@@ -40,6 +40,16 @@ export class AuthService {
     return `${body}.${createHmac('sha256', secret).update(body).digest('base64url')}`;
   }
 
+  verifyAccessToken(token: string): { accountId: string } {
+    const [header, payload, signature] = token.split('.');
+    const secret = process.env.JWT_SECRET;
+    if (!header || !payload || !signature || !secret) throw new UnauthorizedException('Invalid access token.');
+    const expected = createHmac('sha256', secret).update(`${header}.${payload}`).digest('base64url');
+    if (signature.length !== expected.length || !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) throw new UnauthorizedException('Invalid access token.');
+    const claims = JSON.parse(Buffer.from(payload, 'base64url').toString()) as { sub?: string; exp?: number };
+    if (!claims.sub || !claims.exp || claims.exp <= Math.floor(Date.now() / 1000)) throw new UnauthorizedException('Access token expired.');
+    return { accountId: claims.sub };
+  }
   private normalizeEmail(value: string): string { const email = value?.trim().toLowerCase(); if (!email || !/^\S+@\S+\.\S+$/.test(email)) throw new BadRequestException('A valid email is required.'); return email; }
   private validatePassword(password: string): void { if (!password || password.length < 12) throw new BadRequestException('Password must be at least 12 characters.'); }
   private hashPassword(password: string): string { const salt = randomBytes(16).toString('hex'); return `${salt}:${scryptSync(password, salt, 64).toString('hex')}`; }
