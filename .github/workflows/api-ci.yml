@@ -1,0 +1,66 @@
+name: API CI
+
+on:
+  push:
+    branches:
+      - main
+      - feat/execution-package-1-identity
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate-api:
+    name: Prisma, TypeScript and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql://hydroland:hydroland@localhost:5432/hydroland_ci?schema=public
+      JWT_ACCESS_SECRET: ci-only-not-for-production
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: hydroland
+          POSTGRES_PASSWORD: hydroland
+          POSTGRES_DB: hydroland_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hydroland -d hydroland_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Validate Prisma schema
+        run: npm exec --workspace @hydroland/api prisma validate
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate --workspace @hydroland/api
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm run test
