@@ -43,6 +43,15 @@ enum ProfessionalRoleRequestStatus {
   ARCHIVED
 }
 
+enum CredentialVerificationStatus {
+  UNVERIFIED
+  PENDING
+  DOCUMENT_VERIFIED
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
 model Person {
   id                String        @id @default(uuid()) @db.Uuid
   publicId          String        @unique @default(cuid())
@@ -61,6 +70,8 @@ model Person {
   personRoles       PersonRole[]
   professionalRoleRequests ProfessionalRoleRequest[] @relation("ProfessionalRoleApplicant")
   reviewedProfessionalRoleRequests ProfessionalRoleRequest[] @relation("ProfessionalRoleReviewer")
+  credentials ProfessionalCredential[] @relation("CredentialOwner")
+  verifiedCredentials ProfessionalCredential[] @relation("CredentialVerifier")
 
   @@index([status])
 }
@@ -168,10 +179,39 @@ model ProfessionalRoleRequest {
   person          Person                        @relation("ProfessionalRoleApplicant", fields: [personId], references: [id], onDelete: Restrict)
   role            Role                          @relation(fields: [roleId], references: [id], onDelete: Restrict)
   reviewer        Person?                       @relation("ProfessionalRoleReviewer", fields: [reviewerPersonId], references: [id], onDelete: Restrict)
+  credentials     ProfessionalCredential[]
 
   @@index([personId, status])
   @@index([roleId, status])
   @@index([reviewerPersonId])
+}
+
+model ProfessionalCredential {
+  id                 String                       @id @default(uuid()) @db.Uuid
+  publicId           String                       @unique @default(cuid())
+  personId           String                       @db.Uuid
+  roleRequestId      String?                      @db.Uuid
+  credentialType     String
+  title              String
+  issuerName         String
+  credentialNumber   String?
+  issuedAt           DateTime?
+  expiresAt          DateTime?
+  verificationStatus CredentialVerificationStatus @default(UNVERIFIED)
+  verificationSource String?
+  verifiedAt         DateTime?
+  verifiedByPersonId String?                      @db.Uuid
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+  archivedAt         DateTime?
+
+  person             Person                       @relation("CredentialOwner", fields: [personId], references: [id], onDelete: Restrict)
+  roleRequest        ProfessionalRoleRequest?     @relation(fields: [roleRequestId], references: [id], onDelete: Restrict)
+  verifiedBy         Person?                      @relation("CredentialVerifier", fields: [verifiedByPersonId], references: [id], onDelete: Restrict)
+
+  @@index([personId, verificationStatus])
+  @@index([roleRequestId])
+  @@index([expiresAt])
 }
 
 model Session {
