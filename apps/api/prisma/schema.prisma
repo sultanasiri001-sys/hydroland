@@ -102,6 +102,7 @@ model Account {
   reviewDecisions  ReviewDecision[]      @relation("ReviewerDecisions")
   notifications    Notification[]
   bookings         Booking[]
+  payments         Payment[]
 }
 
 model Session {
@@ -269,6 +270,7 @@ model Booking {
   updatedAt DateTime @updatedAt
   trip Trip @relation(fields:[tripId],references:[id],onDelete:Restrict)
   account Account @relation(fields:[accountId],references:[id],onDelete:Restrict)
+  payments Payment[]
   @@unique([tripId,accountId])
   @@index([tripId,status])
 }
@@ -286,4 +288,32 @@ model SafetyChecklist {
  updatedAt DateTime @updatedAt
  trip Trip @relation(fields:[tripId],references:[id],onDelete:Restrict)
  @@index([tripId,decision])
+}
+
+enum PaymentStatus { CREATED PENDING AUTHORIZED CAPTURED FAILED CANCELLED REFUNDED }
+enum InvoiceStatus { DRAFT ISSUED PAID VOID }
+model Payment {
+ id String @id @default(uuid())
+ bookingId String
+ accountId String
+ amountMinor Int
+ currency String @default("SAR")
+ status PaymentStatus @default(CREATED)
+ idempotencyKey String @unique
+ providerReference String? @unique
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ booking Booking @relation(fields:[bookingId],references:[id],onDelete:Restrict)
+ account Account @relation(fields:[accountId],references:[id],onDelete:Restrict)
+ invoice Invoice?
+ @@index([accountId,status])
+}
+model Invoice {
+ id String @id @default(uuid())
+ paymentId String @unique
+ number String @unique
+ status InvoiceStatus @default(DRAFT)
+ issuedAt DateTime?
+ createdAt DateTime @default(now())
+ payment Payment @relation(fields:[paymentId],references:[id],onDelete:Restrict)
 }
