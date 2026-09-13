@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 
 export interface WriteAuditEventInput {
@@ -9,7 +10,7 @@ export interface WriteAuditEventInput {
   result: 'SUCCESS' | 'DENIED' | 'FAILED';
   reason?: string;
   referenceId?: string;
-  context?: Record<string, unknown>;
+  context?: Prisma.InputJsonValue;
 }
 
 @Injectable()
