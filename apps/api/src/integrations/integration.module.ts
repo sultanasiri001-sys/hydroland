@@ -1,0 +1,2 @@
+import { Module } from '@nestjs/common'; import { AdminModule } from '../admin/admin.module'; import { AuditModule } from '../audit/audit.module'; import { IntegrationController } from './integration.controller'; import { IntegrationService } from './integration.service';
+@Module({imports:[AdminModule,AuditModule],controllers:[IntegrationController],providers:[IntegrationService],exports:[IntegrationService]}) export class IntegrationModule {}
