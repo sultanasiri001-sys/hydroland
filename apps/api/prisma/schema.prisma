@@ -1,0 +1,152 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PersonStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  RESTRICTED
+  ARCHIVED
+}
+
+enum AccountStatus {
+  PENDING
+  ACTIVE
+  LOCKED
+  SUSPENDED
+  ARCHIVED
+}
+
+enum RoleScope {
+  OWN
+  ORGANIZATION
+  TRIP
+  REGION
+  PLATFORM
+}
+
+model Person {
+  id                String        @id @default(uuid()) @db.Uuid
+  publicId          String        @unique @default(cuid())
+  firstName         String
+  middleName        String?
+  lastName          String
+  nationalityCode   String?       @db.VarChar(3)
+  preferredLanguage String        @default("ar") @db.VarChar(5)
+  status            PersonStatus  @default(PENDING)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  archivedAt        DateTime?
+
+  accounts          Account[]
+  profile           Profile?
+  personRoles       PersonRole[]
+
+  @@index([status])
+}
+
+model Account {
+  id               String        @id @default(uuid()) @db.Uuid
+  personId         String        @db.Uuid
+  email            String?       @unique
+  phoneE164         String?       @unique
+  passwordHash     String?
+  emailVerifiedAt  DateTime?
+  phoneVerifiedAt  DateTime?
+  status            AccountStatus @default(PENDING)
+  lastLoginAt       DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  person            Person        @relation(fields: [personId], references: [id], onDelete: Restrict)
+  sessions          Session[]
+
+  @@index([personId])
+  @@index([status])
+}
+
+model Profile {
+  id            String   @id @default(uuid()) @db.Uuid
+  personId      String   @unique @db.Uuid
+  displayName   String?
+  bio           String?
+  avatarFileId  String?
+  regionCode    String?
+  city          String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  person        Person   @relation(fields: [personId], references: [id], onDelete: Restrict)
+}
+
+model Role {
+  id          String           @id @default(uuid()) @db.Uuid
+  key         String           @unique
+  nameAr      String
+  description String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  permissions RolePermission[]
+  personRoles PersonRole[]
+}
+
+model Permission {
+  id          String           @id @default(uuid()) @db.Uuid
+  key         String           @unique
+  nameAr      String
+  description String?
+  createdAt   DateTime         @default(now())
+
+  roles       RolePermission[]
+}
+
+model RolePermission {
+  roleId       String      @db.Uuid
+  permissionId String      @db.Uuid
+
+  role          Role       @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  permission    Permission @relation(fields: [permissionId], references: [id], onDelete: Restrict)
+
+  @@id([roleId, permissionId])
+}
+
+model PersonRole {
+  id         String    @id @default(uuid()) @db.Uuid
+  personId   String    @db.Uuid
+  roleId     String    @db.Uuid
+  scope      RoleScope @default(OWN)
+  scopeRef   String?
+  activeFrom DateTime  @default(now())
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  person      Person   @relation(fields: [personId], references: [id], onDelete: Restrict)
+  role        Role     @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@index([personId, roleId])
+  @@index([scope, scopeRef])
+}
+
+model Session {
+  id               String   @id @default(uuid()) @db.Uuid
+  accountId        String   @db.Uuid
+  refreshTokenHash String
+  userAgent        String?
+  ipAddress        String?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime @default(now())
+
+  account          Account  @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([accountId])
+  @@index([expiresAt])
+}
