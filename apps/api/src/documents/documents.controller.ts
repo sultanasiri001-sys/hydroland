@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { AccessTokenGuard, AccessTokenPrincipal } from '../auth/access-token.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { DocumentsService } from './documents.service';
@@ -18,6 +18,11 @@ export class DocumentsController {
   @Post('upload-intent')
   requestUpload(@CurrentUser() user: AccessTokenPrincipal, @Body() input: RequestUploadDto) {
     return this.documents.requestUpload(user.sub, input);
+  }
+
+  @Get(':publicId/read-url')
+  createReadUrl(@CurrentUser() user: AccessTokenPrincipal, @Param('publicId') publicId: string) {
+    return this.documents.createReadUrl(user.sub, publicId);
   }
 
   @Post()
