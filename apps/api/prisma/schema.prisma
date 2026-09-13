@@ -31,6 +31,18 @@ enum RoleScope {
   PLATFORM
 }
 
+enum ProfessionalRoleRequestStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  INFO_REQUIRED
+  RESUBMITTED
+  APPROVED
+  REJECTED
+  SUSPENDED
+  ARCHIVED
+}
+
 model Person {
   id                String        @id @default(uuid()) @db.Uuid
   publicId          String        @unique @default(cuid())
@@ -47,6 +59,8 @@ model Person {
   accounts          Account[]
   profile           Profile?
   personRoles       PersonRole[]
+  professionalRoleRequests ProfessionalRoleRequest[] @relation("ProfessionalRoleApplicant")
+  reviewedProfessionalRoleRequests ProfessionalRoleRequest[] @relation("ProfessionalRoleReviewer")
 
   @@index([status])
 }
@@ -95,6 +109,7 @@ model Role {
 
   permissions RolePermission[]
   personRoles PersonRole[]
+  professionalRoleRequests ProfessionalRoleRequest[]
 }
 
 model Permission {
@@ -133,6 +148,30 @@ model PersonRole {
 
   @@index([personId, roleId])
   @@index([scope, scopeRef])
+}
+
+model ProfessionalRoleRequest {
+  id              String                        @id @default(uuid()) @db.Uuid
+  publicId        String                        @unique @default(cuid())
+  personId        String                        @db.Uuid
+  roleId          String                        @db.Uuid
+  status          ProfessionalRoleRequestStatus @default(DRAFT)
+  applicantNote   String?
+  reviewerNote    String?
+  submittedAt     DateTime?
+  reviewedAt      DateTime?
+  reviewerPersonId String?                      @db.Uuid
+  createdAt       DateTime                      @default(now())
+  updatedAt       DateTime                      @updatedAt
+  archivedAt      DateTime?
+
+  person          Person                        @relation("ProfessionalRoleApplicant", fields: [personId], references: [id], onDelete: Restrict)
+  role            Role                          @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  reviewer        Person?                       @relation("ProfessionalRoleReviewer", fields: [reviewerPersonId], references: [id], onDelete: Restrict)
+
+  @@index([personId, status])
+  @@index([roleId, status])
+  @@index([reviewerPersonId])
 }
 
 model Session {
