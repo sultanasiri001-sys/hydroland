@@ -92,6 +92,27 @@ export class DocumentsService {
     };
   }
 
+  private async rejectVerifiedUpload(personId: string, intentId: string, intentPublicId: string, reason: string) {
+    await this.prisma.$transaction([
+      this.prisma.documentUploadIntent.update({
+        where: { id: intentId },
+        data: { status: 'REJECTED', completedAt: new Date() },
+      }),
+      this.prisma.auditEvent.create({
+        data: {
+          actorPersonId: personId,
+          action: 'document.upload.verify',
+          entityType: 'DocumentUploadIntent',
+          entityId: intentPublicId,
+          result: 'REJECTED',
+          reason,
+          referenceId: intentPublicId,
+        },
+      }),
+    ]);
+    throw new BadRequestException(reason);
+  }
+
   async completeUpload(personId: string, intentPublicId: string) {
     const intent = await this.prisma.documentUploadIntent.findFirst({
       where: { publicId: intentPublicId, personId, archivedAt: null },
@@ -122,19 +143,34 @@ export class DocumentsService {
     const verified = await this.storage.verifyUploadedObject(intent.storageObjectKey);
     const mimeType = verified.mimeType.trim().toLowerCase();
 
-    if (verified.objectKey !== intent.storageObjectKey) throw new BadRequestException('مسار الملف المتحقق منه لا يطابق طلب الرفع');
-    if (!ALLOWED_DOCUMENT_MIME_TYPES.has(mimeType)) throw new BadRequestException('نوع الملف الفعلي غير مسموح');
-    if (mimeType !== intent.declaredMimeType) throw new BadRequestException('نوع الملف الفعلي لا يطابق النوع المعلن');
-    if (verified.byteSize < 1 || verified.byteSize > MAX_DOCUMENT_BYTES) throw new BadRequestException('حجم الملف الفعلي غير مسموح');
-    if (verified.byteSize !== intent.declaredByteSize) throw new BadRequestException('حجم الملف الفعلي لا يطابق الحجم المعلن');
-    if (!/^[a-f0-9]{64}$/i.test(verified.sha256Hex)) throw new BadRequestException('بصمة الملف المتحققة غير صالحة');
-    if (verified.malwareScanStatus !== 'CLEAN') throw new BadRequestException('تم رفض الوثيقة في الفحص الأمني');
+    if (verified.objectKey !== intent.storageObjectKey) {
+      return this.rejectVerifiedUpload(personId, intent.id, intent.publicId, 'مسار الملف المتحقق منه لا يطابق طلب الرفع');
+    }
+    if (!ALLOWED_DOCUMENT_MIME_TYPES.has(mimeType)) {
+      return this.rejectVerifiedUpload(personId, intent.id, intent.publicId, 'نوع الملف الفعلي غير مسموح');
+    }
+    if (mimeType !== intent.declaredMimeType) {
+      return this.rejectVerifiedUpload(personId, intent.id, intent.publicId, 'نوع الملف الفعلي لا يطابق النوع المعلن');
+    }
+    if (verified.byteSize < 1 || verified.byteSize > MAX_DOCUMENT_BYTES) {
+      return this.rejectVerifiedUpload(personId, intent.id, intent.publicId, 'حجم الملف الفعلي غير مسموح');
+    }
+    if (verified.byteSize !== intent.declaredByteSize) {
+      return this.rejectVerifiedUpload(personId, intent.id, intent.publicId, 'حجم الملف الفعلي لا يطابق الحجم المعلن');
+    }
+    if (!/^[a-f0-9]{64}$/i.test(verified.sha256Hex)) {
+      return this.rejectVerifiedUpload(personId, intent.id, intent.publicId, 'بصمة الملف المتحققة غير صالحة');
+    }
+    if (verified.malwareScanStatus !== 'CLEAN') {
+      return this.rejectVerifiedUpload(personId, intent.id, intent.publicId, 'تم رفض الوثيقة في الفحص الأمني');
+    }
 
     return this.prisma.$transaction(async (tx) => {
-      const current = await tx.documentUploadIntent.findUnique({ where: { id: intent.id }, select: { status: true } });
-      if (!current || (current.status !== 'CREATED' && current.status !== 'UPLOADED')) {
-        throw new BadRequestException('تمت معالجة طلب رفع الوثيقة مسبقاً');
-      }
+      const consumed = await tx.documentUploadIntent.updateMany({
+        where: { id: intent.id, status: { in: ['CREATED', 'UPLOADED'] } },
+        data: { status: 'CONSUMED', uploadedAt: new Date(), completedAt: new Date() },
+      });
+      if (consumed.count !== 1) throw new BadRequestException('تمت معالجة طلب رفع الوثيقة مسبقاً');
 
       const document = await tx.documentRecord.create({
         data: {
@@ -161,11 +197,6 @@ export class DocumentsService {
           scannedAt: true,
           createdAt: true,
         },
-      });
-
-      await tx.documentUploadIntent.update({
-        where: { id: intent.id },
-        data: { status: 'CONSUMED', uploadedAt: new Date(), completedAt: new Date() },
       });
 
       await tx.auditEvent.create({
