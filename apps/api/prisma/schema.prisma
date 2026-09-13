@@ -58,6 +58,16 @@ enum DocumentScanStatus {
   REJECTED
 }
 
+enum DocumentUploadIntentStatus {
+  CREATED
+  UPLOADED
+  SCANNING
+  CLEAN
+  REJECTED
+  EXPIRED
+  CONSUMED
+}
+
 enum NotificationStatus {
   UNREAD
   READ
@@ -84,6 +94,7 @@ model Person {
   credentials ProfessionalCredential[] @relation("CredentialOwner")
   verifiedCredentials ProfessionalCredential[] @relation("CredentialVerifier")
   documents DocumentRecord[]
+  documentUploadIntents DocumentUploadIntent[]
   notifications Notification[]
   auditEvents AuditEvent[]
   @@index([status])
@@ -184,6 +195,7 @@ model ProfessionalRoleRequest {
   reviewer Person? @relation("ProfessionalRoleReviewer", fields: [reviewerPersonId], references: [id], onDelete: Restrict)
   credentials ProfessionalCredential[]
   documents DocumentRecord[]
+  documentUploadIntents DocumentUploadIntent[]
   @@index([personId, status])
   @@index([roleId, status])
   @@index([reviewerPersonId])
@@ -211,9 +223,35 @@ model ProfessionalCredential {
   roleRequest ProfessionalRoleRequest? @relation(fields: [roleRequestId], references: [id], onDelete: Restrict)
   verifiedBy Person? @relation("CredentialVerifier", fields: [verifiedByPersonId], references: [id], onDelete: Restrict)
   documents DocumentRecord[]
+  documentUploadIntents DocumentUploadIntent[]
   @@index([personId, verificationStatus])
   @@index([roleRequestId])
   @@index([expiresAt])
+}
+
+model DocumentUploadIntent {
+  id String @id @default(uuid()) @db.Uuid
+  publicId String @unique @default(cuid())
+  personId String @db.Uuid
+  credentialId String? @db.Uuid
+  roleRequestId String? @db.Uuid
+  documentType String
+  originalFileName String
+  declaredMimeType String
+  declaredByteSize Int
+  storageObjectKey String @unique
+  status DocumentUploadIntentStatus @default(CREATED)
+  expiresAt DateTime
+  uploadedAt DateTime?
+  completedAt DateTime?
+  createdAt DateTime @default(now())
+  archivedAt DateTime?
+  person Person @relation(fields: [personId], references: [id], onDelete: Restrict)
+  credential ProfessionalCredential? @relation(fields: [credentialId], references: [id], onDelete: Restrict)
+  roleRequest ProfessionalRoleRequest? @relation(fields: [roleRequestId], references: [id], onDelete: Restrict)
+  @@index([personId, status, expiresAt])
+  @@index([credentialId])
+  @@index([roleRequestId])
 }
 
 model DocumentRecord {
