@@ -59,6 +59,6 @@ byId('language').addEventListener('click',()=>{language=language==='ar'?'en':'ar
 byId('primary-action').addEventListener('click',()=>notify(language==='ar'?'تم فتح الإجراء الرئيسي للواجهة':'Primary workspace action opened'));
 byId('refresh').addEventListener('click',refresh);
 renderNavigation();renderWorkspace();
-if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
+if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
 
 export { api, workspaces };
