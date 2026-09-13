@@ -54,6 +54,9 @@ jobs:
       - name: Generate Prisma client
         run: npm run prisma:generate --workspace @hydroland/api
 
+      - name: Apply schema to CI PostgreSQL
+        run: npm exec --workspace @hydroland/api prisma db push -- --skip-generate
+
       - name: Typecheck
         run: npm run typecheck
 
