@@ -7,225 +7,200 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum PersonStatus {
-  PENDING
-  ACTIVE
-  SUSPENDED
-  RESTRICTED
-  ARCHIVED
-}
-
-enum AccountStatus {
-  PENDING
-  ACTIVE
-  LOCKED
-  SUSPENDED
-  ARCHIVED
-}
-
-enum RoleScope {
-  OWN
-  ORGANIZATION
-  TRIP
-  REGION
-  PLATFORM
-}
-
-enum ProfessionalRoleRequestStatus {
-  DRAFT
-  SUBMITTED
-  UNDER_REVIEW
-  INFO_REQUIRED
-  RESUBMITTED
-  APPROVED
-  REJECTED
-  SUSPENDED
-  ARCHIVED
-}
-
-enum CredentialVerificationStatus {
-  UNVERIFIED
-  PENDING
-  DOCUMENT_VERIFIED
-  VERIFIED
-  REJECTED
-  EXPIRED
-}
+enum PersonStatus { PENDING ACTIVE SUSPENDED RESTRICTED ARCHIVED }
+enum AccountStatus { PENDING ACTIVE LOCKED SUSPENDED ARCHIVED }
+enum RoleScope { OWN ORGANIZATION TRIP REGION PLATFORM }
+enum ProfessionalRoleRequestStatus { DRAFT SUBMITTED UNDER_REVIEW INFO_REQUIRED RESUBMITTED APPROVED REJECTED SUSPENDED ARCHIVED }
+enum CredentialVerificationStatus { UNVERIFIED PENDING DOCUMENT_VERIFIED VERIFIED REJECTED EXPIRED }
+enum DocumentScanStatus { PENDING CLEAN REJECTED }
 
 model Person {
-  id                String        @id @default(uuid()) @db.Uuid
-  publicId          String        @unique @default(cuid())
-  firstName         String
-  middleName        String?
-  lastName          String
-  nationalityCode   String?       @db.VarChar(3)
-  preferredLanguage String        @default("ar") @db.VarChar(5)
-  status            PersonStatus  @default(PENDING)
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-  archivedAt        DateTime?
-
-  accounts          Account[]
-  profile           Profile?
-  personRoles       PersonRole[]
+  id String @id @default(uuid()) @db.Uuid
+  publicId String @unique @default(cuid())
+  firstName String
+  middleName String?
+  lastName String
+  nationalityCode String? @db.VarChar(3)
+  preferredLanguage String @default("ar") @db.VarChar(5)
+  status PersonStatus @default(PENDING)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  archivedAt DateTime?
+  accounts Account[]
+  profile Profile?
+  personRoles PersonRole[]
   professionalRoleRequests ProfessionalRoleRequest[] @relation("ProfessionalRoleApplicant")
   reviewedProfessionalRoleRequests ProfessionalRoleRequest[] @relation("ProfessionalRoleReviewer")
   credentials ProfessionalCredential[] @relation("CredentialOwner")
   verifiedCredentials ProfessionalCredential[] @relation("CredentialVerifier")
-
+  documents DocumentRecord[]
   @@index([status])
 }
 
 model Account {
-  id               String        @id @default(uuid()) @db.Uuid
-  personId         String        @db.Uuid
-  email            String?       @unique
-  phoneE164         String?       @unique
-  passwordHash     String?
-  emailVerifiedAt  DateTime?
-  phoneVerifiedAt  DateTime?
-  status            AccountStatus @default(PENDING)
-  lastLoginAt       DateTime?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-
-  person            Person        @relation(fields: [personId], references: [id], onDelete: Restrict)
-  sessions          Session[]
-
+  id String @id @default(uuid()) @db.Uuid
+  personId String @db.Uuid
+  email String? @unique
+  phoneE164 String? @unique
+  passwordHash String?
+  emailVerifiedAt DateTime?
+  phoneVerifiedAt DateTime?
+  status AccountStatus @default(PENDING)
+  lastLoginAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  person Person @relation(fields: [personId], references: [id], onDelete: Restrict)
+  sessions Session[]
   @@index([personId])
   @@index([status])
 }
 
 model Profile {
-  id            String   @id @default(uuid()) @db.Uuid
-  personId      String   @unique @db.Uuid
-  displayName   String?
-  bio           String?
-  avatarFileId  String?
-  regionCode    String?
-  city          String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  person        Person   @relation(fields: [personId], references: [id], onDelete: Restrict)
+  id String @id @default(uuid()) @db.Uuid
+  personId String @unique @db.Uuid
+  displayName String?
+  bio String?
+  avatarFileId String?
+  regionCode String?
+  city String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  person Person @relation(fields: [personId], references: [id], onDelete: Restrict)
 }
 
 model Role {
-  id          String           @id @default(uuid()) @db.Uuid
-  key         String           @unique
-  nameAr      String
+  id String @id @default(uuid()) @db.Uuid
+  key String @unique
+  nameAr String
   description String?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   permissions RolePermission[]
   personRoles PersonRole[]
   professionalRoleRequests ProfessionalRoleRequest[]
 }
 
 model Permission {
-  id          String           @id @default(uuid()) @db.Uuid
-  key         String           @unique
-  nameAr      String
+  id String @id @default(uuid()) @db.Uuid
+  key String @unique
+  nameAr String
   description String?
-  createdAt   DateTime         @default(now())
-
-  roles       RolePermission[]
+  createdAt DateTime @default(now())
+  roles RolePermission[]
 }
 
 model RolePermission {
-  roleId       String      @db.Uuid
-  permissionId String      @db.Uuid
-
-  role          Role       @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  permission    Permission @relation(fields: [permissionId], references: [id], onDelete: Restrict)
-
+  roleId String @db.Uuid
+  permissionId String @db.Uuid
+  role Role @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Restrict)
   @@id([roleId, permissionId])
 }
 
 model PersonRole {
-  id         String    @id @default(uuid()) @db.Uuid
-  personId   String    @db.Uuid
-  roleId     String    @db.Uuid
-  scope      RoleScope @default(OWN)
-  scopeRef   String?
-  activeFrom DateTime  @default(now())
-  expiresAt  DateTime?
-  revokedAt  DateTime?
-  createdAt  DateTime  @default(now())
-
-  person      Person   @relation(fields: [personId], references: [id], onDelete: Restrict)
-  role        Role     @relation(fields: [roleId], references: [id], onDelete: Restrict)
-
+  id String @id @default(uuid()) @db.Uuid
+  personId String @db.Uuid
+  roleId String @db.Uuid
+  scope RoleScope @default(OWN)
+  scopeRef String?
+  activeFrom DateTime @default(now())
+  expiresAt DateTime?
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  person Person @relation(fields: [personId], references: [id], onDelete: Restrict)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Restrict)
   @@index([personId, roleId])
   @@index([scope, scopeRef])
 }
 
 model ProfessionalRoleRequest {
-  id              String                        @id @default(uuid()) @db.Uuid
-  publicId        String                        @unique @default(cuid())
-  personId        String                        @db.Uuid
-  roleId          String                        @db.Uuid
-  status          ProfessionalRoleRequestStatus @default(DRAFT)
-  applicantNote   String?
-  reviewerNote    String?
-  submittedAt     DateTime?
-  reviewedAt      DateTime?
-  reviewerPersonId String?                      @db.Uuid
-  createdAt       DateTime                      @default(now())
-  updatedAt       DateTime                      @updatedAt
-  archivedAt      DateTime?
-
-  person          Person                        @relation("ProfessionalRoleApplicant", fields: [personId], references: [id], onDelete: Restrict)
-  role            Role                          @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  reviewer        Person?                       @relation("ProfessionalRoleReviewer", fields: [reviewerPersonId], references: [id], onDelete: Restrict)
-  credentials     ProfessionalCredential[]
-
+  id String @id @default(uuid()) @db.Uuid
+  publicId String @unique @default(cuid())
+  personId String @db.Uuid
+  roleId String @db.Uuid
+  status ProfessionalRoleRequestStatus @default(DRAFT)
+  applicantNote String?
+  reviewerNote String?
+  submittedAt DateTime?
+  reviewedAt DateTime?
+  reviewerPersonId String? @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  archivedAt DateTime?
+  person Person @relation("ProfessionalRoleApplicant", fields: [personId], references: [id], onDelete: Restrict)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  reviewer Person? @relation("ProfessionalRoleReviewer", fields: [reviewerPersonId], references: [id], onDelete: Restrict)
+  credentials ProfessionalCredential[]
+  documents DocumentRecord[]
   @@index([personId, status])
   @@index([roleId, status])
   @@index([reviewerPersonId])
 }
 
 model ProfessionalCredential {
-  id                 String                       @id @default(uuid()) @db.Uuid
-  publicId           String                       @unique @default(cuid())
-  personId           String                       @db.Uuid
-  roleRequestId      String?                      @db.Uuid
-  credentialType     String
-  title              String
-  issuerName         String
-  credentialNumber   String?
-  issuedAt           DateTime?
-  expiresAt          DateTime?
+  id String @id @default(uuid()) @db.Uuid
+  publicId String @unique @default(cuid())
+  personId String @db.Uuid
+  roleRequestId String? @db.Uuid
+  credentialType String
+  title String
+  issuerName String
+  credentialNumber String?
+  issuedAt DateTime?
+  expiresAt DateTime?
   verificationStatus CredentialVerificationStatus @default(UNVERIFIED)
   verificationSource String?
-  verifiedAt         DateTime?
-  verifiedByPersonId String?                      @db.Uuid
-  createdAt          DateTime                     @default(now())
-  updatedAt          DateTime                     @updatedAt
-  archivedAt         DateTime?
-
-  person             Person                       @relation("CredentialOwner", fields: [personId], references: [id], onDelete: Restrict)
-  roleRequest        ProfessionalRoleRequest?     @relation(fields: [roleRequestId], references: [id], onDelete: Restrict)
-  verifiedBy         Person?                      @relation("CredentialVerifier", fields: [verifiedByPersonId], references: [id], onDelete: Restrict)
-
+  verifiedAt DateTime?
+  verifiedByPersonId String? @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  archivedAt DateTime?
+  person Person @relation("CredentialOwner", fields: [personId], references: [id], onDelete: Restrict)
+  roleRequest ProfessionalRoleRequest? @relation(fields: [roleRequestId], references: [id], onDelete: Restrict)
+  verifiedBy Person? @relation("CredentialVerifier", fields: [verifiedByPersonId], references: [id], onDelete: Restrict)
+  documents DocumentRecord[]
   @@index([personId, verificationStatus])
   @@index([roleRequestId])
   @@index([expiresAt])
 }
 
+model DocumentRecord {
+  id String @id @default(uuid()) @db.Uuid
+  publicId String @unique @default(cuid())
+  personId String @db.Uuid
+  credentialId String? @db.Uuid
+  roleRequestId String? @db.Uuid
+  documentType String
+  originalFileName String
+  mimeType String
+  byteSize Int
+  sha256Hex String @db.VarChar(64)
+  storageObjectKey String @unique
+  scanStatus DocumentScanStatus @default(PENDING)
+  scanDetail String?
+  scannedAt DateTime?
+  createdAt DateTime @default(now())
+  archivedAt DateTime?
+  person Person @relation(fields: [personId], references: [id], onDelete: Restrict)
+  credential ProfessionalCredential? @relation(fields: [credentialId], references: [id], onDelete: Restrict)
+  roleRequest ProfessionalRoleRequest? @relation(fields: [roleRequestId], references: [id], onDelete: Restrict)
+  @@index([personId, createdAt])
+  @@index([credentialId])
+  @@index([roleRequestId])
+  @@index([scanStatus])
+  @@index([sha256Hex])
+}
+
 model Session {
-  id               String   @id @default(uuid()) @db.Uuid
-  accountId        String   @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
+  accountId String @db.Uuid
   refreshTokenHash String
-  userAgent        String?
-  ipAddress        String?
-  expiresAt        DateTime
-  revokedAt        DateTime?
-  createdAt        DateTime @default(now())
-
-  account          Account  @relation(fields: [accountId], references: [id], onDelete: Restrict)
-
+  userAgent String?
+  ipAddress String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  account Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
   @@index([accountId])
   @@index([expiresAt])
 }
