@@ -29,9 +29,23 @@ export class ReviewService {
       throw new ForbiddenException('تم استلام الطلب بواسطة مراجع آخر');
     }
 
-    return this.prisma.professionalRoleRequest.update({
-      where: { id: request.id },
-      data: { status: 'UNDER_REVIEW', reviewerPersonId },
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.professionalRoleRequest.update({
+        where: { id: request.id },
+        data: { status: 'UNDER_REVIEW', reviewerPersonId },
+      });
+      await tx.auditEvent.create({
+        data: {
+          actorPersonId: reviewerPersonId,
+          action: 'professional.role_request.claim',
+          entityType: 'ProfessionalRoleRequest',
+          entityId: request.publicId,
+          result: 'SUCCESS',
+          referenceId: request.publicId,
+          context: { previousStatus: request.status, nextStatus: 'UNDER_REVIEW' },
+        },
+      });
+      return updated;
     });
   }
 
@@ -55,6 +69,7 @@ export class ReviewService {
         },
       });
 
+      let activatedRole = false;
       if (input.decision === 'APPROVED') {
         const active = await tx.personRole.findFirst({
           where: { personId: request.personId, roleId: request.roleId, revokedAt: null },
@@ -68,8 +83,28 @@ export class ReviewService {
               scopeRef: input.scopeRef?.trim(),
             },
           });
+          activatedRole = true;
         }
       }
+
+      await tx.auditEvent.create({
+        data: {
+          actorPersonId: reviewerPersonId,
+          action: 'professional.role_request.decision',
+          entityType: 'ProfessionalRoleRequest',
+          entityId: request.publicId,
+          result: 'SUCCESS',
+          reason: input.reviewerNote?.trim(),
+          referenceId: request.publicId,
+          context: {
+            decision: input.decision,
+            previousStatus: request.status,
+            roleActivated: activatedRole,
+            scope: input.scopeRef ? 'ORGANIZATION' : 'OWN',
+            scopeRef: input.scopeRef?.trim() ?? null,
+          },
+        },
+      });
 
       return updated;
     });
