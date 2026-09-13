@@ -58,6 +58,7 @@ async function cleanup() {
   if (!personIds.length) return;
 
   await prisma.documentRecord.deleteMany({ where: { personId: { in: personIds } } });
+  await prisma.documentUploadIntent.deleteMany({ where: { personId: { in: personIds } } });
   await prisma.professionalCredential.deleteMany({ where: { personId: { in: personIds } } });
   await prisma.professionalRoleRequest.deleteMany({
     where: { OR: [{ personId: { in: personIds } }, { reviewerPersonId: { in: personIds } }] },
@@ -111,6 +112,66 @@ async function main() {
     assert.equal(createRequest.status, 201, `create role request failed: ${JSON.stringify(createRequest.body)}`);
     assert.equal(createRequest.body.status, 'DRAFT');
     const requestPublicId = createRequest.body.publicId;
+
+    const uploadIntent = await request('/api/v1/me/documents/upload-intent', {
+      method: 'POST',
+      headers: bearer(applicant.accessToken),
+      body: JSON.stringify({
+        documentType: 'DIVING_CERTIFICATE',
+        originalFileName: 'diving-certificate.pdf',
+        mimeType: 'application/pdf',
+        byteSize: 2048,
+        roleRequestPublicId: requestPublicId,
+      }),
+    });
+    assert.equal(uploadIntent.status, 201, `upload intent failed: ${JSON.stringify(uploadIntent.body)}`);
+    assert.equal(uploadIntent.body.status, 'CREATED');
+    assert.equal(uploadIntent.body.uploadUrl, null);
+    assert.equal(uploadIntent.body.uploadUrlStatus, 'STORAGE_PROVIDER_NOT_CONNECTED');
+    assert.equal(typeof uploadIntent.body.publicId, 'string');
+
+    const foreignComplete = await request(`/api/v1/me/documents/upload-intent/${uploadIntent.body.publicId}/complete`, {
+      method: 'POST',
+      headers: bearer(reviewer.accessToken),
+      body: JSON.stringify({}),
+    });
+    assert.equal(foreignComplete.status, 404, `foreign upload intent was exposed: ${JSON.stringify(foreignComplete.body)}`);
+
+    const ownerComplete = await request(`/api/v1/me/documents/upload-intent/${uploadIntent.body.publicId}/complete`, {
+      method: 'POST',
+      headers: bearer(applicant.accessToken),
+      body: JSON.stringify({}),
+    });
+    assert.equal(ownerComplete.status, 501, `owner completion should fail closed until storage is connected: ${JSON.stringify(ownerComplete.body)}`);
+
+    const cleanDocument = await prisma.documentRecord.create({
+      data: {
+        personId: applicantAccount.personId,
+        roleRequestId: createRequest.body.id,
+        documentType: 'DIVING_CERTIFICATE',
+        originalFileName: 'verified-diving-certificate.pdf',
+        mimeType: 'application/pdf',
+        byteSize: 2048,
+        sha256Hex: 'a'.repeat(64),
+        storageObjectKey: `private/documents/${applicantAccount.personId}/e2e-owner-isolation.pdf`,
+        scanStatus: 'CLEAN',
+        scannedAt: new Date(),
+      },
+      select: { publicId: true },
+    });
+
+    const foreignRead = await request(`/api/v1/me/documents/${cleanDocument.publicId}/read-url`, {
+      method: 'GET',
+      headers: bearer(reviewer.accessToken),
+    });
+    assert.equal(foreignRead.status, 404, `foreign document metadata was exposed: ${JSON.stringify(foreignRead.body)}`);
+
+    const ownerRead = await request(`/api/v1/me/documents/${cleanDocument.publicId}/read-url`, {
+      method: 'GET',
+      headers: bearer(applicant.accessToken),
+    });
+    assert.equal(ownerRead.status, 501, `owner read should fail closed until storage is connected: ${JSON.stringify(ownerRead.body)}`);
+    console.log('PASS document upload-intent ownership and read isolation');
 
     const submit = await request(`/api/v1/me/professional/role-requests/${requestPublicId}/submit`, {
       method: 'POST',
