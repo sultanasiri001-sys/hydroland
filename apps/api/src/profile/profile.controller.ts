@@ -16,6 +16,6 @@ export class ProfileController {
 
   @Patch()
   updateProfile(@CurrentUser() user: AccessTokenPrincipal, @Body() input: UpdateProfileDto) {
-    return this.profiles.update(user.sub, input);
+    return this.profiles.updateByPersonId(user.sub, input);
   }
 }
