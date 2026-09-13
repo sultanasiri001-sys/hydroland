@@ -13,6 +13,7 @@ enum RoleScope { OWN ORGANIZATION TRIP REGION PLATFORM }
 enum ProfessionalRoleRequestStatus { DRAFT SUBMITTED UNDER_REVIEW INFO_REQUIRED RESUBMITTED APPROVED REJECTED SUSPENDED ARCHIVED }
 enum CredentialVerificationStatus { UNVERIFIED PENDING DOCUMENT_VERIFIED VERIFIED REJECTED EXPIRED }
 enum DocumentScanStatus { PENDING CLEAN REJECTED }
+enum NotificationStatus { UNREAD READ ARCHIVED }
 
 model Person {
   id String @id @default(uuid()) @db.Uuid
@@ -34,6 +35,8 @@ model Person {
   credentials ProfessionalCredential[] @relation("CredentialOwner")
   verifiedCredentials ProfessionalCredential[] @relation("CredentialVerifier")
   documents DocumentRecord[]
+  notifications Notification[]
+  auditEvents AuditEvent[]
   @@index([status])
 }
 
@@ -191,6 +194,41 @@ model DocumentRecord {
   @@index([sha256Hex])
 }
 
+model Notification {
+  id String @id @default(uuid()) @db.Uuid
+  publicId String @unique @default(cuid())
+  personId String @db.Uuid
+  type String
+  titleAr String
+  bodyAr String
+  status NotificationStatus @default(UNREAD)
+  referenceType String?
+  referenceId String?
+  createdAt DateTime @default(now())
+  readAt DateTime?
+  archivedAt DateTime?
+  person Person @relation(fields: [personId], references: [id], onDelete: Restrict)
+  @@index([personId, status, createdAt])
+  @@index([referenceType, referenceId])
+}
+
+model AuditEvent {
+  id String @id @default(uuid()) @db.Uuid
+  actorPersonId String? @db.Uuid
+  action String
+  entityType String
+  entityId String
+  result String
+  reason String?
+  referenceId String?
+  context Json?
+  createdAt DateTime @default(now())
+  actor Person? @relation(fields: [actorPersonId], references: [id], onDelete: Restrict)
+  @@index([actorPersonId, createdAt])
+  @@index([entityType, entityId])
+  @@index([action, createdAt])
+}
+
 model Session {
   id String @id @default(uuid()) @db.Uuid
   accountId String @db.Uuid
@@ -203,21 +241,4 @@ model Session {
   account Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
   @@index([accountId])
   @@index([expiresAt])
-}
-
-model AuditEvent {
-  id String @id @default(uuid()) @db.Uuid
-  publicId String @unique @default(cuid())
-  actorPersonId String? @db.Uuid
-  action String
-  entityType String
-  entityId String
-  result String
-  reason String?
-  referenceId String?
-  context Json?
-  createdAt DateTime @default(now())
-  @@index([actorPersonId, createdAt])
-  @@index([entityType, entityId, createdAt])
-  @@index([action, createdAt])
 }
