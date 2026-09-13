@@ -8,74 +8,59 @@ import { RegisterDto } from './dto/register.dto';
 
 @Injectable()
 export class AuthService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly jwt: JwtService,
-  ) {}
+  constructor(private readonly prisma: PrismaService, private readonly jwt: JwtService) {}
 
   async register(input: RegisterDto) {
     const email = input.email.trim().toLowerCase();
-    const existing = await this.prisma.account.findUnique({ where: { email } });
-    if (existing) throw new ConflictException('البريد الإلكتروني مستخدم بالفعل');
-
+    if (await this.prisma.account.findUnique({ where: { email } })) throw new ConflictException('البريد الإلكتروني مستخدم بالفعل');
     const passwordHash = await hash(input.password, 12);
-    return this.prisma.$transaction(async (tx) => {
-      const person = await tx.person.create({
-        data: {
-          firstName: input.firstName.trim(),
-          middleName: input.middleName?.trim(),
-          lastName: input.lastName.trim(),
-          preferredLanguage: input.preferredLanguage ?? 'ar',
-          profile: {
-            create: { displayName: `${input.firstName.trim()} ${input.lastName.trim()}` },
-          },
-          accounts: {
-            create: { email, passwordHash },
-          },
-        },
-        select: { id: true, publicId: true, firstName: true, lastName: true, status: true },
-      });
-      return person;
+    return this.prisma.person.create({
+      data: {
+        firstName: input.firstName.trim(), lastName: input.lastName.trim(), preferredLanguage: input.preferredLanguage ?? 'ar',
+        profile: { create: { displayName: `${input.firstName.trim()} ${input.lastName.trim()}` } },
+        accounts: { create: { email, passwordHash } },
+      },
+      select: { publicId: true, firstName: true, lastName: true, status: true },
     });
   }
 
-  async login(input: LoginDto, userAgent?: string, ipAddress?: string) {
-    const email = input.email.trim().toLowerCase();
-    const account = await this.prisma.account.findUnique({
-      where: { email },
-      include: { person: true },
-    });
+  private secret(): string {
+    const secret = process.env.JWT_ACCESS_SECRET;
+    if (!secret) throw new Error('JWT_ACCESS_SECRET is required');
+    return secret;
+  }
 
-    if (!account?.passwordHash || !(await compare(input.password, account.passwordHash))) {
-      throw new UnauthorizedException('بيانات الدخول غير صحيحة');
-    }
-    if (account.status === 'LOCKED' || account.status === 'SUSPENDED' || account.status === 'ARCHIVED') {
-      throw new UnauthorizedException('الحساب غير متاح لتسجيل الدخول');
-    }
+  private issue(personId: string, accountId: string) {
+    return this.jwt.signAsync({ sub: personId, accountId, type: 'access' }, { secret: this.secret(), expiresIn: '15m' });
+  }
 
-    const accessSecret = process.env.JWT_ACCESS_SECRET;
-    if (!accessSecret) throw new Error('JWT_ACCESS_SECRET is required');
-
-    const accessToken = await this.jwt.signAsync(
-      { sub: account.personId, accountId: account.id, type: 'access' },
-      { secret: accessSecret, expiresIn: '15m' },
-    );
+  async login(input: LoginDto) {
+    const account = await this.prisma.account.findUnique({ where: { email: input.email.trim().toLowerCase() }, include: { person: true } });
+    if (!account?.passwordHash || !(await compare(input.password, account.passwordHash))) throw new UnauthorizedException('بيانات الدخول غير صحيحة');
+    if (account.status !== 'ACTIVE' && account.status !== 'PENDING') throw new UnauthorizedException('الحساب غير متاح لتسجيل الدخول');
     const refreshToken = randomBytes(48).toString('base64url');
-    const refreshTokenHash = await hash(refreshToken, 12);
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    await this.prisma.session.create({ data: { accountId: account.id, refreshTokenHash: await hash(refreshToken, 12), expiresAt: new Date(Date.now() + 2592000000) } });
+    return { accessToken: await this.issue(account.personId, account.id), refreshToken, expiresInSeconds: 900 };
+  }
 
-    await this.prisma.$transaction([
-      this.prisma.session.create({
-        data: { accountId: account.id, refreshTokenHash, userAgent, ipAddress, expiresAt },
-      }),
-      this.prisma.account.update({ where: { id: account.id }, data: { lastLoginAt: new Date() } }),
-    ]);
+  async refresh(refreshToken: string) {
+    const sessions = await this.prisma.session.findMany({ where: { revokedAt: null, expiresAt: { gt: new Date() } }, include: { account: true }, take: 20 });
+    for (const session of sessions) {
+      if (await compare(refreshToken, session.refreshTokenHash)) {
+        return { accessToken: await this.issue(session.account.personId, session.accountId), expiresInSeconds: 900 };
+      }
+    }
+    throw new UnauthorizedException('جلسة التجديد غير صالحة أو منتهية');
+  }
 
-    return {
-      accessToken,
-      refreshToken,
-      expiresInSeconds: 900,
-      person: { publicId: account.person.publicId, firstName: account.person.firstName, lastName: account.person.lastName },
-    };
+  async logout(refreshToken: string) {
+    const sessions = await this.prisma.session.findMany({ where: { revokedAt: null }, take: 20 });
+    for (const session of sessions) {
+      if (await compare(refreshToken, session.refreshTokenHash)) {
+        await this.prisma.session.update({ where: { id: session.id }, data: { revokedAt: new Date() } });
+        break;
+      }
+    }
+    return { success: true };
   }
 }
