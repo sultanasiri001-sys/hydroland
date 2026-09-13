@@ -1,8 +1,7 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, NotImplementedException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { ALLOWED_DOCUMENT_MIME_TYPES, MAX_DOCUMENT_BYTES } from './document-policy';
 import { DocumentStorageService } from './document-storage.service';
-import { RegisterDocumentDto } from './dto/register-document.dto';
 import { RequestUploadDto } from './dto/request-upload.dto';
 
 @Injectable()
@@ -22,7 +21,6 @@ export class DocumentsService {
         originalFileName: true,
         mimeType: true,
         byteSize: true,
-        sha256Hex: true,
         scanStatus: true,
         scannedAt: true,
         createdAt: true,
@@ -35,28 +33,80 @@ export class DocumentsService {
     if (!ALLOWED_DOCUMENT_MIME_TYPES.has(mimeType)) throw new BadRequestException('نوع الملف غير مسموح');
     if (input.byteSize < 1 || input.byteSize > MAX_DOCUMENT_BYTES) throw new BadRequestException('حجم الملف غير مسموح');
 
+    let credentialId: string | undefined;
+    let roleRequestId: string | undefined;
+
     if (input.credentialPublicId) {
       const credential = await this.prisma.professionalCredential.findFirst({
-        where: { publicId: input.credentialPublicId, personId, archivedAt: null }, select: { id: true },
+        where: { publicId: input.credentialPublicId, personId, archivedAt: null },
+        select: { id: true },
       });
       if (!credential) throw new NotFoundException('المؤهل غير موجود');
+      credentialId = credential.id;
     }
 
     if (input.roleRequestPublicId) {
       const request = await this.prisma.professionalRoleRequest.findFirst({
-        where: { publicId: input.roleRequestPublicId, personId, archivedAt: null }, select: { status: true },
+        where: { publicId: input.roleRequestPublicId, personId, archivedAt: null },
+        select: { id: true, status: true },
       });
       if (!request) throw new NotFoundException('طلب الدور المهني غير موجود');
-      if (!['DRAFT', 'INFO_REQUIRED'].includes(request.status)) throw new BadRequestException('لا يمكن إضافة إثبات لهذا الطلب في حالته الحالية');
+      if (!['DRAFT', 'INFO_REQUIRED'].includes(request.status)) {
+        throw new BadRequestException('لا يمكن إضافة إثبات لهذا الطلب في حالته الحالية');
+      }
+      roleRequestId = request.id;
     }
 
+    const storageIntent = this.storage.createUploadIntent(personId, input.originalFileName.trim());
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+    const intent = await this.prisma.documentUploadIntent.create({
+      data: {
+        personId,
+        credentialId,
+        roleRequestId,
+        documentType: input.documentType.trim(),
+        originalFileName: input.originalFileName.trim(),
+        declaredMimeType: mimeType,
+        declaredByteSize: input.byteSize,
+        storageObjectKey: storageIntent.objectKey,
+        expiresAt,
+      },
+      select: {
+        publicId: true,
+        documentType: true,
+        originalFileName: true,
+        declaredMimeType: true,
+        declaredByteSize: true,
+        status: true,
+        expiresAt: true,
+      },
+    });
+
     return {
-      documentType: input.documentType.trim(),
-      originalFileName: input.originalFileName.trim(),
-      mimeType,
-      byteSize: input.byteSize,
-      ...this.storage.createUploadIntent(personId, input.originalFileName.trim()),
+      ...intent,
+      storageVisibility: storageIntent.storageVisibility,
+      uploadUrl: storageIntent.uploadUrl,
+      uploadUrlStatus: storageIntent.uploadUrlStatus,
+      expiresInSeconds: 900,
     };
+  }
+
+  async completeUpload(personId: string, intentPublicId: string) {
+    const intent = await this.prisma.documentUploadIntent.findFirst({
+      where: { publicId: intentPublicId, personId, archivedAt: null },
+      select: { id: true, status: true, expiresAt: true },
+    });
+    if (!intent) throw new NotFoundException('طلب رفع الوثيقة غير موجود');
+    if (intent.expiresAt <= new Date()) {
+      await this.prisma.documentUploadIntent.update({ where: { id: intent.id }, data: { status: 'EXPIRED' } });
+      throw new BadRequestException('انتهت صلاحية طلب رفع الوثيقة');
+    }
+    if (intent.status !== 'CREATED' && intent.status !== 'UPLOADED') {
+      throw new BadRequestException('لا يمكن إكمال رفع الوثيقة من حالته الحالية');
+    }
+
+    throw new NotImplementedException('لا يمكن اعتماد الوثيقة قبل ربط مزود التخزين والتحقق الخادمي من الملف وفحصه أمنياً');
   }
 
   async createReadUrl(personId: string, publicId: string) {
@@ -67,57 +117,5 @@ export class DocumentsService {
     if (!document) throw new NotFoundException('الوثيقة غير موجودة');
     if (document.scanStatus !== 'CLEAN') throw new BadRequestException('لا يمكن عرض الوثيقة قبل اكتمال الفحص الأمني بنجاح');
     return { readUrl: this.storage.createTemporaryReadUrl(document.storageObjectKey) };
-  }
-
-  async register(personId: string, input: RegisterDocumentDto) {
-    const mimeType = input.mimeType.trim().toLowerCase();
-    if (!ALLOWED_DOCUMENT_MIME_TYPES.has(mimeType)) throw new BadRequestException('نوع الملف غير مسموح');
-    if (input.byteSize < 1 || input.byteSize > MAX_DOCUMENT_BYTES) throw new BadRequestException('حجم الملف غير مسموح');
-
-    let credentialId: string | undefined;
-    let roleRequestId: string | undefined;
-
-    if (input.credentialPublicId) {
-      const credential = await this.prisma.professionalCredential.findFirst({
-        where: { publicId: input.credentialPublicId, personId, archivedAt: null }, select: { id: true },
-      });
-      if (!credential) throw new NotFoundException('المؤهل غير موجود');
-      credentialId = credential.id;
-    }
-
-    if (input.roleRequestPublicId) {
-      const request = await this.prisma.professionalRoleRequest.findFirst({
-        where: { publicId: input.roleRequestPublicId, personId, archivedAt: null }, select: { id: true, status: true },
-      });
-      if (!request) throw new NotFoundException('طلب الدور المهني غير موجود');
-      if (!['DRAFT', 'INFO_REQUIRED'].includes(request.status)) throw new BadRequestException('لا يمكن إضافة إثبات لهذا الطلب في حالته الحالية');
-      roleRequestId = request.id;
-    }
-
-    const storageObjectKey = input.storageObjectKey.trim();
-    if (!storageObjectKey.startsWith(`private/documents/${personId}/`)) throw new BadRequestException('مسار التخزين غير صالح لهذا المستخدم');
-
-    return this.prisma.documentRecord.create({
-      data: {
-        personId,
-        credentialId,
-        roleRequestId,
-        documentType: input.documentType.trim(),
-        originalFileName: input.originalFileName.trim(),
-        mimeType,
-        byteSize: input.byteSize,
-        sha256Hex: input.sha256Hex.toLowerCase(),
-        storageObjectKey,
-      },
-      select: {
-        publicId: true,
-        documentType: true,
-        originalFileName: true,
-        mimeType: true,
-        byteSize: true,
-        scanStatus: true,
-        createdAt: true,
-      },
-    });
   }
 }
