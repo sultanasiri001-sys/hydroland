@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
+import { ALLOWED_DOCUMENT_MIME_TYPES, MAX_DOCUMENT_BYTES } from './document-policy';
 import { RegisterDocumentDto } from './dto/register-document.dto';
 
 @Injectable()
@@ -10,10 +11,29 @@ export class DocumentsService {
     return this.prisma.documentRecord.findMany({
       where: { personId, archivedAt: null },
       orderBy: { createdAt: 'desc' },
+      select: {
+        publicId: true,
+        documentType: true,
+        originalFileName: true,
+        mimeType: true,
+        byteSize: true,
+        sha256Hex: true,
+        scanStatus: true,
+        scannedAt: true,
+        createdAt: true,
+      },
     });
   }
 
   async register(personId: string, input: RegisterDocumentDto) {
+    const mimeType = input.mimeType.trim().toLowerCase();
+    if (!ALLOWED_DOCUMENT_MIME_TYPES.has(mimeType)) {
+      throw new BadRequestException('نوع الملف غير مسموح');
+    }
+    if (input.byteSize < 1 || input.byteSize > MAX_DOCUMENT_BYTES) {
+      throw new BadRequestException('حجم الملف غير مسموح');
+    }
+
     let credentialId: string | undefined;
     let roleRequestId: string | undefined;
 
@@ -45,7 +65,7 @@ export class DocumentsService {
         roleRequestId,
         documentType: input.documentType.trim(),
         originalFileName: input.originalFileName.trim(),
-        mimeType: input.mimeType.trim().toLowerCase(),
+        mimeType,
         byteSize: input.byteSize,
         sha256Hex: input.sha256Hex.toLowerCase(),
         storageObjectKey: input.storageObjectKey.trim(),
