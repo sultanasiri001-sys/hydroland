@@ -40,18 +40,45 @@ export class ProfessionalService {
   async submit(personId: string, publicId: string) {
     const request = await this.prisma.professionalRoleRequest.findFirst({
       where: { publicId, personId, archivedAt: null },
+      include: { role: { select: { nameAr: true } } },
     });
     if (!request) throw new NotFoundException('طلب الدور المهني غير موجود');
     if (!['DRAFT', 'INFO_REQUIRED'].includes(request.status)) {
       throw new BadRequestException('لا يمكن إرسال الطلب من حالته الحالية');
     }
 
-    return this.prisma.professionalRoleRequest.update({
-      where: { id: request.id },
-      data: {
-        status: request.status === 'INFO_REQUIRED' ? 'RESUBMITTED' : 'SUBMITTED',
-        submittedAt: new Date(),
-      },
+    const nextStatus = request.status === 'INFO_REQUIRED' ? 'RESUBMITTED' : 'SUBMITTED';
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.professionalRoleRequest.update({
+        where: { id: request.id },
+        data: { status: nextStatus, submittedAt: new Date() },
+      });
+
+      await tx.notification.create({
+        data: {
+          personId,
+          type: nextStatus === 'RESUBMITTED' ? 'PROFESSIONAL_ROLE_RESUBMITTED' : 'PROFESSIONAL_ROLE_SUBMITTED',
+          titleAr: nextStatus === 'RESUBMITTED' ? 'تمت إعادة إرسال طلبك المهني' : 'تم إرسال طلبك المهني',
+          bodyAr: `تم إرسال طلب دور ${request.role.nameAr} للمراجعة.`,
+          referenceType: 'ProfessionalRoleRequest',
+          referenceId: request.publicId,
+        },
+      });
+
+      await tx.auditEvent.create({
+        data: {
+          actorPersonId: personId,
+          action: 'professional.role_request.submit',
+          entityType: 'ProfessionalRoleRequest',
+          entityId: request.publicId,
+          result: 'SUCCESS',
+          referenceId: request.publicId,
+          context: { previousStatus: request.status, nextStatus },
+        },
+      });
+
+      return updated;
     });
   }
 }
