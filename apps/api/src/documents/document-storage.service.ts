@@ -1,6 +1,16 @@
 import { Injectable, NotImplementedException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 
+export type VerifiedStoredDocument = {
+  objectKey: string;
+  mimeType: string;
+  byteSize: number;
+  sha256Hex: string;
+  malwareScanStatus: 'CLEAN' | 'REJECTED';
+  malwareScanDetail?: string;
+  scannedAt: Date;
+};
+
 @Injectable()
 export class DocumentStorageService {
   createObjectKey(personId: string, originalFileName: string) {
@@ -18,6 +28,12 @@ export class DocumentStorageService {
       uploadUrlStatus: 'STORAGE_PROVIDER_NOT_CONNECTED' as const,
       expiresInSeconds: null,
     };
+  }
+
+  async verifyUploadedObject(_objectKey: string): Promise<VerifiedStoredDocument> {
+    throw new NotImplementedException(
+      'مزود التخزين والفحص الأمني غير متصل؛ لا يمكن اعتماد بيانات الملف المرسلة من العميل',
+    );
   }
 
   createTemporaryReadUrl(_objectKey: string): never {
