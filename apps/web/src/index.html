@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#003B6F">
   <meta name="description" content="منصة هيدرولاند الذكية للغوص والأنشطة البحرية">
   <title>HYDROLAND | هيدرولاند</title>
-  <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
   <a class="skip-link" href="#main">انتقل إلى المحتوى</a>
@@ -27,7 +27,8 @@
       <section class="hero">
         <div><span class="status-pill"><i></i><span id="status-copy">البحر مناسب للأنشطة</span></span><h2 id="hero-title">أهلًا سلطان، جاهز لمغامرة جديدة؟</h2><p id="hero-copy">استكشف الرحلات، راجع تجهيزاتك، وتابع كل تفاصيلك من مكان واحد.</p></div>
         <button id="primary-action" class="primary-button" type="button">استكشف الرحلات</button>
-      </section>
+            <div class="hero-art" aria-hidden="true"><svg viewBox="0 0 420 300" role="presentation"><defs><linearGradient id="sea" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#89f0e7" stop-opacity=".78"/><stop offset="1" stop-color="#4798d2" stop-opacity=".08"/></linearGradient><linearGradient id="suit" x1="0" x2="1"><stop stop-color="#07243b"/><stop offset="1" stop-color="#15597a"/></linearGradient></defs><circle cx="272" cy="112" r="84" fill="url(#sea)"/><circle cx="272" cy="112" r="112" fill="none" stroke="#a5fff2" stroke-opacity=".22" stroke-width="2"/><path d="M34 248c72-61 118-42 173-94 43-41 85-69 178-73" fill="none" stroke="#b7fff2" stroke-opacity=".42" stroke-width="3" stroke-linecap="round"/><path d="M4 271c88-58 138-31 209-104 46-47 108-83 199-85" fill="none" stroke="#8fe6ff" stroke-opacity=".22" stroke-width="2" stroke-linecap="round"/><g transform="translate(156 85) rotate(-15)"><ellipse cx="55" cy="22" rx="26" ry="21" fill="#e9fbfa"/><ellipse cx="55" cy="22" rx="19" ry="14" fill="#50bcd0"/><path d="M50 44c18 10 26 34 23 69l-30 17-27-15c-3-31 4-58 20-69z" fill="url(#suit)"/><path d="M67 55c28 9 53 21 71 41" fill="none" stroke="#d6fbf5" stroke-width="8" stroke-linecap="round"/><path d="M22 62c-26 15-44 33-57 53" fill="none" stroke="#d6fbf5" stroke-width="8" stroke-linecap="round"/><path d="M29 127c-10 28-25 46-43 62M60 128c18 26 34 40 60 51" fill="none" stroke="#d6fbf5" stroke-width="9" stroke-linecap="round"/><path d="M-20 192l-28 8M120 182l32 3" stroke="#f7c66d" stroke-width="10" stroke-linecap="round"/><rect x="35" y="58" width="18" height="53" rx="8" fill="#f7c66d"/></g><g fill="#a4fff1" fill-opacity=".7"><circle cx="110" cy="38" r="4"/><circle cx="88" cy="67" r="7"/><circle cx="120" cy="88" r="3"/><circle cx="105" cy="114" r="5"/></g></svg></div>
+</section>
       <section class="metrics" id="metrics" aria-label="ملخص الأداء"></section>
       <section class="workspace-grid">
         <article class="panel focus-panel"><div class="panel-head"><div><p class="eyebrow" id="focus-kicker">المهمة التالية</p><h3 id="focus-title">رحلة جزيرة سمر</h3></div><span id="focus-state" class="decision go">GO</span></div><div id="focus-body"></div></article>
@@ -39,6 +40,6 @@
   <nav id="mobile-nav" class="mobile-nav" aria-label="التنقل على الجوال"></nav>
   <dialog id="role-dialog"><form method="dialog"><div class="dialog-head"><div><p class="eyebrow">تجربة الواجهات</p><h2>اختر نوع الحساب</h2></div><button class="icon-button" value="cancel" aria-label="إغلاق">×</button></div><div id="role-options" class="role-options"></div></form></dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="/app.js"></script>
+  <script type="module" src="./app.js"></script>
 </body>
 </html>
