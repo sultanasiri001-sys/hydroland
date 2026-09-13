@@ -54,6 +54,10 @@ jobs:
       - name: Generate Prisma client
         run: npm run prisma:generate --workspace @hydroland/api
 
+      - name: Emit baseline migration SQL
+        working-directory: apps/api
+        run: npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script
+
       - name: Apply schema to CI PostgreSQL
         run: npm exec --workspace @hydroland/api prisma db push -- --skip-generate
 
