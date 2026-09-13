@@ -3,6 +3,7 @@ import { AccessTokenGuard, AccessTokenPrincipal } from '../auth/access-token.gua
 import { CurrentUser } from '../auth/current-user.decorator';
 import { DocumentsService } from './documents.service';
 import { RegisterDocumentDto } from './dto/register-document.dto';
+import { RequestUploadDto } from './dto/request-upload.dto';
 
 @Controller('me/documents')
 @UseGuards(AccessTokenGuard)
@@ -12,6 +13,11 @@ export class DocumentsController {
   @Get()
   listMine(@CurrentUser() user: AccessTokenPrincipal) {
     return this.documents.listMine(user.sub);
+  }
+
+  @Post('upload-intent')
+  requestUpload(@CurrentUser() user: AccessTokenPrincipal, @Body() input: RequestUploadDto) {
+    return this.documents.requestUpload(user.sub, input);
   }
 
   @Post()
