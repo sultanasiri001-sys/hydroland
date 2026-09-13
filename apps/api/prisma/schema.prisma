@@ -7,13 +7,62 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum PersonStatus { PENDING ACTIVE SUSPENDED RESTRICTED ARCHIVED }
-enum AccountStatus { PENDING ACTIVE LOCKED SUSPENDED ARCHIVED }
-enum RoleScope { OWN ORGANIZATION TRIP REGION PLATFORM }
-enum ProfessionalRoleRequestStatus { DRAFT SUBMITTED UNDER_REVIEW INFO_REQUIRED RESUBMITTED APPROVED REJECTED SUSPENDED ARCHIVED }
-enum CredentialVerificationStatus { UNVERIFIED PENDING DOCUMENT_VERIFIED VERIFIED REJECTED EXPIRED }
-enum DocumentScanStatus { PENDING CLEAN REJECTED }
-enum NotificationStatus { UNREAD READ ARCHIVED }
+enum PersonStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  RESTRICTED
+  ARCHIVED
+}
+
+enum AccountStatus {
+  PENDING
+  ACTIVE
+  LOCKED
+  SUSPENDED
+  ARCHIVED
+}
+
+enum RoleScope {
+  OWN
+  ORGANIZATION
+  TRIP
+  REGION
+  PLATFORM
+}
+
+enum ProfessionalRoleRequestStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  INFO_REQUIRED
+  RESUBMITTED
+  APPROVED
+  REJECTED
+  SUSPENDED
+  ARCHIVED
+}
+
+enum CredentialVerificationStatus {
+  UNVERIFIED
+  PENDING
+  DOCUMENT_VERIFIED
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
+enum DocumentScanStatus {
+  PENDING
+  CLEAN
+  REJECTED
+}
+
+enum NotificationStatus {
+  UNREAD
+  READ
+  ARCHIVED
+}
 
 model Person {
   id String @id @default(uuid()) @db.Uuid
