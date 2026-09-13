@@ -1,0 +1,5 @@
+CREATE TYPE "TripStatus" AS ENUM ('DRAFT','OPEN','CLOSED','CANCELLED','COMPLETED');
+CREATE TYPE "BookingStatus" AS ENUM ('PENDING','CONFIRMED','CANCELLED');
+CREATE TABLE "Trip" ("id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),"title" TEXT NOT NULL,"type" TEXT NOT NULL,"startsAt" TIMESTAMPTZ NOT NULL,"endsAt" TIMESTAMPTZ NOT NULL,"capacity" INTEGER NOT NULL CHECK ("capacity">0),"status" "TripStatus" NOT NULL DEFAULT 'DRAFT',"createdAt" TIMESTAMPTZ NOT NULL DEFAULT now(),"updatedAt" TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE "Booking" ("id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),"tripId" UUID NOT NULL REFERENCES "Trip"("id") ON DELETE RESTRICT,"accountId" UUID NOT NULL REFERENCES "Account"("id") ON DELETE RESTRICT,"status" "BookingStatus" NOT NULL DEFAULT 'PENDING',"seats" INTEGER NOT NULL DEFAULT 1 CHECK ("seats">0),"createdAt" TIMESTAMPTZ NOT NULL DEFAULT now(),"updatedAt" TIMESTAMPTZ NOT NULL DEFAULT now(),UNIQUE("tripId","accountId"));
+CREATE INDEX "Trip_status_startsAt_idx" ON "Trip" ("status","startsAt"); CREATE INDEX "Booking_tripId_status_idx" ON "Booking" ("tripId","status");
