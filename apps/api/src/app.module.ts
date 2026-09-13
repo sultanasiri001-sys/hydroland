@@ -6,6 +6,7 @@ import { CredentialsModule } from './credentials/credentials.module';
 import { DatabaseModule } from './database/database.module';
 import { HealthController } from './health/health.controller';
 import { NotificationsModule } from './notifications/notifications.module';
+import { TripsModule } from './trips/trips.module';
 import { ProfileModule } from './profile/profile.module';
-@Module({ imports:[DatabaseModule,AuthModule,ProfileModule,CredentialsModule,ActivationModule,AuditModule,NotificationsModule], controllers:[HealthController] })
+@Module({ imports:[DatabaseModule,AuthModule,ProfileModule,CredentialsModule,ActivationModule,AuditModule,NotificationsModule,TripsModule], controllers:[HealthController] })
 export class AppModule {}
