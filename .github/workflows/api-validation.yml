@@ -12,5 +12,6 @@ jobs:
         with:
           node-version: 22
       - run: npm install
+      - run: npm run validate:phase10 -w @hydroland/api
       - run: npm run typecheck
       - run: npm run build

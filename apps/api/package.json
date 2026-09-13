@@ -1,29 +1,6 @@
 {
-  "name": "@hydroland/api",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "nest start --watch",
-    "build": "nest build",
-    "start": "node dist/main.js",
-    "lint": "eslint \"src/**/*.ts\"",
-    "typecheck": "tsc --noEmit",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
-    "db:deploy": "prisma migrate deploy"
-  },
-  "dependencies": {
-    "@nestjs/common": "^11.0.0",
-    "@nestjs/core": "^11.0.0",
-    "@nestjs/platform-express": "^11.0.0",
-    "@prisma/client": "^6.5.0",
-    "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
-  },
-  "devDependencies": {
-    "@nestjs/cli": "^11.0.0",
-    "@types/node": "^22.10.0",
-    "prisma": "^6.5.0",
-    "typescript": "^5.7.0"
-  }
+  "name":"@hydroland/api","version":"0.1.0","private":true,
+  "scripts":{"dev":"nest start --watch","build":"nest build","start":"node dist/main.js","lint":"eslint \"src/**/*.ts\"","typecheck":"tsc --noEmit","db:generate":"prisma generate","db:migrate":"prisma migrate dev","db:deploy":"prisma migrate deploy","validate:phase10":"node scripts/phase10-validation.mjs"},
+  "dependencies":{"@nestjs/common":"^11.0.0","@nestjs/core":"^11.0.0","@nestjs/platform-express":"^11.0.0","@prisma/client":"^6.5.0","reflect-metadata":"^0.2.2","rxjs":"^7.8.1"},
+  "devDependencies":{"@nestjs/cli":"^11.0.0","@types/node":"^22.10.0","prisma":"^6.5.0","typescript":"^5.7.0"}
 }
