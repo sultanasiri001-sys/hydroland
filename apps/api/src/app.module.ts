@@ -6,6 +6,7 @@ import { CredentialsModule } from './credentials/credentials.module';
 import { DatabaseModule } from './database/database.module';
 import { DocumentsModule } from './documents/documents.module';
 import { HealthController } from './health/health.controller';
+import { NotificationsModule } from './notifications/notifications.module';
 import { ProfessionalModule } from './professional/professional.module';
 import { ProfileModule } from './profile/profile.module';
 import { ReviewModule } from './review/review.module';
@@ -21,6 +22,7 @@ import { ReviewModule } from './review/review.module';
     DocumentsModule,
     ReviewModule,
     AuditModule,
+    NotificationsModule,
   ],
   controllers: [HealthController],
 })
