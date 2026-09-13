@@ -1,0 +1,2 @@
+import { Injectable } from '@nestjs/common'; import { DatabaseService } from '../database/database.service';
+@Injectable() export class AuditService { constructor(private readonly db:DatabaseService){} async record(input:{actorId?:string;action:string;resource:string;resourceId?:string;metadata?:object}){return this.db.auditEvent.create({data:{...input,metadata:input.metadata as never}})} async mine(actorId:string){return this.db.auditEvent.findMany({where:{actorId},orderBy:{occurredAt:'desc'},take:100})} }
