@@ -204,3 +204,20 @@ model Session {
   @@index([accountId])
   @@index([expiresAt])
 }
+
+model AuditEvent {
+  id String @id @default(uuid()) @db.Uuid
+  publicId String @unique @default(cuid())
+  actorPersonId String? @db.Uuid
+  action String
+  entityType String
+  entityId String
+  result String
+  reason String?
+  referenceId String?
+  context Json?
+  createdAt DateTime @default(now())
+  @@index([actorPersonId, createdAt])
+  @@index([entityType, entityId, createdAt])
+  @@index([action, createdAt])
+}
