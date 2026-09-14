@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
+import { CalendarAllocationService } from './calendar-allocation.service';
 
 type CompleteTripInput = {
   siteName?: string;
@@ -18,6 +19,7 @@ export class TripCompletionService {
   constructor(
     private readonly db: DatabaseService,
     private readonly audit: AuditService,
+    private readonly calendar: CalendarAllocationService,
   ) {}
 
   async complete(reviewerAccountId: string, tripId: string, input: CompleteTripInput) {
@@ -28,6 +30,24 @@ export class TripCompletionService {
     }
     if (!Number.isInteger(input.durationMin) || Number(input.durationMin) < 1 || Number(input.durationMin) > 600) {
       throw new BadRequestException('Invalid duration.');
+    }
+
+    const readiness = await this.calendar.readinessForTrip(tripId);
+    if (readiness.status === 'NOT_READY') {
+      throw new ConflictException(`Trip is NOT_READY: ${readiness.blockers.join(', ')}`);
+    }
+
+    const clearance = await this.db.auditEvent.findFirst({
+      where: {
+        resource: 'Trip',
+        resourceId: tripId,
+        action: { in: ['OPERATIONAL_CLEARANCE_GRANTED', 'OPERATIONAL_REVIEW_APPROVED'] },
+      },
+      orderBy: { occurredAt: 'desc' },
+    });
+    if (!clearance) throw new ConflictException('Operational clearance is required before trip completion.');
+    if (readiness.status === 'REVIEW_REQUIRED' && clearance.action !== 'OPERATIONAL_REVIEW_APPROVED') {
+      throw new ConflictException('Current readiness requires documented administrative review approval.');
     }
 
     const result = await this.db.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -91,11 +111,14 @@ export class TripCompletionService {
     });
 
     await this.audit.record({
+      actorId: reviewerAccountId,
       action: 'TRIP_COMPLETED',
       resource: 'Trip',
       resourceId: tripId,
       metadata: {
         reviewerAccountId,
+        operationalClearanceEventId: clearance.id,
+        readiness,
         confirmedAccounts: result.confirmedAccounts,
         confirmedSeats: result.confirmedSeats,
         createdDiveLogs: result.createdDiveLogs,
@@ -103,6 +126,6 @@ export class TripCompletionService {
       },
     });
 
-    return result;
+    return { ...result, readiness, operationalClearanceEventId: clearance.id };
   }
 }
