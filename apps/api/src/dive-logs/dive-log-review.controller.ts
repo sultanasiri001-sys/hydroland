@@ -9,8 +9,8 @@ export class DiveLogReviewController {
   constructor(private readonly review: DiveLogReviewService) {}
 
   @Get()
-  pending() {
-    return this.review.pending();
+  pending(@Req() req: { auth: { accountId: string } }) {
+    return this.review.pending(req.auth.accountId);
   }
 
   @Patch(':id')
