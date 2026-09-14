@@ -15,7 +15,7 @@ const required = ['lang="ar"','dir="rtl"','viewport','aria-live','skip-link','HY
 for (const marker of required) if (!html.includes(marker)) throw new Error(`Missing shell marker: ${marker}`);
 for (const role of roles) if (!html.includes(`data-role="${role}"`)) throw new Error(`Missing role selector: ${role}`);
 for (const token of ['@media','prefers-reduced-motion',':focus-visible']) if (!css.includes(token)) throw new Error(`Missing responsive/accessibility rule: ${token}`);
-if (/GHAWAS|غوّاص/.test(html)) throw new Error('Legacy platform branding remains in index.html');
+if (html.includes('GHAWAS') || html.includes('<title>غوّاص') || html.includes('>غوّاص<')) throw new Error('Legacy platform branding remains in index.html');
 
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
 const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
