@@ -14,6 +14,7 @@ export class SafetyController {
     private readonly reviews: SafetyReviewService,
   ) {}
 
+  @UseGuards(AdminGuard)
   @Post()
   assess(
     @Req() request: { auth: { accountId: string } },
