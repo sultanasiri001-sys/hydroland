@@ -1,9 +1,10 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { AccountStatus, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 
-const allowedStatuses:AccountStatus[]=['PENDING_VERIFICATION','ACTIVE','SUSPENDED','ARCHIVED'];
+type AccountStatusValue='PENDING_VERIFICATION'|'ACTIVE'|'SUSPENDED'|'ARCHIVED';
+const allowedStatuses:AccountStatusValue[]=['PENDING_VERIFICATION','ACTIVE','SUSPENDED','ARCHIVED'];
 
 @Injectable()
 export class AdminService {
@@ -17,7 +18,7 @@ export class AdminService {
 
   async listAccounts(adminAccountId:string){await this.requireAdminRole(adminAccountId);return this.db.account.findMany({select:{id:true,email:true,status:true,emailVerifiedAt:true,lastLoginAt:true,createdAt:true,person:{select:{firstName:true,lastName:true}},roleAssignments:{select:{role:true,status:true}}},orderBy:{createdAt:'desc'},take:200})}
 
-  async setAccountStatus(adminAccountId:string,accountId:string,status:AccountStatus,reason?:string){
+  async setAccountStatus(adminAccountId:string,accountId:string,status:AccountStatusValue,reason?:string){
     await this.requireAdminRole(adminAccountId);
     if(!allowedStatuses.includes(status))throw new BadRequestException('Invalid account status.');
     if(adminAccountId===accountId&&(status==='SUSPENDED'||status==='ARCHIVED'))throw new BadRequestException('Administrators cannot suspend or archive their own account.');
@@ -26,7 +27,7 @@ export class AdminService {
     if(account.status===status)return account;
     if((status==='SUSPENDED'||status==='ARCHIVED')&&(!reason?.trim()||reason.trim().length<5))throw new BadRequestException('A reason of at least five characters is required.');
     const updated=await this.db.$transaction(async(tx:Prisma.TransactionClient)=>{
-      const row=await tx.account.update({where:{id:accountId},data:{status}});
+      const row=await tx.account.update({where:{id:accountId},data:{status:status as never}});
       if(status==='SUSPENDED'||status==='ARCHIVED')await tx.session.updateMany({where:{accountId,revokedAt:null},data:{revokedAt:new Date()}});
       return row;
     });
