@@ -8,10 +8,12 @@ import { TripCompletionController } from './trip-completion.controller';
 import { TripCompletionService } from './trip-completion.service';
 import { TripsController } from './trips.controller';
 import { TripsService } from './trips.service';
+import { WeatherGateController } from './weather-gate.controller';
+import { WeatherGateService } from './weather-gate.service';
 
 @Module({
   imports: [AuthModule, AdminModule, AuditModule],
-  controllers: [TripsController, TripAdminController, TripCompletionController],
-  providers: [TripsService, TripAdminService, TripCompletionService],
+  controllers: [TripsController, TripAdminController, TripCompletionController, WeatherGateController],
+  providers: [TripsService, TripAdminService, TripCompletionService, WeatherGateService],
 })
 export class TripsModule {}
