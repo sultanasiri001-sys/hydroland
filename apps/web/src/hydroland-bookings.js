@@ -5,9 +5,13 @@
   const normalize=value=>String(value||'').trim().toLowerCase();
   const request=async(path,options={})=>{
     let response;
-    const client=auth()?.authorizedFetch;
-    if(client)response=await client(path,options);
-    else response=await fetch(`${auth()?.apiBase||'http://localhost:3001/api/v1'}${path}`,options);
+    if(options.public){
+      const {public:_,...fetchOptions}=options;
+      response=await fetch(`${auth()?.apiBase||'http://localhost:3001/api/v1'}${path}`,fetchOptions);
+    }else{
+      const client=auth()?.authorizedFetch;if(!client)throw new Error('سجّل الدخول أولًا');
+      response=await client(path,options);
+    }
     const body=await response.json().catch(()=>null);
     if(!response.ok)throw new Error(body?.message||`تعذر تنفيذ الطلب (${response.status})`);
     return body;
@@ -21,7 +25,7 @@
     });
   };
   const loadTrips=async()=>{
-    try{const trips=await request('/trips',{method:'GET'});state.trips=Array.isArray(trips)?trips:[];bindButtons();}
+    try{const trips=await request('/trips',{method:'GET',public:true});state.trips=Array.isArray(trips)?trips:[];bindButtons();}
     catch{bindButtons();}
   };
   const confirm=document.getElementById('confirm-booking');
