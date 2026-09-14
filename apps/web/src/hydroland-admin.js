@@ -5,6 +5,12 @@
     module.defer = true;
     document.body.appendChild(module);
   }
+  if (!document.querySelector('script[src="./hydroland-weather-admin.js"]')) {
+    const module = document.createElement('script');
+    module.src = './hydroland-weather-admin.js';
+    module.defer = true;
+    document.body.appendChild(module);
+  }
 
   const host = document.getElementById('role-console') || document.querySelector('main');
   if (!host) return;
@@ -49,12 +55,25 @@
   const renderQueue = (items) => {
     const queue = box.querySelector('[data-admin-queue]');
     if (!queue) return;
-    if (!items.length) { queue.innerHTML = '<p>لا توجد طلبات معلقة حالياً.</p>'; return; }
-    queue.innerHTML = items.map((item) => {
+    queue.textContent = '';
+    if (!items.length) {
+      const empty = document.createElement('p');
+      empty.textContent = 'لا توجد طلبات معلقة حالياً.';
+      queue.appendChild(empty);
+      return;
+    }
+    items.forEach((item) => {
       const name = item.account?.person ? [item.account.person.firstName, item.account.person.lastName].filter(Boolean).join(' ') : item.account?.email || 'حساب جديد';
       const type = item.type === 'ORGANIZATION' ? 'طلب جهة / منظمة' : 'طلب تفعيل حساب';
-      return '<article class="hl-admin__queue-item"><strong>' + name + '</strong><span>' + type + '</span></article>';
-    }).join('');
+      const article = document.createElement('article');
+      article.className = 'hl-admin__queue-item';
+      const strong = document.createElement('strong');
+      strong.textContent = name;
+      const span = document.createElement('span');
+      span.textContent = type;
+      article.append(strong, span);
+      queue.appendChild(article);
+    });
   };
 
   async function refreshAdminOverview() {
