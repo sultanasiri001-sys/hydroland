@@ -16,17 +16,31 @@
     return name&&name!=='Pending Profile'?name:'عضو HYDROLAND';
   };
   const credentialLabel=status=>({VERIFIED:'موثقة',DOCUMENT_VERIFIED:'وثائق موثقة',PENDING:'قيد التحقق',UNVERIFIED:'غير موثقة',REJECTED:'مرفوضة',EXPIRED:'منتهية'})[status]||status||'غير محدد';
+  const roleLabel=role=>({DIVER:'غواص',INSTRUCTOR:'مدرب',DIVE_CENTER:'مركز غوص',BOAT_OWNER:'مشغل بحري',STAFF:'موظف',ORGANIZATION:'جهة',ADMIN:'إدارة',REVIEWER:'مراجع'})[role]||role;
+  const roleState=status=>({ACTIVE:'نشط',PENDING_REVIEW:'قيد المراجعة',REJECTED:'مرفوض',SUSPENDED:'موقوف',ARCHIVED:'مؤرشف',DRAFT:'مسودة'})[status]||status;
   function renderProfile(profile,credentials=[]){
+    const roles=Array.isArray(profile?.roleAssignments)?profile.roleAssignments:[];
+    const activeRoles=roles.filter(item=>item.status==='ACTIVE');
+    const primaryRole=activeRoles[0]||roles[0]||null;
     const dash=document.querySelector('.hl-profile-dashboard');
     if(dash){
       const name=displayName(profile);const pro=profile?.person?.professional;const avatar=dash.querySelector('.hl-profile-avatar');if(avatar)avatar.textContent=name.trim().charAt(0)||'H';
       const h3=dash.querySelector('h3');if(h3)h3.textContent=name;
-      const p=dash.querySelector('header p');if(p)p.textContent=[pro?.headline,pro?.regionCode].filter(Boolean).join(' · ')||text(profile?.email);
+      const p=dash.querySelector('header p');if(p)p.textContent=[pro?.headline,pro?.regionCode,primaryRole?`${roleLabel(primaryRole.role)} · ${roleState(primaryRole.status)}`:null].filter(Boolean).join(' · ')||text(profile?.email);
       const verified=dash.querySelector('.hl-verified');if(verified){const active=profile?.status==='ACTIVE';verified.textContent=active?'✓ حساب نشط':text(profile?.status,'حالة غير محددة');verified.classList.toggle('pending',!active)}
-      const stats=dash.querySelectorAll('.hl-profile-stats strong');if(stats[0])stats[0].textContent='—';if(stats[1])stats[1].textContent=String(credentials.length);if(stats[2])stats[2].textContent='—';
+      const stats=dash.querySelectorAll('.hl-profile-stats strong');if(stats[0])stats[0].textContent='—';if(stats[1])stats[1].textContent=String(credentials.length);if(stats[2])stats[2].textContent=String(activeRoles.length);
     }
     const member=document.querySelector('.hl-pass-card');if(member){
       const paragraphs=member.querySelectorAll('p');if(paragraphs[0])paragraphs[0].textContent=`الحساب: ${text(profile?.email)}`;if(paragraphs[1])paragraphs[1].textContent=`الحالة: ${text(profile?.status)}`;
+      let roleLine=member.querySelector('[data-hl-role-line]');if(!roleLine){roleLine=document.createElement('p');roleLine.dataset.hlRoleLine='1';member.appendChild(roleLine)}
+      roleLine.textContent=roles.length?`الأدوار: ${roles.map(item=>`${roleLabel(item.role)} (${roleState(item.status)})`).join(' · ')}`:'الأدوار: لم يتم تفعيل دور بعد';
+    }
+    const profileDialog=document.getElementById('profile-dialog');if(profileDialog){
+      const hero=profileDialog.querySelector('.profile-hero > div');if(hero){
+        const h3=hero.querySelector('h3');if(h3)h3.textContent=displayName(profile);
+        const p=hero.querySelector('p');if(p)p.textContent=primaryRole?`${roleLabel(primaryRole.role)} · ${roleState(primaryRole.status)}`:text(profile?.email);
+        const span=hero.querySelector('span');if(span)span.textContent=`حالة الحساب: ${text(profile?.status)}`;
+      }
     }
     const certHost=document.querySelector('.hl-certificates');if(certHost){
       certHost.querySelectorAll(':scope > article').forEach(n=>n.remove());
@@ -46,7 +60,7 @@
   document.addEventListener('click',async event=>{
     const btn=event.target.closest?.('[data-hl-action="settings"]');if(!btn)return;
     if(!token()){toast('سجل الدخول أولًا لفتح بيانات الحساب');return}
-    const profile=window.HydrolandProfileData?.profile;const currentName=displayName(profile);const first=prompt('الاسم الأول',profile?.person?.firstName==='Pending'?'':profile?.person?.firstName||'');if(first===null)return;const last=prompt('اسم العائلة',profile?.person?.lastName==='Profile'?'':profile?.person?.lastName||'');if(last===null)return;const headline=prompt('الصفة أو المستوى',profile?.person?.professional?.headline||'');if(headline===null)return;const regionCode=prompt('المنطقة',profile?.person?.professional?.regionCode||'');if(regionCode===null)return;
+    const profile=window.HydrolandProfileData?.profile;const first=prompt('الاسم الأول',profile?.person?.firstName==='Pending'?'':profile?.person?.firstName||'');if(first===null)return;const last=prompt('اسم العائلة',profile?.person?.lastName==='Profile'?'':profile?.person?.lastName||'');if(last===null)return;const headline=prompt('الصفة أو المستوى',profile?.person?.professional?.headline||'');if(headline===null)return;const regionCode=prompt('المنطقة',profile?.person?.professional?.regionCode||'');if(regionCode===null)return;
     if(!first.trim()){toast('الاسم الأول مطلوب');return}
     try{await saveProfile({firstName:first.trim(),lastName:last.trim(),headline:headline.trim(),regionCode:regionCode.trim()});}catch{}
   });
