@@ -14,6 +14,12 @@ type AssignmentRow = {
   createdAt: Date;
   updatedAt: Date;
 };
+type AssignmentWithTripRow = AssignmentRow & {
+  tripTitle: string;
+  tripType: string;
+  startsAt: Date;
+  endsAt: Date;
+};
 
 @Injectable()
 export class CrewAssignmentService {
@@ -95,10 +101,12 @@ export class CrewAssignmentService {
   }
 
   async mine(accountId: string) {
-    return this.db.$queryRaw<AssignmentRow[]>`
-      SELECT * FROM "CrewAssignment"
-      WHERE "accountId" = ${accountId}
-      ORDER BY "createdAt" DESC
+    return this.db.$queryRaw<AssignmentWithTripRow[]>`
+      SELECT c.*, t."title" AS "tripTitle", t."type" AS "tripType", t."startsAt", t."endsAt"
+      FROM "CrewAssignment" c
+      JOIN "Trip" t ON t."id" = c."tripId"
+      WHERE c."accountId" = ${accountId}
+      ORDER BY t."startsAt" ASC, c."createdAt" DESC
       LIMIT 100
     `;
   }
