@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { AdminGuard } from '../admin/admin.guard';
+import { ReviewGuard } from '../admin/review.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { SafetyReviewService } from './safety-review.service';
 import { SafetyService } from './safety.service';
@@ -24,13 +25,13 @@ export class SafetyController {
     return this.safety.assess(request.auth.accountId, tripId, body);
   }
 
-  @UseGuards(AdminGuard)
+  @UseGuards(ReviewGuard)
   @Get('history')
   history(@Param('tripId') tripId: string) {
     return this.reviews.history(tripId);
   }
 
-  @UseGuards(AdminGuard)
+  @UseGuards(ReviewGuard)
   @Patch('checklists/:checklistId/decision')
   decide(
     @Req() request: { auth: { accountId: string } },
