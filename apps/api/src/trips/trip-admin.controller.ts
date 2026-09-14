@@ -34,5 +34,5 @@ export class TripAdminController {
   cancelBooking(@Req() req: { auth: { accountId: string } }, @Param('id') id: string, @Param('bookingId') bookingId: string) { return this.trips.cancelBooking(req.auth.accountId, id, bookingId); }
 
   @Patch(':id/status')
-  status(@Param('id') id: string, @Body() body: { status: TripStatusValue }) { return this.trips.setStatus(id, body.status); }
+  status(@Req() req: { auth: { accountId: string } }, @Param('id') id: string, @Body() body: { status: TripStatusValue }) { return this.trips.setStatus(req.auth.accountId, id, body.status); }
 }
