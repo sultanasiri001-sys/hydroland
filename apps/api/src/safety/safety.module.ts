@@ -1,1 +1,14 @@
-import { Module } from '@nestjs/common'; import { AuthModule } from '../auth/auth.module'; import { SafetyController } from './safety.controller'; import { SafetyService } from './safety.service'; @Module({imports:[AuthModule],controllers:[SafetyController],providers:[SafetyService]}) export class SafetyModule {}
+import { Module } from '@nestjs/common';
+import { AdminModule } from '../admin/admin.module';
+import { AuditModule } from '../audit/audit.module';
+import { AuthModule } from '../auth/auth.module';
+import { SafetyController } from './safety.controller';
+import { SafetyReviewService } from './safety-review.service';
+import { SafetyService } from './safety.service';
+
+@Module({
+  imports: [AuthModule, AdminModule, AuditModule],
+  controllers: [SafetyController],
+  providers: [SafetyService, SafetyReviewService],
+})
+export class SafetyModule {}
