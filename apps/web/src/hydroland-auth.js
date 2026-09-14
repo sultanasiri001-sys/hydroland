@@ -30,4 +30,5 @@
     state.mode=button.classList.contains('hl-login-secondary')?'register':'login';panel.querySelector('.hl-auth-submit').textContent=state.mode==='register'?'إنشاء الحساب':'دخول آمن';panel.querySelector('input[name="password"]').autocomplete=state.mode==='register'?'new-password':'current-password';root.querySelector('.hl-login-actions').hidden=true;panel.hidden=false;panel.querySelector('input[name="email"]').focus();
   },true);
   window.HydrolandAuth={apiBase:API_BASE,getAccessToken:()=>sessionStorage.getItem('hl-access-token'),isAuthenticated:()=>Boolean(sessionStorage.getItem('hl-access-token')),logout:()=>{sessionStorage.removeItem('hl-access-token');sessionStorage.removeItem('hl-refresh-token');sessionStorage.removeItem('hl-preview-seen');location.reload();}};
+  if(!document.querySelector('script[src="./hydroland-bookings.js"]')){const script=document.createElement('script');script.src='./hydroland-bookings.js';script.defer=true;document.body.appendChild(script);}
 })();
