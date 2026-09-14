@@ -37,5 +37,17 @@ export class OrganizationsService {
 
   listForAdmin(){return this.db.organization.findMany({include:{owner:{select:{id:true,email:true,person:{select:{firstName:true,lastName:true}}}},_count:{select:{members:true}}},orderBy:{createdAt:'desc'}});}
 
-  async decide(reviewerId:string,organizationId:string,input:{outcome:'APPROVED'|'REJECTED';reason?:string}){if(!['APPROVED','REJECTED'].includes(input.outcome))throw new BadRequestException('Invalid decision.');const organization=await this.db.organization.findUnique({where:{id:organizationId}});if(!organization||organization.status!=='PENDING_REVIEW')throw new NotFoundException('Organization is not awaiting review.');const policy=await this.activationDecision(organization.kind);if(input.outcome==='APPROVED'&&policy.activation.enforce&&policy.documents.enforce&&!organization.registrationNumber)throw new ConflictException('Registration number is required while organization document validation is enforced.');const status=input.outcome==='APPROVED'?'ACTIVE':'REJECTED';const updated=await this.db.organization.update({where:{id:organizationId},data:{status,reviewedAt:new Date(),reviewedById:reviewerId}});await this.auditAction(reviewerId,'organization.'+input.outcome.toLowerCase(),organizationId,{reason:input.reason||null,policy:{activation:policy.activation.state,documents:policy.documents.state},pendingInvitationsActivated:false});return{...updated,policyReview:{required:policy.documents.review,issues:policy.documents.review?['DOCUMENTS_OR_LICENSES']:[],states:{activation:policy.activation.state,documents:policy.documents.state}}};}
+  async decide(reviewerId:string,organizationId:string,input:{outcome:'APPROVED'|'REJECTED';reason?:string}){
+    if(!['APPROVED','REJECTED'].includes(input.outcome))throw new BadRequestException('Invalid decision.');
+    if(input.outcome==='REJECTED'&&(!input.reason?.trim()||input.reason.trim().length<5))throw new BadRequestException('A rejection reason of at least five characters is required.');
+    const organization=await this.db.organization.findUnique({where:{id:organizationId}});
+    if(!organization||organization.status!=='PENDING_REVIEW')throw new NotFoundException('Organization is not awaiting review.');
+    if(organization.ownerId===reviewerId)throw new ForbiddenException('Reviewers cannot approve or reject an organization they own.');
+    const policy=await this.activationDecision(organization.kind);
+    if(input.outcome==='APPROVED'&&policy.activation.enforce&&policy.documents.enforce&&!organization.registrationNumber)throw new ConflictException('Registration number is required while organization document validation is enforced.');
+    const status=input.outcome==='APPROVED'?'ACTIVE':'REJECTED';
+    const updated=await this.db.organization.update({where:{id:organizationId},data:{status,reviewedAt:new Date(),reviewedById:reviewerId}});
+    await this.auditAction(reviewerId,'organization.'+input.outcome.toLowerCase(),organizationId,{reason:input.reason?.trim()||null,policy:{activation:policy.activation.state,documents:policy.documents.state},pendingInvitationsActivated:false});
+    return{...updated,policyReview:{required:policy.documents.review,issues:policy.documents.review?['DOCUMENTS_OR_LICENSES']:[],states:{activation:policy.activation.state,documents:policy.documents.state}}};
+  }
 }
