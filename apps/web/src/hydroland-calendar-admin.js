@@ -14,6 +14,8 @@
   const endOfWeek=s=>{const x=new Date(s);x.setUTCDate(x.getUTCDate()+7);return x};
   const weatherLabel=w=>{const d=w?.evaluation?.decision;if(d==='ALLOWED')return'طقس مناسب';if(d==='REVIEW_REQUIRED')return'الطقس يحتاج مراجعة';if(d==='DEFERRED')return'مؤجلة بالطقس';if(d==='UNAVAILABLE')return'بيانات الطقس غير متاحة';return'بدون تقييم طقس'};
   const typeLabel=t=>({BOAT:'قارب',INSTRUCTOR:'مدرب',CREW:'طاقم',SITE:'موقع',EQUIPMENT:'معدات'})[t]||t;
+  const crewLabel=crew=>{const s=crew?.summary;if(!s||!s.total)return'الطاقم غير مؤكد';if(s.replacementRequired)return`يحتاج بديل (${s.replacementRequired})`;if(s.pending)return`بانتظار رد الطاقم (${s.pending})`;if(s.ready)return`الطاقم جاهز ${s.accepted}/${s.total}`;return`جاهزية الطاقم ${s.accepted}/${s.total}`};
+  const crewStatus=status=>status==='ACCEPTED'?'مقبول':status==='REJECTED'?'مرفوض':'بانتظار الرد';
 
   async function saveResources(tripId,select,button){
     try{
@@ -36,6 +38,15 @@
     wrap.append(label,select,button);return wrap;
   }
 
+  function crewDetails(item){
+    const members=item.crew?.members||[];
+    const wrap=document.createElement('div');wrap.className='hl-calendar-crew-status';
+    const heading=document.createElement('strong');heading.textContent='استجابة طاقم الرحلة';wrap.appendChild(heading);
+    if(!members.length){const empty=document.createElement('small');empty.textContent='لم يتم إنشاء تكليفات للطاقم بعد.';wrap.appendChild(empty);return wrap;}
+    members.forEach(member=>{const row=document.createElement('div');const name=document.createElement('span');name.textContent=`${member.name} · ${typeLabel(member.roleType)}`;const status=document.createElement('b');status.textContent=crewStatus(member.status);status.dataset.crewStatus=member.status;row.append(name,status);wrap.appendChild(row)});
+    return wrap;
+  }
+
   function render(items,start,end){
     const host=panel.querySelector('[data-calendar-list]');host.textContent='';
     panel.querySelector('[data-calendar-range]').textContent=`${fmt(start)} — ${fmt(new Date(end.getTime()-1))}`;
@@ -50,8 +61,9 @@
         const tags=document.createElement('div');tags.className='hl-calendar-tags';
         const weather=document.createElement('span');weather.textContent=weatherLabel(item.weather);tags.appendChild(weather);
         const safety=document.createElement('span');safety.textContent=item.safety?.decision==='ALLOWED'?'السلامة معتمدة':item.safety?.decision==='DEFERRED'?'مؤجلة بالسلامة':'السلامة تحتاج مراجعة';tags.appendChild(safety);
+        const crew=document.createElement('span');crew.textContent=crewLabel(item.crew);crew.dataset.crewReady=item.crew?.summary?.ready?'true':'false';tags.appendChild(crew);
         const allocated=document.createElement('span');const names=(item.resources||[]).map(r=>r.resource?.name||r.name).filter(Boolean);allocated.textContent=names.length?`الموارد: ${names.join('، ')}`:'لم تُخصص موارد';tags.appendChild(allocated);
-        card.append(head,tags,resourceEditor(item));section.appendChild(card);
+        card.append(head,tags,crewDetails(item),resourceEditor(item));section.appendChild(card);
       });host.appendChild(section);
     });
   }
@@ -75,6 +87,7 @@
   document.addEventListener('hydroland:auth-changed',()=>{if(!panel.hidden)load()});
   document.addEventListener('hydroland:safety-decision-changed',()=>{if(!panel.hidden)load()});
   document.addEventListener('hydroland:weather-gate-changed',()=>{if(!panel.hidden)load()});
+  document.addEventListener('hydroland:crew-assignment-updated',()=>{if(!panel.hidden)load()});
   window.addEventListener('hydroland:booking-created',()=>{if(!panel.hidden)load()});
   window.HydrolandOperationsCalendar={reload:load};
 })();
