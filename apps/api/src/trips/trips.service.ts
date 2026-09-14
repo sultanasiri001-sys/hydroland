@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { BookingParticipantService } from './booking-participant.service';
 import { PolicyControlService } from './policy-control.service';
@@ -8,7 +9,7 @@ type TripListRow={id:string;title:string;status:string;startsAt:Date;capacity:nu
 
 @Injectable()
 export class TripsService {
-  constructor(private readonly db:DatabaseService,private readonly weatherGate:WeatherGateService,private readonly participants:BookingParticipantService,private readonly policies:PolicyControlService) {}
+  constructor(private readonly db:DatabaseService,private readonly weatherGate:WeatherGateService,private readonly participants:BookingParticipantService,private readonly policies:PolicyControlService,private readonly audit:AuditService) {}
   private weatherFromItems(items:unknown):WeatherSnapshot|null{if(!items||Array.isArray(items)||typeof items!=='object')return null;const weather=(items as Record<string,unknown>).weather;if(!weather||Array.isArray(weather)||typeof weather!=='object')return null;return weather as WeatherSnapshot;}
 
   async list(){const gateSettings=await this.weatherGate.settings();const trips=(await this.db.trip.findMany({where:{status:'OPEN'},orderBy:{startsAt:'asc'},include:{bookings:{where:{status:{in:['PENDING','CONFIRMED']}},select:{seats:true}},safetyChecklists:{orderBy:{createdAt:'desc'},take:1,select:{id:true,decision:true,items:true,notes:true,decidedAt:true,createdAt:true}}}})) as TripListRow[];return trips.map((trip:TripListRow)=>{const bookedSeats=trip.bookings.reduce((sum:number,booking:{seats:number})=>sum+booking.seats,0),latestSafety=trip.safetyChecklists[0]??null,weatherSnapshot=latestSafety?this.weatherFromItems(latestSafety.items):null,weather=this.weatherGate.evaluate(weatherSnapshot,gateSettings),{bookings,safetyChecklists,...base}=trip;return {...base,bookedSeats,remainingSeats:Math.max(0,trip.capacity-bookedSeats),safety:latestSafety,weather:{snapshot:weatherSnapshot,gate:gateSettings,evaluation:weather}};});}
@@ -40,6 +41,18 @@ export class TripsService {
   }
 
   mine(accountId:string){return this.db.booking.findMany({where:{accountId},include:{trip:true},orderBy:{createdAt:'desc'}});}
+
+  async cancelMine(accountId:string,bookingId:string){
+    const booking=await this.db.booking.findFirst({where:{id:bookingId,accountId},include:{trip:true}});
+    if(!booking)throw new NotFoundException('Booking not found.');
+    if(booking.status==='CANCELLED')return booking;
+    if(booking.trip.status==='COMPLETED'||booking.trip.status==='CANCELLED')throw new ConflictException('Booking cannot be cancelled after trip closure.');
+    if(booking.trip.startsAt<=new Date())throw new ConflictException('Booking cannot be cancelled after the trip starts.');
+    const updated=await this.db.booking.update({where:{id:bookingId},data:{status:'CANCELLED'}});
+    await this.audit.record({actorId:accountId,action:'BOOKING_SELF_CANCELLED',resource:'Booking',resourceId:bookingId,metadata:{accountId,tripId:booking.tripId,seats:booking.seats,previousStatus:booking.status}});
+    return updated;
+  }
+
   participantsForBooking(accountId:string,bookingId:string){return this.participants.listForOwner(accountId,bookingId);}
   updateParticipant(accountId:string,bookingId:string,participantId:string,input:{fullName?:string;certificationTitle?:string|null;certificationNumber?:string|null;certificationIssuer?:string|null}){return this.participants.updateForOwner(accountId,bookingId,participantId,input);}
 }
