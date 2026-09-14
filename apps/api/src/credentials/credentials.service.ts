@@ -72,4 +72,26 @@ export class CredentialsService {
     await this.audit.record({action:'CREDENTIAL_SUBMITTED',resource:'Credential',resourceId:credentialId,metadata:{accountId,previousStatus:credential.verificationStatus,status:nextStatus,policyState:verificationPolicy.state,documentCount:credential.documents.length}});
     return{id:credentialId,status:nextStatus,verificationBypassed:false,policyReview:{required:verificationPolicy.review,issues:verificationPolicy.review?['DOCUMENT_VERIFICATION']:[],states:{verification:verificationPolicy.state}}};
   }
+
+  pendingForAdmin(){
+    return this.db.credential.findMany({where:{verificationStatus:'PENDING'},include:{documents:true,person:{select:{id:true,firstName:true,lastName:true,account:{select:{id:true,email:true}}}}},orderBy:{updatedAt:'asc'},take:100});
+  }
+
+  async decide(reviewerAccountId:string,credentialId:string,input:{outcome:'VERIFIED'|'REJECTED';reason?:string}){
+    if(!['VERIFIED','REJECTED'].includes(input.outcome))throw new BadRequestException('Invalid credential review outcome.');
+    if(input.outcome==='REJECTED'&&(!input.reason?.trim()||input.reason.trim().length<5))throw new BadRequestException('A rejection reason of at least five characters is required.');
+    const [verificationPolicy,expiryPolicy]=await Promise.all([this.policies.decision('DOCUMENT','VERIFICATION'),this.policies.decision('DOCUMENT','EXPIRY')]);
+    const credential=await this.db.credential.findUnique({where:{id:credentialId},include:{documents:true}});
+    if(!credential||credential.verificationStatus!=='PENDING')throw new NotFoundException('Credential is not awaiting review.');
+    const expired=Boolean(credential.expiresAt&&credential.expiresAt<=new Date());
+    if(input.outcome==='VERIFIED'&&expired&&expiryPolicy.enforce)throw new ConflictException('Expired credential cannot be verified while expiry validation is enforced.');
+    if(input.outcome==='VERIFIED'&&verificationPolicy.enforce&&!credential.documents.length)throw new ConflictException('Supporting documents are required while document verification is enforced.');
+    const updated=await this.db.$transaction(async tx=>{
+      const row=await tx.credential.update({where:{id:credentialId},data:{verificationStatus:input.outcome}});
+      if(credential.documents.length)await tx.document.updateMany({where:{credentialId},data:{status:input.outcome==='VERIFIED'?'AVAILABLE':'REJECTED'}});
+      return row;
+    });
+    await this.audit.record({action:'CREDENTIAL_REVIEWED',resource:'Credential',resourceId:credentialId,metadata:{reviewerAccountId,previousStatus:credential.verificationStatus,status:input.outcome,reason:input.reason?.trim()||null,documentCount:credential.documents.length,externalVerification:false,policyStates:{verification:verificationPolicy.state,expiry:expiryPolicy.state},expired}});
+    return{...updated,externalVerification:false,policyReview:{required:expiryPolicy.review&&expired,issues:expiryPolicy.review&&expired?['DOCUMENT_EXPIRY']:[],states:{verification:verificationPolicy.state,expiry:expiryPolicy.state}}};
+  }
 }
