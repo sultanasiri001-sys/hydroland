@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 
 export type WeatherGateMode = 'ENFORCE' | 'ADVISORY';
@@ -23,7 +22,7 @@ export type WeatherGateSettings = {
   provider: string;
 };
 
-type SettingRow = { value: Prisma.JsonValue };
+type SettingRow = { value: unknown };
 
 @Injectable()
 export class WeatherGateService {
