@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { DiverMasterProfileService } from './diver-master-profile.service';
 
@@ -43,5 +43,14 @@ export class DiverMasterProfileController {
     @Body() body: { category?: string; ownership?: string; brand?: string; model?: string; serialNumber?: string; size?: string; serviceDueAt?: string | null },
   ) {
     return this.divers.addEquipment(req.auth.accountId, body);
+  }
+
+  @Patch('equipment/:equipmentId')
+  updateEquipment(
+    @Req() req:{auth:{accountId:string}},
+    @Param('equipmentId') equipmentId:string,
+    @Body() body:{ownership?:string;brand?:string|null;model?:string|null;serialNumber?:string|null;size?:string|null;serviceDueAt?:string|null;status?:'ACTIVE'|'INACTIVE'|'REVIEW'},
+  ){
+    return this.divers.updateEquipment(req.auth.accountId,equipmentId,body);
   }
 }
