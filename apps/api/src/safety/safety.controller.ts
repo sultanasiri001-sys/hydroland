@@ -16,10 +16,11 @@ export class SafetyController {
 
   @Post()
   assess(
+    @Req() request: { auth: { accountId: string } },
     @Param('tripId') tripId: string,
     @Body() body: { items: Record<string, boolean>; notes?: string },
   ) {
-    return this.safety.assess(tripId, body);
+    return this.safety.assess(request.auth.accountId, tripId, body);
   }
 
   @UseGuards(AdminGuard)
