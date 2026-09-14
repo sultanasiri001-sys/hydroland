@@ -1,14 +1,13 @@
 (()=>{
   const auth=()=>window.HydrolandAuth;
-  const api=()=>auth()?.apiBase||'http://localhost:3001/api/v1';
-  const token=()=>auth()?.getAccessToken?.()||'';
   const toast=message=>{const t=document.getElementById('toast');if(!t)return;t.textContent=message;t.classList.add('visible');setTimeout(()=>t.classList.remove('visible'),2200)};
   const state={trips:[],selected:null};
   const normalize=value=>String(value||'').trim().toLowerCase();
   const request=async(path,options={})=>{
-    const headers={'Content-Type':'application/json',...(options.headers||{})};
-    const access=token();if(access)headers.Authorization=`Bearer ${access}`;
-    const response=await fetch(`${api()}${path}`,{...options,headers});
+    let response;
+    const client=auth()?.authorizedFetch;
+    if(client)response=await client(path,options);
+    else response=await fetch(`${auth()?.apiBase||'http://localhost:3001/api/v1'}${path}`,options);
     const body=await response.json().catch(()=>null);
     if(!response.ok)throw new Error(body?.message||`تعذر تنفيذ الطلب (${response.status})`);
     return body;
@@ -18,7 +17,7 @@
       const title=button.dataset.book||'';
       const trip=state.trips.find(item=>normalize(item.title)===normalize(title));
       if(trip){button.dataset.tripId=trip.id;button.title=`السعة ${trip.capacity} · ${new Date(trip.startsAt).toLocaleString('ar-SA')}`;}
-      button.addEventListener('click',()=>{state.selected=trip||null;},{capture:true});
+      if(!button.dataset.hlBookingBound){button.dataset.hlBookingBound='1';button.addEventListener('click',()=>{state.selected=trip||null;},{capture:true});}
     });
   };
   const loadTrips=async()=>{
@@ -47,7 +46,7 @@
     event.preventDefault();event.stopImmediatePropagation();
     try{
       const bookings=await request('/trips/bookings/mine',{method:'GET'});
-      const next=(Array.isArray(bookings)?bookings:[]).find(item=>item.trip);
+      const next=(Array.isArray(bookings)?bookings:[]).find(item=>item.trip&&item.status!=='CANCELLED');
       if(!next){toast('لا توجد حجوزات حالية');return;}
       const when=new Date(next.trip.startsAt).toLocaleString('ar-SA');
       toast(`${next.trip.title} · ${when} · ${next.status}`);
