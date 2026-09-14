@@ -15,7 +15,8 @@
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "overrides": {
-    "deepmerge-ts": "^8.0.1"
+    "deepmerge-ts": "^8.0.1",
+    "multer": "^2.3.0"
   },
   "engines": {
     "node": ">=22"
