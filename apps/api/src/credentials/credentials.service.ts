@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PolicyControlService } from '../trips/policy-control.service';
 
 type CredentialWithDocuments = {
@@ -20,7 +21,7 @@ type CredentialWithDocuments = {
 
 @Injectable()
 export class CredentialsService {
-  constructor(private readonly db:DatabaseService,private readonly policies:PolicyControlService,private readonly audit:AuditService){}
+  constructor(private readonly db:DatabaseService,private readonly policies:PolicyControlService,private readonly audit:AuditService,private readonly notifications:NotificationsService){}
 
   async list(accountId:string){
     const a=await this.db.account.findUniqueOrThrow({where:{id:accountId},select:{personId:true}});
@@ -99,6 +100,8 @@ export class CredentialsService {
       return row;
     });
     await this.audit.record({action:'CREDENTIAL_REVIEWED',resource:'Credential',resourceId:credentialId,metadata:{reviewerAccountId,previousStatus:credential.verificationStatus,status:input.outcome,reason:input.reason?.trim()||null,documentCount:credential.documents.length,externalVerification:false,policyStates:{verification:verificationPolicy.state,expiry:expiryPolicy.state},expired}});
+    const owner=await this.db.account.findUnique({where:{personId:credential.personId},select:{id:true}});
+    if(owner)await this.notifications.notify(owner.id,'CREDENTIAL_REVIEWED',{credentialId,title:credential.title,outcome:input.outcome,reason:input.reason?.trim()||null,externalVerification:false});
     return{...updated,externalVerification:false,policyReview:{required:expiryPolicy.review&&expired,issues:expiryPolicy.review&&expired?['DOCUMENT_EXPIRY']:[],states:{verification:verificationPolicy.state,expiry:expiryPolicy.state}}};
   }
 }
