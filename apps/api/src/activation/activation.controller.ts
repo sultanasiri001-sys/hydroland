@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
-import { AdminGuard } from '../admin/admin.guard';
+import { ReviewGuard } from '../admin/review.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { ActivationService } from './activation.service';
 
@@ -23,7 +23,7 @@ export class ActivationController {
     return this.service.resubmit(req.auth.accountId,id);
   }
 
-  @UseGuards(AdminGuard)
+  @UseGuards(ReviewGuard)
   @Post(':id/decision')
   decide(@Req() req:{auth:{accountId:string}},@Param('id') id:string,@Body() body:{outcome:'APPROVED'|'REJECTED'|'MORE_INFORMATION_REQUIRED';reason?:string}){
     return this.service.decide(req.auth.accountId,id,body.outcome,body.reason);
