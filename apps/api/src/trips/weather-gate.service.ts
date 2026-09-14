@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 
 export type WeatherGateMode = 'ENFORCE' | 'ADVISORY';
@@ -26,7 +27,7 @@ type SettingRow = { value: unknown };
 
 @Injectable()
 export class WeatherGateService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(private readonly db: DatabaseService,private readonly audit:AuditService) {}
 
   private defaults(): WeatherGateSettings {
     return { enabled: false, mode: 'ADVISORY', provider: 'NOT_SELECTED' };
@@ -46,7 +47,7 @@ export class WeatherGateService {
     };
   }
 
-  async configure(input: { enabled?: boolean; mode?: WeatherGateMode }) {
+  async configure(accountId:string,input: { enabled?: boolean; mode?: WeatherGateMode }) {
     const current = await this.settings();
     const next: WeatherGateSettings = {
       ...current,
@@ -58,6 +59,7 @@ export class WeatherGateService {
       VALUES ('WEATHER_GATE', ${JSON.stringify(next)}::jsonb, NOW())
       ON CONFLICT ("key") DO UPDATE SET "value" = EXCLUDED."value", "updatedAt" = NOW()
     `;
+    await this.audit.record({action:'WEATHER_GATE_CONFIGURED',resource:'OperationalSetting',resourceId:'WEATHER_GATE',metadata:{accountId,previous:current,current:next}});
     return next;
   }
 
