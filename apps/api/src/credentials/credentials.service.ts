@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { PolicyControlService } from '../trips/policy-control.service';
@@ -86,7 +87,7 @@ export class CredentialsService {
     const expired=Boolean(credential.expiresAt&&credential.expiresAt<=new Date());
     if(input.outcome==='VERIFIED'&&expired&&expiryPolicy.enforce)throw new ConflictException('Expired credential cannot be verified while expiry validation is enforced.');
     if(input.outcome==='VERIFIED'&&verificationPolicy.enforce&&!credential.documents.length)throw new ConflictException('Supporting documents are required while document verification is enforced.');
-    const updated=await this.db.$transaction(async tx=>{
+    const updated=await this.db.$transaction(async(tx:Prisma.TransactionClient)=>{
       const row=await tx.credential.update({where:{id:credentialId},data:{verificationStatus:input.outcome}});
       if(credential.documents.length)await tx.document.updateMany({where:{credentialId},data:{status:input.outcome==='VERIFIED'?'AVAILABLE':'REJECTED'}});
       return row;
