@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AdminModule } from '../admin/admin.module';
 import { AuditModule } from '../audit/audit.module';
 import { AuthModule } from '../auth/auth.module';
+import { BookingParticipantService } from './booking-participant.service';
 import { CalendarAllocationController } from './calendar-allocation.controller';
 import { CalendarAllocationService } from './calendar-allocation.service';
 import { CrewAssignmentController } from './crew-assignment.controller';
@@ -21,6 +22,6 @@ import { WeatherGateService } from './weather-gate.service';
 @Module({
   imports: [AuthModule, AdminModule, AuditModule],
   controllers: [TripsController,TripAdminController,TripCompletionController,WeatherGateController,CalendarAllocationController,CrewAssignmentController],
-  providers: [TripsService,TripAdminService,TripCompletionService,WeatherGateService,CalendarAllocationService,CrewAssignmentService,CrewEscalationScheduler,OperationalClearanceService,OperationalClearanceScheduler],
+  providers: [TripsService,TripAdminService,TripCompletionService,WeatherGateService,CalendarAllocationService,CrewAssignmentService,CrewEscalationScheduler,OperationalClearanceService,OperationalClearanceScheduler,BookingParticipantService],
 })
 export class TripsModule {}
