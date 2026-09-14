@@ -12,6 +12,7 @@ const TRIP_STATUSES:TripStatusValue[]=['DRAFT','OPEN','CLOSED','CANCELLED','COMP
 type CreateTripInput={title?:string;type?:string;startsAt?:string;endsAt?:string;capacity?:number;status?:TripStatusValue};
 type AdminTripRow={id:string;title:string;type:string;startsAt:Date;endsAt:Date;capacity:number;status:TripStatusValue;createdAt:Date;updatedAt:Date};
 type AdminBookingRow={id:string;tripId:string;accountId:string;status:string;seats:number;createdAt:Date;updatedAt:Date;account:unknown};
+type AffectedBooking={id:string;accountId:string;seats:number;status:string};
 
 @Injectable()
 export class TripAdminService {
@@ -75,7 +76,7 @@ export class TripAdminService {
     const trip=await this.db.trip.findUnique({where:{id}});if(!trip)throw new NotFoundException('Trip not found.');
     if(status==='OPEN'&&trip.startsAt<=new Date())throw new ConflictException('A trip that already started cannot be opened.');
     if(trip.status===status)return trip;
-    const affectedBookings=status==='CANCELLED'?await this.db.booking.findMany({where:{tripId:id,status:{not:'CANCELLED'}},select:{id:true,accountId:true,seats:true,status:true}}):[];
+    const affectedBookings:AffectedBooking[]=status==='CANCELLED'?await this.db.booking.findMany({where:{tripId:id,status:{not:'CANCELLED'}},select:{id:true,accountId:true,seats:true,status:true}}):[];
     const updated=await this.db.serializable(async tx=>{
       const current=await tx.trip.findUnique({where:{id}});if(!current)throw new NotFoundException('Trip not found.');
       if(status==='CANCELLED'){
@@ -84,7 +85,7 @@ export class TripAdminService {
       }
       return tx.trip.update({where:{id},data:{status}});
     });
-    if(status==='CANCELLED')await Promise.all(affectedBookings.map(booking=>this.notifyQuietly(booking.accountId,'TRIP_CANCELLED',{tripId:id,bookingId:booking.id,seats:booking.seats,previousBookingStatus:booking.status,bookingStatus:'CANCELLED',startsAt:trip.startsAt,title:trip.title})));
+    if(status==='CANCELLED')await Promise.all(affectedBookings.map((booking:AffectedBooking)=>this.notifyQuietly(booking.accountId,'TRIP_CANCELLED',{tripId:id,bookingId:booking.id,seats:booking.seats,previousBookingStatus:booking.status,bookingStatus:'CANCELLED',startsAt:trip.startsAt,title:trip.title})));
     await this.audit.record({action:'TRIP_STATUS_CHANGED',resource:'Trip',resourceId:id,metadata:{reviewerAccountId,previousStatus:trip.status,status,releasedCalendarResources:status==='CANCELLED',cancelledBookings:status==='CANCELLED'?affectedBookings.length:0,notifiedBookings:status==='CANCELLED'?affectedBookings.length:0,financialActionExecuted:false}});
     return updated;
   }
