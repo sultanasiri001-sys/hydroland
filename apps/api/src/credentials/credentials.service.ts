@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { PolicyControlService } from '../trips/policy-control.service';
 
@@ -18,7 +19,7 @@ type CredentialWithDocuments = {
 
 @Injectable()
 export class CredentialsService {
-  constructor(private readonly db:DatabaseService,private readonly policies:PolicyControlService){}
+  constructor(private readonly db:DatabaseService,private readonly policies:PolicyControlService,private readonly audit:AuditService){}
 
   async list(accountId:string){
     const a=await this.db.account.findUniqueOrThrow({where:{id:accountId},select:{personId:true}});
@@ -42,7 +43,8 @@ export class CredentialsService {
     const expired=Boolean(expiresAt&&expiresAt<=new Date());
     if(expired&&expiryPolicy.enforce)throw new ConflictException('Expired credentials cannot be created while expiry validation is enforced.');
     const a=await this.db.account.findUniqueOrThrow({where:{id:accountId},select:{personId:true}});
-    const credential=await this.db.credential.create({data:{personId:a.personId,issuer:input.issuer.trim(),title:input.title.trim(),credentialNumber:input.credentialNumber,issuedAt,expiresAt}});
+    const credential=await this.db.credential.create({data:{personId:a.personId,issuer:input.issuer.trim(),title:input.title.trim(),credentialNumber:input.credentialNumber?.trim()||null,issuedAt,expiresAt}});
+    await this.audit.record({action:'CREDENTIAL_CREATED',resource:'Credential',resourceId:credential.id,metadata:{accountId,issuer:credential.issuer,title:credential.title,expiresAt:credential.expiresAt,policyState:expiryPolicy.state}});
     return {...credential,policyReview:{required:expired&&expiryPolicy.review,issues:expired?['DOCUMENT_EXPIRY']:[],states:{expiry:expiryPolicy.state}}};
   }
 
@@ -50,7 +52,9 @@ export class CredentialsService {
     if(!['application/pdf','image/jpeg','image/png'].includes(input.mimeType)||input.byteSize<1||input.byteSize>10_000_000)throw new BadRequestException('Unsupported document.');
     const a=await this.db.account.findUniqueOrThrow({where:{id:accountId},select:{personId:true}}),c=await this.db.credential.findFirst({where:{id:credentialId,personId:a.personId,verificationStatus:'UNVERIFIED'}});
     if(!c)throw new NotFoundException('Credential not editable.');
-    return this.db.document.create({data:{credentialId,ownerId:a.personId,...input,status:'UPLOADED'}});
+    const document=await this.db.document.create({data:{credentialId,ownerId:a.personId,...input,status:'UPLOADED'}});
+    await this.audit.record({action:'CREDENTIAL_DOCUMENT_ATTACHED',resource:'Credential',resourceId:credentialId,metadata:{accountId,documentId:document.id,mimeType:document.mimeType,byteSize:document.byteSize,sha256:document.sha256}});
+    return document;
   }
 
   async submit(accountId:string,credentialId:string){
@@ -60,10 +64,12 @@ export class CredentialsService {
     if(!credential)throw new NotFoundException('Credential cannot be submitted.');
     if(verificationPolicy.enforce&&!credential.documents.length)throw new ConflictException('At least one supporting document is required while document verification is enforced.');
     if(verificationPolicy.bypass){
+      await this.audit.record({action:'CREDENTIAL_VERIFICATION_BYPASSED',resource:'Credential',resourceId:credentialId,metadata:{accountId,policyState:verificationPolicy.state,documentCount:credential.documents.length}});
       return{id:credentialId,status:credential.verificationStatus,verificationBypassed:true,policyReview:{required:false,issues:[],states:{verification:verificationPolicy.state}}};
     }
     const nextStatus='PENDING';
     await this.db.credential.update({where:{id:credentialId},data:{verificationStatus:nextStatus}});
+    await this.audit.record({action:'CREDENTIAL_SUBMITTED',resource:'Credential',resourceId:credentialId,metadata:{accountId,previousStatus:credential.verificationStatus,status:nextStatus,policyState:verificationPolicy.state,documentCount:credential.documents.length}});
     return{id:credentialId,status:nextStatus,verificationBypassed:false,policyReview:{required:verificationPolicy.review,issues:verificationPolicy.review?['DOCUMENT_VERIFICATION']:[],states:{verification:verificationPolicy.state}}};
   }
 }
