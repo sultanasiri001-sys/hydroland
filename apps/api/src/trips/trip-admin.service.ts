@@ -1,6 +1,8 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { TripStatus } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
+
+export type TripStatusValue = 'DRAFT' | 'OPEN' | 'CLOSED' | 'CANCELLED' | 'COMPLETED';
+const TRIP_STATUSES: TripStatusValue[] = ['DRAFT', 'OPEN', 'CLOSED', 'CANCELLED', 'COMPLETED'];
 
 type CreateTripInput = {
   title?: string;
@@ -8,7 +10,7 @@ type CreateTripInput = {
   startsAt?: string;
   endsAt?: string;
   capacity?: number;
-  status?: TripStatus;
+  status?: TripStatusValue;
 };
 
 @Injectable()
@@ -26,6 +28,9 @@ export class TripAdminService {
     if (!Number.isInteger(input.capacity) || Number(input.capacity) < 1) {
       throw new BadRequestException('Trip capacity must be a positive integer.');
     }
+    if (input.status && !TRIP_STATUSES.includes(input.status)) {
+      throw new BadRequestException('Invalid trip status.');
+    }
     const startsAt = new Date(input.startsAt);
     const endsAt = new Date(input.endsAt);
     if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()) || endsAt <= startsAt) {
@@ -38,16 +43,16 @@ export class TripAdminService {
         startsAt,
         endsAt,
         capacity: Number(input.capacity),
-        status: input.status ?? TripStatus.DRAFT,
+        status: input.status ?? 'DRAFT',
       },
     });
   }
 
-  async setStatus(id: string, status: TripStatus) {
-    if (!Object.values(TripStatus).includes(status)) throw new BadRequestException('Invalid trip status.');
+  async setStatus(id: string, status: TripStatusValue) {
+    if (!TRIP_STATUSES.includes(status)) throw new BadRequestException('Invalid trip status.');
     const trip = await this.db.trip.findUnique({ where: { id } });
     if (!trip) throw new NotFoundException('Trip not found.');
-    if (status === TripStatus.OPEN && trip.startsAt <= new Date()) {
+    if (status === 'OPEN' && trip.startsAt <= new Date()) {
       throw new ConflictException('A trip that already started cannot be opened.');
     }
     return this.db.trip.update({ where: { id }, data: { status } });
