@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 type SelfServiceRole='DIVER'|'INSTRUCTOR'|'DIVE_CENTER'|'BOAT_OWNER'|'STAFF'|'ORGANIZATION';
 type ActivationDecision='APPROVED'|'REJECTED'|'MORE_INFORMATION_REQUIRED';
@@ -10,7 +11,7 @@ const REVIEWABLE_STATES=['SUBMITTED','UNDER_REVIEW','RESUBMITTED'] as const;
 
 @Injectable()
 export class ActivationService {
-  constructor(private readonly db:DatabaseService,private readonly audit:AuditService){}
+  constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly notifications:NotificationsService){}
 
   async request(accountId:string,role:string){
     if(!SELF_SERVICE_ROLES.includes(role as SelfServiceRole))throw new BadRequestException('Requested role is not available for self-service activation.');
@@ -68,6 +69,7 @@ export class ActivationService {
       return{id:requestId,status:outcome,role:request.roleAssignment.role};
     });
     await this.audit.record({action:'ACTIVATION_REQUEST_DECIDED',resource:'ActivationRequest',resourceId:requestId,metadata:{reviewerId,applicantId:request.applicantId,role:request.roleAssignment.role,previousStatus:request.status,outcome,reason:cleanReason}});
+    await this.notifications.notify(request.applicantId,'ACTIVATION_REQUEST_DECIDED',{requestId,role:request.roleAssignment.role,outcome,reason:cleanReason});
     return result;
   }
 }
