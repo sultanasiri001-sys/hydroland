@@ -7,6 +7,13 @@
     if(!trip.safety||trip.safety.decision==='REVIEW_REQUIRED')return'تحتاج اعتماد السلامة';
     if(trip.safety.decision==='DEFERRED')return'مؤجلة بقرار السلامة';
     if(trip.safety.decision!=='ALLOWED')return'تحتاج اعتماد السلامة';
+    if(trip.weather?.evaluation?.blocking){
+      const decision=trip.weather.evaluation.decision;
+      if(decision==='DEFERRED')return'مؤجلة بسبب الطقس';
+      if(decision==='REVIEW_REQUIRED')return'تحتاج مراجعة الطقس';
+      if(decision==='UNAVAILABLE')return'بيانات الطقس غير متاحة';
+      return'غير متاحة بسبب الطقس';
+    }
     if(new Date(trip.startsAt)<=new Date())return'بدأت الرحلة';
     return'';
   };
@@ -26,7 +33,9 @@
         }else if(trip){
           delete btn.dataset.availabilityReason;
           btn.dataset.tripId=trip.id;
-          btn.title=`متبقي ${trip.remainingSeats} من ${trip.capacity}`;
+          const weather=trip.weather?.snapshot;
+          const weatherHint=weather?.waveHeightM!=null?` · الموج ${weather.waveHeightM}م`:'';
+          btn.title=`متبقي ${trip.remainingSeats} من ${trip.capacity}${weatherHint}`;
           btn.textContent='احجز الآن';
         }
       });
@@ -35,6 +44,7 @@
   window.addEventListener('hydroland:booking-created',refresh);
   window.addEventListener('hydroland:booking-cancelled',refresh);
   window.addEventListener('hydroland:booking-confirmed',refresh);
+  window.addEventListener('hydroland:weather-gate-changed',refresh);
   document.addEventListener('hydroland:safety-decision-changed',refresh);
   document.addEventListener('hydroland:auth-changed',refresh);
   refresh();
