@@ -11,7 +11,23 @@ export class OperationalClearanceService {
   constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly calendar:CalendarAllocationService) {}
 
   private async latestEvent(tripId:string){return this.db.auditEvent.findFirst({where:{resource:'Trip',resourceId:tripId,action:{in:['OPERATIONAL_CLEARANCE_GRANTED','OPERATIONAL_REVIEW_APPROVED','OPERATIONAL_CLEARANCE_REVOKED']}},orderBy:{occurredAt:'desc'},select:{id:true,action:true,occurredAt:true}}) as Promise<ClearanceEvent|null>;}
-  private async latestOperationalChange(tripId:string){const rows=await this.db.$queryRaw<ChangeRow[]>`SELECT GREATEST(t."updatedAt",COALESCE((SELECT MAX(s."updatedAt") FROM "SafetyChecklist" s WHERE s."tripId"=t."id"),TIMESTAMP '1970-01-01'),COALESCE((SELECT MAX(c."updatedAt") FROM "CrewAssignment" c WHERE c."tripId"=t."id"),TIMESTAMP '1970-01-01'),COALESCE((SELECT MAX(a."updatedAt") FROM "CalendarAllocation" a WHERE a."tripId"=t."id"),TIMESTAMP '1970-01-01'),COALESCE((SELECT o."updatedAt" FROM "OperationalSetting" o WHERE o."key"='WEATHER_GATE' LIMIT 1),TIMESTAMP '1970-01-01')) AS "changedAt" FROM "Trip" t WHERE t."id"=${tripId} LIMIT 1`;if(!rows.length)throw new NotFoundException('Trip not found.');return rows[0].changedAt;}
+  private async latestOperationalChange(tripId:string){
+    const rows=await this.db.$queryRaw<ChangeRow[]>`
+      SELECT GREATEST(
+        t."updatedAt",
+        COALESCE((SELECT MAX(s."updatedAt") FROM "SafetyChecklist" s WHERE s."tripId"=t."id"),TIMESTAMP '1970-01-01'),
+        COALESCE((SELECT MAX(c."updatedAt") FROM "CrewAssignment" c WHERE c."tripId"=t."id"),TIMESTAMP '1970-01-01'),
+        COALESCE((SELECT MAX(a."updatedAt") FROM "CalendarAllocation" a WHERE a."tripId"=t."id"),TIMESTAMP '1970-01-01'),
+        COALESCE((SELECT MAX(b."updatedAt") FROM "Booking" b WHERE b."tripId"=t."id"),TIMESTAMP '1970-01-01'),
+        COALESCE((SELECT r."updatedAt" FROM "TripComplianceReview" r WHERE r."tripId"=t."id" LIMIT 1),TIMESTAMP '1970-01-01'),
+        COALESCE((SELECT MAX(brc."updatedAt") FROM "CalendarAllocation" a JOIN "CalendarResource" cr ON cr."id"=a."resourceId" JOIN "BoatResourceCompliance" brc ON brc."resourceId"=cr."id" WHERE a."tripId"=t."id" AND a."status"='ACTIVE' AND cr."type"='BOAT'),TIMESTAMP '1970-01-01'),
+        COALESCE((SELECT MAX(p."updatedAt") FROM "PolicyControl" p WHERE p."category" IN ('TRIP','CREW','WEATHER','BOAT','COMPLIANCE','BOOKING')),TIMESTAMP '1970-01-01'),
+        COALESCE((SELECT o."updatedAt" FROM "OperationalSetting" o WHERE o."key"='WEATHER_GATE' LIMIT 1),TIMESTAMP '1970-01-01')
+      ) AS "changedAt"
+      FROM "Trip" t WHERE t."id"=${tripId} LIMIT 1
+    `;
+    if(!rows.length)throw new NotFoundException('Trip not found.');return rows[0].changedAt;
+  }
 
   async grant(reviewerAccountId:string,tripId:string,reason?:string){const readiness=await this.calendar.readinessForTrip(tripId);if(readiness.status==='NOT_READY')throw new ConflictException(`Trip is NOT_READY: ${readiness.blockers.join(', ')}`);if(readiness.status==='REVIEW_REQUIRED'&&(!reason||reason.trim().length<10))throw new ConflictException('A documented review reason of at least 10 characters is required.');const action=readiness.status==='READY'?'OPERATIONAL_CLEARANCE_GRANTED':'OPERATIONAL_REVIEW_APPROVED';const event=await this.audit.record({action,resource:'Trip',resourceId:tripId,metadata:{reviewerAccountId,readiness,reason:reason?.trim()||null}});return {tripId,clearance:'GRANTED',readiness,auditEventId:event.id};}
 
