@@ -3,6 +3,7 @@
   const state={mode:'login'};
   const toast=message=>{const t=document.getElementById('toast');if(!t)return;t.textContent=message;t.classList.add('visible');setTimeout(()=>t.classList.remove('visible'),2200)};
   const login=()=>document.querySelector('.hl-login');
+  const emitAuthChanged=()=>document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));
   const ensurePanel=()=>{
     const root=login();if(!root)return null;
     let panel=root.querySelector('.hl-auth-panel');if(panel)return panel;
@@ -18,7 +19,7 @@
         const body=await response.json().catch(()=>({}));
         if(!response.ok)throw new Error(body.message||'تعذر تسجيل الدخول');
         sessionStorage.setItem('hl-access-token',body.accessToken||'');sessionStorage.setItem('hl-refresh-token',body.refreshToken||'');sessionStorage.setItem('hl-preview-seen','1');
-        root.classList.add('hidden');toast(state.mode==='register'?'تم إنشاء الحساب وتسجيل الدخول':'تم تسجيل الدخول إلى HYDROLAND');
+        root.classList.add('hidden');emitAuthChanged();toast(state.mode==='register'?'تم إنشاء الحساب وتسجيل الدخول':'تم تسجيل الدخول إلى HYDROLAND');
       }catch(error){toast(error instanceof Error?error.message:'تعذر الاتصال بخادم HYDROLAND');}
       finally{submit.disabled=false;submit.textContent=state.mode==='register'?'إنشاء الحساب':'دخول آمن';}
     });
@@ -29,6 +30,6 @@
     event.preventDefault();event.stopImmediatePropagation();const root=login();const panel=ensurePanel();if(!root||!panel)return;
     state.mode=button.classList.contains('hl-login-secondary')?'register':'login';panel.querySelector('.hl-auth-submit').textContent=state.mode==='register'?'إنشاء الحساب':'دخول آمن';panel.querySelector('input[name="password"]').autocomplete=state.mode==='register'?'new-password':'current-password';root.querySelector('.hl-login-actions').hidden=true;panel.hidden=false;panel.querySelector('input[name="email"]').focus();
   },true);
-  window.HydrolandAuth={apiBase:API_BASE,getAccessToken:()=>sessionStorage.getItem('hl-access-token'),isAuthenticated:()=>Boolean(sessionStorage.getItem('hl-access-token')),logout:()=>{sessionStorage.removeItem('hl-access-token');sessionStorage.removeItem('hl-refresh-token');sessionStorage.removeItem('hl-preview-seen');location.reload();}};
+  window.HydrolandAuth={apiBase:API_BASE,getAccessToken:()=>sessionStorage.getItem('hl-access-token'),isAuthenticated:()=>Boolean(sessionStorage.getItem('hl-access-token')),logout:()=>{sessionStorage.removeItem('hl-access-token');sessionStorage.removeItem('hl-refresh-token');sessionStorage.removeItem('hl-preview-seen');emitAuthChanged();location.reload();}};
   if(!document.querySelector('script[src="./hydroland-bookings.js"]')){const script=document.createElement('script');script.src='./hydroland-bookings.js';script.defer=true;document.body.appendChild(script);}
 })();
