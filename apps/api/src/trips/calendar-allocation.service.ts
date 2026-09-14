@@ -24,6 +24,17 @@ type CalendarTripRow = {
     createdAt: Date;
   }>;
 };
+type CrewReadinessRow = {
+  id: string;
+  tripId: string;
+  accountId: string;
+  resourceId: string;
+  roleType: string;
+  status: string;
+  resourceName: string;
+  firstName: string | null;
+  lastName: string | null;
+};
 
 @Injectable()
 export class CalendarAllocationService {
@@ -81,11 +92,37 @@ export class CalendarAllocationService {
       ORDER BY a."startsAt" ASC
     `;
 
+    const crew = await this.db.$queryRaw<CrewReadinessRow[]>`
+      SELECT ca."id", ca."tripId", ca."accountId", ca."resourceId", ca."roleType", ca."status",
+             r."name" AS "resourceName", p."firstName", p."lastName"
+      FROM "CrewAssignment" ca
+      JOIN "Trip" t ON t."id" = ca."tripId"
+      JOIN "CalendarResource" r ON r."id" = ca."resourceId"
+      LEFT JOIN "Account" ac ON ac."id" = ca."accountId"
+      LEFT JOIN "Person" p ON p."id" = ac."personId"
+      WHERE t."startsAt" < ${to}
+        AND t."endsAt" > ${from}
+        AND NOT EXISTS (
+          SELECT 1 FROM "CrewAssignment" child
+          WHERE child."replacesAssignmentId" = ca."id"
+        )
+      ORDER BY ca."createdAt" ASC
+    `;
+
     return trips.map((trip: CalendarTripRow) => {
       const bookedSeats = trip.bookings.reduce((sum: number, booking: { seats: number }) => sum + booking.seats, 0);
       const latestSafety = trip.safetyChecklists[0] ?? null;
       const snapshot = latestSafety ? this.weatherFromItems(latestSafety.items) : null;
       const weather = this.weatherGate.evaluate(snapshot, gate);
+      const tripCrew = crew.filter((member: CrewReadinessRow) => member.tripId === trip.id);
+      const crewSummary = {
+        total: tripCrew.length,
+        accepted: tripCrew.filter((member: CrewReadinessRow) => member.status === 'ACCEPTED').length,
+        pending: tripCrew.filter((member: CrewReadinessRow) => member.status === 'PENDING').length,
+        rejected: tripCrew.filter((member: CrewReadinessRow) => member.status === 'REJECTED').length,
+        replacementRequired: tripCrew.filter((member: CrewReadinessRow) => member.status === 'REJECTED').length,
+        ready: tripCrew.length > 0 && tripCrew.every((member: CrewReadinessRow) => member.status === 'ACCEPTED'),
+      };
       return {
         id: trip.id,
         title: trip.title,
@@ -98,6 +135,18 @@ export class CalendarAllocationService {
         remainingSeats: Math.max(0, trip.capacity - bookedSeats),
         safety: latestSafety,
         weather: { snapshot, gate, evaluation: weather },
+        crew: {
+          summary: crewSummary,
+          members: tripCrew.map((member: CrewReadinessRow) => ({
+            assignmentId: member.id,
+            accountId: member.accountId,
+            resourceId: member.resourceId,
+            roleType: member.roleType,
+            status: member.status,
+            name: [member.firstName, member.lastName].filter(Boolean).join(' ') || member.resourceName,
+            resourceName: member.resourceName,
+          })),
+        },
         resources: allocations
           .filter((allocation: AllocationWithResourceRow) => allocation.tripId === trip.id)
           .map((allocation: AllocationWithResourceRow) => ({
