@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 
 const THEME_CATALOG = [
@@ -30,7 +31,7 @@ type ThemeScheduleRow = {
 
 @Injectable()
 export class ThemesService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(private readonly db: DatabaseService, private readonly audit: AuditService) {}
 
   catalog() {
     return THEME_CATALOG;
@@ -81,10 +82,12 @@ export class ThemesService {
       endsAt,
       createdById ?? null,
     );
-    return rows[0];
+    const created=rows[0];
+    await this.audit.record({action:'THEME_SCHEDULE_CREATED',resource:'ThemeSchedule',resourceId:created.id,metadata:{accountId:createdById??null,themeId:created.themeId,status:created.status,startsAt:created.startsAt,endsAt:created.endsAt}});
+    return created;
   }
 
-  async setStatus(id: string, status: ThemeStatus) {
+  async setStatus(id: string, status: ThemeStatus, accountId?: string) {
     if (!['DRAFT', 'PUBLISHED', 'ARCHIVED'].includes(status)) throw new BadRequestException('Invalid theme status.');
     const existing = await this.db.$queryRawUnsafe<ThemeScheduleRow[]>('SELECT * FROM "ThemeSchedule" WHERE "id"=$1 LIMIT 1', id);
     if (!existing[0]) throw new NotFoundException('Theme schedule not found.');
@@ -94,6 +97,8 @@ export class ThemesService {
       id,
       status,
     );
-    return rows[0];
+    const updated=rows[0];
+    await this.audit.record({action:'THEME_SCHEDULE_STATUS_CHANGED',resource:'ThemeSchedule',resourceId:id,metadata:{accountId:accountId??null,themeId:updated.themeId,previousStatus:existing[0].status,status:updated.status}});
+    return updated;
   }
 }
