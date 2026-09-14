@@ -13,11 +13,12 @@ export class AdminService {
 
   queue(){return this.db.activationRequest.findMany({where:{status:{in:['SUBMITTED','UNDER_REVIEW','RESUBMITTED']}},include:{applicant:{select:{id:true,email:true}},roleAssignment:true},orderBy:{createdAt:'asc'}})}
 
-  listAccounts(){return this.db.account.findMany({select:{id:true,email:true,status:true,emailVerifiedAt:true,lastLoginAt:true,createdAt:true,person:{select:{firstName:true,lastName:true}},roleAssignments:{select:{role:true,status:true}}},orderBy:{createdAt:'desc'},take:200})}
+  private async requireAdminRole(accountId:string){const role=await this.db.roleAssignment.findFirst({where:{accountId,role:'ADMIN',status:'ACTIVE'},select:{id:true}});if(!role)throw new ForbiddenException('Active ADMIN role required.');}
+
+  async listAccounts(adminAccountId:string){await this.requireAdminRole(adminAccountId);return this.db.account.findMany({select:{id:true,email:true,status:true,emailVerifiedAt:true,lastLoginAt:true,createdAt:true,person:{select:{firstName:true,lastName:true}},roleAssignments:{select:{role:true,status:true}}},orderBy:{createdAt:'desc'},take:200})}
 
   async setAccountStatus(adminAccountId:string,accountId:string,status:AccountStatus,reason?:string){
-    const adminRole=await this.db.roleAssignment.findFirst({where:{accountId:adminAccountId,role:'ADMIN',status:'ACTIVE'},select:{id:true}});
-    if(!adminRole)throw new ForbiddenException('Active ADMIN role required for account status changes.');
+    await this.requireAdminRole(adminAccountId);
     if(!allowedStatuses.includes(status))throw new BadRequestException('Invalid account status.');
     if(adminAccountId===accountId&&(status==='SUSPENDED'||status==='ARCHIVED'))throw new BadRequestException('Administrators cannot suspend or archive their own account.');
     const account=await this.db.account.findUnique({where:{id:accountId},select:{id:true,status:true,email:true}});
