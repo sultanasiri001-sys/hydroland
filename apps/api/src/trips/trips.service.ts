@@ -2,12 +2,29 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 
+type TripListRow = {
+  id: string;
+  title: string;
+  status: string;
+  startsAt: Date;
+  capacity: number;
+  bookings: Array<{ seats: number }>;
+  safetyChecklists: Array<{
+    id: string;
+    decision: string;
+    notes: string | null;
+    decidedAt: Date | null;
+    createdAt: Date;
+  }>;
+  [key: string]: unknown;
+};
+
 @Injectable()
 export class TripsService {
   constructor(private readonly db: DatabaseService) {}
 
   async list() {
-    const trips = await this.db.trip.findMany({
+    const trips = (await this.db.trip.findMany({
       where: { status: 'OPEN' },
       orderBy: { startsAt: 'asc' },
       include: {
@@ -21,10 +38,13 @@ export class TripsService {
           select: { id: true, decision: true, notes: true, decidedAt: true, createdAt: true },
         },
       },
-    });
+    })) as TripListRow[];
 
-    return trips.map((trip) => {
-      const bookedSeats = trip.bookings.reduce((sum, booking) => sum + booking.seats, 0);
+    return trips.map((trip: TripListRow) => {
+      const bookedSeats = trip.bookings.reduce(
+        (sum: number, booking: { seats: number }) => sum + booking.seats,
+        0,
+      );
       const latestSafety = trip.safetyChecklists[0] ?? null;
       const { bookings, safetyChecklists, ...base } = trip;
       return {
