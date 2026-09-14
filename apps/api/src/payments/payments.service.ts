@@ -26,10 +26,12 @@ export class PaymentsService {
     const paymentPolicy=await this.policies.decision('PAYMENT','PAYMENT_REQUIRED');
     const booking=await this.db.booking.findFirst({where:{id:input.bookingId,accountId}});
     if(!booking)throw new NotFoundException('Booking not found.');
+    if(booking.status==='CANCELLED')throw new ConflictException('Cancelled booking cannot create a payment.');
     if(paymentPolicy.bypass)return{bookingId:booking.id,status:'BYPASSED',provider:'NOT_SELECTED',policyReview:{required:false,issues:[],states:{payment:paymentPolicy.state}}};
     const idempotencyKey=input.idempotencyKey.trim();
     const existing=await this.db.payment.findUnique({where:{idempotencyKey}});
     if(existing&&existing.accountId!==accountId)throw new ConflictException('Idempotency key already belongs to another payment.');
+    if(existing&&(existing.bookingId!==input.bookingId||existing.amountMinor!==input.amountMinor))throw new ConflictException('Idempotency key cannot be reused with different payment details.');
     const payment=await this.db.payment.upsert({where:{idempotencyKey},create:{bookingId:input.bookingId,amountMinor:input.amountMinor,idempotencyKey,accountId,status:'CREATED'},update:{}});
     if(!existing)await this.audit.record({action:'PAYMENT_CREATED',resource:'Payment',resourceId:payment.id,metadata:{accountId,bookingId:payment.bookingId,amountMinor:payment.amountMinor,currency:payment.currency,status:payment.status,provider:'NOT_SELECTED',policyState:paymentPolicy.state,financialActionExecuted:false}});
     return{...payment,provider:'NOT_SELECTED',policyReview:{required:paymentPolicy.review,issues:paymentPolicy.review?['PAYMENT_REQUIRED']:[],states:{payment:paymentPolicy.state}}};
