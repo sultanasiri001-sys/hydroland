@@ -1,14 +1,10 @@
 (()=>{
   const auth=()=>window.HydrolandAuth;
-  const api=()=>auth()?.apiBase||'http://localhost:3001/api/v1';
-  const token=()=>auth()?.getAccessToken?.()||'';
   const toast=message=>{const t=document.getElementById('toast');if(!t)return;t.textContent=message;t.classList.add('visible');setTimeout(()=>t.classList.remove('visible'),2400)};
   const request=async(path,options={})=>{
-    const headers={'Content-Type':'application/json',...(options.headers||{})};
-    const access=token();if(access)headers.Authorization=`Bearer ${access}`;
-    const response=await fetch(`${api()}${path}`,{...options,headers});
-    const body=await response.json().catch(()=>null);
-    if(!response.ok)throw new Error(body?.message||`تعذر تنفيذ الطلب (${response.status})`);
+    const client=auth()?.authorizedFetch;if(!client)throw new Error('AUTH_REQUIRED');
+    const response=await client(path,options);const body=await response.json().catch(()=>null);
+    if(!response.ok){if(response.status===401)throw new Error('انتهت الجلسة، سجّل الدخول من جديد');throw new Error(body?.message||`تعذر تنفيذ الطلب (${response.status})`)}
     return body;
   };
   const esc=value=>String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
@@ -47,7 +43,7 @@
       const rows=await request('/trips/bookings/mine',{method:'GET'});const bookings=Array.isArray(rows)?rows:[];
       if(!bookings.length){body.innerHTML='<div class="hl-account-empty">لا توجد حجوزات حتى الآن.</div>';return}
       body.innerHTML=bookings.map(item=>{const status=String(item.status||'PENDING').toLowerCase();const cancellable=['pending','confirmed'].includes(status)&&item.trip&&new Date(item.trip.startsAt)>new Date();return `<article class="hl-account-card" data-booking-id="${esc(item.id)}"><div class="hl-account-card-head"><div><h3>${esc(item.trip?.title||'رحلة')}</h3><p>${esc(formatDate(item.trip?.startsAt))}</p></div><span class="hl-status ${esc(status)}">${esc(item.status||'PENDING')}</span></div><small>عدد المقاعد: ${esc(item.seats||1)}</small><div class="hl-account-actions">${cancellable?'<button class="danger" data-cancel-booking>إلغاء الحجز</button>':''}<button data-booking-participants>المشاركون</button></div></article>`}).join('');
-      body.querySelectorAll('[data-cancel-booking]').forEach(button=>button.addEventListener('click',async()=>{const card=button.closest('[data-booking-id]');const bookingId=card?.dataset.bookingId;if(!bookingId)return;button.disabled=true;try{await request(`/trips/bookings/${encodeURIComponent(bookingId)}/cancel`,{method:'PATCH'});toast('تم إلغاء الحجز');await renderBookings();}catch(error){toast(error instanceof Error?error.message:'تعذر إلغاء الحجز');button.disabled=false}}));
+      body.querySelectorAll('[data-cancel-booking]').forEach(button=>button.addEventListener('click',async()=>{const card=button.closest('[data-booking-id]');const bookingId=card?.dataset.bookingId;if(!bookingId)return;button.disabled=true;try{await request(`/trips/bookings/${encodeURIComponent(bookingId)}/cancel`,{method:'PATCH'});toast('تم إلغاء الحجز');dialog.close();await renderBookings();}catch(error){toast(error instanceof Error?error.message:'تعذر إلغاء الحجز');button.disabled=false}}));
       body.querySelectorAll('[data-booking-participants]').forEach(button=>button.addEventListener('click',async()=>{const bookingId=button.closest('[data-booking-id]')?.dataset.bookingId;if(!bookingId)return;button.disabled=true;try{const participants=await request(`/trips/bookings/${encodeURIComponent(bookingId)}/participants`,{method:'GET'});const names=(Array.isArray(participants)?participants:[]).map((p,index)=>p.fullName||`مشارك ${index+1}`).join('، ');toast(names||'لا توجد بيانات مشاركين');}catch(error){toast(error instanceof Error?error.message:'تعذر تحميل المشاركين')}finally{button.disabled=false}}));
     }catch(error){body.innerHTML=`<div class="hl-account-error">${esc(error instanceof Error?error.message:'تعذر تحميل الحجوزات')}</div>`}
   };
@@ -59,12 +55,12 @@
       const rows=await request('/notifications',{method:'GET'});const notifications=Array.isArray(rows)?rows:[];
       if(!notifications.length){body.innerHTML='<div class="hl-account-empty">لا توجد إشعارات جديدة.</div>';return}
       body.innerHTML=notifications.map(item=>{const unread=String(item.status||'UNREAD')!=='READ';return `<article class="hl-account-card hl-notification ${unread?'unread':''}" data-notification-id="${esc(item.id)}"><div class="hl-account-card-head"><div><h3>${esc(item.type||'إشعار')}</h3><p>${esc(formatDate(item.createdAt))}</p></div><span class="hl-status ${unread?'pending':'read'}">${unread?'جديد':'مقروء'}</span></div><small>${esc(notificationSummary(item.payload))}</small>${unread?'<div class="hl-account-actions"><button data-mark-read>تحديد كمقروء</button></div>':''}</article>`}).join('');
-      body.querySelectorAll('[data-mark-read]').forEach(button=>button.addEventListener('click',async()=>{const id=button.closest('[data-notification-id]')?.dataset.notificationId;if(!id)return;button.disabled=true;try{await request(`/notifications/${encodeURIComponent(id)}/read`,{method:'POST'});await renderNotifications();}catch(error){toast(error instanceof Error?error.message:'تعذر تحديث الإشعار');button.disabled=false}}));
+      body.querySelectorAll('[data-mark-read]').forEach(button=>button.addEventListener('click',async()=>{const id=button.closest('[data-notification-id]')?.dataset.notificationId;if(!id)return;button.disabled=true;try{await request(`/notifications/${encodeURIComponent(id)}/read`,{method:'POST'});dialog.close();await renderNotifications();}catch(error){toast(error instanceof Error?error.message:'تعذر تحديث الإشعار');button.disabled=false}}));
     }catch(error){body.innerHTML=`<div class="hl-account-error">${esc(error instanceof Error?error.message:'تعذر تحميل الإشعارات')}</div>`}
   };
   const bind=()=>{
-    const nextTrip=document.querySelector('.mobile-welcome button');if(nextTrip){nextTrip.removeAttribute('data-toast');nextTrip.addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();renderBookings()},true)}
-    document.querySelectorAll('.profile-list button').forEach(button=>{const text=button.textContent||'';if(text.includes('الإشعارات')){button.removeAttribute('data-toast');button.addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();document.getElementById('profile-dialog')?.close();renderNotifications()},true)}});
+    const nextTrip=document.querySelector('.mobile-welcome button');if(nextTrip&&!nextTrip.dataset.hlBound){nextTrip.dataset.hlBound='1';nextTrip.removeAttribute('data-toast');nextTrip.addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();renderBookings()},true)}
+    document.querySelectorAll('.profile-list button').forEach(button=>{const label=button.textContent||'';if(label.includes('الإشعارات')&&!button.dataset.hlBound){button.dataset.hlBound='1';button.removeAttribute('data-toast');button.addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();document.getElementById('profile-dialog')?.close();renderNotifications()},true)}});
     const profileList=document.querySelector('.profile-list');if(profileList&&!profileList.querySelector('[data-hl-bookings]')){const button=document.createElement('button');button.dataset.hlBookings='1';button.innerHTML='<span>⌖</span>حجوزاتي <b>←</b>';button.addEventListener('click',()=>{document.getElementById('profile-dialog')?.close();renderBookings()});profileList.prepend(button)}
   };
   document.addEventListener('hydroland:auth-changed',bind);bind();
