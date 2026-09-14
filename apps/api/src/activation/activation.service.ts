@@ -27,6 +27,19 @@ export class ActivationService {
 
   async mine(accountId:string){return this.db.activationRequest.findMany({where:{applicantId:accountId},include:{roleAssignment:true,decisions:true},orderBy:{createdAt:'desc'}})}
 
+  reviewQueue(){
+    return this.db.activationRequest.findMany({
+      where:{status:{in:[...REVIEWABLE_STATES]}},
+      include:{
+        applicant:{select:{id:true,email:true,person:{select:{firstName:true,lastName:true}}}},
+        roleAssignment:true,
+        decisions:{orderBy:{createdAt:'desc'},take:5},
+      },
+      orderBy:[{submittedAt:'asc'},{createdAt:'asc'}],
+      take:200,
+    });
+  }
+
   async resubmit(accountId:string,requestId:string){
     const request=await this.db.activationRequest.findUnique({where:{id:requestId},include:{roleAssignment:true}});
     if(!request||request.applicantId!==accountId)throw new NotFoundException('Activation request not found.');
