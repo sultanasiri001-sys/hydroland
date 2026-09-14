@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { PolicyControlService } from '../trips/policy-control.service';
 
@@ -9,7 +10,7 @@ type EquipmentRow={id:string;accountId:string;category:string;ownership:string;b
 
 @Injectable()
 export class DiverMasterProfileService {
-  constructor(private readonly db: DatabaseService,private readonly policies:PolicyControlService) {}
+  constructor(private readonly db: DatabaseService,private readonly policies:PolicyControlService,private readonly audit:AuditService) {}
 
   async get(accountId: string) {
     const rows = await this.db.$queryRawUnsafe<any[]>(`SELECT * FROM "DiverProfile" WHERE "accountId"=$1 LIMIT 1`,accountId);
@@ -33,6 +34,7 @@ export class DiverMasterProfileService {
     if (dob && Number.isNaN(dob.getTime())) throw new BadRequestException('Invalid date of birth.');
     if (clearance && Number.isNaN(clearance.getTime())) throw new BadRequestException('Invalid medical clearance date.');
     await this.db.$executeRawUnsafe(`INSERT INTO "DiverProfile" ("id","accountId","dateOfBirth","nationality","identityType","identityLast4","primaryPhone","secondaryPhone","preferredContact","emergencyName","emergencyRelation","emergencyPhone","emergencyAltPhone","bloodType","medicalFitnessStatus","medicalClearanceExpiresAt","preferredLanguage","notes","createdAt","updatedAt") VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NOW(),NOW()) ON CONFLICT ("accountId") DO UPDATE SET "dateOfBirth"=EXCLUDED."dateOfBirth","nationality"=EXCLUDED."nationality","identityType"=EXCLUDED."identityType","identityLast4"=EXCLUDED."identityLast4","primaryPhone"=EXCLUDED."primaryPhone","secondaryPhone"=EXCLUDED."secondaryPhone","preferredContact"=EXCLUDED."preferredContact","emergencyName"=EXCLUDED."emergencyName","emergencyRelation"=EXCLUDED."emergencyRelation","emergencyPhone"=EXCLUDED."emergencyPhone","emergencyAltPhone"=EXCLUDED."emergencyAltPhone","bloodType"=EXCLUDED."bloodType","medicalFitnessStatus"=EXCLUDED."medicalFitnessStatus","medicalClearanceExpiresAt"=EXCLUDED."medicalClearanceExpiresAt","preferredLanguage"=EXCLUDED."preferredLanguage","notes"=EXCLUDED."notes","updatedAt"=NOW()`,accountId,dob,input.nationality?.trim()||null,input.identityType?.trim()||null,idLast4,input.primaryPhone?.trim()||null,input.secondaryPhone?.trim()||null,input.preferredContact?.trim()||null,input.emergencyName?.trim()||null,input.emergencyRelation?.trim()||null,input.emergencyPhone?.trim()||null,input.emergencyAltPhone?.trim()||null,input.bloodType?.trim()||null,input.medicalFitnessStatus?.trim()||'UNKNOWN',clearance,input.preferredLanguage?.trim()||'ar',input.notes?.trim()||null);
+    await this.audit.record({action:'DIVER_PROFILE_UPDATED',resource:'DiverProfile',resourceId:accountId,metadata:{accountId,medicalFitnessStatus:input.medicalFitnessStatus?.trim()||'UNKNOWN',medicalClearanceExpiresAt:clearance,preferredLanguage:input.preferredLanguage?.trim()||'ar'}});
     return this.get(accountId);
   }
 
@@ -43,7 +45,9 @@ export class DiverMasterProfileService {
     const servicePolicy=await this.policies.decision('EQUIPMENT','SERVICE_EXPIRY'),expired=Boolean(serviceDueAt&&serviceDueAt<=new Date());
     if(expired&&servicePolicy.enforce)throw new ConflictException('Equipment with expired service cannot be activated while service validation is enforced.');
     const status=expired&&servicePolicy.review?'REVIEW':'ACTIVE';
-    await this.db.$executeRawUnsafe(`INSERT INTO "DiverEquipment" ("id","accountId","category","ownership","brand","model","serialNumber","size","serviceDueAt","status","createdAt","updatedAt") VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW())`,accountId,input.category.trim(),input.ownership?.trim()||'OWNED',input.brand?.trim()||null,input.model?.trim()||null,input.serialNumber?.trim()||null,input.size?.trim()||null,serviceDueAt,status);
+    const rows=await this.db.$queryRawUnsafe<EquipmentRow[]>(`INSERT INTO "DiverEquipment" ("id","accountId","category","ownership","brand","model","serialNumber","size","serviceDueAt","status","createdAt","updatedAt") VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW()) RETURNING *`,accountId,input.category.trim(),input.ownership?.trim()||'OWNED',input.brand?.trim()||null,input.model?.trim()||null,input.serialNumber?.trim()||null,input.size?.trim()||null,serviceDueAt,status);
+    const equipment=rows[0];
+    await this.audit.record({action:'DIVER_EQUIPMENT_ADDED',resource:'DiverEquipment',resourceId:equipment.id,metadata:{accountId,category:equipment.category,ownership:equipment.ownership,status:equipment.status,serviceDueAt:equipment.serviceDueAt,policyState:servicePolicy.state}});
     return this.get(accountId);
   }
 }
