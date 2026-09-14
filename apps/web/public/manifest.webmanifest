@@ -1,7 +1,8 @@
 {
   "name": "HYDROLAND | هيدرولاند",
   "short_name": "HYDROLAND",
-  "start_url": "/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#041827",
   "theme_color": "#003B6F",
