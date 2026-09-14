@@ -11,6 +11,12 @@
     module.defer = true;
     document.body.appendChild(module);
   }
+  if (!document.querySelector('script[src="./hydroland-calendar-admin.js"]')) {
+    const module = document.createElement('script');
+    module.src = './hydroland-calendar-admin.js';
+    module.defer = true;
+    document.body.appendChild(module);
+  }
 
   const host = document.getElementById('role-console') || document.querySelector('main');
   if (!host) return;
@@ -98,6 +104,7 @@
       if (queueResponse.ok) renderQueue(await queueResponse.json());
       if (state) state.textContent = 'متصل بالخادم';
       setNotice('تم تحديث بيانات الإدارة من خادم HYDROLAND.');
+      window.HydrolandOperationsCalendar?.reload?.();
     } catch (_) {
       if (state) state.textContent = 'تعذر الاتصال';
       setNotice('تعذر الوصول لخادم الإدارة. تأكد من تشغيل واجهة API وتسجيل الدخول بحساب إداري.');
