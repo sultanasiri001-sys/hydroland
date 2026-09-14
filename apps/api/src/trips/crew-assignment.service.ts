@@ -63,7 +63,43 @@ export class CrewAssignmentService {
         AND a."status" = 'ACTIVE'
         AND r."active" = true
         AND r."referenceId" IS NOT NULL
+        AND r."type" IN ('INSTRUCTOR', 'CREW', 'CAPTAIN')
         AND ac."status" = 'ACTIVE'
+        AND (
+          (
+            r."type" = 'INSTRUCTOR'
+            AND EXISTS (
+              SELECT 1 FROM "RoleAssignment" ra
+              WHERE ra."accountId" = ac."id" AND ra."role" = 'INSTRUCTOR' AND ra."status" = 'ACTIVE'
+            )
+            AND EXISTS (
+              SELECT 1 FROM "Credential" c
+              WHERE c."personId" = ac."personId"
+                AND c."verificationStatus" IN ('VERIFIED', 'DOCUMENT_VERIFIED')
+                AND (c."expiresAt" IS NULL OR c."expiresAt" > NOW())
+            )
+          )
+          OR (
+            r."type" = 'CAPTAIN'
+            AND EXISTS (
+              SELECT 1 FROM "RoleAssignment" ra
+              WHERE ra."accountId" = ac."id" AND ra."role" IN ('BOAT_OWNER', 'STAFF') AND ra."status" = 'ACTIVE'
+            )
+            AND EXISTS (
+              SELECT 1 FROM "Credential" c
+              WHERE c."personId" = ac."personId"
+                AND c."verificationStatus" IN ('VERIFIED', 'DOCUMENT_VERIFIED')
+                AND (c."expiresAt" IS NULL OR c."expiresAt" > NOW())
+            )
+          )
+          OR (
+            r."type" = 'CREW'
+            AND EXISTS (
+              SELECT 1 FROM "RoleAssignment" ra
+              WHERE ra."accountId" = ac."id" AND ra."role" IN ('STAFF', 'BOAT_OWNER') AND ra."status" = 'ACTIVE'
+            )
+          )
+        )
     `;
 
     for (const resource of resources) {
@@ -194,9 +230,47 @@ export class CrewAssignmentService {
       SELECT r."id", r."type", r."name", r."referenceId"
       FROM "CalendarResource" r
       JOIN "Account" ac ON ac."id" = r."referenceId"
-      WHERE r."active" = true AND r."type" = ${assignment.roleType}
-        AND r."referenceId" IS NOT NULL AND r."id" <> ${assignment.resourceId}
+      WHERE r."active" = true
+        AND r."type" = ${assignment.roleType}
+        AND r."type" IN ('INSTRUCTOR', 'CREW', 'CAPTAIN')
+        AND r."referenceId" IS NOT NULL
+        AND r."id" <> ${assignment.resourceId}
         AND ac."status" = 'ACTIVE'
+        AND (
+          (
+            r."type" = 'INSTRUCTOR'
+            AND EXISTS (
+              SELECT 1 FROM "RoleAssignment" ra
+              WHERE ra."accountId" = ac."id" AND ra."role" = 'INSTRUCTOR' AND ra."status" = 'ACTIVE'
+            )
+            AND EXISTS (
+              SELECT 1 FROM "Credential" c
+              WHERE c."personId" = ac."personId"
+                AND c."verificationStatus" IN ('VERIFIED', 'DOCUMENT_VERIFIED')
+                AND (c."expiresAt" IS NULL OR c."expiresAt" > NOW())
+            )
+          )
+          OR (
+            r."type" = 'CAPTAIN'
+            AND EXISTS (
+              SELECT 1 FROM "RoleAssignment" ra
+              WHERE ra."accountId" = ac."id" AND ra."role" IN ('BOAT_OWNER', 'STAFF') AND ra."status" = 'ACTIVE'
+            )
+            AND EXISTS (
+              SELECT 1 FROM "Credential" c
+              WHERE c."personId" = ac."personId"
+                AND c."verificationStatus" IN ('VERIFIED', 'DOCUMENT_VERIFIED')
+                AND (c."expiresAt" IS NULL OR c."expiresAt" > NOW())
+            )
+          )
+          OR (
+            r."type" = 'CREW'
+            AND EXISTS (
+              SELECT 1 FROM "RoleAssignment" ra
+              WHERE ra."accountId" = ac."id" AND ra."role" IN ('STAFF', 'BOAT_OWNER') AND ra."status" = 'ACTIVE'
+            )
+          )
+        )
         AND NOT EXISTS (
           SELECT 1 FROM "CalendarAllocation" a
           WHERE a."resourceId" = r."id" AND a."status" = 'ACTIVE'
