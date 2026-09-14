@@ -58,6 +58,6 @@
     }catch(error){toast(error instanceof Error?error.message:'تعذر حفظ الغوصة');}
   });
 
-  window.addEventListener('hydroland-authenticated',load);
+  document.addEventListener('hydroland:auth-changed',load);
   setTimeout(load,0);
 })();
