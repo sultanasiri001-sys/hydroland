@@ -18,6 +18,12 @@ export class ActivationController {
     return this.service.mine(req.auth.accountId);
   }
 
+  @UseGuards(ReviewGuard)
+  @Get('review-queue')
+  reviewQueue(){
+    return this.service.reviewQueue();
+  }
+
   @Post(':id/resubmit')
   resubmit(@Req() req:{auth:{accountId:string}},@Param('id') id:string){
     return this.service.resubmit(req.auth.accountId,id);
