@@ -1,4 +1,11 @@
 (() => {
+  if (!document.querySelector('script[src="./hydroland-booking-admin.js"]')) {
+    const module = document.createElement('script');
+    module.src = './hydroland-booking-admin.js';
+    module.defer = true;
+    document.body.appendChild(module);
+  }
+
   const host = document.getElementById('role-console') || document.querySelector('main');
   if (!host) return;
 
