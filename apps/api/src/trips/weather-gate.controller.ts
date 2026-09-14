@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Req, UseGuards } from '@nestjs/common';
 import { AdminGuard } from '../admin/admin.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { WeatherGateMode, WeatherGateService } from './weather-gate.service';
@@ -14,7 +14,7 @@ export class WeatherGateController {
   }
 
   @Patch()
-  configure(@Body() body: { enabled?: boolean; mode?: WeatherGateMode }) {
-    return this.weatherGate.configure(body);
+  configure(@Req() req:{auth:{accountId:string}},@Body() body: { enabled?: boolean; mode?: WeatherGateMode }) {
+    return this.weatherGate.configure(req.auth.accountId,body);
   }
 }
