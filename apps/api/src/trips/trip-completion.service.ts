@@ -36,7 +36,8 @@ export class TripCompletionService {
       if (trip.status === 'CANCELLED') throw new ConflictException('Cancelled trip cannot be completed.');
       if (trip.status === 'COMPLETED') {
         const existing = await tx.diveLog.count({ where: { notes: { contains: `HYDROLAND_TRIP:${tripId}` } } });
-        return { trip, createdDiveLogs: 0, existingDiveLogs: existing, alreadyCompleted: true };
+        const seatCount = await tx.booking.aggregate({ where: { tripId, status: 'CONFIRMED' }, _sum: { seats: true } });
+        return { trip, createdDiveLogs: 0, existingDiveLogs: existing, confirmedAccounts: existing, confirmedSeats: seatCount._sum.seats ?? 0, alreadyCompleted: true };
       }
       if (trip.startsAt > new Date()) throw new ConflictException('Trip has not started yet.');
 
@@ -45,15 +46,15 @@ export class TripCompletionService {
         orderBy: { createdAt: 'desc' },
         select: { decision: true },
       });
-      if (latestSafety?.decision !== 'ALLOWED') {
-        throw new ConflictException('Trip requires an ALLOWED safety decision before completion.');
-      }
+      if (latestSafety?.decision !== 'ALLOWED') throw new ConflictException('Trip requires an ALLOWED safety decision before completion.');
 
       const bookings = await tx.booking.findMany({
         where: { tripId, status: 'CONFIRMED' },
-        select: { accountId: true },
+        select: { accountId: true, seats: true },
       });
       if (!bookings.length) throw new ConflictException('Trip has no confirmed participants.');
+      const confirmedSeats = bookings.reduce((sum: number, booking: { seats: number }) => sum + booking.seats, 0);
+      if (confirmedSeats > trip.capacity) throw new ConflictException('Confirmed participants exceed trip capacity.');
 
       let createdDiveLogs = 0;
       const marker = `HYDROLAND_TRIP:${tripId}`;
@@ -83,6 +84,8 @@ export class TripCompletionService {
         trip: completedTrip,
         createdDiveLogs,
         existingDiveLogs: bookings.length - createdDiveLogs,
+        confirmedAccounts: bookings.length,
+        confirmedSeats,
         alreadyCompleted: false,
       };
     });
@@ -93,6 +96,8 @@ export class TripCompletionService {
       resourceId: tripId,
       metadata: {
         reviewerAccountId,
+        confirmedAccounts: result.confirmedAccounts,
+        confirmedSeats: result.confirmedSeats,
         createdDiveLogs: result.createdDiveLogs,
         existingDiveLogs: result.existingDiveLogs,
       },
