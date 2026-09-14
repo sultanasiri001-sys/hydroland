@@ -41,18 +41,10 @@ export class TripsService {
     })) as TripListRow[];
 
     return trips.map((trip: TripListRow) => {
-      const bookedSeats = trip.bookings.reduce(
-        (sum: number, booking: { seats: number }) => sum + booking.seats,
-        0,
-      );
+      const bookedSeats = trip.bookings.reduce((sum: number, booking: { seats: number }) => sum + booking.seats, 0);
       const latestSafety = trip.safetyChecklists[0] ?? null;
       const { bookings, safetyChecklists, ...base } = trip;
-      return {
-        ...base,
-        bookedSeats,
-        remainingSeats: Math.max(0, trip.capacity - bookedSeats),
-        safety: latestSafety,
-      };
+      return { ...base, bookedSeats, remainingSeats: Math.max(0, trip.capacity - bookedSeats), safety: latestSafety };
     });
   }
 
@@ -69,27 +61,21 @@ export class TripsService {
         orderBy: { createdAt: 'desc' },
         select: { decision: true },
       });
-      if (latestSafety?.decision === 'DEFERRED') {
-        throw new ConflictException('Trip is deferred by safety review.');
+      if (!latestSafety || latestSafety.decision !== 'ALLOWED') {
+        throw new ConflictException('Trip requires safety approval before booking.');
       }
 
       const used = await tx.booking.aggregate({
         where: { tripId, status: { in: ['PENDING', 'CONFIRMED'] } },
         _sum: { seats: true },
       });
-      if ((used._sum.seats ?? 0) + seats > trip.capacity) {
-        throw new ConflictException('Trip capacity reached.');
-      }
+      if ((used._sum.seats ?? 0) + seats > trip.capacity) throw new ConflictException('Trip capacity reached.');
 
       return tx.booking.create({ data: { tripId, accountId, seats, status: 'PENDING' } });
     });
   }
 
   mine(accountId: string) {
-    return this.db.booking.findMany({
-      where: { accountId },
-      include: { trip: true },
-      orderBy: { createdAt: 'desc' },
-    });
+    return this.db.booking.findMany({ where: { accountId }, include: { trip: true }, orderBy: { createdAt: 'desc' } });
   }
 }
