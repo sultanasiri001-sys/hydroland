@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 
@@ -33,28 +34,42 @@ export class TripAdminService {
   }
 
   async confirmBooking(reviewerAccountId: string, tripId: string, bookingId: string) {
+    const updated = await this.db.$transaction(async (tx: Prisma.TransactionClient) => {
+      const booking = await tx.booking.findUnique({ where: { id: bookingId }, include: { trip: true } });
+      if (!booking || booking.tripId !== tripId) throw new NotFoundException('Booking not found for this trip.');
+      if (booking.status === 'CONFIRMED') return booking;
+      if (booking.status !== 'PENDING') throw new ConflictException('Only pending bookings can be confirmed.');
+      if (booking.trip.status !== 'OPEN' && booking.trip.status !== 'CLOSED') throw new ConflictException('Trip is not available for booking confirmation.');
+      if (booking.trip.startsAt <= new Date()) throw new ConflictException('Trip already started.');
+
+      const latestSafety = await tx.safetyChecklist.findFirst({ where: { tripId }, orderBy: { createdAt: 'desc' }, select: { decision: true } });
+      if (latestSafety?.decision !== 'ALLOWED') throw new ConflictException('Trip requires an ALLOWED safety decision before confirmation.');
+
+      const confirmed = await tx.booking.aggregate({ where: { tripId, status: 'CONFIRMED' }, _sum: { seats: true } });
+      const usedSeats = confirmed._sum.seats ?? 0;
+      if (usedSeats + booking.seats > booking.trip.capacity) throw new ConflictException('Trip capacity reached.');
+
+      return tx.booking.update({ where: { id: bookingId }, data: { status: 'CONFIRMED' } });
+    });
+
+    await this.audit.record({ action: 'BOOKING_CONFIRMED', resource: 'Booking', resourceId: bookingId, metadata: { reviewerAccountId, tripId, accountId: updated.accountId, seats: updated.seats } });
+    return updated;
+  }
+
+  async cancelBooking(reviewerAccountId: string, tripId: string, bookingId: string) {
     const booking = await this.db.booking.findUnique({ where: { id: bookingId }, include: { trip: true } });
     if (!booking || booking.tripId !== tripId) throw new NotFoundException('Booking not found for this trip.');
-    if (booking.status === 'CONFIRMED') return booking;
-    if (booking.status !== 'PENDING') throw new ConflictException('Only pending bookings can be confirmed.');
-    if (booking.trip.status !== 'OPEN' && booking.trip.status !== 'CLOSED') {
-      throw new ConflictException('Trip is not available for booking confirmation.');
-    }
-    if (booking.trip.startsAt <= new Date()) throw new ConflictException('Trip already started.');
-    const latestSafety = await this.db.safetyChecklist.findFirst({ where: { tripId }, orderBy: { createdAt: 'desc' }, select: { decision: true } });
-    if (latestSafety?.decision !== 'ALLOWED') throw new ConflictException('Trip requires an ALLOWED safety decision before confirmation.');
-    const updated = await this.db.booking.update({ where: { id: bookingId }, data: { status: 'CONFIRMED' } });
-    await this.audit.record({ action: 'BOOKING_CONFIRMED', resource: 'Booking', resourceId: bookingId, metadata: { reviewerAccountId, tripId, accountId: booking.accountId, seats: booking.seats } });
+    if (booking.status === 'CANCELLED') return booking;
+    if (booking.trip.status === 'COMPLETED' || booking.trip.status === 'CANCELLED') throw new ConflictException('Booking cannot be cancelled after trip closure.');
+    if (booking.trip.startsAt <= new Date()) throw new ConflictException('Booking cannot be cancelled after the trip starts.');
+    const updated = await this.db.booking.update({ where: { id: bookingId }, data: { status: 'CANCELLED' } });
+    await this.audit.record({ action: 'BOOKING_CANCELLED', resource: 'Booking', resourceId: bookingId, metadata: { reviewerAccountId, tripId, accountId: booking.accountId, seats: booking.seats, previousStatus: booking.status } });
     return updated;
   }
 
   create(input: CreateTripInput) {
-    if (!input.title?.trim() || !input.type?.trim() || !input.startsAt || !input.endsAt) {
-      throw new BadRequestException('Trip title, type, startsAt and endsAt are required.');
-    }
-    if (!Number.isInteger(input.capacity) || Number(input.capacity) < 1) {
-      throw new BadRequestException('Trip capacity must be a positive integer.');
-    }
+    if (!input.title?.trim() || !input.type?.trim() || !input.startsAt || !input.endsAt) throw new BadRequestException('Trip title, type, startsAt and endsAt are required.');
+    if (!Number.isInteger(input.capacity) || Number(input.capacity) < 1) throw new BadRequestException('Trip capacity must be a positive integer.');
     if (input.status && !TRIP_STATUSES.includes(input.status)) throw new BadRequestException('Invalid trip status.');
     if (input.status === 'COMPLETED') throw new BadRequestException('Use the governed trip completion workflow.');
     const startsAt = new Date(input.startsAt);
