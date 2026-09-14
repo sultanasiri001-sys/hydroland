@@ -16,6 +16,15 @@ export class TripAdminController {
     return this.trips.create(body);
   }
 
+  @Post(':id/operational-clearance')
+  operationalClearance(
+    @Req() req: { auth: { accountId: string } },
+    @Param('id') id: string,
+    @Body() body: { reason?: string },
+  ) {
+    return this.trips.operationalClearance(req.auth.accountId, id, body.reason);
+  }
+
   @Get(':id/bookings')
   bookings(@Param('id') id: string) { return this.trips.bookings(id); }
 
