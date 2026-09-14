@@ -1,24 +1,27 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { PolicyControlService } from './policy-control.service';
 
 type ParticipantInput = { fullName?:string; certificationTitle?:string|null; certificationNumber?:string|null; certificationIssuer?:string|null };
 type ParticipantRow = { id:string; bookingId:string; accountId:string|null; fullName:string; certificationTitle:string|null; certificationNumber:string|null; certificationIssuer:string|null; eligibilityStatus:string; createdAt:Date; updatedAt:Date };
+type DbClient = DatabaseService | Prisma.TransactionClient;
 
 @Injectable()
 export class BookingParticipantService {
   constructor(private readonly db:DatabaseService,private readonly policies:PolicyControlService) {}
 
-  async ensureForBooking(bookingId:string,accountId:string,seats:number){
-    const current=await this.db.$queryRaw<ParticipantRow[]>`SELECT * FROM "BookingParticipant" WHERE "bookingId"=${bookingId} ORDER BY "createdAt" ASC`;if(current.length>=seats)return current;
-    const account=await this.db.account.findUnique({where:{id:accountId},select:{person:{select:{firstName:true,lastName:true,credentials:{where:{verificationStatus:{in:['VERIFIED','DOCUMENT_VERIFIED']}},orderBy:{issuedAt:'desc'},take:1,select:{title:true,credentialNumber:true,issuer:true,verificationStatus:true}}}}}});if(!account)throw new NotFoundException('Booking account not found.');
-    const profileRows=await this.db.$queryRaw<Array<{medicalFitnessStatus:string|null;medicalClearanceExpiresAt:Date|null}>>`SELECT "medicalFitnessStatus","medicalClearanceExpiresAt" FROM "DiverProfile" WHERE "accountId"=${accountId} LIMIT 1`;
+  async ensureForBooking(bookingId:string,accountId:string,seats:number,client?:Prisma.TransactionClient){
+    const db:DbClient=client??this.db;
+    const current=await db.$queryRaw<ParticipantRow[]>`SELECT * FROM "BookingParticipant" WHERE "bookingId"=${bookingId} ORDER BY "createdAt" ASC`;if(current.length>=seats)return current;
+    const account=await db.account.findUnique({where:{id:accountId},select:{person:{select:{firstName:true,lastName:true,credentials:{where:{verificationStatus:{in:['VERIFIED','DOCUMENT_VERIFIED']}},orderBy:{issuedAt:'desc'},take:1,select:{title:true,credentialNumber:true,issuer:true,verificationStatus:true}}}}}});if(!account)throw new NotFoundException('Booking account not found.');
+    const profileRows=await db.$queryRaw<Array<{medicalFitnessStatus:string|null;medicalClearanceExpiresAt:Date|null}>>`SELECT "medicalFitnessStatus","medicalClearanceExpiresAt" FROM "DiverProfile" WHERE "accountId"=${accountId} LIMIT 1`;
     const profile=profileRows[0]??null,credential=account.person.credentials[0]??null,medicalValid=profile?.medicalFitnessStatus==='FIT'&&(!profile.medicalClearanceExpiresAt||profile.medicalClearanceExpiresAt>new Date()),primaryEligible=Boolean(credential&&medicalValid);
     for(let index=current.length;index<seats;index++){
-      if(index===0)await this.db.$executeRaw`INSERT INTO "BookingParticipant"("id","bookingId","accountId","fullName","certificationTitle","certificationNumber","certificationIssuer","eligibilityStatus","createdAt","updatedAt") VALUES(gen_random_uuid()::text,${bookingId},${accountId},${`${account.person.firstName} ${account.person.lastName}`.trim()},${credential?.title??null},${credential?.credentialNumber??null},${credential?.issuer??null},${primaryEligible?'ELIGIBLE':'PENDING'},NOW(),NOW())`;
-      else await this.db.$executeRaw`INSERT INTO "BookingParticipant"("id","bookingId","accountId","fullName","eligibilityStatus","createdAt","updatedAt") VALUES(gen_random_uuid()::text,${bookingId},NULL,${`مشارك ${index+1} - البيانات غير مكتملة`},'PENDING',NOW(),NOW())`;
+      if(index===0)await db.$executeRaw`INSERT INTO "BookingParticipant"("id","bookingId","accountId","fullName","certificationTitle","certificationNumber","certificationIssuer","eligibilityStatus","createdAt","updatedAt") VALUES(gen_random_uuid()::text,${bookingId},${accountId},${`${account.person.firstName} ${account.person.lastName}`.trim()},${credential?.title??null},${credential?.credentialNumber??null},${credential?.issuer??null},${primaryEligible?'ELIGIBLE':'PENDING'},NOW(),NOW())`;
+      else await db.$executeRaw`INSERT INTO "BookingParticipant"("id","bookingId","accountId","fullName","eligibilityStatus","createdAt","updatedAt") VALUES(gen_random_uuid()::text,${bookingId},NULL,${`مشارك ${index+1} - البيانات غير مكتملة`},'PENDING',NOW(),NOW())`;
     }
-    return this.listForOwner(accountId,bookingId);
+    return db.$queryRaw<ParticipantRow[]>`SELECT * FROM "BookingParticipant" WHERE "bookingId"=${bookingId} ORDER BY "createdAt" ASC`;
   }
 
   async listForOwner(accountId:string,bookingId:string){const booking=await this.db.booking.findUnique({where:{id:bookingId},select:{accountId:true}});if(!booking||booking.accountId!==accountId)throw new NotFoundException('Booking not found.');return this.db.$queryRaw<ParticipantRow[]>`SELECT * FROM "BookingParticipant" WHERE "bookingId"=${bookingId} ORDER BY "createdAt" ASC`;}
