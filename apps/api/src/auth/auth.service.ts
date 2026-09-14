@@ -27,7 +27,8 @@ export class AuthService {
     const token=this.requireRefreshToken(refreshToken);
     const session=await this.db.session.findUnique({where:{tokenHash:this.tokenHash(token)},include:{account:{select:{status:true}}}});
     if(!session||session.revokedAt||session.expiresAt<=new Date()||this.blocked(session.account.status))throw new UnauthorizedException('Invalid session.');
-    await this.db.session.update({where:{id:session.id},data:{revokedAt:new Date()}});
+    const consumed=await this.db.session.updateMany({where:{id:session.id,revokedAt:null,expiresAt:{gt:new Date()}},data:{revokedAt:new Date()}});
+    if(consumed.count!==1)throw new UnauthorizedException('Invalid session.');
     return this.issue(session.accountId);
   }
 
