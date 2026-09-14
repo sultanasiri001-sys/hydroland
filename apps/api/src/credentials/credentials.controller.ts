@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
-import { AdminGuard } from '../admin/admin.guard';
+import { ReviewGuard } from '../admin/review.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { CredentialsService } from './credentials.service';
 
@@ -20,11 +20,11 @@ export class CredentialsController {
   @Post(':id/submit')
   submit(@Req() r:{auth:{accountId:string}},@Param('id') id:string){return this.service.submit(r.auth.accountId,id)}
 
-  @UseGuards(AdminGuard)
+  @UseGuards(ReviewGuard)
   @Get('admin/pending')
   pendingForAdmin(){return this.service.pendingForAdmin()}
 
-  @UseGuards(AdminGuard)
+  @UseGuards(ReviewGuard)
   @Post('admin/:id/decision')
   decide(@Req() r:{auth:{accountId:string}},@Param('id') id:string,@Body() b:{outcome:'VERIFIED'|'REJECTED';reason?:string}){return this.service.decide(r.auth.accountId,id,b)}
 }
