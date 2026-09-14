@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { AdminGuard } from '../admin/admin.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { CrewAssignmentService } from './crew-assignment.service';
 
@@ -10,6 +11,13 @@ export class CrewAssignmentController {
   @Get('mine')
   mine(@Req() req: { auth: { accountId: string } }) {
     return this.crew.mine(req.auth.accountId);
+  }
+
+  @UseGuards(AdminGuard)
+  @Post('admin/escalate-pending')
+  escalatePending(@Query('hoursBefore') hoursBefore?: string) {
+    const parsed = Number(hoursBefore ?? 24);
+    return this.crew.escalatePending(Number.isFinite(parsed) ? parsed : 24);
   }
 
   @Patch(':id/respond')
