@@ -1,8 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
-import { TripStatus } from '@prisma/client';
 import { AdminGuard } from '../admin/admin.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
-import { TripAdminService } from './trip-admin.service';
+import { TripAdminService, TripStatusValue } from './trip-admin.service';
 
 @UseGuards(AccessTokenGuard, AdminGuard)
 @Controller('trips/admin')
@@ -23,14 +22,14 @@ export class TripAdminController {
       startsAt?: string;
       endsAt?: string;
       capacity?: number;
-      status?: TripStatus;
+      status?: TripStatusValue;
     },
   ) {
     return this.trips.create(body);
   }
 
   @Patch(':id/status')
-  status(@Param('id') id: string, @Body() body: { status: TripStatus }) {
+  status(@Param('id') id: string, @Body() body: { status: TripStatusValue }) {
     return this.trips.setStatus(id, body.status);
   }
 }
