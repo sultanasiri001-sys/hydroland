@@ -11,7 +11,7 @@ export class AdminController {
 
   @Get('overview') overview(){return this.s.overview()}
   @Get('review-queue') queue(){return this.s.queue()}
-  @Get('accounts') accounts(){return this.s.listAccounts()}
+  @Get('accounts') accounts(@Req() req:{auth:{accountId:string}}){return this.s.listAccounts(req.auth.accountId)}
 
   @Patch('accounts/:accountId/status')
   setAccountStatus(
