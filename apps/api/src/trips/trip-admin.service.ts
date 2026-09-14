@@ -8,12 +8,13 @@ import { OperationalClearanceService } from './operational-clearance.service';
 export type TripStatusValue = 'DRAFT' | 'OPEN' | 'CLOSED' | 'CANCELLED' | 'COMPLETED';
 const TRIP_STATUSES: TripStatusValue[] = ['DRAFT', 'OPEN', 'CLOSED', 'CANCELLED', 'COMPLETED'];
 type CreateTripInput = { title?: string; type?: string; startsAt?: string; endsAt?: string; capacity?: number; status?: TripStatusValue };
+type AdminTripRow = { id:string; title:string; type:string; startsAt:Date; endsAt:Date; capacity:number; status:TripStatusValue; createdAt:Date; updatedAt:Date };
 
 @Injectable()
 export class TripAdminService {
   constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly crewAssignments:CrewAssignmentService,private readonly clearance:OperationalClearanceService) {}
 
-  async list(){const trips=await this.db.trip.findMany({orderBy:{startsAt:'desc'}});return Promise.all(trips.map(async trip=>({...trip,operationalClearance:await this.clearance.status(trip.id)})));}
+  async list(){const trips=(await this.db.trip.findMany({orderBy:{startsAt:'desc'}})) as AdminTripRow[];return Promise.all(trips.map(async (trip:AdminTripRow)=>({...trip,operationalClearance:await this.clearance.status(trip.id)})));}
   operationalClearance(reviewerAccountId:string,tripId:string,reason?:string){return this.clearance.grant(reviewerAccountId,tripId,reason);}
 
   async bookings(tripId:string){const trip=await this.db.trip.findUnique({where:{id:tripId},select:{id:true}});if(!trip)throw new NotFoundException('Trip not found.');return this.db.booking.findMany({where:{tripId},orderBy:{createdAt:'asc'},include:{account:{select:{id:true,email:true,person:{select:{firstName:true,lastName:true}}}}}});}
