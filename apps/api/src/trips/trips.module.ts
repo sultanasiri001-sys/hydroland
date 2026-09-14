@@ -6,6 +6,7 @@ import { CalendarAllocationController } from './calendar-allocation.controller';
 import { CalendarAllocationService } from './calendar-allocation.service';
 import { CrewAssignmentController } from './crew-assignment.controller';
 import { CrewAssignmentService } from './crew-assignment.service';
+import { CrewEscalationScheduler } from './crew-escalation.scheduler';
 import { TripAdminController } from './trip-admin.controller';
 import { TripAdminService } from './trip-admin.service';
 import { TripCompletionController } from './trip-completion.controller';
@@ -32,6 +33,7 @@ import { WeatherGateService } from './weather-gate.service';
     WeatherGateService,
     CalendarAllocationService,
     CrewAssignmentService,
+    CrewEscalationScheduler,
   ],
 })
 export class TripsModule {}
