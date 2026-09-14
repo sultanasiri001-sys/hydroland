@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { WeatherGateService, WeatherSnapshot } from './weather-gate.service';
 
@@ -144,7 +145,7 @@ export class CalendarAllocationService {
 
     await this.assertResourcesAvailable(unique, trip.startsAt, trip.endsAt, tripId);
 
-    await this.db.$transaction(async (tx) => {
+    await this.db.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.$executeRaw`
         UPDATE "CalendarAllocation"
         SET "status" = 'INACTIVE', "updatedAt" = NOW()
