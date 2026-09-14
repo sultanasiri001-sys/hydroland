@@ -21,6 +21,21 @@ export class EquipmentInventoryService{
   }
   private generatedCode(resourceId:string){return `HYD-${resourceId.replace(/[^a-zA-Z0-9]/g,'').slice(0,12).toUpperCase()}`;}
 
+  async register(actorAccountId:string,input:{name?:string;serialNumber?:string|null;sku?:string|null;location?:string|null}){
+    const name=input.name?.trim();if(!name||name.length<2)throw new BadRequestException('Equipment name is required.');
+    const serialNumber=this.normalize(input.serialNumber),sku=this.normalize(input.sku),location=this.normalize(input.location);
+    if(serialNumber){const duplicate=await this.db.$queryRaw<Array<{resourceId:string}>>`SELECT "resourceId" FROM "EquipmentBarcode" WHERE "serialNumber"=${serialNumber} LIMIT 1`;if(duplicate.length)throw new ConflictException('Equipment serial number already exists.');}
+    const resource=await this.db.serializable(async tx=>{
+      const resources=await tx.$queryRaw<Array<{id:string;name:string;type:string;active:boolean}>>`INSERT INTO "CalendarResource"("id","type","name","referenceId","active","createdAt","updatedAt") VALUES(gen_random_uuid()::text,'EQUIPMENT',${name},NULL,TRUE,NOW(),NOW()) RETURNING "id","name","type","active"`;
+      const created=resources[0],assetCode=this.generatedCode(created.id),barcodeValue=assetCode,qrValue=`hydroland:equipment:${assetCode}`;
+      const passports=await tx.$queryRaw<BarcodeRow[]>`INSERT INTO "EquipmentBarcode"("id","resourceId","assetCode","barcodeValue","qrValue","serialNumber","sku","location","stockStatus","createdAt","updatedAt") VALUES(gen_random_uuid()::text,${created.id},${assetCode},${barcodeValue},${qrValue},${serialNumber},${sku},${location},'AVAILABLE',NOW(),NOW()) RETURNING *`;
+      await tx.$executeRaw`INSERT INTO "EquipmentMovement"("id","resourceId","movementType","fromLocation","toLocation","tripId","assignedAccountId","notes","actorAccountId","occurredAt") VALUES(gen_random_uuid()::text,${created.id},'CHECK_IN',NULL,${location},NULL,NULL,'Initial inventory registration',${actorAccountId},NOW())`;
+      return{...created,passport:passports[0]};
+    });
+    await this.audit.record({actorId:actorAccountId,action:'EQUIPMENT_REGISTERED',resource:'CalendarResource',resourceId:resource.id,metadata:{name,assetCode:resource.passport.assetCode,barcodeValue:resource.passport.barcodeValue,qrValue:resource.passport.qrValue,serialNumber,sku,location,stockStatus:'AVAILABLE'}});
+    return resource;
+  }
+
   async list(){return this.db.$queryRaw<BarcodeRow[]>`SELECT b.*,r."name" AS "resourceName",r."active" FROM "EquipmentBarcode" b JOIN "CalendarResource" r ON r."id"=b."resourceId" ORDER BY r."name",b."assetCode"`;}
 
   async get(resourceId:string){
