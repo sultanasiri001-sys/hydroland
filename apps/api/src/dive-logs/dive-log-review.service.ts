@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 
@@ -35,29 +35,38 @@ export class DiveLogReviewService {
     throw new ForbiddenException('Dive log review scope required.');
   }
 
+  private async instructorAssignedToTrip(accountId:string,tripId:string|null){
+    if(!tripId)return false;
+    const assignment=await this.db.crewAssignment.findFirst({where:{tripId,accountId,status:'ACCEPTED',roleType:'INSTRUCTOR'},select:{id:true}});
+    return Boolean(assignment);
+  }
+
   async pending(reviewerAccountId: string) {
     const scope = await this.reviewerScope(reviewerAccountId);
+    if(scope.unrestricted){
+      return this.db.diveLog.findMany({where:{status:'DRAFT'},orderBy:{diveDate:'desc'},take:100,include:{account:{select:{id:true,email:true,person:{select:{firstName:true,lastName:true}}}}}});
+    }
+    const tripAssignments=await this.db.crewAssignment.findMany({where:{accountId:reviewerAccountId,status:'ACCEPTED',roleType:'INSTRUCTOR'},select:{tripId:true}});
+    const tripIds=[...new Set(tripAssignments.map(item=>item.tripId))];
     return this.db.diveLog.findMany({
-      where: {
-        status: 'DRAFT',
-        ...(scope.unrestricted ? {} : { instructorName: scope.instructorName }),
-      },
-      orderBy: { diveDate: 'desc' },
-      take: 100,
-      include: {
-        account: { select: { id: true, email: true, person: { select: { firstName: true, lastName: true } } } },
-      },
+      where:{status:'DRAFT',OR:[...(tripIds.length?[{sourceTripId:{in:tripIds}}]:[]),{sourceTripId:null,instructorName:scope.instructorName}]},
+      orderBy:{diveDate:'desc'},take:100,
+      include:{account:{select:{id:true,email:true,person:{select:{firstName:true,lastName:true}}}}},
     });
   }
 
   async decide(reviewerAccountId: string, id: string, status: ReviewStatus, reason?: string) {
     if (!REVIEW_STATUSES.includes(status)) throw new BadRequestException('Invalid dive log review status.');
+    if(status==='REJECTED'&&!reason?.trim())throw new BadRequestException('A rejection reason is required.');
     const scope = await this.reviewerScope(reviewerAccountId);
     const current = await this.db.diveLog.findUnique({ where: { id } });
     if (!current) throw new NotFoundException('Dive log not found.');
+    if(current.status!=='DRAFT')throw new ConflictException('Only draft dive logs can be reviewed.');
     if (current.accountId === reviewerAccountId) throw new BadRequestException('You cannot review your own dive log.');
-    if (!scope.unrestricted && current.instructorName !== scope.instructorName) {
-      throw new ForbiddenException('This dive log is not assigned to this instructor.');
+    if (!scope.unrestricted) {
+      const assigned=await this.instructorAssignedToTrip(reviewerAccountId,current.sourceTripId);
+      const legacyManualMatch=!current.sourceTripId&&current.instructorName===scope.instructorName;
+      if(!assigned&&!legacyManualMatch)throw new ForbiddenException('This dive log is not assigned to this instructor.');
     }
 
     const updated = await this.db.diveLog.update({
@@ -76,6 +85,7 @@ export class DiveLogReviewService {
       metadata: {
         reviewerAccountId,
         ownerAccountId: current.accountId,
+        sourceTripId:current.sourceTripId,
         reviewerScope: scope.unrestricted ? 'ADMIN_OR_REVIEWER' : 'INSTRUCTOR',
         previousStatus: current.status,
         status,
