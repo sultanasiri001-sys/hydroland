@@ -1,9 +1,9 @@
 import { Body, Controller, Get, Param, Put, Req, UseGuards } from '@nestjs/common';
-import { AdminGuard } from '../admin/admin.guard';
+import { ReviewGuard } from '../admin/review.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { BoatComplianceService } from './boat-compliance.service';
 
-@UseGuards(AccessTokenGuard,AdminGuard)
+@UseGuards(AccessTokenGuard,ReviewGuard)
 @Controller('trips/admin/boats')
 export class BoatComplianceController{
   constructor(private readonly boats:BoatComplianceService){}
