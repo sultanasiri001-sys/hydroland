@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { TripsService } from './trips.service';
 
@@ -16,6 +16,10 @@ export class TripsController {
   @UseGuards(AccessTokenGuard)
   @Get('bookings/mine')
   mine(@Req() r:{auth:{accountId:string}}){return this.s.mine(r.auth.accountId);}
+
+  @UseGuards(AccessTokenGuard)
+  @Delete('bookings/:bookingId')
+  cancelMine(@Req() r:{auth:{accountId:string}},@Param('bookingId') bookingId:string){return this.s.cancelMine(r.auth.accountId,bookingId);}
 
   @UseGuards(AccessTokenGuard)
   @Get('bookings/:bookingId/participants')
