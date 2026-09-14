@@ -243,8 +243,19 @@ model AuditEvent {
   @@index([actorId, occurredAt])
 }
 
-enum TripStatus { DRAFT OPEN CLOSED CANCELLED COMPLETED }
-enum BookingStatus { PENDING CONFIRMED CANCELLED }
+enum TripStatus {
+  DRAFT
+  OPEN
+  CLOSED
+  CANCELLED
+  COMPLETED
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
 
 model Trip {
   id String @id @default(uuid())
@@ -275,7 +286,11 @@ model Booking {
   @@index([tripId,status])
 }
 
-enum OperationalDecision { ALLOWED REVIEW_REQUIRED DEFERRED }
+enum OperationalDecision {
+  ALLOWED
+  REVIEW_REQUIRED
+  DEFERRED
+}
 model SafetyChecklist {
  id String @id @default(uuid())
  tripId String
@@ -289,7 +304,11 @@ model SafetyChecklist {
  @@index([tripId,decision])
 }
 
-enum DiveLogStatus { DRAFT VERIFIED REJECTED }
+enum DiveLogStatus {
+  DRAFT
+  VERIFIED
+  REJECTED
+}
 model DiveLog {
  id String @id @default(uuid())
  accountId String
@@ -310,8 +329,22 @@ model DiveLog {
  @@index([accountId,status])
 }
 
-enum PaymentStatus { CREATED PENDING AUTHORIZED CAPTURED FAILED CANCELLED REFUNDED }
-enum InvoiceStatus { DRAFT ISSUED PAID VOID }
+enum PaymentStatus {
+  CREATED
+  PENDING
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  VOID
+}
 model Payment {
  id String @id @default(uuid())
  bookingId String
