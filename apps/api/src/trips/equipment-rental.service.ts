@@ -39,7 +39,12 @@ export class EquipmentRentalService{
 
   async mine(accountId:string){
     const rows=await this.db.$queryRaw<RentalRow[]>`SELECT * FROM "EquipmentRental" WHERE "renterAccountId"=${accountId} ORDER BY "createdAt" DESC LIMIT 100`;
-    for(const rental of rows){if(rental.status==='ACTIVE'&&rental.dueAt&&rental.dueAt.getTime()<Date.now()&&!rental.overdueNotifiedAt){const updated=await this.db.$executeRaw`UPDATE "EquipmentRental" SET "overdueNotifiedAt"=NOW(),"updatedAt"=NOW() WHERE "id"=${rental.id} AND "overdueNotifiedAt" IS NULL`;if(updated){rental.overdueNotifiedAt=new Date();await this.notifications.notify(accountId,'EQUIPMENT_RENTAL_OVERDUE',{title:'تأخر إرجاع معدات التأجير',invoiceNumber:rental.invoiceNumber,rentalId:rental.id,dueAt:rental.dueAt.toISOString(),actions:['REQUEST_EXTENSION','RETURN_EQUIPMENT'],message:'انتهت مدة الإيجار. يمكنك طلب تمديد الإيجار أو إعادة المعدات للمستودع.'});await this.audit.record({actorId:accountId,action:'EQUIPMENT_RENTAL_OVERDUE_NOTIFIED',resource:'EquipmentRental',resourceId:rental.id,metadata:{invoiceNumber:rental.invoiceNumber,dueAt:rental.dueAt.toISOString()}});}}
+    for(const rental of rows){
+      if(rental.status==='ACTIVE'&&rental.dueAt&&rental.dueAt.getTime()<Date.now()&&!rental.overdueNotifiedAt){
+        const updated=await this.db.$executeRaw`UPDATE "EquipmentRental" SET "overdueNotifiedAt"=NOW(),"updatedAt"=NOW() WHERE "id"=${rental.id} AND "overdueNotifiedAt" IS NULL`;
+        if(updated){rental.overdueNotifiedAt=new Date();await this.notifications.notify(accountId,'EQUIPMENT_RENTAL_OVERDUE',{title:'تأخر إرجاع معدات التأجير',invoiceNumber:rental.invoiceNumber,rentalId:rental.id,dueAt:rental.dueAt.toISOString(),actions:['REQUEST_EXTENSION','RETURN_EQUIPMENT'],message:'انتهت مدة الإيجار. يمكنك طلب تمديد الإيجار أو إعادة المعدات للمستودع.'});await this.audit.record({actorId:accountId,action:'EQUIPMENT_RENTAL_OVERDUE_NOTIFIED',resource:'EquipmentRental',resourceId:rental.id,metadata:{invoiceNumber:rental.invoiceNumber,dueAt:rental.dueAt.toISOString()}});}
+      }
+    }
     return Promise.all(rows.map((row:RentalRow)=>this.get(row.id)));
   }
 
