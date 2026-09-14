@@ -19,12 +19,7 @@
   function formatDate(value){try{return new Intl.DateTimeFormat('ar-SA',{dateStyle:'medium'}).format(new Date(value));}catch{return value;}}
   function sourceMeta(log){
     if(log.sourceTrip){
-      return {
-        tripId:log.sourceTrip.id,
-        tripTitle:log.sourceTrip.title,
-        participantName:log.sourceParticipant?.fullName||null,
-        label:'من رحلة HYDROLAND',
-      };
+      return {tripId:log.sourceTrip.id,tripTitle:log.sourceTrip.title,participantName:log.sourceParticipant?.fullName||null,label:'من رحلة HYDROLAND'};
     }
     const marker=String(log.notes||'').match(/HYDROLAND_TRIP:([^\s|]+)/);
     if(!marker)return null;
@@ -38,7 +33,7 @@
     const panel=document.createElement('div');panel.className='hl-real-log';
     panel.innerHTML=`<div class="hl-log-state"><small>سجل الغوص الحقيقي</small><b>سجل الدخول لعرض غوصاتك.</b></div><div class="hl-log-list"></div><form class="hl-log-form" hidden><input name="siteName" required placeholder="موقع الغوص"><input name="diveDate" type="date" required><input name="maxDepthM" type="number" min="1" max="150" step="0.1" required placeholder="أقصى عمق بالمتر"><input name="durationMin" type="number" min="1" max="600" required placeholder="المدة بالدقائق"><input name="buddyName" placeholder="اسم الزميل - اختياري"><button type="submit">حفظ الغوصة</button><button type="button" data-close-log>إلغاء</button></form>`;
     host.querySelector('.hl-member-actions')?.before(panel);
-    const style=document.createElement('style');style.textContent=`.hl-real-log{display:grid;gap:.7rem}.hl-log-state{display:flex;justify-content:space-between;gap:.7rem;padding:.65rem .75rem;border-radius:14px;background:rgba(7,49,73,.5)}.hl-log-state small{color:#9ebdce}.hl-log-list{display:grid;gap:.5rem}.hl-log-item{display:grid;grid-template-columns:1fr auto;gap:.65rem;padding:.75rem;border:1px solid rgba(120,191,224,.12);border-radius:14px;background:rgba(255,255,255,.025)}.hl-log-item small{display:block;color:#9ebdce;margin-top:.18rem}.hl-log-item span{align-self:center;padding:.3rem .5rem;border-radius:999px;background:rgba(50,198,230,.1);font-size:.72rem}.hl-log-source{display:inline-flex;flex-wrap:wrap;gap:.3rem;margin-top:.35rem;padding:.25rem .45rem;border-radius:999px;background:rgba(244,209,140,.1);color:#ffe4aa;font-size:.68rem}.hl-log-participant{color:#cbeefa}@media(max-width:600px){.hl-log-form{grid-template-columns:1fr}}.hl-log-form{display:grid;grid-template-columns:repeat(2,1fr);gap:.55rem;padding:.75rem;border:1px solid rgba(120,191,224,.15);border-radius:14px}.hl-log-form[hidden]{display:none}.hl-log-form input,.hl-log-form button{padding:.7rem;border-radius:11px}.hl-log-form input{border:1px solid rgba(120,191,224,.18);background:rgba(255,255,255,.04);color:#fff}.hl-log-form button{border:1px solid rgba(120,191,224,.2);background:rgba(255,255,255,.05);color:#eaf6fb;font-weight:800}`;document.head.appendChild(style);
+    const style=document.createElement('style');style.textContent=`.hl-real-log{display:grid;gap:.7rem}.hl-log-state{display:flex;justify-content:space-between;gap:.7rem;padding:.65rem .75rem;border-radius:14px;background:rgba(7,49,73,.5)}.hl-log-state small{color:#9ebdce}.hl-log-list{display:grid;gap:.5rem}.hl-log-item{display:grid;grid-template-columns:1fr auto;gap:.65rem;padding:.75rem;border:1px solid rgba(120,191,224,.12);border-radius:14px;background:rgba(255,255,255,.025)}.hl-log-item small{display:block;color:#9ebdce;margin-top:.18rem}.hl-log-item span{align-self:center;padding:.3rem .5rem;border-radius:999px;background:rgba(50,198,230,.1);font-size:.72rem}.hl-log-source{display:inline-flex;flex-wrap:wrap;gap:.3rem;margin-top:.35rem;padding:.25rem .45rem;border-radius:999px;background:rgba(244,209,140,.1);color:#ffe4aa;font-size:.68rem}.hl-log-participant{color:#cbeefa}.hl-log-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.55rem;padding:.75rem;border:1px solid rgba(120,191,224,.15);border-radius:14px}.hl-log-form[hidden]{display:none}.hl-log-form input,.hl-log-form button{min-width:0;padding:.7rem;border-radius:11px}.hl-log-form input{border:1px solid rgba(120,191,224,.18);background:rgba(255,255,255,.04);color:#fff}.hl-log-form button{border:1px solid rgba(120,191,224,.2);background:rgba(255,255,255,.05);color:#eaf6fb;font-weight:800}@media(max-width:600px){.hl-log-state{align-items:flex-start;flex-direction:column}.hl-log-item{grid-template-columns:1fr}.hl-log-item>span{justify-self:start}.hl-log-form{grid-template-columns:1fr}}`;document.head.appendChild(style);
     return panel;
   }
 
