@@ -40,5 +40,18 @@ export class TripAdminService {
   setParticipantEligibility(bookingId:string,participantId:string,status:'ELIGIBLE'|'REJECTED'){return this.participants.setEligibility(bookingId,participantId,status);}
   async cancelBooking(reviewerAccountId:string,tripId:string,bookingId:string){const booking=await this.db.booking.findUnique({where:{id:bookingId},include:{trip:true}});if(!booking||booking.tripId!==tripId)throw new NotFoundException('Booking not found for this trip.');if(booking.status==='CANCELLED')return booking;if(booking.trip.status==='COMPLETED'||booking.trip.status==='CANCELLED')throw new ConflictException('Booking cannot be cancelled after trip closure.');if(booking.trip.startsAt<=new Date())throw new ConflictException('Booking cannot be cancelled after the trip starts.');const updated=await this.db.booking.update({where:{id:bookingId},data:{status:'CANCELLED'}});await this.audit.record({action:'BOOKING_CANCELLED',resource:'Booking',resourceId:bookingId,metadata:{reviewerAccountId,tripId,accountId:booking.accountId,seats:booking.seats,previousStatus:booking.status}});return updated;}
   create(input:CreateTripInput){if(!input.title?.trim()||!input.type?.trim()||!input.startsAt||!input.endsAt)throw new BadRequestException('Trip title, type, startsAt and endsAt are required.');if(!Number.isInteger(input.capacity)||Number(input.capacity)<1)throw new BadRequestException('Trip capacity must be a positive integer.');if(input.status&&!TRIP_STATUSES.includes(input.status))throw new BadRequestException('Invalid trip status.');if(input.status==='COMPLETED')throw new BadRequestException('Use the governed trip completion workflow.');const startsAt=new Date(input.startsAt),endsAt=new Date(input.endsAt);if(Number.isNaN(startsAt.getTime())||Number.isNaN(endsAt.getTime())||endsAt<=startsAt)throw new BadRequestException('Trip date range is invalid.');return this.db.trip.create({data:{title:input.title.trim(),type:input.type.trim(),startsAt,endsAt,capacity:Number(input.capacity),status:input.status??'DRAFT'}});}
-  async setStatus(id:string,status:TripStatusValue){if(!TRIP_STATUSES.includes(status))throw new BadRequestException('Invalid trip status.');if(status==='COMPLETED')throw new BadRequestException('Use the governed trip completion workflow.');const trip=await this.db.trip.findUnique({where:{id}});if(!trip)throw new NotFoundException('Trip not found.');if(status==='OPEN'&&trip.startsAt<=new Date())throw new ConflictException('A trip that already started cannot be opened.');return this.db.trip.update({where:{id},data:{status}});}
+  async setStatus(reviewerAccountId:string,id:string,status:TripStatusValue){
+    if(!TRIP_STATUSES.includes(status))throw new BadRequestException('Invalid trip status.');
+    if(status==='COMPLETED')throw new BadRequestException('Use the governed trip completion workflow.');
+    const trip=await this.db.trip.findUnique({where:{id}});if(!trip)throw new NotFoundException('Trip not found.');
+    if(status==='OPEN'&&trip.startsAt<=new Date())throw new ConflictException('A trip that already started cannot be opened.');
+    if(trip.status===status)return trip;
+    const updated=await this.db.serializable(async tx=>{
+      const current=await tx.trip.findUnique({where:{id}});if(!current)throw new NotFoundException('Trip not found.');
+      if(status==='CANCELLED')await tx.$executeRaw`UPDATE "CalendarAllocation" SET "status"='INACTIVE',"updatedAt"=NOW() WHERE "tripId"=${id} AND "status"='ACTIVE'`;
+      return tx.trip.update({where:{id},data:{status}});
+    });
+    await this.audit.record({action:'TRIP_STATUS_CHANGED',resource:'Trip',resourceId:id,metadata:{reviewerAccountId,previousStatus:trip.status,status,releasedCalendarResources:status==='CANCELLED'}});
+    return updated;
+  }
 }
