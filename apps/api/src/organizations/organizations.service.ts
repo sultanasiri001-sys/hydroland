@@ -25,6 +25,7 @@ export class OrganizationsService {
   async addMember(accountId:string,organizationId:string,input:AddMemberInput){await this.requireManager(accountId,organizationId);const account=await this.db.account.findUnique({where:{id:input.accountId},select:{id:true}});if(!account)throw new NotFoundException('Account not found.');try{const member=await this.db.organizationMember.create({data:{organizationId,accountId:input.accountId,role:input.role,status:'PENDING'}});await this.auditAction(accountId,'organization.member_invited',organizationId,{memberId:member.id,invitedAccountId:input.accountId,role:input.role});return member;}catch(error){if(isUniqueConstraintError(error))throw new ConflictException('Account is already a member.');throw error;}}
 
   async respondToInvitation(accountId:string,organizationId:string,accept:boolean){
+    if(typeof accept!=='boolean')throw new BadRequestException('Invitation response must explicitly set accept to true or false.');
     const membership=await this.db.organizationMember.findUnique({where:{organizationId_accountId:{organizationId,accountId}},include:{organization:{select:{id:true,status:true,displayName:true}}}});
     if(!membership||membership.role==='OWNER'||membership.status!=='PENDING')throw new NotFoundException('Pending organization invitation not found.');
     if(accept&&membership.organization.status!=='ACTIVE')throw new ConflictException('Organization must be active before an invitation can be accepted.');
