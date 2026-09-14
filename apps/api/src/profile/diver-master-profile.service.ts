@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { PolicyControlService } from '../trips/policy-control.service';
@@ -48,6 +48,23 @@ export class DiverMasterProfileService {
     const rows=await this.db.$queryRawUnsafe<EquipmentRow[]>(`INSERT INTO "DiverEquipment" ("id","accountId","category","ownership","brand","model","serialNumber","size","serviceDueAt","status","createdAt","updatedAt") VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW()) RETURNING *`,accountId,input.category.trim(),input.ownership?.trim()||'OWNED',input.brand?.trim()||null,input.model?.trim()||null,input.serialNumber?.trim()||null,input.size?.trim()||null,serviceDueAt,status);
     const equipment=rows[0];
     await this.audit.record({action:'DIVER_EQUIPMENT_ADDED',resource:'DiverEquipment',resourceId:equipment.id,metadata:{accountId,category:equipment.category,ownership:equipment.ownership,status:equipment.status,serviceDueAt:equipment.serviceDueAt,policyState:servicePolicy.state}});
+    return this.get(accountId);
+  }
+
+  async updateEquipment(accountId:string,equipmentId:string,input:{ownership?:string;brand?:string|null;model?:string|null;serialNumber?:string|null;size?:string|null;serviceDueAt?:string|null;status?:'ACTIVE'|'INACTIVE'|'REVIEW'}){
+    const rows=await this.db.$queryRawUnsafe<EquipmentRow[]>(`SELECT * FROM "DiverEquipment" WHERE "id"=$1 AND "accountId"=$2 LIMIT 1`,equipmentId,accountId),current=rows[0];
+    if(!current)throw new NotFoundException('Equipment not found.');
+    if(input.status&&!['ACTIVE','INACTIVE','REVIEW'].includes(input.status))throw new BadRequestException('Invalid equipment status.');
+    const serviceDueAt=input.serviceDueAt===undefined?current.serviceDueAt:input.serviceDueAt?new Date(input.serviceDueAt):null;
+    if(serviceDueAt&&Number.isNaN(serviceDueAt.getTime()))throw new BadRequestException('Invalid service due date.');
+    const [inspectionPolicy,servicePolicy]=await Promise.all([this.policies.decision('EQUIPMENT','INSPECTION_STATUS'),this.policies.decision('EQUIPMENT','SERVICE_EXPIRY')]);
+    const expired=Boolean(serviceDueAt&&serviceDueAt<=new Date());let status=input.status??current.status;
+    if(status==='ACTIVE'&&expired&&servicePolicy.enforce)throw new ConflictException('Expired equipment cannot be activated while service validation is enforced.');
+    if(status==='ACTIVE'&&expired&&servicePolicy.review)status='REVIEW';
+    if(status!=='ACTIVE'&&inspectionPolicy.enforce&&input.status==='ACTIVE')throw new ConflictException('Equipment inspection status prevents activation.');
+    const updated=await this.db.$queryRawUnsafe<EquipmentRow[]>(`UPDATE "DiverEquipment" SET "ownership"=$3,"brand"=$4,"model"=$5,"serialNumber"=$6,"size"=$7,"serviceDueAt"=$8,"status"=$9,"updatedAt"=NOW() WHERE "id"=$1 AND "accountId"=$2 RETURNING *`,equipmentId,accountId,input.ownership?.trim()||current.ownership,input.brand===undefined?current.brand:input.brand?.trim()||null,input.model===undefined?current.model:input.model?.trim()||null,input.serialNumber===undefined?current.serialNumber:input.serialNumber?.trim()||null,input.size===undefined?current.size:input.size?.trim()||null,serviceDueAt,status);
+    const equipment=updated[0];
+    await this.audit.record({action:'DIVER_EQUIPMENT_UPDATED',resource:'DiverEquipment',resourceId:equipmentId,metadata:{accountId,previousStatus:current.status,status:equipment.status,previousServiceDueAt:current.serviceDueAt,serviceDueAt:equipment.serviceDueAt,policyStates:{inspection:inspectionPolicy.state,service:servicePolicy.state}}});
     return this.get(accountId);
   }
 }
