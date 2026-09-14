@@ -1,5 +1,5 @@
 import { INestApplication, Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 
 @Injectable()
 export class DatabaseService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
@@ -32,5 +32,17 @@ export class DatabaseService extends PrismaClient implements OnModuleInit, OnMod
       RETURNING "key"
     `;
     return rows.length > 0;
+  }
+
+  async serializable<T>(work: (tx: Prisma.TransactionClient) => Promise<T>, maxAttempts = 3): Promise<T> {
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return await this.$transaction(work, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      } catch (error) {
+        const retryable = error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034';
+        if (!retryable || attempt === maxAttempts) throw error;
+      }
+    }
+    throw new Error('Serializable transaction retry exhausted.');
   }
 }
