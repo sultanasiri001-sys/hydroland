@@ -37,7 +37,7 @@ export class OrganizationsController {
 
   @Post(':id/membership-response')
   respondToInvitation(@Req() request: AuthenticatedRequest,@Param('id') id:string,@Body() body:{accept:boolean}){
-    return this.organizations.respondToInvitation(request.auth.accountId,id,Boolean(body.accept));
+    return this.organizations.respondToInvitation(request.auth.accountId,id,body.accept);
   }
 
   @UseGuards(ReviewGuard)
