@@ -1,8 +1,9 @@
 import { Body, Controller, Get, Param, Patch, Req, UseGuards } from '@nestjs/common';
-import { AccountStatus } from '@prisma/client';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { AdminGuard } from './admin.guard';
 import { AdminService } from './admin.service';
+
+type AccountStatusValue='PENDING_VERIFICATION'|'ACTIVE'|'SUSPENDED'|'ARCHIVED';
 
 @UseGuards(AccessTokenGuard,AdminGuard)
 @Controller('admin')
@@ -17,7 +18,7 @@ export class AdminController {
   setAccountStatus(
     @Req() req:{auth:{accountId:string}},
     @Param('accountId') accountId:string,
-    @Body() body:{status:AccountStatus;reason?:string},
+    @Body() body:{status:AccountStatusValue;reason?:string},
   ){
     return this.s.setAccountStatus(req.auth.accountId,accountId,body.status,body.reason);
   }
