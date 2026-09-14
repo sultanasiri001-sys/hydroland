@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 
 export type TripStatusValue = 'DRAFT' | 'OPEN' | 'CLOSED' | 'CANCELLED' | 'COMPLETED';
@@ -15,10 +16,36 @@ type CreateTripInput = {
 
 @Injectable()
 export class TripAdminService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(private readonly db: DatabaseService, private readonly audit: AuditService) {}
 
   list() {
     return this.db.trip.findMany({ orderBy: { startsAt: 'desc' } });
+  }
+
+  async bookings(tripId: string) {
+    const trip = await this.db.trip.findUnique({ where: { id: tripId }, select: { id: true } });
+    if (!trip) throw new NotFoundException('Trip not found.');
+    return this.db.booking.findMany({
+      where: { tripId },
+      orderBy: { createdAt: 'asc' },
+      include: { account: { select: { id: true, email: true, person: { select: { firstName: true, lastName: true } } } } },
+    });
+  }
+
+  async confirmBooking(reviewerAccountId: string, tripId: string, bookingId: string) {
+    const booking = await this.db.booking.findUnique({ where: { id: bookingId }, include: { trip: true } });
+    if (!booking || booking.tripId !== tripId) throw new NotFoundException('Booking not found for this trip.');
+    if (booking.status === 'CONFIRMED') return booking;
+    if (booking.status !== 'PENDING') throw new ConflictException('Only pending bookings can be confirmed.');
+    if (booking.trip.status !== 'OPEN' && booking.trip.status !== 'CLOSED') {
+      throw new ConflictException('Trip is not available for booking confirmation.');
+    }
+    if (booking.trip.startsAt <= new Date()) throw new ConflictException('Trip already started.');
+    const latestSafety = await this.db.safetyChecklist.findFirst({ where: { tripId }, orderBy: { createdAt: 'desc' }, select: { decision: true } });
+    if (latestSafety?.decision !== 'ALLOWED') throw new ConflictException('Trip requires an ALLOWED safety decision before confirmation.');
+    const updated = await this.db.booking.update({ where: { id: bookingId }, data: { status: 'CONFIRMED' } });
+    await this.audit.record({ action: 'BOOKING_CONFIRMED', resource: 'Booking', resourceId: bookingId, metadata: { reviewerAccountId, tripId, accountId: booking.accountId, seats: booking.seats } });
+    return updated;
   }
 
   create(input: CreateTripInput) {
@@ -28,39 +55,20 @@ export class TripAdminService {
     if (!Number.isInteger(input.capacity) || Number(input.capacity) < 1) {
       throw new BadRequestException('Trip capacity must be a positive integer.');
     }
-    if (input.status && !TRIP_STATUSES.includes(input.status)) {
-      throw new BadRequestException('Invalid trip status.');
-    }
-    if (input.status === 'COMPLETED') {
-      throw new BadRequestException('Use the governed trip completion workflow.');
-    }
+    if (input.status && !TRIP_STATUSES.includes(input.status)) throw new BadRequestException('Invalid trip status.');
+    if (input.status === 'COMPLETED') throw new BadRequestException('Use the governed trip completion workflow.');
     const startsAt = new Date(input.startsAt);
     const endsAt = new Date(input.endsAt);
-    if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()) || endsAt <= startsAt) {
-      throw new BadRequestException('Trip date range is invalid.');
-    }
-    return this.db.trip.create({
-      data: {
-        title: input.title.trim(),
-        type: input.type.trim(),
-        startsAt,
-        endsAt,
-        capacity: Number(input.capacity),
-        status: input.status ?? 'DRAFT',
-      },
-    });
+    if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()) || endsAt <= startsAt) throw new BadRequestException('Trip date range is invalid.');
+    return this.db.trip.create({ data: { title: input.title.trim(), type: input.type.trim(), startsAt, endsAt, capacity: Number(input.capacity), status: input.status ?? 'DRAFT' } });
   }
 
   async setStatus(id: string, status: TripStatusValue) {
     if (!TRIP_STATUSES.includes(status)) throw new BadRequestException('Invalid trip status.');
-    if (status === 'COMPLETED') {
-      throw new BadRequestException('Use the governed trip completion workflow.');
-    }
+    if (status === 'COMPLETED') throw new BadRequestException('Use the governed trip completion workflow.');
     const trip = await this.db.trip.findUnique({ where: { id } });
     if (!trip) throw new NotFoundException('Trip not found.');
-    if (status === 'OPEN' && trip.startsAt <= new Date()) {
-      throw new ConflictException('A trip that already started cannot be opened.');
-    }
+    if (status === 'OPEN' && trip.startsAt <= new Date()) throw new ConflictException('A trip that already started cannot be opened.');
     return this.db.trip.update({ where: { id }, data: { status } });
   }
 }
