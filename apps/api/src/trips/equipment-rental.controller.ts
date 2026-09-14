@@ -11,6 +11,10 @@ export class EquipmentRentalController{
   @Get('mine')
   mine(@Req()req:{auth:{accountId:string}}){return this.rentals.mine(req.auth.accountId);}
 
+  @Get(':id/mine')
+  getMine(@Req()req:{auth:{accountId:string}},@Param('id')id:string){return this.rentals.getMine(req.auth.accountId,id);}
+
+  @UseGuards(AdminGuard)
   @Get(':id')
   get(@Param('id')id:string){return this.rentals.get(id);}
 
@@ -21,6 +25,10 @@ export class EquipmentRentalController{
   @UseGuards(AdminGuard)
   @Post(':id/paid')
   markPaid(@Req()req:{auth:{accountId:string}},@Param('id')id:string){return this.rentals.markPaid(req.auth.accountId,id);}
+
+  @UseGuards(AdminGuard)
+  @Post(':id/return-scan')
+  returnScan(@Req()req:{auth:{accountId:string}},@Param('id')id:string,@Body()body:{code?:string;condition?:'OK'|'DAMAGED'|'REVIEW';notes?:string|null;toLocation?:string|null}){return this.rentals.returnScan(req.auth.accountId,id,body);}
 
   @UseGuards(AdminGuard)
   @Post(':id/share')
