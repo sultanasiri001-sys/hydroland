@@ -1,10 +1,10 @@
 import { Body, Controller, Get, Param, Patch, Req, UseGuards } from '@nestjs/common';
-import { AdminGuard } from '../admin/admin.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
+import { DiveLogReviewGuard } from './dive-log-review.guard';
 import { DiveLogReviewService } from './dive-log-review.service';
 
-@UseGuards(AccessTokenGuard, AdminGuard)
-@Controller('dive-logs/admin/review')
+@UseGuards(AccessTokenGuard, DiveLogReviewGuard)
+@Controller('dive-logs/review')
 export class DiveLogReviewController {
   constructor(private readonly review: DiveLogReviewService) {}
 
