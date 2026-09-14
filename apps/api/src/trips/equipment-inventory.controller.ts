@@ -11,6 +11,9 @@ export class EquipmentInventoryController{
   @Get()
   list(){return this.inventory.list();}
 
+  @Post()
+  register(@Req()req:{auth:{accountId:string}},@Body()body:{name?:string;serialNumber?:string|null;sku?:string|null;location?:string|null}){return this.inventory.register(req.auth.accountId,body);}
+
   @Get('lookup')
   lookup(@Query('code')code?:string){return this.inventory.lookup(code??'');}
 
