@@ -110,27 +110,28 @@ model Person {
 }
 
 model Account {
-  id             String        @id @default(uuid())
-  personId       String        @unique
-  email          String        @unique
-  passwordHash   String
-  status         AccountStatus @default(PENDING_VERIFICATION)
+  id              String        @id @default(uuid())
+  personId        String        @unique
+  email           String        @unique
+  passwordHash    String
+  status          AccountStatus @default(PENDING_VERIFICATION)
   emailVerifiedAt DateTime?
-  lastLoginAt    DateTime?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  lastLoginAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
-  person           Person               @relation(fields: [personId], references: [id], onDelete: Restrict)
-  sessions         Session[]
-  roleAssignments  RoleAssignment[]
-  activationRequests ActivationRequest[] @relation("ApplicantRequests")
-  reviewDecisions  ReviewDecision[]      @relation("ReviewerDecisions")
-  notifications    Notification[]
-  bookings         Booking[]
-  payments         Payment[]
-  diveLogs         DiveLog[]
+  person                  Person               @relation(fields: [personId], references: [id], onDelete: Restrict)
+  sessions                Session[]
+  roleAssignments         RoleAssignment[]
+  activationRequests      ActivationRequest[]  @relation("ApplicantRequests")
+  reviewDecisions         ReviewDecision[]     @relation("ReviewerDecisions")
+  notifications           Notification[]
+  bookings                Booking[]
+  bookingParticipants     BookingParticipant[]
+  payments                Payment[]
+  diveLogs                DiveLog[]
   organizationMemberships OrganizationMember[]
-  organizationsOwned Organization[] @relation("OrganizationOwner")
+  organizationsOwned      Organization[]       @relation("OrganizationOwner")
 }
 
 model Organization {
@@ -147,8 +148,8 @@ model Organization {
   reviewedAt         DateTime?
   reviewedById       String?
 
-  owner      Account              @relation("OrganizationOwner", fields: [ownerId], references: [id], onDelete: Restrict)
-  members    OrganizationMember[]
+  owner   Account              @relation("OrganizationOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  members OrganizationMember[]
 
   @@index([status, createdAt])
   @@index([ownerId, status])
@@ -184,13 +185,13 @@ model Session {
 }
 
 model ProfessionalProfile {
-  id          String   @id @default(uuid())
-  personId    String   @unique
-  headline    String?
-  bio         String?
-  regionCode  String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(uuid())
+  personId   String   @unique
+  headline   String?
+  bio        String?
+  regionCode String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   person Person @relation(fields: [personId], references: [id], onDelete: Restrict)
 }
@@ -214,7 +215,7 @@ model RoleAssignment {
 }
 
 model Credential {
-  id                 String                     @id @default(uuid())
+  id                 String                       @id @default(uuid())
   personId           String
   issuer             String
   title              String
@@ -222,8 +223,8 @@ model Credential {
   issuedAt           DateTime?
   expiresAt          DateTime?
   verificationStatus CredentialVerificationStatus @default(UNVERIFIED)
-  createdAt          DateTime                   @default(now())
-  updatedAt          DateTime                   @updatedAt
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
 
   person    Person     @relation(fields: [personId], references: [id], onDelete: Restrict)
   documents Document[]
@@ -291,15 +292,15 @@ model Notification {
 }
 
 model AuditEvent {
-  id          String   @id @default(uuid())
-  actorId     String?
-  action      String
-  resource    String
-  resourceId  String?
-  requestId   String?
-  ipAddress   String?
-  metadata    Json?
-  occurredAt  DateTime @default(now())
+  id         String   @id @default(uuid())
+  actorId    String?
+  action     String
+  resource   String
+  resourceId String?
+  requestId  String?
+  ipAddress  String?
+  metadata   Json?
+  occurredAt DateTime @default(now())
 
   actor Person? @relation("ActorAuditEvents", fields: [actorId], references: [id], onDelete: Restrict)
 
@@ -322,32 +323,57 @@ enum BookingStatus {
 }
 
 model Trip {
-  id String @id @default(uuid())
-  title String
-  type String
-  startsAt DateTime
-  endsAt DateTime
-  capacity Int
-  status TripStatus @default(DRAFT)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  bookings Booking[]
+  id               String            @id @default(uuid())
+  title            String
+  type             String
+  startsAt         DateTime
+  endsAt           DateTime
+  capacity         Int
+  status           TripStatus        @default(DRAFT)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  bookings         Booking[]
   safetyChecklists SafetyChecklist[]
+  diveLogs         DiveLog[]         @relation("TripDiveLogs")
+
   @@index([status, startsAt])
 }
+
 model Booking {
-  id String @id @default(uuid())
-  tripId String
-  accountId String
-  status BookingStatus @default(PENDING)
-  seats Int @default(1)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  trip Trip @relation(fields:[tripId],references:[id],onDelete:Restrict)
-  account Account @relation(fields:[accountId],references:[id],onDelete:Restrict)
-  payments Payment[]
-  @@unique([tripId,accountId])
-  @@index([tripId,status])
+  id           String               @id @default(uuid())
+  tripId       String
+  accountId    String
+  status       BookingStatus        @default(PENDING)
+  seats        Int                  @default(1)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  trip         Trip                 @relation(fields: [tripId], references: [id], onDelete: Restrict)
+  account      Account              @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  participants BookingParticipant[]
+  payments     Payment[]
+
+  @@unique([tripId, accountId])
+  @@index([tripId, status])
+}
+
+model BookingParticipant {
+  id                  String    @id @default(uuid())
+  bookingId           String
+  accountId           String?
+  fullName            String
+  certificationTitle  String?
+  certificationNumber String?
+  certificationIssuer String?
+  eligibilityStatus   String    @default("PENDING")
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  booking  Booking   @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  account  Account?  @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  diveLogs DiveLog[] @relation("ParticipantDiveLogs")
+
+  @@index([bookingId, eligibilityStatus])
+  @@index([accountId])
 }
 
 enum OperationalDecision {
@@ -355,17 +381,19 @@ enum OperationalDecision {
   REVIEW_REQUIRED
   DEFERRED
 }
+
 model SafetyChecklist {
- id String @id @default(uuid())
- tripId String
- decision OperationalDecision @default(REVIEW_REQUIRED)
- items Json
- notes String?
- decidedAt DateTime?
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
- trip Trip @relation(fields:[tripId],references:[id],onDelete:Restrict)
- @@index([tripId,decision])
+  id        String              @id @default(uuid())
+  tripId    String
+  decision  OperationalDecision @default(REVIEW_REQUIRED)
+  items     Json
+  notes     String?
+  decidedAt DateTime?
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  trip      Trip                @relation(fields: [tripId], references: [id], onDelete: Restrict)
+
+  @@index([tripId, decision])
 }
 
 enum DiveLogStatus {
@@ -373,24 +401,34 @@ enum DiveLogStatus {
   VERIFIED
   REJECTED
 }
+
 model DiveLog {
- id String @id @default(uuid())
- accountId String
- siteName String
- regionCode String?
- diveDate DateTime
- maxDepthM Float
- durationMin Int
- buddyName String?
- instructorName String?
- notes String?
- status DiveLogStatus @default(DRAFT)
- verifiedAt DateTime?
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
- account Account @relation(fields:[accountId],references:[id],onDelete:Restrict)
- @@index([accountId,diveDate])
- @@index([accountId,status])
+  id                  String              @id @default(uuid())
+  accountId           String?
+  sourceTripId        String?
+  sourceParticipantId String?
+  siteName            String
+  regionCode          String?
+  diveDate            DateTime
+  maxDepthM           Float
+  durationMin         Int
+  buddyName           String?
+  instructorName      String?
+  notes               String?
+  status              DiveLogStatus       @default(DRAFT)
+  verifiedAt          DateTime?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  account           Account?             @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  sourceTrip        Trip?                @relation("TripDiveLogs", fields: [sourceTripId], references: [id], onDelete: Restrict)
+  sourceParticipant BookingParticipant?  @relation("ParticipantDiveLogs", fields: [sourceParticipantId], references: [id], onDelete: Restrict)
+
+  @@unique([sourceParticipantId, sourceTripId])
+  @@index([accountId, diveDate])
+  @@index([accountId, status])
+  @@index([sourceTripId])
+  @@index([sourceParticipantId])
 }
 
 enum PaymentStatus {
@@ -409,28 +447,31 @@ enum InvoiceStatus {
   PAID
   VOID
 }
+
 model Payment {
- id String @id @default(uuid())
- bookingId String
- accountId String
- amountMinor Int
- currency String @default("SAR")
- status PaymentStatus @default(CREATED)
- idempotencyKey String @unique
- providerReference String? @unique
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
- booking Booking @relation(fields:[bookingId],references:[id],onDelete:Restrict)
- account Account @relation(fields:[accountId],references:[id],onDelete:Restrict)
- invoice Invoice?
- @@index([accountId,status])
+  id                String        @id @default(uuid())
+  bookingId         String
+  accountId         String
+  amountMinor       Int
+  currency          String        @default("SAR")
+  status            PaymentStatus @default(CREATED)
+  idempotencyKey    String        @unique
+  providerReference String?       @unique
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  booking           Booking       @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  account           Account       @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  invoice           Invoice?
+
+  @@index([accountId, status])
 }
+
 model Invoice {
- id String @id @default(uuid())
- paymentId String @unique
- number String @unique
- status InvoiceStatus @default(DRAFT)
- issuedAt DateTime?
- createdAt DateTime @default(now())
- payment Payment @relation(fields:[paymentId],references:[id],onDelete:Restrict)
+  id        String        @id @default(uuid())
+  paymentId String        @unique
+  number    String        @unique
+  status    InvoiceStatus @default(DRAFT)
+  issuedAt  DateTime?
+  createdAt DateTime      @default(now())
+  payment   Payment       @relation(fields: [paymentId], references: [id], onDelete: Restrict)
 }
