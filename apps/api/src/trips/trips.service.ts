@@ -1,5 +1,4 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { BookingParticipantService } from './booking-participant.service';
 import { WeatherGateService, WeatherSnapshot } from './weather-gate.service';
@@ -29,7 +28,7 @@ export class TripsService {
   async book(accountId:string,tripId:string,seats:number){
     if(!Number.isInteger(seats)||seats<1)throw new BadRequestException('Invalid seats.');
     const gateSettings=await this.weatherGate.settings();
-    const booking=await this.db.$transaction(async(tx:Prisma.TransactionClient)=>{
+    const booking=await this.db.serializable(async tx=>{
       const trip=await tx.trip.findUnique({where:{id:tripId}});if(!trip||trip.status!=='OPEN')throw new NotFoundException('Trip unavailable.');if(trip.startsAt<=new Date())throw new ConflictException('Trip already started.');
       const latestSafety=await tx.safetyChecklist.findFirst({where:{tripId},orderBy:{createdAt:'desc'},select:{decision:true,items:true}});if(!latestSafety||latestSafety.decision!=='ALLOWED')throw new ConflictException('Trip requires safety approval before booking.');
       const weatherSnapshot=this.weatherFromItems(latestSafety.items),weather=this.weatherGate.evaluate(weatherSnapshot,gateSettings);if(weather.blocking)throw new ConflictException(weather.reason||'Trip is unavailable because of weather conditions.');
