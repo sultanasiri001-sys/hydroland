@@ -14,17 +14,27 @@ export class EquipmentRentalController{
   @Get(':id/mine')
   getMine(@Req()req:{auth:{accountId:string}},@Param('id')id:string){return this.rentals.getMine(req.auth.accountId,id);}
 
+  @Post(':id/extension-request')
+  requestExtension(@Req()req:{auth:{accountId:string}},@Param('id')id:string,@Body()body:{requestedUntil?:string}){return this.rentals.requestExtension(req.auth.accountId,id,body);}
+
+  @Post(':id/return-intent')
+  returnIntent(@Req()req:{auth:{accountId:string}},@Param('id')id:string){return this.rentals.returnIntent(req.auth.accountId,id);}
+
   @UseGuards(AdminGuard)
   @Get(':id')
   get(@Param('id')id:string){return this.rentals.get(id);}
 
   @UseGuards(AdminGuard)
   @Post()
-  create(@Req()req:{auth:{accountId:string}},@Body()body:{renterAccountId?:string;whatsappPhone?:string|null;items?:Array<{resourceId?:string;equipmentType?:string|null;size?:string|null;unitPriceSar?:number}>}){return this.rentals.create(req.auth.accountId,body);}
+  create(@Req()req:{auth:{accountId:string}},@Body()body:{renterAccountId?:string;whatsappPhone?:string|null;dueAt?:string|null;items?:Array<{resourceId?:string;equipmentType?:string|null;size?:string|null;unitPriceSar?:number}>}){return this.rentals.create(req.auth.accountId,body);}
 
   @UseGuards(AdminGuard)
   @Post(':id/paid')
   markPaid(@Req()req:{auth:{accountId:string}},@Param('id')id:string){return this.rentals.markPaid(req.auth.accountId,id);}
+
+  @UseGuards(AdminGuard)
+  @Post(':id/extension-review')
+  reviewExtension(@Req()req:{auth:{accountId:string}},@Param('id')id:string,@Body()body:{decision?:'APPROVED'|'REJECTED'}){return this.rentals.reviewExtension(req.auth.accountId,id,body);}
 
   @UseGuards(AdminGuard)
   @Post(':id/return-scan')
