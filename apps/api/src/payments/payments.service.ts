@@ -27,9 +27,11 @@ export class PaymentsService {
     const booking=await this.db.booking.findFirst({where:{id:input.bookingId,accountId}});
     if(!booking)throw new NotFoundException('Booking not found.');
     if(paymentPolicy.bypass)return{bookingId:booking.id,status:'BYPASSED',provider:'NOT_SELECTED',policyReview:{required:false,issues:[],states:{payment:paymentPolicy.state}}};
-    const existing=await this.db.payment.findUnique({where:{idempotencyKey:input.idempotencyKey.trim()}});
+    const idempotencyKey=input.idempotencyKey.trim();
+    const existing=await this.db.payment.findUnique({where:{idempotencyKey}});
     if(existing&&existing.accountId!==accountId)throw new ConflictException('Idempotency key already belongs to another payment.');
-    const payment=await this.db.payment.upsert({where:{idempotencyKey:input.idempotencyKey.trim()},create:{...input,idempotencyKey:input.idempotencyKey.trim(),accountId,status:'CREATED'},update:{}});
+    const payment=await this.db.payment.upsert({where:{idempotencyKey},create:{bookingId:input.bookingId,amountMinor:input.amountMinor,idempotencyKey,accountId,status:'CREATED'},update:{}});
+    if(!existing)await this.audit.record({action:'PAYMENT_CREATED',resource:'Payment',resourceId:payment.id,metadata:{accountId,bookingId:payment.bookingId,amountMinor:payment.amountMinor,currency:payment.currency,status:payment.status,provider:'NOT_SELECTED',policyState:paymentPolicy.state,financialActionExecuted:false}});
     return{...payment,provider:'NOT_SELECTED',policyReview:{required:paymentPolicy.review,issues:paymentPolicy.review?['PAYMENT_REQUIRED']:[],states:{payment:paymentPolicy.state}}};
   }
 
@@ -40,9 +42,9 @@ export class PaymentsService {
     if(!payment)throw new NotFoundException('Payment not found.');
     if(['REFUNDED','CANCELLED','FAILED'].includes(payment.status))throw new ConflictException('Payment is not eligible for a refund request.');
     const refundPolicy=await this.policies.decision('PAYMENT','REFUND_REVIEW');
-    const recent=await this.db.auditEvent.findFirst({where:{actorId:accountId,resource:'Payment',resourceId:paymentId,action:'PAYMENT_REFUND_REQUESTED'},orderBy:{occurredAt:'desc'},select:{id:true,occurredAt:true}});
+    const recent=await this.db.auditEvent.findFirst({where:{resource:'Payment',resourceId:paymentId,action:'PAYMENT_REFUND_REQUESTED'},orderBy:{occurredAt:'desc'},select:{id:true,occurredAt:true}});
     if(recent&&Date.now()-recent.occurredAt.getTime()<300000)throw new ConflictException('A refund request was already submitted recently.');
-    const event=await this.audit.record({actorId:accountId,action:'PAYMENT_REFUND_REQUESTED',resource:'Payment',resourceId:paymentId,metadata:{accountId,bookingId:payment.bookingId,amountMinor:payment.amountMinor,currency:payment.currency,paymentStatus:payment.status,reason:normalizedReason,provider:'NOT_SELECTED',policyState:refundPolicy.state,financialActionExecuted:false}});
+    const event=await this.audit.record({action:'PAYMENT_REFUND_REQUESTED',resource:'Payment',resourceId:paymentId,metadata:{accountId,bookingId:payment.bookingId,amountMinor:payment.amountMinor,currency:payment.currency,paymentStatus:payment.status,reason:normalizedReason,provider:'NOT_SELECTED',policyState:refundPolicy.state,financialActionExecuted:false}});
     return{paymentId,status:'REFUND_REQUESTED',financialActionExecuted:false,provider:'NOT_SELECTED',auditEventId:event.id,policyReview:{required:!refundPolicy.bypass,reviewRequired:refundPolicy.review,enforced:refundPolicy.enforce,states:{refund:refundPolicy.state}}};
   }
 
