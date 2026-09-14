@@ -7,6 +7,9 @@ type CreateOrganizationInput = { displayName: string; legalName?: string; kind: 
 type UpdateOrganizationInput = Partial<CreateOrganizationInput>;
 type AddMemberInput = { accountId: string; role: 'ADMIN' | 'OPERATOR' | 'INSTRUCTOR' | 'STAFF' | 'VIEWER' };
 
+const isUniqueConstraintError = (error: unknown): error is { code: string } =>
+  typeof error === 'object' && error !== null && 'code' in error && (error as { code?: unknown }).code === 'P2002';
+
 @Injectable()
 export class OrganizationsService {
   constructor(private readonly db: DatabaseService, private readonly audit: AuditService) {}
@@ -40,7 +43,7 @@ export class OrganizationsService {
       await this.auditAction(accountId, 'organization.submitted', organization.id, { kind: organization.kind });
       return organization;
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException('Registration number already exists.');
+      if (isUniqueConstraintError(error)) throw new ConflictException('Registration number already exists.');
       throw error;
     }
   }
@@ -69,7 +72,7 @@ export class OrganizationsService {
       await this.auditAction(accountId, 'organization.updated', organizationId);
       return updated;
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException('Registration number already exists.');
+      if (isUniqueConstraintError(error)) throw new ConflictException('Registration number already exists.');
       throw error;
     }
   }
@@ -92,7 +95,7 @@ export class OrganizationsService {
       await this.auditAction(accountId, 'organization.member_invited', organizationId, { memberId: member.id, role: input.role });
       return member;
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException('Account is already a member.');
+      if (isUniqueConstraintError(error)) throw new ConflictException('Account is already a member.');
       throw error;
     }
   }
