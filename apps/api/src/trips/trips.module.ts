@@ -16,6 +16,8 @@ import { PolicyControlController } from './policy-control.controller';
 import { PolicyControlService } from './policy-control.service';
 import { TripAdminController } from './trip-admin.controller';
 import { TripAdminService } from './trip-admin.service';
+import { TripComplianceController } from './trip-compliance.controller';
+import { TripComplianceService } from './trip-compliance.service';
 import { TripCompletionController } from './trip-completion.controller';
 import { TripCompletionService } from './trip-completion.service';
 import { TripsController } from './trips.controller';
@@ -25,8 +27,8 @@ import { WeatherGateService } from './weather-gate.service';
 
 @Module({
   imports: [AuthModule, AdminModule, AuditModule],
-  controllers: [TripsController,TripAdminController,TripCompletionController,WeatherGateController,CalendarAllocationController,CrewAssignmentController,PolicyControlController,BoatComplianceController],
-  providers: [TripsService,TripAdminService,TripCompletionService,WeatherGateService,CalendarAllocationService,CrewAssignmentService,CrewEscalationScheduler,OperationalClearanceService,OperationalClearanceScheduler,BookingParticipantService,PolicyControlService,BoatComplianceService],
-  exports: [PolicyControlService,BoatComplianceService],
+  controllers: [TripsController,TripAdminController,TripCompletionController,WeatherGateController,CalendarAllocationController,CrewAssignmentController,PolicyControlController,BoatComplianceController,TripComplianceController],
+  providers: [TripsService,TripAdminService,TripCompletionService,WeatherGateService,CalendarAllocationService,CrewAssignmentService,CrewEscalationScheduler,OperationalClearanceService,OperationalClearanceScheduler,BookingParticipantService,PolicyControlService,BoatComplianceService,TripComplianceService],
+  exports: [PolicyControlService,BoatComplianceService,TripComplianceService],
 })
 export class TripsModule {}
