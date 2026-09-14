@@ -6,6 +6,23 @@ type ResourceRow = { id: string; type: string; name: string; active: boolean };
 type AllocationRow = { id: string; tripId: string; resourceId: string; startsAt: Date; endsAt: Date; status: string };
 type AllocationWithResourceRow = AllocationRow & { resourceType: string; resourceName: string };
 type JsonLike = Record<string, unknown> | unknown[] | string | number | boolean | null;
+type CalendarTripRow = {
+  id: string;
+  title: string;
+  type: string;
+  startsAt: Date;
+  endsAt: Date;
+  capacity: number;
+  status: string;
+  bookings: Array<{ seats: number }>;
+  safetyChecklists: Array<{
+    decision: string;
+    items: JsonLike;
+    notes: string | null;
+    decidedAt: Date | null;
+    createdAt: Date;
+  }>;
+};
 
 @Injectable()
 export class CalendarAllocationService {
@@ -43,14 +60,14 @@ export class CalendarAllocationService {
     }
 
     const gate = await this.weatherGate.settings();
-    const trips = await this.db.trip.findMany({
+    const trips = (await this.db.trip.findMany({
       where: { startsAt: { lt: to }, endsAt: { gt: from } },
       orderBy: { startsAt: 'asc' },
       include: {
         bookings: { where: { status: { in: ['PENDING', 'CONFIRMED'] } }, select: { seats: true } },
         safetyChecklists: { orderBy: { createdAt: 'desc' }, take: 1, select: { decision: true, items: true, notes: true, decidedAt: true, createdAt: true } },
       },
-    });
+    })) as CalendarTripRow[];
 
     const allocations = await this.db.$queryRaw<AllocationWithResourceRow[]>`
       SELECT a."id", a."tripId", a."resourceId", a."startsAt", a."endsAt", a."status",
@@ -61,10 +78,10 @@ export class CalendarAllocationService {
       ORDER BY a."startsAt" ASC
     `;
 
-    return trips.map((trip) => {
-      const bookedSeats = trip.bookings.reduce((sum, booking) => sum + booking.seats, 0);
+    return trips.map((trip: CalendarTripRow) => {
+      const bookedSeats = trip.bookings.reduce((sum: number, booking: { seats: number }) => sum + booking.seats, 0);
       const latestSafety = trip.safetyChecklists[0] ?? null;
-      const snapshot = latestSafety ? this.weatherFromItems(latestSafety.items as JsonLike) : null;
+      const snapshot = latestSafety ? this.weatherFromItems(latestSafety.items) : null;
       const weather = this.weatherGate.evaluate(snapshot, gate);
       return {
         id: trip.id,
@@ -79,8 +96,8 @@ export class CalendarAllocationService {
         safety: latestSafety,
         weather: { snapshot, gate, evaluation: weather },
         resources: allocations
-          .filter((allocation) => allocation.tripId === trip.id)
-          .map((allocation) => ({
+          .filter((allocation: AllocationWithResourceRow) => allocation.tripId === trip.id)
+          .map((allocation: AllocationWithResourceRow) => ({
             id: allocation.id,
             resourceId: allocation.resourceId,
             startsAt: allocation.startsAt,
