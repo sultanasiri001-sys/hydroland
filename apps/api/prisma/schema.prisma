@@ -103,10 +103,10 @@ model Person {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  account         Account?
-  professional    ProfessionalProfile?
-  credentials     Credential[]
-  auditEvents     AuditEvent[] @relation("ActorAuditEvents")
+  account      Account?
+  professional ProfessionalProfile?
+  credentials  Credential[]
+  auditEvents  AuditEvent[] @relation("ActorAuditEvents")
 }
 
 model Account {
@@ -128,6 +128,7 @@ model Account {
   notifications           Notification[]
   bookings                Booking[]
   bookingParticipants     BookingParticipant[]
+  crewAssignments         CrewAssignment[]
   payments                Payment[]
   diveLogs                DiveLog[]
   organizationMemberships OrganizationMember[]
@@ -308,6 +309,12 @@ model AuditEvent {
   @@index([actorId, occurredAt])
 }
 
+model OperationalSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @default(now())
+}
+
 enum TripStatus {
   DRAFT
   OPEN
@@ -323,18 +330,20 @@ enum BookingStatus {
 }
 
 model Trip {
-  id               String            @id @default(uuid())
-  title            String
-  type             String
-  startsAt         DateTime
-  endsAt           DateTime
-  capacity         Int
-  status           TripStatus        @default(DRAFT)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  bookings         Booking[]
-  safetyChecklists SafetyChecklist[]
-  diveLogs         DiveLog[]         @relation("TripDiveLogs")
+  id                  String               @id @default(uuid())
+  title               String
+  type                String
+  startsAt            DateTime
+  endsAt              DateTime
+  capacity            Int
+  status              TripStatus           @default(DRAFT)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  bookings            Booking[]
+  safetyChecklists    SafetyChecklist[]
+  diveLogs            DiveLog[]            @relation("TripDiveLogs")
+  calendarAllocations CalendarAllocation[]
+  crewAssignments     CrewAssignment[]
 
   @@index([status, startsAt])
 }
@@ -376,6 +385,60 @@ model BookingParticipant {
   @@index([accountId])
 }
 
+model CalendarResource {
+  id          String   @id @default(uuid())
+  type        String
+  name        String
+  referenceId String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  allocations     CalendarAllocation[]
+  crewAssignments CrewAssignment[]
+
+  @@index([type, active])
+  @@index([referenceId])
+}
+
+model CalendarAllocation {
+  id         String   @id @default(uuid())
+  tripId     String
+  resourceId String
+  startsAt   DateTime
+  endsAt     DateTime
+  status     String   @default("ACTIVE")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  trip     Trip             @relation(fields: [tripId], references: [id], onDelete: Restrict)
+  resource CalendarResource @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+
+  @@index([resourceId, startsAt, endsAt])
+  @@index([tripId, status])
+}
+
+model CrewAssignment {
+  id                   String    @id @default(uuid())
+  tripId               String
+  resourceId           String
+  accountId            String
+  roleType             String
+  status               String    @default("PENDING")
+  replacesAssignmentId String?
+  respondedAt          DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  trip     Trip             @relation(fields: [tripId], references: [id], onDelete: Restrict)
+  resource CalendarResource @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+  account  Account          @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([tripId, status])
+  @@index([accountId, status])
+  @@index([resourceId])
+}
+
 enum OperationalDecision {
   ALLOWED
   REVIEW_REQUIRED
@@ -403,7 +466,7 @@ enum DiveLogStatus {
 }
 
 model DiveLog {
-  id                  String              @id @default(uuid())
+  id                  String             @id @default(uuid())
   accountId           String?
   sourceTripId        String?
   sourceParticipantId String?
@@ -415,14 +478,14 @@ model DiveLog {
   buddyName           String?
   instructorName      String?
   notes               String?
-  status              DiveLogStatus       @default(DRAFT)
+  status              DiveLogStatus      @default(DRAFT)
   verifiedAt          DateTime?
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
 
-  account           Account?             @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  sourceTrip        Trip?                @relation("TripDiveLogs", fields: [sourceTripId], references: [id], onDelete: Restrict)
-  sourceParticipant BookingParticipant?  @relation("ParticipantDiveLogs", fields: [sourceParticipantId], references: [id], onDelete: Restrict)
+  account           Account?            @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  sourceTrip        Trip?               @relation("TripDiveLogs", fields: [sourceTripId], references: [id], onDelete: Restrict)
+  sourceParticipant BookingParticipant? @relation("ParticipantDiveLogs", fields: [sourceParticipantId], references: [id], onDelete: Restrict)
 
   @@unique([sourceParticipantId, sourceTripId])
   @@index([accountId, diveDate])
