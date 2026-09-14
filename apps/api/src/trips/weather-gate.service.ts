@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { DatabaseService } from '../database/database.service';
 
 export type WeatherGateMode = 'ENFORCE' | 'ADVISORY';
 export type WeatherDecision = 'ALLOWED' | 'REVIEW_REQUIRED' | 'DEFERRED' | 'UNAVAILABLE';
@@ -15,25 +17,61 @@ export type WeatherSnapshot = {
   reason?: string;
 };
 
+export type WeatherGateSettings = {
+  enabled: boolean;
+  mode: WeatherGateMode;
+  provider: string;
+};
+
+type SettingRow = { value: Prisma.JsonValue };
+
 @Injectable()
 export class WeatherGateService {
-  private enabled = false;
-  private mode: WeatherGateMode = 'ADVISORY';
+  constructor(private readonly db: DatabaseService) {}
 
-  settings() {
-    return { enabled: this.enabled, mode: this.mode, provider: 'NOT_SELECTED' };
+  private defaults(): WeatherGateSettings {
+    return { enabled: false, mode: 'ADVISORY', provider: 'NOT_SELECTED' };
   }
 
-  configure(input: { enabled?: boolean; mode?: WeatherGateMode }) {
-    if (typeof input.enabled === 'boolean') this.enabled = input.enabled;
-    if (input.mode === 'ENFORCE' || input.mode === 'ADVISORY') this.mode = input.mode;
-    return this.settings();
+  async settings(): Promise<WeatherGateSettings> {
+    const rows = await this.db.$queryRaw<SettingRow[]>`
+      SELECT "value" FROM "OperationalSetting" WHERE "key" = 'WEATHER_GATE' LIMIT 1
+    `;
+    const value = rows[0]?.value;
+    if (!value || Array.isArray(value) || typeof value !== 'object') return this.defaults();
+    const record = value as Record<string, unknown>;
+    return {
+      enabled: record.enabled === true,
+      mode: record.mode === 'ENFORCE' ? 'ENFORCE' : 'ADVISORY',
+      provider: typeof record.provider === 'string' ? record.provider : 'NOT_SELECTED',
+    };
   }
 
-  evaluate(snapshot?: WeatherSnapshot | null) {
-    if (!snapshot) return { blocking: false, decision: 'UNAVAILABLE' as const, reason: 'Weather data unavailable.' };
+  async configure(input: { enabled?: boolean; mode?: WeatherGateMode }) {
+    const current = await this.settings();
+    const next: WeatherGateSettings = {
+      ...current,
+      enabled: typeof input.enabled === 'boolean' ? input.enabled : current.enabled,
+      mode: input.mode === 'ENFORCE' || input.mode === 'ADVISORY' ? input.mode : current.mode,
+    };
+    await this.db.$executeRaw`
+      INSERT INTO "OperationalSetting" ("key", "value", "updatedAt")
+      VALUES ('WEATHER_GATE', ${JSON.stringify(next)}::jsonb, NOW())
+      ON CONFLICT ("key") DO UPDATE SET "value" = EXCLUDED."value", "updatedAt" = NOW()
+    `;
+    return next;
+  }
+
+  evaluate(snapshot: WeatherSnapshot | null | undefined, settings: WeatherGateSettings) {
+    if (!snapshot) {
+      return {
+        blocking: settings.enabled && settings.mode === 'ENFORCE',
+        decision: 'UNAVAILABLE' as const,
+        reason: 'Weather data unavailable.',
+      };
+    }
     const decision = snapshot.decision ?? 'UNAVAILABLE';
-    const blocking = this.enabled && this.mode === 'ENFORCE' && decision !== 'ALLOWED';
+    const blocking = settings.enabled && settings.mode === 'ENFORCE' && decision !== 'ALLOWED';
     return { blocking, decision, reason: snapshot.reason ?? null };
   }
 }
