@@ -1,5 +1,4 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { WeatherGateService, WeatherSnapshot } from './weather-gate.service';
 
@@ -17,7 +16,7 @@ export class CalendarAllocationService {
   async resources(){return this.db.$queryRaw<ResourceRow[]>`SELECT "id","type","name","active" FROM "CalendarResource" ORDER BY "type","name"`;}
   async tripAllocations(tripId:string){return this.db.$queryRaw<AllocationWithResourceRow[]>`SELECT a."id",a."tripId",a."resourceId",a."startsAt",a."endsAt",a."status",r."type" AS "resourceType",r."name" AS "resourceName" FROM "CalendarAllocation" a JOIN "CalendarResource" r ON r."id"=a."resourceId" WHERE a."tripId"=${tripId} AND a."status"='ACTIVE' ORDER BY r."type",r."name"`;}
   private weatherFromItems(items:JsonLike):WeatherSnapshot|null{if(!items||Array.isArray(items)||typeof items!=='object')return null;const weather=(items as Record<string,unknown>).weather;if(!weather||Array.isArray(weather)||typeof weather!=='object')return null;return weather as WeatherSnapshot;}
-  private requiredResourceTypes(type:string){const normalized=type.toUpperCase();if(normalized.includes('BOAT'))return ['BOAT'];return [];}
+  private requiredResourceTypes(type:string){const normalized=type.toUpperCase();if(normalized.includes('BOAT'))return ['BOAT'];if(normalized.includes('SHORE'))return ['SITE'];return [];}
 
   async readinessForTrip(tripId:string):Promise<OperationalReadiness>{
     const trip=await this.db.trip.findUnique({where:{id:tripId},select:{startsAt:true,endsAt:true}});if(!trip)throw new NotFoundException('Trip not found.');
@@ -37,14 +36,26 @@ export class CalendarAllocationService {
       const weather=this.weatherGate.evaluate(snapshot,gate);
       const tripCrew=crew.filter((m:CrewReadinessRow)=>m.tripId===trip.id);
       const tripResources=allocations.filter((a:AllocationWithResourceRow)=>a.tripId===trip.id);
-      const crewSummary={total:tripCrew.length,accepted:tripCrew.filter((m:CrewReadinessRow)=>m.status==='ACCEPTED').length,pending:tripCrew.filter((m:CrewReadinessRow)=>m.status==='PENDING').length,rejected:tripCrew.filter((m:CrewReadinessRow)=>m.status==='REJECTED').length,replacementRequired:tripCrew.filter((m:CrewReadinessRow)=>m.status==='REJECTED').length,ready:tripCrew.length>0&&tripCrew.every((m:CrewReadinessRow)=>m.status==='ACCEPTED')};
+      const crewSummary={total:tripCrew.length,accepted:tripCrew.filter((m:CrewReadinessRow)=>m.status==='ACCEPTED').length,pending:tripCrew.filter((m:CrewReadinessRow)=>m.status==='PENDING').length,rejected:tripCrew.filter((m:CrewReadinessRow)=>m.status==='REJECTED').length,replacementRequired:tripCrew.filter((m:CrewReadinessRow)=>m.status==='REJECTED'||m.status==='REASSIGNED').length,ready:tripCrew.length>0&&tripCrew.every((m:CrewReadinessRow)=>m.status==='ACCEPTED')};
       const required=this.requiredResourceTypes(trip.type),allocatedTypes=new Set(tripResources.map((r:AllocationWithResourceRow)=>r.resourceType)),missing=required.filter((type:string)=>!allocatedTypes.has(type));
-      const resourcesReady=tripResources.length>0&&missing.length===0,safetyReady=latestSafety?.decision==='ALLOWED',weatherReady=weather.decision==='ALLOWED'||(!gate.enabled&&weather.decision!=='DEFERRED'),checks={crew:crewSummary.ready,safety:safetyReady,weather:weatherReady,resources:resourcesReady};
+      const resourcesReady=required.length===0||missing.length===0,safetyReady=latestSafety?.decision==='ALLOWED',weatherReady=weather.decision==='ALLOWED'||(!gate.enabled&&weather.decision!=='DEFERRED'),checks={crew:crewSummary.ready,safety:safetyReady,weather:weatherReady,resources:resourcesReady};
       const blockers=Object.entries(checks).filter(([,ok])=>!ok).map(([key])=>key);const readinessStatus:OperationalReadiness['status']=blockers.length===0?'READY':(latestSafety?.decision==='DEFERRED'||weather.decision==='DEFERRED'?'NOT_READY':'REVIEW_REQUIRED');
       const readiness:OperationalReadiness={status:readinessStatus,checks,blockers,missingResourceTypes:missing};
       return {id:trip.id,title:trip.title,type:trip.type,startsAt:trip.startsAt,endsAt:trip.endsAt,capacity:trip.capacity,status:trip.status,bookedSeats,remainingSeats:Math.max(0,trip.capacity-bookedSeats),safety:latestSafety,weather:{snapshot,gate,evaluation:weather},readiness,crew:{summary:crewSummary,members:tripCrew.map((m:CrewReadinessRow)=>({assignmentId:m.id,accountId:m.accountId,resourceId:m.resourceId,roleType:m.roleType,status:m.status,name:[m.firstName,m.lastName].filter(Boolean).join(' ')||m.resourceName,resourceName:m.resourceName}))},resources:tripResources.map((a:AllocationWithResourceRow)=>({id:a.id,resourceId:a.resourceId,startsAt:a.startsAt,endsAt:a.endsAt,status:a.status,resource:{type:a.resourceType,name:a.resourceName}}))};
     });
   }
+
   async assertResourcesAvailable(resourceIds:string[],startsAt:Date,endsAt:Date,excludeTripId?:string){for(const resourceId of resourceIds){const rows=await this.db.$queryRaw<Array<{id:string;tripId:string}>>`SELECT a."id",a."tripId" FROM "CalendarAllocation" a JOIN "CalendarResource" r ON r."id"=a."resourceId" WHERE a."resourceId"=${resourceId} AND r."active"=TRUE AND a."status"='ACTIVE' AND a."startsAt"<${endsAt} AND a."endsAt">${startsAt} AND (${excludeTripId??null}::text IS NULL OR a."tripId"<>${excludeTripId??null}) LIMIT 1`;if(rows.length)throw new ConflictException('Calendar resource conflict detected.');}}
-  async allocate(tripId:string,resourceIds:string[]){const trip=await this.db.trip.findUnique({where:{id:tripId}});if(!trip)throw new NotFoundException('Trip not found.');const unique=[...new Set(resourceIds.filter(Boolean))];if(unique.length){const valid=await this.db.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "CalendarResource" WHERE "active"=TRUE AND "id"=ANY(${unique}::text[])`;if(valid.length!==unique.length)throw new BadRequestException('One or more calendar resources are invalid or inactive.');}await this.assertResourcesAvailable(unique,trip.startsAt,trip.endsAt,tripId);await this.db.$transaction(async(tx:Prisma.TransactionClient)=>{await tx.$executeRaw`UPDATE "CalendarAllocation" SET "status"='INACTIVE',"updatedAt"=NOW() WHERE "tripId"=${tripId} AND "status"='ACTIVE'`;for(const resourceId of unique)await tx.$executeRaw`INSERT INTO "CalendarAllocation"("id","tripId","resourceId","startsAt","endsAt","status","createdAt","updatedAt") VALUES(gen_random_uuid()::text,${tripId},${resourceId},${trip.startsAt},${trip.endsAt},'ACTIVE',NOW(),NOW())`;});return this.tripAllocations(tripId);}
+
+  async allocate(tripId:string,resourceIds:string[]){
+    const unique=[...new Set(resourceIds.filter(Boolean))];
+    await this.db.serializable(async tx=>{
+      const trip=await tx.trip.findUnique({where:{id:tripId}});if(!trip)throw new NotFoundException('Trip not found.');
+      if(unique.length){const valid=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "CalendarResource" WHERE "active"=TRUE AND "id"=ANY(${unique}::text[])`;if(valid.length!==unique.length)throw new BadRequestException('One or more calendar resources are invalid or inactive.');}
+      for(const resourceId of unique){const conflicts=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "CalendarAllocation" WHERE "resourceId"=${resourceId} AND "status"='ACTIVE' AND "startsAt"<${trip.endsAt} AND "endsAt">${trip.startsAt} AND "tripId"<>${tripId} LIMIT 1`;if(conflicts.length)throw new ConflictException('Calendar resource conflict detected.');}
+      await tx.$executeRaw`UPDATE "CalendarAllocation" SET "status"='INACTIVE',"updatedAt"=NOW() WHERE "tripId"=${tripId} AND "status"='ACTIVE'`;
+      for(const resourceId of unique)await tx.$executeRaw`INSERT INTO "CalendarAllocation"("id","tripId","resourceId","startsAt","endsAt","status","createdAt","updatedAt") VALUES(gen_random_uuid()::text,${tripId},${resourceId},${trip.startsAt},${trip.endsAt},'ACTIVE',NOW(),NOW())`;
+    });
+    return this.tripAllocations(tripId);
+  }
 }
