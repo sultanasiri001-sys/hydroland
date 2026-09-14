@@ -1,4 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 
 type CrewResourceRow = { id: string; type: string; name: string; referenceId: string };
@@ -36,6 +37,17 @@ export class CrewAssignmentService {
       select: { accountId: true },
     });
     await Promise.all(admins.map((admin: { accountId: string }) => this.notify(admin.accountId, type, payload)));
+  }
+
+  private async hasOverdueAlert(assignmentId: string) {
+    const rows = await this.db.$queryRaw<Array<{ exists: boolean }>>`
+      SELECT EXISTS(
+        SELECT 1 FROM "Notification"
+        WHERE "type" = 'CREW_RESPONSE_OVERDUE'
+          AND "payload"->>'assignmentId' = ${assignmentId}
+      ) AS "exists"
+    `;
+    return rows[0]?.exists === true;
   }
 
   async dispatchForConfirmedBooking(tripId: string, bookingId: string) {
@@ -119,17 +131,15 @@ export class CrewAssignmentService {
     for (const assignment of pending) {
       const replacement = await this.findReplacement(assignment);
       if (replacement) {
-        await this.db.$executeRaw`
-          UPDATE "CrewAssignment" SET "status" = 'REASSIGNED', "respondedAt" = NOW(), "updatedAt" = NOW()
-          WHERE "id" = ${assignment.id} AND "status" = 'PENDING'
-        `;
-        await this.replaceAssignment(assignment, replacement);
+        const replacementAssignment = await this.replaceAssignment(assignment, replacement, 'REASSIGNED');
+        if (!replacementAssignment) continue;
         await this.notify(assignment.accountId, 'CREW_ASSIGNMENT_ESCALATED', {
           assignmentId: assignment.id, tripId: assignment.tripId, tripTitle: assignment.tripTitle,
           reason: 'NO_RESPONSE_BEFORE_DEADLINE', startsAt: assignment.startsAt,
         });
         reassigned += 1;
       } else {
+        if (await this.hasOverdueAlert(assignment.id)) continue;
         await this.notifyAdmins('CREW_RESPONSE_OVERDUE', {
           assignmentId: assignment.id, tripId: assignment.tripId, tripTitle: assignment.tripTitle,
           accountId: assignment.accountId, roleType: assignment.roleType, startsAt: assignment.startsAt,
@@ -152,7 +162,7 @@ export class CrewAssignmentService {
     if (response === 'ACCEPTED') {
       await this.db.$executeRaw`
         UPDATE "CrewAssignment" SET "status" = 'ACCEPTED', "respondedAt" = NOW(), "updatedAt" = NOW()
-        WHERE "id" = ${assignmentId}
+        WHERE "id" = ${assignmentId} AND "status" = 'PENDING'
       `;
       await this.notifyAdmins('CREW_ASSIGNMENT_ACCEPTED', { assignmentId, tripId: assignment.tripId, accountId });
       return { assignmentId, status: 'ACCEPTED' };
@@ -160,7 +170,7 @@ export class CrewAssignmentService {
 
     await this.db.$executeRaw`
       UPDATE "CrewAssignment" SET "status" = 'REJECTED', "respondedAt" = NOW(), "updatedAt" = NOW()
-      WHERE "id" = ${assignmentId}
+      WHERE "id" = ${assignmentId} AND "status" = 'PENDING'
     `;
     const replacement = await this.findReplacement(assignment);
     if (!replacement) {
@@ -170,6 +180,7 @@ export class CrewAssignmentService {
       return { assignmentId, status: 'REJECTED', replacement: null, requiresAdminAction: true };
     }
     const replacementAssignment = await this.replaceAssignment(assignment, replacement);
+    if (!replacementAssignment) throw new ConflictException('Crew replacement could not be created.');
     return { assignmentId, status: 'REJECTED', replacement: {
       assignmentId: replacementAssignment.id, accountId: replacement.referenceId,
       resourceId: replacement.id, resourceName: replacement.name,
@@ -202,30 +213,47 @@ export class CrewAssignmentService {
     return candidates[0] ?? null;
   }
 
-  private async replaceAssignment(assignment: AssignmentRow, replacement: CrewResourceRow) {
-    await this.db.$executeRaw`
-      UPDATE "CalendarAllocation" SET "resourceId" = ${replacement.id}, "updatedAt" = NOW()
-      WHERE "tripId" = ${assignment.tripId} AND "resourceId" = ${assignment.resourceId} AND "status" = 'ACTIVE'
-    `;
-    const created = await this.db.$queryRaw<AssignmentRow[]>`
-      INSERT INTO "CrewAssignment" (
-        "id", "tripId", "resourceId", "accountId", "roleType", "status", "replacesAssignmentId", "createdAt", "updatedAt"
-      ) VALUES (
-        gen_random_uuid()::text, ${assignment.tripId}, ${replacement.id}, ${replacement.referenceId},
-        ${assignment.roleType}, 'PENDING', ${assignment.id}, NOW(), NOW()
-      ) RETURNING *
-    `;
+  private async replaceAssignment(
+    assignment: AssignmentRow,
+    replacement: CrewResourceRow,
+    previousStatus?: 'REASSIGNED',
+  ): Promise<AssignmentRow | null> {
+    const created = await this.db.$transaction(async (tx: Prisma.TransactionClient) => {
+      if (previousStatus) {
+        const changed = await tx.$executeRaw`
+          UPDATE "CrewAssignment"
+          SET "status" = ${previousStatus}, "respondedAt" = NOW(), "updatedAt" = NOW()
+          WHERE "id" = ${assignment.id} AND "status" = 'PENDING'
+        `;
+        if (!changed) return null;
+      }
+      await tx.$executeRaw`
+        UPDATE "CalendarAllocation" SET "resourceId" = ${replacement.id}, "updatedAt" = NOW()
+        WHERE "tripId" = ${assignment.tripId} AND "resourceId" = ${assignment.resourceId} AND "status" = 'ACTIVE'
+      `;
+      const rows = await tx.$queryRaw<AssignmentRow[]>`
+        INSERT INTO "CrewAssignment" (
+          "id", "tripId", "resourceId", "accountId", "roleType", "status", "replacesAssignmentId", "createdAt", "updatedAt"
+        ) VALUES (
+          gen_random_uuid()::text, ${assignment.tripId}, ${replacement.id}, ${replacement.referenceId},
+          ${assignment.roleType}, 'PENDING', ${assignment.id}, NOW(), NOW()
+        ) RETURNING *
+      `;
+      return rows[0] ?? null;
+    });
+
+    if (!created) return null;
     const trip = await this.db.trip.findUnique({ where: { id: assignment.tripId } });
     await this.notify(replacement.referenceId, 'TRIP_CREW_ASSIGNMENT', {
-      assignmentId: created[0].id, tripId: assignment.tripId, tripTitle: trip?.title ?? 'HYDROLAND Trip',
+      assignmentId: created.id, tripId: assignment.tripId, tripTitle: trip?.title ?? 'HYDROLAND Trip',
       startsAt: trip?.startsAt ?? null, endsAt: trip?.endsAt ?? null, roleType: assignment.roleType,
       resourceName: replacement.name, replacementForAssignmentId: assignment.id, actionRequired: true,
     });
     await this.notifyAdmins('CREW_REASSIGNED', {
       tripId: assignment.tripId, rejectedAssignmentId: assignment.id,
-      replacementAssignmentId: created[0].id, replacementAccountId: replacement.referenceId,
+      replacementAssignmentId: created.id, replacementAccountId: replacement.referenceId,
       roleType: assignment.roleType,
     });
-    return created[0];
+    return created;
   }
 }
