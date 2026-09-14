@@ -37,9 +37,12 @@ export class DatabaseService extends PrismaClient implements OnModuleInit, OnMod
   async serializable<T>(work: (tx: Prisma.TransactionClient) => Promise<T>, maxAttempts = 3): Promise<T> {
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
-        return await this.$transaction(work, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-      } catch (error) {
-        const retryable = error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034';
+        return await this.$transaction(work, { isolationLevel: 'Serializable' });
+      } catch (error: unknown) {
+        const code = typeof error === 'object' && error !== null && 'code' in error
+          ? String((error as { code?: unknown }).code ?? '')
+          : '';
+        const retryable = code === 'P2034';
         if (!retryable || attempt === maxAttempts) throw error;
       }
     }
