@@ -103,6 +103,7 @@ model Account {
   notifications    Notification[]
   bookings         Booking[]
   payments         Payment[]
+  diveLogs         DiveLog[]
 }
 
 model Session {
@@ -242,7 +243,6 @@ model AuditEvent {
   @@index([actorId, occurredAt])
 }
 
-
 enum TripStatus { DRAFT OPEN CLOSED CANCELLED COMPLETED }
 enum BookingStatus { PENDING CONFIRMED CANCELLED }
 
@@ -275,7 +275,6 @@ model Booking {
   @@index([tripId,status])
 }
 
-
 enum OperationalDecision { ALLOWED REVIEW_REQUIRED DEFERRED }
 model SafetyChecklist {
  id String @id @default(uuid())
@@ -288,6 +287,27 @@ model SafetyChecklist {
  updatedAt DateTime @updatedAt
  trip Trip @relation(fields:[tripId],references:[id],onDelete:Restrict)
  @@index([tripId,decision])
+}
+
+enum DiveLogStatus { DRAFT VERIFIED REJECTED }
+model DiveLog {
+ id String @id @default(uuid())
+ accountId String
+ siteName String
+ regionCode String?
+ diveDate DateTime
+ maxDepthM Float
+ durationMin Int
+ buddyName String?
+ instructorName String?
+ notes String?
+ status DiveLogStatus @default(DRAFT)
+ verifiedAt DateTime?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ account Account @relation(fields:[accountId],references:[id],onDelete:Restrict)
+ @@index([accountId,diveDate])
+ @@index([accountId,status])
 }
 
 enum PaymentStatus { CREATED PENDING AUTHORIZED CAPTURED FAILED CANCELLED REFUNDED }
