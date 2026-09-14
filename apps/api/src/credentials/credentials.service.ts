@@ -2,6 +2,20 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { DatabaseService } from '../database/database.service';
 import { PolicyControlService } from '../trips/policy-control.service';
 
+type CredentialWithDocuments = {
+  id:string;
+  personId:string;
+  issuer:string;
+  title:string;
+  credentialNumber:string|null;
+  issuedAt:Date|null;
+  expiresAt:Date|null;
+  verificationStatus:string;
+  createdAt:Date;
+  updatedAt:Date;
+  documents:unknown[];
+};
+
 @Injectable()
 export class CredentialsService {
   constructor(private readonly db:DatabaseService,private readonly policies:PolicyControlService){}
@@ -9,9 +23,9 @@ export class CredentialsService {
   async list(accountId:string){
     const a=await this.db.account.findUniqueOrThrow({where:{id:accountId},select:{personId:true}});
     const [verificationPolicy,expiryPolicy]=await Promise.all([this.policies.decision('DOCUMENT','VERIFICATION'),this.policies.decision('DOCUMENT','EXPIRY')]);
-    const rows=await this.db.credential.findMany({where:{personId:a.personId},include:{documents:true},orderBy:{createdAt:'desc'}});
+    const rows=await this.db.credential.findMany({where:{personId:a.personId},include:{documents:true},orderBy:{createdAt:'desc'}}) as CredentialWithDocuments[];
     const now=new Date();
-    return rows.map(credential=>{
+    return rows.map((credential:CredentialWithDocuments)=>{
       const verified=['VERIFIED','DOCUMENT_VERIFIED'].includes(credential.verificationStatus),expired=Boolean(credential.expiresAt&&credential.expiresAt<=now),issues:string[]=[];
       if(!verified&&!verificationPolicy.bypass)issues.push('DOCUMENT_VERIFICATION');
       if(expired&&!expiryPolicy.bypass)issues.push('DOCUMENT_EXPIRY');
