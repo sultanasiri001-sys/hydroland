@@ -1,0 +1,11 @@
+(()=>{
+ const main=document.getElementById('main'); if(!main)return;
+ const login=document.createElement('section');login.className='hl-login';login.innerHTML=`<div class="hl-login-brand"><span class="hl-logo">H</span><b>HYDROLAND</b><small>هيدرولاند</small></div><div class="hl-login-copy"><small>ONE OCEAN · MANY OPPORTUNITIES</small><h2>أهلًا بك في هيدرولاند</h2><p>مغامرتك القادمة تبدأ من هنا.</p></div><div class="hl-login-actions"><button class="hl-login-primary">تسجيل الدخول</button><button class="hl-login-secondary">إنشاء حساب</button><button class="hl-login-guest">دخول كضيف</button></div><footer>عربي · EN</footer>`;
+ document.body.appendChild(login);
+ const close=()=>{login.classList.add('hidden');sessionStorage.setItem('hl-preview-seen','1')};
+ login.querySelectorAll('button').forEach(b=>b.addEventListener('click',close));
+ if(sessionStorage.getItem('hl-preview-seen'))login.classList.add('hidden');
+ const mobile=document.querySelector('.mobile-welcome');if(mobile){mobile.innerHTML=`<div><small>مرحبًا سلطان 👋</small><strong>اكتشف البحر بطريقتك</strong><span>رحلات مختارة، تدريب وسلامة في مكان واحد</span></div><button data-hl-action="trip">رحلتي القادمة</button>`}
+ const map=document.querySelector('.map-card');if(map){map.innerHTML=`<div class="hl-map"><span class="hl-coast coast-a"></span><span class="hl-coast coast-b"></span><i class="hl-pin p1"><b>القحمة</b></i><i class="hl-pin p2"><b>جزيرة سمر</b></i><i class="hl-pin p3"><b>البرك · عمق</b></i><div class="hl-map-grid"></div></div><div class="hl-map-info"><p class="eyebrow">HYDROLAND MAP</p><h3>خريطة مواقع الغوص</h3><p>استكشف المواقع، نوع الرحلة وحالة التشغيل.</p><button data-hl-action="map">فتح الخريطة</button></div>`}
+ document.querySelectorAll('[data-hl-action]').forEach(b=>b.addEventListener('click',()=>{const t=document.getElementById('toast');if(t){t.textContent=b.dataset.hlAction==='map'?'تم فتح خريطة مواقع هيدرولاند':'تم فتح الرحلة القادمة';t.classList.add('visible');setTimeout(()=>t.classList.remove('visible'),2200)}}));
+})();
