@@ -13,7 +13,7 @@ type TripListRow = {
   safetyChecklists: Array<{
     id: string;
     decision: string;
-    items: Prisma.JsonValue;
+    items: unknown;
     notes: string | null;
     decidedAt: Date | null;
     createdAt: Date;
@@ -25,7 +25,7 @@ type TripListRow = {
 export class TripsService {
   constructor(private readonly db: DatabaseService, private readonly weatherGate: WeatherGateService) {}
 
-  private weatherFromItems(items: Prisma.JsonValue): WeatherSnapshot | null {
+  private weatherFromItems(items: unknown): WeatherSnapshot | null {
     if (!items || Array.isArray(items) || typeof items !== 'object') return null;
     const weather = (items as Record<string, unknown>).weather;
     if (!weather || Array.isArray(weather) || typeof weather !== 'object') return null;
