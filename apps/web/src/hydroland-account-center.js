@@ -61,6 +61,7 @@
   const bind=()=>{
     const nextTrip=document.querySelector('.mobile-welcome button');if(nextTrip&&!nextTrip.dataset.hlBound){nextTrip.dataset.hlBound='1';nextTrip.removeAttribute('data-toast');nextTrip.addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();renderBookings()},true)}
     document.querySelectorAll('.profile-list button').forEach(button=>{const label=button.textContent||'';if(label.includes('الإشعارات')&&!button.dataset.hlBound){button.dataset.hlBound='1';button.removeAttribute('data-toast');button.addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();document.getElementById('profile-dialog')?.close();renderNotifications()},true)}});
+    const topActions=document.querySelectorAll('.top-actions .icon-button');const notificationsButton=topActions[1];if(notificationsButton&&!notificationsButton.dataset.hlBound){notificationsButton.dataset.hlBound='1';notificationsButton.setAttribute('aria-label','فتح الإشعارات');notificationsButton.addEventListener('click',event=>{event.preventDefault();renderNotifications()})}
     const profileList=document.querySelector('.profile-list');if(profileList&&!profileList.querySelector('[data-hl-bookings]')){const button=document.createElement('button');button.dataset.hlBookings='1';button.innerHTML='<span>⌖</span>حجوزاتي <b>←</b>';button.addEventListener('click',()=>{document.getElementById('profile-dialog')?.close();renderBookings()});profileList.prepend(button)}
   };
   document.addEventListener('hydroland:auth-changed',bind);bind();
