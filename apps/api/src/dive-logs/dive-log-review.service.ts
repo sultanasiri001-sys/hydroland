@@ -3,6 +3,7 @@ import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 
 type ReviewStatus = 'VERIFIED' | 'REJECTED';
+type ReviewerRole = { role: 'ADMIN' | 'REVIEWER' | 'INSTRUCTOR' };
 const REVIEW_STATUSES: ReviewStatus[] = ['VERIFIED', 'REJECTED'];
 
 @Injectable()
@@ -13,14 +14,14 @@ export class DiveLogReviewService {
   ) {}
 
   private async reviewerScope(accountId: string) {
-    const roles = await this.db.roleAssignment.findMany({
+    const roles = (await this.db.roleAssignment.findMany({
       where: { accountId, status: 'ACTIVE', role: { in: ['ADMIN', 'REVIEWER', 'INSTRUCTOR'] } },
       select: { role: true },
-    });
-    if (roles.some((entry) => entry.role === 'ADMIN' || entry.role === 'REVIEWER')) {
+    })) as ReviewerRole[];
+    if (roles.some((entry: ReviewerRole) => entry.role === 'ADMIN' || entry.role === 'REVIEWER')) {
       return { unrestricted: true, instructorName: null as string | null };
     }
-    if (roles.some((entry) => entry.role === 'INSTRUCTOR')) {
+    if (roles.some((entry: ReviewerRole) => entry.role === 'INSTRUCTOR')) {
       const account = await this.db.account.findUnique({
         where: { id: accountId },
         select: { person: { select: { firstName: true, lastName: true } } },
