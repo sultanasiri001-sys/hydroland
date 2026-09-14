@@ -134,3 +134,47 @@ enum PaymentStatus { CREATED PENDING AUTHORIZED CAPTURED FAILED CANCELLED REFUND
 enum InvoiceStatus { DRAFT ISSUED PAID VOID }
 model Payment { id String @id @default(uuid()) bookingId String accountId String amountMinor Int currency String @default("SAR") status PaymentStatus @default(CREATED) idempotencyKey String @unique providerReference String? @unique createdAt DateTime @default(now()) updatedAt DateTime @updatedAt booking Booking @relation(fields:[bookingId],references:[id],onDelete:Restrict) account Account @relation(fields:[accountId],references:[id],onDelete:Restrict) invoice Invoice? @@index([accountId,status]) }
 model Invoice { id String @id @default(uuid()) paymentId String @unique number String @unique status InvoiceStatus @default(DRAFT) issuedAt DateTime? createdAt DateTime @default(now()) payment Payment @relation(fields:[paymentId],references:[id],onDelete:Restrict) }
+
+model ThemeSchedule {
+  id String @id
+  themeId String
+  name String?
+  status String @default("DRAFT")
+  startsAt DateTime
+  endsAt DateTime
+  createdById String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([status,startsAt,endsAt])
+  @@index([themeId])
+}
+
+model BoatResourceCompliance {
+  id String @id
+  resourceId String @unique
+  registrationNumber String?
+  registrationStatus String @default("PENDING")
+  navigationLicenseNumber String?
+  navigationLicenseExpiresAt DateTime?
+  safetyCertificateExpiresAt DateTime?
+  passengerLimit Int?
+  notes String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([registrationStatus])
+}
+
+model TripComplianceReview {
+  id String @id
+  tripId String @unique
+  regulatoryStatus String @default("PENDING")
+  permitStatus String @default("PENDING")
+  permitReference String?
+  authorityReference String?
+  notes String?
+  reviewedByAccountId String?
+  reviewedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([regulatoryStatus,permitStatus])
+}
