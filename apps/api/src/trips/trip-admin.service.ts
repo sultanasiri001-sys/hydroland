@@ -31,6 +31,9 @@ export class TripAdminService {
     if (input.status && !TRIP_STATUSES.includes(input.status)) {
       throw new BadRequestException('Invalid trip status.');
     }
+    if (input.status === 'COMPLETED') {
+      throw new BadRequestException('Use the governed trip completion workflow.');
+    }
     const startsAt = new Date(input.startsAt);
     const endsAt = new Date(input.endsAt);
     if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()) || endsAt <= startsAt) {
@@ -50,6 +53,9 @@ export class TripAdminService {
 
   async setStatus(id: string, status: TripStatusValue) {
     if (!TRIP_STATUSES.includes(status)) throw new BadRequestException('Invalid trip status.');
+    if (status === 'COMPLETED') {
+      throw new BadRequestException('Use the governed trip completion workflow.');
+    }
     const trip = await this.db.trip.findUnique({ where: { id } });
     if (!trip) throw new NotFoundException('Trip not found.');
     if (status === 'OPEN' && trip.startsAt <= new Date()) {
