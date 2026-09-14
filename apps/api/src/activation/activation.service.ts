@@ -4,7 +4,9 @@ import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 
 type SelfServiceRole='DIVER'|'INSTRUCTOR'|'DIVE_CENTER'|'BOAT_OWNER'|'STAFF'|'ORGANIZATION';
+type ActivationDecision='APPROVED'|'REJECTED'|'MORE_INFORMATION_REQUIRED';
 const SELF_SERVICE_ROLES:SelfServiceRole[]=['DIVER','INSTRUCTOR','DIVE_CENTER','BOAT_OWNER','STAFF','ORGANIZATION'];
+const REVIEWABLE_STATES=['SUBMITTED','UNDER_REVIEW','RESUBMITTED'] as const;
 
 @Injectable()
 export class ActivationService {
@@ -25,19 +27,34 @@ export class ActivationService {
 
   async mine(accountId:string){return this.db.activationRequest.findMany({where:{applicantId:accountId},include:{roleAssignment:true,decisions:true},orderBy:{createdAt:'desc'}})}
 
-  async decide(reviewerId:string,requestId:string,outcome:'APPROVED'|'REJECTED',reason?:string){
-    if(!['APPROVED','REJECTED'].includes(outcome))throw new BadRequestException('Invalid activation decision.');
-    if(outcome==='REJECTED'&&(!reason?.trim()||reason.trim().length<5))throw new BadRequestException('A rejection reason of at least five characters is required.');
+  async resubmit(accountId:string,requestId:string){
+    const request=await this.db.activationRequest.findUnique({where:{id:requestId},include:{roleAssignment:true}});
+    if(!request||request.applicantId!==accountId)throw new NotFoundException('Activation request not found.');
+    if(request.status!=='MORE_INFORMATION_REQUIRED')throw new BadRequestException('Only requests awaiting more information can be resubmitted.');
+    const updated=await this.db.$transaction(async(tx:Prisma.TransactionClient)=>{
+      const current=await tx.activationRequest.findUnique({where:{id:requestId}});
+      if(!current||current.status!=='MORE_INFORMATION_REQUIRED')throw new ConflictException('Activation request state changed.');
+      await tx.roleAssignment.update({where:{id:request.roleAssignmentId},data:{status:'PENDING_REVIEW'}});
+      return tx.activationRequest.update({where:{id:requestId},data:{status:'RESUBMITTED',submittedAt:new Date(),decidedAt:null}});
+    });
+    await this.audit.record({action:'ACTIVATION_REQUEST_RESUBMITTED',resource:'ActivationRequest',resourceId:requestId,metadata:{accountId,role:request.roleAssignment.role,previousStatus:request.status,status:'RESUBMITTED'}});
+    return updated;
+  }
+
+  async decide(reviewerId:string,requestId:string,outcome:ActivationDecision,reason?:string){
+    if(!['APPROVED','REJECTED','MORE_INFORMATION_REQUIRED'].includes(outcome))throw new BadRequestException('Invalid activation decision.');
+    const cleanReason=reason?.trim()||null;
+    if((outcome==='REJECTED'||outcome==='MORE_INFORMATION_REQUIRED')&&(!cleanReason||cleanReason.length<5))throw new BadRequestException('A reason of at least five characters is required.');
     const request=await this.db.activationRequest.findUnique({where:{id:requestId},include:{roleAssignment:true}});
     if(!request||request.applicantId===reviewerId)throw new NotFoundException('Request not reviewable.');
-    if(request.status!=='SUBMITTED'&&request.status!=='UNDER_REVIEW')throw new BadRequestException('Invalid request state.');
+    if(!REVIEWABLE_STATES.includes(request.status as (typeof REVIEWABLE_STATES)[number]))throw new BadRequestException('Invalid request state.');
     const result=await this.db.$transaction(async(tx:Prisma.TransactionClient)=>{
-      await tx.reviewDecision.create({data:{activationRequestId:requestId,reviewerId,outcome,reason:reason?.trim()||null}});
-      await tx.activationRequest.update({where:{id:requestId},data:{status:outcome,decidedAt:new Date()}});
-      await tx.roleAssignment.update({where:{id:request.roleAssignmentId},data:{status:outcome==='APPROVED'?'ACTIVE':'REJECTED',activeAt:outcome==='APPROVED'?new Date():null}});
+      await tx.reviewDecision.create({data:{activationRequestId:requestId,reviewerId,outcome,reason:cleanReason}});
+      await tx.activationRequest.update({where:{id:requestId},data:{status:outcome,decidedAt:outcome==='MORE_INFORMATION_REQUIRED'?null:new Date()}});
+      await tx.roleAssignment.update({where:{id:request.roleAssignmentId},data:{status:outcome==='APPROVED'?'ACTIVE':outcome==='REJECTED'?'REJECTED':'PENDING_REVIEW',activeAt:outcome==='APPROVED'?new Date():null}});
       return{id:requestId,status:outcome,role:request.roleAssignment.role};
     });
-    await this.audit.record({action:'ACTIVATION_REQUEST_DECIDED',resource:'ActivationRequest',resourceId:requestId,metadata:{reviewerId,applicantId:request.applicantId,role:request.roleAssignment.role,outcome,reason:reason?.trim()||null}});
+    await this.audit.record({action:'ACTIVATION_REQUEST_DECIDED',resource:'ActivationRequest',resourceId:requestId,metadata:{reviewerId,applicantId:request.applicantId,role:request.roleAssignment.role,previousStatus:request.status,outcome,reason:cleanReason}});
     return result;
   }
 }
