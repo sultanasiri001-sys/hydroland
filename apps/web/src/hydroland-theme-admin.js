@@ -10,8 +10,35 @@
   const token = () => window.HydrolandAuth?.getAccessToken?.();
   const state = (text) => { const el = panel.querySelector('[data-theme-admin-state]'); if (el) el.textContent = text; };
   const authHeaders = (json) => ({ ...(json ? {'Content-Type':'application/json'} : {}), Authorization: 'Bearer ' + token() });
-  const fill = () => { const select = panel.querySelector('[name="themeId"]'); if (!select || !window.HydrolandThemes) return; select.innerHTML = window.HydrolandThemes.list().map(t => '<option value="'+t.id+'">'+t.nameAr+'</option>').join(''); };
-  const render = (items) => { const list = panel.querySelector('[data-theme-admin-list]'); if (!list) return; list.innerHTML = items.length ? items.map(item => '<article><div><strong>'+item.themeId+'</strong><small>'+(item.name || 'بدون اسم')+'</small></div><span>'+item.status+'</span><button data-preview-id="'+item.themeId+'">معاينة</button><button data-status="PUBLISHED" data-id="'+item.id+'">نشر</button><button data-status="ARCHIVED" data-id="'+item.id+'">أرشفة</button></article>').join('') : '<p>لا توجد ثيمات مجدولة.</p>'; list.querySelectorAll('[data-preview-id]').forEach(b => b.onclick = () => window.HydrolandThemes?.apply(b.dataset.previewId)); list.querySelectorAll('[data-status]').forEach(b => b.onclick = async () => { try { state('جارٍ الحفظ'); const r = await fetch(base()+'/themes/admin/schedules/'+b.dataset.id+'/status',{method:'PATCH',headers:authHeaders(true),body:JSON.stringify({status:b.dataset.status})}); if(!r.ok) throw new Error(); await refresh(); } catch { state('تعذر الحفظ'); } }); };
+  const fill = () => {
+    const select = panel.querySelector('[name="themeId"]');
+    if (!select || !window.HydrolandThemes) return;
+    select.textContent = '';
+    window.HydrolandThemes.list().forEach(theme => {
+      const option=document.createElement('option');
+      option.value=String(theme.id||'');
+      option.textContent=String(theme.nameAr||theme.id||'');
+      select.appendChild(option);
+    });
+  };
+  const actionButton=(label,attrs,onClick)=>{const button=document.createElement('button');button.type='button';button.textContent=label;Object.entries(attrs).forEach(([key,value])=>button.dataset[key]=String(value??''));button.onclick=onClick;return button;};
+  const render = (items) => {
+    const list = panel.querySelector('[data-theme-admin-list]');
+    if (!list) return;
+    list.textContent='';
+    if(!Array.isArray(items)||!items.length){const empty=document.createElement('p');empty.textContent='لا توجد ثيمات مجدولة.';list.appendChild(empty);return;}
+    items.forEach(item=>{
+      const article=document.createElement('article'),info=document.createElement('div'),strong=document.createElement('strong'),small=document.createElement('small'),status=document.createElement('span');
+      strong.textContent=String(item.themeId||'—');
+      small.textContent=String(item.name||'بدون اسم');
+      status.textContent=String(item.status||'—');
+      info.append(strong,small);
+      article.append(info,status);
+      article.appendChild(actionButton('معاينة',{previewId:item.themeId},()=>window.HydrolandThemes?.apply(String(item.themeId||''))));
+      ['PUBLISHED','ARCHIVED'].forEach(nextStatus=>article.appendChild(actionButton(nextStatus==='PUBLISHED'?'نشر':'أرشفة',{status:nextStatus,id:item.id},async()=>{try{state('جارٍ الحفظ');const r=await fetch(base()+'/themes/admin/schedules/'+encodeURIComponent(String(item.id||''))+'/status',{method:'PATCH',headers:authHeaders(true),body:JSON.stringify({status:nextStatus})});if(!r.ok)throw new Error();await refresh();}catch{state('تعذر الحفظ');}})));
+      list.appendChild(article);
+    });
+  };
   async function refresh(){ if(!token()){state('يتطلب دخول إداري');return;} try{state('جارٍ التحديث'); const r=await fetch(base()+'/themes/admin/schedules',{headers:authHeaders(false)}); if(!r.ok) throw new Error(); render(await r.json()); state('متصل بالخادم');}catch{state('تعذر الاتصال');} }
   panel.querySelector('[data-preview]').onclick = () => { const id=panel.querySelector('[name="themeId"]').value; window.HydrolandThemes?.apply(id); state('وضع المعاينة'); };
   panel.querySelector('[data-theme-admin-form]').onsubmit = async (e) => { e.preventDefault(); if(!token()){state('يتطلب دخول إداري');return;} const d=Object.fromEntries(new FormData(e.currentTarget).entries()); try{state('جارٍ الحفظ'); const r=await fetch(base()+'/themes/admin/schedules',{method:'POST',headers:authHeaders(true),body:JSON.stringify({themeId:d.themeId,name:d.name||undefined,startsAt:new Date(d.startsAt).toISOString(),endsAt:new Date(d.endsAt).toISOString(),status:d.status})}); if(!r.ok) throw new Error(); e.currentTarget.reset(); fill(); await refresh(); state('تم حفظ الجدولة');}catch{state('تعذر حفظ الجدولة');} };
