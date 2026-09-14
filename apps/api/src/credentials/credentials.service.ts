@@ -59,8 +59,11 @@ export class CredentialsService {
     const credential=await this.db.credential.findFirst({where:{id:credentialId,personId:a.personId,verificationStatus:'UNVERIFIED'},include:{documents:true}});
     if(!credential)throw new NotFoundException('Credential cannot be submitted.');
     if(verificationPolicy.enforce&&!credential.documents.length)throw new ConflictException('At least one supporting document is required while document verification is enforced.');
-    const nextStatus=verificationPolicy.bypass?'DOCUMENT_VERIFIED':'PENDING';
+    if(verificationPolicy.bypass){
+      return{id:credentialId,status:credential.verificationStatus,verificationBypassed:true,policyReview:{required:false,issues:[],states:{verification:verificationPolicy.state}}};
+    }
+    const nextStatus='PENDING';
     await this.db.credential.update({where:{id:credentialId},data:{verificationStatus:nextStatus}});
-    return{id:credentialId,status:nextStatus,policyReview:{required:verificationPolicy.review,issues:verificationPolicy.review?['DOCUMENT_VERIFICATION']:[],states:{verification:verificationPolicy.state}}};
+    return{id:credentialId,status:nextStatus,verificationBypassed:false,policyReview:{required:verificationPolicy.review,issues:verificationPolicy.review?['DOCUMENT_VERIFICATION']:[],states:{verification:verificationPolicy.state}}};
   }
 }
