@@ -37,11 +37,13 @@ export class CalendarAllocationService {
   }
 
   async tripAllocations(tripId: string) {
-    return this.db.$queryRaw<AllocationRow[]>`
-      SELECT "id", "tripId", "resourceId", "startsAt", "endsAt", "status"
-      FROM "CalendarAllocation"
-      WHERE "tripId" = ${tripId}
-      ORDER BY "startsAt" ASC
+    return this.db.$queryRaw<AllocationWithResourceRow[]>`
+      SELECT a."id", a."tripId", a."resourceId", a."startsAt", a."endsAt", a."status",
+             r."type" AS "resourceType", r."name" AS "resourceName"
+      FROM "CalendarAllocation" a
+      JOIN "CalendarResource" r ON r."id" = a."resourceId"
+      WHERE a."tripId" = ${tripId} AND a."status" = 'ACTIVE'
+      ORDER BY r."type" ASC, r."name" ASC
     `;
   }
 
@@ -112,13 +114,15 @@ export class CalendarAllocationService {
   async assertResourcesAvailable(resourceIds: string[], startsAt: Date, endsAt: Date, excludeTripId?: string) {
     for (const resourceId of resourceIds) {
       const rows = await this.db.$queryRaw<Array<{ id: string; tripId: string }>>`
-        SELECT "id", "tripId"
-        FROM "CalendarAllocation"
-        WHERE "resourceId" = ${resourceId}
-          AND "status" = 'ACTIVE'
-          AND "startsAt" < ${endsAt}
-          AND "endsAt" > ${startsAt}
-          AND (${excludeTripId ?? null}::text IS NULL OR "tripId" <> ${excludeTripId ?? null})
+        SELECT a."id", a."tripId"
+        FROM "CalendarAllocation" a
+        JOIN "CalendarResource" r ON r."id" = a."resourceId"
+        WHERE a."resourceId" = ${resourceId}
+          AND r."active" = TRUE
+          AND a."status" = 'ACTIVE'
+          AND a."startsAt" < ${endsAt}
+          AND a."endsAt" > ${startsAt}
+          AND (${excludeTripId ?? null}::text IS NULL OR a."tripId" <> ${excludeTripId ?? null})
         LIMIT 1
       `;
       if (rows.length) throw new ConflictException('Calendar resource conflict detected.');
@@ -130,14 +134,29 @@ export class CalendarAllocationService {
     if (!trip) throw new NotFoundException('Trip not found.');
 
     const unique = [...new Set(resourceIds.filter(Boolean))];
+    if (unique.length) {
+      const valid = await this.db.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "CalendarResource"
+        WHERE "active" = TRUE AND "id" = ANY(${unique}::text[])
+      `;
+      if (valid.length !== unique.length) throw new BadRequestException('One or more calendar resources are invalid or inactive.');
+    }
+
     await this.assertResourcesAvailable(unique, trip.startsAt, trip.endsAt, tripId);
 
-    for (const resourceId of unique) {
-      await this.db.$executeRaw`
-        INSERT INTO "CalendarAllocation" ("id", "tripId", "resourceId", "startsAt", "endsAt", "status", "createdAt", "updatedAt")
-        VALUES (gen_random_uuid()::text, ${tripId}, ${resourceId}, ${trip.startsAt}, ${trip.endsAt}, 'ACTIVE', NOW(), NOW())
+    await this.db.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        UPDATE "CalendarAllocation"
+        SET "status" = 'INACTIVE', "updatedAt" = NOW()
+        WHERE "tripId" = ${tripId} AND "status" = 'ACTIVE'
       `;
-    }
+      for (const resourceId of unique) {
+        await tx.$executeRaw`
+          INSERT INTO "CalendarAllocation" ("id", "tripId", "resourceId", "startsAt", "endsAt", "status", "createdAt", "updatedAt")
+          VALUES (gen_random_uuid()::text, ${tripId}, ${resourceId}, ${trip.startsAt}, ${trip.endsAt}, 'ACTIVE', NOW(), NOW())
+        `;
+      }
+    });
 
     return this.tripAllocations(tripId);
   }
