@@ -1,9 +1,9 @@
 import { Body,Controller,Get,Param,Patch,Req,UseGuards } from '@nestjs/common';
-import { AdminGuard } from '../admin/admin.guard';
+import { ReviewGuard } from '../admin/review.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { TripComplianceService } from './trip-compliance.service';
 
-@UseGuards(AccessTokenGuard,AdminGuard)
+@UseGuards(AccessTokenGuard,ReviewGuard)
 @Controller('trips/admin/compliance')
 export class TripComplianceController{
   constructor(private readonly compliance:TripComplianceService){}
