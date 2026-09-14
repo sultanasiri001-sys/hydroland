@@ -23,10 +23,11 @@ export class TripAdminController {
   @Patch(':id/bookings/:bookingId/participants/:participantId/eligibility')
   participantEligibility(
     @Req() req:{auth:{accountId:string}},
+    @Param('id') id:string,
     @Param('bookingId') bookingId:string,
     @Param('participantId') participantId:string,
     @Body() body:{status:'ELIGIBLE'|'REJECTED'},
-  ){return this.trips.setParticipantEligibility(req.auth.accountId,bookingId,participantId,body.status);}
+  ){return this.trips.setParticipantEligibility(req.auth.accountId,id,bookingId,participantId,body.status);}
 
   @Patch(':id/bookings/:bookingId/confirm')
   confirmBooking(@Req() req: { auth: { accountId: string } }, @Param('id') id: string, @Param('bookingId') bookingId: string) { return this.trips.confirmBooking(req.auth.accountId, id, bookingId); }
