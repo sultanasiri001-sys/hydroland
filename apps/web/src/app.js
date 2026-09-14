@@ -7,6 +7,21 @@ const roleData={
   organization:{label:'ORGANIZATION · جهة',title:'لوحة الشركات والجهات',metrics:[['6','طلبات خدمة'],['2','عقود قيد المراجعة'],['12','مشاركًا']],safety:['REVIEW_REQUIRED','المراجعة التنظيمية مطلوبة','أحد الطلبات يحتاج اعتمادًا متسلسلًا قبل التفعيل.'],tasks:['طلبات التجارب البحرية','العقود والتوقيع الإلكتروني','تقارير السلامة والالتزام']},
   admin:{label:'ADMIN · الإدارة الرئيسية',title:'لوحة الإدارة الرئيسية',metrics:[['63','طلب اعتماد'],['19','رحلة مفتوحة'],['14','مراجعة امتثال']],safety:['GO','مركز قيادة السلامة','لا توجد موانع تنظيمية نشطة على الرحلات المعروضة.'],tasks:['طابور الاعتمادات والمستخدمين','برج التحكم التنظيمي والحوادث','المالية والتكاملات وتدقيق النظام']}
 };
+function initHydrolandIdentity(){
+  document.body.classList.add('hydroland-brand');
+  document.title='HYDROLAND | هيدرولاند';
+  const premium=document.createElement('link');premium.rel='stylesheet';premium.href='./hydroland-premium.css';document.head.appendChild(premium);
+  document.querySelectorAll('body *').forEach(node=>{
+    if(node.children.length===0&&node.textContent){node.textContent=node.textContent.replace(/GHAWAS/g,'HYDROLAND').replace(/غوّاص/g,'هيدرولاند');}
+  });
+  const brand=document.querySelector('.brand');if(brand)brand.setAttribute('aria-label','هيدرولاند الرئيسية');
+  const kicker=document.querySelector('.hero-kicker');if(kicker)kicker.textContent='HYDROLAND · ONE OCEAN · MANY OPPORTUNITIES';
+  const heroTitle=document.querySelector('.landing-hero h2');if(heroTitle)heroTitle.innerHTML='اكتشف أعماق المملكة<br>بهوية بحرية أذكى';
+  const heroCopy=document.querySelector('.landing-hero .hero-copy>p:not(.hero-kicker)');if(heroCopy)heroCopy.textContent='رحلات، تدريب، مجتمع، معدات وسلامة — منصة بحرية سعودية واحدة تجمع تجربتك كاملة.';
+  const footer=document.querySelector('.site-footer span:first-child');if(footer)footer.textContent='HYDROLAND · هيدرولاند';
+  const memberBrand=document.querySelector('.member-card header strong');if(memberBrand)memberBrand.innerHTML='HYDROLAND<small>PREMIUM DIVER MEMBER</small>';
+}
+initHydrolandIdentity();
 const toast=$('toast');
 function notify(message){toast.textContent=message;toast.classList.add('visible');clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>toast.classList.remove('visible'),2600)}
 $('menu').addEventListener('click',()=>document.querySelector('.sidebar').classList.toggle('open'));
