@@ -36,9 +36,9 @@ export class EquipmentInspectionService{
     const [inspectionPolicy,expiryPolicy]=await Promise.all([this.policies.decision('EQUIPMENT','INSPECTION_STATUS'),this.policies.decision('EQUIPMENT','SERVICE_EXPIRY')]);
     if(!unique.length)return{ready:true,blocked:false,reviewRequired:false,issues:[],states:{inspection:inspectionPolicy.state,serviceExpiry:expiryPolicy.state},latest:[]};
     const latest=await this.db.$queryRaw<EquipmentInspectionRow[]>`SELECT DISTINCT ON ("resourceId") * FROM "EquipmentInspection" WHERE "resourceId"=ANY(${unique}::text[]) ORDER BY "resourceId","inspectedAt" DESC,"createdAt" DESC`;
-    const byResource=new Map(latest.map(row=>[row.resourceId,row]));const issues:string[]=[];let blocked=false,reviewRequired=false;const now=new Date();
+    const byResource=new Map<string,EquipmentInspectionRow>(latest.map((row:EquipmentInspectionRow)=>[row.resourceId,row]));const issues:string[]=[];let blocked=false,reviewRequired=false;const now=new Date();
     for(const resourceId of unique){
-      const row=byResource.get(resourceId);const inspectionInvalid=!row||row.status!=='PASS';const expiryInvalid=!row?.serviceExpiresAt||row.serviceExpiresAt<=now;
+      const row:EquipmentInspectionRow|undefined=byResource.get(resourceId);const inspectionInvalid=!row||row.status!=='PASS';const expiryInvalid=!row?.serviceExpiresAt||row.serviceExpiresAt<=now;
       if(inspectionInvalid&&!inspectionPolicy.bypass){issues.push(`EQUIPMENT_INSPECTION:${resourceId}`);if(inspectionPolicy.enforce)blocked=true;else if(inspectionPolicy.review)reviewRequired=true;}
       if(expiryInvalid&&!expiryPolicy.bypass){issues.push(`EQUIPMENT_SERVICE_EXPIRY:${resourceId}`);if(expiryPolicy.enforce)blocked=true;else if(expiryPolicy.review)reviewRequired=true;}
     }
