@@ -2,6 +2,20 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { DatabaseService } from '../database/database.service';
 import { PolicyControlService } from '../trips/policy-control.service';
 
+type PaymentWithInvoice={
+  id:string;
+  bookingId:string;
+  accountId:string;
+  amountMinor:number;
+  currency:string;
+  status:string;
+  idempotencyKey:string;
+  providerReference:string|null;
+  createdAt:Date;
+  updatedAt:Date;
+  invoice:unknown|null;
+};
+
 @Injectable()
 export class PaymentsService {
   constructor(private readonly db:DatabaseService,private readonly policies:PolicyControlService){}
@@ -12,15 +26,15 @@ export class PaymentsService {
     const booking=await this.db.booking.findFirst({where:{id:input.bookingId,accountId}});
     if(!booking)throw new NotFoundException('Booking not found.');
     if(paymentPolicy.bypass)return{bookingId:booking.id,status:'BYPASSED',provider:'NOT_SELECTED',policyReview:{required:false,issues:[],states:{payment:paymentPolicy.state}}};
-    const existing=await this.db.payment.findUnique({where:{idempotencyKey:input.idempotencyKey}});
+    const existing=await this.db.payment.findUnique({where:{idempotencyKey:input.idempotencyKey.trim()}});
     if(existing&&existing.accountId!==accountId)throw new ConflictException('Idempotency key already belongs to another payment.');
-    const payment=await this.db.payment.upsert({where:{idempotencyKey:input.idempotencyKey},create:{...input,idempotencyKey:input.idempotencyKey.trim(),accountId,status:'CREATED'},update:{}});
+    const payment=await this.db.payment.upsert({where:{idempotencyKey:input.idempotencyKey.trim()},create:{...input,idempotencyKey:input.idempotencyKey.trim(),accountId,status:'CREATED'},update:{}});
     return{...payment,provider:'NOT_SELECTED',policyReview:{required:paymentPolicy.review,issues:paymentPolicy.review?['PAYMENT_REQUIRED']:[],states:{payment:paymentPolicy.state}}};
   }
 
   async mine(accountId:string){
     const refundPolicy=await this.policies.decision('PAYMENT','REFUND_REVIEW');
-    const payments=await this.db.payment.findMany({where:{accountId},include:{invoice:true},orderBy:{createdAt:'desc'}});
-    return payments.map(payment=>({...payment,provider:'NOT_SELECTED',refundPolicy:{state:refundPolicy.state,reviewRequired:refundPolicy.review,enforced:refundPolicy.enforce}}));
+    const payments=await this.db.payment.findMany({where:{accountId},include:{invoice:true},orderBy:{createdAt:'desc'}}) as PaymentWithInvoice[];
+    return payments.map((payment:PaymentWithInvoice)=>({...payment,provider:'NOT_SELECTED',refundPolicy:{state:refundPolicy.state,reviewRequired:refundPolicy.review,enforced:refundPolicy.enforce}}));
   }
 }
