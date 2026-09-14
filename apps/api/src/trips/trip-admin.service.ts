@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
+import { CrewAssignmentService } from './crew-assignment.service';
 
 export type TripStatusValue = 'DRAFT' | 'OPEN' | 'CLOSED' | 'CANCELLED' | 'COMPLETED';
 const TRIP_STATUSES: TripStatusValue[] = ['DRAFT', 'OPEN', 'CLOSED', 'CANCELLED', 'COMPLETED'];
@@ -17,7 +18,11 @@ type CreateTripInput = {
 
 @Injectable()
 export class TripAdminService {
-  constructor(private readonly db: DatabaseService, private readonly audit: AuditService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly audit: AuditService,
+    private readonly crewAssignments: CrewAssignmentService,
+  ) {}
 
   list() {
     return this.db.trip.findMany({ orderBy: { startsAt: 'desc' } });
@@ -52,8 +57,20 @@ export class TripAdminService {
       return tx.booking.update({ where: { id: bookingId }, data: { status: 'CONFIRMED' } });
     });
 
-    await this.audit.record({ action: 'BOOKING_CONFIRMED', resource: 'Booking', resourceId: bookingId, metadata: { reviewerAccountId, tripId, accountId: updated.accountId, seats: updated.seats } });
-    return updated;
+    const crewNotification = await this.crewAssignments.dispatchForConfirmedBooking(tripId, bookingId);
+    await this.audit.record({
+      action: 'BOOKING_CONFIRMED',
+      resource: 'Booking',
+      resourceId: bookingId,
+      metadata: {
+        reviewerAccountId,
+        tripId,
+        accountId: updated.accountId,
+        seats: updated.seats,
+        notifiedCrew: crewNotification.notifiedCrew,
+      },
+    });
+    return { ...updated, crewNotification };
   }
 
   async cancelBooking(reviewerAccountId: string, tripId: string, bookingId: string) {
