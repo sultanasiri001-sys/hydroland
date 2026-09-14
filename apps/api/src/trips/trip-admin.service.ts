@@ -19,7 +19,7 @@ export class TripAdminService {
   async list(){const trips=(await this.db.trip.findMany({orderBy:{startsAt:'desc'}})) as AdminTripRow[];return Promise.all(trips.map(async(trip:AdminTripRow)=>({...trip,operationalClearance:await this.clearance.status(trip.id)})));}
   operationalClearance(reviewerAccountId:string,tripId:string,reason?:string){return this.clearance.grant(reviewerAccountId,tripId,reason);}
 
-  async bookings(tripId:string){const trip=await this.db.trip.findUnique({where:{id:tripId},select:{id:true}});if(!trip)throw new NotFoundException('Trip not found.');const bookings=(await this.db.booking.findMany({where:{tripId},orderBy:{createdAt:'asc'},include:{account:{select:{id:true,email:true,person:{select:{firstName:true,lastName:true}}}}}})) as AdminBookingRow[];return Promise.all(bookings.map(async(booking:AdminBookingRow)=>({...booking,participants:await this.db.$queryRaw`SELECT * FROM "BookingParticipant" WHERE "bookingId"=${booking.id} ORDER BY "createdAt" ASC`})));}
+  async bookings(tripId:string){const trip=await this.db.trip.findUnique({where:{id:tripId},select:{id:true}});if(!trip)throw new NotFoundException('Trip not found.');const bookings=(await this.db.booking.findMany({where:{tripId},orderBy:{createdAt:'asc'},include:{account:{select:{id:true,email:true,person:{select:{firstName:true,lastName:true}}}},participants:true}})) as Array<AdminBookingRow&{participants:unknown[]}>;return bookings;}
 
   async confirmBooking(reviewerAccountId:string,tripId:string,bookingId:string){
     const initial=await this.db.booking.findUnique({where:{id:bookingId},select:{tripId:true,seats:true,status:true}});if(!initial||initial.tripId!==tripId)throw new NotFoundException('Booking not found for this trip.');
@@ -46,7 +46,18 @@ export class TripAdminService {
   }
 
   async cancelBooking(reviewerAccountId:string,tripId:string,bookingId:string){const booking=await this.db.booking.findUnique({where:{id:bookingId},include:{trip:true}});if(!booking||booking.tripId!==tripId)throw new NotFoundException('Booking not found for this trip.');if(booking.status==='CANCELLED')return booking;if(booking.trip.status==='COMPLETED'||booking.trip.status==='CANCELLED')throw new ConflictException('Booking cannot be cancelled after trip closure.');if(booking.trip.startsAt<=new Date())throw new ConflictException('Booking cannot be cancelled after the trip starts.');const updated=await this.db.booking.update({where:{id:bookingId},data:{status:'CANCELLED'}});await this.audit.record({action:'BOOKING_CANCELLED',resource:'Booking',resourceId:bookingId,metadata:{reviewerAccountId,tripId,accountId:booking.accountId,seats:booking.seats,previousStatus:booking.status}});return updated;}
-  create(input:CreateTripInput){if(!input.title?.trim()||!input.type?.trim()||!input.startsAt||!input.endsAt)throw new BadRequestException('Trip title, type, startsAt and endsAt are required.');if(!Number.isInteger(input.capacity)||Number(input.capacity)<1)throw new BadRequestException('Trip capacity must be a positive integer.');if(input.status&&!TRIP_STATUSES.includes(input.status))throw new BadRequestException('Invalid trip status.');if(input.status==='COMPLETED')throw new BadRequestException('Use the governed trip completion workflow.');const startsAt=new Date(input.startsAt),endsAt=new Date(input.endsAt);if(Number.isNaN(startsAt.getTime())||Number.isNaN(endsAt.getTime())||endsAt<=startsAt)throw new BadRequestException('Trip date range is invalid.');return this.db.trip.create({data:{title:input.title.trim(),type:input.type.trim(),startsAt,endsAt,capacity:Number(input.capacity),status:input.status??'DRAFT'}});}
+
+  async create(reviewerAccountId:string,input:CreateTripInput){
+    if(!input.title?.trim()||!input.type?.trim()||!input.startsAt||!input.endsAt)throw new BadRequestException('Trip title, type, startsAt and endsAt are required.');
+    if(!Number.isInteger(input.capacity)||Number(input.capacity)<1)throw new BadRequestException('Trip capacity must be a positive integer.');
+    if(input.status&&!TRIP_STATUSES.includes(input.status))throw new BadRequestException('Invalid trip status.');
+    if(input.status==='COMPLETED')throw new BadRequestException('Use the governed trip completion workflow.');
+    const startsAt=new Date(input.startsAt),endsAt=new Date(input.endsAt);if(Number.isNaN(startsAt.getTime())||Number.isNaN(endsAt.getTime())||endsAt<=startsAt)throw new BadRequestException('Trip date range is invalid.');
+    const trip=await this.db.trip.create({data:{title:input.title.trim(),type:input.type.trim(),startsAt,endsAt,capacity:Number(input.capacity),status:input.status??'DRAFT'}});
+    await this.audit.record({action:'TRIP_CREATED',resource:'Trip',resourceId:trip.id,metadata:{reviewerAccountId,title:trip.title,type:trip.type,startsAt:trip.startsAt,endsAt:trip.endsAt,capacity:trip.capacity,status:trip.status}});
+    return trip;
+  }
+
   async setStatus(reviewerAccountId:string,id:string,status:TripStatusValue){
     if(!TRIP_STATUSES.includes(status))throw new BadRequestException('Invalid trip status.');
     if(status==='COMPLETED')throw new BadRequestException('Use the governed trip completion workflow.');
