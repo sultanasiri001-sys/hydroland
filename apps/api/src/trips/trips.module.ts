@@ -7,6 +7,8 @@ import { CalendarAllocationService } from './calendar-allocation.service';
 import { CrewAssignmentController } from './crew-assignment.controller';
 import { CrewAssignmentService } from './crew-assignment.service';
 import { CrewEscalationScheduler } from './crew-escalation.scheduler';
+import { OperationalClearanceScheduler } from './operational-clearance.scheduler';
+import { OperationalClearanceService } from './operational-clearance.service';
 import { TripAdminController } from './trip-admin.controller';
 import { TripAdminService } from './trip-admin.service';
 import { TripCompletionController } from './trip-completion.controller';
@@ -18,22 +20,7 @@ import { WeatherGateService } from './weather-gate.service';
 
 @Module({
   imports: [AuthModule, AdminModule, AuditModule],
-  controllers: [
-    TripsController,
-    TripAdminController,
-    TripCompletionController,
-    WeatherGateController,
-    CalendarAllocationController,
-    CrewAssignmentController,
-  ],
-  providers: [
-    TripsService,
-    TripAdminService,
-    TripCompletionService,
-    WeatherGateService,
-    CalendarAllocationService,
-    CrewAssignmentService,
-    CrewEscalationScheduler,
-  ],
+  controllers: [TripsController,TripAdminController,TripCompletionController,WeatherGateController,CalendarAllocationController,CrewAssignmentController],
+  providers: [TripsService,TripAdminService,TripCompletionService,WeatherGateService,CalendarAllocationService,CrewAssignmentService,CrewEscalationScheduler,OperationalClearanceService,OperationalClearanceScheduler],
 })
 export class TripsModule {}
