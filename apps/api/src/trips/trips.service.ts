@@ -20,15 +20,23 @@ export class TripsService {
     const reviewIssues:string[]=[];
     const result=await this.db.serializable(async tx=>{
       const trip=await tx.trip.findUnique({where:{id:tripId}});if(!trip||trip.status!=='OPEN')throw new NotFoundException('Trip unavailable.');if(trip.startsAt<=new Date())throw new ConflictException('Trip already started.');
+      const existing=await tx.booking.findUnique({where:{tripId_accountId:{tripId,accountId}}});
+      if(existing&&existing.status!=='CANCELLED')throw new ConflictException('An active booking already exists for this trip.');
       const latestSafety=await tx.safetyChecklist.findFirst({where:{tripId},orderBy:{createdAt:'desc'},select:{decision:true,items:true}});
       if(!latestSafety||latestSafety.decision!=='ALLOWED'){if(safetyPolicy.enforce)throw new ConflictException('Trip requires safety approval before booking.');if(safetyPolicy.review)reviewIssues.push('SAFETY_APPROVAL');}
       const weatherSnapshot=latestSafety?this.weatherFromItems(latestSafety.items):null,weather=this.weatherGate.evaluate(weatherSnapshot,gateSettings);if(weather.blocking){if(weatherPolicy.enforce)throw new ConflictException(weather.reason||'Trip is unavailable because of weather conditions.');if(weatherPolicy.review)reviewIssues.push('WEATHER_GATE');}
       const used=await tx.booking.aggregate({where:{tripId,status:{in:['PENDING','CONFIRMED']}},_sum:{seats:true}});if((used._sum.seats??0)+seats>trip.capacity){if(capacityPolicy.enforce)throw new ConflictException('Trip capacity reached.');if(capacityPolicy.review)reviewIssues.push('CAPACITY_LIMIT');}
-      const booking=await tx.booking.create({data:{tripId,accountId,seats,status:'PENDING'}});
+      let booking;
+      if(existing){
+        await tx.bookingParticipant.deleteMany({where:{bookingId:existing.id}});
+        booking=await tx.booking.update({where:{id:existing.id},data:{seats,status:'PENDING'}});
+      }else{
+        booking=await tx.booking.create({data:{tripId,accountId,seats,status:'PENDING'}});
+      }
       const participantRows=await this.participants.ensureForBooking(booking.id,accountId,seats,tx);
-      return{booking,participantRows};
+      return{booking,participantRows,rebooked:Boolean(existing)};
     });
-    return {...result.booking,participants:result.participantRows,policyReview:{required:reviewIssues.length>0,issues:[...new Set(reviewIssues)],states:{safety:safetyPolicy.state,weather:weatherPolicy.state,capacity:capacityPolicy.state}}};
+    return {...result.booking,participants:result.participantRows,rebooked:result.rebooked,policyReview:{required:reviewIssues.length>0,issues:[...new Set(reviewIssues)],states:{safety:safetyPolicy.state,weather:weatherPolicy.state,capacity:capacityPolicy.state}}};
   }
 
   mine(accountId:string){return this.db.booking.findMany({where:{accountId},include:{trip:true},orderBy:{createdAt:'desc'}});}
