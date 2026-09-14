@@ -2,19 +2,13 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
+import { CalendarAllocationService } from './calendar-allocation.service';
 import { CrewAssignmentService } from './crew-assignment.service';
 
 export type TripStatusValue = 'DRAFT' | 'OPEN' | 'CLOSED' | 'CANCELLED' | 'COMPLETED';
 const TRIP_STATUSES: TripStatusValue[] = ['DRAFT', 'OPEN', 'CLOSED', 'CANCELLED', 'COMPLETED'];
 
-type CreateTripInput = {
-  title?: string;
-  type?: string;
-  startsAt?: string;
-  endsAt?: string;
-  capacity?: number;
-  status?: TripStatusValue;
-};
+type CreateTripInput = { title?: string; type?: string; startsAt?: string; endsAt?: string; capacity?: number; status?: TripStatusValue };
 
 @Injectable()
 export class TripAdminService {
@@ -22,23 +16,28 @@ export class TripAdminService {
     private readonly db: DatabaseService,
     private readonly audit: AuditService,
     private readonly crewAssignments: CrewAssignmentService,
+    private readonly calendar: CalendarAllocationService,
   ) {}
 
-  list() {
-    return this.db.trip.findMany({ orderBy: { startsAt: 'desc' } });
+  list() { return this.db.trip.findMany({ orderBy: { startsAt: 'desc' } }); }
+
+  async operationalClearance(reviewerAccountId:string,tripId:string,reason?:string){
+    const readiness=await this.calendar.readinessForTrip(tripId);
+    if(readiness.status==='NOT_READY')throw new ConflictException(`Trip is NOT_READY: ${readiness.blockers.join(', ')}`);
+    if(readiness.status==='REVIEW_REQUIRED'&&(!reason||reason.trim().length<10))throw new BadRequestException('A documented review reason of at least 10 characters is required.');
+    const action=readiness.status==='READY'?'OPERATIONAL_CLEARANCE_GRANTED':'OPERATIONAL_REVIEW_APPROVED';
+    const event=await this.audit.record({actorId:reviewerAccountId,action,resource:'Trip',resourceId:tripId,metadata:{readiness,reason:reason?.trim()||null}});
+    return {tripId,clearance:'GRANTED',readiness,auditEventId:event.id};
   }
 
   async bookings(tripId: string) {
     const trip = await this.db.trip.findUnique({ where: { id: tripId }, select: { id: true } });
     if (!trip) throw new NotFoundException('Trip not found.');
-    return this.db.booking.findMany({
-      where: { tripId },
-      orderBy: { createdAt: 'asc' },
-      include: { account: { select: { id: true, email: true, person: { select: { firstName: true, lastName: true } } } } },
-    });
+    return this.db.booking.findMany({ where: { tripId }, orderBy: { createdAt: 'asc' }, include: { account: { select: { id: true, email: true, person: { select: { firstName: true, lastName: true } } } } } });
   }
 
   async confirmBooking(reviewerAccountId: string, tripId: string, bookingId: string) {
+    let newlyConfirmed=false;
     const updated = await this.db.$transaction(async (tx: Prisma.TransactionClient) => {
       const booking = await tx.booking.findUnique({ where: { id: bookingId }, include: { trip: true } });
       if (!booking || booking.tripId !== tripId) throw new NotFoundException('Booking not found for this trip.');
@@ -46,30 +45,16 @@ export class TripAdminService {
       if (booking.status !== 'PENDING') throw new ConflictException('Only pending bookings can be confirmed.');
       if (booking.trip.status !== 'OPEN' && booking.trip.status !== 'CLOSED') throw new ConflictException('Trip is not available for booking confirmation.');
       if (booking.trip.startsAt <= new Date()) throw new ConflictException('Trip already started.');
-
       const latestSafety = await tx.safetyChecklist.findFirst({ where: { tripId }, orderBy: { createdAt: 'desc' }, select: { decision: true } });
       if (latestSafety?.decision !== 'ALLOWED') throw new ConflictException('Trip requires an ALLOWED safety decision before confirmation.');
-
       const confirmed = await tx.booking.aggregate({ where: { tripId, status: 'CONFIRMED' }, _sum: { seats: true } });
       const usedSeats = confirmed._sum.seats ?? 0;
       if (usedSeats + booking.seats > booking.trip.capacity) throw new ConflictException('Trip capacity reached.');
-
+      newlyConfirmed=true;
       return tx.booking.update({ where: { id: bookingId }, data: { status: 'CONFIRMED' } });
     });
-
-    const crewNotification = await this.crewAssignments.dispatchForConfirmedBooking(tripId, bookingId);
-    await this.audit.record({
-      action: 'BOOKING_CONFIRMED',
-      resource: 'Booking',
-      resourceId: bookingId,
-      metadata: {
-        reviewerAccountId,
-        tripId,
-        accountId: updated.accountId,
-        seats: updated.seats,
-        notifiedCrew: crewNotification.notifiedCrew,
-      },
-    });
+    const crewNotification=newlyConfirmed?await this.crewAssignments.dispatchForConfirmedBooking(tripId,bookingId):{tripId,bookingId,notifiedCrew:0};
+    await this.audit.record({ action: 'BOOKING_CONFIRMED', resource: 'Booking', resourceId: bookingId, metadata: { reviewerAccountId, tripId, accountId: updated.accountId, seats: updated.seats, notifiedCrew: crewNotification.notifiedCrew, newlyConfirmed } });
     return { ...updated, crewNotification };
   }
 
@@ -89,8 +74,7 @@ export class TripAdminService {
     if (!Number.isInteger(input.capacity) || Number(input.capacity) < 1) throw new BadRequestException('Trip capacity must be a positive integer.');
     if (input.status && !TRIP_STATUSES.includes(input.status)) throw new BadRequestException('Invalid trip status.');
     if (input.status === 'COMPLETED') throw new BadRequestException('Use the governed trip completion workflow.');
-    const startsAt = new Date(input.startsAt);
-    const endsAt = new Date(input.endsAt);
+    const startsAt = new Date(input.startsAt), endsAt = new Date(input.endsAt);
     if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()) || endsAt <= startsAt) throw new BadRequestException('Trip date range is invalid.');
     return this.db.trip.create({ data: { title: input.title.trim(), type: input.type.trim(), startsAt, endsAt, capacity: Number(input.capacity), status: input.status ?? 'DRAFT' } });
   }
