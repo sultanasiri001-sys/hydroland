@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { AdminModule } from '../admin/admin.module';
 import { AuditModule } from '../audit/audit.module';
 import { AuthModule } from '../auth/auth.module';
+import { BoatComplianceController } from './boat-compliance.controller';
+import { BoatComplianceService } from './boat-compliance.service';
 import { BookingParticipantService } from './booking-participant.service';
 import { CalendarAllocationController } from './calendar-allocation.controller';
 import { CalendarAllocationService } from './calendar-allocation.service';
@@ -23,8 +25,8 @@ import { WeatherGateService } from './weather-gate.service';
 
 @Module({
   imports: [AuthModule, AdminModule, AuditModule],
-  controllers: [TripsController,TripAdminController,TripCompletionController,WeatherGateController,CalendarAllocationController,CrewAssignmentController,PolicyControlController],
-  providers: [TripsService,TripAdminService,TripCompletionService,WeatherGateService,CalendarAllocationService,CrewAssignmentService,CrewEscalationScheduler,OperationalClearanceService,OperationalClearanceScheduler,BookingParticipantService,PolicyControlService],
-  exports: [PolicyControlService],
+  controllers: [TripsController,TripAdminController,TripCompletionController,WeatherGateController,CalendarAllocationController,CrewAssignmentController,PolicyControlController,BoatComplianceController],
+  providers: [TripsService,TripAdminService,TripCompletionService,WeatherGateService,CalendarAllocationService,CrewAssignmentService,CrewEscalationScheduler,OperationalClearanceService,OperationalClearanceScheduler,BookingParticipantService,PolicyControlService,BoatComplianceService],
+  exports: [PolicyControlService,BoatComplianceService],
 })
 export class TripsModule {}
