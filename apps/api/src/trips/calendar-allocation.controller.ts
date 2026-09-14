@@ -35,7 +35,7 @@ export class CalendarAllocationController {
   }
 
   @Post(':tripId/allocations')
-  allocate(@Param('tripId') tripId: string, @Body() body: { resourceIds?: string[] }) {
-    return this.calendar.allocate(tripId, Array.isArray(body.resourceIds) ? body.resourceIds : []);
+  allocate(@Req()req:{auth:{accountId:string}},@Param('tripId') tripId: string, @Body() body: { resourceIds?: string[] }) {
+    return this.calendar.allocate(req.auth.accountId,tripId,Array.isArray(body.resourceIds) ? body.resourceIds : []);
   }
 }
