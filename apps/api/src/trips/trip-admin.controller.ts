@@ -12,7 +12,7 @@ export class TripAdminController {
   list() { return this.trips.list(); }
 
   @Post()
-  create(@Body() body: { title?: string; type?: string; startsAt?: string; endsAt?: string; capacity?: number; status?: TripStatusValue }) { return this.trips.create(body); }
+  create(@Req() req:{auth:{accountId:string}},@Body() body: { title?: string; type?: string; startsAt?: string; endsAt?: string; capacity?: number; status?: TripStatusValue }) { return this.trips.create(req.auth.accountId,body); }
 
   @Post(':id/operational-clearance')
   operationalClearance(@Req() req: { auth: { accountId: string } }, @Param('id') id: string, @Body() body: { reason?: string }) { return this.trips.operationalClearance(req.auth.accountId, id, body.reason); }
