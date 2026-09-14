@@ -18,9 +18,14 @@ export class ActivationController {
     return this.service.mine(req.auth.accountId);
   }
 
+  @Post(':id/resubmit')
+  resubmit(@Req() req:{auth:{accountId:string}},@Param('id') id:string){
+    return this.service.resubmit(req.auth.accountId,id);
+  }
+
   @UseGuards(AdminGuard)
   @Post(':id/decision')
-  decide(@Req() req:{auth:{accountId:string}},@Param('id') id:string,@Body() body:{outcome:'APPROVED'|'REJECTED';reason?:string}){
+  decide(@Req() req:{auth:{accountId:string}},@Param('id') id:string,@Body() body:{outcome:'APPROVED'|'REJECTED'|'MORE_INFORMATION_REQUIRED';reason?:string}){
     return this.service.decide(req.auth.accountId,id,body.outcome,body.reason);
   }
 }
