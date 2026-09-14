@@ -1,0 +1,19 @@
+:root{--hl-navy:#031521;--hl-navy-2:#06293f;--hl-blue:#0b6fa4;--hl-cyan:#32c6e6;--hl-gold:#e5b45f;--hl-gold-2:#f4d18c;--hl-ink:#f4fbff;--hl-muted:#9cb7c7;--hl-line:rgba(120,191,224,.16)}
+body{background:radial-gradient(circle at 82% 4%,rgba(33,143,196,.17),transparent 28rem),linear-gradient(180deg,#02111b 0%,#041e30 48%,#031521 100%);color:var(--hl-ink)}
+.sidebar{background:linear-gradient(180deg,rgba(4,31,48,.96),rgba(2,17,27,.94));border-color:var(--hl-line)}
+.brand{letter-spacing:.08em}.brand-mark{background:linear-gradient(145deg,#8ee8ff,#197fb4 58%,#e6bb68);color:#fff;box-shadow:0 14px 32px rgba(27,139,190,.28);border-radius:16px}.brand small{color:var(--hl-gold-2)}
+.nav-item.active{background:linear-gradient(110deg,rgba(30,141,189,.92),rgba(42,198,230,.9));color:#031521;box-shadow:0 12px 28px rgba(34,166,211,.2)}
+.topbar h1,.section-heading h2,.training-section h2,.membership h2{font-weight:850;letter-spacing:-.035em}.eyebrow{color:var(--hl-gold-2)}
+.landing-hero{border-color:rgba(121,207,239,.18);box-shadow:0 30px 90px rgba(0,0,0,.38),inset 0 1px 0 rgba(255,255,255,.04)}
+.landing-hero:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(2,17,27,.94) 0%,rgba(2,31,48,.7) 42%,rgba(2,26,41,.14) 72%);pointer-events:none;z-index:0}.landing-hero>*{position:relative;z-index:1}.hero-kicker{color:var(--hl-gold-2)!important;letter-spacing:.16em;font-weight:800}.landing-hero h2{font-weight:900;text-shadow:0 6px 28px rgba(0,0,0,.28)}
+.primary-button,.search-bar button,.trip-card button,.safety-strip button{background:linear-gradient(135deg,var(--hl-gold-2),var(--hl-gold));color:#102131;border:0;box-shadow:0 16px 34px rgba(229,180,95,.2)}
+.ghost-button{border:1px solid rgba(230,187,104,.35)!important;color:#ffe6af!important;background:rgba(4,26,40,.36)!important}
+.quick-grid button,.trip-card,.map-card,.training-section,.product-grid article,.member-card,.safety-strip,.role-console{background:linear-gradient(155deg,rgba(10,46,69,.88),rgba(3,24,38,.88));border:1px solid var(--hl-line);box-shadow:0 20px 55px rgba(0,0,0,.24)}
+.quick-grid button:hover,.trip-card:hover,.product-grid article:hover{transform:translateY(-4px);border-color:rgba(56,198,230,.38)}
+.trip-meta span:first-child,.member-tier{color:var(--hl-gold-2)}
+.member-card{position:relative;overflow:hidden;background:linear-gradient(135deg,#0a3150 0%,#083f66 46%,#0a1f31 100%)}.member-card:before{content:"";position:absolute;inset:auto -15% -45% -15%;height:70%;background:radial-gradient(ellipse,rgba(47,197,230,.34),transparent 68%);transform:rotate(-8deg)}.member-card header,.member-card>div,.member-card footer{position:relative;z-index:1}
+.site-footer{border-top:1px solid var(--hl-line);color:#9fb7c6}.site-footer span:first-child{color:var(--hl-gold-2);font-weight:800;letter-spacing:.08em}
+.mobile-nav{background:rgba(3,24,38,.92)!important;border-color:var(--hl-line)!important}
+body.hydroland-brand .brand>span:last-child{font-size:0}body.hydroland-brand .brand>span:last-child:before{content:"HYDROLAND";font-size:1rem}body.hydroland-brand .brand>span:last-child:after{content:"هيدرولاند";display:block;font-size:.72rem;color:var(--hl-gold-2);letter-spacing:0;margin-top:.12rem}
+body.hydroland-brand .brand-mark{font-size:0}body.hydroland-brand .brand-mark:before{content:"H";font-size:1.12rem;font-weight:900}
+@media(max-width:760px){.landing-hero{min-height:430px}.landing-hero h2{font-size:2.4rem}.quick-grid{grid-template-columns:repeat(2,1fr)}.member-card{border-radius:24px}}
