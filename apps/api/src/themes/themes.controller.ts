@@ -37,7 +37,7 @@ export class ThemesController {
 
   @UseGuards(AccessTokenGuard, AdminGuard)
   @Patch('admin/schedules/:id/status')
-  status(@Param('id') id: string, @Body() body: { status: ThemeStatus }) {
-    return this.themes.setStatus(id, body.status);
+  status(@Param('id') id: string, @Body() body: { status: ThemeStatus }, @Req() req: AuthenticatedRequest) {
+    return this.themes.setStatus(id, body.status, req.auth?.accountId);
   }
 }
