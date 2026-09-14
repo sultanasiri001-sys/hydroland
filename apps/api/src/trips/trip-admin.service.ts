@@ -43,13 +43,16 @@ export class TripAdminService {
   }
 
   async setParticipantEligibility(reviewerAccountId:string,tripId:string,bookingId:string,participantId:string,status:'ELIGIBLE'|'REJECTED'){
-    const booking=await this.db.booking.findUnique({where:{id:bookingId},select:{tripId:true,status:true}});
+    const booking=await this.db.booking.findUnique({where:{id:bookingId},select:{tripId:true,status:true,accountId:true}});
     if(!booking||booking.tripId!==tripId)throw new NotFoundException('Booking not found for this trip.');
     if(booking.status==='CANCELLED')throw new ConflictException('Cancelled booking cannot be reviewed.');
-    const existing=await this.db.$queryRaw<Array<{id:string;bookingId:string;eligibilityStatus:string}>>`SELECT "id","bookingId","eligibilityStatus" FROM "BookingParticipant" WHERE "id"=${participantId} AND "bookingId"=${bookingId} LIMIT 1`;
+    const existing=await this.db.$queryRaw<Array<{id:string;bookingId:string;accountId:string|null;eligibilityStatus:string}>>`SELECT "id","bookingId","accountId","eligibilityStatus" FROM "BookingParticipant" WHERE "id"=${participantId} AND "bookingId"=${bookingId} LIMIT 1`;
     if(!existing[0])throw new NotFoundException('Participant not found.');
     const rows=await this.participants.setEligibility(bookingId,participantId,status);
-    await this.audit.record({action:'BOOKING_PARTICIPANT_ELIGIBILITY_CHANGED',resource:'BookingParticipant',resourceId:participantId,metadata:{reviewerAccountId,tripId,bookingId,previousStatus:existing[0].eligibilityStatus,status}});
+    const payload={participantId,bookingId,tripId,status,previousStatus:existing[0].eligibilityStatus};
+    const recipients=new Set<string>([booking.accountId]);if(existing[0].accountId)recipients.add(existing[0].accountId);
+    await Promise.all([...recipients].map(accountId=>this.notifyQuietly(accountId,'PARTICIPANT_ELIGIBILITY_CHANGED',payload)));
+    await this.audit.record({action:'BOOKING_PARTICIPANT_ELIGIBILITY_CHANGED',resource:'BookingParticipant',resourceId:participantId,metadata:{reviewerAccountId,tripId,bookingId,previousStatus:existing[0].eligibilityStatus,status,notifiedAccounts:recipients.size}});
     return rows;
   }
 
