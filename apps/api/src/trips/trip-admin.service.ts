@@ -37,11 +37,14 @@ export class TripAdminService {
     await this.audit.record({action:'BOOKING_CONFIRMED',resource:'Booking',resourceId:bookingId,metadata:{reviewerAccountId,tripId,accountId:updated.accountId,seats:updated.seats,notifiedCrew:crewNotification.notifiedCrew,newlyConfirmed,policyReview}});return {...updated,crewNotification,policyReview};
   }
 
-  async setParticipantEligibility(reviewerAccountId:string,bookingId:string,participantId:string,status:'ELIGIBLE'|'REJECTED'){
+  async setParticipantEligibility(reviewerAccountId:string,tripId:string,bookingId:string,participantId:string,status:'ELIGIBLE'|'REJECTED'){
+    const booking=await this.db.booking.findUnique({where:{id:bookingId},select:{tripId:true,status:true}});
+    if(!booking||booking.tripId!==tripId)throw new NotFoundException('Booking not found for this trip.');
+    if(booking.status==='CANCELLED')throw new ConflictException('Cancelled booking cannot be reviewed.');
     const existing=await this.db.$queryRaw<Array<{id:string;bookingId:string;eligibilityStatus:string}>>`SELECT "id","bookingId","eligibilityStatus" FROM "BookingParticipant" WHERE "id"=${participantId} AND "bookingId"=${bookingId} LIMIT 1`;
     if(!existing[0])throw new NotFoundException('Participant not found.');
     const rows=await this.participants.setEligibility(bookingId,participantId,status);
-    await this.audit.record({action:'BOOKING_PARTICIPANT_ELIGIBILITY_CHANGED',resource:'BookingParticipant',resourceId:participantId,metadata:{reviewerAccountId,bookingId,previousStatus:existing[0].eligibilityStatus,status}});
+    await this.audit.record({action:'BOOKING_PARTICIPANT_ELIGIBILITY_CHANGED',resource:'BookingParticipant',resourceId:participantId,metadata:{reviewerAccountId,tripId,bookingId,previousStatus:existing[0].eligibilityStatus,status}});
     return rows;
   }
 
