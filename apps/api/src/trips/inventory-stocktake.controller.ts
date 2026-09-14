@@ -12,4 +12,5 @@ export class InventoryStocktakeController{
   @Post(':id/scans') scan(@Req()req:{auth:{accountId:string}},@Param('id')id:string,@Body()body:{code?:string;observedLocation?:string|null}){return this.stocktakes.scan(req.auth.accountId,id,body);}
   @Get(':id') summary(@Param('id')id:string){return this.stocktakes.summary(id);}
   @Post(':id/complete') complete(@Req()req:{auth:{accountId:string}},@Param('id')id:string){return this.stocktakes.complete(req.auth.accountId,id);}
+  @Post(':id/share') share(@Req()req:{auth:{accountId:string}},@Param('id')id:string,@Body()body:{accountId?:string;channel?:'IN_APP'|'WHATSAPP';phone?:string|null}){return this.stocktakes.share(req.auth.accountId,id,body);}
 }
