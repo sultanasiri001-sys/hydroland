@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { AdminGuard } from '../admin/admin.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { CalendarAllocationService } from './calendar-allocation.service';
@@ -7,6 +7,11 @@ import { CalendarAllocationService } from './calendar-allocation.service';
 @Controller('trips/admin/calendar')
 export class CalendarAllocationController {
   constructor(private readonly calendar: CalendarAllocationService) {}
+
+  @Get()
+  calendarFeed(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.calendar.calendar(from ?? '', to ?? '');
+  }
 
   @Get('resources')
   resources() {
