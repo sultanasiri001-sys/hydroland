@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AccountStatus, Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
@@ -16,6 +16,8 @@ export class AdminService {
   listAccounts(){return this.db.account.findMany({select:{id:true,email:true,status:true,emailVerifiedAt:true,lastLoginAt:true,createdAt:true,person:{select:{firstName:true,lastName:true}},roleAssignments:{select:{role:true,status:true}}},orderBy:{createdAt:'desc'},take:200})}
 
   async setAccountStatus(adminAccountId:string,accountId:string,status:AccountStatus,reason?:string){
+    const adminRole=await this.db.roleAssignment.findFirst({where:{accountId:adminAccountId,role:'ADMIN',status:'ACTIVE'},select:{id:true}});
+    if(!adminRole)throw new ForbiddenException('Active ADMIN role required for account status changes.');
     if(!allowedStatuses.includes(status))throw new BadRequestException('Invalid account status.');
     if(adminAccountId===accountId&&(status==='SUSPENDED'||status==='ARCHIVED'))throw new BadRequestException('Administrators cannot suspend or archive their own account.');
     const account=await this.db.account.findUnique({where:{id:accountId},select:{id:true,status:true,email:true}});
