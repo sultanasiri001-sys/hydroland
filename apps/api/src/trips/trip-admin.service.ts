@@ -78,11 +78,14 @@ export class TripAdminService {
     const affectedBookings=status==='CANCELLED'?await this.db.booking.findMany({where:{tripId:id,status:{not:'CANCELLED'}},select:{id:true,accountId:true,seats:true,status:true}}):[];
     const updated=await this.db.serializable(async tx=>{
       const current=await tx.trip.findUnique({where:{id}});if(!current)throw new NotFoundException('Trip not found.');
-      if(status==='CANCELLED')await tx.$executeRaw`UPDATE "CalendarAllocation" SET "status"='INACTIVE',"updatedAt"=NOW() WHERE "tripId"=${id} AND "status"='ACTIVE'`;
+      if(status==='CANCELLED'){
+        await tx.$executeRaw`UPDATE "CalendarAllocation" SET "status"='INACTIVE',"updatedAt"=NOW() WHERE "tripId"=${id} AND "status"='ACTIVE'`;
+        await tx.booking.updateMany({where:{tripId:id,status:{not:'CANCELLED'}},data:{status:'CANCELLED'}});
+      }
       return tx.trip.update({where:{id},data:{status}});
     });
-    if(status==='CANCELLED')await Promise.all(affectedBookings.map(booking=>this.notifyQuietly(booking.accountId,'TRIP_CANCELLED',{tripId:id,bookingId:booking.id,seats:booking.seats,bookingStatus:booking.status,startsAt:trip.startsAt,title:trip.title})));
-    await this.audit.record({action:'TRIP_STATUS_CHANGED',resource:'Trip',resourceId:id,metadata:{reviewerAccountId,previousStatus:trip.status,status,releasedCalendarResources:status==='CANCELLED',notifiedBookings:status==='CANCELLED'?affectedBookings.length:0}});
+    if(status==='CANCELLED')await Promise.all(affectedBookings.map(booking=>this.notifyQuietly(booking.accountId,'TRIP_CANCELLED',{tripId:id,bookingId:booking.id,seats:booking.seats,previousBookingStatus:booking.status,bookingStatus:'CANCELLED',startsAt:trip.startsAt,title:trip.title})));
+    await this.audit.record({action:'TRIP_STATUS_CHANGED',resource:'Trip',resourceId:id,metadata:{reviewerAccountId,previousStatus:trip.status,status,releasedCalendarResources:status==='CANCELLED',cancelledBookings:status==='CANCELLED'?affectedBookings.length:0,notifiedBookings:status==='CANCELLED'?affectedBookings.length:0,financialActionExecuted:false}});
     return updated;
   }
 }
