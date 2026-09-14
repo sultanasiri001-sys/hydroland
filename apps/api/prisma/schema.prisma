@@ -55,6 +55,31 @@ enum ActivationRequestStatus {
   ARCHIVED
 }
 
+enum OrganizationStatus {
+  DRAFT
+  PENDING_REVIEW
+  ACTIVE
+  REJECTED
+  SUSPENDED
+  ARCHIVED
+}
+
+enum OrganizationMemberRole {
+  OWNER
+  ADMIN
+  OPERATOR
+  INSTRUCTOR
+  STAFF
+  VIEWER
+}
+
+enum OrganizationMembershipStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  REMOVED
+}
+
 enum DocumentStatus {
   UPLOADED
   QUARANTINED
@@ -103,6 +128,46 @@ model Account {
   notifications    Notification[]
   bookings         Booking[]
   payments         Payment[]
+  diveLogs         DiveLog[]
+  organizationMemberships OrganizationMember[]
+  organizationsOwned Organization[] @relation("OrganizationOwner")
+}
+
+model Organization {
+  id                 String             @id @default(uuid())
+  displayName        String
+  legalName          String?
+  kind               String
+  registrationNumber String?            @unique
+  regionCode         String?
+  status             OrganizationStatus @default(PENDING_REVIEW)
+  ownerId            String
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  reviewedAt         DateTime?
+  reviewedById       String?
+
+  owner      Account              @relation("OrganizationOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  members    OrganizationMember[]
+
+  @@index([status, createdAt])
+  @@index([ownerId, status])
+}
+
+model OrganizationMember {
+  id             String                       @id @default(uuid())
+  organizationId String
+  accountId      String
+  role           OrganizationMemberRole       @default(VIEWER)
+  status         OrganizationMembershipStatus @default(PENDING)
+  createdAt      DateTime                     @default(now())
+  updatedAt      DateTime                     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  account      Account      @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, accountId])
+  @@index([accountId, status])
 }
 
 model Session {
@@ -242,9 +307,19 @@ model AuditEvent {
   @@index([actorId, occurredAt])
 }
 
+enum TripStatus {
+  DRAFT
+  OPEN
+  CLOSED
+  CANCELLED
+  COMPLETED
+}
 
-enum TripStatus { DRAFT OPEN CLOSED CANCELLED COMPLETED }
-enum BookingStatus { PENDING CONFIRMED CANCELLED }
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
 
 model Trip {
   id String @id @default(uuid())
@@ -275,8 +350,11 @@ model Booking {
   @@index([tripId,status])
 }
 
-
-enum OperationalDecision { ALLOWED REVIEW_REQUIRED DEFERRED }
+enum OperationalDecision {
+  ALLOWED
+  REVIEW_REQUIRED
+  DEFERRED
+}
 model SafetyChecklist {
  id String @id @default(uuid())
  tripId String
@@ -290,8 +368,47 @@ model SafetyChecklist {
  @@index([tripId,decision])
 }
 
-enum PaymentStatus { CREATED PENDING AUTHORIZED CAPTURED FAILED CANCELLED REFUNDED }
-enum InvoiceStatus { DRAFT ISSUED PAID VOID }
+enum DiveLogStatus {
+  DRAFT
+  VERIFIED
+  REJECTED
+}
+model DiveLog {
+ id String @id @default(uuid())
+ accountId String
+ siteName String
+ regionCode String?
+ diveDate DateTime
+ maxDepthM Float
+ durationMin Int
+ buddyName String?
+ instructorName String?
+ notes String?
+ status DiveLogStatus @default(DRAFT)
+ verifiedAt DateTime?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ account Account @relation(fields:[accountId],references:[id],onDelete:Restrict)
+ @@index([accountId,diveDate])
+ @@index([accountId,status])
+}
+
+enum PaymentStatus {
+  CREATED
+  PENDING
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  VOID
+}
 model Payment {
  id String @id @default(uuid())
  bookingId String
