@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { BookingParticipantService } from './booking-participant.service';
 import { CrewAssignmentService } from './crew-assignment.service';
 import { OperationalClearanceService } from './operational-clearance.service';
@@ -14,7 +15,9 @@ type AdminBookingRow={id:string;tripId:string;accountId:string;status:string;sea
 
 @Injectable()
 export class TripAdminService {
-  constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly crewAssignments:CrewAssignmentService,private readonly clearance:OperationalClearanceService,private readonly participants:BookingParticipantService,private readonly policies:PolicyControlService) {}
+  constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly crewAssignments:CrewAssignmentService,private readonly clearance:OperationalClearanceService,private readonly participants:BookingParticipantService,private readonly policies:PolicyControlService,private readonly notifications:NotificationsService) {}
+
+  private async notifyQuietly(accountId:string,type:string,payload:Record<string,unknown>){try{await this.notifications.notify(accountId,type,payload);}catch{return;}}
 
   async list(){const trips=(await this.db.trip.findMany({orderBy:{startsAt:'desc'}})) as AdminTripRow[];return Promise.all(trips.map(async(trip:AdminTripRow)=>({...trip,operationalClearance:await this.clearance.status(trip.id)})));}
   operationalClearance(reviewerAccountId:string,tripId:string,reason?:string){return this.clearance.grant(reviewerAccountId,tripId,reason);}
@@ -34,7 +37,9 @@ export class TripAdminService {
     });
     const crewNotification=newlyConfirmed?await this.crewAssignments.dispatchForConfirmedBooking(tripId,bookingId):{tripId,bookingId,notifiedCrew:0};
     const policyReview={required:reviewIssues.length>0,issues:[...new Set(reviewIssues)],states:{participant:participantPolicy.policyState,safety:safetyPolicy.state,capacity:capacityPolicy.state}};
-    await this.audit.record({action:'BOOKING_CONFIRMED',resource:'Booking',resourceId:bookingId,metadata:{reviewerAccountId,tripId,accountId:updated.accountId,seats:updated.seats,notifiedCrew:crewNotification.notifiedCrew,newlyConfirmed,policyReview}});return {...updated,crewNotification,policyReview};
+    await this.audit.record({action:'BOOKING_CONFIRMED',resource:'Booking',resourceId:bookingId,metadata:{reviewerAccountId,tripId,accountId:updated.accountId,seats:updated.seats,notifiedCrew:crewNotification.notifiedCrew,newlyConfirmed,policyReview}});
+    if(newlyConfirmed)await this.notifyQuietly(updated.accountId,'BOOKING_CONFIRMED',{bookingId,tripId,seats:updated.seats});
+    return {...updated,crewNotification,policyReview};
   }
 
   async setParticipantEligibility(reviewerAccountId:string,tripId:string,bookingId:string,participantId:string,status:'ELIGIBLE'|'REJECTED'){
@@ -48,7 +53,7 @@ export class TripAdminService {
     return rows;
   }
 
-  async cancelBooking(reviewerAccountId:string,tripId:string,bookingId:string){const booking=await this.db.booking.findUnique({where:{id:bookingId},include:{trip:true}});if(!booking||booking.tripId!==tripId)throw new NotFoundException('Booking not found for this trip.');if(booking.status==='CANCELLED')return booking;if(booking.trip.status==='COMPLETED'||booking.trip.status==='CANCELLED')throw new ConflictException('Booking cannot be cancelled after trip closure.');if(booking.trip.startsAt<=new Date())throw new ConflictException('Booking cannot be cancelled after the trip starts.');const updated=await this.db.booking.update({where:{id:bookingId},data:{status:'CANCELLED'}});await this.audit.record({action:'BOOKING_CANCELLED',resource:'Booking',resourceId:bookingId,metadata:{reviewerAccountId,tripId,accountId:booking.accountId,seats:booking.seats,previousStatus:booking.status}});return updated;}
+  async cancelBooking(reviewerAccountId:string,tripId:string,bookingId:string){const booking=await this.db.booking.findUnique({where:{id:bookingId},include:{trip:true}});if(!booking||booking.tripId!==tripId)throw new NotFoundException('Booking not found for this trip.');if(booking.status==='CANCELLED')return booking;if(booking.trip.status==='COMPLETED'||booking.trip.status==='CANCELLED')throw new ConflictException('Booking cannot be cancelled after trip closure.');if(booking.trip.startsAt<=new Date())throw new ConflictException('Booking cannot be cancelled after the trip starts.');const updated=await this.db.booking.update({where:{id:bookingId},data:{status:'CANCELLED'}});await this.audit.record({action:'BOOKING_CANCELLED',resource:'Booking',resourceId:bookingId,metadata:{reviewerAccountId,tripId,accountId:booking.accountId,seats:booking.seats,previousStatus:booking.status}});await this.notifyQuietly(booking.accountId,'BOOKING_CANCELLED',{bookingId,tripId,seats:booking.seats});return updated;}
 
   async create(reviewerAccountId:string,input:CreateTripInput){
     if(!input.title?.trim()||!input.type?.trim()||!input.startsAt||!input.endsAt)throw new BadRequestException('Trip title, type, startsAt and endsAt are required.');
