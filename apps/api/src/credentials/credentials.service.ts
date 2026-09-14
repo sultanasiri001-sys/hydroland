@@ -22,6 +22,7 @@ type CredentialWithDocuments = {
 @Injectable()
 export class CredentialsService {
   constructor(private readonly db:DatabaseService,private readonly policies:PolicyControlService,private readonly audit:AuditService,private readonly notifications:NotificationsService){}
+  private async notifyQuietly(accountId:string,type:string,payload:Record<string,unknown>){try{await this.notifications.notify(accountId,type,payload);}catch{return;}}
 
   async list(accountId:string){
     const a=await this.db.account.findUniqueOrThrow({where:{id:accountId},select:{personId:true}});
@@ -101,7 +102,7 @@ export class CredentialsService {
     });
     await this.audit.record({action:'CREDENTIAL_REVIEWED',resource:'Credential',resourceId:credentialId,metadata:{reviewerAccountId,previousStatus:credential.verificationStatus,status:input.outcome,reason:input.reason?.trim()||null,documentCount:credential.documents.length,externalVerification:false,policyStates:{verification:verificationPolicy.state,expiry:expiryPolicy.state},expired}});
     const owner=await this.db.account.findUnique({where:{personId:credential.personId},select:{id:true}});
-    if(owner)await this.notifications.notify(owner.id,'CREDENTIAL_REVIEWED',{credentialId,title:credential.title,outcome:input.outcome,reason:input.reason?.trim()||null,externalVerification:false});
+    if(owner)await this.notifyQuietly(owner.id,'CREDENTIAL_REVIEWED',{credentialId,title:credential.title,outcome:input.outcome,reason:input.reason?.trim()||null,externalVerification:false});
     return{...updated,externalVerification:false,policyReview:{required:expiryPolicy.review&&expired,issues:expiryPolicy.review&&expired?['DOCUMENT_EXPIRY']:[],states:{verification:verificationPolicy.state,expiry:expiryPolicy.state}}};
   }
 }
