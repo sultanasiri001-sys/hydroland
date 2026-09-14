@@ -15,79 +15,30 @@
   const weatherLabel=w=>{const d=w?.evaluation?.decision;if(d==='ALLOWED')return'طقس مناسب';if(d==='REVIEW_REQUIRED')return'الطقس يحتاج مراجعة';if(d==='DEFERRED')return'مؤجلة بالطقس';if(d==='UNAVAILABLE')return'بيانات الطقس غير متاحة';return'بدون تقييم طقس'};
   const typeLabel=t=>({BOAT:'قارب',INSTRUCTOR:'مدرب',CREW:'طاقم',SITE:'موقع',EQUIPMENT:'معدات'})[t]||t;
   const crewLabel=crew=>{const s=crew?.summary;if(!s||!s.total)return'الطاقم غير مؤكد';if(s.replacementRequired)return`يحتاج بديل (${s.replacementRequired})`;if(s.pending)return`بانتظار رد الطاقم (${s.pending})`;if(s.ready)return`الطاقم جاهز ${s.accepted}/${s.total}`;return`جاهزية الطاقم ${s.accepted}/${s.total}`};
-  const crewStatus=status=>status==='ACCEPTED'?'مقبول':status==='REJECTED'?'مرفوض':'بانتظار الرد';
+  const crewStatus=status=>status==='ACCEPTED'?'مقبول':status==='REJECTED'?'مرفوض':status==='REASSIGNED'?'تم الاستبدال':'بانتظار الرد';
+  const crewRisk=item=>{const starts=new Date(item.startsAt).getTime();const within24=starts>Date.now()&&starts-Date.now()<=24*60*60*1000;return within24&&!item.crew?.summary?.ready;};
 
   async function saveResources(tripId,select,button){
-    try{
-      state('جارٍ حفظ الموارد');button.disabled=true;
-      const resourceIds=[...select.selectedOptions].map(o=>o.value).filter(Boolean);
-      const r=await fetch(`${api()}/trips/admin/calendar/${tripId}/allocations`,{method:'POST',headers:headers(),body:JSON.stringify({resourceIds})});
-      const body=await r.json().catch(()=>null);
-      if(!r.ok)throw new Error(body?.message||'تعذر حفظ الموارد');
-      state('تم تحديث الموارد');await load();
-    }catch(error){state(error instanceof Error?error.message:'تعذر حفظ الموارد');button.disabled=false;}
+    try{state('جارٍ حفظ الموارد');button.disabled=true;const resourceIds=[...select.selectedOptions].map(o=>o.value).filter(Boolean);const r=await fetch(`${api()}/trips/admin/calendar/${tripId}/allocations`,{method:'POST',headers:headers(),body:JSON.stringify({resourceIds})});const body=await r.json().catch(()=>null);if(!r.ok)throw new Error(body?.message||'تعذر حفظ الموارد');state('تم تحديث الموارد');await load();}catch(error){state(error instanceof Error?error.message:'تعذر حفظ الموارد');button.disabled=false;}
   }
 
   function resourceEditor(item){
-    const wrap=document.createElement('div');wrap.className='hl-calendar-resource-editor';
-    const label=document.createElement('label');label.textContent='تخصيص الموارد';
-    const select=document.createElement('select');select.multiple=true;select.setAttribute('aria-label','موارد الرحلة');
-    const assigned=new Set((item.resources||[]).map(r=>r.resourceId));
-    resources.filter(r=>r.active!==false).forEach(resource=>{const option=document.createElement('option');option.value=resource.id;option.textContent=`${typeLabel(resource.type)} · ${resource.name}`;option.selected=assigned.has(resource.id);select.appendChild(option)});
-    const button=document.createElement('button');button.type='button';button.textContent='حفظ الموارد';button.onclick=()=>saveResources(item.id,select,button);
-    wrap.append(label,select,button);return wrap;
+    const wrap=document.createElement('div');wrap.className='hl-calendar-resource-editor';const label=document.createElement('label');label.textContent='تخصيص الموارد';const select=document.createElement('select');select.multiple=true;select.setAttribute('aria-label','موارد الرحلة');const assigned=new Set((item.resources||[]).map(r=>r.resourceId));resources.filter(r=>r.active!==false).forEach(resource=>{const option=document.createElement('option');option.value=resource.id;option.textContent=`${typeLabel(resource.type)} · ${resource.name}`;option.selected=assigned.has(resource.id);select.appendChild(option)});const button=document.createElement('button');button.type='button';button.textContent='حفظ الموارد';button.onclick=()=>saveResources(item.id,select,button);wrap.append(label,select,button);return wrap;
   }
 
   function crewDetails(item){
-    const members=item.crew?.members||[];
-    const wrap=document.createElement('div');wrap.className='hl-calendar-crew-status';
-    const heading=document.createElement('strong');heading.textContent='استجابة طاقم الرحلة';wrap.appendChild(heading);
-    if(!members.length){const empty=document.createElement('small');empty.textContent='لم يتم إنشاء تكليفات للطاقم بعد.';wrap.appendChild(empty);return wrap;}
-    members.forEach(member=>{const row=document.createElement('div');const name=document.createElement('span');name.textContent=`${member.name} · ${typeLabel(member.roleType)}`;const status=document.createElement('b');status.textContent=crewStatus(member.status);status.dataset.crewStatus=member.status;row.append(name,status);wrap.appendChild(row)});
-    return wrap;
+    const members=item.crew?.members||[];const wrap=document.createElement('div');wrap.className='hl-calendar-crew-status';const heading=document.createElement('strong');heading.textContent='استجابة طاقم الرحلة';wrap.appendChild(heading);if(!members.length){const empty=document.createElement('small');empty.textContent='لم يتم إنشاء تكليفات للطاقم بعد.';wrap.appendChild(empty);return wrap;}members.forEach(member=>{const row=document.createElement('div');const name=document.createElement('span');name.textContent=`${member.name} · ${typeLabel(member.roleType)}`;const status=document.createElement('b');status.textContent=crewStatus(member.status);status.dataset.crewStatus=member.status;row.append(name,status);wrap.appendChild(row)});return wrap;
   }
 
   function render(items,start,end){
-    const host=panel.querySelector('[data-calendar-list]');host.textContent='';
-    panel.querySelector('[data-calendar-range]').textContent=`${fmt(start)} — ${fmt(new Date(end.getTime()-1))}`;
-    if(!items.length){const p=document.createElement('p');p.textContent='لا توجد رحلات أو أنشطة في هذا الأسبوع.';host.appendChild(p);return;}
+    const host=panel.querySelector('[data-calendar-list]');host.textContent='';panel.querySelector('[data-calendar-range]').textContent=`${fmt(start)} — ${fmt(new Date(end.getTime()-1))}`;if(!items.length){const p=document.createElement('p');p.textContent='لا توجد رحلات أو أنشطة في هذا الأسبوع.';host.appendChild(p);return;}
     const byDay=new Map();items.forEach(item=>{const key=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Riyadh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(item.startsAt));if(!byDay.has(key))byDay.set(key,[]);byDay.get(key).push(item)});
-    [...byDay.entries()].forEach(([,rows])=>{
-      const section=document.createElement('section');section.className='hl-calendar-day';
-      const h=document.createElement('h4');h.textContent=fmt(new Date(rows[0].startsAt));section.appendChild(h);
-      rows.sort((a,b)=>new Date(a.startsAt)-new Date(b.startsAt)).forEach(item=>{
-        const card=document.createElement('article');card.className='hl-calendar-event';
-        const head=document.createElement('div');const title=document.createElement('strong');title.textContent=item.title;const meta=document.createElement('small');meta.textContent=`${time(new Date(item.startsAt))}–${time(new Date(item.endsAt))} · ${item.type} · ${item.remainingSeats}/${item.capacity} متاح`;head.append(title,meta);
-        const tags=document.createElement('div');tags.className='hl-calendar-tags';
-        const weather=document.createElement('span');weather.textContent=weatherLabel(item.weather);tags.appendChild(weather);
-        const safety=document.createElement('span');safety.textContent=item.safety?.decision==='ALLOWED'?'السلامة معتمدة':item.safety?.decision==='DEFERRED'?'مؤجلة بالسلامة':'السلامة تحتاج مراجعة';tags.appendChild(safety);
-        const crew=document.createElement('span');crew.textContent=crewLabel(item.crew);crew.dataset.crewReady=item.crew?.summary?.ready?'true':'false';tags.appendChild(crew);
-        const allocated=document.createElement('span');const names=(item.resources||[]).map(r=>r.resource?.name||r.name).filter(Boolean);allocated.textContent=names.length?`الموارد: ${names.join('، ')}`:'لم تُخصص موارد';tags.appendChild(allocated);
-        card.append(head,tags,crewDetails(item),resourceEditor(item));section.appendChild(card);
-      });host.appendChild(section);
-    });
+    [...byDay.entries()].forEach(([,rows])=>{const section=document.createElement('section');section.className='hl-calendar-day';const h=document.createElement('h4');h.textContent=fmt(new Date(rows[0].startsAt));section.appendChild(h);rows.sort((a,b)=>new Date(a.startsAt)-new Date(b.startsAt)).forEach(item=>{const card=document.createElement('article');card.className='hl-calendar-event';if(crewRisk(item))card.dataset.crewRisk='critical';const head=document.createElement('div');const title=document.createElement('strong');title.textContent=item.title;const meta=document.createElement('small');meta.textContent=`${time(new Date(item.startsAt))}–${time(new Date(item.endsAt))} · ${item.type} · ${item.remainingSeats}/${item.capacity} متاح`;head.append(title,meta);if(crewRisk(item)){const alert=document.createElement('div');alert.className='hl-calendar-critical';alert.textContent='⚠ خطر تشغيلي: موعد الرحلة خلال 24 ساعة والطاقم غير مكتمل';head.appendChild(alert)}const tags=document.createElement('div');tags.className='hl-calendar-tags';const weather=document.createElement('span');weather.textContent=weatherLabel(item.weather);tags.appendChild(weather);const safety=document.createElement('span');safety.textContent=item.safety?.decision==='ALLOWED'?'السلامة معتمدة':item.safety?.decision==='DEFERRED'?'مؤجلة بالسلامة':'السلامة تحتاج مراجعة';tags.appendChild(safety);const crew=document.createElement('span');crew.textContent=crewLabel(item.crew);crew.dataset.crewReady=item.crew?.summary?.ready?'true':'false';tags.appendChild(crew);const allocated=document.createElement('span');const names=(item.resources||[]).map(r=>r.resource?.name||r.name).filter(Boolean);allocated.textContent=names.length?`الموارد: ${names.join('، ')}`:'لم تُخصص موارد';tags.appendChild(allocated);card.append(head,tags,crewDetails(item),resourceEditor(item));section.appendChild(card)});host.appendChild(section);});
   }
 
   async function load(){
     if(!token()){state('يتطلب دخول إداري');return}
-    try{
-      state('جارٍ تحميل التقويم');const start=startOfWeek(anchor),end=endOfWeek(start);
-      const [calendarResponse,resourcesResponse]=await Promise.all([
-        fetch(`${api()}/trips/admin/calendar?from=${encodeURIComponent(start.toISOString())}&to=${encodeURIComponent(end.toISOString())}`,{headers:headers()}),
-        fetch(`${api()}/trips/admin/calendar/resources`,{headers:headers()})
-      ]);
-      const rows=await calendarResponse.json().catch(()=>[]);const resourceRows=await resourcesResponse.json().catch(()=>[]);
-      if(!calendarResponse.ok||!resourcesResponse.ok)throw new Error();
-      resources=Array.isArray(resourceRows)?resourceRows:[];render(Array.isArray(rows)?rows:[],start,end);state('متصل بالخادم');
-    }catch{state('تعذر تحميل التقويم')}
+    try{state('جارٍ تحميل التقويم');const start=startOfWeek(anchor),end=endOfWeek(start);const [calendarResponse,resourcesResponse]=await Promise.all([fetch(`${api()}/trips/admin/calendar?from=${encodeURIComponent(start.toISOString())}&to=${encodeURIComponent(end.toISOString())}`,{headers:headers()}),fetch(`${api()}/trips/admin/calendar/resources`,{headers:headers()})]);const rows=await calendarResponse.json().catch(()=>[]);const resourceRows=await resourcesResponse.json().catch(()=>[]);if(!calendarResponse.ok||!resourcesResponse.ok)throw new Error();resources=Array.isArray(resourceRows)?resourceRows:[];render(Array.isArray(rows)?rows:[],start,end);state('متصل بالخادم');}catch{state('تعذر تحميل التقويم')}
   }
-  panel.querySelector('[data-calendar-prev]').onclick=()=>{anchor=new Date(anchor.getTime()-7*86400000);load()};
-  panel.querySelector('[data-calendar-next]').onclick=()=>{anchor=new Date(anchor.getTime()+7*86400000);load()};
-  document.addEventListener('hydroland:role-changed',e=>{const active=e.detail?.role==='admin';panel.hidden=!active;if(active)load()});
-  document.addEventListener('hydroland:auth-changed',()=>{if(!panel.hidden)load()});
-  document.addEventListener('hydroland:safety-decision-changed',()=>{if(!panel.hidden)load()});
-  document.addEventListener('hydroland:weather-gate-changed',()=>{if(!panel.hidden)load()});
-  document.addEventListener('hydroland:crew-assignment-updated',()=>{if(!panel.hidden)load()});
-  window.addEventListener('hydroland:booking-created',()=>{if(!panel.hidden)load()});
-  window.HydrolandOperationsCalendar={reload:load};
+  panel.querySelector('[data-calendar-prev]').onclick=()=>{anchor=new Date(anchor.getTime()-7*86400000);load()};panel.querySelector('[data-calendar-next]').onclick=()=>{anchor=new Date(anchor.getTime()+7*86400000);load()};document.addEventListener('hydroland:role-changed',e=>{const active=e.detail?.role==='admin';panel.hidden=!active;if(active)load()});document.addEventListener('hydroland:auth-changed',()=>{if(!panel.hidden)load()});document.addEventListener('hydroland:safety-decision-changed',()=>{if(!panel.hidden)load()});document.addEventListener('hydroland:weather-gate-changed',()=>{if(!panel.hidden)load()});document.addEventListener('hydroland:crew-assignment-updated',()=>{if(!panel.hidden)load()});window.addEventListener('hydroland:booking-created',()=>{if(!panel.hidden)load()});window.HydrolandOperationsCalendar={reload:load};
 })();
