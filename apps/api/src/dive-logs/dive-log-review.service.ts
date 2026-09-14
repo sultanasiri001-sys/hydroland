@@ -4,6 +4,7 @@ import { DatabaseService } from '../database/database.service';
 
 type ReviewStatus = 'VERIFIED' | 'REJECTED';
 type ReviewerRole = { role: 'ADMIN' | 'REVIEWER' | 'INSTRUCTOR' };
+type TripAssignment = { tripId: string };
 const REVIEW_STATUSES: ReviewStatus[] = ['VERIFIED', 'REJECTED'];
 
 @Injectable()
@@ -46,8 +47,8 @@ export class DiveLogReviewService {
     if(scope.unrestricted){
       return this.db.diveLog.findMany({where:{status:'DRAFT'},orderBy:{diveDate:'desc'},take:100,include:{account:{select:{id:true,email:true,person:{select:{firstName:true,lastName:true}}}}}});
     }
-    const tripAssignments=await this.db.crewAssignment.findMany({where:{accountId:reviewerAccountId,status:'ACCEPTED',roleType:'INSTRUCTOR'},select:{tripId:true}});
-    const tripIds=[...new Set(tripAssignments.map(item=>item.tripId))];
+    const tripAssignments=(await this.db.crewAssignment.findMany({where:{accountId:reviewerAccountId,status:'ACCEPTED',roleType:'INSTRUCTOR'},select:{tripId:true}})) as TripAssignment[];
+    const tripIds=[...new Set(tripAssignments.map((item:TripAssignment)=>item.tripId))];
     return this.db.diveLog.findMany({
       where:{status:'DRAFT',OR:[...(tripIds.length?[{sourceTripId:{in:tripIds}}]:[]),{sourceTripId:null,instructorName:scope.instructorName}]},
       orderBy:{diveDate:'desc'},take:100,
