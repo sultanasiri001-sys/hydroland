@@ -30,7 +30,16 @@
     try{state('جارٍ تحميل المهام');const r=await fetch(`${api()}/trips/crew/assignments/mine`,{headers:headers()});const rows=await r.json().catch(()=>[]);if(!r.ok)throw new Error();render(Array.isArray(rows)?rows:[]);state('متصل بالخادم');}catch{state('تعذر تحميل مهام الرحلات')}
   }
   async function respond(id,response,button){
-    try{button.disabled=true;state(response==='ACCEPTED'?'جارٍ قبول المهمة':'جارٍ رفض المهمة');const r=await fetch(`${api()}/trips/crew/assignments/${id}/respond`,{method:'PATCH',headers:headers(),body:JSON.stringify({response})});const body=await r.json().catch(()=>null);if(!r.ok)throw new Error(body?.message||'تعذر تحديث المهمة');await load();window.dispatchEvent(new CustomEvent('hydroland:crew-assignment-changed',{detail:body}));state(response==='ACCEPTED'?'تم قبول المهمة':'تم رفض المهمة وإعادة الإسناد عند توفر بديل');}catch(error){button.disabled=false;state(error instanceof Error?error.message:'تعذر تحديث المهمة')}
+    try{
+      button.disabled=true;state(response==='ACCEPTED'?'جارٍ قبول المهمة':'جارٍ رفض المهمة');
+      const r=await fetch(`${api()}/trips/crew/assignments/${id}/respond`,{method:'PATCH',headers:headers(),body:JSON.stringify({response})});
+      const body=await r.json().catch(()=>null);if(!r.ok)throw new Error(body?.message||'تعذر تحديث المهمة');
+      await load();
+      const detail={...body,response};
+      window.dispatchEvent(new CustomEvent('hydroland:crew-assignment-changed',{detail}));
+      document.dispatchEvent(new CustomEvent('hydroland:crew-assignment-updated',{detail}));
+      state(response==='ACCEPTED'?'تم قبول المهمة':'تم رفض المهمة وإعادة الإسناد عند توفر بديل');
+    }catch(error){button.disabled=false;state(error instanceof Error?error.message:'تعذر تحديث المهمة')}
   }
   const setVisible=role=>{const active=['instructor','boat','admin','center'].includes(role);panel.hidden=!active;if(active)load()};
   document.addEventListener('hydroland:role-changed',e=>setVisible(e.detail?.role));
