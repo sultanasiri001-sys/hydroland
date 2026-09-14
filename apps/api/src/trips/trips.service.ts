@@ -33,6 +33,7 @@ export class TripsService {
   }
 
   async list() {
+    const gateSettings = await this.weatherGate.settings();
     const trips = (await this.db.trip.findMany({
       where: { status: 'OPEN' },
       orderBy: { startsAt: 'asc' },
@@ -53,20 +54,21 @@ export class TripsService {
       const bookedSeats = trip.bookings.reduce((sum: number, booking: { seats: number }) => sum + booking.seats, 0);
       const latestSafety = trip.safetyChecklists[0] ?? null;
       const weatherSnapshot = latestSafety ? this.weatherFromItems(latestSafety.items) : null;
-      const weather = this.weatherGate.evaluate(weatherSnapshot);
+      const weather = this.weatherGate.evaluate(weatherSnapshot, gateSettings);
       const { bookings, safetyChecklists, ...base } = trip;
       return {
         ...base,
         bookedSeats,
         remainingSeats: Math.max(0, trip.capacity - bookedSeats),
         safety: latestSafety,
-        weather: { snapshot: weatherSnapshot, gate: this.weatherGate.settings(), evaluation: weather },
+        weather: { snapshot: weatherSnapshot, gate: gateSettings, evaluation: weather },
       };
     });
   }
 
   async book(accountId: string, tripId: string, seats: number) {
     if (!Number.isInteger(seats) || seats < 1) throw new BadRequestException('Invalid seats.');
+    const gateSettings = await this.weatherGate.settings();
 
     return this.db.$transaction(async (tx: Prisma.TransactionClient) => {
       const trip = await tx.trip.findUnique({ where: { id: tripId } });
@@ -83,7 +85,7 @@ export class TripsService {
       }
 
       const weatherSnapshot = this.weatherFromItems(latestSafety.items);
-      const weather = this.weatherGate.evaluate(weatherSnapshot);
+      const weather = this.weatherGate.evaluate(weatherSnapshot, gateSettings);
       if (weather.blocking) {
         throw new ConflictException(weather.reason || 'Trip is unavailable because of weather conditions.');
       }
