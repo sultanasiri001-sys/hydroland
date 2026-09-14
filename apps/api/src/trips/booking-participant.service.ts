@@ -66,7 +66,7 @@ export class BookingParticipantService {
   async assertConfirmable(bookingId:string,seats:number){
     const rows=await this.db.$queryRaw<ParticipantRow[]>`SELECT * FROM "BookingParticipant" WHERE "bookingId"=${bookingId}`;
     if(rows.length!==seats)throw new ConflictException('Every booked seat must have an individual participant record.');
-    const incomplete=rows.filter(row=>row.eligibilityStatus!=='ELIGIBLE');
+    const incomplete=rows.filter((row:ParticipantRow)=>row.eligibilityStatus!=='ELIGIBLE');
     if(incomplete.length)throw new ConflictException(`${incomplete.length} participant(s) require eligibility approval before booking confirmation.`);
   }
 }
