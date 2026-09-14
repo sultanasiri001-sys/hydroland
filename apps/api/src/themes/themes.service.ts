@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { DatabaseService } from '../database/database.service';
 
@@ -36,6 +36,16 @@ export class ThemesService {
     return THEME_CATALOG;
   }
 
+  private async assertNoPublishedOverlap(startsAt: Date, endsAt: Date, excludeId?: string) {
+    const rows = await this.db.$queryRawUnsafe<Array<{ id: string }>>(
+      'SELECT "id" FROM "ThemeSchedule" WHERE "status"=\'PUBLISHED\' AND "startsAt" < $1 AND "endsAt" > $2 AND ($3::text IS NULL OR "id" <> $3) LIMIT 1',
+      endsAt,
+      startsAt,
+      excludeId ?? null,
+    );
+    if (rows.length) throw new ConflictException('Published theme schedule overlaps an existing published schedule.');
+  }
+
   async active() {
     const rows = await this.db.$queryRawUnsafe<ThemeScheduleRow[]>(
       'SELECT * FROM "ThemeSchedule" WHERE "status" = \'PUBLISHED\' AND "startsAt" <= NOW() AND "endsAt" >= NOW() ORDER BY "startsAt" DESC LIMIT 1',
@@ -59,6 +69,7 @@ export class ThemesService {
       throw new BadRequestException('Invalid theme schedule window.');
     }
     const status: ThemeStatus = input.status ?? 'DRAFT';
+    if (status === 'PUBLISHED') await this.assertNoPublishedOverlap(startsAt, endsAt);
     const id = randomUUID();
     const rows = await this.db.$queryRawUnsafe<ThemeScheduleRow[]>(
       'INSERT INTO "ThemeSchedule" ("id","themeId","name","status","startsAt","endsAt","createdById","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,NOW()) RETURNING *',
@@ -75,12 +86,14 @@ export class ThemesService {
 
   async setStatus(id: string, status: ThemeStatus) {
     if (!['DRAFT', 'PUBLISHED', 'ARCHIVED'].includes(status)) throw new BadRequestException('Invalid theme status.');
+    const existing = await this.db.$queryRawUnsafe<ThemeScheduleRow[]>('SELECT * FROM "ThemeSchedule" WHERE "id"=$1 LIMIT 1', id);
+    if (!existing[0]) throw new NotFoundException('Theme schedule not found.');
+    if (status === 'PUBLISHED') await this.assertNoPublishedOverlap(existing[0].startsAt, existing[0].endsAt, id);
     const rows = await this.db.$queryRawUnsafe<ThemeScheduleRow[]>(
       'UPDATE "ThemeSchedule" SET "status"=$2,"updatedAt"=NOW() WHERE "id"=$1 RETURNING *',
       id,
       status,
     );
-    if (!rows[0]) throw new NotFoundException('Theme schedule not found.');
     return rows[0];
   }
 }
