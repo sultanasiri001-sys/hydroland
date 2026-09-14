@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { AdminGuard } from '../admin/admin.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { CrewAssignmentService } from './crew-assignment.service';
@@ -26,7 +26,9 @@ export class CrewAssignmentController {
     @Param('id') id: string,
     @Body() body: { response?: 'ACCEPTED' | 'REJECTED' },
   ) {
-    const response = body.response === 'REJECTED' ? 'REJECTED' : 'ACCEPTED';
-    return this.crew.respond(req.auth.accountId, id, response);
+    if (body.response !== 'ACCEPTED' && body.response !== 'REJECTED') {
+      throw new BadRequestException('response must be ACCEPTED or REJECTED.');
+    }
+    return this.crew.respond(req.auth.accountId, id, body.response);
   }
 }
