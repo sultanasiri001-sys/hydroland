@@ -10,6 +10,7 @@ export type TripStatusValue = 'DRAFT' | 'OPEN' | 'CLOSED' | 'CANCELLED' | 'COMPL
 const TRIP_STATUSES: TripStatusValue[] = ['DRAFT', 'OPEN', 'CLOSED', 'CANCELLED', 'COMPLETED'];
 type CreateTripInput = { title?: string; type?: string; startsAt?: string; endsAt?: string; capacity?: number; status?: TripStatusValue };
 type AdminTripRow = { id:string; title:string; type:string; startsAt:Date; endsAt:Date; capacity:number; status:TripStatusValue; createdAt:Date; updatedAt:Date };
+type AdminBookingRow = { id:string; tripId:string; accountId:string; status:string; seats:number; createdAt:Date; updatedAt:Date; account:unknown };
 
 @Injectable()
 export class TripAdminService {
@@ -24,7 +25,7 @@ export class TripAdminService {
   async list(){const trips=(await this.db.trip.findMany({orderBy:{startsAt:'desc'}})) as AdminTripRow[];return Promise.all(trips.map(async (trip:AdminTripRow)=>({...trip,operationalClearance:await this.clearance.status(trip.id)})));}
   operationalClearance(reviewerAccountId:string,tripId:string,reason?:string){return this.clearance.grant(reviewerAccountId,tripId,reason);}
 
-  async bookings(tripId:string){const trip=await this.db.trip.findUnique({where:{id:tripId},select:{id:true}});if(!trip)throw new NotFoundException('Trip not found.');const bookings=await this.db.booking.findMany({where:{tripId},orderBy:{createdAt:'asc'},include:{account:{select:{id:true,email:true,person:{select:{firstName:true,lastName:true}}}}}});return Promise.all(bookings.map(async booking=>({...booking,participants:await this.db.$queryRaw`SELECT * FROM "BookingParticipant" WHERE "bookingId"=${booking.id} ORDER BY "createdAt" ASC`})));}
+  async bookings(tripId:string){const trip=await this.db.trip.findUnique({where:{id:tripId},select:{id:true}});if(!trip)throw new NotFoundException('Trip not found.');const bookings=(await this.db.booking.findMany({where:{tripId},orderBy:{createdAt:'asc'},include:{account:{select:{id:true,email:true,person:{select:{firstName:true,lastName:true}}}}}})) as AdminBookingRow[];return Promise.all(bookings.map(async (booking:AdminBookingRow)=>({...booking,participants:await this.db.$queryRaw`SELECT * FROM "BookingParticipant" WHERE "bookingId"=${booking.id} ORDER BY "createdAt" ASC`})));}
 
   async confirmBooking(reviewerAccountId:string,tripId:string,bookingId:string){
     const initial=await this.db.booking.findUnique({where:{id:bookingId},select:{tripId:true,seats:true,status:true}});if(!initial||initial.tripId!==tripId)throw new NotFoundException('Booking not found for this trip.');if(initial.status!=='CONFIRMED')await this.participants.assertConfirmable(bookingId,initial.seats);
