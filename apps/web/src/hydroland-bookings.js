@@ -7,7 +7,7 @@
     let response;
     if(options.public){
       const {public:_,...fetchOptions}=options;
-      response=await fetch(`${auth()?.apiBase||'http://localhost:3001/api/v1'}${path}`,fetchOptions);
+      response=await fetch(`${auth()?.apiBase||window.HYDROLAND_API_BASE||'https://hydroland.onrender.com/api/v1'}${path}`,fetchOptions);
     }else{
       const client=auth()?.authorizedFetch;if(!client)throw new Error('سجّل الدخول أولًا');
       response=await client(path,options);
