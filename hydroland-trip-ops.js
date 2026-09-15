@@ -1,1 +1,58 @@
-(()=>{const css=document.createElement('link');css.rel='stylesheet';css.href='./hydroland-trip-ops.css';document.head.appendChild(css);const trips=document.getElementById('trips');if(!trips||document.querySelector('.hl-trip-ops'))return;const w=document.createElement('section');w.className='hl-trip-ops';w.innerHTML=`<header class="hl-trip-head"><div><small>TRIP OPERATIONS · HYDROLAND</small><h3>إدارة الرحلة من الإنشاء حتى إغلاق سجل الغوص</h3></div><span class="hl-trip-state">✓ GO · جاهزة للتشغيل</span></header><div class="hl-trip-flow"><article class="hl-trip-step"><b>01 · CREATE</b><strong>إنشاء الرحلة</strong><small>الموقع، النوع، الموعد، السعة والمدرب/المشغل.</small></article><article class="hl-trip-step"><b>02 · ELIGIBILITY</b><strong>أهلية المشاركين</strong><small>الشهادة، المستوى، الوثائق والملف الطبي المطلوب.</small></article><article class="hl-trip-step"><b>03 · EQUIPMENT</b><strong>توزيع المعدات</strong><small>تأكيد المعدات الشخصية والمستأجرة وحالتها.</small></article><article class="hl-trip-step"><b>04 · GO / NO GO</b><strong>قرار التشغيل</strong><small>السلامة، الطقس، البحر، القارب والطاقم.</small></article><article class="hl-trip-step"><b>05 · CLOSE</b><strong>إغلاق الرحلة</strong><small>تسجيل الغوصات، الملاحظات والتقييم والحوادث.</small></article></div><div class="hl-trip-grid"><section class="hl-trip-panel"><h4>الرحلة الحالية</h4><div class="hl-trip-row"><span>الرحلة</span><b>جزيرة سمر · قارب</b></div><div class="hl-trip-row"><span>الانطلاق</span><b>مرسى القحمة · 07:00</b></div><div class="hl-trip-row"><span>السعة</span><b>8 / 10 غواصين</b></div><div class="hl-trip-row"><span>الطاقم</span><b class="hl-trip-ok">✓ مكتمل</b></div></section><section class="hl-trip-panel"><h4>المشاركون والأهلية</h4><div class="hl-trip-row"><span>Rescue Diver</span><b class="hl-trip-ok">✓ مؤهل</b></div><div class="hl-trip-row"><span>Advanced Diver</span><b class="hl-trip-ok">✓ مؤهل</b></div><div class="hl-trip-row"><span>Open Water</span><b class="hl-trip-warn">مراجعة العمق</b></div><div class="hl-trip-row"><span>الوثائق الناقصة</span><b>1</b></div></section><section class="hl-trip-panel"><h4>المعدات والسلامة</h4><div class="hl-trip-row"><span>أسطوانات</span><b class="hl-trip-ok">10 / 10</b></div><div class="hl-trip-row"><span>BCD / Regulator</span><b class="hl-trip-ok">جاهز</b></div><div class="hl-trip-row"><span>O₂ + إسعافات</span><b class="hl-trip-ok">✓ موجود</b></div><div class="hl-trip-row"><span>قائمة ما قبل الإبحار</span><b class="hl-trip-ok">100%</b></div></section></div><div class="hl-trip-actions"><button>+ إنشاء رحلة</button><button>إدارة المشاركين</button><button>توزيع المعدات</button><button>قائمة الفحص</button><button class="primary">اعتماد قرار GO</button><button>إغلاق الرحلة</button></div><div class="hl-trip-log"><article><small>آخر تحديث</small><b>تم اعتماد الطاقم والمعدات</b></article><article><small>بعد الرحلة</small><b>تسجيل الغوصة تلقائيًا بعد الإغلاق</b></article><article><small>التقييم</small><b>تقييم الغواص والطاقم والموقع</b></article></div>`;trips.appendChild(w);const toast=document.getElementById('toast');w.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>{if(!toast)return;toast.textContent=btn.textContent.includes('GO')?'تم اعتماد قرار التشغيل للرحلة':`تم فتح: ${btn.textContent}`;toast.classList.add('visible');setTimeout(()=>toast.classList.remove('visible'),1900)}));})();
+(()=>{
+  const css=document.createElement('link');
+  css.rel='stylesheet';
+  css.href='./hydroland-trip-ops.css';
+  document.head.appendChild(css);
+
+  const host=document.getElementById('trips');
+  if(!host||document.querySelector('.hl-trip-ops'))return;
+
+  const api=()=>window.HydrolandAuth?.apiBase||window.HYDROLAND_API_BASE||'http://localhost:3001/api/v1';
+  const state={trips:[]};
+  const panel=document.createElement('section');
+  panel.className='hl-trip-ops';
+  panel.innerHTML=`<header class="hl-trip-head"><div><small>TRIP OPERATIONS · HYDROLAND</small><h3>التشغيل الفعلي للرحلات</h3></div><span class="hl-trip-state" data-trip-state>بانتظار البيانات</span></header><div class="hl-trip-grid" data-trip-grid></div><div class="hl-trip-actions"><button data-trip-refresh>تحديث الرحلات</button></div>`;
+  host.appendChild(panel);
+
+  const grid=panel.querySelector('[data-trip-grid]');
+  const stateLabel=panel.querySelector('[data-trip-state]');
+  const formatDate=value=>new Date(value).toLocaleString('ar-SA',{dateStyle:'medium',timeStyle:'short'});
+  const safetyLabel=decision=>decision==='ALLOWED'?'GO':decision==='DEFERRED'?'NO-GO':'REVIEW';
+  const safetyClass=decision=>decision==='ALLOWED'?'hl-trip-ok':decision==='DEFERRED'?'hl-trip-warn':'';
+
+  function render(){
+    if(!state.trips.length){
+      grid.innerHTML='<section class="hl-trip-panel"><h4>لا توجد رحلات مفتوحة حاليًا</h4><small>ستظهر الرحلات هنا مباشرة من قاعدة البيانات عند توفرها.</small></section>';
+      stateLabel.textContent='لا توجد رحلات مفتوحة';
+      stateLabel.dataset.state='EMPTY';
+      return;
+    }
+
+    grid.innerHTML=state.trips.map(trip=>`<section class="hl-trip-panel" data-trip-id="${trip.id}"><h4>${trip.title}</h4><div class="hl-trip-row"><span>النوع</span><b>${trip.type}</b></div><div class="hl-trip-row"><span>الموعد</span><b>${formatDate(trip.startsAt)}</b></div><div class="hl-trip-row"><span>السعة</span><b>${trip.bookedSeats||0} / ${trip.capacity}</b></div><div class="hl-trip-row"><span>المقاعد المتبقية</span><b>${trip.remainingSeats??trip.capacity}</b></div><div class="hl-trip-row"><span>قرار السلامة</span><b class="${safetyClass(trip.safety?.decision)}">${safetyLabel(trip.safety?.decision)}</b></div></section>`).join('');
+    const first=state.trips[0];
+    const operational=safetyLabel(first.safety?.decision);
+    stateLabel.textContent=`${operational} · ${first.title}`;
+    stateLabel.dataset.state=operational;
+  }
+
+  async function load(){
+    stateLabel.textContent='جارٍ تحميل الرحلات';
+    try{
+      const response=await fetch(`${api().replace(/\/$/,'')}/trips`);
+      if(!response.ok)throw new Error();
+      const data=await response.json();
+      state.trips=Array.isArray(data)?data:[];
+      render();
+    }catch{
+      state.trips=[];
+      grid.innerHTML='<section class="hl-trip-panel"><h4>تعذر الاتصال بخادم الرحلات</h4><small>لا تُعرض أي بيانات تجريبية عند فشل الاتصال.</small></section>';
+      stateLabel.textContent='تعذر الاتصال';
+      stateLabel.dataset.state='OFFLINE';
+    }
+  }
+
+  panel.querySelector('[data-trip-refresh]')?.addEventListener('click',load);
+  document.addEventListener('hydroland:booking-created',load);
+  window.addEventListener('hydroland:safety-decision-changed',load);
+  load();
+})();
