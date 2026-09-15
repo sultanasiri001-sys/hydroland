@@ -22,10 +22,6 @@ export class TripsController {
   cancelMine(@Req() r:{auth:{accountId:string}},@Param('bookingId') bookingId:string){return this.s.cancelMine(r.auth.accountId,bookingId);}
 
   @UseGuards(AccessTokenGuard)
-  @Patch('bookings/:bookingId/cancel')
-  cancelMineFromAccountCenter(@Req() r:{auth:{accountId:string}},@Param('bookingId') bookingId:string){return this.s.cancelMine(r.auth.accountId,bookingId);}
-
-  @UseGuards(AccessTokenGuard)
   @Get('bookings/:bookingId/participants')
   participants(@Req() r:{auth:{accountId:string}},@Param('bookingId') bookingId:string){return this.s.participantsForBooking(r.auth.accountId,bookingId);}
 
