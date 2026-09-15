@@ -13,7 +13,7 @@ type QualificationPolicy={master:string;instructorRole:string;instructorCredenti
 @Injectable()
 export class CrewAssignmentService{
   constructor(private readonly db:DatabaseService,private readonly policies:PolicyControlService,private readonly audit:AuditService){}
-  private notify(accountId:string,type:string,payload:Record<string,unknown>){return this.db.notification.create({data:{accountId,type,payload,status:'PENDING'}});}
+  private notify(accountId:string,type:string,payload:Record<string,unknown>){return this.db.notification.create({data:{accountId,type,payload:payload as Prisma.InputJsonValue,status:'PENDING'}});}
   private async notifyAdmins(type:string,payload:Record<string,unknown>){const admins=await this.db.roleAssignment.findMany({where:{role:'ADMIN',status:'ACTIVE'},select:{accountId:true}});await Promise.all(admins.map((admin:{accountId:string})=>this.notify(admin.accountId,type,payload)));}
   private async hasOverdueAlert(assignmentId:string){const rows=await this.db.$queryRaw<Array<{exists:boolean}>>`SELECT EXISTS(SELECT 1 FROM "Notification" WHERE "type"='CREW_RESPONSE_OVERDUE' AND "payload"->>'assignmentId'=${assignmentId}) AS "exists"`;return rows[0]?.exists===true;}
   private async qualificationPolicy():Promise<QualificationPolicy>{const [master,instructorRole,instructorCredential,captainRole,captainLicense,crewRole]=await Promise.all([this.policies.state('CREW','QUALIFICATION'),this.policies.state('INSTRUCTOR','ACTIVE_ROLE'),this.policies.state('INSTRUCTOR','VERIFIED_CREDENTIAL'),this.policies.state('CAPTAIN','ACTIVE_ROLE'),this.policies.state('CAPTAIN','VERIFIED_LICENSE'),this.policies.state('CREW','ACTIVE_ROLE')]);return{master,instructorRole,instructorCredential,captainRole,captainLicense,crewRole};}
