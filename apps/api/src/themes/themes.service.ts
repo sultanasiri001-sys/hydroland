@@ -4,16 +4,12 @@ import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 
 const THEME_CATALOG = [
-  { id: 'ocean-horizon', nameAr: 'الأفق البحري', category: 'core' },
-  { id: 'winter-current', nameAr: 'تيار الشتاء', category: 'seasonal' },
-  { id: 'spring-reef', nameAr: 'شعاب الربيع', category: 'seasonal' },
-  { id: 'summer-coast', nameAr: 'ساحل الصيف', category: 'seasonal' },
-  { id: 'autumn-depth', nameAr: 'عمق الخريف', category: 'seasonal' },
-  { id: 'founding-day', nameAr: 'يوم التأسيس', category: 'national' },
-  { id: 'national-day', nameAr: 'اليوم الوطني', category: 'national' },
-  { id: 'eid-al-fitr', nameAr: 'عيد الفطر', category: 'holiday' },
-  { id: 'eid-al-adha', nameAr: 'عيد الأضحى', category: 'holiday' },
-  { id: 'marine-event', nameAr: 'فعالية بحرية', category: 'event' },
+  { id: 'ocean-horizon', nameAr: 'هيدرولاند الأساسي', nameEn: 'Ocean Horizon', category: 'core', symbol: 'H', description: 'الهوية البحرية الأساسية الفاخرة لهيدرولاند' },
+  { id: 'ramadan-nights', nameAr: 'ليالي رمضان', nameEn: 'Ramadan Nights', category: 'seasonal', symbol: '☾', description: 'ليل بحري هادئ بلمسات زمردية وذهبية' },
+  { id: 'eid-al-fitr', nameAr: 'عيد الفطر', nameEn: 'Eid Al-Fitr', category: 'seasonal', symbol: '✦', description: 'ثيم احتفالي راقٍ بلؤلؤ وذهب وتركواز' },
+  { id: 'hajj-season', nameAr: 'موسم الحج', nameEn: 'Hajj Season', category: 'seasonal', symbol: '◆', description: 'هوية هادئة ومحترمة بلمسات سوداء وذهبية' },
+  { id: 'founding-day', nameAr: 'يوم التأسيس', nameEn: 'Founding Day', category: 'national', symbol: '1727', description: 'درجات ترابية ونخيلية مستوحاة من الهوية السعودية' },
+  { id: 'national-day', nameAr: 'اليوم الوطني', nameEn: 'Saudi National Day', category: 'national', symbol: '🇸🇦', description: 'أخضر سعودي فاخر مع تفاصيل لؤلؤية' },
 ] as const;
 
 type ThemeStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
