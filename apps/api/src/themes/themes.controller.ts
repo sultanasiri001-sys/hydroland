@@ -21,6 +21,15 @@ export class ThemesController {
   }
 
   @UseGuards(AccessTokenGuard, AdminGuard)
+  @Post('admin/catalog')
+  createTheme(
+    @Body() body: { id?: string; nameAr?: string; nameEn?: string; category?: string; symbol?: string; description?: string; tokens?: Record<string, string> },
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.themes.createCustomTheme(body, req.auth?.accountId);
+  }
+
+  @UseGuards(AccessTokenGuard, AdminGuard)
   @Get('admin/schedules')
   schedules() {
     return this.themes.listSchedules();
