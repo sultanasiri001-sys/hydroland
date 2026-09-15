@@ -15,5 +15,7 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm --workspace @hydroland/api run db:generate
+      - run: npm run validate:phase10 -w @hydroland/api
+      - run: npm run validate:phase12 -w @hydroland/api
       - run: npm run typecheck
       - run: npm run build

@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:deploy": "prisma migrate deploy"
+    "db:deploy": "prisma migrate deploy",
+    "validate:phase10": "node scripts/phase10-validation.mjs",
+    "validate:phase12": "node scripts/phase12-validation.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.3",

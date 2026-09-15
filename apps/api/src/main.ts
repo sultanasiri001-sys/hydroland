@@ -8,7 +8,7 @@ import { ThemesModule } from './themes/themes.module';
 class RootModule {}
 
 async function bootstrap() {
-  const app = await NestFactory.create(RootModule);
+  const app = await NestFactory.create(RootModule, { rawBody: true });
   app.setGlobalPrefix('api/v1');
   const origins=(process.env.WEB_ORIGIN||'http://localhost:3000').split(',').map(value=>value.trim()).filter(Boolean);
   app.enableCors({origin:origins});
