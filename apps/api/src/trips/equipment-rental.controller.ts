@@ -1,12 +1,13 @@
 import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { AdminGuard } from '../admin/admin.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
+import { EquipmentRentalHandoverService } from './equipment-rental-handover.service';
 import { EquipmentRentalService } from './equipment-rental.service';
 
 @UseGuards(AccessTokenGuard)
 @Controller('trips/equipment-rentals')
 export class EquipmentRentalController{
-  constructor(private readonly rentals:EquipmentRentalService){}
+  constructor(private readonly rentals:EquipmentRentalService,private readonly handover:EquipmentRentalHandoverService){}
 
   @Get('mine')
   mine(@Req()req:{auth:{accountId:string}}){return this.rentals.mine(req.auth.accountId);}
@@ -30,7 +31,7 @@ export class EquipmentRentalController{
 
   @UseGuards(AdminGuard)
   @Post(':id/paid')
-  markPaid(@Req()req:{auth:{accountId:string}},@Param('id')id:string){return this.rentals.markPaid(req.auth.accountId,id);}
+  markPaid(@Req()req:{auth:{accountId:string}},@Param('id')id:string){return this.handover.confirmPayment(req.auth.accountId,id);}
 
   @UseGuards(AdminGuard)
   @Post(':id/extension-review')
