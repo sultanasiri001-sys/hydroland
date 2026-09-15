@@ -1,5 +1,5 @@
 (()=>{
-  const API_BASE=(window.HYDROLAND_API_BASE||'http://localhost:3001/api/v1').replace(/\/$/,'');
+  const API_BASE=(window.HYDROLAND_API_BASE||'https://hydroland.onrender.com/api/v1').replace(/\/$/,'');
   const state={mode:'login',refreshPromise:null};
   const toast=message=>{const t=document.getElementById('toast');if(!t)return;t.textContent=message;t.classList.add('visible');setTimeout(()=>t.classList.remove('visible'),2200)};
   const login=()=>document.querySelector('.hl-login');
@@ -35,7 +35,7 @@
   const ensurePanel=()=>{
     const root=login();if(!root)return null;
     let panel=root.querySelector('.hl-auth-panel');if(panel)return panel;
-    panel=document.createElement('form');panel.className='hl-auth-panel';panel.hidden=true;panel.innerHTML=`<label>البريد الإلكتروني<input name="email" type="email" autocomplete="email" required placeholder="name@example.com"></label><label>كلمة المرور<input name="password" type="password" autocomplete="current-password" minlength="12" required placeholder="12 حرفًا على الأقل"></label><button class="hl-auth-submit" type="submit">دخول آمن</button><button class="hl-auth-cancel" type="button">رجوع</button><small class="hl-auth-note">يتم الاتصال بخادم HYDROLAND الحقيقي عند توفره. لا يتم اعتبار تسجيل الدخول ناجحًا إذا كان الخادم غير متاح.</small>`;
+    panel=document.createElement('form');panel.className='hl-auth-panel';panel.hidden=true;panel.innerHTML=`<label>البريد الإلكتروني<input name="email" type="email" autocomplete="email" required placeholder="name@example.com"></label><label>كلمة المرور<input name="password" type="password" autocomplete="current-password" minlength="12" required placeholder="12 حرفًا على الأقل"></label><button class="hl-auth-submit" type="submit">دخول آمن</button><button class="hl-auth-cancel" type="button">رجوع</button><small class="hl-auth-note">يتم الاتصال بخادم HYDROLAND الحقيقي. لا يتم اعتبار تسجيل الدخول ناجحًا إذا كان الخادم غير متاح.</small>`;
     root.querySelector('.hl-login-actions')?.insertAdjacentElement('afterend',panel);
     const style=document.createElement('style');style.textContent=`.hl-auth-panel{width:min(420px,100%);display:grid;gap:.7rem;margin:1rem auto 0;padding:1rem;border:1px solid rgba(120,191,224,.2);border-radius:18px;background:rgba(3,25,39,.86)}.hl-auth-panel[hidden]{display:none}.hl-auth-panel label{display:grid;gap:.35rem;text-align:right;color:#dcebf3;font-weight:700}.hl-auth-panel input{width:100%;box-sizing:border-box;border:1px solid rgba(120,191,224,.22);border-radius:12px;background:rgba(255,255,255,.05);color:#fff;padding:.8rem}.hl-auth-submit,.hl-auth-cancel{border-radius:12px;padding:.75rem;font-weight:800}.hl-auth-submit{border:0;background:linear-gradient(135deg,#f4d18c,#e5b45f);color:#102131}.hl-auth-cancel{border:1px solid rgba(120,191,224,.2);background:transparent;color:#dcebf3}.hl-auth-note{color:#9cb7c7;line-height:1.6}`;document.head.appendChild(style);
     panel.querySelector('.hl-auth-cancel').addEventListener('click',()=>{panel.hidden=true;root.querySelector('.hl-login-actions').hidden=false});
