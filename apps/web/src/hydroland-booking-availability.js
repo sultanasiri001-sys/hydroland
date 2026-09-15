@@ -1,5 +1,5 @@
 (()=>{
-  const api=()=>window.HydrolandAuth?.apiBase||window.HYDROLAND_API_BASE||'http://localhost:3001/api/v1';
+  const api=()=>window.HydrolandAuth?.apiBase||window.HYDROLAND_API_BASE||'https://hydroland.onrender.com/api/v1';
   const normalize=v=>String(v||'').trim().toLowerCase();
   const explain=trip=>{
     if(!trip)return'غير متاحة';
