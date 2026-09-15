@@ -2,7 +2,7 @@
   const auth=window.HydrolandAuth;
   if(!auth)return;
   const toast=message=>{const t=document.getElementById('toast');if(!t)return;t.textContent=message;t.classList.add('visible');setTimeout(()=>t.classList.remove('visible'),2200)};
-  const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[char]));
+  const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   async function request(path,options={}){
     if(!auth.isAuthenticated())throw new Error('سجل الدخول أولًا');
     const response=await auth.authorizedFetch(path,{...options,headers:{'Content-Type':'application/json',...options.headers}});
