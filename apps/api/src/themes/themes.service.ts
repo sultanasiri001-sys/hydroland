@@ -11,65 +11,21 @@ const THEME_CATALOG = [
   { id: 'founding-day', nameAr: 'يوم التأسيس', nameEn: 'Founding Day', category: 'national', symbol: '1727', description: 'درجات ترابية ونخيلية مستوحاة من الهوية السعودية' },
   { id: 'national-day', nameAr: 'اليوم الوطني', nameEn: 'Saudi National Day', category: 'national', symbol: '🇸🇦', description: 'أخضر سعودي فاخر مع تفاصيل لؤلؤية' },
 ] as const;
-
-const CUSTOM_THEME_KEY = 'themes.custom';
-type ThemeStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
-type CustomTheme = { id: string; nameAr: string; nameEn?: string; category: string; symbol?: string; description?: string; tokens?: Record<string, string> };
-type ThemeScheduleRow = { id: string; themeId: string; name: string | null; status: ThemeStatus; startsAt: Date; endsAt: Date; createdById: string | null; createdAt: Date; updatedAt: Date };
-
+const CUSTOM_THEME_KEY='themes.custom';
+const TOKEN_KEYS=['primary','secondary','accent','gold','bg','surface','text','muted'] as const;
+type ThemeStatus='DRAFT'|'PUBLISHED'|'ARCHIVED';
+type CustomTheme={id:string;nameAr:string;nameEn?:string;category:string;symbol?:string;description?:string;tokens?:Record<string,string>};
+type ThemeScheduleRow={id:string;themeId:string;name:string|null;status:ThemeStatus;startsAt:Date;endsAt:Date;createdById:string|null;createdAt:Date;updatedAt:Date};
 @Injectable()
-export class ThemesService {
-  constructor(private readonly db: DatabaseService, private readonly audit: AuditService) {}
-
-  private async customThemes(): Promise<CustomTheme[]> {
-    const rows = await this.db.$queryRawUnsafe<Array<{ value: unknown }>>('SELECT "value" FROM "OperationalSetting" WHERE "key"=$1 LIMIT 1', CUSTOM_THEME_KEY);
-    const value = rows[0]?.value;
-    return Array.isArray(value) ? value.filter((item): item is CustomTheme => Boolean(item && typeof item === 'object' && typeof (item as CustomTheme).id === 'string')) : [];
-  }
-
-  async catalog() { return [...THEME_CATALOG, ...(await this.customThemes())]; }
-
-  async createCustomTheme(input: Partial<CustomTheme>, accountId?: string) {
-    const id = String(input.id || '').trim().toLowerCase();
-    const nameAr = String(input.nameAr || '').trim();
-    if (!/^[a-z0-9][a-z0-9-]{2,48}$/.test(id)) throw new BadRequestException('Theme id must be a 3-49 character lowercase slug.');
-    if (nameAr.length < 2 || nameAr.length > 80) throw new BadRequestException('Arabic theme name is required.');
-    const existing = await this.catalog();
-    if (existing.some(theme => theme.id === id)) throw new ConflictException('Theme id already exists.');
-    const allowedTokens = ['--theme-primary','--theme-accent','--theme-surface','--theme-text','--theme-muted','--theme-glow'];
-    const tokens = Object.fromEntries(Object.entries(input.tokens || {}).filter(([key,value]) => allowedTokens.includes(key) && typeof value === 'string' && value.length <= 64));
-    const theme: CustomTheme = { id, nameAr, nameEn: String(input.nameEn || '').trim().slice(0,80) || undefined, category: String(input.category || 'custom').trim().slice(0,32) || 'custom', symbol: String(input.symbol || 'H').trim().slice(0,8), description: String(input.description || '').trim().slice(0,240) || undefined, tokens };
-    const custom = await this.customThemes(); custom.push(theme);
-    await this.db.$executeRawUnsafe('INSERT INTO "OperationalSetting" ("key","value","updatedAt") VALUES ($1,$2::jsonb,NOW()) ON CONFLICT ("key") DO UPDATE SET "value"=$2::jsonb,"updatedAt"=NOW()', CUSTOM_THEME_KEY, JSON.stringify(custom));
-    await this.audit.record({ action:'CUSTOM_THEME_CREATED', resource:'Theme', resourceId:id, metadata:{ accountId:accountId??null, category:theme.category } });
-    return theme;
-  }
-
-  private async assertThemeExists(themeId: string) { if (!(await this.catalog()).some(theme => theme.id === themeId)) throw new BadRequestException('Unknown theme.'); }
-  private async assertNoPublishedOverlap(startsAt: Date, endsAt: Date, excludeId?: string) {
-    const rows = await this.db.$queryRawUnsafe<Array<{ id: string }>>('SELECT "id" FROM "ThemeSchedule" WHERE "status"=\'PUBLISHED\' AND "startsAt" < $1 AND "endsAt" > $2 AND ($3::text IS NULL OR "id" <> $3) LIMIT 1', endsAt, startsAt, excludeId ?? null);
-    if (rows.length) throw new ConflictException('Published theme schedule overlaps an existing published schedule.');
-  }
-
-  async active() { const rows = await this.db.$queryRawUnsafe<ThemeScheduleRow[]>('SELECT * FROM "ThemeSchedule" WHERE "status" = \'PUBLISHED\' AND "startsAt" <= NOW() AND "endsAt" >= NOW() ORDER BY "startsAt" DESC LIMIT 1'); return rows[0] ?? { themeId: 'ocean-horizon', status: 'FALLBACK' }; }
-  async listSchedules() { return this.db.$queryRawUnsafe<ThemeScheduleRow[]>('SELECT * FROM "ThemeSchedule" ORDER BY "startsAt" DESC'); }
-
-  async schedule(input: { themeId?: string; name?: string; startsAt?: string; endsAt?: string; status?: ThemeStatus }, createdById?: string) {
-    const themeId = input.themeId ?? ''; await this.assertThemeExists(themeId);
-    if (!input.startsAt || !input.endsAt) throw new BadRequestException('startsAt and endsAt are required.');
-    const startsAt = new Date(input.startsAt), endsAt = new Date(input.endsAt);
-    if (!Number.isFinite(startsAt.getTime()) || !Number.isFinite(endsAt.getTime()) || endsAt <= startsAt) throw new BadRequestException('Invalid theme schedule window.');
-    const status: ThemeStatus = input.status ?? 'DRAFT'; if (status === 'PUBLISHED') await this.assertNoPublishedOverlap(startsAt, endsAt);
-    const id=randomUUID();
-    const rows=await this.db.$queryRawUnsafe<ThemeScheduleRow[]>('INSERT INTO "ThemeSchedule" ("id","themeId","name","status","startsAt","endsAt","createdById","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,NOW()) RETURNING *',id,themeId,input.name??null,status,startsAt,endsAt,createdById??null);
-    const created=rows[0]; await this.audit.record({action:'THEME_SCHEDULE_CREATED',resource:'ThemeSchedule',resourceId:created.id,metadata:{accountId:createdById??null,themeId:created.themeId,status:created.status,startsAt:created.startsAt,endsAt:created.endsAt}}); return created;
-  }
-
-  async setStatus(id: string, status: ThemeStatus, accountId?: string) {
-    if (!['DRAFT','PUBLISHED','ARCHIVED'].includes(status)) throw new BadRequestException('Invalid theme status.');
-    const existing=await this.db.$queryRawUnsafe<ThemeScheduleRow[]>('SELECT * FROM "ThemeSchedule" WHERE "id"=$1 LIMIT 1',id); if(!existing[0]) throw new NotFoundException('Theme schedule not found.');
-    if(status==='PUBLISHED') await this.assertNoPublishedOverlap(existing[0].startsAt,existing[0].endsAt,id);
-    const rows=await this.db.$queryRawUnsafe<ThemeScheduleRow[]>('UPDATE "ThemeSchedule" SET "status"=$2,"updatedAt"=NOW() WHERE "id"=$1 RETURNING *',id,status); const updated=rows[0];
-    await this.audit.record({action:'THEME_SCHEDULE_STATUS_CHANGED',resource:'ThemeSchedule',resourceId:id,metadata:{accountId:accountId??null,themeId:updated.themeId,previousStatus:existing[0].status,status:updated.status}}); return updated;
-  }
+export class ThemesService{
+ constructor(private readonly db:DatabaseService,private readonly audit:AuditService){}
+ private async customThemes():Promise<CustomTheme[]>{const rows=await this.db.$queryRawUnsafe<Array<{value:unknown}>>('SELECT "value" FROM "OperationalSetting" WHERE "key"=$1 LIMIT 1',CUSTOM_THEME_KEY);const value=rows[0]?.value;return Array.isArray(value)?value.filter((item):item is CustomTheme=>Boolean(item&&typeof item==='object'&&typeof(item as CustomTheme).id==='string')):[]}
+ async catalog(){return[...THEME_CATALOG,...(await this.customThemes())]}
+ async createCustomTheme(input:Partial<CustomTheme>,accountId?:string){const id=String(input.id||'').trim().toLowerCase(),nameAr=String(input.nameAr||'').trim();if(!/^[a-z0-9][a-z0-9-]{2,48}$/.test(id))throw new BadRequestException('Theme id must be a 3-49 character lowercase slug.');if(nameAr.length<2||nameAr.length>80)throw new BadRequestException('Arabic theme name is required.');if((await this.catalog()).some(theme=>theme.id===id))throw new ConflictException('Theme id already exists.');const tokens=Object.fromEntries(Object.entries(input.tokens||{}).filter(([key,value])=>TOKEN_KEYS.includes(key as typeof TOKEN_KEYS[number])&&typeof value==='string'&&/^#[0-9a-f]{6}$/i.test(value)));const theme:CustomTheme={id,nameAr,nameEn:String(input.nameEn||'').trim().slice(0,80)||undefined,category:String(input.category||'custom').trim().slice(0,32)||'custom',symbol:String(input.symbol||'H').trim().slice(0,8),description:String(input.description||'').trim().slice(0,240)||undefined,tokens};const custom=await this.customThemes();custom.push(theme);await this.db.$executeRawUnsafe('INSERT INTO "OperationalSetting" ("key","value","updatedAt") VALUES ($1,$2::jsonb,NOW()) ON CONFLICT ("key") DO UPDATE SET "value"=$2::jsonb,"updatedAt"=NOW()',CUSTOM_THEME_KEY,JSON.stringify(custom));await this.audit.record({action:'CUSTOM_THEME_CREATED',resource:'Theme',resourceId:id,metadata:{accountId:accountId??null,category:theme.category}});return theme}
+ private async assertThemeExists(themeId:string){if(!(await this.catalog()).some(theme=>theme.id===themeId))throw new BadRequestException('Unknown theme.')}
+ private async assertNoPublishedOverlap(startsAt:Date,endsAt:Date,excludeId?:string){const rows=await this.db.$queryRawUnsafe<Array<{id:string}>>('SELECT "id" FROM "ThemeSchedule" WHERE "status"=\'PUBLISHED\' AND "startsAt" < $1 AND "endsAt" > $2 AND ($3::text IS NULL OR "id" <> $3) LIMIT 1',endsAt,startsAt,excludeId??null);if(rows.length)throw new ConflictException('Published theme schedule overlaps an existing published schedule.')}
+ async active(){const rows=await this.db.$queryRawUnsafe<ThemeScheduleRow[]>('SELECT * FROM "ThemeSchedule" WHERE "status" = \'PUBLISHED\' AND "startsAt" <= NOW() AND "endsAt" >= NOW() ORDER BY "startsAt" DESC LIMIT 1');return rows[0]??{themeId:'ocean-horizon',status:'FALLBACK'}}
+ async listSchedules(){return this.db.$queryRawUnsafe<ThemeScheduleRow[]>('SELECT * FROM "ThemeSchedule" ORDER BY "startsAt" DESC')}
+ async schedule(input:{themeId?:string;name?:string;startsAt?:string;endsAt?:string;status?:ThemeStatus},createdById?:string){const themeId=input.themeId??'';await this.assertThemeExists(themeId);if(!input.startsAt||!input.endsAt)throw new BadRequestException('startsAt and endsAt are required.');const startsAt=new Date(input.startsAt),endsAt=new Date(input.endsAt);if(!Number.isFinite(startsAt.getTime())||!Number.isFinite(endsAt.getTime())||endsAt<=startsAt)throw new BadRequestException('Invalid theme schedule window.');const status:ThemeStatus=input.status??'DRAFT';if(status==='PUBLISHED')await this.assertNoPublishedOverlap(startsAt,endsAt);const id=randomUUID();const rows=await this.db.$queryRawUnsafe<ThemeScheduleRow[]>('INSERT INTO "ThemeSchedule" ("id","themeId","name","status","startsAt","endsAt","createdById","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,NOW()) RETURNING *',id,themeId,input.name??null,status,startsAt,endsAt,createdById??null);const created=rows[0];await this.audit.record({action:'THEME_SCHEDULE_CREATED',resource:'ThemeSchedule',resourceId:created.id,metadata:{accountId:createdById??null,themeId:created.themeId,status:created.status,startsAt:created.startsAt,endsAt:created.endsAt}});return created}
+ async setStatus(id:string,status:ThemeStatus,accountId?:string){if(!['DRAFT','PUBLISHED','ARCHIVED'].includes(status))throw new BadRequestException('Invalid theme status.');const existing=await this.db.$queryRawUnsafe<ThemeScheduleRow[]>('SELECT * FROM "ThemeSchedule" WHERE "id"=$1 LIMIT 1',id);if(!existing[0])throw new NotFoundException('Theme schedule not found.');if(status==='PUBLISHED')await this.assertNoPublishedOverlap(existing[0].startsAt,existing[0].endsAt,id);const rows=await this.db.$queryRawUnsafe<ThemeScheduleRow[]>('UPDATE "ThemeSchedule" SET "status"=$2,"updatedAt"=NOW() WHERE "id"=$1 RETURNING *',id,status);const updated=rows[0];await this.audit.record({action:'THEME_SCHEDULE_STATUS_CHANGED',resource:'ThemeSchedule',resourceId:id,metadata:{accountId:accountId??null,themeId:updated.themeId,previousStatus:existing[0].status,status:updated.status}});return updated}
 }
