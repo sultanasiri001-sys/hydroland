@@ -1,5 +1,6 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 
 const THEME_CATALOG = [
@@ -30,10 +31,20 @@ type ThemeScheduleRow = {
 
 @Injectable()
 export class ThemesService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(private readonly db: DatabaseService, private readonly audit: AuditService) {}
 
   catalog() {
     return THEME_CATALOG;
+  }
+
+  private async assertNoPublishedOverlap(startsAt: Date, endsAt: Date, excludeId?: string) {
+    const rows = await this.db.$queryRawUnsafe<Array<{ id: string }>>(
+      'SELECT "id" FROM "ThemeSchedule" WHERE "status"=\'PUBLISHED\' AND "startsAt" < $1 AND "endsAt" > $2 AND ($3::text IS NULL OR "id" <> $3) LIMIT 1',
+      endsAt,
+      startsAt,
+      excludeId ?? null,
+    );
+    if (rows.length) throw new ConflictException('Published theme schedule overlaps an existing published schedule.');
   }
 
   async active() {
@@ -59,6 +70,7 @@ export class ThemesService {
       throw new BadRequestException('Invalid theme schedule window.');
     }
     const status: ThemeStatus = input.status ?? 'DRAFT';
+    if (status === 'PUBLISHED') await this.assertNoPublishedOverlap(startsAt, endsAt);
     const id = randomUUID();
     const rows = await this.db.$queryRawUnsafe<ThemeScheduleRow[]>(
       'INSERT INTO "ThemeSchedule" ("id","themeId","name","status","startsAt","endsAt","createdById","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,NOW()) RETURNING *',
@@ -70,17 +82,23 @@ export class ThemesService {
       endsAt,
       createdById ?? null,
     );
-    return rows[0];
+    const created=rows[0];
+    await this.audit.record({action:'THEME_SCHEDULE_CREATED',resource:'ThemeSchedule',resourceId:created.id,metadata:{accountId:createdById??null,themeId:created.themeId,status:created.status,startsAt:created.startsAt,endsAt:created.endsAt}});
+    return created;
   }
 
-  async setStatus(id: string, status: ThemeStatus) {
+  async setStatus(id: string, status: ThemeStatus, accountId?: string) {
     if (!['DRAFT', 'PUBLISHED', 'ARCHIVED'].includes(status)) throw new BadRequestException('Invalid theme status.');
+    const existing = await this.db.$queryRawUnsafe<ThemeScheduleRow[]>('SELECT * FROM "ThemeSchedule" WHERE "id"=$1 LIMIT 1', id);
+    if (!existing[0]) throw new NotFoundException('Theme schedule not found.');
+    if (status === 'PUBLISHED') await this.assertNoPublishedOverlap(existing[0].startsAt, existing[0].endsAt, id);
     const rows = await this.db.$queryRawUnsafe<ThemeScheduleRow[]>(
       'UPDATE "ThemeSchedule" SET "status"=$2,"updatedAt"=NOW() WHERE "id"=$1 RETURNING *',
       id,
       status,
     );
-    if (!rows[0]) throw new NotFoundException('Theme schedule not found.');
-    return rows[0];
+    const updated=rows[0];
+    await this.audit.record({action:'THEME_SCHEDULE_STATUS_CHANGED',resource:'ThemeSchedule',resourceId:id,metadata:{accountId:accountId??null,themeId:updated.themeId,previousStatus:existing[0].status,status:updated.status}});
+    return updated;
   }
 }

@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { ReviewGuard } from '../admin/review.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
-import { AdminGuard } from '../admin/admin.guard';
 import { OrganizationsService } from './organizations.service';
 
 type AuthenticatedRequest = { auth: { accountId: string } };
@@ -35,13 +35,18 @@ export class OrganizationsController {
     return this.organizations.addMember(request.auth.accountId, id, body);
   }
 
-  @UseGuards(AdminGuard)
+  @Post(':id/membership-response')
+  respondToInvitation(@Req() request: AuthenticatedRequest,@Param('id') id:string,@Body() body:{accept:boolean}){
+    return this.organizations.respondToInvitation(request.auth.accountId,id,body.accept);
+  }
+
+  @UseGuards(ReviewGuard)
   @Get()
   listForAdmin() {
     return this.organizations.listForAdmin();
   }
 
-  @UseGuards(AdminGuard)
+  @UseGuards(ReviewGuard)
   @Post(':id/decision')
   decide(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { outcome: 'APPROVED' | 'REJECTED'; reason?: string }) {
     return this.organizations.decide(request.auth.accountId, id, body);

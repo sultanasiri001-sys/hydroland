@@ -1,0 +1,47 @@
+import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { AdminGuard } from '../admin/admin.guard';
+import { AccessTokenGuard } from '../auth/access-token.guard';
+import { EquipmentRentalHandoverService } from './equipment-rental-handover.service';
+import { EquipmentRentalService } from './equipment-rental.service';
+
+@UseGuards(AccessTokenGuard)
+@Controller('trips/equipment-rentals')
+export class EquipmentRentalController{
+  constructor(private readonly rentals:EquipmentRentalService,private readonly handover:EquipmentRentalHandoverService){}
+
+  @Get('mine')
+  mine(@Req()req:{auth:{accountId:string}}){return this.rentals.mine(req.auth.accountId);}
+
+  @Get(':id/mine')
+  getMine(@Req()req:{auth:{accountId:string}},@Param('id')id:string){return this.rentals.getMine(req.auth.accountId,id);}
+
+  @Post(':id/extension-request')
+  requestExtension(@Req()req:{auth:{accountId:string}},@Param('id')id:string,@Body()body:{requestedUntil?:string}){return this.rentals.requestExtension(req.auth.accountId,id,body);}
+
+  @Post(':id/return-intent')
+  returnIntent(@Req()req:{auth:{accountId:string}},@Param('id')id:string){return this.rentals.returnIntent(req.auth.accountId,id);}
+
+  @UseGuards(AdminGuard)
+  @Get(':id')
+  get(@Param('id')id:string){return this.rentals.get(id);}
+
+  @UseGuards(AdminGuard)
+  @Post()
+  create(@Req()req:{auth:{accountId:string}},@Body()body:{renterAccountId?:string;whatsappPhone?:string|null;dueAt?:string|null;items?:Array<{resourceId?:string;equipmentType?:string|null;size?:string|null;unitPriceSar?:number}>}){return this.rentals.create(req.auth.accountId,body);}
+
+  @UseGuards(AdminGuard)
+  @Post(':id/paid')
+  markPaid(@Req()req:{auth:{accountId:string}},@Param('id')id:string){return this.handover.confirmPayment(req.auth.accountId,id);}
+
+  @UseGuards(AdminGuard)
+  @Post(':id/extension-review')
+  reviewExtension(@Req()req:{auth:{accountId:string}},@Param('id')id:string,@Body()body:{decision?:'APPROVED'|'REJECTED'}){return this.rentals.reviewExtension(req.auth.accountId,id,body);}
+
+  @UseGuards(AdminGuard)
+  @Post(':id/return-scan')
+  returnScan(@Req()req:{auth:{accountId:string}},@Param('id')id:string,@Body()body:{code?:string;condition?:'OK'|'DAMAGED'|'REVIEW';notes?:string|null;toLocation?:string|null}){return this.rentals.returnScan(req.auth.accountId,id,body);}
+
+  @UseGuards(AdminGuard)
+  @Post(':id/share')
+  share(@Req()req:{auth:{accountId:string}},@Param('id')id:string,@Body()body:{accountId?:string;channel?:'IN_APP'|'WHATSAPP'}){return this.rentals.shareInvoice(req.auth.accountId,id,body);}
+}
