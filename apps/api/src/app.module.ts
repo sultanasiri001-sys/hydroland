@@ -15,5 +15,6 @@ import { TripsModule } from './trips/trips.module';
 import { PaymentsModule } from './payments/payments.module';
 import { ProfileModule } from './profile/profile.module';
 import { OrganizationsModule } from './organizations/organizations.module';
-@Module({ imports:[DatabaseModule,AuthModule,ProfileModule,CredentialsModule,ActivationModule,AuditModule,NotificationsModule,TripsModule,SafetyModule,PaymentsModule,AdminModule,DiveLogsModule,OrganizationsModule,IntegrationModule,AgentModule], controllers:[HealthController] })
+import { TrainingModule } from './training/training.module';
+@Module({ imports:[DatabaseModule,AuthModule,ProfileModule,CredentialsModule,ActivationModule,AuditModule,NotificationsModule,TripsModule,SafetyModule,PaymentsModule,AdminModule,DiveLogsModule,OrganizationsModule,TrainingModule,IntegrationModule,AgentModule], controllers:[HealthController] })
 export class AppModule {}
