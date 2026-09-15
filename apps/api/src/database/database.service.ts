@@ -3,8 +3,6 @@ import { Prisma, PrismaClient } from '@prisma/client';
 
 @Injectable()
 export class DatabaseService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
-  declare $queryRawUnsafe: <T = unknown>(query: string, ...values: unknown[]) => Promise<T>;
-
   async onModuleInit(): Promise<void> {
     await this.$connect();
   }

@@ -7,174 +7,582 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum AccountStatus { PENDING_VERIFICATION ACTIVE SUSPENDED ARCHIVED }
-enum ProfessionalRole { DIVER INSTRUCTOR DIVE_CENTER BOAT_OWNER STAFF ORGANIZATION ADMIN REVIEWER }
-enum RoleAssignmentStatus { DRAFT PENDING_REVIEW ACTIVE REJECTED SUSPENDED ARCHIVED }
-enum CredentialVerificationStatus { UNVERIFIED PENDING DOCUMENT_VERIFIED VERIFIED REJECTED EXPIRED }
-enum ActivationRequestStatus { DRAFT SUBMITTED UNDER_REVIEW MORE_INFORMATION_REQUIRED RESUBMITTED APPROVED REJECTED SUSPENDED ARCHIVED }
-enum OrganizationStatus { DRAFT PENDING_REVIEW ACTIVE REJECTED SUSPENDED ARCHIVED }
-enum OrganizationMemberRole { OWNER ADMIN OPERATOR INSTRUCTOR STAFF VIEWER }
-enum OrganizationMembershipStatus { PENDING ACTIVE SUSPENDED REMOVED }
-enum DocumentStatus { UPLOADED QUARANTINED AVAILABLE REJECTED ARCHIVED }
-enum NotificationStatus { PENDING SENT READ FAILED }
+enum AccountStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum ProfessionalRole {
+  DIVER
+  INSTRUCTOR
+  DIVE_CENTER
+  BOAT_OWNER
+  STAFF
+  ORGANIZATION
+  ADMIN
+  REVIEWER
+}
+
+enum RoleAssignmentStatus {
+  DRAFT
+  PENDING_REVIEW
+  ACTIVE
+  REJECTED
+  SUSPENDED
+  ARCHIVED
+}
+
+enum CredentialVerificationStatus {
+  UNVERIFIED
+  PENDING
+  DOCUMENT_VERIFIED
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
+enum ActivationRequestStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  MORE_INFORMATION_REQUIRED
+  RESUBMITTED
+  APPROVED
+  REJECTED
+  SUSPENDED
+  ARCHIVED
+}
+
+enum OrganizationStatus {
+  DRAFT
+  PENDING_REVIEW
+  ACTIVE
+  REJECTED
+  SUSPENDED
+  ARCHIVED
+}
+
+enum OrganizationMemberRole {
+  OWNER
+  ADMIN
+  OPERATOR
+  INSTRUCTOR
+  STAFF
+  VIEWER
+}
+
+enum OrganizationMembershipStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  REMOVED
+}
+
+enum DocumentStatus {
+  UPLOADED
+  QUARANTINED
+  AVAILABLE
+  REJECTED
+  ARCHIVED
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  READ
+  FAILED
+}
 
 model Person {
-  id String @id @default(uuid())
-  firstName String
-  lastName String
-  phone String? @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  account Account?
+  id           String               @id @default(uuid())
+  firstName    String
+  lastName     String
+  phone        String?              @unique
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  account      Account?
   professional ProfessionalProfile?
-  credentials Credential[]
-  auditEvents AuditEvent[] @relation("ActorAuditEvents")
+  credentials  Credential[]
+  auditEvents  AuditEvent[]         @relation("ActorAuditEvents")
 }
 
 model Account {
-  id String @id @default(uuid())
-  personId String @unique
-  email String @unique
-  passwordHash String
-  status AccountStatus @default(PENDING_VERIFICATION)
-  emailVerifiedAt DateTime?
-  lastLoginAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  person Person @relation(fields:[personId],references:[id],onDelete:Restrict)
-  sessions Session[]
-  roleAssignments RoleAssignment[]
-  activationRequests ActivationRequest[] @relation("ApplicantRequests")
-  reviewDecisions ReviewDecision[] @relation("ReviewerDecisions")
-  notifications Notification[]
-  bookings Booking[]
-  bookingParticipants BookingParticipant[]
-  crewAssignments CrewAssignment[]
-  payments Payment[]
-  diveLogs DiveLog[]
+  id                      String               @id @default(uuid())
+  personId                String               @unique
+  email                   String               @unique
+  passwordHash            String
+  status                  AccountStatus        @default(PENDING_VERIFICATION)
+  emailVerifiedAt         DateTime?
+  lastLoginAt             DateTime?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+  person                  Person               @relation(fields: [personId], references: [id], onDelete: Restrict)
+  sessions                Session[]
+  roleAssignments         RoleAssignment[]
+  activationRequests      ActivationRequest[]  @relation("ApplicantRequests")
+  reviewDecisions         ReviewDecision[]     @relation("ReviewerDecisions")
+  notifications           Notification[]
+  bookings                Booking[]
+  bookingParticipants     BookingParticipant[]
+  crewAssignments         CrewAssignment[]
+  payments                Payment[]
+  diveLogs                DiveLog[]
   organizationMemberships OrganizationMember[]
-  organizationsOwned Organization[] @relation("OrganizationOwner")
-  policyUpdates PolicyControl[] @relation("PolicyUpdatedBy")
+  organizationsOwned      Organization[]       @relation("OrganizationOwner")
+  policyUpdates           PolicyControl[]      @relation("PolicyUpdatedBy")
 }
 
 model Organization {
-  id String @id @default(uuid())
-  displayName String
-  legalName String?
-  kind String
-  registrationNumber String? @unique
-  regionCode String?
-  status OrganizationStatus @default(PENDING_REVIEW)
-  ownerId String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  reviewedAt DateTime?
-  reviewedById String?
-  owner Account @relation("OrganizationOwner",fields:[ownerId],references:[id],onDelete:Restrict)
-  members OrganizationMember[]
-  @@index([status,createdAt])
-  @@index([ownerId,status])
+  id                 String               @id @default(uuid())
+  displayName        String
+  legalName          String?
+  kind               String
+  registrationNumber String?              @unique
+  regionCode         String?
+  status             OrganizationStatus   @default(PENDING_REVIEW)
+  ownerId            String
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  reviewedAt         DateTime?
+  reviewedById       String?
+  owner              Account              @relation("OrganizationOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  members            OrganizationMember[]
+
+  @@index([status, createdAt])
+  @@index([ownerId, status])
 }
 
 model OrganizationMember {
-  id String @id @default(uuid())
+  id             String                       @id @default(uuid())
   organizationId String
-  accountId String
-  role OrganizationMemberRole @default(VIEWER)
-  status OrganizationMembershipStatus @default(PENDING)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
-  account Account @relation(fields:[accountId],references:[id],onDelete:Restrict)
-  @@unique([organizationId,accountId])
-  @@index([accountId,status])
+  accountId      String
+  role           OrganizationMemberRole       @default(VIEWER)
+  status         OrganizationMembershipStatus @default(PENDING)
+  createdAt      DateTime                     @default(now())
+  updatedAt      DateTime                     @updatedAt
+  organization   Organization                 @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  account        Account                      @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, accountId])
+  @@index([accountId, status])
 }
 
-model Session { id String @id @default(uuid()) accountId String tokenHash String @unique expiresAt DateTime revokedAt DateTime? createdAt DateTime @default(now()) account Account @relation(fields:[accountId],references:[id],onDelete:Cascade) @@index([accountId,expiresAt]) }
-model ProfessionalProfile { id String @id @default(uuid()) personId String @unique headline String? bio String? regionCode String? createdAt DateTime @default(now()) updatedAt DateTime @updatedAt person Person @relation(fields:[personId],references:[id],onDelete:Restrict) }
-model RoleAssignment { id String @id @default(uuid()) accountId String role ProfessionalRole status RoleAssignmentStatus @default(DRAFT) scope Json? activeAt DateTime? endedAt DateTime? createdAt DateTime @default(now()) updatedAt DateTime @updatedAt account Account @relation(fields:[accountId],references:[id],onDelete:Restrict) activationRequests ActivationRequest[] @@unique([accountId,role]) @@index([role,status]) }
-model Credential { id String @id @default(uuid()) personId String issuer String title String credentialNumber String? issuedAt DateTime? expiresAt DateTime? verificationStatus CredentialVerificationStatus @default(UNVERIFIED) createdAt DateTime @default(now()) updatedAt DateTime @updatedAt person Person @relation(fields:[personId],references:[id],onDelete:Restrict) documents Document[] @@index([personId,verificationStatus]) }
-model Document { id String @id @default(uuid()) credentialId String? ownerId String storageKey String @unique originalName String mimeType String byteSize Int sha256 String @unique status DocumentStatus @default(UPLOADED) createdAt DateTime @default(now()) archivedAt DateTime? credential Credential? @relation(fields:[credentialId],references:[id],onDelete:Restrict) @@index([ownerId,status]) }
-model ActivationRequest { id String @id @default(uuid()) applicantId String roleAssignmentId String status ActivationRequestStatus @default(DRAFT) submittedAt DateTime? decidedAt DateTime? createdAt DateTime @default(now()) updatedAt DateTime @updatedAt applicant Account @relation("ApplicantRequests",fields:[applicantId],references:[id],onDelete:Restrict) roleAssignment RoleAssignment @relation(fields:[roleAssignmentId],references:[id],onDelete:Restrict) decisions ReviewDecision[] @@index([status,createdAt]) }
-model ReviewDecision { id String @id @default(uuid()) activationRequestId String reviewerId String outcome String reason String? createdAt DateTime @default(now()) activationRequest ActivationRequest @relation(fields:[activationRequestId],references:[id],onDelete:Restrict) reviewer Account @relation("ReviewerDecisions",fields:[reviewerId],references:[id],onDelete:Restrict) }
-model Notification { id String @id @default(uuid()) accountId String type String payload Json status NotificationStatus @default(PENDING) sentAt DateTime? createdAt DateTime @default(now()) account Account @relation(fields:[accountId],references:[id],onDelete:Restrict) }
-model AuditEvent { id String @id @default(uuid()) actorId String? action String resource String resourceId String? requestId String? ipAddress String? metadata Json? occurredAt DateTime @default(now()) actor Person? @relation("ActorAuditEvents",fields:[actorId],references:[id],onDelete:Restrict) @@index([resource,resourceId,occurredAt]) @@index([actorId,occurredAt]) }
-model OperationalSetting { key String @id value Json updatedAt DateTime @default(now()) }
+model Session {
+  id        String    @id @default(uuid())
+  accountId String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  account   Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, expiresAt])
+}
+
+model ProfessionalProfile {
+  id         String   @id @default(uuid())
+  personId   String   @unique
+  headline   String?
+  bio        String?
+  regionCode String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  person     Person   @relation(fields: [personId], references: [id], onDelete: Restrict)
+}
+
+model RoleAssignment {
+  id                 String               @id @default(uuid())
+  accountId          String
+  role               ProfessionalRole
+  status             RoleAssignmentStatus @default(DRAFT)
+  scope              Json?
+  activeAt           DateTime?
+  endedAt            DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  account            Account              @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  activationRequests ActivationRequest[]
+
+  @@unique([accountId, role])
+  @@index([role, status])
+}
+
+model Credential {
+  id                 String                       @id @default(uuid())
+  personId           String
+  issuer             String
+  title              String
+  credentialNumber   String?
+  issuedAt           DateTime?
+  expiresAt          DateTime?
+  verificationStatus CredentialVerificationStatus @default(UNVERIFIED)
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+  person             Person                       @relation(fields: [personId], references: [id], onDelete: Restrict)
+  documents          Document[]
+
+  @@index([personId, verificationStatus])
+}
+
+model Document {
+  id           String         @id @default(uuid())
+  credentialId String?
+  ownerId      String
+  storageKey   String         @unique
+  originalName String
+  mimeType     String
+  byteSize     Int
+  sha256       String         @unique
+  status       DocumentStatus @default(UPLOADED)
+  createdAt    DateTime       @default(now())
+  archivedAt   DateTime?
+  credential   Credential?    @relation(fields: [credentialId], references: [id], onDelete: Restrict)
+
+  @@index([ownerId, status])
+}
+
+model ActivationRequest {
+  id               String                  @id @default(uuid())
+  applicantId      String
+  roleAssignmentId String
+  status           ActivationRequestStatus @default(DRAFT)
+  submittedAt      DateTime?
+  decidedAt        DateTime?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+  applicant        Account                 @relation("ApplicantRequests", fields: [applicantId], references: [id], onDelete: Restrict)
+  roleAssignment   RoleAssignment          @relation(fields: [roleAssignmentId], references: [id], onDelete: Restrict)
+  decisions        ReviewDecision[]
+
+  @@index([status, createdAt])
+}
+
+model ReviewDecision {
+  id                  String            @id @default(uuid())
+  activationRequestId String
+  reviewerId          String
+  outcome             String
+  reason              String?
+  createdAt           DateTime          @default(now())
+  activationRequest   ActivationRequest @relation(fields: [activationRequestId], references: [id], onDelete: Restrict)
+  reviewer            Account           @relation("ReviewerDecisions", fields: [reviewerId], references: [id], onDelete: Restrict)
+}
+
+model Notification {
+  id        String             @id @default(uuid())
+  accountId String
+  type      String
+  payload   Json
+  status    NotificationStatus @default(PENDING)
+  sentAt    DateTime?
+  createdAt DateTime           @default(now())
+  account   Account            @relation(fields: [accountId], references: [id], onDelete: Restrict)
+}
+
+model AuditEvent {
+  id         String   @id @default(uuid())
+  actorId    String?
+  action     String
+  resource   String
+  resourceId String?
+  requestId  String?
+  ipAddress  String?
+  metadata   Json?
+  occurredAt DateTime @default(now())
+  actor      Person?  @relation("ActorAuditEvents", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([resource, resourceId, occurredAt])
+  @@index([actorId, occurredAt])
+}
+
+model OperationalSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @default(now())
+}
 
 model PolicyControl {
-  id String @id @default(uuid())
-  category String
-  ruleKey String
-  labelAr String
-  labelEn String?
-  state String @default("ENABLED")
-  description String?
-  metadata Json?
+  id                 String   @id @default(uuid())
+  category           String
+  ruleKey            String
+  labelAr            String
+  labelEn            String?
+  state              String   @default("ENABLED")
+  description        String?
+  metadata           Json?
   updatedByAccountId String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  updatedBy Account? @relation("PolicyUpdatedBy",fields:[updatedByAccountId],references:[id],onDelete:SetNull)
-  @@unique([category,ruleKey])
-  @@index([category,state])
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  updatedBy          Account? @relation("PolicyUpdatedBy", fields: [updatedByAccountId], references: [id], onDelete: SetNull)
+
+  @@unique([category, ruleKey])
+  @@index([category, state])
 }
 
-enum TripStatus { DRAFT OPEN CLOSED CANCELLED COMPLETED }
-enum BookingStatus { PENDING CONFIRMED CANCELLED }
-model Trip { id String @id @default(uuid()) title String type String startsAt DateTime endsAt DateTime capacity Int status TripStatus @default(DRAFT) createdAt DateTime @default(now()) updatedAt DateTime @updatedAt bookings Booking[] safetyChecklists SafetyChecklist[] diveLogs DiveLog[] @relation("TripDiveLogs") calendarAllocations CalendarAllocation[] crewAssignments CrewAssignment[] @@index([status,startsAt]) }
-model Booking { id String @id @default(uuid()) tripId String accountId String status BookingStatus @default(PENDING) seats Int @default(1) createdAt DateTime @default(now()) updatedAt DateTime @updatedAt trip Trip @relation(fields:[tripId],references:[id],onDelete:Restrict) account Account @relation(fields:[accountId],references:[id],onDelete:Restrict) participants BookingParticipant[] payments Payment[] @@unique([tripId,accountId]) @@index([tripId,status]) }
-model BookingParticipant { id String @id @default(uuid()) bookingId String accountId String? fullName String certificationTitle String? certificationNumber String? certificationIssuer String? eligibilityStatus String @default("PENDING") createdAt DateTime @default(now()) updatedAt DateTime @updatedAt booking Booking @relation(fields:[bookingId],references:[id],onDelete:Restrict) account Account? @relation(fields:[accountId],references:[id],onDelete:Restrict) diveLogs DiveLog[] @relation("ParticipantDiveLogs") @@index([bookingId,eligibilityStatus]) @@index([accountId]) }
-model CalendarResource { id String @id @default(uuid()) type String name String referenceId String? active Boolean @default(true) createdAt DateTime @default(now()) updatedAt DateTime @updatedAt allocations CalendarAllocation[] crewAssignments CrewAssignment[] @@index([type,active]) @@index([referenceId]) }
-model CalendarAllocation { id String @id @default(uuid()) tripId String resourceId String startsAt DateTime endsAt DateTime status String @default("ACTIVE") createdAt DateTime @default(now()) updatedAt DateTime @updatedAt trip Trip @relation(fields:[tripId],references:[id],onDelete:Restrict) resource CalendarResource @relation(fields:[resourceId],references:[id],onDelete:Restrict) @@index([resourceId,startsAt,endsAt]) @@index([tripId,status]) }
-model CrewAssignment { id String @id @default(uuid()) tripId String resourceId String accountId String roleType String status String @default("PENDING") replacesAssignmentId String? respondedAt DateTime? createdAt DateTime @default(now()) updatedAt DateTime @updatedAt trip Trip @relation(fields:[tripId],references:[id],onDelete:Restrict) resource CalendarResource @relation(fields:[resourceId],references:[id],onDelete:Restrict) account Account @relation(fields:[accountId],references:[id],onDelete:Restrict) @@index([tripId,status]) @@index([accountId,status]) @@index([resourceId]) }
-enum OperationalDecision { ALLOWED REVIEW_REQUIRED DEFERRED }
-model SafetyChecklist { id String @id @default(uuid()) tripId String decision OperationalDecision @default(REVIEW_REQUIRED) items Json notes String? decidedAt DateTime? createdAt DateTime @default(now()) updatedAt DateTime @updatedAt trip Trip @relation(fields:[tripId],references:[id],onDelete:Restrict) @@index([tripId,decision]) }
-enum DiveLogStatus { DRAFT VERIFIED REJECTED }
-model DiveLog { id String @id @default(uuid()) accountId String? sourceTripId String? sourceParticipantId String? siteName String regionCode String? diveDate DateTime maxDepthM Float durationMin Int buddyName String? instructorName String? notes String? status DiveLogStatus @default(DRAFT) verifiedAt DateTime? createdAt DateTime @default(now()) updatedAt DateTime @updatedAt account Account? @relation(fields:[accountId],references:[id],onDelete:Restrict) sourceTrip Trip? @relation("TripDiveLogs",fields:[sourceTripId],references:[id],onDelete:Restrict) sourceParticipant BookingParticipant? @relation("ParticipantDiveLogs",fields:[sourceParticipantId],references:[id],onDelete:Restrict) @@unique([sourceParticipantId,sourceTripId]) @@index([accountId,diveDate]) @@index([accountId,status]) @@index([sourceTripId]) @@index([sourceParticipantId]) }
-enum PaymentStatus { CREATED PENDING AUTHORIZED CAPTURED FAILED CANCELLED REFUNDED }
-enum InvoiceStatus { DRAFT ISSUED PAID VOID }
-model Payment { id String @id @default(uuid()) bookingId String accountId String amountMinor Int currency String @default("SAR") status PaymentStatus @default(CREATED) idempotencyKey String @unique providerReference String? @unique createdAt DateTime @default(now()) updatedAt DateTime @updatedAt booking Booking @relation(fields:[bookingId],references:[id],onDelete:Restrict) account Account @relation(fields:[accountId],references:[id],onDelete:Restrict) invoice Invoice? @@index([accountId,status]) }
-model Invoice { id String @id @default(uuid()) paymentId String @unique number String @unique status InvoiceStatus @default(DRAFT) issuedAt DateTime? createdAt DateTime @default(now()) payment Payment @relation(fields:[paymentId],references:[id],onDelete:Restrict) }
+enum TripStatus {
+  DRAFT
+  OPEN
+  CLOSED
+  CANCELLED
+  COMPLETED
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+model Trip {
+  id                  String               @id @default(uuid())
+  title               String
+  type                String
+  startsAt            DateTime
+  endsAt              DateTime
+  capacity            Int
+  status              TripStatus           @default(DRAFT)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  bookings            Booking[]
+  safetyChecklists    SafetyChecklist[]
+  diveLogs            DiveLog[]            @relation("TripDiveLogs")
+  calendarAllocations CalendarAllocation[]
+  crewAssignments     CrewAssignment[]
+
+  @@index([status, startsAt])
+}
+
+model Booking {
+  id           String               @id @default(uuid())
+  tripId       String
+  accountId    String
+  status       BookingStatus        @default(PENDING)
+  seats        Int                  @default(1)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  trip         Trip                 @relation(fields: [tripId], references: [id], onDelete: Restrict)
+  account      Account              @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  participants BookingParticipant[]
+  payments     Payment[]
+
+  @@unique([tripId, accountId])
+  @@index([tripId, status])
+}
+
+model BookingParticipant {
+  id                  String    @id @default(uuid())
+  bookingId           String
+  accountId           String?
+  fullName            String
+  certificationTitle  String?
+  certificationNumber String?
+  certificationIssuer String?
+  eligibilityStatus   String    @default("PENDING")
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  booking             Booking   @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  account             Account?  @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  diveLogs            DiveLog[] @relation("ParticipantDiveLogs")
+
+  @@index([bookingId, eligibilityStatus])
+  @@index([accountId])
+}
+
+model CalendarResource {
+  id              String               @id @default(uuid())
+  type            String
+  name            String
+  referenceId     String?
+  active          Boolean              @default(true)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  allocations     CalendarAllocation[]
+  crewAssignments CrewAssignment[]
+
+  @@index([type, active])
+  @@index([referenceId])
+}
+
+model CalendarAllocation {
+  id         String           @id @default(uuid())
+  tripId     String
+  resourceId String
+  startsAt   DateTime
+  endsAt     DateTime
+  status     String           @default("ACTIVE")
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  trip       Trip             @relation(fields: [tripId], references: [id], onDelete: Restrict)
+  resource   CalendarResource @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+
+  @@index([resourceId, startsAt, endsAt])
+  @@index([tripId, status])
+}
+
+model CrewAssignment {
+  id                   String           @id @default(uuid())
+  tripId               String
+  resourceId           String
+  accountId            String
+  roleType             String
+  status               String           @default("PENDING")
+  replacesAssignmentId String?
+  respondedAt          DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  trip                 Trip             @relation(fields: [tripId], references: [id], onDelete: Restrict)
+  resource             CalendarResource @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+  account              Account          @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([tripId, status])
+  @@index([accountId, status])
+  @@index([resourceId])
+}
+
+enum OperationalDecision {
+  ALLOWED
+  REVIEW_REQUIRED
+  DEFERRED
+}
+
+model SafetyChecklist {
+  id        String              @id @default(uuid())
+  tripId    String
+  decision  OperationalDecision @default(REVIEW_REQUIRED)
+  items     Json
+  notes     String?
+  decidedAt DateTime?
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  trip      Trip                @relation(fields: [tripId], references: [id], onDelete: Restrict)
+
+  @@index([tripId, decision])
+}
+
+enum DiveLogStatus {
+  DRAFT
+  VERIFIED
+  REJECTED
+}
+
+model DiveLog {
+  id                  String              @id @default(uuid())
+  accountId           String?
+  sourceTripId        String?
+  sourceParticipantId String?
+  siteName            String
+  regionCode          String?
+  diveDate            DateTime
+  maxDepthM           Float
+  durationMin         Int
+  buddyName           String?
+  instructorName      String?
+  notes               String?
+  status              DiveLogStatus       @default(DRAFT)
+  verifiedAt          DateTime?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  account             Account?            @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  sourceTrip          Trip?               @relation("TripDiveLogs", fields: [sourceTripId], references: [id], onDelete: Restrict)
+  sourceParticipant   BookingParticipant? @relation("ParticipantDiveLogs", fields: [sourceParticipantId], references: [id], onDelete: Restrict)
+
+  @@unique([sourceParticipantId, sourceTripId])
+  @@index([accountId, diveDate])
+  @@index([accountId, status])
+  @@index([sourceTripId])
+  @@index([sourceParticipantId])
+}
+
+enum PaymentStatus {
+  CREATED
+  PENDING
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  VOID
+}
+
+model Payment {
+  id                String        @id @default(uuid())
+  bookingId         String
+  accountId         String
+  amountMinor       Int
+  currency          String        @default("SAR")
+  status            PaymentStatus @default(CREATED)
+  idempotencyKey    String        @unique
+  providerReference String?       @unique
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  booking           Booking       @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  account           Account       @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  invoice           Invoice?
+
+  @@index([accountId, status])
+}
+
+model Invoice {
+  id        String        @id @default(uuid())
+  paymentId String        @unique
+  number    String        @unique
+  status    InvoiceStatus @default(DRAFT)
+  issuedAt  DateTime?
+  createdAt DateTime      @default(now())
+  payment   Payment       @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+}
 
 model ThemeSchedule {
-  id String @id
-  themeId String
-  name String?
-  status String @default("DRAFT")
-  startsAt DateTime
-  endsAt DateTime
+  id          String   @id
+  themeId     String
+  name        String?
+  status      String   @default("DRAFT")
+  startsAt    DateTime
+  endsAt      DateTime
   createdById String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  @@index([status,startsAt,endsAt])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status, startsAt, endsAt])
   @@index([themeId])
 }
 
 model BoatResourceCompliance {
-  id String @id
-  resourceId String @unique
-  registrationNumber String?
-  registrationStatus String @default("PENDING")
-  navigationLicenseNumber String?
+  id                         String    @id
+  resourceId                 String    @unique
+  registrationNumber         String?
+  registrationStatus         String    @default("PENDING")
+  navigationLicenseNumber    String?
   navigationLicenseExpiresAt DateTime?
   safetyCertificateExpiresAt DateTime?
-  passengerLimit Int?
-  notes String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  passengerLimit             Int?
+  notes                      String?
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
+
   @@index([registrationStatus])
 }
 
 model TripComplianceReview {
-  id String @id
-  tripId String @unique
-  regulatoryStatus String @default("PENDING")
-  permitStatus String @default("PENDING")
-  permitReference String?
-  authorityReference String?
-  notes String?
+  id                  String    @id
+  tripId              String    @unique
+  regulatoryStatus    String    @default("PENDING")
+  permitStatus        String    @default("PENDING")
+  permitReference     String?
+  authorityReference  String?
+  notes               String?
   reviewedByAccountId String?
-  reviewedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  @@index([regulatoryStatus,permitStatus])
+  reviewedAt          DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([regulatoryStatus, permitStatus])
 }
