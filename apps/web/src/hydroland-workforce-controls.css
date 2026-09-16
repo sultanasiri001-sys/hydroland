@@ -1,0 +1,1 @@
+.hl-workforce .hl-workforce__external-seat{display:grid}.hl-workforce__external-seat>.hl-workforce__seat{grid-template-columns:minmax(130px,1fr) minmax(170px,2fr) 120px auto}@media(max-width:860px){.hl-workforce__external-seat>.hl-workforce__seat{grid-template-columns:1fr}}

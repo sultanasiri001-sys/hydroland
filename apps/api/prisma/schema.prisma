@@ -95,6 +95,34 @@ enum NotificationStatus {
   FAILED
 }
 
+enum WorkforceDepartmentStatus {
+  ENABLED
+  DISABLED
+}
+
+enum WorkforceMode {
+  DISABLED
+  AI_ONLY
+  HUMAN_ONLY
+  HYBRID
+}
+
+enum WorkforcePositionTier {
+  MANAGER
+  ASSISTANT
+}
+
+enum WorkforceSeatScope {
+  HEADQUARTERS
+  EXTERNAL_CENTER
+}
+
+enum WorkforceSeatAccessStatus {
+  LOCKED
+  ENABLED
+  SUSPENDED
+}
+
 model Person {
   id           String               @id @default(uuid())
   firstName    String
@@ -132,6 +160,7 @@ model Account {
   organizationMemberships OrganizationMember[]
   organizationsOwned      Organization[]       @relation("OrganizationOwner")
   policyUpdates           PolicyControl[]      @relation("PolicyUpdatedBy")
+  workforceSeats          WorkforceSeat[]
 }
 
 model Organization {
@@ -149,9 +178,81 @@ model Organization {
   reviewedById       String?
   owner              Account              @relation("OrganizationOwner", fields: [ownerId], references: [id], onDelete: Restrict)
   members            OrganizationMember[]
+  workforceSeats     WorkforceSeat[]
 
   @@index([status, createdAt])
   @@index([ownerId, status])
+}
+
+model WorkforceDepartment {
+  id               String                    @id @default(uuid())
+  code             String                    @unique
+  nameAr           String
+  nameEn           String
+  description      String?
+  status           WorkforceDepartmentStatus @default(ENABLED)
+  isHumanResources Boolean                   @default(false)
+  displayOrder     Int                       @default(0)
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+  positions        WorkforcePosition[]
+  technicalSeats   WorkforceSeat[]           @relation("WorkforceTechnicalDepartment")
+
+  @@index([status, displayOrder])
+}
+
+model WorkforcePosition {
+  id                       String                @id @default(uuid())
+  departmentId             String
+  code                     String                @unique
+  titleAr                  String
+  titleEn                  String
+  tier                     WorkforcePositionTier
+  parentPositionId         String?
+  aiEnabled                Boolean               @default(true)
+  humanEnabled             Boolean               @default(false)
+  mode                     WorkforceMode         @default(AI_ONLY)
+  externalLiaisonEligible  Boolean               @default(false)
+  canManageExternalCenter  Boolean               @default(false)
+  permissions              Json?
+  displayOrder             Int                   @default(0)
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
+  department               WorkforceDepartment   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  parentPosition           WorkforcePosition?    @relation("WorkforcePositionHierarchy", fields: [parentPositionId], references: [id], onDelete: Restrict)
+  childPositions           WorkforcePosition[]   @relation("WorkforcePositionHierarchy")
+  seats                    WorkforceSeat[]
+
+  @@index([departmentId, tier, displayOrder])
+  @@index([parentPositionId])
+}
+
+model WorkforceSeat {
+  id                            String                    @id @default(uuid())
+  positionId                    String
+  accountId                     String?
+  organizationId                String?
+  scope                         WorkforceSeatScope        @default(HEADQUARTERS)
+  accessStatus                  WorkforceSeatAccessStatus @default(LOCKED)
+  label                         String?
+  administrativeManagerSeatId   String?
+  technicalDepartmentId         String?
+  enabledAt                     DateTime?
+  disabledAt                    DateTime?
+  createdAt                     DateTime                  @default(now())
+  updatedAt                     DateTime                  @updatedAt
+  position                      WorkforcePosition         @relation(fields: [positionId], references: [id], onDelete: Restrict)
+  account                       Account?                  @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  organization                  Organization?             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  administrativeManagerSeat     WorkforceSeat?            @relation("WorkforceAdministrativeReporting", fields: [administrativeManagerSeatId], references: [id], onDelete: Restrict)
+  administrativeReportees       WorkforceSeat[]           @relation("WorkforceAdministrativeReporting")
+  technicalDepartment           WorkforceDepartment?      @relation("WorkforceTechnicalDepartment", fields: [technicalDepartmentId], references: [id], onDelete: Restrict)
+
+  @@index([positionId, accessStatus])
+  @@index([accountId, accessStatus])
+  @@index([organizationId, scope, accessStatus])
+  @@index([administrativeManagerSeatId])
+  @@index([technicalDepartmentId])
 }
 
 model OrganizationMember {
