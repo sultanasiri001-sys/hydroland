@@ -51,11 +51,7 @@
 
   b.onclick=()=>{draw();d.showModal();};
   close.onclick=()=>d.close();
-  if(!document.querySelector('script[data-hl-theme-admin]')){
-    const s=document.createElement('script');
-    s.src='./hydroland-theme-admin.js';
-    s.defer=true;
-    s.dataset.hlThemeAdmin='1';
-    document.body.appendChild(s);
-  }
+  const load=(selector,src,datasetKey)=>{if(document.querySelector(selector))return;const s=document.createElement('script');s.src=src;s.defer=true;s.dataset[datasetKey]='1';document.body.appendChild(s)};
+  load('script[data-hl-theme-admin]','./hydroland-theme-admin.js','hlThemeAdmin');
+  load('script[data-hl-commerce-guard]','./hydroland-commerce-guard.js','hlCommerceGuard');
 })();
