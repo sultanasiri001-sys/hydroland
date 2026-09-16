@@ -2,7 +2,7 @@ name: API validation
 on:
   pull_request:
   push:
-    branches: [main, feat/database-foundation, consolidation/hydroland-unified, feat/operations-l1-l4, feat/inventory-logistics-l1-l4]
+    branches: [main, feat/database-foundation, consolidation/hydroland-unified, feat/operations-l1-l4, feat/inventory-logistics-l1-l4, feat/finance-l1-l4]
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,6 +18,7 @@ jobs:
       - run: npm run validate:hr -w @hydroland/api
       - run: npm run validate:operations -w @hydroland/api
       - run: npm run validate:inventory -w @hydroland/api
+      - run: npm run validate:finance -w @hydroland/api
       - run: npm run validate:phase10 -w @hydroland/api
       - run: npm run validate:phase12 -w @hydroland/api
       - run: npm run typecheck
