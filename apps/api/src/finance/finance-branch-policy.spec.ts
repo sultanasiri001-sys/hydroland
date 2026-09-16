@@ -1,4 +1,4 @@
-import {assertCashVariance,assertFinanceAiAuthority,assertFinanceBranchAction,assertFinanceBranchScope,assertShiftCloseSegregation} from './finance-branch-policy';
+import {assertAccountantOwnsShift,assertCashVariance,assertFinanceAiAuthority,assertFinanceBranchAction,assertFinanceBranchScope,assertShiftCloseSegregation,assertShiftHandover,calculateShiftExpectedCash} from './finance-branch-policy';
 
 describe('finance branch policy',()=>{
   const branchAccountant={accountId:'acct-1',role:'BRANCH_ACCOUNTANT' as const,centerId:'center-a'};
@@ -6,11 +6,30 @@ describe('finance branch policy',()=>{
   it('allows a branch accountant inside assigned center',()=>{
     expect(assertFinanceBranchScope(branchAccountant,'center-a')).toBe(true);
     expect(assertFinanceBranchAction(branchAccountant,'RECORD_COLLECTION')).toBe(true);
+    expect(assertFinanceBranchAction(branchAccountant,'RECORD_EXPENSE')).toBe(true);
     expect(assertFinanceBranchAction(branchAccountant,'SUBMIT_SHIFT_CLOSE')).toBe(true);
   });
 
   it('denies cross-center access',()=>{
     expect(()=>assertFinanceBranchScope(branchAccountant,'center-b')).toThrow('FINANCE_CENTER_SCOPE_DENIED');
+  });
+
+  it('isolates every accountant to their own open shift',()=>{
+    const shift={shiftId:'shift-1',centerId:'center-a',accountantAccountId:'acct-1',status:'OPEN' as const,openingBalanceMinor:10000,revenueMinor:5000,expenseMinor:1000,expectedCashMinor:14000};
+    expect(assertAccountantOwnsShift(branchAccountant,shift)).toBe(true);
+    expect(()=>assertAccountantOwnsShift({...branchAccountant,accountId:'acct-2'},shift)).toThrow('FINANCE_SHIFT_ACCOUNT_ISOLATION_DENIED');
+    expect(()=>assertAccountantOwnsShift(branchAccountant,{...shift,status:'HANDOVER_PENDING' as const})).toThrow('FINANCE_SHIFT_NOT_OPEN');
+  });
+
+  it('calculates accountant expected cash independently',()=>{
+    expect(calculateShiftExpectedCash({openingBalanceMinor:10000,revenueMinor:7000,expenseMinor:2500})).toBe(14500);
+  });
+
+  it('requires explicit handover between different accountants in the same center',()=>{
+    expect(assertShiftHandover({fromAccountantId:'acct-1',toAccountantId:'acct-2',fromCenterId:'center-a',toCenterId:'center-a',actualCashMinor:14500,expectedCashMinor:14500,acceptedBy:'acct-2'})).toBe(0);
+    expect(()=>assertShiftHandover({fromAccountantId:'acct-1',toAccountantId:'acct-1',fromCenterId:'center-a',toCenterId:'center-a',actualCashMinor:14500,expectedCashMinor:14500})).toThrow('FINANCE_HANDOVER_ACCOUNTANT_INVALID');
+    expect(()=>assertShiftHandover({fromAccountantId:'acct-1',toAccountantId:'acct-2',fromCenterId:'center-a',toCenterId:'center-b',actualCashMinor:14500,expectedCashMinor:14500})).toThrow('FINANCE_HANDOVER_CENTER_MISMATCH');
+    expect(()=>assertShiftHandover({fromAccountantId:'acct-1',toAccountantId:'acct-2',fromCenterId:'center-a',toCenterId:'center-a',actualCashMinor:14500,expectedCashMinor:14500,acceptedBy:'acct-3'})).toThrow('FINANCE_HANDOVER_ACCEPTOR_INVALID');
   });
 
   it('prevents branch accountant from reviewing own shift or approving settlement',()=>{
