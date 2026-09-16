@@ -13,6 +13,8 @@ export class FinanceShiftsService {
     if(!accountantAccountId||!centerOrgUnitId)throw new Error('FINANCE_SHIFT_IDENTITY_REQUIRED');
     if(!Number.isSafeInteger(openingBalanceMinor)||openingBalanceMinor<0)throw new Error('FINANCE_AMOUNT_INVALID');
     return this.db.serializable(async tx=>{
+      const centers=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "OrgUnit" WHERE "id"=${centerOrgUnitId} AND "type"='CENTER' AND "active"=TRUE FOR SHARE`;
+      if(!centers.length)throw new Error('FINANCE_ACTIVE_CENTER_REQUIRED');
       const active=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "FinanceAccountantShift" WHERE "centerOrgUnitId"=${centerOrgUnitId} AND "accountantAccountId"=${accountantAccountId} AND "status" IN ('OPEN','HANDOVER_PENDING') FOR UPDATE`;
       if(active.length)throw new Error('FINANCE_ACTIVE_SHIFT_EXISTS');
       const rows=await tx.$queryRaw<Array<Record<string,unknown>>>`INSERT INTO "FinanceAccountantShift" ("id","centerOrgUnitId","accountantAccountId","openingBalanceMinor","updatedAt") VALUES (gen_random_uuid()::text,${centerOrgUnitId},${accountantAccountId},${openingBalanceMinor},NOW()) RETURNING *`;
@@ -28,6 +30,12 @@ export class FinanceShiftsService {
       const shift=shifts[0]; if(!shift)throw new Error('FINANCE_SHIFT_NOT_FOUND');
       if(shift.accountantAccountId!==accountantAccountId)throw new Error('FINANCE_SHIFT_ACCOUNT_ISOLATION_DENIED');
       if(shift.status!=='OPEN')throw new Error('FINANCE_SHIFT_NOT_OPEN');
+      if(input.type==='REVENUE'){
+        const payments=await tx.$queryRaw<Array<{id:string;amountMinor:number;status:string}>>`SELECT "id","amountMinor","status"::text AS "status" FROM "Payment" WHERE "id"=${input.paymentId!} FOR SHARE`;
+        const payment=payments[0]; if(!payment)throw new Error('FINANCE_PAYMENT_NOT_FOUND');
+        if(!['CAPTURED','REFUNDED'].includes(payment.status))throw new Error('FINANCE_PAYMENT_NOT_SETTLED');
+        if(payment.amountMinor!==input.amountMinor)throw new Error('FINANCE_PAYMENT_AMOUNT_MISMATCH');
+      }
       const rows=await tx.$queryRaw<Array<Record<string,unknown>>>`INSERT INTO "FinanceShiftEntry" ("id","shiftId","type","amountMinor","paymentId","referenceType","referenceId","description","recordedByAccountId") VALUES (gen_random_uuid()::text,${shiftId},${input.type}::"FinanceEntryType",${input.amountMinor},${input.paymentId??null},${input.referenceType??null},${input.referenceId??null},${input.description??null},${accountantAccountId}) RETURNING *`;
       return rows[0];
     });
@@ -43,8 +51,10 @@ export class FinanceShiftsService {
       const entries=await tx.$queryRaw<Array<{type:EntryType;amountMinor:number}>>`SELECT "type"::text AS "type","amountMinor" FROM "FinanceShiftEntry" WHERE "shiftId"=${shiftId}`;
       const totals=calculateFinanceShiftTotals(from.openingBalanceMinor,entries);
       const variance=assertCashVariance({expectedMinor:totals.expectedCashMinor,actualMinor:actualCashMinor,reason:varianceReason});
-      const receivers=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "FinanceAccountantShift" WHERE "centerOrgUnitId"=${from.centerOrgUnitId} AND "accountantAccountId"=${toAccountantId} AND "status"='OPEN' FOR UPDATE`;
+      const receivers=await tx.$queryRaw<Array<{id:string;openingBalanceMinor:number}>>`SELECT "id","openingBalanceMinor" FROM "FinanceAccountantShift" WHERE "centerOrgUnitId"=${from.centerOrgUnitId} AND "accountantAccountId"=${toAccountantId} AND "status"='OPEN' FOR UPDATE`;
       const to=receivers[0]; if(!to)throw new Error('FINANCE_HANDOVER_RECEIVER_SHIFT_REQUIRED');
+      const receiverEntries=await tx.$queryRaw<Array<{count:bigint}>>`SELECT COUNT(*)::bigint AS "count" FROM "FinanceShiftEntry" WHERE "shiftId"=${to.id}`;
+      if(to.openingBalanceMinor!==0||Number(receiverEntries[0]?.count??0)!==0)throw new Error('FINANCE_HANDOVER_RECEIVER_SHIFT_NOT_EMPTY');
       await tx.$executeRaw`UPDATE "FinanceAccountantShift" SET "status"='HANDOVER_PENDING',"submittedAt"=NOW(),"updatedAt"=NOW() WHERE "id"=${shiftId}`;
       const rows=await tx.$queryRaw<Array<Record<string,unknown>>>`INSERT INTO "FinanceShiftHandover" ("id","fromShiftId","toShiftId","fromAccountantId","toAccountantId","expectedCashMinor","actualCashMinor","varianceMinor","varianceReason") VALUES (gen_random_uuid()::text,${shiftId},${to.id},${accountantAccountId},${toAccountantId},${totals.expectedCashMinor},${actualCashMinor},${variance},${varianceReason??null}) RETURNING *`;
       return rows[0];
@@ -57,9 +67,13 @@ export class FinanceShiftsService {
       const handover=rows[0]; if(!handover)throw new Error('FINANCE_HANDOVER_NOT_FOUND');
       if(handover.toAccountantId!==accountantAccountId)throw new Error('FINANCE_HANDOVER_ACCEPTOR_INVALID');
       if(handover.status!=='PENDING')throw new Error('FINANCE_HANDOVER_NOT_PENDING');
+      const receivers=await tx.$queryRaw<Array<{id:string;openingBalanceMinor:number;status:string}>>`SELECT "id","openingBalanceMinor","status"::text AS "status" FROM "FinanceAccountantShift" WHERE "id"=${handover.toShiftId} AND "accountantAccountId"=${accountantAccountId} FOR UPDATE`;
+      const receiver=receivers[0]; if(!receiver||receiver.status!=='OPEN')throw new Error('FINANCE_HANDOVER_RECEIVER_SHIFT_INVALID');
+      const receiverEntries=await tx.$queryRaw<Array<{count:bigint}>>`SELECT COUNT(*)::bigint AS "count" FROM "FinanceShiftEntry" WHERE "shiftId"=${handover.toShiftId}`;
+      if(receiver.openingBalanceMinor!==0||Number(receiverEntries[0]?.count??0)!==0)throw new Error('FINANCE_HANDOVER_RECEIVER_SHIFT_NOT_EMPTY');
       await tx.$executeRaw`UPDATE "FinanceShiftHandover" SET "status"='ACCEPTED',"acceptedAt"=NOW() WHERE "id"=${handoverId}`;
       await tx.$executeRaw`UPDATE "FinanceAccountantShift" SET "status"='HANDED_OVER',"closedAt"=NOW(),"updatedAt"=NOW() WHERE "id"=${handover.fromShiftId}`;
-      await tx.$executeRaw`UPDATE "FinanceAccountantShift" SET "openingBalanceMinor"=${handover.actualCashMinor},"updatedAt"=NOW() WHERE "id"=${handover.toShiftId} AND "accountantAccountId"=${accountantAccountId} AND "status"='OPEN'`;
+      await tx.$executeRaw`UPDATE "FinanceAccountantShift" SET "openingBalanceMinor"=${handover.actualCashMinor},"updatedAt"=NOW() WHERE "id"=${handover.toShiftId}`;
       return {handoverId,status:'ACCEPTED' as const,openingBalanceMinor:handover.actualCashMinor};
     });
   }
