@@ -1,0 +1,13 @@
+import {evaluateFinancePeriodClose,assertFinancePeriodTransition,buildFinanceAuditFinding} from './finance-period-close.domain';
+function eq(a:unknown,e:unknown,l:string){if(a!==e)throw new Error(`${l}: expected ${e}, got ${a}`)}
+function throws(fn:()=>unknown,c:string){try{fn()}catch(e){if(e instanceof Error&&e.message===c)return;throw e}throw new Error(`Expected ${c}`)}
+const ready=evaluateFinancePeriodClose({periodType:'MONTH',periodKey:'2026-09',openShiftCount:0,unresolvedVarianceCount:0,unreconciledPaymentCount:0,pendingRefundCount:0,unpostedReceivableCount:0});eq(ready.state,'READY','ready period');eq(ready.blockers.length,0,'ready blockers');
+const blocked=evaluateFinancePeriodClose({periodType:'QUARTER',periodKey:'2026-Q3',openShiftCount:1,unresolvedVarianceCount:2,unreconciledPaymentCount:1,pendingRefundCount:0,unpostedReceivableCount:3});eq(blocked.state,'OPEN','blocked period');eq(blocked.blockers.length,4,'blocked count');
+throws(()=>evaluateFinancePeriodClose({periodType:'YEAR',periodKey:'',openShiftCount:0,unresolvedVarianceCount:0,unreconciledPaymentCount:0,pendingRefundCount:0,unpostedReceivableCount:0}),'FINANCE_PERIOD_KEY_REQUIRED');
+throws(()=>evaluateFinancePeriodClose({periodType:'MONTH',periodKey:'2026-09',openShiftCount:-1,unresolvedVarianceCount:0,unreconciledPaymentCount:0,pendingRefundCount:0,unpostedReceivableCount:0}),'FINANCE_PERIOD_COUNT_INVALID');
+eq(assertFinancePeriodTransition({from:'OPEN',to:'READY',approved:false}),true,'open-ready');eq(assertFinancePeriodTransition({from:'READY',to:'CLOSED',approved:true}),true,'ready-closed');eq(assertFinancePeriodTransition({from:'CLOSED',to:'REOPENED',approved:true}),true,'closed-reopened');
+throws(()=>assertFinancePeriodTransition({from:'READY',to:'CLOSED',approved:false}),'FINANCE_PERIOD_APPROVAL_REQUIRED');throws(()=>assertFinancePeriodTransition({from:'OPEN',to:'CLOSED',approved:true}),'FINANCE_PERIOD_TRANSITION_DENIED');
+const critical=buildFinanceAuditFinding({code:'LEDGER_MISMATCH',description:'Ledger does not reconcile with settlement',severity:'CRITICAL',amountMinor:1000,referenceId:'settlement-1'});eq(critical.requiresHumanReview,true,'critical review');
+const info=buildFinanceAuditFinding({code:'PERIOD_OK',description:'Period controls completed',severity:'INFO'});eq(info.requiresHumanReview,false,'info review');
+throws(()=>buildFinanceAuditFinding({code:'',description:'bad',severity:'WARNING'}),'FINANCE_AUDIT_FINDING_INVALID');throws(()=>buildFinanceAuditFinding({code:'BAD_AMOUNT',description:'bad amount',severity:'WARNING',amountMinor:-1}),'FINANCE_AMOUNT_INVALID');
+console.log('Finance L4 period close assertions passed.');
