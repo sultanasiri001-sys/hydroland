@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:deploy": "prisma migrate deploy",
+    "db:deploy": "node scripts/db-deploy-with-recovery.js",
     "validate:phase10": "node scripts/phase10-validation.mjs",
     "validate:phase12": "node scripts/phase12-validation.mjs",
     "validate:workforce": "node scripts/workforce-validation.mjs"
