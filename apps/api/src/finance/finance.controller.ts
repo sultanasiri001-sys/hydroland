@@ -1,4 +1,4 @@
-import {Body,Controller,Param,Post,Req,UseGuards} from '@nestjs/common';
+import {Body,Controller,Get,Param,Post,Req,UseGuards} from '@nestjs/common';
 import {AccessTokenGuard} from '../auth/access-token.guard';
 import {FinanceShiftsService} from './finance-shifts.service';
 import {FinanceReceivablesService} from './finance-receivables.service';
@@ -36,5 +36,10 @@ export class FinanceController{
   @Post('receivables/:receivableId/collections')
   collectReceivable(@Req()r:{auth:{accountId:string}},@Param('receivableId')receivableId:string,@Body()b:{paymentId:string;amountMinor:number;receiptNumber:string;installmentId?:string}){
     return this.receivables.collect(r.auth.accountId,receivableId,b);
+  }
+
+  @Get('centers/:centerOrgUnitId/receivables')
+  branchReceivables(@Req()r:{auth:{accountId:string}},@Param('centerOrgUnitId')centerOrgUnitId:string){
+    return this.receivables.branchAr(r.auth.accountId,centerOrgUnitId);
   }
 }
