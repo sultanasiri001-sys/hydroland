@@ -1,17 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { assertCashVariance } from './finance-branch-policy';
+import { FinanceAccessService } from './finance-access.service';
 import { calculateFinanceShiftTotals } from './finance-shift.domain';
 
 type EntryType='REVENUE'|'EXPENSE'|'REFUND'|'ADJUSTMENT';
 
 @Injectable()
 export class FinanceShiftsService {
-  constructor(private readonly db:DatabaseService){}
+  constructor(private readonly db:DatabaseService,private readonly access:FinanceAccessService){}
 
   async openShift(accountantAccountId:string,centerOrgUnitId:string,openingBalanceMinor:number){
     if(!accountantAccountId||!centerOrgUnitId)throw new Error('FINANCE_SHIFT_IDENTITY_REQUIRED');
     if(!Number.isSafeInteger(openingBalanceMinor)||openingBalanceMinor<0)throw new Error('FINANCE_AMOUNT_INVALID');
+    await this.access.requireBranchAccountant(accountantAccountId,centerOrgUnitId);
     return this.db.serializable(async tx=>{
       const centers=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "OrgUnit" WHERE "id"=${centerOrgUnitId} AND "type"='CENTER' AND "active"=TRUE FOR SHARE`;
       if(!centers.length)throw new Error('FINANCE_ACTIVE_CENTER_REQUIRED');
@@ -25,6 +27,8 @@ export class FinanceShiftsService {
   async recordEntry(accountantAccountId:string,shiftId:string,input:{type:EntryType;amountMinor:number;paymentId?:string;referenceType?:string;referenceId?:string;description?:string}){
     if(!Number.isSafeInteger(input.amountMinor)||input.amountMinor<=0)throw new Error('FINANCE_AMOUNT_INVALID');
     if(input.type==='REVENUE'&&!input.paymentId)throw new Error('FINANCE_REVENUE_PAYMENT_REQUIRED');
+    const scope=await this.shiftScope(shiftId);
+    await this.access.requireBranchAccountant(accountantAccountId,scope.centerOrgUnitId);
     return this.db.serializable(async tx=>{
       const shifts=await tx.$queryRaw<Array<{id:string;accountantAccountId:string;status:string}>>`SELECT "id","accountantAccountId","status"::text AS "status" FROM "FinanceAccountantShift" WHERE "id"=${shiftId} FOR UPDATE`;
       const shift=shifts[0]; if(!shift)throw new Error('FINANCE_SHIFT_NOT_FOUND');
@@ -43,6 +47,9 @@ export class FinanceShiftsService {
 
   async requestHandover(accountantAccountId:string,shiftId:string,toAccountantId:string,actualCashMinor:number,varianceReason?:string){
     if(accountantAccountId===toAccountantId)throw new Error('FINANCE_HANDOVER_ACCOUNTANT_INVALID');
+    const scope=await this.shiftScope(shiftId);
+    await this.access.requireBranchAccountant(accountantAccountId,scope.centerOrgUnitId);
+    await this.access.requireBranchAccountant(toAccountantId,scope.centerOrgUnitId);
     return this.db.serializable(async tx=>{
       const shifts=await tx.$queryRaw<Array<{id:string;centerOrgUnitId:string;accountantAccountId:string;status:string;openingBalanceMinor:number}>>`SELECT "id","centerOrgUnitId","accountantAccountId","status"::text AS "status","openingBalanceMinor" FROM "FinanceAccountantShift" WHERE "id"=${shiftId} FOR UPDATE`;
       const from=shifts[0]; if(!from)throw new Error('FINANCE_SHIFT_NOT_FOUND');
@@ -62,6 +69,8 @@ export class FinanceShiftsService {
   }
 
   async acceptHandover(accountantAccountId:string,handoverId:string){
+    const scope=await this.handoverScope(handoverId);
+    await this.access.requireBranchAccountant(accountantAccountId,scope.centerOrgUnitId);
     return this.db.serializable(async tx=>{
       const rows=await tx.$queryRaw<Array<{id:string;fromShiftId:string;toShiftId:string;toAccountantId:string;actualCashMinor:number;status:string}>>`SELECT "id","fromShiftId","toShiftId","toAccountantId","actualCashMinor","status"::text AS "status" FROM "FinanceShiftHandover" WHERE "id"=${handoverId} FOR UPDATE`;
       const handover=rows[0]; if(!handover)throw new Error('FINANCE_HANDOVER_NOT_FOUND');
@@ -76,5 +85,17 @@ export class FinanceShiftsService {
       await tx.$executeRaw`UPDATE "FinanceAccountantShift" SET "openingBalanceMinor"=${handover.actualCashMinor},"updatedAt"=NOW() WHERE "id"=${handover.toShiftId}`;
       return {handoverId,status:'ACCEPTED' as const,openingBalanceMinor:handover.actualCashMinor};
     });
+  }
+
+  private async shiftScope(shiftId:string){
+    const rows=await this.db.$queryRaw<Array<{centerOrgUnitId:string}>>`SELECT "centerOrgUnitId" FROM "FinanceAccountantShift" WHERE "id"=${shiftId} LIMIT 1`;
+    if(!rows[0])throw new Error('FINANCE_SHIFT_NOT_FOUND');
+    return rows[0];
+  }
+
+  private async handoverScope(handoverId:string){
+    const rows=await this.db.$queryRaw<Array<{centerOrgUnitId:string}>>`SELECT s."centerOrgUnitId" FROM "FinanceShiftHandover" h JOIN "FinanceAccountantShift" s ON s."id"=h."toShiftId" WHERE h."id"=${handoverId} LIMIT 1`;
+    if(!rows[0])throw new Error('FINANCE_HANDOVER_NOT_FOUND');
+    return rows[0];
   }
 }
