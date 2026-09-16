@@ -9,6 +9,7 @@ import { DatabaseModule } from './database/database.module';
 import { DiveLogsModule } from './dive-logs/dive-logs.module';
 import { HealthController } from './health/health.controller';
 import { IntegrationModule } from './integrations/integration.module';
+import { InventoryModule } from './inventory/inventory.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { SafetyModule } from './safety/safety.module';
 import { TripsModule } from './trips/trips.module';
@@ -17,5 +18,5 @@ import { ProfileModule } from './profile/profile.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { TrainingModule } from './training/training.module';
 import { ThemesModule } from './themes/themes.module';
-@Module({ imports:[DatabaseModule,AuthModule,ProfileModule,CredentialsModule,ActivationModule,AuditModule,NotificationsModule,TripsModule,SafetyModule,PaymentsModule,AdminModule,DiveLogsModule,OrganizationsModule,TrainingModule,IntegrationModule,AgentModule,ThemesModule], controllers:[HealthController] })
+@Module({ imports:[DatabaseModule,AuthModule,ProfileModule,CredentialsModule,ActivationModule,AuditModule,NotificationsModule,TripsModule,SafetyModule,PaymentsModule,AdminModule,DiveLogsModule,OrganizationsModule,TrainingModule,IntegrationModule,AgentModule,ThemesModule,InventoryModule], controllers:[HealthController] })
 export class AppModule {}
