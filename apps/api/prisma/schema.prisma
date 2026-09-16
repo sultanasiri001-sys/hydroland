@@ -7,22 +7,131 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum AccountStatus { PENDING_VERIFICATION ACTIVE SUSPENDED ARCHIVED }
-enum ProfessionalRole { DIVER INSTRUCTOR DIVE_CENTER BOAT_OWNER STAFF ORGANIZATION ADMIN REVIEWER }
-enum RoleAssignmentStatus { DRAFT PENDING_REVIEW ACTIVE REJECTED SUSPENDED ARCHIVED }
-enum CredentialVerificationStatus { UNVERIFIED PENDING DOCUMENT_VERIFIED VERIFIED REJECTED EXPIRED }
-enum ActivationRequestStatus { DRAFT SUBMITTED UNDER_REVIEW MORE_INFORMATION_REQUIRED RESUBMITTED APPROVED REJECTED SUSPENDED ARCHIVED }
-enum OrganizationStatus { DRAFT PENDING_REVIEW ACTIVE REJECTED SUSPENDED ARCHIVED }
-enum OrganizationMemberRole { OWNER ADMIN OPERATOR INSTRUCTOR STAFF VIEWER }
-enum OrganizationMembershipStatus { PENDING ACTIVE SUSPENDED REMOVED }
-enum DocumentStatus { UPLOADED QUARANTINED AVAILABLE REJECTED ARCHIVED }
-enum NotificationStatus { PENDING SENT READ FAILED }
+enum AccountStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+enum ProfessionalRole {
+  DIVER
+  INSTRUCTOR
+  DIVE_CENTER
+  BOAT_OWNER
+  STAFF
+  ORGANIZATION
+  ADMIN
+  REVIEWER
+}
+enum RoleAssignmentStatus {
+  DRAFT
+  PENDING_REVIEW
+  ACTIVE
+  REJECTED
+  SUSPENDED
+  ARCHIVED
+}
+enum CredentialVerificationStatus {
+  UNVERIFIED
+  PENDING
+  DOCUMENT_VERIFIED
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+enum ActivationRequestStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  MORE_INFORMATION_REQUIRED
+  RESUBMITTED
+  APPROVED
+  REJECTED
+  SUSPENDED
+  ARCHIVED
+}
+enum OrganizationStatus {
+  DRAFT
+  PENDING_REVIEW
+  ACTIVE
+  REJECTED
+  SUSPENDED
+  ARCHIVED
+}
+enum OrganizationMemberRole {
+  OWNER
+  ADMIN
+  OPERATOR
+  INSTRUCTOR
+  STAFF
+  VIEWER
+}
+enum OrganizationMembershipStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  REMOVED
+}
+enum DocumentStatus {
+  UPLOADED
+  QUARANTINED
+  AVAILABLE
+  REJECTED
+  ARCHIVED
+}
+enum NotificationStatus {
+  PENDING
+  SENT
+  READ
+  FAILED
+}
 
-enum OrgUnitType { HQ REGION CENTER DEPARTMENT UNIT TEAM }
-enum EmploymentStatus { DRAFT PENDING_APPROVAL ACTIVE ON_LEAVE SUSPENDED TERMINATED OFFBOARDED }
-enum WorkerClass { EMPLOYEE TEMPORARY_WORKER INDEPENDENT_PROFESSIONAL CONTRACTOR CENTER_AFFILIATED TRIP_ONLY }
-enum EmploymentMovementType { APPOINTMENT TRANSFER TEMPORARY_ASSIGNMENT PROMOTION DEMOTION SUSPENSION RETURN_TO_ROLE TERMINATION }
-enum HrRequestStatus { DRAFT SUBMITTED HR_REVIEW APPROVAL_REQUIRED APPROVED REJECTED CANCELLED EFFECTIVE CLOSED }
+enum OrgUnitType {
+  HQ
+  REGION
+  CENTER
+  DEPARTMENT
+  UNIT
+  TEAM
+}
+enum EmploymentStatus {
+  DRAFT
+  PENDING_APPROVAL
+  ACTIVE
+  ON_LEAVE
+  SUSPENDED
+  TERMINATED
+  OFFBOARDED
+}
+enum WorkerClass {
+  EMPLOYEE
+  TEMPORARY_WORKER
+  INDEPENDENT_PROFESSIONAL
+  CONTRACTOR
+  CENTER_AFFILIATED
+  TRIP_ONLY
+}
+enum EmploymentMovementType {
+  APPOINTMENT
+  TRANSFER
+  TEMPORARY_ASSIGNMENT
+  PROMOTION
+  DEMOTION
+  SUSPENSION
+  RETURN_TO_ROLE
+  TERMINATION
+}
+enum HrRequestStatus {
+  DRAFT
+  SUBMITTED
+  HR_REVIEW
+  APPROVAL_REQUIRED
+  APPROVED
+  REJECTED
+  CANCELLED
+  EFFECTIVE
+  CLOSED
+}
 
 model Person {
   id String @id @default(uuid())
@@ -231,7 +340,11 @@ model AuditEvent {
   @@index([actorId,occurredAt])
 }
 
-model OperationalSetting { key String @id value Json updatedAt DateTime @default(now()) }
+model OperationalSetting {
+  key String @id
+  value Json
+  updatedAt DateTime @default(now())
+}
 
 model PolicyControl {
   id String @id @default(uuid())
@@ -250,8 +363,18 @@ model PolicyControl {
   @@index([category,state])
 }
 
-enum TripStatus { DRAFT OPEN CLOSED CANCELLED COMPLETED }
-enum BookingStatus { PENDING CONFIRMED CANCELLED }
+enum TripStatus {
+  DRAFT
+  OPEN
+  CLOSED
+  CANCELLED
+  COMPLETED
+}
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
 
 model Trip {
   id String @id @default(uuid())
@@ -353,7 +476,11 @@ model CrewAssignment {
   @@index([resourceId])
 }
 
-enum OperationalDecision { ALLOWED REVIEW_REQUIRED DEFERRED }
+enum OperationalDecision {
+  ALLOWED
+  REVIEW_REQUIRED
+  DEFERRED
+}
 model SafetyChecklist {
   id String @id @default(uuid())
   tripId String
@@ -367,7 +494,11 @@ model SafetyChecklist {
   @@index([tripId,decision])
 }
 
-enum DiveLogStatus { DRAFT VERIFIED REJECTED }
+enum DiveLogStatus {
+  DRAFT
+  VERIFIED
+  REJECTED
+}
 model DiveLog {
   id String @id @default(uuid())
   accountId String?
@@ -395,8 +526,21 @@ model DiveLog {
   @@index([sourceParticipantId])
 }
 
-enum PaymentStatus { CREATED PENDING AUTHORIZED CAPTURED FAILED CANCELLED REFUNDED }
-enum InvoiceStatus { DRAFT ISSUED PAID VOID }
+enum PaymentStatus {
+  CREATED
+  PENDING
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  VOID
+}
 model Payment {
   id String @id @default(uuid())
   bookingId String
