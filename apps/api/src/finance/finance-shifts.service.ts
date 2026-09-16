@@ -33,7 +33,7 @@ export class FinanceShiftsService {
       if(input.type==='REVENUE'){
         const payments=await tx.$queryRaw<Array<{id:string;amountMinor:number;status:string}>>`SELECT "id","amountMinor","status"::text AS "status" FROM "Payment" WHERE "id"=${input.paymentId!} FOR SHARE`;
         const payment=payments[0]; if(!payment)throw new Error('FINANCE_PAYMENT_NOT_FOUND');
-        if(!['CAPTURED','REFUNDED'].includes(payment.status))throw new Error('FINANCE_PAYMENT_NOT_SETTLED');
+        if(payment.status!=='CAPTURED')throw new Error('FINANCE_PAYMENT_NOT_SETTLED');
         if(payment.amountMinor!==input.amountMinor)throw new Error('FINANCE_PAYMENT_AMOUNT_MISMATCH');
       }
       const rows=await tx.$queryRaw<Array<Record<string,unknown>>>`INSERT INTO "FinanceShiftEntry" ("id","shiftId","type","amountMinor","paymentId","referenceType","referenceId","description","recordedByAccountId") VALUES (gen_random_uuid()::text,${shiftId},${input.type}::"FinanceEntryType",${input.amountMinor},${input.paymentId??null},${input.referenceType??null},${input.referenceId??null},${input.description??null},${accountantAccountId}) RETURNING *`;
