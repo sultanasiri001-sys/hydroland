@@ -10,6 +10,7 @@ type SeatScope = 'HEADQUARTERS' | 'EXTERNAL_CENTER';
 type SeatAccessStatus = 'LOCKED' | 'ENABLED' | 'SUSPENDED';
 type CenterDepartmentStatus = 'LOCKED' | 'ENABLED';
 type HiringDecision = 'APPROVE' | 'REJECT';
+type HrHiringDecision = 'FORWARD' | 'RETURN' | 'REJECT';
 
 @Injectable()
 export class WorkforceService {
@@ -121,7 +122,20 @@ export class WorkforceService {
       },
       select: { id: true },
     });
-    if (!seat) throw new ForbiddenException('An active headquarters Human Resources seat is required to submit hiring requests.');
+    if (!seat) throw new ForbiddenException('An active headquarters Human Resources seat is required for this review.');
+  }
+
+  private async hiringRequestSource(accountId: string, organizationId: string, departmentId: string, candidateAccountId: string) {
+    if (candidateAccountId === accountId) return 'CANDIDATE' as const;
+    const hrSeat = await this.db.workforceSeat.findFirst({ where: { accountId, scope: 'HEADQUARTERS', accessStatus: 'ENABLED', position: { department: { isHumanResources: true, status: 'ENABLED' } } }, select: { id: true } });
+    if (hrSeat) return 'HUMAN_RESOURCES' as const;
+    const managerSeat = await this.db.workforceSeat.findFirst({ where: { accountId, organizationId, scope: 'EXTERNAL_CENTER', accessStatus: 'ENABLED', position: { canManageExternalCenter: true } }, select: { id: true } });
+    if (managerSeat) {
+      const access = await this.db.workforceCenterDepartment.findUnique({ where: { organizationId_departmentId: { organizationId, departmentId } }, select: { status: true, managerAccessEnabled: true } });
+      if (access?.status !== 'ENABLED' || !access.managerAccessEnabled) throw new ForbiddenException('The center manager is not authorized for this department.');
+      return 'CENTER_MANAGER' as const;
+    }
+    throw new ForbiddenException('Only the candidate, an authorized center manager, or Human Resources can submit this request.');
   }
 
   async structure() {
@@ -160,6 +174,7 @@ export class WorkforceService {
           position: { select: { id: true, code: true, titleAr: true } },
           candidateAccount: { select: { id: true, email: true, status: true, person: { select: { firstName: true, lastName: true } } } },
           requestedBy: { select: { id: true, email: true, person: { select: { firstName: true, lastName: true } } } },
+          hrReviewedBy: { select: { id: true, email: true, person: { select: { firstName: true, lastName: true } } } },
           reviewedBy: { select: { id: true, email: true, person: { select: { firstName: true, lastName: true } } } },
         },
         orderBy: { createdAt: 'desc' },
@@ -367,24 +382,26 @@ export class WorkforceService {
   }
 
   async createHiringRequest(actorId: string, input: { organizationId?: string; positionId?: string; candidateAccountId?: string; justification?: string }) {
-    await this.assertHumanResourcesRequester(actorId);
     if (!input.organizationId || !input.positionId || !input.candidateAccountId) throw new BadRequestException('Center, position, and candidate account are required.');
     const [organization, position, candidate] = await Promise.all([
-      this.db.organization.findUnique({ where: { id: input.organizationId }, select: { id: true } }),
+      this.db.organization.findUnique({ where: { id: input.organizationId }, select: { id: true, status: true } }),
       this.db.workforcePosition.findUnique({ where: { id: input.positionId }, include: { department: true } }),
       this.db.account.findUnique({ where: { id: input.candidateAccountId }, select: { id: true, status: true } }),
     ]);
     if (!organization) throw new NotFoundException('External center not found.');
     if (!position) throw new NotFoundException('Position not found.');
     if (!candidate) throw new NotFoundException('Candidate account not found.');
+    if (organization.status !== 'ACTIVE') throw new BadRequestException('External center must be active.');
+    if (position.department.status !== 'ENABLED') throw new BadRequestException('The headquarters department must be enabled before recruiting for this position.');
     if (candidate.status !== 'ACTIVE') throw new BadRequestException('Candidate account must be active.');
     await this.ensureCenterDepartments(input.organizationId);
-    const duplicate = await this.db.workforceHiringRequest.findFirst({ where: { organizationId: input.organizationId, positionId: input.positionId, candidateAccountId: input.candidateAccountId, status: 'PENDING_EXECUTIVE_APPROVAL' } });
+    const source = await this.hiringRequestSource(actorId, input.organizationId, position.departmentId, input.candidateAccountId);
+    const duplicate = await this.db.workforceHiringRequest.findFirst({ where: { organizationId: input.organizationId, positionId: input.positionId, candidateAccountId: input.candidateAccountId, status: { in: ['PENDING_HR_REVIEW', 'HR_CHANGES_REQUIRED', 'PENDING_EXECUTIVE_APPROVAL'] } } });
     if (duplicate) throw new BadRequestException('A pending hiring request already exists for this candidate and position.');
     const request = await this.db.workforceHiringRequest.create({
-      data: { organizationId: input.organizationId, departmentId: position.departmentId, positionId: position.id, candidateAccountId: input.candidateAccountId, requestedById: actorId, justification: input.justification?.trim() || null },
+      data: { organizationId: input.organizationId, departmentId: position.departmentId, positionId: position.id, candidateAccountId: input.candidateAccountId, requestedById: actorId, source, status: 'PENDING_HR_REVIEW', justification: input.justification?.trim() || null },
     });
-    await this.audit.record({ actorId, action: 'HR_HIRING_REQUEST_SUBMITTED', resource: 'WorkforceHiringRequest', resourceId: request.id, metadata: { organizationId: input.organizationId, departmentId: position.departmentId, positionId: position.id, candidateAccountId: input.candidateAccountId } });
+    await this.audit.record({ actorId, action: 'CENTER_HIRING_REQUEST_SUBMITTED_TO_HR', resource: 'WorkforceHiringRequest', resourceId: request.id, metadata: { source, organizationId: input.organizationId, departmentId: position.departmentId, positionId: position.id, candidateAccountId: input.candidateAccountId } });
     return request;
   }
 
@@ -394,10 +411,64 @@ export class WorkforceService {
     const [organizations, positions, accounts, requests] = await Promise.all([
       this.db.organization.findMany({ select: { id: true, displayName: true, status: true }, orderBy: { displayName: 'asc' } }),
       this.db.workforcePosition.findMany({ select: { id: true, titleAr: true, departmentId: true, department: { select: { nameAr: true } } }, orderBy: [{ department: { displayOrder: 'asc' } }, { displayOrder: 'asc' }] }),
-      this.db.account.findMany({ where: { status: 'ACTIVE' }, select: { id: true, email: true, person: { select: { firstName: true, lastName: true } } }, orderBy: { createdAt: 'desc' }, take: 200 }),
-      this.db.workforceHiringRequest.findMany({ where: { requestedById: actorId }, include: { organization: true, department: true, position: true, candidateAccount: { include: { person: true } } }, orderBy: { createdAt: 'desc' }, take: 100 }),
+      this.db.account.findMany({ where: { status: 'ACTIVE' }, select: { id: true, email: true, person: { select: { firstName: true, lastName: true, credentials: { include: { documents: true } } } } }, orderBy: { createdAt: 'desc' }, take: 200 }),
+      this.db.workforceHiringRequest.findMany({ where: { status: { in: ['PENDING_HR_REVIEW', 'HR_CHANGES_REQUIRED', 'PENDING_EXECUTIVE_APPROVAL'] } }, include: { organization: true, department: true, position: true, candidateAccount: { include: { person: { include: { credentials: { include: { documents: true } } } } } }, requestedBy: { include: { person: true } } }, orderBy: { createdAt: 'asc' }, take: 200 }),
     ]);
     return { organizations, positions, accounts, requests };
+  }
+
+  async recruitmentContext(actorId: string) {
+    await this.ensureCatalog();
+    const [self, positions, organizations, managerSeats] = await Promise.all([
+      this.db.account.findUnique({ where: { id: actorId }, select: { id: true, email: true, status: true, person: { select: { firstName: true, lastName: true } } } }),
+      this.db.workforcePosition.findMany({ select: { id: true, titleAr: true, departmentId: true, department: { select: { nameAr: true, status: true } } }, orderBy: [{ department: { displayOrder: 'asc' } }, { displayOrder: 'asc' }] }),
+      this.db.organization.findMany({ where: { status: 'ACTIVE' }, select: { id: true, displayName: true }, orderBy: { displayName: 'asc' } }),
+      this.db.workforceSeat.findMany({ where: { accountId: actorId, scope: 'EXTERNAL_CENTER', accessStatus: 'ENABLED', position: { canManageExternalCenter: true } }, select: { organizationId: true, organization: { select: { id: true, displayName: true } } } }),
+    ]);
+    if (!self) throw new NotFoundException('Account not found.');
+    const managerOrganizations = managerSeats.flatMap((seat) => seat.organization ? [seat.organization] : []);
+    const managerAccounts = managerOrganizations.length ? await this.db.account.findMany({ where: { status: 'ACTIVE' }, select: { id: true, email: true, person: { select: { firstName: true, lastName: true } } }, orderBy: { createdAt: 'desc' }, take: 200 }) : [];
+    const requests = await this.db.workforceHiringRequest.findMany({ where: { OR: [{ requestedById: actorId }, { candidateAccountId: actorId }] }, include: { organization: true, department: true, position: true, candidateAccount: { include: { person: true } } }, orderBy: { createdAt: 'desc' }, take: 100 });
+    return { self, positions: positions.filter((item) => item.department.status === 'ENABLED'), organizations, managerOrganizations, managerAccounts, requests };
+  }
+
+  async resubmitHiringRequest(actorId: string, requestId: string, justification?: string) {
+    const request = await this.db.workforceHiringRequest.findUnique({ where: { id: requestId } });
+    if (!request) throw new NotFoundException('Hiring request not found.');
+    if (request.status !== 'HR_CHANGES_REQUIRED') throw new BadRequestException('Only requests returned by Human Resources can be resubmitted.');
+    const manager = await this.db.workforceSeat.findFirst({ where: { accountId: actorId, organizationId: request.organizationId, scope: 'EXTERNAL_CENTER', accessStatus: 'ENABLED', position: { canManageExternalCenter: true } }, select: { id: true } });
+    if (request.requestedById !== actorId && request.candidateAccountId !== actorId && !manager) throw new ForbiddenException('You cannot resubmit this hiring request.');
+    const updated = await this.db.workforceHiringRequest.update({ where: { id: requestId }, data: { status: 'PENDING_HR_REVIEW', justification: justification?.trim() || request.justification, hrReviewedById: null, hrReviewedAt: null, hrVerification: Prisma.JsonNull } });
+    await this.audit.record({ actorId, action: 'HIRING_REQUEST_RESUBMITTED_TO_HR', resource: 'WorkforceHiringRequest', resourceId: requestId });
+    return updated;
+  }
+
+  async reviewHiringRequestByHr(actorId: string, requestId: string, input: { decision?: HrHiringDecision; note?: string; verification?: { identityVerified?: boolean; documentsComplete?: boolean; credentialsVerified?: boolean; qualificationMatched?: boolean; positionRequirementsMet?: boolean } }) {
+    await this.assertHumanResourcesRequester(actorId);
+    if (!input.decision || !['FORWARD', 'RETURN', 'REJECT'].includes(input.decision)) throw new BadRequestException('Invalid Human Resources decision.');
+    if (input.decision !== 'FORWARD' && !input.note?.trim()) throw new BadRequestException('Human Resources must provide a reason for returning or rejecting the request.');
+    const request = await this.db.workforceHiringRequest.findUnique({ where: { id: requestId }, include: { candidateAccount: { include: { person: { include: { credentials: { include: { documents: true } } } } } } } });
+    if (!request) throw new NotFoundException('Hiring request not found.');
+    if (request.status !== 'PENDING_HR_REVIEW') throw new BadRequestException('This request is not awaiting Human Resources review.');
+    const verification = {
+      identityVerified: Boolean(input.verification?.identityVerified),
+      documentsComplete: Boolean(input.verification?.documentsComplete),
+      credentialsVerified: Boolean(input.verification?.credentialsVerified),
+      qualificationMatched: Boolean(input.verification?.qualificationMatched),
+      positionRequirementsMet: Boolean(input.verification?.positionRequirementsMet),
+    };
+    if (input.decision === 'FORWARD') {
+      if (!Object.values(verification).every(Boolean)) throw new BadRequestException('Complete every Human Resources verification item before forwarding.');
+      const credentials = request.candidateAccount.person.credentials;
+      const availableDocuments = credentials.flatMap((credential) => credential.documents).filter((document) => document.status === 'AVAILABLE');
+      const validCredentials = credentials.filter((credential) => ['DOCUMENT_VERIFIED', 'VERIFIED'].includes(credential.verificationStatus) && (!credential.expiresAt || credential.expiresAt > new Date()));
+      if (!availableDocuments.length) throw new BadRequestException('At least one available candidate document is required.');
+      if (!validCredentials.length) throw new BadRequestException('At least one verified and unexpired credential is required.');
+    }
+    const status = input.decision === 'FORWARD' ? 'PENDING_EXECUTIVE_APPROVAL' : input.decision === 'RETURN' ? 'HR_CHANGES_REQUIRED' : 'REJECTED';
+    const updated = await this.db.workforceHiringRequest.update({ where: { id: requestId }, data: { status, hrReviewedById: actorId, hrReviewedAt: new Date(), hrVerification: verification, hrNote: input.note?.trim() || null } });
+    await this.audit.record({ actorId, action: input.decision === 'FORWARD' ? 'HR_HIRING_REQUEST_FORWARDED' : input.decision === 'RETURN' ? 'HR_HIRING_REQUEST_RETURNED' : 'HR_HIRING_REQUEST_REJECTED', resource: 'WorkforceHiringRequest', resourceId: requestId, metadata: { verification, note: input.note || null } });
+    return updated;
   }
 
   async myCenterAccess(accountId: string) {

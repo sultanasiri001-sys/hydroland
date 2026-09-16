@@ -129,10 +129,18 @@ enum WorkforceCenterDepartmentStatus {
 }
 
 enum WorkforceHiringRequestStatus {
+  PENDING_HR_REVIEW
+  HR_CHANGES_REQUIRED
   PENDING_EXECUTIVE_APPROVAL
   APPROVED
   REJECTED
   CANCELLED
+}
+
+enum WorkforceHiringRequestSource {
+  CANDIDATE
+  CENTER_MANAGER
+  HUMAN_RESOURCES
 }
 
 model Person {
@@ -176,6 +184,7 @@ model Account {
   centerAccessUpdates     WorkforceCenterDepartment[] @relation("CenterAccessUpdatedBy")
   hiringRequestsSubmitted WorkforceHiringRequest[] @relation("HiringRequestedBy")
   hiringRequestsReviewed  WorkforceHiringRequest[] @relation("HiringReviewedBy")
+  hiringRequestsHrReviewed WorkforceHiringRequest[] @relation("HiringHrReviewedBy")
   hiringCandidacies       WorkforceHiringRequest[] @relation("HiringCandidate")
 }
 
@@ -305,9 +314,14 @@ model WorkforceHiringRequest {
   candidateAccountId String
   targetSeatId       String?
   requestedById      String
+  hrReviewedById     String?
   reviewedById       String?
-  status             WorkforceHiringRequestStatus @default(PENDING_EXECUTIVE_APPROVAL)
+  status             WorkforceHiringRequestStatus @default(PENDING_HR_REVIEW)
+  source             WorkforceHiringRequestSource
   justification      String?
+  hrVerification     Json?
+  hrNote             String?
+  hrReviewedAt       DateTime?
   reviewNote         String?
   reviewedAt         DateTime?
   assignedAt         DateTime?
@@ -319,6 +333,7 @@ model WorkforceHiringRequest {
   candidateAccount   Account                      @relation("HiringCandidate", fields: [candidateAccountId], references: [id], onDelete: Restrict)
   targetSeat         WorkforceSeat?               @relation(fields: [targetSeatId], references: [id], onDelete: Restrict)
   requestedBy        Account                      @relation("HiringRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+  hrReviewedBy       Account?                     @relation("HiringHrReviewedBy", fields: [hrReviewedById], references: [id], onDelete: Restrict)
   reviewedBy         Account?                     @relation("HiringReviewedBy", fields: [reviewedById], references: [id], onDelete: Restrict)
 
   @@index([status, createdAt])
