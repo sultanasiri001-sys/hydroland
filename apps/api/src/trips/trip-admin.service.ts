@@ -75,6 +75,7 @@ export class TripAdminService {
     if(status==='COMPLETED')throw new BadRequestException('Use the governed trip completion workflow.');
     const trip=await this.db.trip.findUnique({where:{id}});if(!trip)throw new NotFoundException('Trip not found.');
     if(status==='OPEN'&&trip.startsAt<=new Date())throw new ConflictException('A trip that already started cannot be opened.');
+    if(status==='CLOSED')await this.clearance.assertValid(id);
     if(trip.status===status)return trip;
     const affectedBookings:AffectedBooking[]=status==='CANCELLED'?await this.db.booking.findMany({where:{tripId:id,status:{not:'CANCELLED'}},select:{id:true,accountId:true,seats:true,status:true}}):[];
     const updated=await this.db.serializable(async tx=>{
