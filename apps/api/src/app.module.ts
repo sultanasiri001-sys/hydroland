@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { CredentialsModule } from './credentials/credentials.module';
 import { DatabaseModule } from './database/database.module';
 import { DiveLogsModule } from './dive-logs/dive-logs.module';
+import { FinanceModule } from './finance/finance.module';
 import { GovernanceModule } from './governance/governance.module';
 import { HealthController } from './health/health.controller';
 import { IntegrationModule } from './integrations/integration.module';
@@ -18,7 +19,7 @@ import { ProfileModule } from './profile/profile.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 
 @Module({
-  imports: [DatabaseModule, AuthModule, ProfileModule, CredentialsModule, ActivationModule, AuditModule, NotificationsModule, GovernanceModule, TripsModule, SafetyModule, PaymentsModule, AdminModule, DiveLogsModule, OrganizationsModule, IntegrationModule, AgentModule],
+  imports: [DatabaseModule, AuthModule, ProfileModule, CredentialsModule, ActivationModule, AuditModule, NotificationsModule, GovernanceModule, TripsModule, SafetyModule, PaymentsModule, FinanceModule, AdminModule, DiveLogsModule, OrganizationsModule, IntegrationModule, AgentModule],
   controllers: [HealthController],
 })
 export class AppModule {}
