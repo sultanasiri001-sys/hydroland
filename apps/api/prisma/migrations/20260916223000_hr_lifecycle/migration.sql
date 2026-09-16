@@ -9,20 +9,15 @@ CREATE TYPE "HrRequestStatus" AS ENUM ('DRAFT','SUBMITTED','HR_REVIEW','APPROVAL
 CREATE TABLE "OrgUnit" ("id" TEXT NOT NULL,"organizationId" TEXT NOT NULL,"parentId" TEXT,"type" "OrgUnitType" NOT NULL,"code" TEXT NOT NULL,"nameAr" TEXT NOT NULL,"nameEn" TEXT,"active" BOOLEAN NOT NULL DEFAULT true,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,CONSTRAINT "OrgUnit_pkey" PRIMARY KEY ("id"));
 CREATE UNIQUE INDEX "OrgUnit_organizationId_code_key" ON "OrgUnit"("organizationId","code");
 CREATE INDEX "OrgUnit_organizationId_parentId_type_idx" ON "OrgUnit"("organizationId","parentId","type");
-
 CREATE TABLE "Position" ("id" TEXT NOT NULL,"orgUnitId" TEXT NOT NULL,"code" TEXT NOT NULL,"titleAr" TEXT NOT NULL,"titleEn" TEXT,"active" BOOLEAN NOT NULL DEFAULT true,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,CONSTRAINT "Position_pkey" PRIMARY KEY ("id"));
 CREATE UNIQUE INDEX "Position_orgUnitId_code_key" ON "Position"("orgUnitId","code");
-
 CREATE TABLE "Employment" ("id" TEXT NOT NULL,"accountId" TEXT NOT NULL,"organizationId" TEXT NOT NULL,"orgUnitId" TEXT NOT NULL,"positionId" TEXT,"managerEmploymentId" TEXT,"workerClass" "WorkerClass" NOT NULL,"status" "EmploymentStatus" NOT NULL DEFAULT 'DRAFT',"startsAt" TIMESTAMP(3),"endsAt" TIMESTAMP(3),"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,CONSTRAINT "Employment_pkey" PRIMARY KEY ("id"));
 CREATE INDEX "Employment_accountId_status_idx" ON "Employment"("accountId","status");
 CREATE INDEX "Employment_organizationId_orgUnitId_status_idx" ON "Employment"("organizationId","orgUnitId","status");
-
 CREATE TABLE "EmploymentContract" ("id" TEXT NOT NULL,"employmentId" TEXT NOT NULL,"version" INTEGER NOT NULL DEFAULT 1,"contractType" TEXT NOT NULL,"effectiveFrom" TIMESTAMP(3) NOT NULL,"effectiveTo" TIMESTAMP(3),"documentId" TEXT,"status" TEXT NOT NULL DEFAULT 'DRAFT',"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,CONSTRAINT "EmploymentContract_pkey" PRIMARY KEY ("id"));
 CREATE UNIQUE INDEX "EmploymentContract_employmentId_version_key" ON "EmploymentContract"("employmentId","version");
-
 CREATE TABLE "EmploymentMovement" ("id" TEXT NOT NULL,"employmentId" TEXT NOT NULL,"type" "EmploymentMovementType" NOT NULL,"status" "HrRequestStatus" NOT NULL DEFAULT 'DRAFT',"fromOrgUnitId" TEXT,"toOrgUnitId" TEXT,"fromPositionId" TEXT,"toPositionId" TEXT,"requestedByAccountId" TEXT NOT NULL,"reviewedByAccountId" TEXT,"approvedByAccountId" TEXT,"effectiveAt" TIMESTAMP(3),"reason" TEXT,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,CONSTRAINT "EmploymentMovement_pkey" PRIMARY KEY ("id"));
 CREATE INDEX "EmploymentMovement_employmentId_status_idx" ON "EmploymentMovement"("employmentId","status");
-
 CREATE TABLE "LeaveRequest" ("id" TEXT NOT NULL,"employmentId" TEXT NOT NULL,"type" TEXT NOT NULL,"status" "HrRequestStatus" NOT NULL DEFAULT 'DRAFT',"startsAt" TIMESTAMP(3) NOT NULL,"endsAt" TIMESTAMP(3) NOT NULL,"requestedByAccountId" TEXT NOT NULL,"approvedByAccountId" TEXT,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,CONSTRAINT "LeaveRequest_pkey" PRIMARY KEY ("id"));
 CREATE TABLE "AttendanceEntry" ("id" TEXT NOT NULL,"employmentId" TEXT NOT NULL,"workDate" DATE NOT NULL,"clockInAt" TIMESTAMP(3),"clockOutAt" TIMESTAMP(3),"status" TEXT NOT NULL DEFAULT 'PENDING',"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,CONSTRAINT "AttendanceEntry_pkey" PRIMARY KEY ("id"));
 CREATE UNIQUE INDEX "AttendanceEntry_employmentId_workDate_key" ON "AttendanceEntry"("employmentId","workDate");
@@ -45,8 +40,16 @@ ALTER TABLE "EmploymentMovement" ADD CONSTRAINT "EmploymentMovement_fromOrgUnitI
 ALTER TABLE "EmploymentMovement" ADD CONSTRAINT "EmploymentMovement_toOrgUnitId_fkey" FOREIGN KEY ("toOrgUnitId") REFERENCES "OrgUnit"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "EmploymentMovement" ADD CONSTRAINT "EmploymentMovement_fromPositionId_fkey" FOREIGN KEY ("fromPositionId") REFERENCES "Position"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "EmploymentMovement" ADD CONSTRAINT "EmploymentMovement_toPositionId_fkey" FOREIGN KEY ("toPositionId") REFERENCES "Position"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "EmploymentMovement" ADD CONSTRAINT "EmploymentMovement_requestedByAccountId_fkey" FOREIGN KEY ("requestedByAccountId") REFERENCES "Account"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "EmploymentMovement" ADD CONSTRAINT "EmploymentMovement_reviewedByAccountId_fkey" FOREIGN KEY ("reviewedByAccountId") REFERENCES "Account"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "EmploymentMovement" ADD CONSTRAINT "EmploymentMovement_approvedByAccountId_fkey" FOREIGN KEY ("approvedByAccountId") REFERENCES "Account"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "LeaveRequest" ADD CONSTRAINT "LeaveRequest_employmentId_fkey" FOREIGN KEY ("employmentId") REFERENCES "Employment"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "LeaveRequest" ADD CONSTRAINT "LeaveRequest_requestedByAccountId_fkey" FOREIGN KEY ("requestedByAccountId") REFERENCES "Account"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "LeaveRequest" ADD CONSTRAINT "LeaveRequest_approvedByAccountId_fkey" FOREIGN KEY ("approvedByAccountId") REFERENCES "Account"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "AttendanceEntry" ADD CONSTRAINT "AttendanceEntry_employmentId_fkey" FOREIGN KEY ("employmentId") REFERENCES "Employment"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "PerformanceCycle" ADD CONSTRAINT "PerformanceCycle_employmentId_fkey" FOREIGN KEY ("employmentId") REFERENCES "Employment"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "EmployeeRelationsCase" ADD CONSTRAINT "EmployeeRelationsCase_employmentId_fkey" FOREIGN KEY ("employmentId") REFERENCES "Employment"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "EmployeeRelationsCase" ADD CONSTRAINT "EmployeeRelationsCase_openedByAccountId_fkey" FOREIGN KEY ("openedByAccountId") REFERENCES "Account"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "EmployeeRelationsCase" ADD CONSTRAINT "EmployeeRelationsCase_reviewedByAccountId_fkey" FOREIGN KEY ("reviewedByAccountId") REFERENCES "Account"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "EmployeeRelationsCase" ADD CONSTRAINT "EmployeeRelationsCase_approvedByAccountId_fkey" FOREIGN KEY ("approvedByAccountId") REFERENCES "Account"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "OffboardingCase" ADD CONSTRAINT "OffboardingCase_employmentId_fkey" FOREIGN KEY ("employmentId") REFERENCES "Employment"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
