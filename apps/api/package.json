@@ -11,6 +11,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
+    "validate:hr": "node scripts/hr-validation.mjs",
     "validate:phase10": "node scripts/phase10-validation.mjs",
     "validate:phase12": "node scripts/phase12-validation.mjs"
   },
