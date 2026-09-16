@@ -48,7 +48,7 @@ export class FinanceReceivablesService {
       if(payment[0].amountMinor!==input.amountMinor)throw new Error('FINANCE_PAYMENT_AMOUNT_MISMATCH');
       const used=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "ReceivablePayment" WHERE "paymentId"=${input.paymentId} OR "receiptNumber"=${input.receiptNumber.trim()} LIMIT 1`;
       if(used[0])throw new Error('FINANCE_COLLECTION_ALREADY_RECORDED');
-      const next=applyReceivablePayment({paidMinor:r.paidMinor,outstandingMinor:r.outstandingMinor},input.amountMinor);
+      const next=applyReceivablePayment(r.outstandingMinor,input.amountMinor);
       if(input.installmentId){
         const inst=await tx.$queryRaw<Array<{id:string;amountMinor:number;paidMinor:number}>>`SELECT "id","amountMinor","paidMinor" FROM "ReceivableInstallment" WHERE "id"=${input.installmentId} AND "receivableId"=${receivableId} FOR UPDATE`;
         if(!inst[0])throw new Error('FINANCE_INSTALLMENT_NOT_FOUND');
@@ -58,9 +58,10 @@ export class FinanceReceivablesService {
         await tx.$executeRaw`UPDATE "ReceivableInstallment" SET "paidMinor"=${instPaid},"status"=${instStatus}::"ReceivableInstallmentStatus","updatedAt"=NOW() WHERE "id"=${input.installmentId}`;
       }
       await tx.$executeRaw`INSERT INTO "ReceivablePayment" ("id","receivableId","installmentId","paymentId","amountMinor","receiptNumber") VALUES (gen_random_uuid()::text,${receivableId},${input.installmentId??null},${input.paymentId},${input.amountMinor},${input.receiptNumber.trim()})`;
-      const receivableStatus=next.outstandingMinor===0?'PAID':'PARTIALLY_PAID';
-      await tx.$executeRaw`UPDATE "Receivable" SET "paidMinor"=${next.paidMinor},"outstandingMinor"=${next.outstandingMinor},"status"=${receivableStatus}::"ReceivableStatus","updatedAt"=NOW() WHERE "id"=${receivableId}`;
-      return {receivableId,receiptNumber:input.receiptNumber.trim(),...next};
+      const paidMinor=r.paidMinor+input.amountMinor;
+      const outstandingMinor=next.remainingMinor;
+      await tx.$executeRaw`UPDATE "Receivable" SET "paidMinor"=${paidMinor},"outstandingMinor"=${outstandingMinor},"status"=${next.status}::"ReceivableStatus","updatedAt"=NOW() WHERE "id"=${receivableId}`;
+      return {receivableId,receiptNumber:input.receiptNumber.trim(),paidMinor,outstandingMinor,status:next.status};
     });
   }
 
