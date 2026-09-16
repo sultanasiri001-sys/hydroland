@@ -123,6 +123,18 @@ enum WorkforceSeatAccessStatus {
   SUSPENDED
 }
 
+enum WorkforceCenterDepartmentStatus {
+  LOCKED
+  ENABLED
+}
+
+enum WorkforceHiringRequestStatus {
+  PENDING_EXECUTIVE_APPROVAL
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
 model Person {
   id           String               @id @default(uuid())
   firstName    String
@@ -161,6 +173,10 @@ model Account {
   organizationsOwned      Organization[]       @relation("OrganizationOwner")
   policyUpdates           PolicyControl[]      @relation("PolicyUpdatedBy")
   workforceSeats          WorkforceSeat[]
+  centerAccessUpdates     WorkforceCenterDepartment[] @relation("CenterAccessUpdatedBy")
+  hiringRequestsSubmitted WorkforceHiringRequest[] @relation("HiringRequestedBy")
+  hiringRequestsReviewed  WorkforceHiringRequest[] @relation("HiringReviewedBy")
+  hiringCandidacies       WorkforceHiringRequest[] @relation("HiringCandidate")
 }
 
 model Organization {
@@ -179,6 +195,8 @@ model Organization {
   owner              Account              @relation("OrganizationOwner", fields: [ownerId], references: [id], onDelete: Restrict)
   members            OrganizationMember[]
   workforceSeats     WorkforceSeat[]
+  centerDepartments  WorkforceCenterDepartment[]
+  hiringRequests     WorkforceHiringRequest[]
 
   @@index([status, createdAt])
   @@index([ownerId, status])
@@ -197,6 +215,8 @@ model WorkforceDepartment {
   updatedAt        DateTime                  @updatedAt
   positions        WorkforcePosition[]
   technicalSeats   WorkforceSeat[]           @relation("WorkforceTechnicalDepartment")
+  centerDepartments WorkforceCenterDepartment[]
+  hiringRequests    WorkforceHiringRequest[]
 
   @@index([status, displayOrder])
 }
@@ -222,6 +242,7 @@ model WorkforcePosition {
   parentPosition           WorkforcePosition?    @relation("WorkforcePositionHierarchy", fields: [parentPositionId], references: [id], onDelete: Restrict)
   childPositions           WorkforcePosition[]   @relation("WorkforcePositionHierarchy")
   seats                    WorkforceSeat[]
+  hiringRequests           WorkforceHiringRequest[]
 
   @@index([departmentId, tier, displayOrder])
   @@index([parentPositionId])
@@ -247,12 +268,62 @@ model WorkforceSeat {
   administrativeManagerSeat     WorkforceSeat?            @relation("WorkforceAdministrativeReporting", fields: [administrativeManagerSeatId], references: [id], onDelete: Restrict)
   administrativeReportees       WorkforceSeat[]           @relation("WorkforceAdministrativeReporting")
   technicalDepartment           WorkforceDepartment?      @relation("WorkforceTechnicalDepartment", fields: [technicalDepartmentId], references: [id], onDelete: Restrict)
+  hiringRequests                WorkforceHiringRequest[]
 
   @@index([positionId, accessStatus])
   @@index([accountId, accessStatus])
   @@index([organizationId, scope, accessStatus])
   @@index([administrativeManagerSeatId])
   @@index([technicalDepartmentId])
+}
+
+model WorkforceCenterDepartment {
+  id                   String                          @id @default(uuid())
+  organizationId       String
+  departmentId         String
+  status               WorkforceCenterDepartmentStatus @default(LOCKED)
+  managerAccessEnabled Boolean                         @default(false)
+  updatedById          String?
+  activatedAt          DateTime?
+  lockedAt             DateTime?                      @default(now())
+  createdAt            DateTime                       @default(now())
+  updatedAt            DateTime                       @updatedAt
+  organization         Organization                   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  department           WorkforceDepartment            @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  updatedBy            Account?                       @relation("CenterAccessUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, departmentId])
+  @@index([organizationId, status])
+  @@index([departmentId, status])
+}
+
+model WorkforceHiringRequest {
+  id                 String                       @id @default(uuid())
+  organizationId     String
+  departmentId       String
+  positionId         String
+  candidateAccountId String
+  targetSeatId       String?
+  requestedById      String
+  reviewedById       String?
+  status             WorkforceHiringRequestStatus @default(PENDING_EXECUTIVE_APPROVAL)
+  justification      String?
+  reviewNote         String?
+  reviewedAt         DateTime?
+  assignedAt         DateTime?
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+  organization       Organization                 @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  department         WorkforceDepartment          @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  position           WorkforcePosition            @relation(fields: [positionId], references: [id], onDelete: Restrict)
+  candidateAccount   Account                      @relation("HiringCandidate", fields: [candidateAccountId], references: [id], onDelete: Restrict)
+  targetSeat         WorkforceSeat?               @relation(fields: [targetSeatId], references: [id], onDelete: Restrict)
+  requestedBy        Account                      @relation("HiringRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+  reviewedBy         Account?                     @relation("HiringReviewedBy", fields: [reviewedById], references: [id], onDelete: Restrict)
+
+  @@index([status, createdAt])
+  @@index([organizationId, departmentId, status])
+  @@index([candidateAccountId, status])
 }
 
 model OrganizationMember {

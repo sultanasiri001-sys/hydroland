@@ -37,4 +37,19 @@ export class WorkforceController {
   initializeExternalCenter(@Req() request: AuthenticatedRequest, @Param('organizationId') organizationId: string) {
     return this.workforce.initializeExternalCenter(request.auth.accountId, organizationId);
   }
+
+  @Patch('centers/:organizationId/departments/:departmentId')
+  setCenterDepartmentAccess(@Req() request: AuthenticatedRequest, @Param('organizationId') organizationId: string, @Param('departmentId') departmentId: string, @Body() body: { status?: 'LOCKED' | 'ENABLED'; managerAccessEnabled?: boolean }) {
+    return this.workforce.setCenterDepartmentAccess(request.auth.accountId, organizationId, departmentId, body);
+  }
+
+  @Patch('centers/:organizationId/departments')
+  setAllCenterDepartmentAccess(@Req() request: AuthenticatedRequest, @Param('organizationId') organizationId: string, @Body() body: { status?: 'LOCKED' | 'ENABLED'; managerAccessEnabled?: boolean }) {
+    return this.workforce.setAllCenterDepartmentAccess(request.auth.accountId, organizationId, body);
+  }
+
+  @Patch('hiring-requests/:requestId/review')
+  reviewHiringRequest(@Req() request: AuthenticatedRequest, @Param('requestId') requestId: string, @Body() body: { decision: 'APPROVE' | 'REJECT'; reviewNote?: string }) {
+    return this.workforce.reviewHiringRequest(request.auth.accountId, requestId, body.decision, body.reviewNote);
+  }
 }
