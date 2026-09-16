@@ -1,14 +1,16 @@
 import {Body,Controller,Param,Post,Req,UseGuards} from '@nestjs/common';
 import {AccessTokenGuard} from '../auth/access-token.guard';
+import {FinanceAccessService} from './finance-access.service';
 import {FinanceShiftsService} from './finance-shifts.service';
 
 @UseGuards(AccessTokenGuard)
 @Controller('finance/shifts')
 export class FinanceController{
-  constructor(private readonly shifts:FinanceShiftsService){}
+  constructor(private readonly shifts:FinanceShiftsService,private readonly access:FinanceAccessService){}
 
   @Post('open')
-  open(@Req()r:{auth:{accountId:string}},@Body()b:{centerOrgUnitId:string;openingBalanceMinor:number}){
+  async open(@Req()r:{auth:{accountId:string}},@Body()b:{centerOrgUnitId:string;openingBalanceMinor:number}){
+    await this.access.requireBranchAccountant(r.auth.accountId,b.centerOrgUnitId);
     return this.shifts.openShift(r.auth.accountId,b.centerOrgUnitId,b.openingBalanceMinor);
   }
 
