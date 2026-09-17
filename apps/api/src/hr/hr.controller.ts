@@ -22,4 +22,8 @@ export class HrController {
   @Post('employments/:id/relations-cases') relations(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: any) { return this.hr.openRelationsCase(r.auth.accountId, id, b); }
   @Post('employments/:id/offboarding') offboarding(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: any) { return this.hr.openOffboarding(r.auth.accountId, id, b); }
 
+  @Patch('compensation/:id/decision') compensationDecision(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: { approve: boolean }) { return this.hr.approveCompensation(r.auth.accountId, id, b.approve); }
+  @Patch('relations-cases/:id/decision') relationsDecision(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: { approve: boolean; decision?: string }) { return this.hr.decideRelationsCase(r.auth.accountId, id, b.approve, b.decision); }
+  @Patch('offboarding/:id/complete') completeOffboarding(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: { clearance?: object; iamRevokedAt?: string }) { return this.hr.completeOffboarding(r.auth.accountId, id, b); }
+
 }
