@@ -1,14 +1,17 @@
 {
-  "name": "hydroland-api",
+  "name": "@hydroland/api",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "build": "nest build",
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",
-    "db:deploy": "node ../../scripts/reconcile-hr-migration.js && prisma migrate deploy",
+    "typecheck": "tsc --noEmit",
+    "db:deploy": "node scripts/reconcile-hr-migration.js && prisma migrate deploy",
     "db:generate": "prisma generate",
-    "db:validate": "prisma validate"
+    "db:validate": "prisma validate",
+    "validate:phase10": "node scripts/phase10-validation.mjs",
+    "validate:phase12": "node scripts/phase12-validation.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",
