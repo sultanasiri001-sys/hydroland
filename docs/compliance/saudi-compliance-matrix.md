@@ -6,6 +6,34 @@ Status: planning baseline. A control becomes **verified** only when tied to an o
 
 HYDROLAND operates across Saudi Arabia. Geographic and activity scope must be stored per control. Regulatory controls are independently evaluated by statutory scope. A hard gate is enabled only when its applicability predicate is true; uncertainty routes to REVIEW rather than an invented legal failure.
 
+## Saudi 19-authority master coverage audit
+
+| # | Authority | Coverage | HYDROLAND applicability |
+|---|---|---|---|
+| 1 | Ministry of Sport | COVERED | Sports/diving entity and activity classification. |
+| 2 | Ministry of Tourism | COVERED | Tourism-service/activity classification where applicable. |
+| 3 | Saudi Water Sports and Diving Federation (SWSDF) | COVERED + ARTICLE LEVEL | Diving credentials, permits, centres, trips, vessels and incident workflows. |
+| 4 | Saudi Red Sea Authority (SRSA) | COVERED | Coastal/maritime tourism within the Authority's statutory geographic/activity scope; not a Kingdom-wide blanket rule. |
+| 5 | Transport General Authority (TGA) | COVERED; HARDENING PENDING | Marine-unit registration/licensing/inspection classification. Exact hard-gate articles remain to be verified. |
+| 6 | General Directorate of Border Guard / ZAWIL | COVERED + HARD GATE | Sailing permit/activity/area/vessel/manifest evidence. Border Guard officially administers marine-activity coordination including diving and marine sports. |
+| 7 | Ministry of Environment, Water and Agriculture (MEWA) | COVERED | Environmental/aquatic framework as applicable. |
+| 8 | National Center for Environmental Compliance (NCEC) | COVERED + INCIDENT GATE | Environmental impact/compliance and pollution-incident escalation. |
+| 9 | National Center for Wildlife (NCW) | COVERED | Protected areas/wildlife/geofence activity review. |
+| 10 | Ministry of Commerce | COVERED + ARTICLE-LEVEL CONSUMER FLOW | E-commerce, consumer disclosures, cancellation/refund and promotions as applicable. |
+| 11 | ZATCA | COVERED | Tax/e-invoicing according to taxpayer, transaction and integration-wave scope. |
+| 12 | MHRSD | COVERED + ARTICLE LEVEL | Labour/OSH/worker safety; headcount/activity-specific OSH rules remain conditional. |
+| 13 | TVTC | COVERED — CONDITIONAL | Activates only if entity/programme falls within private-training jurisdiction; recreational diving training is not automatically classified as TVTC-regulated. |
+| 14 | General Directorate of Civil Defense | COVERED; HARDENING PENDING | Facility/fire-life-safety classification and evidence; exact facility activation rule depends on premises/use. |
+| 15 | Ministry of Municipalities and Housing / Balady | COVERED; HARDENING PENDING | Municipal/commercial activity licence according to location/activity/ISIC. |
+| 16 | SASO | COVERED + PRODUCT CLASSIFICATION | Cylinders/pressure equipment, compressors/machinery, watercraft and PPE are SKU/product-class dependent. |
+| 17 | SDAIA / competent data-protection authority | COVERED + ARTICLE LEVEL | PDPL governance, ROPA, transfers, DPO applicability and breach notification. |
+| 18 | National Cybersecurity Authority (NCA) | COVERED — CONDITIONAL | ECC/CCC mandatory scope must be assessed; do not label mandatory for an ordinary private platform without scope trigger. |
+| 19 | Insurance Authority | COVERED — CONDITIONAL; HARDENING PENDING | Insurance-role/licensing classifier; activity-specific mandatory insurance must be sourced from the controlling activity regulator/instrument. |
+
+Coverage result: **19/19 master authorities represented in the planning matrix.** This does not mean every row is production-ready. TGA vessel licensing/inspection, Civil Defense/municipal facility activation and activity-specific insurance obligations remain article-level hardening items before they may become statutory BLOCK controls.
+
+The official Saudi Red Sea Authority framework confirms that its remit is tied to maritime/coastal tourism and defined geographic/activity scope. The official Border Guard marine-activities function coordinates licensing/regulation for marine activities including marine sports and diving. Ministry of Sport/SWSDF remain a specific diving/sport layer; their presence does not collapse the independent mandates of TGA, Border Guard, SRSA, environment, municipal or other authorities.
+
 ## Verified official-source baseline
 
 | Control | Authority | Official instrument / requirement | HYDROLAND owner | Level | System effect | Applicability |
@@ -40,7 +68,7 @@ HYDROLAND operates across Saudi Arabia. Geographic and activity scope must be st
 | HARD-INCIDENT-001 | SWSDF trip regulation clause 6.11.7 requires immediate notification for applicable accident/emergency and detailed Federation report within 24 hours. | ESCALATE + deadline | Incident time, immediate-notification evidence, recipients, report and 24-hour deadline. |
 | HARD-SAIL-001 | Official Border Guard sailing-permit service records permit purpose/type, period, sailing area, vessel and accompanying persons; applicable conditions include marine-craft driving licence and identity evidence. | BLOCK when applicable | Permit ID/type, dates, area, vessel, captain/driver licence and manifest. |
 | HARD-ENV-001 | NCEC environmental-accident mechanism identifies pollution-related reportable triggers including spills/leaks, vessel incidents, fires/explosions and abnormal marine-environment indicators. | ESCALATE when trigger met | Trigger classification, location/time, affected medium, evidence and notification reference. |
-| HARD-PDPL-001 | PDPL Executive Regulations Article 24(1): controller must notify the competent authority within no more than 72 hours from awareness of a personal-data breach when the incident may harm personal data/data subject or conflict with rights/interests. | ESCALATE + 72-hour deadline when trigger met | Awareness timestamp, breach details, risks/impact, corrective actions, submission reference and retained evidence. |
+| HARD-PDPL-001 | PDPL Executive Regulations Article 24(1): controller must notify the competent authority within no more than 72 hours from awareness of a personal-data breach when the statutory trigger is met. | ESCALATE + 72-hour deadline | Awareness timestamp, breach details, risks/impact, corrective actions, submission reference and retained evidence. |
 | HARD-PDPL-002 | PDPL Executive Regulations Article 24(5): controller must notify affected data subjects without undue delay when the statutory trigger is met. | ESCALATE when trigger met | Trigger assessment, affected subjects, notice and dispatch/delivery evidence. |
 | HARD-ECOM-001 | E-Commerce consumer termination/return right is conditional on statutory predicates/exceptions. | REFUND/REVIEW | Contract time, category, use/benefit state, exception and refund evidence. |
 | HARD-ECOM-002 | Consumer cancellation/refund workflow for qualifying delayed performance is applicability/force-majeure dependent. | ESCALATE + refund workflow | Agreed date, delay, force-majeure assessment and settlement evidence. |
@@ -49,25 +77,25 @@ HYDROLAND operates across Saudi Arabia. Geographic and activity scope must be st
 
 | Control | Product class | Verified SASO instrument/detail | Candidate enforcement | HYDROLAND evidence |
 |---|---|---|---|---|
-| HARD-SASO-CYL-001 | Diving breathing-gas cylinder / pressure assembly | SASO's mechanical technical-regulation catalogue includes the Technical Regulation for Pressure Equipment and the Technical Regulation for Simple Pressure Vessels; SASO's pressure-vessels technical team explicitly covers gas cylinders and their accessories. Exact cylinder classification must be resolved against pressure, volume, medium and product definition before selecting the applicable regulation/conformity path. | REVIEW -> BLOCK only after product classification confirms applicable mandatory conformity requirement | Manufacturer/model/serial, cylinder material, working/test pressure, water capacity, gas/service, manufacture date, applicable regulation/standard, conformity certificate/declaration, inspection/test evidence and status. |
-| HARD-SASO-COMP-001 | Diving air compressor | SASO Technical Regulation for General Requirements for Safety of Machinery includes GSO EN 1012-1, Compressors and vacuum pumps — Safety requirements — Part 1: Air compressors, in its standards list. Compressor machinery therefore requires machine/product classification and applicable conformity evidence; pressure-containing components may also require a separate pressure-equipment assessment. | REVIEW -> BLOCK for procurement/commissioning when applicable conformity is confirmed | Manufacturer/model/serial, machine classification, rated pressure/flow, applicable standard/regulation, conformity evidence, manuals, commissioning/maintenance record and pressure-component classification. |
-| HARD-SASO-BOAT-001 | Watercraft / recreational craft product | SASO publishes a dedicated Technical Regulation for Watercraft, adopted 06 Apr 2023 and published 19 May 2023. This is a product-conformity layer and does not replace TGA registration/licensing, Border Guard sailing permits or SWSDF trip-vessel controls. | REVIEW -> BLOCK at procurement/import/asset acceptance when watercraft regulation applies | Craft manufacturer/model/HIN or serial, category/use, conformity evidence, technical file, owner/asset record; separate TGA/BG/SWSDF operational evidence remains mandatory when applicable. |
-| HARD-SASO-PPE-001 | Personal protective equipment and clothing | SASO Technical Regulation for Personal Protective Equipment and Clothing establishes essential health/safety and conformity requirements for products within its scope; Article 5 places technical, instructions and conformity obligations on suppliers. Diving equipment must not be automatically labelled PPE unless the exact product falls within the regulation's product scope. | REVIEW -> BLOCK for regulated PPE lacking required conformity evidence | Product type/category, intended protective function/risk, supplier, model/batch, applicable standard, conformity certificate/declaration, Arabic/user instructions where required and procurement acceptance status. |
+| HARD-SASO-CYL-001 | Diving breathing-gas cylinder / pressure assembly | Pressure-equipment/simple-pressure-vessel catalogue; gas-cylinder classification must be resolved against exact product parameters. | REVIEW -> BLOCK after classification | Manufacturer/model/serial, pressure/capacity/gas, manufacture date, regulation/standard, conformity and inspection/test evidence. |
+| HARD-SASO-COMP-001 | Diving air compressor | Machinery-safety framework includes air-compressor safety standard; pressure components assessed separately where applicable. | REVIEW -> BLOCK after classification | Model/serial, pressure/flow, standard/regulation, conformity, manuals, commissioning/maintenance and pressure-component decision. |
+| HARD-SASO-BOAT-001 | Watercraft / recreational craft product | Dedicated SASO Technical Regulation for Watercraft; separate from operational TGA/BG/SWSDF evidence. | REVIEW -> BLOCK at procurement/import/asset acceptance when applicable | Manufacturer/model/HIN, category/use, conformity and technical file; separate operational evidence. |
+| HARD-SASO-PPE-001 | Personal protective equipment and clothing | SASO PPE technical regulation applies only to products within its scope; diving equipment is not automatically PPE. | REVIEW -> BLOCK when classified as regulated PPE | Product/risk class, supplier/model/batch, standard, conformity and instructions. |
 
 ### SASO implementation rule
 
-SASO controls are product-conformity controls, not substitutes for operational licences. HYDROLAND must first classify the exact SKU/asset, then attach all applicable regulations because one assembly may cross more than one technical regime. A diving compressor can involve machinery-safety and pressure-equipment controls; a boat can require SASO product conformity plus TGA, Border Guard and SWSDF operational evidence. Unclassified equipment routes to `REVIEW`, not an automatic legal `BLOCK`.
+SASO controls are product-conformity controls, not substitutes for operational licences. HYDROLAND first classifies the exact SKU/asset and then attaches all applicable technical regimes. Unclassified equipment routes to REVIEW.
 
 ## Operational-control mapping
 
-- CMB-001 vessel licence gate — TGA classification/evidence dependent; SASO watercraft conformity is a separate asset/product layer.
+- CMB-001 vessel licence gate — TGA classification/evidence dependent; SASO conformity is a separate product layer.
 - CMB-002 sailing permit gate — HARD-SAIL-001 validates permit/trip matching when applicable.
 - CMB-003 captain/safety assignment — captain/driver evidence mapped where applicable.
 - CMB-004 diver credential gate — strengthened by HARD-DIVE-001; depth entitlement remains credential-framework dependent.
 - CMB-005 safety briefing — authority/context specific; no invented universal statutory customer briefing.
 - CMB-006 incident/escalation — SWSDF/NCEC/PDPL incidents route to separate verified workflows/deadlines.
-- Equipment procurement/commissioning gate — HARD-SASO-CYL/COMP/BOAT/PPE controls require exact product classification before a mandatory conformity `BLOCK` is activated.
-- Privacy incident and e-commerce cancellation/refund gates retain their independently verified predicates.
+- Equipment procurement/commissioning gate — SASO product controls require exact product classification before mandatory conformity BLOCK.
+- Privacy incident and e-commerce cancellation/refund gates retain independently verified predicates.
 
 ## Required implementation fields
 
@@ -80,15 +108,16 @@ Product conformity additionally stores product/SKU class, manufacturer, model, s
 - Saudi Red Sea Authority; Transport General Authority; General Directorate of Border Guard / ZAWIL.
 - MEWA / NCEC; NCW.
 - Ministry of Tourism; Ministry of Sport; Saudi Water Sports and Diving Federation.
-- MHRSD; Civil Defense; Balady.
-- SASO — technical-regulation catalogue; Technical Regulation for Pressure Equipment; Technical Regulation for Simple Pressure Vessels; Technical Regulation for General Requirements for Safety of Machinery; Technical Regulation for Watercraft; Technical Regulation for Personal Protective Equipment and Clothing; pressure-vessels technical-team scope.
+- MHRSD; Civil Defense; Ministry of Municipalities and Housing / Balady.
+- SASO technical regulations and product conformity framework.
 - SDAIA / National Data Governance Platform — PDPL and Executive Regulations.
 - National Cybersecurity Authority — ECC 2:2024 and CCC-2:2024.
 - Insurance Authority; Ministry of Commerce; TVTC; ZATCA.
 
 ## Next verification batches
 
-1. Complete authority coverage audit against the 19-entity Saudi master list and identify source/version gaps.
-2. Verify remaining hard-gate article details for vessel licensing/inspection, insurance obligations and facility activation.
-3. Resolve exact SASO conformity paths for actual equipment SKUs when manufacturer/model data is available.
-4. After planning verification is complete, convert verified matrix rows into persisted compliance-control records, workflow gates, tests and CI validation.
+1. Verify remaining hard-gate article details for TGA vessel registration/licensing/inspection and operator classification.
+2. Verify Civil Defense + Balady facility activation requirements by actual HYDROLAND centre/activity classification.
+3. Verify activity-specific mandatory insurance requirements and distinguish them from Insurance Authority licensing rules.
+4. Resolve exact SASO conformity paths for actual equipment SKUs when manufacturer/model data is available.
+5. After article-level planning hardening, convert verified rows into persisted compliance-control records, workflow gates, tests and CI validation.
