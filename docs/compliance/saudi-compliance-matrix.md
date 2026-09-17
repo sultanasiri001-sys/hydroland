@@ -24,31 +24,52 @@ HYDROLAND operates across Saudi Arabia. Geographic and activity scope must be st
 | REG-SASO-001 | SASO | Mandatory technical regulations by product category. | Inventory/Procurement + Safety/Compliance + Legal | L1/L2/L3 | Product classifier and applicable conformity-evidence gate. | Product-specific. |
 | REG-PDPL-001 | SDAIA / Competent Data Protection Authority | Personal Data Protection Law and Executive Regulations. | Technology + Legal + Executive Governance | L1/L2/L3/L4 | Data inventory, privacy governance, ROPA, transfer/DPO/applicability controls. | Personal-data processing within statutory scope. |
 | REG-NCA-001 | National Cybersecurity Authority | ECC 2:2024 mandatory scope is limited by entity classification; other entities may adopt it as best practice. | Technology/Cybersecurity + Executive Governance + Legal | L1/L2/L3/L4 | Mandatory-scope assessment and cybersecurity control catalogue. | Mandatory only when entity falls within NCA scope. |
-| REG-IA-001 | Insurance Authority | Insurance Authority licensing framework, under the Cooperative Insurance Companies Control Law and Authority mandate, regulates insurance/reinsurance, foreign branches, insurance/reinsurance brokers and agents, electronic insurance brokerage, and insurance support-service companies. | Legal + Finance + Technology + Executive Governance | L1/L2/L3 | Insurance-role classifier: distinguish merely recording/validating a customer's or vessel's insurance evidence from carrying on insurance, brokerage, agency or regulated support services; prevent enabling regulated insurance distribution/intermediation without a verified licence. | Only if HYDROLAND itself carries on a regulated insurance-sector activity; storing policy evidence does not by itself establish that status. |
-| REG-IA-002 | Insurance Authority | Insurance Authority rules catalogue includes marine-insurance instructions and other product/activity-specific rules, while mandatory insurance obligations may arise from the separate regulator/activity instrument. | Legal + Marine Operations + Facilities/Assets | L2/L3 | Insurance evidence registry stores insurer, policy type/number, insured asset/activity, coverage dates and verification status; the required policy/coverage must be sourced from the controlling activity/vessel/facility rule before a hard BLOCK is used. | Policy/activity-specific; do not invent a universal mandatory marine/diving insurance requirement from Insurance Authority regulation alone. |
-| REG-MC-001 | Ministry of Commerce | Saudi E-Commerce Law and its Executive Regulations govern electronic commerce and cover services provided electronically to consumers; Ministry guidance identifies consumer-protection and disclosure obligations for e-commerce. | Legal + Customer Experience + Finance + Technology | L1/L2/L3 | E-commerce seller/service-provider profile; pre-contract disclosure, service characteristics, total price/fees/taxes, payment/performance terms and applicable consumer-rights evidence; version transaction terms shown to the customer. | HYDROLAND electronic sales/bookings/services falling within the E-Commerce Law. |
-| REG-MC-002 | Ministry of Commerce | Ministry of Commerce maintains an e-commerce compliance checklist and consumer legislation framework; discount campaigns are subject to the applicable Ministry licensing process. | Marketing + Legal + Customer Experience | L2/L3 | Promotion/discount workflow records advertised price, discount basis, campaign dates and licence evidence where required; marketing cannot publish a regulated discount campaign until applicability/licence status is resolved. | Applicable e-commerce promotion/discount activity. |
-| REG-TVTC-001 | Technical and Vocational Training Corporation | TVTC regulates licensed private training establishments and approves their training programmes; in 2026 TVTC states that private-training programme applications are reviewed and approved under its controls. | Training + Legal + Executive Governance | L1/L2/L3 | Training-provider applicability classifier: if a HYDROLAND entity operates as a TVTC-regulated private training establishment, store establishment licence and programme approval/version before offering the regulated programme. | Conditional; only where the entity/programme falls within TVTC private-training jurisdiction. Diving certification governed by sport/diving authorities must not automatically be treated as TVTC-regulated without scope confirmation. |
+| REG-IA-001 | Insurance Authority | Licensing framework regulates insurance/reinsurance and licensed insurance intermediation/support activities. | Legal + Finance + Technology + Executive Governance | L1/L2/L3 | Insurance-role classifier; prevent regulated insurance distribution/intermediation without verified licence. | Only if HYDROLAND carries on a regulated insurance-sector activity. |
+| REG-IA-002 | Insurance Authority | Marine-insurance and other product/activity-specific rules; mandatory insurance obligations may arise from another activity regulator. | Legal + Marine Operations + Facilities/Assets | L2/L3 | Insurance evidence registry; required coverage must be sourced from controlling instrument before hard BLOCK. | Policy/activity-specific. |
+| REG-MC-001 | Ministry of Commerce | Saudi E-Commerce Law and Executive Regulations govern applicable electronic sales/services. | Legal + Customer Experience + Finance + Technology | L1/L2/L3 | Pre-contract disclosure, transaction terms and consumer-rights evidence. | Applicable HYDROLAND electronic commerce. |
+| REG-MC-002 | Ministry of Commerce | E-commerce compliance/consumer framework and applicable promotion/discount licensing. | Marketing + Legal + Customer Experience | L2/L3 | Promotion/discount evidence and applicability workflow. | Applicable campaign/activity. |
+| REG-TVTC-001 | Technical and Vocational Training Corporation | TVTC regulates licensed private training establishments and programme approvals. | Training + Legal + Executive Governance | L1/L2/L3 | Conditional private-training licence/programme approval gate. | Only where entity/programme falls within TVTC jurisdiction. |
 | REG-ZATCA-001 | ZATCA | Electronic Invoicing Regulation and implementation framework. | Finance + Technology | L2/L3 | E-invoice compliance and integration evidence. | Subject taxpayer/transaction and Phase-2 notification scope. |
+
+## Article-level hard-gate verification
+
+| Control | Verified source detail | Enforcement candidate | Required system evidence |
+|---|---|---|---|
+| HARD-DIVE-001 | SWSDF Diving Regulations, Article 6: sports, technical or freediving requires a valid membership/licence from a diving organisation approved/licensed by the Federation. | BLOCK | Credential issuer, number, validity/status, recognised-organisation status. |
+| HARD-DIVE-002 | SWSDF Diving Regulations, Article 7.1: diving in natural or artificial water requires a permit limited by place and time through a Federation-licensed diving centre. Article 7.2 assigns the centre the permit process in coordination with related authorities. | BLOCK | Dive permit ID, site/geofence, valid-from/to, licensed centre, related-authority evidence. |
+| HARD-TRIP-001 | SWSDF Diving and Snorkeling Trips Regulations (2025), clause 7.3: only centres licensed by the Ministry and Federation and holding the trip-organisation activity are authorised to organise/advertise diving/snorkeling trips on diving marine craft; clauses 7.4–7.5 require Federation registration/approval and registration of diving marine craft for trip organisation. | BLOCK | Centre licence, trip-organisation capability, Federation approval, registered vessel and marina. |
+| HARD-MANIFEST-001 | SWSDF Diving and Snorkeling Trips Regulations, clause 6.11.5–6.11.6: responsible private-beach operator/centre verifies participants and records diver/snorkeler water entry/exit times. | BLOCK for applicable private-beach workflow | Participant manifest, identity/credential match, entry/exit timestamps, responsible operator. |
+| HARD-INCIDENT-001 | SWSDF Diving and Snorkeling Trips Regulations, clause 6.11.7: when an accident/emergency occurs during an applicable private-beach trip, the responsible entity must notify the Federation and related authorities immediately and submit a detailed report to the Federation within 24 hours. | ESCALATE + deadline | Incident timestamp, immediate-notification evidence, authority recipients, report, 24-hour deadline/status. |
+| HARD-SAIL-001 | Official Border Guard sailing-permit service identifies diving among sailing-permit purposes and requires permit type, date/period, sailing areas, owner's available vessel, vessel details and accompanying persons; service conditions identify marine-craft driving licence and identity/residency/passport. | BLOCK when sailing permit applies | Permit ID/type, date range, sailing area, vessel ID, captain/driver licence, participant manifest and identity evidence. |
+| HARD-ENV-001 | NCEC official environmental-accident reporting mechanism identifies reportable cases that caused or may cause pollution to air/water/soil, including harmful-material spills/leaks, vessel/tanker incidents, fires/explosions, marine colour change or marine-organism mortality. | ESCALATE when environmental trigger is met | Environmental trigger classification, location/time, media affected, evidence, NCEC notification status/reference. |
+
+### Hard-gate implementation rule
+
+A `BLOCK` control may stop activation only when its applicability predicate is true. Missing applicability data routes to `REVIEW`, not an invented statutory failure. `ESCALATE` creates an immutable incident/compliance case, authority-specific deadline and evidence trail. HYDROLAND must keep the SWSDF dive permit distinct from the Border Guard/ZAWIL sailing permit because they validate different regulatory conditions.
 
 ## Operational-control mapping
 
 - CMB-001 vessel licence gate — TGA classification/evidence dependent.
-- CMB-002 sailing permit gate — Border Guard/ZAWIL permit attributes must match trip.
-- CMB-003 captain/safety assignment gate — captain/delegation mapped where applicable; safety-officer requirement remains source/activity dependent.
-- CMB-004 diver certification/depth compatibility gate — recognised credential portion mapped to SWSDF; depth entitlement comes from verified credential framework.
+- CMB-002 sailing permit gate — now strengthened by HARD-SAIL-001; permit activity/date/area/vessel/manifest must match the trip when applicable.
+- CMB-003 captain/safety assignment gate — captain/driver evidence mapped where applicable; safety-officer requirement remains source/activity dependent.
+- CMB-004 diver certification/depth compatibility gate — credential portion strengthened by HARD-DIVE-001; depth entitlement still comes from the verified credential framework, not a universal invented depth.
 - CMB-005 safety briefing gate — authority/context specific; no invented universal statutory customer briefing.
-- CMB-006 incident/escalation gate — authority-specific notification triggers/timelines are encoded only after article-level verification.
-- Insurance gate — store and verify insurance evidence where another applicable instrument requires it. Do not treat HYDROLAND as an insurer/intermediary unless its actual business model crosses REG-IA-001 licensing scope.
-- E-commerce transaction gate — online bookings, courses, rentals and goods/services sales must retain the customer-facing disclosures/terms applicable under REG-MC-001.
-- Training gate — SWSDF/sport-diving controls remain the primary diving-training layer; TVTC controls activate only after a positive private-training-jurisdiction assessment.
-- Privacy-by-design and cloud/vendor gates — retain PDPL processing/transfer evidence; NCA mandatory scope is independently assessed.
+- CMB-006 incident/escalation gate — now partially article-level mapped to HARD-INCIDENT-001 and HARD-ENV-001. Other incident types retain REVIEW until their exact authority trigger/deadline is verified.
+- Dive-activation gate — HARD-DIVE-002 validates separate site/time-specific SWSDF permit evidence.
+- Trip-organiser gate — HARD-TRIP-001 validates centre capability and registered diving marine craft before applicable trip activation.
+- Manifest/accountability gate — HARD-MANIFEST-001 applies to the verified private-beach workflow and must not be generalised beyond its scope without another source.
+- Insurance gate — store/verify insurance evidence only where another applicable instrument requires it.
+- E-commerce transaction gate — online bookings/courses/rentals/sales retain applicable customer-facing disclosures/terms.
+- Training gate — SWSDF/sport-diving controls remain primary; TVTC activates only after positive jurisdiction assessment.
+- Privacy-by-design/cloud/vendor gates — retain PDPL evidence; NCA mandatory scope independently assessed.
 
 ## Required implementation fields
 
 Each regulatory control should ultimately store: authority, instrument, exact article/requirement, source URL/document version, effective date, geography, activity/vessel/worker/facility/product/data/insurance/training applicability, owning department, L1-L4 level, system workflow, enforcement mode (INFO/REVIEW/BLOCK/ESCALATE), evidence type, retention/audit rule, and verification status.
 
-Additional classification fields: insurance role (policy-holder/evidence-only/insurer/broker/agent/e-broker/support-service), e-commerce provider role, private-training-establishment status, programme approval status, controller/processor role, cross-border transfer status and NCA mandatory-scope decision.
+Additional classification fields: insurance role, e-commerce provider role, private-training-establishment status, programme approval status, controller/processor role, cross-border transfer status and NCA mandatory-scope decision.
+
+For hard operational gates additionally store: applicability predicate/result, permit/credential issuer, permit scope/site/area, valid-from/to, vessel, captain, participant manifest, centre capability, authority notification timestamp/reference, statutory deadline and escalation status.
 
 ## Source registry
 
@@ -58,14 +79,17 @@ Additional classification fields: insurance role (policy-holder/evidence-only/in
 - MHRSD; Civil Defense; Balady; SASO.
 - SDAIA / National Data Governance Platform — PDPL framework.
 - National Cybersecurity Authority — ECC 2:2024 and CCC-2:2024.
-- Insurance Authority — licensing framework and official regulations catalogue, including marine-insurance instructions.
-- Ministry of Commerce — E-Commerce Law, Executive Regulations, e-commerce compliance checklist and consumer legislation.
-- Technical and Vocational Training Corporation — private-training regulation/programme-approval framework.
+- Insurance Authority — licensing framework and official regulations catalogue.
+- Ministry of Commerce — E-Commerce Law and consumer framework.
+- Technical and Vocational Training Corporation — private-training framework.
 - ZATCA — Electronic Invoicing Regulation and implementation framework.
+- SWSDF — Diving Regulations, Articles 6–7; Diving and Snorkeling Trips Regulations (2025), clauses 6.11.5–6.11.7 and 7.3–7.5.
+- General Directorate of Border Guard — official ZAWIL sailing-permit service description.
+- NCEC — official environmental accidents and violations reporting mechanism.
 
 ## Next verification batches
 
-1. Article-level verification for hard BLOCK/ESCALATE controls: operational permits, insurance requirements, e-commerce consumer disclosures/cancellation/refunds, privacy/data-breach notification and incident reporting.
+1. Article-level PDPL data-breach notification and e-commerce cancellation/refund controls.
 2. Product-level classification for diving cylinders, compressors, watercraft and PPE against exact SASO technical regulations.
-3. Complete authority coverage audit against the 19-entity Saudi master list and identify any source/version gaps.
+3. Complete authority coverage audit against the 19-entity Saudi master list and identify source/version gaps.
 4. After planning verification is complete, convert verified matrix rows into persisted compliance-control records, workflow gates, tests and CI validation.
