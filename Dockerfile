@@ -13,4 +13,4 @@ ENV NODE_ENV=production
 EXPOSE 10000
 
 # Migrations run before the API accepts requests. DATABASE_URL and JWT_SECRET are injected by Render.
-CMD ["sh", "-c", "npm run db:deploy --workspace=@hydroland/api && npm run start --workspace=@hydroland/api"]
+CMD ["sh", "-c", "(cd apps/api && npx prisma migrate resolve --rolled-back 20260916070000_hr_candidate_verification_workflow || true) && npm run db:deploy --workspace=@hydroland/api && npm run start --workspace=@hydroland/api"]
