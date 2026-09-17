@@ -127,7 +127,7 @@ export class HrService {
   }
 
   async addCompensation(actorId: string, employmentId: string, input: { effectiveFrom: string; effectiveTo?: string; baseAmountMinor?: number; currency?: string; allowances?: object; benefits?: object }) {
-    const row = await this.db.compensationTerm.create({ data: { employmentId, effectiveFrom: new Date(input.effectiveFrom), effectiveTo: input.effectiveTo ? new Date(input.effectiveTo) : undefined, baseAmountMinor: input.baseAmountMinor, currency: input.currency ?? 'SAR', allowances: input.allowances as never, benefits: input.benefits as never, status: 'APPROVAL_REQUIRED' } });
+    const row = await this.db.compensationTerm.create({ data: { employmentId, effectiveFrom: new Date(input.effectiveFrom), effectiveTo: input.effectiveTo ? new Date(input.effectiveTo) : undefined, baseAmountMinor: input.baseAmountMinor, currency: input.currency ?? 'SAR', allowances: input.allowances as never, benefits: input.benefits as never, requestedByAccountId: actorId, status: 'SUBMITTED' } });
     await this.audit.record({ actorId, action: 'HR_COMPENSATION_PROPOSED', resource: 'CompensationTerm', resourceId: row.id });
     return row;
   }
@@ -151,11 +151,25 @@ export class HrService {
     return row;
   }
 
+  async reviewCompensation(actorId: string, id: string, approve: boolean) {
+    await this.requireHrReviewer(actorId);
+    const current = await this.db.compensationTerm.findUnique({ where: { id } });
+    if (!current) throw new NotFoundException('Compensation term not found');
+    if (!current.requestedByAccountId) throw new BadRequestException('HR_COMPENSATION_LEGACY_REVIEW_REQUIRED');
+    if (current.requestedByAccountId === actorId) throw new ForbiddenException('HR_SELF_REVIEW_DENIED');
+    if (current.status !== 'SUBMITTED' && current.status !== 'HR_REVIEW') throw new BadRequestException('HR_COMPENSATION_NOT_REVIEWABLE');
+    const row = await this.db.compensationTerm.update({ where: { id }, data: { status: approve ? 'APPROVAL_REQUIRED' : 'REJECTED', reviewedByAccountId: actorId } });
+    await this.audit.record({ actorId, action: approve ? 'HR_COMPENSATION_REVIEWED' : 'HR_COMPENSATION_REJECTED', resource: 'CompensationTerm', resourceId: id });
+    return row;
+  }
+
   async approveCompensation(actorId: string, id: string, approve: boolean) {
     await this.requireExecutiveApprover(actorId);
     const current = await this.db.compensationTerm.findUnique({ where: { id }, include: { employment: true } });
     if (!current) throw new NotFoundException('Compensation term not found');
-    if (current.employment.accountId === actorId) throw new ForbiddenException('HR_SELF_APPROVAL_DENIED');
+    if (current.status !== 'APPROVAL_REQUIRED' || !current.requestedByAccountId || !current.reviewedByAccountId) throw new BadRequestException('HR_REVIEW_REQUIRED');
+    if (current.employment.accountId === actorId || current.requestedByAccountId === actorId) throw new ForbiddenException('HR_SELF_APPROVAL_DENIED');
+    if (current.reviewedByAccountId === actorId) throw new ForbiddenException('HR_SEGREGATION_OF_DUTIES_DENIED');
     const row = await this.db.compensationTerm.update({ where: { id }, data: { status: approve ? 'APPROVED' : 'REJECTED', approvedByAccountId: actorId } });
     await this.audit.record({ actorId, action: approve ? 'HR_COMPENSATION_APPROVED' : 'HR_COMPENSATION_REJECTED', resource: 'CompensationTerm', resourceId: id });
     return row;
