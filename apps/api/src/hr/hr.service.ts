@@ -57,6 +57,37 @@ export class HrService {
     return row;
   }
 
+  async reviewMovement(actorId: string, id: string, approve: boolean) {
+    const current = await this.db.employmentMovement.findUnique({ where: { id } });
+    if (!current) throw new NotFoundException('Employment movement not found');
+    if (current.requestedByAccountId === actorId) throw new ForbiddenException('HR_SELF_REVIEW_DENIED');
+    if (current.status !== 'SUBMITTED' && current.status !== 'HR_REVIEW') throw new BadRequestException('HR_MOVEMENT_NOT_REVIEWABLE');
+    const row = await this.db.employmentMovement.update({ where: { id }, data: { status: approve ? 'APPROVAL_REQUIRED' : 'REJECTED', reviewedByAccountId: actorId } });
+    await this.audit.record({ actorId, action: approve ? 'HR_MOVEMENT_REVIEWED' : 'HR_MOVEMENT_REJECTED', resource: 'EmploymentMovement', resourceId: id });
+    return row;
+  }
+
+  async approveMovement(actorId: string, id: string, approve: boolean) {
+    const current = await this.db.employmentMovement.findUnique({ where: { id }, include: { employment: true } });
+    if (!current) throw new NotFoundException('Employment movement not found');
+    if (current.status !== 'APPROVAL_REQUIRED') throw new BadRequestException('HR_MOVEMENT_APPROVAL_NOT_READY');
+    if (!current.reviewedByAccountId) throw new BadRequestException('HR_REVIEW_REQUIRED');
+    if (current.requestedByAccountId === actorId) throw new ForbiddenException('HR_SELF_APPROVAL_DENIED');
+    if (current.reviewedByAccountId === actorId) throw new ForbiddenException('HR_SEGREGATION_OF_DUTIES_DENIED');
+    if (!approve) {
+      const rejected = await this.db.employmentMovement.update({ where: { id }, data: { status: 'REJECTED', approvedByAccountId: actorId } });
+      await this.audit.record({ actorId, action: 'HR_MOVEMENT_REJECTED', resource: 'EmploymentMovement', resourceId: id });
+      return rejected;
+    }
+    const row = await this.db.$transaction(async (tx) => {
+      const approved = await tx.employmentMovement.update({ where: { id }, data: { status: 'EFFECTIVE', approvedByAccountId: actorId, effectiveAt: current.effectiveAt ?? new Date() } });
+      await tx.employment.update({ where: { id: current.employmentId }, data: { orgUnitId: current.toOrgUnitId ?? current.employment.orgUnitId, positionId: current.toPositionId ?? current.employment.positionId } });
+      return approved;
+    });
+    await this.audit.record({ actorId, action: 'HR_MOVEMENT_EFFECTIVE', resource: 'EmploymentMovement', resourceId: id });
+    return row;
+  }
+
   async scheduleShift(actorId: string, employmentId: string, input: { startsAt: string; endsAt: string; shiftCode?: string }) {
     if (new Date(input.endsAt) <= new Date(input.startsAt)) throw new BadRequestException('Shift end must be after start');
     const row = await this.db.shiftAssignment.create({ data: { employmentId, startsAt: new Date(input.startsAt), endsAt: new Date(input.endsAt), shiftCode: input.shiftCode } });
