@@ -7,12 +7,17 @@ import {
   ComplianceDecision,
   evaluateComplianceControl,
 } from './compliance-engine.domain';
+import {
+  ComplianceEvidenceInput,
+  CompliancePersistenceService,
+} from './compliance-persistence.service';
 
 @Injectable()
 export class SafetyService {
   constructor(
     private readonly db: DatabaseService,
     private readonly audit: AuditService,
+    private readonly compliancePersistence: CompliancePersistenceService,
   ) {}
 
   private mapComplianceToSafetyDecision(
@@ -30,6 +35,7 @@ export class SafetyService {
       items: Record<string, boolean>;
       notes?: string;
       complianceControls?: ComplianceControlInput[];
+      complianceEvidence?: ComplianceEvidenceInput[];
     },
   ) {
     const trip = await this.db.trip.findUnique({
@@ -57,9 +63,6 @@ export class SafetyService {
       ? aggregateComplianceDecision(complianceResults)
       : undefined;
 
-    // Preserve the existing checklist contract while compliance is introduced.
-    // A failed physical checklist remains deferred. When the checklist passes,
-    // verified compliance controls can allow, review, block, or escalate.
     const decision = failedItems.length
       ? 'DEFERRED'
       : complianceDecision
@@ -75,6 +78,17 @@ export class SafetyService {
       },
     });
 
+    const complianceAssessment = complianceDecision
+      ? await this.compliancePersistence.recordAssessment({
+          tripId,
+          safetyChecklistId: checklist.id,
+          decision: complianceDecision,
+          results: complianceResults,
+          assessedByAccountId: accountId,
+          evidence: input.complianceEvidence,
+        })
+      : null;
+
     await this.audit.record({
       action: 'SAFETY_ASSESSMENT_CREATED',
       resource: 'SafetyChecklist',
@@ -86,6 +100,7 @@ export class SafetyService {
         failedItems,
         notesProvided: Boolean(input.notes?.trim()),
         complianceDecision: complianceDecision ?? null,
+        complianceAssessmentId: complianceAssessment?.id ?? null,
         complianceResults,
       },
     });
@@ -93,6 +108,7 @@ export class SafetyService {
     return {
       ...checklist,
       complianceDecision: complianceDecision ?? null,
+      complianceAssessment,
       complianceResults,
     };
   }
