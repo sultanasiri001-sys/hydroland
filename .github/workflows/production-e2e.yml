@@ -1,0 +1,32 @@
+name: Production E2E
+
+on:
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    environment: production-e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm install
+      - run: npm --workspace @hydroland/api run db:generate
+      - name: Guard required secrets
+        env:
+          DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
+          E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+        run: |
+          test -n "$DATABASE_URL"
+          test -n "$E2E_ADMIN_EMAIL"
+          case "$E2E_ADMIN_EMAIL" in *@hydroland.test) ;; *) exit 1 ;; esac
+      - name: Bootstrap E2E admin
+        working-directory: apps/api
+        env:
+          DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
+          E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+          ALLOW_E2E_BOOTSTRAP: 'true'
+        run: node scripts/bootstrap-e2e-admin.mjs
