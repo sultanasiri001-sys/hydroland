@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { AdminGuard } from '../admin/admin.guard';
 import { ReviewGuard } from '../admin/review.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
@@ -20,9 +20,27 @@ export class SafetyController {
   assess(
     @Req() request: { auth: { accountId: string } },
     @Param('tripId') tripId: string,
-    @Body() body: { items: Record<string, boolean>; notes?: string },
+    @Body() body: Record<string, unknown>,
   ) {
-    return this.safety.assess(request.auth.accountId, tripId, body);
+    if ('complianceControls' in body || 'complianceEvidence' in body) {
+      throw new BadRequestException(
+        'Compliance controls and evidence cannot be self-certified through the safety checklist endpoint.',
+      );
+    }
+
+    const items = body.items;
+    const notes = body.notes;
+    if (!items || typeof items !== 'object' || Array.isArray(items)) {
+      throw new BadRequestException('Safety checklist items are required.');
+    }
+    if (notes !== undefined && typeof notes !== 'string') {
+      throw new BadRequestException('Safety checklist notes must be a string.');
+    }
+
+    return this.safety.assess(request.auth.accountId, tripId, {
+      items: items as Record<string, boolean>,
+      notes,
+    });
   }
 
   @UseGuards(ReviewGuard)
