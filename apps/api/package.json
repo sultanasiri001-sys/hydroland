@@ -7,7 +7,7 @@
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",
     "typecheck": "tsc --noEmit",
-    "db:deploy": "node scripts/reconcile-hr-migration.js && prisma migrate deploy",
+    "db:deploy": "node scripts/reconcile-hr-migration.js && node scripts/reconcile-compliance-migration.js && prisma migrate deploy",
     "db:generate": "prisma generate",
     "db:validate": "prisma validate",
     "validate:phase10": "node scripts/phase10-validation.mjs",
