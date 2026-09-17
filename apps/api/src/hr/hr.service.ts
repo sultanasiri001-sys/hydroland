@@ -14,6 +14,19 @@ export class HrService {
     });
   }
 
+  private async requireActiveRole(actorId: string, roles: string[]) {
+    const assignment = await this.db.roleAssignment.findFirst({ where: { accountId: actorId, status: 'ACTIVE', role: { in: roles as any } }, select: { id: true } });
+    if (!assignment) throw new ForbiddenException('HR_ROLE_REQUIRED');
+  }
+
+  private async requireHrReviewer(actorId: string) {
+    await this.requireActiveRole(actorId, ['REVIEWER', 'ADMIN']);
+  }
+
+  private async requireExecutiveApprover(actorId: string) {
+    await this.requireActiveRole(actorId, ['ADMIN']);
+  }
+
   async createEmployment(actorId: string, input: { accountId: string; organizationId: string; orgUnitId: string; positionId?: string; managerEmploymentId?: string; workerClass: any; startsAt?: string }) {
     const row = await this.db.employment.create({ data: { accountId: input.accountId, organizationId: input.organizationId, orgUnitId: input.orgUnitId, positionId: input.positionId, managerEmploymentId: input.managerEmploymentId, workerClass: input.workerClass, startsAt: input.startsAt ? new Date(input.startsAt) : undefined } });
     await this.audit.record({ actorId, action: 'HR_EMPLOYMENT_CREATED', resource: 'Employment', resourceId: row.id });
@@ -58,6 +71,7 @@ export class HrService {
   }
 
   async reviewMovement(actorId: string, id: string, approve: boolean) {
+    await this.requireHrReviewer(actorId);
     const current = await this.db.employmentMovement.findUnique({ where: { id } });
     if (!current) throw new NotFoundException('Employment movement not found');
     if (current.requestedByAccountId === actorId) throw new ForbiddenException('HR_SELF_REVIEW_DENIED');
@@ -68,6 +82,7 @@ export class HrService {
   }
 
   async approveMovement(actorId: string, id: string, approve: boolean) {
+    await this.requireExecutiveApprover(actorId);
     const current = await this.db.employmentMovement.findUnique({ where: { id }, include: { employment: true } });
     if (!current) throw new NotFoundException('Employment movement not found');
     if (current.status !== 'APPROVAL_REQUIRED') throw new BadRequestException('HR_MOVEMENT_APPROVAL_NOT_READY');
@@ -96,6 +111,7 @@ export class HrService {
   }
 
   async approveLeave(actorId: string, id: string, approve: boolean) {
+    await this.requireHrReviewer(actorId);
     const current = await this.db.leaveRequest.findUnique({ where: { id } });
     if (!current) throw new NotFoundException('Leave request not found');
     if (current.requestedByAccountId === actorId) throw new BadRequestException('HR_SELF_APPROVAL_DENIED');
@@ -130,6 +146,7 @@ export class HrService {
   }
 
   async approveCompensation(actorId: string, id: string, approve: boolean) {
+    await this.requireExecutiveApprover(actorId);
     const current = await this.db.compensationTerm.findUnique({ where: { id }, include: { employment: true } });
     if (!current) throw new NotFoundException('Compensation term not found');
     if (current.employment.accountId === actorId) throw new ForbiddenException('HR_SELF_APPROVAL_DENIED');
@@ -139,6 +156,7 @@ export class HrService {
   }
 
   async decideRelationsCase(actorId: string, id: string, approve: boolean, decision?: string) {
+    await this.requireExecutiveApprover(actorId);
     const current = await this.db.employeeRelationsCase.findUnique({ where: { id } });
     if (!current) throw new NotFoundException('Employee relations case not found');
     if (current.openedByAccountId === actorId || current.reviewedByAccountId === actorId) throw new BadRequestException('HR_SEGREGATION_OF_DUTIES_DENIED');
@@ -148,6 +166,7 @@ export class HrService {
   }
 
   async completeOffboarding(actorId: string, id: string, input: { clearance?: object }) {
+    await this.requireExecutiveApprover(actorId);
     const current = await this.db.offboardingCase.findUnique({ where: { id }, include: { employment: true } });
     if (!current) throw new NotFoundException('Offboarding case not found');
     if (current.employment.status !== 'TERMINATED') throw new BadRequestException('HR_TERMINATION_REQUIRED');
