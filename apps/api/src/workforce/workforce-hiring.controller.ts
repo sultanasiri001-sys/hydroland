@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { AccessTokenGuard } from '../auth/access-token.guard';
+import { CenterRuntimeAccessService } from './center-runtime-access.service';
 import { WorkforceService } from './workforce.service';
 
 type AuthenticatedRequest = { auth: { accountId: string } };
@@ -7,7 +8,10 @@ type AuthenticatedRequest = { auth: { accountId: string } };
 @UseGuards(AccessTokenGuard)
 @Controller('workforce')
 export class WorkforceHiringController {
-  constructor(private readonly workforce: WorkforceService) {}
+  constructor(
+    private readonly workforce: WorkforceService,
+    private readonly centerRuntimeAccess: CenterRuntimeAccessService,
+  ) {}
 
   @Get('hr/context')
   context(@Req() request: AuthenticatedRequest) {
@@ -17,6 +21,11 @@ export class WorkforceHiringController {
   @Get('center-access/mine')
   centerAccess(@Req() request: AuthenticatedRequest) {
     return this.workforce.myCenterAccess(request.auth.accountId);
+  }
+
+  @Get('centers/:organizationId/runtime-access/mine')
+  runtimeCenterAccess(@Req() request: AuthenticatedRequest, @Param('organizationId') organizationId: string) {
+    return this.centerRuntimeAccess.accessSnapshot(request.auth.accountId, organizationId);
   }
 
   @Get('recruitment/context')
