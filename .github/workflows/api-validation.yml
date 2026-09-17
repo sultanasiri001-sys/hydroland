@@ -16,6 +16,7 @@ jobs:
       - run: npm install
       - run: npm --workspace @hydroland/api run db:generate
       - run: npm run validate:hr -w @hydroland/api
+      - run: npm run test:hr-policy -w @hydroland/api
       - run: npm run reconcile:hr-schema -w @hydroland/api
       - run: npm run validate:hr:prisma -w @hydroland/api
       - run: npm run validate:phase10 -w @hydroland/api
