@@ -4,7 +4,7 @@ Status: planning baseline. A control becomes **verified** only when tied to an o
 
 ## Applicability rule
 
-HYDROLAND operates across Saudi Arabia. Geographic and activity scope must be stored per control. SRSA controls apply only within their defined scope. Environmental and protected-area controls are evaluated independently for each trip location/activity.
+HYDROLAND operates across Saudi Arabia. Geographic and activity scope must be stored per control. SRSA controls apply only within their defined scope. Environmental and protected-area controls are evaluated independently for each trip location/activity. Tourism and sport/diving controls are independently evaluated because specialised tourism activities can also fall under another competent government/sport authority.
 
 ## Verified official-source baseline
 
@@ -25,6 +25,12 @@ HYDROLAND operates across Saudi Arabia. Geographic and activity scope must be st
 | REG-NCW-001 | NCW | Environmental Law protected-areas framework and the executive regulation for protected areas govern protected-area conservation and activities within protected areas. | Marine Operations + Safety/Compliance + Legal | L1/L2/L3 | Geofence every trip/site against protected-area registry; require activity-specific applicability/approval evidence before readiness is granted. | Only when trip/site intersects or affects an applicable protected area. |
 | REG-NCW-002 | NCW | NCW officially identifies marine protected areas including Farasan Islands, Al Jubail Marine Wildlife Sanctuary, Blue Holes and Ras Hatibah, among others. | Marine Operations + Technology/GIS + Safety/Compliance | L2/L3 | Protected-area GIS flag, route/site warning and compliance review before booking/activation. | Location dependent; registry must be versioned because protected-area boundaries/status can change. |
 | REG-NCW-003 | NCW | NCW describes organised low-impact marine/ecotourism experiences in protected areas and maintains regulations including protected areas, wildlife protection and marine/coastal environment management. | Marine Operations + Customer Experience + Safety/Compliance | L2/L3 | Activity profile stores ecological restrictions/conditions; briefing and operating checklist can be specialised by protected area and activity. | Apply only after exact area/activity conditions are confirmed from the controlling instrument/permit. |
+| REG-MT-001 | Ministry of Tourism | Saudi Tourism Law requires the Ministry licence/permit before practising tourism activities that fall within Ministry jurisdiction; specialised tourism activities can be under another competent government authority. | Legal + Customer Experience + Marine Operations | L1/L2 | Activity-classification decision records whether a HYDROLAND product requires Ministry of Tourism licensing/permit and stores evidence/status when applicable. | Apply only to activity within Ministry tourism jurisdiction; specialised sport/diving applicability must be evaluated with the competent authority. |
+| REG-MOS-001 | Ministry of Sport | Sports Law, effective 11 June 2026, regulates sports entities, athletes/coaches, sports competitions/events, facilities, centres, institutes/academies and professional licensing/accreditation of sports training/programmes. | Legal + Training + Executive Governance | L1/L2/L3 | Sport-activity/entity classification, licence/accreditation evidence, validity controls and governance audit trail. | Apply according to Sports Law scope and the exact HYDROLAND sport entity/activity. |
+| REG-SWSDF-001 | Saudi Water Sports and Diving Federation | Diving Regulations state that the Federation grants technical licences after administrative licences from the Ministry and regulates sports, technical and freediving. | Training + Legal + Safety/Compliance | L1/L2 | Store administrative licence and Federation technical licence/relationship separately; prevent conflating the two authorities. | Applicable diving activity/entity within the regulation. |
+| REG-SWSDF-002 | Saudi Water Sports and Diving Federation | Diving Regulations require a valid membership/licence from a diving organisation approved/licensed by the Federation for practising sports, technical or freediving. | Training + HR + Safety/Compliance | L2/L3 | Diver/professional credential registry with issuer, credential number, status/expiry and Federation recognition status; eligibility gate before applicable diving workflow. | Applicable sports/technical/freediving participant under the regulation. |
+| REG-SWSDF-003 | Saudi Water Sports and Diving Federation | Diving Regulations state that practising diving in natural or artificial water requires a location/time-specific permit through a Federation-licensed diving centre, coordinated with related authorities. | Marine Operations + Training + Safety/Compliance | L2/L3 | Trip/dive permit record must match site and validity period; link permit to licensed dive centre and related-authority evidence; BLOCK applicable dive activation when required evidence is missing/mismatched. | Applicable diving activity under the regulation. |
+| REG-SWSDF-004 | Saudi Water Sports and Diving Federation | Diving-centre membership controls require registration of centre type and permitted activities and prohibit offering unregistered diving types; activity conditions vary by training, permits, equipment sales/rental/maintenance and trip organisation. | Training + Marine Operations + Inventory + Legal | L1/L2/L3 | Centre capability profile becomes the source of truth for enabled services; only registered/approved activity types can be activated for a centre. | Federation-member/licensed diving centre and the activities it offers. |
 | REG-ZATCA-001 | ZATCA | Electronic Invoicing Regulation requires electronic issuance/storage for subject taxpayers. | Finance + Technology | L2/L3 | E-invoice compliance gate, invoice evidence and validation/error queue. | Subject taxpayer / transaction scope. |
 | REG-ZATCA-002 | ZATCA | Phase 2 integration is applied in waves to notified target groups. | Finance + Technology | L2/L3 | Feature flag by taxpayer applicability and integration evidence. | Only when entity is notified/in scope. |
 
@@ -33,9 +39,11 @@ HYDROLAND operates across Saudi Arabia. Geographic and activity scope must be st
 - CMB-001 vessel licence gate — partially mapped to REG-TGA-001/002; vessel classification determines required evidence.
 - CMB-002 sailing permit gate — mapped to REG-BG-001/002; validate permit attributes against the trip.
 - CMB-003 captain/safety assignment gate — captain/delegation portion partially mapped to REG-BG-003; separate safety-officer requirement remains source/activity dependent.
-- CMB-004 diver certification/depth compatibility gate — awaiting exact Saudi authority/source mapping; international training standards remain reference-only unless incorporated by an applicable Saudi rule/licence condition.
-- CMB-005 safety briefing gate — environmental/protected-area content can be driven by REG-ENV/REG-NCW controls, but a universal statutory briefing requirement is not asserted yet.
+- CMB-004 diver certification/depth compatibility gate — certification/recognised-organisation portion mapped to REG-SWSDF-002. Exact depth entitlement must come from the verified credential/training standard and Federation-recognised framework; HYDROLAND must not invent a universal depth value.
+- CMB-005 safety briefing gate — environmental/protected-area content can be driven by REG-ENV/REG-NCW controls; a universal statutory briefing requirement is not asserted yet.
 - CMB-006 incident report/escalation gate — environmental incidents can route into NCEC-related compliance/corrective-action workflow; exact mandatory notification triggers/timelines require article-level mapping before hard BLOCK/escalation rules are encoded.
+- New dive-activation rule — REG-SWSDF-003 requires the applicable dive permit to match location/time and be processed through a Federation-licensed diving centre; this should be implemented as a distinct dive-permit control rather than overloading the Border Guard sailing permit.
+- Centre-service enablement — REG-SWSDF-004 drives which diving/training/trip/equipment services a centre may expose in HYDROLAND.
 
 ## Required implementation fields
 
@@ -49,13 +57,15 @@ Each regulatory control should ultimately store: authority, instrument, exact ar
 - Ministry of Environment, Water and Agriculture — Environmental Law regulations library.
 - National Center for Environmental Compliance — Executive Regulation for Protection of Aquatic Environments from Pollution and environmental compliance framework.
 - National Center for Wildlife — regulations library and official protected-area registry.
+- Ministry of Tourism — Saudi Tourism Law and official tourism licensing material.
+- Ministry of Sport — Sports Law and official sports licensing/regulations catalogue.
+- Saudi Water Sports and Diving Federation — Diving Regulations and Diving Centre Membership Controls.
 - ZATCA — Electronic Invoicing Regulation and implementation requirements/specifications.
 
 ## Next verification batches
 
-1. Ministry of Tourism, Ministry of Sport and SWSDF activity/training applicability.
-2. MHRSD and occupational safety/labour controls.
-3. Civil Defense, municipalities and SASO facility/equipment controls.
-4. SDAIA/PDPL and NCA data/cybersecurity controls.
-5. Insurance Authority and insurance applicability.
-6. Article-level verification for controls that will become hard BLOCK/ESCALATE rules.
+1. MHRSD and occupational safety/labour controls.
+2. Civil Defense, municipalities and SASO facility/equipment controls.
+3. SDAIA/PDPL and NCA data/cybersecurity controls.
+4. Insurance Authority and insurance applicability.
+5. Article-level verification for controls that will become hard BLOCK/ESCALATE rules.
