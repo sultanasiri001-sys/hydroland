@@ -531,6 +531,7 @@ model LeaveRequest {
   employment Employment @relation(fields:[employmentId], references:[id], onDelete:Restrict)
   requestedBy Account @relation("LeaveRequestedBy", fields:[requestedByAccountId], references:[id], onDelete:Restrict)
   approvedBy Account? @relation("LeaveApprovedBy", fields:[approvedByAccountId], references:[id], onDelete:Restrict)
+  @@index([employmentId,status])
 }
 
 model AttendanceEntry {
@@ -592,6 +593,7 @@ model PerformanceCycle {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   employment Employment @relation(fields:[employmentId], references:[id], onDelete:Restrict)
+  @@index([employmentId,periodStart,periodEnd])
 }
 
 model EmployeeRelationsCase {
@@ -610,6 +612,7 @@ model EmployeeRelationsCase {
   openedBy Account @relation("EmployeeRelationsOpenedBy", fields:[openedByAccountId], references:[id], onDelete:Restrict)
   reviewedBy Account? @relation("EmployeeRelationsReviewedBy", fields:[reviewedByAccountId], references:[id], onDelete:Restrict)
   approvedBy Account? @relation("EmployeeRelationsApprovedBy", fields:[approvedByAccountId], references:[id], onDelete:Restrict)
+  @@index([employmentId,status])
 }
 
 model OffboardingCase {
@@ -624,6 +627,7 @@ model OffboardingCase {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   employment Employment @relation(fields:[employmentId], references:[id], onDelete:Restrict)
+  @@index([employmentId,status])
 }
 
 model OrganizationMember {
