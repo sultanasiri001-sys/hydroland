@@ -4,7 +4,7 @@ Status: planning baseline. A control becomes **verified** only when tied to an o
 
 ## Applicability rule
 
-HYDROLAND operates across Saudi Arabia. Geographic and activity scope must be stored per control. SRSA controls apply only within their defined scope. Environmental and protected-area controls are evaluated independently for each trip location/activity. Tourism and sport/diving controls are independently evaluated because specialised tourism activities can also fall under another competent government/sport authority.
+HYDROLAND operates across Saudi Arabia. Geographic and activity scope must be stored per control. SRSA controls apply only within their defined scope. Environmental and protected-area controls are evaluated independently for each trip location/activity. Tourism and sport/diving controls are independently evaluated because specialised tourism activities can also fall under another competent government/sport authority. Labour and occupational-safety controls apply by employment/activity scope and must not be confused with customer/dive-participant safety controls.
 
 ## Verified official-source baseline
 
@@ -31,6 +31,11 @@ HYDROLAND operates across Saudi Arabia. Geographic and activity scope must be st
 | REG-SWSDF-002 | Saudi Water Sports and Diving Federation | Diving Regulations require a valid membership/licence from a diving organisation approved/licensed by the Federation for practising sports, technical or freediving. | Training + HR + Safety/Compliance | L2/L3 | Diver/professional credential registry with issuer, credential number, status/expiry and Federation recognition status; eligibility gate before applicable diving workflow. | Applicable sports/technical/freediving participant under the regulation. |
 | REG-SWSDF-003 | Saudi Water Sports and Diving Federation | Diving Regulations state that practising diving in natural or artificial water requires a location/time-specific permit through a Federation-licensed diving centre, coordinated with related authorities. | Marine Operations + Training + Safety/Compliance | L2/L3 | Trip/dive permit record must match site and validity period; link permit to licensed dive centre and related-authority evidence; BLOCK applicable dive activation when required evidence is missing/mismatched. | Applicable diving activity under the regulation. |
 | REG-SWSDF-004 | Saudi Water Sports and Diving Federation | Diving-centre membership controls require registration of centre type and permitted activities and prohibit offering unregistered diving types; activity conditions vary by training, permits, equipment sales/rental/maintenance and trip organisation. | Training + Marine Operations + Inventory + Legal | L1/L2/L3 | Centre capability profile becomes the source of truth for enabled services; only registered/approved activity types can be activated for a centre. | Federation-member/licensed diving centre and the activities it offers. |
+| REG-HRSD-001 | Ministry of Human Resources and Social Development | Saudi Labour Law Part VIII governs worker safety, prevention of occupational hazards/work injuries and health/social services. | HR + Safety/Compliance + Legal | L1/L2/L3 | Worker-safety policy set, applicability by worker/site/activity, evidence registry and audit trail. | HYDROLAND employees/workplaces subject to Saudi Labour Law. |
+| REG-HRSD-002 | Ministry of Human Resources and Social Development | Labour Law Articles 121–123 require workplace health/safety measures, necessary precautions against hazards and occupational disease, safety instructions, worker hazard awareness, appropriate PPE and training in its use. | HR + Safety/Compliance + Facilities/Assets | L2/L3 | Job/site risk assessment; induction before work; PPE issue/training record; safety-instruction acknowledgement; nonconformity/corrective-action workflow. | Employees and workplaces within Labour Law scope; exact controls depend on work hazards. |
+| REG-HRSD-003 | Ministry of Human Resources and Social Development | Labour Law Article 125 requires fire-prevention precautions, firefighting means and usable emergency exits, with visible fire-prevention instructions. | Safety/Compliance + Facilities/Assets | L2/L3 | Facility fire-safety checklist, emergency-exit readiness, firefighting-equipment evidence, inspection/corrective-action records. | Applicable HYDROLAND workplaces/facilities; Civil Defense/municipal requirements remain separate and cumulative where applicable. |
+| REG-HRSD-004 | Ministry of Human Resources and Social Development | The current Labour Law executive framework and OSH material preserve occupational-safety obligations for applicable employment, including temporary/seasonal/casual workers for relevant safety and work-injury provisions. | HR + Safety/Compliance | L1/L2/L3 | Worker classification cannot bypass safety controls; onboarding/assignment engine applies mandatory OSH controls by employment/activity scope. | Apply according to worker relationship and Labour Law/executive-regulation scope. |
+| REG-HRSD-005 | Ministry of Human Resources and Social Development | OSH Management Regulation decision 161238 applies to establishments with 50 or more full-time workers in specified activities/sectors. | HR + Safety/Compliance + Executive Governance | L1/L3/L4 | Applicability calculator based on headcount/activity; if in scope, activate OSH-management governance, responsible roles, records and KPI/review controls. | Conditional: 50+ full-time workers AND an activity/sector listed by the regulation; not a universal HYDROLAND requirement. |
 | REG-ZATCA-001 | ZATCA | Electronic Invoicing Regulation requires electronic issuance/storage for subject taxpayers. | Finance + Technology | L2/L3 | E-invoice compliance gate, invoice evidence and validation/error queue. | Subject taxpayer / transaction scope. |
 | REG-ZATCA-002 | ZATCA | Phase 2 integration is applied in waves to notified target groups. | Finance + Technology | L2/L3 | Feature flag by taxpayer applicability and integration evidence. | Only when entity is notified/in scope. |
 
@@ -40,14 +45,15 @@ HYDROLAND operates across Saudi Arabia. Geographic and activity scope must be st
 - CMB-002 sailing permit gate — mapped to REG-BG-001/002; validate permit attributes against the trip.
 - CMB-003 captain/safety assignment gate — captain/delegation portion partially mapped to REG-BG-003; separate safety-officer requirement remains source/activity dependent.
 - CMB-004 diver certification/depth compatibility gate — certification/recognised-organisation portion mapped to REG-SWSDF-002. Exact depth entitlement must come from the verified credential/training standard and Federation-recognised framework; HYDROLAND must not invent a universal depth value.
-- CMB-005 safety briefing gate — environmental/protected-area content can be driven by REG-ENV/REG-NCW controls; a universal statutory briefing requirement is not asserted yet.
-- CMB-006 incident report/escalation gate — environmental incidents can route into NCEC-related compliance/corrective-action workflow; exact mandatory notification triggers/timelines require article-level mapping before hard BLOCK/escalation rules are encoded.
+- CMB-005 safety briefing gate — environmental/protected-area content can be driven by REG-ENV/REG-NCW controls. For HYDROLAND workers, REG-HRSD-002 provides a separate statutory basis for pre-work hazard awareness and PPE training; this must not be misrepresented as a universal customer/diver briefing requirement.
+- CMB-006 incident report/escalation gate — environmental incidents can route into NCEC-related compliance/corrective-action workflow; worker injuries/OSH events require a separate labour/OSH workflow. Exact authority notification triggers/timelines require article-level mapping before hard automated deadlines are encoded.
 - New dive-activation rule — REG-SWSDF-003 requires the applicable dive permit to match location/time and be processed through a Federation-licensed diving centre; this should be implemented as a distinct dive-permit control rather than overloading the Border Guard sailing permit.
 - Centre-service enablement — REG-SWSDF-004 drives which diving/training/trip/equipment services a centre may expose in HYDROLAND.
+- Worker-assignment safety gate — REG-HRSD-002 requires risk awareness/PPE controls for workers before applicable work; operational assignment must retain evidence rather than use a single generic safety checkbox.
 
 ## Required implementation fields
 
-Each regulatory control should ultimately store: authority, instrument, exact article/requirement, source URL/document version, effective date, geography, activity/vessel applicability, owning department, L1-L4 level, system workflow, enforcement mode (INFO/REVIEW/BLOCK/ESCALATE), evidence type, retention/audit rule, and verification status.
+Each regulatory control should ultimately store: authority, instrument, exact article/requirement, source URL/document version, effective date, geography, activity/vessel/worker applicability, owning department, L1-L4 level, system workflow, enforcement mode (INFO/REVIEW/BLOCK/ESCALATE), evidence type, retention/audit rule, and verification status.
 
 ## Source registry
 
@@ -60,12 +66,12 @@ Each regulatory control should ultimately store: authority, instrument, exact ar
 - Ministry of Tourism — Saudi Tourism Law and official tourism licensing material.
 - Ministry of Sport — Sports Law and official sports licensing/regulations catalogue.
 - Saudi Water Sports and Diving Federation — Diving Regulations and Diving Centre Membership Controls.
+- Ministry of Human Resources and Social Development — Saudi Labour Law, current executive framework and occupational-safety/health regulations and guidance.
 - ZATCA — Electronic Invoicing Regulation and implementation requirements/specifications.
 
 ## Next verification batches
 
-1. MHRSD and occupational safety/labour controls.
-2. Civil Defense, municipalities and SASO facility/equipment controls.
-3. SDAIA/PDPL and NCA data/cybersecurity controls.
-4. Insurance Authority and insurance applicability.
-5. Article-level verification for controls that will become hard BLOCK/ESCALATE rules.
+1. Civil Defense, municipalities and SASO facility/equipment controls.
+2. SDAIA/PDPL and NCA data/cybersecurity controls.
+3. Insurance Authority and insurance applicability.
+4. Article-level verification for controls that will become hard BLOCK/ESCALATE rules.
