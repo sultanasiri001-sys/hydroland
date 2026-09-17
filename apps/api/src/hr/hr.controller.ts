@@ -25,6 +25,9 @@ export class HrController {
   @Post('employments/:id/offboarding') offboarding(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: any) { return this.hr.openOffboarding(r.auth.accountId, id, b); }
 
   @Patch('compensation/:id/decision') compensationDecision(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: { approve: boolean }) { return this.hr.approveCompensation(r.auth.accountId, id, b.approve); }
+  @Patch('relations-cases/:id/review') relationsReview(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: { approve: boolean }) { return this.hr.reviewRelationsCase(r.auth.accountId, id, b.approve); }
+  @Patch('performance/:id/assessment') performanceAssessment(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: { managerAssessment?: object; developmentPlan?: object }) { return this.hr.assessPerformance(r.auth.accountId, id, b); }
+  @Patch('performance/:id/review') performanceReview(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: { hrReview?: object; approve: boolean }) { return this.hr.reviewPerformance(r.auth.accountId, id, b); }
   @Patch('relations-cases/:id/decision') relationsDecision(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: { approve: boolean; decision?: string }) { return this.hr.decideRelationsCase(r.auth.accountId, id, b.approve, b.decision); }
   @Patch('offboarding/:id/complete') completeOffboarding(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: { clearance?: object }) { return this.hr.completeOffboarding(r.auth.accountId, id, b); }
 
