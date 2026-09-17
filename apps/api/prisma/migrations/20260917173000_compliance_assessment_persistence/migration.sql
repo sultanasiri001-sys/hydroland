@@ -2,20 +2,20 @@
 -- Additive only: no existing safety, trip, or boat-compliance data is rewritten.
 
 CREATE TABLE "ComplianceAssessment" (
-  "id" TEXT NOT NULL,
-  "tripId" TEXT NOT NULL,
-  "safetyChecklistId" TEXT,
+  "id" UUID NOT NULL,
+  "tripId" UUID NOT NULL,
+  "safetyChecklistId" UUID,
   "decision" TEXT NOT NULL,
   "results" JSONB NOT NULL,
-  "assessedByAccountId" TEXT,
+  "assessedByAccountId" UUID,
   "assessedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "ComplianceAssessment_pkey" PRIMARY KEY ("id")
 );
 
 CREATE TABLE "ComplianceEvidence" (
-  "id" TEXT NOT NULL,
-  "assessmentId" TEXT NOT NULL,
+  "id" UUID NOT NULL,
+  "assessmentId" UUID NOT NULL,
   "controlId" TEXT NOT NULL,
   "evidenceType" TEXT NOT NULL,
   "reference" TEXT,
