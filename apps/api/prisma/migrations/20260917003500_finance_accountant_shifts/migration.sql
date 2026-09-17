@@ -1,5 +1,5 @@
 -- Canonical Finance accountant-shift schema for production reconciliation.
--- This is the only accountant-shift migration introduced on the reconciliation branch.
+-- Center scope uses Organization, the canonical production entity for external centers.
 
 CREATE TYPE "FinanceShiftStatus" AS ENUM ('OPEN', 'HANDOVER_PENDING', 'HANDED_OVER', 'CLOSED');
 CREATE TYPE "FinanceEntryType" AS ENUM ('REVENUE', 'EXPENSE', 'REFUND', 'ADJUSTMENT');
@@ -53,9 +53,7 @@ CREATE TABLE "FinanceShiftHandover" (
   CONSTRAINT "FinanceShiftHandover_pkey" PRIMARY KEY ("id")
 );
 
-CREATE UNIQUE INDEX "FinanceAccountantShift_active_accountant_center_key"
-ON "FinanceAccountantShift"("accountantAccountId", "centerOrgUnitId")
-WHERE "status" IN ('OPEN', 'HANDOVER_PENDING');
+CREATE UNIQUE INDEX "FinanceAccountantShift_active_accountant_center_key" ON "FinanceAccountantShift"("accountantAccountId", "centerOrgUnitId") WHERE "status" IN ('OPEN', 'HANDOVER_PENDING');
 CREATE INDEX "FinanceAccountantShift_center_status_idx" ON "FinanceAccountantShift"("centerOrgUnitId", "status");
 CREATE INDEX "FinanceAccountantShift_accountant_status_idx" ON "FinanceAccountantShift"("accountantAccountId", "status");
 CREATE UNIQUE INDEX "FinanceShiftEntry_paymentId_key" ON "FinanceShiftEntry"("paymentId") WHERE "paymentId" IS NOT NULL;
@@ -66,7 +64,7 @@ CREATE INDEX "FinanceShiftHandover_toShift_status_idx" ON "FinanceShiftHandover"
 CREATE INDEX "FinanceShiftHandover_receiver_status_idx" ON "FinanceShiftHandover"("toAccountantAccountId", "status");
 
 ALTER TABLE "FinanceAccountantShift" ADD CONSTRAINT "FinanceAccountantShift_accountantAccountId_fkey" FOREIGN KEY ("accountantAccountId") REFERENCES "Account"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "FinanceAccountantShift" ADD CONSTRAINT "FinanceAccountantShift_centerOrgUnitId_fkey" FOREIGN KEY ("centerOrgUnitId") REFERENCES "OrgUnit"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "FinanceAccountantShift" ADD CONSTRAINT "FinanceAccountantShift_centerOrgUnitId_fkey" FOREIGN KEY ("centerOrgUnitId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "FinanceAccountantShift" ADD CONSTRAINT "FinanceAccountantShift_reviewedByAccountId_fkey" FOREIGN KEY ("reviewedByAccountId") REFERENCES "Account"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "FinanceShiftEntry" ADD CONSTRAINT "FinanceShiftEntry_shiftId_fkey" FOREIGN KEY ("shiftId") REFERENCES "FinanceAccountantShift"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "FinanceShiftEntry" ADD CONSTRAINT "FinanceShiftEntry_paymentId_fkey" FOREIGN KEY ("paymentId") REFERENCES "Payment"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
