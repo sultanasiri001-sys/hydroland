@@ -13,7 +13,7 @@ const checks = [
   ['L1-L4 hierarchy is enforced', runtime.includes('LEVEL_WEIGHT') && runtime.includes('requiredLevel') && runtime.includes('maxLevel')],
   ['runtime service is registered and exported', moduleSource.includes('CenterRuntimeAccessService') && moduleSource.includes('exports: [CenterRuntimeAccessService]')],
   ['authenticated runtime snapshot endpoint exists', controller.includes("@Get('centers/:organizationId/runtime-access/mine')") && controller.includes('accessSnapshot(request.auth.accountId, organizationId)')],
-  ['central maxLevel API rejects missing/invalid values', centerAccessController.includes("BadRequestException('maxLevel is required.')") && centerAccessController.includes("maxLevel must be one of L1, L2, L3, or L4"))],
+  ['central maxLevel API rejects missing/invalid values', centerAccessController.includes("BadRequestException('maxLevel is required.')") && centerAccessController.includes('maxLevel must be one of L1, L2, L3, or L4')],
 ];
 
 const failed = checks.filter(([, ok]) => !ok);
