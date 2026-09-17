@@ -24,7 +24,23 @@ export class TripsService {
       const existing=await tx.booking.findUnique({where:{tripId_accountId:{tripId,accountId}}});
       if(existing&&existing.status!=='CANCELLED')throw new ConflictException('An active booking already exists for this trip.');
       const latestSafety=await tx.safetyChecklist.findFirst({where:{tripId},orderBy:{createdAt:'desc'},select:{decision:true,items:true}});
-      if(!latestSafety||latestSafety.decision!=='ALLOWED'){if(safetyPolicy.enforce)throw new ConflictException('Trip requires safety approval before booking.');if(safetyPolicy.review)reviewIssues.push('SAFETY_APPROVAL');}
+      // SafetyService now maps canonical compliance outcomes into this persisted gate:
+      // PASS -> ALLOWED, REVIEW -> REVIEW_REQUIRED, BLOCK/ESCALATE -> DEFERRED.
+      // Trips therefore never bypass a compliance BLOCK or ESCALATE by treating all
+      // non-ALLOWED states as the same unstructured checklist failure.
+      if(!latestSafety){
+        if(safetyPolicy.enforce)throw new ConflictException('Trip requires safety approval before booking.');
+        if(safetyPolicy.review)reviewIssues.push('SAFETY_APPROVAL_MISSING');
+      }else if(latestSafety.decision==='DEFERRED'){
+        if(safetyPolicy.enforce)throw new ConflictException('Trip is deferred by safety or compliance controls.');
+        reviewIssues.push('SAFETY_OR_COMPLIANCE_DEFERRED');
+      }else if(latestSafety.decision==='REVIEW_REQUIRED'){
+        if(safetyPolicy.enforce)throw new ConflictException('Trip requires safety or compliance review before booking.');
+        reviewIssues.push('SAFETY_OR_COMPLIANCE_REVIEW');
+      }else if(latestSafety.decision!=='ALLOWED'){
+        if(safetyPolicy.enforce)throw new ConflictException('Trip has an unsupported safety decision and requires review.');
+        reviewIssues.push('SAFETY_DECISION_UNKNOWN');
+      }
       const weatherSnapshot=latestSafety?this.weatherFromItems(latestSafety.items):null,weather=this.weatherGate.evaluate(weatherSnapshot,gateSettings);if(weather.blocking){if(weatherPolicy.enforce)throw new ConflictException(weather.reason||'Trip is unavailable because of weather conditions.');if(weatherPolicy.review)reviewIssues.push('WEATHER_GATE');}
       const used=await tx.booking.aggregate({where:{tripId,status:{in:['PENDING','CONFIRMED']}},_sum:{seats:true}});if((used._sum.seats??0)+seats>trip.capacity){if(capacityPolicy.enforce)throw new ConflictException('Trip capacity reached.');if(capacityPolicy.review)reviewIssues.push('CAPACITY_LIMIT');}
       let booking;
@@ -37,6 +53,7 @@ export class TripsService {
       const participantRows=await this.participants.ensureForBooking(booking.id,accountId,seats,tx);
       return{booking,participantRows,rebooked:Boolean(existing)};
     });
+    await this.audit.record({actorId:accountId,action:'BOOKING_COMPLIANCE_GATE_PASSED',resource:'Trip',resourceId:tripId,metadata:{accountId,tripId,seats,reviewIssues:[...new Set(reviewIssues)],safetyPolicyState:safetyPolicy.state,weatherPolicyState:weatherPolicy.state,capacityPolicyState:capacityPolicy.state}});
     return {...result.booking,participants:result.participantRows,rebooked:result.rebooked,policyReview:{required:reviewIssues.length>0,issues:[...new Set(reviewIssues)],states:{safety:safetyPolicy.state,weather:weatherPolicy.state,capacity:capacityPolicy.state}}};
   }
 
