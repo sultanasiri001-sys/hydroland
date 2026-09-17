@@ -34,6 +34,7 @@ export class HrService {
   }
 
   async transition(actorId: string, id: string, status: any) {
+    if (status === 'TERMINATED') throw new BadRequestException('HR_TERMINATION_REQUIRES_APPROVED_MOVEMENT');
     const current = await this.db.employment.findUnique({ where: { id } });
     if (!current) throw new NotFoundException('Employment not found');
     try { assertEmploymentTransition(current.status, status); } catch (e) { throw new BadRequestException(e instanceof Error ? e.message : 'Invalid employment transition'); }
@@ -96,7 +97,12 @@ export class HrService {
     }
     const row = await this.db.$transaction(async (tx) => {
       const approved = await tx.employmentMovement.update({ where: { id }, data: { status: 'EFFECTIVE', approvedByAccountId: actorId, effectiveAt: current.effectiveAt ?? new Date() } });
-      await tx.employment.update({ where: { id: current.employmentId }, data: { orgUnitId: current.toOrgUnitId ?? current.employment.orgUnitId, positionId: current.toPositionId ?? current.employment.positionId } });
+      await tx.employment.update({
+        where: { id: current.employmentId },
+        data: current.type === 'TERMINATION'
+          ? { status: 'TERMINATED', endsAt: approved.effectiveAt }
+          : { orgUnitId: current.toOrgUnitId ?? current.employment.orgUnitId, positionId: current.toPositionId ?? current.employment.positionId },
+      });
       return approved;
     });
     await this.audit.record({ actorId, action: 'HR_MOVEMENT_EFFECTIVE', resource: 'EmploymentMovement', resourceId: id });
