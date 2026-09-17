@@ -98,4 +98,35 @@ export class HrService {
     return row;
   }
 
+  async approveCompensation(actorId: string, id: string, approve: boolean) {
+    const current = await this.db.compensationTerm.findUnique({ where: { id }, include: { employment: true } });
+    if (!current) throw new NotFoundException('Compensation term not found');
+    const row = await this.db.compensationTerm.update({ where: { id }, data: { status: approve ? 'APPROVED' : 'REJECTED', approvedByAccountId: actorId } });
+    await this.audit.record({ actorId, action: approve ? 'HR_COMPENSATION_APPROVED' : 'HR_COMPENSATION_REJECTED', resource: 'CompensationTerm', resourceId: id });
+    return row;
+  }
+
+  async decideRelationsCase(actorId: string, id: string, approve: boolean, decision?: string) {
+    const current = await this.db.employeeRelationsCase.findUnique({ where: { id } });
+    if (!current) throw new NotFoundException('Employee relations case not found');
+    if (current.openedByAccountId === actorId || current.reviewedByAccountId === actorId) throw new BadRequestException('HR_SEGREGATION_OF_DUTIES_DENIED');
+    const row = await this.db.employeeRelationsCase.update({ where: { id }, data: { status: approve ? 'APPROVED' : 'REJECTED', approvedByAccountId: actorId, decision } });
+    await this.audit.record({ actorId, action: approve ? 'HR_RELATIONS_DECISION_APPROVED' : 'HR_RELATIONS_DECISION_REJECTED', resource: 'EmployeeRelationsCase', resourceId: id });
+    return row;
+  }
+
+  async completeOffboarding(actorId: string, id: string, input: { clearance?: object; iamRevokedAt?: string }) {
+    const current = await this.db.offboardingCase.findUnique({ where: { id }, include: { employment: true } });
+    if (!current) throw new NotFoundException('Offboarding case not found');
+    if (!input.iamRevokedAt) throw new BadRequestException('HR_IAM_REVOCATION_REQUIRED');
+    const iamRevokedAt = new Date(input.iamRevokedAt);
+    const row = await this.db.$transaction(async (tx) => {
+      const closed = await tx.offboardingCase.update({ where: { id }, data: { status: 'CLOSED', clearance: input.clearance as never, iamRevokedAt, closedAt: new Date() } });
+      if (current.employment.status === 'TERMINATED') await tx.employment.update({ where: { id: current.employmentId }, data: { status: 'OFFBOARDED' } });
+      return closed;
+    });
+    await this.audit.record({ actorId, action: 'HR_OFFBOARDING_COMPLETED', resource: 'OffboardingCase', resourceId: id, metadata: { iamRevokedAt: iamRevokedAt.toISOString() } });
+    return row;
+  }
+
 }
