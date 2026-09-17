@@ -155,10 +155,41 @@ export class HrService {
     return row;
   }
 
+  async reviewRelationsCase(actorId: string, id: string, approve: boolean) {
+    await this.requireHrReviewer(actorId);
+    const current = await this.db.employeeRelationsCase.findUnique({ where: { id } });
+    if (!current) throw new NotFoundException('Employee relations case not found');
+    if (current.openedByAccountId === actorId) throw new ForbiddenException('HR_SELF_REVIEW_DENIED');
+    if (current.status !== 'SUBMITTED' && current.status !== 'HR_REVIEW') throw new BadRequestException('HR_RELATIONS_NOT_REVIEWABLE');
+    const row = await this.db.employeeRelationsCase.update({ where: { id }, data: { status: approve ? 'APPROVAL_REQUIRED' : 'REJECTED', reviewedByAccountId: actorId } });
+    await this.audit.record({ actorId, action: approve ? 'HR_RELATIONS_REVIEWED' : 'HR_RELATIONS_REJECTED', resource: 'EmployeeRelationsCase', resourceId: id });
+    return row;
+  }
+
+  async assessPerformance(actorId: string, id: string, input: { managerAssessment?: object; developmentPlan?: object }) {
+    const current = await this.db.performanceCycle.findUnique({ where: { id } });
+    if (!current) throw new NotFoundException('Performance cycle not found');
+    if (!['DRAFT','IN_PROGRESS'].includes(current.status)) throw new BadRequestException('HR_PERFORMANCE_NOT_ASSESSABLE');
+    const row = await this.db.performanceCycle.update({ where: { id }, data: { status: 'MANAGER_ASSESSED', managerAssessment: input.managerAssessment as never, developmentPlan: input.developmentPlan as never } });
+    await this.audit.record({ actorId, action: 'HR_PERFORMANCE_MANAGER_ASSESSED', resource: 'PerformanceCycle', resourceId: id });
+    return row;
+  }
+
+  async reviewPerformance(actorId: string, id: string, input: { hrReview?: object; approve: boolean }) {
+    await this.requireHrReviewer(actorId);
+    const current = await this.db.performanceCycle.findUnique({ where: { id } });
+    if (!current) throw new NotFoundException('Performance cycle not found');
+    if (current.status !== 'MANAGER_ASSESSED') throw new BadRequestException('HR_PERFORMANCE_REVIEW_NOT_READY');
+    const row = await this.db.performanceCycle.update({ where: { id }, data: { status: input.approve ? 'CLOSED' : 'CHANGES_REQUIRED', hrReview: input.hrReview as never } });
+    await this.audit.record({ actorId, action: input.approve ? 'HR_PERFORMANCE_REVIEWED' : 'HR_PERFORMANCE_CHANGES_REQUIRED', resource: 'PerformanceCycle', resourceId: id });
+    return row;
+  }
+
   async decideRelationsCase(actorId: string, id: string, approve: boolean, decision?: string) {
     await this.requireExecutiveApprover(actorId);
     const current = await this.db.employeeRelationsCase.findUnique({ where: { id } });
     if (!current) throw new NotFoundException('Employee relations case not found');
+    if (current.status !== 'APPROVAL_REQUIRED' || !current.reviewedByAccountId) throw new BadRequestException('HR_REVIEW_REQUIRED');
     if (current.openedByAccountId === actorId || current.reviewedByAccountId === actorId) throw new BadRequestException('HR_SEGREGATION_OF_DUTIES_DENIED');
     const row = await this.db.employeeRelationsCase.update({ where: { id }, data: { status: approve ? 'APPROVED' : 'REJECTED', approvedByAccountId: actorId, decision } });
     await this.audit.record({ actorId, action: approve ? 'HR_RELATIONS_DECISION_APPROVED' : 'HR_RELATIONS_DECISION_REJECTED', resource: 'EmployeeRelationsCase', resourceId: id });
