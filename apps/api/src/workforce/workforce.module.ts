@@ -5,6 +5,7 @@ import { AuthModule } from '../auth/auth.module';
 import { DatabaseModule } from '../database/database.module';
 import { CenterAccessController } from './center-access.controller';
 import { CenterAccessService } from './center-access.service';
+import { CenterRuntimeAccessService } from './center-runtime-access.service';
 import { WorkforceController } from './workforce.controller';
 import { WorkforceHiringController } from './workforce-hiring.controller';
 import { WorkforceService } from './workforce.service';
@@ -12,6 +13,7 @@ import { WorkforceService } from './workforce.service';
 @Module({
   imports: [DatabaseModule, AuthModule, AdminModule, AuditModule],
   controllers: [WorkforceController, WorkforceHiringController, CenterAccessController],
-  providers: [WorkforceService, CenterAccessService],
+  providers: [WorkforceService, CenterAccessService, CenterRuntimeAccessService],
+  exports: [CenterRuntimeAccessService],
 })
 export class WorkforceModule {}
