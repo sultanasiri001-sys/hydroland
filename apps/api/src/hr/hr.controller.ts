@@ -14,4 +14,12 @@ export class HrController {
   @Post('employments/:id/contracts') contract(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: any) { return this.hr.addContract(r.auth.accountId, id, b); }
   @Post('employments/:id/leave') leave(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: any) { return this.hr.requestLeave(r.auth.accountId, id, b); }
   @Post('employments/:id/attendance') attendance(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: any) { return this.hr.attendance(r.auth.accountId, id, b); }
+  @Post('employments/:id/movements') movement(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: any) { return this.hr.createMovement(r.auth.accountId, id, b); }
+  @Post('employments/:id/shifts') shift(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: any) { return this.hr.scheduleShift(r.auth.accountId, id, b); }
+  @Patch('leave/:id/decision') leaveDecision(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: { approve: boolean }) { return this.hr.approveLeave(r.auth.accountId, id, b.approve); }
+  @Post('employments/:id/compensation') compensation(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: any) { return this.hr.addCompensation(r.auth.accountId, id, b); }
+  @Post('employments/:id/performance') performance(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: any) { return this.hr.createPerformanceCycle(r.auth.accountId, id, b); }
+  @Post('employments/:id/relations-cases') relations(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: any) { return this.hr.openRelationsCase(r.auth.accountId, id, b); }
+  @Post('employments/:id/offboarding') offboarding(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: any) { return this.hr.openOffboarding(r.auth.accountId, id, b); }
+
 }
