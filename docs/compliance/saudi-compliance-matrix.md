@@ -48,14 +48,21 @@ All 19 master authorities are represented: Ministry of Sport, Ministry of Touris
 | HARD-PDPL-002 | Article 24(5): affected-subject notification without undue delay when trigger is met. | ESCALATE | Trigger/notice/delivery evidence. |
 | HARD-ECOM-001 | E-commerce termination/return right subject to predicates/exceptions. | REFUND/REVIEW | Category/use/exception/refund evidence. |
 | HARD-ECOM-002 | Qualifying delayed performance cancellation/refund subject to force-majeure assessment. | ESCALATE + refund | Dates/delay/force-majeure/settlement. |
-| HARD-TGA-VESSEL-001 | TGA executive rules for inspection/survey of small vessels not subject to international conventions establish competent-authority/authorised-company inspection and technical evaluation for registered, under-construction or repair vessels/units, with mandatory certificates/reports used to evidence compliance and seaworthiness. | REVIEW -> BLOCK after vessel-class applicability is resolved | Vessel class/use/size, registration, survey type/date, authorised surveyor, mandatory certificate/report, validity, deficiencies and closure evidence. |
-| HARD-CD-FACILITY-001 | Civil Defense Salamah service enables establishments with valid commercial registrations to obtain a safety licence after selecting the activity and submitting activity-specific documents. Published requirements include building/occupancy evidence, safety-system maintenance contract and establishment insurance evidence. | BLOCK before physical-centre activation when Salamah licence applies | CR, activity class, facility/building evidence, safety-maintenance contract, insurance evidence, Salamah licence/status/validity. |
-| HARD-CD-FACILITY-002 | Civil Defense publishes activity/building-specific fire/life-safety regulations; the applicable regulation depends on actual premises/use. Office/administrative rules require compliance evidence and recognise Civil Defense inspection/enforcement. | REVIEW -> BLOCK after facility/use classification | Facility use/occupancy, applicable regulation, engineering/safety evidence, inspection/corrective actions, fire systems and maintenance records. |
-| HARD-INS-001 | Insurance Authority confirms mandatory cooperative third-party liability insurance applies to high-risk/crowded establishments and activities under Council of Ministers Decision 103; exact activity inclusion must be determined from the current implementation scope rather than inferred. | REVIEW -> BLOCK only when activity is listed/in scope | Activity code/class, applicable decision/phase, insurer/policy, coverage dates, verification and renewal evidence. |
+| HARD-TGA-VESSEL-001 | TGA small-vessel survey framework requires applicable technical inspection/evaluation and certificates/reports for vessel classes within scope. | REVIEW -> BLOCK after vessel-class applicability | Vessel class/use/size, registration, survey, authorised surveyor, certificate/report, validity, defects/closure. |
+| HARD-CD-FACILITY-001 | Civil Defense Salamah service provides activity-specific safety licensing for establishments; facility activation depends on the selected activity and required evidence. | BLOCK before physical-centre activation when applicable | CR, activity class, premises evidence, safety maintenance, insurance where required, Salamah licence/status/validity. |
+| HARD-CD-FACILITY-002 | Civil Defense fire/life-safety regulation depends on actual facility use/occupancy. | REVIEW -> BLOCK after facility classification | Use/occupancy, applicable regulation, engineering/safety evidence, inspections/corrective actions, systems/maintenance. |
+| HARD-BALADY-001 | Balady's official Commercial Activities and Municipal Requirements service resolves requirements by detailed activity name or ISIC activity. Ministry guidance states municipal licensing is required before practising commercial activity within cities. | BLOCK before physical-site activation once exact activity classification is resolved | CR entity, detailed activity name, ISIC/activity code, municipality/location, municipal licence number/status/validity, linked requirements and approvals. |
+| HARD-BALADY-002 | Balady commercial-licence workflow coordinates the commercial activity licence with Civil Defense safety permit for approved commercial activities. HYDROLAND therefore keeps municipal and Salamah evidence separate but linked under one facility-activation case. | BLOCK when both are applicable | Municipal licence + Salamah permit relationship, activity code, facility ID/address, issue/expiry dates and verification status. |
+| HARD-INS-001 | Insurance Authority confirms compulsory cooperative third-party liability insurance for crowded places/high-risk activities under Council of Ministers Decision 103. On 16 Aug 2026 the Authority announced staged implementation and stated the policy becomes a core requirement for Civil Defense licensing of activities included in the mandatory scope. | REVIEW -> BLOCK only when current activity/phase is in scope | Exact activity code/class, implementation phase/effective date, policy insurer/number, coverage dates/limits, verification/renewal and linked Salamah case. |
+| HARD-INS-002 | Insurance Authority's official rules catalogue separately contains Marine Insurance Coverage Instructions. These rules do not by themselves prove that every HYDROLAND boat or diving activity must carry a particular marine policy; the obligation source must be identified from the vessel/activity/licensing framework before BLOCK. | REVIEW | Vessel/activity class, controlling obligation source, policy type, insured vessel/activity, insurer, coverage/expiry and verification. |
 
 ### Hard-gate implementation rule
 
-A `BLOCK` may stop activation only when applicability is true. Missing classification routes to `REVIEW`. Vessel product conformity (SASO), vessel registration/survey (TGA), sailing permit (Border Guard) and diving-trip vessel approval (SWSDF) remain separate evidence layers. Facility municipal licensing and Civil Defense Salamah/fire-safety controls also remain separate but coordinated activation gates. Insurance Authority licensing of insurers/intermediaries is distinct from a customer's or facility's obligation to hold an insurance policy.
+A `BLOCK` may stop activation only when applicability is true. Missing classification routes to `REVIEW`. Vessel product conformity (SASO), vessel registration/survey (TGA), sailing permit (Border Guard) and diving-trip vessel approval (SWSDF) remain separate evidence layers. Facility activation uses a canonical activity classifier first, then resolves Balady municipal licensing, Civil Defense/Salamah and mandatory-insurance predicates without duplicating activity records.
+
+The municipal classifier must not guess an ISIC code from a marketing label such as 'diving centre'. HYDROLAND stores each actual revenue/operating activity separately (for example: diving-centre services, marine-trip operation, equipment rental, retail/e-commerce and training) and resolves the current official detailed activity/ISIC selection before enabling a statutory BLOCK.
+
+Insurance Authority licensing of insurers/intermediaries is distinct from a HYDROLAND facility's duty to hold a policy. For Decision 103 insurance, the platform must store the implementation phase/effective date and the exact listed activity; staged implementation means a generic high-risk label is insufficient for an automatic BLOCK.
 
 ## SASO product-level classification
 
@@ -66,32 +73,41 @@ A `BLOCK` may stop activation only when applicability is true. Missing classific
 | HARD-SASO-BOAT-001 | Watercraft/recreational craft | REVIEW -> BLOCK at procurement/import/acceptance when applicable | Manufacturer/model/HIN, category/use, conformity/technical file. |
 | HARD-SASO-PPE-001 | PPE/clothing | REVIEW -> BLOCK when classified as regulated PPE | Product/risk class, supplier/model/batch, standard/conformity/instructions. |
 
+## HYDROLAND activity-classification model
+
+Before facility or insurance activation, create one canonical `ActivityClassification` record per actual activity with: legal entity/CR, operating unit/centre, public activity label, official detailed activity name, ISIC/activity code, source authority, source version/date, physical/e-commerce flag, premises/use, geography, regulator set, municipal-licence requirement, Salamah requirement, Decision-103 insurance status/phase and verification timestamp.
+
+Target activities to resolve against Balady's live activity catalogue are: diving-centre operations, diving/snorkeling trip organisation, marine craft/boat trip operation, diving/sports equipment rental, diving/sports equipment retail/e-commerce, diving training/course delivery, and any compressor/cylinder filling or maintenance workshop activity actually offered. These remain `CLASSIFICATION_PENDING` until the exact current official activity entry is selected; no guessed ISIC number is stored.
+
 ## Operational-control mapping
 
-- CMB-001 vessel gate now separates TGA registration/survey/certificates from SASO product conformity, Border Guard sailing permit and SWSDF diving-trip approval.
+- CMB-001 vessel gate separates TGA registration/survey/certificates from SASO conformity, Border Guard sailing permit and SWSDF approval.
 - CMB-002 sailing permit uses HARD-SAIL-001.
-- CMB-004 diver credential uses HARD-DIVE-001; depth entitlement remains credential-framework dependent.
+- CMB-004 diver credential uses HARD-DIVE-001.
 - CMB-006 incident/escalation routes SWSDF/NCEC/PDPL incidents to separate workflows/deadlines.
-- Physical-centre activation requires activity classification first, then applicable Balady and Civil Defense/Salamah evidence; unknown facility use routes to REVIEW.
-- Insurance gate first classifies the activity against the current mandatory-insurance scope; no universal diving-centre/boat insurance BLOCK is invented from Insurance Authority rules alone.
+- Facility activation now uses HARD-BALADY-001/002 + HARD-CD-FACILITY-001/002 and a single canonical ActivityClassification source of truth.
+- Decision-103 insurance uses HARD-INS-001 and cannot become BLOCK until exact activity + current implementation phase are verified.
+- Marine insurance uses HARD-INS-002 and remains separate from Decision-103 facility liability insurance.
 - Equipment procurement/commissioning uses SASO product classification before mandatory conformity BLOCK.
 
 ## Required implementation fields
 
 Each regulatory control stores authority, instrument, exact requirement/source/version/effective date, applicability predicate/result, owner, L1-L4, workflow, enforcement mode, evidence, validity/expiry, audit/retention and verification status.
 
-Vessel records additionally store vessel class/use/size, registration, survey type, authorised surveyor, certificates, defects/corrective closure and separate TGA/BG/SWSDF/SASO statuses. Facility records store CR/activity code, municipal licence, premises/use/occupancy, Salamah licence, fire-safety regulation, safety-system maintenance and insurance evidence. Insurance records store obligation source/phase, policy type/provider/number, insured activity/asset, coverage/expiry and verification.
+Facility records store CR/activity code, municipal licence, premises/use/occupancy, Salamah licence, fire-safety regulation, safety-system maintenance and insurance evidence. Insurance records store obligation source/phase/effective date, exact activity, policy type/provider/number, insured activity/asset, coverage/expiry and verification. Vessel records retain separate TGA/BG/SWSDF/SASO statuses.
 
 ## Source registry
 
-- TGA — executive regulation for inspection/survey of small vessels not subject to international conventions; maritime safety/certificate framework.
-- Civil Defense — Salamah electronic licensing service and official fire/life-safety regulations catalogue.
-- Insurance Authority — official regulations catalogue and mandatory-insurance guidance; activity obligation must be tied to its controlling decision/current implementation scope.
-- Existing verified sources: SRSA, Border Guard/ZAWIL, MEWA/NCEC, NCW, Tourism, Sport/SWSDF, MHRSD, Municipalities/Balady, SASO, SDAIA/PDPL, NCA, Commerce, TVTC and ZATCA.
+- Balady — Commercial Activities and Municipal Requirements lookup by detailed activity/ISIC; commercial licensing services.
+- Ministry of Municipalities and Housing — municipal licensing requirement before commercial activity.
+- Civil Defense — Salamah licensing and fire/life-safety framework.
+- Insurance Authority — Decision 103 implementation announcement (16 Aug 2026), mandatory third-party liability policy for in-scope crowded/high-risk activities, official regulations catalogue and Marine Insurance Coverage Instructions.
+- TGA — small-vessel survey/inspection framework.
+- Existing verified sources: SRSA, Border Guard/ZAWIL, MEWA/NCEC, NCW, Tourism, Sport/SWSDF, MHRSD, SASO, SDAIA/PDPL, NCA, Commerce, TVTC and ZATCA.
 
 ## Next verification batches
 
-1. Verify the exact current TGA vessel class/registration/survey/certificate rules for the HYDROLAND vessel categories that will be onboarded; SOLAS rules are not to be generalized to small domestic recreational craft.
-2. Resolve actual Balady activity/ISIC classifications for diving centres, marine-trip operations, equipment rental/store and training premises, then map the corresponding Civil Defense facility requirements.
-3. Resolve the current mandatory third-party-liability insurance activity list/phase and test whether any HYDROLAND centre/activity is actually included.
-4. After those applicability classifiers are fixed, convert the verified matrix into persisted compliance-control records, workflow gates, tests and CI validation.
+1. Resolve exact live Balady detailed activity/ISIC entries for each HYDROLAND physical activity; do not guess codes if the public catalogue does not expose the entry in a verifiable form.
+2. Obtain/verify the current Decision-103 mandatory-insurance activity list and staged implementation mapping; test each resolved HYDROLAND activity against it.
+3. Verify remaining exact TGA vessel class/registration/survey/certificate rules for the vessel categories HYDROLAND will onboard.
+4. Once these classifiers are fixed, close planning hardening and convert the verified matrix into persisted compliance-control records, workflow gates, tests and CI validation.
