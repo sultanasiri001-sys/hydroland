@@ -1,7 +1,7 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
-import { CenterPermissionLevel } from '../centers/center-permissions.domain';
+import type { CenterPermissionLevel } from '../centers/center-permissions.domain';
 
 const LEVEL_WEIGHT: Record<CenterPermissionLevel, number> = { L1: 1, L2: 2, L3: 3, L4: 4 };
 
@@ -30,34 +30,31 @@ export class CenterRuntimeAccessService {
         ws."id" AS "seatId",
         ws."organizationId" AS "organizationId",
         wcd."departmentId" AS "departmentId",
-        wd."code" AS "departmentCode",
+        target."code" AS "departmentCode",
         wcd."maxLevel" AS "maxLevel",
         wcd."managerAccessEnabled" AS "managerAccessEnabled",
         wp."canManageExternalCenter" AS "canManageExternalCenter"
       FROM "WorkforceSeat" ws
       JOIN "WorkforcePosition" wp ON wp."id" = ws."positionId"
-      JOIN "WorkforceDepartment" wd
-        ON wd."id" = COALESCE(ws."technicalDepartmentId", wp."departmentId")
+      JOIN "WorkforceDepartment" target ON target."code" = ${input.departmentCode}
       JOIN "WorkforceCenterDepartment" wcd
         ON wcd."organizationId" = ws."organizationId"
-       AND wcd."departmentId" = wd."id"
+       AND wcd."departmentId" = target."id"
       WHERE ws."accountId" = ${input.accountId}::uuid
         AND ws."organizationId" = ${input.organizationId}::uuid
         AND ws."scope" = 'EXTERNAL_CENTER'
         AND ws."accessStatus" = 'ENABLED'
-        AND wd."status" = 'ENABLED'
+        AND target."status" = 'ENABLED'
         AND wcd."status" = 'ENABLED'
-        AND wd."code" = ${input.departmentCode}
+        AND (
+          (wp."canManageExternalCenter" = TRUE AND wcd."managerAccessEnabled" = TRUE)
+          OR target."id" = COALESCE(ws."technicalDepartmentId", wp."departmentId")
+        )
       LIMIT 1
     `);
 
     const access = rows[0];
     if (!access) throw new ForbiddenException('No active center department access is assigned to this account.');
-
-    const isManager = access.canManageExternalCenter;
-    if (isManager && !access.managerAccessEnabled) {
-      throw new ForbiddenException('Center manager access is disabled for this department.');
-    }
 
     if (LEVEL_WEIGHT[access.maxLevel] < LEVEL_WEIGHT[input.requiredLevel]) {
       throw new ForbiddenException(`This operation requires ${input.requiredLevel} center access.`);
@@ -72,25 +69,26 @@ export class CenterRuntimeAccessService {
         ws."id" AS "seatId",
         ws."organizationId" AS "organizationId",
         wcd."departmentId" AS "departmentId",
-        wd."code" AS "departmentCode",
-        wd."nameAr" AS "departmentNameAr",
+        target."code" AS "departmentCode",
+        target."nameAr" AS "departmentNameAr",
         wcd."maxLevel" AS "maxLevel",
         wcd."managerAccessEnabled" AS "managerAccessEnabled",
         wp."canManageExternalCenter" AS "canManageExternalCenter"
       FROM "WorkforceSeat" ws
       JOIN "WorkforcePosition" wp ON wp."id" = ws."positionId"
-      JOIN "WorkforceDepartment" wd
-        ON wd."id" = COALESCE(ws."technicalDepartmentId", wp."departmentId")
-      JOIN "WorkforceCenterDepartment" wcd
-        ON wcd."organizationId" = ws."organizationId"
-       AND wcd."departmentId" = wd."id"
+      JOIN "WorkforceCenterDepartment" wcd ON wcd."organizationId" = ws."organizationId"
+      JOIN "WorkforceDepartment" target ON target."id" = wcd."departmentId"
       WHERE ws."accountId" = ${accountId}::uuid
         AND ws."organizationId" = ${organizationId}::uuid
         AND ws."scope" = 'EXTERNAL_CENTER'
         AND ws."accessStatus" = 'ENABLED'
-        AND wd."status" = 'ENABLED'
+        AND target."status" = 'ENABLED'
         AND wcd."status" = 'ENABLED'
-      ORDER BY wd."displayOrder" ASC
+        AND (
+          (wp."canManageExternalCenter" = TRUE AND wcd."managerAccessEnabled" = TRUE)
+          OR target."id" = COALESCE(ws."technicalDepartmentId", wp."departmentId")
+        )
+      ORDER BY target."displayOrder" ASC
     `);
   }
 }
