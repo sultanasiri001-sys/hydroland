@@ -15,6 +15,8 @@ export class HrController {
   @Post('employments/:id/leave') leave(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: any) { return this.hr.requestLeave(r.auth.accountId, id, b); }
   @Post('employments/:id/attendance') attendance(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: any) { return this.hr.attendance(r.auth.accountId, id, b); }
   @Post('employments/:id/movements') movement(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: any) { return this.hr.createMovement(r.auth.accountId, id, b); }
+  @Patch('movements/:id/review') movementReview(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: { approve: boolean }) { return this.hr.reviewMovement(r.auth.accountId, id, b.approve); }
+  @Patch('movements/:id/decision') movementDecision(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: { approve: boolean }) { return this.hr.approveMovement(r.auth.accountId, id, b.approve); }
   @Post('employments/:id/shifts') shift(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: any) { return this.hr.scheduleShift(r.auth.accountId, id, b); }
   @Patch('leave/:id/decision') leaveDecision(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: { approve: boolean }) { return this.hr.approveLeave(r.auth.accountId, id, b.approve); }
   @Post('employments/:id/compensation') compensation(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: any) { return this.hr.addCompensation(r.auth.accountId, id, b); }
