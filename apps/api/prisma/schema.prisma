@@ -501,7 +501,7 @@ model EmploymentMovement {
   toOrgUnitId String?
   fromPositionId String?
   toPositionId String?
-  requestedByAccountId String
+  requestedByAccountId String?
   reviewedByAccountId String?
   approvedByAccountId String?
   effectiveAt DateTime?
