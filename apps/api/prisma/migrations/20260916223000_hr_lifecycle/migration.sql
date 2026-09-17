@@ -20,9 +20,6 @@ CREATE TABLE "EmploymentMovement" ("id" TEXT NOT NULL,"employmentId" TEXT NOT NU
 CREATE INDEX "EmploymentMovement_employmentId_status_idx" ON "EmploymentMovement"("employmentId","status");
 CREATE TABLE "LeaveRequest" ("id" TEXT NOT NULL,"employmentId" TEXT NOT NULL,"type" TEXT NOT NULL,"status" "HrRequestStatus" NOT NULL DEFAULT 'DRAFT',"startsAt" TIMESTAMP(3) NOT NULL,"endsAt" TIMESTAMP(3) NOT NULL,"requestedByAccountId" TEXT NOT NULL,"approvedByAccountId" TEXT,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,CONSTRAINT "LeaveRequest_pkey" PRIMARY KEY ("id"));
 CREATE INDEX "LeaveRequest_employmentId_status_idx" ON "LeaveRequest"("employmentId","status");
-CREATE INDEX "PerformanceCycle_employmentId_periodStart_periodEnd_idx" ON "PerformanceCycle"("employmentId","periodStart","periodEnd");
-CREATE INDEX "EmployeeRelationsCase_employmentId_status_idx" ON "EmployeeRelationsCase"("employmentId","status");
-CREATE INDEX "OffboardingCase_employmentId_status_idx" ON "OffboardingCase"("employmentId","status");
 CREATE TABLE "AttendanceEntry" ("id" TEXT NOT NULL,"employmentId" TEXT NOT NULL,"workDate" DATE NOT NULL,"clockInAt" TIMESTAMP(3),"clockOutAt" TIMESTAMP(3),"status" TEXT NOT NULL DEFAULT 'PENDING',"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,CONSTRAINT "AttendanceEntry_pkey" PRIMARY KEY ("id"));
 CREATE UNIQUE INDEX "AttendanceEntry_employmentId_workDate_key" ON "AttendanceEntry"("employmentId","workDate");
 CREATE TABLE "ShiftAssignment" ("id" TEXT NOT NULL,"employmentId" TEXT NOT NULL,"startsAt" TIMESTAMP(3) NOT NULL,"endsAt" TIMESTAMP(3) NOT NULL,"shiftCode" TEXT,"status" TEXT NOT NULL DEFAULT 'SCHEDULED',"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,CONSTRAINT "ShiftAssignment_pkey" PRIMARY KEY ("id"));
@@ -34,6 +31,10 @@ CREATE INDEX "CompensationTerm_status_idx" ON "CompensationTerm"("status");
 CREATE TABLE "PerformanceCycle" ("id" TEXT NOT NULL,"employmentId" TEXT NOT NULL,"periodStart" DATE NOT NULL,"periodEnd" DATE NOT NULL,"status" TEXT NOT NULL DEFAULT 'DRAFT',"goals" JSONB,"managerAssessment" JSONB,"hrReview" JSONB,"developmentPlan" JSONB,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,CONSTRAINT "PerformanceCycle_pkey" PRIMARY KEY ("id"));
 CREATE TABLE "EmployeeRelationsCase" ("id" TEXT NOT NULL,"employmentId" TEXT NOT NULL,"caseType" TEXT NOT NULL,"status" "HrRequestStatus" NOT NULL DEFAULT 'DRAFT',"openedByAccountId" TEXT NOT NULL,"reviewedByAccountId" TEXT,"approvedByAccountId" TEXT,"summary" TEXT,"decision" TEXT,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,CONSTRAINT "EmployeeRelationsCase_pkey" PRIMARY KEY ("id"));
 CREATE TABLE "OffboardingCase" ("id" TEXT NOT NULL,"employmentId" TEXT NOT NULL,"status" "HrRequestStatus" NOT NULL DEFAULT 'DRAFT',"reason" TEXT,"lastWorkingAt" TIMESTAMP(3),"clearance" JSONB,"iamRevokedAt" TIMESTAMP(3),"closedAt" TIMESTAMP(3),"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,CONSTRAINT "OffboardingCase_pkey" PRIMARY KEY ("id"));
+
+CREATE INDEX "PerformanceCycle_employmentId_periodStart_periodEnd_idx" ON "PerformanceCycle"("employmentId","periodStart","periodEnd");
+CREATE INDEX "EmployeeRelationsCase_employmentId_status_idx" ON "EmployeeRelationsCase"("employmentId","status");
+CREATE INDEX "OffboardingCase_employmentId_status_idx" ON "OffboardingCase"("employmentId","status");
 
 ALTER TABLE "OrgUnit" ADD CONSTRAINT "OrgUnit_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "OrgUnit" ADD CONSTRAINT "OrgUnit_parentId_fkey" FOREIGN KEY ("parentId") REFERENCES "OrgUnit"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
