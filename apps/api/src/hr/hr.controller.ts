@@ -24,6 +24,7 @@ export class HrController {
   @Post('employments/:id/relations-cases') relations(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: any) { return this.hr.openRelationsCase(r.auth.accountId, id, b); }
   @Post('employments/:id/offboarding') offboarding(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: any) { return this.hr.openOffboarding(r.auth.accountId, id, b); }
 
+  @Patch('compensation/:id/review') compensationReview(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: { approve: boolean }) { return this.hr.reviewCompensation(r.auth.accountId, id, b.approve); }
   @Patch('compensation/:id/decision') compensationDecision(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: { approve: boolean }) { return this.hr.approveCompensation(r.auth.accountId, id, b.approve); }
   @Patch('relations-cases/:id/review') relationsReview(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: { approve: boolean }) { return this.hr.reviewRelationsCase(r.auth.accountId, id, b.approve); }
   @Patch('performance/:id/assessment') performanceAssessment(@Req() r: AuthenticatedRequest, @Param('id') id: string, @Body() b: { managerAssessment?: object; developmentPlan?: object }) { return this.hr.assessPerformance(r.auth.accountId, id, b); }
