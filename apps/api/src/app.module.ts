@@ -17,5 +17,6 @@ import { ProfileModule } from './profile/profile.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { TrainingModule } from './training/training.module';
 import { WorkforceModule } from './workforce/workforce.module';
-@Module({ imports:[DatabaseModule,AuthModule,ProfileModule,CredentialsModule,ActivationModule,AuditModule,NotificationsModule,TripsModule,SafetyModule,PaymentsModule,AdminModule,DiveLogsModule,OrganizationsModule,TrainingModule,IntegrationModule,AgentModule,WorkforceModule], controllers:[HealthController] })
+import { HrModule } from './hr/hr.module';
+@Module({ imports:[DatabaseModule,AuthModule,ProfileModule,CredentialsModule,ActivationModule,AuditModule,NotificationsModule,TripsModule,SafetyModule,PaymentsModule,AdminModule,DiveLogsModule,OrganizationsModule,TrainingModule,IntegrationModule,AgentModule,WorkforceModule,HrModule], controllers:[HealthController] })
 export class AppModule {}
