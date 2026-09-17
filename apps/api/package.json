@@ -11,7 +11,8 @@
     "db:generate": "prisma generate",
     "db:validate": "prisma validate",
     "validate:phase10": "node scripts/phase10-validation.mjs",
-    "validate:phase12": "node scripts/phase12-validation.mjs"
+    "validate:phase12": "node scripts/phase12-validation.mjs",
+    "validate:compliance-hardening": "node scripts/validate-compliance-hardening.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",
