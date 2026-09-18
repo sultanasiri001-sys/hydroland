@@ -11,7 +11,11 @@
     "db:generate": "prisma generate",
     "db:validate": "prisma validate",
     "validate:phase10": "node scripts/phase10-validation.mjs",
-    "validate:phase12": "node scripts/phase12-validation.mjs"
+    "validate:phase12": "node scripts/phase12-validation.mjs",
+    "validate:hr": "node scripts/hr-validation.mjs",
+    "reconcile:hr-schema": "node scripts/hr-schema-reconciliation.mjs",
+    "validate:hr:prisma": "prisma validate",
+    "test:hr-policy": "ts-node src/hr/hr-policy.spec.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",

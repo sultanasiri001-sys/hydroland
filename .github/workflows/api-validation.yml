@@ -2,7 +2,7 @@ name: API validation
 on:
   pull_request:
   push:
-    branches: [main, feat/database-foundation]
+    branches: [main, feat/database-foundation, fix/hr-canonical-completion]
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -15,6 +15,10 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm --workspace @hydroland/api run db:generate
+      - run: npm run validate:hr -w @hydroland/api
+      - run: npm run test:hr-policy -w @hydroland/api
+      - run: npm run reconcile:hr-schema -w @hydroland/api
+      - run: npm run validate:hr:prisma -w @hydroland/api
       - run: npm run validate:phase10 -w @hydroland/api
       - run: npm run validate:phase12 -w @hydroland/api
       - run: npm run typecheck
