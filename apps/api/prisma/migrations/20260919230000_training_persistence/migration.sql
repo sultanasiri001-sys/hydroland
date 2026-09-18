@@ -1,5 +1,28 @@
--- Training persistence foundation
-CREATE TYPE "TrainingEnrollmentStatus" AS ENUM ('PENDING','ACTIVE','SUSPENDED','COMPLETED','CANCELLED');
+-- Reconcile legacy training persistence safely.
+-- Production may already contain an empty legacy TrainingEnrollment table and
+-- TrainingEnrollmentStatus enum from an earlier training foundation.
+DO $$
+BEGIN
+  IF to_regclass('"TrainingEnrollment"') IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM "TrainingEnrollment" LIMIT 1)
+     AND EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_schema='public' AND table_name='TrainingEnrollment' AND column_name='courseId'
+     ) THEN
+    DROP TABLE "TrainingEnrollment";
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  ALTER TYPE "TrainingEnrollmentStatus" ADD VALUE IF NOT EXISTS 'PENDING';
+  ALTER TYPE "TrainingEnrollmentStatus" ADD VALUE IF NOT EXISTS 'SUSPENDED';
+EXCEPTION WHEN undefined_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE "TrainingEnrollmentStatus" AS ENUM ('PENDING','ACTIVE','SUSPENDED','COMPLETED','CANCELLED');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 CREATE TYPE "TrainingRecordStatus" AS ENUM ('NOT_STARTED','SCHEDULED','IN_PROGRESS','COMPLETED','DELAYED','SUSPENDED');
 CREATE TYPE "TrainingSessionStatus" AS ENUM ('SCHEDULED','CHECK_IN_OPEN','IN_PROGRESS','COMPLETED','CANCELLED');
 
