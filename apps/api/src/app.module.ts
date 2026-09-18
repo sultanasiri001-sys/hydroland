@@ -24,6 +24,7 @@ import { TripsModule } from './trips/trips.module';
 import { PaymentsModule } from './payments/payments.module';
 import { ProfileModule } from './profile/profile.module';
 import { OrganizationsModule } from './organizations/organizations.module';
+import { ResearchMarketModule } from './research-market/research-market.module';
 
 @Module({
   imports: [DatabaseModule, AuthModule, ProfileModule, CredentialsModule, ActivationModule, AuditModule, NotificationsModule, GovernanceModule, TripsModule, SafetyModule, PaymentsModule, AdminModule, DiveLogsModule, OrganizationsModule, IntegrationModule, InventoryModule, FinanceModule, CustomerServiceModule,
@@ -31,7 +32,7 @@ import { OrganizationsModule } from './organizations/organizations.module';
     TechnologySecurityModule,
     FacilitiesMaintenanceModule,
     AdministrativeAffairsModule,
-    ExecutiveGovernanceModule, AgentModule],
+    ExecutiveGovernanceModule, AgentModule, ResearchMarketModule],
   controllers: [HealthController],
 })
 export class AppModule {}
