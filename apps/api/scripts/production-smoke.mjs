@@ -38,4 +38,11 @@ if (login.response.status !== 200 || !login.body?.accessToken) {
   throw new Error(`Admin login failed: HTTP ${login.response.status}`);
 }
 
-console.log('Production smoke passed: health, DB readiness, auth boundary and admin login.');
+const authorized = await request('/admin/overview', {
+  headers: { authorization: `Bearer ${login.body.accessToken}` },
+});
+if (authorized.response.status !== 200) {
+  throw new Error(`Admin authorization failed: HTTP ${authorized.response.status}`);
+}
+
+console.log('Production smoke passed: health, DB readiness, auth boundary, admin login and admin authorization.');
