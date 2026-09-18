@@ -1,10 +1,10 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { UnitOfWork } from '../database/uow.types';
+import { PostgresUnitOfWork } from '../database/postgres-uow.service';
 
 @Injectable()
 export class ApprovalDecisionService {
- constructor(private readonly db:UnitOfWork){}
+ constructor(private readonly db:PostgresUnitOfWork){}
  async approve(input:{requestId:string;requesterAccountId:string;reviewerAccountId:string;scopeId:string}) {
   if(input.requesterAccountId===input.reviewerAccountId) throw new ForbiddenException('Self approval is forbidden');
   return this.db.transaction(async tx=>{
