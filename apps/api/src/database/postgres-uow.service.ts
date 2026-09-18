@@ -20,7 +20,7 @@ export class PostgresUnitOfWork implements UnitOfWork {
   async activateRoleGrant(requestId:string):Promise<void>{
     const r=await this.q(`UPDATE account_role_grants g SET status='ACTIVE'
       FROM approval_requests a
-      WHERE a.id=$1 AND a.role_grant_id=g.id AND g.status='SUSPENDED'
+      WHERE a.id=$1 AND a.role_grant_id=g.id AND g.status='PENDING'
       RETURNING g.id`,[requestId]);
     if(r.rowCount!==1) throw new Error('Pending role grant not found for approval');
   }
