@@ -17,6 +17,13 @@ export class PostgresUnitOfWork implements UnitOfWork {
     const r=await this.q('UPDATE approval_requests SET status=$2, updated_at=now() WHERE id=$1 RETURNING id',[requestId,status]);
     if(r.rowCount!==1) throw new Error('Approval request not found');
   }
+  async activateRoleGrant(requestId:string):Promise<void>{
+    const r=await this.q(`UPDATE account_role_grants g SET status='ACTIVE'
+      FROM approval_requests a
+      WHERE a.id=$1 AND a.role_grant_id=g.id AND g.status='SUSPENDED'
+      RETURNING g.id`,[requestId]);
+    if(r.rowCount!==1) throw new Error('Pending role grant not found for approval');
+  }
   async appendAudit(e:AuditEvent):Promise<void>{
     await this.q(`INSERT INTO audit_events(id,actor_account_id,action,resource_type,resource_id,scope_id,metadata,occurred_at)
       VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8)`,[e.id,e.actorAccountId,e.action,e.resourceType,e.resourceId,e.scopeId??null,JSON.stringify(e.metadata??{}),e.occurredAt]);
