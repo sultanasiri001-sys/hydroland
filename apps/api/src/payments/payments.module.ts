@@ -4,5 +4,5 @@ import {AuthModule} from '../auth/auth.module';
 import {TripsModule} from '../trips/trips.module';
 import {PaymentsController} from './payments.controller';
 import {PaymentsService} from './payments.service';
-@Module({imports:[AuthModule,AuditModule,TripsModule],controllers:[PaymentsController],providers:[PaymentsService]})
+@Module({imports:[AuthModule,AuditModule,TripsModule],controllers:[PaymentsController],providers:[PaymentsService],exports:[PaymentsService]})
 export class PaymentsModule {}
