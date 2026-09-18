@@ -5,10 +5,11 @@ import { PolicyEngineService } from './policy-engine.service';
 import { TrainingEligibilityService } from './training-eligibility.service';
 import { TrainingWorkflowService } from './training-workflow.service';
 import { TrainingOperationsService } from './training-operations.service';
+import { TrainingGovernanceService } from './training-governance.service';
 
 @Module({
   imports: [AuditModule],
-  providers: [PolicyEngineService, ApprovalEngineService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService],
-  exports: [PolicyEngineService, ApprovalEngineService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService, AuditModule],
+  providers: [PolicyEngineService, ApprovalEngineService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService, TrainingGovernanceService],
+  exports: [PolicyEngineService, ApprovalEngineService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService, TrainingGovernanceService, AuditModule],
 })
 export class GovernanceModule {}
