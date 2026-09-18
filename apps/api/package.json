@@ -8,7 +8,7 @@
     "start": "node dist/main.js",
     "lint": "eslint \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit",
-    "test": "tsx src/access/access.spec.ts && tsx src/security/security.spec.ts && tsx src/workflow/approval.spec.ts && tsx src/workflow/approval-decision.spec.ts && tsx src/notifications/notification-dispatcher.spec.ts",
+    "test": "tsx src/access/access.spec.ts && tsx src/security/security.spec.ts && tsx src/workflow/approval.spec.ts && tsx src/workflow/approval-decision.spec.ts && tsx src/notifications/notification-dispatcher.spec.ts && tsx src/security/document-security.spec.ts",
     "db:migrate": "tsx src/database/migrate.ts"
   },
   "dependencies": {
