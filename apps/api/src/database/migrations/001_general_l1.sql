@@ -97,3 +97,12 @@ CREATE INDEX idx_documents_owner_scope ON private_documents(owner_account_id,sco
 -- Approval target role grant: approved activation requests may activate exactly one pending grant.
 ALTER TABLE approval_requests ADD COLUMN role_grant_id UUID REFERENCES account_role_grants(id);
 CREATE UNIQUE INDEX uq_approval_role_grant ON approval_requests(role_grant_id) WHERE role_grant_id IS NOT NULL;
+
+-- Audit is append-only at database level.
+CREATE OR REPLACE FUNCTION prevent_audit_mutation() RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION 'audit_events is append-only';
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER audit_events_no_update BEFORE UPDATE ON audit_events FOR EACH ROW EXECUTE FUNCTION prevent_audit_mutation();
+CREATE TRIGGER audit_events_no_delete BEFORE DELETE ON audit_events FOR EACH ROW EXECUTE FUNCTION prevent_audit_mutation();
