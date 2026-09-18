@@ -21,6 +21,7 @@ expectThrow(()=>assertOperationalClearance({...ready,startsAt:new Date(Date.now(
 assertOperationalScope({accountId:'manager-a',role:'CENTER_MANAGER',centerId:'center-a'},'center-a');
 expectThrow(()=>assertOperationalScope({accountId:'manager-a',role:'CENTER_MANAGER',centerId:'center-a'},'center-b'),'OPERATIONS_CENTER_SCOPE_DENIED');
 expectThrow(()=>assertOperationalScope({accountId:'manager-a',role:'CENTER_MANAGER'},'center-a'),'OPERATIONS_CENTER_SCOPE_DENIED');
+expectThrow(()=>assertOperationalScope({accountId:'manager-a',role:'CENTER_MANAGER',centerId:'center-a'}),'OPERATIONS_CENTER_SCOPE_DENIED');
 
 assertSegregation('maker','reviewer','approver');
 expectThrow(()=>assertSegregation('maker','maker','approver'),'OPERATIONS_SEGREGATION_OF_DUTIES_VIOLATION');
