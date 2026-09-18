@@ -1,12 +1,15 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PostgresUnitOfWork } from '../database/postgres-uow.service';
+import { AccessService } from '../access/access.service';
 
 @Injectable()
 export class ApprovalDecisionService {
- constructor(private readonly db:PostgresUnitOfWork){}
+ constructor(private readonly db:PostgresUnitOfWork, private readonly access:AccessService){}
  async approve(input:{requestId:string;requesterAccountId:string;reviewerAccountId:string;scopeId:string}) {
   if(input.requesterAccountId===input.reviewerAccountId) throw new ForbiddenException('Self approval is forbidden');
+  const reviewer=await this.access.resolve(input.reviewerAccountId);
+  this.access.require(reviewer,'approval.decide',input.scopeId);
   return this.db.transaction(async tx=>{
    await tx.updateApprovalStatus(input.requestId,'APPROVED');
    if(tx.activateRoleGrant) await tx.activateRoleGrant(input.requestId);
