@@ -6,11 +6,12 @@ import { SafetyController } from './safety.controller';
 import { SafetyReviewService } from './safety-review.service';
 import { SafetyService } from './safety.service';
 import { SafetyComplianceRiskFoundationService } from './safety-compliance-risk-foundation.service';
+import { SafetyComplianceRiskWorkflowService } from './safety-compliance-risk-workflow.service';
 
 @Module({
   imports: [AuthModule, AdminModule, AuditModule],
   controllers: [SafetyController],
-  providers: [SafetyService, SafetyReviewService, SafetyComplianceRiskFoundationService],
-  exports: [SafetyComplianceRiskFoundationService],
+  providers: [SafetyService, SafetyReviewService, SafetyComplianceRiskFoundationService, SafetyComplianceRiskWorkflowService],
+  exports: [SafetyComplianceRiskFoundationService, SafetyComplianceRiskWorkflowService],
 })
 export class SafetyModule {}
