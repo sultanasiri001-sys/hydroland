@@ -43,7 +43,7 @@ CREATE TABLE account_role_grants (
   role_id UUID NOT NULL REFERENCES roles(id),
   scope_type TEXT NOT NULL CHECK (scope_type IN ('GLOBAL','REGION','CENTER','DEPARTMENT','SELF')),
   scope_id UUID,
-  status TEXT NOT NULL CHECK (status IN ('ACTIVE','SUSPENDED','REVOKED')),
+  status TEXT NOT NULL CHECK (status IN ('PENDING','ACTIVE','SUSPENDED','REVOKED')),
   granted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   revoked_at TIMESTAMPTZ
 );
