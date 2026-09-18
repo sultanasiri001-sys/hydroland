@@ -3,7 +3,8 @@
   const panel=document.createElement('section');panel.className='hl-weather-admin';panel.hidden=true;
   panel.innerHTML='<div class="hl-admin__header"><div><span class="eyebrow">WEATHER GATE</span><h3>بوابة الطقس والتقويم</h3><p>تحكم مركزي في تأثير حالة الطقس والبحر على الحجوزات.</p></div><span data-weather-state>بانتظار الاتصال</span></div><div class="hl-admin__grid"><article class="hl-admin__panel"><div class="hl-admin__panel-title"><h3>حالة البوابة</h3><strong data-weather-enabled>—</strong></div><button class="btn btn-primary" type="button" data-weather-toggle>تفعيل</button></article><article class="hl-admin__panel"><div class="hl-admin__panel-title"><h3>وضع التشغيل</h3><strong data-weather-mode>—</strong></div><button class="btn" type="button" data-weather-advisory>عرض فقط</button><button class="btn" type="button" data-weather-enforce>تطبيق على الحجز</button></article><article class="hl-admin__panel"><div class="hl-admin__panel-title"><h3>مزود البيانات</h3><strong data-weather-provider>—</strong></div><p>لن يتم تفعيل أي مزود خارجي حتى يتم اعتماده وربطه رسميًا.</p></article></div>';
   host.insertAdjacentElement('afterend',panel);
-  const api=()=>window.HydrolandAuth?.apiBase||window.HYDROLAND_API_BASE||'http://localhost:3001/api/v1';
+  const defaultApiBase=/^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)?'http://localhost:3001/api/v1':'https://hydroland.onrender.com/api/v1';
+  const api=()=>window.HydrolandAuth?.apiBase||window.HYDROLAND_API_BASE||defaultApiBase;
   const token=()=>window.HydrolandAuth?.getAccessToken?.();
   const headers=()=>({'Content-Type':'application/json',Authorization:'Bearer '+token()});
   const state=t=>{const e=panel.querySelector('[data-weather-state]');if(e)e.textContent=t};
