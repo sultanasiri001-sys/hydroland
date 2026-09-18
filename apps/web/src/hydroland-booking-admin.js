@@ -3,7 +3,8 @@
   const panel=document.createElement('section');panel.className='hl-booking-admin';panel.hidden=true;
   panel.innerHTML='<div class="hl-trip-admin__head"><div><span class="eyebrow">BOOKING CONTROL</span><h3>إدارة حجوزات الرحلات</h3></div><span data-booking-admin-state>بانتظار الاتصال</span></div><div data-booking-admin-list></div>';
   root.insertAdjacentElement('afterend',panel);
-  const api=()=>window.HydrolandAuth?.apiBase||window.HYDROLAND_API_BASE||'http://localhost:3001/api/v1';
+  const defaultApiBase=/^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)?'http://localhost:3001/api/v1':'https://hydroland.onrender.com/api/v1';
+  const api=()=>window.HydrolandAuth?.apiBase||window.HYDROLAND_API_BASE||defaultApiBase;
   const token=()=>window.HydrolandAuth?.getAccessToken?.();
   const headers=()=>({'Content-Type':'application/json',Authorization:'Bearer '+token()});
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

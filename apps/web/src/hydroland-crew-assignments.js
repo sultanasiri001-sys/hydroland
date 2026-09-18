@@ -3,7 +3,8 @@
   const panel=document.createElement('section');panel.className='hl-crew-assignments';panel.hidden=true;
   panel.innerHTML='<div class="hl-trip-admin__head"><div><span class="eyebrow">MY CREW ASSIGNMENTS</span><h3>رحلاتي القادمة</h3></div><span data-crew-state>بانتظار الاتصال</span></div><div data-crew-list></div>';
   root.insertAdjacentElement('afterend',panel);
-  const api=()=>window.HydrolandAuth?.apiBase||window.HYDROLAND_API_BASE||'http://localhost:3001/api/v1';
+  const defaultApiBase=/^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)?'http://localhost:3001/api/v1':'https://hydroland.onrender.com/api/v1';
+  const api=()=>window.HydrolandAuth?.apiBase||window.HYDROLAND_API_BASE||defaultApiBase;
   const token=()=>window.HydrolandAuth?.getAccessToken?.();
   const headers=()=>({'Content-Type':'application/json',Authorization:'Bearer '+token()});
   const state=t=>{const e=panel.querySelector('[data-crew-state]');if(e)e.textContent=t};
