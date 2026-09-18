@@ -64,9 +64,10 @@ export class FinancePersistenceService {
     });
   }
 
-  async postEntry(entryId: string) {
+  async postEntry(entryId: string, postedByAccountId: string) {
     const entry = await this.db.financeEntry.findUnique({ where: { id: entryId } });
     if (!entry) throw new NotFoundException('Finance entry not found.');
+    if (!postedByAccountId) throw new BadRequestException('Posting account is required.');
     if (entry.status !== FinanceEntryStatus.APPROVED) throw new BadRequestException('Only approved finance entries can be posted.');
     return this.db.financeEntry.update({ where: { id: entryId }, data: { status: FinanceEntryStatus.POSTED, postedAt: new Date() } });
   }
