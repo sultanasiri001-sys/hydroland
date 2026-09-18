@@ -11,7 +11,7 @@ import { CustomerServiceGovernanceService } from './customer-service-governance.
 @Module({
   imports: [AuthModule, DatabaseModule],
   controllers: [CustomerCaseController],
-  providers: [CustomerCaseService, [CustomerServiceFoundationService, CustomerServiceWorkflowService, CustomerServiceOperationsService, CustomerServiceGovernanceService],
-  exports: [CustomerServiceFoundationService, CustomerServiceWorkflowService, CustomerServiceOperationsService, CustomerServiceGovernanceService],
+  providers: [CustomerCaseService, CustomerServiceFoundationService, CustomerServiceWorkflowService, CustomerServiceOperationsService, CustomerServiceGovernanceService],
+  exports: [CustomerCaseService, CustomerServiceFoundationService, CustomerServiceWorkflowService, CustomerServiceOperationsService, CustomerServiceGovernanceService],
 })
 export class CustomerServiceModule {}
