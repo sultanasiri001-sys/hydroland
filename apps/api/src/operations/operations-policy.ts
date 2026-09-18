@@ -15,7 +15,7 @@ export type OperationalActor = {
 };
 
 export function assertOperationalScope(actor:OperationalActor,targetCenterId?:string){
-  if(actor.role==='CENTER_MANAGER' && (!actor.centerId || actor.centerId!==targetCenterId)) throw new Error('OPERATIONS_CENTER_SCOPE_DENIED');
+  if(actor.role==='CENTER_MANAGER' && (!targetCenterId || !actor.centerId || actor.centerId!==targetCenterId)) throw new Error('OPERATIONS_CENTER_SCOPE_DENIED');
 }
 
 export function assertOperationalClearance(readiness:OperationalReadiness,now=new Date()){
