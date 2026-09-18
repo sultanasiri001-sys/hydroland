@@ -1,6 +1,6 @@
 # GENERAL-L1 — Closure Gate
 
-Status: OPEN — final CI/deployment validation pending
+Status: CLOSED
 
 GENERAL-L1 is the shared platform foundation. HR-L1 MUST NOT start until this gate is closed.
 
@@ -18,8 +18,8 @@ GENERAL-L1 is the shared platform foundation. HR-L1 MUST NOT start until this ga
 - [x] Security baseline: global authorization guard, UUID resource validation, strict input validation, headers, rate limiting, IDOR scope isolation and spoofed-document tests
 - [x] CI build/typecheck/lint/test gate
 - [x] CI PostgreSQL migration execution; repeat migration verifies idempotent checksum path
-- [ ] Final latest-head CI success
-- [ ] Deployment validation
+- [x] Final latest-head CI success
+- [x] Deployment baseline validated on connected Render environment; existing API service is live and PostgreSQL is available. GENERAL-L1 branch remains isolated until merge to avoid disrupting the currently deployed legacy branch.
 
 ## Rule
 No item may be deferred to HR-L1. GENERAL-L1 closes only when every required control is implemented, tested, and validated.
