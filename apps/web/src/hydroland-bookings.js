@@ -40,7 +40,7 @@
     try{
       const booking=await request(`/trips/${encodeURIComponent(trip.id)}/bookings`,{method:'POST',body:JSON.stringify({seats:1})});
       document.getElementById('booking-dialog')?.close();
-      toast(`تم إنشاء الحجز بنجاح · الحالة ${booking.status||'PENDING'}`);
+      toast(booking?.status?`تم إنشاء الحجز بنجاح · الحالة ${booking.status}`:'تم إنشاء الحجز بنجاح');
       window.dispatchEvent(new CustomEvent('hydroland:booking-created',{detail:booking}));
     }catch(error){toast(error instanceof Error?error.message:'تعذر إنشاء الحجز');}
     finally{confirm.disabled=false;confirm.textContent=original;}
