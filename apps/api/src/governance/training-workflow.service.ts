@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { SkillProgressStatus } from './domain';
 import { CourseSuspensionRequest, DigitalTrainingRecord, InstructorTransfer, TrainingSession, TrainingSkillRecord } from './training.domain';
 
 @Injectable()
@@ -6,7 +7,7 @@ export class TrainingWorkflowService {
   signOffSkill(skill: TrainingSkillRecord, instructorId: string, at = new Date().toISOString()): TrainingSkillRecord {
     if (!instructorId) throw new BadRequestException('Instructor identity is required.');
     if (skill.status === 'COMPLETED') throw new BadRequestException('Completed skill cannot be silently re-signed.');
-    return { ...skill, status: 'COMPLETED', signedOffByInstructorId: instructorId, signedOffAt: at };
+    return { ...skill, status: SkillProgressStatus.COMPLETED, signedOffByInstructorId: instructorId, signedOffAt: at };
   }
 
   acknowledgeSkill(skill: TrainingSkillRecord, studentId: string, objection?: string, at = new Date().toISOString()): TrainingSkillRecord {
