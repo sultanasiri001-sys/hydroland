@@ -3,6 +3,7 @@ import { AuditModule } from '../audit/audit.module';
 import { AuthModule } from '../auth/auth.module';
 import { ApprovalEngineService } from './approval-engine.service';
 import { PolicyEngineService } from './policy-engine.service';
+import { TrainingAuthorizationService } from './training-authorization.service';
 import { TrainingEligibilityService } from './training-eligibility.service';
 import { TrainingWorkflowService } from './training-workflow.service';
 import { TrainingOperationsService } from './training-operations.service';
@@ -13,7 +14,7 @@ import { TrainingController } from './training.controller';
 @Module({
   imports: [AuditModule, AuthModule],
   controllers: [TrainingController],
-  providers: [PolicyEngineService, ApprovalEngineService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService, TrainingGovernanceService, TrainingRepositoryService],
-  exports: [PolicyEngineService, ApprovalEngineService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService, TrainingGovernanceService, TrainingRepositoryService, AuditModule],
+  providers: [PolicyEngineService, ApprovalEngineService, TrainingAuthorizationService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService, TrainingGovernanceService, TrainingRepositoryService],
+  exports: [PolicyEngineService, ApprovalEngineService, TrainingAuthorizationService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService, TrainingGovernanceService, TrainingRepositoryService, AuditModule],
 })
 export class GovernanceModule {}
