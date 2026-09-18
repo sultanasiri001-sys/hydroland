@@ -1,0 +1,14 @@
+CREATE TYPE "CustomerCaseType" AS ENUM ('QUESTION','SUPPORT','COMPLAINT','BOOKING_ISSUE','PAYMENT_ISSUE','SAFETY_CONCERN');
+CREATE TYPE "CustomerCaseStatus" AS ENUM ('OPEN','ASSIGNED','WAITING_CUSTOMER','RESOLVED','CLOSED');
+CREATE TYPE "CustomerCasePriority" AS ENUM ('LOW','NORMAL','HIGH','URGENT');
+CREATE TYPE "CustomerInteractionActorType" AS ENUM ('CUSTOMER','STAFF','AI_AGENT','SYSTEM');
+CREATE TYPE "CustomerInteractionChannel" AS ENUM ('APP','WEB','EMAIL','PHONE','WHATSAPP','SYSTEM');
+CREATE TABLE "CustomerCase" ("id" UUID NOT NULL DEFAULT gen_random_uuid(), "organizationId" UUID, "customerId" UUID NOT NULL, "type" "CustomerCaseType" NOT NULL, "status" "CustomerCaseStatus" NOT NULL DEFAULT 'OPEN', "priority" "CustomerCasePriority" NOT NULL DEFAULT 'NORMAL', "subject" TEXT NOT NULL, "description" TEXT NOT NULL, "referenceType" TEXT, "referenceId" TEXT, "assignedAccountId" UUID, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "CustomerCase_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "CustomerInteraction" ("id" UUID NOT NULL DEFAULT gen_random_uuid(), "caseId" UUID NOT NULL, "actorType" "CustomerInteractionActorType" NOT NULL, "actorId" UUID, "channel" "CustomerInteractionChannel" NOT NULL DEFAULT 'WEB', "message" TEXT NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "CustomerInteraction_pkey" PRIMARY KEY ("id"));
+CREATE INDEX "CustomerCase_customerId_status_createdAt_idx" ON "CustomerCase"("customerId","status","createdAt");
+CREATE INDEX "CustomerCase_organizationId_status_createdAt_idx" ON "CustomerCase"("organizationId","status","createdAt");
+CREATE INDEX "CustomerCase_assignedAccountId_status_idx" ON "CustomerCase"("assignedAccountId","status");
+CREATE INDEX "CustomerInteraction_caseId_createdAt_idx" ON "CustomerInteraction"("caseId","createdAt");
+ALTER TABLE "CustomerCase" ADD CONSTRAINT "CustomerCase_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "Account"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "CustomerInteraction" ADD CONSTRAINT "CustomerInteraction_caseId_fkey" FOREIGN KEY ("caseId") REFERENCES "CustomerCase"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "CustomerInteraction" ADD CONSTRAINT "CustomerInteraction_actorId_fkey" FOREIGN KEY ("actorId") REFERENCES "Account"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
