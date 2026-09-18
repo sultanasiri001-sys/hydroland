@@ -33,6 +33,7 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
           E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
           ALLOW_E2E_BOOTSTRAP: 'true'
         run: node scripts/bootstrap-e2e-admin.mjs
       - name: Run production smoke tests
