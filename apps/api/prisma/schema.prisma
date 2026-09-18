@@ -823,11 +823,41 @@ model OffboardingCase {
 }
 
 
-enum CustomerCaseType { QUESTION SUPPORT COMPLAINT BOOKING_ISSUE PAYMENT_ISSUE SAFETY_CONCERN }
-enum CustomerCaseStatus { OPEN ASSIGNED WAITING_CUSTOMER RESOLVED CLOSED }
-enum CustomerCasePriority { LOW NORMAL HIGH URGENT }
-enum CustomerInteractionActorType { CUSTOMER STAFF AI_AGENT SYSTEM }
-enum CustomerInteractionChannel { APP WEB EMAIL PHONE WHATSAPP SYSTEM }
+enum CustomerCaseType {
+  QUESTION
+  SUPPORT
+  COMPLAINT
+  BOOKING_ISSUE
+  PAYMENT_ISSUE
+  SAFETY_CONCERN
+}
+enum CustomerCaseStatus {
+  OPEN
+  ASSIGNED
+  WAITING_CUSTOMER
+  RESOLVED
+  CLOSED
+}
+enum CustomerCasePriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+enum CustomerInteractionActorType {
+  CUSTOMER
+  STAFF
+  AI_AGENT
+  SYSTEM
+}
+enum CustomerInteractionChannel {
+  APP
+  WEB
+  EMAIL
+  PHONE
+  WHATSAPP
+  SYSTEM
+}
 
 model CustomerCase {
   id String @id @default(uuid())
