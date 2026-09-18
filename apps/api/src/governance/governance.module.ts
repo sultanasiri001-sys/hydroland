@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
+import { AuthModule } from '../auth/auth.module';
 import { ApprovalEngineService } from './approval-engine.service';
 import { PolicyEngineService } from './policy-engine.service';
 import { TrainingEligibilityService } from './training-eligibility.service';
@@ -10,7 +11,7 @@ import { TrainingRepositoryService } from './training-repository.service';
 import { TrainingController } from './training.controller';
 
 @Module({
-  imports: [AuditModule],
+  imports: [AuditModule, AuthModule],
   controllers: [TrainingController],
   providers: [PolicyEngineService, ApprovalEngineService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService, TrainingGovernanceService, TrainingRepositoryService],
   exports: [PolicyEngineService, ApprovalEngineService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService, TrainingGovernanceService, TrainingRepositoryService, AuditModule],
