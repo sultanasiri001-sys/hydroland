@@ -29,6 +29,11 @@ if (unauthenticated.response.status !== 401) {
   throw new Error(`Protected-route boundary failed: expected 401, got ${unauthenticated.response.status}`);
 }
 
+const unauthenticatedTraining = await request('/training/mine/enrollments');
+if (unauthenticatedTraining.response.status !== 401) {
+  throw new Error(`Training auth boundary failed: expected 401, got ${unauthenticatedTraining.response.status}`);
+}
+
 const login = await request('/auth/login', {
   method: 'POST',
   headers: { 'content-type': 'application/json' },
@@ -38,11 +43,16 @@ if (login.response.status !== 200 || !login.body?.accessToken) {
   throw new Error(`Admin login failed: HTTP ${login.response.status}`);
 }
 
-const authorized = await request('/admin/overview', {
-  headers: { authorization: `Bearer ${login.body.accessToken}` },
-});
+const authHeaders = { authorization: `Bearer ${login.body.accessToken}` };
+
+const authorized = await request('/admin/overview', { headers: authHeaders });
 if (authorized.response.status !== 200) {
   throw new Error(`Admin authorization failed: HTTP ${authorized.response.status}`);
 }
 
-console.log('Production smoke passed: health, DB readiness, auth boundary, admin login and admin authorization.');
+const training = await request('/training/mine/enrollments', { headers: authHeaders });
+if (training.response.status !== 200 || !Array.isArray(training.body)) {
+  throw new Error(`Training runtime failed: expected HTTP 200 array, got HTTP ${training.response.status}`);
+}
+
+console.log('Production smoke passed: health, DB readiness, auth boundaries, admin authorization and Training runtime.');
