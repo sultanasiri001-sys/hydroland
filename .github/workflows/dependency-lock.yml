@@ -1,0 +1,55 @@
+name: Dependency lock audit
+
+on:
+  pull_request:
+    paths:
+      - 'package.json'
+      - 'apps/**/package.json'
+      - '.github/workflows/dependency-lock.yml'
+  workflow_dispatch:
+
+jobs:
+  lock-and-audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Generate deterministic lockfile
+        run: npm install --package-lock-only --ignore-scripts
+      - name: Audit high and critical vulnerabilities
+        run: |
+          npm audit --json > audit.json || true
+          node - <<'NODE'
+          const fs = require('fs');
+          const report = JSON.parse(fs.readFileSync('audit.json', 'utf8'));
+          const vulnerabilities = report.vulnerabilities || {};
+          const rows = Object.entries(vulnerabilities)
+            .filter(([, v]) => ['high', 'critical'].includes(v.severity))
+            .map(([name, v]) => ({
+              name,
+              severity: v.severity,
+              direct: v.isDirect,
+              range: v.range,
+              fixAvailable: v.fixAvailable,
+              via: (v.via || []).map(x => typeof x === 'string' ? x : {
+                source: x.source,
+                name: x.name,
+                title: x.title,
+                severity: x.severity,
+                range: x.range
+              })
+            }));
+          console.log(JSON.stringify({ metadata: report.metadata?.vulnerabilities || {}, highOrCritical: rows }, null, 2));
+          if (rows.length) process.exitCode = 1;
+          NODE
+      - name: Upload lockfile and audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-lock-audit
+          path: |
+            package-lock.json
+            audit.json
+          retention-days: 7
