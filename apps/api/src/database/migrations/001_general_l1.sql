@@ -93,3 +93,7 @@ CREATE INDEX idx_approval_scope_status ON approval_requests(scope_id,status);
 CREATE INDEX idx_outbox_status_created ON notification_outbox(status,created_at);
 CREATE INDEX idx_documents_owner_scope ON private_documents(owner_account_id,scope_id);
 
+
+-- Approval target role grant: approved activation requests may activate exactly one pending grant.
+ALTER TABLE approval_requests ADD COLUMN role_grant_id UUID REFERENCES account_role_grants(id);
+CREATE UNIQUE INDEX uq_approval_role_grant ON approval_requests(role_grant_id) WHERE role_grant_id IS NOT NULL;
