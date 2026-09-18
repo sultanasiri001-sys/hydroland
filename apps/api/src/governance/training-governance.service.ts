@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { SkillProgressStatus } from './domain';
 import { DigitalTrainingRecord, TrainingSession } from './training.domain';
 
 export interface TrainingGovernanceSnapshot {
@@ -15,12 +16,12 @@ export interface TrainingGovernanceSnapshot {
 export class TrainingGovernanceService {
   snapshot(record: DigitalTrainingRecord, sessions: TrainingSession[], at = new Date().toISOString()): TrainingGovernanceSnapshot {
     const skills = record.stages.flatMap((stage) => stage.skills);
-    const completedSkills = skills.filter((skill) => skill.status === 'COMPLETED').length;
+    const completedSkills = skills.filter((skill) => skill.status === SkillProgressStatus.COMPLETED).length;
     const relevantSessions = sessions.filter((session) => session.trainingRecordId === record.id);
     const alerts: string[] = [];
 
     if (record.status === 'SUSPENDED') alerts.push('TRAINING_SUSPENDED');
-    if (skills.some((skill) => skill.status === 'NEEDS_REMEDIATION')) alerts.push('SKILL_REMEDIATION_REQUIRED');
+    if (skills.some((skill) => skill.status === SkillProgressStatus.NEEDS_REASSESSMENT)) alerts.push('SKILL_REMEDIATION_REQUIRED');
     if (relevantSessions.some((session) => session.status === 'IN_PROGRESS')) alerts.push('ACTIVE_SESSION');
 
     return {
