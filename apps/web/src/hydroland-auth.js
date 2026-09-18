@@ -1,5 +1,6 @@
 (()=>{
-  const API_BASE=(window.HYDROLAND_API_BASE||'http://localhost:3001/api/v1').replace(/\/$/,'');
+  const DEFAULT_API_BASE=/^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)?'http://localhost:3001/api/v1':'https://hydroland.onrender.com/api/v1';
+  const API_BASE=(window.HYDROLAND_API_BASE||DEFAULT_API_BASE).replace(/\/$/,'');
   const state={mode:'login',refreshPromise:null};
   const toast=message=>{const t=document.getElementById('toast');if(!t)return;t.textContent=message;t.classList.add('visible');setTimeout(()=>t.classList.remove('visible'),2200)};
   const login=()=>document.querySelector('.hl-login');
