@@ -13,10 +13,7 @@ BEGIN
   END IF;
 END $$;
 
-DO $ BEGIN
-  CREATE TYPE "TrainingEnrollmentStatus" AS ENUM ('PENDING','ACTIVE','SUSPENDED','COMPLETED','CANCELLED');
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $;
+-- TrainingEnrollmentStatus is reconciled by the preceding 20260919225000 migration.
 CREATE TYPE "TrainingRecordStatus" AS ENUM ('NOT_STARTED','SCHEDULED','IN_PROGRESS','COMPLETED','DELAYED','SUSPENDED');
 CREATE TYPE "TrainingSessionStatus" AS ENUM ('SCHEDULED','CHECK_IN_OPEN','IN_PROGRESS','COMPLETED','CANCELLED');
 
