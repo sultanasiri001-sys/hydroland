@@ -1,0 +1,821 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AccountStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+enum ProfessionalRole {
+  DIVER
+  INSTRUCTOR
+  DIVE_CENTER
+  BOAT_OWNER
+  STAFF
+  ORGANIZATION
+  ADMIN
+  REVIEWER
+}
+enum RoleAssignmentStatus {
+  DRAFT
+  PENDING_REVIEW
+  ACTIVE
+  REJECTED
+  SUSPENDED
+  ARCHIVED
+}
+enum CredentialVerificationStatus {
+  UNVERIFIED
+  PENDING
+  DOCUMENT_VERIFIED
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+enum ActivationRequestStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  MORE_INFORMATION_REQUIRED
+  RESUBMITTED
+  APPROVED
+  REJECTED
+  SUSPENDED
+  ARCHIVED
+}
+enum OrganizationStatus {
+  DRAFT
+  PENDING_REVIEW
+  ACTIVE
+  REJECTED
+  SUSPENDED
+  ARCHIVED
+}
+enum OrganizationMemberRole {
+  OWNER
+  ADMIN
+  OPERATOR
+  INSTRUCTOR
+  STAFF
+  VIEWER
+}
+enum OrganizationMembershipStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  REMOVED
+}
+enum DocumentStatus {
+  UPLOADED
+  QUARANTINED
+  AVAILABLE
+  REJECTED
+  ARCHIVED
+}
+enum NotificationStatus {
+  PENDING
+  SENT
+  READ
+  FAILED
+}
+
+enum OrgUnitType {
+  HQ
+  REGION
+  CENTER
+  DEPARTMENT
+  UNIT
+  TEAM
+}
+enum EmploymentStatus {
+  DRAFT
+  PENDING_APPROVAL
+  ACTIVE
+  ON_LEAVE
+  SUSPENDED
+  TERMINATED
+  OFFBOARDED
+}
+enum WorkerClass {
+  EMPLOYEE
+  TEMPORARY_WORKER
+  INDEPENDENT_PROFESSIONAL
+  CONTRACTOR
+  CENTER_AFFILIATED
+  TRIP_ONLY
+}
+enum EmploymentMovementType {
+  APPOINTMENT
+  TRANSFER
+  TEMPORARY_ASSIGNMENT
+  PROMOTION
+  DEMOTION
+  SUSPENSION
+  RETURN_TO_ROLE
+  TERMINATION
+}
+enum HrRequestStatus {
+  DRAFT
+  SUBMITTED
+  HR_REVIEW
+  APPROVAL_REQUIRED
+  APPROVED
+  REJECTED
+  CANCELLED
+  EFFECTIVE
+  CLOSED
+}
+
+model Person {
+  id String @id @default(uuid())
+  firstName String
+  lastName String
+  phone String? @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  account Account?
+  professional ProfessionalProfile?
+  credentials Credential[]
+  auditEvents AuditEvent[] @relation("ActorAuditEvents")
+}
+
+model Account {
+  id String @id @default(uuid())
+  personId String @unique
+  email String @unique
+  passwordHash String
+  status AccountStatus @default(PENDING_VERIFICATION)
+  emailVerifiedAt DateTime?
+  lastLoginAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  person Person @relation(fields:[personId], references:[id], onDelete:Restrict)
+  sessions Session[]
+  roleAssignments RoleAssignment[]
+  activationRequests ActivationRequest[] @relation("ApplicantRequests")
+  reviewDecisions ReviewDecision[] @relation("ReviewerDecisions")
+  notifications Notification[]
+  bookings Booking[]
+  bookingParticipants BookingParticipant[]
+  crewAssignments CrewAssignment[]
+  payments Payment[]
+  diveLogs DiveLog[]
+  organizationMemberships OrganizationMember[]
+  organizationsOwned Organization[] @relation("OrganizationOwner")
+  policyUpdates PolicyControl[] @relation("PolicyUpdatedBy")
+  employments Employment[]
+  employmentMovementsRequested EmploymentMovement[] @relation("EmploymentMovementRequestedBy")
+  employmentMovementsReviewed EmploymentMovement[] @relation("EmploymentMovementReviewedBy")
+  employmentMovementsApproved EmploymentMovement[] @relation("EmploymentMovementApprovedBy")
+  leaveRequestsRequested LeaveRequest[] @relation("LeaveRequestedBy")
+  leaveRequestsApproved LeaveRequest[] @relation("LeaveApprovedBy")
+  employeeRelationsCasesOpened EmployeeRelationsCase[] @relation("EmployeeRelationsOpenedBy")
+  employeeRelationsCasesReviewed EmployeeRelationsCase[] @relation("EmployeeRelationsReviewedBy")
+  employeeRelationsCasesApproved EmployeeRelationsCase[] @relation("EmployeeRelationsApprovedBy")
+  compensationTermsApproved CompensationTerm[] @relation("CompensationTermApprovedBy")
+}
+
+model Organization {
+  id String @id @default(uuid())
+  displayName String
+  legalName String?
+  kind String
+  registrationNumber String? @unique
+  regionCode String?
+  status OrganizationStatus @default(PENDING_REVIEW)
+  ownerId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  reviewedAt DateTime?
+  reviewedById String?
+  owner Account @relation("OrganizationOwner", fields:[ownerId], references:[id], onDelete:Restrict)
+  members OrganizationMember[]
+  orgUnits OrgUnit[]
+  employments Employment[]
+  @@index([status,createdAt])
+  @@index([ownerId,status])
+}
+
+model OrganizationMember {
+  id String @id @default(uuid())
+  organizationId String
+  accountId String
+  role OrganizationMemberRole @default(VIEWER)
+  status OrganizationMembershipStatus @default(PENDING)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)
+  account Account @relation(fields:[accountId], references:[id], onDelete:Restrict)
+  @@unique([organizationId,accountId])
+  @@index([accountId,status])
+}
+
+model Session {
+  id String @id @default(uuid())
+  accountId String
+  tokenHash String @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  account Account @relation(fields:[accountId], references:[id], onDelete:Cascade)
+  @@index([accountId,expiresAt])
+}
+
+model ProfessionalProfile {
+  id String @id @default(uuid())
+  personId String @unique
+  headline String?
+  bio String?
+  regionCode String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  person Person @relation(fields:[personId], references:[id], onDelete:Restrict)
+}
+
+model RoleAssignment {
+  id String @id @default(uuid())
+  accountId String
+  role ProfessionalRole
+  status RoleAssignmentStatus @default(DRAFT)
+  scope Json?
+  activeAt DateTime?
+  endedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  account Account @relation(fields:[accountId], references:[id], onDelete:Restrict)
+  activationRequests ActivationRequest[]
+  @@unique([accountId,role])
+  @@index([role,status])
+}
+
+model Credential {
+  id String @id @default(uuid())
+  personId String
+  issuer String
+  title String
+  credentialNumber String?
+  issuedAt DateTime?
+  expiresAt DateTime?
+  verificationStatus CredentialVerificationStatus @default(UNVERIFIED)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  person Person @relation(fields:[personId], references:[id], onDelete:Restrict)
+  documents Document[]
+  @@index([personId,verificationStatus])
+}
+
+model Document {
+  id String @id @default(uuid())
+  credentialId String?
+  ownerId String
+  storageKey String @unique
+  originalName String
+  mimeType String
+  byteSize Int
+  sha256 String @unique
+  status DocumentStatus @default(UPLOADED)
+  createdAt DateTime @default(now())
+  archivedAt DateTime?
+  credential Credential? @relation(fields:[credentialId], references:[id], onDelete:Restrict)
+  employmentContracts EmploymentContract[]
+  @@index([ownerId,status])
+}
+
+model ActivationRequest {
+  id String @id @default(uuid())
+  applicantId String
+  roleAssignmentId String
+  status ActivationRequestStatus @default(DRAFT)
+  submittedAt DateTime?
+  decidedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  applicant Account @relation("ApplicantRequests", fields:[applicantId], references:[id], onDelete:Restrict)
+  roleAssignment RoleAssignment @relation(fields:[roleAssignmentId], references:[id], onDelete:Restrict)
+  decisions ReviewDecision[]
+  @@index([status,createdAt])
+}
+
+model ReviewDecision {
+  id String @id @default(uuid())
+  activationRequestId String
+  reviewerId String
+  outcome String
+  reason String?
+  createdAt DateTime @default(now())
+  activationRequest ActivationRequest @relation(fields:[activationRequestId], references:[id], onDelete:Restrict)
+  reviewer Account @relation("ReviewerDecisions", fields:[reviewerId], references:[id], onDelete:Restrict)
+}
+
+model Notification {
+  id String @id @default(uuid())
+  accountId String
+  type String
+  payload Json
+  status NotificationStatus @default(PENDING)
+  sentAt DateTime?
+  createdAt DateTime @default(now())
+  account Account @relation(fields:[accountId], references:[id], onDelete:Restrict)
+}
+
+model AuditEvent {
+  id String @id @default(uuid())
+  actorId String?
+  action String
+  resource String
+  resourceId String?
+  requestId String?
+  ipAddress String?
+  metadata Json?
+  occurredAt DateTime @default(now())
+  actor Person? @relation("ActorAuditEvents", fields:[actorId], references:[id], onDelete:Restrict)
+  @@index([resource,resourceId,occurredAt])
+  @@index([actorId,occurredAt])
+}
+
+model OperationalSetting {
+  key String @id
+  value Json
+  updatedAt DateTime @default(now())
+}
+
+model PolicyControl {
+  id String @id @default(uuid())
+  category String
+  ruleKey String
+  labelAr String
+  labelEn String?
+  state String @default("ENABLED")
+  description String?
+  metadata Json?
+  updatedByAccountId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  updatedBy Account? @relation("PolicyUpdatedBy", fields:[updatedByAccountId], references:[id], onDelete:SetNull)
+  @@unique([category,ruleKey])
+  @@index([category,state])
+}
+
+enum TripStatus {
+  DRAFT
+  OPEN
+  CLOSED
+  CANCELLED
+  COMPLETED
+}
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+model Trip {
+  id String @id @default(uuid())
+  title String
+  type String
+  startsAt DateTime
+  endsAt DateTime
+  capacity Int
+  status TripStatus @default(DRAFT)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  bookings Booking[]
+  safetyChecklists SafetyChecklist[]
+  diveLogs DiveLog[] @relation("TripDiveLogs")
+  calendarAllocations CalendarAllocation[]
+  crewAssignments CrewAssignment[]
+  @@index([status,startsAt])
+}
+
+model Booking {
+  id String @id @default(uuid())
+  tripId String
+  accountId String
+  status BookingStatus @default(PENDING)
+  seats Int @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  trip Trip @relation(fields:[tripId], references:[id], onDelete:Restrict)
+  account Account @relation(fields:[accountId], references:[id], onDelete:Restrict)
+  participants BookingParticipant[]
+  payments Payment[]
+  @@unique([tripId,accountId])
+  @@index([tripId,status])
+}
+
+model BookingParticipant {
+  id String @id @default(uuid())
+  bookingId String
+  accountId String?
+  fullName String
+  certificationTitle String?
+  certificationNumber String?
+  certificationIssuer String?
+  eligibilityStatus String @default("PENDING")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  booking Booking @relation(fields:[bookingId], references:[id], onDelete:Restrict)
+  account Account? @relation(fields:[accountId], references:[id], onDelete:Restrict)
+  diveLogs DiveLog[] @relation("ParticipantDiveLogs")
+  @@index([bookingId,eligibilityStatus])
+  @@index([accountId])
+}
+
+model CalendarResource {
+  id String @id @default(uuid())
+  type String
+  name String
+  referenceId String?
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  allocations CalendarAllocation[]
+  crewAssignments CrewAssignment[]
+  @@index([type,active])
+  @@index([referenceId])
+}
+
+model CalendarAllocation {
+  id String @id @default(uuid())
+  tripId String
+  resourceId String
+  startsAt DateTime
+  endsAt DateTime
+  status String @default("ACTIVE")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  trip Trip @relation(fields:[tripId], references:[id], onDelete:Restrict)
+  resource CalendarResource @relation(fields:[resourceId], references:[id], onDelete:Restrict)
+  @@index([resourceId,startsAt,endsAt])
+  @@index([tripId,status])
+}
+
+model CrewAssignment {
+  id String @id @default(uuid())
+  tripId String
+  resourceId String
+  accountId String
+  roleType String
+  status String @default("PENDING")
+  replacesAssignmentId String?
+  respondedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  trip Trip @relation(fields:[tripId], references:[id], onDelete:Restrict)
+  resource CalendarResource @relation(fields:[resourceId], references:[id], onDelete:Restrict)
+  account Account @relation(fields:[accountId], references:[id], onDelete:Restrict)
+  @@index([tripId,status])
+  @@index([accountId,status])
+  @@index([resourceId])
+}
+
+enum OperationalDecision {
+  ALLOWED
+  REVIEW_REQUIRED
+  DEFERRED
+}
+model SafetyChecklist {
+  id String @id @default(uuid())
+  tripId String
+  decision OperationalDecision @default(REVIEW_REQUIRED)
+  items Json
+  notes String?
+  decidedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  trip Trip @relation(fields:[tripId], references:[id], onDelete:Restrict)
+  @@index([tripId,decision])
+}
+
+enum DiveLogStatus {
+  DRAFT
+  VERIFIED
+  REJECTED
+}
+model DiveLog {
+  id String @id @default(uuid())
+  accountId String?
+  sourceTripId String?
+  sourceParticipantId String?
+  siteName String
+  regionCode String?
+  diveDate DateTime
+  maxDepthM Float
+  durationMin Int
+  buddyName String?
+  instructorName String?
+  notes String?
+  status DiveLogStatus @default(DRAFT)
+  verifiedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  account Account? @relation(fields:[accountId], references:[id], onDelete:Restrict)
+  sourceTrip Trip? @relation("TripDiveLogs", fields:[sourceTripId], references:[id], onDelete:Restrict)
+  sourceParticipant BookingParticipant? @relation("ParticipantDiveLogs", fields:[sourceParticipantId], references:[id], onDelete:Restrict)
+  @@unique([sourceParticipantId,sourceTripId])
+  @@index([accountId,diveDate])
+  @@index([accountId,status])
+  @@index([sourceTripId])
+  @@index([sourceParticipantId])
+}
+
+enum PaymentStatus {
+  CREATED
+  PENDING
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  VOID
+}
+model Payment {
+  id String @id @default(uuid())
+  bookingId String
+  accountId String
+  amountMinor Int
+  currency String @default("SAR")
+  status PaymentStatus @default(CREATED)
+  idempotencyKey String @unique
+  providerReference String? @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  booking Booking @relation(fields:[bookingId], references:[id], onDelete:Restrict)
+  account Account @relation(fields:[accountId], references:[id], onDelete:Restrict)
+  invoice Invoice?
+  @@index([accountId,status])
+}
+model Invoice {
+  id String @id @default(uuid())
+  paymentId String @unique
+  number String @unique
+  status InvoiceStatus @default(DRAFT)
+  issuedAt DateTime?
+  createdAt DateTime @default(now())
+  payment Payment @relation(fields:[paymentId], references:[id], onDelete:Restrict)
+}
+
+model ThemeSchedule {
+  id String @id
+  themeId String
+  name String?
+  status String @default("DRAFT")
+  startsAt DateTime
+  endsAt DateTime
+  createdById String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([status,startsAt,endsAt])
+  @@index([themeId])
+}
+model BoatResourceCompliance {
+  id String @id
+  resourceId String @unique
+  registrationNumber String?
+  registrationStatus String @default("PENDING")
+  navigationLicenseNumber String?
+  navigationLicenseExpiresAt DateTime?
+  safetyCertificateExpiresAt DateTime?
+  passengerLimit Int?
+  notes String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([registrationStatus])
+}
+model TripComplianceReview {
+  id String @id
+  tripId String @unique
+  regulatoryStatus String @default("PENDING")
+  permitStatus String @default("PENDING")
+  permitReference String?
+  authorityReference String?
+  notes String?
+  reviewedByAccountId String?
+  reviewedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([regulatoryStatus,permitStatus])
+}
+
+model OrgUnit {
+ id String @id @default(uuid())
+ organizationId String
+ parentId String?
+ type OrgUnitType
+ code String
+ nameAr String
+ nameEn String?
+ active Boolean @default(true)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)
+ parent OrgUnit? @relation("OrgUnitTree", fields:[parentId], references:[id], onDelete:Restrict)
+ children OrgUnit[] @relation("OrgUnitTree")
+ positions Position[]
+ employments Employment[]
+ movementsFrom EmploymentMovement[] @relation("MovementFromOrgUnit")
+ movementsTo EmploymentMovement[] @relation("MovementToOrgUnit")
+ @@unique([organizationId,code])
+ @@index([organizationId,parentId,type])
+}
+model Position {
+ id String @id @default(uuid())
+ orgUnitId String
+ code String
+ titleAr String
+ titleEn String?
+ active Boolean @default(true)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ orgUnit OrgUnit @relation(fields:[orgUnitId], references:[id], onDelete:Restrict)
+ employments Employment[]
+ movementsFrom EmploymentMovement[] @relation("MovementFromPosition")
+ movementsTo EmploymentMovement[] @relation("MovementToPosition")
+ @@unique([orgUnitId,code])
+}
+model Employment {
+ id String @id @default(uuid())
+ accountId String
+ organizationId String
+ orgUnitId String
+ positionId String?
+ managerEmploymentId String?
+ workerClass WorkerClass
+ status EmploymentStatus @default(DRAFT)
+ startsAt DateTime?
+ endsAt DateTime?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ account Account @relation(fields:[accountId], references:[id], onDelete:Restrict)
+ organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)
+ orgUnit OrgUnit @relation(fields:[orgUnitId], references:[id], onDelete:Restrict)
+ position Position? @relation(fields:[positionId], references:[id], onDelete:Restrict)
+ manager Employment? @relation("EmploymentManager", fields:[managerEmploymentId], references:[id], onDelete:Restrict)
+ reports Employment[] @relation("EmploymentManager")
+ contracts EmploymentContract[]
+ movements EmploymentMovement[]
+ leaveRequests LeaveRequest[]
+ attendanceEntries AttendanceEntry[]
+ shiftAssignments ShiftAssignment[]
+ compensationTerms CompensationTerm[]
+ performanceCycles PerformanceCycle[]
+ relationsCases EmployeeRelationsCase[]
+ offboardingCases OffboardingCase[]
+ @@index([accountId,status])
+ @@index([organizationId,orgUnitId,status])
+}
+model EmploymentContract {
+ id String @id @default(uuid())
+ employmentId String
+ version Int @default(1)
+ contractType String
+ effectiveFrom DateTime
+ effectiveTo DateTime?
+ documentId String?
+ status String @default("DRAFT")
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ employment Employment @relation(fields:[employmentId], references:[id], onDelete:Restrict)
+ document Document? @relation(fields:[documentId], references:[id], onDelete:Restrict)
+ @@unique([employmentId,version])
+}
+model EmploymentMovement {
+ id String @id @default(uuid())
+ employmentId String
+ type EmploymentMovementType
+ status HrRequestStatus @default(DRAFT)
+ fromOrgUnitId String?
+ toOrgUnitId String?
+ fromPositionId String?
+ toPositionId String?
+ requestedByAccountId String
+ reviewedByAccountId String?
+ approvedByAccountId String?
+ effectiveAt DateTime?
+ reason String?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ employment Employment @relation(fields:[employmentId], references:[id], onDelete:Restrict)
+ fromOrgUnit OrgUnit? @relation("MovementFromOrgUnit", fields:[fromOrgUnitId], references:[id], onDelete:Restrict)
+ toOrgUnit OrgUnit? @relation("MovementToOrgUnit", fields:[toOrgUnitId], references:[id], onDelete:Restrict)
+ fromPosition Position? @relation("MovementFromPosition", fields:[fromPositionId], references:[id], onDelete:Restrict)
+ toPosition Position? @relation("MovementToPosition", fields:[toPositionId], references:[id], onDelete:Restrict)
+ requestedBy Account @relation("EmploymentMovementRequestedBy", fields:[requestedByAccountId], references:[id], onDelete:Restrict)
+ reviewedBy Account? @relation("EmploymentMovementReviewedBy", fields:[reviewedByAccountId], references:[id], onDelete:Restrict)
+ approvedBy Account? @relation("EmploymentMovementApprovedBy", fields:[approvedByAccountId], references:[id], onDelete:Restrict)
+ @@index([employmentId,status])
+}
+model LeaveRequest {
+ id String @id @default(uuid())
+ employmentId String
+ type String
+ status HrRequestStatus @default(DRAFT)
+ startsAt DateTime
+ endsAt DateTime
+ requestedByAccountId String
+ approvedByAccountId String?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ employment Employment @relation(fields:[employmentId], references:[id], onDelete:Restrict)
+ requestedBy Account @relation("LeaveRequestedBy", fields:[requestedByAccountId], references:[id], onDelete:Restrict)
+ approvedBy Account? @relation("LeaveApprovedBy", fields:[approvedByAccountId], references:[id], onDelete:Restrict)
+}
+model AttendanceEntry {
+ id String @id @default(uuid())
+ employmentId String
+ workDate DateTime @db.Date
+ clockInAt DateTime?
+ clockOutAt DateTime?
+ status String @default("PENDING")
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ employment Employment @relation(fields:[employmentId], references:[id], onDelete:Restrict)
+ @@unique([employmentId,workDate])
+}
+model ShiftAssignment {
+ id String @id @default(uuid())
+ employmentId String
+ startsAt DateTime
+ endsAt DateTime
+ shiftCode String?
+ status String @default("SCHEDULED")
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ employment Employment @relation(fields:[employmentId], references:[id], onDelete:Restrict)
+ @@index([employmentId,startsAt])
+ @@index([status])
+}
+model CompensationTerm {
+ id String @id @default(uuid())
+ employmentId String
+ effectiveFrom DateTime
+ effectiveTo DateTime?
+ baseAmountMinor Int?
+ currency String @default("SAR")
+ allowances Json?
+ benefits Json?
+ status HrRequestStatus @default(DRAFT)
+ approvedByAccountId String?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ employment Employment @relation(fields:[employmentId], references:[id], onDelete:Restrict)
+ approvedBy Account? @relation("CompensationTermApprovedBy", fields:[approvedByAccountId], references:[id], onDelete:Restrict)
+ @@index([employmentId,effectiveFrom])
+ @@index([status])
+}
+model PerformanceCycle {
+ id String @id @default(uuid())
+ employmentId String
+ periodStart DateTime @db.Date
+ periodEnd DateTime @db.Date
+ status String @default("DRAFT")
+ goals Json?
+ managerAssessment Json?
+ hrReview Json?
+ developmentPlan Json?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ employment Employment @relation(fields:[employmentId], references:[id], onDelete:Restrict)
+}
+model EmployeeRelationsCase {
+ id String @id @default(uuid())
+ employmentId String
+ caseType String
+ status HrRequestStatus @default(DRAFT)
+ openedByAccountId String
+ reviewedByAccountId String?
+ approvedByAccountId String?
+ summary String?
+ decision String?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ employment Employment @relation(fields:[employmentId], references:[id], onDelete:Restrict)
+ openedBy Account @relation("EmployeeRelationsOpenedBy", fields:[openedByAccountId], references:[id], onDelete:Restrict)
+ reviewedBy Account? @relation("EmployeeRelationsReviewedBy", fields:[reviewedByAccountId], references:[id], onDelete:Restrict)
+ approvedBy Account? @relation("EmployeeRelationsApprovedBy", fields:[approvedByAccountId], references:[id], onDelete:Restrict)
+}
+model OffboardingCase {
+ id String @id @default(uuid())
+ employmentId String
+ status HrRequestStatus @default(DRAFT)
+ reason String?
+ lastWorkingAt DateTime?
+ clearance Json?
+ iamRevokedAt DateTime?
+ closedAt DateTime?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ employment Employment @relation(fields:[employmentId], references:[id], onDelete:Restrict)
+}

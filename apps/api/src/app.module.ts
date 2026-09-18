@@ -1,13 +1,24 @@
 import { Module } from '@nestjs/common';
-import { HealthController } from './health/health.controller';
+import { AdminModule } from './admin/admin.module';
+import { AgentModule } from './agents/agent.module';
+import { ActivationModule } from './activation/activation.module';
+import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
-import { AccessModule } from './access/access.module';
-import { OrganizationModule } from './organization/organization.module';
+import { CredentialsModule } from './credentials/credentials.module';
 import { DatabaseModule } from './database/database.module';
-import { DocumentsModule } from './documents/documents.module';
+import { DiveLogsModule } from './dive-logs/dive-logs.module';
+import { GovernanceModule } from './governance/governance.module';
+import { HealthController } from './health/health.controller';
+import { IntegrationModule } from './integrations/integration.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { SafetyModule } from './safety/safety.module';
+import { TripsModule } from './trips/trips.module';
+import { PaymentsModule } from './payments/payments.module';
+import { ProfileModule } from './profile/profile.module';
+import { OrganizationsModule } from './organizations/organizations.module';
 
 @Module({
-  imports: [DatabaseModule, AuthModule, AccessModule, OrganizationModule, DocumentsModule],
+  imports: [DatabaseModule, AuthModule, ProfileModule, CredentialsModule, ActivationModule, AuditModule, NotificationsModule, GovernanceModule, TripsModule, SafetyModule, PaymentsModule, AdminModule, DiveLogsModule, OrganizationsModule, IntegrationModule, AgentModule],
   controllers: [HealthController],
 })
 export class AppModule {}

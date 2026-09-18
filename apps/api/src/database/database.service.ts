@@ -1,15 +1,49 @@
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
-import { Pool, PoolClient, QueryResultRow } from 'pg';
+import { INestApplication, Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Prisma, PrismaClient } from '@prisma/client';
 
 @Injectable()
-export class DatabaseService implements OnModuleDestroy {
-  private readonly pool = new Pool({ connectionString: process.env.DATABASE_URL });
-  query<T extends QueryResultRow = QueryResultRow>(text:string, values:unknown[] = []) { return this.pool.query<T>(text, values); }
-  async transaction<T>(work:(client:PoolClient)=>Promise<T>):Promise<T> {
-    const client=await this.pool.connect();
-    try { await client.query('BEGIN'); const result=await work(client); await client.query('COMMIT'); return result; }
-    catch(error){ await client.query('ROLLBACK'); throw error; }
-    finally { client.release(); }
+export class DatabaseService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+  async onModuleInit(): Promise<void> {
+    await this.$connect();
   }
-  async onModuleDestroy(){ await this.pool.end(); }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.$disconnect();
+  }
+
+  async enableShutdownHooks(app: INestApplication): Promise<void> {
+    this.$on('beforeExit' as never, async () => {
+      await app.close();
+    });
+  }
+
+  async tryAcquireLease(key: string, ttlMs: number): Promise<boolean> {
+    const leaseKey = `LEASE:${key}`;
+    const cutoff = new Date(Date.now() - Math.max(1_000, ttlMs));
+    const value = JSON.stringify({ type: 'SCHEDULER_LEASE' });
+    const rows = await this.$queryRaw<Array<{ key: string }>>`
+      INSERT INTO "OperationalSetting" ("key", "value", "updatedAt")
+      VALUES (${leaseKey}, ${value}::jsonb, NOW())
+      ON CONFLICT ("key") DO UPDATE
+        SET "value" = EXCLUDED."value", "updatedAt" = NOW()
+      WHERE "OperationalSetting"."updatedAt" < ${cutoff}
+      RETURNING "key"
+    `;
+    return rows.length > 0;
+  }
+
+  async serializable<T>(work: (tx: Prisma.TransactionClient) => Promise<T>, maxAttempts = 3): Promise<T> {
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return await this.$transaction(work, { isolationLevel: 'Serializable' });
+      } catch (error: unknown) {
+        const code = typeof error === 'object' && error !== null && 'code' in error
+          ? String((error as { code?: unknown }).code ?? '')
+          : '';
+        const retryable = code === 'P2034';
+        if (!retryable || attempt === maxAttempts) throw error;
+      }
+    }
+    throw new Error('Serializable transaction retry exhausted.');
+  }
 }

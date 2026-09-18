@@ -8,27 +8,26 @@
     "start": "node dist/main.js",
     "lint": "eslint \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit",
-    "test": "tsx src/access/access.spec.ts && tsx src/security/security.spec.ts && tsx src/workflow/approval.spec.ts && tsx src/workflow/approval-decision.spec.ts && tsx src/notifications/notification-dispatcher.spec.ts && tsx src/security/document-security.spec.ts",
-    "db:migrate": "tsx src/database/migrate.ts"
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "validate:hr": "node scripts/hr-validation.mjs",
+    "validate:operations": "rm -rf .tmp-operations-validation && tsc src/operations/operations-policy.ts src/operations/operations-policy.spec.ts --outDir .tmp-operations-validation --module commonjs --target es2020 --esModuleInterop --skipLibCheck && node .tmp-operations-validation/operations-policy.spec.js && rm -rf .tmp-operations-validation",
+    "validate:phase10": "node scripts/phase10-validation.mjs",
+    "validate:phase12": "node scripts/phase12-validation.mjs"
   },
   "dependencies": {
-    "@nestjs/common": "^11.0.0",
-    "@nestjs/core": "^11.0.0",
-    "@nestjs/platform-express": "^11.0.0",
+    "@nestjs/common": "^11.2.3",
+    "@nestjs/core": "^11.2.3",
+    "@nestjs/platform-express": "^11.2.3",
+    "@prisma/client": "^6.19.3",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1",
-    "pg": "^8.13.1",
-    "class-validator": "^0.14.1",
-    "class-transformer": "^0.5.1"
+    "rxjs": "^7.8.1"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",
     "@types/node": "^22.10.0",
-    "typescript": "^5.7.0",
-    "tsx": "^4.19.0",
-    "@types/pg": "^8.11.10",
-    "eslint": "^9.0.0",
-    "@typescript-eslint/parser": "^8.0.0",
-    "@typescript-eslint/eslint-plugin": "^8.0.0"
+    "prisma": "^6.19.3",
+    "typescript": "^5.7.0"
   }
 }

@@ -1,0 +1,15 @@
+services:
+  api:
+    build: { context: .., dockerfile: apps/api/Dockerfile }
+    env_file: .env.production
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    ports: ["127.0.0.1:3001:3001"]
+    restart: unless-stopped
+  postgres:
+    image: postgres:16-alpine
+    environment: { POSTGRES_DB: hydroland, POSTGRES_USER: hydroland, POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} }
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    restart: unless-stopped
+volumes: { postgres-data: {} }
