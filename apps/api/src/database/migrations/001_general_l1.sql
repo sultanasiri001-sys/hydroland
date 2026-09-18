@@ -81,8 +81,8 @@ CREATE TABLE approval_requests (
 );
 CREATE TABLE notification_outbox (
  id UUID PRIMARY KEY, account_id UUID NOT NULL REFERENCES accounts(id), event_key TEXT NOT NULL,
- payload JSONB NOT NULL DEFAULT '{}'::jsonb, status TEXT NOT NULL CHECK(status IN ('PENDING','SENT','FAILED')),
- attempts INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), sent_at TIMESTAMPTZ
+ payload JSONB NOT NULL DEFAULT '{}'::jsonb, status TEXT NOT NULL CHECK(status IN ('PENDING','PROCESSING','SENT','FAILED')),
+ attempts INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), claimed_at TIMESTAMPTZ, sent_at TIMESTAMPTZ
 );
 CREATE TABLE private_documents (
  id UUID PRIMARY KEY, owner_account_id UUID NOT NULL REFERENCES accounts(id), scope_id UUID NOT NULL,
