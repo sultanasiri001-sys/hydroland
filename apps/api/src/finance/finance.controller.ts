@@ -39,5 +39,5 @@ export class FinanceController {
 
   @UseGuards(AdminGuard)
   @Post('admin/entries/:entryId/post')
-  post(@Param('entryId') entryId: string) { return this.finance.postEntry(entryId); }
+  post(@Req() request: AuthenticatedRequest, @Param('entryId') entryId: string) { return this.finance.postEntry(entryId, request.auth.accountId); }
 }
