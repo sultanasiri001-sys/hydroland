@@ -895,9 +895,11 @@ model CustomerInteraction {
 
 
 enum FinanceEntryType {
+  REVENUE
   EXPENSE
-  SETTLEMENT
+  REFUND
   ADJUSTMENT
+  SETTLEMENT
 }
 
 enum FinanceEntryStatus {
