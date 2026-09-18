@@ -19,7 +19,7 @@
     "multer": "^2.3.0"
   },
   "engines": {
-    "node": ">=22"
+    "node": "22.x"
   },
-  "packageManager": "npm@10"
+  "packageManager": "npm@10.9.8"
 }
