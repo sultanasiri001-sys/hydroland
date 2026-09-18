@@ -892,3 +892,71 @@ model CustomerInteraction {
   actor Account? @relation("CustomerInteractionActor", fields:[actorId], references:[id], onDelete:Restrict)
   @@index([caseId,createdAt])
 }
+
+
+enum FinanceEntryType {
+  EXPENSE
+  SETTLEMENT
+  ADJUSTMENT
+}
+
+enum FinanceEntryStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  POSTED
+  REJECTED
+  VOIDED
+}
+
+model FinanceAccount {
+  id String @id @default(uuid())
+  organizationId String
+  name String
+  currency String @default("SAR")
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  entries FinanceEntry[]
+  @@index([organizationId,active])
+}
+
+model FinanceEntry {
+  id String @id @default(uuid())
+  organizationId String
+  financeAccountId String
+  type FinanceEntryType
+  status FinanceEntryStatus @default(DRAFT)
+  amountMinor Int
+  currency String @default("SAR")
+  referenceType String
+  referenceId String
+  description String?
+  requestedByAccountId String
+  approvedByAccountId String?
+  approvedAt DateTime?
+  postedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  financeAccount FinanceAccount @relation(fields:[financeAccountId], references:[id], onDelete:Restrict)
+  approvals FinanceApproval[]
+  @@index([organizationId,status,createdAt])
+  @@index([referenceType,referenceId])
+  @@index([financeAccountId,status])
+}
+
+model FinanceApproval {
+  id String @id @default(uuid())
+  financeEntryId String
+  status String @default("REQUESTED")
+  requestedByAccountId String
+  decidedByAccountId String?
+  decisionNote String?
+  decidedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  financeEntry FinanceEntry @relation(fields:[financeEntryId], references:[id], onDelete:Restrict)
+  @@index([financeEntryId,status])
+  @@index([requestedByAccountId,status])
+  @@index([decidedByAccountId,status])
+}
