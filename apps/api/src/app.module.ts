@@ -14,6 +14,7 @@ import { InventoryModule } from './inventory/inventory.module';
 import { FinanceModule } from './finance/finance.module';
 import { CustomerServiceModule } from './customer-service/customer-service.module';
 import { MarketingModule } from './marketing/marketing.module';
+import { TechnologySecurityModule } from './technology-security/technology-security.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { SafetyModule } from './safety/safety.module';
 import { TripsModule } from './trips/trips.module';
@@ -23,7 +24,8 @@ import { OrganizationsModule } from './organizations/organizations.module';
 
 @Module({
   imports: [DatabaseModule, AuthModule, ProfileModule, CredentialsModule, ActivationModule, AuditModule, NotificationsModule, GovernanceModule, TripsModule, SafetyModule, PaymentsModule, AdminModule, DiveLogsModule, OrganizationsModule, IntegrationModule, InventoryModule, FinanceModule, CustomerServiceModule,
-    MarketingModule, AgentModule],
+    MarketingModule,
+    TechnologySecurityModule, AgentModule],
   controllers: [HealthController],
 })
 export class AppModule {}
