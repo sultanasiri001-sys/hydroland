@@ -5,10 +5,12 @@ import { AuthModule } from '../auth/auth.module';
 import { SafetyController } from './safety.controller';
 import { SafetyReviewService } from './safety-review.service';
 import { SafetyService } from './safety.service';
+import { SafetyComplianceRiskFoundationService } from './safety-compliance-risk-foundation.service';
 
 @Module({
   imports: [AuthModule, AdminModule, AuditModule],
   controllers: [SafetyController],
-  providers: [SafetyService, SafetyReviewService],
+  providers: [SafetyService, SafetyReviewService, SafetyComplianceRiskFoundationService],
+  exports: [SafetyComplianceRiskFoundationService],
 })
 export class SafetyModule {}
