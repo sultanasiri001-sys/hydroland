@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:deploy": "prisma migrate resolve --rolled-back 20260918195000_finance_persistence || true; prisma migrate deploy",
+    "db:deploy": "prisma migrate deploy",
     "validate:hr": "node scripts/hr-validation.mjs",
     "validate:operations": "rm -rf .tmp-operations-validation && tsc src/operations/operations-policy.ts src/operations/operations-policy.spec.ts --outDir .tmp-operations-validation --module commonjs --target es2020 --esModuleInterop --skipLibCheck && node .tmp-operations-validation/operations-policy.spec.js && rm -rf .tmp-operations-validation",
     "validate:phase10": "node scripts/phase10-validation.mjs",
