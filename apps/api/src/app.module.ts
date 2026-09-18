@@ -17,6 +17,7 @@ import { MarketingModule } from './marketing/marketing.module';
 import { TechnologySecurityModule } from './technology-security/technology-security.module';
 import { FacilitiesMaintenanceModule } from './facilities-maintenance/facilities-maintenance.module';
 import { AdministrativeAffairsModule } from './administrative-affairs/administrative-affairs.module';
+import { ExecutiveGovernanceModule } from './executive-governance/executive-governance.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { SafetyModule } from './safety/safety.module';
 import { TripsModule } from './trips/trips.module';
@@ -29,7 +30,8 @@ import { OrganizationsModule } from './organizations/organizations.module';
     MarketingModule,
     TechnologySecurityModule,
     FacilitiesMaintenanceModule,
-    AdministrativeAffairsModule, AgentModule],
+    AdministrativeAffairsModule,
+    ExecutiveGovernanceModule, AgentModule],
   controllers: [HealthController],
 })
 export class AppModule {}
