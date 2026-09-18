@@ -38,9 +38,9 @@ export class SessionService {
 
   async validate(token: string): Promise<Session> {
     const result = await this.db.query<SessionRow>(
-      `SELECT id, account_id, token_hash, expires_at, revoked_at
-       FROM sessions
-       WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()
+      `SELECT s.id, s.account_id, s.token_hash, s.expires_at, s.revoked_at
+       FROM sessions s JOIN accounts a ON a.id=s.account_id
+       WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > now() AND a.status='ACTIVE'
        LIMIT 1`,
       [this.hash(token)],
     );
