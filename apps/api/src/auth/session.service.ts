@@ -1,5 +1,5 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { createHash, randomUUID } from 'crypto';
+import { createHash, randomBytes, randomUUID } from 'crypto';
 import { DatabaseService } from '../database/database.service';
 
 export interface Session {
@@ -22,8 +22,9 @@ interface SessionRow {
 export class SessionService {
   constructor(private readonly db: DatabaseService) {}
 
-  async issue(accountId: string, token: string, ttlMs = 1000 * 60 * 60 * 8): Promise<Session> {
+  async issue(accountId: string, ttlMs = 1000 * 60 * 60 * 8): Promise<{ token:string; session:Session }> {
     const id = randomUUID();
+    const token = randomBytes(32).toString('base64url');
     const tokenHash = this.hash(token);
     const expiresAt = new Date(Date.now() + ttlMs);
     const result = await this.db.query<SessionRow>(
@@ -32,7 +33,7 @@ export class SessionService {
        RETURNING id, account_id, token_hash, expires_at, revoked_at`,
       [id, accountId, tokenHash, expiresAt],
     );
-    return this.map(result.rows[0]);
+    return { token, session:this.map(result.rows[0]) };
   }
 
   async validate(token: string): Promise<Session> {
