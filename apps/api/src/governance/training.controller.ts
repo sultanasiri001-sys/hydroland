@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { TrainingEnrollmentStatus, TrainingRecordStatus, TrainingSessionStatus } from '@prisma/client';
-import { AdminGuard } from '../admin/admin.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
+import { TrainingAuthorizationService } from './training-authorization.service';
 import { TrainingRepositoryService } from './training-repository.service';
 
 type AuthenticatedRequest = { auth: { accountId: string } };
@@ -9,7 +9,10 @@ type AuthenticatedRequest = { auth: { accountId: string } };
 @UseGuards(AccessTokenGuard)
 @Controller('training')
 export class TrainingController {
-  constructor(private readonly training: TrainingRepositoryService) {}
+  constructor(
+    private readonly training: TrainingRepositoryService,
+    private readonly authorization: TrainingAuthorizationService,
+  ) {}
 
   @Get('mine/enrollments')
   mine(@Req() request: AuthenticatedRequest) {
@@ -21,57 +24,57 @@ export class TrainingController {
     return this.training.createEnrollment({ studentAccountId: request.auth.accountId, ...body });
   }
 
-  @UseGuards(AdminGuard)
   @Get('enrollments/:id')
-  getEnrollment(@Param('id') id: string) {
+  async getEnrollment(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+    await this.authorization.assertEnrollmentAccess(request.auth.accountId, id, true);
     return this.training.getEnrollment(id);
   }
 
-  @UseGuards(AdminGuard)
   @Patch('enrollments/:id/instructor')
-  assignInstructor(@Param('id') id: string, @Body() body: { instructorAccountId: string }) {
+  async assignInstructor(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { instructorAccountId: string }) {
+    await this.authorization.assertAdministrativeEnrollmentAccess(request.auth.accountId, id);
     return this.training.assignInstructor(id, body.instructorAccountId);
   }
 
-  @UseGuards(AdminGuard)
   @Patch('enrollments/:id/status')
-  setEnrollmentStatus(@Param('id') id: string, @Body() body: { status: TrainingEnrollmentStatus }) {
+  async setEnrollmentStatus(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { status: TrainingEnrollmentStatus }) {
+    await this.authorization.assertEnrollmentAccess(request.auth.accountId, id);
     return this.training.setEnrollmentStatus(id, body.status);
   }
 
-  @UseGuards(AdminGuard)
   @Post('enrollments/:id/record')
-  createRecord(@Param('id') id: string, @Body() body: { policyVersion?: string }) {
+  async createRecord(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { policyVersion?: string }) {
+    await this.authorization.assertEnrollmentAccess(request.auth.accountId, id);
     return this.training.createRecord(id, body.policyVersion);
   }
 
-  @UseGuards(AdminGuard)
   @Patch('records/:id/progress')
-  setProgress(@Param('id') id: string, @Body() body: { progressPercent: number; status?: TrainingRecordStatus }) {
+  async setProgress(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { progressPercent: number; status?: TrainingRecordStatus }) {
+    await this.authorization.assertRecordAccess(request.auth.accountId, id);
     return this.training.setRecordProgress(id, body.progressPercent, body.status);
   }
 
-  @UseGuards(AdminGuard)
   @Post('records/:id/stages')
-  addStage(@Param('id') id: string, @Body() body: { stageType: string; deliveryMode: string; sequence: number }) {
+  async addStage(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { stageType: string; deliveryMode: string; sequence: number }) {
+    await this.authorization.assertRecordAccess(request.auth.accountId, id);
     return this.training.addStage(id, body.stageType, body.deliveryMode, body.sequence);
   }
 
-  @UseGuards(AdminGuard)
   @Post('stages/:id/skills')
-  addSkill(@Param('id') id: string, @Body() body: { skillCode: string; name: string }) {
+  async addSkill(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { skillCode: string; name: string }) {
+    await this.authorization.assertStageAccess(request.auth.accountId, id);
     return this.training.addSkill(id, body.skillCode, body.name);
   }
 
-  @UseGuards(AdminGuard)
   @Post('records/:id/sessions')
-  createSession(@Param('id') id: string, @Body() body: { instructorAccountId: string; startsAt: string; trainingStageId?: string; facilityOrSiteId?: string; tripId?: string; vesselId?: string }) {
+  async createSession(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { instructorAccountId: string; startsAt: string; trainingStageId?: string; facilityOrSiteId?: string; tripId?: string; vesselId?: string }) {
+    await this.authorization.assertRecordAccess(request.auth.accountId, id);
     return this.training.createSession({ ...body, trainingRecordId: id, startsAt: new Date(body.startsAt) });
   }
 
-  @UseGuards(AdminGuard)
   @Patch('sessions/:id/status')
-  setSessionStatus(@Param('id') id: string, @Body() body: { status: TrainingSessionStatus; evidence?: any }) {
+  async setSessionStatus(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { status: TrainingSessionStatus; evidence?: any }) {
+    await this.authorization.assertSessionAccess(request.auth.accountId, id);
     return this.training.setSessionStatus(id, body.status, body.evidence);
   }
 }

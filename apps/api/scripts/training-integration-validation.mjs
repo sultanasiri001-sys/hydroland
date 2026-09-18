@@ -7,6 +7,7 @@ const schema = read('prisma/schema.prisma');
 const migration = read('prisma/migrations/20260919230000_training_persistence/migration.sql');
 const repository = read('src/governance/training-repository.service.ts');
 const controller = read('src/governance/training.controller.ts');
+const authorization = read('src/governance/training-authorization.service.ts');
 const moduleFile = read('src/governance/governance.module.ts');
 
 const checks = [
@@ -24,12 +25,18 @@ const checks = [
   ['Authenticated training controller', /@UseGuards\(AccessTokenGuard\)/.test(controller)],
   ['Self enrollment route', /@Post\('enrollments'\)/.test(controller)],
   ['Student enrollment list route', /@Get\('mine\/enrollments'\)/.test(controller)],
-  ['Record route', /@Post\('enrollments\/:id\/record'\)/.test(controller)],
-  ['Stage route', /@Post\('records\/:id\/stages'\)/.test(controller)],
-  ['Skill route', /@Post\('stages\/:id\/skills'\)/.test(controller)],
-  ['Session route', /@Post\('records\/:id\/sessions'\)/.test(controller)],
-  ['Progress route', /@Patch\('records\/:id\/progress'\)/.test(controller)],
-  ['Controller registered', /controllers:\s*\[TrainingController\]/.test(moduleFile)],
+  ['Enrollment read authorization', /assertEnrollmentAccess\(request\.auth\.accountId, id, true\)/.test(controller)],
+  ['Instructor assignment admin scope', /assertAdministrativeEnrollmentAccess\(request\.auth\.accountId, id\)/.test(controller)],
+  ['Record authorization', /assertRecordAccess\(request\.auth\.accountId, id\)/.test(controller)],
+  ['Stage authorization', /assertStageAccess\(request\.auth\.accountId, id\)/.test(controller)],
+  ['Session authorization', /assertSessionAccess\(request\.auth\.accountId, id\)/.test(controller)],
+  ['Active global admin bypass', /status: 'ACTIVE', role: 'ADMIN'/.test(authorization)],
+  ['Assigned instructor requires active role', /enrollment\.instructorAccountId !== accountId/.test(authorization) && /status: 'ACTIVE', role: 'INSTRUCTOR'/.test(authorization)],
+  ['Center scope requires active membership', /organizationId: centerOrganizationId/.test(authorization) && /status: 'ACTIVE'/.test(authorization)],
+  ['Center-wide roles exclude instructor', /role: \{ in: \['OWNER', 'ADMIN', 'OPERATOR'\] \}/.test(authorization)],
+  ['Student access is explicit read-only option', /allowStudent && enrollment\.studentAccountId === accountId/.test(authorization)],
+  ['Authorization service registered', /TrainingAuthorizationService/.test(moduleFile)],
+  ['Legacy AdminGuard removed from training controller', !/AdminGuard/.test(controller)],
 ];
 
 const failed = checks.filter(([, ok]) => !ok);
