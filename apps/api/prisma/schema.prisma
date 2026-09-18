@@ -962,3 +962,116 @@ model FinanceApproval {
   @@index([requestedByAccountId,status])
   @@index([decidedByAccountId,status])
 }
+
+
+enum TrainingEnrollmentStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  COMPLETED
+  CANCELLED
+}
+
+enum TrainingRecordStatus {
+  NOT_STARTED
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  DELAYED
+  SUSPENDED
+}
+
+enum TrainingSessionStatus {
+  SCHEDULED
+  CHECK_IN_OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model TrainingEnrollment {
+  id String @id @default(uuid())
+  studentAccountId String
+  courseCode String
+  centerOrganizationId String?
+  instructorAccountId String?
+  status TrainingEnrollmentStatus @default(PENDING)
+  enrolledAt DateTime @default(now())
+  completedAt DateTime?
+  metadata Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  record TrainingRecord?
+  @@index([studentAccountId,status])
+  @@index([centerOrganizationId,status])
+  @@index([instructorAccountId,status])
+  @@index([courseCode,status])
+}
+
+model TrainingRecord {
+  id String @id @default(uuid())
+  enrollmentId String @unique
+  status TrainingRecordStatus @default(NOT_STARTED)
+  progressPercent Int @default(0)
+  policyVersion String?
+  startedAt DateTime?
+  completedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  enrollment TrainingEnrollment @relation(fields:[enrollmentId], references:[id], onDelete:Restrict)
+  stages TrainingStage[]
+  sessions TrainingSession[]
+  @@index([status,updatedAt])
+}
+
+model TrainingStage {
+  id String @id @default(uuid())
+  trainingRecordId String
+  stageType String
+  deliveryMode String
+  sequence Int
+  progressPercent Int @default(0)
+  status String @default("NOT_STARTED")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  trainingRecord TrainingRecord @relation(fields:[trainingRecordId], references:[id], onDelete:Cascade)
+  skills TrainingSkill[]
+  @@unique([trainingRecordId,sequence])
+  @@index([trainingRecordId,status])
+}
+
+model TrainingSkill {
+  id String @id @default(uuid())
+  trainingStageId String
+  skillCode String
+  name String
+  status String @default("NOT_STARTED")
+  signedOffByInstructorId String?
+  signedOffAt DateTime?
+  studentAcknowledgedAt DateTime?
+  studentObjection String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  trainingStage TrainingStage @relation(fields:[trainingStageId], references:[id], onDelete:Cascade)
+  @@unique([trainingStageId,skillCode])
+  @@index([trainingStageId,status])
+}
+
+model TrainingSession {
+  id String @id @default(uuid())
+  trainingRecordId String
+  trainingStageId String?
+  instructorAccountId String
+  facilityOrSiteId String?
+  tripId String?
+  vesselId String?
+  evidence Json?
+  status TrainingSessionStatus @default(SCHEDULED)
+  startsAt DateTime
+  endsAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  trainingRecord TrainingRecord @relation(fields:[trainingRecordId], references:[id], onDelete:Cascade)
+  @@index([trainingRecordId,status,startsAt])
+  @@index([instructorAccountId,startsAt])
+}
