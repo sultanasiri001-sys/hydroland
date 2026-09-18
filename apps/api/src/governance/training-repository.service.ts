@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { TrainingEnrollmentStatus, TrainingRecordStatus, TrainingSessionStatus } from '@prisma/client';
+import { Prisma, TrainingEnrollmentStatus, TrainingRecordStatus, TrainingSessionStatus } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 
 export interface CreateTrainingEnrollmentInput {
@@ -7,7 +7,7 @@ export interface CreateTrainingEnrollmentInput {
   courseCode: string;
   centerOrganizationId?: string;
   instructorAccountId?: string;
-  metadata?: Record<string, unknown>;
+  metadata?: Prisma.InputJsonValue;
 }
 
 @Injectable()
@@ -100,7 +100,7 @@ export class TrainingRepositoryService {
     return this.db.trainingSession.create({ data: input });
   }
 
-  setSessionStatus(id: string, status: TrainingSessionStatus, evidence?: Record<string, unknown>) {
+  setSessionStatus(id: string, status: TrainingSessionStatus, evidence?: Prisma.InputJsonValue) {
     return this.db.trainingSession.update({
       where: { id },
       data: { status, evidence },
