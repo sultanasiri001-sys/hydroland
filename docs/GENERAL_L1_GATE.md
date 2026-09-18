@@ -1,25 +1,24 @@
 # GENERAL-L1 — Closure Gate
 
-Status: OPEN
+Status: OPEN — final CI/deployment validation pending
 
 GENERAL-L1 is the shared platform foundation. HR-L1 MUST NOT start until this gate is closed.
 
 ## Required closure controls
-- [x] Canonical identity/auth boundary scaffold
-- [x] Canonical authorization + scoped-access contract scaffold
-- [x] Canonical organization hierarchy contract scaffold
-- [x] Canonical audit-event contract scaffold
-- [~] Persistent database schema and migrations — canonical PostgreSQL schema added; migration runner/validation pending
-- [~] Authentication sessions/tokens lifecycle — PostgreSQL-backed hashed sessions implemented; secure token issuance/rotation and DB integration tests pending
-- [~] RBAC persistence: roles, permissions, grants, scopes — canonical tables/permission keys added; repository/service enforcement pending
-- [~] Organization persistence: HQ/Region/Center/Department/Unit/Team — canonical hierarchy table added; service/API validation pending
-- [~] Approval workflow engine — transactional approval/status, scoped reviewer authorization, role-grant activation, audit and outbox implemented; DB state-locking/integration validation pending
-- [~] Private document storage contract + validation — MIME allowlist, size limit, magic-byte validation, SHA-256, metadata persistence and read/download authorization implemented; private object storage and security tests pending
-- [~] Notifications/outbox — transactional outbox, SKIP LOCKED claiming, retry/failure handling and dispatcher core implemented; external delivery adapter/integration validation pending
-- [~] Append-only audit persistence — PostgreSQL inserts plus UPDATE/DELETE prevention triggers implemented; migration/integration validation pending
-- [ ] Security controls (IDOR, validation, rate limiting, headers)
-- [ ] Integration and security tests
-- [~] Build/typecheck/test green in CI — push and PR checks green at ffb147e; lint still pending
+- [x] Canonical identity/auth boundary
+- [x] Canonical authorization with permission-to-scope grant isolation
+- [x] Organization hierarchy contract and PostgreSQL persistence
+- [x] Append-only audit contract and database mutation guards
+- [x] PostgreSQL canonical schema plus checksummed transactional migration runner
+- [x] Authentication sessions with server-generated cryptographic tokens, hashed persistence, expiry/revocation and inactive-account invalidation
+- [x] RBAC persistence: roles, permissions, grants and exact scoped enforcement
+- [x] Approval workflow transaction: valid persisted state transition, scoped reviewer authorization, pending role-grant activation, audit and notification outbox
+- [x] Private document validation/storage: MIME/size/magic bytes/SHA-256, opaque private storage, authorized upload/read/download and failed-DB cleanup
+- [x] Notification outbox: atomic PROCESSING lease, retry/failure handling, stale-lease recovery and dispatcher
+- [x] Security baseline: global authorization guard, UUID resource validation, strict input validation, headers, rate limiting, IDOR scope isolation and spoofed-document tests
+- [x] CI build/typecheck/lint/test gate
+- [x] CI PostgreSQL migration execution; repeat migration verifies idempotent checksum path
+- [ ] Final latest-head CI success
 - [ ] Deployment validation
 
 ## Rule
