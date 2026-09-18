@@ -6,7 +6,8 @@
   panel.hidden = true;
   panel.innerHTML = '<div class="hl-theme-admin__head"><div><span class="eyebrow">THEME CONTROL</span><h3>إدارة ثيمات HYDROLAND</h3></div><span data-theme-admin-state>بانتظار الاتصال</span></div><form data-theme-admin-form><label>الثيم<select name="themeId" required></select></label><label>اسم الحملة<input name="name" maxlength="80"></label><label>يبدأ<input name="startsAt" type="datetime-local" required></label><label>ينتهي<input name="endsAt" type="datetime-local" required></label><label>الحالة<select name="status"><option value="DRAFT">مسودة</option><option value="PUBLISHED">منشور</option></select></label><div class="hl-theme-admin__actions"><button type="button" data-preview>معاينة</button><button type="submit">حفظ الجدولة</button></div></form><div data-theme-admin-list></div>';
   root.insertAdjacentElement('afterend', panel);
-  const base = () => (window.HydrolandAuth?.apiBase || window.HYDROLAND_API_BASE || 'http://localhost:3001/api/v1').replace(/\/$/, '');
+  const defaultApiBase = /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname) ? 'http://localhost:3001/api/v1' : 'https://hydroland.onrender.com/api/v1';
+  const base = () => (window.HydrolandAuth?.apiBase || window.HYDROLAND_API_BASE || defaultApiBase).replace(/\/$/, '');
   const token = () => window.HydrolandAuth?.getAccessToken?.();
   const state = (text) => { const el = panel.querySelector('[data-theme-admin-state]'); if (el) el.textContent = text; };
   const authHeaders = (json) => ({ ...(json ? {'Content-Type':'application/json'} : {}), Authorization: 'Bearer ' + token() });
