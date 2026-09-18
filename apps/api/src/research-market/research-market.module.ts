@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
 import { ResearchMarketFoundationService } from './research-market-foundation.service';
-@Module({ providers:[ResearchMarketFoundationService], exports:[ResearchMarketFoundationService] })
+import { ResearchMarketWorkflowService } from './research-market-workflow.service';
+@Module({ providers:[ResearchMarketFoundationService, ResearchMarketWorkflowService], exports:[ResearchMarketFoundationService, ResearchMarketWorkflowService] })
 export class ResearchMarketModule {}
