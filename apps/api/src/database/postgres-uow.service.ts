@@ -14,7 +14,8 @@ export class PostgresUnitOfWork implements UnitOfWork {
   }
   private q(text:string,values:unknown[]=[]){ return this.client ? this.client.query(text,values) : this.db.query(text,values); }
   async updateApprovalStatus(requestId:string,status:string):Promise<void>{
-    const r=await this.q('UPDATE approval_requests SET status=$2, updated_at=now() WHERE id=$1 RETURNING id',[requestId,status]);
+    const allowedFrom=status==='APPROVED' ? ['UNDER_REVIEW'] : [];
+    const r=await this.q('UPDATE approval_requests SET status=$2, updated_at=now() WHERE id=$1 AND (cardinality($3::text[])=0 OR status=ANY($3::text[])) RETURNING id',[requestId,status,allowedFrom]);
     if(r.rowCount!==1) throw new Error('Approval request not found');
   }
   async activateRoleGrant(requestId:string):Promise<void>{
