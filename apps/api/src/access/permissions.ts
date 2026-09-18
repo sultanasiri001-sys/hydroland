@@ -9,6 +9,7 @@ export const Permissions = {
   ApprovalDecide: 'approval.decide',
   DocumentRead: 'document.read',
   DocumentUpload: 'document.upload',
+ 'document.download',
   AuditRead: 'audit.read',
 } as const;
 
