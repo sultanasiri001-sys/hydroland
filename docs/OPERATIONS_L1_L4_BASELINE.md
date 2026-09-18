@@ -1,6 +1,6 @@
 # HYDROLAND Operations — L1–L4 Canonical Baseline
 
-Status: implementation baseline. This document does not create a parallel backend; it assigns ownership and governs the existing canonical platform domains.
+Status: implementation baseline — active reconciliation. This document does not create a parallel backend; it assigns ownership and governs the existing canonical platform domains.
 
 ## L1 — Organization and ownership
 Marine Operations owns Trips, Bookings, Crew Assignments and Dive Logs. Inventory & Logistics owns inventory, rental, procurement and transfers. Safety owns safety/risk/incident/operational clearance. Facilities owns assets and maintenance. Finance remains independent for budget confirmation, payment and accounting. HR remains the canonical source for employment and workforce status.
@@ -40,3 +40,8 @@ Operations is NOT COMPLETE until:
 6. Incident escalation and evidence retention are connected to shared audit/document/notification capabilities.
 7. Finance and HR integrations reference canonical records without copying ledgers or employment state.
 8. Prisma validation, TypeScript/build and operations policy tests pass before production deployment.
+
+## Validation record
+- Branch build check: PASS at `10c5c6069d90a0eaf02d7891a6146f00c58d6508`.
+- Canonical operations policy tests are present for fail-closed safety/compliance/weather/crew/resource gates, center scope, and segregation of duties.
+- Remaining closure work must validate the full canonical branch against the current shared foundation before merge; no parallel operational engine may be introduced.
