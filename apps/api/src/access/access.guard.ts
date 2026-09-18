@@ -4,6 +4,7 @@ import { SessionService } from '../auth/session.service';
 import { AccessService } from './access.service';
 import { AccessContext } from './access.types';
 import { PERMISSION_KEY, SCOPE_PARAM_KEY } from './access.decorators';
+import { isSafeResourceId } from '../security/resource-id';
 
 export interface AccessRequest { headers?: { authorization?: string }; params?: Record<string,string>; accessContext?: AccessContext; }
 
@@ -22,7 +23,9 @@ export class AccessGuard implements CanActivate {
   const accessContext=await this.access.resolve(session.accountId); req.accessContext=accessContext;
   if(!accessContext.active)throw new ForbiddenException('Account inactive');
   const scopeParam=this.reflector.getAllAndOverride<string>(SCOPE_PARAM_KEY,[ctx.getHandler(),ctx.getClass()]);
-  this.access.require(accessContext,permission,scopeParam?req.params?.[scopeParam]:undefined);
+  const resourceScopeId=scopeParam?req.params?.[scopeParam]:undefined;
+  if(resourceScopeId && !isSafeResourceId(resourceScopeId)) throw new ForbiddenException('Invalid resource scope');
+  this.access.require(accessContext,permission,resourceScopeId);
   return true;
  }
 }
