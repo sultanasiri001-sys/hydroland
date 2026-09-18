@@ -58,3 +58,59 @@ export interface ApprovalWorkflowDefinition {
   steps: ApprovalStepDefinition[];
   policy: PolicyVersionRef;
 }
+
+
+export enum TrainingStageType {
+  THEORY = 'THEORY',
+  E_LEARNING = 'E_LEARNING',
+  CLASSROOM = 'CLASSROOM',
+  CONFINED_WATER = 'CONFINED_WATER',
+  OPEN_WATER = 'OPEN_WATER',
+  ASSESSMENT = 'ASSESSMENT',
+  CERTIFICATION = 'CERTIFICATION',
+}
+
+export enum SkillProgressStatus {
+  NOT_STARTED = 'NOT_STARTED',
+  INTRODUCED = 'INTRODUCED',
+  PRACTICED = 'PRACTICED',
+  COMPLETED = 'COMPLETED',
+  NEEDS_REASSESSMENT = 'NEEDS_REASSESSMENT',
+}
+
+export enum DelayAttribution {
+  STUDENT = 'STUDENT',
+  INSTRUCTOR = 'INSTRUCTOR',
+  CENTER = 'CENTER',
+  SAFETY_WEATHER = 'SAFETY_WEATHER',
+  FACILITY_RESOURCE = 'FACILITY_RESOURCE',
+  EXTERNAL_AUTHORITY = 'EXTERNAL_AUTHORITY',
+  FORCE_MAJEURE = 'FORCE_MAJEURE',
+  PENDING_REVIEW = 'PENDING_REVIEW',
+}
+
+export interface TrainingEnrollmentIdentity {
+  enrollmentId: string;
+  studentId: string;
+  centerId: string;
+  courseId: string;
+  source: EnrollmentSource;
+  referredByInstructorId?: string;
+  preferredInstructorId?: string;
+  assignedInstructorId?: string;
+  policy: PolicyVersionRef;
+}
+
+export interface SessionEvidence {
+  scheduledAt: string;
+  studentCheckInAt?: string;
+  instructorCheckInAt?: string;
+  startedAt?: string;
+  endedAt?: string;
+  studentGeofenceVerified?: boolean;
+  instructorGeofenceVerified?: boolean;
+  studentQrVerified?: boolean;
+  instructorQrVerified?: boolean;
+  offlineCapturedAt?: string;
+  synchronizedAt?: string;
+}
