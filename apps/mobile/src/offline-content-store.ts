@@ -35,3 +35,9 @@ export function deletePayload(tripId:string,mediaKey:string){
  const file=payloadFile(tripId,mediaKey);
  if(file.exists)file.delete();
 }
+
+export function loadPayloadBytes(tripId:string,mediaKey:string):Uint8Array|null{
+ const file=payloadFile(tripId,mediaKey);
+ if(!file.exists)return null;
+ try{return file.bytesSync()}catch{return null}
+}
