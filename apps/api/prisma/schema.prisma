@@ -1250,9 +1250,28 @@ model TripBriefing {
   updatedAt DateTime @updatedAt
   trip Trip @relation(fields:[tripId], references:[id], onDelete:Restrict)
   translations BriefingTranslation[]
+  media BriefingMedia[]
   offlinePackages OfflineTripPackage[]
   @@unique([tripId,version])
   @@index([tripId,status])
+}
+
+model BriefingMedia {
+  id String @id @default(uuid())
+  briefingId String
+  mediaKey String
+  mediaType String
+  storageKey String
+  checksum String
+  sizeBytes Int?
+  contentType String?
+  classification String @default("OPERATIONAL_OFFLINE")
+  status String @default("READY")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  briefing TripBriefing @relation(fields:[briefingId], references:[id], onDelete:Restrict)
+  @@unique([briefingId,mediaKey])
+  @@index([briefingId,status])
 }
 
 model DivePlan {
