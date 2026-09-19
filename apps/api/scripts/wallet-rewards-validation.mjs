@@ -40,3 +40,8 @@ assert.ok(storeService.includes("payment.status!=='CAPTURED'"),'FULFILLED must r
 assert.ok(storeService.includes("provider:'NOT_SELECTED'"),'Payment provider must remain explicitly unselected until configured');
 assert.ok(storeService.includes("financialActionExecuted:false"),'Payment preparation must remain non-financial until provider integration');
 console.log('Store payment boundary validation passed.');
+
+assert.ok(storeService.includes("payment?.status==='CAPTURED'"),'Captured payments must block cancellation until refund flow exists');
+assert.ok(storeService.includes("Captured payment requires an approved refund flow before cancellation."),'Missing captured-payment cancellation guard');
+assert.ok(storeService.includes("throw new ConflictException('Idempotency key cannot be reused')"),'Payment idempotency reuse must be a conflict');
+console.log('Store cancellation/refund boundary validation passed.');
