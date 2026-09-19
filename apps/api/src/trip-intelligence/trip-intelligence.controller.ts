@@ -34,4 +34,6 @@ export class TripIntelligenceController {
   generatePackage(@Req() req:any,@Param('tripId') tripId:string){return this.service.generateOfflinePackage(req.auth.accountId,tripId);}
   @Get(':tripId/offline-package')
   packageStatus(@Param('tripId') tripId:string){return this.service.packageStatus(tripId);}
+  @Get(':tripId/offline-package/content')
+  packageContent(@Param('tripId') tripId:string){return this.service.packageContent(tripId);}
 }
