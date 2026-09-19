@@ -24,6 +24,7 @@ import { TripsModule } from './trips/trips.module';
 import { PaymentsModule } from './payments/payments.module';
 import { StoreModule } from './store/store.module';
 import { WalletModule } from './wallet/wallet.module';
+import { RewardsModule } from './rewards/rewards.module';
 import { ProfileModule } from './profile/profile.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { ResearchMarketModule } from './research-market/research-market.module';
@@ -35,7 +36,7 @@ import { LegalGovernanceModule } from './legal-governance/legal-governance.modul
     TechnologySecurityModule,
     FacilitiesMaintenanceModule,
     AdministrativeAffairsModule,
-    ExecutiveGovernanceModule, AgentModule, ResearchMarketModule, LegalGovernanceModule, StoreModule, WalletModule],
+    ExecutiveGovernanceModule, AgentModule, ResearchMarketModule, LegalGovernanceModule, StoreModule, WalletModule, RewardsModule],
   controllers: [HealthController],
 })
 export class AppModule {}
