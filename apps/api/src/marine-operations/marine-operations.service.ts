@@ -23,6 +23,19 @@ export class MarineOperationsService{
    return tx.marineAsset.update({where:{id:marineAssetId},data:{calendarResourceId:resourceId}});
   });
  }
+ async addMaintenance(marineAssetId:string,input:{maintenanceType:string;dueAt?:string;notes?:string}){
+  const asset=await this.db.marineAsset.findUnique({where:{id:marineAssetId},select:{id:true}});
+  if(!asset)throw new NotFoundException('Marine asset not found.');
+  const dueAt=input.dueAt?new Date(input.dueAt):null;
+  if(dueAt&&Number.isNaN(dueAt.getTime()))throw new BadRequestException('Invalid maintenance due date.');
+  if(!input.maintenanceType?.trim())throw new BadRequestException('Maintenance type is required.');
+  return this.db.marineMaintenanceRecord.create({data:{marineAssetId,maintenanceType:input.maintenanceType.trim(),dueAt,notes:input.notes?.trim()||null}});
+ }
+ async completeMaintenance(recordId:string){
+  const record=await this.db.marineMaintenanceRecord.findUnique({where:{id:recordId}});
+  if(!record)throw new NotFoundException('Maintenance record not found.');
+  return this.db.marineMaintenanceRecord.update({where:{id:recordId},data:{status:'COMPLETED',completedAt:new Date()}});
+ }
  async readinessForCalendarResource(resourceId:string,tripId?:string,checkedByAccountId?:string){
   const asset=await this.db.marineAsset.findUnique({where:{calendarResourceId:resourceId},select:{id:true}});
   if(!asset)return{status:'NOT_READY' as const,reasonCodes:['MARINE_ASSET_NOT_LINKED']};
