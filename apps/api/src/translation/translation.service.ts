@@ -37,5 +37,5 @@ export class TranslationService {
     if(item.phrase.status==='RETIRED')throw new ConflictException('Retired emergency phrase cannot be approved.');
     return this.db.emergencyPhraseTranslation.update({where:{id:translationId},data:{reviewedByAccountId:reviewerAccountId,reviewedAt:new Date()}});
   }
-  translate(input:{sourceLanguage:string;targetLanguage:string;text:string;mode:TranslationMode;contentClass?:TranslationContentClass}){return this.router.translate({...input,contentClass:input.contentClass??'GENERAL'});}}
+  translate(input:{sourceLanguage:string;targetLanguage:string;text:string;mode:TranslationMode;contentClass?:TranslationContentClass}){return this.router.translate({...input,contentClass:input.contentClass??'GENERAL'});}
 }
