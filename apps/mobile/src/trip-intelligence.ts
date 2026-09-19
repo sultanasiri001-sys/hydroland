@@ -1,6 +1,6 @@
 import {CryptoDigestAlgorithm,digestStringAsync} from 'expo-crypto';
 import {authorizedFetch,authorizedBinaryFetch} from './api';
-import {saveOfflineContent,loadOfflineContent,deleteOfflineContent,payloadFile,deletePayload} from './offline-content-store';
+import {saveOfflineContent,loadOfflineContent,deleteOfflineContent,payloadFile,deletePayload,loadPayloadBytes} from './offline-content-store';
 import {saveTripPackage,deleteTripPackage,type OfflineTripPackage} from './offline-trip-package';
 
 export type OfflinePackageStatus={tripId:string;briefingVersion?:number;status:'NOT_READY'|'UPDATE_REQUIRED'|'READY'|string;reason?:string;checksum?:string;generatedAt?:string};
@@ -72,5 +72,15 @@ export async function verifyStoredOfflinePackage(tripId:string){
  if(checksum.toLowerCase()!==metadata.checksum.toLowerCase()){
   deleteOfflineContent(tripId);await deleteTripPackage(tripId);return false;
  }
+ return true;
+}
+
+export async function verifyStoredOfflinePayload(tripId:string,entry:OfflineMediaManifestEntry){
+ if(!entry.key.startsWith('media:')||!entry.checksum)return false;
+ const mediaKey=entry.key.slice('media:'.length);if(!mediaKey)return false;
+ const bytes=loadPayloadBytes(tripId,mediaKey);if(!bytes)return false;
+ if(entry.sizeBytes!=null&&bytes.byteLength!==entry.sizeBytes){deletePayload(tripId,mediaKey);return false;}
+ const actual=await digestStringAsync(CryptoDigestAlgorithm.SHA256,bytesToBase64(bytes),{encoding:'base64'} as any);
+ if(actual.toLowerCase()!==entry.checksum.toLowerCase()){deletePayload(tripId,mediaKey);return false;}
  return true;
 }
