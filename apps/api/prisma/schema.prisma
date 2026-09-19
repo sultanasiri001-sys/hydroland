@@ -1159,8 +1159,18 @@ model StoreOrderItem {
 }
 
 
-enum WalletEntryType { CREDIT DEBIT REFUND ADJUSTMENT }
-enum RewardEntryType { EARN REDEEM EXPIRE ADJUSTMENT }
+enum WalletEntryType {
+ CREDIT
+ DEBIT
+ REFUND
+ ADJUSTMENT
+}
+enum RewardEntryType {
+ EARN
+ REDEEM
+ EXPIRE
+ ADJUSTMENT
+}
 
 model Wallet {
  id String @id @default(uuid())
