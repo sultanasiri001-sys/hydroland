@@ -19,7 +19,7 @@ export class WalletService {
   async apply(input:WalletMutation){
     if(!Number.isInteger(input.amountMinor)||input.amountMinor<1||!input.idempotencyKey?.trim())throw new BadRequestException('Invalid wallet mutation.');
     const key=input.idempotencyKey.trim();
-    return this.db.$transaction(async tx=>{
+    for(let attempt=0;attempt<3;attempt++)try{return await this.db.$transaction(async tx=>{
       const existing=await tx.walletEntry.findUnique({where:{idempotencyKey:key}});
       if(existing){
         const wallet=await tx.wallet.findUnique({where:{id:existing.walletId},select:{accountId:true}});
@@ -35,6 +35,14 @@ export class WalletService {
       }else await tx.wallet.update({where:{id:wallet.id},data:{balanceMinor:{increment:input.amountMinor}}});
       const current=await tx.wallet.findUniqueOrThrow({where:{id:wallet.id},select:{balanceMinor:true}});
       return tx.walletEntry.create({data:{walletId:wallet.id,type:input.type,amountMinor:input.amountMinor,balanceAfterMinor:current.balanceMinor,idempotencyKey:key,referenceType:input.referenceType,referenceId:input.referenceId,metadata:input.metadata}});
-    },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+    },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});}catch(error){
+      if(error instanceof Prisma.PrismaClientKnownRequestError&&(error.code==='P2002'||error.code==='P2034')){
+        const existing=await this.db.walletEntry.findUnique({where:{idempotencyKey:key}});
+        if(existing){const wallet=await this.db.wallet.findUnique({where:{id:existing.walletId},select:{accountId:true}});if(wallet?.accountId===input.accountId&&existing.type===input.type&&existing.amountMinor===input.amountMinor&&existing.referenceType===(input.referenceType??null)&&existing.referenceId===(input.referenceId??null))return existing;throw new ConflictException('Idempotency key cannot be reused with different wallet details.');}
+        if(error.code==='P2034'&&attempt<2)continue;
+      }
+      throw error;
+    }
+    throw new ConflictException('Wallet mutation could not be serialized.');
   }
 }
