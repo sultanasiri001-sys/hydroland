@@ -134,7 +134,16 @@ export class TripIntelligenceService {
       ...briefing.translations.map((translation:any)=>({key:`translation:${translation.languageCode}`,version:briefing.version,checksum:this.sha256(translation.content),classification:translation.level==='CONTROLLED_SAFETY_CONTENT'?'SENSITIVE_ENCRYPTED':'OPERATIONAL_OFFLINE'})),
       ...briefing.media.filter((media:any)=>media.classification!=='ONLINE_ONLY').map((media:any)=>({key:`media:${media.mediaKey}`,version:briefing.version,checksum:media.checksum,classification:media.classification,mediaType:media.mediaType,sizeBytes:media.sizeBytes,contentType:media.contentType,payloadKey:media.mediaKey}))
     ];
-    const manifest={schemaVersion:1,tripId,briefingId:briefing.id,briefingVersion:briefing.version,divePlanVersion:divePlan.version,emergencyPlanVersion:emergencyPlan.version,generatedAt:new Date().toISOString(),files};
+    const packageIdentity={schemaVersion:1,tripId,briefingId:briefing.id,briefingVersion:briefing.version,divePlanVersion:divePlan.version,emergencyPlanVersion:emergencyPlan.version,files};
+    const existingPackages=await this.db.offlineTripPackage.findMany({where:{briefingId:briefing.id,status:'READY'},orderBy:{generatedAt:'desc'}});
+    const existing=existingPackages.find((candidate:any)=>{
+      const stored=candidate.manifest as any;
+      if(!stored||this.sha256(stored)!==candidate.checksum)return false;
+      const {generatedAt:ignored,...storedIdentity}=stored;
+      return this.sha256(storedIdentity)===this.sha256(packageIdentity);
+    });
+    if(existing)return existing;
+    const manifest={...packageIdentity,generatedAt:new Date().toISOString()};
     const checksum=this.sha256(manifest);
     const pkg=await this.db.offlineTripPackage.create({data:{briefingId:briefing.id,manifest,checksum,status:'READY'}});
     await this.audit.record({action:'OFFLINE_TRIP_PACKAGE_GENERATED',resource:'OfflineTripPackage',resourceId:pkg.id,metadata:{reviewerAccountId,tripId,briefingVersion:briefing.version,checksum,fileCount:files.length}});
