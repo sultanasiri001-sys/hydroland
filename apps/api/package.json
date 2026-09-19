@@ -19,7 +19,8 @@
     "validate:wallet-rewards": "node scripts/wallet-rewards-validation.mjs",
     "validate:trip-intelligence": "node scripts/trip-intelligence-validation.mjs",
     "validate:translation": "node scripts/translation-validation.mjs",
-    "validate:marine": "node scripts/marine-operations-validation.mjs"
+    "validate:marine": "node scripts/marine-operations-validation.mjs",
+    "validate:integrations": "node scripts/integration-readiness-validation.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.3",
