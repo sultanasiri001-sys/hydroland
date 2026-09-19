@@ -1,0 +1,36 @@
+name: Release Candidate Gate
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  rc:
+    runs-on: ubuntu-24.04
+    env:
+      DATABASE_URL: postgresql://hydroland:hydroland@localhost:5432/hydroland
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm --workspace @hydroland/api run db:generate
+      - name: API domain validations
+        run: |
+          npm run validate:hr -w @hydroland/api
+          npm run validate:operations -w @hydroland/api
+          npm run validate:phase10 -w @hydroland/api
+          npm run validate:phase12 -w @hydroland/api
+          npm run validate:training -w @hydroland/api
+          npm run validate:wallet-rewards -w @hydroland/api
+          npm run validate:trip-intelligence -w @hydroland/api
+          npm run validate:translation -w @hydroland/api
+          npm run validate:marine -w @hydroland/api
+          npm run validate:integrations -w @hydroland/api
+      - name: Workspace tests
+        run: npm test
+      - name: Typecheck all workspaces
+        run: npm run typecheck
+      - name: Build all workspaces
+        run: npm run build
