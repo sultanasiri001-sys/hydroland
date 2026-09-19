@@ -24,5 +24,6 @@ jobs:
       - run: npm run validate:trip-intelligence -w @hydroland/api
       - run: npm run validate:translation -w @hydroland/api
       - run: npm run validate:marine -w @hydroland/api
+      - run: npm run validate:integrations -w @hydroland/api
       - run: npm run typecheck
       - run: npm run build
