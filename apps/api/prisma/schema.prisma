@@ -186,6 +186,7 @@ model Account {
  storePayments StorePayment[]
  wallet Wallet?
  rewardAccount RewardAccount?
+ translationPreference TranslationPreference?
 }
 
 model Organization {
