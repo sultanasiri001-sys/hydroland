@@ -117,7 +117,7 @@ export class TripIntelligenceService {
   private sha256(value:unknown){return createHash('sha256').update(this.stableJson(value)).digest('hex');}
 
   async generateOfflinePackage(reviewerAccountId:string,tripId:string){
-    const briefing=await this.db.tripBriefing.findFirst({where:{tripId,status:'PUBLISHED'},orderBy:{version:'desc'},include:{translations:true}});
+    const briefing=await this.db.tripBriefing.findFirst({where:{tripId,status:'PUBLISHED'},orderBy:{version:'desc'},include:{translations:true,media:{where:{status:'READY'}}}});
     if(!briefing)throw new ConflictException('Published briefing required before package generation.');
     const [divePlan,emergencyPlan]=await Promise.all([
       this.db.divePlan.findFirst({where:{tripId,approvedAt:{not:null}},orderBy:{version:'desc'}}),
@@ -130,7 +130,8 @@ export class TripIntelligenceService {
       {key:'briefing',version:briefing.version,checksum:this.sha256({title:briefing.title,summary:briefing.summary}),classification:'OPERATIONAL_OFFLINE'},
       {key:'dive-plan',version:divePlan.version,checksum:this.sha256(divePlan.plan),classification:'SENSITIVE_ENCRYPTED'},
       {key:'emergency-plan',version:emergencyPlan.version,checksum:this.sha256(emergencyPlan.plan),classification:'SENSITIVE_ENCRYPTED'},
-      ...briefing.translations.map((translation:any)=>({key:`translation:${translation.languageCode}`,version:briefing.version,checksum:this.sha256(translation.content),classification:translation.level==='CONTROLLED_SAFETY_CONTENT'?'SENSITIVE_ENCRYPTED':'OPERATIONAL_OFFLINE'}))
+      ...briefing.translations.map((translation:any)=>({key:`translation:${translation.languageCode}`,version:briefing.version,checksum:this.sha256(translation.content),classification:translation.level==='CONTROLLED_SAFETY_CONTENT'?'SENSITIVE_ENCRYPTED':'OPERATIONAL_OFFLINE'})),
+      ...briefing.media.map((media:any)=>({key:`media:${media.mediaKey}`,version:briefing.version,checksum:media.checksum,classification:media.classification,mediaType:media.mediaType,sizeBytes:media.sizeBytes,contentType:media.contentType,payloadRef:media.storageKey}))
     ];
     const manifest={schemaVersion:1,tripId,briefingId:briefing.id,briefingVersion:briefing.version,divePlanVersion:divePlan.version,emergencyPlanVersion:emergencyPlan.version,generatedAt:new Date().toISOString(),files};
     const checksum=this.sha256(manifest);
