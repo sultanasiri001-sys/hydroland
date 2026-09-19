@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
+import { rewardsPolicy } from './rewards.policy';
 
 // Internal trusted-domain mutation contract; no public mutation endpoint is exposed.
 type RewardMutation={accountId:string;type:'EARN'|'REDEEM'|'EXPIRE'|'ADJUSTMENT';points:number;idempotencyKey:string;referenceType?:string;referenceId?:string;expiresAt?:Date;metadata?:Prisma.InputJsonValue};
@@ -20,6 +21,8 @@ export class RewardsService {
   async apply(input:RewardMutation){
     if(!Number.isInteger(input.points)||input.points<1||!input.idempotencyKey?.trim())throw new BadRequestException('Invalid reward mutation.');
     if(input.type==='ADJUSTMENT')throw new BadRequestException('Reward adjustment is not enabled.');
+    if(input.type==='EARN'&&(!rewardsPolicy.earningEnabled||rewardsPolicy.earnPointsPerMinor===null))throw new BadRequestException('Reward earning is not enabled.');
+    if(input.type==='REDEEM'&&(!rewardsPolicy.redemptionEnabled||rewardsPolicy.redemptionValueMinorPerPoint===null))throw new BadRequestException('Reward redemption is not enabled.');
     if(input.type==='EXPIRE')throw new BadRequestException('Reward expiration is not enabled.');
     if(input.expiresAt)throw new BadRequestException('Reward expiration is not enabled.');
     const key=input.idempotencyKey.trim();
