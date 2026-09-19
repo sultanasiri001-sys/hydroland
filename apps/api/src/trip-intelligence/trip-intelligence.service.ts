@@ -146,4 +146,13 @@ export class TripIntelligenceService {
     if(!pkg)return{tripId,briefingVersion:briefing.version,status:'UPDATE_REQUIRED',reason:'PACKAGE_GENERATION_REQUIRED'};
     return{tripId,briefingVersion:briefing.version,status:pkg.status,checksum:pkg.checksum,generatedAt:pkg.generatedAt};
   }
+  async packageContent(tripId:string){
+    const briefing=await this.db.tripBriefing.findFirst({where:{tripId,status:'PUBLISHED'},orderBy:{version:'desc'},include:{offlinePackages:{where:{status:'READY'},orderBy:{generatedAt:'desc'},take:1}}});
+    if(!briefing)throw new NotFoundException('Published briefing package not found.');
+    const pkg=briefing.offlinePackages[0];
+    if(!pkg)throw new ConflictException('Ready offline package is not available.');
+    const manifest=pkg.manifest as Prisma.JsonValue;
+    if(this.sha256(manifest)!==pkg.checksum)throw new ConflictException('Offline package integrity check failed.');
+    return{tripId,briefingVersion:briefing.version,checksum:pkg.checksum,generatedAt:pkg.generatedAt,manifest};
+  }
 }
