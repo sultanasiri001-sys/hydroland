@@ -1,0 +1,43 @@
+name: Production Release Gate
+on:
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  production-readiness:
+    runs-on: ubuntu-24.04
+    env:
+      DATABASE_URL: postgresql://hydroland:hydroland@localhost:5432/hydroland
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm --workspace @hydroland/api run db:generate
+      - name: Verify release validations
+        run: |
+          npm run validate:integrations -w @hydroland/api
+          npm run validate:trip-intelligence -w @hydroland/api
+          npm run validate:translation -w @hydroland/api
+          npm run validate:marine -w @hydroland/api
+      - name: Test
+        run: npm test
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+      - name: Confirm production remains explicit
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs=require('fs');
+          const src=fs.readFileSync('apps/api/src/integrations/integration.service.ts','utf8');
+          const required=['PAYMENT_PSP','OBJECT_STORAGE','TRANSLATION_ENGINE'];
+          for(const key of required){
+            const row=src.match(new RegExp("\\{key:'"+key+"'[^\\n]+"));
+            if(!row) throw new Error('Missing integration: '+key);
+            if(!row[0].includes("status:'NOT_SELECTED'")) throw new Error(key+' changed from NOT_SELECTED without production provider review.');
+          }
+          console.log('Production integration boundary verified.');
+          NODE
