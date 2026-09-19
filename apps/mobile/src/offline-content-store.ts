@@ -24,3 +24,14 @@ export function deleteOfflineContent(tripId:string){
  const file=new File(ensureRoot(),safeTripId(tripId)+'.json');
  if(file.exists)file.delete();
 }
+
+const payloadRoot=(tripId:string)=>new Directory(ensureRoot(),safeTripId(tripId)+'-payloads');
+function ensurePayloadRoot(tripId:string){const dir=payloadRoot(tripId);if(!dir.exists)dir.create({idempotent:true,intermediates:true});return dir}
+const safeMediaKey=(mediaKey:string)=>encodeURIComponent(mediaKey);
+
+export function payloadFile(tripId:string,mediaKey:string){return new File(ensurePayloadRoot(tripId),safeMediaKey(mediaKey))}
+
+export function deletePayload(tripId:string,mediaKey:string){
+ const file=payloadFile(tripId,mediaKey);
+ if(file.exists)file.delete();
+}
