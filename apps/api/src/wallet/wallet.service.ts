@@ -34,7 +34,10 @@ export class WalletService {
         if(changed.count!==1)throw new ConflictException('Insufficient wallet balance.');
       }else await tx.wallet.update({where:{id:wallet.id},data:{balanceMinor:{increment:input.amountMinor}}});
       const current=await tx.wallet.findUniqueOrThrow({where:{id:wallet.id},select:{balanceMinor:true}});
-      return tx.walletEntry.create({data:{walletId:wallet.id,type:input.type,amountMinor:input.amountMinor,balanceAfterMinor:current.balanceMinor,idempotencyKey:key,referenceType:input.referenceType,referenceId:input.referenceId,metadata:input.metadata}});
+      const entry=await tx.walletEntry.create({data:{walletId:wallet.id,type:input.type,amountMinor:input.amountMinor,balanceAfterMinor:current.balanceMinor,idempotencyKey:key,referenceType:input.referenceType,referenceId:input.referenceId,metadata:input.metadata}});
+      const actor=await tx.account.findUnique({where:{id:input.accountId},select:{personId:true}});
+      await tx.auditEvent.create({data:{actorId:actor?.personId,action:`WALLET_${input.type}`,resource:'WalletEntry',resourceId:entry.id,metadata:{walletId:wallet.id,amountMinor:input.amountMinor,balanceAfterMinor:current.balanceMinor,referenceType:input.referenceType??null,referenceId:input.referenceId??null}}});
+      return entry;
     },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});}catch(error){
       if(error instanceof Prisma.PrismaClientKnownRequestError&&(error.code==='P2002'||error.code==='P2034')){
         const existing=await this.db.walletEntry.findUnique({where:{idempotencyKey:key}});
