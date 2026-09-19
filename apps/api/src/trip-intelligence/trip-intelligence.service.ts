@@ -162,8 +162,13 @@ export class TripIntelligenceService {
     if(!briefing)throw new NotFoundException('Published briefing package not found.');
     const pkg=briefing.offlinePackages[0];
     if(!pkg)throw new ConflictException('Ready offline package is not available.');
-    const manifest=pkg.manifest as Prisma.JsonValue;
+    const manifest=pkg.manifest as any;
     if(this.sha256(manifest)!==pkg.checksum)throw new ConflictException('Offline package integrity check failed.');
+    const [divePlan,emergencyPlan]=await Promise.all([
+      this.db.divePlan.findFirst({where:{tripId,approvedAt:{not:null}},orderBy:{version:'desc'},select:{version:true}}),
+      this.db.emergencyPlan.findFirst({where:{tripId,approvedAt:{not:null}},orderBy:{version:'desc'},select:{version:true}})
+    ]);
+    if(!divePlan||!emergencyPlan||manifest?.briefingVersion!==briefing.version||manifest?.divePlanVersion!==divePlan.version||manifest?.emergencyPlanVersion!==emergencyPlan.version)throw new ConflictException('Offline package is stale and must be regenerated.');
     return{tripId,briefingVersion:briefing.version,checksum:pkg.checksum,generatedAt:pkg.generatedAt,manifest};
   }
   async payloadDelivery(tripId:string,mediaKey:string){
@@ -174,6 +179,11 @@ export class TripIntelligenceService {
     if(!pkg||!media)throw new NotFoundException('Offline payload is not available.');
     const manifest=pkg.manifest as any;
     if(this.sha256(manifest)!==pkg.checksum)throw new ConflictException('Offline package integrity check failed.');
+    const [divePlan,emergencyPlan]=await Promise.all([
+      this.db.divePlan.findFirst({where:{tripId,approvedAt:{not:null}},orderBy:{version:'desc'},select:{version:true}}),
+      this.db.emergencyPlan.findFirst({where:{tripId,approvedAt:{not:null}},orderBy:{version:'desc'},select:{version:true}})
+    ]);
+    if(!divePlan||!emergencyPlan||manifest?.briefingVersion!==briefing.version||manifest?.divePlanVersion!==divePlan.version||manifest?.emergencyPlanVersion!==emergencyPlan.version)throw new ConflictException('Offline package is stale and must be regenerated.');
     const entry=Array.isArray(manifest?.files)?manifest.files.find((item:any)=>item?.key===`media:${mediaKey}`):null;
     if(!entry||entry.checksum!==media.checksum||entry.payloadKey!==media.mediaKey||entry.classification==='ONLINE_ONLY')throw new ConflictException('Payload is not part of the approved offline manifest.');
     return this.payloadStorage.delivery({storageKey:media.storageKey,checksum:media.checksum,sizeBytes:media.sizeBytes,contentType:media.contentType});
