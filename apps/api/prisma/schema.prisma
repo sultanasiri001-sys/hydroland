@@ -397,6 +397,9 @@ model Trip {
   diveLogs DiveLog[] @relation("TripDiveLogs")
   calendarAllocations CalendarAllocation[]
   crewAssignments CrewAssignment[]
+  briefings TripBriefing[]
+  divePlans DivePlan[]
+  emergencyPlans EmergencyPlan[]
   @@index([status,startsAt])
 }
 
@@ -1223,4 +1226,79 @@ model RewardEntry {
  rewardAccount RewardAccount @relation(fields:[rewardAccountId], references:[id], onDelete:Restrict)
  @@index([rewardAccountId,createdAt])
  @@index([expiresAt])
+}
+
+
+enum BriefingStatus {
+  DRAFT
+  REVIEW
+  PUBLISHED
+  SUPERSEDED
+}
+
+model TripBriefing {
+  id String @id @default(uuid())
+  tripId String
+  version Int
+  status BriefingStatus @default(DRAFT)
+  title String?
+  summary Json?
+  createdByAccountId String
+  publishedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  trip Trip @relation(fields:[tripId], references:[id], onDelete:Restrict)
+  translations BriefingTranslation[]
+  offlinePackages OfflineTripPackage[]
+  @@unique([tripId,version])
+  @@index([tripId,status])
+}
+
+model DivePlan {
+  id String @id @default(uuid())
+  tripId String
+  version Int
+  plan Json
+  approvedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  trip Trip @relation(fields:[tripId], references:[id], onDelete:Restrict)
+  @@unique([tripId,version])
+}
+
+model EmergencyPlan {
+  id String @id @default(uuid())
+  tripId String
+  version Int
+  plan Json
+  approvedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  trip Trip @relation(fields:[tripId], references:[id], onDelete:Restrict)
+  @@unique([tripId,version])
+}
+
+model BriefingTranslation {
+  id String @id @default(uuid())
+  briefingId String
+  languageCode String
+  content Json
+  level String
+  reviewedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  briefing TripBriefing @relation(fields:[briefingId], references:[id], onDelete:Restrict)
+  @@unique([briefingId,languageCode])
+}
+
+model OfflineTripPackage {
+  id String @id @default(uuid())
+  briefingId String
+  manifest Json
+  checksum String?
+  status String @default("NOT_READY")
+  generatedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  briefing TripBriefing @relation(fields:[briefingId], references:[id], onDelete:Restrict)
+  @@index([briefingId,status])
 }
