@@ -613,6 +613,9 @@ model TripComplianceReview {
   notes String?
   reviewedByAccountId String?
   reviewedAt DateTime?
+  reviewedByAccountId String?
+  reviewStatus String @default("NOT_REQUIRED")
+  createdByAccountId String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   @@index([regulatoryStatus,permitStatus])
