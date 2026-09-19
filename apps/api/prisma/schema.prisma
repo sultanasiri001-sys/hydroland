@@ -186,6 +186,7 @@ model Account {
  storePayments StorePayment[]
  wallet Wallet?
  rewardAccount RewardAccount?
+ translationPreference TranslationPreference?
 }
 
 model Organization {
@@ -1304,4 +1305,83 @@ model OfflineTripPackage {
   updatedAt DateTime @updatedAt
   briefing TripBriefing @relation(fields:[briefingId], references:[id], onDelete:Restrict)
   @@index([briefingId,status])
+}
+
+
+enum TranslationMode {
+  OFFLINE
+  ONLINE
+  AUTO
+}
+
+enum LanguagePackStatus {
+  DOWNLOAD_AVAILABLE
+  INSTALLED
+  UPDATE_AVAILABLE
+  DISABLED
+}
+
+model LanguagePack {
+  id String @id @default(uuid())
+  languageCode String
+  version Int
+  status LanguagePackStatus @default(DOWNLOAD_AVAILABLE)
+  checksum String
+  sizeBytes Int?
+  releasedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([languageCode,version])
+  @@index([languageCode,status])
+}
+
+model TranslationPreference {
+  id String @id @default(uuid())
+  accountId String @unique
+  preferredLanguageCode String @default("ar")
+  mode TranslationMode @default(AUTO)
+  autoTranslateMessages Boolean @default(false)
+  keepOriginalText Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  account Account @relation(fields:[accountId], references:[id], onDelete:Restrict)
+}
+
+
+enum EmergencyPhraseStatus {
+  DRAFT
+  REVIEW
+  APPROVED
+  RETIRED
+}
+
+model EmergencyPhrase {
+  id String @id @default(uuid())
+  key String @unique
+  category String
+  sourceArabic String
+  status EmergencyPhraseStatus @default(DRAFT)
+  version Int @default(1)
+  createdByAccountId String
+  reviewedByAccountId String?
+  reviewedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  translations EmergencyPhraseTranslation[]
+  @@index([category,status])
+}
+
+model EmergencyPhraseTranslation {
+  id String @id @default(uuid())
+  phraseId String
+  languageCode String
+  text String
+  createdByAccountId String
+  reviewedByAccountId String?
+  reviewedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  phrase EmergencyPhrase @relation(fields:[phraseId], references:[id], onDelete:Restrict)
+  @@unique([phraseId,languageCode])
+  @@index([languageCode,reviewedAt])
 }
