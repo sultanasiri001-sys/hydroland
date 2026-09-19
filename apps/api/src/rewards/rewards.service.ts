@@ -34,7 +34,7 @@ export class RewardsService {
         if(changed.count!==1)throw new ConflictException('Insufficient reward points.');
       }else await tx.rewardAccount.update({where:{id:account.id},data:{points:{increment:input.points}}});
       const current=await tx.rewardAccount.findUniqueOrThrow({where:{id:account.id},select:{points:true}});
-      return tx.rewardEntry.create({data:{rewardAccountId:account.id,type:input.type,points:input.points,balanceAfter:current.points,idempotencyKey:key,referenceType:input.referenceType,referenceId:input.referenceId,expiresAt:input.expiresAt,metadata:input.metadata}});
+      const entry=await tx.rewardEntry.create({data:{rewardAccountId:account.id,type:input.type,points:input.points,balanceAfter:current.points,idempotencyKey:key,referenceType:input.referenceType,referenceId:input.referenceId,expiresAt:input.expiresAt,metadata:input.metadata}});\n      const actor=await tx.account.findUnique({where:{id:input.accountId},select:{personId:true}});\n      await tx.auditEvent.create({data:{actorId:actor?.personId,action:`REWARD_${input.type}`,resource:'RewardEntry',resourceId:entry.id,metadata:{rewardAccountId:account.id,points:input.points,balanceAfter:current.points,referenceType:input.referenceType??null,referenceId:input.referenceId??null}}});\n      return entry;
     },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});}catch(error){
       if(error instanceof Prisma.PrismaClientKnownRequestError&&(error.code==='P2002'||error.code==='P2034')){
         const existing=await this.db.rewardEntry.findUnique({where:{idempotencyKey:key}});
