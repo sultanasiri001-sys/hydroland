@@ -2,6 +2,7 @@ import {Body,Controller,Get,Param,Post,Req,UseGuards} from '@nestjs/common';
 import {AccessTokenGuard} from '../auth/access-token.guard';
 import {ReviewGuard} from '../admin/review.guard';
 import {TripIntelligenceService} from './trip-intelligence.service';
+import {TranslationMode} from '../translation/translation.domain';
 
 @UseGuards(AccessTokenGuard)
 @Controller('trip-intelligence')
@@ -23,6 +24,8 @@ export class TripIntelligenceController {
   approvePlans(@Req() req:any,@Param('tripId') tripId:string){return this.service.approvePlans(req.auth.accountId,tripId);}
   @Post('briefings/:briefingId/translations')
   translation(@Req() req:any,@Param('briefingId') briefingId:string,@Body() input:{languageCode:string;content:Record<string,unknown>;level:string}){return this.service.upsertTranslation(req.auth.accountId,briefingId,input);}
+  @Post('briefings/:briefingId/translate')
+  translateBriefing(@Param('briefingId') briefingId:string,@Body() input:{sourceLanguage:string;targetLanguage:string;text:string;mode:TranslationMode}){return this.service.translateBriefingText(briefingId,input);}
   @UseGuards(ReviewGuard)
   @Post('translations/:translationId/approve')
   approveTranslation(@Req() req:any,@Param('translationId') translationId:string){return this.service.approveControlledTranslation(req.auth.accountId,translationId);}
