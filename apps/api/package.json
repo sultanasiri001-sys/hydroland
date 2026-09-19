@@ -16,7 +16,8 @@
     "validate:phase10": "node scripts/phase10-validation.mjs",
     "validate:phase12": "node scripts/phase12-validation.mjs",
     "validate:training": "node scripts/training-integration-validation.mjs",
-    "validate:wallet-rewards": "node scripts/wallet-rewards-validation.mjs"
+    "validate:wallet-rewards": "node scripts/wallet-rewards-validation.mjs",
+    "validate:trip-intelligence": "node scripts/trip-intelligence-validation.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.3",

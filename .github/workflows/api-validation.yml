@@ -21,5 +21,6 @@ jobs:
       - run: npm run validate:phase12 -w @hydroland/api
       - run: npm run validate:training -w @hydroland/api
       - run: npm run validate:wallet-rewards -w @hydroland/api
+      - run: npm run validate:trip-intelligence -w @hydroland/api
       - run: npm run typecheck
       - run: npm run build
