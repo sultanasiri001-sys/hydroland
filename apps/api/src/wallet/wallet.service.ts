@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
+import { walletMutationPolicy } from './wallet.policy';
 
 type WalletMutation={accountId:string;type:'CREDIT'|'DEBIT'|'REFUND'|'ADJUSTMENT';amountMinor:number;idempotencyKey:string;referenceType?:string;referenceId?:string;metadata?:Prisma.InputJsonValue};
 
@@ -18,6 +19,10 @@ export class WalletService {
   }
   async apply(input:WalletMutation){
     if(!Number.isInteger(input.amountMinor)||input.amountMinor<1||!input.idempotencyKey?.trim())throw new BadRequestException('Invalid wallet mutation.');
+    if(input.type==='CREDIT'&&!walletMutationPolicy.creditEnabled)throw new BadRequestException('Wallet credit is not enabled.');
+    if(input.type==='DEBIT'&&!walletMutationPolicy.debitEnabled)throw new BadRequestException('Wallet debit is not enabled.');
+    if(input.type==='REFUND'&&!walletMutationPolicy.refundEnabled)throw new BadRequestException('Wallet refund is not enabled.');
+    if(input.type==='ADJUSTMENT'&&!walletMutationPolicy.adjustmentEnabled)throw new BadRequestException('Wallet adjustment is not enabled.');
     const key=input.idempotencyKey.trim();
     for(let attempt=0;attempt<3;attempt++)try{return await this.db.$transaction(async tx=>{
       const existing=await tx.walletEntry.findUnique({where:{idempotencyKey:key}});
