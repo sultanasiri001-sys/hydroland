@@ -1,2 +1,2 @@
-import {Stack} from 'expo-router';
-export default function RootLayout(){return <Stack screenOptions={{headerShown:false,contentStyle:{backgroundColor:'#061826'}}}/>;}
+import {Stack} from 'expo-router';import {useEffect,useState} from 'react';import {ActivityIndicator,View} from 'react-native';import {bootstrapSession,BootstrapState} from '../src/bootstrap';
+export default function RootLayout(){const[state,setState]=useState<BootstrapState>('LOADING');useEffect(()=>{let active=true;bootstrapSession().then(next=>{if(active)setState(next)});return()=>{active=false}},[]);if(state==='LOADING')return <View style={{flex:1,backgroundColor:'#061826',alignItems:'center',justifyContent:'center'}}><ActivityIndicator/></View>;return <Stack screenOptions={{headerShown:false,contentStyle:{backgroundColor:'#061826'}}}/>;}
