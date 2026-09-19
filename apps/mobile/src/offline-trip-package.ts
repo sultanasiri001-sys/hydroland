@@ -1,8 +1,15 @@
 import * as SecureStore from 'expo-secure-store';
 /** Small offline-package metadata only. Large briefing/media/map payloads must live in a file/DB store, not SecureStore. */
-export type OfflineTripPackage={tripId:string;manifestVersion:string;downloadedAt:string;sourceUpdatedAt:string;staleAfter?:string;localContentRef?:string};
+export type OfflineTripPackage={tripId:string;manifestVersion:string;downloadedAt:string;sourceUpdatedAt:string;staleAfter?:string;checksum?:string;briefingVersion?:number;localContentRef?:string};
 const key=(tripId:string)=>'hydroland.trip-package-meta.'+tripId;
 export async function saveTripPackage(value:OfflineTripPackage){await SecureStore.setItemAsync(key(value.tripId),JSON.stringify(value))}
 export async function loadTripPackage(tripId:string):Promise<OfflineTripPackage|null>{const raw=await SecureStore.getItemAsync(key(tripId));if(!raw)return null;try{return JSON.parse(raw) as OfflineTripPackage}catch{await SecureStore.deleteItemAsync(key(tripId));return null}}
 export async function deleteTripPackage(tripId:string){await SecureStore.deleteItemAsync(key(tripId))}
 export function freshnessLabel(value:OfflineTripPackage,now=Date.now()){if(!value.staleAfter)return'UNKNOWN_CACHE' as const;const staleAt=new Date(value.staleAfter).getTime();if(!Number.isFinite(staleAt))return'UNKNOWN_CACHE' as const;return staleAt>now?'CURRENT_CACHE' as const:'STALE_CACHE' as const}
+
+export type PackageSyncState='NO_LOCAL_PACKAGE'|'SERVER_UNAVAILABLE'|'SERVER_NOT_READY'|'UPDATE_REQUIRED'|'MATCHED';
+export function packageSyncState(local:OfflineTripPackage|null,remote:{status:string;checksum?:string;briefingVersion?:number}|null,serverAvailable=true):PackageSyncState{
+ if(!local)return'NO_LOCAL_PACKAGE';if(!serverAvailable||!remote)return'SERVER_UNAVAILABLE';if(remote.status!=='READY')return remote.status==='UPDATE_REQUIRED'?'UPDATE_REQUIRED':'SERVER_NOT_READY';
+ if(!local.checksum||!remote.checksum||local.checksum!==remote.checksum)return'UPDATE_REQUIRED';
+ if(local.briefingVersion!==undefined&&remote.briefingVersion!==undefined&&local.briefingVersion!==remote.briefingVersion)return'UPDATE_REQUIRED';return'MATCHED';
+}
