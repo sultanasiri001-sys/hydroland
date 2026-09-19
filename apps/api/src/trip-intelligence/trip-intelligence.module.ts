@@ -6,6 +6,7 @@ import {ReviewGuard} from '../admin/review.guard';
 import {TranslationModule} from '../translation/translation.module';
 import {TripIntelligenceController} from './trip-intelligence.controller';
 import {TripIntelligenceService} from './trip-intelligence.service';
+import {OfflinePayloadStorageService} from './offline-payload-storage.service';
 
-@Module({imports:[AuditModule,AuthModule,DatabaseModule,TranslationModule],controllers:[TripIntelligenceController],providers:[TripIntelligenceService,ReviewGuard],exports:[TripIntelligenceService]})
+@Module({imports:[AuditModule,AuthModule,DatabaseModule,TranslationModule],controllers:[TripIntelligenceController],providers:[TripIntelligenceService,OfflinePayloadStorageService,ReviewGuard],exports:[TripIntelligenceService]})
 export class TripIntelligenceModule {}
