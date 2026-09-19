@@ -14,6 +14,8 @@ export class StoreController {
  @Get('products') products(){return this.store.listProducts()}
  @UseGuards(AccessTokenGuard) @Post('orders') order(@Req() req:any,@Body() body:{items:{productId:string;quantity:number}[]}){return this.store.createOrder(req.auth.accountId,body.items)}
  @UseGuards(AccessTokenGuard) @Get('orders/mine') mine(@Req() req:any){return this.store.listMine(req.auth.accountId)}
+ @UseGuards(AccessTokenGuard) @Post('orders/:orderId/payment') createPayment(@Req() req:any,@Param('orderId') orderId:string,@Body() body:{idempotencyKey:string}){return this.store.createPayment(req.auth.accountId,orderId,body.idempotencyKey)}
+ @UseGuards(AccessTokenGuard) @Get('payments/mine') myPayments(@Req() req:any){return this.store.listMyPayments(req.auth.accountId)}
  @UseGuards(AccessTokenGuard,AdminGuard) @Get('admin/products') adminProducts(){return this.store.listAdminProducts()}
  @UseGuards(AccessTokenGuard,AdminGuard) @Post('admin/products') createProduct(@Body() body:ProductInput){return this.store.createProduct(body)}
  @UseGuards(AccessTokenGuard,AdminGuard) @Patch('admin/products/:productId') updateProduct(@Param('productId') productId:string,@Body() body:ProductPatch){return this.store.updateProduct(productId,body)}
