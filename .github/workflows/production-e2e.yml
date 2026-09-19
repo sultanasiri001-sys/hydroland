@@ -12,10 +12,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
       - run: npm install
-      - run: npm --workspace @hydroland/api run db:generate
-      - name: Guard required configuration
+      - name: Preflight production E2E target
         env:
           E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
           DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
@@ -26,8 +24,10 @@ jobs:
           test -n "$DATABASE_URL"
           test -n "$E2E_ADMIN_EMAIL"
           test -n "$E2E_ADMIN_PASSWORD"
-          case "$E2E_BASE_URL" in https://*) ;; *) exit 1 ;; esac
-          case "$E2E_ADMIN_EMAIL" in *@hydroland.test) ;; *) exit 1 ;; esac
+          case "$E2E_BASE_URL" in https://*) ;; *) echo "E2E_BASE_URL must use HTTPS"; exit 1 ;; esac
+          case "$E2E_BASE_URL" in *localhost*|*127.0.0.1*) echo "E2E_BASE_URL must be a deployed target"; exit 1 ;; esac
+          case "$E2E_ADMIN_EMAIL" in *@hydroland.test) ;; *) echo "E2E account must use @hydroland.test"; exit 1 ;; esac
+      - run: npm --workspace @hydroland/api run db:generate
       - name: Prepare E2E account through API
         working-directory: apps/api
         env:
