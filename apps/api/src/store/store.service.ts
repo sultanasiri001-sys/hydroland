@@ -150,6 +150,10 @@ export class StoreService {
       if(!order)throw new NotFoundException('Order not found');
       if(order.status===status)return order;
       if(!allowed[order.status]?.includes(status))throw new BadRequestException('Invalid order status transition');
+      if(status==='FULFILLED'){
+        const payment=await tx.storePayment.findUnique({where:{orderId},select:{status:true}});
+        if(!payment||payment.status!=='CAPTURED')throw new ConflictException('Order cannot be fulfilled before payment is captured.');
+      }
 
       const transitioned=await tx.storeOrder.updateMany({where:{id:orderId,status:order.status},data:{status}});
       if(transitioned.count!==1)throw new BadRequestException('Order status changed concurrently; retry');
