@@ -89,6 +89,29 @@ export class StoreService {
     });
   }
 
+  async createPayment(accountId:string,orderId:string,idempotencyKey:string) {
+    const key=idempotencyKey?.trim();
+    if(!key)throw new BadRequestException('Idempotency key is required');
+    const order=await this.prisma.storeOrder.findFirst({where:{id:orderId,accountId},include:{payment:true}});
+    if(!order)throw new NotFoundException('Order not found');
+    if(order.status==='CANCELLED'||order.status==='FULFILLED')throw new BadRequestException('Order is not eligible for payment');
+    if(order.payment){
+      if(order.payment.idempotencyKey!==key)throw new BadRequestException('Order already has a payment');
+      return {...order.payment,provider:'NOT_SELECTED',financialActionExecuted:false};
+    }
+    const existing=await this.prisma.storePayment.findUnique({where:{idempotencyKey:key}});
+    if(existing){
+      if(existing.accountId!==accountId||existing.orderId!==orderId)throw new BadRequestException('Idempotency key cannot be reused');
+      return {...existing,provider:'NOT_SELECTED',financialActionExecuted:false};
+    }
+    const payment=await this.prisma.storePayment.create({data:{orderId,accountId,amountMinor:order.totalMinor,currency:order.currency,idempotencyKey:key,status:'CREATED'}});
+    return {...payment,provider:'NOT_SELECTED',financialActionExecuted:false};
+  }
+
+  listMyPayments(accountId:string) {
+    return this.prisma.storePayment.findMany({where:{accountId},include:{invoice:true,order:{select:{id:true,status:true,totalMinor:true,currency:true}}},orderBy:{createdAt:'desc'}});
+  }
+
   listAdminOrders() {
     return this.prisma.storeOrder.findMany({ include: { account: { select: { id:true,email:true,person:{select:{firstName:true,lastName:true}} } }, items: { include: { product: true } } }, orderBy: { createdAt: 'desc' }, take: 200 });
   }
