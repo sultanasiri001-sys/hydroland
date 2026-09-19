@@ -122,6 +122,14 @@ export class StoreService {
     return this.prisma.storePayment.findMany({where:{accountId},include:{invoice:true,order:{select:{id:true,status:true,totalMinor:true,currency:true}}},orderBy:{createdAt:'desc'}});
   }
 
+  listAdminPayments() {
+    return this.prisma.storePayment.findMany({include:{invoice:true,order:{select:{id:true,status:true,totalMinor:true,currency:true}},account:{select:{id:true,email:true,person:{select:{firstName:true,lastName:true}}}}},orderBy:{createdAt:'desc'},take:200});
+  }
+
+  listAdminInvoices() {
+    return this.prisma.storeInvoice.findMany({include:{payment:{include:{order:{select:{id:true,status:true,totalMinor:true,currency:true}},account:{select:{id:true,email:true}}}}},orderBy:{createdAt:'desc'},take:200});
+  }
+
   listAdminOrders() {
     return this.prisma.storeOrder.findMany({ include: { account: { select: { id:true,email:true,person:{select:{firstName:true,lastName:true}} } }, items: { include: { product: true } } }, orderBy: { createdAt: 'desc' }, take: 200 });
   }
