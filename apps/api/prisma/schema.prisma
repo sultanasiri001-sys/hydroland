@@ -184,6 +184,8 @@ model Account {
   customerInteractions CustomerInteraction[] @relation("CustomerInteractionActor")
   storeOrders StoreOrder[]
  storePayments StorePayment[]
+ wallet Wallet?
+ rewardAccount RewardAccount?
 }
 
 model Organization {
@@ -1154,4 +1156,71 @@ model StoreOrderItem {
  product StoreProduct @relation(fields:[productId], references:[id], onDelete:Restrict)
  @@index([orderId])
  @@index([productId])
+}
+
+
+enum WalletEntryType {
+ CREDIT
+ DEBIT
+ REFUND
+ ADJUSTMENT
+}
+enum RewardEntryType {
+ EARN
+ REDEEM
+ EXPIRE
+ ADJUSTMENT
+}
+
+model Wallet {
+ id String @id @default(uuid())
+ accountId String @unique
+ currency String @default("SAR")
+ balanceMinor Int @default(0)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ account Account @relation(fields:[accountId], references:[id], onDelete:Restrict)
+ entries WalletEntry[]
+}
+
+model WalletEntry {
+ id String @id @default(uuid())
+ walletId String
+ type WalletEntryType
+ amountMinor Int
+ balanceAfterMinor Int
+ referenceType String?
+ referenceId String?
+ idempotencyKey String @unique
+ metadata Json?
+ createdAt DateTime @default(now())
+ wallet Wallet @relation(fields:[walletId], references:[id], onDelete:Restrict)
+ @@index([walletId,createdAt])
+}
+
+model RewardAccount {
+ id String @id @default(uuid())
+ accountId String @unique
+ points Int @default(0)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ account Account @relation(fields:[accountId], references:[id], onDelete:Restrict)
+ entries RewardEntry[]
+}
+
+model RewardEntry {
+ id String @id @default(uuid())
+ rewardAccountId String
+ type RewardEntryType
+ points Int
+ balanceAfter Int
+ referenceType String?
+ referenceId String?
+ idempotencyKey String @unique
+ expiresAt DateTime?
+ metadata Json?
+ createdAt DateTime @default(now())
+ rewardAccount RewardAccount @relation(fields:[rewardAccountId], references:[id], onDelete:Restrict)
+ @@index([rewardAccountId,createdAt])
+ @@index([expiresAt])
 }
