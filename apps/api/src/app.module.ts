@@ -22,6 +22,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { SafetyModule } from './safety/safety.module';
 import { TripsModule } from './trips/trips.module';
 import { PaymentsModule } from './payments/payments.module';
+import { StoreModule } from './store/store.module';
 import { ProfileModule } from './profile/profile.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { ResearchMarketModule } from './research-market/research-market.module';
@@ -33,7 +34,7 @@ import { LegalGovernanceModule } from './legal-governance/legal-governance.modul
     TechnologySecurityModule,
     FacilitiesMaintenanceModule,
     AdministrativeAffairsModule,
-    ExecutiveGovernanceModule, AgentModule, ResearchMarketModule, LegalGovernanceModule],
+    ExecutiveGovernanceModule, AgentModule, ResearchMarketModule, LegalGovernanceModule, StoreModule],
   controllers: [HealthController],
 })
 export class AppModule {}
