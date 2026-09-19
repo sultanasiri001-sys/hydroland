@@ -3,10 +3,12 @@ import {AuditService} from '../audit/audit.service';
 import {DatabaseService} from '../database/database.service';
 import {createHash} from 'node:crypto';
 import {Prisma} from '@prisma/client';
+import {TranslationRouterService} from '../translation/translation-router.service';
+import {TranslationMode} from '../translation/translation.domain';
 
 @Injectable()
 export class TripIntelligenceService {
-  constructor(private readonly db:DatabaseService,private readonly audit:AuditService){}
+  constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly translation:TranslationRouterService){}
 
   private async assertAuthor(accountId:string){
     const role=await this.db.roleAssignment.findFirst({where:{accountId,status:'ACTIVE',role:{in:['ADMIN','REVIEWER','INSTRUCTOR','DIVE_CENTER','STAFF']}},select:{id:true}});
@@ -90,6 +92,12 @@ export class TripIntelligenceService {
       create:{briefingId,languageCode:input.languageCode,content:input.content as Prisma.InputJsonValue,level:input.level,createdByAccountId:accountId,reviewStatus:controlled?'PENDING_REVIEW':'NOT_REQUIRED'},
       update:{content:input.content as Prisma.InputJsonValue,level:input.level,createdByAccountId:accountId,reviewedAt:null,reviewedByAccountId:null,reviewStatus:controlled?'PENDING_REVIEW':'NOT_REQUIRED'}
     });
+  }
+  async translateBriefingText(briefingId:string,input:{sourceLanguage:string;targetLanguage:string;text:string;mode:TranslationMode}){
+    const briefing=await this.db.tripBriefing.findUnique({where:{id:briefingId},select:{id:true,status:true}});
+    if(!briefing)throw new NotFoundException('Briefing not found.');
+    if(briefing.status!=='PUBLISHED')throw new ConflictException('Only published briefing content may be translated for participants.');
+    return this.translation.translate({...input,contentClass:'GENERAL'});
   }
   async approveControlledTranslation(reviewerAccountId:string,translationId:string){
     const translation=await this.db.briefingTranslation.findUnique({where:{id:translationId}});
