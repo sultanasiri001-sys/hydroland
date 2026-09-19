@@ -10,6 +10,7 @@ export function freshnessLabel(value:OfflineTripPackage,now=Date.now()){if(!valu
 export type PackageSyncState='NO_LOCAL_PACKAGE'|'SERVER_UNAVAILABLE'|'SERVER_NOT_READY'|'UPDATE_REQUIRED'|'MATCHED';
 export function packageSyncState(local:OfflineTripPackage|null,remote:{status:string;checksum?:string;briefingVersion?:number}|null,serverAvailable=true,verifiedLocalContent=false):PackageSyncState{
  if(!local)return'NO_LOCAL_PACKAGE';if(!serverAvailable||!remote)return'SERVER_UNAVAILABLE';if(remote.status!=='READY')return remote.status==='UPDATE_REQUIRED'?'UPDATE_REQUIRED':'SERVER_NOT_READY';
- if(!verifiedLocalContent||!local.localContentRef)return'UPDATE_REQUIRED';\n if(!local.checksum||!remote.checksum||local.checksum!==remote.checksum)return'UPDATE_REQUIRED';
+ if(!verifiedLocalContent||!local.localContentRef)return'UPDATE_REQUIRED';
+ if(!local.checksum||!remote.checksum||local.checksum!==remote.checksum)return'UPDATE_REQUIRED';
  if(local.briefingVersion!==undefined&&remote.briefingVersion!==undefined&&local.briefingVersion!==remote.briefingVersion)return'UPDATE_REQUIRED';return'MATCHED';
 }
