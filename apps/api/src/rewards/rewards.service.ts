@@ -20,6 +20,8 @@ export class RewardsService {
   async apply(input:RewardMutation){
     if(!Number.isInteger(input.points)||input.points<1||!input.idempotencyKey?.trim())throw new BadRequestException('Invalid reward mutation.');
     if(input.type==='ADJUSTMENT')throw new BadRequestException('Reward adjustment is not enabled.');
+    if(input.type==='EXPIRE')throw new BadRequestException('Reward expiration is not enabled.');
+    if(input.expiresAt)throw new BadRequestException('Reward expiration is not enabled.');
     const key=input.idempotencyKey.trim();
     for(let attempt=0;attempt<3;attempt++)try{return await this.db.$transaction(async tx=>{
       const existing=await tx.rewardEntry.findUnique({where:{idempotencyKey:key}});
