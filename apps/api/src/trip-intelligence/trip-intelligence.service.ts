@@ -80,8 +80,25 @@ export class TripIntelligenceService {
     await this.assertAuthor(accountId);
     const allowed=['MACHINE_TRANSLATABLE','REVIEWED_TRANSLATION','CONTROLLED_SAFETY_CONTENT'];
     if(!allowed.includes(input.level))throw new BadRequestException('Invalid translation level.');
-    if(input.level==='CONTROLLED_SAFETY_CONTENT')throw new ConflictException('Controlled safety translations require a separate reviewed approval workflow.');
-    return this.db.briefingTranslation.upsert({where:{briefingId_languageCode:{briefingId,languageCode:input.languageCode}},create:{briefingId,languageCode:input.languageCode,content:input.content,level:input.level},update:{content:input.content,level:input.level,reviewedAt:null}});
+    const briefing=await this.db.tripBriefing.findUnique({where:{id:briefingId},select:{id:true,status:true}});
+    if(!briefing)throw new NotFoundException('Briefing not found.');
+    if(briefing.status==='SUPERSEDED')throw new ConflictException('Superseded briefing translations cannot be changed.');
+    const controlled=input.level==='CONTROLLED_SAFETY_CONTENT';
+    return this.db.briefingTranslation.upsert({
+      where:{briefingId_languageCode:{briefingId,languageCode:input.languageCode}},
+      create:{briefingId,languageCode:input.languageCode,content:input.content,level:input.level,createdByAccountId:accountId,reviewStatus:controlled?'PENDING_REVIEW':'NOT_REQUIRED'},
+      update:{content:input.content,level:input.level,createdByAccountId:accountId,reviewedAt:null,reviewedByAccountId:null,reviewStatus:controlled?'PENDING_REVIEW':'NOT_REQUIRED'}
+    });
+  }
+  async approveControlledTranslation(reviewerAccountId:string,translationId:string){
+    const translation=await this.db.briefingTranslation.findUnique({where:{id:translationId}});
+    if(!translation)throw new NotFoundException('Translation not found.');
+    if(translation.level!=='CONTROLLED_SAFETY_CONTENT')throw new ConflictException('Only controlled safety translations use this approval workflow.');
+    if(translation.reviewStatus!=='PENDING_REVIEW')throw new ConflictException('Translation is not pending review.');
+    if(translation.createdByAccountId===reviewerAccountId)throw new ForbiddenException('Translation author cannot approve the same controlled translation.');
+    const updated=await this.db.briefingTranslation.update({where:{id:translationId},data:{reviewStatus:'APPROVED',reviewedAt:new Date(),reviewedByAccountId:reviewerAccountId}});
+    await this.audit.record({action:'CONTROLLED_TRANSLATION_APPROVED',resource:'BriefingTranslation',resourceId:translationId,metadata:{reviewerAccountId,briefingId:translation.briefingId,languageCode:translation.languageCode}});
+    return updated;
   }
   private stableJson(value:unknown):string{
     if(Array.isArray(value))return '['+value.map(item=>this.stableJson(item)).join(',')+']';
@@ -98,6 +115,8 @@ export class TripIntelligenceService {
       this.db.emergencyPlan.findFirst({where:{tripId,approvedAt:{not:null}},orderBy:{version:'desc'}})
     ]);
     if(!divePlan||!emergencyPlan)throw new ConflictException('Approved dive and emergency plans are required.');
+    const unapprovedControlled=briefing.translations.filter((translation:any)=>translation.level==='CONTROLLED_SAFETY_CONTENT'&&translation.reviewStatus!=='APPROVED');
+    if(unapprovedControlled.length)throw new ConflictException('All controlled safety translations must be approved before offline package generation.');
     const files=[
       {key:'briefing',version:briefing.version,checksum:this.sha256({title:briefing.title,summary:briefing.summary}),classification:'OPERATIONAL_OFFLINE'},
       {key:'dive-plan',version:divePlan.version,checksum:this.sha256(divePlan.plan),classification:'SENSITIVE_ENCRYPTED'},
