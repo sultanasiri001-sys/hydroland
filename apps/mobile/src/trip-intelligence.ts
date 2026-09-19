@@ -61,3 +61,16 @@ export async function downloadOfflinePayload(tripId:string,entry:OfflineMediaMan
  const file=payloadFile(tripId,mediaKey);
  try{file.write(bytes);return file.uri}catch(error){deletePayload(tripId,mediaKey);throw error}
 }
+
+export async function verifyStoredOfflinePackage(tripId:string){
+ const metadata=await (await import('./offline-trip-package')).loadTripPackage(tripId);
+ const stored=loadOfflineContent(tripId);
+ if(!metadata||!stored||stored.tripId!==tripId||!metadata.checksum||stored.checksum!==metadata.checksum||stored.briefingVersion!==metadata.briefingVersion){
+  deleteOfflineContent(tripId);await deleteTripPackage(tripId);return false;
+ }
+ const checksum=await manifestChecksum(stored.manifest);
+ if(checksum.toLowerCase()!==metadata.checksum.toLowerCase()){
+  deleteOfflineContent(tripId);await deleteTripPackage(tripId);return false;
+ }
+ return true;
+}
