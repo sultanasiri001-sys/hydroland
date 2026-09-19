@@ -183,6 +183,7 @@ model Account {
   customerCases CustomerCase[] @relation("CustomerCases")
   customerInteractions CustomerInteraction[] @relation("CustomerInteractionActor")
   storeOrders StoreOrder[]
+ storePayments StorePayment[]
 }
 
 model Organization {
@@ -1114,8 +1115,35 @@ model StoreOrder {
  updatedAt DateTime @updatedAt
  account Account @relation(fields:[accountId], references:[id], onDelete:Restrict)
  items StoreOrderItem[]
+ payment StorePayment?
  @@index([accountId,status,createdAt])
 }
+model StorePayment {
+ id String @id @default(uuid())
+ orderId String @unique
+ accountId String
+ amountMinor Int
+ currency String @default("SAR")
+ status PaymentStatus @default(CREATED)
+ idempotencyKey String @unique
+ providerReference String? @unique
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ order StoreOrder @relation(fields:[orderId], references:[id], onDelete:Restrict)
+ account Account @relation(fields:[accountId], references:[id], onDelete:Restrict)
+ invoice StoreInvoice?
+ @@index([accountId,status])
+}
+model StoreInvoice {
+ id String @id @default(uuid())
+ paymentId String @unique
+ number String @unique
+ status InvoiceStatus @default(DRAFT)
+ issuedAt DateTime?
+ createdAt DateTime @default(now())
+ payment StorePayment @relation(fields:[paymentId], references:[id], onDelete:Restrict)
+}
+
 model StoreOrderItem {
  id String @id @default(uuid())
  orderId String
