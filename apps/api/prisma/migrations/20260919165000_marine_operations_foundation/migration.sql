@@ -1,0 +1,16 @@
+CREATE TYPE "MarineAssetStatus" AS ENUM ('DRAFT','PENDING_REVIEW','ACTIVE','SUSPENDED','OUT_OF_SERVICE','RETIRED');
+CREATE TYPE "MarineReadinessStatus" AS ENUM ('NOT_READY','NEEDS_REVIEW','READY');
+CREATE TABLE "MarineAsset" ("id" TEXT NOT NULL,"organizationId" TEXT NOT NULL,"calendarResourceId" TEXT,"name" TEXT NOT NULL,"assetType" TEXT NOT NULL,"registrationNumber" TEXT,"passengerCapacity" INTEGER,"status" "MarineAssetStatus" NOT NULL DEFAULT 'DRAFT',"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,CONSTRAINT "MarineAsset_pkey" PRIMARY KEY ("id"));
+CREATE UNIQUE INDEX "MarineAsset_calendarResourceId_key" ON "MarineAsset"("calendarResourceId");
+CREATE UNIQUE INDEX "MarineAsset_registrationNumber_key" ON "MarineAsset"("registrationNumber");
+CREATE INDEX "MarineAsset_organizationId_status_idx" ON "MarineAsset"("organizationId","status");
+CREATE TABLE "MarineAssetDocument" ("id" TEXT NOT NULL,"marineAssetId" TEXT NOT NULL,"documentType" TEXT NOT NULL,"referenceNumber" TEXT,"expiresAt" TIMESTAMP(3),"verifiedAt" TIMESTAMP(3),"status" TEXT NOT NULL DEFAULT 'PENDING',"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,CONSTRAINT "MarineAssetDocument_pkey" PRIMARY KEY ("id"));
+CREATE INDEX "MarineAssetDocument_marineAssetId_status_expiresAt_idx" ON "MarineAssetDocument"("marineAssetId","status","expiresAt");
+CREATE TABLE "MarineMaintenanceRecord" ("id" TEXT NOT NULL,"marineAssetId" TEXT NOT NULL,"maintenanceType" TEXT NOT NULL,"status" TEXT NOT NULL DEFAULT 'OPEN',"dueAt" TIMESTAMP(3),"completedAt" TIMESTAMP(3),"notes" TEXT,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,CONSTRAINT "MarineMaintenanceRecord_pkey" PRIMARY KEY ("id"));
+CREATE INDEX "MarineMaintenanceRecord_marineAssetId_status_dueAt_idx" ON "MarineMaintenanceRecord"("marineAssetId","status","dueAt");
+CREATE TABLE "MarineReadinessSnapshot" ("id" TEXT NOT NULL,"marineAssetId" TEXT NOT NULL,"tripId" TEXT,"status" "MarineReadinessStatus" NOT NULL DEFAULT 'NEEDS_REVIEW',"reasonCodes" JSONB NOT NULL,"checkedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"checkedByAccountId" TEXT,CONSTRAINT "MarineReadinessSnapshot_pkey" PRIMARY KEY ("id"));
+CREATE INDEX "MarineReadinessSnapshot_marineAssetId_checkedAt_idx" ON "MarineReadinessSnapshot"("marineAssetId","checkedAt");
+CREATE INDEX "MarineReadinessSnapshot_tripId_status_idx" ON "MarineReadinessSnapshot"("tripId","status");
+ALTER TABLE "MarineAssetDocument" ADD CONSTRAINT "MarineAssetDocument_marineAssetId_fkey" FOREIGN KEY ("marineAssetId") REFERENCES "MarineAsset"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "MarineMaintenanceRecord" ADD CONSTRAINT "MarineMaintenanceRecord_marineAssetId_fkey" FOREIGN KEY ("marineAssetId") REFERENCES "MarineAsset"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "MarineReadinessSnapshot" ADD CONSTRAINT "MarineReadinessSnapshot_marineAssetId_fkey" FOREIGN KEY ("marineAssetId") REFERENCES "MarineAsset"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
