@@ -23,6 +23,9 @@ export class TripIntelligenceController {
   approvePlans(@Req() req:any,@Param('tripId') tripId:string){return this.service.approvePlans(req.auth.accountId,tripId);}
   @Post('briefings/:briefingId/translations')
   translation(@Req() req:any,@Param('briefingId') briefingId:string,@Body() input:{languageCode:string;content:Record<string,unknown>;level:string}){return this.service.upsertTranslation(req.auth.accountId,briefingId,input);}
+  @UseGuards(ReviewGuard)
+  @Post(':tripId/offline-package/generate')
+  generatePackage(@Req() req:any,@Param('tripId') tripId:string){return this.service.generateOfflinePackage(req.auth.accountId,tripId);}
   @Get(':tripId/offline-package')
   packageStatus(@Param('tripId') tripId:string){return this.service.packageStatus(tripId);}
 }
