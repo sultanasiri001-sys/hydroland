@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { DatabaseService } from '../database/database.service';
 @Injectable()
 export class StoreService {
- constructor(private readonly prisma:PrismaService){}
+ constructor(private readonly prisma:DatabaseService){}
  listProducts(){return this.prisma.storeProduct.findMany({where:{status:'ACTIVE'},orderBy:{nameAr:'asc'}})}
  async createOrder(accountId:string,items:{productId:string;quantity:number}[]){
   if(!items?.length)throw new BadRequestException('Order requires items');
