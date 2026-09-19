@@ -20,12 +20,14 @@ export class RewardsService {
   async apply(input:RewardMutation){
     if(!Number.isInteger(input.points)||input.points<1||!input.idempotencyKey?.trim())throw new BadRequestException('Invalid reward mutation.');
     if(input.type==='ADJUSTMENT')throw new BadRequestException('Reward adjustment is not enabled.');
+    if(input.type==='EXPIRE')throw new BadRequestException('Reward expiration is not enabled.');
+    if(input.expiresAt)throw new BadRequestException('Reward expiration is not enabled.');
     const key=input.idempotencyKey.trim();
     for(let attempt=0;attempt<3;attempt++)try{return await this.db.$transaction(async tx=>{
       const existing=await tx.rewardEntry.findUnique({where:{idempotencyKey:key}});
       if(existing){
         const account=await tx.rewardAccount.findUnique({where:{id:existing.rewardAccountId},select:{accountId:true}});
-        if(!account||account.accountId!==input.accountId||existing.type!==input.type||existing.points!==input.points||existing.referenceType!==(input.referenceType??null)||existing.referenceId!==(input.referenceId??null))throw new ConflictException('Idempotency key cannot be reused with different reward details.');
+        if(!account||account.accountId!==input.accountId||existing.type!==input.type||existing.points!==input.points||existing.referenceType!==(input.referenceType??null)||existing.referenceId!==(input.referenceId??null)||existing.expiresAt?.getTime()!==(input.expiresAt?.getTime()))throw new ConflictException('Idempotency key cannot be reused with different reward details.');
         return existing;
       }
       const account=await tx.rewardAccount.upsert({where:{accountId:input.accountId},create:{accountId:input.accountId},update:{}});
@@ -41,7 +43,7 @@ export class RewardsService {
     },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});}catch(error){
       if(error instanceof Prisma.PrismaClientKnownRequestError&&(error.code==='P2002'||error.code==='P2034')){
         const existing=await this.db.rewardEntry.findUnique({where:{idempotencyKey:key}});
-        if(existing){const account=await this.db.rewardAccount.findUnique({where:{id:existing.rewardAccountId},select:{accountId:true}});if(account?.accountId===input.accountId&&existing.type===input.type&&existing.points===input.points&&existing.referenceType===(input.referenceType??null)&&existing.referenceId===(input.referenceId??null))return existing;throw new ConflictException('Idempotency key cannot be reused with different reward details.');}
+        if(existing){const account=await this.db.rewardAccount.findUnique({where:{id:existing.rewardAccountId},select:{accountId:true}});if(account?.accountId===input.accountId&&existing.type===input.type&&existing.points===input.points&&existing.referenceType===(input.referenceType??null)&&existing.referenceId===(input.referenceId??null)&&existing.expiresAt?.getTime()===(input.expiresAt?.getTime()))return existing;throw new ConflictException('Idempotency key cannot be reused with different reward details.');}
         if(error.code==='P2034'&&attempt<2)continue;
       }
       throw error;
