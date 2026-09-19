@@ -1,9 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class StoreService {
-  constructor(private readonly prisma: DatabaseService) {}
+  constructor(private readonly prisma: DatabaseService, private readonly audit: AuditService) {}
 
   listProducts() {
     return this.prisma.storeProduct.findMany({ where: { status: 'ACTIVE' }, orderBy: { nameAr: 'asc' } });
@@ -105,6 +106,7 @@ export class StoreService {
       return {...existing,provider:'NOT_SELECTED',financialActionExecuted:false};
     }
     const payment=await this.prisma.storePayment.create({data:{orderId,accountId,amountMinor:order.totalMinor,currency:order.currency,idempotencyKey:key,status:'CREATED'}});
+    await this.audit.record({action:'STORE_PAYMENT_CREATED',resource:'StorePayment',resourceId:payment.id,metadata:{accountId,orderId,amountMinor:payment.amountMinor,currency:payment.currency,status:payment.status,provider:'NOT_SELECTED',financialActionExecuted:false}});
     return {...payment,provider:'NOT_SELECTED',financialActionExecuted:false};
   }
 
@@ -131,7 +133,9 @@ export class StoreService {
       if(status==='CANCELLED'){
         for(const item of order.items)await tx.storeProduct.update({where:{id:item.productId},data:{stockQuantity:{increment:item.quantity}}});
       }
-      return tx.storeOrder.findUniqueOrThrow({where:{id:orderId},include:{items:true}});
+      const updated=await tx.storeOrder.findUniqueOrThrow({where:{id:orderId},include:{items:true}});
+      await this.audit.record({action:'STORE_ORDER_STATUS_CHANGED',resource:'StoreOrder',resourceId:orderId,metadata:{from:order.status,to:status,stockRestored:status==='CANCELLED'}});
+      return updated;
     });
   }
 
