@@ -19,4 +19,9 @@ describe('TripIntelligenceService publication boundaries',()=>{
     const service=new TripIntelligenceService(db,{record:async()=>({})} as any);
     await expect(service.packageStatus('t1')).resolves.toEqual({tripId:'t1',status:'NOT_READY',reason:'PUBLISHED_BRIEFING_REQUIRED'});
   });
+  it('blocks self-approval of controlled safety translations',async()=>{
+    const db:any={briefingTranslation:{findUnique:async()=>({id:'tr1',briefingId:'b1',languageCode:'en',level:'CONTROLLED_SAFETY_CONTENT',reviewStatus:'PENDING_REVIEW',createdByAccountId:'author'})}};
+    const service=new TripIntelligenceService(db,{record:async()=>({})} as any);
+    await expect(service.approveControlledTranslation('author','tr1')).rejects.toBeInstanceOf(ForbiddenException);
+  });
 });
