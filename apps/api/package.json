@@ -15,7 +15,8 @@
     "validate:operations": "rm -rf .tmp-operations-validation && tsc src/operations/operations-policy.ts src/operations/operations-policy.spec.ts --outDir .tmp-operations-validation --module commonjs --target es2020 --esModuleInterop --skipLibCheck && node .tmp-operations-validation/operations-policy.spec.js && rm -rf .tmp-operations-validation",
     "validate:phase10": "node scripts/phase10-validation.mjs",
     "validate:phase12": "node scripts/phase12-validation.mjs",
-    "validate:training": "node scripts/training-integration-validation.mjs"
+    "validate:training": "node scripts/training-integration-validation.mjs",
+    "validate:wallet-rewards": "node scripts/wallet-rewards-validation.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.3",
