@@ -5,3 +5,12 @@ export async function apiFetch<T>(path:string,init:RequestInit={},accessToken?:s
  const response=await fetch(API_BASE_URL+path,{...init,headers});if(!response.ok)throw new ApiError(response.status,await response.text()||'Request failed');
  if(response.status===204)return undefined as T;return response.json() as Promise<T>;
 }
+export async function authorizedFetch<T>(path:string,init:RequestInit={}):Promise<T>{
+ const {getAccessToken,refreshSession}=await import('./session');
+ let token=await getAccessToken();if(!token)throw new ApiError(401,'Authentication required');
+ try{return await apiFetch<T>(path,init,token)}catch(error){
+  if(!(error instanceof ApiError)||error.status!==401)throw error;
+  const refreshed=await refreshSession();if(!refreshed)throw error;
+  return apiFetch<T>(path,init,refreshed.accessToken);
+ }
+}
