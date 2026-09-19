@@ -132,7 +132,7 @@ export class TripIntelligenceService {
       {key:'dive-plan',version:divePlan.version,checksum:this.sha256(divePlan.plan),classification:'SENSITIVE_ENCRYPTED'},
       {key:'emergency-plan',version:emergencyPlan.version,checksum:this.sha256(emergencyPlan.plan),classification:'SENSITIVE_ENCRYPTED'},
       ...briefing.translations.map((translation:any)=>({key:`translation:${translation.languageCode}`,version:briefing.version,checksum:this.sha256(translation.content),classification:translation.level==='CONTROLLED_SAFETY_CONTENT'?'SENSITIVE_ENCRYPTED':'OPERATIONAL_OFFLINE'})),
-      ...briefing.media.map((media:any)=>({key:`media:${media.mediaKey}`,version:briefing.version,checksum:media.checksum,classification:media.classification,mediaType:media.mediaType,sizeBytes:media.sizeBytes,contentType:media.contentType,payloadRef:media.storageKey}))
+      ...briefing.media.filter((media:any)=>media.classification!=='ONLINE_ONLY').map((media:any)=>({key:`media:${media.mediaKey}`,version:briefing.version,checksum:media.checksum,classification:media.classification,mediaType:media.mediaType,sizeBytes:media.sizeBytes,contentType:media.contentType,payloadKey:media.mediaKey}))
     ];
     const manifest={schemaVersion:1,tripId,briefingId:briefing.id,briefingVersion:briefing.version,divePlanVersion:divePlan.version,emergencyPlanVersion:emergencyPlan.version,generatedAt:new Date().toISOString(),files};
     const checksum=this.sha256(manifest);
@@ -166,7 +166,7 @@ export class TripIntelligenceService {
     const manifest=pkg.manifest as any;
     if(this.sha256(manifest)!==pkg.checksum)throw new ConflictException('Offline package integrity check failed.');
     const entry=Array.isArray(manifest?.files)?manifest.files.find((item:any)=>item?.key===`media:${mediaKey}`):null;
-    if(!entry||entry.checksum!==media.checksum||entry.payloadRef!==media.storageKey)throw new ConflictException('Payload is not part of the approved offline manifest.');
+    if(!entry||entry.checksum!==media.checksum||entry.payloadKey!==media.mediaKey||entry.classification==='ONLINE_ONLY')throw new ConflictException('Payload is not part of the approved offline manifest.');
     return this.payloadStorage.delivery({storageKey:media.storageKey,checksum:media.checksum,sizeBytes:media.sizeBytes,contentType:media.contentType});
   }
 }
