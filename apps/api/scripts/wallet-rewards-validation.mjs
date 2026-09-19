@@ -33,3 +33,10 @@ for(const expected of [
   "input.type==='ADJUSTMENT'&&!walletMutationPolicy.adjustmentEnabled"
 ]) assert.ok(wallet.includes(expected),'Missing wallet activation gate: '+expected);
 console.log('Wallet fail-closed mutation policy validation passed.');
+
+const storeService=fs.readFileSync(new URL('../src/store/store.service.ts',import.meta.url),'utf8');
+assert.ok(storeService.includes("status==='FULFILLED'"),'Missing store fulfillment payment boundary');
+assert.ok(storeService.includes("payment.status!=='CAPTURED'"),'FULFILLED must require CAPTURED payment');
+assert.ok(storeService.includes("provider:'NOT_SELECTED'"),'Payment provider must remain explicitly unselected until configured');
+assert.ok(storeService.includes("financialActionExecuted:false"),'Payment preparation must remain non-financial until provider integration');
+console.log('Store payment boundary validation passed.');
