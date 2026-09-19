@@ -134,7 +134,16 @@ export class TripIntelligenceService {
       ...briefing.translations.map((translation:any)=>({key:`translation:${translation.languageCode}`,version:briefing.version,checksum:this.sha256(translation.content),classification:translation.level==='CONTROLLED_SAFETY_CONTENT'?'SENSITIVE_ENCRYPTED':'OPERATIONAL_OFFLINE'})),
       ...briefing.media.filter((media:any)=>media.classification!=='ONLINE_ONLY').map((media:any)=>({key:`media:${media.mediaKey}`,version:briefing.version,checksum:media.checksum,classification:media.classification,mediaType:media.mediaType,sizeBytes:media.sizeBytes,contentType:media.contentType,payloadKey:media.mediaKey}))
     ];
-    const manifest={schemaVersion:1,tripId,briefingId:briefing.id,briefingVersion:briefing.version,divePlanVersion:divePlan.version,emergencyPlanVersion:emergencyPlan.version,generatedAt:new Date().toISOString(),files};
+    const packageIdentity={schemaVersion:1,tripId,briefingId:briefing.id,briefingVersion:briefing.version,divePlanVersion:divePlan.version,emergencyPlanVersion:emergencyPlan.version,files};
+    const existingPackages=await this.db.offlineTripPackage.findMany({where:{briefingId:briefing.id,status:'READY'},orderBy:{generatedAt:'desc'}});
+    const existing=existingPackages.find((candidate:any)=>{
+      const stored=candidate.manifest as any;
+      if(!stored||this.sha256(stored)!==candidate.checksum)return false;
+      const {generatedAt:ignored,...storedIdentity}=stored;
+      return this.sha256(storedIdentity)===this.sha256(packageIdentity);
+    });
+    if(existing)return existing;
+    const manifest={...packageIdentity,generatedAt:new Date().toISOString()};
     const checksum=this.sha256(manifest);
     const pkg=await this.db.offlineTripPackage.create({data:{briefingId:briefing.id,manifest,checksum,status:'READY'}});
     await this.audit.record({action:'OFFLINE_TRIP_PACKAGE_GENERATED',resource:'OfflineTripPackage',resourceId:pkg.id,metadata:{reviewerAccountId,tripId,briefingVersion:briefing.version,checksum,fileCount:files.length}});
@@ -153,8 +162,13 @@ export class TripIntelligenceService {
     if(!briefing)throw new NotFoundException('Published briefing package not found.');
     const pkg=briefing.offlinePackages[0];
     if(!pkg)throw new ConflictException('Ready offline package is not available.');
-    const manifest=pkg.manifest as Prisma.JsonValue;
+    const manifest=pkg.manifest as any;
     if(this.sha256(manifest)!==pkg.checksum)throw new ConflictException('Offline package integrity check failed.');
+    const [divePlan,emergencyPlan]=await Promise.all([
+      this.db.divePlan.findFirst({where:{tripId,approvedAt:{not:null}},orderBy:{version:'desc'},select:{version:true}}),
+      this.db.emergencyPlan.findFirst({where:{tripId,approvedAt:{not:null}},orderBy:{version:'desc'},select:{version:true}})
+    ]);
+    if(!divePlan||!emergencyPlan||manifest?.briefingVersion!==briefing.version||manifest?.divePlanVersion!==divePlan.version||manifest?.emergencyPlanVersion!==emergencyPlan.version)throw new ConflictException('Offline package is stale and must be regenerated.');
     return{tripId,briefingVersion:briefing.version,checksum:pkg.checksum,generatedAt:pkg.generatedAt,manifest};
   }
   async payloadDelivery(tripId:string,mediaKey:string){
@@ -165,6 +179,11 @@ export class TripIntelligenceService {
     if(!pkg||!media)throw new NotFoundException('Offline payload is not available.');
     const manifest=pkg.manifest as any;
     if(this.sha256(manifest)!==pkg.checksum)throw new ConflictException('Offline package integrity check failed.');
+    const [divePlan,emergencyPlan]=await Promise.all([
+      this.db.divePlan.findFirst({where:{tripId,approvedAt:{not:null}},orderBy:{version:'desc'},select:{version:true}}),
+      this.db.emergencyPlan.findFirst({where:{tripId,approvedAt:{not:null}},orderBy:{version:'desc'},select:{version:true}})
+    ]);
+    if(!divePlan||!emergencyPlan||manifest?.briefingVersion!==briefing.version||manifest?.divePlanVersion!==divePlan.version||manifest?.emergencyPlanVersion!==emergencyPlan.version)throw new ConflictException('Offline package is stale and must be regenerated.');
     const entry=Array.isArray(manifest?.files)?manifest.files.find((item:any)=>item?.key===`media:${mediaKey}`):null;
     if(!entry||entry.checksum!==media.checksum||entry.payloadKey!==media.mediaKey||entry.classification==='ONLINE_ONLY')throw new ConflictException('Payload is not part of the approved offline manifest.');
     return this.payloadStorage.delivery({storageKey:media.storageKey,checksum:media.checksum,sizeBytes:media.sizeBytes,contentType:media.contentType});

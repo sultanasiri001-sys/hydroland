@@ -1,6 +1,6 @@
 import {CryptoDigestAlgorithm,digestStringAsync} from 'expo-crypto';
 import {authorizedFetch,authorizedBinaryFetch} from './api';
-import {saveOfflineContent,loadOfflineContent,deleteOfflineContent,payloadFile,deletePayload} from './offline-content-store';
+import {saveOfflineContent,loadOfflineContent,deleteOfflineContent,payloadFile,deletePayload,loadPayloadBytes} from './offline-content-store';
 import {saveTripPackage,deleteTripPackage,type OfflineTripPackage} from './offline-trip-package';
 
 export type OfflinePackageStatus={tripId:string;briefingVersion?:number;status:'NOT_READY'|'UPDATE_REQUIRED'|'READY'|string;reason?:string;checksum?:string;generatedAt?:string};
@@ -60,4 +60,27 @@ export async function downloadOfflinePayload(tripId:string,entry:OfflineMediaMan
  if(actual.toLowerCase()!==entry.checksum.toLowerCase()){deletePayload(tripId,mediaKey);throw new Error('Offline payload checksum verification failed.');}
  const file=payloadFile(tripId,mediaKey);
  try{file.write(bytes);return file.uri}catch(error){deletePayload(tripId,mediaKey);throw error}
+}
+
+export async function verifyStoredOfflinePackage(tripId:string){
+ const metadata=await (await import('./offline-trip-package')).loadTripPackage(tripId);
+ const stored=loadOfflineContent(tripId);
+ if(!metadata||!stored||stored.tripId!==tripId||!metadata.checksum||stored.checksum!==metadata.checksum||stored.briefingVersion!==metadata.briefingVersion){
+  deleteOfflineContent(tripId);await deleteTripPackage(tripId);return false;
+ }
+ const checksum=await manifestChecksum(stored.manifest);
+ if(checksum.toLowerCase()!==metadata.checksum.toLowerCase()){
+  deleteOfflineContent(tripId);await deleteTripPackage(tripId);return false;
+ }
+ return true;
+}
+
+export async function verifyStoredOfflinePayload(tripId:string,entry:OfflineMediaManifestEntry){
+ if(!entry.key.startsWith('media:')||!entry.checksum)return false;
+ const mediaKey=entry.key.slice('media:'.length);if(!mediaKey)return false;
+ const bytes=loadPayloadBytes(tripId,mediaKey);if(!bytes)return false;
+ if(entry.sizeBytes!=null&&bytes.byteLength!==entry.sizeBytes){deletePayload(tripId,mediaKey);return false;}
+ const actual=await digestStringAsync(CryptoDigestAlgorithm.SHA256,bytesToBase64(bytes),{encoding:'base64'} as any);
+ if(actual.toLowerCase()!==entry.checksum.toLowerCase()){deletePayload(tripId,mediaKey);return false;}
+ return true;
 }
