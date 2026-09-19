@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { PolicyControlService } from '../trips/policy-control.service';
+import { IntegrationService } from '../integrations/integration.service';
 
 type PaymentWithInvoice={
   id:string;
@@ -19,7 +20,7 @@ type PaymentWithInvoice={
 
 @Injectable()
 export class PaymentsService {
-  constructor(private readonly db:DatabaseService,private readonly policies:PolicyControlService,private readonly audit:AuditService){}
+  constructor(private readonly db:DatabaseService,private readonly policies:PolicyControlService,private readonly audit:AuditService,private readonly integrations:IntegrationService){}
 
   async create(accountId:string,input:{bookingId:string;amountMinor:number;idempotencyKey:string}){
     if(!Number.isInteger(input.amountMinor)||input.amountMinor<1||!input.idempotencyKey?.trim())throw new BadRequestException('Invalid payment.');
@@ -32,6 +33,7 @@ export class PaymentsService {
     const existing=await this.db.payment.findUnique({where:{idempotencyKey}});
     if(existing&&existing.accountId!==accountId)throw new ConflictException('Idempotency key already belongs to another payment.');
     if(existing&&(existing.bookingId!==input.bookingId||existing.amountMinor!==input.amountMinor))throw new ConflictException('Idempotency key cannot be reused with different payment details.');
+    this.integrations.requireOperational('PAYMENT_PSP');
     const payment=await this.db.payment.upsert({where:{idempotencyKey},create:{bookingId:input.bookingId,amountMinor:input.amountMinor,idempotencyKey,accountId,status:'CREATED'},update:{}});
     if(!existing)await this.audit.record({action:'PAYMENT_CREATED',resource:'Payment',resourceId:payment.id,metadata:{accountId,bookingId:payment.bookingId,amountMinor:payment.amountMinor,currency:payment.currency,status:payment.status,provider:'NOT_SELECTED',policyState:paymentPolicy.state,financialActionExecuted:false}});
     return{...payment,provider:'NOT_SELECTED',policyReview:{required:paymentPolicy.review,issues:paymentPolicy.review?['PAYMENT_REQUIRED']:[],states:{payment:paymentPolicy.state}}};
