@@ -2,6 +2,7 @@ import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotF
 import {AuditService} from '../audit/audit.service';
 import {DatabaseService} from '../database/database.service';
 import {createHash} from 'node:crypto';
+import {Prisma} from '@prisma/client';
 
 @Injectable()
 export class TripIntelligenceService {
@@ -54,13 +55,13 @@ export class TripIntelligenceService {
     await this.assertAuthor(accountId);
     if(!plan||Object.keys(plan).length===0)throw new BadRequestException('Dive plan is required.');
     const latest=await this.db.divePlan.findFirst({where:{tripId},orderBy:{version:'desc'},select:{version:true}});
-    return this.db.divePlan.create({data:{tripId,version:(latest?.version??0)+1,plan}});
+    return this.db.divePlan.create({data:{tripId,version:(latest?.version??0)+1,plan:plan as Prisma.InputJsonValue}});
   }
   async saveEmergencyPlan(accountId:string,tripId:string,plan:Record<string,unknown>){
     await this.assertAuthor(accountId);
     if(!plan||Object.keys(plan).length===0)throw new BadRequestException('Emergency plan is required.');
     const latest=await this.db.emergencyPlan.findFirst({where:{tripId},orderBy:{version:'desc'},select:{version:true}});
-    return this.db.emergencyPlan.create({data:{tripId,version:(latest?.version??0)+1,plan}});
+    return this.db.emergencyPlan.create({data:{tripId,version:(latest?.version??0)+1,plan:plan as Prisma.InputJsonValue}});
   }
   async approvePlans(reviewerAccountId:string,tripId:string){
     const [divePlan,emergencyPlan]=await Promise.all([
@@ -86,8 +87,8 @@ export class TripIntelligenceService {
     const controlled=input.level==='CONTROLLED_SAFETY_CONTENT';
     return this.db.briefingTranslation.upsert({
       where:{briefingId_languageCode:{briefingId,languageCode:input.languageCode}},
-      create:{briefingId,languageCode:input.languageCode,content:input.content,level:input.level,createdByAccountId:accountId,reviewStatus:controlled?'PENDING_REVIEW':'NOT_REQUIRED'},
-      update:{content:input.content,level:input.level,createdByAccountId:accountId,reviewedAt:null,reviewedByAccountId:null,reviewStatus:controlled?'PENDING_REVIEW':'NOT_REQUIRED'}
+      create:{briefingId,languageCode:input.languageCode,content:input.content as Prisma.InputJsonValue,level:input.level,createdByAccountId:accountId,reviewStatus:controlled?'PENDING_REVIEW':'NOT_REQUIRED'},
+      update:{content:input.content as Prisma.InputJsonValue,level:input.level,createdByAccountId:accountId,reviewedAt:null,reviewedByAccountId:null,reviewStatus:controlled?'PENDING_REVIEW':'NOT_REQUIRED'}
     });
   }
   async approveControlledTranslation(reviewerAccountId:string,translationId:string){
