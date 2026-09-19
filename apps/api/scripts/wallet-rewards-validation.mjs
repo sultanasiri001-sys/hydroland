@@ -10,3 +10,7 @@ const rewards=fs.readFileSync(new URL('../src/rewards/rewards.service.ts',import
 for(const expected of ["TransactionIsolationLevel.Serializable","balanceMinor:{gte:input.amountMinor}","Insufficient wallet balance.","idempotencyKey:key"]) assert.ok(wallet.includes(expected),'Missing wallet invariant: '+expected);
 for(const expected of ["TransactionIsolationLevel.Serializable","points:{gte:input.points}","Insufficient reward points.","idempotencyKey:key"]) assert.ok(rewards.includes(expected),'Missing rewards invariant: '+expected);
 console.log('Wallet/rewards ledger invariant validation passed.');
+
+for(const expected of ["error.code==='P2002'||error.code==='P2034'","attempt<2)continue","Wallet mutation could not be serialized."]) assert.ok(wallet.includes(expected),'Missing wallet concurrency guard: '+expected);
+for(const expected of ["error.code==='P2002'||error.code==='P2034'","attempt<2)continue","Reward mutation could not be serialized."]) assert.ok(rewards.includes(expected),'Missing rewards concurrency guard: '+expected);
+console.log('Wallet/rewards concurrency guard validation passed.');
