@@ -1345,3 +1345,42 @@ model TranslationPreference {
   updatedAt DateTime @updatedAt
   account Account @relation(fields:[accountId], references:[id], onDelete:Restrict)
 }
+
+
+enum EmergencyPhraseStatus {
+  DRAFT
+  REVIEW
+  APPROVED
+  RETIRED
+}
+
+model EmergencyPhrase {
+  id String @id @default(uuid())
+  key String @unique
+  category String
+  sourceArabic String
+  status EmergencyPhraseStatus @default(DRAFT)
+  version Int @default(1)
+  createdByAccountId String
+  reviewedByAccountId String?
+  reviewedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  translations EmergencyPhraseTranslation[]
+  @@index([category,status])
+}
+
+model EmergencyPhraseTranslation {
+  id String @id @default(uuid())
+  phraseId String
+  languageCode String
+  text String
+  createdByAccountId String
+  reviewedByAccountId String?
+  reviewedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  phrase EmergencyPhrase @relation(fields:[phraseId], references:[id], onDelete:Restrict)
+  @@unique([phraseId,languageCode])
+  @@index([languageCode,reviewedAt])
+}
