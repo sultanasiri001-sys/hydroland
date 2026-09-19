@@ -118,16 +118,20 @@ export class StoreService {
 
   async updateOrderStatus(orderId:string,status:'CREATED'|'CONFIRMED'|'CANCELLED'|'FULFILLED') {
     if(!['CREATED','CONFIRMED','CANCELLED','FULFILLED'].includes(status))throw new BadRequestException('Invalid order status');
-    const order=await this.prisma.storeOrder.findUnique({where:{id:orderId},include:{items:true}});
-    if(!order)throw new NotFoundException('Order not found');
-    if(order.status===status)return order;
     const allowed:Record<string,string[]>={CREATED:['CONFIRMED','CANCELLED'],CONFIRMED:['FULFILLED','CANCELLED'],CANCELLED:[],FULFILLED:[]};
-    if(!allowed[order.status]?.includes(status))throw new BadRequestException('Invalid order status transition');
     return this.prisma.serializable(async tx=>{
+      const order=await tx.storeOrder.findUnique({where:{id:orderId},include:{items:true}});
+      if(!order)throw new NotFoundException('Order not found');
+      if(order.status===status)return order;
+      if(!allowed[order.status]?.includes(status))throw new BadRequestException('Invalid order status transition');
+
+      const transitioned=await tx.storeOrder.updateMany({where:{id:orderId,status:order.status},data:{status}});
+      if(transitioned.count!==1)throw new BadRequestException('Order status changed concurrently; retry');
+
       if(status==='CANCELLED'){
         for(const item of order.items)await tx.storeProduct.update({where:{id:item.productId},data:{stockQuantity:{increment:item.quantity}}});
       }
-      return tx.storeOrder.update({where:{id:orderId},data:{status}});
+      return tx.storeOrder.findUniqueOrThrow({where:{id:orderId},include:{items:true}});
     });
   }
 
