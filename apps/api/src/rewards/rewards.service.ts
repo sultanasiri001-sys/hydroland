@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable } from '@nestjs/comm
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 
+// Internal trusted-domain mutation contract; no public mutation endpoint is exposed.
 type RewardMutation={accountId:string;type:'EARN'|'REDEEM'|'EXPIRE'|'ADJUSTMENT';points:number;idempotencyKey:string;referenceType?:string;referenceId?:string;expiresAt?:Date;metadata?:Prisma.InputJsonValue};
 
 @Injectable()
