@@ -31,6 +31,7 @@ import { ResearchMarketModule } from './research-market/research-market.module';
 import { LegalGovernanceModule } from './legal-governance/legal-governance.module';
 import { TripIntelligenceModule } from './trip-intelligence/trip-intelligence.module';
 import { TranslationModule } from './translation/translation.module';
+import { MarineOperationsModule } from './marine-operations/marine-operations.module';
 
 @Module({
   imports: [DatabaseModule, AuthModule, ProfileModule, CredentialsModule, ActivationModule, AuditModule, NotificationsModule, GovernanceModule, TripsModule, SafetyModule, PaymentsModule, AdminModule, DiveLogsModule, OrganizationsModule, IntegrationModule, InventoryModule, FinanceModule, CustomerServiceModule,
@@ -38,7 +39,7 @@ import { TranslationModule } from './translation/translation.module';
     TechnologySecurityModule,
     FacilitiesMaintenanceModule,
     AdministrativeAffairsModule,
-    ExecutiveGovernanceModule, AgentModule, ResearchMarketModule, LegalGovernanceModule, TripIntelligenceModule, TranslationModule, StoreModule, WalletModule, RewardsModule],
+    ExecutiveGovernanceModule, AgentModule, ResearchMarketModule, LegalGovernanceModule, TripIntelligenceModule, TranslationModule, MarineOperationsModule, StoreModule, WalletModule, RewardsModule],
   controllers: [HealthController],
 })
 export class AppModule {}
