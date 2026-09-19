@@ -1,4 +1,4 @@
-export type IntegrationKey = 'WEATHER_MARINE' | 'EMAIL' | 'SMS' | 'WHATSAPP' | 'PAYMENT_PSP' | 'BANKING_SETTLEMENT' | 'NAFATH' | 'REGULATORY';
-export type IntegrationStatus = 'NOT_SELECTED' | 'SANDBOX_READY' | 'CONNECTED' | 'DISABLED';
-export interface IntegrationDescriptor { key:IntegrationKey; name:string; category:'marine'|'messaging'|'payments'|'identity'|'regulatory'; status:IntegrationStatus; requiresHumanApproval:boolean; supportsWebhook:boolean; }
+export type IntegrationKey = 'WEATHER_MARINE' | 'EMAIL' | 'SMS' | 'WHATSAPP' | 'PAYMENT_PSP' | 'BANKING_SETTLEMENT' | 'OBJECT_STORAGE' | 'TRANSLATION_ENGINE' | 'MAPS_GEO' | 'ESIGN' | 'CERTIFICATION' | 'DISTRESS_AIS' | 'NAFATH' | 'REGULATORY';
+export type IntegrationStatus = 'NOT_SELECTED' | 'SANDBOX' | 'CONFIGURED' | 'VERIFIED' | 'PRODUCTION_ENABLED' | 'DEGRADED' | 'DISABLED';
+export interface IntegrationDescriptor { key:IntegrationKey; name:string; category:'marine'|'messaging'|'payments'|'storage'|'translation'|'maps'|'documents'|'certification'|'identity'|'regulatory'; status:IntegrationStatus; requiresHumanApproval:boolean; supportsWebhook:boolean; }
 export interface VerifiedWebhook { provider:IntegrationKey; eventId:string; eventType:string; receivedAt:string; payload:Record<string,unknown>; }
