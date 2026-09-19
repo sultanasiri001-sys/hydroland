@@ -23,3 +23,13 @@ for(const expected of [
   "input.type==='ADJUSTMENT'"
 ]) assert.ok(rewards.includes(expected),'Missing rewards activation gate: '+expected);
 console.log('Rewards activation gate validation passed.');
+
+const walletPolicy=fs.readFileSync(new URL('../src/wallet/wallet.policy.ts',import.meta.url),'utf8');
+for(const expected of ['creditEnabled: false','debitEnabled: false','refundEnabled: false','adjustmentEnabled: false']) assert.ok(walletPolicy.includes(expected),'Missing wallet fail-closed default: '+expected);
+for(const expected of [
+  "input.type==='CREDIT'&&!walletMutationPolicy.creditEnabled",
+  "input.type==='DEBIT'&&!walletMutationPolicy.debitEnabled",
+  "input.type==='REFUND'&&!walletMutationPolicy.refundEnabled",
+  "input.type==='ADJUSTMENT'&&!walletMutationPolicy.adjustmentEnabled"
+]) assert.ok(wallet.includes(expected),'Missing wallet activation gate: '+expected);
+console.log('Wallet fail-closed mutation policy validation passed.');
