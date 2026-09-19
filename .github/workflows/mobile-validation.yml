@@ -1,0 +1,20 @@
+name: Mobile validation
+on:
+  pull_request:
+    paths:
+      - 'apps/mobile/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/mobile-validation.yml'
+jobs:
+  mobile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm --workspace @hydroland/mobile run test
+      - run: npm --workspace @hydroland/mobile run typecheck
+      - run: npm --workspace @hydroland/mobile run build
