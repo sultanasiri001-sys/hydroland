@@ -98,12 +98,12 @@ export class StoreService {
     if(!order)throw new NotFoundException('Order not found');
     if(order.status==='CANCELLED'||order.status==='FULFILLED')throw new BadRequestException('Order is not eligible for payment');
     if(order.payment){
-      if(order.payment.idempotencyKey!==key)throw new BadRequestException('Order already has a payment');
+      if(order.payment.idempotencyKey!==key)throw new ConflictException('Order already has a payment');
       return {...order.payment,provider:'NOT_SELECTED',financialActionExecuted:false};
     }
     const existing=await this.prisma.storePayment.findUnique({where:{idempotencyKey:key}});
     if(existing){
-      if(existing.accountId!==accountId||existing.orderId!==orderId)throw new BadRequestException('Idempotency key cannot be reused');
+      if(existing.accountId!==accountId||existing.orderId!==orderId)throw new ConflictException('Idempotency key cannot be reused');
       return {...existing,provider:'NOT_SELECTED',financialActionExecuted:false};
     }
     try {
@@ -150,6 +150,10 @@ export class StoreService {
       if(!order)throw new NotFoundException('Order not found');
       if(order.status===status)return order;
       if(!allowed[order.status]?.includes(status))throw new BadRequestException('Invalid order status transition');
+      if(status==='CANCELLED'){
+        const payment=await tx.storePayment.findUnique({where:{orderId},select:{status:true}});
+        if(payment?.status==='CAPTURED')throw new ConflictException('Captured payment requires an approved refund flow before cancellation.');
+      }
       if(status==='FULFILLED'){
         const payment=await tx.storePayment.findUnique({where:{orderId},select:{status:true}});
         if(!payment||payment.status!=='CAPTURED')throw new ConflictException('Order cannot be fulfilled before payment is captured.');
