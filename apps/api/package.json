@@ -18,7 +18,8 @@
     "validate:training": "node scripts/training-integration-validation.mjs",
     "validate:wallet-rewards": "node scripts/wallet-rewards-validation.mjs",
     "validate:trip-intelligence": "node scripts/trip-intelligence-validation.mjs",
-    "validate:translation": "node scripts/translation-validation.mjs"
+    "validate:translation": "node scripts/translation-validation.mjs",
+    "validate:marine": "node scripts/marine-operations-validation.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.3",

@@ -28,6 +28,9 @@ export class OperationalClearanceService {
         COALESCE((SELECT MAX(b."updatedAt") FROM "Booking" b WHERE b."tripId"=t."id"),TIMESTAMP '1970-01-01'),
         COALESCE((SELECT r."updatedAt" FROM "TripComplianceReview" r WHERE r."tripId"=t."id" LIMIT 1),TIMESTAMP '1970-01-01'),
         COALESCE((SELECT MAX(brc."updatedAt") FROM "CalendarAllocation" a JOIN "CalendarResource" cr ON cr."id"=a."resourceId" JOIN "BoatResourceCompliance" brc ON brc."resourceId"=cr."id" WHERE a."tripId"=t."id" AND a."status"='ACTIVE' AND cr."type"='BOAT'),TIMESTAMP '1970-01-01'),
+        COALESCE((SELECT MAX(ma."updatedAt") FROM "CalendarAllocation" a JOIN "MarineAsset" ma ON ma."calendarResourceId"=a."resourceId" WHERE a."tripId"=t."id" AND a."status"='ACTIVE'),TIMESTAMP '1970-01-01'),
+        COALESCE((SELECT MAX(md."updatedAt") FROM "CalendarAllocation" a JOIN "MarineAsset" ma ON ma."calendarResourceId"=a."resourceId" JOIN "MarineAssetDocument" md ON md."marineAssetId"=ma."id" WHERE a."tripId"=t."id" AND a."status"='ACTIVE'),TIMESTAMP '1970-01-01'),
+        COALESCE((SELECT MAX(mm."updatedAt") FROM "CalendarAllocation" a JOIN "MarineAsset" ma ON ma."calendarResourceId"=a."resourceId" JOIN "MarineMaintenanceRecord" mm ON mm."marineAssetId"=ma."id" WHERE a."tripId"=t."id" AND a."status"='ACTIVE'),TIMESTAMP '1970-01-01'),
         COALESCE((SELECT MAX(p."updatedAt") FROM "PolicyControl" p WHERE p."category" IN ('TRIP','CREW','WEATHER','BOAT','COMPLIANCE','BOOKING')),TIMESTAMP '1970-01-01'),
         COALESCE((SELECT o."updatedAt" FROM "OperationalSetting" o WHERE o."key"='WEATHER_GATE' LIMIT 1),TIMESTAMP '1970-01-01')
       ) AS "changedAt"

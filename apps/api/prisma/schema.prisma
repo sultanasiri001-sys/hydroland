@@ -1385,3 +1385,77 @@ model EmergencyPhraseTranslation {
   @@unique([phraseId,languageCode])
   @@index([languageCode,reviewedAt])
 }
+
+
+enum MarineAssetStatus {
+  DRAFT
+  PENDING_REVIEW
+  ACTIVE
+  SUSPENDED
+  OUT_OF_SERVICE
+  RETIRED
+}
+
+enum MarineReadinessStatus {
+  NOT_READY
+  NEEDS_REVIEW
+  READY
+}
+
+model MarineAsset {
+  id String @id @default(uuid())
+  organizationId String
+  calendarResourceId String? @unique
+  name String
+  assetType String
+  registrationNumber String? @unique
+  passengerCapacity Int?
+  status MarineAssetStatus @default(DRAFT)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  readiness MarineReadinessSnapshot[]
+  maintenance MarineMaintenanceRecord[]
+  documents MarineAssetDocument[]
+  @@index([organizationId,status])
+}
+
+model MarineAssetDocument {
+  id String @id @default(uuid())
+  marineAssetId String
+  documentType String
+  referenceNumber String?
+  expiresAt DateTime?
+  verifiedAt DateTime?
+  status String @default("PENDING")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  marineAsset MarineAsset @relation(fields:[marineAssetId],references:[id],onDelete:Restrict)
+  @@index([marineAssetId,status,expiresAt])
+}
+
+model MarineMaintenanceRecord {
+  id String @id @default(uuid())
+  marineAssetId String
+  maintenanceType String
+  status String @default("OPEN")
+  dueAt DateTime?
+  completedAt DateTime?
+  notes String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  marineAsset MarineAsset @relation(fields:[marineAssetId],references:[id],onDelete:Restrict)
+  @@index([marineAssetId,status,dueAt])
+}
+
+model MarineReadinessSnapshot {
+  id String @id @default(uuid())
+  marineAssetId String
+  tripId String?
+  status MarineReadinessStatus @default(NEEDS_REVIEW)
+  reasonCodes Json
+  checkedAt DateTime @default(now())
+  checkedByAccountId String?
+  marineAsset MarineAsset @relation(fields:[marineAssetId],references:[id],onDelete:Restrict)
+  @@index([marineAssetId,checkedAt])
+  @@index([tripId,status])
+}
