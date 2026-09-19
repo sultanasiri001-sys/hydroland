@@ -13,6 +13,21 @@ export class MarineOperationsService{
   if(!org)throw new NotFoundException('Organization not found.');
   return this.db.marineAsset.create({data:{...input,name:input.name.trim(),registrationNumber:input.registrationNumber?.trim()||null}});
  }
+ async linkCalendarResource(marineAssetId:string,resourceId:string){
+  const [asset,resource]=await Promise.all([this.db.marineAsset.findUnique({where:{id:marineAssetId}}),this.db.calendarResource.findUnique({where:{id:resourceId}})]);
+  if(!asset)throw new NotFoundException('Marine asset not found.');
+  if(!resource||resource.type!=='BOAT'||!resource.active)throw new BadRequestException('Active BOAT calendar resource is required.');
+  if(resource.referenceId&&resource.referenceId!==marineAssetId)throw new BadRequestException('Calendar resource is linked to another reference.');
+  return this.db.$transaction(async tx=>{
+   await tx.calendarResource.update({where:{id:resourceId},data:{referenceId:marineAssetId}});
+   return tx.marineAsset.update({where:{id:marineAssetId},data:{calendarResourceId:resourceId}});
+  });
+ }
+ async readinessForCalendarResource(resourceId:string,tripId?:string,checkedByAccountId?:string){
+  const asset=await this.db.marineAsset.findUnique({where:{calendarResourceId:resourceId},select:{id:true}});
+  if(!asset)return{status:'NOT_READY' as const,reasonCodes:['MARINE_ASSET_NOT_LINKED']};
+  return this.evaluateReadiness(asset.id,tripId,checkedByAccountId);
+ }
  async evaluateReadiness(marineAssetId:string,tripId?:string,checkedByAccountId?:string):Promise<MarineReadinessResult>{
   const asset=await this.db.marineAsset.findUnique({where:{id:marineAssetId},include:{documents:true,maintenance:true}});
   if(!asset)throw new NotFoundException('Marine asset not found.');
