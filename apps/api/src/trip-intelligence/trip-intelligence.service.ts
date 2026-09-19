@@ -5,10 +5,11 @@ import {createHash} from 'node:crypto';
 import {Prisma} from '@prisma/client';
 import {TranslationRouterService} from '../translation/translation-router.service';
 import {TranslationMode} from '../translation/translation.domain';
+import {OfflinePayloadStorageService} from './offline-payload-storage.service';
 
 @Injectable()
 export class TripIntelligenceService {
-  constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly translation:TranslationRouterService){}
+  constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly translation:TranslationRouterService,private readonly payloadStorage:OfflinePayloadStorageService){}
 
   private async assertAuthor(accountId:string){
     const role=await this.db.roleAssignment.findFirst({where:{accountId,status:'ACTIVE',role:{in:['ADMIN','REVIEWER','INSTRUCTOR','DIVE_CENTER','STAFF']}},select:{id:true}});
@@ -155,5 +156,17 @@ export class TripIntelligenceService {
     const manifest=pkg.manifest as Prisma.JsonValue;
     if(this.sha256(manifest)!==pkg.checksum)throw new ConflictException('Offline package integrity check failed.');
     return{tripId,briefingVersion:briefing.version,checksum:pkg.checksum,generatedAt:pkg.generatedAt,manifest};
+  }
+  async payloadDelivery(tripId:string,mediaKey:string){
+    const briefing=await this.db.tripBriefing.findFirst({where:{tripId,status:'PUBLISHED'},orderBy:{version:'desc'},include:{offlinePackages:{where:{status:'READY'},orderBy:{generatedAt:'desc'},take:1},media:{where:{mediaKey,status:'READY'},take:1}}});
+    if(!briefing)throw new NotFoundException('Published briefing not found.');
+    const pkg=briefing.offlinePackages[0];
+    const media=briefing.media[0];
+    if(!pkg||!media)throw new NotFoundException('Offline payload is not available.');
+    const manifest=pkg.manifest as any;
+    if(this.sha256(manifest)!==pkg.checksum)throw new ConflictException('Offline package integrity check failed.');
+    const entry=Array.isArray(manifest?.files)?manifest.files.find((item:any)=>item?.key===`media:${mediaKey}`):null;
+    if(!entry||entry.checksum!==media.checksum||entry.payloadRef!==media.storageKey)throw new ConflictException('Payload is not part of the approved offline manifest.');
+    return this.payloadStorage.delivery({storageKey:media.storageKey,checksum:media.checksum,sizeBytes:media.sizeBytes,contentType:media.contentType});
   }
 }
