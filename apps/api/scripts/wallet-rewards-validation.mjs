@@ -14,3 +14,12 @@ console.log('Wallet/rewards ledger invariant validation passed.');
 for(const expected of ["error.code==='P2002'||error.code==='P2034'","attempt<2)continue","Wallet mutation could not be serialized."]) assert.ok(wallet.includes(expected),'Missing wallet concurrency guard: '+expected);
 for(const expected of ["error.code==='P2002'||error.code==='P2034'","attempt<2)continue","Reward mutation could not be serialized."]) assert.ok(rewards.includes(expected),'Missing rewards concurrency guard: '+expected);
 console.log('Wallet/rewards concurrency guard validation passed.');
+
+for(const expected of [
+  "input.type==='EARN'&&(!rewardsPolicy.earningEnabled||rewardsPolicy.earnPointsPerMinor===null)",
+  "input.type==='REDEEM'&&(!rewardsPolicy.redemptionEnabled||rewardsPolicy.redemptionValueMinorPerPoint===null)",
+  "input.type==='EXPIRE'",
+  "if(input.expiresAt)",
+  "input.type==='ADJUSTMENT'"
+]) assert.ok(rewards.includes(expected),'Missing rewards activation gate: '+expected);
+console.log('Rewards activation gate validation passed.');
