@@ -3,6 +3,7 @@ import { AdminModule } from '../admin/admin.module';
 import { AuditModule } from '../audit/audit.module';
 import { AuthModule } from '../auth/auth.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { MarineOperationsModule } from '../marine-operations/marine-operations.module';
 import { BoatComplianceController } from './boat-compliance.controller';
 import { BoatComplianceService } from './boat-compliance.service';
 import { BookingParticipantService } from './booking-participant.service';
@@ -40,7 +41,7 @@ import { WeatherGateController } from './weather-gate.controller';
 import { WeatherGateService } from './weather-gate.service';
 
 @Module({
-  imports: [AuthModule, AdminModule, AuditModule, NotificationsModule],
+  imports: [AuthModule, AdminModule, AuditModule, NotificationsModule, MarineOperationsModule],
   controllers: [TripsController,TripAdminController,TripCompletionController,WeatherGateController,CalendarAllocationController,CrewAssignmentController,PolicyControlController,BoatComplianceController,TripComplianceController,EquipmentInspectionController,EquipmentInventoryController,InventoryStocktakeController,EquipmentRentalController,EquipmentRentalAdminController,EquipmentRentalHandoverController],
   providers: [TripsService,TripAdminService,TripCompletionService,WeatherGateService,CalendarAllocationService,CalendarResourceService,CrewAssignmentService,CrewEscalationScheduler,OperationalClearanceService,OperationalClearanceScheduler,BookingParticipantService,PolicyControlService,BoatComplianceService,TripComplianceService,EquipmentInspectionService,EquipmentInventoryService,InventoryStocktakeService,EquipmentRentalService,EquipmentRentalAdminService,EquipmentRentalHandoverService],
   exports: [PolicyControlService,BoatComplianceService,TripComplianceService,EquipmentInspectionService,EquipmentInventoryService,InventoryStocktakeService,EquipmentRentalService],
