@@ -1,6 +1,7 @@
 import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {AuditService} from '../audit/audit.service';
 import {DatabaseService} from '../database/database.service';
+import {createHash} from 'node:crypto';
 
 @Injectable()
 export class TripIntelligenceService {
@@ -82,6 +83,34 @@ export class TripIntelligenceService {
     if(input.level==='CONTROLLED_SAFETY_CONTENT')throw new ConflictException('Controlled safety translations require a separate reviewed approval workflow.');
     return this.db.briefingTranslation.upsert({where:{briefingId_languageCode:{briefingId,languageCode:input.languageCode}},create:{briefingId,languageCode:input.languageCode,content:input.content,level:input.level},update:{content:input.content,level:input.level,reviewedAt:null}});
   }
+  private stableJson(value:unknown):string{
+    if(Array.isArray(value))return '['+value.map(item=>this.stableJson(item)).join(',')+']';
+    if(value&&typeof value==='object'){const obj=value as Record<string,unknown>;return '{'+Object.keys(obj).sort().map(key=>JSON.stringify(key)+':'+this.stableJson(obj[key])).join(',')+'}';}
+    return JSON.stringify(value);
+  }
+  private sha256(value:unknown){return createHash('sha256').update(this.stableJson(value)).digest('hex');}
+
+  async generateOfflinePackage(reviewerAccountId:string,tripId:string){
+    const briefing=await this.db.tripBriefing.findFirst({where:{tripId,status:'PUBLISHED'},orderBy:{version:'desc'},include:{translations:true}});
+    if(!briefing)throw new ConflictException('Published briefing required before package generation.');
+    const [divePlan,emergencyPlan]=await Promise.all([
+      this.db.divePlan.findFirst({where:{tripId,approvedAt:{not:null}},orderBy:{version:'desc'}}),
+      this.db.emergencyPlan.findFirst({where:{tripId,approvedAt:{not:null}},orderBy:{version:'desc'}})
+    ]);
+    if(!divePlan||!emergencyPlan)throw new ConflictException('Approved dive and emergency plans are required.');
+    const files=[
+      {key:'briefing',version:briefing.version,checksum:this.sha256({title:briefing.title,summary:briefing.summary}),classification:'OPERATIONAL_OFFLINE'},
+      {key:'dive-plan',version:divePlan.version,checksum:this.sha256(divePlan.plan),classification:'SENSITIVE_ENCRYPTED'},
+      {key:'emergency-plan',version:emergencyPlan.version,checksum:this.sha256(emergencyPlan.plan),classification:'SENSITIVE_ENCRYPTED'},
+      ...briefing.translations.map((translation:any)=>({key:`translation:${translation.languageCode}`,version:briefing.version,checksum:this.sha256(translation.content),classification:translation.level==='CONTROLLED_SAFETY_CONTENT'?'SENSITIVE_ENCRYPTED':'OPERATIONAL_OFFLINE'}))
+    ];
+    const manifest={schemaVersion:1,tripId,briefingId:briefing.id,briefingVersion:briefing.version,divePlanVersion:divePlan.version,emergencyPlanVersion:emergencyPlan.version,generatedAt:new Date().toISOString(),files};
+    const checksum=this.sha256(manifest);
+    const pkg=await this.db.offlineTripPackage.create({data:{briefingId:briefing.id,manifest,checksum,status:'READY'}});
+    await this.audit.record({action:'OFFLINE_TRIP_PACKAGE_GENERATED',resource:'OfflineTripPackage',resourceId:pkg.id,metadata:{reviewerAccountId,tripId,briefingVersion:briefing.version,checksum,fileCount:files.length}});
+    return pkg;
+  }
+
   async packageStatus(tripId:string){
     const briefing=await this.db.tripBriefing.findFirst({where:{tripId,status:'PUBLISHED'},orderBy:{version:'desc'},include:{offlinePackages:{orderBy:{generatedAt:'desc'},take:1}}});
     if(!briefing)return{tripId,status:'NOT_READY',reason:'PUBLISHED_BRIEFING_REQUIRED'};
