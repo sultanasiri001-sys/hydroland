@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { AuditService } from '../audit/audit.service';
 
@@ -105,9 +106,16 @@ export class StoreService {
       if(existing.accountId!==accountId||existing.orderId!==orderId)throw new BadRequestException('Idempotency key cannot be reused');
       return {...existing,provider:'NOT_SELECTED',financialActionExecuted:false};
     }
-    const payment=await this.prisma.storePayment.create({data:{orderId,accountId,amountMinor:order.totalMinor,currency:order.currency,idempotencyKey:key,status:'CREATED'}});
-    await this.audit.record({action:'STORE_PAYMENT_CREATED',resource:'StorePayment',resourceId:payment.id,metadata:{accountId,orderId,amountMinor:payment.amountMinor,currency:payment.currency,status:payment.status,provider:'NOT_SELECTED',financialActionExecuted:false}});
-    return {...payment,provider:'NOT_SELECTED',financialActionExecuted:false};
+    try {
+      const payment=await this.prisma.storePayment.create({data:{orderId,accountId,amountMinor:order.totalMinor,currency:order.currency,idempotencyKey:key,status:'CREATED'}});
+      await this.audit.record({action:'STORE_PAYMENT_CREATED',resource:'StorePayment',resourceId:payment.id,metadata:{accountId,orderId,amountMinor:payment.amountMinor,currency:payment.currency,status:payment.status,provider:'NOT_SELECTED',financialActionExecuted:false}});
+      return {...payment,provider:'NOT_SELECTED',financialActionExecuted:false};
+    } catch (error) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code!=='P2002') throw error;
+      const canonical=await this.prisma.storePayment.findFirst({where:{OR:[{orderId},{idempotencyKey:key}]}});
+      if(canonical?.accountId===accountId&&canonical.orderId===orderId&&canonical.idempotencyKey===key)return {...canonical,provider:'NOT_SELECTED',financialActionExecuted:false};
+      throw new ConflictException('Order already has a payment or idempotency key is already in use');
+    }
   }
 
   listMyPayments(accountId:string) {
