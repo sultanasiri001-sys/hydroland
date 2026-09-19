@@ -1,0 +1,13 @@
+CREATE TYPE "StoreProductStatus" AS ENUM ('DRAFT', 'ACTIVE', 'INACTIVE');
+CREATE TYPE "StoreOrderStatus" AS ENUM ('CREATED', 'CONFIRMED', 'CANCELLED', 'FULFILLED');
+CREATE TABLE "StoreProduct" ("id" TEXT NOT NULL,"sku" TEXT NOT NULL,"nameAr" TEXT NOT NULL,"nameEn" TEXT,"description" TEXT,"priceMinor" INTEGER NOT NULL,"currency" TEXT NOT NULL DEFAULT 'SAR',"stockQuantity" INTEGER NOT NULL DEFAULT 0,"status" "StoreProductStatus" NOT NULL DEFAULT 'DRAFT',"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,CONSTRAINT "StoreProduct_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "StoreOrder" ("id" TEXT NOT NULL,"accountId" TEXT NOT NULL,"status" "StoreOrderStatus" NOT NULL DEFAULT 'CREATED',"totalMinor" INTEGER NOT NULL,"currency" TEXT NOT NULL DEFAULT 'SAR',"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,CONSTRAINT "StoreOrder_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "StoreOrderItem" ("id" TEXT NOT NULL,"orderId" TEXT NOT NULL,"productId" TEXT NOT NULL,"quantity" INTEGER NOT NULL,"unitPriceMinor" INTEGER NOT NULL,CONSTRAINT "StoreOrderItem_pkey" PRIMARY KEY ("id"));
+CREATE UNIQUE INDEX "StoreProduct_sku_key" ON "StoreProduct"("sku");
+CREATE INDEX "StoreProduct_status_nameAr_idx" ON "StoreProduct"("status","nameAr");
+CREATE INDEX "StoreOrder_accountId_status_createdAt_idx" ON "StoreOrder"("accountId","status","createdAt");
+CREATE INDEX "StoreOrderItem_orderId_idx" ON "StoreOrderItem"("orderId");
+CREATE INDEX "StoreOrderItem_productId_idx" ON "StoreOrderItem"("productId");
+ALTER TABLE "StoreOrder" ADD CONSTRAINT "StoreOrder_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "Account"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "StoreOrderItem" ADD CONSTRAINT "StoreOrderItem_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "StoreOrder"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "StoreOrderItem" ADD CONSTRAINT "StoreOrderItem_productId_fkey" FOREIGN KEY ("productId") REFERENCES "StoreProduct"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
