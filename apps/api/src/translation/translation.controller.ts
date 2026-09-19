@@ -2,13 +2,15 @@ import {Body,Controller,Get,Param,Post,Put,Query,Req,UseGuards} from '@nestjs/co
 import {AuthGuard} from '../auth/auth.guard';
 import {ReviewGuard} from '../auth/review.guard';
 import {TranslationService} from './translation.service';
-import {TranslationMode} from './translation.domain';
+import {TranslationContentClass,TranslationMode} from './translation.domain';
 
 @Controller('translation')
 export class TranslationController {
  constructor(private readonly service:TranslationService){}
  @Get('languages') languages(){return this.service.languages();}
  @Get('packs') packs(){return this.service.languagePacks();}
+ @UseGuards(AuthGuard) @Post('translate')
+ translate(@Body() body:{sourceLanguage:string;targetLanguage:string;text:string;mode:TranslationMode;contentClass?:TranslationContentClass}){return this.service.translate(body);}
  @Get('emergency-phrasebook')
  phrasebook(@Query('language') language='ar'){return this.service.emergencyPhrasebook(language);}
  @UseGuards(ReviewGuard) @Post('emergency-phrasebook/translations/:translationId/approve')
