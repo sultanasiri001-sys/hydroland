@@ -36,4 +36,6 @@ export class TripIntelligenceController {
   packageStatus(@Param('tripId') tripId:string){return this.service.packageStatus(tripId);}
   @Get(':tripId/offline-package/content')
   packageContent(@Param('tripId') tripId:string){return this.service.packageContent(tripId);}
+  @Get(':tripId/offline-package/payloads/:mediaKey')
+  payload(@Param('tripId') tripId:string,@Param('mediaKey') mediaKey:string){return this.service.payloadDelivery(tripId,mediaKey);}
 }
