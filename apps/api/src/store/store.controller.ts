@@ -19,6 +19,8 @@ export class StoreController {
  @UseGuards(AccessTokenGuard,AdminGuard) @Get('admin/products') adminProducts(){return this.store.listAdminProducts()}
  @UseGuards(AccessTokenGuard,AdminGuard) @Post('admin/products') createProduct(@Body() body:ProductInput){return this.store.createProduct(body)}
  @UseGuards(AccessTokenGuard,AdminGuard) @Patch('admin/products/:productId') updateProduct(@Param('productId') productId:string,@Body() body:ProductPatch){return this.store.updateProduct(productId,body)}
+ @UseGuards(AccessTokenGuard,AdminGuard) @Get('admin/payments') adminPayments(){return this.store.listAdminPayments()}
+ @UseGuards(AccessTokenGuard,AdminGuard) @Get('admin/invoices') adminInvoices(){return this.store.listAdminInvoices()}
  @UseGuards(AccessTokenGuard,AdminGuard) @Get('admin/orders') adminOrders(){return this.store.listAdminOrders()}
  @UseGuards(AccessTokenGuard,AdminGuard) @Patch('admin/orders/:orderId/status') updateOrderStatus(@Param('orderId') orderId:string,@Body() body:{status:OrderStatus}){return this.store.updateOrderStatus(orderId,body.status)}
 }
