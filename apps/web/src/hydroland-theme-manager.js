@@ -1,10 +1,13 @@
 (()=>{
+  const init=()=>{
   const top=document.querySelector('.top-actions');
-  if(!top)return;
+  if(!top||top.querySelector('[data-hl-theme-button]'))return;
   const b=document.createElement('button');
   b.className='icon-button';
   b.textContent='◐';
   b.title='الثيمات';
+  b.setAttribute('aria-label','فتح الثيمات');
+  b.dataset.hlThemeButton='1';
   top.prepend(b);
 
   const d=document.createElement('dialog');
@@ -58,4 +61,6 @@
     s.dataset.hlThemeAdmin='1';
     document.body.appendChild(s);
   }
+  };
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })();
