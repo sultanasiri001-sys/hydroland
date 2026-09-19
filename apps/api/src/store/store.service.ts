@@ -122,6 +122,14 @@ export class StoreService {
     return this.prisma.storePayment.findMany({where:{accountId},include:{invoice:true,order:{select:{id:true,status:true,totalMinor:true,currency:true}}},orderBy:{createdAt:'desc'}});
   }
 
+  async adminFinanceSummary() {
+    const [payments,invoices]=await Promise.all([
+      this.prisma.storePayment.groupBy({by:['status','currency'],_count:{_all:true},_sum:{amountMinor:true}}),
+      this.prisma.storeInvoice.groupBy({by:['status'],_count:{_all:true}}),
+    ]);
+    return {payments:payments.map(row=>({status:row.status,currency:row.currency,count:row._count._all,amountMinor:row._sum.amountMinor??0})),invoices:invoices.map(row=>({status:row.status,count:row._count._all})),provider:'NOT_SELECTED',financialActionExecuted:false};
+  }
+
   listAdminPayments() {
     return this.prisma.storePayment.findMany({include:{invoice:true,order:{select:{id:true,status:true,totalMinor:true,currency:true}},account:{select:{id:true,email:true,person:{select:{firstName:true,lastName:true}}}}},orderBy:{createdAt:'desc'},take:200});
   }
