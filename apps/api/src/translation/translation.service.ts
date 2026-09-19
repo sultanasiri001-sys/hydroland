@@ -1,11 +1,12 @@
 import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {Prisma,TranslationMode as DbTranslationMode} from '@prisma/client';
 import {DatabaseService} from '../database/database.service';
-import {ARABIC_LANGUAGE,HYDROLAND_TRANSLATION_LANGUAGES,TRANSLATION_MODES,TranslationMode} from './translation.domain';
+import {ARABIC_LANGUAGE,HYDROLAND_TRANSLATION_LANGUAGES,TRANSLATION_MODES,TranslationContentClass,TranslationMode} from './translation.domain';
+import {TranslationRouterService} from './translation-router.service';
 
 @Injectable()
 export class TranslationService {
-  constructor(private readonly db:DatabaseService){}
+  constructor(private readonly db:DatabaseService,private readonly router:TranslationRouterService){}
   languages(){return {source:ARABIC_LANGUAGE,targets:HYDROLAND_TRANSLATION_LANGUAGES,bidirectional:true};}
   private supported(code:string){return code==='ar'||HYDROLAND_TRANSLATION_LANGUAGES.some(x=>x.code===code);}
   resolveMode(requested:TranslationMode,online:boolean,packInstalled:boolean){
@@ -36,5 +37,5 @@ export class TranslationService {
     if(item.phrase.status==='RETIRED')throw new ConflictException('Retired emergency phrase cannot be approved.');
     return this.db.emergencyPhraseTranslation.update({where:{id:translationId},data:{reviewedByAccountId:reviewerAccountId,reviewedAt:new Date()}});
   }
-  translate(){return {status:'PROVIDER_NOT_SELECTED',translatedText:null};}
+  translate(input:{sourceLanguage:string;targetLanguage:string;text:string;mode:TranslationMode;contentClass?:TranslationContentClass}){return this.router.translate({...input,contentClass:input.contentClass??'GENERAL'});}}
 }
