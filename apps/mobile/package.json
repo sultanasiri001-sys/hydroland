@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "expo": "^57.0.24",
-    "expo-router": "^7.0.0",
+    "expo-router": "^6.0.0",
     "expo-secure-store": "^16.0.0",
     "react": "19.1.0",
     "react-native": "0.84.4",
