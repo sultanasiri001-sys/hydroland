@@ -1078,8 +1078,17 @@ model TrainingSession {
 }
 
 
-enum StoreProductStatus { DRAFT ACTIVE INACTIVE }
-enum StoreOrderStatus { CREATED CONFIRMED CANCELLED FULFILLED }
+enum StoreProductStatus {
+ DRAFT
+ ACTIVE
+ INACTIVE
+}
+enum StoreOrderStatus {
+ CREATED
+ CONFIRMED
+ CANCELLED
+ FULFILLED
+}
 model StoreProduct {
  id String @id @default(uuid())
  sku String @unique
