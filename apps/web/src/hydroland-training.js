@@ -28,6 +28,7 @@
       list.innerHTML=enrollments.length?enrollments.map(item=>{const progress=Math.max(0,Math.min(100,Number(item.record?.progressPercent||0)));return `<article class="hl-course"><div class="hl-course-top"><div><b>${esc(item.courseCode)}</b><small>${esc(label(item.status))}</small></div><span>${progress}%</span></div><div class="hl-progress"><i style="width:${progress}%"></i></div><small>${item.instructorAccountId?'تم تعيين المدرب':'بانتظار تعيين المدرب'}</small></article>`;}).join(''):'<p>لا توجد دورات مسجلة على حسابك حتى الآن.</p>';
     }catch(error){list.innerHTML=`<p>${esc(error instanceof Error?error.message:'تعذر تحميل بيانات التدريب')}</p>`;}
   }
+  document.addEventListener('click',event=>{const button=event.target.closest?.('[data-hl-action="training"],[data-training-open]');if(!button)return;event.preventDefault();section.scrollIntoView({behavior:'smooth',block:'start'});if(!auth?.isAuthenticated()){const list=section.querySelector('[data-training-list]');if(list)list.innerHTML='<p>سجل الدخول لعرض بيانات التدريب.</p>';return}load();});
   document.addEventListener('hydroland:auth-changed',load);
   window.HydrolandTraining={reload:load};
   setTimeout(load,0);
