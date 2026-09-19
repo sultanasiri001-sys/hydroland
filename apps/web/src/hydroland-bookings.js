@@ -21,7 +21,7 @@
     document.querySelectorAll('[data-book]').forEach(button=>{
       const title=button.dataset.book||'';
       const trip=state.trips.find(item=>normalize(item.title)===normalize(title));
-      if(trip){button.dataset.tripId=trip.id;button.title=`السعة ${trip.capacity} · ${new Date(trip.startsAt).toLocaleString('ar-SA')}`;}
+      if(trip){button.dataset.tripId=trip.id;button.title=`السعة ${trip.capacity} · ${new Date(trip.startsAt).toLocaleString('ar-SA')}`;button.addEventListener('click',()=>{const location=document.getElementById('booking-location');if(location)location.textContent=trip.location||trip.siteName||trip.meetingPoint||'حسب بيانات الرحلة';const safety=document.querySelector('#booking-dialog .booking-safety span');if(safety)safety.textContent=trip.safety?.decision||'REVIEW';},{capture:true});}
       if(!button.dataset.hlBookingBound){button.dataset.hlBookingBound='1';button.addEventListener('click',()=>{state.selected=trip||null;},{capture:true});}
     });
   };
