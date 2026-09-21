@@ -1,0 +1,49 @@
+name: Production Prisma Recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type ROLLBACK_FAILED_MIGRATION to confirm production migration recovery'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-prisma-recovery
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    if: ${{ inputs.confirm == 'ROLLBACK_FAILED_MIGRATION' }}
+    runs-on: ubuntu-latest
+    environment: production-e2e
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Require production database secret
+        run: test -n "$DATABASE_URL"
+
+      - name: Install API dependencies
+        run: npm install --include=dev
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Mark failed migration rolled back
+        run: npx prisma migrate resolve --rolled-back 20260919150000_trip_intelligence_foundation
+
+      - name: Deploy pending migrations
+        run: npx prisma migrate deploy
