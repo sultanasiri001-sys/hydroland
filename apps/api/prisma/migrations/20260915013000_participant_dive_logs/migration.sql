@@ -1,4 +1,4 @@
-ALTER TABLE "DiveLog" ADD COLUMN "sourceParticipantId" UUID;
+ALTER TABLE "DiveLog" ADD COLUMN "sourceParticipantId" TEXT;
 ALTER TABLE "DiveLog" ALTER COLUMN "accountId" DROP NOT NULL;
 
 DROP INDEX IF EXISTS "DiveLog_accountId_sourceTripId_key";
