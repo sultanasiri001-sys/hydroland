@@ -185,6 +185,8 @@ model Account {
   employeeRelationsCasesOpened EmployeeRelationsCase[] @relation("EmployeeRelationsOpenedBy")
   employeeRelationsCasesReviewed EmployeeRelationsCase[] @relation("EmployeeRelationsReviewedBy")
   employeeRelationsCasesApproved EmployeeRelationsCase[] @relation("EmployeeRelationsApprovedBy")
+  compensationTermsRequested CompensationTerm[] @relation("CompensationTermRequestedBy")
+  compensationTermsReviewed CompensationTerm[] @relation("CompensationTermReviewedBy")
   compensationTermsApproved CompensationTerm[] @relation("CompensationTermApprovedBy")
   customerCases CustomerCase[] @relation("CustomerCases")
   customerInteractions CustomerInteraction[] @relation("CustomerInteractionActor")
@@ -783,10 +785,14 @@ model CompensationTerm {
  allowances Json?
  benefits Json?
  status HrRequestStatus @default(DRAFT)
+ requestedByAccountId String?
+ reviewedByAccountId String?
  approvedByAccountId String?
  createdAt DateTime @default(now())
  updatedAt DateTime @updatedAt
  employment Employment @relation(fields:[employmentId], references:[id], onDelete:Restrict)
+ requestedBy Account? @relation("CompensationTermRequestedBy", fields:[requestedByAccountId], references:[id], onDelete:Restrict)
+ reviewedBy Account? @relation("CompensationTermReviewedBy", fields:[reviewedByAccountId], references:[id], onDelete:Restrict)
  approvedBy Account? @relation("CompensationTermApprovedBy", fields:[approvedByAccountId], references:[id], onDelete:Restrict)
  @@index([employmentId,effectiveFrom])
  @@index([status])
