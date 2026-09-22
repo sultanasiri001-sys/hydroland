@@ -1,4 +1,4 @@
-ALTER TABLE "DiveLog" ADD COLUMN "sourceTripId" UUID;
+ALTER TABLE "DiveLog" ADD COLUMN "sourceTripId" TEXT;
 
 CREATE UNIQUE INDEX "DiveLog_accountId_sourceTripId_key"
 ON "DiveLog"("accountId", "sourceTripId");
