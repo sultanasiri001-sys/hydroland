@@ -31,6 +31,25 @@ const sensitiveApprovalActions = new Set<HrAction>([
   'APPROVE_TERMINATION',
 ]);
 
+export function assertHrActionForEmploymentTransition(action: HrAction, from: string, to: string): void {
+  if (to === 'ACTIVE' && from === 'PENDING_APPROVAL' && action !== 'APPROVE_APPOINTMENT') {
+    throw new Error('HR_APPOINTMENT_APPROVAL_REQUIRED');
+  }
+  if (to === 'TERMINATED' && action !== 'APPROVE_TERMINATION') {
+    throw new Error('HR_TERMINATION_APPROVAL_REQUIRED');
+  }
+  if (from === 'TERMINATED' && to === 'OFFBOARDED' && action !== 'APPLY_IAM_CHANGE') {
+    throw new Error('HR_IAM_OFFBOARDING_REQUIRED');
+  }
+  if (from === 'DRAFT' && to === 'PENDING_APPROVAL' && action !== 'STAFFING_REQUEST') {
+    throw new Error('HR_STAFFING_REQUEST_REQUIRED');
+  }
+  if (!['DRAFT', 'PENDING_APPROVAL', 'TERMINATED'].includes(from) &&
+      to !== 'TERMINATED' && action !== 'CHANGE_EMPLOYMENT') {
+    throw new Error('HR_EMPLOYMENT_CHANGE_ACTION_REQUIRED');
+  }
+}
+
 export function assertHrAuthorization(actor: HrActor, action: HrAction, ctx: HrRequestContext): void {
   if (actor.organizationId !== ctx.organizationId) throw new Error('HR_ORGANIZATION_SCOPE_DENIED');
 
