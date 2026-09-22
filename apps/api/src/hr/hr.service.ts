@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { assertEmploymentTransition, assertHrActionForEmploymentTransition, assertHrAuthorization, HrAction, HrActor, HrRequestContext } from './hr-policy';
+import { assertHrProductionCompliance, HrComplianceControl } from './hr-compliance';
 
 @Injectable()
 export class HrService {
@@ -29,6 +30,31 @@ export class HrService {
     this.authorize(input.actor, input.action, input.context);
     this.validateEmploymentTransition(employment.status, input.nextStatus);
     assertHrActionForEmploymentTransition(input.action, employment.status, input.nextStatus);
+    if (['APPROVE_APPOINTMENT', 'APPROVE_COMPENSATION_CHANGE', 'APPROVE_DISCIPLINARY_DECISION', 'APPROVE_TERMINATION', 'APPLY_IAM_CHANGE'].includes(input.action)) {
+      const rows = await this.db.policyControl.findMany({
+        where: { category: 'HR_COMPLIANCE', state: 'ENABLED' },
+        select: { ruleKey: true, metadata: true },
+      });
+      const controls: HrComplianceControl[] = rows.map((row) => {
+        const m = row.metadata;
+        if (!m || Array.isArray(m) || typeof m !== 'object') {
+          return { controlId: row.ruleKey, mandatory: true, applicable: true, evidenceIds: [], validationStatus: 'MISSING' };
+        }
+        const x = m as Record<string, unknown>;
+        return {
+          controlId: row.ruleKey,
+          mandatory: x.mandatory !== false,
+          applicable: x.applicable !== false,
+          regulatoryRequirementId: typeof x.regulatoryRequirementId === 'string' ? x.regulatoryRequirementId : undefined,
+          regulatoryVersion: typeof x.regulatoryVersion === 'string' ? x.regulatoryVersion : undefined,
+          evidenceIds: Array.isArray(x.evidenceIds) ? x.evidenceIds.filter((v): v is string => typeof v === 'string') : [],
+          validationStatus: ['VALID','INVALID','MISSING','EXPIRED'].includes(String(x.validationStatus)) ? x.validationStatus as HrComplianceControl['validationStatus'] : 'MISSING',
+          blockingFinding: x.blockingFinding === true,
+        };
+      });
+      if (controls.length === 0) throw new Error('HR_COMPLIANCE_CONTROLS_MISSING');
+      assertHrProductionCompliance(controls);
+    }
     return this.db.$transaction(async (tx) => {
       const current = await tx.employment.findUniqueOrThrow({
         where: { id: employment.id },
