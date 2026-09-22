@@ -1,8 +1,8 @@
 CREATE TYPE "DiveLogStatus" AS ENUM ('DRAFT', 'VERIFIED', 'REJECTED');
 
 CREATE TABLE "DiveLog" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-    "accountId" UUID NOT NULL,
+    "id" TEXT NOT NULL,
+    "accountId" TEXT NOT NULL,
     "siteName" TEXT NOT NULL,
     "regionCode" TEXT,
     "diveDate" TIMESTAMP(3) NOT NULL,
