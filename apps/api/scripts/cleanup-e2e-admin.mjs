@@ -21,7 +21,7 @@ try {
 
   await db.roleAssignment.updateMany({
     where: { accountId: account.id, role: 'ADMIN', scope: { path: ['purpose'], equals: 'E2E_ONLY' } },
-    data: { status: 'INACTIVE', endedAt: new Date() },
+    data: { status: 'ARCHIVED', endedAt: new Date() },
   });
 
   console.log(`E2E admin privileges revoked for ${email}.`);
