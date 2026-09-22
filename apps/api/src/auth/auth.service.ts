@@ -20,6 +20,7 @@ export class AuthService {
   async login(input:Credentials){
     const account=await this.db.account.findUnique({where:{email:this.email(input.email)}});
     if(!account||!this.verify(input.password,account.passwordHash)||this.blocked(account.status))throw new UnauthorizedException('Invalid credentials.');
+    if(!account.emailVerifiedAt)throw new UnauthorizedException('Email verification is required.');
     return this.issue(account.id);
   }
 
@@ -39,8 +40,8 @@ export class AuthService {
 
   async authenticateAccessToken(token:string){
     const claims=this.verifyAccessToken(token);
-    const account=await this.db.account.findUnique({where:{id:claims.accountId},select:{id:true,status:true}});
-    if(!account||this.blocked(account.status))throw new UnauthorizedException('Account is not active.');
+    const account=await this.db.account.findUnique({where:{id:claims.accountId},select:{id:true,status:true,emailVerifiedAt:true}});
+    if(!account||this.blocked(account.status)||!account.emailVerifiedAt)throw new UnauthorizedException('Account is not active or email is not verified.');
     return{accountId:account.id};
   }
 
