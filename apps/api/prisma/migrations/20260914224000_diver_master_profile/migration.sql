@@ -1,6 +1,6 @@
 CREATE TABLE "DiverProfile" (
-  "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-  "accountId" UUID NOT NULL,
+  "id" TEXT NOT NULL,
+  "accountId" TEXT NOT NULL,
   "dateOfBirth" TIMESTAMP(3),
   "nationality" TEXT,
   "identityType" TEXT,
@@ -26,8 +26,8 @@ CREATE UNIQUE INDEX "DiverProfile_accountId_key" ON "DiverProfile"("accountId");
 ALTER TABLE "DiverProfile" ADD CONSTRAINT "DiverProfile_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "Account"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 CREATE TABLE "DiverEquipment" (
-  "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-  "accountId" UUID NOT NULL,
+  "id" TEXT NOT NULL,
+  "accountId" TEXT NOT NULL,
   "category" TEXT NOT NULL,
   "ownership" TEXT NOT NULL DEFAULT 'OWNED',
   "brand" TEXT,
