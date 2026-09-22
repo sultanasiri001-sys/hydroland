@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Param, Patch, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Param, Patch, Req, UseGuards } from '@nestjs/common';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { DatabaseService } from '../database/database.service';
 import { HrService } from './hr.service';
@@ -46,7 +46,7 @@ export class HrController {
       },
       select: { role: true },
     });
-    if (!membership) throw new Error('HR_ORGANIZATION_SCOPE_DENIED');
+    if (!membership) throw new ForbiddenException('HR_ORGANIZATION_SCOPE_DENIED');
     const scopedAssignments = assignments.filter((assignment) => {
       const scope = assignment.scope;
       if (!scope || Array.isArray(scope) || typeof scope !== 'object') return false;
@@ -64,7 +64,8 @@ export class HrController {
       return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
     });
 
-    return this.hr.applyEmploymentStatus({
+    try {
+      return await this.hr.applyEmploymentStatus({
       employmentId,
       nextStatus: body.nextStatus,
       actor: {
@@ -81,6 +82,20 @@ export class HrController {
         reviewerAccountId: body.context.reviewerAccountId,
         approverAccountId: request.auth.accountId,
       },
-    });
+      });
+    } catch (error) {
+      const code = error instanceof Error ? error.message : '';
+      if (code.includes('SCOPE_DENIED') || code.includes('PERMISSION_REQUIRED') ||
+          code.includes('APPROVAL_REQUIRED') || code.includes('SELF_APPROVAL_DENIED') ||
+          code.includes('SEGREGATION_OF_DUTIES_DENIED') || code.includes('IAM_SERVICE_REQUIRED')) {
+        throw new ForbiddenException(code);
+      }
+      if (code.includes('CONCURRENT_MODIFICATION') || code.includes('INVALID_EMPLOYMENT_TRANSITION') ||
+          code.includes('ACTION_REQUIRED') || code.includes('REQUESTER_REQUIRED') ||
+          code.includes('SEPARATION_CONTEXT_REQUIRED')) {
+        throw new ConflictException(code);
+      }
+      throw error;
+    }
   }
 }
