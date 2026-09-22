@@ -34,10 +34,12 @@ export class HrService {
         select: { status: true },
       });
       if (current.status !== employment.status) throw new Error('HR_EMPLOYMENT_CONCURRENT_MODIFICATION');
-      return tx.employment.update({
-        where: { id: employment.id },
+      const updated = await tx.employment.updateMany({
+        where: { id: employment.id, status: employment.status as never },
         data: { status: input.nextStatus as never },
       });
+      if (updated.count !== 1) throw new Error('HR_EMPLOYMENT_CONCURRENT_MODIFICATION');
+      return tx.employment.findUniqueOrThrow({ where: { id: employment.id } });
     });
   }
 }
