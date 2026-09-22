@@ -97,3 +97,37 @@ For each reconciliation unit:
 8. merge through PR only.
 
 No table or field is removed merely because it looks duplicated.
+
+
+## R2 Identity & Role Reconciliation — audit result
+
+### Verified existing behavior
+- Account authentication uses short-lived signed access tokens and hashed refresh sessions.
+- Refresh rotation revokes the consumed session.
+- RoleAssignment already supports multiple roles per account and a JSON scope.
+- Governance already defines ScopedPermission as a domain contract.
+- AdminGuard and ReviewGuard currently authorize by hard-coded role checks.
+
+### Required reconciliation
+1. Keep Person + Account; do not introduce a duplicate User table.
+2. Keep RoleAssignment as the canonical account-role relationship.
+3. Preserve legacy enum values during migration; expose canonical UI/domain labels first:
+   - INSTRUCTOR => DIVING_PROFESSIONAL
+   - BOAT_OWNER => MARINE_OPERATOR
+4. Replace endpoint-specific hard-coded role guards over time with a reusable permission/scope guard backed by one canonical permission policy.
+5. Add TrustedDevice and MfaMethod before marking Identity & Security complete.
+6. Extend Session with device/security metadata only through a forward migration; do not replace Session.
+7. Active-role switching is an application/session context concern and must validate that the account owns an ACTIVE RoleAssignment.
+8. Organization membership and RoleAssignment remain separate: organization membership answers "which organization?" while role assignment answers "what capability/role?".
+9. REVIEWER remains an internal approval capability until the permission model replaces direct role coupling.
+
+### Duplication decision
+Do not add a second roles table merely to match the target blueprint. The existing RoleAssignment + governance ScopedPermission are the migration starting point. A persisted Permission/RolePermission model is only justified if the policy cannot be represented safely by the existing governance policy store.
+
+### Security gaps retained for implementation
+- MFA persistence and challenge flow.
+- Trusted-device registry and session/device linkage.
+- reusable RBAC + ABAC permission enforcement.
+- active-role selection and validation.
+- cross-organization authorization regression tests.
+- durable/distributed login throttling for multi-instance production (current in-memory attempt map is process-local).
