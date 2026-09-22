@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
+import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { assertEmploymentTransition, assertHrAuthorization, HrAction, HrActor, HrRequestContext } from './hr-policy';
 
 @Injectable()
 export class HrService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(private readonly db: DatabaseService, private readonly audit: AuditService) {}
 
   authorize(actor: HrActor, action: HrAction, context: HrRequestContext): void {
     assertHrAuthorization(actor, action, context);
@@ -39,7 +40,20 @@ export class HrService {
         data: { status: input.nextStatus as never },
       });
       if (updated.count !== 1) throw new Error('HR_EMPLOYMENT_CONCURRENT_MODIFICATION');
-      return tx.employment.findUniqueOrThrow({ where: { id: employment.id } });
+      const result = await tx.employment.findUniqueOrThrow({ where: { id: employment.id } });
+      await this.audit.record({
+        actorId: input.actor.accountId,
+        action: 'HR_EMPLOYMENT_STATUS_CHANGED',
+        resource: 'Employment',
+        resourceId: employment.id,
+        metadata: {
+          organizationId: employment.organizationId,
+          fromStatus: employment.status,
+          toStatus: input.nextStatus,
+          hrAction: input.action,
+        },
+      });
+      return result;
     });
   }
 }
