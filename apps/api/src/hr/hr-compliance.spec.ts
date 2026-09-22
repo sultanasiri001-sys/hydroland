@@ -19,8 +19,9 @@ for (const [mutation, code] of [
 ] as const) {
   try {
     assertHrProductionCompliance([{ ...valid, ...mutation }]);
-    throw new Error('EXPECTED_DENIAL');
+    throw new Error(`EXPECTED_DENIAL:${code}`);
   } catch (error) {
+    if (error instanceof Error && error.message === `EXPECTED_DENIAL:${code}`) throw error;
     if (!(error instanceof Error) || !error.message.includes(code)) throw error;
   }
 }
