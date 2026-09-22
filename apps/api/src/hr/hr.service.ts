@@ -40,9 +40,13 @@ export class HrService {
         data: { status: input.nextStatus as never },
       });
       if (updated.count !== 1) throw new Error('HR_EMPLOYMENT_CONCURRENT_MODIFICATION');
+      const auditActor = await tx.account.findUniqueOrThrow({
+        where: { id: input.actor.accountId },
+        select: { personId: true },
+      });
       await tx.auditEvent.create({
         data: {
-          actorId: input.actor.accountId,
+          actorId: auditActor.personId,
           action: 'HR_EMPLOYMENT_STATUS_CHANGED',
           resource: 'Employment',
           resourceId: employment.id,
