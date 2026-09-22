@@ -72,4 +72,17 @@ expectDenied(
   'HR_CENTER_SCOPE_DENIED',
 );
 
+// Sensitive approvals require complete separation context.
+expectDenied(
+  () => assertHrAuthorization(executive, 'APPROVE_APPOINTMENT', { organizationId: 'org-1' }),
+  'HR_REQUESTER_REQUIRED',
+);
+expectDenied(
+  () => assertHrAuthorization(executive, 'APPROVE_TERMINATION', { organizationId: 'org-1', requesterAccountId: 'mgr-1' }),
+  'HR_SEPARATION_CONTEXT_REQUIRED',
+);
+assertHrAuthorization(executive, 'APPROVE_TERMINATION', {
+  organizationId: 'org-1', requesterAccountId: 'mgr-1', reviewerAccountId: 'hr-1',
+});
+
 console.log('HR authorization and employment lifecycle controls validated.');
