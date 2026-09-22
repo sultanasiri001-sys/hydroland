@@ -66,6 +66,22 @@ export class HrController {
       return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
     });
 
+    let requesterAccountId: string | undefined;
+    let reviewerAccountId: string | undefined;
+    if (['APPROVE_APPOINTMENT', 'APPROVE_TERMINATION'].includes(body.action)) {
+      const movement = await this.db.employmentMovement.findFirst({
+        where: {
+          employmentId,
+          status: { in: ['HR_REVIEW', 'APPROVAL_REQUIRED', 'APPROVED'] },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { requestedByAccountId: true, reviewedByAccountId: true },
+      });
+      if (!movement) throw new ConflictException('HR_PERSISTED_APPROVAL_CONTEXT_REQUIRED');
+      requesterAccountId = movement.requestedByAccountId;
+      reviewerAccountId = movement.reviewedByAccountId ?? undefined;
+    }
+
     try {
       return await this.hr.applyEmploymentStatus({
       employmentId,
@@ -80,8 +96,8 @@ export class HrController {
       context: {
         organizationId: employment.organizationId,
         centerId: body.context.centerId,
-        requesterAccountId: body.context.requesterAccountId,
-        reviewerAccountId: body.context.reviewerAccountId,
+        requesterAccountId,
+        reviewerAccountId,
         approverAccountId: request.auth.accountId,
       },
       });
