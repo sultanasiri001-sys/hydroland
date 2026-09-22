@@ -40,6 +40,40 @@ export class HrService {
         data: { status: input.nextStatus as never },
       });
       if (updated.count !== 1) throw new Error('HR_EMPLOYMENT_CONCURRENT_MODIFICATION');
+      if (input.action === 'APPLY_IAM_CHANGE' && employment.status === 'TERMINATED' && input.nextStatus === 'OFFBOARDED') {
+        const revokedAt = new Date();
+        await tx.session.updateMany({
+          where: { accountId: input.actor.accountId === employment.id ? undefined : undefined },
+          data: {},
+        });
+        const target = await tx.employment.findUniqueOrThrow({
+          where: { id: employment.id },
+          select: { accountId: true },
+        });
+        await tx.session.updateMany({
+          where: { accountId: target.accountId, revokedAt: null },
+          data: { revokedAt },
+        });
+        await tx.roleAssignment.updateMany({
+          where: { accountId: target.accountId, status: 'ACTIVE' },
+          data: { status: 'ARCHIVED', endedAt: revokedAt },
+        });
+        const offboarding = await tx.offboardingCase.findFirst({
+          where: { employmentId: employment.id },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true },
+        });
+        if (offboarding) {
+          await tx.offboardingCase.update({
+            where: { id: offboarding.id },
+            data: { status: 'CLOSED', iamRevokedAt: revokedAt, closedAt: revokedAt },
+          });
+        } else {
+          await tx.offboardingCase.create({
+            data: { employmentId: employment.id, status: 'CLOSED', iamRevokedAt: revokedAt, closedAt: revokedAt },
+          });
+        }
+      }
       const auditActor = await tx.account.findUniqueOrThrow({
         where: { id: input.actor.accountId },
         select: { personId: true },
