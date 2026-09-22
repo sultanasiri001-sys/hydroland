@@ -13,7 +13,7 @@ CREATE INDEX "CalendarResource_referenceId_idx" ON "CalendarResource"("reference
 
 CREATE TABLE "CalendarAllocation" (
   "id" TEXT NOT NULL,
-  "tripId" UUID NOT NULL,
+  "tripId" TEXT NOT NULL,
   "resourceId" TEXT NOT NULL,
   "startsAt" TIMESTAMP(3) NOT NULL,
   "endsAt" TIMESTAMP(3) NOT NULL,
