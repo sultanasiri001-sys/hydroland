@@ -58,4 +58,18 @@ expectDenied(
   'HR_CENTER_SCOPE_DENIED',
 );
 
+// Action-level permissions fail closed.
+expectDenied(() => assertHrAuthorization(reviewer, 'CHANGE_EMPLOYMENT', { organizationId: 'org-1' }), 'HR_EMPLOYMENT_CHANGE_PERMISSION_REQUIRED');
+assertHrAuthorization({ ...reviewer, roles: ['HR_MANAGER'] }, 'CHANGE_EMPLOYMENT', { organizationId: 'org-1' });
+expectDenied(() => assertHrAuthorization(reviewer, 'STAFFING_REQUEST', { organizationId: 'org-1' }), 'HR_STAFFING_PERMISSION_REQUIRED');
+assertHrAuthorization(centerManager, 'STAFFING_REQUEST', { organizationId: 'org-1', centerId: 'center-1' });
+expectDenied(() => assertHrAuthorization(centerManager, 'OPEN_EMPLOYEE_RELATIONS_CASE', { organizationId: 'org-1' }), 'HR_EMPLOYEE_RELATIONS_PERMISSION_REQUIRED');
+assertHrAuthorization(reviewer, 'OPEN_EMPLOYEE_RELATIONS_CASE', { organizationId: 'org-1' });
+
+// Any center-scoped HR actor is constrained by assigned centers.
+expectDenied(
+  () => assertHrAuthorization({ ...reviewer, centerScopeIds: ['center-1'] }, 'VERIFY_CANDIDATE', { organizationId: 'org-1', centerId: 'center-2' }),
+  'HR_CENTER_SCOPE_DENIED',
+);
+
 console.log('HR authorization and employment lifecycle controls validated.');
