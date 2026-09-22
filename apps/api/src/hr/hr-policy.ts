@@ -66,6 +66,19 @@ export function assertHrAuthorization(actor: HrActor, action: HrAction, ctx: HrR
     throw new Error('HR_REVIEW_PERMISSION_REQUIRED');
   }
 
+  if (action === 'APPROVE_APPOINTMENT' && !ctx.requesterAccountId) {
+    throw new Error('HR_REQUESTER_REQUIRED');
+  }
+  if (action === 'APPROVE_COMPENSATION_CHANGE' && !ctx.requesterAccountId) {
+    throw new Error('HR_REQUESTER_REQUIRED');
+  }
+  if (action === 'APPROVE_DISCIPLINARY_DECISION' && (!ctx.requesterAccountId || !ctx.reviewerAccountId)) {
+    throw new Error('HR_SEPARATION_CONTEXT_REQUIRED');
+  }
+  if (action === 'APPROVE_TERMINATION' && (!ctx.requesterAccountId || !ctx.reviewerAccountId)) {
+    throw new Error('HR_SEPARATION_CONTEXT_REQUIRED');
+  }
+
   if (action === 'APPLY_IAM_CHANGE' && !actor.roles.includes('IAM_SERVICE')) {
     throw new Error('HR_IAM_SERVICE_REQUIRED');
   }
