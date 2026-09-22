@@ -22,7 +22,7 @@ jobs:
     environment: production-e2e
     timeout-minutes: 10
     env:
-    DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
     defaults:
       run:
         working-directory: apps/api
