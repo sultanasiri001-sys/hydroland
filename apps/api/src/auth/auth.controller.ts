@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, Req, TooManyRequestsException } from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpException, HttpStatus, Post, Req } from '@nestjs/common';
 import { AuthService } from './auth.service';
 type Credentials={email:string;password:string}; type Refresh={refreshToken:string};
 type RequestLike={ip?:string;headers?:Record<string,string|string[]|undefined>};
@@ -29,7 +29,7 @@ const MAX_ATTEMPTS=10;
    const now=Date.now(),entry=attempts.get(key);
    if(!entry)return;
    if(entry.resetAt<=now){attempts.delete(key);return;}
-   if(entry.count>=MAX_ATTEMPTS)throw new TooManyRequestsException('Too many login attempts. Try again later.');
+   if(entry.count>=MAX_ATTEMPTS)throw new HttpException('Too many login attempts. Try again later.',HttpStatus.TOO_MANY_REQUESTS);
  }
  private recordFailure(key:string){
    const now=Date.now(),entry=attempts.get(key);
