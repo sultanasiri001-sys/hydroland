@@ -26,9 +26,15 @@ try{
  r=await patch({action:'STAFFING_REQUEST',nextStatus:'ACTIVE',context:{organizationId:org.id}}); if(r.status<400)throw new Error('Invalid privileged transition was accepted');
  const afterDenied=await db.employment.findUniqueOrThrow({where:{id:employment.id}}); if(afterDenied.status!=='PENDING_APPROVAL')throw new Error('Denied transition mutated employment state');
  const afterDeniedAudit=await db.auditEvent.count({where:{resourceId:employment.id}}); if(afterDeniedAudit!==beforeDenied)throw new Error('Denied transition emitted success audit evidence');
- console.log('HR HTTP/DB E2E passed: auth, persisted transition, audit, denial non-mutation, fail-closed transition.');
+ await db.roleAssignment.update({where:{accountId_role:{accountId:account.id,role:'HR_MANAGER'}},data:{role:'HR_EXECUTIVE'}});
+ await db.employmentMovement.create({data:{employmentId:employment.id,type:'APPOINTMENT',status:'APPROVAL_REQUIRED',effectiveAt:new Date(),requestedByAccountId:account.id}});
+ r=await patch({action:'APPROVE_APPOINTMENT',nextStatus:'ACTIVE',context:{organizationId:org.id}});
+ if(r.status<400)throw new Error('Sensitive HR mutation bypassed missing compliance controls');
+ const complianceDenied=await db.employment.findUniqueOrThrow({where:{id:employment.id}}); if(complianceDenied.status!=='PENDING_APPROVAL')throw new Error('Compliance denial mutated employment state');
+ console.log('HR HTTP/DB E2E passed: auth, persisted transition, audit, denial non-mutation, fail-closed transition and compliance enforcement.');
 } finally {
  await db.auditEvent.deleteMany({where:{resourceId:employment.id}});
+ await db.employmentMovement.deleteMany({where:{employmentId:employment.id}});
  await db.employment.deleteMany({where:{id:employment.id}});
  await db.roleAssignment.deleteMany({where:{accountId:account.id}});
  await db.organizationMember.deleteMany({where:{accountId:account.id}});
