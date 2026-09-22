@@ -1,4 +1,4 @@
-import { assertEmploymentTransition, assertHrAuthorization, HrActor } from './hr-policy';
+import { assertEmploymentTransition, assertHrActionForEmploymentTransition, assertHrAuthorization, HrActor } from './hr-policy';
 
 const executive: HrActor = {
   accountId: 'exec-1', roles: ['HR_EXECUTIVE', 'EXECUTIVE_APPROVER'], organizationId: 'org-1', centerScopeIds: ['center-1'],
@@ -84,5 +84,16 @@ expectDenied(
 assertHrAuthorization(executive, 'APPROVE_TERMINATION', {
   organizationId: 'org-1', requesterAccountId: 'mgr-1', reviewerAccountId: 'hr-1',
 });
+
+// Privileged actions are bound to the lifecycle transition they authorize.
+assertHrActionForEmploymentTransition('STAFFING_REQUEST', 'DRAFT', 'PENDING_APPROVAL');
+assertHrActionForEmploymentTransition('APPROVE_APPOINTMENT', 'PENDING_APPROVAL', 'ACTIVE');
+assertHrActionForEmploymentTransition('APPROVE_TERMINATION', 'ACTIVE', 'TERMINATED');
+assertHrActionForEmploymentTransition('APPLY_IAM_CHANGE', 'TERMINATED', 'OFFBOARDED');
+assertHrActionForEmploymentTransition('CHANGE_EMPLOYMENT', 'ACTIVE', 'ON_LEAVE');
+expectDenied(() => assertHrActionForEmploymentTransition('CHANGE_EMPLOYMENT', 'PENDING_APPROVAL', 'ACTIVE'), 'HR_APPOINTMENT_APPROVAL_REQUIRED');
+expectDenied(() => assertHrActionForEmploymentTransition('CHANGE_EMPLOYMENT', 'ACTIVE', 'TERMINATED'), 'HR_TERMINATION_APPROVAL_REQUIRED');
+expectDenied(() => assertHrActionForEmploymentTransition('CHANGE_EMPLOYMENT', 'TERMINATED', 'OFFBOARDED'), 'HR_IAM_OFFBOARDING_REQUIRED');
+expectDenied(() => assertHrActionForEmploymentTransition('VERIFY_CANDIDATE', 'DRAFT', 'PENDING_APPROVAL'), 'HR_STAFFING_REQUEST_REQUIRED');
 
 console.log('HR authorization and employment lifecycle controls validated.');
