@@ -7,7 +7,7 @@ CREATE TABLE "PolicyControl" (
   "state" TEXT NOT NULL DEFAULT 'ENABLED',
   "description" TEXT,
   "metadata" JSONB,
-  "updatedByAccountId" TEXT,
+  "updatedByAccountId" UUID,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "PolicyControl_pkey" PRIMARY KEY ("id")
