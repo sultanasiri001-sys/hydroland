@@ -3,13 +3,13 @@
 -- TrainingEnrollmentStatus enum from an earlier training foundation.
 DO $$
 BEGIN
-  IF to_regclass('"TrainingEnrollment"') IS NOT NULL THEN
-    IF EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_schema='public' AND table_name='TrainingEnrollment' AND column_name='courseId'
-    ) THEN
-      EXECUTE 'DROP TABLE IF EXISTS "TrainingEnrollment"';
-    END IF;
+  IF to_regclass('"TrainingEnrollment"') IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM "TrainingEnrollment" LIMIT 1)
+     AND EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_schema='public' AND table_name='TrainingEnrollment' AND column_name='courseId'
+     ) THEN
+    DROP TABLE "TrainingEnrollment";
   END IF;
 END $$;
 
