@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
-import { assertEmploymentTransition, assertHrAuthorization, HrAction, HrActor, HrRequestContext } from './hr-policy';
+import { assertEmploymentTransition, assertHrActionForEmploymentTransition, assertHrAuthorization, HrAction, HrActor, HrRequestContext } from './hr-policy';
 
 @Injectable()
 export class HrService {
@@ -28,6 +28,7 @@ export class HrService {
     if (employment.organizationId !== input.context.organizationId) throw new Error('HR_ORGANIZATION_SCOPE_DENIED');
     this.authorize(input.actor, input.action, input.context);
     this.validateEmploymentTransition(employment.status, input.nextStatus);
+    assertHrActionForEmploymentTransition(input.action, employment.status, input.nextStatus);
     return this.db.$transaction(async (tx) => {
       const current = await tx.employment.findUniqueOrThrow({
         where: { id: employment.id },
