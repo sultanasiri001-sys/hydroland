@@ -11,12 +11,14 @@ const valid: HrComplianceControl = {
 };
 assertHrProductionCompliance([valid]);
 
-for (const [mutation, code] of [
+const cases: Array<[Partial<HrComplianceControl>, string]> = [
   [{ regulatoryRequirementId: undefined }, 'HR_COMPLIANCE_REQUIREMENT_MISSING'],
   [{ evidenceIds: [] }, 'HR_COMPLIANCE_EVIDENCE_MISSING'],
-  [{ validationStatus: 'EXPIRED' as const }, 'HR_COMPLIANCE_VALIDATION_FAILED'],
+  [{ validationStatus: 'EXPIRED' }, 'HR_COMPLIANCE_VALIDATION_FAILED'],
   [{ blockingFinding: true }, 'HR_COMPLIANCE_BLOCKING_FINDING'],
-] as const) {
+];
+
+for (const [mutation, code] of cases) {
   try {
     assertHrProductionCompliance([{ ...valid, ...mutation }]);
     throw new Error(`EXPECTED_DENIAL:${code}`);
