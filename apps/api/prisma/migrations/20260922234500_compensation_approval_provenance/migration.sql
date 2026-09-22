@@ -1,6 +1,6 @@
 ALTER TABLE "CompensationTerm"
-  ADD COLUMN "requestedByAccountId" TEXT,
-  ADD COLUMN "reviewedByAccountId" TEXT;
+  ADD COLUMN "requestedByAccountId" UUID,
+  ADD COLUMN "reviewedByAccountId" UUID;
 
 ALTER TABLE "CompensationTerm"
   ADD CONSTRAINT "CompensationTerm_requestedByAccountId_fkey"
