@@ -38,9 +38,10 @@ export class HrController {
       },
       select: { role: true },
     });
+    if (!membership) throw new Error('HR_ORGANIZATION_SCOPE_DENIED');
     const roles = [
       ...assignments.map((assignment) => assignment.role),
-      ...(membership ? [membership.role] : []),
+      membership.role,
     ];
     const centerScopeIds = assignments.flatMap((assignment) => {
       const scope = assignment.scope;
@@ -59,7 +60,10 @@ export class HrController {
         centerScopeIds,
       },
       action: body.action,
-      context: body.context,
+      context: {
+        ...body.context,
+        organizationId: employment.organizationId,
+      },
     });
   }
 }
