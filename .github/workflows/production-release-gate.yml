@@ -22,13 +22,14 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin main
-          changed="$(git diff --name-only origin/main...HEAD -- 'apps/api/prisma/migrations/*/migration.sql')"
+          changed="$(git diff --name-only --diff-filter=MDR origin/main...HEAD -- 'apps/api/prisma/migrations/*/migration.sql')"
           if [ -n "$changed" ]; then
-            echo "Historical Prisma migration files differ from main:"
+            echo "Existing Prisma migration files were modified, deleted, or renamed:"
             echo "$changed"
-            echo "Release blocked: use an approved forward-only reconciliation strategy or an explicitly reviewed production recovery plan before merge."
+            echo "Release blocked: existing migration history is immutable. Add a new forward-only migration instead."
             exit 1
           fi
+          echo "Migration history is immutable; newly added forward-only migrations are allowed."
       - name: Verify release validations
         run: |
           npm run validate:integrations -w @hydroland/api
