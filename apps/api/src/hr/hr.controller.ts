@@ -47,11 +47,17 @@ export class HrController {
       select: { role: true },
     });
     if (!membership) throw new Error('HR_ORGANIZATION_SCOPE_DENIED');
+    const scopedAssignments = assignments.filter((assignment) => {
+      const scope = assignment.scope;
+      if (!scope || Array.isArray(scope) || typeof scope !== 'object') return false;
+      const organizationIds = (scope as { organizationIds?: unknown }).organizationIds;
+      return Array.isArray(organizationIds) && organizationIds.includes(employment.organizationId);
+    });
     const roles = [
-      ...assignments.map((assignment) => assignment.role),
+      ...scopedAssignments.map((assignment) => assignment.role),
       membership.role,
     ];
-    const centerScopeIds = assignments.flatMap((assignment) => {
+    const centerScopeIds = scopedAssignments.flatMap((assignment) => {
       const scope = assignment.scope;
       if (!scope || Array.isArray(scope) || typeof scope !== 'object') return [];
       const ids = (scope as { centerIds?: unknown }).centerIds;
@@ -73,7 +79,7 @@ export class HrController {
         centerId: body.context.centerId,
         requesterAccountId: body.context.requesterAccountId,
         reviewerAccountId: body.context.reviewerAccountId,
-        approverAccountId: body.context.approverAccountId,
+        approverAccountId: request.auth.accountId,
       },
     });
   }
