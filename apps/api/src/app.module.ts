@@ -32,6 +32,7 @@ import { LegalGovernanceModule } from './legal-governance/legal-governance.modul
 import { TripIntelligenceModule } from './trip-intelligence/trip-intelligence.module';
 import { TranslationModule } from './translation/translation.module';
 import { MarineOperationsModule } from './marine-operations/marine-operations.module';
+import { HrModule } from './hr/hr.module';
 
 @Module({
   imports: [DatabaseModule, AuthModule, ProfileModule, CredentialsModule, ActivationModule, AuditModule, NotificationsModule, GovernanceModule, TripsModule, SafetyModule, PaymentsModule, AdminModule, DiveLogsModule, OrganizationsModule, IntegrationModule, InventoryModule, FinanceModule, CustomerServiceModule,
@@ -39,7 +40,7 @@ import { MarineOperationsModule } from './marine-operations/marine-operations.mo
     TechnologySecurityModule,
     FacilitiesMaintenanceModule,
     AdministrativeAffairsModule,
-    ExecutiveGovernanceModule, AgentModule, ResearchMarketModule, LegalGovernanceModule, TripIntelligenceModule, TranslationModule, MarineOperationsModule, StoreModule, WalletModule, RewardsModule],
+    ExecutiveGovernanceModule, HrModule, AgentModule, ResearchMarketModule, LegalGovernanceModule, TripIntelligenceModule, TranslationModule, MarineOperationsModule, StoreModule, WalletModule, RewardsModule],
   controllers: [HealthController],
 })
 export class AppModule {}
