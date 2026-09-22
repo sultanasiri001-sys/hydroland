@@ -1,4 +1,4 @@
-import { Body, Controller, Param, Patch, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Param, Patch, Req, UseGuards } from '@nestjs/common';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { DatabaseService } from '../database/database.service';
 import { HrService } from './hr.service';
@@ -22,6 +22,14 @@ export class HrController {
       context: HrRequestContext;
     },
   ) {
+    const allowedActions: HrAction[] = [
+      'STAFFING_REQUEST', 'VERIFY_CANDIDATE', 'APPROVE_APPOINTMENT', 'CHANGE_EMPLOYMENT',
+      'APPROVE_COMPENSATION_CHANGE', 'OPEN_EMPLOYEE_RELATIONS_CASE',
+      'APPROVE_DISCIPLINARY_DECISION', 'APPROVE_TERMINATION', 'APPLY_IAM_CHANGE',
+    ];
+    const allowedStatuses = ['DRAFT', 'PENDING_APPROVAL', 'ACTIVE', 'ON_LEAVE', 'SUSPENDED', 'TERMINATED', 'OFFBOARDED'];
+    if (!allowedActions.includes(body.action)) throw new BadRequestException('Invalid HR action.');
+    if (!allowedStatuses.includes(body.nextStatus)) throw new BadRequestException('Invalid employment status.');
     const employment = await this.db.employment.findUniqueOrThrow({
       where: { id: employmentId },
       select: { organizationId: true },
