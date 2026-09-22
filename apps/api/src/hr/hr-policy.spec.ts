@@ -45,4 +45,17 @@ assertEmploymentTransition('TERMINATED', 'OFFBOARDED');
 expectDenied(() => assertEmploymentTransition('DRAFT', 'ACTIVE'), 'HR_INVALID_EMPLOYMENT_TRANSITION');
 expectDenied(() => assertEmploymentTransition('OFFBOARDED', 'ACTIVE'), 'HR_INVALID_EMPLOYMENT_TRANSITION');
 
+
+// Cross-organization access must fail closed.
+expectDenied(
+  () => assertHrAuthorization({ ...reviewer, organizationId: 'org-2' }, 'VERIFY_CANDIDATE', { organizationId: 'org-1' }),
+  'HR_ORGANIZATION_SCOPE_DENIED',
+);
+
+// A center-scoped manager cannot act outside the assigned center.
+expectDenied(
+  () => assertHrAuthorization({ ...centerManager, centerScopeIds: [] }, 'STAFFING_REQUEST', { organizationId: 'org-1', centerId: 'center-1' }),
+  'HR_CENTER_SCOPE_DENIED',
+);
+
 console.log('HR authorization and employment lifecycle controls validated.');
