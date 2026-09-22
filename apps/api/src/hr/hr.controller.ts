@@ -80,6 +80,17 @@ export class HrController {
       if (!movement) throw new ConflictException('HR_PERSISTED_APPROVAL_CONTEXT_REQUIRED');
       requesterAccountId = movement.requestedByAccountId;
       reviewerAccountId = movement.reviewedByAccountId ?? undefined;
+    } else if (body.action === 'APPROVE_COMPENSATION_CHANGE') {
+      throw new ConflictException('HR_PERSISTED_COMPENSATION_APPROVAL_CONTEXT_REQUIRED');
+    } else if (body.action === 'APPROVE_DISCIPLINARY_DECISION') {
+      const relationsCase = await this.db.employeeRelationsCase.findFirst({
+        where: { employmentId, status: { in: ['HR_REVIEW', 'APPROVAL_REQUIRED', 'APPROVED'] } },
+        orderBy: { createdAt: 'desc' },
+        select: { openedByAccountId: true, reviewedByAccountId: true },
+      });
+      if (!relationsCase) throw new ConflictException('HR_PERSISTED_DISCIPLINARY_CONTEXT_REQUIRED');
+      requesterAccountId = relationsCase.openedByAccountId;
+      reviewerAccountId = relationsCase.reviewedByAccountId ?? undefined;
     }
 
     try {
