@@ -18,7 +18,7 @@ CREATE INDEX "LanguagePack_languageCode_status_idx" ON "LanguagePack"("languageC
 
 CREATE TABLE "TranslationPreference" (
   "id" TEXT NOT NULL,
-  "accountId" TEXT NOT NULL,
+  "accountId" UUID NOT NULL,
   "preferredLanguageCode" TEXT NOT NULL DEFAULT 'ar',
   "mode" "TranslationMode" NOT NULL DEFAULT 'AUTO',
   "autoTranslateMessages" BOOLEAN NOT NULL DEFAULT false,
