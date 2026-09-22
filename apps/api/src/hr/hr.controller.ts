@@ -72,6 +72,7 @@ export class HrController {
       const movement = await this.db.employmentMovement.findFirst({
         where: {
           employmentId,
+          type: body.action === 'APPROVE_APPOINTMENT' ? 'APPOINTMENT' : 'TERMINATION',
           status: { in: ['HR_REVIEW', 'APPROVAL_REQUIRED', 'APPROVED'] },
         },
         orderBy: { createdAt: 'desc' },
