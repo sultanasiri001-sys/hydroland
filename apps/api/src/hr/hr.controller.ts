@@ -61,8 +61,11 @@ export class HrController {
       },
       action: body.action,
       context: {
-        ...body.context,
         organizationId: employment.organizationId,
+        centerId: body.context.centerId,
+        requesterAccountId: body.context.requesterAccountId,
+        reviewerAccountId: body.context.reviewerAccountId,
+        approverAccountId: body.context.approverAccountId,
       },
     });
   }
