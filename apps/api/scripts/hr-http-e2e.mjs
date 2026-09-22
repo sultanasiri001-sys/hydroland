@@ -21,8 +21,11 @@ try{
  r=await patch({action:'STAFFING_REQUEST',status:'PENDING_APPROVAL',context:{organizationId:org.id}}); if(!r.ok)throw new Error('Allowed HR transition failed '+r.status+' '+await r.text());
  const persisted=await db.employment.findUniqueOrThrow({where:{id:employment.id}}); if(persisted.status!=='PENDING_APPROVAL')throw new Error('Employment status was not persisted');
  const audit=await db.auditEvent.findFirst({where:{actorId:person.id,resource:'Employment',resourceId:employment.id,action:'HR_EMPLOYMENT_STATUS_CHANGED'}}); if(!audit)throw new Error('HR audit evidence missing');
+ const beforeDenied=(await db.auditEvent.count({where:{resourceId:employment.id}}));
  r=await patch({action:'STAFFING_REQUEST',status:'ACTIVE',context:{organizationId:org.id}}); if(r.status<400)throw new Error('Invalid privileged transition was accepted');
- console.log('HR HTTP/DB E2E passed: auth, persisted transition, audit, fail-closed transition.');
+ const afterDenied=await db.employment.findUniqueOrThrow({where:{id:employment.id}}); if(afterDenied.status!=='PENDING_APPROVAL')throw new Error('Denied transition mutated employment state');
+ const afterDeniedAudit=await db.auditEvent.count({where:{resourceId:employment.id}}); if(afterDeniedAudit!==beforeDenied)throw new Error('Denied transition emitted success audit evidence');
+ console.log('HR HTTP/DB E2E passed: auth, persisted transition, audit, denial non-mutation, fail-closed transition.');
 } finally {
  await db.auditEvent.deleteMany({where:{resourceId:employment.id}});
  await db.employment.deleteMany({where:{id:employment.id}});
