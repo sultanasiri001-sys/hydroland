@@ -22,6 +22,8 @@ export class HrController {
       context: HrRequestContext;
     },
   ) {
+    if (!body || typeof body !== 'object') throw new BadRequestException('HR request body is required.');
+    if (!body.context || typeof body.context !== 'object') throw new BadRequestException('HR request context is required.');
     const allowedActions: HrAction[] = [
       'STAFFING_REQUEST', 'VERIFY_CANDIDATE', 'APPROVE_APPOINTMENT', 'CHANGE_EMPLOYMENT',
       'APPROVE_COMPENSATION_CHANGE', 'OPEN_EMPLOYEE_RELATIONS_CASE',
