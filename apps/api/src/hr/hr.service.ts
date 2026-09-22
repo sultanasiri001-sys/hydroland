@@ -1,11 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { assertEmploymentTransition, assertHrAuthorization, HrAction, HrActor, HrRequestContext } from './hr-policy';
 
 @Injectable()
 export class HrService {
-  constructor(private readonly db: DatabaseService, private readonly audit: AuditService) {}
+  constructor(private readonly db: DatabaseService) {}
 
   authorize(actor: HrActor, action: HrAction, context: HrRequestContext): void {
     assertHrAuthorization(actor, action, context);
@@ -40,20 +39,21 @@ export class HrService {
         data: { status: input.nextStatus as never },
       });
       if (updated.count !== 1) throw new Error('HR_EMPLOYMENT_CONCURRENT_MODIFICATION');
-      const result = await tx.employment.findUniqueOrThrow({ where: { id: employment.id } });
-      await this.audit.record({
-        actorId: input.actor.accountId,
-        action: 'HR_EMPLOYMENT_STATUS_CHANGED',
-        resource: 'Employment',
-        resourceId: employment.id,
-        metadata: {
-          organizationId: employment.organizationId,
-          fromStatus: employment.status,
-          toStatus: input.nextStatus,
-          hrAction: input.action,
+      await tx.auditEvent.create({
+        data: {
+          actorId: input.actor.accountId,
+          action: 'HR_EMPLOYMENT_STATUS_CHANGED',
+          resource: 'Employment',
+          resourceId: employment.id,
+          metadata: {
+            organizationId: employment.organizationId,
+            fromStatus: employment.status,
+            toStatus: input.nextStatus,
+            hrAction: input.action,
+          } as never,
         },
       });
-      return result;
+      return tx.employment.findUniqueOrThrow({ where: { id: employment.id } });
     });
   }
 }
