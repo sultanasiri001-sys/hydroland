@@ -42,8 +42,23 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
-      - name: Mark failed migration rolled back
-        run: npx prisma migrate resolve --rolled-back 20260919150000_trip_intelligence_foundation
+      - name: Recover known failed migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          for migration in \
+            20260919150000_trip_intelligence_foundation \
+            20260919161500_translation_packs_preferences
+          do
+            output="$(npx prisma migrate resolve --rolled-back "$migration" 2>&1)" || {
+              if echo "$output" | grep -qiE "not in a failed state|cannot be rolled back|P3012"; then
+                echo "$migration does not require rollback recovery."
+              else
+                echo "$output"
+                exit 1
+              fi
+            }
+          done
 
       - name: Deploy pending migrations
         run: npx prisma migrate deploy
