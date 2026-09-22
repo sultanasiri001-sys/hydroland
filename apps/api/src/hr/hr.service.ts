@@ -42,10 +42,6 @@ export class HrService {
       if (updated.count !== 1) throw new Error('HR_EMPLOYMENT_CONCURRENT_MODIFICATION');
       if (input.action === 'APPLY_IAM_CHANGE' && employment.status === 'TERMINATED' && input.nextStatus === 'OFFBOARDED') {
         const revokedAt = new Date();
-        await tx.session.updateMany({
-          where: { accountId: input.actor.accountId === employment.id ? undefined : undefined },
-          data: {},
-        });
         const target = await tx.employment.findUniqueOrThrow({
           where: { id: employment.id },
           select: { accountId: true },
