@@ -11,7 +11,8 @@ const account=await db.account.create({data:{personId:person.id,email:`hr-e2e-${
 const org=await db.organization.create({data:{displayName:'HR E2E '+suffix,kind:'DIVE_CENTER',regionCode:'ASIR',ownerId:account.id}});
 await db.organizationMember.create({data:{organizationId:org.id,accountId:account.id,role:'STAFF',status:'ACTIVE'}});
 await db.roleAssignment.create({data:{accountId:account.id,role:'HR_MANAGER',status:'ACTIVE',scope:{organizationIds:[org.id]}}});
-const employment=await db.employment.create({data:{accountId:account.id,organizationId:org.id,status:'DRAFT',workerClass:'EMPLOYEE'}});
+const orgUnit=await db.orgUnit.create({data:{organizationId:org.id,type:'DEPARTMENT',code:'HR-E2E-'+suffix,nameAr:'الموارد البشرية'}});
+const employment=await db.employment.create({data:{accountId:account.id,organizationId:org.id,orgUnitId:orgUnit.id,status:'DRAFT',workerClass:'EMPLOYEE'}});
 const enc=v=>Buffer.from(JSON.stringify(v)).toString('base64url'),now=Math.floor(Date.now()/1000);
 const body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:account.id,iat:now,exp:now+900})}`;
 const token=`${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`;
@@ -31,5 +32,6 @@ try{
  await db.employment.deleteMany({where:{id:employment.id}});
  await db.roleAssignment.deleteMany({where:{accountId:account.id}});
  await db.organizationMember.deleteMany({where:{accountId:account.id}});
- await db.account.delete({where:{id:account.id}}); await db.person.delete({where:{id:person.id}}); await db.organization.delete({where:{id:org.id}}); await db.$disconnect();
+ await db.orgUnit.deleteMany({where:{id:orgUnit.id}});
+ await db.organization.delete({where:{id:org.id}}); await db.account.delete({where:{id:account.id}}); await db.person.delete({where:{id:person.id}}); await db.$disconnect();
 }
