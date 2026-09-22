@@ -81,10 +81,16 @@ export class HrController {
       requesterAccountId = movement.requestedByAccountId;
       reviewerAccountId = movement.reviewedByAccountId ?? undefined;
     } else if (body.action === 'APPROVE_COMPENSATION_CHANGE') {
-      // CompensationTerm currently stores only the approver, not the immutable requester/reviewer
-      // chain required for segregation-of-duties. Keep this action fail-closed until that
-      // provenance is persisted by the compensation workflow.
-      throw new ConflictException('HR_PERSISTED_COMPENSATION_APPROVAL_CONTEXT_REQUIRED');
+      const compensation = await this.db.compensationTerm.findFirst({
+        where: { employmentId, status: { in: ['HR_REVIEW', 'APPROVAL_REQUIRED', 'APPROVED'] } },
+        orderBy: { createdAt: 'desc' },
+        select: { requestedByAccountId: true, reviewedByAccountId: true },
+      });
+      if (!compensation?.requestedByAccountId || !compensation.reviewedByAccountId) {
+        throw new ConflictException('HR_PERSISTED_COMPENSATION_APPROVAL_CONTEXT_REQUIRED');
+      }
+      requesterAccountId = compensation.requestedByAccountId;
+      reviewerAccountId = compensation.reviewedByAccountId;
     } else if (body.action === 'APPROVE_DISCIPLINARY_DECISION') {
       const relationsCase = await this.db.employeeRelationsCase.findFirst({
         where: { employmentId, status: { in: ['HR_REVIEW', 'APPROVAL_REQUIRED', 'APPROVED'] } },
