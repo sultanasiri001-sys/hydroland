@@ -1,0 +1,4 @@
+const assert=require('node:assert/strict'); const {DocumentFormService}=require('../.tmp-document-catalog-validation/document-form.service.js'); const {buildDepartmentTemplateCatalog}=require('../.tmp-document-catalog-validation/document-template-catalog.js');
+const s=new DocumentFormService(), c=buildDepartmentTemplateCatalog('org1'); assert.equal(c.length,14); assert.equal(new Set(c.map(x=>x.department)).size,14); assert.equal(new Set(c.map(x=>x.code)).size,14); assert.equal(new Set(c.map(x=>x.id)).size,14);
+for(const t of c){ s.validateTemplate(t); assert.equal(t.organizationId,'org1'); assert.equal(t.active,true); assert.equal(t.printable,true); assert.ok(t.titleAr); assert.ok(t.titleEn); assert.ok(t.fields.some(f=>f.required)); }
+assert.throws(()=>buildDepartmentTemplateCatalog('')); console.log('Document Template Catalog validation passed.');
