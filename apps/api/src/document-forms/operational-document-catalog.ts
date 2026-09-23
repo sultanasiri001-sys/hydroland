@@ -34,5 +34,5 @@ const s:OperationalSeedTuple[]=[
 
 export function buildOperationalDocumentCatalog(organizationId:string):DocumentTemplate[]{
  if(!organizationId?.trim()) throw new Error('Organization scope is required.');
- return s.map(x=>({id:`operational-${x.code.toLowerCase()}`,organizationId,code:x.code,titleAr:x.ar,titleEn:x.en,department:x.department,version:1,active:true,printable:true,fields:x.fields.map(([key,labelAr,labelEn,required])=>({key,labelAr,labelEn,type:key==='amount'||key==='budget'||key==='score'||key==='depth'||key==='duration'?'NUMBER':key.toLowerCase().includes('date')?'DATE':'TEXT',required}))}));
+ return s.map(([department,code,titleAr,titleEn,fields])=>({id:`operational-${code.toLowerCase()}`,organizationId,code,titleAr,titleEn,department,version:1,active:true,printable:true,fields:fields.map(([key,labelAr,labelEn,required])=>({key,labelAr,labelEn,type:key==='amount'||key==='budget'||key==='score'||key==='depth'||key==='duration'?'NUMBER':key.toLowerCase().includes('date')?'DATE':'TEXT',required}))}));
 }
