@@ -132,12 +132,12 @@ try{
  await db.compensationTerm.deleteMany({where:{employmentId:employment.id}});
  await db.employeeRelationsCase.deleteMany({where:{employmentId:employment.id}});
  if(reviewerAccount){ await db.organizationMember.deleteMany({where:{accountId:reviewerAccount.id}}); await db.account.delete({where:{id:reviewerAccount.id}}); }
- if(reviewerPerson) await db.person.delete({where:{id:reviewerPerson.id}});
+ if(reviewerPerson){ await db.auditEvent.deleteMany({where:{actorId:reviewerPerson.id}}); await db.person.delete({where:{id:reviewerPerson.id}}); }
  await db.employmentMovement.deleteMany({where:{employmentId:employment.id}});
  await db.employment.deleteMany({where:{id:employment.id}});
  await db.roleAssignment.deleteMany({where:{accountId:account.id}});
  await db.organizationMember.deleteMany({where:{accountId:account.id}});
  await db.orgUnit.deleteMany({where:{id:orgUnit.id}});
- await db.organization.delete({where:{id:org.id}}); await db.account.delete({where:{id:account.id}}); await db.person.delete({where:{id:person.id}});
+ await db.organization.delete({where:{id:org.id}}); await db.account.delete({where:{id:account.id}}); await db.auditEvent.deleteMany({where:{actorId:person.id}}); await db.person.delete({where:{id:person.id}});
  await db.account.delete({where:{id:requesterAccount.id}}); await db.person.delete({where:{id:requesterPerson.id}}); await db.$disconnect();
 }
