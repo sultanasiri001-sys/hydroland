@@ -4,5 +4,6 @@ import { DocumentFormService } from './document-form.service';
 import { DocumentLifecycleService } from './document-lifecycle.service';
 import { DocumentPersistenceService } from './document-persistence.service';
 import { DocumentPersistenceController } from './document-persistence.controller';
-@Module({imports:[AuthModule],controllers:[DocumentPersistenceController],providers:[DocumentFormService,DocumentLifecycleService,DocumentPersistenceService],exports:[DocumentFormService,DocumentLifecycleService,DocumentPersistenceService]})
+import { DocumentAuthorizationService } from './document-authorization.service';
+@Module({imports:[AuthModule],controllers:[DocumentPersistenceController],providers:[DocumentFormService,DocumentLifecycleService,DocumentAuthorizationService,DocumentPersistenceService],exports:[DocumentFormService,DocumentLifecycleService,DocumentPersistenceService]})
 export class DocumentFormModule {}

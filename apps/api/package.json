@@ -40,7 +40,8 @@
     "validate:document-persistence-api": "node scripts/document-persistence-api-validation.cjs && npm run typecheck",
     "validate:document-reference-numbering": "node scripts/document-reference-numbering-validation.cjs && prisma validate --schema prisma/schema.prisma",
     "seed:operational-document-templates": "rm -rf .tmp-operational-template-seed && tsc src/document-forms/document-form.domain.ts src/document-forms/operational-document-catalog.ts --outDir .tmp-operational-template-seed --module commonjs --moduleResolution node --target es2020 --esModuleInterop --skipLibCheck && node scripts/operational-document-template-seed.cjs; code=$?; rm -rf .tmp-operational-template-seed; exit $code",
-    "validate:operational-document-template-seed": "node scripts/operational-document-template-seed-validation.cjs"
+    "validate:operational-document-template-seed": "node scripts/operational-document-template-seed-validation.cjs",
+    "validate:document-rbac": "node scripts/document-rbac-validation.cjs && npm run typecheck"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.3",
