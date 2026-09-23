@@ -5,7 +5,7 @@ import { DatabaseService } from '../database/database.service';
 export class AdministrativeAffairsPersistenceService {
   constructor(private readonly db: DatabaseService) {}
 
-  private async assertPermission(accountId:string, organizationId:string, action:'REGISTER'|'ROUTE'|'ASSIGN'|'DECIDE'|'ARCHIVE', unitIds:string[] = []) {
+  private async assertPermission(accountId:string, organizationId:string, action:'REGISTER'|'ROUTE'|'ASSIGN'|'DECIDE'|'ARCHIVE'|'SCHEDULE_MEETING', unitIds:string[] = []) {
     const member=await this.db.organizationMember.findFirst({where:{accountId,organizationId,status:'ACTIVE'},select:{role:true}});
     if(!member) throw new ForbiddenException('ADMIN_ORGANIZATION_SCOPE_DENIED');
     const assignments=await this.db.roleAssignment.findMany({where:{accountId,status:'ACTIVE'},select:{role:true,scope:true}});
@@ -21,6 +21,7 @@ export class AdministrativeAffairsPersistenceService {
       ASSIGN:['OWNER','ADMIN','CENTER_MANAGER'],
       DECIDE:['OWNER','ADMIN','CENTER_MANAGER','REVIEWER','EXECUTIVE_APPROVER'],
       ARCHIVE:['OWNER','ADMIN','OPERATOR','STAFF','CENTER_MANAGER'],
+      SCHEDULE_MEETING:['OWNER','ADMIN','OPERATOR','STAFF','CENTER_MANAGER'],
     };
     if(!allowed[action].some(role=>roles.has(role))) throw new ForbiddenException(`ADMIN_PERMISSION_REQUIRED:${action}`);
   }
@@ -52,6 +53,29 @@ export class AdministrativeAffairsPersistenceService {
       const actor=await tx.account.findUniqueOrThrow({where:{id:actorAccountId},select:{personId:true}});
       await tx.auditEvent.create({data:{actorId:actor.personId,action:'ADMIN_RECORD_ARCHIVED',resource:'AdministrativeRecord',resourceId:record.id,metadata:{organizationId:record.organizationId}}});
       return tx.administrativeRecord.findUniqueOrThrow({where:{id:record.id}});
+    });
+  }
+
+  async scheduleMeeting(input:{organizationId:string,unitId:string,title:string,startsAt:Date,endsAt:Date,participantAccountIds:string[],resourceIds?:string[]}, actorAccountId:string) {
+    if(!input.title?.trim()||!(input.startsAt instanceof Date)||!(input.endsAt instanceof Date)||input.endsAt<=input.startsAt) throw new BadRequestException('ADMIN_MEETING_TIME_INVALID');
+    await this.assertPermission(actorAccountId,input.organizationId,'SCHEDULE_MEETING',[input.unitId]);
+    const unit=await this.db.orgUnit.findUniqueOrThrow({where:{id:input.unitId},select:{organizationId:true,active:true}});
+    if(unit.organizationId!==input.organizationId||!unit.active) throw new ForbiddenException('ADMIN_MEETING_UNIT_SCOPE_DENIED');
+    for(const accountId of new Set([actorAccountId,...input.participantAccountIds])) await this.assertMember(accountId,input.organizationId);
+    const resourceIds=[...new Set(input.resourceIds??[])];
+    if(resourceIds.length){
+      const resources=await this.db.calendarResource.findMany({where:{id:{in:resourceIds},active:true},select:{id:true}});
+      if(resources.length!==resourceIds.length) throw new BadRequestException('ADMIN_MEETING_RESOURCE_INVALID');
+      const conflict=await this.db.calendarAllocation.findFirst({where:{resourceId:{in:resourceIds},status:'ACTIVE',startsAt:{lt:input.endsAt},endsAt:{gt:input.startsAt}},select:{id:true}});
+      if(conflict) throw new ConflictException('CALENDAR_RESOURCE_CONFLICT');
+    }
+    return this.db.$transaction(async tx=>{
+      const meeting=await tx.administrativeMeeting.create({data:{organizationId:input.organizationId,unitId:input.unitId,title:input.title.trim(),scheduledAt:input.startsAt,organizerAccountId:actorAccountId,participantAccountIds:input.participantAccountIds}});
+      const event=await tx.calendarEvent.create({data:{organizationId:input.organizationId,type:'ADMINISTRATIVE_MEETING',referenceType:'ADMINISTRATIVE_MEETING',referenceId:meeting.id,title:meeting.title,startsAt:input.startsAt,endsAt:input.endsAt}});
+      if(resourceIds.length) await tx.calendarAllocation.createMany({data:resourceIds.map(resourceId=>({eventId:event.id,resourceId,startsAt:input.startsAt,endsAt:input.endsAt,status:'ACTIVE'}))});
+      const actor=await tx.account.findUniqueOrThrow({where:{id:actorAccountId},select:{personId:true}});
+      await tx.auditEvent.create({data:{actorId:actor.personId,action:'ADMIN_MEETING_SCHEDULED',resource:'AdministrativeMeeting',resourceId:meeting.id,metadata:{organizationId:input.organizationId,calendarEventId:event.id}}});
+      return {meeting,event};
     });
   }
 
