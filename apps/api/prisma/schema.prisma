@@ -1807,6 +1807,7 @@ model ManagedDocument {
   status ManagedDocumentStatus @default(DRAFT)
   version Int @default(1)
   contentHash String
+  documentBrandVersion Int?
   payload Json
   createdByAccountId String
   approvedByAccountId String?
