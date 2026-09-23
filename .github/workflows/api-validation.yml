@@ -6,6 +6,20 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: hydroland
+          POSTGRES_PASSWORD: hydroland
+          POSTGRES_DB: hydroland
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hydroland -d hydroland"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       DATABASE_URL: postgresql://hydroland:hydroland@localhost:5432/hydroland
     steps:
@@ -15,6 +29,13 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm --workspace @hydroland/api run db:generate
+      # Legacy migration history contains pre-production migrations whose original SQL
+      # cannot bootstrap a clean database (for example TEXT -> UUID FK drift).
+      # Historical files are immutable and production already has repaired/applied state.
+      # CI therefore validates the canonical Prisma schema on an ephemeral clean database.
+      # Forward migration immutability is enforced separately by Production Release Gate.
+      - name: Bootstrap canonical schema on clean PostgreSQL
+        run: npm --workspace @hydroland/api exec -- prisma db push --skip-generate
       - run: npm run validate:hr -w @hydroland/api
       - run: npm run validate:operations -w @hydroland/api
       - run: npm run validate:phase10 -w @hydroland/api
@@ -27,3 +48,16 @@ jobs:
       - run: npm run validate:integrations -w @hydroland/api
       - run: npm run typecheck
       - run: npm run build
+      - name: HR HTTP/DB E2E
+        env:
+          JWT_SECRET: ci-hr-e2e-secret-must-be-at-least-32-characters
+          PORT: 3101
+        run: |
+          node apps/api/dist/main.js > /tmp/hydroland-api.log 2>&1 &
+          API_PID=$!
+          trap 'kill $API_PID || true' EXIT
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3101/api/v1/health >/dev/null; then break; fi
+            sleep 1
+          done
+          HR_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/hr-http-e2e.mjs

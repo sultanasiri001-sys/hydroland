@@ -1,4 +1,4 @@
-import { assertEmploymentTransition, assertHrAuthorization, HrActor } from './hr-policy';
+import { assertEmploymentTransition, assertHrActionForEmploymentTransition, assertHrAuthorization, HrActor } from './hr-policy';
 
 const executive: HrActor = {
   accountId: 'exec-1', roles: ['HR_EXECUTIVE', 'EXECUTIVE_APPROVER'], organizationId: 'org-1', centerScopeIds: ['center-1'],
@@ -44,5 +44,79 @@ assertEmploymentTransition('ACTIVE', 'TERMINATED');
 assertEmploymentTransition('TERMINATED', 'OFFBOARDED');
 expectDenied(() => assertEmploymentTransition('DRAFT', 'ACTIVE'), 'HR_INVALID_EMPLOYMENT_TRANSITION');
 expectDenied(() => assertEmploymentTransition('OFFBOARDED', 'ACTIVE'), 'HR_INVALID_EMPLOYMENT_TRANSITION');
+
+
+// Cross-organization access must fail closed.
+expectDenied(
+  () => assertHrAuthorization({ ...reviewer, organizationId: 'org-2' }, 'VERIFY_CANDIDATE', { organizationId: 'org-1' }),
+  'HR_ORGANIZATION_SCOPE_DENIED',
+);
+
+// A center-scoped manager cannot act outside the assigned center.
+expectDenied(
+  () => assertHrAuthorization({ ...centerManager, centerScopeIds: [] }, 'STAFFING_REQUEST', { organizationId: 'org-1', centerId: 'center-1' }),
+  'HR_CENTER_SCOPE_DENIED',
+);
+
+// Action-level permissions fail closed.
+expectDenied(() => assertHrAuthorization(reviewer, 'CHANGE_EMPLOYMENT', { organizationId: 'org-1' }), 'HR_EMPLOYMENT_CHANGE_PERMISSION_REQUIRED');
+assertHrAuthorization({ ...reviewer, roles: ['HR_MANAGER'] }, 'CHANGE_EMPLOYMENT', { organizationId: 'org-1' });
+expectDenied(() => assertHrAuthorization(reviewer, 'STAFFING_REQUEST', { organizationId: 'org-1' }), 'HR_STAFFING_PERMISSION_REQUIRED');
+assertHrAuthorization(centerManager, 'STAFFING_REQUEST', { organizationId: 'org-1', centerId: 'center-1' });
+expectDenied(() => assertHrAuthorization(centerManager, 'OPEN_EMPLOYEE_RELATIONS_CASE', { organizationId: 'org-1' }), 'HR_EMPLOYEE_RELATIONS_PERMISSION_REQUIRED');
+assertHrAuthorization(reviewer, 'OPEN_EMPLOYEE_RELATIONS_CASE', { organizationId: 'org-1' });
+
+// Any center-scoped HR actor is constrained by assigned centers.
+expectDenied(
+  () => assertHrAuthorization({ ...reviewer, centerScopeIds: ['center-1'] }, 'VERIFY_CANDIDATE', { organizationId: 'org-1', centerId: 'center-2' }),
+  'HR_CENTER_SCOPE_DENIED',
+);
+
+// Sensitive approvals require complete separation context.
+expectDenied(
+  () => assertHrAuthorization(executive, 'APPROVE_APPOINTMENT', { organizationId: 'org-1' }),
+  'HR_REQUESTER_REQUIRED',
+);
+expectDenied(
+  () => assertHrAuthorization(executive, 'APPROVE_TERMINATION', { organizationId: 'org-1', requesterAccountId: 'mgr-1' }),
+  'HR_SEPARATION_CONTEXT_REQUIRED',
+);
+assertHrAuthorization(executive, 'APPROVE_TERMINATION', {
+  organizationId: 'org-1', requesterAccountId: 'mgr-1', reviewerAccountId: 'hr-1',
+});
+
+// Compensation and disciplinary approvals require full Maker -> Reviewer -> Approver separation.
+expectDenied(
+  () => assertHrAuthorization(executive, 'APPROVE_COMPENSATION_CHANGE', { organizationId: 'org-1', requesterAccountId: 'mgr-1' }),
+  'HR_SEPARATION_CONTEXT_REQUIRED',
+);
+assertHrAuthorization(executive, 'APPROVE_COMPENSATION_CHANGE', {
+  organizationId: 'org-1', requesterAccountId: 'mgr-1', reviewerAccountId: 'hr-1',
+});
+expectDenied(
+  () => assertHrAuthorization({ ...executive, accountId: 'hr-1' }, 'APPROVE_COMPENSATION_CHANGE', { organizationId: 'org-1', requesterAccountId: 'mgr-1', reviewerAccountId: 'hr-1' }),
+  'HR_SEGREGATION_OF_DUTIES_DENIED',
+);
+expectDenied(
+  () => assertHrAuthorization(executive, 'APPROVE_DISCIPLINARY_DECISION', { organizationId: 'org-1', requesterAccountId: 'mgr-1' }),
+  'HR_SEPARATION_CONTEXT_REQUIRED',
+);
+assertHrAuthorization(executive, 'APPROVE_DISCIPLINARY_DECISION', {
+  organizationId: 'org-1', requesterAccountId: 'mgr-1', reviewerAccountId: 'hr-1',
+});
+
+// Privileged actions are bound to the lifecycle transition they authorize.
+assertHrActionForEmploymentTransition('STAFFING_REQUEST', 'DRAFT', 'PENDING_APPROVAL');
+assertHrActionForEmploymentTransition('APPROVE_APPOINTMENT', 'PENDING_APPROVAL', 'ACTIVE');
+assertHrActionForEmploymentTransition('APPROVE_TERMINATION', 'ACTIVE', 'TERMINATED');
+assertHrActionForEmploymentTransition('APPLY_IAM_CHANGE', 'TERMINATED', 'OFFBOARDED');
+assertHrActionForEmploymentTransition('CHANGE_EMPLOYMENT', 'ACTIVE', 'ON_LEAVE');
+expectDenied(() => assertHrActionForEmploymentTransition('CHANGE_EMPLOYMENT', 'PENDING_APPROVAL', 'ACTIVE'), 'HR_APPOINTMENT_APPROVAL_REQUIRED');
+expectDenied(() => assertHrActionForEmploymentTransition('CHANGE_EMPLOYMENT', 'ACTIVE', 'TERMINATED'), 'HR_TERMINATION_APPROVAL_REQUIRED');
+expectDenied(() => assertHrActionForEmploymentTransition('CHANGE_EMPLOYMENT', 'TERMINATED', 'OFFBOARDED'), 'HR_IAM_OFFBOARDING_REQUIRED');
+expectDenied(() => assertHrActionForEmploymentTransition('VERIFY_CANDIDATE', 'DRAFT', 'PENDING_APPROVAL'), 'HR_ACTION_NOT_EMPLOYMENT_STATUS_TRANSITION');
+expectDenied(() => assertHrActionForEmploymentTransition('APPROVE_COMPENSATION_CHANGE', 'ACTIVE', 'ON_LEAVE'), 'HR_ACTION_NOT_EMPLOYMENT_STATUS_TRANSITION');
+expectDenied(() => assertHrActionForEmploymentTransition('OPEN_EMPLOYEE_RELATIONS_CASE', 'ACTIVE', 'SUSPENDED'), 'HR_ACTION_NOT_EMPLOYMENT_STATUS_TRANSITION');
+expectDenied(() => assertHrActionForEmploymentTransition('APPROVE_DISCIPLINARY_DECISION', 'ACTIVE', 'SUSPENDED'), 'HR_ACTION_NOT_EMPLOYMENT_STATUS_TRANSITION');
 
 console.log('HR authorization and employment lifecycle controls validated.');

@@ -22,6 +22,12 @@ enum ProfessionalRole {
   ORGANIZATION
   ADMIN
   REVIEWER
+  CENTER_MANAGER
+  HR_REVIEWER
+  HR_MANAGER
+  HR_EXECUTIVE
+  EXECUTIVE_APPROVER
+  IAM_SERVICE
 }
 enum RoleAssignmentStatus {
   DRAFT
@@ -144,6 +150,7 @@ model Person {
   professional ProfessionalProfile?
   credentials Credential[]
   auditEvents AuditEvent[] @relation("ActorAuditEvents")
+  hrCandidates HrCandidate[]
 }
 
 model Account {
@@ -170,6 +177,7 @@ model Account {
   organizationMemberships OrganizationMember[]
   organizationsOwned Organization[] @relation("OrganizationOwner")
   policyUpdates PolicyControl[] @relation("PolicyUpdatedBy")
+  hrCandidatesVerified HrCandidate[] @relation("HrCandidateVerifiedBy")
   employments Employment[]
   employmentMovementsRequested EmploymentMovement[] @relation("EmploymentMovementRequestedBy")
   employmentMovementsReviewed EmploymentMovement[] @relation("EmploymentMovementReviewedBy")
@@ -179,6 +187,8 @@ model Account {
   employeeRelationsCasesOpened EmployeeRelationsCase[] @relation("EmployeeRelationsOpenedBy")
   employeeRelationsCasesReviewed EmployeeRelationsCase[] @relation("EmployeeRelationsReviewedBy")
   employeeRelationsCasesApproved EmployeeRelationsCase[] @relation("EmployeeRelationsApprovedBy")
+  compensationTermsRequested CompensationTerm[] @relation("CompensationTermRequestedBy")
+  compensationTermsReviewed CompensationTerm[] @relation("CompensationTermReviewedBy")
   compensationTermsApproved CompensationTerm[] @relation("CompensationTermApprovedBy")
   customerCases CustomerCase[] @relation("CustomerCases")
   customerInteractions CustomerInteraction[] @relation("CustomerInteractionActor")
@@ -655,6 +665,22 @@ model Position {
  movementsTo EmploymentMovement[] @relation("MovementToPosition")
  @@unique([orgUnitId,code])
 }
+model HrCandidate {
+ id String @id @default(uuid())
+ organizationId String
+ personId String
+ status HrRequestStatus @default(SUBMITTED)
+ verifiedByAccountId String?
+ verifiedAt DateTime?
+ verificationNotes String?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ person Person @relation(fields:[personId], references:[id], onDelete:Restrict)
+ verifiedBy Account? @relation("HrCandidateVerifiedBy", fields:[verifiedByAccountId], references:[id], onDelete:Restrict)
+ @@index([organizationId,status])
+ @@unique([organizationId,personId])
+}
+
 model Employment {
  id String @id @default(uuid())
  accountId String
@@ -777,10 +803,14 @@ model CompensationTerm {
  allowances Json?
  benefits Json?
  status HrRequestStatus @default(DRAFT)
+ requestedByAccountId String?
+ reviewedByAccountId String?
  approvedByAccountId String?
  createdAt DateTime @default(now())
  updatedAt DateTime @updatedAt
  employment Employment @relation(fields:[employmentId], references:[id], onDelete:Restrict)
+ requestedBy Account? @relation("CompensationTermRequestedBy", fields:[requestedByAccountId], references:[id], onDelete:Restrict)
+ reviewedBy Account? @relation("CompensationTermReviewedBy", fields:[reviewedByAccountId], references:[id], onDelete:Restrict)
  approvedBy Account? @relation("CompensationTermApprovedBy", fields:[approvedByAccountId], references:[id], onDelete:Restrict)
  @@index([employmentId,effectiveFrom])
  @@index([status])

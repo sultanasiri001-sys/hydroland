@@ -1,0 +1,7 @@
+-- Persist executable HR authorization roles used by the application policy.
+ALTER TYPE "ProfessionalRole" ADD VALUE IF NOT EXISTS 'CENTER_MANAGER';
+ALTER TYPE "ProfessionalRole" ADD VALUE IF NOT EXISTS 'HR_REVIEWER';
+ALTER TYPE "ProfessionalRole" ADD VALUE IF NOT EXISTS 'HR_MANAGER';
+ALTER TYPE "ProfessionalRole" ADD VALUE IF NOT EXISTS 'HR_EXECUTIVE';
+ALTER TYPE "ProfessionalRole" ADD VALUE IF NOT EXISTS 'EXECUTIVE_APPROVER';
+ALTER TYPE "ProfessionalRole" ADD VALUE IF NOT EXISTS 'IAM_SERVICE';

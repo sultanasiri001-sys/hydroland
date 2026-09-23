@@ -31,11 +31,34 @@ const sensitiveApprovalActions = new Set<HrAction>([
   'APPROVE_TERMINATION',
 ]);
 
+export function assertHrActionForEmploymentTransition(action: HrAction, from: string, to: string): void {
+  const statusTransitionActions = new Set<HrAction>(['STAFFING_REQUEST', 'APPROVE_APPOINTMENT', 'CHANGE_EMPLOYMENT', 'APPROVE_TERMINATION', 'APPLY_IAM_CHANGE']);
+  if (!statusTransitionActions.has(action)) {
+    throw new Error(`HR_ACTION_NOT_EMPLOYMENT_STATUS_TRANSITION:${action}`);
+  }
+  if (to === 'ACTIVE' && from === 'PENDING_APPROVAL' && action !== 'APPROVE_APPOINTMENT') {
+    throw new Error('HR_APPOINTMENT_APPROVAL_REQUIRED');
+  }
+  if (to === 'TERMINATED' && action !== 'APPROVE_TERMINATION') {
+    throw new Error('HR_TERMINATION_APPROVAL_REQUIRED');
+  }
+  if (from === 'TERMINATED' && to === 'OFFBOARDED' && action !== 'APPLY_IAM_CHANGE') {
+    throw new Error('HR_IAM_OFFBOARDING_REQUIRED');
+  }
+  if (from === 'DRAFT' && to === 'PENDING_APPROVAL' && action !== 'STAFFING_REQUEST') {
+    throw new Error('HR_STAFFING_REQUEST_REQUIRED');
+  }
+  if (!['DRAFT', 'PENDING_APPROVAL', 'TERMINATED'].includes(from) &&
+      to !== 'TERMINATED' && action !== 'CHANGE_EMPLOYMENT') {
+    throw new Error('HR_EMPLOYMENT_CHANGE_ACTION_REQUIRED');
+  }
+}
+
 export function assertHrAuthorization(actor: HrActor, action: HrAction, ctx: HrRequestContext): void {
   if (actor.organizationId !== ctx.organizationId) throw new Error('HR_ORGANIZATION_SCOPE_DENIED');
 
-  if (ctx.centerId && actor.roles.includes('CENTER_MANAGER')) {
-    if (!actor.centerScopeIds?.includes(ctx.centerId)) throw new Error('HR_CENTER_SCOPE_DENIED');
+  if (ctx.centerId && (!actor.centerScopeIds?.length || !actor.centerScopeIds.includes(ctx.centerId))) {
+    throw new Error('HR_CENTER_SCOPE_DENIED');
   }
 
   if (sensitiveApprovalActions.has(action)) {
@@ -50,8 +73,33 @@ export function assertHrAuthorization(actor: HrActor, action: HrAction, ctx: HrR
     }
   }
 
+  if (action === 'CHANGE_EMPLOYMENT' && !actor.roles.some((r) => ['HR_MANAGER', 'HR_EXECUTIVE'].includes(r))) {
+    throw new Error('HR_EMPLOYMENT_CHANGE_PERMISSION_REQUIRED');
+  }
+
+  if (action === 'STAFFING_REQUEST' && !actor.roles.some((r) => ['CENTER_MANAGER', 'HR_MANAGER', 'HR_EXECUTIVE'].includes(r))) {
+    throw new Error('HR_STAFFING_PERMISSION_REQUIRED');
+  }
+
+  if (action === 'OPEN_EMPLOYEE_RELATIONS_CASE' && !actor.roles.some((r) => ['HR_REVIEWER', 'HR_MANAGER', 'HR_EXECUTIVE'].includes(r))) {
+    throw new Error('HR_EMPLOYEE_RELATIONS_PERMISSION_REQUIRED');
+  }
+
   if (action === 'VERIFY_CANDIDATE' && !actor.roles.some((r) => ['HR_REVIEWER', 'HR_MANAGER'].includes(r))) {
     throw new Error('HR_REVIEW_PERMISSION_REQUIRED');
+  }
+
+  if (action === 'APPROVE_APPOINTMENT' && !ctx.requesterAccountId) {
+    throw new Error('HR_REQUESTER_REQUIRED');
+  }
+  if (action === 'APPROVE_COMPENSATION_CHANGE' && (!ctx.requesterAccountId || !ctx.reviewerAccountId)) {
+    throw new Error('HR_SEPARATION_CONTEXT_REQUIRED');
+  }
+  if (action === 'APPROVE_DISCIPLINARY_DECISION' && (!ctx.requesterAccountId || !ctx.reviewerAccountId)) {
+    throw new Error('HR_SEPARATION_CONTEXT_REQUIRED');
+  }
+  if (action === 'APPROVE_TERMINATION' && (!ctx.requesterAccountId || !ctx.reviewerAccountId)) {
+    throw new Error('HR_SEPARATION_CONTEXT_REQUIRED');
   }
 
   if (action === 'APPLY_IAM_CHANGE' && !actor.roles.includes('IAM_SERVICE')) {
