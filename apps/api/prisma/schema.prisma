@@ -218,6 +218,7 @@ model Organization {
   registrationNumber String? @unique
   regionCode String?
   documentLogoUrl String?
+  documentLogoAssetId String?
   documentBrandNameAr String?
   documentBrandNameEn String?
   documentFooterAr String?
@@ -242,6 +243,22 @@ model Organization {
   managedDocuments ManagedDocument[]
   documentReferenceCounters DocumentReferenceCounter[]
   documentBrandSnapshots DocumentBrandSnapshot[]
+  documentAssets OrganizationDocumentAsset[]
+}
+
+model OrganizationDocumentAsset {
+  id String @id @default(uuid())
+  organizationId String
+  kind String
+  mimeType String
+  byteSize Int
+  sha256 String
+  storageKey String
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)
+  @@unique([organizationId,sha256])
+  @@unique([storageKey])
+  @@index([organizationId,kind,createdAt])
 }
 
 model DocumentBrandSnapshot {
@@ -249,6 +266,7 @@ model DocumentBrandSnapshot {
   organizationId String
   brandVersion Int
   logoUrl String?
+  logoAssetId String?
   brandNameAr String?
   brandNameEn String?
   footerAr String?
