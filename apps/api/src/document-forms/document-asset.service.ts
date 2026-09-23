@@ -17,7 +17,7 @@ export class DocumentAssetService {
     const sha256=createHash('sha256').update(bytes).digest('hex');
     const existing=await this.db.organizationDocumentAsset.findUnique({where:{organizationId_sha256:{organizationId,sha256}}});
     if(existing) return existing;
-    return this.db.organizationDocumentAsset.create({data:{organizationId,kind:'LOGO',mimeType,byteSize:bytes.length,sha256,content:bytes}});
+    return this.db.organizationDocumentAsset.create({data:{organizationId,kind:'LOGO',mimeType,byteSize:bytes.length,sha256,content:new Uint8Array(bytes)}});
   }
 
   async bytesForLogo(organizationId:string,assetId:string){
