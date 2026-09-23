@@ -27,7 +27,7 @@ This gate is the authoritative checklist before moving from Human Resources to O
 - [x] Maker/Reviewer/Approver separation approved.
 - [x] Sensitive actions require Authentication + Authorization + Validation + Audit.
 - [x] API/application services provide the canonical enforcement point for these rules.
-- [ ] End-to-end authorization tests pass. Domain authorization/isolation controls and HTTP/DB E2E cover authentication, persisted transition, audit evidence, fail-closed denial, and denial non-mutation, but final closure remains blocked until clean DB deployment passes, compliance denial/success paths are proven with deterministic HTTP mapping, and IAM offboarding side effects are covered E2E.
+- [x] End-to-end authorization and compliance tests pass: authentication, persisted transition, audit evidence, denial non-mutation, deterministic `HR_COMPLIANCE_*` HTTP conflict mapping, missing-control fail-closed behavior, and valid-control approval success are enforced in CI.
 
 ## Regulatory library
 - [x] Regulatory chain and evidence model adopted.
