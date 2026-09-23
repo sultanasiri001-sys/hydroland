@@ -85,6 +85,26 @@ assertHrAuthorization(executive, 'APPROVE_TERMINATION', {
   organizationId: 'org-1', requesterAccountId: 'mgr-1', reviewerAccountId: 'hr-1',
 });
 
+// Compensation and disciplinary approvals require full Maker -> Reviewer -> Approver separation.
+expectDenied(
+  () => assertHrAuthorization(executive, 'APPROVE_COMPENSATION_CHANGE', { organizationId: 'org-1', requesterAccountId: 'mgr-1' }),
+  'HR_SEPARATION_CONTEXT_REQUIRED',
+);
+assertHrAuthorization(executive, 'APPROVE_COMPENSATION_CHANGE', {
+  organizationId: 'org-1', requesterAccountId: 'mgr-1', reviewerAccountId: 'hr-1',
+});
+expectDenied(
+  () => assertHrAuthorization({ ...executive, accountId: 'hr-1' }, 'APPROVE_COMPENSATION_CHANGE', { organizationId: 'org-1', requesterAccountId: 'mgr-1', reviewerAccountId: 'hr-1' }),
+  'HR_SEGREGATION_OF_DUTIES_DENIED',
+);
+expectDenied(
+  () => assertHrAuthorization(executive, 'APPROVE_DISCIPLINARY_DECISION', { organizationId: 'org-1', requesterAccountId: 'mgr-1' }),
+  'HR_SEPARATION_CONTEXT_REQUIRED',
+);
+assertHrAuthorization(executive, 'APPROVE_DISCIPLINARY_DECISION', {
+  organizationId: 'org-1', requesterAccountId: 'mgr-1', reviewerAccountId: 'hr-1',
+});
+
 // Privileged actions are bound to the lifecycle transition they authorize.
 assertHrActionForEmploymentTransition('STAFFING_REQUEST', 'DRAFT', 'PENDING_APPROVAL');
 assertHrActionForEmploymentTransition('APPROVE_APPOINTMENT', 'PENDING_APPROVAL', 'ACTIVE');
