@@ -90,7 +90,7 @@ export class HrService {
           where: { id: offboarding.id },
           select: { status: true, clearance: true },
         });
-        if (!['APPROVED', 'APPROVAL_REQUIRED'].includes(offboardingRecord.status)) {
+        if (offboardingRecord.status !== 'APPROVED') {
           throw new Error('HR_OFFBOARDING_APPROVAL_REQUIRED');
         }
         const clearance = offboardingRecord.clearance;
