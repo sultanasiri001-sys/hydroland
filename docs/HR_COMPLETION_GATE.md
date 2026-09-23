@@ -37,3 +37,4 @@ This gate is the authoritative checklist before moving from Human Resources to O
 
 ## Closure rule
 HR is NOT COMPLETE until every unchecked item above is implemented and validated. Do not report HR as 100% complete and do not move to Operations before this gate is green.
+- [x] IAM offboarding E2E passes: incomplete clearance is fail-closed; approved completed clearance atomically offboards employment, revokes active sessions, archives active roles with `endedAt`, closes the offboarding case with IAM timestamps, and emits audit evidence.
