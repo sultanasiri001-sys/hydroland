@@ -18,7 +18,37 @@ try{
  r=await call('/documents','POST',token(viewer.id),body);if(r.status!==403)throw new Error('VIEWER document create expected 403');
  r=await call('/documents','POST',token(suspended.id),body);if(r.status!==403)throw new Error('Suspended member expected 403');
  r=await call('/documents','POST',token(creator.id),body);if(!r.ok)throw new Error('STAFF document create failed '+r.status+' '+await r.text());const doc=await r.json();
- if(!new RegExp('^HYD-SAFETY_COMPLIANCE_RISK-\\d{4}-\\d{6}$').test(doc.referenceNumber))throw new Error('Reference format invalid '+doc.referenceNumber);
+ if(!new RegExp('^HYD-SAFETY_COMPLIANCE_RISK-\\d{4}-\\d{6}
+ r=await call(`/documents/${doc.id}`,'GET',token(outsider.id));if(r.status!==403)throw new Error('Cross-org read expected 403');
+ r=await call(`/documents/${doc.id}/approve`,'POST',token(approver.id));if(r.status!==400)throw new Error('Approve before submit expected 400');
+ r=await call(`/documents/${doc.id}/submit`,'POST',token(creator.id));if(!r.ok)throw new Error('Submit failed');
+ r=await call(`/documents/${doc.id}/revise`,'POST',token(creator.id),{contentHash:'sha256:late',payload:{summary:'late'}});if(r.status!==400)throw new Error('Non-DRAFT revise expected 400');
+ const immutable=await db.managedDocument.findUniqueOrThrow({where:{id:doc.id}});
+ if(immutable.version!==2||immutable.contentHash!=='sha256:'+suffix+'-v2')throw new Error('Denied revision mutated document');
+
+ r=await call(`/documents/${doc.id}/approve`,'POST',token(creator.id));if(r.status!==403)throw new Error('STAFF approve expected 403');
+ r=await call(`/documents/${doc.id}/approve`,'POST',token(approver.id));if(!r.ok)throw new Error('ADMIN approve failed '+r.status+' '+await r.text());
+ r=await call(`/documents/${doc.id}/sign`,'POST',token(approver.id));if(r.status!==400)throw new Error('Approver signing expected SoD 400');
+ r=await call(`/documents/${doc.id}/sign`,'POST',token(signer.id));if(!r.ok)throw new Error('Independent signing failed');
+ r=await call(`/documents/${doc.id}/archive`,'POST',token(signer.id));if(!r.ok)throw new Error('Archive failed');
+ r=await call(`/documents/${doc.id}/archive`,'POST',token(signer.id));if(r.status!==400)throw new Error('Repeat archive expected 400');
+ const stored=await db.managedDocument.findUniqueOrThrow({where:{id:doc.id},include:{lifecycleEvents:true}});
+ if(stored.status!=='ARCHIVED'||stored.lifecycleEvents.length!==6)throw new Error('Lifecycle persistence invalid');
+ const bodies=Array.from({length:8},(_,i)=>({...body,contentHash:'sha256:'+suffix+'-'+i,payload:{summary:'concurrent '+i}}));
+ const rs=await Promise.all(bodies.map(x=>call('/documents','POST',token(creator.id),x)));
+ if(rs.some(x=>!x.ok))throw new Error('Concurrent create failed: '+rs.map(x=>x.status).join(','));
+ const docs=await Promise.all(rs.map(x=>x.json())),refs=new Set(docs.map(x=>x.referenceNumber));
+ if(refs.size!==docs.length)throw new Error('Concurrent reference numbers not unique');
+ console.log('Document HTTP/DB E2E validation passed.');
+}finally{await db.$disconnect();}
+).test(doc.referenceNumber))throw new Error('Reference format invalid '+doc.referenceNumber);
+ r=await call(`/documents/${doc.id}/revise`,'POST',token(viewer.id),{contentHash:'sha256:viewer',payload:{summary:'denied'}});if(r.status!==403)throw new Error('VIEWER revise expected 403');
+ r=await call(`/documents/${doc.id}/revise`,'POST',token(creator.id),{contentHash:'sha256:'+suffix+'-v2',payload:{summary:'revision 2'}});if(!r.ok)throw new Error('DRAFT revise failed '+r.status+' '+await r.text());const revised=await r.json();
+ if(revised.version!==2||revised.payload?.summary!=='revision 2')throw new Error('Revision version/payload invalid');
+ const revisedStored=await db.managedDocument.findUniqueOrThrow({where:{id:doc.id},include:{lifecycleEvents:{orderBy:{occurredAt:'asc'}}}});
+ const reviseEvent=revisedStored.lifecycleEvents.find(x=>x.action==='REVISE');
+ if(revisedStored.version!==2||!reviseEvent||reviseEvent.version!==2)throw new Error('Revision audit persistence invalid');
+
  r=await call(`/documents/${doc.id}`,'GET',token(outsider.id));if(r.status!==403)throw new Error('Cross-org read expected 403');
  r=await call(`/documents/${doc.id}/approve`,'POST',token(approver.id));if(r.status!==400)throw new Error('Approve before submit expected 400');
  r=await call(`/documents/${doc.id}/submit`,'POST',token(creator.id));if(!r.ok)throw new Error('Submit failed');
