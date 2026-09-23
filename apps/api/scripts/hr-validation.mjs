@@ -31,7 +31,10 @@ for (const field of ['requestedByAccountId','reviewedByAccountId','approvedByAcc
 for (const field of ['requestedByAccountId','reviewedByAccountId']) {
   if (!compensationMigration.includes(field)) throw new Error(`Missing compensation provenance migration field: ${field}`);
 }
-for (const source of ['employmentMovement.findFirst','compensationTerm.findFirst','employeeRelationsCase.findFirst']) {
+for (const source of ['employmentMovement.findFirst']) {
   if (!controller.includes(source)) throw new Error(`Sensitive HR approval is not bound to persisted provenance: ${source}`);
 }
-console.log('HR L1-L4 architecture, canonical schema, migration and governance validated.');
+for (const forbidden of ['compensationTerm.findFirst','employeeRelationsCase.findFirst']) {
+  if (controller.includes(forbidden)) throw new Error(`Non-lifecycle HR workflow leaked into employment status controller: ${forbidden}`);
+}
+console.log('HR L1-L4 architecture, canonical schema, migration, governance and lifecycle boundary validated.');
