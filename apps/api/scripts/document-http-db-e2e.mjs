@@ -7,7 +7,6 @@ const token=id=>{const b=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:id,iat:now,
 const mk=async(last)=>{const p=await db.person.create({data:{firstName:'Document',lastName:last}});return db.account.create({data:{personId:p.id,email:`doc-${last.toLowerCase()}-${suffix}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}})};
 const creator=await mk('Creator'),approver=await mk('Approver'),signer=await mk('Signer'),viewer=await mk('Viewer'),outsider=await mk('Outsider'),suspended=await mk('Suspended');
 const org=await db.organization.create({data:{displayName:'Document E2E '+suffix,kind:'DIVE_CENTER',ownerId:signer.id,documentBrandNameEn:'E2E Dive Center',documentBrandVersion:1}});
-await db.documentBrandSnapshot.create({data:{organizationId:org.id,brandVersion:1,brandNameEn:'E2E Dive Center',footerEn:'Issued by E2E Dive Center'}});
 const other=await db.organization.create({data:{displayName:'Document Other '+suffix,kind:'DIVE_CENTER',ownerId:outsider.id}});
 for(const [a,o,r,s='ACTIVE'] of [[creator,org,'STAFF'],[approver,org,'ADMIN'],[signer,org,'OWNER'],[viewer,org,'VIEWER'],[outsider,other,'ADMIN'],[suspended,org,'STAFF','SUSPENDED']])await db.organizationMember.create({data:{organizationId:o.id,accountId:a.id,role:r,status:s}});
 const call=(path,method,t,body)=>fetch(base+path,{method,headers:{authorization:`Bearer ${t}`,'content-type':'application/json'},body:body?JSON.stringify(body):undefined});
@@ -23,6 +22,10 @@ try{
  r=await call(`/documents/${doc.id}/print-contract`,'GET',token(viewer.id));if(!r.ok)throw new Error('VIEWER print contract read failed '+r.status+' '+await r.text());const printContract=await r.json();
  if(printContract.documentId!==doc.id||printContract.organizationId!==org.id||printContract.referenceNumber!==doc.referenceNumber||printContract.documentVersion!==1||printContract.contentHash!==body.contentHash)throw new Error('Print contract document identity invalid');
  if(printContract.branding?.brandVersion!==1||printContract.branding?.brandNameEn!=='E2E Dive Center')throw new Error('Pinned print branding invalid');
+ const initialSnapshot=await db.documentBrandSnapshot.findUnique({where:{organizationId_brandVersion:{organizationId:org.id,brandVersion:1}}});if(!initialSnapshot||initialSnapshot.brandNameEn!=='E2E Dive Center')throw new Error('Initial branding snapshot was not created automatically');
+ r=await call(`/documents/organizations/${org.id}/branding`,'PUT',token(approver.id),{brandNameEn:'E2E Dive Center v2',footerEn:'Current branding v2'});if(!r.ok)throw new Error('Branding update failed '+r.status+' '+await r.text());const brandV2=await r.json();if(brandV2.brandVersion!==2)throw new Error('Branding version did not advance to v2');
+ r=await call(`/documents/${doc.id}/print-contract`,'GET',token(viewer.id));if(!r.ok)throw new Error('Pinned print contract reread failed');const pinnedAfterBrandChange=await r.json();if(pinnedAfterBrandChange.branding?.brandVersion!==1||pinnedAfterBrandChange.branding?.brandNameEn!=='E2E Dive Center')throw new Error('Historical document branding changed after organization branding update');
+ r=await call(`/documents/organizations/${org.id}/branding`,'PUT',token(outsider.id),{brandNameEn:'Cross-org attack'});if(r.status!==403)throw new Error('Cross-org branding update expected 403');
  r=await call(`/documents/${doc.id}/pdf`,'GET',token(viewer.id));if(!r.ok)throw new Error('VIEWER PDF read failed '+r.status+' '+await r.text());if(r.headers.get('content-type')!=='application/pdf')throw new Error('PDF content type invalid');const pdfBytes=new Uint8Array(await r.arrayBuffer());if(new TextDecoder().decode(pdfBytes.slice(0,5))!=='%PDF-')throw new Error('PDF signature invalid');
  r=await call(`/documents/${doc.id}/pdf`,'GET',token(outsider.id));if(r.status!==403)throw new Error('Cross-org PDF expected 403');
  if(printContract.template?.id!==template.id||printContract.template?.code!==templateBody.code||printContract.template?.titleAr!==templateBody.titleAr||printContract.template?.titleEn!==templateBody.titleEn||printContract.template?.printable!==true)throw new Error('Print contract template metadata invalid');
@@ -69,5 +72,6 @@ try{
  if(rs.some(x=>!x.ok))throw new Error('Concurrent create failed: '+rs.map(x=>x.status).join(','));
  const docs=await Promise.all(rs.map(x=>x.json())),refs=new Set(docs.map(x=>x.referenceNumber));
  if(refs.size!==docs.length)throw new Error('Concurrent reference numbers not unique');
+ console.log('Document PDF Rendering validation passed.');
  console.log('Document HTTP/DB E2E validation passed.');
 }finally{await db.$disconnect();}
