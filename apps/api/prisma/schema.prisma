@@ -1097,10 +1097,10 @@ model FinanceApproval {
 
 
 
-enum FinanceShiftStatus { OPEN HANDOVER_PENDING HANDED_OVER CLOSED }
-enum FinanceHandoverStatus { PENDING ACCEPTED REJECTED }
-enum ReceivableStatus { OPEN PARTIALLY_PAID PAID OVERDUE }
-enum ReceivableInstallmentStatus { PENDING PARTIALLY_PAID PAID OVERDUE CANCELLED }
+enum FinanceShiftStatus {\n  OPEN\n  HANDOVER_PENDING\n  HANDED_OVER\n  CLOSED\n}
+enum FinanceHandoverStatus {\n  PENDING\n  ACCEPTED\n  REJECTED\n}
+enum ReceivableStatus {\n  OPEN\n  PARTIALLY_PAID\n  PAID\n  OVERDUE\n}
+enum ReceivableInstallmentStatus {\n  PENDING\n  PARTIALLY_PAID\n  PAID\n  OVERDUE\n  CANCELLED\n}
 
 model FinanceAccountantShift {
  id String @id @default(uuid())
