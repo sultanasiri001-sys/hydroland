@@ -14,6 +14,23 @@ export class DocumentPersistenceService {
     return this.db.documentTemplate.create({data:{organizationId:input.organizationId,code:input.code,titleAr:input.titleAr,titleEn:input.titleEn,department:input.department,fields:input.fields as never,printable:input.printable!==false}});
   }
 
+  async updateTemplate(accountId:string,id:string,input:{titleAr?:string;titleEn?:string;fields?:Field[];printable?:boolean}){
+    const current=await this.db.documentTemplate.findUnique({where:{id}});
+    if(!current) throw new NotFoundException('Document template not found.');
+    await this.authz.assert(accountId,current.organizationId,'TEMPLATE_UPDATE');
+    if(current.status!=='ACTIVE') throw new BadRequestException('Only ACTIVE templates can be revised.');
+    const titleAr=input.titleAr?.trim()||current.titleAr;
+    const titleEn=input.titleEn?.trim()||current.titleEn;
+    const fields=input.fields??(current.fields as unknown as Field[]);
+    if(!titleAr||!titleEn||!Array.isArray(fields)||!fields.length) throw new BadRequestException('Template identity and fields are required.');
+    return this.db.serializable(async tx=>{
+      const latest=await tx.documentTemplate.findUnique({where:{id}});
+      if(!latest||latest.status!=='ACTIVE'||latest.version!==current.version) throw new BadRequestException('Template changed concurrently; reload before revising.');
+      await tx.documentTemplate.update({where:{id},data:{status:'INACTIVE'}});
+      return tx.documentTemplate.create({data:{organizationId:current.organizationId,code:current.code,titleAr,titleEn,department:current.department,version:current.version+1,status:'ACTIVE',printable:input.printable??current.printable,fields:fields as never}});
+    });
+  }
+
   async listTemplates(accountId:string,organizationId:string,department?:string){
     await this.authz.assert(accountId,organizationId,'TEMPLATE_LIST');
     return this.db.documentTemplate.findMany({where:{organizationId,status:'ACTIVE',...(department?{department}:{})},orderBy:[{department:'asc'},{code:'asc'}]});
