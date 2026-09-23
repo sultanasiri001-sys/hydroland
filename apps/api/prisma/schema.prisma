@@ -182,6 +182,7 @@ model Account {
   managedDocumentsSigned ManagedDocument[] @relation("ManagedDocumentSigner")
   managedDocumentsArchived ManagedDocument[] @relation("ManagedDocumentArchiver")
   documentLifecycleEvents DocumentLifecycleEvent[] @relation("DocumentLifecycleActor")
+  documentRevisionsCreated DocumentRevision[] @relation("DocumentRevisionCreator")
   hrCandidatesVerified HrCandidate[] @relation("HrCandidateVerifiedBy")
   employments Employment[]
   employmentMovementsRequested EmploymentMovement[] @relation("EmploymentMovementRequestedBy")
