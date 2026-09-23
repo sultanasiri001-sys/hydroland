@@ -52,9 +52,11 @@ try{
  if(candidateResponse.status!==403)throw new Error('Unauthorized candidate verification was not denied: '+candidateResponse.status);
  let candidateState=await db.hrCandidate.findUniqueOrThrow({where:{id:candidate.id}}); if(candidateState.status!=='SUBMITTED'||candidateState.verifiedByAccountId||candidateState.verifiedAt)throw new Error('Denied candidate verification mutated state');
  let candidateAudit=await db.auditEvent.count({where:{resource:'HrCandidate',resourceId:candidate.id,action:'HR_CANDIDATE_VERIFIED'}}); if(candidateAudit!==0)throw new Error('Denied candidate verification emitted audit evidence');
+ await db.roleAssignment.update({where:{accountId_role:{accountId:account.id,role:'HR_EXECUTIVE'}},data:{role:'HR_REVIEWER'}});
  candidateResponse=await fetch(`${base}/hr/employments/candidates/${candidate.id}/verify`,{method:'PATCH',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({notes:'E2E verified'})}); if(!candidateResponse.ok)throw new Error('Candidate verification failed '+candidateResponse.status+' '+await candidateResponse.text());
  candidateState=await db.hrCandidate.findUniqueOrThrow({where:{id:candidate.id}}); if(candidateState.status!=='APPROVED'||candidateState.verifiedByAccountId!==account.id||!candidateState.verifiedAt)throw new Error('Candidate verification provenance/status invalid');
  candidateAudit=await db.auditEvent.count({where:{resource:'HrCandidate',resourceId:candidate.id,action:'HR_CANDIDATE_VERIFIED'}}); if(candidateAudit!==1)throw new Error('Candidate verification audit missing');
+ await db.roleAssignment.update({where:{accountId_role:{accountId:account.id,role:'HR_REVIEWER'}},data:{role:'HR_EXECUTIVE'}});
  const beforeOpenCount=await db.employeeRelationsCase.count({where:{employmentId:employment.id}});
  const requesterBody=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:requesterAccount.id,iat:now,exp:now+900})}`; const requesterToken=`${requesterBody}.${createHmac('sha256',secret).update(requesterBody).digest('base64url')}`;
  const deniedOpen=await fetch(`${base}/hr/employments/${employment.id}/relations`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${requesterToken}`},body:JSON.stringify({caseType:'GRIEVANCE',summary:'Denied E2E case'})});
