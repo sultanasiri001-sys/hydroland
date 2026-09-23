@@ -233,6 +233,7 @@ model Organization {
   administrativeMeetings AdministrativeMeeting[]
   documentTemplates DocumentTemplate[]
   managedDocuments ManagedDocument[]
+  documentReferenceCounters DocumentReferenceCounter[]
 }
 
 model OrganizationMember {
@@ -1819,4 +1820,16 @@ model DocumentLifecycleEvent {
   actor Account @relation("DocumentLifecycleActor", fields:[actorAccountId], references:[id], onDelete:Restrict)
   @@index([documentId,occurredAt])
   @@index([actorAccountId,occurredAt])
+}
+
+model DocumentReferenceCounter {
+  id String @id @default(uuid())
+  organizationId String
+  department String
+  year Int
+  lastNumber Int @default(0)
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)
+  @@unique([organizationId,department,year])
+  @@index([organizationId,year])
 }
