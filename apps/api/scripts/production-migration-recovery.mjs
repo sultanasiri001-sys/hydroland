@@ -5,6 +5,7 @@ const prisma = new PrismaClient();
 const HR = '20260923092000_hr_candidate_verification';
 const ADMIN = '20260923102000_administrative_affairs_persistence';
 const CALENDAR = '20260923114000_unified_calendar_events';
+const FINANCE = '20260923133000_finance_completion_gate';
 
 async function migrationFailure(name) {
   const rows = await prisma.$queryRawUnsafe(
@@ -81,9 +82,52 @@ async function recoverHr() {
   ];
   await prisma.$transaction(hrStatements.map((sql) => prisma.$executeRawUnsafe(sql)));
   markApplied(HR);
+  console.log('[migration-recovery] HR recovered');
+}
 
-  const financeStatements = [
-    `ALTER TABLE "FinanceEntry" ADD COLUMN IF NOT EXISTS "postedByAccountId" UUID`,
+async function recoverFinance() {
+  const failed = await migrationFailure(FINANCE);
+  if (!failed) {
+    console.log('[migration-recovery] no open finance failure; no-op');
+    return;
+  }
+  if (failed.applied_steps_count !== 0) {
+    throw new Error('Refusing recovery: finance migration partially applied');
+  }
+
+  await requireUuidColumns([
+    ['Account', 'id'], ['FinanceEntry', 'id'],
+  ]);
+
+  const postedByType = await columnType('FinanceEntry', 'postedByAccountId');
+  if (postedByType && postedByType !== 'text' && postedByType !== 'uuid') {
+    throw new Error(`Refusing recovery: FinanceEntry.postedByAccountId has unexpected type ${postedByType}`);
+  }
+
+  if (postedByType === 'text') {
+    const invalidValues = await prisma.$queryRawUnsafe(
+      `SELECT 1
+         FROM "FinanceEntry"
+        WHERE "postedByAccountId" IS NOT NULL
+          AND "postedByAccountId" !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        LIMIT 1`,
+    );
+    if (invalidValues.length) {
+      throw new Error('Refusing recovery: FinanceEntry.postedByAccountId contains a non-UUID value');
+    }
+  }
+
+  const financeStatements = [];
+  if (!postedByType) {
+    financeStatements.push(
+      `ALTER TABLE "FinanceEntry" ADD COLUMN "postedByAccountId" UUID`,
+    );
+  } else if (postedByType === 'text') {
+    financeStatements.push(
+      `ALTER TABLE "FinanceEntry" ALTER COLUMN "postedByAccountId" TYPE UUID USING "postedByAccountId"::uuid`,
+    );
+  }
+  financeStatements.push(
     `CREATE INDEX IF NOT EXISTS "FinanceEntry_postedByAccountId_idx" ON "FinanceEntry"("postedByAccountId")`,
     `DO $$ BEGIN
       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='FinanceEntry_postedByAccountId_fkey') THEN
@@ -91,9 +135,14 @@ async function recoverHr() {
         FOREIGN KEY ("postedByAccountId") REFERENCES "Account"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
       END IF;
     END $$`,
-  ];
+  );
+
   await prisma.$transaction(financeStatements.map((sql) => prisma.$executeRawUnsafe(sql)));
-  console.log('[migration-recovery] HR recovered; finance UUID compatibility staged');
+  if (await columnType('FinanceEntry', 'postedByAccountId') !== 'uuid') {
+    throw new Error('Finance recovery failed: FinanceEntry.postedByAccountId is not uuid');
+  }
+  markApplied(FINANCE);
+  console.log('[migration-recovery] finance posting recovered with UUID-compatible provenance');
 }
 
 async function recoverAdministrativeAffairs() {
@@ -255,6 +304,7 @@ async function main() {
   await recoverHr();
   await recoverAdministrativeAffairs();
   await recoverUnifiedCalendar();
+  await recoverFinance();
 }
 
 main().finally(() => prisma.$disconnect());
