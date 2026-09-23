@@ -38,6 +38,8 @@ export class DocumentPdfService {
     if(c.approvals.approvedByAccountId) text(`Approved by: ${c.approvals.approvedByAccountId}`,48,8);
     if(c.approvals.signedByAccountId) text(`Signed by: ${c.approvals.signedByAccountId}`,48,8);
     if(c.branding.footerEn) text(c.branding.footerEn,48,8);
+    // Logo bytes are intentionally not fetched from arbitrary URLs here.
+    // Rendering a logo requires a trusted platform-managed asset source; this avoids SSRF/redirect bypasses.
     return {bytes:Buffer.from(await pdf.save()),filename:`${c.referenceNumber}.pdf`,status:c.status};
   }
 }
