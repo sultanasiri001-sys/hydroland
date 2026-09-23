@@ -31,5 +31,11 @@ try{
  r=await call(`/administrative-affairs/routings/${routing.id}/decision`,'PATCH',token(approver.id),{decision:'APPROVE'}); if(!r.ok)throw new Error('Decision failed '+r.status+' '+await r.text());
  const done=await db.administrativeRouting.findUniqueOrThrow({where:{id:routing.id}}); if(done.decision!=='APPROVE'||done.decidedByAccountId!==approver.id)throw new Error('Decision provenance invalid');
  if(!await db.auditEvent.findFirst({where:{resource:'AdministrativeRouting',resourceId:routing.id,action:'ADMIN_ROUTING_APPROVE'}}))throw new Error('Decision audit missing');
+ r=await call(`/administrative-affairs/records/${record.id}/archive`,'PATCH',token(outsider.id)); if(r.status!==403)throw new Error('Expected cross-org archive 403, got '+r.status);
+ if((await db.administrativeRecord.findUniqueOrThrow({where:{id:record.id}})).status!=='REGISTERED')throw new Error('Denied archive mutated state');
+ r=await call(`/administrative-affairs/records/${record.id}/archive`,'PATCH',token(manager.id)); if(!r.ok)throw new Error('Archive failed '+r.status+' '+await r.text());
+ if((await db.administrativeRecord.findUniqueOrThrow({where:{id:record.id}})).status!=='ARCHIVED')throw new Error('Archive state invalid');
+ if(!await db.auditEvent.findFirst({where:{resource:'AdministrativeRecord',resourceId:record.id,action:'ADMIN_RECORD_ARCHIVED'}}))throw new Error('Archive audit missing');
+ r=await call(`/administrative-affairs/records/${record.id}/archive`,'PATCH',token(manager.id)); if(r.status!==409)throw new Error('Repeat archive expected 409, got '+r.status);
  console.log('Admin Affairs HTTP/DB E2E: PASS');
 }finally{await db.$disconnect();}
