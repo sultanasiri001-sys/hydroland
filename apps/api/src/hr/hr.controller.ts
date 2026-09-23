@@ -27,6 +27,13 @@ export class HrController {
     private readonly db: DatabaseService,
   ) {}
 
+  @Patch('candidates/:candidateId/verify')
+  async verifyCandidate(@Req() request:{auth:{accountId:string}},@Param('candidateId') candidateId:string,@Body() body:{notes?:string;context?:HrRequestContext}) {
+    const candidate=await this.db.hrCandidate.findUniqueOrThrow({where:{id:candidateId},select:{organizationId:true}});
+    const actor=await this.actorFor(request.auth.accountId,candidate.organizationId);
+    try { return await this.hr.verifyCandidate({candidateId,notes:body?.notes,actor,context:{organizationId:candidate.organizationId,centerId:body?.context?.centerId}}); } catch(e){ this.mapWorkflowError(e); }
+  }
+
   @Post(':employmentId/relations')
   async openRelationsCase(@Req() request:{auth:{accountId:string}},@Param('employmentId') employmentId:string,@Body() body:{caseType?:string;summary?:string;context?:HrRequestContext}) {
     if(!body?.caseType || typeof body.caseType!=='string') throw new BadRequestException('HR relations case type is required.');
