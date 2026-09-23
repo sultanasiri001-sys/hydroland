@@ -45,7 +45,7 @@ try{
  reviewerPerson=await db.person.create({data:{firstName:'HR',lastName:'Reviewer'}});
  reviewerAccount=await db.account.create({data:{personId:reviewerPerson.id,email:`hr-reviewer-${suffix}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}});
  await db.organizationMember.create({data:{organizationId:org.id,accountId:reviewerAccount.id,role:'STAFF',status:'ACTIVE'}});
- const compensation=await db.compensationTerm.create({data:{employmentId:employment.id,effectiveFrom:new Date(),baseAmount:1000,status:'APPROVAL_REQUIRED',requestedByAccountId:requesterAccount.id,reviewedByAccountId:reviewerAccount.id}});
+ const compensation=await db.compensationTerm.create({data:{employmentId:employment.id,effectiveFrom:new Date(),baseAmountMinor:100000,status:'APPROVAL_REQUIRED',requestedByAccountId:requesterAccount.id,reviewedByAccountId:reviewerAccount.id}});
  compensationId=compensation.id;
  const compPatch=()=>fetch(`${base}/hr/employments/compensation/${compensation.id}/approve`,{method:'PATCH',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({context:{organizationId:org.id}})});
  r=await compPatch(); if(!r.ok)throw new Error('Compensation approval failed '+r.status+' '+await r.text());
