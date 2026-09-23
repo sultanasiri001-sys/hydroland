@@ -32,7 +32,7 @@ export class DatabaseService extends PrismaClient implements OnModuleInit, OnMod
     return rows.length > 0;
   }
 
-  async serializable<T>(work: (tx: Prisma.TransactionClient) => Promise<T>, maxAttempts = 3): Promise<T> {
+  async serializable<T>(work: (tx: Prisma.TransactionClient) => Promise<T>, maxAttempts = 8): Promise<T> {
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
         return await this.$transaction(work, { isolationLevel: 'Serializable' });
@@ -42,6 +42,7 @@ export class DatabaseService extends PrismaClient implements OnModuleInit, OnMod
           : '';
         const retryable = code === 'P2034';
         if (!retryable || attempt === maxAttempts) throw error;
+        await new Promise((resolve) => setTimeout(resolve, Math.min(10 * attempt, 50)));
       }
     }
     throw new Error('Serializable transaction retry exhausted.');
