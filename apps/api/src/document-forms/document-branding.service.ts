@@ -23,7 +23,13 @@ export class DocumentBrandingService {
 
   async update(accountId:string,organizationId:string,input:DocumentBrandInput){
     await this.authz.assert(accountId,organizationId,'BRAND_UPDATE');
-    if(input.logoUrl!==undefined&&input.logoUrl!==null&&!/^https:\/\//i.test(input.logoUrl)) throw new BadRequestException('Document logo URL must use HTTPS.');
+    if(input.logoUrl!==undefined&&input.logoUrl!==null){
+      let logo:URL;
+      try{logo=new URL(input.logoUrl);}catch{throw new BadRequestException('Document logo URL is invalid.');}
+      if(logo.protocol!=='https:') throw new BadRequestException('Document logo URL must use HTTPS.');
+      const host=logo.hostname.toLowerCase();
+      if(host==='localhost'||host.endsWith('.localhost')||host==='0.0.0.0'||host==='::1'||host.startsWith('127.')||host.startsWith('10.')||host.startsWith('192.168.')||/^172\.(1[6-9]|2\d|3[01])\./.test(host)||host.startsWith('169.254.')) throw new BadRequestException('Private or local document logo URLs are not allowed.');
+    }
     return this.db.serializable(async tx=>{
       const org=await tx.organization.findUnique({where:{id:organizationId}});
       if(!org) throw new NotFoundException('Organization not found.');
