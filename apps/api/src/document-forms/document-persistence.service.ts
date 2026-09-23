@@ -85,6 +85,23 @@ export class DocumentPersistenceService {
     });
   }
 
+  async listRevisions(accountId:string,id:string){
+    const d=await this.db.managedDocument.findUnique({where:{id},select:{organizationId:true}});
+    if(!d) throw new NotFoundException('Document not found.');
+    await this.authz.assert(accountId,d.organizationId,'DOCUMENT_READ');
+    return this.db.documentRevision.findMany({where:{documentId:id},orderBy:{version:'asc'}});
+  }
+
+  async getRevision(accountId:string,id:string,version:number){
+    if(!Number.isInteger(version)||version<1) throw new BadRequestException('Revision version must be a positive integer.');
+    const d=await this.db.managedDocument.findUnique({where:{id},select:{organizationId:true}});
+    if(!d) throw new NotFoundException('Document not found.');
+    await this.authz.assert(accountId,d.organizationId,'DOCUMENT_READ');
+    const revision=await this.db.documentRevision.findUnique({where:{documentId_version:{documentId:id,version}}});
+    if(!revision) throw new NotFoundException('Document revision not found.');
+    return revision;
+  }
+
   async get(accountId:string,id:string){
     const d=await this.db.managedDocument.findUnique({where:{id},include:{lifecycleEvents:{orderBy:{occurredAt:'asc'}},template:true}});
     if(!d) throw new NotFoundException('Document not found.');
