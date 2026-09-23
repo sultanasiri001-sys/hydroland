@@ -5,11 +5,12 @@ import { AdministrativeAffairsOperationsService } from './administrative-affairs
 import { AdministrativeAffairsGovernanceService } from './administrative-affairs-governance.service';
 import { AdministrativeAffairsPersistenceService } from './administrative-affairs-persistence.service';
 import { DatabaseModule } from '../database/database.module';
+import { AuthModule } from '../auth/auth.module';
 import { AdministrativeAffairsOwnershipGuard } from './administrative-affairs-ownership.guard';
 import { AdministrativeAffairsController } from './administrative-affairs.controller';
 
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, AuthModule],
   controllers: [AdministrativeAffairsController],
   providers: [AdministrativeAffairsFoundationService, AdministrativeAffairsWorkflowService, AdministrativeAffairsOperationsService, AdministrativeAffairsGovernanceService, AdministrativeAffairsPersistenceService, AdministrativeAffairsOwnershipGuard],
   exports: [AdministrativeAffairsFoundationService, AdministrativeAffairsWorkflowService, AdministrativeAffairsOperationsService, AdministrativeAffairsGovernanceService, AdministrativeAffairsPersistenceService, AdministrativeAffairsOwnershipGuard],
