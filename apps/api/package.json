@@ -23,7 +23,8 @@
     "validate:integrations": "node scripts/integration-readiness-validation.mjs",
     "validate:admin-affairs": "node scripts/administrative-affairs-validation.mjs",
     "validate:finance": "node scripts/finance-validation.mjs",
-    "validate:inventory": "rm -rf .tmp-inventory-validation && tsc src/inventory/*.ts --outDir .tmp-inventory-validation --module commonjs --moduleResolution node --target es2020 --esModuleInterop --skipLibCheck && node scripts/inventory-validation.cjs && rm -rf .tmp-inventory-validation"
+    "validate:inventory": "rm -rf .tmp-inventory-validation && tsc src/inventory/*.ts --outDir .tmp-inventory-validation --module commonjs --moduleResolution node --target es2020 --esModuleInterop --skipLibCheck && node scripts/inventory-validation.cjs && rm -rf .tmp-inventory-validation",
+    "validate:customer-service": "rm -rf .tmp-customer-service-validation && tsc src/customer-service/customer-service-foundation.service.ts src/customer-service/customer-service-workflow.service.ts src/customer-service/customer-service-operations.service.ts src/customer-service/customer-service-governance.service.ts src/customer-service/customer-service.domain.ts --outDir .tmp-customer-service-validation --module commonjs --moduleResolution node --target es2020 --esModuleInterop --skipLibCheck && node scripts/customer-service-validation.cjs && rm -rf .tmp-customer-service-validation"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.3",
