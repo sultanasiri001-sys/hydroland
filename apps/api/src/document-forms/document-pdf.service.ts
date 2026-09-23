@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import { DocumentPrintService } from './document-print.service';
 
 @Injectable()
@@ -12,7 +12,10 @@ export class DocumentPdfService {
     const page=pdf.addPage([595.28,841.89]);
     const font=await pdf.embedFont(StandardFonts.Helvetica);
     const bold=await pdf.embedFont(StandardFonts.HelveticaBold);
-    const {height}=page.getSize();
+    const {width,height}=page.getSize();
+    if(!['SIGNED','ARCHIVED'].includes(c.status)){
+      page.drawText(c.status,{x:width/2-95,y:height/2,size:44,font:bold,color:rgb(0.82,0.82,0.82),rotate:degrees(35),opacity:0.45});
+    }
     let y=height-56;
     const text=(value:unknown,x:number,size=10,isBold=false)=>{
       const raw=String(value??'');
