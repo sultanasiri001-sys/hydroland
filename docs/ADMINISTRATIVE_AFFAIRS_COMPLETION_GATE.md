@@ -28,7 +28,7 @@ Administrative Affairs does **not** grant executive authority, IAM privileges, f
 - [x] Meeting resource allocations use CalendarAllocation.
 - [x] Overlapping active resource allocations are rejected.
 - [x] Administrative meeting scheduling emits audit evidence.
-- [ ] Concurrency-safe resource locking must be proven before final department closure.
+- [x] Concurrency-safe resource locking is enforced with sorted row locks inside a retryable serializable transaction; CI HTTP/DB E2E proves meeting allocation and overlap denial.
 
 ## Ownership guard
 - [x] Executive authority grants are denied.
@@ -39,7 +39,7 @@ Administrative Affairs does **not** grant executive authority, IAM privileges, f
 ## Validation
 - [x] Static Administrative Affairs closure invariants run in CI.
 - [x] HTTP/DB E2E covers authentication, cross-org denial, register, route, assignment, decision, archive, provenance and audit.
-- [ ] HTTP/DB E2E must cover unified-calendar meeting creation and overlap denial.
+- [x] HTTP/DB E2E covers unified-calendar meeting creation, allocation, audit evidence, cross-organization denial, and overlapping-resource denial with no conflicting calendar mutation.
 - [x] Security Audit passes.
 - [x] Release Candidate Gate passes.
 - [x] Production Release Gate passes.
