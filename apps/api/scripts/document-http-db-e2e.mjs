@@ -27,8 +27,9 @@ try{
  if(revisedStored.version!==2||!reviseEvent||reviseEvent.version!==2)throw new Error('Revision audit persistence invalid');
  const snapshots=await db.documentRevision.findMany({where:{documentId:doc.id},orderBy:{version:'asc'}});
  if(snapshots.length!==2||snapshots[0].version!==1||snapshots[0].payload?.summary!=='e2e'||snapshots[1].version!==2||snapshots[1].payload?.summary!=='revision 2')throw new Error('Immutable revision snapshots invalid');
+ const pair=await Promise.all([call(`/documents/${doc.id}/revise`,'POST',token(creator.id),{contentHash:'sha256:'+suffix+'-v3a',payload:{summary:'concurrent A'}}),call(`/documents/${doc.id}/revise`,'POST',token(creator.id),{contentHash:'sha256:'+suffix+'-v3b',payload:{summary:'concurrent B'}})]); const statuses=pair.map(x=>x.status); if(statuses.filter(x=>x>=200&&x<300).length!==1||statuses.filter(x=>x===400).length!==1)throw new Error('Concurrent revise claim invalid '+statuses.join(',')); const afterConcurrent=await db.managedDocument.findUniqueOrThrow({where:{id:doc.id}}); const concurrentSnapshots=await db.documentRevision.findMany({where:{documentId:doc.id},orderBy:{version:'asc'}}); if(afterConcurrent.version!==3||concurrentSnapshots.length!==3||concurrentSnapshots[2].version!==3||concurrentSnapshots[2].payload?.summary!==afterConcurrent.payload?.summary)throw new Error('Concurrent revision snapshot invalid');
  r=await call(`/documents/${doc.id}/revisions`,'GET',token(viewer.id));if(!r.ok)throw new Error('VIEWER revision history read failed');const history=await r.json();
- if(history.length!==2||history[0].version!==1||history[1].version!==2)throw new Error('Revision history API invalid');
+ if(history.length!==3||history[0].version!==1||history[1].version!==2||history[2].version!==3)throw new Error('Revision history API invalid');
  r=await call(`/documents/${doc.id}/revisions/1`,'GET',token(viewer.id));if(!r.ok||(await r.json()).payload?.summary!=='e2e')throw new Error('Revision v1 API invalid');
  r=await call(`/documents/${doc.id}/revisions/999`,'GET',token(viewer.id));if(r.status!==404)throw new Error('Missing revision expected 404');
  r=await call(`/documents/${doc.id}/revisions`,'GET',token(outsider.id));if(r.status!==403)throw new Error('Cross-org revision history expected 403');
@@ -41,7 +42,7 @@ try{
  r=await call(`/documents/${doc.id}/revise`,'POST',token(creator.id),{contentHash:'sha256:after-submit',payload:{summary:'must not mutate'}});if(r.status!==400)throw new Error('Revise after submit expected 400');
  const afterDeniedRevise=await db.managedDocument.findUniqueOrThrow({where:{id:doc.id}});
  if(afterDeniedRevise.version!==beforeDeniedRevise.version||afterDeniedRevise.contentHash!==beforeDeniedRevise.contentHash||afterDeniedRevise.payload?.summary!==beforeDeniedRevise.payload?.summary)throw new Error('Denied non-DRAFT revise mutated document');
- const afterDeniedSnapshots=await db.documentRevision.count({where:{documentId:doc.id}});if(afterDeniedSnapshots!==2)throw new Error('Denied non-DRAFT revise created snapshot');
+ const afterDeniedSnapshots=await db.documentRevision.count({where:{documentId:doc.id}});if(afterDeniedSnapshots!==3)throw new Error('Denied non-DRAFT revise created snapshot');
  r=await call(`/documents/${doc.id}/approve`,'POST',token(creator.id));if(r.status!==403)throw new Error('STAFF approve expected 403');
  r=await call(`/documents/${doc.id}/approve`,'POST',token(approver.id));if(!r.ok)throw new Error('ADMIN approve failed '+r.status+' '+await r.text());
  r=await call(`/documents/${doc.id}/sign`,'POST',token(approver.id));if(r.status!==400)throw new Error('Approver signing expected SoD 400');
@@ -49,7 +50,7 @@ try{
  r=await call(`/documents/${doc.id}/archive`,'POST',token(signer.id));if(!r.ok)throw new Error('Archive failed');
  r=await call(`/documents/${doc.id}/archive`,'POST',token(signer.id));if(r.status!==400)throw new Error('Repeat archive expected 400');
  const stored=await db.managedDocument.findUniqueOrThrow({where:{id:doc.id},include:{lifecycleEvents:true}});
- if(stored.status!=='ARCHIVED'||stored.lifecycleEvents.length!==6)throw new Error('Lifecycle persistence invalid: status='+stored.status+' events='+stored.lifecycleEvents.length);
+ if(stored.status!=='ARCHIVED'||stored.lifecycleEvents.length!==7)throw new Error('Lifecycle persistence invalid: status='+stored.status+' events='+stored.lifecycleEvents.length);
  const bodies=Array.from({length:8},(_,i)=>({...body,contentHash:'sha256:'+suffix+'-'+i,payload:{summary:'concurrent '+i}}));
  const rs=await Promise.all(bodies.map(x=>call('/documents','POST',token(creator.id),x)));
  if(rs.some(x=>!x.ok))throw new Error('Concurrent create failed: '+rs.map(x=>x.status).join(','));
