@@ -1,7 +1,7 @@
 import { DocumentDepartment, DocumentTemplate } from './document-form.domain';
 
-type OperationalSeed={department:DocumentDepartment;code:string;ar:string;en:string;fields:Array<[string,string,string,boolean]>};
-const s:OperationalSeed[]=[
+type OperationalSeedTuple=[DocumentDepartment,string,string,string,Array<[string,string,string,boolean]>];
+const s:OperationalSeedTuple[]=[
 ['HR','HR-LEAVE-REQUEST','طلب إجازة','Leave Request',[['employeeNo','رقم الموظف','Employee number',true],['leaveType','نوع الإجازة','Leave type',true],['startDate','تاريخ البداية','Start date',true],['endDate','تاريخ النهاية','End date',true]]],
 ['HR','HR-PERFORMANCE-REVIEW','تقييم أداء موظف','Employee Performance Review',[['employeeNo','رقم الموظف','Employee number',true],['period','فترة التقييم','Review period',true],['rating','التقييم','Rating',true]]],
 ['TRAINING','TRN-ENROLLMENT','نموذج تسجيل متدرب','Trainee Enrollment',[['courseCode','رمز الدورة','Course code',true],['traineeId','رقم المتدرب','Trainee ID',true],['instructorId','رقم المدرب','Instructor ID',true]]],
