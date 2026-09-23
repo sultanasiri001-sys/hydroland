@@ -49,11 +49,16 @@ export class DocumentPersistenceService {
     if(to==='APPROVED' && accountId===d.createdByAccountId) throw new BadRequestException('Creator cannot approve own document.');
     if(to==='SIGNED' && (accountId===d.createdByAccountId||accountId===d.approvedByAccountId)) throw new BadRequestException('Signer must be independent from creator and approver.');
     return this.db.serializable(async tx=>{
+      const current=await tx.managedDocument.findUnique({where:{id}});
+      if(!current) throw new NotFoundException('Document not found.');
+      if(current.status!==d.status) throw new BadRequestException('Document status changed concurrently; retry transition.');
       const data:any={status:to};
       if(to==='APPROVED'){data.approvedByAccountId=accountId;data.approvedAt=new Date();}
       if(to==='SIGNED'){data.signedByAccountId=accountId;data.signedAt=new Date();}
       if(to==='ARCHIVED'){data.archivedByAccountId=accountId;data.archivedAt=new Date();}
-      const updated=await tx.managedDocument.update({where:{id},data});
+      const claimed=await tx.managedDocument.updateMany({where:{id,status:d.status},data});
+      if(claimed.count!==1) throw new BadRequestException('Document status changed concurrently; retry transition.');
+      const updated=await tx.managedDocument.findUniqueOrThrow({where:{id}});
       await tx.documentLifecycleEvent.create({data:{documentId:id,actorAccountId:accountId,action:to,fromStatus:d.status,toStatus:to,version:updated.version}});
       return updated;
     });
