@@ -1,0 +1,6 @@
+export const DOCUMENT_DEPARTMENTS = ['HR','TRAINING','MARINE_OPERATIONS','INVENTORY_LOGISTICS','FINANCE','SAFETY_COMPLIANCE_RISK','CUSTOMER_EXPERIENCE','MARKETING_GROWTH','TECHNOLOGY_CYBERSECURITY','FACILITIES_ASSETS_MAINTENANCE','ADMIN_AFFAIRS_RECORDS','EXECUTIVE_GOVERNANCE','RND_MARKET_INTELLIGENCE','LEGAL_CONTRACTS_INSURANCE'] as const;
+export type DocumentDepartment = typeof DOCUMENT_DEPARTMENTS[number];
+export type DocumentFieldType = 'TEXT'|'NUMBER'|'DATE'|'BOOLEAN'|'SELECT'|'SIGNATURE'|'TABLE';
+export interface DocumentFieldDefinition { key:string; labelAr:string; labelEn:string; type:DocumentFieldType; required:boolean; options?:string[]; }
+export interface DocumentTemplate { id:string; organizationId:string; code:string; titleAr:string; titleEn:string; department:DocumentDepartment; version:number; active:boolean; printable:boolean; fields:DocumentFieldDefinition[]; }
+export interface DocumentRecord { id:string; organizationId:string; templateId:string; templateVersion:number; department:DocumentDepartment; referenceType:string; referenceId:string; values:Record<string,unknown>; status:'DRAFT'|'FINAL'; createdByAccountId:string; finalizedByAccountId?:string; finalizedAt?:Date; }
