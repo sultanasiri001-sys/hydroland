@@ -6,5 +6,8 @@ import { DocumentPersistenceService } from './document-persistence.service';
 import { DocumentPersistenceController } from './document-persistence.controller';
 import { DocumentAuthorizationService } from './document-authorization.service';
 import { DocumentPrintService } from './document-print.service';
-@Module({imports:[AuthModule],controllers:[DocumentPersistenceController],providers:[DocumentFormService,DocumentLifecycleService,DocumentAuthorizationService,DocumentPersistenceService,DocumentPrintService],exports:[DocumentFormService,DocumentLifecycleService,DocumentPersistenceService,DocumentPrintService]})
+import { DocumentPdfService } from './document-pdf.service';
+import { DocumentBrandingService } from './document-branding.service';
+import { DocumentAssetService } from './document-asset.service';
+@Module({imports:[AuthModule],controllers:[DocumentPersistenceController],providers:[DocumentFormService,DocumentLifecycleService,DocumentAuthorizationService,DocumentPersistenceService,DocumentPrintService,DocumentPdfService,DocumentBrandingService,DocumentAssetService],exports:[DocumentFormService,DocumentLifecycleService,DocumentPersistenceService,DocumentPrintService,DocumentPdfService,DocumentBrandingService,DocumentAssetService]})
 export class DocumentFormModule {}

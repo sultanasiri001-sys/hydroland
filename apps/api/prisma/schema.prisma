@@ -217,6 +217,13 @@ model Organization {
   kind String
   registrationNumber String? @unique
   regionCode String?
+  documentLogoUrl String?
+  documentLogoAssetId String?
+  documentBrandNameAr String?
+  documentBrandNameEn String?
+  documentFooterAr String?
+  documentFooterEn String?
+  documentBrandVersion Int @default(1)
   status OrganizationStatus @default(PENDING_REVIEW)
   ownerId String
   createdAt DateTime @default(now())
@@ -235,6 +242,38 @@ model Organization {
   documentTemplates DocumentTemplate[]
   managedDocuments ManagedDocument[]
   documentReferenceCounters DocumentReferenceCounter[]
+  documentBrandSnapshots DocumentBrandSnapshot[]
+  documentAssets OrganizationDocumentAsset[]
+}
+
+model OrganizationDocumentAsset {
+  id String @id @default(uuid())
+  organizationId String
+  kind String
+  mimeType String
+  byteSize Int
+  sha256 String
+  content Bytes
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)
+  @@unique([organizationId,sha256])
+  @@index([organizationId,kind,createdAt])
+}
+
+model DocumentBrandSnapshot {
+  id String @id @default(uuid())
+  organizationId String
+  brandVersion Int
+  logoUrl String?
+  logoAssetId String?
+  brandNameAr String?
+  brandNameEn String?
+  footerAr String?
+  footerEn String?
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)
+  @@unique([organizationId,brandVersion])
+  @@index([organizationId,createdAt])
 }
 
 model OrganizationMember {
@@ -1785,6 +1824,7 @@ model ManagedDocument {
   status ManagedDocumentStatus @default(DRAFT)
   version Int @default(1)
   contentHash String
+  documentBrandVersion Int?
   payload Json
   createdByAccountId String
   approvedByAccountId String?
