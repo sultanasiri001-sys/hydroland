@@ -40,6 +40,25 @@ export class DocumentPersistenceService {
     });
   }
 
+  async revise(accountId:string,id:string,input:{contentHash:string;payload:Record<string,unknown>}){
+    const d=await this.db.managedDocument.findUnique({where:{id}});
+    if(!d) throw new NotFoundException('Document not found.');
+    await this.authz.assert(accountId,d.organizationId,'REVISE');
+    if(d.status!=='DRAFT') throw new BadRequestException('Only DRAFT documents can be revised. Approved, signed and archived records are immutable.');
+    if(!input.contentHash?.trim()) throw new BadRequestException('Content hash is required.');
+    return this.db.serializable(async tx=>{
+      const current=await tx.managedDocument.findUnique({where:{id}});
+      if(!current) throw new NotFoundException('Document not found.');
+      if(current.status!=='DRAFT'||current.version!==d.version) throw new BadRequestException('Document changed concurrently; reload before revising.');
+      const nextVersion=current.version+1;
+      const claimed=await tx.managedDocument.updateMany({where:{id,status:'DRAFT',version:current.version},data:{contentHash:input.contentHash,payload:input.payload as Prisma.InputJsonValue,version:{increment:1}}});
+      if(claimed.count!==1) throw new BadRequestException('Document changed concurrently; reload before revising.');
+      const updated=await tx.managedDocument.findUniqueOrThrow({where:{id}});
+      await tx.documentLifecycleEvent.create({data:{documentId:id,actorAccountId:accountId,action:'REVISE',fromStatus:ManagedDocumentStatus.DRAFT,toStatus:ManagedDocumentStatus.DRAFT,version:nextVersion,metadata:{previousVersion:current.version} as Prisma.InputJsonValue}});
+      return updated;
+    });
+  }
+
   async transition(accountId:string,id:string,to:ManagedDocumentStatus){
     const d=await this.db.managedDocument.findUnique({where:{id}});
     if(!d) throw new NotFoundException('Document not found.');
