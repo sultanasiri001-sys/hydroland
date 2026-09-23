@@ -7,10 +7,39 @@ import { HrAction, HrRequestContext } from './hr-policy';
 @Controller('hr/employments')
 @UseGuards(AccessTokenGuard)
 export class HrController {
+  private async actorFor(accountId: string, organizationId: string) {
+    const assignments = await this.db.roleAssignment.findMany({ where: { accountId, status: 'ACTIVE' }, select: { role: true, scope: true } });
+    const membership = await this.db.organizationMember.findFirst({ where: { accountId, organizationId, status: 'ACTIVE' }, select: { role: true } });
+    if (!membership) throw new ForbiddenException('HR_ORGANIZATION_SCOPE_DENIED');
+    const scoped = assignments.filter((a) => { const s=a.scope; if(!s||Array.isArray(s)||typeof s!=='object')return false; const ids=(s as {organizationIds?:unknown}).organizationIds; return Array.isArray(ids)&&ids.includes(organizationId); });
+    const centerScopeIds = scoped.flatMap((a) => { const s=a.scope as {centerIds?:unknown}; return Array.isArray(s.centerIds)?s.centerIds.filter((id): id is string => typeof id==='string'):[]; });
+    return { accountId, roles:[...scoped.map(a=>a.role),membership.role], organizationId, centerScopeIds };
+  }
+
+  private mapWorkflowError(error: unknown): never {
+    const code=error instanceof Error?error.message:'';
+    if (code.includes('SCOPE_DENIED')||code.includes('PERMISSION_REQUIRED')||code.includes('APPROVAL_REQUIRED')||code.includes('SELF_APPROVAL_DENIED')||code.includes('SEGREGATION_OF_DUTIES_DENIED')) throw new ForbiddenException(code);
+    if (code.includes('SEPARATION_CONTEXT_REQUIRED')||code.includes('NOT_APPROVABLE')||code.includes('CONCURRENT_MODIFICATION')||code.includes('DECISION_REQUIRED')) throw new ConflictException(code);
+    throw error;
+  }
   constructor(
     private readonly hr: HrService,
     private readonly db: DatabaseService,
   ) {}
+
+  @Patch('compensation/:compensationTermId/approve')
+  async approveCompensation(@Req() request:{auth:{accountId:string}},@Param('compensationTermId') id:string,@Body() body:{context?:HrRequestContext}) {
+    const term=await this.db.compensationTerm.findUniqueOrThrow({where:{id},select:{employment:{select:{organizationId:true}}}});
+    const actor=await this.actorFor(request.auth.accountId,term.employment.organizationId);
+    try { return await this.hr.approveCompensation({compensationTermId:id,actor,context:{organizationId:term.employment.organizationId,centerId:body?.context?.centerId,approverAccountId:request.auth.accountId}}); } catch(e){ this.mapWorkflowError(e); }
+  }
+
+  @Patch('relations/:relationsCaseId/disciplinary-approval')
+  async approveDisciplinary(@Req() request:{auth:{accountId:string}},@Param('relationsCaseId') id:string,@Body() body:{context?:HrRequestContext}) {
+    const record=await this.db.employeeRelationsCase.findUniqueOrThrow({where:{id},select:{employment:{select:{organizationId:true}}}});
+    const actor=await this.actorFor(request.auth.accountId,record.employment.organizationId);
+    try { return await this.hr.approveDisciplinaryDecision({relationsCaseId:id,actor,context:{organizationId:record.employment.organizationId,centerId:body?.context?.centerId,approverAccountId:request.auth.accountId}}); } catch(e){ this.mapWorkflowError(e); }
+  }
 
   @Patch(':employmentId/status')
   async changeStatus(
