@@ -217,6 +217,12 @@ model Organization {
   kind String
   registrationNumber String? @unique
   regionCode String?
+  documentLogoUrl String?
+  documentBrandNameAr String?
+  documentBrandNameEn String?
+  documentFooterAr String?
+  documentFooterEn String?
+  documentBrandVersion Int @default(1)
   status OrganizationStatus @default(PENDING_REVIEW)
   ownerId String
   createdAt DateTime @default(now())
@@ -235,6 +241,22 @@ model Organization {
   documentTemplates DocumentTemplate[]
   managedDocuments ManagedDocument[]
   documentReferenceCounters DocumentReferenceCounter[]
+  documentBrandSnapshots DocumentBrandSnapshot[]
+}
+
+model DocumentBrandSnapshot {
+  id String @id @default(uuid())
+  organizationId String
+  brandVersion Int
+  logoUrl String?
+  brandNameAr String?
+  brandNameEn String?
+  footerAr String?
+  footerEn String?
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)
+  @@unique([organizationId,brandVersion])
+  @@index([organizationId,createdAt])
 }
 
 model OrganizationMember {
