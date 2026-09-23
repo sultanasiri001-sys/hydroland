@@ -58,9 +58,13 @@ export class AdministrativeAffairsPersistenceService {
     const routing=await this.db.administrativeRouting.findUniqueOrThrow({where:{id:routingId},select:{id:true,organizationId:true,decision:true,assignedToAccountId:true}});
     await this.assertPermission(actorAccountId,routing.organizationId,'ASSIGN'); await this.assertMember(assigneeAccountId,routing.organizationId);
     if(routing.decision) throw new ConflictException('ADMIN_ROUTING_ALREADY_DECIDED');
-    const updated=await this.db.administrativeRouting.updateMany({where:{id:routing.id,decision:null,assignedToAccountId:routing.assignedToAccountId},data:{assignedToAccountId:assigneeAccountId}});
-    if(updated.count!==1) throw new ConflictException('ADMIN_ROUTING_CONCURRENT_MODIFICATION');
-    return this.db.administrativeRouting.findUniqueOrThrow({where:{id:routing.id}});
+    return this.db.$transaction(async tx=>{
+      const updated=await tx.administrativeRouting.updateMany({where:{id:routing.id,decision:null,assignedToAccountId:routing.assignedToAccountId},data:{assignedToAccountId:assigneeAccountId}});
+      if(updated.count!==1) throw new ConflictException('ADMIN_ROUTING_CONCURRENT_MODIFICATION');
+      const actor=await tx.account.findUniqueOrThrow({where:{id:actorAccountId},select:{personId:true}});
+      await tx.auditEvent.create({data:{actorId:actor.personId,action:'ADMIN_ROUTING_ASSIGNED',resource:'AdministrativeRouting',resourceId:routing.id,metadata:{organizationId:routing.organizationId,assigneeAccountId}}});
+      return tx.administrativeRouting.findUniqueOrThrow({where:{id:routing.id}});
+    });
   }
 
   async decide(routingId:string,decision:'APPROVE'|'REJECT',actorAccountId:string) {
