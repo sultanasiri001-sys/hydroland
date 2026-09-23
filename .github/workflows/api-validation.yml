@@ -49,6 +49,7 @@ jobs:
       - run: npm run validate:legal-governance -w @hydroland/api
       - run: npm run validate:executive-governance -w @hydroland/api
       - run: npm run validate:research-market -w @hydroland/api
+      - run: npm run validate:document-forms -w @hydroland/api
       - run: npm run validate:phase10 -w @hydroland/api
       - run: npm run validate:phase12 -w @hydroland/api
       - run: npm run validate:training -w @hydroland/api
