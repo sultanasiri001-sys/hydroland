@@ -19,7 +19,7 @@ This gate is the authoritative checklist before moving from Human Resources to O
 - [x] Performance cycle
 - [x] Employee-relations/disciplinary case
 - [x] Offboarding workflow state
-- [x] Required Prisma migration(s) validated against existing migration history.
+- [ ] Required Prisma migration(s) validated against existing migration history. BLOCKED: clean `prisma migrate deploy` currently fails at legacy migration `20260914101500_dive_logs` because `DiveLog.accountId` is TEXT while `Account.id` is UUID. Historical migrations must remain immutable; resolve via an approved bootstrap/baseline reconciliation strategy.
 
 ## Workflow and permissions
 - [x] External-center request → HR verification → required executive approval → appointment → IAM activation rule approved.
@@ -27,7 +27,7 @@ This gate is the authoritative checklist before moving from Human Resources to O
 - [x] Maker/Reviewer/Approver separation approved.
 - [x] Sensitive actions require Authentication + Authorization + Validation + Audit.
 - [x] API/application services provide the canonical enforcement point for these rules.
-- [x] End-to-end authorization tests pass. Domain authorization/isolation controls and full HTTP/DB E2E are enforced in CI, including authentication, persisted transition, audit evidence, fail-closed denial, and denial non-mutation.
+- [ ] End-to-end authorization tests pass. Domain authorization/isolation controls and HTTP/DB E2E cover authentication, persisted transition, audit evidence, fail-closed denial, and denial non-mutation, but final closure remains blocked until clean DB deployment passes, compliance denial/success paths are proven with deterministic HTTP mapping, and IAM offboarding side effects are covered E2E.
 
 ## Regulatory library
 - [x] Regulatory chain and evidence model adopted.
