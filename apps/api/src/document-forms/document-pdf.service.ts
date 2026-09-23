@@ -10,14 +10,16 @@ export class DocumentPdfService {
   async render(accountId:string,id:string){
     const c=await this.print.contract(accountId,id);
     const pdf=await PDFDocument.create();
-    const page=pdf.addPage([595.28,841.89]);
+    let page=pdf.addPage([595.28,841.89]);
     const font=await pdf.embedFont(StandardFonts.Helvetica);
     const bold=await pdf.embedFont(StandardFonts.HelveticaBold);
     const {width,height}=page.getSize();
-    if(!['SIGNED','ARCHIVED'].includes(c.status)){
-      page.drawText(c.status,{x:width/2-95,y:height/2,size:44,font:bold,color:rgb(0.82,0.82,0.82),rotate:degrees(35),opacity:0.45});
-    }
+    const decoratePage=()=>{
+      if(!['SIGNED','ARCHIVED'].includes(c.status)) page.drawText(c.status,{x:width/2-95,y:height/2,size:44,font:bold,color:rgb(0.82,0.82,0.82),rotate:degrees(35),opacity:0.45});
+    };
+    decoratePage();
     let y=height-56;
+    const nextPage=()=>{page=pdf.addPage([595.28,841.89]);y=height-56;decoratePage();};
     const text=(value:unknown,x:number,size=10,isBold=false)=>{
 
       const raw=String(value??'');
@@ -40,10 +42,11 @@ export class DocumentPdfService {
     text(`Document version: ${c.documentVersion} | Brand version: ${c.branding.brandVersion}`,48,9);
     y-=10;
     for(const field of c.fields){
-      if(y<80){ y=height-56; pdf.addPage([595.28,841.89]); }
+      if(y<80) nextPage();
       text(`${field.labelEn||field.key}: ${field.value??''}`,48,10);
     }
     y-=10;
+    if(y<100) nextPage();
     text(`Created by: ${c.approvals.createdByAccountId}`,48,8);
     if(c.approvals.approvedByAccountId) text(`Approved by: ${c.approvals.approvedByAccountId}`,48,8);
     if(c.approvals.signedByAccountId) text(`Signed by: ${c.approvals.signedByAccountId}`,48,8);
