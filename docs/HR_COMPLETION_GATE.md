@@ -28,6 +28,9 @@ This gate is the authoritative checklist before moving from Human Resources to O
 - [x] Sensitive actions require Authentication + Authorization + Validation + Audit.
 - [x] API/application services provide the canonical enforcement point for these rules.
 - [x] End-to-end authorization and compliance tests pass: authentication, persisted transition, audit evidence, denial non-mutation, deterministic `HR_COMPLIANCE_*` HTTP conflict mapping, missing-control fail-closed behavior, and valid-control approval success are enforced in CI.
+- [x] All nine canonical HR actions are policy-bound and semantically routed: staffing request, candidate verification, appointment approval, employment change, compensation approval, employee-relations opening, disciplinary approval, termination approval, and IAM change.
+- [x] Candidate verification has a dedicated persisted workflow with role enforcement, denial non-mutation/no-success-audit behavior, approval provenance, and E2E coverage.
+- [x] Compensation and disciplinary approvals use dedicated workflows and cannot bypass the shared fail-closed HR compliance gate; E2E proves 409/no mutation/no success audit when compliance is unavailable and successful audited persistence when controls are valid.
 
 ## Regulatory library
 - [x] Regulatory chain and evidence model adopted.
@@ -36,5 +39,5 @@ This gate is the authoritative checklist before moving from Human Resources to O
 - [x] HR compliance contract fails closed when mandatory requirement/version/evidence/validation is missing or a blocking finding exists.
 
 ## Closure rule
-HR is NOT COMPLETE until every unchecked item above is implemented and validated. Do not report HR as 100% complete and do not move to Operations before this gate is green.
+HR is NOT COMPLETE until every unchecked item above is implemented and validated. This branch has a green completion gate, but department closure additionally requires merge to `main` and the required post-merge validation checks to remain green.
 - [x] IAM offboarding E2E passes: incomplete clearance is fail-closed; approved completed clearance atomically offboards employment, revokes active sessions, archives active roles with `endedAt`, closes the offboarding case with IAM timestamps, and emits audit evidence.
