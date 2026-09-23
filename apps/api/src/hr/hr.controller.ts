@@ -25,9 +25,8 @@ export class HrController {
     if (!body || typeof body !== 'object') throw new BadRequestException('HR request body is required.');
     if (!body.context || typeof body.context !== 'object') throw new BadRequestException('HR request context is required.');
     const allowedActions: HrAction[] = [
-      'STAFFING_REQUEST', 'VERIFY_CANDIDATE', 'APPROVE_APPOINTMENT', 'CHANGE_EMPLOYMENT',
-      'APPROVE_COMPENSATION_CHANGE', 'OPEN_EMPLOYEE_RELATIONS_CASE',
-      'APPROVE_DISCIPLINARY_DECISION', 'APPROVE_TERMINATION', 'APPLY_IAM_CHANGE',
+      'STAFFING_REQUEST', 'APPROVE_APPOINTMENT', 'CHANGE_EMPLOYMENT',
+      'APPROVE_TERMINATION', 'APPLY_IAM_CHANGE',
     ];
     const allowedStatuses = ['DRAFT', 'PENDING_APPROVAL', 'ACTIVE', 'ON_LEAVE', 'SUSPENDED', 'TERMINATED', 'OFFBOARDED'];
     if (!allowedActions.includes(body.action)) throw new BadRequestException('Invalid HR action.');
@@ -81,26 +80,6 @@ export class HrController {
       if (!movement) throw new ConflictException('HR_PERSISTED_APPROVAL_CONTEXT_REQUIRED');
       requesterAccountId = movement.requestedByAccountId;
       reviewerAccountId = movement.reviewedByAccountId ?? undefined;
-    } else if (body.action === 'APPROVE_COMPENSATION_CHANGE') {
-      const compensation = await this.db.compensationTerm.findFirst({
-        where: { employmentId, status: { in: ['HR_REVIEW', 'APPROVAL_REQUIRED', 'APPROVED'] } },
-        orderBy: { createdAt: 'desc' },
-        select: { requestedByAccountId: true, reviewedByAccountId: true },
-      });
-      if (!compensation?.requestedByAccountId || !compensation.reviewedByAccountId) {
-        throw new ConflictException('HR_PERSISTED_COMPENSATION_APPROVAL_CONTEXT_REQUIRED');
-      }
-      requesterAccountId = compensation.requestedByAccountId;
-      reviewerAccountId = compensation.reviewedByAccountId;
-    } else if (body.action === 'APPROVE_DISCIPLINARY_DECISION') {
-      const relationsCase = await this.db.employeeRelationsCase.findFirst({
-        where: { employmentId, status: { in: ['HR_REVIEW', 'APPROVAL_REQUIRED', 'APPROVED'] } },
-        orderBy: { createdAt: 'desc' },
-        select: { openedByAccountId: true, reviewedByAccountId: true },
-      });
-      if (!relationsCase) throw new ConflictException('HR_PERSISTED_DISCIPLINARY_CONTEXT_REQUIRED');
-      requesterAccountId = relationsCase.openedByAccountId;
-      reviewerAccountId = relationsCase.reviewedByAccountId ?? undefined;
     }
 
     try {
