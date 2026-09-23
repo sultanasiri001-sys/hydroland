@@ -6,7 +6,8 @@ const suffix=Date.now().toString(),enc=v=>Buffer.from(JSON.stringify(v)).toStrin
 const token=id=>{const b=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:id,iat:now,exp:now+900})}`;return `${b}.${createHmac('sha256',secret).update(b).digest('base64url')}`};
 const mk=async(last)=>{const p=await db.person.create({data:{firstName:'Document',lastName:last}});return db.account.create({data:{personId:p.id,email:`doc-${last.toLowerCase()}-${suffix}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}})};
 const creator=await mk('Creator'),approver=await mk('Approver'),signer=await mk('Signer'),viewer=await mk('Viewer'),outsider=await mk('Outsider'),suspended=await mk('Suspended');
-const org=await db.organization.create({data:{displayName:'Document E2E '+suffix,kind:'DIVE_CENTER',ownerId:signer.id}});
+const org=await db.organization.create({data:{displayName:'Document E2E '+suffix,kind:'DIVE_CENTER',ownerId:signer.id,documentBrandNameEn:'E2E Dive Center',documentBrandVersion:1}});
+await db.documentBrandSnapshot.create({data:{organizationId:org.id,brandVersion:1,brandNameEn:'E2E Dive Center',footerEn:'Issued by E2E Dive Center'}});
 const other=await db.organization.create({data:{displayName:'Document Other '+suffix,kind:'DIVE_CENTER',ownerId:outsider.id}});
 for(const [a,o,r,s='ACTIVE'] of [[creator,org,'STAFF'],[approver,org,'ADMIN'],[signer,org,'OWNER'],[viewer,org,'VIEWER'],[outsider,other,'ADMIN'],[suspended,org,'STAFF','SUSPENDED']])await db.organizationMember.create({data:{organizationId:o.id,accountId:a.id,role:r,status:s}});
 const call=(path,method,t,body)=>fetch(base+path,{method,headers:{authorization:`Bearer ${t}`,'content-type':'application/json'},body:body?JSON.stringify(body):undefined});
@@ -21,12 +22,16 @@ try{
  if(!new RegExp('^HYD-SAFETY_COMPLIANCE_RISK-\\d{4}-\\d{6}$').test(doc.referenceNumber))throw new Error('Reference format invalid '+doc.referenceNumber);
  r=await call(`/documents/${doc.id}/print-contract`,'GET',token(viewer.id));if(!r.ok)throw new Error('VIEWER print contract read failed '+r.status+' '+await r.text());const printContract=await r.json();
  if(printContract.documentId!==doc.id||printContract.organizationId!==org.id||printContract.referenceNumber!==doc.referenceNumber||printContract.documentVersion!==1||printContract.contentHash!==body.contentHash)throw new Error('Print contract document identity invalid');
+ if(printContract.branding?.brandVersion!==1||printContract.branding?.brandNameEn!=='E2E Dive Center')throw new Error('Pinned print branding invalid');
+ r=await call(`/documents/${doc.id}/pdf`,'GET',token(viewer.id));if(!r.ok)throw new Error('VIEWER PDF read failed '+r.status+' '+await r.text());if(r.headers.get('content-type')!=='application/pdf')throw new Error('PDF content type invalid');const pdfBytes=new Uint8Array(await r.arrayBuffer());if(new TextDecoder().decode(pdfBytes.slice(0,5))!=='%PDF-')throw new Error('PDF signature invalid');
+ r=await call(`/documents/${doc.id}/pdf`,'GET',token(outsider.id));if(r.status!==403)throw new Error('Cross-org PDF expected 403');
  if(printContract.template?.id!==template.id||printContract.template?.code!==templateBody.code||printContract.template?.titleAr!==templateBody.titleAr||printContract.template?.titleEn!==templateBody.titleEn||printContract.template?.printable!==true)throw new Error('Print contract template metadata invalid');
  const printSummary=printContract.fields?.find(x=>x.key==='summary');if(!printSummary||printSummary.value!=='e2e'||printSummary.labelAr!=='الملخص'||printSummary.labelEn!=='Summary'||printSummary.required!==true)throw new Error('Print contract field mapping invalid');
  r=await call(`/documents/${doc.id}/print-contract`,'GET',token(outsider.id));if(r.status!==403)throw new Error('Cross-org print contract expected 403');
  const nonPrintable=await db.documentTemplate.create({data:{organizationId:org.id,code:'E2E-NOPRINT-'+suffix,titleAr:'غير قابل للطباعة',titleEn:'Non printable',department:templateBody.department,version:1,status:'ACTIVE',printable:false,fields:templateBody.fields}});
  const nonPrintableDoc=await db.managedDocument.create({data:{organizationId:org.id,templateId:nonPrintable.id,referenceNumber:'HYD-E2E-NOPRINT-'+suffix,department:templateBody.department,status:'DRAFT',version:1,contentHash:'sha256:noprint-'+suffix,payload:{summary:'hidden'},createdByAccountId:creator.id}});
  r=await call(`/documents/${nonPrintableDoc.id}/print-contract`,'GET',token(viewer.id));if(r.status!==400)throw new Error('Non-printable template expected 400');
+ r=await call(`/documents/${nonPrintableDoc.id}/pdf`,'GET',token(viewer.id));if(r.status!==400)throw new Error('Non-printable PDF expected 400');
  r=await call(`/documents/${doc.id}/revise`,'POST',token(viewer.id),{contentHash:'sha256:viewer',payload:{summary:'denied'}});if(r.status!==403)throw new Error('VIEWER revise expected 403');
  r=await call(`/documents/${doc.id}/revise`,'POST',token(creator.id),{contentHash:'sha256:'+suffix+'-v2',payload:{summary:'revision 2'}});if(!r.ok)throw new Error('DRAFT revise failed '+r.status+' '+await r.text());const revised=await r.json();
  if(revised.version!==2||revised.payload?.summary!=='revision 2')throw new Error('Revision version/payload invalid');
