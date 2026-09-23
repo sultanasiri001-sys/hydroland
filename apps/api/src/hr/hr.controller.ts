@@ -19,7 +19,7 @@ export class HrController {
   private mapWorkflowError(error: unknown): never {
     const code=error instanceof Error?error.message:'';
     if (code.includes('SCOPE_DENIED')||code.includes('PERMISSION_REQUIRED')||code.includes('APPROVAL_REQUIRED')||code.includes('SELF_APPROVAL_DENIED')||code.includes('SEGREGATION_OF_DUTIES_DENIED')) throw new ForbiddenException(code);
-    if (code.includes('SEPARATION_CONTEXT_REQUIRED')||code.includes('NOT_APPROVABLE')||code.includes('CONCURRENT_MODIFICATION')||code.includes('DECISION_REQUIRED')) throw new ConflictException(code);
+    if (code.startsWith('HR_COMPLIANCE_')||code.includes('SEPARATION_CONTEXT_REQUIRED')||code.includes('NOT_APPROVABLE')||code.includes('CONCURRENT_MODIFICATION')||code.includes('DECISION_REQUIRED')) throw new ConflictException(code);
     throw error;
   }
   constructor(
