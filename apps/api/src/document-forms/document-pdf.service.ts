@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import { readFile } from 'node:fs/promises';
-import { createRequire } from 'node:module';
+import { join } from 'node:path';
 import { DocumentPrintService } from './document-print.service';
 import { DocumentAssetService } from './document-asset.service';
 
@@ -17,8 +17,7 @@ export class DocumentPdfService {
     const page=pdf.addPage([595.28,841.89]);
     const font=await pdf.embedFont(StandardFonts.Helvetica);
     const bold=await pdf.embedFont(StandardFonts.HelveticaBold);
-    const require=createRequire(import.meta.url);
-    const arabicFontPath=require.resolve('@fontsource/noto-sans-arabic/files/noto-sans-arabic-arabic-400-normal.woff');
+    const arabicFontPath=join(process.cwd(),'node_modules','@fontsource','noto-sans-arabic','files','noto-sans-arabic-arabic-400-normal.woff');
     const arabicFont=await pdf.embedFont(await readFile(arabicFontPath),{subset:true});
     const {width,height}=page.getSize();
     if(!['SIGNED','ARCHIVED'].includes(c.status)){
