@@ -2,7 +2,7 @@
 -- Existing production shift tables may already exist from historical migrations.
 -- Only the new posting provenance column is introduced here; restored models map to existing tables.
 ALTER TABLE "FinanceEntry"
-  ADD COLUMN IF NOT EXISTS "postedByAccountId" TEXT;
+  ADD COLUMN IF NOT EXISTS "postedByAccountId" UUID;
 
 CREATE INDEX IF NOT EXISTS "FinanceEntry_postedByAccountId_idx"
   ON "FinanceEntry"("postedByAccountId");
