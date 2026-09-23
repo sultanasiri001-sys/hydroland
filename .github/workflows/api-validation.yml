@@ -94,3 +94,4 @@ jobs:
           HR_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/hr-http-e2e.mjs
           ADMIN_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/administrative-affairs-http-e2e.mjs
           FINANCE_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/finance-http-e2e.mjs
+          DOCUMENT_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/document-http-db-e2e.mjs
