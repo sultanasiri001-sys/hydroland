@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 const prisma = new PrismaClient();
 const HR = '20260923092000_hr_candidate_verification';
 const ADMIN = '20260923102000_administrative_affairs_persistence';
+const CALENDAR = '20260923114000_unified_calendar_events';
 
 async function migrationFailure(name) {
   const rows = await prisma.$queryRawUnsafe(
@@ -182,9 +183,78 @@ async function recoverAdministrativeAffairs() {
   console.log('[migration-recovery] administrative affairs recovered with UUID-compatible schema');
 }
 
+async function recoverUnifiedCalendar() {
+  const failed = await migrationFailure(CALENDAR);
+  if (!failed) {
+    console.log('[migration-recovery] no open unified-calendar failure; no-op');
+    return;
+  }
+  if (failed.applied_steps_count !== 0) {
+    throw new Error('Refusing recovery: unified-calendar migration partially applied');
+  }
+
+  if (await columnType('Trip', 'id') !== 'uuid') {
+    throw new Error('Refusing recovery: Trip.id is not uuid');
+  }
+  if (await columnType('CalendarAllocation', 'tripId') !== 'uuid') {
+    throw new Error('Refusing recovery: CalendarAllocation.tripId is not uuid');
+  }
+  if (await columnType('CalendarAllocation', 'id') !== 'text') {
+    throw new Error('Refusing recovery: CalendarAllocation.id is not text');
+  }
+  if (await columnType('CalendarEvent', 'id')) {
+    throw new Error('Refusing recovery: CalendarEvent already exists');
+  }
+  if (await columnType('CalendarAllocation', 'eventId')) {
+    throw new Error('Refusing recovery: CalendarAllocation.eventId already exists');
+  }
+
+  const calendarStatements = [
+    `CREATE TABLE "CalendarEvent" (
+      "id" TEXT NOT NULL,
+      "organizationId" TEXT,
+      "type" TEXT NOT NULL,
+      "referenceType" TEXT NOT NULL,
+      "referenceId" TEXT NOT NULL,
+      "title" TEXT NOT NULL,
+      "startsAt" TIMESTAMP(3) NOT NULL,
+      "endsAt" TIMESTAMP(3) NOT NULL,
+      "status" TEXT NOT NULL DEFAULT 'ACTIVE',
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL,
+      CONSTRAINT "CalendarEvent_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE UNIQUE INDEX "CalendarEvent_referenceType_referenceId_key" ON "CalendarEvent"("referenceType","referenceId")`,
+    `CREATE INDEX "CalendarEvent_organizationId_startsAt_endsAt_idx" ON "CalendarEvent"("organizationId","startsAt","endsAt")`,
+    `CREATE INDEX "CalendarEvent_type_status_startsAt_idx" ON "CalendarEvent"("type","status","startsAt")`,
+    `ALTER TABLE "CalendarAllocation" ADD COLUMN "eventId" TEXT`,
+    `INSERT INTO "CalendarEvent" ("id","type","referenceType","referenceId","title","startsAt","endsAt","status","createdAt","updatedAt")
+     SELECT gen_random_uuid()::text,'TRIP','TRIP',t."id"::text,t."title",t."startsAt",t."endsAt",
+            CASE WHEN t."status"::text='CANCELLED' THEN 'CANCELLED' ELSE 'ACTIVE' END,
+            CURRENT_TIMESTAMP,CURRENT_TIMESTAMP
+       FROM "Trip" t
+      WHERE EXISTS (SELECT 1 FROM "CalendarAllocation" ca WHERE ca."tripId"=t."id")`,
+    `UPDATE "CalendarAllocation" ca
+        SET "eventId"=ce."id"
+       FROM "CalendarEvent" ce
+      WHERE ce."referenceType"='TRIP' AND ce."referenceId"=ca."tripId"::text`,
+    `ALTER TABLE "CalendarAllocation" ALTER COLUMN "eventId" SET NOT NULL`,
+    `ALTER TABLE "CalendarAllocation" DROP CONSTRAINT IF EXISTS "CalendarAllocation_tripId_fkey"`,
+    `DROP INDEX IF EXISTS "CalendarAllocation_tripId_status_idx"`,
+    `ALTER TABLE "CalendarAllocation" DROP COLUMN "tripId"`,
+    `ALTER TABLE "CalendarAllocation" ADD CONSTRAINT "CalendarAllocation_eventId_fkey" FOREIGN KEY ("eventId") REFERENCES "CalendarEvent"("id") ON DELETE RESTRICT ON UPDATE CASCADE`,
+    `CREATE INDEX "CalendarAllocation_eventId_status_idx" ON "CalendarAllocation"("eventId","status")`,
+  ];
+
+  await prisma.$transaction(calendarStatements.map((sql) => prisma.$executeRawUnsafe(sql)));
+  markApplied(CALENDAR);
+  console.log('[migration-recovery] unified calendar recovered with explicit UUID-to-text conversion');
+}
+
 async function main() {
   await recoverHr();
   await recoverAdministrativeAffairs();
+  await recoverUnifiedCalendar();
 }
 
 main().finally(() => prisma.$disconnect());
