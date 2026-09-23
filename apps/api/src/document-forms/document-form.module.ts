@@ -1,0 +1,1 @@
+import { Module } from '@nestjs/common'; import { DocumentFormService } from './document-form.service'; @Module({providers:[DocumentFormService],exports:[DocumentFormService]}) export class DocumentFormModule {}
