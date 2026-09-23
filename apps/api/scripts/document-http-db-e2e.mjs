@@ -25,10 +25,23 @@ try{
  const revisedStored=await db.managedDocument.findUniqueOrThrow({where:{id:doc.id},include:{lifecycleEvents:{orderBy:{occurredAt:'asc'}}}});
  const reviseEvent=revisedStored.lifecycleEvents.find(x=>x.action==='REVISE');
  if(revisedStored.version!==2||!reviseEvent||reviseEvent.version!==2)throw new Error('Revision audit persistence invalid');
+ const snapshots=await db.documentRevision.findMany({where:{documentId:doc.id},orderBy:{version:'asc'}});
+ if(snapshots.length!==2||snapshots[0].version!==1||snapshots[0].payload?.summary!=='e2e'||snapshots[1].version!==2||snapshots[1].payload?.summary!=='revision 2')throw new Error('Immutable revision snapshots invalid');
+ r=await call(`/documents/${doc.id}/revisions`,'GET',token(viewer.id));if(!r.ok)throw new Error('VIEWER revision history read failed');const history=await r.json();
+ if(history.length!==2||history[0].version!==1||history[1].version!==2)throw new Error('Revision history API invalid');
+ r=await call(`/documents/${doc.id}/revisions/1`,'GET',token(viewer.id));if(!r.ok||(await r.json()).payload?.summary!=='e2e')throw new Error('Revision v1 API invalid');
+ r=await call(`/documents/${doc.id}/revisions/999`,'GET',token(viewer.id));if(r.status!==404)throw new Error('Missing revision expected 404');
+ r=await call(`/documents/${doc.id}/revisions`,'GET',token(outsider.id));if(r.status!==403)throw new Error('Cross-org revision history expected 403');
+ r=await call(`/documents/${doc.id}/revise`,'POST',token(outsider.id),{contentHash:'sha256:outsider',payload:{summary:'cross-org denied'}});if(r.status!==403)throw new Error('Cross-org revise expected 403');
 
  r=await call(`/documents/${doc.id}`,'GET',token(outsider.id));if(r.status!==403)throw new Error('Cross-org read expected 403');
  r=await call(`/documents/${doc.id}/approve`,'POST',token(approver.id));if(r.status!==400)throw new Error('Approve before submit expected 400');
  r=await call(`/documents/${doc.id}/submit`,'POST',token(creator.id));if(!r.ok)throw new Error('Submit failed');
+ const beforeDeniedRevise=await db.managedDocument.findUniqueOrThrow({where:{id:doc.id}});
+ r=await call(`/documents/${doc.id}/revise`,'POST',token(creator.id),{contentHash:'sha256:after-submit',payload:{summary:'must not mutate'}});if(r.status!==400)throw new Error('Revise after submit expected 400');
+ const afterDeniedRevise=await db.managedDocument.findUniqueOrThrow({where:{id:doc.id}});
+ if(afterDeniedRevise.version!==beforeDeniedRevise.version||afterDeniedRevise.contentHash!==beforeDeniedRevise.contentHash||afterDeniedRevise.payload?.summary!==beforeDeniedRevise.payload?.summary)throw new Error('Denied non-DRAFT revise mutated document');
+ const afterDeniedSnapshots=await db.documentRevision.count({where:{documentId:doc.id}});if(afterDeniedSnapshots!==2)throw new Error('Denied non-DRAFT revise created snapshot');
  r=await call(`/documents/${doc.id}/approve`,'POST',token(creator.id));if(r.status!==403)throw new Error('STAFF approve expected 403');
  r=await call(`/documents/${doc.id}/approve`,'POST',token(approver.id));if(!r.ok)throw new Error('ADMIN approve failed '+r.status+' '+await r.text());
  r=await call(`/documents/${doc.id}/sign`,'POST',token(approver.id));if(r.status!==400)throw new Error('Approver signing expected SoD 400');
