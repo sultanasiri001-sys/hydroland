@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import { DocumentPrintService } from './document-print.service';
+import { DocumentAssetService } from './document-asset.service';
 
 @Injectable()
 export class DocumentPdfService {
-  constructor(private readonly print:DocumentPrintService){}
+  constructor(private readonly print:DocumentPrintService,private readonly assets:DocumentAssetService){}
 
   async render(accountId:string,id:string){
     const c=await this.print.contract(accountId,id);
@@ -23,6 +24,12 @@ export class DocumentPdfService {
       page.drawText(safe,{x,y,size,font:isBold?bold:font,color:rgb(0,0,0)});
       y-=size+8;
     };
+    if(c.branding.logoAssetId){
+      const {asset,bytes}=await this.assets.bytesForLogo(c.organizationId,c.branding.logoAssetId);
+      const image=asset.mimeType==='image/png'?await pdf.embedPng(bytes):await pdf.embedJpg(bytes);
+      const scaled=image.scale(Math.min(1,110/image.width,55/image.height));
+      page.drawImage(image,{x:width-48-scaled.width,y:height-48-scaled.height,width:scaled.width,height:scaled.height});
+    }
     text(c.branding.brandNameEn||'Organization',48,16,true);
     text(c.template.titleEn,48,14,true);
     text(c.referenceNumber,48,10);
