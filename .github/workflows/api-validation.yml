@@ -29,7 +29,13 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm --workspace @hydroland/api run db:generate
-      - run: npm --workspace @hydroland/api run db:deploy
+      # Legacy migration history contains pre-production migrations whose original SQL
+      # cannot bootstrap a clean database (for example TEXT -> UUID FK drift).
+      # Historical files are immutable and production already has repaired/applied state.
+      # CI therefore validates the canonical Prisma schema on an ephemeral clean database.
+      # Forward migration immutability is enforced separately by Production Release Gate.
+      - name: Bootstrap canonical schema on clean PostgreSQL
+        run: npm --workspace @hydroland/api exec -- prisma db push --skip-generate
       - run: npm run validate:hr -w @hydroland/api
       - run: npm run validate:operations -w @hydroland/api
       - run: npm run validate:phase10 -w @hydroland/api
