@@ -1,1 +1,7 @@
-import { Module } from '@nestjs/common'; import { DocumentFormService } from './document-form.service'; import { DocumentLifecycleService } from './document-lifecycle.service'; @Module({providers:[DocumentFormService,DocumentLifecycleService],exports:[DocumentFormService,DocumentLifecycleService]}) export class DocumentFormModule {}
+import { Module } from '@nestjs/common';
+import { DocumentFormService } from './document-form.service';
+import { DocumentLifecycleService } from './document-lifecycle.service';
+import { DocumentPersistenceService } from './document-persistence.service';
+import { DocumentPersistenceController } from './document-persistence.controller';
+@Module({controllers:[DocumentPersistenceController],providers:[DocumentFormService,DocumentLifecycleService,DocumentPersistenceService],exports:[DocumentFormService,DocumentLifecycleService,DocumentPersistenceService]})
+export class DocumentFormModule {}
