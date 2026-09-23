@@ -17,7 +17,7 @@ try{
   const org=await db.organization.create({data:{displayName:'Finance E2E '+suffix,kind:'DIVE_CENTER',regionCode:'ASIR',ownerId:requester.a.id}});ids.org=org.id;
   let r=await fetch(base+'/finance/admin/accounts',{method:'POST',headers:auth(requester.t),body:JSON.stringify({organizationId:org.id,name:'E2E Cash',currency:'SAR'})});
   if(!r.ok)throw new Error('Finance account create failed '+r.status+' '+await r.text()); const fa=await r.json();ids.fa=fa.id;
-  r=await fetch(base+'/finance/admin/entries',{method:'POST',headers:auth(requester.t),body:JSON.stringify({organizationId:org.id,financeAccountId:fa.id,type:'PAYMENT',amountMinor:25000,currency:'SAR',referenceType:'E2E',referenceId:suffix})});
+  r=await fetch(base+'/finance/admin/entries',{method:'POST',headers:auth(requester.t),body:JSON.stringify({organizationId:org.id,financeAccountId:fa.id,type:'REVENUE',amountMinor:25000,currency:'SAR',referenceType:'E2E',referenceId:suffix})});
   if(!r.ok)throw new Error('Finance entry create failed '+r.status+' '+await r.text());const entry=await r.json();ids.entry=entry.id;
   r=await fetch(base+`/finance/admin/entries/${entry.id}/decision`,{method:'POST',headers:auth(requester.t),body:JSON.stringify({approved:true})});
   if(r.status<400)throw new Error('Self approval was accepted');
