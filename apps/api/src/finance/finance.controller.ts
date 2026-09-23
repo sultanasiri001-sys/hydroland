@@ -4,16 +4,53 @@ import { AdminGuard } from '../admin/admin.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { PaymentsService } from '../payments/payments.service';
 import { FinancePersistenceService } from './finance-persistence.service';
+import { FinanceShiftsService } from './finance-shifts.service';
+import { FinanceReceivablesService } from './finance-receivables.service';
 
 type AuthenticatedRequest = { auth: { accountId: string } };
 
 @UseGuards(AccessTokenGuard)
 @Controller('finance')
 export class FinanceController {
-  constructor(private readonly payments: PaymentsService, private readonly finance: FinancePersistenceService) {}
+  constructor(private readonly payments: PaymentsService, private readonly finance: FinancePersistenceService, private readonly shifts: FinanceShiftsService, private readonly receivables: FinanceReceivablesService) {}
 
   @Get('mine/payments')
   mine(@Req() request: AuthenticatedRequest) { return this.payments.mine(request.auth.accountId); }
+
+  @Post('shifts/open')
+  openShift(@Req() request: AuthenticatedRequest, @Body() body: { centerOrgUnitId: string; openingBalanceMinor: number }) {
+    return this.shifts.openShift(request.auth.accountId, body.centerOrgUnitId, body.openingBalanceMinor);
+  }
+
+  @Post('shifts/:shiftId/entries')
+  recordShiftEntry(@Req() request: AuthenticatedRequest, @Param('shiftId') shiftId: string, @Body() body: { type: 'REVENUE'|'EXPENSE'|'REFUND'|'ADJUSTMENT'; amountMinor: number; paymentId?: string; referenceType?: string; referenceId?: string; description?: string }) {
+    return this.shifts.recordEntry(request.auth.accountId, shiftId, body);
+  }
+
+  @Post('shifts/:shiftId/handover')
+  requestHandover(@Req() request: AuthenticatedRequest, @Param('shiftId') shiftId: string, @Body() body: { toAccountantId: string; actualCashMinor: number; varianceReason?: string }) {
+    return this.shifts.requestHandover(request.auth.accountId, shiftId, body.toAccountantId, body.actualCashMinor, body.varianceReason);
+  }
+
+  @Post('shifts/handovers/:handoverId/accept')
+  acceptHandover(@Req() request: AuthenticatedRequest, @Param('handoverId') handoverId: string) {
+    return this.shifts.acceptHandover(request.auth.accountId, handoverId);
+  }
+
+  @Post('receivables')
+  createReceivable(@Req() request: AuthenticatedRequest, @Body() body: { invoiceId: string; customerAccountId: string; centerOrgUnitId: string; totalMinor: number; paidMinor?: number; dueAt: string; creditLimitMinor?: number; installments?: Array<{ sequence: number; amountMinor: number; dueAt: string }> }) {
+    return this.receivables.createDeferredInvoice(request.auth.accountId, { ...body, dueAt: new Date(body.dueAt), installments: body.installments?.map((item) => ({ ...item, dueAt: new Date(item.dueAt) })) });
+  }
+
+  @Post('receivables/:receivableId/collections')
+  collectReceivable(@Req() request: AuthenticatedRequest, @Param('receivableId') receivableId: string, @Body() body: { paymentId: string; amountMinor: number; receiptNumber: string; installmentId?: string }) {
+    return this.receivables.collect(request.auth.accountId, receivableId, body);
+  }
+
+  @Get('centers/:centerOrgUnitId/receivables')
+  branchReceivables(@Req() request: AuthenticatedRequest, @Param('centerOrgUnitId') centerOrgUnitId: string) {
+    return this.receivables.branchAr(request.auth.accountId, centerOrgUnitId);
+  }
 
   @UseGuards(AdminGuard)
   @Post('admin/accounts')
