@@ -177,6 +177,11 @@ model Account {
   organizationMemberships OrganizationMember[]
   organizationsOwned Organization[] @relation("OrganizationOwner")
   policyUpdates PolicyControl[] @relation("PolicyUpdatedBy")
+  managedDocumentsCreated ManagedDocument[] @relation("ManagedDocumentCreator")
+  managedDocumentsApproved ManagedDocument[] @relation("ManagedDocumentApprover")
+  managedDocumentsSigned ManagedDocument[] @relation("ManagedDocumentSigner")
+  managedDocumentsArchived ManagedDocument[] @relation("ManagedDocumentArchiver")
+  documentLifecycleEvents DocumentLifecycleEvent[] @relation("DocumentLifecycleActor")
   hrCandidatesVerified HrCandidate[] @relation("HrCandidateVerifiedBy")
   employments Employment[]
   employmentMovementsRequested EmploymentMovement[] @relation("EmploymentMovementRequestedBy")
@@ -226,6 +231,8 @@ model Organization {
   administrativeRecords AdministrativeRecord[]
   administrativeRoutings AdministrativeRouting[]
   administrativeMeetings AdministrativeMeeting[]
+  documentTemplates DocumentTemplate[]
+  managedDocuments ManagedDocument[]
 }
 
 model OrganizationMember {
@@ -1732,4 +1739,84 @@ model MarineReadinessSnapshot {
   marineAsset MarineAsset @relation(fields:[marineAssetId],references:[id],onDelete:Restrict)
   @@index([marineAssetId,checkedAt])
   @@index([tripId,status])
+}
+
+
+enum ManagedDocumentStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  SIGNED
+  ARCHIVED
+}
+
+enum DocumentTemplateStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model DocumentTemplate {
+  id String @id @default(uuid())
+  organizationId String
+  code String
+  titleAr String
+  titleEn String
+  department String
+  version Int @default(1)
+  status DocumentTemplateStatus @default(ACTIVE)
+  printable Boolean @default(true)
+  fields Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)
+  documents ManagedDocument[]
+  @@unique([organizationId,code,version])
+  @@index([organizationId,department,status])
+}
+
+model ManagedDocument {
+  id String @id @default(uuid())
+  organizationId String
+  templateId String
+  referenceNumber String
+  department String
+  status ManagedDocumentStatus @default(DRAFT)
+  version Int @default(1)
+  contentHash String
+  payload Json
+  createdByAccountId String
+  approvedByAccountId String?
+  signedByAccountId String?
+  archivedByAccountId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  approvedAt DateTime?
+  signedAt DateTime?
+  archivedAt DateTime?
+  organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)
+  template DocumentTemplate @relation(fields:[templateId], references:[id], onDelete:Restrict)
+  createdBy Account @relation("ManagedDocumentCreator", fields:[createdByAccountId], references:[id], onDelete:Restrict)
+  approvedBy Account? @relation("ManagedDocumentApprover", fields:[approvedByAccountId], references:[id], onDelete:Restrict)
+  signedBy Account? @relation("ManagedDocumentSigner", fields:[signedByAccountId], references:[id], onDelete:Restrict)
+  archivedBy Account? @relation("ManagedDocumentArchiver", fields:[archivedByAccountId], references:[id], onDelete:Restrict)
+  lifecycleEvents DocumentLifecycleEvent[]
+  @@unique([organizationId,referenceNumber])
+  @@index([organizationId,department,status])
+  @@index([templateId,status])
+}
+
+model DocumentLifecycleEvent {
+  id String @id @default(uuid())
+  documentId String
+  actorAccountId String
+  action String
+  fromStatus ManagedDocumentStatus?
+  toStatus ManagedDocumentStatus
+  version Int
+  metadata Json?
+  occurredAt DateTime @default(now())
+  document ManagedDocument @relation(fields:[documentId], references:[id], onDelete:Restrict)
+  actor Account @relation("DocumentLifecycleActor", fields:[actorAccountId], references:[id], onDelete:Restrict)
+  @@index([documentId,occurredAt])
+  @@index([actorAccountId,occurredAt])
 }

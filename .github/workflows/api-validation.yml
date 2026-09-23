@@ -53,6 +53,7 @@ jobs:
       - run: npm run validate:document-template-catalog -w @hydroland/api
       - run: npm run validate:operational-document-catalog -w @hydroland/api
       - run: npm run validate:document-lifecycle -w @hydroland/api
+      - run: npm run validate:document-persistence -w @hydroland/api
       - run: npm run validate:phase10 -w @hydroland/api
       - run: npm run validate:phase12 -w @hydroland/api
       - run: npm run validate:training -w @hydroland/api
