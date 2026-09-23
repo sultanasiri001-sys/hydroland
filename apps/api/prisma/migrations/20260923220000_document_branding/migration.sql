@@ -35,3 +35,11 @@ INSERT INTO "DocumentBrandSnapshot" (
 )
 SELECT gen_random_uuid()::text, "id", 1, "displayName", "displayName", CURRENT_TIMESTAMP
 FROM "Organization";
+
+ALTER TABLE "ManagedDocument"
+ADD COLUMN "documentBrandVersion" INTEGER;
+
+UPDATE "ManagedDocument" d
+SET "documentBrandVersion" = o."documentBrandVersion"
+FROM "Organization" o
+WHERE d."organizationId" = o."id";
