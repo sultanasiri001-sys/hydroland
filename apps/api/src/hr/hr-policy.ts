@@ -92,8 +92,8 @@ export function assertHrAuthorization(actor: HrActor, action: HrAction, ctx: HrR
   if (action === 'APPROVE_APPOINTMENT' && !ctx.requesterAccountId) {
     throw new Error('HR_REQUESTER_REQUIRED');
   }
-  if (action === 'APPROVE_COMPENSATION_CHANGE' && !ctx.requesterAccountId) {
-    throw new Error('HR_REQUESTER_REQUIRED');
+  if (action === 'APPROVE_COMPENSATION_CHANGE' && (!ctx.requesterAccountId || !ctx.reviewerAccountId)) {
+    throw new Error('HR_SEPARATION_CONTEXT_REQUIRED');
   }
   if (action === 'APPROVE_DISCIPLINARY_DECISION' && (!ctx.requesterAccountId || !ctx.reviewerAccountId)) {
     throw new Error('HR_SEPARATION_CONTEXT_REQUIRED');
