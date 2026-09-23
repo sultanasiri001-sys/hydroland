@@ -224,7 +224,6 @@ model Organization {
   employments Employment[]
   @@index([status,createdAt])
   @@index([ownerId,status])
-  administrativeUnits AdministrativeUnit[]
   administrativeRecords AdministrativeRecord[]
   administrativeRoutings AdministrativeRouting[]
   administrativeMeetings AdministrativeMeeting[]
@@ -358,24 +357,6 @@ enum AdministrativeRecordDbStatus {
   ARCHIVED
 }
 
-model AdministrativeUnit {
-  id String @id @default(uuid())
-  organizationId String
-  name String
-  managerAccountId String
-  active Boolean @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)
-  manager Account @relation("AdministrativeUnitManager", fields:[managerAccountId], references:[id], onDelete:Restrict)
-  records AdministrativeRecord[]
-  meetings AdministrativeMeeting[]
-  routingsFrom AdministrativeRouting[] @relation("AdministrativeRoutingFromUnit")
-  routingsTo AdministrativeRouting[] @relation("AdministrativeRoutingToUnit")
-  @@unique([organizationId,name])
-  @@index([organizationId,active])
-}
-
 model AdministrativeRecord {
   id String @id @default(uuid())
   organizationId String
@@ -388,7 +369,7 @@ model AdministrativeRecord {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)
-  unit AdministrativeUnit @relation(fields:[unitId], references:[id], onDelete:Restrict)
+  unit OrgUnit @relation(fields:[unitId], references:[id], onDelete:Restrict)
   owner Account @relation("AdministrativeRecordOwner", fields:[ownerAccountId], references:[id], onDelete:Restrict)
   routings AdministrativeRouting[]
   @@unique([organizationId,referenceNumber])
@@ -409,8 +390,8 @@ model AdministrativeRouting {
   decidedAt DateTime?
   organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)
   record AdministrativeRecord @relation(fields:[recordId], references:[id], onDelete:Restrict)
-  fromUnit AdministrativeUnit @relation("AdministrativeRoutingFromUnit", fields:[fromUnitId], references:[id], onDelete:Restrict)
-  toUnit AdministrativeUnit @relation("AdministrativeRoutingToUnit", fields:[toUnitId], references:[id], onDelete:Restrict)
+  fromUnit OrgUnit @relation("AdministrativeRoutingFromOrgUnit", fields:[fromUnitId], references:[id], onDelete:Restrict)
+  toUnit OrgUnit @relation("AdministrativeRoutingToOrgUnit", fields:[toUnitId], references:[id], onDelete:Restrict)
   requestedBy Account @relation("AdministrativeRoutingRequester", fields:[requestedByAccountId], references:[id], onDelete:Restrict)
   assignedTo Account? @relation("AdministrativeRoutingAssignee", fields:[assignedToAccountId], references:[id], onDelete:Restrict)
   decidedBy Account? @relation("AdministrativeRoutingDecider", fields:[decidedByAccountId], references:[id], onDelete:Restrict)
@@ -429,7 +410,7 @@ model AdministrativeMeeting {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)
-  unit AdministrativeUnit @relation(fields:[unitId], references:[id], onDelete:Restrict)
+  unit OrgUnit @relation(fields:[unitId], references:[id], onDelete:Restrict)
   organizer Account @relation("AdministrativeMeetingOrganizer", fields:[organizerAccountId], references:[id], onDelete:Restrict)
   @@index([organizationId,unitId,scheduledAt])
 }
