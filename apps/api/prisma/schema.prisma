@@ -179,6 +179,10 @@ model Account {
   policyUpdates PolicyControl[] @relation("PolicyUpdatedBy")
   hrCandidatesVerified HrCandidate[] @relation("HrCandidateVerifiedBy")
   employments Employment[]
+  administrativeRecords AdministrativeRecord[]
+  administrativeMeetings AdministrativeMeeting[]
+  administrativeRoutingsFrom AdministrativeRouting[] @relation("AdministrativeRoutingFromOrgUnit")
+  administrativeRoutingsTo AdministrativeRouting[] @relation("AdministrativeRoutingToOrgUnit")
   employmentMovementsRequested EmploymentMovement[] @relation("EmploymentMovementRequestedBy")
   employmentMovementsReviewed EmploymentMovement[] @relation("EmploymentMovementReviewedBy")
   employmentMovementsApproved EmploymentMovement[] @relation("EmploymentMovementApprovedBy")
