@@ -44,7 +44,7 @@ export class AdministrativeAffairsPersistenceService {
     await this.assertPermission(actorAccountId,record.organizationId,'ROUTE');
     if(record.status!=='REGISTERED') throw new ConflictException('ADMIN_RECORD_NOT_REGISTERED');
     if(record.unitId===toUnitId) throw new BadRequestException('ADMIN_ROUTING_DISTINCT_UNITS_REQUIRED');
-    const target=await this.db.administrativeUnit.findUniqueOrThrow({where:{id:toUnitId},select:{organizationId:true,active:true}});
+    const target=await this.db.orgUnit.findUniqueOrThrow({where:{id:toUnitId},select:{organizationId:true,active:true}});
     if(target.organizationId!==record.organizationId||!target.active) throw new ForbiddenException('ADMIN_ROUTING_SCOPE_DENIED');
     return this.db.$transaction(async tx=>{
       const routing=await tx.administrativeRouting.create({data:{organizationId:record.organizationId,recordId:record.id,fromUnitId:record.unitId,toUnitId,requestedByAccountId:actorAccountId}});
