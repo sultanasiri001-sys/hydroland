@@ -19,6 +19,14 @@ try{
  r=await call('/documents','POST',token(suspended.id),body);if(r.status!==403)throw new Error('Suspended member expected 403');
  r=await call('/documents','POST',token(creator.id),body);if(!r.ok)throw new Error('STAFF document create failed '+r.status+' '+await r.text());const doc=await r.json();
  if(!new RegExp('^HYD-SAFETY_COMPLIANCE_RISK-\\d{4}-\\d{6}$').test(doc.referenceNumber))throw new Error('Reference format invalid '+doc.referenceNumber);
+ r=await call(`/documents/${doc.id}/print-contract`,'GET',token(viewer.id));if(!r.ok)throw new Error('VIEWER print contract read failed '+r.status+' '+await r.text());const printContract=await r.json();
+ if(printContract.documentId!==doc.id||printContract.organizationId!==org.id||printContract.referenceNumber!==doc.referenceNumber||printContract.documentVersion!==1||printContract.contentHash!==body.contentHash)throw new Error('Print contract document identity invalid');
+ if(printContract.template?.id!==template.id||printContract.template?.code!==templateBody.code||printContract.template?.titleAr!==templateBody.titleAr||printContract.template?.titleEn!==templateBody.titleEn||printContract.template?.printable!==true)throw new Error('Print contract template metadata invalid');
+ const printSummary=printContract.fields?.find(x=>x.key==='summary');if(!printSummary||printSummary.value!=='e2e'||printSummary.labelAr!=='الملخص'||printSummary.labelEn!=='Summary'||printSummary.required!==true)throw new Error('Print contract field mapping invalid');
+ r=await call(`/documents/${doc.id}/print-contract`,'GET',token(outsider.id));if(r.status!==403)throw new Error('Cross-org print contract expected 403');
+ const nonPrintable=await db.documentTemplate.create({data:{organizationId:org.id,code:'E2E-NOPRINT-'+suffix,titleAr:'غير قابل للطباعة',titleEn:'Non printable',department:templateBody.department,version:1,active:true,printable:false,fields:templateBody.fields}});
+ const nonPrintableDoc=await db.managedDocument.create({data:{organizationId:org.id,templateId:nonPrintable.id,referenceNumber:'HYD-E2E-NOPRINT-'+suffix,department:templateBody.department,status:'DRAFT',version:1,contentHash:'sha256:noprint-'+suffix,payload:{summary:'hidden'},createdByAccountId:creator.id}});
+ r=await call(`/documents/${nonPrintableDoc.id}/print-contract`,'GET',token(viewer.id));if(r.status!==400)throw new Error('Non-printable template expected 400');
  r=await call(`/documents/${doc.id}/revise`,'POST',token(viewer.id),{contentHash:'sha256:viewer',payload:{summary:'denied'}});if(r.status!==403)throw new Error('VIEWER revise expected 403');
  r=await call(`/documents/${doc.id}/revise`,'POST',token(creator.id),{contentHash:'sha256:'+suffix+'-v2',payload:{summary:'revision 2'}});if(!r.ok)throw new Error('DRAFT revise failed '+r.status+' '+await r.text());const revised=await r.json();
  if(revised.version!==2||revised.payload?.summary!=='revision 2')throw new Error('Revision version/payload invalid');
