@@ -10,7 +10,7 @@ export interface DocumentPrintContract {
   status:string;
   documentVersion:number;
   contentHash:string;
-  branding:{brandVersion:number;logoUrl:string|null;brandNameAr:string|null;brandNameEn:string|null;footerAr:string|null;footerEn:string|null};
+  branding:{brandVersion:number;logoUrl:string|null;logoAssetId:string|null;brandNameAr:string|null;brandNameEn:string|null;footerAr:string|null;footerEn:string|null};
   template:{id:string;code:string;titleAr:string;titleEn:string;version:number;printable:boolean};
   fields:Array<{key:string;labelAr:string;labelEn:string;type:string;required:boolean;value:unknown}>;
   approvals:{createdByAccountId:string;approvedByAccountId:string|null;signedByAccountId:string|null;archivedByAccountId:string|null;approvedAt:Date|null;signedAt:Date|null;archivedAt:Date|null};
@@ -44,7 +44,7 @@ export class DocumentPrintService {
     return {
       documentId:d.id,organizationId:d.organizationId,referenceNumber:d.referenceNumber,department:d.department,status:d.status,
       documentVersion:d.version,contentHash:d.contentHash,
-      branding:{brandVersion:branding.brandVersion,logoUrl:branding.logoUrl,brandNameAr:branding.brandNameAr,brandNameEn:branding.brandNameEn,footerAr:branding.footerAr,footerEn:branding.footerEn},
+      branding:{brandVersion:branding.brandVersion,logoUrl:branding.logoUrl,logoAssetId:branding.logoAssetId,brandNameAr:branding.brandNameAr,brandNameEn:branding.brandNameEn,footerAr:branding.footerAr,footerEn:branding.footerEn},
       template:{id:d.template.id,code:d.template.code,titleAr:d.template.titleAr,titleEn:d.template.titleEn,version:d.template.version,printable:d.template.printable},
       fields,
       approvals:{createdByAccountId:d.createdByAccountId,approvedByAccountId:d.approvedByAccountId,signedByAccountId:d.signedByAccountId,archivedByAccountId:d.archivedByAccountId,approvedAt:d.approvedAt,signedAt:d.signedAt,archivedAt:d.archivedAt},
