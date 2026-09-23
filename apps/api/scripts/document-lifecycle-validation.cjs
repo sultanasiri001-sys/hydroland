@@ -1,0 +1,6 @@
+const assert=require('node:assert/strict'); const {DocumentLifecycleService}=require('../.tmp-document-lifecycle-validation/document-lifecycle.service.js'); const s=new DocumentLifecycleService();
+assert.equal(s.assignReference('org1','FINANCE',2026,7),'FINANCE-2026-000007'); assert.throws(()=>s.assignReference('','FINANCE',2026,1));
+let d=s.create({id:'d1',organizationId:'org1',department:'FINANCE',sequenceNo:'FINANCE-2026-000007',contentHash:'h1',createdBy:'creator'}); assert.equal(d.status,'DRAFT'); assert.equal(d.version,1);
+assert.throws(()=>s.approve(d,'approver')); d=s.submit(d,'creator'); assert.throws(()=>s.approve(d,'creator')); d=s.approve(d,'approver'); assert.throws(()=>s.sign(d,'approver')); assert.throws(()=>s.sign(d,'creator')); d=s.sign(d,'signer'); d=s.archive(d,'records'); assert.equal(d.status,'ARCHIVED'); assert.equal(d.audit.length,5); assert.throws(()=>s.revise(d,'creator','h2'));
+let x=s.create({id:'d2',organizationId:'org1',department:'HR',sequenceNo:'HR-2026-000001',contentHash:'a',createdBy:'c'}); x=s.submit(x,'c'); x=s.approve(x,'a'); x=s.revise(x,'c','b'); assert.equal(x.version,2); assert.equal(x.status,'DRAFT'); assert.equal(x.approvedBy,undefined); assert.throws(()=>s.revise(x,'c','b'));
+console.log('Document Lifecycle Controls validation passed.');
