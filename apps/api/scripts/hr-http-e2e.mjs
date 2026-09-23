@@ -19,7 +19,7 @@ const enc=v=>Buffer.from(JSON.stringify(v)).toString('base64url'),now=Math.floor
 const body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:account.id,iat:now,exp:now+900})}`;
 const token=`${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`;
 const patch=(payload,t=token)=>fetch(`${base}/hr/employments/${employment.id}/status`,{method:'PATCH',headers:{'content-type':'application/json',authorization:`Bearer ${t}`},body:JSON.stringify(payload)});
-let compensationId=null, relationsId=null, reviewerAccount=null, reviewerPerson=null;
+let compensationId=null, relationsId=null, candidateId=null, candidatePerson=null, reviewerAccount=null, reviewerPerson=null;
 try{
  let r=await patch({action:'STAFFING_REQUEST',nextStatus:'PENDING_APPROVAL',context:{organizationId:org.id}},'invalid'); if(r.status!==401)throw new Error('Expected 401, got '+r.status);
  r=await patch({action:'STAFFING_REQUEST',nextStatus:'PENDING_APPROVAL',context:{organizationId:org.id}}); if(!r.ok)throw new Error('Allowed HR transition failed '+r.status+' '+await r.text());
@@ -45,6 +45,16 @@ try{
  reviewerPerson=await db.person.create({data:{firstName:'HR',lastName:'Reviewer'}});
  reviewerAccount=await db.account.create({data:{personId:reviewerPerson.id,email:`hr-reviewer-${suffix}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}});
  await db.organizationMember.create({data:{organizationId:org.id,accountId:reviewerAccount.id,role:'STAFF',status:'ACTIVE'}});
+ candidatePerson=await db.person.create({data:{firstName:'HR',lastName:'Candidate'}});
+ const candidate=await db.hrCandidate.create({data:{organizationId:org.id,personId:candidatePerson.id,status:'SUBMITTED'}}); candidateId=candidate.id;
+ const requesterBodyCandidate=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:requesterAccount.id,iat:now,exp:now+900})}`; const requesterCandidateToken=`${requesterBodyCandidate}.${createHmac('sha256',secret).update(requesterBodyCandidate).digest('base64url')}`;
+ let candidateResponse=await fetch(`${base}/hr/employments/candidates/${candidate.id}/verify`,{method:'PATCH',headers:{'content-type':'application/json',authorization:`Bearer ${requesterCandidateToken}`},body:JSON.stringify({notes:'must be denied'})});
+ if(candidateResponse.status!==403)throw new Error('Unauthorized candidate verification was not denied: '+candidateResponse.status);
+ let candidateState=await db.hrCandidate.findUniqueOrThrow({where:{id:candidate.id}}); if(candidateState.status!=='SUBMITTED'||candidateState.verifiedByAccountId||candidateState.verifiedAt)throw new Error('Denied candidate verification mutated state');
+ let candidateAudit=await db.auditEvent.count({where:{resource:'HrCandidate',resourceId:candidate.id,action:'HR_CANDIDATE_VERIFIED'}}); if(candidateAudit!==0)throw new Error('Denied candidate verification emitted audit evidence');
+ candidateResponse=await fetch(`${base}/hr/employments/candidates/${candidate.id}/verify`,{method:'PATCH',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({notes:'E2E verified'})}); if(!candidateResponse.ok)throw new Error('Candidate verification failed '+candidateResponse.status+' '+await candidateResponse.text());
+ candidateState=await db.hrCandidate.findUniqueOrThrow({where:{id:candidate.id}}); if(candidateState.status!=='APPROVED'||candidateState.verifiedByAccountId!==account.id||!candidateState.verifiedAt)throw new Error('Candidate verification provenance/status invalid');
+ candidateAudit=await db.auditEvent.count({where:{resource:'HrCandidate',resourceId:candidate.id,action:'HR_CANDIDATE_VERIFIED'}}); if(candidateAudit!==1)throw new Error('Candidate verification audit missing');
  const beforeOpenCount=await db.employeeRelationsCase.count({where:{employmentId:employment.id}});
  const requesterBody=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:requesterAccount.id,iat:now,exp:now+900})}`; const requesterToken=`${requesterBody}.${createHmac('sha256',secret).update(requesterBody).digest('base64url')}`;
  const deniedOpen=await fetch(`${base}/hr/employments/${employment.id}/relations`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${requesterToken}`},body:JSON.stringify({caseType:'GRIEVANCE',summary:'Denied E2E case'})});
@@ -126,6 +136,9 @@ try{
  await db.person.deleteMany({where:{id:{in:[targetPerson.id,iamPerson.id]}}});
  console.log('HR HTTP/DB E2E passed: auth, persisted transition, audit, denial non-mutation, deterministic compliance denial and valid compliance success.');
 } finally {
+ if(candidateId) await db.auditEvent.deleteMany({where:{resource:'HrCandidate',resourceId:candidateId}});
+ if(candidateId) await db.hrCandidate.deleteMany({where:{id:candidateId}});
+ if(candidatePerson) await db.person.deleteMany({where:{id:candidatePerson.id}});
  await db.auditEvent.deleteMany({where:{resourceId:employment.id}});
  await db.policyControl.deleteMany({where:{ruleKey:'HR-E2E-'+suffix}});
  if(compensationId||relationsId) await db.auditEvent.deleteMany({where:{resourceId:{in:[compensationId,relationsId].filter(Boolean)}}});
