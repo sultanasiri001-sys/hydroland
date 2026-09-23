@@ -1,5 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, Req, Res, UseGuards } from '@nestjs/common';
-import type { Response } from 'express';
+import { Body, Controller, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { ManagedDocumentStatus } from '@prisma/client';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { DocumentPersistenceService } from './document-persistence.service';
@@ -22,7 +21,7 @@ export class DocumentPersistenceController {
   @Put('organizations/:organizationId/branding') brandingUpdate(@Req() r:ReqAuth,@Param('organizationId') org:string,@Body() b:any){return this.branding.update(r.auth.accountId,org,b);}
   @Post() create(@Req() r:ReqAuth,@Body() b:any){return this.documents.createDocument(r.auth.accountId,b);}
   @Get(':id') get(@Req() r:ReqAuth,@Param('id') id:string){return this.documents.get(r.auth.accountId,id);}
-  @Get(':id/pdf') async pdfFile(@Req() r:ReqAuth,@Param('id') id:string,@Res() res:Response){
+  @Get(':id/pdf') async pdfFile(@Req() r:ReqAuth,@Param('id') id:string,@Res() res:any){
     const rendered=await this.pdf.render(r.auth.accountId,id);
     res.setHeader('Content-Type','application/pdf');
     res.setHeader('Content-Disposition',`inline; filename="${rendered.filename.replace(/[^A-Za-z0-9._-]/g,'_')}"`);
