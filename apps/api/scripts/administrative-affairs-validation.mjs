@@ -7,7 +7,7 @@ const controller=read('src/administrative-affairs/administrative-affairs.control
 const guard=read('src/administrative-affairs/administrative-affairs-ownership.guard.ts');
 const moduleFile=read('src/administrative-affairs/administrative-affairs.module.ts');
 
-const requiredModels=['model AdministrativeUnit {','model AdministrativeRecord {','model AdministrativeRouting {','model AdministrativeMeeting {'];
+const requiredModels=['model OrgUnit {','model AdministrativeRecord {','model AdministrativeRouting {','model AdministrativeMeeting {'];
 for(const token of requiredModels) if(!schema.includes(token)) throw new Error('ADMIN_SCHEMA_MISSING:'+token);
 for(const token of ['AccessTokenGuard','@UseGuards(AccessTokenGuard)','req.auth.accountId']) if(!controller.includes(token)) throw new Error('ADMIN_AUTH_BOUNDARY_MISSING:'+token);
 for(const token of ['ADMIN_SELF_APPROVAL_DENIED','ADMIN_APPROVER_NOT_ASSIGNED','ADMIN_ORGANIZATION_SCOPE_DENIED','ADMIN_PERMISSION_REQUIRED','ADMIN_ROUTING_CONCURRENT_MODIFICATION']) if(!service.includes(token)) throw new Error('ADMIN_RUNTIME_CONTROL_MISSING:'+token);
