@@ -131,7 +131,8 @@ export class HrController {
       }
       if (code.includes('CONCURRENT_MODIFICATION') || code.includes('INVALID_EMPLOYMENT_TRANSITION') ||
           code.includes('ACTION_REQUIRED') || code.includes('REQUESTER_REQUIRED') ||
-          code.includes('SEPARATION_CONTEXT_REQUIRED') || code.startsWith('HR_COMPLIANCE_')) {
+          code.includes('SEPARATION_CONTEXT_REQUIRED') || code.startsWith('HR_COMPLIANCE_') ||
+          code.startsWith('HR_OFFBOARDING_')) {
         throw new ConflictException(code);
       }
       throw error;
