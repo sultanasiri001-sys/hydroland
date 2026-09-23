@@ -190,7 +190,6 @@ model Account {
   compensationTermsRequested CompensationTerm[] @relation("CompensationTermRequestedBy")
   compensationTermsReviewed CompensationTerm[] @relation("CompensationTermReviewedBy")
   compensationTermsApproved CompensationTerm[] @relation("CompensationTermApprovedBy")
-  administrativeUnitsManaged AdministrativeUnit[] @relation("AdministrativeUnitManager")
   administrativeRecordsOwned AdministrativeRecord[] @relation("AdministrativeRecordOwner")
   administrativeRoutingsRequested AdministrativeRouting[] @relation("AdministrativeRoutingRequester")
   administrativeRoutingsAssigned AdministrativeRouting[] @relation("AdministrativeRoutingAssignee")
