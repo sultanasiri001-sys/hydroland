@@ -30,8 +30,8 @@ async function main() {
   }
   if (await columnType('HrCandidate','id')) throw new Error('Refusing recovery: HrCandidate already exists');
 
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE "HrCandidate" (
+  const hrStatements = [
+    `CREATE TABLE "HrCandidate" (
       "id" UUID NOT NULL,
       "organizationId" UUID NOT NULL,
       "personId" UUID NOT NULL,
@@ -42,26 +42,28 @@ async function main() {
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" TIMESTAMP(3) NOT NULL,
       CONSTRAINT "HrCandidate_pkey" PRIMARY KEY ("id")
-    );
-    CREATE INDEX "HrCandidate_organizationId_status_idx" ON "HrCandidate"("organizationId","status");
-    CREATE UNIQUE INDEX "HrCandidate_organizationId_personId_key" ON "HrCandidate"("organizationId","personId");
-    ALTER TABLE "HrCandidate" ADD CONSTRAINT "HrCandidate_personId_fkey" FOREIGN KEY ("personId") REFERENCES "Person"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-    ALTER TABLE "HrCandidate" ADD CONSTRAINT "HrCandidate_verifiedByAccountId_fkey" FOREIGN KEY ("verifiedByAccountId") REFERENCES "Account"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-  `);
+    )`,
+    `CREATE INDEX "HrCandidate_organizationId_status_idx" ON "HrCandidate"("organizationId","status")`,
+    `CREATE UNIQUE INDEX "HrCandidate_organizationId_personId_key" ON "HrCandidate"("organizationId","personId")`,
+    `ALTER TABLE "HrCandidate" ADD CONSTRAINT "HrCandidate_personId_fkey" FOREIGN KEY ("personId") REFERENCES "Person"("id") ON DELETE RESTRICT ON UPDATE CASCADE`,
+    `ALTER TABLE "HrCandidate" ADD CONSTRAINT "HrCandidate_verifiedByAccountId_fkey" FOREIGN KEY ("verifiedByAccountId") REFERENCES "Account"("id") ON DELETE RESTRICT ON UPDATE CASCADE`,
+  ];
+  await prisma.$transaction(hrStatements.map((sql) => prisma.$executeRawUnsafe(sql)));
 
   execFileSync('npx', ['prisma','migrate','resolve','--applied',HR], { stdio:'inherit' });
 
   // Pre-create UUID-compatible structures so immutable historical migrations become idempotent/no-op where possible.
-  await prisma.$executeRawUnsafe(`
-    ALTER TABLE "FinanceEntry" ADD COLUMN IF NOT EXISTS "postedByAccountId" UUID;
-    CREATE INDEX IF NOT EXISTS "FinanceEntry_postedByAccountId_idx" ON "FinanceEntry"("postedByAccountId");
-    DO $$ BEGIN
+  const financeStatements = [
+    `ALTER TABLE "FinanceEntry" ADD COLUMN IF NOT EXISTS "postedByAccountId" UUID`,
+    `CREATE INDEX IF NOT EXISTS "FinanceEntry_postedByAccountId_idx" ON "FinanceEntry"("postedByAccountId")`,
+    `DO $ BEGIN
       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='FinanceEntry_postedByAccountId_fkey') THEN
         ALTER TABLE "FinanceEntry" ADD CONSTRAINT "FinanceEntry_postedByAccountId_fkey"
         FOREIGN KEY ("postedByAccountId") REFERENCES "Account"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
       END IF;
-    END $$;
-  `);
+    END $`,
+  ];
+  await prisma.$transaction(financeStatements.map((sql) => prisma.$executeRawUnsafe(sql)));
   console.log('[migration-recovery] HR recovered; finance UUID compatibility staged');
 }
 main().finally(()=>prisma.$disconnect());
