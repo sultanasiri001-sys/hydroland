@@ -35,6 +35,7 @@ export class DocumentPersistenceService {
       const sequence=String(counter.lastNumber).padStart(6,'0');
       const referenceNumber=`HYD-${t.department}-${year}-${sequence}`;
       const d=await tx.managedDocument.create({data:{organizationId:input.organizationId,templateId:t.id,referenceNumber,department:t.department,contentHash:input.contentHash,payload:input.payload as Prisma.InputJsonValue,createdByAccountId:accountId}});
+      await tx.documentRevision.create({data:{documentId:d.id,version:d.version,contentHash:d.contentHash,payload:d.payload as Prisma.InputJsonValue,createdByAccountId:accountId}});
       await tx.documentLifecycleEvent.create({data:{documentId:d.id,actorAccountId:accountId,action:'CREATE',toStatus:ManagedDocumentStatus.DRAFT,version:d.version}});
       return d;
     });
@@ -54,6 +55,7 @@ export class DocumentPersistenceService {
       const claimed=await tx.managedDocument.updateMany({where:{id,status:'DRAFT',version:current.version},data:{contentHash:input.contentHash,payload:input.payload as Prisma.InputJsonValue,version:{increment:1}}});
       if(claimed.count!==1) throw new BadRequestException('Document changed concurrently; reload before revising.');
       const updated=await tx.managedDocument.findUniqueOrThrow({where:{id}});
+      await tx.documentRevision.create({data:{documentId:id,version:nextVersion,contentHash:updated.contentHash,payload:updated.payload as Prisma.InputJsonValue,createdByAccountId:accountId}});
       await tx.documentLifecycleEvent.create({data:{documentId:id,actorAccountId:accountId,action:'REVISE',fromStatus:ManagedDocumentStatus.DRAFT,toStatus:ManagedDocumentStatus.DRAFT,version:nextVersion,metadata:{previousVersion:current.version} as Prisma.InputJsonValue}});
       return updated;
     });
@@ -81,6 +83,23 @@ export class DocumentPersistenceService {
       await tx.documentLifecycleEvent.create({data:{documentId:id,actorAccountId:accountId,action:to,fromStatus:d.status,toStatus:to,version:updated.version}});
       return updated;
     });
+  }
+
+  async listRevisions(accountId:string,id:string){
+    const d=await this.db.managedDocument.findUnique({where:{id},select:{organizationId:true}});
+    if(!d) throw new NotFoundException('Document not found.');
+    await this.authz.assert(accountId,d.organizationId,'DOCUMENT_READ');
+    return this.db.documentRevision.findMany({where:{documentId:id},orderBy:{version:'asc'}});
+  }
+
+  async getRevision(accountId:string,id:string,version:number){
+    if(!Number.isInteger(version)||version<1) throw new BadRequestException('Revision version must be a positive integer.');
+    const d=await this.db.managedDocument.findUnique({where:{id},select:{organizationId:true}});
+    if(!d) throw new NotFoundException('Document not found.');
+    await this.authz.assert(accountId,d.organizationId,'DOCUMENT_READ');
+    const revision=await this.db.documentRevision.findUnique({where:{documentId_version:{documentId:id,version}}});
+    if(!revision) throw new NotFoundException('Document revision not found.');
+    return revision;
   }
 
   async get(accountId:string,id:string){
