@@ -14,6 +14,8 @@ const templateBody={organizationId:org.id,code:'E2E-'+suffix,titleAr:'نموذج
 try{
  let r=await call('/documents/templates','POST',token(creator.id),templateBody);if(r.status!==403)throw new Error('STAFF template create expected 403');
  r=await call('/documents/templates','POST',token(approver.id),templateBody);if(!r.ok)throw new Error('ADMIN template create failed '+r.status+' '+await r.text());const template=await r.json();
+ r=await call(`/documents/templates/${template.id}`,'PUT',token(creator.id),{titleEn:'Denied'});if(r.status!==403)throw new Error('STAFF template update expected 403');
+ r=await call(`/documents/templates/${template.id}`,'PUT',token(outsider.id),{titleEn:'Cross-org attack'});if(r.status!==403)throw new Error('Cross-org template update expected 403');
  const body={organizationId:org.id,templateId:template.id,department:templateBody.department,contentHash:'sha256:'+suffix,payload:{summary:'e2e'}};
  r=await call('/documents','POST',token(viewer.id),body);if(r.status!==403)throw new Error('VIEWER document create expected 403');
  r=await call('/documents','POST',token(suspended.id),body);if(r.status!==403)throw new Error('Suspended member expected 403');
@@ -28,6 +30,11 @@ try{
  r=await call(`/documents/organizations/${org.id}/branding`,'PUT',token(outsider.id),{brandNameEn:'Cross-org attack'});if(r.status!==403)throw new Error('Cross-org branding update expected 403');
  r=await call(`/documents/${doc.id}/pdf`,'GET',token(viewer.id));if(!r.ok)throw new Error('VIEWER PDF read failed '+r.status+' '+await r.text());if(r.headers.get('content-type')!=='application/pdf')throw new Error('PDF content type invalid');const pdfBytes=new Uint8Array(await r.arrayBuffer());if(new TextDecoder().decode(pdfBytes.slice(0,5))!=='%PDF-')throw new Error('PDF signature invalid');
  r=await call(`/documents/${doc.id}/pdf`,'GET',token(outsider.id));if(r.status!==403)throw new Error('Cross-org PDF expected 403');
+ r=await call(`/documents/templates/${template.id}`,'PUT',token(approver.id),{titleAr:'نموذج اختبار محدث',titleEn:'E2E Template v2',fields:[{key:'summary',labelAr:'الملخص المحدث',labelEn:'Updated Summary',type:'TEXT',required:true}],printable:true});if(!r.ok)throw new Error('ADMIN template update failed '+r.status+' '+await r.text());const templateV2=await r.json();
+ if(templateV2.id===template.id||templateV2.version!==2||templateV2.status!=='ACTIVE'||templateV2.code!==template.code)throw new Error('Template versioning invalid');
+ const templateV1Stored=await db.documentTemplate.findUniqueOrThrow({where:{id:template.id}});if(templateV1Stored.status!=='INACTIVE'||templateV1Stored.version!==1)throw new Error('Historical template version was mutated incorrectly');
+ r=await call(`/documents/${doc.id}/print-contract`,'GET',token(viewer.id));if(!r.ok)throw new Error('Historical document print contract failed after template update');const historicalTemplateContract=await r.json();if(historicalTemplateContract.template?.id!==template.id||historicalTemplateContract.template?.titleEn!=='E2E Template'||historicalTemplateContract.fields?.find(x=>x.key==='summary')?.labelEn!=='Summary')throw new Error('Historical document template changed after template revision');
+ r=await call(`/documents/organizations/${org.id}/templates`,'GET',token(viewer.id));if(!r.ok)throw new Error('Template list failed');const activeTemplates=await r.json();if(!activeTemplates.some(x=>x.id===templateV2.id&&x.version===2)||activeTemplates.some(x=>x.id===template.id))throw new Error('Active template list did not switch to latest version');
  if(printContract.template?.id!==template.id||printContract.template?.code!==templateBody.code||printContract.template?.titleAr!==templateBody.titleAr||printContract.template?.titleEn!==templateBody.titleEn||printContract.template?.printable!==true)throw new Error('Print contract template metadata invalid');
  const printSummary=printContract.fields?.find(x=>x.key==='summary');if(!printSummary||printSummary.value!=='e2e'||printSummary.labelAr!=='الملخص'||printSummary.labelEn!=='Summary'||printSummary.required!==true)throw new Error('Print contract field mapping invalid');
  r=await call(`/documents/${doc.id}/print-contract`,'GET',token(outsider.id));if(r.status!==403)throw new Error('Cross-org print contract expected 403');
@@ -67,11 +74,13 @@ try{
  r=await call(`/documents/${doc.id}/archive`,'POST',token(signer.id));if(r.status!==400)throw new Error('Repeat archive expected 400');
  const stored=await db.managedDocument.findUniqueOrThrow({where:{id:doc.id},include:{lifecycleEvents:true}});
  if(stored.status!=='ARCHIVED'||stored.lifecycleEvents.length!==7)throw new Error('Lifecycle persistence invalid: status='+stored.status+' events='+stored.lifecycleEvents.length);
- const bodies=Array.from({length:8},(_,i)=>({...body,contentHash:'sha256:'+suffix+'-'+i,payload:{summary:'concurrent '+i}}));
+ const latestBody={...body,templateId:templateV2.id};
+ const bodies=Array.from({length:8},(_,i)=>({...latestBody,contentHash:'sha256:'+suffix+'-'+i,payload:{summary:'concurrent '+i}}));
  const rs=await Promise.all(bodies.map(x=>call('/documents','POST',token(creator.id),x)));
  if(rs.some(x=>!x.ok))throw new Error('Concurrent create failed: '+rs.map(x=>x.status).join(','));
  const docs=await Promise.all(rs.map(x=>x.json())),refs=new Set(docs.map(x=>x.referenceNumber));
  if(refs.size!==docs.length)throw new Error('Concurrent reference numbers not unique');
+ console.log('Document Template Revision validation passed.');
  console.log('Document PDF Rendering validation passed.');
  console.log('Document HTTP/DB E2E validation passed.');
 }finally{await db.$disconnect();}

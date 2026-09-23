@@ -12,6 +12,7 @@ type ReqAuth={auth:{accountId:string}};
 export class DocumentPersistenceController {
   constructor(private readonly documents:DocumentPersistenceService,private readonly print:DocumentPrintService,private readonly pdf:DocumentPdfService,private readonly assets:DocumentAssetService,private readonly branding:DocumentBrandingService){}
   @Post('templates') createTemplate(@Req() r:ReqAuth,@Body() b:any){return this.documents.createTemplate(r.auth.accountId,b);}
+  @Put('templates/:id') updateTemplate(@Req() r:ReqAuth,@Param('id') id:string,@Body() b:any){return this.documents.updateTemplate(r.auth.accountId,id,b);}
   @Get('organizations/:organizationId/templates') listTemplates(@Req() r:ReqAuth,@Param('organizationId') org:string){return this.documents.listTemplates(r.auth.accountId,org);}
   @Post('organizations/:organizationId/logo') async uploadLogo(@Req() r:ReqAuth,@Param('organizationId') org:string,@Body() b:{mimeType:string;base64:string}){
     const bytes=Buffer.from(b.base64||'','base64');
