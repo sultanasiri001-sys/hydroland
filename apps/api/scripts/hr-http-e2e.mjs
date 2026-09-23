@@ -45,6 +45,17 @@ try{
  reviewerPerson=await db.person.create({data:{firstName:'HR',lastName:'Reviewer'}});
  reviewerAccount=await db.account.create({data:{personId:reviewerPerson.id,email:`hr-reviewer-${suffix}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}});
  await db.organizationMember.create({data:{organizationId:org.id,accountId:reviewerAccount.id,role:'STAFF',status:'ACTIVE'}});
+ const beforeOpenCount=await db.employeeRelationsCase.count({where:{employmentId:employment.id}});
+ const requesterBody=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:requesterAccount.id,iat:now,exp:now+900})}`; const requesterToken=`${requesterBody}.${createHmac('sha256',secret).update(requesterBody).digest('base64url')}`;
+ const deniedOpen=await fetch(`${base}/hr/employments/${employment.id}/relations`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${requesterToken}`},body:JSON.stringify({caseType:'GRIEVANCE',summary:'Denied E2E case'})});
+ if(deniedOpen.status!==403)throw new Error('Unauthorized employee relations opening was not denied: '+deniedOpen.status);
+ const afterDeniedOpenCount=await db.employeeRelationsCase.count({where:{employmentId:employment.id}}); if(afterDeniedOpenCount!==beforeOpenCount)throw new Error('Denied employee relations opening mutated state');
+ const deniedOpenAudit=await db.auditEvent.count({where:{resource:'EmployeeRelationsCase',action:'HR_EMPLOYEE_RELATIONS_CASE_OPENED'}});
+ r=await fetch(`${base}/hr/employments/${employment.id}/relations`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({caseType:'GRIEVANCE',summary:'E2E employee relations case'})}); if(!r.ok)throw new Error('Employee relations case opening failed '+r.status+' '+await r.text());
+ const openedRelations=await r.json(); relationsId=openedRelations.id;
+ if(openedRelations.status!=='SUBMITTED'||openedRelations.openedByAccountId!==account.id)throw new Error('Employee relations case provenance/status invalid');
+ const openAudit=await db.auditEvent.findFirst({where:{resource:'EmployeeRelationsCase',resourceId:openedRelations.id,action:'HR_EMPLOYEE_RELATIONS_CASE_OPENED'}}); if(!openAudit)throw new Error('Employee relations opening audit missing');
+ const afterAllowedAudit=await db.auditEvent.count({where:{resource:'EmployeeRelationsCase',action:'HR_EMPLOYEE_RELATIONS_CASE_OPENED'}}); if(afterAllowedAudit!==deniedOpenAudit+1)throw new Error('Denied employee relations opening emitted audit evidence');
  const compensation=await db.compensationTerm.create({data:{employmentId:employment.id,effectiveFrom:new Date(),baseAmountMinor:100000,status:'APPROVAL_REQUIRED',requestedByAccountId:requesterAccount.id,reviewedByAccountId:reviewerAccount.id}});
  compensationId=compensation.id;
  const compPatch=()=>fetch(`${base}/hr/employments/compensation/${compensation.id}/approve`,{method:'PATCH',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({context:{organizationId:org.id}})});
