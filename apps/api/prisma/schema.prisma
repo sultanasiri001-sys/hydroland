@@ -253,11 +253,10 @@ model OrganizationDocumentAsset {
   mimeType String
   byteSize Int
   sha256 String
-  storageKey String
+  content Bytes
   createdAt DateTime @default(now())
   organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)
   @@unique([organizationId,sha256])
-  @@unique([storageKey])
   @@index([organizationId,kind,createdAt])
 }
 
