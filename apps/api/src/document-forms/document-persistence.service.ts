@@ -34,7 +34,9 @@ export class DocumentPersistenceService {
       });
       const sequence=String(counter.lastNumber).padStart(6,'0');
       const referenceNumber=`HYD-${t.department}-${year}-${sequence}`;
-      const d=await tx.managedDocument.create({data:{organizationId:input.organizationId,templateId:t.id,referenceNumber,department:t.department,contentHash:input.contentHash,payload:input.payload as Prisma.InputJsonValue,createdByAccountId:accountId}});
+      const org=await tx.organization.findUnique({where:{id:input.organizationId},select:{documentBrandVersion:true}});
+      if(!org) throw new NotFoundException('Organization not found.');
+      const d=await tx.managedDocument.create({data:{organizationId:input.organizationId,templateId:t.id,referenceNumber,department:t.department,contentHash:input.contentHash,documentBrandVersion:org.documentBrandVersion,payload:input.payload as Prisma.InputJsonValue,createdByAccountId:accountId}});
       await tx.documentRevision.create({data:{documentId:d.id,version:d.version,contentHash:d.contentHash,payload:d.payload as Prisma.InputJsonValue,createdByAccountId:accountId}});
       await tx.documentLifecycleEvent.create({data:{documentId:d.id,actorAccountId:accountId,action:'CREATE',toStatus:ManagedDocumentStatus.DRAFT,version:d.version}});
       return d;
