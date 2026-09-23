@@ -5,7 +5,7 @@ import { DatabaseService } from '../database/database.service';
 export class AdministrativeAffairsPersistenceService {
   constructor(private readonly db: DatabaseService) {}
 
-  private async assertPermission(accountId:string, organizationId:string, action:'REGISTER'|'ROUTE'|'ASSIGN'|'DECIDE', unitIds:string[] = []) {
+  private async assertPermission(accountId:string, organizationId:string, action:'REGISTER'|'ROUTE'|'ASSIGN'|'DECIDE'|'ARCHIVE', unitIds:string[] = []) {
     const member=await this.db.organizationMember.findFirst({where:{accountId,organizationId,status:'ACTIVE'},select:{role:true}});
     if(!member) throw new ForbiddenException('ADMIN_ORGANIZATION_SCOPE_DENIED');
     const assignments=await this.db.roleAssignment.findMany({where:{accountId,status:'ACTIVE'},select:{role:true,scope:true}});
@@ -20,6 +20,7 @@ export class AdministrativeAffairsPersistenceService {
       ROUTE:['OWNER','ADMIN','OPERATOR','STAFF','CENTER_MANAGER'],
       ASSIGN:['OWNER','ADMIN','CENTER_MANAGER'],
       DECIDE:['OWNER','ADMIN','CENTER_MANAGER','REVIEWER','EXECUTIVE_APPROVER'],
+      ARCHIVE:['OWNER','ADMIN','OPERATOR','STAFF','CENTER_MANAGER'],
     };
     if(!allowed[action].some(role=>roles.has(role))) throw new ForbiddenException(`ADMIN_PERMISSION_REQUIRED:${action}`);
   }
@@ -40,6 +41,18 @@ export class AdministrativeAffairsPersistenceService {
       return tx.administrativeRecord.findUniqueOrThrow({where:{id:record.id}});
     });
     return result;
+  }
+
+  async archiveRecord(recordId:string, actorAccountId:string) {
+    const record=await this.db.administrativeRecord.findUniqueOrThrow({where:{id:recordId},select:{id:true,organizationId:true,unitId:true,status:true}});
+    await this.assertPermission(actorAccountId,record.organizationId,'ARCHIVE',[record.unitId]);
+    return this.db.$transaction(async tx=>{
+      const updated=await tx.administrativeRecord.updateMany({where:{id:record.id,status:'REGISTERED'},data:{status:'ARCHIVED'}});
+      if(updated.count!==1) throw new ConflictException('ADMIN_RECORD_CONCURRENT_MODIFICATION');
+      const actor=await tx.account.findUniqueOrThrow({where:{id:actorAccountId},select:{personId:true}});
+      await tx.auditEvent.create({data:{actorId:actor.personId,action:'ADMIN_RECORD_ARCHIVED',resource:'AdministrativeRecord',resourceId:record.id,metadata:{organizationId:record.organizationId}}});
+      return tx.administrativeRecord.findUniqueOrThrow({where:{id:record.id}});
+    });
   }
 
   async route(recordId:string,toUnitId:string,actorAccountId:string) {
