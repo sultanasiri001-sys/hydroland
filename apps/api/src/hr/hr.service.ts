@@ -15,6 +15,19 @@ export class HrService {
     assertEmploymentTransition(from, to);
   }
 
+  async openEmployeeRelationsCase(input: { employmentId: string; caseType: string; summary?: string; actor: HrActor; context: HrRequestContext }) {
+    const employment = await this.db.employment.findUniqueOrThrow({ where: { id: input.employmentId }, select: { organizationId: true } });
+    if (employment.organizationId !== input.context.organizationId) throw new Error('HR_ORGANIZATION_SCOPE_DENIED');
+    this.authorize(input.actor, 'OPEN_EMPLOYEE_RELATIONS_CASE', input.context);
+    if (!input.caseType.trim()) throw new Error('HR_RELATIONS_CASE_TYPE_REQUIRED');
+    return this.db.$transaction(async (tx) => {
+      const record = await tx.employeeRelationsCase.create({ data: { employmentId: input.employmentId, caseType: input.caseType.trim(), summary: input.summary?.trim() || null, status: 'SUBMITTED', openedByAccountId: input.actor.accountId } });
+      const auditActor = await tx.account.findUniqueOrThrow({ where: { id: input.actor.accountId }, select: { personId: true } });
+      await tx.auditEvent.create({ data: { actorId: auditActor.personId, action: 'HR_EMPLOYEE_RELATIONS_CASE_OPENED', resource: 'EmployeeRelationsCase', resourceId: record.id, metadata: { organizationId: employment.organizationId, caseType: record.caseType } as never } });
+      return record;
+    });
+  }
+
   async approveCompensation(input: { compensationTermId: string; actor: HrActor; context: HrRequestContext }) {
     const term = await this.db.compensationTerm.findUniqueOrThrow({
       where: { id: input.compensationTermId },
