@@ -38,7 +38,9 @@
     "validate:operational-document-catalog": "rm -rf .tmp-operational-document-validation && tsc src/document-forms/document-form.domain.ts src/document-forms/operational-document-catalog.ts --outDir .tmp-operational-document-validation/document-forms --module commonjs --moduleResolution node --target es2020 --esModuleInterop --skipLibCheck && node scripts/operational-document-catalog-validation.cjs && rm -rf .tmp-operational-document-validation",
     "validate:document-persistence": "node scripts/document-persistence-validation.cjs && prisma validate --schema prisma/schema.prisma",
     "validate:document-persistence-api": "node scripts/document-persistence-api-validation.cjs && npm run typecheck",
-    "validate:document-reference-numbering": "node scripts/document-reference-numbering-validation.cjs && prisma validate --schema prisma/schema.prisma"
+    "validate:document-reference-numbering": "node scripts/document-reference-numbering-validation.cjs && prisma validate --schema prisma/schema.prisma",
+    "seed:operational-document-templates": "rm -rf .tmp-operational-template-seed && tsc src/document-forms/document-form.domain.ts src/document-forms/operational-document-catalog.ts --outDir .tmp-operational-template-seed --module commonjs --moduleResolution node --target es2020 --esModuleInterop --skipLibCheck && node scripts/operational-document-template-seed.cjs; code=$?; rm -rf .tmp-operational-template-seed; exit $code",
+    "validate:operational-document-template-seed": "node scripts/operational-document-template-seed-validation.cjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.3",
