@@ -58,17 +58,30 @@ export class FinancePersistenceService {
       const entry = await tx.financeEntry.findUnique({ where: { id: entryId }, include: { approvals: { where: { status: 'REQUESTED' }, orderBy: { createdAt: 'desc' }, take: 1 } } });
       if (!entry) throw new NotFoundException('Finance entry not found.');
       if (entry.status !== FinanceEntryStatus.PENDING_APPROVAL || !entry.approvals[0]) throw new BadRequestException('Finance entry is not pending approval.');
+      if (entry.requestedByAccountId === decidedByAccountId) throw new BadRequestException('Finance requester cannot approve or reject their own entry.');
       const now = new Date();
-      await tx.financeApproval.update({ where: { id: entry.approvals[0].id }, data: { status: approved ? 'APPROVED' : 'REJECTED', decidedByAccountId, decisionNote: note, decidedAt: now } });
-      return tx.financeEntry.update({ where: { id: entryId }, data: { status: approved ? FinanceEntryStatus.APPROVED : FinanceEntryStatus.REJECTED, approvedByAccountId: approved ? decidedByAccountId : null, approvedAt: approved ? now : null } });
+      const approvalUpdated = await tx.financeApproval.updateMany({ where: { id: entry.approvals[0].id, status: 'REQUESTED' }, data: { status: approved ? 'APPROVED' : 'REJECTED', decidedByAccountId, decisionNote: note, decidedAt: now } });
+      if (approvalUpdated.count !== 1) throw new BadRequestException('Finance approval was modified concurrently.');
+      const entryUpdated = await tx.financeEntry.updateMany({ where: { id: entryId, status: FinanceEntryStatus.PENDING_APPROVAL }, data: { status: approved ? FinanceEntryStatus.APPROVED : FinanceEntryStatus.REJECTED, approvedByAccountId: approved ? decidedByAccountId : null, approvedAt: approved ? now : null } });
+      if (entryUpdated.count !== 1) throw new BadRequestException('Finance entry was modified concurrently.');
+      const auditActor = await tx.account.findUniqueOrThrow({ where: { id: decidedByAccountId }, select: { personId: true } });
+      await tx.auditEvent.create({ data: { actorId: auditActor.personId, action: approved ? 'FINANCE_ENTRY_APPROVED' : 'FINANCE_ENTRY_REJECTED', resource: 'FinanceEntry', resourceId: entryId, metadata: { organizationId: entry.organizationId } as never } });
+      return tx.financeEntry.findUniqueOrThrow({ where: { id: entryId } });
     });
   }
 
   async postEntry(entryId: string, postedByAccountId: string) {
-    const entry = await this.db.financeEntry.findUnique({ where: { id: entryId } });
-    if (!entry) throw new NotFoundException('Finance entry not found.');
     if (!postedByAccountId) throw new BadRequestException('Posting account is required.');
-    if (entry.status !== FinanceEntryStatus.APPROVED) throw new BadRequestException('Only approved finance entries can be posted.');
-    return this.db.financeEntry.update({ where: { id: entryId }, data: { status: FinanceEntryStatus.POSTED, postedAt: new Date() } });
+    return this.db.serializable(async (tx: Prisma.TransactionClient) => {
+      const entry = await tx.financeEntry.findUnique({ where: { id: entryId } });
+      if (!entry) throw new NotFoundException('Finance entry not found.');
+      if (entry.status !== FinanceEntryStatus.APPROVED) throw new BadRequestException('Only approved finance entries can be posted.');
+      if (entry.requestedByAccountId === postedByAccountId || entry.approvedByAccountId === postedByAccountId) throw new BadRequestException('Finance posting requires segregation of duties.');
+      const updated = await tx.financeEntry.updateMany({ where: { id: entryId, status: FinanceEntryStatus.APPROVED }, data: { status: FinanceEntryStatus.POSTED, postedAt: new Date(), postedByAccountId } });
+      if (updated.count !== 1) throw new BadRequestException('Finance entry was modified concurrently.');
+      const auditActor = await tx.account.findUniqueOrThrow({ where: { id: postedByAccountId }, select: { personId: true } });
+      await tx.auditEvent.create({ data: { actorId: auditActor.personId, action: 'FINANCE_ENTRY_POSTED', resource: 'FinanceEntry', resourceId: entryId, metadata: { organizationId: entry.organizationId } as never } });
+      return tx.financeEntry.findUniqueOrThrow({ where: { id: entryId } });
+    });
   }
 }

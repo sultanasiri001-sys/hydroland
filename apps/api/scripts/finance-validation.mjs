@@ -1,0 +1,17 @@
+import fs from 'node:fs';
+const must=(ok,msg)=>{if(!ok)throw new Error(msg)};
+const read=p=>fs.readFileSync(new URL('../'+p,import.meta.url),'utf8');
+const persistence=read('src/finance/finance-persistence.service.ts');
+const controller=read('src/finance/finance.controller.ts');
+const moduleFile=read('src/finance/finance.module.ts');
+const schema=read('prisma/schema.prisma');
+must(persistence.includes('Finance requester cannot approve or reject their own entry.'),'missing finance self-approval SoD');
+must(persistence.includes('Finance posting requires segregation of duties.'),'missing posting SoD');
+must(persistence.includes('updateMany'),'missing CAS transition');
+must(persistence.includes('FINANCE_ENTRY_POSTED'),'missing posting audit');
+must(schema.includes('postedByAccountId String?'),'missing posting provenance');
+must(schema.includes('model FinanceAccountantShift'),'missing finance shifts');
+must(schema.includes('model Receivable'),'missing receivables');
+must(moduleFile.includes('FinanceShiftsService')&&moduleFile.includes('FinanceReceivablesService'),'restored services not wired');
+must(controller.includes("Post('shifts/open')")&&controller.includes("Post('receivables')"),'restored APIs not exposed');
+console.log('Finance completion validation passed');
