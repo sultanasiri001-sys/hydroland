@@ -6,9 +6,11 @@ import { AdministrativeAffairsGovernanceService } from './administrative-affairs
 import { AdministrativeAffairsPersistenceService } from './administrative-affairs-persistence.service';
 import { DatabaseModule } from '../database/database.module';
 import { AdministrativeAffairsOwnershipGuard } from './administrative-affairs-ownership.guard';
+import { AdministrativeAffairsController } from './administrative-affairs.controller';
 
 @Module({
   imports: [DatabaseModule],
+  controllers: [AdministrativeAffairsController],
   providers: [AdministrativeAffairsFoundationService, AdministrativeAffairsWorkflowService, AdministrativeAffairsOperationsService, AdministrativeAffairsGovernanceService, AdministrativeAffairsPersistenceService, AdministrativeAffairsOwnershipGuard],
   exports: [AdministrativeAffairsFoundationService, AdministrativeAffairsWorkflowService, AdministrativeAffairsOperationsService, AdministrativeAffairsGovernanceService, AdministrativeAffairsPersistenceService, AdministrativeAffairsOwnershipGuard],
 })
