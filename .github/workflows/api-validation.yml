@@ -38,6 +38,7 @@ jobs:
         run: npm --workspace @hydroland/api exec -- prisma db push --skip-generate
       - run: npm run validate:hr -w @hydroland/api
       - run: npm run validate:operations -w @hydroland/api
+      - run: npm run validate:admin-affairs -w @hydroland/api
       - run: npm run validate:phase10 -w @hydroland/api
       - run: npm run validate:phase12 -w @hydroland/api
       - run: npm run validate:training -w @hydroland/api
@@ -56,8 +57,20 @@ jobs:
           node apps/api/dist/main.js > /tmp/hydroland-api.log 2>&1 &
           API_PID=$!
           trap 'kill $API_PID || true' EXIT
+          READY=0
           for i in {1..30}; do
-            if curl -fsS http://127.0.0.1:3101/api/v1/health >/dev/null; then break; fi
+            if curl -fsS http://127.0.0.1:3101/api/v1/health >/dev/null; then READY=1; break; fi
+            if ! kill -0 $API_PID 2>/dev/null; then
+              echo "API process exited before becoming healthy"
+              cat /tmp/hydroland-api.log
+              exit 1
+            fi
             sleep 1
           done
+          if [ "$READY" -ne 1 ]; then
+            echo "API did not become healthy within 30 seconds"
+            cat /tmp/hydroland-api.log
+            exit 1
+          fi
           HR_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/hr-http-e2e.mjs
+          ADMIN_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/administrative-affairs-http-e2e.mjs
