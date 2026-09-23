@@ -179,10 +179,6 @@ model Account {
   policyUpdates PolicyControl[] @relation("PolicyUpdatedBy")
   hrCandidatesVerified HrCandidate[] @relation("HrCandidateVerifiedBy")
   employments Employment[]
-  administrativeUnits AdministrativeUnit[]
-  administrativeRecords AdministrativeRecord[]
-  administrativeRoutings AdministrativeRouting[]
-  administrativeMeetings AdministrativeMeeting[]
   employmentMovementsRequested EmploymentMovement[] @relation("EmploymentMovementRequestedBy")
   employmentMovementsReviewed EmploymentMovement[] @relation("EmploymentMovementReviewedBy")
   employmentMovementsApproved EmploymentMovement[] @relation("EmploymentMovementApprovedBy")
@@ -228,6 +224,10 @@ model Organization {
   employments Employment[]
   @@index([status,createdAt])
   @@index([ownerId,status])
+  administrativeUnits AdministrativeUnit[]
+  administrativeRecords AdministrativeRecord[]
+  administrativeRoutings AdministrativeRouting[]
+  administrativeMeetings AdministrativeMeeting[]
 }
 
 model OrganizationMember {
