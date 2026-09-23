@@ -19,6 +19,7 @@ export class DocumentPdfService {
     }
     let y=height-56;
     const text=(value:unknown,x:number,size=10,isBold=false)=>{
+
       const raw=String(value??'');
       const safe=raw.replace(/[^\x20-\x7E]/g,'?');
       page.drawText(safe,{x,y,size,font:isBold?bold:font,color:rgb(0,0,0)});
@@ -30,6 +31,8 @@ export class DocumentPdfService {
       const scaled=image.scale(Math.min(1,110/image.width,55/image.height));
       page.drawImage(image,{x:width-48-scaled.width,y:height-48-scaled.height,width:scaled.width,height:scaled.height});
     }
+    // Arabic strings remain available in the canonical print contract.
+    // PDF Arabic rendering is intentionally gated until a licensed Unicode font asset is configured.
     text(c.branding.brandNameEn||'Organization',48,16,true);
     text(c.template.titleEn,48,14,true);
     text(c.referenceNumber,48,10);
