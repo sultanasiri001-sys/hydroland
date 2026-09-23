@@ -1,1 +1,1 @@
-import { Module } from '@nestjs/common'; import { DocumentFormService } from './document-form.service'; @Module({providers:[DocumentFormService],exports:[DocumentFormService]}) export class DocumentFormModule {}
+import { Module } from '@nestjs/common'; import { DocumentFormService } from './document-form.service'; import { DocumentLifecycleService } from './document-lifecycle.service'; @Module({providers:[DocumentFormService,DocumentLifecycleService],exports:[DocumentFormService,DocumentLifecycleService]}) export class DocumentFormModule {}
