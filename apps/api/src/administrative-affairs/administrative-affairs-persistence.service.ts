@@ -80,14 +80,17 @@ export class AdministrativeAffairsPersistenceService {
     const unit=await this.db.orgUnit.findUniqueOrThrow({where:{id:input.unitId},select:{organizationId:true,active:true}});
     if(unit.organizationId!==input.organizationId||!unit.active) throw new ForbiddenException('ADMIN_MEETING_UNIT_SCOPE_DENIED');
     for(const accountId of new Set([actorAccountId,...input.participantAccountIds])) await this.assertMember(accountId,input.organizationId);
-    const resourceIds=[...new Set(input.resourceIds??[])];
-    if(resourceIds.length){
-      const resources=await this.db.calendarResource.findMany({where:{id:{in:resourceIds},active:true},select:{id:true}});
-      if(resources.length!==resourceIds.length) throw new BadRequestException('ADMIN_MEETING_RESOURCE_INVALID');
-      const conflict=await this.db.calendarAllocation.findFirst({where:{resourceId:{in:resourceIds},status:'ACTIVE',startsAt:{lt:input.endsAt},endsAt:{gt:input.startsAt}},select:{id:true}});
-      if(conflict) throw new ConflictException('CALENDAR_RESOURCE_CONFLICT');
-    }
-    return this.db.$transaction(async tx=>{
+    const resourceIds=[...new Set(input.resourceIds??[])].sort();
+    return this.db.serializable(async tx=>{
+      if(resourceIds.length){
+        const locked=await tx.$queryRawUnsafe<Array<{id:string}>>(
+          `SELECT "id" FROM "CalendarResource" WHERE "id" = ANY($1::text[]) AND "active" = true ORDER BY "id" FOR UPDATE`,
+          resourceIds,
+        );
+        if(locked.length!==resourceIds.length) throw new BadRequestException('ADMIN_MEETING_RESOURCE_INVALID');
+        const conflict=await tx.calendarAllocation.findFirst({where:{resourceId:{in:resourceIds},status:'ACTIVE',startsAt:{lt:input.endsAt},endsAt:{gt:input.startsAt}},select:{id:true}});
+        if(conflict) throw new ConflictException('CALENDAR_RESOURCE_CONFLICT');
+      }
       const meeting=await tx.administrativeMeeting.create({data:{organizationId:input.organizationId,unitId:input.unitId,title:input.title.trim(),scheduledAt:input.startsAt,organizerAccountId:actorAccountId,participantAccountIds:input.participantAccountIds}});
       const event=await tx.calendarEvent.create({data:{organizationId:input.organizationId,type:'ADMINISTRATIVE_MEETING',referenceType:'ADMINISTRATIVE_MEETING',referenceId:meeting.id,title:meeting.title,startsAt:input.startsAt,endsAt:input.endsAt}});
       if(resourceIds.length) await tx.calendarAllocation.createMany({data:resourceIds.map(resourceId=>({eventId:event.id,resourceId,startsAt:input.startsAt,endsAt:input.endsAt,status:'ACTIVE'}))});
