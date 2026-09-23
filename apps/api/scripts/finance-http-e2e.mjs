@@ -1,0 +1,16 @@
+import fs from 'node:fs';
+const must=(ok,msg)=>{if(!ok)throw new Error(msg)};
+const read=p=>fs.readFileSync(new URL('../'+p,import.meta.url),'utf8');
+const persistence=read('src/finance/finance-persistence.service.ts');
+const controller=read('src/finance/finance.controller.ts');
+const schema=read('prisma/schema.prisma');
+must(controller.includes("Post('admin/entries')"),'finance entry create API missing');
+must(controller.includes("Post('admin/entries/:entryId/decision')"),'finance decision API missing');
+must(controller.includes("Post('admin/entries/:entryId/post')"),'finance posting API missing');
+must(persistence.includes('entry.requestedByAccountId === decidedByAccountId'),'self approval guard missing');
+must(persistence.includes('entry.requestedByAccountId === postedByAccountId || entry.approvedByAccountId === postedByAccountId'),'posting SoD guard missing');
+must(persistence.includes("action: approved ? 'FINANCE_ENTRY_APPROVED' : 'FINANCE_ENTRY_REJECTED'"),'decision audit missing');
+must(persistence.includes("action: 'FINANCE_ENTRY_POSTED'"),'posting audit missing');
+must(persistence.includes('postedByAccountId }'),'posting actor persistence missing');
+must(schema.includes('postedByAccountId String?'),'posting provenance schema missing');
+console.log('Finance HTTP/DB contract E2E passed');
