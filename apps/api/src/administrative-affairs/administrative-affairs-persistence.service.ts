@@ -11,7 +11,8 @@ export class AdministrativeAffairsPersistenceService {
     const assignments=await this.db.roleAssignment.findMany({where:{accountId,status:'ACTIVE'},select:{role:true,scope:true}});
     const scoped=assignments.filter(a=>{const x=a.scope;if(!x||Array.isArray(x)||typeof x!=='object')return false;const ids=(x as {organizationIds?:unknown}).organizationIds;return Array.isArray(ids)&&ids.includes(organizationId);});
     const roles=new Set<string>([member.role,...scoped.map(a=>a.role)]);
-    if(roles.has('CENTER_MANAGER')&&unitIds.length){
+    const globalAuthority=member.role==='OWNER'||member.role==='ADMIN'||roles.has('OWNER')||roles.has('ADMIN');
+    if(!globalAuthority&&roles.has('CENTER_MANAGER')&&unitIds.length){
       const unitScoped=scoped.some(a=>{const x=a.scope as {unitIds?:unknown,centerIds?:unknown};const ids=Array.isArray(x.unitIds)?x.unitIds:Array.isArray(x.centerIds)?x.centerIds:[];return unitIds.every(id=>ids.includes(id));});
       if(!unitScoped) throw new ForbiddenException('ADMIN_UNIT_SCOPE_DENIED');
     }
@@ -29,6 +30,23 @@ export class AdministrativeAffairsPersistenceService {
   async assertMember(accountId:string, organizationId:string) {
     const member=await this.db.organizationMember.findFirst({where:{accountId,organizationId,status:'ACTIVE'},select:{id:true}});
     if(!member) throw new ForbiddenException('ADMIN_ORGANIZATION_SCOPE_DENIED');
+  }
+
+  private async assertAssigneeEligible(accountId:string, organizationId:string, unitId:string) {
+    const member=await this.db.organizationMember.findFirst({where:{accountId,organizationId,status:'ACTIVE'},select:{role:true}});
+    if(!member) throw new ForbiddenException('ADMIN_ASSIGNEE_NOT_ELIGIBLE');
+    if(member.role==='OWNER'||member.role==='ADMIN') return;
+    const assignments=await this.db.roleAssignment.findMany({where:{accountId,status:'ACTIVE'},select:{role:true,scope:true}});
+    const eligible=assignments.some(a=>{
+      if(!['CENTER_MANAGER','REVIEWER','EXECUTIVE_APPROVER','STAFF','OPERATOR'].includes(a.role)) return false;
+      const x=a.scope;
+      if(!x||Array.isArray(x)||typeof x!=='object') return false;
+      const scope=x as {organizationIds?:unknown,unitIds?:unknown,centerIds?:unknown};
+      if(!Array.isArray(scope.organizationIds)||!scope.organizationIds.includes(organizationId)) return false;
+      const ids=Array.isArray(scope.unitIds)?scope.unitIds:Array.isArray(scope.centerIds)?scope.centerIds:[];
+      return ids.includes(unitId);
+    });
+    if(!eligible) throw new ForbiddenException('ADMIN_ASSIGNEE_NOT_ELIGIBLE');
   }
 
   async registerRecord(recordId:string, actorAccountId:string) {
@@ -97,7 +115,7 @@ export class AdministrativeAffairsPersistenceService {
 
   async assign(routingId:string,assigneeAccountId:string,actorAccountId:string) {
     const routing=await this.db.administrativeRouting.findUniqueOrThrow({where:{id:routingId},select:{id:true,organizationId:true,toUnitId:true,decision:true,assignedToAccountId:true}});
-    await this.assertPermission(actorAccountId,routing.organizationId,'ASSIGN',[routing.toUnitId]); await this.assertMember(assigneeAccountId,routing.organizationId);
+    await this.assertPermission(actorAccountId,routing.organizationId,'ASSIGN',[routing.toUnitId]); await this.assertAssigneeEligible(assigneeAccountId,routing.organizationId,routing.toUnitId);
     if(routing.decision) throw new ConflictException('ADMIN_ROUTING_ALREADY_DECIDED');
     return this.db.$transaction(async tx=>{
       const updated=await tx.administrativeRouting.updateMany({where:{id:routing.id,decision:null,assignedToAccountId:routing.assignedToAccountId},data:{assignedToAccountId:assigneeAccountId}});
