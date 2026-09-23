@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common';
+import { Res, Body, Controller, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { ManagedDocumentStatus } from '@prisma/client';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { DocumentPersistenceService } from './document-persistence.service';
