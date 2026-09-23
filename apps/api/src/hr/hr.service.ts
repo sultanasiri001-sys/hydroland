@@ -15,6 +15,40 @@ export class HrService {
     assertEmploymentTransition(from, to);
   }
 
+  async approveCompensation(input: { compensationTermId: string; actor: HrActor; context: HrRequestContext }) {
+    const term = await this.db.compensationTerm.findUniqueOrThrow({
+      where: { id: input.compensationTermId },
+      select: { id: true, status: true, employment: { select: { organizationId: true } }, requestedByAccountId: true, reviewedByAccountId: true },
+    });
+    if (term.employment.organizationId !== input.context.organizationId) throw new Error('HR_ORGANIZATION_SCOPE_DENIED');
+    if (!term.requestedByAccountId || !term.reviewedByAccountId) throw new Error('HR_SEPARATION_CONTEXT_REQUIRED');
+    this.authorize(input.actor, 'APPROVE_COMPENSATION_CHANGE', { ...input.context, requesterAccountId: term.requestedByAccountId, reviewerAccountId: term.reviewedByAccountId });
+    if (!['HR_REVIEW', 'APPROVAL_REQUIRED'].includes(term.status)) throw new Error('HR_COMPENSATION_NOT_APPROVABLE');
+    return this.db.$transaction(async (tx) => {
+      const updated = await tx.compensationTerm.updateMany({ where: { id: term.id, status: term.status }, data: { status: 'APPROVED', approvedByAccountId: input.actor.accountId } });
+      if (updated.count !== 1) throw new Error('HR_COMPENSATION_CONCURRENT_MODIFICATION');
+      const auditActor = await tx.account.findUniqueOrThrow({ where: { id: input.actor.accountId }, select: { personId: true } });
+      await tx.auditEvent.create({ data: { actorId: auditActor.personId, action: 'HR_COMPENSATION_APPROVED', resource: 'CompensationTerm', resourceId: term.id, metadata: { organizationId: term.employment.organizationId } as never } });
+      return tx.compensationTerm.findUniqueOrThrow({ where: { id: term.id } });
+    });
+  }
+
+  async approveDisciplinaryDecision(input: { relationsCaseId: string; actor: HrActor; context: HrRequestContext }) {
+    const record = await this.db.employeeRelationsCase.findUniqueOrThrow({ where: { id: input.relationsCaseId }, select: { id: true, status: true, openedByAccountId: true, reviewedByAccountId: true, decision: true, employment: { select: { organizationId: true } } } });
+    if (record.employment.organizationId !== input.context.organizationId) throw new Error('HR_ORGANIZATION_SCOPE_DENIED');
+    if (!record.reviewedByAccountId) throw new Error('HR_SEPARATION_CONTEXT_REQUIRED');
+    if (!record.decision?.trim()) throw new Error('HR_DISCIPLINARY_DECISION_REQUIRED');
+    this.authorize(input.actor, 'APPROVE_DISCIPLINARY_DECISION', { ...input.context, requesterAccountId: record.openedByAccountId, reviewerAccountId: record.reviewedByAccountId });
+    if (!['HR_REVIEW', 'APPROVAL_REQUIRED'].includes(record.status)) throw new Error('HR_DISCIPLINARY_NOT_APPROVABLE');
+    return this.db.$transaction(async (tx) => {
+      const updated = await tx.employeeRelationsCase.updateMany({ where: { id: record.id, status: record.status }, data: { status: 'APPROVED', approvedByAccountId: input.actor.accountId } });
+      if (updated.count !== 1) throw new Error('HR_DISCIPLINARY_CONCURRENT_MODIFICATION');
+      const auditActor = await tx.account.findUniqueOrThrow({ where: { id: input.actor.accountId }, select: { personId: true } });
+      await tx.auditEvent.create({ data: { actorId: auditActor.personId, action: 'HR_DISCIPLINARY_DECISION_APPROVED', resource: 'EmployeeRelationsCase', resourceId: record.id, metadata: { organizationId: record.employment.organizationId } as never } });
+      return tx.employeeRelationsCase.findUniqueOrThrow({ where: { id: record.id } });
+    });
+  }
+
   async applyEmploymentStatus(input: {
     employmentId: string;
     nextStatus: string;
