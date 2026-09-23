@@ -478,7 +478,6 @@ model Trip {
   bookings Booking[]
   safetyChecklists SafetyChecklist[]
   diveLogs DiveLog[] @relation("TripDiveLogs")
-  calendarAllocations CalendarAllocation[]
   crewAssignments CrewAssignment[]
   briefings TripBriefing[]
   divePlans DivePlan[]
@@ -534,19 +533,37 @@ model CalendarResource {
   @@index([referenceId])
 }
 
+model CalendarEvent {
+  id String @id @default(uuid())
+  organizationId String?
+  type String
+  referenceType String
+  referenceId String
+  title String
+  startsAt DateTime
+  endsAt DateTime
+  status String @default("ACTIVE")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  allocations CalendarAllocation[]
+  @@unique([referenceType,referenceId])
+  @@index([organizationId,startsAt,endsAt])
+  @@index([type,status,startsAt])
+}
+
 model CalendarAllocation {
   id String @id @default(uuid())
-  tripId String
+  eventId String
   resourceId String
   startsAt DateTime
   endsAt DateTime
   status String @default("ACTIVE")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  trip Trip @relation(fields:[tripId], references:[id], onDelete:Restrict)
+  event CalendarEvent @relation(fields:[eventId], references:[id], onDelete:Restrict)
   resource CalendarResource @relation(fields:[resourceId], references:[id], onDelete:Restrict)
   @@index([resourceId,startsAt,endsAt])
-  @@index([tripId,status])
+  @@index([eventId,status])
 }
 
 model CrewAssignment {
