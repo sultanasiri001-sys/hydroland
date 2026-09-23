@@ -1095,6 +1095,117 @@ model FinanceApproval {
 }
 
 
+
+enum FinanceShiftStatus { OPEN HANDOVER_PENDING HANDED_OVER CLOSED }
+enum FinanceHandoverStatus { PENDING ACCEPTED REJECTED }
+enum ReceivableStatus { OPEN PARTIALLY_PAID PAID OVERDUE }
+enum ReceivableInstallmentStatus { PENDING PARTIALLY_PAID PAID OVERDUE CANCELLED }
+
+model FinanceAccountantShift {
+ id String @id @default(uuid())
+ centerOrgUnitId String
+ accountantAccountId String
+ status FinanceShiftStatus @default(OPEN)
+ openingBalanceMinor Int @default(0)
+ currency String @default("SAR")
+ openedAt DateTime @default(now())
+ submittedAt DateTime?
+ closedAt DateTime?
+ reviewedByAccountId String?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ entries FinanceShiftEntry[]
+ outgoingHandovers FinanceShiftHandover[] @relation("FinanceHandoverFromShift")
+ incomingHandovers FinanceShiftHandover[] @relation("FinanceHandoverToShift")
+ @@index([centerOrgUnitId,status])
+ @@index([accountantAccountId,status])
+}
+
+model FinanceShiftEntry {
+ id String @id @default(uuid())
+ shiftId String
+ type FinanceEntryType
+ amountMinor Int
+ paymentId String? @unique
+ referenceType String?
+ referenceId String?
+ description String?
+ recordedByAccountId String
+ createdAt DateTime @default(now())
+ shift FinanceAccountantShift @relation(fields:[shiftId],references:[id],onDelete:Restrict)
+ @@index([shiftId,createdAt])
+}
+
+model FinanceShiftHandover {
+ id String @id @default(uuid())
+ fromShiftId String
+ toShiftId String
+ fromAccountantId String
+ toAccountantId String
+ expectedCashMinor Int
+ actualCashMinor Int
+ varianceMinor Int
+ varianceReason String?
+ status FinanceHandoverStatus @default(PENDING)
+ offeredAt DateTime @default(now())
+ acceptedAt DateTime?
+ createdAt DateTime @default(now())
+ fromShift FinanceAccountantShift @relation("FinanceHandoverFromShift",fields:[fromShiftId],references:[id],onDelete:Restrict)
+ toShift FinanceAccountantShift @relation("FinanceHandoverToShift",fields:[toShiftId],references:[id],onDelete:Restrict)
+ @@index([fromShiftId,status])
+ @@index([toShiftId,status])
+}
+
+model Receivable {
+ id String @id @default(uuid())
+ invoiceId String @unique
+ customerAccountId String
+ centerOrgUnitId String
+ totalMinor Int
+ paidMinor Int @default(0)
+ outstandingMinor Int
+ currency String @default("SAR")
+ dueAt DateTime
+ creditLimitMinor Int?
+ status ReceivableStatus @default(OPEN)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ installments ReceivableInstallment[]
+ payments ReceivablePayment[]
+ @@index([centerOrgUnitId,status,dueAt])
+ @@index([customerAccountId,status])
+}
+
+model ReceivableInstallment {
+ id String @id @default(uuid())
+ receivableId String
+ sequence Int
+ amountMinor Int
+ paidMinor Int @default(0)
+ dueAt DateTime
+ status ReceivableInstallmentStatus @default(PENDING)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ receivable Receivable @relation(fields:[receivableId],references:[id],onDelete:Restrict)
+ payments ReceivablePayment[]
+ @@unique([receivableId,sequence])
+ @@index([dueAt,status])
+}
+
+model ReceivablePayment {
+ id String @id @default(uuid())
+ receivableId String
+ installmentId String?
+ paymentId String @unique
+ amountMinor Int
+ receiptNumber String @unique
+ collectedAt DateTime @default(now())
+ createdAt DateTime @default(now())
+ receivable Receivable @relation(fields:[receivableId],references:[id],onDelete:Restrict)
+ installment ReceivableInstallment? @relation(fields:[installmentId],references:[id],onDelete:Restrict)
+ @@index([receivableId,collectedAt])
+}
+
 enum TrainingEnrollmentStatus {
   PENDING
   ACTIVE
