@@ -12,7 +12,7 @@ for(const [a,o,r] of [[manager,org,'ADMIN'],[approver,org,'STAFF'],[outsider,oth
 const u1=await db.orgUnit.create({data:{organizationId:org.id,type:'DEPARTMENT',code:'ADM-A-'+suffix,nameAr:'الإدارة أ'}});
 const u2=await db.orgUnit.create({data:{organizationId:org.id,type:'DEPARTMENT',code:'ADM-B-'+suffix,nameAr:'الإدارة ب'}});
 const uOther=await db.orgUnit.create({data:{organizationId:other.id,type:'DEPARTMENT',code:'ADM-X-'+suffix,nameAr:'إدارة خارجية'}});
-await db.roleAssignment.create({data:{accountId:approver.id,role:'REVIEWER',status:'ACTIVE',scope:{organizationIds:[org.id]}}});
+await db.roleAssignment.create({data:{accountId:approver.id,role:'REVIEWER',status:'ACTIVE',scope:{organizationIds:[org.id],unitIds:[u2.id]}}});
 const record=await db.administrativeRecord.create({data:{organizationId:org.id,unitId:u1.id,type:'INTERNAL_MEMO',referenceNumber:'E2E-'+suffix,subject:'Admin E2E',ownerAccountId:manager.id}});
 const call=(path,method,t,body)=>fetch(base+path,{method,headers:{authorization:`Bearer ${t}`,'content-type':'application/json'},body:body?JSON.stringify(body):undefined});
 try{
