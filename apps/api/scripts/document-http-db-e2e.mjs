@@ -74,7 +74,8 @@ try{
  r=await call(`/documents/${doc.id}/archive`,'POST',token(signer.id));if(r.status!==400)throw new Error('Repeat archive expected 400');
  const stored=await db.managedDocument.findUniqueOrThrow({where:{id:doc.id},include:{lifecycleEvents:true}});
  if(stored.status!=='ARCHIVED'||stored.lifecycleEvents.length!==7)throw new Error('Lifecycle persistence invalid: status='+stored.status+' events='+stored.lifecycleEvents.length);
- const bodies=Array.from({length:8},(_,i)=>({...body,contentHash:'sha256:'+suffix+'-'+i,payload:{summary:'concurrent '+i}}));
+ const latestBody={...body,templateId:templateV2.id};
+ const bodies=Array.from({length:8},(_,i)=>({...latestBody,contentHash:'sha256:'+suffix+'-'+i,payload:{summary:'concurrent '+i}}));
  const rs=await Promise.all(bodies.map(x=>call('/documents','POST',token(creator.id),x)));
  if(rs.some(x=>!x.ok))throw new Error('Concurrent create failed: '+rs.map(x=>x.status).join(','));
  const docs=await Promise.all(rs.map(x=>x.json())),refs=new Set(docs.map(x=>x.referenceNumber));
