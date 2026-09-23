@@ -94,6 +94,9 @@ assertHrActionForEmploymentTransition('CHANGE_EMPLOYMENT', 'ACTIVE', 'ON_LEAVE')
 expectDenied(() => assertHrActionForEmploymentTransition('CHANGE_EMPLOYMENT', 'PENDING_APPROVAL', 'ACTIVE'), 'HR_APPOINTMENT_APPROVAL_REQUIRED');
 expectDenied(() => assertHrActionForEmploymentTransition('CHANGE_EMPLOYMENT', 'ACTIVE', 'TERMINATED'), 'HR_TERMINATION_APPROVAL_REQUIRED');
 expectDenied(() => assertHrActionForEmploymentTransition('CHANGE_EMPLOYMENT', 'TERMINATED', 'OFFBOARDED'), 'HR_IAM_OFFBOARDING_REQUIRED');
-expectDenied(() => assertHrActionForEmploymentTransition('VERIFY_CANDIDATE', 'DRAFT', 'PENDING_APPROVAL'), 'HR_STAFFING_REQUEST_REQUIRED');
+expectDenied(() => assertHrActionForEmploymentTransition('VERIFY_CANDIDATE', 'DRAFT', 'PENDING_APPROVAL'), 'HR_ACTION_NOT_EMPLOYMENT_STATUS_TRANSITION');
+expectDenied(() => assertHrActionForEmploymentTransition('APPROVE_COMPENSATION_CHANGE', 'ACTIVE', 'ON_LEAVE'), 'HR_ACTION_NOT_EMPLOYMENT_STATUS_TRANSITION');
+expectDenied(() => assertHrActionForEmploymentTransition('OPEN_EMPLOYEE_RELATIONS_CASE', 'ACTIVE', 'SUSPENDED'), 'HR_ACTION_NOT_EMPLOYMENT_STATUS_TRANSITION');
+expectDenied(() => assertHrActionForEmploymentTransition('APPROVE_DISCIPLINARY_DECISION', 'ACTIVE', 'SUSPENDED'), 'HR_ACTION_NOT_EMPLOYMENT_STATUS_TRANSITION');
 
 console.log('HR authorization and employment lifecycle controls validated.');
