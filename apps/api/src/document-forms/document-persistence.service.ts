@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { ManagedDocumentStatus } from '@prisma/client';
+import { ManagedDocumentStatus, Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 
 type Field={key:string;labelAr:string;labelEn:string;type:string;required:boolean;options?:string[]};
@@ -30,7 +30,7 @@ export class DocumentPersistenceService {
     if(t.department!==input.department) throw new BadRequestException('Document department does not match template.');
     if(!input.referenceNumber?.trim()||!input.contentHash?.trim()) throw new BadRequestException('Reference number and content hash are required.');
     return this.db.serializable(async tx=>{
-      const d=await tx.managedDocument.create({data:{organizationId:input.organizationId,templateId:t.id,referenceNumber:input.referenceNumber,department:t.department,contentHash:input.contentHash,payload:input.payload,createdByAccountId:accountId}});
+      const d=await tx.managedDocument.create({data:{organizationId:input.organizationId,templateId:t.id,referenceNumber:input.referenceNumber,department:t.department,contentHash:input.contentHash,payload:input.payload as Prisma.InputJsonValue,createdByAccountId:accountId}});
       await tx.documentLifecycleEvent.create({data:{documentId:d.id,actorAccountId:accountId,action:'CREATE',toStatus:ManagedDocumentStatus.DRAFT,version:d.version}});
       return d;
     });
