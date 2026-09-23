@@ -22,7 +22,8 @@
     "validate:marine": "node scripts/marine-operations-validation.mjs",
     "validate:integrations": "node scripts/integration-readiness-validation.mjs",
     "validate:admin-affairs": "node scripts/administrative-affairs-validation.mjs",
-    "validate:finance": "node scripts/finance-validation.mjs"
+    "validate:finance": "node scripts/finance-validation.mjs",
+    "validate:inventory": "rm -rf .tmp-inventory-validation && tsc src/inventory/*.ts --outDir .tmp-inventory-validation --module commonjs --moduleResolution node --target es2020 --esModuleInterop --skipLibCheck && node scripts/inventory-validation.cjs && rm -rf .tmp-inventory-validation"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.3",
