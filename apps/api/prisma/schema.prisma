@@ -179,6 +179,10 @@ model Account {
   policyUpdates PolicyControl[] @relation("PolicyUpdatedBy")
   hrCandidatesVerified HrCandidate[] @relation("HrCandidateVerifiedBy")
   employments Employment[]
+  administrativeUnits AdministrativeUnit[]
+  administrativeRecords AdministrativeRecord[]
+  administrativeRoutings AdministrativeRouting[]
+  administrativeMeetings AdministrativeMeeting[]
   employmentMovementsRequested EmploymentMovement[] @relation("EmploymentMovementRequestedBy")
   employmentMovementsReviewed EmploymentMovement[] @relation("EmploymentMovementReviewedBy")
   employmentMovementsApproved EmploymentMovement[] @relation("EmploymentMovementApprovedBy")
@@ -190,6 +194,12 @@ model Account {
   compensationTermsRequested CompensationTerm[] @relation("CompensationTermRequestedBy")
   compensationTermsReviewed CompensationTerm[] @relation("CompensationTermReviewedBy")
   compensationTermsApproved CompensationTerm[] @relation("CompensationTermApprovedBy")
+  administrativeUnitsManaged AdministrativeUnit[] @relation("AdministrativeUnitManager")
+  administrativeRecordsOwned AdministrativeRecord[] @relation("AdministrativeRecordOwner")
+  administrativeRoutingsRequested AdministrativeRouting[] @relation("AdministrativeRoutingRequester")
+  administrativeRoutingsAssigned AdministrativeRouting[] @relation("AdministrativeRoutingAssignee")
+  administrativeRoutingsDecided AdministrativeRouting[] @relation("AdministrativeRoutingDecider")
+  administrativeMeetingsOrganized AdministrativeMeeting[] @relation("AdministrativeMeetingOrganizer")
   customerCases CustomerCase[] @relation("CustomerCases")
   customerInteractions CustomerInteraction[] @relation("CustomerInteractionActor")
   storeOrders StoreOrder[]
@@ -340,6 +350,88 @@ model Notification {
   sentAt DateTime?
   createdAt DateTime @default(now())
   account Account @relation(fields:[accountId], references:[id], onDelete:Restrict)
+}
+
+enum AdministrativeRecordDbStatus {
+  DRAFT
+  REGISTERED
+  ARCHIVED
+}
+
+model AdministrativeUnit {
+  id String @id @default(uuid())
+  organizationId String
+  name String
+  managerAccountId String
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)
+  manager Account @relation("AdministrativeUnitManager", fields:[managerAccountId], references:[id], onDelete:Restrict)
+  records AdministrativeRecord[]
+  meetings AdministrativeMeeting[]
+  routingsFrom AdministrativeRouting[] @relation("AdministrativeRoutingFromUnit")
+  routingsTo AdministrativeRouting[] @relation("AdministrativeRoutingToUnit")
+  @@unique([organizationId,name])
+  @@index([organizationId,active])
+}
+
+model AdministrativeRecord {
+  id String @id @default(uuid())
+  organizationId String
+  unitId String
+  type String
+  referenceNumber String
+  subject String
+  status AdministrativeRecordDbStatus @default(DRAFT)
+  ownerAccountId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)
+  unit AdministrativeUnit @relation(fields:[unitId], references:[id], onDelete:Restrict)
+  owner Account @relation("AdministrativeRecordOwner", fields:[ownerAccountId], references:[id], onDelete:Restrict)
+  routings AdministrativeRouting[]
+  @@unique([organizationId,referenceNumber])
+  @@index([organizationId,unitId,status])
+}
+
+model AdministrativeRouting {
+  id String @id @default(uuid())
+  organizationId String
+  recordId String
+  fromUnitId String
+  toUnitId String
+  requestedByAccountId String
+  assignedToAccountId String?
+  decision String?
+  decidedByAccountId String?
+  createdAt DateTime @default(now())
+  decidedAt DateTime?
+  organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)
+  record AdministrativeRecord @relation(fields:[recordId], references:[id], onDelete:Restrict)
+  fromUnit AdministrativeUnit @relation("AdministrativeRoutingFromUnit", fields:[fromUnitId], references:[id], onDelete:Restrict)
+  toUnit AdministrativeUnit @relation("AdministrativeRoutingToUnit", fields:[toUnitId], references:[id], onDelete:Restrict)
+  requestedBy Account @relation("AdministrativeRoutingRequester", fields:[requestedByAccountId], references:[id], onDelete:Restrict)
+  assignedTo Account? @relation("AdministrativeRoutingAssignee", fields:[assignedToAccountId], references:[id], onDelete:Restrict)
+  decidedBy Account? @relation("AdministrativeRoutingDecider", fields:[decidedByAccountId], references:[id], onDelete:Restrict)
+  @@index([organizationId,recordId])
+  @@index([assignedToAccountId,decision])
+}
+
+model AdministrativeMeeting {
+  id String @id @default(uuid())
+  organizationId String
+  unitId String
+  title String
+  scheduledAt DateTime
+  organizerAccountId String
+  participantAccountIds Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)
+  unit AdministrativeUnit @relation(fields:[unitId], references:[id], onDelete:Restrict)
+  organizer Account @relation("AdministrativeMeetingOrganizer", fields:[organizerAccountId], references:[id], onDelete:Restrict)
+  @@index([organizationId,unitId,scheduledAt])
 }
 
 model AuditEvent {
