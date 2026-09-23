@@ -15,6 +15,21 @@ export class HrService {
     assertEmploymentTransition(from, to);
   }
 
+  async verifyCandidate(input: { candidateId: string; notes?: string; actor: HrActor; context: HrRequestContext }) {
+    const candidate = await this.db.hrCandidate.findUniqueOrThrow({ where: { id: input.candidateId }, select: { id: true, organizationId: true, status: true } });
+    if (candidate.organizationId !== input.context.organizationId) throw new Error('HR_ORGANIZATION_SCOPE_DENIED');
+    this.authorize(input.actor, 'VERIFY_CANDIDATE', input.context);
+    if (!['SUBMITTED','HR_REVIEW'].includes(candidate.status)) throw new Error('HR_CANDIDATE_NOT_VERIFIABLE');
+    return this.db.$transaction(async (tx) => {
+      const updated = await tx.hrCandidate.updateMany({ where: { id: candidate.id, status: candidate.status }, data: { status: 'APPROVED', verifiedByAccountId: input.actor.accountId, verifiedAt: new Date(), verificationNotes: input.notes?.trim() || null } });
+      if (updated.count !== 1) throw new Error('HR_CANDIDATE_CONCURRENT_MODIFICATION');
+      const record = await tx.hrCandidate.findUniqueOrThrow({ where: { id: candidate.id } });
+      const auditActor = await tx.account.findUniqueOrThrow({ where: { id: input.actor.accountId }, select: { personId: true } });
+      await tx.auditEvent.create({ data: { actorId: auditActor.personId, action: 'HR_CANDIDATE_VERIFIED', resource: 'HrCandidate', resourceId: candidate.id, metadata: { organizationId: candidate.organizationId } as never } });
+      return record;
+    });
+  }
+
   async openEmployeeRelationsCase(input: { employmentId: string; caseType: string; summary?: string; actor: HrActor; context: HrRequestContext }) {
     const employment = await this.db.employment.findUniqueOrThrow({ where: { id: input.employmentId }, select: { organizationId: true } });
     if (employment.organizationId !== input.context.organizationId) throw new Error('HR_ORGANIZATION_SCOPE_DENIED');
