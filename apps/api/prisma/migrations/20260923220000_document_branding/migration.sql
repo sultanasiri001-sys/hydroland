@@ -54,11 +54,10 @@ CREATE TABLE "OrganizationDocumentAsset" (
   "mimeType" TEXT NOT NULL,
   "byteSize" INTEGER NOT NULL,
   "sha256" TEXT NOT NULL,
-  "storageKey" TEXT NOT NULL,
+  "content" BYTEA NOT NULL,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "OrganizationDocumentAsset_pkey" PRIMARY KEY ("id")
 );
 CREATE UNIQUE INDEX "OrganizationDocumentAsset_organizationId_sha256_key" ON "OrganizationDocumentAsset"("organizationId","sha256");
-CREATE UNIQUE INDEX "OrganizationDocumentAsset_storageKey_key" ON "OrganizationDocumentAsset"("storageKey");
 CREATE INDEX "OrganizationDocumentAsset_organizationId_kind_createdAt_idx" ON "OrganizationDocumentAsset"("organizationId","kind","createdAt");
 ALTER TABLE "OrganizationDocumentAsset" ADD CONSTRAINT "OrganizationDocumentAsset_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
