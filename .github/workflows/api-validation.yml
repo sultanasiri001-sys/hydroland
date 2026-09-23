@@ -43,6 +43,7 @@ jobs:
       - run: npm run validate:inventory -w @hydroland/api
       - run: npm run validate:customer-service -w @hydroland/api
       - run: npm run validate:marketing -w @hydroland/api
+      - run: npm run validate:safety -w @hydroland/api
       - run: npm run validate:phase10 -w @hydroland/api
       - run: npm run validate:phase12 -w @hydroland/api
       - run: npm run validate:training -w @hydroland/api
