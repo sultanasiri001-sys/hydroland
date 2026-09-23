@@ -85,16 +85,23 @@ export class HrService {
           orderBy: { createdAt: 'desc' },
           select: { id: true },
         });
-        if (offboarding) {
-          await tx.offboardingCase.update({
-            where: { id: offboarding.id },
-            data: { status: 'CLOSED', iamRevokedAt: revokedAt, closedAt: revokedAt },
-          });
-        } else {
-          await tx.offboardingCase.create({
-            data: { employmentId: employment.id, status: 'CLOSED', iamRevokedAt: revokedAt, closedAt: revokedAt },
-          });
+        if (!offboarding) throw new Error('HR_OFFBOARDING_CASE_REQUIRED');
+        const offboardingRecord = await tx.offboardingCase.findUniqueOrThrow({
+          where: { id: offboarding.id },
+          select: { status: true, clearance: true },
+        });
+        if (!['APPROVED', 'APPROVAL_REQUIRED'].includes(offboardingRecord.status)) {
+          throw new Error('HR_OFFBOARDING_APPROVAL_REQUIRED');
         }
+        const clearance = offboardingRecord.clearance;
+        if (!clearance || Array.isArray(clearance) || typeof clearance !== 'object' ||
+            (clearance as Record<string, unknown>).completed !== true) {
+          throw new Error('HR_OFFBOARDING_CLEARANCE_REQUIRED');
+        }
+        await tx.offboardingCase.update({
+          where: { id: offboarding.id },
+          data: { status: 'CLOSED', iamRevokedAt: revokedAt, closedAt: revokedAt },
+        });
       }
       const auditActor = await tx.account.findUniqueOrThrow({
         where: { id: input.actor.accountId },
