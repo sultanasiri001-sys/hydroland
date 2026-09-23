@@ -1,4 +1,4 @@
-import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Param, Patch, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { DatabaseService } from '../database/database.service';
 import { HrService } from './hr.service';
@@ -26,6 +26,14 @@ export class HrController {
     private readonly hr: HrService,
     private readonly db: DatabaseService,
   ) {}
+
+  @Post(':employmentId/relations')
+  async openRelationsCase(@Req() request:{auth:{accountId:string}},@Param('employmentId') employmentId:string,@Body() body:{caseType?:string;summary?:string;context?:HrRequestContext}) {
+    if(!body?.caseType || typeof body.caseType!=='string') throw new BadRequestException('HR relations case type is required.');
+    const employment=await this.db.employment.findUniqueOrThrow({where:{id:employmentId},select:{organizationId:true}});
+    const actor=await this.actorFor(request.auth.accountId,employment.organizationId);
+    try { return await this.hr.openEmployeeRelationsCase({employmentId,caseType:body.caseType,summary:body.summary,actor,context:{organizationId:employment.organizationId,centerId:body.context?.centerId}}); } catch(e){ this.mapWorkflowError(e); }
+  }
 
   @Patch('compensation/:compensationTermId/approve')
   async approveCompensation(@Req() request:{auth:{accountId:string}},@Param('compensationTermId') id:string,@Body() body:{context?:HrRequestContext}) {
