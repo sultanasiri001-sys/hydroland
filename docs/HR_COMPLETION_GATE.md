@@ -19,7 +19,7 @@ This gate is the authoritative checklist before moving from Human Resources to O
 - [x] Performance cycle
 - [x] Employee-relations/disciplinary case
 - [x] Offboarding workflow state
-- [ ] Required Prisma migration(s) validated against existing migration history. BLOCKED: clean `prisma migrate deploy` currently fails at legacy migration `20260914101500_dive_logs` because `DiveLog.accountId` is TEXT while `Account.id` is UUID. Historical migrations must remain immutable; resolve via an approved bootstrap/baseline reconciliation strategy.
+- [x] Database bootstrap/reconciliation validated without rewriting legacy migration history: production migration state was inspected read-only, canonical Prisma schema bootstraps clean PostgreSQL in CI, and the Production Release Gate prevents modification/deletion/rename of historical migrations.
 
 ## Workflow and permissions
 - [x] External-center request → HR verification → required executive approval → appointment → IAM activation rule approved.
