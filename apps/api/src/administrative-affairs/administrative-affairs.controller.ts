@@ -23,6 +23,15 @@ export class AdministrativeAffairsController {
     return this.service.archiveRecord(recordId,req.auth.accountId);
   }
 
+  @Post('meetings')
+  scheduleMeeting(@Req() req:{auth:{accountId:string}}, @Body() body:{organizationId?:string,unitId?:string,title?:string,startsAt?:string,endsAt?:string,participantAccountIds?:string[],resourceIds?:string[]}) {
+    this.ownership.assertOwnMutation('MEETING');
+    if(!body.organizationId||!body.unitId||!body.title||!body.startsAt||!body.endsAt) throw new BadRequestException('ADMIN_MEETING_REQUIRED_FIELDS');
+    const startsAt=new Date(body.startsAt), endsAt=new Date(body.endsAt);
+    if(Number.isNaN(startsAt.getTime())||Number.isNaN(endsAt.getTime())) throw new BadRequestException('ADMIN_MEETING_TIME_INVALID');
+    return this.service.scheduleMeeting({organizationId:body.organizationId,unitId:body.unitId,title:body.title,startsAt,endsAt,participantAccountIds:body.participantAccountIds??[],resourceIds:body.resourceIds??[]},req.auth.accountId);
+  }
+
   @Post('records/:recordId/routings')
   route(@Req() req:{auth:{accountId:string}}, @Param('recordId') recordId:string, @Body() body:{toUnitId?:string}) {
     this.ownership.assertOwnMutation('ADMIN_ROUTING');
