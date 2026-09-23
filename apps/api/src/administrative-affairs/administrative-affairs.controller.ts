@@ -17,6 +17,12 @@ export class AdministrativeAffairsController {
     return this.service.registerRecord(recordId,req.auth.accountId);
   }
 
+  @Patch('records/:recordId/archive')
+  archive(@Req() req:{auth:{accountId:string}}, @Param('recordId') recordId:string) {
+    this.ownership.assertOwnMutation('ADMIN_ARCHIVE');
+    return this.service.archiveRecord(recordId,req.auth.accountId);
+  }
+
   @Post('records/:recordId/routings')
   route(@Req() req:{auth:{accountId:string}}, @Param('recordId') recordId:string, @Body() body:{toUnitId?:string}) {
     this.ownership.assertOwnMutation('ADMIN_ROUTING');
