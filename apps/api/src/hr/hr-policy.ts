@@ -32,6 +32,10 @@ const sensitiveApprovalActions = new Set<HrAction>([
 ]);
 
 export function assertHrActionForEmploymentTransition(action: HrAction, from: string, to: string): void {
+  const statusTransitionActions = new Set<HrAction>(['STAFFING_REQUEST', 'APPROVE_APPOINTMENT', 'CHANGE_EMPLOYMENT', 'APPROVE_TERMINATION', 'APPLY_IAM_CHANGE']);
+  if (!statusTransitionActions.has(action)) {
+    throw new Error(`HR_ACTION_NOT_EMPLOYMENT_STATUS_TRANSITION:${action}`);
+  }
   if (to === 'ACTIVE' && from === 'PENDING_APPROVAL' && action !== 'APPROVE_APPOINTMENT') {
     throw new Error('HR_APPOINTMENT_APPROVAL_REQUIRED');
   }
