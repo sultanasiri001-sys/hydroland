@@ -1,9 +1,9 @@
 CREATE TABLE "HrCandidate" (
-  "id" TEXT NOT NULL,
-  "organizationId" TEXT NOT NULL,
-  "personId" TEXT NOT NULL,
+  "id" UUID NOT NULL,
+  "organizationId" UUID NOT NULL,
+  "personId" UUID NOT NULL,
   "status" "HrRequestStatus" NOT NULL DEFAULT 'SUBMITTED',
-  "verifiedByAccountId" TEXT,
+  "verifiedByAccountId" UUID,
   "verifiedAt" TIMESTAMP(3),
   "verificationNotes" TEXT,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
