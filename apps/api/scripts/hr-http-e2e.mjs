@@ -58,7 +58,16 @@ try{
  if(r.status!==409)throw new Error('Expected 409 incomplete clearance denial, got '+r.status+' '+await r.text());
  const deniedTarget=await db.employment.findUniqueOrThrow({where:{id:targetEmployment.id}}); if(deniedTarget.status!=='TERMINATED')throw new Error('Denied offboarding mutated employment');
  const deniedSession=await db.session.findUniqueOrThrow({where:{id:targetSession.id}}); if(deniedSession.revokedAt)throw new Error('Denied offboarding revoked session');
- await db.offboardingCase.update({where:{id:offboarding.id},data:{clearance:{completed:true}}});
+ const deniedRole=await db.roleAssignment.findUniqueOrThrow({where:{accountId_role:{accountId:targetAccount.id,role:'DIVER'}}}); if(deniedRole.status!=='ACTIVE'||deniedRole.endedAt)throw new Error('Denied offboarding mutated role assignment');
+ const deniedCase=await db.offboardingCase.findUniqueOrThrow({where:{id:offboarding.id}}); if(deniedCase.status!=='APPROVED'||deniedCase.iamRevokedAt||deniedCase.closedAt)throw new Error('Denied offboarding mutated offboarding case');
+ const deniedOffboardingAudit=await db.auditEvent.findFirst({where:{actorId:iamPerson.id,resourceId:targetEmployment.id,action:'HR_EMPLOYMENT_STATUS_CHANGED'}}); if(deniedOffboardingAudit)throw new Error('Denied offboarding emitted success audit evidence');
+ await db.offboardingCase.update({where:{id:offboarding.id},data:{status:'APPROVAL_REQUIRED',clearance:{completed:true}}});
+ r=await patchEmployment(targetEmployment.id,{action:'APPLY_IAM_CHANGE',nextStatus:'OFFBOARDED',context:{organizationId:org.id}},iamToken);
+ if(r.status!==403)throw new Error('Expected 403 pending approval denial, got '+r.status+' '+await r.text());
+ const pendingApprovalTarget=await db.employment.findUniqueOrThrow({where:{id:targetEmployment.id}}); if(pendingApprovalTarget.status!=='TERMINATED')throw new Error('Pending approval denial mutated employment');
+ const pendingApprovalSession=await db.session.findUniqueOrThrow({where:{id:targetSession.id}}); if(pendingApprovalSession.revokedAt)throw new Error('Pending approval denial revoked session');
+ const pendingApprovalRole=await db.roleAssignment.findUniqueOrThrow({where:{accountId_role:{accountId:targetAccount.id,role:'DIVER'}}}); if(pendingApprovalRole.status!=='ACTIVE'||pendingApprovalRole.endedAt)throw new Error('Pending approval denial mutated role assignment');
+ await db.offboardingCase.update({where:{id:offboarding.id},data:{status:'APPROVED'}});
  r=await patchEmployment(targetEmployment.id,{action:'APPLY_IAM_CHANGE',nextStatus:'OFFBOARDED',context:{organizationId:org.id}},iamToken);
  if(!r.ok)throw new Error('IAM offboarding failed '+r.status+' '+await r.text());
  const offboardedTarget=await db.employment.findUniqueOrThrow({where:{id:targetEmployment.id}}); if(offboardedTarget.status!=='OFFBOARDED')throw new Error('Offboarding status not persisted');
