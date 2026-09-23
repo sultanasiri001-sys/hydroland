@@ -11,7 +11,7 @@ export class DocumentPersistenceController {
   @Get('organizations/:organizationId/templates') listTemplates(@Req() r:ReqAuth,@Param('organizationId') org:string){return this.documents.listTemplates(r.auth.accountId,org);}
   @Post() create(@Req() r:ReqAuth,@Body() b:any){return this.documents.createDocument(r.auth.accountId,b);}
   @Get(':id') get(@Req() r:ReqAuth,@Param('id') id:string){return this.documents.get(r.auth.accountId,id);}
-  @Post(':id/submit') submit(@Req() r:ReqAuth,@Param('id') id:string){return this.documents.transition(r.auth.accountId,id,ManagedDocumentStatus.PENDING_APPROVAL);}
+  @Post(':id/revise') revise(@Req() r:ReqAuth,@Param('id') id:string,@Body() b:any){return this.documents.revise(r.auth.accountId,id,b);}\n  @Post(':id/submit') submit(@Req() r:ReqAuth,@Param('id') id:string){return this.documents.transition(r.auth.accountId,id,ManagedDocumentStatus.PENDING_APPROVAL);}
   @Post(':id/approve') approve(@Req() r:ReqAuth,@Param('id') id:string){return this.documents.transition(r.auth.accountId,id,ManagedDocumentStatus.APPROVED);}
   @Post(':id/sign') sign(@Req() r:ReqAuth,@Param('id') id:string){return this.documents.transition(r.auth.accountId,id,ManagedDocumentStatus.SIGNED);}
   @Post(':id/archive') archive(@Req() r:ReqAuth,@Param('id') id:string){return this.documents.transition(r.auth.accountId,id,ManagedDocumentStatus.ARCHIVED);}
