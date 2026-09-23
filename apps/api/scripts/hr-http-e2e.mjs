@@ -19,6 +19,7 @@ const enc=v=>Buffer.from(JSON.stringify(v)).toString('base64url'),now=Math.floor
 const body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:account.id,iat:now,exp:now+900})}`;
 const token=`${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`;
 const patch=(payload,t=token)=>fetch(`${base}/hr/employments/${employment.id}/status`,{method:'PATCH',headers:{'content-type':'application/json',authorization:`Bearer ${t}`},body:JSON.stringify(payload)});
+let compensationId=null, relationsId=null, reviewerAccount=null, reviewerPerson=null;
 try{
  let r=await patch({action:'STAFFING_REQUEST',nextStatus:'PENDING_APPROVAL',context:{organizationId:org.id}},'invalid'); if(r.status!==401)throw new Error('Expected 401, got '+r.status);
  r=await patch({action:'STAFFING_REQUEST',nextStatus:'PENDING_APPROVAL',context:{organizationId:org.id}}); if(!r.ok)throw new Error('Allowed HR transition failed '+r.status+' '+await r.text());
@@ -41,15 +42,17 @@ try{
  if(!r.ok)throw new Error('Valid compliance-controlled appointment failed '+r.status+' '+await r.text());
  const complianceAllowed=await db.employment.findUniqueOrThrow({where:{id:employment.id}}); if(complianceAllowed.status!=='ACTIVE')throw new Error('Valid compliance approval was not persisted');
  const approvalAudit=await db.auditEvent.findFirst({where:{resourceId:employment.id,action:'HR_EMPLOYMENT_STATUS_CHANGED'},orderBy:{occurredAt:'desc'}}); if(!approvalAudit)throw new Error('Compliance-approved mutation audit missing');
- const reviewerPerson=await db.person.create({data:{firstName:'HR',lastName:'Reviewer'}});
- const reviewerAccount=await db.account.create({data:{personId:reviewerPerson.id,email:`hr-reviewer-${suffix}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}});
+ reviewerPerson=await db.person.create({data:{firstName:'HR',lastName:'Reviewer'}});
+ reviewerAccount=await db.account.create({data:{personId:reviewerPerson.id,email:`hr-reviewer-${suffix}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}});
  await db.organizationMember.create({data:{organizationId:org.id,accountId:reviewerAccount.id,role:'STAFF',status:'ACTIVE'}});
  const compensation=await db.compensationTerm.create({data:{employmentId:employment.id,effectiveFrom:new Date(),baseAmount:1000,status:'APPROVAL_REQUIRED',requestedByAccountId:requesterAccount.id,reviewedByAccountId:reviewerAccount.id}});
+ compensationId=compensation.id;
  const compPatch=()=>fetch(`${base}/hr/employments/compensation/${compensation.id}/approve`,{method:'PATCH',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({context:{organizationId:org.id}})});
  r=await compPatch(); if(!r.ok)throw new Error('Compensation approval failed '+r.status+' '+await r.text());
  const approvedComp=await db.compensationTerm.findUniqueOrThrow({where:{id:compensation.id}}); if(approvedComp.status!=='APPROVED'||approvedComp.approvedByAccountId!==account.id)throw new Error('Compensation approval was not persisted with approver');
  const compAudit=await db.auditEvent.findFirst({where:{resource:'CompensationTerm',resourceId:compensation.id,action:'HR_COMPENSATION_APPROVED'}}); if(!compAudit)throw new Error('Compensation approval audit missing');
  const relations=await db.employeeRelationsCase.create({data:{employmentId:employment.id,caseType:'DISCIPLINARY',status:'APPROVAL_REQUIRED',openedByAccountId:requesterAccount.id,reviewedByAccountId:reviewerAccount.id,summary:'E2E disciplinary case',decision:'E2E decision'}});
+ relationsId=relations.id;
  const relPatch=()=>fetch(`${base}/hr/employments/relations/${relations.id}/disciplinary-approval`,{method:'PATCH',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({context:{organizationId:org.id}})});
  r=await relPatch(); if(!r.ok)throw new Error('Disciplinary approval failed '+r.status+' '+await r.text());
  const approvedRel=await db.employeeRelationsCase.findUniqueOrThrow({where:{id:relations.id}}); if(approvedRel.status!=='APPROVED'||approvedRel.approvedByAccountId!==account.id)throw new Error('Disciplinary approval was not persisted with approver');
@@ -100,11 +103,11 @@ try{
 } finally {
  await db.auditEvent.deleteMany({where:{resourceId:employment.id}});
  await db.policyControl.deleteMany({where:{ruleKey:'HR-E2E-'+suffix}});
- await db.auditEvent.deleteMany({where:{resourceId:{in:[compensation.id,relations.id]}}});
+ if(compensationId||relationsId) await db.auditEvent.deleteMany({where:{resourceId:{in:[compensationId,relationsId].filter(Boolean)}}});
  await db.compensationTerm.deleteMany({where:{employmentId:employment.id}});
  await db.employeeRelationsCase.deleteMany({where:{employmentId:employment.id}});
- await db.organizationMember.deleteMany({where:{accountId:reviewerAccount.id}});
- await db.account.delete({where:{id:reviewerAccount.id}}); await db.person.delete({where:{id:reviewerPerson.id}});
+ if(reviewerAccount){ await db.organizationMember.deleteMany({where:{accountId:reviewerAccount.id}}); await db.account.delete({where:{id:reviewerAccount.id}}); }
+ if(reviewerPerson) await db.person.delete({where:{id:reviewerPerson.id}});
  await db.employmentMovement.deleteMany({where:{employmentId:employment.id}});
  await db.employment.deleteMany({where:{id:employment.id}});
  await db.roleAssignment.deleteMany({where:{accountId:account.id}});
