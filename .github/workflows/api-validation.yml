@@ -46,6 +46,7 @@ jobs:
       - run: npm run validate:safety -w @hydroland/api
       - run: npm run validate:technology-security -w @hydroland/api
       - run: npm run validate:facilities-maintenance -w @hydroland/api
+      - run: npm run validate:legal-governance -w @hydroland/api
       - run: npm run validate:phase10 -w @hydroland/api
       - run: npm run validate:phase12 -w @hydroland/api
       - run: npm run validate:training -w @hydroland/api
