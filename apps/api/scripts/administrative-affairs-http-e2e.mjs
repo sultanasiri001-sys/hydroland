@@ -37,5 +37,16 @@ try{
  if((await db.administrativeRecord.findUniqueOrThrow({where:{id:record.id}})).status!=='ARCHIVED')throw new Error('Archive state invalid');
  if(!await db.auditEvent.findFirst({where:{resource:'AdministrativeRecord',resourceId:record.id,action:'ADMIN_RECORD_ARCHIVED'}}))throw new Error('Archive audit missing');
  r=await call(`/administrative-affairs/records/${record.id}/archive`,'PATCH',token(manager.id)); if(r.status!==409)throw new Error('Repeat archive expected 409, got '+r.status);
+ const resource=await db.calendarResource.create({data:{type:'MEETING_ROOM',name:'Admin E2E Room '+suffix,referenceId:'admin-room-'+suffix}});
+ const startsAt=new Date(Date.now()+3600000),endsAt=new Date(startsAt.getTime()+3600000);
+ const meetingBody={organizationId:org.id,unitId:u1.id,title:'Admin E2E Meeting',startsAt:startsAt.toISOString(),endsAt:endsAt.toISOString(),participantAccountIds:[approver.id],resourceIds:[resource.id]};
+ r=await call('/administrative-affairs/meetings','POST',token(outsider.id),meetingBody); if(r.status!==403)throw new Error('Expected cross-org meeting 403, got '+r.status);
+ if(await db.calendarEvent.count({where:{referenceType:'ADMINISTRATIVE_MEETING',title:'Admin E2E Meeting'}})throw new Error('Denied meeting mutated calendar');
+ r=await call('/administrative-affairs/meetings','POST',token(manager.id),meetingBody); if(!r.ok)throw new Error('Meeting failed '+r.status+' '+await r.text()); const scheduled=await r.json();
+ const event=await db.calendarEvent.findUniqueOrThrow({where:{id:scheduled.event.id}}); if(event.referenceType!=='ADMINISTRATIVE_MEETING'||event.organizationId!==org.id)throw new Error('Meeting calendar event invalid');
+ if(await db.calendarAllocation.count({where:{eventId:event.id,resourceId:resource.id,status:'ACTIVE'}})!==1)throw new Error('Meeting allocation missing');
+ if(!await db.auditEvent.findFirst({where:{resource:'AdministrativeMeeting',resourceId:scheduled.meeting.id,action:'ADMIN_MEETING_SCHEDULED'}}))throw new Error('Meeting audit missing');
+ r=await call('/administrative-affairs/meetings','POST',token(manager.id),{...meetingBody,title:'Admin E2E Overlap'}); if(r.status!==409)throw new Error('Overlapping resource expected 409, got '+r.status);
+ if(await db.calendarEvent.count({where:{title:'Admin E2E Overlap'}})throw new Error('Conflict meeting mutated calendar');
  console.log('Admin Affairs HTTP/DB E2E: PASS');
 }finally{await db.$disconnect();}
