@@ -233,6 +233,7 @@ model Organization {
   administrativeMeetings AdministrativeMeeting[]
   documentTemplates DocumentTemplate[]
   managedDocuments ManagedDocument[]
+  documentReferenceCounters DocumentReferenceCounter[]
 }
 
 model OrganizationMember {
