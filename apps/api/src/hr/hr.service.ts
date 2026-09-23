@@ -43,6 +43,33 @@ export class HrService {
     });
   }
 
+  private async assertProductionCompliance(action: HrAction) {
+    if (!['APPROVE_APPOINTMENT', 'APPROVE_COMPENSATION_CHANGE', 'APPROVE_DISCIPLINARY_DECISION', 'APPROVE_TERMINATION', 'APPLY_IAM_CHANGE'].includes(action)) return;
+    const rows = await this.db.policyControl.findMany({
+      where: { category: 'HR_COMPLIANCE', state: 'ENABLED' },
+      select: { ruleKey: true, metadata: true },
+    });
+    const controls: HrComplianceControl[] = rows.map((row) => {
+      const m = row.metadata;
+      if (!m || Array.isArray(m) || typeof m !== 'object') {
+        return { controlId: row.ruleKey, mandatory: true, applicable: true, evidenceIds: [], validationStatus: 'MISSING' };
+      }
+      const x = m as Record<string, unknown>;
+      return {
+        controlId: row.ruleKey,
+        mandatory: x.mandatory !== false,
+        applicable: x.applicable !== false,
+        regulatoryRequirementId: typeof x.regulatoryRequirementId === 'string' ? x.regulatoryRequirementId : undefined,
+        regulatoryVersion: typeof x.regulatoryVersion === 'string' ? x.regulatoryVersion : undefined,
+        evidenceIds: Array.isArray(x.evidenceIds) ? x.evidenceIds.filter((v): v is string => typeof v === 'string') : [],
+        validationStatus: ['VALID','INVALID','MISSING','EXPIRED'].includes(String(x.validationStatus)) ? x.validationStatus as HrComplianceControl['validationStatus'] : 'MISSING',
+        blockingFinding: x.blockingFinding === true,
+      };
+    });
+    if (controls.length === 0) throw new Error('HR_COMPLIANCE_CONTROLS_MISSING');
+    assertHrProductionCompliance(controls);
+  }
+
   async approveCompensation(input: { compensationTermId: string; actor: HrActor; context: HrRequestContext }) {
     const term = await this.db.compensationTerm.findUniqueOrThrow({
       where: { id: input.compensationTermId },
@@ -52,6 +79,7 @@ export class HrService {
     if (!term.requestedByAccountId || !term.reviewedByAccountId) throw new Error('HR_SEPARATION_CONTEXT_REQUIRED');
     this.authorize(input.actor, 'APPROVE_COMPENSATION_CHANGE', { ...input.context, requesterAccountId: term.requestedByAccountId, reviewerAccountId: term.reviewedByAccountId });
     if (!['HR_REVIEW', 'APPROVAL_REQUIRED'].includes(term.status)) throw new Error('HR_COMPENSATION_NOT_APPROVABLE');
+    await this.assertProductionCompliance('APPROVE_COMPENSATION_CHANGE');
     return this.db.$transaction(async (tx) => {
       const updated = await tx.compensationTerm.updateMany({ where: { id: term.id, status: term.status }, data: { status: 'APPROVED', approvedByAccountId: input.actor.accountId } });
       if (updated.count !== 1) throw new Error('HR_COMPENSATION_CONCURRENT_MODIFICATION');
@@ -68,6 +96,7 @@ export class HrService {
     if (!record.decision?.trim()) throw new Error('HR_DISCIPLINARY_DECISION_REQUIRED');
     this.authorize(input.actor, 'APPROVE_DISCIPLINARY_DECISION', { ...input.context, requesterAccountId: record.openedByAccountId, reviewerAccountId: record.reviewedByAccountId });
     if (!['HR_REVIEW', 'APPROVAL_REQUIRED'].includes(record.status)) throw new Error('HR_DISCIPLINARY_NOT_APPROVABLE');
+    await this.assertProductionCompliance('APPROVE_DISCIPLINARY_DECISION');
     return this.db.$transaction(async (tx) => {
       const updated = await tx.employeeRelationsCase.updateMany({ where: { id: record.id, status: record.status }, data: { status: 'APPROVED', approvedByAccountId: input.actor.accountId } });
       if (updated.count !== 1) throw new Error('HR_DISCIPLINARY_CONCURRENT_MODIFICATION');
@@ -92,31 +121,7 @@ export class HrService {
     this.authorize(input.actor, input.action, input.context);
     this.validateEmploymentTransition(employment.status, input.nextStatus);
     assertHrActionForEmploymentTransition(input.action, employment.status, input.nextStatus);
-    if (['APPROVE_APPOINTMENT', 'APPROVE_COMPENSATION_CHANGE', 'APPROVE_DISCIPLINARY_DECISION', 'APPROVE_TERMINATION', 'APPLY_IAM_CHANGE'].includes(input.action)) {
-      const rows = await this.db.policyControl.findMany({
-        where: { category: 'HR_COMPLIANCE', state: 'ENABLED' },
-        select: { ruleKey: true, metadata: true },
-      });
-      const controls: HrComplianceControl[] = rows.map((row) => {
-        const m = row.metadata;
-        if (!m || Array.isArray(m) || typeof m !== 'object') {
-          return { controlId: row.ruleKey, mandatory: true, applicable: true, evidenceIds: [], validationStatus: 'MISSING' };
-        }
-        const x = m as Record<string, unknown>;
-        return {
-          controlId: row.ruleKey,
-          mandatory: x.mandatory !== false,
-          applicable: x.applicable !== false,
-          regulatoryRequirementId: typeof x.regulatoryRequirementId === 'string' ? x.regulatoryRequirementId : undefined,
-          regulatoryVersion: typeof x.regulatoryVersion === 'string' ? x.regulatoryVersion : undefined,
-          evidenceIds: Array.isArray(x.evidenceIds) ? x.evidenceIds.filter((v): v is string => typeof v === 'string') : [],
-          validationStatus: ['VALID','INVALID','MISSING','EXPIRED'].includes(String(x.validationStatus)) ? x.validationStatus as HrComplianceControl['validationStatus'] : 'MISSING',
-          blockingFinding: x.blockingFinding === true,
-        };
-      });
-      if (controls.length === 0) throw new Error('HR_COMPLIANCE_CONTROLS_MISSING');
-      assertHrProductionCompliance(controls);
-    }
+    await this.assertProductionCompliance(input.action);
     return this.db.$transaction(async (tx) => {
       const current = await tx.employment.findUniqueOrThrow({
         where: { id: employment.id },
