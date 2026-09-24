@@ -1,6 +1,6 @@
 CREATE TABLE "DocumentReferenceCounter" (
-  "id" UUID NOT NULL,
-  "organizationId" UUID NOT NULL,
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
   "department" TEXT NOT NULL,
   "year" INTEGER NOT NULL,
   "lastNumber" INTEGER NOT NULL DEFAULT 0,
