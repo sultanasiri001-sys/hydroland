@@ -34,8 +34,8 @@ test('real logout control purges session, reloads to login and cannot restore pr
   const logoutButton=profileDialog.locator('[data-hl-action="logout"]');
   await expect(logoutButton).toBeVisible();
   await logoutButton.scrollIntoViewIfNeeded();
-  await logoutButton.click();
-  await page.waitForLoadState('domcontentloaded');
+  await logoutButton.click({noWaitAfter:true});
+  await expect(page.locator('.hl-login')).not.toHaveClass(/hidden/);
   await waitForApp(page);
   expect(await page.evaluate(() => sessionStorage.getItem('hl-access-token'))).toBeNull();
   expect(await page.evaluate(() => sessionStorage.getItem('hl-refresh-token'))).toBeNull();
