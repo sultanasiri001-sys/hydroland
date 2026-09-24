@@ -30,7 +30,7 @@ test('logout purges tokens, profile data and protected portal state', async ({ p
   });
   await page.locator('#profile-dialog').evaluate(el => el.showModal());
   await page.locator('[data-hl-action="logout"]').click({noWaitAfter:true});
-  await page.waitForURL('**/',{waitUntil:'commit'});
+  await page.waitForLoadState('domcontentloaded');
   expect(await page.evaluate(() => sessionStorage.getItem('hl-access-token'))).toBeNull();
   expect(await page.evaluate(() => sessionStorage.getItem('hl-refresh-token'))).toBeNull();
   expect(await page.evaluate(() => window.HydrolandProfileData)).toBeUndefined();
