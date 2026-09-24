@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PDFDocument, StandardFonts, degrees, rgb, PDFFont } from 'pdf-lib';
-import fontkit from '@pdf-lib/fontkit';
+import * as fontkitNamespace from '@pdf-lib/fontkit';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
@@ -8,6 +8,7 @@ import { DocumentPrintService } from './document-print.service';
 import { DocumentAssetService } from './document-asset.service';
 import { assertArabicPdfSourceText, containsArabic, pdfTextX, preferredLocalizedText } from './document-pdf-arabic.contract';
 
+const fontkit = (fontkitNamespace as unknown as { default?: unknown }).default ?? fontkitNamespace;
 const requireForFont = createRequire(__filename);
 const fontPackageRoot = dirname(requireForFont.resolve('@fontsource/noto-sans-arabic/package.json'));
 const arabicFontPath = join(fontPackageRoot,'files','noto-sans-arabic-arabic-400-normal.woff');
@@ -23,7 +24,7 @@ export class DocumentPdfService {
     let page=pdf.addPage([595.28,841.89]);
     const font=await pdf.embedFont(StandardFonts.Helvetica);
     const bold=await pdf.embedFont(StandardFonts.HelveticaBold);
-    pdf.registerFontkit(fontkit);
+    pdf.registerFontkit(fontkit as Parameters<PDFDocument['registerFontkit']>[0]);
     const [arabicFontBytes,arabicBoldFontBytes]=await Promise.all([readFile(arabicFontPath),readFile(arabicBoldFontPath)]);
     const arabicFont=await pdf.embedFont(arabicFontBytes,{subset:true});
     const arabicBold=await pdf.embedFont(arabicBoldFontBytes,{subset:true});
