@@ -28,7 +28,7 @@
   }
   async function load(){
     if(!auth()?.isAuthenticated?.()){window.HydrolandProfileData=undefined;return;}
-    try{const [profile,credentials]=await Promise.all([request('/me'),request('/credentials')]);renderProfile(profile,Array.isArray(credentials)?credentials:[]);window.HydrolandProfileData={profile,credentials};bindCredentialActions();}
+    try{const [profile,credentials,diver]=await Promise.all([request('/me'),request('/credentials'),request('/me/diver-profile').catch(()=>({profile:null,equipment:[]}))]);renderProfile(profile,Array.isArray(credentials)?credentials:[]);window.HydrolandProfileData={profile,credentials,diverProfile:diver?.profile||null,equipment:Array.isArray(diver?.equipment)?diver.equipment:[]};bindCredentialActions();}
     catch(error){if(error.message!=='AUTH_REQUIRED')toast('تعذر تحميل بيانات الحساب من الخادم');}
   }
   async function saveProfile(input){try{const updated=await request('/me',{method:'PATCH',body:JSON.stringify(input)});toast('تم حفظ بيانات الحساب');await load();return updated}catch(error){toast(error.message==='AUTH_REQUIRED'?'سجل الدخول أولًا':'تعذر حفظ بيانات الحساب');throw error}}
