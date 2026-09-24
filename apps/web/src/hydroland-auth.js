@@ -62,8 +62,12 @@
   },true);
   const terminateSession=()=>{
     const refreshToken=sessionStorage.getItem('hl-refresh-token');
-    clearSession();clearProtectedView();emitAuthChanged();
-    if(refreshToken){try{fetch(`${API_BASE}/auth/logout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken}),keepalive:true}).catch(()=>{})}catch{}}
+    window.__hlLogoutTrace=['start'];
+    clearSession();window.__hlLogoutTrace.push('clearSession');
+    clearProtectedView();window.__hlLogoutTrace.push('clearProtectedView');
+    emitAuthChanged();window.__hlLogoutTrace.push('emitAuthChanged');
+    if(refreshToken){try{window.__hlLogoutTrace.push('fetch:start');fetch(`${API_BASE}/auth/logout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken}),keepalive:true}).then(()=>{window.__hlLogoutTrace?.push('fetch:resolved')}).catch(()=>{window.__hlLogoutTrace?.push('fetch:rejected')});window.__hlLogoutTrace.push('fetch:scheduled')}catch{window.__hlLogoutTrace.push('fetch:threw')}}
+    window.__hlLogoutTrace.push('done');
   };
   const logout=()=>{terminateSession();location.reload()};
   window.addEventListener('pageshow',()=>{if(!sessionStorage.getItem('hl-refresh-token')){clearSession();clearProtectedView();showLogin()}});
