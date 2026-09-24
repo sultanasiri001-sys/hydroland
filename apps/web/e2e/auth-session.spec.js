@@ -14,8 +14,8 @@ const waitForApp = async page => {
 
 const seedAuthenticatedSession = async page => {
   await page.addInitScript(() => {
-    if(sessionStorage.getItem('hl-e2e-auth-seeded'))return;
-    sessionStorage.setItem('hl-e2e-auth-seeded','1');
+    if(window.name==='hl-e2e-auth-seeded')return;
+    window.name='hl-e2e-auth-seeded';
     sessionStorage.setItem('hl-access-token','e2e-access');
     sessionStorage.setItem('hl-refresh-token','e2e-refresh');
   });
