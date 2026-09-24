@@ -64,7 +64,7 @@
   const terminateSession=()=>{
     const refreshToken=sessionStorage.getItem('hl-refresh-token');
     clearSession();clearProtectedView();
-    queueMicrotask(emitAuthChanged);
+    setTimeout(emitAuthChanged,0);
     return refreshToken;
   };
   const logout=()=>{
