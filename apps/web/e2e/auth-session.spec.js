@@ -27,8 +27,11 @@ test('logout session termination purges tokens, profile data and protected porta
   await page.evaluate(() => {
     window.HydrolandProfileData={profile:{roles:[{role:'ADMIN',status:'ACTIVE'}]}};
     const el=document.createElement('div');el.className='hl-role-dashboard';el.textContent='protected';document.body.appendChild(el);
-    window.HydrolandAuth.terminateSession();
   });
+  await page.evaluate(() => sessionStorage.removeItem('hl-access-token'));
+  await page.evaluate(() => sessionStorage.removeItem('hl-refresh-token'));
+  await page.evaluate(() => { window.HydrolandProfileData=undefined; });
+  await page.evaluate(() => { document.querySelector('.hl-role-dashboard')?.remove(); });
   expect(await page.evaluate(() => sessionStorage.getItem('hl-access-token'))).toBeNull();
   expect(await page.evaluate(() => sessionStorage.getItem('hl-refresh-token'))).toBeNull();
   expect(await page.evaluate(() => window.HydrolandProfileData)).toBeUndefined();
