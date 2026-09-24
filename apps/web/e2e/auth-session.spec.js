@@ -28,7 +28,11 @@ test('real logout control purges session, reloads to login and cannot restore pr
     window.HydrolandProfileData={profile:{roles:[{role:'ADMIN',status:'ACTIVE'}]}};
     const el=document.createElement('div');el.className='hl-role-dashboard';el.textContent='protected';document.body.appendChild(el);
   });
-  const logoutButton=page.locator('[data-hl-action="logout"]');
+  await page.locator('#profile-open').click();
+  const profileDialog=page.locator('#profile-dialog');
+  await expect(profileDialog).toBeVisible();
+  const logoutButton=profileDialog.locator('[data-hl-action="logout"]');
+  await expect(logoutButton).toBeVisible();
   await logoutButton.scrollIntoViewIfNeeded();
   await logoutButton.click();
   await page.waitForLoadState('domcontentloaded');
