@@ -17,6 +17,11 @@ if (html.includes('GHAWAS') || html.includes('<title>غوّاص') || html.includ
 for (const approved of ['محترفي الغوص','الوساطة البحرية']) if (!html.includes(approved) || !app.includes(approved)) throw new Error(`Missing approved portal terminology: ${approved}`);
 for (const legacy of ['مدرب محترف','صاحب قارب','واجهة المدرب المحترف','لوحة مشغل القارب']) if (html.includes(legacy) || app.includes(legacy)) throw new Error(`Legacy portal terminology remains: ${legacy}`);
 
+const mobileNav = html.match(/<nav class="mobile-nav"[\\s\\S]*?<\\/nav>/)?.[0] || '';
+for (const marker of ['href="#home"','>الرئيسية<','href="#trips"','>الرحلات<','href="#community"','>المجتمع<','>الرسائل<','id="profile-open-mobile"','>حسابي<']) if (!mobileNav.includes(marker)) throw new Error(`Missing approved mobile navigation item: ${marker}`);
+if (!/disabled[^>]*[\\s\\S]*?>الرسائل</.test(mobileNav)) throw new Error('Messages control must remain explicitly disabled until connected');
+if (mobileNav.includes('>اكتشف<') || mobileNav.includes('>أنشطتي<')) throw new Error('Legacy mobile navigation labels remain');
+
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
 const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
 if (duplicates.length) throw new Error(`Duplicate HTML ids: ${[...new Set(duplicates)].join(', ')}`);
