@@ -1,6 +1,6 @@
 /**
  * Strict contract for Arabic PDF rendering.
- * Arabic PDF output is not supported until CI proves these mixed-direction probes.
+ * Rendering stays fail-closed until a Unicode Arabic font is embedded.
  */
 export const ARABIC_PDF_PROBES = [
   'منصة هايدرولاند',
@@ -20,4 +20,23 @@ export function assertArabicPdfSourceText(value: unknown): string {
 
 export function containsArabic(value: string): boolean {
   return /[\u0600-\u06FF]/u.test(value);
+}
+
+export type PdfTextDirection = 'ltr' | 'rtl';
+
+export function pdfTextDirection(value: unknown): PdfTextDirection {
+  return containsArabic(assertArabicPdfSourceText(value)) ? 'rtl' : 'ltr';
+}
+
+export function pdfTextX(value: unknown, width: number, leftMargin: number, rightMargin: number, measuredWidth: number): number {
+  if (![width,leftMargin,rightMargin,measuredWidth].every(Number.isFinite)) throw new Error('PDF text geometry must be finite.');
+  if (pdfTextDirection(value) === 'rtl') return Math.max(leftMargin, width - rightMargin - measuredWidth);
+  return leftMargin;
+}
+
+export function preferredLocalizedText(ar: unknown, en: unknown, fallback = ''): string {
+  const arabic = assertArabicPdfSourceText(ar).trim();
+  if (arabic) return arabic;
+  const english = String(en ?? '').trim();
+  return english || fallback;
 }
