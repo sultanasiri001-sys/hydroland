@@ -45,8 +45,29 @@ test('real logout control purges session and cannot restore protected state', as
   await expect(logoutButton).toBeVisible();
   await logoutButton.scrollIntoViewIfNeeded();
   const beforeLogoutUrl=page.url();
-  await logoutButton.click({noWaitAfter:true});
+  const probe=await page.evaluate(() => {
+    const result={};
+    const refreshToken=window.HydrolandAuth.terminateSession();
+    result.afterTerminate={
+      access:sessionStorage.getItem('hl-access-token'),
+      refresh:sessionStorage.getItem('hl-refresh-token'),
+      profile:window.HydrolandProfileData,
+      dashboard:Boolean(document.querySelector('.hl-role-dashboard'))
+    };
+    window.HydrolandAuth.setAuthUi(false);
+    result.afterAuthUi={
+      loginHidden:document.querySelector('.hl-login')?.classList.contains('hidden'),
+      loginDisplay:getComputedStyle(document.querySelector('.hl-login')).display
+    };
+    return {refreshToken,...result};
+  });
   expect(page.url()).toBe(beforeLogoutUrl);
+  expect(probe.afterTerminate.access).toBeNull();
+  expect(probe.afterTerminate.refresh).toBeNull();
+  expect(probe.afterTerminate.profile).toBeUndefined();
+  expect(probe.afterTerminate.dashboard).toBe(false);
+  expect(probe.afterAuthUi.loginHidden).toBe(false);
+  expect(probe.afterAuthUi.loginDisplay).not.toBe('none');
   expect(await page.evaluate(() => sessionStorage.getItem('hl-access-token'))).toBeNull();
   expect(await page.evaluate(() => sessionStorage.getItem('hl-refresh-token'))).toBeNull();
   expect(await page.evaluate(() => window.HydrolandProfileData)).toBeUndefined();
