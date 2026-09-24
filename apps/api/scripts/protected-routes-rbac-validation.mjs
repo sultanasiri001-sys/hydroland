@@ -15,6 +15,6 @@ for(const marker of ["role:'ADMIN'","status:'ACTIVE'","Admin scope required."]) 
 assert.ok(profile.includes('@UseGuards(AccessTokenGuard)'),'Profile must be protected');
 for(const marker of ["@Post(':id/bookings')","@Get('bookings/mine')","@Delete('bookings/:bookingId')","@Get('bookings/:bookingId/participants')"]) assert.ok(trips.includes(marker),`Missing protected trip route: ${marker}`);
 assert.ok((trips.match(/@UseGuards\(AccessTokenGuard\)/g)||[]).length>=4,'Authenticated trip actions must remain guarded');
-assert.ok(access.includes("authorization?.startsWith('Bearer ')"),'Bearer token guard required');
+assert.ok(access.includes("authorization?.replace(/^Bearer\\s+/i, '')"),'Bearer token extraction guard required');
 assert.ok(access.includes('authenticateAccessToken(token)'),'Guard must authenticate token against active account state');
 console.log('Validated protected routes and RBAC invariants for admin, profile and authenticated trip operations.');
