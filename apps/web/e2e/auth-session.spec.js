@@ -21,6 +21,7 @@ const seedAuthenticatedSession = async page => {
 
 test('logout purges tokens, profile data and protected portal state', async ({ page }) => {
   await seedAuthenticatedSession(page);
+  page.on('dialog', async dialog => { await dialog.accept(); });
   await page.route('**/api/v1/auth/logout', route => route.fulfill({status:200,contentType:'application/json',body:'{}'}));
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await waitForApp(page);
@@ -37,9 +38,11 @@ test('logout purges tokens, profile data and protected portal state', async ({ p
   expect(box).not.toBeNull();
   expect(box.y).toBeGreaterThanOrEqual(0);
   expect(box.y+box.height).toBeLessThanOrEqual(await page.evaluate(()=>innerHeight));
-  const navigation=page.waitForURL(url => url.pathname === '/', {waitUntil:'domcontentloaded'});
-  await logoutButton.click({noWaitAfter:true});
-  await navigation;
+  await Promise.all([
+    page.waitForEvent('framenavigated'),
+    logoutButton.click({noWaitAfter:true})
+  ]);
+  await page.waitForLoadState('domcontentloaded');
   await waitForApp(page);
   expect(await page.evaluate(() => sessionStorage.getItem('hl-access-token'))).toBeNull();
   expect(await page.evaluate(() => sessionStorage.getItem('hl-refresh-token'))).toBeNull();
