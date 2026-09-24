@@ -32,6 +32,13 @@ const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
 const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
 if (duplicates.length) throw new Error(`Duplicate HTML ids: ${[...new Set(duplicates)].join(', ')}`);
 
+const credentialUi = await readFile(path.join(src, 'hydroland-credentials.js'), 'utf8');
+const membersUi = await readFile(path.join(src, 'hydroland-members.js'), 'utf8');
+for (const marker of ["request('/credentials'",'hl-credential-create','new FormData(form)']) if (!credentialUi.includes(marker)) throw new Error(`Missing credential UI integrity marker: ${marker}`);
+if (!app.includes('hydroland-credentials.js')) throw new Error('Credential UI module is not loaded');
+if (!membersUi.includes('data-hl-action="credential-create"')) throw new Error('Credential create action is not exposed');
+if (!membersUi.includes('رفع المستند وطلب التحقق · قيد الربط') || !membersUi.includes('disabled title="رفع المستندات قيد ربط التخزين"')) throw new Error('Unconnected credential upload must remain explicitly disabled');
+
 const entries = await readdir(src, { withFileTypes: true });
 const cssFiles = entries.filter(entry => entry.isFile() && entry.name.endsWith('.css')).map(entry => entry.name);
 const css = (await Promise.all(cssFiles.map(name => readFile(path.join(src, name), 'utf8')))).join('\n');
@@ -57,7 +64,7 @@ const profileData = await readFile(path.join(src, 'hydroland-profile-data.js'), 
 for (const marker of ['hl-profile-editor','openProfileEditor','new FormData(form)',"request('/me',{method:'PATCH'"]) if (!profileData.includes(marker)) throw new Error(`Missing professional profile editor marker: ${marker}`);
 if (/\bprompt\s*\(/.test(profileData)) throw new Error('Profile editing must not use prompt()');
 
-for (const moduleName of ['hydroland-auth.js','hydroland-bookings.js','hydroland-profile-data.js','hydroland-dive-logs.js']) {
+for (const moduleName of ['hydroland-auth.js','hydroland-bookings.js','hydroland-profile-data.js','hydroland-credentials.js','hydroland-dive-logs.js']) {
   if (!app.includes(moduleName)) throw new Error(`Missing frontend module loader: ${moduleName}`);
 }
 
