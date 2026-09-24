@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { DocumentPrintService } from './document-print.service';
 import { DocumentAssetService } from './document-asset.service';
-import { assertArabicPdfSourceText, containsArabic, pdfTextX, preferredLocalizedText } from './document-pdf-arabic.contract';
+import { assertArabicPdfSourceText, containsArabic, pdfTextX, pdfVisualText, preferredLocalizedText } from './document-pdf-arabic.contract';
 
 const fontkit = (fontkitNamespace as unknown as { default?: unknown }).default ?? fontkitNamespace;
 const requireForFont = createRequire(__filename);
@@ -38,9 +38,10 @@ export class DocumentPdfService {
     const text=(value:unknown,x:number,size=10,isBold=false)=>{
       const raw=assertArabicPdfSourceText(value);
       const isArabic=containsArabic(raw);
+      const visual=pdfVisualText(raw);
       const selected:PDFFont=isArabic?(isBold?arabicBold:arabicFont):(isBold?bold:font);
-      const drawX=isArabic?pdfTextX(raw,width,x,48,selected.widthOfTextAtSize(raw,size)):x;
-      page.drawText(raw,{x:drawX,y,size,font:selected,color:rgb(0,0,0)});
+      const drawX=isArabic?pdfTextX(raw,width,x,48,selected.widthOfTextAtSize(visual,size)):x;
+      page.drawText(visual,{x:drawX,y,size,font:selected,color:rgb(0,0,0)});
       y-=size+8;
     };
     if(c.branding.logoAssetId){
