@@ -27,12 +27,12 @@
     const certHost=document.querySelector('.hl-certificates');if(certHost){certHost.querySelectorAll(':scope > article').forEach(n=>n.remove());const action=certHost.querySelector('.hl-member-actions');credentials.forEach(c=>{const article=document.createElement('article');const exp=c.expiresAt?new Date(c.expiresAt).toLocaleDateString('ar-SA'):'بدون تاريخ انتهاء';article.innerHTML=`<div><b>${text(c.title)}</b><small>${text(c.issuer)} · ${exp}</small></div><span class="hl-status ${['VERIFIED','DOCUMENT_VERIFIED'].includes(c.verificationStatus)?'ok':'review'}">${credentialLabel(c.verificationStatus)}</span>`;certHost.insertBefore(article,action)});if(!credentials.length){const article=document.createElement('article');article.innerHTML='<div><b>لا توجد شهادات محفوظة</b><small>يمكن إضافة شهادة من زر إضافة شهادة.</small></div><span class="hl-status review">فارغ</span>';certHost.insertBefore(article,action)}}
   }
   async function load(){
-    if(!auth()?.isAuthenticated?.())return;
+    if(!auth()?.isAuthenticated?.()){window.HydrolandProfileData=undefined;return;}
     try{const [profile,credentials]=await Promise.all([request('/me'),request('/credentials')]);renderProfile(profile,Array.isArray(credentials)?credentials:[]);window.HydrolandProfileData={profile,credentials};}
     catch(error){if(error.message!=='AUTH_REQUIRED')toast('تعذر تحميل بيانات الحساب من الخادم');}
   }
   async function saveProfile(input){try{const updated=await request('/me',{method:'PATCH',body:JSON.stringify(input)});toast('تم حفظ بيانات الحساب');await load();return updated}catch(error){toast(error.message==='AUTH_REQUIRED'?'سجل الدخول أولًا':'تعذر حفظ بيانات الحساب');throw error}}
   document.addEventListener('click',event=>{const btn=event.target.closest?.('[data-hl-action="certs"]');if(!btn)return;event.preventDefault();if(!auth()?.isAuthenticated?.()){toast('سجل الدخول أولًا لعرض الشهادات');return}const host=document.querySelector('.hl-certificates');if(host){document.getElementById('profile-dialog')?.close();host.scrollIntoView({behavior:'smooth',block:'start'});return}toast('تعذر فتح قسم الشهادات')});
   document.addEventListener('click',async event=>{const btn=event.target.closest?.('[data-hl-action="settings"]');if(!btn)return;event.preventDefault();if(!auth()?.isAuthenticated?.()){toast('سجل الدخول أولًا لفتح بيانات الحساب');return}let current=window.HydrolandProfileData?.profile;if(!current){toast('جارٍ تحميل بيانات الحساب...');await load();current=window.HydrolandProfileData?.profile;if(!current)return}openProfileEditor(current)});
-  document.addEventListener('hydroland:auth-changed',load);setTimeout(load,500);window.HydrolandProfile={load,saveProfile};
+  document.addEventListener('hydroland:auth-changed',()=>{if(!auth()?.isAuthenticated?.())window.HydrolandProfileData=undefined;load()});setTimeout(load,500);window.HydrolandProfile={load,saveProfile};
 })();
