@@ -63,9 +63,7 @@
   const terminateSession=()=>{
     const refreshToken=sessionStorage.getItem('hl-refresh-token');
     window.__hlLogoutTrace=['start'];
-    clearSession();window.__hlLogoutTrace.push('clearSession');
-    clearProtectedView();window.__hlLogoutTrace.push('clearProtectedView');
-    emitAuthChanged();window.__hlLogoutTrace.push('emitAuthChanged');
+    clearSession();clearProtectedView();emitAuthChanged();window.__hlLogoutTrace.push('session-cleared');
     if(refreshToken){try{window.__hlLogoutTrace.push('fetch:start');fetch(`${API_BASE}/auth/logout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken}),keepalive:true}).then(()=>{window.__hlLogoutTrace?.push('fetch:resolved')}).catch(()=>{window.__hlLogoutTrace?.push('fetch:rejected')});window.__hlLogoutTrace.push('fetch:scheduled')}catch{window.__hlLogoutTrace.push('fetch:threw')}}
     window.__hlLogoutTrace.push('done');
   };
