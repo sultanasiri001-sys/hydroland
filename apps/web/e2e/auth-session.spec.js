@@ -53,16 +53,23 @@ test('real logout control purges session and cannot restore protected state', as
     loginHidden:false
   });
 
-  await page.reload({waitUntil:'domcontentloaded'});
-  await waitForApp(page);
-  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));
-  const postReload=await page.evaluate(() => ({
+  const context=page.context();
+  const storage=await context.storageState();
+  const origin=storage.origins.find(item => item.origin===new URL(page.url()).origin);
+  expect(origin?.sessionStorage?.find(item => item.name==='hl-access-token')).toBeUndefined();
+  expect(origin?.sessionStorage?.find(item => item.name==='hl-refresh-token')).toBeUndefined();
+
+  const restored=await context.newPage();
+  await restored.goto('/');
+  await waitForApp(restored);
+  const postRestart=await restored.evaluate(() => ({
     access:sessionStorage.getItem('hl-access-token'),
     refresh:sessionStorage.getItem('hl-refresh-token'),
     dashboard:Boolean(document.querySelector('.hl-role-dashboard')),
     loginHidden:document.querySelector('.hl-login')?.classList.contains('hidden')
   }));
-  expect(postReload).toEqual({access:null,refresh:null,dashboard:false,loginHidden:false});
+  expect(postRestart).toEqual({access:null,refresh:null,dashboard:false,loginHidden:false});
+  await restored.close();
 });
 test('back-forward cache/pageshow cannot restore protected state after session removal', async ({ page }) => {
   await seedAuthenticatedSession(page);
