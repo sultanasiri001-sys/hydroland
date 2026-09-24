@@ -7,8 +7,8 @@ ADD COLUMN "documentFooterEn" TEXT,
 ADD COLUMN "documentBrandVersion" INTEGER NOT NULL DEFAULT 1;
 
 CREATE TABLE "DocumentBrandSnapshot" (
-  "id" UUID NOT NULL,
-  "organizationId" UUID NOT NULL,
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
   "brandVersion" INTEGER NOT NULL,
   "logoUrl" TEXT,
   "brandNameAr" TEXT,
@@ -33,7 +33,7 @@ ON DELETE RESTRICT ON UPDATE CASCADE;
 INSERT INTO "DocumentBrandSnapshot" (
   "id","organizationId","brandVersion","brandNameAr","brandNameEn","createdAt"
 )
-SELECT gen_random_uuid(), "id", 1, "displayName", "displayName", CURRENT_TIMESTAMP
+SELECT gen_random_uuid()::text, "id", 1, "displayName", "displayName", CURRENT_TIMESTAMP
 FROM "Organization";
 
 ALTER TABLE "ManagedDocument"
@@ -49,7 +49,7 @@ ALTER TABLE "DocumentBrandSnapshot" ADD COLUMN "logoAssetId" TEXT;
 
 CREATE TABLE "OrganizationDocumentAsset" (
   "id" TEXT NOT NULL,
-  "organizationId" UUID NOT NULL,
+  "organizationId" TEXT NOT NULL,
   "kind" TEXT NOT NULL,
   "mimeType" TEXT NOT NULL,
   "byteSize" INTEGER NOT NULL,
