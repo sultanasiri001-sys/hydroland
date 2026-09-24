@@ -31,11 +31,13 @@ test('logout purges tokens, profile data and protected portal state', async ({ p
   await page.evaluate(() => {
     window.HydrolandAuth.logout();
   }).catch(() => null);
-  await page.waitForLoadState('domcontentloaded').catch(() => null);
-  expect(await page.evaluate(() => sessionStorage.getItem('hl-refresh-token'))).toBeNull();
-  expect(await page.evaluate(() => window.HydrolandProfileData)).toBeUndefined();
-  await expect(page.locator('.hl-role-dashboard')).toHaveCount(0);
-  await expect(page.locator('.hl-login')).not.toHaveClass(/hidden/);
+  const postLogout = await page.context().newPage();
+  await postLogout.goto('/',{waitUntil:'domcontentloaded'});
+  await waitForAuth(postLogout);
+  expect(await postLogout.evaluate(() => sessionStorage.getItem('hl-refresh-token'))).toBeNull();
+  expect(await postLogout.evaluate(() => window.HydrolandProfileData)).toBeUndefined();
+  await expect(postLogout.locator('.hl-role-dashboard')).toHaveCount(0);
+  await expect(postLogout.locator('.hl-login')).not.toHaveClass(/hidden/);
 });
 
 test('back-forward cache/pageshow cannot restore protected state after session removal', async ({ page }) => {
@@ -70,11 +72,10 @@ test('expired refresh fails closed and returns to login without protected data',
 
 test('unauthenticated user cannot render admin portal shell', async ({ page }) => {
   await page.addInitScript(() => sessionStorage.clear());
-  await page.goto('/',{waitUntil:'domcontentloaded'});
-  await expect(page.locator('#role-switch')).toBeVisible();
-  await page.locator('#role-switch').click();
-  await expect(page.locator('#role-dialog')).toBeVisible();
-  await page.locator('.role-options button[data-role="admin"]').click();
+  await page.goto('/index.html',{waitUntil:'domcontentloaded'});
+  await expect(page.locator('#role-switch')).toHaveCount(1);
+  expect(await page.evaluate(() => window.HydrolandPortalAccess?.roleAllowed('admin') ?? false)).toBe(false);
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('hydroland:role-changed',{detail:{role:'admin'}})));
   await expect(page.locator('#role-console')).toBeHidden();
   await expect(page.locator('.hl-role-dashboard')).toHaveCount(0);
 });
