@@ -2,13 +2,16 @@ import { Injectable } from '@nestjs/common';
 import { PDFDocument, StandardFonts, degrees, rgb, PDFFont } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { createRequire } from 'node:module';
 import { DocumentPrintService } from './document-print.service';
 import { DocumentAssetService } from './document-asset.service';
 import { assertArabicPdfSourceText, containsArabic, pdfTextX, preferredLocalizedText } from './document-pdf-arabic.contract';
 
-const arabicFontPath = join(process.cwd(),'node_modules','@fontsource','noto-sans-arabic','files','noto-sans-arabic-arabic-400-normal.woff');
-const arabicBoldFontPath = join(process.cwd(),'node_modules','@fontsource','noto-sans-arabic','files','noto-sans-arabic-arabic-700-normal.woff');
+const requireForFont = createRequire(__filename);
+const fontPackageRoot = dirname(requireForFont.resolve('@fontsource/noto-sans-arabic/package.json'));
+const arabicFontPath = join(fontPackageRoot,'files','noto-sans-arabic-arabic-400-normal.woff');
+const arabicBoldFontPath = join(fontPackageRoot,'files','noto-sans-arabic-arabic-700-normal.woff');
 
 @Injectable()
 export class DocumentPdfService {
