@@ -62,7 +62,8 @@
   },true);
   const terminateSession=()=>{
     const refreshToken=sessionStorage.getItem('hl-refresh-token');
-    clearSession();clearProtectedView();emitAuthChanged();
+    clearSession();clearProtectedView();
+    queueMicrotask(emitAuthChanged);
     if(refreshToken){try{fetch(`${API_BASE}/auth/logout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken}),keepalive:true}).catch(()=>{})}catch{}}
   };
   const logout=()=>{terminateSession();location.reload()};
