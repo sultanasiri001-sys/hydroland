@@ -40,3 +40,30 @@ export function preferredLocalizedText(ar: unknown, en: unknown, fallback = ''):
   const english = String(en ?? '').trim();
   return english || fallback;
 }
+
+
+type BidiApi = {
+  getEmbeddingLevels(text: string, explicitDirection?: 'ltr' | 'rtl'): unknown;
+  getReorderedString(text: string, embeddingLevels: unknown): string;
+};
+
+let bidiApi: BidiApi | null = null;
+
+function bidi(): BidiApi {
+  if (bidiApi) return bidiApi;
+  // bidi-js is CommonJS-compatible at runtime; keeping the require local avoids ESM/CJS interop drift.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const factory = require('bidi-js') as () => BidiApi;
+  bidiApi = factory();
+  return bidiApi;
+}
+
+export function pdfVisualText(value: unknown): string {
+  const source = assertArabicPdfSourceText(value);
+  if (!containsArabic(source)) return source;
+  const engine = bidi();
+  const levels = engine.getEmbeddingLevels(source, 'rtl');
+  const visual = engine.getReorderedString(source, levels);
+  if (!visual || visual.includes('\uFFFD')) throw new Error('Arabic PDF BiDi transformation produced invalid text.');
+  return visual;
+}
