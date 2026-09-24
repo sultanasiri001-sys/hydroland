@@ -64,7 +64,7 @@
     const refreshToken=sessionStorage.getItem('hl-refresh-token');
     clearSession();clearProtectedView();emitAuthChanged();
     if(refreshToken){try{fetch(`${API_BASE}/auth/logout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken}),keepalive:true}).catch(()=>{})}catch{}}
-    setTimeout(()=>location.reload(),0);
+    showLogin();
   };
   window.addEventListener('pageshow',()=>{if(!sessionStorage.getItem('hl-refresh-token')){clearSession();clearProtectedView();showLogin()}});
   document.addEventListener('click',event=>{const button=event.target.closest?.('[data-hl-action="logout"]');if(!button)return;event.preventDefault();button.disabled=true;document.getElementById('profile-dialog')?.close();void logout()});
