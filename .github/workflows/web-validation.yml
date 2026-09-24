@@ -19,8 +19,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci --ignore-scripts
+      - run: npm install --ignore-scripts
       - name: Static web validation
         run: npm run test -w @hydroland/web
       - name: Production web build
