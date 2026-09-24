@@ -22,6 +22,14 @@ const seedAuthenticatedSession = async page => {
 };
 
 test('real logout control purges session and cannot restore protected state', async ({ page }) => {
+  const diagnostics = [];
+  page.on('pageerror', error => diagnostics.push(`pageerror: ${error.message}`));
+  page.on('console', message => {
+    if(message.type()==='error') diagnostics.push(`console: ${message.text()}`);
+  });
+  page.on('requestfailed', request => {
+    if(request.resourceType()==='script') diagnostics.push(`script-failed: ${request.url()} :: ${request.failure()?.errorText ?? 'unknown'}`);
+  });
   await seedAuthenticatedSession(page);
   await page.route('**/api/v1/auth/logout', route => route.fulfill({status:200,contentType:'application/json',body:'{}'}));
   await page.goto('/',{waitUntil:'domcontentloaded'});
@@ -46,7 +54,18 @@ test('real logout control purges session and cannot restore protected state', as
   await expect(page.locator('.hl-login')).toHaveCount(1);
   await expect(page.locator('.hl-login')).not.toHaveClass(/hidden/);
   await page.reload({waitUntil:'domcontentloaded'});
-  await waitForApp(page);
+  try {
+    await waitForApp(page);
+  } catch (error) {
+    const state=await page.evaluate(() => ({
+      href:location.href,
+      readyState:document.readyState,
+      auth:Boolean(window.HydrolandAuth),
+      portal:Boolean(window.HydrolandPortalAccess),
+      scripts:[...document.scripts].map(script => script.src || '[inline]')
+    })).catch(e => ({evaluateError:e.message}));
+    throw new Error(`post-reload bootstrap failed :: ${JSON.stringify({state,diagnostics})} :: ${error.message}`);
+  }
   await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));
   expect(await page.evaluate(() => sessionStorage.getItem('hl-refresh-token'))).toBeNull();
   await expect(page.locator('.hl-role-dashboard')).toHaveCount(0);
