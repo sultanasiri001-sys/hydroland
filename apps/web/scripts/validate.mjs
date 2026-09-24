@@ -54,6 +54,7 @@ if (!html.includes('data-hl-action="logout"')) throw new Error('Missing visible 
 const authModule = await readFile(path.join(src, 'hydroland-auth.js'), 'utf8');
 for (const marker of ["if(!accessToken||!refreshToken)","clearSession();throw new Error('استجابة الجلسة غير صالحة')","isAuthenticated:()=>Boolean(sessionStorage.getItem('hl-refresh-token'))","showLogin('انتهت الجلسة، سجّل الدخول من جديد')","data-hl-action=\"logout\"","keepalive:true"]) if (!authModule.includes(marker)) throw new Error(`Missing fail-closed session marker: ${marker}`);
 if (authModule.includes("body?.accessToken||''") || authModule.includes("body?.refreshToken||''")) throw new Error('Authentication must not store empty token fallbacks');
+for (const marker of ["clearProtectedView","window.HydrolandProfileData=undefined","window.addEventListener('pageshow'","clearSession();clearProtectedView();emitAuthChanged()","showLogin=message=>{clearProtectedView()"] ) if (!authModule.includes(marker)) throw new Error(`Missing browser/session closure marker: ${marker}`);
 
 const profileData = await readFile(path.join(src, 'hydroland-profile-data.js'), 'utf8');
 for (const marker of ['hl-profile-editor','openProfileEditor','new FormData(form)',"request('/me',{method:'PATCH'"]) if (!profileData.includes(marker)) throw new Error(`Missing professional profile editor marker: ${marker}`);
