@@ -6,7 +6,7 @@
   const login=()=>document.querySelector('.hl-login');
   const emitAuthChanged=()=>document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));
   const clearSession=()=>{sessionStorage.removeItem('hl-access-token');sessionStorage.removeItem('hl-refresh-token');sessionStorage.removeItem('hl-preview-seen')};
-  const storeTokens=body=>{sessionStorage.setItem('hl-access-token',body?.accessToken||'');sessionStorage.setItem('hl-refresh-token',body?.refreshToken||'');sessionStorage.setItem('hl-preview-seen','1')};
+  const storeTokens=body=>{const accessToken=typeof body?.accessToken==='string'?body.accessToken.trim():'',refreshToken=typeof body?.refreshToken==='string'?body.refreshToken.trim():'';if(!accessToken||!refreshToken){clearSession();throw new Error('استجابة الجلسة غير صالحة')}sessionStorage.setItem('hl-access-token',accessToken);sessionStorage.setItem('hl-refresh-token',refreshToken);sessionStorage.setItem('hl-preview-seen','1')};
   const refreshSession=async()=>{
     if(state.refreshPromise)return state.refreshPromise;
     const refreshToken=sessionStorage.getItem('hl-refresh-token');
@@ -15,7 +15,7 @@
       try{
         const response=await fetch(`${API_BASE}/auth/refresh`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken})});
         const body=await response.json().catch(()=>({}));
-        if(!response.ok||!body.accessToken||!body.refreshToken)throw new Error(body.message||'SESSION_EXPIRED');
+        if(!response.ok)throw new Error(body.message||'SESSION_EXPIRED');
         storeTokens(body);emitAuthChanged();return body.accessToken;
       }catch(error){clearSession();emitAuthChanged();throw error}
       finally{state.refreshPromise=null}
@@ -64,5 +64,5 @@
     if(refreshToken)fetch(`${API_BASE}/auth/logout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken})}).catch(()=>{});
     location.reload();
   };
-  window.HydrolandAuth={apiBase:API_BASE,getAccessToken:()=>sessionStorage.getItem('hl-access-token'),getRefreshToken:()=>sessionStorage.getItem('hl-refresh-token'),isAuthenticated:()=>Boolean(sessionStorage.getItem('hl-access-token')||sessionStorage.getItem('hl-refresh-token')),refreshSession,authorizedFetch,logout};
+  window.HydrolandAuth={apiBase:API_BASE,getAccessToken:()=>sessionStorage.getItem('hl-access-token'),getRefreshToken:()=>sessionStorage.getItem('hl-refresh-token'),isAuthenticated:()=>Boolean(sessionStorage.getItem('hl-refresh-token')),refreshSession,authorizedFetch,logout};
 })();
