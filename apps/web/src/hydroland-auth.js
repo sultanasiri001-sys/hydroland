@@ -60,11 +60,11 @@
     event.preventDefault();event.stopImmediatePropagation();const root=login();const panel=ensurePanel();if(!root||!panel)return;
     state.mode=button.classList.contains('hl-login-secondary')?'register':'login';panel.querySelector('.hl-auth-submit').textContent=state.mode==='register'?'إنشاء الحساب':'دخول آمن';panel.querySelector('input[name="password"]').autocomplete=state.mode==='register'?'new-password':'current-password';root.querySelector('.hl-login-actions').hidden=true;panel.hidden=false;panel.querySelector('input[name="email"]').focus();
   },true);
-  const logout=async()=>{
+  const logout=()=>{
     const refreshToken=sessionStorage.getItem('hl-refresh-token');
     clearSession();clearProtectedView();emitAuthChanged();
     if(refreshToken){try{fetch(`${API_BASE}/auth/logout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken}),keepalive:true}).catch(()=>{})}catch{}}
-    location.reload();
+    setTimeout(()=>location.reload(),0);
   };
   window.addEventListener('pageshow',()=>{if(!sessionStorage.getItem('hl-refresh-token')){clearSession();clearProtectedView();showLogin()}});
   document.addEventListener('click',event=>{const button=event.target.closest?.('[data-hl-action="logout"]');if(!button)return;event.preventDefault();button.disabled=true;document.getElementById('profile-dialog')?.close();void logout()});
