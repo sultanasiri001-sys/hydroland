@@ -6,7 +6,7 @@
   const login=()=>document.querySelector('.hl-login');
   const emitAuthChanged=()=>document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));
   const clearSession=()=>{sessionStorage.removeItem('hl-access-token');sessionStorage.removeItem('hl-refresh-token');sessionStorage.removeItem('hl-preview-seen')};
-  const clearProtectedView=()=>{window.HydrolandProfileData=undefined;window.HydrolandPortalAccess?.clearProtectedPortal?.();document.dispatchEvent(new CustomEvent('hydroland:portal-cleared'))};
+  const clearProtectedView=()=>{window.HydrolandProfileData=undefined;const consoleEl=document.getElementById('role-console');if(consoleEl)consoleEl.hidden=true;document.querySelector('.hl-role-dashboard')?.remove()};
   const showLogin=message=>{clearProtectedView();const root=login();if(root){root.classList.remove('hidden');const actions=root.querySelector('.hl-login-actions');if(actions)actions.hidden=false;const panel=root.querySelector('.hl-auth-panel');if(panel)panel.hidden=true}if(message)toast(message)};
   const storeTokens=body=>{const accessToken=typeof body?.accessToken==='string'?body.accessToken.trim():'',refreshToken=typeof body?.refreshToken==='string'?body.refreshToken.trim():'';if(!accessToken||!refreshToken){clearSession();throw new Error('استجابة الجلسة غير صالحة')}sessionStorage.setItem('hl-access-token',accessToken);sessionStorage.setItem('hl-refresh-token',refreshToken);sessionStorage.setItem('hl-preview-seen','1')};
   const refreshSession=async()=>{
@@ -62,10 +62,8 @@
   },true);
   const terminateSession=()=>{
     const refreshToken=sessionStorage.getItem('hl-refresh-token');
-    window.__hlLogoutTrace=['start'];
-    clearSession();clearProtectedView();emitAuthChanged();window.__hlLogoutTrace.push('session-cleared');
-    if(refreshToken){try{window.__hlLogoutTrace.push('fetch:start');fetch(`${API_BASE}/auth/logout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken}),keepalive:true}).then(()=>{window.__hlLogoutTrace?.push('fetch:resolved')}).catch(()=>{window.__hlLogoutTrace?.push('fetch:rejected')});window.__hlLogoutTrace.push('fetch:scheduled')}catch{window.__hlLogoutTrace.push('fetch:threw')}}
-    window.__hlLogoutTrace.push('done');
+    clearSession();clearProtectedView();emitAuthChanged();
+    if(refreshToken){try{fetch(`${API_BASE}/auth/logout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken}),keepalive:true}).catch(()=>{})}catch{}}
   };
   const logout=()=>{terminateSession();location.reload()};
   window.addEventListener('pageshow',()=>{if(!sessionStorage.getItem('hl-refresh-token')){clearSession();clearProtectedView();showLogin()}});
