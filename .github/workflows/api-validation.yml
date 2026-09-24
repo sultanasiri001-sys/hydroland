@@ -58,6 +58,7 @@ jobs:
       - run: npm run validate:document-reference-numbering -w @hydroland/api
       - run: npm run validate:operational-document-template-seed -w @hydroland/api
       - run: npm run validate:document-rbac -w @hydroland/api
+      - run: npm run validate:document-pdf-arabic -w @hydroland/api
       - run: npm run validate:phase10 -w @hydroland/api
       - run: npm run validate:phase12 -w @hydroland/api
       - run: npm run validate:training -w @hydroland/api
