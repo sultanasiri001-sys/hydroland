@@ -22,6 +22,12 @@ for (const marker of ['href="#home"','>الرئيسية<','href="#trips"','>ال
 if (!/disabled[^>]*[\s\S]*?>الرسائل</.test(mobileNav)) throw new Error('Messages control must remain explicitly disabled until connected');
 if (mobileNav.includes('>اكتشف<') || mobileNav.includes('>أنشطتي<')) throw new Error('Legacy mobile navigation labels remain');
 
+for (const id of ['top-search','top-notifications','profile-open']) if (!html.includes(`id="${id}"`)) throw new Error(`Missing explicit top-bar control: ${id}`);
+const accountCenter = await readFile(path.join(src, 'hydroland-account-center.js'), 'utf8');
+if (!app.includes("const topSearch=$('top-search')")) throw new Error('Search must bind by explicit top-search id');
+if (!accountCenter.includes("getElementById('top-notifications')")) throw new Error('Notifications must bind by explicit top-notifications id');
+for (const fragile of ["querySelector('.top-actions .icon-button:not([data-hl-theme-button])')","querySelectorAll('.top-actions .icon-button')","topActions[1]"]) if (app.includes(fragile) || accountCenter.includes(fragile)) throw new Error(`Fragile positional top-bar binding remains: ${fragile}`);
+
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
 const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
 if (duplicates.length) throw new Error(`Duplicate HTML ids: ${[...new Set(duplicates)].join(', ')}`);
