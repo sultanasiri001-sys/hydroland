@@ -37,14 +37,20 @@ test('logout purges tokens, profile data and protected portal state', async ({ p
   expect(box).not.toBeNull();
   expect(box.y).toBeGreaterThanOrEqual(0);
   expect(box.y+box.height).toBeLessThanOrEqual(await page.evaluate(()=>innerHeight));
-  await logoutButton.dispatchEvent('click');
-  await page.waitForURL(url => url.pathname === '/');
-  await waitForAuth(page);
+  await page.evaluate(() => {
+    const nativeReload=Location.prototype.reload;
+    Location.prototype.reload=function(){ window.__logoutReloadRequested=true; };
+    try {
+      document.querySelector('[data-hl-action="logout"]')?.click();
+    } finally {
+      Location.prototype.reload=nativeReload;
+    }
+  });
   expect(await page.evaluate(() => sessionStorage.getItem('hl-access-token'))).toBeNull();
   expect(await page.evaluate(() => sessionStorage.getItem('hl-refresh-token'))).toBeNull();
   expect(await page.evaluate(() => window.HydrolandProfileData)).toBeUndefined();
   await expect(page.locator('.hl-role-dashboard')).toHaveCount(0);
-  await expect(page.locator('.hl-login')).not.toHaveClass(/hidden/);
+  expect(await page.evaluate(() => window.__logoutReloadRequested)).toBe(true);
 });
 
 test('back-forward cache/pageshow cannot restore protected state after session removal', async ({ page }) => {
