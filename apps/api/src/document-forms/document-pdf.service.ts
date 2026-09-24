@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import { DocumentPrintService } from './document-print.service';
 import { DocumentAssetService } from './document-asset.service';
-import { assertArabicPdfSourceText, containsArabic } from './document-pdf-arabic.contract';
+import { assertArabicPdfSourceText, containsArabic, pdfTextX, preferredLocalizedText } from './document-pdf-arabic.contract';
 
 @Injectable()
 export class DocumentPdfService {
@@ -34,22 +34,23 @@ export class DocumentPdfService {
       const scaled=image.scale(Math.min(1,110/image.width,55/image.height));
       page.drawImage(image,{x:width-48-scaled.width,y:height-48-scaled.height,width:scaled.width,height:scaled.height});
     }
-    text(c.branding.brandNameEn||'Organization',48,16,true);
-    text(c.template.titleEn,48,14,true);
+    text(preferredLocalizedText(c.branding.brandNameAr,c.branding.brandNameEn,'Organization'),48,16,true);
+    text(preferredLocalizedText(c.template.titleAr,c.template.titleEn),48,14,true);
     text(c.referenceNumber,48,10);
     text(`Status: ${c.status}`,48,10);
     text(`Document version: ${c.documentVersion} | Brand version: ${c.branding.brandVersion}`,48,9);
     y-=10;
     for(const field of c.fields){
       if(y<80) nextPage();
-      text(`${field.labelEn||field.key}: ${field.value??''}`,48,10);
+      text(`${preferredLocalizedText(field.labelAr,field.labelEn,field.key)}: ${field.value??''}`,48,10);
     }
     y-=10;
     if(y<100) nextPage();
     text(`Created by: ${c.approvals.createdByAccountId}`,48,8);
     if(c.approvals.approvedByAccountId) text(`Approved by: ${c.approvals.approvedByAccountId}`,48,8);
     if(c.approvals.signedByAccountId) text(`Signed by: ${c.approvals.signedByAccountId}`,48,8);
-    if(c.branding.footerEn) text(c.branding.footerEn,48,8);
+    const footer=preferredLocalizedText(c.branding.footerAr,c.branding.footerEn);
+    if(footer) text(footer,48,8);
     // Logo bytes are intentionally not fetched from arbitrary URLs here.
     // Rendering a logo requires a trusted platform-managed asset source; this avoids SSRF/redirect bypasses.
     return {bytes:Buffer.from(await pdf.save()),filename:`${c.referenceNumber}.pdf`,status:c.status};
