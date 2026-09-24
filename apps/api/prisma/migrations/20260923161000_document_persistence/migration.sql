@@ -3,8 +3,8 @@ CREATE TYPE "ManagedDocumentStatus" AS ENUM ('DRAFT','PENDING_APPROVAL','APPROVE
 CREATE TYPE "DocumentTemplateStatus" AS ENUM ('ACTIVE','INACTIVE');
 
 CREATE TABLE "DocumentTemplate" (
-  "id" UUID NOT NULL,
-  "organizationId" UUID NOT NULL,
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
   "code" TEXT NOT NULL,
   "titleAr" TEXT NOT NULL,
   "titleEn" TEXT NOT NULL,
@@ -22,19 +22,19 @@ CREATE INDEX "DocumentTemplate_organizationId_department_status_idx" ON "Documen
 ALTER TABLE "DocumentTemplate" ADD CONSTRAINT "DocumentTemplate_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 CREATE TABLE "ManagedDocument" (
-  "id" UUID NOT NULL,
-  "organizationId" UUID NOT NULL,
-  "templateId" UUID NOT NULL,
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "templateId" TEXT NOT NULL,
   "referenceNumber" TEXT NOT NULL,
   "department" TEXT NOT NULL,
   "status" "ManagedDocumentStatus" NOT NULL DEFAULT 'DRAFT',
   "version" INTEGER NOT NULL DEFAULT 1,
   "contentHash" TEXT NOT NULL,
   "payload" JSONB NOT NULL,
-  "createdByAccountId" UUID NOT NULL,
-  "approvedByAccountId" UUID,
-  "signedByAccountId" UUID,
-  "archivedByAccountId" UUID,
+  "createdByAccountId" TEXT NOT NULL,
+  "approvedByAccountId" TEXT,
+  "signedByAccountId" TEXT,
+  "archivedByAccountId" TEXT,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL,
   "approvedAt" TIMESTAMP(3),
@@ -53,9 +53,9 @@ ALTER TABLE "ManagedDocument" ADD CONSTRAINT "ManagedDocument_signedByAccountId_
 ALTER TABLE "ManagedDocument" ADD CONSTRAINT "ManagedDocument_archivedByAccountId_fkey" FOREIGN KEY ("archivedByAccountId") REFERENCES "Account"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 CREATE TABLE "DocumentLifecycleEvent" (
-  "id" UUID NOT NULL,
-  "documentId" UUID NOT NULL,
-  "actorAccountId" UUID NOT NULL,
+  "id" TEXT NOT NULL,
+  "documentId" TEXT NOT NULL,
+  "actorAccountId" TEXT NOT NULL,
   "action" TEXT NOT NULL,
   "fromStatus" "ManagedDocumentStatus",
   "toStatus" "ManagedDocumentStatus" NOT NULL,
