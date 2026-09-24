@@ -43,7 +43,8 @@
     "validate:operational-document-template-seed": "node scripts/operational-document-template-seed-validation.cjs",
     "validate:document-rbac": "node scripts/document-rbac-validation.cjs && npm run typecheck",
     "validate:document-pdf-arabic": "rm -rf .tmp-document-pdf-arabic && tsc src/document-forms/document-pdf-arabic.contract.ts --outDir .tmp-document-pdf-arabic --module commonjs --moduleResolution node --target es2020 --esModuleInterop --skipLibCheck && node scripts/document-pdf-arabic-validation.cjs; code=$?; rm -rf .tmp-document-pdf-arabic; exit $code",
-    "validate:auth-session": "node scripts/auth-session-validation.mjs"
+    "validate:auth-session": "node scripts/auth-session-validation.mjs",
+    "validate:protected-routes-rbac": "node scripts/protected-routes-rbac-validation.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.3",

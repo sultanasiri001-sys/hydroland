@@ -30,6 +30,9 @@ const requiredWeb=[
 ];
 for(const marker of requiredWeb) assert.ok(web.includes(marker),`Missing web lifecycle marker: ${marker}`);
 
-assert.ok(!service.includes('refreshToken}'), 'Raw refresh token must not be persisted by issue()');
-assert.ok(service.includes('tokenHash:this.tokenHash(refreshToken)'), 'Refresh token must be stored hashed');
+const issueStart=service.indexOf('private async issue(accountId:string)');
+assert.ok(issueStart>=0,'issue() method must exist');
+const issueBody=service.slice(issueStart);
+assert.ok(issueBody.includes('tokenHash:this.tokenHash(refreshToken)'),'Refresh token must be stored hashed');
+assert.ok(!/data:\s*\{[^}]*refreshToken\s*[:},]/s.test(issueBody),'Raw refresh token must not be persisted in session data');
 console.log('Validated session lifecycle invariants: expiry, one-time refresh rotation, replay/race rejection, logout revocation, fail-closed web refresh and login recovery.');
