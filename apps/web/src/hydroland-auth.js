@@ -63,10 +63,10 @@
   const logout=async()=>{
     const refreshToken=sessionStorage.getItem('hl-refresh-token');
     clearSession();clearProtectedView();emitAuthChanged();
-    if(refreshToken){try{await fetch(`${API_BASE}/auth/logout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken}),keepalive:true})}catch{}}
-    if(!globalThis.__HYDROLAND_E2E_NO_RELOAD__) location.reload();
+    if(refreshToken){try{fetch(`${API_BASE}/auth/logout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken}),keepalive:true}).catch(()=>{})}catch{}}
+    location.reload();
   };
   window.addEventListener('pageshow',()=>{if(!sessionStorage.getItem('hl-refresh-token')){clearSession();clearProtectedView();showLogin()}});
-  document.addEventListener('click',async event=>{const button=event.target.closest?.('[data-hl-action="logout"]');if(!button)return;event.preventDefault();button.disabled=true;document.getElementById('profile-dialog')?.close();await logout()});
+  document.addEventListener('click',event=>{const button=event.target.closest?.('[data-hl-action="logout"]');if(!button)return;event.preventDefault();button.disabled=true;document.getElementById('profile-dialog')?.close();void logout()});
   window.HydrolandAuth={apiBase:API_BASE,getAccessToken:()=>sessionStorage.getItem('hl-access-token'),getRefreshToken:()=>sessionStorage.getItem('hl-refresh-token'),isAuthenticated:()=>Boolean(sessionStorage.getItem('hl-refresh-token')),refreshSession,authorizedFetch,logout};
 })();
