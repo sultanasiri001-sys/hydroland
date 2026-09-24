@@ -65,9 +65,13 @@
     const refreshToken=sessionStorage.getItem('hl-refresh-token');
     clearSession();clearProtectedView();
     queueMicrotask(emitAuthChanged);
-    if(refreshToken){try{fetch(`${API_BASE}/auth/logout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken}),keepalive:true}).catch(()=>{})}catch{}}
+    return refreshToken;
   };
-  const logout=()=>{terminateSession();setTimeout(()=>{try{location.reload()}catch{}},50)};
+  const logout=()=>{
+    const refreshToken=terminateSession();
+    showLogin();
+    if(refreshToken){setTimeout(()=>{try{fetch(`${API_BASE}/auth/logout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken}),keepalive:true}).catch(()=>{})}catch{}},0)}
+  };
   window.addEventListener('pageshow',syncAuthUi);
   syncAuthUi();
   document.addEventListener('click',event=>{const button=event.target.closest?.('[data-hl-action="logout"]');if(!button)return;event.preventDefault();button.disabled=true;document.getElementById('profile-dialog')?.close();void logout()});
