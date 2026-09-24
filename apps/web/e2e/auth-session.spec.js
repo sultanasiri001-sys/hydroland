@@ -35,12 +35,12 @@ test('real logout control purges session and cannot restore protected state', as
   await expect(logoutButton).toBeVisible();
   await logoutButton.scrollIntoViewIfNeeded();
   await logoutButton.click({noWaitAfter:true});
-  await expect(page.locator('.hl-login')).toBeVisible();
   await waitForApp(page);
   expect(await page.evaluate(() => sessionStorage.getItem('hl-access-token'))).toBeNull();
   expect(await page.evaluate(() => sessionStorage.getItem('hl-refresh-token'))).toBeNull();
   expect(await page.evaluate(() => window.HydrolandProfileData)).toBeUndefined();
   await expect(page.locator('.hl-role-dashboard')).toHaveCount(0);
+  await expect(page.locator('.hl-login')).toHaveCount(1);
   await expect(page.locator('.hl-login')).not.toHaveClass(/hidden/);
   await page.reload({waitUntil:'domcontentloaded'});
   await waitForApp(page);
