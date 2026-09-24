@@ -33,6 +33,10 @@ for (const name of jsFiles) {
   catch (error) { throw new Error(`JavaScript syntax error in ${name}: ${error.message}`); }
 }
 
+const roleDashboard = await readFile(path.join(src, 'hydroland-role-dashboards.js'), 'utf8');
+for (const marker of ['connectControl','قيد الربط بالخدمة',"node.disabled=true","aria-disabled"]) if (!roleDashboard.includes(marker)) throw new Error(`Missing role-control integrity marker: ${marker}`);
+if (roleDashboard.includes("forEach(x=>x.addEventListener('click',()=>go(x)))")) throw new Error('Legacy unguarded role action binding remains');
+
 for (const moduleName of ['hydroland-auth.js','hydroland-bookings.js','hydroland-profile-data.js','hydroland-dive-logs.js']) {
   if (!app.includes(moduleName)) throw new Error(`Missing frontend module loader: ${moduleName}`);
 }
