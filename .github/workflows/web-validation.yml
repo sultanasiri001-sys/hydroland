@@ -21,3 +21,5 @@ jobs:
       - run: npm install --ignore-scripts
       - run: npm run test -w @hydroland/web
       - run: npm run build -w @hydroland/web
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e -w @hydroland/web
