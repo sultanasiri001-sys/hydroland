@@ -37,10 +37,8 @@ test('logout purges tokens, profile data and protected portal state', async ({ p
   expect(box).not.toBeNull();
   expect(box.y).toBeGreaterThanOrEqual(0);
   expect(box.y+box.height).toBeLessThanOrEqual(await page.evaluate(()=>innerHeight));
-  await Promise.all([
-    page.waitForLoadState('domcontentloaded'),
-    logoutButton.click({noWaitAfter:true})
-  ]);
+  await logoutButton.dispatchEvent('click');
+  await page.waitForURL(url => url.pathname === '/');
   await waitForAuth(page);
   expect(await page.evaluate(() => sessionStorage.getItem('hl-access-token'))).toBeNull();
   expect(await page.evaluate(() => sessionStorage.getItem('hl-refresh-token'))).toBeNull();
