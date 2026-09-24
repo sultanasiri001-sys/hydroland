@@ -14,6 +14,8 @@ const required = ['lang="ar"','dir="rtl"','viewport','aria-live','skip-link','HY
 for (const marker of required) if (!html.includes(marker)) throw new Error(`Missing shell marker: ${marker}`);
 for (const role of roles) if (!html.includes(`data-role="${role}"`)) throw new Error(`Missing role selector: ${role}`);
 if (html.includes('GHAWAS') || html.includes('<title>غوّاص') || html.includes('>غوّاص<')) throw new Error('Legacy platform branding remains in index.html');
+for (const approved of ['محترفي الغوص','الوساطة البحرية']) if (!html.includes(approved) || !app.includes(approved)) throw new Error(`Missing approved portal terminology: ${approved}`);
+for (const legacy of ['مدرب محترف','صاحب قارب','واجهة المدرب المحترف','لوحة مشغل القارب']) if (html.includes(legacy) || app.includes(legacy)) throw new Error(`Legacy portal terminology remains: ${legacy}`);
 
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
 const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
