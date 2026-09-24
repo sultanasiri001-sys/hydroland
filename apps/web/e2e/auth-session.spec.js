@@ -29,7 +29,8 @@ test('logout purges tokens, profile data and protected portal state', async ({ p
     const el=document.createElement('div');el.className='hl-role-dashboard';el.textContent='protected';document.body.appendChild(el);
   });
   await page.evaluate(() => { globalThis.__HYDROLAND_E2E_NO_RELOAD__=true; });
-  await page.locator('[data-hl-action="logout"]').first().click({force:true});
+  await page.locator('#profile-dialog').evaluate(el => el.showModal());
+  await page.locator('[data-hl-action="logout"]').click();
   await expect(page.locator('.hl-role-dashboard')).toHaveCount(0);
   await expect(page.locator('.hl-login')).not.toHaveClass(/hidden/);
 });
@@ -64,9 +65,11 @@ test('expired refresh fails closed and returns to login without protected data',
   await expect(page.locator('.hl-login')).not.toHaveClass(/hidden/);
 });
 
-test('unauthenticated user cannot render admin portal shell', async ({ page }) => {
-  const response=await page.goto('/',{waitUntil:'domcontentloaded'});
-  expect(response?.status()).toBe(200);
-  await expect(page.locator('.hl-role-dashboard')).toHaveCount(0);
-  await expect(page.locator('#role-console')).toBeHidden();
+test('unauthenticated user cannot render admin portal shell', async ({ request }) => {
+  const response=await request.get('/');
+  expect(response.status()).toBe(200);
+  const html=await response.text();
+  expect(html).not.toContain('hl-role-dashboard');
+  expect(html).toContain('id="role-console"');
+  expect(html).toMatch(/id="role-console"[^>]*hidden/);
 });
