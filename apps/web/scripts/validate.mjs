@@ -48,8 +48,9 @@ const roleDashboard = await readFile(path.join(src, 'hydroland-role-dashboards.j
 for (const marker of ['connectControl','قيد الربط بالخدمة',"node.disabled=true","aria-disabled"]) if (!roleDashboard.includes(marker)) throw new Error(`Missing role-control integrity marker: ${marker}`);
 if (roleDashboard.includes("forEach(x=>x.addEventListener('click',()=>go(x)))")) throw new Error('Legacy unguarded role action binding remains');
 
+if (!html.includes('data-hl-action="logout"')) throw new Error('Missing visible logout control');
 const authModule = await readFile(path.join(src, 'hydroland-auth.js'), 'utf8');
-for (const marker of ["if(!accessToken||!refreshToken)","clearSession();throw new Error('استجابة الجلسة غير صالحة')","isAuthenticated:()=>Boolean(sessionStorage.getItem('hl-refresh-token'))"]) if (!authModule.includes(marker)) throw new Error(`Missing fail-closed session marker: ${marker}`);
+for (const marker of ["if(!accessToken||!refreshToken)","clearSession();throw new Error('استجابة الجلسة غير صالحة')","isAuthenticated:()=>Boolean(sessionStorage.getItem('hl-refresh-token'))","showLogin('انتهت الجلسة، سجّل الدخول من جديد')","data-hl-action=\"logout\"","keepalive:true"]) if (!authModule.includes(marker)) throw new Error(`Missing fail-closed session marker: ${marker}`);
 if (authModule.includes("body?.accessToken||''") || authModule.includes("body?.refreshToken||''")) throw new Error('Authentication must not store empty token fallbacks');
 
 const profileData = await readFile(path.join(src, 'hydroland-profile-data.js'), 'utf8');
