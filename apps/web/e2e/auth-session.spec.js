@@ -13,7 +13,8 @@ const waitForApp = async page => {
 };
 
 const seedAuthenticatedSession = async page => {
-  await page.addInitScript(() => {
+  await page.goto('/',{waitUntil:'domcontentloaded'});
+  await page.evaluate(() => {
     sessionStorage.setItem('hl-access-token','e2e-access');
     sessionStorage.setItem('hl-refresh-token','e2e-refresh');
   });
