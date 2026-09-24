@@ -1,10 +1,10 @@
 CREATE TABLE "DocumentRevision" (
-  "id" TEXT NOT NULL,
-  "documentId" TEXT NOT NULL,
+  "id" UUID NOT NULL,
+  "documentId" UUID NOT NULL,
   "version" INTEGER NOT NULL,
   "contentHash" TEXT NOT NULL,
   "payload" JSONB NOT NULL,
-  "createdByAccountId" TEXT NOT NULL,
+  "createdByAccountId" UUID NOT NULL,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "DocumentRevision_pkey" PRIMARY KEY ("id")
 );
@@ -33,7 +33,7 @@ INSERT INTO "DocumentRevision" (
   "id","documentId","version","contentHash","payload","createdByAccountId","createdAt"
 )
 SELECT
-  md5(random()::text || clock_timestamp()::text || d."id"),
+  gen_random_uuid(),
   d."id",
   d."version",
   d."contentHash",
