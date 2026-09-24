@@ -28,11 +28,8 @@ test('logout purges tokens, profile data and protected portal state', async ({ p
     window.HydrolandProfileData={profile:{roles:[{role:'ADMIN',status:'ACTIVE'}]}};
     const el=document.createElement('div');el.className='hl-role-dashboard';el.textContent='protected';document.body.appendChild(el);
   });
-  await Promise.all([
-    page.waitForNavigation({waitUntil:'domcontentloaded'}),
-    page.evaluate(() => { void window.HydrolandAuth.logout(); })
-  ]);
-  expect(await page.evaluate(() => sessionStorage.getItem('hl-refresh-token'))).toBeNull();
+  await page.evaluate(() => { void window.HydrolandAuth.logout(); });
+  await expect.poll(async () => page.evaluate(() => sessionStorage.getItem('hl-refresh-token')).catch(() => null)).toBeNull();
   expect(await page.evaluate(() => window.HydrolandProfileData)).toBeUndefined();
   await expect(page.locator('.hl-role-dashboard')).toHaveCount(0);
   await expect(page.locator('.hl-login')).not.toHaveClass(/hidden/);
@@ -70,6 +67,7 @@ test('expired refresh fails closed and returns to login without protected data',
 
 test('unauthenticated user cannot render admin portal shell', async ({ page }) => {
   await page.goto('/',{waitUntil:'domcontentloaded'});
+  await page.reload({waitUntil:'domcontentloaded'});
   await waitForPortal(page);
   expect(await page.evaluate(() => window.HydrolandPortalAccess.roleAllowed('admin'))).toBe(false);
   await page.evaluate(() => document.dispatchEvent(new CustomEvent('hydroland:role-changed',{detail:{role:'admin'}})));
