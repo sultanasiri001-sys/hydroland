@@ -19,7 +19,7 @@ const seedAuthenticatedSession = async page => {
   });
 };
 
-test('real logout control purges session, reloads to login and cannot restore protected state', async ({ page }) => {
+test('real logout control purges session and cannot restore protected state', async ({ page }) => {
   await seedAuthenticatedSession(page);
   await page.route('**/api/v1/auth/logout', route => route.fulfill({status:200,contentType:'application/json',body:'{}'}));
   await page.goto('/',{waitUntil:'domcontentloaded'});
@@ -42,7 +42,8 @@ test('real logout control purges session, reloads to login and cannot restore pr
   expect(await page.evaluate(() => window.HydrolandProfileData)).toBeUndefined();
   await expect(page.locator('.hl-role-dashboard')).toHaveCount(0);
   await expect(page.locator('.hl-login')).not.toHaveClass(/hidden/);
-  await page.goBack({waitUntil:'domcontentloaded'}).catch(()=>null);
+  await page.reload({waitUntil:'domcontentloaded'});
+  await waitForApp(page);
   await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));
   expect(await page.evaluate(() => sessionStorage.getItem('hl-refresh-token'))).toBeNull();
   await expect(page.locator('.hl-role-dashboard')).toHaveCount(0);
