@@ -6,6 +6,7 @@ const HR = '20260923092000_hr_candidate_verification';
 const ADMIN = '20260923102000_administrative_affairs_persistence';
 const CALENDAR = '20260923114000_unified_calendar_events';
 const FINANCE = '20260923133000_finance_completion_gate';
+const DOCUMENTS = '20260923161000_document_persistence';
 
 async function migrationFailure(name) {
   const rows = await prisma.$queryRawUnsafe(
@@ -44,6 +45,34 @@ async function requireTablesAbsent(tables) {
 
 function markApplied(name) {
   execFileSync('npx', ['prisma', 'migrate', 'resolve', '--applied', name], { stdio: 'inherit' });
+}
+
+function markRolledBack(name) {
+  execFileSync('npx', ['prisma', 'migrate', 'resolve', '--rolled-back', name], { stdio: 'inherit' });
+}
+
+async function recoverDocumentPersistence() {
+  const failed = await migrationFailure(DOCUMENTS);
+  if (!failed) {
+    console.log('[migration-recovery] no open document-persistence failure; no-op');
+    return;
+  }
+  if (failed.applied_steps_count !== 0) {
+    throw new Error('Refusing recovery: document-persistence migration partially applied');
+  }
+
+  await requireUuidColumns([['Organization', 'id'], ['Account', 'id']]);
+  await requireTablesAbsent(['DocumentTemplate', 'ManagedDocument', 'DocumentLifecycleEvent']);
+
+  const enumRows = await prisma.$queryRawUnsafe(
+    `SELECT typname FROM pg_type WHERE typname IN ('ManagedDocumentStatus','DocumentTemplateStatus')`,
+  );
+  if (enumRows.length) {
+    throw new Error('Refusing recovery: document-persistence enum types already exist');
+  }
+
+  markRolledBack(DOCUMENTS);
+  console.log('[migration-recovery] document-persistence failure safely marked rolled back for corrected UUID migration');
 }
 
 async function recoverHr() {
@@ -305,6 +334,7 @@ async function main() {
   await recoverAdministrativeAffairs();
   await recoverUnifiedCalendar();
   await recoverFinance();
+  await recoverDocumentPersistence();
 }
 
 main().finally(() => prisma.$disconnect());
