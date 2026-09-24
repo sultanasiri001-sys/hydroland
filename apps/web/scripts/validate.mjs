@@ -47,6 +47,8 @@ for (const name of jsFiles) {
 const roleDashboard = await readFile(path.join(src, 'hydroland-role-dashboards.js'), 'utf8');
 for (const marker of ['connectControl','قيد الربط بالخدمة',"node.disabled=true","aria-disabled"]) if (!roleDashboard.includes(marker)) throw new Error(`Missing role-control integrity marker: ${marker}`);
 if (roleDashboard.includes("forEach(x=>x.addEventListener('click',()=>go(x)))")) throw new Error('Legacy unguarded role action binding remains');
+for (const gate of ["window.HydrolandPortalAccess?.roleAllowed?.(role)","hydroland:portal-cleared","hydroland:auth-changed"]) if (!roleDashboard.includes(gate)) throw new Error(`Missing fail-closed role dashboard gate: ${gate}`);
+for (const gate of ["if(!window.HydrolandAuth?.isAuthenticated?.())return role==='diver'","clearProtectedPortal","window.HydrolandProfileData=undefined"]) if (!app.includes(gate)) throw new Error(`Missing portal/session isolation gate: ${gate}`);
 
 if (!html.includes('data-hl-action="logout"')) throw new Error('Missing visible logout control');
 const authModule = await readFile(path.join(src, 'hydroland-auth.js'), 'utf8');
