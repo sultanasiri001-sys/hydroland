@@ -13,11 +13,18 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: npm install --ignore-scripts
-      - run: npm run test -w @hydroland/web
-      - run: npm run build -w @hydroland/web
+      - name: Static web validation
+        run: npm run test -w @hydroland/web
+      - name: Production web build
+        run: npm run build -w @hydroland/web
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Browser E2E
+        run: npm run test:e2e -w @hydroland/web

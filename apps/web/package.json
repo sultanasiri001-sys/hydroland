@@ -8,6 +8,10 @@
     "build": "node scripts/build.mjs",
     "test": "node scripts/validate.mjs",
     "typecheck": "node scripts/validate.mjs",
-    "serve": "node scripts/serve.mjs"
+    "serve": "node scripts/serve.mjs",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
   }
 }

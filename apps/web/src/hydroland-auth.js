@@ -6,8 +6,10 @@
   const login=()=>document.querySelector('.hl-login');
   const emitAuthChanged=()=>document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));
   const clearSession=()=>{sessionStorage.removeItem('hl-access-token');sessionStorage.removeItem('hl-refresh-token');sessionStorage.removeItem('hl-preview-seen')};
-  const clearProtectedView=()=>{window.HydrolandProfileData=undefined;window.HydrolandPortalAccess?.clearProtectedPortal?.();document.dispatchEvent(new CustomEvent('hydroland:portal-cleared'))};
-  const showLogin=message=>{clearProtectedView();const root=login();if(root){root.classList.remove('hidden');const actions=root.querySelector('.hl-login-actions');if(actions)actions.hidden=false;const panel=root.querySelector('.hl-auth-panel');if(panel)panel.hidden=true}if(message)toast(message)};
+  const clearProtectedView=()=>{window.HydrolandProfileData=undefined;const consoleEl=document.getElementById('role-console');if(consoleEl)consoleEl.hidden=true;document.querySelector('.hl-role-dashboard')?.remove()};
+  const showLogin=message=>{clearProtectedView();const root=login();if(root){root.classList.remove('hidden');root.style.display='';root.removeAttribute('hidden');const actions=root.querySelector('.hl-login-actions');if(actions)actions.hidden=false;const panel=root.querySelector('.hl-auth-panel');if(panel)panel.hidden=true}if(message)toast(message)};
+  const setAuthUi=authenticated=>{const root=login();if(!root)return;if(authenticated){root.classList.add('hidden');return}showLogin()};
+  const syncAuthUi=()=>setAuthUi(Boolean(sessionStorage.getItem('hl-refresh-token')));
   const storeTokens=body=>{const accessToken=typeof body?.accessToken==='string'?body.accessToken.trim():'',refreshToken=typeof body?.refreshToken==='string'?body.refreshToken.trim():'';if(!accessToken||!refreshToken){clearSession();throw new Error('استجابة الجلسة غير صالحة')}sessionStorage.setItem('hl-access-token',accessToken);sessionStorage.setItem('hl-refresh-token',refreshToken);sessionStorage.setItem('hl-preview-seen','1')};
   const refreshSession=async()=>{
     if(state.refreshPromise)return state.refreshPromise;
@@ -49,7 +51,7 @@
         const response=await fetch(`${API_BASE}/auth/${state.mode}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});
         const body=await response.json().catch(()=>({}));
         if(!response.ok)throw new Error(body.message||'تعذر تسجيل الدخول');
-        storeTokens(body);root.classList.add('hidden');emitAuthChanged();toast(state.mode==='register'?'تم إنشاء الحساب وتسجيل الدخول':'تم تسجيل الدخول إلى HYDROLAND');
+        storeTokens(body);setAuthUi(true);emitAuthChanged();toast(state.mode==='register'?'تم إنشاء الحساب وتسجيل الدخول':'تم تسجيل الدخول إلى HYDROLAND');
       }catch(error){toast(error instanceof Error?error.message:'تعذر الاتصال بخادم HYDROLAND');}
       finally{submit.disabled=false;submit.textContent=state.mode==='register'?'إنشاء الحساب':'دخول آمن';}
     });
@@ -60,13 +62,19 @@
     event.preventDefault();event.stopImmediatePropagation();const root=login();const panel=ensurePanel();if(!root||!panel)return;
     state.mode=button.classList.contains('hl-login-secondary')?'register':'login';panel.querySelector('.hl-auth-submit').textContent=state.mode==='register'?'إنشاء الحساب':'دخول آمن';panel.querySelector('input[name="password"]').autocomplete=state.mode==='register'?'new-password':'current-password';root.querySelector('.hl-login-actions').hidden=true;panel.hidden=false;panel.querySelector('input[name="email"]').focus();
   },true);
-  const logout=async()=>{
+  const terminateSession=()=>{
     const refreshToken=sessionStorage.getItem('hl-refresh-token');
-    clearSession();clearProtectedView();emitAuthChanged();
-    if(refreshToken){try{await fetch(`${API_BASE}/auth/logout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken}),keepalive:true})}catch{}}
-    location.reload();
+    clearSession();clearProtectedView();
+    setTimeout(emitAuthChanged,0);
+    return refreshToken;
   };
-  window.addEventListener('pageshow',()=>{if(!sessionStorage.getItem('hl-refresh-token')){clearSession();clearProtectedView();showLogin()}});
-  document.addEventListener('click',async event=>{const button=event.target.closest?.('[data-hl-action="logout"]');if(!button)return;event.preventDefault();button.disabled=true;document.getElementById('profile-dialog')?.close();await logout()});
-  window.HydrolandAuth={apiBase:API_BASE,getAccessToken:()=>sessionStorage.getItem('hl-access-token'),getRefreshToken:()=>sessionStorage.getItem('hl-refresh-token'),isAuthenticated:()=>Boolean(sessionStorage.getItem('hl-refresh-token')),refreshSession,authorizedFetch,logout};
+  const logout=()=>{
+    const refreshToken=terminateSession();
+    showLogin();
+    if(refreshToken){setTimeout(()=>{try{fetch(`${API_BASE}/auth/logout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken}),keepalive:true}).catch(()=>{})}catch{}},0)}
+  };
+  window.addEventListener('pageshow',syncAuthUi);
+  syncAuthUi();
+  document.addEventListener('click',event=>{const button=event.target.closest?.('[data-hl-action="logout"]');if(!button)return;event.preventDefault();button.disabled=true;document.getElementById('profile-dialog')?.close();void logout()});
+  window.HydrolandAuth={apiBase:API_BASE,setAuthUi,syncAuthUi,getAccessToken:()=>sessionStorage.getItem('hl-access-token'),getRefreshToken:()=>sessionStorage.getItem('hl-refresh-token'),isAuthenticated:()=>Boolean(sessionStorage.getItem('hl-refresh-token')),refreshSession,authorizedFetch,terminateSession,logout};
 })();

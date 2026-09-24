@@ -24,9 +24,10 @@ const requiredWeb=[
   "if(response.status!==401)return response",
   "access=await refreshSession()",
   "if(response.status===401){clearSession();emitAuthChanged();showLogin('انتهت الجلسة، سجّل الدخول من جديد')}",
-  "clearSession();emitAuthChanged();",
-  "fetch(`${API_BASE}/auth/logout`",
-  "location.reload()"
+  "clearSession();clearProtectedView();",
+  "setTimeout(emitAuthChanged,0)",
+  "showLogin();",
+  "fetch(`${API_BASE}/auth/logout`"
 ];
 for(const marker of requiredWeb) assert.ok(web.includes(marker),`Missing web lifecycle marker: ${marker}`);
 
