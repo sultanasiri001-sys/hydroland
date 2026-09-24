@@ -22,77 +22,48 @@ const seedAuthenticatedSession = async page => {
 };
 
 test('real logout control purges session and cannot restore protected state', async ({ page }) => {
-  const diagnostics = [];
-  page.on('pageerror', error => diagnostics.push(`pageerror: ${error.message}`));
-  page.on('console', message => {
-    if(message.type()==='error') diagnostics.push(`console: ${message.text()}`);
-  });
-  page.on('requestfailed', request => {
-    if(request.resourceType()==='script') diagnostics.push(`script-failed: ${request.url()} :: ${request.failure()?.errorText ?? 'unknown'}`);
-  });
   await seedAuthenticatedSession(page);
   await page.route('**/api/v1/auth/logout', route => route.fulfill({status:200,contentType:'application/json',body:'{}'}));
-  await page.goto('/',{waitUntil:'domcontentloaded'});
+  await page.goto('/');
   await waitForApp(page);
   await page.evaluate(() => {
-    window.HydrolandProfileData={profile:{roles:[{role:'ADMIN',status:'ACTIVE'}]}};
-    const el=document.createElement('div');el.className='hl-role-dashboard';el.textContent='protected';document.body.appendChild(el);
+    window.HydrolandProfileData={profile:{roles:[{role:'admin',status:'ACTIVE'}]}};
+    const stale=document.createElement('section');
+    stale.className='hl-role-dashboard';
+    document.body.appendChild(stale);
   });
   await page.locator('#profile-open').click();
-  const profileDialog=page.locator('#profile-dialog');
-  await expect(profileDialog).toBeVisible();
-  const logoutButton=profileDialog.locator('[data-hl-action="logout"]');
+  const logoutButton=page.locator('[data-hl-action="logout"]').first();
   await expect(logoutButton).toBeVisible();
-  await logoutButton.scrollIntoViewIfNeeded();
   const beforeLogoutUrl=page.url();
-  const probe=await page.evaluate(() => {
-    const result={};
-    const refreshToken=window.HydrolandAuth.terminateSession();
-    result.afterTerminate={
-      access:sessionStorage.getItem('hl-access-token'),
-      refresh:sessionStorage.getItem('hl-refresh-token'),
-      profile:window.HydrolandProfileData,
-      dashboard:Boolean(document.querySelector('.hl-role-dashboard'))
-    };
-    window.HydrolandAuth.setAuthUi(false);
-    result.afterAuthUi={
-      loginHidden:document.querySelector('.hl-login')?.classList.contains('hidden'),
-      loginDisplay:getComputedStyle(document.querySelector('.hl-login')).display
-    };
-    return {refreshToken,...result};
-  });
+  await logoutButton.click({noWaitAfter:true});
   expect(page.url()).toBe(beforeLogoutUrl);
-  expect(probe.afterTerminate.access).toBeNull();
-  expect(probe.afterTerminate.refresh).toBeNull();
-  expect(probe.afterTerminate.profile).toBeUndefined();
-  expect(probe.afterTerminate.dashboard).toBe(false);
-  expect(probe.afterAuthUi.loginHidden).toBe(false);
-  expect(probe.afterAuthUi.loginDisplay).not.toBe('none');
-  expect(await page.evaluate(() => sessionStorage.getItem('hl-access-token'))).toBeNull();
-  expect(await page.evaluate(() => sessionStorage.getItem('hl-refresh-token'))).toBeNull();
-  expect(await page.evaluate(() => window.HydrolandProfileData)).toBeUndefined();
-  await expect(page.locator('.hl-role-dashboard')).toHaveCount(0);
-  await expect(page.locator('.hl-login')).toHaveCount(1);
-  await expect(page.locator('.hl-login')).not.toHaveClass(/hidden/);
-  await page.reload({waitUntil:'domcontentloaded'});
-  try {
-    await waitForApp(page);
-  } catch (error) {
-    const state=await page.evaluate(() => ({
-      href:location.href,
-      readyState:document.readyState,
-      auth:Boolean(window.HydrolandAuth),
-      portal:Boolean(window.HydrolandPortalAccess),
-      scripts:[...document.scripts].map(script => script.src || '[inline]')
-    })).catch(e => ({evaluateError:e.message}));
-    throw new Error(`post-reload bootstrap failed :: ${JSON.stringify({state,diagnostics})} :: ${error.message}`);
-  }
-  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));
-  expect(await page.evaluate(() => sessionStorage.getItem('hl-refresh-token'))).toBeNull();
-  await expect(page.locator('.hl-role-dashboard')).toHaveCount(0);
-  await expect(page.locator('.hl-login')).not.toHaveClass(/hidden/);
-});
 
+  await expect.poll(async () => page.evaluate(() => ({
+    access:sessionStorage.getItem('hl-access-token'),
+    refresh:sessionStorage.getItem('hl-refresh-token'),
+    profile:window.HydrolandProfileData,
+    dashboard:Boolean(document.querySelector('.hl-role-dashboard')),
+    loginHidden:document.querySelector('.hl-login')?.classList.contains('hidden')
+  }))).toEqual({
+    access:null,
+    refresh:null,
+    profile:undefined,
+    dashboard:false,
+    loginHidden:false
+  });
+
+  await page.reload({waitUntil:'domcontentloaded'});
+  await waitForApp(page);
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));
+  const postReload=await page.evaluate(() => ({
+    access:sessionStorage.getItem('hl-access-token'),
+    refresh:sessionStorage.getItem('hl-refresh-token'),
+    dashboard:Boolean(document.querySelector('.hl-role-dashboard')),
+    loginHidden:document.querySelector('.hl-login')?.classList.contains('hidden')
+  }));
+  expect(postReload).toEqual({access:null,refresh:null,dashboard:false,loginHidden:false});
+});
 test('back-forward cache/pageshow cannot restore protected state after session removal', async ({ page }) => {
   await seedAuthenticatedSession(page);
   await page.goto('/',{waitUntil:'domcontentloaded'});
