@@ -55,7 +55,11 @@
         const response=await fetch(`${API_BASE}/auth/${state.mode}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});
         const body=await response.json().catch(()=>({}));
         if(!response.ok)throw new Error(body.message||'تعذر تسجيل الدخول');
-        storeTokens(body);setAuthUi(true);emitAuthChanged();toast(state.mode==='register'?'تم إنشاء الحساب وتسجيل الدخول':'تم تسجيل الدخول إلى HYDROLAND');
+        if(state.mode==='register'){
+          if(body?.status!=='PENDING_VERIFICATION'||body?.requiresEmailVerification!==true)throw new Error('استجابة إنشاء الحساب غير صالحة');
+          clearSession();clearProtectedView();setAuthUi(false);emitAuthChanged();panel.reset();state.mode='login';submit.textContent='دخول آمن';panel.querySelector('input[name="password"]').autocomplete='current-password';toast('تم إنشاء الحساب. يلزم التحقق من البريد الإلكتروني قبل تسجيل الدخول');return;
+        }
+        storeTokens(body);setAuthUi(true);emitAuthChanged();toast('تم تسجيل الدخول إلى HYDROLAND');
       }catch(error){toast(error instanceof Error?error.message:'تعذر الاتصال بخادم HYDROLAND');}
       finally{submit.disabled=false;submit.textContent=state.mode==='register'?'إنشاء الحساب':'دخول آمن';}
     });
