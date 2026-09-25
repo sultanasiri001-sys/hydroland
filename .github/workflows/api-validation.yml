@@ -98,6 +98,11 @@ jobs:
           ADMIN_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/administrative-affairs-http-e2e.mjs
           RBAC_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/runtime-rbac-ownership-http-e2e.mjs
           FINANCE_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/finance-http-e2e.mjs
+          if ! PROFILE_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/profile-account-http-e2e.mjs; then
+            echo "Profile/Account HTTP/DB E2E failed; API log follows"
+            cat /tmp/hydroland-api.log
+            exit 1
+          fi
           if ! DOCUMENT_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/document-http-db-e2e.mjs; then
             echo "Document HTTP/DB E2E failed; API log follows"
             cat /tmp/hydroland-api.log

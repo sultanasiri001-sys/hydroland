@@ -171,6 +171,8 @@ model Account {
   notifications Notification[]
   bookings Booking[]
   bookingParticipants BookingParticipant[]
+  diverProfile DiverProfile?
+  diverEquipment DiverEquipment[]
   crewAssignments CrewAssignment[]
   payments Payment[]
   diveLogs DiveLog[]
@@ -310,6 +312,48 @@ model ProfessionalProfile {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   person Person @relation(fields:[personId], references:[id], onDelete:Restrict)
+}
+
+model DiverProfile {
+  id String @id @default(uuid())
+  accountId String @unique
+  dateOfBirth DateTime?
+  nationality String?
+  identityType String?
+  identityLast4 String?
+  identityVerifiedAt DateTime?
+  primaryPhone String?
+  secondaryPhone String?
+  preferredContact String?
+  emergencyName String?
+  emergencyRelation String?
+  emergencyPhone String?
+  emergencyAltPhone String?
+  bloodType String?
+  medicalFitnessStatus String @default("UNKNOWN")
+  medicalClearanceExpiresAt DateTime?
+  preferredLanguage String? @default("ar")
+  notes String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  account Account @relation(fields:[accountId], references:[id], onDelete:Restrict)
+}
+
+model DiverEquipment {
+  id String @id @default(uuid())
+  accountId String
+  category String
+  ownership String @default("OWNED")
+  brand String?
+  model String?
+  serialNumber String?
+  size String?
+  serviceDueAt DateTime?
+  status String @default("ACTIVE")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  account Account @relation(fields:[accountId], references:[id], onDelete:Restrict)
+  @@index([accountId,category])
 }
 
 model RoleAssignment {
@@ -558,6 +602,11 @@ model BookingParticipant {
   certificationNumber String?
   certificationIssuer String?
   eligibilityStatus String @default("PENDING")
+  profileSnapshot Json?
+  equipmentSnapshot Json?
+  emergencySnapshot Json?
+  identitySnapshot Json?
+  snapshotAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   booking Booking @relation(fields:[bookingId], references:[id], onDelete:Restrict)
