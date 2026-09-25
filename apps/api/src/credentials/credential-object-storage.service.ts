@@ -32,7 +32,8 @@ export class CredentialObjectStorageService {
   async put(storageKey:string,bytes:Buffer,mimeType:string){
     const payloadHash=createHash('sha256').update(bytes).digest('hex');
     const request=this.signedRequest('PUT',storageKey,payloadHash,{'content-type':mimeType});
-    const response=await fetch(request.url,{method:'PUT',headers:request.headers,body:bytes});
+    const body=Uint8Array.from(bytes).buffer;
+    const response=await fetch(request.url,{method:'PUT',headers:request.headers,body});
     if(!response.ok)throw new BadGatewayException(`Object storage upload failed (${response.status}).`);
   }
 
