@@ -39,7 +39,7 @@ export class MessagingService {
     const title=this.title(input.title);
     const allIds=[accountId,...participantIds];
     const valid=await this.db.$queryRaw<Array<{id:string}>>(Prisma.sql`
-      SELECT "id" FROM "Account" WHERE "id" IN (${Prisma.join(allIds)}) AND "status" NOT IN ('SUSPENDED','ARCHIVED')
+      SELECT "id" FROM "Account" WHERE "id" IN (${Prisma.join(allIds)}) AND "status"='ACTIVE' AND "emailVerifiedAt" IS NOT NULL
     `);
     if(valid.length!==allIds.length)throw new BadRequestException('One or more participant accounts are unavailable.');
     const conversationId=await this.db.serializable(async tx=>{
