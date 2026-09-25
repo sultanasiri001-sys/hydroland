@@ -1,10 +1,21 @@
 import { test, expect } from '@playwright/test';
 
 const waitForApp = async page => {
-  await page.waitForFunction(() => Boolean(window.HydrolandAuth && window.HydrolandPortalAccess));
+  await page.waitForFunction(() => Boolean(window.HydrolandAuth && window.HydrolandPortalAccess && window.HydrolandProfile));
+};
+
+const installStableProfileApi = async page => {
+  const json = (route, body) => route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(body)});
+  await page.route(/\/api\/v1\/me$/, route => json(route, {
+    id:'auth-e2e',email:'auth-e2e@hydroland.test',status:'ACTIVE',roleAssignments:[],
+    person:{firstName:'Auth',lastName:'E2E',phone:null,professional:null}
+  }));
+  await page.route(/\/api\/v1\/credentials$/, route => json(route, []));
+  await page.route(/\/api\/v1\/me\/diver-profile$/, route => json(route, {profile:null,equipment:[]}));
 };
 
 const seedSession = async page => {
+  await installStableProfileApi(page);
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await waitForApp(page);
   await page.evaluate(() => {
@@ -25,17 +36,38 @@ test('logout is local-first and protected state stays cleared', async ({ page })
   });
 
   await page.locator('#profile-open').click();
-  const logoutButton=page.locator('[data-hl-action="logout"]').first();
+  const logoutButton=page.locator('#profile-dialog [data-hl-action="logout"]');
   await expect(logoutButton).toBeVisible();
-  await logoutButton.dispatchEvent('click');
+  const clickState=await logoutButton.evaluate(button => {
+    button.click();
+    return {
+      disabled:button.disabled,
+      access:sessionStorage.getItem('hl-access-token'),
+      refresh:sessionStorage.getItem('hl-refresh-token'),
+      dialogOpen:document.getElementById('profile-dialog')?.open,
+      profile:Boolean(window.HydrolandProfileData),
+      dashboard:Boolean(document.querySelector('.hl-role-dashboard')),
+      loginHidden:document.querySelector('.hl-login')?.classList.contains('hidden')
+    };
+  });
+  expect(clickState).toEqual({
+    disabled:true,
+    access:null,
+    refresh:null,
+    dialogOpen:false,
+    profile:false,
+    dashboard:false,
+    loginHidden:false
+  });
 
-  await expect.poll(() => page.evaluate(() => ({
-    access:sessionStorage.getItem('hl-access-token'),
-    refresh:sessionStorage.getItem('hl-refresh-token'),
+  await page.waitForTimeout(250);
+  const settledState=await page.evaluate(() => ({
     profile:Boolean(window.HydrolandProfileData),
     dashboard:Boolean(document.querySelector('.hl-role-dashboard')),
     loginHidden:document.querySelector('.hl-login')?.classList.contains('hidden')
-  }))).toEqual({access:null,refresh:null,profile:false,dashboard:false,loginHidden:false});
+  }));
+  console.log('logout settled state', JSON.stringify(settledState));
+  expect(settledState).toEqual({profile:false,dashboard:false,loginHidden:false});
 });
 
 test('pageshow fails closed when the session is absent', async ({ page }) => {
@@ -55,6 +87,7 @@ test('pageshow fails closed when the session is absent', async ({ page }) => {
 
 test('expired refresh fails closed', async ({ page }) => {
   await page.route('**/api/v1/auth/refresh', route => route.fulfill({status:401,contentType:'application/json',body:JSON.stringify({message:'expired'})}));
+  await page.route('**/api/v1/profile', route => route.fulfill({status:401,contentType:'application/json',body:JSON.stringify({message:'expired'})}));
   await seedSession(page);
   await page.evaluate(() => {
     window.HydrolandProfileData={profile:{roles:[{role:'admin',status:'ACTIVE'}]}};
@@ -67,14 +100,20 @@ test('expired refresh fails closed', async ({ page }) => {
 });
 
 test('unauthenticated runtime keeps the admin console closed', async ({ page }) => {
+  await installStableProfileApi(page);
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await waitForApp(page);
-  await page.evaluate(() => {
+  const state=await page.evaluate(() => {
     sessionStorage.clear();
     window.HydrolandAuth.syncAuthUi();
     window.HydrolandPortalAccess.clearProtectedPortal();
+    return {
+      profile:Boolean(window.HydrolandProfileData),
+      dashboard:Boolean(document.querySelector('.hl-role-dashboard')),
+      loginHidden:document.querySelector('.hl-login')?.classList.contains('hidden')
+    };
   });
+  expect(state).toEqual({profile:false,dashboard:false,loginHidden:false});
   await expect(page.locator('#role-console')).toBeHidden();
   await expect(page.locator('.hl-role-dashboard')).toHaveCount(0);
-  await expect(page.locator('.hl-login')).not.toHaveClass(/hidden/);
 });
