@@ -1,7 +1,7 @@
 (()=>{
   const DEFAULT_API_BASE=/^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)?'http://localhost:3001/api/v1':'https://hydroland.onrender.com/api/v1';
   const API_BASE=(window.HYDROLAND_API_BASE||DEFAULT_API_BASE).replace(/\/$/,'');
-  const state={mode:'login',refreshPromise:null,panelOpen:false};
+  const state={mode:'login',refreshPromise:null,panelOpen:false,mfaChallenge:null};
   const toast=message=>{const t=document.getElementById('toast');if(!t)return;t.textContent=message;t.classList.add('visible');setTimeout(()=>t.classList.remove('visible'),2200)};
   const login=()=>document.querySelector('.hl-login');
   const emitAuthChanged=()=>document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));
@@ -9,81 +9,76 @@
   const clearSession=()=>{sessionStorage.removeItem('hl-access-token');sessionStorage.removeItem('hl-refresh-token');sessionStorage.removeItem('hl-preview-seen');sessionStorage.removeItem('hl-guest-mode')};
   const clearProtectedView=()=>{window.HydrolandProfileData=undefined;const consoleEl=document.getElementById('role-console');if(consoleEl)consoleEl.hidden=true;document.querySelector('.hl-role-dashboard')?.remove()};
   const showLogin=message=>{sessionStorage.removeItem('hl-guest-mode');clearProtectedView();const root=login();if(root){root.classList.remove('hidden');root.style.display='';root.removeAttribute('hidden');const actions=root.querySelector('.hl-login-actions');if(actions)actions.hidden=state.panelOpen;const panel=root.querySelector('.hl-auth-panel');if(panel)panel.hidden=!state.panelOpen}if(message)toast(message)};
-  const setAuthUi=authenticated=>{const root=login();if(!root)return;if(authenticated){state.panelOpen=false;sessionStorage.removeItem('hl-guest-mode');root.classList.add('hidden');return}if(isGuestMode()){state.panelOpen=false;root.classList.add('hidden');return}showLogin()};
+  const setAuthUi=authenticated=>{const root=login();if(!root)return;if(authenticated){state.panelOpen=false;state.mfaChallenge=null;sessionStorage.removeItem('hl-guest-mode');root.classList.add('hidden');return}if(isGuestMode()){state.panelOpen=false;state.mfaChallenge=null;root.classList.add('hidden');return}showLogin()};
   const syncAuthUi=()=>setAuthUi(Boolean(sessionStorage.getItem('hl-refresh-token')));
   const storeTokens=body=>{const accessToken=typeof body?.accessToken==='string'?body.accessToken.trim():'',refreshToken=typeof body?.refreshToken==='string'?body.refreshToken.trim():'';if(!accessToken||!refreshToken){clearSession();throw new Error('استجابة الجلسة غير صالحة')}sessionStorage.setItem('hl-access-token',accessToken);sessionStorage.setItem('hl-refresh-token',refreshToken);sessionStorage.setItem('hl-preview-seen','1');sessionStorage.removeItem('hl-guest-mode')};
   const refreshSession=async()=>{
     if(state.refreshPromise)return state.refreshPromise;
     const refreshToken=sessionStorage.getItem('hl-refresh-token');
     if(!refreshToken){clearSession();emitAuthChanged();showLogin('انتهت الجلسة، سجّل الدخول من جديد');throw new Error('SESSION_EXPIRED')}
-    state.refreshPromise=(async()=>{
-      try{
-        const response=await fetch(`${API_BASE}/auth/refresh`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken})});
-        const body=await response.json().catch(()=>({}));
-        if(!response.ok)throw new Error(body.message||'SESSION_EXPIRED');
-        storeTokens(body);emitAuthChanged();return body.accessToken;
-      }catch(error){clearSession();emitAuthChanged();showLogin('انتهت الجلسة، سجّل الدخول من جديد');throw error}
-      finally{state.refreshPromise=null}
-    })();
+    state.refreshPromise=(async()=>{try{const response=await fetch(`${API_BASE}/auth/refresh`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken})});const body=await response.json().catch(()=>({}));if(!response.ok)throw new Error(body.message||'SESSION_EXPIRED');storeTokens(body);emitAuthChanged();return body.accessToken}catch(error){clearSession();emitAuthChanged();showLogin('انتهت الجلسة، سجّل الدخول من جديد');throw error}finally{state.refreshPromise=null}})();
     return state.refreshPromise;
   };
   const authorizedFetch=async(path,options={})=>{
     const execute=access=>fetch(`${API_BASE}${path}`,{...options,headers:{...(options.body?{'Content-Type':'application/json'}:{}),...(options.headers||{}),Authorization:`Bearer ${access}`}});
-    let access=sessionStorage.getItem('hl-access-token');
-    if(!access){
-      if(!sessionStorage.getItem('hl-refresh-token'))throw new Error('AUTH_REQUIRED');
-      access=await refreshSession();
-    }
-    let response=await execute(access);
-    if(response.status!==401)return response;
-    access=await refreshSession();
-    response=await execute(access);
-    if(response.status===401){clearSession();emitAuthChanged();showLogin('انتهت الجلسة، سجّل الدخول من جديد')}
-    return response;
+    let access=sessionStorage.getItem('hl-access-token');if(!access){if(!sessionStorage.getItem('hl-refresh-token'))throw new Error('AUTH_REQUIRED');access=await refreshSession()}
+    let response=await execute(access);if(response.status!==401)return response;access=await refreshSession();response=await execute(access);if(response.status===401){clearSession();emitAuthChanged();showLogin('انتهت الجلسة، سجّل الدخول من جديد')}return response;
   };
+  const resetMfaStep=panel=>{state.mfaChallenge=null;if(!panel)return;panel.querySelectorAll('[data-auth-primary]').forEach(label=>{label.hidden=false;label.querySelector('input').disabled=false});const field=panel.querySelector('[data-mfa-field]');if(field){field.hidden=true;const input=field.querySelector('input');input.required=false;input.value=''}const note=panel.querySelector('.hl-auth-note');if(note)note.textContent='يتم الاتصال بخادم HYDROLAND الحقيقي عند توفره. لا يتم اعتبار تسجيل الدخول ناجحًا إذا كان الخادم غير متاح.'};
+  const enterMfaStep=(panel,challengeToken)=>{state.mfaChallenge=challengeToken;panel.querySelectorAll('[data-auth-primary]').forEach(label=>{label.hidden=true;label.querySelector('input').disabled=true});const field=panel.querySelector('[data-mfa-field]'),input=field?.querySelector('input');if(field)field.hidden=false;if(input){input.required=true;input.value='';input.focus()}const note=panel.querySelector('.hl-auth-note');if(note)note.textContent='أدخل رمز تطبيق المصادقة المكوّن من 6 أرقام أو أحد رموز الاسترداد.';panel.querySelector('.hl-auth-submit').textContent='تحقق من الرمز'};
   const ensurePanel=()=>{
-    const root=login();if(!root)return null;
-    let panel=root.querySelector('.hl-auth-panel');if(panel)return panel;
-    panel=document.createElement('form');panel.className='hl-auth-panel';panel.hidden=true;panel.innerHTML=`<label>البريد الإلكتروني<input name="email" type="email" autocomplete="email" required placeholder="name@example.com"></label><label>كلمة المرور<input name="password" type="password" autocomplete="current-password" minlength="12" required placeholder="12 حرفًا على الأقل"></label><button class="hl-auth-submit" type="submit">دخول آمن</button><button class="hl-auth-cancel" type="button">رجوع</button><small class="hl-auth-note">يتم الاتصال بخادم HYDROLAND الحقيقي عند توفره. لا يتم اعتبار تسجيل الدخول ناجحًا إذا كان الخادم غير متاح.</small>`;
+    const root=login();if(!root)return null;let panel=root.querySelector('.hl-auth-panel');if(panel)return panel;
+    panel=document.createElement('form');panel.className='hl-auth-panel';panel.hidden=true;panel.innerHTML=`<label data-auth-primary>البريد الإلكتروني<input name="email" type="email" autocomplete="email" required placeholder="name@example.com"></label><label data-auth-primary>كلمة المرور<input name="password" type="password" autocomplete="current-password" minlength="12" required placeholder="12 حرفًا على الأقل"></label><label data-mfa-field hidden>رمز التحقق<input name="mfaCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="16" placeholder="000000 أو رمز الاسترداد"></label><button class="hl-auth-submit" type="submit">دخول آمن</button><button class="hl-auth-cancel" type="button">رجوع</button><small class="hl-auth-note">يتم الاتصال بخادم HYDROLAND الحقيقي عند توفره. لا يتم اعتبار تسجيل الدخول ناجحًا إذا كان الخادم غير متاح.</small>`;
     root.querySelector('.hl-login-actions')?.insertAdjacentElement('afterend',panel);
-    const style=document.createElement('style');style.textContent=`.hl-auth-panel{width:min(420px,100%);display:grid;gap:.7rem;margin:1rem auto 0;padding:1rem;border:1px solid rgba(120,191,224,.2);border-radius:18px;background:rgba(3,25,39,.86)}.hl-auth-panel[hidden]{display:none}.hl-auth-panel label{display:grid;gap:.35rem;text-align:right;color:#dcebf3;font-weight:700}.hl-auth-panel input{width:100%;box-sizing:border-box;border:1px solid rgba(120,191,224,.22);border-radius:12px;background:rgba(255,255,255,.05);color:#fff;padding:.8rem}.hl-auth-submit,.hl-auth-cancel{border-radius:12px;padding:.75rem;font-weight:800}.hl-auth-submit{border:0;background:linear-gradient(135deg,#f4d18c,#e5b45f);color:#102131}.hl-auth-cancel{border:1px solid rgba(120,191,224,.2);background:transparent;color:#dcebf3}.hl-auth-note{color:#9cb7c7;line-height:1.6}`;document.head.appendChild(style);
-    panel.querySelector('.hl-auth-cancel').addEventListener('click',()=>{state.panelOpen=false;panel.hidden=true;root.querySelector('.hl-login-actions').hidden=false});
+    const style=document.createElement('style');style.textContent=`.hl-auth-panel{width:min(420px,100%);display:grid;gap:.7rem;margin:1rem auto 0;padding:1rem;border:1px solid rgba(120,191,224,.2);border-radius:18px;background:rgba(3,25,39,.86)}.hl-auth-panel[hidden],.hl-auth-panel label[hidden]{display:none}.hl-auth-panel label{display:grid;gap:.35rem;text-align:right;color:#dcebf3;font-weight:700}.hl-auth-panel input{width:100%;box-sizing:border-box;border:1px solid rgba(120,191,224,.22);border-radius:12px;background:rgba(255,255,255,.05);color:#fff;padding:.8rem}.hl-auth-submit,.hl-auth-cancel{border-radius:12px;padding:.75rem;font-weight:800}.hl-auth-submit{border:0;background:linear-gradient(135deg,#f4d18c,#e5b45f);color:#102131}.hl-auth-cancel{border:1px solid rgba(120,191,224,.2);background:transparent;color:#dcebf3}.hl-auth-note{color:#9cb7c7;line-height:1.6}`;document.head.appendChild(style);
+    panel.querySelector('.hl-auth-cancel').addEventListener('click',()=>{resetMfaStep(panel);state.panelOpen=false;panel.hidden=true;root.querySelector('.hl-login-actions').hidden=false});
     panel.addEventListener('submit',async event=>{
-      event.preventDefault();const submit=panel.querySelector('.hl-auth-submit');const data=new FormData(panel);const email=String(data.get('email')||'').trim();const password=String(data.get('password')||'');
-      submit.disabled=true;submit.textContent='جارٍ الاتصال...';
+      event.preventDefault();const submit=panel.querySelector('.hl-auth-submit');submit.disabled=true;submit.textContent='جارٍ الاتصال...';
       try{
-        const response=await fetch(`${API_BASE}/auth/${state.mode}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});
-        const body=await response.json().catch(()=>({}));
-        if(!response.ok)throw new Error(body.message||'تعذر تسجيل الدخول');
+        if(state.mfaChallenge){
+          const code=String(new FormData(panel).get('mfaCode')||'').trim();if(!code)throw new Error('أدخل رمز التحقق');
+          const response=await fetch(`${API_BASE}/auth/mfa/verify`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({challengeToken:state.mfaChallenge,code})});const body=await response.json().catch(()=>({}));if(!response.ok)throw new Error(body.message||'تعذر التحقق من الرمز');
+          resetMfaStep(panel);state.panelOpen=false;storeTokens(body);setAuthUi(true);emitAuthChanged();toast('تم تسجيل الدخول إلى HYDROLAND');return;
+        }
+        const data=new FormData(panel),email=String(data.get('email')||'').trim(),password=String(data.get('password')||'');
+        const response=await fetch(`${API_BASE}/auth/${state.mode}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});const body=await response.json().catch(()=>({}));if(!response.ok)throw new Error(body.message||'تعذر تسجيل الدخول');
         if(state.mode==='register'){
           if(body?.status!=='PENDING_VERIFICATION'||body?.requiresEmailVerification!==true)throw new Error('استجابة إنشاء الحساب غير صالحة');
           state.panelOpen=false;clearSession();clearProtectedView();setAuthUi(false);emitAuthChanged();panel.reset();state.mode='login';submit.textContent='دخول آمن';panel.querySelector('input[name="password"]').autocomplete='current-password';toast('تم إنشاء الحساب. يلزم التحقق من البريد الإلكتروني قبل تسجيل الدخول');return;
         }
+        if(body?.mfaRequired===true&&typeof body?.challengeToken==='string'&&body.challengeToken){enterMfaStep(panel,body.challengeToken);return}
         state.panelOpen=false;storeTokens(body);setAuthUi(true);emitAuthChanged();toast('تم تسجيل الدخول إلى HYDROLAND');
-      }catch(error){toast(error instanceof Error?error.message:'تعذر الاتصال بخادم HYDROLAND');}
-      finally{submit.disabled=false;submit.textContent=state.mode==='register'?'إنشاء الحساب':'دخول آمن';}
+      }catch(error){toast(error instanceof Error?error.message:'تعذر الاتصال بخادم HYDROLAND')}
+      finally{submit.disabled=false;submit.textContent=state.mfaChallenge?'تحقق من الرمز':state.mode==='register'?'إنشاء الحساب':'دخول آمن'}
     });
     return panel;
   };
   document.addEventListener('click',event=>{
     const button=event.target.closest?.('.hl-login-primary,.hl-login-secondary');if(!button)return;
-    event.preventDefault();event.stopImmediatePropagation();sessionStorage.removeItem('hl-guest-mode');const root=login();const panel=ensurePanel();if(!root||!panel)return;
+    event.preventDefault();event.stopImmediatePropagation();sessionStorage.removeItem('hl-guest-mode');const root=login(),panel=ensurePanel();if(!root||!panel)return;resetMfaStep(panel);
     state.mode=button.classList.contains('hl-login-secondary')?'register':'login';state.panelOpen=true;panel.querySelector('.hl-auth-submit').textContent=state.mode==='register'?'إنشاء الحساب':'دخول آمن';panel.querySelector('input[name="password"]').autocomplete=state.mode==='register'?'new-password':'current-password';root.querySelector('.hl-login-actions').hidden=true;panel.hidden=false;panel.querySelector('input[name="email"]').focus();
   },true);
-  const terminateSession=()=>{
-    const refreshToken=sessionStorage.getItem('hl-refresh-token');
-    state.panelOpen=false;clearSession();clearProtectedView();
-    setTimeout(emitAuthChanged,0);
-    return refreshToken;
+
+  const mfaRequest=async(path,options={})=>{const response=await authorizedFetch(path,options),body=await response.json().catch(()=>({}));if(!response.ok)throw new Error(body.message||'تعذر تنفيذ إعداد المصادقة الثنائية');return body};
+  const ensureMfaDialog=()=>{
+    let dialog=document.getElementById('hl-mfa-dialog');if(dialog)return dialog;dialog=document.createElement('dialog');dialog.id='hl-mfa-dialog';dialog.className='hl-mfa-dialog';dialog.innerHTML=`<section><header><div><small>ACCOUNT SECURITY · أمان الحساب</small><h2>المصادقة الثنائية</h2></div><button type="button" data-mfa-close aria-label="إغلاق">×</button></header><div data-mfa-body></div></section>`;
+    const style=document.createElement('style');style.textContent=`.hl-mfa-dialog{width:min(560px,calc(100vw - 24px));border:1px solid rgba(120,191,224,.22);border-radius:24px;background:#071f31;color:#edf7fb;padding:0;box-shadow:0 28px 90px rgba(0,0,0,.48)}.hl-mfa-dialog::backdrop{background:rgba(1,10,18,.72);backdrop-filter:blur(5px)}.hl-mfa-dialog section{padding:1.1rem;display:grid;gap:1rem}.hl-mfa-dialog header{display:flex;justify-content:space-between;align-items:center}.hl-mfa-dialog header h2{margin:.2rem 0 0}.hl-mfa-dialog header button{border:0;background:transparent;color:#fff;font-size:1.6rem}.hl-mfa-dialog [data-mfa-body]{display:grid;gap:.8rem}.hl-mfa-dialog input{width:100%;box-sizing:border-box;border:1px solid rgba(120,191,224,.24);border-radius:12px;background:rgba(255,255,255,.055);color:#fff;padding:.78rem}.hl-mfa-dialog button[data-mfa-action]{border:0;border-radius:12px;padding:.75rem 1rem;background:linear-gradient(135deg,#f4d18c,#e5b45f);color:#102131;font-weight:900}.hl-mfa-dialog code,.hl-mfa-dialog pre{direction:ltr;text-align:left;white-space:pre-wrap;overflow-wrap:anywhere;background:rgba(255,255,255,.06);padding:.7rem;border-radius:12px}.hl-mfa-danger{background:transparent!important;color:#ffc0b9!important;border:1px solid rgba(255,120,110,.35)!important}`;document.head.appendChild(style);
+    dialog.querySelector('[data-mfa-close]').addEventListener('click',()=>dialog.close());dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close()});document.body.appendChild(dialog);return dialog;
   };
-  const logout=()=>{
-    const refreshToken=terminateSession();
-    showLogin();
-    if(refreshToken){setTimeout(()=>{try{fetch(`${API_BASE}/auth/logout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken}),keepalive:true}).catch(()=>{})}catch{}},0)}
+  const renderMfaSettings=async()=>{
+    if(!isAuthenticated()){toast('سجّل الدخول أولًا');return}const dialog=ensureMfaDialog(),body=dialog.querySelector('[data-mfa-body]');body.innerHTML='<p>جارٍ تحميل حالة المصادقة الثنائية...</p>';dialog.showModal();
+    try{const status=await mfaRequest('/auth/mfa/status');if(status.enabled){body.innerHTML=`<p>المصادقة الثنائية <b>مفعّلة</b>. رموز الاسترداد المتبقية: <b>${Number(status.recoveryCodesRemaining||0)}</b></p><label>رمز TOTP أو رمز استرداد<input data-mfa-disable-code autocomplete="one-time-code" maxlength="16"></label><button data-mfa-action="disable" class="hl-mfa-danger">تعطيل المصادقة الثنائية</button>`;body.querySelector('[data-mfa-action="disable"]').addEventListener('click',async button=>{const code=body.querySelector('[data-mfa-disable-code]').value.trim();if(!code){toast('أدخل رمز التحقق أولًا');return}button.disabled=true;try{await mfaRequest('/auth/mfa/disable',{method:'POST',body:JSON.stringify({code})});toast('تم تعطيل المصادقة الثنائية');dialog.close()}catch(error){toast(error.message)}finally{button.disabled=false}});return}
+      body.innerHTML='<p>استخدم تطبيق مصادقة متوافق مع TOTP لحماية تسجيل الدخول.</p><button data-mfa-action="start">بدء إعداد المصادقة الثنائية</button>';
+      body.querySelector('[data-mfa-action="start"]').addEventListener('click',async button=>{button.disabled=true;try{const setup=await mfaRequest('/auth/mfa/totp/setup',{method:'POST'});body.innerHTML=`<p>أضف هذا المفتاح في تطبيق المصادقة، ثم أدخل الرمز المكوّن من 6 أرقام.</p><code data-mfa-secret></code><label>رمز التأكيد<input data-mfa-confirm-code inputmode="numeric" autocomplete="one-time-code" maxlength="6"></label><button data-mfa-action="confirm">تأكيد وتفعيل</button>`;body.querySelector('[data-mfa-secret]').textContent=setup.secret;body.querySelector('[data-mfa-action="confirm"]').addEventListener('click',async confirm=>{const code=body.querySelector('[data-mfa-confirm-code]').value.trim();if(!/^\d{6}$/.test(code)){toast('أدخل رمزًا مكوّنًا من 6 أرقام');return}confirm.disabled=true;try{const result=await mfaRequest('/auth/mfa/totp/confirm',{method:'POST',body:JSON.stringify({code})});body.innerHTML='<p><b>تم تفعيل المصادقة الثنائية.</b> احفظ رموز الاسترداد التالية الآن؛ لن تُعرض مرة أخرى.</p><pre data-mfa-recovery></pre><button data-mfa-action="done">تم الحفظ</button>';body.querySelector('[data-mfa-recovery]').textContent=(result.recoveryCodes||[]).join('\n');body.querySelector('[data-mfa-action="done"]').addEventListener('click',()=>dialog.close());toast('تم تفعيل المصادقة الثنائية')}catch(error){toast(error.message)}finally{confirm.disabled=false}})}catch(error){toast(error.message);button.disabled=false}})
+    }catch(error){body.innerHTML='<p>تعذر تحميل إعدادات المصادقة الثنائية.</p>';toast(error.message)}
   };
-  window.addEventListener('pageshow',syncAuthUi);
-  document.addEventListener('hydroland:guest-mode',syncAuthUi);
-  syncAuthUi();
+  const ensureMfaSettingsButton=()=>{const list=document.querySelector('#profile-dialog .profile-list');if(!list||list.querySelector('[data-hl-action="mfa-settings"]'))return;const button=document.createElement('button');button.type='button';button.dataset.hlAction='mfa-settings';button.innerHTML='<span>◈</span>المصادقة الثنائية <b>←</b>';const settings=list.querySelector('[data-hl-action="settings"]');settings?.insertAdjacentElement('afterend',button)||list.appendChild(button)};
+  document.addEventListener('click',event=>{const button=event.target.closest?.('[data-hl-action="mfa-settings"]');if(!button)return;event.preventDefault();document.getElementById('profile-dialog')?.close();void renderMfaSettings()});
+
+  const terminateSession=()=>{const refreshToken=sessionStorage.getItem('hl-refresh-token');state.panelOpen=false;state.mfaChallenge=null;clearSession();clearProtectedView();setTimeout(emitAuthChanged,0);return refreshToken};
+  const logout=()=>{const refreshToken=terminateSession();showLogin();if(refreshToken){setTimeout(()=>{try{fetch(`${API_BASE}/auth/logout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken}),keepalive:true}).catch(()=>{})}catch{}},0)}};
+  const isAuthenticated=()=>Boolean(sessionStorage.getItem('hl-refresh-token'));
+  window.addEventListener('pageshow',syncAuthUi);document.addEventListener('hydroland:guest-mode',syncAuthUi);document.addEventListener('hydroland:auth-changed',ensureMfaSettingsButton);syncAuthUi();ensureMfaSettingsButton();
   document.addEventListener('click',event=>{const button=event.target.closest?.('[data-hl-action="logout"]');if(!button)return;event.preventDefault();button.disabled=true;document.getElementById('profile-dialog')?.close();void logout()});
-  window.HydrolandAuth={apiBase:API_BASE,setAuthUi,syncAuthUi,getAccessToken:()=>sessionStorage.getItem('hl-access-token'),getRefreshToken:()=>sessionStorage.getItem('hl-refresh-token'),isAuthenticated:()=>Boolean(sessionStorage.getItem('hl-refresh-token')),isGuestMode,refreshSession,authorizedFetch,terminateSession,logout};
+  window.HydrolandAuth={apiBase:API_BASE,setAuthUi,syncAuthUi,getAccessToken:()=>sessionStorage.getItem('hl-access-token'),getRefreshToken:()=>sessionStorage.getItem('hl-refresh-token'),isAuthenticated,isGuestMode,refreshSession,authorizedFetch,terminateSession,logout,openMfaSettings:renderMfaSettings};
 })();
