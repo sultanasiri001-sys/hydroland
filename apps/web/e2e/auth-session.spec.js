@@ -41,7 +41,7 @@ test('registration remains unauthenticated until email verification', async ({ p
   await expect(panel).toBeVisible();
   await panel.locator('input[name="email"]').fill('new-user@hydroland.test');
   await panel.locator('input[name="password"]').fill('Hydroland-Registration-2026!');
-  await panel.locator('.hl-auth-submit').click();
+  await panel.evaluate(form=>form.requestSubmit());
   await expect.poll(()=>registrationPayload).toEqual({email:'new-user@hydroland.test',password:'Hydroland-Registration-2026!'});
   await expect(page.locator('.hl-login')).not.toHaveClass(/hidden/);
   await expect(panel).toBeHidden();
