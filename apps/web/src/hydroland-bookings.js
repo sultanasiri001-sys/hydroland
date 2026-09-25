@@ -3,6 +3,7 @@
   const toast=message=>{const t=document.getElementById('toast');if(!t)return;t.textContent=message;t.classList.add('visible');setTimeout(()=>t.classList.remove('visible'),2200)};
   const state={trips:[],selected:null};
   const normalize=value=>String(value||'').trim().toLowerCase();
+  const locationText=trip=>{const location=trip?.location;if(location&&typeof location==='object')return String(location.locationName||trip?.siteName||trip?.meetingPoint||'حسب بيانات الرحلة');if(typeof location==='string'&&location.trim())return location;return trip?.siteName||trip?.meetingPoint||'حسب بيانات الرحلة'};
   const request=async(path,options={})=>{
     let response;
     if(options.public){
@@ -35,7 +36,7 @@
     document.querySelectorAll('[data-book]').forEach(button=>{
       const title=button.dataset.book||'';
       const trip=state.trips.find(item=>normalize(item.title)===normalize(title));
-      if(trip){button.dataset.tripId=trip.id;button.title=`السعة ${trip.capacity} · ${new Date(trip.startsAt).toLocaleString('ar-SA')}`;button.addEventListener('click',()=>{const location=document.getElementById('booking-location');if(location)location.textContent=trip.location||trip.siteName||trip.meetingPoint||'حسب بيانات الرحلة';const safety=document.querySelector('#booking-dialog .booking-safety span');if(safety)safety.textContent=trip.safety?.decision||'REVIEW';syncSeats(trip);},{capture:true});}
+      if(trip){button.dataset.tripId=trip.id;button.title=`السعة ${trip.capacity} · ${new Date(trip.startsAt).toLocaleString('ar-SA')}`;button.addEventListener('click',()=>{const location=document.getElementById('booking-location');if(location)location.textContent=locationText(trip);const safety=document.querySelector('#booking-dialog .booking-safety span');if(safety)safety.textContent=trip.safety?.decision||'REVIEW';syncSeats(trip);},{capture:true});}
       if(!button.dataset.hlBookingBound){button.dataset.hlBookingBound='1';button.addEventListener('click',()=>{state.selected=trip||null;syncSeats(trip||null);},{capture:true});}
     });
   };
