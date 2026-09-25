@@ -29,6 +29,11 @@ test('guest can open trip map and authenticated booking renders location object 
   await expect(page.locator('.hl-login')).toBeVisible();
   await page.locator('.hl-login-guest').click();
   await expect(page.locator('.hl-login')).toHaveClass(/hidden/);
+  expect(await page.evaluate(()=>sessionStorage.getItem('hl-guest-mode'))).toBe('1');
+  await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));
+  await expect(page.locator('.hl-login')).toHaveClass(/hidden/);
+  expect(await page.evaluate(()=>window.HydrolandAuth.isAuthenticated())).toBe(false);
+  expect(await page.evaluate(()=>window.HydrolandAuth.isGuestMode())).toBe(true);
 
   const mapCard=page.locator('.map-card');
   await expect(mapCard.locator('[data-hl-map-card-provider]')).toContainText('E2E_MAPS');
@@ -41,6 +46,7 @@ test('guest can open trip map and authenticated booking renders location object 
   await mapDialog.locator('[data-hl-map-close]').click();
 
   await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','map-e2e-access');sessionStorage.setItem('hl-refresh-token','map-e2e-refresh');window.HydrolandAuth.syncAuthUi();await window.HydrolandProfile.load()});
+  expect(await page.evaluate(()=>sessionStorage.getItem('hl-guest-mode'))).toBeNull();
   await page.locator('[data-book="رحلة جزيرة سمر"]').click();
   await expect(page.locator('#booking-dialog')).toBeVisible();
   await expect(page.locator('#booking-location')).toHaveText('مرسى القحمة');
