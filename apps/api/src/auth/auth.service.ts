@@ -1,15 +1,17 @@
 import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { DatabaseService } from '../database/database.service';
+import { GoogleIdentityService } from './google-identity.service';
 import { MfaService } from './mfa.service';
 
 type Credentials={email:string;password:string};
 type Tokens={accessToken:string;refreshToken:string};
 type RegistrationResult={email:string;status:'PENDING_VERIFICATION';requiresEmailVerification:true};
+type GoogleIdentity={subject:string;email:string;givenName:string;familyName:string;hostedDomain:string|null};
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly db:DatabaseService,private readonly mfa:MfaService){}
+  constructor(private readonly db:DatabaseService,private readonly mfa:MfaService,private readonly google:GoogleIdentityService){}
 
   async register(input:Credentials):Promise<RegistrationResult>{
     const email=this.email(input.email);
@@ -24,8 +26,17 @@ export class AuthService {
     if(!account||!this.verify(input.password,account.passwordHash)||this.blocked(account.status))throw new UnauthorizedException('Invalid credentials.');
     if(account.status!=='ACTIVE')throw new UnauthorizedException('Account activation is required.');
     if(!account.emailVerifiedAt)throw new UnauthorizedException('Email verification is required.');
-    if(await this.mfa.isEnabled(account.id))return this.mfa.beginChallenge(account.id);
-    return this.issue(account.id);
+    return this.completePrimaryAuthentication(account.id);
+  }
+
+  googleConfig(){return this.google.config()}
+
+  async loginWithGoogle(credential:string){
+    const identity=await this.google.verifyCredential(credential);
+    const account=await this.resolveGoogleAccount(identity);
+    if(this.blocked(account.status))throw new UnauthorizedException('Account is unavailable.');
+    if(account.status!=='ACTIVE'||!account.emailVerifiedAt)throw new UnauthorizedException('Account is not active.');
+    return this.completePrimaryAuthentication(account.id);
   }
 
   async verifyMfaChallenge(challengeToken:string,code:string):Promise<Tokens>{const accountId=await this.mfa.verifyChallenge(challengeToken,code);return this.issue(accountId)}
@@ -58,6 +69,40 @@ export class AuthService {
     if(!session||session.account.status!=='ACTIVE'||!session.account.emailVerifiedAt)throw new UnauthorizedException('Account is not active, session is invalid, or email is not verified.');
     return{accountId:session.account.id,sessionId:session.id};
   }
+
+  private async completePrimaryAuthentication(accountId:string){if(await this.mfa.isEnabled(accountId))return this.mfa.beginChallenge(accountId);return this.issue(accountId)}
+
+  private async resolveGoogleAccount(identity:GoogleIdentity){
+    const key=this.googleSubjectKey(identity.subject),mapping=await this.db.operationalSetting.findUnique({where:{key}}),mappedAccountId=this.googleMappedAccountId(mapping?.value);
+    if(mappedAccountId){
+      const mapped=await this.db.account.findUnique({where:{id:mappedAccountId}});
+      if(!mapped)throw new UnauthorizedException('Google account link is unavailable.');
+      return mapped;
+    }
+    let account=await this.db.account.findUnique({where:{email:identity.email},include:{person:true}});
+    const now=new Date();
+    if(account){
+      if(this.blocked(account.status))throw new UnauthorizedException('Account is unavailable.');
+      if(account.status!=='ACTIVE'||!account.emailVerifiedAt)account=await this.db.account.update({where:{id:account.id},data:{status:'ACTIVE',emailVerifiedAt:account.emailVerifiedAt||now},include:{person:true}});
+      if(account.person.firstName==='Pending'&&account.person.lastName==='Profile')await this.db.person.update({where:{id:account.personId},data:{firstName:identity.givenName,lastName:identity.familyName}});
+    }else{
+      account=await this.db.account.create({data:{email:identity.email,passwordHash:this.hash(randomBytes(48).toString('base64url')),status:'ACTIVE',emailVerifiedAt:now,person:{create:{firstName:identity.givenName,lastName:identity.familyName}}},include:{person:true}});
+    }
+    await this.linkGoogleSubject(key,account.id,identity.email,identity.hostedDomain);
+    return account;
+  }
+
+  private async linkGoogleSubject(key:string,accountId:string,email:string,hostedDomain:string|null){
+    try{await this.db.operationalSetting.create({data:{key,value:{version:1,provider:'google',accountId,emailAtLink:email,hostedDomain}}})}
+    catch(error){
+      const existing=await this.db.operationalSetting.findUnique({where:{key}}),mapped=this.googleMappedAccountId(existing?.value);
+      if(mapped===accountId)return;
+      throw new ConflictException('Google identity is already linked to another account.');
+    }
+  }
+
+  private googleMappedAccountId(value:unknown){if(!value||typeof value!=='object'||Array.isArray(value))return null;const accountId=(value as Record<string,unknown>).accountId;return typeof accountId==='string'&&accountId?accountId:null}
+  private googleSubjectKey(subject:string){return`auth.google.subject.${createHash('sha256').update(subject).digest('hex')}`}
 
   private async issue(accountId:string):Promise<Tokens>{
     const refreshToken=randomBytes(48).toString('base64url');
