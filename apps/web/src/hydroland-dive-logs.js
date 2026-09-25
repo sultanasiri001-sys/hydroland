@@ -75,7 +75,7 @@
   const exportLogs=()=>{if(!auth.isAuthenticated()){toast('سجل الدخول أولًا لتصدير السجل');return}if(!currentLogs.length){toast('لا توجد غوصات لتصديرها');return}const rows=[['siteName','diveDate','maxDepthM','durationMin','buddyName','status'],...currentLogs.map(log=>[log.siteName,log.diveDate,log.maxDepthM,log.durationMin,log.buddyName||'',log.status])],csv=rows.map(row=>row.map(value=>'"'+String(value??'').replace(/"/g,'""')+'"').join(',')).join('\n'),blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='hydroland-dive-log.csv';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);toast('تم تصدير سجل الغوص')};
   const bindExport=()=>{const actions=document.querySelector('.hl-log .hl-member-actions');if(!actions)return;const button=actions.querySelectorAll('button')[1];if(!button||button.dataset.hlExportBound)return;button.disabled=false;button.textContent='تصدير السجل';button.dataset.hlExportBound='1';button.addEventListener('click',exportLogs)};
   bindExport();
-  document.addEventListener('hydroland:auth-changed',load);
+  document.addEventListener('hydroland:auth-changed',()=>{if(!auth.isAuthenticated())return;setTimeout(load,0)});
   document.addEventListener('hydroland:trip-completed',load);
   window.HydrolandDiveLogs={reload:load};
   setTimeout(load,0);
