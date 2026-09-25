@@ -9,7 +9,7 @@ const installProfileApi=async page=>{
   await page.route(/\/api\/v1\/me\/diver-profile$/,route=>requireAuth(route.request())?json(route,{profile:null,equipment:[]}):json(route,{message:'Unauthorized'},401));
 };
 
-test('trip map uses operational coordinates and booking renders location object as text',async({page})=>{
+test('guest can open trip map and authenticated booking renders location object as text',async({page})=>{
   const startsAt=new Date(Date.now()+48*3600000).toISOString();
   const trips=[{id:'trip-map-e2e',title:'رحلة جزيرة سمر',type:'BOAT_DIVE',startsAt,endsAt:new Date(Date.now()+51*3600000).toISOString(),capacity:8,remainingSeats:8,status:'OPEN',location:{tripId:'trip-map-e2e',locationName:'مرسى القحمة',latitude:18.015432,longitude:41.708765},weather:{reviewStatus:'APPROVED'},safety:{decision:'ALLOWED'}}];
   await page.addInitScript(()=>{
@@ -25,6 +25,10 @@ test('trip map uses operational coordinates and booking renders location object 
 
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.HydrolandMap&&window.HydrolandAuth&&window.HydrolandProfile));
+
+  await expect(page.locator('.hl-login')).toBeVisible();
+  await page.locator('.hl-login-guest').click();
+  await expect(page.locator('.hl-login')).toHaveClass(/hidden/);
 
   const mapCard=page.locator('.map-card');
   await expect(mapCard.locator('[data-hl-map-card-provider]')).toContainText('E2E_MAPS');
