@@ -210,6 +210,8 @@ model Account {
  wallet Wallet?
  rewardAccount RewardAccount?
  translationPreference TranslationPreference?
+ safetyIncidentsReported SafetyIncident[] @relation("SafetyIncidentReporter")
+ safetyIncidentsResolved SafetyIncident[] @relation("SafetyIncidentResolver")
 }
 
 model Organization {
@@ -569,6 +571,7 @@ model Trip {
   updatedAt DateTime @updatedAt
   bookings Booking[]
   safetyChecklists SafetyChecklist[]
+  safetyIncidents SafetyIncident[]
   diveLogs DiveLog[] @relation("TripDiveLogs")
   crewAssignments CrewAssignment[]
   briefings TripBriefing[]
@@ -698,6 +701,40 @@ model SafetyChecklist {
   updatedAt DateTime @updatedAt
   trip Trip @relation(fields:[tripId], references:[id], onDelete:Restrict)
   @@index([tripId,decision])
+}
+
+enum SafetyIncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+enum SafetyIncidentStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  CLOSED
+}
+model SafetyIncident {
+  id String @id @default(uuid())
+  tripId String?
+  reportedByAccountId String
+  severity SafetyIncidentSeverity
+  title String
+  description String
+  locationName String?
+  status SafetyIncidentStatus @default(OPEN)
+  resolutionNotes String?
+  resolvedByAccountId String?
+  resolvedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  trip Trip? @relation(fields:[tripId], references:[id], onDelete:Restrict)
+  reportedBy Account @relation("SafetyIncidentReporter", fields:[reportedByAccountId], references:[id], onDelete:Restrict)
+  resolvedBy Account? @relation("SafetyIncidentResolver", fields:[resolvedByAccountId], references:[id], onDelete:Restrict)
+  @@index([tripId,status,createdAt])
+  @@index([reportedByAccountId,createdAt])
+  @@index([status,severity,createdAt])
 }
 
 enum DiveLogStatus {
