@@ -89,6 +89,9 @@ jobs:
           HYDROLAND_INTEGRATION_WEATHER_MARINE_STATUS: SANDBOX
           STORMGLASS_API_KEY: hydroland-e2e-weather
           STORMGLASS_API_BASE_URL: http://127.0.0.1:3198
+          HYDROLAND_INTEGRATION_MAPS_GEO_STATUS: SANDBOX
+          HYDROLAND_MAP_PROVIDER: E2E_MAPS
+          HYDROLAND_MAP_STYLE_URL: https://maps.hydroland.test/style.json
         run: |
           node apps/api/dist/main.js > /tmp/hydroland-api.log 2>&1 &
           API_PID=$!
@@ -112,6 +115,7 @@ jobs:
           ADMIN_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/administrative-affairs-http-e2e.mjs
           RBAC_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/runtime-rbac-ownership-http-e2e.mjs
           FINANCE_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/finance-http-e2e.mjs
+          MAPS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/maps-runtime-http-e2e.mjs
           if ! PROFILE_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/profile-account-http-e2e.mjs; then
             echo "Profile/Account HTTP/DB E2E failed; API log follows"
             cat /tmp/hydroland-api.log
