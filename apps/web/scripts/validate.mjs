@@ -19,7 +19,7 @@ for (const legacy of ['مدرب محترف','صاحب قارب','واجهة ال
 
 const mobileNav = html.match(/<nav class="mobile-nav"[\s\S]*?<\/nav>/)?.[0] || '';
 for (const marker of ['href="#home"','>الرئيسية<','href="#trips"','>الرحلات<','href="#community"','>المجتمع<','>الرسائل<','id="profile-open-mobile"','>حسابي<']) if (!mobileNav.includes(marker)) throw new Error(`Missing approved mobile navigation item: ${marker}`);
-if (!/disabled[^>]*[\s\S]*?>الرسائل</.test(mobileNav)) throw new Error('Messages control must remain explicitly disabled until connected');
+if (!/disabled[^>]*[\s\S]*?>الرسائل</.test(mobileNav)) throw new Error('Messages control must remain fail-closed in static HTML until messaging runtime loads');
 if (mobileNav.includes('>اكتشف<') || mobileNav.includes('>أنشطتي<')) throw new Error('Legacy mobile navigation labels remain');
 
 for (const id of ['top-search','top-notifications','profile-open']) if (!html.includes(`id="${id}"`)) throw new Error(`Missing explicit top-bar control: ${id}`);
@@ -65,12 +65,16 @@ const profileData = await readFile(path.join(src, 'hydroland-profile-data.js'), 
 for (const marker of ['hl-profile-editor','openProfileEditor','new FormData(form)',"request('/me',{method:'PATCH'"]) if (!profileData.includes(marker)) throw new Error(`Missing professional profile editor marker: ${marker}`);
 if (/\bprompt\s*\(/.test(profileData)) throw new Error('Profile editing must not use prompt()');
 
-for (const moduleName of ['hydroland-auth.js','hydroland-bookings.js','hydroland-map.js','hydroland-profile-data.js','hydroland-dive-logs.js']) {
+for (const moduleName of ['hydroland-auth.js','hydroland-bookings.js','hydroland-map.js','hydroland-profile-data.js','hydroland-messages.js','hydroland-dive-logs.js']) {
   if (!app.includes(moduleName)) throw new Error(`Missing frontend module loader: ${moduleName}`);
 }
+if(!app.includes('hydroland-messages.css'))throw new Error('Missing messaging stylesheet loader');
+const messagesModule=await readFile(path.join(src,'hydroland-messages.js'),'utf8');
+for(const marker of ["mobile.disabled=false","button.id='top-messages'","/messages/conversations","kind:'TEXT'","kind:'VOICE'","sessionStorage.removeItem('hl-guest-mode')","audio controls"])if(!messagesModule.includes(marker))throw new Error(`Missing connected messaging UI boundary: ${marker}`);
+if(messagesModule.includes('MediaRecorder')||messagesModule.includes('getUserMedia'))throw new Error('Messaging UI must not claim direct voice capture before object-storage upload is implemented');
 
 const mapModule = await readFile(path.join(src, 'hydroland-map.js'), 'utf8');
 for(const marker of ["MAPLIBRE_VERSION='6.11.2'",'cdn.jsdelivr.net/npm/maplibre-gl@${MAPLIBRE_VERSION}/dist','HydrolandMapLibreTestDouble','MapLibre runtime failed to load','مزود الخرائط غير مفعّل'])if(!mapModule.includes(marker))throw new Error(`Map runtime integrity marker missing: ${marker}`);
 if(mapModule.includes('@latest')||mapModule.includes('maplibre-gl@latest'))throw new Error('MapLibre runtime must remain version-pinned.');
 
-console.log(`Validated HYDROLAND shell, six role selectors, ${jsFiles.length} JavaScript modules, ${cssFiles.length} style modules, branding, IDs, responsiveness, accessibility, anonymous/guest auth separation and pinned resilient MapLibre runtime markers.`);
+console.log(`Validated HYDROLAND shell, six role selectors, ${jsFiles.length} JavaScript modules, ${cssFiles.length} style modules, branding, IDs, responsiveness, accessibility, anonymous/guest auth separation, connected messaging and pinned resilient MapLibre runtime markers.`);
