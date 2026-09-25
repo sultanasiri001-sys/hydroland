@@ -19,11 +19,7 @@ assert(generatedId.length>0&&generatedId!=='x'.repeat(129),'Oversized X-Request-
 
 response=await fetch(base+'/health',{
   method:'OPTIONS',
-  headers:{
-    Origin:allowedOrigin,
-    'Access-Control-Request-Method':'GET',
-    'Access-Control-Request-Headers':'authorization,x-request-id'
-  }
+  headers:{Origin:allowedOrigin,'Access-Control-Request-Method':'GET','Access-Control-Request-Headers':'authorization,x-request-id'}
 });
 assert(response.status===200||response.status===204,`Allowed CORS preflight failed: ${response.status}`);
 assert(response.headers.get('access-control-allow-origin')===allowedOrigin,'Allowed origin was not returned by CORS');
@@ -37,3 +33,4 @@ assert(response.ok,`Disallowed-origin health request failed unexpectedly: ${resp
 assert(!response.headers.get('access-control-allow-origin'),'Untrusted origin received Access-Control-Allow-Origin');
 
 console.log('API runtime hardening HTTP E2E passed: security headers, request IDs, restricted CORS, and origin denial are active.');
+await import('./auth-account-lifecycle-http-e2e.mjs');
