@@ -125,7 +125,7 @@ jobs:
           MARINE_DOCS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/marine-documents-http-e2e.mjs
           MARINE_READINESS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/marine-readiness-http-e2e.mjs
           SAFETY_CHECKLIST_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/safety-checklist-http-e2e.mjs
-          SAFETY_INCIDENTS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/safety-incidents-http-e2e.mjs
+          SAFETY_INCIDENTS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/safety-incidents-http-e2e.mjs\n          COMMUNITY_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/community-runtime-http-e2e.mjs
           if ! PROFILE_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/profile-account-http-e2e.mjs; then
             echo "Profile/Account HTTP/DB E2E failed; API log follows"
             cat /tmp/hydroland-api.log
