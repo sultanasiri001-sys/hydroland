@@ -1,22 +1,27 @@
 import { PrismaClient } from '@prisma/client';
-import { createHmac } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 
 const db=new PrismaClient();
 const base=process.env.RBAC_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1';
 await import('./api-runtime-hardening-validation.mjs');
 await import('./api-runtime-hardening-http-e2e.mjs');
+await import('./auth-session-http-e2e.mjs');
 const secret=process.env.JWT_SECRET;
 if(!secret)throw new Error('JWT_SECRET required');
 const suffix=Date.now().toString();
 const enc=v=>Buffer.from(JSON.stringify(v)).toString('base64url');
-const tokenFor=id=>{const now=Math.floor(Date.now()/1000),body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:id,iat:now,exp:now+900})}`;return `${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`;};
+const tokenFor=async id=>{
+  const session=await db.session.create({data:{accountId:id,tokenHash:randomBytes(32).toString('hex'),expiresAt:new Date(Date.now()+3600000)}});
+  const now=Math.floor(Date.now()/1000),body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:id,sid:session.id,iat:now,exp:now+900})}`;
+  return `${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`;
+};
 const auth=t=>({authorization:`Bearer ${t}`});
 let trip,userA,userB,admin,people=[];
 try{
   const mk=async(label)=>{const p=await db.person.create({data:{firstName:'RBAC',lastName:label}});people.push(p);return db.account.create({data:{personId:p.id,email:`rbac-${label.toLowerCase()}-${suffix}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}})};
   userA=await mk('UserA'); userB=await mk('UserB'); admin=await mk('Admin');
   await db.roleAssignment.create({data:{accountId:admin.id,role:'ADMIN',status:'ACTIVE',scope:{}}});
-  const ta=tokenFor(userA.id),tb=tokenFor(userB.id),tadmin=tokenFor(admin.id);
+  const ta=await tokenFor(userA.id),tb=await tokenFor(userB.id),tadmin=await tokenFor(admin.id);
 
   let r=await fetch(base+'/admin/overview'); if(r.status!==401)throw new Error('Anonymous admin route expected 401, got '+r.status);
   r=await fetch(base+'/admin/overview',{headers:auth(ta)}); if(r.status!==403)throw new Error('Normal user admin route expected 403, got '+r.status);
