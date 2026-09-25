@@ -7,6 +7,7 @@ test('boat operator registers marine asset and license metadata, admin verifies 
   const membership={id:'membership-e2e',organizationId:'org-marine-e2e',accountId:profile.id,role:'OWNER',status:'ACTIVE',organization:{id:'org-marine-e2e',displayName:'مشغل بحري تجريبي',status:'ACTIVE'}};
   const state={assets:[],pending:[],decision:null};
   const requireAuth=request=>request.headers().authorization==='Bearer marine-e2e-access';
+  const assetSummary=()=>{const asset=state.assets[0];if(!asset)return null;const {documents,...summary}=asset;return summary};
   await page.route(/\/api\/v1\/me$/,route=>requireAuth(route.request())?json(route,profile):json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/credentials$/,route=>requireAuth(route.request())?json(route,[]):json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/me\/diver-profile$/,route=>requireAuth(route.request())?json(route,{profile:null,equipment:[]}):json(route,{message:'Unauthorized'},401));
@@ -18,12 +19,12 @@ test('boat operator registers marine asset and license metadata, admin verifies 
   });
   await page.route(/\/api\/v1\/marine-operations\/assets\/asset-marine-e2e\/documents$/,route=>{
     if(!requireAuth(route.request()))return json(route,{message:'Unauthorized'},401);
-    const body=route.request().postDataJSON();const doc={id:'marine-doc-e2e',marineAssetId:'asset-marine-e2e',documentType:body.documentType,referenceNumber:body.referenceNumber||null,expiresAt:body.expiresAt?new Date(body.expiresAt).toISOString():null,status:'PENDING',verifiedAt:null,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),marineAsset:state.assets[0]};state.assets[0].documents=[doc];state.pending=[doc];return json(route,doc,201);
+    const body=route.request().postDataJSON();const doc={id:'marine-doc-e2e',marineAssetId:'asset-marine-e2e',documentType:body.documentType,referenceNumber:body.referenceNumber||null,expiresAt:body.expiresAt?new Date(body.expiresAt).toISOString():null,status:'PENDING',verifiedAt:null,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};state.assets[0].documents=[doc];state.pending=[doc];return json(route,{...doc,marineAsset:assetSummary()},201);
   });
-  await page.route(/\/api\/v1\/marine-operations\/admin\/documents\/pending$/,route=>requireAuth(route.request())?json(route,state.pending):json(route,{message:'Unauthorized'},401));
+  await page.route(/\/api\/v1\/marine-operations\/admin\/documents\/pending$/,route=>requireAuth(route.request())?json(route,state.pending.map(doc=>({...doc,marineAsset:assetSummary()}))):json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/marine-operations\/admin\/documents\/marine-doc-e2e\/decision$/,route=>{
     if(!requireAuth(route.request()))return json(route,{message:'Unauthorized'},401);
-    state.decision=route.request().postDataJSON();const doc=state.pending[0];doc.status=state.decision.outcome;doc.verifiedAt=state.decision.outcome==='VERIFIED'?new Date().toISOString():null;state.pending=[];state.assets[0].documents=[doc];return json(route,doc);
+    state.decision=route.request().postDataJSON();const doc=state.pending[0];doc.status=state.decision.outcome;doc.verifiedAt=state.decision.outcome==='VERIFIED'?new Date().toISOString():null;state.pending=[];state.assets[0].documents=[doc];return json(route,{...doc,marineAsset:assetSummary()});
   });
 
   await page.goto('/',{waitUntil:'domcontentloaded'});
