@@ -98,8 +98,9 @@ test('profile settings save, reload persistence and real roleAssignments mapping
   expect(await page.evaluate(() => window.HydrolandProfileData?.profile?.roles?.[0]?.role)).toBe('ADMIN');
 
   await page.locator('#profile-open').click();
-  await expect(page.locator('#profile-dialog')).toBeVisible();
-  await page.locator('[data-hl-action="settings"]').click();
+  const profileDialog = page.locator('#profile-dialog');
+  await expect(profileDialog).toBeVisible();
+  await profileDialog.locator('[data-hl-action="settings"]').last().click();
 
   const editor = page.locator('#hl-profile-editor');
   await expect(editor).toBeVisible();
@@ -121,7 +122,8 @@ test('profile settings save, reload persistence and real roleAssignments mapping
   await expect.poll(() => page.evaluate(() => window.HydrolandProfileData?.profile?.person?.firstName)).toBe('Sultan Updated');
 
   await page.locator('#profile-open').click();
-  await page.locator('[data-hl-action="settings"]').click();
+  const reloadedDialog = page.locator('#profile-dialog');
+  await reloadedDialog.locator('[data-hl-action="settings"]').last().click();
   await expect(page.locator('#hl-profile-editor [name="firstName"]')).toHaveValue('Sultan Updated');
   await expect(page.locator('#hl-profile-editor [name="headline"]')).toHaveValue('Profile E2E');
   await page.locator('#hl-profile-editor [data-profile-cancel]').click();
@@ -138,7 +140,8 @@ test('diver profile editor loads, saves and reopens with persisted values', asyn
   await seedAuthenticatedProfile(page);
 
   await page.locator('#profile-open').click();
-  await page.locator('[data-hl-action="diver-profile"]').click();
+  const profileDialog = page.locator('#profile-dialog');
+  await profileDialog.locator('[data-hl-action="diver-profile"]').click();
   const editor = page.locator('#hl-diver-editor');
   await expect(editor).toBeVisible();
   await expect(editor.locator('[name="nationality"]')).toHaveValue('SA');
@@ -152,7 +155,7 @@ test('diver profile editor loads, saves and reopens with persisted values', asyn
   await expect(editor).not.toBeVisible();
   await expect.poll(() => page.evaluate(() => window.HydrolandProfileData?.diverProfile?.primaryPhone)).toBe('0555555555');
 
-  await page.locator('[data-hl-action="diver-profile"]').click();
+  await profileDialog.locator('[data-hl-action="diver-profile"]').click();
   await expect(page.locator('#hl-diver-editor [name="primaryPhone"]')).toHaveValue('0555555555');
   await expect(page.locator('#hl-diver-editor [name="emergencyName"]')).toHaveValue('Updated Emergency');
   await expect(page.locator('#hl-diver-editor [name="medicalFitnessStatus"]')).toHaveValue('FIT');
@@ -166,8 +169,8 @@ test('unauthenticated account settings stay guarded in the browser', async ({ pa
     window.HydrolandAuth.syncAuthUi();
   });
 
-  await page.locator('#profile-open').click();
-  await page.locator('[data-hl-action="settings"]').click();
+  await expect(page.locator('.hl-login')).not.toHaveClass(/hidden/);
+  await page.locator('#profile-dialog [data-hl-action="settings"]').last().dispatchEvent('click');
   await expect(page.locator('#toast')).toContainText('سجل الدخول أولًا لفتح بيانات الحساب');
   await expect(page.locator('#hl-profile-editor')).toHaveCount(0);
   expect(await page.evaluate(() => Boolean(window.HydrolandProfileData))).toBe(false);
