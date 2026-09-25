@@ -60,8 +60,19 @@ const profileData = await readFile(path.join(src, 'hydroland-profile-data.js'), 
 for (const marker of ['hl-profile-editor','openProfileEditor','new FormData(form)',"request('/me',{method:'PATCH'"]) if (!profileData.includes(marker)) throw new Error(`Missing professional profile editor marker: ${marker}`);
 if (/\bprompt\s*\(/.test(profileData)) throw new Error('Profile editing must not use prompt()');
 
-for (const moduleName of ['hydroland-auth.js','hydroland-bookings.js','hydroland-profile-data.js','hydroland-dive-logs.js']) {
+for (const moduleName of ['hydroland-auth.js','hydroland-bookings.js','hydroland-map.js','hydroland-profile-data.js','hydroland-dive-logs.js']) {
   if (!app.includes(moduleName)) throw new Error(`Missing frontend module loader: ${moduleName}`);
 }
 
-console.log(`Validated HYDROLAND shell, six role selectors, ${jsFiles.length} JavaScript modules, ${cssFiles.length} style modules, branding, IDs, responsiveness and accessibility markers.`);
+const [packageText, buildScript, mapModule] = await Promise.all([
+  readFile(path.join(root, 'package.json'), 'utf8'),
+  readFile(path.join(root, 'scripts', 'build.mjs'), 'utf8'),
+  readFile(path.join(src, 'hydroland-map.js'), 'utf8')
+]);
+const webPackage=JSON.parse(packageText);
+if(webPackage.dependencies?.['maplibre-gl']!=='6.11.2')throw new Error('MapLibre must remain pinned to 6.11.2.');
+for(const marker of ['maplibre-gl.js','maplibre-gl.css','node_modules','vendor'])if(!buildScript.includes(marker))throw new Error(`Production build does not vendor MapLibre asset: ${marker}`);
+for(const marker of ['./vendor/maplibre-gl.js','./vendor/maplibre-gl.css','HydrolandMapLibreTestDouble'])if(!mapModule.includes(marker))throw new Error(`Map runtime integrity marker missing: ${marker}`);
+for(const remote of ['unpkg.com','cdn.jsdelivr.net'])if(mapModule.includes(remote))throw new Error(`Map runtime must not depend on external CDN: ${remote}`);
+
+console.log(`Validated HYDROLAND shell, six role selectors, ${jsFiles.length} JavaScript modules, ${cssFiles.length} style modules, branding, IDs, responsiveness, accessibility and vendored MapLibre integrity markers.`);
