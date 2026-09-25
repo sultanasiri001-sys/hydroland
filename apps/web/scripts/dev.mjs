@@ -1,17 +1,19 @@
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const root = path.join(appRoot, 'src');
-const workspaceRoot = path.resolve(appRoot, '..', '..');
-const maplibreDist = path.join(workspaceRoot, 'node_modules', 'maplibre-gl', 'dist');
+const require = createRequire(import.meta.url);
+const maplibreEntry = require.resolve('maplibre-gl');
+const maplibreDist = path.dirname(maplibreEntry);
 const types = { '.html':'text/html; charset=utf-8', '.css':'text/css; charset=utf-8', '.js':'text/javascript; charset=utf-8' };
 createServer(async (request, response) => {
   const requestPath = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
   let candidate;
-  if(requestPath==='/vendor/maplibre-gl.js')candidate=path.join(maplibreDist,'maplibre-gl.js');
+  if(requestPath==='/vendor/maplibre-gl.js')candidate=maplibreEntry;
   else if(requestPath==='/vendor/maplibre-gl.css')candidate=path.join(maplibreDist,'maplibre-gl.css');
   else candidate = path.resolve(root, requestPath === '/' ? 'index.html' : `.${requestPath}`);
   const allowed=candidate.startsWith(root)||candidate.startsWith(maplibreDist);
