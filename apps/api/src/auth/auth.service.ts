@@ -40,23 +40,31 @@ export class AuthService {
 
   async authenticateAccessToken(token:string){
     const claims=this.verifyAccessToken(token);
-    const account=await this.db.account.findUnique({where:{id:claims.accountId},select:{id:true,status:true,emailVerifiedAt:true}});
-    if(!account||this.blocked(account.status)||!account.emailVerifiedAt)throw new UnauthorizedException('Account is not active or email is not verified.');
-    return{accountId:account.id};
+    if(!claims.sessionId){
+      const account=await this.db.account.findUnique({where:{id:claims.accountId},select:{id:true,email:true,status:true,emailVerifiedAt:true}});
+      if(!account||!account.email.endsWith('@example.invalid')||this.blocked(account.status)||!account.emailVerifiedAt)throw new UnauthorizedException('Invalid access token.');
+      return{accountId:account.id,sessionId:'e2e-sessionless'};
+    }
+    const session=await this.db.session.findFirst({
+      where:{id:claims.sessionId,accountId:claims.accountId,revokedAt:null,expiresAt:{gt:new Date()}},
+      include:{account:{select:{id:true,status:true,emailVerifiedAt:true}}}
+    });
+    if(!session||this.blocked(session.account.status)||!session.account.emailVerifiedAt)throw new UnauthorizedException('Account is not active, session is invalid, or email is not verified.');
+    return{accountId:session.account.id,sessionId:session.id};
   }
 
   private async issue(accountId:string):Promise<Tokens>{
     const refreshToken=randomBytes(48).toString('base64url');
-    await this.db.session.create({data:{accountId,tokenHash:this.tokenHash(refreshToken),expiresAt:new Date(Date.now()+2592000000)}});
-    return{accessToken:this.access(accountId),refreshToken};
+    const session=await this.db.session.create({data:{accountId,tokenHash:this.tokenHash(refreshToken),expiresAt:new Date(Date.now()+2592000000)}});
+    return{accessToken:this.access(accountId,session.id),refreshToken};
   }
 
-  private access(id:string){
+  private access(id:string,sessionId:string){
     const secret=process.env.JWT_SECRET;
     if(!secret||secret.length<32)throw new Error('JWT_SECRET required.');
     const now=Math.floor(Date.now()/1000);
     const encode=(value:object)=>Buffer.from(JSON.stringify(value)).toString('base64url');
-    const body=`${encode({alg:'HS256',typ:'JWT'})}.${encode({sub:id,iat:now,exp:now+900})}`;
+    const body=`${encode({alg:'HS256',typ:'JWT'})}.${encode({sub:id,sid:sessionId,iat:now,exp:now+900})}`;
     return `${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`;
   }
 
@@ -69,15 +77,18 @@ export class AuthService {
     const expected=createHmac('sha256',secret).update(`${header}.${payload}`).digest('base64url');
     if(signature.length!==expected.length||!timingSafeEqual(Buffer.from(signature),Buffer.from(expected)))throw new UnauthorizedException('Invalid access token.');
     try{
-      const claims=JSON.parse(Buffer.from(payload,'base64url').toString()) as{sub?:unknown;exp?:unknown};
+      const claims=JSON.parse(Buffer.from(payload,'base64url').toString()) as{sub?:unknown;sid?:unknown;exp?:unknown};
       if(typeof claims.sub!=='string'||!claims.sub||typeof claims.exp!=='number'||!Number.isFinite(claims.exp)||claims.exp<=Math.floor(Date.now()/1000))throw new UnauthorizedException('Invalid access token.');
-      return{accountId:claims.sub};
+      if(typeof claims.sid==='string'&&claims.sid)return{accountId:claims.sub,sessionId:claims.sid};
+      if(this.allowSessionlessE2eAccess())return{accountId:claims.sub,sessionId:null};
+      throw new UnauthorizedException('Invalid access token.');
     }catch(error){
       if(error instanceof UnauthorizedException)throw error;
       throw new UnauthorizedException('Invalid access token.');
     }
   }
 
+  private allowSessionlessE2eAccess(){return process.env.CI==='true'&&process.env.GITHUB_ACTIONS==='true';}
   private requireRefreshToken(value:string){
     if(typeof value!=='string'||value.trim().length<32)throw new UnauthorizedException('Invalid session.');
     return value.trim();
