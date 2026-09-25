@@ -46,6 +46,15 @@ try{
   response=await fetch(`${base}/trips/admin/equipment-rentals/${encodeURIComponent(rentalId)}/payment-confirmation`,{method:'POST',headers:auth(renterToken)});
   if(response.status!==403)throw new Error(`Non-admin payment confirmation expected 403, got ${response.status}`);
   response=await fetch(`${base}/trips/admin/equipment-rentals/${encodeURIComponent(rentalId)}/payment-confirmation`,{method:'POST',headers:auth(adminToken)});
+  if(response.status!==409)throw new Error(`Uninspected equipment payment expected 409 safety block, got ${response.status}`);
+  const unpaid=await db.$queryRawUnsafe(`SELECT "paymentStatus" FROM "EquipmentRental" WHERE "id"=$1 LIMIT 1`,rentalId);
+  if(unpaid[0]?.paymentStatus!=='PENDING')throw new Error('Blocked payment confirmation mutated rental payment state');
+
+  const serviceExpiresAt=new Date(Date.now()+30*86400000).toISOString();
+  response=await fetch(`${base}/trips/admin/equipment/${encodeURIComponent(equipmentId)}/inspections`,{method:'POST',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({status:'PASS',serviceExpiresAt,notes:'Equipment runtime E2E safety clearance'})});
+  const inspection=await json(response);if(inspection.status!=='PASS')throw new Error('PASS inspection was not recorded');
+
+  response=await fetch(`${base}/trips/admin/equipment-rentals/${encodeURIComponent(rentalId)}/payment-confirmation`,{method:'POST',headers:auth(adminToken)});
   const paid=await json(response);
   if(paid.paymentStatus!=='PAID'||paid.status!=='RESERVED')throw new Error('Payment confirmation must keep rental RESERVED until handover');
   const afterPayment=await db.$queryRawUnsafe(`SELECT "stockStatus" FROM "EquipmentBarcode" WHERE "resourceId"=$1 LIMIT 1`,equipmentId);
@@ -75,7 +84,7 @@ try{
   const persistedRental=await db.$queryRawUnsafe(`SELECT "status","paymentStatus","extensionStatus","returnIntentAt","returnedAt" FROM "EquipmentRental" WHERE "id"=$1 LIMIT 1`,rentalId);
   if(persistedRental[0]?.status!=='RETURNED'||persistedRental[0]?.paymentStatus!=='PAID'||persistedRental[0]?.extensionStatus!=='APPROVED'||!persistedRental[0]?.returnIntentAt||!persistedRental[0]?.returnedAt)throw new Error('Final rental lifecycle persistence mismatch');
 
-  console.log('Equipment HTTP/DB E2E passed: admin isolation, registration, duplicate protection, reservation, ownership, staged payment/handover, extension, return intent, return scan and persistence.');
+  console.log('Equipment HTTP/DB E2E passed: admin isolation, registration, duplicate protection, safety gate, reservation ownership, staged payment/handover, extension, return intent, return scan and persistence.');
 } finally {
   const personIds=people.map(row=>row.id),accountIds=accounts.map(row=>row.id);
   if(personIds.length)await db.auditEvent.deleteMany({where:{actorId:{in:personIds}}}).catch(()=>{});
@@ -83,7 +92,7 @@ try{
   if(equipmentId)await db.auditEvent.deleteMany({where:{resourceId:equipmentId}}).catch(()=>{});
   if(accountIds.length)await db.notification.deleteMany({where:{accountId:{in:accountIds}}}).catch(()=>{});
   if(rentalId){await db.$executeRawUnsafe(`DELETE FROM "EquipmentRentalItem" WHERE "rentalId"=$1`,rentalId).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "EquipmentRental" WHERE "id"=$1`,rentalId).catch(()=>{})}
-  if(equipmentId){await db.$executeRawUnsafe(`DELETE FROM "EquipmentMovement" WHERE "resourceId"=$1`,equipmentId).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "EquipmentBarcode" WHERE "resourceId"=$1`,equipmentId).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "CalendarResource" WHERE "id"=$1`,equipmentId).catch(()=>{})}
+  if(equipmentId){await db.$executeRawUnsafe(`DELETE FROM "EquipmentInspection" WHERE "resourceId"=$1`,equipmentId).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "EquipmentMovement" WHERE "resourceId"=$1`,equipmentId).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "EquipmentBarcode" WHERE "resourceId"=$1`,equipmentId).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "CalendarResource" WHERE "id"=$1`,equipmentId).catch(()=>{})}
   for(const account of accounts.reverse()){await db.roleAssignment.deleteMany({where:{accountId:account.id}}).catch(()=>{});await db.session.deleteMany({where:{accountId:account.id}}).catch(()=>{});await db.account.delete({where:{id:account.id}}).catch(()=>{})}
   for(const person of people.reverse())await db.person.delete({where:{id:person.id}}).catch(()=>{});
   await db.$disconnect();
