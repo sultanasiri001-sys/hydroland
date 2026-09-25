@@ -75,7 +75,7 @@ for(const marker of [
   "import { OAuth2Client } from 'google-auth-library'","new OAuth2Client()","process.env.GOOGLE_CLIENT_ID","verifyIdToken({idToken:credential.trim(),audience:clientId})",
   "payload?.email_verified!==true","email.endsWith('@gmail.com')","payload?.email_verified===true&&Boolean(hostedDomain)","subject=typeof payload?.sub==='string'"
 ]) assert.ok(google.includes(marker),`Missing Google ID-token verification invariant: ${marker}`);
-assert.ok(apiPackage.includes('"google-auth-library": "^10.3.0"'),'Google auth verifier dependency is missing.');
+assert.ok(apiPackage.includes('"google-auth-library": "^11.1.0"'),'Google auth verifier dependency is missing or stale.');
 
 const registerStart=service.indexOf('async register(input:Credentials)');
 const loginStart=service.indexOf('async login(input:Credentials)');
