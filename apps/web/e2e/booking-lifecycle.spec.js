@@ -16,7 +16,11 @@ const installApi=async page=>{
 const prepare=async page=>{
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandBookings&&window.HydrolandAccountCenter));
-  await page.evaluate(()=>{window.HydrolandAuth.isAuthenticated=()=>true;window.HydrolandAuth.authorizedFetch=(path,options={})=>fetch(`/api/v1${path}`,options);});
+  await page.evaluate(()=>{
+    window.HydrolandAuth.isAuthenticated=()=>true;
+    window.HydrolandAuth.authorizedFetch=(path,options={})=>fetch(`/api/v1${path}`,options);
+    document.querySelector('.hl-login')?.classList.add('hidden');
+  });
   await page.waitForFunction(()=>Boolean(window.HydrolandBookingParticipants));
 };
 
