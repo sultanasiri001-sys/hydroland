@@ -44,9 +44,9 @@ const MAX_RATE_BUCKETS=5000;
  }
  @Post('mfa/verify') @HttpCode(HttpStatus.OK) async verifyMfa(@Body() b:MfaVerify,@Req() req:RequestLike){
    const ip=this.clientIp(req),challenge=typeof b.challengeToken==='string'?b.challengeToken:'',key=`mfa:${ip}:${challenge.slice(-24)}`;
-   if(this.isLimited(mfaFailures,key,MAX_MFA_FAILURES)){await this.audit.record({action:'AUTH_MFA_RATE_LIMITED',resource:'AUTH',metadata:{ip}});throw new HttpException('Too many MFA attempts. Sign in again.',HttpStatus.TOO_MANY_REQUESTS)}
+   if(this.isLimited(mfaFailures,key,MAX_MFA_FAILURES)){await this.mfa.invalidateChallenge(challenge);await this.audit.record({action:'AUTH_MFA_RATE_LIMITED',resource:'AUTH',metadata:{ip}});throw new HttpException('Too many MFA attempts. Sign in again.',HttpStatus.TOO_MANY_REQUESTS)}
    try{const result=await this.auth.verifyMfaChallenge(challenge,b.code);mfaFailures.delete(key);await this.audit.record({action:'AUTH_MFA_SUCCEEDED',resource:'AUTH',metadata:{ip}});return result}
-   catch(error){this.increment(mfaFailures,key,MFA_WINDOW_MS);await this.audit.record({action:'AUTH_MFA_FAILED',resource:'AUTH',metadata:{ip}});throw error}
+   catch(error){this.increment(mfaFailures,key,MFA_WINDOW_MS);if(this.isLimited(mfaFailures,key,MAX_MFA_FAILURES))await this.mfa.invalidateChallenge(challenge);await this.audit.record({action:'AUTH_MFA_FAILED',resource:'AUTH',metadata:{ip}});throw error}
  }
  @Get('mfa/status') @UseGuards(AccessTokenGuard) mfaStatus(@Req() req:RequestLike){return this.mfa.status(req.auth!.accountId)}
  @Post('mfa/totp/setup') @UseGuards(AccessTokenGuard) beginMfaSetup(@Req() req:RequestLike){return this.mfa.beginSetup(req.auth!.accountId)}
