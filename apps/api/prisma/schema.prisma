@@ -212,6 +212,14 @@ model Account {
  translationPreference TranslationPreference?
  safetyIncidentsReported SafetyIncident[] @relation("SafetyIncidentReporter")
  safetyIncidentsResolved SafetyIncident[] @relation("SafetyIncidentResolver")
+  communityPosts CommunityPost[] @relation("CommunityPostAuthor")
+  communityPostsReviewed CommunityPost[] @relation("CommunityPostReviewer")
+  communityEventsCreated CommunityEvent[] @relation("CommunityEventCreator")
+  communityVolunteerRegistrations CommunityVolunteerRegistration[] @relation("CommunityVolunteerAccount")
+  communityVolunteerReviews CommunityVolunteerRegistration[] @relation("CommunityVolunteerReviewer")
+  communityEngagementRequests CommunityEngagementRequest[] @relation("CommunityEngagementRequester")
+  communityEngagementDecisions CommunityEngagementRequest[] @relation("CommunityEngagementDecider")
+
 }
 
 model Organization {
@@ -735,6 +743,118 @@ model SafetyIncident {
   @@index([tripId,status,createdAt])
   @@index([reportedByAccountId,createdAt])
   @@index([status,severity,createdAt])
+}
+
+
+enum CommunityPostStatus {
+  PENDING_REVIEW
+  PUBLISHED
+  REJECTED
+  ARCHIVED
+}
+
+enum CommunityEventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  COMPLETED
+}
+
+enum CommunityVolunteerStatus {
+  REGISTERED
+  CANCELLED
+  ATTENDED
+  REJECTED
+}
+
+enum CommunityEngagementType {
+  CONSULTATION
+  MEETING
+}
+
+enum CommunityEngagementStatus {
+  OPEN
+  UNDER_REVIEW
+  SCHEDULED
+  RESOLVED
+  REJECTED
+  CANCELLED
+}
+
+model CommunityPost {
+  id String @id @default(uuid())
+  authorAccountId String
+  title String
+  body String
+  status CommunityPostStatus @default(PENDING_REVIEW)
+  reviewedByAccountId String?
+  reviewNotes String?
+  reviewedAt DateTime?
+  publishedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  author Account @relation("CommunityPostAuthor", fields:[authorAccountId], references:[id], onDelete:Restrict)
+  reviewedBy Account? @relation("CommunityPostReviewer", fields:[reviewedByAccountId], references:[id], onDelete:Restrict)
+  @@index([status,publishedAt])
+  @@index([authorAccountId,createdAt])
+}
+
+model CommunityEvent {
+  id String @id @default(uuid())
+  createdByAccountId String
+  title String
+  description String
+  locationName String
+  startsAt DateTime
+  endsAt DateTime
+  capacity Int?
+  status CommunityEventStatus @default(DRAFT)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy Account @relation("CommunityEventCreator", fields:[createdByAccountId], references:[id], onDelete:Restrict)
+  volunteerRegistrations CommunityVolunteerRegistration[]
+  @@index([status,startsAt])
+  @@index([createdByAccountId,createdAt])
+}
+
+model CommunityVolunteerRegistration {
+  id String @id @default(uuid())
+  eventId String
+  accountId String
+  status CommunityVolunteerStatus @default(REGISTERED)
+  approvedMinutes Int?
+  reviewNotes String?
+  reviewedByAccountId String?
+  reviewedAt DateTime?
+  attendedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  event CommunityEvent @relation(fields:[eventId], references:[id], onDelete:Restrict)
+  account Account @relation("CommunityVolunteerAccount", fields:[accountId], references:[id], onDelete:Restrict)
+  reviewedBy Account? @relation("CommunityVolunteerReviewer", fields:[reviewedByAccountId], references:[id], onDelete:Restrict)
+  @@unique([eventId,accountId])
+  @@index([accountId,status,createdAt])
+  @@index([eventId,status,createdAt])
+}
+
+model CommunityEngagementRequest {
+  id String @id @default(uuid())
+  requesterAccountId String
+  type CommunityEngagementType
+  status CommunityEngagementStatus @default(OPEN)
+  subject String
+  description String
+  requestedFor DateTime?
+  scheduledAt DateTime?
+  decisionNotes String?
+  decidedByAccountId String?
+  decidedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  requester Account @relation("CommunityEngagementRequester", fields:[requesterAccountId], references:[id], onDelete:Restrict)
+  decidedBy Account? @relation("CommunityEngagementDecider", fields:[decidedByAccountId], references:[id], onDelete:Restrict)
+  @@index([requesterAccountId,status,createdAt])
+  @@index([status,type,createdAt])
 }
 
 enum DiveLogStatus {
