@@ -10,7 +10,7 @@ const tokenFor=id=>{const now=Math.floor(Date.now()/1000),body=`${enc({alg:'HS25
 const headers=token=>({authorization:`Bearer ${token}`,'content-type':'application/json'});
 const bodyOf=async response=>{const body=await response.json().catch(()=>null);return{response,body}};
 const expectOk=async response=>{const {body}=await bodyOf(response);if(!response.ok)throw new Error(`HTTP ${response.status}: ${JSON.stringify(body)}`);return body};
-const accounts=[];const persons=[];const orderIds=[];let product=null;let adminRole=null;
+const accounts=[];const persons=[];const orderIds=[];const paymentIds=[];let product=null;let adminRole=null;
 try{
   for(const name of ['buyer','other','admin']){
     const person=await db.person.create({data:{firstName:name,lastName:'StoreE2E'}});persons.push(person);
@@ -28,7 +28,7 @@ try{
 
   const key=`store-e2e-${suffix}`;
   response=await fetch(base+`/store/orders/${order.id}/payment`,{method:'POST',headers:headers(buyerToken),body:JSON.stringify({idempotencyKey:key})});
-  const payment=await expectOk(response);
+  const payment=await expectOk(response);paymentIds.push(payment.id);
   if(payment.status!=='CREATED'||payment.orderId!==order.id||payment.amountMinor!==25000||payment.provider!=='NOT_SELECTED'||payment.financialActionExecuted!==false)throw new Error('Store payment record truth boundary mismatch');
 
   response=await fetch(base+`/store/orders/${order.id}/payment`,{method:'POST',headers:headers(buyerToken),body:JSON.stringify({idempotencyKey:key})});
@@ -59,12 +59,13 @@ try{
 
   console.log('Store checkout HTTP/DB E2E passed: server totals, atomic stock decrement, idempotent payment record, ownership isolation, key conflict, cancellation stock restoration, unpaid fulfillment block and truthful NOT_SELECTED provider state.');
 } finally {
+  if(paymentIds.length)await db.auditEvent.deleteMany({where:{resource:'StorePayment',resourceId:{in:paymentIds}}}).catch(()=>{});
   if(orderIds.length){
+    await db.auditEvent.deleteMany({where:{resource:'StoreOrder',resourceId:{in:orderIds}}}).catch(()=>{});
     await db.storeInvoice.deleteMany({where:{payment:{orderId:{in:orderIds}}}}).catch(()=>{});
     await db.storePayment.deleteMany({where:{orderId:{in:orderIds}}}).catch(()=>{});
     await db.storeOrderItem.deleteMany({where:{orderId:{in:orderIds}}}).catch(()=>{});
     await db.storeOrder.deleteMany({where:{id:{in:orderIds}}}).catch(()=>{});
-    await db.auditEvent.deleteMany({where:{OR:[{resource:'StorePayment',resourceId:{in:orderIds}},{resource:'StoreOrder',resourceId:{in:orderIds}}]}}).catch(()=>{});
   }
   if(product)await db.storeProduct.delete({where:{id:product.id}}).catch(()=>{});
   if(adminRole)await db.roleAssignment.delete({where:{id:adminRole.id}}).catch(()=>{});
