@@ -10,7 +10,7 @@
   const clearProtectedView=()=>{window.HydrolandProfileData=undefined;const consoleEl=document.getElementById('role-console');if(consoleEl)consoleEl.hidden=true;document.querySelector('.hl-role-dashboard')?.remove()};
   const showLogin=message=>{sessionStorage.removeItem('hl-guest-mode');clearProtectedView();const root=login();if(root){root.classList.remove('hidden');root.style.display='';root.removeAttribute('hidden');const actions=root.querySelector('.hl-login-actions');if(actions)actions.hidden=false;const panel=root.querySelector('.hl-auth-panel');if(panel)panel.hidden=true}if(message)toast(message)};
   const setAuthUi=authenticated=>{const root=login();if(!root)return;if(authenticated){sessionStorage.removeItem('hl-guest-mode');root.classList.add('hidden');return}if(isGuestMode()){root.classList.add('hidden');return}showLogin()};
-  const syncAuthUi=()=>{const authenticated=Boolean(sessionStorage.getItem('hl-refresh-token'));setAuthUi(authenticated);emitAuthChanged();};
+  const syncAuthUi=()=>setAuthUi(Boolean(sessionStorage.getItem('hl-refresh-token')));
   const storeTokens=body=>{const accessToken=typeof body?.accessToken==='string'?body.accessToken.trim():'',refreshToken=typeof body?.refreshToken==='string'?body.refreshToken.trim():'';if(!accessToken||!refreshToken){clearSession();throw new Error('استجابة الجلسة غير صالحة')}sessionStorage.setItem('hl-access-token',accessToken);sessionStorage.setItem('hl-refresh-token',refreshToken);sessionStorage.setItem('hl-preview-seen','1');sessionStorage.removeItem('hl-guest-mode')};
   const refreshSession=async()=>{
     if(state.refreshPromise)return state.refreshPromise;
