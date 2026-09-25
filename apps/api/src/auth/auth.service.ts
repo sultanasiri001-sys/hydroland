@@ -1,25 +1,31 @@
 import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { DatabaseService } from '../database/database.service';
+import { EmailVerificationService } from './email-verification.service';
 import { GoogleIdentityService } from './google-identity.service';
 import { MfaService } from './mfa.service';
 
 type Credentials={email:string;password:string};
 type Tokens={accessToken:string;refreshToken:string};
-type RegistrationResult={email:string;status:'PENDING_VERIFICATION';requiresEmailVerification:true};
+type VerificationDelivery='SENT'|'UNAVAILABLE'|'FAILED';
+type RegistrationResult={email:string;status:'PENDING_VERIFICATION';requiresEmailVerification:true;verificationDelivery:VerificationDelivery};
 type GoogleIdentity={subject:string;email:string;givenName:string;familyName:string;hostedDomain:string|null};
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly db:DatabaseService,private readonly mfa:MfaService,private readonly google:GoogleIdentityService){}
+  constructor(private readonly db:DatabaseService,private readonly mfa:MfaService,private readonly google:GoogleIdentityService,private readonly emailVerification:EmailVerificationService){}
 
   async register(input:Credentials):Promise<RegistrationResult>{
     const email=this.email(input.email);
     this.password(input.password);
     if(await this.db.account.findUnique({where:{email}}))throw new ConflictException('Account exists.');
     const account=await this.db.account.create({data:{email,passwordHash:this.hash(input.password),person:{create:{firstName:'Pending',lastName:'Profile'}}}});
-    return{email:account.email,status:'PENDING_VERIFICATION',requiresEmailVerification:true};
+    const verificationDelivery=await this.emailVerification.issueAndSend(account.id,account.email);
+    return{email:account.email,status:'PENDING_VERIFICATION',requiresEmailVerification:true,verificationDelivery};
   }
+
+  resendEmailVerification(email:string){return this.emailVerification.resend(this.email(email))}
+  verifyEmail(token:string){return this.emailVerification.verify(token)}
 
   async login(input:Credentials){
     const account=await this.db.account.findUnique({where:{email:this.email(input.email)}});
@@ -85,6 +91,7 @@ export class AuthService {
       if(this.blocked(account.status))throw new UnauthorizedException('Account is unavailable.');
       if(account.status!=='ACTIVE'||!account.emailVerifiedAt)account=await this.db.account.update({where:{id:account.id},data:{status:'ACTIVE',emailVerifiedAt:account.emailVerifiedAt||now},include:{person:true}});
       if(account.person.firstName==='Pending'&&account.person.lastName==='Profile')await this.db.person.update({where:{id:account.personId},data:{firstName:identity.givenName,lastName:identity.familyName}});
+      await this.db.operationalSetting.deleteMany({where:{key:`auth.email-verification.account.${account.id}`}});
     }else{
       account=await this.db.account.create({data:{email:identity.email,passwordHash:this.hash(randomBytes(48).toString('base64url')),status:'ACTIVE',emailVerifiedAt:now,person:{create:{firstName:identity.givenName,lastName:identity.familyName}}},include:{person:true}});
     }
