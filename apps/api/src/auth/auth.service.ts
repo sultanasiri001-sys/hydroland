@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { DatabaseService } from '../database/database.service';
+import { MfaService } from './mfa.service';
 
 type Credentials={email:string;password:string};
 type Tokens={accessToken:string;refreshToken:string};
@@ -8,7 +9,7 @@ type RegistrationResult={email:string;status:'PENDING_VERIFICATION';requiresEmai
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly db:DatabaseService){}
+  constructor(private readonly db:DatabaseService,private readonly mfa:MfaService){}
 
   async register(input:Credentials):Promise<RegistrationResult>{
     const email=this.email(input.email);
@@ -23,8 +24,11 @@ export class AuthService {
     if(!account||!this.verify(input.password,account.passwordHash)||this.blocked(account.status))throw new UnauthorizedException('Invalid credentials.');
     if(account.status!=='ACTIVE')throw new UnauthorizedException('Account activation is required.');
     if(!account.emailVerifiedAt)throw new UnauthorizedException('Email verification is required.');
+    if(await this.mfa.isEnabled(account.id))return this.mfa.beginChallenge(account.id);
     return this.issue(account.id);
   }
+
+  async verifyMfaChallenge(challengeToken:string,code:string):Promise<Tokens>{const accountId=await this.mfa.verifyChallenge(challengeToken,code);return this.issue(accountId)}
 
   async refresh(refreshToken:string):Promise<Tokens>{
     const token=this.requireRefreshToken(refreshToken);
@@ -48,7 +52,7 @@ export class AuthService {
       return{accountId:account.id,sessionId:'e2e-sessionless'};
     }
     const session=await this.db.session.findFirst({
-      where:{id:claims.sessionId,accountId:claims.accountId,revokedAt:null,expiresAt:{gt:new Date()}},
+      where:{id:claims.sessionId,accountId:claims.accountId,revokedAt:null,expiresAt:{gt:new Date()},tokenHash:{not:{startsWith:'mfa:'}}},
       include:{account:{select:{id:true,status:true,emailVerifiedAt:true}}}
     });
     if(!session||session.account.status!=='ACTIVE'||!session.account.emailVerifiedAt)throw new UnauthorizedException('Account is not active, session is invalid, or email is not verified.');
