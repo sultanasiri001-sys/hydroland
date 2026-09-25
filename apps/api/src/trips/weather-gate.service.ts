@@ -13,6 +13,10 @@ export type WeatherSnapshot = {
   windDirectionDeg?: number;
   waveHeightM?: number;
   waveDirectionDeg?: number;
+  wavePeriodS?: number;
+  swellHeightM?: number;
+  swellDirectionDeg?: number;
+  waterTemperatureC?: number;
   decision?: WeatherDecision;
   reason?: string;
 };
