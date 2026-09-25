@@ -4,16 +4,19 @@ import { MfaService } from './mfa.service';
 import { AccessTokenGuard } from './access-token.guard';
 import { AuditService } from '../audit/audit.service';
 type Credentials={email:string;password:string}; type Refresh={refreshToken:string}; type MfaVerify={challengeToken:string;code:string}; type MfaCode={code:string};
+type EmailBody={email:string}; type TokenBody={token:string}; type ResetBody={token:string;password:string};
 type RequestLike={ip?:string;headers?:Record<string,string|string[]|undefined>;auth?:{accountId:string;sessionId:string}};
 type RateEntry={count:number;resetAt:number};
 
 const loginFailures=new Map<string,RateEntry>();
 const registrationAttempts=new Map<string,RateEntry>();
+const publicActions=new Map<string,RateEntry>();
 const mfaFailures=new Map<string,RateEntry>();
 const WINDOW_MS=15*60*1000;
 const MFA_WINDOW_MS=5*60*1000;
 const MAX_LOGIN_FAILURES=10;
 const MAX_REGISTRATION_ATTEMPTS=5;
+const MAX_PUBLIC_ACTIONS=5;
 const MAX_MFA_FAILURES=5;
 const MAX_RATE_BUCKETS=5000;
 
@@ -41,6 +44,32 @@ const MAX_RATE_BUCKETS=5000;
      else await this.audit.record({action:'AUTH_LOGIN_SUCCEEDED',resource:'AUTH',metadata:{email,ip}});
      return result;
    }catch(error){this.increment(loginFailures,key,WINDOW_MS);await this.audit.record({action:'AUTH_LOGIN_FAILED',resource:'AUTH',metadata:{email,ip}});throw error}
+ }
+ @Post('email-verification/request') @HttpCode(HttpStatus.ACCEPTED) async requestEmailVerification(@Body() b:EmailBody,@Req() req:RequestLike){
+   const ip=this.clientIp(req),email=this.safeEmail(b.email),key=`verify:${ip}:${email}`;
+   if(this.isLimited(publicActions,key,MAX_PUBLIC_ACTIONS)){await this.audit.record({action:'AUTH_EMAIL_VERIFICATION_RATE_LIMITED',resource:'AUTH',metadata:{email,ip}});throw new HttpException('Too many requests. Try again later.',HttpStatus.TOO_MANY_REQUESTS)}
+   this.increment(publicActions,key,WINDOW_MS);
+   const result=await this.auth.requestEmailVerification(b.email);
+   await this.audit.record({action:'AUTH_EMAIL_VERIFICATION_REQUESTED',resource:'AUTH',metadata:{email,ip}});
+   return result;
+ }
+ @Post('email-verification/confirm') @HttpCode(HttpStatus.OK) async confirmEmailVerification(@Body() b:TokenBody,@Req() req:RequestLike){
+   const result=await this.auth.confirmEmailVerification(b.token);
+   await this.audit.record({action:'AUTH_EMAIL_VERIFIED',resource:'AUTH',metadata:{ip:this.clientIp(req)}});
+   return result;
+ }
+ @Post('password-reset/request') @HttpCode(HttpStatus.ACCEPTED) async requestPasswordReset(@Body() b:EmailBody,@Req() req:RequestLike){
+   const ip=this.clientIp(req),email=this.safeEmail(b.email),key=`reset:${ip}:${email}`;
+   if(this.isLimited(publicActions,key,MAX_PUBLIC_ACTIONS)){await this.audit.record({action:'AUTH_PASSWORD_RESET_RATE_LIMITED',resource:'AUTH',metadata:{email,ip}});throw new HttpException('Too many requests. Try again later.',HttpStatus.TOO_MANY_REQUESTS)}
+   this.increment(publicActions,key,WINDOW_MS);
+   const result=await this.auth.requestPasswordReset(b.email);
+   await this.audit.record({action:'AUTH_PASSWORD_RESET_REQUESTED',resource:'AUTH',metadata:{email,ip}});
+   return result;
+ }
+ @Post('password-reset/confirm') @HttpCode(HttpStatus.OK) async confirmPasswordReset(@Body() b:ResetBody,@Req() req:RequestLike){
+   const result=await this.auth.resetPassword(b.token,b.password);
+   await this.audit.record({action:'AUTH_PASSWORD_RESET_COMPLETED',resource:'AUTH',metadata:{ip:this.clientIp(req),sessionsRevoked:true}});
+   return result;
  }
  @Post('mfa/verify') @HttpCode(HttpStatus.OK) async verifyMfa(@Body() b:MfaVerify,@Req() req:RequestLike){
    const ip=this.clientIp(req),challenge=typeof b.challengeToken==='string'?b.challengeToken:'',key=`mfa:${ip}:${challenge.slice(-24)}`;
