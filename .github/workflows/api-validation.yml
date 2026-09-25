@@ -114,6 +114,11 @@ jobs:
             cat /tmp/hydroland-api.log
             exit 1
           fi
+          if ! DOCUMENT_LIST_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/document-list-http-e2e.mjs; then
+            echo "Organization Document List HTTP/DB E2E failed; API log follows"
+            cat /tmp/hydroland-api.log
+            exit 1
+          fi
           if ! DOCUMENT_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/document-http-db-e2e.mjs; then
             echo "Document HTTP/DB E2E failed; API log follows"
             cat /tmp/hydroland-api.log

@@ -1,4 +1,11 @@
 (() => {
+  if (!document.querySelector('script[data-hl-documents]')) {
+    const documents = document.createElement('script');
+    documents.src = './hydroland-documents.js';
+    documents.dataset.hlDocuments = '1';
+    document.body.appendChild(documents);
+  }
+
   const host = document.getElementById('role-console');
   if (!host) return;
 
