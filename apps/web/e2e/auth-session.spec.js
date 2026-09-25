@@ -4,7 +4,18 @@ const waitForApp = async page => {
   await page.waitForFunction(() => Boolean(window.HydrolandAuth && window.HydrolandPortalAccess));
 };
 
+const installStableProfileApi = async page => {
+  const json = (route, body) => route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(body)});
+  await page.route(/\/api\/v1\/me$/, route => json(route, {
+    id:'auth-e2e',email:'auth-e2e@hydroland.test',status:'ACTIVE',roleAssignments:[],
+    person:{firstName:'Auth',lastName:'E2E',phone:null,professional:null}
+  }));
+  await page.route(/\/api\/v1\/credentials$/, route => json(route, []));
+  await page.route(/\/api\/v1\/me\/diver-profile$/, route => json(route, {profile:null,equipment:[]}));
+};
+
 const seedSession = async page => {
+  await installStableProfileApi(page);
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await waitForApp(page);
   await page.evaluate(() => {
@@ -25,7 +36,7 @@ test('logout is local-first and protected state stays cleared', async ({ page })
   });
 
   await page.locator('#profile-open').click();
-  const logoutButton=page.locator('[data-hl-action="logout"]').first();
+  const logoutButton=page.locator('#profile-dialog [data-hl-action="logout"]');
   await expect(logoutButton).toBeVisible();
   await logoutButton.dispatchEvent('click');
 
@@ -55,6 +66,7 @@ test('pageshow fails closed when the session is absent', async ({ page }) => {
 
 test('expired refresh fails closed', async ({ page }) => {
   await page.route('**/api/v1/auth/refresh', route => route.fulfill({status:401,contentType:'application/json',body:JSON.stringify({message:'expired'})}));
+  await page.route('**/api/v1/profile', route => route.fulfill({status:401,contentType:'application/json',body:JSON.stringify({message:'expired'})}));
   await seedSession(page);
   await page.evaluate(() => {
     window.HydrolandProfileData={profile:{roles:[{role:'admin',status:'ACTIVE'}]}};
