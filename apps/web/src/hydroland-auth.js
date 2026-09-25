@@ -1,15 +1,15 @@
 (()=>{
   const DEFAULT_API_BASE=/^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)?'http://localhost:3001/api/v1':'https://hydroland.onrender.com/api/v1';
   const API_BASE=(window.HYDROLAND_API_BASE||DEFAULT_API_BASE).replace(/\/$/,'');
-  const state={mode:'login',refreshPromise:null};
+  const state={mode:'login',refreshPromise:null,panelOpen:false};
   const toast=message=>{const t=document.getElementById('toast');if(!t)return;t.textContent=message;t.classList.add('visible');setTimeout(()=>t.classList.remove('visible'),2200)};
   const login=()=>document.querySelector('.hl-login');
   const emitAuthChanged=()=>document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));
   const isGuestMode=()=>sessionStorage.getItem('hl-guest-mode')==='1';
   const clearSession=()=>{sessionStorage.removeItem('hl-access-token');sessionStorage.removeItem('hl-refresh-token');sessionStorage.removeItem('hl-preview-seen');sessionStorage.removeItem('hl-guest-mode')};
   const clearProtectedView=()=>{window.HydrolandProfileData=undefined;const consoleEl=document.getElementById('role-console');if(consoleEl)consoleEl.hidden=true;document.querySelector('.hl-role-dashboard')?.remove()};
-  const showLogin=message=>{sessionStorage.removeItem('hl-guest-mode');clearProtectedView();const root=login();if(root){root.classList.remove('hidden');root.style.display='';root.removeAttribute('hidden');const actions=root.querySelector('.hl-login-actions');if(actions)actions.hidden=false;const panel=root.querySelector('.hl-auth-panel');if(panel)panel.hidden=true}if(message)toast(message)};
-  const setAuthUi=authenticated=>{const root=login();if(!root)return;if(authenticated){sessionStorage.removeItem('hl-guest-mode');root.classList.add('hidden');return}if(isGuestMode()){root.classList.add('hidden');return}showLogin()};
+  const showLogin=message=>{sessionStorage.removeItem('hl-guest-mode');clearProtectedView();const root=login();if(root){root.classList.remove('hidden');root.style.display='';root.removeAttribute('hidden');const actions=root.querySelector('.hl-login-actions');if(actions)actions.hidden=state.panelOpen;const panel=root.querySelector('.hl-auth-panel');if(panel)panel.hidden=!state.panelOpen}if(message)toast(message)};
+  const setAuthUi=authenticated=>{const root=login();if(!root)return;if(authenticated){state.panelOpen=false;sessionStorage.removeItem('hl-guest-mode');root.classList.add('hidden');return}if(isGuestMode()){state.panelOpen=false;root.classList.add('hidden');return}showLogin()};
   const syncAuthUi=()=>setAuthUi(Boolean(sessionStorage.getItem('hl-refresh-token')));
   const storeTokens=body=>{const accessToken=typeof body?.accessToken==='string'?body.accessToken.trim():'',refreshToken=typeof body?.refreshToken==='string'?body.refreshToken.trim():'';if(!accessToken||!refreshToken){clearSession();throw new Error('استجابة الجلسة غير صالحة')}sessionStorage.setItem('hl-access-token',accessToken);sessionStorage.setItem('hl-refresh-token',refreshToken);sessionStorage.setItem('hl-preview-seen','1');sessionStorage.removeItem('hl-guest-mode')};
   const refreshSession=async()=>{
@@ -47,7 +47,7 @@
     panel=document.createElement('form');panel.className='hl-auth-panel';panel.hidden=true;panel.innerHTML=`<label>البريد الإلكتروني<input name="email" type="email" autocomplete="email" required placeholder="name@example.com"></label><label>كلمة المرور<input name="password" type="password" autocomplete="current-password" minlength="12" required placeholder="12 حرفًا على الأقل"></label><button class="hl-auth-submit" type="submit">دخول آمن</button><button class="hl-auth-cancel" type="button">رجوع</button><small class="hl-auth-note">يتم الاتصال بخادم HYDROLAND الحقيقي عند توفره. لا يتم اعتبار تسجيل الدخول ناجحًا إذا كان الخادم غير متاح.</small>`;
     root.querySelector('.hl-login-actions')?.insertAdjacentElement('afterend',panel);
     const style=document.createElement('style');style.textContent=`.hl-auth-panel{width:min(420px,100%);display:grid;gap:.7rem;margin:1rem auto 0;padding:1rem;border:1px solid rgba(120,191,224,.2);border-radius:18px;background:rgba(3,25,39,.86)}.hl-auth-panel[hidden]{display:none}.hl-auth-panel label{display:grid;gap:.35rem;text-align:right;color:#dcebf3;font-weight:700}.hl-auth-panel input{width:100%;box-sizing:border-box;border:1px solid rgba(120,191,224,.22);border-radius:12px;background:rgba(255,255,255,.05);color:#fff;padding:.8rem}.hl-auth-submit,.hl-auth-cancel{border-radius:12px;padding:.75rem;font-weight:800}.hl-auth-submit{border:0;background:linear-gradient(135deg,#f4d18c,#e5b45f);color:#102131}.hl-auth-cancel{border:1px solid rgba(120,191,224,.2);background:transparent;color:#dcebf3}.hl-auth-note{color:#9cb7c7;line-height:1.6}`;document.head.appendChild(style);
-    panel.querySelector('.hl-auth-cancel').addEventListener('click',()=>{panel.hidden=true;root.querySelector('.hl-login-actions').hidden=false});
+    panel.querySelector('.hl-auth-cancel').addEventListener('click',()=>{state.panelOpen=false;panel.hidden=true;root.querySelector('.hl-login-actions').hidden=false});
     panel.addEventListener('submit',async event=>{
       event.preventDefault();const submit=panel.querySelector('.hl-auth-submit');const data=new FormData(panel);const email=String(data.get('email')||'').trim();const password=String(data.get('password')||'');
       submit.disabled=true;submit.textContent='جارٍ الاتصال...';
@@ -57,9 +57,9 @@
         if(!response.ok)throw new Error(body.message||'تعذر تسجيل الدخول');
         if(state.mode==='register'){
           if(body?.status!=='PENDING_VERIFICATION'||body?.requiresEmailVerification!==true)throw new Error('استجابة إنشاء الحساب غير صالحة');
-          clearSession();clearProtectedView();setAuthUi(false);emitAuthChanged();panel.reset();state.mode='login';submit.textContent='دخول آمن';panel.querySelector('input[name="password"]').autocomplete='current-password';toast('تم إنشاء الحساب. يلزم التحقق من البريد الإلكتروني قبل تسجيل الدخول');return;
+          state.panelOpen=false;clearSession();clearProtectedView();setAuthUi(false);emitAuthChanged();panel.reset();state.mode='login';submit.textContent='دخول آمن';panel.querySelector('input[name="password"]').autocomplete='current-password';toast('تم إنشاء الحساب. يلزم التحقق من البريد الإلكتروني قبل تسجيل الدخول');return;
         }
-        storeTokens(body);setAuthUi(true);emitAuthChanged();toast('تم تسجيل الدخول إلى HYDROLAND');
+        state.panelOpen=false;storeTokens(body);setAuthUi(true);emitAuthChanged();toast('تم تسجيل الدخول إلى HYDROLAND');
       }catch(error){toast(error instanceof Error?error.message:'تعذر الاتصال بخادم HYDROLAND');}
       finally{submit.disabled=false;submit.textContent=state.mode==='register'?'إنشاء الحساب':'دخول آمن';}
     });
@@ -68,11 +68,11 @@
   document.addEventListener('click',event=>{
     const button=event.target.closest?.('.hl-login-primary,.hl-login-secondary');if(!button)return;
     event.preventDefault();event.stopImmediatePropagation();sessionStorage.removeItem('hl-guest-mode');const root=login();const panel=ensurePanel();if(!root||!panel)return;
-    state.mode=button.classList.contains('hl-login-secondary')?'register':'login';panel.querySelector('.hl-auth-submit').textContent=state.mode==='register'?'إنشاء الحساب':'دخول آمن';panel.querySelector('input[name="password"]').autocomplete=state.mode==='register'?'new-password':'current-password';root.querySelector('.hl-login-actions').hidden=true;panel.hidden=false;panel.querySelector('input[name="email"]').focus();
+    state.mode=button.classList.contains('hl-login-secondary')?'register':'login';state.panelOpen=true;panel.querySelector('.hl-auth-submit').textContent=state.mode==='register'?'إنشاء الحساب':'دخول آمن';panel.querySelector('input[name="password"]').autocomplete=state.mode==='register'?'new-password':'current-password';root.querySelector('.hl-login-actions').hidden=true;panel.hidden=false;panel.querySelector('input[name="email"]').focus();
   },true);
   const terminateSession=()=>{
     const refreshToken=sessionStorage.getItem('hl-refresh-token');
-    clearSession();clearProtectedView();
+    state.panelOpen=false;clearSession();clearProtectedView();
     setTimeout(emitAuthChanged,0);
     return refreshToken;
   };
