@@ -25,7 +25,9 @@ test('logout is local-first and protected state stays cleared', async ({ page })
   });
 
   await page.locator('#profile-open').click();
-  await page.locator('[data-hl-action="logout"]').first().click({noWaitAfter:true});
+  const logoutButton=page.locator('[data-hl-action="logout"]').first();
+  await expect(logoutButton).toBeVisible();
+  await logoutButton.dispatchEvent('click');
 
   await expect.poll(() => page.evaluate(() => ({
     access:sessionStorage.getItem('hl-access-token'),
