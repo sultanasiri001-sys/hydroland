@@ -33,6 +33,24 @@ const requiredService=[
 for(const marker of requiredService) assert.ok(service.includes(marker),`Missing session/registration invariant: ${marker}`);
 for(const marker of ["@Post('register')","@Post('refresh')","@Post('logout')","HttpStatus.NO_CONTENT"]) assert.ok(controller.includes(marker),`Missing auth endpoint marker: ${marker}`);
 
+const requiredController=[
+  'const MAX_LOGIN_FAILURES=10',
+  'const MAX_REGISTRATION_ATTEMPTS=5',
+  'const MAX_RATE_BUCKETS=5000',
+  "key=`register:${ip}`",
+  'this.isLimited(registrationAttempts,key,MAX_REGISTRATION_ATTEMPTS)',
+  'this.increment(registrationAttempts,key)',
+  "action:'AUTH_REGISTER_RATE_LIMITED'",
+  "action:'AUTH_REGISTER_SUCCEEDED'",
+  "action:'AUTH_REGISTER_FAILED'",
+  'this.isLimited(loginFailures,key,MAX_LOGIN_FAILURES)',
+  "action:'AUTH_LOGIN_RATE_LIMITED'",
+  'private ensureCapacity(bucket:Map<string,RateEntry>,now:number)',
+  'while(bucket.size>=MAX_RATE_BUCKETS)'
+];
+for(const marker of requiredController) assert.ok(controller.includes(marker),`Missing auth abuse-control invariant: ${marker}`);
+assert.ok(!controller.includes('const attempts=new Map'),'Legacy unbounded shared login attempt map must not return.');
+
 const registerStart=service.indexOf('async register(input:Credentials)');
 const loginStart=service.indexOf('async login(input:Credentials)');
 assert.ok(registerStart>=0&&loginStart>registerStart,'register/login methods must exist in order');
@@ -61,4 +79,4 @@ assert.ok(issueStart>=0,'issue() method must exist');
 const issueBody=service.slice(issueStart);
 assert.ok(issueBody.includes('tokenHash:this.tokenHash(refreshToken)'),'Refresh token must be stored hashed');
 assert.ok(!/data:\s*\{[^}]*refreshToken\s*[:},]/s.test(issueBody),'Raw refresh token must not be persisted in session data');
-console.log('Validated auth lifecycle invariants: unverified registration is sessionless, activation+email verification are required for login, refresh rotates once, logout revokes immediately, and the web never treats registration as authenticated.');
+console.log('Validated auth lifecycle invariants: unverified registration is sessionless, registration/login abuse controls are bounded and audited, activation+email verification are required for login, refresh rotates once, logout revokes immediately, and the web never treats registration as authenticated.');
