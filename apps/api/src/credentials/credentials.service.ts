@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
@@ -49,6 +50,30 @@ export class CredentialsService {
     const credential=await this.db.credential.create({data:{personId:a.personId,issuer:input.issuer.trim(),title:input.title.trim(),credentialNumber:input.credentialNumber?.trim()||null,issuedAt,expiresAt}});
     await this.audit.record({action:'CREDENTIAL_CREATED',resource:'Credential',resourceId:credential.id,metadata:{accountId,issuer:credential.issuer,title:credential.title,expiresAt:credential.expiresAt,policyState:expiryPolicy.state}});
     return {...credential,policyReview:{required:expired&&expiryPolicy.review,issues:expired?['DOCUMENT_EXPIRY']:[],states:{expiry:expiryPolicy.state}}};
+  }
+
+  async uploadDocument(accountId:string,credentialId:string,file:Express.Multer.File){
+    const allowed=['application/pdf','image/jpeg','image/png'];
+    if(!allowed.includes(file.mimetype)||!file.buffer?.length||file.buffer.length>10_000_000)throw new BadRequestException('Unsupported document.');
+    const account=await this.db.account.findUniqueOrThrow({where:{id:accountId},select:{personId:true}});
+    const credential=await this.db.credential.findFirst({where:{id:credentialId,personId:account.personId,verificationStatus:'UNVERIFIED'}});
+    if(!credential)throw new NotFoundException('Credential not editable.');
+    const sha256=createHash('sha256').update(file.buffer).digest('hex');
+    const existing=await this.db.document.findUnique({where:{sha256}});
+    if(existing)throw new ConflictException('Document already uploaded.');
+    const storageKey=`credential/${credentialId}/${sha256}`;
+    const document=await this.db.document.create({data:{credentialId,ownerId:account.personId,storageKey,originalName:file.originalname,mimeType:file.mimetype,byteSize:file.buffer.length,sha256,content:file.buffer,status:'UPLOADED'}});
+    await this.audit.record({action:'CREDENTIAL_DOCUMENT_UPLOADED',resource:'Credential',resourceId:credentialId,metadata:{accountId,documentId:document.id,mimeType:document.mimeType,byteSize:document.byteSize,sha256}});
+    return {id:document.id,credentialId:document.credentialId,originalName:document.originalName,mimeType:document.mimeType,byteSize:document.byteSize,sha256:document.sha256,status:document.status,createdAt:document.createdAt};
+  }
+
+  async getDocumentContent(accountId:string,documentId:string){
+    const account=await this.db.account.findUniqueOrThrow({where:{id:accountId},select:{personId:true,roleAssignments:{where:{status:'ACTIVE'},select:{role:true}}}});
+    const reviewer=account.roleAssignments.some(item=>['ADMIN','REVIEWER'].includes(item.role));
+    const document=await this.db.document.findUnique({where:{id:documentId},select:{id:true,ownerId:true,originalName:true,mimeType:true,content:true,status:true}});
+    if(!document||(!reviewer&&document.ownerId!==account.personId))throw new NotFoundException('Document not found.');
+    if(!document.content)throw new NotFoundException('Document content not available.');
+    return {...document,content:Buffer.from(document.content)};
   }
 
   async attachDocument(accountId:string,credentialId:string,input:{storageKey:string;originalName:string;mimeType:string;byteSize:number;sha256:string}){
