@@ -30,7 +30,10 @@
   const authorizedFetch=async(path,options={})=>{
     const execute=access=>fetch(`${API_BASE}${path}`,{...options,headers:{...(options.body?{'Content-Type':'application/json'}:{}),...(options.headers||{}),Authorization:`Bearer ${access}`}});
     let access=sessionStorage.getItem('hl-access-token');
-    if(!access)access=await refreshSession();
+    if(!access){
+      if(!sessionStorage.getItem('hl-refresh-token'))throw new Error('AUTH_REQUIRED');
+      access=await refreshSession();
+    }
     let response=await execute(access);
     if(response.status!==401)return response;
     access=await refreshSession();
