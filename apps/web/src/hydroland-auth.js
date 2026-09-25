@@ -5,12 +5,13 @@
   const toast=message=>{const t=document.getElementById('toast');if(!t)return;t.textContent=message;t.classList.add('visible');setTimeout(()=>t.classList.remove('visible'),2200)};
   const login=()=>document.querySelector('.hl-login');
   const emitAuthChanged=()=>document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));
-  const clearSession=()=>{sessionStorage.removeItem('hl-access-token');sessionStorage.removeItem('hl-refresh-token');sessionStorage.removeItem('hl-preview-seen')};
+  const isGuestMode=()=>sessionStorage.getItem('hl-guest-mode')==='1';
+  const clearSession=()=>{sessionStorage.removeItem('hl-access-token');sessionStorage.removeItem('hl-refresh-token');sessionStorage.removeItem('hl-preview-seen');sessionStorage.removeItem('hl-guest-mode')};
   const clearProtectedView=()=>{window.HydrolandProfileData=undefined;const consoleEl=document.getElementById('role-console');if(consoleEl)consoleEl.hidden=true;document.querySelector('.hl-role-dashboard')?.remove()};
-  const showLogin=message=>{clearProtectedView();const root=login();if(root){root.classList.remove('hidden');root.style.display='';root.removeAttribute('hidden');const actions=root.querySelector('.hl-login-actions');if(actions)actions.hidden=false;const panel=root.querySelector('.hl-auth-panel');if(panel)panel.hidden=true}if(message)toast(message)};
-  const setAuthUi=authenticated=>{const root=login();if(!root)return;if(authenticated){root.classList.add('hidden');return}showLogin()};
+  const showLogin=message=>{sessionStorage.removeItem('hl-guest-mode');clearProtectedView();const root=login();if(root){root.classList.remove('hidden');root.style.display='';root.removeAttribute('hidden');const actions=root.querySelector('.hl-login-actions');if(actions)actions.hidden=false;const panel=root.querySelector('.hl-auth-panel');if(panel)panel.hidden=true}if(message)toast(message)};
+  const setAuthUi=authenticated=>{const root=login();if(!root)return;if(authenticated){sessionStorage.removeItem('hl-guest-mode');root.classList.add('hidden');return}if(isGuestMode()){root.classList.add('hidden');return}showLogin()};
   const syncAuthUi=()=>setAuthUi(Boolean(sessionStorage.getItem('hl-refresh-token')));
-  const storeTokens=body=>{const accessToken=typeof body?.accessToken==='string'?body.accessToken.trim():'',refreshToken=typeof body?.refreshToken==='string'?body.refreshToken.trim():'';if(!accessToken||!refreshToken){clearSession();throw new Error('استجابة الجلسة غير صالحة')}sessionStorage.setItem('hl-access-token',accessToken);sessionStorage.setItem('hl-refresh-token',refreshToken);sessionStorage.setItem('hl-preview-seen','1')};
+  const storeTokens=body=>{const accessToken=typeof body?.accessToken==='string'?body.accessToken.trim():'',refreshToken=typeof body?.refreshToken==='string'?body.refreshToken.trim():'';if(!accessToken||!refreshToken){clearSession();throw new Error('استجابة الجلسة غير صالحة')}sessionStorage.setItem('hl-access-token',accessToken);sessionStorage.setItem('hl-refresh-token',refreshToken);sessionStorage.setItem('hl-preview-seen','1');sessionStorage.removeItem('hl-guest-mode')};
   const refreshSession=async()=>{
     if(state.refreshPromise)return state.refreshPromise;
     const refreshToken=sessionStorage.getItem('hl-refresh-token');
@@ -59,7 +60,7 @@
   };
   document.addEventListener('click',event=>{
     const button=event.target.closest?.('.hl-login-primary,.hl-login-secondary');if(!button)return;
-    event.preventDefault();event.stopImmediatePropagation();const root=login();const panel=ensurePanel();if(!root||!panel)return;
+    event.preventDefault();event.stopImmediatePropagation();sessionStorage.removeItem('hl-guest-mode');const root=login();const panel=ensurePanel();if(!root||!panel)return;
     state.mode=button.classList.contains('hl-login-secondary')?'register':'login';panel.querySelector('.hl-auth-submit').textContent=state.mode==='register'?'إنشاء الحساب':'دخول آمن';panel.querySelector('input[name="password"]').autocomplete=state.mode==='register'?'new-password':'current-password';root.querySelector('.hl-login-actions').hidden=true;panel.hidden=false;panel.querySelector('input[name="email"]').focus();
   },true);
   const terminateSession=()=>{
@@ -74,7 +75,8 @@
     if(refreshToken){setTimeout(()=>{try{fetch(`${API_BASE}/auth/logout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken}),keepalive:true}).catch(()=>{})}catch{}},0)}
   };
   window.addEventListener('pageshow',syncAuthUi);
+  document.addEventListener('hydroland:guest-mode',syncAuthUi);
   syncAuthUi();
   document.addEventListener('click',event=>{const button=event.target.closest?.('[data-hl-action="logout"]');if(!button)return;event.preventDefault();button.disabled=true;document.getElementById('profile-dialog')?.close();void logout()});
-  window.HydrolandAuth={apiBase:API_BASE,setAuthUi,syncAuthUi,getAccessToken:()=>sessionStorage.getItem('hl-access-token'),getRefreshToken:()=>sessionStorage.getItem('hl-refresh-token'),isAuthenticated:()=>Boolean(sessionStorage.getItem('hl-refresh-token')),refreshSession,authorizedFetch,terminateSession,logout};
+  window.HydrolandAuth={apiBase:API_BASE,setAuthUi,syncAuthUi,getAccessToken:()=>sessionStorage.getItem('hl-access-token'),getRefreshToken:()=>sessionStorage.getItem('hl-refresh-token'),isAuthenticated:()=>Boolean(sessionStorage.getItem('hl-refresh-token')),isGuestMode,refreshSession,authorizedFetch,terminateSession,logout};
 })();
