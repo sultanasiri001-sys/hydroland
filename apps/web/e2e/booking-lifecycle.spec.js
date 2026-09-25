@@ -5,6 +5,9 @@ const installApi=async page=>{
   const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
   const trip=()=>({id:'trip-1',title:'رحلة جزيرة سمر',type:'BOAT_DIVE',startsAt:new Date(Date.now()+86400000).toISOString(),endsAt:new Date(Date.now()+90000000).toISOString(),capacity:3,bookedSeats:0,remainingSeats:3,status:'OPEN',safety:{decision:'ALLOWED'},weather:{snapshot:{decision:'ALLOWED',waveHeightM:0.5},evaluation:{blocking:false,decision:'ALLOWED'}}});
   await page.route(/\/api\/v1\/trips$/,route=>json(route,[trip()]));
+  await page.route(/\/api\/v1\/me$/,route=>json(route,{id:'account-e2e',email:'booking-e2e@hydroland.test',status:'ACTIVE',roleAssignments:[],person:{firstName:'Sultan',lastName:'Asiri',professional:null}}));
+  await page.route(/\/api\/v1\/credentials$/,route=>json(route,[]));
+  await page.route(/\/api\/v1\/me\/diver-profile$/,route=>json(route,{profile:{medicalFitnessStatus:'FIT'},equipment:[]}));
   await page.route(/\/api\/v1\/trips\/trip-1\/bookings$/,async route=>{state.submittedSeats=route.request().postDataJSON()?.seats;return json(route,{id:'booking-1',tripId:'trip-1',accountId:'account-e2e',status:state.bookingStatus,seats:state.submittedSeats,participants:state.participants},201)});
   await page.route(/\/api\/v1\/trips\/bookings\/mine$/,route=>json(route,[{id:'booking-1',tripId:'trip-1',accountId:'account-e2e',status:state.bookingStatus,seats:2,trip:trip()}]));
   await page.route(/\/api\/v1\/trips\/bookings\/booking-1\/participants$/,route=>json(route,state.participants));
@@ -14,14 +17,14 @@ const installApi=async page=>{
 };
 
 const prepare=async page=>{
-  await page.goto('/',{waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandBookings&&window.HydrolandAccountCenter));
-  await page.evaluate(()=>{
-    window.HydrolandAuth.isAuthenticated=()=>true;
-    window.HydrolandAuth.authorizedFetch=(path,options={})=>fetch(`/api/v1${path}`,options);
-    document.querySelector('.hl-login')?.classList.add('hidden');
+  await page.addInitScript(()=>{
+    sessionStorage.setItem('hl-access-token','booking-e2e-access');
+    sessionStorage.setItem('hl-refresh-token','booking-e2e-refresh');
   });
-  await page.waitForFunction(()=>Boolean(window.HydrolandBookingParticipants));
+  await page.goto('/',{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandBookings&&window.HydrolandAccountCenter&&window.HydrolandBookingParticipants));
+  await expect(page.locator('.hl-login')).toHaveClass(/hidden/);
+  expect(await page.evaluate(()=>window.HydrolandAuth.isAuthenticated())).toBe(true);
 };
 
 test('multi-seat booking, participant editing and self-cancel work from the browser',async({page})=>{
