@@ -1,9 +1,11 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Req, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import type { Response } from 'express';
 import { ReviewGuard } from '../admin/review.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { CredentialsService } from './credentials.service';
+
+type UploadedCredentialFile={originalname:string;mimetype:string;buffer:Buffer;size:number};
+type HttpResponse={setHeader:(name:string,value:string)=>void;send:(body:Buffer)=>void};
 
 @UseGuards(AccessTokenGuard)
 @Controller('credentials')
@@ -21,13 +23,13 @@ export class CredentialsController {
 
   @Post(':id/documents/upload')
   @UseInterceptors(FileInterceptor('file',{limits:{fileSize:10_000_000,files:1}}))
-  upload(@Req() r:{auth:{accountId:string}},@Param('id') id:string,@UploadedFile() file?:Express.Multer.File){
+  upload(@Req() r:{auth:{accountId:string}},@Param('id') id:string,@UploadedFile() file?:UploadedCredentialFile){
     if(!file)throw new BadRequestException('Document file is required.');
     return this.service.uploadDocument(r.auth.accountId,id,file);
   }
 
   @Get('documents/:documentId/content')
-  async content(@Req() r:{auth:{accountId:string}},@Param('documentId') documentId:string,@Res() response:Response){
+  async content(@Req() r:{auth:{accountId:string}},@Param('documentId') documentId:string,@Res() response:HttpResponse){
     const document=await this.service.getDocumentContent(r.auth.accountId,documentId);
     response.setHeader('Content-Type',document.mimeType);
     response.setHeader('Content-Length',String(document.content.length));
