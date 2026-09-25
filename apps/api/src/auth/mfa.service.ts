@@ -25,6 +25,8 @@ export class MfaService{
     return session.accountId;
   }
 
+  async invalidateChallenge(challengeToken:string){const token=this.requireChallenge(challengeToken);await this.db.session.updateMany({where:{tokenHash:this.challengeHash(token),revokedAt:null},data:{revokedAt:new Date()}})}
+
   async status(accountId:string){const credential=await this.credential(accountId);return{enabled:Boolean(credential?.enabledAt),recoveryCodesRemaining:credential?.enabledAt?credential.recoveryCodeHashes.length:0}}
 
   async beginSetup(accountId:string){
