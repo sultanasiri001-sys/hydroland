@@ -15,6 +15,8 @@ for(const status of ['NOT_SELECTED','SANDBOX','CONFIGURED','VERIFIED','PRODUCTIO
  if(!types.includes(`'${status}'`))throw new Error(`Missing integration status: ${status}`);
 }
 if(!service.includes("integration.status==='PRODUCTION_ENABLED'"))throw new Error('Production operational gate is missing.');
+if(!service.includes('HYDROLAND_INTEGRATION_${key}_STATUS'))throw new Error('Environment-based integration lifecycle configuration is missing.');
+if(!service.includes("statuses.has(status)"))throw new Error('Integration lifecycle status allowlist is missing.');
 if(!payments.includes("requireOperational('PAYMENT_PSP')"))throw new Error('Payment PSP fail-closed gate is missing.');
 if(!storage.includes("requireOperational('OBJECT_STORAGE')"))throw new Error('Object storage fail-closed gate is missing.');
 if(!translation.includes("provider.mode==='ONLINE'")||!translation.includes("requireOperational('TRANSLATION_ENGINE')"))throw new Error('Online translation fail-closed gate is missing.');
