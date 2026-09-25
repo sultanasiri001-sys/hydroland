@@ -65,7 +65,7 @@
   const terminateSession=()=>{
     const refreshToken=sessionStorage.getItem('hl-refresh-token');
     clearSession();clearProtectedView();
-    setTimeout(emitAuthChanged,0);
+    setTimeout(()=>{window.HydrolandPortalAccess?.clearProtectedPortal?.();emitAuthChanged()},0);
     return refreshToken;
   };
   const logout=()=>{
