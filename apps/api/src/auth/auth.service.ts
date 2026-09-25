@@ -4,30 +4,32 @@ import { DatabaseService } from '../database/database.service';
 
 type Credentials={email:string;password:string};
 type Tokens={accessToken:string;refreshToken:string};
+type RegistrationResult={email:string;status:'PENDING_VERIFICATION';requiresEmailVerification:true};
 
 @Injectable()
 export class AuthService {
   constructor(private readonly db:DatabaseService){}
 
-  async register(input:Credentials){
+  async register(input:Credentials):Promise<RegistrationResult>{
     const email=this.email(input.email);
     this.password(input.password);
     if(await this.db.account.findUnique({where:{email}}))throw new ConflictException('Account exists.');
     const account=await this.db.account.create({data:{email,passwordHash:this.hash(input.password),person:{create:{firstName:'Pending',lastName:'Profile'}}}});
-    return this.issue(account.id);
+    return{email:account.email,status:'PENDING_VERIFICATION',requiresEmailVerification:true};
   }
 
   async login(input:Credentials){
     const account=await this.db.account.findUnique({where:{email:this.email(input.email)}});
     if(!account||!this.verify(input.password,account.passwordHash)||this.blocked(account.status))throw new UnauthorizedException('Invalid credentials.');
+    if(account.status!=='ACTIVE')throw new UnauthorizedException('Account activation is required.');
     if(!account.emailVerifiedAt)throw new UnauthorizedException('Email verification is required.');
     return this.issue(account.id);
   }
 
   async refresh(refreshToken:string):Promise<Tokens>{
     const token=this.requireRefreshToken(refreshToken);
-    const session=await this.db.session.findUnique({where:{tokenHash:this.tokenHash(token)},include:{account:{select:{status:true}}}});
-    if(!session||session.revokedAt||session.expiresAt<=new Date()||this.blocked(session.account.status))throw new UnauthorizedException('Invalid session.');
+    const session=await this.db.session.findUnique({where:{tokenHash:this.tokenHash(token)},include:{account:{select:{status:true,emailVerifiedAt:true}}}});
+    if(!session||session.revokedAt||session.expiresAt<=new Date()||session.account.status!=='ACTIVE'||!session.account.emailVerifiedAt)throw new UnauthorizedException('Invalid session.');
     const consumed=await this.db.session.updateMany({where:{id:session.id,revokedAt:null,expiresAt:{gt:new Date()}},data:{revokedAt:new Date()}});
     if(consumed.count!==1)throw new UnauthorizedException('Invalid session.');
     return this.issue(session.accountId);
@@ -42,14 +44,14 @@ export class AuthService {
     const claims=this.verifyAccessToken(token);
     if(!claims.sessionId){
       const account=await this.db.account.findUnique({where:{id:claims.accountId},select:{id:true,email:true,status:true,emailVerifiedAt:true}});
-      if(!account||!account.email.endsWith('@example.invalid')||this.blocked(account.status)||!account.emailVerifiedAt)throw new UnauthorizedException('Invalid access token.');
+      if(!account||!account.email.endsWith('@example.invalid')||account.status!=='ACTIVE'||!account.emailVerifiedAt)throw new UnauthorizedException('Invalid access token.');
       return{accountId:account.id,sessionId:'e2e-sessionless'};
     }
     const session=await this.db.session.findFirst({
       where:{id:claims.sessionId,accountId:claims.accountId,revokedAt:null,expiresAt:{gt:new Date()}},
       include:{account:{select:{id:true,status:true,emailVerifiedAt:true}}}
     });
-    if(!session||this.blocked(session.account.status)||!session.account.emailVerifiedAt)throw new UnauthorizedException('Account is not active, session is invalid, or email is not verified.');
+    if(!session||session.account.status!=='ACTIVE'||!session.account.emailVerifiedAt)throw new UnauthorizedException('Account is not active, session is invalid, or email is not verified.');
     return{accountId:session.account.id,sessionId:session.id};
   }
 
