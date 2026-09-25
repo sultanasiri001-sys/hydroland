@@ -57,6 +57,12 @@ export class CredentialsService {
   async uploadDocument(accountId:string,credentialId:string,file:UploadedCredentialFile){
     const allowed=['application/pdf','image/jpeg','image/png'];
     if(!allowed.includes(file.mimetype)||!file.buffer?.length||file.buffer.length>10_000_000)throw new BadRequestException('Unsupported document.');
+    const signatures:Record<string,(bytes:Buffer)=>boolean>={
+      'application/pdf':bytes=>bytes.length>=5&&bytes.subarray(0,5).toString('ascii')==='%PDF-',
+      'image/jpeg':bytes=>bytes.length>=3&&bytes[0]===0xff&&bytes[1]===0xd8&&bytes[2]===0xff,
+      'image/png':bytes=>bytes.length>=8&&bytes.subarray(0,8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]))
+    };
+    if(!signatures[file.mimetype]?.(file.buffer))throw new BadRequestException('Document content does not match its declared MIME type.');
     const account=await this.db.account.findUniqueOrThrow({where:{id:accountId},select:{personId:true}});
     const credential=await this.db.credential.findFirst({where:{id:credentialId,personId:account.personId,verificationStatus:'UNVERIFIED'}});
     if(!credential)throw new NotFoundException('Credential not editable.');
