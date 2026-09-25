@@ -54,6 +54,28 @@ test('registration remains unauthenticated until email verification', async ({ p
   expect(session).toEqual({access:null,refresh:null,authenticated:false});
 });
 
+test('MFA challenge keeps browser unauthenticated until second factor succeeds', async ({ page }) => {
+  await installStableProfileApi(page);
+  let verifyPayload=null;
+  await page.route('**/api/v1/auth/login', route => route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({mfaRequired:true,challengeToken:'mfa-browser-challenge-token-12345678901234567890'})}));
+  await page.route('**/api/v1/auth/mfa/verify', route => {verifyPayload=route.request().postDataJSON();return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({accessToken:'mfa-access-token',refreshToken:'mfa-refresh-token'})})});
+  await page.goto('/',{waitUntil:'domcontentloaded'});
+  await waitForApp(page);
+  await page.locator('.hl-login-primary').click();
+  const panel=page.locator('.hl-auth-panel');
+  await panel.locator('input[name="email"]').fill('mfa-user@hydroland.test');
+  await panel.locator('input[name="password"]').fill('Hydroland-MFA-Login-2026!');
+  await panel.evaluate(form=>form.requestSubmit());
+  await expect(panel.locator('[data-mfa-field]')).toBeVisible();
+  await expect(panel.locator('[data-auth-primary]').first()).toBeHidden();
+  expect(await page.evaluate(()=>({access:sessionStorage.getItem('hl-access-token'),refresh:sessionStorage.getItem('hl-refresh-token')}))).toEqual({access:null,refresh:null});
+  await panel.locator('input[name="mfaCode"]').fill('123456');
+  await panel.evaluate(form=>form.requestSubmit());
+  await expect.poll(()=>verifyPayload).toEqual({challengeToken:'mfa-browser-challenge-token-12345678901234567890',code:'123456'});
+  await expect(page.locator('.hl-login')).toHaveClass(/hidden/);
+  expect(await page.evaluate(()=>({access:sessionStorage.getItem('hl-access-token'),refresh:sessionStorage.getItem('hl-refresh-token'),authenticated:window.HydrolandAuth.isAuthenticated()}))).toEqual({access:'mfa-access-token',refresh:'mfa-refresh-token',authenticated:true});
+});
+
 test('logout is local-first and protected state stays cleared', async ({ page }) => {
   await page.route('**/api/v1/auth/logout', route => route.fulfill({status:200,contentType:'application/json',body:'{}'}));
   await seedSession(page);
