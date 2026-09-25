@@ -44,16 +44,30 @@ test('logout is local-first and protected state stays cleared', async ({ page })
       disabled:button.disabled,
       access:sessionStorage.getItem('hl-access-token'),
       refresh:sessionStorage.getItem('hl-refresh-token'),
-      dialogOpen:document.getElementById('profile-dialog')?.open
+      dialogOpen:document.getElementById('profile-dialog')?.open,
+      profile:Boolean(window.HydrolandProfileData),
+      dashboard:Boolean(document.querySelector('.hl-role-dashboard')),
+      loginHidden:document.querySelector('.hl-login')?.classList.contains('hidden')
     };
   });
-  expect(clickState).toEqual({disabled:true,access:null,refresh:null,dialogOpen:false});
+  expect(clickState).toEqual({
+    disabled:true,
+    access:null,
+    refresh:null,
+    dialogOpen:false,
+    profile:false,
+    dashboard:false,
+    loginHidden:false
+  });
 
-  await expect.poll(() => page.evaluate(() => ({
+  await page.waitForTimeout(250);
+  const settledState=await page.evaluate(() => ({
     profile:Boolean(window.HydrolandProfileData),
     dashboard:Boolean(document.querySelector('.hl-role-dashboard')),
     loginHidden:document.querySelector('.hl-login')?.classList.contains('hidden')
-  }))).toEqual({profile:false,dashboard:false,loginHidden:false});
+  }));
+  console.log('logout settled state', JSON.stringify(settledState));
+  expect(settledState).toEqual({profile:false,dashboard:false,loginHidden:false});
 });
 
 test('pageshow fails closed when the session is absent', async ({ page }) => {
@@ -89,12 +103,17 @@ test('unauthenticated runtime keeps the admin console closed', async ({ page }) 
   await installStableProfileApi(page);
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await waitForApp(page);
-  await page.evaluate(() => {
+  const state=await page.evaluate(() => {
     sessionStorage.clear();
     window.HydrolandAuth.syncAuthUi();
     window.HydrolandPortalAccess.clearProtectedPortal();
+    return {
+      profile:Boolean(window.HydrolandProfileData),
+      dashboard:Boolean(document.querySelector('.hl-role-dashboard')),
+      loginHidden:document.querySelector('.hl-login')?.classList.contains('hidden')
+    };
   });
+  expect(state).toEqual({profile:false,dashboard:false,loginHidden:false});
   await expect(page.locator('#role-console')).toBeHidden();
   await expect(page.locator('.hl-role-dashboard')).toHaveCount(0);
-  await expect(page.locator('.hl-login')).not.toHaveClass(/hidden/);
 });
