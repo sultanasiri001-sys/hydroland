@@ -27,6 +27,14 @@ const statuses=new Set(['NOT_SELECTED','SANDBOX','CONFIGURED','VERIFIED','PRODUC
  }
  list(){return catalog.map(item=>({...item,status:this.configuredStatus(item.key)??item.status}))}
  status(key:IntegrationKey){const integration=this.list().find(item=>item.key===key);if(!integration)throw new ServiceUnavailableException('Unknown integration.');return integration}
+ publicMapConfig(){
+  const integration=this.status('MAPS_GEO');
+  const operational=integration.status==='PRODUCTION_ENABLED'||integration.status==='SANDBOX';
+  const styleUrl=process.env.HYDROLAND_MAP_STYLE_URL?.trim()||null;
+  const provider=process.env.HYDROLAND_MAP_PROVIDER?.trim()||'UNCONFIGURED';
+  const attribution=process.env.HYDROLAND_MAP_ATTRIBUTION?.trim()||null;
+  return{engine:'MAPLIBRE',engineVersion:'6.11.2',status:integration.status,provider,enabled:operational&&Boolean(styleUrl),styleUrl:operational?styleUrl:null,attribution};
+ }
  requireOperational(key:IntegrationKey,options:{allowSandbox?:boolean}={}){
   const integration=this.status(key);
   const allowed=integration.status==='PRODUCTION_ENABLED'||(options.allowSandbox===true&&integration.status==='SANDBOX');
