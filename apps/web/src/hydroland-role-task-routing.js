@@ -17,6 +17,15 @@
     'المالية والتكاملات وتدقيق النظام':{selector:'.hl-admin',hash:'admin'}
   };
   const clean=node=>String(node?.childNodes?.length?Array.from(node.childNodes).filter(n=>n.nodeType===Node.TEXT_NODE).map(n=>n.textContent).join(''):node?.textContent||'').trim();
+  const authorizeCurrentRole=async()=>{
+    const auth=window.HydrolandAuth,access=window.HydrolandPortalAccess;
+    const role=access?.getCurrentRole?.()||'diver';
+    if(role==='diver'||!auth?.isAuthenticated?.()||!access?.roleAllowed?.(role))return false;
+    if(typeof access.refreshPortalAccess!=='function')return false;
+    await access.refreshPortalAccess();
+    if(window.HydrolandPortalFreshness?.enforce?.()===false)return false;
+    return Boolean(auth.isAuthenticated()&&access.roleAllowed(role));
+  };
   const navigate=config=>{
     if(config.action){config.action();return true}
     const target=config.section?document.getElementById(config.section):document.querySelector(config.selector);
@@ -36,7 +45,8 @@
       button.dataset.hlRoleTaskConnected='1';
       const state=button.querySelector('b');
       if(state)state.textContent='فتح ←';
-      button.onclick=()=>{
+      button.onclick=async()=>{
+        if(!(await authorizeCurrentRole()))return;
         if(navigate(config))return;
         button.disabled=true;
         button.dataset.hlRoleTaskConnected='0';
