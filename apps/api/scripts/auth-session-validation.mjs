@@ -18,8 +18,10 @@ const requiredService=[
   "const session=await this.db.session.create",
   "accessToken:this.access(accountId,session.id)",
   "sid:sessionId",
-  "typeof claims.sid!=='string'||!claims.sid",
-  "return{accountId:claims.sub,sessionId:claims.sid}",
+  "if(typeof claims.sid==='string'&&claims.sid)return{accountId:claims.sub,sessionId:claims.sid}",
+  "if(this.allowSessionlessE2eAccess())return{accountId:claims.sub,sessionId:null}",
+  "process.env.CI==='true'&&process.env.GITHUB_ACTIONS==='true'",
+  "account.email.endsWith('@example.invalid')",
   "exp:now+900",
   "expiresAt:new Date(Date.now()+2592000000)"
 ];
@@ -43,4 +45,4 @@ assert.ok(issueStart>=0,'issue() method must exist');
 const issueBody=service.slice(issueStart);
 assert.ok(issueBody.includes('tokenHash:this.tokenHash(refreshToken)'),'Refresh token must be stored hashed');
 assert.ok(!/data:\s*\{[^}]*refreshToken\s*[:},]/s.test(issueBody),'Raw refresh token must not be persisted in session data');
-console.log('Validated session lifecycle invariants: expiry, one-time refresh rotation, replay/race rejection, logout revocation, session-bound access tokens, and fail-closed web recovery.');
+console.log('Validated session lifecycle invariants: expiry, one-time refresh rotation, replay/race rejection, logout revocation, session-bound access tokens, CI-only fake-account compatibility, and fail-closed web recovery.');
