@@ -48,6 +48,7 @@ test('multi-seat booking, participant editing and self-cancel work from the brow
   await expect(companion.locator('[name="fullName"]')).toHaveValue('Companion Diver');
   expect(state.participants.find(row=>row.id==='participant-2')?.certificationNumber).toBe('AOW-22');
   await participantsDialog.locator('.hl-account-head button').click();
+  page.once('dialog',dialog=>dialog.accept());
   await bookingsDialog.locator('[data-cancel-booking]').click();
   await expect.poll(()=>state.cancelMethod).toBe('PATCH');
   await expect.poll(()=>state.bookingStatus).toBe('CANCELLED');
