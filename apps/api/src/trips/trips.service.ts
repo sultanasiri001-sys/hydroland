@@ -46,7 +46,7 @@ export class TripsService {
     const booking=await this.db.booking.findFirst({where:{id:bookingId,accountId},include:{trip:true}});
     if(!booking)throw new NotFoundException('Booking not found.');
     if(booking.status==='CANCELLED')return booking;
-    if(booking.trip.status==='COMPLETED'||booking.trip.status==='CANCELLED')throw new ConflictException('Booking cannot be cancelled after trip closure.');
+    if(booking.trip.status!=='OPEN')throw new ConflictException('Booking cannot be cancelled after trip closure.');
     if(booking.trip.startsAt<=new Date())throw new ConflictException('Booking cannot be cancelled after the trip starts.');
     const updated=await this.db.booking.update({where:{id:bookingId},data:{status:'CANCELLED'}});
     await this.audit.record({actorId:accountId,action:'BOOKING_SELF_CANCELLED',resource:'Booking',resourceId:bookingId,metadata:{accountId,tripId:booking.tripId,seats:booking.seats,previousStatus:booking.status}});
