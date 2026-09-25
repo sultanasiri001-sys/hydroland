@@ -1,7 +1,6 @@
 import {readFile} from 'node:fs/promises';
-import {resolve} from 'node:path';
 
-const source=await readFile(resolve('src/main.ts'),'utf8');
+const source=await readFile(new URL('../src/main.ts',import.meta.url),'utf8');
 for(const marker of [
   "const required = ['DATABASE_URL', 'JWT_SECRET']",
   "JWT_SECRET must be at least 32 characters.",
