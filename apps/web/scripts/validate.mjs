@@ -64,15 +64,8 @@ for (const moduleName of ['hydroland-auth.js','hydroland-bookings.js','hydroland
   if (!app.includes(moduleName)) throw new Error(`Missing frontend module loader: ${moduleName}`);
 }
 
-const [packageText, buildScript, mapModule] = await Promise.all([
-  readFile(path.join(root, 'package.json'), 'utf8'),
-  readFile(path.join(root, 'scripts', 'build.mjs'), 'utf8'),
-  readFile(path.join(src, 'hydroland-map.js'), 'utf8')
-]);
-const webPackage=JSON.parse(packageText);
-if(webPackage.dependencies?.['maplibre-gl']!=='6.11.2')throw new Error('MapLibre must remain pinned to 6.11.2.');
-for(const marker of ['createRequire','require.resolve','maplibre-gl','maplibre-gl.css','vendor'])if(!buildScript.includes(marker))throw new Error(`Production build does not resolve/vendor MapLibre correctly: ${marker}`);
-for(const marker of ['./vendor/maplibre-gl.js','./vendor/maplibre-gl.css','HydrolandMapLibreTestDouble'])if(!mapModule.includes(marker))throw new Error(`Map runtime integrity marker missing: ${marker}`);
-for(const remote of ['unpkg.com','cdn.jsdelivr.net'])if(mapModule.includes(remote))throw new Error(`Map runtime must not depend on external CDN: ${remote}`);
+const mapModule = await readFile(path.join(src, 'hydroland-map.js'), 'utf8');
+for(const marker of ["MAPLIBRE_VERSION='6.11.2'",'cdn.jsdelivr.net/npm/maplibre-gl@${MAPLIBRE_VERSION}/dist','HydrolandMapLibreTestDouble','MapLibre runtime failed to load','مزود الخرائط غير مفعّل'])if(!mapModule.includes(marker))throw new Error(`Map runtime integrity marker missing: ${marker}`);
+if(mapModule.includes('@latest')||mapModule.includes('maplibre-gl@latest'))throw new Error('MapLibre runtime must remain version-pinned.');
 
-console.log(`Validated HYDROLAND shell, six role selectors, ${jsFiles.length} JavaScript modules, ${cssFiles.length} style modules, branding, IDs, responsiveness, accessibility and vendored MapLibre integrity markers.`);
+console.log(`Validated HYDROLAND shell, six role selectors, ${jsFiles.length} JavaScript modules, ${cssFiles.length} style modules, branding, IDs, responsiveness, accessibility and pinned resilient MapLibre runtime markers.`);
