@@ -117,6 +117,11 @@ jobs:
             cat /tmp/hydroland-api.log
             exit 1
           fi
+          if ! BOOKING_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/booking-runtime-http-e2e.mjs; then
+            echo "Booking HTTP/DB E2E failed; API log follows"
+            cat /tmp/hydroland-api.log
+            exit 1
+          fi
           if ! CREDENTIAL_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/credential-documents-http-e2e.mjs; then
             echo "Credential Documents HTTP/DB E2E failed; API log follows"
             cat /tmp/hydroland-api.log
