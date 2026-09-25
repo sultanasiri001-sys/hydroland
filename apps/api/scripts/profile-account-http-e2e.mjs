@@ -44,13 +44,16 @@ try{
 } finally {
   if(account){
     await db.auditEvent.deleteMany({where:{OR:[{resourceId:account.id},...(equipmentId?[{resourceId:equipmentId}]:[])]}}).catch(()=>{});
-    await db.$executeRawUnsafe(`DELETE FROM "DiverEquipment" WHERE "accountId"=$1`,account.id).catch(()=>{});
-    await db.$executeRawUnsafe(`DELETE FROM "DiverProfile" WHERE "accountId"=$1`,account.id).catch(()=>{});
-    await db.credential.deleteMany({where:{accountId:account.id}}).catch(()=>{});
+    await db.diverEquipment.deleteMany({where:{accountId:account.id}}).catch(()=>{});
+    await db.diverProfile.deleteMany({where:{accountId:account.id}}).catch(()=>{});
     await db.roleAssignment.deleteMany({where:{accountId:account.id}}).catch(()=>{});
     await db.session.deleteMany({where:{accountId:account.id}}).catch(()=>{});
-    await db.account.delete({where:{id:account.id}}).catch(()=>{});
   }
+  if(person){
+    await db.credential.deleteMany({where:{personId:person.id}}).catch(()=>{});
+    await db.professionalProfile.deleteMany({where:{personId:person.id}}).catch(()=>{});
+  }
+  if(account)await db.account.delete({where:{id:account.id}}).catch(()=>{});
   if(person)await db.person.delete({where:{id:person.id}}).catch(()=>{});
   await db.$disconnect();
 }
