@@ -50,6 +50,7 @@ export class StormglassWeatherService {
       swellHeightM: value(hour, 'swellHeight'),
       swellDirectionDeg: value(hour, 'swellDirection'),
       waterTemperatureC: value(hour, 'waterTemperature'),
+      decision: 'REVIEW_REQUIRED',
       reason: 'Marine forecast supplied by Stormglass; operational approval remains human-reviewed.',
     };
   }
