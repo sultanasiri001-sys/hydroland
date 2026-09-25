@@ -55,7 +55,7 @@ test('admin portal lazy-loads inventory, registers equipment and creates a renta
   await page.locator('#role-switch').click();await page.locator('#role-dialog [data-role="admin"]').click();
   const inventory=page.locator('.hl-inventory');await expect(inventory).toBeVisible();
   await expect(inventory).toContainText('المستودع والباركود');
-  expect(await page.evaluate(()=>[...document.scripts].some(s=>s.src.endsWith('/hydroland-equipment-rentals.js')))).toBe(true);
+  await expect(inventory.locator('#hl-rental-new')).toBeVisible();
 
   await inventory.locator('[data-inventory-action="register"]').click();
   const register=page.locator('.hl-barcode-dialog').filter({hasText:'تسجيل معدة جديدة'});await expect(register).toBeVisible();

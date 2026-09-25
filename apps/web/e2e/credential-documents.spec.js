@@ -53,7 +53,7 @@ test('credential can be created, documented, privately opened and submitted from
   await expect(credentialArticle).toContainText('1 مستند');await expect(credentialArticle).toContainText('certificate.png');
 
   const accessRequest=page.waitForRequest(request=>request.url().includes('/credentials/credential-1/documents/document-1/access'));
-  await credentialArticle.getByRole('button',{name:'عرض المستند'}).click();await accessRequest;expect(state.accessRequests).toBe(1);
+  await credentialArticle.getByRole('button',{name:'عرض المستند'}).click();await accessRequest;await expect.poll(()=>state.accessRequests).toBe(1);
 
   await credentialArticle.getByRole('button',{name:'إرسال للتحقق'}).click();
   await expect.poll(()=>page.evaluate(()=>window.HydrolandProfileData?.credentials?.[0]?.verificationStatus)).toBe('PENDING');
@@ -79,6 +79,6 @@ test('admin can review pending credential evidence and approve it from the brows
   await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','e2e-access');sessionStorage.setItem('hl-refresh-token','e2e-refresh');window.HydrolandAuth.syncAuthUi();await window.HydrolandProfile.load()});
   await page.locator('#role-switch').click();await page.locator('#role-dialog [data-role="admin"]').click();
   const admin=page.locator('.hl-admin');await expect(admin).toBeVisible();const card=admin.locator('[data-credential-review="pending-credential"]');await expect(card).toContainText('Pending Rescue Credential');
-  const accessRequest=page.waitForRequest(request=>request.url().includes('/credentials/admin/pending-credential/documents/pending-document/access'));await card.getByRole('button',{name:/عرض: evidence\.pdf/}).click();await accessRequest;expect(reviewAccess).toBe(1);
+  const accessRequest=page.waitForRequest(request=>request.url().includes('/credentials/admin/pending-credential/documents/pending-document/access'));await card.getByRole('button',{name:/عرض: evidence\.pdf/}).click();await accessRequest;await expect.poll(()=>reviewAccess).toBe(1);
   await card.getByRole('button',{name:'اعتماد الشهادة'}).click();await expect.poll(()=>decision?.outcome).toBe('VERIFIED');await expect(admin.locator('[data-credential-review-list]')).toContainText('لا توجد شهادات بانتظار المراجعة');
 });
