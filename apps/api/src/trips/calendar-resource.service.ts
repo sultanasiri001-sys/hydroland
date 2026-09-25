@@ -37,7 +37,7 @@ export class CalendarResourceService{
     const current=rows[0];if(!current)throw new NotFoundException('Calendar resource not found.');
     if(current.active===active)return current;
     if(!active){
-      const allocations=await this.db.$queryRaw<Array<{id:string;tripId:string}>>`SELECT a."id",a."tripId" FROM "CalendarAllocation" a JOIN "Trip" t ON t."id"=a."tripId" WHERE a."resourceId"=${resourceId} AND a."status"='ACTIVE' AND t."status" IN ('OPEN','CLOSED','DRAFT') AND t."endsAt">NOW() LIMIT 1`;
+      const allocations=await this.db.$queryRaw<Array<{id:string;tripId:string}>>`SELECT a."id",e."referenceId" AS "tripId" FROM "CalendarAllocation" a JOIN "CalendarEvent" e ON e."id"=a."eventId" JOIN "Trip" t ON t."id"=e."referenceId" WHERE e."referenceType"='TRIP' AND a."resourceId"=${resourceId} AND a."status"='ACTIVE' AND t."status" IN ('OPEN','CLOSED','DRAFT') AND t."endsAt">NOW() LIMIT 1`;
       if(allocations.length)throw new ConflictException('Resource has an active future allocation and cannot be disabled.');
     }
     const updated=await this.db.$queryRaw<ResourceRow[]>`UPDATE "CalendarResource" SET "active"=${active},"updatedAt"=NOW() WHERE "id"=${resourceId} RETURNING *`;

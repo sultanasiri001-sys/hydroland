@@ -6,6 +6,7 @@ import { BookingParticipantService } from './booking-participant.service';
 import { CrewAssignmentService } from './crew-assignment.service';
 import { OperationalClearanceService } from './operational-clearance.service';
 import { PolicyControlService } from './policy-control.service';
+import { WeatherGateService, WeatherSnapshot } from './weather-gate.service';
 
 export type TripStatusValue='DRAFT'|'OPEN'|'CLOSED'|'CANCELLED'|'COMPLETED';
 const TRIP_STATUSES:TripStatusValue[]=['DRAFT','OPEN','CLOSED','CANCELLED','COMPLETED'];
@@ -16,9 +17,10 @@ type AffectedBooking={id:string;accountId:string;seats:number;status:string};
 
 @Injectable()
 export class TripAdminService {
-  constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly crewAssignments:CrewAssignmentService,private readonly clearance:OperationalClearanceService,private readonly participants:BookingParticipantService,private readonly policies:PolicyControlService,private readonly notifications:NotificationsService) {}
+  constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly crewAssignments:CrewAssignmentService,private readonly clearance:OperationalClearanceService,private readonly participants:BookingParticipantService,private readonly policies:PolicyControlService,private readonly notifications:NotificationsService,private readonly weatherGate:WeatherGateService) {}
 
   private async notifyQuietly(accountId:string,type:string,payload:Record<string,unknown>){try{await this.notifications.notify(accountId,type,payload);}catch{return;}}
+  private weatherFromItems(items:unknown):WeatherSnapshot|null{if(!items||Array.isArray(items)||typeof items!=='object')return null;const weather=(items as Record<string,unknown>).weather;if(!weather||Array.isArray(weather)||typeof weather!=='object')return null;return weather as WeatherSnapshot;}
 
   async list(){const trips=(await this.db.trip.findMany({orderBy:{startsAt:'desc'}})) as AdminTripRow[];return Promise.all(trips.map(async(trip:AdminTripRow)=>({...trip,operationalClearance:await this.clearance.status(trip.id)})));}
   operationalClearance(reviewerAccountId:string,tripId:string,reason?:string){return this.clearance.grant(reviewerAccountId,tripId,reason);}
@@ -28,16 +30,17 @@ export class TripAdminService {
   async confirmBooking(reviewerAccountId:string,tripId:string,bookingId:string){
     const initial=await this.db.booking.findUnique({where:{id:bookingId},select:{tripId:true,seats:true,status:true}});if(!initial||initial.tripId!==tripId)throw new NotFoundException('Booking not found for this trip.');
     const participantPolicy=initial.status==='CONFIRMED'?{policyState:'ENABLED',reviewRequired:false,bypassed:false,issues:[],incompleteParticipants:0}:await this.participants.assertConfirmable(bookingId,initial.seats);
-    const [safetyPolicy,capacityPolicy]=await Promise.all([this.policies.decision('BOOKING','SAFETY_APPROVAL'),this.policies.decision('BOOKING','CAPACITY_LIMIT')]);
+    const [safetyPolicy,weatherPolicy,capacityPolicy,gateSettings]=await Promise.all([this.policies.decision('BOOKING','SAFETY_APPROVAL'),this.policies.decision('WEATHER','WEATHER_GATE'),this.policies.decision('BOOKING','CAPACITY_LIMIT'),this.weatherGate.settings()]);
     const reviewIssues=[...participantPolicy.issues];let newlyConfirmed=false;
     const updated=await this.db.serializable(async tx=>{
       const booking=await tx.booking.findUnique({where:{id:bookingId},include:{trip:true}});if(!booking||booking.tripId!==tripId)throw new NotFoundException('Booking not found for this trip.');if(booking.status==='CONFIRMED')return booking;if(booking.status!=='PENDING')throw new ConflictException('Only pending bookings can be confirmed.');if(booking.trip.status!=='OPEN'&&booking.trip.status!=='CLOSED')throw new ConflictException('Trip is not available for booking confirmation.');if(booking.trip.startsAt<=new Date())throw new ConflictException('Trip already started.');
-      const latestSafety=await tx.safetyChecklist.findFirst({where:{tripId},orderBy:{createdAt:'desc'},select:{decision:true}});if(latestSafety?.decision!=='ALLOWED'){if(safetyPolicy.enforce)throw new ConflictException('Trip requires an ALLOWED safety decision before confirmation.');if(safetyPolicy.review)reviewIssues.push('SAFETY_APPROVAL');}
+      const latestSafety=await tx.safetyChecklist.findFirst({where:{tripId},orderBy:{createdAt:'desc'},select:{decision:true,items:true}});if(latestSafety?.decision!=='ALLOWED'){if(safetyPolicy.enforce)throw new ConflictException('Trip requires an ALLOWED safety decision before confirmation.');if(safetyPolicy.review)reviewIssues.push('SAFETY_APPROVAL');}
+      const weather=this.weatherGate.evaluate(latestSafety?this.weatherFromItems(latestSafety.items):null,gateSettings);if(weather.blocking){if(weatherPolicy.enforce)throw new ConflictException(weather.reason||'Trip is unavailable because of weather conditions.');if(weatherPolicy.review)reviewIssues.push('WEATHER_GATE');}
       const confirmed=await tx.booking.aggregate({where:{tripId,status:'CONFIRMED'},_sum:{seats:true}}),usedSeats=confirmed._sum.seats??0;if(usedSeats+booking.seats>booking.trip.capacity){if(capacityPolicy.enforce)throw new ConflictException('Trip capacity reached.');if(capacityPolicy.review)reviewIssues.push('CAPACITY_LIMIT');}
       newlyConfirmed=true;return tx.booking.update({where:{id:bookingId},data:{status:'CONFIRMED'}});
     });
     const crewNotification=newlyConfirmed?await this.crewAssignments.dispatchForConfirmedBooking(tripId,bookingId):{tripId,bookingId,notifiedCrew:0};
-    const policyReview={required:reviewIssues.length>0,issues:[...new Set(reviewIssues)],states:{participant:participantPolicy.policyState,safety:safetyPolicy.state,capacity:capacityPolicy.state}};
+    const policyReview={required:reviewIssues.length>0,issues:[...new Set(reviewIssues)],states:{participant:participantPolicy.policyState,safety:safetyPolicy.state,weather:weatherPolicy.state,capacity:capacityPolicy.state}};
     await this.audit.record({action:'BOOKING_CONFIRMED',resource:'Booking',resourceId:bookingId,metadata:{reviewerAccountId,tripId,accountId:updated.accountId,seats:updated.seats,notifiedCrew:crewNotification.notifiedCrew,newlyConfirmed,policyReview}});
     if(newlyConfirmed)await this.notifyQuietly(updated.accountId,'BOOKING_CONFIRMED',{bookingId,tripId,seats:updated.seats});
     return {...updated,crewNotification,policyReview};
@@ -81,7 +84,8 @@ export class TripAdminService {
     const updated=await this.db.serializable(async tx=>{
       const current=await tx.trip.findUnique({where:{id}});if(!current)throw new NotFoundException('Trip not found.');
       if(status==='CANCELLED'){
-        await tx.$executeRaw`UPDATE "CalendarAllocation" SET "status"='INACTIVE',"updatedAt"=NOW() WHERE "tripId"=${id} AND "status"='ACTIVE'`;
+        await tx.$executeRaw`UPDATE "CalendarAllocation" a SET "status"='INACTIVE',"updatedAt"=NOW() FROM "CalendarEvent" e WHERE e."id"=a."eventId" AND e."referenceType"='TRIP' AND e."referenceId"=${id} AND a."status"='ACTIVE'`;
+        await tx.$executeRaw`UPDATE "CalendarEvent" SET "status"='INACTIVE',"updatedAt"=NOW() WHERE "referenceType"='TRIP' AND "referenceId"=${id} AND "status"='ACTIVE'`;
         await tx.booking.updateMany({where:{tripId:id,status:{not:'CANCELLED'}},data:{status:'CANCELLED'}});
       }
       return tx.trip.update({where:{id},data:{status}});
