@@ -10,5 +10,7 @@ services:
         sync: false
       - key: JWT_SECRET
         generateValue: true
+      - key: GOOGLE_CLIENT_ID
+        sync: false
       - key: WEB_ORIGIN
         value: https://sultanasiri001-sys.github.io

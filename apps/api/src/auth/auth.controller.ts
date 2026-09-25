@@ -3,18 +3,20 @@ import { AuthService } from './auth.service';
 import { MfaService } from './mfa.service';
 import { AccessTokenGuard } from './access-token.guard';
 import { AuditService } from '../audit/audit.service';
-type Credentials={email:string;password:string}; type Refresh={refreshToken:string}; type MfaVerify={challengeToken:string;code:string}; type MfaCode={code:string};
+type Credentials={email:string;password:string}; type Refresh={refreshToken:string}; type MfaVerify={challengeToken:string;code:string}; type MfaCode={code:string}; type GoogleCredential={credential:string};
 type RequestLike={ip?:string;headers?:Record<string,string|string[]|undefined>;auth?:{accountId:string;sessionId:string}};
 type RateEntry={count:number;resetAt:number};
 
 const loginFailures=new Map<string,RateEntry>();
 const registrationAttempts=new Map<string,RateEntry>();
 const mfaFailures=new Map<string,RateEntry>();
+const googleFailures=new Map<string,RateEntry>();
 const WINDOW_MS=15*60*1000;
 const MFA_WINDOW_MS=5*60*1000;
 const MAX_LOGIN_FAILURES=10;
 const MAX_REGISTRATION_ATTEMPTS=5;
 const MAX_MFA_FAILURES=5;
+const MAX_GOOGLE_FAILURES=10;
 const MAX_RATE_BUCKETS=5000;
 
 @Controller('auth') export class AuthController {
@@ -41,6 +43,17 @@ const MAX_RATE_BUCKETS=5000;
      else await this.audit.record({action:'AUTH_LOGIN_SUCCEEDED',resource:'AUTH',metadata:{email,ip}});
      return result;
    }catch(error){this.increment(loginFailures,key,WINDOW_MS);await this.audit.record({action:'AUTH_LOGIN_FAILED',resource:'AUTH',metadata:{email,ip}});throw error}
+ }
+ @Get('google/config') googleConfig(){return this.auth.googleConfig()}
+ @Post('google') @HttpCode(HttpStatus.OK) async googleLogin(@Body() b:GoogleCredential,@Req() req:RequestLike){
+   const ip=this.clientIp(req),key=`google:${ip}`;
+   if(this.isLimited(googleFailures,key,MAX_GOOGLE_FAILURES)){await this.audit.record({action:'AUTH_GOOGLE_RATE_LIMITED',resource:'AUTH',metadata:{ip}});throw new HttpException('Too many Google sign-in attempts. Try again later.',HttpStatus.TOO_MANY_REQUESTS)}
+   try{
+     const result=await this.auth.loginWithGoogle(b.credential);googleFailures.delete(key);
+     if('mfaRequired' in result)await this.audit.record({action:'AUTH_GOOGLE_MFA_REQUIRED',resource:'AUTH',metadata:{ip}});
+     else await this.audit.record({action:'AUTH_GOOGLE_SUCCEEDED',resource:'AUTH',metadata:{ip}});
+     return result;
+   }catch(error){this.increment(googleFailures,key,WINDOW_MS);await this.audit.record({action:'AUTH_GOOGLE_FAILED',resource:'AUTH',metadata:{ip}});throw error}
  }
  @Post('mfa/verify') @HttpCode(HttpStatus.OK) async verifyMfa(@Body() b:MfaVerify,@Req() req:RequestLike){
    const ip=this.clientIp(req),challenge=typeof b.challengeToken==='string'?b.challengeToken:'',key=`mfa:${ip}:${challenge.slice(-24)}`;
