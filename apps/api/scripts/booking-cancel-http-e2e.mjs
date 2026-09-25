@@ -60,12 +60,16 @@ try {
 
   closedTrip = await db.trip.create({ data: { title: 'Closed cancellation E2E', type: 'DIVE', startsAt: future, endsAt: futureEnd, capacity: 4, status: 'CLOSED' } });
   closedBooking = await db.booking.create({ data: { tripId: closedTrip.id, accountId: owner.account.id, seats: 1, status: 'PENDING' } });
+  const closedFixture = await db.booking.findUniqueOrThrow({ where: { id: closedBooking.id }, include: { trip: true } });
+  if (closedFixture.trip.status !== 'CLOSED') throw new Error(`Closed-trip fixture precondition failed: ${closedFixture.trip.status}`);
   r = await call(`/trips/bookings/${closedBooking.id}`, ownerToken);
   if (r.status !== 409) throw new Error(`Closed trip cancellation expected 409, got ${r.status}`);
   if ((await db.booking.findUniqueOrThrow({ where: { id: closedBooking.id } })).status !== 'PENDING') throw new Error('Closed-trip cancellation mutated booking');
 
   startedTrip = await db.trip.create({ data: { title: 'Started cancellation E2E', type: 'DIVE', startsAt: past, endsAt: pastEnd, capacity: 4, status: 'OPEN' } });
   startedBooking = await db.booking.create({ data: { tripId: startedTrip.id, accountId: owner.account.id, seats: 1, status: 'CONFIRMED' } });
+  const startedFixture = await db.booking.findUniqueOrThrow({ where: { id: startedBooking.id }, include: { trip: true } });
+  if (startedFixture.trip.status !== 'OPEN' || startedFixture.trip.startsAt > new Date()) throw new Error('Started-trip fixture precondition failed');
   r = await call(`/trips/bookings/${startedBooking.id}`, ownerToken);
   if (r.status !== 409) throw new Error(`Started trip cancellation expected 409, got ${r.status}`);
   if ((await db.booking.findUniqueOrThrow({ where: { id: startedBooking.id } })).status !== 'CONFIRMED') throw new Error('Started-trip cancellation mutated booking');
