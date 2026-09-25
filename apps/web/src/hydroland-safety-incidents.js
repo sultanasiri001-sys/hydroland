@@ -40,7 +40,7 @@
   const legacyReport=document.querySelector('[data-hl-incident]');if(legacyReport){legacyReport.disabled=false;legacyReport.textContent='فتح مركز البلاغات';legacyReport.title='';legacyReport.addEventListener('click',()=>open(state.role,true))}
   const legacyLog=document.querySelector('[data-hl-log]');if(legacyLog){legacyLog.disabled=false;legacyLog.textContent='عرض بلاغاتي';legacyLog.title='';legacyLog.addEventListener('click',()=>open(state.role,true))}
   document.addEventListener('hydroland:role-changed',event=>open(event.detail?.role||'diver'));
-  document.addEventListener('hydroland:auth-changed',()=>{if(!window.HydrolandAuth?.isAuthenticated?.())panel.hidden=true;else void refreshData()});
+  document.addEventListener('hydroland:auth-changed',()=>{if(!window.HydrolandAuth?.isAuthenticated?.())panel.hidden=true;else open(window.HydrolandPortalAccess?.getCurrentRole?.()||'diver')});
   const initial=window.HydrolandPortalAccess?.getCurrentRole?.()||'diver';if(window.HydrolandAuth?.isAuthenticated?.())open(initial);
   window.HydrolandSafetyIncidents={open,refresh:refreshData};
 })();
