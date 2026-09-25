@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+
+type UploadedCredentialFile={originalname:string;mimetype:string;buffer:Buffer;size:number};
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
@@ -52,7 +54,7 @@ export class CredentialsService {
     return {...credential,policyReview:{required:expired&&expiryPolicy.review,issues:expired?['DOCUMENT_EXPIRY']:[],states:{expiry:expiryPolicy.state}}};
   }
 
-  async uploadDocument(accountId:string,credentialId:string,file:Express.Multer.File){
+  async uploadDocument(accountId:string,credentialId:string,file:UploadedCredentialFile){
     const allowed=['application/pdf','image/jpeg','image/png'];
     if(!allowed.includes(file.mimetype)||!file.buffer?.length||file.buffer.length>10_000_000)throw new BadRequestException('Unsupported document.');
     const account=await this.db.account.findUniqueOrThrow({where:{id:accountId},select:{personId:true}});
