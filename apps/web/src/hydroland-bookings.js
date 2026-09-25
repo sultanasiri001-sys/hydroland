@@ -17,29 +17,46 @@
     if(!response.ok)throw new Error(body?.message||`تعذر تنفيذ الطلب (${response.status})`);
     return body;
   };
+  const bookingDialog=document.getElementById('booking-dialog');
+  const confirm=document.getElementById('confirm-booking');
+  let seatsInput=document.getElementById('booking-seats');
+  if(bookingDialog&&confirm&&!seatsInput){
+    const field=document.createElement('label');field.className='booking-seats-field';field.innerHTML='<span>عدد المقاعد</span><input id="booking-seats" type="number" min="1" step="1" value="1" inputmode="numeric" aria-label="عدد المقاعد"><small id="booking-seats-hint">مقعد واحد</small>';
+    confirm.insertAdjacentElement('beforebegin',field);seatsInput=field.querySelector('#booking-seats');
+  }
+  const syncSeats=trip=>{
+    if(!seatsInput)return;
+    const remaining=Math.max(1,Number(trip?.remainingSeats??trip?.capacity??1));
+    seatsInput.max=String(remaining);
+    const current=Number(seatsInput.value||1);seatsInput.value=String(Math.min(Math.max(1,current),remaining));
+    const hint=document.getElementById('booking-seats-hint');if(hint)hint.textContent=trip?`المتاح ${remaining} مقعد`:'اختر عدد المقاعد';
+  };
   const bindButtons=()=>{
     document.querySelectorAll('[data-book]').forEach(button=>{
       const title=button.dataset.book||'';
       const trip=state.trips.find(item=>normalize(item.title)===normalize(title));
-      if(trip){button.dataset.tripId=trip.id;button.title=`السعة ${trip.capacity} · ${new Date(trip.startsAt).toLocaleString('ar-SA')}`;button.addEventListener('click',()=>{const location=document.getElementById('booking-location');if(location)location.textContent=trip.location||trip.siteName||trip.meetingPoint||'حسب بيانات الرحلة';const safety=document.querySelector('#booking-dialog .booking-safety span');if(safety)safety.textContent=trip.safety?.decision||'REVIEW';},{capture:true});}
-      if(!button.dataset.hlBookingBound){button.dataset.hlBookingBound='1';button.addEventListener('click',()=>{state.selected=trip||null;},{capture:true});}
+      if(trip){button.dataset.tripId=trip.id;button.title=`السعة ${trip.capacity} · ${new Date(trip.startsAt).toLocaleString('ar-SA')}`;button.addEventListener('click',()=>{const location=document.getElementById('booking-location');if(location)location.textContent=trip.location||trip.siteName||trip.meetingPoint||'حسب بيانات الرحلة';const safety=document.querySelector('#booking-dialog .booking-safety span');if(safety)safety.textContent=trip.safety?.decision||'REVIEW';syncSeats(trip);},{capture:true});}
+      if(!button.dataset.hlBookingBound){button.dataset.hlBookingBound='1';button.addEventListener('click',()=>{state.selected=trip||null;syncSeats(trip||null);},{capture:true});}
     });
   };
   const loadTrips=async()=>{
     try{const trips=await request('/trips',{method:'GET',public:true});state.trips=Array.isArray(trips)?trips:[];bindButtons();}
     catch{bindButtons();}
   };
-  const confirm=document.getElementById('confirm-booking');
   if(confirm){confirm.addEventListener('click',async event=>{
     event.preventDefault();event.stopImmediatePropagation();
     if(!auth()?.isAuthenticated?.()){toast('سجّل الدخول أولًا لإتمام الحجز');return;}
     const title=document.getElementById('booking-title')?.textContent||'';
     const trip=state.selected||state.trips.find(item=>normalize(item.title)===normalize(title));
     if(!trip){toast('هذه الرحلة غير متاحة في قاعدة البيانات بعد');return;}
+    const seats=Number(seatsInput?.value||1),remaining=Number(trip.remainingSeats??trip.capacity??0);
+    if(!Number.isInteger(seats)||seats<1){toast('اختر عدد مقاعد صحيح');seatsInput?.focus();return;}
+    if(remaining>0&&seats>remaining){toast(`المتاح حاليًا ${remaining} مقعد فقط`);seatsInput?.focus();return;}
     confirm.disabled=true;const original=confirm.textContent;confirm.textContent='جارٍ حفظ الحجز...';
     try{
-      const booking=await request(`/trips/${encodeURIComponent(trip.id)}/bookings`,{method:'POST',body:JSON.stringify({seats:1})});
-      document.getElementById('booking-dialog')?.close();
+      const booking=await request(`/trips/${encodeURIComponent(trip.id)}/bookings`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seats})});
+      bookingDialog?.close();
+      if(seatsInput)seatsInput.value='1';
       toast(booking?.status?`تم إنشاء الحجز بنجاح · الحالة ${booking.status}`:'تم إنشاء الحجز بنجاح');
       window.dispatchEvent(new CustomEvent('hydroland:booking-created',{detail:booking}));
     }catch(error){toast(error instanceof Error?error.message:'تعذر إنشاء الحجز');}
