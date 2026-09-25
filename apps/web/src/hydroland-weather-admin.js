@@ -37,7 +37,9 @@
   panel.querySelector('[data-weather-toggle]')?.addEventListener('click',()=>save({enabled:panel.dataset.enabled!=='true'}));
   panel.querySelector('[data-weather-advisory]')?.addEventListener('click',()=>save({mode:'ADVISORY'}));
   panel.querySelector('[data-weather-enforce]')?.addEventListener('click',()=>save({mode:'ENFORCE'}));
-  document.addEventListener('hydroland:role-changed',e=>{const active=e.detail?.role==='admin';panel.hidden=!active;if(active)load()});
+  const applyRole=role=>{const active=role==='admin';panel.hidden=!active;if(active)load()};
+  document.addEventListener('hydroland:role-changed',e=>applyRole(e.detail?.role));
   document.addEventListener('hydroland:auth-changed',()=>{if(!panel.hidden)load()});
   document.addEventListener('hydroland:trip-location-changed',()=>{if(!panel.hidden)loadTrips()});
+  applyRole(window.HydrolandPortalAccess?.getCurrentRole?.()||'diver');
 })();
