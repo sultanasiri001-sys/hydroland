@@ -60,3 +60,25 @@ test('credential can be created, documented, privately opened and submitted from
   await expect(credentialArticle.getByRole('button',{name:'إرسال للتحقق'})).toHaveCount(0);
   await expect(credentialArticle.getByRole('button',{name:'عرض المستند'})).toBeVisible();
 });
+
+test('admin can review pending credential evidence and approve it from the browser',async({page})=>{
+  const pending=[{id:'pending-credential',issuer:'HYDROLAND E2E',title:'Pending Rescue Credential',verificationStatus:'PENDING',person:{firstName:'Diver',lastName:'One',account:{email:'diver@hydroland.test'}},documents:[{id:'pending-document',originalName:'evidence.pdf',mimeType:'application/pdf',byteSize:128,status:'UPLOADED',createdAt:new Date().toISOString()}]}];
+  let reviewAccess=0,decision=null;
+  const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)}),authorized=request=>request.headers().authorization==='Bearer e2e-access';
+  const profile={id:'admin-web-e2e',email:'admin@hydroland.test',status:'ACTIVE',roleAssignments:[{id:'admin-role',role:'ADMIN',status:'ACTIVE'}],person:{firstName:'Admin',lastName:'Reviewer',professional:null}};
+  await page.route(/\/api\/v1\/me$/,route=>authorized(route.request())?json(route,profile):json(route,{message:'Unauthorized'},401));
+  await page.route(/\/api\/v1\/me\/diver-profile$/,route=>json(route,{profile:null,equipment:[]}));
+  await page.route(/\/api\/v1\/credentials$/,route=>json(route,[]));
+  await page.route(/\/api\/v1\/admin\/overview$/,route=>json(route,{pendingReviews:1,activeBookings:0,accounts:1,openTrips:0}));
+  await page.route(/\/api\/v1\/admin\/review-queue$/,route=>json(route,[]));
+  await page.route(/\/api\/v1\/credentials\/admin\/pending$/,route=>json(route,pending));
+  await page.route(/\/api\/v1\/credentials\/admin\/pending-credential\/documents\/pending-document\/access$/,route=>{reviewAccess++;return json(route,{url:'about:blank#review-signed-document',expiresAt:new Date(Date.now()+300000).toISOString()})});
+  await page.route(/\/api\/v1\/credentials\/admin\/pending-credential\/decision$/,route=>{decision=route.request().postDataJSON();pending.length=0;return json(route,{id:'pending-credential',verificationStatus:decision.outcome})});
+
+  await page.goto('/',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&document.querySelector('.hl-admin')));
+  await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','e2e-access');sessionStorage.setItem('hl-refresh-token','e2e-refresh');window.HydrolandAuth.syncAuthUi();await window.HydrolandProfile.load()});
+  await page.locator('#role-switch').click();await page.locator('#role-dialog [data-role="admin"]').click();
+  const admin=page.locator('.hl-admin');await expect(admin).toBeVisible();const card=admin.locator('[data-credential-review="pending-credential"]');await expect(card).toContainText('Pending Rescue Credential');
+  const accessRequest=page.waitForRequest(request=>request.url().includes('/credentials/admin/pending-credential/documents/pending-document/access'));await card.getByRole('button',{name:/عرض: evidence\.pdf/}).click();await accessRequest;expect(reviewAccess).toBe(1);
+  await card.getByRole('button',{name:'اعتماد الشهادة'}).click();await expect.poll(()=>decision?.outcome).toBe('VERIFIED');await expect(admin.locator('[data-credential-review-list]')).toContainText('لا توجد شهادات بانتظار المراجعة');
+});
