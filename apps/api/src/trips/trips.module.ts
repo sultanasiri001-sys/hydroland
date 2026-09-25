@@ -39,11 +39,12 @@ import { TripsController } from './trips.controller';
 import { TripsService } from './trips.service';
 import { WeatherGateController } from './weather-gate.controller';
 import { WeatherGateService } from './weather-gate.service';
+import { StormglassWeatherService } from './stormglass-weather.service';
 
 @Module({
   imports: [AuthModule, AdminModule, AuditModule, NotificationsModule, MarineOperationsModule],
   controllers: [TripsController,TripAdminController,TripCompletionController,WeatherGateController,CalendarAllocationController,CrewAssignmentController,PolicyControlController,BoatComplianceController,TripComplianceController,EquipmentInspectionController,EquipmentInventoryController,InventoryStocktakeController,EquipmentRentalController,EquipmentRentalAdminController,EquipmentRentalHandoverController],
-  providers: [TripsService,TripAdminService,TripCompletionService,WeatherGateService,CalendarAllocationService,CalendarResourceService,CrewAssignmentService,CrewEscalationScheduler,OperationalClearanceService,OperationalClearanceScheduler,BookingParticipantService,PolicyControlService,BoatComplianceService,TripComplianceService,EquipmentInspectionService,EquipmentInventoryService,InventoryStocktakeService,EquipmentRentalService,EquipmentRentalAdminService,EquipmentRentalHandoverService],
+  providers: [TripsService,TripAdminService,TripCompletionService,WeatherGateService,StormglassWeatherService,CalendarAllocationService,CalendarResourceService,CrewAssignmentService,CrewEscalationScheduler,OperationalClearanceService,OperationalClearanceScheduler,BookingParticipantService,PolicyControlService,BoatComplianceService,TripComplianceService,EquipmentInspectionService,EquipmentInventoryService,InventoryStocktakeService,EquipmentRentalService,EquipmentRentalAdminService,EquipmentRentalHandoverService],
   exports: [PolicyControlService,BoatComplianceService,TripComplianceService,EquipmentInspectionService,EquipmentInventoryService,InventoryStocktakeService,EquipmentRentalService],
 })
 export class TripsModule {}
