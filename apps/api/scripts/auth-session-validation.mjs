@@ -13,6 +13,13 @@ const requiredService=[
   "updateMany({where:{id:session.id,revokedAt:null,expiresAt:{gt:new Date()}}",
   "if(consumed.count!==1)throw new UnauthorizedException('Invalid session.')",
   "updateMany({where:{tokenHash:this.tokenHash(token),revokedAt:null},data:{revokedAt:new Date()}})",
+  "where:{id:claims.sessionId,accountId:claims.accountId,revokedAt:null,expiresAt:{gt:new Date()}}",
+  "return{accountId:session.account.id,sessionId:session.id}",
+  "const session=await this.db.session.create",
+  "accessToken:this.access(accountId,session.id)",
+  "sid:sessionId",
+  "typeof claims.sid!=='string'||!claims.sid",
+  "return{accountId:claims.sub,sessionId:claims.sid}",
   "exp:now+900",
   "expiresAt:new Date(Date.now()+2592000000)"
 ];
@@ -36,4 +43,4 @@ assert.ok(issueStart>=0,'issue() method must exist');
 const issueBody=service.slice(issueStart);
 assert.ok(issueBody.includes('tokenHash:this.tokenHash(refreshToken)'),'Refresh token must be stored hashed');
 assert.ok(!/data:\s*\{[^}]*refreshToken\s*[:},]/s.test(issueBody),'Raw refresh token must not be persisted in session data');
-console.log('Validated session lifecycle invariants: expiry, one-time refresh rotation, replay/race rejection, logout revocation, fail-closed web refresh and login recovery.');
+console.log('Validated session lifecycle invariants: expiry, one-time refresh rotation, replay/race rejection, logout revocation, session-bound access tokens, and fail-closed web recovery.');
