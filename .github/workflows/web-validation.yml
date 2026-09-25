@@ -10,6 +10,7 @@ on:
     branches: [main]
     paths:
       - 'apps/web/**'
+      - '.github/workflows/web-validation.yml'
 
 jobs:
   validate:
