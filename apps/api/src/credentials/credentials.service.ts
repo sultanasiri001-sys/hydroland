@@ -64,7 +64,7 @@ export class CredentialsService {
     const existing=await this.db.document.findUnique({where:{sha256}});
     if(existing)throw new ConflictException('Document already uploaded.');
     const storageKey=`credential/${credentialId}/${sha256}`;
-    const document=await this.db.document.create({data:{credentialId,ownerId:account.personId,storageKey,originalName:file.originalname,mimeType:file.mimetype,byteSize:file.buffer.length,sha256,content:file.buffer,status:'UPLOADED'}});
+    const document=await this.db.document.create({data:{credentialId,ownerId:account.personId,storageKey,originalName:file.originalname,mimeType:file.mimetype,byteSize:file.buffer.length,sha256,content:new Uint8Array(file.buffer),status:'UPLOADED'}});
     await this.audit.record({action:'CREDENTIAL_DOCUMENT_UPLOADED',resource:'Credential',resourceId:credentialId,metadata:{accountId,documentId:document.id,mimeType:document.mimeType,byteSize:document.byteSize,sha256}});
     return {id:document.id,credentialId:document.credentialId,originalName:document.originalName,mimeType:document.mimeType,byteSize:document.byteSize,sha256:document.sha256,status:document.status,createdAt:document.createdAt};
   }
