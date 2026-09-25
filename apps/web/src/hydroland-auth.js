@@ -46,12 +46,15 @@
   };
   const configurePanel=panel=>{
     const emailLabel=panel.querySelector('.hl-auth-email');
+    const email=panel.querySelector('input[name="email"]');
     const password=panel.querySelector('input[name="password"]');
     const submit=panel.querySelector('.hl-auth-submit');
     const forgot=panel.querySelector('.hl-auth-forgot');
     const resend=panel.querySelector('.hl-auth-resend');
     const reset=state.mode==='reset';
     emailLabel.hidden=reset;
+    email.disabled=reset;
+    email.required=!reset;
     password.autocomplete=state.mode==='login'?'current-password':'new-password';
     submit.textContent=reset?'تعيين كلمة مرور جديدة':state.mode==='register'?'إنشاء الحساب':'دخول آمن';
     forgot.hidden=state.mode!=='login';
