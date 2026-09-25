@@ -38,16 +38,22 @@ test('logout is local-first and protected state stays cleared', async ({ page })
   await page.locator('#profile-open').click();
   const logoutButton=page.locator('#profile-dialog [data-hl-action="logout"]');
   await expect(logoutButton).toBeVisible();
-  await logoutButton.evaluate(button => button.click());
-  await expect(logoutButton).toBeDisabled();
+  const clickState=await logoutButton.evaluate(button => {
+    button.click();
+    return {
+      disabled:button.disabled,
+      access:sessionStorage.getItem('hl-access-token'),
+      refresh:sessionStorage.getItem('hl-refresh-token'),
+      dialogOpen:document.getElementById('profile-dialog')?.open
+    };
+  });
+  expect(clickState).toEqual({disabled:true,access:null,refresh:null,dialogOpen:false});
 
   await expect.poll(() => page.evaluate(() => ({
-    access:sessionStorage.getItem('hl-access-token'),
-    refresh:sessionStorage.getItem('hl-refresh-token'),
     profile:Boolean(window.HydrolandProfileData),
     dashboard:Boolean(document.querySelector('.hl-role-dashboard')),
     loginHidden:document.querySelector('.hl-login')?.classList.contains('hidden')
-  }))).toEqual({access:null,refresh:null,profile:false,dashboard:false,loginHidden:false});
+  }))).toEqual({profile:false,dashboard:false,loginHidden:false});
 });
 
 test('pageshow fails closed when the session is absent', async ({ page }) => {
