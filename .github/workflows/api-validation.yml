@@ -32,10 +32,13 @@ jobs:
       # Legacy migration history contains pre-production migrations whose original SQL
       # cannot bootstrap a clean database (for example TEXT -> UUID FK drift).
       # Historical files are immutable and production already has repaired/applied state.
-      # CI therefore validates the canonical Prisma schema on an ephemeral clean database.
+      # CI therefore validates the canonical Prisma schema on an ephemeral clean database,
+      # then restores raw-SQL operational extensions from their production migration definitions.
       # Forward migration immutability is enforced separately by Production Release Gate.
       - name: Bootstrap canonical schema on clean PostgreSQL
         run: npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+      - name: Bootstrap raw equipment operational schema
+        run: node apps/api/scripts/bootstrap-equipment-runtime-schema.mjs
       - run: npm run validate:hr -w @hydroland/api
       - run: npm run validate:operations -w @hydroland/api
       - run: npm run validate:admin-affairs -w @hydroland/api
@@ -106,6 +109,11 @@ jobs:
           FINANCE_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/finance-http-e2e.mjs
           if ! PROFILE_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/profile-account-http-e2e.mjs; then
             echo "Profile/Account HTTP/DB E2E failed; API log follows"
+            cat /tmp/hydroland-api.log
+            exit 1
+          fi
+          if ! EQUIPMENT_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/equipment-runtime-http-e2e.mjs; then
+            echo "Equipment HTTP/DB E2E failed; API log follows"
             cat /tmp/hydroland-api.log
             exit 1
           fi
