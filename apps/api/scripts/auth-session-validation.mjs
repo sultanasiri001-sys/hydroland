@@ -17,6 +17,17 @@ const requiredService=[
   "type RegistrationResult={email:string;status:'PENDING_VERIFICATION';requiresEmailVerification:true}",
   "async register(input:Credentials):Promise<RegistrationResult>",
   "return{email:account.email,status:'PENDING_VERIFICATION',requiresEmailVerification:true}",
+  "await this.replaceChallenge(tx,created.id,'VERIFY_EMAIL',VERIFY_TTL_MS)",
+  "async requestEmailVerification(emailInput:string)",
+  "async confirmEmailVerification(token:string):Promise<Tokens>",
+  "async requestPasswordReset(emailInput:string)",
+  "async resetPassword(token:string,newPassword:string)",
+  "AUTH_EMAIL_VERIFICATION",
+  "AUTH_PASSWORD_RESET",
+  "hydroland-auth-challenge.",
+  "status:'PENDING'},data:{status:'READ'}",
+  "session.updateMany({where:{accountId:claims.accountId,revokedAt:null}",
+  "materializePendingChallenge",
   "if(account.status!=='ACTIVE')throw new UnauthorizedException('Account activation is required.')",
   "if(!account.emailVerifiedAt)throw new UnauthorizedException('Email verification is required.')",
   "if(await this.mfa.isEnabled(account.id))return this.mfa.beginChallenge(account.id)",
@@ -37,19 +48,21 @@ const requiredService=[
   "exp:now+900",
   "expiresAt:new Date(Date.now()+2592000000)"
 ];
-for(const marker of requiredService) assert.ok(service.includes(marker),`Missing session/registration invariant: ${marker}`);
+for(const marker of requiredService) assert.ok(service.includes(marker),`Missing session/registration/recovery invariant: ${marker}`);
 
 const requiredController=[
   "@Post('register')","@Post('refresh')","@Post('logout')",'HttpStatus.NO_CONTENT',
-  'const MAX_LOGIN_FAILURES=10','const MAX_REGISTRATION_ATTEMPTS=5','const MAX_MFA_FAILURES=5','const MAX_RATE_BUCKETS=5000',
+  "@Post('email-verification/request')","@Post('email-verification/confirm')","@Post('password-reset/request')","@Post('password-reset/confirm')",
+  'const MAX_LOGIN_FAILURES=10','const MAX_REGISTRATION_ATTEMPTS=5','const MAX_PUBLIC_ACTIONS=5','const MAX_MFA_FAILURES=5','const MAX_RATE_BUCKETS=5000',
   "key=`register:${ip}`",'this.isLimited(registrationAttempts,key,MAX_REGISTRATION_ATTEMPTS)','this.increment(registrationAttempts,key,WINDOW_MS)',
   "action:'AUTH_REGISTER_RATE_LIMITED'","action:'AUTH_REGISTER_SUCCEEDED'","action:'AUTH_REGISTER_FAILED'",
   'this.isLimited(loginFailures,key,MAX_LOGIN_FAILURES)',"action:'AUTH_LOGIN_RATE_LIMITED'",
+  'this.isLimited(publicActions,key,MAX_PUBLIC_ACTIONS)',"action:'AUTH_EMAIL_VERIFICATION_REQUESTED'","action:'AUTH_PASSWORD_RESET_REQUESTED'",
   "@Post('mfa/verify')",'this.isLimited(mfaFailures,key,MAX_MFA_FAILURES)',"action:'AUTH_MFA_RATE_LIMITED'","action:'AUTH_MFA_SUCCEEDED'","action:'AUTH_MFA_FAILED'",
   "@Get('mfa/status')","@Post('mfa/totp/setup')","@Post('mfa/totp/confirm')","@Post('mfa/disable')",
   'private ensureCapacity(bucket:Map<string,RateEntry>,now:number)','while(bucket.size>=MAX_RATE_BUCKETS)'
 ];
-for(const marker of requiredController) assert.ok(controller.includes(marker),`Missing auth abuse/MFA invariant: ${marker}`);
+for(const marker of requiredController) assert.ok(controller.includes(marker),`Missing auth abuse/recovery/MFA invariant: ${marker}`);
 assert.ok(!controller.includes('const attempts=new Map'),'Legacy unbounded shared login attempt map must not return.');
 
 for(const marker of [
@@ -67,16 +80,18 @@ const registerBody=service.slice(registerStart,loginStart);
 assert.ok(!registerBody.includes('this.issue('),'Registration must not issue a session before verification.');
 assert.ok(!registerBody.includes('accessToken'),'Registration must not return an access token.');
 assert.ok(!registerBody.includes('refreshToken'),'Registration must not return a refresh token.');
+assert.ok(!service.includes("payload:{purpose,expiresAt:expiresAt.toISOString(),delivery:'EMAIL',version:1,token"),'Raw auth challenge token must not be persisted in notification payload');
 
 const requiredWeb=[
   "if(state.refreshPromise)return state.refreshPromise","if(response.status!==401)return response","access=await refreshSession()",
   "if(response.status===401){clearSession();emitAuthChanged();showLogin('انتهت الجلسة، سجّل الدخول من جديد')}","if(state.mode==='register')",
   "body?.status!=='PENDING_VERIFICATION'||body?.requiresEmailVerification!==true","clearSession();clearProtectedView();setAuthUi(false);emitAuthChanged()",
-  "تم إنشاء الحساب. يلزم التحقق من البريد الإلكتروني قبل تسجيل الدخول","storeTokens(body);setAuthUi(true)","setTimeout(emitAuthChanged,0)","fetch(`${API_BASE}/auth/logout`"
+  "تم إنشاء الحساب. يلزم التحقق من البريد الإلكتروني قبل تسجيل الدخول","storeTokens(body);setAuthUi(true)","setTimeout(emitAuthChanged,0)","fetch(`${API_BASE}/auth/logout`",
+  "params.get('reset_token')","searchParams.get('verify_email')","'/auth/email-verification/confirm'","'/auth/password-reset/confirm'","requestEmailVerification","requestPasswordReset"
 ];
 for(const marker of requiredWeb) assert.ok(web.includes(marker),`Missing web lifecycle marker: ${marker}`);
 
 const issueStart=service.indexOf('private async issue(accountId:string)');assert.ok(issueStart>=0,'issue() method must exist');const issueBody=service.slice(issueStart);
 assert.ok(issueBody.includes('tokenHash:this.tokenHash(refreshToken)'),'Refresh token must be stored hashed');
 assert.ok(!/data:\s*\{[^}]*refreshToken\s*[:},]/s.test(issueBody),'Raw refresh token must not be persisted in session data');
-console.log('Validated auth invariants: registration is sessionless, abuse controls are bounded, MFA challenges gate session issuance, TOTP secrets are protected, recovery codes are hashed, refresh/logout revoke immediately, and the web remains fail-closed.');
+console.log('Validated auth invariants: registration is sessionless until one-time email verification, recovery tokens are purpose-bound and non-persisted, password reset revokes all sessions, abuse controls are bounded, MFA challenges gate login session issuance, TOTP secrets are protected, and the web remains fail-closed.');
