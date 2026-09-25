@@ -5,7 +5,9 @@ const base=process.env.AUTH_SESSION_E2E_BASE_URL||process.env.RBAC_E2E_BASE_URL|
 const suffix=Date.now().toString();
 const email=`auth-session-${suffix}@example.invalid`;
 const password='Hydroland-Session-E2E-2026!';
+const abuseIp='198.51.100.77';
 let account=null;
+const abuseAccounts=[];
 
 const jsonRequest=async(path,options={})=>{
   const response=await fetch(base+path,options);
@@ -88,8 +90,38 @@ try{
   if(sessions.length!==2)throw new Error(`Expected 2 login/rotated sessions, found ${sessions.length}`);
   if(sessions.some(session=>!session.revokedAt))throw new Error('Expected both consumed/logged-out sessions to be revoked.');
 
-  console.log('Auth session HTTP/DB E2E passed: registration is sessionless until activation+verification, then access tokens are session-bound and immediately revoked by refresh rotation/logout.');
+  for(let index=0;index<5;index++){
+    const abuseEmail=`auth-register-abuse-${suffix}-${index}@example.invalid`;
+    result=await jsonRequest('/auth/register',{
+      method:'POST',
+      headers:{'content-type':'application/json','x-forwarded-for':abuseIp},
+      body:JSON.stringify({email:abuseEmail,password})
+    });
+    if(!result.response.ok)throw new Error(`Registration abuse-control setup ${index+1}/5 failed: ${result.response.status} ${JSON.stringify(result.body)}`);
+    const created=await db.account.findUnique({where:{email:abuseEmail}});
+    if(!created)throw new Error(`Registration abuse-control account ${index+1} was not persisted.`);
+    abuseAccounts.push(created);
+  }
+  const blockedEmail=`auth-register-abuse-${suffix}-blocked@example.invalid`;
+  result=await jsonRequest('/auth/register',{
+    method:'POST',
+    headers:{'content-type':'application/json','x-forwarded-for':abuseIp},
+    body:JSON.stringify({email:blockedEmail,password})
+  });
+  if(result.response.status!==429)throw new Error(`Sixth registration from one IP expected 429, got ${result.response.status}`);
+  if(await db.account.findUnique({where:{email:blockedEmail}}))throw new Error('Rate-limited registration unexpectedly created an account.');
+  const abuseAudit=await db.auditEvent.findMany({where:{action:{in:['AUTH_REGISTER_SUCCEEDED','AUTH_REGISTER_RATE_LIMITED']}}});
+  const matchingAudit=abuseAudit.filter(event=>event.metadata&&typeof event.metadata==='object'&&!Array.isArray(event.metadata)&&event.metadata.ip===abuseIp);
+  if(matchingAudit.filter(event=>event.action==='AUTH_REGISTER_SUCCEEDED').length!==5)throw new Error('Expected five successful registration audit events for the limited IP.');
+  if(matchingAudit.filter(event=>event.action==='AUTH_REGISTER_RATE_LIMITED').length!==1)throw new Error('Expected one rate-limited registration audit event for the limited IP.');
+
+  console.log('Auth session HTTP/DB E2E passed: registration is sessionless until activation+verification, access tokens revoke immediately, and registration abuse is limited/audited at five attempts per IP window.');
 } finally {
+  for(const created of abuseAccounts.reverse()){
+    await db.session.deleteMany({where:{accountId:created.id}});
+    await db.account.delete({where:{id:created.id}}).catch(()=>{});
+    await db.person.delete({where:{id:created.personId}}).catch(()=>{});
+  }
   if(account){
     await db.session.deleteMany({where:{accountId:account.id}});
     const personId=account.personId;
