@@ -353,6 +353,7 @@ model Document {
   mimeType String
   byteSize Int
   sha256 String @unique
+  content Bytes?
   status DocumentStatus @default(UPLOADED)
   createdAt DateTime @default(now())
   archivedAt DateTime?
