@@ -49,4 +49,7 @@
   if(root)new MutationObserver(()=>queueMicrotask(connect)).observe(root,{childList:true});
   connect();
   window.HydrolandRoleTasks={refresh:connect};
+  const freshnessScript=document.createElement('script');
+  freshnessScript.src='./hydroland-portal-access-freshness.js';
+  document.body.appendChild(freshnessScript);
 })();
