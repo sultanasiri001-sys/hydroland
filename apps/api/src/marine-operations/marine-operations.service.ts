@@ -1,10 +1,17 @@
-import {BadRequestException,Injectable,NotFoundException} from '@nestjs/common';
+import {BadRequestException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {DatabaseService} from '../database/database.service';
 import {MARINE_ASSET_TYPES,REQUIRED_MARINE_DOCUMENTS,MarineAssetType,MarineReadinessResult} from './marine-operations.domain';
 
 @Injectable()
 export class MarineOperationsService{
  constructor(private readonly db:DatabaseService){}
+ private async requireMember(accountId:string,organizationId:string,write=false){
+  const member=await this.db.organizationMember.findUnique({where:{organizationId_accountId:{organizationId,accountId}}});
+  if(!member||member.status!=='ACTIVE')throw new ForbiddenException('Active organization membership required.');
+  if(write&&!['OWNER','ADMIN','OPERATOR','STAFF'].includes(member.role))throw new ForbiddenException('Marine asset write scope required.');
+  return member;
+ }
+ private parseExpiry(value?:string){if(!value)return null;const date=new Date(value);if(Number.isNaN(date.getTime()))throw new BadRequestException('Invalid document expiry date.');return date;}
  async createAsset(input:{organizationId:string;name:string;assetType:MarineAssetType;registrationNumber?:string;passengerCapacity?:number}){
   if(!MARINE_ASSET_TYPES.includes(input.assetType))throw new BadRequestException('Unsupported marine asset type.');
   if(!input.name?.trim())throw new BadRequestException('Marine asset name is required.');
@@ -12,6 +19,34 @@ export class MarineOperationsService{
   const org=await this.db.organization.findUnique({where:{id:input.organizationId},select:{id:true}});
   if(!org)throw new NotFoundException('Organization not found.');
   return this.db.marineAsset.create({data:{...input,name:input.name.trim(),registrationNumber:input.registrationNumber?.trim()||null}});
+ }
+ async createOwnedAsset(accountId:string,input:{organizationId:string;name:string;assetType:MarineAssetType;registrationNumber?:string;passengerCapacity?:number}){
+  await this.requireMember(accountId,input.organizationId,true);
+  return this.createAsset(input);
+ }
+ async listMine(accountId:string){
+  const memberships=await this.db.organizationMember.findMany({where:{accountId,status:'ACTIVE'},select:{organizationId:true,role:true}});
+  const ids=memberships.map(x=>x.organizationId);if(!ids.length)return[];
+  return this.db.marineAsset.findMany({where:{organizationId:{in:ids}},include:{documents:{orderBy:{updatedAt:'desc'}},maintenance:{orderBy:{updatedAt:'desc'}}},orderBy:{updatedAt:'desc'}});
+ }
+ async addDocument(accountId:string,marineAssetId:string,input:{documentType:string;referenceNumber?:string;expiresAt?:string}){
+  const asset=await this.db.marineAsset.findUnique({where:{id:marineAssetId},select:{id:true,organizationId:true}});if(!asset)throw new NotFoundException('Marine asset not found.');
+  await this.requireMember(accountId,asset.organizationId,true);
+  if(!(REQUIRED_MARINE_DOCUMENTS as readonly string[]).includes(input.documentType))throw new BadRequestException('Unsupported marine document type.');
+  return this.db.marineAssetDocument.create({data:{marineAssetId,documentType:input.documentType,referenceNumber:input.referenceNumber?.trim()||null,expiresAt:this.parseExpiry(input.expiresAt),status:'PENDING',verifiedAt:null}});
+ }
+ async updateDocument(accountId:string,marineAssetId:string,documentId:string,input:{referenceNumber?:string;expiresAt?:string}){
+  const doc=await this.db.marineAssetDocument.findFirst({where:{id:documentId,marineAssetId},include:{marineAsset:{select:{organizationId:true}}}});if(!doc)throw new NotFoundException('Marine document not found.');
+  await this.requireMember(accountId,doc.marineAsset.organizationId,true);
+  if(doc.status==='VERIFIED')throw new BadRequestException('Verified marine documents cannot be edited.');
+  return this.db.marineAssetDocument.update({where:{id:documentId},data:{...(input.referenceNumber!==undefined?{referenceNumber:input.referenceNumber.trim()||null}:{}),...(input.expiresAt!==undefined?{expiresAt:this.parseExpiry(input.expiresAt)}:{}),status:'PENDING',verifiedAt:null}});
+ }
+ async pendingDocuments(){return this.db.marineAssetDocument.findMany({where:{status:'PENDING'},include:{marineAsset:true},orderBy:{createdAt:'asc'},take:200});}
+ async decideDocument(documentId:string,outcome:'VERIFIED'|'REJECTED'){
+  if(!['VERIFIED','REJECTED'].includes(outcome))throw new BadRequestException('Invalid marine document decision.');
+  const doc=await this.db.marineAssetDocument.findUnique({where:{id:documentId}});if(!doc)throw new NotFoundException('Marine document not found.');
+  if(doc.status!=='PENDING')throw new BadRequestException('Marine document is not awaiting review.');
+  return this.db.marineAssetDocument.update({where:{id:documentId},data:{status:outcome,verifiedAt:outcome==='VERIFIED'?new Date():null}});
  }
  async linkCalendarResource(marineAssetId:string,resourceId:string){
   const [asset,resource]=await Promise.all([this.db.marineAsset.findUnique({where:{id:marineAssetId}}),this.db.calendarResource.findUnique({where:{id:resourceId}})]);
