@@ -19,6 +19,10 @@ try{
   let r=await fetch(base+'/admin/overview'); if(r.status!==401)throw new Error('Anonymous admin route expected 401, got '+r.status);
   r=await fetch(base+'/admin/overview',{headers:auth(ta)}); if(r.status!==403)throw new Error('Normal user admin route expected 403, got '+r.status);
   r=await fetch(base+'/admin/overview',{headers:auth(tadmin)}); if(!r.ok)throw new Error('Admin route rejected active ADMIN: '+r.status+' '+await r.text());
+  await db.roleAssignment.update({where:{accountId_role:{accountId:admin.id,role:'ADMIN'}},data:{status:'SUSPENDED'}});
+  r=await fetch(base+'/admin/overview',{headers:auth(tadmin)}); if(r.status!==403)throw new Error('Same-session revoked ADMIN expected 403, got '+r.status);
+  await db.roleAssignment.update({where:{accountId_role:{accountId:admin.id,role:'ADMIN'}},data:{status:'ACTIVE'}});
+  r=await fetch(base+'/admin/overview',{headers:auth(tadmin)}); if(!r.ok)throw new Error('Reactivated ADMIN route failed: '+r.status+' '+await r.text());
 
   trip=await db.trip.create({data:{title:'RBAC ownership E2E '+suffix,type:'BOAT_DIVE',startsAt:new Date(Date.now()+86400000),endsAt:new Date(Date.now()+90000000),capacity:4,status:'OPEN'}});
   const booking=await db.booking.create({data:{tripId:trip.id,accountId:userA.id,seats:1,status:'PENDING'}});
@@ -34,7 +38,7 @@ try{
   r=await fetch(base+'/trips/bookings/'+booking.id+'/participants/'+participant.id,{method:'PATCH',headers:{...auth(ta),'content-type':'application/json'},body:JSON.stringify({fullName:'Owner Updated'})}); if(!r.ok)throw new Error('Owner participant update failed '+r.status+' '+await r.text());
   r=await fetch(base+'/trips/bookings/'+booking.id,{method:'DELETE',headers:auth(ta)}); if(!r.ok)throw new Error('Owner cancellation failed '+r.status+' '+await r.text());
   const cancelled=await db.booking.findUniqueOrThrow({where:{id:booking.id}}); if(cancelled.status!=='CANCELLED')throw new Error('Owner cancellation not persisted');
-  console.log('Runtime RBAC/ownership E2E passed: admin isolation, cross-user read/update/cancel denial, owner success.');
+  console.log('Runtime RBAC/ownership E2E passed: admin isolation, same-session role revocation/reactivation, cross-user read/update/cancel denial, owner success.');
 } finally {
   if(trip){await db.auditEvent.deleteMany({where:{resourceId:{in:(await db.bookingParticipant.findMany({where:{booking:{tripId:trip.id}},select:{id:true}})).map(x=>x.id)}}});await db.bookingParticipant.deleteMany({where:{booking:{tripId:trip.id}}});await db.auditEvent.deleteMany({where:{resource:'Booking',metadata:{path:['tripId'],equals:trip.id}}}).catch(()=>{});await db.booking.deleteMany({where:{tripId:trip.id}});await db.trip.delete({where:{id:trip.id}}).catch(()=>{});}
   for(const a of [admin,userB,userA].filter(Boolean)){await db.roleAssignment.deleteMany({where:{accountId:a.id}});await db.session.deleteMany({where:{accountId:a.id}});await db.account.delete({where:{id:a.id}}).catch(()=>{});}
