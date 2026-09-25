@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-const store=await readFile(resolve('apps/web/src/hydroland-store.js'),'utf8');
+const store=await readFile(resolve('src/hydroland-store.js'),'utf8');
 for(const marker of [
   "/store/orders'",
   '/store/orders/${encodeURIComponent(orderId)}/payment',
