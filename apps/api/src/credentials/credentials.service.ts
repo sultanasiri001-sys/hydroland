@@ -30,7 +30,7 @@ export class CredentialsService {
   async list(accountId:string){
     const a=await this.db.account.findUniqueOrThrow({where:{id:accountId},select:{personId:true}});
     const [verificationPolicy,expiryPolicy]=await Promise.all([this.policies.decision('DOCUMENT','VERIFICATION'),this.policies.decision('DOCUMENT','EXPIRY')]);
-    const rows=await this.db.credential.findMany({where:{personId:a.personId},include:{documents:true},orderBy:{createdAt:'desc'}}) as CredentialWithDocuments[];
+    const rows=await this.db.credential.findMany({where:{personId:a.personId},include:{documents:{select:{id:true,credentialId:true,ownerId:true,storageKey:true,originalName:true,mimeType:true,byteSize:true,sha256:true,status:true,createdAt:true,archivedAt:true}}},orderBy:{createdAt:'desc'}}) as CredentialWithDocuments[];
     const now=new Date();
     return rows.map((credential:CredentialWithDocuments)=>{
       const verified=['VERIFIED','DOCUMENT_VERIFIED'].includes(credential.verificationStatus),expired=Boolean(credential.expiresAt&&credential.expiresAt<=now),issues:string[]=[];
@@ -90,21 +90,22 @@ export class CredentialsService {
   async submit(accountId:string,credentialId:string){
     const verificationPolicy=await this.policies.decision('DOCUMENT','VERIFICATION');
     const a=await this.db.account.findUniqueOrThrow({where:{id:accountId},select:{personId:true}});
-    const credential=await this.db.credential.findFirst({where:{id:credentialId,personId:a.personId,verificationStatus:'UNVERIFIED'},include:{documents:true}});
+    const credential=await this.db.credential.findFirst({where:{id:credentialId,personId:a.personId,verificationStatus:'UNVERIFIED'},include:{documents:{select:{id:true,content:true,status:true}}}});
     if(!credential)throw new NotFoundException('Credential cannot be submitted.');
-    if(verificationPolicy.enforce&&!credential.documents.length)throw new ConflictException('At least one supporting document is required while document verification is enforced.');
+    const uploadedDocuments=credential.documents.filter(document=>document.status==='UPLOADED'&&document.content!==null);
+    if(verificationPolicy.enforce&&!uploadedDocuments.length)throw new ConflictException('At least one uploaded supporting document is required while document verification is enforced.');
     if(verificationPolicy.bypass){
-      await this.audit.record({action:'CREDENTIAL_VERIFICATION_BYPASSED',resource:'Credential',resourceId:credentialId,metadata:{accountId,policyState:verificationPolicy.state,documentCount:credential.documents.length}});
+      await this.audit.record({action:'CREDENTIAL_VERIFICATION_BYPASSED',resource:'Credential',resourceId:credentialId,metadata:{accountId,policyState:verificationPolicy.state,documentCount:uploadedDocuments.length}});
       return{id:credentialId,status:credential.verificationStatus,verificationBypassed:true,policyReview:{required:false,issues:[],states:{verification:verificationPolicy.state}}};
     }
     const nextStatus='PENDING';
     await this.db.credential.update({where:{id:credentialId},data:{verificationStatus:nextStatus}});
-    await this.audit.record({action:'CREDENTIAL_SUBMITTED',resource:'Credential',resourceId:credentialId,metadata:{accountId,previousStatus:credential.verificationStatus,status:nextStatus,policyState:verificationPolicy.state,documentCount:credential.documents.length}});
+    await this.audit.record({action:'CREDENTIAL_SUBMITTED',resource:'Credential',resourceId:credentialId,metadata:{accountId,previousStatus:credential.verificationStatus,status:nextStatus,policyState:verificationPolicy.state,documentCount:uploadedDocuments.length}});
     return{id:credentialId,status:nextStatus,verificationBypassed:false,policyReview:{required:verificationPolicy.review,issues:verificationPolicy.review?['DOCUMENT_VERIFICATION']:[],states:{verification:verificationPolicy.state}}};
   }
 
   pendingForAdmin(){
-    return this.db.credential.findMany({where:{verificationStatus:'PENDING'},include:{documents:true,person:{select:{id:true,firstName:true,lastName:true,account:{select:{id:true,email:true}}}}},orderBy:{updatedAt:'asc'},take:100});
+    return this.db.credential.findMany({where:{verificationStatus:'PENDING'},include:{documents:{select:{id:true,credentialId:true,ownerId:true,storageKey:true,originalName:true,mimeType:true,byteSize:true,sha256:true,status:true,createdAt:true,archivedAt:true}},person:{select:{id:true,firstName:true,lastName:true,account:{select:{id:true,email:true}}}}},orderBy:{updatedAt:'asc'},take:100});
   }
 
   async decide(reviewerAccountId:string,credentialId:string,input:{outcome:'VERIFIED'|'REJECTED';reason?:string}){
@@ -115,19 +116,20 @@ export class CredentialsService {
       this.policies.decision('DOCUMENT','EXPIRY'),
       this.db.account.findUnique({where:{id:reviewerAccountId},select:{personId:true}}),
     ]);
-    const credential=await this.db.credential.findUnique({where:{id:credentialId},include:{documents:true}});
+    const credential=await this.db.credential.findUnique({where:{id:credentialId},include:{documents:{select:{id:true,content:true,status:true}}}});
     if(!credential||credential.verificationStatus!=='PENDING')throw new NotFoundException('Credential is not awaiting review.');
     if(!reviewer)throw new NotFoundException('Reviewer account not found.');
     if(reviewer.personId===credential.personId)throw new ForbiddenException('Reviewers cannot verify or reject their own credential.');
     const expired=Boolean(credential.expiresAt&&credential.expiresAt<=new Date());
     if(input.outcome==='VERIFIED'&&expired&&expiryPolicy.enforce)throw new ConflictException('Expired credential cannot be verified while expiry validation is enforced.');
-    if(input.outcome==='VERIFIED'&&verificationPolicy.enforce&&!credential.documents.length)throw new ConflictException('Supporting documents are required while document verification is enforced.');
+    const uploadedDocuments=credential.documents.filter(document=>document.status==='UPLOADED'&&document.content!==null);
+    if(input.outcome==='VERIFIED'&&verificationPolicy.enforce&&!uploadedDocuments.length)throw new ConflictException('Uploaded supporting documents are required while document verification is enforced.');
     const updated=await this.db.$transaction(async(tx:Prisma.TransactionClient)=>{
       const row=await tx.credential.update({where:{id:credentialId},data:{verificationStatus:input.outcome}});
-      if(credential.documents.length)await tx.document.updateMany({where:{credentialId},data:{status:input.outcome==='VERIFIED'?'AVAILABLE':'REJECTED'}});
+      if(uploadedDocuments.length)await tx.document.updateMany({where:{credentialId,id:{in:uploadedDocuments.map(document=>document.id)}},data:{status:input.outcome==='VERIFIED'?'AVAILABLE':'REJECTED'}});
       return row;
     });
-    await this.audit.record({action:'CREDENTIAL_REVIEWED',resource:'Credential',resourceId:credentialId,metadata:{reviewerAccountId,previousStatus:credential.verificationStatus,status:input.outcome,reason:input.reason?.trim()||null,documentCount:credential.documents.length,externalVerification:false,policyStates:{verification:verificationPolicy.state,expiry:expiryPolicy.state},expired}});
+    await this.audit.record({action:'CREDENTIAL_REVIEWED',resource:'Credential',resourceId:credentialId,metadata:{reviewerAccountId,previousStatus:credential.verificationStatus,status:input.outcome,reason:input.reason?.trim()||null,documentCount:uploadedDocuments.length,externalVerification:false,policyStates:{verification:verificationPolicy.state,expiry:expiryPolicy.state},expired}});
     const owner=await this.db.account.findUnique({where:{personId:credential.personId},select:{id:true}});
     if(owner)await this.notifyQuietly(owner.id,'CREDENTIAL_REVIEWED',{credentialId,title:credential.title,outcome:input.outcome,reason:input.reason?.trim()||null,externalVerification:false});
     return{...updated,externalVerification:false,policyReview:{required:expiryPolicy.review&&expired,issues:expiryPolicy.review&&expired?['DOCUMENT_EXPIRY']:[],states:{verification:verificationPolicy.state,expiry:expiryPolicy.state}}};
