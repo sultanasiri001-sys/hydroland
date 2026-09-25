@@ -14,6 +14,7 @@ const jsonRequest=async(path,options={})=>{
 };
 const bearer=token=>({authorization:`Bearer ${token}`});
 const jwtPayload=token=>JSON.parse(Buffer.from(token.split('.')[1],'base64url').toString());
+const login=()=>jsonRequest('/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password})});
 
 try{
   let result=await jsonRequest('/auth/register',{
@@ -22,14 +23,30 @@ try{
     body:JSON.stringify({email,password})
   });
   if(!result.response.ok)throw new Error(`Register failed: ${result.response.status} ${JSON.stringify(result.body)}`);
-  const initial=result.body;
-  if(!initial?.accessToken||!initial?.refreshToken)throw new Error('Register did not return access/refresh tokens.');
-  const initialClaims=jwtPayload(initial.accessToken);
-  if(typeof initialClaims.sid!=='string'||!initialClaims.sid)throw new Error('Access token is missing session id (sid).');
+  if(result.body?.status!=='PENDING_VERIFICATION'||result.body?.requiresEmailVerification!==true||result.body?.email!==email)throw new Error(`Unexpected registration response: ${JSON.stringify(result.body)}`);
+  if(result.body?.accessToken||result.body?.refreshToken)throw new Error('Unverified registration must not return access/refresh tokens.');
 
   account=await db.account.findUnique({where:{email}});
   if(!account)throw new Error('Registered account was not persisted.');
-  await db.account.update({where:{id:account.id},data:{status:'ACTIVE',emailVerifiedAt:new Date()}});
+  if(account.status!=='PENDING_VERIFICATION')throw new Error(`Expected PENDING_VERIFICATION, got ${account.status}`);
+  if(account.emailVerifiedAt)throw new Error('Fresh registration must not be email verified.');
+  let sessions=await db.session.findMany({where:{accountId:account.id}});
+  if(sessions.length!==0)throw new Error(`Fresh unverified registration created ${sessions.length} session(s).`);
+
+  result=await login();
+  if(result.response.status!==401)throw new Error(`Pending unverified login expected 401, got ${result.response.status}`);
+
+  await db.account.update({where:{id:account.id},data:{status:'ACTIVE'}});
+  result=await login();
+  if(result.response.status!==401)throw new Error(`Active but unverified login expected 401, got ${result.response.status}`);
+
+  await db.account.update({where:{id:account.id},data:{emailVerifiedAt:new Date()}});
+  result=await login();
+  if(!result.response.ok)throw new Error(`Verified active login failed: ${result.response.status} ${JSON.stringify(result.body)}`);
+  const initial=result.body;
+  if(!initial?.accessToken||!initial?.refreshToken)throw new Error('Verified login did not return access/refresh tokens.');
+  const initialClaims=jwtPayload(initial.accessToken);
+  if(typeof initialClaims.sid!=='string'||!initialClaims.sid)throw new Error('Access token is missing session id (sid).');
 
   let response=await fetch(base+'/me',{headers:bearer(initial.accessToken)});
   if(!response.ok)throw new Error(`Initial session-bound access token was rejected: ${response.status} ${await response.text()}`);
@@ -67,11 +84,11 @@ try{
   response=await fetch(base+'/me',{headers:bearer(rotated.accessToken)});
   if(response.status!==401)throw new Error(`Access token remained valid after logout: ${response.status}`);
 
-  const sessions=await db.session.findMany({where:{accountId:account.id},orderBy:{createdAt:'asc'}});
-  if(sessions.length!==2)throw new Error(`Expected 2 rotated sessions, found ${sessions.length}`);
+  sessions=await db.session.findMany({where:{accountId:account.id},orderBy:{createdAt:'asc'}});
+  if(sessions.length!==2)throw new Error(`Expected 2 login/rotated sessions, found ${sessions.length}`);
   if(sessions.some(session=>!session.revokedAt))throw new Error('Expected both consumed/logged-out sessions to be revoked.');
 
-  console.log('Auth session HTTP/DB E2E passed: access tokens are session-bound and immediately revoked by refresh rotation and logout.');
+  console.log('Auth session HTTP/DB E2E passed: registration is sessionless until activation+verification, then access tokens are session-bound and immediately revoked by refresh rotation/logout.');
 } finally {
   if(account){
     await db.session.deleteMany({where:{accountId:account.id}});
