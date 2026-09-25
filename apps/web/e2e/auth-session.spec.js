@@ -25,6 +25,35 @@ const seedSession = async page => {
   });
 };
 
+test('registration remains unauthenticated until email verification', async ({ page }) => {
+  await installStableProfileApi(page);
+  let registrationPayload=null;
+  await page.route('**/api/v1/auth/register', async route => {
+    registrationPayload=route.request().postDataJSON();
+    await route.fulfill({status:201,contentType:'application/json',body:JSON.stringify({
+      email:'new-user@hydroland.test',status:'PENDING_VERIFICATION',requiresEmailVerification:true
+    })});
+  });
+  await page.goto('/',{waitUntil:'domcontentloaded'});
+  await waitForApp(page);
+  await page.locator('.hl-login-secondary').click();
+  const panel=page.locator('.hl-auth-panel');
+  await expect(panel).toBeVisible();
+  await panel.locator('input[name="email"]').fill('new-user@hydroland.test');
+  await panel.locator('input[name="password"]').fill('Hydroland-Registration-2026!');
+  await panel.locator('.hl-auth-submit').click();
+  await expect.poll(()=>registrationPayload).toEqual({email:'new-user@hydroland.test',password:'Hydroland-Registration-2026!'});
+  await expect(page.locator('.hl-login')).not.toHaveClass(/hidden/);
+  await expect(panel).toBeHidden();
+  await expect(page.locator('#toast')).toContainText('يلزم التحقق من البريد الإلكتروني قبل تسجيل الدخول');
+  const session=await page.evaluate(()=>({
+    access:sessionStorage.getItem('hl-access-token'),
+    refresh:sessionStorage.getItem('hl-refresh-token'),
+    authenticated:window.HydrolandAuth.isAuthenticated()
+  }));
+  expect(session).toEqual({access:null,refresh:null,authenticated:false});
+});
+
 test('logout is local-first and protected state stays cleared', async ({ page }) => {
   await page.route('**/api/v1/auth/logout', route => route.fulfill({status:200,contentType:'application/json',body:'{}'}));
   await seedSession(page);
