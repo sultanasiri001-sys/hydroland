@@ -6,7 +6,7 @@
     "dev": "node scripts/dev.mjs",
     "build": "node scripts/build.mjs",
     "serve": "node scripts/serve.mjs",
-    "test": "node scripts/validate.mjs && node scripts/store-checkout-validation.mjs",
+    "test": "node scripts/validate.mjs && node scripts/store-checkout-validation.mjs && node scripts/portal-access-validation.mjs",
     "test:e2e": "playwright test"
   },
   "devDependencies": {
