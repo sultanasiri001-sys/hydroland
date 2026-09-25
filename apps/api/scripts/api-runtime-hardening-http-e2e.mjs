@@ -37,3 +37,4 @@ assert(response.ok,`Disallowed-origin health request failed unexpectedly: ${resp
 assert(!response.headers.get('access-control-allow-origin'),'Untrusted origin received Access-Control-Allow-Origin');
 
 console.log('API runtime hardening HTTP E2E passed: security headers, request IDs, restricted CORS, and origin denial are active.');
+await import('./auth-account-lifecycle-http-e2e.mjs');
