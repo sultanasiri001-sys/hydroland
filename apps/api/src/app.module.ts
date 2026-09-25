@@ -19,6 +19,7 @@ import { FacilitiesMaintenanceModule } from './facilities-maintenance/facilities
 import { AdministrativeAffairsModule } from './administrative-affairs/administrative-affairs.module';
 import { ExecutiveGovernanceModule } from './executive-governance/executive-governance.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { MessagingModule } from './messaging/messaging.module';
 import { SafetyModule } from './safety/safety.module';
 import { TripsModule } from './trips/trips.module';
 import { PaymentsModule } from './payments/payments.module';
@@ -36,7 +37,7 @@ import { HrModule } from './hr/hr.module';
 import { DocumentFormModule } from './document-forms/document-form.module';
 
 @Module({
-  imports: [DatabaseModule, AuthModule, ProfileModule, CredentialsModule, ActivationModule, AuditModule, NotificationsModule, GovernanceModule, TripsModule, SafetyModule, PaymentsModule, AdminModule, DiveLogsModule, OrganizationsModule, IntegrationModule, InventoryModule, FinanceModule, CustomerServiceModule,
+  imports: [DatabaseModule, AuthModule, ProfileModule, CredentialsModule, ActivationModule, AuditModule, NotificationsModule, MessagingModule, GovernanceModule, TripsModule, SafetyModule, PaymentsModule, AdminModule, DiveLogsModule, OrganizationsModule, IntegrationModule, InventoryModule, FinanceModule, CustomerServiceModule,
     MarketingModule,
     TechnologySecurityModule,
     FacilitiesMaintenanceModule,
