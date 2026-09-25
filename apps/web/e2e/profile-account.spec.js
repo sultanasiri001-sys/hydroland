@@ -164,14 +164,17 @@ test('diver profile editor loads, saves and reopens with persisted values', asyn
 test('unauthenticated account settings stay guarded in the browser', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await waitForProfileRuntime(page);
-  await page.evaluate(() => {
+  const unauthState = await page.evaluate(() => {
     sessionStorage.clear();
     window.HydrolandAuth.syncAuthUi();
+    return {
+      profile:Boolean(window.HydrolandProfileData),
+      loginHidden:document.querySelector('.hl-login')?.classList.contains('hidden')
+    };
   });
 
-  await expect(page.locator('.hl-login')).not.toHaveClass(/hidden/);
+  expect(unauthState).toEqual({profile:false,loginHidden:false});
   await page.locator('#profile-dialog [data-hl-action="settings"]').last().dispatchEvent('click');
   await expect(page.locator('#toast')).toContainText('سجل الدخول أولًا لفتح بيانات الحساب');
   await expect(page.locator('#hl-profile-editor')).toHaveCount(0);
-  expect(await page.evaluate(() => Boolean(window.HydrolandProfileData))).toBe(false);
 });
