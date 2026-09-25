@@ -2,17 +2,16 @@ import { Injectable } from '@nestjs/common';
 import { PDFDocument, StandardFonts, degrees, rgb, PDFFont } from 'pdf-lib';
 import * as fontkitNamespace from '@pdf-lib/fontkit';
 import { readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { createRequire } from 'node:module';
+import { resolve } from 'node:path';
 import { DocumentPrintService } from './document-print.service';
 import { DocumentAssetService } from './document-asset.service';
 import { assertArabicPdfSourceText, containsArabic, pdfTextX, pdfVisualText, preferredLocalizedText } from './document-pdf-arabic.contract';
 
 const fontkit = (fontkitNamespace as unknown as { default?: unknown }).default ?? fontkitNamespace;
-const requireForFont = createRequire(__filename);
-const fontPackageRoot = dirname(requireForFont.resolve('@fontsource/noto-sans-arabic/package.json'));
-const arabicFontPath = join(fontPackageRoot,'files','noto-sans-arabic-arabic-400-normal.woff');
-const arabicBoldFontPath = join(fontPackageRoot,'files','noto-sans-arabic-arabic-700-normal.woff');
+// Full TTF assets are intentionally shipped with the API. Web-font subsets omit
+// Arabic presentation glyphs and Latin digits, which breaks shaped RTL and mixed text in PDFs.
+const arabicFontPath = resolve(__dirname,'..','..','src','document-forms','fonts','NotoSansArabic-Regular.woff');
+const arabicBoldFontPath = resolve(__dirname,'..','..','src','document-forms','fonts','NotoSansArabic-Bold.woff');
 
 @Injectable()
 export class DocumentPdfService {

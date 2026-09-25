@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { ARABIC_PDF_PROBES, assertArabicPdfSourceText, containsArabic, pdfTextDirection, pdfTextX, preferredLocalizedText, pdfVisualText } = require('../.tmp-document-pdf-arabic/document-pdf-arabic.contract.js');
+const { ARABIC_PDF_PROBES, assertArabicPdfSourceText, containsArabic, pdfTextDirection, pdfTextX, preferredLocalizedText, shapeArabicForPdf, pdfVisualText } = require('../.tmp-document-pdf-arabic/document-pdf-arabic.contract.js');
 
 assert.equal(ARABIC_PDF_PROBES.length, 5);
 for (const probe of ARABIC_PDF_PROBES) {
@@ -24,4 +24,6 @@ const mixedAmount = pdfVisualText('الإجمالي 1,234.50 ر.س');
 assert.equal(mixedAmount.includes('1,234.50'), true, 'BiDi must preserve numeric amount order');
 assert.equal(pdfVisualText('HYDROLAND 2026'), 'HYDROLAND 2026', 'LTR text must remain unchanged');
 assert.notEqual(pdfVisualText('منصة هايدرولاند'), 'منصة هايدرولاند', 'Arabic visual order must be transformed before PDF drawing');
+assert.match(shapeArabicForPdf('منصة هايدرولاند'), /[\uFE70-\uFEFF]/u, 'Arabic text must be explicitly shaped for PDF glyph joining');
+assert.match(shapeArabicForPdf('لا'), /[\uFEFB-\uFEFC]/u, 'Lam-alef must be shaped as a ligature');
 console.log('Document Arabic PDF RTL validation passed.');
