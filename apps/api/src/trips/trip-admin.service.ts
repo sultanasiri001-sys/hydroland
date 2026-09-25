@@ -84,7 +84,8 @@ export class TripAdminService {
     const updated=await this.db.serializable(async tx=>{
       const current=await tx.trip.findUnique({where:{id}});if(!current)throw new NotFoundException('Trip not found.');
       if(status==='CANCELLED'){
-        await tx.$executeRaw`UPDATE "CalendarAllocation" SET "status"='INACTIVE',"updatedAt"=NOW() WHERE "tripId"=${id} AND "status"='ACTIVE'`;
+        await tx.$executeRaw`UPDATE "CalendarAllocation" a SET "status"='INACTIVE',"updatedAt"=NOW() FROM "CalendarEvent" e WHERE e."id"=a."eventId" AND e."referenceType"='TRIP' AND e."referenceId"=${id} AND a."status"='ACTIVE'`;
+        await tx.$executeRaw`UPDATE "CalendarEvent" SET "status"='INACTIVE',"updatedAt"=NOW() WHERE "referenceType"='TRIP' AND "referenceId"=${id} AND "status"='ACTIVE'`;
         await tx.booking.updateMany({where:{tripId:id,status:{not:'CANCELLED'}},data:{status:'CANCELLED'}});
       }
       return tx.trip.update({where:{id},data:{status}});
