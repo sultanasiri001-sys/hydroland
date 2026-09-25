@@ -39,6 +39,8 @@ jobs:
         run: npm --workspace @hydroland/api exec -- prisma db push --skip-generate
       - name: Bootstrap raw equipment operational schema
         run: node apps/api/scripts/bootstrap-equipment-runtime-schema.mjs
+      - name: Bootstrap trip weather operational schema
+        run: node apps/api/scripts/bootstrap-trip-weather-runtime-schema.mjs
       - run: npm run validate:hr -w @hydroland/api
       - run: npm run validate:operations -w @hydroland/api
       - run: npm run validate:admin-affairs -w @hydroland/api
@@ -84,6 +86,9 @@ jobs:
           HYDROLAND_OBJECT_STORAGE_BUCKET: hydroland-e2e
           HYDROLAND_OBJECT_STORAGE_ACCESS_KEY_ID: hydroland-e2e-access
           HYDROLAND_OBJECT_STORAGE_SECRET_ACCESS_KEY: hydroland-e2e-secret
+          HYDROLAND_INTEGRATION_WEATHER_MARINE_STATUS: SANDBOX
+          STORMGLASS_API_KEY: hydroland-e2e-weather
+          STORMGLASS_API_BASE_URL: http://127.0.0.1:3198
         run: |
           node apps/api/dist/main.js > /tmp/hydroland-api.log 2>&1 &
           API_PID=$!

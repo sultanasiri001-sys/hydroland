@@ -4,6 +4,7 @@ import { DatabaseService } from '../database/database.service';
 
 export type WeatherGateMode = 'ENFORCE' | 'ADVISORY';
 export type WeatherDecision = 'ALLOWED' | 'REVIEW_REQUIRED' | 'DEFERRED' | 'UNAVAILABLE';
+export type WeatherReviewStatus='PENDING'|'APPROVED'|'REJECTED';
 
 export type WeatherSnapshot = {
   provider?: string;
@@ -34,7 +35,7 @@ export class WeatherGateService {
   constructor(private readonly db: DatabaseService,private readonly audit:AuditService) {}
 
   private defaults(): WeatherGateSettings {
-    return { enabled: false, mode: 'ADVISORY', provider: 'NOT_SELECTED' };
+    return { enabled: false, mode: 'ADVISORY', provider: 'STORMGLASS' };
   }
 
   async settings(): Promise<WeatherGateSettings> {
@@ -47,7 +48,7 @@ export class WeatherGateService {
     return {
       enabled: record.enabled === true,
       mode: record.mode === 'ENFORCE' ? 'ENFORCE' : 'ADVISORY',
-      provider: typeof record.provider === 'string' ? record.provider : 'NOT_SELECTED',
+      provider: typeof record.provider === 'string' && record.provider.trim() ? record.provider : 'STORMGLASS',
     };
   }
 
@@ -55,6 +56,7 @@ export class WeatherGateService {
     const current = await this.settings();
     const next: WeatherGateSettings = {
       ...current,
+      provider:'STORMGLASS',
       enabled: typeof input.enabled === 'boolean' ? input.enabled : current.enabled,
       mode: input.mode === 'ENFORCE' || input.mode === 'ADVISORY' ? input.mode : current.mode,
     };
@@ -78,5 +80,13 @@ export class WeatherGateService {
     const decision = snapshot.decision ?? 'UNAVAILABLE';
     const blocking = settings.enabled && settings.mode === 'ENFORCE' && decision !== 'ALLOWED';
     return { blocking, decision, reason: snapshot.reason ?? null };
+  }
+
+  evaluateReview(snapshot:WeatherSnapshot|null|undefined,status:WeatherReviewStatus|null|undefined,settings:WeatherGateSettings){
+    if(!snapshot)return this.evaluate(null,settings);
+    const decision:WeatherDecision=status==='APPROVED'?'ALLOWED':status==='REJECTED'?'DEFERRED':'REVIEW_REQUIRED';
+    const blocking=settings.enabled&&settings.mode==='ENFORCE'&&decision!=='ALLOWED';
+    const reason=status==='APPROVED'?'Weather forecast reviewed and approved by an authorized operator.':status==='REJECTED'?'Weather forecast was rejected by an authorized operator.':'Fresh weather forecast requires human operational review.';
+    return{blocking,decision,reason};
   }
 }
