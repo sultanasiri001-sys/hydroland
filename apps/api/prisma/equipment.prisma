@@ -1,0 +1,133 @@
+model EquipmentBarcode {
+  id                    String   @id
+  resourceId            String   @unique
+  assetCode             String   @unique
+  barcodeValue          String   @unique
+  qrValue               String   @unique
+  serialNumber          String?
+  sku                   String?
+  location              String?
+  stockStatus           String   @default("AVAILABLE")
+  acquisitionCostHalala BigInt?
+  tagMethod             String   @default("ADHESIVE_LABEL")
+  tagPlacement          String?
+  tagMaterial           String?
+  tagNotes              String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @default(now()) @updatedAt
+
+  @@index([stockStatus])
+  @@index([serialNumber])
+  @@index([tagMethod])
+}
+
+model EquipmentMovement {
+  id                String   @id
+  resourceId        String
+  movementType      String
+  fromLocation      String?
+  toLocation        String?
+  tripId            String?
+  assignedAccountId String?
+  notes             String?
+  actorAccountId    String
+  occurredAt        DateTime @default(now())
+
+  @@index([resourceId, occurredAt])
+  @@index([tripId])
+  @@index([assignedAccountId])
+}
+
+model EquipmentInspection {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()::text"))
+  resourceId          String
+  status              String
+  inspectedAt         DateTime @default(now())
+  serviceExpiresAt    DateTime?
+  notes               String?
+  reviewedByAccountId String?
+  createdAt           DateTime @default(now())
+
+  @@index([resourceId, inspectedAt])
+  @@index([status])
+}
+
+model InventoryStocktake {
+  id                   String   @id
+  location             String?
+  status               String   @default("OPEN")
+  startedByAccountId   String
+  startedAt            DateTime @default(now())
+  completedByAccountId String?
+  completedAt          DateTime?
+  scans                InventoryStocktakeScan[]
+
+  @@index([status, startedAt])
+}
+
+model InventoryStocktakeScan {
+  id                 String   @id
+  stocktakeId        String
+  resourceId         String?
+  scannedCode        String
+  result             String
+  expectedLocation   String?
+  observedLocation   String?
+  scannedByAccountId String
+  scannedAt          DateTime @default(now())
+  stocktake          InventoryStocktake @relation(fields: [stocktakeId], references: [id], onDelete: Cascade)
+
+  @@index([stocktakeId, scannedAt])
+}
+
+model EquipmentRental {
+  id                           String   @id
+  renterAccountId              String
+  status                       String   @default("RESERVED")
+  paymentStatus                String   @default("PENDING")
+  totalHalala                  BigInt   @default(0)
+  invoiceNumber                String   @unique
+  whatsappPhone                String?
+  reservedAt                   DateTime @default(now())
+  paidAt                       DateTime?
+  returnedAt                   DateTime?
+  dueAt                        DateTime?
+  overdueNotifiedAt            DateTime?
+  extensionRequestedUntil      DateTime?
+  extensionStatus              String?
+  extensionRequestedAt         DateTime?
+  extensionReviewedAt          DateTime?
+  extensionReviewedByAccountId String?
+  returnIntentAt               DateTime?
+  createdByAccountId           String
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @default(now()) @updatedAt
+  items                        EquipmentRentalItem[]
+
+  @@index([renterAccountId, createdAt])
+  @@index([status, dueAt])
+  @@index([extensionStatus, extensionRequestedAt])
+}
+
+model EquipmentRentalItem {
+  id                     String   @id
+  rentalId               String
+  resourceId             String
+  equipmentType          String?
+  size                   String?
+  unitPriceHalala        BigInt   @default(0)
+  assetCodeSnapshot      String
+  equipmentNameSnapshot String
+  serialNumberSnapshot   String?
+  handedOverAt           DateTime?
+  returnedAt             DateTime?
+  returnCondition        String?
+  returnNotes            String?
+  createdAt              DateTime @default(now())
+  rental                 EquipmentRental @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+
+  @@unique([rentalId, resourceId])
+  @@index([resourceId])
+  @@index([rentalId, returnedAt])
+  @@index([rentalId, handedOverAt])
+}
