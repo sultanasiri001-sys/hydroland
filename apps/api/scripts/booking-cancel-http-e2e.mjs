@@ -29,7 +29,7 @@ const future = new Date(Date.now() + 86_400_000);
 const futureEnd = new Date(future.getTime() + 10_800_000);
 const past = new Date(Date.now() - 3_600_000);
 const pastEnd = new Date(Date.now() + 3_600_000);
-let trip, booking, closedTrip, closedBooking, startedTrip, startedBooking;
+let trip, booking, closedTrip, closedBooking, completedTrip, completedBooking, cancelledTrip, cancelledBooking, startedTrip, startedBooking;
 
 try {
   trip = await db.trip.create({ data: { title: 'Booking cancellation E2E', type: 'DIVE', startsAt: future, endsAt: futureEnd, capacity: 8, status: 'OPEN' } });
@@ -58,13 +58,27 @@ try {
   const auditCount = await db.auditEvent.count({ where: { resource: 'Booking', resourceId: booking.id, action: 'BOOKING_SELF_CANCELLED' } });
   if (auditCount !== 1) throw new Error(`Idempotent cancellation created ${auditCount} audit rows`);
 
-  closedTrip = await db.trip.create({ data: { title: 'Closed cancellation E2E', type: 'DIVE', startsAt: future, endsAt: futureEnd, capacity: 4, status: 'CLOSED' } });
+  // CLOSED stops new public bookings, but it is still a pre-completion operational state.
+  // The owner may cancel before the trip starts; COMPLETED/CANCELLED are terminal states.
+  closedTrip = await db.trip.create({ data: { title: 'Closed booking-window E2E', type: 'DIVE', startsAt: future, endsAt: futureEnd, capacity: 4, status: 'CLOSED' } });
   closedBooking = await db.booking.create({ data: { tripId: closedTrip.id, accountId: owner.account.id, seats: 1, status: 'PENDING' } });
   const closedFixture = await db.booking.findUniqueOrThrow({ where: { id: closedBooking.id }, include: { trip: true } });
   if (closedFixture.trip.status !== 'CLOSED') throw new Error(`Closed-trip fixture precondition failed: ${closedFixture.trip.status}`);
   r = await call(`/trips/bookings/${closedBooking.id}`, ownerToken);
-  if (r.status !== 409) throw new Error(`Closed trip cancellation expected 409, got ${r.status}`);
-  if ((await db.booking.findUniqueOrThrow({ where: { id: closedBooking.id } })).status !== 'PENDING') throw new Error('Closed-trip cancellation mutated booking');
+  if (!r.ok || (await r.json()).status !== 'CANCELLED') throw new Error(`CLOSED pre-trip cancellation expected 200/CANCELLED, got ${r.status}`);
+  if ((await db.booking.findUniqueOrThrow({ where: { id: closedBooking.id } })).status !== 'CANCELLED') throw new Error('CLOSED pre-trip cancellation did not persist');
+
+  completedTrip = await db.trip.create({ data: { title: 'Completed cancellation E2E', type: 'DIVE', startsAt: future, endsAt: futureEnd, capacity: 4, status: 'COMPLETED' } });
+  completedBooking = await db.booking.create({ data: { tripId: completedTrip.id, accountId: owner.account.id, seats: 1, status: 'CONFIRMED' } });
+  r = await call(`/trips/bookings/${completedBooking.id}`, ownerToken);
+  if (r.status !== 409) throw new Error(`Completed trip cancellation expected 409, got ${r.status}`);
+  if ((await db.booking.findUniqueOrThrow({ where: { id: completedBooking.id } })).status !== 'CONFIRMED') throw new Error('Completed-trip cancellation mutated booking');
+
+  cancelledTrip = await db.trip.create({ data: { title: 'Cancelled trip cancellation E2E', type: 'DIVE', startsAt: future, endsAt: futureEnd, capacity: 4, status: 'CANCELLED' } });
+  cancelledBooking = await db.booking.create({ data: { tripId: cancelledTrip.id, accountId: owner.account.id, seats: 1, status: 'PENDING' } });
+  r = await call(`/trips/bookings/${cancelledBooking.id}`, ownerToken);
+  if (r.status !== 409) throw new Error(`Cancelled trip booking cancellation expected 409, got ${r.status}`);
+  if ((await db.booking.findUniqueOrThrow({ where: { id: cancelledBooking.id } })).status !== 'PENDING') throw new Error('Cancelled-trip cancellation mutated booking');
 
   startedTrip = await db.trip.create({ data: { title: 'Started cancellation E2E', type: 'DIVE', startsAt: past, endsAt: pastEnd, capacity: 4, status: 'OPEN' } });
   startedBooking = await db.booking.create({ data: { tripId: startedTrip.id, accountId: owner.account.id, seats: 1, status: 'CONFIRMED' } });
@@ -74,16 +88,16 @@ try {
   if (r.status !== 409) throw new Error(`Started trip cancellation expected 409, got ${r.status}`);
   if ((await db.booking.findUniqueOrThrow({ where: { id: startedBooking.id } })).status !== 'CONFIRMED') throw new Error('Started-trip cancellation mutated booking');
 
-  console.log('Booking cancellation HTTP/DB E2E passed: auth, ownership isolation, canonical DELETE, persistence, audit, idempotency, closed/started trip protection.');
+  console.log('Booking cancellation HTTP/DB E2E passed: auth, ownership isolation, canonical DELETE, persistence, audit, idempotency, CLOSED pre-trip cancellation, terminal-state and started-trip protection.');
 } finally {
-  const bookingIds = [booking?.id, closedBooking?.id, startedBooking?.id].filter(Boolean);
+  const bookingIds = [booking?.id, closedBooking?.id, completedBooking?.id, cancelledBooking?.id, startedBooking?.id].filter(Boolean);
   if (bookingIds.length) {
     await db.payment.deleteMany({ where: { bookingId: { in: bookingIds } } }).catch(() => {});
     await db.bookingParticipant.deleteMany({ where: { bookingId: { in: bookingIds } } }).catch(() => {});
     await db.auditEvent.deleteMany({ where: { resource: 'Booking', resourceId: { in: bookingIds } } }).catch(() => {});
     await db.booking.deleteMany({ where: { id: { in: bookingIds } } }).catch(() => {});
   }
-  const tripIds = [trip?.id, closedTrip?.id, startedTrip?.id].filter(Boolean);
+  const tripIds = [trip?.id, closedTrip?.id, completedTrip?.id, cancelledTrip?.id, startedTrip?.id].filter(Boolean);
   if (tripIds.length) {
     await db.safetyChecklist.deleteMany({ where: { tripId: { in: tripIds } } }).catch(() => {});
     await db.trip.deleteMany({ where: { id: { in: tripIds } } }).catch(() => {});
