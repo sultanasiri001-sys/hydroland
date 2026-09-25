@@ -71,7 +71,7 @@ const [packageText, buildScript, mapModule] = await Promise.all([
 ]);
 const webPackage=JSON.parse(packageText);
 if(webPackage.dependencies?.['maplibre-gl']!=='6.11.2')throw new Error('MapLibre must remain pinned to 6.11.2.');
-for(const marker of ['maplibre-gl.js','maplibre-gl.css','node_modules','vendor'])if(!buildScript.includes(marker))throw new Error(`Production build does not vendor MapLibre asset: ${marker}`);
+for(const marker of ['createRequire','require.resolve','maplibre-gl','maplibre-gl.css','vendor'])if(!buildScript.includes(marker))throw new Error(`Production build does not resolve/vendor MapLibre correctly: ${marker}`);
 for(const marker of ['./vendor/maplibre-gl.js','./vendor/maplibre-gl.css','HydrolandMapLibreTestDouble'])if(!mapModule.includes(marker))throw new Error(`Map runtime integrity marker missing: ${marker}`);
 for(const remote of ['unpkg.com','cdn.jsdelivr.net'])if(mapModule.includes(remote))throw new Error(`Map runtime must not depend on external CDN: ${remote}`);
 
