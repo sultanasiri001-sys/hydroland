@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { TripStatus } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { BookingParticipantService } from './booking-participant.service';
@@ -12,7 +13,7 @@ export class TripsService {
   constructor(private readonly db:DatabaseService,private readonly weatherGate:WeatherGateService,private readonly participants:BookingParticipantService,private readonly policies:PolicyControlService,private readonly audit:AuditService) {}
   private weatherFromItems(items:unknown):WeatherSnapshot|null{if(!items||Array.isArray(items)||typeof items!=='object')return null;const weather=(items as Record<string,unknown>).weather;if(!weather||Array.isArray(weather)||typeof weather!=='object')return null;return weather as WeatherSnapshot;}
 
-  async list(){const gateSettings=await this.weatherGate.settings();const trips=(await this.db.trip.findMany({where:{status:'OPEN'},orderBy:{startsAt:'asc'},include:{bookings:{where:{status:{in:['PENDING','CONFIRMED']}},select:{seats:true}},safetyChecklists:{orderBy:{createdAt:'desc'},take:1,select:{id:true,decision:true,items:true,notes:true,decidedAt:true,createdAt:true}}}})) as TripListRow[];return trips.map((trip:TripListRow)=>{const bookedSeats=trip.bookings.reduce((sum:number,booking:{seats:number})=>sum+booking.seats,0),latestSafety=trip.safetyChecklists[0]??null,weatherSnapshot=latestSafety?this.weatherFromItems(latestSafety.items):null,weather=this.weatherGate.evaluate(weatherSnapshot,gateSettings),{bookings,safetyChecklists,...base}=trip;return {...base,bookedSeats,remainingSeats:Math.max(0,trip.capacity-bookedSeats),safety:latestSafety,weather:{snapshot:weatherSnapshot,gate:gateSettings,evaluation:weather}};});}
+  async list(){const gateSettings=await this.weatherGate.settings();const trips=(await this.db.trip.findMany({where:{status:TripStatus.OPEN},orderBy:{startsAt:'asc'},include:{bookings:{where:{status:{in:['PENDING','CONFIRMED']}},select:{seats:true}},safetyChecklists:{orderBy:{createdAt:'desc'},take:1,select:{id:true,decision:true,items:true,notes:true,decidedAt:true,createdAt:true}}}})) as TripListRow[];return trips.map((trip:TripListRow)=>{const bookedSeats=trip.bookings.reduce((sum:number,booking:{seats:number})=>sum+booking.seats,0),latestSafety=trip.safetyChecklists[0]??null,weatherSnapshot=latestSafety?this.weatherFromItems(latestSafety.items):null,weather=this.weatherGate.evaluate(weatherSnapshot,gateSettings),{bookings,safetyChecklists,...base}=trip;return {...base,bookedSeats,remainingSeats:Math.max(0,trip.capacity-bookedSeats),safety:latestSafety,weather:{snapshot:weatherSnapshot,gate:gateSettings,evaluation:weather}};});}
 
   async book(accountId:string,tripId:string,seats:number){
     if(!Number.isInteger(seats)||seats<1)throw new BadRequestException('Invalid seats.');
@@ -20,7 +21,7 @@ export class TripsService {
     const [safetyPolicy,weatherPolicy,capacityPolicy]=await Promise.all([this.policies.decision('BOOKING','SAFETY_APPROVAL'),this.policies.decision('WEATHER','WEATHER_GATE'),this.policies.decision('BOOKING','CAPACITY_LIMIT')]);
     const reviewIssues:string[]=[];
     const result=await this.db.serializable(async tx=>{
-      const trip=await tx.trip.findUnique({where:{id:tripId}});if(!trip||trip.status!=='OPEN')throw new NotFoundException('Trip unavailable.');if(trip.startsAt<=new Date())throw new ConflictException('Trip already started.');
+      const trip=await tx.trip.findUnique({where:{id:tripId}});if(!trip||trip.status!==TripStatus.OPEN)throw new NotFoundException('Trip unavailable.');if(trip.startsAt<=new Date())throw new ConflictException('Trip already started.');
       const existing=await tx.booking.findUnique({where:{tripId_accountId:{tripId,accountId}}});
       if(existing&&existing.status!=='CANCELLED')throw new ConflictException('An active booking already exists for this trip.');
       const latestSafety=await tx.safetyChecklist.findFirst({where:{tripId},orderBy:{createdAt:'desc'},select:{decision:true,items:true}});
@@ -46,7 +47,7 @@ export class TripsService {
     const booking=await this.db.booking.findFirst({where:{id:bookingId,accountId},include:{trip:true}});
     if(!booking)throw new NotFoundException('Booking not found.');
     if(booking.status==='CANCELLED')return booking;
-    if(booking.trip.status!=='OPEN')throw new ConflictException('Booking cannot be cancelled after trip closure.');
+    if(booking.trip.status!==TripStatus.OPEN)throw new ConflictException('Booking cannot be cancelled after trip closure.');
     if(booking.trip.startsAt<=new Date())throw new ConflictException('Booking cannot be cancelled after the trip starts.');
     const updated=await this.db.booking.update({where:{id:bookingId},data:{status:'CANCELLED'}});
     await this.audit.record({actorId:accountId,action:'BOOKING_SELF_CANCELLED',resource:'Booking',resourceId:bookingId,metadata:{accountId,tripId:booking.tripId,seats:booking.seats,previousStatus:booking.status}});
