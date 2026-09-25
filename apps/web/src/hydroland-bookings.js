@@ -32,11 +32,12 @@
     const current=Number(seatsInput.value||1);seatsInput.value=String(Math.min(Math.max(1,current),remaining));
     const hint=document.getElementById('booking-seats-hint');if(hint)hint.textContent=trip?`المتاح ${remaining} مقعد`:'اختر عدد المقاعد';
   };
+  const syncBookingDetails=trip=>{const location=document.getElementById('booking-location');if(location)location.textContent=locationText(trip);const safety=document.querySelector('#booking-dialog .booking-safety span');if(safety)safety.textContent=trip.safety?.decision||'REVIEW';syncSeats(trip)};
   const bindButtons=()=>{
     document.querySelectorAll('[data-book]').forEach(button=>{
       const title=button.dataset.book||'';
       const trip=state.trips.find(item=>normalize(item.title)===normalize(title));
-      if(trip){button.dataset.tripId=trip.id;button.title=`السعة ${trip.capacity} · ${new Date(trip.startsAt).toLocaleString('ar-SA')}`;button.addEventListener('click',()=>{const location=document.getElementById('booking-location');if(location)location.textContent=locationText(trip);const safety=document.querySelector('#booking-dialog .booking-safety span');if(safety)safety.textContent=trip.safety?.decision||'REVIEW';syncSeats(trip);},{capture:true});}
+      if(trip){button.dataset.tripId=trip.id;button.title=`السعة ${trip.capacity} · ${new Date(trip.startsAt).toLocaleString('ar-SA')}`;button.addEventListener('click',()=>{syncBookingDetails(trip);queueMicrotask(()=>syncBookingDetails(trip))},{capture:true});}
       if(!button.dataset.hlBookingBound){button.dataset.hlBookingBound='1';button.addEventListener('click',()=>{state.selected=trip||null;syncSeats(trip||null);},{capture:true});}
     });
   };
