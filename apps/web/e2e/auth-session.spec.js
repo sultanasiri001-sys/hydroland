@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 const waitForApp = async page => {
-  await page.waitForFunction(() => Boolean(window.HydrolandAuth && window.HydrolandPortalAccess));
+  await page.waitForFunction(() => Boolean(window.HydrolandAuth && window.HydrolandPortalAccess && window.HydrolandProfile));
 };
 
 const installStableProfileApi = async page => {
@@ -38,7 +38,8 @@ test('logout is local-first and protected state stays cleared', async ({ page })
   await page.locator('#profile-open').click();
   const logoutButton=page.locator('#profile-dialog [data-hl-action="logout"]');
   await expect(logoutButton).toBeVisible();
-  await logoutButton.dispatchEvent('click');
+  await logoutButton.evaluate(button => button.click());
+  await expect(logoutButton).toBeDisabled();
 
   await expect.poll(() => page.evaluate(() => ({
     access:sessionStorage.getItem('hl-access-token'),
@@ -79,6 +80,7 @@ test('expired refresh fails closed', async ({ page }) => {
 });
 
 test('unauthenticated runtime keeps the admin console closed', async ({ page }) => {
+  await installStableProfileApi(page);
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await waitForApp(page);
   await page.evaluate(() => {
