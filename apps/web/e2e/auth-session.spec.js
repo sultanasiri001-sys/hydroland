@@ -27,13 +27,16 @@ test('logout is local-first and protected state stays cleared', async ({ page })
   await page.locator('#profile-open').click();
   await page.locator('[data-hl-action="logout"]').first().click({noWaitAfter:true});
 
-  await expect.poll(() => page.evaluate(() => ({
+  await page.waitForTimeout(50);
+  const state=await page.evaluate(() => ({
     access:sessionStorage.getItem('hl-access-token'),
     refresh:sessionStorage.getItem('hl-refresh-token'),
     profile:Boolean(window.HydrolandProfileData),
     dashboard:Boolean(document.querySelector('.hl-role-dashboard')),
     loginHidden:document.querySelector('.hl-login')?.classList.contains('hidden')
-  }))).toEqual({access:null,refresh:null,profile:false,dashboard:false,loginHidden:false});
+  }));
+  console.log('logout-state',JSON.stringify(state));
+  expect(state).toEqual({access:null,refresh:null,profile:false,dashboard:false,loginHidden:false});
 });
 
 test('pageshow fails closed when the session is absent', async ({ page }) => {
