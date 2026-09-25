@@ -117,3 +117,15 @@ test('unauthenticated runtime keeps the admin console closed', async ({ page }) 
   await expect(page.locator('#role-console')).toBeHidden();
   await expect(page.locator('.hl-role-dashboard')).toHaveCount(0);
 });
+
+
+test('late-loaded role dashboard replays the current authorized role', async ({ page }) => {
+  await seedSession(page);
+  await page.evaluate(() => {
+    window.HydrolandProfileData={profile:{roles:[{role:'ADMIN',status:'ACTIVE'}]}};
+    const adminButton=document.querySelector('#role-dialog [data-role="admin"]');
+    adminButton?.click();
+  });
+  await page.waitForFunction(() => window.HydrolandPortalAccess?.getCurrentRole?.()==='admin');
+  await expect(page.locator('.hl-role-dashboard[data-role="admin"]')).toBeVisible();
+});
