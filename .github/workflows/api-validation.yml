@@ -75,6 +75,12 @@ jobs:
         env:
           JWT_SECRET: ci-hr-e2e-secret-must-be-at-least-32-characters
           PORT: 3101
+          HYDROLAND_INTEGRATION_OBJECT_STORAGE_STATUS: SANDBOX
+          HYDROLAND_OBJECT_STORAGE_ENDPOINT: http://127.0.0.1:3199
+          HYDROLAND_OBJECT_STORAGE_REGION: us-east-1
+          HYDROLAND_OBJECT_STORAGE_BUCKET: hydroland-e2e
+          HYDROLAND_OBJECT_STORAGE_ACCESS_KEY_ID: hydroland-e2e-access
+          HYDROLAND_OBJECT_STORAGE_SECRET_ACCESS_KEY: hydroland-e2e-secret
         run: |
           node apps/api/dist/main.js > /tmp/hydroland-api.log 2>&1 &
           API_PID=$!
@@ -100,6 +106,11 @@ jobs:
           FINANCE_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/finance-http-e2e.mjs
           if ! PROFILE_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/profile-account-http-e2e.mjs; then
             echo "Profile/Account HTTP/DB E2E failed; API log follows"
+            cat /tmp/hydroland-api.log
+            exit 1
+          fi
+          if ! CREDENTIAL_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/credential-documents-http-e2e.mjs; then
+            echo "Credential Documents HTTP/DB E2E failed; API log follows"
             cat /tmp/hydroland-api.log
             exit 1
           fi

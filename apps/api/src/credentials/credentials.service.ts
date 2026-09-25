@@ -1,9 +1,11 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { createHash } from 'node:crypto';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PolicyControlService } from '../trips/policy-control.service';
+import { CredentialObjectStorageService } from './credential-object-storage.service';
 
 type CredentialWithDocuments = {
   id:string;
@@ -16,13 +18,15 @@ type CredentialWithDocuments = {
   verificationStatus:string;
   createdAt:Date;
   updatedAt:Date;
-  documents:unknown[];
+  documents:any[];
 };
 
 @Injectable()
 export class CredentialsService {
-  constructor(private readonly db:DatabaseService,private readonly policies:PolicyControlService,private readonly audit:AuditService,private readonly notifications:NotificationsService){}
+  constructor(private readonly db:DatabaseService,private readonly policies:PolicyControlService,private readonly audit:AuditService,private readonly notifications:NotificationsService,private readonly storage:CredentialObjectStorageService){}
   private async notifyQuietly(accountId:string,type:string,payload:Record<string,unknown>){try{await this.notifications.notify(accountId,type,payload);}catch{return;}}
+  private publicDocument<T extends Record<string,unknown>>(document:T){const{storageKey:_storageKey,...safe}=document;return safe;}
+  private publicCredential<T extends Record<string,any>>(credential:T){return{...credential,documents:Array.isArray(credential.documents)?credential.documents.map((document:Record<string,unknown>)=>this.publicDocument(document)):credential.documents};}
 
   async list(accountId:string){
     const a=await this.db.account.findUniqueOrThrow({where:{id:accountId},select:{personId:true}});
@@ -33,7 +37,7 @@ export class CredentialsService {
       const verified=['VERIFIED','DOCUMENT_VERIFIED'].includes(credential.verificationStatus),expired=Boolean(credential.expiresAt&&credential.expiresAt<=now),issues:string[]=[];
       if(!verified&&!verificationPolicy.bypass)issues.push('DOCUMENT_VERIFICATION');
       if(expired&&!expiryPolicy.bypass)issues.push('DOCUMENT_EXPIRY');
-      return {...credential,policyReview:{required:(verificationPolicy.review&&!verified)||(expiryPolicy.review&&expired),blocked:(verificationPolicy.enforce&&!verified)||(expiryPolicy.enforce&&expired),issues,states:{verification:verificationPolicy.state,expiry:expiryPolicy.state}}};
+      return this.publicCredential({...credential,policyReview:{required:(verificationPolicy.review&&!verified)||(expiryPolicy.review&&expired),blocked:(verificationPolicy.enforce&&!verified)||(expiryPolicy.enforce&&expired),issues,states:{verification:verificationPolicy.state,expiry:expiryPolicy.state}}});
     });
   }
 
@@ -51,13 +55,41 @@ export class CredentialsService {
     return {...credential,policyReview:{required:expired&&expiryPolicy.review,issues:expired?['DOCUMENT_EXPIRY']:[],states:{expiry:expiryPolicy.state}}};
   }
 
-  async attachDocument(accountId:string,credentialId:string,input:{storageKey:string;originalName:string;mimeType:string;byteSize:number;sha256:string}){
-    if(!['application/pdf','image/jpeg','image/png'].includes(input.mimeType)||input.byteSize<1||input.byteSize>10_000_000)throw new BadRequestException('Unsupported document.');
-    const a=await this.db.account.findUniqueOrThrow({where:{id:accountId},select:{personId:true}}),c=await this.db.credential.findFirst({where:{id:credentialId,personId:a.personId,verificationStatus:'UNVERIFIED'}});
-    if(!c)throw new NotFoundException('Credential not editable.');
-    const document=await this.db.document.create({data:{credentialId,ownerId:a.personId,...input,status:'UPLOADED'}});
-    await this.audit.record({action:'CREDENTIAL_DOCUMENT_ATTACHED',resource:'Credential',resourceId:credentialId,metadata:{accountId,documentId:document.id,mimeType:document.mimeType,byteSize:document.byteSize,sha256:document.sha256}});
-    return document;
+  async attachDocument(accountId:string,credentialId:string,input:{originalName:string;mimeType:string;base64:string}){
+    const originalName=this.cleanName(input.originalName),mimeType=String(input.mimeType||'').trim().toLowerCase(),bytes=this.decode(input.base64);
+    this.validateFile(originalName,mimeType,bytes);
+    const a=await this.db.account.findUniqueOrThrow({where:{id:accountId},select:{personId:true}}),credential=await this.db.credential.findFirst({where:{id:credentialId,personId:a.personId,verificationStatus:'UNVERIFIED'}});
+    if(!credential)throw new NotFoundException('Credential not editable.');
+    const sha256=createHash('sha256').update(bytes).digest('hex');
+    if(await this.db.document.findUnique({where:{sha256},select:{id:true}}))throw new ConflictException('This document has already been uploaded.');
+    const storageKey=this.storage.key(accountId,credentialId,mimeType);
+    await this.storage.put(storageKey,bytes,mimeType);
+    try{
+      const document=await this.db.document.create({data:{credentialId,ownerId:a.personId,storageKey,originalName,mimeType,byteSize:bytes.length,sha256,status:'UPLOADED'}});
+      await this.audit.record({action:'CREDENTIAL_DOCUMENT_ATTACHED',resource:'Credential',resourceId:credentialId,metadata:{accountId,documentId:document.id,mimeType,byteSize:bytes.length,sha256}});
+      return this.publicDocument(document as unknown as Record<string,unknown>);
+    }catch(error){await this.storage.delete(storageKey);throw error;}
+  }
+
+  async documentAccess(accountId:string,credentialId:string,documentId:string){
+    const a=await this.db.account.findUniqueOrThrow({where:{id:accountId},select:{personId:true}});
+    const document=await this.db.document.findFirst({where:{id:documentId,credentialId,ownerId:a.personId,status:{not:'ARCHIVED'}}});
+    if(!document)throw new NotFoundException('Document not found.');
+    if(!await this.storage.exists(document.storageKey))throw new NotFoundException('Document bytes not found.');
+    const access=this.storage.signedGet(document.storageKey,300);
+    await this.audit.record({action:'CREDENTIAL_DOCUMENT_ACCESS_ISSUED',resource:'Document',resourceId:document.id,metadata:{accountId,credentialId,mode:'OWNER',expiresAt:access.expiresAt}});
+    return access;
+  }
+
+  async reviewerDocumentAccess(reviewerAccountId:string,credentialId:string,documentId:string){
+    const credential=await this.db.credential.findFirst({where:{id:credentialId,verificationStatus:'PENDING'},select:{id:true}});
+    if(!credential)throw new NotFoundException('Credential is not awaiting review.');
+    const document=await this.db.document.findFirst({where:{id:documentId,credentialId,status:{not:'ARCHIVED'}}});
+    if(!document)throw new NotFoundException('Document not found.');
+    if(!await this.storage.exists(document.storageKey))throw new NotFoundException('Document bytes not found.');
+    const access=this.storage.signedGet(document.storageKey,300);
+    await this.audit.record({action:'CREDENTIAL_DOCUMENT_ACCESS_ISSUED',resource:'Document',resourceId:document.id,metadata:{accountId:reviewerAccountId,credentialId,mode:'REVIEW',expiresAt:access.expiresAt}});
+    return access;
   }
 
   async submit(accountId:string,credentialId:string){
@@ -66,6 +98,7 @@ export class CredentialsService {
     const credential=await this.db.credential.findFirst({where:{id:credentialId,personId:a.personId,verificationStatus:'UNVERIFIED'},include:{documents:true}});
     if(!credential)throw new NotFoundException('Credential cannot be submitted.');
     if(verificationPolicy.enforce&&!credential.documents.length)throw new ConflictException('At least one supporting document is required while document verification is enforced.');
+    if(credential.documents.length){let realDocuments=0;for(const document of credential.documents){if(document.status!=='ARCHIVED'&&await this.storage.exists(document.storageKey))realDocuments++;}if(!realDocuments)throw new ConflictException('At least one uploaded document must exist in private storage before verification.');}
     if(verificationPolicy.bypass){
       await this.audit.record({action:'CREDENTIAL_VERIFICATION_BYPASSED',resource:'Credential',resourceId:credentialId,metadata:{accountId,policyState:verificationPolicy.state,documentCount:credential.documents.length}});
       return{id:credentialId,status:credential.verificationStatus,verificationBypassed:true,policyReview:{required:false,issues:[],states:{verification:verificationPolicy.state}}};
@@ -76,8 +109,9 @@ export class CredentialsService {
     return{id:credentialId,status:nextStatus,verificationBypassed:false,policyReview:{required:verificationPolicy.review,issues:verificationPolicy.review?['DOCUMENT_VERIFICATION']:[],states:{verification:verificationPolicy.state}}};
   }
 
-  pendingForAdmin(){
-    return this.db.credential.findMany({where:{verificationStatus:'PENDING'},include:{documents:true,person:{select:{id:true,firstName:true,lastName:true,account:{select:{id:true,email:true}}}}},orderBy:{updatedAt:'asc'},take:100});
+  async pendingForAdmin(){
+    const rows=await this.db.credential.findMany({where:{verificationStatus:'PENDING'},include:{documents:true,person:{select:{id:true,firstName:true,lastName:true,account:{select:{id:true,email:true}}}}},orderBy:{updatedAt:'asc'},take:100});
+    return rows.map(row=>this.publicCredential(row as unknown as Record<string,any>));
   }
 
   async decide(reviewerAccountId:string,credentialId:string,input:{outcome:'VERIFIED'|'REJECTED';reason?:string}){
@@ -95,6 +129,7 @@ export class CredentialsService {
     const expired=Boolean(credential.expiresAt&&credential.expiresAt<=new Date());
     if(input.outcome==='VERIFIED'&&expired&&expiryPolicy.enforce)throw new ConflictException('Expired credential cannot be verified while expiry validation is enforced.');
     if(input.outcome==='VERIFIED'&&verificationPolicy.enforce&&!credential.documents.length)throw new ConflictException('Supporting documents are required while document verification is enforced.');
+    if(input.outcome==='VERIFIED'){let realDocuments=0;for(const document of credential.documents){if(document.status!=='ARCHIVED'&&await this.storage.exists(document.storageKey))realDocuments++;}if(verificationPolicy.enforce&&!realDocuments)throw new ConflictException('Uploaded credential evidence is unavailable in private storage.');}
     const updated=await this.db.$transaction(async(tx:Prisma.TransactionClient)=>{
       const row=await tx.credential.update({where:{id:credentialId},data:{verificationStatus:input.outcome}});
       if(credential.documents.length)await tx.document.updateMany({where:{credentialId},data:{status:input.outcome==='VERIFIED'?'AVAILABLE':'REJECTED'}});
@@ -104,5 +139,15 @@ export class CredentialsService {
     const owner=await this.db.account.findUnique({where:{personId:credential.personId},select:{id:true}});
     if(owner)await this.notifyQuietly(owner.id,'CREDENTIAL_REVIEWED',{credentialId,title:credential.title,outcome:input.outcome,reason:input.reason?.trim()||null,externalVerification:false});
     return{...updated,externalVerification:false,policyReview:{required:expiryPolicy.review&&expired,issues:expiryPolicy.review&&expired?['DOCUMENT_EXPIRY']:[],states:{verification:verificationPolicy.state,expiry:expiryPolicy.state}}};
+  }
+
+  private cleanName(value:string){const name=String(value||'').split(/[\\/]/).pop()?.trim()||'';if(!name||name.length>180)throw new BadRequestException('Invalid document file name.');return name;}
+  private decode(value:string){const base64=String(value||'').trim();if(!base64||base64.length>13_400_000||base64.length%4!==0||!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(base64))throw new BadRequestException('Invalid document payload.');const bytes=Buffer.from(base64,'base64');if(!bytes.length||bytes.length>10_000_000)throw new BadRequestException('Document must be between 1 byte and 10 MB.');return bytes;}
+  private validateFile(originalName:string,mimeType:string,bytes:Buffer){
+    if(!['application/pdf','image/jpeg','image/png'].includes(mimeType))throw new BadRequestException('Only PDF, JPEG and PNG documents are supported.');
+    const lower=originalName.toLowerCase(),extensionOk=mimeType==='application/pdf'?lower.endsWith('.pdf'):mimeType==='image/png'?lower.endsWith('.png'):lower.endsWith('.jpg')||lower.endsWith('.jpeg');
+    if(!extensionOk)throw new BadRequestException('File extension does not match the declared content type.');
+    const signatureOk=mimeType==='application/pdf'?bytes.subarray(0,5).toString('ascii')==='%PDF-':mimeType==='image/png'?bytes.length>=8&&bytes.subarray(0,8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a])):bytes.length>=3&&bytes[0]===0xff&&bytes[1]===0xd8&&bytes[2]===0xff;
+    if(!signatureOk)throw new BadRequestException('Document signature does not match the declared content type.');
   }
 }
