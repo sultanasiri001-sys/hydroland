@@ -18,10 +18,15 @@ const catalog:readonly IntegrationDescriptor[]=[
  {key:'NAFATH',name:'National identity verification',category:'identity',status:'NOT_SELECTED',requiresHumanApproval:true,supportsWebhook:true},
  {key:'REGULATORY',name:'Government and regulatory APIs',category:'regulatory',status:'NOT_SELECTED',requiresHumanApproval:true,supportsWebhook:true}
 ];
+const statuses=new Set(['NOT_SELECTED','SANDBOX','CONFIGURED','VERIFIED','PRODUCTION_ENABLED','DEGRADED','DISABLED']);
 @Injectable() export class IntegrationService {
  constructor(private readonly audit:AuditService){}
- list(){return catalog}
- status(key:IntegrationKey){const integration=catalog.find(item=>item.key===key);if(!integration)throw new ServiceUnavailableException('Unknown integration.');return integration}
+ private configuredStatus(key:IntegrationKey){
+  const status=process.env[`HYDROLAND_INTEGRATION_${key}_STATUS`]?.trim().toUpperCase();
+  return status&&statuses.has(status)?status as IntegrationDescriptor['status']:undefined;
+ }
+ list(){return catalog.map(item=>({...item,status:this.configuredStatus(item.key)??item.status}))}
+ status(key:IntegrationKey){const integration=this.list().find(item=>item.key===key);if(!integration)throw new ServiceUnavailableException('Unknown integration.');return integration}
  requireOperational(key:IntegrationKey,options:{allowSandbox?:boolean}={}){
   const integration=this.status(key);
   const allowed=integration.status==='PRODUCTION_ENABLED'||(options.allowSandbox===true&&integration.status==='SANDBOX');
