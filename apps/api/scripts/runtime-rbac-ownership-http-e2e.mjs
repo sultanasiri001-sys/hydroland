@@ -3,6 +3,7 @@ import { createHmac } from 'node:crypto';
 
 const db=new PrismaClient();
 const base=process.env.RBAC_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1';
+await import('./api-runtime-hardening-validation.mjs');
 await import('./api-runtime-hardening-http-e2e.mjs');
 const secret=process.env.JWT_SECRET;
 if(!secret)throw new Error('JWT_SECRET required');
