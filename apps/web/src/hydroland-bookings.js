@@ -74,6 +74,7 @@
       toast(`${next.trip.title} · ${when} · ${next.status}`);
     }catch(error){toast(error instanceof Error?error.message:'تعذر تحميل الحجوزات');}
   },true);}
+  if(!document.querySelector('script[src$="hydroland-booking-participants.js"]')){const module=document.createElement('script');module.src='./hydroland-booking-participants.js';module.defer=true;document.body.appendChild(module);}
   loadTrips();
   window.HydrolandBookings={reload:loadTrips,listMine:()=>request('/trips/bookings/mine',{method:'GET'})};
 })();
