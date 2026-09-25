@@ -3,7 +3,7 @@ import { AuthService } from './auth.service';
 import { MfaService } from './mfa.service';
 import { AccessTokenGuard } from './access-token.guard';
 import { AuditService } from '../audit/audit.service';
-type Credentials={email:string;password:string}; type Refresh={refreshToken:string}; type MfaVerify={challengeToken:string;code:string}; type MfaCode={code:string}; type GoogleCredential={credential:string};
+type Credentials={email:string;password:string}; type Refresh={refreshToken:string}; type MfaVerify={challengeToken:string;code:string}; type MfaCode={code:string}; type GoogleCredential={credential:string}; type EmailResend={email:string}; type EmailVerify={token:string};
 type RequestLike={ip?:string;headers?:Record<string,string|string[]|undefined>;auth?:{accountId:string;sessionId:string}};
 type RateEntry={count:number;resetAt:number};
 
@@ -11,12 +11,16 @@ const loginFailures=new Map<string,RateEntry>();
 const registrationAttempts=new Map<string,RateEntry>();
 const mfaFailures=new Map<string,RateEntry>();
 const googleFailures=new Map<string,RateEntry>();
+const emailResendAttempts=new Map<string,RateEntry>();
+const emailVerifyFailures=new Map<string,RateEntry>();
 const WINDOW_MS=15*60*1000;
 const MFA_WINDOW_MS=5*60*1000;
 const MAX_LOGIN_FAILURES=10;
 const MAX_REGISTRATION_ATTEMPTS=5;
 const MAX_MFA_FAILURES=5;
 const MAX_GOOGLE_FAILURES=10;
+const MAX_EMAIL_RESENDS=3;
+const MAX_EMAIL_VERIFY_FAILURES=10;
 const MAX_RATE_BUCKETS=5000;
 
 @Controller('auth') export class AuthController {
@@ -28,8 +32,22 @@ const MAX_RATE_BUCKETS=5000;
      throw new HttpException('Too many registration attempts. Try again later.',HttpStatus.TOO_MANY_REQUESTS);
    }
    this.increment(registrationAttempts,key,WINDOW_MS);
-   try{const result=await this.auth.register(b);await this.audit.record({action:'AUTH_REGISTER_SUCCEEDED',resource:'AUTH',metadata:{email,ip}});return result}
+   try{const result=await this.auth.register(b);await this.audit.record({action:'AUTH_REGISTER_SUCCEEDED',resource:'AUTH',metadata:{email,ip,verificationDelivery:result.verificationDelivery}});return result}
    catch(error){await this.audit.record({action:'AUTH_REGISTER_FAILED',resource:'AUTH',metadata:{email,ip}});throw error}
+ }
+ @Post('email-verification/resend') @HttpCode(HttpStatus.OK) async resendEmailVerification(@Body() b:EmailResend,@Req() req:RequestLike){
+   const ip=this.clientIp(req),email=this.safeEmail(b.email),key=`email-resend:${ip}:${email}`;
+   if(this.isLimited(emailResendAttempts,key,MAX_EMAIL_RESENDS)){await this.audit.record({action:'AUTH_EMAIL_VERIFICATION_RESEND_RATE_LIMITED',resource:'AUTH',metadata:{email,ip}});throw new HttpException('Too many verification email requests. Try again later.',HttpStatus.TOO_MANY_REQUESTS)}
+   this.increment(emailResendAttempts,key,WINDOW_MS);
+   const result=await this.auth.resendEmailVerification(email);
+   await this.audit.record({action:'AUTH_EMAIL_VERIFICATION_RESEND_ACCEPTED',resource:'AUTH',metadata:{email,ip,delivery:result.delivery}});
+   return result;
+ }
+ @Post('email-verification/verify') @HttpCode(HttpStatus.OK) async verifyEmail(@Body() b:EmailVerify,@Req() req:RequestLike){
+   const ip=this.clientIp(req),key=`email-verify:${ip}`;
+   if(this.isLimited(emailVerifyFailures,key,MAX_EMAIL_VERIFY_FAILURES)){await this.audit.record({action:'AUTH_EMAIL_VERIFICATION_RATE_LIMITED',resource:'AUTH',metadata:{ip}});throw new HttpException('Too many verification attempts. Try again later.',HttpStatus.TOO_MANY_REQUESTS)}
+   try{const result=await this.auth.verifyEmail(b.token);emailVerifyFailures.delete(key);await this.audit.record({action:'AUTH_EMAIL_VERIFIED',resource:'AUTH',resourceId:result.accountId,metadata:{ip}});return{verified:true}}
+   catch(error){this.increment(emailVerifyFailures,key,WINDOW_MS);await this.audit.record({action:'AUTH_EMAIL_VERIFICATION_FAILED',resource:'AUTH',metadata:{ip}});throw error}
  }
  @Post('login') @HttpCode(HttpStatus.OK) async login(@Body() b:Credentials,@Req() req:RequestLike){
    const ip=this.clientIp(req),email=this.safeEmail(b.email),key=`login:${ip}:${email}`;
