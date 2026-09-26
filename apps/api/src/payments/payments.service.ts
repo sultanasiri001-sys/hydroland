@@ -99,7 +99,8 @@ export class PaymentsService {
   private async reconcile(payment:LocalPayment,remote:MoyasarPayment,source:string){
     this.verifyRemote(payment,remote);
     if(payment.providerReference&&payment.providerReference!==remote.id)throw new ConflictException('Payment is already linked to a different provider reference.');
-    const status=this.localStatus(remote.status);
+    const mappedStatus=this.localStatus(remote.status);
+    const status=this.nextStatus(payment.status,mappedStatus);
     const now=new Date();
     const updated=await this.db.$transaction(async tx=>{
       const row=await tx.payment.update({where:{id:payment.id},data:{providerReference:remote.id,status}});
@@ -123,5 +124,6 @@ export class PaymentsService {
 
   private metadataPaymentId(remote:MoyasarPayment){const value=remote.metadata?.hydroland_payment_id;return typeof value==='string'&&value.trim()?value.trim():null;}
   private localStatus(status:MoyasarPayment['status']){switch(status){case'paid':case'captured':return'CAPTURED';case'authorized':return'AUTHORIZED';case'failed':return'FAILED';case'refunded':return'REFUNDED';case'voided':return'CANCELLED';case'initiated':case'verified':default:return'PENDING';}}
+  private nextStatus(current:string,remote:string){if(current==='REFUNDED')return'REFUNDED';if(current==='CAPTURED'&&remote!=='REFUNDED')return'CAPTURED';return remote;}
   private invoiceNumber(paymentId:string){return`HL-${paymentId.toUpperCase()}`;}
 }
