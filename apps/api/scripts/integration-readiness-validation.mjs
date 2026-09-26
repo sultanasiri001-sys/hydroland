@@ -4,6 +4,7 @@ const read=(path)=>fs.readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const service=read('src/integrations/integration.service.ts');
 const types=read('src/integrations/integration.types.ts');
 const payments=read('src/payments/payments.service.ts');
+const paymentController=read('src/payments/payments.controller.ts');
 const paymentProvider=read('src/payments/moyasar-payment-provider.service.ts');
 const paymentWebhook=read('src/payments/payments-webhook.controller.ts');
 const storage=read('src/trip-intelligence/offline-payload-storage.service.ts');
@@ -11,10 +12,13 @@ const translation=read('src/translation/translation-router.service.ts');
 const stormglass=read('src/trips/stormglass-weather.service.ts');
 const weatherGate=read('src/trips/weather-gate.service.ts');
 const tripAdmin=read('src/trips/trip-admin.service.ts');
+const tripAdminController=read('src/trips/trip-admin.controller.ts');
+const trips=read('src/trips/trips.service.ts');
 const emailDelivery=read('src/integrations/email-delivery.service.ts');
 const emailWorker=read('src/auth/auth-email-outbox.worker.ts');
 const auth=read('src/auth/auth.service.ts');
 const webAuth=read('../web/src/hydroland-auth.js');
+const webBookings=read('../web/src/hydroland-bookings.js');
 const render=read('../../render.yaml');
 
 const requiredKeys=['PAYMENT_PSP','OBJECT_STORAGE','TRANSLATION_ENGINE','WEATHER_MARINE','EMAIL','MAPS_GEO','ESIGN','CERTIFICATION','DISTRESS_AIS','NAFATH','REGULATORY'];
@@ -77,6 +81,9 @@ for(const marker of [
   "Buffer.from(`${secret}:`).toString('base64')",
   "successUrl.searchParams.set('payment','success')",
   "backUrl.searchParams.set('payment','cancelled')",
+  "hydroland_payment_id:input.paymentId",
+  "hydroland_booking_id:input.bookingId",
+  "method:'PUT'",
   "expired_at:new Date(Date.now()+30*60_000).toISOString()",
   "AbortSignal.timeout(8_000)",
   "timingSafeEqual(Buffer.from(secret),Buffer.from(expected))",
@@ -89,11 +96,25 @@ for(const marker of [
   "this.moyasar.cancelInvoice(providerInvoice.id)",
   "PAYMENT_PROVIDER_WEBHOOK_PROCESSED",
   "resource:'PaymentProviderWebhook'",
-  "amount!==payment.amountMinor",
-  "currency!==payment.currency",
-  "payment_paid'||type==='payment_captured'",
-  "payment_refunded",
+  "const providerInvoice=await this.moyasar.fetchInvoice(invoiceId)",
+  "providerVerified:true",
+  "invoice.metadata.hydroland_payment_id!==payment.id",
+  "invoice.metadata.hydroland_booking_id!==payment.bookingId",
+  "const pricing=await this.tripPrice(booking.tripId)",
+  "const amountMinor=pricing.pricePerSeatMinor*booking.seats",
 ])if(!payments.includes(marker))throw new Error(`Payment lifecycle invariant missing: ${marker}`);
+if(paymentController.includes('amountMinor'))throw new Error('Payment controller must not accept a client-supplied amount.');
+for(const marker of ["@Patch(':id/price')","pricePerSeatMinor:number"])if(!tripAdminController.includes(marker))throw new Error(`Trip pricing admin boundary missing: ${marker}`);
+for(const marker of ["TRIP_PRICE_CHANGED","paymentCount>0","Trip price cannot be changed after a payment has been created","trip-price:${tripId}"])if(!tripAdmin.includes(marker))throw new Error(`Governed trip pricing invariant missing: ${marker}`);
+if(!trips.includes('price,safety:latestSafety')||!trips.includes('price=await this.tripPrice'))throw new Error('Public trip pricing is not exposed from the authoritative server store.');
+for(const marker of [
+  "request('/payments'",
+  "bookingId:booking.id",
+  "idempotencyKey:`booking:${booking.id}`",
+  "request(`/payments/${encodeURIComponent(paymentId)}/refresh`",
+  "payment?.status==='CAPTURED'",
+])if(!webBookings.includes(marker))throw new Error(`Web payment checkout invariant missing: ${marker}`);
+if(webBookings.includes('amountMinor'))throw new Error('Web checkout must not submit a payment amount.');
 if(!paymentWebhook.includes("@Controller('payments/provider')")||!paymentWebhook.includes("@Post('moyasar/webhook')")||paymentWebhook.includes('UseGuards'))throw new Error('Moyasar public webhook boundary is missing or incorrectly guarded.');
 for(const key of ['HYDROLAND_INTEGRATION_PAYMENT_PSP_STATUS','HYDROLAND_PAYMENT_PROVIDER','MOYASAR_SECRET_KEY','MOYASAR_WEBHOOK_SECRET'])if(!render.includes(`key: ${key}`))throw new Error(`Render blueprint missing payment activation input: ${key}`);
 console.log('Integration readiness validation passed.');
