@@ -83,6 +83,13 @@ jobs:
             console.log('Weather gate already enforced; no configuration change required.');
           }
           NODE
+      - name: Enable production weather policy
+        working-directory: apps/api
+        env:
+          E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
+          E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+        run: node scripts/enable-stage2-weather-policy.mjs
       - name: Run Stage 2 production operational journey
         working-directory: apps/api
         env:
