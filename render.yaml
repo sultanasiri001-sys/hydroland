@@ -48,6 +48,14 @@ services:
         sync: false
       - key: UNIFONIC_WHATSAPP_SECRET
         sync: false
+      - key: HYDROLAND_INTEGRATION_ESIGN_STATUS
+        sync: false
+      - key: HYDROLAND_ESIGN_PROVIDER
+        sync: false
+      - key: SIGNIT_API_KEY
+        sync: false
+      - key: HYDROLAND_ESIGN_DOCUMENT_HOSTS
+        sync: false
       - key: HYDROLAND_PUBLIC_WEB_ORIGIN
         value: https://hydroland-web.onrender.com
       - key: WEB_ORIGIN

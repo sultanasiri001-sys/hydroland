@@ -19,7 +19,9 @@ for(const marker of [
   "type:'template'",
   'AbortSignal.timeout(8_000)',
 ])if(!service.includes(marker))throw new Error(`Unifonic messaging invariant missing: ${marker}`);
-if(!moduleFile.includes('UnifonicMessagingService')||!moduleFile.includes('exports:[IntegrationService,EmailDeliveryService,UnifonicMessagingService]'))throw new Error('Unifonic messaging service is not exported by IntegrationModule.');
+const exportsBlock=moduleFile.match(/exports:\[([^\]]*)\]/s)?.[1]??'';
+const providersBlock=moduleFile.match(/providers:\[([^\]]*)\]/s)?.[1]??'';
+if(!moduleFile.includes("import { UnifonicMessagingService } from './unifonic-messaging.service';")||!exportsBlock.includes('UnifonicMessagingService')||!providersBlock.includes('UnifonicMessagingService'))throw new Error('Unifonic messaging service is not registered and exported by IntegrationModule.');
 for(const key of ['HYDROLAND_INTEGRATION_SMS_STATUS','HYDROLAND_SMS_PROVIDER','UNIFONIC_SMS_APPSID','UNIFONIC_SMS_SENDER_ID','HYDROLAND_INTEGRATION_WHATSAPP_STATUS','HYDROLAND_WHATSAPP_PROVIDER','UNIFONIC_WHATSAPP_PUBLIC_ID','UNIFONIC_WHATSAPP_SECRET'])if(!render.includes(`key: ${key}`))throw new Error(`Render blueprint missing messaging activation input: ${key}`);
 if(service.includes('console.log')||service.includes('console.error'))throw new Error('Messaging adapter must not log provider credentials or payloads.');
 console.log('Unifonic messaging validation passed.');
