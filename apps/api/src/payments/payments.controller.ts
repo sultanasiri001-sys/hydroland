@@ -10,6 +10,9 @@ export class PaymentsController {
   @Post()
   create(@Req()r:{auth:{accountId:string}},@Body()b:{bookingId:string;amountMinor:number;idempotencyKey:string}){return this.s.create(r.auth.accountId,b)}
 
+  @Post(':id/sync')
+  sync(@Req()r:{auth:{accountId:string}},@Param('id')id:string,@Body()b:{providerPaymentId:string}){return this.s.sync(r.auth.accountId,id,b.providerPaymentId)}
+
   @Post(':id/refund-request')
   requestRefund(@Req()r:{auth:{accountId:string}},@Param('id')id:string,@Body()b:{reason:string}){return this.s.requestRefund(r.auth.accountId,id,b.reason)}
 
