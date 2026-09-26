@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:deploy": "node scripts/production-migration-recovery.mjs && prisma migrate deploy",
+    "db:deploy": "node scripts/production-migration-recovery.mjs && node scripts/trip-weather-migration-recovery.mjs && prisma migrate deploy",
     "validate:hr": "node scripts/hr-validation.mjs && rm -rf .tmp-hr-validation && tsc src/hr/hr-policy.ts src/hr/hr-policy.spec.ts src/hr/hr-compliance.ts src/hr/hr-compliance.spec.ts --outDir .tmp-hr-validation --module commonjs --moduleResolution node --target es2020 --esModuleInterop --skipLibCheck && node .tmp-hr-validation/hr-policy.spec.js && node .tmp-hr-validation/hr-compliance.spec.js && rm -rf .tmp-hr-validation",
     "validate:operations": "rm -rf .tmp-operations-validation && tsc src/operations/operations-policy.ts src/operations/operations-policy.spec.ts --outDir .tmp-operations-validation --module commonjs --target es2020 --esModuleInterop --skipLibCheck && node .tmp-operations-validation/operations-policy.spec.js && rm -rf .tmp-operations-validation",
     "validate:phase10": "node scripts/phase10-validation.mjs",
