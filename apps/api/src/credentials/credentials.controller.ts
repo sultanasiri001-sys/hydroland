@@ -40,8 +40,8 @@ export class CredentialsController {
       outcome:'VERIFIED'|'REJECTED';
       reason?:string;
       externalVerification?:{
-        source:'PADI'|'SSI';
-        method:'ECARD'|'QR';
+        source:'PADI'|'SSI'|'SWSDF'|'NAUI';
+        method:'ECARD'|'QR'|'PRO_LICENSE_VALIDATION'|'ONLINE_DIVER_VERIFY';
         reference:string;
         verificationUrl?:string;
         checkedAt?:string;
