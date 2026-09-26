@@ -3,6 +3,7 @@ import fs from 'node:fs';
 const read=(path)=>fs.readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const service=read('src/integrations/integration.service.ts');
 const types=read('src/integrations/integration.types.ts');
+const health=read('src/health/health.controller.ts');
 const payments=read('src/payments/payments.service.ts');
 const paymentController=read('src/payments/payments.controller.ts');
 const paymentProvider=read('src/payments/moyasar-payment-provider.service.ts');
@@ -117,4 +118,15 @@ for(const marker of [
 if(webBookings.includes('amountMinor'))throw new Error('Web checkout must not submit a payment amount.');
 if(!paymentWebhook.includes("@Controller('payments/provider')")||!paymentWebhook.includes("@Post('moyasar/webhook')")||paymentWebhook.includes('UseGuards'))throw new Error('Moyasar public webhook boundary is missing or incorrectly guarded.');
 for(const key of ['HYDROLAND_INTEGRATION_PAYMENT_PSP_STATUS','HYDROLAND_PAYMENT_PROVIDER','MOYASAR_SECRET_KEY','MOYASAR_WEBHOOK_SECRET'])if(!render.includes(`key: ${key}`))throw new Error(`Render blueprint missing payment activation input: ${key}`);
+for(const marker of [
+  "@Get('integrations/payment')",
+  "this.integrations.status('PAYMENT_PSP')",
+  "providerConfigured: provider === 'MOYASAR'",
+  "credentialsConfigured: Boolean(process.env.MOYASAR_SECRET_KEY?.trim())",
+  "webhookConfigured: Boolean(process.env.MOYASAR_WEBHOOK_SECRET?.trim())",
+  "publicWebOriginConfigured: Boolean(process.env.HYDROLAND_PUBLIC_WEB_ORIGIN?.trim())",
+  'productionReady:',
+  'sandboxReady:',
+])if(!health.includes(marker))throw new Error(`Sanitized payment readiness invariant missing: ${marker}`);
+if(/MOYASAR_SECRET_KEY\s*[:,]/.test(health)||/MOYASAR_WEBHOOK_SECRET\s*[:,]/.test(health))throw new Error('Payment health response must not expose secret environment values.');
 console.log('Integration readiness validation passed.');
