@@ -32,6 +32,22 @@ services:
         sync: false
       - key: MOYASAR_WEBHOOK_SECRET
         sync: false
+      - key: HYDROLAND_INTEGRATION_SMS_STATUS
+        sync: false
+      - key: HYDROLAND_SMS_PROVIDER
+        sync: false
+      - key: UNIFONIC_SMS_APPSID
+        sync: false
+      - key: UNIFONIC_SMS_SENDER_ID
+        sync: false
+      - key: HYDROLAND_INTEGRATION_WHATSAPP_STATUS
+        sync: false
+      - key: HYDROLAND_WHATSAPP_PROVIDER
+        sync: false
+      - key: UNIFONIC_WHATSAPP_PUBLIC_ID
+        sync: false
+      - key: UNIFONIC_WHATSAPP_SECRET
+        sync: false
       - key: HYDROLAND_PUBLIC_WEB_ORIGIN
         value: https://hydroland-web.onrender.com
       - key: WEB_ORIGIN

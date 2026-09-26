@@ -1,0 +1,28 @@
+name: Stage 3 Messaging Validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/api/src/integrations/unifonic-messaging.service.ts'
+      - 'apps/api/src/integrations/integration.module.ts'
+      - 'apps/api/scripts/unifonic-messaging-validation.mjs'
+      - 'render.yaml'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - name: Validate Unifonic messaging contract
+        working-directory: apps/api
+        run: node scripts/unifonic-messaging-validation.mjs
+      - name: Typecheck API
+        run: npm --workspace @hydroland/api run typecheck
+      - name: Build API
+        run: npm --workspace @hydroland/api run build
