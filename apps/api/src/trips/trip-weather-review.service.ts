@@ -24,17 +24,18 @@ export class TripWeatherReviewService{
   private hash(snapshot:WeatherSnapshot){return createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');}
   private async requireTrip(tripId:string){const trip=await this.db.trip.findUnique({where:{id:tripId},select:{id:true,title:true,startsAt:true,status:true}});if(!trip)throw new NotFoundException('Trip not found.');return trip;}
 
-  async location(tripId:string){const rows=await this.db.$queryRaw<TripLocation[]>`SELECT * FROM "TripOperationalLocation" WHERE "tripId"=${tripId}::uuid LIMIT 1`;return rows[0]??null;}
+  async location(tripId:string){const rows=await this.db.$queryRaw<TripLocation[]>`SELECT * FROM "TripOperationalLocation" WHERE "tripId"::text=${tripId} LIMIT 1`;return rows[0]??null;}
 
   async setLocation(actorAccountId:string,tripId:string,input:LocationInput){
     await this.requireTrip(tripId);const value=this.validateLocation(input);
-    const rows=await this.db.$queryRaw<TripLocation[]>`INSERT INTO "TripOperationalLocation"("tripId","locationName","latitude","longitude","createdAt","updatedAt") VALUES(${tripId}::uuid,${value.locationName},${value.latitude},${value.longitude},NOW(),NOW()) ON CONFLICT("tripId") DO UPDATE SET "locationName"=EXCLUDED."locationName","latitude"=EXCLUDED."latitude","longitude"=EXCLUDED."longitude","updatedAt"=NOW() RETURNING *`;
-    await this.db.$executeRaw`UPDATE "TripWeatherReview" SET "status"='PENDING',"reviewedByAccountId"=NULL,"reviewedAt"=NULL,"notes"='Trip location changed; weather review must be repeated.',"updatedAt"=NOW() WHERE "tripId"=${tripId}::uuid AND "status"='APPROVED'`;
+    const rows=await this.db.$queryRaw<TripLocation[]>`INSERT INTO "TripOperationalLocation"("tripId","locationName","latitude","longitude","createdAt","updatedAt") SELECT "id",${value.locationName},${value.latitude},${value.longitude},NOW(),NOW() FROM "Trip" WHERE "id"::text=${tripId} ON CONFLICT("tripId") DO UPDATE SET "locationName"=EXCLUDED."locationName","latitude"=EXCLUDED."latitude","longitude"=EXCLUDED."longitude","updatedAt"=NOW() RETURNING *`;
+    if(!rows[0])throw new NotFoundException('Trip not found.');
+    await this.db.$executeRaw`UPDATE "TripWeatherReview" SET "status"='PENDING',"reviewedByAccountId"=NULL,"reviewedAt"=NULL,"notes"='Trip location changed; weather review must be repeated.',"updatedAt"=NOW() WHERE "tripId"::text=${tripId} AND "status"='APPROVED'`;
     await this.audit.record({action:'TRIP_LOCATION_SET',resource:'Trip',resourceId:tripId,metadata:{actorAccountId,locationName:value.locationName,latitude:value.latitude,longitude:value.longitude}});
     return rows[0];
   }
 
-  async latest(tripId:string){const rows=await this.db.$queryRaw<TripWeatherReview[]>`SELECT * FROM "TripWeatherReview" WHERE "tripId"=${tripId}::uuid ORDER BY "fetchedAt" DESC,"createdAt" DESC LIMIT 1`;return rows[0]??null;}
+  async latest(tripId:string){const rows=await this.db.$queryRaw<TripWeatherReview[]>`SELECT * FROM "TripWeatherReview" WHERE "tripId"::text=${tripId} ORDER BY "fetchedAt" DESC,"createdAt" DESC LIMIT 1`;return rows[0]??null;}
 
   async state(tripId:string){const trip=await this.requireTrip(tripId);const [location,review]=await Promise.all([this.location(tripId),this.latest(tripId)]);return{trip,location,review};}
 
@@ -43,9 +44,9 @@ export class TripWeatherReviewService{
     const snapshot=await this.stormglass.snapshot(location.latitude,location.longitude,trip.startsAt),snapshotHash=this.hash(snapshot),forecastAt=new Date(snapshot.observedAt??trip.startsAt);
     const previous=await this.latest(tripId);let review:TripWeatherReview;
     if(previous&&previous.snapshotHash===snapshotHash){
-      const rows=await this.db.$queryRaw<TripWeatherReview[]>`UPDATE "TripWeatherReview" SET "provider"=${snapshot.provider??'STORMGLASS'},"forecastAt"=${forecastAt},"fetchedAt"=NOW(),"snapshot"=${JSON.stringify(snapshot)}::jsonb,"updatedAt"=NOW() WHERE "id"=${previous.id}::uuid RETURNING *`;review=rows[0];
+      const rows=await this.db.$queryRaw<TripWeatherReview[]>`UPDATE "TripWeatherReview" SET "provider"=${snapshot.provider??'STORMGLASS'},"forecastAt"=${forecastAt},"fetchedAt"=NOW(),"snapshot"=${JSON.stringify(snapshot)}::jsonb,"updatedAt"=NOW() WHERE "id"::text=${previous.id} RETURNING *`;review=rows[0];
     }else{
-      const rows=await this.db.$queryRaw<TripWeatherReview[]>`INSERT INTO "TripWeatherReview"("tripId","provider","forecastAt","fetchedAt","snapshot","snapshotHash","status","createdAt","updatedAt") VALUES(${tripId}::uuid,${snapshot.provider??'STORMGLASS'},${forecastAt},NOW(),${JSON.stringify(snapshot)}::jsonb,${snapshotHash},'PENDING',NOW(),NOW()) RETURNING *`;review=rows[0];
+      const rows=await this.db.$queryRaw<TripWeatherReview[]>`INSERT INTO "TripWeatherReview"("tripId","provider","forecastAt","fetchedAt","snapshot","snapshotHash","status","createdAt","updatedAt") SELECT "id",${snapshot.provider??'STORMGLASS'},${forecastAt},NOW(),${JSON.stringify(snapshot)}::jsonb,${snapshotHash},'PENDING',NOW(),NOW() FROM "Trip" WHERE "id"::text=${tripId} RETURNING *`;if(!rows[0])throw new NotFoundException('Trip not found.');review=rows[0];
     }
     await this.audit.record({action:'TRIP_WEATHER_REFRESHED',resource:'TripWeatherReview',resourceId:review.id,metadata:{actorAccountId,tripId,provider:review.provider,forecastAt:review.forecastAt,status:review.status,snapshotChanged:!previous||previous.snapshotHash!==snapshotHash}});
     return{trip,location,review};
@@ -55,7 +56,7 @@ export class TripWeatherReviewService{
     const status=input.status;if(status!=='APPROVED'&&status!=='REJECTED')throw new BadRequestException('Weather review decision must be APPROVED or REJECTED.');
     await this.requireTrip(tripId);const current=await this.latest(tripId);if(!current)throw new ConflictException('Refresh the trip weather before recording a decision.');
     const notes=input.notes?.trim()||null;
-    const rows=await this.db.$queryRaw<TripWeatherReview[]>`UPDATE "TripWeatherReview" SET "status"=${status},"notes"=${notes},"reviewedByAccountId"=${actorAccountId}::uuid,"reviewedAt"=NOW(),"updatedAt"=NOW() WHERE "id"=${current.id}::uuid RETURNING *`;
+    const rows=await this.db.$queryRaw<TripWeatherReview[]>`UPDATE "TripWeatherReview" SET "status"=${status},"notes"=${notes},"reviewedByAccountId"=(SELECT "id" FROM "Account" WHERE "id"::text=${actorAccountId} LIMIT 1),"reviewedAt"=NOW(),"updatedAt"=NOW() WHERE "id"::text=${current.id} RETURNING *`;
     const review=rows[0];await this.audit.record({action:`TRIP_WEATHER_${status}`,resource:'TripWeatherReview',resourceId:review.id,metadata:{actorAccountId,tripId,provider:review.provider,forecastAt:review.forecastAt,notes}});return{...(await this.state(tripId)),review};
   }
 }
