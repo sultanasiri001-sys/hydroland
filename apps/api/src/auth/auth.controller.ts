@@ -4,17 +4,20 @@ import { MfaService } from './mfa.service';
 import { AccessTokenGuard } from './access-token.guard';
 import { AuditService } from '../audit/audit.service';
 type Credentials={email:string;password:string}; type Refresh={refreshToken:string}; type MfaVerify={challengeToken:string;code:string}; type MfaCode={code:string}; type GoogleCredential={credential:string};
+type EmailBody={email:string}; type TokenBody={token:string}; type ResetBody={token:string;password:string};
 type RequestLike={ip?:string;headers?:Record<string,string|string[]|undefined>;auth?:{accountId:string;sessionId:string}};
 type RateEntry={count:number;resetAt:number};
 
 const loginFailures=new Map<string,RateEntry>();
 const registrationAttempts=new Map<string,RateEntry>();
+const publicActions=new Map<string,RateEntry>();
 const mfaFailures=new Map<string,RateEntry>();
 const googleFailures=new Map<string,RateEntry>();
 const WINDOW_MS=15*60*1000;
 const MFA_WINDOW_MS=5*60*1000;
 const MAX_LOGIN_FAILURES=10;
 const MAX_REGISTRATION_ATTEMPTS=5;
+const MAX_PUBLIC_ACTIONS=5;
 const MAX_MFA_FAILURES=5;
 const MAX_GOOGLE_FAILURES=10;
 const MAX_RATE_BUCKETS=5000;
@@ -23,38 +26,36 @@ const MAX_RATE_BUCKETS=5000;
  constructor(private readonly auth:AuthService,private readonly mfa:MfaService,private readonly audit:AuditService){}
  @Post('register') async register(@Body() b:Credentials,@Req() req:RequestLike){
    const ip=this.clientIp(req),email=this.safeEmail(b.email),key=`register:${ip}`;
-   if(this.isLimited(registrationAttempts,key,MAX_REGISTRATION_ATTEMPTS)){
-     await this.audit.record({action:'AUTH_REGISTER_RATE_LIMITED',resource:'AUTH',metadata:{email,ip}});
-     throw new HttpException('Too many registration attempts. Try again later.',HttpStatus.TOO_MANY_REQUESTS);
-   }
+   if(this.isLimited(registrationAttempts,key,MAX_REGISTRATION_ATTEMPTS)){await this.audit.record({action:'AUTH_REGISTER_RATE_LIMITED',resource:'AUTH',metadata:{email,ip}});throw new HttpException('Too many registration attempts. Try again later.',HttpStatus.TOO_MANY_REQUESTS)}
    this.increment(registrationAttempts,key,WINDOW_MS);
    try{const result=await this.auth.register(b);await this.audit.record({action:'AUTH_REGISTER_SUCCEEDED',resource:'AUTH',metadata:{email,ip}});return result}
    catch(error){await this.audit.record({action:'AUTH_REGISTER_FAILED',resource:'AUTH',metadata:{email,ip}});throw error}
  }
  @Post('login') @HttpCode(HttpStatus.OK) async login(@Body() b:Credentials,@Req() req:RequestLike){
    const ip=this.clientIp(req),email=this.safeEmail(b.email),key=`login:${ip}:${email}`;
-   if(this.isLimited(loginFailures,key,MAX_LOGIN_FAILURES)){
-     await this.audit.record({action:'AUTH_LOGIN_RATE_LIMITED',resource:'AUTH',metadata:{email,ip}});
-     throw new HttpException('Too many login attempts. Try again later.',HttpStatus.TOO_MANY_REQUESTS);
-   }
-   try{
-     const result=await this.auth.login(b);loginFailures.delete(key);
-     if('mfaRequired' in result)await this.audit.record({action:'AUTH_LOGIN_MFA_REQUIRED',resource:'AUTH',metadata:{email,ip}});
-     else await this.audit.record({action:'AUTH_LOGIN_SUCCEEDED',resource:'AUTH',metadata:{email,ip}});
-     return result;
-   }catch(error){this.increment(loginFailures,key,WINDOW_MS);await this.audit.record({action:'AUTH_LOGIN_FAILED',resource:'AUTH',metadata:{email,ip}});throw error}
+   if(this.isLimited(loginFailures,key,MAX_LOGIN_FAILURES)){await this.audit.record({action:'AUTH_LOGIN_RATE_LIMITED',resource:'AUTH',metadata:{email,ip}});throw new HttpException('Too many login attempts. Try again later.',HttpStatus.TOO_MANY_REQUESTS)}
+   try{const result=await this.auth.login(b);loginFailures.delete(key);if('mfaRequired' in result)await this.audit.record({action:'AUTH_LOGIN_MFA_REQUIRED',resource:'AUTH',metadata:{email,ip}});else await this.audit.record({action:'AUTH_LOGIN_SUCCEEDED',resource:'AUTH',metadata:{email,ip}});return result}
+   catch(error){this.increment(loginFailures,key,WINDOW_MS);await this.audit.record({action:'AUTH_LOGIN_FAILED',resource:'AUTH',metadata:{email,ip}});throw error}
  }
  @Get('google/config') googleConfig(){return this.auth.googleConfig()}
  @Post('google') @HttpCode(HttpStatus.OK) async googleLogin(@Body() b:GoogleCredential,@Req() req:RequestLike){
    const ip=this.clientIp(req),key=`google:${ip}`;
    if(this.isLimited(googleFailures,key,MAX_GOOGLE_FAILURES)){await this.audit.record({action:'AUTH_GOOGLE_RATE_LIMITED',resource:'AUTH',metadata:{ip}});throw new HttpException('Too many Google sign-in attempts. Try again later.',HttpStatus.TOO_MANY_REQUESTS)}
-   try{
-     const result=await this.auth.loginWithGoogle(b.credential);googleFailures.delete(key);
-     if('mfaRequired' in result)await this.audit.record({action:'AUTH_GOOGLE_MFA_REQUIRED',resource:'AUTH',metadata:{ip}});
-     else await this.audit.record({action:'AUTH_GOOGLE_SUCCEEDED',resource:'AUTH',metadata:{ip}});
-     return result;
-   }catch(error){this.increment(googleFailures,key,WINDOW_MS);await this.audit.record({action:'AUTH_GOOGLE_FAILED',resource:'AUTH',metadata:{ip}});throw error}
+   try{const result=await this.auth.loginWithGoogle(b.credential);googleFailures.delete(key);if('mfaRequired' in result)await this.audit.record({action:'AUTH_GOOGLE_MFA_REQUIRED',resource:'AUTH',metadata:{ip}});else await this.audit.record({action:'AUTH_GOOGLE_SUCCEEDED',resource:'AUTH',metadata:{ip}});return result}
+   catch(error){this.increment(googleFailures,key,WINDOW_MS);await this.audit.record({action:'AUTH_GOOGLE_FAILED',resource:'AUTH',metadata:{ip}});throw error}
  }
+ @Post('email-verification/request') @HttpCode(HttpStatus.ACCEPTED) async requestEmailVerification(@Body() b:EmailBody,@Req() req:RequestLike){
+   const ip=this.clientIp(req),email=this.safeEmail(b.email),key=`verify:${ip}:${email}`;
+   if(this.isLimited(publicActions,key,MAX_PUBLIC_ACTIONS)){await this.audit.record({action:'AUTH_EMAIL_VERIFICATION_RATE_LIMITED',resource:'AUTH',metadata:{email,ip}});throw new HttpException('Too many requests. Try again later.',HttpStatus.TOO_MANY_REQUESTS)}
+   this.increment(publicActions,key,WINDOW_MS);const result=await this.auth.requestEmailVerification(b.email);await this.audit.record({action:'AUTH_EMAIL_VERIFICATION_REQUESTED',resource:'AUTH',metadata:{email,ip}});return result
+ }
+ @Post('email-verification/confirm') @HttpCode(HttpStatus.OK) async confirmEmailVerification(@Body() b:TokenBody,@Req() req:RequestLike){const result=await this.auth.confirmEmailVerification(b.token);await this.audit.record({action:'AUTH_EMAIL_VERIFIED',resource:'AUTH',metadata:{ip:this.clientIp(req)}});return result}
+ @Post('password-reset/request') @HttpCode(HttpStatus.ACCEPTED) async requestPasswordReset(@Body() b:EmailBody,@Req() req:RequestLike){
+   const ip=this.clientIp(req),email=this.safeEmail(b.email),key=`reset:${ip}:${email}`;
+   if(this.isLimited(publicActions,key,MAX_PUBLIC_ACTIONS)){await this.audit.record({action:'AUTH_PASSWORD_RESET_RATE_LIMITED',resource:'AUTH',metadata:{email,ip}});throw new HttpException('Too many requests. Try again later.',HttpStatus.TOO_MANY_REQUESTS)}
+   this.increment(publicActions,key,WINDOW_MS);const result=await this.auth.requestPasswordReset(b.email);await this.audit.record({action:'AUTH_PASSWORD_RESET_REQUESTED',resource:'AUTH',metadata:{email,ip}});return result
+ }
+ @Post('password-reset/confirm') @HttpCode(HttpStatus.OK) async confirmPasswordReset(@Body() b:ResetBody,@Req() req:RequestLike){const result=await this.auth.resetPassword(b.token,b.password);await this.audit.record({action:'AUTH_PASSWORD_RESET_COMPLETED',resource:'AUTH',metadata:{ip:this.clientIp(req),sessionsRevoked:true}});return result}
  @Post('mfa/verify') @HttpCode(HttpStatus.OK) async verifyMfa(@Body() b:MfaVerify,@Req() req:RequestLike){
    const ip=this.clientIp(req),challenge=typeof b.challengeToken==='string'?b.challengeToken:'',key=`mfa:${ip}:${challenge.slice(-24)}`;
    if(this.isLimited(mfaFailures,key,MAX_MFA_FAILURES)){await this.mfa.invalidateChallenge(challenge);await this.audit.record({action:'AUTH_MFA_RATE_LIMITED',resource:'AUTH',metadata:{ip}});throw new HttpException('Too many MFA attempts. Sign in again.',HttpStatus.TOO_MANY_REQUESTS)}
