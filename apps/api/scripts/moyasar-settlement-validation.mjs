@@ -43,6 +43,12 @@ for(const marker of [
   'BANKING_SETTLEMENT:PRODUCTION_NOT_READY',
   'STAGE3_SETTLEMENT_READINESS=',
 ])if(!inventory.includes(marker))throw new Error(`Stage 3 settlement inventory marker missing: ${marker}`);
-for(const marker of ["'BANKING_SETTLEMENT'","BANKING_SETTLEMENT:[settlement","'CERTIFICATION','DISTRESS_AIS','NAFATH','REGULATORY'"])if(!coverage.includes(marker))throw new Error(`Stage 3 settlement coverage marker missing: ${marker}`);
+
+const adapterReadyBlock=coverage.match(/const adapterReady=\[([\s\S]*?)\];/)?.[1]||'';
+const providerSelectionBlock=coverage.match(/const providerSelectionRequired=\[([\s\S]*?)\];/)?.[1]||'';
+const contractAccessBlock=coverage.match(/const contractAccessRequired=\[([\s\S]*?)\];/)?.[1]||'';
+if(!adapterReadyBlock.includes("'BANKING_SETTLEMENT'"))throw new Error('BANKING_SETTLEMENT is not classified as code-ready.');
+if(providerSelectionBlock.includes("'BANKING_SETTLEMENT'")||contractAccessBlock.includes("'BANKING_SETTLEMENT'"))throw new Error('BANKING_SETTLEMENT is incorrectly classified as unresolved.');
+if(!coverage.includes('BANKING_SETTLEMENT:[settlement'))throw new Error('BANKING_SETTLEMENT adapter evidence is missing from Stage 3 coverage.');
 
 console.log('Moyasar read-only settlement reconciliation validation passed.');
