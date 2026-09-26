@@ -8,6 +8,7 @@ const inventory=read('scripts/production-integration-inventory.mjs');
 const coverage=read('scripts/stage3-integration-coverage-validation.mjs');
 
 for(const marker of [
+  '@UseGuards(AccessTokenGuard,AdminGuard)',
   "@Get('nafath')",
   "this.integrations.status('NAFATH')",
   "providerSelected:provider==='NAFATH'",
@@ -34,7 +35,7 @@ for(const secret of ['NAFATH_CLIENT_SECRET','SAUDI_TOURISM_API_TOKEN']){
 }
 
 const controllersBlock=moduleFile.match(/controllers:\[([^\]]+)\]/)?.[1]||'';
-if(!moduleFile.includes('OfficialOnboardingReadinessController')||!controllersBlock.includes('OfficialOnboardingReadinessController'))throw new Error('Official onboarding readiness controller is not registered by IntegrationModule.');
+if(!moduleFile.includes('AdminModule')||!moduleFile.includes('AuthModule')||!moduleFile.includes('OfficialOnboardingReadinessController')||!controllersBlock.includes('OfficialOnboardingReadinessController'))throw new Error('Official onboarding readiness authorization/registration is incomplete.');
 
 for(const key of [
   'HYDROLAND_INTEGRATION_NAFATH_STATUS','HYDROLAND_NAFATH_PROVIDER','HYDROLAND_NAFATH_ACCESS_APPROVED',
@@ -44,8 +45,9 @@ for(const key of [
 ])if(!render.includes(`key: ${key}`))throw new Error(`Render blueprint missing official onboarding input: ${key}`);
 
 for(const marker of [
-  "read('/health/integrations/nafath')",
-  "read('/health/integrations/regulatory')",
+  "const adminRead = path => read(path, { headers })",
+  "adminRead('/health/integrations/nafath')",
+  "adminRead('/health/integrations/regulatory')",
   'NAFATH:APPROVED_CONTRACT_AND_ADAPTER_REQUIRED',
   'REGULATORY:LICENSING_API_CONTRACT_AND_ADAPTER_REQUIRED',
   'STAGE3_NAFATH_ONBOARDING=',
