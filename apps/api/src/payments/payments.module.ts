@@ -5,7 +5,9 @@ import {TripsModule} from '../trips/trips.module';
 import {IntegrationModule} from '../integrations/integration.module';
 import {PaymentsController} from './payments.controller';
 import {PaymentsWebhookController} from './payments-webhook.controller';
+import {SettlementReadinessController} from './settlement-readiness.controller';
 import {PaymentsService} from './payments.service';
 import {MoyasarPaymentProviderService} from './moyasar-payment-provider.service';
-@Module({imports:[AuthModule,AuditModule,TripsModule,IntegrationModule],controllers:[PaymentsController,PaymentsWebhookController],providers:[PaymentsService,MoyasarPaymentProviderService],exports:[PaymentsService]})
+import {MoyasarSettlementProviderService} from './moyasar-settlement-provider.service';
+@Module({imports:[AuthModule,AuditModule,TripsModule,IntegrationModule],controllers:[PaymentsController,PaymentsWebhookController,SettlementReadinessController],providers:[PaymentsService,MoyasarPaymentProviderService,MoyasarSettlementProviderService],exports:[PaymentsService,MoyasarSettlementProviderService]})
 export class PaymentsModule {}

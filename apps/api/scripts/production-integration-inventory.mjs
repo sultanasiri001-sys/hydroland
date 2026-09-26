@@ -38,10 +38,11 @@ const counts = safe.reduce((acc, item) => {
   return acc;
 }, {});
 
-const [maps, weather, payment, emailReadiness, sms, whatsapp, objectStorage, translation, esign] = await Promise.all([
+const [maps, weather, payment, settlement, emailReadiness, sms, whatsapp, objectStorage, translation, esign] = await Promise.all([
   read('/integrations/maps/public-config'),
   read('/integrations/weather/public-config'),
   read('/health/integrations/payment'),
+  read('/health/integrations/settlement'),
   read('/health/integrations/email'),
   read('/health/integrations/sms'),
   read('/health/integrations/whatsapp'),
@@ -73,6 +74,7 @@ const sanitizeReadiness = value => ({
   checks: value?.checks ?? {},
 });
 const safePayment = sanitizeReadiness(payment);
+const safeSettlement = sanitizeReadiness(settlement);
 const safeEmail = sanitizeReadiness(emailReadiness);
 const safeSms = sanitizeReadiness(sms);
 const safeWhatsApp = sanitizeReadiness(whatsapp);
@@ -93,6 +95,7 @@ for (const item of safe) {
 if (!safeMaps.enabled) blockers.push('MAPS_GEO:RUNTIME_NOT_OPERATIONAL');
 if (!safeWeather.configured) blockers.push('WEATHER_MARINE:RUNTIME_NOT_OPERATIONAL');
 if (!safePayment.productionReady) blockers.push('PAYMENT_PSP:PRODUCTION_NOT_READY');
+if (!safeSettlement.productionReady) blockers.push('BANKING_SETTLEMENT:PRODUCTION_NOT_READY');
 if (!safeEmail.productionReady) blockers.push('EMAIL:PRODUCTION_NOT_READY');
 if (!safeSms.productionReady) blockers.push('SMS:PRODUCTION_NOT_READY');
 if (!safeWhatsApp.productionReady) blockers.push('WHATSAPP:PRODUCTION_NOT_READY');
@@ -104,6 +107,7 @@ console.log('STAGE3_INTEGRATION_INVENTORY=' + JSON.stringify({ counts, integrati
 console.log('STAGE3_MAPS_PUBLIC=' + JSON.stringify(safeMaps));
 console.log('STAGE3_WEATHER_PUBLIC=' + JSON.stringify(safeWeather));
 console.log('STAGE3_PAYMENT_READINESS=' + JSON.stringify(safePayment));
+console.log('STAGE3_SETTLEMENT_READINESS=' + JSON.stringify(safeSettlement));
 console.log('STAGE3_EMAIL_READINESS=' + JSON.stringify(safeEmail));
 console.log('STAGE3_SMS_READINESS=' + JSON.stringify(safeSms));
 console.log('STAGE3_WHATSAPP_READINESS=' + JSON.stringify(safeWhatsApp));

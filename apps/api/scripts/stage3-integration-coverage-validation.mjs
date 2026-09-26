@@ -6,6 +6,7 @@ const stormglass=read('src/trips/stormglass-weather.service.ts');
 const email=read('src/integrations/email-delivery.service.ts');
 const unifonic=read('src/integrations/unifonic-messaging.service.ts');
 const moyasar=read('src/payments/moyasar-payment-provider.service.ts');
+const settlement=read('src/payments/moyasar-settlement-provider.service.ts');
 const storage=read('src/trip-intelligence/offline-payload-storage.service.ts');
 const translationRouter=read('src/translation/translation-router.service.ts');
 const googleTranslation=read('src/translation/google-cloud-translation.provider.ts');
@@ -18,11 +19,11 @@ const allKeys=[
   'DISTRESS_AIS','NAFATH','REGULATORY',
 ];
 const adapterReady=[
-  'WEATHER_MARINE','EMAIL','SMS','WHATSAPP','PAYMENT_PSP',
+  'WEATHER_MARINE','EMAIL','SMS','WHATSAPP','PAYMENT_PSP','BANKING_SETTLEMENT',
   'OBJECT_STORAGE','TRANSLATION_ENGINE','MAPS_GEO','ESIGN',
 ];
 const providerSelectionRequired=[
-  'BANKING_SETTLEMENT','CERTIFICATION','DISTRESS_AIS','NAFATH','REGULATORY',
+  'CERTIFICATION','DISTRESS_AIS','NAFATH','REGULATORY',
 ];
 
 for(const key of allKeys){
@@ -40,6 +41,7 @@ const evidence={
   SMS:[unifonic,"requireOperational('SMS'",'UNIFONIC_SMS_APPSID'],
   WHATSAPP:[unifonic,"requireOperational('WHATSAPP'",'UNIFONIC_WHATSAPP_PUBLIC_ID'],
   PAYMENT_PSP:[moyasar,"requireOperational('PAYMENT_PSP'",'MOYASAR_SECRET_KEY'],
+  BANKING_SETTLEMENT:[settlement,"requireOperational('BANKING_SETTLEMENT'",'HYDROLAND_SETTLEMENT_PROVIDER','MOYASAR_SECRET_KEY','/settlements','/lines'],
   OBJECT_STORAGE:[storage,"requireOperational('OBJECT_STORAGE'",'CLOUDFLARE_R2_ACCOUNT_ID'],
   TRANSLATION_ENGINE:[translationRouter+'\n'+googleTranslation,"requireOperational('TRANSLATION_ENGINE')",'GOOGLE_CLOUD_TRANSLATION_API_KEY','https://translation.googleapis.com/language/translate/v2'],
   MAPS_GEO:[integrations,'publicMapConfig()','HYDROLAND_MAP_STYLE_URL'],
