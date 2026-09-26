@@ -1,11 +1,9 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { AuthEmailOutboxWorker } from './auth-email-outbox.worker';
 import { MfaService } from './mfa.service';
 import { GoogleIdentityService } from './google-identity.service';
 import { AccessTokenGuard } from './access-token.guard';
 import { AuditModule } from '../audit/audit.module';
-import { IntegrationModule } from '../integrations/integration.module';
-@Module({ imports:[forwardRef(()=>AuditModule),forwardRef(()=>IntegrationModule)], controllers: [AuthController], providers: [AuthService, AuthEmailOutboxWorker, MfaService, GoogleIdentityService, AccessTokenGuard], exports: [AuthService, MfaService, GoogleIdentityService, AccessTokenGuard] })
+@Module({ imports:[forwardRef(()=>AuditModule)], controllers: [AuthController], providers: [AuthService, MfaService, GoogleIdentityService, AccessTokenGuard], exports: [AuthService, MfaService, GoogleIdentityService, AccessTokenGuard] })
 export class AuthModule {}
