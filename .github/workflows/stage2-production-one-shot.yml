@@ -29,6 +29,11 @@ jobs:
           case "$E2E_BASE_URL" in https://*) ;; *) echo "E2E_BASE_URL must use HTTPS"; exit 1 ;; esac
           case "$E2E_BASE_URL" in *localhost*|*127.0.0.1*) echo "E2E_BASE_URL must be deployed"; exit 1 ;; esac
           case "$E2E_ADMIN_EMAIL" in *@hydroland.test) ;; *) echo "E2E admin must use @hydroland.test"; exit 1 ;; esac
+      - name: Apply branch database repair migration
+        working-directory: apps/api
+        env:
+          DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
+        run: npm run db:deploy
       - name: Prepare E2E admin account
         working-directory: apps/api
         env:
