@@ -11,6 +11,7 @@ const storage=read('src/trip-intelligence/offline-payload-storage.service.ts');
 const translationRouter=read('src/translation/translation-router.service.ts');
 const googleTranslation=read('src/translation/google-cloud-translation.provider.ts');
 const signit=read('src/integrations/signit-esign.service.ts');
+const marineTraffic=read('src/integrations/marinetraffic-ais.service.ts');
 const webMap=read('../web/src/hydroland-map.js');
 
 const allKeys=[
@@ -25,6 +26,7 @@ const adapterReady=[
 const providerSelectionRequired=[
   'CERTIFICATION','DISTRESS_AIS','NAFATH','REGULATORY',
 ];
+const partialCoverage={DISTRESS_AIS:'MARINETRAFFIC_AIS_ONLY'};
 
 for(const key of allKeys){
   if(!integrations.includes(`key:'${key}'`))throw new Error(`Stage 3 catalog key missing: ${key}`);
@@ -52,6 +54,13 @@ for(const [key,[source,...markers]] of Object.entries(evidence)){
     if(!source.includes(marker))throw new Error(`Stage 3 adapter evidence missing for ${key}: ${marker}`);
   }
 }
+for(const marker of [
+  "requireOperational('DISTRESS_AIS',{allowSandbox:true})",
+  'HYDROLAND_DISTRESS_AIS_PROVIDER',
+  'MARINETRAFFIC_AIS_ONLY',
+  'MARINETRAFFIC_API_KEY',
+  'https://services.marinetraffic.com/api/exportvessel/',
+])if(!marineTraffic.includes(marker))throw new Error(`DISTRESS_AIS partial AIS evidence missing: ${marker}`);
 if(!webMap.includes("request('/integrations/maps/public-config')")||!webMap.includes('MapLibre'))throw new Error('MAPS_GEO web runtime evidence is missing.');
 
 for(const key of providerSelectionRequired){
@@ -60,5 +69,6 @@ for(const key of providerSelectionRequired){
 }
 
 console.log('STAGE3_CODE_READY='+JSON.stringify(adapterReady));
+console.log('STAGE3_PARTIAL_COVERAGE='+JSON.stringify(partialCoverage));
 console.log('STAGE3_PROVIDER_SELECTION_REQUIRED='+JSON.stringify(providerSelectionRequired));
 console.log('Stage 3 integration coverage matrix validation passed.');
