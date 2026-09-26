@@ -12,5 +12,9 @@ services:
         generateValue: true
       - key: GOOGLE_CLIENT_ID
         sync: false
+      - key: STORMGLASS_API_KEY
+        sync: false
+      - key: HYDROLAND_INTEGRATION_WEATHER_MARINE_STATUS
+        sync: false
       - key: WEB_ORIGIN
         value: https://sultanasiri001-sys.github.io
