@@ -12,7 +12,10 @@ export class TripAdminController {
   list() { return this.trips.list(); }
 
   @Post()
-  create(@Req() req:{auth:{accountId:string}},@Body() body: { title?: string; type?: string; startsAt?: string; endsAt?: string; capacity?: number; status?: TripStatusValue; locationName?:string; latitude?:number; longitude?:number }) { return this.trips.create(req.auth.accountId,body); }
+  create(@Req() req:{auth:{accountId:string}},@Body() body: { title?: string; type?: string; startsAt?: string; endsAt?: string; capacity?: number; status?: TripStatusValue; locationName?:string; latitude?:number; longitude?:number; pricePerSeatMinor?:number }) { return this.trips.create(req.auth.accountId,body); }
+
+  @Patch(':id/price')
+  price(@Req() req:{auth:{accountId:string}},@Param('id') id:string,@Body() body:{pricePerSeatMinor:number}){return this.trips.setPrice(req.auth.accountId,id,body.pricePerSeatMinor);}
 
   @Patch(':id/location')
   location(@Req() req:{auth:{accountId:string}},@Param('id') id:string,@Body() body:{locationName?:string;latitude?:number;longitude?:number}){return this.trips.location(req.auth.accountId,id,body);}
