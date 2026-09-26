@@ -38,7 +38,7 @@ const counts = safe.reduce((acc, item) => {
   return acc;
 }, {});
 
-const [maps, weather, payment, settlement, emailReadiness, sms, whatsapp, objectStorage, translation, esign] = await Promise.all([
+const [maps, weather, payment, settlement, emailReadiness, sms, whatsapp, objectStorage, translation, esign, distressAis] = await Promise.all([
   read('/integrations/maps/public-config'),
   read('/integrations/weather/public-config'),
   read('/health/integrations/payment'),
@@ -49,6 +49,7 @@ const [maps, weather, payment, settlement, emailReadiness, sms, whatsapp, object
   read('/health/integrations/object-storage'),
   read('/health/integrations/translation'),
   read('/health/integrations/esign'),
+  read('/health/integrations/distress-ais'),
 ]);
 
 const safeMaps = {
@@ -81,6 +82,14 @@ const safeWhatsApp = sanitizeReadiness(whatsapp);
 const safeObjectStorage = sanitizeReadiness(objectStorage);
 const safeTranslation = sanitizeReadiness(translation);
 const safeEsign = sanitizeReadiness(esign);
+const safeDistressAis = {
+  status: distressAis?.status ?? null,
+  provider: distressAis?.provider ?? null,
+  aisReady: Boolean(distressAis?.aisReady),
+  distressReady: Boolean(distressAis?.distressReady),
+  productionReady: Boolean(distressAis?.productionReady),
+  checks: distressAis?.checks ?? {},
+};
 
 const validStatuses = ['NOT_SELECTED','SANDBOX','CONFIGURED','VERIFIED','PRODUCTION_ENABLED','DEGRADED','DISABLED'];
 const invalid = safe.filter(item => !validStatuses.includes(item.status));
@@ -102,6 +111,7 @@ if (!safeWhatsApp.productionReady) blockers.push('WHATSAPP:PRODUCTION_NOT_READY'
 if (!safeObjectStorage.productionReady) blockers.push('OBJECT_STORAGE:PRODUCTION_NOT_READY');
 if (!safeTranslation.productionReady) blockers.push('TRANSLATION_ENGINE:PRODUCTION_NOT_READY');
 if (!safeEsign.productionReady) blockers.push('ESIGN:PRODUCTION_NOT_READY');
+if (!safeDistressAis.distressReady) blockers.push('DISTRESS_AIS:DISTRESS_PROVIDER_REQUIRED');
 
 console.log('STAGE3_INTEGRATION_INVENTORY=' + JSON.stringify({ counts, integrations: safe }));
 console.log('STAGE3_MAPS_PUBLIC=' + JSON.stringify(safeMaps));
@@ -114,4 +124,5 @@ console.log('STAGE3_WHATSAPP_READINESS=' + JSON.stringify(safeWhatsApp));
 console.log('STAGE3_OBJECT_STORAGE_READINESS=' + JSON.stringify(safeObjectStorage));
 console.log('STAGE3_TRANSLATION_READINESS=' + JSON.stringify(safeTranslation));
 console.log('STAGE3_ESIGN_READINESS=' + JSON.stringify(safeEsign));
+console.log('STAGE3_DISTRESS_AIS_READINESS=' + JSON.stringify(safeDistressAis));
 console.log('STAGE3_BLOCKERS=' + JSON.stringify([...new Set(blockers)]));

@@ -1,0 +1,38 @@
+name: Stage 3 MarineTraffic AIS Validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/api/src/integrations/marinetraffic-ais.service.ts'
+      - 'apps/api/src/integrations/distress-ais-readiness.controller.ts'
+      - 'apps/api/src/integrations/integration.module.ts'
+      - 'apps/api/scripts/marinetraffic-ais-validation.mjs'
+      - 'apps/api/scripts/production-integration-inventory.mjs'
+      - 'apps/api/scripts/stage3-integration-coverage-validation.mjs'
+      - 'docs/STAGE3_INTEGRATION_COVERAGE.md'
+      - 'render.yaml'
+      - '.github/workflows/stage3-marinetraffic-ais-validation.yml'
+  push:
+    branches: [feat/stage3-marinetraffic-ais-readonly]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm --workspace @hydroland/api run db:generate
+      - name: Validate MarineTraffic AIS-only contract
+        run: node apps/api/scripts/marinetraffic-ais-validation.mjs
+      - name: Validate Stage 3 integration coverage
+        run: node apps/api/scripts/stage3-integration-coverage-validation.mjs
+      - name: Validate existing integration safeguards
+        run: node apps/api/scripts/integration-readiness-validation.mjs
+      - name: API typecheck
+        run: npm --workspace @hydroland/api run typecheck
+      - name: API build
+        run: npm --workspace @hydroland/api run build

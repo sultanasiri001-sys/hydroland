@@ -19,7 +19,9 @@ for(const marker of [
   'AbortSignal.timeout(10_000)',
   'AbortSignal.timeout(8_000)',
 ])if(!service.includes(marker))throw new Error(`Signit e-sign invariant missing: ${marker}`);
-if(!moduleFile.includes('SignitEsignService')||!moduleFile.includes('exports:[IntegrationService,EmailDeliveryService,UnifonicMessagingService,SignitEsignService]'))throw new Error('Signit e-sign service is not exported by IntegrationModule.');
+const exportsBlock=moduleFile.match(/exports:\[([^\]]+)\]/)?.[1]||'';
+const providersBlock=moduleFile.match(/providers:\[([^\]]+)\]/)?.[1]||'';
+if(!moduleFile.includes('SignitEsignService')||!exportsBlock.includes('SignitEsignService')||!providersBlock.includes('SignitEsignService'))throw new Error('Signit e-sign service is not registered and exported by IntegrationModule.');
 for(const key of ['HYDROLAND_INTEGRATION_ESIGN_STATUS','HYDROLAND_ESIGN_PROVIDER','SIGNIT_API_KEY','HYDROLAND_ESIGN_DOCUMENT_HOSTS'])if(!render.includes(`key: ${key}`))throw new Error(`Render blueprint missing e-sign activation input: ${key}`);
 if(service.includes('console.log')||service.includes('console.error'))throw new Error('E-sign adapter must not log provider credentials or document payloads.');
 console.log('Signit e-sign validation passed.');

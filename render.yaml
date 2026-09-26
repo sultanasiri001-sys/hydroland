@@ -80,6 +80,12 @@ services:
         sync: false
       - key: HYDROLAND_OBJECT_STORAGE_URL_TTL_SECONDS
         value: '300'
+      - key: HYDROLAND_INTEGRATION_DISTRESS_AIS_STATUS
+        sync: false
+      - key: HYDROLAND_DISTRESS_AIS_PROVIDER
+        sync: false
+      - key: MARINETRAFFIC_API_KEY
+        sync: false
       - key: HYDROLAND_PUBLIC_WEB_ORIGIN
         value: https://hydroland-web.onrender.com
       - key: WEB_ORIGIN
