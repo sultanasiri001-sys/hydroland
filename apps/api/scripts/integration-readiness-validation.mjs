@@ -106,7 +106,7 @@ for(const marker of [
 if(paymentController.includes('amountMinor'))throw new Error('Payment controller must not accept a client-supplied amount.');
 for(const marker of ["@Patch(':id/price')","pricePerSeatMinor:number"])if(!tripAdminController.includes(marker))throw new Error(`Trip pricing admin boundary missing: ${marker}`);
 for(const marker of ["TRIP_PRICE_CHANGED","paymentCount>0","Trip price cannot be changed after a payment has been created","trip-price:${tripId}"])if(!tripAdmin.includes(marker))throw new Error(`Governed trip pricing invariant missing: ${marker}`);
-if(!trips.includes('price,safety:latestSafety')||!trips.includes('price=await this.tripPrice'))throw new Error('Public trip pricing is not exposed from the authoritative server store.');
+if(!trips.includes('price,safety:latestSafety')||!trips.includes('this.tripPrice(trip.id)'))throw new Error('Public trip pricing is not exposed from the authoritative server store.');
 for(const marker of [
   "request('/payments'",
   "bookingId:booking.id",
