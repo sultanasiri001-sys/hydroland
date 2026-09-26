@@ -24,6 +24,14 @@ A code-ready integration still requires the provider account, credentials, appro
 
 ## Partial coverage
 
+### CERTIFICATION
+
+HYDROLAND supports validation of a user/operator-provided PADI eCard verification link as official evidence. The boundary accepts only HTTPS links on `livewebservices.padi.com` using the PADI eCard v4 verification path, fingerprints the evidence, and requires human review. It does not scrape PADI, does not claim automated API verification, and does not expose the verification query values through readiness output.
+
+This is evidence validation only. `CERTIFICATION` remains `NOT_SELECTED` and production-unready until an approved certification-verification API contract is implemented. Additional agencies such as SSI/SDI are not treated as integrated without their own verified contracts.
+
+### DISTRESS_AIS
+
 `DISTRESS_AIS` has an AIS-only adapter using MarineTraffic for read-only vessel situational awareness by MMSI/IMO. This does not implement, transmit, acknowledge or manage maritime distress alerts. The overall `DISTRESS_AIS` integration therefore remains provider-selection-required and must not report production-ready until an approved distress contract is implemented.
 
 ## Contract/access onboarding required
@@ -39,7 +47,7 @@ Both integrations remain `NOT_SELECTED` in runtime until their approved adapter 
 
 The following integrations still need a complete provider/capability contract:
 
-- CERTIFICATION — no verified public certification-verification API contract has been approved.
+- CERTIFICATION — PADI eCard human-verifiable evidence exists as partial coverage, but no approved automated certification API contract exists.
 - DISTRESS_AIS — distress capability still required; MarineTraffic AIS-only partial coverage exists.
 
 No production adapter should be invented without a verifiable provider contract, authentication model, endpoint specification, data handling requirements and commercial/regulatory approval where applicable.
