@@ -4,18 +4,18 @@ const waitForApp = async page => {
   await page.waitForFunction(() => Boolean(window.HydrolandAuth && window.HydrolandPortalAccess && window.HydrolandProfile));
 };
 
-const installStableProfileApi = async page => {
+const installStableProfileApi = async (page,{roleAssignments=[]}={}) => {
   const json = (route, body) => route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(body)});
   await page.route(/\/api\/v1\/me$/, route => json(route, {
-    id:'auth-e2e',email:'auth-e2e@hydroland.test',status:'ACTIVE',roleAssignments:[],
+    id:'auth-e2e',email:'auth-e2e@hydroland.test',status:'ACTIVE',roleAssignments,
     person:{firstName:'Auth',lastName:'E2E',phone:null,professional:null}
   }));
   await page.route(/\/api\/v1\/credentials$/, route => json(route, []));
   await page.route(/\/api\/v1\/me\/diver-profile$/, route => json(route, {profile:null,equipment:[]}));
 };
 
-const seedSession = async page => {
-  await installStableProfileApi(page);
+const seedSession = async (page,profileOptions={}) => {
+  await installStableProfileApi(page,profileOptions);
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await waitForApp(page);
   await page.evaluate(() => {
@@ -171,7 +171,7 @@ test('unauthenticated runtime keeps the admin console closed', async ({ page }) 
 
 
 test('late-loaded role dashboard replays the current authorized role', async ({ page }) => {
-  await seedSession(page);
+  await seedSession(page,{roleAssignments:[{role:'ADMIN',status:'ACTIVE'}]});
   await page.evaluate(() => {
     window.HydrolandProfileData={profile:{roles:[{role:'ADMIN',status:'ACTIVE'}]}};
     const adminButton=document.querySelector('#role-dialog [data-role="admin"]');
