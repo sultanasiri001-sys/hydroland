@@ -29,7 +29,11 @@ export class CredentialsController {
 
   @UseGuards(ReviewGuard)
   @Get('admin/pending')
-  pendingForAdmin(){return this.service.pendingForAdmin()}
+  async pendingForAdmin(@Req() r:{auth:{accountId:string}}){
+    const rows=await this.service.pendingForAdmin();
+    const statuses=await this.verificationEvidence.statuses(r.auth.accountId,rows.map(row=>row.id));
+    return rows.map(row=>({...row,externalVerificationEvidenceRecordedAt:statuses[row.id]||null}));
+  }
 
   @UseGuards(ReviewGuard)
   @Get('admin/:id/documents/:documentId/access')
