@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 
 const service=fs.readFileSync(new URL('../src/trip-intelligence/offline-payload-storage.service.ts',import.meta.url),'utf8');
-const render=fs.readFileSync(new URL('../../render.yaml',import.meta.url),'utf8');
-const rootPackage=JSON.parse(fs.readFileSync(new URL('../../package.json',import.meta.url),'utf8'));
+const render=fs.readFileSync(new URL('../../../render.yaml',import.meta.url),'utf8');
+const rootPackage=JSON.parse(fs.readFileSync(new URL('../../../package.json',import.meta.url),'utf8'));
 
 for(const marker of [
   "requireOperational('OBJECT_STORAGE',{allowSandbox:true})",
