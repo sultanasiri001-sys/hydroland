@@ -28,6 +28,7 @@ import { InventoryStocktakeController } from './inventory-stocktake.controller';
 import { InventoryStocktakeService } from './inventory-stocktake.service';
 import { OperationalClearanceScheduler } from './operational-clearance.scheduler';
 import { OperationalClearanceService } from './operational-clearance.service';
+import { PaymentConfirmationGuard } from './payment-confirmation.guard';
 import { PolicyControlController } from './policy-control.controller';
 import { PolicyControlService } from './policy-control.service';
 import { TripAdminController } from './trip-admin.controller';
@@ -36,6 +37,7 @@ import { TripComplianceController } from './trip-compliance.controller';
 import { TripComplianceService } from './trip-compliance.service';
 import { TripCompletionController } from './trip-completion.controller';
 import { TripCompletionService } from './trip-completion.service';
+import { TripPricingGovernanceService } from './trip-pricing-governance.service';
 import { TripWeatherReviewService } from './trip-weather-review.service';
 import { TripsController } from './trips.controller';
 import { TripsService } from './trips.service';
@@ -46,7 +48,7 @@ import { StormglassWeatherService } from './stormglass-weather.service';
 @Module({
   imports: [AuthModule, AdminModule, AuditModule, NotificationsModule, IntegrationModule, MarineOperationsModule],
   controllers: [TripsController,TripAdminController,TripCompletionController,WeatherGateController,CalendarAllocationController,CrewAssignmentController,PolicyControlController,BoatComplianceController,TripComplianceController,EquipmentInspectionController,EquipmentInventoryController,InventoryStocktakeController,EquipmentRentalController,EquipmentRentalAdminController,EquipmentRentalHandoverController],
-  providers: [TripsService,TripAdminService,TripCompletionService,WeatherGateService,StormglassWeatherService,TripWeatherReviewService,CalendarAllocationService,CalendarResourceService,CrewAssignmentService,CrewEscalationScheduler,OperationalClearanceService,OperationalClearanceScheduler,BookingParticipantService,PolicyControlService,BoatComplianceService,TripComplianceService,EquipmentInspectionService,EquipmentInventoryService,InventoryStocktakeService,EquipmentRentalService,EquipmentRentalAdminService,EquipmentRentalHandoverService],
+  providers: [TripsService,TripAdminService,TripPricingGovernanceService,PaymentConfirmationGuard,TripCompletionService,WeatherGateService,StormglassWeatherService,TripWeatherReviewService,CalendarAllocationService,CalendarResourceService,CrewAssignmentService,CrewEscalationScheduler,OperationalClearanceService,OperationalClearanceScheduler,BookingParticipantService,PolicyControlService,BoatComplianceService,TripComplianceService,EquipmentInspectionService,EquipmentInventoryService,InventoryStocktakeService,EquipmentRentalService,EquipmentRentalAdminService,EquipmentRentalHandoverService],
   exports: [PolicyControlService,BoatComplianceService,TripComplianceService,EquipmentInspectionService,EquipmentInventoryService,InventoryStocktakeService,EquipmentRentalService,TripWeatherReviewService],
 })
 export class TripsModule {}
