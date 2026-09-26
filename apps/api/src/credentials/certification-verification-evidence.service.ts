@@ -60,11 +60,20 @@ export class CertificationVerificationEvidenceService{
     return{credentialId,evidence,decisionRequired:true};
   }
 
-  async status(reviewerAccountId:string,credentialId:string){
+  async statuses(reviewerAccountId:string,credentialIds:string[]){
+    if(!credentialIds.length)return{} as Record<string,string|null>;
     const reviewer=await this.db.account.findUnique({where:{id:reviewerAccountId},select:{personId:true}});
     if(!reviewer)throw new NotFoundException('Reviewer account not found.');
-    const evidence=await this.db.auditEvent.findFirst({where:{action:'CREDENTIAL_EXTERNAL_VERIFICATION_EVIDENCE_RECORDED',resource:'Credential',resourceId:credentialId,actorId:reviewer.personId},orderBy:{occurredAt:'desc'},select:{id:true,occurredAt:true}});
-    return{credentialId,recorded:Boolean(evidence),recordedAt:evidence?.occurredAt||null};
+    const events=await this.db.auditEvent.findMany({where:{action:'CREDENTIAL_EXTERNAL_VERIFICATION_EVIDENCE_RECORDED',resource:'Credential',resourceId:{in:credentialIds},actorId:reviewer.personId},orderBy:{occurredAt:'desc'},select:{resourceId:true,occurredAt:true}});
+    const result:Record<string,string|null>={};
+    for(const credentialId of credentialIds)result[credentialId]=null;
+    for(const event of events)if(event.resourceId&&result[event.resourceId]===null)result[event.resourceId]=event.occurredAt.toISOString();
+    return result;
+  }
+
+  async status(reviewerAccountId:string,credentialId:string){
+    const statuses=await this.statuses(reviewerAccountId,[credentialId]);
+    return{credentialId,recorded:Boolean(statuses[credentialId]),recordedAt:statuses[credentialId]||null};
   }
 
   async assertRecorded(reviewerAccountId:string,credentialId:string){
