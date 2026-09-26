@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, ServiceUnavailableException, Unauthori
 import { timingSafeEqual } from 'node:crypto';
 import { IntegrationService } from '../integrations/integration.service';
 
-export type MoyasarInvoice={id:string;status:string;amount:number;currency:string;url:string};
+export type MoyasarInvoice={id:string;status:string;amount:number;currency:string;url:string;metadata:Record<string,string>};
 export type MoyasarWebhook={id:string;type:string;secret_token:string;live:boolean;data:Record<string,unknown>};
 
 @Injectable()
@@ -15,20 +15,21 @@ export class MoyasarPaymentProviderService {
     const origin=this.publicWebOrigin();
     const successUrl=new URL(origin.toString());successUrl.searchParams.set('payment','success');successUrl.searchParams.set('payment_id',input.paymentId);
     const backUrl=new URL(origin.toString());backUrl.searchParams.set('payment','cancelled');backUrl.searchParams.set('payment_id',input.paymentId);
-    const payload={amount:input.amountMinor,currency:input.currency,description:`HYDROLAND booking ${input.bookingId}`,success_url:successUrl.toString(),back_url:backUrl.toString(),expired_at:new Date(Date.now()+30*60_000).toISOString()};
+    const metadata={hydroland_payment_id:input.paymentId,hydroland_booking_id:input.bookingId};
+    const payload={amount:input.amountMinor,currency:input.currency,description:`HYDROLAND booking ${input.bookingId}`,success_url:successUrl.toString(),back_url:backUrl.toString(),expired_at:new Date(Date.now()+30*60_000).toISOString(),metadata};
     const response=await this.request('/invoices',{method:'POST',body:JSON.stringify(payload)});
-    return this.invoice(response,input.amountMinor,input.currency);
+    return this.invoice(response,input.amountMinor,input.currency,metadata);
   }
 
   async fetchInvoice(invoiceId:string){
     this.assertProvider();
     if(!/^[0-9a-f-]{30,40}$/i.test(invoiceId))throw new BadRequestException('Invalid provider reference.');
-    return this.invoice(await this.request(`/invoices/${encodeURIComponent(invoiceId)}`),undefined,undefined);
+    return this.invoice(await this.request(`/invoices/${encodeURIComponent(invoiceId)}`),undefined,undefined,undefined);
   }
 
   async cancelInvoice(invoiceId:string){
     this.assertProvider();
-    try{await this.request(`/invoices/${encodeURIComponent(invoiceId)}/cancel`,{method:'POST'});}catch{return false}return true;
+    try{await this.request(`/invoices/${encodeURIComponent(invoiceId)}/cancel`,{method:'PUT'});}catch{return false}return true;
   }
 
   verifyWebhook(payload:unknown):MoyasarWebhook{
@@ -64,15 +65,18 @@ export class MoyasarPaymentProviderService {
     return body;
   }
 
-  private invoice(payload:unknown,expectedAmount?:number,expectedCurrency?:string):MoyasarInvoice{
+  private invoice(payload:unknown,expectedAmount?:number,expectedCurrency?:string,expectedMetadata?:Record<string,string>):MoyasarInvoice{
     if(!payload||typeof payload!=='object'||Array.isArray(payload))throw new ServiceUnavailableException('Payment provider returned an invalid response.');
     const row=payload as Record<string,unknown>,id=typeof row.id==='string'?row.id:'',status=typeof row.status==='string'?row.status:'',currency=typeof row.currency==='string'?row.currency:'',url=typeof row.url==='string'?row.url:'',amount=typeof row.amount==='number'?row.amount:Number.NaN;
     if(!id||!status||!Number.isInteger(amount)||!currency||!url)throw new ServiceUnavailableException('Payment provider returned an invalid invoice.');
     if(expectedAmount!==undefined&&amount!==expectedAmount)throw new ServiceUnavailableException('Payment provider amount mismatch.');
     if(expectedCurrency&&currency!==expectedCurrency)throw new ServiceUnavailableException('Payment provider currency mismatch.');
+    const metadata:Record<string,string>={};
+    if(row.metadata&&typeof row.metadata==='object'&&!Array.isArray(row.metadata))for(const[key,value]of Object.entries(row.metadata as Record<string,unknown>))if(typeof value==='string')metadata[key]=value;
+    if(expectedMetadata)for(const[key,value]of Object.entries(expectedMetadata))if(metadata[key]!==value)throw new ServiceUnavailableException('Payment provider metadata mismatch.');
     let checkout:URL;try{checkout=new URL(url);}catch{throw new ServiceUnavailableException('Payment provider returned an invalid checkout URL.');}
     if(checkout.protocol!=='https:'&&!['localhost','127.0.0.1'].includes(checkout.hostname))throw new ServiceUnavailableException('Payment checkout URL must use HTTPS.');
-    return{id,status,amount,currency,url:checkout.toString()};
+    return{id,status,amount,currency,url:checkout.toString(),metadata};
   }
 
   private publicWebOrigin(){
