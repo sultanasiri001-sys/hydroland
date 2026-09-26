@@ -32,6 +32,10 @@ services:
         sync: false
       - key: MOYASAR_WEBHOOK_SECRET
         sync: false
+      - key: HYDROLAND_INTEGRATION_BANKING_SETTLEMENT_STATUS
+        sync: false
+      - key: HYDROLAND_SETTLEMENT_PROVIDER
+        sync: false
       - key: HYDROLAND_INTEGRATION_SMS_STATUS
         sync: false
       - key: HYDROLAND_SMS_PROVIDER
