@@ -60,12 +60,17 @@ export class CertificationVerificationEvidenceService{
     return{credentialId,evidence,decisionRequired:true};
   }
 
-  async assertRecorded(reviewerAccountId:string,credentialId:string){
+  async status(reviewerAccountId:string,credentialId:string){
     const reviewer=await this.db.account.findUnique({where:{id:reviewerAccountId},select:{personId:true}});
     if(!reviewer)throw new NotFoundException('Reviewer account not found.');
     const evidence=await this.db.auditEvent.findFirst({where:{action:'CREDENTIAL_EXTERNAL_VERIFICATION_EVIDENCE_RECORDED',resource:'Credential',resourceId:credentialId,actorId:reviewer.personId},orderBy:{occurredAt:'desc'},select:{id:true,occurredAt:true}});
-    if(!evidence)throw new BadRequestException('Official external certification verification evidence must be recorded before approval.');
-    return evidence;
+    return{credentialId,recorded:Boolean(evidence),recordedAt:evidence?.occurredAt||null};
+  }
+
+  async assertRecorded(reviewerAccountId:string,credentialId:string){
+    const status=await this.status(reviewerAccountId,credentialId);
+    if(!status.recorded)throw new BadRequestException('Official external certification verification evidence must be recorded before approval.');
+    return status;
   }
 
   private url(value:string,allowedHosts:string[]){
