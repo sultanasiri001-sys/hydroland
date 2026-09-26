@@ -1,0 +1,34 @@
+name: Stage 3 Production Integration Inventory
+
+on:
+  push:
+    branches: [test/stage3-production-integration-inventory]
+
+jobs:
+  integration-inventory:
+    runs-on: ubuntu-latest
+    environment: production-e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Preflight production target
+        env:
+          E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
+          E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+        run: |
+          test -n "$E2E_BASE_URL"
+          test -n "$E2E_ADMIN_EMAIL"
+          test -n "$E2E_ADMIN_PASSWORD"
+          case "$E2E_BASE_URL" in https://*) ;; *) echo "E2E_BASE_URL must use HTTPS"; exit 1 ;; esac
+          case "$E2E_BASE_URL" in *localhost*|*127.0.0.1*) echo "E2E_BASE_URL must be deployed"; exit 1 ;; esac
+          case "$E2E_ADMIN_EMAIL" in *@hydroland.test) ;; *) echo "E2E admin must use @hydroland.test"; exit 1 ;; esac
+      - name: Run safe production integration inventory
+        working-directory: apps/api
+        env:
+          E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
+          E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+        run: node scripts/production-integration-inventory.mjs
