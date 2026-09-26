@@ -292,8 +292,8 @@ try {
   if (trip?.id) {
     await db.crewAssignment.deleteMany({ where: { tripId: trip.id } }).catch(() => {});
     await db.safetyChecklist.deleteMany({ where: { tripId: trip.id } }).catch(() => {});
-    await db.$executeRaw`DELETE FROM "TripWeatherReview" WHERE "tripId"=${trip.id}`.catch(() => {});
-    await db.$executeRaw`DELETE FROM "TripOperationalLocation" WHERE "tripId"=${trip.id}`.catch(() => {});
+    await db.$executeRaw`DELETE FROM "TripWeatherReview" WHERE "tripId"::text=${trip.id}`.catch(() => {});
+    await db.$executeRaw`DELETE FROM "TripOperationalLocation" WHERE "tripId"::text=${trip.id}`.catch(() => {});
     await db.operationalSetting.delete({ where: { key: `trip-price:${trip.id}` } }).catch(() => {});
     await db.trip.deleteMany({ where: { id: trip.id } }).catch(() => {});
   }
