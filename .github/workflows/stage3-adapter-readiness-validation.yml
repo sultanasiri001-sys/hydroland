@@ -4,9 +4,13 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - 'apps/api/src/health/health.controller.ts'
+      - 'apps/api/src/health/**'
+      - 'apps/api/src/admin/admin.guard.ts'
+      - 'apps/api/src/auth/access-token.guard.ts'
+      - 'apps/api/src/app.module.ts'
       - 'apps/api/scripts/production-integration-inventory.mjs'
       - 'apps/api/scripts/adapter-readiness-validation.mjs'
+      - 'apps/api/scripts/integration-readiness-validation.mjs'
       - '.github/workflows/stage3-adapter-readiness-validation.yml'
   push:
     branches: [ops/stage3-adapter-readiness]
@@ -21,7 +25,7 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm --workspace @hydroland/api run db:generate
-      - name: Validate sanitized adapter readiness
+      - name: Validate guarded adapter readiness
         run: node apps/api/scripts/adapter-readiness-validation.mjs
       - name: Validate Stage 3 integration safeguards
         run: node apps/api/scripts/integration-readiness-validation.mjs
