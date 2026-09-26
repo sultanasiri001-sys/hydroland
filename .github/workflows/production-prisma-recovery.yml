@@ -37,7 +37,7 @@ jobs:
         run: test -n "$DATABASE_URL"
 
       - name: Install API dependencies
-        run: npm install --include=dev
+        run: npm ci --include=dev
 
       - name: Generate Prisma client
         run: npx prisma generate

@@ -24,7 +24,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
+      - run: npm ci
       - run: npm --workspace @hydroland/api run db:generate
       - name: Validate MarineTraffic AIS-only contract
         run: node apps/api/scripts/marinetraffic-ais-validation.mjs
