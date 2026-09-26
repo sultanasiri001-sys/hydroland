@@ -38,7 +38,7 @@ const counts = safe.reduce((acc, item) => {
   return acc;
 }, {});
 
-const [maps, weather, payment, settlement, emailReadiness, sms, whatsapp, objectStorage, translation, esign, distressAis] = await Promise.all([
+const [maps, weather, payment, settlement, emailReadiness, sms, whatsapp, objectStorage, translation, esign, distressAis, nafath, regulatory] = await Promise.all([
   read('/integrations/maps/public-config'),
   read('/integrations/weather/public-config'),
   read('/health/integrations/payment'),
@@ -50,6 +50,8 @@ const [maps, weather, payment, settlement, emailReadiness, sms, whatsapp, object
   read('/health/integrations/translation'),
   read('/health/integrations/esign'),
   read('/health/integrations/distress-ais'),
+  read('/health/integrations/nafath'),
+  read('/health/integrations/regulatory'),
 ]);
 
 const safeMaps = {
@@ -74,6 +76,14 @@ const sanitizeReadiness = value => ({
   sandboxReady: Boolean(value?.sandboxReady),
   checks: value?.checks ?? {},
 });
+const sanitizeOnboarding = value => ({
+  status: value?.status ?? null,
+  provider: value?.provider ?? null,
+  contractAccessReady: Boolean(value?.contractAccessReady),
+  productionReady: Boolean(value?.productionReady),
+  checks: value?.checks ?? {},
+  blocker: value?.blocker ?? null,
+});
 const safePayment = sanitizeReadiness(payment);
 const safeSettlement = sanitizeReadiness(settlement);
 const safeEmail = sanitizeReadiness(emailReadiness);
@@ -90,6 +100,8 @@ const safeDistressAis = {
   productionReady: Boolean(distressAis?.productionReady),
   checks: distressAis?.checks ?? {},
 };
+const safeNafath = sanitizeOnboarding(nafath);
+const safeRegulatory = sanitizeOnboarding(regulatory);
 
 const validStatuses = ['NOT_SELECTED','SANDBOX','CONFIGURED','VERIFIED','PRODUCTION_ENABLED','DEGRADED','DISABLED'];
 const invalid = safe.filter(item => !validStatuses.includes(item.status));
@@ -112,6 +124,8 @@ if (!safeObjectStorage.productionReady) blockers.push('OBJECT_STORAGE:PRODUCTION
 if (!safeTranslation.productionReady) blockers.push('TRANSLATION_ENGINE:PRODUCTION_NOT_READY');
 if (!safeEsign.productionReady) blockers.push('ESIGN:PRODUCTION_NOT_READY');
 if (!safeDistressAis.distressReady) blockers.push('DISTRESS_AIS:DISTRESS_PROVIDER_REQUIRED');
+if (!safeNafath.productionReady) blockers.push('NAFATH:APPROVED_CONTRACT_AND_ADAPTER_REQUIRED');
+if (!safeRegulatory.productionReady) blockers.push('REGULATORY:LICENSING_API_CONTRACT_AND_ADAPTER_REQUIRED');
 
 console.log('STAGE3_INTEGRATION_INVENTORY=' + JSON.stringify({ counts, integrations: safe }));
 console.log('STAGE3_MAPS_PUBLIC=' + JSON.stringify(safeMaps));
@@ -125,4 +139,6 @@ console.log('STAGE3_OBJECT_STORAGE_READINESS=' + JSON.stringify(safeObjectStorag
 console.log('STAGE3_TRANSLATION_READINESS=' + JSON.stringify(safeTranslation));
 console.log('STAGE3_ESIGN_READINESS=' + JSON.stringify(safeEsign));
 console.log('STAGE3_DISTRESS_AIS_READINESS=' + JSON.stringify(safeDistressAis));
+console.log('STAGE3_NAFATH_ONBOARDING=' + JSON.stringify(safeNafath));
+console.log('STAGE3_REGULATORY_ONBOARDING=' + JSON.stringify(safeRegulatory));
 console.log('STAGE3_BLOCKERS=' + JSON.stringify([...new Set(blockers)]));
