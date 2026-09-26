@@ -123,6 +123,7 @@ if (!safeWhatsApp.productionReady) blockers.push('WHATSAPP:PRODUCTION_NOT_READY'
 if (!safeObjectStorage.productionReady) blockers.push('OBJECT_STORAGE:PRODUCTION_NOT_READY');
 if (!safeTranslation.productionReady) blockers.push('TRANSLATION_ENGINE:PRODUCTION_NOT_READY');
 if (!safeEsign.productionReady) blockers.push('ESIGN:PRODUCTION_NOT_READY');
+blockers.push('CERTIFICATION:AUTOMATED_PROVIDER_REQUIRED');
 if (!safeDistressAis.distressReady) blockers.push('DISTRESS_AIS:DISTRESS_PROVIDER_REQUIRED');
 if (!safeNafath.productionReady) blockers.push('NAFATH:APPROVED_CONTRACT_AND_ADAPTER_REQUIRED');
 if (!safeRegulatory.productionReady) blockers.push('REGULATORY:LICENSING_API_CONTRACT_AND_ADAPTER_REQUIRED');
