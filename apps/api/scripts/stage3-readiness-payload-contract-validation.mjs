@@ -3,7 +3,7 @@ import fs from 'node:fs';
 const read=(path)=>fs.readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const types=read('src/integrations/integration.types.ts');
 const service=read('src/integrations/integration.service.ts');
-const health=read('src/health/health.controller.ts');
+const readiness=read('src/health/integration-readiness.controller.ts');
 const settlement=read('src/payments/settlement-readiness.controller.ts');
 const distress=read('src/integrations/distress-ais-readiness.controller.ts');
 const onboarding=read('src/integrations/official-onboarding-readiness.controller.ts');
@@ -38,7 +38,7 @@ for(const method of [
   'getPaymentReadiness','getEmailReadiness','getSmsReadiness','getWhatsAppReadiness',
   'getObjectStorageReadiness','getTranslationReadiness','getEsignReadiness',
 ]){
-  if(!health.includes(`${method}():IntegrationReadinessPayload`))throw new Error(`${method} is not bound to IntegrationReadinessPayload.`);
+  if(!readiness.includes(`${method}():IntegrationReadinessPayload`))throw new Error(`${method} is not bound to IntegrationReadinessPayload.`);
 }
 if(!settlement.includes('getSettlementReadiness():IntegrationReadinessPayload'))throw new Error('Settlement readiness is not bound to IntegrationReadinessPayload.');
 if(!distress.includes('getDistressAisReadiness():DistressAisReadinessPayload'))throw new Error('DISTRESS_AIS readiness is not bound to DistressAisReadinessPayload.');
