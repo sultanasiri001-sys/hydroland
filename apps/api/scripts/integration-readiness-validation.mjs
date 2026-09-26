@@ -9,9 +9,13 @@ const translation=read('src/translation/translation-router.service.ts');
 const stormglass=read('src/trips/stormglass-weather.service.ts');
 const weatherGate=read('src/trips/weather-gate.service.ts');
 const tripAdmin=read('src/trips/trip-admin.service.ts');
+const emailDelivery=read('src/integrations/email-delivery.service.ts');
+const emailWorker=read('src/auth/auth-email-outbox.worker.ts');
+const auth=read('src/auth/auth.service.ts');
+const webAuth=read('../web/src/hydroland-auth.js');
 const render=read('../../render.yaml');
 
-const requiredKeys=['PAYMENT_PSP','OBJECT_STORAGE','TRANSLATION_ENGINE','WEATHER_MARINE','MAPS_GEO','ESIGN','CERTIFICATION','DISTRESS_AIS','NAFATH','REGULATORY'];
+const requiredKeys=['PAYMENT_PSP','OBJECT_STORAGE','TRANSLATION_ENGINE','WEATHER_MARINE','EMAIL','MAPS_GEO','ESIGN','CERTIFICATION','DISTRESS_AIS','NAFATH','REGULATORY'];
 for(const key of requiredKeys){
  if(!service.includes(`key:'${key}'`)&&!types.includes(`'${key}'`))throw new Error(`Missing integration registry key: ${key}`);
 }
@@ -39,4 +43,27 @@ for(const marker of [
 for(const marker of ['currentSpeedMps?: number','currentDirectionDeg?: number','swellPeriodS?: number'])if(!weatherGate.includes(marker))throw new Error(`Weather snapshot marine field missing: ${marker}`);
 if(!tripAdmin.includes('weatherReviews.refresh(reviewerAccountId,tripId)')||!tripAdmin.includes("rows[0]?.status!=='APPROVED'"))throw new Error('Booking confirmation does not revalidate and require human approval of the fresh weather snapshot.');
 if(!render.includes('key: STORMGLASS_API_KEY')||!render.includes('key: HYDROLAND_INTEGRATION_WEATHER_MARINE_STATUS'))throw new Error('Render blueprint does not declare Stormglass activation inputs.');
+
+for(const marker of [
+  "requireOperational('EMAIL',{allowSandbox:true})",
+  "provider!=='RESEND'",
+  'process.env.RESEND_API_KEY',
+  'process.env.HYDROLAND_EMAIL_FROM',
+  'process.env.HYDROLAND_PUBLIC_WEB_ORIGIN',
+  "purpose==='VERIFY_EMAIL'?'verify_email':'reset_token'",
+  "'Idempotency-Key':`hydroland-auth/${input.notificationId}`",
+  "AbortSignal.timeout(8_000)",
+])if(!emailDelivery.includes(marker))throw new Error(`Transactional email delivery invariant missing: ${marker}`);
+for(const marker of [
+  "status!=='PRODUCTION_ENABLED'&&status!=='SANDBOX'",
+  "type:{in:[...TYPES]},status:'PENDING'",
+  "meta.deliveryStatus==='SENT'",
+  "status:'FAILED'",
+  'nextDeliveryAttemptAt',
+  'Math.min(15*60_000,30_000*(2**Math.min(attempts,5)))',
+  'this.auth.materializePendingChallenge(row.id)',
+])if(!emailWorker.includes(marker))throw new Error(`Auth email outbox invariant missing: ${marker}`);
+if(!auth.includes("payload:{purpose,expiresAt:expiresAt.toISOString(),delivery:'EMAIL',version:1}"))throw new Error('Auth challenge outbox payload boundary is missing.');
+if(!webAuth.includes("params.get('reset_token')")||!webAuth.includes("searchParams.get('verify_email')"))throw new Error('Web auth challenge link parameters are not wired.');
+for(const key of ['HYDROLAND_INTEGRATION_EMAIL_STATUS','HYDROLAND_EMAIL_PROVIDER','RESEND_API_KEY','HYDROLAND_EMAIL_FROM','HYDROLAND_PUBLIC_WEB_ORIGIN'])if(!render.includes(`key: ${key}`))throw new Error(`Render blueprint missing email activation input: ${key}`);
 console.log('Integration readiness validation passed.');
