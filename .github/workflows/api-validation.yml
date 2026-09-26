@@ -96,6 +96,12 @@ jobs:
           HYDROLAND_INTEGRATION_MAPS_GEO_STATUS: SANDBOX
           HYDROLAND_MAP_PROVIDER: E2E_MAPS
           HYDROLAND_MAP_STYLE_URL: https://maps.hydroland.test/style.json
+          HYDROLAND_INTEGRATION_PAYMENT_PSP_STATUS: SANDBOX
+          HYDROLAND_PAYMENT_PROVIDER: MOYASAR
+          MOYASAR_SECRET_KEY: sk_test_hydroland_e2e
+          MOYASAR_WEBHOOK_SECRET: whsec-hydroland-e2e
+          MOYASAR_API_BASE_URL: http://127.0.0.1:3197/v1/
+          HYDROLAND_PUBLIC_WEB_ORIGIN: http://127.0.0.1:4173
         run: |
           node apps/api/dist/main.js > /tmp/hydroland-api.log 2>&1 &
           API_PID=$!
@@ -122,6 +128,7 @@ jobs:
           MAPS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/maps-runtime-http-e2e.mjs
           MESSAGING_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/messaging-http-e2e.mjs
           STORE_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/store-checkout-http-e2e.mjs
+          PAYMENT_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/payment-moyasar-http-e2e.mjs
           MARINE_DOCS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/marine-documents-http-e2e.mjs
           MARINE_READINESS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/marine-readiness-http-e2e.mjs
           SAFETY_CHECKLIST_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/safety-checklist-http-e2e.mjs
