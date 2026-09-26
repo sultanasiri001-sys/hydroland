@@ -5,7 +5,9 @@ on:
     branches: [main]
     paths:
       - 'apps/api/src/app.module.ts'
-      - 'apps/api/src/health/health.controller.ts'
+      - 'apps/api/src/health/**'
+      - 'apps/api/src/admin/admin.guard.ts'
+      - 'apps/api/src/auth/access-token.guard.ts'
       - 'apps/api/src/integrations/**'
       - 'apps/api/src/payments/**'
       - 'apps/api/src/credentials/**'
@@ -16,6 +18,7 @@ on:
       - 'apps/api/scripts/production-integration-inventory.mjs'
       - 'apps/api/scripts/stage3-integration-coverage-validation.mjs'
       - 'apps/api/scripts/stage3-readiness-payload-contract-validation.mjs'
+      - 'apps/api/scripts/readiness-authorization-validation.mjs'
       - 'docs/STAGE3_INTEGRATION_COVERAGE.md'
       - '.github/workflows/stage3-production-integration-inventory.yml'
       - '.github/workflows/stage3-integration-coverage-validation.yml'
@@ -32,10 +35,12 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm --workspace @hydroland/api run db:generate
-      - name: Validate Stage 3 integration coverage matrix and readiness route contracts
+      - name: Validate Stage 3 integration coverage, route, and authorization contracts
         run: node apps/api/scripts/stage3-integration-coverage-validation.mjs
       - name: Validate Stage 3 readiness payload contracts
         run: node apps/api/scripts/stage3-readiness-payload-contract-validation.mjs
+      - name: Validate Stage 3 readiness authorization boundary
+        run: node apps/api/scripts/readiness-authorization-validation.mjs
       - name: Validate existing integration safeguards
         run: node apps/api/scripts/integration-readiness-validation.mjs
       - name: API typecheck

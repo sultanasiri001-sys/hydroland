@@ -9,6 +9,7 @@ import { DatabaseModule } from './database/database.module';
 import { DiveLogsModule } from './dive-logs/dive-logs.module';
 import { GovernanceModule } from './governance/governance.module';
 import { HealthController } from './health/health.controller';
+import { IntegrationReadinessController } from './health/integration-readiness.controller';
 import { IntegrationModule } from './integrations/integration.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { FinanceModule } from './finance/finance.module';
@@ -43,6 +44,6 @@ import { DocumentFormModule } from './document-forms/document-form.module';
     FacilitiesMaintenanceModule,
     AdministrativeAffairsModule,
     ExecutiveGovernanceModule, HrModule, AgentModule, ResearchMarketModule, LegalGovernanceModule, TripIntelligenceModule, TranslationModule, MarineOperationsModule, DocumentFormModule, StoreModule, WalletModule, RewardsModule],
-  controllers: [HealthController],
+  controllers: [HealthController, IntegrationReadinessController],
 })
 export class AppModule {}

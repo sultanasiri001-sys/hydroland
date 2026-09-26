@@ -7,6 +7,7 @@ const integrationModule=read('src/integrations/integration.module.ts');
 const distressReadiness=read('src/integrations/distress-ais-readiness.controller.ts');
 const onboarding=read('src/integrations/official-onboarding-readiness.controller.ts');
 const health=read('src/health/health.controller.ts');
+const readiness=read('src/health/integration-readiness.controller.ts');
 const appModule=read('src/app.module.ts');
 const paymentsModule=read('src/payments/payments.module.ts');
 const settlementReadiness=read('src/payments/settlement-readiness.controller.ts');
@@ -102,14 +103,14 @@ const routeContracts=[
   ['/integrations/catalog',integrationController,["@Controller('integrations')","@Get('catalog')"]],
   ['/integrations/maps/public-config',integrationController,["@Controller('integrations')","@Get('maps/public-config')"]],
   ['/integrations/weather/public-config',integrationController,["@Controller('integrations')","@Get('weather/public-config')"]],
-  ['/health/integrations/payment',health,["@Controller('health')","@Get('integrations/payment')"]],
+  ['/health/integrations/payment',readiness,["@Controller('health/integrations')","@Get('payment')"]],
   ['/health/integrations/settlement',settlementReadiness,["@Controller('health/integrations')","@Get('settlement')"]],
-  ['/health/integrations/email',health,["@Controller('health')","@Get('integrations/email')"]],
-  ['/health/integrations/sms',health,["@Controller('health')","@Get('integrations/sms')"]],
-  ['/health/integrations/whatsapp',health,["@Controller('health')","@Get('integrations/whatsapp')"]],
-  ['/health/integrations/object-storage',health,["@Controller('health')","@Get('integrations/object-storage')"]],
-  ['/health/integrations/translation',health,["@Controller('health')","@Get('integrations/translation')"]],
-  ['/health/integrations/esign',health,["@Controller('health')","@Get('integrations/esign')"]],
+  ['/health/integrations/email',readiness,["@Controller('health/integrations')","@Get('email')"]],
+  ['/health/integrations/sms',readiness,["@Controller('health/integrations')","@Get('sms')"]],
+  ['/health/integrations/whatsapp',readiness,["@Controller('health/integrations')","@Get('whatsapp')"]],
+  ['/health/integrations/object-storage',readiness,["@Controller('health/integrations')","@Get('object-storage')"]],
+  ['/health/integrations/translation',readiness,["@Controller('health/integrations')","@Get('translation')"]],
+  ['/health/integrations/esign',readiness,["@Controller('health/integrations')","@Get('esign')"]],
   ['/health/integrations/distress-ais',distressReadiness,["@Controller('health/integrations')","@Get('distress-ais')"]],
   ['/health/integrations/nafath',onboarding,["@Controller('health/integrations')","@Get('nafath')"]],
   ['/health/integrations/regulatory',onboarding,["@Controller('health/integrations')","@Get('regulatory')"]],
@@ -121,14 +122,29 @@ for(const [path,source,markers] of routeContracts){
   }
 }
 
+const adminGuardMarker='@UseGuards(AccessTokenGuard,AdminGuard)';
+for(const [label,source] of [
+  ['general readiness',readiness],
+  ['settlement readiness',settlementReadiness],
+  ['distress/AIS readiness',distressReadiness],
+  ['official onboarding readiness',onboarding],
+]){
+  if(!source.includes(adminGuardMarker))throw new Error(`${label} must require authenticated ADMIN scope.`);
+}
+if(!integrationController.includes('@UseGuards(AccessTokenGuard,AdminGuard) @Get(\'catalog\')'))throw new Error('Integration catalog must remain ADMIN-only.');
+if(health.includes("@Get('integrations/"))throw new Error('Detailed integration readiness must not be exposed from the public HealthController.');
+
 const compact=(value)=>value.replace(/\s+/g,'');
 const compactApp=compact(appModule);
 const compactPayments=compact(paymentsModule);
 const compactIntegrations=compact(integrationModule);
-if(!compactApp.includes('controllers:[HealthController]'))throw new Error('HealthController is not registered in AppModule.');
+if(!/controllers:\[[^\]]*HealthController[^\]]*IntegrationReadinessController[^\]]*\]/.test(compactApp))throw new Error('Health and guarded IntegrationReadiness controllers must both be registered in AppModule.');
+if(!/imports:\[[^\]]*AdminModule[^\]]*AuthModule[^\]]*\]/.test(compactApp)&&!(/imports:\[[^\]]*AuthModule[^\]]*AdminModule[^\]]*\]/.test(compactApp)))throw new Error('AppModule must load AuthModule and AdminModule for guarded readiness.');
 if(!/imports:\[[^\]]*IntegrationModule[^\]]*\]/.test(compactApp))throw new Error('IntegrationModule is not loaded by AppModule.');
 if(!/imports:\[[^\]]*PaymentsModule[^\]]*\]/.test(compactApp))throw new Error('PaymentsModule is not loaded by AppModule.');
+if(!/imports:\[[^\]]*AdminModule[^\]]*\]/.test(compactPayments))throw new Error('PaymentsModule must import AdminModule for settlement readiness authorization.');
 if(!/controllers:\[[^\]]*SettlementReadinessController[^\]]*\]/.test(compactPayments))throw new Error('SettlementReadinessController is not registered in PaymentsModule.');
+if(!/imports:\[[^\]]*AdminModule[^\]]*AuthModule[^\]]*\]/.test(compactIntegrations)&&!(/imports:\[[^\]]*AuthModule[^\]]*AdminModule[^\]]*\]/.test(compactIntegrations)))throw new Error('IntegrationModule must import AuthModule and AdminModule for readiness authorization.');
 if(!/controllers:\[[^\]]*DistressAisReadinessController[^\]]*OfficialOnboardingReadinessController[^\]]*\]/.test(compactIntegrations))throw new Error('Stage 3 readiness controllers are not registered in IntegrationModule.');
 
 for(const key of [...providerSelectionRequired,...contractAccessRequired]){
@@ -141,4 +157,5 @@ console.log('STAGE3_PARTIAL_COVERAGE='+JSON.stringify(partialCoverage));
 console.log('STAGE3_PROVIDER_SELECTION_REQUIRED='+JSON.stringify(providerSelectionRequired));
 console.log('STAGE3_CONTRACT_ACCESS_REQUIRED='+JSON.stringify(contractAccessRequired));
 console.log('STAGE3_READINESS_ROUTE_CONTRACTS='+JSON.stringify(routeContracts.map(([path])=>path)));
+console.log('STAGE3_READINESS_AUTHORIZATION=ADMIN_ONLY');
 console.log('Stage 3 integration coverage matrix validation passed.');

@@ -3,7 +3,10 @@ name: Stage 3 Messaging Readiness Validation
 on:
   pull_request:
     paths:
-      - 'apps/api/src/health/health.controller.ts'
+      - 'apps/api/src/health/**'
+      - 'apps/api/src/admin/admin.guard.ts'
+      - 'apps/api/src/auth/access-token.guard.ts'
+      - 'apps/api/src/app.module.ts'
       - 'apps/api/scripts/production-integration-inventory.mjs'
       - 'apps/api/scripts/messaging-readiness-validation.mjs'
       - '.github/workflows/stage3-readiness-validation.yml'
@@ -20,7 +23,7 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm --workspace @hydroland/api run db:generate
-      - name: Validate sanitized messaging readiness
+      - name: Validate guarded messaging readiness
         run: node apps/api/scripts/messaging-readiness-validation.mjs
       - name: API typecheck
         run: npm --workspace @hydroland/api run typecheck

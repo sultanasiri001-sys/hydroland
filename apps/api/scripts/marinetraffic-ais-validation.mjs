@@ -27,6 +27,7 @@ for(const prohibited of ["method:'POST'","method:'PUT'","method:'PATCH'","method
 }
 
 for(const marker of [
+  '@UseGuards(AccessTokenGuard,AdminGuard)',
   "@Get('distress-ais')",
   "this.integrations.status('DISTRESS_AIS')",
   "aisProviderConfigured:provider==='MARINETRAFFIC_AIS_ONLY'",
@@ -38,10 +39,11 @@ for(const marker of [
 ])if(!readiness.includes(marker))throw new Error(`DISTRESS_AIS partial-readiness invariant missing: ${marker}`);
 if(/MARINETRAFFIC_API_KEY\s*[:,]/.test(readiness))throw new Error('AIS readiness must not expose the MarineTraffic API key.');
 
-for(const marker of ['MarineTrafficAisService','DistressAisReadinessController'])if(!moduleFile.includes(marker))throw new Error(`Integration module AIS registration missing: ${marker}`);
+for(const marker of ['AdminModule','AuthModule','MarineTrafficAisService','DistressAisReadinessController'])if(!moduleFile.includes(marker))throw new Error(`Integration module AIS registration missing: ${marker}`);
 for(const key of ['HYDROLAND_INTEGRATION_DISTRESS_AIS_STATUS','HYDROLAND_DISTRESS_AIS_PROVIDER','MARINETRAFFIC_API_KEY'])if(!render.includes(`key: ${key}`))throw new Error(`Render blueprint missing AIS activation input: ${key}`);
 for(const marker of [
-  "read('/health/integrations/distress-ais')",
+  "const adminRead = path => read(path, { headers })",
+  "adminRead('/health/integrations/distress-ais')",
   'DISTRESS_AIS:DISTRESS_PROVIDER_REQUIRED',
   'STAGE3_DISTRESS_AIS_READINESS=',
 ])if(!inventory.includes(marker))throw new Error(`Stage 3 AIS inventory marker missing: ${marker}`);

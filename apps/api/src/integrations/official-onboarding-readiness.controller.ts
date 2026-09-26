@@ -1,7 +1,10 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, UseGuards } from '@nestjs/common';
+import { AdminGuard } from '../admin/admin.guard';
+import { AccessTokenGuard } from '../auth/access-token.guard';
 import { IntegrationService } from './integration.service';
 import { OfficialOnboardingReadinessPayload } from './integration.types';
 
+@UseGuards(AccessTokenGuard,AdminGuard)
 @Controller('health/integrations')
 export class OfficialOnboardingReadinessController {
   constructor(private readonly integrations:IntegrationService){}
