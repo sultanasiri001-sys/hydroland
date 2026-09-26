@@ -89,7 +89,7 @@ for(const marker of [
 
 for(const blocker of [
   'CERTIFICATION:AUTOMATED_PROVIDER_REQUIRED',
-  'DISTRESS_AIS:FULL_DISTRESS_PROVIDER_REQUIRED',
+  'DISTRESS_AIS:DISTRESS_PROVIDER_REQUIRED',
   'NAFATH:APPROVED_CONTRACT_AND_ADAPTER_REQUIRED',
   'REGULATORY:LICENSING_API_CONTRACT_AND_ADAPTER_REQUIRED',
 ])if(!inventory.includes(blocker))throw new Error(`Production inventory blocker missing: ${blocker}`);
