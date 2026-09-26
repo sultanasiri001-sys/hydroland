@@ -51,8 +51,9 @@ for (const gate of ["window.HydrolandPortalAccess?.roleAllowed?.(role)","hydrola
 for (const gate of ["if(!window.HydrolandAuth?.isAuthenticated?.())return role==='diver'","clearProtectedPortal","window.HydrolandProfileData=undefined"]) if (!app.includes(gate)) throw new Error(`Missing portal/session isolation gate: ${gate}`);
 
 if (!html.includes('data-hl-action="logout"')) throw new Error('Missing visible logout control');
-const [authModule, googleAuthModule, experienceModule] = await Promise.all([
+const [authModule, emailVerificationModule, googleAuthModule, experienceModule] = await Promise.all([
   readFile(path.join(src, 'hydroland-auth.js'), 'utf8'),
+  readFile(path.join(src, 'hydroland-email-verification.js'), 'utf8'),
   readFile(path.join(src, 'hydroland-google-auth.js'), 'utf8'),
   readFile(path.join(src, 'hydroland-experience.js'), 'utf8')
 ]);
@@ -62,8 +63,16 @@ for (const marker of ["clearProtectedView","window.HydrolandProfileData=undefine
 for (const marker of ["const isGuestMode=()=>sessionStorage.getItem('hl-guest-mode')==='1'","if(isGuestMode()){state.panelOpen=false;state.mfaChallenge=null;root.classList.add('hidden');return}","state.panelOpen=true","actions.hidden=state.panelOpen","panel.hidden=!state.panelOpen","sessionStorage.removeItem('hl-guest-mode')","isGuestMode,refreshSession","if(!sessionStorage.getItem('hl-refresh-token'))throw new Error('AUTH_REQUIRED')"]) if (!authModule.includes(marker)) throw new Error(`Missing explicit anonymous/guest/auth-panel boundary: ${marker}`);
 for(const marker of ["mfaChallenge:null","data-mfa-field","`${API_BASE}/auth/mfa/verify`","body?.mfaRequired===true","challengeToken:state.mfaChallenge","state.mfaChallenge=null","/auth/mfa/totp/setup","/auth/mfa/totp/confirm","/auth/mfa/disable","data-hl-action=\"mfa-settings\""]) if(!authModule.includes(marker)) throw new Error(`Missing MFA browser boundary: ${marker}`);
 if(/sessionStorage\.setItem\([^\n]*mfa/i.test(authModule))throw new Error('MFA challenge must not be persisted in sessionStorage.');
+
+for(const marker of ["const prefix='#verify-email='","history.replaceState(null,'',location.pathname+location.search)","/auth/email-verification/verify","/auth/email-verification/resend","data.emailVerificationResend='1'","delivery==='UNAVAILABLE'","window.HydrolandEmailVerification"])if(!emailVerificationModule.includes(marker))throw new Error(`Missing email verification browser boundary: ${marker}`);
+if(emailVerificationModule.includes('?verify-email='))throw new Error('Email verification tokens must not be placed in query strings.');
+if(/(?:localStorage|sessionStorage)\.setItem\([^\n]*(verify|email.*token|token.*email)/i.test(emailVerificationModule))throw new Error('Email verification token must not be persisted in browser storage.');
+const clearFragmentAt=emailVerificationModule.indexOf("history.replaceState(null,'',location.pathname+location.search)"),verifyRequestAt=emailVerificationModule.indexOf('/auth/email-verification/verify');
+if(clearFragmentAt<0||verifyRequestAt<0||clearFragmentAt>verifyRequestAt)throw new Error('Email verification fragment must be cleared before the verification request is sent.');
+
 for(const marker of ["https://accounts.google.com/gsi/client","/auth/google/config","/auth/google`","window.google.accounts.id.initialize","window.google.accounts.id.renderButton","data-hl-google-signin","challengeToken=null","/auth/mfa/verify","sessionStorage.setItem('hl-access-token'","sessionStorage.setItem('hl-refresh-token'"])if(!googleAuthModule.includes(marker))throw new Error(`Missing Google sign-in browser boundary: ${marker}`);
 if(/sessionStorage\.setItem\([^\n]*(credential|challenge)/i.test(googleAuthModule))throw new Error('Google credential or MFA challenge must not be persisted in sessionStorage.');
+if(!app.includes("await loadScript('hydroland-email-verification.js')"))throw new Error('Email verification module must load after core authentication.');
 if(!app.includes("await loadScript('hydroland-google-auth.js')"))throw new Error('Google sign-in module must load after core authentication.');
 for (const marker of ["sessionStorage.setItem('hl-guest-mode','1')","hydroland:guest-mode"]) if (!experienceModule.includes(marker)) throw new Error(`Missing guest entry marker: ${marker}`);
 
@@ -71,7 +80,7 @@ const profileData = await readFile(path.join(src, 'hydroland-profile-data.js'), 
 for (const marker of ['hl-profile-editor','openProfileEditor','new FormData(form)',"request('/me',{method:'PATCH'"]) if (!profileData.includes(marker)) throw new Error(`Missing professional profile editor marker: ${marker}`);
 if (/\bprompt\s*\(/.test(profileData)) throw new Error('Profile editing must not use prompt()');
 
-for (const moduleName of ['hydroland-auth.js','hydroland-google-auth.js','hydroland-bookings.js','hydroland-map.js','hydroland-profile-data.js','hydroland-messages.js','hydroland-dive-logs.js']) {
+for (const moduleName of ['hydroland-auth.js','hydroland-email-verification.js','hydroland-google-auth.js','hydroland-bookings.js','hydroland-map.js','hydroland-profile-data.js','hydroland-messages.js','hydroland-dive-logs.js']) {
   if (!app.includes(moduleName)) throw new Error(`Missing frontend module loader: ${moduleName}`);
 }
 if(!app.includes('hydroland-messages.css'))throw new Error('Missing messaging stylesheet loader');
@@ -83,4 +92,4 @@ const mapModule = await readFile(path.join(src, 'hydroland-map.js'), 'utf8');
 for(const marker of ["MAPLIBRE_VERSION='6.11.2'",'cdn.jsdelivr.net/npm/maplibre-gl@${MAPLIBRE_VERSION}/dist','HydrolandMapLibreTestDouble','MapLibre runtime failed to load','مزود الخرائط غير مفعّل'])if(!mapModule.includes(marker))throw new Error(`Map runtime integrity marker missing: ${marker}`);
 if(mapModule.includes('@latest')||mapModule.includes('maplibre-gl@latest'))throw new Error('MapLibre runtime must remain version-pinned.');
 
-console.log(`Validated HYDROLAND shell, six role selectors, ${jsFiles.length} JavaScript modules, ${cssFiles.length} style modules, branding, IDs, responsiveness, accessibility, anonymous/guest/MFA/Google auth separation, connected messaging and pinned resilient MapLibre runtime markers.`);
+console.log(`Validated HYDROLAND shell, six role selectors, ${jsFiles.length} JavaScript modules, ${cssFiles.length} style modules, branding, IDs, responsiveness, accessibility, anonymous/guest/email/MFA/Google auth separation, connected messaging and pinned resilient MapLibre runtime markers.`);
