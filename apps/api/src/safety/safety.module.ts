@@ -2,8 +2,10 @@ import { Module } from '@nestjs/common';
 import { AdminModule } from '../admin/admin.module';
 import { AuditModule } from '../audit/audit.module';
 import { AuthModule } from '../auth/auth.module';
+import { IntegrationModule } from '../integrations/integration.module';
 import { SafetyController } from './safety.controller';
 import { SafetyIncidentsController } from './safety-incidents.controller';
+import { SafetyDistressService } from './safety-distress.service';
 import { SafetyIncidentsService } from './safety-incidents.service';
 import { SafetyReviewService } from './safety-review.service';
 import { SafetyService } from './safety.service';
@@ -13,9 +15,9 @@ import { SafetyComplianceRiskOperationsService } from './safety-compliance-risk-
 import { SafetyComplianceRiskGovernanceService } from './safety-compliance-risk-governance.service';
 
 @Module({
-  imports: [AuthModule, AdminModule, AuditModule],
+  imports: [AuthModule, AdminModule, AuditModule, IntegrationModule],
   controllers: [SafetyController, SafetyIncidentsController],
-  providers: [SafetyService, SafetyReviewService, SafetyComplianceRiskFoundationService, SafetyComplianceRiskWorkflowService, SafetyComplianceRiskOperationsService, SafetyComplianceRiskGovernanceService, SafetyIncidentsService],
+  providers: [SafetyService, SafetyReviewService, SafetyComplianceRiskFoundationService, SafetyComplianceRiskWorkflowService, SafetyComplianceRiskOperationsService, SafetyComplianceRiskGovernanceService, SafetyIncidentsService, SafetyDistressService],
   exports: [SafetyComplianceRiskFoundationService, SafetyComplianceRiskWorkflowService, SafetyComplianceRiskOperationsService, SafetyComplianceRiskGovernanceService],
 })
 export class SafetyModule {}
