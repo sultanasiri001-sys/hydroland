@@ -26,16 +26,23 @@ A code-ready integration still requires the provider account, credentials, appro
 
 `DISTRESS_AIS` has an AIS-only adapter using MarineTraffic for read-only vessel situational awareness by MMSI/IMO. This does not implement, transmit, acknowledge or manage maritime distress alerts. The overall `DISTRESS_AIS` integration therefore remains provider-selection-required and must not report production-ready until an approved distress contract is implemented.
 
-## Provider selection / contract still required
+## Contract/access onboarding required
 
-The following governed integrations remain intentionally `NOT_SELECTED` until the remaining approved provider/API contract exists:
+The provider category is known for the following official integrations, but production implementation must wait for approved access and the authoritative technical contract:
 
-- CERTIFICATION
-- DISTRESS_AIS — distress capability still required; AIS-only partial coverage exists
-- NAFATH
-- REGULATORY
+- NAFATH — official Nafath identity integration. HYDROLAND may record onboarding readiness for issuer/client credentials after approval, but no OIDC endpoint or payload contract is hard-coded until the authorized contract is available.
+- REGULATORY — Saudi Ministry of Tourism Developer Portal is the selected official boundary for licensing inquiry APIs. Ministry approval, the authorized base URL/token and a versioned licensing API contract are required before an adapter is implemented.
 
-No production adapter should be invented for these categories without a verifiable provider contract, authentication model, endpoint specification, data handling requirements and commercial/regulatory approval where applicable.
+Both integrations remain `NOT_SELECTED` in runtime until their approved adapter is implemented. Onboarding readiness never makes either integration production-ready by itself.
+
+## Provider selection / capability still required
+
+The following integrations still need a complete provider/capability contract:
+
+- CERTIFICATION — no verified public certification-verification API contract has been approved.
+- DISTRESS_AIS — distress capability still required; MarineTraffic AIS-only partial coverage exists.
+
+No production adapter should be invented without a verifiable provider contract, authentication model, endpoint specification, data handling requirements and commercial/regulatory approval where applicable.
 
 ## Closure rule
 

@@ -45,10 +45,13 @@ for(const marker of [
   'DISTRESS_AIS:DISTRESS_PROVIDER_REQUIRED',
   'STAGE3_DISTRESS_AIS_READINESS=',
 ])if(!inventory.includes(marker))throw new Error(`Stage 3 AIS inventory marker missing: ${marker}`);
-for(const marker of [
-  "partialCoverage={DISTRESS_AIS:'MARINETRAFFIC_AIS_ONLY'}",
-  "'CERTIFICATION','DISTRESS_AIS','NAFATH','REGULATORY'",
-  'DISTRESS_AIS partial AIS evidence missing',
-])if(!coverage.includes(marker))throw new Error(`Stage 3 AIS partial-coverage marker missing: ${marker}`);
+
+if(!coverage.includes("partialCoverage={DISTRESS_AIS:'MARINETRAFFIC_AIS_ONLY'}"))throw new Error('DISTRESS_AIS partial AIS coverage declaration is missing.');
+if(!coverage.includes('DISTRESS_AIS partial AIS evidence missing'))throw new Error('DISTRESS_AIS partial AIS evidence guard is missing.');
+const providerSelectionBlock=coverage.match(/const providerSelectionRequired=\[([\s\S]*?)\];/)?.[1]||'';
+const contractAccessBlock=coverage.match(/const contractAccessRequired=\[([\s\S]*?)\];/)?.[1]||'';
+if(!providerSelectionBlock.includes("'CERTIFICATION'")||!providerSelectionBlock.includes("'DISTRESS_AIS'"))throw new Error('Provider/capability selection classification must retain CERTIFICATION and DISTRESS_AIS.');
+if(!contractAccessBlock.includes("'NAFATH'")||!contractAccessBlock.includes("'REGULATORY'"))throw new Error('Contract/access classification must retain NAFATH and REGULATORY.');
+if(contractAccessBlock.includes("'DISTRESS_AIS'"))throw new Error('DISTRESS_AIS must remain a provider/capability-selection blocker, not a contract-access-only blocker.');
 
 console.log('MarineTraffic AIS-only Stage 3 validation passed.');

@@ -86,6 +86,30 @@ services:
         sync: false
       - key: MARINETRAFFIC_API_KEY
         sync: false
+      - key: HYDROLAND_INTEGRATION_NAFATH_STATUS
+        sync: false
+      - key: HYDROLAND_NAFATH_PROVIDER
+        sync: false
+      - key: HYDROLAND_NAFATH_ACCESS_APPROVED
+        sync: false
+      - key: NAFATH_OIDC_ISSUER
+        sync: false
+      - key: NAFATH_CLIENT_ID
+        sync: false
+      - key: NAFATH_CLIENT_SECRET
+        sync: false
+      - key: HYDROLAND_INTEGRATION_REGULATORY_STATUS
+        sync: false
+      - key: HYDROLAND_REGULATORY_PROVIDER
+        sync: false
+      - key: HYDROLAND_REGULATORY_ACCESS_APPROVED
+        sync: false
+      - key: SAUDI_TOURISM_API_BASE_URL
+        sync: false
+      - key: SAUDI_TOURISM_API_TOKEN
+        sync: false
+      - key: SAUDI_TOURISM_LICENSING_CONTRACT_VERSION
+        sync: false
       - key: HYDROLAND_PUBLIC_WEB_ORIGIN
         value: https://hydroland-web.onrender.com
       - key: WEB_ORIGIN

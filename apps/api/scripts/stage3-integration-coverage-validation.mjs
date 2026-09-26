@@ -12,6 +12,7 @@ const translationRouter=read('src/translation/translation-router.service.ts');
 const googleTranslation=read('src/translation/google-cloud-translation.provider.ts');
 const signit=read('src/integrations/signit-esign.service.ts');
 const marineTraffic=read('src/integrations/marinetraffic-ais.service.ts');
+const onboarding=read('src/integrations/official-onboarding-readiness.controller.ts');
 const webMap=read('../web/src/hydroland-map.js');
 
 const allKeys=[
@@ -23,15 +24,14 @@ const adapterReady=[
   'WEATHER_MARINE','EMAIL','SMS','WHATSAPP','PAYMENT_PSP','BANKING_SETTLEMENT',
   'OBJECT_STORAGE','TRANSLATION_ENGINE','MAPS_GEO','ESIGN',
 ];
-const providerSelectionRequired=[
-  'CERTIFICATION','DISTRESS_AIS','NAFATH','REGULATORY',
-];
+const providerSelectionRequired=['CERTIFICATION','DISTRESS_AIS'];
+const contractAccessRequired=['NAFATH','REGULATORY'];
 const partialCoverage={DISTRESS_AIS:'MARINETRAFFIC_AIS_ONLY'};
 
 for(const key of allKeys){
   if(!integrations.includes(`key:'${key}'`))throw new Error(`Stage 3 catalog key missing: ${key}`);
 }
-const partition=[...adapterReady,...providerSelectionRequired];
+const partition=[...adapterReady,...providerSelectionRequired,...contractAccessRequired];
 if(partition.length!==allKeys.length||new Set(partition).size!==allKeys.length)throw new Error('Stage 3 coverage partition is incomplete or duplicated.');
 for(const key of allKeys){
   if(!partition.includes(key))throw new Error(`Stage 3 coverage classification missing: ${key}`);
@@ -61,14 +61,31 @@ for(const marker of [
   'MARINETRAFFIC_API_KEY',
   'https://services.marinetraffic.com/api/exportvessel/',
 ])if(!marineTraffic.includes(marker))throw new Error(`DISTRESS_AIS partial AIS evidence missing: ${marker}`);
+for(const marker of [
+  "status('NAFATH')",
+  "providerSelected:provider==='NAFATH'",
+  'HYDROLAND_NAFATH_ACCESS_APPROVED',
+  'NAFATH_OIDC_ISSUER',
+  'NAFATH_CLIENT_ID',
+  'NAFATH_CLIENT_SECRET',
+  "status('REGULATORY')",
+  "providerSelected:provider==='SAUDI_MINISTRY_OF_TOURISM'",
+  'HYDROLAND_REGULATORY_ACCESS_APPROVED',
+  'SAUDI_TOURISM_API_BASE_URL',
+  'SAUDI_TOURISM_API_TOKEN',
+  'SAUDI_TOURISM_LICENSING_CONTRACT_VERSION',
+  'adapterImplemented:false',
+  'productionReady:false',
+])if(!onboarding.includes(marker))throw new Error(`Official onboarding boundary missing: ${marker}`);
 if(!webMap.includes("request('/integrations/maps/public-config')")||!webMap.includes('MapLibre'))throw new Error('MAPS_GEO web runtime evidence is missing.');
 
-for(const key of providerSelectionRequired){
+for(const key of [...providerSelectionRequired,...contractAccessRequired]){
   const row=integrations.match(new RegExp(`\\{key:'${key}'[^}]+\\}`))?.[0]||'';
-  if(!row.includes("status:'NOT_SELECTED'"))throw new Error(`${key} must remain explicitly NOT_SELECTED until a provider contract is approved.`);
+  if(!row.includes("status:'NOT_SELECTED'"))throw new Error(`${key} must remain explicitly NOT_SELECTED until its approved production boundary is implemented.`);
 }
 
 console.log('STAGE3_CODE_READY='+JSON.stringify(adapterReady));
 console.log('STAGE3_PARTIAL_COVERAGE='+JSON.stringify(partialCoverage));
 console.log('STAGE3_PROVIDER_SELECTION_REQUIRED='+JSON.stringify(providerSelectionRequired));
+console.log('STAGE3_CONTRACT_ACCESS_REQUIRED='+JSON.stringify(contractAccessRequired));
 console.log('Stage 3 integration coverage matrix validation passed.');
