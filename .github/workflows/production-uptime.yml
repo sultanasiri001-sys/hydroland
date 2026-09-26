@@ -43,24 +43,17 @@ jobs:
         run: |
           response="$(curl --fail --silent --show-error --max-time 20 https://hydroland.onrender.com/api/v1/health)"
           echo "$response" | jq -e '.service == "hydroland-api" and .status == "ok"'
-      - name: Report payment integration readiness
+      - name: Verify payment readiness is admin-protected
         run: |
           set -euo pipefail
-          response="$(curl --fail --silent --show-error --max-time 20 https://hydroland.onrender.com/api/v1/health/integrations/payment)"
-          echo "$response" | jq -e '
-            .service == "hydroland-api" and
-            .integration == "PAYMENT_PSP" and
-            (.locallyConfigured | type) == "boolean" and
-            (.productionReady | type) == "boolean" and
-            (.sandboxReady | type) == "boolean" and
-            (.checks.lifecycleOperational | type) == "boolean" and
-            (.checks.providerConfigured | type) == "boolean" and
-            (.checks.credentialsConfigured | type) == "boolean" and
-            (.checks.webhookConfigured | type) == "boolean" and
-            (.checks.publicWebOriginConfigured | type) == "boolean"
-          ' >/dev/null
-          echo "Payment integration readiness (sanitized):"
-          echo "$response" | jq '{status,provider,locallyConfigured,productionReady,sandboxReady,checks,commit}'
+          body_file="$(mktemp)"
+          status="$(curl --silent --show-error --max-time 20 --output "$body_file" --write-out '%{http_code}' https://hydroland.onrender.com/api/v1/health/integrations/payment)"
+          if [ "$status" != "401" ]; then
+            echo "Expected protected payment readiness endpoint to return 401 without authentication; got $status." >&2
+            cat "$body_file" >&2
+            exit 1
+          fi
+          echo "Payment readiness diagnostics are correctly protected from unauthenticated access."
       - name: Check web shell
         run: |
           for attempt in $(seq 1 12); do
