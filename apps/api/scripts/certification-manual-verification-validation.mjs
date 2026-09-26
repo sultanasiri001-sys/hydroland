@@ -8,6 +8,8 @@ const integrations=read('src/integrations/integration.service.ts');
 const coverage=read('scripts/stage3-integration-coverage-validation.mjs');
 const inventory=read('scripts/production-integration-inventory.mjs');
 const docs=fs.readFileSync(new URL('../../../docs/STAGE3_INTEGRATION_COVERAGE.md',import.meta.url),'utf8');
+const webAdmin=fs.readFileSync(new URL('../../web/src/hydroland-admin.js',import.meta.url),'utf8');
+const webE2e=fs.readFileSync(new URL('../../web/e2e/credential-documents.spec.js',import.meta.url),'utf8');
 
 for(const marker of [
   'ExternalCertificationVerificationInput',
@@ -38,15 +40,44 @@ for(const marker of [
   "host===root||host.endsWith('.'+root)",
   "reviewer.personId===credential.personId",
   'CREDENTIAL_EXTERNAL_VERIFICATION_EVIDENCE_RECORDED',
+  'actorId:reviewerAccountId',
+  "action:'CREDENTIAL_EXTERNAL_VERIFICATION_EVIDENCE_RECORDED'",
+  'resourceId:{in:credentialIds}',
+  'async assertRecorded',
+  'Official external certification verification evidence must be recorded before approval.',
   'decisionRequired:true',
 ])if(!evidenceService.includes(marker))throw new Error(`Diving agency verification evidence invariant missing: ${marker}`);
 
 for(const marker of [
   "@Get('verification-organizations')",
+  "@Get('admin/:id/external-verification-evidence-status')",
   "@Post('admin/:id/external-verification-evidence')",
   "source:'SWSDF'|'PADI'|'SSI'|'NAUI'|'RAID'|'SDI'|'TDI'|'IANTD'|'GUE'|'CMAS'|'BSAC'",
+  'externalVerificationEvidenceRecordedAt:statuses[row.id]||null',
+  "b.outcome==='VERIFIED'&&!b.externalVerification",
+  'this.verificationEvidence.assertRecorded(r.auth.accountId,id)',
   'CertificationVerificationEvidenceService',
 ])if(!controller.includes(marker))throw new Error(`Credential verification API catalog marker missing: ${marker}`);
+
+for(const marker of [
+  "api('/credentials/verification-organizations')",
+  'externalVerificationEvidenceRecordedAt',
+  'جهة التحقق الرسمية',
+  'مرجع التحقق الرسمي',
+  'فتح التحقق الرسمي',
+  'حفظ دليل التحقق',
+  'احفظ دليل التحقق الرسمي قبل اعتماد الشهادة',
+  'لا تغني عن رخصة SWSDF للمحترف داخل السعودية',
+  '/external-verification-evidence',
+])if(!webAdmin.includes(marker))throw new Error(`Certification review UI invariant missing: ${marker}`);
+
+for(const marker of [
+  "selectOption('NAUI')",
+  "toBe('ONLINE_DIVER_VERIFY')",
+  'toBeDisabled()',
+  'toBeEnabled()',
+  'NAUI-E2E-2026',
+])if(!webE2e.includes(marker))throw new Error(`Certification review browser test invariant missing: ${marker}`);
 
 if(evidenceService.includes('fetch('))throw new Error('Verification evidence catalog must not call unapproved external APIs.');
 for(const secret of ['PADI_API_KEY','SSI_API_KEY','NAUI_API_KEY','RAID_API_KEY','SDI_API_KEY','TDI_API_KEY','IANTD_API_KEY','GUE_API_KEY','CMAS_API_KEY','BSAC_API_KEY']){
@@ -66,4 +97,4 @@ for(const marker of ['SWSDF','PADI','SSI','NAUI','RAID','SDI / TDI','IANTD','GUE
   if(!docs.includes(marker))throw new Error(`Certification boundary documentation missing: ${marker}`);
 }
 
-console.log('Saudi diving agency manual verification catalog validation passed.');
+console.log('Saudi diving agency manual verification catalog and governed review workflow validation passed.');
