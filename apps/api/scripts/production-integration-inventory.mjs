@@ -22,8 +22,9 @@ const login = await read('/auth/login', {
 });
 if (!login?.accessToken) throw new Error('Admin login returned no access token.');
 const headers = { authorization: `Bearer ${login.accessToken}` };
+const adminRead = path => read(path, { headers });
 
-const catalog = await read('/integrations/catalog', { headers });
+const catalog = await adminRead('/integrations/catalog');
 if (!Array.isArray(catalog)) throw new Error('Integration catalog response is not an array.');
 
 const safe = catalog.map(item => ({
@@ -41,17 +42,17 @@ const counts = safe.reduce((acc, item) => {
 const [maps, weather, payment, settlement, emailReadiness, sms, whatsapp, objectStorage, translation, esign, distressAis, nafath, regulatory] = await Promise.all([
   read('/integrations/maps/public-config'),
   read('/integrations/weather/public-config'),
-  read('/health/integrations/payment'),
-  read('/health/integrations/settlement'),
-  read('/health/integrations/email'),
-  read('/health/integrations/sms'),
-  read('/health/integrations/whatsapp'),
-  read('/health/integrations/object-storage'),
-  read('/health/integrations/translation'),
-  read('/health/integrations/esign'),
-  read('/health/integrations/distress-ais'),
-  read('/health/integrations/nafath'),
-  read('/health/integrations/regulatory'),
+  adminRead('/health/integrations/payment'),
+  adminRead('/health/integrations/settlement'),
+  adminRead('/health/integrations/email'),
+  adminRead('/health/integrations/sms'),
+  adminRead('/health/integrations/whatsapp'),
+  adminRead('/health/integrations/object-storage'),
+  adminRead('/health/integrations/translation'),
+  adminRead('/health/integrations/esign'),
+  adminRead('/health/integrations/distress-ais'),
+  adminRead('/health/integrations/nafath'),
+  adminRead('/health/integrations/regulatory'),
 ]);
 
 const safeMaps = {
