@@ -38,9 +38,14 @@ const counts = safe.reduce((acc, item) => {
   return acc;
 }, {});
 
-const maps = await read('/integrations/maps/public-config');
-const weather = await read('/integrations/weather/public-config');
-const payment = await read('/health/integrations/payment');
+const [maps, weather, payment, emailReadiness, sms, whatsapp] = await Promise.all([
+  read('/integrations/maps/public-config'),
+  read('/integrations/weather/public-config'),
+  read('/health/integrations/payment'),
+  read('/health/integrations/email'),
+  read('/health/integrations/sms'),
+  read('/health/integrations/whatsapp'),
+]);
 
 const safeMaps = {
   engine: maps?.engine ?? null,
@@ -56,14 +61,18 @@ const safeWeather = {
   configured: Boolean(weather?.configured),
   sandbox: Boolean(weather?.sandbox),
 };
-const safePayment = {
-  status: payment?.status ?? null,
-  provider: payment?.provider ?? null,
-  locallyConfigured: Boolean(payment?.locallyConfigured),
-  productionReady: Boolean(payment?.productionReady),
-  sandboxReady: Boolean(payment?.sandboxReady),
-  checks: payment?.checks ?? {},
-};
+const sanitizeReadiness = value => ({
+  status: value?.status ?? null,
+  provider: value?.provider ?? null,
+  locallyConfigured: Boolean(value?.locallyConfigured),
+  productionReady: Boolean(value?.productionReady),
+  sandboxReady: Boolean(value?.sandboxReady),
+  checks: value?.checks ?? {},
+});
+const safePayment = sanitizeReadiness(payment);
+const safeEmail = sanitizeReadiness(emailReadiness);
+const safeSms = sanitizeReadiness(sms);
+const safeWhatsApp = sanitizeReadiness(whatsapp);
 
 const validStatuses = ['NOT_SELECTED','SANDBOX','CONFIGURED','VERIFIED','PRODUCTION_ENABLED','DEGRADED','DISABLED'];
 const invalid = safe.filter(item => !validStatuses.includes(item.status));
@@ -78,9 +87,15 @@ for (const item of safe) {
 if (!safeMaps.enabled) blockers.push('MAPS_GEO:RUNTIME_NOT_OPERATIONAL');
 if (!safeWeather.configured) blockers.push('WEATHER_MARINE:RUNTIME_NOT_OPERATIONAL');
 if (!safePayment.productionReady) blockers.push('PAYMENT_PSP:PRODUCTION_NOT_READY');
+if (!safeEmail.productionReady) blockers.push('EMAIL:PRODUCTION_NOT_READY');
+if (!safeSms.productionReady) blockers.push('SMS:PRODUCTION_NOT_READY');
+if (!safeWhatsApp.productionReady) blockers.push('WHATSAPP:PRODUCTION_NOT_READY');
 
 console.log('STAGE3_INTEGRATION_INVENTORY=' + JSON.stringify({ counts, integrations: safe }));
 console.log('STAGE3_MAPS_PUBLIC=' + JSON.stringify(safeMaps));
 console.log('STAGE3_WEATHER_PUBLIC=' + JSON.stringify(safeWeather));
 console.log('STAGE3_PAYMENT_READINESS=' + JSON.stringify(safePayment));
+console.log('STAGE3_EMAIL_READINESS=' + JSON.stringify(safeEmail));
+console.log('STAGE3_SMS_READINESS=' + JSON.stringify(safeSms));
+console.log('STAGE3_WHATSAPP_READINESS=' + JSON.stringify(safeWhatsApp));
 console.log('STAGE3_BLOCKERS=' + JSON.stringify([...new Set(blockers)]));
