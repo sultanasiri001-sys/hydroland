@@ -29,11 +29,19 @@ export class CredentialsController {
 
   @UseGuards(ReviewGuard)
   @Get('admin/pending')
-  pendingForAdmin(){return this.service.pendingForAdmin()}
+  async pendingForAdmin(@Req() r:{auth:{accountId:string}}){
+    const rows=await this.service.pendingForAdmin();
+    const statuses=await this.verificationEvidence.statuses(r.auth.accountId,rows.map(row=>row.id));
+    return rows.map(row=>({...row,externalVerificationEvidenceRecordedAt:statuses[row.id]||null}));
+  }
 
   @UseGuards(ReviewGuard)
   @Get('admin/:id/documents/:documentId/access')
   reviewerDocumentAccess(@Req() r:{auth:{accountId:string}},@Param('id') id:string,@Param('documentId') documentId:string){return this.service.reviewerDocumentAccess(r.auth.accountId,id,documentId)}
+
+  @UseGuards(ReviewGuard)
+  @Get('admin/:id/external-verification-evidence-status')
+  externalVerificationStatus(@Req() r:{auth:{accountId:string}},@Param('id') id:string){return this.verificationEvidence.status(r.auth.accountId,id)}
 
   @UseGuards(ReviewGuard)
   @Post('admin/:id/external-verification-evidence')
@@ -45,7 +53,7 @@ export class CredentialsController {
 
   @UseGuards(ReviewGuard)
   @Post('admin/:id/decision')
-  decide(
+  async decide(
     @Req() r:{auth:{accountId:string}},
     @Param('id') id:string,
     @Body() b:{
@@ -59,5 +67,8 @@ export class CredentialsController {
         checkedAt?:string;
       };
     },
-  ){return this.service.decide(r.auth.accountId,id,b)}
+  ){
+    if(b.outcome==='VERIFIED'&&!b.externalVerification)await this.verificationEvidence.assertRecorded(r.auth.accountId,id);
+    return this.service.decide(r.auth.accountId,id,b);
+  }
 }

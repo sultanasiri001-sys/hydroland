@@ -61,9 +61,13 @@ test('credential can be created, documented, privately opened and submitted from
   await expect(credentialArticle.getByRole('button',{name:'عرض المستند'})).toBeVisible();
 });
 
-test('admin can review pending credential evidence and approve it from the browser',async({page})=>{
-  const pending=[{id:'pending-credential',issuer:'HYDROLAND E2E',title:'Pending Rescue Credential',verificationStatus:'PENDING',person:{firstName:'Diver',lastName:'One',account:{email:'diver@hydroland.test'}},documents:[{id:'pending-document',originalName:'evidence.pdf',mimeType:'application/pdf',byteSize:128,status:'UPLOADED',createdAt:new Date().toISOString()}]}];
-  let reviewAccess=0,decision=null;
+test('admin records official organization evidence before approving a pending credential',async({page})=>{
+  const pending=[{id:'pending-credential',issuer:'NAUI',title:'Pending Rescue Credential',verificationStatus:'PENDING',externalVerificationEvidenceRecordedAt:null,person:{firstName:'Diver',lastName:'One',account:{email:'diver@hydroland.test'}},documents:[{id:'pending-document',originalName:'evidence.pdf',mimeType:'application/pdf',byteSize:128,status:'UPLOADED',createdAt:new Date().toISOString()}]}];
+  const catalog=[
+    {source:'SWSDF',name:'Saudi Water Sports and Diving Federation',scope:['SAUDI_PROFESSIONAL_LICENSE'],methods:['PRO_LICENSE_VALIDATION'],verificationUrl:'https://swsdf.sa/diving/license-validation',saudiEvidence:'National professional diver licensing authority in Saudi Arabia.'},
+    {source:'NAUI',name:'National Association of Underwater Instructors',scope:['RECREATIONAL','PROFESSIONAL'],methods:['ONLINE_DIVER_VERIFY'],verificationUrl:'https://www.naui.org/services/verify-diver-certification/',saudiEvidence:'Supported for official certification verification; Saudi professional licensing remains subject to SWSDF.'},
+  ];
+  let reviewAccess=0,decision=null,evidence=null;
   const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)}),authorized=request=>request.headers().authorization==='Bearer e2e-access';
   const profile={id:'admin-web-e2e',email:'admin@hydroland.test',status:'ACTIVE',roleAssignments:[{id:'admin-role',role:'ADMIN',status:'ACTIVE'}],person:{firstName:'Admin',lastName:'Reviewer',professional:null}};
   await page.route(/\/api\/v1\/me$/,route=>authorized(route.request())?json(route,profile):json(route,{message:'Unauthorized'},401));
@@ -71,8 +75,10 @@ test('admin can review pending credential evidence and approve it from the brows
   await page.route(/\/api\/v1\/credentials$/,route=>json(route,[]));
   await page.route(/\/api\/v1\/admin\/overview$/,route=>json(route,{pendingReviews:1,activeBookings:0,accounts:1,openTrips:0}));
   await page.route(/\/api\/v1\/admin\/review-queue$/,route=>json(route,[]));
+  await page.route(/\/api\/v1\/credentials\/verification-organizations$/,route=>json(route,catalog));
   await page.route(/\/api\/v1\/credentials\/admin\/pending$/,route=>json(route,pending));
   await page.route(/\/api\/v1\/credentials\/admin\/pending-credential\/documents\/pending-document\/access$/,route=>{reviewAccess++;return json(route,{url:'about:blank#review-signed-document',expiresAt:new Date(Date.now()+300000).toISOString()})});
+  await page.route(/\/api\/v1\/credentials\/admin\/pending-credential\/external-verification-evidence$/,route=>{evidence=route.request().postDataJSON();pending[0].externalVerificationEvidenceRecordedAt=new Date().toISOString();return json(route,{credentialId:'pending-credential',evidence:{...evidence,checkedAt:pending[0].externalVerificationEvidenceRecordedAt},decisionRequired:true},201)});
   await page.route(/\/api\/v1\/credentials\/admin\/pending-credential\/decision$/,route=>{decision=route.request().postDataJSON();pending.length=0;return json(route,{id:'pending-credential',verificationStatus:decision.outcome})});
 
   await page.goto('/',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&document.querySelector('.hl-admin')));
@@ -80,5 +86,13 @@ test('admin can review pending credential evidence and approve it from the brows
   await page.locator('#role-switch').click();await page.locator('#role-dialog [data-role="admin"]').click();
   const admin=page.locator('.hl-admin');await expect(admin).toBeVisible();const card=admin.locator('[data-credential-review="pending-credential"]');await expect(card).toContainText('Pending Rescue Credential');
   const accessRequest=page.waitForRequest(request=>request.url().includes('/credentials/admin/pending-credential/documents/pending-document/access'));await card.getByRole('button',{name:/عرض: evidence\.pdf/}).click();await accessRequest;await expect.poll(()=>reviewAccess).toBe(1);
-  await card.getByRole('button',{name:'اعتماد الشهادة'}).click();await expect.poll(()=>decision?.outcome).toBe('VERIFIED');await expect(admin.locator('[data-credential-review-list]')).toContainText('لا توجد شهادات بانتظار المراجعة');
+
+  const approve=card.getByRole('button',{name:'اعتماد الشهادة'});await expect(approve).toBeDisabled();
+  await card.getByLabel('جهة التحقق الرسمية').selectOption('NAUI');
+  await expect(card).toContainText('لا تغني عن رخصة SWSDF للمحترف داخل السعودية');
+  await card.getByLabel('مرجع التحقق الرسمي').fill('NAUI-E2E-2026');
+  await card.getByRole('button',{name:'حفظ دليل التحقق'}).click();
+  await expect.poll(()=>evidence?.source).toBe('NAUI');expect(evidence.method).toBe('ONLINE_DIVER_VERIFY');expect(evidence.reference).toBe('NAUI-E2E-2026');
+  await expect(approve).toBeEnabled();await expect(card).toContainText('دليل تحقق محفوظ');
+  await approve.click();await expect.poll(()=>decision?.outcome).toBe('VERIFIED');await expect(admin.locator('[data-credential-review-list]')).toContainText('لا توجد شهادات بانتظار المراجعة');
 });

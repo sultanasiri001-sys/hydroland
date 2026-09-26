@@ -10,10 +10,12 @@ on:
       - 'apps/api/scripts/certification-manual-verification-validation.mjs'
       - 'apps/api/scripts/production-integration-inventory.mjs'
       - 'apps/api/scripts/stage3-integration-coverage-validation.mjs'
+      - 'apps/web/src/hydroland-admin.js'
+      - 'apps/web/e2e/credential-documents.spec.js'
       - 'docs/STAGE3_INTEGRATION_COVERAGE.md'
       - '.github/workflows/stage3-certification-manual-verification.yml'
   push:
-    branches: [feat/stage3-internal-distress-workflow]
+    branches: [feat/stage3-certification-review-workflow]
 
 jobs:
   validate:
@@ -25,7 +27,7 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm --workspace @hydroland/api run db:generate
-      - name: Validate Saudi diving agency manual verification catalog
+      - name: Validate Saudi diving agency manual verification catalog and review workflow
         run: node apps/api/scripts/certification-manual-verification-validation.mjs
       - name: Validate Stage 3 integration coverage
         run: node apps/api/scripts/stage3-integration-coverage-validation.mjs
@@ -35,3 +37,9 @@ jobs:
         run: npm --workspace @hydroland/api run typecheck
       - name: API build
         run: npm --workspace @hydroland/api run build
+      - name: Web validation
+        run: npm --workspace @hydroland/web test
+      - name: Install Chromium for governed certification review E2E
+        run: npx playwright install --with-deps chromium
+      - name: Browser E2E for credential verification and approval workflow
+        run: npm --workspace @hydroland/web run test:e2e -- credential-documents.spec.js

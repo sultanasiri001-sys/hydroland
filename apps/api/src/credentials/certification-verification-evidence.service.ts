@@ -56,8 +56,30 @@ export class CertificationVerificationEvidenceService{
     if(reviewer.personId===credential.personId)throw new ForbiddenException('Reviewers cannot verify their own credential evidence.');
     const verificationUrl=this.url(input.verificationUrl||entry.verificationUrl,entry.allowedHosts);
     const evidence={source:entry.source,organization:entry.name,method,reference,verificationUrl,checkedAt:checkedAt.toISOString(),scope:entry.scope,saudiEvidence:entry.saudiEvidence};
-    await this.audit.record({action:'CREDENTIAL_EXTERNAL_VERIFICATION_EVIDENCE_RECORDED',resource:'Credential',resourceId:credentialId,metadata:{reviewerAccountId,credentialIssuer:credential.issuer,credentialTitle:credential.title,evidence}});
+    await this.audit.record({actorId:reviewerAccountId,action:'CREDENTIAL_EXTERNAL_VERIFICATION_EVIDENCE_RECORDED',resource:'Credential',resourceId:credentialId,metadata:{reviewerAccountId,credentialIssuer:credential.issuer,credentialTitle:credential.title,evidence}});
     return{credentialId,evidence,decisionRequired:true};
+  }
+
+  async statuses(reviewerAccountId:string,credentialIds:string[]){
+    if(!credentialIds.length)return{} as Record<string,string|null>;
+    const reviewer=await this.db.account.findUnique({where:{id:reviewerAccountId},select:{personId:true}});
+    if(!reviewer)throw new NotFoundException('Reviewer account not found.');
+    const events=await this.db.auditEvent.findMany({where:{action:'CREDENTIAL_EXTERNAL_VERIFICATION_EVIDENCE_RECORDED',resource:'Credential',resourceId:{in:credentialIds},actorId:reviewer.personId},orderBy:{occurredAt:'desc'},select:{resourceId:true,occurredAt:true}});
+    const result:Record<string,string|null>={};
+    for(const credentialId of credentialIds)result[credentialId]=null;
+    for(const event of events)if(event.resourceId&&result[event.resourceId]===null)result[event.resourceId]=event.occurredAt.toISOString();
+    return result;
+  }
+
+  async status(reviewerAccountId:string,credentialId:string){
+    const statuses=await this.statuses(reviewerAccountId,[credentialId]);
+    return{credentialId,recorded:Boolean(statuses[credentialId]),recordedAt:statuses[credentialId]||null};
+  }
+
+  async assertRecorded(reviewerAccountId:string,credentialId:string){
+    const status=await this.status(reviewerAccountId,credentialId);
+    if(!status.recorded)throw new BadRequestException('Official external certification verification evidence must be recorded before approval.');
+    return status;
   }
 
   private url(value:string,allowedHosts:string[]){
