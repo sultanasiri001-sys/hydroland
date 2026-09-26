@@ -5,7 +5,9 @@ on:
     branches: [main]
     paths:
       - 'apps/api/src/app.module.ts'
-      - 'apps/api/src/health/health.controller.ts'
+      - 'apps/api/src/health/**'
+      - 'apps/api/src/admin/admin.guard.ts'
+      - 'apps/api/src/auth/access-token.guard.ts'
       - 'apps/api/src/integrations/**'
       - 'apps/api/src/payments/**'
       - 'apps/api/src/credentials/**'
@@ -32,7 +34,7 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm --workspace @hydroland/api run db:generate
-      - name: Validate Stage 3 integration coverage matrix and readiness route contracts
+      - name: Validate Stage 3 integration coverage, route, and authorization contracts
         run: node apps/api/scripts/stage3-integration-coverage-validation.mjs
       - name: Validate Stage 3 readiness payload contracts
         run: node apps/api/scripts/stage3-readiness-payload-contract-validation.mjs
