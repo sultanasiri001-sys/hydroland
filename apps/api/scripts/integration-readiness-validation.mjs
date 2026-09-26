@@ -36,7 +36,7 @@ if(!service.includes("integration.status==='PRODUCTION_ENABLED'"))throw new Erro
 if(!service.includes('HYDROLAND_INTEGRATION_${key}_STATUS'))throw new Error('Environment-based integration lifecycle configuration is missing.');
 if(!service.includes("statuses.has(status)"))throw new Error('Integration lifecycle status allowlist is missing.');
 if(!payments.includes("requireOperational('PAYMENT_PSP',{allowSandbox:true})"))throw new Error('Payment PSP fail-closed gate is missing.');
-if(!storage.includes("requireOperational('OBJECT_STORAGE')"))throw new Error('Object storage fail-closed gate is missing.');
+if(!storage.includes("requireOperational('OBJECT_STORAGE'"))throw new Error('Object storage fail-closed gate is missing.');
 if(!translation.includes("provider.mode==='ONLINE'")||!translation.includes("requireOperational('TRANSLATION_ENGINE')"))throw new Error('Online translation fail-closed gate is missing.');
 if(!translation.includes("CONTROLLED_SAFETY_CONTENT"))throw new Error('Controlled safety translation protection is missing.');
 for(const marker of [
