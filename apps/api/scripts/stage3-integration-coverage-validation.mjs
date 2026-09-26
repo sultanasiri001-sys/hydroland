@@ -12,6 +12,8 @@ const translationRouter=read('src/translation/translation-router.service.ts');
 const googleTranslation=read('src/translation/google-cloud-translation.provider.ts');
 const signit=read('src/integrations/signit-esign.service.ts');
 const marineTraffic=read('src/integrations/marinetraffic-ais.service.ts');
+const padiEvidence=read('src/integrations/padi-ecard-evidence.service.ts');
+const certificationReadiness=read('src/integrations/certification-readiness.controller.ts');
 const onboarding=read('src/integrations/official-onboarding-readiness.controller.ts');
 const webMap=read('../web/src/hydroland-map.js');
 
@@ -26,7 +28,7 @@ const adapterReady=[
 ];
 const providerSelectionRequired=['CERTIFICATION','DISTRESS_AIS'];
 const contractAccessRequired=['NAFATH','REGULATORY'];
-const partialCoverage={DISTRESS_AIS:'MARINETRAFFIC_AIS_ONLY'};
+const partialCoverage={CERTIFICATION:'PADI_ECARD_HUMAN_VERIFICATION',DISTRESS_AIS:'MARINETRAFFIC_AIS_ONLY'};
 
 for(const key of allKeys){
   if(!integrations.includes(`key:'${key}'`))throw new Error(`Stage 3 catalog key missing: ${key}`);
@@ -61,6 +63,24 @@ for(const marker of [
   'MARINETRAFFIC_API_KEY',
   'https://services.marinetraffic.com/api/exportvessel/',
 ])if(!marineTraffic.includes(marker))throw new Error(`DISTRESS_AIS partial AIS evidence missing: ${marker}`);
+for(const marker of [
+  "hostname.toLowerCase()!=='livewebservices.padi.com'",
+  '/^\\/ecard-webservices\\/v4\\/ecardVerify\\/?$/i',
+  "url.searchParams.get('acid')",
+  "url.searchParams.get('at')",
+  "humanReviewRequired:true",
+  "apiVerified:false",
+  "createHash('sha256')",
+])if(!padiEvidence.includes(marker))throw new Error(`CERTIFICATION partial PADI evidence boundary missing: ${marker}`);
+for(const marker of [
+  "status('CERTIFICATION')",
+  "partialProvider:'PADI_ECARD_HUMAN_VERIFICATION'",
+  'padiEvidenceUrlValidationReady:true',
+  'automatedApiVerificationReady:false',
+  'humanReviewRequired:true',
+  'productionReady:false',
+  "blocker:'OFFICIAL_CERTIFICATION_API_CONTRACT_REQUIRED'",
+])if(!certificationReadiness.includes(marker))throw new Error(`CERTIFICATION partial readiness boundary missing: ${marker}`);
 for(const marker of [
   "status('NAFATH')",
   "providerSelected:provider==='NAFATH'",
