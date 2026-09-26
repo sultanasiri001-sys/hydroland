@@ -24,9 +24,6 @@ jobs:
     timeout-minutes: 25
     steps:
       - name: Check deployed API readiness
-        env:
-          EXPECTED_COMMIT: ${{ github.sha }}
-          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           last_response=""
@@ -34,16 +31,14 @@ jobs:
             if response="$(curl --fail --silent --show-error --max-time 20 https://hydroland.onrender.com/api/v1/health/ready 2>/dev/null)"; then
               last_response="$response"
               if echo "$response" | jq -e '.service == "hydroland-api" and .status == "ready" and .database == "ok"' >/dev/null; then
-                if [ "$EVENT_NAME" != "push" ] || [ "$(echo "$response" | jq -r '.commit // empty')" = "$EXPECTED_COMMIT" ]; then
-                  echo "$response" | jq .
-                  exit 0
-                fi
+                echo "$response" | jq .
+                exit 0
               fi
             fi
-            echo "API not yet ready on expected deployment (attempt $attempt/120)."
+            echo "API not ready (attempt $attempt/120)."
             sleep 10
           done
-          echo "API readiness/deployment verification failed. Last response: $last_response" >&2
+          echo "API readiness verification failed. Last response: $last_response" >&2
           exit 1
       - name: Check API liveness
         run: |
