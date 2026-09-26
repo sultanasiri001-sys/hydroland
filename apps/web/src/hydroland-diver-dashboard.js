@@ -1,4 +1,9 @@
 (()=>{
+  if(!document.querySelector('link[data-hl-visual-qa]')){const visual=document.createElement('link');visual.rel='stylesheet';visual.href='./hydroland-visual-qa.css';visual.dataset.hlVisualQa='1';document.head.appendChild(visual)}
+  if(!document.getElementById('hl-brand-fonts')){const fonts=document.createElement('link');fonts.id='hl-brand-fonts';fonts.rel='stylesheet';fonts.href='https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Tajawal:wght@400;500;700;800&display=swap';document.head.appendChild(fonts)}
+  const approvedTerms=new Map([['مدرب معتمد','محترفي الغوص'],['INSTRUCTOR','DIVE PROFESSIONALS'],['مشغل قارب','الوساطة البحرية'],['BOAT OPERATOR','MARINE BROKERAGE'],['الوسائط البحرية','الوساطة البحرية']]);
+  const normalizeTerms=root=>{const walker=document.createTreeWalker(root||document.body,NodeFilter.SHOW_TEXT);const nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);for(const node of nodes){const exact=String(node.nodeValue||'').trim();if(approvedTerms.has(exact))node.nodeValue=node.nodeValue.replace(exact,approvedTerms.get(exact))}};
+  normalizeTerms(document.body);new MutationObserver(records=>records.forEach(record=>record.addedNodes.forEach(node=>{if(node.nodeType===Node.TEXT_NODE){const exact=String(node.nodeValue||'').trim();if(approvedTerms.has(exact))node.nodeValue=node.nodeValue.replace(exact,approvedTerms.get(exact))}else if(node.nodeType===Node.ELEMENT_NODE)normalizeTerms(node)}))).observe(document.body,{childList:true,subtree:true});
   if(document.getElementById('hl-diver-dashboard'))return;
   const css=document.createElement('link');css.rel='stylesheet';css.href='./hydroland-diver-dashboard.css';css.dataset.hlDiverDashboard='1';document.head.appendChild(css);
   const host=document.getElementById('role-console')||document.querySelector('.landing-hero');if(!host)return;
@@ -40,6 +45,7 @@
         </div></section>
       </div>
       <footer class="hl-diver-foot"><b>تنبيه:</b> مؤشرات هذه اللوحة تلخص بيانات الحساب فقط؛ قرار تشغيل الرحلة والسلامة يبقى خاضعًا لقوائم الفحص وحالة الرحلة والبيانات البحرية المعتمدة.</footer>`;
+    normalizeTerms(dashboard);
   }
   dashboard.addEventListener('click',event=>{const route=event.target.closest?.('[data-diver-route]')?.dataset.diverRoute;if(!route)return;const target=document.getElementById(route);if(!target)return;target.scrollIntoView({behavior:'smooth',block:'start'});history.replaceState(null,'','#'+route)});
   document.addEventListener('hydroland:auth-changed',()=>{render();setTimeout(render,650);setTimeout(render,1600)});
