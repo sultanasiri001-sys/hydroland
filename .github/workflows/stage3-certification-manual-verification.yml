@@ -6,13 +6,14 @@ on:
     paths:
       - 'apps/api/src/credentials/credentials.controller.ts'
       - 'apps/api/src/credentials/credentials.service.ts'
+      - 'apps/api/src/credentials/certification-verification-evidence.service.ts'
       - 'apps/api/scripts/certification-manual-verification-validation.mjs'
       - 'apps/api/scripts/production-integration-inventory.mjs'
       - 'apps/api/scripts/stage3-integration-coverage-validation.mjs'
       - 'docs/STAGE3_INTEGRATION_COVERAGE.md'
       - '.github/workflows/stage3-certification-manual-verification.yml'
   push:
-    branches: [feat/stage3-certification-manual-verification]
+    branches: [feat/stage3-internal-distress-workflow]
 
 jobs:
   validate:
@@ -24,7 +25,7 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm --workspace @hydroland/api run db:generate
-      - name: Validate manual official certification verification
+      - name: Validate Saudi diving agency manual verification catalog
         run: node apps/api/scripts/certification-manual-verification-validation.mjs
       - name: Validate Stage 3 integration coverage
         run: node apps/api/scripts/stage3-integration-coverage-validation.mjs
