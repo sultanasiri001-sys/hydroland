@@ -1,0 +1,33 @@
+name: Stage 3 Google Translation Validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/api/src/translation/google-cloud-translation.provider.ts'
+      - 'apps/api/src/translation/translation-router.service.ts'
+      - 'apps/api/src/translation/translation.module.ts'
+      - 'apps/api/scripts/google-translation-validation.mjs'
+      - 'render.yaml'
+  push:
+    branches: [feat/stage3-google-translation]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm --workspace @hydroland/api run db:generate
+      - name: Validate Google Translation contract
+        working-directory: apps/api
+        run: node scripts/google-translation-validation.mjs
+      - name: Validate existing translation safeguards
+        run: npm --workspace @hydroland/api run validate:translation
+      - name: API typecheck
+        run: npm --workspace @hydroland/api run typecheck
+      - name: API build
+        run: npm --workspace @hydroland/api run build

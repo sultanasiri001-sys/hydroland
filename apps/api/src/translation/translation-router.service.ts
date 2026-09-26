@@ -2,11 +2,17 @@ import {BadRequestException,Injectable,ServiceUnavailableException} from '@nestj
 import {HYDROLAND_TRANSLATION_LANGUAGES,TranslationContentClass,TranslationMode} from './translation.domain';
 import {TranslationProvider,TranslationRequest} from './translation-provider';
 import {IntegrationService} from '../integrations/integration.service';
+import {GoogleCloudTranslationProvider} from './google-cloud-translation.provider';
 
 @Injectable()
 export class TranslationRouterService {
- constructor(private readonly integrations:IntegrationService){}
- private providers:TranslationProvider[]=[];
+ private providers:TranslationProvider[];
+ constructor(
+  private readonly integrations:IntegrationService,
+  googleCloud:GoogleCloudTranslationProvider,
+ ){
+  this.providers=[googleCloud];
+ }
  register(provider:TranslationProvider){this.providers=this.providers.filter(p=>p.id!==provider.id).concat(provider);}
  private supported(code:string){return code==='ar'||HYDROLAND_TRANSLATION_LANGUAGES.some(x=>x.code===code);}
  async translate(input:TranslationRequest & {mode:TranslationMode;contentClass:TranslationContentClass}){
