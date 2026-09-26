@@ -56,6 +56,12 @@ services:
         sync: false
       - key: HYDROLAND_ESIGN_DOCUMENT_HOSTS
         sync: false
+      - key: HYDROLAND_INTEGRATION_TRANSLATION_ENGINE_STATUS
+        sync: false
+      - key: HYDROLAND_TRANSLATION_PROVIDER
+        sync: false
+      - key: GOOGLE_CLOUD_TRANSLATION_API_KEY
+        sync: false
       - key: HYDROLAND_PUBLIC_WEB_ORIGIN
         value: https://hydroland-web.onrender.com
       - key: WEB_ORIGIN
