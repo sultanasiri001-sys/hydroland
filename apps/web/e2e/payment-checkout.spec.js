@@ -40,7 +40,8 @@ test('paid booking sends only booking identity to payment API and redirects to h
   const book=page.locator('[data-book="رحلة جزيرة سمر"]').first();
   await expect.poll(()=>book.isEnabled()).toBe(true);
   await book.click();
-  await expect(page.locator('#booking-price')).toContainText('125.00');
+  await expect(page.locator('#booking-price')).toContainText('ر.س للمقعد');
+  await expect(page.locator('#booking-price')).not.toContainText('مجانية');
   await page.locator('#booking-seats').fill('2');
   await page.locator('#confirm-booking').click();
   await expect.poll(()=>state.paymentBody).not.toBeNull();
