@@ -49,7 +49,7 @@ test('admin can create a geolocated trip, refresh Stormglass and approve the for
   await page.locator('#role-switch').click();await page.locator('#role-dialog [data-role="admin"]').click();
 
   const tripPanel=page.locator('.hl-trip-admin');const weatherPanel=page.locator('.hl-weather-admin');
-  await expect(tripPanel).toBeVisible();await expect(weatherPanel).toBeVisible();
+  await expect(tripPanel).toBeVisible();await expect(weatherPanel).toHaveCount(1);await expect(weatherPanel).toBeVisible();
   const form=tripPanel.locator('[data-trip-admin-form]');
   await form.locator('[name="title"]').fill('رحلة طقس تجريبية');
   await form.locator('[name="type"]').fill('BOAT_DIVE');

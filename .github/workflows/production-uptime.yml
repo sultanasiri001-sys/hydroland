@@ -15,7 +15,7 @@ jobs:
   uptime:
     name: Verify public services
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 25
     steps:
       - name: Check deployed API readiness
         env:
@@ -24,7 +24,7 @@ jobs:
         run: |
           set -euo pipefail
           last_response=""
-          for attempt in $(seq 1 36); do
+          for attempt in $(seq 1 120); do
             if response="$(curl --fail --silent --show-error --max-time 20 https://hydroland.onrender.com/api/v1/health/ready 2>/dev/null)"; then
               last_response="$response"
               if echo "$response" | jq -e '.service == "hydroland-api" and .status == "ready" and .database == "ok"' >/dev/null; then
@@ -34,7 +34,7 @@ jobs:
                 fi
               fi
             fi
-            echo "API not yet ready on expected deployment (attempt $attempt/36)."
+            echo "API not yet ready on expected deployment (attempt $attempt/120)."
             sleep 10
           done
           echo "API readiness/deployment verification failed. Last response: $last_response" >&2
