@@ -22,12 +22,16 @@ The repository contains a concrete governed runtime path for:
 
 A code-ready integration still requires the provider account, credentials, approved configuration and lifecycle status to be verified before production activation.
 
+## Partial coverage
+
+`DISTRESS_AIS` has an AIS-only adapter using MarineTraffic for read-only vessel situational awareness by MMSI/IMO. This does not implement, transmit, acknowledge or manage maritime distress alerts. The overall `DISTRESS_AIS` integration therefore remains provider-selection-required and must not report production-ready until an approved distress contract is implemented.
+
 ## Provider selection / contract still required
 
-The following governed integrations remain intentionally `NOT_SELECTED` until an approved provider/API contract exists:
+The following governed integrations remain intentionally `NOT_SELECTED` until the remaining approved provider/API contract exists:
 
 - CERTIFICATION
-- DISTRESS_AIS
+- DISTRESS_AIS — distress capability still required; AIS-only partial coverage exists
 - NAFATH
 - REGULATORY
 
