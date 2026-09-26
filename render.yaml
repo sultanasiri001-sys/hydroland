@@ -16,5 +16,15 @@ services:
         sync: false
       - key: HYDROLAND_INTEGRATION_WEATHER_MARINE_STATUS
         sync: false
+      - key: HYDROLAND_INTEGRATION_EMAIL_STATUS
+        sync: false
+      - key: HYDROLAND_EMAIL_PROVIDER
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: HYDROLAND_EMAIL_FROM
+        sync: false
+      - key: HYDROLAND_PUBLIC_WEB_ORIGIN
+        value: https://hydroland-web.onrender.com
       - key: WEB_ORIGIN
         value: https://sultanasiri001-sys.github.io
