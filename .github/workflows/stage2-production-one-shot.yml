@@ -1,10 +1,11 @@
-name: Production E2E
+name: Stage 2 Production One-Shot
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [test/stage2-production-operational-e2e-v2]
 
 jobs:
-  smoke:
+  operational-journey:
     runs-on: ubuntu-latest
     environment: production-e2e
     steps:
@@ -13,7 +14,8 @@ jobs:
         with:
           node-version: 22
       - run: npm install
-      - name: Preflight production E2E target
+      - run: npm --workspace @hydroland/api run db:generate
+      - name: Preflight deployed production target
         env:
           E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
           DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
@@ -25,10 +27,14 @@ jobs:
           test -n "$E2E_ADMIN_EMAIL"
           test -n "$E2E_ADMIN_PASSWORD"
           case "$E2E_BASE_URL" in https://*) ;; *) echo "E2E_BASE_URL must use HTTPS"; exit 1 ;; esac
-          case "$E2E_BASE_URL" in *localhost*|*127.0.0.1*) echo "E2E_BASE_URL must be a deployed target"; exit 1 ;; esac
-          case "$E2E_ADMIN_EMAIL" in *@hydroland.test) ;; *) echo "E2E account must use @hydroland.test"; exit 1 ;; esac
-      - run: npm --workspace @hydroland/api run db:generate
-      - name: Prepare E2E account through API
+          case "$E2E_BASE_URL" in *localhost*|*127.0.0.1*) echo "E2E_BASE_URL must be deployed"; exit 1 ;; esac
+          case "$E2E_ADMIN_EMAIL" in *@hydroland.test) ;; *) echo "E2E admin must use @hydroland.test"; exit 1 ;; esac
+      - name: Verify production migrations
+        working-directory: apps/api
+        env:
+          DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
+        run: npm run db:deploy
+      - name: Prepare E2E admin account
         working-directory: apps/api
         env:
           E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
@@ -43,14 +49,14 @@ jobs:
           E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
           ALLOW_E2E_BOOTSTRAP: 'true'
         run: node scripts/bootstrap-e2e-admin.mjs
-      - name: Run production smoke tests
+      - name: Enable production weather policy
         working-directory: apps/api
         env:
           E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
           E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
           E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
-        run: node scripts/production-smoke.mjs
-      - name: Run isolated production operational journey E2E
+        run: node scripts/enable-stage2-weather-policy.mjs
+      - name: Run Stage 2 production operational journey
         working-directory: apps/api
         env:
           E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
@@ -58,13 +64,6 @@ jobs:
           E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
           E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
         run: node scripts/production-operational-e2e.mjs
-      - name: Run isolated production finance E2E
-        working-directory: apps/api
-        env:
-          E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
-          DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
-          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
-        run: node scripts/finance-production-e2e.mjs
       - name: Revoke temporary E2E admin privileges
         if: always()
         working-directory: apps/api
@@ -73,3 +72,9 @@ jobs:
           E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
           ALLOW_E2E_BOOTSTRAP: 'true'
         run: node scripts/cleanup-e2e-admin.mjs
+      - name: Cleanup stale Stage 2 E2E trips
+        if: always()
+        working-directory: apps/api
+        env:
+          DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
+        run: node scripts/cleanup-stage2-stale-trips.mjs
