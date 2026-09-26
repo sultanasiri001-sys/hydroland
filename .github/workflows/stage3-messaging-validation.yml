@@ -19,6 +19,7 @@ jobs:
         with:
           node-version: 22
       - run: npm install
+      - run: npm --workspace @hydroland/api run db:generate
       - name: Validate Unifonic messaging contract
         working-directory: apps/api
         run: node scripts/unifonic-messaging-validation.mjs
