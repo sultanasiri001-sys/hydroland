@@ -4,29 +4,36 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const [service,controller,mfa,crypto,totp,google,web,googleWeb,webApp,apiPackage]=await Promise.all([
+const [service,controller,emailVerification,mfa,crypto,totp,google,web,emailWeb,googleWeb,webApp,apiPackage]=await Promise.all([
   readFile(path.join(root,'src/auth/auth.service.ts'),'utf8'),
   readFile(path.join(root,'src/auth/auth.controller.ts'),'utf8'),
+  readFile(path.join(root,'src/auth/email-verification.service.ts'),'utf8'),
   readFile(path.join(root,'src/auth/mfa.service.ts'),'utf8'),
   readFile(path.join(root,'src/auth/mfa-crypto.ts'),'utf8'),
   readFile(path.join(root,'src/auth/totp.ts'),'utf8'),
   readFile(path.join(root,'src/auth/google-identity.service.ts'),'utf8'),
   readFile(path.join(root,'../web/src/hydroland-auth.js'),'utf8'),
+  readFile(path.join(root,'../web/src/hydroland-email-verification.js'),'utf8'),
   readFile(path.join(root,'../web/src/hydroland-google-auth.js'),'utf8'),
   readFile(path.join(root,'../web/src/app.js'),'utf8'),
   readFile(path.join(root,'package.json'),'utf8')
 ]);
 
 const requiredService=[
-  "type RegistrationResult={email:string;status:'PENDING_VERIFICATION';requiresEmailVerification:true}",
+  "type VerificationDelivery='SENT'|'UNAVAILABLE'|'FAILED'",
+  "type RegistrationResult={email:string;status:'PENDING_VERIFICATION';requiresEmailVerification:true;verificationDelivery:VerificationDelivery}",
   "async register(input:Credentials):Promise<RegistrationResult>",
-  "return{email:account.email,status:'PENDING_VERIFICATION',requiresEmailVerification:true}",
+  "const verificationDelivery=await this.emailVerification.issueAndSend(account.id,account.email)",
+  "return{email:account.email,status:'PENDING_VERIFICATION',requiresEmailVerification:true,verificationDelivery}",
+  "resendEmailVerification(email:string){return this.emailVerification.resend(this.email(email))}",
+  "verifyEmail(token:string){return this.emailVerification.verify(token)}",
   "if(account.status!=='ACTIVE')throw new UnauthorizedException('Account activation is required.')",
   "if(!account.emailVerifiedAt)throw new UnauthorizedException('Email verification is required.')",
   "googleConfig(){return this.google.config()}",
   "async loginWithGoogle(credential:string)",
   "const identity=await this.google.verifyCredential(credential)",
   "const account=await this.resolveGoogleAccount(identity)",
+  "await this.db.operationalSetting.deleteMany({where:{key:`auth.email-verification.account.${account.id}`}})",
   "private async completePrimaryAuthentication(accountId:string){if(await this.mfa.isEnabled(accountId))return this.mfa.beginChallenge(accountId);return this.issue(accountId)}",
   "private googleSubjectKey(subject:string){return`auth.google.subject.${createHash('sha256').update(subject).digest('hex')}`}",
   "provider:'google',accountId,emailAtLink:email,hostedDomain",
@@ -47,11 +54,13 @@ const requiredService=[
   "exp:now+900",
   "expiresAt:new Date(Date.now()+2592000000)"
 ];
-for(const marker of requiredService) assert.ok(service.includes(marker),`Missing session/registration/Google invariant: ${marker}`);
+for(const marker of requiredService) assert.ok(service.includes(marker),`Missing session/registration/email/Google invariant: ${marker}`);
 
 const requiredController=[
   "@Post('register')","@Post('refresh')","@Post('logout')",'HttpStatus.NO_CONTENT',
-  'const MAX_LOGIN_FAILURES=10','const MAX_REGISTRATION_ATTEMPTS=5','const MAX_MFA_FAILURES=5','const MAX_GOOGLE_FAILURES=10','const MAX_RATE_BUCKETS=5000',
+  'const MAX_LOGIN_FAILURES=10','const MAX_REGISTRATION_ATTEMPTS=5','const MAX_MFA_FAILURES=5','const MAX_GOOGLE_FAILURES=10','const MAX_EMAIL_RESENDS=3','const MAX_EMAIL_VERIFY_FAILURES=10','const MAX_RATE_BUCKETS=5000',
+  "@Post('email-verification/resend')","@Post('email-verification/verify')",'this.isLimited(emailResendAttempts,key,MAX_EMAIL_RESENDS)','this.isLimited(emailVerifyFailures,key,MAX_EMAIL_VERIFY_FAILURES)',
+  "action:'AUTH_EMAIL_VERIFICATION_RESEND_RATE_LIMITED'","action:'AUTH_EMAIL_VERIFICATION_RESEND_ACCEPTED'","action:'AUTH_EMAIL_VERIFIED'","action:'AUTH_EMAIL_VERIFICATION_FAILED'","action:'AUTH_EMAIL_VERIFICATION_RATE_LIMITED'",
   "key=`register:${ip}`",'this.isLimited(registrationAttempts,key,MAX_REGISTRATION_ATTEMPTS)','this.increment(registrationAttempts,key,WINDOW_MS)',
   "action:'AUTH_REGISTER_RATE_LIMITED'","action:'AUTH_REGISTER_SUCCEEDED'","action:'AUTH_REGISTER_FAILED'",
   'this.isLimited(loginFailures,key,MAX_LOGIN_FAILURES)',"action:'AUTH_LOGIN_RATE_LIMITED'",
@@ -60,8 +69,18 @@ const requiredController=[
   "@Get('mfa/status')","@Post('mfa/totp/setup')","@Post('mfa/totp/confirm')","@Post('mfa/disable')",
   'private ensureCapacity(bucket:Map<string,RateEntry>,now:number)','while(bucket.size>=MAX_RATE_BUCKETS)'
 ];
-for(const marker of requiredController) assert.ok(controller.includes(marker),`Missing auth abuse/Google/MFA invariant: ${marker}`);
+for(const marker of requiredController) assert.ok(controller.includes(marker),`Missing auth abuse/email/Google/MFA invariant: ${marker}`);
 assert.ok(!controller.includes('const attempts=new Map'),'Legacy unbounded shared login attempt map must not return.');
+
+for(const marker of [
+  "const token=`${accountId}.${randomBytes(32).toString('base64url')}`","tokenHash:this.hash(token)","new Date(now.getTime()+60*60*1000).toISOString()",
+  "status!=='PRODUCTION_ENABLED'&&status!=='SANDBOX'","process.env.HYDROLAND_EMAIL_PROVIDER","process.env.RESEND_API_KEY","process.env.HYDROLAND_EMAIL_FROM","process.env.WEB_ORIGIN",
+  "provider!=='RESEND'","https://api.resend.com/emails","#verify-email=${encodeURIComponent(token)}","AbortSignal.timeout(8000)",
+  "status:{in:['PENDING_VERIFICATION','ACTIVE']}","emailVerifiedAt:now","tx.operationalSetting.deleteMany","return{verified:true as const,accountId}",
+  "return{accepted:true,delivery:'UNAVAILABLE'}","return{accepted:true,delivery:'ACCEPTED'}"
+])assert.ok(emailVerification.includes(marker),`Missing email verification invariant: ${marker}`);
+assert.ok(!/value:\s*\{[^}]*\btoken\s*[:,]/s.test(emailVerification),'Raw email verification token must never be persisted.');
+assert.ok(!emailVerification.includes('?verify-email='),'Verification token must not be placed in the query string.');
 
 for(const marker of [
   "tokenHash:this.challengeHash(challengeToken)","expiresAt:new Date(Date.now()+5*60*1000)","return`mfa:${createHash('sha256').update(token).digest('hex')}`",
@@ -92,14 +111,18 @@ const requiredWeb=[
   "تم إنشاء الحساب. يلزم التحقق من البريد الإلكتروني قبل تسجيل الدخول","storeTokens(body);setAuthUi(true)","setTimeout(emitAuthChanged,0)","fetch(`${API_BASE}/auth/logout`"
 ];
 for(const marker of requiredWeb) assert.ok(web.includes(marker),`Missing web lifecycle marker: ${marker}`);
+for(const marker of ["#verify-email=","history.replaceState(null,'',location.pathname+location.search)","/auth/email-verification/verify","/auth/email-verification/resend","data.emailVerificationResend='1'","delivery==='UNAVAILABLE'","window.HydrolandEmailVerification"])assert.ok(emailWeb.includes(marker),`Missing email verification browser boundary: ${marker}`);
+assert.ok(!/sessionStorage\.setItem\([^\n]*(verify|email.*token|token.*email)/i.test(emailWeb),'Email verification token must not be persisted in sessionStorage.');
+assert.ok(!emailWeb.includes('?verify-email='),'Email verification browser flow must consume a URL fragment, not a query token.');
 for(const marker of [
   "https://accounts.google.com/gsi/client","/auth/google/config","/auth/google`","data-hl-google-signin","window.google.accounts.id.initialize","window.google.accounts.id.renderButton",
   "challengeToken=null","/auth/mfa/verify","sessionStorage.setItem('hl-access-token'","sessionStorage.setItem('hl-refresh-token'"
 ])assert.ok(googleWeb.includes(marker),`Missing Google browser boundary: ${marker}`);
 assert.ok(!/sessionStorage\.setItem\([^\n]*(credential|challenge)/i.test(googleWeb),'Google credential/MFA challenge must not be persisted in sessionStorage.');
+assert.ok(webApp.includes("await loadScript('hydroland-email-verification.js')"),'Email verification browser module must load after core authentication.');
 assert.ok(webApp.includes("await loadScript('hydroland-google-auth.js')"),'Google browser module must load after core authentication.');
 
 const issueStart=service.indexOf('private async issue(accountId:string)');assert.ok(issueStart>=0,'issue() method must exist');const issueBody=service.slice(issueStart);
 assert.ok(issueBody.includes('tokenHash:this.tokenHash(refreshToken)'),'Refresh token must be stored hashed');
 assert.ok(!/data:\s*\{[^}]*refreshToken\s*[:},]/s.test(issueBody),'Raw refresh token must not be persisted in session data');
-console.log('Validated auth invariants: registration is sessionless, abuse controls are bounded, Google ID tokens are server-verified and linked by subject, MFA gates session issuance, secrets/recovery codes are protected, refresh/logout revoke immediately, and browser credentials remain fail-closed.');
+console.log('Validated auth invariants: registration is sessionless, email verification is hashed/one-time/fail-closed, abuse controls are bounded, Google ID tokens are server-verified and linked by subject, MFA gates session issuance, secrets/recovery codes are protected, refresh/logout revoke immediately, and browser credentials remain fail-closed.');
