@@ -45,7 +45,7 @@ export class CredentialsController {
 
   @UseGuards(ReviewGuard)
   @Post('admin/:id/decision')
-  decide(
+  async decide(
     @Req() r:{auth:{accountId:string}},
     @Param('id') id:string,
     @Body() b:{
@@ -59,5 +59,8 @@ export class CredentialsController {
         checkedAt?:string;
       };
     },
-  ){return this.service.decide(r.auth.accountId,id,b)}
+  ){
+    if(b.outcome==='VERIFIED'&&!b.externalVerification)await this.verificationEvidence.assertRecorded(r.auth.accountId,id);
+    return this.service.decide(r.auth.accountId,id,b);
+  }
 }
