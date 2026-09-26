@@ -35,6 +35,12 @@ const statuses=new Set(['NOT_SELECTED','SANDBOX','CONFIGURED','VERIFIED','PRODUC
   const attribution=process.env.HYDROLAND_MAP_ATTRIBUTION?.trim()||null;
   return{engine:'MAPLIBRE',engineVersion:'6.11.2',status:integration.status,provider,enabled:operational&&Boolean(styleUrl),styleUrl:operational?styleUrl:null,attribution};
  }
+ publicWeatherConfig(){
+  const integration=this.status('WEATHER_MARINE');
+  const operational=integration.status==='PRODUCTION_ENABLED'||integration.status==='SANDBOX';
+  const credentialsConfigured=Boolean(process.env.STORMGLASS_API_KEY?.trim());
+  return{status:integration.status,provider:'STORMGLASS',configured:operational&&credentialsConfigured,sandbox:integration.status==='SANDBOX'};
+ }
  requireOperational(key:IntegrationKey,options:{allowSandbox?:boolean}={}){
   const integration=this.status(key);
   const allowed=integration.status==='PRODUCTION_ENABLED'||(options.allowSandbox===true&&integration.status==='SANDBOX');
