@@ -7,7 +7,8 @@ const email=read('src/integrations/email-delivery.service.ts');
 const unifonic=read('src/integrations/unifonic-messaging.service.ts');
 const moyasar=read('src/payments/moyasar-payment-provider.service.ts');
 const storage=read('src/trip-intelligence/offline-payload-storage.service.ts');
-const translation=read('src/translation/translation-router.service.ts');
+const translationRouter=read('src/translation/translation-router.service.ts');
+const googleTranslation=read('src/translation/google-cloud-translation.provider.ts');
 const signit=read('src/integrations/signit-esign.service.ts');
 const webMap=read('../web/src/hydroland-map.js');
 
@@ -40,7 +41,7 @@ const evidence={
   WHATSAPP:[unifonic,"requireOperational('WHATSAPP'",'UNIFONIC_WHATSAPP_PUBLIC_ID'],
   PAYMENT_PSP:[moyasar,"requireOperational('PAYMENT_PSP'",'MOYASAR_SECRET_KEY'],
   OBJECT_STORAGE:[storage,"requireOperational('OBJECT_STORAGE'",'CLOUDFLARE_R2_ACCOUNT_ID'],
-  TRANSLATION_ENGINE:[translation,"requireOperational('TRANSLATION_ENGINE')",'GOOGLE_CLOUD_TRANSLATION_API_KEY'],
+  TRANSLATION_ENGINE:[translationRouter+'\n'+googleTranslation,"requireOperational('TRANSLATION_ENGINE')",'GOOGLE_CLOUD_TRANSLATION_API_KEY','https://translation.googleapis.com/language/translate/v2'],
   MAPS_GEO:[integrations,'publicMapConfig()','HYDROLAND_MAP_STYLE_URL'],
   ESIGN:[signit,"requireOperational('ESIGN'",'SIGNIT_API_KEY'],
 };
