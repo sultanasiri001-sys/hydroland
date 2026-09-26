@@ -44,6 +44,40 @@ jobs:
           E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
           ALLOW_E2E_BOOTSTRAP: 'true'
         run: node scripts/bootstrap-e2e-admin.mjs
+      - name: Enable production weather enforcement
+        env:
+          E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
+          E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+        run: |
+          node --input-type=module <<'NODE'
+          const base = process.env.E2E_BASE_URL.replace(/\/$/, '');
+          const login = await fetch(`${base}/api/v1/auth/login`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ email: process.env.E2E_ADMIN_EMAIL, password: process.env.E2E_ADMIN_PASSWORD }),
+          });
+          if (!login.ok) throw new Error(`Admin login failed: HTTP ${login.status}`);
+          const { accessToken } = await login.json();
+          const headers = { authorization: `Bearer ${accessToken}` };
+          const beforeResponse = await fetch(`${base}/api/v1/trips/admin/weather-gate`, { headers });
+          if (!beforeResponse.ok) throw new Error(`Read weather gate failed: HTTP ${beforeResponse.status}`);
+          const before = await beforeResponse.json();
+          console.log(`Weather gate before: enabled=${before.enabled}, mode=${before.mode}, provider=${before.provider}`);
+          if (before.enabled !== true || before.mode !== 'ENFORCE') {
+            const configure = await fetch(`${base}/api/v1/trips/admin/weather-gate`, {
+              method: 'PATCH',
+              headers: { ...headers, 'content-type': 'application/json' },
+              body: JSON.stringify({ enabled: true, mode: 'ENFORCE' }),
+            });
+            if (!configure.ok) throw new Error(`Enable weather enforcement failed: HTTP ${configure.status}`);
+            const updated = await configure.json();
+            if (updated.enabled !== true || updated.mode !== 'ENFORCE') throw new Error('Weather enforcement did not persist.');
+            console.log(`Weather gate enabled: enabled=${updated.enabled}, mode=${updated.mode}, provider=${updated.provider}`);
+          } else {
+            console.log('Weather gate already enforced; no configuration change required.');
+          }
+          NODE
       - name: Run Stage 2 production operational journey
         working-directory: apps/api
         env:
