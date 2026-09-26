@@ -6,10 +6,11 @@ import { AuditModule } from '../audit/audit.module';
 import { IntegrationController } from './integration.controller';
 import { IntegrationService } from './integration.service';
 import { EmailDeliveryService } from './email-delivery.service';
+import { UnifonicMessagingService } from './unifonic-messaging.service';
 @Module({
   imports:[AdminModule,AuditModule,AuthModule],
   controllers:[IntegrationController],
-  providers:[IntegrationService,EmailDeliveryService,AuthEmailOutboxWorker],
-  exports:[IntegrationService,EmailDeliveryService],
+  providers:[IntegrationService,EmailDeliveryService,UnifonicMessagingService,AuthEmailOutboxWorker],
+  exports:[IntegrationService,EmailDeliveryService,UnifonicMessagingService],
 })
 export class IntegrationModule {}
