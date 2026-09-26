@@ -8,7 +8,7 @@ export class PaymentsController {
   constructor(private readonly s:PaymentsService){}
 
   @Post()
-  create(@Req()r:{auth:{accountId:string}},@Body()b:{bookingId:string;amountMinor:number;idempotencyKey:string}){return this.s.create(r.auth.accountId,b)}
+  create(@Req()r:{auth:{accountId:string}},@Body()b:{bookingId:string;idempotencyKey:string}){return this.s.create(r.auth.accountId,b)}
 
   @Post(':id/refresh')
   refresh(@Req()r:{auth:{accountId:string}},@Param('id')id:string){return this.s.refresh(r.auth.accountId,id)}
