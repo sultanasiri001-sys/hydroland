@@ -1,5 +1,5 @@
 CREATE TABLE "TripOperationalLocation" (
-  "tripId" UUID PRIMARY KEY REFERENCES "Trip"("id") ON DELETE CASCADE,
+  "tripId" TEXT PRIMARY KEY REFERENCES "Trip"("id") ON DELETE CASCADE,
   "locationName" TEXT NOT NULL,
   "latitude" DOUBLE PRECISION NOT NULL,
   "longitude" DOUBLE PRECISION NOT NULL,
@@ -10,8 +10,8 @@ CREATE TABLE "TripOperationalLocation" (
 );
 
 CREATE TABLE "TripWeatherReview" (
-  "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  "tripId" UUID NOT NULL REFERENCES "Trip"("id") ON DELETE CASCADE,
+  "id" TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  "tripId" TEXT NOT NULL REFERENCES "Trip"("id") ON DELETE CASCADE,
   "provider" TEXT NOT NULL,
   "forecastAt" TIMESTAMPTZ NOT NULL,
   "fetchedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -19,7 +19,7 @@ CREATE TABLE "TripWeatherReview" (
   "snapshotHash" TEXT NOT NULL,
   "status" TEXT NOT NULL DEFAULT 'PENDING',
   "notes" TEXT,
-  "reviewedByAccountId" UUID REFERENCES "Account"("id") ON DELETE SET NULL,
+  "reviewedByAccountId" TEXT REFERENCES "Account"("id") ON DELETE SET NULL,
   "reviewedAt" TIMESTAMPTZ,
   "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
