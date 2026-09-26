@@ -5,5 +5,6 @@ import { MfaService } from './mfa.service';
 import { GoogleIdentityService } from './google-identity.service';
 import { AccessTokenGuard } from './access-token.guard';
 import { AuditModule } from '../audit/audit.module';
-@Module({ imports:[forwardRef(()=>AuditModule)], controllers: [AuthController], providers: [AuthService, MfaService, GoogleIdentityService, AccessTokenGuard], exports: [AuthService, MfaService, GoogleIdentityService, AccessTokenGuard] })
+import { IntegrationModule } from '../integrations/integration.module';
+@Module({ imports:[forwardRef(()=>AuditModule),forwardRef(()=>IntegrationModule)], controllers: [AuthController], providers: [AuthService, MfaService, GoogleIdentityService, AccessTokenGuard], exports: [AuthService, MfaService, GoogleIdentityService, AccessTokenGuard] })
 export class AuthModule {}
