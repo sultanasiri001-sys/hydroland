@@ -21,6 +21,22 @@ type CredentialWithDocuments = {
   documents:any[];
 };
 
+type ExternalCertificationVerificationInput={
+  source:'PADI'|'SSI';
+  method:'ECARD'|'QR';
+  reference:string;
+  verificationUrl?:string;
+  checkedAt?:string;
+};
+
+type ExternalCertificationVerification={
+  source:'PADI'|'SSI';
+  method:'ECARD'|'QR';
+  reference:string;
+  verificationUrl:string|null;
+  checkedAt:string;
+};
+
 @Injectable()
 export class CredentialsService {
   constructor(private readonly db:DatabaseService,private readonly policies:PolicyControlService,private readonly audit:AuditService,private readonly notifications:NotificationsService,private readonly storage:CredentialObjectStorageService){}
@@ -114,9 +130,10 @@ export class CredentialsService {
     return rows.map(row=>this.publicCredential(row as unknown as Record<string,any>));
   }
 
-  async decide(reviewerAccountId:string,credentialId:string,input:{outcome:'VERIFIED'|'REJECTED';reason?:string}){
+  async decide(reviewerAccountId:string,credentialId:string,input:{outcome:'VERIFIED'|'REJECTED';reason?:string;externalVerification?:ExternalCertificationVerificationInput}){
     if(!['VERIFIED','REJECTED'].includes(input.outcome))throw new BadRequestException('Invalid credential review outcome.');
     if(input.outcome==='REJECTED'&&(!input.reason?.trim()||input.reason.trim().length<5))throw new BadRequestException('A rejection reason of at least five characters is required.');
+    const externalVerification=input.externalVerification?this.externalCertificationVerification(input.externalVerification):null;
     const [verificationPolicy,expiryPolicy,reviewer]=await Promise.all([
       this.policies.decision('DOCUMENT','VERIFICATION'),
       this.policies.decision('DOCUMENT','EXPIRY'),
@@ -135,10 +152,33 @@ export class CredentialsService {
       if(credential.documents.length)await tx.document.updateMany({where:{credentialId},data:{status:input.outcome==='VERIFIED'?'AVAILABLE':'REJECTED'}});
       return row;
     });
-    await this.audit.record({action:'CREDENTIAL_REVIEWED',resource:'Credential',resourceId:credentialId,metadata:{reviewerAccountId,previousStatus:credential.verificationStatus,status:input.outcome,reason:input.reason?.trim()||null,documentCount:credential.documents.length,externalVerification:false,policyStates:{verification:verificationPolicy.state,expiry:expiryPolicy.state},expired}});
+    await this.audit.record({action:'CREDENTIAL_REVIEWED',resource:'Credential',resourceId:credentialId,metadata:{reviewerAccountId,previousStatus:credential.verificationStatus,status:input.outcome,reason:input.reason?.trim()||null,documentCount:credential.documents.length,externalVerification:Boolean(externalVerification),externalVerificationEvidence:externalVerification,policyStates:{verification:verificationPolicy.state,expiry:expiryPolicy.state},expired}});
     const owner=await this.db.account.findUnique({where:{personId:credential.personId},select:{id:true}});
-    if(owner)await this.notifyQuietly(owner.id,'CREDENTIAL_REVIEWED',{credentialId,title:credential.title,outcome:input.outcome,reason:input.reason?.trim()||null,externalVerification:false});
-    return{...updated,externalVerification:false,policyReview:{required:expiryPolicy.review&&expired,issues:expiryPolicy.review&&expired?['DOCUMENT_EXPIRY']:[],states:{verification:verificationPolicy.state,expiry:expiryPolicy.state}}};
+    if(owner)await this.notifyQuietly(owner.id,'CREDENTIAL_REVIEWED',{credentialId,title:credential.title,outcome:input.outcome,reason:input.reason?.trim()||null,externalVerification:Boolean(externalVerification),externalVerificationSource:externalVerification?.source||null});
+    return{...updated,externalVerification:Boolean(externalVerification),externalVerificationEvidence:externalVerification,policyReview:{required:expiryPolicy.review&&expired,issues:expiryPolicy.review&&expired?['DOCUMENT_EXPIRY']:[],states:{verification:verificationPolicy.state,expiry:expiryPolicy.state}}};
+  }
+
+  private externalCertificationVerification(input:ExternalCertificationVerificationInput):ExternalCertificationVerification{
+    const source=String(input.source||'').trim().toUpperCase();
+    const method=String(input.method||'').trim().toUpperCase();
+    if(source!=='PADI'&&source!=='SSI')throw new BadRequestException('Unsupported external certification source.');
+    if(source==='PADI'&&method!=='ECARD')throw new BadRequestException('PADI manual verification must use eCard evidence.');
+    if(source==='SSI'&&method!=='QR')throw new BadRequestException('SSI manual verification must use QR evidence.');
+    const reference=String(input.reference||'').trim();
+    if(reference.length<3||reference.length>200)throw new BadRequestException('External certification verification reference must be between 3 and 200 characters.');
+    const checkedAtDate=input.checkedAt?new Date(input.checkedAt):new Date();
+    if(Number.isNaN(checkedAtDate.getTime()))throw new BadRequestException('Invalid external certification verification time.');
+    if(checkedAtDate.getTime()>Date.now()+5*60_000)throw new BadRequestException('External certification verification time cannot be in the future.');
+    let verificationUrl:string|null=null;
+    if(input.verificationUrl){
+      let url:URL;try{url=new URL(input.verificationUrl.trim());}catch{throw new BadRequestException('Invalid external certification verification URL.');}
+      if(url.protocol!=='https:'||url.username||url.password)throw new BadRequestException('External certification verification URL must use HTTPS without embedded credentials.');
+      const host=url.hostname.toLowerCase();
+      const hostAllowed=source==='PADI'?(host==='padi.com'||host.endsWith('.padi.com')):(host==='divessi.com'||host.endsWith('.divessi.com'));
+      if(!hostAllowed)throw new BadRequestException('External certification verification URL does not match the selected issuer.');
+      url.hash='';verificationUrl=url.toString();
+    }
+    return{source:source as 'PADI'|'SSI',method:method as 'ECARD'|'QR',reference,verificationUrl,checkedAt:checkedAtDate.toISOString()};
   }
 
   private cleanName(value:string){const name=String(value||'').split(/[\\/]/).pop()?.trim()||'';if(!name||name.length>180)throw new BadRequestException('Invalid document file name.');return name;}
