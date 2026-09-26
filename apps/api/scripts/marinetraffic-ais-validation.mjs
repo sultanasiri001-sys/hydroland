@@ -46,7 +46,8 @@ for(const marker of [
   'STAGE3_DISTRESS_AIS_READINESS=',
 ])if(!inventory.includes(marker))throw new Error(`Stage 3 AIS inventory marker missing: ${marker}`);
 
-if(!coverage.includes("partialCoverage={DISTRESS_AIS:'MARINETRAFFIC_AIS_ONLY'}"))throw new Error('DISTRESS_AIS partial AIS coverage declaration is missing.');
+const partialCoverageBlock=coverage.match(/const partialCoverage=\{([^}]+)\};/)?.[1]||'';
+if(!partialCoverageBlock.includes("DISTRESS_AIS:'MARINETRAFFIC_AIS_ONLY'"))throw new Error('DISTRESS_AIS partial AIS coverage declaration is missing.');
 if(!coverage.includes('DISTRESS_AIS partial AIS evidence missing'))throw new Error('DISTRESS_AIS partial AIS evidence guard is missing.');
 const providerSelectionBlock=coverage.match(/const providerSelectionRequired=\[([\s\S]*?)\];/)?.[1]||'';
 const contractAccessBlock=coverage.match(/const contractAccessRequired=\[([\s\S]*?)\];/)?.[1]||'';
