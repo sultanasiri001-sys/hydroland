@@ -2,6 +2,7 @@ import fs from 'node:fs';
 
 const read=(path)=>fs.readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const service=read('src/integrations/integration.service.ts');
+const integrationController=read('src/integrations/integration.controller.ts');
 const types=read('src/integrations/integration.types.ts');
 const health=read('src/health/health.controller.ts');
 const payments=read('src/payments/payments.service.ts');
@@ -20,6 +21,8 @@ const emailWorker=read('src/auth/auth-email-outbox.worker.ts');
 const auth=read('src/auth/auth.service.ts');
 const webAuth=read('../web/src/hydroland-auth.js');
 const webBookings=read('../web/src/hydroland-bookings.js');
+const webMap=read('../web/src/hydroland-map.js');
+const webRoleDashboards=read('../web/src/hydroland-role-dashboards.js');
 const render=read('../../render.yaml');
 
 const requiredKeys=['PAYMENT_PSP','OBJECT_STORAGE','TRANSLATION_ENGINE','WEATHER_MARINE','EMAIL','MAPS_GEO','ESIGN','CERTIFICATION','DISTRESS_AIS','NAFATH','REGULATORY'];
@@ -48,6 +51,24 @@ for(const marker of [
   "decision: 'REVIEW_REQUIRED'",
 ])if(!stormglass.includes(marker))throw new Error(`Stormglass marine contract missing: ${marker}`);
 for(const marker of ['currentSpeedMps?: number','currentDirectionDeg?: number','swellPeriodS?: number'])if(!weatherGate.includes(marker))throw new Error(`Weather snapshot marine field missing: ${marker}`);
+for(const marker of [
+  "publicWeatherConfig()",
+  "this.status('WEATHER_MARINE')",
+  "credentialsConfigured=Boolean(process.env.STORMGLASS_API_KEY?.trim())",
+  "provider:'STORMGLASS'",
+  'configured:operational&&credentialsConfigured',
+  "sandbox:integration.status==='SANDBOX'",
+])if(!service.includes(marker))throw new Error(`Sanitized weather readiness invariant missing: ${marker}`);
+if(!integrationController.includes("@Get('weather/public-config')")||!integrationController.includes('this.service.publicWeatherConfig()'))throw new Error('Public weather readiness route is missing.');
+if(/STORMGLASS_API_KEY\s*[:,]/.test(service))throw new Error('Public weather readiness must not expose the Stormglass API key.');
+for(const marker of [
+  "request('/integrations/weather/public-config')",
+  "Stormglass · متصل",
+  "Stormglass · تجريبي",
+  "بانتظار إعداد المزود",
+  "setMarineWeatherState('غير مفعّل')",
+])if(!webMap.includes(marker))throw new Error(`Marine weather status UI invariant missing: ${marker}`);
+for(const marker of ["script.dataset.hlWeatherAdmin='1'","script.src='./hydroland-weather-admin.js'","if(role==='admin')ensureWeatherAdmin()"]){if(!webRoleDashboards.includes(marker))throw new Error(`Weather admin runtime loader missing: ${marker}`)}
 if(!tripAdmin.includes('weatherReviews.refresh(reviewerAccountId,tripId)')||!tripAdmin.includes("rows[0]?.status!=='APPROVED'"))throw new Error('Booking confirmation does not revalidate and require human approval of the fresh weather snapshot.');
 if(!render.includes('key: STORMGLASS_API_KEY')||!render.includes('key: HYDROLAND_INTEGRATION_WEATHER_MARINE_STATUS'))throw new Error('Render blueprint does not declare Stormglass activation inputs.');
 
