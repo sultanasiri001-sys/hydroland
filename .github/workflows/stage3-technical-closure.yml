@@ -1,0 +1,34 @@
+name: Stage 3 Technical Closure Gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/api/src/integrations/**'
+      - 'apps/api/src/credentials/**'
+      - 'apps/api/src/safety/**'
+      - 'apps/api/scripts/stage3-*.mjs'
+      - 'apps/api/scripts/certification-manual-verification-validation.mjs'
+      - 'apps/api/scripts/production-integration-inventory.mjs'
+      - '.github/workflows/stage3-*.yml'
+      - 'docs/STAGE3_INTEGRATION_COVERAGE.md'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  technical-closure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate Stage 3 technical closure partition and external blockers
+        run: node apps/api/scripts/stage3-technical-closure-validation.mjs
+      - name: Re-validate Stage 3 integration coverage
+        run: node apps/api/scripts/stage3-integration-coverage-validation.mjs
+      - name: Re-validate readiness authorization
+        run: node apps/api/scripts/readiness-authorization-validation.mjs
+      - name: Re-validate readiness payload contracts
+        run: node apps/api/scripts/stage3-readiness-payload-contract-validation.mjs
