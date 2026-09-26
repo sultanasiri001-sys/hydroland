@@ -8,12 +8,21 @@ import { WeatherGateService, WeatherSnapshot } from './weather-gate.service';
 
 type TripListRow={id:string;title:string;status:string;startsAt:Date;capacity:number;bookings:Array<{seats:number}>;safetyChecklists:Array<{id:string;decision:string;items:unknown;notes:string|null;decidedAt:Date|null;createdAt:Date}>;[key:string]:unknown};
 type WeatherReviewRow={status:'PENDING'|'APPROVED'|'REJECTED';snapshot:WeatherSnapshot;forecastAt:Date;fetchedAt:Date};
+type TripPrice={pricePerSeatMinor:number;currency:'SAR';configured:boolean};
 
 @Injectable()
 export class TripsService {
   constructor(private readonly db:DatabaseService,private readonly weatherGate:WeatherGateService,private readonly weatherReviews:TripWeatherReviewService,private readonly participants:BookingParticipantService,private readonly policies:PolicyControlService,private readonly audit:AuditService) {}
 
-  async list(){const gateSettings=await this.weatherGate.settings();const trips=(await this.db.trip.findMany({where:{status:'OPEN'},orderBy:{startsAt:'asc'},include:{bookings:{where:{status:{in:['PENDING','CONFIRMED']}},select:{seats:true}},safetyChecklists:{orderBy:{createdAt:'desc'},take:1,select:{id:true,decision:true,items:true,notes:true,decidedAt:true,createdAt:true}}}})) as TripListRow[];return Promise.all(trips.map(async(trip:TripListRow)=>{const bookedSeats=trip.bookings.reduce((sum:number,booking:{seats:number})=>sum+booking.seats,0),latestSafety=trip.safetyChecklists[0]??null,[location,review]=await Promise.all([this.weatherReviews.location(trip.id),this.weatherReviews.latest(trip.id)]),weather=this.weatherGate.evaluateReview(review?.snapshot,review?.status,gateSettings),{bookings,safetyChecklists,...base}=trip;return {...base,bookedSeats,remainingSeats:Math.max(0,trip.capacity-bookedSeats),safety:latestSafety,location,weather:{snapshot:review?.snapshot??null,reviewStatus:review?.status??null,forecastAt:review?.forecastAt??null,fetchedAt:review?.fetchedAt??null,gate:gateSettings,evaluation:weather}};}));}
+  private async tripPrice(tripId:string):Promise<TripPrice>{
+    const row=await this.db.operationalSetting.findUnique({where:{key:`trip-price:${tripId}`},select:{value:true}});
+    if(!row?.value||typeof row.value!=='object'||Array.isArray(row.value))return{pricePerSeatMinor:0,currency:'SAR',configured:false};
+    const value=row.value as Record<string,unknown>,amount=typeof value.pricePerSeatMinor==='number'?value.pricePerSeatMinor:Number.NaN,currency=typeof value.currency==='string'?value.currency.toUpperCase():'';
+    if(!Number.isSafeInteger(amount)||amount<0||currency!=='SAR')return{pricePerSeatMinor:0,currency:'SAR',configured:false};
+    return{pricePerSeatMinor:amount,currency:'SAR',configured:true};
+  }
+
+  async list(){const gateSettings=await this.weatherGate.settings();const trips=(await this.db.trip.findMany({where:{status:'OPEN'},orderBy:{startsAt:'asc'},include:{bookings:{where:{status:{in:['PENDING','CONFIRMED']}},select:{seats:true}},safetyChecklists:{orderBy:{createdAt:'desc'},take:1,select:{id:true,decision:true,items:true,notes:true,decidedAt:true,createdAt:true}}}})) as TripListRow[];return Promise.all(trips.map(async(trip:TripListRow)=>{const bookedSeats=trip.bookings.reduce((sum:number,booking:{seats:number})=>sum+booking.seats,0),latestSafety=trip.safetyChecklists[0]??null,[location,review,price]=await Promise.all([this.weatherReviews.location(trip.id),this.weatherReviews.latest(trip.id),this.tripPrice(trip.id)]),weather=this.weatherGate.evaluateReview(review?.snapshot,review?.status,gateSettings),{bookings,safetyChecklists,...base}=trip;return {...base,bookedSeats,remainingSeats:Math.max(0,trip.capacity-bookedSeats),price,safety:latestSafety,location,weather:{snapshot:review?.snapshot??null,reviewStatus:review?.status??null,forecastAt:review?.forecastAt??null,fetchedAt:review?.fetchedAt??null,gate:gateSettings,evaluation:weather}};}));}
 
   async book(accountId:string,tripId:string,seats:number){
     if(!Number.isInteger(seats)||seats<1)throw new BadRequestException('Invalid seats.');
@@ -38,7 +47,8 @@ export class TripsService {
       const participantRows=await this.participants.ensureForBooking(booking.id,accountId,seats,tx);
       return{booking,participantRows,rebooked:Boolean(existing),weatherReview};
     });
-    return {...result.booking,participants:result.participantRows,rebooked:result.rebooked,policyReview:{required:reviewIssues.length>0,issues:[...new Set(reviewIssues)],states:{safety:safetyPolicy.state,weather:weatherPolicy.state,capacity:capacityPolicy.state},weatherGate:{enabled:gateSettings.enabled,mode:gateSettings.mode,provider:gateSettings.provider,reviewStatus:result.weatherReview?.status??null,forecastAt:result.weatherReview?.forecastAt??null}}};
+    const price=await this.tripPrice(tripId);
+    return {...result.booking,price,participants:result.participantRows,rebooked:result.rebooked,policyReview:{required:reviewIssues.length>0,issues:[...new Set(reviewIssues)],states:{safety:safetyPolicy.state,weather:weatherPolicy.state,capacity:capacityPolicy.state},weatherGate:{enabled:gateSettings.enabled,mode:gateSettings.mode,provider:gateSettings.provider,reviewStatus:result.weatherReview?.status??null,forecastAt:result.weatherReview?.forecastAt??null}}};
   }
 
   mine(accountId:string){return this.db.booking.findMany({where:{accountId},include:{trip:true},orderBy:{createdAt:'desc'}});}
