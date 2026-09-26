@@ -1,0 +1,38 @@
+name: Stage 3 Moyasar Settlement Validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/api/src/payments/moyasar-settlement-provider.service.ts'
+      - 'apps/api/src/payments/settlement-readiness.controller.ts'
+      - 'apps/api/src/payments/payments.module.ts'
+      - 'apps/api/scripts/moyasar-settlement-validation.mjs'
+      - 'apps/api/scripts/production-integration-inventory.mjs'
+      - 'apps/api/scripts/stage3-integration-coverage-validation.mjs'
+      - 'docs/STAGE3_INTEGRATION_COVERAGE.md'
+      - 'render.yaml'
+      - '.github/workflows/stage3-moyasar-settlement-validation.yml'
+  push:
+    branches: [feat/stage3-moyasar-settlement-reconciliation]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm --workspace @hydroland/api run db:generate
+      - name: Validate read-only Moyasar settlement contract
+        run: node apps/api/scripts/moyasar-settlement-validation.mjs
+      - name: Validate Stage 3 integration coverage
+        run: node apps/api/scripts/stage3-integration-coverage-validation.mjs
+      - name: Validate existing integration safeguards
+        run: node apps/api/scripts/integration-readiness-validation.mjs
+      - name: API typecheck
+        run: npm --workspace @hydroland/api run typecheck
+      - name: API build
+        run: npm --workspace @hydroland/api run build
