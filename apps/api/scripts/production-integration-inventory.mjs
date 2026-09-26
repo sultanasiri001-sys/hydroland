@@ -38,7 +38,7 @@ const counts = safe.reduce((acc, item) => {
   return acc;
 }, {});
 
-const [maps, weather, payment, settlement, emailReadiness, sms, whatsapp, objectStorage, translation, esign, distressAis, nafath, regulatory] = await Promise.all([
+const [maps, weather, payment, settlement, emailReadiness, sms, whatsapp, objectStorage, translation, esign, distressAis, certification, nafath, regulatory] = await Promise.all([
   read('/integrations/maps/public-config'),
   read('/integrations/weather/public-config'),
   read('/health/integrations/payment'),
@@ -50,6 +50,7 @@ const [maps, weather, payment, settlement, emailReadiness, sms, whatsapp, object
   read('/health/integrations/translation'),
   read('/health/integrations/esign'),
   read('/health/integrations/distress-ais'),
+  read('/health/integrations/certification'),
   read('/health/integrations/nafath'),
   read('/health/integrations/regulatory'),
 ]);
@@ -100,6 +101,15 @@ const safeDistressAis = {
   productionReady: Boolean(distressAis?.productionReady),
   checks: distressAis?.checks ?? {},
 };
+const safeCertification = {
+  status: certification?.status ?? null,
+  partialProvider: certification?.partialProvider ?? null,
+  padiEvidenceUrlValidationReady: Boolean(certification?.padiEvidenceUrlValidationReady),
+  automatedApiVerificationReady: Boolean(certification?.automatedApiVerificationReady),
+  humanReviewRequired: Boolean(certification?.humanReviewRequired),
+  productionReady: Boolean(certification?.productionReady),
+  blocker: certification?.blocker ?? null,
+};
 const safeNafath = sanitizeOnboarding(nafath);
 const safeRegulatory = sanitizeOnboarding(regulatory);
 
@@ -124,6 +134,7 @@ if (!safeObjectStorage.productionReady) blockers.push('OBJECT_STORAGE:PRODUCTION
 if (!safeTranslation.productionReady) blockers.push('TRANSLATION_ENGINE:PRODUCTION_NOT_READY');
 if (!safeEsign.productionReady) blockers.push('ESIGN:PRODUCTION_NOT_READY');
 if (!safeDistressAis.distressReady) blockers.push('DISTRESS_AIS:DISTRESS_PROVIDER_REQUIRED');
+if (!safeCertification.productionReady) blockers.push('CERTIFICATION:OFFICIAL_API_CONTRACT_REQUIRED');
 if (!safeNafath.productionReady) blockers.push('NAFATH:APPROVED_CONTRACT_AND_ADAPTER_REQUIRED');
 if (!safeRegulatory.productionReady) blockers.push('REGULATORY:LICENSING_API_CONTRACT_AND_ADAPTER_REQUIRED');
 
@@ -139,6 +150,7 @@ console.log('STAGE3_OBJECT_STORAGE_READINESS=' + JSON.stringify(safeObjectStorag
 console.log('STAGE3_TRANSLATION_READINESS=' + JSON.stringify(safeTranslation));
 console.log('STAGE3_ESIGN_READINESS=' + JSON.stringify(safeEsign));
 console.log('STAGE3_DISTRESS_AIS_READINESS=' + JSON.stringify(safeDistressAis));
+console.log('STAGE3_CERTIFICATION_READINESS=' + JSON.stringify(safeCertification));
 console.log('STAGE3_NAFATH_ONBOARDING=' + JSON.stringify(safeNafath));
 console.log('STAGE3_REGULATORY_ONBOARDING=' + JSON.stringify(safeRegulatory));
 console.log('STAGE3_BLOCKERS=' + JSON.stringify([...new Set(blockers)]));
