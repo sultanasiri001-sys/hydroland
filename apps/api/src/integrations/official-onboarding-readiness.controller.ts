@@ -1,12 +1,13 @@
 import { Controller, Get } from '@nestjs/common';
 import { IntegrationService } from './integration.service';
+import { OfficialOnboardingReadinessPayload } from './integration.types';
 
 @Controller('health/integrations')
 export class OfficialOnboardingReadinessController {
   constructor(private readonly integrations:IntegrationService){}
 
   @Get('nafath')
-  getNafathReadiness(){
+  getNafathReadiness():OfficialOnboardingReadinessPayload{
     const integration=this.integrations.status('NAFATH');
     const provider=process.env.HYDROLAND_NAFATH_PROVIDER?.trim().toUpperCase()||'';
     const checks={
@@ -33,7 +34,7 @@ export class OfficialOnboardingReadinessController {
   }
 
   @Get('regulatory')
-  getRegulatoryReadiness(){
+  getRegulatoryReadiness():OfficialOnboardingReadinessPayload{
     const integration=this.integrations.status('REGULATORY');
     const provider=process.env.HYDROLAND_REGULATORY_PROVIDER?.trim().toUpperCase()||'';
     const checks={

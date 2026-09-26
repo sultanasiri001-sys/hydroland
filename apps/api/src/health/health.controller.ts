@@ -1,6 +1,7 @@
 import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { IntegrationService } from '../integrations/integration.service';
+import { IntegrationReadinessPayload } from '../integrations/integration.types';
 
 @Controller('health')
 export class HealthController {
@@ -43,7 +44,7 @@ export class HealthController {
   }
 
   @Get('integrations/payment')
-  getPaymentReadiness() {
+  getPaymentReadiness():IntegrationReadinessPayload {
     const integration = this.integrations.status('PAYMENT_PSP');
     const provider = process.env.HYDROLAND_PAYMENT_PROVIDER?.trim().toUpperCase() || '';
     const checks = {
@@ -69,7 +70,7 @@ export class HealthController {
   }
 
   @Get('integrations/email')
-  getEmailReadiness() {
+  getEmailReadiness():IntegrationReadinessPayload {
     const integration = this.integrations.status('EMAIL');
     const provider = process.env.HYDROLAND_EMAIL_PROVIDER?.trim().toUpperCase() || '';
     const checks = {
@@ -95,7 +96,7 @@ export class HealthController {
   }
 
   @Get('integrations/sms')
-  getSmsReadiness() {
+  getSmsReadiness():IntegrationReadinessPayload {
     const integration = this.integrations.status('SMS');
     const provider = process.env.HYDROLAND_SMS_PROVIDER?.trim().toUpperCase() || '';
     const checks = {
@@ -120,7 +121,7 @@ export class HealthController {
   }
 
   @Get('integrations/whatsapp')
-  getWhatsAppReadiness() {
+  getWhatsAppReadiness():IntegrationReadinessPayload {
     const integration = this.integrations.status('WHATSAPP');
     const provider = process.env.HYDROLAND_WHATSAPP_PROVIDER?.trim().toUpperCase() || '';
     const checks = {
@@ -145,7 +146,7 @@ export class HealthController {
   }
 
   @Get('integrations/object-storage')
-  getObjectStorageReadiness() {
+  getObjectStorageReadiness():IntegrationReadinessPayload {
     const integration = this.integrations.status('OBJECT_STORAGE');
     const provider = process.env.HYDROLAND_OBJECT_STORAGE_PROVIDER?.trim().toUpperCase() || '';
     const checks = {
@@ -172,7 +173,7 @@ export class HealthController {
   }
 
   @Get('integrations/translation')
-  getTranslationReadiness() {
+  getTranslationReadiness():IntegrationReadinessPayload {
     const integration = this.integrations.status('TRANSLATION_ENGINE');
     const provider = process.env.HYDROLAND_TRANSLATION_PROVIDER?.trim().toUpperCase() || '';
     const checks = {
@@ -196,7 +197,7 @@ export class HealthController {
   }
 
   @Get('integrations/esign')
-  getEsignReadiness() {
+  getEsignReadiness():IntegrationReadinessPayload {
     const integration = this.integrations.status('ESIGN');
     const provider = process.env.HYDROLAND_ESIGN_PROVIDER?.trim().toUpperCase() || '';
     const checks = {

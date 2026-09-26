@@ -1,12 +1,13 @@
 import { Controller, Get } from '@nestjs/common';
 import { IntegrationService } from '../integrations/integration.service';
+import { IntegrationReadinessPayload } from '../integrations/integration.types';
 
 @Controller('health/integrations')
 export class SettlementReadinessController {
   constructor(private readonly integrations:IntegrationService){}
 
   @Get('settlement')
-  getSettlementReadiness(){
+  getSettlementReadiness():IntegrationReadinessPayload{
     const integration=this.integrations.status('BANKING_SETTLEMENT');
     const provider=process.env.HYDROLAND_SETTLEMENT_PROVIDER?.trim().toUpperCase()||'';
     const checks={

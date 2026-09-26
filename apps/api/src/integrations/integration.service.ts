@@ -1,7 +1,7 @@
 import { Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { AuditService } from '../audit/audit.service';
-import { IntegrationDescriptor, IntegrationKey, VerifiedWebhook } from './integration.types';
+import { IntegrationDescriptor, IntegrationKey, MapsPublicConfigPayload, VerifiedWebhook, WeatherPublicConfigPayload } from './integration.types';
 const catalog:readonly IntegrationDescriptor[]=[
  {key:'WEATHER_MARINE',name:'Weather & marine data',category:'marine',status:'NOT_SELECTED',requiresHumanApproval:false,supportsWebhook:false},
  {key:'EMAIL',name:'Email delivery',category:'messaging',status:'NOT_SELECTED',requiresHumanApproval:false,supportsWebhook:true},
@@ -27,7 +27,7 @@ const statuses=new Set(['NOT_SELECTED','SANDBOX','CONFIGURED','VERIFIED','PRODUC
  }
  list(){return catalog.map(item=>({...item,status:this.configuredStatus(item.key)??item.status}))}
  status(key:IntegrationKey){const integration=this.list().find(item=>item.key===key);if(!integration)throw new ServiceUnavailableException('Unknown integration.');return integration}
- publicMapConfig(){
+ publicMapConfig():MapsPublicConfigPayload{
   const integration=this.status('MAPS_GEO');
   const operational=integration.status==='PRODUCTION_ENABLED'||integration.status==='SANDBOX';
   const styleUrl=process.env.HYDROLAND_MAP_STYLE_URL?.trim()||null;
@@ -35,7 +35,7 @@ const statuses=new Set(['NOT_SELECTED','SANDBOX','CONFIGURED','VERIFIED','PRODUC
   const attribution=process.env.HYDROLAND_MAP_ATTRIBUTION?.trim()||null;
   return{engine:'MAPLIBRE',engineVersion:'6.11.2',status:integration.status,provider,enabled:operational&&Boolean(styleUrl),styleUrl:operational?styleUrl:null,attribution};
  }
- publicWeatherConfig(){
+ publicWeatherConfig():WeatherPublicConfigPayload{
   const integration=this.status('WEATHER_MARINE');
   const operational=integration.status==='PRODUCTION_ENABLED'||integration.status==='SANDBOX';
   const credentialsConfigured=Boolean(process.env.STORMGLASS_API_KEY?.trim());
