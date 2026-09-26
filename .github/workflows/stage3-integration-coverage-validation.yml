@@ -4,14 +4,19 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - 'apps/api/src/app.module.ts'
+      - 'apps/api/src/health/health.controller.ts'
       - 'apps/api/src/integrations/**'
       - 'apps/api/src/payments/**'
+      - 'apps/api/src/credentials/**'
       - 'apps/api/src/trips/stormglass-weather.service.ts'
       - 'apps/api/src/trip-intelligence/offline-payload-storage.service.ts'
-      - 'apps/api/src/translation/translation-router.service.ts'
+      - 'apps/api/src/translation/**'
       - 'apps/web/src/hydroland-map.js'
+      - 'apps/api/scripts/production-integration-inventory.mjs'
       - 'apps/api/scripts/stage3-integration-coverage-validation.mjs'
       - 'docs/STAGE3_INTEGRATION_COVERAGE.md'
+      - '.github/workflows/stage3-production-integration-inventory.yml'
       - '.github/workflows/stage3-integration-coverage-validation.yml'
   push:
     branches: [ops/stage3-integration-coverage-matrix]
@@ -26,7 +31,7 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm --workspace @hydroland/api run db:generate
-      - name: Validate Stage 3 integration coverage matrix
+      - name: Validate Stage 3 integration coverage matrix and readiness route contracts
         run: node apps/api/scripts/stage3-integration-coverage-validation.mjs
       - name: Validate existing integration safeguards
         run: node apps/api/scripts/integration-readiness-validation.mjs
