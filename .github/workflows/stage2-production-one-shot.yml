@@ -72,3 +72,9 @@ jobs:
           E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
           ALLOW_E2E_BOOTSTRAP: 'true'
         run: node scripts/cleanup-e2e-admin.mjs
+      - name: Cleanup stale Stage 2 E2E trips
+        if: always()
+        working-directory: apps/api
+        env:
+          DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
+        run: node scripts/cleanup-stage2-stale-trips.mjs
