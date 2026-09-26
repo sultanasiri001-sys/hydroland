@@ -26,14 +26,26 @@ A code-ready integration still requires the provider account, credentials, appro
 
 ### CERTIFICATION — manual official verification evidence
 
-HYDROLAND can record a reviewer-verified external certification check as audit evidence without pretending that an automated certification API exists.
+HYDROLAND can record reviewer-verified official certification evidence without pretending that an automated certification API exists.
 
-Currently supported evidence boundaries:
+The Saudi boundary is kept distinct from international training-agency certification:
 
-- PADI — eCard verification evidence only.
-- SSI — QR verification evidence only.
+- SWSDF — Saudi Water Sports and Diving Federation. National professional diver license validation through the federation's official professional-license validation service.
+- PADI — eCard evidence.
+- SSI — QR / official digital certification evidence.
+- NAUI — official online diver certification verification.
+- RAID — official diver lookup.
+- SDI / TDI — official Certification Search through International Training.
+- IANTD — official digital certification / global database evidence.
+- GUE — official Verify Certification card lookup.
+- CMAS — official CMAS Certification Search; Saudi Water Sports and Diving Federation is the Saudi national federation affiliated with CMAS.
+- BSAC — MyBSAC digital Qualification Card / QCard evidence.
 
-The reviewer may record the source, method, reference, verification timestamp and an optional HTTPS verification URL. URLs are restricted to the selected issuer's official domain family. The evidence is written into the credential review audit trail; the platform does not call PADI or SSI APIs from this path.
+The platform also exposes a governed verification-organization catalog for these sources. Each source defines its allowed verification method and official domain family. Reviewers may record source, method, reference, verification timestamp and official HTTPS evidence URL. The evidence is written to the credential audit trail and does not itself approve the credential.
+
+Saudi professional status is not inferred from an international agency card. A professional diver operating under the Saudi national professional licensing regime must still be validated against the SWSDF professional license boundary.
+
+For non-professional divers, the Saudi federation rules treat a diving license issued by an organization licensed by the federation as sufficient diving-license evidence, subject to the diver remaining within the limits of that training level and other applicable federation/authority rules.
 
 This does **not** make `CERTIFICATION` code-ready. `CERTIFICATION` remains `NOT_SELECTED` and provider-selection-required until an approved automated provider/API contract is available. The production inventory therefore continues to emit `CERTIFICATION:AUTOMATED_PROVIDER_REQUIRED`.
 
@@ -54,7 +66,7 @@ Both integrations remain `NOT_SELECTED` in runtime until their approved adapter 
 
 The following integrations still need a complete provider/capability contract:
 
-- CERTIFICATION — manual PADI eCard / SSI QR evidence exists, but no approved automated certification-verification API contract is implemented.
+- CERTIFICATION — official manual verification evidence exists for Saudi and supported international diving organizations, but no approved automated certification-verification API contract is implemented.
 - DISTRESS_AIS — distress capability still required; MarineTraffic AIS-only partial coverage exists.
 
 No production adapter should be invented without a verifiable provider contract, authentication model, endpoint specification, data handling requirements and commercial/regulatory approval where applicable.
