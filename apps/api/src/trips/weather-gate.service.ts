@@ -8,6 +8,7 @@ export type WeatherReviewStatus='PENDING'|'APPROVED'|'REJECTED';
 
 export type WeatherSnapshot = {
   provider?: string;
+  source?: string;
   observedAt?: string;
   windSpeedKph?: number;
   windGustKph?: number;
@@ -17,6 +18,9 @@ export type WeatherSnapshot = {
   wavePeriodS?: number;
   swellHeightM?: number;
   swellDirectionDeg?: number;
+  swellPeriodS?: number;
+  currentSpeedMps?: number;
+  currentDirectionDeg?: number;
   waterTemperatureC?: number;
   decision?: WeatherDecision;
   reason?: string;
