@@ -12,10 +12,13 @@ The repository contains a concrete governed runtime path for:
 - SMS — Unifonic
 - WHATSAPP — Unifonic
 - PAYMENT_PSP — Moyasar
+- BANKING_SETTLEMENT — Moyasar read-only settlement reconciliation
 - OBJECT_STORAGE — Cloudflare R2
 - TRANSLATION_ENGINE — Google Cloud Translation
 - MAPS_GEO — MapLibre runtime with provider/style configuration boundary
 - ESIGN — Signit
+
+`BANKING_SETTLEMENT` is intentionally read-only. It may list/fetch Moyasar settlements and settlement lines for reconciliation, but it does not expose Payouts or any transfer/write operation.
 
 A code-ready integration still requires the provider account, credentials, approved configuration and lifecycle status to be verified before production activation.
 
@@ -23,7 +26,6 @@ A code-ready integration still requires the provider account, credentials, appro
 
 The following governed integrations remain intentionally `NOT_SELECTED` until an approved provider/API contract exists:
 
-- BANKING_SETTLEMENT
 - CERTIFICATION
 - DISTRESS_AIS
 - NAFATH
