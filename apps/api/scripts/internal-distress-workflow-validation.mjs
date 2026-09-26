@@ -32,7 +32,7 @@ for(const marker of ['SafetyIncident','UNDER_REVIEW','RESOLVED','CLOSED','Resolu
 for(const marker of ["method:'GET'",'MARINETRAFFIC_AIS_ONLY'])if(!ais.includes(marker))throw new Error(`AIS read-only invariant missing: ${marker}`);
 
 for(const marker of [
-  "data.safetyEmergencyBoundary='internal-only'",
+  "emergency.dataset.safetyEmergencyBoundary='internal-only'",
   'href="tel:994"',
   'داخل HYDROLAND فقط',
   'لم يتم إشعار حرس الحدود تلقائيًا',
