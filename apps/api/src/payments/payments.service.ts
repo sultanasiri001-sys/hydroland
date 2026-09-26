@@ -20,6 +20,8 @@ type PaymentWithInvoice={
   invoice:unknown|null;
 };
 
+type TripPrice={pricePerSeatMinor:number;currency:string};
+
 @Injectable()
 export class PaymentsService {
   constructor(
@@ -30,20 +32,27 @@ export class PaymentsService {
     private readonly moyasar:MoyasarPaymentProviderService,
   ){}
 
-  async create(accountId:string,input:{bookingId:string;amountMinor:number;idempotencyKey:string}){
-    if(!Number.isInteger(input.amountMinor)||input.amountMinor<1||!input.idempotencyKey?.trim())throw new BadRequestException('Invalid payment.');
+  async create(accountId:string,input:{bookingId:string;idempotencyKey:string}){
+    if(!input.bookingId?.trim()||!input.idempotencyKey?.trim())throw new BadRequestException('Invalid payment.');
     const paymentPolicy=await this.policies.decision('PAYMENT','PAYMENT_REQUIRED');
-    const booking=await this.db.booking.findFirst({where:{id:input.bookingId,accountId}});
+    const booking=await this.db.booking.findFirst({where:{id:input.bookingId,accountId},include:{trip:true}});
     if(!booking)throw new NotFoundException('Booking not found.');
     if(booking.status==='CANCELLED')throw new ConflictException('Cancelled booking cannot create a payment.');
     if(paymentPolicy.bypass)return{bookingId:booking.id,status:'BYPASSED',provider:'BYPASSED',policyReview:{required:false,issues:[],states:{payment:paymentPolicy.state}}};
+    const pricing=await this.tripPrice(booking.tripId);
+    if(!pricing)throw new ConflictException('Trip price is not configured.');
+    if(pricing.currency!=='SAR')throw new ConflictException('Trip payment currency is not supported.');
+    const amountMinor=pricing.pricePerSeatMinor*booking.seats;
+    if(!Number.isSafeInteger(amountMinor)||amountMinor<0)throw new ConflictException('Trip payment amount is invalid.');
+    if(amountMinor===0)return{bookingId:booking.id,status:'BYPASSED',provider:'FREE_TRIP',amountMinor:0,currency:pricing.currency,policyReview:{required:false,issues:[],states:{payment:paymentPolicy.state}}};
+    if(amountMinor<100)throw new ConflictException('Trip payment amount is below the provider minimum.');
     const idempotencyKey=input.idempotencyKey.trim();
     const existing=await this.db.payment.findUnique({where:{idempotencyKey}});
     if(existing&&existing.accountId!==accountId)throw new ConflictException('Idempotency key already belongs to another payment.');
-    if(existing&&(existing.bookingId!==input.bookingId||existing.amountMinor!==input.amountMinor))throw new ConflictException('Idempotency key cannot be reused with different payment details.');
+    if(existing&&(existing.bookingId!==input.bookingId||existing.amountMinor!==amountMinor||existing.currency!==pricing.currency))throw new ConflictException('Idempotency key cannot be reused with different payment details.');
     this.integrations.requireOperational('PAYMENT_PSP',{allowSandbox:true});
-    let payment=await this.db.payment.upsert({where:{idempotencyKey},create:{bookingId:input.bookingId,amountMinor:input.amountMinor,idempotencyKey,accountId,status:'CREATED'},update:{}});
-    if(!existing)await this.audit.record({action:'PAYMENT_CREATED',resource:'Payment',resourceId:payment.id,metadata:{accountId,bookingId:payment.bookingId,amountMinor:payment.amountMinor,currency:payment.currency,status:payment.status,provider:'MOYASAR',policyState:paymentPolicy.state,financialActionExecuted:false}});
+    let payment=await this.db.payment.upsert({where:{idempotencyKey},create:{bookingId:input.bookingId,amountMinor,currency:pricing.currency,idempotencyKey,accountId,status:'CREATED'},update:{}});
+    if(!existing)await this.audit.record({action:'PAYMENT_CREATED',resource:'Payment',resourceId:payment.id,metadata:{accountId,bookingId:payment.bookingId,seats:booking.seats,pricePerSeatMinor:pricing.pricePerSeatMinor,amountMinor:payment.amountMinor,currency:payment.currency,status:payment.status,provider:'MOYASAR',policyState:paymentPolicy.state,financialActionExecuted:false}});
 
     let providerInvoice:MoyasarInvoice;
     if(payment.providerReference){
@@ -53,6 +62,7 @@ export class PaymentsService {
       if(status!==payment.status)payment=await this.db.payment.update({where:{id:payment.id},data:{status}});
     }else{
       providerInvoice=await this.moyasar.createInvoice({paymentId:payment.id,bookingId:payment.bookingId,amountMinor:payment.amountMinor,currency:payment.currency});
+      this.assertProviderInvoice(payment,providerInvoice);
       const claimed=await this.db.payment.updateMany({where:{id:payment.id,providerReference:null},data:{providerReference:providerInvoice.id,status:this.statusFromInvoice(providerInvoice.status)}});
       if(claimed.count===1){
         payment=await this.db.payment.findUniqueOrThrow({where:{id:payment.id}});
@@ -84,19 +94,24 @@ export class PaymentsService {
     const event=this.moyasar.verifyWebhook(payload);
     const invoiceId=typeof event.data.invoice_id==='string'?event.data.invoice_id.trim():'';
     if(!invoiceId)return{accepted:true,matched:false};
-    const amount=typeof event.data.amount==='number'?event.data.amount:null;
-    const currency=typeof event.data.currency==='string'?event.data.currency:null;
+    const duplicate=await this.db.auditEvent.findFirst({where:{resource:'PaymentProviderWebhook',resourceId:event.id},select:{id:true}});
+    if(duplicate)return{accepted:true,duplicate:true};
+    const payment=await this.db.payment.findUnique({where:{providerReference:invoiceId}});
+    if(!payment){
+      await this.db.auditEvent.create({data:{action:'PAYMENT_PROVIDER_WEBHOOK_UNMATCHED',resource:'PaymentProviderWebhook',resourceId:event.id,metadata:{provider:'MOYASAR',type:event.type,invoiceId,live:event.live}}});
+      return{accepted:true,matched:false};
+    }
+    const providerInvoice=await this.moyasar.fetchInvoice(invoiceId);
+    this.assertProviderInvoice(payment,providerInvoice);
+    const next=this.statusFromInvoice(providerInvoice.status);
     return this.db.$transaction(async(tx:Prisma.TransactionClient)=>{
-      const duplicate=await tx.auditEvent.findFirst({where:{resource:'PaymentProviderWebhook',resourceId:event.id},select:{id:true}});
-      if(duplicate)return{accepted:true,duplicate:true};
-      const payment=await tx.payment.findUnique({where:{providerReference:invoiceId}});
-      if(!payment){await tx.auditEvent.create({data:{action:'PAYMENT_PROVIDER_WEBHOOK_UNMATCHED',resource:'PaymentProviderWebhook',resourceId:event.id,metadata:{provider:'MOYASAR',type:event.type,invoiceId}}});return{accepted:true,matched:false};}
-      if(amount!==null&&amount!==payment.amountMinor)throw new BadRequestException('Payment webhook amount mismatch.');
-      if(currency!==null&&currency!==payment.currency)throw new BadRequestException('Payment webhook currency mismatch.');
-      const next=this.statusFromWebhook(event.type,payment.status);
-      if(next!==payment.status)await tx.payment.update({where:{id:payment.id},data:{status:next}});
-      await tx.auditEvent.create({data:{action:'PAYMENT_PROVIDER_WEBHOOK_PROCESSED',resource:'PaymentProviderWebhook',resourceId:event.id,metadata:{provider:'MOYASAR',type:event.type,paymentId:payment.id,invoiceId,from:payment.status,to:next,live:event.live}}});
-      return{accepted:true,matched:true,paymentId:payment.id,status:next};
+      const repeated=await tx.auditEvent.findFirst({where:{resource:'PaymentProviderWebhook',resourceId:event.id},select:{id:true}});
+      if(repeated)return{accepted:true,duplicate:true};
+      const current=await tx.payment.findUnique({where:{id:payment.id}});
+      if(!current||current.providerReference!==invoiceId)throw new ConflictException('Payment provider reference changed during reconciliation.');
+      if(next!==current.status)await tx.payment.update({where:{id:current.id},data:{status:next}});
+      await tx.auditEvent.create({data:{action:'PAYMENT_PROVIDER_WEBHOOK_PROCESSED',resource:'PaymentProviderWebhook',resourceId:event.id,metadata:{provider:'MOYASAR',type:event.type,paymentId:current.id,invoiceId,from:current.status,to:next,providerStatus:providerInvoice.status,live:event.live,providerVerified:true}}});
+      return{accepted:true,matched:true,paymentId:current.id,status:next};
     });
   }
 
@@ -119,14 +134,19 @@ export class PaymentsService {
     return payments.map((payment:PaymentWithInvoice)=>({...payment,provider:payment.providerReference?'MOYASAR':'PENDING_PROVIDER',refundPolicy:{state:refundPolicy.state,reviewRequired:refundPolicy.review,enforced:refundPolicy.enforce}}));
   }
 
-  private assertProviderInvoice(payment:{amountMinor:number;currency:string},invoice:MoyasarInvoice){if(invoice.amount!==payment.amountMinor||invoice.currency!==payment.currency)throw new ConflictException('Provider invoice does not match local payment.');}
-  private statusFromInvoice(status:string):PaymentStatus{switch(status){case'paid':return PaymentStatus.CAPTURED;case'refunded':return PaymentStatus.REFUNDED;case'failed':return PaymentStatus.FAILED;case'canceled':case'voided':case'expired':return PaymentStatus.CANCELLED;case'on_hold':case'initiated':default:return PaymentStatus.PENDING}}
-  private statusFromWebhook(type:string,current:PaymentStatus):PaymentStatus{
-    if(current===PaymentStatus.REFUNDED)return current;
-    if(type==='payment_refunded')return PaymentStatus.REFUNDED;
-    if(current===PaymentStatus.CAPTURED)return current;
-    if(type==='payment_paid'||type==='payment_captured')return PaymentStatus.CAPTURED;
-    if(type==='payment_authorized')return PaymentStatus.AUTHORIZED;
-    return PaymentStatus.PENDING;
+  private async tripPrice(tripId:string):Promise<TripPrice|null>{
+    const setting=await this.db.operationalSetting.findUnique({where:{key:`trip-price:${tripId}`},select:{value:true}});
+    if(!setting?.value||typeof setting.value!=='object'||Array.isArray(setting.value))return null;
+    const value=setting.value as Record<string,unknown>;
+    const pricePerSeatMinor=typeof value.pricePerSeatMinor==='number'?value.pricePerSeatMinor:Number.NaN;
+    const currency=typeof value.currency==='string'?value.currency.trim().toUpperCase():'';
+    if(!Number.isSafeInteger(pricePerSeatMinor)||pricePerSeatMinor<0||!currency)return null;
+    return{pricePerSeatMinor,currency};
   }
+
+  private assertProviderInvoice(payment:{id:string;bookingId:string;amountMinor:number;currency:string},invoice:MoyasarInvoice){
+    if(invoice.amount!==payment.amountMinor||invoice.currency!==payment.currency)throw new ConflictException('Provider invoice does not match local payment.');
+    if(invoice.metadata.hydroland_payment_id!==payment.id||invoice.metadata.hydroland_booking_id!==payment.bookingId)throw new ConflictException('Provider invoice metadata does not match local payment.');
+  }
+  private statusFromInvoice(status:string):PaymentStatus{switch(status){case'paid':return PaymentStatus.CAPTURED;case'refunded':return PaymentStatus.REFUNDED;case'failed':return PaymentStatus.FAILED;case'canceled':case'voided':case'expired':return PaymentStatus.CANCELLED;case'on_hold':case'initiated':default:return PaymentStatus.PENDING}}
 }
