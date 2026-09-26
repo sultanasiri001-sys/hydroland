@@ -1,33 +1,34 @@
 import fs from 'node:fs';
 
-const health = fs.readFileSync(new URL('../src/health/health.controller.ts', import.meta.url), 'utf8');
+const readiness = fs.readFileSync(new URL('../src/health/integration-readiness.controller.ts', import.meta.url), 'utf8');
 const inventory = fs.readFileSync(new URL('./production-integration-inventory.mjs', import.meta.url), 'utf8');
 
-const healthMarkers = [
-  "@Get('integrations/email')",
+const readinessMarkers = [
+  "@UseGuards(AccessTokenGuard,AdminGuard)",
+  "@Get('email')",
   "this.integrations.status('EMAIL')",
   "providerConfigured: provider === 'RESEND'",
   "credentialsConfigured: Boolean(process.env.RESEND_API_KEY?.trim())",
   "senderConfigured: Boolean(process.env.HYDROLAND_EMAIL_FROM?.trim())",
-  "@Get('integrations/sms')",
+  "@Get('sms')",
   "this.integrations.status('SMS')",
-  "providerConfigured: provider === 'UNIFONIC'",
-  "credentialsConfigured: Boolean(process.env.UNIFONIC_SMS_APPSID?.trim())",
-  "senderConfigured: Boolean(process.env.UNIFONIC_SMS_SENDER_ID?.trim())",
-  "@Get('integrations/whatsapp')",
+  "providerConfigured:provider==='UNIFONIC'",
+  "credentialsConfigured:Boolean(process.env.UNIFONIC_SMS_APPSID?.trim())",
+  "senderConfigured:Boolean(process.env.UNIFONIC_SMS_SENDER_ID?.trim())",
+  "@Get('whatsapp')",
   "this.integrations.status('WHATSAPP')",
-  "publicIdConfigured: Boolean(process.env.UNIFONIC_WHATSAPP_PUBLIC_ID?.trim())",
-  "secretConfigured: Boolean(process.env.UNIFONIC_WHATSAPP_SECRET?.trim())",
+  "publicIdConfigured:Boolean(process.env.UNIFONIC_WHATSAPP_PUBLIC_ID?.trim())",
+  "secretConfigured:Boolean(process.env.UNIFONIC_WHATSAPP_SECRET?.trim())",
   'productionReady:',
   'sandboxReady:',
 ];
-for (const marker of healthMarkers) {
-  if (!health.includes(marker)) throw new Error(`Messaging readiness marker missing: ${marker}`);
+for (const marker of readinessMarkers) {
+  if (!readiness.includes(marker)) throw new Error(`Messaging readiness marker missing: ${marker}`);
 }
 
 for (const secret of ['RESEND_API_KEY','UNIFONIC_SMS_APPSID','UNIFONIC_WHATSAPP_SECRET']) {
   const directExposure = new RegExp(`${secret}\\s*[:,]`);
-  if (directExposure.test(health)) throw new Error(`Health response may expose secret value: ${secret}`);
+  if (directExposure.test(readiness)) throw new Error(`Readiness response may expose secret value: ${secret}`);
 }
 
 const inventoryMarkers = [
