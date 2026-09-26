@@ -1,33 +1,34 @@
 import fs from 'node:fs';
 
-const health = fs.readFileSync(new URL('../src/health/health.controller.ts', import.meta.url), 'utf8');
+const readiness = fs.readFileSync(new URL('../src/health/integration-readiness.controller.ts', import.meta.url), 'utf8');
 const inventory = fs.readFileSync(new URL('./production-integration-inventory.mjs', import.meta.url), 'utf8');
 
-const healthMarkers = [
-  "@Get('integrations/object-storage')",
+const readinessMarkers = [
+  "@UseGuards(AccessTokenGuard,AdminGuard)",
+  "@Get('object-storage')",
   "this.integrations.status('OBJECT_STORAGE')",
-  "providerConfigured: provider === 'CLOUDFLARE_R2'",
-  "accountConfigured: Boolean(process.env.CLOUDFLARE_R2_ACCOUNT_ID?.trim())",
-  "bucketConfigured: Boolean(process.env.CLOUDFLARE_R2_BUCKET?.trim())",
-  "accessKeyConfigured: Boolean(process.env.CLOUDFLARE_R2_ACCESS_KEY_ID?.trim())",
-  "secretConfigured: Boolean(process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY?.trim())",
-  "@Get('integrations/translation')",
+  "providerConfigured:provider==='CLOUDFLARE_R2'",
+  "accountConfigured:Boolean(process.env.CLOUDFLARE_R2_ACCOUNT_ID?.trim())",
+  "bucketConfigured:Boolean(process.env.CLOUDFLARE_R2_BUCKET?.trim())",
+  "accessKeyConfigured:Boolean(process.env.CLOUDFLARE_R2_ACCESS_KEY_ID?.trim())",
+  "secretConfigured:Boolean(process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY?.trim())",
+  "@Get('translation')",
   "this.integrations.status('TRANSLATION_ENGINE')",
-  "providerConfigured: provider === 'GOOGLE_CLOUD'",
-  "credentialsConfigured: Boolean(process.env.GOOGLE_CLOUD_TRANSLATION_API_KEY?.trim())",
-  "@Get('integrations/esign')",
+  "providerConfigured:provider==='GOOGLE_CLOUD'",
+  "credentialsConfigured:Boolean(process.env.GOOGLE_CLOUD_TRANSLATION_API_KEY?.trim())",
+  "@Get('esign')",
   "this.integrations.status('ESIGN')",
-  "providerConfigured: provider === 'SIGNIT'",
-  "credentialsConfigured: Boolean(process.env.SIGNIT_API_KEY?.trim())",
-  "documentHostsConfigured: Boolean(process.env.HYDROLAND_ESIGN_DOCUMENT_HOSTS?.trim())",
+  "providerConfigured:provider==='SIGNIT'",
+  "credentialsConfigured:Boolean(process.env.SIGNIT_API_KEY?.trim())",
+  "documentHostsConfigured:Boolean(process.env.HYDROLAND_ESIGN_DOCUMENT_HOSTS?.trim())",
 ];
-for (const marker of healthMarkers) {
-  if (!health.includes(marker)) throw new Error(`Adapter readiness marker missing: ${marker}`);
+for (const marker of readinessMarkers) {
+  if (!readiness.includes(marker)) throw new Error(`Adapter readiness marker missing: ${marker}`);
 }
 
 for (const secret of ['CLOUDFLARE_R2_SECRET_ACCESS_KEY','GOOGLE_CLOUD_TRANSLATION_API_KEY','SIGNIT_API_KEY']) {
   const directExposure = new RegExp(`${secret}\\s*[:,]`);
-  if (directExposure.test(health)) throw new Error(`Health response may expose secret value: ${secret}`);
+  if (directExposure.test(readiness)) throw new Error(`Readiness response may expose secret value: ${secret}`);
 }
 
 const inventoryMarkers = [
