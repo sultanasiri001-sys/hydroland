@@ -32,9 +32,10 @@ for (const secret of ['CLOUDFLARE_R2_SECRET_ACCESS_KEY','GOOGLE_CLOUD_TRANSLATIO
 }
 
 const inventoryMarkers = [
-  "read('/health/integrations/object-storage')",
-  "read('/health/integrations/translation')",
-  "read('/health/integrations/esign')",
+  "const adminRead = path => read(path, { headers })",
+  "adminRead('/health/integrations/object-storage')",
+  "adminRead('/health/integrations/translation')",
+  "adminRead('/health/integrations/esign')",
   "OBJECT_STORAGE:PRODUCTION_NOT_READY",
   "TRANSLATION_ENGINE:PRODUCTION_NOT_READY",
   "ESIGN:PRODUCTION_NOT_READY",
