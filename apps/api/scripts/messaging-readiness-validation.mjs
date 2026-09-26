@@ -32,9 +32,10 @@ for (const secret of ['RESEND_API_KEY','UNIFONIC_SMS_APPSID','UNIFONIC_WHATSAPP_
 }
 
 const inventoryMarkers = [
-  "read('/health/integrations/email')",
-  "read('/health/integrations/sms')",
-  "read('/health/integrations/whatsapp')",
+  "const adminRead = path => read(path, { headers })",
+  "adminRead('/health/integrations/email')",
+  "adminRead('/health/integrations/sms')",
+  "adminRead('/health/integrations/whatsapp')",
   "EMAIL:PRODUCTION_NOT_READY",
   "SMS:PRODUCTION_NOT_READY",
   "WHATSAPP:PRODUCTION_NOT_READY",
