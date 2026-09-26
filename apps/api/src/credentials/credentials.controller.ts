@@ -36,6 +36,10 @@ export class CredentialsController {
   reviewerDocumentAccess(@Req() r:{auth:{accountId:string}},@Param('id') id:string,@Param('documentId') documentId:string){return this.service.reviewerDocumentAccess(r.auth.accountId,id,documentId)}
 
   @UseGuards(ReviewGuard)
+  @Get('admin/:id/external-verification-evidence-status')
+  externalVerificationStatus(@Req() r:{auth:{accountId:string}},@Param('id') id:string){return this.verificationEvidence.status(r.auth.accountId,id)}
+
+  @UseGuards(ReviewGuard)
   @Post('admin/:id/external-verification-evidence')
   recordExternalVerification(
     @Req() r:{auth:{accountId:string}},
