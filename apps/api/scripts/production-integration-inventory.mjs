@@ -33,7 +33,6 @@ const safe = catalog.map(item => ({
   requiresHumanApproval: Boolean(item.requiresHumanApproval),
   supportsWebhook: Boolean(item.supportsWebhook),
 }));
-
 const counts = safe.reduce((acc, item) => {
   acc[item.status] = (acc[item.status] ?? 0) + 1;
   return acc;
@@ -41,25 +40,47 @@ const counts = safe.reduce((acc, item) => {
 
 const maps = await read('/integrations/maps/public-config');
 const weather = await read('/integrations/weather/public-config');
+const payment = await read('/health/integrations/payment');
 
-console.log('STAGE3_INTEGRATION_INVENTORY=' + JSON.stringify({ counts, integrations: safe }));
-console.log('STAGE3_MAPS_PUBLIC=' + JSON.stringify({
+const safeMaps = {
   engine: maps?.engine ?? null,
   status: maps?.status ?? null,
   provider: maps?.provider ?? null,
   enabled: Boolean(maps?.enabled),
   attributionConfigured: Boolean(maps?.attribution),
   styleConfigured: Boolean(maps?.styleUrl),
-}));
-console.log('STAGE3_WEATHER_PUBLIC=' + JSON.stringify({
+};
+const safeWeather = {
   status: weather?.status ?? null,
   provider: weather?.provider ?? null,
   configured: Boolean(weather?.configured),
   sandbox: Boolean(weather?.sandbox),
-}));
+};
+const safePayment = {
+  status: payment?.status ?? null,
+  provider: payment?.provider ?? null,
+  locallyConfigured: Boolean(payment?.locallyConfigured),
+  productionReady: Boolean(payment?.productionReady),
+  sandboxReady: Boolean(payment?.sandboxReady),
+  checks: payment?.checks ?? {},
+};
 
-const invalid = safe.filter(item => !['NOT_SELECTED','SANDBOX','CONFIGURED','VERIFIED','PRODUCTION_ENABLED','DEGRADED','DISABLED'].includes(item.status));
+const validStatuses = ['NOT_SELECTED','SANDBOX','CONFIGURED','VERIFIED','PRODUCTION_ENABLED','DEGRADED','DISABLED'];
+const invalid = safe.filter(item => !validStatuses.includes(item.status));
 if (invalid.length) throw new Error(`Unknown integration status values: ${JSON.stringify(invalid)}`);
 
-if (weather?.configured !== true) throw new Error('Marine weather integration is not operational in production.');
-if (maps?.enabled !== true) throw new Error('Maps/geospatial integration is not operational in production.');
+const blockers = [];
+for (const item of safe) {
+  if (item.status === 'NOT_SELECTED') blockers.push(`${item.key}:NOT_SELECTED`);
+  if (item.status === 'DEGRADED') blockers.push(`${item.key}:DEGRADED`);
+  if (item.status === 'DISABLED') blockers.push(`${item.key}:DISABLED`);
+}
+if (!safeMaps.enabled) blockers.push('MAPS_GEO:RUNTIME_NOT_OPERATIONAL');
+if (!safeWeather.configured) blockers.push('WEATHER_MARINE:RUNTIME_NOT_OPERATIONAL');
+if (!safePayment.productionReady) blockers.push('PAYMENT_PSP:PRODUCTION_NOT_READY');
+
+console.log('STAGE3_INTEGRATION_INVENTORY=' + JSON.stringify({ counts, integrations: safe }));
+console.log('STAGE3_MAPS_PUBLIC=' + JSON.stringify(safeMaps));
+console.log('STAGE3_WEATHER_PUBLIC=' + JSON.stringify(safeWeather));
+console.log('STAGE3_PAYMENT_READINESS=' + JSON.stringify(safePayment));
+console.log('STAGE3_BLOCKERS=' + JSON.stringify([...new Set(blockers)]));
