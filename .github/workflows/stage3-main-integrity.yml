@@ -1,0 +1,54 @@
+name: Stage 3 Main Integrity Gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/api/src/**'
+      - 'apps/api/scripts/**'
+      - 'apps/web/src/**'
+      - 'docs/STAGE3_INTEGRATION_COVERAGE.md'
+      - 'render.yaml'
+      - '.github/workflows/stage3-*.yml'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  validate-stage3-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate integration coverage and route contracts
+        run: node apps/api/scripts/stage3-integration-coverage-validation.mjs
+      - name: Validate readiness payload contracts
+        run: node apps/api/scripts/stage3-readiness-payload-contract-validation.mjs
+      - name: Validate readiness authorization
+        run: node apps/api/scripts/readiness-authorization-validation.mjs
+      - name: Validate integration readiness safeguards
+        run: node apps/api/scripts/integration-readiness-validation.mjs
+      - name: Validate adapter readiness
+        run: node apps/api/scripts/adapter-readiness-validation.mjs
+      - name: Validate messaging readiness
+        run: node apps/api/scripts/messaging-readiness-validation.mjs
+      - name: Validate Unifonic messaging adapter
+        run: node apps/api/scripts/unifonic-messaging-validation.mjs
+      - name: Validate Moyasar settlement boundary
+        run: node apps/api/scripts/moyasar-settlement-validation.mjs
+      - name: Validate Cloudflare R2 object storage
+        run: node apps/api/scripts/r2-object-storage-validation.mjs
+      - name: Validate Google translation adapter
+        run: node apps/api/scripts/google-translation-validation.mjs
+      - name: Validate Signit e-sign adapter
+        run: node apps/api/scripts/signit-esign-validation.mjs
+      - name: Validate MarineTraffic AIS boundary
+        run: node apps/api/scripts/marinetraffic-ais-validation.mjs
+      - name: Validate internal distress workflow
+        run: node apps/api/scripts/internal-distress-workflow-validation.mjs
+      - name: Validate certification manual verification
+        run: node apps/api/scripts/certification-manual-verification-validation.mjs
+      - name: Validate official onboarding boundaries
+        run: node apps/api/scripts/official-onboarding-readiness-validation.mjs
