@@ -54,8 +54,10 @@ export class PolicyControlService {
     const current=await this.get(category,ruleKey);
     const rows=await this.db.$queryRaw<PolicyRule[]>`
       UPDATE "PolicyControl"
-      SET "state"=${state},"updatedByAccountId"=${accountId},"updatedAt"=NOW()
-      WHERE "id"=${current.id}
+      SET "state"=${state},
+          "updatedByAccountId"=(SELECT a."id" FROM "Account" a WHERE a."id"::text=${accountId} LIMIT 1),
+          "updatedAt"=NOW()
+      WHERE "id"::text=${current.id}
       RETURNING *
     `;
     await this.audit.record({action:'POLICY_STATE_CHANGED',resource:'PolicyControl',resourceId:current.id,metadata:{accountId,category:current.category,ruleKey:current.ruleKey,previousState:current.state,state,reason:reason?.trim()||null}});
@@ -69,9 +71,25 @@ export class PolicyControlService {
     if(!['ENABLED','DISABLED','REVIEW'].includes(state))throw new BadRequestException('Invalid policy state.');
     const rows=await this.db.$queryRaw<PolicyRule[]>`
       INSERT INTO "PolicyControl"("id","category","ruleKey","labelAr","labelEn","state","description","updatedByAccountId","createdAt","updatedAt")
-      VALUES(gen_random_uuid()::text,${category},${ruleKey},${labelAr},${input.labelEn?.trim()||null},${state},${input.description?.trim()||null},${accountId},NOW(),NOW())
+      VALUES(
+        gen_random_uuid()::text,
+        ${category},
+        ${ruleKey},
+        ${labelAr},
+        ${input.labelEn?.trim()||null},
+        ${state},
+        ${input.description?.trim()||null},
+        (SELECT a."id" FROM "Account" a WHERE a."id"::text=${accountId} LIMIT 1),
+        NOW(),
+        NOW()
+      )
       ON CONFLICT("category","ruleKey") DO UPDATE SET
-        "labelAr"=EXCLUDED."labelAr","labelEn"=EXCLUDED."labelEn","description"=EXCLUDED."description","state"=EXCLUDED."state","updatedByAccountId"=EXCLUDED."updatedByAccountId","updatedAt"=NOW()
+        "labelAr"=EXCLUDED."labelAr",
+        "labelEn"=EXCLUDED."labelEn",
+        "description"=EXCLUDED."description",
+        "state"=EXCLUDED."state",
+        "updatedByAccountId"=EXCLUDED."updatedByAccountId",
+        "updatedAt"=NOW()
       RETURNING *
     `;
     await this.audit.record({action:'POLICY_RULE_UPSERTED',resource:'PolicyControl',resourceId:rows[0].id,metadata:{accountId,category,ruleKey,state}});
