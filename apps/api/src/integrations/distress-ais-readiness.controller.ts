@@ -1,12 +1,13 @@
 import { Controller, Get } from '@nestjs/common';
 import { IntegrationService } from './integration.service';
+import { DistressAisReadinessPayload } from './integration.types';
 
 @Controller('health/integrations')
 export class DistressAisReadinessController {
   constructor(private readonly integrations:IntegrationService){}
 
   @Get('distress-ais')
-  getDistressAisReadiness(){
+  getDistressAisReadiness():DistressAisReadinessPayload{
     const integration=this.integrations.status('DISTRESS_AIS');
     const provider=process.env.HYDROLAND_DISTRESS_AIS_PROVIDER?.trim().toUpperCase()||'';
     const checks={
