@@ -1,0 +1,43 @@
+# Stage 3 Integration Coverage
+
+This document is the current code-coverage boundary for HYDROLAND Stage 3 external integrations.
+It does **not** declare Stage 3 production-closed.
+
+## Code-ready / governed runtime
+
+The repository contains a concrete governed runtime path for:
+
+- WEATHER_MARINE — Stormglass
+- EMAIL — Resend
+- SMS — Unifonic
+- WHATSAPP — Unifonic
+- PAYMENT_PSP — Moyasar
+- OBJECT_STORAGE — Cloudflare R2
+- TRANSLATION_ENGINE — Google Cloud Translation
+- MAPS_GEO — MapLibre runtime with provider/style configuration boundary
+- ESIGN — Signit
+
+A code-ready integration still requires the provider account, credentials, approved configuration and lifecycle status to be verified before production activation.
+
+## Provider selection / contract still required
+
+The following governed integrations remain intentionally `NOT_SELECTED` until an approved provider/API contract exists:
+
+- BANKING_SETTLEMENT
+- CERTIFICATION
+- DISTRESS_AIS
+- NAFATH
+- REGULATORY
+
+No production adapter should be invented for these categories without a verifiable provider contract, authentication model, endpoint specification, data handling requirements and commercial/regulatory approval where applicable.
+
+## Closure rule
+
+Stage 3 may only be considered production-closed when:
+
+1. every required integration is explicitly classified;
+2. required provider contracts are selected and implemented;
+3. secrets/configuration are provisioned outside source control;
+4. readiness probes show the required production state;
+5. provider-specific functional verification passes;
+6. the Stage 3 production inventory reports no unresolved blocker required for launch.
