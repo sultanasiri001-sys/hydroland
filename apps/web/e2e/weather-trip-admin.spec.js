@@ -48,7 +48,7 @@ test('admin can create a geolocated trip, refresh Stormglass and approve the for
   await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','weather-e2e-access');sessionStorage.setItem('hl-refresh-token','weather-e2e-refresh');window.HydrolandAuth.syncAuthUi();await window.HydrolandProfile.load()});
   await page.locator('#role-switch').click();await page.locator('#role-dialog [data-role="admin"]').click();
 
-  const tripPanel=page.locator('.hl-trip-admin');const weatherPanel=page.locator('.hl-weather-admin');
+  const tripPanel=page.locator('.hl-trip-admin');const weatherPanel=page.locator('.hl-weather-admin').filter({has:page.locator('[data-weather-trip]')});
   await expect(tripPanel).toBeVisible();await expect(weatherPanel).toBeVisible();
   const form=tripPanel.locator('[data-trip-admin-form]');
   await form.locator('[name="title"]').fill('رحلة طقس تجريبية');
