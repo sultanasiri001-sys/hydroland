@@ -1,12 +1,16 @@
 import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { ReviewGuard } from '../admin/review.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
+import { CertificationVerificationEvidenceService } from './certification-verification-evidence.service';
 import { CredentialsService } from './credentials.service';
 
 @UseGuards(AccessTokenGuard)
 @Controller('credentials')
 export class CredentialsController {
-  constructor(private readonly service:CredentialsService){}
+  constructor(private readonly service:CredentialsService,private readonly verificationEvidence:CertificationVerificationEvidenceService){}
+
+  @Get('verification-organizations')
+  verificationOrganizations(){return this.verificationEvidence.list()}
 
   @Get()
   list(@Req() r:{auth:{accountId:string}}){return this.service.list(r.auth.accountId)}
@@ -30,6 +34,14 @@ export class CredentialsController {
   @UseGuards(ReviewGuard)
   @Get('admin/:id/documents/:documentId/access')
   reviewerDocumentAccess(@Req() r:{auth:{accountId:string}},@Param('id') id:string,@Param('documentId') documentId:string){return this.service.reviewerDocumentAccess(r.auth.accountId,id,documentId)}
+
+  @UseGuards(ReviewGuard)
+  @Post('admin/:id/external-verification-evidence')
+  recordExternalVerification(
+    @Req() r:{auth:{accountId:string}},
+    @Param('id') id:string,
+    @Body() b:{source:'SWSDF'|'PADI'|'SSI'|'NAUI'|'RAID'|'SDI'|'TDI'|'IANTD'|'GUE'|'CMAS'|'BSAC';method:'PRO_LICENSE_VALIDATION'|'ECARD'|'QR'|'ONLINE_DIVER_VERIFY'|'DIVER_LOOKUP'|'CERTIFICATION_SEARCH'|'DIGITAL_CERT'|'VERIFY_CARD'|'CMAS_CERT_SEARCH'|'DIGITAL_QCARD';reference:string;verificationUrl?:string;checkedAt?:string},
+  ){return this.verificationEvidence.record(r.auth.accountId,id,b)}
 
   @UseGuards(ReviewGuard)
   @Post('admin/:id/decision')
