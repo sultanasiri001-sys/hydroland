@@ -1,0 +1,36 @@
+name: Stage 3 Certification Manual Verification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/api/src/credentials/credentials.controller.ts'
+      - 'apps/api/src/credentials/credentials.service.ts'
+      - 'apps/api/scripts/certification-manual-verification-validation.mjs'
+      - 'apps/api/scripts/production-integration-inventory.mjs'
+      - 'apps/api/scripts/stage3-integration-coverage-validation.mjs'
+      - 'docs/STAGE3_INTEGRATION_COVERAGE.md'
+      - '.github/workflows/stage3-certification-manual-verification.yml'
+  push:
+    branches: [feat/stage3-certification-manual-verification]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm --workspace @hydroland/api run db:generate
+      - name: Validate manual official certification verification
+        run: node apps/api/scripts/certification-manual-verification-validation.mjs
+      - name: Validate Stage 3 integration coverage
+        run: node apps/api/scripts/stage3-integration-coverage-validation.mjs
+      - name: Validate existing integration safeguards
+        run: node apps/api/scripts/integration-readiness-validation.mjs
+      - name: API typecheck
+        run: npm --workspace @hydroland/api run typecheck
+      - name: API build
+        run: npm --workspace @hydroland/api run build

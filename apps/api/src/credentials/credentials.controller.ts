@@ -33,5 +33,19 @@ export class CredentialsController {
 
   @UseGuards(ReviewGuard)
   @Post('admin/:id/decision')
-  decide(@Req() r:{auth:{accountId:string}},@Param('id') id:string,@Body() b:{outcome:'VERIFIED'|'REJECTED';reason?:string}){return this.service.decide(r.auth.accountId,id,b)}
+  decide(
+    @Req() r:{auth:{accountId:string}},
+    @Param('id') id:string,
+    @Body() b:{
+      outcome:'VERIFIED'|'REJECTED';
+      reason?:string;
+      externalVerification?:{
+        source:'PADI'|'SSI';
+        method:'ECARD'|'QR';
+        reference:string;
+        verificationUrl?:string;
+        checkedAt?:string;
+      };
+    },
+  ){return this.service.decide(r.auth.accountId,id,b)}
 }

@@ -13,6 +13,7 @@ const googleTranslation=read('src/translation/google-cloud-translation.provider.
 const signit=read('src/integrations/signit-esign.service.ts');
 const marineTraffic=read('src/integrations/marinetraffic-ais.service.ts');
 const onboarding=read('src/integrations/official-onboarding-readiness.controller.ts');
+const credentials=read('src/credentials/credentials.service.ts');
 const webMap=read('../web/src/hydroland-map.js');
 
 const allKeys=[
@@ -26,7 +27,7 @@ const adapterReady=[
 ];
 const providerSelectionRequired=['CERTIFICATION','DISTRESS_AIS'];
 const contractAccessRequired=['NAFATH','REGULATORY'];
-const partialCoverage={DISTRESS_AIS:'MARINETRAFFIC_AIS_ONLY'};
+const partialCoverage={CERTIFICATION:'MANUAL_OFFICIAL_VERIFICATION',DISTRESS_AIS:'MARINETRAFFIC_AIS_ONLY'};
 
 for(const key of allKeys){
   if(!integrations.includes(`key:'${key}'`))throw new Error(`Stage 3 catalog key missing: ${key}`);
@@ -54,6 +55,16 @@ for(const [key,[source,...markers]] of Object.entries(evidence)){
     if(!source.includes(marker))throw new Error(`Stage 3 adapter evidence missing for ${key}: ${marker}`);
   }
 }
+for(const marker of [
+  'ExternalCertificationVerificationInput',
+  "source:'PADI'|'SSI'",
+  "method:'ECARD'|'QR'",
+  "source==='PADI'&&method!=='ECARD'",
+  "source==='SSI'&&method!=='QR'",
+  "host==='padi.com'||host.endsWith('.padi.com')",
+  "host==='divessi.com'||host.endsWith('.divessi.com')",
+  'externalVerificationEvidence:externalVerification',
+])if(!credentials.includes(marker))throw new Error(`CERTIFICATION partial manual-verification evidence missing: ${marker}`);
 for(const marker of [
   "requireOperational('DISTRESS_AIS',{allowSandbox:true})",
   'HYDROLAND_DISTRESS_AIS_PROVIDER',
