@@ -27,6 +27,7 @@ for(const prohibited of ["method:'POST'","method:'PUT'","method:'PATCH'","method
 }
 
 for(const marker of [
+  '@UseGuards(AccessTokenGuard,AdminGuard)',
   "@Get('settlement')",
   "this.integrations.status('BANKING_SETTLEMENT')",
   "providerConfigured:provider==='MOYASAR'",
@@ -36,10 +37,11 @@ for(const marker of [
 ])if(!controller.includes(marker))throw new Error(`Settlement readiness invariant missing: ${marker}`);
 if(/MOYASAR_SECRET_KEY\s*[:,]/.test(controller))throw new Error('Settlement readiness must not expose the Moyasar secret key.');
 
-for(const marker of ['MoyasarSettlementProviderService','SettlementReadinessController'])if(!moduleFile.includes(marker))throw new Error(`Payments module settlement registration missing: ${marker}`);
+for(const marker of ['AdminModule','MoyasarSettlementProviderService','SettlementReadinessController'])if(!moduleFile.includes(marker))throw new Error(`Payments module settlement registration missing: ${marker}`);
 for(const key of ['HYDROLAND_INTEGRATION_BANKING_SETTLEMENT_STATUS','HYDROLAND_SETTLEMENT_PROVIDER'])if(!render.includes(`key: ${key}`))throw new Error(`Render blueprint missing settlement activation input: ${key}`);
 for(const marker of [
-  "read('/health/integrations/settlement')",
+  "const adminRead = path => read(path, { headers })",
+  "adminRead('/health/integrations/settlement')",
   'BANKING_SETTLEMENT:PRODUCTION_NOT_READY',
   'STAGE3_SETTLEMENT_READINESS=',
 ])if(!inventory.includes(marker))throw new Error(`Stage 3 settlement inventory marker missing: ${marker}`);
