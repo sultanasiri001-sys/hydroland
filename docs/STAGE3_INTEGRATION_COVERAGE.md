@@ -41,7 +41,7 @@ The Saudi boundary is kept distinct from international training-agency certifica
 - CMAS — official CMAS Certification Search; Saudi Water Sports and Diving Federation is the Saudi national federation affiliated with CMAS.
 - BSAC — MyBSAC digital Qualification Card / QCard evidence.
 
-The platform also exposes a governed verification-organization catalog for these sources. Each source defines its allowed verification method and official domain family. Reviewers may record source, method, reference, verification timestamp and official HTTPS evidence URL. The evidence is written to the credential audit trail and does not itself approve the credential.
+The platform exposes a governed verification-organization catalog for these sources. Each source defines its allowed verification method and official domain family. Reviewers may record source, method, reference, verification timestamp and official HTTPS evidence URL. The evidence is written to the credential audit trail and does not itself approve the credential.
 
 Saudi professional status is not inferred from an international agency card. A professional diver operating under the Saudi national professional licensing regime must still be validated against the SWSDF professional license boundary.
 
@@ -49,9 +49,13 @@ For non-professional divers, the Saudi federation rules treat a diving license i
 
 This does **not** make `CERTIFICATION` code-ready. `CERTIFICATION` remains `NOT_SELECTED` and provider-selection-required until an approved automated provider/API contract is available. The production inventory therefore continues to emit `CERTIFICATION:AUTOMATED_PROVIDER_REQUIRED`.
 
-### DISTRESS_AIS — AIS only
+### DISTRESS_AIS — AIS plus internal fail-safe distress case
 
-`DISTRESS_AIS` has an AIS-only adapter using MarineTraffic for read-only vessel situational awareness by MMSI/IMO. This does not implement, transmit, acknowledge or manage maritime distress alerts. The overall `DISTRESS_AIS` integration therefore remains provider-selection-required and must not report production-ready until an approved distress contract is implemented.
+`DISTRESS_AIS` has a MarineTraffic AIS-only adapter for read-only vessel situational awareness by MMSI/IMO. HYDROLAND also provides an internal distress workflow that immediately opens a `CRITICAL` safety incident. If an MMSI/IMO is supplied, the workflow attempts to attach the latest AIS position; AIS failure never prevents creation of the critical incident. Caller coordinates may be retained as a fallback.
+
+The internal distress workflow explicitly reports `externalTransmission: NOT_IMPLEMENTED`, `externalDistressSent: false`, and requires human emergency escalation. It does **not** transmit, acknowledge or manage a distress signal with an external maritime emergency provider.
+
+The overall `DISTRESS_AIS` integration therefore remains provider-selection-required and must not report production-ready until an approved external distress contract is implemented.
 
 ## Contract/access onboarding required
 
@@ -67,7 +71,7 @@ Both integrations remain `NOT_SELECTED` in runtime until their approved adapter 
 The following integrations still need a complete provider/capability contract:
 
 - CERTIFICATION — official manual verification evidence exists for Saudi and supported international diving organizations, but no approved automated certification-verification API contract is implemented.
-- DISTRESS_AIS — distress capability still required; MarineTraffic AIS-only partial coverage exists.
+- DISTRESS_AIS — external distress capability still required; AIS read-only coverage and an internal critical-incident workflow exist.
 
 No production adapter should be invented without a verifiable provider contract, authentication model, endpoint specification, data handling requirements and commercial/regulatory approval where applicable.
 
