@@ -91,9 +91,9 @@ for(const marker of [
 assert.ok(apiPackage.includes('"google-auth-library": "^11.1.0"'),'Google auth verifier dependency is missing or stale.');
 
 const registerStart=service.indexOf('async register(input:Credentials)');
-const loginStart=service.indexOf('async login(input:Credentials)');
-assert.ok(registerStart>=0&&loginStart>registerStart,'register/login methods must exist in order');
-const registerBody=service.slice(registerStart,loginStart);
+const registerEnd=service.indexOf('async requestEmailVerification(emailInput:string)');
+assert.ok(registerStart>=0&&registerEnd>registerStart,'register method boundary must exist before verification request method');
+const registerBody=service.slice(registerStart,registerEnd);
 assert.ok(!registerBody.includes('this.issue('),'Registration must not issue a session before verification.');
 assert.ok(!registerBody.includes('accessToken'),'Registration must not return an access token.');
 assert.ok(!registerBody.includes('refreshToken'),'Registration must not return a refresh token.');
