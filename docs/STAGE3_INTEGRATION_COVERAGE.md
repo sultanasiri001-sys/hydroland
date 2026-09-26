@@ -43,7 +43,9 @@ The Saudi boundary is kept distinct from international training-agency certifica
 
 The platform exposes a governed verification-organization catalog for these sources. Each source defines its allowed verification method and official domain family. Reviewers may record source, method, reference, verification timestamp and official HTTPS evidence URL. The evidence is written to the credential audit trail and does not itself approve the credential.
 
-Saudi professional status is not inferred from an international agency card. A professional diver operating under the Saudi national professional licensing regime must still be validated against the SWSDF professional license boundary.
+The administration review workflow consumes that same catalog. It opens the official verification destination, captures the reviewer-entered reference and records the evidence before approval. Normal approval is blocked at both the browser workflow and API boundary until official external verification evidence has been recorded by the same reviewer. Rejection remains available with a documented reason and does not require positive verification evidence. The evidence state is restored from the audit trail when the review queue is reloaded.
+
+Saudi professional status is not inferred from an international agency card. A professional diver operating under the Saudi national professional licensing regime must still be validated against the SWSDF professional license boundary. The administration workflow explicitly preserves this distinction when a professional-capable international organization is selected.
 
 For non-professional divers, the Saudi federation rules treat a diving license issued by an organization licensed by the federation as sufficient diving-license evidence, subject to the diver remaining within the limits of that training level and other applicable federation/authority rules.
 
