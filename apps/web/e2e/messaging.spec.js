@@ -36,7 +36,7 @@ test('messages control is auth-gated and authenticated member can read text/voic
   await expect(messagesControl).toBeHidden();
   await expect(page.locator('#hl-messages-dialog')).not.toBeVisible();
 
-  await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','messaging-e2e-access');sessionStorage.setItem('hl-refresh-token','messaging-e2e-refresh');window.HydrolandAuth.syncAuthUi();await window.HydrolandProfile.load()});
+  await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','messaging-e2e-access');sessionStorage.setItem('hl-refresh-token','messaging-e2e-refresh');window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));await window.HydrolandProfile.load()});
   await expect(messagesControl).toBeVisible();
   await messagesControl.click();
   const dialog=page.locator('#hl-messages-dialog');await expect(dialog).toBeVisible();
