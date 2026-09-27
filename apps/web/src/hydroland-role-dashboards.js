@@ -13,7 +13,7 @@
       lower:[['المواد التدريبية','إدارة مواد الدورة والتقييمات'],['سجل الحضور','توثيق الحضور والمهارات'],['الملف المهني','الشهادات والاعتمادات والتقييمات']]
     },
     center:{
-      k:'DIVE CENTER · مركز الغوص',t:'لوحة مركز الغوص',s:'تشغيل الحجوزات والرحلات والمعدات ومحترفي الغوص والتقارير والملف التجاري.',icon:'◉',
+      k:'DIVE CENTER · مركز الغوص',t:'تشغيل مركز الغوص',s:'تشغيل الحجوزات والرحلات والمعدات ومحترفي الغوص والتقارير والملف التجاري.',icon:'◉',
       m:[['—','حجوزات جديدة'],['—','رحلات اليوم'],['—','جاهزية المعدات'],['—','مراجعات سلامة']],
       nav:['الرئيسية','إدارة الحجوزات','الرحلات','المعدات والمخزون','محترفي الغوص','العملاء','المستندات والتراخيص','التقارير','الملف التجاري'],
       a:[['إدارة الحجوزات','trips','▣'],['إدارة الرحلات','trips','⌖'],['المخزون والمعدات','store','◫'],['الطاقم والمدربين','trips','♟'],['المستندات والتراخيص','documents','◇'],['تقارير السلامة','safety','⬡'],['التقارير المالية','finance','◈']],
@@ -40,13 +40,13 @@
       lower:[['التوقيع الإلكتروني','متابعة العقود والتوقيعات'],['تقارير السلامة','تقارير الرحلات والمشاركين'],['إدارة المشاركين','القوائم والوثائق والأهلية']]
     },
     admin:{
-      k:'HYDROLAND CONTROL TOWER · الإدارة',t:'مركز القيادة والتحكم',s:'لوحة موحدة لإدارة المستخدمين والاعتمادات والرحلات والسلامة والمالية والتكاملات.',icon:'H',
+      k:'HYDROLAND CONTROL TOWER · الإدارة',t:'مركز القيادة والتحكم',s:'لوحة موحدة لإدارة المستخدمين والاعتمادات والرحلات والسلامة والمالية؛ الربط الخارجي مؤجل.',icon:'H',
       m:[['—','طلبات اعتماد'],['—','رحلات مفتوحة'],['—','مراجعات امتثال'],['—','حالة النظام']],
       nav:['مركز القيادة والتحكم','المستخدمون','الموافقات والطلبات','مراكز الغوص','محترفي الغوص','الوساطة البحرية','الشركات والجهات الحكومية','الرحلات والحجوزات','المعدات والمستودعات','السلامة والامتثال','المالية والفواتير','التقارير والإحصائيات','الذكاء الاصطناعي','إدارة المحتوى','الإشعارات والرسائل','الإعدادات'],
-      a:[['الاعتمادات','admin','✓'],['إدارة المستخدمين','admin','♟'],['الرحلات والحجوزات','trips','⌖'],['المعدات والمستودعات','store','▣'],['مركز الحوادث','safety','⬡'],['الطقس وحالة البحر','marine-intelligence','☀'],['المالية والفواتير','finance','◈'],['التكاملات','admin','⇄'],['التقارير والإحصائيات','admin','▥'],['إدارة المحتوى','community','★']],
+      a:[['الاعتمادات','admin','✓'],['إدارة المستخدمين','admin','♟'],['الرحلات والحجوزات','trips','⌖'],['المعدات والمستودعات','store','▣'],['مركز الحوادث','safety','⬡'],['الطقس وحالة البحر','marine-intelligence','☀'],['المالية والفواتير','finance','◈'],['إعدادات المنصة','admin','⚙'],['التقارير والإحصائيات','admin','▥'],['إدارة المحتوى','community','★']],
       q:[['طلبات اعتماد المراكز','من النظام'],['طلبات محترفي الغوص','من النظام'],['مراجعات السلامة','من النظام']],
       spotlight:['مركز القيادة والتحكم','المؤشرات والخرائط والتنبيهات تعتمد على البيانات الفعلية ولا تعرض أرقامًا تجريبية.'],
-      lower:[['مركز السلامة والطوارئ','الحوادث وحالة الرحلات'],['التكاملات الحكومية','حالة الربط والاعتمادات الخارجية'],['الذكاء الاصطناعي','الوكلاء والموافقات البشرية']]
+      lower:[['مركز السلامة والطوارئ','الحوادث وحالة الرحلات'],['الجهات الخارجية · مؤجل','لا يوجد ربط أو إرسال خارجي مفعّل حاليًا'],['الذكاء الاصطناعي','الوكلاء والموافقات البشرية']]
     }
   };
 
@@ -73,7 +73,7 @@
         <aside class="hl-portal-nav" aria-label="${c.t}">
           <div class="hl-portal-brand"><span class="hl-portal-mark">${c.icon}</span><div><b>HYDROLAND</b><small>${c.k}</small></div></div>
           <nav>${c.nav.map((item,index)=>`<button type="button" class="hl-portal-nav-item${index===0?' active':''}" data-portal-label="${item}"><span>${String(index+1).padStart(2,'0')}</span>${item}</button>`).join('')}</nav>
-          <div class="hl-portal-safe"><b>السلامة أولًا</b><small>الصلاحيات والبيانات من النظام الفعلي.</small></div>
+          <div class="hl-portal-safe"><b>السلامة أولًا</b><small>الصلاحيات والبيانات من النظام الفعلي.</small><button type="button" class="hl-portal-switch" data-portal-switch>⇄ تبديل الواجهة</button><button type="button" class="hl-portal-switch" data-hl-action="logout">↪ تسجيل الخروج</button></div>
         </aside>
         <div class="hl-portal-main">
           <header class="hl-role-head"><div><small>${c.k}</small><h3>${c.t}</h3><p>${c.s}</p></div><div class="hl-portal-head-actions"><div class="hl-portal-utility" aria-label="إشعارات ورسائل الحساب"><button type="button" data-portal-notifications aria-label="فتح الإشعارات">♢<span>الإشعارات</span></button><button type="button" data-portal-messages aria-label="فتح الرسائل الداخلية">✉<span>الرسائل</span></button></div><span class="hl-live-badge"><i></i>HYDROLAND · LIVE WORKSPACE</span></div></header>
@@ -86,12 +86,13 @@
           </div>
         </div>
       </div>`;
-    consoleEl.insertAdjacentElement('afterend',d);
+    document.getElementById('main')?.prepend(d);
 
     d.querySelector('[data-portal-notifications]')?.addEventListener('click',()=>window.HydrolandAccountCenter?.openNotifications?.());
     d.querySelector('[data-portal-messages]')?.addEventListener('click',()=>window.HydrolandMessages?.open?.());
+    d.querySelector('[data-portal-switch]')?.addEventListener('click',()=>document.getElementById('role-dialog')?.showModal());
     d.querySelectorAll('[data-route]').forEach(node=>{const id=node.dataset.route,label=node.dataset.actionLabel||node.textContent.trim();connectControl(node,role,id,label)});
-    d.querySelectorAll('[data-secondary-label]').forEach(node=>{const label=node.dataset.secondaryLabel;const routeMap={'المواد التدريبية':'training','سجل الحضور':'training','الملف المهني':'community','المعدات والمخزون':'store','محترفو الغوص':'training','الملف التجاري':'community','الخدمات الفنية':'store','قطع الغيار':'store','الربط مع المراكز':'community','التوقيع الإلكتروني':'documents','تقارير السلامة':'safety','إدارة المشاركين':'community','مركز السلامة والطوارئ':'safety','التكاملات الحكومية':'admin','الذكاء الاصطناعي':'admin'};const id=routeMap[label];if(!id){node.disabled=true;node.setAttribute('aria-disabled','true');return}connectControl(node,role,id,label)});
+    d.querySelectorAll('[data-secondary-label]').forEach(node=>{const label=node.dataset.secondaryLabel;const routeMap={'المواد التدريبية':'training','سجل الحضور':'training','الملف المهني':'community','المعدات والمخزون':'store','محترفو الغوص':'training','الملف التجاري':'community','الخدمات الفنية':'store','قطع الغيار':'store','الربط مع المراكز':'community','التوقيع الإلكتروني':'documents','تقارير السلامة':'safety','إدارة المشاركين':'community','مركز السلامة والطوارئ':'safety','الذكاء الاصطناعي':'admin'};const id=routeMap[label];if(!id){node.disabled=true;node.setAttribute('aria-disabled','true');if(label==='الجهات الخارجية · مؤجل')node.title='الربط الخارجي مؤجل حسب التوجيه';return}connectControl(node,role,id,label)});
     d.querySelectorAll('.hl-portal-nav-item').forEach((node,index)=>node.addEventListener('click',async()=>{if(index===0){d.scrollIntoView({behavior:'smooth',block:'start'});return}const id=node.dataset.hlNavRoute;if(!id||!(await authorizeRoleAction(role)))return;const target=targetFor(id);if(!target){setTargetAvailability(node,id,node.dataset.portalLabel);return}d.querySelectorAll('.hl-portal-nav-item').forEach(x=>x.classList.remove('active'));node.classList.add('active');openTarget(id,role);target.scrollIntoView({behavior:'smooth',block:'start'});history.replaceState(null,'','#'+(id==='documents'?'hl-documents':id==='marine-documents'?'hl-marine-documents':id))}));
     reconnectDashboard();
   }

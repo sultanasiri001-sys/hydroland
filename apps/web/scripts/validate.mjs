@@ -12,6 +12,7 @@ const [html, app] = await Promise.all([
 const roles = ['diver','instructor','center','boat','organization','admin'];
 const required = ['lang="ar"','dir="rtl"','viewport','aria-live','skip-link','HYDROLAND'];
 for (const marker of required) if (!html.includes(marker)) throw new Error(`Missing shell marker: ${marker}`);
+if (!html.includes('<body data-hl-workspace-role="visitor">')) throw new Error('Workspace access must default to guest before authentication and role loading.');
 for (const role of roles) if (!html.includes(`data-role="${role}"`)) throw new Error(`Missing role selector: ${role}`);
 if (html.includes('GHAWAS') || html.includes('<title>غوّاص') || html.includes('>غوّاص<')) throw new Error('Legacy platform branding remains in index.html');
 for (const approved of ['محترفي الغوص','الوساطة البحرية']) if (!html.includes(approved) || !app.includes(approved)) throw new Error(`Missing approved portal terminology: ${approved}`);
@@ -75,6 +76,18 @@ for (const moduleName of ['hydroland-auth.js','hydroland-google-auth.js','hydrol
   if (!app.includes(moduleName)) throw new Error(`Missing frontend module loader: ${moduleName}`);
 }
 if(!app.includes('hydroland-messages.css'))throw new Error('Missing messaging stylesheet loader');
+if(!app.includes('hydroland-workspace-ui.css')||!app.includes("'hydroland-workspace-ui.js'"))throw new Error('Workspace role guard and layout must load with the portal UI.');
+const workspaceUi=await readFile(path.join(src,'hydroland-workspace-ui.js'),'utf8');
+for(const marker of ["body.dataset.hlWorkspaceRole=role","body.classList.toggle('hl-managed-workspace'","!isAuthed||!roles.includes(role)","hydroland:role-changed","hydroland:auth-changed"])if(!workspaceUi.includes(marker))throw new Error(`Missing workspace access/layout boundary: ${marker}`);
+const workspaceCss=await readFile(path.join(src,'hydroland-workspace-ui.css'),'utf8');
+for(const marker of ['body[data-hl-workspace-role="visitor"] .hl-finance','.hl-workspace-hidden{display:none!important}','.hl-managed-workspace #role-console{display:none!important}'])if(!workspaceCss.includes(marker))throw new Error(`Missing fail-closed workspace presentation rule: ${marker}`);
+if(!workspaceCss.includes('body.hl-visitor-mode #role-switch{display:none!important}'))throw new Error('Visitors must not see the portal switch control.');
+const shellCss=await readFile(path.join(src,'styles.css'),'utf8');
+for(const selector of ['.topbar h1:after{font-size','.landing-hero h2:after{font-size'])if(shellCss.includes(selector))throw new Error(`Duplicated pseudo-heading rule remains: ${selector}`);
+const visualQa=await readFile(path.join(src,'hydroland-visual-qa.css'),'utf8');
+for(const token of ['--hl-deep:#0A1E3A','--hl-aqua:#00D4FF','--hl-gold:#F6C35E'])if(!visualQa.includes(token))throw new Error(`Approved identity token is missing: ${token}`);
+const portalCss=await readFile(path.join(src,'hydroland-reference-portals.css'),'utf8');
+if(!portalCss.includes('--hl-ref-deep:#06182B')||!portalCss.includes('--hl-ref-cyan:#00D4FF')||!portalCss.includes('--hl-ref-gold:#F6C35E'))throw new Error('Portal dashboards must use the approved visual identity.');
 const messagesModule=await readFile(path.join(src,'hydroland-messages.js'),'utf8');
 for(const marker of ["mobile.disabled=false","button.id='top-messages'","/messages/conversations","kind:'TEXT'","kind:'VOICE'","sessionStorage.removeItem('hl-guest-mode')","audio controls"])if(!messagesModule.includes(marker))throw new Error(`Missing connected messaging UI boundary: ${marker}`);
 if(messagesModule.includes('MediaRecorder')||messagesModule.includes('getUserMedia'))throw new Error('Messaging UI must not claim direct voice capture before object-storage upload is implemented');

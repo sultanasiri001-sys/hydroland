@@ -1,41 +1,44 @@
-:root{--hl-deep:#003B6F;--hl-ocean:#0077B6;--hl-aqua:#00B4D8;--hl-light:#E6F4F8;--hl-gold:#D4AF37;--hl-sand:#F5E6C8;--hl-white:#ffffff;--hl-ink-dark:#08263a;--hl-shadow:0 18px 45px rgba(0,59,111,.14)}
-html{font-family:"Tajawal",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-body,.button,button,input,select,textarea{font-family:"Tajawal",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-.hero-kicker,.eyebrow,[class*="ENGLISH"],[class*="english"],.hl-login-copy>small,.hl-role-head small,.hl-diver-head small{font-family:"Montserrat","Tajawal",sans-serif}
+:root{
+  --hl-deep:#0A1E3A;
+  --hl-ocean:#075A84;
+  --hl-aqua:#00D4FF;
+  --hl-gold:#F6C35E;
+  --hl-positive:#22C55E;
+  --hl-danger:#FF6B6B;
+  --hl-light:#E6F4F8;
+  --hl-copy:#C5E1EA;
+}
+
+html,body,button,input,select,textarea{font-family:"Tajawal",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.hero-kicker,.eyebrow,[class*="ENGLISH"],.hl-login-copy>small,.hl-role-head small,.hl-diver-head small{font-family:"Montserrat","Tajawal",sans-serif}
 :focus-visible{outline:3px solid var(--hl-aqua);outline-offset:3px}
-/* Visitor: approved light marine identity */
-body.hl-visitor-mode{background:linear-gradient(180deg,var(--hl-light) 0%,#fff 46%,var(--hl-light) 100%);color:var(--hl-deep)}
-.hl-visitor-mode .sidebar{background:rgba(255,255,255,.97)!important;border-color:rgba(0,119,182,.12)!important;box-shadow:14px 0 40px rgba(0,59,111,.06)}
-.hl-visitor-mode .brand{color:var(--hl-deep)!important}.hl-visitor-mode .brand small{color:var(--hl-ocean)!important}
-.hl-visitor-mode .brand-mark{background:linear-gradient(145deg,var(--hl-aqua),var(--hl-ocean) 62%,var(--hl-gold))!important}
-.hl-visitor-mode .nav-item{color:#365d73!important}.hl-visitor-mode .nav-item:hover{background:rgba(0,180,216,.08)!important;color:var(--hl-deep)!important}.hl-visitor-mode .nav-item.active{background:linear-gradient(110deg,var(--hl-ocean),var(--hl-aqua))!important;color:white!important;box-shadow:0 10px 24px rgba(0,119,182,.18)!important}
-.hl-visitor-mode .language{color:var(--hl-ocean)!important;border-color:rgba(0,119,182,.18)!important;background:#fff!important}
-.hl-visitor-mode .topbar{background:rgba(255,255,255,.9)!important;border-bottom:1px solid rgba(0,119,182,.1)!important;backdrop-filter:blur(18px)}
-.hl-visitor-mode .topbar h1{color:var(--hl-deep)!important}.hl-visitor-mode .topbar .eyebrow{color:var(--hl-ocean)!important}
-.hl-visitor-mode .icon-button,.hl-visitor-mode .avatar{background:#fff!important;color:var(--hl-deep)!important;border:1px solid rgba(0,119,182,.14)!important}
-.hl-visitor-mode .mobile-welcome{background:#fff!important;border-color:rgba(0,119,182,.12)!important;color:var(--hl-deep)!important;box-shadow:var(--hl-shadow)!important}
-.hl-visitor-mode .mobile-welcome small,.hl-visitor-mode .mobile-welcome span{color:#56798c!important}.hl-visitor-mode .mobile-welcome button{background:var(--hl-deep)!important;color:#fff!important}
-.hl-visitor-mode .landing-hero{border-color:rgba(0,180,216,.28)!important;box-shadow:0 28px 70px rgba(0,59,111,.2)!important}
-.hl-visitor-mode .landing-hero:after{background:linear-gradient(90deg,rgba(0,59,111,.94) 0%,rgba(0,59,111,.73) 44%,rgba(0,59,111,.16) 76%)!important}
-.hl-visitor-mode .landing-hero .status-pill{background:rgba(255,255,255,.12)!important;border-color:rgba(255,255,255,.18)!important;color:#fff!important}.hl-visitor-mode .landing-hero .status-pill i{background:var(--hl-aqua)!important}.hl-visitor-mode .hero-kicker{color:var(--hl-sand)!important}
-.hl-visitor-mode .primary-button,.hl-visitor-mode .search-bar button,.hl-visitor-mode .trip-card button,.hl-visitor-mode .safety-strip button{background:linear-gradient(135deg,var(--hl-gold),#e0c35d)!important;color:#102b3a!important;box-shadow:0 12px 26px rgba(212,175,55,.18)!important}
-.hl-visitor-mode .ghost-button{border-color:rgba(245,230,200,.5)!important;color:var(--hl-sand)!important;background:rgba(0,59,111,.22)!important}
-.hl-visitor-mode .hl-visitor-routebar>article,.hl-visitor-mode .hl-visitor-routebar>button{background:#fff!important;border-color:rgba(0,119,182,.12)!important;color:var(--hl-deep)!important;box-shadow:var(--hl-shadow)!important}
-.hl-visitor-mode .hl-visitor-routebar>article small{color:var(--hl-gold)!important}.hl-visitor-mode .hl-visitor-routebar>article span,.hl-visitor-mode .hl-visitor-routebar>button small{color:#618295!important}.hl-visitor-mode .hl-visitor-routebar>button b{background:rgba(0,180,216,.09)!important;color:var(--hl-ocean)!important}
-.hl-visitor-mode .section-heading h2,.hl-visitor-mode .training-section h2,.hl-visitor-mode .membership h2,.hl-visitor-mode .marine-intelligence h2{color:var(--hl-deep)!important}.hl-visitor-mode .eyebrow{color:var(--hl-gold)!important}
-.hl-visitor-mode .trip-card,.hl-visitor-mode .training-section,.hl-visitor-mode .product-grid article,.hl-visitor-mode .map-card{background:#fff!important;border-color:rgba(0,119,182,.12)!important;color:var(--hl-deep)!important;box-shadow:var(--hl-shadow)!important}.hl-visitor-mode .trip-card p,.hl-visitor-mode .training-section p,.hl-visitor-mode .product-grid article p,.hl-visitor-mode .map-card p{color:#5d7d8e!important}
-.hl-visitor-mode .training-section article{background:var(--hl-light)!important;border-color:rgba(0,119,182,.1)!important}.hl-visitor-mode .course-list small{color:#638395!important}.hl-visitor-mode .course-progress{background:rgba(0,119,182,.1)!important}.hl-visitor-mode .course-progress em{background:linear-gradient(90deg,var(--hl-ocean),var(--hl-aqua))!important}
-.hl-visitor-mode .marine-intelligence{background:linear-gradient(145deg,#fff,var(--hl-light))!important;border-color:rgba(0,119,182,.12)!important;box-shadow:var(--hl-shadow)!important}.hl-visitor-mode .marine-intelligence p,.hl-visitor-mode .marine-signal__footer{color:#5c7c8d!important}.hl-visitor-mode .marine-brain,.hl-visitor-mode .marine-signal{background:#fff!important;border-color:rgba(0,119,182,.12)!important;color:var(--hl-deep)!important}.hl-visitor-mode .marine-brain__copy span,.hl-visitor-mode .marine-signal__top span{color:var(--hl-gold)!important}.hl-visitor-mode .marine-intelligence__steps article{background:#fff!important;border-color:rgba(0,119,182,.1)!important;color:var(--hl-deep)!important}.hl-visitor-mode .marine-intelligence__steps small{color:#688798!important}
-.hl-visitor-mode .membership{background:linear-gradient(145deg,var(--hl-light),#fff)!important;border-color:rgba(0,119,182,.12)!important;color:var(--hl-deep)!important;box-shadow:var(--hl-shadow)!important}.hl-visitor-mode .membership p,.hl-visitor-mode .member-benefits{color:#5b7a8b!important}.hl-visitor-mode .member-card{background:linear-gradient(135deg,var(--hl-deep),var(--hl-ocean))!important;color:#fff!important;border-color:rgba(0,180,216,.22)!important}
-.hl-visitor-mode .safety-strip{background:linear-gradient(110deg,var(--hl-deep),var(--hl-ocean))!important;color:#fff!important;border-color:transparent!important}.hl-visitor-mode .safety-strip small{color:#d9edf5!important}
-.hl-visitor-mode .site-footer{color:#557789!important;border-color:rgba(0,119,182,.12)!important}.hl-visitor-mode .site-footer span:first-child{color:var(--hl-deep)!important}
-.hl-visitor-mode .mobile-nav{background:rgba(255,255,255,.96)!important;border-color:rgba(0,119,182,.12)!important}.hl-visitor-mode .mobile-nav a,.hl-visitor-mode .mobile-nav button{color:#476b7d!important}.hl-visitor-mode .mobile-nav .active{color:var(--hl-ocean)!important}
-/* Login keeps the immersive reference treatment, but normalized to approved tokens */
-.hl-login{background:linear-gradient(180deg,var(--hl-deep),#001f3b)!important}.hl-login-scene{background:linear-gradient(90deg,rgba(0,59,111,.9),rgba(0,119,182,.34)),url('./assets/hydroland-hero-v2.webp') center/cover!important}.hl-login-panel{background:linear-gradient(180deg,var(--hl-deep),#002a4e)!important}.hl-login-panel>small,.hl-login-brand small{color:var(--hl-sand)!important}.hl-login-primary{background:linear-gradient(135deg,var(--hl-gold),#e0c35d)!important}.hl-login-secondary{border-color:rgba(245,230,200,.45)!important}
-/* Diver workspace: same approved identity, operational dark treatment */
-.hl-diver-dashboard{border-color:rgba(0,180,216,.2)!important;background:linear-gradient(145deg,rgba(0,59,111,.98),rgba(0,38,71,.99))!important;box-shadow:0 26px 70px rgba(0,59,111,.25)!important}.hl-diver-head{background:radial-gradient(circle at 85% 15%,rgba(0,180,216,.2),transparent 18rem),linear-gradient(120deg,rgba(0,119,182,.82),rgba(0,59,111,.94))!important;border-color:rgba(0,180,216,.16)!important}.hl-diver-head small,.hl-diver-metric span,.hl-diver-section-head small,.hl-diver-foot b{color:var(--hl-sand)!important}.hl-diver-level{border-color:rgba(212,175,55,.28)!important;background:rgba(212,175,55,.08)!important}.hl-diver-level b{color:var(--hl-sand)!important}.hl-diver-metric,.hl-diver-actions,.hl-diver-readiness{border-color:rgba(0,180,216,.14)!important;background:linear-gradient(145deg,rgba(0,119,182,.24),rgba(0,59,111,.42))!important}.hl-diver-action-grid button{border-color:rgba(0,180,216,.15)!important;background:linear-gradient(145deg,rgba(0,119,182,.28),rgba(0,59,111,.55))!important}.hl-diver-action-grid button i{color:var(--hl-aqua)!important}.hl-diver-ready-dot.review{background:var(--hl-gold)!important;box-shadow:0 0 12px rgba(212,175,55,.4)!important}
-/* Protected role portals: preserve operational layout while normalizing identity */
-.hl-role-dashboard{border-color:rgba(0,180,216,.2)!important;background:linear-gradient(145deg,rgba(0,59,111,.99),rgba(0,34,63,.99))!important;box-shadow:0 30px 80px rgba(0,59,111,.22)!important}.hl-portal-nav{background:linear-gradient(180deg,var(--hl-deep),#002847)!important;border-color:rgba(0,180,216,.14)!important}.hl-portal-mark{background:linear-gradient(145deg,var(--hl-aqua),var(--hl-ocean) 60%,var(--hl-gold))!important}.hl-portal-brand small,.hl-role-head p,.hl-role-tile small,.hl-command-grid button small,.hl-insight-cards p,.hl-queue p{color:#a9c7d5!important}.hl-portal-nav-item.active{background:linear-gradient(110deg,var(--hl-ocean),var(--hl-aqua))!important;color:white!important;box-shadow:0 10px 24px rgba(0,119,182,.18)!important}.hl-portal-safe{border-color:rgba(212,175,55,.24)!important;background:rgba(212,175,55,.07)!important}.hl-portal-safe b,.hl-role-head small,.hl-role-tile strong,.hl-portal-spotlight small,.hl-command header small,.hl-queue header small,.hl-queue p b,.hl-insight-cards button{color:var(--hl-sand)!important}.hl-role-tile,.hl-command,.hl-queue,.hl-insight-cards article{border-color:rgba(0,180,216,.14)!important;background:linear-gradient(145deg,rgba(0,119,182,.26),rgba(0,59,111,.54))!important}.hl-portal-spotlight{border-color:rgba(0,180,216,.16)!important;background:radial-gradient(circle at 15% 35%,rgba(0,180,216,.15),transparent 14rem),linear-gradient(120deg,rgba(0,119,182,.42),rgba(0,59,111,.86))!important}.hl-command-grid button{border-color:rgba(0,180,216,.16)!important;background:linear-gradient(145deg,rgba(0,119,182,.3),rgba(0,59,111,.6))!important}.hl-command-grid button i,.hl-insight-cards article>span{color:var(--hl-aqua)!important}.hl-live-badge{border-color:rgba(0,180,216,.22)!important;color:#c2dce6!important;background:rgba(0,119,182,.18)!important}.hl-role-dashboard[data-role="admin"],.hl-role-dashboard[data-role="organization"]{border-color:rgba(212,175,55,.24)!important}
-/* Cross-screen consistency */
-.trip-card,.training-section,.membership,.marine-intelligence,.hl-diver-dashboard,.hl-role-dashboard{scroll-margin-top:90px}
-@media(max-width:760px){body.hl-visitor-mode{background:var(--hl-light)}.hl-visitor-mode .topbar{box-shadow:0 8px 24px rgba(0,59,111,.07)}.hl-visitor-mode .hl-visitor-routebar>article,.hl-visitor-mode .hl-visitor-routebar>button{border-radius:16px!important}.hl-diver-dashboard,.hl-role-dashboard{border-radius:22px!important}}
+
+/* Visitor pages follow the approved deep-water palette. */
+body.hl-visitor-mode{background:radial-gradient(circle at 84% 7%,rgba(0,212,255,.14),transparent 27rem),linear-gradient(180deg,#071a2d,#03111f 72%,#020d18)!important;color:#effaff}
+.hl-visitor-mode .sidebar{background:linear-gradient(180deg,rgba(5,29,52,.98),rgba(2,15,29,.99))!important;border-color:rgba(0,212,255,.2)!important;box-shadow:0 20px 54px rgba(0,0,0,.34)!important}
+.hl-visitor-mode .brand,.hl-visitor-mode .topbar h1{color:#fff!important}
+.hl-visitor-mode .brand small,.hl-visitor-mode .topbar .eyebrow{color:var(--hl-aqua)!important}
+.hl-visitor-mode .nav-item{color:#bdd5e1!important}
+.hl-visitor-mode .nav-item:hover{background:rgba(0,212,255,.1)!important;color:#fff!important}
+.hl-visitor-mode .nav-item.active{background:linear-gradient(105deg,#087bb4,var(--hl-aqua))!important;color:#031522!important;box-shadow:0 0 25px rgba(0,212,255,.25)!important}
+.hl-visitor-mode .topbar{background:rgba(3,22,39,.78)!important;border-color:rgba(0,212,255,.15)!important;backdrop-filter:blur(20px)}
+.hl-visitor-mode .icon-button,.hl-visitor-mode .avatar,.hl-visitor-mode .language{border-color:rgba(0,212,255,.2)!important;background:rgba(3,26,45,.9)!important;color:#effaff!important}
+.hl-visitor-mode .hl-visitor-routebar>article,.hl-visitor-mode .hl-visitor-routebar>button,.hl-visitor-mode .hl-visitor-gateway article{background:linear-gradient(145deg,rgba(7,47,72,.96),rgba(2,21,37,.98))!important;border-color:rgba(0,212,255,.2)!important;color:#effaff!important;box-shadow:0 19px 46px rgba(0,0,0,.25)!important}
+.hl-visitor-mode .hl-visitor-routebar>article span,.hl-visitor-mode .hl-visitor-routebar>button small,.hl-visitor-mode .hl-visitor-gateway p{color:#a9cbd5!important}
+.hl-visitor-mode .trip-card,.hl-visitor-mode .training-section,.hl-visitor-mode .product-grid article,.hl-visitor-mode .map-card,.hl-visitor-mode .marine-intelligence,.hl-visitor-mode .membership{background:linear-gradient(145deg,rgba(6,45,69,.96),rgba(2,20,35,.98))!important;border-color:rgba(0,212,255,.18)!important;color:#effaff!important;box-shadow:0 19px 46px rgba(0,0,0,.24)!important}
+.hl-visitor-mode .trip-card p,.hl-visitor-mode .training-section p,.hl-visitor-mode .product-grid article p,.hl-visitor-mode .map-card p,.hl-visitor-mode .membership p,.hl-visitor-mode .marine-intelligence p{color:#a9cbd5!important}
+.hl-visitor-mode .section-heading h2,.hl-visitor-mode .training-section h2,.hl-visitor-mode .membership h2,.hl-visitor-mode .marine-intelligence h2{color:#fff!important}
+.hl-visitor-mode .training-section article,.hl-visitor-mode .marine-brain,.hl-visitor-mode .marine-signal,.hl-visitor-mode .marine-intelligence__steps article{background:rgba(2,24,41,.8)!important;border-color:rgba(0,212,255,.15)!important;color:#effaff!important}
+.hl-visitor-mode .training-section article small,.hl-visitor-mode .marine-signal__footer,.hl-visitor-mode .marine-intelligence__steps small{color:#a9cbd5!important}
+.hl-visitor-mode .member-card{background:linear-gradient(140deg,#0A1E3A,#075A84 58%,#08233A)!important;border-color:rgba(0,212,255,.25)!important}
+.hl-visitor-mode .safety-strip{background:linear-gradient(105deg,#0A1E3A,#075A84)!important;border-color:rgba(0,212,255,.25)!important}
+.hl-visitor-mode .mobile-nav{background:rgba(3,22,39,.96)!important;border-color:rgba(0,212,255,.18)!important}
+.hl-visitor-mode .mobile-nav a,.hl-visitor-mode .mobile-nav button{color:#bdd5e1!important}
+.hl-visitor-mode .mobile-nav .active{color:var(--hl-aqua)!important}
+.hl-visitor-mode .mobile-nav [data-hl-action="messages"]{display:none!important}
+
+.hl-role-dashboard .hl-live-badge i{background:var(--hl-positive)!important}
+.hl-role-dashboard[data-role="admin"]{border-color:rgba(246,195,94,.34)!important}
+.hl-role-dashboard[data-role="admin"] .hl-live-badge{border-color:rgba(246,195,94,.28)!important}
+.hl-role-dashboard[data-role="admin"] .hl-portal-mark{box-shadow:0 0 28px rgba(246,195,94,.25)!important}
+@media(prefers-reduced-motion:reduce){.hl-diver-action-grid button,.hl-command-grid button,.hl-visitor-mode .trip-card,.hl-visitor-mode .product-grid article{transition:none!important}}

@@ -1,0 +1,59 @@
+/* Authenticated workspaces begin with their own dashboard, while visitors see public discovery only. */
+.hl-authenticated-workspace #home,
+.hl-authenticated-workspace .hl-visitor-routebar,
+.hl-authenticated-workspace .hl-visitor-gateway,
+.hl-authenticated-workspace .mobile-welcome,
+.hl-authenticated-workspace .quick-grid{display:none!important}
+
+/* Fail closed before role/profile loading completes, including a returning session. */
+body[data-hl-workspace-role="visitor"] .hl-finance,
+body[data-hl-workspace-role="visitor"] .hl-training,
+body[data-hl-workspace-role="visitor"] .hl-members,
+body[data-hl-workspace-role="visitor"] .hl-logistics,
+body[data-hl-workspace-role="visitor"] .hl-procurement,
+body[data-hl-workspace-role="visitor"] .hl-safety-center,
+body[data-hl-workspace-role="visitor"] .hl-safety-review,
+body[data-hl-workspace-role="visitor"] .hl-safety-incidents,
+body[data-hl-workspace-role="visitor"] .hl-weather-admin,
+body[data-hl-workspace-role="visitor"] .hl-booking-admin,
+body[data-hl-workspace-role="visitor"] .hl-calendar-admin,
+body[data-hl-workspace-role="visitor"] .hl-crew-assignments,
+body[data-hl-workspace-role="visitor"] .hl-dive-review,
+body[data-hl-workspace-role="visitor"] .hl-documents,
+body[data-hl-workspace-role="visitor"] #hl-marine-documents,
+body[data-hl-workspace-role="visitor"] #hl-marine-readiness,
+body[data-hl-workspace-role="visitor"] .hl-organizations,
+body[data-hl-workspace-role="visitor"] .hl-admin,
+body[data-hl-workspace-role="visitor"] .hl-theme-admin,
+body[data-hl-workspace-role="visitor"] .hl-trip-admin,
+body[data-hl-workspace-role="visitor"] .hl-store-admin,
+body[data-hl-workspace-role="visitor"] .hl-policy-center{display:none!important}
+body.hl-visitor-mode #role-switch{display:none!important}
+
+/* Operational modules are hidden by role until their matching workspace is active. */
+.hl-workspace-hidden{display:none!important}
+.hl-support form[hidden]{display:none!important}
+.hl-support-guest-gate{display:flex;align-items:center;justify-content:space-between;gap:.8rem;padding:.9rem 1rem;border:1px solid rgba(0,212,255,.18);border-radius:14px;background:rgba(0,212,255,.05);color:#c5e1ea;line-height:1.6}
+.hl-support-guest-gate button,.hl-portal-switch{border:1px solid rgba(0,212,255,.28);border-radius:12px;padding:.65rem .85rem;background:rgba(0,212,255,.09);color:#effaff;font:700 .78rem Tajawal,sans-serif;cursor:pointer}
+.hl-support-guest-gate button:hover,.hl-portal-switch:hover{border-color:#00d4ff;background:rgba(0,212,255,.16)}
+
+/* Match the full-width protected portal boards and remove the duplicated public shell. */
+.hl-managed-workspace .sidebar,
+.hl-managed-workspace .topbar,
+.hl-managed-workspace .mobile-nav,
+.hl-managed-workspace .site-footer{display:none!important}
+.hl-managed-workspace #role-console{display:none!important}
+.hl-managed-workspace .shell{width:100%!important;max-width:none!important;margin:0!important;padding:0!important}
+.hl-managed-workspace #main{width:100%!important;max-width:none!important;margin:0!important;padding:0!important}
+.hl-managed-workspace .hl-role-dashboard{min-height:100vh;margin:0!important;border-radius:0!important}
+.hl-managed-workspace .hl-portal-shell{min-height:100vh}
+.hl-managed-workspace .hl-portal-nav{position:sticky;top:0;height:100vh;max-height:100vh;overflow:auto}
+.hl-portal-switch{display:flex;width:100%;align-items:center;justify-content:flex-start;gap:.6rem;margin-top:.5rem}
+.hl-managed-workspace .hl-portal-safe small{color:#bdd5e1!important}
+
+@media(max-width:760px){
+  .hl-support-guest-gate{align-items:stretch;flex-direction:column}
+  .hl-managed-workspace .hl-portal-nav{position:static;height:auto;max-height:none;overflow:visible}
+  .hl-managed-workspace .hl-portal-shell{grid-template-columns:1fr}
+  .hl-managed-workspace .hl-portal-nav nav{display:flex;overflow:auto}
+}
