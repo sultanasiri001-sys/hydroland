@@ -51,6 +51,7 @@ test('organization can create, revise and submit an operational document from th
   await panel.locator('[data-doc-save]').click();
   await expect.poll(()=>state.revisePayload?.payload?.summary).toBe('التقرير التشغيلي بعد التعديل');
   await expect(item).toContainText('الإصدار 2');
+  await expect(panel.locator('[data-doc-note]')).toContainText('تم حفظ التعديل والإصدار الجديد.');
 
   await item.getByRole('button',{name:'إرسال للاعتماد'}).click();
   await expect.poll(()=>state.submitCount).toBe(1);

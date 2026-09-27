@@ -7,7 +7,7 @@ const seeds: Seed[] = [
 ['MARINE_OPERATIONS','MAR-TRIP-REPORT','تقرير رحلة بحرية','Marine Trip Report',[['tripNo','رقم الرحلة','Trip number',true],['vessel','الوسيلة البحرية','Marine vessel',true]]],
 ['INVENTORY_LOGISTICS','INV-STOCK-REPORT','تقرير المخزون','Inventory Report',[['warehouse','المستودع','Warehouse',true],['itemCount','عدد الأصناف','Item count',true]]],
 ['FINANCE','FIN-TRANSACTION-REPORT','تقرير معاملة مالية','Financial Transaction Report',[['referenceNo','رقم المرجع','Reference number',true],['amount','المبلغ','Amount',true]]],
-['SAFETY_COMPLIANCE_RISK','SAF-INCIDENT-REPORT','تقرير حادث سلامة','Safety Incident Report',[['incidentNo','رقم الحادث','Incident number',true],['severity','درجة الخطورة','Severity',true]]],
+['SAFETY_COMPLIANCE_RISK','SAF-INCIDENT-REPORT','تقرير حادث بحري','Marine Incident Report',[['incidentNo','رقم الحادث','Incident number',true],['severity','درجة الخطورة','Severity',true]]],
 ['CUSTOMER_EXPERIENCE','CEX-CASE-REPORT','تقرير حالة عميل','Customer Case Report',[['caseNo','رقم الحالة','Case number',true],['resolution','المعالجة','Resolution',false]]],
 ['MARKETING_GROWTH','MKT-CAMPAIGN-REPORT','تقرير حملة تسويقية','Marketing Campaign Report',[['campaign','الحملة','Campaign',true],['channel','القناة','Channel',true]]],
 ['TECHNOLOGY_CYBERSECURITY','TEC-SECURITY-REPORT','تقرير تقني وأمني','Technology & Security Report',[['eventNo','رقم الحدث','Event number',true],['classification','التصنيف','Classification',true]]],
