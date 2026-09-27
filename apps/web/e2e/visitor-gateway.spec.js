@@ -45,6 +45,7 @@ test('visitor can explore public sections, return to sign-up, and account alerts
 
   await page.evaluate(() => {
     window.HydrolandAuth.isAuthenticated = () => true;
+    window.HydrolandAuth.authorizedFetch = async () => new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } });
     window.HydrolandAuth.setAuthUi(true);
     document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));
   });
