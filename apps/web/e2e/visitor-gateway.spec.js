@@ -2,11 +2,16 @@ import { test, expect } from '@playwright/test';
 
 test('visitor can explore public sections, return to sign-up, and sees account alerts only after sign-in', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.route('http://localhost:3001/api/v1/**', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify(route.request().url().endsWith('/notifications') || route.request().url().endsWith('/messages/conversations') || route.request().url().endsWith('/credentials') ? [] : { id: 'visitor-e2e-account', roles: [] })
-  }));
+  await page.route('**/*', async route => {
+    const url = new URL(route.request().url());
+    if (!url.pathname.startsWith('/api/v1/')) return route.continue();
+    const body = url.pathname.endsWith('/me/diver-profile')
+      ? { profile: null, equipment: [] }
+      : url.pathname.endsWith('/me')
+        ? { id: 'visitor-e2e-account', roles: [] }
+        : [];
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => Boolean(window.HydrolandAuth && window.HydrolandMessages));
 
