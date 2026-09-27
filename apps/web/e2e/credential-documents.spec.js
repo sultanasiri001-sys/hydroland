@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import {openWorkspaceSwitcher} from './portal-test-helpers.js';
 
 const installApi=async page=>{
   const state={
@@ -33,7 +34,7 @@ const installApi=async page=>{
 const seed=async page=>{
   const state=await installApi(page);await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&document.querySelector('.hl-members')));
-  await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','e2e-access');sessionStorage.setItem('hl-refresh-token','e2e-refresh');window.HydrolandAuth.syncAuthUi();await window.HydrolandProfile.load()});
+  await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','e2e-access');sessionStorage.setItem('hl-refresh-token','e2e-refresh');window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));await window.HydrolandProfile.load()});
   return state;
 };
 
@@ -82,8 +83,8 @@ test('admin records official organization evidence before approving a pending cr
   await page.route(/\/api\/v1\/credentials\/admin\/pending-credential\/decision$/,route=>{decision=route.request().postDataJSON();pending.length=0;return json(route,{id:'pending-credential',verificationStatus:decision.outcome})});
 
   await page.goto('/',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&document.querySelector('.hl-admin')));
-  await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','e2e-access');sessionStorage.setItem('hl-refresh-token','e2e-refresh');window.HydrolandAuth.syncAuthUi();await window.HydrolandProfile.load()});
-  await page.locator('#role-switch').click();await page.locator('#role-dialog [data-role="admin"]').click();
+  await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','e2e-access');sessionStorage.setItem('hl-refresh-token','e2e-refresh');window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));await window.HydrolandProfile.load()});
+  await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="admin"]').click();
   const admin=page.locator('.hl-admin');await expect(admin).toBeVisible();const card=admin.locator('[data-credential-review="pending-credential"]');await expect(card).toContainText('Pending Rescue Credential');
   const accessRequest=page.waitForRequest(request=>request.url().includes('/credentials/admin/pending-credential/documents/pending-document/access'));await card.getByRole('button',{name:/عرض: evidence\.pdf/}).click();await accessRequest;await expect.poll(()=>reviewAccess).toBe(1);
 

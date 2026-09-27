@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import {openWorkspaceSwitcher} from './portal-test-helpers.js';
 
 const installProfileApi=async page=>{
   const profile={id:'admin-weather-e2e',email:'admin-weather@hydroland.test',status:'ACTIVE',roleAssignments:[{id:'role-admin-weather',role:'ADMIN',status:'ACTIVE',activeAt:null,updatedAt:'2026-09-25T00:00:00.000Z'}],person:{firstName:'Admin',lastName:'Weather',phone:null,professional:null}};
@@ -45,8 +46,8 @@ test('admin can create a geolocated trip, refresh Stormglass and approve the for
 
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandPortalAccess));
-  await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','weather-e2e-access');sessionStorage.setItem('hl-refresh-token','weather-e2e-refresh');window.HydrolandAuth.syncAuthUi();await window.HydrolandProfile.load()});
-  await page.locator('#role-switch').click();await page.locator('#role-dialog [data-role="admin"]').click();
+  await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','weather-e2e-access');sessionStorage.setItem('hl-refresh-token','weather-e2e-refresh');window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));await window.HydrolandProfile.load()});
+  await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="admin"]').click();
 
   const tripPanel=page.locator('.hl-trip-admin');const weatherPanel=page.locator('.hl-weather-admin');
   await expect(tripPanel).toBeVisible();await expect(weatherPanel).toHaveCount(1);await expect(weatherPanel).toBeVisible();

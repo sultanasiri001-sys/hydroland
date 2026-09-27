@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {openWorkspaceSwitcher} from './portal-test-helpers.js';
 
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 
@@ -17,13 +18,13 @@ const setupAdmin=async page=>{
   await page.evaluate(async()=>{
     sessionStorage.setItem('hl-access-token','portal-action-access');
     sessionStorage.setItem('hl-refresh-token','portal-action-refresh');
-    window.HydrolandAuth.syncAuthUi();
+    window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));
     await window.HydrolandProfile.load();
   });
-  await page.locator('#role-switch').click();
+  await openWorkspaceSwitcher(page);
   await page.locator('#role-dialog [data-role="admin"]').click();
   await expect.poll(()=>page.evaluate(()=>window.HydrolandPortalAccess.getCurrentRole())).toBe('admin');
-  await expect(page.locator('#role-console')).toBeVisible();
+  await expect(page.locator('#role-console')).toBeHidden();
   await expect(page.locator('.hl-role-dashboard[data-role="admin"]')).toBeVisible();
   return state;
 };
@@ -44,12 +45,12 @@ test('role dashboard action reauthorizes and blocks navigation after live role r
   await expectClosed(page);
 });
 
-test('top role-console task reauthorizes and blocks navigation after live role revocation',async({page})=>{
+test('role workspace navigation reauthorizes and blocks navigation after live role revocation',async({page})=>{
   const state=await setupAdmin(page);
   await page.evaluate(()=>history.replaceState(null,'','#home'));
   state.roles=[];
-  const task=page.locator('#role-console-tasks button').filter({hasText:'مركز السلامة والحوادث'});
-  await expect(task).toBeEnabled();
-  await task.click();
+  const navigation=page.locator('.hl-role-dashboard[data-role="admin"] .hl-portal-nav-item[data-portal-label="السلامة والامتثال"]');
+  await expect(navigation).toBeEnabled();
+  await navigation.click();
   await expectClosed(page);
 });

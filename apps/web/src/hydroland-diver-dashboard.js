@@ -6,9 +6,9 @@
   normalizeTerms(document.body);new MutationObserver(records=>records.forEach(record=>record.addedNodes.forEach(node=>{if(node.nodeType===Node.TEXT_NODE){const exact=String(node.nodeValue||'').trim();if(approvedTerms.has(exact))node.nodeValue=node.nodeValue.replace(exact,approvedTerms.get(exact))}else if(node.nodeType===Node.ELEMENT_NODE)normalizeTerms(node)}))).observe(document.body,{childList:true,subtree:true});
   if(document.getElementById('hl-diver-dashboard'))return;
   const css=document.createElement('link');css.rel='stylesheet';css.href='./hydroland-diver-dashboard.css';css.dataset.hlDiverDashboard='1';document.head.appendChild(css);
-  const host=document.getElementById('role-console')||document.querySelector('.landing-hero');if(!host)return;
+  const main=document.getElementById('main');if(!main)return;
   const dashboard=document.createElement('section');dashboard.id='hl-diver-dashboard';dashboard.className='hl-diver-dashboard';dashboard.hidden=true;
-  host.insertAdjacentElement('afterend',dashboard);
+  main.prepend(dashboard);
   const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const isAuthenticated=()=>Boolean(window.HydrolandAuth?.isAuthenticated?.());
   const isDiverView=()=>{const role=window.HydrolandPortalAccess?.getCurrentRole?.()||'diver';return role==='diver'};

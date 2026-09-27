@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {openWorkspaceSwitcher} from './portal-test-helpers.js';
 
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 
@@ -32,12 +33,12 @@ test('boat operator manages maintenance and admin activates a compliant marine a
   });
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandMarineReadiness));
-  await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','marine-readiness-access');sessionStorage.setItem('hl-refresh-token','marine-readiness-refresh');window.HydrolandAuth.syncAuthUi();await window.HydrolandProfile.load()});
-  await page.locator('#role-switch').click();await page.locator('#role-dialog [data-role="boat"]').click();
+  await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','marine-readiness-access');sessionStorage.setItem('hl-refresh-token','marine-readiness-refresh');window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));await window.HydrolandProfile.load()});
+  await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="boat"]').click();
   const panel=page.locator('#hl-marine-readiness');await expect(panel).toBeVisible();const card=panel.locator('[data-marine-readiness-asset="asset-marine-readiness"]');await expect(card).toContainText('قارب الجاهزية');
   await card.locator('[data-marine-readiness-check]').click();await expect.poll(()=>asset.readiness[0]?.status).toBe('NOT_READY');await expect(card).toContainText('ASSET_NOT_ACTIVE');
   const form=card.locator('form[data-marine-maintenance]');await form.locator('[name="maintenanceType"]').fill('فحص المحرك');await form.locator('[name="dueAt"]').fill('2030-01-01');await form.locator('button[type="submit"]').click();await expect.poll(()=>asset.maintenance.length).toBe(1);await expect(card).toContainText('فحص المحرك');
   await card.locator('[data-marine-maintenance-complete]').click();await expect.poll(()=>asset.maintenance[0]?.status).toBe('COMPLETED');
-  await page.locator('#role-switch').click();await page.locator('#role-dialog [data-role="admin"]').click();
+  await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="admin"]').click();
   await expect(panel).toBeVisible();const review=panel.locator('[data-marine-readiness-review="asset-marine-readiness"]');await expect(review).toContainText('قارب الجاهزية');await review.locator('[data-marine-asset-status="ACTIVE"]').click();await expect.poll(()=>state.lastStatus).toBe('ACTIVE');await expect(review).toContainText('ACTIVE');
 });

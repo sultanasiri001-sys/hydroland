@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {openWorkspaceSwitcher,returnToDiverWorkspace} from './portal-test-helpers.js';
 
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 
@@ -59,13 +60,13 @@ test('unread notifications and inbox indicators reach signed-in workspaces and c
 
   await page.setViewportSize({width:1280,height:900});
   for(const role of ['instructor','center','boat','organization','admin']){
-    await page.locator('#role-switch').click();
+    await openWorkspaceSwitcher(page);
     await page.locator(`#role-dialog [data-role="${role}"]`).click();
     const dashboard=page.locator(`.hl-role-dashboard[data-role="${role}"]`);
     await expect(dashboard).toBeVisible();
     await expect(dashboard.locator('[data-portal-notifications]')).toHaveAttribute('data-unread','1');
     await expect(dashboard.locator('[data-portal-messages]')).toHaveAttribute('data-unread','1');
-    await page.locator('#exit-role').click();
+    await returnToDiverWorkspace(page);
   }
 
   await page.locator('#top-notifications').click();

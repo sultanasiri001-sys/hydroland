@@ -45,6 +45,14 @@
     if(exit)exit.click();else access.clearProtectedPortal?.();
     return false;
   };
+  const openRoleSwitcher=async()=>{
+    if(authenticated()){
+      await refreshPortalAccess();
+      enforceCurrentRole();
+    }
+    syncRoleOptions();
+    dialog?.showModal();
+  };
   access.refreshPortalAccess=refreshPortalAccess;
   roleSwitch?.addEventListener('click',async event=>{
     if(replaySwitch)return;
@@ -77,5 +85,5 @@
   });
   document.addEventListener('hydroland:auth-changed',()=>queueMicrotask(syncRoleOptions));
   syncRoleOptions();
-  window.HydrolandPortalFreshness={refresh:refreshPortalAccess,sync:syncRoleOptions,enforce:enforceCurrentRole};
+  window.HydrolandPortalFreshness={refresh:refreshPortalAccess,sync:syncRoleOptions,enforce:enforceCurrentRole,openRoleSwitcher};
 })();

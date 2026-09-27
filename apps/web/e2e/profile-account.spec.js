@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import {openWorkspaceSwitcher} from './portal-test-helpers.js';
 
 const waitForProfileRuntime = async page => {
   await page.waitForFunction(() => Boolean(window.HydrolandAuth && window.HydrolandProfile && window.HydrolandPortalAccess));
@@ -85,7 +86,7 @@ const seedAuthenticatedProfile = async (page) => {
   await page.evaluate(async () => {
     sessionStorage.setItem('hl-access-token', 'e2e-access');
     sessionStorage.setItem('hl-refresh-token', 'e2e-refresh');
-    window.HydrolandAuth.syncAuthUi();
+    window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));
     await window.HydrolandProfile.load();
   });
   await expect.poll(() => page.evaluate(() => window.HydrolandProfileData?.profile?.person?.firstName)).toBe('Sultan');
@@ -129,11 +130,12 @@ test('profile settings save, reload persistence and real roleAssignments mapping
   await page.locator('#hl-profile-editor [data-profile-cancel]').click();
   await page.locator('#close-profile').click();
 
-  await page.locator('#role-switch').click();
+  await openWorkspaceSwitcher(page);
   await expect(page.locator('#role-dialog')).toBeVisible();
   await page.locator('#role-dialog [data-role="admin"]').click();
-  await expect(page.locator('#role-console')).toBeVisible();
-  await expect(page.locator('#role-console-title')).toHaveText('لوحة الإدارة الرئيسية');
+  const dashboard=page.locator('.hl-role-dashboard[data-role="admin"]');
+  await expect(dashboard).toBeVisible();
+  await expect(dashboard.locator('.hl-role-head h3')).toHaveText('مركز القيادة والتحكم');
 });
 
 test('diver profile editor loads, saves and reopens with persisted values', async ({ page }) => {
@@ -166,7 +168,7 @@ test('unauthenticated account settings stay guarded in the browser', async ({ pa
   await waitForProfileRuntime(page);
   const unauthState = await page.evaluate(() => {
     sessionStorage.clear();
-    window.HydrolandAuth.syncAuthUi();
+    window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));
     return {
       profile:Boolean(window.HydrolandProfileData),
       loginHidden:document.querySelector('.hl-login')?.classList.contains('hidden')

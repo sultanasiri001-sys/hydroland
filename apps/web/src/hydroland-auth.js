@@ -74,4 +74,5 @@
   queueMicrotask(()=>void processEmailVerificationLink());
   document.addEventListener('click',event=>{const button=event.target.closest?.('[data-hl-action="logout"]');if(!button)return;event.preventDefault();button.disabled=true;document.getElementById('profile-dialog')?.close();void logout()});
   window.HydrolandAuth={apiBase:API_BASE,setAuthUi,syncAuthUi,getAccessToken:()=>sessionStorage.getItem('hl-access-token'),getRefreshToken:()=>sessionStorage.getItem('hl-refresh-token'),isAuthenticated,isGuestMode,refreshSession,authorizedFetch,terminateSession,logout,openMfaSettings:renderMfaSettings,requestEmailVerification:email=>postPublic('/auth/email-verification/request',{email}),requestPasswordReset:email=>postPublic('/auth/password-reset/request',{email}),confirmEmailVerification:token=>postPublic('/auth/email-verification/confirm',{token}),resetPassword:(token,password)=>postPublic('/auth/password-reset/confirm',{token,password})};
+  emitAuthChanged();
 })();
