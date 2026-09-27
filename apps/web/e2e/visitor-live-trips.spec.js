@@ -4,7 +4,7 @@ const json=(route,body)=>route.fulfill({status:200,contentType:'application/json
 
 test('visitor sees an honest empty state and can still open the live map when no trips are published',async({page})=>{
   await page.route(/\/api\/v1\/trips$/,route=>json(route,[]));
-  await page.route(/\/api\/v1\/integrations\/maps\/public-config$/,route=>json(route,{engine:'MAPLIBRE',status:'DISABLED',provider:'UNCONFIGURED',enabled:false}));
+  await page.route(/\/api\/v1\/integrations\/maps\/public-config$/,route=>json(route,{engine:'MAPLIBRE',status:'CONFIGURED',provider:'MAPS_GEO',enabled:false}));
   await page.route(/\/api\/v1\/integrations\/weather\/public-config$/,route=>json(route,{status:'NOT_SELECTED',configured:false}));
 
   await page.goto('/',{waitUntil:'domcontentloaded'});
@@ -17,8 +17,10 @@ test('visitor sees an honest empty state and can still open the live map when no
   await expect(grid).not.toContainText('رحلة جزيرة سمر');
   await expect(grid).not.toContainText('غوص موقع عمق');
   await expect(grid.locator('.map-card [data-hl-map-open]')).toBeEnabled();
+  await expect(grid.locator('.map-card [data-hl-map-card-provider]')).toHaveText('MAPS_GEO · غير مفعّل');
 
   await grid.locator('.map-card [data-hl-map-open]').click();
   await expect(page.locator('#hl-map-dialog')).toBeVisible();
   await expect(page.locator('#hl-map-dialog')).toContainText('لا توجد رحلات مفتوحة بإحداثيات تشغيلية حاليًا.');
+  await expect(page.locator('#hl-map-dialog [data-hl-map-provider]')).toHaveText('MAPS_GEO · غير مفعّل');
 });
