@@ -28,16 +28,17 @@ test('messages control is auth-gated and authenticated member can read text/voic
 
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.HydrolandMessages&&window.HydrolandAuth&&window.HydrolandProfile));
-  await expect(page.locator('#top-messages')).toBeVisible();
+  const messagesControl=page.locator('#top-messages');
+  await expect(messagesControl).toBeHidden();
 
   await page.locator('.hl-login-guest').click();
   await expect(page.locator('.hl-login')).toHaveClass(/hidden/);
-  await page.locator('#top-messages').click();
-  await expect(page.locator('.hl-login')).not.toHaveClass(/hidden/);
+  await expect(messagesControl).toBeHidden();
   await expect(page.locator('#hl-messages-dialog')).not.toBeVisible();
 
-  await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','messaging-e2e-access');sessionStorage.setItem('hl-refresh-token','messaging-e2e-refresh');window.HydrolandAuth.syncAuthUi();await window.HydrolandProfile.load()});
-  await page.locator('#top-messages').click();
+  await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','messaging-e2e-access');sessionStorage.setItem('hl-refresh-token','messaging-e2e-refresh');window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));await window.HydrolandProfile.load()});
+  await expect(messagesControl).toBeVisible();
+  await messagesControl.click();
   const dialog=page.locator('#hl-messages-dialog');await expect(dialog).toBeVisible();
   await expect(dialog.locator('[data-conversation-id="conversation-e2e"]')).toContainText('رحلة جزيرة سمر');
   await dialog.locator('[data-conversation-id="conversation-e2e"]').click();

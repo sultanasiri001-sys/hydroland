@@ -24,7 +24,7 @@
     const credentialState=verified.length?['ok',`${verified.length} موثقة`,'شهادات تم التحقق منها في الحساب']:['review','لا توجد موثقة','أضف شهادة واطلب التحقق عند توفر المستند'];
     const equipmentState=activeEquipment.length?['ok',`${activeEquipment.length} نشطة`,'معدات شخصية مسجلة كجاهزة']:['review','غير مكتمل','أضف معداتك وحدّث حالة الصيانة'];
     dashboard.innerHTML=`
-      <header class="hl-diver-head"><div><small>DIVER WORKSPACE · مساحة الغواص</small><h3>مرحبًا، ${esc(displayName(profile))}</h3><p>رحلاتك، سجل الغوص، الشهادات، المعدات وبيانات الجاهزية في مساحة واحدة مرتبطة بالخدمات الحالية.</p></div><div class="hl-diver-level"><b>${hasActiveDiver?'DIVER MEMBER':'HYDROLAND MEMBER'}</b><span>الحالة من الحساب الفعلي</span></div></header>
+      <header class="hl-diver-head"><div><small>DIVER WORKSPACE · مساحة الغواص</small><h3>مرحبًا، ${esc(displayName(profile))}</h3><p>رحلاتك، سجل الغوص، الشهادات، المعدات وبيانات الجاهزية في مساحة واحدة مرتبطة بالخدمات الحالية.</p></div><div class="hl-diver-head-actions"><div class="hl-diver-utility" aria-label="إشعارات ورسائل الحساب"><button type="button" data-diver-notifications aria-label="فتح الإشعارات">♢<span>الإشعارات</span></button><button type="button" data-diver-messages aria-label="فتح الرسائل الداخلية">✉<span>الرسائل</span></button></div><div class="hl-diver-level"><b>${hasActiveDiver?'DIVER MEMBER':'HYDROLAND MEMBER'}</b><span>الحالة من الحساب الفعلي</span></div></div></header>
       <div class="hl-diver-overview">
         <article class="hl-diver-metric"><small>سجل الغوص</small><strong>—</strong><span>العدد من سجل الغوص</span></article>
         <article class="hl-diver-metric"><small>الشهادات الموثقة</small><strong>${verified.length}</strong><span>من حسابك</span></article>
@@ -47,7 +47,7 @@
       <footer class="hl-diver-foot"><b>تنبيه:</b> مؤشرات هذه اللوحة تلخص بيانات الحساب فقط؛ قرار تشغيل الرحلة والسلامة يبقى خاضعًا لقوائم الفحص وحالة الرحلة والبيانات البحرية المعتمدة.</footer>`;
     normalizeTerms(dashboard);
   }
-  dashboard.addEventListener('click',event=>{const route=event.target.closest?.('[data-diver-route]')?.dataset.diverRoute;if(!route)return;const target=document.getElementById(route);if(!target)return;target.scrollIntoView({behavior:'smooth',block:'start'});history.replaceState(null,'','#'+route)});
+  dashboard.addEventListener('click',event=>{if(event.target.closest?.('[data-diver-notifications]')){window.HydrolandAccountCenter?.openNotifications?.();return}if(event.target.closest?.('[data-diver-messages]')){window.HydrolandMessages?.open?.();return}const route=event.target.closest?.('[data-diver-route]')?.dataset.diverRoute;if(!route)return;const target=document.getElementById(route);if(!target)return;target.scrollIntoView({behavior:'smooth',block:'start'});history.replaceState(null,'','#'+route)});
   document.addEventListener('hydroland:auth-changed',()=>{render();setTimeout(render,650);setTimeout(render,1600)});
   document.addEventListener('hydroland:role-changed',()=>{render();setTimeout(render,250)});
   document.addEventListener('click',event=>{if(event.target.closest?.('[data-hl-action="diver-profile"],[data-hl-action="diver-equipment-list"],[data-hl-action="certs"],[data-hl-action="logbook"]'))setTimeout(render,1200)});

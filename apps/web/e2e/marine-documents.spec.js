@@ -32,6 +32,13 @@ test('boat operator registers marine asset and license metadata, admin verifies 
   await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','marine-e2e-access');sessionStorage.setItem('hl-refresh-token','marine-e2e-refresh');window.HydrolandAuth.syncAuthUi();await window.HydrolandProfile.load()});
   await page.locator('#role-switch').click();await page.locator('#role-dialog [data-role="boat"]').click();
   const panel=page.locator('#hl-marine-documents');await expect(panel).toBeVisible();
+  const dashboard=page.locator('.hl-role-dashboard[data-role="boat"]');
+  await page.evaluate(()=>{document.getElementById('hl-marine-documents').hidden=true});
+  await dashboard.locator('[data-action-label="المستندات والتراخيص"]').click();
+  await expect(panel).toBeVisible();
+  await page.evaluate(()=>{document.getElementById('hl-marine-documents').hidden=true});
+  await dashboard.locator('.hl-portal-nav-item[data-portal-label="المستندات والتراخيص"]').click();
+  await expect(panel).toBeVisible();
   const assetForm=panel.locator('[data-marine-asset-form]');await assetForm.locator('[name="name"]').fill('قارب القحمة');await assetForm.locator('[name="assetType"]').selectOption('DIVE_BOAT');await assetForm.locator('[name="registrationNumber"]').fill('QA-2026-01');await assetForm.locator('[name="passengerCapacity"]').fill('10');await assetForm.locator('button[type="submit"]').click();
   await expect.poll(()=>state.assets.length).toBe(1);await expect(panel.locator('[data-marine-asset="asset-marine-e2e"]')).toContainText('قارب القحمة');
   const docForm=panel.locator('[data-marine-asset="asset-marine-e2e"] [data-marine-doc-form]');await docForm.locator('[name="documentType"]').selectOption('REGISTRATION');await docForm.locator('[name="referenceNumber"]').fill('REG-7788');await docForm.locator('[name="expiresAt"]').fill('2027-09-25');await docForm.locator('button[type="submit"]').click();
