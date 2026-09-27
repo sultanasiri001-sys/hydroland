@@ -37,6 +37,9 @@ test('center portal opens center documents and saves a test report under its act
   await page.locator('#role-dialog [data-role="center"]').click();
   const dashboard=page.locator('.hl-role-dashboard[data-role="center"]');
   await expect(dashboard).toBeVisible();
+  await expect(dashboard.locator('.hl-role-head')).toHaveClass(/hl-center-hero/);
+  await expect(dashboard.locator('.hl-center-highlights')).toContainText('سلامة أولًا');
+  await expect(dashboard.locator('[data-center-name]')).toHaveText('مركز الاختبار');
   await expect(dashboard.locator('.hl-portal-nav-item[data-portal-label="المستندات والتراخيص"]')).toBeEnabled();
   await dashboard.locator('.hl-portal-nav-item[data-portal-label="المستندات والتراخيص"]').click();
 
