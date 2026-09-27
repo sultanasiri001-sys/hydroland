@@ -1,0 +1,23 @@
+{
+  "source": "Read-only Render _prisma_migrations snapshot verified 2026-09-27",
+  "migrations": [
+    { "name": "20260914101500_dive_logs", "sha256": "6267bf0d9ca2c95fd82e4dd500159780d6f22c4eca1c02221704d53bbf36753d" },
+    { "name": "20260914213000_booking_participants", "sha256": "12bca6527e776e67ac2e366b5c82b793d84fea9714aa9902542fd8f46c6fec41" },
+    { "name": "20260914221000_trip_completion_dive_logs", "sha256": "195a0c64b458bdc8e210ff1dd4825cf1027cd35bc72798055a2fe7153a8c356d" },
+    { "name": "20260914224000_diver_master_profile", "sha256": "c5a71b100fa3287711e394a8fa1bcd47ee34cd6953e2a8f81ec0c594a364a404" },
+    { "name": "20260914234500_unified_calendar_resources", "sha256": "facab0544eb77b1457a083ab1921cd85f54a7924b39cdaf20001bbad19e0370c" },
+    { "name": "20260915001000_crew_assignment_workflow", "sha256": "02a837d51d09634cc3e823e902f3e36323a250fbebca16e538ef8cc482389228" },
+    { "name": "20260915004500_policy_control_center", "sha256": "535ac1d99b47ed7938c9222f90c4a3650e5d97a09bc5a0d2ef62c5df055be158" },
+    { "name": "20260915023000_trip_compliance_review", "sha256": "58020c4d79573684d5298cd8b61b7e5df33b0cc5f4825d5dba7dacf64ecab408" },
+    { "name": "20260915233000_training", "sha256": "b1ba25cae3e1b92cc99556552b6fad3e59e9d54bbb12b723fc84a344a7cb65ff" },
+    { "name": "20260916050000_workforce_structure", "sha256": "6d2d9c319c3822a8b337723d79fe88bce34ff2bf8c1a99202f9038db031ee546" },
+    { "name": "20260916062000_center_department_hiring_controls", "sha256": "489fd316fdd631e6b325042a34a044b49a2ed793b3edd120526e0d4ce3f814d6" },
+    { "name": "20260916070000_hr_candidate_verification_workflow", "sha256": "8edaaa5a6353827b7b561d13e6745663acca1728ae0c731e809e10c78c06c2c9" },
+    { "name": "20260916071000_hr_candidate_verification_columns", "sha256": "b118e890d85637c292f02b4844d48e364ef84c21cd9caa4f302b78eaf3e91ad5" },
+    { "name": "20260916191500_hr_candidate_verification_fields", "sha256": "7c927f394d96513441c497f3a0980de98635ac00bbb5f89c050531488928d520" },
+    { "name": "20260917003500_finance_accountant_shifts", "sha256": "e90d58f0660960cf926739d971177452a2ccde1b73d653356cf12612919a87bb" },
+    { "name": "20260917014500_finance_deferred_invoice", "sha256": "ca40b3fee020dfbed44f6510a3d27db50dbe7870d3af1d65162fc8312f233425" },
+    { "name": "20260917173000_compliance_assessment_persistence", "sha256": "f29c933d2d12586a24c463edba3f9962599702b8836d15773d997b88338eaaba" },
+    { "name": "20260917203000_center_department_access_levels", "sha256": "7ec33ac64bf8960f842d0226dace4df766923e815cc4b2601e776fa6aae8282d" }
+  ]
+}

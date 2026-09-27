@@ -1,8 +1,8 @@
 CREATE TABLE "CrewAssignment" (
   "id" TEXT NOT NULL,
-  "tripId" TEXT NOT NULL,
+  "tripId" UUID NOT NULL,
   "resourceId" TEXT NOT NULL,
-  "accountId" TEXT NOT NULL,
+  "accountId" UUID NOT NULL,
   "roleType" TEXT NOT NULL,
   "status" TEXT NOT NULL DEFAULT 'PENDING',
   "replacesAssignmentId" TEXT,

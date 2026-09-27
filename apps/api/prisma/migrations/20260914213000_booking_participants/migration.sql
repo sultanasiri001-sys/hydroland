@@ -1,7 +1,7 @@
 CREATE TABLE "BookingParticipant" (
   "id" TEXT NOT NULL,
-  "bookingId" TEXT NOT NULL,
-  "accountId" TEXT,
+  "bookingId" UUID NOT NULL,
+  "accountId" UUID,
   "fullName" TEXT NOT NULL,
   "certificationTitle" TEXT,
   "certificationNumber" TEXT,

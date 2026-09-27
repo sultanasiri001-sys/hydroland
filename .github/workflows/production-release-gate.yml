@@ -19,19 +19,20 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm --workspace @hydroland/api run db:generate
+      - name: Verify production-applied migration checksums
+        run: node apps/api/scripts/production-migration-baseline-validation.mjs
       - name: Block unapproved historical migration rewrites
         shell: bash
         run: |
           set -euo pipefail
           git fetch origin main
-          changed="$(git diff --name-only --diff-filter=MDR origin/main...HEAD -- 'apps/api/prisma/migrations/*/migration.sql')"
-          if [ -n "$changed" ]; then
-            echo "Existing Prisma migration files were modified, deleted, or renamed:"
-            echo "$changed"
-            echo "Release blocked: existing migration history is immutable. Add a new forward-only migration instead."
+          manifest_changes="$(git diff --name-only --diff-filter=MD origin/main...HEAD -- 'apps/api/prisma/production-migration-baseline.json')"
+          if [ -n "$manifest_changes" ]; then
+            echo "The production migration baseline cannot be changed in the same pull request as migration files."
+            echo "$manifest_changes"
             exit 1
           fi
-          echo "Migration history is immutable; newly added forward-only migrations are allowed."
+          HYDROLAND_MIGRATION_DIFF_BASE=origin/main node apps/api/scripts/production-migration-baseline-validation.mjs --check-release-diff
       - name: Verify release validations
         run: |
           npm run validate:integrations -w @hydroland/api

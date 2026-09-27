@@ -1,6 +1,6 @@
 CREATE TABLE "DiverProfile" (
   "id" TEXT NOT NULL,
-  "accountId" TEXT NOT NULL,
+  "accountId" UUID NOT NULL,
   "dateOfBirth" TIMESTAMP(3),
   "nationality" TEXT,
   "identityType" TEXT,
@@ -27,7 +27,7 @@ ALTER TABLE "DiverProfile" ADD CONSTRAINT "DiverProfile_accountId_fkey" FOREIGN 
 
 CREATE TABLE "DiverEquipment" (
   "id" TEXT NOT NULL,
-  "accountId" TEXT NOT NULL,
+  "accountId" UUID NOT NULL,
   "category" TEXT NOT NULL,
   "ownership" TEXT NOT NULL DEFAULT 'OWNED',
   "brand" TEXT,
