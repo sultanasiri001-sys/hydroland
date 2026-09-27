@@ -51,6 +51,7 @@
   };
 
   function clearDashboard(){document.querySelector('.hl-role-dashboard')?.remove()}
+  const syncDashboardIdentity=()=>{const d=document.querySelector('.hl-role-dashboard[data-role="center"]');if(!d)return;const profile=window.HydrolandProfileData?.profile,person=profile?.person||{},name=[person.firstName,person.lastName].filter(Boolean).join(' ').trim();const nameNode=d.querySelector('[data-center-name]'),avatarNode=d.querySelector('[data-center-avatar]');if(nameNode)nameNode.textContent=name||'حساب مركز الغوص';if(avatarNode)avatarNode.textContent=(person.firstName||'H').trim().slice(0,1).toUpperCase()};
   const ensureWeatherAdmin=()=>{if(document.querySelector('script[data-hl-weather-admin]'))return;const script=document.createElement('script');script.src='./hydroland-weather-admin.js';script.dataset.hlWeatherAdmin='1';document.body.appendChild(script)};
   const denyRoleAction=()=>{clearDashboard();const exit=document.getElementById('exit-role');if(exit)exit.click();else window.HydrolandPortalAccess?.clearProtectedPortal?.();return false};
   const authorizeRoleAction=async role=>{const auth=window.HydrolandAuth,access=window.HydrolandPortalAccess;if(!auth?.isAuthenticated?.()||!access?.roleAllowed?.(role))return denyRoleAction();if(typeof access.refreshPortalAccess!=='function')return denyRoleAction();await access.refreshPortalAccess();if(window.HydrolandPortalFreshness?.enforce?.()===false)return false;if(!auth.isAuthenticated()||!access.roleAllowed(role))return denyRoleAction();return true};
@@ -71,12 +72,13 @@
     d.innerHTML=`
       <div class="hl-portal-shell">
         <aside class="hl-portal-nav" aria-label="${c.t}">
-          <div class="hl-portal-brand"><span class="hl-portal-mark">${c.icon}</span><div><b>HYDROLAND</b><small>${c.k}</small></div></div>
+          <div class="hl-portal-brand"><span class="hl-portal-mark">${role==='center'?'<img src="./assets/hydroland-mark.svg" alt="">':c.icon}</span><div><b>HYDROLAND</b><small>${c.k}</small></div></div>
+          ${role==='center'?'<section class="hl-center-member" aria-label="حساب المركز"><span data-center-avatar>H</span><div><b data-center-name>حساب مركز الغوص</b><small>مساحة تشغيل مركز الغوص</small></div></section>':''}
           <nav>${c.nav.map((item,index)=>`<button type="button" class="hl-portal-nav-item${index===0?' active':''}" data-portal-label="${item}"><span>${String(index+1).padStart(2,'0')}</span>${item}</button>`).join('')}</nav>
           <div class="hl-portal-safe"><b>السلامة أولًا</b><small>الصلاحيات والبيانات من النظام الفعلي.</small><button type="button" class="hl-portal-switch" data-portal-switch>⇄ تبديل الواجهة</button><button type="button" class="hl-portal-switch" data-hl-action="logout">↪ تسجيل الخروج</button></div>
         </aside>
         <div class="hl-portal-main">
-          <header class="hl-role-head"><div><small>${c.k}</small><h3>${c.t}</h3><p>${c.s}</p></div><div class="hl-portal-head-actions"><div class="hl-portal-utility" aria-label="إشعارات ورسائل الحساب"><button type="button" data-portal-notifications aria-label="فتح الإشعارات">♢<span>الإشعارات</span></button><button type="button" data-portal-messages aria-label="فتح الرسائل الداخلية">✉<span>الرسائل</span></button></div><span class="hl-live-badge"><i></i>HYDROLAND · LIVE WORKSPACE</span></div></header>
+          <header class="hl-role-head${role==='center'?' hl-center-hero':''}"><div><small>${c.k}</small><h3>${c.t}</h3><p>${c.s}</p>${role==='center'?'<div class="hl-center-highlights" aria-label="مزايا تشغيل المركز"><span><i>⬡</i>سلامة أولًا</span><span><i>✦</i>تجارب مميزة</span><span><i>⚙</i>تشغيل احترافي</span><span><i>≈</i>رحلات بحرية موثقة</span></div>':''}</div><div class="hl-portal-head-actions"><div class="hl-portal-utility" aria-label="إشعارات ورسائل الحساب"><button type="button" data-portal-notifications aria-label="فتح الإشعارات"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><span>الإشعارات</span></button><button type="button" data-portal-messages aria-label="فتح الرسائل الداخلية"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg><span>الرسائل</span></button></div><span class="hl-live-badge"><i></i>HYDROLAND · LIVE WORKSPACE</span></div></header>
           <div class="hl-role-grid">${c.m.map(([value,label])=>`<article class="hl-role-tile"><small>${label}</small><b>${value}</b><strong>من النظام</strong></article>`).join('')}</div>
           <section class="hl-portal-spotlight"><div><small>OPERATIONAL VIEW</small><h4>${c.spotlight[0]}</h4><p>${c.spotlight[1]}</p></div><div class="hl-ocean-orb" aria-hidden="true"><span></span><i></i></div></section>
           <section class="hl-command"><header><div><small>QUICK ACTIONS</small><h4>الإجراءات الرئيسية</h4></div><span>واجهة معتمدة · صلاحيات محمية</span></header><div class="hl-command-grid">${c.a.map(([label,target,icon])=>`<button type="button" data-route="${target}" data-action-label="${label}"><i>${icon}</i><span>${label}</span><small>فتح الخدمة</small></button>`).join('')}</div></section>
@@ -87,6 +89,7 @@
         </div>
       </div>`;
     document.getElementById('main')?.prepend(d);
+    syncDashboardIdentity();
 
     d.querySelector('[data-portal-notifications]')?.addEventListener('click',()=>window.HydrolandAccountCenter?.openNotifications?.());
     d.querySelector('[data-portal-messages]')?.addEventListener('click',()=>window.HydrolandMessages?.open?.());
@@ -103,6 +106,7 @@
 
   const applyRole=role=>{const next=role||'diver';if(next==='diver'){clearDashboard();return}render(next)};
   document.addEventListener('hydroland:role-changed',event=>applyRole(event.detail?.role));
+  document.addEventListener('hydroland:profile-data-ready',()=>syncDashboardIdentity());
   document.getElementById('exit-role')?.addEventListener('click',clearDashboard);
   document.addEventListener('hydroland:portal-cleared',clearDashboard);
   document.addEventListener('hydroland:auth-changed',()=>{const role=window.HydrolandPortalAccess?.getCurrentRole?.()||'diver';if(!window.HydrolandAuth?.isAuthenticated?.()||role==='diver'||!window.HydrolandPortalAccess?.roleAllowed?.(role)){clearDashboard();return}applyRole(role)});
