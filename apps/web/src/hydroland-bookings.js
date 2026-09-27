@@ -68,6 +68,7 @@
       const seats=document.createElement('span');seats.textContent=`المتاح ${Number(trip.remainingSeats??trip.capacity??0)} من ${Number(trip.capacity||0)} مقعد`;
       meta.append(date,seats);
       const button=document.createElement('button');button.type='button';button.dataset.book=String(trip.title||'');button.dataset.tripId=String(trip.id||'');button.textContent='احجز الآن';
+      button.addEventListener('click',()=>{if(button.disabled)return;const selected=tripForButton(button);if(!selected)return;state.selected=selected;state.pendingBooking=null;syncBookingDetails(selected);const bookingTitle=document.getElementById('booking-title');if(bookingTitle)bookingTitle.textContent=selected.title;if(!auth()?.isAuthenticated?.()){toast('سجّل الدخول أولًا لإتمام الحجز');document.querySelector('.hl-login')?.classList.remove('hidden');return}bookingDialog?.showModal()});
       details.append(location,title,description,meta,button);card.append(image,details);
       grid.insertBefore(card,mapCard||status);
     }
