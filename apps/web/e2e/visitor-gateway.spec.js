@@ -1,0 +1,45 @@
+import { test, expect } from '@playwright/test';
+
+test('visitor can explore public sections, return to sign-up, and sees account alerts only after sign-in', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => Boolean(window.HydrolandAuth && window.HydrolandMessages));
+
+  const entry = page.locator('.hl-login');
+  await expect(entry).toHaveAttribute('role', 'dialog');
+  await expect(entry).toHaveAttribute('aria-modal', 'true');
+  await expect(entry.getByRole('heading', { name: 'بوابتك إلى البحر الأحمر' })).toBeVisible();
+  await expect(entry.locator('.hl-login-guest')).toBeVisible();
+
+  await entry.locator('.hl-login-guest').click();
+  await expect(entry).toHaveClass(/hidden/);
+  expect(await page.evaluate(() => ({
+    guest: window.HydrolandAuth.isGuestMode(),
+    authenticated: window.HydrolandAuth.isAuthenticated(),
+    access: document.body.classList.contains('hl-visitor-mode')
+  }))).toEqual({ guest: true, authenticated: false, access: true });
+  await expect(page.locator('#visitor-auth-cta')).toBeVisible();
+  await expect(page.locator('#top-notifications')).toBeHidden();
+  await expect(page.locator('#top-messages')).toBeHidden();
+  await expect(page.locator('.mobile-nav [data-visitor-auth-control="messages"]')).toBeHidden();
+
+  await page.locator('.hl-visitor-routebar [data-visitor-target="trips"]').click();
+  await expect(page).toHaveURL(/#trips$/);
+  await expect(page.locator('.nav-item[href="#trips"]').first()).toHaveClass(/active/);
+
+  await page.locator('#visitor-auth-cta').click();
+  await expect(entry).not.toHaveClass(/hidden/);
+  await entry.locator('.hl-login-secondary').click();
+  await expect(entry.locator('.hl-auth-panel')).toBeVisible();
+  await expect(entry.locator('.hl-auth-panel input[name="email"]')).toBeFocused();
+
+  await page.evaluate(() => {
+    sessionStorage.setItem('hl-access-token', 'visitor-test-access');
+    sessionStorage.setItem('hl-refresh-token', 'visitor-test-refresh');
+    window.HydrolandAuth.syncAuthUi();
+    document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));
+  });
+  await expect.poll(() => page.locator('body').evaluate(element => element.classList.contains('hl-visitor-mode'))).toBe(false);
+  await expect(page.locator('#top-notifications')).toBeVisible();
+  await expect(page.locator('#top-messages')).toBeVisible();
+});
