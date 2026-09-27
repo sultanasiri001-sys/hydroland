@@ -1,0 +1,12 @@
+CREATE TYPE "TrainingCourseStatus" AS ENUM ('DRAFT','PUBLISHED','CLOSED','ARCHIVED');
+CREATE TYPE "TrainingEnrollmentStatus" AS ENUM ('ENROLLED','ACTIVE','COMPLETED','CANCELLED');
+CREATE TABLE "TrainingCourse" ("id" UUID NOT NULL,"title" TEXT NOT NULL,"description" TEXT,"level" TEXT,"capacity" INTEGER NOT NULL DEFAULT 20,"status" "TrainingCourseStatus" NOT NULL DEFAULT 'DRAFT',"instructorAccountId" UUID NOT NULL,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,CONSTRAINT "TrainingCourse_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "TrainingEnrollment" ("id" UUID NOT NULL,"courseId" UUID NOT NULL,"accountId" UUID NOT NULL,"status" "TrainingEnrollmentStatus" NOT NULL DEFAULT 'ENROLLED',"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,"completedAt" TIMESTAMP(3),CONSTRAINT "TrainingEnrollment_pkey" PRIMARY KEY ("id"));
+CREATE INDEX "TrainingCourse_status_createdAt_idx" ON "TrainingCourse"("status","createdAt");
+CREATE INDEX "TrainingCourse_instructorAccountId_status_idx" ON "TrainingCourse"("instructorAccountId","status");
+CREATE UNIQUE INDEX "TrainingEnrollment_courseId_accountId_key" ON "TrainingEnrollment"("courseId","accountId");
+CREATE INDEX "TrainingEnrollment_accountId_status_idx" ON "TrainingEnrollment"("accountId","status");
+CREATE INDEX "TrainingEnrollment_courseId_status_idx" ON "TrainingEnrollment"("courseId","status");
+ALTER TABLE "TrainingCourse" ADD CONSTRAINT "TrainingCourse_instructorAccountId_fkey" FOREIGN KEY ("instructorAccountId") REFERENCES "Account"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "TrainingEnrollment" ADD CONSTRAINT "TrainingEnrollment_courseId_fkey" FOREIGN KEY ("courseId") REFERENCES "TrainingCourse"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "TrainingEnrollment" ADD CONSTRAINT "TrainingEnrollment_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "Account"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
