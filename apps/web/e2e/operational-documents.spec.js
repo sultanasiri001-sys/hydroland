@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import {openWorkspaceSwitcher} from './portal-test-helpers.js';
 
 const installApi=async page=>{
   const state={documents:[],createPayload:null,revisePayload:null,submitCount:0};
@@ -27,14 +28,14 @@ const seed=async page=>{
   const state=await installApi(page);
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile));
-  await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','e2e-access');sessionStorage.setItem('hl-refresh-token','e2e-refresh');window.HydrolandAuth.syncAuthUi();await window.HydrolandProfile.load()});
+  await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','e2e-access');sessionStorage.setItem('hl-refresh-token','e2e-refresh');window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));await window.HydrolandProfile.load()});
   await page.waitForFunction(()=>Boolean(window.HydrolandDocuments));
   return state;
 };
 
 test('organization can create, revise and submit an operational document from the browser',async({page})=>{
   const state=await seed(page);
-  await page.locator('#role-switch').click();
+  await openWorkspaceSwitcher(page);
   await page.locator('#role-dialog [data-role="organization"]').click();
   const panel=page.locator('#hl-documents');await expect(panel).toBeVisible();
   await expect(panel.locator('[data-doc-org]')).toHaveValue('org-1');
@@ -61,7 +62,7 @@ test('organization can create, revise and submit an operational document from th
 
 test('document quick actions are connected instead of disabled placeholders',async({page})=>{
   await seed(page);
-  await page.locator('#role-switch').click();await page.locator('#role-dialog [data-role="organization"]').click();
+  await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="organization"]').click();
   const dashboard=page.locator('.hl-role-dashboard[data-role="organization"]');await expect(dashboard).toBeVisible();
   for(const name of ['رفع الوثائق','التوقيع الإلكتروني','طلب اعتماد الإدارة','متابعة الحالة'])await expect(dashboard.getByRole('button',{name})).toBeEnabled();
   await dashboard.getByRole('button',{name:'متابعة الحالة'}).click();await expect(page.locator('#hl-documents')).toBeVisible();

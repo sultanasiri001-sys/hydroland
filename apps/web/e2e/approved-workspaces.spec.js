@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {openWorkspaceSwitcher} from './portal-test-helpers.js';
 
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 
@@ -36,10 +37,10 @@ test('admin workspace opens as the first full-width view with private alerts and
   await page.evaluate(async()=>{
     sessionStorage.setItem('hl-access-token','approved-workspace-access');
     sessionStorage.setItem('hl-refresh-token','approved-workspace-refresh');
-    window.HydrolandAuth.syncAuthUi();
+    window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));
     await window.HydrolandProfile.load();
   });
-  await page.locator('#role-switch').click();
+  await openWorkspaceSwitcher(page);
   await page.locator('#role-dialog [data-role="admin"]').click();
 
   const dashboard=page.locator('.hl-role-dashboard[data-role="admin"]');

@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {openWorkspaceSwitcher} from './portal-test-helpers.js';
 
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 
@@ -29,8 +30,8 @@ test('boat operator registers marine asset and license metadata, admin verifies 
 
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandMarineDocuments));
-  await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','marine-e2e-access');sessionStorage.setItem('hl-refresh-token','marine-e2e-refresh');window.HydrolandAuth.syncAuthUi();await window.HydrolandProfile.load()});
-  await page.locator('#role-switch').click();await page.locator('#role-dialog [data-role="boat"]').click();
+  await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','marine-e2e-access');sessionStorage.setItem('hl-refresh-token','marine-e2e-refresh');window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));await window.HydrolandProfile.load()});
+  await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="boat"]').click();
   const panel=page.locator('#hl-marine-documents');await expect(panel).toBeVisible();
   const dashboard=page.locator('.hl-role-dashboard[data-role="boat"]');
   await page.evaluate(()=>{document.getElementById('hl-marine-documents').hidden=true});
@@ -44,7 +45,7 @@ test('boat operator registers marine asset and license metadata, admin verifies 
   const docForm=panel.locator('[data-marine-asset="asset-marine-e2e"] [data-marine-doc-form]');await docForm.locator('[name="documentType"]').selectOption('REGISTRATION');await docForm.locator('[name="referenceNumber"]').fill('REG-7788');await docForm.locator('[name="expiresAt"]').fill('2027-09-25');await docForm.locator('button[type="submit"]').click();
   await expect.poll(()=>state.pending.length).toBe(1);await expect(panel.locator('[data-marine-asset="asset-marine-e2e"]')).toContainText('PENDING');
 
-  await page.locator('#role-switch').click();await page.locator('#role-dialog [data-role="admin"]').click();
+  await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="admin"]').click();
   await expect(panel).toBeVisible();const review=panel.locator('[data-marine-doc="marine-doc-e2e"]');await expect(review).toContainText('REG-7788');await review.locator('[data-marine-decision="VERIFIED"]').click();
   await expect.poll(()=>state.decision?.outcome).toBe('VERIFIED');await expect(panel).toContainText('لا توجد وثائق بحرية بانتظار المراجعة');
 });

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import {openWorkspaceSwitcher,returnToDiverWorkspace} from './portal-test-helpers.js';
 
 const installProfileApi=async(page,{admin=true}={})=>{
   const profile={id:admin?'admin-e2e':'diver-e2e',email:admin?'admin@hydroland.test':'diver@hydroland.test',status:'ACTIVE',roleAssignments:[{id:'role-1',role:admin?'ADMIN':'DIVER',status:'ACTIVE',activeAt:null,updatedAt:'2026-09-25T00:00:00.000Z'}],person:{firstName:admin?'Admin':'Diver',lastName:'E2E',phone:null,professional:null}};
@@ -14,7 +15,7 @@ const seed=async(page,{admin=true}={})=>{
   const api=await installProfileApi(page,{admin});
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandPortalAccess));
-  await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','e2e-access');sessionStorage.setItem('hl-refresh-token','e2e-refresh');window.HydrolandAuth.syncAuthUi();await window.HydrolandProfile.load()});
+  await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','e2e-access');sessionStorage.setItem('hl-refresh-token','e2e-refresh');window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));await window.HydrolandProfile.load()});
   return api;
 };
 
@@ -22,7 +23,7 @@ test('equipment administration modules are not loaded for a normal authenticated
   await seed(page,{admin:false});
   await expect(page.locator('.hl-inventory')).toHaveCount(0);
   expect(await page.evaluate(()=>[...document.scripts].some(s=>/hydroland-(inventory|stocktake|rental-admin|equipment-rentals)\.js$/.test(s.src)))).toBe(false);
-  await page.locator('#role-switch').click();
+  await openWorkspaceSwitcher(page);
   await page.locator('#role-dialog [data-role="admin"]').dispatchEvent('click');
   await expect(page.locator('.hl-inventory')).toHaveCount(0);
 });
@@ -49,10 +50,10 @@ test('admin portal lazy-loads inventory, registers equipment and creates a renta
   });
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandEquipmentAdmin));
-  await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','e2e-access');sessionStorage.setItem('hl-refresh-token','e2e-refresh');window.HydrolandAuth.syncAuthUi();await window.HydrolandProfile.load()});
+  await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','e2e-access');sessionStorage.setItem('hl-refresh-token','e2e-refresh');window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));await window.HydrolandProfile.load()});
   expect(await page.locator('.hl-inventory').count()).toBe(0);
 
-  await page.locator('#role-switch').click();await page.locator('#role-dialog [data-role="admin"]').click();
+  await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="admin"]').click();
   const inventory=page.locator('.hl-inventory');await expect(inventory).toBeVisible();
   await expect(inventory).toContainText('المستودع والباركود');
   await expect(inventory.locator('#hl-rental-new')).toBeVisible();
@@ -70,5 +71,5 @@ test('admin portal lazy-loads inventory, registers equipment and creates a renta
   await expect(inventory.locator('.hl-rental-invoice')).toContainText('HYD-RNT-E2E');
   expect(createdRental?.renterAccountId).toBe('diver-account-1');
 
-  await page.locator('#exit-role').click();await expect(inventory).toBeHidden();
+  await returnToDiverWorkspace(page);await expect(inventory).toBeHidden();
 });

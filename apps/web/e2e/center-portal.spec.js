@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {openWorkspaceSwitcher} from './portal-test-helpers.js';
 
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 
@@ -30,9 +31,9 @@ test('center portal opens center documents and saves a test report under its act
   const state=await installCenterFixture(page);
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandDocuments));
-  await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','center-e2e-access');sessionStorage.setItem('hl-refresh-token','center-e2e-refresh');window.HydrolandAuth.syncAuthUi();await window.HydrolandProfile.load()});
+  await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','center-e2e-access');sessionStorage.setItem('hl-refresh-token','center-e2e-refresh');window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));await window.HydrolandProfile.load()});
 
-  await page.locator('#role-switch').click();
+  await openWorkspaceSwitcher(page);
   await page.locator('#role-dialog [data-role="center"]').click();
   const dashboard=page.locator('.hl-role-dashboard[data-role="center"]');
   await expect(dashboard).toBeVisible();

@@ -90,7 +90,11 @@
 
     d.querySelector('[data-portal-notifications]')?.addEventListener('click',()=>window.HydrolandAccountCenter?.openNotifications?.());
     d.querySelector('[data-portal-messages]')?.addEventListener('click',()=>window.HydrolandMessages?.open?.());
-    d.querySelector('[data-portal-switch]')?.addEventListener('click',()=>document.getElementById('role-dialog')?.showModal());
+    d.querySelector('[data-portal-switch]')?.addEventListener('click',async()=>{
+      const freshness=window.HydrolandPortalFreshness;
+      if(freshness?.openRoleSwitcher)await freshness.openRoleSwitcher();
+      else document.getElementById('role-dialog')?.showModal();
+    });
     d.querySelectorAll('[data-route]').forEach(node=>{const id=node.dataset.route,label=node.dataset.actionLabel||node.textContent.trim();connectControl(node,role,id,label)});
     d.querySelectorAll('[data-secondary-label]').forEach(node=>{const label=node.dataset.secondaryLabel;const routeMap={'المواد التدريبية':'training','سجل الحضور':'training','الملف المهني':'community','المعدات والمخزون':'store','محترفو الغوص':'training','الملف التجاري':'community','الخدمات الفنية':'store','قطع الغيار':'store','الربط مع المراكز':'community','التوقيع الإلكتروني':'documents','تقارير السلامة':'safety','إدارة المشاركين':'community','مركز السلامة والطوارئ':'safety','الذكاء الاصطناعي':'admin'};const id=routeMap[label];if(!id){node.disabled=true;node.setAttribute('aria-disabled','true');if(label==='الجهات الخارجية · مؤجل')node.title='الربط الخارجي مؤجل حسب التوجيه';return}connectControl(node,role,id,label)});
     d.querySelectorAll('.hl-portal-nav-item').forEach((node,index)=>node.addEventListener('click',async()=>{if(index===0){d.scrollIntoView({behavior:'smooth',block:'start'});return}const id=node.dataset.hlNavRoute;if(!id||!(await authorizeRoleAction(role)))return;const target=targetFor(id);if(!target){setTargetAvailability(node,id,node.dataset.portalLabel);return}d.querySelectorAll('.hl-portal-nav-item').forEach(x=>x.classList.remove('active'));node.classList.add('active');openTarget(id,role);target.scrollIntoView({behavior:'smooth',block:'start'});history.replaceState(null,'','#'+(id==='documents'?'hl-documents':id==='marine-documents'?'hl-marine-documents':id))}));

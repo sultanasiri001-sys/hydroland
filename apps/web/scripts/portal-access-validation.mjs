@@ -14,7 +14,9 @@ for(const marker of [
   "button.disabled=!allowed",
   "document.visibilityState!=='visible'",
   "event.stopImmediatePropagation()",
-  'access.refreshPortalAccess=refreshPortalAccess'
+  'access.refreshPortalAccess=refreshPortalAccess',
+  'openRoleSwitcher',
+  'dialog?.showModal()'
 ])if(!freshness.includes(marker))throw new Error(`Missing portal-access freshness marker: ${marker}`);
 if(!routing.includes("freshnessScript.src='./hydroland-portal-access-freshness.js'"))throw new Error('Portal freshness runtime is not loaded after role task routing.');
 console.log('Portal access validation passed: protected-role entry refreshes /me, fails closed, and revocation is enforced in-session.');

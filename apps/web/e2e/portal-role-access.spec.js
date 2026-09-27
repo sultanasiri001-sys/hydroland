@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {openWorkspaceSwitcher} from './portal-test-helpers.js';
 
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 
@@ -17,7 +18,7 @@ const setup=async page=>{
   await page.evaluate(async()=>{
     sessionStorage.setItem('hl-access-token','portal-access-e2e');
     sessionStorage.setItem('hl-refresh-token','portal-refresh-e2e');
-    window.HydrolandAuth.syncAuthUi();
+    window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));
     await window.HydrolandProfile.load();
   });
   await expect.poll(()=>page.evaluate(()=>window.HydrolandPortalAccess.roleAllowed('admin'))).toBe(true);
@@ -36,11 +37,11 @@ const expectDenied=async page=>{
 
 test('revoked protected role closes an already-open portal in the same session',async({page})=>{
   const state=await setup(page);
-  await page.locator('#role-switch').click();
+  await openWorkspaceSwitcher(page);
   await page.locator('#role-dialog [data-role="admin"]').click();
   await expect.poll(()=>page.evaluate(()=>window.HydrolandPortalAccess.getCurrentRole())).toBe('admin');
   state.roles=[];
-  await page.locator('#role-switch').click();
+  await openWorkspaceSwitcher(page);
   await expect(page.locator('#role-dialog')).toBeVisible();
   await expectDenied(page);
 });
@@ -48,7 +49,7 @@ test('revoked protected role closes an already-open portal in the same session',
 test('protected portal fails closed when authoritative role refresh is unavailable',async({page})=>{
   const state=await setup(page);
   state.fail=true;
-  await page.locator('#role-switch').click();
+  await openWorkspaceSwitcher(page);
   await expect(page.locator('#role-dialog')).toBeVisible();
   await expectDenied(page);
 });
