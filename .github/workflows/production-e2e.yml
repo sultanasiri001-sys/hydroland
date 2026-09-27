@@ -12,7 +12,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
+      - run: npm ci
       - name: Preflight production E2E target
         env:
           E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
