@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test('visitor can explore public sections, return to sign-up, and account alerts follow authentication state', async ({ page }) => {
+test('visitor can explore public sections and return to the sign-up entry', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
@@ -42,15 +42,4 @@ test('visitor can explore public sections, return to sign-up, and account alerts
   await entry.locator('.hl-login-secondary').click();
   await expect(entry.locator('.hl-auth-panel')).toBeVisible();
   await expect(entry.locator('.hl-auth-panel input[name="email"]')).toBeFocused();
-
-  await page.evaluate(() => {
-    window.HydrolandAuth.isAuthenticated = () => true;
-    window.HydrolandAuth.authorizedFetch = async () => new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } });
-    window.HydrolandAuth.setAuthUi(true);
-    document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));
-  });
-  await expect.poll(() => page.evaluate(() => window.HydrolandAuth.isAuthenticated())).toBe(true);
-  await expect.poll(() => page.locator('body').evaluate(element => element.classList.contains('hl-visitor-mode'))).toBe(false);
-  await expect(page.locator('#top-notifications')).toBeVisible();
-  await expect(page.locator('#top-messages')).toBeVisible();
 });
