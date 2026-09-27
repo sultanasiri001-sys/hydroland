@@ -76,6 +76,8 @@ test('unread notifications and inbox indicators reach signed-in workspaces and c
   await expect.poll(()=>page.locator('#top-notifications').getAttribute('data-unread')).toBeNull();
   await expect(page.locator('[data-diver-notifications]')).not.toHaveAttribute('data-unread',/./);
 
+  await page.setViewportSize({width:390,height:844});
+  await notificationDialog.getByRole('button',{name:'إغلاق'}).click();
   await page.locator('.mobile-nav button[data-hl-action="messages"]').click();
   const messagesDialog=page.locator('#hl-messages-dialog');
   await expect(messagesDialog).toBeVisible();
