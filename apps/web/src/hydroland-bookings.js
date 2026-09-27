@@ -42,7 +42,37 @@
     const hint=document.getElementById('booking-seats-hint');if(hint)hint.textContent=trip?`المتاح ${remaining} مقعد`:'اختر عدد المقاعد';
   };
   const syncBookingDetails=trip=>{if(!trip)return;const location=document.getElementById('booking-location');if(location)location.textContent=locationText(trip);const safety=document.querySelector('#booking-dialog .booking-safety span');if(safety)safety.textContent=trip.safety?.decision||'REVIEW';if(priceText)priceText.textContent=formatPrice(trip.price);syncSeats(trip)};
-  const tripForButton=button=>state.trips.find(item=>normalize(item.title)===normalize(button?.dataset?.book||''));
+  const tripForButton=button=>state.trips.find(item=>(button?.dataset?.tripId&&item.id===button.dataset.tripId)||normalize(item.title)===normalize(button?.dataset?.book||''));
+  const tripTypeLabel=type=>({BOAT_DIVE:'رحلة قارب',SHORE_DIVE:'غوص شاطئي',DIVE:'رحلة غوص',SNORKELING:'سنوركل',MARINE_TRIP:'رحلة بحرية'})[String(type||'').toUpperCase()]||'رحلة بحرية';
+  const tripDescription=trip=>String(trip.description||trip.summary||'تفاصيل الرحلة ومتطلبات المشاركة من بيانات المشغّل.');
+  const tripDate=trip=>{const date=new Date(trip.startsAt);return Number.isNaN(date.getTime())?'الموعد من المشغّل':date.toLocaleString('ar-SA',{dateStyle:'medium',timeStyle:'short'})};
+  const renderPublicTrips=(trips,error=false)=>{
+    const grid=document.querySelector('[data-public-trip-grid]');if(!grid)return;
+    const status=grid.querySelector('[data-public-trip-state]');if(!status)return;
+    grid.querySelectorAll('[data-public-trip]').forEach(card=>card.remove());
+    grid.dataset.publicTripCount=String(trips.length);
+    if(error){grid.dataset.tripState='error';status.textContent='تعذر تحميل الرحلات الآن. أعد المحاولة بعد قليل.';status.hidden=false;return}
+    if(!trips.length){grid.dataset.tripState='empty';status.textContent='لا توجد رحلات منشورة للحجز الآن. ستظهر هنا الرحلات المعتمدة من المشغّلين.';status.hidden=false;return}
+    grid.dataset.tripState='ready';status.hidden=true;
+    const mapCard=grid.querySelector('.map-card');
+    for(const trip of trips){
+      const card=document.createElement('article');card.className='trip-card';card.dataset.publicTrip='1';
+      const image=document.createElement('div');image.className=`trip-image ${String(trip.type||'').toUpperCase().includes('SHORE')?'depth':'summer'}`;
+      const badge=document.createElement('span');badge.textContent=tripTypeLabel(trip.type);image.appendChild(badge);
+      const details=document.createElement('div');
+      const location=document.createElement('small');location.textContent=locationText(trip);
+      const title=document.createElement('h3');title.textContent=String(trip.title||'رحلة بحرية');
+      const description=document.createElement('p');description.textContent=tripDescription(trip);
+      const meta=document.createElement('div');meta.className='trip-meta';
+      const date=document.createElement('span');date.textContent=tripDate(trip);
+      const seats=document.createElement('span');seats.textContent=`المتاح ${Number(trip.remainingSeats??trip.capacity??0)} من ${Number(trip.capacity||0)} مقعد`;
+      meta.append(date,seats);
+      const button=document.createElement('button');button.type='button';button.dataset.book=String(trip.title||'');button.dataset.tripId=String(trip.id||'');button.textContent='احجز الآن';
+      details.append(location,title,description,meta,button);card.append(image,details);
+      grid.insertBefore(card,mapCard||status);
+    }
+    window.HydrolandBookingAvailability?.refresh?.();
+  };
   const bindButtons=()=>{
     document.querySelectorAll('[data-book]').forEach(button=>{
       const trip=tripForButton(button);
@@ -54,8 +84,8 @@
     });
   };
   const loadTrips=async()=>{
-    try{const trips=await request('/trips',{method:'GET',public:true});state.trips=Array.isArray(trips)?trips:[];bindButtons();return state.trips;}
-    catch{bindButtons();return state.trips;}
+    try{const trips=await request('/trips',{method:'GET',public:true});state.trips=Array.isArray(trips)?trips.filter(trip=>trip&&trip.id&&trip.title):[];renderPublicTrips(state.trips);bindButtons();return state.trips;}
+    catch{state.trips=[];renderPublicTrips([],true);bindButtons();return state.trips;}
   };
   const startPayment=async booking=>{
     const price=booking?.price||state.selected?.price;
