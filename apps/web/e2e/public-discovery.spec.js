@@ -22,7 +22,7 @@ const installApi=async(page,options={})=>{
 const enter=async(page,url='/')=>{await page.goto(url,{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>Boolean(window.HydrolandPublicUI));await page.locator('.hl-login-guest').click();await expect(page.locator('.hl-login')).toBeHidden();await page.evaluate(()=>document.fonts.ready)};
 const navigate=async(page,id)=>{const link=page.locator(`#navigation a[href="#${id}"]`);if(!await link.isVisible())await page.locator('#menu').click();await link.click();await expect(page.locator('body')).toHaveAttribute('data-public-page',id);await expect.poll(()=>page.evaluate(()=>window.scrollY)).toBe(0);if(id!=='home')await expect(page.locator('#hl-public-page-heading')).toBeInViewport()};
 const noOverflow=async page=>{const widths=await page.evaluate(()=>({page:document.documentElement.scrollWidth,viewport:document.documentElement.clientWidth}));expect(widths.page).toBeLessThanOrEqual(widths.viewport+1)};
-const screenshot=async(page,testInfo,name)=>{await noOverflow(page);await page.screenshot({path:testInfo.outputPath(`public-${name}.png`),fullPage:name==='home-desktop'||name.startsWith('store-')||name.startsWith('training-')})};
+const screenshot=async(page,testInfo,name)=>{await noOverflow(page);await page.screenshot({path:testInfo.outputPath(`public-${name}.png`),fullPage:name.startsWith('home-')||name.startsWith('store-')||name.startsWith('training-')})};
 
 for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',width:768,height:1024},{name:'mobile',width:390,height:844}]){
   test(`public discovery, detail navigation and cart work on ${viewport.name}`,async({page},testInfo)=>{
