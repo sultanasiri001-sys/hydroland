@@ -42,7 +42,7 @@
     const hint=document.getElementById('booking-seats-hint');if(hint)hint.textContent=trip?`المتاح ${remaining} مقعد`:'اختر عدد المقاعد';
   };
   const syncBookingDetails=trip=>{if(!trip)return;const location=document.getElementById('booking-location');if(location)location.textContent=locationText(trip);const safety=document.querySelector('#booking-dialog .booking-safety span');if(safety)safety.textContent=trip.safety?.decision||'REVIEW';if(priceText)priceText.textContent=formatPrice(trip.price);syncSeats(trip)};
-  const tripForButton=button=>state.trips.find(item=>(button?.dataset?.tripId&&item.id===button.dataset.tripId)||normalize(item.title)===normalize(button?.dataset?.book||''));
+  const tripForButton=button=>state.trips.find(item=>button?.dataset?.tripId?item.id===button.dataset.tripId:normalize(item.title)===normalize(button?.dataset?.book||''));
   const tripTypeLabel=type=>({BOAT_DIVE:'رحلة قارب',SHORE_DIVE:'غوص شاطئي',DIVE:'رحلة غوص',SNORKELING:'سنوركل',MARINE_TRIP:'رحلة بحرية'})[String(type||'').toUpperCase()]||'رحلة بحرية';
   const tripDescription=trip=>String(trip.description||trip.summary||'تفاصيل الرحلة ومتطلبات المشاركة من بيانات المشغّل.');
   const tripDate=trip=>{const date=new Date(trip.startsAt);return Number.isNaN(date.getTime())?'الموعد من المشغّل':date.toLocaleString('ar-SA',{dateStyle:'medium',timeStyle:'short'})};
