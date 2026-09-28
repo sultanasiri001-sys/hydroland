@@ -53,9 +53,10 @@ test('planned centers remain interactive when map provider fails without becomin
   await dialog.locator('.hl-map-overview-pin').first().focus();
   await page.keyboard.press('Enter');
   await expect(dialog.locator('.hl-map-selection')).toContainText('جازان');
-  await page.screenshot({path:testInfo.outputPath('saudi-map-desktop.png')});
+  await dialog.locator('[data-map-zoom="reset"]').click();
+  await page.screenshot({path:testInfo.outputPath('public-saudi-map-desktop.png')});
   await page.setViewportSize({width:390,height:844});
   await expect(dialog.locator('[data-map-zoom="reset"]')).toBeVisible();
   await expect(dialog.locator('[data-hl-map-close]')).toBeVisible();
-  await page.screenshot({path:testInfo.outputPath('saudi-map-mobile.png')});
+  await page.screenshot({path:testInfo.outputPath('public-saudi-map-mobile.png')});
 });
