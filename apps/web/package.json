@@ -6,8 +6,9 @@
     "dev": "node scripts/dev.mjs",
     "build": "node scripts/build.mjs",
     "serve": "node scripts/serve.mjs",
-    "test": "node scripts/validate.mjs && node scripts/store-checkout-validation.mjs && node scripts/portal-access-validation.mjs && node scripts/portal-action-authorization-validation.mjs",
-    "test:e2e": "playwright test"
+    "test": "node scripts/validate.mjs && node scripts/design-system-validation.mjs && node scripts/store-checkout-validation.mjs && node scripts/portal-access-validation.mjs && node scripts/portal-action-authorization-validation.mjs",
+    "test:e2e": "playwright test",
+    "validate:design-system": "node scripts/design-system-validation.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2"
