@@ -1,5 +1,4 @@
 /* HYDROLAND Design System — approved visual reference, Phase 1 */
-@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap');
 
 :root{
   --hl-deep:#0A1E3A;--hl-deepest:#020B18;--hl-panel:#06283D;--hl-panel-2:#073B59;
@@ -7,11 +6,12 @@
   --hl-success:#22C55E;--hl-danger:#FF6B6B;--hl-warning:#F59E0B;
   --hl-text:#F5FBFF;--hl-muted:#A9C6D8;
   --hl-glass:rgba(4,31,52,.72);--hl-glass-strong:rgba(3,23,40,.90);
-  --hl-line:rgba(0,212,255,.38);--hl-line-soft:rgba(112,220,255,.18);
+  --hl-line:rgba(103,225,255,.60);--hl-line-soft:rgba(112,220,255,.25);
   --hl-radius-sm:12px;--hl-radius:18px;--hl-radius-lg:28px;
-  --hl-glow:0 0 0 1px rgba(0,212,255,.12),0 0 22px rgba(0,212,255,.18);
+  --hl-glow:0 0 0 1px rgba(152,235,255,.25),0 0 18px rgba(0,212,255,.28),inset 0 0 14px rgba(0,212,255,.10);
   --hl-shadow:0 24px 70px rgba(0,0,0,.38);
   --hl-font:'Tajawal',Tahoma,Arial,sans-serif;
+  --hl-space-1:4px;--hl-space-2:8px;--hl-space-3:12px;--hl-space-4:16px;--hl-space-6:24px;--hl-space-8:32px;
   --hl-theme-primary:var(--theme-primary,var(--hl-deep));--hl-theme-accent:var(--theme-accent,var(--hl-cyan));--hl-theme-gold:var(--theme-gold,var(--hl-gold));--hl-theme-bg:var(--theme-bg,var(--hl-deepest));
 }
 html{direction:rtl;background:var(--hl-deepest);color-scheme:dark}
@@ -29,8 +29,13 @@ body.hydroland-brand .sidebar{
   box-shadow:var(--hl-shadow),inset 0 0 32px rgba(0,212,255,.04)!important;
   backdrop-filter:blur(22px) saturate(130%)!important}
 body.hydroland-brand .shell{padding-right:307px!important;padding-left:1.7rem!important}
-body.hydroland-brand .brand-mark{background:url('./assets/hydroland-mark.svg') center/contain no-repeat!important;border:0!important;box-shadow:none!important}
+body.hydroland-brand .brand-mark{background:url('./assets/hydroland-mark-reference.webp') center/contain no-repeat!important;border:0!important;box-shadow:none!important}
 body.hydroland-brand .brand-mark:before,body.hydroland-brand .brand-mark:after{display:none!important}
+body.hydroland-brand .brand .brand-copy{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:1rem;letter-spacing:0}
+body.hydroland-brand .brand .brand-copy:before,body.hydroland-brand .brand small:after{content:none!important}
+body.hydroland-brand .brand .brand-copy>b{font:800 1.35rem/1.15 'Montserrat',sans-serif;letter-spacing:-.04em;color:#fff}
+body.hydroland-brand .brand .brand-copy>small{font-size:1rem!important;line-height:1.3;color:var(--hl-cyan)!important;letter-spacing:.1em!important}
+body.hydroland-brand .brand-tagline{display:none;font:500 .42rem/1.8 'Montserrat',sans-serif;letter-spacing:.09em;white-space:nowrap;color:#d5e9f1}
 body.hydroland-brand .nav-item{color:#D4E7F2!important;border-radius:14px!important;border:1px solid transparent!important;font-weight:700!important}
 body.hydroland-brand .nav-item:hover{color:#fff!important;background:rgba(0,212,255,.08)!important;border-color:var(--hl-line-soft)!important}
 body.hydroland-brand .nav-item.active{color:#fff!important;background:linear-gradient(100deg,color-mix(in srgb,var(--hl-theme-accent) 30%,transparent),color-mix(in srgb,var(--hl-theme-primary) 58%,transparent))!important;border-color:rgba(89,225,255,.65)!important;box-shadow:0 0 22px rgba(0,212,255,.24),inset 0 0 18px rgba(0,212,255,.08)!important}
@@ -43,7 +48,7 @@ body.hydroland-brand :is(.trip-card,.map-card,.training-section,.product-grid ar
 body.hydroland-brand .landing-hero{
   min-height:620px!important;border-radius:var(--hl-radius-lg)!important;
   background:linear-gradient(90deg,rgba(2,14,27,.92),rgba(3,36,60,.58) 52%,rgba(1,19,34,.08)),
-  url('./assets/red-sea-hero.png') center/cover no-repeat!important}
+  url('./assets/hydroland-ocean-reference.webp') center/cover no-repeat!important}
 body.hydroland-brand .landing-hero:after{content:"";position:absolute;inset:0;pointer-events:none;background:
   linear-gradient(180deg,transparent 48%,rgba(1,13,25,.78)),
   radial-gradient(circle at 55% 48%,rgba(0,212,255,.08),transparent 28rem)}
@@ -52,9 +57,10 @@ body.hydroland-brand .landing-hero h2{font-weight:900!important;line-height:1.05
 body.hydroland-brand .eyebrow,body.hydroland-brand .section-heading a{color:var(--hl-cyan)!important}
 body.hydroland-brand .hero-kicker{color:var(--hl-gold)!important}
 body.hydroland-brand .primary-button,body.hydroland-brand .search-bar button{
+  border-radius:var(--hl-radius-sm)!important;min-height:44px;
   background:linear-gradient(135deg,color-mix(in srgb,var(--hl-theme-gold) 68%,#fff),var(--hl-theme-gold))!important;color:#102033!important;border:1px solid rgba(255,231,169,.65)!important;
   box-shadow:0 0 24px rgba(246,195,94,.24)!important}
-body.hydroland-brand .ghost-button{color:#fff!important;background:rgba(2,27,47,.68)!important;border:1px solid var(--hl-line)!important}
+body.hydroland-brand .ghost-button{color:#fff!important;background:rgba(2,27,47,.68)!important;border:1px solid var(--hl-line)!important;border-radius:var(--hl-radius-sm)!important;min-height:44px}
 body.hydroland-brand :is(.icon-button,.language,.search-bar,.mobile-nav){background:var(--hl-glass)!important;border-color:var(--hl-line-soft)!important;backdrop-filter:blur(18px)!important}
 body.hydroland-brand .avatar{background:linear-gradient(145deg,color-mix(in srgb,var(--hl-theme-gold) 68%,#fff),var(--hl-theme-gold))!important;color:#102033!important}
 body.hydroland-brand .status-pill{background:rgba(0,212,255,.10)!important;border-color:var(--hl-line)!important}

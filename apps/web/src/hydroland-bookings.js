@@ -73,6 +73,7 @@
       const badge=document.createElement('span');badge.textContent=tripTypeLabel(trip.type);image.appendChild(badge);
       const details=document.createElement('div');
       const location=document.createElement('small');location.textContent=locationText(trip);
+      const kind=document.createElement('span');kind.className='hl-public-trip-kind';kind.textContent=tripTypeLabel(trip.type);
       const title=document.createElement('h3');title.textContent=String(trip.title||'رحلة بحرية');
       const description=document.createElement('p');description.textContent=tripDescription(trip);
       const meta=document.createElement('div');meta.className='trip-meta';
@@ -84,7 +85,7 @@
       const price=document.createElement('strong');price.className='hl-public-price';price.textContent=formatPrice(trip.price);
       const detailLink=document.createElement('a');detailLink.href='#trip/'+encodeURIComponent(trip.id);detailLink.dataset.publicDetail='trip';detailLink.textContent='تفاصيل الرحلة';detailLink.setAttribute('aria-label','تفاصيل '+trip.title);
       const actions=document.createElement('div');actions.className='hl-public-card-actions';actions.append(detailLink,button);
-      details.append(location,title,description,meta,price,actions);card.append(image,details);
+      details.append(location,title,description,meta,price,actions,kind);card.append(image,details);
       grid.insertBefore(card,mapCard||status);
     }
     window.HydrolandBookingAvailability?.refresh?.();

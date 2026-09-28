@@ -27,7 +27,7 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
     await expect(page.locator('#top-messages')).toBeHidden();
     await expect(page.locator('.hl-finance')).toBeHidden();
     await page.evaluate(()=>document.fonts.ready);
-    const artwork=await page.evaluate(async()=>Promise.all(['hydroland-ocean-reference.webp','hydroland-island-reference.webp'].map(async name=>{const image=new Image();image.src='./assets/'+name;await image.decode();return image.naturalWidth})));
+    const artwork=await page.evaluate(async()=>Promise.all(['hydroland-ocean-reference.webp','hydroland-island-reference.webp','hydroland-mark-reference.webp','hydroland-community-reference.webp','hydroland-assistant-reference.webp'].map(async name=>{const image=new Image();image.src='./assets/'+name;await image.decode();return image.naturalWidth})));
     expect(artwork.every(width=>width>=1024)).toBe(true);
     const geometry=await page.evaluate(()=>{
       const box=selector=>{const r=document.querySelector(selector).getBoundingClientRect();return {top:r.top,height:r.height,left:r.left,right:r.right}};

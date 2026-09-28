@@ -28,6 +28,7 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
   test(`public discovery, detail navigation and cart work on ${viewport.name}`,async({page},testInfo)=>{
     test.setTimeout(60_000);await page.setViewportSize({width:viewport.width,height:viewport.height});const writes=await installApi(page);await enter(page);
     await expect(page.locator('[data-public-trip]')).toHaveCount(3);
+    await expect(page.locator('.hl-map-preview-pin')).toHaveCount(1); // Shared live coordinates are represented once.
     await screenshot(page,testInfo,`home-${viewport.name}`);
     if(viewport.name==='desktop'){const footer=await page.locator('.site-footer').boundingBox();expect(footer.y+footer.height).toBeLessThanOrEqual(viewport.height+60)}
     await navigate(page,'explore');await expect(page.locator('.hl-public-explore-grid>a')).toHaveCount(6);await expect(page.locator('#home')).toBeHidden();

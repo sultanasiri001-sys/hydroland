@@ -29,7 +29,7 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.28;ba
 .language,.icon-button,.avatar{border-color:var(--hydro-line)!important;background:rgba(4,31,48,.78)!important;backdrop-filter:blur(16px)}
 .eyebrow{color:#66d8ff!important}
 .topbar h1{font-weight:900;letter-spacing:-.045em}
-.landing-hero{min-height:565px!important;border-radius:28px!important;border:1px solid rgba(105,210,246,.25)!important;box-shadow:var(--hydro-shadow)!important;background:linear-gradient(90deg,rgba(1,17,29,.94) 0%,rgba(2,28,45,.80) 38%,rgba(2,37,58,.22) 74%),url('./assets/red-sea-hero.png') center/cover!important}
+.landing-hero{min-height:565px!important;border-radius:28px!important;border:1px solid rgba(105,210,246,.25)!important;box-shadow:var(--hydro-shadow)!important;background:linear-gradient(90deg,rgba(1,17,29,.94) 0%,rgba(2,28,45,.80) 38%,rgba(2,37,58,.22) 74%),url('./assets/hydroland-ocean-reference.webp') center/cover!important}
 .landing-hero:before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(3,17,29,.03) 55%,rgba(3,17,29,.82));pointer-events:none}
 .landing-hero .hero-copy{max-width:760px!important}
 .hero-kicker{color:var(--hydro-gold)!important;letter-spacing:.17em!important;font-size:.75rem!important;font-weight:800!important}

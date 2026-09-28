@@ -72,7 +72,7 @@
     d.innerHTML=`
       <div class="hl-portal-shell">
         <aside class="hl-portal-nav" aria-label="${c.t}">
-          <div class="hl-portal-brand"><span class="hl-portal-mark">${role==='center'?'<img src="./assets/hydroland-mark.svg" alt="">':c.icon}</span><div><b>HYDROLAND</b><small>${c.k}</small></div></div>
+          <div class="hl-portal-brand"><span class="hl-portal-mark">${role==='center'?'<img src="./assets/hydroland-mark-reference.webp" alt="">':c.icon}</span><div><b>HYDROLAND</b><small>${c.k}</small></div></div>
           ${role==='center'?'<section class="hl-center-member" aria-label="حساب المركز"><span data-center-avatar>H</span><div><b data-center-name>حساب مركز الغوص</b><small>مساحة تشغيل مركز الغوص</small></div></section>':''}
           <nav>${c.nav.map((item,index)=>`<button type="button" class="hl-portal-nav-item${index===0?' active':''}" data-portal-label="${item}"><span>${String(index+1).padStart(2,'0')}</span>${item}</button>`).join('')}</nav>
           <div class="hl-portal-safe"><b>السلامة أولًا</b><small>الصلاحيات والبيانات من النظام الفعلي.</small><button type="button" class="hl-portal-switch" data-portal-switch>⇄ تبديل الواجهة</button><button type="button" class="hl-portal-switch" data-hl-action="logout">↪ تسجيل الخروج</button></div>
