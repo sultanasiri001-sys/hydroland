@@ -160,3 +160,10 @@ Browser verification includes all six authenticated portal layouts at desktop, t
 ## أولوية الواجهات الرئيسية — الخرائط مؤجلة
 
 وجّه المستخدم بإنهاء الواجهات الرئيسية أولًا وتأجيل الخرائط إلى آخر العمل. هذه الدفعة لا تعدّل الخرائط. تمت مقارنة الزائر وهواة الغوص والشركات باللوحات المعتمدة: تكبير الشعار في القوائم، تعديل نصوص وصور مسارات الزائر، زر أزرق لهواة الغوص، بطاقات مؤشرات بخلفيات بحرية وأيقونات دائرية، إزالة الأيقونات الكبيرة التي تحجب صور الإجراءات، وإطارات مستقلة للجاهزية. صحح تمييز الرئيسية النشط عند دخول هواة الغوص. بطاقات المؤشرات المشتركة اكتسبت الخلفية البحرية، وأصبحت إجراءات الشركات صفًا واحدًا على الكمبيوتر بنفس نمط مرجعها مع استجابة للتابلت والجوال. معرفات الخدمات والصلاحيات والأرقام الفعلية لم تتغير. الفحص الساكن والبناء ناجحان؛ الصور واختبارات المتصفح للالتزام الجديد مطلوبة قبل القبول. بقية الفروق في الواجهات ما زالت ضمن العمل، ولا تمثل هذه الدفعة إغلاقها كلها.
+
+### Main interface visual review follow-up
+- Commit a1e057d passed all eight CI workflows, including browser E2E and desktop/tablet/mobile screenshot generation (Web run 36470540133).
+- Inspected actual diver/organization desktop and public mobile screenshots. The diver blue CTA, framed readiness tiles and organization ten-action desktop row render correctly.
+- Follow-up: show the actual member name and initial in the existing diver account button, preserving its account/wallet handlers; clear the identity presentation when leaving the role or signing out. Remove header blur to expose the marine scene. Vary metric backgrounds using existing marine/equipment assets and improve readiness caption contrast.
+- Preserve requested terminology: محترفي الغوص.
+- Static validation and production build passed. This is not visual closure: organization hero artwork and other portal-specific differences still require review; maps remain deferred. No merge or production deployment.
