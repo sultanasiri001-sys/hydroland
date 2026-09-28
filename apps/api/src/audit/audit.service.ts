@@ -18,6 +18,27 @@ export class AuditService {
     return this.db.auditEvent.create({data:{action:input.action,resource:input.resource,resourceId:input.resourceId,actorId,metadata:input.metadata as never}});
   }
 
+  async recordWebhookOnce(input:{provider:string;eventId:string;eventType:string}){
+    const replayKey=`${input.provider}:${input.eventId}`;
+    return this.db.$transaction(async tx=>{
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${replayKey})::bigint)`;
+      const existing=await tx.auditEvent.findFirst({
+        where:{action:'integration.webhook.verified',resource:'integration.webhook',resourceId:replayKey},
+        select:{id:true},
+      });
+      if(existing)return false;
+      await tx.auditEvent.create({
+        data:{
+          action:'integration.webhook.verified',
+          resource:'integration.webhook',
+          resourceId:replayKey,
+          metadata:{provider:input.provider,eventId:input.eventId,eventType:input.eventType},
+        },
+      });
+      return true;
+    });
+  }
+
   async mine(accountId:string){
     const account=await this.db.account.findUnique({where:{id:accountId},select:{personId:true}});
     if(!account)return [];
