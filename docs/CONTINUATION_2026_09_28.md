@@ -134,3 +134,7 @@ The presentation now has one design-token/control layer, one application shell, 
 Portal home screens follow role-specific compositions: diver hero/profile summary/action cards/readiness; center masthead/operations/metrics/picture actions/resource panels; organization service requests/documents/approval workflow; admin command summary/actions/integrations/safety/approvals. Professional and brokerage portals use the same approved identity with their existing service structure because no independent board was supplied for them. Operational services open inside their workspace shell rather than appearing as an unstructured stack below every dashboard. Unimplemented services stay disabled or explicitly pending; no sample metrics or external safety/AI integrations are represented as live.
 
 Browser verification includes all six authenticated portal layouts at desktop, tablet, and mobile sizes, plus public catalog/details, authentication, session expiry, portal revocation, and document workflows. This section records scope and implementation, not a production deployment or final visual approval.
+
+## تحديث المسميات المعتمدة
+
+بتوجيه المستخدم: واجهة `diver` باسم **هواة الغوص**، وواجهة `instructor` باسم **محترفي الغوص**، وواجهة `boat` باسم **الوسائط البحرية**. هذه المسميات تتقدم على أي تسمية سابقة في وثائق المتابعة. التعديل في العرض والقوائم فقط؛ معرفات الأدوار والصلاحيات ثابتة.

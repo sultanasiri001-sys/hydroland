@@ -41,6 +41,6 @@ test('boat operator manages maintenance and admin activates a compliant marine a
   const form=card.locator('form[data-marine-maintenance]');await form.locator('[name="maintenanceType"]').fill('فحص المحرك');await form.locator('[name="dueAt"]').fill('2030-01-01');await form.locator('button[type="submit"]').click();await expect.poll(()=>asset.maintenance.length).toBe(1);await expect(card).toContainText('فحص المحرك');
   await card.locator('[data-marine-maintenance-complete]').click();await expect.poll(()=>asset.maintenance[0]?.status).toBe('COMPLETED');
   await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="admin"]').click();
-  await page.locator('.hl-role-dashboard .hl-portal-nav-item[data-portal-label="الوساطة البحرية"]').click();
+  await page.locator('.hl-role-dashboard .hl-portal-nav-item[data-portal-label="الوسائط البحرية"]').click();
   await expect(panel).toBeVisible();const review=panel.locator('[data-marine-readiness-review="asset-marine-readiness"]');await expect(review).toContainText('قارب الجاهزية');await review.locator('[data-marine-asset-status="ACTIVE"]').click();await expect.poll(()=>state.lastStatus).toBe('ACTIVE');await expect(review).toContainText('ACTIVE');
 });
