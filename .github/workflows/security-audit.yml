@@ -16,7 +16,7 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm ci
-      - name: Generate dependency audit report
+      - name: Generate dependency audit report and enforce severity gate
         shell: bash
         run: |
           npm audit --json > audit.json || true
@@ -28,8 +28,13 @@ jobs:
             .filter(([,v])=>['high','critical'].includes(v.severity))
             .map(([name,v])=>({name,severity:v.severity,direct:v.isDirect,range:v.range,fixAvailable:v.fixAvailable,via:(v.via||[]).map(x=>typeof x==='string'?x:{source:x.source,name:x.name,title:x.title,severity:x.severity,range:x.range})}));
           console.log(JSON.stringify({metadata:report.metadata?.vulnerabilities||{},highOrCritical:rows},null,2));
+          if(rows.length){
+            console.error(`Security gate failed: ${rows.length} high/critical package vulnerabilities detected.`);
+            process.exit(1);
+          }
           NODE
       - name: Upload audit report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: npm-audit-report
