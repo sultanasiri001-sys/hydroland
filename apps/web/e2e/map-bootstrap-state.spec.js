@@ -54,6 +54,7 @@ test('planned centers remain interactive when map provider fails without becomin
   await page.keyboard.press('Enter');
   await expect(dialog.locator('.hl-map-selection')).toContainText('جازان');
   await dialog.locator('[data-map-zoom="reset"]').click();
+  await expect(dialog.locator('.hl-map-selection')).toBeHidden();
   const canvasBox=await dialog.locator('[data-hl-map-canvas]').boundingBox();
   const dialogBox=await dialog.boundingBox();
   expect(canvasBox.height).toBeLessThan(610);
