@@ -55,7 +55,10 @@ test('cancelled sign-in ignores the pending success and erases the password',asy
   await page.locator('.hl-auth-panel [name="email"]').fill('account@hydroland.test');
   await page.locator('.hl-auth-panel [name="password"]').fill('Hydroland-Test-2026!');
   await page.locator('.hl-auth-submit').click();await expect.poll(()=>Boolean(pending)).toBe(true);
+  // Disabled pending buttons can lose focus to body; cancellation must not rely on form focus.
+  await page.locator('.hl-auth-submit').evaluate(button=>button.blur());
   await page.keyboard.press('Escape');
+  await expect(page.locator('.hl-login')).toBeHidden();
   await json(pending,{accessToken:'cancelled-access',refreshToken:'cancelled-refresh'});
   await expect(page.locator('.hl-auth-panel')).not.toHaveAttribute('aria-busy');
   expect(await session(page)).toEqual(signedOut);
