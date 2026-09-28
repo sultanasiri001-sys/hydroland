@@ -54,6 +54,10 @@ test('planned centers remain interactive when map provider fails without becomin
   await page.keyboard.press('Enter');
   await expect(dialog.locator('.hl-map-selection')).toContainText('جازان');
   await dialog.locator('[data-map-zoom="reset"]').click();
+  const canvasBox=await dialog.locator('[data-hl-map-canvas]').boundingBox();
+  const dialogBox=await dialog.boundingBox();
+  expect(canvasBox.height).toBeLessThan(610);
+  expect(canvasBox.y+canvasBox.height).toBeLessThanOrEqual(dialogBox.y+dialogBox.height+1);
   await page.screenshot({path:testInfo.outputPath('public-saudi-map-desktop.png')});
   await page.setViewportSize({width:390,height:844});
   await expect(dialog.locator('[data-map-zoom="reset"]')).toBeVisible();

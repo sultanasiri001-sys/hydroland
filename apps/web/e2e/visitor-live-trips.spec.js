@@ -14,7 +14,7 @@ test('visitor sees an honest empty state and can still open the live map when no
   const grid=page.locator('[data-public-trip-grid]');
   await expect(grid.locator('[data-public-trip-state]')).toContainText('لا توجد رحلات منشورة');
   await expect(grid.locator('[data-public-trip]')).toHaveCount(0);
-  await expect(grid.locator('.hl-map-preview-pin')).toHaveCount(0);
+  await expect(grid.locator('.hl-map-preview-pin:not(.hl-map-planned)')).toHaveCount(0);
   await expect(page.locator('.hl-public-weather-metrics b')).toHaveText(['—','—','—']);
   await expect(grid).not.toContainText('رحلة جزيرة سمر');
   await expect(grid).not.toContainText('غوص موقع عمق');
@@ -23,6 +23,6 @@ test('visitor sees an honest empty state and can still open the live map when no
 
   await grid.locator('.map-card [data-hl-map-open]').click();
   await expect(page.locator('#hl-map-dialog')).toBeVisible();
-  await expect(page.locator('#hl-map-dialog')).toContainText('لا توجد رحلات مفتوحة بإحداثيات تشغيلية حاليًا.');
+  await expect(page.locator('#hl-map-dialog')).toContainText('مركز مخطط');
   await expect(page.locator('#hl-map-dialog [data-hl-map-provider]')).toHaveText('الخريطة التفاعلية غير مفعّلة');
 });
