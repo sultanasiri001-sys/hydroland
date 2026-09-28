@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { openWorkspaceSwitcher } from './portal-test-helpers.js';
 
 const waitForApp = async page => {
   await page.waitForFunction(() => Boolean(window.HydrolandAuth && window.HydrolandPortalAccess && window.HydrolandProfile));
@@ -171,12 +172,24 @@ test('unauthenticated runtime keeps the admin console closed', async ({ page }) 
 
 
 test('late-loaded role dashboard replays the current authorized role', async ({ page }) => {
-  await seedSession(page,{roleAssignments:[{role:'ADMIN',status:'ACTIVE'}]});
-  await page.evaluate(() => {
-    window.HydrolandProfileData={profile:{roles:[{role:'ADMIN',status:'ACTIVE'}]}};
-    const adminButton=document.querySelector('#role-dialog [data-role="admin"]');
-    adminButton?.click();
+  let releaseDashboard;
+  const dashboardReady = new Promise(resolve => { releaseDashboard = resolve; });
+  await page.route('**/hydroland-role-dashboards.js', async route => {
+    await dashboardReady;
+    await route.continue();
   });
-  await page.waitForFunction(() => window.HydrolandPortalAccess?.getCurrentRole?.()==='admin');
+
+  try {
+    await seedSession(page,{roleAssignments:[{role:'ADMIN',status:'ACTIVE'}]});
+    await openWorkspaceSwitcher(page);
+    const adminButton = page.locator('#role-dialog [data-role="admin"]');
+    await expect(adminButton).toBeEnabled();
+    await adminButton.click();
+    await expect.poll(() => page.evaluate(() => window.HydrolandPortalAccess.getCurrentRole())).toBe('admin');
+    await expect(page.locator('.hl-role-dashboard')).toHaveCount(0);
+  } finally {
+    releaseDashboard();
+  }
+
   await expect(page.locator('.hl-role-dashboard[data-role="admin"]')).toBeVisible();
 });
