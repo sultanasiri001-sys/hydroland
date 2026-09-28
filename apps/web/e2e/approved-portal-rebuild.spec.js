@@ -31,6 +31,14 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
    const geometry=await page.evaluate(()=>({width:document.documentElement.clientWidth,scroll:document.documentElement.scrollWidth,mainChildren:[...document.querySelector('#main').children].filter(node=>node.getClientRects().length>0).map(node=>node.id||node.className)}));
    expect(geometry.scroll,JSON.stringify(geometry)).toBeLessThanOrEqual(geometry.width+1);
    expect(geometry.mainChildren).toHaveLength(1);
+   if(role==='diver'){
+    const hero=await board.locator('.hl-diver-head').boundingBox();
+    for(const selector of ['.hl-diver-head h1','.hl-diver-head .primary-button']){
+     const content=await board.locator(selector).boundingBox();
+     expect(content.y,`${selector} must fit inside the hero`).toBeGreaterThanOrEqual(hero.y);
+     expect(content.y+content.height,`${selector} must not be clipped`).toBeLessThanOrEqual(hero.y+hero.height);
+    }
+   }
    await expect(board.locator(role==='diver'?'.hl-diver-action-grid>button':'.hl-command-grid>button')).toHaveCount(['organization','admin','boat'].includes(role)?10:6);
    await expect(page.locator('#toast')).not.toHaveClass(/visible/);
    await page.screenshot({path:testInfo.outputPath(`portal-${role}-${viewport.name}.png`),fullPage:true});
