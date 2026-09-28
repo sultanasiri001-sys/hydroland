@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import type { DiverProfile } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { PolicyControlService } from '../trips/policy-control.service';
@@ -37,7 +37,7 @@ export class DiverMasterProfileService {
     }
     // PATCH must distinguish omitted fields from an explicit request to clear them.
     // Pick only editable fields; identity verification and account ownership stay server-managed.
-    const patch: Omit<Prisma.DiverProfileUncheckedCreateInput, 'accountId'> = {};
+    const patch: Partial<Pick<DiverProfile, keyof DiverProfileInput>> = {};
     for (const key of textFields) if (input[key] !== undefined) patch[key] = input[key]?.trim() || null;
     if (patch.identityLast4 && !/^\d{4}$/.test(patch.identityLast4)) throw new BadRequestException('Identity last4 must contain exactly four digits.');
     for (const key of dateFields) {
@@ -51,13 +51,21 @@ export class DiverMasterProfileService {
     if (input.preferredLanguage !== undefined) patch.preferredLanguage = input.preferredLanguage?.trim() || 'ar';
 
     const saved = await this.db.serializable(async tx => {
-      const current = await tx.diverProfile.findUnique({ where: { accountId } });
+      // Production uses a UUID accountId while the canonical test schema uses text.
+      // Keep parameterized SQL so PostgreSQL infers the deployed column type.
+      const current = (await tx.$queryRaw<DiverProfile[]>`SELECT * FROM "DiverProfile" WHERE "accountId"=${accountId} LIMIT 1`)[0];
       if (patch.emergencyName !== undefined || patch.emergencyPhone !== undefined) {
         const name = patch.emergencyName === undefined ? current?.emergencyName : patch.emergencyName;
         const phone = patch.emergencyPhone === undefined ? current?.emergencyPhone : patch.emergencyPhone;
         if (Boolean(name) !== Boolean(phone)) throw new BadRequestException('Emergency contact name and phone must be provided together.');
       }
-      return tx.diverProfile.upsert({ where: { accountId }, create: { accountId, ...patch }, update: patch });
+      const next = { ...current, ...patch };
+      const rows = await tx.$queryRaw<DiverProfile[]>`
+        INSERT INTO "DiverProfile" ("id","accountId","dateOfBirth","nationality","identityType","identityLast4","primaryPhone","secondaryPhone","preferredContact","emergencyName","emergencyRelation","emergencyPhone","emergencyAltPhone","bloodType","medicalFitnessStatus","medicalClearanceExpiresAt","preferredLanguage","notes","createdAt","updatedAt")
+        VALUES (gen_random_uuid()::text,${accountId},${next.dateOfBirth ?? null},${next.nationality ?? null},${next.identityType ?? null},${next.identityLast4 ?? null},${next.primaryPhone ?? null},${next.secondaryPhone ?? null},${next.preferredContact ?? null},${next.emergencyName ?? null},${next.emergencyRelation ?? null},${next.emergencyPhone ?? null},${next.emergencyAltPhone ?? null},${next.bloodType ?? null},${next.medicalFitnessStatus ?? 'UNKNOWN'},${next.medicalClearanceExpiresAt ?? null},${next.preferredLanguage === undefined ? 'ar' : next.preferredLanguage},${next.notes ?? null},NOW(),NOW())
+        ON CONFLICT ("accountId") DO UPDATE SET "dateOfBirth"=EXCLUDED."dateOfBirth","nationality"=EXCLUDED."nationality","identityType"=EXCLUDED."identityType","identityLast4"=EXCLUDED."identityLast4","primaryPhone"=EXCLUDED."primaryPhone","secondaryPhone"=EXCLUDED."secondaryPhone","preferredContact"=EXCLUDED."preferredContact","emergencyName"=EXCLUDED."emergencyName","emergencyRelation"=EXCLUDED."emergencyRelation","emergencyPhone"=EXCLUDED."emergencyPhone","emergencyAltPhone"=EXCLUDED."emergencyAltPhone","bloodType"=EXCLUDED."bloodType","medicalFitnessStatus"=EXCLUDED."medicalFitnessStatus","medicalClearanceExpiresAt"=EXCLUDED."medicalClearanceExpiresAt","preferredLanguage"=EXCLUDED."preferredLanguage","notes"=EXCLUDED."notes","updatedAt"=NOW()
+        RETURNING *`;
+      return rows[0];
     });
     await this.audit.record({action:'DIVER_PROFILE_UPDATED',resource:'DiverProfile',resourceId:accountId,metadata:{accountId,medicalFitnessStatus:saved.medicalFitnessStatus,medicalClearanceExpiresAt:saved.medicalClearanceExpiresAt,preferredLanguage:saved.preferredLanguage}});
     return this.get(accountId);
