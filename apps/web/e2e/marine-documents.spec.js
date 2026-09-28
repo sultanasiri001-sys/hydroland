@@ -40,6 +40,7 @@ test('boat operator registers marine asset and license metadata, admin verifies 
   await page.evaluate(()=>{document.getElementById('hl-marine-documents').hidden=true});
   await dashboard.locator('.hl-portal-nav-item[data-portal-label="المستندات والتراخيص"]').click();
   await expect(panel).toBeVisible();
+  await page.evaluate(()=>window.HydrolandMarineDocuments.refresh());
   const assetForm=panel.locator('[data-marine-asset-form]');await assetForm.locator('[name="name"]').fill('قارب القحمة');await assetForm.locator('[name="assetType"]').selectOption('DIVE_BOAT');await assetForm.locator('[name="registrationNumber"]').fill('QA-2026-01');await assetForm.locator('[name="passengerCapacity"]').fill('10');await assetForm.locator('button[type="submit"]').click();
   await expect.poll(()=>state.assets.length).toBe(1);await expect(panel.locator('[data-marine-asset="asset-marine-e2e"]')).toContainText('قارب القحمة');
   const docForm=panel.locator('[data-marine-asset="asset-marine-e2e"] [data-marine-doc-form]');await docForm.locator('[name="documentType"]').selectOption('REGISTRATION');await docForm.locator('[name="referenceNumber"]').fill('REG-7788');await docForm.locator('[name="expiresAt"]').fill('2027-09-25');await docForm.locator('button[type="submit"]').click();
