@@ -100,3 +100,28 @@ test('missing detail links show an honest state and public search opens the matc
   await installApi(page);await enter(page,'/#product/missing');const detail=page.locator('#hl-public-detail');await expect(detail.locator('h2')).toHaveText('هذا المحتوى غير متاح');await detail.locator('[data-detail-back]').click();await expect(page).toHaveURL(/#store$/);
   await navigate(page,'home');await page.locator('#search-form input').fill('قناع');await page.locator('#search-form button').click();await expect(page.locator('body')).toHaveAttribute('data-public-page','store');await expect(page.locator('[data-public-product="mask-public"]')).toBeVisible();
 });
+
+test('opening trip details stops an in-flight page scroll and preserves the viewport',async({page},testInfo)=>{
+  await page.setViewportSize({width:390,height:844});
+  await installApi(page);await enter(page);await navigate(page,'trips');
+  const result=await page.evaluate(async()=>{
+    const frame=()=>new Promise(resolve=>requestAnimationFrame(resolve));
+    window.scrollTo({top:Math.min(650,document.documentElement.scrollHeight-innerHeight),behavior:'smooth'});
+    for(let i=0;i<30&&scrollY<20;i++)await frame();
+    const startedAt=scrollY;
+    document.querySelector('a[href="#trip/boat-public"]').click();
+    const samples=[];
+    for(let i=0;i<15;i++){
+      await frame();
+      const dialog=document.getElementById('hl-public-detail').getBoundingClientRect();
+      samples.push({scrollY,visualTop:visualViewport.pageTop,dialogTop:dialog.top,dialogBottom:dialog.bottom});
+    }
+    return {startedAt,samples};
+  });
+  console.log('DETAIL_SCROLL_DIAGNOSTIC '+JSON.stringify(result));
+  expect(result.startedAt).toBeGreaterThan(0);
+  expect(new Set(result.samples.map(sample=>sample.scrollY)).size,JSON.stringify(result)).toBe(1);
+  await screenshot(page,testInfo,'trip-detail-scroll-mobile');
+  await page.locator('[data-detail-close]').click();
+  await expect(page.locator('#hl-public-detail')).toBeHidden();
+});
