@@ -1,0 +1,86 @@
+name: Phase 11 recovery drill
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/api/prisma/**'
+      - '.github/workflows/phase11-recovery-drill.yml'
+      - 'docs/PRODUCTION_RECOVERY_RUNBOOK.md'
+  schedule:
+    - cron: '30 3 * * 0'
+
+permissions:
+  contents: read
+
+jobs:
+  restore-drill:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql://hydroland:hydroland@127.0.0.1:5432/hydroland?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Start disposable PostgreSQL 18
+        run: |
+          docker run -d --name phase11-postgres \
+            -e POSTGRES_USER=hydroland \
+            -e POSTGRES_PASSWORD=hydroland \
+            -e POSTGRES_DB=hydroland \
+            -p 5432:5432 \
+            postgres:18
+          for attempt in $(seq 1 60); do
+            if docker exec phase11-postgres pg_isready -U hydroland -d hydroland >/dev/null 2>&1; then exit 0; fi
+            sleep 2
+          done
+          docker logs phase11-postgres
+          exit 1
+
+      - name: Install dependencies and deploy schema
+        run: |
+          npm ci --ignore-scripts
+          npm run db:generate --workspace=@hydroland/api
+          npm run db:deploy --workspace=@hydroland/api
+
+      - name: Add restore sentinel
+        run: |
+          docker exec phase11-postgres psql -U hydroland -d hydroland -v ON_ERROR_STOP=1 -c \
+            "CREATE TABLE phase11_restore_probe (id text PRIMARY KEY, payload text NOT NULL); INSERT INTO phase11_restore_probe VALUES ('phase11-sentinel','restore-ok');"
+
+      - name: Create logical backup
+        run: |
+          docker exec phase11-postgres pg_dump -U hydroland -d hydroland --format=custom --no-owner --no-acl > phase11-hydroland.dump
+          test -s phase11-hydroland.dump
+
+      - name: Restore into clean database
+        run: |
+          docker exec phase11-postgres createdb -U hydroland hydroland_restore
+          docker exec -i phase11-postgres pg_restore -U hydroland -d hydroland_restore --no-owner --no-acl < phase11-hydroland.dump
+
+      - name: Verify restored data and Prisma migration history
+        run: |
+          sentinel="$(docker exec phase11-postgres psql -U hydroland -d hydroland_restore -Atc "SELECT payload FROM phase11_restore_probe WHERE id='phase11-sentinel'")"
+          migrations="$(docker exec phase11-postgres psql -U hydroland -d hydroland_restore -Atc 'SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL')"
+          test "$sentinel" = 'restore-ok'
+          test "$migrations" -gt 0
+          {
+            echo "PostgreSQL restore drill: PASS"
+            echo "Server: PostgreSQL 18"
+            echo "Sentinel: $sentinel"
+            echo "Applied migration records restored: $migrations"
+            echo "Commit: $GITHUB_SHA"
+            echo "Run: $GITHUB_RUN_ID"
+          } | tee recovery-drill-report.txt
+
+      - name: Upload recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase11-recovery-drill-${{ github.run_id }}
+          path: recovery-drill-report.txt
+          retention-days: 30
