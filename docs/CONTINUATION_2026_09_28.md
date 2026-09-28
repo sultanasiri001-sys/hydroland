@@ -178,3 +178,9 @@ Browser verification includes all six authenticated portal layouts at desktop, t
 ### Phase 2 mobile detail review
 - Web CI run 36472137671 succeeded for 29d60c0; reviewed its actual desktop exploration and mobile training/detail images.
 - Mobile trip-detail screenshot clips the top of the dialog despite preceding visibility assertions. Explicitly anchor the detail dialog to the viewport (fixed/inset/margin auto) and check complete dialog bounds plus both controls before and after screenshot capture. This regression remains under verification until the next CI run and image review.
+
+### Public home reference controls
+- 75e917c passed all eight CI workflows. The new mobile trip-detail image shows the close button fully visible; the viewport-bound regression checks passed.
+- Match reference home controls: illuminated blue selected sidebar entry, light inactive icons, dark gold-outlined registration button, luminous hero CTA borders, and assistant artwork on the right at desktop size. Mobile assistant arrangement remains responsive.
+- Marked the old FINAL_VISUAL_QA checklist as historical because its light visitor treatment and marine-portal label contradict the latest approved references and user instructions.
+- Maps deferred. No merge or deployment. Visual matching is still under review; no closure or percentage claimed.

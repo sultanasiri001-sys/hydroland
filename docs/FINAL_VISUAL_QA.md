@@ -1,5 +1,7 @@
 # HYDROLAND Final Visual QA
 
+> Historical checklist below; superseded by the approved September 28 reference images and `PHASE_1_VISUAL_AUDIT_2026_09_28.md`. The current visitor uses the dark marine identity (Tajawal/Montserrat, cyan illumination and gold actions), not the earlier light treatment. Current user-facing names are **هواة الغوص، محترفي الغوص، الوسائط البحرية**. Do not use the legacy terminology normalization below for new edits. This document is not evidence of final visual closure.
+
 This pass is presentation-only. It does not change API contracts, RBAC, booking authorization, safety policy, external integration readiness, or portal architecture.
 
 ## Approved visual reference
