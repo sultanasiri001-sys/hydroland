@@ -12,6 +12,7 @@ test('registration remains unauthenticated until email verification',async({page
   await page.route('**/api/v1/auth/register',route=>json(route,{email:'pending@hydroland.test',status:'PENDING_VERIFICATION',requiresEmailVerification:true},201));
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.HydrolandAuth));
+  await page.locator('#visitor-auth-cta').click();
   await page.locator('.hl-login-secondary').click();
   const panel=page.locator('.hl-auth-panel');
   await expect(panel).toBeVisible();
@@ -55,6 +56,7 @@ test('recovery controls request generic actions without creating a session',asyn
   await page.route('**/api/v1/auth/email-verification/request',async route=>{calls.push(['verify',await route.request().postDataJSON()]);return json(route,{accepted:true},202);});
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.HydrolandAuth));
+  await page.locator('#visitor-auth-cta').click();
   await page.locator('.hl-login-primary').click();
   const panel=page.locator('.hl-auth-panel');
   await panel.locator('input[name="email"]').fill('recovery@hydroland.test');
@@ -69,6 +71,7 @@ test('MFA login step still gates token storage after recovery UI merge',async({p
   await page.route('**/api/v1/auth/login',route=>json(route,{mfaRequired:true,challengeToken:'mfa-e2e-challenge'}));
   await page.route('**/api/v1/auth/mfa/verify',async route=>{expect(await route.request().postDataJSON()).toEqual({challengeToken:'mfa-e2e-challenge',code:'123456'});return json(route,{accessToken:'mfa-access',refreshToken:'mfa-refresh'});});
   await page.goto('/',{waitUntil:'domcontentloaded'});
+  await page.locator('#visitor-auth-cta').click();
   await page.locator('.hl-login-primary').click();
   const panel=page.locator('.hl-auth-panel');
   await panel.locator('input[name="email"]').fill('mfa@hydroland.test');

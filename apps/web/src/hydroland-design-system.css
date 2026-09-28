@@ -1,77 +1,20 @@
-/* HYDROLAND Design System — approved visual reference, Phase 1 */
-@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap');
-
+/* Approved identity. This file owns tokens and shared controls; pages own composition. */
 :root{
-  --hl-deep:#0A1E3A;--hl-deepest:#020B18;--hl-panel:#06283D;--hl-panel-2:#073B59;
-  --hl-cyan:#00D4FF;--hl-cyan-soft:#67E8F9;--hl-gold:#F6C35E;
-  --hl-success:#22C55E;--hl-danger:#FF6B6B;--hl-warning:#F59E0B;
-  --hl-text:#F5FBFF;--hl-muted:#A9C6D8;
-  --hl-glass:rgba(4,31,52,.72);--hl-glass-strong:rgba(3,23,40,.90);
-  --hl-line:rgba(0,212,255,.38);--hl-line-soft:rgba(112,220,255,.18);
-  --hl-radius-sm:12px;--hl-radius:18px;--hl-radius-lg:28px;
-  --hl-glow:0 0 0 1px rgba(0,212,255,.12),0 0 22px rgba(0,212,255,.18);
-  --hl-shadow:0 24px 70px rgba(0,0,0,.38);
-  --hl-font:'Tajawal',Tahoma,Arial,sans-serif;
-  --hl-theme-primary:var(--theme-primary,var(--hl-deep));--hl-theme-accent:var(--theme-accent,var(--hl-cyan));--hl-theme-gold:var(--theme-gold,var(--hl-gold));--hl-theme-bg:var(--theme-bg,var(--hl-deepest));
+ --hl-deep:#0A1E3A;--hl-deepest:#020B18;--hl-cyan:#00D4FF;--hl-gold:#F6C35E;--hl-success:#22C55E;--hl-danger:#FF6B6B;--hl-warning:#F59E0B;
+ --hl-theme-primary:var(--theme-primary,var(--hl-deep));--hl-theme-accent:var(--theme-accent,var(--hl-cyan));--hl-theme-gold:var(--theme-gold,var(--hl-gold));--hl-theme-bg:var(--theme-bg,var(--hl-deepest));
+ --hl-text:#F5FBFF;--hl-muted:#A9C6D8;--hl-panel:#06283D;--hl-panel-2:#073B59;--hl-cyan-soft:#67E8F9;--hl-gold-2:#FFE3A1;
+ --hl-line:color-mix(in srgb,var(--hl-theme-accent) 52%,#7cbbd8 12%);--hl-line-soft:color-mix(in srgb,var(--hl-theme-accent) 23%,transparent);
+ --hl-glass:linear-gradient(145deg,rgba(14,65,95,.78),rgba(3,23,44,.9));--hl-glass-strong:rgba(3,23,40,.94);
+ --hl-radius-sm:10px;--hl-radius:14px;--hl-radius-lg:18px;--hl-glow:0 0 16px rgba(0,212,255,.22),inset 0 0 18px rgba(0,212,255,.07);--hl-shadow:0 14px 40px rgba(0,0,0,.28);
+ --hl-font:'Tajawal',Tahoma,Arial,sans-serif;--hl-space-1:4px;--hl-space-2:8px;--hl-space-3:12px;--hl-space-4:16px;--hl-space-6:24px;--hl-space-8:32px;
+ --bg:var(--hl-theme-bg);--panel:var(--hl-panel);--panel2:var(--hl-panel-2);--ink:var(--hl-text);--muted:var(--hl-muted);--cyan:var(--hl-theme-accent);--blue:#168bd1;--gold:var(--hl-theme-gold);--line:var(--hl-line-soft);--glass:var(--hl-glass);--shadow:var(--hl-shadow);--r:var(--hl-radius);
+ font-family:var(--hl-font);color-scheme:dark
 }
-html{direction:rtl;background:var(--hl-deepest);color-scheme:dark}
-body.hydroland-brand{font-family:var(--hl-font)!important;color:var(--hl-text)!important;background:
-  radial-gradient(circle at 70% -10%,color-mix(in srgb,var(--hl-theme-accent) 22%,transparent),transparent 34rem),
-  linear-gradient(180deg,color-mix(in srgb,var(--hl-theme-bg) 78%,#03182c) 0%,var(--hl-theme-bg) 100%)!important}
-body.hydroland-brand *{box-sizing:border-box}
-body.hydroland-brand :is(button,input,select,textarea){font-family:var(--hl-font)}
-body.hydroland-brand :focus-visible{outline:2px solid var(--hl-cyan)!important;outline-offset:3px}
-
-body.hydroland-brand .sidebar{
-  right:1.25rem!important;left:auto!important;
-  background:linear-gradient(180deg,rgba(3,27,49,.97),rgba(2,13,27,.94))!important;
-  border:1px solid var(--hl-line)!important;border-radius:var(--hl-radius-lg)!important;
-  box-shadow:var(--hl-shadow),inset 0 0 32px rgba(0,212,255,.04)!important;
-  backdrop-filter:blur(22px) saturate(130%)!important}
-body.hydroland-brand .shell{padding-right:307px!important;padding-left:1.7rem!important}
-body.hydroland-brand .brand-mark{background:url('./assets/hydroland-mark.svg') center/contain no-repeat!important;border:0!important;box-shadow:none!important}
-body.hydroland-brand .brand-mark:before,body.hydroland-brand .brand-mark:after{display:none!important}
-body.hydroland-brand .nav-item{color:#D4E7F2!important;border-radius:14px!important;border:1px solid transparent!important;font-weight:700!important}
-body.hydroland-brand .nav-item:hover{color:#fff!important;background:rgba(0,212,255,.08)!important;border-color:var(--hl-line-soft)!important}
-body.hydroland-brand .nav-item.active{color:#fff!important;background:linear-gradient(100deg,color-mix(in srgb,var(--hl-theme-accent) 30%,transparent),color-mix(in srgb,var(--hl-theme-primary) 58%,transparent))!important;border-color:rgba(89,225,255,.65)!important;box-shadow:0 0 22px rgba(0,212,255,.24),inset 0 0 18px rgba(0,212,255,.08)!important}
-
-body.hydroland-brand :is(.hero,.landing-hero,.trip-card,.map-card,.training-section,.product-grid article,.member-card,.role-console,.safety-strip,.quick-grid button,dialog){
-  border:1px solid var(--hl-line)!important;box-shadow:var(--hl-glow),var(--hl-shadow)!important}
-body.hydroland-brand :is(.trip-card,.map-card,.training-section,.product-grid article,.role-console,.quick-grid button,dialog){
-  background:linear-gradient(145deg,rgba(7,54,82,.82),rgba(2,20,36,.88))!important;
-  backdrop-filter:blur(16px) saturate(125%)!important}
-body.hydroland-brand .landing-hero{
-  min-height:620px!important;border-radius:var(--hl-radius-lg)!important;
-  background:linear-gradient(90deg,rgba(2,14,27,.92),rgba(3,36,60,.58) 52%,rgba(1,19,34,.08)),
-  url('./assets/red-sea-hero.png') center/cover no-repeat!important}
-body.hydroland-brand .landing-hero:after{content:"";position:absolute;inset:0;pointer-events:none;background:
-  linear-gradient(180deg,transparent 48%,rgba(1,13,25,.78)),
-  radial-gradient(circle at 55% 48%,rgba(0,212,255,.08),transparent 28rem)}
-body.hydroland-brand .landing-hero>*{position:relative;z-index:2}
-body.hydroland-brand .landing-hero h2{font-weight:900!important;line-height:1.05!important;text-shadow:0 4px 28px rgba(0,0,0,.7)}
-body.hydroland-brand .eyebrow,body.hydroland-brand .section-heading a{color:var(--hl-cyan)!important}
-body.hydroland-brand .hero-kicker{color:var(--hl-gold)!important}
-body.hydroland-brand .primary-button,body.hydroland-brand .search-bar button{
-  background:linear-gradient(135deg,color-mix(in srgb,var(--hl-theme-gold) 68%,#fff),var(--hl-theme-gold))!important;color:#102033!important;border:1px solid rgba(255,231,169,.65)!important;
-  box-shadow:0 0 24px rgba(246,195,94,.24)!important}
-body.hydroland-brand .ghost-button{color:#fff!important;background:rgba(2,27,47,.68)!important;border:1px solid var(--hl-line)!important}
-body.hydroland-brand :is(.icon-button,.language,.search-bar,.mobile-nav){background:var(--hl-glass)!important;border-color:var(--hl-line-soft)!important;backdrop-filter:blur(18px)!important}
-body.hydroland-brand .avatar{background:linear-gradient(145deg,color-mix(in srgb,var(--hl-theme-gold) 68%,#fff),var(--hl-theme-gold))!important;color:#102033!important}
-body.hydroland-brand .status-pill{background:rgba(0,212,255,.10)!important;border-color:var(--hl-line)!important}
-body.hydroland-brand .status-pill i{background:var(--hl-success)!important;box-shadow:0 0 16px rgba(34,197,94,.75)!important}
-body.hydroland-brand :is(.member-tier,mark){background:linear-gradient(135deg,color-mix(in srgb,var(--hl-theme-gold) 68%,#fff),var(--hl-theme-gold))!important;color:#102033!important}
-body.hydroland-brand .hl-success{color:#D9FFE5!important;border-color:rgba(34,197,94,.5)!important;background:rgba(34,197,94,.12)!important}
-body.hydroland-brand .hl-warning{color:#FFF0C7!important;border-color:rgba(245,158,11,.5)!important;background:rgba(245,158,11,.12)!important}
-body.hydroland-brand .hl-danger{color:#FFE1E1!important;border-color:rgba(255,107,107,.55)!important;background:rgba(255,107,107,.12)!important}
-body.hydroland-brand .hl-empty{color:var(--hl-muted)!important;border:1px dashed var(--hl-line-soft)!important;background:rgba(3,29,49,.48)!important}
-body.hydroland-brand .hl-skeleton{background:linear-gradient(90deg,rgba(255,255,255,.04),rgba(0,212,255,.10),rgba(255,255,255,.04));background-size:220% 100%;animation:hl-shimmer 1.4s linear infinite}
-@keyframes hl-shimmer{to{background-position:-220% 0}}
-@media(max-width:1120px){body.hydroland-brand .shell{padding-right:110px!important}}
-@media(max-width:760px){
-  body.hydroland-brand .sidebar{right:0!important;left:auto!important;transform:translateX(110%)!important;border-radius:0!important}
-  body.hydroland-brand .sidebar.open{transform:translateX(0)!important}
-  body.hydroland-brand .shell{padding:0 1rem 1.5rem!important}
-  body.hydroland-brand .landing-hero{min-height:560px!important;background-position:60% center!important}
-  body.hydroland-brand .mobile-nav{right:.75rem!important;left:.75rem!important}
-}
-@media(prefers-reduced-motion:reduce){body.hydroland-brand *,body.hydroland-brand *:before,body.hydroland-brand *:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+*{box-sizing:border-box}html{direction:rtl;background:var(--hl-theme-bg);scroll-behavior:smooth}body{margin:0;color:var(--hl-text);font-family:var(--hl-font);font-size:15px;line-height:1.55;background:radial-gradient(ellipse at 50% 0,rgba(11,85,125,.3),transparent 70%),var(--hl-theme-bg);min-height:100dvh}
+button,input,select,textarea{font:inherit}button{cursor:pointer}a{color:inherit}button,input,select,textarea{color:inherit}button:disabled{cursor:not-allowed;opacity:.55}button{border:1px solid var(--hl-line-soft);background:rgba(12,57,85,.55);border-radius:var(--hl-radius-sm);padding:.6rem .9rem}button:hover:not(:disabled){border-color:var(--hl-theme-accent)}:focus-visible{outline:2px solid var(--hl-theme-accent);outline-offset:3px}input,select,textarea{min-width:0;max-width:100%;background:rgba(2,16,32,.75);border:1px solid var(--hl-line-soft);border-radius:8px;padding:.65rem .8rem}input::placeholder,textarea::placeholder{color:var(--hl-muted)}[hidden],.hidden{display:none!important}img,svg{max-width:100%}h1,h2,h3,h4,p{margin-top:0}h1,h2,h3,h4{line-height:1.3}h1,h2{font-weight:800}small{font-size:.8em}a{text-underline-offset:4px}svg.hl-icon{width:24px;height:24px;flex:none}
+.primary-button,.hl-login-primary{background:linear-gradient(120deg,#ffe1a0,var(--hl-theme-gold));color:#102438;border:1px solid #ffe2aa;box-shadow:0 0 14px rgba(246,195,94,.2);font-weight:800;min-height:42px;border-radius:10px;padding:.6rem 1.2rem}.ghost-button,.hl-login-secondary{border:1px solid var(--hl-line);background:linear-gradient(140deg,rgba(31,119,168,.54),rgba(6,43,73,.65));font-weight:700;min-height:42px;padding:.6rem 1.2rem}.icon-button,.avatar{width:40px;height:40px;padding:8px;display:inline-grid;place-items:center;border-radius:12px}.avatar{border-color:var(--hl-theme-gold);background:linear-gradient(135deg,#173e59,#08243d);color:var(--hl-theme-gold);font-weight:800}.icon-button svg{width:21px;height:21px}
+.eyebrow{font-size:.7rem;letter-spacing:.09em;font-weight:700;color:var(--hl-theme-accent);margin:0 0 .25rem}.brand{display:flex;align-items:center;justify-content:center;gap:9px;text-decoration:none;color:white}.brand-mark{display:block;flex:none;width:66px;height:68px;background:url('./assets/hydroland-mark-reference.webp') center/contain no-repeat;font-size:0}.brand-copy{display:flex;flex-direction:column;align-items:center;line-height:1.15}.brand-copy b{font:800 1.18rem 'Montserrat',sans-serif;letter-spacing:-.05em}.brand-copy small{font-size:1rem;color:var(--hl-theme-accent);font-weight:700}.brand-tagline{font:500 6px 'Montserrat',sans-serif;letter-spacing:.04em;margin-top:7px;font-style:normal}.hl-panel{border:1px solid var(--hl-line);border-radius:var(--hl-radius);background:var(--hl-glass);box-shadow:var(--hl-glow);backdrop-filter:blur(14px)}.hl-panel-title{display:flex;align-items:center;gap:8px;font-size:1.05rem;margin:0 0 12px}.hl-panel-title .hl-icon{color:var(--hl-theme-accent)}
+.hl-success{color:#b5f6ce;border-color:var(--hl-success);background:rgba(34,197,94,.1)}.hl-warning{color:#ffe8b4;border-color:var(--hl-warning);background:rgba(245,158,11,.1)}.hl-danger{color:#ffcdcd;border-color:var(--hl-danger);background:rgba(255,107,107,.1)}.hl-empty{padding:24px;border:1px dashed var(--hl-line-soft);color:var(--hl-muted);text-align:center}.hl-skeleton{background:linear-gradient(90deg,transparent,rgba(0,212,255,.1),transparent);background-size:220% 100%;animation:hl-shimmer 1.4s linear infinite}@keyframes hl-shimmer{to{background-position:-220% 0}}
+dialog{width:min(700px,calc(100% - 32px));max-height:calc(100dvh - 32px);overflow:auto;overscroll-behavior:contain;padding:24px;color:var(--hl-text);border:1px solid var(--hl-line);border-radius:18px;background:linear-gradient(145deg,#0b3552,#031426);box-shadow:var(--hl-glow),var(--hl-shadow)}dialog::backdrop{background:rgba(0,8,20,.8);backdrop-filter:blur(7px)}.dialog-head{display:flex;justify-content:space-between;align-items:start;gap:12px;margin-bottom:18px}.dialog-head h2{margin:0;font-size:1.35rem}.dialog-head>button{padding:0;width:36px;height:36px;font-size:24px}.toast{position:fixed;z-index:300;bottom:24px;left:24px;max-width:min(500px,calc(100% - 48px));padding:12px 18px;border:1px solid var(--hl-line);border-radius:12px;background:#072c46;box-shadow:var(--hl-shadow);transform:translateY(180%);visibility:hidden;opacity:0;transition:transform .2s,opacity .2s;pointer-events:none}.toast.visible{transform:translateY(0);visibility:visible;opacity:1}
+@media(max-width:760px){body{font-size:14px}dialog{padding:18px;width:calc(100% - 24px)}.toast{bottom:85px}.brand-tagline{font-size:6px}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}

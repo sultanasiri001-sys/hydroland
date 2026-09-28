@@ -5,16 +5,20 @@ const json=(route,body,status=200)=>route.fulfill({status,contentType:'applicati
 
 test('visitor gets the approved public view and no account-only modules',async({page})=>{
   await page.goto('/',{waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>Boolean(window.HydrolandWorkspaceUI&&document.querySelector('.hl-support')));
-  await page.locator('.hl-login-guest').click();
+  await page.waitForFunction(()=>Boolean(window.HydrolandWorkspaceUI&&window.HydrolandPublicUI&&document.querySelector('.hl-support')));
+  await expect(page.locator('.hl-login')).toBeHidden();
 
   await expect(page.locator('body')).toHaveAttribute('data-hl-workspace-role','visitor');
   await expect(page.locator('#home')).toBeVisible();
   await expect(page.locator('#trips')).toBeVisible();
+  await page.locator('#home .ghost-button').click();
+  await expect(page).toHaveURL(/#training$/);
   await expect(page.locator('#training')).toBeVisible();
+  await expect(page.locator('#home')).toBeHidden();
   await expect(page.locator('#role-switch')).toBeHidden();
   for(const selector of ['.hl-finance','.hl-training','.hl-members','.hl-logistics','.hl-procurement','.hl-safety-center','.hl-admin','#hl-documents','#hl-marine-documents'])
     await expect(page.locator(selector)).toBeHidden();
+  await page.locator('#navigation a[href="#community"]').click();
   await expect(page.locator('.hl-support [data-support-form]')).toBeHidden();
   await expect(page.locator('.hl-support-guest-gate')).toBeVisible();
   await expect(page.locator('#top-notifications')).toBeHidden();

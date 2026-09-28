@@ -32,9 +32,9 @@ test('boat operator registers marine asset and license metadata, admin verifies 
   await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandMarineDocuments));
   await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','marine-e2e-access');sessionStorage.setItem('hl-refresh-token','marine-e2e-refresh');window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));await window.HydrolandProfile.load()});
   await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="boat"]').click();
-  const panel=page.locator('#hl-marine-documents');await expect(panel).toBeVisible();
+  const panel=page.locator('#hl-marine-documents');
   const dashboard=page.locator('.hl-role-dashboard[data-role="boat"]');
-  await page.evaluate(()=>{document.getElementById('hl-marine-documents').hidden=true});
+
   await dashboard.locator('[data-action-label="المستندات والتراخيص"]').click();
   await expect(panel).toBeVisible();
   await page.evaluate(()=>{document.getElementById('hl-marine-documents').hidden=true});
@@ -47,6 +47,7 @@ test('boat operator registers marine asset and license metadata, admin verifies 
   await expect.poll(()=>state.pending.length).toBe(1);await expect(panel.locator('[data-marine-asset="asset-marine-e2e"]')).toContainText('PENDING');
 
   await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="admin"]').click();
+  await page.locator('.hl-role-dashboard .hl-portal-nav-item[data-portal-label="الوسائط البحرية"]').click();
   await expect(panel).toBeVisible();const review=panel.locator('[data-marine-doc="marine-doc-e2e"]');await expect(review).toContainText('REG-7788');await review.locator('[data-marine-decision="VERIFIED"]').click();
   await expect.poll(()=>state.decision?.outcome).toBe('VERIFIED');await expect(panel).toContainText('لا توجد وثائق بحرية بانتظار المراجعة');
 });

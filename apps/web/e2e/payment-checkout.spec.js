@@ -37,6 +37,8 @@ test('paid booking sends only booking identity to payment API and redirects to h
   });
   await page.route('http://127.0.0.1:4173/provider-checkout',route=>route.fulfill({status:200,contentType:'text/html',body:'<!doctype html><title>Hosted payment</title><h1>Moyasar hosted checkout stub</h1>'}));
   await prepare(page);
+  await page.waitForFunction(()=>Boolean(window.HydrolandWorkspaceUI));
+  await page.locator('#navigation a[href="#trips"]').click();
   const book=page.locator('[data-book="رحلة جزيرة سمر"]').first();
   await expect.poll(()=>book.isEnabled()).toBe(true);
   await book.click();

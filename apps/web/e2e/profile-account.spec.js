@@ -135,7 +135,7 @@ test('profile settings save, reload persistence and real roleAssignments mapping
   await page.locator('#role-dialog [data-role="admin"]').click();
   const dashboard=page.locator('.hl-role-dashboard[data-role="admin"]');
   await expect(dashboard).toBeVisible();
-  await expect(dashboard.locator('.hl-role-head h3')).toHaveText('مركز القيادة والتحكم');
+  await expect(dashboard.locator('.hl-role-head h1')).toHaveText('مركز القيادة والإدارة');
 });
 
 test('diver profile editor loads, saves and reopens with persisted values', async ({ page }) => {

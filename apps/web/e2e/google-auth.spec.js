@@ -14,6 +14,7 @@ test('Google sign-in stays sessionless until HYDROLAND MFA succeeds', async ({pa
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandGoogleAuth));
   const googleButton=page.locator('[data-google-mock]');
+  await page.locator('#visitor-auth-cta').click();
   await expect(googleButton).toBeVisible();
   await googleButton.click();
   await expect.poll(()=>googlePayload).toEqual({credential:'google-e2e-id-token-credential-abcdefghijklmnopqrstuvwxyz-0123456789'});

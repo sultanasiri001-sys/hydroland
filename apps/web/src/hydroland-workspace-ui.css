@@ -6,6 +6,7 @@
 .hl-authenticated-workspace .quick-grid{display:none!important}
 
 /* Fail closed before role/profile loading completes, including a returning session. */
+body[data-hl-workspace-role="visitor"] .hl-inventory,
 body[data-hl-workspace-role="visitor"] .hl-finance,
 body[data-hl-workspace-role="visitor"] .hl-training,
 body[data-hl-workspace-role="visitor"] .hl-members,
@@ -37,23 +38,19 @@ body.hl-visitor-mode #role-switch{display:none!important}
 .hl-support-guest-gate button,.hl-portal-switch{border:1px solid rgba(0,212,255,.28);border-radius:12px;padding:.65rem .85rem;background:rgba(0,212,255,.09);color:#effaff;font:700 .78rem Tajawal,sans-serif;cursor:pointer}
 .hl-support-guest-gate button:hover,.hl-portal-switch:hover{border-color:#00d4ff;background:rgba(0,212,255,.16)}
 
-/* Match the full-width protected portal boards and remove the duplicated public shell. */
-.hl-managed-workspace .sidebar,
-.hl-managed-workspace .topbar,
-.hl-managed-workspace .mobile-nav,
-.hl-managed-workspace .site-footer{display:none!important}
+/* A protected workspace shows one service at a time, retaining its navigation. */
+.hl-managed-workspace .sidebar,.hl-managed-workspace .topbar,.hl-managed-workspace .mobile-nav,.hl-managed-workspace .site-footer{display:none!important}
 .hl-managed-workspace #role-console{display:none!important}
-.hl-managed-workspace .shell{width:100%!important;max-width:none!important;margin:0!important;padding:0!important}
-.hl-managed-workspace #main{width:100%!important;max-width:none!important;margin:0!important;padding:0!important}
-.hl-managed-workspace .hl-role-dashboard{min-height:100vh;margin:0!important;border-radius:0!important}
-.hl-managed-workspace .hl-portal-shell{min-height:100vh}
-.hl-managed-workspace .hl-portal-nav{position:sticky;top:0;height:100vh;max-height:100vh;overflow:auto}
-.hl-portal-switch{display:flex;width:100%;align-items:center;justify-content:flex-start;gap:.6rem;margin-top:.5rem}
-.hl-managed-workspace .hl-portal-safe small{color:#bdd5e1!important}
-
-@media(max-width:760px){
-  .hl-support-guest-gate{align-items:stretch;flex-direction:column}
-  .hl-managed-workspace .hl-portal-nav{position:static;height:auto;max-height:none;overflow:visible}
-  .hl-managed-workspace .hl-portal-shell{grid-template-columns:1fr}
-  .hl-managed-workspace .hl-portal-nav nav{display:flex;overflow:auto}
-}
+.hl-managed-workspace .shell{margin:0;padding:0;max-width:none;width:100%}
+.hl-managed-workspace #main{margin:0;padding:0;max-width:none;width:100%}
+.hl-managed-workspace .hl-role-dashboard{min-height:100dvh;margin:0;border:0;border-radius:0}
+.hl-authenticated-workspace #main>:not(.hl-role-dashboard):not(#hl-diver-dashboard):not(.hl-workspace-selected){display:none!important}
+.hl-managed-workspace[data-hl-workspace-view="service"] .hl-role-dashboard{min-height:0}
+.hl-managed-workspace[data-hl-workspace-view="service"] .hl-portal-content{display:none}
+.hl-managed-workspace #main>.hl-workspace-selected{margin:16px 256px 24px 24px;max-width:calc(100% - 280px);border-radius:14px;border-color:var(--hl-line);box-shadow:var(--hl-glow)}
+.hl-diver-workspace[data-hl-workspace-view="service"] #hl-diver-dashboard{display:none!important}
+.hl-authenticated-workspace .hl-workspace-selected:not([hidden]){scroll-margin-top:20px}
+.hl-authenticated-workspace .hl-workspace-selected :is(input,select,textarea){border-color:var(--hl-line-soft);border-radius:9px}
+.hl-diver-workspace .site-footer{display:none}
+@media(max-width:1200px){.hl-managed-workspace #main>.hl-workspace-selected{margin-right:228px;max-width:calc(100% - 252px)}}
+@media(max-width:760px){.hl-managed-workspace{padding-bottom:0}.hl-managed-workspace #main>.hl-workspace-selected{margin:12px;max-width:calc(100% - 24px)}.hl-support-guest-gate{align-items:stretch;flex-direction:column}}

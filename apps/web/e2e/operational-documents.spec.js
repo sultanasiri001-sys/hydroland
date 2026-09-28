@@ -37,10 +37,12 @@ test('organization can create, revise and submit an operational document from th
   const state=await seed(page);
   await openWorkspaceSwitcher(page);
   await page.locator('#role-dialog [data-role="organization"]').click();
+  const upload=page.locator('.hl-role-dashboard [data-action-label="رفع الوثائق"]');
+  await expect(upload).toBeEnabled();await upload.click();
   const panel=page.locator('#hl-documents');await expect(panel).toBeVisible();
   await expect(panel.locator('[data-doc-org]')).toHaveValue('org-1');
   await expect(panel.locator('[data-doc-template]')).toHaveValue('template-1');
-  await expect(page.getByRole('button',{name:'رفع الوثائق'})).toBeEnabled();
+
 
   await panel.locator('[name="summary"]').fill('التقرير التشغيلي الأول');
   await panel.locator('[data-doc-save]').click();

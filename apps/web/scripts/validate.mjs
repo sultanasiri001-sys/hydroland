@@ -15,7 +15,7 @@ for (const marker of required) if (!html.includes(marker)) throw new Error(`Miss
 if (!html.includes('<body data-hl-workspace-role="visitor">')) throw new Error('Workspace access must default to guest before authentication and role loading.');
 for (const role of roles) if (!html.includes(`data-role="${role}"`)) throw new Error(`Missing role selector: ${role}`);
 if (html.includes('GHAWAS') || html.includes('<title>غوّاص') || html.includes('>غوّاص<')) throw new Error('Legacy platform branding remains in index.html');
-for (const approved of ['محترفي الغوص','الوساطة البحرية']) if (!html.includes(approved) || !app.includes(approved)) throw new Error(`Missing approved portal terminology: ${approved}`);
+for (const approved of ['هواة الغوص','محترفي الغوص','الوسائط البحرية']) if (!html.includes(approved) || !app.includes(approved)) throw new Error(`Missing approved portal terminology: ${approved}`);
 for (const legacy of ['مدرب محترف','صاحب قارب','واجهة المدرب المحترف','لوحة مشغل القارب']) if (html.includes(legacy) || app.includes(legacy)) throw new Error(`Legacy portal terminology remains: ${legacy}`);
 
 const mobileNav = html.match(/<nav class="mobile-nav"[\s\S]*?<\/nav>/)?.[0] || '';
@@ -84,16 +84,16 @@ for(const marker of ['body[data-hl-workspace-role="visitor"] .hl-finance','.hl-w
 if(!workspaceCss.includes('body.hl-visitor-mode #role-switch{display:none!important}'))throw new Error('Visitors must not see the portal switch control.');
 const shellCss=await readFile(path.join(src,'styles.css'),'utf8');
 for(const selector of ['.topbar h1:after{font-size','.landing-hero h2:after{font-size'])if(shellCss.includes(selector))throw new Error(`Duplicated pseudo-heading rule remains: ${selector}`);
-const visualQa=await readFile(path.join(src,'hydroland-visual-qa.css'),'utf8');
-for(const token of ['--hl-deep:#0A1E3A','--hl-aqua:#00D4FF','--hl-gold:#F6C35E'])if(!visualQa.includes(token))throw new Error(`Approved identity token is missing: ${token}`);
-const portalCss=await readFile(path.join(src,'hydroland-reference-portals.css'),'utf8');
-if(!portalCss.includes('--hl-ref-deep:#06182B')||!portalCss.includes('--hl-ref-cyan:#00D4FF')||!portalCss.includes('--hl-ref-gold:#F6C35E'))throw new Error('Portal dashboards must use the approved visual identity.');
+const visualQa=await readFile(path.join(src,'hydroland-design-system.css'),'utf8');
+for(const token of ['--hl-deep:#0A1E3A','--hl-cyan:#00D4FF','--hl-gold:#F6C35E'])if(!visualQa.includes(token))throw new Error(`Approved identity token is missing: ${token}`);
+const portalCss=await readFile(path.join(src,'hydroland-portals.css'),'utf8');
+if(!portalCss.includes('var(--hl-line)')||!portalCss.includes('var(--hl-theme-accent)')||!portalCss.includes('var(--hl-theme-gold)'))throw new Error('Portal dashboards must use the approved visual identity.');
 const messagesModule=await readFile(path.join(src,'hydroland-messages.js'),'utf8');
 for(const marker of ["mobile.disabled=false","button.id='top-messages'","/messages/conversations","kind:'TEXT'","kind:'VOICE'","sessionStorage.removeItem('hl-guest-mode')","audio controls"])if(!messagesModule.includes(marker))throw new Error(`Missing connected messaging UI boundary: ${marker}`);
 if(messagesModule.includes('MediaRecorder')||messagesModule.includes('getUserMedia'))throw new Error('Messaging UI must not claim direct voice capture before object-storage upload is implemented');
 
 const mapModule = await readFile(path.join(src, 'hydroland-map.js'), 'utf8');
-for(const marker of ["MAPLIBRE_VERSION='6.11.2'",'cdn.jsdelivr.net/npm/maplibre-gl@${MAPLIBRE_VERSION}/dist','HydrolandMapLibreTestDouble','MapLibre runtime failed to load','مزود الخرائط غير مفعّل'])if(!mapModule.includes(marker))throw new Error(`Map runtime integrity marker missing: ${marker}`);
+for(const marker of ["MAPLIBRE_VERSION='6.11.2'",'cdn.jsdelivr.net/npm/maplibre-gl@${MAPLIBRE_VERSION}/dist','HydrolandMapLibreTestDouble','MapLibre runtime failed to load','طبقة المزود غير متاحة'])if(!mapModule.includes(marker))throw new Error(`Map runtime integrity marker missing: ${marker}`);
 if(mapModule.includes('@latest')||mapModule.includes('maplibre-gl@latest'))throw new Error('MapLibre runtime must remain version-pinned.');
 
 console.log(`Validated HYDROLAND shell, six role selectors, ${jsFiles.length} JavaScript modules, ${cssFiles.length} style modules, branding, IDs, responsiveness, accessibility, anonymous/guest/MFA/Google auth separation, connected messaging and pinned resilient MapLibre runtime markers.`);

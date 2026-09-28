@@ -49,8 +49,9 @@ test('admin can create a geolocated trip, refresh Stormglass and approve the for
   await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','weather-e2e-access');sessionStorage.setItem('hl-refresh-token','weather-e2e-refresh');window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));await window.HydrolandProfile.load()});
   await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="admin"]').click();
 
+  await page.locator('.hl-role-dashboard [data-action-label="الرحلات والحجوزات"]').click();
   const tripPanel=page.locator('.hl-trip-admin');const weatherPanel=page.locator('.hl-weather-admin');
-  await expect(tripPanel).toBeVisible();await expect(weatherPanel).toHaveCount(1);await expect(weatherPanel).toBeVisible();
+  await expect(tripPanel).toBeVisible();await expect(weatherPanel).toHaveCount(1);
   const form=tripPanel.locator('[data-trip-admin-form]');
   await form.locator('[name="title"]').fill('رحلة طقس تجريبية');
   await form.locator('[name="type"]').fill('BOAT_DIVE');
@@ -74,6 +75,9 @@ test('admin can create a geolocated trip, refresh Stormglass and approve the for
   await locationForm.locator('button[type="submit"]').click();
   await expect.poll(()=>state.locationPatch?.locationName).toBe('جزيرة سمر');
 
+  await page.locator('.hl-role-dashboard [data-portal-home]').click();
+  await page.locator('.hl-role-dashboard [data-action-label="الطقس وحالة البحر"]').click();
+  await expect(weatherPanel).toBeVisible();
   const weatherCard=weatherPanel.locator('[data-weather-trip="trip-weather-e2e"]');await expect(weatherCard).toBeVisible();await expect(weatherCard).toContainText('جزيرة سمر');
   await weatherCard.locator('[data-weather-refresh]').click();
   await expect.poll(()=>state.review?.status).toBe('PENDING');

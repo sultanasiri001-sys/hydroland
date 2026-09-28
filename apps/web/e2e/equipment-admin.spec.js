@@ -54,6 +54,7 @@ test('admin portal lazy-loads inventory, registers equipment and creates a renta
   expect(await page.locator('.hl-inventory').count()).toBe(0);
 
   await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="admin"]').click();
+  await page.locator('.hl-role-dashboard [data-action-label="المعدات والمستودعات"]').click();
   const inventory=page.locator('.hl-inventory');await expect(inventory).toBeVisible();
   await expect(inventory).toContainText('المستودع والباركود');
   await expect(inventory.locator('#hl-rental-new')).toBeVisible();

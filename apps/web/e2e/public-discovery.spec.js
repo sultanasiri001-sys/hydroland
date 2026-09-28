@@ -1,0 +1,127 @@
+import {test,expect} from '@playwright/test';
+
+const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
+const trip=(id,title,type)=>({id,title,type,startsAt:new Date(Date.now()+7*86400000).toISOString(),endsAt:new Date(Date.now()+7*86400000+10800000).toISOString(),capacity:12,remainingSeats:8,price:{configured:true,pricePerSeatMinor:22000,currency:'SAR'},safety:{decision:'ALLOWED'},weather:{evaluation:{blocking:false}},location:{locationName:'مرسى القحمة',latitude:18.02,longitude:41.7},description:'وصف الرحلة المنشور من المركز.'});
+const trips=[trip('boat-public','رحلة غوص بالقارب','BOAT_DIVE'),trip('shore-public','غوص شاطئي في عمق','SHORE_DIVE'),trip('marine-public','تجربة سنوركل بحرية','SNORKELING')];
+const products=[{id:'mask-public',sku:'MASK-01',nameAr:'قناع غوص',description:'وصف المنتج <strong>من المورد</strong>',priceMinor:15000,currency:'SAR',stockQuantity:3},{id:'fins-public',sku:'FINS-02',nameAr:'زعانف غوص',priceMinor:24000,currency:'SAR',stockQuantity:0}];
+const installApi=async(page,options={})=>{
+  const writes=[];
+  await page.route('**/api/v1/**',route=>{
+    const request=route.request(),path=new URL(request.url()).pathname;
+    if(request.method()!=='GET')writes.push(path);
+    if(path==='/api/v1/trips')return options.tripResponse?options.tripResponse(route):json(route,trips);
+    if(path==='/api/v1/store/products')return json(route,products);
+    if(path.endsWith('/maps/public-config'))return json(route,{enabled:false,status:'NOT_SELECTED'});
+    if(path.endsWith('/weather/public-config'))return json(route,{configured:false,status:'NOT_SELECTED'});
+    if(path.endsWith('/me/diver-profile'))return json(route,{profile:null,equipment:[]});
+    if(path.endsWith('/me'))return json(route,{id:'discovery-user',roles:[]});
+    return json(route,[]);
+  });
+  return writes;
+};
+const enter=async(page,url='/')=>{await page.goto(url,{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>Boolean(window.HydrolandPublicUI));await expect(page.locator('.hl-login')).toBeHidden();await expect(page.locator('.hl-login')).toBeHidden();await page.evaluate(()=>document.fonts.ready)};
+const navigate=async(page,id)=>{const link=page.locator(`#navigation a[href="#${id}"]`);if(!await link.isVisible())await page.locator('#menu').click();await link.click();await expect(page.locator('body')).toHaveAttribute('data-public-page',id);await expect.poll(()=>page.evaluate(()=>window.scrollY)).toBe(0);if(id!=='home')await expect(page.locator('#hl-public-page-heading')).toBeInViewport();const links=page.locator(`.nav-item[href="#${id}"]`);for(const item of await links.all()){await expect(item).toHaveClass(/active/);await expect(item).toHaveAttribute('aria-current','page')}await expect(page.locator(`.nav-item.active:not([href="#${id}"])`)).toHaveCount(0)};
+const noOverflow=async page=>{const widths=await page.evaluate(()=>({page:document.documentElement.scrollWidth,viewport:document.documentElement.clientWidth}));expect(widths.page).toBeLessThanOrEqual(widths.viewport+1)};
+const screenshot=async(page,testInfo,name)=>{
+  await noOverflow(page);
+  const detail=name.includes('detail-');
+  const assertDetailBounds=async()=>{
+    const bounds=await page.locator('#hl-public-detail').evaluate(node=>{const box=node.getBoundingClientRect();return {top:box.top,bottom:box.bottom,height:window.innerHeight}});
+    expect(bounds.top).toBeGreaterThanOrEqual(0);
+    expect(bounds.bottom).toBeLessThanOrEqual(bounds.height);
+    await expect(page.locator('[data-detail-close]')).toBeInViewport({ratio:1});
+    await expect(page.locator('[data-detail-action]')).toBeInViewport({ratio:1});
+  };
+  if(detail)await assertDetailBounds();
+  await page.screenshot({path:testInfo.outputPath(`public-${name}.png`),fullPage:!detail});
+  if(detail)await assertDetailBounds();
+};
+
+for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',width:768,height:1024},{name:'mobile',width:390,height:844}]){
+  test(`public discovery, detail navigation and cart work on ${viewport.name}`,async({page},testInfo)=>{
+    test.setTimeout(60_000);await page.setViewportSize({width:viewport.width,height:viewport.height});const writes=await installApi(page);await enter(page);
+    await expect(page.locator('[data-public-trip]')).toHaveCount(3);
+    await expect(page.locator('.hl-map-preview-pin:not(.hl-map-planned)')).toHaveCount(1); // Shared live coordinates are represented once.
+    await screenshot(page,testInfo,`home-${viewport.name}`);
+    if(viewport.name==='desktop'){const footer=await page.locator('.site-footer').boundingBox();expect(footer.y+footer.height).toBeLessThanOrEqual(viewport.height+60)}
+    await navigate(page,'explore');await expect(page.locator('.hl-public-explore-grid>a')).toHaveCount(6);await expect(page.locator('#home')).toBeHidden();
+    await screenshot(page,testInfo,`explore-${viewport.name}`);
+    await page.locator('#explore a[href="#activities"]').click();await expect(page.locator('.hl-public-activity')).toHaveCount(3);await expect(page.locator('[data-activity-count="shore"]')).toHaveText('1 رحلة منشورة');
+    await screenshot(page,testInfo,`activities-${viewport.name}`);
+    await page.locator('[data-activity-filter="shore"]').click();await expect(page).toHaveURL(/#trips$/);await expect(page.locator('[data-public-trip]')).toHaveCount(1);
+    await expect(page.locator('[data-public-trip-filter="shore"]')).toHaveAttribute('aria-pressed','true');
+    await page.locator('[data-public-detail="trip"]').click();const detail=page.locator('#hl-public-detail');await expect(detail).toBeVisible();await expect(detail.locator('h2')).toHaveText('غوص شاطئي في عمق');await expect(detail.locator('dl')).toContainText('مرسى القحمة');
+    await expect(detail.locator('.hl-public-detail-art')).toHaveAttribute('data-public-art','shore');
+    const cardArtwork=await page.locator('[data-public-trip] .trip-image').evaluate(node=>getComputedStyle(node).backgroundImage);
+    expect(await detail.locator('.hl-public-detail-art').evaluate(node=>getComputedStyle(node).backgroundImage)).toBe(cardArtwork);
+    await expect(detail.locator('[data-detail-action]')).toBeInViewport({ratio:1});await expect(detail.locator('[data-detail-close]')).toBeInViewport({ratio:1});
+    await screenshot(page,testInfo,`trip-detail-${viewport.name}`);
+    await page.goBack();await expect(detail).toBeHidden();await expect(page).toHaveURL(/#trips$/);
+    await page.locator('[data-public-trip-filter="all"]').click();await expect(page.locator('[data-public-trip]')).toHaveCount(3);
+    await screenshot(page,testInfo,`trips-${viewport.name}`);
+    await navigate(page,'training');await expect(page.locator('.hl-public-course')).toHaveCount(3);await screenshot(page,testInfo,`training-${viewport.name}`);
+    await page.locator('a[href="#course/open-water"]').click();await expect(detail.locator('h2')).toHaveText('الغوص في المياه المفتوحة');await expect(detail).toContainText('تظهر عند نشر الدورات');await detail.locator('[data-detail-back]').click();await expect(detail).toBeHidden();
+    await navigate(page,'store');await page.locator('[data-product-filter="available"]').click();await expect(page.locator('[data-public-product]')).toHaveCount(1);
+    if(viewport.name==='mobile'){const grid=await page.locator('#store .product-grid').boundingBox(),card=await page.locator('[data-public-product]').boundingBox();expect(card.width).toBeGreaterThan(grid.width*.9)}
+    await screenshot(page,testInfo,`store-${viewport.name}`);
+    await page.locator('[data-public-detail="product"]').click();await expect(detail.locator('[data-detail-description]')).toHaveText('وصف المنتج <strong>من المورد</strong>');await expect(detail.locator('[data-detail-description] strong')).toHaveCount(0);
+    await screenshot(page,testInfo,`product-detail-${viewport.name}`);
+    await detail.locator('[data-detail-action]').click();await expect(detail).toBeHidden();await expect(page.locator('.hl-store-summary')).toContainText('1 منتج');
+    await page.locator('[data-product-filter="unavailable"]').click();await page.locator('[data-public-detail="product"]').click();await expect(detail.locator('[data-detail-action]')).toBeDisabled();await detail.locator('[data-detail-back]').click();await expect(detail).toBeHidden();
+    await navigate(page,'trips');await page.locator('a[href="#trip/boat-public"]').click();await detail.locator('[data-detail-action]').click();await expect(page.locator('.hl-login')).toBeVisible();await expect(page.locator('#booking-dialog')).toBeHidden();
+    expect(writes).toEqual([]);expect(await page.evaluate(()=>window.HydrolandAuth.isAuthenticated())).toBe(false);
+  });
+}
+
+test('shared trip links recover from a read failure and keep unavailable bookings blocked',async({page})=>{
+  let unavailable=true;const blocked={...trips[0],price:{configured:false,pricePerSeatMinor:0},safety:{decision:'ALLOWED'}};
+  const sameTitle={...trips[0],id:'other-trip-with-same-title'};
+  const writes=await installApi(page,{tripResponse:route=>unavailable?json(route,{message:'Unavailable'},503):json(route,[sameTitle,blocked])});
+  await enter(page,'/#trip/boat-public');const detail=page.locator('#hl-public-detail');await expect(detail).toBeVisible();await expect(detail.locator('h2')).toHaveText('تعذر تحميل التفاصيل');
+  unavailable=false;await detail.locator('[data-detail-action]').click();await expect(detail.locator('h2')).toHaveText(blocked.title);await expect(detail.locator('[data-detail-action]')).toBeDisabled();await expect(detail.locator('[data-detail-action]')).toHaveText('السعر لم يُعتمد بعد');
+  await detail.locator('[data-detail-back]').click();await expect(page).toHaveURL(/#trips$/);await expect(page.locator('[data-book][data-trip-id="boat-public"]')).toBeDisabled();await expect(page.locator('[data-book][data-trip-id="other-trip-with-same-title"]')).toBeEnabled();expect(writes).toEqual([]);
+});
+
+test('long trip details keep actions reachable and restore keyboard focus on a short mobile screen',async({page})=>{
+  await page.setViewportSize({width:390,height:568});
+  const longTrip={...trips[0],description:'تعليمات الرحلة المنشورة من المركز. '.repeat(100)};
+  await installApi(page,{tripResponse:route=>json(route,[longTrip])});await enter(page);await navigate(page,'trips');
+  const trigger=page.locator('a[href="#trip/boat-public"]');await trigger.click();
+  const detail=page.locator('#hl-public-detail'),body=detail.locator('.hl-public-detail-body'),action=detail.locator('[data-detail-action]');
+  await expect(detail.locator('h2')).toHaveText(longTrip.title);await expect(action).toBeInViewport({ratio:1});
+  const before=await action.boundingBox();await body.focus();await page.keyboard.press('End');
+  await expect.poll(()=>body.evaluate(node=>node.scrollTop)).toBeGreaterThan(100);
+  await expect(action).toBeInViewport({ratio:1});await expect(detail.locator('[data-detail-close]')).toBeInViewport({ratio:1});
+  expect((await action.boundingBox()).y).toBeCloseTo(before.y,0);await noOverflow(page);
+  await page.keyboard.press('Escape');await expect(detail).toBeHidden();await expect(page).toHaveURL(/#trips$/);await expect(trigger).toBeFocused();
+});
+
+test('missing detail links show an honest state and public search opens the matching page',async({page})=>{
+  await installApi(page);await enter(page,'/#product/missing');const detail=page.locator('#hl-public-detail');await expect(detail.locator('h2')).toHaveText('هذا المحتوى غير متاح');await detail.locator('[data-detail-back]').click();await expect(page).toHaveURL(/#store$/);
+  await navigate(page,'home');await page.locator('#search-form input').fill('قناع');await page.locator('#search-form button').click();await expect(page.locator('body')).toHaveAttribute('data-public-page','store');await expect(page.locator('[data-public-product="mask-public"]')).toBeVisible();
+});
+
+test('opening trip details stops an in-flight page scroll and preserves the viewport',async({page},testInfo)=>{
+  await page.setViewportSize({width:390,height:844});
+  await installApi(page);await enter(page);await navigate(page,'trips');
+  const result=await page.evaluate(async()=>{
+    const frame=()=>new Promise(resolve=>requestAnimationFrame(resolve));
+    window.scrollTo({top:Math.min(650,document.documentElement.scrollHeight-innerHeight),behavior:'smooth'});
+    for(let i=0;i<30&&scrollY<20;i++)await frame();
+    const startedAt=scrollY;
+    document.querySelector('a[href="#trip/boat-public"]').click();
+    const samples=[];
+    for(let i=0;i<15;i++){
+      await frame();
+      const dialog=document.getElementById('hl-public-detail').getBoundingClientRect();
+      samples.push({scrollY,visualTop:visualViewport.pageTop,dialogTop:dialog.top,dialogBottom:dialog.bottom});
+    }
+    return {startedAt,samples};
+  });
+  console.log('DETAIL_SCROLL_DIAGNOSTIC '+JSON.stringify(result));
+  expect(result.startedAt).toBeGreaterThan(0);
+  expect(new Set(result.samples.map(sample=>sample.scrollY)).size,JSON.stringify(result)).toBe(1);
+  await screenshot(page,testInfo,'trip-detail-scroll-mobile');
+  await page.locator('[data-detail-close]').click();
+  await expect(page.locator('#hl-public-detail')).toBeHidden();
+});

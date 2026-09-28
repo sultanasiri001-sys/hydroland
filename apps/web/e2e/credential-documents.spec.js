@@ -40,6 +40,8 @@ const seed=async page=>{
 
 test('credential can be created, documented, privately opened and submitted from the browser',async({page})=>{
   const state=await seed(page),certificates=page.locator('.hl-certificates');
+  await page.waitForFunction(()=>Boolean(window.HydrolandWorkspaceUI));
+  await page.locator('#navigation [data-hl-action="certs"]').click();
   const add=certificates.locator('.hl-member-actions button').first();await expect(add).toBeEnabled();await add.click();
   const editor=page.locator('#hl-credential-editor');await expect(editor).toBeVisible();
   await editor.locator('[name="issuer"]').fill('HYDROLAND E2E');await editor.locator('[name="title"]').fill('Rescue Diver E2E');await editor.locator('button[type="submit"]').click();
@@ -85,6 +87,7 @@ test('admin records official organization evidence before approving a pending cr
   await page.goto('/',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&document.querySelector('.hl-admin')));
   await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','e2e-access');sessionStorage.setItem('hl-refresh-token','e2e-refresh');window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));await window.HydrolandProfile.load()});
   await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="admin"]').click();
+  await page.locator('.hl-role-dashboard [data-action-label="الاعتمادات"]').click();
   const admin=page.locator('.hl-admin');await expect(admin).toBeVisible();const card=admin.locator('[data-credential-review="pending-credential"]');await expect(card).toContainText('Pending Rescue Credential');
   const accessRequest=page.waitForRequest(request=>request.url().includes('/credentials/admin/pending-credential/documents/pending-document/access'));await card.getByRole('button',{name:/عرض: evidence\.pdf/}).click();await accessRequest;await expect.poll(()=>reviewAccess).toBe(1);
 

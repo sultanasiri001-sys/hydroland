@@ -25,6 +25,7 @@ test('admin submits a pre-trip safety checklist and approves it through the revi
   await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandSafetyChecklist));
   await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','safety-checklist-access');sessionStorage.setItem('hl-refresh-token','safety-checklist-refresh');window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));await window.HydrolandProfile.load()});
   await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="admin"]').click();
+  await page.locator('.hl-role-dashboard .hl-portal-nav-item[data-portal-label="السلامة والامتثال"]').click();
   const review=page.locator('.hl-safety-review');const form=page.locator('#hl-safety-checklist-form');await expect(review).toBeVisible();await expect(form).toBeVisible();
   const checks=form.locator('input[type="checkbox"]');for(let index=0;index<await checks.count();index+=1)await checks.nth(index).check();
   await form.locator('textarea[name="notes"]').fill('تم فحص عناصر السلامة الأساسية');
