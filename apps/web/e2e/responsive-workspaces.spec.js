@@ -111,6 +111,15 @@ for(const viewport of viewports){
     await expect(page.locator('body')).toHaveAttribute('data-hl-workspace-role','diver');
     await expectNoPageOverflow(page);
 
+    if(viewport.name==='mobile'){
+      const sidebar=page.locator('.sidebar');
+      await expect(sidebar).toBeHidden();
+      await page.locator('#menu').click();
+      await expect(sidebar).toHaveClass(/open/);
+      await expect(sidebar).toBeVisible();
+      await expectNoPageOverflow(page);
+    }
+
     await openWorkspaceSwitcher(page);
     await page.locator('#role-dialog [data-role="admin"]').click();
     await expect.poll(()=>page.evaluate(()=>window.HydrolandPortalAccess.getCurrentRole())).toBe('admin');
