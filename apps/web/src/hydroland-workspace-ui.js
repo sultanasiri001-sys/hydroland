@@ -47,7 +47,7 @@
       const target=isAuthed&&role==='diver'?'#hl-diver-dashboard':'#home';
       home.setAttribute('href',target);
       if(label)label.textContent=isAuthed&&role==='diver'?'لوحة هواة الغوص':'الرئيسية';
-      home.classList.toggle('active',location.hash===target||(!location.hash&&target==='#home'));
+      home.classList.toggle('active',location.hash===target||!location.hash||(role==='diver'&&location.hash==='#home'));
     }
   };
   const nav=document.getElementById('navigation'),switcher=document.getElementById('role-switch');
