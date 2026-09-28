@@ -4,6 +4,7 @@
   const normalize=v=>String(v||'').trim().toLowerCase();
   const explain=trip=>{
     if(!trip)return'غير متاحة';
+    if(trip.price?.configured===false)return'السعر لم يُعتمد بعد';
     if(Number(trip.remainingSeats)<=0)return'مكتملة السعة';
     if(!trip.safety||trip.safety.decision==='REVIEW_REQUIRED')return'تحتاج اعتماد السلامة';
     if(trip.safety.decision==='DEFERRED')return'مؤجلة بقرار السلامة';
@@ -49,5 +50,5 @@
   document.addEventListener('hydroland:safety-decision-changed',refresh);
   document.addEventListener('hydroland:auth-changed',refresh);
   refresh();
-  window.HydrolandBookingAvailability={refresh};
+  window.HydrolandBookingAvailability={refresh,explain};
 })();

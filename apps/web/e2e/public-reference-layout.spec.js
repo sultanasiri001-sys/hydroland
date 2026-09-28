@@ -17,7 +17,7 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
     await page.setViewportSize({width:viewport.width,height:viewport.height});
     await mockPublicApi(page);
     await page.goto('/',{waitUntil:'domcontentloaded'});
-    await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandWorkspaceUI));
+    await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandWorkspaceUI&&window.HydrolandPublicUI));
     await page.locator('.hl-login-guest').click();
     await expect(page.locator('.hl-login')).toBeHidden();
     await expect(page.locator('.topbar #search-form')).toBeVisible();
@@ -52,7 +52,7 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
 test('guest header restores the single search form when the account workspace opens',async({page})=>{
   await mockPublicApi(page);
   await page.goto('/',{waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandWorkspaceUI));
+  await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandWorkspaceUI&&window.HydrolandPublicUI));
   await page.locator('.hl-login-guest').click();
   await expect(page.locator('.topbar #search-form')).toBeVisible();
   await page.evaluate(()=>{

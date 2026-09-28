@@ -3,6 +3,7 @@
   const grid=section.querySelector('.product-grid');
   const toast=m=>{const t=document.getElementById('toast');if(!t)return;t.textContent=m;t.classList.add('visible');setTimeout(()=>t.classList.remove('visible'),2600)};
   const cart=new Map();
+  const catalog={products:[],status:'loading',filter:'all'};
   const money=(v,c='SAR')=>new Intl.NumberFormat('ar-SA',{style:'currency',currency:c}).format(v/100);
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const auth=()=>window.HydrolandAuth;
@@ -23,7 +24,24 @@
     }
   };
   const paymentStatusText=payment=>payment?`سجل الدفع: ${payment.status} · ${payment.provider||'NOT_SELECTED'}${payment.financialActionExecuted?'':' · لا يوجد تحصيل مالي منفذ'}`:'لا يوجد سجل دفع';
-  const loadProducts=async()=>{grid.innerHTML='<article><span>جارٍ تحميل المنتجات...</span></article>';try{const base=auth()?.apiBase||'https://hydroland.onrender.com/api/v1';const r=await fetch(base+'/store/products');const products=await r.json();if(!r.ok||!Array.isArray(products))throw new Error();if(!products.length){grid.innerHTML='<article><span>لا توجد منتجات متاحة حاليًا.</span></article>';return}grid.innerHTML=products.map(p=>'<article><div class="product-art">◉</div><small>'+esc(p.sku)+'</small><span>'+esc(p.nameAr)+'</span><strong>'+money(p.priceMinor,p.currency)+'</strong><small>المتوفر: '+p.stockQuantity+'</small><button type="button" data-store-add="'+esc(p.id)+'" '+(p.stockQuantity<1?'disabled':'')+'>'+(p.stockQuantity<1?'نفد المخزون':'أضف للسلة')+'</button></article>').join('');grid.querySelectorAll('[data-store-add]').forEach(btn=>btn.addEventListener('click',()=>{const p=products.find(x=>x.id===btn.dataset.storeAdd);if(!p)return;const q=cart.get(p.id)?.quantity||0;if(q>=p.stockQuantity){toast('لا يمكن تجاوز المخزون المتاح');return}cart.set(p.id,{...p,quantity:q+1});renderCart()}))}catch{grid.innerHTML='<article><span>تعذر تحميل المتجر من الخادم حاليًا.</span><button type="button" class="hl-store-retry">إعادة المحاولة</button></article>';grid.querySelector('.hl-store-retry')?.addEventListener('click',loadProducts)}};
+  const addToCart=id=>{
+    const product=catalog.products.find(item=>item.id===id);if(!product)return false;
+    const quantity=cart.get(id)?.quantity||0;
+    if(quantity>=product.stockQuantity){toast('لا يمكن تجاوز المخزون المتاح');return false}
+    cart.set(id,{...product,quantity:quantity+1});renderCart();toast('تمت إضافة المنتج إلى السلة');return true;
+  };
+  const renderProducts=()=>{
+    const products=catalog.products.filter(product=>catalog.filter==='all'||(catalog.filter==='available'?product.stockQuantity>0:product.stockQuantity<1));
+    if(!products.length){grid.innerHTML='<article class="hl-public-empty"><span>'+(!catalog.products.length?'لا توجد منتجات متاحة حاليًا.':'لا توجد منتجات مطابقة لهذا الاختيار.')+'</span></article>';return}
+    grid.innerHTML=products.map(p=>'<article data-public-product="'+esc(p.id)+'"><div class="product-art" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 22h28l4 32H14l4-32Z"/><path d="M24 26V18a8 8 0 0 1 16 0v8M25 37h14M25 44h9"/></svg></div><small>'+esc(p.sku)+'</small><h3>'+esc(p.nameAr)+'</h3><strong>'+money(p.priceMinor,p.currency)+'</strong><small>المتوفر: '+Number(p.stockQuantity)+'</small><div class="hl-public-card-actions"><a data-public-detail="product" href="#product/'+encodeURIComponent(p.id)+'">تفاصيل المنتج</a><button type="button" data-store-add="'+esc(p.id)+'" '+(p.stockQuantity<1?'disabled':'')+'>'+(p.stockQuantity<1?'نفد المخزون':'أضف للسلة')+'</button></div></article>').join('');
+    grid.querySelectorAll('[data-store-add]').forEach(button=>button.addEventListener('click',()=>addToCart(button.dataset.storeAdd)));
+  };
+  const loadProducts=async()=>{
+    catalog.status='loading';grid.innerHTML='<article class="hl-public-empty"><span>جارٍ تحميل المنتجات...</span></article>';
+    try{const base=auth()?.apiBase||'https://hydroland.onrender.com/api/v1';const r=await fetch(base+'/store/products');const products=await r.json();if(!r.ok||!Array.isArray(products))throw new Error();catalog.products=products.filter(product=>product&&product.id&&product.nameAr);catalog.status='ready';renderProducts()}
+    catch{catalog.products=[];catalog.status='error';grid.innerHTML='<article class="hl-public-empty"><span>تعذر تحميل المتجر من الخادم حاليًا.</span><button type="button" class="hl-store-retry">إعادة المحاولة</button></article>';grid.querySelector('.hl-store-retry')?.addEventListener('click',loadProducts)}
+    finally{document.dispatchEvent(new CustomEvent('hydroland:public-products-updated'))}
+  };
   const loadOrders=async()=>{
     if(!auth()?.isAuthenticated?.()){toast('سجّل الدخول لعرض طلباتك');return}
     orders.hidden=false;orders.textContent='جارٍ تحميل الطلبات...';
@@ -35,7 +53,7 @@
     }catch{orders.textContent='تعذر تحميل الطلبات.'}
   };
   checkout.addEventListener('click',async()=>{
-    if(!auth()?.isAuthenticated?.()){toast('سجّل الدخول أولًا لإتمام الطلب');document.querySelector('.hl-login')?.classList.remove('hidden');return}
+    if(!auth()?.isAuthenticated?.()){toast('سجّل الدخول أولًا لإتمام الطلب');document.getElementById('visitor-auth-cta')?.click();return}
     checkout.disabled=true;
     let order=null;
     try{
@@ -55,5 +73,5 @@
   });
   panel.querySelector('.hl-store-orders').addEventListener('click',loadOrders);
   loadProducts();
-  window.HydrolandStore={reloadProducts:loadProducts,openOrders:loadOrders,getCart:()=>[...cart.values()]};
+  window.HydrolandStore={reloadProducts:loadProducts,openOrders:loadOrders,getCart:()=>[...cart.values()],getProducts:()=>[...catalog.products],getPublicStatus:()=>catalog.status,addToCart,setFilter:filter=>{catalog.filter=['all','available','unavailable'].includes(filter)?filter:'all';if(catalog.status==='ready')renderProducts()}};
 })();

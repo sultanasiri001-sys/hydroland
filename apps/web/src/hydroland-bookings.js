@@ -1,7 +1,7 @@
 (()=>{
   const auth=()=>window.HydrolandAuth;
   const toast=message=>{const t=document.getElementById('toast');if(!t)return;t.textContent=message;t.classList.add('visible');setTimeout(()=>t.classList.remove('visible'),2600)};
-  const state={trips:[],selected:null,pendingBooking:null,paymentReturnHandled:false};
+  const state={trips:[],selected:null,pendingBooking:null,paymentReturnHandled:false,publicStatus:'loading',filter:'all'};
   const normalize=value=>String(value||'').trim().toLowerCase();
   const locationText=trip=>{const location=trip?.location;if(location&&typeof location==='object')return String(location.locationName||trip?.siteName||trip?.meetingPoint||'حسب بيانات الرحلة');if(typeof location==='string'&&location.trim())return location;return trip?.siteName||trip?.meetingPoint||'حسب بيانات الرحلة'};
   const request=async(path,options={})=>{
@@ -46,16 +46,28 @@
   const tripTypeLabel=type=>({BOAT_DIVE:'رحلة قارب',SHORE_DIVE:'غوص شاطئي',DIVE:'رحلة غوص',SNORKELING:'سنوركل',MARINE_TRIP:'رحلة بحرية'})[String(type||'').toUpperCase()]||'رحلة بحرية';
   const tripDescription=trip=>String(trip.description||trip.summary||'تفاصيل الرحلة ومتطلبات المشاركة من بيانات المشغّل.');
   const tripDate=trip=>{const date=new Date(trip.startsAt);return Number.isNaN(date.getTime())?'الموعد من المشغّل':date.toLocaleString('ar-SA',{dateStyle:'medium',timeStyle:'short'})};
+  const publicCategory=trip=>{const type=String(trip.type||'').toUpperCase();return type.includes('SHORE')?'shore':type.includes('DIVE')?'dive':'marine'};
+  const openBooking=id=>{
+    const trip=state.trips.find(item=>item.id===id);if(!trip)return;
+    const reason=window.HydrolandBookingAvailability?.explain?.(trip)||(trip.price?.configured===false?'السعر لم يُعتمد بعد':'');
+    if(reason){toast(reason);return}
+    state.selected=trip;state.pendingBooking=null;syncBookingDetails(trip);
+    const title=document.getElementById('booking-title');if(title)title.textContent=trip.title;
+    if(!auth()?.isAuthenticated?.()){toast('سجّل الدخول أولًا لإتمام الحجز');document.getElementById('visitor-auth-cta')?.click();return}
+    bookingDialog?.showModal();
+  };
   const renderPublicTrips=(trips,error=false)=>{
     const grid=document.querySelector('[data-public-trip-grid]');if(!grid)return;
     const status=grid.querySelector('[data-public-trip-state]');if(!status)return;
     grid.querySelectorAll('[data-public-trip]').forEach(card=>card.remove());
-    grid.dataset.publicTripCount=String(trips.length);
-    if(error){grid.dataset.tripState='error';status.textContent='تعذر تحميل الرحلات الآن. أعد المحاولة بعد قليل.';status.hidden=false;return}
-    if(!trips.length){grid.dataset.tripState='empty';status.textContent='لا توجد رحلات منشورة للحجز الآن. ستظهر هنا الرحلات المعتمدة من المشغّلين.';status.hidden=false;return}
+    const visible=trips.filter(trip=>state.filter==='all'||publicCategory(trip)===state.filter);
+    grid.dataset.publicTripCount=String(visible.length);
+    const counter=document.querySelector('[data-public-trip-count-label]');if(counter)counter.textContent=`${visible.length} رحلة منشورة`;
+    if(error){grid.dataset.tripState='error';status.textContent='تعذر تحميل الرحلات الآن.';const retry=document.createElement('button');retry.type='button';retry.textContent='إعادة المحاولة';retry.addEventListener('click',()=>void loadTrips());status.appendChild(retry);status.hidden=false;return}
+    if(!visible.length){grid.dataset.tripState='empty';status.textContent=trips.length?'لا توجد رحلات منشورة في هذا النشاط حاليًا.':'لا توجد رحلات منشورة للحجز الآن. ستظهر هنا الرحلات المعتمدة من المشغّلين.';status.hidden=false;return}
     grid.dataset.tripState='ready';status.hidden=true;
     const mapCard=grid.querySelector('.map-card');
-    for(const trip of trips){
+    for(const trip of visible){
       const card=document.createElement('article');card.className='trip-card';card.dataset.publicTrip='1';
       const image=document.createElement('div');image.className=`trip-image ${String(trip.type||'').toUpperCase().includes('SHORE')?'depth':'summer'}`;
       const badge=document.createElement('span');badge.textContent=tripTypeLabel(trip.type);image.appendChild(badge);
@@ -68,8 +80,11 @@
       const seats=document.createElement('span');seats.textContent=`المتاح ${Number(trip.remainingSeats??trip.capacity??0)} من ${Number(trip.capacity||0)} مقعد`;
       meta.append(date,seats);
       const button=document.createElement('button');button.type='button';button.dataset.book=String(trip.title||'');button.dataset.tripId=String(trip.id||'');button.textContent='احجز الآن';
-      button.addEventListener('click',()=>{if(button.disabled)return;const selected=tripForButton(button);if(!selected)return;state.selected=selected;state.pendingBooking=null;syncBookingDetails(selected);const bookingTitle=document.getElementById('booking-title');if(bookingTitle)bookingTitle.textContent=selected.title;if(!auth()?.isAuthenticated?.()){toast('سجّل الدخول أولًا لإتمام الحجز');document.querySelector('.hl-login')?.classList.remove('hidden');return}bookingDialog?.showModal()});
-      details.append(location,title,description,meta,button);card.append(image,details);
+      button.addEventListener('click',()=>{if(!button.disabled)openBooking(trip.id)});
+      const price=document.createElement('strong');price.className='hl-public-price';price.textContent=formatPrice(trip.price);
+      const detailLink=document.createElement('a');detailLink.href='#trip/'+encodeURIComponent(trip.id);detailLink.dataset.publicDetail='trip';detailLink.textContent='تفاصيل الرحلة';detailLink.setAttribute('aria-label','تفاصيل '+trip.title);
+      const actions=document.createElement('div');actions.className='hl-public-card-actions';actions.append(detailLink,button);
+      details.append(location,title,description,meta,price,actions);card.append(image,details);
       grid.insertBefore(card,mapCard||status);
     }
     window.HydrolandBookingAvailability?.refresh?.();
@@ -85,8 +100,10 @@
     });
   };
   const loadTrips=async()=>{
-    try{const trips=await request('/trips',{method:'GET',public:true});state.trips=Array.isArray(trips)?trips.filter(trip=>trip&&trip.id&&trip.title):[];renderPublicTrips(state.trips);bindButtons();return state.trips;}
-    catch{state.trips=[];renderPublicTrips([],true);bindButtons();return state.trips;}
+    state.publicStatus='loading';
+    try{const trips=await request('/trips',{method:'GET',public:true});if(!Array.isArray(trips))throw new Error('Invalid trips');state.trips=trips.filter(trip=>trip&&trip.id&&trip.title);state.publicStatus='ready';renderPublicTrips(state.trips);bindButtons();return state.trips;}
+    catch{state.trips=[];state.publicStatus='error';renderPublicTrips([],true);bindButtons();return state.trips;}
+    finally{document.dispatchEvent(new CustomEvent('hydroland:public-trips-updated'))}
   };
   const startPayment=async booking=>{
     const price=booking?.price||state.selected?.price;
@@ -163,5 +180,5 @@
   },true);}
   if(!document.querySelector('script[src$="hydroland-booking-participants.js"]')){const module=document.createElement('script');module.src='./hydroland-booking-participants.js';module.defer=true;document.body.appendChild(module);}
   loadTrips();
-  window.HydrolandBookings={reload:loadTrips,listMine:()=>request('/trips/bookings/mine',{method:'GET'}),reconcilePaymentReturn};
+  window.HydrolandBookings={reload:loadTrips,listMine:()=>request('/trips/bookings/mine',{method:'GET'}),reconcilePaymentReturn,getPublicTrips:()=>[...state.trips],getPublicStatus:()=>state.publicStatus,publicCategory,formatPrice,locationText,tripDate,tripTypeLabel,openBooking,setPublicFilter:filter=>{state.filter=['all','dive','shore','marine'].includes(filter)?filter:'all';renderPublicTrips(state.trips,state.publicStatus==='error');bindButtons()}};
 })();
