@@ -38,6 +38,7 @@ test('planned centers remain interactive when map provider fails without becomin
   await page.locator('[data-hl-map-open]').click();
   const dialog=page.locator('#hl-map-dialog');
   await expect(dialog.locator('.hl-map-overview-pin')).toHaveCount(8);
+  await expect(dialog.locator('.hl-map-callout')).toHaveCount(8);
   await expect(dialog.locator('[data-hl-map-list] article')).toHaveCount(8);
   expect(await page.evaluate(()=>window.HydrolandMap.getState().points)).toEqual([]);
   await expect(dialog).toContainText('مركز مخطط');
@@ -50,6 +51,9 @@ test('planned centers remain interactive when map provider fails without becomin
   await expect(map).toHaveAttribute('viewBox','0 0 300 200');
   await dialog.locator('[data-hl-map-list] article').filter({hasText:'عمق'}).getByRole('button').click();
   await expect(dialog.locator('.hl-map-selection')).toContainText('عمق');
+  await expect(dialog.locator('.hl-map-callout').first()).toBeHidden();
+  const focused=await dialog.locator('.hl-map-overview-pin').filter({hasText:'عمق'}).evaluate(pin=>{const point=new DOMPoint(0,0).matrixTransform(pin.getScreenCTM()),rect=pin.closest('svg').getBoundingClientRect();return point.x>=rect.left&&point.x<=rect.right&&point.y>=rect.top&&point.y<=rect.bottom});
+  expect(focused).toBe(true);
   await dialog.locator('.hl-map-overview-pin').first().focus();
   await page.keyboard.press('Enter');
   await expect(dialog.locator('.hl-map-selection')).toContainText('جازان');
