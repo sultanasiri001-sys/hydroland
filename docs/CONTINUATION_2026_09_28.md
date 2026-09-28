@@ -167,3 +167,10 @@ Browser verification includes all six authenticated portal layouts at desktop, t
 - Follow-up: show the actual member name and initial in the existing diver account button, preserving its account/wallet handlers; clear the identity presentation when leaving the role or signing out. Remove header blur to expose the marine scene. Vary metric backgrounds using existing marine/equipment assets and improve readiness caption contrast.
 - Preserve requested terminology: محترفي الغوص.
 - Static validation and production build passed. This is not visual closure: organization hero artwork and other portal-specific differences still require review; maps remain deferred. No merge or production deployment.
+
+### Phase 2 public catalog identity pass
+- Scope is the original Stage 2 public pages: home, explore, trips, activities, training, store and details; role portals belong to later stages, and map refinement remains deferred by request.
+- Commit 036d157 passed all eight CI workflows.
+- Reviewed actual explore/store/training desktop screenshots from the previous public artifact. Replaced repeated exploration artwork with service-specific existing marine assets and differentiated course/activity cards; kept the shared palette, type, borders and layout.
+- Product cards explicitly identify missing product photography rather than showing unrelated catalog imagery.
+- Static web/design-system checks and production build pass. Full visual approval and merge/deployment remain outstanding; no phase closure claimed.
