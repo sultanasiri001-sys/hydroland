@@ -5,6 +5,7 @@ const account={id:'stage-three',email:'account@hydroland.test',status:'ACTIVE',r
 const install=async(page,{credentials=[]}={})=>{
   await page.route('**/api/v1/**',route=>json(route,[]));
   await page.route('**/api/v1/auth/google/config',route=>json(route,{enabled:false}));
+  await page.route('**/api/v1/integrations/email/public-config',route=>json(route,{enabled:true}));
   await page.route(/\/api\/v1\/me$/,route=>json(route,account));
   await page.route(/\/api\/v1\/credentials$/,route=>json(route,credentials));
   await page.route(/\/api\/v1\/me\/diver-profile$/,route=>json(route,{profile:{nationality:'SA',primaryPhone:'0500000000',emergencyName:'جهة اتصال اختبار',medicalFitnessStatus:'UNKNOWN'},equipment:[]}));

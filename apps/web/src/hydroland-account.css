@@ -8,6 +8,8 @@
 .hl-auth-note{color:var(--hl-muted);line-height:1.7}
 .hl-auth-status{margin:0;color:var(--hl-cyan-soft);font-size:.9rem;overflow-wrap:anywhere}
 .hl-auth-status:empty{display:none}.hl-auth-status.is-error{color:var(--hl-danger)}
+.hl-auth-availability{padding:12px;border:1px solid var(--hl-line);border-radius:12px;background:var(--hl-panel);color:var(--hl-muted);font-size:.9rem;line-height:1.7}
+.hl-auth-availability p{margin:0 0 8px}.hl-auth-availability-retry{min-height:44px;background:transparent;font-weight:700}
 .hl-profile-editor,.hl-mfa-dialog,.hl-google-mfa-dialog{width:min(620px,calc(100vw - 24px));max-height:calc(100dvh - 24px);padding:0;overscroll-behavior:contain;overflow:auto}
 .hl-mfa-dialog{width:min(560px,calc(100vw - 24px))}.hl-google-mfa-dialog{width:min(440px,calc(100vw - 24px))}
 .hl-profile-editor>form,.hl-profile-editor>section,.hl-mfa-dialog>section,.hl-google-mfa-dialog>form{display:grid;gap:18px;padding:20px;min-width:0}

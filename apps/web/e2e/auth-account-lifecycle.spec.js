@@ -1,5 +1,9 @@
 import {test,expect} from '@playwright/test';
 
+test.beforeEach(async({page})=>{
+  await page.route('**/api/v1/integrations/email/public-config',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({enabled:true})}));
+});
+
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 
 const installProfileStubs=async page=>{

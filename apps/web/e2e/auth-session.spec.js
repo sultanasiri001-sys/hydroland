@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test';
 
+test.beforeEach(async({page})=>{
+  await page.route('**/api/v1/integrations/email/public-config',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({enabled:true})}));
+});
+
 const waitForApp = async page => {
   await page.waitForFunction(() => Boolean(window.HydrolandAuth && window.HydrolandPortalAccess && window.HydrolandProfile));
 };
