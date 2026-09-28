@@ -70,7 +70,7 @@
     for(const trip of visible){
       const card=document.createElement('article');card.className='trip-card';card.dataset.publicTrip='1';
       const image=document.createElement('div');image.className=`trip-image ${String(trip.type||'').toUpperCase().includes('SHORE')?'depth':'summer'}`;image.dataset.publicArt=publicCategory(trip);image.setAttribute('role','img');image.setAttribute('aria-label','صورة تعبيرية للنشاط البحري');
-      const badge=document.createElement('span');badge.textContent=tripTypeLabel(trip.type);image.appendChild(badge);
+      const badge=document.createElement('span');badge.textContent=tripTypeLabel(trip.type);image.appendChild(badge);const artworkNote=document.createElement('small');artworkNote.className='hl-trip-art-note';artworkNote.textContent='صورة توضيحية';image.appendChild(artworkNote);
       const details=document.createElement('div');
       const location=document.createElement('small');location.textContent=locationText(trip);
       const kind=document.createElement('span');kind.className='hl-public-trip-kind';kind.textContent=tripTypeLabel(trip.type);

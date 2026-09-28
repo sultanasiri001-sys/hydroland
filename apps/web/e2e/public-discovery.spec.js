@@ -51,6 +51,9 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
     await page.locator('[data-activity-filter="shore"]').click();await expect(page).toHaveURL(/#trips$/);await expect(page.locator('[data-public-trip]')).toHaveCount(1);
     await expect(page.locator('[data-public-trip-filter="shore"]')).toHaveAttribute('aria-pressed','true');
     await page.locator('[data-public-detail="trip"]').click();const detail=page.locator('#hl-public-detail');await expect(detail).toBeVisible();await expect(detail.locator('h2')).toHaveText('غوص شاطئي في عمق');await expect(detail.locator('dl')).toContainText('مرسى القحمة');
+    await expect(detail.locator('.hl-public-detail-art')).toHaveAttribute('data-public-art','shore');
+    const cardArtwork=await page.locator('[data-public-trip] .trip-image').evaluate(node=>getComputedStyle(node).backgroundImage);
+    expect(await detail.locator('.hl-public-detail-art').evaluate(node=>getComputedStyle(node).backgroundImage)).toBe(cardArtwork);
     await expect(detail.locator('[data-detail-action]')).toBeInViewport({ratio:1});await expect(detail.locator('[data-detail-close]')).toBeInViewport({ratio:1});
     await screenshot(page,testInfo,`trip-detail-${viewport.name}`);
     await page.goBack();await expect(detail).toBeHidden();await expect(page).toHaveURL(/#trips$/);

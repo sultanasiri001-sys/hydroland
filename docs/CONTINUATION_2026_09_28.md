@@ -184,3 +184,8 @@ Browser verification includes all six authenticated portal layouts at desktop, t
 - Match reference home controls: illuminated blue selected sidebar entry, light inactive icons, dark gold-outlined registration button, luminous hero CTA borders, and assistant artwork on the right at desktop size. Mobile assistant arrangement remains responsive.
 - Marked the old FINAL_VISUAL_QA checklist as historical because its light visitor treatment and marine-portal label contradict the latest approved references and user instructions.
 - Maps deferred. No merge or deployment. Visual matching is still under review; no closure or percentage claimed.
+
+### Consistent public trip artwork
+- Use one CSS mapping for trip cards and details: boat/diving equipment, underwater shore dive, and marine island experience. Detail pages now use the same category as the selected card.
+- Show a visible illustrative-image label; these assets are not presented as operator-supplied site photography.
+- Existing responsive discovery test now checks card/detail artwork consistency for shore diving. Booking data, filters and authorization are unchanged.
