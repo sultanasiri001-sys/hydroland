@@ -93,7 +93,7 @@ for(const marker of ["mobile.disabled=false","button.id='top-messages'","/messag
 if(messagesModule.includes('MediaRecorder')||messagesModule.includes('getUserMedia'))throw new Error('Messaging UI must not claim direct voice capture before object-storage upload is implemented');
 
 const mapModule = await readFile(path.join(src, 'hydroland-map.js'), 'utf8');
-for(const marker of ["MAPLIBRE_VERSION='6.11.2'",'cdn.jsdelivr.net/npm/maplibre-gl@${MAPLIBRE_VERSION}/dist','HydrolandMapLibreTestDouble','MapLibre runtime failed to load','مزود الخرائط غير مفعّل'])if(!mapModule.includes(marker))throw new Error(`Map runtime integrity marker missing: ${marker}`);
+for(const marker of ["MAPLIBRE_VERSION='6.11.2'",'cdn.jsdelivr.net/npm/maplibre-gl@${MAPLIBRE_VERSION}/dist','HydrolandMapLibreTestDouble','MapLibre runtime failed to load','طبقة المزود غير متاحة'])if(!mapModule.includes(marker))throw new Error(`Map runtime integrity marker missing: ${marker}`);
 if(mapModule.includes('@latest')||mapModule.includes('maplibre-gl@latest'))throw new Error('MapLibre runtime must remain version-pinned.');
 
 console.log(`Validated HYDROLAND shell, six role selectors, ${jsFiles.length} JavaScript modules, ${cssFiles.length} style modules, branding, IDs, responsiveness, accessibility, anonymous/guest/MFA/Google auth separation, connected messaging and pinned resilient MapLibre runtime markers.`);

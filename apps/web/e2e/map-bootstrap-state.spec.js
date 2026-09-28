@@ -29,3 +29,33 @@ test('map card becomes actionable before provider requests resolve',async({page}
   const mapCard=page.locator('.map-card');
   await expect(mapCard.locator('[data-hl-map-card-provider]')).toContainText('E2E_MAPS',{timeout:5000});
 });
+
+test('planned centers remain interactive when map provider fails without becoming bookable trips',async({page},testInfo)=>{
+  await page.route(/\/api\/v1\/integrations\/maps\/public-config$/,route=>route.fulfill({status:503,body:'{}'}));
+  await page.route(/\/api\/v1\/trips$/,route=>route.fulfill({contentType:'application/json',body:JSON.stringify([{id:'invalid',title:'Invalid location',location:{latitude:null,longitude:null}}])}));
+  await page.goto('/',{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>window.HydrolandMap?.getState().config?.status==='UNAVAILABLE');
+  await page.locator('[data-hl-map-open]').click();
+  const dialog=page.locator('#hl-map-dialog');
+  await expect(dialog.locator('.hl-map-overview-pin')).toHaveCount(8);
+  await expect(dialog.locator('[data-hl-map-list] article')).toHaveCount(8);
+  expect(await page.evaluate(()=>window.HydrolandMap.getState().points)).toEqual([]);
+  await expect(dialog).toContainText('مركز مخطط');
+  await expect(dialog.locator('[data-book]')).toHaveCount(0);
+  const map=dialog.locator('.hl-map-overview>svg');
+  await expect(map).toHaveAttribute('viewBox','0 0 300 200');
+  await dialog.locator('[data-map-zoom="in"]').click();
+  await expect(map).not.toHaveAttribute('viewBox','0 0 300 200');
+  await dialog.locator('[data-map-zoom="reset"]').click();
+  await expect(map).toHaveAttribute('viewBox','0 0 300 200');
+  await dialog.locator('[data-hl-map-list] article').filter({hasText:'عمق'}).getByRole('button').click();
+  await expect(dialog.locator('.hl-map-selection')).toContainText('عمق');
+  await dialog.locator('.hl-map-overview-pin').first().focus();
+  await page.keyboard.press('Enter');
+  await expect(dialog.locator('.hl-map-selection')).toContainText('جازان');
+  await page.screenshot({path:testInfo.outputPath('saudi-map-desktop.png')});
+  await page.setViewportSize({width:390,height:844});
+  await expect(dialog.locator('[data-map-zoom="reset"]')).toBeVisible();
+  await expect(dialog.locator('[data-hl-map-close]')).toBeVisible();
+  await page.screenshot({path:testInfo.outputPath('saudi-map-mobile.png')});
+});

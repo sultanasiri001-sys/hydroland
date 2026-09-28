@@ -130,3 +130,9 @@ Path: `apps/web/public/assets/hydroland-diver-shop-reference.webp` — 1536 × 1
 Final prompt (built-in tool):
 
 > Use case: precise-object-edit. Asset type: HYDROLAND store action card illustration. Input is the approved diver portal reference. Reconstruct ONLY the photographic scene in the lower-left equipment store card: premium scuba diving shop interior, neatly organized black wetsuits, masks and regulators on warm wooden display walls, a few fins and silver tanks, glowing cool cyan screen on a counter. Realistic marine retail scene, warm spotlights, dark navy/cyan accents, detailed materials. Landscape 3:2, centered wide view of the store with no people. No interface, no text, no pricing signs, no logos, no icons, no border, no watermarks. Decorative illustration.
+
+### Saudi marine geographic overview
+
+`apps/web/public/assets/saudi-marine-overview.svg` reprojects the same Natural Earth country geometry cited above to a whole-Kingdom overview: Mercator 34°N–14°N, centered 44°E, 300×200. Cyan coastline glow and navy water follow the approved board. This is low-resolution geographic artwork, not bathymetry or a navigation chart.
+
+The eight user-requested planned-center pins are approximate locality positions only. Source cross-checks: https://almadwaaljazer.com/sa/saudi-arabia (coastal localities including Umq 18°26′32″N, 41°26′49″E); https://aseer.theen.dev/en/places/albrk (Al Birk); https://pmc.ncbi.nlm.nih.gov/articles/PMC8742046/ (Tabuk locality). Coordinates are rounded to two decimals and clearly labeled planned/approximate in the interface. Planned markers never enter booking data or constitute approved center records.
