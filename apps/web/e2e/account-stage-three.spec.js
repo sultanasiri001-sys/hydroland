@@ -136,7 +136,7 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
     await page.keyboard.press('Escape');await seed(page);
     await page.locator('#profile-open').click();await capture('profile');
     // Open diver data first: its style must not depend on having opened general settings.
-    await page.locator('[data-hl-action="diver-profile"]').click();
+    await page.locator('#profile-dialog [data-hl-action="diver-profile"]').click();
     const editor=page.locator('#hl-diver-editor');await expect(editor).toBeVisible();
     const geometry=await editor.evaluate(el=>({top:el.getBoundingClientRect().top,bottom:el.getBoundingClientRect().bottom,viewport:innerHeight,display:getComputedStyle(el.querySelector('form')).display}));
     expect(geometry.display).toBe('grid');expect(geometry.top).toBeGreaterThanOrEqual(0);expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewport);
