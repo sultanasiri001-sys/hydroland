@@ -229,6 +229,7 @@ body.hydroland-brand.hl-visitor-mode #toast:empty{display:none}
  body.hydroland-brand.hl-visitor-mode .sidebar .brand-mark{width:90px;height:90px}
  body.hydroland-brand.hl-visitor-mode .sidebar .nav-item{padding:.7rem .6rem;gap:.6rem}
  body.hydroland-brand.hl-visitor-mode .sidebar .nav-item span:last-child{font-size:.9rem}
+ body.hydroland-brand.hl-visitor-mode .topbar{min-height:76px!important;backdrop-filter:none}
  body.hydroland-brand.hl-visitor-mode[data-public-page="home"] #main{grid-template-columns:minmax(220px,1fr) minmax(0,4.25fr);gap:10px}
  body.hydroland-brand.hl-visitor-mode[data-public-page="home"] #home{min-height:240px!important;padding:.5rem 0 1rem!important}
  body.hydroland-brand.hl-visitor-mode[data-public-page="home"] #home h2{font-size:clamp(2rem,3.6vw,3.25rem)!important;line-height:1.15!important}
@@ -258,7 +259,8 @@ body.hydroland-brand.hl-visitor-mode #toast:empty{display:none}
  body.hydroland-brand.hl-visitor-mode[data-public-page="home"] #trips [data-hl-map-open]{min-height:28px;padding:.2rem .8rem;border-radius:99px!important;font-size:.75rem;margin-top:.35rem}
  body.hydroland-brand.hl-visitor-mode[data-public-page="home"] #marine-intelligence{padding:.65rem;border-color:rgba(102,224,255,.6)!important;box-shadow:var(--hl-glow);min-height:245px}
  body.hydroland-brand.hl-visitor-mode[data-public-page="home"] .marine-intelligence__head{margin:0 0 .1rem;text-align:center}
- body.hydroland-brand.hl-visitor-mode[data-public-page="home"] .marine-signal{padding:.15rem .35rem;border:0;background:transparent!important}
+ body.hydroland-brand.hl-visitor-mode[data-public-page="home"] .marine-intelligence__grid{margin-top:.3rem}
+ body.hydroland-brand.hl-visitor-mode[data-public-page="home"] .marine-signal{min-height:0;padding:.15rem .35rem;border:0;background:transparent!important}
  body.hydroland-brand.hl-visitor-mode[data-public-page="home"] .marine-signal__row{padding:.45rem 0;gap:.1rem .4rem}
  body.hydroland-brand.hl-visitor-mode[data-public-page="home"] .marine-signal__footer{padding-top:.4rem}
 }
