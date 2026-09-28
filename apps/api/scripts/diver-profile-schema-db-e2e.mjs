@@ -46,7 +46,13 @@ try{
   await Promise.all([service.upsert(secondId,{nationality:'SA'}),service.upsert(secondId,{primaryPhone:'0500000002'})]);
   result=await service.get(secondId);
   assert.equal(result.profile.nationality,'SA');assert.equal(result.profile.primaryPhone,'0500000002');
-  console.log('Diver profile production-schema PostgreSQL E2E passed: native UUID account key, omitted-field preservation, explicit clearing, contact validation, concurrent create/update and audit state.');
+  result=await service.addEquipment(accountId,{category:'REGULATOR',brand:'Schema Test'});
+  const equipmentId=result.equipment[0].id;
+  result=await service.updateEquipment(accountId,equipmentId,{model:'Persisted',status:'INACTIVE'});
+  assert.equal(result.equipment[0].model,'Persisted');assert.equal(result.equipment[0].status,'INACTIVE');
+  await assert.rejects(()=>service.updateEquipment(secondId,equipmentId,{model:'Foreign update'}),error=>error.getStatus?.()===404);
+  assert.equal((await service.get(accountId)).equipment[0].model,'Persisted');
+  console.log('Diver profile production-schema PostgreSQL E2E passed: native UUID account key, omitted-field preservation, explicit clearing, contact validation, concurrent create/update, audit state and equipment ownership.');
 }finally{
   await db.$disconnect();
   if(created)await admin.$executeRawUnsafe(`DROP SCHEMA "${schema}" CASCADE`);

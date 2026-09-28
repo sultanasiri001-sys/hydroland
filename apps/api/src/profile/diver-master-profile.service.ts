@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import type { DiverProfile } from '@prisma/client';
+import { Prisma, type DiverProfile } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { PolicyControlService } from '../trips/policy-control.service';
@@ -13,9 +13,16 @@ type EquipmentRow={id:string;accountId:string;category:string;ownership:string;b
 export class DiverMasterProfileService {
   constructor(private readonly db: DatabaseService,private readonly policies:PolicyControlService,private readonly audit:AuditService) {}
 
+  private accountKey(accountId: string) {
+    // Convert the bound value to the deployed FK type (UUID in production, text
+    // in the canonical schema). Leave the indexed column itself uncast.
+    return Prisma.sql`(jsonb_populate_record(NULL::"DiverProfile",jsonb_build_object('accountId',${accountId}::text)))."accountId"`;
+  }
+
   async get(accountId: string) {
-    const rows = await this.db.$queryRawUnsafe<any[]>(`SELECT * FROM "DiverProfile" WHERE "accountId"=$1 LIMIT 1`,accountId);
-    const equipment = await this.db.$queryRawUnsafe<EquipmentRow[]>(`SELECT * FROM "DiverEquipment" WHERE "accountId"=$1 ORDER BY "category","createdAt"`,accountId);
+    const key = this.accountKey(accountId);
+    const rows = await this.db.$queryRaw<DiverProfile[]>`SELECT * FROM "DiverProfile" WHERE "accountId"=${key} LIMIT 1`;
+    const equipment = await this.db.$queryRaw<EquipmentRow[]>`SELECT * FROM "DiverEquipment" WHERE "accountId"=${key} ORDER BY "category","createdAt"`;
     const [inspectionPolicy,servicePolicy]=await Promise.all([this.policies.decision('EQUIPMENT','INSPECTION_STATUS'),this.policies.decision('EQUIPMENT','SERVICE_EXPIRY')]);
     const now=new Date();
     const equipmentWithPolicy=equipment.map((item:EquipmentRow)=>{
@@ -51,9 +58,8 @@ export class DiverMasterProfileService {
     if (input.preferredLanguage !== undefined) patch.preferredLanguage = input.preferredLanguage?.trim() || 'ar';
 
     const saved = await this.db.serializable(async tx => {
-      // Production uses a UUID accountId while the canonical test schema uses text.
-      // Keep parameterized SQL so PostgreSQL infers the deployed column type.
-      const current = (await tx.$queryRaw<DiverProfile[]>`SELECT * FROM "DiverProfile" WHERE "accountId"=${accountId} LIMIT 1`)[0];
+      const key = this.accountKey(accountId);
+      const current = (await tx.$queryRaw<DiverProfile[]>`SELECT * FROM "DiverProfile" WHERE "accountId"=${key} LIMIT 1`)[0];
       if (patch.emergencyName !== undefined || patch.emergencyPhone !== undefined) {
         const name = patch.emergencyName === undefined ? current?.emergencyName : patch.emergencyName;
         const phone = patch.emergencyPhone === undefined ? current?.emergencyPhone : patch.emergencyPhone;
@@ -62,7 +68,7 @@ export class DiverMasterProfileService {
       const next = { ...current, ...patch };
       const rows = await tx.$queryRaw<DiverProfile[]>`
         INSERT INTO "DiverProfile" ("id","accountId","dateOfBirth","nationality","identityType","identityLast4","primaryPhone","secondaryPhone","preferredContact","emergencyName","emergencyRelation","emergencyPhone","emergencyAltPhone","bloodType","medicalFitnessStatus","medicalClearanceExpiresAt","preferredLanguage","notes","createdAt","updatedAt")
-        VALUES (gen_random_uuid()::text,${accountId},${next.dateOfBirth ?? null},${next.nationality ?? null},${next.identityType ?? null},${next.identityLast4 ?? null},${next.primaryPhone ?? null},${next.secondaryPhone ?? null},${next.preferredContact ?? null},${next.emergencyName ?? null},${next.emergencyRelation ?? null},${next.emergencyPhone ?? null},${next.emergencyAltPhone ?? null},${next.bloodType ?? null},${next.medicalFitnessStatus ?? 'UNKNOWN'},${next.medicalClearanceExpiresAt ?? null},${next.preferredLanguage === undefined ? 'ar' : next.preferredLanguage},${next.notes ?? null},NOW(),NOW())
+        VALUES (gen_random_uuid()::text,${key},${next.dateOfBirth ?? null},${next.nationality ?? null},${next.identityType ?? null},${next.identityLast4 ?? null},${next.primaryPhone ?? null},${next.secondaryPhone ?? null},${next.preferredContact ?? null},${next.emergencyName ?? null},${next.emergencyRelation ?? null},${next.emergencyPhone ?? null},${next.emergencyAltPhone ?? null},${next.bloodType ?? null},${next.medicalFitnessStatus ?? 'UNKNOWN'},${next.medicalClearanceExpiresAt ?? null},${next.preferredLanguage === undefined ? 'ar' : next.preferredLanguage},${next.notes ?? null},NOW(),NOW())
         ON CONFLICT ("accountId") DO UPDATE SET "dateOfBirth"=EXCLUDED."dateOfBirth","nationality"=EXCLUDED."nationality","identityType"=EXCLUDED."identityType","identityLast4"=EXCLUDED."identityLast4","primaryPhone"=EXCLUDED."primaryPhone","secondaryPhone"=EXCLUDED."secondaryPhone","preferredContact"=EXCLUDED."preferredContact","emergencyName"=EXCLUDED."emergencyName","emergencyRelation"=EXCLUDED."emergencyRelation","emergencyPhone"=EXCLUDED."emergencyPhone","emergencyAltPhone"=EXCLUDED."emergencyAltPhone","bloodType"=EXCLUDED."bloodType","medicalFitnessStatus"=EXCLUDED."medicalFitnessStatus","medicalClearanceExpiresAt"=EXCLUDED."medicalClearanceExpiresAt","preferredLanguage"=EXCLUDED."preferredLanguage","notes"=EXCLUDED."notes","updatedAt"=NOW()
         RETURNING *`;
       return rows[0];
@@ -78,14 +84,14 @@ export class DiverMasterProfileService {
     const servicePolicy=await this.policies.decision('EQUIPMENT','SERVICE_EXPIRY'),expired=Boolean(serviceDueAt&&serviceDueAt<=new Date());
     if(expired&&servicePolicy.enforce)throw new ConflictException('Equipment with expired service cannot be activated while service validation is enforced.');
     const status=expired&&servicePolicy.review?'REVIEW':'ACTIVE';
-    const rows=await this.db.$queryRawUnsafe<EquipmentRow[]>(`INSERT INTO "DiverEquipment" ("id","accountId","category","ownership","brand","model","serialNumber","size","serviceDueAt","status","createdAt","updatedAt") VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW()) RETURNING *`,accountId,input.category.trim(),input.ownership?.trim()||'OWNED',input.brand?.trim()||null,input.model?.trim()||null,input.serialNumber?.trim()||null,input.size?.trim()||null,serviceDueAt,status);
+    const rows=await this.db.$queryRaw<EquipmentRow[]>`INSERT INTO "DiverEquipment" ("id","accountId","category","ownership","brand","model","serialNumber","size","serviceDueAt","status","createdAt","updatedAt") VALUES (gen_random_uuid()::text,${this.accountKey(accountId)},${input.category.trim()},${input.ownership?.trim()||'OWNED'},${input.brand?.trim()||null},${input.model?.trim()||null},${input.serialNumber?.trim()||null},${input.size?.trim()||null},${serviceDueAt},${status},NOW(),NOW()) RETURNING *`;
     const equipment=rows[0];
     await this.audit.record({action:'DIVER_EQUIPMENT_ADDED',resource:'DiverEquipment',resourceId:equipment.id,metadata:{accountId,category:equipment.category,ownership:equipment.ownership,status:equipment.status,serviceDueAt:equipment.serviceDueAt,policyState:servicePolicy.state}});
     return this.get(accountId);
   }
 
   async updateEquipment(accountId:string,equipmentId:string,input:{ownership?:string;brand?:string|null;model?:string|null;serialNumber?:string|null;size?:string|null;serviceDueAt?:string|null;status?:'ACTIVE'|'INACTIVE'|'REVIEW'}){
-    const rows=await this.db.$queryRawUnsafe<EquipmentRow[]>(`SELECT * FROM "DiverEquipment" WHERE "id"=$1 AND "accountId"=$2 LIMIT 1`,equipmentId,accountId),current=rows[0];
+    const rows=await this.db.$queryRaw<EquipmentRow[]>`SELECT * FROM "DiverEquipment" WHERE "id"=${equipmentId} AND "accountId"=${this.accountKey(accountId)} LIMIT 1`,current=rows[0];
     if(!current)throw new NotFoundException('Equipment not found.');
     if(input.status&&!['ACTIVE','INACTIVE','REVIEW'].includes(input.status))throw new BadRequestException('Invalid equipment status.');
     const serviceDueAt=input.serviceDueAt===undefined?current.serviceDueAt:input.serviceDueAt?new Date(input.serviceDueAt):null;
@@ -95,7 +101,7 @@ export class DiverMasterProfileService {
     if(status==='ACTIVE'&&expired&&servicePolicy.enforce)throw new ConflictException('Expired equipment cannot be activated while service validation is enforced.');
     if(status==='ACTIVE'&&expired&&servicePolicy.review)status='REVIEW';
     if(status!=='ACTIVE'&&inspectionPolicy.enforce&&input.status==='ACTIVE')throw new ConflictException('Equipment inspection status prevents activation.');
-    const updated=await this.db.$queryRawUnsafe<EquipmentRow[]>(`UPDATE "DiverEquipment" SET "ownership"=$3,"brand"=$4,"model"=$5,"serialNumber"=$6,"size"=$7,"serviceDueAt"=$8,"status"=$9,"updatedAt"=NOW() WHERE "id"=$1 AND "accountId"=$2 RETURNING *`,equipmentId,accountId,input.ownership?.trim()||current.ownership,input.brand===undefined?current.brand:input.brand?.trim()||null,input.model===undefined?current.model:input.model?.trim()||null,input.serialNumber===undefined?current.serialNumber:input.serialNumber?.trim()||null,input.size===undefined?current.size:input.size?.trim()||null,serviceDueAt,status);
+    const updated=await this.db.$queryRaw<EquipmentRow[]>`UPDATE "DiverEquipment" SET "ownership"=${input.ownership?.trim()||current.ownership},"brand"=${input.brand===undefined?current.brand:input.brand?.trim()||null},"model"=${input.model===undefined?current.model:input.model?.trim()||null},"serialNumber"=${input.serialNumber===undefined?current.serialNumber:input.serialNumber?.trim()||null},"size"=${input.size===undefined?current.size:input.size?.trim()||null},"serviceDueAt"=${serviceDueAt},"status"=${status},"updatedAt"=NOW() WHERE "id"=${equipmentId} AND "accountId"=${this.accountKey(accountId)} RETURNING *`;
     const equipment=updated[0];
     await this.audit.record({action:'DIVER_EQUIPMENT_UPDATED',resource:'DiverEquipment',resourceId:equipmentId,metadata:{accountId,previousStatus:current.status,status:equipment.status,previousServiceDueAt:current.serviceDueAt,serviceDueAt:equipment.serviceDueAt,policyStates:{inspection:inspectionPolicy.state,service:servicePolicy.state}}});
     return this.get(accountId);

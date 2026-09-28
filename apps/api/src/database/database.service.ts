@@ -40,7 +40,10 @@ export class DatabaseService extends PrismaClient implements OnModuleInit, OnMod
         const code = typeof error === 'object' && error !== null && 'code' in error
           ? String((error as { code?: unknown }).code ?? '')
           : '';
-        const retryable = code === 'P2034';
+        // Bound SQL reports PostgreSQL transaction conflicts through P2010.
+        const meta = typeof error === 'object' && error !== null && 'meta' in error ? error.meta : null;
+        const sqlState = typeof meta === 'object' && meta !== null && 'code' in meta ? String(meta.code) : '';
+        const retryable = code === 'P2034' || (code === 'P2010' && ['40001', '40P01'].includes(sqlState));
         if (!retryable || attempt === maxAttempts) throw error;
         await new Promise((resolve) => setTimeout(resolve, Math.min(10 * attempt, 50)));
       }
