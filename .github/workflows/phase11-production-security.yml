@@ -1,0 +1,41 @@
+name: Phase 11 production security
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - 'apps/api/Dockerfile'
+      - 'apps/api/src/main.ts'
+      - 'apps/api/src/auth/**'
+      - 'apps/api/scripts/phase11-production-security-validation.mjs'
+      - 'infra/**'
+      - '.github/workflows/security-audit.yml'
+      - '.github/workflows/phase11-production-security.yml'
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - 'apps/api/Dockerfile'
+      - 'apps/api/src/main.ts'
+      - 'apps/api/src/auth/**'
+      - 'apps/api/scripts/phase11-production-security-validation.mjs'
+      - 'infra/**'
+      - '.github/workflows/security-audit.yml'
+      - '.github/workflows/phase11-production-security.yml'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate Phase 11 repository controls
+        run: node apps/api/scripts/phase11-production-security-validation.mjs
+      - name: Build production API image
+        run: docker build -t hydroland-api:phase11 .
+      - name: Verify image runs as non-root user
+        run: |
+          test "$(docker image inspect hydroland-api:phase11 --format '{{.Config.User}}')" = "node"
