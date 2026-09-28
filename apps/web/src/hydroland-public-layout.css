@@ -35,7 +35,7 @@ body.hydroland-brand.hl-visitor-mode .hl-visitor-routebar>button{min-height:94px
 body.hydroland-brand.hl-visitor-mode .hl-visitor-routebar>button strong{font-size:1rem}
 body.hydroland-brand.hl-visitor-mode .hl-visitor-routebar>button small{font-size:.8rem;line-height:1.5}
 body.hydroland-brand.hl-visitor-mode #trips{grid-column:2;grid-row:3;margin:0;padding:.8rem;border:1px solid var(--hl-line)!important;border-radius:16px;background:var(--hl-glass)}
-body.hydroland-brand.hl-visitor-mode #trips>.section-heading{margin:0 0 .65rem}
+body.hydroland-brand.hl-visitor-mode #trips>.section-heading{margin:0 0 .65rem!important}
 body.hydroland-brand.hl-visitor-mode #trips>.section-heading .eyebrow{display:none}
 body.hydroland-brand.hl-visitor-mode #trips h2{font-size:1.2rem;margin:0}
 body.hydroland-brand.hl-visitor-mode #trips .trip-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
@@ -44,6 +44,9 @@ body.hydroland-brand.hl-visitor-mode #trips .map-card{grid-column:1;grid-row:1;m
 body.hydroland-brand.hl-visitor-mode #trips .trip-empty-card{grid-column:2}
 body.hydroland-brand.hl-visitor-mode #trips .trip-empty-card[hidden]{display:none!important}
 body.hydroland-brand.hl-visitor-mode #trips .map-card>div:last-child{padding:1rem}
+body.hydroland-brand.hl-visitor-mode #trips .hl-map{min-height:84px;max-height:84px;overflow:hidden}
+body.hydroland-brand.hl-visitor-mode #trips .hl-map-info{align-content:start}
+body.hydroland-brand.hl-visitor-mode #trips .hl-map-info>.eyebrow{display:none}
 body.hydroland-brand.hl-visitor-mode #trips .map-card h3{font-size:1.05rem;margin:.4rem 0}
 body.hydroland-brand.hl-visitor-mode #trips .map-card p{font-size:.85rem}
 body.hydroland-brand.hl-visitor-mode #trips .trip-image{height:145px;background-image:linear-gradient(180deg,transparent,rgba(2,17,28,.55)),url('./assets/hydroland-hero-v2.webp')}
@@ -89,9 +92,10 @@ body.hydroland-brand.hl-visitor-mode .site-footer{padding:1.2rem .3rem}
  body.hydroland-brand.hl-visitor-mode #main{display:flex;flex-direction:column;gap:12px}
  body.hydroland-brand.hl-visitor-mode #main>*{width:100%}
  body.hydroland-brand.hl-visitor-mode #home{min-height:340px!important;padding:2rem 1rem 1.2rem!important;background-position:62% center!important;order:-4}
+ body.hydroland-brand.hl-visitor-mode #home .hero-copy{min-height:0!important}
  body.hydroland-brand.hl-visitor-mode #home h2{font-size:2.2rem!important}
  body.hydroland-brand.hl-visitor-mode #home .hero-copy>p:not(.hero-kicker){font-size:.95rem}
- body.hydroland-brand.hl-visitor-mode #home .hero-ctas{display:grid;grid-template-columns:1fr 1fr;gap:.5rem}
+ body.hydroland-brand.hl-visitor-mode #home .hero-ctas{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-top:1rem!important}
  body.hydroland-brand.hl-visitor-mode #home .hero-ctas button{padding:.6rem;font-size:.85rem}
  body.hydroland-brand.hl-visitor-mode .hl-visitor-routebar{grid-template-columns:1fr;margin:0;order:-3}
  body.hydroland-brand.hl-visitor-mode .hl-visitor-routebar>button{min-height:84px}

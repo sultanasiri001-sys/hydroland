@@ -32,8 +32,8 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
       return {hero:box('#home'),trips:box('#trips'),marine:box('#marine-intelligence'),width:document.documentElement.clientWidth,scrollWidth:document.documentElement.scrollWidth};
     });
     expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.width+1);
+    expect(geometry.hero.height).toBeLessThanOrEqual(380);
     if(viewport.name==='desktop'){
-      expect(geometry.hero.height).toBeLessThanOrEqual(380);
       expect(geometry.trips.top).toBeLessThan(600);
       expect(Math.abs(geometry.trips.top-geometry.marine.top)).toBeLessThan(2);
     }
@@ -42,6 +42,7 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
     await expect(page).toHaveURL(/#training$/);
     await page.locator('#visitor-register-cta').click();
     await expect(page.locator('.hl-login .hl-auth-panel')).toBeVisible();
+    await expect(page.locator('.hl-auth-submit')).toHaveText('إنشاء الحساب');
     await expect(page.locator('.hl-auth-panel input[name="email"]')).toBeFocused();
     expect(await page.evaluate(()=>window.HydrolandAuth.isAuthenticated())).toBe(false);
   });
