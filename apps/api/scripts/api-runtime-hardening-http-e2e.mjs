@@ -32,5 +32,13 @@ response=await fetch(base+'/health',{headers:{Origin:'https://untrusted.example.
 assert(response.ok,`Disallowed-origin health request failed unexpectedly: ${response.status}`);
 assert(!response.headers.get('access-control-allow-origin'),'Untrusted origin received Access-Control-Allow-Origin');
 
-console.log('API runtime hardening HTTP E2E passed: security headers, request IDs, restricted CORS, and origin denial are active.');
+response=await fetch(base+'/integrations/email/public-config');
+assert(response.ok,'Public email availability must be readable without authentication');
+const emailAvailability=await response.json();
+assert(Object.keys(emailAvailability).join(',')==='enabled'&&typeof emailAvailability.enabled==='boolean','Public email availability must not expose provider or credential diagnostics');
+assert(response.headers.get('cache-control')==='no-store','Email availability must not be cached across provider configuration changes');
+response=await fetch(base+'/health/integrations/email');
+assert(response.status===401,'Detailed email readiness must remain protected');
+
+console.log('API runtime hardening HTTP E2E passed: security headers, request IDs, restricted CORS, origin denial, and sanitized email feature availability with protected diagnostics are active.');
 await import('./auth-account-lifecycle-http-e2e.mjs');

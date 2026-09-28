@@ -15,7 +15,12 @@ const escapeHtml=(value:string)=>value.replace(/[&<>"']/g,char=>({
 export class EmailDeliveryService {
   constructor(private readonly integrations:IntegrationService,private readonly audit:AuditService){}
 
-  async sendAuthChallenge(input:{notificationId:string;to:string;purpose:AuthEmailPurpose;token:string;expiresAt:string}):Promise<AuthEmailDelivery>{
+  // Public feature availability only. Provider details and credentials stay admin-only.
+  publicConfig():{enabled:boolean}{
+    try{this.configuration();return{enabled:true}}catch{return{enabled:false}}
+  }
+
+  private configuration(){
     this.integrations.requireOperational('EMAIL',{allowSandbox:true});
     const provider=(process.env.HYDROLAND_EMAIL_PROVIDER?.trim().toUpperCase()||'');
     if(provider!=='RESEND')throw new ServiceUnavailableException('Email provider is not configured.');
@@ -23,6 +28,11 @@ export class EmailDeliveryService {
     const from=process.env.HYDROLAND_EMAIL_FROM?.trim();
     const origin=this.publicOrigin();
     if(!apiKey||!from)throw new ServiceUnavailableException('Email delivery credentials are not configured.');
+    return{apiKey,from,origin};
+  }
+
+  async sendAuthChallenge(input:{notificationId:string;to:string;purpose:AuthEmailPurpose;token:string;expiresAt:string}):Promise<AuthEmailDelivery>{
+    const {apiKey,from,origin}=this.configuration();
     const url=this.challengeUrl(origin,input.purpose,input.token);
     const subject=input.purpose==='VERIFY_EMAIL'?'تفعيل حساب HYDROLAND | Verify your account':'استعادة كلمة مرور HYDROLAND | Reset your password';
     const action=input.purpose==='VERIFY_EMAIL'?'تفعيل الحساب':'تعيين كلمة مرور جديدة';
@@ -57,7 +67,8 @@ export class EmailDeliveryService {
     if(!raw)throw new ServiceUnavailableException('Public web origin is not configured for email links.');
     let origin:URL;
     try{origin=new URL(raw);}catch{throw new ServiceUnavailableException('Public web origin is invalid.');}
-    if(origin.protocol!=='https:'&&!['localhost','127.0.0.1'].includes(origin.hostname))throw new ServiceUnavailableException('Public web origin must use HTTPS.');
+    const localHttp=origin.protocol==='http:'&&['localhost','127.0.0.1'].includes(origin.hostname);
+    if((origin.protocol!=='https:'&&!localHttp)||origin.username||origin.password)throw new ServiceUnavailableException('Public web origin must use HTTPS.');
     origin.pathname='/';origin.search='';origin.hash='';
     return origin;
   }

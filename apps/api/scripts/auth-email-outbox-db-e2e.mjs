@@ -67,6 +67,24 @@ const tokenFor=(id,param)=>{
 };
 
 try{
+  assert.deepEqual(delivery.publicConfig(),{enabled:true},'Configured sandbox must expose only feature availability');
+  for(const key of ['RESEND_API_KEY','HYDROLAND_EMAIL_FROM','HYDROLAND_EMAIL_PROVIDER','HYDROLAND_PUBLIC_WEB_ORIGIN']){
+    const saved=process.env[key];delete process.env[key];
+    assert.deepEqual(delivery.publicConfig(),{enabled:false},'Incomplete configuration must not advertise email availability');
+    process.env[key]=saved;
+  }
+  for(const origin of ['invalid','http://web.example.invalid','ftp://localhost','https://user:password@web.example.invalid']){
+    const saved=process.env.HYDROLAND_PUBLIC_WEB_ORIGIN;process.env.HYDROLAND_PUBLIC_WEB_ORIGIN=origin;
+    assert.deepEqual(delivery.publicConfig(),{enabled:false},'Unsafe link origins must not advertise email availability');
+    process.env.HYDROLAND_PUBLIC_WEB_ORIGIN=saved;
+  }
+  for(const status of ['NOT_SELECTED','CONFIGURED','VERIFIED','DEGRADED','DISABLED']){
+    process.env.HYDROLAND_INTEGRATION_EMAIL_STATUS=status;
+    assert.deepEqual(delivery.publicConfig(),{enabled:false},'Non-operational lifecycle states must disable the public feature');
+  }
+  process.env.HYDROLAND_INTEGRATION_EMAIL_STATUS='PRODUCTION_ENABLED';
+  assert.deepEqual(delivery.publicConfig(),{enabled:true});
+  process.env.HYDROLAND_INTEGRATION_EMAIL_STATUS='SANDBOX';
   account=await db.account.create({data:{
     email:'outbox-e2e-'+randomUUID()+'@example.invalid',passwordHash:'fixture-only',
     person:{create:{firstName:'Outbox',lastName:'E2E'}},
