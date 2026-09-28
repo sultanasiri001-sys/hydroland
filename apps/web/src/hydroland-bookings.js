@@ -69,7 +69,7 @@
     const mapCard=grid.querySelector('.map-card');
     for(const trip of visible){
       const card=document.createElement('article');card.className='trip-card';card.dataset.publicTrip='1';
-      const image=document.createElement('div');image.className=`trip-image ${String(trip.type||'').toUpperCase().includes('SHORE')?'depth':'summer'}`;
+      const image=document.createElement('div');image.className=`trip-image ${String(trip.type||'').toUpperCase().includes('SHORE')?'depth':'summer'}`;image.dataset.publicArt=publicCategory(trip);image.setAttribute('role','img');image.setAttribute('aria-label','صورة تعبيرية للنشاط البحري');
       const badge=document.createElement('span');badge.textContent=tripTypeLabel(trip.type);image.appendChild(badge);
       const details=document.createElement('div');
       const location=document.createElement('small');location.textContent=locationText(trip);
