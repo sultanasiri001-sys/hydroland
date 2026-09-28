@@ -1,15 +1,18 @@
 import {test,expect} from '@playwright/test';
 
-test('approved identity, fonts and button geometry survive blocked external fonts',async({page})=>{
+test('approved identity, fonts and button geometry survive blocked external fonts',async({page},testInfo)=>{
   await page.setViewportSize({width:1536,height:864});
   await page.route('https://fonts.googleapis.com/**',route=>route.abort());
   await page.route('https://fonts.gstatic.com/**',route=>route.abort());
   await page.route('**/api/v1/**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(new URL(route.request().url()).pathname.endsWith('/themes/active')?{themeId:'ocean-horizon'}:[])}));
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.HydrolandPublicUI));
+  await page.evaluate(()=>document.fonts.ready);
+  await page.screenshot({path:testInfo.outputPath('public-identity-login.png')});
   await page.locator('.hl-login-guest').click();
   const identity=await page.evaluate(async()=>{
     const loaded=await Promise.all([400,500,700,800,900].map(weight=>document.fonts.load(`${weight} 16px Tajawal`,'هيدرولاند')));
+    loaded.push(await document.fonts.load('800 16px Montserrat','HYDROLAND'));
     await document.fonts.ready;
     const css=getComputedStyle(document.documentElement),button=getComputedStyle(document.querySelector('#home .primary-button'));
     const mark=new Image();mark.src='./assets/hydroland-mark-reference.webp';await mark.decode();
@@ -31,4 +34,10 @@ test('approved identity, fonts and button geometry survive blocked external font
   expect(await training.evaluate(button=>getComputedStyle(button).backgroundImage)).not.toBe(oceanButton);
   await page.locator('.theme-dialog [data-id="ocean-horizon"]').click();
   await expect(page.locator('html')).toHaveAttribute('data-theme','ocean-horizon');
+  await page.locator('.theme-dialog [data-close]').click();
+  await page.setViewportSize({width:390,height:844});
+  await page.locator('#menu').click();
+  await expect(page.locator('.sidebar [data-hl-theme-button]')).toHaveCount(1);
+  await page.getByRole('button',{name:'فتح الثيمات',exact:true}).click();
+  await expect(page.locator('.theme-dialog')).toBeVisible();
 });

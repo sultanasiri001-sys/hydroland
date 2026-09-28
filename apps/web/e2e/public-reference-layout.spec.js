@@ -64,6 +64,7 @@ test('guest header restores the single search form when the account workspace op
     document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));
   });
   await expect(page.locator('#home #search-form')).toHaveCount(1);
+  await expect(page.locator('.top-actions [data-hl-theme-button]')).toHaveCount(1);
   await expect(page.locator('#search-form')).toHaveCount(1);
   await expect(page.locator('#visitor-register-cta')).toBeHidden();
 });

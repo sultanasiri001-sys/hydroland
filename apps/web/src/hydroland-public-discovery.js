@@ -3,6 +3,15 @@
   const main=document.getElementById('main');if(!main)return;
   const css=document.createElement('link');css.rel='stylesheet';css.href='./hydroland-public-discovery.css';document.head.appendChild(css);
   const auth=()=>Boolean(window.HydrolandAuth?.isAuthenticated?.());
+  let themeButtonHome=null;
+  const placeThemeButton=()=>{
+    const button=document.querySelector('[data-hl-theme-button]'),language=document.getElementById('language');
+    if(!button||!language)return;
+    if(!themeButtonHome){themeButtonHome=document.createComment('theme-button-home');button.before(themeButtonHome)}
+    if(!auth())language.before(button);
+    else themeButtonHome.after(button);
+  };
+  document.addEventListener('DOMContentLoaded',placeThemeButton,{once:true});
   const icons={compass:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM15 9l-2 4-4 2 2-4 4-2Z',boat:'M3 13l9 4 9-4-3 7H6l-3-7ZM7 14V8h10v6M12 8V3M8 8l4-5 4 5',water:'M3 8c3-4 6 4 9 0s6 4 9 0M3 13c3-4 6 4 9 0s6 4 9 0M3 18c3-4 6 4 9 0s6 4 9 0',learn:'m2 9 10-6 10 6-10 6L2 9Zm4 3v6c4 3 8 3 12 0v-6M22 9v8',bag:'M5 8h14l2 13H3L5 8Zm3 2V6a4 4 0 0 1 8 0v4',people:'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM2 21v-2a7 7 0 0 1 14 0v2M17 5a4 4 0 0 1 0 8M18 16a6 6 0 0 1 4 5',shield:'m12 2 8 3v7c0 5-8 10-8 10S4 17 4 12V5l8-3Zm-4 9 3 3 5-6'};
   Object.assign(icons,{
     home:'m3 10 9-7 9 7M5 9v12h5v-7h4v7h5V9',
@@ -54,6 +63,7 @@
   const tripsNav=document.querySelector('#navigation a[href="#trips"]');if(tripsNav)tripsNav.querySelector('span:last-child').textContent='الرحلات';
   const storeNav=document.querySelector('#navigation a[href="#store"]'),communityNav=document.querySelector('#navigation a[href="#community"]');if(storeNav&&communityNav)storeNav.before(communityNav);
   const setView=id=>{
+    placeThemeButton();
     if(auth()){delete document.body.dataset.publicPage;main.querySelectorAll('.hl-public-page-hidden').forEach(node=>node.classList.remove('hl-public-page-hidden'));return false}
     const page=Object.hasOwn(pages,id)?id:'home';document.body.dataset.publicPage=page;
     const visible=new Set(page==='home'?['home','trips','marine-intelligence']:['heading',page]);
