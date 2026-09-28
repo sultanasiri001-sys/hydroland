@@ -2,7 +2,7 @@
   if(window.HydrolandWorkspaceUI)return;
 
   const roleModules={
-    '.hl-inventory':['center','boat','admin'],
+    '.hl-inventory':['admin'],
     '.hl-finance':['diver','instructor','center','boat','organization','admin'],
     '.hl-training':['diver','instructor','center','admin'],
     '.hl-members':['diver','instructor','center','boat','organization','admin'],
@@ -12,8 +12,8 @@
     '.hl-safety-review':['center','boat','organization','admin'],
     '#hl-safety-incidents':['diver','instructor','center','boat','organization','admin'],
     '.hl-weather-admin':['admin'],
-    '.hl-booking-admin':['center','boat','admin'],
-    '.hl-calendar-admin':['center','boat','admin'],
+    '.hl-booking-admin':['admin'],
+    '.hl-calendar-admin':['admin'],
     '.hl-crew-assignments':['instructor','center','boat','admin'],
     '.hl-dive-review':['instructor','center','admin'],
     '.hl-documents':['center','boat','organization','admin'],
@@ -22,7 +22,7 @@
     '.hl-organizations':['center','boat','organization','admin'],
     '.hl-admin':['admin'],
     '.hl-theme-admin':['admin'],
-    '.hl-trip-admin':['center','boat','admin'],
+    '.hl-trip-admin':['admin'],
     '.hl-store-admin':['center','admin'],
     '.hl-policy-center':['admin']
   };
@@ -32,6 +32,8 @@
   const setWorkspace=()=>{
     const isAuthed=auth(),role=currentRole(),body=document.body;
     body.dataset.hlWorkspaceRole=role;
+    body.classList.toggle('hl-visitor-mode',!isAuthed);
+    if(isAuthed){delete body.dataset.publicPage;main.querySelectorAll('.hl-public-page-hidden').forEach(node=>node.classList.remove('hl-public-page-hidden'))}
     body.classList.toggle('hl-authenticated-workspace',isAuthed);
     body.classList.toggle('hl-managed-workspace',isAuthed&&role!=='diver');
     body.classList.toggle('hl-diver-workspace',isAuthed&&role==='diver');
@@ -50,6 +52,8 @@
   };
   const nav=document.getElementById('navigation'),switcher=document.getElementById('role-switch');
   const publicItems=[...nav.children].filter(node=>node!==switcher);let navRole='visitor';
+  const publicIcons={home:'home',explore:'compass',trips:'boat',training:'learn',store:'bag',community:'people',safety:'shield'};
+  publicItems.forEach(node=>{const art=publicIcons[node.hash?.slice(1)],holder=node.querySelector('.nav-icon');if(art&&holder)holder.innerHTML=window.HydrolandUI.icon(art)});
   const syncNavigation=role=>{
     const next=role==='diver'?'diver':'visitor';if(navRole===next)return;navRole=next;
     if(next==='visitor'){nav.replaceChildren(...publicItems,switcher);return}
@@ -82,15 +86,19 @@
     const link=event.target.closest('a[href^="#"]');if(!link||!link.closest('#navigation,.mobile-nav'))return;
     const id=link.hash.slice(1),target=document.getElementById(id)||(id==='hl-support'?document.querySelector('.hl-support'):null);if(!target)return;event.preventDefault();show(target);history.replaceState(null,'','#'+id);document.querySelectorAll('.nav-item[href]').forEach(item=>item.classList.toggle('active',item===link));
   });
-  const queued=()=>queueMicrotask(()=>{setWorkspace();window.HydrolandRoleDashboards?.refreshControls?.()});
+  const queued=()=>queueMicrotask(()=>{connectServices();setWorkspace();window.HydrolandRoleDashboards?.refreshControls?.()});
   for(const eventName of ['hydroland:auth-changed','hydroland:role-changed','hydroland:guest-mode'])document.addEventListener(eventName,()=>{reset();queued()});
   document.addEventListener('hydroland:profile-data-ready',queued);
   const moduleObserver=new MutationObserver(records=>{
     if(records.some(record=>[...record.addedNodes].some(node=>node.nodeType===Node.ELEMENT_NODE&&policyEntries.some(([selector])=>node.matches(selector)||node.querySelector(selector)))))queued();
   });moduleObserver.observe(document.body,{childList:true,subtree:true});
   // Feature controllers retain their API and ownership of loading/authorization.
-  for(const [name,selector] of [['HydrolandDocuments','#hl-documents'],['HydrolandMarineDocuments','#hl-marine-documents'],['HydrolandSafetyIncidents','#hl-safety-incidents'],['HydrolandMarineReadiness','#hl-marine-readiness']]){
-    const service=window[name];if(typeof service?.open!=='function')continue;const open=service.open;service.open=(...args)=>{const result=open(...args);show(document.querySelector(selector));return result};
+  const wrappedServices=new WeakSet();
+  function connectServices(){
+    for(const [name,selector] of [['HydrolandDocuments','#hl-documents'],['HydrolandMarineDocuments','#hl-marine-documents'],['HydrolandSafetyIncidents','#hl-safety-incidents'],['HydrolandMarineReadiness','#hl-marine-readiness']]){
+      const service=window[name];if(typeof service?.open!=='function'||wrappedServices.has(service))continue;
+      const open=service.open;service.open=(...args)=>{const result=open(...args);show(document.querySelector(selector));return result};wrappedServices.add(service);
+    }
   }
-  window.HydrolandWorkspaceUI={refresh:setWorkspace,getRole:currentRole,show};setWorkspace();
+  window.HydrolandWorkspaceUI={refresh:setWorkspace,getRole:currentRole,show};connectServices();setWorkspace();
 })();

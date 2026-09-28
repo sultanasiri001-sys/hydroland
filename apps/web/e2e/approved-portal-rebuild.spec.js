@@ -34,6 +34,7 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
    await expect(board.locator(role==='diver'?'.hl-diver-action-grid>button':'.hl-command-grid>button')).toHaveCount(['organization','admin','boat'].includes(role)?10:6);
    await expect(page.locator('#toast')).not.toHaveClass(/visible/);
    await page.screenshot({path:testInfo.outputPath(`portal-${role}-${viewport.name}.png`),fullPage:true});
+   if(role==='boat')await expect(board.locator('[data-action-label="إنشاء رحلة"]')).toBeDisabled();
    // Exercise routing through the real workspace shell, then restore its home.
    if(role==='diver'){
     await board.locator('[data-diver-route="trips"]').first().click();
@@ -46,6 +47,12 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
     await board.locator('[data-portal-home]').click();await expect(board.locator('.hl-portal-content')).toBeVisible();
    }
   }
+  // Loading an admin-only feature must not make it available in another workspace.
+  await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="center"]').click();
+  const center=page.locator('.hl-role-dashboard[data-role="center"]');
+  await expect(center.locator('[data-action-label="المخزون والمعدات"]')).toBeDisabled();
+  await expect(center.locator('[data-action-label="إدارة الرحلات"]')).toBeDisabled();
+  await expect(page.locator('.hl-inventory')).toBeHidden();
   expect(errors).toEqual([]);
  });
 }
