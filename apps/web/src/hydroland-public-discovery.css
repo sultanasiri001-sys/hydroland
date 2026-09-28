@@ -319,8 +319,9 @@ body.hydroland-brand.hl-visitor-mode .hl-public-home-teasers a{background:linear
 .hl-public-weather{display:none}
 .hl-map{position:relative}
 .hl-map-preview{position:absolute;inset:0;overflow:hidden}
-.hl-map-preview>img{width:100%;height:100%;display:block;object-fit:fill}
-.hl-map-preview-pin{position:absolute;display:block;width:13px;height:13px;border:2px solid #e6fbff;border-radius:50% 50% 50% 0;background:#00bde8;transform:translate(-50%,-100%) rotate(-45deg);box-shadow:0 0 0 4px rgba(0,212,255,.22),0 0 8px #004963}
+.hl-map-preview>svg{width:100%;height:100%;display:block}
+.hl-map-preview-pin{fill:#00bde8;stroke:#e6fbff;stroke-width:1.5}
+.hl-map-preview-halo{fill:rgba(0,212,255,.25);stroke:none}
 body.hydroland-brand.hl-visitor-mode[data-public-page="home"] .hl-public-weather{display:block;margin-top:.3rem}
 .hl-public-weather-heading{display:flex;gap:10px;align-items:center;min-height:48px}
 .hl-public-weather-heading>svg{width:39px;height:39px;color:#92eaff}
@@ -432,4 +433,14 @@ body.hydroland-brand.hl-visitor-mode[data-public-page="home"] .marine-signal__ro
  .hl-public-footer{grid-template-columns:repeat(3,1fr);gap:14px 8px;padding:.5rem}
  .hl-public-footer>span{flex-direction:column;text-align:center;border:0;padding:0;font-size:.66rem;gap:.2rem}
  .hl-public-footer small{grid-column:1/-1}
+}
+
+/* Keep the tablet catalog wide enough to avoid a tall, empty side column. */
+@media(min-width:761px) and (max-width:1120px){
+ body.hydroland-brand.hl-visitor-mode[data-public-page="home"] #main{grid-template-columns:minmax(0,1fr)}
+ body.hydroland-brand.hl-visitor-mode[data-public-page="home"] #trips{grid-column:1;grid-row:3}
+ body.hydroland-brand.hl-visitor-mode[data-public-page="home"] #trips .trip-grid:not([data-public-trip-count="0"]){grid-template-columns:repeat(2,minmax(0,1fr))}
+ body.hydroland-brand.hl-visitor-mode[data-public-page="home"] #trips .map-card{grid-column:auto;grid-row:auto}
+ body.hydroland-brand.hl-visitor-mode[data-public-page="home"] #marine-intelligence{grid-column:1;grid-row:4}
+ body.hydroland-brand.hl-visitor-mode[data-public-page="home"] #home .hero-copy{padding:.7rem;border-radius:14px;background:linear-gradient(270deg,rgba(1,20,35,.74),rgba(1,20,35,.25))}
 }
