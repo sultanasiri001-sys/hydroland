@@ -88,6 +88,20 @@ for(const viewport of viewports){
     await expect(page.locator('.sidebar')).not.toHaveAttribute('aria-hidden','true');
     await expect(page.locator('.shell')).not.toHaveAttribute('aria-hidden','true');
     await expectNoPageOverflow(page);
+
+    if(viewport.name==='mobile'){
+      const sidebar=page.locator('.sidebar');
+      await expect(sidebar).toBeHidden();
+      await page.locator('#menu').click();
+      await expect(sidebar).toHaveClass(/open/);
+      await expect(sidebar).toBeVisible();
+      await expectNoPageOverflow(page);
+      await sidebar.locator('.nav-item[href="#trips"]').click();
+      await expect(sidebar).not.toHaveClass(/open/);
+      await expect(sidebar).toBeHidden();
+      await expect(page).toHaveURL(/#trips$/);
+      await expectNoPageOverflow(page);
+    }
   });
 
   test(`diver and protected workspace layouts stay responsive on ${viewport.name}`,async({page})=>{
