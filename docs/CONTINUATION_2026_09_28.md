@@ -174,3 +174,7 @@ Browser verification includes all six authenticated portal layouts at desktop, t
 - Reviewed actual explore/store/training desktop screenshots from the previous public artifact. Replaced repeated exploration artwork with service-specific existing marine assets and differentiated course/activity cards; kept the shared palette, type, borders and layout.
 - Product cards explicitly identify missing product photography rather than showing unrelated catalog imagery.
 - Static web/design-system checks and production build pass. Full visual approval and merge/deployment remain outstanding; no phase closure claimed.
+
+### Phase 2 mobile detail review
+- Web CI run 36472137671 succeeded for 29d60c0; reviewed its actual desktop exploration and mobile training/detail images.
+- Mobile trip-detail screenshot clips the top of the dialog despite preceding visibility assertions. Explicitly anchor the detail dialog to the viewport (fixed/inset/margin auto) and check complete dialog bounds plus both controls before and after screenshot capture. This regression remains under verification until the next CI run and image review.
