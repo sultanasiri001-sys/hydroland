@@ -80,6 +80,8 @@ jobs:
       - run: npm run validate:integrations -w @hydroland/api
       - run: npm run typecheck
       - run: npm run build
+      - name: Auth email outbox PostgreSQL E2E
+        run: node apps/api/scripts/auth-email-outbox-db-e2e.mjs
       - name: HR HTTP/DB E2E
         env:
           JWT_SECRET: ci-hr-e2e-secret-must-be-at-least-32-characters
