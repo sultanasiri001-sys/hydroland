@@ -10,7 +10,31 @@ const viewports=[
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 
 const expectNoPageOverflow=async page=>{
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1)).toBe(true);
+  const report=await page.evaluate(()=>{
+    const root=document.documentElement;
+    const viewport=root.clientWidth;
+    const offenders=[...document.querySelectorAll('body *')]
+      .filter(el=>{
+        const style=getComputedStyle(el);
+        if(style.display==='none'||style.visibility==='hidden'||style.position==='fixed')return false;
+        const rect=el.getBoundingClientRect();
+        return rect.width>0&&(rect.left<-1||rect.right>viewport+1);
+      })
+      .slice(0,12)
+      .map(el=>{
+        const rect=el.getBoundingClientRect();
+        return {
+          tag:el.tagName.toLowerCase(),
+          id:el.id||'',
+          className:String(el.className||'').slice(0,140),
+          left:Math.round(rect.left),
+          right:Math.round(rect.right),
+          width:Math.round(rect.width)
+        };
+      });
+    return {clientWidth:viewport,scrollWidth:root.scrollWidth,offenders};
+  });
+  expect(report.scrollWidth,JSON.stringify(report,null,2)).toBeLessThanOrEqual(report.clientWidth+1);
 };
 
 const mockVisitorApi=async page=>{
