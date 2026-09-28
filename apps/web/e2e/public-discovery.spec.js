@@ -20,9 +20,9 @@ const installApi=async(page,options={})=>{
   return writes;
 };
 const enter=async(page,url='/')=>{await page.goto(url,{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>Boolean(window.HydrolandPublicUI));await page.locator('.hl-login-guest').click();await expect(page.locator('.hl-login')).toBeHidden();await page.evaluate(()=>document.fonts.ready)};
-const navigate=async(page,id)=>{const link=page.locator(`#navigation a[href="#${id}"]`);if(!await link.isVisible())await page.locator('#menu').click();await link.click();await expect(page.locator('body')).toHaveAttribute('data-public-page',id)};
+const navigate=async(page,id)=>{const link=page.locator(`#navigation a[href="#${id}"]`);if(!await link.isVisible())await page.locator('#menu').click();await link.click();await expect(page.locator('body')).toHaveAttribute('data-public-page',id);await expect.poll(()=>page.evaluate(()=>window.scrollY)).toBe(0);if(id!=='home')await expect(page.locator('#hl-public-page-heading')).toBeInViewport()};
 const noOverflow=async page=>{const widths=await page.evaluate(()=>({page:document.documentElement.scrollWidth,viewport:document.documentElement.clientWidth}));expect(widths.page).toBeLessThanOrEqual(widths.viewport+1)};
-const screenshot=async(page,testInfo,name)=>{await noOverflow(page);await page.screenshot({path:testInfo.outputPath(`public-${name}.png`)})};
+const screenshot=async(page,testInfo,name)=>{await noOverflow(page);await page.screenshot({path:testInfo.outputPath(`public-${name}.png`),fullPage:name==='home-desktop'||name.startsWith('store-')||name.startsWith('training-')})};
 
 for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',width:768,height:1024},{name:'mobile',width:390,height:844}]){
   test(`public discovery, detail navigation and cart work on ${viewport.name}`,async({page},testInfo)=>{
@@ -32,6 +32,7 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
     await navigate(page,'explore');await expect(page.locator('.hl-public-explore-grid>a')).toHaveCount(6);await expect(page.locator('#home')).toBeHidden();
     await screenshot(page,testInfo,`explore-${viewport.name}`);
     await page.locator('#explore a[href="#activities"]').click();await expect(page.locator('.hl-public-activity')).toHaveCount(3);await expect(page.locator('[data-activity-count="shore"]')).toHaveText('1 رحلة منشورة');
+    await screenshot(page,testInfo,`activities-${viewport.name}`);
     await page.locator('[data-activity-filter="shore"]').click();await expect(page).toHaveURL(/#trips$/);await expect(page.locator('[data-public-trip]')).toHaveCount(1);
     await expect(page.locator('[data-public-trip-filter="shore"]')).toHaveAttribute('aria-pressed','true');
     await page.locator('[data-public-detail="trip"]').click();const detail=page.locator('#hl-public-detail');await expect(detail).toBeVisible();await expect(detail.locator('h2')).toHaveText('غوص شاطئي في عمق');await expect(detail.locator('dl')).toContainText('مرسى القحمة');
@@ -42,6 +43,7 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
     await navigate(page,'training');await expect(page.locator('.hl-public-course')).toHaveCount(3);await screenshot(page,testInfo,`training-${viewport.name}`);
     await page.locator('a[href="#course/open-water"]').click();await expect(detail.locator('h2')).toHaveText('الغوص في المياه المفتوحة');await expect(detail).toContainText('تظهر عند نشر الدورات');await detail.locator('[data-detail-back]').click();await expect(detail).toBeHidden();
     await navigate(page,'store');await page.locator('[data-product-filter="available"]').click();await expect(page.locator('[data-public-product]')).toHaveCount(1);
+    if(viewport.name==='mobile'){const grid=await page.locator('#store .product-grid').boundingBox(),card=await page.locator('[data-public-product]').boundingBox();expect(card.width).toBeGreaterThan(grid.width*.9)}
     await screenshot(page,testInfo,`store-${viewport.name}`);
     await page.locator('[data-public-detail="product"]').click();await expect(detail.locator('[data-detail-description]')).toHaveText('وصف المنتج <strong>من المورد</strong>');await expect(detail.locator('[data-detail-description] strong')).toHaveCount(0);
     await screenshot(page,testInfo,`product-detail-${viewport.name}`);
@@ -54,10 +56,11 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
 
 test('shared trip links recover from a read failure and keep unavailable bookings blocked',async({page})=>{
   let unavailable=true;const blocked={...trips[0],price:{configured:false,pricePerSeatMinor:0},safety:{decision:'ALLOWED'}};
-  const writes=await installApi(page,{tripResponse:route=>unavailable?json(route,{message:'Unavailable'},503):json(route,[blocked])});
+  const sameTitle={...trips[0],id:'other-trip-with-same-title'};
+  const writes=await installApi(page,{tripResponse:route=>unavailable?json(route,{message:'Unavailable'},503):json(route,[sameTitle,blocked])});
   await enter(page,'/#trip/boat-public');const detail=page.locator('#hl-public-detail');await expect(detail).toBeVisible();await expect(detail.locator('h2')).toHaveText('تعذر تحميل التفاصيل');
   unavailable=false;await detail.locator('[data-detail-action]').click();await expect(detail.locator('h2')).toHaveText(blocked.title);await expect(detail.locator('[data-detail-action]')).toBeDisabled();await expect(detail.locator('[data-detail-action]')).toHaveText('السعر لم يُعتمد بعد');
-  await detail.locator('[data-detail-back]').click();await expect(page).toHaveURL(/#trips$/);await expect(page.locator('[data-book]')).toBeDisabled();expect(writes).toEqual([]);
+  await detail.locator('[data-detail-back]').click();await expect(page).toHaveURL(/#trips$/);await expect(page.locator('[data-book][data-trip-id="boat-public"]')).toBeDisabled();await expect(page.locator('[data-book][data-trip-id="other-trip-with-same-title"]')).toBeEnabled();expect(writes).toEqual([]);
 });
 
 test('missing detail links show an honest state and public search opens the matching page',async({page})=>{

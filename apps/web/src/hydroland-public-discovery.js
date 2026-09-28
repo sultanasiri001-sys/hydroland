@@ -22,20 +22,21 @@
   const storeFilters=document.querySelector('.hl-store-filters');if(storeFilters){storeFilters.setAttribute('aria-label','تصفية المنتجات');storeFilters.innerHTML=[['all','الكل'],['available','متوفر'],['unavailable','نفد المخزون']].map(([id,title])=>`<button type="button" data-product-filter="${id}" aria-pressed="${id==='all'}">${title}</button>`).join('')}
   const teasers=document.createElement('section');teasers.className='hl-public-home-teasers hl-public-only';teasers.dataset.publicSurface='home';teasers.innerHTML=`<article>${icon('people')}<h2>مجتمع هيدرولاند</h2><p>قصص وتجارب يجمعها حب البحر.</p><a href="#community">انضم إلى المجتمع ←</a></article><article>${icon('shield')}<h2>معًا لمحيط أكثر أمانًا</h2><p>استكشف معلومات السلامة قبل رحلتك.</p><a href="#safety">مركز السلامة ←</a></article><article>${icon('learn')}<h2>غوصتك التالية تبدأ هنا</h2><p>اكتشف مسارات التعلم المناسبة لك.</p><a href="#training">استكشف التدريب ←</a></article>`;main.appendChild(teasers);
   for(const id of Object.keys(pages)){const node=document.getElementById(id);if(node)node.dataset.publicSurface=id}
-  const routebar=document.querySelector('.hl-visitor-routebar');if(routebar){routebar.dataset.publicSurface='home';routebar.querySelectorAll('button').forEach(button=>{button.querySelector('b').innerHTML=icon(button.dataset.visitorTarget==='trips'?'boat':button.dataset.visitorTarget==='training'?'learn':'shield')});routebar.prepend(routebar.querySelector('[data-hl-public-auth]'))}
+  const routebar=document.querySelector('.hl-visitor-routebar');if(routebar){routebar.dataset.publicSurface='home';routebar.querySelectorAll('button').forEach(button=>{button.querySelector('b').innerHTML=icon(button.dataset.visitorTarget==='trips'?'boat':button.dataset.visitorTarget==='training'?'learn':'shield')});routebar.prepend(routebar.querySelector('[data-hl-public-auth]'),routebar.querySelector('[data-visitor-target="training"]'))}
   document.querySelectorAll('.hl-community,.hl-support').forEach(node=>node.dataset.publicSurface='community');
   const tripsNav=document.querySelector('#navigation a[href="#trips"]');if(tripsNav){const link=document.createElement('a');link.className='nav-item hl-public-only';link.href='#activities';link.innerHTML=`<span class="nav-icon">${icon('water')}</span><span>الأنشطة البحرية</span>`;tripsNav.after(link)}
   const setView=id=>{
-    if(auth()){delete document.body.dataset.publicPage;main.querySelectorAll('.hl-public-page-hidden').forEach(node=>node.classList.remove('hl-public-page-hidden'));return}
+    if(auth()){delete document.body.dataset.publicPage;main.querySelectorAll('.hl-public-page-hidden').forEach(node=>node.classList.remove('hl-public-page-hidden'));return false}
     const page=Object.hasOwn(pages,id)?id:'home';document.body.dataset.publicPage=page;
     const visible=new Set(page==='home'?['home','trips','marine-intelligence']:['heading',page]);
     main.querySelectorAll(':scope>[data-public-surface]').forEach(node=>node.classList.toggle('hl-public-page-hidden',!visible.has(node.dataset.publicSurface)));
     heading.querySelector('[data-page-title]').textContent=pages[page][0];heading.querySelector('[data-page-description]').textContent=pages[page][1];heading.querySelector('[data-page-crumb]').textContent=pages[page][0];
     document.title=page==='home'?'HYDROLAND | هيدرولاند':pages[page][0]+' | HYDROLAND';
     document.querySelectorAll('.nav-item[href]').forEach(link=>link.classList.toggle('active',link.getAttribute('href')==='#'+page));
+    return Object.hasOwn(pages,id);
   };
   const filterTrips=filter=>{window.HydrolandBookings?.setPublicFilter?.(filter);tripToolbar.querySelectorAll('[data-public-trip-filter]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.publicTripFilter===filter)))};
-  const navigate=id=>{setView(id);history.pushState(null,'','#'+id);document.getElementById(id)?.scrollIntoView({behavior:'smooth',block:'start'});document.querySelector('.sidebar')?.classList.remove('open')};
+  const navigate=id=>{const publicPage=setView(id);history.pushState(null,'','#'+id);if(publicPage)window.scrollTo({top:0,behavior:'instant'});else document.getElementById(id)?.scrollIntoView({behavior:'smooth',block:'start'});document.querySelector('.sidebar')?.classList.remove('open')};
   const openTraining=()=>{if(!auth()){document.getElementById('visitor-auth-cta')?.click();return}window.HydrolandTraining?.reload?.();document.querySelector('.hl-training')?.scrollIntoView({behavior:'smooth',block:'start'})};
   const updateCounts=()=>{const client=window.HydrolandBookings,trips=client?.getPublicTrips?.()||[],status=client?.getPublicStatus?.();activitySection.querySelectorAll('[data-activity-count]').forEach(node=>{const count=trips.filter(trip=>client.publicCategory(trip)===node.dataset.activityCount).length;node.textContent=status==='loading'?'جارٍ تحميل الرحلات...':status==='error'?'تعذر تحميل الرحلات':count?`${count} رحلة منشورة`:'لا توجد رحلات منشورة حاليًا'});const count=tripSection?.querySelector('[data-public-trip-grid]')?.dataset.publicTripCount;tripToolbar.querySelector('[data-public-trip-count-label]').textContent=status==='ready'?`${count||0} رحلة منشورة`:''};
   const dialog=document.createElement('dialog');dialog.id='hl-public-detail';dialog.className='hl-public-detail';dialog.setAttribute('aria-labelledby','hl-public-detail-title');document.body.appendChild(dialog);
@@ -49,7 +50,7 @@
   };
   const leaveDetailsForAction=kind=>{dialog.close();history.replaceState(null,'',returnHash||'#'+parentPage(kind));returnHash=null;setView(parentPage(kind))};
   const renderDetails=()=>{
-    const {kind,id}=routeParts(),parent=parentPage(kind);if(!parent){if(dialog.open){closingForRoute=true;dialog.close();closingForRoute=false}return false}
+    const {kind,id}=routeParts(),parent=parentPage(kind);if(!parent){if(dialog.open)dialog.close();return false}
     setView(parent);if(!auth()&&!window.HydrolandAuth?.isGuestMode?.()){if(dialog.open)dialog.close();return true}let detail=null,status='ready',retry=null;
     if(kind==='trip'){
       const client=window.HydrolandBookings,trip=client?.getPublicTrips?.().find(item=>item.id===id);status=client?.getPublicStatus?.()||'loading';retry=()=>client.reload();
@@ -74,7 +75,7 @@
     const activity=event.target.closest?.('[data-activity-filter]');if(activity){filterTrips(activity.dataset.activityFilter);navigate('trips');return}
     const productFilter=event.target.closest?.('[data-product-filter]');if(productFilter){const filter=productFilter.dataset.productFilter;window.HydrolandStore?.setFilter?.(filter);storeFilters.querySelectorAll('button').forEach(button=>button.setAttribute('aria-pressed',String(button===productFilter)));return}
     if(event.target.closest?.('[data-public-training-account]')){openTraining();return}
-    const anchor=event.target.closest?.('a[href^="#"]');if(anchor&&Object.hasOwn(pages,anchor.hash.slice(1))){setView(anchor.hash.slice(1));document.querySelector('.sidebar')?.classList.remove('open')}
+    const anchor=event.target.closest?.('a[href^="#"]');if(!auth()&&anchor&&Object.hasOwn(pages,anchor.hash.slice(1))){event.preventDefault();navigate(anchor.hash.slice(1))}
   },true);
   for(const name of ['hydroland:public-trips-updated','hydroland:public-products-updated'])document.addEventListener(name,()=>{updateCounts();if(parentPage(routeParts().kind))renderDetails()});
   for(const name of ['hydroland:auth-changed','hydroland:guest-mode'])document.addEventListener(name,syncRoute);
