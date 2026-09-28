@@ -103,13 +103,13 @@ const requiredWeb=[
   "if(state.refreshPromise)return state.refreshPromise","if(response.status!==401)return response","access=await refreshSession()",
   "if(response.status===401){clearSession();emitAuthChanged();showLogin('انتهت الجلسة، سجّل الدخول من جديد')}","if(state.mode==='register')",
   "body?.status!=='PENDING_VERIFICATION'||body?.requiresEmailVerification!==true","clearSession();clearProtectedView();setAuthUi(false);emitAuthChanged()",
-  "تم إنشاء الحساب. يلزم التحقق من البريد الإلكتروني قبل تسجيل الدخول","storeTokens(body);setAuthUi(true)","setTimeout(emitAuthChanged,0)","fetch(`${API_BASE}/auth/logout`",
+  "تم إنشاء الحساب. يلزم التحقق من البريد الإلكتروني قبل تسجيل الدخول","storeTokens(body);state.sessionVersion++;setAuthUi(true)","setTimeout(emitAuthChanged,0)","fetch(`${API_BASE}/auth/logout`",
   "params.get('reset_token')","searchParams.get('verify_email')","'/auth/email-verification/confirm'","'/auth/password-reset/confirm'","requestEmailVerification","requestPasswordReset"
 ];
 for(const marker of requiredWeb) assert.ok(web.includes(marker),`Missing web lifecycle marker: ${marker}`);
 for(const marker of [
   "https://accounts.google.com/gsi/client","/auth/google/config","/auth/google`","data-hl-google-signin","window.google.accounts.id.initialize","window.google.accounts.id.renderButton",
-  "challengeToken=null","/auth/mfa/verify","sessionStorage.setItem('hl-access-token'","sessionStorage.setItem('hl-refresh-token'"
+  "challengeToken=null","/auth/mfa/verify","auth().acceptSession(body,attempt)","auth().isAuthAttemptCurrent(currentAttempt)"
 ])assert.ok(googleWeb.includes(marker),`Missing Google browser boundary: ${marker}`);
 assert.ok(!/sessionStorage\.setItem\([^\n]*(credential|challenge)/i.test(googleWeb),'Google credential/MFA challenge must not be persisted in sessionStorage.');
 assert.ok(webApp.includes("await loadScript('hydroland-google-auth.js')"),'Google browser module must load after core authentication.');

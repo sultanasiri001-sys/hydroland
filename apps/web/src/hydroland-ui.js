@@ -5,5 +5,6 @@
   const icon=name=>'<svg class="hl-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(paths[name]||paths.compass)+'"/></svg>';
   const brand=(compact=false)=>'<span class="brand-mark" aria-hidden="true"></span><span class="brand-copy"><b>HYDROLAND</b><small>هيدرولاند</small>'+(compact?'':'<em class="brand-tagline">DIVE · EXPLORE · PROTECT · BELONG</em>')+'</span>';
   const emblem='<svg viewBox="0 0 64 70" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" aria-hidden="true"><path d="M32 39V14M32 14C22 2 14 7 12 14c8-4 14-2 20 0M32 14C42 2 50 7 52 14c-8-4-14-2-20 0M32 14C20 11 15 19 16 23l16-9M32 14c12-3 17 5 16 9l-16-9M10 43c10 1 20 10 34 18M54 43c-10 1-20 10-34 18M11 42l-3 5M53 42l3 5M43 57l5 7M21 57l-5 7"/></svg>';
-  window.HydrolandUI={icon,esc,brand,emblem};
+  const openDialog=dialog=>{dialog.showModal();window.scrollTo({left:window.scrollX,top:window.scrollY,behavior:'instant'})};
+  window.HydrolandUI={icon,esc,brand,emblem,openDialog};
 })();

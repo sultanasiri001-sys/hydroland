@@ -48,3 +48,11 @@ jobs:
           path: apps/web/test-results/**/portal-*.png
           if-no-files-found: ignore
           retention-days: 3
+      - name: Account and authentication review screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: account-interface-review
+          path: apps/web/test-results/**/account-*.png
+          if-no-files-found: ignore
+          retention-days: 7
