@@ -55,6 +55,22 @@ Final prompt (built-in tool):
 
 > Use case: background-extraction. Asset type: transparent HYDROLAND marine assistant mascot cutout for a small website card. Input image is the approved homepage, edit target. Faithfully extract/reconstruct ONLY the cute small futuristic SCUBA ROBOT at the bottom RIGHT of that reference. Same glossy dark navy rounded diving helmet, large glowing cyan eyes behind its black visor, small compact body, cyan luminous metallic edge accents, visible diving air tank/hoses, one hand gently raised. Three-quarter view facing LEFT toward the card text, matching the reference pose and premium 3D rendering. Isolate the robot, remove coral, water, UI, text, buttons, sparkles and background. Preserve the friendly diving mascot identity, not a generic box-shaped robot. Genuine transparent alpha background, narrow even margins, full upper body visible, no letters, no branding, no border.
 
+## Center and administration hero artwork (2026-09-28 rebuild)
+
+Two decorative scenes reconstructed by the built-in image-generation tool from the approved center and administration boards. The images are illustrations, not records of a provider, vessel, destination or operational condition. Their original 2172 × 724 dimensions are preserved in WebP.
+
+Path: `apps/web/public/assets/hydroland-center-hero-reference.webp`. Input: `C41BF53C-01E6-4BA8-A765-04E295C73614(5).jpeg`.
+
+Final prompt (built-in tool):
+
+> Use case: precise-object-edit. Asset type: HYDROLAND dive-center portal hero background. Input is the approved center UI reference. Reconstruct ONLY the photograph in the big main hero panel below the masthead, with no UI. Exact composition: on LEFT a large elegant white and navy dive yacht next to rugged warm golden Red Sea rocky islands above the waterline; below left and center crystal turquoise ocean with colorful corals, fish and two realistic black scuba divers swimming toward the right; cinematic sunlight rays. RIGHT third quiet very dark navy blue underwater space, reserved for Arabic UI text rendered later in HTML. Rich deep navy, glowing cyan, realistic gold sunlight, same premium photographic detail and scale as the reference. Wide 5:1 landscape. Yacht should be clearly recognizable and large, centered around x=25%. No writing, logos, people closeup, interface, cards, badges, icons, borders or watermark. Decorative illustration, not documentary photography.
+
+Path: `apps/web/public/assets/hydroland-admin-hero-reference.webp`. Input: `3A8D883E-BFB6-4CD8-8BCF-10C8B68DE65C(4).jpeg`.
+
+Final prompt (built-in tool):
+
+> Use case: precise-object-edit. Asset type: HYDROLAND administration portal panoramic hero background. Input is the approved admin UI reference. Reconstruct ONLY the cinematic marine scene in the top 230-pixel-high area, excluding UI. Above a gently curving waterline: distant jagged rocky Red Sea islands and three small white motor yachts under golden sunset, filling the top quarter. Below waterline: rich dark blue/cyan ocean with luminous shafts of light and fish, a realistic sea turtle and colorful healthy coral clustered on LEFT, a scuba diver near upper RIGHT but leave lower RIGHT half dark quiet navy open water for large Arabic title rendered in code. Same composition, colors and realistic detail of reference. Extra-wide 5:1 panorama. No text, logos, icons, interface, frames, badges, borders or watermark. Decorative illustration, not a real destination record.
+
 ## Local fonts
 
 Six WOFF files are in `apps/web/public/assets/fonts/`, referenced by `src/hydroland-fonts.css`. They retain the complete source glyph sets. Google Fonts TTF sources were converted using fontTools, without changing outlines or subsetting. The two included OFL license files apply.
