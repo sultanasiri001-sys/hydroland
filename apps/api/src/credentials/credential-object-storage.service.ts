@@ -21,6 +21,15 @@ export class CredentialObjectStorageService {
     let url:URL;try{url=new URL(endpoint)}catch{throw new ServiceUnavailableException('Private object storage endpoint is invalid.');}
     if(!['http:','https:'].includes(url.protocol))throw new ServiceUnavailableException('Private object storage endpoint must use HTTP or HTTPS.');
     if(url.username||url.password||url.search||url.hash)throw new ServiceUnavailableException('Private object storage endpoint is invalid.');
+    if(process.env.NODE_ENV==='production'){
+      if(url.protocol!=='https:')throw new ServiceUnavailableException('Production object storage must use HTTPS.');
+      const privateConfirmed=process.env.HYDROLAND_OBJECT_STORAGE_PRIVATE_ACCESS_CONFIRMED==='true';
+      const encryptionConfirmed=process.env.HYDROLAND_OBJECT_STORAGE_ENCRYPTION_CONFIRMED==='true';
+      const versioningConfirmed=process.env.HYDROLAND_OBJECT_STORAGE_VERSIONING_CONFIRMED==='true';
+      if(!privateConfirmed||!encryptionConfirmed||!versioningConfirmed){
+        throw new ServiceUnavailableException('Production object storage requires confirmed private access, encryption at rest, and versioning.');
+      }
+    }
     return{url,bucket,accessKeyId,secretAccessKey,region};
   }
 
