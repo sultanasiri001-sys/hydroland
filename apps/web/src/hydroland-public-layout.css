@@ -1,4 +1,6 @@
 /* Phase 2 visitor composition. The Phase 1 tokens and protected workspaces stay canonical. */
+/* Visibility must change immediately so auth inputs can receive focus while opacity animates. */
+body.hydroland-brand.hl-visitor-mode .hl-login{transition-property:opacity}
 body.hydroland-brand.hl-visitor-mode .shell{max-width:none;padding:0 250px 1.5rem 20px!important}
 body.hydroland-brand.hl-visitor-mode .sidebar{inset:0 0 0 auto!important;width:230px;border-radius:0!important;padding:1.1rem .8rem;gap:.8rem}
 body.hydroland-brand.hl-visitor-mode .sidebar .brand{flex-direction:column;gap:.2rem;padding:.2rem 0 .8rem}

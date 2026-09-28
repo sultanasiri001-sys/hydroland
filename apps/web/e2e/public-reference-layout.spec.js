@@ -43,7 +43,8 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
     await page.locator('#visitor-register-cta').click();
     await expect(page.locator('.hl-login .hl-auth-panel')).toBeVisible();
     await expect(page.locator('.hl-auth-submit')).toHaveText('إنشاء الحساب');
-    await expect(page.locator('.hl-auth-panel input[name="email"]')).toBeFocused();
+    const authFocus=await page.evaluate(()=>({activeTag:document.activeElement?.tagName,activeName:document.activeElement?.getAttribute('name'),visibility:getComputedStyle(document.querySelector('.hl-login')).visibility,transition:getComputedStyle(document.querySelector('.hl-login')).transitionProperty}));
+    await expect(page.locator('.hl-auth-panel input[name="email"]'),JSON.stringify(authFocus)).toBeFocused();
     expect(await page.evaluate(()=>window.HydrolandAuth.isAuthenticated())).toBe(false);
   });
 }
