@@ -79,14 +79,18 @@
   const updateCounts=()=>{const client=window.HydrolandBookings,trips=client?.getPublicTrips?.()||[],status=client?.getPublicStatus?.();activitySection.querySelectorAll('[data-activity-count]').forEach(node=>{const count=trips.filter(trip=>client.publicCategory(trip)===node.dataset.activityCount).length;node.textContent=status==='loading'?'جارٍ تحميل الرحلات...':status==='error'?'تعذر تحميل الرحلات':count?`${count} رحلة منشورة`:'لا توجد رحلات منشورة حاليًا'});const count=tripSection?.querySelector('[data-public-trip-grid]')?.dataset.publicTripCount;tripToolbar.querySelector('[data-public-trip-count-label]').textContent=status==='ready'?`${count||0} رحلة منشورة`:''};
   const dialog=document.createElement('dialog');dialog.id='hl-public-detail';dialog.className='hl-public-detail';dialog.setAttribute('aria-labelledby','hl-public-detail-title');document.body.appendChild(dialog);
   let returnHash=null,detailTrigger=null;
+  const restoreDetailFocus=()=>{
+    const trigger=detailTrigger;detailTrigger=null;if(!trigger)return;
+    // Fragment navigation may reset focus after dialog.close(); restore it after routing.
+    requestAnimationFrame(()=>{if(dialog.open)return;const target=trigger.isConnected?trigger:[...document.querySelectorAll('[data-public-detail]')].find(link=>link.getAttribute('href')===trigger.getAttribute('href'));target?.focus({preventScroll:true})});
+  };
   const routeParts=()=>{const parts=location.hash.slice(1).split('/');try{return {kind:parts[0],id:decodeURIComponent(parts.slice(1).join('/'))}}catch{return {kind:parts[0],id:''}}};
   const parentPage=kind=>({trip:'trips',product:'store',course:'training'})[kind];
   const closeDetails=()=>{
     const parent=parentPage(routeParts().kind)||'home';if(dialog.open)dialog.close();
-    if(returnHash){returnHash=null;history.back()}else{history.replaceState(null,'','#'+parent);setView(parent)}
-    detailTrigger?.focus?.({preventScroll:true});detailTrigger=null;
+    if(returnHash){returnHash=null;history.back()}else{history.replaceState(null,'','#'+parent);setView(parent);restoreDetailFocus()}
   };
-  const leaveDetailsForAction=kind=>{dialog.close();history.replaceState(null,'',returnHash||'#'+parentPage(kind));returnHash=null;setView(parentPage(kind))};
+  const leaveDetailsForAction=kind=>{detailTrigger=null;dialog.close();history.replaceState(null,'',returnHash||'#'+parentPage(kind));returnHash=null;setView(parentPage(kind))};
   const renderDetails=()=>{
     const {kind,id}=routeParts(),parent=parentPage(kind);if(!parent){if(dialog.open)dialog.close();return false}
     setView(parent);if(!auth()&&!window.HydrolandAuth?.isGuestMode?.()){if(dialog.open)dialog.close();return true}let detail=null,status='ready',retry=null;
@@ -106,7 +110,7 @@
   };
   dialog.addEventListener('cancel',event=>{event.preventDefault();closeDetails()});
   dialog.addEventListener('click',event=>{if(event.target===dialog){const box=dialog.getBoundingClientRect();if(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom)closeDetails()}});
-  const syncRoute=()=>{if(!renderDetails()){const id=location.hash.slice(1)||'home';setView(id)}};
+  const syncRoute=()=>{if(!renderDetails()){const id=location.hash.slice(1)||'home';setView(id);returnHash=null;restoreDetailFocus()}};
   document.addEventListener('click',event=>{
     const detail=event.target.closest?.('[data-public-detail]');if(detail){event.preventDefault();detailTrigger=detail;returnHash=location.hash||'#'+parentPage(detail.dataset.publicDetail);history.pushState(null,'',detail.getAttribute('href'));renderDetails();return}
     const tripFilter=event.target.closest?.('[data-public-trip-filter]');if(tripFilter){filterTrips(tripFilter.dataset.publicTripFilter);return}
