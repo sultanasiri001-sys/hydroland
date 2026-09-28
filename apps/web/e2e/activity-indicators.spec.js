@@ -38,7 +38,7 @@ test('unread notifications and inbox indicators reach signed-in workspaces and c
   const mobileMessages=page.locator('.mobile-nav button[data-hl-action="messages"]');
   await expect(page.locator('#top-notifications')).toBeHidden();
   await expect(page.locator('#top-messages')).toBeHidden();
-  await page.locator('.hl-login-guest').click();
+  await expect(page.locator('.hl-login')).toBeHidden();
   await expect(page.locator('#top-notifications')).toBeHidden();
   await expect(page.locator('#top-messages')).toBeHidden();
   await expect(mobileMessages).toBeHidden();

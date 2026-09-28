@@ -8,6 +8,8 @@ test('approved identity, fonts and button geometry survive blocked external font
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.HydrolandPublicUI));
   await page.evaluate(()=>document.fonts.ready);
+  await expect(page.locator('.hl-login')).toBeHidden();
+  await page.locator('#visitor-auth-cta').click();
   await page.screenshot({path:testInfo.outputPath('public-identity-login.png')});
   await page.locator('.hl-login-guest').click();
   const identity=await page.evaluate(async()=>{

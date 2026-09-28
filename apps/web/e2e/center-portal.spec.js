@@ -52,6 +52,8 @@ test('center portal opens center documents and saves a test report under its act
   await expect.poll(()=>state.createdPayload?.payload?.summary).toBe('فحص تشغيل مركز الغوص التجريبي');
   await expect(panel.locator('[data-document-id="center-document-001"]')).toContainText('HYD-CENTER-E2E-001');
   await expect(panel.locator('[data-doc-note]')).toContainText('تم حفظ المستند كمسودة.');
+  await dashboard.locator('[data-portal-home]').click();
+  await expect(dashboard.locator('.hl-portal-content')).toBeVisible();
   await page.evaluate(()=>{document.getElementById('hl-documents').hidden=true});
   await dashboard.locator('[data-action-label="المستندات والتراخيص"]').click();
   await expect(panel).toBeVisible();

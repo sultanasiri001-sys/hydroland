@@ -2,6 +2,8 @@ import {expect} from '@playwright/test';
 
 export const openWorkspaceSwitcher=async page=>{
   await page.waitForFunction(()=>Boolean(window.HydrolandPortalFreshness));
+  const portalMenu=page.locator('.hl-role-dashboard [data-portal-menu]');
+  if(await portalMenu.isVisible().catch(()=>false)&&!await page.locator('.hl-role-dashboard [data-portal-switch]').isVisible().catch(()=>false))await portalMenu.click();
   const dashboardSwitch=page.locator('.hl-role-dashboard [data-portal-switch]');
   if(await dashboardSwitch.isVisible().catch(()=>false)){
     await dashboardSwitch.click();

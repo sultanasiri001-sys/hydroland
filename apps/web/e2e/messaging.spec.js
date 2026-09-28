@@ -31,7 +31,7 @@ test('messages control is auth-gated and authenticated member can read text/voic
   const messagesControl=page.locator('#top-messages');
   await expect(messagesControl).toBeHidden();
 
-  await page.locator('.hl-login-guest').click();
+  await expect(page.locator('.hl-login')).toBeHidden();
   await expect(page.locator('.hl-login')).toHaveClass(/hidden/);
   await expect(messagesControl).toBeHidden();
   await expect(page.locator('#hl-messages-dialog')).not.toBeVisible();

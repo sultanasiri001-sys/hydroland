@@ -18,7 +18,7 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
     await mockPublicApi(page);
     await page.goto('/',{waitUntil:'domcontentloaded'});
     await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandWorkspaceUI&&window.HydrolandPublicUI));
-    await page.locator('.hl-login-guest').click();
+    await expect(page.locator('.hl-login')).toBeHidden();
     await expect(page.locator('.hl-login')).toBeHidden();
     await expect(page.locator('.topbar #search-form')).toBeVisible();
     await expect(page.locator('#search-form')).toHaveCount(1);
@@ -51,11 +51,11 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
   });
 }
 
-test('guest header restores the single search form when the account workspace opens',async({page})=>{
+test('the canonical header search remains available in the account workspace',async({page})=>{
   await mockPublicApi(page);
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandWorkspaceUI&&window.HydrolandPublicUI));
-  await page.locator('.hl-login-guest').click();
+  await expect(page.locator('.hl-login')).toBeHidden();
   await expect(page.locator('.topbar #search-form')).toBeVisible();
   await page.evaluate(()=>{
     sessionStorage.setItem('hl-access-token','public-layout-test-access');
@@ -63,7 +63,7 @@ test('guest header restores the single search form when the account workspace op
     window.HydrolandAuth.syncAuthUi();
     document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));
   });
-  await expect(page.locator('#home #search-form')).toHaveCount(1);
+  await expect(page.locator('.topbar #search-form')).toHaveCount(1);
   await expect(page.locator('.top-actions [data-hl-theme-button]')).toHaveCount(1);
   await expect(page.locator('#search-form')).toHaveCount(1);
   await expect(page.locator('#visitor-register-cta')).toBeHidden();

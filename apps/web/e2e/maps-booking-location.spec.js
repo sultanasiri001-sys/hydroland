@@ -26,8 +26,8 @@ test('guest can open trip map and authenticated booking renders location object 
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.HydrolandMap&&window.HydrolandAuth&&window.HydrolandProfile));
 
-  await expect(page.locator('.hl-login')).toBeVisible();
-  await page.locator('.hl-login-guest').click();
+  await expect(page.locator('#home')).toBeVisible();
+  await expect(page.locator('.hl-login')).toBeHidden();
   await expect(page.locator('.hl-login')).toHaveClass(/hidden/);
   expect(await page.evaluate(()=>sessionStorage.getItem('hl-guest-mode'))).toBe('1');
   await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));

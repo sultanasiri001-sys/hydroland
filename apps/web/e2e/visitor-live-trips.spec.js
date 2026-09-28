@@ -9,7 +9,7 @@ test('visitor sees an honest empty state and can still open the live map when no
 
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.HydrolandBookings&&window.HydrolandMap));
-  await page.locator('.hl-login-guest').click();
+  await expect(page.locator('.hl-login')).toBeHidden();
 
   const grid=page.locator('[data-public-trip-grid]');
   await expect(grid.locator('[data-public-trip-state]')).toContainText('لا توجد رحلات منشورة');

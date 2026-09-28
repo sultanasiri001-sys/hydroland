@@ -75,6 +75,9 @@ for(const viewport of viewports){
     await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandWorkspaceUI));
 
     const entry=page.locator('.hl-login');
+    await expect(entry).toBeHidden();
+    await expect(page.locator('#home')).toBeVisible();
+    await page.locator('#visitor-auth-cta').click();
     await expect(entry).toBeVisible();
     await expect(entry).toHaveAttribute('aria-modal','true');
     await expect(page.locator('.sidebar')).toHaveAttribute('aria-hidden','true');

@@ -36,6 +36,7 @@ test('registration remains unauthenticated until email verification', async ({ p
   });
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await waitForApp(page);
+  await page.locator('#visitor-auth-cta').click();
   await page.locator('.hl-login-secondary').click();
   const panel=page.locator('.hl-auth-panel');
   await expect(panel).toBeVisible();
@@ -61,6 +62,7 @@ test('MFA challenge keeps browser unauthenticated until second factor succeeds',
   await page.route('**/api/v1/auth/mfa/verify', route => {verifyPayload=route.request().postDataJSON();return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({accessToken:'mfa-access-token',refreshToken:'mfa-refresh-token'})})});
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await waitForApp(page);
+  await page.locator('#visitor-auth-cta').click();
   await page.locator('.hl-login-primary').click();
   const panel=page.locator('.hl-auth-panel');
   await panel.locator('input[name="email"]').fill('mfa-user@hydroland.test');

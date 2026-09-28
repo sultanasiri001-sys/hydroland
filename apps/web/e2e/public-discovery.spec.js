@@ -19,7 +19,7 @@ const installApi=async(page,options={})=>{
   });
   return writes;
 };
-const enter=async(page,url='/')=>{await page.goto(url,{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>Boolean(window.HydrolandPublicUI));await page.locator('.hl-login-guest').click();await expect(page.locator('.hl-login')).toBeHidden();await page.evaluate(()=>document.fonts.ready)};
+const enter=async(page,url='/')=>{await page.goto(url,{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>Boolean(window.HydrolandPublicUI));await expect(page.locator('.hl-login')).toBeHidden();await expect(page.locator('.hl-login')).toBeHidden();await page.evaluate(()=>document.fonts.ready)};
 const navigate=async(page,id)=>{const link=page.locator(`#navigation a[href="#${id}"]`);if(!await link.isVisible())await page.locator('#menu').click();await link.click();await expect(page.locator('body')).toHaveAttribute('data-public-page',id);await expect.poll(()=>page.evaluate(()=>window.scrollY)).toBe(0);if(id!=='home')await expect(page.locator('#hl-public-page-heading')).toBeInViewport();const links=page.locator(`.nav-item[href="#${id}"]`);for(const item of await links.all()){await expect(item).toHaveClass(/active/);await expect(item).toHaveAttribute('aria-current','page')}await expect(page.locator(`.nav-item.active:not([href="#${id}"])`)).toHaveCount(0)};
 const noOverflow=async page=>{const widths=await page.evaluate(()=>({page:document.documentElement.scrollWidth,viewport:document.documentElement.clientWidth}));expect(widths.page).toBeLessThanOrEqual(widths.viewport+1)};
 const screenshot=async(page,testInfo,name)=>{await noOverflow(page);await page.screenshot({path:testInfo.outputPath(`public-${name}.png`),fullPage:!name.includes('detail-')})};

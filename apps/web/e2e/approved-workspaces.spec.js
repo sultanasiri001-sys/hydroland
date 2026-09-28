@@ -6,7 +6,7 @@ const json=(route,body,status=200)=>route.fulfill({status,contentType:'applicati
 test('visitor gets the approved public view and no account-only modules',async({page})=>{
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.HydrolandWorkspaceUI&&window.HydrolandPublicUI&&document.querySelector('.hl-support')));
-  await page.locator('.hl-login-guest').click();
+  await expect(page.locator('.hl-login')).toBeHidden();
 
   await expect(page.locator('body')).toHaveAttribute('data-hl-workspace-role','visitor');
   await expect(page.locator('#home')).toBeVisible();

@@ -40,3 +40,11 @@ jobs:
             apps/web/test-results/**/public-*.png
           if-no-files-found: ignore
           retention-days: 3
+      - name: Approved portal rebuild screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: approved-portal-review
+          path: apps/web/test-results/**/portal-*.png
+          if-no-files-found: ignore
+          retention-days: 3

@@ -124,3 +124,13 @@
 - توسعة فحص المتصفح لتغطية ظهور إجراءات التفاصيل، والمحتوى الطويل على شاشة 390×568، واستعادة تركيز لوحة المفاتيح. صور القوائم تغطي الصفحة كاملة؛ نتائج الفحص المحدثة تُسجل في PR #356 بعد تشغيل CI.
 
 هذه متابعة للمرحلة الثانية. لا تتضمن دمجًا أو نشرًا ولا تغلق قبول المطابقة البصرية للمرحلتين الأولى والثانية.
+
+## Superseding instruction — clean presentation rebuild
+
+The user explicitly rejected adding patches to the old interface and requested rebuilding each interface from the six attached approved boards, while preserving the architectural and executive structure. This expands the earlier public-layout correction into all seven portal presentations. Phase completion still requires visual and functional review; previous percentage estimates do not certify this rebuild.
+
+The presentation now has one design-token/control layer, one application shell, a public-page composition stylesheet, and portal compositions. Ten obsolete presentation/override stylesheets were removed. Existing feature controllers, backend APIs, active-role checks, refresh-before-action authorization, and payment/document boundaries remain authoritative. Public discovery is the initial anonymous screen; account entry opens a branded dialog. Recovery/verification links and explicit logout retain their existing authentication flows.
+
+Portal home screens follow role-specific compositions: diver hero/profile summary/action cards/readiness; center masthead/operations/metrics/picture actions/resource panels; organization service requests/documents/approval workflow; admin command summary/actions/integrations/safety/approvals. Professional and brokerage portals use the same approved identity with their existing service structure because no independent board was supplied for them. Operational services open inside their workspace shell rather than appearing as an unstructured stack below every dashboard. Unimplemented services stay disabled or explicitly pending; no sample metrics or external safety/AI integrations are represented as live.
+
+Browser verification includes all six authenticated portal layouts at desktop, tablet, and mobile sizes, plus public catalog/details, authentication, session expiry, portal revocation, and document workflows. This section records scope and implementation, not a production deployment or final visual approval.
