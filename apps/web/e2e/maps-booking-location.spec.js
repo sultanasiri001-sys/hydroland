@@ -47,6 +47,8 @@ test('guest can open trip map and authenticated booking renders location object 
 
   await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','map-e2e-access');sessionStorage.setItem('hl-refresh-token','map-e2e-refresh');window.HydrolandAuth.syncAuthUi();await window.HydrolandProfile.load()});
   expect(await page.evaluate(()=>sessionStorage.getItem('hl-guest-mode'))).toBeNull();
+  await page.waitForFunction(()=>Boolean(window.HydrolandWorkspaceUI));
+  await page.locator('#navigation a[href="#trips"]').click();
   await page.locator('[data-book="رحلة جزيرة سمر"]').click();
   await expect(page.locator('#booking-dialog')).toBeVisible();
   await expect(page.locator('#booking-location')).toHaveText('مرسى القحمة');

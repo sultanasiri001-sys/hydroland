@@ -32,6 +32,7 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
    expect(geometry.scroll,JSON.stringify(geometry)).toBeLessThanOrEqual(geometry.width+1);
    expect(geometry.mainChildren).toHaveLength(1);
    await expect(board.locator(role==='diver'?'.hl-diver-action-grid>button':'.hl-command-grid>button')).toHaveCount(['organization','admin','boat'].includes(role)?10:6);
+   await expect(page.locator('#toast')).not.toHaveClass(/visible/);
    await page.screenshot({path:testInfo.outputPath(`portal-${role}-${viewport.name}.png`),fullPage:true});
    // Exercise routing through the real workspace shell, then restore its home.
    if(role==='diver'){

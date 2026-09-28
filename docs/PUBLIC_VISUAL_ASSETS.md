@@ -77,3 +77,40 @@ Path: `apps/web/public/assets/red-sea-overview.svg` — native 300 × 200 SVG.
 Source: Natural Earth 1:110m admin-0 countries, https://github.com/nvkelso/natural-earth-vector (`geojson/ne_110m_admin_0_countries.geojson`, blob `1e6ab74c7042f97013be69ceec798be8e1aff27d`). Natural Earth's data is public domain. Simplified polygons for Saudi Arabia, Egypt, Sudan, Eritrea, Yemen, Israel and Jordan are projected onto a Mercator view centered at 39°E, bounded by 30°N and 16°N. Land shading is decorative, not terrain or bathymetric information.
 
 Pins use the same projection and only the existing validated trip coordinates. Duplicate positions are represented once; coordinates outside this overview are omitted from the thumbnail but remain available through the full map/list. This thumbnail is a geographic overview, not a navigation chart or satellite image. No AI-generated map or invented trip coordinates are used.
+
+
+## Diver portal reference artwork (2026-09-28 rebuild)
+
+Input: approved diver board `41D5B17D-83BC-4794-A599-7EEC54F3AE66(4).jpeg`. The built-in image-generation tool reconstructed the four decorative scenes below. These are illustrative scenes, not documentary photographs, provider stock, official credentials or operational data. Original output dimensions were preserved during WebP encoding; the CSS crops them responsively.
+
+### diver-hero
+
+Path: `apps/web/public/assets/hydroland-diver-hero-reference.webp` — 2172 × 724.
+
+Final prompt (built-in tool):
+
+> Use case: precise-object-edit. Asset type: HYDROLAND diver portal hero background. Input is the approved diver portal reference. Reconstruct only the photographic scene behind the main welcome hero (the big panel below the search bar), with NO UI. Cinematic underwater Red Sea coral panorama: a realistic scuba diver in black gear swimming toward camera at CENTER, vibrant cyan light rays from the surface, fish and colorful healthy coral, sunset jagged rocky islands and a white dive yacht in the upper RIGHT above a curving waterline. The LEFT quarter is quiet dark navy water, allowing white Arabic text to be overlaid in code. Match the reference's rich blue/cyan/gold realism, scale, perspective, diver position and coral detail. Wide 3:1 landscape. Fill frame, no writing, no logos, no icons, no cards, no border, no watermarks. Decorative illustration, not documentary photography.
+
+### diver-equipment
+
+Path: `apps/web/public/assets/hydroland-diver-equipment-reference.webp` — 1536 × 1024.
+
+Final prompt (built-in tool):
+
+> Use case: precise-object-edit. Asset type: HYDROLAND equipment action card illustration. Input is the approved diver portal reference. Faithfully reconstruct ONLY the photographic scene in the equipment action card: neatly arranged black scuba BCD, twin silver tanks, regulators, fins and a dive mask on the deck of a dive boat, with shimmering turquoise sea and rocky Red Sea islands in the background. Detailed premium marine realism, cyan highlights, warm sun, rich navy shadows. Landscape 3:2, equipment dominates center. No interface, no frame, no text, no icons, no logo, no people, no watermark. Decorative illustration.
+
+### diver-documents
+
+Path: `apps/web/public/assets/hydroland-diver-documents-reference.webp` — 1536 × 1024.
+
+Final prompt (built-in tool):
+
+> Use case: precise-object-edit. Asset type: HYDROLAND credentials action card illustration. Input is the approved diver portal reference. Reconstruct ONLY the photographic scene in the certificates card: cream diving certification documents on a wooden desk, a dark navy closed credential booklet, a simple round gold seal and a navy lanyard, warmly lit beside blue sea reflections. Use abstract unreadable fine document lines, no legible words and no governmental emblems or logos. Same premium photographic navy/gold style as the approved card. Landscape 3:2, close-up tabletop still life. No UI, no text overlays, no frames, no icons, no watermark. Decorative illustration.
+
+### diver-shop
+
+Path: `apps/web/public/assets/hydroland-diver-shop-reference.webp` — 1536 × 1024.
+
+Final prompt (built-in tool):
+
+> Use case: precise-object-edit. Asset type: HYDROLAND store action card illustration. Input is the approved diver portal reference. Reconstruct ONLY the photographic scene in the lower-left equipment store card: premium scuba diving shop interior, neatly organized black wetsuits, masks and regulators on warm wooden display walls, a few fins and silver tanks, glowing cool cyan screen on a counter. Realistic marine retail scene, warm spotlights, dark navy/cyan accents, detailed materials. Landscape 3:2, centered wide view of the store with no people. No interface, no text, no pricing signs, no logos, no icons, no border, no watermarks. Decorative illustration.

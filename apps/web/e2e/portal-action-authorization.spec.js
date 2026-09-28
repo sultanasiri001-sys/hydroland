@@ -3,11 +3,12 @@ import {openWorkspaceSwitcher} from './portal-test-helpers.js';
 
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 
-const setupAdmin=async page=>{
-  const state={roles:[{id:'role-admin-action',role:'ADMIN',status:'ACTIVE'}],fail:false};
+const setupAdmin=async (page,role='admin')=>{
+  const state={roles:[{id:'role-admin-action',role:role==='organization'?'ORGANIZATION':'ADMIN',status:'ACTIVE'}],fail:false};
   const authed=request=>request.headers().authorization==='Bearer portal-action-access';
-  await page.route(/\/api\/v1\/me$/,route=>{
+  await page.route(/\/api\/v1\/me$/,async route=>{
     if(!authed(route.request()))return json(route,{message:'Unauthorized'},401);
+    if(state.hold)await new Promise(resolve=>{state.release=resolve});
     if(state.fail)return json(route,{message:'Unavailable'},503);
     return json(route,{id:'portal-action-user',email:'action@hydroland.test',status:'ACTIVE',roleAssignments:state.roles,person:{firstName:'Action',lastName:'Guard',phone:null,professional:null}});
   });
@@ -22,10 +23,10 @@ const setupAdmin=async page=>{
     await window.HydrolandProfile.load();
   });
   await openWorkspaceSwitcher(page);
-  await page.locator('#role-dialog [data-role="admin"]').click();
-  await expect.poll(()=>page.evaluate(()=>window.HydrolandPortalAccess.getCurrentRole())).toBe('admin');
+  await page.locator(`#role-dialog [data-role="${role}"]`).click();
+  await expect.poll(()=>page.evaluate(()=>window.HydrolandPortalAccess.getCurrentRole())).toBe(role);
   await expect(page.locator('#role-console')).toBeHidden();
-  await expect(page.locator('.hl-role-dashboard[data-role="admin"]')).toBeVisible();
+  await expect(page.locator(`.hl-role-dashboard[data-role="${role}"]`)).toBeVisible();
   return state;
 };
 
@@ -53,4 +54,19 @@ test('role workspace navigation reauthorizes and blocks navigation after live ro
   await expect(navigation).toBeEnabled();
   await navigation.click();
   await expectClosed(page);
+});
+
+test('document feature handlers wait for dashboard authorization and stay closed on revocation',async({page})=>{
+  const state=await setupAdmin(page,'organization');
+  await page.waitForFunction(()=>Boolean(window.HydrolandDocuments&&window.HydrolandWorkspaceUI));
+  const documents=page.locator('#hl-documents');
+  await expect(documents).toBeHidden();
+  state.hold=true;state.roles=[];
+  await page.locator('.hl-role-dashboard [data-action-label="رفع الوثائق"]').click();
+  await expect.poll(()=>typeof state.release).toBe('function');
+  await expect(documents).toBeHidden();
+  expect(new URL(page.url()).hash).not.toBe('#hl-documents');
+  state.hold=false;state.release();
+  await expectClosed(page);
+  await expect(documents).toBeHidden();
 });

@@ -10,15 +10,15 @@
     '.hl-procurement':['center','boat','admin'],
     '.hl-safety-center':['center','boat','organization','admin'],
     '.hl-safety-review':['center','boat','organization','admin'],
-    '.hl-safety-incidents':['center','boat','organization','admin'],
-    '.hl-weather-admin':['center','boat','admin'],
+    '#hl-safety-incidents':['diver','instructor','center','boat','organization','admin'],
+    '.hl-weather-admin':['admin'],
     '.hl-booking-admin':['center','boat','admin'],
     '.hl-calendar-admin':['center','boat','admin'],
     '.hl-crew-assignments':['instructor','center','boat','admin'],
     '.hl-dive-review':['instructor','center','admin'],
     '.hl-documents':['center','boat','organization','admin'],
     '#hl-marine-documents':['boat','admin'],
-    '#hl-marine-readiness':['center','boat','admin'],
+    '#hl-marine-readiness':['boat','admin'],
     '.hl-organizations':['center','boat','organization','admin'],
     '.hl-admin':['admin'],
     '.hl-theme-admin':['admin'],
@@ -58,7 +58,7 @@
     fragment.innerHTML=[['home','الرئيسية','#hl-diver-dashboard'],['boat','الرحلات والحجوزات','#trips'],['water','سجل الغوص','logbook'],['tanks','المعدات','diver-equipment-list'],['certificate','الشهادات','certs'],['bag','المتجر والتأجير','#store'],['people','المجتمع','#community'],['pin','المواقع','#marine-intelligence'],['learn','التدريب','#training'],['mail','الرسائل','messages'],['help','مركز المساعدة','#hl-support'],['settings','الإعدادات','settings']].map(([art,label,target])=>target.startsWith('#')?`<a class="nav-item" href="${target}"><span class="nav-icon">${icon(art)}</span><span>${label}</span></a>`:`<button type="button" class="nav-item" data-hl-action="${target}"><span class="nav-icon">${icon(art)}</span><span>${label}</span></button>`).join('');nav.replaceChildren(...fragment.children,switcher);
   };
   const main=document.getElementById('main');
-  const serviceGroups={training:['#training','.hl-training'],community:['#community','.hl-community','.hl-support','.hl-members'],safety:['#safety','.hl-safety-center','.hl-safety-review','#hl-safety-incidents']};
+  const serviceGroups={'hl-marine-documents':['#hl-marine-documents','#hl-marine-readiness'],training:['#training','.hl-training'],community:['#community','.hl-community','.hl-support','.hl-members'],safety:['#safety','.hl-safety-center','.hl-safety-review','#hl-safety-incidents','#hl-marine-readiness']};
   let selected=null;
   const show=target=>{
     if(!auth()||!target)return false;
@@ -89,7 +89,7 @@
     if(records.some(record=>[...record.addedNodes].some(node=>node.nodeType===Node.ELEMENT_NODE&&policyEntries.some(([selector])=>node.matches(selector)||node.querySelector(selector)))))queued();
   });moduleObserver.observe(document.body,{childList:true,subtree:true});
   // Feature controllers retain their API and ownership of loading/authorization.
-  for(const [name,selector] of [['HydrolandDocuments','#hl-documents'],['HydrolandMarineDocuments','#hl-marine-documents'],['HydrolandSafetyIncidents','#hl-safety-incidents']]){
+  for(const [name,selector] of [['HydrolandDocuments','#hl-documents'],['HydrolandMarineDocuments','#hl-marine-documents'],['HydrolandSafetyIncidents','#hl-safety-incidents'],['HydrolandMarineReadiness','#hl-marine-readiness']]){
     const service=window[name];if(typeof service?.open!=='function')continue;const open=service.open;service.open=(...args)=>{const result=open(...args);show(document.querySelector(selector));return result};
   }
   window.HydrolandWorkspaceUI={refresh:setWorkspace,getRole:currentRole,show};setWorkspace();

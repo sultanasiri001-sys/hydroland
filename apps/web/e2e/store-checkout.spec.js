@@ -33,6 +33,8 @@ test('checkout creates one order, survives payment-record failure, and resumes p
   await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandStore));
   await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','store-e2e-access');sessionStorage.setItem('hl-refresh-token','store-e2e-refresh');window.HydrolandAuth.syncAuthUi();await window.HydrolandProfile.load()});
 
+  await page.waitForFunction(()=>Boolean(window.HydrolandWorkspaceUI));
+  await page.locator('#navigation a[href="#store"]').click();
   const add=page.locator('[data-store-add="product-store-e2e"]');await expect(add).toBeVisible();await add.click();
   await expect(page.locator('.hl-store-summary')).toContainText('1 منتج');
   await page.locator('.hl-store-checkout').click();
