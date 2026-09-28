@@ -106,7 +106,13 @@
     const action=dialog.querySelector('[data-detail-action]'),art=dialog.querySelector('.hl-public-detail-art');
     if(detail){dialog.querySelector('[data-detail-label]').textContent=detail.label;dialog.querySelector('h2').textContent=detail.title;dialog.querySelector('[data-detail-description]').textContent=detail.description;dialog.querySelector('[data-detail-note]').textContent=detail.note;art.classList.add('hl-public-detail-art-'+detail.art);if(detail.imageCategory){art.dataset.publicArt=detail.imageCategory;const note=document.createElement('small');note.className='hl-trip-art-note';note.textContent='صورة توضيحية للنشاط';art.appendChild(note)}if(detail.art!=='sea')art.innerHTML=icon(detail.art==='product'?'bag':'learn');for(const [label,value] of detail.facts){const row=document.createElement('div'),dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=label;dd.textContent=value;row.append(dt,dd);dialog.querySelector('dl').appendChild(row)}action.textContent=detail.action;action.disabled=Boolean(detail.disabled);action.addEventListener('click',()=>{leaveDetailsForAction(kind);detail.run()})}
     else{art.hidden=true;dialog.querySelector('h2').textContent=status==='loading'?'جارٍ تحميل التفاصيل...':status==='error'?'تعذر تحميل التفاصيل':'هذا المحتوى غير متاح';dialog.querySelector('[data-detail-description]').textContent=status==='error'?'أعد المحاولة للاتصال بالخدمة.':status==='loading'?'نحمّل أحدث البيانات المنشورة.':'قد يكون الرابط غير صحيح أو لم يعد المحتوى منشورًا.';action.hidden=status!=='error';action.textContent='إعادة المحاولة';action.addEventListener('click',()=>void retry?.())}
-    if(!dialog.open)dialog.showModal();return true;
+    if(!dialog.open){
+      // Overflow locking does not cancel a smooth scroll already in flight.
+      // Preserve the list position and stop that animation after native dialog focus.
+      const position={left:window.scrollX,top:window.scrollY,behavior:'instant'};
+      dialog.showModal();window.scrollTo(position);
+    }
+    return true;
   };
   dialog.addEventListener('cancel',event=>{event.preventDefault();closeDetails()});
   dialog.addEventListener('click',event=>{if(event.target===dialog){const box=dialog.getBoundingClientRect();if(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom)closeDetails()}});

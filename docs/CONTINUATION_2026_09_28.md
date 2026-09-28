@@ -189,3 +189,9 @@ Browser verification includes all six authenticated portal layouts at desktop, t
 - Use one CSS mapping for trip cards and details: boat/diving equipment, underwater shore dive, and marine island experience. Detail pages now use the same category as the selected card.
 - Show a visible illustrative-image label; these assets are not presented as operator-supplied site photography.
 - Existing responsive discovery test now checks card/detail artwork consistency for shore diving. Booking data, filters and authorization are unchanged.
+
+### Mobile detail clipping: reproduced root cause
+- Reproduction commit 3e75ce6 failed only the new in-flight scroll regression (68 existing browser tests passed), Web run 36480345525.
+- At dialog opening page scroll started at 28px and advanced through 15 distinct positions to 589px while dialog bounds remained 10–834px. This explains why bounds-only checks passed but the screenshot clipping changed between captures.
+- Preserve the page position at opening, cancel the active root scroll immediately after native showModal/focus, and disable inherited smooth scrolling while the detail dialog is open. No sizing, identity, booking or authorization changes.
+- Keep the failing regression in the suite and review fresh mobile captures before marking this issue resolved.
