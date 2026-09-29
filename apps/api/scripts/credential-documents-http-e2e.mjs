@@ -56,6 +56,21 @@ try{
   r=await fetch(`${base}/credentials/admin/${credentialId}/decision`,{method:'POST',headers:{...auth(reviewerToken),'content-type':'application/json'},body:JSON.stringify({outcome:'VERIFIED'})});body=await json(r);if(body.verificationStatus!=='VERIFIED')throw new Error('Reviewer did not verify credential after recording official evidence');
 
   const persisted=await db.document.findUnique({where:{id:documentId}});if(!persisted||persisted.byteSize!==png.length||!persisted.sha256||!persisted.storageKey.startsWith(`credentials/${ownerAccount.id}/${credentialId}/`))throw new Error('Document metadata was not persisted from server-computed upload');
+  const readinessPath=base+'/health/integrations/credential-storage';
+  r=await fetch(readinessPath);assert.equal(r.status,401,'Storage diagnostics require authentication');
+  r=await fetch(readinessPath,{headers:auth(ownerToken)});assert.equal(r.status,403,'Storage diagnostics require admin scope');
+  r=await fetch(readinessPath,{headers:auth(reviewerToken)});assert.equal(r.status,403,'Review permission does not grant storage diagnostics');
+  await db.roleAssignment.create({data:{accountId:reviewerAccount.id,role:'ADMIN',status:'ACTIVE',activeAt:new Date()}});
+  r=await fetch(readinessPath,{headers:auth(reviewerToken)});body=await json(r);
+  assert.equal(body.sandboxReady,true,'Readiness must match the working local upload');assert.equal(body.productionReady,false);
+  assert.equal(body.provider,'S3_COMPATIBLE');assert.equal(body.checks.endpointValid,true);
+  for(const value of Object.values(body.checks))assert.equal(typeof value,'boolean');
+  for(const key of ['HYDROLAND_OBJECT_STORAGE_ENDPOINT','HYDROLAND_OBJECT_STORAGE_BUCKET','HYDROLAND_OBJECT_STORAGE_ACCESS_KEY_ID','HYDROLAND_OBJECT_STORAGE_SECRET_ACCESS_KEY']){
+    const value=process.env[key];if(value)assert(!JSON.stringify(body).includes(value),'Storage diagnostics leaked configuration');
+  }
+  await db.roleAssignment.update({where:{accountId_role:{accountId:reviewerAccount.id,role:'ADMIN'}},data:{status:'SUSPENDED'}});
+  r=await fetch(readinessPath,{headers:auth(reviewerToken)});assert.equal(r.status,403,'Revoked admin scope immediately blocks diagnostics');
+  console.log('Credential storage readiness HTTP E2E passed: guest/user/reviewer denial, admin access, runtime parity, sanitized checks and revoked-admin denial.');
   console.log('Credential Documents HTTP/DB E2E passed: auth, spoof rejection, real private upload, server metadata, storageKey redaction, owner/reviewer signed access, cross-account denial, evidence-gated approval, audit-backed evidence restoration and review.');
 } finally {
   if(credentialId){await db.document.deleteMany({where:{credentialId}}).catch(()=>{});await db.credential.deleteMany({where:{id:credentialId}}).catch(()=>{});}

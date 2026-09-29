@@ -68,6 +68,25 @@ services:
         sync: false
       - key: HYDROLAND_INTEGRATION_OBJECT_STORAGE_STATUS
         sync: false
+      # Account documents use their own private, encrypted, versioned S3-compatible bucket.
+      # Supply values securely only after verification; R2 offline settings below do not replace these.
+      - key: HYDROLAND_OBJECT_STORAGE_ENDPOINT
+        sync: false
+      - key: HYDROLAND_OBJECT_STORAGE_BUCKET
+        sync: false
+      - key: HYDROLAND_OBJECT_STORAGE_REGION
+        sync: false
+      - key: HYDROLAND_OBJECT_STORAGE_ACCESS_KEY_ID
+        sync: false
+      - key: HYDROLAND_OBJECT_STORAGE_SECRET_ACCESS_KEY
+        sync: false
+      - key: HYDROLAND_OBJECT_STORAGE_PRIVATE_ACCESS_CONFIRMED
+        sync: false
+      - key: HYDROLAND_OBJECT_STORAGE_ENCRYPTION_CONFIRMED
+        sync: false
+      - key: HYDROLAND_OBJECT_STORAGE_VERSIONING_CONFIRMED
+        sync: false
+      # Existing read-only delivery of offline trip payloads.
       - key: HYDROLAND_OBJECT_STORAGE_PROVIDER
         sync: false
       - key: CLOUDFLARE_R2_ACCOUNT_ID

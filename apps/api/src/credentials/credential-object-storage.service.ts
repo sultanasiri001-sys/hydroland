@@ -1,6 +1,7 @@
 import { BadGatewayException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { IntegrationService } from '../integrations/integration.service';
+import { inspectCredentialObjectStorage } from './credential-object-storage.config';
 
 const EMPTY_SHA256=createHash('sha256').update('').digest('hex');
 const enc=(value:string)=>encodeURIComponent(value).replace(/[!'()*]/g,char=>`%${char.charCodeAt(0).toString(16).toUpperCase()}`);
@@ -12,25 +13,9 @@ export class CredentialObjectStorageService {
 
   private config(){
     this.integrations.requireOperational('OBJECT_STORAGE',{allowSandbox:true});
-    const endpoint=process.env.HYDROLAND_OBJECT_STORAGE_ENDPOINT?.trim();
-    const bucket=process.env.HYDROLAND_OBJECT_STORAGE_BUCKET?.trim();
-    const accessKeyId=process.env.HYDROLAND_OBJECT_STORAGE_ACCESS_KEY_ID?.trim();
-    const secretAccessKey=process.env.HYDROLAND_OBJECT_STORAGE_SECRET_ACCESS_KEY?.trim();
-    const region=process.env.HYDROLAND_OBJECT_STORAGE_REGION?.trim()||'us-east-1';
-    if(!endpoint||!bucket||!accessKeyId||!secretAccessKey)throw new ServiceUnavailableException('Private object storage is not configured.');
-    let url:URL;try{url=new URL(endpoint)}catch{throw new ServiceUnavailableException('Private object storage endpoint is invalid.');}
-    if(!['http:','https:'].includes(url.protocol))throw new ServiceUnavailableException('Private object storage endpoint must use HTTP or HTTPS.');
-    if(url.username||url.password||url.search||url.hash)throw new ServiceUnavailableException('Private object storage endpoint is invalid.');
-    if(process.env.NODE_ENV==='production'){
-      if(url.protocol!=='https:')throw new ServiceUnavailableException('Production object storage must use HTTPS.');
-      const privateConfirmed=process.env.HYDROLAND_OBJECT_STORAGE_PRIVATE_ACCESS_CONFIRMED==='true';
-      const encryptionConfirmed=process.env.HYDROLAND_OBJECT_STORAGE_ENCRYPTION_CONFIRMED==='true';
-      const versioningConfirmed=process.env.HYDROLAND_OBJECT_STORAGE_VERSIONING_CONFIRMED==='true';
-      if(!privateConfirmed||!encryptionConfirmed||!versioningConfirmed){
-        throw new ServiceUnavailableException('Production object storage requires confirmed private access, encryption at rest, and versioning.');
-      }
-    }
-    return{url,bucket,accessKeyId,secretAccessKey,region};
+    const inspected=inspectCredentialObjectStorage();
+    if(!inspected.config)throw new ServiceUnavailableException(inspected.error||'Private object storage is not configured.');
+    return inspected.config;
   }
 
   key(accountId:string,credentialId:string,mimeType:string){

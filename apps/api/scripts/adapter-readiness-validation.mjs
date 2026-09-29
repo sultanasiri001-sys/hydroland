@@ -6,6 +6,8 @@ const inventory = fs.readFileSync(new URL('./production-integration-inventory.mj
 const readinessMarkers = [
   "@UseGuards(AccessTokenGuard,AdminGuard)",
   "@Get('object-storage')",
+  "@Get('credential-storage')",
+  "inspectCredentialObjectStorage()",
   "this.integrations.status('OBJECT_STORAGE')",
   "providerConfigured:provider==='CLOUDFLARE_R2'",
   "accountConfigured:Boolean(process.env.CLOUDFLARE_R2_ACCOUNT_ID?.trim())",
@@ -34,12 +36,15 @@ for (const secret of ['CLOUDFLARE_R2_SECRET_ACCESS_KEY','GOOGLE_CLOUD_TRANSLATIO
 const inventoryMarkers = [
   "const adminRead = path => read(path, { headers })",
   "adminRead('/health/integrations/object-storage')",
+  "adminRead('/health/integrations/credential-storage')",
   "adminRead('/health/integrations/translation')",
   "adminRead('/health/integrations/esign')",
   "OBJECT_STORAGE:PRODUCTION_NOT_READY",
+  "CREDENTIAL_STORAGE:PRODUCTION_NOT_READY",
   "TRANSLATION_ENGINE:PRODUCTION_NOT_READY",
   "ESIGN:PRODUCTION_NOT_READY",
   "STAGE3_OBJECT_STORAGE_READINESS=",
+  "STAGE3_CREDENTIAL_STORAGE_READINESS=",
   "STAGE3_TRANSLATION_READINESS=",
   "STAGE3_ESIGN_READINESS=",
 ];

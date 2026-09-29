@@ -9,7 +9,7 @@ const catalog:readonly IntegrationDescriptor[]=[
  {key:'WHATSAPP',name:'WhatsApp Business',category:'messaging',status:'NOT_SELECTED',requiresHumanApproval:true,supportsWebhook:true},
  {key:'PAYMENT_PSP',name:'Payment service provider',category:'payments',status:'NOT_SELECTED',requiresHumanApproval:true,supportsWebhook:true},
  {key:'BANKING_SETTLEMENT',name:'Banking and settlement',category:'payments',status:'NOT_SELECTED',requiresHumanApproval:true,supportsWebhook:true},
- {key:'OBJECT_STORAGE',name:'Offline payload object storage',category:'storage',status:'NOT_SELECTED',requiresHumanApproval:true,supportsWebhook:false},
+ {key:'OBJECT_STORAGE',name:'Credential documents and offline payload storage',category:'storage',status:'NOT_SELECTED',requiresHumanApproval:true,supportsWebhook:false},
  {key:'TRANSLATION_ENGINE',name:'Machine translation engine',category:'translation',status:'NOT_SELECTED',requiresHumanApproval:true,supportsWebhook:false},
  {key:'MAPS_GEO',name:'Maps and geospatial provider',category:'maps',status:'NOT_SELECTED',requiresHumanApproval:false,supportsWebhook:false},
  {key:'ESIGN',name:'Electronic signature provider',category:'documents',status:'NOT_SELECTED',requiresHumanApproval:true,supportsWebhook:true},
