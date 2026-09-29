@@ -43,6 +43,14 @@ export class CredentialsService {
   private async notifyQuietly(accountId:string,type:string,payload:Record<string,unknown>){try{await this.notifications.notify(accountId,type,payload);}catch{return;}}
   private publicDocument<T extends Record<string,unknown>>(document:T){const{storageKey:_storageKey,...safe}=document;return safe;}
   private publicCredential<T extends Record<string,any>>(credential:T){return{...credential,documents:Array.isArray(credential.documents)?credential.documents.map((document:Record<string,unknown>)=>this.publicDocument(document)):credential.documents};}
+  private assertEvidenceUnchanged(before:CredentialWithDocuments,after:CredentialWithDocuments){
+    const snapshot=(credential:CredentialWithDocuments)=>JSON.stringify({
+      personId:credential.personId,issuer:credential.issuer,title:credential.title,credentialNumber:credential.credentialNumber,
+      issuedAt:credential.issuedAt,expiresAt:credential.expiresAt,
+      documents:credential.documents.map(document=>[document.id,document.storageKey,document.sha256,document.byteSize,document.status]).sort((a,b)=>String(a[0]).localeCompare(String(b[0]))),
+    });
+    if(snapshot(before)!==snapshot(after))throw new ConflictException('Credential evidence changed. Reload and try again.');
+  }
 
   async list(accountId:string){
     const a=await this.db.account.findUniqueOrThrow({where:{id:accountId},select:{personId:true}});
@@ -66,8 +74,11 @@ export class CredentialsService {
     const expired=Boolean(expiresAt&&expiresAt<=new Date());
     if(expired&&expiryPolicy.enforce)throw new ConflictException('Expired credentials cannot be created while expiry validation is enforced.');
     const a=await this.db.account.findUniqueOrThrow({where:{id:accountId},select:{personId:true}});
-    const credential=await this.db.credential.create({data:{personId:a.personId,issuer:input.issuer.trim(),title:input.title.trim(),credentialNumber:input.credentialNumber?.trim()||null,issuedAt,expiresAt}});
-    await this.audit.record({action:'CREDENTIAL_CREATED',resource:'Credential',resourceId:credential.id,metadata:{accountId,issuer:credential.issuer,title:credential.title,expiresAt:credential.expiresAt,policyState:expiryPolicy.state}});
+    const credential=await this.db.$transaction(async tx=>{
+      const row=await tx.credential.create({data:{personId:a.personId,issuer:input.issuer.trim(),title:input.title.trim(),credentialNumber:input.credentialNumber?.trim()||null,issuedAt,expiresAt}});
+      await this.audit.record({actorId:accountId,action:'CREDENTIAL_CREATED',resource:'Credential',resourceId:row.id,metadata:{accountId,issuer:row.issuer,title:row.title,expiresAt:row.expiresAt,policyState:expiryPolicy.state}},tx);
+      return row;
+    });
     return {...credential,policyReview:{required:expired&&expiryPolicy.review,issues:expired?['DOCUMENT_EXPIRY']:[],states:{expiry:expiryPolicy.state}}};
   }
 
@@ -81,10 +92,23 @@ export class CredentialsService {
     const storageKey=this.storage.key(accountId,credentialId,mimeType);
     await this.storage.put(storageKey,bytes,mimeType);
     try{
-      const document=await this.db.document.create({data:{credentialId,ownerId:a.personId,storageKey,originalName,mimeType,byteSize:bytes.length,sha256,status:'UPLOADED'}});
-      await this.audit.record({action:'CREDENTIAL_DOCUMENT_ATTACHED',resource:'Credential',resourceId:credentialId,metadata:{accountId,documentId:document.id,mimeType,byteSize:bytes.length,sha256}});
+      const document=await this.db.serializable(async tx=>{
+        const current=await tx.credential.findFirst({where:{id:credentialId,personId:a.personId,verificationStatus:'UNVERIFIED'}});
+        if(!current)throw new NotFoundException('Credential not editable.');
+        // Write the parent in every lifecycle transaction so attachment and submission serialize.
+        await tx.credential.update({where:{id:credentialId},data:{verificationStatus:'UNVERIFIED'}});
+        const row=await tx.document.create({data:{credentialId,ownerId:a.personId,storageKey,originalName,mimeType,byteSize:bytes.length,sha256,status:'UPLOADED'}});
+        await this.audit.record({actorId:accountId,action:'CREDENTIAL_DOCUMENT_ATTACHED',resource:'Credential',resourceId:credentialId,metadata:{accountId,documentId:row.id,mimeType,byteSize:bytes.length,sha256}},tx);
+        return row;
+      });
       return this.publicDocument(document as unknown as Record<string,unknown>);
-    }catch(error){await this.storage.delete(storageKey);throw error;}
+    }catch(error){
+      // Never remove referenced bytes if a commit acknowledgement or the database is unavailable.
+      const retained=await this.db.document.findUnique({where:{storageKey},select:{id:true}}).catch(()=>true);
+      if(!retained)await this.storage.delete(storageKey);
+      if(error instanceof Prisma.PrismaClientKnownRequestError&&error.code==='P2002'&&String(error.meta?.target).includes('sha256'))throw new ConflictException('This document has already been uploaded.');
+      throw error;
+    }
   }
 
   async documentAccess(accountId:string,credentialId:string,documentId:string){
@@ -115,14 +139,15 @@ export class CredentialsService {
     if(!credential)throw new NotFoundException('Credential cannot be submitted.');
     if(verificationPolicy.enforce&&!credential.documents.length)throw new ConflictException('At least one supporting document is required while document verification is enforced.');
     if(credential.documents.length){let realDocuments=0;for(const document of credential.documents){if(document.status!=='ARCHIVED'&&await this.storage.exists(document.storageKey))realDocuments++;}if(!realDocuments)throw new ConflictException('At least one uploaded document must exist in private storage before verification.');}
-    if(verificationPolicy.bypass){
-      await this.audit.record({action:'CREDENTIAL_VERIFICATION_BYPASSED',resource:'Credential',resourceId:credentialId,metadata:{accountId,policyState:verificationPolicy.state,documentCount:credential.documents.length}});
-      return{id:credentialId,status:credential.verificationStatus,verificationBypassed:true,policyReview:{required:false,issues:[],states:{verification:verificationPolicy.state}}};
-    }
-    const nextStatus='PENDING';
-    await this.db.credential.update({where:{id:credentialId},data:{verificationStatus:nextStatus}});
-    await this.audit.record({action:'CREDENTIAL_SUBMITTED',resource:'Credential',resourceId:credentialId,metadata:{accountId,previousStatus:credential.verificationStatus,status:nextStatus,policyState:verificationPolicy.state,documentCount:credential.documents.length}});
-    return{id:credentialId,status:nextStatus,verificationBypassed:false,policyReview:{required:verificationPolicy.review,issues:verificationPolicy.review?['DOCUMENT_VERIFICATION']:[],states:{verification:verificationPolicy.state}}};
+    return this.db.serializable(async tx=>{
+      const current=await tx.credential.findFirst({where:{id:credentialId,personId:a.personId,verificationStatus:'UNVERIFIED'},include:{documents:true}});
+      if(!current)throw new NotFoundException('Credential cannot be submitted.');
+      this.assertEvidenceUnchanged(credential,current);
+      const nextStatus=verificationPolicy.bypass?'UNVERIFIED':'PENDING';
+      await tx.credential.update({where:{id:credentialId},data:{verificationStatus:nextStatus}});
+      await this.audit.record({actorId:accountId,action:verificationPolicy.bypass?'CREDENTIAL_VERIFICATION_BYPASSED':'CREDENTIAL_SUBMITTED',resource:'Credential',resourceId:credentialId,metadata:{accountId,previousStatus:current.verificationStatus,status:nextStatus,policyState:verificationPolicy.state,documentCount:current.documents.length}},tx);
+      return{id:credentialId,status:nextStatus,verificationBypassed:verificationPolicy.bypass,policyReview:{required:verificationPolicy.review,issues:verificationPolicy.review?['DOCUMENT_VERIFICATION']:[],states:{verification:verificationPolicy.state}}};
+    });
   }
 
   async pendingForAdmin(){
@@ -147,12 +172,15 @@ export class CredentialsService {
     if(input.outcome==='VERIFIED'&&expired&&expiryPolicy.enforce)throw new ConflictException('Expired credential cannot be verified while expiry validation is enforced.');
     if(input.outcome==='VERIFIED'&&verificationPolicy.enforce&&!credential.documents.length)throw new ConflictException('Supporting documents are required while document verification is enforced.');
     if(input.outcome==='VERIFIED'){let realDocuments=0;for(const document of credential.documents){if(document.status!=='ARCHIVED'&&await this.storage.exists(document.storageKey))realDocuments++;}if(verificationPolicy.enforce&&!realDocuments)throw new ConflictException('Uploaded credential evidence is unavailable in private storage.');}
-    const updated=await this.db.$transaction(async(tx:Prisma.TransactionClient)=>{
+    const updated=await this.db.serializable(async tx=>{
+      const current=await tx.credential.findUnique({where:{id:credentialId},include:{documents:true}});
+      if(!current||current.verificationStatus!=='PENDING')throw new NotFoundException('Credential is not awaiting review.');
+      this.assertEvidenceUnchanged(credential,current);
       const row=await tx.credential.update({where:{id:credentialId},data:{verificationStatus:input.outcome}});
-      if(credential.documents.length)await tx.document.updateMany({where:{credentialId},data:{status:input.outcome==='VERIFIED'?'AVAILABLE':'REJECTED'}});
+      if(current.documents.length)await tx.document.updateMany({where:{credentialId,status:{not:'ARCHIVED'}},data:{status:input.outcome==='VERIFIED'?'AVAILABLE':'REJECTED'}});
+      await this.audit.record({actorId:reviewerAccountId,action:'CREDENTIAL_REVIEWED',resource:'Credential',resourceId:credentialId,metadata:{reviewerAccountId,previousStatus:current.verificationStatus,status:input.outcome,reason:input.reason?.trim()||null,documentCount:current.documents.length,externalVerification:Boolean(externalVerification),externalVerificationEvidence:externalVerification,policyStates:{verification:verificationPolicy.state,expiry:expiryPolicy.state},expired}},tx);
       return row;
     });
-    await this.audit.record({action:'CREDENTIAL_REVIEWED',resource:'Credential',resourceId:credentialId,metadata:{reviewerAccountId,previousStatus:credential.verificationStatus,status:input.outcome,reason:input.reason?.trim()||null,documentCount:credential.documents.length,externalVerification:Boolean(externalVerification),externalVerificationEvidence:externalVerification,policyStates:{verification:verificationPolicy.state,expiry:expiryPolicy.state},expired}});
     const owner=await this.db.account.findUnique({where:{personId:credential.personId},select:{id:true}});
     if(owner)await this.notifyQuietly(owner.id,'CREDENTIAL_REVIEWED',{credentialId,title:credential.title,outcome:input.outcome,reason:input.reason?.trim()||null,externalVerification:Boolean(externalVerification),externalVerificationSource:externalVerification?.source||null});
     return{...updated,externalVerification:Boolean(externalVerification),externalVerificationEvidence:externalVerification,policyReview:{required:expiryPolicy.review&&expired,issues:expiryPolicy.review&&expired?['DOCUMENT_EXPIRY']:[],states:{verification:verificationPolicy.state,expiry:expiryPolicy.state}}};

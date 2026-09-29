@@ -1,9 +1,11 @@
 import { PrismaClient } from '@prisma/client';
 import { createHmac } from 'node:crypto';
 import http from 'node:http';
+import assert from 'node:assert/strict';
 
 const db=new PrismaClient();
 const base=process.env.CREDENTIAL_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1';
+for(const url of [process.env.DATABASE_URL||'postgresql://missing',base])assert(['localhost','127.0.0.1','[::1]'].includes(new URL(url).hostname),'Credential HTTP E2E requires a local test database and API');
 const secret=process.env.JWT_SECRET;
 if(!secret)throw new Error('JWT_SECRET required');
 const suffix=Date.now().toString(),objects=new Map();let sawSigV4=false;
