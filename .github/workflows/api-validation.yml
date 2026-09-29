@@ -131,6 +131,7 @@ jobs:
           FINANCE_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/finance-http-e2e.mjs
           MAPS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/maps-runtime-http-e2e.mjs
           MESSAGING_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/messaging-http-e2e.mjs
+          NOTIFICATIONS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/notifications-http-e2e.mjs
           STORE_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/store-checkout-http-e2e.mjs
           PAYMENT_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/payment-moyasar-http-e2e.mjs
           MARINE_DOCS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/marine-documents-http-e2e.mjs
