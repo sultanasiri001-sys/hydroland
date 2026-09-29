@@ -210,7 +210,16 @@ export class CredentialsService {
   }
 
   private cleanName(value:string){const name=String(value||'').split(/[\\/]/).pop()?.trim()||'';if(!name||name.length>180)throw new BadRequestException('Invalid document file name.');return name;}
-  private decode(value:string){const base64=String(value||'').trim();if(!base64||base64.length>13_400_000||base64.length%4!==0||!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(base64))throw new BadRequestException('Invalid document payload.');const bytes=Buffer.from(base64,'base64');if(!bytes.length||bytes.length>10_000_000)throw new BadRequestException('Document must be between 1 byte and 10 MB.');return bytes;}
+  private decode(value:string){
+    const base64=String(value||'').trim();
+    if(!base64||base64.length>13_400_000||base64.length%4!==0)throw new BadRequestException('Invalid document payload.');
+    // Buffer decoding is bounded; a canonical round-trip rejects malformed
+    // input without the recursive regexp stack growth of repeated groups.
+    const bytes=Buffer.from(base64,'base64');
+    if(!bytes.length||bytes.length>10_000_000)throw new BadRequestException('Document must be between 1 byte and 10 MB.');
+    if(bytes.toString('base64')!==base64)throw new BadRequestException('Invalid document payload.');
+    return bytes;
+  }
   private validateFile(originalName:string,mimeType:string,bytes:Buffer){
     if(!['application/pdf','image/jpeg','image/png'].includes(mimeType))throw new BadRequestException('Only PDF, JPEG and PNG documents are supported.');
     const lower=originalName.toLowerCase(),extensionOk=mimeType==='application/pdf'?lower.endsWith('.pdf'):mimeType==='image/png'?lower.endsWith('.png'):lower.endsWith('.jpg')||lower.endsWith('.jpeg');
