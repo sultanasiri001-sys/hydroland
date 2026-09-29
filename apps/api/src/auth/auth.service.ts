@@ -4,6 +4,7 @@ import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from
 import { DatabaseService } from '../database/database.service';
 import { GoogleIdentityService } from './google-identity.service';
 import { MfaService } from './mfa.service';
+import { assertAuthEmailRecipient } from './email-trial-policy';
 
 type Credentials={email:string;password:string};
 type Tokens={accessToken:string;refreshToken:string};
@@ -22,6 +23,7 @@ export class AuthService {
   async register(input:Credentials):Promise<RegistrationResult>{
     const email=this.email(input.email);
     this.password(input.password);
+    assertAuthEmailRecipient(email);
     if(await this.db.account.findUnique({where:{email}}))throw new ConflictException('Account exists.');
     const account=await this.db.$transaction(async(tx:Prisma.TransactionClient)=>{
       const created=await tx.account.create({data:{email,passwordHash:this.hash(input.password),person:{create:{firstName:'Pending',lastName:'Profile'}}}});
@@ -33,6 +35,7 @@ export class AuthService {
 
   async requestEmailVerification(emailInput:string){
     const email=this.email(emailInput);
+    assertAuthEmailRecipient(email);
     const account=await this.db.account.findUnique({where:{email},select:{id:true,status:true,emailVerifiedAt:true}});
     if(!account||account.emailVerifiedAt||this.blocked(account.status))return{accepted:true};
     await this.db.$transaction((tx:Prisma.TransactionClient)=>this.replaceChallenge(tx,account.id,'VERIFY_EMAIL',VERIFY_TTL_MS));
@@ -56,6 +59,7 @@ export class AuthService {
 
   async requestPasswordReset(emailInput:string){
     const email=this.email(emailInput);
+    assertAuthEmailRecipient(email);
     const account=await this.db.account.findUnique({where:{email},select:{id:true,status:true,emailVerifiedAt:true}});
     if(!account||!this.isActive(account.status,account.emailVerifiedAt))return{accepted:true};
     await this.db.$transaction((tx:Prisma.TransactionClient)=>this.replaceChallenge(tx,account.id,'RESET_PASSWORD',RESET_TTL_MS));

@@ -1,6 +1,7 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { IntegrationService } from './integration.service';
+import { assertAuthEmailRecipient, emailTrialRecipient } from '../auth/email-trial-policy';
 
 export type AuthEmailPurpose='VERIFY_EMAIL'|'RESET_PASSWORD';
 export type AuthEmailDelivery={provider:'RESEND';messageId:string};
@@ -16,8 +17,8 @@ export class EmailDeliveryService {
   constructor(private readonly integrations:IntegrationService,private readonly audit:AuditService){}
 
   // Public feature availability only. Provider details and credentials stay admin-only.
-  publicConfig():{enabled:boolean}{
-    try{this.configuration();return{enabled:true}}catch{return{enabled:false}}
+  publicConfig():{enabled:boolean;restricted?:true}{
+    try{const {trialRecipient}=this.configuration();return trialRecipient?{enabled:true,restricted:true}:{enabled:true}}catch{return{enabled:false}}
   }
 
   private configuration(){
@@ -28,11 +29,13 @@ export class EmailDeliveryService {
     const from=process.env.HYDROLAND_EMAIL_FROM?.trim();
     const origin=this.publicOrigin();
     if(!apiKey||!from)throw new ServiceUnavailableException('Email delivery credentials are not configured.');
-    return{apiKey,from,origin};
+    const trialRecipient=emailTrialRecipient();
+    return{apiKey,from,origin,trialRecipient};
   }
 
   async sendAuthChallenge(input:{notificationId:string;to:string;purpose:AuthEmailPurpose;token:string;expiresAt:string}):Promise<AuthEmailDelivery>{
     const {apiKey,from,origin}=this.configuration();
+    assertAuthEmailRecipient(input.to);
     const url=this.challengeUrl(origin,input.purpose,input.token);
     const subject=input.purpose==='VERIFY_EMAIL'?'تفعيل حساب HYDROLAND | Verify your account':'استعادة كلمة مرور HYDROLAND | Reset your password';
     const action=input.purpose==='VERIFY_EMAIL'?'تفعيل الحساب':'تعيين كلمة مرور جديدة';

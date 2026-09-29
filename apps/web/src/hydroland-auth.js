@@ -2,7 +2,7 @@
   const DEFAULT_API_BASE=/^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)?'http://localhost:3001/api/v1':'https://hydroland.onrender.com/api/v1';
   const API_BASE=(window.HYDROLAND_API_BASE||DEFAULT_API_BASE).replace(/\/$/,'');
   const params=new URL(window.location.href).searchParams;
-  const state={mode:'login',refreshPromise:null,panelOpen:false,mfaChallenge:null,resetToken:params.get('reset_token')||null,sessionVersion:0,authAttempt:0,emailDelivery:'loading'};
+  const state={mode:'login',refreshPromise:null,panelOpen:false,mfaChallenge:null,resetToken:params.get('reset_token')||null,sessionVersion:0,authAttempt:0,emailDelivery:'loading',emailRestricted:false};
   const toast=message=>{const t=document.getElementById('toast');if(!t)return;t.textContent=message;t.classList.add('visible');setTimeout(()=>t.classList.remove('visible'),2600)};
   const login=()=>document.querySelector('.hl-login');
   const emitAuthChanged=()=>document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));
@@ -38,13 +38,14 @@
   let emailAvailabilityPromise=null;
   const refreshEmailAvailability=()=>{
     if(emailAvailabilityPromise)return emailAvailabilityPromise;
-    state.emailDelivery='loading';configurePanel(login()?.querySelector('.hl-auth-panel'));
+    state.emailDelivery='loading';state.emailRestricted=false;configurePanel(login()?.querySelector('.hl-auth-panel'));
     emailAvailabilityPromise=(async()=>{
       try{
         const response=await fetch(`${API_BASE}/integrations/email/public-config`,{cache:'no-store',signal:AbortSignal.timeout(8000)});
         const body=await response.json();
-        if(!response.ok||typeof body?.enabled!=='boolean')throw new Error('EMAIL_AVAILABILITY_UNKNOWN');
+        if(!response.ok||typeof body?.enabled!=='boolean'||(body.restricted!==undefined&&typeof body.restricted!=='boolean'))throw new Error('EMAIL_AVAILABILITY_UNKNOWN');
         state.emailDelivery=body.enabled?'available':'unavailable';
+        state.emailRestricted=body.enabled&&body.restricted===true;
       }catch{state.emailDelivery='error'}
       finally{emailAvailabilityPromise=null;configurePanel(login()?.querySelector('.hl-auth-panel'))}
     })();
@@ -59,9 +60,9 @@
     if(!panel.hasAttribute('aria-busy'))submit.disabled=state.mode==='register'&&!emailEnabled;
     for(const button of [forgot,resend])button.disabled=!emailEnabled||button.dataset.pending==='true';
     if(availability){
-      availability.hidden=reset||emailEnabled;
-      availability.querySelector('p').textContent=state.emailDelivery==='loading'?'جارٍ التحقق من خدمة البريد...':state.emailDelivery==='error'?'تعذر التحقق من خدمة البريد. أعد المحاولة.':state.mode==='register'?'إنشاء الحساب غير متاح مؤقتًا لعدم جاهزية خدمة البريد. يمكنك الاستكشاف كزائر.':'رسائل التفعيل واستعادة كلمة المرور غير متاحة مؤقتًا. يمكنك تسجيل الدخول بحسابك الحالي.';
-      availability.querySelector('button').disabled=state.emailDelivery==='loading';
+      availability.hidden=reset||(emailEnabled&&!state.emailRestricted);
+      availability.querySelector('p').textContent=emailEnabled&&state.emailRestricted?'خدمة البريد في تجربة محدودة لحساب الاختبار المعتمد. يمكنك الاستكشاف كزائر.':state.emailDelivery==='loading'?'جارٍ التحقق من خدمة البريد...':state.emailDelivery==='error'?'تعذر التحقق من خدمة البريد. أعد المحاولة.':state.mode==='register'?'إنشاء الحساب غير متاح مؤقتًا لعدم جاهزية خدمة البريد. يمكنك الاستكشاف كزائر.':'رسائل التفعيل واستعادة كلمة المرور غير متاحة مؤقتًا. يمكنك تسجيل الدخول بحسابك الحالي.';
+      availability.querySelector('button').disabled=state.emailDelivery==='loading';availability.querySelector('button').hidden=emailEnabled;
     }
   };
   const resetMfaStep=panel=>{state.mfaChallenge=null;if(!panel)return;panel.querySelectorAll('[data-auth-primary]').forEach(label=>{label.hidden=false;label.querySelector('input').disabled=false});const field=panel.querySelector('[data-mfa-field]');if(field){field.hidden=true;const input=field.querySelector('input');input.required=false;input.value=''}const recovery=panel.querySelector('.hl-auth-recovery');if(recovery)recovery.hidden=false;configurePanel(panel)};
