@@ -82,6 +82,8 @@ jobs:
       - run: npm run build
       - name: Auth email outbox PostgreSQL E2E
         run: node apps/api/scripts/auth-email-outbox-db-e2e.mjs
+      - name: MFA lifecycle PostgreSQL E2E
+        run: node apps/api/scripts/mfa-lifecycle-db-e2e.mjs
       - name: Diver profile production-schema PostgreSQL E2E
         run: node apps/api/scripts/diver-profile-schema-db-e2e.mjs
       - name: HR HTTP/DB E2E

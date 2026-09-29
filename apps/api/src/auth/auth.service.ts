@@ -101,7 +101,12 @@ export class AuthService {
     return this.completePrimaryAuthentication(account.id);
   }
 
-  async verifyMfaChallenge(challengeToken:string,code:string):Promise<Tokens>{const accountId=await this.mfa.verifyChallenge(challengeToken,code);return this.issue(accountId)}
+  async verifyMfaChallenge(challengeToken:string,code:string):Promise<Tokens>{
+    return this.db.serializable(async tx=>{
+      const accountId=await this.mfa.verifyChallenge(challengeToken,code,tx);
+      return this.issue(accountId,tx);
+    });
+  }
 
   async refresh(refreshToken:string):Promise<Tokens>{
     const token=this.requireRefreshToken(refreshToken);
@@ -165,7 +170,7 @@ export class AuthService {
   private googleMappedAccountId(value:unknown){if(!value||typeof value!=='object'||Array.isArray(value))return null;const accountId=(value as Record<string,unknown>).accountId;return typeof accountId==='string'&&accountId?accountId:null}
   private googleSubjectKey(subject:string){return`auth.google.subject.${createHash('sha256').update(subject).digest('hex')}`}
 
-  private async issue(accountId:string):Promise<Tokens>{const refreshToken=randomBytes(48).toString('base64url');const session=await this.db.session.create({data:{accountId,tokenHash:this.tokenHash(refreshToken),expiresAt:new Date(Date.now()+2592000000)}});return{accessToken:this.access(accountId,session.id),refreshToken}}
+  private async issue(accountId:string,tx:Prisma.TransactionClient=this.db):Promise<Tokens>{const refreshToken=randomBytes(48).toString('base64url');const session=await tx.session.create({data:{accountId,tokenHash:this.tokenHash(refreshToken),expiresAt:new Date(Date.now()+2592000000)}});return{accessToken:this.access(accountId,session.id),refreshToken}}
   private access(id:string,sessionId:string){const secret=process.env.JWT_SECRET;if(!secret||secret.length<32)throw new Error('JWT_SECRET required.');const now=Math.floor(Date.now()/1000),encode=(value:object)=>Buffer.from(JSON.stringify(value)).toString('base64url'),body=`${encode({alg:'HS256',typ:'JWT'})}.${encode({sub:id,sid:sessionId,iat:now,exp:now+900})}`;return `${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`}
   verifyAccessToken(token:string){if(typeof token!=='string'||token.length<16)throw new UnauthorizedException('Invalid access token.');const parts=token.split('.');if(parts.length!==3)throw new UnauthorizedException('Invalid access token.');const [header,payload,signature]=parts,secret=process.env.JWT_SECRET;if(!header||!payload||!signature||!secret)throw new UnauthorizedException('Invalid access token.');const expected=createHmac('sha256',secret).update(`${header}.${payload}`).digest('base64url');if(signature.length!==expected.length||!timingSafeEqual(Buffer.from(signature),Buffer.from(expected)))throw new UnauthorizedException('Invalid access token.');try{const claims=JSON.parse(Buffer.from(payload,'base64url').toString()) as{sub?:unknown;sid?:unknown;exp?:unknown};if(typeof claims.sub!=='string'||!claims.sub||typeof claims.exp!=='number'||!Number.isFinite(claims.exp)||claims.exp<=Math.floor(Date.now()/1000))throw new UnauthorizedException('Invalid access token.');if(typeof claims.sid==='string'&&claims.sid)return{accountId:claims.sub,sessionId:claims.sid};if(this.allowSessionlessE2eAccess())return{accountId:claims.sub,sessionId:null};throw new UnauthorizedException('Invalid access token.')}catch(error){if(error instanceof UnauthorizedException)throw error;throw new UnauthorizedException('Invalid access token.')}}
   private allowSessionlessE2eAccess(){return process.env.CI==='true'&&process.env.GITHUB_ACTIONS==='true'}
