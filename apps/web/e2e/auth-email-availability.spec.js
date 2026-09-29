@@ -90,3 +90,39 @@ test('an existing reset link works even when new email delivery is unavailable',
   await expect.poll(()=>resets).toBe(1);
   expect(new URL(page.url()).searchParams.has('reset_token')).toBe(false);
 });
+
+test('restricted trial explains the limit and keeps rejected registration unauthenticated',async({page})=>{
+  await page.setViewportSize({width:390,height:844});await install(page);
+  await page.route('**/api/v1/integrations/email/public-config',route=>json(route,{enabled:true,restricted:true}));
+  await page.route('**/api/v1/auth/register',route=>json(route,{message:'إرسال البريد متاح حاليًا لحساب الاختبار المعتمد فقط. يمكنك الاستكشاف كزائر.'},403));
+  const panel=await open(page);
+  await expect(panel.locator('.hl-auth-availability')).toContainText('تجربة محدودة لحساب الاختبار المعتمد');
+  await expect(panel.locator('.hl-auth-availability-retry')).toBeHidden();
+  await expect(panel.locator('.hl-auth-submit')).toBeEnabled();
+  await panel.locator('[name="email"]').fill('other@example.invalid');
+  await panel.locator('[name="password"]').fill('Hydroland-Trial-123!');
+  await panel.locator('.hl-auth-submit').click();
+  await expect(panel.locator('.hl-auth-status')).toContainText('لحساب الاختبار المعتمد فقط');
+  await expect(panel.locator('[name="email"]')).toHaveValue('other@example.invalid');
+  await expect(panel.locator('.hl-auth-submit')).toBeEnabled();
+  expect(await page.evaluate(()=>window.HydrolandAuth.isAuthenticated())).toBe(false);
+  const box=await panel.boundingBox();expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(391);
+  await panel.locator('.hl-auth-cancel').click();await page.locator('.hl-login-primary').click();
+  await expect(panel.locator('.hl-auth-submit')).toBeEnabled();
+  await expect(panel.locator('.hl-auth-availability')).toContainText('تجربة محدودة');
+});
+
+test('restricted trial permits the approved account through the normal verification flow',async({page})=>{
+  await install(page);
+  await page.route('**/api/v1/integrations/email/public-config',route=>json(route,{enabled:true,restricted:true}));
+  let submitted;
+  await page.route('**/api/v1/auth/register',route=>{submitted=route.request().postDataJSON();return json(route,{status:'PENDING_VERIFICATION',requiresEmailVerification:true},201)});
+  const panel=await open(page);
+  await panel.locator('[name="email"]').fill('approved@example.invalid');
+  await panel.locator('[name="password"]').fill('Hydroland-Trial-123!');
+  await panel.locator('.hl-auth-submit').click();
+  await expect(panel).toBeHidden();
+  expect(submitted.email).toBe('approved@example.invalid');
+  expect(await page.evaluate(()=>window.HydrolandAuth.isAuthenticated())).toBe(false);
+  await expect(page.locator('#toast')).toContainText('يلزم التحقق من البريد الإلكتروني');
+});

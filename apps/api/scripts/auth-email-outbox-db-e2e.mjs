@@ -47,7 +47,7 @@ const integrations=new IntegrationService({record:async()=>{}});
 const delivery=new EmailDeliveryService(integrations,{record:async event=>auditEvents.push(event)});
 const auth=new AuthService(db,{},{}); // MFA/Google are not used by challenge delivery or consumption.
 const worker=new AuthEmailOutboxWorker(db,auth,delivery,integrations);
-let account;
+let account,trialAccount;
 const now=Date.now();
 const future=new Date(now+20*60_000).toISOString();
 const past=new Date(now-60_000).toISOString();
@@ -190,16 +190,60 @@ try{
   assert.equal(await db.session.count({where:{accountId:account.id,revokedAt:null}}),0,'Password reset must revoke existing sessions');
   assert(!JSON.stringify(auditEvents).includes(verifyToken),'Audit metadata must not contain bearer tokens');
   assert(!JSON.stringify(auditEvents).includes(resetToken),'Audit metadata must not contain reset tokens');
+
+  // The free Resend sender must never open registration for undeliverable addresses.
+  process.env.HYDROLAND_EMAIL_FROM='HYDROLAND <onboarding@resend.dev>';
+  const trialEmail='trial-'+randomUUID()+'@example.invalid';
+  const password='Hydroland-Trial-123!';
+  for(const value of ['', 'invalid', 'owner@example.invalid,other@example.invalid', 'Owner <owner@example.invalid>']){
+    process.env.HYDROLAND_EMAIL_TEST_RECIPIENT=value;
+    assert.deepEqual(delivery.publicConfig(),{enabled:false},'Shared sender without one valid test recipient must stay unavailable');
+    await assert.rejects(()=>auth.register({email:trialEmail,password}),error=>error.getStatus()===503);
+    assert.equal(await db.account.count({where:{email:trialEmail}}),0,'Invalid trial setup must not create stranded accounts');
+  }
+  process.env.HYDROLAND_EMAIL_TEST_RECIPIENT='  '+trialEmail.toUpperCase()+'  ';
+  assert.deepEqual(delivery.publicConfig(),{enabled:true,restricted:true},'Public availability must not reveal the test recipient');
+  const rejectedEmail='rejected-'+randomUUID()+'@example.invalid';
+  const restricted=error=>error.getStatus()===403&&!error.message.includes(trialEmail);
+  const beforeRestricted=await db.notification.count();
+  await assert.rejects(()=>auth.register({email:rejectedEmail,password}),restricted);
+  for(const email of [rejectedEmail,account.email]){
+    await assert.rejects(()=>auth.requestEmailVerification(email),restricted);
+    await assert.rejects(()=>auth.requestPasswordReset(email),restricted);
+  }
+  assert.equal(await db.account.count({where:{email:rejectedEmail}}),0,'Rejected trial registration must not create an account');
+  assert.equal(await db.notification.count(),beforeRestricted,'Rejected requests must not create or replace challenges');
+  const beforeDirectSend=attempts.length;
+  await assert.rejects(()=>delivery.sendAuthChallenge({notificationId:randomUUID(),to:account.email,purpose:'RESET_PASSWORD',token:'must-not-leave-the-server',expiresAt:future}),restricted);
+  assert.equal(attempts.length,beforeDirectSend,'A queued or direct message must be checked again before provider delivery');
+  assert.equal((await auth.register({email:' '+trialEmail.toUpperCase()+' ',password})).status,'PENDING_VERIFICATION');
+  trialAccount=await db.account.findUniqueOrThrow({where:{email:trialEmail}});
+  const trialVerification=await db.notification.findFirstOrThrow({where:{accountId:trialAccount.id,type:'AUTH_EMAIL_VERIFICATION',status:'PENDING'}});
+  await worker.run();
+  assert.equal(attemptsFor(trialVerification.id).length,1);
+  assert.deepEqual(attemptsFor(trialVerification.id)[0].payload.to,[trialEmail],'Never redirect another account\'s challenge to the owner');
+  const trialTokens=await auth.confirmEmailVerification(tokenFor(trialVerification.id,'verify_email'));
+  assert(trialTokens.accessToken&&trialTokens.refreshToken);
+  await auth.requestPasswordReset(trialEmail);
+  const trialReset=await db.notification.findFirstOrThrow({where:{accountId:trialAccount.id,type:'AUTH_PASSWORD_RESET',status:'PENDING'}});
+  await worker.run();
+  assert.deepEqual(await auth.resetPassword(tokenFor(trialReset.id,'reset_token'),'Hydroland-Trial-Renew-123!'),{passwordReset:true});
+  assert.equal(await db.session.count({where:{accountId:trialAccount.id,revokedAt:null}}),0);
+  // A verified sender can leave the restricted trial explicitly, without changing code.
+  process.env.HYDROLAND_EMAIL_FROM='HYDROLAND <no-reply@example.invalid>';
+  assert.deepEqual(delivery.publicConfig(),{enabled:true,restricted:true},'Keep the restriction until the operator removes it');
+  delete process.env.HYDROLAND_EMAIL_TEST_RECIPIENT;
+  assert.deepEqual(delivery.publicConfig(),{enabled:true});
   assert.deepEqual(providerErrors,[]);
-  console.log('Auth email outbox PostgreSQL E2E passed: no queue starvation, missing/null JSON fields, expiry, bounded batches, retry idempotency/backoff, lifecycle gate, database recovery, and usable single-use verification/reset links.');
+  console.log('Auth email outbox PostgreSQL E2E passed: no queue starvation, missing/null JSON fields, expiry, bounded batches, retry idempotency/backoff, lifecycle gate, database recovery, usable single-use verification/reset links, restricted trial registration without stranded accounts, and no delivery to other recipients.');
 } finally {
   worker.onModuleDestroy();
   try{
-    if(account){
-      await db.session.deleteMany({where:{accountId:account.id}});
-      await db.notification.deleteMany({where:{accountId:account.id}});
-      await db.account.delete({where:{id:account.id}});
-      await db.person.delete({where:{id:account.personId}});
+    for(const fixture of [trialAccount,account].filter(Boolean)){
+      await db.session.deleteMany({where:{accountId:fixture.id}});
+      await db.notification.deleteMany({where:{accountId:fixture.id}});
+      await db.account.delete({where:{id:fixture.id}});
+      await db.person.delete({where:{id:fixture.personId}});
     }
   }finally{
     await db.$disconnect();
