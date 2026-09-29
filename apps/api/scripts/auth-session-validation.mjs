@@ -49,7 +49,9 @@ const requiredService=[
   "updateMany({where:{tokenHash:this.tokenHash(token),revokedAt:null},data:{revokedAt:new Date()}})",
   "tokenHash:{not:{startsWith:'mfa:'}}",
   "return{accountId:session.account.id,sessionId:session.id}",
-  "const session=await this.db.session.create",
+  "const session=await tx.session.create",
+  "const accountId=await this.mfa.verifyChallenge(challengeToken,code,tx)",
+  "return this.issue(accountId,tx)",
   "accessToken:this.access(accountId,session.id)",
   "sid:sessionId",
   "if(typeof claims.sid==='string'&&claims.sid)return{accountId:claims.sub,sessionId:claims.sid}",
@@ -79,8 +81,9 @@ assert.ok(!controller.includes('const attempts=new Map'),'Legacy unbounded share
 
 for(const marker of [
   "tokenHash:this.challengeHash(challengeToken)","expiresAt:new Date(Date.now()+5*60*1000)","return`mfa:${createHash('sha256').update(token).digest('hex')}`",
-  "if(!credential?.enabledAt||!await this.verifyCode",'consumed.count!==1',"setupExpiresAt:new Date(Date.now()+10*60*1000).toISOString()",
-  'recoveryCodes=Array.from({length:10}',"this.db.operationalSetting.deleteMany",'revokeOthers(accountId,currentSessionId)','invalidateChallenge(challengeToken:string)'
+  "if(!credential?.enabledAt||!await this.verifyCode",'consumed.count!==1',"new Date(Date.now()+10*60*1000).toISOString()",
+  'recoveryCodes=Array.from({length:10}',"tx.operationalSetting.deleteMany",'revokeOthers(accountId,currentSessionId,tx)','invalidateChallenge(challengeToken:string)',
+  "code:'MFA_ALREADY_ENABLED'",'return this.db.serializable(async tx=>'
 ]) assert.ok(mfa.includes(marker),`Missing MFA lifecycle invariant: ${marker}`);
 for(const marker of ["createCipheriv('aes-256-gcm'","createDecipheriv('aes-256-gcm'","process.env.MFA_ENCRYPTION_KEY||process.env.JWT_SECRET",'createRecoveryCode','recoveryHash']) assert.ok(crypto.includes(marker),`Missing MFA secret-protection invariant: ${marker}`);
 for(const marker of ["createHmac('sha1'",'counter.writeBigUInt64BE','for(const offset of[-1,0,1])','timingSafeEqual']) assert.ok(totp.includes(marker),`Missing TOTP verification invariant: ${marker}`);
@@ -114,7 +117,7 @@ for(const marker of [
 assert.ok(!/sessionStorage\.setItem\([^\n]*(credential|challenge)/i.test(googleWeb),'Google credential/MFA challenge must not be persisted in sessionStorage.');
 assert.ok(webApp.includes("await loadScript('hydroland-google-auth.js')"),'Google browser module must load after core authentication.');
 
-const issueStart=service.indexOf('private async issue(accountId:string)');assert.ok(issueStart>=0,'issue() method must exist');const issueBody=service.slice(issueStart);
+const issueStart=service.indexOf('private async issue(accountId:string,tx:Prisma.TransactionClient=this.db)');assert.ok(issueStart>=0,'issue() method must exist');const issueBody=service.slice(issueStart);
 assert.ok(issueBody.includes('tokenHash:this.tokenHash(refreshToken)'),'Refresh token must be stored hashed');
 assert.ok(!/data:\s*\{[^}]*refreshToken\s*[:},]/s.test(issueBody),'Raw refresh token must not be persisted in session data');
 console.log('Validated auth invariants: registration is sessionless until one-time email verification, recovery challenges are purpose-bound and non-persisted, reset revokes all sessions, Google ID tokens are server-verified and cannot leave stale verification links, MFA gates primary authentication, and browser credentials remain fail-closed.');
