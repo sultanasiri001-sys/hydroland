@@ -80,6 +80,8 @@ jobs:
       - run: npm run validate:integrations -w @hydroland/api
       - run: npm run typecheck
       - run: npm run build
+      - name: Credential storage configuration and readiness
+        run: node apps/api/scripts/credential-storage-readiness-validation.mjs
       - name: Auth email outbox PostgreSQL E2E
         run: node apps/api/scripts/auth-email-outbox-db-e2e.mjs
       - name: MFA lifecycle PostgreSQL E2E

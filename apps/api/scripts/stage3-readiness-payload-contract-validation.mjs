@@ -36,7 +36,7 @@ for(const marker of [
 
 for(const method of [
   'getPaymentReadiness','getEmailReadiness','getSmsReadiness','getWhatsAppReadiness',
-  'getObjectStorageReadiness','getTranslationReadiness','getEsignReadiness',
+  'getObjectStorageReadiness','getCredentialStorageReadiness','getTranslationReadiness','getEsignReadiness',
 ]){
   if(!readiness.includes(`${method}():IntegrationReadinessPayload`))throw new Error(`${method} is not bound to IntegrationReadinessPayload.`);
 }
