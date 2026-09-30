@@ -10,7 +10,7 @@ test('professional courses workspace shows only assigned students and fails clos
  await page.goto('/',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>Boolean(window.HydrolandProfessionalAssignments&&window.HydrolandPortalFreshness));
  await page.evaluate(async()=>{window.HydrolandAuth.acceptSession({accessToken:'professional-access',refreshToken:'professional-refresh'},window.HydrolandAuth.beginAuthAttempt());await window.HydrolandProfile.load()});
  await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="instructor"]').click();
- await page.locator('.hl-role-dashboard[data-role="instructor"] [data-action-label="إدارة الدورات"]').click();
+ await page.locator('.hl-role-dashboard[data-role="instructor"] [data-action-label="إدارة الطلاب"]').click();
  const host=page.locator('.hl-professional-assignments');await expect(host).toBeVisible();await expect(host).toContainText('OW-101');await expect(host).toContainText('طالب أول');await expect(host).toContainText('RESCUE-201');await expect(host).not.toContainText('private@example.invalid');
  state.active=false;await page.evaluate(()=>window.HydrolandProfessionalAssignments.open());await expect(host).not.toBeVisible();
 });
