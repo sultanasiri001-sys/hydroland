@@ -14,6 +14,35 @@ export class TrainingProfessionalProfileService {
     return role;
   }
 
+  async listSchedule(accountId: string) {
+    await this.requireActiveInstructor(accountId);
+    const sessions = await this.db.trainingSession.findMany({
+      where: { instructorAccountId: accountId },
+      select: {
+        id: true, trainingRecordId: true, status: true, startsAt: true, endsAt: true,
+        facilityOrSiteId: true, tripId: true, vesselId: true, evidence: true,
+        trainingRecord: { select: { enrollment: { select: { courseCode: true, studentAccountId: true, instructorAccountId: true } } } },
+      },
+      orderBy: { startsAt: 'asc' },
+      take: 200,
+    });
+    const studentIds=[...new Set(sessions.map(row=>row.trainingRecord.enrollment.studentAccountId))];
+    const students=studentIds.length?await this.db.account.findMany({
+      where:{id:{in:studentIds}},select:{id:true,person:{select:{firstName:true,lastName:true}}},
+    }):[];
+    const names=new Map(students.map(student=>[student.id,[student.person.firstName,student.person.lastName].filter(Boolean).join(' ').trim()||'طالب']));
+    return sessions.map(row=>({
+      id:row.id,courseCode:row.trainingRecord.enrollment.courseCode,
+      student:{displayName:names.get(row.trainingRecord.enrollment.studentAccountId)||'طالب'},
+      status:row.status,startsAt:row.startsAt,endsAt:row.endsAt,
+      facilityOrSiteId:row.facilityOrSiteId,tripId:row.tripId,vesselId:row.vesselId,
+      attendance:{
+        instructorCheckedIn:Boolean(row.evidence&&typeof row.evidence==='object'&&!Array.isArray(row.evidence)&&(row.evidence as Record<string,unknown>).instructorCheckInAt),
+        studentCheckedIn:Boolean(row.evidence&&typeof row.evidence==='object'&&!Array.isArray(row.evidence)&&(row.evidence as Record<string,unknown>).studentCheckInAt),
+      },
+    }));
+  }
+
   async listAssignments(accountId: string) {
     await this.requireActiveInstructor(accountId);
     const rows = await this.db.trainingEnrollment.findMany({

@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
-import { TrainingEnrollmentStatus, TrainingRecordStatus, TrainingSessionStatus } from '@prisma/client';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Prisma, TrainingEnrollmentStatus, TrainingRecordStatus, TrainingSessionStatus } from '@prisma/client';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { TrainingAuthorizationService } from './training-authorization.service';
 import { TrainingRepositoryService } from './training-repository.service';
@@ -15,6 +15,11 @@ export class TrainingController {
     private readonly authorization: TrainingAuthorizationService,
     private readonly professionalProfile: TrainingProfessionalProfileService,
   ) {}
+
+  @Get('professional/me/schedule')
+  professionalSchedule(@Req() request: AuthenticatedRequest) {
+    return this.professionalProfile.listSchedule(request.auth.accountId);
+  }
 
   @Get('professional/me/assignments')
   professionalAssignments(@Req() request: AuthenticatedRequest) {
@@ -82,6 +87,29 @@ export class TrainingController {
   async createSession(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { instructorAccountId: string; startsAt: string; trainingStageId?: string; facilityOrSiteId?: string; tripId?: string; vesselId?: string }) {
     await this.authorization.assertRecordAccess(request.auth.accountId, id);
     return this.training.createSession({ ...body, trainingRecordId: id, startsAt: new Date(body.startsAt) });
+  }
+
+  @Patch('professional/me/sessions/:id/attendance')
+  async professionalAttendance(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: { action: 'OPEN' | 'INSTRUCTOR_CHECK_IN' },
+  ) {
+    await this.authorization.assertSessionAccess(request.auth.accountId, id);
+    const session = await this.training.getSession(id);
+    const evidence = session.evidence && typeof session.evidence === 'object' && !Array.isArray(session.evidence)
+      ? { ...(session.evidence as Prisma.JsonObject) }
+      : {} as Prisma.JsonObject;
+    if (body.action === 'OPEN') {
+      if (session.status !== 'SCHEDULED') throw new BadRequestException('Only a scheduled session can open check-in.');
+      return this.training.setSessionStatus(id, TrainingSessionStatus.CHECK_IN_OPEN, evidence);
+    }
+    if (body.action === 'INSTRUCTOR_CHECK_IN') {
+      if (session.status !== 'CHECK_IN_OPEN' && session.status !== 'IN_PROGRESS') throw new BadRequestException('Check-in must be open.');
+      evidence.instructorCheckInAt = new Date().toISOString();
+      return this.training.setSessionStatus(id, session.status, evidence);
+    }
+    throw new BadRequestException('Unsupported attendance action.');
   }
 
   @Patch('sessions/:id/status')
