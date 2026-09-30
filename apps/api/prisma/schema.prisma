@@ -187,7 +187,6 @@ model Account {
   documentRevisionsCreated DocumentRevision[] @relation("DocumentRevisionCreator")
   hrCandidatesVerified HrCandidate[] @relation("HrCandidateVerifiedBy")
   employments Employment[]
-  trips Trip[]
   employmentMovementsRequested EmploymentMovement[] @relation("EmploymentMovementRequestedBy")
   employmentMovementsReviewed EmploymentMovement[] @relation("EmploymentMovementReviewedBy")
   employmentMovementsApproved EmploymentMovement[] @relation("EmploymentMovementApprovedBy")
@@ -237,6 +236,7 @@ model Organization {
   reviewedById String?
   owner Account @relation("OrganizationOwner", fields:[ownerId], references:[id], onDelete:Restrict)
   members OrganizationMember[]
+  trips Trip[]
   orgUnits OrgUnit[]
   employments Employment[]
   @@index([status,createdAt])
