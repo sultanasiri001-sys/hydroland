@@ -1,0 +1,59 @@
+name: Messaging key schema validation
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/**'
+      - 'package*.json'
+      - '.github/workflows/messaging-key-schema-validation.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/api/**'
+      - 'package*.json'
+      - '.github/workflows/messaging-key-schema-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  messaging-key-schemas:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: hydroland
+          POSTGRES_PASSWORD: hydroland
+          POSTGRES_DB: hydroland
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hydroland -d hydroland"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://hydroland:hydroland@127.0.0.1:5432/hydroland?schema=public
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - run: npm run db:generate --workspace=@hydroland/api
+      - run: npm run build --workspace=@hydroland/api
+      - name: Verify actual messaging service with text and UUID keys
+        run: |
+          set -o pipefail
+          node apps/api/scripts/messaging-key-schema-db-e2e.mjs | tee messaging-key-schema-report.txt
+      - name: Upload schema compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: messaging-key-schema-${{ github.run_id }}
+          path: messaging-key-schema-report.txt
+          retention-days: 30
