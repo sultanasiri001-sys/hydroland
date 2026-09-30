@@ -14,6 +14,27 @@ export class TrainingProfessionalProfileService {
     return role;
   }
 
+  async listSkills(accountId: string) {
+    await this.requireActiveInstructor(accountId);
+    const stages = await this.db.trainingStage.findMany({
+      where: { trainingRecord: { enrollment: { instructorAccountId: accountId } } },
+      select: {
+        id: true, stageType: true, sequence: true,
+        trainingRecord: { select: { enrollment: { select: { courseCode: true, studentAccountId: true } } } },
+        skills: { select: { id: true, skillCode: true, name: true, status: true, signedOffAt: true }, orderBy: { createdAt: 'asc' } },
+      },
+      orderBy: { sequence: 'asc' },
+      take: 200,
+    });
+    const studentIds=[...new Set(stages.map(row=>row.trainingRecord.enrollment.studentAccountId))];
+    const students=studentIds.length?await this.db.account.findMany({where:{id:{in:studentIds}},select:{id:true,person:{select:{firstName:true,lastName:true}}}}):[];
+    const names=new Map(students.map(student=>[student.id,[student.person.firstName,student.person.lastName].filter(Boolean).join(' ').trim()||'طالب']));
+    return stages.flatMap(stage=>stage.skills.map(skill=>({
+      ...skill,stageType:stage.stageType,courseCode:stage.trainingRecord.enrollment.courseCode,
+      student:{displayName:names.get(stage.trainingRecord.enrollment.studentAccountId)||'طالب'},
+    })));
+  }
+
   async listSchedule(accountId: string) {
     await this.requireActiveInstructor(accountId);
     const sessions = await this.db.trainingSession.findMany({
