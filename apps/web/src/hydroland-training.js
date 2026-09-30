@@ -9,6 +9,19 @@
 
   const label=status=>({PENDING:'بانتظار التفعيل',ACTIVE:'نشط',SUSPENDED:'موقوف',COMPLETED:'مكتمل',CANCELLED:'ملغي'}[status]||status||'—');
   let requestedMode='student';
+  async function loadProfessionalSchedule(){
+    const list=section.querySelector('[data-training-list]');
+    section.dataset.trainingMode='professional-schedule';
+    section.querySelector('.hl-training-head h3').textContent='الجدول الزمني والحضور';
+    section.querySelector('.hl-training-head span').textContent='جلساتك التدريبية المعيّنة لك فقط';
+    list.innerHTML='<p>جارٍ تحميل جدولك...</p>';
+    try{
+      const response=await auth.authorizedFetch('/training/professional/me/schedule');
+      const rows=await response.json().catch(()=>[]);
+      if(!response.ok)throw new Error(rows?.message||'تعذر تحميل الجدول');
+      list.innerHTML=(Array.isArray(rows)&&rows.length)?rows.map(item=>`<article class="hl-course" data-professional-session="${esc(item.id)}"><div class="hl-course-top"><div><b>${esc(item.courseCode)}</b><small>${esc(item.student?.displayName||'طالب')} · ${new Date(item.startsAt).toLocaleString('ar-SA')}</small></div><span>${esc(label(item.status))}</span></div><div class="hl-member-actions">${item.status==='SCHEDULED'?'<button type="button" data-attendance-action="OPEN">فتح الحضور</button>':''}${['CHECK_IN_OPEN','IN_PROGRESS'].includes(item.status)&&!item.attendance?.instructorCheckedIn?'<button type="button" data-attendance-action="INSTRUCTOR_CHECK_IN">تسجيل حضور المدرب</button>':''}</div><small>حضور المدرب: ${item.attendance?.instructorCheckedIn?'مسجل':'غير مسجل'} · حضور الطالب: ${item.attendance?.studentCheckedIn?'مسجل':'غير مسجل'}</small></article>`).join(''):'<p>لا توجد جلسات مكلّفة لك حاليًا.</p>';
+    }catch(error){list.innerHTML=`<p>${esc(error instanceof Error?error.message:'تعذر تحميل الجدول')}</p>`;}
+  }
   async function loadProfessional(){
     const list=section.querySelector('[data-training-list]');
     list.innerHTML='<p>جارٍ تحميل الدورات والطلاب المكلفين لك...</p>';
@@ -45,6 +58,7 @@
     const list=section.querySelector('[data-training-list]');
     if(!auth?.isAuthenticated()){list.innerHTML='<p>سجل الدخول لعرض بيانات التدريب.</p>';return;}
     if(mode==='instructor'){section.dataset.trainingMode='professional';return loadProfessional();}
+    if(mode==='instructor-schedule')return loadProfessionalSchedule();
     section.querySelector('.hl-training-head h3').textContent='مركز التدريب والدورات';
     section.querySelector('.hl-training-head span').textContent='سجلك التدريبي المباشر';
     section.dataset.trainingMode='student';
@@ -66,6 +80,16 @@
     }catch(error){list.innerHTML=`<p>${esc(error instanceof Error?error.message:'تعذر تحميل بيانات التدريب')}</p>`;}
   }
   document.addEventListener('click',event=>{const button=event.target.closest?.('[data-hl-action="training"],[data-training-open]');if(!button)return;event.preventDefault();section.scrollIntoView({behavior:'smooth',block:'start'});if(!auth?.isAuthenticated()){const list=section.querySelector('[data-training-list]');if(list)list.innerHTML='<p>سجل الدخول لعرض بيانات التدريب.</p>';return}const instructor=Boolean(button.closest?.('.hl-role-dashboard[data-role="instructor"]'));load(instructor?'instructor':undefined);});
+  section.addEventListener('click',async event=>{
+    const button=event.target.closest?.('[data-attendance-action]');if(!button)return;
+    const article=button.closest('[data-professional-session]'),id=article?.dataset.professionalSession;if(!id)return;
+    button.disabled=true;
+    try{
+      const response=await auth.authorizedFetch('/training/professional/me/sessions/'+encodeURIComponent(id)+'/attendance',{method:'PATCH',body:JSON.stringify({action:button.dataset.attendanceAction})});
+      if(!response.ok){const body=await response.json().catch(()=>null);throw new Error(body?.message||'تعذر تحديث الحضور')}
+      await loadProfessionalSchedule();
+    }catch(error){button.disabled=false;const list=section.querySelector('[data-training-list]');list.insertAdjacentHTML('afterbegin',`<p role="alert">${esc(error instanceof Error?error.message:'تعذر تحديث الحضور')}</p>`);}
+  });
   document.addEventListener('hydroland:auth-changed',()=>load(requestedMode));
   window.HydrolandTraining={reload:mode=>load(mode)};
   setTimeout(load,0);
