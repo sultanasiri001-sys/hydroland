@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 
@@ -28,6 +28,12 @@ export class SafetyReviewService {
     if (!decisions.includes(decision)) throw new BadRequestException('Invalid safety decision.');
     const checklist = await this.db.safetyChecklist.findUnique({ where: { id: checklistId } });
     if (!checklist) throw new NotFoundException('Safety checklist not found.');
+    const items = checklist.items && typeof checklist.items === 'object' && !Array.isArray(checklist.items)
+      ? Object.values(checklist.items as Record<string, unknown>)
+      : [];
+    if (decision === 'ALLOWED' && (items.length === 0 || items.some((value) => value !== true))) {
+      throw new ConflictException('Failed or incomplete safety checklist items cannot be marked ALLOWED.');
+    }
 
     const updated = await this.db.safetyChecklist.update({
       where: { id: checklistId },
