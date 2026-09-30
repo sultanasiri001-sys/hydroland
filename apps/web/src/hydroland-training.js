@@ -42,7 +42,7 @@
     mode=requestedMode;
     const list=section.querySelector('[data-training-list]');
     if(!auth?.isAuthenticated()){list.innerHTML='<p>سجل الدخول لعرض بيانات التدريب.</p>';return;}
-    if(mode==='instructor')return loadProfessional();
+    if(mode==='instructor'){section.dataset.trainingMode='professional';return loadProfessional();}
     section.querySelector('.hl-training-head h3').textContent='مركز التدريب والدورات';
     section.querySelector('.hl-training-head span').textContent='سجلك التدريبي المباشر';
     section.dataset.trainingMode='student';
