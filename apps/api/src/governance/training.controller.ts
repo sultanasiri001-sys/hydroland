@@ -16,6 +16,11 @@ export class TrainingController {
     private readonly professionalProfile: TrainingProfessionalProfileService,
   ) {}
 
+  @Get('professional/me/certificates')
+  professionalCertificates(@Req() request: AuthenticatedRequest) {
+    return this.professionalProfile.listCertificateReadiness(request.auth.accountId);
+  }
+
   @Post('professional/me/records/:id/certificate-recommendation')
   async recommendCertificate(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
     await this.authorization.assertRecordAccess(request.auth.accountId, id);
