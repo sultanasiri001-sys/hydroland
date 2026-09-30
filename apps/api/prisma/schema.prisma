@@ -1378,6 +1378,13 @@ enum TrainingRecordStatus {
   SUSPENDED
 }
 
+enum InstructorEarningStatus {
+  PENDING
+  APPROVED
+  SETTLED
+  VOIDED
+}
+
 enum TrainingCertificateStatus {
   RECOMMENDED
   APPROVED
@@ -1406,6 +1413,7 @@ model TrainingEnrollment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   record TrainingRecord?
+  instructorEarning InstructorEarning?
   @@index([studentAccountId,status])
   @@index([centerOrganizationId,status])
   @@index([instructorAccountId,status])
@@ -1460,6 +1468,24 @@ model TrainingSkill {
   trainingStage TrainingStage @relation(fields:[trainingStageId], references:[id], onDelete:Cascade)
   @@unique([trainingStageId,skillCode])
   @@index([trainingStageId,status])
+}
+
+model InstructorEarning {
+  id String @id @default(uuid())
+  trainingEnrollmentId String @unique
+  instructorAccountId String
+  centerOrganizationId String?
+  amountMinor Int
+  currency String @default("SAR")
+  status InstructorEarningStatus @default(PENDING)
+  financeEntryId String? @unique
+  approvedByAccountId String?
+  approvedAt DateTime?
+  settledAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  trainingEnrollment TrainingEnrollment @relation(fields:[trainingEnrollmentId], references:[id], onDelete:Restrict)
+  @@index([instructorAccountId,status,createdAt])
 }
 
 model TrainingCertificate {
