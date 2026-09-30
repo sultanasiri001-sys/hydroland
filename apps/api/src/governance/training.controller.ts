@@ -77,6 +77,17 @@ export class TrainingController {
     return this.training.addStage(id, body.stageType, body.deliveryMode, body.sequence);
   }
 
+  @Patch('skills/:id/assessment')
+  async assessSkill(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: { status: 'IN_PROGRESS' | 'COMPETENT' | 'NEEDS_REVIEW' },
+  ) {
+    await this.authorization.assertSkillAccess(request.auth.accountId, id);
+    if (!['IN_PROGRESS','COMPETENT','NEEDS_REVIEW'].includes(body.status)) throw new BadRequestException('Unsupported skill assessment status.');
+    return this.training.assessSkill(id, body.status, request.auth.accountId);
+  }
+
   @Post('stages/:id/skills')
   async addSkill(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { skillCode: string; name: string }) {
     await this.authorization.assertStageAccess(request.auth.accountId, id);
