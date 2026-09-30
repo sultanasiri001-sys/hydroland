@@ -52,6 +52,14 @@
 
   function clearDashboard(){document.querySelector('.hl-role-dashboard')?.remove()}
   const syncDashboardIdentity=()=>{const d=document.querySelector('.hl-role-dashboard');if(!d)return;const person=window.HydrolandProfileData?.profile?.person||{},name=[person.firstName,person.lastName].filter(Boolean).join(' ').trim();d.querySelectorAll('[data-portal-name],[data-center-name]').forEach(node=>{const value=name||'حساب HYDROLAND';if(node.textContent!==value)node.textContent=value});d.querySelectorAll('[data-portal-avatar],[data-center-avatar]').forEach(node=>{const value=(person.firstName||'H').trim().slice(0,1).toUpperCase();if(node.textContent!==value)node.textContent=value})};
+  const loadCenterSummary=async d=>{
+    const auth=window.HydrolandAuth;if(!d||d.dataset.role!=='center'||!auth?.isAuthenticated?.())return;
+    const session=auth.getSessionVersion?.();
+    try{const response=await auth.authorizedFetch('/center/me/overview'),data=await response.json().catch(()=>null);if(!response.ok)throw new Error(data?.message||'CENTER_UNAVAILABLE');if(!d.isConnected||session!==auth.getSessionVersion?.())return;
+      const tiles=d.querySelectorAll('.hl-role-tile b'),values=[data?.metrics?.newBookings??0,data?.metrics?.tripsToday??0,data?.metrics?.activeMembers??0,data?.metrics?.totalTrips??0];values.forEach((value,index)=>{if(tiles[index])tiles[index].textContent=String(value)});
+      const name=data?.center?.displayName||data?.center?.documentBrandNameAr||'مركز الغوص';d.querySelectorAll('[data-portal-name],[data-center-name]').forEach(node=>node.textContent=name);d.dataset.centerScopeLoaded='1';
+    }catch{if(d.isConnected){d.dataset.centerScopeLoaded='0';d.querySelectorAll('.hl-role-tile b').forEach(node=>node.textContent='—')}}
+  };
   const loadInstructorSummary=async d=>{
     const auth=window.HydrolandAuth;if(!d||d.dataset.role!=='instructor'||!auth?.isAuthenticated?.())return;
     const session=auth.getSessionVersion?.();
@@ -132,6 +140,7 @@
     if(role==='admin')d.querySelector('.brand-copy small').textContent='مركز القيادة والإدارة';
     syncDashboardIdentity();
     if(role==='instructor')void loadInstructorSummary(d);
+    if(role==='center')void loadCenterSummary(d);
 
     d.querySelector('[data-board-notifications]')?.addEventListener('click',()=>window.HydrolandAccountCenter?.openNotifications?.());
     d.querySelector('[data-board-messages]')?.addEventListener('click',()=>window.HydrolandMessages?.open?.());
