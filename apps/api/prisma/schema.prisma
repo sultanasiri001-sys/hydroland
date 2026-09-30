@@ -236,6 +236,7 @@ model Organization {
   reviewedById String?
   owner Account @relation("OrganizationOwner", fields:[ownerId], references:[id], onDelete:Restrict)
   members OrganizationMember[]
+  trips Trip[]
   orgUnits OrgUnit[]
   employments Employment[]
   @@index([status,createdAt])
@@ -569,6 +570,8 @@ model Trip {
   status TripStatus @default(DRAFT)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  organizationId String?
+  organization Organization? @relation(fields:[organizationId], references:[id], onDelete:Restrict)
   bookings Booking[]
   safetyChecklists SafetyChecklist[]
   safetyIncidents SafetyIncident[]
@@ -578,6 +581,7 @@ model Trip {
   divePlans DivePlan[]
   emergencyPlans EmergencyPlan[]
   @@index([status,startsAt])
+  @@index([organizationId,status,startsAt])
 }
 
 model Booking {
