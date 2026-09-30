@@ -15,8 +15,7 @@ export class TrainingProfessionalProfileService {
     const rows = await this.db.trainingEnrollment.findMany({
       where: { instructorAccountId: accountId },
       select: {
-        id: true, courseCode: true, status: true, enrolledAt: true, completedAt: true,
-        student: { select: { person: { select: { firstName: true, lastName: true } } } },
+        id: true, studentAccountId: true, courseCode: true, status: true, enrolledAt: true, completedAt: true,
         record: {
           select: {
             status: true, progressPercent: true,
@@ -32,15 +31,19 @@ export class TrainingProfessionalProfileService {
       orderBy: { enrolledAt: 'desc' },
       take: 200,
     });
+    const studentIds = [...new Set(rows.map(row => row.studentAccountId))];
+    const students = studentIds.length ? await this.db.account.findMany({
+      where: { id: { in: studentIds } },
+      select: { id: true, person: { select: { firstName: true, lastName: true } } },
+    }) : [];
+    const names = new Map(students.map(student => [student.id, [student.person.firstName, student.person.lastName].filter(Boolean).join(' ').trim() || 'طالب']));
     return rows.map(row => ({
       enrollmentId: row.id,
       courseCode: row.courseCode,
       status: row.status,
       enrolledAt: row.enrolledAt,
       completedAt: row.completedAt,
-      student: {
-        displayName: [row.student.person.firstName, row.student.person.lastName].filter(Boolean).join(' ').trim() || 'طالب',
-      },
+      student: { displayName: names.get(row.studentAccountId) || 'طالب' },
       record: row.record ? {
         status: row.record.status,
         progressPercent: row.record.progressPercent,
