@@ -1,0 +1,20 @@
+import { test, expect } from '@playwright/test';
+import { openWorkspaceSwitcher } from './portal-test-helpers.js';
+const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
+test('professional portal loads privacy-safe live profile metrics and clears them after role loss',async({page})=>{
+ const state={active:true};
+ const profile={id:'professional-e2e',email:'private@example.invalid',status:'ACTIVE',roleAssignments:[{id:'instructor-role',role:'INSTRUCTOR',status:'ACTIVE'}],person:{firstName:'مدرب',lastName:'اختبار',professional:{headline:'مدرب غوص',regionCode:'ASIR'}}};
+ const authed=request=>request.headers().authorization==='Bearer professional-access';
+ await page.route(/\/api\/v1\/me$/,route=>{profile.roleAssignments=state.active?[{id:'instructor-role',role:'INSTRUCTOR',status:'ACTIVE'}]:[{id:'instructor-role',role:'INSTRUCTOR',status:'SUSPENDED'}];return authed(route.request())?json(route,profile):json(route,{message:'Unauthorized'},401)});
+ await page.route(/\/api\/v1\/credentials$/,route=>json(route,[]));
+ await page.route(/\/api\/v1\/me\/diver-profile$/,route=>json(route,{profile:{medicalFitnessStatus:'FIT',bloodType:'O+'},equipment:[]}));
+ await page.route(/\/api\/v1\/training\/professional\/me$/,route=>state.active?json(route,{profile:{displayName:'مدرب اختبار',headline:'مدرب غوص',bio:'professional only',regionCode:'ASIR',instructorActiveAt:'2026-09-30T00:00:00Z'},credentials:[{id:'c1',issuer:'Agency',title:'Instructor',verificationStatus:'VERIFIED'}],metrics:{activeStudents:7,sessionsToday:2,completedSessions:14,verifiedCredentials:1},privacy:{excludesMedicalData:true,excludesIdentityData:true,excludesEmergencyContacts:true}}):json(route,{message:'Active instructor role required.'},403));
+ await page.goto('/',{waitUntil:'domcontentloaded'});
+ await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandPortalFreshness));
+ await page.evaluate(async()=>{window.HydrolandAuth.acceptSession({accessToken:'professional-access',refreshToken:'professional-refresh'},window.HydrolandAuth.beginAuthAttempt());await window.HydrolandProfile.load()});
+ await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="instructor"]').click();
+ const dash=page.locator('.hl-role-dashboard[data-role="instructor"]');await expect(dash).toBeVisible();await expect(dash).toHaveAttribute('data-professional-profile-loaded','1');
+ const values=await dash.locator('.hl-role-tile b').allTextContents();expect(values.slice(0,4)).toEqual(['7','2','1','14']);
+ await expect(dash).toContainText('مدرب اختبار');await expect(dash).not.toContainText('O+');await expect(dash).not.toContainText('private@example.invalid');
+ state.active=false;await openWorkspaceSwitcher(page);await expect(page.locator('#role-dialog [data-role="instructor"]')).toBeDisabled();await expect(page.locator('.hl-role-dashboard[data-role="instructor"]')).toHaveCount(0);
+});
