@@ -26,6 +26,6 @@
   }
   document.addEventListener('hydroland:session-cleared',()=>{version++;section?.remove();section=null});
   document.addEventListener('hydroland:auth-changed',()=>{if(!auth()?.isAuthenticated?.()){version++;section?.remove();section=null}});
-  document.addEventListener('click',event=>{const node=event.target.closest?.('.hl-role-dashboard[data-role="instructor"] [data-action-label="إدارة الطلاب"]');if(!node)return;event.preventDefault();event.stopImmediatePropagation();void open();},true);
+  document.addEventListener('click',event=>{const node=event.target.closest?.('.hl-role-dashboard[data-role="instructor"] [data-action-label="إدارة الطلاب"],.hl-role-dashboard[data-role="instructor"] [data-action-label="إدارة الدورات"]');if(!node)return;event.preventDefault();event.stopImmediatePropagation();void open();},true);
   window.HydrolandProfessionalAssignments=Object.freeze({open});
 })();
