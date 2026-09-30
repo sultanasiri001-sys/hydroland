@@ -51,7 +51,7 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
     await page.locator('#navigation a[href="#hl-diver-dashboard"]').click();await expect(board).toBeVisible();
    }else if(role==='instructor'){
     await board.locator('[data-action-label="إدارة الدورات"]').click();
-    await expect(page.locator('.hl-professional-assignments')).toBeVisible();await expect(board.locator('.hl-portal-content')).toBeHidden();
+    await expect(page.locator('.hl-training')).toBeVisible();await expect(board.locator('.hl-portal-content')).toBeHidden();
     await board.locator('[data-portal-home]').click();await expect(board.locator('.hl-portal-content')).toBeVisible();
    }
   }
