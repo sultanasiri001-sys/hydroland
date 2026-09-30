@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 const account = { id: 'membership-fixture', email: 'private@example.invalid', status: 'ACTIVE', roleAssignments: [{ role: 'DIVER', status: 'ACTIVE' }], person: { firstName: 'عضو', lastName: 'اختبار', professional: {} } };
 const reference = 'hlm1.' + 'A'.repeat(140);
-const card = () => ({ cardType: 'INTERNAL_ACCOUNT_REFERENCE', officialLicence: false, displayName: 'عضو اختبار', accountStatus: 'ACTIVE', roles: ['هواة الغوص'], reference, expiresAt: new Date(Date.now() + 300_000).toISOString() });
+const card = () => ({ cardType: 'INTERNAL_ACCOUNT_REFERENCE', officialLicence: false, displayName: 'عضو اختبار', accountStatus: 'ACTIVE', roles: ['هواة الغوص'], reference, observedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 300_000).toISOString() });
 async function install(page, signedIn = true) {
   await page.route('**/api/v1/**', route => json(route, []));
   await page.route('**/api/v1/auth/google/config', route => json(route, { enabled: false }));
@@ -93,4 +93,64 @@ test('scanned references do not expose account details to guests or unauthorized
   await page.evaluate(() => window.HydrolandAuth.acceptSession({ accessToken: 'ordinary-member', refreshToken: 'ordinary-refresh' }, window.HydrolandAuth.beginAuthAttempt()));
   await page.evaluate(ref => { location.hash = 'membership-pass=' + ref; }, reference);
   await expect(dialog(page).locator('[data-pass-status]')).toContainText('ليست لديك صلاحية'); await expect(dialog(page)).not.toContainText('عضو اختبار');
+});
+
+// The API fixture clock is in this Node process, independent of the simulated
+// device wall clock. Production returns observedAt/verifiedAt; do not omit them.
+for (const offset of [7 * 60000, -7 * 60000]) {
+  test(`fresh card survives device clock offset ${offset} and later clock jumps`, async ({ page }, testInfo) => {
+    await page.clock.setFixedTime(new Date(Date.now() + offset));
+    await page.setViewportSize({ width: 390, height: 844 }); await install(page);
+    await page.evaluate(() => Object.defineProperty(navigator, 'share', { configurable: true, value: async data => { window.__shared = data; } }));
+    await open(page);
+    await expect(dialog(page).locator('[data-pass-status]')).toContainText('تم التحقق');
+    await page.clock.setFixedTime(new Date('2035-01-01T00:00:00Z'));
+    await dialog(page).locator('[data-pass-consent]').check();
+    await expect(dialog(page).locator('[data-pass-download]')).toBeEnabled();
+    const downloadPromise = page.waitForEvent('download'); await dialog(page).locator('[data-pass-download]').click();
+    const download = await downloadPromise;
+    expect((await readFile(await download.path())).subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
+    await page.clock.setFixedTime(new Date('2000-01-01T00:00:00Z'));
+    await dialog(page).locator('[data-pass-share]').click();
+    expect((await page.evaluate(() => window.__shared)).url).toContain('/#membership-pass=');
+    await dialog(page).screenshot({ path: testInfo.outputPath(`account-membership-clock-${offset}.png`) });
+  });
+}
+test('a slow device clock cannot extend the server reference lifetime', async ({ page }) => {
+  await page.clock.setFixedTime(new Date(Date.now() - 86400000)); await install(page);
+  await page.route('**/api/v1/me/membership-pass', route => json(route, { ...card(), expiresAt: new Date(Date.now() + 2000).toISOString() }));
+  await open(page); await dialog(page).locator('[data-pass-consent]').check();
+  await expect(dialog(page).locator('[data-pass-status]')).toContainText('انتهت صلاحية المرجع', { timeout: 6000 });
+  await expect(dialog(page).locator('[data-pass-download]')).toBeDisabled();
+  await expect(dialog(page).locator('[data-pass-share]')).toBeDisabled();
+});
+test('round trip time is subtracted and expired delayed responses are not displayed', async ({ page }) => {
+  await install(page); let pending;
+  await page.route('**/api/v1/me/membership-pass', route => { pending = route; });
+  await page.locator('[data-membership-action="qr"]').click(); await expect.poll(() => Boolean(pending)).toBe(true);
+  const payload = { ...card(), expiresAt: new Date(Date.now() + 500).toISOString() };
+  await new Promise(resolve => setTimeout(resolve, 1000)); await json(pending, payload);
+  await expect(dialog(page).locator('[data-pass-status]')).toContainText('انتهت صلاحية المرجع');
+  await expect(dialog(page).locator('[data-pass-content]')).toBeHidden();
+});
+test('missing server clock does not silently fall back to device time', async ({ page }) => {
+  await install(page);
+  await page.route('**/api/v1/me/membership-pass', route => json(route, { ...card(), observedAt: undefined }));
+  await page.locator('[data-membership-action="qr"]').click();
+  await expect(dialog(page).locator('[data-pass-status]')).toContainText('تعذر');
+  await expect(dialog(page).locator('[data-pass-content]')).toBeHidden();
+});
+test('verification uses the fresh server timestamp rather than the original observation', async ({ page }) => {
+  await page.clock.setFixedTime(new Date(Date.now() + 86400000)); await install(page);
+  await page.route('**/api/v1/me/membership-pass/verify', route => json(route, {
+    ...card(), observedAt: new Date(Date.now() - 600000).toISOString(), verifiedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 2000).toISOString(),
+  }));
+  await page.evaluate(ref => { location.hash = 'membership-pass=' + ref; }, reference);
+  await expect(dialog(page).locator('[data-pass-content]')).toBeVisible();
+  await expect(dialog(page).locator('[data-pass-status]')).toContainText('انتهت صلاحية المرجع', { timeout: 6000 });
+});
+test('backgrounding removes a prepared reference instead of retaining a suspended timer', async ({ page }) => {
+  await install(page); await open(page);
+  await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, value: true }); document.dispatchEvent(new Event('visibilitychange')); });
+  await expect(dialog(page)).toHaveCount(0);
 });
