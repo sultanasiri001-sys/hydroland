@@ -9,6 +9,16 @@
 
   const label=status=>({PENDING:'بانتظار التفعيل',ACTIVE:'نشط',SUSPENDED:'موقوف',COMPLETED:'مكتمل',CANCELLED:'ملغي'}[status]||status||'—');
   let requestedMode='student';
+  async function loadProfessionalEarnings(){
+    const list=section.querySelector('[data-training-list]');section.dataset.trainingMode='professional-earnings';
+    section.querySelector('.hl-training-head h3').textContent='الإيرادات';section.querySelector('.hl-training-head span').textContent='استحقاقاتك التدريبية فقط — لا تعرض حسابات العملاء أو المنصة';
+    list.innerHTML='<p>جارٍ تحميل الاستحقاقات...</p>';
+    try{const response=await auth.authorizedFetch('/training/professional/me/earnings'),data=await response.json().catch(()=>null);if(!response.ok)throw new Error(data?.message||'تعذر تحميل الاستحقاقات');
+      const sar=minor=>(Number(minor||0)/100).toLocaleString('ar-SA',{style:'currency',currency:'SAR'});
+      const entries=Array.isArray(data?.entries)?data.entries:[];
+      list.innerHTML=`<div class="hl-role-tiles"><article><small>قيد الاعتماد</small><b>${sar(data?.totals?.pendingMinor)}</b></article><article><small>معتمد</small><b>${sar(data?.totals?.approvedMinor)}</b></article><article><small>تمت التسوية</small><b>${sar(data?.totals?.settledMinor)}</b></article></div>`+(entries.length?entries.map(item=>`<article class="hl-course"><div class="hl-course-top"><div><b>${esc(item.courseCode)}</b><small>${new Date(item.createdAt).toLocaleDateString('ar-SA')}</small></div><span>${sar(item.amountMinor)} · ${esc(item.status)}</span></div></article>`).join(''):'<p>لا توجد استحقاقات تدريبية مسجلة حتى الآن.</p>');
+    }catch(error){list.innerHTML=`<p>${esc(error instanceof Error?error.message:'تعذر تحميل الاستحقاقات')}</p>`;}
+  }
   async function loadProfessionalCertificates(){
     const list=section.querySelector('[data-training-list]');section.dataset.trainingMode='professional-certificates';
     section.querySelector('.hl-training-head h3').textContent='الشهادات';section.querySelector('.hl-training-head span').textContent='توصية المدرب ثم اعتماد مستقل قبل الإصدار';
@@ -79,6 +89,7 @@
     if(mode==='instructor-schedule')return loadProfessionalSchedule();
     if(mode==='instructor-skills')return loadProfessionalSkills();
     if(mode==='instructor-certificates')return loadProfessionalCertificates();
+    if(mode==='instructor-earnings')return loadProfessionalEarnings();
     section.querySelector('.hl-training-head h3').textContent='مركز التدريب والدورات';
     section.querySelector('.hl-training-head span').textContent='سجلك التدريبي المباشر';
     section.dataset.trainingMode='student';
