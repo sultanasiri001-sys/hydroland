@@ -6,10 +6,12 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { TripsModule } from '../trips/trips.module';
 import { OrganizationsController } from './organizations.controller';
 import { OrganizationsService } from './organizations.service';
+import { DiveCenterPortalController } from './dive-center-portal.controller';
+import { DiveCenterPortalService } from './dive-center-portal.service';
 
 @Module({
   imports: [AuthModule, AdminModule, AuditModule, NotificationsModule, TripsModule],
-  controllers: [OrganizationsController],
-  providers: [OrganizationsService],
+  controllers: [OrganizationsController, DiveCenterPortalController],
+  providers: [OrganizationsService, DiveCenterPortalService],
 })
 export class OrganizationsModule {}
