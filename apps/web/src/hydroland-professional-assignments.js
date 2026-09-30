@@ -14,7 +14,7 @@
   const render=rows=>{
     const host=ensure(),list=host.querySelector('[data-professional-list]'),summary=host.querySelector('[data-professional-summary]');
     const students=new Set(rows.map(row=>row.student?.displayName)).size,courses=new Set(rows.map(row=>row.courseCode)).size;
-    summary.textContent=`${courses} دورة · ${students} طالب · ${rows.length} تسجيل`;
+    summary.textContent=String(courses)+' دورة · '+String(students)+' طالب · '+String(rows.length)+' تسجيل';
     list.innerHTML=rows.length?rows.map(row=>`<article class="hl-course"><div class="hl-course-top"><div><b>${esc(row.courseCode)}</b><small>${esc(row.student?.displayName||'طالب')} · ${esc(statusLabel(row.status))}</small></div><span>${Number(row.record?.progressPercent||0)}%</span></div><div class="hl-progress"><i style="width:${Math.max(0,Math.min(100,Number(row.record?.progressPercent||0)))}%"></i></div><small>${esc(statusLabel(row.record?.status))} · ${row.record?.sessions?.length||0} جلسة مرتبطة</small></article>`).join(''):'<p>لا توجد دورات أو طلاب معيّنون لك حاليًا.</p>';
   };
   async function open(){
