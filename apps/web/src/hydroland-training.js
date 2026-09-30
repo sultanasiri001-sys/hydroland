@@ -12,7 +12,7 @@
     const list=section.querySelector('[data-training-list]');
     list.innerHTML='<p>جارٍ تحميل الدورات والطلاب المكلفين لك...</p>';
     try{
-      const response=await auth.authorizedFetch('/training/professional/enrollments');
+      const response=await auth.authorizedFetch('/training/professional/me/assignments');
       const rows=await response.json().catch(()=>[]);
       if(!response.ok)throw new Error(rows?.message||'تعذر تحميل دورات المدرب');
       const enrollments=Array.isArray(rows)?rows:[];
@@ -30,7 +30,7 @@
         const progress=Math.max(0,Math.min(100,Number(item.record?.progressPercent||0)));
         const sessions=Array.isArray(item.record?.sessions)?item.record.sessions:[];
         const next=sessions.find(x=>['SCHEDULED','CHECK_IN_OPEN','IN_PROGRESS'].includes(x.status));
-        return `<article class="hl-course" data-professional-enrollment="${esc(item.id)}"><div class="hl-course-top"><div><b>${esc(item.courseCode)}</b><small>${esc(item.student?.displayName||'طالب')} · ${esc(label(item.status))}</small></div><span>${progress}%</span></div><div class="hl-progress"><i style="width:${progress}%"></i></div><small>${next?'الجلسة القادمة: '+new Date(next.startsAt).toLocaleString('ar-SA'):'لا توجد جلسة قادمة'}</small></article>`;
+        return `<article class="hl-course" data-professional-enrollment="${esc(item.enrollmentId)}"><div class="hl-course-top"><div><b>${esc(item.courseCode)}</b><small>${esc(item.student?.displayName||'طالب')} · ${esc(label(item.status))}</small></div><span>${progress}%</span></div><div class="hl-progress"><i style="width:${progress}%"></i></div><small>${next?'الجلسة القادمة: '+new Date(next.startsAt).toLocaleString('ar-SA'):'لا توجد جلسة قادمة'}</small></article>`;
       }).join(''):'<p>لا توجد دورات أو طلاب مكلفون لك حاليًا.</p>';
       section.dataset.trainingMode='professional';section.dataset.professionalStudents=String(students.size);
     }catch(error){list.innerHTML=`<p>${esc(error instanceof Error?error.message:'تعذر تحميل دورات المدرب')}</p>`;}
