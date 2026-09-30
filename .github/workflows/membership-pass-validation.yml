@@ -1,0 +1,70 @@
+name: Membership account pass validation
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/profile/**'
+      - 'apps/api/scripts/membership-*.mjs'
+      - 'apps/web/src/hydroland-members*.js'
+      - 'apps/web/e2e/membership-pass.spec.js'
+      - '.github/workflows/membership-pass-validation.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/api/src/profile/**'
+      - 'apps/api/scripts/membership-*.mjs'
+      - 'apps/web/src/hydroland-members*.js'
+      - 'apps/web/e2e/membership-pass.spec.js'
+      - '.github/workflows/membership-pass-validation.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  membership-pass:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: hydroland
+          POSTGRES_PASSWORD: hydroland
+          POSTGRES_DB: hydroland
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U hydroland -d hydroland"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://hydroland:hydroland@127.0.0.1:5432/hydroland?schema=public
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - run: npm run db:generate --workspace=@hydroland/api
+      - run: npm run build --workspace=@hydroland/api
+      - name: Local HTTP, permissions and PostgreSQL schema compatibility
+        run: |
+          set -o pipefail
+          node apps/api/scripts/membership-pass-db-e2e.mjs | tee membership-api-report.txt
+          node apps/api/scripts/membership-qr-validation.mjs | tee membership-qr-report.txt
+      - run: npm run test -w @hydroland/web
+      - run: npm run build -w @hydroland/web
+      - run: npx playwright install --with-deps chromium
+      - name: Membership browser regression with isolated fixtures
+        run: |
+          set -o pipefail
+          npm run test:e2e -w @hydroland/web -- membership-pass.spec.js | tee membership-browser-report.txt
+      - name: Preserve bounded test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: membership-pass-${{ github.run_id }}
+          path: |
+            membership-*-report.txt
+            apps/web/test-results/**/account-membership-*.png
+          retention-days: 14
+          if-no-files-found: warn
