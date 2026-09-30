@@ -1,0 +1,17 @@
+import { test, expect } from '@playwright/test';
+import { openWorkspaceSwitcher } from './portal-test-helpers.js';
+const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
+test('professional schedule opens attendance only for assigned session and fails closed after role loss',async({page})=>{
+ const state={active:true,status:'SCHEDULED',instructor:false};
+ const me=()=>({id:'instructor',status:'ACTIVE',roleAssignments:[{role:'INSTRUCTOR',status:state.active?'ACTIVE':'SUSPENDED'}],person:{firstName:'مدرب',lastName:'اختبار',professional:{}}});
+ await page.route(/\/api\/v1\/me$/,route=>json(route,me()));await page.route(/\/api\/v1\/credentials$/,route=>json(route,[]));await page.route(/\/api\/v1\/me\/diver-profile$/,route=>json(route,{profile:null,equipment:[]}));
+ await page.route(/\/api\/v1\/training\/professional\/me$/,route=>json(route,{profile:{displayName:'مدرب اختبار'},credentials:[],metrics:{activeStudents:1,sessionsToday:1,completedSessions:0,verifiedCredentials:0},privacy:{excludesMedicalData:true,excludesIdentityData:true,excludesEmergencyContacts:true}}));
+ await page.route(/\/api\/v1\/training\/professional\/me\/schedule$/,route=>state.active?json(route,[{id:'s1',courseCode:'RESCUE-201',student:{displayName:'طالب أول'},status:state.status,startsAt:'2026-10-01T08:00:00Z',attendance:{instructorCheckedIn:state.instructor,studentCheckedIn:false}}]):json(route,{message:'Active instructor role required.'},403));
+ await page.route(/\/api\/v1\/training\/professional\/me\/sessions\/s1\/attendance$/,async route=>{if(!state.active)return json(route,{message:'Training resource access denied.'},403);const action=route.request().postDataJSON().action;if(action==='OPEN'){state.status='CHECK_IN_OPEN';return json(route,{id:'s1',status:state.status,evidence:{}})}if(action==='INSTRUCTOR_CHECK_IN'){state.instructor=true;return json(route,{id:'s1',status:state.status,evidence:{instructorCheckInAt:'2026-10-01T07:55:00Z'}})}return json(route,{message:'bad'},400)});
+ await page.goto('/',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandTraining));
+ await page.evaluate(async()=>{window.HydrolandAuth.acceptSession({accessToken:'professional-access',refreshToken:'professional-refresh'},window.HydrolandAuth.beginAuthAttempt());await window.HydrolandProfile.load()});
+ await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="instructor"]').click();await page.locator('.hl-role-dashboard[data-role="instructor"] [data-action-label="الجدول الزمني"]').click();
+ const training=page.locator('.hl-training');await expect(training).toBeVisible();await expect(training).toHaveAttribute('data-training-mode','professional-schedule');await expect(training).toContainText('طالب أول');
+ await training.locator('[data-attendance-action="OPEN"]').click();await expect(training).toContainText('CHECK_IN_OPEN');await training.locator('[data-attendance-action="INSTRUCTOR_CHECK_IN"]').click();await expect(training).toContainText('حضور المدرب: مسجل');
+ state.active=false;await page.evaluate(()=>window.HydrolandTraining.reload('instructor-schedule'));await expect(training).toContainText('Active instructor role required');
+});
