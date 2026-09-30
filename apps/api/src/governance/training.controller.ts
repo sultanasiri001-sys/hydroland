@@ -1,5 +1,5 @@
 import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
-import { Prisma, TrainingEnrollmentStatus, TrainingRecordStatus, TrainingSessionStatus } from '@prisma/client';
+import { Prisma, TrainingCertificateStatus, TrainingEnrollmentStatus, TrainingRecordStatus, TrainingSessionStatus } from '@prisma/client';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { TrainingAuthorizationService } from './training-authorization.service';
 import { TrainingRepositoryService } from './training-repository.service';
@@ -15,6 +15,19 @@ export class TrainingController {
     private readonly authorization: TrainingAuthorizationService,
     private readonly professionalProfile: TrainingProfessionalProfileService,
   ) {}
+
+  @Post('professional/me/records/:id/certificate-recommendation')
+  async recommendCertificate(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+    await this.authorization.assertRecordAccess(request.auth.accountId, id);
+    return this.training.recommendCertificate(id, request.auth.accountId);
+  }
+
+  @Post('certificates/:id/decision')
+  async decideCertificate(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { outcome: 'APPROVED'|'REJECTED'; reason?: string }) {
+    await this.authorization.assertReviewer(request.auth.accountId);
+    if (!['APPROVED','REJECTED'].includes(body.outcome)) throw new BadRequestException('Unsupported certificate decision.');
+    return this.training.decideCertificate(id, body.outcome as TrainingCertificateStatus, request.auth.accountId, body.reason);
+  }
 
   @Get('professional/me/skills')
   professionalSkills(@Req() request: AuthenticatedRequest) {
