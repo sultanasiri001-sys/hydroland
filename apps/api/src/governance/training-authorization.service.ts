@@ -78,6 +78,15 @@ export class TrainingAuthorizationService {
     await this.assertScope(accountId, stage.trainingRecord.enrollment, false);
   }
 
+  async assertSkillAccess(accountId: string, skillId: string) {
+    const skill = await this.db.trainingSkill.findUnique({
+      where: { id: skillId },
+      select: { trainingStage: { select: { trainingRecord: { select: { enrollment: { select: { studentAccountId: true, instructorAccountId: true, centerOrganizationId: true } } } } } } },
+    });
+    if (!skill) this.deny();
+    await this.assertScope(accountId, skill.trainingStage.trainingRecord.enrollment, false);
+  }
+
   async assertSessionAccess(accountId: string, sessionId: string) {
     const session = await this.db.trainingSession.findUnique({
       where: { id: sessionId },
