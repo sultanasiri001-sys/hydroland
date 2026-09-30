@@ -17,6 +17,13 @@ try{
  trip=await db.trip.create({data:{title:'Safety Incident E2E',type:'BOAT',startsAt:new Date('2030-02-01T08:00:00.000Z'),endsAt:new Date('2030-02-01T12:00:00.000Z'),capacity:8,status:'OPEN'}});
  const reporterToken=tokenFor(reporter.id),otherToken=tokenFor(other.id),adminToken=tokenFor(admin.id);
  let response=await fetch(base+'/safety/incidents',{method:'POST',headers:headers(reporterToken),body:JSON.stringify({tripId:trip.id,severity:'INVALID',title:'Invalid severity',description:'Must be rejected'})});if(response.status!==400)throw new Error('Invalid incident severity expected 400, got '+response.status);
+ const distress=await expectOk(await fetch(base+'/safety/incidents/distress',{method:'POST',headers:headers(reporterToken),body:JSON.stringify({tripId:trip.id,description:'Engine disabled; internal emergency coordination required',latitude:18.015432,longitude:41.708765})}));
+ if(distress.incident?.severity!=='CRITICAL'||distress.incident?.status!=='OPEN')throw new Error('Internal distress must create a CRITICAL open incident');
+ if(distress.distress?.workflow!=='INTERNAL_CRITICAL_INCIDENT'||distress.distress?.externalTransmission!=='NOT_IMPLEMENTED'||distress.distress?.externalDistressSent!==false||distress.distress?.humanEmergencyEscalationRequired!==true)throw new Error('Distress boundary must never imply external transmission');
+ if(distress.distress?.aisLookupAttempted!==false||distress.distress?.effectivePosition?.source!=='CALLER')throw new Error('Caller-only distress coordinates were not preserved correctly');
+ const distressAudit=await db.auditEvent.findFirst({where:{resource:'SafetyIncident',resourceId:distress.incident.id,action:'SAFETY_DISTRESS_CASE_OPENED'},select:{metadata:true}});
+ if(!distressAudit||distressAudit.metadata?.externalDistressSent!==false)throw new Error('Internal distress audit boundary missing');
+ await db.safetyIncident.delete({where:{id:distress.incident.id}});
  const created=await expectOk(await fetch(base+'/safety/incidents',{method:'POST',headers:headers(reporterToken),body:JSON.stringify({tripId:trip.id,severity:'HIGH',title:'تسرب وقود محدود',locationName:'مرسى القحمة',description:'تمت ملاحظة تسرب محدود قرب منطقة المحرك ويحتاج مراجعة فنية.'})}));incidentId=created.id;if(created.status!=='OPEN'||created.severity!=='HIGH'||created.reportedByAccountId!==reporter.id)throw new Error('Incident creation did not persist reporter-owned open record');
  const mine=await expectOk(await fetch(base+'/safety/incidents/mine',{headers:headers(reporterToken)}));if(!Array.isArray(mine)||mine[0]?.id!==incidentId||mine[0]?.trip?.id!==trip.id)throw new Error('Reporter mine list missing linked incident');
  const otherMine=await expectOk(await fetch(base+'/safety/incidents/mine',{headers:headers(otherToken)}));if(otherMine.length)throw new Error('Other account can view reporter incidents');
@@ -26,7 +33,7 @@ try{
  const reviewing=await expectOk(await fetch(base+'/safety/incidents/admin/'+incidentId+'/status',{method:'PATCH',headers:headers(adminToken),body:JSON.stringify({status:'UNDER_REVIEW',resolutionNotes:'تم توجيه البلاغ للفحص الفني'})}));if(reviewing.status!=='UNDER_REVIEW'||reviewing.resolvedAt)throw new Error('Under-review incident decision did not persist');
  response=await fetch(base+'/safety/incidents/admin/'+incidentId+'/status',{method:'PATCH',headers:headers(adminToken),body:JSON.stringify({status:'RESOLVED'})});if(response.status!==400)throw new Error('Resolution without notes expected 400, got '+response.status);
  const resolved=await expectOk(await fetch(base+'/safety/incidents/admin/'+incidentId+'/status',{method:'PATCH',headers:headers(adminToken),body:JSON.stringify({status:'RESOLVED',resolutionNotes:'تم عزل المصدر وإكمال فحص المحرك قبل التشغيل.'})}));if(resolved.status!=='RESOLVED'||resolved.resolvedByAccountId!==admin.id||!resolved.resolvedAt)throw new Error('Resolved incident did not persist resolver evidence');
- console.log('Safety incidents HTTP/DB E2E passed: authenticated reporting, reporter isolation, admin queue, review and evidenced resolution.');
+ console.log('Phase 7 internal emergency HTTP/DB E2E passed: CRITICAL distress record, caller coordinates, explicit no-external-transmission boundary, reporter isolation, admin review and evidenced resolution.');
 }finally{
  if(incidentId)await db.safetyIncident.deleteMany({where:{id:incidentId}}).catch(()=>{});
  if(trip)await db.trip.deleteMany({where:{id:trip.id}}).catch(()=>{});
