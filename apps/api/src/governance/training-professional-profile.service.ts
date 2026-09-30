@@ -5,6 +5,50 @@ import { DatabaseService } from '../database/database.service';
 export class TrainingProfessionalProfileService {
   constructor(private readonly db: DatabaseService) {}
 
+  private async assertActiveInstructor(accountId: string) {
+    const role = await this.assertActiveInstructor(accountId);
+    return role;
+  }
+
+  async listAssignments(accountId: string) {
+    await this.assertActiveInstructor(accountId);
+    const rows = await this.db.trainingEnrollment.findMany({
+      where: { instructorAccountId: accountId },
+      select: {
+        id: true, courseCode: true, status: true, enrolledAt: true, completedAt: true,
+        student: { select: { person: { select: { firstName: true, lastName: true } } } },
+        record: {
+          select: {
+            status: true, progressPercent: true,
+            sessions: {
+              where: { instructorAccountId: accountId },
+              select: { id: true, startsAt: true, status: true },
+              orderBy: { startsAt: 'asc' },
+              take: 20,
+            },
+          },
+        },
+      },
+      orderBy: { enrolledAt: 'desc' },
+      take: 200,
+    });
+    return rows.map(row => ({
+      enrollmentId: row.id,
+      courseCode: row.courseCode,
+      status: row.status,
+      enrolledAt: row.enrolledAt,
+      completedAt: row.completedAt,
+      student: {
+        displayName: [row.student.person.firstName, row.student.person.lastName].filter(Boolean).join(' ').trim() || 'طالب',
+      },
+      record: row.record ? {
+        status: row.record.status,
+        progressPercent: row.record.progressPercent,
+        sessions: row.record.sessions,
+      } : null,
+    }));
+  }
+
   async get(accountId: string) {
     const role = await this.db.roleAssignment.findUnique({
       where: { accountId_role: { accountId, role: 'INSTRUCTOR' } },
