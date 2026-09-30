@@ -1,0 +1,28 @@
+import { test, expect } from '@playwright/test';
+import { openWorkspaceSwitcher } from './portal-test-helpers.js';
+const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
+test('Dive Professionals portal closure: all protected workspaces are instructor-scoped and revocation fails closed',async({page})=>{
+ const state={active:true,skill:'NOT_STARTED',session:'SCHEDULED',checked:false,recommended:false};
+ const me=()=>({id:'instructor',email:'hidden@example.invalid',status:'ACTIVE',roleAssignments:[{role:'INSTRUCTOR',status:state.active?'ACTIVE':'SUSPENDED'}],person:{firstName:'مدرب',lastName:'إغلاق',professional:{headline:'محترف غوص',regionCode:'ASIR'}}});
+ await page.route(/\/api\/v1\/me$/,r=>json(r,me()));await page.route(/\/api\/v1\/credentials$/,r=>json(r,[]));await page.route(/\/api\/v1\/me\/diver-profile$/,r=>json(r,{profile:{bloodType:'O+'},equipment:[]}));
+ await page.route(/\/api\/v1\/training\/professional\/me$/,r=>json(r,{profile:{displayName:'مدرب إغلاق',headline:'محترف غوص',regionCode:'ASIR'},credentials:[],metrics:{activeStudents:1,sessionsToday:1,completedSessions:8,verifiedCredentials:2},privacy:{excludesMedicalData:true,excludesIdentityData:true,excludesEmergencyContacts:true}}));
+ await page.route(/\/api\/v1\/training\/professional\/me\/assignments$/,r=>json(r,[{enrollmentId:'e1',courseCode:'RESCUE-201',status:'ACTIVE',student:{displayName:'طالب مخصص'},record:{status:'IN_PROGRESS',progressPercent:75,sessions:[]}}]));
+ await page.route(/\/api\/v1\/training\/professional\/me\/schedule$/,r=>state.active?json(r,[{id:'s1',courseCode:'RESCUE-201',student:{displayName:'طالب مخصص'},status:state.session,startsAt:'2026-10-01T08:00:00Z',attendance:{instructorCheckedIn:state.checked,studentCheckedIn:false}}]):json(r,{message:'Active instructor role required.'},403));
+ await page.route(/\/api\/v1\/training\/professional\/me\/sessions\/s1\/attendance$/,r=>{const a=r.request().postDataJSON().action;if(a==='OPEN')state.session='CHECK_IN_OPEN';if(a==='INSTRUCTOR_CHECK_IN')state.checked=true;return json(r,{id:'s1',status:state.session})});
+ await page.route(/\/api\/v1\/training\/professional\/me\/skills$/,r=>json(r,[{id:'k1',name:'إنقاذ غواص',status:state.skill,stageType:'OPEN_WATER',courseCode:'RESCUE-201',student:{displayName:'طالب مخصص'}}]));
+ await page.route(/\/api\/v1\/training\/skills\/k1\/assessment$/,r=>{state.skill=r.request().postDataJSON().status;return json(r,{id:'k1',status:state.skill})});
+ await page.route(/\/api\/v1\/training\/professional\/me\/certificates$/,r=>json(r,[{trainingRecordId:'tr1',courseCode:'RESCUE-201',student:{displayName:'طالب مخصص'},readyForRecommendation:true,certificate:state.recommended?{id:'c1',status:'RECOMMENDED'}:null}]));
+ await page.route(/\/api\/v1\/training\/professional\/me\/records\/tr1\/certificate-recommendation$/,r=>{state.recommended=true;return json(r,{id:'c1',status:'RECOMMENDED'})});
+ await page.route(/\/api\/v1\/training\/professional\/me\/earnings$/,r=>json(r,{currency:'SAR',totals:{pendingMinor:12500,approvedMinor:25000,settledMinor:50000},entries:[{id:'x1',courseCode:'RESCUE-201',amountMinor:25000,currency:'SAR',status:'APPROVED',createdAt:'2026-09-30T12:00:00Z'}]}));
+ await page.goto('/',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandTraining));
+ await page.evaluate(async()=>{window.HydrolandAuth.acceptSession({accessToken:'close-access',refreshToken:'close-refresh'},window.HydrolandAuth.beginAuthAttempt());await window.HydrolandProfile.load()});
+ await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="instructor"]').click();
+ const dash=page.locator('.hl-role-dashboard[data-role="instructor"]');await expect(dash).toBeVisible();await expect(dash).toContainText('مدرب إغلاق');await expect(dash).not.toContainText('O+');await expect(dash).not.toContainText('hidden@example.invalid');
+ const open=async(label,mode)=>{await page.evaluate(label=>{const button=document.querySelector('.hl-role-dashboard[data-role="instructor"] [data-action-label="'+label+'"]');if(!(button instanceof HTMLButtonElement))throw new Error('Professional action not found: '+label);button.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));},label);const t=page.locator('.hl-training');await expect(t).toBeVisible();await expect(t).toHaveAttribute('data-training-mode',mode);return t};
+ let t=await open('إدارة الدورات','professional');await expect(t).toContainText('طالب مخصص');
+ t=await open('جدول التدريب','professional-schedule');await t.locator('[data-attendance-action="OPEN"]').click();await t.locator('[data-attendance-action="INSTRUCTOR_CHECK_IN"]').click();await expect(t).toContainText('حضور المدرب: مسجل');
+ t=await open('تقييم المهارات','professional-skills');await t.locator('[data-skill-status="COMPETENT"]').click();await expect(t).toContainText('COMPETENT');
+ t=await open('إصدار الشهادات','professional-certificates');await t.locator('[data-certificate-recommend]').click();await expect(t).toContainText('RECOMMENDED');
+ t=await open('الإيرادات','professional-earnings');await expect(t).toContainText('RESCUE-201');await expect(t).not.toContainText('hidden@example.invalid');
+ state.active=false;await openWorkspaceSwitcher(page);await expect(page.locator('#role-dialog [data-role="instructor"]')).toBeDisabled();await expect(page.locator('.hl-role-dashboard[data-role="instructor"]')).toHaveCount(0);
+});
