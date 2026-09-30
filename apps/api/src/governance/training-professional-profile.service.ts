@@ -5,8 +5,12 @@ import { DatabaseService } from '../database/database.service';
 export class TrainingProfessionalProfileService {
   constructor(private readonly db: DatabaseService) {}
 
-  private async requireActiveInstructor(accountId: string) {
-    const role = await this.requireActiveInstructor(accountId);
+  private async requireActiveInstructor(accountId: string): Promise<{ status: string; activeAt: Date | null }> {
+    const role = await this.db.roleAssignment.findUnique({
+      where: { accountId_role: { accountId, role: 'INSTRUCTOR' } },
+      select: { status: true, activeAt: true },
+    });
+    if (!role || role.status !== 'ACTIVE') throw new ForbiddenException('Active instructor role required.');
     return role;
   }
 
@@ -34,11 +38,7 @@ export class TrainingProfessionalProfileService {
   }
 
   async get(accountId: string) {
-    const role = await this.db.roleAssignment.findUnique({
-      where: { accountId_role: { accountId, role: 'INSTRUCTOR' } },
-      select: { status: true, activeAt: true },
-    });
-    if (!role || role.status !== 'ACTIVE') throw new ForbiddenException('Active instructor role required.');
+    const role = await this.requireActiveInstructor(accountId);
 
     const account = await this.db.account.findUnique({
       where: { id: accountId },
