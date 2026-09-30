@@ -9,6 +9,14 @@
 
   const label=status=>({PENDING:'بانتظار التفعيل',ACTIVE:'نشط',SUSPENDED:'موقوف',COMPLETED:'مكتمل',CANCELLED:'ملغي'}[status]||status||'—');
   let requestedMode='student';
+  async function loadProfessionalCertificates(){
+    const list=section.querySelector('[data-training-list]');section.dataset.trainingMode='professional-certificates';
+    section.querySelector('.hl-training-head h3').textContent='الشهادات';section.querySelector('.hl-training-head span').textContent='توصية المدرب ثم اعتماد مستقل قبل الإصدار';
+    list.innerHTML='<p>جارٍ تحميل حالة الشهادات...</p>';
+    try{const response=await auth.authorizedFetch('/training/professional/me/certificates'),rows=await response.json().catch(()=>[]);if(!response.ok)throw new Error(rows?.message||'تعذر تحميل الشهادات');
+      list.innerHTML=(Array.isArray(rows)&&rows.length)?rows.map(item=>`<article class="hl-course" data-certificate-record="${esc(item.trainingRecordId)}"><div class="hl-course-top"><div><b>${esc(item.courseCode)}</b><small>${esc(item.student?.displayName||'طالب')}</small></div><span>${esc(item.certificate?.status|| (item.readyForRecommendation?'جاهز للتوصية':'غير مكتمل'))}</span></div>${item.readyForRecommendation&&!item.certificate?'<button type="button" data-certificate-recommend>إرسال توصية الاعتماد</button>':''}${item.certificate?.certificateNumber?`<small>رقم الشهادة الداخلية: ${esc(item.certificate.certificateNumber)}</small>`:''}</article>`).join(''):'<p>لا توجد سجلات تدريب مرتبطة بك.</p>';
+    }catch(error){list.innerHTML=`<p>${esc(error instanceof Error?error.message:'تعذر تحميل الشهادات')}</p>`;}
+  }
   async function loadProfessionalSkills(){
     const list=section.querySelector('[data-training-list]');section.dataset.trainingMode='professional-skills';
     section.querySelector('.hl-training-head h3').textContent='تقييم المهارات';section.querySelector('.hl-training-head span').textContent='مهارات الطلاب المعيّنين لك فقط';
@@ -70,6 +78,7 @@
     if(mode==='instructor'){section.dataset.trainingMode='professional';return loadProfessional();}
     if(mode==='instructor-schedule')return loadProfessionalSchedule();
     if(mode==='instructor-skills')return loadProfessionalSkills();
+    if(mode==='instructor-certificates')return loadProfessionalCertificates();
     section.querySelector('.hl-training-head h3').textContent='مركز التدريب والدورات';
     section.querySelector('.hl-training-head span').textContent='سجلك التدريبي المباشر';
     section.dataset.trainingMode='student';
@@ -92,6 +101,8 @@
   }
   document.addEventListener('click',event=>{const button=event.target.closest?.('[data-hl-action="training"],[data-training-open]');if(!button)return;event.preventDefault();section.scrollIntoView({behavior:'smooth',block:'start'});if(!auth?.isAuthenticated()){const list=section.querySelector('[data-training-list]');if(list)list.innerHTML='<p>سجل الدخول لعرض بيانات التدريب.</p>';return}const instructor=Boolean(button.closest?.('.hl-role-dashboard[data-role="instructor"]'));load(instructor?'instructor':undefined);});
   section.addEventListener('click',async event=>{
+    const certificateButton=event.target.closest?.('[data-certificate-recommend]');
+    if(certificateButton){const article=certificateButton.closest('[data-certificate-record]'),id=article?.dataset.certificateRecord;if(!id)return;certificateButton.disabled=true;try{const response=await auth.authorizedFetch('/training/professional/me/records/'+encodeURIComponent(id)+'/certificate-recommendation',{method:'POST'});if(!response.ok){const body=await response.json().catch(()=>null);throw new Error(body?.message||'تعذر إرسال التوصية')}await loadProfessionalCertificates();}catch(error){certificateButton.disabled=false;section.querySelector('[data-training-list]').insertAdjacentHTML('afterbegin',`<p role="alert">${esc(error instanceof Error?error.message:'تعذر إرسال التوصية')}</p>`);}return;}
     const skillButton=event.target.closest?.('[data-skill-status]');
     if(skillButton){
       const article=skillButton.closest('[data-professional-skill]'),id=article?.dataset.professionalSkill;if(!id)return;
