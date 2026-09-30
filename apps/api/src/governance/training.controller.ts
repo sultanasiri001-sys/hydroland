@@ -3,6 +3,7 @@ import { TrainingEnrollmentStatus, TrainingRecordStatus, TrainingSessionStatus }
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { TrainingAuthorizationService } from './training-authorization.service';
 import { TrainingRepositoryService } from './training-repository.service';
+import { TrainingProfessionalProfileService } from './training-professional-profile.service';
 
 type AuthenticatedRequest = { auth: { accountId: string } };
 
@@ -12,7 +13,13 @@ export class TrainingController {
   constructor(
     private readonly training: TrainingRepositoryService,
     private readonly authorization: TrainingAuthorizationService,
+    private readonly professionalProfile: TrainingProfessionalProfileService,
   ) {}
+
+  @Get('professional/me')
+  professionalMe(@Req() request: AuthenticatedRequest) {
+    return this.professionalProfile.get(request.auth.accountId);
+  }
 
   @Get('mine/enrollments')
   mine(@Req() request: AuthenticatedRequest) {
