@@ -52,6 +52,27 @@
 
   function clearDashboard(){document.querySelector('.hl-role-dashboard')?.remove()}
   const syncDashboardIdentity=()=>{const d=document.querySelector('.hl-role-dashboard');if(!d)return;const person=window.HydrolandProfileData?.profile?.person||{},name=[person.firstName,person.lastName].filter(Boolean).join(' ').trim();d.querySelectorAll('[data-portal-name],[data-center-name]').forEach(node=>{const value=name||'حساب HYDROLAND';if(node.textContent!==value)node.textContent=value});d.querySelectorAll('[data-portal-avatar],[data-center-avatar]').forEach(node=>{const value=(person.firstName||'H').trim().slice(0,1).toUpperCase();if(node.textContent!==value)node.textContent=value})};
+  const loadInstructorSummary=async d=>{
+    const auth=window.HydrolandAuth;if(!d||d.dataset.role!=='instructor'||!auth?.isAuthenticated?.())return;
+    const session=auth.getSessionVersion?.();
+    try{
+      const response=await auth.authorizedFetch('/training/professional/me');
+      const data=await response.json().catch(()=>null);
+      if(!response.ok)throw new Error(data?.message||'PROFILE_UNAVAILABLE');
+      if(!d.isConnected||session!==auth.getSessionVersion?.()||d.dataset.role!=='instructor')return;
+      const tiles=d.querySelectorAll('.hl-role-tile b');
+      const values=[data?.metrics?.activeStudents??0,data?.metrics?.sessionsToday??0,data?.metrics?.verifiedCredentials??0,data?.metrics?.completedSessions??0];
+      values.forEach((value,index)=>{if(tiles[index])tiles[index].textContent=String(value)});
+      const profile=data?.profile||{};
+      const name=profile.displayName||'محترف غوص';
+      d.querySelectorAll('[data-portal-name]').forEach(node=>node.textContent=name);
+      const spotlight=d.querySelector('.hl-role-spotlight p,.hl-role-spotlight small');
+      if(spotlight)spotlight.textContent=[profile.headline,profile.regionCode].filter(Boolean).join(' · ')||'الملف المهني مرتبط ببيانات الحساب والشهادات الموثقة.';
+      d.dataset.professionalProfileLoaded='1';
+    }catch{
+      if(d.isConnected){d.dataset.professionalProfileLoaded='0';d.querySelectorAll('.hl-role-tile b').forEach(node=>node.textContent='—');}
+    }
+  };
   const ensureWeatherAdmin=()=>{if(document.querySelector('script[data-hl-weather-admin]'))return;const script=document.createElement('script');script.src='./hydroland-weather-admin.js';script.dataset.hlWeatherAdmin='1';document.body.appendChild(script)};
   const denyRoleAction=()=>{clearDashboard();const exit=document.getElementById('exit-role');if(exit)exit.click();else window.HydrolandPortalAccess?.clearProtectedPortal?.();return false};
   const authorizeRoleAction=async role=>{const auth=window.HydrolandAuth,access=window.HydrolandPortalAccess;if(!auth?.isAuthenticated?.()||!access?.roleAllowed?.(role))return denyRoleAction();if(typeof access.refreshPortalAccess!=='function')return denyRoleAction();await access.refreshPortalAccess();if(window.HydrolandPortalFreshness?.enforce?.()===false)return false;if(!auth.isAuthenticated()||!access.roleAllowed(role))return denyRoleAction();return true};
@@ -110,6 +131,7 @@
     document.getElementById('main')?.prepend(d);
     if(role==='admin')d.querySelector('.brand-copy small').textContent='مركز القيادة والإدارة';
     syncDashboardIdentity();
+    if(role==='instructor')void loadInstructorSummary(d);
 
     d.querySelector('[data-board-notifications]')?.addEventListener('click',()=>window.HydrolandAccountCenter?.openNotifications?.());
     d.querySelector('[data-board-messages]')?.addEventListener('click',()=>window.HydrolandMessages?.open?.());
