@@ -39,6 +39,8 @@
 
   async function load(mode){
     if(mode)requestedMode=mode;
+    const instructorPortal=document.querySelector('.hl-role-dashboard[data-role="instructor"]');
+    if(!mode&&instructorPortal&&window.HydrolandPortalAccess?.getCurrentRole?.()==='instructor')requestedMode='instructor';
     mode=requestedMode;
     const list=section.querySelector('[data-training-list]');
     if(!auth?.isAuthenticated()){list.innerHTML='<p>سجل الدخول لعرض بيانات التدريب.</p>';return;}
