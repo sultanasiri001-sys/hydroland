@@ -21,11 +21,6 @@ export class TrainingController {
     return this.professionalProfile.listAssignments(request.auth.accountId);
   }
 
-  @Get('professional/enrollments')
-  professionalEnrollments(@Req() request: AuthenticatedRequest) {
-    return this.professionalProfile.listEnrollments(request.auth.accountId);
-  }
-
   @Get('professional/me')
   professionalMe(@Req() request: AuthenticatedRequest) {
     return this.professionalProfile.get(request.auth.accountId);
