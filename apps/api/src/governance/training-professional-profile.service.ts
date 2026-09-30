@@ -5,7 +5,7 @@ import { DatabaseService } from '../database/database.service';
 export class TrainingProfessionalProfileService {
   constructor(private readonly db: DatabaseService) {}
 
-  private async assertActiveInstructor(accountId: string) {
+  private async assertActiveInstructor(accountId: string): Promise<{ status: string; activeAt: Date | null }> {
     const role = await this.assertActiveInstructor(accountId);
     return role;
   }
