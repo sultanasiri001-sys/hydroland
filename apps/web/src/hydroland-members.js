@@ -57,3 +57,6 @@
   const certHost=section.querySelector('.hl-certificates');if(certHost)new MutationObserver(()=>queueMicrotask(enhanceCredentials)).observe(certHost,{childList:true});
   document.addEventListener('hydroland:auth-changed',()=>setTimeout(enhanceCredentials,0));setTimeout(enhanceCredentials,650);
 })();
+
+// Connect the membership controls only when their fail-closed runtime is ready.
+void import('./hydroland-membership-pass.js').catch(() => {});

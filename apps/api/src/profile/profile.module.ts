@@ -6,10 +6,12 @@ import { DiverMasterProfileController } from './diver-master-profile.controller'
 import { DiverMasterProfileService } from './diver-master-profile.service';
 import { ProfileController } from './profile.controller';
 import { ProfileService } from './profile.service';
+import { MembershipPassController } from './membership-pass.controller';
+import { MembershipPassService } from './membership-pass.service';
 
 @Module({
   imports: [AuthModule, TripsModule, AuditModule],
-  controllers: [ProfileController, DiverMasterProfileController],
-  providers: [ProfileService, DiverMasterProfileService],
+  controllers: [ProfileController, DiverMasterProfileController, MembershipPassController],
+  providers: [ProfileService, DiverMasterProfileService, MembershipPassService],
 })
 export class ProfileModule {}
