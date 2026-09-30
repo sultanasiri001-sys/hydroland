@@ -100,6 +100,10 @@ export class TrainingRepositoryService {
     return this.db.trainingSession.create({ data: input });
   }
 
+  getSession(id: string) {
+    return this.db.trainingSession.findUniqueOrThrow({ where: { id } });
+  }
+
   setSessionStatus(id: string, status: TrainingSessionStatus, evidence?: Prisma.InputJsonValue) {
     return this.db.trainingSession.update({
       where: { id },
