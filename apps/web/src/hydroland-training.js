@@ -8,6 +8,7 @@
   host.insertAdjacentElement('afterend',section);
 
   const label=status=>({PENDING:'بانتظار التفعيل',ACTIVE:'نشط',SUSPENDED:'موقوف',COMPLETED:'مكتمل',CANCELLED:'ملغي'}[status]||status||'—');
+  let requestedMode='student';
   async function loadProfessional(){
     const list=section.querySelector('[data-training-list]');
     list.innerHTML='<p>جارٍ تحميل الدورات والطلاب المكلفين لك...</p>';
@@ -37,6 +38,8 @@
   }
 
   async function load(mode){
+    if(mode)requestedMode=mode;
+    mode=requestedMode;
     const list=section.querySelector('[data-training-list]');
     if(!auth?.isAuthenticated()){list.innerHTML='<p>سجل الدخول لعرض بيانات التدريب.</p>';return;}
     if(mode==='instructor')return loadProfessional();
@@ -61,7 +64,7 @@
     }catch(error){list.innerHTML=`<p>${esc(error instanceof Error?error.message:'تعذر تحميل بيانات التدريب')}</p>`;}
   }
   document.addEventListener('click',event=>{const button=event.target.closest?.('[data-hl-action="training"],[data-training-open]');if(!button)return;event.preventDefault();section.scrollIntoView({behavior:'smooth',block:'start'});if(!auth?.isAuthenticated()){const list=section.querySelector('[data-training-list]');if(list)list.innerHTML='<p>سجل الدخول لعرض بيانات التدريب.</p>';return}const instructor=Boolean(button.closest?.('.hl-role-dashboard[data-role="instructor"]'));load(instructor?'instructor':undefined);});
-  document.addEventListener('hydroland:auth-changed',()=>{if(!auth?.isAuthenticated?.())load();else if(section.dataset.trainingMode==='professional')load('instructor');else load();});
+  document.addEventListener('hydroland:auth-changed',()=>load(requestedMode));
   window.HydrolandTraining={reload:mode=>load(mode)};
   setTimeout(load,0);
 })();
