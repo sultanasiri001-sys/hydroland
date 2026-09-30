@@ -9,12 +9,13 @@ import { TrainingWorkflowService } from './training-workflow.service';
 import { TrainingOperationsService } from './training-operations.service';
 import { TrainingGovernanceService } from './training-governance.service';
 import { TrainingRepositoryService } from './training-repository.service';
+import { TrainingProfessionalProfileService } from './training-professional-profile.service';
 import { TrainingController } from './training.controller';
 
 @Module({
   imports: [AuditModule, AuthModule],
   controllers: [TrainingController],
   providers: [PolicyEngineService, ApprovalEngineService, TrainingAuthorizationService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService, TrainingGovernanceService, TrainingRepositoryService],
-  exports: [PolicyEngineService, ApprovalEngineService, TrainingAuthorizationService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService, TrainingGovernanceService, TrainingRepositoryService, AuditModule],
+  exports: [PolicyEngineService, ApprovalEngineService, TrainingAuthorizationService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService, TrainingGovernanceService, TrainingRepositoryService, TrainingProfessionalProfileService, AuditModule],
 })
 export class GovernanceModule {}
