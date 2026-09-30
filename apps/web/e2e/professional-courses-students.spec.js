@@ -8,8 +8,8 @@ test('professional training workspace shows only assigned students and courses',
  await page.route(/\/api\/v1\/me\/diver-profile$/,route=>json(route,{profile:null,equipment:[]}));
  await page.route(/\/api\/v1\/training\/professional\/me$/,route=>json(route,{profile:{displayName:'مدرب اختبار'},credentials:[],metrics:{activeStudents:2,sessionsToday:1,completedSessions:3,verifiedCredentials:0},privacy:{excludesMedicalData:true,excludesIdentityData:true,excludesEmergencyContacts:true}}));
  await page.route(/\/api\/v1\/training\/professional\/enrollments$/,route=>json(route,[
-  {id:'e1',courseCode:'OW-101',status:'ACTIVE',student:{displayName:'طالب أول'},record:{progressPercent:60,sessions:[{id:'s1',status:'SCHEDULED',startsAt:'2026-10-01T08:00:00Z'}]}},
-  {id:'e2',courseCode:'RESCUE-201',status:'COMPLETED',student:{displayName:'طالب ثان'},record:{progressPercent:100,sessions:[]}}
+  {enrollmentId:'e1',courseCode:'OW-101',status:'ACTIVE',student:{displayName:'طالب أول'},record:{progressPercent:60,sessions:[{id:'s1',status:'SCHEDULED',startsAt:'2026-10-01T08:00:00Z'}]}},
+  {enrollmentId:'e2',courseCode:'RESCUE-201',status:'COMPLETED',student:{displayName:'طالب ثان'},record:{progressPercent:100,sessions:[]}}
  ]));
  await page.goto('/',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandTraining));
  await page.evaluate(async()=>{window.HydrolandAuth.acceptSession({accessToken:'professional-access',refreshToken:'professional-refresh'},window.HydrolandAuth.beginAuthAttempt());await window.HydrolandProfile.load()});
