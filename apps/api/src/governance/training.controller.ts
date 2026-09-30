@@ -1,5 +1,5 @@
 import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
-import { TrainingEnrollmentStatus, TrainingRecordStatus, TrainingSessionStatus } from '@prisma/client';
+import { Prisma, TrainingEnrollmentStatus, TrainingRecordStatus, TrainingSessionStatus } from '@prisma/client';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { TrainingAuthorizationService } from './training-authorization.service';
 import { TrainingRepositoryService } from './training-repository.service';
@@ -98,8 +98,8 @@ export class TrainingController {
     await this.authorization.assertSessionAccess(request.auth.accountId, id);
     const session = await this.training.getSession(id);
     const evidence = session.evidence && typeof session.evidence === 'object' && !Array.isArray(session.evidence)
-      ? { ...(session.evidence as Record<string, unknown>) }
-      : {};
+      ? { ...(session.evidence as Prisma.JsonObject) }
+      : {} as Prisma.JsonObject;
     if (body.action === 'OPEN') {
       if (session.status !== 'SCHEDULED') throw new BadRequestException('Only a scheduled session can open check-in.');
       return this.training.setSessionStatus(id, TrainingSessionStatus.CHECK_IN_OPEN, evidence);
