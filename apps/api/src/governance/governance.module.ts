@@ -15,7 +15,7 @@ import { TrainingController } from './training.controller';
 @Module({
   imports: [AuditModule, AuthModule],
   controllers: [TrainingController],
-  providers: [PolicyEngineService, ApprovalEngineService, TrainingAuthorizationService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService, TrainingGovernanceService, TrainingRepositoryService],
+  providers: [PolicyEngineService, ApprovalEngineService, TrainingAuthorizationService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService, TrainingGovernanceService, TrainingRepositoryService, TrainingProfessionalProfileService],
   exports: [PolicyEngineService, ApprovalEngineService, TrainingAuthorizationService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService, TrainingGovernanceService, TrainingRepositoryService, TrainingProfessionalProfileService, AuditModule],
 })
 export class GovernanceModule {}
