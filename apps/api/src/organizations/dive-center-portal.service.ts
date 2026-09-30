@@ -2,7 +2,7 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { DatabaseService } from '../database/database.service';
 
 @Injectable()
-export class DiveCenterPortalService {
+// Center scope is explicit: unassigned legacy trips remain outside every center portal.\nexport class DiveCenterPortalService {
   constructor(private readonly db: DatabaseService) {}
 
   private async managedCenter(accountId: string) {
