@@ -15,7 +15,7 @@ test('professional training workspace shows only assigned students and courses',
  await page.evaluate(async()=>{window.HydrolandAuth.acceptSession({accessToken:'professional-access',refreshToken:'professional-refresh'},window.HydrolandAuth.beginAuthAttempt());await window.HydrolandProfile.load()});
  await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="instructor"]').click();
  await page.locator('.hl-role-dashboard[data-role="instructor"] [data-action-label="إدارة الدورات"]').click();
- const training=page.locator('.hl-professional-assignments');await expect(training).toBeVisible();
+ const training=page.locator('.hl-training');await expect(training).toBeVisible();await expect(training).toHaveAttribute('data-training-mode','professional');
  await expect(training).toContainText('طالب أول');await expect(training).toContainText('طالب ثان');await expect(training).toContainText('OW-101');await expect(training).toContainText('RESCUE-201');
- await expect(training).not.toContainText('instructor-private@example.invalid');await expect(training.locator('.hl-course')).toHaveCount(2);
+ await expect(training).not.toContainText('instructor-private@example.invalid');await expect(training.locator('[data-professional-enrollment]')).toHaveCount(2);
 });
