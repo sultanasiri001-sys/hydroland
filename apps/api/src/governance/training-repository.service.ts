@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { Prisma, TrainingEnrollmentStatus, TrainingRecordStatus, TrainingSessionStatus } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
@@ -86,6 +87,31 @@ export class TrainingRepositoryService {
     return this.db.trainingSkill.create({
       data: { trainingStageId, skillCode, name },
     });
+  }
+
+  async recommendCertificate(trainingRecordId: string, instructorAccountId: string) {
+    const record = await this.db.trainingRecord.findUniqueOrThrow({
+      where: { id: trainingRecordId },
+      include: { enrollment: true, stages: { include: { skills: true } }, sessions: true, certificate: true },
+    });
+    if (record.enrollment.instructorAccountId !== instructorAccountId) throw new Error('Instructor is not assigned to this training record.');
+    if (record.status !== 'COMPLETED' || record.progressPercent !== 100) throw new Error('Training record must be completed at 100%.');
+    const skills=record.stages.flatMap(stage=>stage.skills);
+    if (!skills.length || skills.some(skill=>skill.status!=='COMPETENT'||skill.signedOffByInstructorId!==instructorAccountId)) throw new Error('All required skills must be competent and signed off by the assigned instructor.');
+    if (record.sessions.some(session=>session.status!=='COMPLETED'&&session.status!=='CANCELLED')) throw new Error('All training sessions must be completed or cancelled before recommendation.');
+    if (record.certificate) return record.certificate;
+    return this.db.trainingCertificate.create({data:{trainingRecordId,studentAccountId:record.enrollment.studentAccountId,courseCode:record.enrollment.courseCode,recommendedByInstructorId:instructorAccountId}});
+  }
+
+  async decideCertificate(id: string, outcome: 'APPROVED'|'REJECTED', reviewerId: string, reason?: string) {
+    const certificate=await this.db.trainingCertificate.findUniqueOrThrow({where:{id}});
+    if (certificate.recommendedByInstructorId===reviewerId) throw new Error('Instructor cannot approve their own certificate recommendation.');
+    if (certificate.status!=='RECOMMENDED') throw new Error('Certificate recommendation is no longer pending review.');
+    if (outcome==='REJECTED') return this.db.trainingCertificate.update({where:{id},data:{status:'REJECTED',reviewedByAccountId:reviewerId,reviewedAt:new Date(),reviewReason:reason||null}});
+    const raw=randomBytes(24).toString('base64url'),hash=createHash('sha256').update(raw).digest('hex');
+    const number='HYD-TRN-'+new Date().getUTCFullYear()+'-'+randomBytes(5).toString('hex').toUpperCase();
+    const approved=await this.db.trainingCertificate.update({where:{id},data:{status:'APPROVED',reviewedByAccountId:reviewerId,reviewedAt:new Date(),reviewReason:reason||null,certificateNumber:number,verificationTokenHash:hash,issuedAt:new Date()}});
+    return {...approved,verificationToken:raw};
   }
 
   assessSkill(id: string, status: string, instructorAccountId: string) {

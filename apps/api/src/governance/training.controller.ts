@@ -16,6 +16,19 @@ export class TrainingController {
     private readonly professionalProfile: TrainingProfessionalProfileService,
   ) {}
 
+  @Post('professional/me/records/:id/certificate-recommendation')
+  async recommendCertificate(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+    await this.authorization.assertRecordAccess(request.auth.accountId, id);
+    return this.training.recommendCertificate(id, request.auth.accountId);
+  }
+
+  @Post('certificates/:id/decision')
+  async decideCertificate(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { outcome: 'APPROVED'|'REJECTED'; reason?: string }) {
+    await this.authorization.assertReviewer(request.auth.accountId);
+    if (!['APPROVED','REJECTED'].includes(body.outcome)) throw new BadRequestException('Unsupported certificate decision.');
+    return this.training.decideCertificate(id, body.outcome, request.auth.accountId, body.reason);
+  }
+
   @Get('professional/me/skills')
   professionalSkills(@Req() request: AuthenticatedRequest) {
     return this.professionalProfile.listSkills(request.auth.accountId);

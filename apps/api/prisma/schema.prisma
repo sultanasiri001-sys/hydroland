@@ -1378,6 +1378,13 @@ enum TrainingRecordStatus {
   SUSPENDED
 }
 
+enum TrainingCertificateStatus {
+  RECOMMENDED
+  APPROVED
+  REJECTED
+  REVOKED
+}
+
 enum TrainingSessionStatus {
   SCHEDULED
   CHECK_IN_OPEN
@@ -1418,6 +1425,7 @@ model TrainingRecord {
   enrollment TrainingEnrollment @relation(fields:[enrollmentId], references:[id], onDelete:Restrict)
   stages TrainingStage[]
   sessions TrainingSession[]
+  certificate TrainingCertificate?
   @@index([status,updatedAt])
 }
 
@@ -1452,6 +1460,27 @@ model TrainingSkill {
   trainingStage TrainingStage @relation(fields:[trainingStageId], references:[id], onDelete:Cascade)
   @@unique([trainingStageId,skillCode])
   @@index([trainingStageId,status])
+}
+
+model TrainingCertificate {
+  id String @id @default(uuid())
+  trainingRecordId String @unique
+  studentAccountId String
+  courseCode String
+  recommendedByInstructorId String
+  recommendedAt DateTime @default(now())
+  status TrainingCertificateStatus @default(RECOMMENDED)
+  reviewedByAccountId String?
+  reviewedAt DateTime?
+  reviewReason String?
+  certificateNumber String? @unique
+  verificationTokenHash String? @unique
+  issuedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  trainingRecord TrainingRecord @relation(fields:[trainingRecordId], references:[id], onDelete:Restrict)
+  @@index([studentAccountId,status])
+  @@index([status,createdAt])
 }
 
 model TrainingSession {

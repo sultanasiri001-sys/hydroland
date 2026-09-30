@@ -51,6 +51,14 @@ export class TrainingAuthorizationService {
     this.deny();
   }
 
+  async assertReviewer(accountId: string) {
+    const reviewer = await this.db.roleAssignment.findFirst({
+      where: { accountId, status: 'ACTIVE', role: { in: ['REVIEWER','ADMIN'] } },
+      select: { id: true },
+    });
+    if (!reviewer) this.deny();
+  }
+
   async assertEnrollmentAccess(accountId: string, enrollmentId: string, allowStudent = false) {
     const enrollment = await this.db.trainingEnrollment.findUnique({
       where: { id: enrollmentId },
