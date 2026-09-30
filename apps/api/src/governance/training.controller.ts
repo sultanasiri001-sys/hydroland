@@ -16,6 +16,11 @@ export class TrainingController {
     private readonly professionalProfile: TrainingProfessionalProfileService,
   ) {}
 
+  @Get('professional/me/skills')
+  professionalSkills(@Req() request: AuthenticatedRequest) {
+    return this.professionalProfile.listSkills(request.auth.accountId);
+  }
+
   @Get('professional/me/schedule')
   professionalSchedule(@Req() request: AuthenticatedRequest) {
     return this.professionalProfile.listSchedule(request.auth.accountId);
