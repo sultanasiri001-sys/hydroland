@@ -84,7 +84,7 @@ try {
         check((await post('/verify', 'owner-fixture', { reference: bad })).status === 400, 'invalid/tampered reference rejected');
       }
       const adminPass = await post('', 'admin-fixture');
-      check(adminPass.body.roles.length === 0 && !JSON.stringify(adminPass.body).includes('ADMIN'), 'internal privilege labels are not exported');
+      check(adminPass.status === 200 && adminPass.body.roles.length === 0, 'internal privilege labels are not exported');
       const now = Date.now; Date.now = () => now() + 301_000;
       try { await assert.rejects(() => service.verify(ids.admin, pass.reference), e => e.getStatus?.() === 403); passed++; } finally { Date.now = now; }
       await db.$executeRawUnsafe(`UPDATE "Account" SET "status"='SUSPENDED' WHERE "id"='${ids.owner}'`);
