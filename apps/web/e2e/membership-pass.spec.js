@@ -40,6 +40,7 @@ for (const [name, viewport] of [['mobile', { width: 390, height: 844 }], ['deskt
       if (action === 'card') {
         const downloadPromise = page.waitForEvent('download'); await dialog(page).locator('[data-pass-download]').click();
         const file = await downloadPromise; const bytes = await readFile(await file.path());
+        await file.saveAs(testInfo.outputPath(`account-membership-card-${name}.png`));
         expect(bytes.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a'); expect(bytes.readUInt32BE(16)).toBe(1080); expect(bytes.readUInt32BE(20)).toBe(680);
       }
       if (action === 'share') {
