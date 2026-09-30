@@ -171,14 +171,12 @@ jobs:
             cat /tmp/hydroland-api.log
             exit 1
           fi
+          PHASE5_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/phase5-centers-approvals-http-e2e.mjs
           if ! DOCUMENT_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/document-http-db-e2e.mjs; then
             echo "Document HTTP/DB E2E failed; API log follows"
             cat /tmp/hydroland-api.log
             exit 1
           fi
 
-      - name: Phase 5 centers, organization isolation and approval lifecycle
-        run: |
-          JWT_SECRET=test-secret-key-at-least-32-characters PHASE5_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/phase5-centers-approvals-http-e2e.mjs
       - name: Phase 4 append-only audit database boundary
         run: node apps/api/scripts/audit-append-only-validation.mjs
