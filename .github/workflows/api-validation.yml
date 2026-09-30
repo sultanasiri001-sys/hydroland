@@ -176,3 +176,6 @@ jobs:
             cat /tmp/hydroland-api.log
             exit 1
           fi
+
+      - name: Phase 4 append-only audit database boundary
+        run: node apps/api/scripts/audit-append-only-validation.mjs

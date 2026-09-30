@@ -103,6 +103,8 @@ try {
     assert.ok(names.length, 'Empty operational migration list: ' + file);
     for (const name of names) migrations.push({ name, sql: await readFile(join(apiRoot, 'prisma/migrations', name, 'migration.sql'), 'utf8'), source: file });
   }
+  const appendOnlyAuditName = '20260930080000_audit_event_append_only';
+  migrations.push({ name: appendOnlyAuditName, sql: await readFile(join(apiRoot, 'prisma/migrations', appendOnlyAuditName, 'migration.sql'), 'utf8'), source: 'phase4 append-only audit ledger' });
   check('migration_names_are_unique', new Set(migrations.map(item => item.name)).size === migrations.length);
   for (const migration of migrations) {
     await mkdir(join(work, 'migrations', migration.name));
