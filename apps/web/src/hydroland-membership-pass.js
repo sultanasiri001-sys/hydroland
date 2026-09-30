@@ -1,5 +1,7 @@
 (async () => {
-const { membershipQr } = await import('./hydroland-membership-qr.js');
+const [{ membershipQr }, { membershipDeadline }] = await Promise.all([
+  import('./hydroland-membership-qr.js'), import('./hydroland-membership-time.js'),
+]);
 
 // This is an internal account reference, never a licence or medical clearance.
 const auth = () => window.HydrolandAuth;
@@ -21,7 +23,7 @@ function clear() {
   enableActions();
 }
 function current(s) { return state === s && generation === s.generation && s.session === auth()?.getSessionVersion?.() && Boolean(auth()?.isAuthenticated?.()) && s.dialog.open; }
-function valid(s) { return current(s) && s.data && Date.parse(s.data.expiresAt) > Date.now(); }
+function valid(s) { return current(s) && s.data && performance.now() < s.data.deadline; }
 function drawQr(canvas, matrix, scale = 4) {
   canvas.width = canvas.height = (matrix.length + 8) * scale;
   const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('CANVAS_UNAVAILABLE');
@@ -45,9 +47,9 @@ function renderCard(s) {
   ctx.fillText('تنتهي صلاحية المرجع: ' + new Date(s.data.expiresAt).toLocaleString('ar-SA'), 1000, 565, 950);
   ctx.fillText('ليست رخصة غوص أو إثبات لياقة أو اعتمادًا مهنيًا.', 1000, 620, 950);
 }
-function normalized(data) {
-  if (!data || data.cardType !== 'INTERNAL_ACCOUNT_REFERENCE' || data.officialLicence !== false || data.accountStatus !== 'ACTIVE' || typeof data.displayName !== 'string' || !Array.isArray(data.roles) || !data.roles.every(v => typeof v === 'string') || !Number.isFinite(Date.parse(data.expiresAt)) || Date.parse(data.expiresAt) <= Date.now()) throw new Error('INVALID_PASS');
-  return { displayName: data.displayName.slice(0, 161), roles: data.roles.slice(0, 5).map(v => v.slice(0, 80)), expiresAt: data.expiresAt };
+function normalized(data, requestStartedAt) {
+  if (!data || data.cardType !== 'INTERNAL_ACCOUNT_REFERENCE' || data.officialLicence !== false || data.accountStatus !== 'ACTIVE' || typeof data.displayName !== 'string' || !Array.isArray(data.roles) || !data.roles.every(v => typeof v === 'string')) throw new Error('INVALID_PASS');
+  return { displayName: data.displayName.slice(0, 161), roles: data.roles.slice(0, 5).map(v => v.slice(0, 80)), expiresAt: data.expiresAt, deadline: membershipDeadline(data, requestStartedAt) };
 }
 async function request(path, body) {
   if (!auth()?.isAuthenticated?.()) throw new Error('AUTH_REQUIRED');
@@ -71,7 +73,7 @@ function makeDialog() {
 function message(s, text) { if (state === s) s.dialog.querySelector('[data-pass-status]').textContent = text; }
 function expire(s) {
   if (!current(s)) { if (state === s) clear(); return; }
-  if (s.data && Date.parse(s.data.expiresAt) <= Date.now()) {
+  if (s.data && performance.now() >= s.data.deadline) {
     s.data = null; s.link = ''; s.card.width = s.qr.width = 0;
     s.dialog.querySelector('[data-pass-content]').hidden = true;
     s.dialog.querySelector('[data-pass-link]').value = '';
@@ -83,9 +85,10 @@ async function prepare(s, reference) {
   const retry = s.dialog.querySelector('[data-pass-retry]'); retry.disabled = true;
   try {
     if (!auth()?.isAuthenticated?.()) { message(s, 'سجّل الدخول ثم أعد فتح رابط البطاقة للتحقق منها.'); return; }
+    const requestStartedAt = performance.now();
     const raw = await request(reference ? '/me/membership-pass/verify' : '/me/membership-pass', reference ? { reference } : {});
     if (!current(s)) return;
-    s.data = normalized(raw);
+    s.data = normalized(raw, requestStartedAt);
     s.dialog.querySelector('[data-pass-name]').textContent = s.data.displayName;
     s.dialog.querySelector('[data-pass-roles]').textContent = s.data.roles.join(' · ') || 'حساب عضو';
     s.dialog.querySelector('[data-pass-expiry]').textContent = 'صلاحية المرجع حتى: ' + new Date(s.data.expiresAt).toLocaleString('ar-SA');
@@ -108,7 +111,7 @@ async function prepare(s, reference) {
     if (current(s)) {
       s.data = null; s.link = ''; s.card.width = s.qr.width = 0;
       s.dialog.querySelector('[data-pass-content]').hidden = true;
-      message(s, error?.message === 'FORBIDDEN' ? 'المرجع منتهي أو ليست لديك صلاحية التحقق من هذا الحساب.' : 'تعذر تجهيز البطاقة. أعد المحاولة دون مشاركة أي بيانات.');
+      message(s, error?.message === 'PASS_EXPIRED' ? 'انتهت صلاحية المرجع. أعد المحاولة لإصدار بطاقة جديدة.' : error?.message === 'FORBIDDEN' ? 'المرجع منتهي أو ليست لديك صلاحية التحقق من هذا الحساب.' : 'تعذر تجهيز البطاقة. أعد المحاولة دون مشاركة أي بيانات.');
     }
   } finally { if (state === s) retry.disabled = false; }
 }
@@ -151,6 +154,9 @@ actions.forEach(button => button.addEventListener('click', () => { if (auth()?.i
 document.addEventListener('hydroland:session-cleared', clear);
 document.addEventListener('hydroland:auth-changed', clear);
 window.addEventListener('pagehide', clear);
+// Some mobile engines pause monotonic time during suspension. Discard the
+// preview on backgrounding; require a new server response after returning.
+document.addEventListener('visibilitychange', () => { if (document.hidden) clear(); });
 function scanHash() {
   const prefix = '#membership-pass='; if (!location.hash.startsWith(prefix)) return;
   const reference = location.hash.slice(prefix.length);
