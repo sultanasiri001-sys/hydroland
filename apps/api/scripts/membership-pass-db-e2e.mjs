@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { Module, UnauthorizedException } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, AccountStatus, ProfessionalRole, RoleAssignmentStatus } from '@prisma/client';
 import { DatabaseService } from '../dist/database/database.service.js';
 import { MembershipPassService } from '../dist/profile/membership-pass.service.js';
 import { MembershipPassController } from '../dist/profile/membership-pass.controller.js';
@@ -26,10 +26,17 @@ try {
     try {
       await root.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`); created = true;
       assert.equal((await db.$queryRaw`SELECT current_schema() AS name`)[0].name, schema);
+      // Use the generated Prisma enums: ORM filters cast bound values to these
+      // exact types. A text-only stand-in cannot exercise the real contract.
+      for (const [name, definition] of Object.entries({ AccountStatus, ProfessionalRole, RoleAssignmentStatus })) {
+        const values = Object.values(definition);
+        assert.ok(/^[A-Za-z]+$/.test(name) && values.length && values.every(v => /^[A-Z_]+$/.test(v)));
+        await db.$executeRawUnsafe(`CREATE TYPE "${name}" AS ENUM (${values.map(v => "'" + v + "'").join(',')})`);
+      }
       await db.$executeRawUnsafe(`CREATE TABLE "Person" ("id" ${type} PRIMARY KEY, "firstName" text NOT NULL, "lastName" text NOT NULL)`);
-      await db.$executeRawUnsafe(`CREATE TABLE "Account" ("id" ${type} PRIMARY KEY, "personId" ${type} NOT NULL REFERENCES "Person"("id"), "email" text NOT NULL, "status" text NOT NULL, "emailVerifiedAt" timestamptz)`);
+      await db.$executeRawUnsafe(`CREATE TABLE "Account" ("id" ${type} PRIMARY KEY, "personId" ${type} NOT NULL REFERENCES "Person"("id"), "email" text NOT NULL, "status" "AccountStatus" NOT NULL, "emailVerifiedAt" timestamptz)`);
       await db.$executeRawUnsafe(`CREATE TABLE "Session" ("id" ${type} PRIMARY KEY, "accountId" ${type} NOT NULL REFERENCES "Account"("id"), "expiresAt" timestamptz NOT NULL, "revokedAt" timestamptz)`);
-      await db.$executeRawUnsafe(`CREATE TABLE "RoleAssignment" ("id" ${type} PRIMARY KEY, "accountId" ${type} NOT NULL REFERENCES "Account"("id"), "role" text NOT NULL, "status" text NOT NULL)`);
+      await db.$executeRawUnsafe(`CREATE TABLE "RoleAssignment" ("id" ${type} PRIMARY KEY, "accountId" ${type} NOT NULL REFERENCES "Account"("id"), "role" "ProfessionalRole" NOT NULL, "status" "RoleAssignmentStatus" NOT NULL)`);
       const ids = Object.fromEntries(['owner', 'admin', 'outsider'].map(key => [key, randomUUID()]));
       const sessions = Object.fromEntries(Object.keys(ids).map(key => [key, randomUUID()]));
       for (const [name, id] of Object.entries(ids)) {
@@ -64,7 +71,7 @@ try {
       check((await post('', '')).status === 401, 'guest issue denied');
       check((await post('/verify', '', { reference: 'hlm1.invalid' })).status === 401, 'guest verification denied');
       const issued = await post('', 'owner-fixture');
-      check(issued.status === 200 && issued.body.officialLicence === false, 'actual controller issue');
+      check(issued.status === 200 && issued.body.officialLicence === false, `actual controller issue expected 200, got ${issued.status}`);
       check(issued.cache === 'no-store', 'issue cannot be cached');
       const pass = issued.body;
       check(pass.displayName === 'Fixture owner' && pass.roles.length === 1, 'current minimal account snapshot');
@@ -77,7 +84,7 @@ try {
       check(!('reference' in own.body), 'verification does not reissue references');
       check((await post('/verify', 'outsider-fixture', { reference: pass.reference })).status === 403, 'ordinary member denial');
       check((await post('/verify', 'admin-fixture', { reference: pass.reference })).status === 200, 'existing active admin permission');
-      await db.$executeRawUnsafe(`UPDATE "RoleAssignment" SET "status"='INACTIVE' WHERE "accountId"='${ids.admin}'`);
+      await db.$executeRawUnsafe(`UPDATE "RoleAssignment" SET "status"='SUSPENDED' WHERE "accountId"='${ids.admin}'`);
       check((await post('/verify', 'admin-fixture', { reference: pass.reference })).status === 403, 'admin revocation takes immediate effect');
       await db.$executeRawUnsafe(`UPDATE "RoleAssignment" SET "status"='ACTIVE' WHERE "accountId"='${ids.admin}'`);
       for (const bad of [null, {}, '', 'hlm1.' + 'A'.repeat(401), pass.reference + 'A', pass.reference.slice(0, 10) + (pass.reference[10] === 'A' ? 'B' : 'A') + pass.reference.slice(11)]) {
