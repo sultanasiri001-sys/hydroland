@@ -5,6 +5,7 @@
     '.hl-inventory':['admin'],
     '.hl-finance':['diver','instructor','center','boat','organization','admin'],
     '.hl-training':['diver','instructor','center','admin'],
+    '.hl-professional-assignments':['instructor'],
     '.hl-members':['diver','instructor','center','boat','organization','admin'],
     '.hl-logistics':['center','boat','admin'],
     '.hl-procurement':['center','boat','admin'],

@@ -8,9 +8,46 @@
   host.insertAdjacentElement('afterend',section);
 
   const label=status=>({PENDING:'بانتظار التفعيل',ACTIVE:'نشط',SUSPENDED:'موقوف',COMPLETED:'مكتمل',CANCELLED:'ملغي'}[status]||status||'—');
-  async function load(){
+  let requestedMode='student';
+  async function loadProfessional(){
+    const list=section.querySelector('[data-training-list]');
+    list.innerHTML='<p>جارٍ تحميل الدورات والطلاب المكلفين لك...</p>';
+    try{
+      const response=await auth.authorizedFetch('/training/professional/me/assignments');
+      const rows=await response.json().catch(()=>[]);
+      if(!response.ok)throw new Error(rows?.message||'تعذر تحميل دورات المدرب');
+      const enrollments=Array.isArray(rows)?rows:[];
+      const active=enrollments.filter(x=>x.status==='ACTIVE').length;
+      const completed=enrollments.filter(x=>x.status==='COMPLETED').length;
+      const students=new Set(enrollments.map(x=>x.student?.displayName).filter(Boolean));
+      const progresses=enrollments.map(x=>Number(x.record?.progressPercent||0));
+      section.querySelector('.hl-training-head h3').textContent='إدارة الدورات والطلاب';
+      section.querySelector('.hl-training-head span').textContent='التكليفات المرتبطة بحسابك المهني فقط';
+      section.querySelector('[data-training-count]').textContent=String(enrollments.length);
+      section.querySelector('[data-training-active]').textContent=String(active);
+      section.querySelector('[data-training-completed]').textContent=String(completed);
+      section.querySelector('[data-training-progress]').textContent=(progresses.length?Math.round(progresses.reduce((a,b)=>a+b,0)/progresses.length):0)+'%';
+      list.innerHTML=enrollments.length?enrollments.map(item=>{
+        const progress=Math.max(0,Math.min(100,Number(item.record?.progressPercent||0)));
+        const sessions=Array.isArray(item.record?.sessions)?item.record.sessions:[];
+        const next=sessions.find(x=>['SCHEDULED','CHECK_IN_OPEN','IN_PROGRESS'].includes(x.status));
+        return `<article class="hl-course" data-professional-enrollment="${esc(item.enrollmentId)}"><div class="hl-course-top"><div><b>${esc(item.courseCode)}</b><small>${esc(item.student?.displayName||'طالب')} · ${esc(label(item.status))}</small></div><span>${progress}%</span></div><div class="hl-progress"><i style="width:${progress}%"></i></div><small>${next?'الجلسة القادمة: '+new Date(next.startsAt).toLocaleString('ar-SA'):'لا توجد جلسة قادمة'}</small></article>`;
+      }).join(''):'<p>لا توجد دورات أو طلاب مكلفون لك حاليًا.</p>';
+      section.dataset.trainingMode='professional';section.dataset.professionalStudents=String(students.size);
+    }catch(error){list.innerHTML=`<p>${esc(error instanceof Error?error.message:'تعذر تحميل دورات المدرب')}</p>`;}
+  }
+
+  async function load(mode){
+    if(mode)requestedMode=mode;
+    const instructorPortal=document.querySelector('.hl-role-dashboard[data-role="instructor"]');
+    if(!mode&&instructorPortal&&window.HydrolandPortalAccess?.getCurrentRole?.()==='instructor')requestedMode='instructor';
+    mode=requestedMode;
     const list=section.querySelector('[data-training-list]');
     if(!auth?.isAuthenticated()){list.innerHTML='<p>سجل الدخول لعرض بيانات التدريب.</p>';return;}
+    if(mode==='instructor'){section.dataset.trainingMode='professional';return loadProfessional();}
+    section.querySelector('.hl-training-head h3').textContent='مركز التدريب والدورات';
+    section.querySelector('.hl-training-head span').textContent='سجلك التدريبي المباشر';
+    section.dataset.trainingMode='student';
     list.innerHTML='<p>جارٍ تحميل السجل التدريبي...</p>';
     try{
       const response=await auth.authorizedFetch('/training/mine/enrollments');
@@ -28,8 +65,8 @@
       list.innerHTML=enrollments.length?enrollments.map(item=>{const progress=Math.max(0,Math.min(100,Number(item.record?.progressPercent||0)));return `<article class="hl-course"><div class="hl-course-top"><div><b>${esc(item.courseCode)}</b><small>${esc(label(item.status))}</small></div><span>${progress}%</span></div><div class="hl-progress"><i style="width:${progress}%"></i></div><small>${item.instructorAccountId?'تم تعيين المدرب':'بانتظار تعيين المدرب'}</small></article>`;}).join(''):'<p>لا توجد دورات مسجلة على حسابك حتى الآن.</p>';
     }catch(error){list.innerHTML=`<p>${esc(error instanceof Error?error.message:'تعذر تحميل بيانات التدريب')}</p>`;}
   }
-  document.addEventListener('click',event=>{const button=event.target.closest?.('[data-hl-action="training"],[data-training-open]');if(!button)return;event.preventDefault();section.scrollIntoView({behavior:'smooth',block:'start'});if(!auth?.isAuthenticated()){const list=section.querySelector('[data-training-list]');if(list)list.innerHTML='<p>سجل الدخول لعرض بيانات التدريب.</p>';return}load();});
-  document.addEventListener('hydroland:auth-changed',load);
-  window.HydrolandTraining={reload:load};
+  document.addEventListener('click',event=>{const button=event.target.closest?.('[data-hl-action="training"],[data-training-open]');if(!button)return;event.preventDefault();section.scrollIntoView({behavior:'smooth',block:'start'});if(!auth?.isAuthenticated()){const list=section.querySelector('[data-training-list]');if(list)list.innerHTML='<p>سجل الدخول لعرض بيانات التدريب.</p>';return}const instructor=Boolean(button.closest?.('.hl-role-dashboard[data-role="instructor"]'));load(instructor?'instructor':undefined);});
+  document.addEventListener('hydroland:auth-changed',()=>load(requestedMode));
+  window.HydrolandTraining={reload:mode=>load(mode)};
   setTimeout(load,0);
 })();
