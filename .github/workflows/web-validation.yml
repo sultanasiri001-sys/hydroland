@@ -30,6 +30,8 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Browser E2E
         run: npm run test:e2e -w @hydroland/web
+      - name: Phase 4 notification focused regression
+        run: npm run test:e2e -w @hydroland/web -- safety-notifications.spec.js
       - name: Public interface review screenshots
         if: always()
         uses: actions/upload-artifact@v4
