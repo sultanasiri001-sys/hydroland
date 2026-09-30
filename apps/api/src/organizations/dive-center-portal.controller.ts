@@ -1,9 +1,10 @@
 import { Controller, Get, Param, Req, UseGuards } from '@nestjs/common';
-import { AuthGuard, AuthenticatedRequest } from '../auth/auth.guard';
+import { AccessTokenGuard } from '../auth/access-token.guard';
+type AuthenticatedRequest = { auth: { accountId: string } };
 import { DiveCenterPortalService } from './dive-center-portal.service';
 
 @Controller('center')
-@UseGuards(AuthGuard)
+@UseGuards(AccessTokenGuard)
 export class DiveCenterPortalController {
   constructor(private readonly portal:DiveCenterPortalService){}
   @Get('me/overview') overview(@Req() request:AuthenticatedRequest){return this.portal.overview(request.auth.accountId);}
