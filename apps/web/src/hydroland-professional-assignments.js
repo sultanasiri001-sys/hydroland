@@ -21,7 +21,7 @@
     const role='instructor',access=window.HydrolandPortalAccess;if(!auth()?.isAuthenticated?.()||!access?.roleAllowed?.(role))return;
     if(typeof access.refreshPortalAccess!=='function')return;await access.refreshPortalAccess();if(!auth()?.isAuthenticated?.()||!access.roleAllowed(role))return;
     const host=ensure(),v=++version,session=auth().getSessionVersion?.();window.HydrolandWorkspaceUI?.show?.(host);host.querySelector('[data-professional-list]').innerHTML='<p>جارٍ تحميل الدورات والطلاب...</p>';
-    try{const response=await auth().authorizedFetch('/training/professional/enrollments'),body=await response.json().catch(()=>[]);if(!response.ok)throw new Error();if(v!==version||session!==auth().getSessionVersion?.()||!auth().isAuthenticated?.()||!access.roleAllowed(role))return;render(Array.isArray(body)?body:[])}
+    try{const response=await auth().authorizedFetch('/training/professional/me/assignments'),body=await response.json().catch(()=>[]);if(!response.ok)throw new Error();if(v!==version||session!==auth().getSessionVersion?.()||!auth().isAuthenticated?.()||!access.roleAllowed(role))return;render(Array.isArray(body)?body:[])}
     catch{if(v===version&&host.isConnected)host.querySelector('[data-professional-list]').innerHTML='<p>تعذر تحميل الدورات والطلاب. أعد المحاولة.</p>'}
   }
   document.addEventListener('hydroland:session-cleared',()=>{version++;section?.remove();section=null});
