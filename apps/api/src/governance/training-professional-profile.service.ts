@@ -5,67 +5,19 @@ import { DatabaseService } from '../database/database.service';
 export class TrainingProfessionalProfileService {
   constructor(private readonly db: DatabaseService) {}
 
-  private async assertActiveInstructor(accountId: string): Promise<{ status: string; activeAt: Date | null }> {
-    const role = await this.assertActiveInstructor(accountId);
+  private async requireActiveInstructor(accountId: string) {
+    const role = await this.requireActiveInstructor(accountId);
     return role;
   }
 
   async listAssignments(accountId: string) {
-    await this.assertActiveInstructor(accountId);
+    await this.requireActiveInstructor(accountId);
     const rows = await this.db.trainingEnrollment.findMany({
       where: { instructorAccountId: accountId },
       select: {
         id: true, studentAccountId: true, courseCode: true, status: true, enrolledAt: true, completedAt: true,
-        record: {
-          select: {
-            status: true, progressPercent: true,
-            sessions: {
-              where: { instructorAccountId: accountId },
-              select: { id: true, startsAt: true, status: true },
-              orderBy: { startsAt: 'asc' },
-              take: 20,
-            },
-          },
-        },
-      },
-      orderBy: { enrolledAt: 'desc' },
-      take: 200,
-    });
-    const studentIds = [...new Set(rows.map(row => row.studentAccountId))];
-    const students = studentIds.length ? await this.db.account.findMany({
-      where: { id: { in: studentIds } },
-      select: { id: true, person: { select: { firstName: true, lastName: true } } },
-    }) : [];
-    const names = new Map(students.map(student => [student.id, [student.person.firstName, student.person.lastName].filter(Boolean).join(' ').trim() || 'طالب']));
-    return rows.map(row => ({
-      enrollmentId: row.id,
-      courseCode: row.courseCode,
-      status: row.status,
-      enrolledAt: row.enrolledAt,
-      completedAt: row.completedAt,
-      student: { displayName: names.get(row.studentAccountId) || 'طالب' },
-      record: row.record ? {
-        status: row.record.status,
-        progressPercent: row.record.progressPercent,
-        sessions: row.record.sessions,
-      } : null,
-    }));
-  }
-
-  private async requireInstructor(accountId: string) {
-    const role = await this.requireInstructor(accountId);
-    return role;
-  }
-
-  async listEnrollments(accountId: string) {
-    await this.requireInstructor(accountId);
-    const rows = await this.db.trainingEnrollment.findMany({
-      where: { instructorAccountId: accountId },
-      select: {
-        id: true, courseCode: true, status: true, enrolledAt: true, completedAt: true,
-        centerOrganizationId: true, studentAccountId: true,
-        record: { select: { id: true, status: true, progressPercent: true,
-          sessions: { select: { id: true, status: true, startsAt: true }, orderBy: { startsAt: 'asc' }, take: 20 } } },
+        record: { select: { status: true, progressPercent: true,
+          sessions: { where: { instructorAccountId: accountId }, select: { id: true, startsAt: true, status: true }, orderBy: { startsAt: 'asc' }, take: 20 } } },
       },
       orderBy: { enrolledAt: 'desc' }, take: 200,
     });
@@ -73,12 +25,11 @@ export class TrainingProfessionalProfileService {
     const students=studentIds.length?await this.db.account.findMany({
       where:{id:{in:studentIds}},select:{id:true,person:{select:{firstName:true,lastName:true}}}
     }):[];
-    const names=new Map(students.map(item=>[item.id,[item.person.firstName,item.person.lastName].filter(Boolean).join(' ').trim()||'طالب']));
-    return rows.map(row => ({
-      id: row.id, courseCode: row.courseCode, status: row.status, enrolledAt: row.enrolledAt,
-      completedAt: row.completedAt, centerOrganizationId: row.centerOrganizationId,
-      student: { displayName: names.get(row.studentAccountId)||'طالب' },
-      record: row.record ? { id: row.record.id, status: row.record.status, progressPercent: row.record.progressPercent, sessions: row.record.sessions } : null,
+    const names=new Map(students.map(student=>[student.id,[student.person.firstName,student.person.lastName].filter(Boolean).join(' ').trim()||'طالب']));
+    return rows.map(row=>({
+      enrollmentId:row.id,courseCode:row.courseCode,status:row.status,enrolledAt:row.enrolledAt,completedAt:row.completedAt,
+      student:{displayName:names.get(row.studentAccountId)||'طالب'},
+      record:row.record?{status:row.record.status,progressPercent:row.record.progressPercent,sessions:row.record.sessions}:null,
     }));
   }
 
