@@ -88,6 +88,17 @@ export class TrainingRepositoryService {
     });
   }
 
+  assessSkill(id: string, status: string, instructorAccountId: string) {
+    return this.db.trainingSkill.update({
+      where: { id },
+      data: {
+        status,
+        signedOffByInstructorId: status === 'COMPETENT' ? instructorAccountId : null,
+        signedOffAt: status === 'COMPETENT' ? new Date() : null,
+      },
+    });
+  }
+
   createSession(input: {
     trainingRecordId: string;
     instructorAccountId: string;

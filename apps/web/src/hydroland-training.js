@@ -9,6 +9,16 @@
 
   const label=status=>({PENDING:'بانتظار التفعيل',ACTIVE:'نشط',SUSPENDED:'موقوف',COMPLETED:'مكتمل',CANCELLED:'ملغي'}[status]||status||'—');
   let requestedMode='student';
+  async function loadProfessionalSkills(){
+    const list=section.querySelector('[data-training-list]');section.dataset.trainingMode='professional-skills';
+    section.querySelector('.hl-training-head h3').textContent='تقييم المهارات';section.querySelector('.hl-training-head span').textContent='مهارات الطلاب المعيّنين لك فقط';
+    list.innerHTML='<p>جارٍ تحميل المهارات...</p>';
+    try{
+      const response=await auth.authorizedFetch('/training/professional/me/skills'),rows=await response.json().catch(()=>[]);
+      if(!response.ok)throw new Error(rows?.message||'تعذر تحميل المهارات');
+      list.innerHTML=(Array.isArray(rows)&&rows.length)?rows.map(item=>`<article class="hl-course" data-professional-skill="${esc(item.id)}"><div class="hl-course-top"><div><b>${esc(item.name)}</b><small>${esc(item.courseCode)} · ${esc(item.student?.displayName||'طالب')} · ${esc(item.stageType)}</small></div><span>${esc(item.status)}</span></div><div class="hl-member-actions"><button type="button" data-skill-status="IN_PROGRESS">قيد التقييم</button><button type="button" data-skill-status="NEEDS_REVIEW">يحتاج مراجعة</button><button type="button" data-skill-status="COMPETENT">متقن</button></div></article>`).join(''):'<p>لا توجد مهارات بانتظار التقييم.</p>';
+    }catch(error){list.innerHTML=`<p>${esc(error instanceof Error?error.message:'تعذر تحميل المهارات')}</p>`;}
+  }
   async function loadProfessionalSchedule(){
     const list=section.querySelector('[data-training-list]');
     section.dataset.trainingMode='professional-schedule';
@@ -59,6 +69,7 @@
     if(!auth?.isAuthenticated()){list.innerHTML='<p>سجل الدخول لعرض بيانات التدريب.</p>';return;}
     if(mode==='instructor'){section.dataset.trainingMode='professional';return loadProfessional();}
     if(mode==='instructor-schedule')return loadProfessionalSchedule();
+    if(mode==='instructor-skills')return loadProfessionalSkills();
     section.querySelector('.hl-training-head h3').textContent='مركز التدريب والدورات';
     section.querySelector('.hl-training-head span').textContent='سجلك التدريبي المباشر';
     section.dataset.trainingMode='student';
@@ -81,6 +92,14 @@
   }
   document.addEventListener('click',event=>{const button=event.target.closest?.('[data-hl-action="training"],[data-training-open]');if(!button)return;event.preventDefault();section.scrollIntoView({behavior:'smooth',block:'start'});if(!auth?.isAuthenticated()){const list=section.querySelector('[data-training-list]');if(list)list.innerHTML='<p>سجل الدخول لعرض بيانات التدريب.</p>';return}const instructor=Boolean(button.closest?.('.hl-role-dashboard[data-role="instructor"]'));load(instructor?'instructor':undefined);});
   section.addEventListener('click',async event=>{
+    const skillButton=event.target.closest?.('[data-skill-status]');
+    if(skillButton){
+      const article=skillButton.closest('[data-professional-skill]'),id=article?.dataset.professionalSkill;if(!id)return;
+      skillButton.disabled=true;
+      try{const response=await auth.authorizedFetch('/training/skills/'+encodeURIComponent(id)+'/assessment',{method:'PATCH',body:JSON.stringify({status:skillButton.dataset.skillStatus})});if(!response.ok){const body=await response.json().catch(()=>null);throw new Error(body?.message||'تعذر حفظ التقييم')}await loadProfessionalSkills();}
+      catch(error){skillButton.disabled=false;section.querySelector('[data-training-list]').insertAdjacentHTML('afterbegin',`<p role="alert">${esc(error instanceof Error?error.message:'تعذر حفظ التقييم')}</p>`);}
+      return;
+    }
     const button=event.target.closest?.('[data-attendance-action]');if(!button)return;
     const article=button.closest('[data-professional-session]'),id=article?.dataset.professionalSession;if(!id)return;
     button.disabled=true;

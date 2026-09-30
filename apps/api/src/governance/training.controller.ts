@@ -16,6 +16,11 @@ export class TrainingController {
     private readonly professionalProfile: TrainingProfessionalProfileService,
   ) {}
 
+  @Get('professional/me/skills')
+  professionalSkills(@Req() request: AuthenticatedRequest) {
+    return this.professionalProfile.listSkills(request.auth.accountId);
+  }
+
   @Get('professional/me/schedule')
   professionalSchedule(@Req() request: AuthenticatedRequest) {
     return this.professionalProfile.listSchedule(request.auth.accountId);
@@ -75,6 +80,17 @@ export class TrainingController {
   async addStage(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { stageType: string; deliveryMode: string; sequence: number }) {
     await this.authorization.assertRecordAccess(request.auth.accountId, id);
     return this.training.addStage(id, body.stageType, body.deliveryMode, body.sequence);
+  }
+
+  @Patch('skills/:id/assessment')
+  async assessSkill(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: { status: 'IN_PROGRESS' | 'COMPETENT' | 'NEEDS_REVIEW' },
+  ) {
+    await this.authorization.assertSkillAccess(request.auth.accountId, id);
+    if (!['IN_PROGRESS','COMPETENT','NEEDS_REVIEW'].includes(body.status)) throw new BadRequestException('Unsupported skill assessment status.');
+    return this.training.assessSkill(id, body.status, request.auth.accountId);
   }
 
   @Post('stages/:id/skills')
