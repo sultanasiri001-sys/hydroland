@@ -1,4 +1,4 @@
-# Phase 6 — Safety and operations
+# Phase 6 — Safety and operations — CLOSED 2026-09-30
 
 Approved roadmap checklist:
 1. Digital safety checklist.
@@ -33,6 +33,21 @@ This phase is safety checklist and operational decision integrity. Weather/sea
 provider enrichment, emergency integrations and official permits are the next
 roadmap transition and are not used to falsely close Phase 6.
 
-Production currently has no Trip or SafetyChecklist rows, so no synthetic live
-trip will be created merely to manufacture acceptance. Closure requires green
-CI, merge/deployment and production code/readiness verification.
+Production read-only inspection at Phase 6 review found zero Trip rows and zero
+SafetyChecklist rows, while historical append-only SafetyChecklist audit events
+remain present. No synthetic production trip/checklist was created merely to
+manufacture acceptance.
+
+PR #383 passed all seven triggered gates. Its API validation explicitly reported:
+"Phase 6 safety checklist HTTP/DB E2E passed: trip linkage, REVIEW_REQUIRED,
+ALLOWED, DEFERRED, unsafe-override denial and operational audit log."
+
+PR #383 was merged as 55dfd68a9a8ab1cae0168fb03030f47dc3f1cdea and the
+API deployment for that exact commit reached LIVE on Render.
+
+## Closure
+Phase 6 is CLOSED for the approved five-point safety-and-operations scope.
+Reopen for a regression, approved scope change, or evidence that a real
+production trip behaves differently from the tested contract. The roadmap
+transition to weather/sea, emergencies and official permits begins after this
+closure; those integrations are not retroactively counted as Phase 6 evidence.
