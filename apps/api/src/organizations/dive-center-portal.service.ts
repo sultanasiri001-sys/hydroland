@@ -26,6 +26,15 @@ export class DiveCenterPortalService {
     return {center,metrics:{newBookings,tripsToday,activeMembers:memberCount,totalTrips:tripCount}};
   }
 
+  async inventory(accountId:string){
+    const center=await this.managedCenter(accountId);
+    const [locations,items]=await Promise.all([
+      this.db.inventoryLocation.findMany({where:{organizationId:center.id,active:true},select:{id:true,name:true,type:true},orderBy:{name:'asc'}}),
+      this.db.inventoryItem.findMany({where:{organizationId:center.id,status:{not:'RETIRED'}},select:{id:true,sku:true,name:true,category:true,status:true,serialized:true,qrCode:true,stocks:{select:{onHand:true,reserved:true,location:{select:{id:true,name:true,type:true,organizationId:true}}}}},orderBy:{name:'asc'},take:500}),
+    ]);
+    return {locations,items:items.map(item=>({...item,stocks:item.stocks.filter(stock=>stock.location.organizationId===center.id).map(stock=>({locationId:stock.location.id,locationName:stock.location.name,locationType:stock.location.type,onHand:stock.onHand,reserved:stock.reserved,available:stock.onHand-stock.reserved}))}))};
+  }
+
   async customers(accountId:string){
     const center=await this.managedCenter(accountId);
     const bookings=await this.db.booking.findMany({where:{trip:{organizationId:center.id}},select:{accountId:true,status:true,seats:true,createdAt:true,account:{select:{person:{select:{firstName:true,lastName:true}}}}},orderBy:{createdAt:'desc'},take:1000});

@@ -8,6 +8,8 @@ import { DiveCenterPortalService } from './dive-center-portal.service';
 export class DiveCenterPortalController {
   constructor(private readonly portal:DiveCenterPortalService){}
   @Get('me/overview') overview(@Req() request:AuthenticatedRequest){return this.portal.overview(request.auth.accountId);}
+  @Get('me/inventory') inventory(@Req() request:AuthenticatedRequest){return this.portal.inventory(request.auth.accountId);}
+
   @Get('me/customers') customers(@Req() request:AuthenticatedRequest){return this.portal.customers(request.auth.accountId);}
 
   @Get('me/team') team(@Req() request:AuthenticatedRequest){return this.portal.team(request.auth.accountId);}

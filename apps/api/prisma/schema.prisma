@@ -1404,6 +1404,45 @@ enum TrainingSessionStatus {
   CANCELLED
 }
 
+model InventoryLocation {
+ id String @id @default(uuid())
+ organizationId String
+ name String
+ type String
+ active Boolean @default(true)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ stocks InventoryStock[]
+ @@index([organizationId,active])
+}
+model InventoryItem {
+ id String @id @default(uuid())
+ organizationId String
+ sku String
+ name String
+ category String
+ status String @default("ACTIVE")
+ serialized Boolean @default(false)
+ qrCode String?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ stocks InventoryStock[]
+ @@unique([organizationId,sku])
+ @@index([organizationId,status])
+}
+model InventoryStock {
+ id String @id @default(uuid())
+ itemId String
+ locationId String
+ onHand Int @default(0)
+ reserved Int @default(0)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ item InventoryItem @relation(fields:[itemId],references:[id],onDelete:Restrict)
+ location InventoryLocation @relation(fields:[locationId],references:[id],onDelete:Restrict)
+ @@unique([itemId,locationId])
+}
+
 model TrainingEnrollment {
   id String @id @default(uuid())
   studentAccountId String
