@@ -237,8 +237,6 @@ model Organization {
   owner Account @relation("OrganizationOwner", fields:[ownerId], references:[id], onDelete:Restrict)
   members OrganizationMember[]
   trips Trip[]
-  inventoryLocations InventoryLocation[]
-  inventoryItems InventoryItem[]
   orgUnits OrgUnit[]
   employments Employment[]
   @@index([status,createdAt])
@@ -1414,7 +1412,6 @@ model InventoryLocation {
  active Boolean @default(true)
  createdAt DateTime @default(now())
  updatedAt DateTime @updatedAt
- organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
  stocks InventoryStock[]
  @@index([organizationId,active])
 }
@@ -1429,7 +1426,6 @@ model InventoryItem {
  qrCode String?
  createdAt DateTime @default(now())
  updatedAt DateTime @updatedAt
- organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
  stocks InventoryStock[]
  @@unique([organizationId,sku])
  @@index([organizationId,status])
