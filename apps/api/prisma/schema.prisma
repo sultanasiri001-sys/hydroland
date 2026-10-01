@@ -237,6 +237,8 @@ model Organization {
   owner Account @relation("OrganizationOwner", fields:[ownerId], references:[id], onDelete:Restrict)
   members OrganizationMember[]
   trips Trip[]
+  inventoryLocations InventoryLocation[]
+  inventoryItems InventoryItem[]
   orgUnits OrgUnit[]
   employments Employment[]
   @@index([status,createdAt])
@@ -1402,6 +1404,47 @@ enum TrainingSessionStatus {
   IN_PROGRESS
   COMPLETED
   CANCELLED
+}
+
+model InventoryLocation {
+ id String @id @default(uuid()) @db.Uuid
+ organizationId String @db.Uuid
+ name String
+ type String
+ active Boolean @default(true)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+ stocks InventoryStock[]
+ @@index([organizationId,active])
+}
+model InventoryItem {
+ id String @id @default(uuid()) @db.Uuid
+ organizationId String @db.Uuid
+ sku String
+ name String
+ category String
+ status String @default("ACTIVE")
+ serialized Boolean @default(false)
+ qrCode String?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+ stocks InventoryStock[]
+ @@unique([organizationId,sku])
+ @@index([organizationId,status])
+}
+model InventoryStock {
+ id String @id @default(uuid()) @db.Uuid
+ itemId String @db.Uuid
+ locationId String @db.Uuid
+ onHand Int @default(0)
+ reserved Int @default(0)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ item InventoryItem @relation(fields:[itemId],references:[id],onDelete:Restrict)
+ location InventoryLocation @relation(fields:[locationId],references:[id],onDelete:Restrict)
+ @@unique([itemId,locationId])
 }
 
 model TrainingEnrollment {
