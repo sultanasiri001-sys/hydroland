@@ -26,6 +26,14 @@ export class DiveCenterPortalService {
     return {center,metrics:{newBookings,tripsToday,activeMembers:memberCount,totalTrips:tripCount}};
   }
 
+  async customers(accountId:string){
+    const center=await this.managedCenter(accountId);
+    const bookings=await this.db.booking.findMany({where:{trip:{organizationId:center.id}},select:{accountId:true,status:true,seats:true,createdAt:true,account:{select:{person:{select:{firstName:true,lastName:true}}}}},orderBy:{createdAt:'desc'},take:1000});
+    const grouped=new Map<string,{displayName:string;bookingCount:number;confirmedBookings:number;totalSeats:number;lastBookingAt:Date}>();
+    for(const booking of bookings){const current=grouped.get(booking.accountId)??{displayName:[booking.account.person.firstName,booking.account.person.lastName].filter(Boolean).join(' ').trim()||'عميل',bookingCount:0,confirmedBookings:0,totalSeats:0,lastBookingAt:booking.createdAt};current.bookingCount+=1;current.totalSeats+=booking.seats;if(booking.status==='CONFIRMED')current.confirmedBookings+=1;if(booking.createdAt>current.lastBookingAt)current.lastBookingAt=booking.createdAt;grouped.set(booking.accountId,current)}
+    return [...grouped.values()].sort((a,b)=>b.lastBookingAt.getTime()-a.lastBookingAt.getTime());
+  }
+
   async team(accountId:string){
     const center=await this.managedCenter(accountId);
     const members=await this.db.organizationMember.findMany({where:{organizationId:center.id,status:{in:['ACTIVE','PENDING','SUSPENDED']}},select:{id:true,role:true,status:true,createdAt:true,account:{select:{person:{select:{firstName:true,lastName:true,professional:{select:{headline:true,regionCode:true}},credentials:{select:{verificationStatus:true},take:20}}},roleAssignments:{where:{role:'INSTRUCTOR'},select:{status:true,activeAt:true}}}}},orderBy:{createdAt:'asc'}});
