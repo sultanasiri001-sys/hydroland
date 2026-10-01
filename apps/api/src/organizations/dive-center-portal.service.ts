@@ -26,6 +26,15 @@ export class DiveCenterPortalService {
     return {center,metrics:{newBookings,tripsToday,activeMembers:memberCount,totalTrips:tripCount}};
   }
 
+  async equipmentLookup(accountId:string,code:string){
+    const center=await this.managedCenter(accountId);const clean=code?.trim();if(!clean)throw new BadRequestException('Equipment code is required.');
+    const rows=await this.db.$queryRaw<Array<{resourceId:string;assetCode:string;barcodeValue:string;qrValue:string;serialNumber:string|null;sku:string|null;location:string|null;stockStatus:string;resourceName:string;active:boolean}>>`
+      SELECT b."resourceId",b."assetCode",b."barcodeValue",b."qrValue",b."serialNumber",b."sku",b."location",b."stockStatus",r."name" AS "resourceName",r."active"
+      FROM "EquipmentBarcode" b JOIN "CalendarResource" r ON r."id"=b."resourceId"
+      WHERE b."organizationId"=${center.id}::uuid AND r."type"='EQUIPMENT' AND (b."assetCode"=${clean} OR b."barcodeValue"=${clean} OR b."qrValue"=${clean} OR b."serialNumber"=${clean}) LIMIT 1`;
+    if(!rows.length)throw new NotFoundException('Equipment code not found in managed dive center.');return rows[0];
+  }
+
   async equipment(accountId:string){
     const center=await this.managedCenter(accountId);
     return this.db.$queryRaw<Array<{resourceId:string;assetCode:string;serialNumber:string|null;sku:string|null;location:string|null;stockStatus:string;resourceName:string;active:boolean}>>`
