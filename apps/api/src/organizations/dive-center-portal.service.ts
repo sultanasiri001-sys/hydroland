@@ -26,6 +26,21 @@ export class DiveCenterPortalService {
     return {center,metrics:{newBookings,tripsToday,activeMembers:memberCount,totalTrips:tripCount}};
   }
 
+  async team(accountId:string){
+    const center=await this.managedCenter(accountId);
+    const members=await this.db.organizationMember.findMany({where:{organizationId:center.id,status:{in:['ACTIVE','PENDING','SUSPENDED']}},select:{id:true,role:true,status:true,createdAt:true,account:{select:{person:{select:{firstName:true,lastName:true,professional:{select:{headline:true,regionCode:true}},credentials:{select:{verificationStatus:true},take:20}}},roleAssignments:{where:{role:'INSTRUCTOR'},select:{status:true,activeAt:true}}}}},orderBy:{createdAt:'asc'}});
+    return members.map(member=>({membershipId:member.id,role:member.role,status:member.status,person:{displayName:[member.account.person.firstName,member.account.person.lastName].filter(Boolean).join(' ').trim()||'عضو',headline:member.account.person.professional?.headline??null,regionCode:member.account.person.professional?.regionCode??null},professional:{instructorStatus:member.account.roleAssignments[0]?.status??null,instructorActiveAt:member.account.roleAssignments[0]?.activeAt??null,verifiedCredentials:member.account.person.credentials.filter(item=>['VERIFIED','DOCUMENT_VERIFIED'].includes(item.verificationStatus)).length}}));
+  }
+
+  async professionals(accountId:string){
+    const center=await this.managedCenter(accountId);
+    const memberships=await this.db.organizationMember.findMany({where:{organizationId:center.id,status:'ACTIVE',role:'INSTRUCTOR',account:{roleAssignments:{some:{role:'INSTRUCTOR',status:'ACTIVE'}}}},select:{accountId:true,account:{select:{person:{select:{firstName:true,lastName:true,professional:{select:{headline:true,regionCode:true}},credentials:{select:{verificationStatus:true},take:20}}}}}}});
+    const ids=memberships.map(row=>row.accountId);
+    const assignmentCounts=ids.length?await this.db.trainingEnrollment.groupBy({by:['instructorAccountId'],where:{centerOrganizationId:center.id,instructorAccountId:{in:ids},status:{in:['ACTIVE','COMPLETED']}},_count:{_all:true}}):[];
+    const counts=new Map(assignmentCounts.map(row=>[row.instructorAccountId,row._count._all]));
+    return memberships.map(row=>({accountId:row.accountId,displayName:[row.account.person.firstName,row.account.person.lastName].filter(Boolean).join(' ').trim()||'محترف غوص',headline:row.account.person.professional?.headline??null,regionCode:row.account.person.professional?.regionCode??null,verifiedCredentials:row.account.person.credentials.filter(item=>['VERIFIED','DOCUMENT_VERIFIED'].includes(item.verificationStatus)).length,assignedTrainingCount:counts.get(row.accountId)||0}));
+  }
+
   async trips(accountId:string){
     const center=await this.managedCenter(accountId);
     return this.db.trip.findMany({
