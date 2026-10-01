@@ -1407,8 +1407,8 @@ enum TrainingSessionStatus {
 }
 
 model InventoryLocation {
- id String @id @default(uuid()) @db.Uuid
- organizationId String @db.Uuid
+ id String @id @default(uuid())
+ organizationId String
  name String
  type String
  active Boolean @default(true)
@@ -1419,8 +1419,8 @@ model InventoryLocation {
  @@index([organizationId,active])
 }
 model InventoryItem {
- id String @id @default(uuid()) @db.Uuid
- organizationId String @db.Uuid
+ id String @id @default(uuid())
+ organizationId String
  sku String
  name String
  category String
@@ -1435,9 +1435,9 @@ model InventoryItem {
  @@index([organizationId,status])
 }
 model InventoryStock {
- id String @id @default(uuid()) @db.Uuid
- itemId String @db.Uuid
- locationId String @db.Uuid
+ id String @id @default(uuid())
+ itemId String
+ locationId String
  onHand Int @default(0)
  reserved Int @default(0)
  createdAt DateTime @default(now())
