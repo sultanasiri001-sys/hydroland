@@ -26,6 +26,22 @@ export class DiveCenterPortalService {
     return {center,metrics:{newBookings,tripsToday,activeMembers:memberCount,totalTrips:tripCount}};
   }
 
+  async equipment(accountId:string){
+    const center=await this.managedCenter(accountId);
+    return this.db.$queryRaw<Array<{resourceId:string;assetCode:string;serialNumber:string|null;sku:string|null;location:string|null;stockStatus:string;resourceName:string;active:boolean}>>`
+      SELECT b."resourceId",b."assetCode",b."serialNumber",b."sku",b."location",b."stockStatus",r."name" AS "resourceName",r."active"
+      FROM "EquipmentBarcode" b JOIN "CalendarResource" r ON r."id"=b."resourceId"
+      WHERE b."organizationId"=${center.id}::uuid AND r."type"='EQUIPMENT'
+      ORDER BY r."name",b."assetCode"`;
+  }
+
+  async equipmentHistory(accountId:string,resourceId:string){
+    const center=await this.managedCenter(accountId);
+    const owned=await this.db.$queryRaw<Array<{resourceId:string}>>`SELECT "resourceId" FROM "EquipmentBarcode" WHERE "resourceId"=${resourceId} AND "organizationId"=${center.id}::uuid LIMIT 1`;
+    if(!owned.length)throw new NotFoundException('Equipment not found in managed dive center.');
+    return this.db.$queryRaw`SELECT "id","movementType","fromLocation","toLocation","tripId","assignedAccountId","notes","occurredAt" FROM "EquipmentMovement" WHERE "resourceId"=${resourceId} ORDER BY "occurredAt" DESC LIMIT 200`;
+  }
+
   async customers(accountId:string){
     const center=await this.managedCenter(accountId);
     const bookings=await this.db.booking.findMany({where:{trip:{organizationId:center.id}},select:{accountId:true,status:true,seats:true,createdAt:true,account:{select:{person:{select:{firstName:true,lastName:true}}}}},orderBy:{createdAt:'desc'},take:1000});
