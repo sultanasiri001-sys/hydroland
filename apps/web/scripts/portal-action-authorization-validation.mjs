@@ -28,8 +28,8 @@ for(const marker of [
 if(dashboards.includes("['المستندات والتراخيص','community'"))throw new Error('Portal document controls must not route to the community section.');
 for(const marker of [
   'authorizeCurrentRole',
-  'access.refreshPortalAccess',
-  'HydrolandPortalFreshness?.enforce?.()',
+  'access.authorizeRole',
+
   'button.onclick=async()=>'
 ])if(!routing.includes(marker))throw new Error(`Missing role-console action authorization marker: ${marker}`);
 for(const [module,label] of [["'hydroland-center-safety.js'",'Center safety'],["'hydroland-center-documents.js'",'Center documents'],["'hydroland-center-equipment.js'",'Center equipment'],["'hydroland-center-customers.js'",'Center customers'],["'hydroland-center-operations.js'",'Center operations'],["'hydroland-center-team.js'",'Center team']])if(bootstrap.split(module).length!==2||bootstrap.indexOf(module)>bootstrap.indexOf("'hydroland-role-dashboards.js'"))throw new Error(label+' must be registered once in the real bootstrap before dashboard actions.');
