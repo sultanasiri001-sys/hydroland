@@ -42,6 +42,7 @@
       document.querySelectorAll(selector).forEach(node=>node.classList.toggle('hl-workspace-hidden',!isAuthed||!roles.includes(role)));
     }
     syncNavigation(role);
+    if(selected?.isConnected&&isAuthed){selected.classList.add('hl-workspace-selected');if(document.body.dataset.hlWorkspaceService==='hl-training-service'){const training=selected.matches('.hl-training')?selected:selected.querySelector?.('.hl-training');training?.classList.add('hl-workspace-selected');selected.classList.add('hl-managed-service-root')}}
     const home=document.querySelector('#navigation > a[href="#home"],#navigation > a[href="#hl-diver-dashboard"]');
     if(home){
       const label=home.querySelector('span:last-child');
