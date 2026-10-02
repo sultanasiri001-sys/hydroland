@@ -55,6 +55,7 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
     await board.locator('[data-portal-home]').click();await expect(board.locator('.hl-portal-content')).toBeVisible();
     for(const [label,mode] of [['الجدول الزمني','professional-schedule'],['التقييمات','professional-skills'],['الشهادات','professional-certificates'],['الإيرادات','professional-earnings']]){
       if(viewport.name==='mobile'){await board.locator('[data-portal-menu]').click();await expect(board).toHaveClass(/hl-portal-nav-open/)}
+      const navDiagnostic=await board.locator('.hl-portal-nav-item',{hasText:label}).evaluate(n=>({disabled:n.disabled,route:n.dataset.hlNavRoute,aria:n.getAttribute('aria-disabled'),unavailable:n.dataset.hlUnavailable,className:n.className}));console.log('INSTRUCTOR_NAV_RUNTIME',viewport.name,label,JSON.stringify(navDiagnostic));
       await board.locator('.hl-portal-nav-item',{hasText:label}).click();
       await expect(page.locator('.hl-training')).toBeVisible();await expect(page.locator('.hl-training')).toHaveAttribute('data-training-mode',mode);
       await board.locator('[data-portal-home]').click();
