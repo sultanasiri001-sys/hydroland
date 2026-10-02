@@ -1,0 +1,55 @@
+name: Finalize PR 409 review
+on:
+  pull_request:
+    types: [synchronize]
+    paths: ['.github/workflows/review-finalize-once.yml']
+permissions:
+  contents: write
+jobs:
+  finalize:
+    if: github.repository == 'sultanasiri001-sys/hydroland' && github.event.pull_request.number == 409 && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'feat/dive-center-safety'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Normalize secondary actions and register isolated DB test
+        run: |
+          test "$(git hash-object apps/web/src/hydroland-role-dashboards.js)" = '15a2e0aba10560018fd1433364142d3a9071bfa7'
+          test "$(git hash-object .github/workflows/api-validation.yml)" = 'e3926ba5ccaa1a15d9f49d936e9c039b24ec83d9'
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('apps/web/src/hydroland-role-dashboards.js');s=p.read_text()
+          old="d.querySelectorAll('[data-route]').forEach(node=>{const id=node.dataset.route,label=node.dataset.actionLabel||node.textContent.trim();connectControl(node,role,id,label)});"
+          new="d.querySelectorAll('[data-route]').forEach(node=>{const label=node.dataset.actionLabel||node.textContent.trim(),id=actionRoute(role,label,node.dataset.route);if(!id){node.disabled=true;node.setAttribute('aria-disabled','true');return}connectControl(node,role,id,label)});"
+          assert s.count(old)==1
+          p.write_text(s.replace(old,new,1))
+          p=Path('.github/workflows/api-validation.yml');s=p.read_text()
+          anchor='          SAFETY_CHECKLIST_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/safety-checklist-http-e2e.mjs\n'
+          assert s.count(anchor)==1
+          p.write_text(s.replace(anchor,anchor+'          CENTER_SAFETY_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/center-safety-http-e2e.mjs\n',1))
+          PY
+          node --check apps/web/src/hydroland-role-dashboards.js
+          node --check apps/api/scripts/center-safety-http-e2e.mjs
+          node --check apps/web/e2e/center-safety-review.spec.js
+          node --check apps/web/e2e/profile-load-coordination.spec.js
+          npm test -w @hydroland/web
+          git diff --check
+      - name: Read public package remediation metadata without changing dependencies
+        run: npm view node-forge version dist-tags --json
+      - name: Commit to unchanged feature branch only and remove this workflow
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          actual=$(git ls-remote origin refs/heads/feat/dive-center-safety | cut -f1)
+          test "$actual" = "$EXPECTED_HEAD"
+          git rm .github/workflows/review-finalize-once.yml
+          git add apps/web/src/hydroland-role-dashboards.js .github/workflows/api-validation.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Normalize scoped safety actions and require center safety HTTP/PostgreSQL regression'
+          git push origin HEAD:refs/heads/feat/dive-center-safety
