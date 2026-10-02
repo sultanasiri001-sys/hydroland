@@ -45,6 +45,13 @@ for(const marker of [
   'id=actionRoute(role,label,node.dataset.route)',
   "if(activeRole==='center'&&['center-safety','center-documents','center-equipment','center-customers','center-operations','center-team'].includes(route))"
 ])if(!dashboards.includes(marker))throw new Error(`Missing scoped center route marker: ${marker}`);
+for(const marker of [
+  "if(role==='instructor'&&label==='الجدول الزمني')return 'training-schedule'",
+  "if(role==='instructor'&&label==='التقييمات')return 'training-skills'",
+  "if(role==='instructor'&&label==='الشهادات')return 'training-certificates'",
+  "if(role==='instructor'&&label==='الإيرادات')return 'training-earnings'",
+  "if(role==='instructor'&&label==='الملف المهني')return 'professional-profile'"
+])if(!dashboards.includes(marker))throw new Error(`Missing scoped professional route marker: ${marker}`);
 for(const [index,source] of centerModules.entries()){
   const name=['safety','documents','equipment','customers','operations','team'][index];
   for(const marker of ['async function authorize','access()?.authorizeRole','if(!(await authorize(host,version,session)))return'])if(!source.includes(marker))throw new Error(`Center ${name} must refresh authoritative role state before scoped reads: missing ${marker}`);
