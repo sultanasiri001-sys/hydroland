@@ -3,7 +3,7 @@ import {openWorkspaceSwitcher} from './portal-test-helpers.js';
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 const item={resourceId:'eq-a',assetCode:'A-001',serialNumber:'S-001',sku:'SKU-1',location:'المستودع',stockStatus:'AVAILABLE',resourceName:'منظم غوص',active:true};
 async function install(page){
- const state={active:true,moves:0,refreshes:0};
+ const state={active:true,moves:0,refreshes:0,reads:0};
  const profile={id:'center-eq-review',email:'center-eq@example.invalid',status:'ACTIVE',person:{firstName:'مدير',lastName:'المركز'},roleAssignments:[{role:'DIVE_CENTER',status:'ACTIVE'}]};
  await page.route('**/api/v1/**',route=>{const path=new URL(route.request().url()).pathname;if(path==='/api/v1/me'){state.refreshes++;return json(route,{...profile,roleAssignments:state.active?profile.roleAssignments:[]})}return json(route,[])});await page.route('**/api/v1/auth/google/config',route=>json(route,{enabled:false}));
 await page.route(/\/api\/v1\/me\/diver-profile$/,route=>json(route,{profile:null,equipment:[]}));
@@ -30,4 +30,7 @@ test('center equipment escapes API text and clears on logout',async({page})=>{
  await install(page);await page.unroute(/\/api\/v1\/center\/me\/equipment$/);await page.route(/\/api\/v1\/center\/me\/equipment$/,route=>json(route,[{...item,resourceName:'<img src=x onerror="window.eqXss=1">'}]));
  await page.locator('[data-portal-label="المعدات والمخزون"]').click();const panel=page.locator('#hl-center-equipment');await expect(panel).toContainText('<img src=x');await expect(panel.locator('img')).toHaveCount(0);expect(await page.evaluate(()=>window.eqXss)).toBeUndefined();
  await page.evaluate(()=>window.HydrolandAuth.terminateSession());await expect(panel).toHaveCount(0);
+});
+test('center equipment refreshes role before exposing inventory',async({page})=>{
+ const state=await install(page),before=state.refreshes;state.active=false;await page.locator('[data-portal-label="المعدات والمخزون"]').click();await expect(page.locator('#hl-center-equipment')).toHaveCount(0);expect(state.refreshes).toBeGreaterThan(before);expect(state.reads).toBe(0);await expect(page.getByText('منظم غوص')).toHaveCount(0);
 });
