@@ -54,6 +54,7 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
     await expect(page.locator('.hl-training')).toBeVisible();await expect(page.locator('.hl-training')).toHaveAttribute('data-training-mode','professional');
     await board.locator('[data-portal-home]').click();await expect(board.locator('.hl-portal-content')).toBeVisible();
     for(const [label,mode] of [['الجدول الزمني','professional-schedule'],['التقييمات','professional-skills'],['الشهادات','professional-certificates'],['الإيرادات','professional-earnings']]){
+      if(viewport.name==='mobile'){await board.locator('[data-portal-menu]').click();await expect(board).toHaveClass(/hl-portal-nav-open/)}
       await board.locator('.hl-portal-nav-item',{hasText:label}).click();
       await expect(page.locator('.hl-training')).toBeVisible();await expect(page.locator('.hl-training')).toHaveAttribute('data-training-mode',mode);
       await board.locator('[data-portal-home]').click();
