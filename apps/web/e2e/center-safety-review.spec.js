@@ -95,5 +95,5 @@ for(const reason of ['logout','revocation']){
 }
 
 test('center safety refreshes role before exposing scoped safety records',async({page})=>{
-  const state=await install(page),before=state.refreshes;state.active=false;await quick(page).click();await expect(page.locator('#hl-center-safety')).toHaveCount(0);expect(state.refreshes).toBeGreaterThan(before);expect(state.reads).toBe(0);await expect(page.getByText('بلاغ المركز')).toHaveCount(0);
+  const state=await install(page),before=state.refreshes;state.active=false;await page.evaluate(()=>window.HydrolandCenterSafety.open());await expect(page.locator('#hl-center-safety')).toHaveCount(0);expect(state.refreshes).toBeGreaterThan(before);expect(state.reads).toBe(0);await expect(page.getByText('بلاغ المركز')).toHaveCount(0);
 });
