@@ -31,10 +31,10 @@ for(const marker of [
   'HydrolandPortalFreshness?.enforce?.()',
   'button.onclick=async()=>'
 ])if(!routing.includes(marker))throw new Error(`Missing role-console action authorization marker: ${marker}`);
-const safetyModule="'hydroland-center-safety.js'";
-if(bootstrap.split(safetyModule).length!==2||bootstrap.indexOf(safetyModule)>bootstrap.indexOf("'hydroland-role-dashboards.js'"))throw new Error('Center safety must be registered once in the real bootstrap before dashboard actions.');
+for(const [module,label] of [["'hydroland-center-safety.js'",'Center safety'],["'hydroland-center-documents.js'",'Center documents']])if(bootstrap.split(module).length!==2||bootstrap.indexOf(module)>bootstrap.indexOf("'hydroland-role-dashboards.js'"))throw new Error(label+' must be registered once in the real bootstrap before dashboard actions.');
 for(const marker of [
   "if(role==='center'&&label==='السلامة')return 'center-safety'",
+  "if(role==='center'&&label==='المستندات والتراخيص')return 'center-documents'",
   "if(role==='center'&&['السلامة','تقارير السلامة'].includes(label))return 'center-safety'",
   'id=actionRoute(role,label,node.dataset.route)',
   "if(activeRole==='center'&&route==='center-safety')"
