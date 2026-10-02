@@ -17,17 +17,9 @@
  }
  const card=row=>`<article class="hl-course" data-center-equipment-id="${esc(row.resourceId)}"><div class="hl-course-top"><div><b>${esc(row.resourceName||'معدة')}</b><small>${esc(row.assetCode||'—')}${row.serialNumber?' · S/N '+esc(row.serialNumber):''}</small></div><span>${esc(row.stockStatus||'—')}</span></div><small>الموقع: ${esc(row.location||'غير محدد')} · SKU: ${esc(row.sku||'—')}</small><div class="hl-member-actions"><button type="button" data-move="CHECK_OUT">إعارة/خروج</button><button type="button" data-move="CHECK_IN">إرجاع</button><button type="button" data-move="MAINTENANCE">صيانة</button><button type="button" data-move="QUARANTINE">حجر</button><button type="button" data-move="RELEASE">إتاحة</button></div><button type="button" data-equipment-history-button>سجل الحركة</button><div data-equipment-history></div></article>`;
  async function authorize(host,version,session){
-   if(!current(host,version,session))return false;
-   try{
-     const response=await auth().authorizedFetch('/me'),body=await response.json().catch(()=>null);
-     // A late authorization response must not restore a cleared or newer session.
-     if(!current(host,version,session))return false;
-     if(!response.ok||!body||typeof body!=='object'||Array.isArray(body)){clear();return false}
-     const roles=Array.isArray(body.roleAssignments)?body.roleAssignments:Array.isArray(body.roles)?body.roles:[];
-     window.HydrolandProfileData={...(window.HydrolandProfileData||{}),profile:{...body,roles}};
-     if(!eligible()){clear();access()?.clearProtectedPortal?.();return false}
-     return true;
-   }catch{if(current(host,version,session))clear();return false}
+   const centralized=access()?.authorizeRole;if(typeof centralized!=='function'){clear();return false}
+   const valid=await centralized('center',{sessionVersion:session,isCurrent:()=>host===section&&host.isConnected&&version===viewVersion});
+   if(!valid||!current(host,version,session)){if(host===section&&host.isConnected)clear();return false}return true
  }
  async function open(){
    if(!eligible()){clear();return}
