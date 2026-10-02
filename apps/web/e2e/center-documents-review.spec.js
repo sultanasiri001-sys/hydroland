@@ -3,14 +3,14 @@ import {openWorkspaceSwitcher} from './portal-test-helpers.js';
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 const payload={assets:[{id:'asset-a',kind:'LICENSE_SCAN',mimeType:'application/pdf',byteSize:2048,createdAt:'2026-10-02T00:00:00Z'}],licenses:[{id:'license-a',type:'LICENSE',referenceNumber:'LIC-001',subject:'ترخيص المركز',status:'ACTIVE',updatedAt:'2026-10-02T00:00:00Z'}]};
 async function install(page){
- const state={active:true,status:200,body:payload};
+ const state={active:true,status:200,body:payload,reads:0,refreshes:0};
  const profile={id:'center-doc-review',email:'center-doc@example.invalid',status:'ACTIVE',person:{firstName:'مدير',lastName:'المركز'},roleAssignments:[{role:'DIVE_CENTER',status:'ACTIVE'}]};
  await page.route('**/api/v1/**',route=>json(route,[]));
  await page.route('**/api/v1/auth/google/config',route=>json(route,{enabled:false}));
  await page.route(/\/api\/v1\/me$/,route=>json(route,{...profile,roleAssignments:state.active?profile.roleAssignments:[]}));
  await page.route(/\/api\/v1\/me\/diver-profile$/,route=>json(route,{profile:null,equipment:[]}));
  await page.route('**/api/v1/center/me/overview',route=>json(route,{center:{displayName:'مركز المستندات'},metrics:{newBookings:0,tripsToday:0,activeMembers:1,totalTrips:0}}));
- await page.route('**/api/v1/center/me/documents',route=>json(route,state.body,state.status));
+ await page.route('**/api/v1/center/me/documents',route=>{state.reads++;return json(route,state.body,state.status)});
  await page.goto('/',{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandCenterDocuments));
  await page.evaluate(async()=>{window.HydrolandAuth.acceptSession({accessToken:'doc-access',refreshToken:'doc-refresh'},window.HydrolandAuth.beginAuthAttempt());await window.HydrolandProfile.load()});
@@ -45,4 +45,7 @@ test('center documents discards pending data after role revocation',async({page}
  await page.locator('[data-portal-label="المستندات والتراخيص"]').click();await expect.poll(()=>Boolean(pending)).toBe(true);
  state.active=false;await page.evaluate(async()=>{await window.HydrolandPortalAccess.refreshPortalAccess();window.HydrolandPortalFreshness.enforce()});
  await json(pending,payload);await expect(page.locator('#hl-center-documents')).toHaveCount(0);await expect(page.locator('[data-center-license="license-a"]')).toHaveCount(0);
+});
+test('center documents refreshes role before exposing scoped licenses and assets',async({page})=>{
+ const state=await install(page),before=state.refreshes;state.active=false;await page.locator('[data-portal-label="المستندات والتراخيص"]').click();await expect(page.locator('#hl-center-documents')).toHaveCount(0);expect(state.refreshes).toBeGreaterThan(before);expect(state.reads).toBe(0);await expect(page.getByText('LIC-001')).toHaveCount(0);
 });
