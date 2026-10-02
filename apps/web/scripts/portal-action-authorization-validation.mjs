@@ -45,6 +45,7 @@ for(const marker of [
   'id=actionRoute(role,label,node.dataset.route)',
   "if(activeRole==='center'&&['center-safety','center-documents','center-equipment','center-customers','center-operations','center-team'].includes(route))"
 ])if(!dashboards.includes(marker))throw new Error(`Missing scoped center route marker: ${marker}`);
+if(!dashboards.includes("const trainingTarget=document.querySelector('.hl-training');window.HydrolandWorkspaceUI?.show?.(trainingTarget)"))throw new Error('Managed instructor training must route to the actual .hl-training service node.');
 for(const marker of [
   "if(role==='instructor'&&label==='الجدول الزمني')return 'training-schedule'",
   "if(role==='instructor'&&label==='التقييمات')return 'training-skills'",
