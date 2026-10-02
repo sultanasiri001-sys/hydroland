@@ -53,10 +53,11 @@ for(const kind of ['equipment','operations']){
      void (kind==='equipment'?window.HydrolandCenterEquipment:window.HydrolandCenterOperations).open();
    },kind);
    release();
-   await expect.poll(()=>intercepted).toBeGreaterThan(1);
+   // The central authorization layer intentionally coalesces same-session /me refreshes.
+   await expect.poll(()=>intercepted).toBe(1);
    await page.waitForTimeout(50);
    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
-   // The replacement workspace performs its own fresh /me authorization; the stale action may not trigger the sensitive read.
+   // A removed workspace cannot issue a sensitive read; the shared authoritative refresh may safely update role state.
    expect(await page.evaluate(()=>window.HydrolandProfileData?.profile?.id)).toBe('focused-center');
    expect(state.reads).toBe(reads);
    await expect(panel).toBeVisible();
