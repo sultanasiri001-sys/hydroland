@@ -1,7 +1,7 @@
 (()=>{
   const auth=()=>window.HydrolandAuth;
   const esc=value=>window.HydrolandUI.esc(value);
-  let loadVersion=0;
+  let loadVersion=0,latestLoad=null;
   const toast=message=>{const t=document.getElementById('toast');if(!t)return;t.textContent=message;t.classList.add('visible');setTimeout(()=>t.classList.remove('visible'),2200)};
   const request=async(path,options={})=>{
     const client=auth()?.authorizedFetch;if(!client)throw new Error('AUTH_REQUIRED');
@@ -89,8 +89,34 @@
   async function load(){
     if(!auth()?.isAuthenticated?.()){window.HydrolandProfileData=undefined;return;}
     const version=++loadVersion,sessionVersion=auth().getSessionVersion();
-    try{const [profile,credentials,diverResult]=await Promise.all([request('/me'),request('/credentials'),request('/me/diver-profile').then(data=>({ok:true,data})).catch(error=>({ok:false,error}))]);if(version!==loadVersion||sessionVersion!==auth().getSessionVersion()||!auth()?.isAuthenticated?.())return;const normalizedProfile=normalizeProfile(profile);renderProfile(normalizedProfile,Array.isArray(credentials)?credentials:[]);const diver=diverResult.ok?diverResult.data:null;window.HydrolandProfileData={profile:normalizedProfile,credentials,diverProfile:diver?.profile||null,equipment:Array.isArray(diver?.equipment)?diver.equipment:[],diverProfileAvailable:diverResult.ok};document.dispatchEvent(new CustomEvent('hydroland:profile-data-ready'));if(!diverResult.ok&&diverResult.error?.message!=='AUTH_REQUIRED')toast('تعذر تحميل بيانات الغواص والمعدات');bindCredentialActions();}
-    catch(error){if(version===loadVersion&&sessionVersion===auth().getSessionVersion()&&error.message!=='AUTH_REQUIRED'&&error.message!=='AUTH_CANCELLED')toast('تعذر تحميل بيانات الحساب من الخادم');}
+    const currentSession=()=>sessionVersion===auth()?.getSessionVersion()&&auth()?.isAuthenticated?.();
+    // A superseded caller must wait for the replacement to publish its result.
+    // Otherwise a retry can inspect stale availability while a background load is pending.
+    const replacement=()=>currentSession()&&latestLoad?.sessionVersion===sessionVersion&&latestLoad.version>version?latestLoad.promise:undefined;
+    const promise=(async()=>{
+      try{
+        const [profile,credentials,diverResult]=await Promise.all([
+          request('/me'),request('/credentials'),
+          request('/me/diver-profile').then(data=>({ok:true,data})).catch(error=>({ok:false,error}))
+        ]);
+        if(!currentSession())return;
+        if(version!==loadVersion)return replacement();
+        const normalizedProfile=normalizeProfile(profile);
+        renderProfile(normalizedProfile,Array.isArray(credentials)?credentials:[]);
+        const diver=diverResult.ok?diverResult.data:null;
+        window.HydrolandProfileData={profile:normalizedProfile,credentials,diverProfile:diver?.profile||null,equipment:Array.isArray(diver?.equipment)?diver.equipment:[],diverProfileAvailable:diverResult.ok};
+        document.dispatchEvent(new CustomEvent('hydroland:profile-data-ready'));
+        if(!diverResult.ok&&diverResult.error?.message!=='AUTH_REQUIRED')toast('تعذر تحميل بيانات الغواص والمعدات');
+        bindCredentialActions();
+        return window.HydrolandProfileData;
+      }catch(error){
+        if(!currentSession())return;
+        if(version!==loadVersion)return replacement();
+        if(error.message!=='AUTH_REQUIRED'&&error.message!=='AUTH_CANCELLED')toast('تعذر تحميل بيانات الحساب من الخادم');
+      }
+    })();
+    latestLoad={version,sessionVersion,promise};
+    return promise;
   }
   async function saveProfile(input){try{const updated=await request('/me',{method:'PATCH',body:JSON.stringify(input)});toast('تم حفظ بيانات الحساب');await load();return updated}catch(error){toast(error.message==='AUTH_REQUIRED'?'سجل الدخول أولًا':'تعذر حفظ بيانات الحساب');throw error}}
   const ensureCredentialDialog=()=>{let dialog=document.getElementById('hl-credential-editor');if(dialog)return dialog;dialog=document.createElement('dialog');dialog.id='hl-credential-editor';dialog.className='hl-profile-editor';dialog.innerHTML=`<form><header><div><small>CREDENTIAL · الشهادات</small><h2>إضافة شهادة</h2></div><button type="button" data-credential-close aria-label="إغلاق">×</button></header><div class="hl-profile-editor-grid"><label>الجهة المانحة<input name="issuer" maxlength="120" required></label><label>اسم الشهادة<input name="title" maxlength="160" required></label><label>رقم الشهادة<input name="credentialNumber" maxlength="120"></label><label>تاريخ الإصدار<input name="issuedAt" type="date"></label><label>تاريخ الانتهاء<input name="expiresAt" type="date"></label></div><p class="hl-profile-editor-status" role="status" aria-live="polite"></p><footer><button type="button" data-credential-cancel>إلغاء</button><button type="submit" class="primary-button">حفظ الشهادة</button></footer></form>`;const form=dialog.querySelector('form'),close=()=>dialog.close();dialog.querySelector('[data-credential-close]').addEventListener('click',close);dialog.querySelector('[data-credential-cancel]').addEventListener('click',close);form.addEventListener('submit',async event=>{event.preventDefault();const data=new FormData(form),status=form.querySelector('.hl-profile-editor-status'),submit=form.querySelector('[type="submit"]'),body={issuer:String(data.get('issuer')||'').trim(),title:String(data.get('title')||'').trim(),credentialNumber:String(data.get('credentialNumber')||'').trim()||undefined,issuedAt:String(data.get('issuedAt')||'')||undefined,expiresAt:String(data.get('expiresAt')||'')||undefined};if(!body.issuer||!body.title){status.textContent='الجهة المانحة واسم الشهادة مطلوبان';return}submit.disabled=true;status.textContent='جارٍ حفظ الشهادة...';try{await request('/credentials',{method:'POST',body:JSON.stringify(body)});form.reset();close();toast('تمت إضافة الشهادة');await load()}catch(error){status.textContent=error.message==='AUTH_REQUIRED'?'سجل الدخول أولًا':'تعذر حفظ الشهادة'}finally{submit.disabled=false}});document.body.appendChild(dialog);return dialog};
@@ -100,6 +126,6 @@
   document.addEventListener('click',event=>{const btn=event.target.closest?.('[data-hl-action="diver-equipment"]');if(!btn)return;event.preventDefault();openEquipmentEditor()});
   document.addEventListener('click',event=>{const btn=event.target.closest?.('[data-hl-action="diver-profile"]');if(!btn)return;event.preventDefault();if(!auth()?.isAuthenticated?.()){toast('سجل الدخول أولًا');return}openDiverEditor()});
   document.addEventListener('click',async event=>{const btn=event.target.closest?.('[data-hl-action="settings"]');if(!btn)return;event.preventDefault();if(!auth()?.isAuthenticated?.()){toast('سجل الدخول أولًا لفتح بيانات الحساب');return}let current=window.HydrolandProfileData?.profile;if(!current){toast('جارٍ تحميل بيانات الحساب...');await load();current=window.HydrolandProfileData?.profile;if(!current)return}openProfileEditor(current)});
-  document.addEventListener('hydroland:session-cleared',()=>{loadVersion++;window.HydrolandProfileData=undefined;renderProfile({},[])});
+  document.addEventListener('hydroland:session-cleared',()=>{loadVersion++;latestLoad=null;window.HydrolandProfileData=undefined;renderProfile({},[])});
   document.addEventListener('hydroland:auth-changed',()=>{if(!auth()?.isAuthenticated?.())window.HydrolandProfileData=undefined;load()});setTimeout(load,500);window.HydrolandProfile={load,saveProfile};
 })();
