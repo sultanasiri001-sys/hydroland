@@ -67,6 +67,7 @@
   let selected=null;
   const show=target=>{
     if(!auth()||!target)return false;
+    setWorkspace();
     let node=typeof target==='string'?document.getElementById(target):target;if(!node)return false;
     const role=currentRole(),home=node.matches('.hl-role-dashboard,#hl-diver-dashboard,#home');
     main.querySelectorAll('.hl-workspace-selected').forEach(item=>item.classList.remove('hl-workspace-selected'));
