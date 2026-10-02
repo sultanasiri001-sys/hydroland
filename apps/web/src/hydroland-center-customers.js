@@ -7,8 +7,9 @@
  const clear=()=>{viewVersion++;section?.remove();section=null};
  const current=(host,version,session)=>host===section&&host.isConnected&&version===viewVersion&&eligible()&&session===auth()?.getSessionVersion?.();
  async function authorize(host,version,session){
-   if(!current(host,version,session))return false;
-   try{const response=await auth().authorizedFetch('/me'),body=await response.json().catch(()=>null);if(!current(host,version,session))return false;if(!response.ok||!body||typeof body!=='object'||Array.isArray(body)){clear();return false}const roles=Array.isArray(body.roleAssignments)?body.roleAssignments:Array.isArray(body.roles)?body.roles:[];window.HydrolandProfileData={...(window.HydrolandProfileData||{}),profile:{...body,roles}};if(!eligible()){clear();access()?.clearProtectedPortal?.();return false}return true}catch{if(current(host,version,session))clear();return false}
+   const centralized=access()?.authorizeRole;if(typeof centralized!=='function'){clear();return false}
+   const valid=await centralized('center',{sessionVersion:session,isCurrent:()=>host===section&&host.isConnected&&version===viewVersion});
+   if(!valid||!current(host,version,session)){if(host===section&&host.isConnected)clear();return false}return true
  }
  const ensure=()=>{if(section?.isConnected)return section;section=document.createElement('section');section.className='hl-center-customers';section.id='hl-center-customers';section.hidden=true;section.innerHTML='<header><div><small>DIVE CENTER · مركز الغوص</small><h2>عملاء المركز</h2><p>ملخص العملاء المستمد من حجوزات رحلات المركز المُدار فقط.</p></div></header><div data-center-customers aria-live="polite"></div>';section.addEventListener('click',event=>{if(event.target.closest?.('[data-center-customers-retry]'))void open()});document.getElementById('main')?.prepend(section);return section};
  async function open(){
