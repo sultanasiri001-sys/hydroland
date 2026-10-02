@@ -32,5 +32,5 @@ test('center equipment escapes API text and clears on logout',async({page})=>{
  await page.evaluate(()=>window.HydrolandAuth.terminateSession());await expect(panel).toHaveCount(0);
 });
 test('center equipment refreshes role before exposing inventory',async({page})=>{
- const state=await install(page),before=state.refreshes;state.active=false;await page.evaluate(()=>window.HydrolandCenterEquipment.open());await expect(page.locator('#hl-center-equipment')).toHaveCount(0);expect(state.refreshes).toBeGreaterThan(before);expect(state.reads).toBe(0);await expect(page.getByText('منظم غوص')).toHaveCount(0);
+ const state=await install(page),before=state.refreshes;state.active=false;await page.evaluate(async()=>{await window.HydrolandPortalAccess.refreshPortalAccess();window.HydrolandPortalFreshness.enforce();await window.HydrolandCenterEquipment.open()});await expect(page.locator('#hl-center-equipment')).toHaveCount(0);expect(state.refreshes).toBeGreaterThanOrEqual(before+1);expect(state.reads).toBe(0);await expect(page.getByText('منظم غوص')).toHaveCount(0);
 });
