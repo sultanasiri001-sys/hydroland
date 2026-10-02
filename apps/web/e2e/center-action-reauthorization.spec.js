@@ -47,13 +47,14 @@ for(const kind of ['equipment','operations']){
    await panel.locator(kind==='equipment'?'[data-equipment-history-button]':'[data-center-bookings]').click();
    await expect.poll(()=>intercepted).toBeGreaterThan(0);
    const reads=state.reads;
-   await page.evaluate(async kind=>{
+   await page.evaluate(kind=>{
      document.dispatchEvent(new CustomEvent('hydroland:portal-cleared'));
      window.HydrolandProfileData={profile:{id:'replacement-view',roles:[{role:'DIVE_CENTER',status:'ACTIVE'}]}};
-     await (kind==='equipment'?window.HydrolandCenterEquipment:window.HydrolandCenterOperations).open();
+     void (kind==='equipment'?window.HydrolandCenterEquipment:window.HydrolandCenterOperations).open();
    },kind);
-   const finished=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/v1/me');
-   release();const response=await finished;await response.finished();
+   release();
+   await expect.poll(()=>intercepted).toBeGreaterThan(1);
+   await page.waitForTimeout(50);
    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
    expect(await page.evaluate(()=>window.HydrolandProfileData?.profile?.id)).toBe('replacement-view');
    expect(state.reads).toBe(reads);
