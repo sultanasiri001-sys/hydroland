@@ -58,7 +58,7 @@ for(const kind of ['equipment','operations']){
    expect(await page.evaluate(()=>window.HydrolandProfileData?.profile?.id)).toBe('replacement-view');
    expect(state.reads).toBe(reads);
    await expect(panel).toBeVisible();
-   await expect(panel.locator(kind==='equipment'?'[data-equipment-history]':'[data-bookings]')).not.toContainText(kind==='equipment'?'CHECK_IN':'عميل');
+   await expect(panel).not.toContainText(kind==='equipment'?'CHECK_IN':'عميل');
  });
 }
 
