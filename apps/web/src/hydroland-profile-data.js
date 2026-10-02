@@ -1,7 +1,7 @@
 (()=>{
   const auth=()=>window.HydrolandAuth;
   const esc=value=>window.HydrolandUI.esc(value);
-  let loadVersion=0,latestLoad=null;
+  let loadVersion=0,latestLoad=null;const loadPromises=new Map();
   const toast=message=>{const t=document.getElementById('toast');if(!t)return;t.textContent=message;t.classList.add('visible');setTimeout(()=>t.classList.remove('visible'),2200)};
   const request=async(path,options={})=>{
     const client=auth()?.authorizedFetch;if(!client)throw new Error('AUTH_REQUIRED');
@@ -92,7 +92,7 @@
     const currentSession=()=>sessionVersion===auth()?.getSessionVersion()&&auth()?.isAuthenticated?.();
     // A superseded caller must wait for the replacement to publish its result.
     // Otherwise a retry can inspect stale availability while a background load is pending.
-    const replacement=()=>currentSession()&&latestLoad?.sessionVersion===sessionVersion&&latestLoad.version>version?latestLoad.promise:undefined;
+    const replacement=()=>{if(!currentSession())return;for(let next=version+1;next<=loadVersion;next++){const entry=loadPromises.get(next);if(entry?.sessionVersion===sessionVersion)return entry.promise}};
     const promise=(async()=>{
       try{
         const [profile,credentials,diverResult]=await Promise.all([
@@ -115,7 +115,8 @@
         if(error.message!=='AUTH_REQUIRED'&&error.message!=='AUTH_CANCELLED')toast('تعذر تحميل بيانات الحساب من الخادم');
       }
     })();
-    latestLoad={version,sessionVersion,promise};
+    const entry={version,sessionVersion,promise};latestLoad=entry;loadPromises.set(version,entry);
+    promise.finally(()=>{if(loadPromises.get(version)?.promise===promise)loadPromises.delete(version)});
     return promise;
   }
   async function saveProfile(input){try{const updated=await request('/me',{method:'PATCH',body:JSON.stringify(input)});toast('تم حفظ بيانات الحساب');await load();return updated}catch(error){toast(error.message==='AUTH_REQUIRED'?'سجل الدخول أولًا':'تعذر حفظ بيانات الحساب');throw error}}
@@ -126,6 +127,6 @@
   document.addEventListener('click',event=>{const btn=event.target.closest?.('[data-hl-action="diver-equipment"]');if(!btn)return;event.preventDefault();openEquipmentEditor()});
   document.addEventListener('click',event=>{const btn=event.target.closest?.('[data-hl-action="diver-profile"]');if(!btn)return;event.preventDefault();if(!auth()?.isAuthenticated?.()){toast('سجل الدخول أولًا');return}openDiverEditor()});
   document.addEventListener('click',async event=>{const btn=event.target.closest?.('[data-hl-action="settings"]');if(!btn)return;event.preventDefault();if(!auth()?.isAuthenticated?.()){toast('سجل الدخول أولًا لفتح بيانات الحساب');return}let current=window.HydrolandProfileData?.profile;if(!current){toast('جارٍ تحميل بيانات الحساب...');await load();current=window.HydrolandProfileData?.profile;if(!current)return}openProfileEditor(current)});
-  document.addEventListener('hydroland:session-cleared',()=>{loadVersion++;latestLoad=null;window.HydrolandProfileData=undefined;renderProfile({},[])});
+  document.addEventListener('hydroland:session-cleared',()=>{loadVersion++;latestLoad=null;loadPromises.clear();window.HydrolandProfileData=undefined;renderProfile({},[])});
   document.addEventListener('hydroland:auth-changed',()=>{if(!auth()?.isAuthenticated?.())window.HydrolandProfileData=undefined;load()});setTimeout(load,500);window.HydrolandProfile={load,saveProfile};
 })();
