@@ -47,5 +47,5 @@ test('center documents discards pending data after role revocation',async({page}
  await json(pending,payload);await expect(page.locator('#hl-center-documents')).toHaveCount(0);await expect(page.locator('[data-center-license="license-a"]')).toHaveCount(0);
 });
 test('center documents refreshes role before exposing scoped licenses and assets',async({page})=>{
- const state=await install(page),before=state.refreshes;state.active=false;await page.locator('[data-portal-label="المستندات والتراخيص"]').click();await expect(page.locator('#hl-center-documents')).toHaveCount(0);expect(state.refreshes).toBeGreaterThan(before);expect(state.reads).toBe(0);await expect(page.getByText('LIC-001')).toHaveCount(0);
+ const state=await install(page),before=state.refreshes;state.active=false;await page.evaluate(()=>window.HydrolandCenterDocuments.open());await expect(page.locator('#hl-center-documents')).toHaveCount(0);expect(state.refreshes).toBeGreaterThan(before);expect(state.reads).toBe(0);await expect(page.getByText('LIC-001')).toHaveCount(0);
 });
