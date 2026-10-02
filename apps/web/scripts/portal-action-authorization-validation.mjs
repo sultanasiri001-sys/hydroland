@@ -59,4 +59,6 @@ for(const [index,source] of centerModules.entries()){
 }
 const freshness=await readFile(resolve('src/hydroland-portal-access-freshness.js'),'utf8');
 for(const marker of ['const authorizeRole=async(role,context={})=>','await refreshPortalAccess()','session===auth.getSessionVersion?.()','access.authorizeRole=authorizeRole','HydrolandPortalFreshness={refresh:refreshPortalAccess,authorizeRole'])if(!freshness.includes(marker))throw new Error(`Missing centralized portal authorization marker: ${marker}`);
+const workspace=await readFile(resolve('src/hydroland-workspace-ui.js'),'utf8'),workspaceCss=await readFile(resolve('src/hydroland-workspace-ui.css'),'utf8');
+for(const marker of ["data-hl-workspace-service","hl-training-service","hl-managed-service-root"])if(!workspace.includes(marker)&&!workspaceCss.includes(marker))throw new Error(`Missing managed professional training workspace marker: ${marker}`);
 console.log('Portal action authorization validation passed: centralized role authorization, registered scoped center modules and normalized action aliases.');
