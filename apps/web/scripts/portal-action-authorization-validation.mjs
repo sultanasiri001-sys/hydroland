@@ -41,6 +41,6 @@ for(const marker of [
   "if(role==='center'&&label==='محترفي الغوص')return 'center-team'",
   "if(role==='center'&&['السلامة','تقارير السلامة'].includes(label))return 'center-safety'",
   'id=actionRoute(role,label,node.dataset.route)',
-  "if(activeRole==='center'&&route==='center-safety')"
-])if(!dashboards.includes(marker))throw new Error(`Missing center safety route marker: ${marker}`);
-console.log('Portal action authorization validation passed: dashboard and console reauthorization, registered center safety bootstrap and normalized action aliases.');
+  "if(activeRole==='center'&&['center-safety','center-documents','center-equipment','center-customers','center-operations','center-team'].includes(route))"
+])if(!dashboards.includes(marker))throw new Error(`Missing scoped center route marker: ${marker}`);
+console.log('Portal action authorization validation passed: dashboard and console reauthorization, registered scoped center modules and normalized action aliases.');
