@@ -23,7 +23,7 @@ test('center equipment sidebar uses scoped inventory, lookup and movement histor
  await panel.locator('[data-equipment-lookup] input').fill('A-001');await panel.locator('[data-equipment-lookup]').evaluate(form=>form.requestSubmit());await expect(panel.locator('[data-center-equipment-id="eq-a"]')).toBeVisible();
 });
 test('center equipment reauthorizes before state mutation',async({page})=>{
- const state=await install(page);await page.locator('[data-portal-label="المعدات والمخزون"]').click();state.active=false;
+ const state=await install(page);await page.locator('[data-portal-label="المعدات والمخزون"]').click();await expect(page.locator('#hl-center-equipment [data-move="CHECK_OUT"]')).toBeVisible();state.active=false;
  await page.locator('#hl-center-equipment [data-move="CHECK_OUT"]').click();await expect.poll(()=>state.moves).toBe(0);await expect(page.locator('#hl-center-equipment')).toHaveCount(0);
 });
 test('center equipment escapes API text and clears on logout',async({page})=>{
@@ -32,5 +32,5 @@ test('center equipment escapes API text and clears on logout',async({page})=>{
  await page.evaluate(()=>window.HydrolandAuth.terminateSession());await expect(panel).toHaveCount(0);
 });
 test('center equipment refreshes role before exposing inventory',async({page})=>{
- const state=await install(page),before=state.refreshes;state.active=false;await page.locator('[data-portal-label="المعدات والمخزون"]').click();await expect(page.locator('#hl-center-equipment')).toHaveCount(0);expect(state.refreshes).toBeGreaterThan(before);expect(state.reads).toBe(0);await expect(page.getByText('منظم غوص')).toHaveCount(0);
+ const state=await install(page),before=state.refreshes;state.active=false;await page.evaluate(()=>window.HydrolandCenterEquipment.open());await expect(page.locator('#hl-center-equipment')).toHaveCount(0);expect(state.refreshes).toBeGreaterThan(before);expect(state.reads).toBe(0);await expect(page.getByText('منظم غوص')).toHaveCount(0);
 });
