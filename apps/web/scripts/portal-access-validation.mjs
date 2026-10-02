@@ -16,6 +16,7 @@ for(const marker of [
   "button.disabled=!allowed",
   "document.visibilityState!=='visible'",
   "event.stopImmediatePropagation()",
+  "'hydroland:profile-data-ready'",
   'access.refreshPortalAccess=refreshPortalAccess',
   'openRoleSwitcher',
   'dialog?.showModal()'
