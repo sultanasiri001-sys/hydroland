@@ -26,6 +26,15 @@ export class DiveCenterPortalService {
     return {center,metrics:{newBookings,tripsToday,activeMembers:memberCount,totalTrips:tripCount}};
   }
 
+  async safety(accountId:string){
+    const center=await this.managedCenter(accountId);
+    const [checklists,incidents]=await Promise.all([
+      this.db.safetyChecklist.findMany({where:{trip:{organizationId:center.id}},select:{id:true,tripId:true,decision:true,notes:true,decidedAt:true,updatedAt:true,trip:{select:{title:true,startsAt:true,status:true}}},orderBy:{updatedAt:'desc'},take:200}),
+      this.db.safetyIncident.findMany({where:{trip:{organizationId:center.id}},select:{id:true,tripId:true,severity:true,title:true,status:true,locationName:true,createdAt:true,resolvedAt:true,trip:{select:{title:true,startsAt:true}}},orderBy:{createdAt:'desc'},take:200}),
+    ]);
+    return {checklists,incidents};
+  }
+
   async documents(accountId:string){
     const center=await this.managedCenter(accountId);
     const [assets,records]=await Promise.all([
