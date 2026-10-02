@@ -54,3 +54,9 @@ body.hl-visitor-mode #role-switch{display:none!important}
 .hl-diver-workspace .site-footer{display:none}
 @media(max-width:1200px){.hl-managed-workspace #main>.hl-workspace-selected{margin-right:228px;max-width:calc(100% - 252px)}}
 @media(max-width:760px){.hl-managed-workspace{padding-bottom:0}.hl-managed-workspace #main>.hl-workspace-selected{margin:12px;max-width:calc(100% - 24px)}.hl-support-guest-gate{align-items:stretch;flex-direction:column}}
+
+/* Managed professional training reuses the public training DOM, but owns its visibility while the instructor workspace is active. */
+.hl-managed-workspace[data-hl-workspace-service="hl-training-service"] #main>#training.hl-managed-service-root{display:block!important;margin:16px 256px 24px 24px;max-width:calc(100% - 280px)}
+.hl-managed-workspace[data-hl-workspace-service="hl-training-service"] #training>.hl-training.hl-workspace-selected{display:block!important}
+@media(max-width:1200px){.hl-managed-workspace[data-hl-workspace-service="hl-training-service"] #main>#training.hl-managed-service-root{margin-right:228px;max-width:calc(100% - 252px)}}
+@media(max-width:760px){.hl-managed-workspace[data-hl-workspace-service="hl-training-service"] #main>#training.hl-managed-service-root{margin:12px;max-width:calc(100% - 24px)}}
