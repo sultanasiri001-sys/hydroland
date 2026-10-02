@@ -56,7 +56,8 @@ for(const kind of ['equipment','operations']){
    await expect.poll(()=>intercepted).toBeGreaterThan(1);
    await page.waitForTimeout(50);
    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
-   expect(await page.evaluate(()=>window.HydrolandProfileData?.profile?.id)).toBe('replacement-view');
+   // The replacement workspace performs its own fresh /me authorization; the stale action may not trigger the sensitive read.
+   expect(await page.evaluate(()=>window.HydrolandProfileData?.profile?.id)).toBe('focused-center');
    expect(state.reads).toBe(reads);
    await expect(panel).toBeVisible();
    await expect(panel).not.toContainText(kind==='equipment'?'CHECK_IN':'عميل');
