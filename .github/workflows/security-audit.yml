@@ -6,6 +6,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   audit:
     runs-on: ubuntu-24.04
@@ -19,21 +22,29 @@ jobs:
       - name: Generate dependency audit report and enforce severity gate
         shell: bash
         run: |
-          npm audit --json > audit.json || true
-          node - <<'NODE'
+          set +e
+          npm audit --json > audit.json
+          audit_status=$?
+          set -e
+          AUDIT_STATUS="$audit_status" node - <<'NODE'
           const fs=require('fs');
           const report=JSON.parse(fs.readFileSync('audit.json','utf8'));
-          const vulns=report.vulnerabilities||{};
-          const rows=Object.entries(vulns)
+          const status=Number(process.env.AUDIT_STATUS);
+          const counts=report.metadata?.vulnerabilities;
+          if(![0,1].includes(status)||report.error||!counts||
+             !Number.isInteger(counts.high)||!Number.isInteger(counts.critical)||
+             counts.high<0||counts.critical<0||
+             !report.vulnerabilities||typeof report.vulnerabilities!=='object'||
+             Array.isArray(report.vulnerabilities)){
+            console.error('Security gate failed: dependency audit did not return a complete valid report.');
+            process.exit(1);
+          }
+          const rows=Object.entries(report.vulnerabilities)
             .filter(([,v])=>['high','critical'].includes(v.severity))
             .map(([name,v])=>({name,severity:v.severity,direct:v.isDirect,range:v.range,fixAvailable:v.fixAvailable,via:(v.via||[]).map(x=>typeof x==='string'?x:{source:x.source,name:x.name,title:x.title,severity:x.severity,range:x.range})}));
-          console.log(JSON.stringify({metadata:report.metadata?.vulnerabilities||{},highOrCritical:rows},null,2));
-          const knownExpoForge = new Set(['expo','@expo/cli','@expo/code-signing-certificates','node-forge']);
-          const blocking=rows.filter(row=>!knownExpoForge.has(row.name));
-          const known=rows.filter(row=>knownExpoForge.has(row.name));
-          if(known.length) console.warn('Known upstream Expo/node-forge advisory chain detected; tracked separately because npm currently reports no non-breaking SDK 57 remediation.');
-          if(blocking.length){
-            console.error(`Security gate failed: ${blocking.length} unapproved high/critical package vulnerabilities detected.`);
+          console.log(JSON.stringify({metadata:counts,highOrCritical:rows},null,2));
+          if(rows.length||counts.high||counts.critical){
+            console.error('Security gate failed: high/critical dependency vulnerabilities remain. No package-name exceptions are permitted.');
             process.exit(1);
           }
           NODE
