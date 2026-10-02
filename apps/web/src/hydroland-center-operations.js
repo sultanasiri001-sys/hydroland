@@ -16,16 +16,9 @@
    section=host;document.getElementById('main')?.prepend(host);return host;
  }
  async function authorize(host,version,session){
-   if(!current(host,version,session))return false;
-   try{
-     const response=await auth().authorizedFetch('/me'),body=await response.json().catch(()=>null);
-     if(!current(host,version,session))return false;
-     if(!response.ok||!body||typeof body!=='object'||Array.isArray(body)){clear();return false}
-     const roles=Array.isArray(body.roleAssignments)?body.roleAssignments:Array.isArray(body.roles)?body.roles:[];
-     window.HydrolandProfileData={...(window.HydrolandProfileData||{}),profile:{...body,roles}};
-     if(!eligible()){clear();access()?.clearProtectedPortal?.();return false}
-     return true;
-   }catch{if(current(host,version,session))clear();return false}
+   const centralized=access()?.authorizeRole;if(typeof centralized!=='function'){clear();return false}
+   const valid=await centralized('center',{sessionVersion:session,isCurrent:()=>host===section&&host.isConnected&&version===viewVersion});
+   if(!valid||!current(host,version,session)){if(host===section&&host.isConnected)clear();return false}return true
  }
  async function bookings(tripId,article,host,version,session){
    if(!(await authorize(host,version,session))||!article.isConnected)return;
