@@ -58,8 +58,10 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
   // Loading an admin-only feature must not make it available in another workspace.
   await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="center"]').click();
   const center=page.locator('.hl-role-dashboard[data-role="center"]');
-  await expect(center.locator('[data-action-label="المخزون والمعدات"]')).toBeDisabled();
-  await expect(center.locator('[data-action-label="إدارة الرحلات"]')).toBeDisabled();
+  await expect(center.locator('[data-action-label="المخزون والمعدات"]')).toBeEnabled();
+  await expect(center.locator('[data-action-label="إدارة الرحلات"]')).toBeEnabled();
+  await center.locator('[data-action-label="المخزون والمعدات"]').click();
+  await expect(page.locator('#hl-center-equipment')).toBeVisible();
   await expect(page.locator('.hl-inventory')).toBeHidden();
   expect(errors).toEqual([]);
  });
