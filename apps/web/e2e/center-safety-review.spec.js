@@ -4,7 +4,7 @@ import {openWorkspaceSwitcher} from './portal-test-helpers.js';
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 const sample={checklists:[{id:'center-check',decision:'GO',notes:'فحص المركز',updatedAt:'2026-10-02T00:00:00Z',trip:{title:'رحلة المركز الخاصة'}}],incidents:[{id:'center-incident',title:'بلاغ المركز',severity:'LOW',status:'OPEN',createdAt:'2026-10-02T00:00:00Z',trip:{title:'رحلة المركز الخاصة'}}]};
 const install=async page=>{
-  const state={active:true,status:200,body:sample,reads:0};
+  const state={active:true,status:200,body:sample,reads:0,refreshes:0};
   const profile={id:'center-safety-review',email:'center-review@example.invalid',status:'ACTIVE',person:{firstName:'مدير',lastName:'المركز'},roleAssignments:[{role:'DIVE_CENTER',status:'ACTIVE'}]};
   await page.route('**/api/v1/**',route=>json(route,[]));
   await page.route('**/api/v1/auth/google/config',route=>json(route,{enabled:false}));
@@ -93,3 +93,7 @@ for(const reason of ['logout','revocation']){
     await expect(page.locator('[data-center-incident="center-incident"]')).toHaveCount(0);
   });
 }
+
+test('center safety refreshes role before exposing scoped safety records',async({page})=>{
+  const state=await install(page),before=state.refreshes;state.active=false;await quick(page).click();await expect(page.locator('#hl-center-safety')).toHaveCount(0);expect(state.refreshes).toBeGreaterThan(before);expect(state.reads).toBe(0);await expect(page.getByText('بلاغ المركز')).toHaveCount(0);
+});
