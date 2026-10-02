@@ -6,7 +6,7 @@
  const count=value=>Number.isFinite(Number(value))?Math.max(0,Number(value)):0;
  const clear=()=>{viewVersion++;section?.remove();section=null};
  const ensure=()=>{if(section?.isConnected)return section;section=document.createElement('section');section.className='hl-center-operations';section.id='hl-center-operations';section.hidden=true;section.innerHTML='<header><div><small>DIVE CENTER · مركز الغوص</small><h2>الرحلات والحجوزات</h2><p>رحلات المركز المُدار وحجوزاتها فقط.</p></div></header><div data-center-ops-list aria-live="polite"></div>';section.addEventListener('click',event=>{if(event.target.closest?.('[data-center-operations-retry]'))void open()});document.getElementById('main')?.prepend(section);return section};
- const authorize=async()=>{if(!eligible()||typeof access()?.refreshPortalAccess!=='function')return false;await access().refreshPortalAccess();if(window.HydrolandPortalFreshness?.enforce?.()===false)return false;return eligible()};
+ const authorize=async()=>{if(!eligible()||typeof access()?.refreshPortalAccess!=='function')return false;await access().refreshPortalAccess();if(window.HydrolandPortalFreshness?.enforce?.()===false||!eligible()){clear();return false}return true};
  async function bookings(tripId,article){
    if(!(await authorize())){clear();return}const session=auth().getSessionVersion?.(),requestVersion=viewVersion;
    const response=await auth().authorizedFetch('/center/me/trips/'+encodeURIComponent(tripId)+'/bookings'),rows=await response.json().catch(()=>null);
