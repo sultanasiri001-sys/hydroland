@@ -4,7 +4,7 @@ const json=(route,body,status=200)=>route.fulfill({status,contentType:'applicati
 const trips=[{id:'trip-a',title:'رحلة المركز',type:'BOAT',startsAt:'2030-01-01T07:00:00Z',capacity:6,status:'OPEN',_count:{bookings:1}}];
 const bookings=[{id:'booking-a',status:'CONFIRMED',seats:2,account:{person:{firstName:'عميل',lastName:'خاص'}},participants:[{id:'p1',fullName:'مشارك خاص'}]}];
 async function install(page){
- const state={active:true,bookingReads:0,refreshes:0};const profile={id:'center-ops-review',email:'center-ops@example.invalid',status:'ACTIVE',person:{firstName:'مدير',lastName:'المركز'},roleAssignments:[{role:'DIVE_CENTER',status:'ACTIVE'}]};
+ const state={active:true,bookingReads:0,tripReads:0,refreshes:0};const profile={id:'center-ops-review',email:'center-ops@example.invalid',status:'ACTIVE',person:{firstName:'مدير',lastName:'المركز'},roleAssignments:[{role:'DIVE_CENTER',status:'ACTIVE'}]};
  await page.route('**/api/v1/**',route=>{const path=new URL(route.request().url()).pathname;if(path==='/api/v1/me'){state.refreshes++;return json(route,{...profile,roleAssignments:state.active?profile.roleAssignments:[]})}return json(route,[])});await page.route('**/api/v1/auth/google/config',route=>json(route,{enabled:false}));
 await page.route(/\/api\/v1\/me\/diver-profile$/,route=>json(route,{profile:null,equipment:[]}));
  await page.route('**/api/v1/center/me/overview',route=>json(route,{center:{displayName:'مركز العمليات'},metrics:{newBookings:1,tripsToday:1,activeMembers:1,totalTrips:1}}));
@@ -23,4 +23,7 @@ test('center operations reauthorizes before exposing booking identities',async({
 test('center operations escapes trip and customer names and clears on logout',async({page})=>{
  await install(page);await page.unroute(/\/api\/v1\/center\/me\/trips$/);await page.route(/\/api\/v1\/center\/me\/trips$/,route=>json(route,[{...trips[0],title:'<img src=x onerror="window.tripXss=1">'}]));
  await page.locator('[data-portal-label="الرحلات"]').click();const panel=page.locator('#hl-center-operations');await expect(panel).toContainText('<img src=x');await expect(panel.locator('img')).toHaveCount(0);expect(await page.evaluate(()=>window.tripXss)).toBeUndefined();await page.evaluate(()=>window.HydrolandAuth.terminateSession());await expect(panel).toHaveCount(0);
+});
+test('center operations refreshes role before exposing center trips',async({page})=>{
+ const state=await install(page),before=state.refreshes;state.active=false;await page.locator('[data-portal-label="الرحلات"]').click();await expect(page.locator('#hl-center-operations')).toHaveCount(0);expect(state.refreshes).toBeGreaterThan(before);expect(state.tripReads).toBe(0);expect(state.bookingReads).toBe(0);await expect(page.getByText('رحلة المركز')).toHaveCount(0);
 });
