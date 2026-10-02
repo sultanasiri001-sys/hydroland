@@ -1,0 +1,48 @@
+import {test,expect} from '@playwright/test';
+import {openWorkspaceSwitcher} from './portal-test-helpers.js';
+const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
+const payload={assets:[{id:'asset-a',kind:'LICENSE_SCAN',mimeType:'application/pdf',byteSize:2048,createdAt:'2026-10-02T00:00:00Z'}],licenses:[{id:'license-a',type:'LICENSE',referenceNumber:'LIC-001',subject:'ترخيص المركز',status:'ACTIVE',updatedAt:'2026-10-02T00:00:00Z'}]};
+async function install(page){
+ const state={active:true,status:200,body:payload};
+ const profile={id:'center-doc-review',email:'center-doc@example.invalid',status:'ACTIVE',person:{firstName:'مدير',lastName:'المركز'},roleAssignments:[{role:'DIVE_CENTER',status:'ACTIVE'}]};
+ await page.route('**/api/v1/**',route=>json(route,[]));
+ await page.route('**/api/v1/auth/google/config',route=>json(route,{enabled:false}));
+ await page.route(/\/api\/v1\/me$/,route=>json(route,{...profile,roleAssignments:state.active?profile.roleAssignments:[]}));
+ await page.route(/\/api\/v1\/me\/diver-profile$/,route=>json(route,{profile:null,equipment:[]}));
+ await page.route('**/api/v1/center/me/overview',route=>json(route,{center:{displayName:'مركز المستندات'},metrics:{newBookings:0,tripsToday:0,activeMembers:1,totalTrips:0}}));
+ await page.route('**/api/v1/center/me/documents',route=>json(route,state.body,state.status));
+ await page.goto('/',{waitUntil:'domcontentloaded'});
+ await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandCenterDocuments));
+ await page.evaluate(async()=>{window.HydrolandAuth.acceptSession({accessToken:'doc-access',refreshToken:'doc-refresh'},window.HydrolandAuth.beginAuthAttempt());await window.HydrolandProfile.load()});
+ await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="center"]').click();
+ await expect(page.locator('.hl-role-dashboard[data-role="center"]')).toBeVisible();return state;
+}
+test('center documents sidebar renders scoped assets and licenses, not generic documents',async({page})=>{
+ await install(page);const dash=page.locator('.hl-role-dashboard[data-role="center"]');
+ await dash.locator('[data-portal-label="المستندات والتراخيص"]').click();
+ const panel=page.locator('#hl-center-documents');await expect(panel).toBeVisible();
+ await expect(panel.locator('[data-center-license="license-a"]')).toContainText('LIC-001');
+ await expect(panel.locator('[data-center-asset="asset-a"]')).toContainText('LICENSE_SCAN');
+ await expect(page.locator('#hl-documents')).not.toBeVisible();
+});
+test('center documents distinguishes denied, malformed and valid empty responses',async({page})=>{
+ const state=await install(page);state.status=403;state.body={message:'Forbidden'};
+ await page.locator('[data-portal-label="المستندات والتراخيص"]').click();const panel=page.locator('#hl-center-documents');
+ await expect(panel.locator('[role="alert"]')).toContainText('لا تملك صلاحية');
+ state.status=200;state.body={assets:[],licenses:null};await panel.locator('[data-center-documents-retry]').click();
+ await expect(panel.locator('[role="alert"]')).toContainText('غير مكتملة');
+ state.body={assets:[],licenses:[]};await panel.locator('[data-center-documents-retry]').click();
+ await expect(panel).toContainText('لا توجد تراخيص');await expect(panel).toContainText('لا توجد ملفات');
+});
+test('center documents escapes service text and clears on logout',async({page})=>{
+ const state=await install(page);state.body={assets:[],licenses:[{id:'x',subject:'<img src=x onerror="window.docXss=1">',type:'LICENSE',status:'ACTIVE'}]};
+ await page.locator('[data-portal-label="المستندات والتراخيص"]').click();const panel=page.locator('#hl-center-documents');
+ await expect(panel).toContainText('<img src=x');await expect(panel.locator('img')).toHaveCount(0);expect(await page.evaluate(()=>window.docXss)).toBeUndefined();
+ await page.evaluate(()=>window.HydrolandAuth.terminateSession());await expect(panel).toHaveCount(0);
+});
+test('center documents discards pending data after role revocation',async({page})=>{
+ const state=await install(page);let pending;await page.route('**/api/v1/center/me/documents',route=>{pending=route});
+ await page.locator('[data-portal-label="المستندات والتراخيص"]').click();await expect.poll(()=>Boolean(pending)).toBe(true);
+ state.active=false;await page.evaluate(async()=>{await window.HydrolandPortalAccess.refreshPortalAccess();window.HydrolandPortalFreshness.enforce()});
+ await json(pending,payload);await expect(page.locator('#hl-center-documents')).toHaveCount(0);await expect(page.locator('[data-center-license="license-a"]')).toHaveCount(0);
+});
