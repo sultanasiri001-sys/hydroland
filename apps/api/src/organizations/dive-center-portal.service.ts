@@ -26,6 +26,15 @@ export class DiveCenterPortalService {
     return {center,metrics:{newBookings,tripsToday,activeMembers:memberCount,totalTrips:tripCount}};
   }
 
+  async documents(accountId:string){
+    const center=await this.managedCenter(accountId);
+    const [assets,records]=await Promise.all([
+      this.db.organizationDocumentAsset.findMany({where:{organizationId:center.id},select:{id:true,kind:true,mimeType:true,byteSize:true,sha256:true,createdAt:true},orderBy:{createdAt:'desc'},take:200}),
+      this.db.administrativeRecord.findMany({where:{organizationId:center.id,type:{in:['LICENSE','PERMIT','CERTIFICATE','REGULATORY_APPROVAL']}},select:{id:true,type:true,referenceNumber:true,subject:true,status:true,createdAt:true,updatedAt:true},orderBy:{updatedAt:'desc'},take:200}),
+    ]);
+    return {assets,licenses:records};
+  }
+
   async equipmentLookup(accountId:string,code:string){
     const center=await this.managedCenter(accountId);const clean=code?.trim();if(!clean)throw new BadRequestException('Equipment code is required.');
     const rows=await this.db.$queryRaw<Array<{resourceId:string;assetCode:string;barcodeValue:string;qrValue:string;serialNumber:string|null;sku:string|null;location:string|null;stockStatus:string;resourceName:string;active:boolean}>>`
