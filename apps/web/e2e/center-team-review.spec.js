@@ -6,7 +6,7 @@ const pros=[{accountId:'p1',displayName:'محترف المركز',headline:'مد
 async function install(page){
  const state={active:true,team,pros,reads:0,refreshes:0};const profile={id:'center-team-review',email:'center-team@example.invalid',status:'ACTIVE',person:{firstName:'مدير',lastName:'المركز'},roleAssignments:[{role:'DIVE_CENTER',status:'ACTIVE'}]};
  await page.route('**/api/v1/**',route=>{const path=new URL(route.request().url()).pathname;if(path.endsWith('/me'))return route.fallback();return json(route,[])});await page.route('**/api/v1/auth/google/config',route=>json(route,{enabled:false}));
- await page.route(/\/api\/v1\/me$/,route=>json(route,{...profile,roleAssignments:state.active?profile.roleAssignments:[]}));await page.route(/\/api\/v1\/me\/diver-profile$/,route=>json(route,{profile:null,equipment:[]}));
+ await page.route(/\/api\/v1\/me$/,route=>{state.refreshes++;return json(route,{...profile,roleAssignments:state.active?profile.roleAssignments:[]})});await page.route(/\/api\/v1\/me\/diver-profile$/,route=>json(route,{profile:null,equipment:[]}));
  await page.route('**/api/v1/center/me/overview',route=>json(route,{center:{displayName:'مركز الفريق'},metrics:{newBookings:0,tripsToday:0,activeMembers:2,totalTrips:0}}));
  await page.route('**/api/v1/center/me/team',route=>{state.reads++;return json(route,state.team)});await page.route('**/api/v1/center/me/professionals',route=>{state.reads++;return json(route,state.pros)});
  await page.goto('/',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandCenterTeam));
