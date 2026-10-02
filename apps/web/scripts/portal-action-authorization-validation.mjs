@@ -47,6 +47,7 @@ for(const marker of [
 ])if(!dashboards.includes(marker))throw new Error(`Missing scoped center route marker: ${marker}`);
 if(!dashboards.includes("const trainingTarget=document.querySelector('.hl-training');window.HydrolandWorkspaceUI?.show?.(trainingTarget)"))throw new Error('Managed instructor training must route to the actual .hl-training service node.');
 if(!dashboards.includes("target=professionalTraining?document.querySelector('.hl-training'):targetFor(resolvedId)"))throw new Error('Professional training availability must be evaluated against the managed .hl-training service node.');
+if(!dashboards.includes("available=professionalTraining?Boolean(target&&window.HydrolandPortalAccess?.roleAllowed?.('instructor'))"))throw new Error('Professional training capability must not depend on current workspace visibility.');
 for(const marker of [
   "if(role==='instructor'&&label==='الجدول الزمني')return 'training-schedule'",
   "if(role==='instructor'&&label==='التقييمات')return 'training-skills'",
