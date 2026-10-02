@@ -8,7 +8,7 @@ const install=async page=>{
   const profile={id:'center-safety-review',email:'center-review@example.invalid',status:'ACTIVE',person:{firstName:'مدير',lastName:'المركز'},roleAssignments:[{role:'DIVE_CENTER',status:'ACTIVE'}]};
   await page.route('**/api/v1/**',route=>json(route,[]));
   await page.route('**/api/v1/auth/google/config',route=>json(route,{enabled:false}));
-  await page.route(/\/api\/v1\/me$/,route=>json(route,{...profile,roleAssignments:state.active?profile.roleAssignments:[]}));
+  await page.route(/\/api\/v1\/me$/,route=>{state.refreshes++;return json(route,{...profile,roleAssignments:state.active?profile.roleAssignments:[]})});
   await page.route(/\/api\/v1\/me\/diver-profile$/,route=>json(route,{profile:null,equipment:[]}));
   await page.route('**/api/v1/center/me/overview',route=>json(route,{center:{displayName:'مركز نطاق الاختبار'},metrics:{newBookings:1,tripsToday:2,activeMembers:3,totalTrips:4}}));
   await page.route('**/api/v1/center/me/safety',route=>{state.reads++;return json(route,state.body,state.status)});
