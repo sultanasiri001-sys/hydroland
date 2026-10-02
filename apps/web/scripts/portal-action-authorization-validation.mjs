@@ -1,10 +1,11 @@
 import {readFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 
-const [dashboards,routing,bootstrap]=await Promise.all([
+const [dashboards,routing,bootstrap,...centerModules]=await Promise.all([
   readFile(resolve('src/hydroland-role-dashboards.js'),'utf8'),
   readFile(resolve('src/hydroland-role-task-routing.js'),'utf8'),
-  readFile(resolve('src/app.js'),'utf8')
+  readFile(resolve('src/app.js'),'utf8'),
+  ...['safety','documents','equipment','customers','operations','team'].map(name=>readFile(resolve(`src/hydroland-center-${name}.js`),'utf8'))
 ]);
 for(const marker of [
   'authorizeRoleAction',
@@ -43,4 +44,9 @@ for(const marker of [
   'id=actionRoute(role,label,node.dataset.route)',
   "if(activeRole==='center'&&['center-safety','center-documents','center-equipment','center-customers','center-operations','center-team'].includes(route))"
 ])if(!dashboards.includes(marker))throw new Error(`Missing scoped center route marker: ${marker}`);
+for(const [index,source] of centerModules.entries()){
+  const name=['safety','documents','equipment','customers','operations','team'][index];
+  for(const marker of ['async function authorize','authorizedFetch(\'/me\')','if(!(await authorize(host,version,session)))return'])if(!source.includes(marker))throw new Error(`Center ${name} must refresh authoritative role state before scoped reads: missing ${marker}`);
+  for(const marker of ['getSessionVersion','hydroland:session-cleared','hydroland:portal-cleared'])if(!source.includes(marker))throw new Error(`Center ${name} must fence session/workspace lifecycle: missing ${marker}`);
+}
 console.log('Portal action authorization validation passed: dashboard and console reauthorization, registered scoped center modules and normalized action aliases.');
