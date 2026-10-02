@@ -1,0 +1,102 @@
+name: Guarded PR 409 repair
+on:
+  pull_request:
+    types: [synchronize]
+    paths: ['.github/workflows/review-repair-once.yml']
+permissions:
+  contents: write
+jobs:
+  repair:
+    if: github.repository == 'sultanasiri001-sys/hydroland' && github.event.pull_request.number == 409 && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'feat/dive-center-safety'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply exact reviewed source transformations
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from hashlib import sha256
+          root=Path('.')
+          guards={'hydroland-profile-data.js':'35e5b3491344a3b518bc312c5d0c4e1a400e295d40e615d8c5807755f37c5bcf','hydroland-role-dashboards.js':'b0a8b0904f8bc8a6a9e7541eb4c0b5ea86a44a4f4e7a9f2ce96e597a5652f122'}
+          for name,digest in guards.items():
+              assert sha256((root/'apps/web/src'/name).read_bytes()).hexdigest()==digest, 'Source changed; review again: '+name
+          p=root/'apps/web/src/hydroland-profile-data.js'
+          s=p.read_text();s=s.replace('  let loadVersion=0;','  let loadVersion=0,latestLoad=null;',1)
+          start=s.index('  async function load(){');end=s.index('  async function saveProfile',start)
+          s=s[:start]+'''  async function load(){
+              if(!auth()?.isAuthenticated?.()){window.HydrolandProfileData=undefined;return;}
+              const version=++loadVersion,sessionVersion=auth().getSessionVersion();
+              const currentSession=()=>sessionVersion===auth()?.getSessionVersion()&&auth()?.isAuthenticated?.();
+              // A superseded caller must wait for the replacement to publish its result.
+              // Otherwise a retry can inspect stale availability while a background load is pending.
+              const replacement=()=>currentSession()&&latestLoad?.sessionVersion===sessionVersion&&latestLoad.version>version?latestLoad.promise:undefined;
+              const promise=(async()=>{
+                try{
+                  const [profile,credentials,diverResult]=await Promise.all([
+                    request('/me'),request('/credentials'),
+                    request('/me/diver-profile').then(data=>({ok:true,data})).catch(error=>({ok:false,error}))
+                  ]);
+                  if(!currentSession())return;
+                  if(version!==loadVersion)return replacement();
+                  const normalizedProfile=normalizeProfile(profile);
+                  renderProfile(normalizedProfile,Array.isArray(credentials)?credentials:[]);
+                  const diver=diverResult.ok?diverResult.data:null;
+                  window.HydrolandProfileData={profile:normalizedProfile,credentials,diverProfile:diver?.profile||null,equipment:Array.isArray(diver?.equipment)?diver.equipment:[],diverProfileAvailable:diverResult.ok};
+                  document.dispatchEvent(new CustomEvent('hydroland:profile-data-ready'));
+                  if(!diverResult.ok&&diverResult.error?.message!=='AUTH_REQUIRED')toast('تعذر تحميل بيانات الغواص والمعدات');
+                  bindCredentialActions();
+                  return window.HydrolandProfileData;
+                }catch(error){
+                  if(!currentSession())return;
+                  if(version!==loadVersion)return replacement();
+                  if(error.message!=='AUTH_REQUIRED'&&error.message!=='AUTH_CANCELLED')toast('تعذر تحميل بيانات الحساب من الخادم');
+                }
+              })();
+              latestLoad={version,sessionVersion,promise};
+              return promise;
+            }
+          '''+s[end:]
+          s=s.replace("()=>{loadVersion++;window.HydrolandProfileData=undefined;renderProfile({},[])}", "()=>{loadVersion++;latestLoad=null;window.HydrolandProfileData=undefined;renderProfile({},[])}",1)
+          p.write_text(s)
+          p=root/'apps/web/src/hydroland-role-dashboards.js';s=p.read_text()
+          changes=[
+            ("m:[['—','حجوزات جديدة'],['—','رحلات اليوم'],['—','جاهزية المعدات'],['—','مراجعات سلامة']]", "m:[['—','حجوزات جديدة'],['—','رحلات اليوم'],['—','أعضاء نشطون'],['—','إجمالي الرحلات']]"),
+            ("'العملاء','المستندات والتراخيص','التقارير','الملف التجاري'", "'العملاء','المستندات والتراخيص','السلامة','التقارير','الملف التجاري'"),
+            ("d.querySelectorAll('[data-portal-name],[data-center-name]').forEach(node=>{const value", "d.querySelectorAll('[data-portal-name],[data-center-name]').forEach(node=>{if(node.hasAttribute('data-center-name')&&d.dataset.centerScopeLoaded==='1')return;const value"),
+            ("d.querySelectorAll('[data-portal-name],[data-center-name]').forEach(node=>node.textContent=name);d.dataset.centerScopeLoaded='1';", "d.querySelectorAll('[data-center-name]').forEach(node=>node.textContent=name);d.dataset.centerScopeLoaded='1';"),
+            ("if(role==='center'&&label==='السلامة'){window.HydrolandCenterSafety?.open?.();return}"*3,"if(role==='center'&&id==='center-safety'){window.HydrolandCenterSafety?.open?.();return}"),
+            ("if(role==='center'&&label==='المعدات والمخزون'){window.HydrolandCenterEquipment?.open?.();return}"*2,"if(role==='center'&&label==='المعدات والمخزون'){window.HydrolandCenterEquipment?.open?.();return}"),
+            ("available=Boolean(target&&!target.classList.contains('hl-workspace-hidden')", "available=id==='center-safety'?Boolean(window.HydrolandCenterSafety?.open&&window.HydrolandPortalAccess?.roleAllowed?.('center')):Boolean(target&&!target.classList.contains('hl-workspace-hidden')"),
+            ("if(!(await authorizeRoleAction(activeRole)))return;const target=", "if(!(await authorizeRoleAction(activeRole)))return;if(activeRole==='center'&&route==='center-safety'){openTarget(route,activeRole,label);return}const target="),
+            ("const portalNavTarget=(role,label)=>{", "const portalNavTarget=(role,label)=>{if(role==='center'&&label==='السلامة')return 'center-safety';"),
+            ("  const actionRoute=(role,label,fallback)=>{", "  const actionRoute=(role,label,fallback)=>{\n    if(role==='center'&&['السلامة','تقارير السلامة'].includes(label))return 'center-safety';"),
+            ("if(!id||!(await authorizeRoleAction(role)))return;const target=", "if(!id||!(await authorizeRoleAction(role)))return;if(role==='center'&&id==='center-safety'){openTarget(id,role,node.dataset.portalLabel);d.classList.remove('hl-portal-nav-open');return}const target=")
+          ]
+          for old,new in changes:
+              assert s.count(old)==1, 'Unexpected source match count'
+              s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+          node --check apps/web/src/hydroland-profile-data.js
+          node --check apps/web/src/hydroland-role-dashboards.js
+          npm test -w @hydroland/web
+          git diff --check
+      - name: Commit only to the unchanged feature branch and remove temporary workflows
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          actual=$(git ls-remote origin refs/heads/feat/dive-center-safety | cut -f1)
+          test "$actual" = "$EXPECTED_HEAD"
+          git rm .github/workflows/review-repair-once.yml .github/workflows/resume-source-review.yml
+          git add apps/web/src/hydroland-profile-data.js apps/web/src/hydroland-role-dashboards.js
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Fix overlapping profile loads and center safety routes; remove temporary review workflows'
+          git push origin HEAD:refs/heads/feat/dive-center-safety
