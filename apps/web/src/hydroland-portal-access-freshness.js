@@ -99,6 +99,7 @@
     syncRoleOptions();
   });
   document.addEventListener('hydroland:auth-changed',()=>queueMicrotask(syncRoleOptions));
+  document.addEventListener('hydroland:profile-data-ready',()=>queueMicrotask(()=>{enforceCurrentRole();syncRoleOptions()}));
   syncRoleOptions();
   window.HydrolandPortalFreshness={refresh:refreshPortalAccess,authorizeRole,sync:syncRoleOptions,enforce:enforceCurrentRole,openRoleSwitcher};
 })();
