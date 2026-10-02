@@ -56,7 +56,6 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
     for(const [label,mode] of [['الجدول الزمني','professional-schedule'],['التقييمات','professional-skills'],['الشهادات','professional-certificates'],['الإيرادات','professional-earnings']]){
       if(viewport.name==='mobile'){await board.locator('[data-portal-menu]').click();await expect(board).toHaveClass(/hl-portal-nav-open/)}
       await board.locator('.hl-portal-nav-item',{hasText:label}).click();
-      const trainingDiagnostic=await page.locator('.hl-training').evaluate(node=>{const chain=[];for(let n=node;n&&chain.length<6;n=n.parentElement)chain.push({tag:n.tagName,id:n.id,cls:n.className,display:getComputedStyle(n).display,hidden:n.hidden});return {chain,body:{cls:document.body.className,role:document.body.dataset.hlWorkspaceRole,view:document.body.dataset.hlWorkspaceView,service:document.body.dataset.hlWorkspaceService},currentRole:window.HydrolandPortalAccess?.getCurrentRole?.()}});console.log('PROFESSIONAL_TRAINING_VISIBILITY',viewport.name,label,JSON.stringify(trainingDiagnostic));
       await expect(page.locator('.hl-training')).toBeVisible();await expect(page.locator('.hl-training')).toHaveAttribute('data-training-mode',mode);
       await board.locator('[data-portal-home]').click();
     }
