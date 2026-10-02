@@ -56,6 +56,7 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
     for(const [label,mode] of [['الجدول الزمني','professional-schedule'],['التقييمات','professional-skills'],['الشهادات','professional-certificates'],['الإيرادات','professional-earnings']]){
       if(viewport.name==='mobile'){await board.locator('[data-portal-menu]').click();await expect(board).toHaveClass(/hl-portal-nav-open/)}
       await board.locator('.hl-portal-nav-item',{hasText:label}).click();
+      const contractDiagnostic=await page.evaluate(()=>{const n=document.querySelector('.hl-training');return {trainingClass:n?.className,display:n?getComputedStyle(n).display:null,role:document.body.dataset.hlWorkspaceRole,view:document.body.dataset.hlWorkspaceView,service:document.body.dataset.hlWorkspaceService,showResult:n?window.HydrolandWorkspaceUI?.show?.(n):null,afterClass:n?.className,afterDisplay:n?getComputedStyle(n).display:null,afterView:document.body.dataset.hlWorkspaceView,afterService:document.body.dataset.hlWorkspaceService}});console.log('PROFESSIONAL_TRAINING_CONTRACT',viewport.name,label,JSON.stringify(contractDiagnostic));
       await expect(page.locator('.hl-training')).toBeVisible();await expect(page.locator('.hl-training')).toHaveAttribute('data-training-mode',mode);
       await board.locator('[data-portal-home]').click();
     }
