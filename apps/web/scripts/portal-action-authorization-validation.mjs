@@ -9,8 +9,8 @@ const [dashboards,routing,bootstrap,...centerModules]=await Promise.all([
 ]);
 for(const marker of [
   'authorizeRoleAction',
-  'access.refreshPortalAccess',
-  'HydrolandPortalFreshness?.enforce?.()',
+  'access.authorizeRole',
+
   "document.addEventListener('hydroland:role-changed'",
   'getCurrentRole?.()',
   "document.addEventListener('hydroland:portal-cleared'",
@@ -46,7 +46,9 @@ for(const marker of [
 ])if(!dashboards.includes(marker))throw new Error(`Missing scoped center route marker: ${marker}`);
 for(const [index,source] of centerModules.entries()){
   const name=['safety','documents','equipment','customers','operations','team'][index];
-  for(const marker of ['async function authorize','authorizedFetch(\'/me\')','if(!(await authorize(host,version,session)))return'])if(!source.includes(marker))throw new Error(`Center ${name} must refresh authoritative role state before scoped reads: missing ${marker}`);
+  for(const marker of ['async function authorize','access()?.authorizeRole','if(!(await authorize(host,version,session)))return'])if(!source.includes(marker))throw new Error(`Center ${name} must refresh authoritative role state before scoped reads: missing ${marker}`);
   for(const marker of ['getSessionVersion','hydroland:session-cleared','hydroland:portal-cleared'])if(!source.includes(marker))throw new Error(`Center ${name} must fence session/workspace lifecycle: missing ${marker}`);
 }
-console.log('Portal action authorization validation passed: dashboard and console reauthorization, registered scoped center modules and normalized action aliases.');
+const freshness=await readFile(resolve('src/hydroland-portal-access-freshness.js'),'utf8');
+for(const marker of ['const authorizeRole=async(role,context={})=>','await refreshPortalAccess()','session===auth.getSessionVersion?.()','access.authorizeRole=authorizeRole','HydrolandPortalFreshness={refresh:refreshPortalAccess,authorizeRole'])if(!freshness.includes(marker))throw new Error(`Missing centralized portal authorization marker: ${marker}`);
+console.log('Portal action authorization validation passed: centralized role authorization, registered scoped center modules and normalized action aliases.');
