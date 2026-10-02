@@ -18,12 +18,12 @@ test('center operations sidebar exposes only center trip and booking details',as
  await panel.locator('[data-center-bookings]').click();await expect(panel.locator('[data-center-booking="booking-a"]')).toContainText('عميل خاص');await expect(panel).toContainText('المشاركون: 1');
 });
 test('center operations reauthorizes before exposing booking identities',async({page})=>{
- const state=await install(page);await page.locator('[data-portal-label="الرحلات"]').click();state.active=false;await page.locator('#hl-center-operations [data-center-bookings]').click();await expect.poll(()=>state.bookingReads).toBe(0);await expect(page.locator('#hl-center-operations')).toHaveCount(0);await expect(page.getByText('عميل خاص')).toHaveCount(0);
+ const state=await install(page);await page.locator('[data-portal-label="الرحلات"]').click();await expect(page.locator('#hl-center-operations [data-center-bookings]')).toBeVisible();state.active=false;await page.locator('#hl-center-operations [data-center-bookings]').click();await expect.poll(()=>state.bookingReads).toBe(0);await expect(page.locator('#hl-center-operations')).toHaveCount(0);await expect(page.getByText('عميل خاص')).toHaveCount(0);
 });
 test('center operations escapes trip and customer names and clears on logout',async({page})=>{
  await install(page);await page.unroute(/\/api\/v1\/center\/me\/trips$/);await page.route(/\/api\/v1\/center\/me\/trips$/,route=>json(route,[{...trips[0],title:'<img src=x onerror="window.tripXss=1">'}]));
  await page.locator('[data-portal-label="الرحلات"]').click();const panel=page.locator('#hl-center-operations');await expect(panel).toContainText('<img src=x');await expect(panel.locator('img')).toHaveCount(0);expect(await page.evaluate(()=>window.tripXss)).toBeUndefined();await page.evaluate(()=>window.HydrolandAuth.terminateSession());await expect(panel).toHaveCount(0);
 });
 test('center operations refreshes role before exposing center trips',async({page})=>{
- const state=await install(page),before=state.refreshes;state.active=false;await page.locator('[data-portal-label="الرحلات"]').click();await expect(page.locator('#hl-center-operations')).toHaveCount(0);expect(state.refreshes).toBeGreaterThan(before);expect(state.tripReads).toBe(0);expect(state.bookingReads).toBe(0);await expect(page.getByText('رحلة المركز')).toHaveCount(0);
+ const state=await install(page),before=state.refreshes;state.active=false;await page.evaluate(()=>window.HydrolandCenterOperations.open());await expect(page.locator('#hl-center-operations')).toHaveCount(0);expect(state.refreshes).toBeGreaterThan(before);expect(state.tripReads).toBe(0);expect(state.bookingReads).toBe(0);await expect(page.getByText('رحلة المركز')).toHaveCount(0);
 });
