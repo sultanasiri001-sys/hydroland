@@ -41,6 +41,7 @@
    const host=ensure(),list=host.querySelector('[data-center-ops-list]'),version=++viewVersion,session=auth().getSessionVersion?.();
    host.hidden=false;window.HydrolandWorkspaceUI?.show?.(host);list.setAttribute('aria-busy','true');list.innerHTML='<p>جارٍ تحميل رحلات المركز...</p>';
    try{
+     if(!(await authorize(host,version,session)))return;
      const response=await auth().authorizedFetch('/center/me/trips'),rows=await response.json().catch(()=>null);
      if(!current(host,version,session))return;
      if(!response.ok)throw new Error(response.status===403?'لا تملك صلاحية عرض رحلات هذا المركز.':rows?.message||'تعذر تحميل الرحلات');
