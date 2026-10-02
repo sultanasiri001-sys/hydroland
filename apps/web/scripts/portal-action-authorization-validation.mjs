@@ -1,9 +1,10 @@
 import {readFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 
-const [dashboards,routing]=await Promise.all([
+const [dashboards,routing,bootstrap]=await Promise.all([
   readFile(resolve('src/hydroland-role-dashboards.js'),'utf8'),
-  readFile(resolve('src/hydroland-role-task-routing.js'),'utf8')
+  readFile(resolve('src/hydroland-role-task-routing.js'),'utf8'),
+  readFile(resolve('src/app.js'),'utf8')
 ]);
 for(const marker of [
   'authorizeRoleAction',
@@ -30,4 +31,12 @@ for(const marker of [
   'HydrolandPortalFreshness?.enforce?.()',
   'button.onclick=async()=>'
 ])if(!routing.includes(marker))throw new Error(`Missing role-console action authorization marker: ${marker}`);
-console.log('Portal action authorization validation passed: dashboard controls and role-console tasks reauthorize before execution.');
+const safetyModule="'hydroland-center-safety.js'";
+if(bootstrap.split(safetyModule).length!==2||bootstrap.indexOf(safetyModule)>bootstrap.indexOf("'hydroland-role-dashboards.js'"))throw new Error('Center safety must be registered once in the real bootstrap before dashboard actions.');
+for(const marker of [
+  "if(role==='center'&&label==='السلامة')return 'center-safety'",
+  "if(role==='center'&&['السلامة','تقارير السلامة'].includes(label))return 'center-safety'",
+  'id=actionRoute(role,label,node.dataset.route)',
+  "if(activeRole==='center'&&route==='center-safety')"
+])if(!dashboards.includes(marker))throw new Error(`Missing center safety route marker: ${marker}`);
+console.log('Portal action authorization validation passed: dashboard and console reauthorization, registered center safety bootstrap and normalized action aliases.');
