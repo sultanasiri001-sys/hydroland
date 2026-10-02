@@ -5,7 +5,7 @@ const item={resourceId:'eq-a',assetCode:'A-001',serialNumber:'S-001',sku:'SKU-1'
 async function install(page){
  const state={active:true,moves:0};
  const profile={id:'center-eq-review',email:'center-eq@example.invalid',status:'ACTIVE',person:{firstName:'مدير',lastName:'المركز'},roleAssignments:[{role:'DIVE_CENTER',status:'ACTIVE'}]};
- await page.route('**/api/v1/**',route=>json(route,[]));await page.route('**/api/v1/auth/google/config',route=>json(route,{enabled:false}));
+ await page.route('**/api/v1/**',route=>{const path=new URL(route.request().url()).pathname;if(path.endsWith('/me'))return route.fallback();return json(route,[])});await page.route('**/api/v1/auth/google/config',route=>json(route,{enabled:false}));
  await page.route(/\/api\/v1\/me$/,route=>json(route,{...profile,roleAssignments:state.active?profile.roleAssignments:[]}));await page.route(/\/api\/v1\/me\/diver-profile$/,route=>json(route,{profile:null,equipment:[]}));
  await page.route('**/api/v1/center/me/overview',route=>json(route,{center:{displayName:'مركز المعدات'},metrics:{newBookings:0,tripsToday:0,activeMembers:1,totalTrips:0}}));
  await page.route(/\/api\/v1\/center\/me\/equipment$/,route=>json(route,[item]));
