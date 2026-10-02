@@ -62,5 +62,6 @@ for(const marker of ['const authorizeRole=async(role,context={})=>','await refre
 const workspace=await readFile(resolve('src/hydroland-workspace-ui.js'),'utf8'),workspaceCss=await readFile(resolve('src/hydroland-workspace-ui.css'),'utf8');
 if(!workspace.includes("while(serviceRoot.parentElement&&serviceRoot.parentElement!==main)serviceRoot=serviceRoot.parentElement"))throw new Error('Managed training must resolve its real direct child service root under #main.');
 if(!workspace.includes("const show=target=>{\n    if(!auth()||!target)return false;\n    setWorkspace();"))throw new Error('Workspace show must refresh role policy before checking service visibility.');
+if(!workspace.includes("if(selected?.isConnected&&isAuthed)"))throw new Error('Workspace policy refresh must preserve the selected managed service.');
 for(const marker of ["data-hl-workspace-service","hl-training-service","hl-managed-service-root"])if(!workspace.includes(marker)&&!workspaceCss.includes(marker))throw new Error(`Missing managed professional training workspace marker: ${marker}`);
 console.log('Portal action authorization validation passed: centralized role authorization, registered scoped center modules and normalized action aliases.');
