@@ -51,8 +51,15 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
     await page.locator('#navigation a[href="#hl-diver-dashboard"]').click();await expect(board).toBeVisible();
    }else if(role==='instructor'){
     await board.locator('[data-action-label="إدارة الدورات"]').click();
-    await expect(page.locator('.hl-training')).toBeVisible();await expect(board.locator('.hl-portal-content')).toBeHidden();
+    await expect(page.locator('.hl-training')).toBeVisible();await expect(page.locator('.hl-training')).toHaveAttribute('data-training-mode','professional');
     await board.locator('[data-portal-home]').click();await expect(board.locator('.hl-portal-content')).toBeVisible();
+    for(const [label,mode] of [['الجدول الزمني','professional-schedule'],['التقييمات','professional-skills'],['الشهادات','professional-certificates'],['الإيرادات','professional-earnings']]){
+      await board.locator('.hl-portal-nav-item',{hasText:label}).click();
+      await expect(page.locator('.hl-training')).toBeVisible();await expect(page.locator('.hl-training')).toHaveAttribute('data-training-mode',mode);
+      await board.locator('[data-portal-home]').click();
+    }
+    await board.locator('[data-secondary-label="الملف المهني"]').click();
+    await expect(page.locator('#profile-dialog')).toBeVisible();await page.locator('#profile-dialog').evaluate(node=>node.close());
    }
   }
   // Loading an admin-only feature must not make it available in another workspace.
