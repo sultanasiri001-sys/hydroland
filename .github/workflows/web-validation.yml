@@ -5,11 +5,15 @@ on:
   pull_request:
     paths:
       - 'apps/web/**'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/web-validation.yml'
   push:
     branches: [main]
     paths:
       - 'apps/web/**'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/web-validation.yml'
 
 jobs:
@@ -21,7 +25,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci --ignore-scripts
+      - run: npm ci --workspace=@hydroland/web --include-workspace-root=true --ignore-scripts
       - name: Static web validation
         run: npm run test -w @hydroland/web
       - name: Production web build

@@ -15,6 +15,8 @@ on:
       - 'package-lock.json'
       - 'infra/**'
       - '.github/workflows/security-audit.yml'
+      - '.github/workflows/mobile-security.yml'
+      - 'scripts/release-dependency-audit*'
       - '.github/workflows/phase11-production-security.yml'
   pull_request:
     paths:
@@ -29,6 +31,8 @@ on:
       - 'package-lock.json'
       - 'infra/**'
       - '.github/workflows/security-audit.yml'
+      - '.github/workflows/mobile-security.yml'
+      - 'scripts/release-dependency-audit*'
       - '.github/workflows/phase11-production-security.yml'
   workflow_dispatch:
 

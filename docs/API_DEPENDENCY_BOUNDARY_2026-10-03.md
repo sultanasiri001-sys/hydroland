@@ -51,6 +51,10 @@ claimed. Exact-head CI evidence is recorded in PR #409.
 
 ## Remaining release blocker
 
+Update: the subsequently approved independent web/API and mobile release policy
+is documented in RELEASE_CHANNELS_2026-10-03.md. The paragraph below records the
+hold before that decision; mobile advisories remain unresolved and fully audited.
+
 The full repository audit must continue to fail while mobile contains the two
 unpatched dependencies. Isolating the API fixes accidental shipping; it does not
 repair upstream cryptography or recursive brace parsing, nor certify the mobile

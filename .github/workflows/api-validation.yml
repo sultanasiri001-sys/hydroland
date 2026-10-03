@@ -27,7 +27,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci
+      - run: npm ci --workspace=@hydroland/api --include-workspace-root=true
       - run: npm --workspace @hydroland/api run db:generate
       # Legacy migration history contains pre-production migrations whose original SQL
       # cannot bootstrap a clean database (for example TEXT -> UUID FK drift).
@@ -80,8 +80,8 @@ jobs:
       - run: npm run validate:translation -w @hydroland/api
       - run: npm run validate:marine -w @hydroland/api
       - run: npm run validate:integrations -w @hydroland/api
-      - run: npm run typecheck
-      - run: npm run build
+      - run: npm run typecheck --workspace=@hydroland/api
+      - run: npm run build --workspace=@hydroland/api
       - name: Credential upload payload and legacy schema regression
         run: node apps/api/scripts/credential-upload-regression.mjs
       - name: Credential storage configuration and readiness

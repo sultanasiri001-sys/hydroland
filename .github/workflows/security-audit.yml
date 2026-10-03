@@ -11,47 +11,24 @@ permissions:
 
 jobs:
   audit:
+    # User-approved release boundary: web/API/root, including build tools.
+    # Mobile and the full repository retain a separate failing security gate.
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install dependencies
-        run: npm ci
-      - name: Generate dependency audit report and enforce severity gate
-        shell: bash
-        run: |
-          set +e
-          npm audit --json > audit.json
-          audit_status=$?
-          set -e
-          AUDIT_STATUS="$audit_status" node - <<'NODE'
-          const fs=require('fs');
-          const report=JSON.parse(fs.readFileSync('audit.json','utf8'));
-          const status=Number(process.env.AUDIT_STATUS);
-          const counts=report.metadata?.vulnerabilities;
-          if(![0,1].includes(status)||report.error||!counts||
-             !Number.isInteger(counts.high)||!Number.isInteger(counts.critical)||
-             counts.high<0||counts.critical<0||
-             !report.vulnerabilities||typeof report.vulnerabilities!=='object'||
-             Array.isArray(report.vulnerabilities)){
-            console.error('Security gate failed: dependency audit did not return a complete valid report.');
-            process.exit(1);
-          }
-          const rows=Object.entries(report.vulnerabilities)
-            .filter(([,v])=>['high','critical'].includes(v.severity))
-            .map(([name,v])=>({name,severity:v.severity,direct:v.isDirect,range:v.range,fixAvailable:v.fixAvailable,via:(v.via||[]).map(x=>typeof x==='string'?x:{source:x.source,name:x.name,title:x.title,severity:x.severity,range:x.range})}));
-          console.log(JSON.stringify({metadata:counts,highOrCritical:rows},null,2));
-          if(rows.length||counts.high||counts.critical){
-            console.error('Security gate failed: high/critical dependency vulnerabilities remain. No package-name exceptions are permitted.');
-            process.exit(1);
-          }
-          NODE
+      - name: Install web and API release dependencies
+        run: npm ci --workspace=@hydroland/api --workspace=@hydroland/web --include-workspace-root=true
+      - name: Verify fail-closed audit contract
+        run: node scripts/release-dependency-audit.test.mjs
+      - name: Audit web/API release including build dependencies
+        run: node scripts/release-dependency-audit.mjs web-api audit.json
       - name: Upload audit report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: npm-audit-report
+          name: web-api-dependency-audit
           path: audit.json
           retention-days: 7
