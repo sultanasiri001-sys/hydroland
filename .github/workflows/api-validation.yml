@@ -39,6 +39,8 @@ jobs:
         run: npm --workspace @hydroland/api exec -- prisma db push --skip-generate
       - name: Center license forward migration on TEXT and UUID asset keys
         run: node apps/api/scripts/center-license-migration-db-e2e.mjs
+      - name: Center license platform-review forward migration
+        run: node apps/api/scripts/center-license-platform-review-migration-checks.mjs
       - name: Bootstrap raw equipment operational schema
         run: node apps/api/scripts/bootstrap-equipment-runtime-schema.mjs
       - name: Bootstrap trip weather operational schema

@@ -148,3 +148,10 @@ for(const action of ['register','route','assign','decide'])test(`license ${actio
  await form.evaluate(node=>node.requestSubmit());
  await expect(page.locator('#hl-center-documents')).toHaveCount(0);expect(writes).toBe(0);expect(state.refreshes).toBeGreaterThan(before);
 });
+
+test('center submits saved license to platform review and sees returned decision',async({page})=>{
+ const state=await install(page),row={id:'platform',subject:'رخصة المركز',status:'DRAFT',licenseAssetId:'file',licenseIssuedAt:'2020-01-01',licenseExpiresAt:'2099-01-01'};state.body={assets:[],licenses:[row]};let submits=0;
+ await page.route('**/api/v1/center/me/licenses/platform/submit',route=>{submits++;row.status='REGISTERED';row.licenseReviewStatus='PENDING';return json(route,{status:'PENDING'},201)});
+ await page.locator('[data-portal-label="المستندات والتراخيص"]').click();await page.locator('[data-license-review-action="submit"] button').click();await expect(page.locator('[data-license-platform-status]')).toContainText('بانتظار مراجعة');await expect(page.locator('[data-license-attachment]')).toHaveCount(0);expect(submits).toBe(1);
+ row.licenseReviewStatus='REJECTED';row.licenseReviewReason='أرفق النسخة الواضحة';await page.evaluate(()=>window.HydrolandCenterDocuments.open());await expect(page.locator('[data-license-platform-status]')).toContainText('أرفق النسخة الواضحة');
+});
