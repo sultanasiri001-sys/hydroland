@@ -64,14 +64,20 @@ test('a successful empty profile allows first-time data entry',async({page})=>{
 });
 
 test('closing while a profile loads does not reopen or enable the abandoned form',async({page})=>{
-  await install(page,{available:false});let pending;
-  await page.route(/\/api\/v1\/me\/diver-profile$/,route=>{pending=route});
+  await install(page,{available:false});const pending=[];let released=false;
+  const reply=route=>json(route,{profile:initialProfile,equipment:[]});
+  // Startup can schedule a replacement load while the editor is open. Hold
+  // every request, then release the response phase, including later arrivals.
+  await page.route(/\/api\/v1\/me\/diver-profile$/,route=>released?reply(route):pending.push(route));
   const editor=await open(page);
-  await expect.poll(()=>Boolean(pending)).toBe(true);
+  await expect.poll(()=>pending.length).toBeGreaterThan(0);
   await expect(editor.locator('form')).toHaveAttribute('aria-busy','true');
   await expect(editor.locator('[type="submit"]')).toBeDisabled();
+  await page.evaluate(()=>{void window.HydrolandProfile.load()});
+  await expect.poll(()=>pending.length).toBeGreaterThan(1);
   await editor.locator('[data-diver-cancel]').click();
-  await json(pending,{profile:initialProfile,equipment:[]});
+  released=true;
+  await Promise.all(pending.map(reply));
   await expect.poll(()=>page.evaluate(()=>window.HydrolandProfileData?.diverProfileAvailable)).toBe(true);
   await expect(editor).not.toBeVisible();
   await expect(editor.locator('form')).toHaveAttribute('data-profile-ready','0');
