@@ -132,3 +132,37 @@ endpoint accepts logos, not license attachments. Metadata fixtures of kind
 LICENSE do not establish an upload/expiry/review/external-verification workflow.
 No external license approval or qualified electronic-signature acceptance is
 claimed. No production mutation, merge, deployment or security exception occurs.
+
+## License attachments and validity — implementation
+
+Existing center regulatory records now expose an optional linked attachment,
+issue/expiry dates and their latest internal administrative routing outcome.
+A center manager with an ACTIVE DIVE_CENTER assignment can attach a PDF/PNG/JPEG
+(up to 2 MB) to an owned DRAFT regulatory record. File encoding/signature and
+calendar dates are checked; PDFs must parse and contain a page. Server SHA-256,
+scoped deduplication, conditional record update and actor audit commit together.
+REGISTERED/ARCHIVED records reject attachment/date changes. Old files are retained.
+
+Private downloads follow record and center ownership, verify the stored digest,
+and use attachment disposition with private/no-store caching. The web panel
+reauthorizes before upload/download, discards stale session responses, shows
+validity independently of internal review, and locks the upload form after
+registration. Internal review is not issuer/regulator verification. These checks
+are not a malware-scanning service.
+
+The forward migration adds nullable asset/date fields, preserves legacy records,
+and follows the actual asset key type (TEXT/UUID). Its isolated database test
+runs the exact migration on both key types and verifies the FK, ordered dates,
+asset deletion restriction and legacy nulls. Deployment of the migration has NOT
+occurred; code and schema must be released together after the security hold clears.
+
+HTTP tests exercise bad input, scope/role denial, exact download bytes, tamper
+rejection, deduplication, immutable registered dates, audit linkage and the
+existing register/route/assign/independent-review workflow. Browser tests cover
+upload payload/refresh, expiry versus internal approval, read-only registered
+records and revoked-role upload/download denial.
+
+Scope: this adds attachments to existing DRAFT regulatory records. It does not
+add center-side record creation, renewal or review-assignment screens; those
+remain the next UI work, using existing administrative workflow boundaries.
+No external approval, production data or production service was changed.

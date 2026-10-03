@@ -259,6 +259,7 @@ model OrganizationDocumentAsset {
   byteSize Int
   sha256 String
   content Bytes
+  licenseRecords AdministrativeRecord[] @relation("LicenseAttachment")
   createdAt DateTime @default(now())
   organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)
   @@unique([organizationId,sha256])
@@ -459,6 +460,10 @@ model AdministrativeRecord {
   referenceNumber String
   subject String
   status AdministrativeRecordDbStatus @default(DRAFT)
+  licenseAssetId String?
+  licenseIssuedAt DateTime?
+  licenseExpiresAt DateTime?
+  licenseAsset OrganizationDocumentAsset? @relation("LicenseAttachment", fields:[licenseAssetId], references:[id], onDelete:Restrict)
   ownerAccountId String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

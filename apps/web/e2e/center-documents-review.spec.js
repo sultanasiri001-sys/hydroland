@@ -49,3 +49,39 @@ test('center documents discards pending data after role revocation',async({page}
 test('center documents refreshes role before exposing scoped licenses and assets',async({page})=>{
  const state=await install(page),before=state.refreshes;state.active=false;await page.evaluate(()=>window.HydrolandCenterDocuments.open());await expect(page.locator('#hl-center-documents')).toHaveCount(0);expect(state.refreshes).toBeGreaterThan(before);expect(state.reads).toBe(0);await expect(page.getByText('LIC-001')).toHaveCount(0);
 });
+
+test('draft license upload reauthorizes, sends file and dates, then refreshes linked record',async({page})=>{
+ const state=await install(page);state.body={assets:[],licenses:[{id:'draft-license',subject:'رخصة مسودة',type:'LICENSE',status:'DRAFT',routings:[]}]};
+ let uploaded;
+ await page.route('**/api/v1/center/me/licenses/draft-license/attachment',route=>{
+   uploaded=route.request().postDataJSON();state.body.licenses[0]={...state.body.licenses[0],licenseAssetId:'linked',licenseIssuedAt:'2025-01-01',licenseExpiresAt:'2030-01-01'};
+   return json(route,{id:'draft-license',licenseAssetId:'linked'});
+ });
+ await page.locator('[data-portal-label="المستندات والتراخيص"]').click();
+ const form=page.locator('[data-license-attachment="draft-license"]');
+ await form.locator('[name="issuedAt"]').fill('2025-01-01');await form.locator('[name="expiresAt"]').fill('2030-01-01');
+ await form.locator('[type="file"]').setInputFiles({name:'license.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-fixture')});
+ const before=state.refreshes;await form.locator('[type="submit"]').click();
+ await expect(page.locator('[data-license-download="draft-license"]')).toBeVisible();
+ expect(uploaded).toEqual({mimeType:'application/pdf',base64:Buffer.from('%PDF-fixture').toString('base64'),issuedAt:'2025-01-01',expiresAt:'2030-01-01'});expect(state.refreshes).toBeGreaterThan(before);
+});
+test('registered license shows expired validity and internal review separately and locks upload',async({page})=>{
+ const state=await install(page);state.body={assets:[],licenses:[{id:'reviewed',subject:'رخصة',type:'LICENSE',status:'REGISTERED',licenseAssetId:'asset',licenseIssuedAt:'2020-01-01',licenseExpiresAt:'2021-01-01',routings:[{decision:'APPROVE'}]}]};
+ await page.locator('[data-portal-label="المستندات والتراخيص"]').click();const card=page.locator('[data-center-license="reviewed"]');
+ await expect(card).toContainText('منتهية الصلاحية');await expect(card).toContainText('مقبولة بالمراجعة الداخلية');await expect(card.locator('form')).toHaveCount(0);
+ await expect(page.locator('#hl-center-documents')).toContainText('لا تمثل تحققًا من الجهة المصدرة');
+});
+test('license download is revoked before requesting private bytes',async({page})=>{
+ const state=await install(page);state.body={assets:[],licenses:[{id:'private',status:'REGISTERED',licenseAssetId:'asset'}]};let downloads=0;
+ await page.route('**/api/v1/center/me/licenses/private/attachment',route=>{downloads++;return json(route,{})});
+ await page.locator('[data-portal-label="المستندات والتراخيص"]').click();state.active=false;
+ await page.locator('[data-license-download="private"]').click();await expect(page.locator('#hl-center-documents')).toHaveCount(0);expect(downloads).toBe(0);
+});
+test('license upload cannot write after role revocation',async({page})=>{
+ const state=await install(page);state.body={assets:[],licenses:[{id:'private',status:'DRAFT'}]};let writes=0;
+ await page.route('**/api/v1/center/me/licenses/private/attachment',route=>{writes++;return json(route,{})});
+ await page.locator('[data-portal-label="المستندات والتراخيص"]').click();const form=page.locator('[data-license-attachment="private"]');
+ await form.locator('[name="issuedAt"]').fill('2025-01-01');await form.locator('[name="expiresAt"]').fill('2030-01-01');
+ await form.locator('[type="file"]').setInputFiles({name:'license.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-fixture')});state.active=false;
+ await form.locator('[type="submit"]').click();await expect(page.locator('#hl-center-documents')).toHaveCount(0);expect(writes).toBe(0);
+});

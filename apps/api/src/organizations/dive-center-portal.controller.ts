@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Param, Patch, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Req, Res, UseGuards } from '@nestjs/common';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 type AuthenticatedRequest = { auth: { accountId: string } };
+import { LicenseAttachmentInput } from './center-license.service';
 import { DiveCenterPortalService } from './dive-center-portal.service';
 
 @Controller('center')
@@ -11,6 +12,15 @@ export class DiveCenterPortalController {
   @Get('me/safety') safety(@Req() request:AuthenticatedRequest){return this.portal.safety(request.auth.accountId);}
 
   @Get('me/documents') documents(@Req() request:AuthenticatedRequest){return this.portal.documents(request.auth.accountId);}
+
+  @Patch('me/licenses/:id/attachment') attachLicense(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:LicenseAttachmentInput){return this.portal.attachLicense(request.auth.accountId,id,body);}
+  @Get('me/licenses/:id/attachment') async downloadLicense(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Res() res:any){
+    const file=await this.portal.downloadLicense(request.auth.accountId,id);
+    res.setHeader('Content-Type',file.mimeType);
+    res.setHeader('Content-Disposition',`attachment; filename="${file.filename}"`);
+    res.setHeader('Cache-Control','private, no-store');
+    return res.send(file.bytes);
+  }
 
   @Get('me/equipment/lookup/:code') equipmentLookup(@Req() request:AuthenticatedRequest,@Param('code') code:string){return this.portal.equipmentLookup(request.auth.accountId,code);}
   @Get('me/equipment') equipment(@Req() request:AuthenticatedRequest){return this.portal.equipment(request.auth.accountId);}

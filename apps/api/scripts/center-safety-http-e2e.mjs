@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {checkCenterLicenses} from './center-license-http-checks.mjs';
 import {checkCenterEquipment} from './center-equipment-http-checks.mjs';
 import {PrismaClient} from '@prisma/client';
 import {createHash,createHmac,randomUUID,randomBytes} from 'node:crypto';
@@ -69,6 +70,7 @@ try{
   const routes=[
     ['/me/overview'],['/me/safety'],['/me/documents'],['/me/customers'],
     ['/me/team'],['/me/professionals'],['/me/trips'],[`/me/trips/${a.trip.id}/bookings`],
+    [`/me/licenses/${missingResourceId}/attachment`],[`/me/licenses/${missingResourceId}/attachment`,'PATCH'],
     ['/me/equipment'],[`/me/equipment/lookup/${missingResourceId}`],
     [`/me/equipment/${missingResourceId}/history`],[`/me/equipment/${missingResourceId}/move`,'PATCH'],
   ];
@@ -119,7 +121,9 @@ try{
 
   await checkCenterEquipment(db,{base,a,b,ownerA,ta,tb,ts},check);
 
-  console.log(`Center safety and portal authorization HTTP/PostgreSQL E2E: ${checks}/${checks} passed (exact active role across 12 routes, same-session revocation/recovery, center isolation document metadata privacy, equipment movements/inspection gates/audit and TEXT/UUID center scope).`);
+  await checkCenterLicenses(db,{base,a,b,ownerA,staff,ta,tb,ts},check);
+
+  console.log(`Center safety and portal authorization HTTP/PostgreSQL E2E: ${checks}/${checks} passed (exact active role across 14 routes, same-session revocation/recovery, center isolation document metadata privacy, equipment movements/inspection gates/audit and TEXT/UUID center scope).`);
 }finally{
   await db.administrativeRecord.deleteMany({where:{organizationId:{in:ids.organizations}}});
   await db.orgUnit.deleteMany({where:{organizationId:{in:ids.organizations}}});
