@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Param, Patch, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 type AuthenticatedRequest = { auth: { accountId: string } };
+import { LicenseAttachmentInput, LicenseRecordInput } from './center-license.service';
 import { DiveCenterPortalService } from './dive-center-portal.service';
 
 @Controller('center')
@@ -11,6 +12,22 @@ export class DiveCenterPortalController {
   @Get('me/safety') safety(@Req() request:AuthenticatedRequest){return this.portal.safety(request.auth.accountId);}
 
   @Get('me/documents') documents(@Req() request:AuthenticatedRequest){return this.portal.documents(request.auth.accountId);}
+
+  @Patch('me/licenses/:id/register') registerLicense(@Req() request:AuthenticatedRequest,@Param('id') id:string){return this.portal.registerLicense(request.auth.accountId,id);}
+  @Post('me/licenses/:id/reviews') routeLicense(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:{toUnitId?:string}){return this.portal.routeLicense(request.auth.accountId,id,body?.toUnitId);}
+  @Patch('me/license-reviews/:id/assign') assignReview(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:{assigneeAccountId?:string}){return this.portal.assignLicenseReview(request.auth.accountId,id,body?.assigneeAccountId);}
+  @Patch('me/license-reviews/:id/decision') decideReview(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:{decision?:string}){return this.portal.decideLicenseReview(request.auth.accountId,id,body?.decision);}
+
+  @Post('me/licenses') createLicense(@Req() request:AuthenticatedRequest,@Body() body:LicenseRecordInput){return this.portal.createLicense(request.auth.accountId,body);}
+  @Post('me/licenses/:id/renew') renewLicense(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:LicenseRecordInput){return this.portal.createLicense(request.auth.accountId,body,id);}
+  @Patch('me/licenses/:id/attachment') attachLicense(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:LicenseAttachmentInput){return this.portal.attachLicense(request.auth.accountId,id,body);}
+  @Get('me/licenses/:id/attachment') async downloadLicense(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Res() res:any){
+    const file=await this.portal.downloadLicense(request.auth.accountId,id);
+    res.setHeader('Content-Type',file.mimeType);
+    res.setHeader('Content-Disposition',`attachment; filename="${file.filename}"`);
+    res.setHeader('Cache-Control','private, no-store');
+    return res.send(file.bytes);
+  }
 
   @Get('me/equipment/lookup/:code') equipmentLookup(@Req() request:AuthenticatedRequest,@Param('code') code:string){return this.portal.equipmentLookup(request.auth.accountId,code);}
   @Get('me/equipment') equipment(@Req() request:AuthenticatedRequest){return this.portal.equipment(request.auth.accountId);}

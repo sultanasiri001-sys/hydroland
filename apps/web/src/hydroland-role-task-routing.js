@@ -20,11 +20,8 @@
   const authorizeCurrentRole=async()=>{
     const auth=window.HydrolandAuth,access=window.HydrolandPortalAccess;
     const role=access?.getCurrentRole?.()||'diver';
-    if(role==='diver'||!auth?.isAuthenticated?.()||!access?.roleAllowed?.(role))return false;
-    if(typeof access.refreshPortalAccess!=='function')return false;
-    await access.refreshPortalAccess();
-    if(window.HydrolandPortalFreshness?.enforce?.()===false)return false;
-    return Boolean(auth.isAuthenticated()&&access.roleAllowed(role));
+    if(role==='diver'||!auth?.isAuthenticated?.()||typeof access?.authorizeRole!=='function')return false;
+    return access.authorizeRole(role,{sessionVersion:auth.getSessionVersion?.()});
   };
   const navigate=config=>{
     if(config.action){config.action();return true}
@@ -59,7 +56,4 @@
   if(root)new MutationObserver(()=>queueMicrotask(connect)).observe(root,{childList:true});
   connect();
   window.HydrolandRoleTasks={refresh:connect};
-  const freshnessScript=document.createElement('script');
-  freshnessScript.src='./hydroland-portal-access-freshness.js';
-  document.body.appendChild(freshnessScript);
 })();

@@ -51,15 +51,25 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
     await page.locator('#navigation a[href="#hl-diver-dashboard"]').click();await expect(board).toBeVisible();
    }else if(role==='instructor'){
     await board.locator('[data-action-label="إدارة الدورات"]').click();
-    await expect(page.locator('.hl-training')).toBeVisible();await expect(board.locator('.hl-portal-content')).toBeHidden();
+    await expect(page.locator('.hl-training')).toBeVisible();await expect(page.locator('.hl-training')).toHaveAttribute('data-training-mode','professional');
     await board.locator('[data-portal-home]').click();await expect(board.locator('.hl-portal-content')).toBeVisible();
+    for(const [label,mode] of [['الجدول الزمني','professional-schedule'],['التقييمات','professional-skills'],['الشهادات','professional-certificates'],['الإيرادات','professional-earnings']]){
+      if(viewport.name==='mobile'){await board.locator('[data-portal-menu]').click();await expect(board).toHaveClass(/hl-portal-nav-open/)}
+      await board.locator('.hl-portal-nav-item',{hasText:label}).click();
+      await expect(page.locator('.hl-training')).toBeVisible();await expect(page.locator('.hl-training')).toHaveAttribute('data-training-mode',mode);
+      await board.locator('[data-portal-home]').click();
+    }
+    await board.locator('[data-secondary-label="الملف المهني"]').click();
+    await expect(page.locator('#profile-dialog')).toBeVisible();await page.locator('#profile-dialog').evaluate(node=>node.close());
    }
   }
   // Loading an admin-only feature must not make it available in another workspace.
   await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="center"]').click();
   const center=page.locator('.hl-role-dashboard[data-role="center"]');
-  await expect(center.locator('[data-action-label="المخزون والمعدات"]')).toBeDisabled();
-  await expect(center.locator('[data-action-label="إدارة الرحلات"]')).toBeDisabled();
+  await expect(center.locator('[data-action-label="المخزون والمعدات"]')).toBeEnabled();
+  await expect(center.locator('[data-action-label="إدارة الرحلات"]')).toBeEnabled();
+  await center.locator('[data-action-label="المخزون والمعدات"]').click();
+  await expect(page.locator('#hl-center-equipment')).toBeVisible();
   await expect(page.locator('.hl-inventory')).toBeHidden();
   expect(errors).toEqual([]);
  });

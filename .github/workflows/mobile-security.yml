@@ -1,0 +1,36 @@
+name: Mobile release security (independent release)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mobile-security:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - name: Verify fail-closed audit contract
+        run: node scripts/release-dependency-audit.test.mjs
+      - name: Block vulnerable mobile releases including build tools
+        run: node scripts/release-dependency-audit.mjs mobile mobile-audit.json
+      - name: Retain full repository security coverage
+        if: always()
+        run: node scripts/release-dependency-audit.mjs repository repository-audit.json
+      - name: Upload mobile and full repository reports even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-and-repository-security
+          path: |
+            mobile-audit.json
+            repository-audit.json
+          retention-days: 7

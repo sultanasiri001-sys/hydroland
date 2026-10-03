@@ -1,11 +1,26 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { AuditService } from '../audit/audit.service';
+import { EquipmentInspectionService } from '../trips/equipment-inspection.service';
+import { CenterLicenseService, LicenseAttachmentInput, LicenseRecordInput } from './center-license.service';
 import { DatabaseService } from '../database/database.service';
 
 @Injectable()
 export class DiveCenterPortalService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly inspections: EquipmentInspectionService,
+    private readonly audit: AuditService,
+    private readonly licenses: CenterLicenseService,
+  ) {}
 
   private async managedCenter(accountId: string) {
+    const role = await this.db.roleAssignment.findUnique({
+      where: { accountId_role: { accountId, role: 'DIVE_CENTER' } },
+      select: { status: true },
+    });
+    if (role?.status !== 'ACTIVE') {
+      throw new ForbiddenException('Active dive-center role required.');
+    }
     const membership=await this.db.organizationMember.findFirst({
       where:{accountId,status:'ACTIVE',role:{in:['OWNER','ADMIN']},organization:{kind:{contains:'DIVE',mode:'insensitive'},status:'ACTIVE'}},
       select:{organization:{select:{id:true,displayName:true,legalName:true,registrationNumber:true,regionCode:true,status:true,documentBrandNameAr:true,documentBrandNameEn:true}}},
@@ -37,11 +52,38 @@ export class DiveCenterPortalService {
 
   async documents(accountId:string){
     const center=await this.managedCenter(accountId);
-    const [assets,records]=await Promise.all([
+    const [assets,records,units,reviewers]=await Promise.all([
       this.db.organizationDocumentAsset.findMany({where:{organizationId:center.id},select:{id:true,kind:true,mimeType:true,byteSize:true,sha256:true,createdAt:true},orderBy:{createdAt:'desc'},take:200}),
-      this.db.administrativeRecord.findMany({where:{organizationId:center.id,type:{in:['LICENSE','PERMIT','CERTIFICATE','REGULATORY_APPROVAL']}},select:{id:true,type:true,referenceNumber:true,subject:true,status:true,createdAt:true,updatedAt:true},orderBy:{updatedAt:'desc'},take:200}),
+      this.db.administrativeRecord.findMany({where:{organizationId:center.id,type:{in:['LICENSE','PERMIT','CERTIFICATE','REGULATORY_APPROVAL']}},select:{id:true,type:true,referenceNumber:true,subject:true,status:true,createdAt:true,updatedAt:true,unitId:true,licenseAssetId:true,licenseIssuedAt:true,licenseExpiresAt:true,routings:{select:{id:true,decision:true,decidedAt:true,createdAt:true,requestedByAccountId:true,assignedToAccountId:true,assignedTo:{select:{person:{select:{firstName:true,lastName:true}}}},toUnit:{select:{nameAr:true,nameEn:true}}},orderBy:{createdAt:'desc'}}},orderBy:{updatedAt:'desc'},take:200}),
+      this.db.orgUnit.findMany({where:{organizationId:center.id,active:true},select:{id:true,nameAr:true,nameEn:true,type:true},orderBy:{nameAr:'asc'}}),
+      this.licenses.reviewers(center.id),
     ]);
-    return {assets,licenses:records};
+    return {assets,units,licenses:records.map(({unitId,routings,...record})=>({...record,
+      reviewUnits:units.filter(unit=>unit.id!==unitId),
+      routings:routings.map(({requestedByAccountId,assignedToAccountId,assignedTo,toUnit,...routing})=>({...routing,
+        unitName:toUnit.nameAr||toUnit.nameEn,reviewerName:assignedTo?[assignedTo.person.firstName,assignedTo.person.lastName].filter(Boolean).join(' ').trim()||'مراجع المركز':null,
+        canDecide:!routing.decision&&assignedToAccountId===accountId&&requestedByAccountId!==accountId,
+        reviewerOptions:routing.decision?[]:reviewers.filter(x=>x.id!==requestedByAccountId),
+      })),
+    }))};
+  }
+
+  async registerLicense(accountId:string,id:string){const center=await this.managedCenter(accountId);return this.licenses.register(accountId,center.id,id);}
+  async routeLicense(accountId:string,id:string,toUnitId:unknown){const center=await this.managedCenter(accountId);return this.licenses.route(accountId,center.id,id,toUnitId);}
+  async assignLicenseReview(accountId:string,id:string,assignee:unknown){const center=await this.managedCenter(accountId);return this.licenses.assign(accountId,center.id,id,assignee);}
+  async decideLicenseReview(accountId:string,id:string,decision:unknown){const center=await this.managedCenter(accountId);return this.licenses.decide(accountId,center.id,id,decision);}
+
+  async createLicense(accountId:string,input:LicenseRecordInput,renewalId?:string){
+    const center=await this.managedCenter(accountId);
+    return this.licenses.create(accountId,center.id,input,renewalId);
+  }
+  async attachLicense(accountId:string,id:string,input:LicenseAttachmentInput){
+    const center=await this.managedCenter(accountId);
+    return this.licenses.attach(accountId,center.id,id,input);
+  }
+  async downloadLicense(accountId:string,id:string){
+    const center=await this.managedCenter(accountId);
+    return this.licenses.download(center.id,id);
   }
 
   async equipmentLookup(accountId:string,code:string){
@@ -49,7 +91,7 @@ export class DiveCenterPortalService {
     const rows=await this.db.$queryRaw<Array<{resourceId:string;assetCode:string;barcodeValue:string;qrValue:string;serialNumber:string|null;sku:string|null;location:string|null;stockStatus:string;resourceName:string;active:boolean}>>`
       SELECT b."resourceId",b."assetCode",b."barcodeValue",b."qrValue",b."serialNumber",b."sku",b."location",b."stockStatus",r."name" AS "resourceName",r."active"
       FROM "EquipmentBarcode" b JOIN "CalendarResource" r ON r."id"=b."resourceId"
-      WHERE b."organizationId"=${center.id}::uuid AND r."type"='EQUIPMENT' AND (b."assetCode"=${clean} OR b."barcodeValue"=${clean} OR b."qrValue"=${clean} OR b."serialNumber"=${clean}) LIMIT 1`;
+      WHERE b."organizationId"=(jsonb_populate_record(NULL::"EquipmentBarcode", jsonb_build_object('organizationId', ${center.id}::text)))."organizationId" AND r."type"='EQUIPMENT' AND (b."assetCode"=${clean} OR b."barcodeValue"=${clean} OR b."qrValue"=${clean} OR b."serialNumber"=${clean}) LIMIT 1`;
     if(!rows.length)throw new NotFoundException('Equipment code not found in managed dive center.');return rows[0];
   }
 
@@ -58,13 +100,13 @@ export class DiveCenterPortalService {
     return this.db.$queryRaw<Array<{resourceId:string;assetCode:string;serialNumber:string|null;sku:string|null;location:string|null;stockStatus:string;resourceName:string;active:boolean}>>`
       SELECT b."resourceId",b."assetCode",b."serialNumber",b."sku",b."location",b."stockStatus",r."name" AS "resourceName",r."active"
       FROM "EquipmentBarcode" b JOIN "CalendarResource" r ON r."id"=b."resourceId"
-      WHERE b."organizationId"=${center.id}::uuid AND r."type"='EQUIPMENT'
+      WHERE b."organizationId"=(jsonb_populate_record(NULL::"EquipmentBarcode", jsonb_build_object('organizationId', ${center.id}::text)))."organizationId" AND r."type"='EQUIPMENT'
       ORDER BY r."name",b."assetCode"`;
   }
 
   async moveEquipment(accountId:string,resourceId:string,input:{movementType?:string;toLocation?:string|null;tripId?:string|null;notes?:string|null}){
     const center=await this.managedCenter(accountId);
-    const owned=await this.db.$queryRaw<Array<{resourceId:string;stockStatus:string;location:string|null}>>`SELECT "resourceId","stockStatus","location" FROM "EquipmentBarcode" WHERE "resourceId"=${resourceId} AND "organizationId"=${center.id}::uuid LIMIT 1`;
+    const owned=await this.db.$queryRaw<Array<{resourceId:string;stockStatus:string;location:string|null}>>`SELECT "resourceId","stockStatus","location" FROM "EquipmentBarcode" WHERE "resourceId"=${resourceId} AND "organizationId"=(jsonb_populate_record(NULL::"EquipmentBarcode", jsonb_build_object('organizationId', ${center.id}::text)))."organizationId" LIMIT 1`;
     if(!owned.length)throw new NotFoundException('Equipment not found in managed dive center.');
     const allowed=['CHECK_IN','CHECK_OUT','TRANSFER','MAINTENANCE','QUARANTINE','RELEASE','RETIRE'];if(!input.movementType||!allowed.includes(input.movementType))throw new BadRequestException('Invalid equipment movement type.');
     if(input.tripId){const trip=await this.db.trip.findFirst({where:{id:input.tripId,organizationId:center.id},select:{id:true,status:true}});if(!trip)throw new NotFoundException('Trip not found in managed dive center.');if(['CANCELLED','COMPLETED'].includes(trip.status))throw new ConflictException('Equipment cannot be assigned to a closed trip.');}
@@ -73,12 +115,32 @@ export class DiveCenterPortalService {
     if(input.movementType==='CHECK_IN'&&current.stockStatus!=='CHECKED_OUT')throw new ConflictException('Only checked-out equipment can be checked in.');
     if(input.movementType==='RELEASE'&&!['MAINTENANCE','QUARANTINED'].includes(current.stockStatus))throw new ConflictException('Only maintained or quarantined equipment can be released.');
     const next=input.movementType==='TRANSFER'?current.stockStatus:input.movementType==='CHECK_OUT'?'CHECKED_OUT':input.movementType==='MAINTENANCE'?'MAINTENANCE':input.movementType==='QUARANTINE'?'QUARANTINED':input.movementType==='RETIRE'?'RETIRED':'AVAILABLE';
-    return this.db.serializable(async tx=>{const latest=await tx.$queryRaw<Array<{stockStatus:string;location:string|null}>>`SELECT "stockStatus","location" FROM "EquipmentBarcode" WHERE "resourceId"=${resourceId} AND "organizationId"=${center.id}::uuid FOR UPDATE`;if(!latest.length||latest[0].stockStatus!==current.stockStatus)throw new ConflictException('Equipment state changed. Refresh and retry.');const rows=await tx.$queryRaw`INSERT INTO "EquipmentMovement"("id","resourceId","movementType","fromLocation","toLocation","tripId","assignedAccountId","notes","actorAccountId","occurredAt") VALUES(gen_random_uuid()::text,${resourceId},${input.movementType},${latest[0].location},${input.toLocation??null},${input.tripId??null},NULL,${input.notes??null},${accountId},NOW()) RETURNING *`;await tx.$executeRaw`UPDATE "EquipmentBarcode" SET "stockStatus"=${next},"location"=COALESCE(${input.toLocation??null},"location"),"updatedAt"=NOW() WHERE "resourceId"=${resourceId} AND "organizationId"=${center.id}::uuid`;return{movement:(rows as any[])[0],stockStatus:next}});
+    if(input.movementType==='CHECK_OUT'){
+      const inspection=await this.inspections.evaluate([resourceId]);
+      if(inspection.blocked)throw new ConflictException('Equipment inspection or service policy blocks check-out.');
+    }
+    return this.db.serializable(async tx=>{
+      const latest=await tx.$queryRaw<Array<{stockStatus:string;location:string|null}>>`
+        SELECT "stockStatus","location" FROM "EquipmentBarcode"
+        WHERE "resourceId"=${resourceId} AND "organizationId"=(jsonb_populate_record(NULL::"EquipmentBarcode", jsonb_build_object('organizationId', ${center.id}::text)))."organizationId" FOR UPDATE`;
+      if(!latest.length||latest[0].stockStatus!==current.stockStatus)throw new ConflictException('Equipment state changed. Refresh and retry.');
+      const rows=await tx.$queryRaw<Array<{id:string}>>`
+        INSERT INTO "EquipmentMovement"("id","resourceId","movementType","fromLocation","toLocation","tripId","assignedAccountId","notes","actorAccountId","occurredAt")
+        VALUES(gen_random_uuid()::text,${resourceId},${input.movementType},${latest[0].location},${input.toLocation??null},${input.tripId??null},NULL,${input.notes??null},${accountId},NOW()) RETURNING *`;
+      await tx.$executeRaw`
+        UPDATE "EquipmentBarcode" SET "stockStatus"=${next},"location"=COALESCE(${input.toLocation??null},"location"),"updatedAt"=NOW()
+        WHERE "resourceId"=${resourceId} AND "organizationId"=(jsonb_populate_record(NULL::"EquipmentBarcode", jsonb_build_object('organizationId', ${center.id}::text)))."organizationId"`;
+      await this.audit.record({actorId:accountId,action:'EQUIPMENT_INVENTORY_MOVED',resource:'CalendarResource',resourceId,
+        metadata:{organizationId:center.id,movementId:rows[0].id,movementType:input.movementType,
+          fromLocation:latest[0].location,toLocation:input.toLocation??null,tripId:input.tripId??null,
+          assignedAccountId:null,previousStatus:current.stockStatus,stockStatus:next,notes:input.notes??null}},tx);
+      return{movement:rows[0],stockStatus:next};
+    });
   }
 
   async equipmentHistory(accountId:string,resourceId:string){
     const center=await this.managedCenter(accountId);
-    const owned=await this.db.$queryRaw<Array<{resourceId:string}>>`SELECT "resourceId" FROM "EquipmentBarcode" WHERE "resourceId"=${resourceId} AND "organizationId"=${center.id}::uuid LIMIT 1`;
+    const owned=await this.db.$queryRaw<Array<{resourceId:string}>>`SELECT "resourceId" FROM "EquipmentBarcode" WHERE "resourceId"=${resourceId} AND "organizationId"=(jsonb_populate_record(NULL::"EquipmentBarcode", jsonb_build_object('organizationId', ${center.id}::text)))."organizationId" LIMIT 1`;
     if(!owned.length)throw new NotFoundException('Equipment not found in managed dive center.');
     return this.db.$queryRaw`SELECT "id","movementType","fromLocation","toLocation","tripId","assignedAccountId","notes","occurredAt" FROM "EquipmentMovement" WHERE "resourceId"=${resourceId} ORDER BY "occurredAt" DESC LIMIT 200`;
   }

@@ -29,6 +29,20 @@
     })();
     try{return await refreshPromise}finally{refreshPromise=null}
   };
+  const authorizeRole=async(role,context={})=>{
+    const session=context.sessionVersion??auth.getSessionVersion?.();
+    const stillCurrent=()=>authenticated()&&session===auth.getSessionVersion?.()&&(!context.isCurrent||context.isCurrent());
+    if(role==='diver')return stillCurrent();
+    if(!stillCurrent())return false;
+    const refreshed=await refreshPortalAccess();
+    if(!refreshed||!stillCurrent())return false;
+    if(!access.roleAllowed(role)){
+      enforceCurrentRole();
+      access.clearProtectedPortal?.();
+      return false;
+    }
+    return true;
+  };
   const syncRoleOptions=()=>{
     document.querySelectorAll('#role-dialog [data-role]').forEach(button=>{
       const allowed=access.roleAllowed(button.dataset.role);
@@ -54,6 +68,7 @@
     dialog?.showModal();
   };
   access.refreshPortalAccess=refreshPortalAccess;
+  access.authorizeRole=authorizeRole;
   roleSwitch?.addEventListener('click',async event=>{
     if(replaySwitch)return;
     if(!authenticated()){syncRoleOptions();return}
@@ -84,6 +99,7 @@
     syncRoleOptions();
   });
   document.addEventListener('hydroland:auth-changed',()=>queueMicrotask(syncRoleOptions));
+  document.addEventListener('hydroland:profile-data-ready',()=>queueMicrotask(()=>{enforceCurrentRole();syncRoleOptions()}));
   syncRoleOptions();
-  window.HydrolandPortalFreshness={refresh:refreshPortalAccess,sync:syncRoleOptions,enforce:enforceCurrentRole,openRoleSwitcher};
+  window.HydrolandPortalFreshness={refresh:refreshPortalAccess,authorizeRole,sync:syncRoleOptions,enforce:enforceCurrentRole,openRoleSwitcher};
 })();

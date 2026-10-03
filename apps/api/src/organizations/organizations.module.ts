@@ -1,3 +1,5 @@
+import { AdministrativeAffairsModule } from '../administrative-affairs/administrative-affairs.module';
+import { CenterLicenseService } from './center-license.service';
 import { Module } from '@nestjs/common';
 import { AdminModule } from '../admin/admin.module';
 import { AuditModule } from '../audit/audit.module';
@@ -10,8 +12,8 @@ import { DiveCenterPortalController } from './dive-center-portal.controller';
 import { DiveCenterPortalService } from './dive-center-portal.service';
 
 @Module({
-  imports: [AuthModule, AdminModule, AuditModule, NotificationsModule, TripsModule],
+  imports: [AdministrativeAffairsModule, AuthModule, AdminModule, AuditModule, NotificationsModule, TripsModule],
   controllers: [OrganizationsController, DiveCenterPortalController],
-  providers: [OrganizationsService, DiveCenterPortalService],
+  providers: [OrganizationsService, DiveCenterPortalService, CenterLicenseService],
 })
 export class OrganizationsModule {}

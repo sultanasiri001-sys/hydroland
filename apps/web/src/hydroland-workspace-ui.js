@@ -42,6 +42,7 @@
       document.querySelectorAll(selector).forEach(node=>node.classList.toggle('hl-workspace-hidden',!isAuthed||!roles.includes(role)));
     }
     syncNavigation(role);
+    if(selected?.isConnected&&isAuthed){selected.classList.add('hl-workspace-selected');if(document.body.dataset.hlWorkspaceService==='hl-training-service'){const training=selected.matches('.hl-training')?selected:selected.querySelector?.('.hl-training');training?.classList.add('hl-workspace-selected');selected.classList.add('hl-managed-service-root')}}
     const home=document.querySelector('#navigation > a[href="#home"],#navigation > a[href="#hl-diver-dashboard"]');
     if(home){
       const label=home.querySelector('span:last-child');
@@ -63,25 +64,28 @@
     fragment.innerHTML=[['home','الرئيسية','#hl-diver-dashboard'],['boat','الرحلات والحجوزات','#trips'],['water','سجل الغوص','logbook'],['tanks','المعدات','diver-equipment-list'],['certificate','الشهادات','certs'],['bag','المتجر والتأجير','#store'],['people','المجتمع','#community'],['pin','المواقع','#marine-intelligence'],['learn','التدريب','#training'],['mail','الرسائل','messages'],['help','مركز المساعدة','#hl-support'],['settings','الإعدادات','settings']].map(([art,label,target])=>target.startsWith('#')?`<a class="nav-item" href="${target}"><span class="nav-icon">${icon(art)}</span><span>${label}</span></a>`:`<button type="button" class="nav-item" data-hl-action="${target}"><span class="nav-icon">${icon(art)}</span><span>${label}</span></button>`).join('');nav.replaceChildren(...fragment.children,switcher);
   };
   const main=document.getElementById('main');
-  const serviceGroups={'hl-marine-documents':['#hl-marine-documents','#hl-marine-readiness'],training:['#training','.hl-training'],community:['#community','.hl-community','.hl-support','.hl-members'],safety:['#safety','.hl-safety-center','.hl-safety-review','#hl-safety-incidents','#hl-marine-readiness']};
+  const serviceGroups={'hl-marine-documents':['#hl-marine-documents','#hl-marine-readiness'],'hl-training-service':['.hl-training'],training:['#training','.hl-training'],community:['#community','.hl-community','.hl-support','.hl-members'],safety:['#safety','.hl-safety-center','.hl-safety-review','#hl-safety-incidents','#hl-marine-readiness']};
   let selected=null;
   const show=target=>{
     if(!auth()||!target)return false;
+    setWorkspace();
     let node=typeof target==='string'?document.getElementById(target):target;if(!node)return false;
     const role=currentRole(),home=node.matches('.hl-role-dashboard,#hl-diver-dashboard,#home');
     main.querySelectorAll('.hl-workspace-selected').forEach(item=>item.classList.remove('hl-workspace-selected'));
     const heading=document.querySelector('.hl-service-heading');
-    if(home){selected=null;delete document.body.dataset.hlWorkspaceView;if(heading)heading.hidden=true;history.replaceState(null,'','#'+(role==='diver'?'hl-diver-dashboard':'home'));document.querySelectorAll('.hl-portal-nav-item').forEach((item,index)=>{item.classList.toggle('active',index===0);if(index===0)item.setAttribute('aria-current','page');else item.removeAttribute('aria-current')});window.scrollTo({top:0,behavior:'instant'});return true}
+    if(home){selected=null;document.querySelectorAll('.hl-managed-service-root').forEach(item=>item.classList.remove('hl-managed-service-root','hl-workspace-selected'));delete document.body.dataset.hlWorkspaceView;delete document.body.dataset.hlWorkspaceService;if(heading)heading.hidden=true;history.replaceState(null,'','#'+(role==='diver'?'hl-diver-dashboard':'home'));document.querySelectorAll('.hl-portal-nav-item').forEach((item,index)=>{item.classList.toggle('active',index===0);if(index===0)item.setAttribute('aria-current','page');else item.removeAttribute('aria-current')});window.scrollTo({top:0,behavior:'instant'});return true}
     if(node.classList.contains('hl-workspace-hidden'))return false;
-    while(node.parentElement&&node.parentElement!==main)node=node.parentElement;
-    if(node.parentElement!==main)return false;
+    const managedTraining=node.matches('.hl-training')?node:null;
+    while(!managedTraining&&node.parentElement&&node.parentElement!==main)node=node.parentElement;
+    if(!managedTraining&&node.parentElement!==main)return false;
+    if(managedTraining){let serviceRoot=managedTraining;while(serviceRoot.parentElement&&serviceRoot.parentElement!==main)serviceRoot=serviceRoot.parentElement;if(serviceRoot.parentElement!==main)return false;selected=serviceRoot;serviceRoot.classList.add('hl-workspace-selected','hl-managed-service-root');managedTraining.classList.add('hl-workspace-selected');document.body.dataset.hlWorkspaceView='service';document.body.dataset.hlWorkspaceService='hl-training-service';if(heading){heading.hidden=false;heading.querySelector('[data-service-title]').textContent=managedTraining.querySelector('h1,h2,h3')?.textContent||'مساحة التدريب'}document.querySelector('.hl-role-dashboard')?.classList.remove('hl-portal-nav-open');document.querySelector('.sidebar')?.classList.remove('open');if(!managedTraining.hasAttribute('tabindex'))managedTraining.tabIndex=-1;managedTraining.focus({preventScroll:true});window.scrollTo({top:0,behavior:'instant'});return true}
     selected=node;node.classList.add('hl-workspace-selected');document.body.dataset.hlWorkspaceView='service';
     for(const selector of serviceGroups[node.id]||[])document.querySelectorAll(selector).forEach(item=>{if(!item.classList.contains('hl-workspace-hidden'))item.classList.add('hl-workspace-selected')});
     if(heading){heading.hidden=false;heading.querySelector('[data-service-title]').textContent=node.querySelector('h1,h2,h3')?.textContent||'مساحة الخدمة'}
     document.querySelector('.hl-role-dashboard')?.classList.remove('hl-portal-nav-open');document.querySelector('.sidebar')?.classList.remove('open');
     if(!node.hasAttribute('tabindex'))node.tabIndex=-1;node.focus({preventScroll:true});window.scrollTo({top:0,behavior:'instant'});return true;
   };
-  const reset=()=>{selected=null;main.querySelectorAll('.hl-workspace-selected').forEach(item=>item.classList.remove('hl-workspace-selected'));delete document.body.dataset.hlWorkspaceView;const heading=document.querySelector('.hl-service-heading');if(heading)heading.hidden=true};
+  const reset=()=>{selected=null;document.querySelectorAll('.hl-managed-service-root').forEach(item=>item.classList.remove('hl-managed-service-root','hl-workspace-selected'));delete document.body.dataset.hlWorkspaceService;main.querySelectorAll('.hl-workspace-selected').forEach(item=>item.classList.remove('hl-workspace-selected'));delete document.body.dataset.hlWorkspaceView;const heading=document.querySelector('.hl-service-heading');if(heading)heading.hidden=true};
   document.addEventListener('click',event=>{
     if(!auth()||event.defaultPrevented)return;
     const link=event.target.closest('a[href^="#"]');if(!link||!link.closest('#navigation,.mobile-nav'))return;
