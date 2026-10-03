@@ -106,3 +106,29 @@ typecheck and build passed locally before submission.
 Production operation acceptance and document/license lifecycles remain open.
 Security release hold is unchanged; no merge, deployment, production migration,
 policy change or dependency-audit exception is authorized by this repair.
+
+## Document lifecycle continuation
+
+Review found a version race in DocumentPersistenceService.transition: after its
+initial read, a concurrent DRAFT revision could commit before the transition
+transaction. The transaction checked status only, so it submitted the changed
+version. An actual-service local reproduction accepted version 2 after reading
+version 1. The repaired transaction checks both status and version, including
+both in the conditional update. The same reproduction now returns 400 without
+writing a transition or event.
+
+A deterministic CI PostgreSQL regression invokes the real transition service and
+commits the competing revision through the running HTTP API before opening the
+transition transaction. It checks that stale submit leaves DRAFT version 2 and
+its revision history intact, writes no approval-transition event, and that a
+fresh HTTP submit succeeds with exactly one version-2 event. Existing HTTP tests
+continue to cover membership isolation, separation of creator/approver/signer,
+PDF rendering, pinned branding/templates, archive immutability and numbering.
+This server-side race guard does not add a client expected-version contract.
+
+License acceptance remains separate: the center endpoint currently lists
+AdministrativeRecord metadata; OrganizationDocumentAsset's implemented upload
+endpoint accepts logos, not license attachments. Metadata fixtures of kind
+LICENSE do not establish an upload/expiry/review/external-verification workflow.
+No external license approval or qualified electronic-signature acceptance is
+claimed. No production mutation, merge, deployment or security exception occurs.
