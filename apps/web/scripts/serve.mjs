@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { randomUUID } from 'node:crypto';
 import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -11,19 +12,30 @@ const isWithin = (directory, candidate) => {
   return relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 };
 
-export function createStaticServer(directory = root) {
+export function createStaticServer(directory = root, { onReject = event => console.warn(JSON.stringify(event)) } = {}) {
   const publicRoot = path.resolve(directory);
   return createServer(async (request, response) => {
+    const reject = (status, reason, message) => {
+      const requestId = randomUUID();
+      // Never log request URLs, headers, cookies, credentials or client addresses.
+      onReject({ event: 'web_request_rejected', requestId, status, reason });
+      response.writeHead(status, {
+        'content-type': 'text/plain; charset=utf-8',
+        'content-length': Buffer.byteLength(message),
+        'cache-control': 'no-store',
+        'x-hydroland-request-id': requestId,
+      }).end(message);
+    };
     let requestPath;
     try {
       requestPath = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
       if (requestPath.includes('\0')) throw new URIError('Invalid path');
     } catch {
-      response.writeHead(400).end('Bad request');
+      reject(400, 'invalid_path', 'Bad request');
       return;
     }
     let candidate = path.resolve(publicRoot, requestPath === '/' ? 'index.html' : `.${requestPath}`);
-    if (!isWithin(publicRoot, candidate)) { response.writeHead(403).end(); return; }
+    if (!isWithin(publicRoot, candidate)) { reject(403, 'outside_public_root', 'Forbidden'); return; }
     try {
       if (!(await stat(candidate)).isFile()) throw new Error();
     } catch {
@@ -32,12 +44,12 @@ export function createStaticServer(directory = root) {
     try {
       // Resolve links too: a public asset must not expose a file outside dist.
       const [resolvedRoot, resolvedFile] = await Promise.all([realpath(publicRoot), realpath(candidate)]);
-      if (!isWithin(resolvedRoot, resolvedFile)) { response.writeHead(403).end(); return; }
+      if (!isWithin(resolvedRoot, resolvedFile)) { reject(403, 'outside_public_root', 'Forbidden'); return; }
       const content = await readFile(resolvedFile);
       response.writeHead(200, { 'content-type': types[path.extname(candidate)] ?? 'application/octet-stream' });
       response.end(content);
     } catch {
-      response.writeHead(404).end('Not found');
+      reject(404, 'file_unavailable', 'Not found');
     }
   });
 }
