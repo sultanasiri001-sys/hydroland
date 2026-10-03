@@ -137,6 +137,8 @@ for(const decision of ['APPROVE','REJECT'])test(`assigned license reviewer recor
 for(const action of ['register','route','assign','decide'])test(`license ${action} refreshes revoked access before writing`,async({page})=>{
  const state=await install(page);const row={id:'guarded',status:action==='register'?'DRAFT':'REGISTERED',licenseAssetId:'asset',reviewUnits:[{id:'review-unit',nameAr:'المراجعة'}],routings:action==='assign'||action==='decide'?[{id:'pending',canDecide:true,reviewerOptions:[{id:'reviewer',name:'مراجع'}]}]:[]};state.body={assets:[],licenses:[row]};let writes=0;
  await page.route(/\/api\/v1\/center\/me\/(?:licenses|license-reviews)\//,route=>{writes++;return json(route,{})});
- await page.locator('[data-portal-label="المستندات والتراخيص"]').click();const form=page.locator(`[data-license-review-action="${action}"]`);await expect(form).toBeVisible();if(action==='decide')await form.locator('select').selectOption('APPROVE');state.active=false;await form.locator('button').click();
- await expect(page.locator('#hl-center-documents')).toHaveCount(0);expect(writes).toBe(0);
+ await page.locator('[data-portal-label="المستندات والتراخيص"]').click();const form=page.locator(`[data-license-review-action="${action}"]`);await expect(form).toBeVisible();if(action==='decide')await form.locator('select').selectOption('APPROVE');const before=state.refreshes;state.active=false;
+ // Positive flow covers clicks. Native submit avoids scroll/focus refresh removing the form before this authorization test can submit it.
+ await form.evaluate(node=>node.requestSubmit());
+ await expect(page.locator('#hl-center-documents')).toHaveCount(0);expect(writes).toBe(0);expect(state.refreshes).toBeGreaterThan(before);
 });
