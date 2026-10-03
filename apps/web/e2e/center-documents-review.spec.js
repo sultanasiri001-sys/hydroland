@@ -89,8 +89,8 @@ test('license upload cannot write after role revocation',async({page})=>{
 
 test('center creates a scoped license draft and can immediately attach its file',async({page})=>{
  const state=await install(page);state.body={assets:[],licenses:[],units:[{id:'unit-a',nameAr:'وحدة المركز'}]};let created;
- await page.route('**/api/v1/center/me/licenses',route=>{created=route.request().postDataJSON();state.body.licenses.push({id:'new-license',status:'DRAFT',...created});return json(route,{id:'new-license',status:'DRAFT'},201)});
- await page.locator('[data-portal-label="المستندات والتراخيص"]').click();await page.getByText('إنشاء سجل رخصة جديد',{exact:true}).click();
+ await page.route('**/api/v1/center/me/licenses',route=>{expect(route.request().headers()['content-type']).toBe('application/json');created=route.request().postDataJSON();state.body.licenses.push({id:'new-license',status:'DRAFT',...created});return json(route,{id:'new-license',status:'DRAFT'},201)});
+ await page.locator('[data-portal-label="المستندات والتراخيص"]').click();await expect(page.locator('[data-license-create]')).toBeVisible();
  const form=page.locator('[data-license-create]');await form.locator('[name="referenceNumber"]').fill('LIC-NEW-1');await form.locator('[name="subject"]').fill('رخصة المركز الجديدة');
  const before=state.refreshes;await form.locator('[type="submit"]').click();
  await expect(page.locator('[data-license-attachment="new-license"]')).toBeVisible();
@@ -106,13 +106,13 @@ test('renewal creates a separate draft without replacing the old license',async(
 });
 test('duplicate reference error preserves draft form for correction',async({page})=>{
  const state=await install(page);state.body={assets:[],licenses:[],units:[{id:'unit-a',nameAr:'المركز'}]};await page.route('**/api/v1/center/me/licenses',route=>json(route,{message:'Duplicate reference'},409));
- await page.locator('[data-portal-label="المستندات والتراخيص"]').click();await page.getByText('إنشاء سجل رخصة جديد',{exact:true}).click();
+ await page.locator('[data-portal-label="المستندات والتراخيص"]').click();await expect(page.locator('[data-license-create]')).toBeVisible();
  const form=page.locator('[data-license-create]');await form.locator('[name="referenceNumber"]').fill('DUPLICATE');await form.locator('[name="subject"]').fill('رخصة');await form.locator('[type="submit"]').click();
  await expect(form.locator('[data-license-feedback]')).toContainText('الرقم المرجعي مستخدم');await expect(form.locator('[name="referenceNumber"]')).toHaveValue('DUPLICATE');await expect(form.locator('[type="submit"]')).toBeEnabled();
 });
 test('license creation rechecks revoked center role before sending a write',async({page})=>{
  const state=await install(page);state.body={assets:[],licenses:[],units:[{id:'unit-a',nameAr:'المركز'}]};let writes=0;await page.route('**/api/v1/center/me/licenses',route=>{writes++;return json(route,{})});
- await page.locator('[data-portal-label="المستندات والتراخيص"]').click();await page.getByText('إنشاء سجل رخصة جديد',{exact:true}).click();const form=page.locator('[data-license-create]');
+ await page.locator('[data-portal-label="المستندات والتراخيص"]').click();await expect(page.locator('[data-license-create]')).toBeVisible();const form=page.locator('[data-license-create]');
  await form.locator('[name="referenceNumber"]').fill('REF');await form.locator('[name="subject"]').fill('رخصة');state.active=false;await form.locator('[type="submit"]').click();
  await expect(page.locator('#hl-center-documents')).toHaveCount(0);expect(writes).toBe(0);
 });
