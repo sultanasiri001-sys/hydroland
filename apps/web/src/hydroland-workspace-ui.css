@@ -60,3 +60,14 @@ body.hl-visitor-mode #role-switch{display:none!important}
 .hl-managed-workspace[data-hl-workspace-service="hl-training-service"] .hl-training.hl-workspace-selected{display:block!important}
 @media(max-width:1200px){.hl-managed-workspace[data-hl-workspace-service="hl-training-service"] #main>.hl-managed-service-root{margin-right:228px;max-width:calc(100% - 252px)}}
 @media(max-width:760px){.hl-managed-workspace[data-hl-workspace-service="hl-training-service"] #main>.hl-managed-service-root{margin:12px;max-width:calc(100% - 24px)}}
+
+/* Center licenses: keep upload and confirmation usable on narrow screens. */
+.hl-center-documents { padding:clamp(16px,3vw,32px); min-width:0; }
+.hl-center-documents form { display:grid; gap:14px; margin-block:16px; }
+.hl-center-documents fieldset { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr)); gap:16px; border:1px solid currentColor; border-radius:12px; padding:16px; min-width:0; }
+.hl-center-documents [hidden] { display:none !important; }
+.hl-center-documents label { display:flex; flex-direction:column; gap:8px; min-width:0; }
+.hl-center-documents input:not([type=checkbox]),.hl-center-documents select { width:100%; box-sizing:border-box; min-width:0; padding:10px; }
+.hl-center-documents label:has([type=checkbox]) { flex-direction:row; align-items:center; }
+.hl-center-documents input[type=date] { direction:ltr; }
+.hl-center-documents [role=status] { overflow-wrap:anywhere; }

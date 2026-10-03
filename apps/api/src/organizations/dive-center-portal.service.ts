@@ -73,6 +73,10 @@ export class DiveCenterPortalService {
   async assignLicenseReview(accountId:string,id:string,assignee:unknown){const center=await this.managedCenter(accountId);return this.licenses.assign(accountId,center.id,id,assignee);}
   async decideLicenseReview(accountId:string,id:string,decision:unknown){const center=await this.managedCenter(accountId);return this.licenses.decide(accountId,center.id,id,decision);}
 
+  async saveLicense(accountId:string,input:LicenseRecordInput & LicenseAttachmentInput){
+    const center=await this.managedCenter(accountId);
+    return this.licenses.save(accountId,center.id,input);
+  }
   async createLicense(accountId:string,input:LicenseRecordInput,renewalId?:string){
     const center=await this.managedCenter(accountId);
     return this.licenses.create(accountId,center.id,input,renewalId);

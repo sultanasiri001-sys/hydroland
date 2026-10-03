@@ -84,10 +84,7 @@ export class CenterLicenseService {
     if(Number.isNaN(date.getTime())||date.toISOString().slice(0,10)!==value)throw new BadRequestException('Invalid license date.');
     return date;
   }
-  async attach(accountId:string,organizationId:string,id:string,input:LicenseAttachmentInput){
-    const record=await this.db.administrativeRecord.findFirst({where:{id,organizationId,type:{in:types}}});
-    if(!record)throw new NotFoundException('License record not found in managed center.');
-    if(record.status!=='DRAFT')throw new ConflictException('Only draft license attachments can be changed.');
+  private async attachmentData(input:LicenseAttachmentInput){
     const issuedAt=this.date(input?.issuedAt),expiresAt=this.date(input?.expiresAt);
     if(expiresAt<=issuedAt)throw new BadRequestException('License expiry must be after issue date.');
     const encoded=input?.base64,mimeType=input?.mimeType;
@@ -100,6 +97,35 @@ export class CenterLicenseService {
     if(!png&&!jpeg&&!pdf)throw new BadRequestException('License must be a PDF, PNG or JPEG with a matching file signature.');
     if(pdf){try{const parsed=await PDFDocument.load(bytes);if(parsed.getPageCount()<1)throw new Error('Empty PDF');}catch{throw new BadRequestException('License PDF is unreadable or encrypted.');}}
     const sha256=createHash('sha256').update(bytes).digest('hex');
+    return {issuedAt,expiresAt,mimeType,bytes,sha256};
+  }
+  async save(accountId:string,organizationId:string,input:LicenseRecordInput & LicenseAttachmentInput){
+    const text=(value:unknown,max:number)=>typeof value==='string'&&value.trim().length<=max?value.trim():'';
+    const referenceNumber=text(input?.referenceNumber,120),subject=text(input?.subject,240);
+    if(!referenceNumber||!subject)throw new BadRequestException('أدخل رقم الرخصة وعنوانها.');
+    const type=input?.type,unitId=input?.unitId;
+    if(typeof type!=='string'||!types.includes(type)||typeof unitId!=='string'||!unitId)throw new BadRequestException('اختر نوع الرخصة ووحدة المركز.');
+    const {issuedAt,expiresAt,mimeType,bytes,sha256}=await this.attachmentData(input);
+    try{
+      return await this.db.serializable(async tx=>{
+        const unit=await tx.orgUnit.findFirst({where:{id:unitId,organizationId,active:true},select:{id:true}});
+        if(!unit)throw new NotFoundException('Active unit not found in managed center.');
+        const asset=await tx.organizationDocumentAsset.upsert({where:{organizationId_sha256:{organizationId,sha256}},create:{organizationId,kind:'LICENSE_ATTACHMENT',mimeType:mimeType!,byteSize:bytes.length,sha256,content:new Uint8Array(bytes)},update:{}});
+        if(asset.kind!=='LICENSE_ATTACHMENT')throw new ConflictException('File is already used as another organization asset type.');
+        const record=await tx.administrativeRecord.create({data:{organizationId,unitId:unit.id,type,referenceNumber,subject,ownerAccountId:accountId,status:'DRAFT',licenseAssetId:asset.id,licenseIssuedAt:issuedAt,licenseExpiresAt:expiresAt}});
+        await this.audit.record({actorId:accountId,action:'CENTER_LICENSE_SAVED',resource:'AdministrativeRecord',resourceId:record.id,metadata:{organizationId,unitId:unit.id,assetId:asset.id,sha256,issuedAt,expiresAt}},tx);
+        return {id:record.id,status:record.status,licenseAssetId:asset.id,licenseIssuedAt:issuedAt,licenseExpiresAt:expiresAt};
+      });
+    }catch(error){
+      if(typeof error==='object'&&error!==null&&'code' in error&&error.code==='P2002')throw new ConflictException('رقم الرخصة محفوظ مسبقًا في هذا المركز.');
+      throw error;
+    }
+  }
+  async attach(accountId:string,organizationId:string,id:string,input:LicenseAttachmentInput){
+    const record=await this.db.administrativeRecord.findFirst({where:{id,organizationId,type:{in:types}}});
+    if(!record)throw new NotFoundException('License record not found in managed center.');
+    if(record.status!=='DRAFT')throw new ConflictException('Only draft license attachments can be changed.');
+    const {issuedAt,expiresAt,mimeType,bytes,sha256}=await this.attachmentData(input);
     return this.db.serializable(async tx=>{
       const asset=await tx.organizationDocumentAsset.upsert({where:{organizationId_sha256:{organizationId,sha256}},create:{organizationId,kind:'LICENSE_ATTACHMENT',mimeType:mimeType!,byteSize:bytes.length,sha256,content:new Uint8Array(bytes)},update:{}});
       if(asset.kind!=='LICENSE_ATTACHMENT')throw new ConflictException('File is already used as another organization asset type.');

@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {PDFDocument} from 'pdf-lib';
 export async function checkCenterLicenseCreation(db,{base,a,b,ownerA,ta,tb,ts},check){
   const unit=await db.orgUnit.findFirstOrThrow({where:{organizationId:a.org.id,active:true}});
   const otherUnit=await db.orgUnit.findFirstOrThrow({where:{organizationId:b.org.id,active:true}});
@@ -46,13 +47,35 @@ export async function checkCenterLicenseCreation(db,{base,a,b,ownerA,ta,tb,ts},c
     const renewalAudit=await db.auditEvent.findFirst({where:{resourceId:renewed.id,action:'CENTER_LICENSE_RENEWAL_CREATED'}});
     check(renewalAudit?.metadata.renewalOfRecordId===source.id&&renewalAudit.metadata.previousReferenceNumber===source.referenceNumber,'Audit records renewal provenance');
     check(await db.administrativeRouting.count({where:{recordId:renewed.id}})===0,'Renewal cannot inherit previous approval');
+    const pdf=await PDFDocument.create();pdf.addPage();
+    const saveBody={...body,referenceNumber:'FILE-'+randomUUID(),mimeType:'application/pdf',base64:Buffer.from(await pdf.save()).toString('base64'),issuedAt:'2025-01-01',expiresAt:'2030-01-01'};
+    const savePath='/center/me/licenses/save';
+    const recordsBefore=await db.administrativeRecord.count({where:{organizationId:a.org.id}});
+    const assetsBefore=await db.organizationDocumentAsset.count({where:{organizationId:a.org.id}});
+    check((await post(undefined,saveBody,savePath)).status===401,'File-first save rejects guests');
+    check((await post(ts,saveBody,savePath)).status===403,'File-first save rejects ordinary staff');
+    check((await post(tb,saveBody,savePath)).status===404,'File-first save rejects foreign unit');
+    check((await post(ta,{...saveBody,base64:'invalid'},savePath)).status===400,'File-first save rejects invalid file');
+    check((await post(ta,{...saveBody,expiresAt:'2024-01-01'},savePath)).status===400,'File-first save rejects invalid date order');
+    check(await db.administrativeRecord.count({where:{organizationId:a.org.id}})===recordsBefore,'Failed save leaves no empty record');
+    check(await db.organizationDocumentAsset.count({where:{organizationId:a.org.id}})===assetsBefore,'Failed save leaves no asset');
+    const saved=await post(ta,{...saveBody,organizationId:b.org.id,status:'REGISTERED',ownerAccountId:'spoof'},savePath);
+    check(saved.status===201&&saved.body.licenseAssetId&&saved.body.status==='DRAFT','File and record saved together without auto-approval');
+    const savedRecord=await db.administrativeRecord.findUniqueOrThrow({where:{id:saved.body.id}});
+    check(savedRecord.organizationId===a.org.id&&savedRecord.ownerAccountId===ownerA.id,'File-first save binds server-owned center and owner');
+    check(savedRecord.licenseExpiresAt.toISOString().slice(0,10)==='2030-01-01','Confirmed dates persist');
+    const savedAsset=await db.organizationDocumentAsset.findUniqueOrThrow({where:{id:savedRecord.licenseAssetId}});
+    check(Buffer.from(savedAsset.content).toString('base64')===saveBody.base64,'Saved attachment retains original bytes');
+    check((await post(ta,saveBody,savePath)).status===409,'Duplicate file-first submission cannot create another license');
+    const saveAudit=await db.auditEvent.findFirst({where:{resourceId:savedRecord.id,action:'CENTER_LICENSE_SAVED'}});
+    check(saveAudit?.actorId===ownerA.personId,'Atomic save records actor audit');
     const concurrent={...body,referenceNumber:'CONCURRENT-'+randomUUID()};
     const results=await Promise.all([post(ta,concurrent),post(ta,concurrent)]);
     check(results.filter(x=>x.status===201).length===1&&results.filter(x=>x.status===409).length===1,'Concurrent duplicate submissions create one record');
     check(await db.administrativeRecord.count({where:{organizationId:a.org.id,referenceNumber:concurrent.referenceNumber}})===1,'Exactly one concurrent record persists');
   }finally{
     await db.orgUnit.update({where:{id:unit.id},data:{active:true}});
-    await db.auditEvent.deleteMany({where:{resourceId:{in:created},action:{in:['CENTER_LICENSE_CREATED','CENTER_LICENSE_RENEWAL_CREATED']}}});
+    await db.auditEvent.deleteMany({where:{resourceId:{in:created},action:{in:['CENTER_LICENSE_CREATED','CENTER_LICENSE_RENEWAL_CREATED','CENTER_LICENSE_SAVED']}}});
     await db.administrativeRecord.deleteMany({where:{id:{in:created}}});
   }
 }
