@@ -47,7 +47,7 @@ test('boat operator registers marine asset and license metadata, admin verifies 
   await expect.poll(()=>state.pending.length).toBe(1);await expect(panel.locator('[data-marine-asset="asset-marine-e2e"]')).toContainText('PENDING');
 
   await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="admin"]').click();
-  await page.locator('.hl-role-dashboard .hl-portal-nav-item[data-portal-label="الوسائط البحرية"]').click();
+  await page.locator('.hl-role-dashboard .hl-portal-nav-item[data-portal-label="الوساطة البحرية"]').click();
   await expect(panel).toBeVisible();const review=panel.locator('[data-marine-doc="marine-doc-e2e"]');await expect(review).toContainText('REG-7788');await review.locator('[data-marine-decision="VERIFIED"]').click();
   await expect.poll(()=>state.decision?.outcome).toBe('VERIFIED');await expect(panel).toContainText('لا توجد وثائق بحرية بانتظار المراجعة');
 });
