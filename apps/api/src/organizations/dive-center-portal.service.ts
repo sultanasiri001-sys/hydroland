@@ -1,9 +1,15 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { AuditService } from '../audit/audit.service';
+import { EquipmentInspectionService } from '../trips/equipment-inspection.service';
 import { DatabaseService } from '../database/database.service';
 
 @Injectable()
 export class DiveCenterPortalService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly inspections: EquipmentInspectionService,
+    private readonly audit: AuditService,
+  ) {}
 
   private async managedCenter(accountId: string) {
     const role = await this.db.roleAssignment.findUnique({
@@ -56,7 +62,7 @@ export class DiveCenterPortalService {
     const rows=await this.db.$queryRaw<Array<{resourceId:string;assetCode:string;barcodeValue:string;qrValue:string;serialNumber:string|null;sku:string|null;location:string|null;stockStatus:string;resourceName:string;active:boolean}>>`
       SELECT b."resourceId",b."assetCode",b."barcodeValue",b."qrValue",b."serialNumber",b."sku",b."location",b."stockStatus",r."name" AS "resourceName",r."active"
       FROM "EquipmentBarcode" b JOIN "CalendarResource" r ON r."id"=b."resourceId"
-      WHERE b."organizationId"=${center.id}::uuid AND r."type"='EQUIPMENT' AND (b."assetCode"=${clean} OR b."barcodeValue"=${clean} OR b."qrValue"=${clean} OR b."serialNumber"=${clean}) LIMIT 1`;
+      WHERE b."organizationId"=(jsonb_populate_record(NULL::"EquipmentBarcode", jsonb_build_object('organizationId', ${center.id}::text)))."organizationId" AND r."type"='EQUIPMENT' AND (b."assetCode"=${clean} OR b."barcodeValue"=${clean} OR b."qrValue"=${clean} OR b."serialNumber"=${clean}) LIMIT 1`;
     if(!rows.length)throw new NotFoundException('Equipment code not found in managed dive center.');return rows[0];
   }
 
@@ -65,13 +71,13 @@ export class DiveCenterPortalService {
     return this.db.$queryRaw<Array<{resourceId:string;assetCode:string;serialNumber:string|null;sku:string|null;location:string|null;stockStatus:string;resourceName:string;active:boolean}>>`
       SELECT b."resourceId",b."assetCode",b."serialNumber",b."sku",b."location",b."stockStatus",r."name" AS "resourceName",r."active"
       FROM "EquipmentBarcode" b JOIN "CalendarResource" r ON r."id"=b."resourceId"
-      WHERE b."organizationId"=${center.id}::uuid AND r."type"='EQUIPMENT'
+      WHERE b."organizationId"=(jsonb_populate_record(NULL::"EquipmentBarcode", jsonb_build_object('organizationId', ${center.id}::text)))."organizationId" AND r."type"='EQUIPMENT'
       ORDER BY r."name",b."assetCode"`;
   }
 
   async moveEquipment(accountId:string,resourceId:string,input:{movementType?:string;toLocation?:string|null;tripId?:string|null;notes?:string|null}){
     const center=await this.managedCenter(accountId);
-    const owned=await this.db.$queryRaw<Array<{resourceId:string;stockStatus:string;location:string|null}>>`SELECT "resourceId","stockStatus","location" FROM "EquipmentBarcode" WHERE "resourceId"=${resourceId} AND "organizationId"=${center.id}::uuid LIMIT 1`;
+    const owned=await this.db.$queryRaw<Array<{resourceId:string;stockStatus:string;location:string|null}>>`SELECT "resourceId","stockStatus","location" FROM "EquipmentBarcode" WHERE "resourceId"=${resourceId} AND "organizationId"=(jsonb_populate_record(NULL::"EquipmentBarcode", jsonb_build_object('organizationId', ${center.id}::text)))."organizationId" LIMIT 1`;
     if(!owned.length)throw new NotFoundException('Equipment not found in managed dive center.');
     const allowed=['CHECK_IN','CHECK_OUT','TRANSFER','MAINTENANCE','QUARANTINE','RELEASE','RETIRE'];if(!input.movementType||!allowed.includes(input.movementType))throw new BadRequestException('Invalid equipment movement type.');
     if(input.tripId){const trip=await this.db.trip.findFirst({where:{id:input.tripId,organizationId:center.id},select:{id:true,status:true}});if(!trip)throw new NotFoundException('Trip not found in managed dive center.');if(['CANCELLED','COMPLETED'].includes(trip.status))throw new ConflictException('Equipment cannot be assigned to a closed trip.');}
@@ -80,12 +86,32 @@ export class DiveCenterPortalService {
     if(input.movementType==='CHECK_IN'&&current.stockStatus!=='CHECKED_OUT')throw new ConflictException('Only checked-out equipment can be checked in.');
     if(input.movementType==='RELEASE'&&!['MAINTENANCE','QUARANTINED'].includes(current.stockStatus))throw new ConflictException('Only maintained or quarantined equipment can be released.');
     const next=input.movementType==='TRANSFER'?current.stockStatus:input.movementType==='CHECK_OUT'?'CHECKED_OUT':input.movementType==='MAINTENANCE'?'MAINTENANCE':input.movementType==='QUARANTINE'?'QUARANTINED':input.movementType==='RETIRE'?'RETIRED':'AVAILABLE';
-    return this.db.serializable(async tx=>{const latest=await tx.$queryRaw<Array<{stockStatus:string;location:string|null}>>`SELECT "stockStatus","location" FROM "EquipmentBarcode" WHERE "resourceId"=${resourceId} AND "organizationId"=${center.id}::uuid FOR UPDATE`;if(!latest.length||latest[0].stockStatus!==current.stockStatus)throw new ConflictException('Equipment state changed. Refresh and retry.');const rows=await tx.$queryRaw`INSERT INTO "EquipmentMovement"("id","resourceId","movementType","fromLocation","toLocation","tripId","assignedAccountId","notes","actorAccountId","occurredAt") VALUES(gen_random_uuid()::text,${resourceId},${input.movementType},${latest[0].location},${input.toLocation??null},${input.tripId??null},NULL,${input.notes??null},${accountId},NOW()) RETURNING *`;await tx.$executeRaw`UPDATE "EquipmentBarcode" SET "stockStatus"=${next},"location"=COALESCE(${input.toLocation??null},"location"),"updatedAt"=NOW() WHERE "resourceId"=${resourceId} AND "organizationId"=${center.id}::uuid`;return{movement:(rows as any[])[0],stockStatus:next}});
+    if(input.movementType==='CHECK_OUT'){
+      const inspection=await this.inspections.evaluate([resourceId]);
+      if(inspection.blocked)throw new ConflictException('Equipment inspection or service policy blocks check-out.');
+    }
+    return this.db.serializable(async tx=>{
+      const latest=await tx.$queryRaw<Array<{stockStatus:string;location:string|null}>>`
+        SELECT "stockStatus","location" FROM "EquipmentBarcode"
+        WHERE "resourceId"=${resourceId} AND "organizationId"=(jsonb_populate_record(NULL::"EquipmentBarcode", jsonb_build_object('organizationId', ${center.id}::text)))."organizationId" FOR UPDATE`;
+      if(!latest.length||latest[0].stockStatus!==current.stockStatus)throw new ConflictException('Equipment state changed. Refresh and retry.');
+      const rows=await tx.$queryRaw<Array<{id:string}>>`
+        INSERT INTO "EquipmentMovement"("id","resourceId","movementType","fromLocation","toLocation","tripId","assignedAccountId","notes","actorAccountId","occurredAt")
+        VALUES(gen_random_uuid()::text,${resourceId},${input.movementType},${latest[0].location},${input.toLocation??null},${input.tripId??null},NULL,${input.notes??null},${accountId},NOW()) RETURNING *`;
+      await tx.$executeRaw`
+        UPDATE "EquipmentBarcode" SET "stockStatus"=${next},"location"=COALESCE(${input.toLocation??null},"location"),"updatedAt"=NOW()
+        WHERE "resourceId"=${resourceId} AND "organizationId"=(jsonb_populate_record(NULL::"EquipmentBarcode", jsonb_build_object('organizationId', ${center.id}::text)))."organizationId"`;
+      await this.audit.record({actorId:accountId,action:'EQUIPMENT_INVENTORY_MOVED',resource:'CalendarResource',resourceId,
+        metadata:{organizationId:center.id,movementId:rows[0].id,movementType:input.movementType,
+          fromLocation:latest[0].location,toLocation:input.toLocation??null,tripId:input.tripId??null,
+          assignedAccountId:null,previousStatus:current.stockStatus,stockStatus:next,notes:input.notes??null}},tx);
+      return{movement:rows[0],stockStatus:next};
+    });
   }
 
   async equipmentHistory(accountId:string,resourceId:string){
     const center=await this.managedCenter(accountId);
-    const owned=await this.db.$queryRaw<Array<{resourceId:string}>>`SELECT "resourceId" FROM "EquipmentBarcode" WHERE "resourceId"=${resourceId} AND "organizationId"=${center.id}::uuid LIMIT 1`;
+    const owned=await this.db.$queryRaw<Array<{resourceId:string}>>`SELECT "resourceId" FROM "EquipmentBarcode" WHERE "resourceId"=${resourceId} AND "organizationId"=(jsonb_populate_record(NULL::"EquipmentBarcode", jsonb_build_object('organizationId', ${center.id}::text)))."organizationId" LIMIT 1`;
     if(!owned.length)throw new NotFoundException('Equipment not found in managed dive center.');
     return this.db.$queryRaw`SELECT "id","movementType","fromLocation","toLocation","tripId","assignedAccountId","notes","occurredAt" FROM "EquipmentMovement" WHERE "resourceId"=${resourceId} ORDER BY "occurredAt" DESC LIMIT 200`;
   }

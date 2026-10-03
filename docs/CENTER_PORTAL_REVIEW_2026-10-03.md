@@ -79,3 +79,30 @@ against supported schemas, document/license lifecycles, finance/reporting and
 production acceptance. The dependency-security gate must pass before merge or
 deployment. No production data, role, setting, migration or external provider was
 modified during this continuation.
+
+## Equipment continuation
+
+The center movement endpoint bypassed the canonical equipment inspection/service
+policy check on CHECK_OUT and omitted the inventory audit event. It now calls
+EquipmentInspectionService.evaluate, rejects blocked check-outs, and records
+EQUIPMENT_INVENTORY_MOVED in the same transaction as movement/status changes.
+Configured REVIEW/DISABLED behavior remains that of the canonical inventory
+service; this does not introduce a new safety policy.
+
+Scoped SQL now converts the bound center identifier to the actual EquipmentBarcode
+organizationId column type through jsonb_populate_record. It supports canonical
+TEXT and recovered UUID scope columns without casting the indexed column.
+
+The center HTTP suite adds real equipment for two centers and exercises lookup,
+list/history isolation, manager/staff/guest writes, invalid movements, foreign
+and completed trips, missing/failed/expired inspections, all seven movement types,
+retirement, actor/center/movement audit linkage, and unchanged foreign equipment.
+It runs against both TEXT and UUID organizationId columns. The CI-only temporary
+TEXT scope has a real Organization FK; UUID mode tests query compatibility and
+is not proof of production FK migration/recovery. Fixtures and temporary schema
+changes are removed. Successful run counts belong in the PR's current CI evidence;
+typecheck and build passed locally before submission.
+
+Production operation acceptance and document/license lifecycles remain open.
+Security release hold is unchanged; no merge, deployment, production migration,
+policy change or dependency-audit exception is authorized by this repair.

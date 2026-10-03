@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {checkCenterEquipment} from './center-equipment-http-checks.mjs';
 import {PrismaClient} from '@prisma/client';
 import {createHash,createHmac,randomUUID,randomBytes} from 'node:crypto';
 
@@ -116,7 +117,9 @@ try{
   check((await read(ts,'/me/documents')).status===403,'Ordinary staff must not read center manager documents');
   check((await read(undefined,'/me/documents')).status===401,'Anonymous document listing must be denied');
 
-  console.log(`Center safety and portal authorization HTTP/PostgreSQL E2E: ${checks}/${checks} passed (exact active role across 12 routes, same-session revocation/recovery, center isolation and document metadata privacy).`);
+  await checkCenterEquipment(db,{base,a,b,ownerA,ta,tb,ts},check);
+
+  console.log(`Center safety and portal authorization HTTP/PostgreSQL E2E: ${checks}/${checks} passed (exact active role across 12 routes, same-session revocation/recovery, center isolation document metadata privacy, equipment movements/inspection gates/audit and TEXT/UUID center scope).`);
 }finally{
   await db.administrativeRecord.deleteMany({where:{organizationId:{in:ids.organizations}}});
   await db.orgUnit.deleteMany({where:{organizationId:{in:ids.organizations}}});
