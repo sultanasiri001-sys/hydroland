@@ -56,6 +56,9 @@ export async function checkCenterLicenseReview(db,{base,a,b,ownerA,staff,ta,tb,t
     check((await request(ta,'/license-reviews/'+second+'/assign','PATCH',{assigneeAccountId:staff.id})).status===200,'Second review independently assigned');
     check((await request(ts,'/license-reviews/'+second+'/decision','PATCH',{decision:'REJECT'})).status===200,'Reviewer can reject through the same guarded workflow');
     row=await view(ta);check(row.routings.length===2&&row.routings[0].decision==='REJECT'&&row.routings[1].decision==='APPROVE','Both decisions remain visible, latest first');
+    const historicalReviewer=row.routings[0].reviewerName;
+    await db.roleAssignment.update({where:{accountId_role:{accountId:staff.id,role:'DIVE_CENTER'}},data:{status:'SUSPENDED'}});
+    row=await view(ta);check(!!historicalReviewer&&row.routings.every(x=>x.reviewerName===historicalReviewer),'Historical reviewer names survive later role revocation');
     const audits=await db.auditEvent.findMany({where:{resourceId:{in:ids}}});
     check(audits.some(x=>x.action==='ADMIN_ROUTING_APPROVE'&&x.actorId===staff.personId)&&audits.some(x=>x.action==='ADMIN_ROUTING_REJECT'&&x.actorId===staff.personId),'Decisions retain canonical reviewer audit events');
   }finally{

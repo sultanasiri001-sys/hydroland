@@ -54,14 +54,14 @@ export class DiveCenterPortalService {
     const center=await this.managedCenter(accountId);
     const [assets,records,units,reviewers]=await Promise.all([
       this.db.organizationDocumentAsset.findMany({where:{organizationId:center.id},select:{id:true,kind:true,mimeType:true,byteSize:true,sha256:true,createdAt:true},orderBy:{createdAt:'desc'},take:200}),
-      this.db.administrativeRecord.findMany({where:{organizationId:center.id,type:{in:['LICENSE','PERMIT','CERTIFICATE','REGULATORY_APPROVAL']}},select:{id:true,type:true,referenceNumber:true,subject:true,status:true,createdAt:true,updatedAt:true,unitId:true,licenseAssetId:true,licenseIssuedAt:true,licenseExpiresAt:true,routings:{select:{id:true,decision:true,decidedAt:true,createdAt:true,requestedByAccountId:true,assignedToAccountId:true,toUnit:{select:{nameAr:true,nameEn:true}}},orderBy:{createdAt:'desc'}}},orderBy:{updatedAt:'desc'},take:200}),
+      this.db.administrativeRecord.findMany({where:{organizationId:center.id,type:{in:['LICENSE','PERMIT','CERTIFICATE','REGULATORY_APPROVAL']}},select:{id:true,type:true,referenceNumber:true,subject:true,status:true,createdAt:true,updatedAt:true,unitId:true,licenseAssetId:true,licenseIssuedAt:true,licenseExpiresAt:true,routings:{select:{id:true,decision:true,decidedAt:true,createdAt:true,requestedByAccountId:true,assignedToAccountId:true,assignedTo:{select:{person:{select:{firstName:true,lastName:true}}}},toUnit:{select:{nameAr:true,nameEn:true}}},orderBy:{createdAt:'desc'}}},orderBy:{updatedAt:'desc'},take:200}),
       this.db.orgUnit.findMany({where:{organizationId:center.id,active:true},select:{id:true,nameAr:true,nameEn:true,type:true},orderBy:{nameAr:'asc'}}),
       this.licenses.reviewers(center.id),
     ]);
     return {assets,units,licenses:records.map(({unitId,routings,...record})=>({...record,
       reviewUnits:units.filter(unit=>unit.id!==unitId),
-      routings:routings.map(({requestedByAccountId,assignedToAccountId,toUnit,...routing})=>({...routing,
-        unitName:toUnit.nameAr||toUnit.nameEn,reviewerName:reviewers.find(x=>x.id===assignedToAccountId)?.name??null,
+      routings:routings.map(({requestedByAccountId,assignedToAccountId,assignedTo,toUnit,...routing})=>({...routing,
+        unitName:toUnit.nameAr||toUnit.nameEn,reviewerName:assignedTo?[assignedTo.person.firstName,assignedTo.person.lastName].filter(Boolean).join(' ').trim()||'مراجع المركز':null,
         canDecide:!routing.decision&&assignedToAccountId===accountId&&requestedByAccountId!==accountId,
         reviewerOptions:routing.decision?[]:reviewers.filter(x=>x.id!==requestedByAccountId),
       })),
