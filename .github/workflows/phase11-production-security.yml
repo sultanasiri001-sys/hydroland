@@ -17,6 +17,7 @@ on:
       - '.github/workflows/security-audit.yml'
       - '.github/workflows/mobile-security.yml'
       - 'scripts/release-dependency-audit*'
+      - 'scripts/build-*-release.mjs'
       - '.github/workflows/phase11-production-security.yml'
   pull_request:
     paths:
@@ -33,6 +34,7 @@ on:
       - '.github/workflows/security-audit.yml'
       - '.github/workflows/mobile-security.yml'
       - 'scripts/release-dependency-audit*'
+      - 'scripts/build-*-release.mjs'
       - '.github/workflows/phase11-production-security.yml'
   workflow_dispatch:
 
@@ -100,10 +102,33 @@ jobs:
             sleep 1
           done
           exit 1
+      - name: Verify native Render API build command and retained Prisma engine
+        run: |
+          cd apps/api
+          node ../../scripts/build-api-release.mjs > /tmp/native-api-build.log 2>&1 || { cat /tmp/native-api-build.log; exit 1; }
+          node ../../node_modules/prisma/build/index.js --version
+          node ../../node_modules/prisma/build/index.js db push --schema prisma/schema.prisma --skip-generate
+          JWT_SECRET=ci-native-api-secret-at-least-32-characters WEB_ORIGIN=http://127.0.0.1:4173 PORT=3103 NODE_ENV=production \
+            node dist/main.js > /tmp/native-api.log 2>&1 &
+          api_pid=$!
+          trap 'cat /tmp/native-api.log; kill "$api_pid" || true' EXIT
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:3103/api/v1/health/ready > /tmp/native-api-ready.json; then
+              node -e 'const r=require("/tmp/native-api-ready.json"); if(r.status!=="ready"||r.database!=="ok")process.exit(1)'
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
+      - name: Verify native Render web build command
+        run: node scripts/build-web-release.mjs
       - name: Retain installed runtime inventories
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: api-runtime-inventories
-          path: api-runtime-*.json
+          path: |
+            api-runtime-*.json
+            api-release-audit.json
+            web-release-audit.json
           retention-days: 7

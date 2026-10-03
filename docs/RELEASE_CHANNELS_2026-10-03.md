@@ -43,13 +43,33 @@ existing regressions, plus clean web/API dependency gates. A mobile release
 requires BOTH Mobile validation and Mobile release security to succeed. There
 is currently no mobile deployment workflow; any future one must require both.
 
-The GitHub connector returned 403 for main branch-protection inspection. No
-branch rules, required checks or administrative bypass settings were changed.
-Do not force merge or bypass protection to implement this split. If an existing
-rule requires the full/mobile audit for every web/API change, an authorized
-repository administrator must explicitly align it with the approved channels.
-Until that can be verified, green scoped checks are review evidence, not an
-assertion that GitHub authorizes merge or that production has been released.
+The dedicated branch-protection endpoint returned 403. Subsequent permitted
+reads of branches/main and repository rulesets returned protected:false,
+required-check enforcement off, empty contexts/checks and no rulesets. No branch
+rules or bypass settings were changed. The approved release gates must still be
+verified explicitly; absence of branch protection does not waive them.
+
+## Native Render configuration still to apply
+
+Live read-only service inspection found both services use native Node, not the
+Docker Blueprint. Both auto-deploy main on commit. The API rootDir is apps/api
+with build `npm install --include=dev && npx prisma generate && npm run build`;
+web builds from root using `cd apps/web && npm run build`. Thus validating only
+the Dockerfiles does not establish live build isolation.
+
+The prepared replacement build commands are:
+
+- API service srv-dakelt142hec73aavvsg: `node ../../scripts/build-api-release.mjs`
+- Web service srv-daknr0tbvr0c73ea69a0: `node scripts/build-web-release.mjs`
+
+Both commands use committed scoped installs and the release audit; the API
+command prunes development tools and verifies installed runtime contents while
+retaining migration engines. Existing start commands and environment values are
+unchanged. Phase 11 CI executes these exact scripts, verifies native API readiness
+against disposable PostgreSQL, and retains both audit reports. Docker checks are
+retained too. The Render connector cannot update build commands. Applying these
+settings therefore needs an approved supported fallback; no merge/deploy should
+occur before the production build path is aligned and the exact head passes.
 
 The API boundary report is at API_DEPENDENCY_BOUNDARY_2026-10-03.md; exact commit
 workflow results are recorded in PR #409.
