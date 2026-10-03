@@ -48,6 +48,7 @@ for(const marker of [
 if(!dashboards.includes("const trainingTarget=document.querySelector('.hl-training');window.HydrolandWorkspaceUI?.show?.(trainingTarget)"))throw new Error('Managed instructor training must route to the actual .hl-training service node.');
 if(!dashboards.includes("target=professionalTraining?document.querySelector('.hl-training'):targetFor(resolvedId)"))throw new Error('Professional training availability must be evaluated against the managed .hl-training service node.');
 if(!dashboards.includes("available=professionalTraining?Boolean(target&&window.HydrolandPortalAccess?.roleAllowed?.('instructor'))"))throw new Error('Professional training capability must not depend on current workspace visibility.');
+if(!dashboards.includes("resolvedId=['training-schedule','training-skills','training-certificates','training-earnings'].includes(id)?'training':id,target=targetFor(resolvedId)"))throw new Error('Portal nav must resolve scoped training routes before the target existence guard.');
 for(const marker of [
   "if(role==='instructor'&&label==='الجدول الزمني')return 'training-schedule'",
   "if(role==='instructor'&&label==='التقييمات')return 'training-skills'",
