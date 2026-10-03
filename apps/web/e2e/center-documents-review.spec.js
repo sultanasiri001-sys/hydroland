@@ -74,7 +74,8 @@ test('registered license shows expired validity and internal review separately a
 test('license download is revoked before requesting private bytes',async({page})=>{
  const state=await install(page);state.body={assets:[],licenses:[{id:'private',status:'REGISTERED',licenseAssetId:'asset'}]};let downloads=0;
  await page.route('**/api/v1/center/me/licenses/private/attachment',route=>{downloads++;return json(route,{})});
- await page.locator('[data-portal-label="المستندات والتراخيص"]').click();state.active=false;
+ await page.locator('[data-portal-label="المستندات والتراخيص"]').click();
+ await expect(page.locator('[data-license-download="private"]')).toBeVisible();state.active=false;
  await page.locator('[data-license-download="private"]').click();await expect(page.locator('#hl-center-documents')).toHaveCount(0);expect(downloads).toBe(0);
 });
 test('license upload cannot write after role revocation',async({page})=>{
