@@ -48,5 +48,5 @@ async function read(file,{signal,onProgress}){
       try{const scale=Math.min(1,Math.sqrt(4000000/(bitmap.width*bitmap.height))),canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);text=await recognize(canvas);canvas.width=canvas.height=0}finally{bitmap.close()}
     }
     aborted();return extractFields(text);
-  }finally{signal?.removeEventListener('abort',cancel);await worker?.terminate();if(pdf)await pdf.destroy();else await loadingTask?.destroy()}
+  }finally{signal?.removeEventListener('abort',cancel);await worker?.terminate();await loadingTask?.destroy()}
 }
