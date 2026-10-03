@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {PrismaClient} from '@prisma/client';
-import {createHmac,randomUUID,randomBytes} from 'node:crypto';
+import {createHash,createHmac,randomUUID,randomBytes} from 'node:crypto';
 
 const base=process.env.CENTER_SAFETY_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1';
 const databaseUrl=process.env.DATABASE_URL;
@@ -23,7 +23,13 @@ const tokenFor=async accountId=>{
   const body=encode({alg:'HS256',typ:'JWT'})+'.'+encode({sub:accountId,sid:session.id,iat:now,exp:now+900});
   return body+'.'+createHmac('sha256',secret).update(body).digest('base64url');
 };
-const read=async token=>{const response=await fetch(base+'/center/me/safety',{headers:token?{authorization:'Bearer '+token}:{}});return {status:response.status,body:await response.json().catch(()=>null)};};
+const read=async(token,path='/me/safety',method='GET')=>{
+  const response=await fetch(base+'/center'+path,{
+    method,headers:{...(token?{authorization:'Bearer '+token}:{}),...(method==='PATCH'?{'content-type':'application/json'}:{})},
+    ...(method==='PATCH'?{body:JSON.stringify({movementType:'TRANSFER',toLocation:'CI-DENIED'})}:{}),
+  });
+  return {status:response.status,body:await response.json().catch(()=>null)};
+};
 const centerFor=async owner=>{
   const org=await db.organization.create({data:{displayName:'Center safety CI '+owner.id,kind:'DIVE_CENTER',status:'ACTIVE',ownerId:owner.id}});ids.organizations.push(org.id);
   const member=await db.organizationMember.create({data:{organizationId:org.id,accountId:owner.id,role:'OWNER',status:'ACTIVE'}});
@@ -55,8 +61,66 @@ try{
   check((await read(ta)).status===403,'Suspended center must be denied even with an active manager');
   await db.organization.update({where:{id:a.org.id},data:{status:'ACTIVE'}});
   r=await read(ta);check(r.status===200&&r.body.incidents[0].id===a.incident.id,'Restored authority must recover without widening scope');
-  console.log(`Center safety HTTP/PostgreSQL E2E: ${checks}/${checks} passed (ownership, payload minimization, suspension and recovery).`);
+
+  // Keep the organization and manager membership active while changing only the
+  // portal role. Reuse the same token to prove per-request server enforcement.
+  const missingResourceId=randomUUID();
+  const routes=[
+    ['/me/overview'],['/me/safety'],['/me/documents'],['/me/customers'],
+    ['/me/team'],['/me/professionals'],['/me/trips'],[`/me/trips/${a.trip.id}/bookings`],
+    ['/me/equipment'],[`/me/equipment/lookup/${missingResourceId}`],
+    [`/me/equipment/${missingResourceId}/history`],[`/me/equipment/${missingResourceId}/move`,'PATCH'],
+  ];
+  await db.roleAssignment.create({data:{accountId:ownerA.id,role:'INSTRUCTOR',status:'ACTIVE'}});
+  for(const status of ['DRAFT','PENDING_REVIEW','REJECTED','SUSPENDED','ARCHIVED']){
+    await db.roleAssignment.update({where:{accountId_role:{accountId:ownerA.id,role:'DIVE_CENTER'}},data:{status}});
+    for(const [path,method] of routes){
+      r=await read(ta,path,method);
+      check(r.status===403,`${status} center role must deny ${method||'GET'} ${path}, got ${r.status}`);
+    }
+  }
+  await db.roleAssignment.delete({where:{accountId_role:{accountId:ownerA.id,role:'DIVE_CENTER'}}});
+  for(const [path,method] of routes){
+    r=await read(ta,path,method);
+    check(r.status===403,`An unrelated active role must not replace missing DIVE_CENTER for ${path}, got ${r.status}`);
+  }
+  await db.roleAssignment.create({data:{accountId:ownerA.id,role:'DIVE_CENTER',status:'ACTIVE',activeAt:new Date()}});
+  for(const [path] of routes.slice(0,8)){
+    check((await read(ta,path)).status===200,`Restored center role must recover scoped read ${path}`);
+  }
+
+  // Review the center document-list contract with real, isolated records. This
+  // verifies metadata/read scope only; it is not an upload/download acceptance.
+  const assetFor=async organizationId=>{
+    const content=Buffer.from('PRIVATE-CENTER-ASSET:'+organizationId);
+    return db.organizationDocumentAsset.create({data:{organizationId,kind:'LICENSE',mimeType:'application/pdf',byteSize:content.length,sha256:createHash('sha256').update(content).digest('hex'),content}});
+  };
+  const assetA=await assetFor(a.org.id),assetB=await assetFor(b.org.id);
+  const licenseTypes=['LICENSE','PERMIT','CERTIFICATE','REGULATORY_APPROVAL'];
+  for(const [center,owner] of [[a,ownerA],[b,ownerB]]){
+    const unit=await db.orgUnit.create({data:{organizationId:center.org.id,type:'CENTER',code:'CENTER-DOCS',nameAr:'وحدة اختبار المركز'}});
+    for(const type of [...licenseTypes,'INTERNAL_MEMO']){
+      await db.administrativeRecord.create({data:{organizationId:center.org.id,unitId:unit.id,ownerAccountId:owner.id,type,referenceNumber:`${center.org.id}-${type}`,subject:`${type} ${center.org.id}`,status:'REGISTERED'}});
+    }
+  }
+  r=await read(ta,'/me/documents');
+  check(r.status===200&&r.body.assets.length===1&&r.body.assets[0].id===assetA.id,'Center A must see only its document asset');
+  check(!('content' in r.body.assets[0])&&!('organizationId' in r.body.assets[0]),'Document list must not return binary content or unnecessary organization identifiers');
+  check(r.body.assets[0].byteSize===assetA.byteSize&&r.body.assets[0].sha256===assetA.sha256,'Document metadata must reflect persisted asset');
+  check(r.body.licenses.length===4&&licenseTypes.every(type=>r.body.licenses.some(row=>row.type===type)),'Center document list must include all four regulatory record types and exclude internal memos');
+  check(r.body.licenses.every(row=>row.referenceNumber.startsWith(a.org.id)&&row.status==='REGISTERED'),'Center A licenses must retain own reference and status');
+  check(r.body.licenses.every(row=>!('ownerAccountId' in row)&&!('unitId' in row)&&!('organizationId' in row)),'License list must minimize administrative identifiers');
+  r=await read(tb,'/me/documents');
+  check(r.status===200&&r.body.assets.length===1&&r.body.assets[0].id===assetB.id,'Center B must not receive center A document metadata');
+  check(r.body.licenses.length===4&&r.body.licenses.every(row=>row.referenceNumber.startsWith(b.org.id)),'Center B license list must remain isolated');
+  check((await read(ts,'/me/documents')).status===403,'Ordinary staff must not read center manager documents');
+  check((await read(undefined,'/me/documents')).status===401,'Anonymous document listing must be denied');
+
+  console.log(`Center safety and portal authorization HTTP/PostgreSQL E2E: ${checks}/${checks} passed (exact active role across 12 routes, same-session revocation/recovery, center isolation and document metadata privacy).`);
 }finally{
+  await db.administrativeRecord.deleteMany({where:{organizationId:{in:ids.organizations}}});
+  await db.orgUnit.deleteMany({where:{organizationId:{in:ids.organizations}}});
+  await db.organizationDocumentAsset.deleteMany({where:{organizationId:{in:ids.organizations}}});
   await db.safetyIncident.deleteMany({where:{reportedByAccountId:{in:ids.accounts}}});
   await db.safetyChecklist.deleteMany({where:{tripId:{in:ids.trips}}});
   await db.trip.deleteMany({where:{id:{in:ids.trips}}});

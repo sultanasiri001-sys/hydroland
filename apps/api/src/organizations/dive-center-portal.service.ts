@@ -6,6 +6,13 @@ export class DiveCenterPortalService {
   constructor(private readonly db: DatabaseService) {}
 
   private async managedCenter(accountId: string) {
+    const role = await this.db.roleAssignment.findUnique({
+      where: { accountId_role: { accountId, role: 'DIVE_CENTER' } },
+      select: { status: true },
+    });
+    if (role?.status !== 'ACTIVE') {
+      throw new ForbiddenException('Active dive-center role required.');
+    }
     const membership=await this.db.organizationMember.findFirst({
       where:{accountId,status:'ACTIVE',role:{in:['OWNER','ADMIN']},organization:{kind:{contains:'DIVE',mode:'insensitive'},status:'ACTIVE'}},
       select:{organization:{select:{id:true,displayName:true,legalName:true,registrationNumber:true,regionCode:true,status:true,documentBrandNameAr:true,documentBrandNameEn:true}}},
