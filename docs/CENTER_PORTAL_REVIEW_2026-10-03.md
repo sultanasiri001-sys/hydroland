@@ -227,3 +227,22 @@ final decisions and canonical reviewer audit. Inactive-role coverage now spans
 and per-action same-session role revocation. No new migration is required.
 The original attachment migration remains pending deployment with the code;
 production and dependency-security release hold are unchanged.
+
+## Registration versus concurrent attachment edits
+
+Center registration previously verified the attachment before calling canonical
+registration, whose DRAFT-only update could accept a different attachment or
+validity dates committed in between. The center wrapper now passes the verified
+record's updatedAt, attachment ID and both dates to the canonical atomic update.
+A mismatch returns 409 before the registration audit is created. Existing
+administrative callers keep their current contract when no license snapshot is
+supplied; this is a server-side interleaving guard, not a client revision token.
+
+Two deterministic service/PostgreSQL checks commit a competing attachment edit
+through the HTTP API: one before the canonical record read and one immediately
+before the registration transaction. They cover changed file and dates even at
+equal timestamp precision, retained DRAFT/edited content, absence of a false
+registration audit, and successful fresh HTTP retry with exactly one audit.
+They run within the existing center HTTP/PostgreSQL CI suite. Local typecheck,
+API build and script syntax checks passed; exact commit CI evidence belongs in
+PR #409. No schema, dependency, release gate or production change is included.

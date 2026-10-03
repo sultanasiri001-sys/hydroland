@@ -29,7 +29,12 @@ export class CenterLicenseService {
     const record=await this.record(organizationId,id);
     if(!record.licenseAssetId||!record.licenseIssuedAt||!record.licenseExpiresAt)throw new ConflictException('Attach the license and its validity dates before registration.');
     await this.download(organizationId,id);
-    return this.administrative.registerRecord(id,accountId);
+    // Lock exactly the attachment and dates validated above, even if another
+    // request edits the draft before the canonical registration transaction.
+    return this.administrative.registerRecord(id,accountId,{
+      updatedAt:record.updatedAt,licenseAssetId:record.licenseAssetId,
+      licenseIssuedAt:record.licenseIssuedAt,licenseExpiresAt:record.licenseExpiresAt,
+    });
   }
   async route(accountId:string,organizationId:string,id:string,toUnitId:unknown){
     await this.record(organizationId,id);

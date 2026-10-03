@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {checkCenterLicenseRegistrationRace} from './center-license-registration-race-checks.mjs';
 import {checkCenterLicenseReview} from './center-license-review-http-checks.mjs';
 import {checkCenterLicenseCreation} from './center-license-create-http-checks.mjs';
 import {checkCenterLicenses} from './center-license-http-checks.mjs';
@@ -131,6 +132,7 @@ try{
   await checkCenterLicenseCreation(db,{base,a,b,ownerA,ta,tb,ts},check);
 
   await checkCenterLicenseReview(db,{base,a,b,ownerA,staff,ta,tb,ts},check);
+  await checkCenterLicenseRegistrationRace({base,a,ownerA,ta},check);
 
   console.log(`Center safety and portal authorization HTTP/PostgreSQL E2E: ${checks}/${checks} passed (exact active role across 20 routes, same-session revocation/recovery, center isolation document metadata privacy, equipment movements/inspection gates/audit and TEXT/UUID center scope).`);
 }finally{

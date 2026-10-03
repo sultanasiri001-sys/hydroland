@@ -49,11 +49,11 @@ export class AdministrativeAffairsPersistenceService {
     if(!eligible) throw new ForbiddenException('ADMIN_ASSIGNEE_NOT_ELIGIBLE');
   }
 
-  async registerRecord(recordId:string, actorAccountId:string) {
+  async registerRecord(recordId:string, actorAccountId:string, expectedLicense?:{updatedAt:Date;licenseAssetId:string|null;licenseIssuedAt:Date|null;licenseExpiresAt:Date|null}) {
     const record=await this.db.administrativeRecord.findUniqueOrThrow({where:{id:recordId},select:{id:true,organizationId:true,unitId:true,status:true}});
     await this.assertPermission(actorAccountId,record.organizationId,'REGISTER',[record.unitId]);
     const result=await this.db.$transaction(async tx=>{
-      const updated=await tx.administrativeRecord.updateMany({where:{id:record.id,status:'DRAFT'},data:{status:'REGISTERED'}});
+      const updated=await tx.administrativeRecord.updateMany({where:{id:record.id,status:'DRAFT',...expectedLicense},data:{status:'REGISTERED'}});
       if(updated.count!==1) throw new ConflictException('ADMIN_RECORD_CONCURRENT_MODIFICATION');
       const actor=await tx.account.findUniqueOrThrow({where:{id:actorAccountId},select:{personId:true}});
       await tx.auditEvent.create({data:{actorId:actor.personId,action:'ADMIN_RECORD_REGISTERED',resource:'AdministrativeRecord',resourceId:record.id,metadata:{organizationId:record.organizationId}}});
