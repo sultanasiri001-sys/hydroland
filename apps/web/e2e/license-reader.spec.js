@@ -1,6 +1,5 @@
 import {test,expect} from '@playwright/test';
-import {readFileSync} from 'node:fs';
-const fixture=JSON.parse(readFileSync(new URL('./fixtures/license-text-pdf.json',import.meta.url)));
+import fixture from './fixtures/license-text-pdf.json';
 test('real PDF reader extracts labelled fields from a text PDF',async({page})=>{
  await page.goto('/');
  const result=await page.evaluate(async base64=>{const {readLicense}=await import('/hydroland-license-reader.mjs');return readLicense(new File([Uint8Array.from(atob(base64),x=>x.charCodeAt(0))],'license.pdf',{type:'application/pdf'}))},fixture.base64);

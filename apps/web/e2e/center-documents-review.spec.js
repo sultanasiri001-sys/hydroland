@@ -89,7 +89,6 @@ test('license upload cannot write after role revocation',async({page})=>{
 
 async function chooseLicenseFile(form){
  await form.locator('[name="file"]').setInputFiles({name:'license.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-fixture')});
- const manual=form.locator('[data-license-manual]');if(await manual.isVisible())await manual.click();
  await expect(form.locator('fieldset')).toBeVisible();
  await form.locator('[name="issuedAt"]').fill('2025-01-01');await form.locator('[name="expiresAt"]').fill('2030-01-01');
  await form.locator('[name="confirmed"]').check();
