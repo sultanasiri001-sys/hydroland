@@ -9,6 +9,10 @@ on:
       - 'apps/api/src/main.ts'
       - 'apps/api/src/auth/**'
       - 'apps/api/scripts/phase11-production-security-validation.mjs'
+      - 'apps/api/scripts/runtime-dependency-boundary.mjs'
+      - 'apps/api/package.json'
+      - 'package.json'
+      - 'package-lock.json'
       - 'infra/**'
       - '.github/workflows/security-audit.yml'
       - '.github/workflows/phase11-production-security.yml'
@@ -19,6 +23,10 @@ on:
       - 'apps/api/src/main.ts'
       - 'apps/api/src/auth/**'
       - 'apps/api/scripts/phase11-production-security-validation.mjs'
+      - 'apps/api/scripts/runtime-dependency-boundary.mjs'
+      - 'apps/api/package.json'
+      - 'package.json'
+      - 'package-lock.json'
       - 'infra/**'
       - '.github/workflows/security-audit.yml'
       - '.github/workflows/phase11-production-security.yml'
@@ -27,6 +35,19 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: hydroland
+          POSTGRES_PASSWORD: hydroland
+          POSTGRES_DB: hydroland_image_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U hydroland -d hydroland_image_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://hydroland:hydroland@127.0.0.1:5432/hydroland_image_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -36,6 +57,49 @@ jobs:
         run: node apps/api/scripts/phase11-production-security-validation.mjs
       - name: Build production API image
         run: docker build -t hydroland-api:phase11 .
+      - name: Build Compose API image
+        run: docker build -f apps/api/Dockerfile -t hydroland-api:compose .
       - name: Verify image runs as non-root user
         run: |
-          test "$(docker image inspect hydroland-api:phase11 --format '{{.Config.User}}')" = "node"
+          for image in hydroland-api:phase11 hydroland-api:compose; do
+            test "$(docker image inspect "$image" --format '{{.Config.User}}')" = "node"
+          done
+      - name: Verify installed runtime boundary and offline Prisma CLI
+        run: |
+          for image in hydroland-api:phase11 hydroland-api:compose; do
+            label="${image##*:}"
+            docker run --rm --network none --read-only --tmpfs /tmp --entrypoint node "$image" \
+              apps/api/scripts/runtime-dependency-boundary.mjs > "api-runtime-$label.json"
+            docker run --rm --network none --read-only --tmpfs /tmp --entrypoint node "$image" \
+              node_modules/prisma/build/index.js --version
+          done
+      - name: Audit API image dependencies (additional to full repository gate)
+        run: |
+          docker run --rm --entrypoint npm hydroland-api:phase11 \
+            audit --workspace=@hydroland/api --include-workspace-root=false --omit=dev --audit-level=high
+      - name: Verify final image starts and queries disposable PostgreSQL
+        run: |
+          # Historical migrations cannot bootstrap an empty database. This smoke
+          # checks runtime/engine readiness, not production migration acceptance.
+          docker run --rm --network host -e DATABASE_URL --entrypoint node hydroland-api:phase11 \
+            node_modules/prisma/build/index.js db push --schema apps/api/prisma/schema.prisma --skip-generate
+          docker run -d --name hydroland-image-smoke --network host --read-only --tmpfs /tmp \
+            -e DATABASE_URL -e PORT=3102 -e WEB_ORIGIN=http://127.0.0.1:4173 \
+            -e JWT_SECRET=ci-image-smoke-secret-at-least-32-characters \
+            --entrypoint node hydroland-api:phase11 apps/api/dist/main.js
+          trap 'docker logs hydroland-image-smoke; docker rm -f hydroland-image-smoke' EXIT
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:3102/api/v1/health/ready > /tmp/api-image-ready.json; then
+              node -e 'const r=require("/tmp/api-image-ready.json"); if(r.status!=="ready"||r.database!=="ok")process.exit(1)'
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
+      - name: Retain installed runtime inventories
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-runtime-inventories
+          path: api-runtime-*.json
+          retention-days: 7
