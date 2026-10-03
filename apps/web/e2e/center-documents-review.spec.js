@@ -68,7 +68,7 @@ test('draft license upload reauthorizes, sends file and dates, then refreshes li
 test('registered license shows expired validity and internal review separately and locks upload',async({page})=>{
  const state=await install(page);state.body={assets:[],licenses:[{id:'reviewed',subject:'رخصة',type:'LICENSE',status:'REGISTERED',licenseAssetId:'asset',licenseIssuedAt:'2020-01-01',licenseExpiresAt:'2021-01-01',routings:[{decision:'APPROVE'}]}]};
  await page.locator('[data-portal-label="المستندات والتراخيص"]').click();const card=page.locator('[data-center-license="reviewed"]');
- await expect(card).toContainText('منتهية الصلاحية');await expect(card).toContainText('مقبولة بالمراجعة الداخلية');await expect(card.locator('form')).toHaveCount(0);
+ await expect(card).toContainText('منتهية الصلاحية');await expect(card).toContainText('مقبولة بالمراجعة الداخلية');await expect(card.locator('[data-license-attachment]')).toHaveCount(0);
  await expect(page.locator('#hl-center-documents')).toContainText('لا تمثل تحققًا من الجهة المصدرة');
 });
 test('license download is revoked before requesting private bytes',async({page})=>{
@@ -85,4 +85,34 @@ test('license upload cannot write after role revocation',async({page})=>{
  await form.locator('[name="issuedAt"]').fill('2025-01-01');await form.locator('[name="expiresAt"]').fill('2030-01-01');
  await form.locator('[type="file"]').setInputFiles({name:'license.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-fixture')});state.active=false;
  await form.locator('[type="submit"]').click();await expect(page.locator('#hl-center-documents')).toHaveCount(0);expect(writes).toBe(0);
+});
+
+test('center creates a scoped license draft and can immediately attach its file',async({page})=>{
+ const state=await install(page);state.body={assets:[],licenses:[],units:[{id:'unit-a',nameAr:'وحدة المركز'}]};let created;
+ await page.route('**/api/v1/center/me/licenses',route=>{created=route.request().postDataJSON();state.body.licenses.push({id:'new-license',status:'DRAFT',...created});return json(route,{id:'new-license',status:'DRAFT'},201)});
+ await page.locator('[data-portal-label="المستندات والتراخيص"]').click();await page.getByText('إنشاء سجل رخصة جديد',{exact:true}).click();
+ const form=page.locator('[data-license-create]');await form.locator('[name="referenceNumber"]').fill('LIC-NEW-1');await form.locator('[name="subject"]').fill('رخصة المركز الجديدة');
+ const before=state.refreshes;await form.locator('[type="submit"]').click();
+ await expect(page.locator('[data-license-attachment="new-license"]')).toBeVisible();
+ expect(created).toEqual({referenceNumber:'LIC-NEW-1',subject:'رخصة المركز الجديدة',type:'LICENSE',unitId:'unit-a'});expect(state.refreshes).toBeGreaterThan(before);
+});
+test('renewal creates a separate draft without replacing the old license',async({page})=>{
+ const state=await install(page);state.body={assets:[],units:[],licenses:[{id:'old-license',subject:'الرخصة الأصلية',referenceNumber:'OLD-1',type:'LICENSE',status:'REGISTERED',licenseAssetId:'old-asset'}]};let renewed;
+ await page.route('**/api/v1/center/me/licenses/old-license/renew',route=>{renewed=route.request().postDataJSON();state.body.licenses.push({id:'renewed-license',status:'DRAFT',type:'LICENSE',...renewed});return json(route,{id:'renewed-license',status:'DRAFT'},201)});
+ await page.locator('[data-portal-label="المستندات والتراخيص"]').click();await page.locator('[data-center-license="old-license"] summary').click();
+ const form=page.locator('[data-license-renew="old-license"]');await form.locator('[name="referenceNumber"]').fill('NEW-2');await form.locator('[type="submit"]').click();
+ await expect(page.locator('[data-license-attachment="renewed-license"]')).toBeVisible();await expect(page.locator('[data-license-download="old-license"]')).toBeVisible();
+ expect(renewed).toEqual({referenceNumber:'NEW-2',subject:'الرخصة الأصلية'});
+});
+test('duplicate reference error preserves draft form for correction',async({page})=>{
+ const state=await install(page);state.body={assets:[],licenses:[],units:[{id:'unit-a',nameAr:'المركز'}]};await page.route('**/api/v1/center/me/licenses',route=>json(route,{message:'Duplicate reference'},409));
+ await page.locator('[data-portal-label="المستندات والتراخيص"]').click();await page.getByText('إنشاء سجل رخصة جديد',{exact:true}).click();
+ const form=page.locator('[data-license-create]');await form.locator('[name="referenceNumber"]').fill('DUPLICATE');await form.locator('[name="subject"]').fill('رخصة');await form.locator('[type="submit"]').click();
+ await expect(form.locator('[data-license-feedback]')).toContainText('الرقم المرجعي مستخدم');await expect(form.locator('[name="referenceNumber"]')).toHaveValue('DUPLICATE');await expect(form.locator('[type="submit"]')).toBeEnabled();
+});
+test('license creation rechecks revoked center role before sending a write',async({page})=>{
+ const state=await install(page);state.body={assets:[],licenses:[],units:[{id:'unit-a',nameAr:'المركز'}]};let writes=0;await page.route('**/api/v1/center/me/licenses',route=>{writes++;return json(route,{})});
+ await page.locator('[data-portal-label="المستندات والتراخيص"]').click();await page.getByText('إنشاء سجل رخصة جديد',{exact:true}).click();const form=page.locator('[data-license-create]');
+ await form.locator('[name="referenceNumber"]').fill('REF');await form.locator('[name="subject"]').fill('رخصة');state.active=false;await form.locator('[type="submit"]').click();
+ await expect(page.locator('#hl-center-documents')).toHaveCount(0);expect(writes).toBe(0);
 });

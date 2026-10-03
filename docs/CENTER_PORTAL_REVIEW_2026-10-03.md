@@ -166,3 +166,31 @@ Scope: this adds attachments to existing DRAFT regulatory records. It does not
 add center-side record creation, renewal or review-assignment screens; those
 remain the next UI work, using existing administrative workflow boundaries.
 No external approval, production data or production service was changed.
+
+## Center-side license creation and renewal
+
+The portal now creates regulatory DRAFT records in an active unit belonging to
+the managed center. Organization, owner and initial status come from server
+context; callers cannot inject another center, owner, attachment or approval.
+Reference/subject/type are validated, duplicate references return 409, and record
+creation plus actor audit is atomic. The documents response supplies only active
+scoped unit choices.
+
+Renewal is a separate endpoint for an owned non-DRAFT regulatory record. It
+creates a new DRAFT with a new reference, inherits the source type/unit, and
+copies no old attachment, validity dates, routing or approval. The old record
+is untouched. CENTER_LICENSE_RENEWAL_CREATED records the source record ID and
+reference as provenance in the append-only audit; no new schema migration is
+needed for this continuation.
+
+The UI offers new-record creation, renewal, duplicate-error correction and
+immediate attachment editing on the new draft, with fresh authorization before
+every write. The HTTP matrix now denies inactive roles across 16 center routes;
+additional real-DB checks cover foreign/inactive units, spoofing, concurrent
+reference collisions, renewal provenance and old-record preservation. Browser
+checks exercise creation, renewal, duplicate feedback and role revocation.
+
+Remaining UI work: submission/registration and reviewer assignment/decision,
+reusing existing administrative permissions and separation of duties. Creation
+or renewal is not a license approval. Production deployment and the earlier
+attachment migration remain held by dependency security.

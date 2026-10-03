@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { EquipmentInspectionService } from '../trips/equipment-inspection.service';
-import { CenterLicenseService, LicenseAttachmentInput } from './center-license.service';
+import { CenterLicenseService, LicenseAttachmentInput, LicenseRecordInput } from './center-license.service';
 import { DatabaseService } from '../database/database.service';
 
 @Injectable()
@@ -52,13 +52,18 @@ export class DiveCenterPortalService {
 
   async documents(accountId:string){
     const center=await this.managedCenter(accountId);
-    const [assets,records]=await Promise.all([
+    const [assets,records,units]=await Promise.all([
       this.db.organizationDocumentAsset.findMany({where:{organizationId:center.id},select:{id:true,kind:true,mimeType:true,byteSize:true,sha256:true,createdAt:true},orderBy:{createdAt:'desc'},take:200}),
       this.db.administrativeRecord.findMany({where:{organizationId:center.id,type:{in:['LICENSE','PERMIT','CERTIFICATE','REGULATORY_APPROVAL']}},select:{id:true,type:true,referenceNumber:true,subject:true,status:true,createdAt:true,updatedAt:true,licenseAssetId:true,licenseIssuedAt:true,licenseExpiresAt:true,routings:{select:{id:true,decision:true,decidedAt:true,createdAt:true},orderBy:{createdAt:'desc'},take:1}},orderBy:{updatedAt:'desc'},take:200}),
+      this.db.orgUnit.findMany({where:{organizationId:center.id,active:true},select:{id:true,nameAr:true,nameEn:true,type:true},orderBy:{nameAr:'asc'}}),
     ]);
-    return {assets,licenses:records};
+    return {assets,licenses:records,units};
   }
 
+  async createLicense(accountId:string,input:LicenseRecordInput,renewalId?:string){
+    const center=await this.managedCenter(accountId);
+    return this.licenses.create(accountId,center.id,input,renewalId);
+  }
   async attachLicense(accountId:string,id:string,input:LicenseAttachmentInput){
     const center=await this.managedCenter(accountId);
     return this.licenses.attach(accountId,center.id,id,input);

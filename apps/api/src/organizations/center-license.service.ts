@@ -5,10 +5,34 @@ import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 
 const types=['LICENSE','PERMIT','CERTIFICATE','REGULATORY_APPROVAL'];
+export type LicenseRecordInput={type?:string;unitId?:string;referenceNumber?:string;subject?:string};
 export type LicenseAttachmentInput={mimeType?:string;base64?:string;issuedAt?:string;expiresAt?:string};
 @Injectable()
 export class CenterLicenseService {
   constructor(private readonly db:DatabaseService,private readonly audit:AuditService){}
+  async create(accountId:string,organizationId:string,input:LicenseRecordInput,renewalId?:string){
+    const text=(value:unknown,max:number)=>typeof value==='string'&&value.trim().length<=max?value.trim():'';
+    const referenceNumber=text(input?.referenceNumber,120),subject=text(input?.subject,240);
+    if(!referenceNumber||!subject)throw new BadRequestException('License reference and subject are required (120/240 characters maximum).');
+    try{
+      return await this.db.serializable(async tx=>{
+        const previous=renewalId?await tx.administrativeRecord.findFirst({where:{id:renewalId,organizationId,type:{in:types}}}):null;
+        if(renewalId&&!previous)throw new NotFoundException('Previous license not found in managed center.');
+        if(previous?.status==='DRAFT')throw new ConflictException('Finish the existing draft instead of renewing it.');
+        const type=previous?.type??input?.type,unitId=previous?.unitId??input?.unitId;
+        if(typeof type!=='string'||!types.includes(type)||typeof unitId!=='string'||!unitId)throw new BadRequestException('A regulatory record type and active center unit are required.');
+        const unit=await tx.orgUnit.findFirst({where:{id:unitId,organizationId,active:true},select:{id:true}});
+        if(!unit)throw new NotFoundException('Active unit not found in managed center.');
+        const record=await tx.administrativeRecord.create({data:{organizationId,unitId:unit.id,type,referenceNumber,subject,ownerAccountId:accountId,status:'DRAFT'}});
+        await this.audit.record({actorId:accountId,action:previous?'CENTER_LICENSE_RENEWAL_CREATED':'CENTER_LICENSE_CREATED',resource:'AdministrativeRecord',resourceId:record.id,
+          metadata:{organizationId,unitId:unit.id,type,referenceNumber,renewalOfRecordId:previous?.id??null,previousReferenceNumber:previous?.referenceNumber??null}},tx);
+        return {id:record.id,type:record.type,referenceNumber:record.referenceNumber,subject:record.subject,status:record.status};
+      });
+    }catch(error){
+      if(typeof error==='object'&&error!==null&&'code' in error&&error.code==='P2002')throw new ConflictException('License reference already exists in this center.');
+      throw error;
+    }
+  }
   private date(value:unknown){
     if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value))throw new BadRequestException('License dates must use YYYY-MM-DD.');
     const date=new Date(value+'T00:00:00.000Z');

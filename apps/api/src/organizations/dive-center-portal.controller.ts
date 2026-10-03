@@ -1,7 +1,7 @@
-import { Body, Controller, Get, Param, Patch, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 type AuthenticatedRequest = { auth: { accountId: string } };
-import { LicenseAttachmentInput } from './center-license.service';
+import { LicenseAttachmentInput, LicenseRecordInput } from './center-license.service';
 import { DiveCenterPortalService } from './dive-center-portal.service';
 
 @Controller('center')
@@ -13,6 +13,8 @@ export class DiveCenterPortalController {
 
   @Get('me/documents') documents(@Req() request:AuthenticatedRequest){return this.portal.documents(request.auth.accountId);}
 
+  @Post('me/licenses') createLicense(@Req() request:AuthenticatedRequest,@Body() body:LicenseRecordInput){return this.portal.createLicense(request.auth.accountId,body);}
+  @Post('me/licenses/:id/renew') renewLicense(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:LicenseRecordInput){return this.portal.createLicense(request.auth.accountId,body,id);}
   @Patch('me/licenses/:id/attachment') attachLicense(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:LicenseAttachmentInput){return this.portal.attachLicense(request.auth.accountId,id,body);}
   @Get('me/licenses/:id/attachment') async downloadLicense(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Res() res:any){
     const file=await this.portal.downloadLicense(request.auth.accountId,id);
