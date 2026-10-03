@@ -11,6 +11,7 @@ async function setup(page){
  await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandCenterLicenseAdmin));
  await page.evaluate(async()=>{window.HydrolandAuth.acceptSession({accessToken:'admin-test',refreshToken:'admin-refresh'},window.HydrolandAuth.beginAuthAttempt());await window.HydrolandProfile.load()});
  await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="admin"]').click();
+ await page.locator('[data-portal-label="الموافقات والطلبات"]').click();
  await expect(page.locator('[data-platform-license="review-one"]')).toBeVisible();return state;
 }
 for(const outcome of ['APPROVED','REJECTED'])test(`independent platform admin saves ${outcome} with reviewed revision`,async({page})=>{

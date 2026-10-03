@@ -16,7 +16,7 @@
   const fileBase64=file=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('تعذرت قراءة الملف.'));reader.readAsDataURL(file)});
   function previewValidity(form){
     const output=form.querySelector('[data-license-validity]');if(!output)return;
-    const issue=form.elements.issuedAt.value,expiry=form.elements.expiresAt.value,today=new Date().toISOString().slice(0,10);
+    const issue=form.elements.issuedAt.value,expiry=form.elements.expiresAt.value,today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Riyadh'}).format(new Date());
     output.textContent=!issue||!expiry?'أكمل التاريخين لتحديد الصلاحية.':expiry<=issue?'يجب أن يكون الانتهاء بعد الإصدار.':expiry<today?'منتهية الصلاحية':issue>today?'لم تبدأ الصلاحية':'سارية بحسب التواريخ المدخلة';
   }
   async function readFile(form){
@@ -98,7 +98,7 @@
     finally{delete form.dataset.busy;button.disabled=false}
   }
   const licenseCard=row=>{
-    const today=new Date().toISOString().slice(0,10),expires=row.licenseExpiresAt?.slice(0,10);
+    const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Riyadh'}).format(new Date()),expires=row.licenseExpiresAt?.slice(0,10);
     const validity=!expires?'الصلاحية غير موثقة':expires<today?'منتهية الصلاحية':row.licenseIssuedAt?.slice(0,10)>today?'لم تبدأ الصلاحية':'ضمن فترة الصلاحية';
     const routing=row.routings?.[0],review=!routing?'لم تُطلب مراجعة داخلية':routing.decision==='APPROVE'?'مقبولة بالمراجعة الداخلية':routing.decision==='REJECT'?'مرفوضة بالمراجعة الداخلية':'بانتظار المراجعة الداخلية';
     return `<article class="hl-course" data-center-license="${esc(row.id)}"><div class="hl-course-top"><div><b>${esc(row.subject||row.type||'سجل تنظيمي')}</b><small>${esc(row.referenceNumber||'بدون رقم مرجعي')} · ${esc(row.type||'RECORD')}</small></div><span>${esc(({DRAFT:'محفوظ — قابل للتعديل',REGISTERED:'محفوظ — مقفل للمراجعة'})[row.status]||row.status||'—')}</span></div><p>${esc(validity)} · ${esc(review)}</p><small>الإصدار: ${esc(row.licenseIssuedAt?.slice(0,10)||'—')} · الانتهاء: ${esc(expires||'—')}</small><p>${row.licenseAssetId?`<button type="button" data-license-download="${esc(row.id)}">تنزيل المرفق</button>`:'لا يوجد مرفق مرتبط'}</p>${row.status==='DRAFT'?`<form data-license-attachment="${esc(row.id)}"><label>تاريخ الإصدار <input name="issuedAt" type="date" value="${esc(row.licenseIssuedAt?.slice(0,10)||'')}" required></label><label>تاريخ الانتهاء <input name="expiresAt" type="date" value="${esc(expires||'')}" required></label><label>مرفق الرخصة — PDF أو PNG أو JPEG، حتى 2 ميجابايت <input name="file" type="file" accept="application/pdf,image/png,image/jpeg" required></label><button type="submit">حفظ المرفق والصلاحية</button><p data-license-feedback role="status"></p></form>`:`<small>المرفق مقفل بعد تسجيل السجل.</small><details><summary>تجديد بسجل جديد</summary><p>تبقى الرخصة السابقة كما هي. أرفق نسخة الرخصة المجددة بعد حفظ الرخصة.</p><form data-license-renew="${esc(row.id)}">${identityFields(row.subject)}<button type="submit">حفظ سجل التجديد</button><p data-license-feedback role="status"></p></form></details>`}<small>آخر تحديث: ${esc(date(row.updatedAt||row.createdAt))}</small><p data-license-download-feedback role="status"></p>${platformReview(row)}${reviewControls(row)}</article>`;

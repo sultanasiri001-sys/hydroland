@@ -47,7 +47,7 @@ export class CenterLicensePlatformReviewService {
    const member=await tx.organizationMember.findFirst({where:{accountId:actor,organizationId:row.organizationId,status:'ACTIVE'}});
    if(actor===row.ownerAccountId||actor===row.licenseReviewSubmittedById||actor===row.organization.ownerId||member)throw new ForbiddenException('لا يمكن مراجعة رخصة مركز تملكه أو تنتمي إليه أو أرسلت طلبه.');
    if(outcome==='APPROVED'){
-    const today=new Date(new Date().toISOString().slice(0,10)+'T00:00:00Z');
+    const today=new Date(new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Riyadh'}).format(new Date())+'T00:00:00Z');
     if(row.organization.status!=='ACTIVE'||!row.licenseAssetId||!row.licenseIssuedAt||!row.licenseExpiresAt||row.licenseIssuedAt>today||row.licenseExpiresAt<today)throw new ConflictException('لا يمكن اعتماد رخصة غير سارية أو مركز غير نشط.');
     const asset=await tx.organizationDocumentAsset.findFirst({where:{id:row.licenseAssetId,organizationId:row.organizationId,kind:'LICENSE_ATTACHMENT'}});
     if(!asset||createHash('sha256').update(Buffer.from(asset.content)).digest('hex')!==asset.sha256)throw new ConflictException('تعذر التحقق من سلامة المرفق.');
