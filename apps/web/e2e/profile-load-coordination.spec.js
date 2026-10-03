@@ -3,12 +3,16 @@ const json=(route,body,status=200)=>route.fulfill({status,contentType:'applicati
 const account={id:'profile-load-order',email:'profile-order@example.invalid',status:'ACTIVE',person:{firstName:'عضو',lastName:'اختبار'},roleAssignments:[{role:'DIVER',status:'ACTIVE'}]};
 const install=async page=>{
   await page.setViewportSize({width:390,height:844});
+  await page.clock.install();
   await page.route('**/api/v1/**',route=>json(route,[]));
   await page.route('**/api/v1/auth/google/config',route=>json(route,{enabled:false}));
   await page.route(/\/api\/v1\/me$/,route=>json(route,account));
   await page.route(/\/api\/v1\/me\/diver-profile$/,route=>json(route,{message:'Unavailable'},503));
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile));
+  // Drain the 500 ms bootstrap load before installing the two-request transport.
+  // Otherwise startup can create an uncontrolled third request held forever.
+  await page.clock.runFor(500);
   await page.evaluate(async()=>{window.HydrolandAuth.acceptSession({accessToken:'load-order-access',refreshToken:'load-order-refresh'},window.HydrolandAuth.beginAuthAttempt());await window.HydrolandProfile.load()});
   await page.locator('#profile-open').click();
   await page.locator('#profile-dialog [data-hl-action="diver-profile"]').click();
