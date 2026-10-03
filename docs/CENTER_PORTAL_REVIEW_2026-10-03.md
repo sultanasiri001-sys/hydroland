@@ -194,3 +194,36 @@ Remaining UI work: submission/registration and reviewer assignment/decision,
 reusing existing administrative permissions and separation of duties. Creation
 or renewal is not a license approval. Production deployment and the earlier
 attachment migration remain held by dependency security.
+
+## Center license review UI and scoped actions
+
+The portal now exposes registration (which locks the attachment), routing to a
+separate active center unit, reviewer assignment and APPROVE/REJECT decisions.
+Registration and routing are explicit separate actions, not a claimed atomic
+combined submission. Four fresh-role/managed-center endpoints scope the record
+or routing before delegating to AdministrativeAffairsPersistenceService. They
+reuse canonical permissions, conditional writes, audit events and requester /
+assigned-reviewer separation of duties. No independent approval engine is added.
+
+Center registration requires an attached file with dates and verified digest.
+Reviewer choices are active OWNER/ADMIN members with active accounts and an
+ACTIVE DIVE_CENTER role whose selected managed center is this center. Scoped
+administrative reviewers outside this portal subset keep their existing admin
+workflow; no role is granted automatically. Assignment rechecks eligibility and
+rejects the requester. Only the assigned non-requester can decide; decisions
+remain immutable through the canonical workflow.
+
+All review records are shown latest first, not only the latest row. Each row
+has its unit/reviewer display name, eligible assignment choices and a server
+computed canDecide flag; raw requester/assignee fields are omitted from the
+list. Historical decisions remain visible when another review is requested.
+The UI hides final decision controls and reauthorizes before each of the four
+mutations. Internal review is not issuer/regulatory approval.
+
+Coverage adds real HTTP/DB registration, missing-file denial, destination scope,
+requester/foreign/ineligible assignee denial, approval and rejection, immutable
+final decisions and canonical reviewer audit. Inactive-role coverage now spans
+20 routes. Browser tests cover ordered register/route/assign, both decisions,
+and per-action same-session role revocation. No new migration is required.
+The original attachment migration remains pending deployment with the code;
+production and dependency-security release hold are unchanged.

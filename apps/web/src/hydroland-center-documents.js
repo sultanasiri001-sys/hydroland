@@ -29,11 +29,43 @@
     }catch(error){if(current(host,version,session))feedback.textContent=error.message||'تعذر إنشاء المسودة.'}
     finally{delete form.dataset.busy;button.disabled=false}
   }
+  const reviewControls=row=>{
+    let html='';
+    if(row.status==='DRAFT')html=row.licenseAssetId?`<form data-license-review-action="register" data-license-target="${esc(row.id)}"><p>تسجيل الرخصة يقفل المرفق والتواريخ. بعدها اختر وحدة المراجعة.</p><button type="submit">تسجيل الرخصة وقفل المرفق</button><p data-license-feedback role="status"></p></form>`:'<p>أرفق الرخصة وتواريخها قبل تسجيلها للمراجعة.</p>';
+    const routes=Array.isArray(row.routings)?row.routings:[],units=Array.isArray(row.reviewUnits)?row.reviewUnits:[];
+    if(row.status==='REGISTERED'&&!routes.some(x=>!x.decision))html+=units.length?`<form data-license-review-action="route" data-license-target="${esc(row.id)}"><label>وحدة المراجعة <select name="toUnitId" required>${units.map(unit=>`<option value="${esc(unit.id)}">${esc(unit.nameAr||unit.nameEn)}</option>`).join('')}</select></label><button type="submit">إرسال للمراجعة الداخلية</button><p data-license-feedback role="status"></p></form>`:'<p>الإرسال للمراجعة يتطلب وحدة نشطة أخرى داخل المركز.</p>';
+    html+=routes.map(route=>{
+      const options=Array.isArray(route.reviewerOptions)?route.reviewerOptions:[];
+      let result=`<section data-license-review="${esc(route.id)}"><p>وحدة المراجعة: ${esc(route.unitName||'—')} · المراجع: ${esc(route.reviewerName||'غير معيّن')}</p><p>${route.decision==='APPROVE'?'قبول داخلي':route.decision==='REJECT'?'رفض داخلي':'قيد المراجعة'}</p>`;
+      if(!route.decision){
+        result+=options.length?`<form data-license-review-action="assign" data-license-target="${esc(route.id)}"><label>مراجع مستقل <select name="assigneeAccountId" required>${options.map(person=>`<option value="${esc(person.id)}">${esc(person.name)}</option>`).join('')}</select></label><button type="submit">تعيين المراجع</button><p data-license-feedback role="status"></p></form>`:'<p>لا يوجد مراجع مؤهل مستقل متاح في بوابة هذا المركز.</p>';
+        if(route.canDecide)result+=`<form data-license-review-action="decide" data-license-target="${esc(route.id)}"><label>قرار المراجعة الداخلية <select name="decision" required><option value="">اختر القرار</option><option value="APPROVE">قبول</option><option value="REJECT">رفض</option></select></label><button type="submit">تسجيل القرار النهائي</button><p data-license-feedback role="status"></p></form>`;
+      }
+      return result+'</section>';
+    }).join('');
+    return html;
+  };
+  async function reviewAction(form){
+    if(form.dataset.busy)return;
+    const host=section,version=viewVersion,session=auth()?.getSessionVersion?.(),feedback=form.querySelector('[data-license-feedback]'),button=form.querySelector('[type="submit"]');
+    const action=form.dataset.licenseReviewAction,id=encodeURIComponent(form.dataset.licenseTarget);
+    const config={register:{path:'/licenses/'+id+'/register',method:'PATCH',body:{}},route:{path:'/licenses/'+id+'/reviews',method:'POST',body:{toUnitId:form.elements.toUnitId?.value}},assign:{path:'/license-reviews/'+id+'/assign',method:'PATCH',body:{assigneeAccountId:form.elements.assigneeAccountId?.value}},decide:{path:'/license-reviews/'+id+'/decision',method:'PATCH',body:{decision:form.elements.decision?.value}}}[action];
+    if(!config)return;
+    form.dataset.busy='true';button.disabled=true;
+    try{
+      if(!(await authorize(host,version,session)))return;
+      const response=await auth().authorizedFetch('/center/me'+config.path,{method:config.method,headers:{'content-type':'application/json'},body:JSON.stringify(config.body)});
+      const data=await response.json().catch(()=>null);if(!current(host,version,session))return;
+      if(!response.ok)throw new Error(data?.message||'تعذر تنفيذ إجراء المراجعة. حدّث السجل وحاول مجددًا.');
+      await open();
+    }catch(error){if(current(host,version,session))feedback.textContent=error.message||'تعذر تنفيذ إجراء المراجعة.'}
+    finally{delete form.dataset.busy;button.disabled=false}
+  }
   const licenseCard=row=>{
     const today=new Date().toISOString().slice(0,10),expires=row.licenseExpiresAt?.slice(0,10);
     const validity=!expires?'الصلاحية غير موثقة':expires<today?'منتهية الصلاحية':row.licenseIssuedAt?.slice(0,10)>today?'لم تبدأ الصلاحية':'ضمن فترة الصلاحية';
     const routing=row.routings?.[0],review=!routing?'لم تُطلب مراجعة داخلية':routing.decision==='APPROVE'?'مقبولة بالمراجعة الداخلية':routing.decision==='REJECT'?'مرفوضة بالمراجعة الداخلية':'بانتظار المراجعة الداخلية';
-    return `<article class="hl-course" data-center-license="${esc(row.id)}"><div class="hl-course-top"><div><b>${esc(row.subject||row.type||'سجل تنظيمي')}</b><small>${esc(row.referenceNumber||'بدون رقم مرجعي')} · ${esc(row.type||'RECORD')}</small></div><span>${esc(row.status||'—')}</span></div><p>${esc(validity)} · ${esc(review)}</p><small>الإصدار: ${esc(row.licenseIssuedAt?.slice(0,10)||'—')} · الانتهاء: ${esc(expires||'—')}</small><p>${row.licenseAssetId?`<button type="button" data-license-download="${esc(row.id)}">تنزيل المرفق</button>`:'لا يوجد مرفق مرتبط'}</p>${row.status==='DRAFT'?`<form data-license-attachment="${esc(row.id)}"><label>تاريخ الإصدار <input name="issuedAt" type="date" value="${esc(row.licenseIssuedAt?.slice(0,10)||'')}" required></label><label>تاريخ الانتهاء <input name="expiresAt" type="date" value="${esc(expires||'')}" required></label><label>مرفق الرخصة — PDF أو PNG أو JPEG، حتى 2 ميجابايت <input name="file" type="file" accept="application/pdf,image/png,image/jpeg" required></label><button type="submit">حفظ المرفق والصلاحية</button><p data-license-feedback role="status"></p></form>`:`<small>المرفق مقفل بعد تسجيل السجل.</small><details><summary>تجديد بسجل جديد</summary><p>تبقى الرخصة السابقة كما هي. أرفق نسخة الرخصة المجددة بعد إنشاء المسودة.</p><form data-license-renew="${esc(row.id)}">${identityFields(row.subject)}<button type="submit">إنشاء مسودة التجديد</button><p data-license-feedback role="status"></p></form></details>`}<small>آخر تحديث: ${esc(date(row.updatedAt||row.createdAt))}</small><p data-license-download-feedback role="status"></p></article>`;
+    return `<article class="hl-course" data-center-license="${esc(row.id)}"><div class="hl-course-top"><div><b>${esc(row.subject||row.type||'سجل تنظيمي')}</b><small>${esc(row.referenceNumber||'بدون رقم مرجعي')} · ${esc(row.type||'RECORD')}</small></div><span>${esc(row.status||'—')}</span></div><p>${esc(validity)} · ${esc(review)}</p><small>الإصدار: ${esc(row.licenseIssuedAt?.slice(0,10)||'—')} · الانتهاء: ${esc(expires||'—')}</small><p>${row.licenseAssetId?`<button type="button" data-license-download="${esc(row.id)}">تنزيل المرفق</button>`:'لا يوجد مرفق مرتبط'}</p>${row.status==='DRAFT'?`<form data-license-attachment="${esc(row.id)}"><label>تاريخ الإصدار <input name="issuedAt" type="date" value="${esc(row.licenseIssuedAt?.slice(0,10)||'')}" required></label><label>تاريخ الانتهاء <input name="expiresAt" type="date" value="${esc(expires||'')}" required></label><label>مرفق الرخصة — PDF أو PNG أو JPEG، حتى 2 ميجابايت <input name="file" type="file" accept="application/pdf,image/png,image/jpeg" required></label><button type="submit">حفظ المرفق والصلاحية</button><p data-license-feedback role="status"></p></form>`:`<small>المرفق مقفل بعد تسجيل السجل.</small><details><summary>تجديد بسجل جديد</summary><p>تبقى الرخصة السابقة كما هي. أرفق نسخة الرخصة المجددة بعد إنشاء المسودة.</p><form data-license-renew="${esc(row.id)}">${identityFields(row.subject)}<button type="submit">إنشاء مسودة التجديد</button><p data-license-feedback role="status"></p></form></details>`}<small>آخر تحديث: ${esc(date(row.updatedAt||row.createdAt))}</small><p data-license-download-feedback role="status"></p>${reviewControls(row)}</article>`;
   };
   async function attach(form){
     if(form.dataset.busy)return;
@@ -68,7 +100,7 @@
     }catch(error){if(current(host,version,session))feedback.textContent=error.message||'تعذر تنزيل المرفق.'}
     finally{button.disabled=false}
   }
-  const ensure=()=>{if(section?.isConnected)return section;section=document.createElement('section');section.className='hl-center-documents';section.id='hl-center-documents';section.hidden=true;section.innerHTML='<header><div><small>DIVE CENTER · مركز الغوص</small><h2>المستندات والتراخيص</h2><p>سجلات المركز التنظيمية والأصول المرفوعة ضمن نطاق المركز المُدار فقط.</p></div></header><div data-center-documents aria-live="polite"></div>';section.addEventListener('click',event=>{if(event.target.closest?.('[data-center-documents-retry]'))void open();const button=event.target.closest?.('[data-license-download]');if(button)void download(button)});section.addEventListener('submit',event=>{const form=event.target.closest?.('[data-license-attachment]');if(form){event.preventDefault();void attach(form);return}const recordForm=event.target.closest?.('[data-license-create],[data-license-renew]');if(recordForm){event.preventDefault();void saveRecord(recordForm)}});document.getElementById('main')?.prepend(section);return section};
+  const ensure=()=>{if(section?.isConnected)return section;section=document.createElement('section');section.className='hl-center-documents';section.id='hl-center-documents';section.hidden=true;section.innerHTML='<header><div><small>DIVE CENTER · مركز الغوص</small><h2>المستندات والتراخيص</h2><p>سجلات المركز التنظيمية والأصول المرفوعة ضمن نطاق المركز المُدار فقط.</p></div></header><div data-center-documents aria-live="polite"></div>';section.addEventListener('click',event=>{if(event.target.closest?.('[data-center-documents-retry]'))void open();const button=event.target.closest?.('[data-license-download]');if(button)void download(button)});section.addEventListener('submit',event=>{const reviewForm=event.target.closest?.('[data-license-review-action]');if(reviewForm){event.preventDefault();void reviewAction(reviewForm);return}const form=event.target.closest?.('[data-license-attachment]');if(form){event.preventDefault();void attach(form);return}const recordForm=event.target.closest?.('[data-license-create],[data-license-renew]');if(recordForm){event.preventDefault();void saveRecord(recordForm)}});document.getElementById('main')?.prepend(section);return section};
   async function open(){
     if(!eligible()){clear();return;}
     const host=ensure(),list=host.querySelector('[data-center-documents]'),version=++viewVersion,session=auth().getSessionVersion?.();

@@ -1,6 +1,7 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { PDFDocument } from 'pdf-lib';
+import { AdministrativeAffairsPersistenceService } from '../administrative-affairs/administrative-affairs-persistence.service';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 
@@ -9,7 +10,46 @@ export type LicenseRecordInput={type?:string;unitId?:string;referenceNumber?:str
 export type LicenseAttachmentInput={mimeType?:string;base64?:string;issuedAt?:string;expiresAt?:string};
 @Injectable()
 export class CenterLicenseService {
-  constructor(private readonly db:DatabaseService,private readonly audit:AuditService){}
+  constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly administrative:AdministrativeAffairsPersistenceService){}
+  async reviewers(organizationId:string){
+    const members=await this.db.organizationMember.findMany({where:{organizationId,status:'ACTIVE',role:{in:['OWNER','ADMIN']},account:{status:'ACTIVE',roleAssignments:{some:{role:'DIVE_CENTER',status:'ACTIVE'}}}},select:{account:{select:{id:true,person:{select:{firstName:true,lastName:true}},organizationMemberships:{where:{status:'ACTIVE',role:{in:['OWNER','ADMIN']},organization:{kind:{contains:'DIVE',mode:'insensitive'},status:'ACTIVE'}},orderBy:{createdAt:'asc'},take:1,select:{organizationId:true}}}}}});
+    return members.filter(x=>x.account.organizationMemberships[0]?.organizationId===organizationId).map(x=>({id:x.account.id,name:[x.account.person.firstName,x.account.person.lastName].filter(Boolean).join(' ').trim()||'مراجع المركز'}));
+  }
+  private async record(organizationId:string,id:string){
+    const record=await this.db.administrativeRecord.findFirst({where:{id,organizationId,type:{in:types}}});
+    if(!record)throw new NotFoundException('License record not found in managed center.');
+    return record;
+  }
+  private async routing(organizationId:string,id:string){
+    const routing=await this.db.administrativeRouting.findFirst({where:{id,organizationId,record:{organizationId,type:{in:types}}}});
+    if(!routing)throw new NotFoundException('License review not found in managed center.');
+    return routing;
+  }
+  async register(accountId:string,organizationId:string,id:string){
+    const record=await this.record(organizationId,id);
+    if(!record.licenseAssetId||!record.licenseIssuedAt||!record.licenseExpiresAt)throw new ConflictException('Attach the license and its validity dates before registration.');
+    await this.download(organizationId,id);
+    return this.administrative.registerRecord(id,accountId);
+  }
+  async route(accountId:string,organizationId:string,id:string,toUnitId:unknown){
+    await this.record(organizationId,id);
+    if(typeof toUnitId!=='string'||!toUnitId)throw new BadRequestException('Review unit is required.');
+    const target=await this.db.orgUnit.findFirst({where:{id:toUnitId,organizationId,active:true},select:{id:true}});
+    if(!target)throw new NotFoundException('Active review unit not found in managed center.');
+    return this.administrative.route(id,toUnitId,accountId);
+  }
+  async assign(accountId:string,organizationId:string,id:string,assignee:unknown){
+    const routing=await this.routing(organizationId,id);
+    if(typeof assignee!=='string'||!assignee)throw new BadRequestException('Reviewer is required.');
+    if(assignee===routing.requestedByAccountId)throw new ForbiddenException('Requester cannot review own license request.');
+    if(!(await this.reviewers(organizationId)).some(x=>x.id===assignee))throw new ForbiddenException('Reviewer is not eligible in this center portal.');
+    return this.administrative.assign(id,assignee,accountId);
+  }
+  async decide(accountId:string,organizationId:string,id:string,decision:unknown){
+    await this.routing(organizationId,id);
+    if(decision!=='APPROVE'&&decision!=='REJECT')throw new BadRequestException('Decision must be APPROVE or REJECT.');
+    return this.administrative.decide(id,decision,accountId);
+  }
   async create(accountId:string,organizationId:string,input:LicenseRecordInput,renewalId?:string){
     const text=(value:unknown,max:number)=>typeof value==='string'&&value.trim().length<=max?value.trim():'';
     const referenceNumber=text(input?.referenceNumber,120),subject=text(input?.subject,240);

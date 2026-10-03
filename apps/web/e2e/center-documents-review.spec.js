@@ -116,3 +116,27 @@ test('license creation rechecks revoked center role before sending a write',asyn
  await form.locator('[name="referenceNumber"]').fill('REF');await form.locator('[name="subject"]').fill('رخصة');state.active=false;await form.locator('[type="submit"]').click();
  await expect(page.locator('#hl-center-documents')).toHaveCount(0);expect(writes).toBe(0);
 });
+
+test('license registration, routing and reviewer assignment use scoped actions in order',async({page})=>{
+ const state=await install(page),calls=[];const row={id:'review-license',subject:'رخصة للمراجعة',status:'DRAFT',licenseAssetId:'asset',reviewUnits:[{id:'review-unit',nameAr:'وحدة المراجعة'}],routings:[]};state.body={assets:[],units:[],licenses:[row]};
+ await page.route('**/api/v1/center/me/licenses/review-license/register',route=>{calls.push('register');row.status='REGISTERED';return json(route,{status:'REGISTERED'})});
+ await page.route('**/api/v1/center/me/licenses/review-license/reviews',route=>{calls.push(route.request().postDataJSON());row.routings=[{id:'review-one',reviewerOptions:[{id:'reviewer',name:'المراجع المستقل'}],canDecide:false,unitName:'وحدة المراجعة'}];return json(route,{id:'review-one'},201)});
+ await page.route('**/api/v1/center/me/license-reviews/review-one/assign',route=>{calls.push(route.request().postDataJSON());row.routings[0].reviewerName='المراجع المستقل';return json(route,{id:'review-one'})});
+ await page.locator('[data-portal-label="المستندات والتراخيص"]').click();
+ await page.locator('[data-license-review-action="register"] button').click();await expect(page.locator('[data-license-attachment]')).toHaveCount(0);
+ await page.locator('[data-license-review-action="route"] button').click();await page.locator('[data-license-review-action="assign"] button').click();
+ await expect(page.locator('[data-license-review="review-one"]')).toContainText('المراجع: المراجع المستقل');await expect(page.locator('[data-license-review-action="decide"]')).toHaveCount(0);
+ expect(calls).toEqual(['register',{toUnitId:'review-unit'},{assigneeAccountId:'reviewer'}]);
+});
+for(const decision of ['APPROVE','REJECT'])test(`assigned license reviewer records ${decision} and loses final-decision controls`,async({page})=>{
+ const state=await install(page);const review={id:'assigned',canDecide:true,reviewerName:'مراجع',reviewerOptions:[],unitName:'المراجعة'};state.body={assets:[],licenses:[{id:'reviewed',status:'REGISTERED',routings:[review]}]};let posted;
+ await page.route('**/api/v1/center/me/license-reviews/assigned/decision',route=>{posted=route.request().postDataJSON();review.decision=posted.decision;return json(route,{decision})});
+ await page.locator('[data-portal-label="المستندات والتراخيص"]').click();const form=page.locator('[data-license-review-action="decide"]');await form.locator('select').selectOption(decision);await form.locator('button').click();
+ await expect(page.locator('[data-license-review="assigned"]')).toContainText(decision==='APPROVE'?'قبول داخلي':'رفض داخلي');await expect(page.locator('[data-license-review-action="decide"]')).toHaveCount(0);expect(posted).toEqual({decision});
+});
+for(const action of ['register','route','assign','decide'])test(`license ${action} refreshes revoked access before writing`,async({page})=>{
+ const state=await install(page);const row={id:'guarded',status:action==='register'?'DRAFT':'REGISTERED',licenseAssetId:'asset',reviewUnits:[{id:'review-unit',nameAr:'المراجعة'}],routings:action==='assign'||action==='decide'?[{id:'pending',canDecide:true,reviewerOptions:[{id:'reviewer',name:'مراجع'}]}]:[]};state.body={assets:[],licenses:[row]};let writes=0;
+ await page.route(/\/api\/v1\/center\/me\/(?:licenses|license-reviews)\//,route=>{writes++;return json(route,{})});
+ await page.locator('[data-portal-label="المستندات والتراخيص"]').click();const form=page.locator(`[data-license-review-action="${action}"]`);await expect(form).toBeVisible();if(action==='decide')await form.locator('select').selectOption('APPROVE');state.active=false;await form.locator('button').click();
+ await expect(page.locator('#hl-center-documents')).toHaveCount(0);expect(writes).toBe(0);
+});
