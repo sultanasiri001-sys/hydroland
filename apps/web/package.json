@@ -6,12 +6,18 @@
     "dev": "node scripts/dev.mjs",
     "build": "node scripts/build.mjs",
     "serve": "node scripts/serve.mjs",
-    "test": "node --test scripts/serve.test.mjs scripts/authorized-fetch.test.mjs && node scripts/validate.mjs && node scripts/design-system-validation.mjs && node scripts/public-interfaces-validation.mjs && node scripts/store-checkout-validation.mjs && node scripts/portal-access-validation.mjs && node scripts/portal-action-authorization-validation.mjs",
+    "test": "node --test scripts/serve.test.mjs scripts/authorized-fetch.test.mjs scripts/license-fields.test.mjs && node scripts/validate.mjs && node scripts/design-system-validation.mjs && node scripts/public-interfaces-validation.mjs && node scripts/store-checkout-validation.mjs && node scripts/portal-access-validation.mjs && node scripts/portal-action-authorization-validation.mjs",
     "test:e2e": "playwright test",
     "validate:design-system": "node scripts/design-system-validation.mjs",
     "validate:public-interfaces": "node scripts/public-interfaces-validation.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2"
+  },
+  "dependencies": {
+    "@tesseract.js-data/ara": "1.0.0",
+    "@tesseract.js-data/eng": "1.0.0",
+    "pdfjs-dist": "6.4.299",
+    "tesseract.js": "7.0.0"
   }
 }

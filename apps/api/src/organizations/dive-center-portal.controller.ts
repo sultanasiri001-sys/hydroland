@@ -18,6 +18,7 @@ export class DiveCenterPortalController {
   @Patch('me/license-reviews/:id/assign') assignReview(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:{assigneeAccountId?:string}){return this.portal.assignLicenseReview(request.auth.accountId,id,body?.assigneeAccountId);}
   @Patch('me/license-reviews/:id/decision') decideReview(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:{decision?:string}){return this.portal.decideLicenseReview(request.auth.accountId,id,body?.decision);}
 
+  @Post('me/licenses/save') saveLicense(@Req() request:AuthenticatedRequest,@Body() body:LicenseRecordInput & LicenseAttachmentInput){return this.portal.saveLicense(request.auth.accountId,body);}
   @Post('me/licenses') createLicense(@Req() request:AuthenticatedRequest,@Body() body:LicenseRecordInput){return this.portal.createLicense(request.auth.accountId,body);}
   @Post('me/licenses/:id/renew') renewLicense(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:LicenseRecordInput){return this.portal.createLicense(request.auth.accountId,body,id);}
   @Patch('me/licenses/:id/attachment') attachLicense(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:LicenseAttachmentInput){return this.portal.attachLicense(request.auth.accountId,id,body);}
