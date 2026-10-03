@@ -198,6 +198,8 @@ model Account {
   compensationTermsRequested CompensationTerm[] @relation("CompensationTermRequestedBy")
   compensationTermsReviewed CompensationTerm[] @relation("CompensationTermReviewedBy")
   compensationTermsApproved CompensationTerm[] @relation("CompensationTermApprovedBy")
+  centerLicensesSubmitted AdministrativeRecord[] @relation("CenterLicenseSubmitter")
+  centerLicensesReviewed AdministrativeRecord[] @relation("CenterLicenseDecider")
   administrativeRecordsOwned AdministrativeRecord[] @relation("AdministrativeRecordOwner")
   administrativeRoutingsRequested AdministrativeRouting[] @relation("AdministrativeRoutingRequester")
   administrativeRoutingsAssigned AdministrativeRouting[] @relation("AdministrativeRoutingAssignee")
@@ -463,6 +465,14 @@ model AdministrativeRecord {
   licenseAssetId String?
   licenseIssuedAt DateTime?
   licenseExpiresAt DateTime?
+  licenseReviewStatus String?
+  licenseReviewSubmittedAt DateTime?
+  licenseReviewSubmittedById String?
+  licenseReviewDecidedAt DateTime?
+  licenseReviewDecidedById String?
+  licenseReviewReason String?
+  licenseReviewSubmitter Account? @relation("CenterLicenseSubmitter", fields:[licenseReviewSubmittedById], references:[id], onDelete:Restrict)
+  licenseReviewDecider Account? @relation("CenterLicenseDecider", fields:[licenseReviewDecidedById], references:[id], onDelete:Restrict)
   licenseAsset OrganizationDocumentAsset? @relation("LicenseAttachment", fields:[licenseAssetId], references:[id], onDelete:Restrict)
   ownerAccountId String
   createdAt DateTime @default(now())
@@ -471,6 +481,7 @@ model AdministrativeRecord {
   unit OrgUnit @relation(fields:[unitId], references:[id], onDelete:Restrict)
   owner Account @relation("AdministrativeRecordOwner", fields:[ownerAccountId], references:[id], onDelete:Restrict)
   routings AdministrativeRouting[]
+  @@index([licenseReviewStatus,licenseReviewSubmittedAt], map:"CenterLicense_platform_review_queue_idx")
   @@unique([organizationId,referenceNumber])
   @@index([organizationId,unitId,status])
 }

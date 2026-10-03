@@ -1,3 +1,4 @@
+import {checkCenterLicensePlatformReview} from './center-license-platform-review-http-checks.mjs';
 import assert from 'node:assert/strict';
 import {checkCenterLicenseRegistrationRace} from './center-license-registration-race-checks.mjs';
 import {checkCenterLicenseReview} from './center-license-review-http-checks.mjs';
@@ -130,6 +131,7 @@ try{
   await checkCenterLicenses(db,{base,a,b,ownerA,staff,ta,tb,ts},check);
 
   await checkCenterLicenseCreation(db,{base,a,b,ownerA,ta,tb,ts},check);
+  await checkCenterLicensePlatformReview(db,{base,a,b,ownerA,ta,tb,ts,personAccount,tokenFor},check);
 
   await checkCenterLicenseReview(db,{base,a,b,ownerA,staff,ta,tb,ts},check);
   await checkCenterLicenseRegistrationRace({base,a,ownerA,ta},check);

@@ -1,3 +1,4 @@
+import {CenterLicensePlatformReviewService} from './center-license-platform-review.service';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { EquipmentInspectionService } from '../trips/equipment-inspection.service';
@@ -11,6 +12,7 @@ export class DiveCenterPortalService {
     private readonly inspections: EquipmentInspectionService,
     private readonly audit: AuditService,
     private readonly licenses: CenterLicenseService,
+    private readonly platformReview: CenterLicensePlatformReviewService,
   ) {}
 
   private async managedCenter(accountId: string) {
@@ -54,7 +56,7 @@ export class DiveCenterPortalService {
     const center=await this.managedCenter(accountId);
     const [assets,records,units,reviewers]=await Promise.all([
       this.db.organizationDocumentAsset.findMany({where:{organizationId:center.id},select:{id:true,kind:true,mimeType:true,byteSize:true,sha256:true,createdAt:true},orderBy:{createdAt:'desc'},take:200}),
-      this.db.administrativeRecord.findMany({where:{organizationId:center.id,type:{in:['LICENSE','PERMIT','CERTIFICATE','REGULATORY_APPROVAL']}},select:{id:true,type:true,referenceNumber:true,subject:true,status:true,createdAt:true,updatedAt:true,unitId:true,licenseAssetId:true,licenseIssuedAt:true,licenseExpiresAt:true,routings:{select:{id:true,decision:true,decidedAt:true,createdAt:true,requestedByAccountId:true,assignedToAccountId:true,assignedTo:{select:{person:{select:{firstName:true,lastName:true}}}},toUnit:{select:{nameAr:true,nameEn:true}}},orderBy:{createdAt:'desc'}}},orderBy:{updatedAt:'desc'},take:200}),
+      this.db.administrativeRecord.findMany({where:{organizationId:center.id,type:{in:['LICENSE','PERMIT','CERTIFICATE','REGULATORY_APPROVAL']}},select:{id:true,type:true,referenceNumber:true,subject:true,status:true,createdAt:true,updatedAt:true,unitId:true,licenseAssetId:true,licenseIssuedAt:true,licenseExpiresAt:true,licenseReviewStatus:true,licenseReviewSubmittedAt:true,licenseReviewDecidedAt:true,licenseReviewReason:true,routings:{select:{id:true,decision:true,decidedAt:true,createdAt:true,requestedByAccountId:true,assignedToAccountId:true,assignedTo:{select:{person:{select:{firstName:true,lastName:true}}}},toUnit:{select:{nameAr:true,nameEn:true}}},orderBy:{createdAt:'desc'}}},orderBy:{updatedAt:'desc'},take:200}),
       this.db.orgUnit.findMany({where:{organizationId:center.id,active:true},select:{id:true,nameAr:true,nameEn:true,type:true},orderBy:{nameAr:'asc'}}),
       this.licenses.reviewers(center.id),
     ]);
@@ -68,6 +70,7 @@ export class DiveCenterPortalService {
     }))};
   }
 
+  async submitLicense(accountId:string,id:string){const center=await this.managedCenter(accountId);return this.platformReview.submit(accountId,center.id,id);}
   async registerLicense(accountId:string,id:string){const center=await this.managedCenter(accountId);return this.licenses.register(accountId,center.id,id);}
   async routeLicense(accountId:string,id:string,toUnitId:unknown){const center=await this.managedCenter(accountId);return this.licenses.route(accountId,center.id,id,toUnitId);}
   async assignLicenseReview(accountId:string,id:string,assignee:unknown){const center=await this.managedCenter(accountId);return this.licenses.assign(accountId,center.id,id,assignee);}
