@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
+import { instructorCenterScope } from './training-center-scope';
 
 @Injectable()
 export class TrainingProfessionalProfileService {
@@ -8,9 +9,9 @@ export class TrainingProfessionalProfileService {
   private async requireActiveInstructor(accountId: string): Promise<{ status: string; activeAt: Date | null }> {
     const role = await this.db.roleAssignment.findUnique({
       where: { accountId_role: { accountId, role: 'INSTRUCTOR' } },
-      select: { status: true, activeAt: true },
+      select: { status: true, activeAt: true, account:{select:{status:true}} },
     });
-    if (!role || role.status !== 'ACTIVE') throw new ForbiddenException('Active instructor role required.');
+    if (!role || role.status !== 'ACTIVE' || role.account.status !== 'ACTIVE') throw new ForbiddenException('Active instructor role required.');
     return role;
   }
 
@@ -27,8 +28,9 @@ export class TrainingProfessionalProfileService {
 
   async listCertificateReadiness(accountId: string) {
     await this.requireActiveInstructor(accountId);
+    const scope=await instructorCenterScope(this.db,accountId);
     const records = await this.db.trainingRecord.findMany({
-      where: { enrollment: { instructorAccountId: accountId } },
+      where: { enrollment: { instructorAccountId: accountId, ...scope } },
       select: { id:true,status:true,progressPercent:true,enrollment:{select:{courseCode:true,studentAccountId:true}},stages:{select:{skills:{select:{status:true,signedOffByInstructorId:true}}}},sessions:{select:{status:true}},certificate:{select:{id:true,status:true,recommendedAt:true,issuedAt:true,certificateNumber:true}} },
       orderBy:{updatedAt:'desc'},take:200,
     });
@@ -40,8 +42,9 @@ export class TrainingProfessionalProfileService {
 
   async listSkills(accountId: string) {
     await this.requireActiveInstructor(accountId);
+    const scope=await instructorCenterScope(this.db,accountId);
     const stages = await this.db.trainingStage.findMany({
-      where: { trainingRecord: { enrollment: { instructorAccountId: accountId } } },
+      where: { trainingRecord: { enrollment: { instructorAccountId: accountId, ...scope } } },
       select: {
         id: true, stageType: true, sequence: true,
         trainingRecord: { select: { enrollment: { select: { courseCode: true, studentAccountId: true } } } },
@@ -61,8 +64,9 @@ export class TrainingProfessionalProfileService {
 
   async listSchedule(accountId: string) {
     await this.requireActiveInstructor(accountId);
+    const scope=await instructorCenterScope(this.db,accountId);
     const sessions = await this.db.trainingSession.findMany({
-      where: { instructorAccountId: accountId },
+      where: { instructorAccountId: accountId, trainingRecord:{enrollment:scope} },
       select: {
         id: true, trainingRecordId: true, status: true, startsAt: true, endsAt: true,
         facilityOrSiteId: true, tripId: true, vesselId: true, evidence: true,
@@ -90,8 +94,9 @@ export class TrainingProfessionalProfileService {
 
   async listAssignments(accountId: string) {
     await this.requireActiveInstructor(accountId);
+    const scope=await instructorCenterScope(this.db,accountId);
     const rows = await this.db.trainingEnrollment.findMany({
-      where: { instructorAccountId: accountId },
+      where: { instructorAccountId: accountId, ...scope },
       select: {
         id: true, studentAccountId: true, courseCode: true, status: true, enrolledAt: true, completedAt: true,
         record: { select: { status: true, progressPercent: true,
@@ -113,6 +118,7 @@ export class TrainingProfessionalProfileService {
 
   async get(accountId: string) {
     const role = await this.requireActiveInstructor(accountId);
+    const scope=await instructorCenterScope(this.db,accountId);
 
     const account = await this.db.account.findUnique({
       where: { id: accountId },
@@ -136,18 +142,19 @@ export class TrainingProfessionalProfileService {
 
     const [studentRows, sessionsToday, completedSessions] = await Promise.all([
       this.db.trainingEnrollment.findMany({
-        where: { instructorAccountId: accountId, status: { in: ['ACTIVE', 'COMPLETED'] } },
+        where: { instructorAccountId: accountId, ...scope, status: { in: ['ACTIVE', 'COMPLETED'] } },
         select: { studentAccountId: true },
         distinct: ['studentAccountId'],
       }),
       this.db.trainingSession.count({
         where: {
           instructorAccountId: accountId,
+          trainingRecord:{enrollment:scope},
           startsAt: { gte: new Date(new Date().setHours(0,0,0,0)), lt: new Date(new Date().setHours(24,0,0,0)) },
           status: { in: ['SCHEDULED','CHECK_IN_OPEN','IN_PROGRESS'] },
         },
       }),
-      this.db.trainingSession.count({ where: { instructorAccountId: accountId, status: 'COMPLETED' } }),
+      this.db.trainingSession.count({ where: { instructorAccountId: accountId, status: 'COMPLETED', trainingRecord:{enrollment:scope} } }),
     ]);
 
     const credentials = account.person.credentials.map(item => ({

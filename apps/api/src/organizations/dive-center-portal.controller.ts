@@ -49,6 +49,7 @@ export class DiveCenterPortalController {
 
   @Post('me/team/invitations') inviteMember(@Req() request:AuthenticatedRequest,@Body() body:Record<string,unknown>){return this.memberships.invite(request.auth.accountId,body);}
   @Post('me/team/:id/cancel-invitation') cancelMemberInvitation(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.memberships.cancel(request.auth.accountId,id,body);}
+  @Patch('me/team/:id') manageMember(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.memberships.manage(request.auth.accountId,id,body);}
   @Get('me/team') team(@Req() request:AuthenticatedRequest){return this.portal.team(request.auth.accountId);}
   @Get('me/professionals') professionals(@Req() request:AuthenticatedRequest){return this.portal.professionals(request.auth.accountId);}
 

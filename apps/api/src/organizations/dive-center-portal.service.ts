@@ -211,17 +211,26 @@ export class DiveCenterPortalService {
 
   async team(accountId:string){
     const center=await this.managedCenter(accountId);
-    const members=await this.db.organizationMember.findMany({where:{organizationId:center.id,status:{in:['ACTIVE','PENDING','SUSPENDED']}},select:{id:true,role:true,status:true,createdAt:true,updatedAt:true,account:{select:{person:{select:{firstName:true,lastName:true,professional:{select:{headline:true,regionCode:true}},credentials:{select:{verificationStatus:true},take:20}}},roleAssignments:{where:{role:'INSTRUCTOR'},select:{status:true,activeAt:true}}}}},orderBy:{createdAt:'asc'}});
-    return members.map(member=>({membershipId:member.id,role:member.role,status:member.status,updatedAt:member.updatedAt,canCancelInvitation:member.status==='PENDING'&&['OPERATOR','INSTRUCTOR','STAFF','VIEWER'].includes(member.role),person:{displayName:[member.account.person.firstName,member.account.person.lastName].filter(Boolean).join(' ').trim()||'عضو',headline:member.account.person.professional?.headline??null,regionCode:member.account.person.professional?.regionCode??null},professional:{instructorStatus:member.account.roleAssignments[0]?.status??null,instructorActiveAt:member.account.roleAssignments[0]?.activeAt??null,verifiedCredentials:member.account.person.credentials.filter(item=>['VERIFIED','DOCUMENT_VERIFIED'].includes(item.verificationStatus)).length}}));
+    const members=await this.db.organizationMember.findMany({where:{organizationId:center.id,status:{in:['ACTIVE','PENDING','SUSPENDED']}},select:{id:true,accountId:true,role:true,status:true,createdAt:true,updatedAt:true,account:{select:{status:true,person:{select:{firstName:true,lastName:true,professional:{select:{headline:true,regionCode:true}},_count:{select:{credentials:{where:{verificationStatus:{in:['VERIFIED','DOCUMENT_VERIFIED']}}}}}}},roleAssignments:{where:{role:'INSTRUCTOR'},select:{status:true,activeAt:true}}}}},orderBy:{createdAt:'asc'}});
+    const ids=members.map(row=>row.accountId);
+    const [enrollments,sessions]=ids.length?await Promise.all([
+      this.db.trainingEnrollment.groupBy({by:['instructorAccountId'],where:{centerOrganizationId:center.id,instructorAccountId:{in:ids},status:{in:['PENDING','ACTIVE','SUSPENDED']}},_count:{_all:true}}),
+      this.db.trainingSession.groupBy({by:['instructorAccountId'],where:{instructorAccountId:{in:ids},status:{in:['SCHEDULED','CHECK_IN_OPEN','IN_PROGRESS']},trainingRecord:{enrollment:{centerOrganizationId:center.id}}},_count:{_all:true}}),
+    ]):[[],[]];
+    const enrollmentCounts=new Map(enrollments.map(row=>[row.instructorAccountId,row._count._all])),sessionCounts=new Map(sessions.map(row=>[row.instructorAccountId,row._count._all]));
+    return members.map(member=>{
+      const ordinary=['OPERATOR','INSTRUCTOR','STAFF','VIEWER'].includes(member.role)&&member.accountId!==accountId;
+      return {membershipId:member.id,role:member.role,status:member.status,accountStatus:member.account.status,updatedAt:member.updatedAt,canCancelInvitation:ordinary&&member.status==='PENDING',canChangeRole:ordinary&&['ACTIVE','SUSPENDED'].includes(member.status),canSuspend:ordinary&&member.status==='ACTIVE',canReactivate:ordinary&&member.status==='SUSPENDED',openTrainingEnrollments:enrollmentCounts.get(member.accountId)||0,openTrainingSessions:sessionCounts.get(member.accountId)||0,person:{displayName:[member.account.person.firstName,member.account.person.lastName].filter(Boolean).join(' ').trim()||'عضو',headline:member.account.person.professional?.headline??null,regionCode:member.account.person.professional?.regionCode??null},professional:{instructorStatus:member.account.roleAssignments[0]?.status??null,instructorActiveAt:member.account.roleAssignments[0]?.activeAt??null,verifiedCredentials:member.account.person._count.credentials}};
+    });
   }
 
   async professionals(accountId:string){
     const center=await this.managedCenter(accountId);
-    const memberships=await this.db.organizationMember.findMany({where:{organizationId:center.id,status:'ACTIVE',role:'INSTRUCTOR',account:{status:'ACTIVE',roleAssignments:{some:{role:'INSTRUCTOR',status:'ACTIVE'}}}},select:{accountId:true,account:{select:{person:{select:{firstName:true,lastName:true,professional:{select:{headline:true,regionCode:true}},credentials:{select:{verificationStatus:true},take:20}}}}}}});
+    const memberships=await this.db.organizationMember.findMany({where:{organizationId:center.id,status:'ACTIVE',role:'INSTRUCTOR',account:{status:'ACTIVE',roleAssignments:{some:{role:'INSTRUCTOR',status:'ACTIVE'}}}},select:{accountId:true,account:{select:{person:{select:{firstName:true,lastName:true,professional:{select:{headline:true,regionCode:true}},_count:{select:{credentials:{where:{verificationStatus:{in:['VERIFIED','DOCUMENT_VERIFIED']}}}}}}}}}}});
     const ids=memberships.map(row=>row.accountId);
     const assignmentCounts=ids.length?await this.db.trainingEnrollment.groupBy({by:['instructorAccountId'],where:{centerOrganizationId:center.id,instructorAccountId:{in:ids},status:{in:['ACTIVE','COMPLETED']}},_count:{_all:true}}):[];
     const counts=new Map(assignmentCounts.map(row=>[row.instructorAccountId,row._count._all]));
-    return memberships.map(row=>({accountId:row.accountId,displayName:[row.account.person.firstName,row.account.person.lastName].filter(Boolean).join(' ').trim()||'محترف غوص',headline:row.account.person.professional?.headline??null,regionCode:row.account.person.professional?.regionCode??null,verifiedCredentials:row.account.person.credentials.filter(item=>['VERIFIED','DOCUMENT_VERIFIED'].includes(item.verificationStatus)).length,assignedTrainingCount:counts.get(row.accountId)||0}));
+    return memberships.map(row=>({accountId:row.accountId,displayName:[row.account.person.firstName,row.account.person.lastName].filter(Boolean).join(' ').trim()||'محترف غوص',headline:row.account.person.professional?.headline??null,regionCode:row.account.person.professional?.regionCode??null,verifiedCredentials:row.account.person._count.credentials,assignedTrainingCount:counts.get(row.accountId)||0}));
   }
 
   async bookings(accountId:string,tripId:string){

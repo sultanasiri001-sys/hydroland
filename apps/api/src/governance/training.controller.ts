@@ -66,7 +66,8 @@ export class TrainingController {
 
   @Post('enrollments')
   enroll(@Req() request: AuthenticatedRequest, @Body() body: { courseCode: string; centerOrganizationId?: string; metadata?: any }) {
-    return this.training.createEnrollment({ studentAccountId: request.auth.accountId, ...body });
+    if(!body||Object.keys(body).some(key=>!['courseCode','centerOrganizationId','metadata'].includes(key)))throw new BadRequestException('حقول التسجيل غير صالحة. تعيين المدرب من صلاحيات المركز.');
+    return this.training.createEnrollment({ studentAccountId: request.auth.accountId, courseCode:body.courseCode,centerOrganizationId:body.centerOrganizationId,metadata:body.metadata });
   }
 
   @Get('enrollments/:id')
@@ -78,7 +79,7 @@ export class TrainingController {
   @Patch('enrollments/:id/instructor')
   async assignInstructor(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { instructorAccountId: string }) {
     await this.authorization.assertAdministrativeEnrollmentAccess(request.auth.accountId, id);
-    return this.training.assignInstructor(id, body.instructorAccountId);
+    return this.training.assignInstructor(id, body?.instructorAccountId,request.auth.accountId);
   }
 
   @Patch('enrollments/:id/status')
@@ -125,7 +126,7 @@ export class TrainingController {
   @Post('records/:id/sessions')
   async createSession(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { instructorAccountId: string; startsAt: string; trainingStageId?: string; facilityOrSiteId?: string; tripId?: string; vesselId?: string }) {
     await this.authorization.assertRecordAccess(request.auth.accountId, id);
-    return this.training.createSession({ ...body, trainingRecordId: id, startsAt: new Date(body.startsAt) });
+    return this.training.createSession({ instructorAccountId:body.instructorAccountId,trainingStageId:body.trainingStageId,facilityOrSiteId:body.facilityOrSiteId,tripId:body.tripId,vesselId:body.vesselId,trainingRecordId: id, startsAt: new Date(body.startsAt) },request.auth.accountId);
   }
 
   @Patch('professional/me/sessions/:id/attendance')
