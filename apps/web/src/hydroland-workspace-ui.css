@@ -83,3 +83,10 @@ body.hl-visitor-mode #role-switch{display:none!important}
 .hl-center-operations [data-bookings]{margin-top:16px;display:grid;gap:12px}
 .hl-center-operations [data-center-booking]{display:grid;gap:6px;padding:12px;border:1px solid #ffffff26;border-radius:12px;overflow-wrap:anywhere}
 .hl-center-operations [data-center-booking] ul{margin:0;padding-inline-start:24px}
+
+.hl-center-trip-editor{padding:14px;border:1px solid #ffffff26;border-radius:12px;margin-block:12px}
+.hl-center-trip-editor summary{cursor:pointer;font-weight:700}
+.hl-center-trip-editor form{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));margin-top:14px}
+.hl-center-trip-editor label{display:grid;gap:6px;min-width:0}
+.hl-center-trip-editor input,.hl-center-trip-editor select{width:100%;min-width:0;box-sizing:border-box;padding:10px;color:inherit;background:var(--hl-surface,#122330);font:inherit}
+.hl-center-trip-editor form>p{grid-column:1/-1}

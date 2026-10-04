@@ -162,7 +162,7 @@
     reconnectDashboard();
   }
 
-  document.addEventListener('hydroland:center-profile-saved',()=>loadCenterSummary(document.querySelector('.hl-role-dashboard[data-role="center"]')));
+  for(const event of ['hydroland:center-profile-saved','hydroland:center-trips-changed'])document.addEventListener(event,()=>loadCenterSummary(document.querySelector('.hl-role-dashboard[data-role="center"]')));
   window.HydrolandRoleDashboards={refreshControls:reconnectDashboard};
   const applyRole=role=>{const next=role||'diver';if(next==='diver'){clearDashboard();return}render(next)};
   document.addEventListener('hydroland:role-changed',event=>applyRole(event.detail?.role));
