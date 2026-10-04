@@ -47,3 +47,23 @@ test('center equipment offers only applicable movements and returns from lookup 
  await expect(panel.locator('[data-center-equipment-id]')).toHaveCount(1);
  await panel.getByRole('button',{name:'عرض جميع المعدات'}).click();await expect(panel.locator('[data-center-equipment-id]')).toHaveCount(3);
 });
+
+test('equipment creation retains input and request identity after failure then saves and refreshes',async({page})=>{
+ await install(page);const payloads=[];
+ await page.route(/\/api\/v1\/center\/me\/equipment$/,route=>{
+  if(route.request().method()!=='POST')return json(route,payloads.length>1?[{...item,resourceName:'أسطوانة جديدة'}]:[item]);
+  payloads.push(route.request().postDataJSON());return payloads.length===1?json(route,{message:'تعذر الحفظ مؤقتًا'},503):json(route,{resourceId:payloads[0].requestId,assetCode:'NEW-001'},201);
+ });
+ await page.locator('[data-portal-label="المعدات والمخزون"]').click();const panel=page.locator('#hl-center-equipment');
+ await panel.getByText('إضافة معدة',{exact:true}).click();const form=panel.locator('[data-equipment-create]');
+ await form.getByLabel('اسم المعدة').fill('أسطوانة جديدة');await form.getByLabel('الرقم التسلسلي').fill('SER-1');await form.getByLabel('موقع التخزين').fill('عسير');
+ await form.getByRole('button',{name:'حفظ المعدة'}).click();await expect(form).toContainText('تعذر الحفظ مؤقتًا');await expect(form.getByLabel('اسم المعدة')).toHaveValue('أسطوانة جديدة');
+ await form.getByRole('button',{name:'حفظ المعدة'}).click();await expect(form).toContainText('تم حفظ المعدة');await expect(panel.locator('[data-center-equipment]')).toContainText('أسطوانة جديدة');
+ expect(payloads).toHaveLength(2);expect(payloads[0]).toEqual(payloads[1]);expect(payloads[0].organizationId).toBeUndefined();await expect(form.getByLabel('اسم المعدة')).toHaveValue('');
+});
+test('equipment inspection shows expired service and escapes notes',async({page})=>{
+ await install(page);await page.route('**/api/v1/center/me/equipment/eq-a/inspection',route=>json(route,{blocked:true,reviewRequired:false,history:[{status:'PASS',inspectedAt:'2025-01-01T09:00:00Z',serviceExpiresAt:'2025-02-01T09:00:00Z',notes:'<img src=x onerror=alert(1)>'}]}));
+ await page.locator('[data-portal-label="المعدات والمخزون"]').click();const panel=page.locator('#hl-center-equipment');await panel.getByRole('button',{name:'الفحص والصيانة'}).click();
+ const box=panel.locator('[data-equipment-inspection]');await expect(box).toContainText('انتهت مدة الصيانة');await expect(box).toContainText('إخراج المعدة ممنوع');await expect(box).toContainText('اجتاز الفحص');await expect(box.locator('img')).toHaveCount(0);
+ await page.evaluate(()=>window.HydrolandAuth.terminateSession());await expect(panel).toHaveCount(0);
+});

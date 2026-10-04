@@ -1,3 +1,4 @@
+import { CenterEquipmentManagementService } from './center-equipment-management.service';
 import { CenterTripManagementService } from './center-trip-management.service';
 import { Body, Controller, Get, Param, Patch, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { AccessTokenGuard } from '../auth/access-token.guard';
@@ -8,7 +9,7 @@ import { DiveCenterPortalService } from './dive-center-portal.service';
 @Controller('center')
 @UseGuards(AccessTokenGuard)
 export class DiveCenterPortalController {
-  constructor(private readonly portal:DiveCenterPortalService,private readonly tripManagement:CenterTripManagementService){}
+  constructor(private readonly equipmentManagement:CenterEquipmentManagementService, private readonly portal:DiveCenterPortalService,private readonly tripManagement:CenterTripManagementService){}
   @Patch(':id/business-profile') updateBusinessProfile(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.portal.updateBusinessProfile(request.auth.accountId,id,body);}
   @Get('me/reports') reports(@Req() request:AuthenticatedRequest,@Query('from') from?:string,@Query('to') to?:string){return this.portal.reports(request.auth.accountId,from,to);}
   @Get('me/overview') overview(@Req() request:AuthenticatedRequest){return this.portal.overview(request.auth.accountId);}
@@ -35,6 +36,8 @@ export class DiveCenterPortalController {
   }
 
   @Get('me/equipment/lookup/:code') equipmentLookup(@Req() request:AuthenticatedRequest,@Param('code') code:string){return this.portal.equipmentLookup(request.auth.accountId,code);}
+  @Post('me/equipment') equipmentCreate(@Req() request:AuthenticatedRequest,@Body() body:Record<string,unknown>){return this.equipmentManagement.create(request.auth.accountId,body);}
+  @Get('me/equipment/:resourceId/inspection') equipmentInspection(@Req() request:AuthenticatedRequest,@Param('resourceId') resourceId:string){return this.equipmentManagement.inspection(request.auth.accountId,resourceId);}
   @Get('me/equipment') equipment(@Req() request:AuthenticatedRequest){return this.portal.equipment(request.auth.accountId);}
   @Patch('me/equipment/:resourceId/move') equipmentMove(@Req() request:AuthenticatedRequest,@Param('resourceId') resourceId:string,@Body() body:{movementType?:string;toLocation?:string|null;tripId?:string|null;notes?:string|null}){return this.portal.moveEquipment(request.auth.accountId,resourceId,body);}
 
