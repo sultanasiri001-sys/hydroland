@@ -90,3 +90,12 @@ body.hl-visitor-mode #role-switch{display:none!important}
 .hl-center-trip-editor label{display:grid;gap:6px;min-width:0}
 .hl-center-trip-editor input,.hl-center-trip-editor select{width:100%;min-width:0;box-sizing:border-box;padding:10px;color:inherit;background:var(--hl-surface,#122330);font:inherit}
 .hl-center-trip-editor form>p{grid-column:1/-1}
+
+.hl-center-reports{padding:clamp(12px,2vw,28px);min-width:0}
+.hl-center-reports form{display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin-block:16px}
+.hl-center-reports label{display:grid;gap:6px}
+.hl-center-reports input{padding:10px;background:var(--hl-surface,#122330);color:inherit;font:inherit}
+.hl-center-report-table{max-width:100%;overflow-x:auto;margin-block:18px}
+.hl-center-report-table table{width:100%;border-collapse:collapse;text-align:start}
+.hl-center-report-table caption{text-align:start;font-weight:700;padding-block:10px}
+.hl-center-report-table th,.hl-center-report-table td{padding:10px;border-bottom:1px solid #ffffff26;text-align:start}

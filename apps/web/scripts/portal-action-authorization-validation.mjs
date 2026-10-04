@@ -5,7 +5,7 @@ const [dashboards,routing,bootstrap,...centerModules]=await Promise.all([
   readFile(resolve('src/hydroland-role-dashboards.js'),'utf8'),
   readFile(resolve('src/hydroland-role-task-routing.js'),'utf8'),
   readFile(resolve('src/app.js'),'utf8'),
-  ...['safety','documents','equipment','customers','operations','team'].map(name=>readFile(resolve(`src/hydroland-center-${name}.js`),'utf8'))
+  ...['safety','documents','equipment','customers','operations','team','reports'].map(name=>readFile(resolve(`src/hydroland-center-${name}.js`),'utf8'))
 ]);
 for(const marker of [
   'authorizeRoleAction',
@@ -43,7 +43,7 @@ for(const marker of [
   "if(role==='center'&&label==='محترفي الغوص')return 'center-team'",
   "if(role==='center'&&['السلامة','تقارير السلامة'].includes(label))return 'center-safety'",
   'id=actionRoute(role,label,node.dataset.route)',
-  "if(activeRole==='center'&&['center-safety','center-documents','center-equipment','center-customers','center-business-profile','center-operations','center-team'].includes(route))"
+  "if(activeRole==='center'&&['center-safety','center-documents','center-equipment','center-customers','center-business-profile','center-operations','center-team','center-reports'].includes(route))"
 ])if(!dashboards.includes(marker))throw new Error(`Missing scoped center route marker: ${marker}`);
 if(!dashboards.includes("const trainingTarget=document.querySelector('.hl-training');window.HydrolandWorkspaceUI?.show?.(trainingTarget)"))throw new Error('Managed instructor training must route to the actual .hl-training service node.');
 if(!dashboards.includes("target=professionalTraining?document.querySelector('.hl-training'):targetFor(resolvedId)"))throw new Error('Professional training availability must be evaluated against the managed .hl-training service node.');
@@ -58,7 +58,7 @@ for(const marker of [
   "if(role==='instructor'&&label==='الملف المهني')return 'professional-profile'"
 ])if(!dashboards.includes(marker))throw new Error(`Missing scoped professional route marker: ${marker}`);
 for(const [index,source] of centerModules.entries()){
-  const name=['safety','documents','equipment','customers','operations','team'][index];
+  const name=['safety','documents','equipment','customers','operations','team','reports'][index];
   for(const marker of ['async function authorize','access()?.authorizeRole','if(!(await authorize(host,version,session)))return'])if(!source.includes(marker))throw new Error(`Center ${name} must refresh authoritative role state before scoped reads: missing ${marker}`);
   for(const marker of ['getSessionVersion','hydroland:session-cleared','hydroland:portal-cleared'])if(!source.includes(marker))throw new Error(`Center ${name} must fence session/workspace lifecycle: missing ${marker}`);
 }
@@ -70,3 +70,5 @@ if(!workspace.includes("const show=target=>{\n    if(!auth()||!target)return fal
 if(!workspace.includes("if(selected?.isConnected&&isAuthed)"))throw new Error('Workspace policy refresh must preserve the selected managed service.');
 for(const marker of ["data-hl-workspace-service","hl-training-service","hl-managed-service-root"])if(!workspace.includes(marker)&&!workspaceCss.includes(marker))throw new Error(`Missing managed professional training workspace marker: ${marker}`);
 console.log('Portal action authorization validation passed: centralized role authorization, registered scoped center modules and normalized action aliases.');
+
+if(!bootstrap.includes("'hydroland-center-reports.js'")||!dashboards.includes("if(role==='center'&&label==='التقارير')return 'center-reports'"))throw new Error('Center reports must use scoped bootstrap and routing.');

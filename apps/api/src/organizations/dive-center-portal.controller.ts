@@ -1,5 +1,5 @@
 import { CenterTripManagementService } from './center-trip-management.service';
-import { Body, Controller, Get, Param, Patch, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 type AuthenticatedRequest = { auth: { accountId: string } };
 import { LicenseAttachmentInput, LicenseRecordInput } from './center-license.service';
@@ -10,6 +10,7 @@ import { DiveCenterPortalService } from './dive-center-portal.service';
 export class DiveCenterPortalController {
   constructor(private readonly portal:DiveCenterPortalService,private readonly tripManagement:CenterTripManagementService){}
   @Patch(':id/business-profile') updateBusinessProfile(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.portal.updateBusinessProfile(request.auth.accountId,id,body);}
+  @Get('me/reports') reports(@Req() request:AuthenticatedRequest,@Query('from') from?:string,@Query('to') to?:string){return this.portal.reports(request.auth.accountId,from,to);}
   @Get('me/overview') overview(@Req() request:AuthenticatedRequest){return this.portal.overview(request.auth.accountId);}
   @Get('me/safety') safety(@Req() request:AuthenticatedRequest){return this.portal.safety(request.auth.accountId);}
 
