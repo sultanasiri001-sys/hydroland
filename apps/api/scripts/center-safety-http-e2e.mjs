@@ -1,3 +1,4 @@
+import {checkCenterBusinessProfile} from './center-business-profile-http-checks.mjs';
 import {checkCenterLicensePlatformReview} from './center-license-platform-review-http-checks.mjs';
 import assert from 'node:assert/strict';
 import {checkCenterLicenseRegistrationRace} from './center-license-registration-race-checks.mjs';
@@ -135,6 +136,7 @@ try{
 
   await checkCenterLicenseReview(db,{base,a,b,ownerA,staff,ta,tb,ts},check);
   await checkCenterLicenseRegistrationRace({base,a,ownerA,ta},check);
+  await checkCenterBusinessProfile(db,{base,a,b,ownerA,ta,tb,ts},check);
 
   console.log(`Center safety and portal authorization HTTP/PostgreSQL E2E: ${checks}/${checks} passed (exact active role across 20 routes, same-session revocation/recovery, center isolation document metadata privacy, equipment movements/inspection gates/audit and TEXT/UUID center scope).`);
 }finally{

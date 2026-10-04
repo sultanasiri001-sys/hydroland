@@ -25,3 +25,22 @@ test('business profile distinguishes failed requests and discards late data afte
 test('business profile rejects a revoked center role before fetching membership data',async({page})=>{
  const state=await install(page);state.active=false;const before=state.reads;await page.evaluate(()=>window.HydrolandCenterBusinessProfile.open());await expect(page.locator('.hl-role-dashboard[data-role="center"]')).toHaveCount(0);await expect(page.locator('#hl-center-business-profile')).toHaveCount(0);expect(state.reads).toBe(before);
 });
+
+async function edit(page,state){
+ state.body=structuredClone(rows);state.body[0].organization={...state.body[0].organization,status:'ACTIVE',updatedAt:'2026-10-04T00:00:00.000Z'};
+ await page.locator('[data-portal-label="الملف التجاري"]').click();await page.locator('#hl-center-business-profile summary').click();return page.locator('[data-center-profile-edit]');
+}
+test('center manager saves business metadata and refreshes dashboard name',async({page})=>{
+ const state=await install(page),form=await edit(page,state);let saved;
+ await page.route('**/api/v1/center/center-profile/business-profile',route=>{saved=route.request().postDataJSON();state.body[0].organization={...state.body[0].organization,...saved,updatedAt:'2026-10-04T01:00:00.000Z'};return json(route,state.body[0].organization)});
+ await page.route('**/api/v1/center/me/overview',route=>json(route,{center:{displayName:state.body[0].organization.displayName},metrics:{newBookings:0,tripsToday:0,activeMembers:1,totalTrips:1}}));
+ await form.locator('[name=displayName]').fill('عالم الغوص الجديد');await form.locator('[name=legalName]').fill('مؤسسة عالم الغوص');await form.locator('[name=registrationNumber]').fill('REG-123');await form.locator('[type=submit]').click();
+ await expect(page.locator('#hl-center-business-profile')).toContainText('تم حفظ بيانات المركز');await expect(page.locator('#hl-center-business-profile h3')).toHaveText('عالم الغوص الجديد');await expect(page.locator('[data-center-name]').first()).toHaveText('عالم الغوص الجديد');
+ expect(saved).toEqual({displayName:'عالم الغوص الجديد',legalName:'مؤسسة عالم الغوص',registrationNumber:'REG-123',regionCode:'عسير',expectedUpdatedAt:'2026-10-04T00:00:00.000Z'});
+});
+test('failed profile save preserves edits for correction',async({page})=>{
+ const state=await install(page),form=await edit(page,state);await page.route('**/api/v1/center/center-profile/business-profile',route=>json(route,{message:'رقم السجل مستخدم لدى مركز آخر'},409));await form.locator('[name=registrationNumber]').fill('DUPLICATE');await form.locator('[type=submit]').click();await expect(form.locator('[data-center-profile-feedback]')).toContainText('رقم السجل مستخدم');await expect(form.locator('[name=registrationNumber]')).toHaveValue('DUPLICATE');await expect(form.locator('[type=submit]')).toBeEnabled();
+});
+test('revoked manager cannot submit business profile edits',async({page})=>{
+ const state=await install(page),form=await edit(page,state);let writes=0;await page.route('**/api/v1/center/center-profile/business-profile',route=>{writes++;return json(route,{})});await form.locator('[name=displayName]').fill('changed');state.active=false;await form.evaluate(node=>node.requestSubmit());await expect(page.locator('#hl-center-business-profile')).toHaveCount(0);expect(writes).toBe(0);
+});
