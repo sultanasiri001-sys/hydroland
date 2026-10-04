@@ -8,6 +8,7 @@ import { DiveCenterPortalService } from './dive-center-portal.service';
 @UseGuards(AccessTokenGuard)
 export class DiveCenterPortalController {
   constructor(private readonly portal:DiveCenterPortalService){}
+  @Patch(':id/business-profile') updateBusinessProfile(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.portal.updateBusinessProfile(request.auth.accountId,id,body);}
   @Get('me/overview') overview(@Req() request:AuthenticatedRequest){return this.portal.overview(request.auth.accountId);}
   @Get('me/safety') safety(@Req() request:AuthenticatedRequest){return this.portal.safety(request.auth.accountId);}
 

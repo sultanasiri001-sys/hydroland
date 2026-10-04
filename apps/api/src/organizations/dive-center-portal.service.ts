@@ -15,6 +15,41 @@ export class DiveCenterPortalService {
     private readonly platformReview: CenterLicensePlatformReviewService,
   ) {}
 
+  async updateBusinessProfile(accountId:string,id:string,input:Record<string,unknown>){
+    const allowed=['displayName','legalName','registrationNumber','regionCode','expectedUpdatedAt'];
+    if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(key=>!allowed.includes(key)))throw new BadRequestException('يُسمح بتعديل بيانات الملف التجاري فقط.');
+    if(typeof input.expectedUpdatedAt!=='string'||!Number.isFinite(Date.parse(input.expectedUpdatedAt)))throw new BadRequestException('حدّث بيانات المركز قبل الحفظ.');
+    const expectedUpdatedAt=new Date(input.expectedUpdatedAt);
+    const clean=(value:unknown,max:number,required=false)=>{
+      if(value===null&&!required)return null;
+      if(typeof value!=='string'||value.trim().length>max||(required&&!value.trim()))throw new BadRequestException('تحقق من الحقول وأطوالها؛ اسم المركز مطلوب.');
+      return value.trim()||null;
+    };
+    try{return await this.db.serializable(async tx=>{
+      const role=await tx.roleAssignment.findFirst({where:{accountId,role:'DIVE_CENTER',status:'ACTIVE',account:{status:'ACTIVE'}}});
+      if(!role)throw new ForbiddenException('Active dive center role required.');
+      const member=await tx.organizationMember.findFirst({where:{accountId,organizationId:id,status:'ACTIVE',role:{in:['OWNER','ADMIN']},organization:{kind:'DIVE_CENTER'}},include:{organization:true}});
+      if(!member)throw new ForbiddenException('لا تملك صلاحية تعديل هذا المركز.');
+      const before=member.organization;
+      if(!['ACTIVE','PENDING_REVIEW','REJECTED'].includes(before.status))throw new ConflictException('لا يمكن تعديل مركز موقوف أو مؤرشف.');
+      if(before.updatedAt.getTime()!==expectedUpdatedAt.getTime())throw new ConflictException('تغيرت بيانات المركز. أعد تحميلها قبل الحفظ.');
+      const displayName=input.displayName===undefined?before.displayName:clean(input.displayName,240,true)!;
+      const legalName=input.legalName===undefined?before.legalName:clean(input.legalName,240);
+      const registrationNumber=input.registrationNumber===undefined?before.registrationNumber:clean(input.registrationNumber,120);
+      let regionCode=input.regionCode===undefined?before.regionCode:clean(input.regionCode,32);
+      if(regionCode==='عسير'||regionCode?.toUpperCase()==='ASIR')regionCode='ASIR';
+      const data={displayName,legalName,registrationNumber,regionCode};
+      const changedFields=(Object.keys(data) as Array<keyof typeof data>).filter(key=>data[key]!==before[key]);
+      if(!changedFields.length)return {id:before.id,...data,status:before.status,updatedAt:before.updatedAt};
+      // Editing business metadata cannot activate a center or transfer ownership.
+      const review=before.status==='REJECTED'?{status:'PENDING_REVIEW' as const,reviewedAt:null,reviewedById:null}:{};
+      const claimed=await tx.organization.updateMany({where:{id,updatedAt:expectedUpdatedAt,status:before.status},data:{...data,...review}});
+      if(claimed.count!==1)throw new ConflictException('تغيرت بيانات المركز. أعد تحميلها قبل الحفظ.');
+      await this.audit.record({actorId:accountId,action:'CENTER_BUSINESS_PROFILE_UPDATED',resource:'organization',resourceId:id,metadata:{changedFields,previousStatus:before.status,status:review.status||before.status}},tx);
+      return tx.organization.findUniqueOrThrow({where:{id},select:{id:true,displayName:true,legalName:true,registrationNumber:true,regionCode:true,status:true,updatedAt:true}});
+    });}catch(error){if(typeof error==='object'&&error!==null&&'code' in error&&error.code==='P2002')throw new ConflictException('رقم السجل مستخدم لدى مركز أو جهة أخرى.');throw error}
+  }
+
   private async managedCenter(accountId: string) {
     const role = await this.db.roleAssignment.findUnique({
       where: { accountId_role: { accountId, role: 'DIVE_CENTER' } },
