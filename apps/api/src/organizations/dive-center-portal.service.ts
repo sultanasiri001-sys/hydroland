@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { centerReportRange, riyadhToday } from './center-report-range';
 import {CenterLicensePlatformReviewService} from './center-license-platform-review.service';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
@@ -142,7 +143,7 @@ export class DiveCenterPortalService {
   async equipmentLookup(accountId:string,code:string){
     const center=await this.managedCenter(accountId);const clean=code?.trim();if(!clean)throw new BadRequestException('Equipment code is required.');
     const rows=await this.db.$queryRaw<Array<{resourceId:string;assetCode:string;barcodeValue:string;qrValue:string;serialNumber:string|null;sku:string|null;location:string|null;stockStatus:string;resourceName:string;active:boolean}>>`
-      SELECT b."resourceId",b."assetCode",b."barcodeValue",b."qrValue",b."serialNumber",b."sku",b."location",b."stockStatus",r."name" AS "resourceName",r."active"
+      SELECT b."resourceId",b."assetCode",b."barcodeValue",b."qrValue",b."serialNumber",b."sku",b."location",b."stockStatus",b."updatedAt",r."name" AS "resourceName",r."active"
       FROM "EquipmentBarcode" b JOIN "CalendarResource" r ON r."id"=b."resourceId"
       WHERE b."organizationId"=(jsonb_populate_record(NULL::"EquipmentBarcode", jsonb_build_object('organizationId', ${center.id}::text)))."organizationId" AND r."type"='EQUIPMENT' AND (b."assetCode"=${clean} OR b."barcodeValue"=${clean} OR b."qrValue"=${clean} OR b."serialNumber"=${clean}) LIMIT 1`;
     if(!rows.length)throw new NotFoundException('Equipment code not found in managed dive center.');return rows[0];
@@ -151,51 +152,53 @@ export class DiveCenterPortalService {
   async equipment(accountId:string){
     const center=await this.managedCenter(accountId);
     return this.db.$queryRaw<Array<{resourceId:string;assetCode:string;serialNumber:string|null;sku:string|null;location:string|null;stockStatus:string;resourceName:string;active:boolean}>>`
-      SELECT b."resourceId",b."assetCode",b."serialNumber",b."sku",b."location",b."stockStatus",r."name" AS "resourceName",r."active"
+      SELECT b."resourceId",b."assetCode",b."serialNumber",b."sku",b."location",b."stockStatus",b."updatedAt",r."name" AS "resourceName",r."active"
       FROM "EquipmentBarcode" b JOIN "CalendarResource" r ON r."id"=b."resourceId"
       WHERE b."organizationId"=(jsonb_populate_record(NULL::"EquipmentBarcode", jsonb_build_object('organizationId', ${center.id}::text)))."organizationId" AND r."type"='EQUIPMENT'
       ORDER BY r."name",b."assetCode"`;
   }
 
-  async moveEquipment(accountId:string,resourceId:string,input:{movementType?:string;toLocation?:string|null;tripId?:string|null;notes?:string|null}){
+  async moveEquipment(accountId:string,resourceId:string,input:Record<string,unknown>,retry=true):Promise<unknown>{
+    if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(key=>!['movementType','toLocation','tripId','notes','requestId','expectedUpdatedAt'].includes(key)))throw new BadRequestException('حقول حركة المعدة غير صالحة.');
+    const movementType=input.movementType;
+    if(typeof movementType!=='string'||!['CHECK_IN','CHECK_OUT','TRANSFER','MAINTENANCE','QUARANTINE','RELEASE','RETIRE'].includes(movementType))throw new BadRequestException('نوع الحركة غير صالح.');
+    const clean=(key:string,max:number)=>{const value=input[key];if(value===undefined||value===null)return null;if(typeof value!=='string'||value.trim().length>max)throw new BadRequestException('تحقق من بيانات الحركة وطول الحقول.');return value.trim()||null};
+    const toLocation=clean('toLocation',240),tripId=clean('tripId',120),notes=clean('notes',2000),requestId=clean('requestId',36)?.toLowerCase();
+    if(requestId&&!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(requestId))throw new BadRequestException('معرّف طلب الحفظ غير صالح.');
+    if(movementType==='TRANSFER'&&!toLocation)throw new BadRequestException('حدد الموقع الجديد لنقل المعدة.');
+    const revision=input.expectedUpdatedAt===undefined?null:new Date(String(input.expectedUpdatedAt));
+    if(revision&&(typeof input.expectedUpdatedAt!=='string'||!Number.isFinite(revision.getTime())))throw new BadRequestException('حدّث بيانات المعدة قبل الحفظ.');
+    const fingerprint=createHash('sha256').update(JSON.stringify({resourceId,movementType,toLocation,tripId,notes,revision:revision?.toISOString()??null})).digest('hex');
     const center=await this.managedCenter(accountId);
-    const owned=await this.db.$queryRaw<Array<{resourceId:string;stockStatus:string;location:string|null}>>`SELECT "resourceId","stockStatus","location" FROM "EquipmentBarcode" WHERE "resourceId"=${resourceId} AND "organizationId"=(jsonb_populate_record(NULL::"EquipmentBarcode", jsonb_build_object('organizationId', ${center.id}::text)))."organizationId" LIMIT 1`;
-    if(!owned.length)throw new NotFoundException('Equipment not found in managed dive center.');
-    const allowed=['CHECK_IN','CHECK_OUT','TRANSFER','MAINTENANCE','QUARANTINE','RELEASE','RETIRE'];if(!input.movementType||!allowed.includes(input.movementType))throw new BadRequestException('Invalid equipment movement type.');
-    if(input.tripId){const trip=await this.db.trip.findFirst({where:{id:input.tripId,organizationId:center.id},select:{id:true,status:true}});if(!trip)throw new NotFoundException('Trip not found in managed dive center.');if(['CANCELLED','COMPLETED'].includes(trip.status))throw new ConflictException('Equipment cannot be assigned to a closed trip.');}
-    const current=owned[0];if(current.stockStatus==='RETIRED')throw new ConflictException('Retired equipment cannot return to circulation.');
-    if(input.movementType==='CHECK_OUT'&&current.stockStatus!=='AVAILABLE')throw new ConflictException('Only available equipment can be checked out.');
-    if(input.movementType==='CHECK_IN'&&current.stockStatus!=='CHECKED_OUT')throw new ConflictException('Only checked-out equipment can be checked in.');
-    if(input.movementType==='RELEASE'&&!['MAINTENANCE','QUARANTINED'].includes(current.stockStatus))throw new ConflictException('Only maintained or quarantined equipment can be released.');
-    const next=input.movementType==='TRANSFER'?current.stockStatus:input.movementType==='CHECK_OUT'?'CHECKED_OUT':input.movementType==='MAINTENANCE'?'MAINTENANCE':input.movementType==='QUARANTINE'?'QUARANTINED':input.movementType==='RETIRE'?'RETIRED':'AVAILABLE';
-    if(input.movementType==='CHECK_OUT'){
-      const inspection=await this.inspections.evaluate([resourceId]);
-      if(inspection.blocked)throw new ConflictException('Equipment inspection or service policy blocks check-out.');
-    }
-    return this.db.serializable(async tx=>{
-      const latest=await tx.$queryRaw<Array<{stockStatus:string;location:string|null}>>`
-        SELECT "stockStatus","location" FROM "EquipmentBarcode"
-        WHERE "resourceId"=${resourceId} AND "organizationId"=(jsonb_populate_record(NULL::"EquipmentBarcode", jsonb_build_object('organizationId', ${center.id}::text)))."organizationId" FOR UPDATE`;
-      if(!latest.length||latest[0].stockStatus!==current.stockStatus)throw new ConflictException('Equipment state changed. Refresh and retry.');
-      const rows=await tx.$queryRaw<Array<{id:string}>>`
-        INSERT INTO "EquipmentMovement"("id","resourceId","movementType","fromLocation","toLocation","tripId","assignedAccountId","notes","actorAccountId","occurredAt")
-        VALUES(gen_random_uuid()::text,${resourceId},${input.movementType},${latest[0].location},${input.toLocation??null},${input.tripId??null},NULL,${input.notes??null},${accountId},NOW()) RETURNING *`;
-      await tx.$executeRaw`
-        UPDATE "EquipmentBarcode" SET "stockStatus"=${next},"location"=COALESCE(${input.toLocation??null},"location"),"updatedAt"=NOW()
-        WHERE "resourceId"=${resourceId} AND "organizationId"=(jsonb_populate_record(NULL::"EquipmentBarcode", jsonb_build_object('organizationId', ${center.id}::text)))."organizationId"`;
-      await this.audit.record({actorId:accountId,action:'EQUIPMENT_INVENTORY_MOVED',resource:'CalendarResource',resourceId,
-        metadata:{organizationId:center.id,movementId:rows[0].id,movementType:input.movementType,
-          fromLocation:latest[0].location,toLocation:input.toLocation??null,tripId:input.tripId??null,
-          assignedAccountId:null,previousStatus:current.stockStatus,stockStatus:next,notes:input.notes??null}},tx);
-      return{movement:rows[0],stockStatus:next};
-    });
+    try{return await this.db.serializable(async tx=>{
+      const role=await tx.roleAssignment.findFirst({where:{accountId,role:'DIVE_CENTER',status:'ACTIVE',account:{status:'ACTIVE'}}});
+      const member=await tx.organizationMember.findFirst({where:{accountId,organizationId:center.id,status:'ACTIVE',role:{in:['OWNER','ADMIN']},organization:{kind:'DIVE_CENTER',status:'ACTIVE'}}});
+      if(!role||!member)throw new ForbiddenException('يتطلب الإجراء صلاحية إدارة مركز غوص نشط.');
+      const owned=await tx.$queryRaw<Array<{stockStatus:string;location:string|null;updatedAt:Date;active:boolean}>>`SELECT b."stockStatus",b."location",b."updatedAt",r."active" FROM "EquipmentBarcode" b JOIN "CalendarResource" r ON r."id"=b."resourceId" WHERE b."resourceId"=${resourceId} AND r."type"='EQUIPMENT' AND b."organizationId"=(jsonb_populate_record(NULL::"EquipmentBarcode",jsonb_build_object('organizationId',${center.id}::text)))."organizationId" FOR UPDATE OF b`;
+      if(!owned.length)throw new NotFoundException('المعدة غير موجودة في المركز.');
+      const current=owned[0],key=requestId?'center-equipment-move:'+requestId:null;
+      if(key){const previous=await tx.operationalSetting.findUnique({where:{key}});if(previous){const value=previous.value as {organizationId:string;fingerprint:string;movementId:string;stockStatus:string};if(value.organizationId!==center.id||value.fingerprint!==fingerprint)throw new ConflictException('سبق استخدام طلب الحركة ببيانات مختلفة.');return {movement:{id:value.movementId},stockStatus:value.stockStatus};}}
+      if(!current.active||current.stockStatus==='RETIRED')throw new ConflictException('المعدة مستبعدة أو غير مفعلة.');
+      if(revision&&current.updatedAt.getTime()!==revision.getTime())throw new ConflictException('تغيرت بيانات المعدة. حدّث القائمة قبل الحفظ.');
+      if(tripId){const trip=await tx.trip.findFirst({where:{id:tripId,organizationId:center.id},select:{status:true}});if(!trip)throw new NotFoundException('الرحلة غير موجودة في المركز.');if(['CANCELLED','COMPLETED'].includes(trip.status))throw new ConflictException('لا يمكن ربط الحركة برحلة ملغاة أو مكتملة.');}
+      if(movementType==='CHECK_OUT'&&current.stockStatus!=='AVAILABLE')throw new ConflictException('يمكن إخراج المعدات المتاحة فقط.');
+      if(movementType==='CHECK_IN'&&current.stockStatus!=='CHECKED_OUT')throw new ConflictException('يمكن إرجاع المعدات المعارة فقط.');
+      if(movementType==='RELEASE'&&!['MAINTENANCE','QUARANTINED'].includes(current.stockStatus))throw new ConflictException('الإتاحة تخص المعدات المحجوزة أو تحت الصيانة.');
+      if(movementType==='CHECK_OUT'){const inspection=await this.inspections.evaluate([resourceId],tx);if(inspection.blocked)throw new ConflictException('الفحص أو صلاحية الصيانة يمنعان إخراج المعدة.');}
+      const next=movementType==='TRANSFER'?current.stockStatus:movementType==='CHECK_OUT'?'CHECKED_OUT':movementType==='MAINTENANCE'?'MAINTENANCE':movementType==='QUARANTINE'?'QUARANTINED':movementType==='RETIRE'?'RETIRED':'AVAILABLE';
+      const rows=await tx.$queryRaw<Array<{id:string}>>`INSERT INTO "EquipmentMovement"("id","resourceId","movementType","fromLocation","toLocation","tripId","assignedAccountId","notes","actorAccountId","occurredAt") VALUES(gen_random_uuid()::text,${resourceId},${movementType},${current.location},${toLocation},${tripId},NULL,${notes},${accountId},NOW()) RETURNING *`;
+      await tx.$executeRaw`UPDATE "EquipmentBarcode" SET "stockStatus"=${next},"location"=COALESCE(${toLocation},"location"),"updatedAt"=NOW() WHERE "resourceId"=${resourceId}`;
+      await this.audit.record({actorId:accountId,action:'EQUIPMENT_INVENTORY_MOVED',resource:'CalendarResource',resourceId,metadata:{organizationId:center.id,movementId:rows[0].id,movementType,fromLocation:current.location,toLocation,tripId,assignedAccountId:null,previousStatus:current.stockStatus,stockStatus:next,notes}},tx);
+      if(key)await tx.operationalSetting.create({data:{key,value:{organizationId:center.id,fingerprint,movementId:rows[0].id,stockStatus:next}}});
+      return {movement:rows[0],stockStatus:next};
+    });}catch(error){const e=error as {code?:string};if(requestId&&retry&&e.code==='P2002')return this.moveEquipment(accountId,resourceId,input,false);throw error;}
   }
 
   async equipmentHistory(accountId:string,resourceId:string){
     const center=await this.managedCenter(accountId);
     const owned=await this.db.$queryRaw<Array<{resourceId:string}>>`SELECT "resourceId" FROM "EquipmentBarcode" WHERE "resourceId"=${resourceId} AND "organizationId"=(jsonb_populate_record(NULL::"EquipmentBarcode", jsonb_build_object('organizationId', ${center.id}::text)))."organizationId" LIMIT 1`;
     if(!owned.length)throw new NotFoundException('Equipment not found in managed dive center.');
-    return this.db.$queryRaw`SELECT "id","movementType","fromLocation","toLocation","tripId","assignedAccountId","notes","occurredAt" FROM "EquipmentMovement" WHERE "resourceId"=${resourceId} ORDER BY "occurredAt" DESC LIMIT 200`;
+    return this.db.$queryRaw`SELECT m."id",m."movementType",m."fromLocation",m."toLocation",m."tripId",m."assignedAccountId",m."notes",m."occurredAt",t."title" AS "tripTitle" FROM "EquipmentMovement" m LEFT JOIN "Trip" t ON t."id"::text=m."tripId" AND t."organizationId"::text=${center.id} WHERE m."resourceId"=${resourceId} ORDER BY m."occurredAt" DESC LIMIT 200`;
   }
 
   async customers(accountId:string){
