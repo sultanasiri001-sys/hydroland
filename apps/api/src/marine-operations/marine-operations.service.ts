@@ -45,8 +45,9 @@ export class MarineOperationsService{
   if(!MARINE_ASSET_TYPES.includes(input.assetType))throw new BadRequestException('Unsupported marine asset type.');
   if(!input.name?.trim())throw new BadRequestException('Marine asset name is required.');
   if(input.passengerCapacity!==undefined&&(!Number.isInteger(input.passengerCapacity)||input.passengerCapacity<1))throw new BadRequestException('Passenger capacity must be a positive integer.');
-  const org=await this.db.organization.findUnique({where:{id:input.organizationId},select:{id:true}});
-  if(!org)throw new NotFoundException('Organization not found.');
+  const org=await this.db.organization.findUnique({where:{id:input.organizationId},select:{id:true,kind:true,status:true}});
+  if(!org||org.status!=='ACTIVE')throw new NotFoundException('Active organization not found.');
+  if(!['DIVE_CENTER','MARINE_OPERATOR'].includes(org.kind))throw new BadRequestException('Marine assets must belong to an active dive center or marine operator.');
   return this.db.marineAsset.create({data:{...input,name:input.name.trim(),registrationNumber:input.registrationNumber?.trim()||null}});
  }
  async createOwnedAsset(accountId:string,input:{organizationId:string;name:string;assetType:MarineAssetType;registrationNumber?:string;passengerCapacity?:number}){
