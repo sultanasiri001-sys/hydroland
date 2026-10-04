@@ -1,3 +1,4 @@
+import {checkCenterOverview} from './center-overview-http-checks.mjs';
 import {checkCenterSafetyWorkspace} from './center-safety-workspace-http-checks.mjs';
 import {checkCenterBookings} from './center-booking-http-checks.mjs';
 import {checkCenterCustomers} from './center-customer-http-checks.mjs';
@@ -156,6 +157,8 @@ try{
   await checkCenterBookings(db,{base,a,b,ownerA,ta,tb,ts,personAccount,tokenFor},check);
 
   await checkCenterCustomers(db,{base,a,b,ownerA,ta,tb,ts,personAccount},check);
+
+  await checkCenterOverview(db,{base,b,ownerB,ts,personAccount,tokenFor},check);
 
   await checkCenterReports(db,{base,a,b,ownerA,ownerB,ta,tb,ts},check);
 
