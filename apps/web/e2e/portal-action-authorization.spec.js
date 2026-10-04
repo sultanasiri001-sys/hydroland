@@ -52,10 +52,11 @@ test('role dashboard action reauthorizes and blocks navigation after live role r
 test('role workspace navigation reauthorizes and blocks navigation after live role revocation',async({page})=>{
   const state=await setupAdmin(page);
   await page.evaluate(()=>history.replaceState(null,'','#home'));
-  state.roles=[];
+  // As with dashboard actions, release the revoked response after the real
+  // click dispatches. A background refresh must not race away the click target.
+  let release;state.gate=new Promise(resolve=>{release=resolve});state.roles=[];
   const navigation=page.locator('.hl-role-dashboard[data-role="admin"] .hl-portal-nav-item[data-portal-label="السلامة والامتثال"]');
-  await expect(navigation).toBeEnabled();
-  await navigation.click();
+  try{await expect(navigation).toBeEnabled();await navigation.click()}finally{release();state.gate=null}
   await expectClosed(page);
 });
 
