@@ -73,7 +73,7 @@
     const form=event.target;if(!(form instanceof HTMLFormElement)||!form.matches('[data-marine-maintenance]'))return;event.preventDefault();
     const c=context();if(c.role!=='boat'||!current(c))return;
     const assetId=form.dataset.marineMaintenance,data=Object.fromEntries(new FormData(form).entries()),submit=form.querySelector('[type="submit"]');if(!data.dueAt)delete data.dueAt;if(submit?.disabled)return;if(submit)submit.disabled=true;
-    try{await authorize(c);await request(c,'/marine-operations/assets/'+encodeURIComponent(assetId)+'/maintenance',{method:'POST',body:JSON.stringify(data)});if(current(c))await refresh()}
+    try{await authorize(c);await request(c,'/marine-operations/assets/'+encodeURIComponent(assetId)+'/maintenance',{method:'POST',body:JSON.stringify(data)});if(current(c)){await refresh();document.dispatchEvent(new CustomEvent('hydroland:marine-assets-changed'))}}
     catch(error){if(!error.stale&&current(c))alert(error instanceof Error?error.message:'تعذر حفظ عمل الصيانة')}
     finally{if(current(c)&&submit?.isConnected)submit.disabled=false}
   });
@@ -85,7 +85,7 @@
     else if(c.role==='boat'&&target.dataset.marineMaintenanceComplete)path='/marine-operations/assets/'+encodeURIComponent(target.dataset.marineAssetId)+'/maintenance/'+encodeURIComponent(target.dataset.marineMaintenanceComplete)+'/complete';
     else if(c.role==='admin'&&target.dataset.marineAssetStatus){path='/marine-operations/admin/assets/'+encodeURIComponent(target.dataset.marineAssetId)+'/status';body=JSON.stringify({status:target.dataset.marineAssetStatus})}
     if(!path)return;target.disabled=true;
-    try{await authorize(c);await request(c,path,{method:'POST',body});if(current(c))await refresh()}
+    try{await authorize(c);await request(c,path,{method:'POST',body});if(current(c)){await refresh();if(c.role==='boat'&&target.dataset.marineMaintenanceComplete)document.dispatchEvent(new CustomEvent('hydroland:marine-assets-changed'))}}
     catch(error){if(!error.stale&&current(c))alert(error instanceof Error?error.message:'تعذر تنفيذ الإجراء')}
     finally{if(current(c)&&target.isConnected)target.disabled=false}
   });
