@@ -42,7 +42,7 @@ for(const action of ['check','complete','save','admin'])test(`marine ${action} a
   const state=await setup(page);
   if(action==='admin'){
     await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="admin"]').click();
-    await page.locator('.hl-role-dashboard .hl-portal-nav-item[data-portal-label="الوسائط البحرية"]').click();
+    await page.locator('.hl-role-dashboard .hl-portal-nav-item[data-portal-label="الوساطة البحرية"]').click();
     await expect(page.locator('[data-marine-asset-status="ACTIVE"]')).toBeVisible();
     await expect(page.locator('[data-marine-readiness-refresh]')).toBeEnabled();
   }

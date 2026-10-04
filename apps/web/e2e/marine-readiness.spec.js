@@ -7,12 +7,13 @@ test('boat operator manages maintenance and admin activates a compliant marine a
   const profile={id:'marine-readiness-e2e',email:'marine-readiness@hydroland.test',status:'ACTIVE',roleAssignments:[{id:'boat-role',role:'BOAT_OWNER',status:'ACTIVE'},{id:'admin-role',role:'ADMIN',status:'ACTIVE'}],person:{firstName:'Marine',lastName:'Readiness',phone:null,professional:null}};
   const membership={id:'membership-e2e',organizationId:'org-marine-readiness',accountId:profile.id,role:'OWNER',status:'ACTIVE',organization:{id:'org-marine-readiness',displayName:'مشغل بحري تجريبي',status:'ACTIVE'}};
   const asset={id:'asset-marine-readiness',organizationId:membership.organizationId,name:'قارب الجاهزية',assetType:'DIVE_BOAT',registrationNumber:'MR-2026-01',passengerCapacity:10,status:'DRAFT',documents:[{id:'doc-1',documentType:'REGISTRATION',status:'VERIFIED',referenceNumber:'REG-1',expiresAt:'2030-01-01T00:00:00.000Z'},{id:'doc-2',documentType:'NAVIGATION_LICENSE',status:'VERIFIED',referenceNumber:'NAV-1',expiresAt:'2030-01-01T00:00:00.000Z'},{id:'doc-3',documentType:'SAFETY_CERTIFICATE',status:'VERIFIED',referenceNumber:'SAFE-1',expiresAt:'2030-01-01T00:00:00.000Z'}],maintenance:[],readiness:[]};
-  const state={assets:[asset],lastStatus:null};
+  const state={assets:[asset],lastStatus:null,overviewCalls:0};
   const authorized=request=>request.headers().authorization==='Bearer marine-readiness-access';
   await page.route(/\/api\/v1\/me$/,route=>authorized(route.request())?json(route,profile):json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/credentials$/,route=>authorized(route.request())?json(route,[]):json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/me\/diver-profile$/,route=>authorized(route.request())?json(route,{profile:null,equipment:[]}):json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/organizations\/mine$/,route=>authorized(route.request())?json(route,[membership]):json(route,{message:'Unauthorized'},401));
+  await page.route(/\/api\/v1\/marine-operations\/overview\/mine$/,route=>{if(!authorized(route.request()))return json(route,{message:'Unauthorized'},401);state.overviewCalls++;return json(route,{generatedAt:'2026-10-04T12:00:00.000Z',metrics:{activeAssets:1,scheduledTrips:2,openMaintenance:3,confirmedBookings:4}})});
   await page.route(/\/api\/v1\/marine-operations\/assets\/mine$/,route=>authorized(route.request())?json(route,state.assets):json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/marine-operations\/admin\/assets\/review$/,route=>authorized(route.request())?json(route,state.assets):json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/marine-operations\/assets\/asset-marine-readiness\/maintenance$/,route=>{
@@ -35,12 +36,14 @@ test('boat operator manages maintenance and admin activates a compliant marine a
   await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandMarineReadiness));
   await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','marine-readiness-access');sessionStorage.setItem('hl-refresh-token','marine-readiness-refresh');window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));await window.HydrolandProfile.load()});
   await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="boat"]').click();
+  const dashboard=page.locator('.hl-role-dashboard[data-role="boat"]');await expect(dashboard.locator('.hl-role-tile b').nth(0)).toHaveText('1');await expect(dashboard.locator('.hl-role-tile b').nth(1)).toHaveText('2');await expect(dashboard.locator('.hl-role-tile b').nth(2)).toHaveText('3');await expect(dashboard.locator('.hl-role-tile b').nth(3)).toHaveText('4');await expect(dashboard.locator('[data-marine-home-status]')).toContainText('آخر تحديث');
+  await dashboard.locator('[data-marine-home-refresh]').click();await expect.poll(()=>state.overviewCalls).toBeGreaterThan(1);
   await page.locator('.hl-role-dashboard [data-action-label="سجل الصيانة"]').click();
   const panel=page.locator('#hl-marine-readiness');await expect(panel).toBeVisible();const card=panel.locator('[data-marine-readiness-asset="asset-marine-readiness"]');await expect(card).toContainText('قارب الجاهزية');
   await card.locator('[data-marine-readiness-check]').click();await expect.poll(()=>asset.readiness[0]?.status).toBe('NOT_READY');await expect(card).toContainText('ASSET_NOT_ACTIVE');
   const form=card.locator('form[data-marine-maintenance]');await form.locator('[name="maintenanceType"]').fill('فحص المحرك');await form.locator('[name="dueAt"]').fill('2030-01-01');await form.locator('button[type="submit"]').click();await expect.poll(()=>asset.maintenance.length).toBe(1);await expect(card).toContainText('فحص المحرك');
   await card.locator('[data-marine-maintenance-complete]').click();await expect.poll(()=>asset.maintenance[0]?.status).toBe('COMPLETED');
   await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="admin"]').click();
-  await page.locator('.hl-role-dashboard .hl-portal-nav-item[data-portal-label="الوسائط البحرية"]').click();
+  await page.locator('.hl-role-dashboard .hl-portal-nav-item[data-portal-label="الوساطة البحرية"]').click();
   await expect(panel).toBeVisible();const review=panel.locator('[data-marine-readiness-review="asset-marine-readiness"]');await expect(review).toContainText('قارب الجاهزية');await review.locator('[data-marine-asset-status="ACTIVE"]').click();await expect.poll(()=>state.lastStatus).toBe('ACTIVE');await expect(review).toContainText('ACTIVE');
 });

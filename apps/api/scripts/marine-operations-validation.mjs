@@ -3,6 +3,7 @@ const read=p=>fs.readFileSync(new URL('../'+p,import.meta.url),'utf8');
 const schema=read('prisma/schema.prisma'),service=read('src/marine-operations/marine-operations.service.ts'),controller=read('src/marine-operations/marine-operations.controller.ts'),calendar=read('src/trips/calendar-allocation.service.ts'),clearance=read('src/trips/operational-clearance.service.ts');
 const checks=[
  ['MarineAsset model',schema.includes('model MarineAsset {')],
+ ['Marine brokerage dashboard summary',controller.includes("overview/mine")&&service.includes('async overviewMine')&&service.includes("role:'BOAT_OWNER'")],
  ['Marine documents',schema.includes('model MarineAssetDocument {')],
  ['Marine maintenance',schema.includes('model MarineMaintenanceRecord {')],
  ['Readiness snapshots',schema.includes('model MarineReadinessSnapshot {')],

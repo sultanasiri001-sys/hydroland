@@ -4,7 +4,7 @@
     'جلسات التدريب':{section:'training'},
     'إصدار الشهادات بعد الاعتماد':{section:'training'},
     'متابعة الحجوزات والرحلات':{section:'trips'},
-    'الطاقم والمعدات والوسائط البحرية':{section:'store'},
+    'الطاقم والمعدات والقوارب':{section:'store'},
     'الامتثال والمالية والتقارير':{selector:'.hl-finance',hash:'finance'},
     'إدارة الرحلات والتقويم':{section:'trips'},
     'فحص القارب والوثائق والتراخيص':{action:()=>window.HydrolandMarineDocuments?.open?.()},
