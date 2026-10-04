@@ -12,7 +12,7 @@ async function setup(page){
  await page.evaluate(async()=>{window.HydrolandAuth.acceptSession({accessToken:'admin-test',refreshToken:'admin-refresh'},window.HydrolandAuth.beginAuthAttempt());await window.HydrolandProfile.load()});
  await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="admin"]').click();
  await page.locator('[data-portal-label="الموافقات والطلبات"]').click();
- await expect(page.locator('[data-platform-license="review-one"]')).toBeVisible();return state;
+ try{await expect(page.locator('[data-platform-license="review-one"]')).toBeVisible()}catch(error){console.log('LICENSE_VISIBILITY',await page.evaluate(()=>{const nodes=[];let node=document.querySelector('[data-platform-license="review-one"]');while(node){nodes.push({tag:node.tagName,id:node.id,classes:node.className,hidden:node.hidden,display:getComputedStyle(node).display,visibility:getComputedStyle(node).visibility});node=node.parentElement}return {nodes,workspace:{...document.body.dataset},role:window.HydrolandPortalAccess?.getCurrentRole?.()}}));throw error}return state;
 }
 for(const outcome of ['APPROVED','REJECTED'])test(`independent platform admin saves ${outcome} with reviewed revision`,async({page})=>{
  const state=await setup(page);let posted;
