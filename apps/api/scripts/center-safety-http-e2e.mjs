@@ -1,3 +1,4 @@
+import {checkCenterTripLifecycle} from './center-trip-lifecycle-http-checks.mjs';
 import {checkCenterTeam} from './center-team-http-checks.mjs';
 import {checkCenterTeamManagement} from './center-team-management-http-checks.mjs';
 import {checkCenterTrainingAssignments} from './center-training-assignment-http-checks.mjs';
@@ -145,6 +146,7 @@ try{
   await checkCenterBusinessProfile(db,{base,a,b,ownerA,ta,tb,ts},check);
 
   await checkCenterTripManagement(db,{base,a,b,ownerA,ta,tb,ts},check);
+  await checkCenterTripLifecycle(db,{base,a,b,ownerA,ta,tb,ts,personAccount,tokenFor},check);
 
   await checkCenterReports(db,{base,a,b,ownerA,ownerB,ta,tb,ts},check);
 
