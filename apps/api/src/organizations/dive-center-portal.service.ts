@@ -228,7 +228,7 @@ export class DiveCenterPortalService {
     const center=await this.managedCenter(accountId);
     const memberships=await this.db.organizationMember.findMany({where:{organizationId:center.id,status:'ACTIVE',role:{in:['OWNER','ADMIN','INSTRUCTOR']},account:{status:'ACTIVE',roleAssignments:{some:{role:'INSTRUCTOR',status:'ACTIVE'}}}},select:{accountId:true,account:{select:{person:{select:{firstName:true,lastName:true,professional:{select:{headline:true,regionCode:true}},_count:{select:{credentials:{where:{verificationStatus:{in:['VERIFIED','DOCUMENT_VERIFIED']}}}}}}}}}}});
     const ids=memberships.map(row=>row.accountId);
-    const assignmentCounts=ids.length?await this.db.trainingEnrollment.groupBy({by:['instructorAccountId'],where:{centerOrganizationId:center.id,instructorAccountId:{in:ids},status:{in:['ACTIVE','COMPLETED']}},_count:{_all:true}}):[];
+    const assignmentCounts=ids.length?await this.db.trainingEnrollment.groupBy({by:['instructorAccountId'],where:{centerOrganizationId:center.id,instructorAccountId:{in:ids},status:{not:'CANCELLED'}},_count:{_all:true}}):[];
     const counts=new Map(assignmentCounts.map(row=>[row.instructorAccountId,row._count._all]));
     return memberships.map(row=>({accountId:row.accountId,displayName:[row.account.person.firstName,row.account.person.lastName].filter(Boolean).join(' ').trim()||'محترف غوص',headline:row.account.person.professional?.headline??null,regionCode:row.account.person.professional?.regionCode??null,verifiedCredentials:row.account.person._count.credentials,assignedTrainingCount:counts.get(row.accountId)||0}));
   }

@@ -1,3 +1,4 @@
+import { GovernanceModule } from '../governance/governance.module';
 import { OrganizationMembershipService } from './organization-membership.service';
 import { CenterEquipmentManagementService } from './center-equipment-management.service';
 import { CenterTripManagementService } from './center-trip-management.service';
@@ -17,7 +18,7 @@ import { DiveCenterPortalController } from './dive-center-portal.controller';
 import { DiveCenterPortalService } from './dive-center-portal.service';
 
 @Module({
-  imports: [AdministrativeAffairsModule, AuthModule, AdminModule, AuditModule, NotificationsModule, TripsModule],
+  imports: [GovernanceModule, AdministrativeAffairsModule, AuthModule, AdminModule, AuditModule, NotificationsModule, TripsModule],
   controllers: [CenterLicensePlatformReviewController, OrganizationsController, DiveCenterPortalController],
   providers: [OrganizationMembershipService, CenterEquipmentManagementService, CenterTripManagementService, CenterLicensePlatformReviewService, OrganizationsService, DiveCenterPortalService, CenterLicenseService],
 })
