@@ -60,7 +60,8 @@ for(const marker of [
 ])if(!dashboards.includes(marker))throw new Error(`Missing scoped professional route marker: ${marker}`);
 for(const [index,source] of centerModules.entries()){
   const name=['safety','documents','equipment','customers','operations','team','reports'][index];
-  for(const marker of ['async function authorize','access()?.authorizeRole','if(!(await authorize(host,version,session)))return'])if(!source.includes(marker))throw new Error(`Center ${name} must refresh authoritative role state before scoped reads: missing ${marker}`);
+  const authorizationCalls=name==='safety'?['if(!await authorize(host,session,()=>v===listVersion))return','if(!await authorize(host,session,()=>v===detailVersion))return','if(!await authorize(host,session,()=>v===composeVersion))return']:['if(!(await authorize(host,version,session)))return'];
+  for(const marker of ['async function authorize','access()?.authorizeRole',...authorizationCalls])if(!source.includes(marker))throw new Error(`Center ${name} must refresh authoritative role state before scoped reads: missing ${marker}`);
   for(const marker of ['getSessionVersion','hydroland:session-cleared','hydroland:portal-cleared'])if(!source.includes(marker))throw new Error(`Center ${name} must fence session/workspace lifecycle: missing ${marker}`);
 }
 const freshness=await readFile(resolve('src/hydroland-portal-access-freshness.js'),'utf8');

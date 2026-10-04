@@ -1,3 +1,4 @@
+import { CenterSafetyService } from './center-safety.service';
 import { BookingManagementService } from '../trips/booking-management.service';
 import { CenterCustomerService } from './center-customer.service';
 import { TripLifecycleService } from '../trips/trip-lifecycle.service';
@@ -15,11 +16,17 @@ import { DiveCenterPortalService } from './dive-center-portal.service';
 @Controller('center')
 @UseGuards(AccessTokenGuard)
 export class DiveCenterPortalController {
-  constructor(private readonly bookingManagement:BookingManagementService,private readonly customersDirectory:CenterCustomerService,private readonly tripLifecycle:TripLifecycleService,private readonly trainingSessions:TrainingSessionService,private readonly trainingAssignments:TrainingAssignmentService,private readonly memberships:OrganizationMembershipService,private readonly equipmentManagement:CenterEquipmentManagementService, private readonly portal:DiveCenterPortalService,private readonly tripManagement:CenterTripManagementService){}
+  constructor(private readonly safetyWorkspace:CenterSafetyService,private readonly bookingManagement:BookingManagementService,private readonly customersDirectory:CenterCustomerService,private readonly tripLifecycle:TripLifecycleService,private readonly trainingSessions:TrainingSessionService,private readonly trainingAssignments:TrainingAssignmentService,private readonly memberships:OrganizationMembershipService,private readonly equipmentManagement:CenterEquipmentManagementService, private readonly portal:DiveCenterPortalService,private readonly tripManagement:CenterTripManagementService){}
   @Patch(':id/business-profile') updateBusinessProfile(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.portal.updateBusinessProfile(request.auth.accountId,id,body);}
   @Get('me/reports') reports(@Req() request:AuthenticatedRequest,@Query('from') from?:string,@Query('to') to?:string){return this.portal.reports(request.auth.accountId,from,to);}
   @Get('me/overview') overview(@Req() request:AuthenticatedRequest){return this.portal.overview(request.auth.accountId);}
-  @Get('me/safety') safety(@Req() request:AuthenticatedRequest){return this.portal.safety(request.auth.accountId);}
+  @Get('me/safety') safety(@Req() request:AuthenticatedRequest,@Query() query:Record<string,unknown>){return this.safetyWorkspace.list(request.auth.accountId,query);}
+  @Get('me/safety/trips') safetyTrips(@Req() request:AuthenticatedRequest,@Query() query:Record<string,unknown>){return this.safetyWorkspace.trips(request.auth.accountId,query);}
+  @Get('me/safety/trips/:id') safetyTrip(@Req() request:AuthenticatedRequest,@Param('id') id:string){return this.safetyWorkspace.preview(request.auth.accountId,id);}
+  @Get('me/safety/checklists/:id') safetyChecklist(@Req() request:AuthenticatedRequest,@Param('id') id:string){return this.safetyWorkspace.detail(request.auth.accountId,'checklist',id);}
+  @Get('me/safety/incidents/:id') safetyIncident(@Req() request:AuthenticatedRequest,@Param('id') id:string){return this.safetyWorkspace.detail(request.auth.accountId,'incident',id);}
+  @Post('me/safety/trips/:id/checklists') safetyAssess(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.safetyWorkspace.submit(request.auth.accountId,id,'checklist',body);}
+  @Post('me/safety/trips/:id/incidents') safetyReport(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.safetyWorkspace.submit(request.auth.accountId,id,'incident',body);}
 
   @Get('me/documents') documents(@Req() request:AuthenticatedRequest){return this.portal.documents(request.auth.accountId);}
 
