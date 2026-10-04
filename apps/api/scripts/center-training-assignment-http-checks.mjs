@@ -62,6 +62,12 @@ export async function checkCenterTrainingAssignments(db,{base,a,b,ownerA,ta,tb,t
   const latest=await current(own.id);r=await assign(latest);check(r.status===200&&r.body.transferredSessionCount===0,'same target with current revision is a no-op');
   check(await db.auditEvent.count({where:{resourceId:own.id,action:'training.instructor_assigned'}})===1,'no-op does not duplicate audit');
 
+  const pending=await course('ASSIGN-PENDING');
+  const pendingRevision=await db.trainingEnrollment.update({where:{id:pending.id},data:{status:'PENDING'}});
+  check((await assign(pendingRevision)).status===200,'pending enrollment can be assigned before training begins');
+  r=await request(ta,'/center/me/professionals');
+  check(r.status===200&&r.body.find(row=>row.accountId===pros[1].id)?.assignedTrainingCount===2,'professional assignment count includes pending courses');
+
   const keep=await course('ASSIGN-KEEP'),kept=await session(keep);
   r=await assign(keep,pros[1].id,{transferUpcomingSessions:false});check(r.status===200&&r.body.transferredSessionCount===0,'explicit keep-sessions choice respected');
   check((await db.trainingSession.findUnique({where:{id:kept.id}})).instructorAccountId===pros[0].id,'kept session retains original instructor');
