@@ -161,6 +161,7 @@ try{
   await db.roleAssignment.deleteMany({where:{accountId:{in:ids.accounts}}});
   await db.session.deleteMany({where:{accountId:{in:ids.accounts}}});
   await db.account.deleteMany({where:{id:{in:ids.accounts}}});
-  await db.person.deleteMany({where:{id:{in:ids.people}}});
+  // Retain test actors referenced by append-only audit records in this disposable CI database.
+  await db.person.deleteMany({where:{id:{in:ids.people},auditEvents:{none:{}}}});
   await db.$disconnect();
 }
