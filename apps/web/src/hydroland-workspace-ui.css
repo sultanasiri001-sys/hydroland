@@ -77,3 +77,9 @@ body.hl-visitor-mode #role-switch{display:none!important}
 .hl-center-business-profile label {display:grid;gap:8px;min-width:0}
 .hl-center-business-profile input {width:100%;min-width:0;box-sizing:border-box;padding:10px}
 .hl-center-business-profile [role=status] {overflow-wrap:anywhere}
+
+.hl-center-operations{padding:clamp(12px,2vw,28px);min-width:0}
+.hl-center-operations [data-center-ops-list]{display:grid;gap:16px}
+.hl-center-operations [data-bookings]{margin-top:16px;display:grid;gap:12px}
+.hl-center-operations [data-center-booking]{display:grid;gap:6px;padding:12px;border:1px solid #ffffff26;border-radius:12px;overflow-wrap:anywhere}
+.hl-center-operations [data-center-booking] ul{margin:0;padding-inline-start:24px}
