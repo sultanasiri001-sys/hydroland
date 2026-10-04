@@ -59,12 +59,20 @@
      if(!current(host,version,session))return;
      if(!response.ok)throw new Error(response.status===403?'لا تملك صلاحية عرض رحلات هذا المركز.':rows?.message||'تعذر تحميل الرحلات');
      if(!Array.isArray(rows))throw new Error('استجابة رحلات المركز غير مكتملة. أعد المحاولة.');
-     list.innerHTML=(notice?`<p role="status">${esc(notice)}</p>`:'')+editor()+(rows.length?rows.map(row=>`<article class="hl-course" data-center-trip="${esc(row.id)}"><div class="hl-course-top"><div><b>${esc(row.title||'رحلة المركز')}</b><small>${esc(date(row.startsAt))} (توقيت الرياض) · ${esc(tripType(row.type))}</small></div><span>${esc(tripStatus(row.status))}</span></div><small>السعة: ${count(row.capacity)} · الحجوزات: ${count(row._count?.bookings)}</small><p>${row.location?.locationName?`الموقع: ${esc(row.location.locationName)} · `:''}${Number.isSafeInteger(row.price?.pricePerSeatMinor)?`سعر المقعد: ${(row.price.pricePerSeatMinor/100).toFixed(2)} ريال`:'السعر غير محدد'}</p><button type="button" data-center-bookings>عرض الحجوزات</button>${row.status==='DRAFT'&&row.updatedAt?`${editor(row)}<button type="button" data-center-trip-publish data-version="${esc(row.updatedAt)}">فتح الحجز</button><p data-trip-publish-feedback role="status"></p>`:''}</article>`).join(''):'<p>لا توجد رحلات مرتبطة بهذا المركز حاليًا.</p>');
+     list.innerHTML=(notice?`<p role="status">${esc(notice)}</p>`:'')+editor()+(rows.length?rows.map(row=>`<article class="hl-course" data-center-trip="${esc(row.id)}"><div class="hl-course-top"><div><b>${esc(row.title||'رحلة المركز')}</b><small>${esc(date(row.startsAt))} (توقيت الرياض) · ${esc(tripType(row.type))}</small></div><span>${esc(tripStatus(row.status))}</span></div><small>السعة: ${count(row.capacity)} · الحجوزات: ${count(row._count?.bookings)}</small><p>${row.location?.locationName?`الموقع: ${esc(row.location.locationName)} · `:''}${Number.isSafeInteger(row.price?.pricePerSeatMinor)?`سعر المقعد: ${(row.price.pricePerSeatMinor/100).toFixed(2)} ريال`:'السعر غير محدد'}</p><button type="button" data-center-bookings>عرض الحجوزات</button><button type="button" data-center-trip-lifecycle>إجراءات الرحلة</button>${row.status==='DRAFT'&&row.updatedAt?`${editor(row)}<button type="button" data-center-trip-publish data-version="${esc(row.updatedAt)}">فتح الحجز</button><p data-trip-publish-feedback role="status"></p>`:''}</article>`).join(''):'<p>لا توجد رحلات مرتبطة بهذا المركز حاليًا.</p>');
    }catch(error){if(current(host,version,session))list.innerHTML=`<p role="alert">${esc(error instanceof Error?error.message:'تعذر تحميل الرحلات')}</p><button type="button" data-center-operations-retry>إعادة المحاولة</button>`}
    finally{if(current(host,version,session))list.removeAttribute('aria-busy')}
  }
  async function onClick(event){
    const host=event.currentTarget;
+   const lifecycle=event.target.closest?.('[data-center-trip-lifecycle]');
+   if(lifecycle){
+     const article=lifecycle.closest('[data-center-trip]'),version=viewVersion,session=auth()?.getSessionVersion?.();if(!article)return;
+     let box=article.querySelector('[data-trip-lifecycle]');if(box){box.scrollIntoView({block:'nearest'});return}
+     box=document.createElement('div');box.dataset.tripLifecycle='';box.className='hl-trip-lifecycle';article.append(box);
+     const path='/center/me/trips/'+encodeURIComponent(article.dataset.centerTrip);
+     window.HydrolandTripLifecycle.mount(box,{isCurrent:()=>current(host,version,session),authorize:()=>authorize(host,version,session),load:()=>auth().authorizedFetch(path+'/lifecycle'),send:body=>auth().authorizedFetch(path+'/actions',{method:'POST',body:JSON.stringify(body)}),onSaved:async()=>{document.dispatchEvent(new CustomEvent('hydroland:center-trips-changed'));await open('تم حفظ إجراء الرحلة وتحديث سجلاتها.')}});return
+   }
    const publish=event.target.closest?.('[data-center-trip-publish]');if(publish){void publishTrip(publish);return}
    if(event.target.closest?.('[data-center-operations-retry]')){void open();return}
    const button=event.target.closest?.('[data-center-bookings]');if(!button||button.disabled)return;

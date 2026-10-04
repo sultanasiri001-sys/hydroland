@@ -1,3 +1,4 @@
+import { TripLifecycleService } from './trip-lifecycle.service';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
@@ -19,7 +20,7 @@ type TripPrice={pricePerSeatMinor:number;currency:'SAR';configured:boolean};
 
 @Injectable()
 export class TripAdminService {
-  constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly crewAssignments:CrewAssignmentService,private readonly clearance:OperationalClearanceService,private readonly participants:BookingParticipantService,private readonly policies:PolicyControlService,private readonly notifications:NotificationsService,private readonly weatherGate:WeatherGateService,private readonly weatherReviews:TripWeatherReviewService) {}
+  constructor(private readonly lifecycle:TripLifecycleService,private readonly db:DatabaseService,private readonly audit:AuditService,private readonly crewAssignments:CrewAssignmentService,private readonly clearance:OperationalClearanceService,private readonly participants:BookingParticipantService,private readonly policies:PolicyControlService,private readonly notifications:NotificationsService,private readonly weatherGate:WeatherGateService,private readonly weatherReviews:TripWeatherReviewService) {}
 
   private async notifyQuietly(accountId:string,type:string,payload:Record<string,unknown>){try{await this.notifications.notify(accountId,type,payload);}catch{return;}}
   private priceKey(tripId:string){return `trip-price:${tripId}`;}
@@ -112,26 +113,14 @@ export class TripAdminService {
     return{...trip,price,location};
   }
 
-  async setStatus(reviewerAccountId:string,id:string,status:TripStatusValue){
-    if(!TRIP_STATUSES.includes(status))throw new BadRequestException('Invalid trip status.');
-    if(status==='COMPLETED')throw new BadRequestException('Use the governed trip completion workflow.');
+  lifecyclePreview(accountId:string,id:string){return this.lifecycle.preview(accountId,id,'admin');}
+  async setStatus(reviewerAccountId:string,id:string,input:Record<string,unknown>){
+    if(!input||typeof input!=='object'||Array.isArray(input))throw new BadRequestException('Invalid lifecycle input.');
+    const {status,...details}=input;
+    if(!['OPEN','CLOSED','CANCELLED'].includes(String(status)))throw new BadRequestException('Use the governed lifecycle; terminal trips cannot be reset.');
     const trip=await this.db.trip.findUnique({where:{id}});if(!trip)throw new NotFoundException('Trip not found.');
-    if(status==='OPEN'&&trip.startsAt<=new Date())throw new ConflictException('A trip that already started cannot be opened.');
-    if(status==='OPEN'){const price=await this.tripPrice(id);if(!price.configured)throw new ConflictException('Trip price must be configured before opening the trip.');}
-    if(status==='CLOSED')await this.clearance.assertValid(id);
-    if(trip.status===status)return trip;
-    const affectedBookings:AffectedBooking[]=status==='CANCELLED'?await this.db.booking.findMany({where:{tripId:id,status:{not:'CANCELLED'}},select:{id:true,accountId:true,seats:true,status:true}}):[];
-    const updated=await this.db.serializable(async tx=>{
-      const current=await tx.trip.findUnique({where:{id}});if(!current)throw new NotFoundException('Trip not found.');
-      if(status==='CANCELLED'){
-        await tx.$executeRaw`UPDATE "CalendarAllocation" a SET "status"='INACTIVE',"updatedAt"=NOW() FROM "CalendarEvent" e WHERE e."id"=a."eventId" AND e."referenceType"='TRIP' AND e."referenceId"=${id} AND a."status"='ACTIVE'`;
-        await tx.$executeRaw`UPDATE "CalendarEvent" SET "status"='INACTIVE',"updatedAt"=NOW() WHERE "referenceType"='TRIP' AND "referenceId"=${id} AND "status"='ACTIVE'`;
-        await tx.booking.updateMany({where:{tripId:id,status:{not:'CANCELLED'}},data:{status:'CANCELLED'}});
-      }
-      return tx.trip.update({where:{id},data:{status}});
-    });
-    if(status==='CANCELLED')await Promise.all(affectedBookings.map((booking:AffectedBooking)=>this.notifyQuietly(booking.accountId,'TRIP_CANCELLED',{tripId:id,bookingId:booking.id,seats:booking.seats,previousBookingStatus:booking.status,bookingStatus:'CANCELLED',startsAt:trip.startsAt,title:trip.title})));
-    await this.audit.record({action:'TRIP_STATUS_CHANGED',resource:'Trip',resourceId:id,metadata:{reviewerAccountId,previousStatus:trip.status,status,releasedCalendarResources:status==='CANCELLED',cancelledBookings:status==='CANCELLED'?affectedBookings.length:0,notifiedBookings:status==='CANCELLED'?affectedBookings.length:0,financialActionExecuted:false}});
-    return updated;
+    const action=status==='OPEN'?'REOPEN':status==='CLOSED'?'CLOSE':'CANCEL';
+    const result=await this.lifecycle.apply(reviewerAccountId,id,{...details,action},'admin');
+    return {...(result as unknown as {trip:object}).trip,...result};
   }
 }

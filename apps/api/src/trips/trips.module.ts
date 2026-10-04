@@ -1,3 +1,4 @@
+import { TripLifecycleService } from './trip-lifecycle.service';
 import { Module } from '@nestjs/common';
 import { AdminModule } from '../admin/admin.module';
 import { AuditModule } from '../audit/audit.module';
@@ -48,7 +49,7 @@ import { StormglassWeatherService } from './stormglass-weather.service';
 @Module({
   imports: [AuthModule, AdminModule, AuditModule, NotificationsModule, IntegrationModule, MarineOperationsModule],
   controllers: [TripsController,TripAdminController,TripCompletionController,WeatherGateController,CalendarAllocationController,CrewAssignmentController,PolicyControlController,BoatComplianceController,TripComplianceController,EquipmentInspectionController,EquipmentInventoryController,InventoryStocktakeController,EquipmentRentalController,EquipmentRentalAdminController,EquipmentRentalHandoverController],
-  providers: [TripsService,TripAdminService,TripPricingGovernanceService,PaymentConfirmationGuard,TripCompletionService,WeatherGateService,StormglassWeatherService,TripWeatherReviewService,CalendarAllocationService,CalendarResourceService,CrewAssignmentService,CrewEscalationScheduler,OperationalClearanceService,OperationalClearanceScheduler,BookingParticipantService,PolicyControlService,BoatComplianceService,TripComplianceService,EquipmentInspectionService,EquipmentInventoryService,InventoryStocktakeService,EquipmentRentalService,EquipmentRentalAdminService,EquipmentRentalHandoverService],
-  exports: [PolicyControlService,BoatComplianceService,TripComplianceService,EquipmentInspectionService,EquipmentInventoryService,InventoryStocktakeService,EquipmentRentalService,TripWeatherReviewService],
+  providers: [TripLifecycleService,TripsService,TripAdminService,TripPricingGovernanceService,PaymentConfirmationGuard,TripCompletionService,WeatherGateService,StormglassWeatherService,TripWeatherReviewService,CalendarAllocationService,CalendarResourceService,CrewAssignmentService,CrewEscalationScheduler,OperationalClearanceService,OperationalClearanceScheduler,BookingParticipantService,PolicyControlService,BoatComplianceService,TripComplianceService,EquipmentInspectionService,EquipmentInventoryService,InventoryStocktakeService,EquipmentRentalService,EquipmentRentalAdminService,EquipmentRentalHandoverService],
+  exports: [TripLifecycleService,PolicyControlService,BoatComplianceService,TripComplianceService,EquipmentInspectionService,EquipmentInventoryService,InventoryStocktakeService,EquipmentRentalService,TripWeatherReviewService],
 })
 export class TripsModule {}

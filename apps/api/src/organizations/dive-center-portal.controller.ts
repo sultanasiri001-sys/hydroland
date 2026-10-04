@@ -1,3 +1,4 @@
+import { TripLifecycleService } from '../trips/trip-lifecycle.service';
 import { TrainingSessionService } from '../governance/training-session.service';
 import { TrainingAssignmentService } from '../governance/training-assignment.service';
 import { OrganizationMembershipService } from './organization-membership.service';
@@ -12,7 +13,7 @@ import { DiveCenterPortalService } from './dive-center-portal.service';
 @Controller('center')
 @UseGuards(AccessTokenGuard)
 export class DiveCenterPortalController {
-  constructor(private readonly trainingSessions:TrainingSessionService,private readonly trainingAssignments:TrainingAssignmentService,private readonly memberships:OrganizationMembershipService,private readonly equipmentManagement:CenterEquipmentManagementService, private readonly portal:DiveCenterPortalService,private readonly tripManagement:CenterTripManagementService){}
+  constructor(private readonly tripLifecycle:TripLifecycleService,private readonly trainingSessions:TrainingSessionService,private readonly trainingAssignments:TrainingAssignmentService,private readonly memberships:OrganizationMembershipService,private readonly equipmentManagement:CenterEquipmentManagementService, private readonly portal:DiveCenterPortalService,private readonly tripManagement:CenterTripManagementService){}
   @Patch(':id/business-profile') updateBusinessProfile(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.portal.updateBusinessProfile(request.auth.accountId,id,body);}
   @Get('me/reports') reports(@Req() request:AuthenticatedRequest,@Query('from') from?:string,@Query('to') to?:string){return this.portal.reports(request.auth.accountId,from,to);}
   @Get('me/overview') overview(@Req() request:AuthenticatedRequest){return this.portal.overview(request.auth.accountId);}
@@ -64,6 +65,8 @@ export class DiveCenterPortalController {
   @Post('me/trips') createTrip(@Req() request:AuthenticatedRequest,@Body() body:Record<string,unknown>){return this.tripManagement.save(request.auth.accountId,body);}
   @Patch('me/trips/:tripId') updateTrip(@Req() request:AuthenticatedRequest,@Param('tripId') tripId:string,@Body() body:Record<string,unknown>){return this.tripManagement.save(request.auth.accountId,body,tripId);}
   @Post('me/trips/:tripId/publish') publishTrip(@Req() request:AuthenticatedRequest,@Param('tripId') tripId:string,@Body() body:Record<string,unknown>){return this.tripManagement.publish(request.auth.accountId,tripId,body);}
+  @Get('me/trips/:tripId/lifecycle') tripLifecyclePreview(@Req() request:AuthenticatedRequest,@Param('tripId') tripId:string){return this.tripLifecycle.preview(request.auth.accountId,tripId);}
+  @Post('me/trips/:tripId/actions') tripAction(@Req() request:AuthenticatedRequest,@Param('tripId') tripId:string,@Body() body:Record<string,unknown>){return this.tripLifecycle.apply(request.auth.accountId,tripId,body);}
   @Get('me/trips') trips(@Req() request:AuthenticatedRequest){return this.tripManagement.list(request.auth.accountId);}
   @Get('me/trips/:tripId/bookings') bookings(@Req() request:AuthenticatedRequest,@Param('tripId') tripId:string){return this.portal.bookings(request.auth.accountId,tripId);}
 }

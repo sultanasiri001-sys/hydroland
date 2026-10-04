@@ -60,13 +60,17 @@ export class CrewAssignmentService{
     for(const resource of allocated){
       const existing=await this.db.$queryRaw<AssignmentRow[]>`SELECT * FROM "CrewAssignment" WHERE "tripId"::text=${tripId} AND "resourceId"=${resource.id} AND "status" IN ('PENDING','ACCEPTED') ORDER BY "createdAt" DESC LIMIT 1`;
       if(!existing.length){
-        const created=await this.db.$queryRaw<AssignmentRow[]>`
+        const created=await this.db.serializable(async tx=>{
+          const current=await tx.trip.findUnique({where:{id:tripId},select:{status:true}});
+          if(!current||['CANCELLED','COMPLETED'].includes(current.status))return [];
+          return tx.$queryRaw<AssignmentRow[]>`
           INSERT INTO "CrewAssignment"("id","tripId","resourceId","accountId","roleType","status","createdAt","updatedAt")
           SELECT gen_random_uuid(),t."id",${resource.id},ac."id",${resource.type},'PENDING',NOW(),NOW()
           FROM "Trip" t JOIN "Account" ac ON ac."id"::text=${resource.referenceId}
           WHERE t."id"::text=${tripId}
           RETURNING *`;
-        if(!created[0])throw new ConflictException('Crew assignment could not be created.');
+        });
+        if(!created[0])continue;
         await this.notify(resource.referenceId,'TRIP_CREW_ASSIGNMENT',{assignmentId:created[0].id,tripId,bookingId,tripTitle:trip.title,startsAt:trip.startsAt,endsAt:trip.endsAt,roleType:resource.type,resourceName:resource.name,actionRequired:true,policyReview:qualified.reviews});
       }else await this.notify(existing[0].accountId,'TRIP_BOOKING_CONFIRMED',{assignmentId:existing[0].id,tripId,bookingId,tripTitle:trip.title,startsAt:trip.startsAt,endsAt:trip.endsAt,roleType:existing[0].roleType,actionRequired:existing[0].status==='PENDING',policyReview:qualified.reviews});
     }
@@ -80,13 +84,14 @@ export class CrewAssignmentService{
   async respond(accountId:string,assignmentId:string,response:'ACCEPTED'|'REJECTED'){
     const rows=await this.db.$queryRaw<AssignmentRow[]>`SELECT * FROM "CrewAssignment" WHERE "id"::text=${assignmentId} LIMIT 1`,assignment=rows[0];
     if(!assignment||assignment.accountId!==accountId)throw new NotFoundException('Crew assignment not found.');
-    if(assignment.status!=='PENDING')throw new ConflictException('Crew assignment already answered.');
-    if(response==='ACCEPTED'){
-      await this.db.$executeRaw`UPDATE "CrewAssignment" SET "status"='ACCEPTED',"respondedAt"=NOW(),"updatedAt"=NOW() WHERE "id"::text=${assignmentId} AND "status"='PENDING'`;
-      await this.audit.record({action:'CREW_ASSIGNMENT_ACCEPTED',resource:'CrewAssignment',resourceId:assignmentId,metadata:{accountId,tripId:assignment.tripId,resourceId:assignment.resourceId,roleType:assignment.roleType}});await this.notifyAdmins('CREW_ASSIGNMENT_ACCEPTED',{assignmentId,tripId:assignment.tripId,accountId});return{assignmentId,status:'ACCEPTED'};
-    }
-    await this.db.$executeRaw`UPDATE "CrewAssignment" SET "status"='REJECTED',"respondedAt"=NOW(),"updatedAt"=NOW() WHERE "id"::text=${assignmentId} AND "status"='PENDING'`;
-    await this.audit.record({action:'CREW_ASSIGNMENT_REJECTED',resource:'CrewAssignment',resourceId:assignmentId,metadata:{accountId,tripId:assignment.tripId,resourceId:assignment.resourceId,roleType:assignment.roleType}});
+    await this.db.serializable(async tx=>{
+      const trip=await tx.trip.findUnique({where:{id:assignment.tripId},select:{status:true}});
+      if(!trip||['CANCELLED','COMPLETED'].includes(trip.status))throw new ConflictException('Terminal trip crew assignments cannot be answered.');
+      const changed=await tx.$executeRaw`UPDATE "CrewAssignment" SET "status"=${response},"respondedAt"=NOW(),"updatedAt"=NOW() WHERE "id"::text=${assignmentId} AND "status"='PENDING'`;
+      if(!changed)throw new ConflictException('Crew assignment already answered.');
+      await this.audit.record({actorId:accountId,action:'CREW_ASSIGNMENT_'+response,resource:'CrewAssignment',resourceId:assignmentId,metadata:{accountId,tripId:assignment.tripId,resourceId:assignment.resourceId,roleType:assignment.roleType}},tx);
+    });
+    if(response==='ACCEPTED'){await this.notifyAdmins('CREW_ASSIGNMENT_ACCEPTED',{assignmentId,tripId:assignment.tripId,accountId});return{assignmentId,status:'ACCEPTED'};}
     const replacement=await this.findReplacement(assignment);
     if(!replacement){await this.notifyAdmins('CREW_REPLACEMENT_REQUIRED',{assignmentId,tripId:assignment.tripId,roleType:assignment.roleType,rejectedByAccountId:accountId});return{assignmentId,status:'REJECTED',replacement:null,requiresAdminAction:true};}
     const replacementAssignment=await this.replaceAssignment(assignment,replacement);if(!replacementAssignment)throw new ConflictException('Crew replacement could not be created.');return{assignmentId,status:'REJECTED',replacement:{assignmentId:replacementAssignment.id,accountId:replacement.referenceId,resourceId:replacement.id,resourceName:replacement.name}};
@@ -100,7 +105,9 @@ export class CrewAssignmentService{
   }
 
   private async replaceAssignment(assignment:AssignmentRow,replacement:CrewResourceRow,previousStatus?:'REASSIGNED'):Promise<AssignmentRow|null>{
-    const created=await this.db.$transaction(async(tx:Prisma.TransactionClient)=>{
+    const created=await this.db.serializable(async(tx:Prisma.TransactionClient)=>{
+      const trip=await tx.trip.findUnique({where:{id:assignment.tripId},select:{status:true}});
+      if(!trip||['CANCELLED','COMPLETED'].includes(trip.status))return null;
       if(previousStatus){const changed=await tx.$executeRaw`UPDATE "CrewAssignment" SET "status"=${previousStatus},"respondedAt"=NOW(),"updatedAt"=NOW() WHERE "id"::text=${assignment.id} AND "status"='PENDING'`;if(!changed)return null;}
       await tx.$executeRaw`UPDATE "CalendarAllocation" a SET "resourceId"=${replacement.id},"updatedAt"=NOW() FROM "CalendarEvent" e WHERE e."id"=a."eventId" AND e."referenceType"='TRIP' AND e."referenceId"=${assignment.tripId} AND a."resourceId"=${assignment.resourceId} AND a."status"='ACTIVE'`;
       const rows=await tx.$queryRaw<AssignmentRow[]>`
