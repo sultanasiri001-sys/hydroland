@@ -118,3 +118,6 @@ body.hl-visitor-mode #role-switch{display:none!important}
 .hl-center-team label {display:grid;gap:8px;min-width:0}
 .hl-center-team input,.hl-center-team select,.hl-center-team textarea {width:100%;min-width:0;box-sizing:border-box;padding:10px;font:inherit}
 .hl-center-team [hidden] {display:none!important}
+.hl-center-team .hl-training-transfer {display:flex;align-items:center;gap:10px}
+.hl-center-team .hl-training-transfer input {width:auto;flex:0 0 auto}
+.hl-center-team .hl-training-session {padding:16px;margin-block:12px;border:1px solid currentColor;border-radius:12px}

@@ -10,6 +10,7 @@ export async function checkCenterTeamManagement(db,{base,a,b,ownerA,ta,tb,ts,per
  const tp=await tokenFor(pro.id),studentToken=await tokenFor(student.id),actorToken=await tokenFor(actor.id);
  const manage=(row,action='SUSPEND',extra={},token=ta)=>request(token,`/center/me/team/${row.id}`,{action,reason:'اختبار تعديل العضوية',expectedUpdatedAt:new Date(row.updatedAt).toISOString(),...extra});
  const refresh=row=>db.organizationMember.findUniqueOrThrow({where:{id:row.id}});
+ const assign=async(id,instructorAccountId)=>request(ta,`/training/enrollments/${id}/instructor`,{instructorAccountId,reason:'اختبار أهلية التكليف',expectedUpdatedAt:(await db.trainingEnrollment.findUniqueOrThrow({where:{id}})).updatedAt.toISOString(),transferUpcomingSessions:false});
  const enrollments=[];
  try{
   check((await manage(member,'SUSPEND',{},null)).status===401,'anonymous team mutation denied');
@@ -39,11 +40,11 @@ export async function checkCenterTeamManagement(db,{base,a,b,ownerA,ta,tb,ts,per
   const own=await createEnrollment(a.org.id,'TEAM-A'),other=await createEnrollment(b.org.id,'TEAM-B'),independent=await createEnrollment(null,'TEAM-INDEPENDENT');
   await db.roleAssignment.upsert({where:{accountId_role:{accountId:ownerA.id,role:'INSTRUCTOR'}},create:{accountId:ownerA.id,role:'INSTRUCTOR',status:'ACTIVE'},update:{status:'ACTIVE'}});
   const ownerEnrollment=await db.trainingEnrollment.create({data:{studentAccountId:student.id,centerOrganizationId:a.org.id,courseCode:'TEAM-OWNER',status:'ACTIVE'}});enrollments.push(ownerEnrollment.id);
-  check((await request(ta,`/training/enrollments/${ownerEnrollment.id}/instructor`,{instructorAccountId:ownerA.id})).status===200,'qualified center owner can also teach without losing ownership');
+  check((await assign(ownerEnrollment.id,ownerA.id)).status===200,'qualified center owner can also teach without losing ownership');
   check((await request(ta,'/center/me/professionals')).body.some(row=>row.accountId===ownerA.id),'qualified owner appears among center professionals');
   check((await request(ta,'/training/professional/me/assignments')).body.some(row=>row.enrollmentId===ownerEnrollment.id),'professional portal includes qualified owner assignments');
   await db.roleAssignment.update({where:{accountId_role:{accountId:ownerA.id,role:'INSTRUCTOR'}},data:{status:'SUSPENDED'}});
-  check((await request(ta,`/training/enrollments/${ownerEnrollment.id}/instructor`,{instructorAccountId:ownerA.id})).status===409,'center ownership alone cannot grant instructor qualification');
+  check((await assign(ownerEnrollment.id,ownerA.id)).status===409,'center ownership alone cannot grant instructor qualification');
   await db.roleAssignment.update({where:{accountId_role:{accountId:ownerA.id,role:'INSTRUCTOR'}},data:{status:'ACTIVE'}});
   const earning=await db.instructorEarning.create({data:{trainingEnrollmentId:own.row.id,instructorAccountId:pro.id,centerOrganizationId:a.org.id,amountMinor:5000}});
   check((await request(actorToken,`/training/enrollments/${own.row.id}`)).status===200,'active operator has center training scope');
@@ -81,7 +82,7 @@ export async function checkCenterTeamManagement(db,{base,a,b,ownerA,ta,tb,ts,per
   check((await request(tp,'/training/professional/me/earnings')).body.entries.some(row=>row.id===earning.id),'own financial history remains visible');
   check((await request(tp,`/training/enrollments/${other.row.id}`)).status===200&&(await request(tp,`/training/enrollments/${independent.row.id}`)).status===200,'other center and independent training remain authorized');
   check((await request(studentToken,`/training/enrollments/${own.row.id}`)).status===200,'student retains access to own training');
-  check((await request(ta,`/training/enrollments/${own.row.id}/instructor`,{instructorAccountId:pro.id})).status===409,'legacy assignment cannot select suspended center member');
+  check((await assign(own.row.id,pro.id)).status===409,'legacy assignment cannot select suspended center member');
   check((await request(ta,`/training/records/${own.record.id}/sessions`,{instructorAccountId:pro.id,startsAt:'2030-01-02T06:00:00Z'},'POST')).status===409,'new sessions cannot select suspended center member');
   check((await request(studentToken,'/training/enrollments',{courseCode:'FORGED',centerOrganizationId:a.org.id,instructorAccountId:pro.id},'POST')).status===400,'self enrollment cannot forge instructor assignment');
   check((await request(studentToken,'/training/enrollments',{courseCode:'FORGED',studentAccountId:pro.id},'POST')).status===400,'self enrollment cannot forge student identity');
@@ -96,7 +97,7 @@ export async function checkCenterTeamManagement(db,{base,a,b,ownerA,ta,tb,ts,per
   await db.roleAssignment.delete({where:{accountId_role:{accountId:pro.id,role:'ADMIN'}}});
   result=await manage(instructor,'REACTIVATE');check(result.status===200,'eligible instructor can reactivate');instructor=result.body;
   check((await request(tp,`/training/enrollments/${own.row.id}`)).status===200,'reactivation restores same-session center access');
-  check((await request(ta,`/training/enrollments/${own.row.id}/instructor`,{instructorAccountId:pro.id})).status===200,'active eligible instructor can be assigned');
+  check((await assign(own.row.id,pro.id)).status===200,'active eligible instructor can be assigned');
   result=await manage(instructor,'CHANGE_ROLE',{role:'STAFF'});check(result.status===200,'instructor can change to ordinary staff role');instructor=result.body;
   check((await request(tp,`/training/enrollments/${own.row.id}`)).status===403,'changing instructor membership role revokes assigned-instructor access');
   check(!(await request(tp,'/training/professional/me/assignments')).body.some(row=>row.enrollmentId===own.row.id),'role change also filters professional assignment list');

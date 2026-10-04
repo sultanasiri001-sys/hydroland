@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { Prisma, TrainingEnrollmentStatus, TrainingRecordStatus, TrainingSessionStatus } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
-import { AuditService } from '../audit/audit.service';
+import { TrainingAssignmentService } from './training-assignment.service';
 import { TrainingAuthorizationService } from './training-authorization.service';
 import { hasInstructorCenterAccess } from './training-center-scope';
 
@@ -16,7 +16,7 @@ export interface CreateTrainingEnrollmentInput {
 
 @Injectable()
 export class TrainingRepositoryService {
-  constructor(private readonly db: DatabaseService,private readonly authorization:TrainingAuthorizationService,private readonly audit:AuditService) {}
+  constructor(private readonly db: DatabaseService,private readonly authorization:TrainingAuthorizationService,private readonly assignments:TrainingAssignmentService) {}
 
   private async eligibleInstructor(tx:Prisma.TransactionClient,accountId:string,centerId:string|null){
     if(typeof accountId!=='string'||!accountId.trim())throw new BadRequestException('اختر مدربًا للتكليف.');
@@ -52,16 +52,7 @@ export class TrainingRepositoryService {
     });
   }
 
-  assignInstructor(enrollmentId: string, instructorAccountId: string, actorId:string) {
-    return this.db.serializable(async tx=>{
-      await this.authorization.assertAdministrativeEnrollmentAccess(actorId,enrollmentId,tx);
-      const enrollment=await tx.trainingEnrollment.findUniqueOrThrow({where:{id:enrollmentId}});
-      await this.eligibleInstructor(tx,instructorAccountId,enrollment.centerOrganizationId);
-      const updated=await tx.trainingEnrollment.update({where:{id:enrollmentId},data:{instructorAccountId}});
-      await this.audit.record({actorId,action:'training.instructor_assigned',resource:'trainingEnrollment',resourceId:enrollmentId,metadata:{from:enrollment.instructorAccountId,to:instructorAccountId,centerOrganizationId:enrollment.centerOrganizationId}},tx);
-      return updated;
-    });
-  }
+  assignInstructor(enrollmentId:string,input:Record<string,unknown>,actorId:string){return this.assignments.assignEnrollment(actorId,enrollmentId,input);}
 
   setEnrollmentStatus(enrollmentId: string, status: TrainingEnrollmentStatus) {
     return this.db.trainingEnrollment.update({
@@ -110,7 +101,7 @@ export class TrainingRepositoryService {
     if (record.enrollment.instructorAccountId !== instructorAccountId) throw new Error('Instructor is not assigned to this training record.');
     if (record.status !== 'COMPLETED' || record.progressPercent !== 100) throw new Error('Training record must be completed at 100%.');
     const skills=record.stages.flatMap(stage=>stage.skills);
-    if (!skills.length || skills.some(skill=>skill.status!=='COMPETENT'||skill.signedOffByInstructorId!==instructorAccountId)) throw new Error('All required skills must be competent and signed off by the assigned instructor.');
+    if (!skills.length || skills.some(skill=>skill.status!=='COMPETENT'||!skill.signedOffByInstructorId||!skill.signedOffAt)) throw new ConflictException('يجب إتقان جميع المهارات وتوثيق توقيع المدرب وتاريخه قبل التوصية.');
     if (record.sessions.some(session=>session.status!=='COMPLETED'&&session.status!=='CANCELLED')) throw new Error('All training sessions must be completed or cancelled before recommendation.');
     if (record.certificate) return record.certificate;
     return this.db.trainingCertificate.create({data:{trainingRecordId,studentAccountId:record.enrollment.studentAccountId,courseCode:record.enrollment.courseCode,recommendedByInstructorId:instructorAccountId}});

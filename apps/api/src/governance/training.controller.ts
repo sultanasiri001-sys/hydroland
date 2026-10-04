@@ -77,9 +77,9 @@ export class TrainingController {
   }
 
   @Patch('enrollments/:id/instructor')
-  async assignInstructor(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { instructorAccountId: string }) {
+  async assignInstructor(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: Record<string,unknown>) {
     await this.authorization.assertAdministrativeEnrollmentAccess(request.auth.accountId, id);
-    return this.training.assignInstructor(id, body?.instructorAccountId,request.auth.accountId);
+    return this.training.assignInstructor(id, body,request.auth.accountId);
   }
 
   @Patch('enrollments/:id/status')
