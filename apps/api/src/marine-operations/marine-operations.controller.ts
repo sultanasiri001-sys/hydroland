@@ -18,7 +18,7 @@ export class MarineOperationsController{
  @Post('assets/:assetId/maintenance/:recordId/complete') completeMaintenance(@Req()req:{auth:{accountId:string}},@Param('assetId')assetId:string,@Param('recordId')recordId:string){return this.marine.completeOwnedMaintenance(req.auth.accountId,assetId,recordId)}
  @Post('assets/:assetId/readiness') readiness(@Req()req:{auth:{accountId:string}},@Param('assetId')assetId:string){return this.marine.evaluateOwnedReadiness(req.auth.accountId,assetId)}
  @UseGuards(AdminGuard)
- @Get('admin/documents/:documentId/access') reviewerDocumentAccess(@Param('documentId')documentId:string){return this.marine.reviewerDocumentAccess(documentId)}
+ @Get('admin/documents/:documentId/access') reviewerDocumentAccess(@Req()req:{auth:{accountId:string}},@Param('documentId')documentId:string){return this.marine.reviewerDocumentAccess(req.auth.accountId,documentId)}
  @UseGuards(AdminGuard)
  @Get('admin/documents/pending') pending(){return this.marine.pendingDocuments()}
  @UseGuards(AdminGuard)
