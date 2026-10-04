@@ -109,3 +109,5 @@ body.hl-visitor-mode #role-switch{display:none!important}
 .hl-center-equipment label input {width:100%}
 .hl-center-equipment [data-equipment-lookup] {display:flex;gap:10px;flex-wrap:wrap;margin-block:16px}
 .hl-center-equipment [data-equipment-inspection] {margin-block:12px}
+.hl-center-equipment select,.hl-center-equipment textarea {width:100%;min-width:0;box-sizing:border-box;padding:10px;font:inherit}
+.hl-center-equipment [data-equipment-inspection-form] {margin-block:12px}

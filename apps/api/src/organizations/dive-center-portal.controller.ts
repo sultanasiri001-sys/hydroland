@@ -37,6 +37,7 @@ export class DiveCenterPortalController {
 
   @Get('me/equipment/lookup/:code') equipmentLookup(@Req() request:AuthenticatedRequest,@Param('code') code:string){return this.portal.equipmentLookup(request.auth.accountId,code);}
   @Post('me/equipment') equipmentCreate(@Req() request:AuthenticatedRequest,@Body() body:Record<string,unknown>){return this.equipmentManagement.create(request.auth.accountId,body);}
+  @Post('me/equipment/:resourceId/inspection') equipmentInspectionRecord(@Req() request:AuthenticatedRequest,@Param('resourceId') resourceId:string,@Body() body:Record<string,unknown>){return this.equipmentManagement.recordInspection(request.auth.accountId,resourceId,body);}
   @Get('me/equipment/:resourceId/inspection') equipmentInspection(@Req() request:AuthenticatedRequest,@Param('resourceId') resourceId:string){return this.equipmentManagement.inspection(request.auth.accountId,resourceId);}
   @Get('me/equipment') equipment(@Req() request:AuthenticatedRequest){return this.portal.equipment(request.auth.accountId);}
   @Patch('me/equipment/:resourceId/move') equipmentMove(@Req() request:AuthenticatedRequest,@Param('resourceId') resourceId:string,@Body() body:{movementType?:string;toLocation?:string|null;tripId?:string|null;notes?:string|null}){return this.portal.moveEquipment(request.auth.accountId,resourceId,body);}

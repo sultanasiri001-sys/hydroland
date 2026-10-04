@@ -8,7 +8,7 @@ export async function checkCenterEquipment(db,{base,a,b,ownerA,ta,tb,ts},check){
   if(process.env.CI!=='true'||!['localhost','127.0.0.1','[::1]'].includes(new URL(process.env.DATABASE_URL).hostname))throw new Error('CI loopback database required');
   const columns=await db.$queryRaw`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='EquipmentBarcode' AND column_name='organizationId'`;
   assert.equal(columns.length,0,'Expected isolated bootstrap schema without center scope');
-  const resources=[];
+  const resources=[],inspectionRequests=[];
   const policies=await db.$queryRaw`SELECT "id","state" FROM "PolicyControl" WHERE "category"='EQUIPMENT' AND "ruleKey" IN ('INSPECTION_STATUS','SERVICE_EXPIRY')`;
   const request=async(token,path,body,method)=>{
     const response=await fetch(base+'/center/me/equipment'+path,{method:method||(body?'PATCH':'GET'),headers:{...(token?{authorization:'Bearer '+token}:{}),...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
@@ -53,6 +53,25 @@ export async function checkCenterEquipment(db,{base,a,b,ownerA,ta,tb,ts},check){
       check(noInspection.status===200&&noInspection.body.blocked&&noInspection.body.history.length===0,`${keyType}: creation does not approve inspection`);
       check((await request(tb,`/${createdId}/inspection`)).status===404,`${keyType}: cross-center inspection denied`);
       check((await request(ts,`/${createdId}/inspection`)).status===403,`${keyType}: staff inspection denied`);
+      const reportId=randomUUID();inspectionRequests.push(reportId);
+      const report={requestId:reportId,status:'REVIEW',notes:'فحص المركز بواسطة فني الاختبار',serviceExpiresAt:new Date(Date.now()+86400000*30).toISOString()};
+      const submit=(payload=report,token=ta,id=createdId)=>request(token,`/${id}/inspection`,payload,'POST');
+      check((await submit({...report,status:'PASS'})).status===400,`${keyType}: center cannot self-approve inspection`);
+      check((await submit(report,tb)).status===404,`${keyType}: foreign inspection write denied`);
+      check((await submit(report,ts)).status===403,`${keyType}: staff inspection write denied`);
+      check((await submit(report,null)).status===401,`${keyType}: anonymous inspection write denied`);
+      check((await submit({...report,reviewedByAccountId:ownerA.id})).status===400,`${keyType}: reviewer spoof rejected`);
+      check((await submit({...report,notes:''})).status===400,`${keyType}: inspection details required`);
+      check((await submit({...report,serviceExpiresAt:'2025-02-30T00:00:00Z'})).status===400,`${keyType}: impossible service date rejected`);
+      check((await submit({...report,serviceExpiresAt:'2020-01-01T00:00:00Z'})).status===400,`${keyType}: past service deadline rejected`);
+      const reports=await Promise.all([submit(),submit()]);check(reports.every(row=>row.status===201),`${keyType}: simultaneous report retry succeeds`);
+      check((await submit({...report,notes:'changed'})).status===409,`${keyType}: changed report retry rejected`);
+      const review=await request(ta,`/${createdId}/inspection`);check(review.status===200&&review.body.blocked&&review.body.history.length===1&&review.body.history[0].status==='REVIEW',`${keyType}: report is pending and does not grant readiness`);
+      const reviewer=await db.$queryRaw`SELECT "reviewedByAccountId" FROM "EquipmentInspection" WHERE "id"=${reportId}`;check(reviewer[0]?.reviewedByAccountId===null,`${keyType}: center is not recorded as platform reviewer`);
+      const reportAudit=await db.auditEvent.findMany({where:{resourceId:createdId,action:'CENTER_EQUIPMENT_INSPECTION_RECORDED'}});check(reportAudit.length===1&&reportAudit[0].actorId===ownerA.personId,`${keyType}: report has exactly one actor audit`);
+      const reportMovements=await request(ta,`/${createdId}/history`);check(reportMovements.body.length===2&&reportMovements.body[0].movementType==='QUARANTINE',`${keyType}: report quarantines once`);
+      check((await request(ta,`/${createdId}/move`,{movementType:'CHECK_OUT'})).status===409,`${keyType}: reported equipment cannot be checked out`);
+      const failId=randomUUID();inspectionRequests.push(failId);check((await submit({...report,requestId:failId,status:'FAIL',serviceExpiresAt:null})).status===201,`${keyType}: unsafe result saves without granting approval`);
       const [own,other]=fixtures;
       const move=(body,token=ta,id=own.id)=>request(token,`/${id}/move`,body);
       let r=await request(ta,'');
@@ -93,8 +112,9 @@ export async function checkCenterEquipment(db,{base,a,b,ownerA,ta,tb,ts},check){
       r=await request(tb,'/lookup/'+other.code);check(r.status===200&&r.body.stockStatus==='AVAILABLE'&&r.body.location==='STORE',`${keyType}: other center equipment unchanged`);
     }
   }finally{
-    await db.auditEvent.deleteMany({where:{resourceId:{in:resources},action:{in:['EQUIPMENT_INVENTORY_MOVED','CENTER_EQUIPMENT_CREATED']}}});
+    await db.auditEvent.deleteMany({where:{resourceId:{in:resources},action:{in:['EQUIPMENT_INVENTORY_MOVED','CENTER_EQUIPMENT_CREATED','CENTER_EQUIPMENT_INSPECTION_RECORDED']}}});
     await db.operationalSetting.deleteMany({where:{key:{in:resources.map(id=>'center-equipment-create:'+id)}}});
+    await db.operationalSetting.deleteMany({where:{key:{in:inspectionRequests.map(id=>'center-equipment-inspection:'+id)}}});
     await db.$executeRaw`DELETE FROM "EquipmentMovement" WHERE "resourceId"=ANY(${resources}::text[])`;
     await db.$executeRaw`DELETE FROM "EquipmentInspection" WHERE "resourceId"=ANY(${resources}::text[])`;
     await db.$executeRaw`DELETE FROM "EquipmentBarcode" WHERE "resourceId"=ANY(${resources}::text[])`;
