@@ -1910,6 +1910,11 @@ model MarineAssetDocument {
   expiresAt DateTime?
   verifiedAt DateTime?
   status String @default("PENDING")
+  storageKey String? @unique
+  originalName String?
+  mimeType String?
+  byteSize Int?
+  sha256 String? @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   marineAsset MarineAsset @relation(fields:[marineAssetId],references:[id],onDelete:Restrict)
