@@ -22,7 +22,7 @@ test('role workspace controls route to internal modules without observer loops',
   const bookings=centerDashboard.locator('[data-action-label="إدارة الحجوزات"]');
   await expect(bookings).toBeEnabled();
   await bookings.click();
-  await expect(page.locator('#hl-center-operations')).toBeVisible();
+  await expect(page.locator('#hl-center-bookings')).toBeVisible();
   await expect(page.locator('#trips')).toBeHidden();
 
   await page.evaluate(()=>{window.HydrolandMarineDocuments.open=()=>{document.body.dataset.marineDocumentsOpened='1'}});

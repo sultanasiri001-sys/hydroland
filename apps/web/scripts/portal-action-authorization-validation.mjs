@@ -33,17 +33,18 @@ for(const marker of [
   'button.onclick=async()=>'
 ])if(!routing.includes(marker))throw new Error(`Missing role-console action authorization marker: ${marker}`);
 if(bootstrap.split("'hydroland-portal-access-freshness.js'").length!==2||bootstrap.indexOf("'hydroland-portal-access-freshness.js'")>bootstrap.indexOf("'hydroland-center-safety.js'"))throw new Error('Portal freshness must bootstrap once before protected center modules.');
-for(const [module,label] of [["'hydroland-center-safety.js'",'Center safety'],["'hydroland-center-documents.js'",'Center documents'],["'hydroland-center-equipment.js'",'Center equipment'],["'hydroland-center-customers.js'",'Center customers'],["'hydroland-center-business-profile.js'",'Center business profile'],["'hydroland-center-operations.js'",'Center operations'],["'hydroland-center-team.js'",'Center team']])if(bootstrap.split(module).length!==2||bootstrap.indexOf(module)>bootstrap.indexOf("'hydroland-role-dashboards.js'"))throw new Error(label+' must be registered once in the real bootstrap before dashboard actions.');
+for(const [module,label] of [["'hydroland-center-safety.js'",'Center safety'],["'hydroland-center-documents.js'",'Center documents'],["'hydroland-center-equipment.js'",'Center equipment'],["'hydroland-center-customers.js'",'Center customers'],["'hydroland-center-business-profile.js'",'Center business profile'],["'hydroland-center-operations.js'",'Center operations'],["'hydroland-center-bookings.js'",'Center bookings'],["'hydroland-center-team.js'",'Center team']])if(bootstrap.split(module).length!==2||bootstrap.indexOf(module)>bootstrap.indexOf("'hydroland-role-dashboards.js'"))throw new Error(label+' must be registered once in the real bootstrap before dashboard actions.');
 for(const marker of [
   "if(role==='center'&&label==='السلامة')return 'center-safety'",
   "if(role==='center'&&label==='المستندات والتراخيص')return 'center-documents'",
   "if(role==='center'&&label==='المعدات والمخزون')return 'center-equipment'",
   "if(role==='center'&&label==='العملاء')return 'center-customers'",
-  "if(role==='center'&&['إدارة الحجوزات','الرحلات'].includes(label))return 'center-operations'",
+  "if(role==='center'&&label==='إدارة الحجوزات')return 'center-bookings'",
+  "if(role==='center'&&label==='الرحلات')return 'center-operations'",
   "if(role==='center'&&label==='محترفي الغوص')return 'center-team'",
   "if(role==='center'&&['السلامة','تقارير السلامة'].includes(label))return 'center-safety'",
   'id=actionRoute(role,label,node.dataset.route)',
-  "if(activeRole==='center'&&['center-safety','center-documents','center-equipment','center-customers','center-business-profile','center-operations','center-team','center-reports'].includes(route))"
+  "if(activeRole==='center'&&['center-safety','center-documents','center-equipment','center-customers','center-business-profile','center-operations','center-bookings','center-team','center-reports'].includes(route))"
 ])if(!dashboards.includes(marker))throw new Error(`Missing scoped center route marker: ${marker}`);
 if(!dashboards.includes("const trainingTarget=document.querySelector('.hl-training');window.HydrolandWorkspaceUI?.show?.(trainingTarget)"))throw new Error('Managed instructor training must route to the actual .hl-training service node.');
 if(!dashboards.includes("target=professionalTraining?document.querySelector('.hl-training'):targetFor(resolvedId)"))throw new Error('Professional training availability must be evaluated against the managed .hl-training service node.');

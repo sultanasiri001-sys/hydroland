@@ -29,7 +29,7 @@ test('center operations refreshes role before exposing center trips',async({page
 });
 
 test('booking reload clears old identities and recovers without duplicate errors',async({page})=>{
- await install(page);await page.locator('[data-portal-label="إدارة الحجوزات"]').click();const panel=page.locator('#hl-center-operations'),button=panel.locator('[data-center-bookings]');await button.click();await expect(panel).toContainText('مشارك خاص');
+ await install(page);await page.locator('[data-portal-label="الرحلات"]').click();const panel=page.locator('#hl-center-operations'),button=panel.locator('[data-center-bookings]');await button.click();await expect(panel).toContainText('مشارك خاص');
  await page.route('**/api/v1/center/me/trips/trip-a/bookings',route=>json(route,{message:'تعذر تحميل الحجوزات'},500));
  for(let attempt=0;attempt<2;attempt++){await button.click();await expect(panel.locator('[role="alert"]')).toHaveCount(1);await expect(button).toBeEnabled();await expect(panel).not.toContainText('مشارك خاص');}
  await page.route('**/api/v1/center/me/trips/trip-a/bookings',route=>json(route,[]));await button.click();await expect(panel).toContainText('لا توجد حجوزات');await expect(panel.locator('[role="alert"]')).toHaveCount(0);

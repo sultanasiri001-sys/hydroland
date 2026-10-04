@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { Injectable } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
@@ -42,8 +43,8 @@ export class WeatherGateService {
     return { enabled: false, mode: 'ADVISORY', provider: 'STORMGLASS' };
   }
 
-  async settings(): Promise<WeatherGateSettings> {
-    const rows = await this.db.$queryRaw<SettingRow[]>`
+  async settings(tx: Prisma.TransactionClient = this.db): Promise<WeatherGateSettings> {
+    const rows = await tx.$queryRaw<SettingRow[]>`
       SELECT "value" FROM "OperationalSetting" WHERE "key" = 'WEATHER_GATE' LIMIT 1
     `;
     const value = rows[0]?.value;

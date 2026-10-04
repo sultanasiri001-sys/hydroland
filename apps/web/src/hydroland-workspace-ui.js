@@ -21,6 +21,7 @@
     '#hl-marine-documents':['boat','admin'],
     '#hl-marine-readiness':['boat','admin'],
     '.hl-center-business-profile':['center'],
+    '.hl-center-bookings':['center'],
     '.hl-organizations':['center','boat','organization','admin'],
     '.hl-admin':['admin'],
     '.hl-theme-admin':['admin'],
