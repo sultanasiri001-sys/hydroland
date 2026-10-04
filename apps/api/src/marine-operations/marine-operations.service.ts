@@ -126,7 +126,8 @@ export class MarineOperationsService{
   return this.evaluateReadiness(marineAssetId,undefined,accountId);
  }
  async reviewAssets(){
-  return this.db.marineAsset.findMany({include:{documents:{orderBy:{updatedAt:'desc'}},maintenance:{orderBy:{updatedAt:'desc'}},readiness:{orderBy:{checkedAt:'desc'},take:1}},orderBy:{updatedAt:'desc'},take:200});
+  const assets=await this.db.marineAsset.findMany({include:{documents:{orderBy:{updatedAt:'desc'}},maintenance:{orderBy:{updatedAt:'desc'}},readiness:{orderBy:{checkedAt:'desc'},take:1}},orderBy:{updatedAt:'desc'},take:200});
+  return assets.map(asset=>({...asset,documents:asset.documents.map(document=>this.publicDocument(document))}));
  }
  async decideAssetStatus(marineAssetId:string,status:MarineAssetDecision){
   if(!['ACTIVE','SUSPENDED','OUT_OF_SERVICE'].includes(status))throw new BadRequestException('Invalid marine asset status decision.');
