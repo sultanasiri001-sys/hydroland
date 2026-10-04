@@ -6,13 +6,14 @@ const json=(route,body,status=200)=>route.fulfill({status,contentType:'applicati
 test('boat operator registers marine asset and license metadata, admin verifies it',async({page})=>{
   const profile={id:'marine-e2e',email:'marine@hydroland.test',status:'ACTIVE',roleAssignments:[{id:'boat-role',role:'BOAT_OWNER',status:'ACTIVE'},{id:'admin-role',role:'ADMIN',status:'ACTIVE'}],person:{firstName:'Marine',lastName:'E2E',phone:null,professional:null}};
   const membership={id:'membership-e2e',organizationId:'org-marine-e2e',accountId:profile.id,role:'OWNER',status:'ACTIVE',organization:{id:'org-marine-e2e',displayName:'مشغل بحري تجريبي',status:'ACTIVE'}};
-  const state={assets:[],pending:[],decision:null};
+  const state={assets:[],pending:[],decision:null,overviewCalls:0};
   const requireAuth=request=>request.headers().authorization==='Bearer marine-e2e-access';
   const assetSummary=()=>{const asset=state.assets[0];if(!asset)return null;const {documents,...summary}=asset;return summary};
   await page.route(/\/api\/v1\/me$/,route=>requireAuth(route.request())?json(route,profile):json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/credentials$/,route=>requireAuth(route.request())?json(route,[]):json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/me\/diver-profile$/,route=>requireAuth(route.request())?json(route,{profile:null,equipment:[]}):json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/organizations\/mine$/,route=>requireAuth(route.request())?json(route,[membership]):json(route,{message:'Unauthorized'},401));
+  await page.route(/\/api\/v1\/marine-operations\/overview\/mine$/,route=>{if(!requireAuth(route.request()))return json(route,{message:'Unauthorized'},401);state.overviewCalls++;return json(route,{generatedAt:new Date().toISOString(),metrics:{activeAssets:state.assets.filter(asset=>asset.status==='ACTIVE').length,scheduledTrips:0,openMaintenance:0,confirmedBookings:0}})});
   await page.route(/\/api\/v1\/marine-operations\/assets\/mine$/,route=>requireAuth(route.request())?json(route,state.assets):json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/marine-operations\/assets$/,route=>{
     if(!requireAuth(route.request()))return json(route,{message:'Unauthorized'},401);
@@ -33,7 +34,7 @@ test('boat operator registers marine asset and license metadata, admin verifies 
   await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','marine-e2e-access');sessionStorage.setItem('hl-refresh-token','marine-e2e-refresh');window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));await window.HydrolandProfile.load()});
   await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="boat"]').click();
   const panel=page.locator('#hl-marine-documents');
-  const dashboard=page.locator('.hl-role-dashboard[data-role="boat"]');
+  const dashboard=page.locator('.hl-role-dashboard[data-role="boat"]');await expect(dashboard.locator('.hl-role-tile b').nth(0)).toHaveText('0');
 
   await dashboard.locator('[data-action-label="المستندات والتراخيص"]').click();
   await expect(panel).toBeVisible();
@@ -42,7 +43,7 @@ test('boat operator registers marine asset and license metadata, admin verifies 
   await expect(panel).toBeVisible();
   await page.evaluate(()=>window.HydrolandMarineDocuments.refresh());
   const assetForm=panel.locator('[data-marine-asset-form]');await assetForm.locator('[name="name"]').fill('قارب القحمة');await assetForm.locator('[name="assetType"]').selectOption('DIVE_BOAT');await assetForm.locator('[name="registrationNumber"]').fill('QA-2026-01');await assetForm.locator('[name="passengerCapacity"]').fill('10');await assetForm.locator('button[type="submit"]').click();
-  await expect.poll(()=>state.assets.length).toBe(1);await expect(panel.locator('[data-marine-asset="asset-marine-e2e"]')).toContainText('قارب القحمة');
+  await expect.poll(()=>state.assets.length).toBe(1);await expect(panel.locator('[data-marine-asset="asset-marine-e2e"]')).toContainText('قارب القحمة');await expect(dashboard.locator('.hl-role-tile b').nth(0)).toHaveText('1');
   const docForm=panel.locator('[data-marine-asset="asset-marine-e2e"] [data-marine-doc-form]');await docForm.locator('[name="documentType"]').selectOption('REGISTRATION');await docForm.locator('[name="referenceNumber"]').fill('REG-7788');await docForm.locator('[name="expiresAt"]').fill('2027-09-25');await docForm.locator('button[type="submit"]').click();
   await expect.poll(()=>state.pending.length).toBe(1);await expect(panel.locator('[data-marine-asset="asset-marine-e2e"]')).toContainText('PENDING');
 
