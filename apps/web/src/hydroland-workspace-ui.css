@@ -111,3 +111,9 @@ body.hl-visitor-mode #role-switch{display:none!important}
 .hl-center-equipment [data-equipment-inspection] {margin-block:12px}
 .hl-center-equipment select,.hl-center-equipment textarea {width:100%;min-width:0;box-sizing:border-box;padding:10px;font:inherit}
 .hl-center-equipment [data-equipment-inspection-form] {margin-block:12px}
+.hl-center-team {padding:clamp(16px,3vw,32px);min-width:0;overflow-wrap:anywhere}
+.hl-center-team details {margin-block:16px;padding:16px;border:1px solid currentColor;border-radius:12px}
+.hl-center-team summary {cursor:pointer;font-weight:700}
+.hl-center-team fieldset {display:grid;gap:14px;min-width:0;max-width:720px;border:0;padding:16px 0}
+.hl-center-team label {display:grid;gap:8px;min-width:0}
+.hl-center-team input,.hl-center-team select {width:100%;min-width:0;box-sizing:border-box;padding:10px;font:inherit}

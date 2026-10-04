@@ -21,7 +21,7 @@
   const notificationText=value=>typeof value==='string'?value:'';
   const notificationSummary=payload=>{
     const details=[];
-    for(const [key,label] of [['areaLabel','المنطقة'],['tripTitle','الرحلة'],['invoiceNumber','رقم الفاتورة'],['location','الموقع']]){
+    for(const [key,label] of [['organizationName','الجهة'],['areaLabel','المنطقة'],['tripTitle','الرحلة'],['invoiceNumber','رقم الفاتورة'],['location','الموقع']]){
       if(notificationText(payload[key]))details.push(`${label}: ${payload[key]}`);
     }
     for(const [key,label] of [['startsAt','موعد الرحلة'],['dueAt','موعد الاستحقاق']]){
@@ -64,8 +64,31 @@
         const payload=item.payload&&typeof item.payload==='object'?item.payload:{};
         const title=notificationText(payload.title)||notificationTitles[item.type]||'إشعار من HYDROLAND';
         const message=notificationText(payload.message),details=notificationSummary(payload);
-        return `<article class="hl-account-card hl-notification ${unread?'unread':''} ${isTest?'hl-notification-test':''}" data-notification-id="${esc(item.id)}">${isTest?'<span class="hl-notification-test-label">تجريبي · حسابك فقط</span>':''}<div class="hl-account-card-head"><div><h3>${esc(title)}</h3><p>${esc(formatDate(item.createdAt))}</p></div><span class="hl-status ${unread?'pending':'read'}">${unread?'جديد':'مقروء'}</span></div>${message?`<p class="hl-notification-message">${esc(message)}</p>`:''}${details?`<small>${esc(details)}</small>`:''}${isTest?'<p class="hl-notification-test-note">هذا اختبار لظهور التنبيهات، وليس بلاغًا عن خطر فعلي.</p>':''}${unread?'<div class="hl-account-actions"><button type="button" data-mark-read>تحديد كمقروء</button></div>':''}</article>`;
+        return `<article class="hl-account-card hl-notification ${unread?'unread':''} ${isTest?'hl-notification-test':''}" data-notification-id="${esc(item.id)}">${isTest?'<span class="hl-notification-test-label">تجريبي · حسابك فقط</span>':''}<div class="hl-account-card-head"><div><h3>${esc(title)}</h3><p>${esc(formatDate(item.createdAt))}</p></div><span class="hl-status ${unread?'pending':'read'}">${unread?'جديد':'مقروء'}</span></div>${message?`<p class="hl-notification-message">${esc(message)}</p>`:''}${details?`<small>${esc(details)}</small>`:''}${item.type==='ORGANIZATION_INVITATION'&&notificationText(payload.organizationId)?'<div class="hl-account-actions"><button type="button" data-view-invitation>عرض دعوة الانضمام</button></div><div data-invitation-detail aria-live="polite"></div>':''}${isTest?'<p class="hl-notification-test-note">هذا اختبار لظهور التنبيهات، وليس بلاغًا عن خطر فعلي.</p>':''}${unread?'<div class="hl-account-actions"><button type="button" data-mark-read>تحديد كمقروء</button></div>':''}</article>`;
       }).join(''):'<div class="hl-account-empty">لا توجد إشعارات جديدة.</div>';
+      list.querySelectorAll('[data-view-invitation]').forEach(button=>button.addEventListener('click',async()=>{
+        const card=button.closest('[data-notification-id]'),item=notifications.find(row=>row.id===card?.dataset.notificationId),payload=item?.payload||{},detail=card?.querySelector('[data-invitation-detail]');
+        const live=()=>current()&&card?.isConnected;
+        if(!detail||!live()||button.disabled)return;button.disabled=true;detail.textContent='جارٍ التحقق من الدعوة...';
+        try{
+          const memberships=await request('/organizations/mine');if(!live())return;
+          if(!Array.isArray(memberships))throw new Error('تعذر قراءة الدعوة. أعد المحاولة.');
+          const member=memberships.find(row=>row.organizationId===payload.organizationId&&(!payload.memberId||row.id===payload.memberId));
+          if(!member||member.status!=='PENDING'||member.role==='OWNER'||(payload.membershipUpdatedAt&&member.updatedAt!==payload.membershipUpdatedAt)){detail.textContent='هذه الدعوة لم تعد معلقة أو تم استبدالها. حدّث الإشعارات.';return;}
+          const roleLabels={ADMIN:'مدير الجهة',OPERATOR:'مسؤول تشغيل',INSTRUCTOR:'مدرب غوص',STAFF:'عضو فريق',VIEWER:'مشاهد'};
+          if(!member.updatedAt||!member.organization)throw new Error('بيانات الدعوة غير مكتملة.');
+          detail.innerHTML=`<p>الجهة: ${esc(member.organization.displayName)}</p><p>الدور المقترح: ${esc(roleLabels[member.role]||'غير معروف')}</p><p>قبول الدعوة يضيف عضويتك في الجهة بهذا الدور، ولا يمنح اعتمادًا مهنيًا أو صلاحيات الإدارة العليا.</p>${member.organization.status!=='ACTIVE'?'<p>قبول الدعوة متاح بعد تفعيل الجهة.</p>':''}<div class="hl-account-actions"><button type="button" data-invitation-response="accept" ${member.organization.status!=='ACTIVE'?'disabled':''}>قبول الدعوة</button><button type="button" data-invitation-response="decline">رفض الدعوة</button></div><p data-invitation-message role="status"></p>`;
+          detail.querySelectorAll('[data-invitation-response]').forEach(action=>action.addEventListener('click',async()=>{
+            if(!live()||detail.dataset.busy)return;detail.dataset.busy='true';detail.querySelectorAll('button').forEach(node=>node.disabled=true);
+            const accept=action.dataset.invitationResponse==='accept';
+            try{
+              await request('/organizations/'+encodeURIComponent(payload.organizationId)+'/membership-response',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({accept,expectedUpdatedAt:member.updatedAt})});
+              if(live()){detail.textContent=accept?'تم قبول الدعوة وتفعيل العضوية في الجهة.':'تم رفض الدعوة.';document.dispatchEvent(new CustomEvent('hydroland:organization-membership-changed'));}
+            }catch(error){if(live()){detail.querySelector('[data-invitation-message]').textContent=error instanceof Error?error.message:'تعذر الرد على الدعوة.';detail.querySelectorAll('button').forEach(node=>node.disabled=node.dataset.invitationResponse==='accept'&&member.organization.status!=='ACTIVE')}}
+            finally{delete detail.dataset.busy}
+          }));
+        }catch(error){if(live()){detail.textContent=error instanceof Error?error.message:'تعذر تحميل الدعوة.';button.disabled=false}}
+      }));
       list.querySelectorAll('[data-mark-read]').forEach(button=>button.addEventListener('click',async()=>{
         const id=button.closest('[data-notification-id]')?.dataset.notificationId;if(!id||!current())return;
         button.disabled=true;

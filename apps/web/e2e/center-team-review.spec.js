@@ -27,3 +27,23 @@ test('center team discards response after revocation',async({page})=>{
 test('center team refreshes role before exposing member identities',async({page})=>{
  const state=await install(page),before=state.refreshes;state.active=false;await page.evaluate(async()=>{await window.HydrolandPortalAccess.refreshPortalAccess();window.HydrolandPortalFreshness.enforce();await window.HydrolandCenterTeam.open('professionals')});await expect(page.locator('#hl-center-team')).toHaveCount(0);expect(state.refreshes).toBeGreaterThanOrEqual(before+1);expect(state.reads).toBe(0);await expect(page.getByText('محترف المركز')).toHaveCount(0);
 });
+
+test('center invites an ordinary member, retries without losing fields, and cancels the pending invitation',async({page})=>{
+ const state=await install(page),writes=[];const revision='2026-10-04T06:00:00.000Z';
+ await page.route('**/api/v1/center/me/team/invitations',route=>{
+  writes.push(route.request().postDataJSON());if(writes.length===1)return json(route,{message:'تعذر إرسال الدعوة مؤقتًا'},503);
+  state.team=[...team,{membershipId:'pending',role:'STAFF',status:'PENDING',updatedAt:revision,canCancelInvitation:true,person:{displayName:'عضو مدعو'}}];return json(route,{id:'pending',status:'PENDING'},201);
+ });
+ let cancelled=0;await page.route('**/api/v1/center/me/team/pending/cancel-invitation',route=>{cancelled++;expect(route.request().postDataJSON()).toEqual({expectedUpdatedAt:revision});state.team=team;return json(route,{id:'pending',status:'REMOVED'},201)});
+ await page.locator('[data-portal-label="محترفي الغوص"]').click();const panel=page.locator('#hl-center-team');await panel.getByText('دعوة عضو للمركز',{exact:true}).click();const form=panel.locator('[data-center-team-invite]');
+ await expect(form.locator('option[value="OWNER"],option[value="ADMIN"]')).toHaveCount(0);
+ await form.getByLabel('البريد المسجل في المنصة').fill('member@example.invalid');await form.getByLabel('الدور داخل المركز').selectOption('STAFF');await form.getByRole('button',{name:'إرسال الدعوة'}).click();
+ await expect(form).toContainText('تعذر إرسال الدعوة مؤقتًا');await expect(form.locator('input')).toHaveValue('member@example.invalid');await form.getByRole('button',{name:'إرسال الدعوة'}).click();
+ await expect(panel.locator('[data-team-feedback]')).toContainText('بانتظار قبول');await expect(panel).toContainText('عضو مدعو');await expect(panel).toContainText('بانتظار قبول الدعوة');expect(writes).toHaveLength(2);expect(writes[0]).toEqual(writes[1]);expect(writes[0].organizationId).toBeUndefined();
+ await panel.getByRole('button',{name:'إلغاء الدعوة'}).click();await expect(panel.locator('[data-team-feedback]')).toContainText('تم إلغاء');await expect(panel).not.toContainText('عضو مدعو');expect(cancelled).toBe(1);
+});
+test('center invitation submission rechecks authority before writing',async({page})=>{
+ const state=await install(page);let writes=0;await page.route('**/api/v1/center/me/team/invitations',route=>{writes++;return json(route,{id:'pending',status:'PENDING'},201)});
+ await page.locator('[data-portal-label="محترفي الغوص"]').click();const panel=page.locator('#hl-center-team');await panel.getByText('دعوة عضو للمركز',{exact:true}).click();await panel.locator('[name="email"]').fill('member@example.invalid');state.active=false;
+ await panel.locator('[data-center-team-invite]').evaluate(form=>form.requestSubmit());await expect(panel).toHaveCount(0);expect(writes).toBe(0);
+});
