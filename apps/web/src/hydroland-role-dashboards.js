@@ -59,10 +59,10 @@
     const version=(centerLoads.get(d)||0)+1;centerLoads.set(d,version);
     const session=auth.getSessionVersion?.(),current=()=>d.isConnected&&centerLoads.get(d)===version&&session===auth.getSessionVersion?.()&&auth.isAuthenticated()&&access.getCurrentRole?.()==='center'&&access.roleAllowed?.('center');
     const status=d.querySelector('[data-center-home-status]'),body=d.querySelector('[data-center-home-panels]'),refresh=d.querySelector('[data-center-home-refresh]');
-    const reset=()=>{d.dataset.centerScopeLoaded='0';d.querySelectorAll('.hl-role-tile b').forEach(node=>node.textContent='—');d.querySelectorAll('.hl-role-tile span').forEach(node=>node.textContent='بانتظار التحديث');d.querySelectorAll('[data-center-name]').forEach(node=>node.textContent='مركز الغوص');body.innerHTML=centerHomePanels(null);connectHomeControls(d)};
+    const reset=()=>{d.dataset.centerScopeLoaded='0';d.querySelectorAll('.hl-role-tile b').forEach(node=>node.textContent='—');d.querySelectorAll('.hl-role-tile span').forEach(node=>node.textContent='بانتظار التحديث');syncDashboardIdentity();body.innerHTML=centerHomePanels(null);connectHomeControls(d)};
     reset();status.textContent='جارٍ تحميل ملخص المركز…';status.setAttribute('role','status');body.setAttribute('aria-busy','true');refresh.disabled=true;
     try{
-      if(typeof access.authorizeRole!=='function'||!await access.authorizeRole('center',{sessionVersion:session,isCurrent:current})||!current())return;
+      if(typeof access.authorizeRole!=='function'||!await access.authorizeRole('center',{sessionVersion:session,isCurrent:()=>d.isConnected&&centerLoads.get(d)===version})||!current())return;
       const response=await auth.authorizedFetch('/center/me/overview'),data=await response.json().catch(()=>null);
       if(!current())return;
       if(!response.ok)throw new Error(response.status===403?'لا تتوفر صلاحية إدارة مركز نشط. راجع الملف التجاري أو أعد المحاولة.':'تعذر تحميل ملخص المركز. أعد المحاولة.');
