@@ -42,14 +42,18 @@ for(const action of ['check','complete','save','admin'])test(`marine ${action} a
   const state=await setup(page);
   if(action==='admin'){
     await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="admin"]').click();
-    await page.evaluate(()=>window.HydrolandMarineReadiness.open('admin'));
+    await page.locator('.hl-role-dashboard .hl-portal-nav-item[data-portal-label="الوسائط البحرية"]').click();
     await expect(page.locator('[data-marine-asset-status="ACTIVE"]')).toBeVisible();
     await expect(page.locator('[data-marine-readiness-refresh]')).toBeEnabled();
   }
   if(action==='save')await page.locator('[data-marine-maintenance] [name="maintenanceType"]').fill('عمل يجب منعه');
+  const selector={check:'[data-marine-readiness-check]',complete:'[data-marine-maintenance-complete]',save:'[data-marine-maintenance] [type="submit"]',admin:'[data-marine-asset-status="ACTIVE"]'}[action];
+  // Establish the real rendered control before holding authorization traffic.
+  // A background profile refresh must not intercept initial service loading.
+  await expect(page.locator(selector)).toBeVisible();
+  await expect(page.locator('[data-marine-readiness-refresh]')).toBeEnabled();
   let release;
   await page.route(/\/api\/v1\/me$/,async route=>{await new Promise(resolve=>{release=resolve});return json(route,{id:'marine-authority',status:'ACTIVE',roleAssignments:[],person:{firstName:'Marine'}})});
-  const selector={check:'[data-marine-readiness-check]',complete:'[data-marine-maintenance-complete]',save:'[data-marine-maintenance] [type="submit"]',admin:'[data-marine-asset-status="ACTIVE"]'}[action];
   await page.locator(selector).click();await expect.poll(()=>typeof release).toBe('function');
   expect(state.writes).toHaveLength(0);release();
   await expect(page.locator('#hl-marine-readiness')).toBeHidden();
