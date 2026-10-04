@@ -83,7 +83,7 @@ export async function checkCenterTeamManagement(db,{base,a,b,ownerA,ta,tb,ts,per
   check((await request(tp,`/training/enrollments/${other.row.id}`)).status===200&&(await request(tp,`/training/enrollments/${independent.row.id}`)).status===200,'other center and independent training remain authorized');
   check((await request(studentToken,`/training/enrollments/${own.row.id}`)).status===200,'student retains access to own training');
   check((await assign(own.row.id,pro.id)).status===409,'legacy assignment cannot select suspended center member');
-  check((await request(ta,`/training/records/${own.record.id}/sessions`,{instructorAccountId:pro.id,startsAt:'2030-01-02T06:00:00Z'},'POST')).status===409,'new sessions cannot select suspended center member');
+  check((await request(ta,`/training/records/${own.record.id}/sessions`,{instructorAccountId:pro.id,startsAt:'2035-01-02T06:00:00Z',endsAt:'2035-01-02T07:00:00Z',requestId:randomUUID(),reason:'جلسة إضافية',expectedUpdatedAt:(await db.trainingEnrollment.findUnique({where:{id:own.row.id}})).updatedAt.toISOString()},'POST')).status===409,'new sessions cannot select suspended center member');
   check((await request(studentToken,'/training/enrollments',{courseCode:'FORGED',centerOrganizationId:a.org.id,instructorAccountId:pro.id},'POST')).status===400,'self enrollment cannot forge instructor assignment');
   check((await request(studentToken,'/training/enrollments',{courseCode:'FORGED',studentAccountId:pro.id},'POST')).status===400,'self enrollment cannot forge student identity');
   await db.roleAssignment.update({where:{accountId_role:{accountId:pro.id,role:'INSTRUCTOR'}},data:{status:'SUSPENDED'}});

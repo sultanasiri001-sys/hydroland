@@ -1,3 +1,4 @@
+import { TrainingSessionService } from '../governance/training-session.service';
 import { TrainingAssignmentService } from '../governance/training-assignment.service';
 import { OrganizationMembershipService } from './organization-membership.service';
 import { CenterEquipmentManagementService } from './center-equipment-management.service';
@@ -11,7 +12,7 @@ import { DiveCenterPortalService } from './dive-center-portal.service';
 @Controller('center')
 @UseGuards(AccessTokenGuard)
 export class DiveCenterPortalController {
-  constructor(private readonly trainingAssignments:TrainingAssignmentService,private readonly memberships:OrganizationMembershipService,private readonly equipmentManagement:CenterEquipmentManagementService, private readonly portal:DiveCenterPortalService,private readonly tripManagement:CenterTripManagementService){}
+  constructor(private readonly trainingSessions:TrainingSessionService,private readonly trainingAssignments:TrainingAssignmentService,private readonly memberships:OrganizationMembershipService,private readonly equipmentManagement:CenterEquipmentManagementService, private readonly portal:DiveCenterPortalService,private readonly tripManagement:CenterTripManagementService){}
   @Patch(':id/business-profile') updateBusinessProfile(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.portal.updateBusinessProfile(request.auth.accountId,id,body);}
   @Get('me/reports') reports(@Req() request:AuthenticatedRequest,@Query('from') from?:string,@Query('to') to?:string){return this.portal.reports(request.auth.accountId,from,to);}
   @Get('me/overview') overview(@Req() request:AuthenticatedRequest){return this.portal.overview(request.auth.accountId);}
@@ -54,6 +55,9 @@ export class DiveCenterPortalController {
   @Get('me/training') training(@Req() request:AuthenticatedRequest,@Query('cursor') cursor?:string){return this.trainingAssignments.listCenter(request.auth.accountId,cursor);}
   @Patch('me/training/enrollments/:id/instructor') assignTraining(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.trainingAssignments.assignEnrollment(request.auth.accountId,id,body,true);}
   @Patch('me/training/sessions/:id/instructor') assignTrainingSession(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.trainingAssignments.assignSession(request.auth.accountId,id,body);}
+  @Post('me/training/enrollments/:id/sessions') createTrainingSession(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.trainingSessions.create(request.auth.accountId,id,body);}
+  @Patch('me/training/sessions/:id/schedule') rescheduleTrainingSession(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.trainingSessions.reschedule(request.auth.accountId,id,body);}
+  @Patch('me/training/sessions/:id/actions') trainingSessionAction(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.trainingSessions.act(request.auth.accountId,id,body);}
   @Get('me/team') team(@Req() request:AuthenticatedRequest){return this.portal.team(request.auth.accountId);}
   @Get('me/professionals') professionals(@Req() request:AuthenticatedRequest){return this.portal.professionals(request.auth.accountId);}
 

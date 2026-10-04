@@ -13,7 +13,8 @@ export async function checkCenterTrainingAssignments(db,{base,a,b,ownerA,ta,tb,t
   const row=await db.trainingEnrollment.create({data:{studentAccountId:student.id,centerOrganizationId:center,instructorAccountId:pros[0].id,status:'ACTIVE',courseCode:label,metadata:{privateMarker:'DO_NOT_RETURN'}}});ids.push(row.id);
   const record=await db.trainingRecord.create({data:{enrollmentId:row.id}});return {...row,record};
  };
- const session=(row,status='SCHEDULED',instructorAccountId=pros[0].id,startsAt=new Date('2035-01-01T06:00:00Z'),evidence)=>db.trainingSession.create({data:{trainingRecordId:row.record.id,instructorAccountId,status,startsAt,evidence}});
+ let sessionSequence=0;
+ const session=(row,status='SCHEDULED',instructorAccountId=pros[0].id,startsAt,evidence)=>{startsAt ||= new Date(Date.parse('2035-01-01T06:00:00Z')+(sessionSequence++)*7200000);return db.trainingSession.create({data:{trainingRecordId:row.record.id,instructorAccountId,status,startsAt,endsAt:new Date(startsAt.getTime()+3600000),evidence}})};
  const current=id=>db.trainingEnrollment.findUniqueOrThrow({where:{id}});
  const payload=(row,target=pros[1].id,extra={})=>({instructorAccountId:target,reason:'إعادة توزيع التكليف',expectedUpdatedAt:new Date(row.updatedAt).toISOString(),transferUpcomingSessions:true,...extra});
  const assign=(row,target=pros[1].id,extra={},token=ta)=>request(token,`/center/me/training/enrollments/${row.id}/instructor`,payload(row,target,extra));
@@ -80,6 +81,8 @@ export async function checkCenterTrainingAssignments(db,{base,a,b,ownerA,ta,tb,t
   const running=await course('ASSIGN-RUNNING'),runningSession=await session(running,'IN_PROGRESS');
   check((await assign(running)).status===409,'running session blocks course reassignment');
   check((await assignSession(runningSession)).status===409,'running session cannot be reassigned');
+  // Retire this isolated in-progress fixture before later availability checks.
+  await db.trainingSession.update({where:{id:runningSession.id},data:{status:'CANCELLED'}});
   const evidenced=await course('ASSIGN-EVIDENCE'),evidenceSession=await session(evidenced,'SCHEDULED',pros[0].id,undefined,{instructorCheckInAt:new Date().toISOString()});
   check((await assignSession(evidenceSession)).status===409,'attendance evidence blocks reassignment even with scheduled status');
   check((await assign(evidenced)).status===409,'attendance evidence also blocks bulk reassignment');

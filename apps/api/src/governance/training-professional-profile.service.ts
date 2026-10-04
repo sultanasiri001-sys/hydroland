@@ -1,3 +1,4 @@
+import { sessionControls } from './training-session-policy';
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { instructorCenterScope } from './training-center-scope';
@@ -68,9 +69,9 @@ export class TrainingProfessionalProfileService {
     const sessions = await this.db.trainingSession.findMany({
       where: { instructorAccountId: accountId, trainingRecord:{enrollment:scope} },
       select: {
-        id: true, trainingRecordId: true, status: true, startsAt: true, endsAt: true,
+        id: true, trainingRecordId: true, status: true, startsAt: true, endsAt: true, updatedAt:true,
         facilityOrSiteId: true, tripId: true, vesselId: true, evidence: true,
-        trainingRecord: { select: { enrollment: { select: { courseCode: true, studentAccountId: true, instructorAccountId: true } } } },
+        trainingRecord: { select: {status:true,certificate:{select:{id:true}}, enrollment: { select: {status:true, courseCode: true, studentAccountId: true, instructorAccountId: true } } } },
       },
       orderBy: { startsAt: 'asc' },
       take: 200,
@@ -83,7 +84,8 @@ export class TrainingProfessionalProfileService {
     return sessions.map(row=>({
       id:row.id,courseCode:row.trainingRecord.enrollment.courseCode,
       student:{displayName:names.get(row.trainingRecord.enrollment.studentAccountId)||'طالب'},
-      status:row.status,startsAt:row.startsAt,endsAt:row.endsAt,
+      status:row.status,startsAt:row.startsAt,endsAt:row.endsAt,updatedAt:row.updatedAt,
+      actions:sessionControls({...row.trainingRecord.enrollment,record:row.trainingRecord},row).actions.filter(action=>['OPEN','INSTRUCTOR_CHECK_IN'].includes(action)),
       facilityOrSiteId:row.facilityOrSiteId,tripId:row.tripId,vesselId:row.vesselId,
       attendance:{
         instructorCheckedIn:Boolean(row.evidence&&typeof row.evidence==='object'&&!Array.isArray(row.evidence)&&(row.evidence as Record<string,unknown>).instructorCheckInAt),

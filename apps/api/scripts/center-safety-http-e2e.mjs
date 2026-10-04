@@ -1,6 +1,7 @@
 import {checkCenterTeam} from './center-team-http-checks.mjs';
 import {checkCenterTeamManagement} from './center-team-management-http-checks.mjs';
 import {checkCenterTrainingAssignments} from './center-training-assignment-http-checks.mjs';
+import {checkCenterTrainingSessions} from './center-training-session-http-checks.mjs';
 import {checkCenterReports} from './center-reports-http-checks.mjs';
 import {checkCenterTripManagement} from './center-trip-management-http-checks.mjs';
 import {checkCenterBusinessProfile} from './center-business-profile-http-checks.mjs';
@@ -150,6 +151,7 @@ try{
   await checkCenterTeam(db,{base,a,b,ownerA,ta,tb,ts,personAccount,tokenFor},check);
   await checkCenterTeamManagement(db,{base,a,b,ownerA,ta,tb,ts,personAccount,tokenFor},check);
   await checkCenterTrainingAssignments(db,{base,a,b,ownerA,ta,tb,ts,personAccount,tokenFor},check);
+  await checkCenterTrainingSessions(db,{base,a,b,ownerA,ta,tb,ts,personAccount,tokenFor},check);
 
   console.log(`Center safety and portal authorization HTTP/PostgreSQL E2E: ${checks}/${checks} passed (exact active role across 20 routes, same-session revocation/recovery, center isolation document metadata privacy, equipment movements/inspection gates/audit and TEXT/UUID center scope).`);
 }finally{
