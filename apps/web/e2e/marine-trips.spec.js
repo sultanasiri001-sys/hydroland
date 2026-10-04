@@ -1,0 +1,32 @@
+import {test,expect} from '@playwright/test';
+import {openWorkspaceSwitcher} from './portal-test-helpers.js';
+
+const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
+
+test('boat operator creates, edits and publishes an organization scoped trip draft',async({page})=>{
+ const profile={id:'marine-trips-owner',email:'marine-trips@hydroland.test',status:'ACTIVE',roleAssignments:[{id:'boat-role',role:'BOAT_OWNER',status:'ACTIVE'}],person:{firstName:'Marine',lastName:'Trips',phone:null,professional:null}};
+ const marine={id:'org-marine-trips',displayName:'المشغل البحري',kind:'MARINE_OPERATOR',status:'ACTIVE'};
+ const center={id:'org-center-excluded',displayName:'مركز غوص مستبعد',kind:'DIVE_CENTER',status:'ACTIVE'};
+ const memberships=[{id:'member-marine',organizationId:marine.id,accountId:profile.id,role:'OWNER',status:'ACTIVE',organization:marine},{id:'member-center',organizationId:center.id,accountId:profile.id,role:'OWNER',status:'ACTIVE',organization:center}];
+ const state={trip:null,organizationsCalls:0,listCalls:0,published:false};
+ const authorized=request=>request.headers().authorization==='Bearer marine-trips-access';
+ await page.route(/\/api\/v1\/me$/,route=>authorized(route.request())?json(route,profile):json(route,{message:'Unauthorized'},401));
+ await page.route(/\/api\/v1\/credentials$/,route=>authorized(route.request())?json(route,[]):json(route,{message:'Unauthorized'},401));
+ await page.route(/\/api\/v1\/me\/diver-profile$/,route=>authorized(route.request())?json(route,{profile:null,equipment:[]}):json(route,{message:'Unauthorized'},401));
+ await page.route(/\/api\/v1\/organizations\/mine$/,route=>{if(!authorized(route.request()))return json(route,{message:'Unauthorized'},401);state.organizationsCalls++;return json(route,memberships)});
+ await page.route(/\/api\/v1\/marine-operations\/trips\/mine$/,route=>{if(!authorized(route.request()))return json(route,{message:'Unauthorized'},401);state.listCalls++;return json(route,state.trip?[state.trip]:[])});
+ await page.route(/\/api\/v1\/marine-operations\/trips$/,async route=>{if(!authorized(route.request()))return json(route,{message:'Unauthorized'},401);const body=route.request().postDataJSON();state.trip={id:'marine-trip-draft',organizationId:body.organizationId,title:body.title,type:'BOAT',startsAt:body.startsAt,endsAt:body.endsAt,capacity:body.capacity,status:'DRAFT',updatedAt:'2026-11-01T08:00:00.000Z',price:{pricePerSeatMinor:body.pricePerSeatMinor,currency:'SAR'},location:{tripId:'marine-trip-draft',locationName:body.locationName,latitude:body.latitude,longitude:body.longitude},organization:marine};return json(route,state.trip,201)});
+ await page.route(/\/api\/v1\/marine-operations\/trips\/marine-trip-draft$/,async route=>{if(!authorized(route.request()))return json(route,{message:'Unauthorized'},401);const body=route.request().postDataJSON();expect(body.expectedUpdatedAt).toBe(state.trip.updatedAt);state.trip={...state.trip,title:body.title,updatedAt:'2026-11-01T08:05:00.000Z',price:{pricePerSeatMinor:body.pricePerSeatMinor,currency:'SAR'},location:{...state.trip.location,locationName:body.locationName}};return json(route,state.trip)});
+ await page.route(/\/api\/v1\/marine-operations\/trips\/marine-trip-draft\/publish$/,async route=>{if(!authorized(route.request()))return json(route,{message:'Unauthorized'},401);expect(route.request().postDataJSON().expectedUpdatedAt).toBe(state.trip.updatedAt);state.published=true;state.trip={...state.trip,status:'OPEN',updatedAt:'2026-11-01T08:10:00.000Z'};return json(route,state.trip)});
+ await page.goto('/',{waitUntil:'domcontentloaded'});
+ await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandMarineTrips));
+ await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','marine-trips-access');sessionStorage.setItem('hl-refresh-token','marine-trips-refresh');window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));await window.HydrolandProfile.load()});
+ await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="boat"]').click();
+ const dashboard=page.locator('.hl-role-dashboard[data-role="boat"]');const openButton=dashboard.locator('[data-action-label="إنشاء رحلة"]');await expect(openButton).toBeEnabled();await openButton.click();
+ const panel=page.locator('#hl-marine-trips');await expect(panel).toBeVisible();await expect(panel.locator('[name="organizationId"] option')).toHaveCount(1);await expect(panel.locator('[name="organizationId"]')).toHaveValue(marine.id);
+ await panel.locator('[name="title"]').fill('رحلة الساحل');await panel.locator('[name="startsAt"]').fill('2030-05-01T10:00');await panel.locator('[name="endsAt"]').fill('2030-05-01T12:00');await panel.locator('[name="capacity"]').fill('8');await panel.locator('[name="pricePerSeatMinor"]').fill('12500');await panel.locator('[name="locationName"]').fill('مرسى تجريبي');await panel.locator('[name="latitude"]').fill('24.7');await panel.locator('[name="longitude"]').fill('46.6');await panel.locator('[data-mt-form] button[type="submit"]').click();
+ const card=panel.locator('[data-mt-trip="marine-trip-draft"]');await expect(card).toContainText('رحلة الساحل');await expect(card).toContainText('125.00 ر.س للمقعد');expect(state.trip.organizationId).toBe(marine.id);expect(state.trip.status).toBe('DRAFT');
+ await card.locator('[data-mt-edit]').click();await panel.locator('[name="title"]').fill('رحلة الساحل المعدلة');await panel.locator('[data-mt-form] button[type="submit"]').click();await expect(panel.locator('[data-mt-trip="marine-trip-draft"]')).toContainText('رحلة الساحل المعدلة');
+ await panel.locator('[data-mt-trip="marine-trip-draft"] [data-mt-publish]').click();await expect.poll(()=>state.published).toBe(true);await expect(panel.locator('[data-mt-trip="marine-trip-draft"] .hl-mt-state')).toHaveText('OPEN');expect(state.organizationsCalls).toBeGreaterThan(0);expect(state.listCalls).toBeGreaterThan(0);
+ await expect(panel).toContainText('النشر لا يمنح موافقة السلامة أو الجاهزية التشغيلية');
+});
