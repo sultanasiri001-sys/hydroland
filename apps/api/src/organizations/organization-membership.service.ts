@@ -4,6 +4,7 @@ import { DatabaseService } from '../database/database.service';
 import { AuditService } from '../audit/audit.service';
 
 const ordinaryRoles=['OPERATOR','INSTRUCTOR','STAFF','VIEWER'];
+const ordinaryRoleLabels:Partial<Record<OrganizationMemberRole,string>>={OPERATOR:'مسؤول تشغيل',INSTRUCTOR:'مدرب غوص',STAFF:'عضو فريق',VIEWER:'مشاهد'};
 const privilegedRoles=['ADMIN','REVIEWER','HR_REVIEWER','HR_MANAGER','HR_EXECUTIVE','EXECUTIVE_APPROVER','IAM_SERVICE'];
 @Injectable()
 export class OrganizationMembershipService {
@@ -63,7 +64,7 @@ export class OrganizationMembershipService {
  async manage(accountId:string,id:string,input:Record<string,unknown>){
   if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(key=>!['action','role','reason','expectedUpdatedAt'].includes(key)))throw new BadRequestException('حقول تعديل العضوية غير صالحة.');
   const {action}=input;
-  if(!['CHANGE_ROLE','SUSPEND','REACTIVATE'].includes(String(action)))throw new BadRequestException('اختر إجراءً صالحًا للعضوية.');
+  if(typeof action!=='string'||!['CHANGE_ROLE','SUSPEND','REACTIVATE'].includes(action))throw new BadRequestException('اختر إجراءً صالحًا للعضوية.');
   if(action==='CHANGE_ROLE'?(typeof input.role!=='string'||!ordinaryRoles.includes(input.role)):input.role!==undefined)throw new BadRequestException('اختر دورًا عاديًا داخل المركز.');
   if(typeof input.reason!=='string'||!input.reason.trim()||input.reason.trim().length>1000)throw new BadRequestException('سبب التعديل مطلوب، بحد أقصى 1000 حرف.');
   const revision=this.revision(input.expectedUpdatedAt),reason=input.reason.trim();
@@ -81,7 +82,7 @@ export class OrganizationMembershipService {
    const changed=await tx.organizationMember.updateMany({where:{id,organizationId,role:member.role,status:member.status,updatedAt:revision},data:{role,status,updatedAt}});
    if(changed.count!==1)throw new ConflictException('تغيرت العضوية. حدّث القائمة قبل إعادة المحاولة.');
    await this.audit.record({actorId:accountId,action:'organization.member_'+(action==='CHANGE_ROLE'?'role_changed':action==='SUSPEND'?'suspended':'reactivated'),resource:'organization',resourceId:organizationId,metadata:{memberId:id,from:{role:member.role,status:member.status},to:{role,status},reason}},tx);
-   await tx.notification.create({data:{accountId:member.accountId,type:'ORGANIZATION_MEMBERSHIP_CHANGED',status:'SENT',sentAt:new Date(),payload:{organizationId,organizationName:member.organization.displayName,memberId:id,role,status,reason,message:(action==='SUSPEND'?'تم إيقاف عضويتك في المركز.':action==='REACTIVATE'?'تمت إعادة تفعيل عضويتك في المركز.':'تم تغيير دورك داخل المركز.')+' السبب: '+reason}}});
+   await tx.notification.create({data:{accountId:member.accountId,type:'ORGANIZATION_MEMBERSHIP_CHANGED',status:'SENT',sentAt:new Date(),payload:{organizationId,organizationName:member.organization.displayName,memberId:id,role,status,reason,message:(action==='SUSPEND'?'تم إيقاف عضويتك في المركز.':action==='REACTIVATE'?'تمت إعادة تفعيل عضويتك في المركز.':'تم تغيير دورك داخل المركز إلى '+ordinaryRoleLabels[role]+'.')+' السبب: '+reason}}});
    return {id,role,status,updatedAt};
   });
  }

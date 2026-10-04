@@ -37,6 +37,14 @@ export async function checkCenterTeamManagement(db,{base,a,b,ownerA,ta,tb,ts,per
    return {row,record,stage,skill,session};
   };
   const own=await createEnrollment(a.org.id,'TEAM-A'),other=await createEnrollment(b.org.id,'TEAM-B'),independent=await createEnrollment(null,'TEAM-INDEPENDENT');
+  await db.roleAssignment.upsert({where:{accountId_role:{accountId:ownerA.id,role:'INSTRUCTOR'}},create:{accountId:ownerA.id,role:'INSTRUCTOR',status:'ACTIVE'},update:{status:'ACTIVE'}});
+  const ownerEnrollment=await db.trainingEnrollment.create({data:{studentAccountId:student.id,centerOrganizationId:a.org.id,courseCode:'TEAM-OWNER',status:'ACTIVE'}});enrollments.push(ownerEnrollment.id);
+  check((await request(ta,`/training/enrollments/${ownerEnrollment.id}/instructor`,{instructorAccountId:ownerA.id})).status===200,'qualified center owner can also teach without losing ownership');
+  check((await request(ta,'/center/me/professionals')).body.some(row=>row.accountId===ownerA.id),'qualified owner appears among center professionals');
+  check((await request(ta,'/training/professional/me/assignments')).body.some(row=>row.enrollmentId===ownerEnrollment.id),'professional portal includes qualified owner assignments');
+  await db.roleAssignment.update({where:{accountId_role:{accountId:ownerA.id,role:'INSTRUCTOR'}},data:{status:'SUSPENDED'}});
+  check((await request(ta,`/training/enrollments/${ownerEnrollment.id}/instructor`,{instructorAccountId:ownerA.id})).status===409,'center ownership alone cannot grant instructor qualification');
+  await db.roleAssignment.update({where:{accountId_role:{accountId:ownerA.id,role:'INSTRUCTOR'}},data:{status:'ACTIVE'}});
   const earning=await db.instructorEarning.create({data:{trainingEnrollmentId:own.row.id,instructorAccountId:pro.id,centerOrganizationId:a.org.id,amountMinor:5000}});
   check((await request(actorToken,`/training/enrollments/${own.row.id}`)).status===200,'active operator has center training scope');
   result=await manage(member);check(result.status===200&&result.body.status==='SUSPENDED','manager suspends ordinary membership');member=result.body;
