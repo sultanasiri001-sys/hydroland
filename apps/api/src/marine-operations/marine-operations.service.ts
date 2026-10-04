@@ -68,7 +68,7 @@ export class MarineOperationsService{
    file={bytes,name:validated.name,type:validated.type,sha256,storageKey:this.storage.key(accountId,marineAssetId,validated.type,'marine-assets')};
    await this.storage.put(file.storageKey,file.bytes,file.type);
   }
-  try{return await this.db.marineAssetDocument.create({data:{marineAssetId,documentType:input.documentType,referenceNumber:input.referenceNumber?.trim()||null,expiresAt:this.parseExpiry(input.expiresAt),status:'PENDING',verifiedAt:null,...(file?{storageKey:file.storageKey,originalName:file.name,mimeType:file.type,byteSize:file.bytes.length,sha256:file.sha256}:{})}});}
+  try{const row=await this.db.marineAssetDocument.create({data:{marineAssetId,documentType:input.documentType,referenceNumber:input.referenceNumber?.trim()||null,expiresAt:this.parseExpiry(input.expiresAt),status:'PENDING',verifiedAt:null,...(file?{storageKey:file.storageKey,originalName:file.name,mimeType:file.type,byteSize:file.bytes.length,sha256:file.sha256}:{})}});return this.publicDocument(row);}
   catch(error){if(file){const retained=await this.db.marineAssetDocument.findUnique({where:{storageKey:file.storageKey},select:{id:true}}).catch(()=>true);if(!retained)await this.storage.delete(file.storageKey)}throw error}
  }
  async documentAccess(accountId:string,marineAssetId:string,documentId:string){
@@ -88,14 +88,14 @@ export class MarineOperationsService{
   const doc=await this.db.marineAssetDocument.findFirst({where:{id:documentId,marineAssetId},include:{marineAsset:{select:{organizationId:true}}}});if(!doc)throw new NotFoundException('Marine document not found.');
   await this.requireMember(accountId,doc.marineAsset.organizationId,true);
   if(doc.status==='VERIFIED')throw new BadRequestException('Verified marine documents cannot be edited.');
-  return this.db.marineAssetDocument.update({where:{id:documentId},data:{...(input.referenceNumber!==undefined?{referenceNumber:input.referenceNumber.trim()||null}:{}),...(input.expiresAt!==undefined?{expiresAt:this.parseExpiry(input.expiresAt)}:{}),status:'PENDING',verifiedAt:null}});
+  const updated=await this.db.marineAssetDocument.update({where:{id:documentId},data:{...(input.referenceNumber!==undefined?{referenceNumber:input.referenceNumber.trim()||null}:{}),...(input.expiresAt!==undefined?{expiresAt:this.parseExpiry(input.expiresAt)}:{}),status:'PENDING',verifiedAt:null}});return this.publicDocument(updated);
  }
  async pendingDocuments(){const rows=await this.db.marineAssetDocument.findMany({where:{status:'PENDING'},include:{marineAsset:true},orderBy:{createdAt:'asc'},take:200});return rows.map(row=>({...this.publicDocument(row),marineAsset:row.marineAsset}));}
  async decideDocument(documentId:string,outcome:'VERIFIED'|'REJECTED'){
   if(!['VERIFIED','REJECTED'].includes(outcome))throw new BadRequestException('Invalid marine document decision.');
   const doc=await this.db.marineAssetDocument.findUnique({where:{id:documentId}});if(!doc)throw new NotFoundException('Marine document not found.');
   if(doc.status!=='PENDING')throw new BadRequestException('Marine document is not awaiting review.');
-  return this.db.marineAssetDocument.update({where:{id:documentId},data:{status:outcome,verifiedAt:outcome==='VERIFIED'?new Date():null}});
+  const updated=await this.db.marineAssetDocument.update({where:{id:documentId},data:{status:outcome,verifiedAt:outcome==='VERIFIED'?new Date():null}});return this.publicDocument(updated);
  }
  async addMaintenance(marineAssetId:string,input:{maintenanceType:string;dueAt?:string;notes?:string}){
   const asset=await this.db.marineAsset.findUnique({where:{id:marineAssetId},select:{id:true}});
