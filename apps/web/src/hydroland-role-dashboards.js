@@ -79,7 +79,7 @@
       body.innerHTML=centerHomePanels(complete?data:null);connectHomeControls(d);
       status.textContent=complete?'آخر تحديث: '+centerHomeDate(data.generatedAt)+' · بتوقيت الرياض':'المؤشرات محدثة. تفاصيل الملخص غير متاحة؛ أعد التحديث.';
     }catch(error){if(current()){reset();status.setAttribute('role','alert');status.textContent=error.message||'تعذر تحميل ملخص المركز. أعد المحاولة.'}}
-    finally{if(d.isConnected&&centerLoads.get(d)===version){body.removeAttribute('aria-busy');refresh.disabled=false}}
+    finally{if(d.isConnected&&centerLoads.get(d)===version){body.removeAttribute('aria-busy');refresh.disabled=false;d.hidden=false}}
   };
   const loadInstructorSummary=async d=>{
     const auth=window.HydrolandAuth;if(!d||d.dataset.role!=='instructor'||!auth?.isAuthenticated?.())return;
@@ -155,7 +155,7 @@
     clearDashboard();
     if(role==='diver'||!window.HydrolandAuth?.isAuthenticated?.()||!window.HydrolandPortalAccess?.roleAllowed?.(role))return;
     const c=configs[role];if(!c)return;if(role==='admin')ensureWeatherAdmin();
-    const d=document.createElement('section');d.className='hl-role-dashboard';d.dataset.role=role;
+    const d=document.createElement('section');d.className='hl-role-dashboard';d.dataset.role=role;if(role==='center')d.hidden=true;
     const center=role==='center',operational=['center','boat','instructor'].includes(role),heroTitle={center:'تشغيل مركز الغوص',admin:'مركز القيادة والإدارة',organization:'بوابة الشركات والجهات الحكومية',instructor:'محترفي الغوص',boat:'الوسائط البحرية'}[role];
     const heroSubtitle={center:'نظم رحلاتك… واصنع تجربة غوص استثنائية',admin:'كل ما تحتاجه لإدارة منظومة هيدرولاند في مكان واحد',organization:'حلول بحرية متكاملة لشراكات طموحة',instructor:'علّم، ألهم… واصنع جيلًا من الغواصين',boat:'أدر أسطولك وخدماتك البحرية بثقة'}[role];
     const actions=c.a.filter(([label])=>!center||label!=='المستندات والتراخيص');
