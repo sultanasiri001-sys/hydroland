@@ -70,7 +70,7 @@ test('center equipment captures lookup input before asynchronous authorization',
  const errors=[];page.on('pageerror',error=>errors.push(error.message));
  await panel.locator('[data-equipment-lookup] input').fill('ASSET / 123');
  const refreshes=state.refreshes;
- await panel.locator('[data-equipment-lookup] button').click();
+ await panel.getByRole('button',{name:'بحث',exact:true}).click();
  await expect(panel.locator('[data-center-equipment-id="found"]')).toContainText('نتيجة البحث');
  expect(state.lookupCodes).toEqual(['ASSET / 123']);expect(state.refreshes).toBeGreaterThan(refreshes);expect(errors).toEqual([]);
 });
