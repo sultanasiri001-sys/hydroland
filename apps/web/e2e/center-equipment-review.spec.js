@@ -19,7 +19,7 @@ await page.route(/\/api\/v1\/me\/diver-profile$/,route=>json(route,{profile:null
 test('center equipment sidebar uses scoped inventory, lookup and movement history',async({page})=>{
  await install(page);const dash=page.locator('.hl-role-dashboard[data-role="center"]');await dash.locator('[data-portal-label="المعدات والمخزون"]').click();
  const panel=page.locator('#hl-center-equipment');await expect(panel).toBeVisible();await expect(panel.locator('[data-center-equipment-id="eq-a"]')).toContainText('منظم غوص');
- await panel.locator('[data-equipment-history-button]').click();await expect(panel.locator('[data-equipment-history]')).toContainText('CHECK_IN');
+ await panel.locator('[data-equipment-history-button]').click();await expect(panel.locator('[data-equipment-history]')).toContainText('إرجاع');
  await panel.locator('[data-equipment-lookup] input').fill('A-001');await panel.locator('[data-equipment-lookup]').evaluate(form=>form.requestSubmit());await expect(panel.locator('[data-center-equipment-id="eq-a"]')).toBeVisible();
 });
 test('center equipment reauthorizes before state mutation',async({page})=>{
@@ -33,4 +33,17 @@ test('center equipment escapes API text and clears on logout',async({page})=>{
 });
 test('center equipment refreshes role before exposing inventory',async({page})=>{
  const state=await install(page),before=state.refreshes;state.active=false;await page.evaluate(async()=>{await window.HydrolandPortalAccess.refreshPortalAccess();window.HydrolandPortalFreshness.enforce();await window.HydrolandCenterEquipment.open()});await expect(page.locator('#hl-center-equipment')).toHaveCount(0);expect(state.refreshes).toBeGreaterThanOrEqual(before+1);expect(state.reads).toBe(0);await expect(page.getByText('منظم غوص')).toHaveCount(0);
+});
+
+test('center equipment offers only applicable movements and returns from lookup to full inventory',async({page})=>{
+ await install(page);
+ await page.route(/\/api\/v1\/center\/me\/equipment$/,route=>json(route,[item,{...item,resourceId:'retired',stockStatus:'RETIRED'},{...item,resourceId:'out',stockStatus:'CHECKED_OUT'}]));
+ await page.locator('[data-portal-label="المعدات والمخزون"]').click();
+ const panel=page.locator('#hl-center-equipment'),available=panel.locator('[data-center-equipment-id="eq-a"]');
+ await expect(available).toContainText('متاحة');await expect(available.locator('[data-move="CHECK_IN"]')).toHaveCount(0);
+ await expect(panel.locator('[data-center-equipment-id="retired"] [data-move]')).toHaveCount(0);
+ await expect(panel.locator('[data-center-equipment-id="out"] [data-move="CHECK_IN"]')).toBeVisible();
+ await panel.locator('[data-equipment-lookup] input').fill('A-001');await panel.locator('[data-equipment-lookup]').evaluate(form=>form.requestSubmit());
+ await expect(panel.locator('[data-center-equipment-id]')).toHaveCount(1);
+ await panel.getByRole('button',{name:'عرض جميع المعدات'}).click();await expect(panel.locator('[data-center-equipment-id]')).toHaveCount(3);
 });

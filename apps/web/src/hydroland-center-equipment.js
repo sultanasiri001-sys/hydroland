@@ -9,13 +9,17 @@
    if(section?.isConnected)return section;
    const host=document.createElement('section');
    host.className='hl-center-equipment';host.id='hl-center-equipment';host.hidden=true;
-   host.innerHTML='<header><div><small>DIVE CENTER · مركز الغوص</small><h2>المعدات والمخزون</h2><p>الأصول المنسوبة للمركز وحالتها التشغيلية فقط.</p></div></header><form data-equipment-lookup><input name="code" required autocomplete="off" placeholder="QR / Barcode / Asset / Serial"><button>بحث</button></form><div data-center-equipment aria-live="polite"></div>';
+   host.innerHTML='<header><div><small>DIVE CENTER · مركز الغوص</small><h2>المعدات والمخزون</h2><p>الأصول المنسوبة للمركز وحالتها التشغيلية فقط.</p></div></header><form data-equipment-lookup><input name="code" required autocomplete="off" placeholder="QR / Barcode / Asset / Serial"><button>بحث</button><button type="button" data-center-equipment-retry>عرض جميع المعدات</button></form><div data-center-equipment aria-live="polite"></div>';
    // Every recreated workspace owns its listeners; never bind only the first instance.
    host.querySelector('[data-equipment-lookup]').addEventListener('submit',lookup);
    host.addEventListener('click',onClick);
-   section=host;document.getElementById('main')?.prepend(host);return host;
+   section=host;document.getElementById('main')?.append(host);return host;
  }
- const card=row=>`<article class="hl-course" data-center-equipment-id="${esc(row.resourceId)}"><div class="hl-course-top"><div><b>${esc(row.resourceName||'معدة')}</b><small>${esc(row.assetCode||'—')}${row.serialNumber?' · S/N '+esc(row.serialNumber):''}</small></div><span>${esc(row.stockStatus||'—')}</span></div><small>الموقع: ${esc(row.location||'غير محدد')} · SKU: ${esc(row.sku||'—')}</small><div class="hl-member-actions"><button type="button" data-move="CHECK_OUT">إعارة/خروج</button><button type="button" data-move="CHECK_IN">إرجاع</button><button type="button" data-move="MAINTENANCE">صيانة</button><button type="button" data-move="QUARANTINE">حجر</button><button type="button" data-move="RELEASE">إتاحة</button></div><button type="button" data-equipment-history-button>سجل الحركة</button><div data-equipment-history></div></article>`;
+ const statuses={AVAILABLE:'متاحة',CHECKED_OUT:'معارة / خارج المستودع',MAINTENANCE:'تحت الصيانة',QUARANTINED:'محجوزة للفحص',RETIRED:'مستبعدة من الخدمة'};
+ const movements={CHECK_IN:'إرجاع',CHECK_OUT:'إعارة / خروج',TRANSFER:'نقل',MAINTENANCE:'صيانة',QUARANTINE:'حجز للفحص',RELEASE:'إتاحة',RETIRE:'استبعاد من الخدمة'};
+ const date=value=>{const parsed=new Date(value);return value&&Number.isFinite(parsed.getTime())?new Intl.DateTimeFormat('ar-SA',{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Riyadh',calendar:'gregory'}).format(parsed):'غير مسجل'};
+ const actions=row=>row.active===false||row.stockStatus==='RETIRED'?[]:row.stockStatus==='AVAILABLE'?['CHECK_OUT','MAINTENANCE','QUARANTINE']:row.stockStatus==='CHECKED_OUT'?['CHECK_IN','MAINTENANCE','QUARANTINE']:['MAINTENANCE','QUARANTINED'].includes(row.stockStatus)?['RELEASE']:[];
+ const card=row=>`<article class="hl-course" data-center-equipment-id="${esc(row.resourceId)}"><div class="hl-course-top"><div><b>${esc(row.resourceName||'معدة')}</b><small>${esc(row.assetCode||'—')}${row.serialNumber?' · الرقم التسلسلي: '+esc(row.serialNumber):''}</small></div><span>${esc(statuses[row.stockStatus]||'حالة غير معروفة')}${row.active===false?' · غير مفعلة':''}</span></div><small>الموقع: ${esc(row.location||'غير محدد')} · رمز الصنف: ${esc(row.sku||'—')}</small><div class="hl-member-actions">${actions(row).map(type=>`<button type="button" data-move="${type}">${movements[type]}</button>`).join('')}</div><div data-equipment-error></div><button type="button" data-equipment-history-button>سجل الحركة</button><div data-equipment-history></div></article>`;
  async function authorize(host,version,session){
    const centralized=access()?.authorizeRole;if(typeof centralized!=='function'){clear();return false}
    const valid=await centralized('center',{sessionVersion:session,isCurrent:()=>host===section&&host.isConnected&&version===viewVersion});
@@ -59,6 +63,7 @@
    const button=event.target.closest?.('[data-equipment-history-button],[data-move]');if(!button||button.disabled)return;
    const id=article.dataset.centerEquipmentId,version=viewVersion,session=auth()?.getSessionVersion?.();
    const live=()=>current(host,version,session)&&article.isConnected;
+   article.querySelector('[data-equipment-error]').replaceChildren();
    button.disabled=true;
    try{
      if(!(await authorize(host,version,session))||!live())return;
@@ -67,7 +72,7 @@
        if(!live())return;
        if(!response.ok)throw new Error(rows?.message||'تعذر تحميل سجل الحركة');
        if(!Array.isArray(rows))throw new Error('استجابة سجل الحركة غير مكتملة.');
-       article.querySelector('[data-equipment-history]').innerHTML=rows.length?rows.map(row=>`<div class="hl-member-row"><b>${esc(row.movementType)}</b><span>${esc(row.toLocation||row.fromLocation||'بدون موقع')}</span></div>`).join(''):'<p>لا توجد حركات مسجلة.</p>';
+       article.querySelector('[data-equipment-history]').innerHTML=rows.length?rows.map(row=>`<div class="hl-member-row"><b>${esc(movements[row.movementType]||'حركة غير معروفة')}</b><span>من: ${esc(row.fromLocation||'غير محدد')} · إلى: ${esc(row.toLocation||'غير محدد')}</span><small>${esc(date(row.occurredAt))} · توقيت الرياض</small>${row.notes?`<p>${esc(row.notes)}</p>`:''}</div>`).join(''):'<p>لا توجد حركات مسجلة.</p>';
      }else{
        const response=await auth().authorizedFetch('/center/me/equipment/'+encodeURIComponent(id)+'/move',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({movementType:button.dataset.move})}),body=await response.json().catch(()=>null);
        if(!live())return;
@@ -78,7 +83,7 @@
      if(live()){
        const message=`<p role="alert">${esc(error instanceof Error?error.message:'تعذر تنفيذ إجراء المعدة')}</p>`;
        if(button.hasAttribute('data-equipment-history-button'))article.querySelector('[data-equipment-history]').innerHTML=message;
-       else article.insertAdjacentHTML('beforeend',message);
+       else article.querySelector('[data-equipment-error]').innerHTML=message;
      }
    }finally{button.disabled=false}
  }
