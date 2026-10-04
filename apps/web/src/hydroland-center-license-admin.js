@@ -1,6 +1,6 @@
 (()=>{
  const auth=()=>window.HydrolandAuth,access=()=>window.HydrolandPortalAccess;
- const host=document.querySelector('.hl-admin__grid');if(!host)return;
+ const host=document.querySelector('.hl-admin > .hl-admin__grid');if(!host)return;
  const panel=document.createElement('article');panel.className='hl-admin__panel hl-admin__credential-panel';panel.dataset.centerLicenseAdmin='';
  panel.innerHTML='<h3>اعتماد رخص مراكز الغوص</h3><p>مراجعة إدارة المنصة مستقلة عن صلاحية التواريخ والتحقق من الجهة المصدرة.</p><button type="button" data-license-admin-refresh>تحديث الطلبات</button><p data-license-admin-state role="status"></p><div data-license-admin-list></div>';host.append(panel);
  const list=panel.querySelector('[data-license-admin-list]'),status=panel.querySelector('[data-license-admin-state]');
