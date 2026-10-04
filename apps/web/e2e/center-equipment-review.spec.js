@@ -67,3 +67,16 @@ test('equipment inspection shows expired service and escapes notes',async({page}
  const box=panel.locator('[data-equipment-inspection]');await expect(box).toContainText('انتهت مدة الصيانة');await expect(box).toContainText('إخراج المعدة ممنوع');await expect(box).toContainText('اجتاز الفحص');await expect(box.locator('img')).toHaveCount(0);
  await page.evaluate(()=>window.HydrolandAuth.terminateSession());await expect(panel).toHaveCount(0);
 });
+
+test('center saves inspection for review with a Riyadh service date and stable retry identity',async({page})=>{
+ await install(page);const reports=[];
+ await page.route('**/api/v1/center/me/equipment/eq-a/inspection',route=>{
+  reports.push(route.request().postDataJSON());return reports.length===1?json(route,{message:'تعذر حفظ الفحص مؤقتًا'},503):json(route,{id:reports[0].requestId,status:'REVIEW'},201);
+ });
+ await page.locator('[data-portal-label="المعدات والمخزون"]').click();const panel=page.locator('#hl-center-equipment');await panel.getByText('تسجيل فحص وصيانة',{exact:true}).click();const form=panel.locator('[data-equipment-inspection-form]');
+ await expect(form.locator('option[value="PASS"]')).toHaveCount(0);
+ await form.getByLabel('تفاصيل الفحص والصيانة واسم الفني').fill('فحص المنظم بواسطة الفني');await form.getByLabel('انتهاء صلاحية الصيانة (اختياري)').fill('2030-02-15');
+ await form.getByRole('button',{name:'حفظ الفحص'}).click();await expect(form).toContainText('تعذر حفظ الفحص مؤقتًا');await expect(form.locator('textarea')).toHaveValue('فحص المنظم بواسطة الفني');
+ await form.getByRole('button',{name:'حفظ الفحص'}).click();await expect(panel.locator('[data-equipment-feedback]')).toContainText('تم حفظ الفحص وحجز المعدة');
+ expect(reports).toHaveLength(2);expect(reports[0]).toEqual(reports[1]);expect(reports[0].status).toBe('REVIEW');expect(reports[0].serviceExpiresAt).toBe('2030-02-15T20:59:59.000Z');
+});
