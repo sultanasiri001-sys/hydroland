@@ -210,15 +210,6 @@ export class DiveCenterPortalService {
     return memberships.map(row=>({accountId:row.accountId,displayName:[row.account.person.firstName,row.account.person.lastName].filter(Boolean).join(' ').trim()||'محترف غوص',headline:row.account.person.professional?.headline??null,regionCode:row.account.person.professional?.regionCode??null,verifiedCredentials:row.account.person.credentials.filter(item=>['VERIFIED','DOCUMENT_VERIFIED'].includes(item.verificationStatus)).length,assignedTrainingCount:counts.get(row.accountId)||0}));
   }
 
-  async trips(accountId:string){
-    const center=await this.managedCenter(accountId);
-    return this.db.trip.findMany({
-      where:{organizationId:center.id},
-      select:{id:true,title:true,type:true,startsAt:true,endsAt:true,capacity:true,status:true,_count:{select:{bookings:true}}},
-      orderBy:{startsAt:'desc'},take:200,
-    });
-  }
-
   async bookings(accountId:string,tripId:string){
     const center=await this.managedCenter(accountId);
     const trip=await this.db.trip.findFirst({where:{id:tripId,organizationId:center.id},select:{id:true}});
