@@ -24,6 +24,7 @@
    if(error.status!==403||!section)return false;
    listVersion++;detailVersion++;composeVersion++;draft=null;
    section.querySelector('[data-safety-compose]').replaceChildren();section.querySelector('section[data-safety-detail]').replaceChildren();
+   section.querySelector('[data-center-safety]').removeAttribute('aria-busy');
    section.querySelector('[data-center-safety]').innerHTML=`<p role="alert">${esc(error.message)}</p><button type="button" data-center-safety-retry>إعادة المحاولة</button>`;return true;
  }
  const select=(name,title,values)=>`<label><span id="hl-center-safety-${name}-label">${title}</span><select name="${name}" aria-labelledby="hl-center-safety-${name}-label"><option value="ALL">الكل</option>${values.map(v=>`<option value="${v}">${label(v)}</option>`).join('')}</select></label>`;

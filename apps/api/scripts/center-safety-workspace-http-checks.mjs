@@ -74,6 +74,12 @@ export async function checkCenterSafetyWorkspace(db,{base,a,b,ownerA,ownerB,ta,t
   check((await call(ta,'?q=%25')).body.checklistPagination.total===0,'Search escapes wildcards');
   const closeReport=async(token)=>fetch(base+'/safety/incidents/admin/'+incidentId+'/status',{method:'PATCH',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({status:'RESOLVED',resolutionNotes:'تمت المعالجة من المختص'})});
   check((await closeReport(ta)).status===403,'Center cannot close its own incident');check((await closeReport(tad)).status===200,'Authorized admin can resolve report');report=await call(ta,'/incidents/'+incidentId);check(report.body.status==='RESOLVED'&&report.body.resolvedAt,'Center sees resolution outcome without private review notes');
+  p=await preview();const outdated=await submit('checklists',checklist(p));check(outdated.status===201,'Fresh assessment can be submitted before trip edit');
+  await db.trip.update({where:{id:trip.id},data:{capacity:5}});check((await decide(tr,'ALLOWED',outdated.body.id)).status===409,'Reviewer cannot approve evidence collected before a trip change');
+  p=await preview();const latest=await submit('checklists',checklist(p));check(latest.status===201,'Updated trip supports a new assessment');
+  check((await decide(tr,'ALLOWED',id)).status===409,'Reviewer cannot re-approve a superseded assessment');
+  const wrongPath=await fetch(base+'/trips/'+b.trip.id+'/safety/checklists/'+latest.body.id+'/decision',{method:'PATCH',headers:{authorization:'Bearer '+tr,'content-type':'application/json'},body:JSON.stringify({decision:'ALLOWED'})});check(wrongPath.status===404,'Review URL trip must match checklist');
+  check((await decide(tr,'ALLOWED',latest.body.id)).status===200,'Reviewer can approve latest unchanged assessment');
   p=await preview();c=checklist(p);await db.trip.update({where:{id:trip.id},data:{status:'COMPLETED'}});check((await submit('checklists',c)).status===409,'Trip closure invalidates outstanding assessment');p=await preview();check(!p.canAssess,'Closed trip cannot be assessed');check((await submit('checklists',checklist(p))).status===409,'Fresh preview cannot override closed trip');
   check((await submit('incidents',incident(p))).status===201,'Post-trip incident reporting remains available');
   await db.trip.update({where:{id:trip.id},data:{status:'OPEN',startsAt:new Date(Date.now()-60000)}});p=await preview();check(!p.canAssess&&(await submit('checklists',checklist(p))).status===409,'Started trip cannot receive a backdated pre-trip assessment');

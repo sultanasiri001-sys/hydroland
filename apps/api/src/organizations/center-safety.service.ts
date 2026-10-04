@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { OperationalDecision, Prisma, SafetyIncidentSeverity, SafetyIncidentStatus } from '@prisma/client';
 import { createHash } from 'node:crypto';
+import { safetyTripRevision, safetyTripSelect } from '../safety/safety-assessment-context';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 
@@ -12,7 +13,7 @@ const checklistItems = [
   { key: 'weather_review', label: 'مراجعة الطقس والبحر' },
   { key: 'emergency_plan', label: 'تأكيد خطة الطوارئ' },
 ];
-const tripSelect = { id: true, title: true, status: true, type: true, startsAt: true, endsAt: true, updatedAt: true } as const;
+const tripSelect = safetyTripSelect;
 const checklistSelect = { id: true, tripId: true, decision: true, notes: true, decidedAt: true, createdAt: true, updatedAt: true, trip: { select: tripSelect } } as const;
 const incidentSelect = { id: true, tripId: true, severity: true, title: true, status: true, locationName: true, createdAt: true, updatedAt: true, resolvedAt: true, trip: { select: tripSelect } } as const;
 const hash = (data: unknown) => createHash('sha256').update(JSON.stringify(data)).digest('hex');
@@ -148,7 +149,7 @@ export class CenterSafetyService {
         result = { id: row.id, tripId, severity: row.severity, status: row.status, createdAt: row.createdAt.toISOString(), externalDistressSent: false, alreadyApplied: false };
       } else throw new BadRequestException('نوع سجل السلامة غير صالح.');
       const resource = kind === 'checklist' ? 'SafetyChecklist' : 'SafetyIncident';
-      await this.audit.record({ actorId: accountId, action: kind === 'checklist' ? 'SAFETY_ASSESSMENT_CREATED' : 'SAFETY_INCIDENT_REPORTED', resource, resourceId: String(result.id), metadata: { source: 'center', organizationId, tripId, requestId: input.requestId, fingerprint, result } }, tx);
+      await this.audit.record({ actorId: accountId, action: kind === 'checklist' ? 'SAFETY_ASSESSMENT_CREATED' : 'SAFETY_INCIDENT_REPORTED', resource, resourceId: String(result.id), metadata: { source: 'center', organizationId, tripId, tripRevision: safetyTripRevision(state.trip), requestId: input.requestId, fingerprint, result } }, tx);
       const reviewers = await tx.roleAssignment.findMany({ where: { role: { in: kind === 'checklist' ? ['ADMIN', 'REVIEWER'] : ['ADMIN'] }, status: 'ACTIVE', account: { status: 'ACTIVE' } }, distinct: ['accountId'], select: { accountId: true } });
       if (reviewers.length) await tx.notification.createMany({ data: reviewers.map(reviewer => ({ accountId: reviewer.accountId, type: kind === 'checklist' ? 'SAFETY_CHECKLIST_SUBMITTED' : 'SAFETY_INCIDENT_REPORTED', status: 'SENT' as const, sentAt: new Date(), payload: { source: 'center', resource, resourceId: String(result.id), tripId, message: kind === 'checklist' ? 'قائمة فحص مركز غوص تحتاج مراجعة.' : 'بلاغ سلامة جديد من مركز غوص يحتاج مراجعة.' } })) });
       return result;
