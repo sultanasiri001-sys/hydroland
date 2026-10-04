@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { centerReportRange, riyadhToday } from './center-report-range';
+import { centerReportRange } from './center-report-range';
 import {CenterLicensePlatformReviewService} from './center-license-platform-review.service';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
@@ -67,17 +67,6 @@ export class DiveCenterPortalService {
     });
     if(!membership)throw new ForbiddenException('Active dive-center manager membership required.');
     return membership.organization;
-  }
-
-  async overview(accountId:string){
-    const center=await this.managedCenter(accountId),today=riyadhToday();
-    const [newBookings,tripsToday,memberCount,tripCount]=await Promise.all([
-      this.db.booking.count({where:{trip:{organizationId:center.id},status:'PENDING'}}),
-      this.db.trip.count({where:{organizationId:center.id,startsAt:{gte:today.start,lt:today.end},status:{in:['DRAFT','OPEN','CLOSED','COMPLETED']}}}),
-      this.db.organizationMember.count({where:{organizationId:center.id,status:'ACTIVE'}}),
-      this.db.trip.count({where:{organizationId:center.id}}),
-    ]);
-    return {center,timeZone:'Asia/Riyadh',date:today.date,metrics:{newBookings,tripsToday,activeMembers:memberCount,totalTrips:tripCount}};
   }
 
   async reports(accountId:string,from?:string,to?:string){
