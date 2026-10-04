@@ -8,6 +8,7 @@ const setupAdmin=async (page,role='admin')=>{
   const authed=request=>request.headers().authorization==='Bearer portal-action-access';
   await page.route(/\/api\/v1\/me$/,async route=>{
     if(!authed(route.request()))return json(route,{message:'Unauthorized'},401);
+    if(state.gate)await state.gate;
     if(state.hold)await new Promise(resolve=>{state.release=resolve});
     if(state.fail)return json(route,{message:'Unavailable'},503);
     return json(route,{id:'portal-action-user',email:'action@hydroland.test',status:'ACTIVE',roleAssignments:state.roles,person:{firstName:'Action',lastName:'Guard',phone:null,professional:null}});
@@ -40,9 +41,11 @@ const expectClosed=async page=>{
 test('role dashboard action reauthorizes and blocks navigation after live role revocation',async({page})=>{
   const state=await setupAdmin(page);
   await page.evaluate(()=>history.replaceState(null,'','#home'));
-  state.roles=[];
+  // Hold background refresh responses until the action has dispatched, so
+  // successful early revocation cannot remove the target before the click.
+  let release;state.gate=new Promise(resolve=>{release=resolve});state.roles=[];
   const dashboard=page.locator('.hl-role-dashboard[data-role="admin"]');
-  await dashboard.getByRole('button',{name:'مركز الحوادث'}).click();
+  try{await dashboard.getByRole('button',{name:'مركز الحوادث'}).click()}finally{release();state.gate=null}
   await expectClosed(page);
 });
 
