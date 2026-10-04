@@ -48,7 +48,7 @@ test('credential can be created, documented, privately opened and submitted from
   await expect(editor).not.toBeVisible();await expect.poll(()=>page.evaluate(()=>window.HydrolandProfileData?.credentials?.length)).toBe(1);
 
   const credentialArticle=certificates.locator(':scope > article').first();await expect(credentialArticle).toContainText('Rescue Diver E2E');
-  const fileInput=credentialArticle.locator('input[type="file"]');await expect(fileInput).toHaveCount(1);
+  const fileInput=credentialArticle.locator('input[data-credential-upload]');await expect(fileInput).toHaveCount(1);
   const png=Buffer.concat([Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]),Buffer.from('web-e2e')]);
   await fileInput.setInputFiles({name:'certificate.png',mimeType:'image/png',buffer:png});
   await expect.poll(()=>state.uploadedPayload?.originalName).toBe('certificate.png');
