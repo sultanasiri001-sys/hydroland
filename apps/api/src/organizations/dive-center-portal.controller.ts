@@ -1,3 +1,4 @@
+import { BookingManagementService } from '../trips/booking-management.service';
 import { CenterCustomerService } from './center-customer.service';
 import { TripLifecycleService } from '../trips/trip-lifecycle.service';
 import { TrainingSessionService } from '../governance/training-session.service';
@@ -14,7 +15,7 @@ import { DiveCenterPortalService } from './dive-center-portal.service';
 @Controller('center')
 @UseGuards(AccessTokenGuard)
 export class DiveCenterPortalController {
-  constructor(private readonly customersDirectory:CenterCustomerService,private readonly tripLifecycle:TripLifecycleService,private readonly trainingSessions:TrainingSessionService,private readonly trainingAssignments:TrainingAssignmentService,private readonly memberships:OrganizationMembershipService,private readonly equipmentManagement:CenterEquipmentManagementService, private readonly portal:DiveCenterPortalService,private readonly tripManagement:CenterTripManagementService){}
+  constructor(private readonly bookingManagement:BookingManagementService,private readonly customersDirectory:CenterCustomerService,private readonly tripLifecycle:TripLifecycleService,private readonly trainingSessions:TrainingSessionService,private readonly trainingAssignments:TrainingAssignmentService,private readonly memberships:OrganizationMembershipService,private readonly equipmentManagement:CenterEquipmentManagementService, private readonly portal:DiveCenterPortalService,private readonly tripManagement:CenterTripManagementService){}
   @Patch(':id/business-profile') updateBusinessProfile(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.portal.updateBusinessProfile(request.auth.accountId,id,body);}
   @Get('me/reports') reports(@Req() request:AuthenticatedRequest,@Query('from') from?:string,@Query('to') to?:string){return this.portal.reports(request.auth.accountId,from,to);}
   @Get('me/overview') overview(@Req() request:AuthenticatedRequest){return this.portal.overview(request.auth.accountId);}
@@ -48,6 +49,10 @@ export class DiveCenterPortalController {
   @Patch('me/equipment/:resourceId/move') equipmentMove(@Req() request:AuthenticatedRequest,@Param('resourceId') resourceId:string,@Body() body:Record<string,unknown>){return this.portal.moveEquipment(request.auth.accountId,resourceId,body);}
 
   @Get('me/equipment/:resourceId/history') equipmentHistory(@Req() request:AuthenticatedRequest,@Param('resourceId') resourceId:string){return this.portal.equipmentHistory(request.auth.accountId,resourceId);}
+
+  @Get('me/bookings') bookingsDirectory(@Req() request:AuthenticatedRequest,@Query() query:Record<string,unknown>){return this.bookingManagement.listCenter(request.auth.accountId,query);}
+  @Get('me/bookings/:id') bookingDetail(@Req() request:AuthenticatedRequest,@Param('id') id:string){return this.bookingManagement.detail(request.auth.accountId,id);}
+  @Post('me/bookings/:id/actions') bookingAction(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.bookingManagement.apply(request.auth.accountId,id,body);}
 
   @Get('me/customers') customers(@Req() request:AuthenticatedRequest,@Query() query:Record<string,unknown>){return this.customersDirectory.list(request.auth.accountId,query);}
   @Get('me/customers/:customerId') customer(@Req() request:AuthenticatedRequest,@Param('customerId') customerId:string,@Query() query:Record<string,unknown>){return this.customersDirectory.detail(request.auth.accountId,customerId,query);}

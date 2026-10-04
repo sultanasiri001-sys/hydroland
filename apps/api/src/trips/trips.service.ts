@@ -1,3 +1,4 @@
+import { BookingManagementService } from './booking-management.service';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
@@ -12,7 +13,7 @@ type TripPrice={pricePerSeatMinor:number;currency:'SAR';configured:boolean};
 
 @Injectable()
 export class TripsService {
-  constructor(private readonly db:DatabaseService,private readonly weatherGate:WeatherGateService,private readonly weatherReviews:TripWeatherReviewService,private readonly participants:BookingParticipantService,private readonly policies:PolicyControlService,private readonly audit:AuditService) {}
+  constructor(private readonly bookingManagement:BookingManagementService,private readonly db:DatabaseService,private readonly weatherGate:WeatherGateService,private readonly weatherReviews:TripWeatherReviewService,private readonly participants:BookingParticipantService,private readonly policies:PolicyControlService,private readonly audit:AuditService) {}
 
   private async tripPrice(tripId:string):Promise<TripPrice>{
     const row=await this.db.operationalSetting.findUnique({where:{key:`trip-price:${tripId}`},select:{value:true}});
@@ -53,16 +54,7 @@ export class TripsService {
 
   mine(accountId:string){return this.db.booking.findMany({where:{accountId},include:{trip:true},orderBy:{createdAt:'desc'}});}
 
-  async cancelMine(accountId:string,bookingId:string){
-    const booking=await this.db.booking.findFirst({where:{id:bookingId,accountId},include:{trip:true}});
-    if(!booking)throw new NotFoundException('Booking not found.');
-    if(booking.status==='CANCELLED')return booking;
-    if(booking.trip.status==='COMPLETED'||booking.trip.status==='CANCELLED')throw new ConflictException('Booking cannot be cancelled after trip closure.');
-    if(booking.trip.startsAt<=new Date())throw new ConflictException('Booking cannot be cancelled after the trip starts.');
-    const updated=await this.db.booking.update({where:{id:bookingId},data:{status:'CANCELLED'}});
-    await this.audit.record({actorId:accountId,action:'BOOKING_SELF_CANCELLED',resource:'Booking',resourceId:bookingId,metadata:{accountId,tripId:booking.tripId,seats:booking.seats,previousStatus:booking.status}});
-    return updated;
-  }
+  cancelMine(accountId:string,bookingId:string){return this.bookingManagement.legacy(accountId,bookingId,'CANCEL','owner');}
 
   participantsForBooking(accountId:string,bookingId:string){return this.participants.listForOwner(accountId,bookingId);}
   updateParticipant(accountId:string,bookingId:string,participantId:string,input:{fullName?:string;certificationTitle?:string|null;certificationNumber?:string|null;certificationIssuer?:string|null}){return this.participants.updateForOwner(accountId,bookingId,participantId,input);}

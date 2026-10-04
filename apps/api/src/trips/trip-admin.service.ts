@@ -1,3 +1,4 @@
+import { BookingManagementService } from './booking-management.service';
 import { TripLifecycleService } from './trip-lifecycle.service';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
@@ -20,7 +21,7 @@ type TripPrice={pricePerSeatMinor:number;currency:'SAR';configured:boolean};
 
 @Injectable()
 export class TripAdminService {
-  constructor(private readonly lifecycle:TripLifecycleService,private readonly db:DatabaseService,private readonly audit:AuditService,private readonly crewAssignments:CrewAssignmentService,private readonly clearance:OperationalClearanceService,private readonly participants:BookingParticipantService,private readonly policies:PolicyControlService,private readonly notifications:NotificationsService,private readonly weatherGate:WeatherGateService,private readonly weatherReviews:TripWeatherReviewService) {}
+  constructor(private readonly bookingManagement:BookingManagementService,private readonly lifecycle:TripLifecycleService,private readonly db:DatabaseService,private readonly audit:AuditService,private readonly crewAssignments:CrewAssignmentService,private readonly clearance:OperationalClearanceService,private readonly participants:BookingParticipantService,private readonly policies:PolicyControlService,private readonly notifications:NotificationsService,private readonly weatherGate:WeatherGateService,private readonly weatherReviews:TripWeatherReviewService) {}
 
   private async notifyQuietly(accountId:string,type:string,payload:Record<string,unknown>){try{await this.notifications.notify(accountId,type,payload);}catch{return;}}
   private priceKey(tripId:string){return `trip-price:${tripId}`;}
@@ -55,31 +56,7 @@ export class TripAdminService {
 
   async bookings(tripId:string){const trip=await this.db.trip.findUnique({where:{id:tripId},select:{id:true}});if(!trip)throw new NotFoundException('Trip not found.');const bookings=(await this.db.booking.findMany({where:{tripId},orderBy:{createdAt:'asc'},include:{account:{select:{id:true,email:true,person:{select:{firstName:true,lastName:true}}}},participants:true}})) as Array<AdminBookingRow&{participants:unknown[]}>;return bookings;}
 
-  async confirmBooking(reviewerAccountId:string,tripId:string,bookingId:string){
-    const initial=await this.db.booking.findUnique({where:{id:bookingId},select:{tripId:true,seats:true,status:true}});if(!initial||initial.tripId!==tripId)throw new NotFoundException('Booking not found for this trip.');
-    const participantPolicy=initial.status==='CONFIRMED'?{policyState:'ENABLED',reviewRequired:false,bypassed:false,issues:[],incompleteParticipants:0}:await this.participants.assertConfirmable(bookingId,initial.seats);
-    const [safetyPolicy,weatherPolicy,capacityPolicy,gateSettings]=await Promise.all([this.policies.decision('BOOKING','SAFETY_APPROVAL'),this.policies.decision('WEATHER','WEATHER_GATE'),this.policies.decision('BOOKING','CAPACITY_LIMIT'),this.weatherGate.settings()]);
-    const reviewIssues=[...participantPolicy.issues];
-    let weatherState:Awaited<ReturnType<TripWeatherReviewService['refresh']>>|null=null;
-    let weatherOutcome=this.weatherGate.evaluate(null,gateSettings);
-    if(gateSettings.enabled){
-      try{weatherState=await this.weatherReviews.refresh(reviewerAccountId,tripId);weatherOutcome=this.weatherGate.evaluateReview(weatherState.review.snapshot,weatherState.review.status,gateSettings);}catch(error){weatherOutcome={...this.weatherGate.evaluate(null,gateSettings),reason:error instanceof Error?error.message:'Weather data unavailable.'};}
-      if(weatherOutcome.blocking){if(weatherPolicy.enforce)throw new ConflictException(weatherOutcome.reason||'Trip requires an approved weather review before confirmation.');if(weatherPolicy.review)reviewIssues.push('WEATHER_GATE');}
-    }
-    let newlyConfirmed=false;
-    const updated=await this.db.serializable(async tx=>{
-      const booking=await tx.booking.findUnique({where:{id:bookingId},include:{trip:true}});if(!booking||booking.tripId!==tripId)throw new NotFoundException('Booking not found for this trip.');if(booking.status==='CONFIRMED')return booking;if(booking.status!=='PENDING')throw new ConflictException('Only pending bookings can be confirmed.');if(booking.trip.status!=='OPEN'&&booking.trip.status!=='CLOSED')throw new ConflictException('Trip is not available for booking confirmation.');if(booking.trip.startsAt<=new Date())throw new ConflictException('Trip already started.');
-      const latestSafety=await tx.safetyChecklist.findFirst({where:{tripId},orderBy:{createdAt:'desc'},select:{decision:true}});if(latestSafety?.decision!=='ALLOWED'){if(safetyPolicy.enforce)throw new ConflictException('Trip requires an ALLOWED safety decision before confirmation.');if(safetyPolicy.review)reviewIssues.push('SAFETY_APPROVAL');}
-      if(gateSettings.enabled&&gateSettings.mode==='ENFORCE'&&weatherPolicy.enforce){const rows=await tx.$queryRaw<Array<{status:string;snapshotHash:string}>>`SELECT "status","snapshotHash" FROM "TripWeatherReview" WHERE "id"::text=${weatherState?.review.id??''} AND "tripId"::text=${tripId} LIMIT 1`;if(rows[0]?.status!=='APPROVED'||rows[0].snapshotHash!==weatherState?.review.snapshotHash)throw new ConflictException('Fresh weather forecast requires human operational approval before confirmation.');}
-      const confirmed=await tx.booking.aggregate({where:{tripId,status:'CONFIRMED'},_sum:{seats:true}}),usedSeats=confirmed._sum.seats??0;if(usedSeats+booking.seats>booking.trip.capacity){if(capacityPolicy.enforce)throw new ConflictException('Trip capacity reached.');if(capacityPolicy.review)reviewIssues.push('CAPACITY_LIMIT');}
-      newlyConfirmed=true;return tx.booking.update({where:{id:bookingId},data:{status:'CONFIRMED'}});
-    });
-    const crewNotification=newlyConfirmed?await this.crewAssignments.dispatchForConfirmedBooking(tripId,bookingId):{tripId,bookingId,notifiedCrew:0};
-    const policyReview={required:reviewIssues.length>0,issues:[...new Set(reviewIssues)],states:{participant:participantPolicy.policyState,safety:safetyPolicy.state,weather:weatherPolicy.state,capacity:capacityPolicy.state},weatherGate:{enabled:gateSettings.enabled,mode:gateSettings.mode,provider:gateSettings.provider,decision:weatherOutcome.decision,reviewStatus:weatherState?.review.status??null,forecastAt:weatherState?.review.forecastAt??null}};
-    await this.audit.record({action:'BOOKING_CONFIRMED',resource:'Booking',resourceId:bookingId,metadata:{reviewerAccountId,tripId,accountId:updated.accountId,seats:updated.seats,notifiedCrew:crewNotification.notifiedCrew,newlyConfirmed,policyReview}});
-    if(newlyConfirmed)await this.notifyQuietly(updated.accountId,'BOOKING_CONFIRMED',{bookingId,tripId,seats:updated.seats});
-    return {...updated,crewNotification,policyReview};
-  }
+  confirmBooking(reviewerAccountId:string,tripId:string,bookingId:string){return this.bookingManagement.legacy(reviewerAccountId,bookingId,'CONFIRM','admin',tripId);}
 
   async setParticipantEligibility(reviewerAccountId:string,tripId:string,bookingId:string,participantId:string,status:'ELIGIBLE'|'REJECTED'){
     const booking=await this.db.booking.findUnique({where:{id:bookingId},select:{tripId:true,status:true,accountId:true}});
@@ -95,7 +72,7 @@ export class TripAdminService {
     return rows;
   }
 
-  async cancelBooking(reviewerAccountId:string,tripId:string,bookingId:string){const booking=await this.db.booking.findUnique({where:{id:bookingId},include:{trip:true}});if(!booking||booking.tripId!==tripId)throw new NotFoundException('Booking not found for this trip.');if(booking.status==='CANCELLED')return booking;if(booking.trip.status==='COMPLETED'||booking.trip.status==='CANCELLED')throw new ConflictException('Booking cannot be cancelled after trip closure.');if(booking.trip.startsAt<=new Date())throw new ConflictException('Booking cannot be cancelled after the trip starts.');const updated=await this.db.booking.update({where:{id:bookingId},data:{status:'CANCELLED'}});await this.audit.record({action:'BOOKING_CANCELLED',resource:'Booking',resourceId:bookingId,metadata:{reviewerAccountId,tripId,accountId:booking.accountId,seats:booking.seats,previousStatus:booking.status}});await this.notifyQuietly(booking.accountId,'BOOKING_CANCELLED',{bookingId,tripId,seats:booking.seats});return updated;}
+  cancelBooking(reviewerAccountId:string,tripId:string,bookingId:string){return this.bookingManagement.legacy(reviewerAccountId,bookingId,'CANCEL','admin',tripId);}
 
   async create(reviewerAccountId:string,input:CreateTripInput){
     if(!input.title?.trim()||!input.type?.trim()||!input.startsAt||!input.endsAt)throw new BadRequestException('Trip title, type, startsAt and endsAt are required.');
