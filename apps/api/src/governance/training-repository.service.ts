@@ -1,7 +1,10 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { Prisma, TrainingEnrollmentStatus, TrainingRecordStatus, TrainingSessionStatus } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
+import { AuditService } from '../audit/audit.service';
+import { TrainingAuthorizationService } from './training-authorization.service';
+import { hasInstructorCenterAccess } from './training-center-scope';
 
 export interface CreateTrainingEnrollmentInput {
   studentAccountId: string;
@@ -13,7 +16,13 @@ export interface CreateTrainingEnrollmentInput {
 
 @Injectable()
 export class TrainingRepositoryService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(private readonly db: DatabaseService,private readonly authorization:TrainingAuthorizationService,private readonly audit:AuditService) {}
+
+  private async eligibleInstructor(tx:Prisma.TransactionClient,accountId:string,centerId:string|null){
+    if(typeof accountId!=='string'||!accountId.trim())throw new BadRequestException('اختر مدربًا للتكليف.');
+    const active=await tx.roleAssignment.findFirst({where:{accountId,role:'INSTRUCTOR',status:'ACTIVE',account:{status:'ACTIVE'}},select:{id:true}});
+    if(!active||!await hasInstructorCenterAccess(tx,accountId,centerId))throw new ConflictException('يتطلب التكليف مدربًا نشطًا بعضوية مدرب نشطة في المركز.');
+  }
 
   createEnrollment(input: CreateTrainingEnrollmentInput) {
     return this.db.trainingEnrollment.create({
@@ -43,10 +52,14 @@ export class TrainingRepositoryService {
     });
   }
 
-  assignInstructor(enrollmentId: string, instructorAccountId: string) {
-    return this.db.trainingEnrollment.update({
-      where: { id: enrollmentId },
-      data: { instructorAccountId },
+  assignInstructor(enrollmentId: string, instructorAccountId: string, actorId:string) {
+    return this.db.serializable(async tx=>{
+      await this.authorization.assertAdministrativeEnrollmentAccess(actorId,enrollmentId,tx);
+      const enrollment=await tx.trainingEnrollment.findUniqueOrThrow({where:{id:enrollmentId}});
+      await this.eligibleInstructor(tx,instructorAccountId,enrollment.centerOrganizationId);
+      const updated=await tx.trainingEnrollment.update({where:{id:enrollmentId},data:{instructorAccountId}});
+      await this.audit.record({actorId,action:'training.instructor_assigned',resource:'trainingEnrollment',resourceId:enrollmentId,metadata:{from:enrollment.instructorAccountId,to:instructorAccountId,centerOrganizationId:enrollment.centerOrganizationId}},tx);
+      return updated;
     });
   }
 
@@ -133,8 +146,13 @@ export class TrainingRepositoryService {
     facilityOrSiteId?: string;
     tripId?: string;
     vesselId?: string;
-  }) {
-    return this.db.trainingSession.create({ data: input });
+  },actorId:string) {
+    return this.db.serializable(async tx=>{
+      await this.authorization.assertRecordAccess(actorId,input.trainingRecordId,tx);
+      const record=await tx.trainingRecord.findUniqueOrThrow({where:{id:input.trainingRecordId},select:{enrollment:{select:{centerOrganizationId:true}}}});
+      await this.eligibleInstructor(tx,input.instructorAccountId,record.enrollment.centerOrganizationId);
+      return tx.trainingSession.create({data:input});
+    });
   }
 
   getSession(id: string) {

@@ -47,3 +47,48 @@ test('center invitation submission rechecks authority before writing',async({pag
  await page.locator('[data-portal-label="محترفي الغوص"]').click();const panel=page.locator('#hl-center-team');await panel.getByText('دعوة عضو للمركز',{exact:true}).click();await panel.locator('[name="email"]').fill('member@example.invalid');state.active=false;
  await panel.locator('[data-center-team-invite]').evaluate(form=>form.requestSubmit());await expect(panel).toHaveCount(0);expect(writes).toBe(0);
 });
+
+const managedMember=()=>({...team[0],updatedAt:'2026-10-04T08:00:00.000Z',canChangeRole:true,canSuspend:true,canReactivate:false,openTrainingEnrollments:2,openTrainingSessions:3});
+async function openManagedTeam(page,state){
+ state.team=[managedMember(),{membershipId:'owner',role:'OWNER',status:'ACTIVE',person:{displayName:'مالك المركز'}},{membershipId:'pending',role:'STAFF',status:'PENDING',person:{displayName:'العضو المدعو'}}];
+ await page.locator('[data-portal-label="محترفي الغوص"]').click();const panel=page.locator('#hl-center-team');await panel.locator('[data-center-team-mode="team"]').click();await panel.getByText('تعديل العضوية',{exact:true}).click();return panel;
+}
+test('center changes ordinary role and preserves fields on a failed save',async({page})=>{
+ const state=await install(page),panel=await openManagedTeam(page,state),writes=[];
+ await expect(panel.locator('[data-team-manage]')).toHaveCount(1);
+ const form=panel.locator('[data-team-manage]');await expect(form.locator('[data-training-impact]')).toContainText('الجلسات غير المنتهية: 3');
+ await expect(form.locator('option[value="OWNER"],option[value="ADMIN"]')).toHaveCount(0);
+ await page.route('**/api/v1/center/me/team/m1',route=>{
+  writes.push(route.request().postDataJSON());expect(route.request().method()).toBe('PATCH');if(writes.length===1)return json(route,{message:'تعذر الحفظ مؤقتًا'},503);
+  state.team=[{...managedMember(),role:'STAFF',updatedAt:'2026-10-04T08:01:00.000Z'}];return json(route,{id:'m1',role:'STAFF',status:'ACTIVE'});
+ });
+ await form.getByLabel('الدور الجديد').selectOption('STAFF');await form.getByLabel('سبب التعديل').fill('تغيير مهام العضو');await form.getByRole('button',{name:'حفظ التعديل'}).click();
+ await expect(form.locator('[data-team-manage-message]')).toContainText('تعذر الحفظ مؤقتًا');await expect(form.getByLabel('سبب التعديل')).toHaveValue('تغيير مهام العضو');await expect(form.getByLabel('الدور الجديد')).toHaveValue('STAFF');
+ await form.getByRole('button',{name:'حفظ التعديل'}).click();await expect(panel.locator('[data-team-feedback]')).toContainText('تم حفظ الدور الجديد');await expect(panel).toContainText('دور المركز: عضو فريق');
+ expect(writes).toHaveLength(2);expect(writes[0]).toEqual(writes[1]);expect(writes[0]).toEqual({action:'CHANGE_ROLE',role:'STAFF',reason:'تغيير مهام العضو',expectedUpdatedAt:'2026-10-04T08:00:00.000Z'});
+});
+test('center suspends and reactivates membership with current revision and no forged role',async({page})=>{
+ const state=await install(page),panel=await openManagedTeam(page,state),writes=[];
+ await page.route('**/api/v1/center/me/team/m1',route=>{
+  const payload=route.request().postDataJSON();writes.push(payload);const suspended=payload.action==='SUSPEND';state.team=[{...managedMember(),status:suspended?'SUSPENDED':'ACTIVE',canSuspend:!suspended,canReactivate:suspended,updatedAt:suspended?'2026-10-04T08:01:00.000Z':'2026-10-04T08:02:00.000Z'}];return json(route,{id:'m1',role:'INSTRUCTOR',status:state.team[0].status});
+ });
+ let form=panel.locator('[data-team-manage]');await form.getByLabel('الإجراء',{exact:true}).selectOption('SUSPEND');await expect(form.locator('[data-team-role-field]')).toBeHidden();await form.getByLabel('سبب التعديل').fill('إيقاف مؤقت');await form.getByRole('button',{name:'حفظ التعديل'}).click();
+ await expect(panel.locator('[data-team-feedback]')).toContainText('تم إيقاف العضوية');await expect(panel).toContainText('موقوف');await panel.getByText('تعديل العضوية',{exact:true}).click();form=panel.locator('[data-team-manage]');
+ await expect(form.locator('option[value="SUSPEND"]')).toHaveCount(0);await form.getByLabel('الإجراء',{exact:true}).selectOption('REACTIVATE');await form.getByLabel('سبب التعديل').fill('انتهاء الإيقاف');await form.getByRole('button',{name:'حفظ التعديل'}).click();await expect(panel.locator('[data-team-feedback]')).toContainText('إعادة تفعيل العضوية');
+ expect(writes.map(row=>row.action)).toEqual(['SUSPEND','REACTIVATE']);expect(writes.every(row=>row.role===undefined)).toBe(true);expect(writes[1].expectedUpdatedAt).toBe('2026-10-04T08:01:00.000Z');
+});
+test('center membership conflict preserves reason and offers explicit refresh',async({page})=>{
+ const state=await install(page),panel=await openManagedTeam(page,state);let writes=0;
+ await page.route('**/api/v1/center/me/team/m1',route=>{writes++;state.team=[{...managedMember(),status:'SUSPENDED',canSuspend:false,canReactivate:true,updatedAt:'2026-10-04T08:03:00.000Z'}];return json(route,{message:'تغيرت العضوية. حدّث القائمة.'},409)});
+ const form=panel.locator('[data-team-manage]');await form.getByLabel('الإجراء',{exact:true}).selectOption('SUSPEND');await form.getByLabel('سبب التعديل').fill('مراجعة العضوية');await form.getByRole('button',{name:'حفظ التعديل'}).click();await expect(form).toContainText('تغيرت العضوية');await expect(form.getByLabel('سبب التعديل')).toHaveValue('مراجعة العضوية');
+ await form.getByRole('button',{name:'تحديث قائمة الطاقم'}).click();await expect(panel.locator('[data-team-manage]')).toHaveAttribute('data-revision','2026-10-04T08:03:00.000Z');expect(writes).toBe(1);
+});
+test('center member edit rechecks manager role before sending',async({page})=>{
+ const state=await install(page),panel=await openManagedTeam(page,state);let writes=0;await page.route('**/api/v1/center/me/team/m1',route=>{writes++;return json(route,{id:'m1',status:'SUSPENDED'})});
+ const form=panel.locator('[data-team-manage]');await form.getByLabel('الإجراء',{exact:true}).selectOption('SUSPEND');await form.getByLabel('سبب التعديل').fill('سبب الإيقاف');state.active=false;await form.evaluate(el=>el.requestSubmit());await expect(panel).toHaveCount(0);expect(writes).toBe(0);
+});
+test('late membership save cannot restore team data after logout',async({page})=>{
+ const state=await install(page),panel=await openManagedTeam(page,state);let pending;await page.route('**/api/v1/center/me/team/m1',route=>{pending=route});
+ const form=panel.locator('[data-team-manage]');await form.getByLabel('الإجراء',{exact:true}).selectOption('SUSPEND');await form.getByLabel('سبب التعديل').fill('إيقاف مؤقت');await form.getByRole('button',{name:'حفظ التعديل'}).click();await expect.poll(()=>Boolean(pending)).toBe(true);
+ await page.evaluate(()=>window.HydrolandAuth.terminateSession());await json(pending,{id:'m1',status:'SUSPENDED'});await expect(panel).toHaveCount(0);await expect(page.getByText('تم إيقاف العضوية في المركز.',{exact:true})).toHaveCount(0);
+});

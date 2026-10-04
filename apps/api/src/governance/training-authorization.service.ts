@@ -1,5 +1,7 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
+import { hasInstructorCenterAccess } from './training-center-scope';
 
 type EnrollmentScope = {
   studentAccountId: string;
@@ -15,39 +17,42 @@ export class TrainingAuthorizationService {
     throw new ForbiddenException('Training resource access denied.');
   }
 
-  private async isAdmin(accountId: string) {
-    return Boolean(await this.db.roleAssignment.findFirst({
-      where: { accountId, status: 'ACTIVE', role: 'ADMIN' },
+  private async isAdmin(accountId: string, db:Prisma.TransactionClient=this.db) {
+    return Boolean(await db.roleAssignment.findFirst({
+      where: { accountId, status: 'ACTIVE', role: 'ADMIN', account:{status:'ACTIVE'} },
       select: { id: true },
     }));
   }
 
-  private async isAssignedInstructor(accountId: string, enrollment: EnrollmentScope) {
+  private async isAssignedInstructor(accountId: string, enrollment: EnrollmentScope, db:Prisma.TransactionClient=this.db) {
     if (enrollment.instructorAccountId !== accountId) return false;
-    return Boolean(await this.db.roleAssignment.findFirst({
-      where: { accountId, status: 'ACTIVE', role: 'INSTRUCTOR' },
+    const active=Boolean(await db.roleAssignment.findFirst({
+      where: { accountId, status: 'ACTIVE', role: 'INSTRUCTOR', account:{status:'ACTIVE'} },
       select: { id: true },
     }));
+    return active&&await hasInstructorCenterAccess(db,accountId,enrollment.centerOrganizationId);
   }
 
-  private async isCenterOperator(accountId: string, centerOrganizationId: string | null) {
+  private async isCenterOperator(accountId: string, centerOrganizationId: string | null, db:Prisma.TransactionClient=this.db) {
     if (!centerOrganizationId) return false;
-    return Boolean(await this.db.organizationMember.findFirst({
+    return Boolean(await db.organizationMember.findFirst({
       where: {
         accountId,
         organizationId: centerOrganizationId,
         status: 'ACTIVE',
         role: { in: ['OWNER', 'ADMIN', 'OPERATOR'] },
+        account:{status:'ACTIVE'},
+        organization:{kind:'DIVE_CENTER',status:'ACTIVE'},
       },
       select: { id: true },
     }));
   }
 
-  private async assertScope(accountId: string, enrollment: EnrollmentScope, allowStudent: boolean) {
+  private async assertScope(accountId: string, enrollment: EnrollmentScope, allowStudent: boolean, db:Prisma.TransactionClient=this.db) {
     if (allowStudent && enrollment.studentAccountId === accountId) return;
-    if (await this.isAdmin(accountId)) return;
-    if (await this.isAssignedInstructor(accountId, enrollment)) return;
-    if (await this.isCenterOperator(accountId, enrollment.centerOrganizationId)) return;
+    if (await this.isAdmin(accountId,db)) return;
+    if (await this.isAssignedInstructor(accountId, enrollment,db)) return;
+    if (await this.isCenterOperator(accountId, enrollment.centerOrganizationId,db)) return;
     this.deny();
   }
 
@@ -68,13 +73,13 @@ export class TrainingAuthorizationService {
     await this.assertScope(accountId, enrollment, allowStudent);
   }
 
-  async assertRecordAccess(accountId: string, recordId: string) {
-    const record = await this.db.trainingRecord.findUnique({
+  async assertRecordAccess(accountId: string, recordId: string, db:Prisma.TransactionClient=this.db) {
+    const record = await db.trainingRecord.findUnique({
       where: { id: recordId },
       select: { enrollment: { select: { studentAccountId: true, instructorAccountId: true, centerOrganizationId: true } } },
     });
     if (!record) this.deny();
-    await this.assertScope(accountId, record.enrollment, false);
+    await this.assertScope(accountId, record.enrollment, false,db);
   }
 
   async assertStageAccess(accountId: string, stageId: string) {
@@ -105,25 +110,19 @@ export class TrainingAuthorizationService {
     });
     if (!session) this.deny();
 
-    if (session.instructorAccountId === accountId) {
-      const activeInstructor = await this.db.roleAssignment.findFirst({
-        where: { accountId, status: 'ACTIVE', role: 'INSTRUCTOR' },
-        select: { id: true },
-      });
-      if (activeInstructor) return;
-    }
+    if (await this.isAssignedInstructor(accountId,{...session.trainingRecord.enrollment,instructorAccountId:session.instructorAccountId})) return;
 
     await this.assertScope(accountId, session.trainingRecord.enrollment, false);
   }
 
-  async assertAdministrativeEnrollmentAccess(accountId: string, enrollmentId: string) {
-    const enrollment = await this.db.trainingEnrollment.findUnique({
+  async assertAdministrativeEnrollmentAccess(accountId: string, enrollmentId: string, db:Prisma.TransactionClient=this.db) {
+    const enrollment = await db.trainingEnrollment.findUnique({
       where: { id: enrollmentId },
       select: { centerOrganizationId: true },
     });
     if (!enrollment) this.deny();
-    if (await this.isAdmin(accountId)) return;
-    if (await this.isCenterOperator(accountId, enrollment.centerOrganizationId)) return;
+    if (await this.isAdmin(accountId,db)) return;
+    if (await this.isCenterOperator(accountId, enrollment.centerOrganizationId,db)) return;
     this.deny();
   }
 }
