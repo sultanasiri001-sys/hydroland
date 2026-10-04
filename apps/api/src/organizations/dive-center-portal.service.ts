@@ -1,3 +1,4 @@
+import { centerReportRange, riyadhToday } from './center-report-range';
 import {CenterLicensePlatformReviewService} from './center-license-platform-review.service';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
@@ -68,14 +69,24 @@ export class DiveCenterPortalService {
   }
 
   async overview(accountId:string){
-    const center=await this.managedCenter(accountId);
+    const center=await this.managedCenter(accountId),today=riyadhToday();
     const [newBookings,tripsToday,memberCount,tripCount]=await Promise.all([
       this.db.booking.count({where:{trip:{organizationId:center.id},status:'PENDING'}}),
-      this.db.trip.count({where:{organizationId:center.id,startsAt:{gte:new Date(new Date().setHours(0,0,0,0)),lt:new Date(new Date().setHours(24,0,0,0))},status:{in:['DRAFT','OPEN','CLOSED']}}}),
+      this.db.trip.count({where:{organizationId:center.id,startsAt:{gte:today.start,lt:today.end},status:{in:['DRAFT','OPEN','CLOSED','COMPLETED']}}}),
       this.db.organizationMember.count({where:{organizationId:center.id,status:'ACTIVE'}}),
       this.db.trip.count({where:{organizationId:center.id}}),
     ]);
-    return {center,metrics:{newBookings,tripsToday,activeMembers:memberCount,totalTrips:tripCount}};
+    return {center,timeZone:'Asia/Riyadh',date:today.date,metrics:{newBookings,tripsToday,activeMembers:memberCount,totalTrips:tripCount}};
+  }
+
+  async reports(accountId:string,from?:string,to?:string){
+    const period=centerReportRange(from,to),center=await this.managedCenter(accountId),tripFilter={organizationId:center.id,startsAt:{gte:period.start,lt:period.end}};
+    return this.db.$transaction(async tx=>{
+      const trips=await tx.trip.groupBy({by:['status'],where:tripFilter,_count:{_all:true},_sum:{capacity:true}});
+      const bookings=await tx.booking.groupBy({by:['status'],where:{trip:tripFilter},_count:{_all:true},_sum:{seats:true}});
+      const payments=await tx.payment.groupBy({by:['currency','status'],where:{booking:{trip:tripFilter}},_count:{_all:true},_sum:{amountMinor:true},orderBy:[{currency:'asc'},{status:'asc'}]});
+      return {center:{id:center.id,displayName:center.displayName},period:{from:period.from,to:period.to,timeZone:period.timeZone,basis:period.basis},generatedAt:new Date(),trips:trips.map(row=>({status:row.status,count:row._count._all,capacity:row._sum.capacity??0})),bookings:bookings.map(row=>({status:row.status,count:row._count._all,seats:row._sum.seats??0})),payments:payments.map(row=>({currency:row.currency,status:row.status,count:row._count._all,amountMinor:row._sum.amountMinor??0}))};
+    },{isolationLevel:'RepeatableRead'});
   }
 
   async safety(accountId:string){

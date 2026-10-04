@@ -1,3 +1,4 @@
+import {checkCenterReports} from './center-reports-http-checks.mjs';
 import {checkCenterTripManagement} from './center-trip-management-http-checks.mjs';
 import {checkCenterBusinessProfile} from './center-business-profile-http-checks.mjs';
 import {checkCenterLicensePlatformReview} from './center-license-platform-review-http-checks.mjs';
@@ -140,6 +141,8 @@ try{
   await checkCenterBusinessProfile(db,{base,a,b,ownerA,ta,tb,ts},check);
 
   await checkCenterTripManagement(db,{base,a,b,ownerA,ta,tb,ts},check);
+
+  await checkCenterReports(db,{base,a,b,ownerA,ownerB,ta,tb,ts},check);
 
   console.log(`Center safety and portal authorization HTTP/PostgreSQL E2E: ${checks}/${checks} passed (exact active role across 20 routes, same-session revocation/recovery, center isolation document metadata privacy, equipment movements/inspection gates/audit and TEXT/UUID center scope).`);
 }finally{
