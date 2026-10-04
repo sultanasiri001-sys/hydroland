@@ -1,5 +1,6 @@
 import {BadRequestException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {createHash} from 'node:crypto';
+import {AuditService} from '../audit/audit.service';
 import {DatabaseService} from '../database/database.service';
 import {CredentialObjectStorageService} from '../credentials/credential-object-storage.service';
 import {MARINE_ASSET_TYPES,REQUIRED_MARINE_DOCUMENTS,MarineAssetType,MarineReadinessResult} from './marine-operations.domain';
@@ -8,7 +9,7 @@ type MarineAssetDecision='ACTIVE'|'SUSPENDED'|'OUT_OF_SERVICE';
 
 @Injectable()
 export class MarineOperationsService{
- constructor(private readonly db:DatabaseService,private readonly storage:CredentialObjectStorageService){}
+ constructor(private readonly db:DatabaseService,private readonly storage:CredentialObjectStorageService,private readonly audit:AuditService){}
  async overviewMine(accountId:string){
   const role=await this.db.roleAssignment.findFirst({where:{accountId,role:'BOAT_OWNER',status:'ACTIVE',account:{status:'ACTIVE'}},select:{id:true}});
   if(!role)throw new ForbiddenException('Active marine brokerage role required.');
@@ -76,13 +77,13 @@ export class MarineOperationsService{
   if(!document?.storageKey)throw new NotFoundException('Marine document file not found.');
   await this.requireMember(accountId,document.marineAsset.organizationId);
   if(!await this.storage.exists(document.storageKey))throw new NotFoundException('Marine document bytes not found.');
-  return this.storage.signedGet(document.storageKey,300);
+  const access=this.storage.signedGet(document.storageKey,300);await this.audit.record({actorId:accountId,action:'MARINE_DOCUMENT_ACCESS_ISSUED',resource:'MarineAssetDocument',resourceId:document.id,metadata:{accountId,marineAssetId,mode:'OWNER',expiresAt:access.expiresAt}});return access;
  }
- async reviewerDocumentAccess(documentId:string){
+ async reviewerDocumentAccess(accountId:string,documentId:string){
   const document=await this.db.marineAssetDocument.findFirst({where:{id:documentId,status:'PENDING'},select:{storageKey:true}});
   if(!document?.storageKey)throw new NotFoundException('Marine document file not found.');
   if(!await this.storage.exists(document.storageKey))throw new NotFoundException('Marine document bytes not found.');
-  return this.storage.signedGet(document.storageKey,300);
+  const access=this.storage.signedGet(document.storageKey,300);await this.audit.record({actorId:accountId,action:'MARINE_DOCUMENT_ACCESS_ISSUED',resource:'MarineAssetDocument',resourceId:documentId,metadata:{accountId,mode:'REVIEW',expiresAt:access.expiresAt}});return access;
  }
  async updateDocument(accountId:string,marineAssetId:string,documentId:string,input:{referenceNumber?:string;expiresAt?:string}){
   const doc=await this.db.marineAssetDocument.findFirst({where:{id:documentId,marineAssetId},include:{marineAsset:{select:{organizationId:true}}}});if(!doc)throw new NotFoundException('Marine document not found.');
