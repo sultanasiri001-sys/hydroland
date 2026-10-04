@@ -1,12 +1,14 @@
 import {BadRequestException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
+import {createHash} from 'node:crypto';
 import {DatabaseService} from '../database/database.service';
+import {CredentialObjectStorageService} from '../credentials/credential-object-storage.service';
 import {MARINE_ASSET_TYPES,REQUIRED_MARINE_DOCUMENTS,MarineAssetType,MarineReadinessResult} from './marine-operations.domain';
 
 type MarineAssetDecision='ACTIVE'|'SUSPENDED'|'OUT_OF_SERVICE';
 
 @Injectable()
 export class MarineOperationsService{
- constructor(private readonly db:DatabaseService){}
+ constructor(private readonly db:DatabaseService,private readonly storage:CredentialObjectStorageService){}
  async overviewMine(accountId:string){
   const role=await this.db.roleAssignment.findFirst({where:{accountId,role:'BOAT_OWNER',status:'ACTIVE',account:{status:'ACTIVE'}},select:{id:true}});
   if(!role)throw new ForbiddenException('Active marine brokerage role required.');
@@ -34,6 +36,9 @@ export class MarineOperationsService{
   return asset;
  }
  private parseExpiry(value?:string){if(!value)return null;const date=new Date(value);if(Number.isNaN(date.getTime()))throw new BadRequestException('Invalid document expiry date.');return date;}
+ private decodeDocument(value:string){const base64=String(value||'').trim();if(!base64||base64.length>13_400_000||base64.length%4!==0)throw new BadRequestException('Invalid document payload.');const bytes=Buffer.from(base64,'base64');if(!bytes.length||bytes.length>10_000_000||bytes.toString('base64')!==base64)throw new BadRequestException('Document must be valid and no larger than 10 MB.');return bytes;}
+ private validateDocument(originalName:string,mimeType:string,bytes:Buffer){const name=String(originalName||'').split(/[\\/]/).pop()?.trim()||'';if(!name||name.length>180)throw new BadRequestException('Invalid document file name.');const type=String(mimeType||'').trim().toLowerCase();if(!['application/pdf','image/jpeg','image/png'].includes(type))throw new BadRequestException('Only PDF, JPEG and PNG documents are supported.');const lower=name.toLowerCase(),extensionOk=type==='application/pdf'?lower.endsWith('.pdf'):type==='image/png'?lower.endsWith('.png'):lower.endsWith('.jpg')||lower.endsWith('.jpeg');if(!extensionOk)throw new BadRequestException('File extension does not match the declared content type.');const signatureOk=type==='application/pdf'?bytes.subarray(0,5).toString('ascii')==='%PDF-':type==='image/png'?bytes.length>=8&&bytes.subarray(0,8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a])):bytes.length>=3&&bytes[0]===0xff&&bytes[1]===0xd8&&bytes[2]===0xff;if(!signatureOk)throw new BadRequestException('Document signature does not match the declared content type.');return{name,type};}
+ private publicDocument<T extends {storageKey?:string|null;sha256?:string|null}>(document:T){const{storageKey,sha256,...safe}=document;return safe;}
  private parseDueAt(value?:string){if(!value)return null;const date=new Date(value);if(Number.isNaN(date.getTime()))throw new BadRequestException('Invalid maintenance due date.');return date;}
  async createAsset(input:{organizationId:string;name:string;assetType:MarineAssetType;registrationNumber?:string;passengerCapacity?:number}){
   if(!MARINE_ASSET_TYPES.includes(input.assetType))throw new BadRequestException('Unsupported marine asset type.');
@@ -50,12 +55,34 @@ export class MarineOperationsService{
  async listMine(accountId:string){
   const memberships=await this.db.organizationMember.findMany({where:{accountId,status:'ACTIVE'},select:{organizationId:true}});
   const ids=memberships.map(x=>x.organizationId);if(!ids.length)return[];
-  return this.db.marineAsset.findMany({where:{organizationId:{in:ids}},include:{documents:{orderBy:{updatedAt:'desc'}},maintenance:{orderBy:{updatedAt:'desc'}},readiness:{orderBy:{checkedAt:'desc'},take:1}},orderBy:{updatedAt:'desc'}});
+  const assets=await this.db.marineAsset.findMany({where:{organizationId:{in:ids}},include:{documents:{orderBy:{updatedAt:'desc'}},maintenance:{orderBy:{updatedAt:'desc'}},readiness:{orderBy:{checkedAt:'desc'},take:1}},orderBy:{updatedAt:'desc'}});return assets.map(asset=>({...asset,documents:asset.documents.map(document=>this.publicDocument(document))}));
  }
- async addDocument(accountId:string,marineAssetId:string,input:{documentType:string;referenceNumber?:string;expiresAt?:string}){
+ async addDocument(accountId:string,marineAssetId:string,input:{documentType:string;referenceNumber?:string;expiresAt?:string;originalName?:string;mimeType?:string;base64?:string}){
   await this.requireOwnedAsset(accountId,marineAssetId,true);
   if(!(REQUIRED_MARINE_DOCUMENTS as readonly string[]).includes(input.documentType))throw new BadRequestException('Unsupported marine document type.');
-  return this.db.marineAssetDocument.create({data:{marineAssetId,documentType:input.documentType,referenceNumber:input.referenceNumber?.trim()||null,expiresAt:this.parseExpiry(input.expiresAt),status:'PENDING',verifiedAt:null}});
+  let file:null|{bytes:Buffer;name:string;type:string;sha256:string;storageKey:string}=null;
+  if(input.base64||input.originalName||input.mimeType){
+   if(!input.base64||!input.originalName||!input.mimeType)throw new BadRequestException('Complete file metadata and content are required.');
+   const bytes=this.decodeDocument(input.base64),validated=this.validateDocument(input.originalName,input.mimeType,bytes),sha256=createHash('sha256').update(bytes).digest('hex');
+   if(await this.db.marineAssetDocument.findUnique({where:{sha256},select:{id:true}}))throw new BadRequestException('This document has already been uploaded.');
+   file={bytes,name:validated.name,type:validated.type,sha256,storageKey:this.storage.key(accountId,marineAssetId,validated.type,'marine-assets')};
+   await this.storage.put(file.storageKey,file.bytes,file.type);
+  }
+  try{return await this.db.marineAssetDocument.create({data:{marineAssetId,documentType:input.documentType,referenceNumber:input.referenceNumber?.trim()||null,expiresAt:this.parseExpiry(input.expiresAt),status:'PENDING',verifiedAt:null,...(file?{storageKey:file.storageKey,originalName:file.name,mimeType:file.type,byteSize:file.bytes.length,sha256:file.sha256}:{})}});}
+  catch(error){if(file){const retained=await this.db.marineAssetDocument.findUnique({where:{storageKey:file.storageKey},select:{id:true}}).catch(()=>true);if(!retained)await this.storage.delete(file.storageKey)}throw error}
+ }
+ async documentAccess(accountId:string,marineAssetId:string,documentId:string){
+  const document=await this.db.marineAssetDocument.findFirst({where:{id:documentId,marineAssetId},include:{marineAsset:{select:{organizationId:true}}}});
+  if(!document?.storageKey)throw new NotFoundException('Marine document file not found.');
+  await this.requireMember(accountId,document.marineAsset.organizationId);
+  if(!await this.storage.exists(document.storageKey))throw new NotFoundException('Marine document bytes not found.');
+  return this.storage.signedGet(document.storageKey,300);
+ }
+ async reviewerDocumentAccess(documentId:string){
+  const document=await this.db.marineAssetDocument.findFirst({where:{id:documentId,status:'PENDING'},select:{storageKey:true}});
+  if(!document?.storageKey)throw new NotFoundException('Marine document file not found.');
+  if(!await this.storage.exists(document.storageKey))throw new NotFoundException('Marine document bytes not found.');
+  return this.storage.signedGet(document.storageKey,300);
  }
  async updateDocument(accountId:string,marineAssetId:string,documentId:string,input:{referenceNumber?:string;expiresAt?:string}){
   const doc=await this.db.marineAssetDocument.findFirst({where:{id:documentId,marineAssetId},include:{marineAsset:{select:{organizationId:true}}}});if(!doc)throw new NotFoundException('Marine document not found.');
@@ -63,7 +90,7 @@ export class MarineOperationsService{
   if(doc.status==='VERIFIED')throw new BadRequestException('Verified marine documents cannot be edited.');
   return this.db.marineAssetDocument.update({where:{id:documentId},data:{...(input.referenceNumber!==undefined?{referenceNumber:input.referenceNumber.trim()||null}:{}),...(input.expiresAt!==undefined?{expiresAt:this.parseExpiry(input.expiresAt)}:{}),status:'PENDING',verifiedAt:null}});
  }
- async pendingDocuments(){return this.db.marineAssetDocument.findMany({where:{status:'PENDING'},include:{marineAsset:true},orderBy:{createdAt:'asc'},take:200});}
+ async pendingDocuments(){const rows=await this.db.marineAssetDocument.findMany({where:{status:'PENDING'},include:{marineAsset:true},orderBy:{createdAt:'asc'},take:200});return rows.map(row=>({...this.publicDocument(row),marineAsset:row.marineAsset}));}
  async decideDocument(documentId:string,outcome:'VERIFIED'|'REJECTED'){
   if(!['VERIFIED','REJECTED'].includes(outcome))throw new BadRequestException('Invalid marine document decision.');
   const doc=await this.db.marineAssetDocument.findUnique({where:{id:documentId}});if(!doc)throw new NotFoundException('Marine document not found.');
