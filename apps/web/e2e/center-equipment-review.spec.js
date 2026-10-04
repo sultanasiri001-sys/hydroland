@@ -80,3 +80,17 @@ test('center saves inspection for review with a Riyadh service date and stable r
  await form.getByRole('button',{name:'حفظ الفحص'}).click();await expect(panel.locator('[data-equipment-feedback]')).toContainText('تم حفظ الفحص وحجز المعدة');
  expect(reports).toHaveLength(2);expect(reports[0]).toEqual(reports[1]);expect(reports[0].status).toBe('REVIEW');expect(reports[0].serviceExpiresAt).toBe('2030-02-15T20:59:59.000Z');
 });
+
+test('movement form scopes trip choices and retains details across a save retry',async({page})=>{
+ await install(page);const writes=[];
+ await page.route('**/api/v1/center/me/trips',route=>json(route,[{id:'trip-a',title:'رحلة عسير',status:'OPEN',startsAt:'2030-03-01T09:00:00Z'},{id:'trip-ended',title:'رحلة مكتملة',status:'COMPLETED'}]));
+ await page.route('**/api/v1/center/me/equipment/eq-a/move',route=>{writes.push(route.request().postDataJSON());return writes.length===1?json(route,{message:'تعذر الحفظ مؤقتًا'},503):json(route,{movement:{id:'movement-a'},stockStatus:'AVAILABLE'})});
+ await page.locator('[data-portal-label="المعدات والمخزون"]').click();const panel=page.locator('#hl-center-equipment');await panel.locator('[data-move="TRANSFER"]').click();const form=panel.locator('[data-equipment-move-form]');
+ await expect(form).toBeVisible();expect(writes).toHaveLength(0);await expect(form.locator('option[value="trip-ended"]')).toHaveCount(0);
+ await form.getByLabel('الموقع الجديد',{exact:true}).fill('مستودع عسير');await form.getByLabel('الرحلة المرتبطة (اختياري)').selectOption('trip-a');await form.getByLabel('ملاحظات الحركة').fill('تجهيز رحلة المركز');
+ await form.getByRole('button',{name:'حفظ الحركة'}).click();await expect(form).toContainText('تعذر الحفظ مؤقتًا');await expect(form.getByLabel('ملاحظات الحركة')).toHaveValue('تجهيز رحلة المركز');
+ await form.getByRole('button',{name:'حفظ الحركة'}).click();await expect(panel.locator('[data-equipment-feedback]')).toContainText('تم حفظ حركة المعدة');expect(writes).toHaveLength(2);expect(writes[0]).toEqual(writes[1]);expect(writes[0]).toMatchObject({movementType:'TRANSFER',tripId:'trip-a',toLocation:'مستودع عسير',notes:'تجهيز رحلة المركز'});
+});
+test('movement cancellation does not write inventory',async({page})=>{
+ const state=await install(page);await page.route('**/api/v1/center/me/trips',route=>json(route,[]));await page.locator('[data-portal-label="المعدات والمخزون"]').click();const panel=page.locator('#hl-center-equipment');await panel.locator('[data-move="CHECK_OUT"]').click();await expect(panel.locator('[data-equipment-move-form]')).toBeVisible();await panel.getByRole('button',{name:'إلغاء',exact:true}).click();await expect(panel.locator('[data-equipment-move-form]')).toHaveCount(0);expect(state.moves).toBe(0);
+});

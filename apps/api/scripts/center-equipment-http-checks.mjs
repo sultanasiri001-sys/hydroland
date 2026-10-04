@@ -8,7 +8,7 @@ export async function checkCenterEquipment(db,{base,a,b,ownerA,ta,tb,ts},check){
   if(process.env.CI!=='true'||!['localhost','127.0.0.1','[::1]'].includes(new URL(process.env.DATABASE_URL).hostname))throw new Error('CI loopback database required');
   const columns=await db.$queryRaw`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='EquipmentBarcode' AND column_name='organizationId'`;
   assert.equal(columns.length,0,'Expected isolated bootstrap schema without center scope');
-  const resources=[],inspectionRequests=[];
+  const resources=[],inspectionRequests=[],movementRequests=[];
   const policies=await db.$queryRaw`SELECT "id","state" FROM "PolicyControl" WHERE "category"='EQUIPMENT' AND "ruleKey" IN ('INSPECTION_STATUS','SERVICE_EXPIRY')`;
   const request=async(token,path,body,method)=>{
     const response=await fetch(base+'/center/me/equipment'+path,{method:method||(body?'PATCH':'GET'),headers:{...(token?{authorization:'Bearer '+token}:{}),...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
@@ -72,6 +72,21 @@ export async function checkCenterEquipment(db,{base,a,b,ownerA,ta,tb,ts},check){
       const reportMovements=await request(ta,`/${createdId}/history`);check(reportMovements.body.length===2&&reportMovements.body[0].movementType==='QUARANTINE',`${keyType}: report quarantines once`);
       check((await request(ta,`/${createdId}/move`,{movementType:'CHECK_OUT'})).status===409,`${keyType}: reported equipment cannot be checked out`);
       const failId=randomUUID();inspectionRequests.push(failId);check((await submit({...report,requestId:failId,status:'FAIL',serviceExpiresAt:null})).status===201,`${keyType}: unsafe result saves without granting approval`);
+      const movementId=randomUUID();movementRequests.push(movementId);
+      const beforeMove=await request(ta,'/lookup/'+simultaneous[0].body.assetCode);
+      const payload={movementType:'TRANSFER',toLocation:'مخزن عسير',tripId:a.trip.id,notes:'نقل مرتبط بالرحلة',requestId:movementId,expectedUpdatedAt:beforeMove.body.updatedAt};
+      const transfer=data=>request(ta,`/${createdId}/move`,data);
+      check((await transfer({...payload,toLocation:''})).status===400,`${keyType}: transfer needs destination`);
+      check((await transfer({...payload,notes:45})).status===400,`${keyType}: invalid movement field rejected`);
+      check((await transfer({...payload,assignedAccountId:ownerA.id})).status===400,`${keyType}: extra assignment field rejected`);
+      const transfers=await Promise.all([transfer(payload),transfer(payload)]);
+      check(transfers.every(row=>row.status===200)&&transfers[0].body.movement.id===transfers[1].body.movement.id,`${keyType}: concurrent movement retry records once`);
+      check((await transfer({...payload,notes:'changed'})).status===409,`${keyType}: changed movement retry conflicts`);
+      const staleId=randomUUID();movementRequests.push(staleId);
+      check((await transfer({...payload,requestId:staleId})).status===409,`${keyType}: stale inventory revision rejected`);
+      const movementHistory=await request(ta,`/${createdId}/history`),movement=movementHistory.body.find(row=>row.id===transfers[0].body.movement.id);
+      check(movement?.toLocation==='مخزن عسير'&&movement.notes==='نقل مرتبط بالرحلة'&&movement.tripId===a.trip.id&&typeof movement.tripTitle==='string',`${keyType}: movement keeps location notes and owned trip title`);
+      check(await db.auditEvent.count({where:{resourceId:createdId,action:'EQUIPMENT_INVENTORY_MOVED'}})===1,`${keyType}: retry has one movement audit`);
       const [own,other]=fixtures;
       const move=(body,token=ta,id=own.id)=>request(token,`/${id}/move`,body);
       let r=await request(ta,'');
@@ -79,13 +94,13 @@ export async function checkCenterEquipment(db,{base,a,b,ownerA,ta,tb,ts},check){
       r=await request(ta,'/lookup/'+own.code);check(r.status===200&&r.body.resourceId===own.id,`${keyType}: owned lookup succeeds`);
       check((await request(ta,'/lookup/'+other.code)).status===404,`${keyType}: cross-center lookup denied`);
       check((await request(tb,`/${own.id}/history`)).status===404,`${keyType}: cross-center history denied`);
-      check((await move({movementType:'TRANSFER'},tb)).status===404,`${keyType}: cross-center write denied`);
-      check((await move({movementType:'TRANSFER'},ts)).status===403,`${keyType}: ordinary staff write denied`);
-      check((await request(undefined,`/${own.id}/move`,{movementType:'TRANSFER'})).status===401,`${keyType}: anonymous write denied`);
+      check((await move({movementType:'TRANSFER',toLocation:'STORE'},tb)).status===404,`${keyType}: cross-center write denied`);
+      check((await move({movementType:'TRANSFER',toLocation:'STORE'},ts)).status===403,`${keyType}: ordinary staff write denied`);
+      check((await request(undefined,`/${own.id}/move`,{movementType:'TRANSFER',toLocation:'STORE'})).status===401,`${keyType}: anonymous write denied`);
       check((await move({movementType:'INVALID'})).status===400,`${keyType}: invalid movement denied`);
-      check((await move({movementType:'TRANSFER',tripId:b.trip.id})).status===404,`${keyType}: other center trip denied`);
+      check((await move({movementType:'TRANSFER',toLocation:'STORE',tripId:b.trip.id})).status===404,`${keyType}: other center trip denied`);
       await db.trip.update({where:{id:a.trip.id},data:{status:'COMPLETED'}});
-      check((await move({movementType:'TRANSFER',tripId:a.trip.id})).status===409,`${keyType}: completed trip denied`);
+      check((await move({movementType:'TRANSFER',toLocation:'STORE',tripId:a.trip.id})).status===409,`${keyType}: completed trip denied`);
       await db.trip.update({where:{id:a.trip.id},data:{status:'OPEN'}});
       check((await move({movementType:'CHECK_IN'})).status===409,`${keyType}: invalid check-in denied`);
       check((await move({movementType:'CHECK_OUT'})).status===409,`${keyType}: missing inspection blocks check-out`);
@@ -114,6 +129,7 @@ export async function checkCenterEquipment(db,{base,a,b,ownerA,ta,tb,ts},check){
   }finally{
     await db.auditEvent.deleteMany({where:{resourceId:{in:resources},action:{in:['EQUIPMENT_INVENTORY_MOVED','CENTER_EQUIPMENT_CREATED','CENTER_EQUIPMENT_INSPECTION_RECORDED']}}});
     await db.operationalSetting.deleteMany({where:{key:{in:resources.map(id=>'center-equipment-create:'+id)}}});
+    await db.operationalSetting.deleteMany({where:{key:{in:movementRequests.map(id=>'center-equipment-move:'+id)}}});
     await db.operationalSetting.deleteMany({where:{key:{in:inspectionRequests.map(id=>'center-equipment-inspection:'+id)}}});
     await db.$executeRaw`DELETE FROM "EquipmentMovement" WHERE "resourceId"=ANY(${resources}::text[])`;
     await db.$executeRaw`DELETE FROM "EquipmentInspection" WHERE "resourceId"=ANY(${resources}::text[])`;
