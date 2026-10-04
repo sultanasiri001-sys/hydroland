@@ -24,7 +24,7 @@ async function fixture(page,kind){
  await expect(page.locator(kind==='equipment'?'[data-equipment-history-button]':'[data-center-bookings]')).toBeVisible();
  return state;
 }
-test('center equipment sensitive read refreshes role and fails closed after revocation',async({page})=>{const state=await fixture(page,'equipment');const panel=page.locator('#hl-center-equipment');const before=state.refreshes;await panel.locator('[data-equipment-history-button]').click();await expect(panel.locator('[data-equipment-history]')).toContainText('CHECK_IN');expect(state.refreshes).toBeGreaterThan(before);state.active=false;await panel.locator('[data-equipment-history-button]').click();await expect(panel).toHaveCount(0)});
+test('center equipment sensitive read refreshes role and fails closed after revocation',async({page})=>{const state=await fixture(page,'equipment');const panel=page.locator('#hl-center-equipment');const before=state.refreshes;await panel.locator('[data-equipment-history-button]').click();await expect(panel.locator('[data-equipment-history]')).toContainText('إرجاع');expect(state.refreshes).toBeGreaterThan(before);state.active=false;await panel.locator('[data-equipment-history-button]').click();await expect(panel).toHaveCount(0)});
 test('center booking identities refresh role and fail closed after revocation',async({page})=>{const state=await fixture(page,'operations');const panel=page.locator('#hl-center-operations');const before=state.refreshes;await panel.locator('[data-center-bookings]').click();await expect(panel.locator('[data-center-booking="book"]')).toContainText('عميل');expect(state.refreshes).toBeGreaterThan(before);state.active=false;await panel.locator('[data-center-bookings]').click();await expect(panel).toHaveCount(0)});
 
 for(const kind of ['equipment','operations']){
@@ -35,7 +35,7 @@ for(const kind of ['equipment','operations']){
      await expect(panel).toHaveCount(1);
      const reads=state.reads,refreshes=state.refreshes;
      await panel.locator(kind==='equipment'?'[data-equipment-history-button]':'[data-center-bookings]').click();
-     await expect(panel.locator(kind==='equipment'?'[data-equipment-history]':'[data-center-booking="book"]')).toContainText(kind==='equipment'?'CHECK_IN':'عميل');
+     await expect(panel.locator(kind==='equipment'?'[data-equipment-history]':'[data-center-booking="book"]')).toContainText(kind==='equipment'?'إرجاع':'عميل');
      expect(state.reads).toBe(reads+1);expect(state.refreshes).toBeGreaterThan(refreshes);
    }
  });
@@ -61,7 +61,7 @@ for(const kind of ['equipment','operations']){
    expect(await page.evaluate(()=>window.HydrolandProfileData?.profile?.id)).toBe('focused-center');
    expect(state.reads).toBe(reads);
    await expect(panel).toBeVisible();
-   await expect(panel).not.toContainText(kind==='equipment'?'CHECK_IN':'عميل');
+   await expect(panel).not.toContainText(kind==='equipment'?'إرجاع':'عميل');
  });
 }
 
@@ -70,7 +70,7 @@ test('center equipment captures lookup input before asynchronous authorization',
  const errors=[];page.on('pageerror',error=>errors.push(error.message));
  await panel.locator('[data-equipment-lookup] input').fill('ASSET / 123');
  const refreshes=state.refreshes;
- await panel.locator('[data-equipment-lookup] button').click();
+ await panel.getByRole('button',{name:'بحث',exact:true}).click();
  await expect(panel.locator('[data-center-equipment-id="found"]')).toContainText('نتيجة البحث');
  expect(state.lookupCodes).toEqual(['ASSET / 123']);expect(state.refreshes).toBeGreaterThan(refreshes);expect(errors).toEqual([]);
 });
