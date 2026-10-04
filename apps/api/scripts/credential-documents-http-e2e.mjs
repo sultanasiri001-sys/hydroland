@@ -15,7 +15,7 @@ const auth=t=>({authorization:`Bearer ${t}`});
 const json=async r=>{const b=await r.json().catch(()=>null);if(!r.ok)throw new Error(`HTTP ${r.status}: ${JSON.stringify(b)}`);return b};
 const storage=http.createServer((req,res)=>{const key=req.url?.split('?')[0]||'/';if(req.method==='PUT'){sawSigV4=String(req.headers.authorization||'').startsWith('AWS4-HMAC-SHA256 ');const chunks=[];req.on('data',c=>chunks.push(c));req.on('end',()=>{objects.set(key,Buffer.concat(chunks));res.statusCode=200;res.end()});return}if(req.method==='HEAD'){res.statusCode=objects.has(key)?200:404;res.end();return}if(req.method==='GET'){const bytes=objects.get(key);if(!bytes){res.statusCode=404;res.end();return}res.statusCode=200;res.setHeader('content-type','application/octet-stream');res.end(bytes);return}if(req.method==='DELETE'){objects.delete(key);res.statusCode=204;res.end();return}res.statusCode=405;res.end()});
 await new Promise((resolve,reject)=>{storage.once('error',reject);storage.listen(3199,'127.0.0.1',resolve)});
-let ownerPerson,ownerAccount,reviewerPerson,reviewerAccount,outsiderPerson,outsiderAccount,credentialId,documentId;
+let ownerPerson,ownerAccount,reviewerPerson,reviewerAccount,outsiderPerson,outsiderAccount,credentialId,documentId,marineOrganization,marineMember,marineAssetId,marineDocumentId;
 try{
   ownerPerson=await db.person.create({data:{firstName:'Credential',lastName:'Owner'}});
   ownerAccount=await db.account.create({data:{personId:ownerPerson.id,email:`credential-owner-${suffix}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}});
@@ -25,6 +25,8 @@ try{
   outsiderAccount=await db.account.create({data:{personId:outsiderPerson.id,email:`credential-outsider-${suffix}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}});
   await db.roleAssignment.create({data:{accountId:reviewerAccount.id,role:'REVIEWER',status:'ACTIVE',activeAt:new Date()}});
   const ownerToken=tokenFor(ownerAccount.id),reviewerToken=tokenFor(reviewerAccount.id),outsiderToken=tokenFor(outsiderAccount.id);
+  marineOrganization=await db.organization.create({data:{displayName:'Marine private docs E2E',kind:'MARINE_OPERATOR',status:'ACTIVE',ownerId:ownerAccount.id}});
+  marineMember=await db.organizationMember.create({data:{organizationId:marineOrganization.id,accountId:ownerAccount.id,role:'OWNER',status:'ACTIVE'}});
 
   let r=await fetch(base+'/credentials',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({issuer:'HYDROLAND E2E',title:'Credential document test'})});if(r.status!==401)throw new Error('Anonymous credential create expected 401, got '+r.status);
   r=await fetch(base+'/credentials',{method:'POST',headers:{...auth(ownerToken),'content-type':'application/json'},body:JSON.stringify({issuer:'HYDROLAND E2E',title:'Credential document test'})});let body=await json(r);credentialId=body.id;if(!credentialId)throw new Error('Credential id missing');
@@ -56,6 +58,17 @@ try{
   r=await fetch(`${base}/credentials/admin/${credentialId}/decision`,{method:'POST',headers:{...auth(reviewerToken),'content-type':'application/json'},body:JSON.stringify({outcome:'VERIFIED'})});body=await json(r);if(body.verificationStatus!=='VERIFIED')throw new Error('Reviewer did not verify credential after recording official evidence');
 
   const persisted=await db.document.findUnique({where:{id:documentId}});if(!persisted||persisted.byteSize!==png.length||!persisted.sha256||!persisted.storageKey.startsWith(`credentials/${ownerAccount.id}/${credentialId}/`))throw new Error('Document metadata was not persisted from server-computed upload');
+  // Marine asset documents use the same private object-store contract with a distinct namespace.
+  r=await fetch(base+'/marine-operations/assets',{method:'POST',headers:{...auth(ownerToken),'content-type':'application/json'},body:JSON.stringify({organizationId:marineOrganization.id,name:'E2E private marine asset',assetType:'DIVE_BOAT',registrationNumber:`MARINE-${suffix}`})});body=await json(r);marineAssetId=body.id;if(!marineAssetId)throw new Error('Marine asset id missing');
+  const marinePng=Buffer.concat([Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]),Buffer.from('marine-private-e2e')]);
+  r=await fetch(`${base}/marine-operations/assets/${marineAssetId}/documents`,{method:'POST',headers:{...auth(ownerToken),'content-type':'application/json'},body:JSON.stringify({documentType:'OPERATING_LICENSE',referenceNumber:'OP-E2E',expiresAt:'2027-12-31',originalName:'operating-license.png',mimeType:'image/png',base64:marinePng.toString('base64')})});body=await json(r);marineDocumentId=body.id;if(!marineDocumentId||body.hasFile!==true||'storageKey'in body)throw new Error('Marine evidence response mismatch or leaked private storage key');
+  if(!sawSigV4)throw new Error('Marine object upload was not SigV4 signed');
+  const marineList=await json(await fetch(base+'/marine-operations/assets/mine',{headers:auth(ownerToken)}));const listedMarineDoc=marineList.find(x=>x.id===marineAssetId)?.documents?.find(x=>x.id===marineDocumentId);if(!listedMarineDoc?.hasFile||'storageKey'in listedMarineDoc)throw new Error('Marine asset list leaked storage key or missed attachment metadata');
+  r=await fetch(`${base}/marine-operations/assets/${marineAssetId}/documents/${marineDocumentId}/access`,{headers:auth(outsiderToken)});if(r.status!==403)throw new Error('Non-member marine file access expected 403, got '+r.status);
+  r=await fetch(`${base}/marine-operations/assets/${marineAssetId}/documents/${marineDocumentId}/access`,{headers:auth(ownerToken)});body=await json(r);if(!body.url?.includes('X-Amz-Signature='))throw new Error('Marine owner signed access missing');const marineDownloaded=Buffer.from(await(await fetch(body.url)).arrayBuffer());if(!marineDownloaded.equals(marinePng))throw new Error('Marine signed owner URL did not return original bytes');
+  await db.roleAssignment.create({data:{accountId:reviewerAccount.id,role:'ADMIN',status:'ACTIVE',activeAt:new Date()}});
+  r=await fetch(`${base}/marine-operations/admin/documents/${marineDocumentId}/access`,{headers:auth(reviewerToken)});body=await json(r);if(!body.url?.includes('X-Amz-Signature='))throw new Error('Marine reviewer signed access missing');
+  r=await fetch(`${base}/marine-operations/admin/documents/${marineDocumentId}/access`,{headers:auth(outsiderToken)});if(r.status!==403)throw new Error('Non-admin marine review access expected 403, got '+r.status);
   const readinessPath=base+'/health/integrations/credential-storage';
   r=await fetch(readinessPath);assert.equal(r.status,401,'Storage diagnostics require authentication');
   r=await fetch(readinessPath,{headers:auth(ownerToken)});assert.equal(r.status,403,'Storage diagnostics require admin scope');
@@ -73,6 +86,8 @@ try{
   console.log('Credential storage readiness HTTP E2E passed: guest/user/reviewer denial, admin access, runtime parity, sanitized checks and revoked-admin denial.');
   console.log('Credential Documents HTTP/DB E2E passed: auth, spoof rejection, real private upload, server metadata, storageKey redaction, owner/reviewer signed access, cross-account denial, evidence-gated approval, audit-backed evidence restoration and review.');
 } finally {
+  if(marineAssetId){await db.marineAssetDocument.deleteMany({where:{marineAssetId}}).catch(()=>{});await db.marineMaintenanceRecord.deleteMany({where:{marineAssetId}}).catch(()=>{});await db.marineAsset.deleteMany({where:{id:marineAssetId}}).catch(()=>{});}
+  if(marineOrganization){await db.organizationMember.deleteMany({where:{organizationId:marineOrganization.id}}).catch(()=>{});await db.organization.delete({where:{id:marineOrganization.id}}).catch(()=>{});}
   if(credentialId){await db.document.deleteMany({where:{credentialId}}).catch(()=>{});await db.credential.deleteMany({where:{id:credentialId}}).catch(()=>{});}
   for(const account of [ownerAccount,reviewerAccount,outsiderAccount].filter(Boolean)){await db.notification.deleteMany({where:{accountId:account.id}}).catch(()=>{});await db.roleAssignment.deleteMany({where:{accountId:account.id}}).catch(()=>{});await db.session.deleteMany({where:{accountId:account.id}}).catch(()=>{});}
   const resourceIds=[credentialId,documentId].filter(Boolean);if(resourceIds.length)await db.auditEvent.deleteMany({where:{resourceId:{in:resourceIds}}}).catch(()=>{});
