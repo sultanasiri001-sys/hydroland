@@ -41,7 +41,7 @@ export class OperationalClearanceService {
         COALESCE((SELECT MAX(p."updatedAt") FROM "PolicyControl" p WHERE p."category" IN ('TRIP','CREW','WEATHER','BOAT','COMPLIANCE','BOOKING','EQUIPMENT','DIVE_LOG','MARINE')),TIMESTAMP '1970-01-01'),
         COALESCE((SELECT o."updatedAt" FROM "OperationalSetting" o WHERE o."key"='WEATHER_GATE' LIMIT 1),TIMESTAMP '1970-01-01')
       ) AS "changedAt"
-      FROM "Trip" t WHERE t."id"=${tripId} LIMIT 1
+      FROM "Trip" t WHERE t."id"::text=${tripId} LIMIT 1
     `;
     if(!rows.length)throw new NotFoundException('Trip not found.');return rows[0].changedAt;
   }
