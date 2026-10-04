@@ -8,6 +8,7 @@ const checks=[
  ['Marine document evidence uses private storage',schema.includes('storageKey String? @unique')&&schema.includes('sha256 String? @unique')&&service.includes('this.storage.put(file.storageKey')&&service.includes('validateDocument(')],
  ['Marine owner and reviewer access routes are scoped',controller.includes("assets/:assetId/documents/:documentId/access")&&controller.includes("admin/documents/:documentId/access")&&service.includes('async documentAccess(')&&service.includes('async reviewerDocumentAccess(')],
  ['Marine public responses redact object keys',service.includes('private publicDocument')&&service.includes('this.publicDocument(document)')&&service.includes('this.publicDocument(row)')],
+ ['Admin asset review also redacts private keys',service.includes('async reviewAssets()')&&service.includes('documents:asset.documents.map(document=>this.publicDocument(document))')],
  ['Marine maintenance',schema.includes('model MarineMaintenanceRecord {')],
  ['Readiness snapshots',schema.includes('model MarineReadinessSnapshot {')],
  ['Fail closed unlinked',service.includes("MARINE_ASSET_NOT_LINKED")],
