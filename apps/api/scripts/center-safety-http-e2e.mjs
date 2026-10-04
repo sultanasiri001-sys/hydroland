@@ -1,3 +1,4 @@
+import {checkCenterSafetyWorkspace} from './center-safety-workspace-http-checks.mjs';
 import {checkCenterBookings} from './center-booking-http-checks.mjs';
 import {checkCenterCustomers} from './center-customer-http-checks.mjs';
 import {checkCenterTripLifecycle} from './center-trip-lifecycle-http-checks.mjs';
@@ -149,6 +150,8 @@ try{
 
   await checkCenterTripManagement(db,{base,a,b,ownerA,ta,tb,ts},check);
   await checkCenterTripLifecycle(db,{base,a,b,ownerA,ta,tb,ts,personAccount,tokenFor},check);
+
+  await checkCenterSafetyWorkspace(db,{base,a,b,ownerA,ownerB,ta,tb,ts,personAccount,tokenFor},check);
 
   await checkCenterBookings(db,{base,a,b,ownerA,ta,tb,ts,personAccount,tokenFor},check);
 
