@@ -8,7 +8,7 @@ import { PolicyControlService } from './policy-control.service';
 import { TripWeatherReview, TripWeatherReviewService } from './trip-weather-review.service';
 import { WeatherGateService } from './weather-gate.service';
 
-type Mode = 'center' | 'admin' | 'owner';
+type Mode = 'center' | 'marine' | 'admin' | 'owner';
 type Action = 'CONFIRM' | 'CANCEL';
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const stale = () => new ConflictException('تغيرت بيانات الحجز أو شروط التأكيد. حدّث التفاصيل قبل المحاولة.');
@@ -20,6 +20,13 @@ export class BookingManagementService {
   constructor(private readonly db: DatabaseService, private readonly audit: AuditService, private readonly policies: PolicyControlService, private readonly weather: WeatherGateService, private readonly weatherReviews: TripWeatherReviewService, private readonly crew: CrewAssignmentService) {}
 
   private async scope(tx: Prisma.TransactionClient, accountId: string, mode: Mode): Promise<Prisma.BookingWhereInput> {
+    if (mode === 'marine') {
+      if (!await tx.roleAssignment.findFirst({ where: { accountId, role: 'BOAT_OWNER', status: 'ACTIVE', account: { status: 'ACTIVE' } }, select: { id: true } })) throw new ForbiddenException('يتطلب الإجراء حساب وساطة بحرية نشطًا.');
+      const memberships = await tx.organizationMember.findMany({ where: { accountId, status: 'ACTIVE', role: { in: ['OWNER', 'ADMIN', 'OPERATOR', 'STAFF'] }, organization: { kind: 'MARINE_OPERATOR', status: 'ACTIVE' } }, select: { organizationId: true } });
+      const organizationIds = [...new Set(memberships.map(row => row.organizationId))];
+      if (!organizationIds.length) throw new ForbiddenException('يتطلب الإجراء عضوية تشغيل نشطة في جهة بحرية.');
+      return { trip: { organizationId: { in: organizationIds } } };
+    }
     if (mode === 'owner') {
       if (!await tx.account.findFirst({ where: { id: accountId, status: 'ACTIVE' } })) throw new ForbiddenException('الحساب غير نشط.');
       return { accountId };
@@ -43,17 +50,28 @@ export class BookingManagementService {
   }
 
   async listCenter(accountId: string, query: Record<string, unknown> = {}) {
+    return this.listScoped(accountId, 'center', query);
+  }
+
+  async listMarineTrip(accountId: string, tripId: string, query: Record<string, unknown> = {}) {
+    if (typeof tripId !== 'string' || !tripId.trim()) throw new BadRequestException('معرّف الرحلة غير صالح.');
+    return this.listScoped(accountId, 'marine', query, tripId);
+  }
+
+  private async listScoped(accountId: string, mode: 'center' | 'marine', query: Record<string, unknown>, routeTripId?: string) {
     if (Object.keys(query).some(k => !['q', 'status', 'tripId', 'page', 'pageSize'].includes(k))) throw new BadRequestException('مرشحات الحجوزات غير صالحة.');
     const string = (key: string, fallback: string, max: number) => { const v = query[key] ?? fallback; if (typeof v !== 'string' || v.length > max) throw new BadRequestException('مرشحات الحجوزات غير صالحة.'); return v.trim(); };
     const q = string('q', '', 120), status = string('status', 'ALL', 20), tripId = string('tripId', '', 120);
+    if (routeTripId && tripId && tripId !== routeTripId) throw new BadRequestException('معرّف الرحلة لا يطابق المسار.');
     if (!['ALL', 'PENDING', 'CONFIRMED', 'CANCELLED'].includes(status)) throw new BadRequestException('حالة الحجز غير صالحة.');
     const number = (key: string, fallback: number, max: number) => { const v = query[key]; if (v === undefined) return fallback; if (typeof v !== 'string' || !/^\d+$/.test(v) || Number(v) < 1 || Number(v) > max) throw new BadRequestException('رقم الصفحة غير صالح.'); return Number(v); };
     const requestedPage = number('page', 1, 100000), pageSize = number('pageSize', 20, 50);
     return this.db.serializable(async tx => {
-      const scope = await this.scope(tx, accountId, 'center');
-      if (tripId && !await tx.trip.findFirst({ where: { id: tripId, ...(scope.trip as Prisma.TripWhereInput) } })) throw new NotFoundException('الرحلة غير موجودة في المركز.');
+      const scope = await this.scope(tx, accountId, mode);
+      const selectedTripId = routeTripId || tripId;
+      if (selectedTripId && !await tx.trip.findFirst({ where: { id: selectedTripId, ...(scope.trip as Prisma.TripWhereInput) } })) throw new NotFoundException(mode === 'center' ? 'الرحلة غير موجودة في المركز.' : 'الرحلة غير موجودة ضمن جهاتك البحرية.');
       const needle = q.replace(/[\\%_]/g, '\\$&');
-      const where: Prisma.BookingWhereInput = { AND: [scope, ...(tripId ? [{ tripId }] : []), ...(q ? [{ OR: [{ id: { contains: needle, mode: 'insensitive' as const } }, { trip: { title: { contains: needle, mode: 'insensitive' as const } } }, { AND: needle.split(/\s+/).map(part => ({ account: { person: { OR: [{ firstName: { contains: part, mode: 'insensitive' as const } }, { lastName: { contains: part, mode: 'insensitive' as const } }] } } })) }] }] : [])] };
+      const where: Prisma.BookingWhereInput = { AND: [scope, ...(selectedTripId ? [{ tripId: selectedTripId }] : []), ...(q ? [{ OR: [{ id: { contains: needle, mode: 'insensitive' as const } }, { trip: { title: { contains: needle, mode: 'insensitive' as const } } }, { AND: needle.split(/\s+/).map(part => ({ account: { person: { OR: [{ firstName: { contains: part, mode: 'insensitive' as const } }, { lastName: { contains: part, mode: 'insensitive' as const } }] } } })) }] }] : [])] };
       const counts = await tx.booking.groupBy({ by: ['status'], where, _count: { _all: true }, _sum: { seats: true } });
       const filtered = { AND: [where, ...(status === 'ALL' ? [] : [{ status: status as BookingStatus }])] };
       const total = await tx.booking.count({ where: filtered }), totalPages = Math.max(1, Math.ceil(total / pageSize)), page = Math.min(requestedPage, totalPages);
@@ -101,6 +119,12 @@ export class BookingManagementService {
       const latest = await tx.auditEvent.findFirst({ where: { resource: 'Booking', resourceId: id, action: { in: ['BOOKING_CONFIRMED', 'BOOKING_CANCELLED', 'BOOKING_SELF_CANCELLED'] } }, orderBy: { occurredAt: 'desc' }, select: { action: true, occurredAt: true, metadata: true } });
       return { booking: this.row(booking), ...state, financialActionExecuted: false, lastAction: latest ? { action: latest.action, occurredAt: latest.occurredAt, reason: (latest.metadata as Record<string, unknown> | null)?.reason ?? null } : null };
     });
+  }
+
+  async detailMarineTrip(accountId: string, tripId: string, bookingId: string) {
+    const detail = await this.detail(accountId, bookingId, 'marine', tripId);
+    const { stateToken: _stateToken, actions: _actions, ...readOnly } = detail;
+    return readOnly;
   }
 
   private validate(input: Record<string, unknown>) {
