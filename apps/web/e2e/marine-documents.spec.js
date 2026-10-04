@@ -5,7 +5,7 @@ const json=(route,body,status=200)=>route.fulfill({status,contentType:'applicati
 
 test('boat operator registers marine asset and license metadata, admin verifies it',async({page})=>{
   const profile={id:'marine-e2e',email:'marine@hydroland.test',status:'ACTIVE',roleAssignments:[{id:'boat-role',role:'BOAT_OWNER',status:'ACTIVE'},{id:'admin-role',role:'ADMIN',status:'ACTIVE'}],person:{firstName:'Marine',lastName:'E2E',phone:null,professional:null}};
-  const membership={id:'membership-e2e',organizationId:'org-marine-e2e',accountId:profile.id,role:'OWNER',status:'ACTIVE',organization:{id:'org-marine-e2e',displayName:'مشغل بحري تجريبي',status:'ACTIVE'}};
+  const membership={id:'membership-e2e',organizationId:'org-marine-e2e',accountId:profile.id,role:'OWNER',status:'ACTIVE',organization:{id:'org-marine-e2e',displayName:'مشغل بحري تجريبي',kind:'MARINE_OPERATOR',status:'ACTIVE'}};
   const state={assets:[],pending:[],decision:null,overviewCalls:0,uploadedPayload:null,ownerAccess:0,adminAccess:0};
   const requireAuth=request=>request.headers().authorization==='Bearer marine-e2e-access';
   const assetSummary=()=>{const asset=state.assets[0];if(!asset)return null;const {documents,...summary}=asset;return summary};
