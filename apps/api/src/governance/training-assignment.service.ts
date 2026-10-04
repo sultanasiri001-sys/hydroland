@@ -1,3 +1,5 @@
+import { TrainingSessionService } from './training-session.service';
+import { courseSchedulable, sessionControls } from './training-session-policy';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
@@ -15,7 +17,7 @@ const nextRevision=(previous:Date)=>new Date(Math.max(Date.now(),previous.getTim
 
 @Injectable()
 export class TrainingAssignmentService {
- constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly authorization:TrainingAuthorizationService){}
+ constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly authorization:TrainingAuthorizationService,private readonly sessions:TrainingSessionService){}
 
  private async center(tx:Prisma.TransactionClient,accountId:string){
   const role=await tx.roleAssignment.findFirst({where:{accountId,role:'DIVE_CENTER',status:'ACTIVE',account:{status:'ACTIVE'}},select:{id:true}});
@@ -54,7 +56,7 @@ export class TrainingAssignmentService {
    const name=(person:{firstName:string;lastName:string|null})=>[person.firstName,person.lastName].filter(Boolean).join(' ').trim()||'مستخدم';
    const names=new Map(accounts.map(row=>[row.id,name(row.person)])),eligibleIds=new Set(members.map(row=>row.accountId));
    const instructor=(id:string|null)=>id?{accountId:id,displayName:names.get(id)||'مدرب سابق',eligible:eligibleIds.has(id)}:null;
-   return {center:{displayName:center.displayName},timeZone:'Asia/Riyadh',instructors:members.map(row=>({accountId:row.accountId,displayName:name(row.account.person)})),enrollments:page.map(row=>({id:row.id,courseCode:row.courseCode,status:row.status,enrolledAt:row.enrolledAt,updatedAt:row.updatedAt,student:{displayName:names.get(row.studentAccountId)||'متدرب'},instructor:instructor(row.instructorAccountId),canAssign:mutableEnrollment(row)&&!row.record?.sessions.some(item=>openSession(item,now)),record:row.record?{id:row.record.id,status:row.record.status,sessions:row.record.sessions.map(item=>({id:item.id,status:item.status,startsAt:item.startsAt,endsAt:item.endsAt,updatedAt:item.updatedAt,instructor:instructor(item.instructorAccountId),canAssign:mutableEnrollment(row)&&movableSession(item,now)}))}:null})),nextCursor:rows.length>50?page[page.length-1].id:null};
+   return {center:{displayName:center.displayName},timeZone:'Asia/Riyadh',instructors:members.map(row=>({accountId:row.accountId,displayName:name(row.account.person)})),enrollments:page.map(row=>({id:row.id,courseCode:row.courseCode,status:row.status,enrolledAt:row.enrolledAt,updatedAt:row.updatedAt,student:{displayName:names.get(row.studentAccountId)||'متدرب'},instructor:instructor(row.instructorAccountId),canCreateSession:courseSchedulable(row),canAssign:mutableEnrollment(row)&&!row.record?.sessions.some(item=>openSession(item,now)),record:row.record?{id:row.record.id,status:row.record.status,sessions:row.record.sessions.map(item=>({id:item.id,status:item.status,startsAt:item.startsAt,endsAt:item.endsAt,updatedAt:item.updatedAt,instructor:instructor(item.instructorAccountId),...sessionControls(row,item,now),canAssign:mutableEnrollment(row)&&movableSession(item,now)}))}:null})),nextCursor:rows.length>50?page[page.length-1].id:null};
   });
  }
 
@@ -76,6 +78,8 @@ export class TrainingAssignmentService {
    if(changed.count!==1)throw new ConflictException('تغير التكليف. حدّث القائمة.');
    const sessions=input.transfer?(row.record?.sessions.filter(item=>item.instructorAccountId===row.instructorAccountId&&movableSession(item,now))??[]):[];
    for(const session of sessions){
+    if(!session.endsAt||session.endsAt<=session.startsAt)throw new ConflictException('حدد وقت نهاية الجلسة قبل نقل تكليفها.');
+    await this.sessions.assertAvailable(tx,input.instructorAccountId,row.studentAccountId,session.startsAt,session.endsAt,session.id);
     const moved=await tx.trainingSession.updateMany({where:{id:session.id,updatedAt:session.updatedAt,status:'SCHEDULED'},data:{instructorAccountId:input.instructorAccountId,updatedAt:nextRevision(session.updatedAt)}});
     if(moved.count!==1)throw new ConflictException('تغيرت إحدى الجلسات. حدّث القائمة قبل إعادة المحاولة.');
    }
@@ -96,6 +100,8 @@ export class TrainingAssignmentService {
    if(!mutableEnrollment({...enrollment,record:row.trainingRecord})||!movableSession(row,now))throw new ConflictException('يمكن تغيير مدرب جلسة قادمة مجدولة لم يبدأ تسجيل حضورها فقط.');
    await this.eligible(tx,input.instructorAccountId,center.id);
    if(row.instructorAccountId===input.instructorAccountId)return {id,instructorAccountId:row.instructorAccountId,updatedAt:row.updatedAt};
+   if(!row.endsAt||row.endsAt<=row.startsAt)throw new ConflictException('حدد وقت نهاية الجلسة قبل نقل تكليفها.');
+   await this.sessions.assertAvailable(tx,input.instructorAccountId,enrollment.studentAccountId,row.startsAt,row.endsAt,id);
    const updatedAt=nextRevision(row.updatedAt);
    const changed=await tx.trainingSession.updateMany({where:{id,updatedAt:input.revision,status:'SCHEDULED'},data:{instructorAccountId:input.instructorAccountId,updatedAt}});
    if(changed.count!==1)throw new ConflictException('تغيرت الجلسة. حدّث القائمة.');

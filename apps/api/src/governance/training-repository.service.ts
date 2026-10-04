@@ -1,10 +1,9 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
-import { Prisma, TrainingEnrollmentStatus, TrainingRecordStatus, TrainingSessionStatus } from '@prisma/client';
+import { ConflictException, Injectable } from '@nestjs/common';
+import { Prisma, TrainingEnrollmentStatus, TrainingRecordStatus } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { TrainingAssignmentService } from './training-assignment.service';
-import { TrainingAuthorizationService } from './training-authorization.service';
-import { hasInstructorCenterAccess } from './training-center-scope';
+import { TrainingSessionService } from './training-session.service';
 
 export interface CreateTrainingEnrollmentInput {
   studentAccountId: string;
@@ -16,13 +15,7 @@ export interface CreateTrainingEnrollmentInput {
 
 @Injectable()
 export class TrainingRepositoryService {
-  constructor(private readonly db: DatabaseService,private readonly authorization:TrainingAuthorizationService,private readonly assignments:TrainingAssignmentService) {}
-
-  private async eligibleInstructor(tx:Prisma.TransactionClient,accountId:string,centerId:string|null){
-    if(typeof accountId!=='string'||!accountId.trim())throw new BadRequestException('اختر مدربًا للتكليف.');
-    const active=await tx.roleAssignment.findFirst({where:{accountId,role:'INSTRUCTOR',status:'ACTIVE',account:{status:'ACTIVE'}},select:{id:true}});
-    if(!active||!await hasInstructorCenterAccess(tx,accountId,centerId))throw new ConflictException('يتطلب التكليف مدربًا نشطًا بعضوية مدرب نشطة في المركز.');
-  }
+  constructor(private readonly db: DatabaseService,private readonly sessions:TrainingSessionService,private readonly assignments:TrainingAssignmentService) {}
 
   createEnrollment(input: CreateTrainingEnrollmentInput) {
     return this.db.trainingEnrollment.create({
@@ -129,31 +122,9 @@ export class TrainingRepositoryService {
     });
   }
 
-  createSession(input: {
-    trainingRecordId: string;
-    instructorAccountId: string;
-    startsAt: Date;
-    trainingStageId?: string;
-    facilityOrSiteId?: string;
-    tripId?: string;
-    vesselId?: string;
-  },actorId:string) {
-    return this.db.serializable(async tx=>{
-      await this.authorization.assertRecordAccess(actorId,input.trainingRecordId,tx);
-      const record=await tx.trainingRecord.findUniqueOrThrow({where:{id:input.trainingRecordId},select:{enrollment:{select:{centerOrganizationId:true}}}});
-      await this.eligibleInstructor(tx,input.instructorAccountId,record.enrollment.centerOrganizationId);
-      return tx.trainingSession.create({data:input});
-    });
-  }
+  createSession(id:string,input:Record<string,unknown>,actorId:string){return this.sessions.create(actorId,id,input,false);}
 
-  getSession(id: string) {
-    return this.db.trainingSession.findUniqueOrThrow({ where: { id } });
-  }
+  setSessionAttendance(id:string,input:Record<string,unknown>,actorId:string){return this.sessions.act(actorId,id,input,'professional');}
 
-  setSessionStatus(id: string, status: TrainingSessionStatus, evidence?: Prisma.InputJsonValue) {
-    return this.db.trainingSession.update({
-      where: { id },
-      data: { status, evidence },
-    });
-  }
+  setSessionStatus(id:string,input:Record<string,unknown>,actorId:string){return this.sessions.legacyStatus(actorId,id,input);}
 }

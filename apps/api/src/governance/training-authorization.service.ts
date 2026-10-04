@@ -41,7 +41,7 @@ export class TrainingAuthorizationService {
         organizationId: centerOrganizationId,
         status: 'ACTIVE',
         role: { in: ['OWNER', 'ADMIN', 'OPERATOR'] },
-        account:{status:'ACTIVE'},
+        account:{status:'ACTIVE',roleAssignments:{some:{role:'DIVE_CENTER',status:'ACTIVE'}}},
         organization:{kind:'DIVE_CENTER',status:'ACTIVE'},
       },
       select: { id: true },
@@ -100,8 +100,8 @@ export class TrainingAuthorizationService {
     await this.assertScope(accountId, skill.trainingStage.trainingRecord.enrollment, false);
   }
 
-  async assertSessionAccess(accountId: string, sessionId: string) {
-    const session = await this.db.trainingSession.findUnique({
+  async assertSessionAccess(accountId: string, sessionId: string, db:Prisma.TransactionClient=this.db) {
+    const session = await db.trainingSession.findUnique({
       where: { id: sessionId },
       select: {
         instructorAccountId: true,
@@ -110,9 +110,9 @@ export class TrainingAuthorizationService {
     });
     if (!session) this.deny();
 
-    if (await this.isAssignedInstructor(accountId,{...session.trainingRecord.enrollment,instructorAccountId:session.instructorAccountId})) return;
+    if (await this.isAssignedInstructor(accountId,{...session.trainingRecord.enrollment,instructorAccountId:session.instructorAccountId},db)) return;
 
-    await this.assertScope(accountId, session.trainingRecord.enrollment, false);
+    await this.assertScope(accountId, session.trainingRecord.enrollment, false,db);
   }
 
   async assertAdministrativeEnrollmentAccess(accountId: string, enrollmentId: string, db:Prisma.TransactionClient=this.db) {

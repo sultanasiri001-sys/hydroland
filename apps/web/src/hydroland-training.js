@@ -8,7 +8,10 @@
   host.insertAdjacentElement('afterend',section);
 
   const label=status=>({PENDING:'بانتظار التفعيل',ACTIVE:'نشط',SUSPENDED:'موقوف',COMPLETED:'مكتمل',CANCELLED:'ملغي'}[status]||status||'—');
-  let requestedMode='student';
+  let requestedMode='student',scheduleVersion=0;
+  const scheduleCurrent=(version,session)=>version===scheduleVersion&&session===auth?.getSessionVersion?.()&&auth?.isAuthenticated()&&section.dataset.trainingMode==='professional-schedule';
+  const scheduleAuthorized=async(version,session)=>{const fn=window.HydrolandPortalAccess?.authorizeRole;return typeof fn==='function'&&await fn('instructor',{sessionVersion:session,isCurrent:()=>scheduleCurrent(version,session)})&&scheduleCurrent(version,session)};
+  const scheduleDate=value=>new Intl.DateTimeFormat('ar-SA-u-ca-gregory',{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Riyadh'}).format(new Date(value));
   async function loadProfessionalEarnings(){
     const list=section.querySelector('[data-training-list]');section.dataset.trainingMode='professional-earnings';
     section.querySelector('.hl-training-head h3').textContent='الإيرادات';section.querySelector('.hl-training-head span').textContent='استحقاقاتك التدريبية فقط — لا تعرض حسابات العملاء أو المنصة';
@@ -38,17 +41,18 @@
     }catch(error){list.innerHTML=`<p>${esc(error instanceof Error?error.message:'تعذر تحميل المهارات')}</p>`;}
   }
   async function loadProfessionalSchedule(){
-    const list=section.querySelector('[data-training-list]');
+    const list=section.querySelector('[data-training-list]'),version=++scheduleVersion,session=auth?.getSessionVersion?.();
     section.dataset.trainingMode='professional-schedule';
     section.querySelector('.hl-training-head h3').textContent='الجدول الزمني والحضور';
-    section.querySelector('.hl-training-head span').textContent='جلساتك التدريبية المعيّنة لك فقط';
+    section.querySelector('.hl-training-head span').textContent='جلساتك المعيّنة لك · الأوقات بتوقيت الرياض';
     list.innerHTML='<p>جارٍ تحميل جدولك...</p>';
     try{
-      const response=await auth.authorizedFetch('/training/professional/me/schedule');
-      const rows=await response.json().catch(()=>[]);
-      if(!response.ok)throw new Error(rows?.message||'تعذر تحميل الجدول');
-      list.innerHTML=(Array.isArray(rows)&&rows.length)?rows.map(item=>`<article class="hl-course" data-professional-session="${esc(item.id)}"><div class="hl-course-top"><div><b>${esc(item.courseCode)}</b><small>${esc(item.student?.displayName||'طالب')} · ${new Date(item.startsAt).toLocaleString('ar-SA')}</small></div><span>${esc(label(item.status))}</span></div><div class="hl-member-actions">${item.status==='SCHEDULED'?'<button type="button" data-attendance-action="OPEN">فتح الحضور</button>':''}${['CHECK_IN_OPEN','IN_PROGRESS'].includes(item.status)&&!item.attendance?.instructorCheckedIn?'<button type="button" data-attendance-action="INSTRUCTOR_CHECK_IN">تسجيل حضور المدرب</button>':''}</div><small>حضور المدرب: ${item.attendance?.instructorCheckedIn?'مسجل':'غير مسجل'} · حضور الطالب: ${item.attendance?.studentCheckedIn?'مسجل':'غير مسجل'}</small></article>`).join(''):'<p>لا توجد جلسات مكلّفة لك حاليًا.</p>';
-    }catch(error){list.innerHTML=`<p>${esc(error instanceof Error?error.message:'تعذر تحميل الجدول')}</p>`;}
+      if(!(await scheduleAuthorized(version,session))){if(scheduleCurrent(version,session))list.innerHTML='<p>صلاحية المدرب غير متاحة. حدّث حسابك.</p>';return}
+      const response=await auth.authorizedFetch('/training/professional/me/schedule'),rows=await response.json().catch(()=>null);
+      if(!scheduleCurrent(version,session))return;
+      if(!response.ok||!Array.isArray(rows))throw new Error(rows?.message||'تعذر تحميل الجدول');
+      list.innerHTML=rows.length?rows.map(item=>`<article class="hl-course" data-professional-session="${esc(item.id)}" data-revision="${esc(item.updatedAt)}"><div class="hl-course-top"><div><b>${esc(item.courseCode)}</b><small>${esc(item.student?.displayName||'طالب')} · ${esc(scheduleDate(item.startsAt))}</small></div><span>${esc(label(item.status))}</span></div><div class="hl-member-actions">${item.updatedAt&&item.actions?.includes('OPEN')?'<button type="button" data-attendance-action="OPEN">فتح الحضور</button>':''}${item.updatedAt&&item.actions?.includes('INSTRUCTOR_CHECK_IN')?'<button type="button" data-attendance-action="INSTRUCTOR_CHECK_IN">تسجيل حضور المدرب</button>':''}</div><small>حضور المدرب: ${item.attendance?.instructorCheckedIn?'مسجل':'غير مسجل'} · حضور الطالب: ${item.attendance?.studentCheckedIn?'مسجل':'غير مسجل'}</small></article>`).join(''):'<p>لا توجد جلسات مكلّفة لك حاليًا.</p>';
+    }catch(error){if(scheduleCurrent(version,session))list.innerHTML=`<p role="alert">${esc(error instanceof Error?error.message:'تعذر تحميل الجدول')}</p><button type="button" data-training-schedule-refresh>تحديث الجدول</button>`;}
   }
   async function loadProfessional(){
     const list=section.querySelector('[data-training-list]');
@@ -79,6 +83,7 @@
   }
 
   async function load(mode){
+    scheduleVersion++;
     if(mode)requestedMode=mode;
     const instructorPortal=document.querySelector('.hl-role-dashboard[data-role="instructor"]');
     if(!mode&&instructorPortal&&window.HydrolandPortalAccess?.getCurrentRole?.()==='instructor')requestedMode='instructor';
@@ -112,6 +117,7 @@
   }
   document.addEventListener('click',event=>{const button=event.target.closest?.('[data-hl-action="training"],[data-training-open]');if(!button)return;event.preventDefault();section.scrollIntoView({behavior:'smooth',block:'start'});if(!auth?.isAuthenticated()){const list=section.querySelector('[data-training-list]');if(list)list.innerHTML='<p>سجل الدخول لعرض بيانات التدريب.</p>';return}const instructor=Boolean(button.closest?.('.hl-role-dashboard[data-role="instructor"]'));load(instructor?'instructor':undefined);});
   section.addEventListener('click',async event=>{
+    if(event.target.closest?.('[data-training-schedule-refresh]')){await loadProfessionalSchedule();return}
     const certificateButton=event.target.closest?.('[data-certificate-recommend]');
     if(certificateButton){const article=certificateButton.closest('[data-certificate-record]'),id=article?.dataset.certificateRecord;if(!id)return;certificateButton.disabled=true;try{const response=await auth.authorizedFetch('/training/professional/me/records/'+encodeURIComponent(id)+'/certificate-recommendation',{method:'POST'});if(!response.ok){const body=await response.json().catch(()=>null);throw new Error(body?.message||'تعذر إرسال التوصية')}await loadProfessionalCertificates();}catch(error){certificateButton.disabled=false;section.querySelector('[data-training-list]').insertAdjacentHTML('afterbegin',`<p role="alert">${esc(error instanceof Error?error.message:'تعذر إرسال التوصية')}</p>`);}return;}
     const skillButton=event.target.closest?.('[data-skill-status]');
@@ -122,15 +128,20 @@
       catch(error){skillButton.disabled=false;section.querySelector('[data-training-list]').insertAdjacentHTML('afterbegin',`<p role="alert">${esc(error instanceof Error?error.message:'تعذر حفظ التقييم')}</p>`);}
       return;
     }
-    const button=event.target.closest?.('[data-attendance-action]');if(!button)return;
+    const button=event.target.closest?.('[data-attendance-action]');if(!button||button.disabled)return;
     const article=button.closest('[data-professional-session]'),id=article?.dataset.professionalSession;if(!id)return;
+    const version=scheduleVersion,session=auth?.getSessionVersion?.(),live=()=>scheduleCurrent(version,session)&&article.isConnected;
     button.disabled=true;
     try{
-      const response=await auth.authorizedFetch('/training/professional/me/sessions/'+encodeURIComponent(id)+'/attendance',{method:'PATCH',body:JSON.stringify({action:button.dataset.attendanceAction})});
-      if(!response.ok){const body=await response.json().catch(()=>null);throw new Error(body?.message||'تعذر تحديث الحضور')}
+      if(!(await scheduleAuthorized(version,session))||!live()){if(live())section.querySelector('[data-training-list]').innerHTML='<p>صلاحية المدرب غير متاحة. حدّث حسابك.</p>';return}
+      const response=await auth.authorizedFetch('/training/professional/me/sessions/'+encodeURIComponent(id)+'/attendance',{method:'PATCH',body:JSON.stringify({action:button.dataset.attendanceAction,expectedUpdatedAt:article.dataset.revision})});
+      const body=await response.json().catch(()=>null);if(!live())return;
+      if(!response.ok)throw new Error(body?.message||'تعذر تحديث الحضور');
       await loadProfessionalSchedule();
-    }catch(error){button.disabled=false;const list=section.querySelector('[data-training-list]');list.insertAdjacentHTML('afterbegin',`<p role="alert">${esc(error instanceof Error?error.message:'تعذر تحديث الحضور')}</p>`);}
+    }catch(error){if(live())article.insertAdjacentHTML('beforeend',`<p role="alert">${esc(error instanceof Error?error.message:'تعذر تحديث الحضور')}</p><button type="button" data-training-schedule-refresh>تحديث الجدول</button>`);}
+    finally{button.disabled=false}
   });
+  document.addEventListener('hydroland:session-cleared',()=>{scheduleVersion++;if(section.dataset.trainingMode==='professional-schedule')section.querySelector('[data-training-list]').textContent='سجل الدخول لعرض جدولك.'});
   document.addEventListener('hydroland:auth-changed',()=>load(requestedMode));
   window.HydrolandTraining={reload:mode=>load(mode)};
   setTimeout(load,0);

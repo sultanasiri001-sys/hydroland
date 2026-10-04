@@ -1,5 +1,5 @@
 import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
-import { Prisma, TrainingEnrollmentStatus, TrainingRecordStatus, TrainingSessionStatus } from '@prisma/client';
+import { TrainingEnrollmentStatus, TrainingRecordStatus } from '@prisma/client';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { TrainingAuthorizationService } from './training-authorization.service';
 import { TrainingRepositoryService } from './training-repository.service';
@@ -124,37 +124,20 @@ export class TrainingController {
   }
 
   @Post('records/:id/sessions')
-  async createSession(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { instructorAccountId: string; startsAt: string; trainingStageId?: string; facilityOrSiteId?: string; tripId?: string; vesselId?: string }) {
+  async createSession(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: Record<string,unknown>) {
     await this.authorization.assertRecordAccess(request.auth.accountId, id);
-    return this.training.createSession({ instructorAccountId:body.instructorAccountId,trainingStageId:body.trainingStageId,facilityOrSiteId:body.facilityOrSiteId,tripId:body.tripId,vesselId:body.vesselId,trainingRecordId: id, startsAt: new Date(body.startsAt) },request.auth.accountId);
+    return this.training.createSession(id,body,request.auth.accountId);
   }
 
   @Patch('professional/me/sessions/:id/attendance')
-  async professionalAttendance(
-    @Req() request: AuthenticatedRequest,
-    @Param('id') id: string,
-    @Body() body: { action: 'OPEN' | 'INSTRUCTOR_CHECK_IN' },
-  ) {
+  async professionalAttendance(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: Record<string,unknown>) {
     await this.authorization.assertSessionAccess(request.auth.accountId, id);
-    const session = await this.training.getSession(id);
-    const evidence = session.evidence && typeof session.evidence === 'object' && !Array.isArray(session.evidence)
-      ? { ...(session.evidence as Prisma.JsonObject) }
-      : {} as Prisma.JsonObject;
-    if (body.action === 'OPEN') {
-      if (session.status !== 'SCHEDULED') throw new BadRequestException('Only a scheduled session can open check-in.');
-      return this.training.setSessionStatus(id, TrainingSessionStatus.CHECK_IN_OPEN, evidence);
-    }
-    if (body.action === 'INSTRUCTOR_CHECK_IN') {
-      if (session.status !== 'CHECK_IN_OPEN' && session.status !== 'IN_PROGRESS') throw new BadRequestException('Check-in must be open.');
-      evidence.instructorCheckInAt = new Date().toISOString();
-      return this.training.setSessionStatus(id, session.status, evidence);
-    }
-    throw new BadRequestException('Unsupported attendance action.');
+    return this.training.setSessionAttendance(id,body,request.auth.accountId);
   }
 
   @Patch('sessions/:id/status')
-  async setSessionStatus(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { status: TrainingSessionStatus; evidence?: any }) {
+  async setSessionStatus(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: Record<string,unknown>) {
     await this.authorization.assertSessionAccess(request.auth.accountId, id);
-    return this.training.setSessionStatus(id, body.status, body.evidence);
+    return this.training.setSessionStatus(id,body,request.auth.accountId);
   }
 }
