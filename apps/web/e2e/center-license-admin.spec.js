@@ -1,7 +1,8 @@
 import {test,expect} from '@playwright/test';
 import {openWorkspaceSwitcher} from './portal-test-helpers.js';
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
-async function setup(page){
+async function setup(page,earlyWeather=false){
+ if(earlyWeather)await page.route('**/hydroland-center-license-admin.js',async route=>{const response=await route.fetch();await route.fulfill({response,body:"(()=>{const weather=document.createElement('section');weather.className='hl-weather-admin';weather.innerHTML='<div class=\"hl-admin__grid\"></div>';document.getElementById('main').prepend(weather)})();\n"+await response.text()})});
  const state={active:true,rows:[{id:'review-one',subject:'رخصة عالم الغوص',referenceNumber:'REF-123',organization:{displayName:'عالم الغوص'},licenseIssuedAt:'2020-01-01',licenseExpiresAt:'2099-01-01',licenseReviewStatus:'PENDING',updatedAt:'2026-10-04T00:00:00.000Z'}]};
  await page.route('**/api/v1/**',route=>json(route,[]));
  await page.route('**/api/v1/auth/google/config',route=>json(route,{enabled:false}));
@@ -12,7 +13,7 @@ async function setup(page){
  await page.evaluate(async()=>{window.HydrolandAuth.acceptSession({accessToken:'admin-test',refreshToken:'admin-refresh'},window.HydrolandAuth.beginAuthAttempt());await window.HydrolandProfile.load()});
  await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="admin"]').click();
  await page.locator('[data-portal-label="الموافقات والطلبات"]').click();
- await expect(page.locator('[data-platform-license="review-one"]')).toBeVisible();return state;
+ await expect(page.locator('.hl-admin > .hl-admin__grid [data-platform-license="review-one"]')).toBeVisible();return state;
 }
 for(const outcome of ['APPROVED','REJECTED'])test(`independent platform admin saves ${outcome} with reviewed revision`,async({page})=>{
  const state=await setup(page);let posted;
@@ -28,4 +29,8 @@ test('revoked platform authority cannot send a decision or retain private rows',
 });
 test('admin clears license queue after logout and escapes submitted metadata',async({page})=>{
  const state=await setup(page);state.rows[0].subject='<img src=x onerror=alert(1)>';await page.locator('[data-license-admin-refresh]').click();await expect(page.locator('[data-platform-license]')).toContainText('<img src=x');await expect(page.locator('[data-platform-license] img')).toHaveCount(0);await page.evaluate(()=>window.HydrolandAuth.terminateSession());await expect(page.locator('[data-platform-license]')).toHaveCount(0);
+});
+
+test('license review attaches to admin even when weather grid loads first',async({page})=>{
+ await setup(page,true);await expect(page.locator('.hl-admin [data-center-license-admin]')).toHaveCount(1);await expect(page.locator('.hl-weather-admin [data-center-license-admin]')).toHaveCount(0);
 });
