@@ -44,7 +44,7 @@ try {
         await db.$executeRawUnsafe(`INSERT INTO "Person" VALUES ('${id}', 'Fixture', '${name}')`);
         await db.$executeRawUnsafe(`INSERT INTO "Account" VALUES ('${id}', '${id}', '${name}@example.invalid', 'ACTIVE', NOW())`);
         await db.$executeRawUnsafe(`INSERT INTO "Session" VALUES ('${sessions[name]}', '${id}', NOW() + INTERVAL '1 hour', NULL)`);
-        await db.$executeRawUnsafe(`INSERT INTO "RoleAssignment" VALUES ('${randomUUID()}', '${id}', '${name === 'admin' ? 'ADMIN' : 'DIVER'}', 'ACTIVE')`);
+        await db.$executeRawUnsafe(`INSERT INTO "RoleAssignment" VALUES ('${randomUUID()}', '${id}', '${name === 'admin' ? 'ADMIN' : name === 'owner' ? 'BOAT_OWNER' : 'DIVER'}', 'ACTIVE')`);
       }
       const service = new MembershipPassService(db);
       // The real AccessTokenGuard and controller are exercised. Identity tokens
@@ -74,7 +74,7 @@ try {
       check(issued.status === 200 && issued.body.officialLicence === false, `actual controller issue expected 200, got ${issued.status}`);
       check(issued.cache === 'no-store', 'issue cannot be cached');
       const pass = issued.body;
-      check(pass.displayName === 'Fixture owner' && pass.roles.length === 1, 'current minimal account snapshot');
+      check(pass.displayName === 'Fixture owner' && pass.roles.length === 1 && pass.roles[0] === 'الوساطة البحرية', 'boat owner receives the approved marine brokerage label');
       const serialized = JSON.stringify(pass);
       check(!serialized.includes('@') && !serialized.includes(ids.owner) && !serialized.includes(sessions.owner) && !serialized.includes('medical') && !serialized.includes('credentialNumber'), 'no PII fields or identifiers in reference');
       check(Date.parse(pass.expiresAt) <= Date.now() + 300_000, 'bounded reference lifetime');
