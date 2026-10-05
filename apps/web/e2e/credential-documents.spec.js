@@ -58,7 +58,7 @@ test('credential can be created, documented, privately opened and submitted from
   const submitCredential=credentialArticle.locator('[data-credential-submit]').first();await submitCredential.click();
   await expect.poll(()=>page.evaluate(()=>window.HydrolandProfileData?.credentials?.[0]?.verificationStatus)).toBe('PENDING');
   await expect(credentialArticle.locator('[data-credential-submit]').first()).toBeDisabled();
-  await expect(credentialArticle.getByRole('button',{name:'عرض المستند'})).toBeVisible();
+  await expect(credentialArticle.getByRole('button',{name:'عرض المستند'}).first()).toBeVisible();
   const accessRequest=page.waitForRequest(request=>request.url().includes('/credentials/credential-1/documents/document-1/access'));
   await credentialArticle.getByRole('button',{name:'عرض المستند'}).first().click();await accessRequest;await expect.poll(()=>state.accessRequests).toBe(1);
 });
