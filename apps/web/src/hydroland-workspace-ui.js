@@ -18,7 +18,7 @@
     '.hl-crew-assignments':['instructor','center','boat','admin'],
     '.hl-dive-review':['instructor','center','admin'],
     '.hl-documents':['center','boat','organization','admin'],
-    '#hl-marine-documents':['boat','admin'],
+    '#hl-marine-documents':['center','boat','admin'],
     '#hl-marine-readiness':['boat','admin'],
     '.hl-center-business-profile':['center'],
     '.hl-center-bookings':['center'],
