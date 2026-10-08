@@ -7,6 +7,9 @@ const moduleFile=read('src/finance/finance.module.ts');
 const closeService=read('src/finance/finance-shift-close.service.ts');
 const dailyCloseDomain=read('src/finance/finance-center-daily-close.domain.ts');
 const closeMigration=read('prisma/migrations/20261009010000_finance_shift_close_reviews/migration.sql');
+const periodCloseService=read('src/finance/finance-period-close.service.ts');
+const periodCloseDomain=read('src/finance/finance-period-close.domain.ts');
+const periodCloseMigration=read('prisma/migrations/20261009020000_finance_period_close_workflow/migration.sql');
 const schema=read('prisma/schema.prisma');
 must(persistence.includes('Finance requester cannot approve or reject their own entry.'),'missing finance self-approval SoD');
 must(persistence.includes('Finance posting requires segregation of duties.'),'missing posting SoD');
@@ -22,4 +25,8 @@ must(closeService.includes('FINANCE_SHIFT_CLOSE_REVIEW_SOD_VIOLATION')&&closeSer
 must(closeService.includes('FINANCE_SHIFT_CLOSE_SUBMITTED')&&closeService.includes('FINANCE_SHIFT_CLOSE_${decision}'),'shift close audit trail missing');
 must(closeMigration.includes('FinanceShiftCloseSubmission_one_pending_per_shift_key')&&closeMigration.includes('FinanceShiftCloseSubmission_values_check'),'shift close persistence constraints missing');
 must(closeService.includes('async dailyReport')&&controller.includes("daily-close-report")&&dailyCloseDomain.includes('NO_APPROVED_SHIFT_CLOSES'),'center daily close report is not wired or empty dates are ambiguous');
+must(moduleFile.includes('FinancePeriodCloseService')&&controller.includes('period-close-submissions')&&controller.includes('period-close-reviews'),'period close workflow is not wired');
+must(periodCloseService.includes('FinancePeriodCloseApproval')&&periodCloseService.includes('assertFinancePeriodApproval')&&periodCloseService.includes('FINANCE_PERIOD_NOT_ENDED'),'period close persistence, segregation, or elapsed-period check is missing');
+must(periodCloseMigration.includes('FinancePeriodCloseApproval_submission_reviewer_key')&&periodCloseMigration.includes('FinancePeriodCloseSubmission_values_check'),'period close database constraints are missing');
+must(periodCloseDomain.includes("timeZone:'Asia/Riyadh'")&&periodCloseDomain.includes('FINANCE_PERIOD_KEY_INVALID'),'Saudi-period boundaries or period-key validation are missing');
 console.log('Finance completion validation passed');

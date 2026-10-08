@@ -9,6 +9,7 @@ import {FinanceWorkspaceService} from '../dist/finance/finance-workspace.service
 import {FinanceShiftsService} from '../dist/finance/finance-shifts.service.js';
 import {FinanceReceivablesService} from '../dist/finance/finance-receivables.service.js';
 import {FinanceShiftCloseService} from '../dist/finance/finance-shift-close.service.js';
+import {FinancePeriodCloseService} from '../dist/finance/finance-period-close.service.js';
 import {FinancePersistenceService} from '../dist/finance/finance-persistence.service.js';
 import {PaymentsService} from '../dist/payments/payments.service.js';
 // Real HTTP routing, AccessTokenGuard, controller, compiled services and PostgreSQL.
@@ -19,16 +20,18 @@ export async function checkFinanceWorkspaceHttp(db,workspace,shifts,{a,b,outside
  Module({controllers:[FinanceController],providers:[
   {provide:DatabaseService,useValue:db},{provide:AuthService,useValue:{authenticateAccessToken:async token=>{if(!tokens.has(token))throw new UnauthorizedException();return {accountId:tokens.get(token)}}}},
   {provide:FinanceReceivablesWorkspaceService,useValue:{}},{provide:FinanceWorkspaceService,useValue:workspace},{provide:FinanceShiftsService,useValue:shifts},
-  ...[FinanceReceivablesService,FinancePersistenceService,PaymentsService].map(provide=>({provide,useValue:{}})),{provide:FinanceShiftCloseService,useValue:{reviewCenters:async()=>[],pending:async()=>[],dailyReport:async(_accountId,centerOrgUnitId,businessDate)=>({centerOrgUnitId,businessDate,shiftCount:0,decision:'NO_APPROVED_SHIFT_CLOSES'})}}
+  ...[FinanceReceivablesService,FinancePersistenceService,PaymentsService].map(provide=>({provide,useValue:{}})),{provide:FinanceShiftCloseService,useValue:{reviewCenters:async()=>[],pending:async()=>[],dailyReport:async(_accountId,centerOrgUnitId,businessDate)=>({centerOrgUnitId,businessDate,shiftCount:0,decision:'NO_APPROVED_SHIFT_CLOSES'})}},{provide:FinancePeriodCloseService,useValue:{reviewCenters:async()=>[],preview:async(_accountId,centerOrgUnitId,periodType,periodKey)=>({centerOrgUnitId,periodType,periodKey,state:'READY'}),submit:async()=>({status:'SUBMITTED'}),pending:async()=>[],decide:async()=>({status:'CLOSED'})}}
  ]})(FixtureModule);
  const app=await NestFactory.create(FixtureModule,{logger:false});let count=0;
  try{
   await app.listen(0,'127.0.0.1');const base=await app.getUrl();
   const call=async(path,token,body)=>{const r=await fetch(base+'/finance'+path,{method:body===undefined?'GET':'POST',headers:{...(token?{authorization:'Bearer '+token}:{}),'content-type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,body:await r.json()}};
   const check=(actual,expected)=>{assert.equal(actual,expected);count++};
-  check((await call('/mine/centers')).status,401);check((await call('/mine/centers','invalid')).status,401);check((await call('/mine/shift-close-centers','invalid')).status,401);assert.deepEqual((await call('/mine/shift-close-centers',a)).body,[]);count++;
+  check((await call('/mine/centers')).status,401);check((await call('/mine/centers','invalid')).status,401);check((await call('/mine/shift-close-centers','invalid')).status,401);check((await call('/mine/period-close-centers','invalid')).status,401);assert.deepEqual((await call('/mine/shift-close-centers',a)).body,[]);assert.deepEqual((await call('/mine/period-close-centers',a)).body,[]);count++;
   const centers=await call('/mine/centers',a);check(centers.status,200);assert.deepEqual(centers.body.map(x=>x.id),[unitA]);count++;
   const daily=await call('/centers/'+unitA+'/daily-close-report?businessDate=2026-10-08',a);check(daily.status,200);check(daily.body.businessDate,'2026-10-08');
+  const periodPreview=await call('/centers/'+unitA+'/period-close-preview?periodType=MONTH&periodKey=2000-01',a);check(periodPreview.status,200);check(periodPreview.body.state,'READY');
+  const periodSubmit=await call('/centers/'+unitA+'/period-close-submissions',a,{periodType:'MONTH',periodKey:'2000-01'});check(periodSubmit.status,201);check(periodSubmit.body.status,'SUBMITTED');
   assert.deepEqual((await call('/mine/centers',wrong)).body,[]);count++;
   const path='/centers/'+unitA+'/workspace';const view=await call(path,a);check(view.status,200);check(view.body.shift.id,from.id);check(view.body.totals.expectedCashMinor,100);
   check((await call(path,outsider)).status,403);check((await call(path,wrong)).status,403);
