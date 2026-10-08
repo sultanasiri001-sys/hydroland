@@ -224,6 +224,7 @@ try {
    const closed=await db.$queryRawUnsafe(`SELECT status::text AS status FROM "FinanceAccountantShift" WHERE id=${literal(closeShift.id)}`);assert.equal(closed[0].status,'CLOSED');
    const closeAudit=await db.$queryRawUnsafe(`SELECT action FROM "AuditEvent" WHERE "resourceId"=${literal(resubmitted.submissionId)} ORDER BY action`);assert.deepEqual(closeAudit.map(x=>x.action),['FINANCE_SHIFT_CLOSE_APPROVED','FINANCE_SHIFT_CLOSE_SUBMITTED']);scenarios++;
    await rejects(service.recordEntry(a,closeShift.id,{type:'EXPENSE',amountMinor:1}),'FINANCE_SHIFT_NOT_OPEN');
+   await service.openShift(a,unitA,0);
    const newInvoices=[];
    for(let n=0;n<26;n++){const pay=await makePayment(originBooking,b,100),invoice=id();await run(`UPDATE "Payment" SET status='CREATED' WHERE id=${literal(pay)}`);await run(`INSERT INTO "Invoice" (id,"paymentId",status,number) VALUES (${literal(invoice)},${literal(pay)},'ISSUED',${literal('PAGE-'+String(n).padStart(2,'0'))})`);newInvoices.push(invoice);}
    const invoices1=await arView.invoices(a,unitA,'1'),invoices2=await arView.invoices(a,unitA,'2');assert.equal(invoices1.items.length,25);assert.equal(invoices2.items.length,1);assert.equal(invoices1.total,26);assert.equal(new Set([...invoices1.items,...invoices2.items].map(x=>x.id)).size,26);scenarios++;
