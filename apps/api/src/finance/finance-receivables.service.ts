@@ -14,6 +14,7 @@ export class FinanceReceivablesService {
     const checked=assertCreditInvoice({totalMinor:input.totalMinor,paidMinor:input.paidMinor??0,dueAt:input.dueAt,creditLimitMinor:input.creditLimitMinor});
     return this.db.serializable(async tx=>{
       const scope=await this.access.requireBranchAccountant(actorAccountId,input.centerOrgUnitId,tx);
+      await this.access.requireCenterOrganizationAccountant(actorAccountId,scope.organizationId,tx);
       const invoice=await tx.$queryRaw<Array<{id:string;accountId:string;amountMinor:number;currency:string;paymentStatus:string}>>`SELECT i."id",p."accountId",p."amountMinor",p."currency",p."status"::text AS "paymentStatus" FROM "Invoice" i JOIN "Payment" p ON p."id"=i."paymentId" JOIN "Booking" b ON b."id"=p."bookingId" JOIN "Trip" t ON t."id"=b."tripId" WHERE i."id"=${financeKey('Invoice','id',input.invoiceId)} AND t."organizationId"=${financeKey('Organization','id',scope.organizationId)} AND i."status"::text<>'VOID' FOR UPDATE OF i FOR SHARE OF p,b,t`;
       if(!invoice[0])throw new Error('FINANCE_INVOICE_SCOPE_UNVERIFIED');
       if(invoice[0].currency!=='SAR')throw new Error('FINANCE_CURRENCY_UNSUPPORTED');

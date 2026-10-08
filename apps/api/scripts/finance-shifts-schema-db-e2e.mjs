@@ -98,6 +98,9 @@ try {
    await run(`UPDATE "Payment" SET currency='USD' WHERE id=${literal(originPayment)}`);
    await rejects(ar.createDeferredInvoice(a,terms),'FINANCE_CURRENCY_UNSUPPORTED');
    await run(`UPDATE "Payment" SET currency='SAR' WHERE id=${literal(originPayment)}`);
+   await run(`INSERT INTO "OrgUnit" VALUES (${literal(extra)},${literal(orgA)},'CENTER',TRUE)`);
+   await rejects(ar.createDeferredInvoice(a,terms),'FINANCE_CENTER_MAPPING_AMBIGUOUS');
+   await run(`DELETE FROM "OrgUnit" WHERE id=${literal(extra)}`);
    const receivable=await ar.createDeferredInvoice(a,terms);scenarios++;
    await rejects(ar.createDeferredInvoice(a,terms),'FINANCE_RECEIVABLE_ALREADY_EXISTS');
    const installments=await db.$queryRawUnsafe(`SELECT id,sequence FROM "ReceivableInstallment" WHERE "receivableId"=${literal(receivable.receivableId)} ORDER BY sequence`);
