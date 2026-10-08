@@ -178,6 +178,27 @@ try {
     report.migrationCount = finalManifest.length;
     await writeFile(join(evidenceDir, 'fixture-migration-manifest.json'), JSON.stringify(finalManifest, null, 2));
   }
+  // Synthetic raw-domain relationship graph; no production data is copied.
+  const rawIds = Object.fromEntries(completion.catalog.tables.map((t,i) => [t.name, '10000000-0000-4000-8000-' + String(i+1).padStart(12,'0')]));
+  const parentIds = { ...rawIds, Account: account.id, Organization: organization.id, Trip: trip.id };
+  for (const name of ['WorkforceDepartment','WorkforcePosition','WorkforceSeat','WorkforceCenterDepartment','WorkforceHiringRequest','TrainingCourse','ComplianceAssessment','ComplianceEvidence']) {
+    const values = new Map();
+    for (const column of completion.catalog.columns.filter(c => c.table_name === name)) {
+      const ref = completion.catalog.constraints.find(c => c.kind === 'f' && c.table_name === name && c.columns.includes(column.name));
+      const parent = ref?.referenced_table.replaceAll('"','');
+      if (column.name === 'id') values.set(column.name, literal(rawIds[name]) + '::uuid');
+      else if (ref && parentIds[parent] && parent !== name) values.set(column.name, literal(parentIds[parent]));
+      else if (column.not_null && column.default_sql === null) {
+        if (column.type.startsWith('timestamp')) values.set(column.name, 'CURRENT_TIMESTAMP');
+        else if (column.type === 'jsonb') values.set(column.name, "'[]'::jsonb");
+        else if (column.type === '"WorkforcePositionTier"') values.set(column.name, "'MANAGER'");
+        else { assert.equal(column.type, 'text', 'Unhandled required raw fixture column'); values.set(column.name, literal('REHEARSAL_' + name + '_' + column.name)); }
+      }
+    }
+    if (name === 'WorkforceSeat') values.set('scope', "'EXTERNAL_CENTER'");
+    sql(SOURCE, `INSERT INTO ${identifier(name)} (${[...values.keys()].map(identifier).join(',')}) VALUES (${[...values.values()].join(',')})`);
+  }
+  check('all_eight_raw_domains_have_synthetic_relationship_rows', completion.catalog.tables.every(t => Number(sql(SOURCE, `SELECT count(*) FROM ${identifier(t.name)}`)) === 1));
   await assertAuditAppendOnly(db, SOURCE);
   await db.$disconnect(); db = null;
   const completedColumns = rows(SOURCE, `SELECT c.relname AS table_name,a.attname AS name,format_type(a.atttypid,a.atttypmod) AS type,a.attnotnull AS not_null,pg_get_expr(d.adbin,d.adrelid) AS default_sql FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum WHERE n.nspname='public' AND a.attnum>0 AND NOT a.attisdropped`);
