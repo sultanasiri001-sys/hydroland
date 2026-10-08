@@ -66,12 +66,12 @@ export class FinanceReceivablesService {
       if(payment[0].currency!==r.currency)throw new Error('FINANCE_PAYMENT_CURRENCY_MISMATCH');
       if(payment[0].accountId!==r.customerAccountId)throw new Error('FINANCE_PAYMENT_CUSTOMER_MISMATCH');
       if(payment[0].amountMinor!==input.amountMinor)throw new Error('FINANCE_PAYMENT_AMOUNT_MISMATCH');
-      const ledgered=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "FinanceShiftEntry" WHERE "paymentId"=${financeKey('FinanceShiftEntry','paymentId',input.paymentId)} LIMIT 1`;
-      if(ledgered.length)throw new Error('FINANCE_PAYMENT_ALREADY_LEDGERED');
-      const assigned=await tx.$queryRaw<Array<{id:string}>>`SELECT other."id" FROM "Invoice" i JOIN "Receivable" other ON other."invoiceId"=i."id" WHERE i."paymentId"=${financeKey('Payment','id',input.paymentId)} AND other."id"<>${financeKey('Receivable','id',receivableId)} FOR SHARE OF i,other`;
-      if(assigned.length)throw new Error('FINANCE_PAYMENT_ALLOCATED_TO_OTHER_RECEIVABLE');
       const used=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "ReceivablePayment" WHERE "paymentId"=${financeKey('ReceivablePayment','paymentId',input.paymentId)} OR "receiptNumber"=${input.receiptNumber.trim()} LIMIT 1`;
       if(used[0])throw new Error('FINANCE_COLLECTION_ALREADY_RECORDED');
+      const assigned=await tx.$queryRaw<Array<{id:string}>>`SELECT other."id" FROM "Invoice" i JOIN "Receivable" other ON other."invoiceId"=i."id" WHERE i."paymentId"=${financeKey('Payment','id',input.paymentId)} AND other."id"<>${financeKey('Receivable','id',receivableId)} FOR SHARE OF i,other`;
+      if(assigned.length)throw new Error('FINANCE_PAYMENT_ALLOCATED_TO_OTHER_RECEIVABLE');
+      const ledgered=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "FinanceShiftEntry" WHERE "paymentId"=${financeKey('FinanceShiftEntry','paymentId',input.paymentId)} LIMIT 1`;
+      if(ledgered.length)throw new Error('FINANCE_PAYMENT_ALREADY_LEDGERED');
       const next=applyReceivablePayment(r.outstandingMinor,input.amountMinor);
       const scheduled=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "ReceivableInstallment" WHERE "receivableId"=${financeKey('ReceivableInstallment','receivableId',receivableId)} AND "status"<>'CANCELLED' LIMIT 1`;
       if(scheduled.length&&!input.installmentId)throw new Error('FINANCE_INSTALLMENT_REQUIRED');
