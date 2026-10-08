@@ -217,7 +217,7 @@ try {
    await rejects(closeService.review(a,closeSubmission.submissionId,'REJECTED','سبب رفض موثق للمراجعة'),'FINANCE_SHIFT_CLOSE_REVIEW_SOD_VIOLATION');
    await rejects(closeService.review(outsider,closeSubmission.submissionId,'REJECTED'),'FINANCE_SHIFT_CLOSE_REJECTION_REASON_REQUIRED');
    const reviewList=await closeService.pending(outsider,unitA);assert.equal(reviewList.length,1);assert.equal(reviewList[0].id,closeSubmission.submissionId);scenarios++;
-   await rejects(closeService.review(a,closeSubmission.submissionId,'APPROVED'),'FINANCE_SHIFT_CLOSE_REVIEW_DENIED');
+   await rejects(closeService.review(a,closeSubmission.submissionId,'APPROVED'),'FINANCE_SHIFT_CLOSE_REVIEW_SOD_VIOLATION');
    const rejected=await closeService.review(outsider,closeSubmission.submissionId,'REJECTED','فرق الجرد يحتاج إلى إرفاق محضر');assert.equal(rejected.status,'REJECTED');scenarios++;
    const resubmitted=await closeService.submit(a,unitA,closeShift.id,postedShift.totals.expectedCashMinor);assert.equal(resubmitted.status,'SUBMITTED');assert.equal(resubmitted.revision,2);scenarios++;
    const approved=await closeService.review(outsider,resubmitted.submissionId,'APPROVED','تمت مطابقة سجل الصندوق');assert.equal(approved.status,'APPROVED');
