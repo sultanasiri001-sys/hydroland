@@ -1,0 +1,61 @@
+{
+  "status": "CANDIDATE_NOT_PRODUCTION_APPROVED",
+  "baselineName": "00000000000000_fresh_install_baseline",
+  "schemaSha256": "4eeaba16079bbd915d5ea97dc09eb86e1cdf12d263d1c5b5c9cf3dc9e16df1df",
+  "baselineSha256": "fe4e99baad5e980ceb780534a373ddaa3f17d76db908f418812479cbe2f30242",
+  "components": [
+    {
+      "source": "prisma/schema.prisma",
+      "sha256": "b2b0b87e5d9f42bd303e2df51ab0fa76b90196b86e595b8e353179d8824c468a"
+    },
+    {
+      "source": "prisma/migrations/20260915024500_equipment_barcode_inventory/migration.sql",
+      "sha256": "9538175bd05888f1448c08398aeef58ab70fe899607a3a364a8461deafddc47f"
+    },
+    {
+      "source": "prisma/migrations/20260915031500_equipment_inspections/migration.sql",
+      "sha256": "841bd032ea5fdaff867da0bda4797959610888bce36755176de574c6746b43b7"
+    },
+    {
+      "source": "prisma/migrations/20260915042000_inventory_stocktake/migration.sql",
+      "sha256": "802dcfb96fb0f30cb226e60f91d899ecdea2b8e88d1cef79829cff1a097033e5"
+    },
+    {
+      "source": "prisma/migrations/20260915044000_inventory_asset_value/migration.sql",
+      "sha256": "4e3849a49c500fbdc583ad3e6c232ed8b8c56305e9314b1bff858194dd267441"
+    },
+    {
+      "source": "prisma/migrations/20260915045500_equipment_rentals/migration.sql",
+      "sha256": "bc73091c3c276f6179314dc957679d1019811789d6a95ce8f7ae9f3011a6b65d"
+    },
+    {
+      "source": "prisma/migrations/20260915052000_equipment_rental_returns/migration.sql",
+      "sha256": "347cc41acb2d3d9a41c84747d254f5e15a8a1a96aa0ec97af593a98dd50c3e5c"
+    },
+    {
+      "source": "prisma/migrations/20260915053500_equipment_rental_due_extensions/migration.sql",
+      "sha256": "f0ef1fd982336997be10cb8f6c050d054c4702550ba20514fc92b16284081652"
+    },
+    {
+      "source": "prisma/migrations/20260915054500_equipment_tag_profiles/migration.sql",
+      "sha256": "0d3b5fc523d94051fb5194e4071cd5c2835023a85d854b7debbcc6a64e126f4a"
+    },
+    {
+      "source": "prisma/migrations/20260915060000_equipment_rental_handover/migration.sql",
+      "sha256": "ca81de6d5f363af9b9f66a3cd2b6fca7f1996519f36af3152999ab53fcd56e19"
+    },
+    {
+      "source": "prisma/migrations/20260925210500_trip_weather_runtime/migration.sql",
+      "sha256": "0dbbcd54e402d0e578b28b1777ced21d4687bd5f8ecfc3552380c5a10a7eed85"
+    },
+    {
+      "source": "prisma/migrations/20260925224500_messaging_runtime/migration.sql",
+      "sha256": "122499993b47ead838614cea06db179d6847efe055f382692d7e90f5e7c556a6"
+    },
+    {
+      "source": "prisma/migrations/20260930080000_audit_event_append_only/migration.sql",
+      "sha256": "5d77de905693d97bb1164ef77a6179442e70790f1ae2045d80af4fac2a094349"
+    }
+  ],
+  "historicalLedgerReplacementApproved": false
+}

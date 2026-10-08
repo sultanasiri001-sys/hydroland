@@ -5,6 +5,8 @@ on:
   pull_request:
     paths:
       - 'apps/api/prisma/**'
+      - 'apps/api/prisma-fresh-install-candidate/**'
+      - 'apps/api/scripts/fresh-install-candidate.mjs'
       - 'apps/api/scripts/recovery-rehearsal.mjs'
       - 'apps/api/scripts/bootstrap-*-runtime-schema.mjs'
       - '.github/workflows/phase11-recovery-drill.yml'
@@ -13,6 +15,8 @@ on:
     branches: [main]
     paths:
       - 'apps/api/prisma/**'
+      - 'apps/api/prisma-fresh-install-candidate/**'
+      - 'apps/api/scripts/fresh-install-candidate.mjs'
       - 'apps/api/scripts/recovery-rehearsal.mjs'
       - 'apps/api/scripts/bootstrap-*-runtime-schema.mjs'
       - '.github/workflows/phase11-recovery-drill.yml'
@@ -25,11 +29,17 @@ permissions:
 
 jobs:
   restore-drill:
+    name: restore-drill (${{ matrix.baseline }})
+    strategy:
+      fail-fast: false
+      matrix:
+        baseline: [GENERATED_REFERENCE, VERSIONED_CANDIDATE]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       NODE_ENV: test
       RECOVERY_REHEARSAL_CONFIRM: DISPOSABLE_LOCAL_ONLY
+      RECOVERY_BASELINE_SOURCE: ${{ matrix.baseline }}
       DATABASE_URL: postgresql://hydroland:hydroland@127.0.0.1:5432/hydroland_rehearsal_source?schema=public
     steps:
       - uses: actions/checkout@v4
@@ -61,7 +71,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: phase11-recovery-drill-${{ github.run_id }}
+          name: phase11-recovery-drill-${{ matrix.baseline }}-${{ github.run_id }}
           path: phase11-recovery-evidence/*.json
           retention-days: 30
           if-no-files-found: error

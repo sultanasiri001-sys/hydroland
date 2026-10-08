@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { verifyFreshInstallCandidate, baselineName } from './fresh-install-candidate.mjs';
 
 // This is a local, synthetic restore rehearsal, never a production restore.
 // Refuse other hosts/databases and verify the exact disposable Docker boundary
@@ -14,6 +15,8 @@ const TARGETS = ['hydroland_rehearsal_restore_1', 'hydroland_rehearsal_restore_2
 const CONTAINER = 'phase11-postgres';
 assert.equal(process.env.NODE_ENV, 'test', 'Recovery rehearsal requires NODE_ENV=test');
 assert.equal(process.env.RECOVERY_REHEARSAL_CONFIRM, 'DISPOSABLE_LOCAL_ONLY', 'Explicit disposable-rehearsal confirmation required');
+const baselineSource = process.env.RECOVERY_BASELINE_SOURCE || 'GENERATED_REFERENCE';
+assert.ok(['GENERATED_REFERENCE', 'VERSIONED_CANDIDATE'].includes(baselineSource), 'Unknown baseline source');
 const sourceUrl = new URL(process.env.DATABASE_URL || '');
 assert.equal(sourceUrl.protocol, 'postgresql:');
 assert.equal(sourceUrl.hostname, '127.0.0.1', 'Remote database hosts are prohibited');
@@ -42,6 +45,7 @@ const report = {
   scope: 'SYNTHETIC_LOCAL_LOGICAL_RESTORE', sourceCommit: process.env.GITHUB_SHA || 'local',
   runId: process.env.GITHUB_RUN_ID || 'local', startedAt: new Date().toISOString(),
   status: 'RUNNING', productionRecoveryVerified: false, historicalProductionReplayVerified: false,
+  baselineSource, freshInstallCandidateVerified: false,
   notes: ['No production credentials, records or provider were used.',
     'CI baseline migrations are actually executed; no migrate resolve or fabricated historical records.',
     'This tests a logical backup/restore of the current canonical schema plus its raw-SQL extensions.',
@@ -93,7 +97,7 @@ try {
   await writeFile(join(work, 'migrations/migration_lock.toml'), 'provider = "postgresql"\n');
   const baseline = prisma(['migrate', 'diff', '--from-empty', '--to-schema-datamodel', join(apiRoot, 'prisma/schema.prisma'), '--script']);
   check('canonical_baseline_has_tables', baseline.includes('CREATE TABLE'));
-  const migrations = [{ name: '00000000000000_ci_canonical_baseline', sql: baseline, source: 'generated from current Prisma schema' }];
+  let migrations = [{ name: '00000000000000_ci_canonical_baseline', sql: baseline, source: 'generated from current Prisma schema' }];
   // Use the same exact operational-extension lists as the existing API suite.
   for (const file of ['bootstrap-equipment-runtime-schema.mjs', 'bootstrap-trip-weather-runtime-schema.mjs', 'bootstrap-messaging-runtime-schema.mjs']) {
     const bootstrap = await readFile(join(apiRoot, 'scripts', file), 'utf8');
@@ -105,6 +109,12 @@ try {
   }
   const appendOnlyAuditName = '20260930080000_audit_event_append_only';
   migrations.push({ name: appendOnlyAuditName, sql: await readFile(join(apiRoot, 'prisma/migrations', appendOnlyAuditName, 'migration.sql'), 'utf8'), source: 'phase4 append-only audit ledger' });
+  if (baselineSource === 'VERSIONED_CANDIDATE') {
+    const candidate = await verifyFreshInstallCandidate();
+    check('versioned_candidate_matches_canonical_schema_and_exact_raw_sql', true);
+    migrations = [{ name: baselineName, sql: await readFile(join(candidate.candidate, 'migrations', baselineName, 'migration.sql'), 'utf8'), source: 'versioned fresh-install candidate; separate migration ledger' }];
+    report.candidateBaselineSha256 = candidate.baselineSha256;
+  }
   check('migration_names_are_unique', new Set(migrations.map(item => item.name)).size === migrations.length);
   for (const migration of migrations) {
     await mkdir(join(work, 'migrations', migration.name));
@@ -184,6 +194,7 @@ try {
     }
   }
   check('source_unchanged_by_both_restores', JSON.stringify(snapshot(SOURCE)) === JSON.stringify(before));
+  report.freshInstallCandidateVerified = baselineSource === 'VERSIONED_CANDIDATE';
   report.status = 'PASS';
 } catch (error) {
   report.status = 'FAIL'; report.failure = String(error?.message || error).slice(0, 2500);
