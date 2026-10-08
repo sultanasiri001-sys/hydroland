@@ -8,6 +8,7 @@ Implemented:
 - Candidate invoices have linked, non-captured CREATED/PENDING/AUTHORIZED payments and an active customer; existing receivables, drafts, unlinked invoices and other centers are excluded from creation choices.
 - Payment choices match invoice booking, customer, currency, captured status, available balance and unused collection evidence. Unsupported/void/unlinked provenance exposes no collection action.
 - Manual receivable creation uses authoritative invoice/customer/total values, a Riyadh due date and optional explicitly entered installments. Installment amounts must exactly sum to the debt.
+- Initial paid evidence cannot reuse an already allocated payment, and collection cannot consume a payment attached to a different receivable. Unissued invoices and cancelled/refunded/failed source payments cannot establish new debt.
 - Collection uses the selected payment's exact amount and a receipt number; scheduled receivables require an installment and cancelled installments are denied. Existing transactional guards enforce provenance, duplicate prevention and overpayment limits.
 - Detail shows installment balances and the latest 50 collection receipts. Pagination is available for receivables, eligible invoices and payment candidates.
 - Role/session fencing, duplicate-submit disabling and stale-data clearing follow the accountant workspace pattern.

@@ -135,6 +135,7 @@ try {
    await rejects(arView.list(a,unitA,'1',['open']),'FINANCE_FILTER_INVALID');
    await run(`UPDATE "Invoice" SET status='DRAFT' WHERE id=${literal(invoiceId)}`);
    assert.deepEqual((await arView.invoices(a,unitA)).items,[]);scenarios++;
+   await rejects(ar.createDeferredInvoice(a,terms),'FINANCE_INVOICE_SCOPE_UNVERIFIED');
    await run(`UPDATE "Invoice" SET status='ISSUED' WHERE id=${literal(invoiceId)}`);
    await rejects(ar.createDeferredInvoice(outsider,terms),'FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
    await rejects(ar.createDeferredInvoice(a,{...terms,invoiceId:unlinkedInvoice}),'FINANCE_INVOICE_SCOPE_UNVERIFIED');
@@ -197,12 +198,18 @@ try {
    const newInvoices=[];
    for(let n=0;n<26;n++){const pay=await makePayment(originBooking,b,100),invoice=id();await run(`UPDATE "Payment" SET status='CREATED' WHERE id=${literal(pay)}`);await run(`INSERT INTO "Invoice" (id,"paymentId",status,number) VALUES (${literal(invoice)},${literal(pay)},'ISSUED',${literal('PAGE-'+String(n).padStart(2,'0'))})`);newInvoices.push(invoice);}
    const invoices1=await arView.invoices(a,unitA,'1'),invoices2=await arView.invoices(a,unitA,'2');assert.equal(invoices1.items.length,25);assert.equal(invoices2.items.length,1);assert.equal(invoices1.total,26);assert.equal(new Set([...invoices1.items,...invoices2.items].map(x=>x.id)).size,26);scenarios++;
-   for(const invoice of newInvoices)await ar.createDeferredInvoice(a,{...terms,invoiceId:invoice,installments:undefined});
+   const pagedReceivables=[];for(const invoice of newInvoices)pagedReceivables.push((await ar.createDeferredInvoice(a,{...terms,invoiceId:invoice,installments:undefined})).receivableId);
    const page1=await arView.list(a,unitA,'1','all'),page2=await arView.list(a,unitA,'2','all');assert.equal(page1.items.length,25);assert.equal(page2.items.length,2);assert.equal(page1.total,27);assert.equal(new Set([...page1.items,...page2.items].map(x=>x.id)).size,27);scenarios++;
    const httpOrigin=await makePayment(originBooking,b,100),httpInvoice=id(),httpPayment=await makePayment(originBooking,b,100);
    await run(`UPDATE "Payment" SET status='CREATED' WHERE id=${literal(httpOrigin)}`);
    await run(`INSERT INTO "Invoice" (id,"paymentId",status) VALUES (${literal(httpInvoice)},${literal(httpOrigin)},'ISSUED')`);
    scenarios+=await checkReceivablesWorkspaceHttp(db,workspace,arView,service,ar,{a,b,outsider,unitA,invoiceId:httpInvoice,paymentId:httpPayment,foreignId:foreignReceivable.receivableId});
+   const allocatedInvoice=id();await run(`INSERT INTO "Invoice" (id,"paymentId",status) VALUES (${literal(allocatedInvoice)},${literal(httpPayment)},'PAID')`);
+   await rejects(ar.createDeferredInvoice(a,{...terms,invoiceId:allocatedInvoice,paidMinor:100,installments:undefined}),'FINANCE_INVOICE_PAYMENT_ALREADY_ALLOCATED');
+   const ownedPayment=await makePayment(originBooking,b,100),ownedInvoice=id();await run(`INSERT INTO "Invoice" (id,"paymentId",status) VALUES (${literal(ownedInvoice)},${literal(ownedPayment)},'PAID')`);
+   await ar.createDeferredInvoice(a,{...terms,invoiceId:ownedInvoice,paidMinor:100,installments:undefined});
+   assert.ok(!(await arView.detail(a,unitA,pagedReceivables[0])).payments.items.some(x=>x.id===ownedPayment));scenarios++;
+   await rejects(ar.collect(a,pagedReceivables[0],{paymentId:ownedPayment,amountMinor:100,receiptNumber:'DOUBLE-ORIGIN'}),'FINANCE_PAYMENT_ALLOCATED_TO_OTHER_RECEIVABLE');
    // Totals include every entry even when the display is capped at the latest 50.
    await run(`UPDATE "Position" SET code='BRANCH_ACCOUNTANT' WHERE id=${literal(wrongPosition)}`);
    for(let n=0;n<55;n++)await run(`INSERT INTO "FinanceShiftEntry" (id,"shiftId",type,"amountMinor","recordedByAccountId") VALUES (${literal(randomUUID())},${literal(second.id)},'ADJUSTMENT',1,${literal(wrong)})`);

@@ -23,7 +23,8 @@ export async function checkReceivablesWorkspaceHttp(db,workspace,arWorkspace,shi
   check((await call(root+'/receivables/workspace')).status,401);
   check((await call(root+'/receivables/workspace',outsider)).status,403);
   check((await call(root+'/receivables/workspace?page=0',a)).status,400);
-  check((await call(root+'/receivables/workspace?status[]=open',a)).status,400);
+  check((await call(root+'/receivables/workspace?status=open&status=all',a)).status,400);
+  check((await call(root+'/receivables/workspace?status=invalid',a)).status,400);
   check((await call(root+'/receivable-invoices?page=bad',a)).status,400);
   const list=await call(root+'/receivables/workspace?status=all&page=2',a);check(list.status,200);check(list.body.items.length,2);check(list.body.total,27);
   check((await call(root+'/receivables/'+foreignId,a)).status,404);

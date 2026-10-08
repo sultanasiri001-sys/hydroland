@@ -70,7 +70,7 @@ export class FinanceReceivablesWorkspaceService {
       const provenance=await tx.$queryRaw<Array<{id:string}>>`
         SELECT origin."id" FROM "Invoice" i JOIN "Payment" origin ON origin."id"=i."paymentId"
         JOIN "Booking" b ON b."id"=origin."bookingId" JOIN "Trip" t ON t."id"=b."tripId"
-        WHERE i."id"=${financeKey('Invoice','id',receivable.invoiceId)} AND i."status"<>'VOID'
+        WHERE i."id"=${financeKey('Invoice','id',receivable.invoiceId)} AND i."status" IN ('ISSUED','PAID')
           AND origin."accountId"=${financeKey('Account','id',receivable.customerAccountId)}
           AND t."organizationId"=${financeKey('Organization','id',scope.organizationId)} FOR SHARE OF i,origin,b,t`;
       const collectable=provenance.length===1&&receivable.outstandingMinor>0&&receivable.currency==='SAR';
@@ -78,7 +78,8 @@ export class FinanceReceivablesWorkspaceService {
         WHERE origin."id"=${financeKey('Payment','id',provenance[0]?.id??null)} AND pay."status"='CAPTURED'
           AND pay."accountId"=${financeKey('Account','id',receivable.customerAccountId)} AND pay."currency"=${receivable.currency}
           AND pay."amountMinor">0 AND pay."amountMinor"<=${receivable.outstandingMinor}
-          AND NOT EXISTS(SELECT 1 FROM "ReceivablePayment" used WHERE used."paymentId"=pay."id")`;
+          AND NOT EXISTS(SELECT 1 FROM "ReceivablePayment" used WHERE used."paymentId"=pay."id")
+          AND NOT EXISTS(SELECT 1 FROM "Invoice" pi JOIN "Receivable" other ON other."invoiceId"=pi."id" WHERE pi."paymentId"=pay."id" AND other."id"<>${financeKey('Receivable','id',receivableId)})`;
       const counts=collectable?await tx.$queryRaw<Array<{total:bigint}>>`SELECT COUNT(*)::bigint AS total ${from}`:[{total:0n}];
       const payments=collectable?await tx.$queryRaw<Array<Record<string,unknown>>>`
         SELECT pay."id",pay."amountMinor",pay."createdAt",pay."providerReference" ${from}
