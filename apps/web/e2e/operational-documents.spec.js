@@ -67,7 +67,7 @@ test('document quick actions are connected instead of disabled placeholders',asy
   await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="organization"]').click();
   const dashboard=page.locator('.hl-role-dashboard[data-role="organization"]');await expect(dashboard).toBeVisible();
   for(const name of ['رفع الوثائق','العقود والمستندات','متابعة اعتماد المستندات']){
-    const button=dashboard.getByRole('button',{name,exact:true});
+    const button=dashboard.locator('.hl-command-grid').getByRole('button',{name,exact:true});
     await expect(button).toBeEnabled();await expect(button).toHaveAttribute('data-hl-route','documents');
   }
   await dashboard.getByRole('button',{name:'متابعة اعتماد المستندات',exact:true}).click();await expect(page.locator('#hl-documents')).toBeVisible();
