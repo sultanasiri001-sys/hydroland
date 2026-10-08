@@ -1,3 +1,5 @@
+import { FinanceWorkspaceService } from './finance-workspace.service';
+import { financeHttp } from './finance-http';
 import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { FinanceEntryType } from '@prisma/client';
 import { AdminGuard } from '../admin/admin.guard';
@@ -12,14 +14,24 @@ type AuthenticatedRequest = { auth: { accountId: string } };
 @UseGuards(AccessTokenGuard)
 @Controller('finance')
 export class FinanceController {
-  constructor(private readonly payments: PaymentsService, private readonly finance: FinancePersistenceService, private readonly shifts: FinanceShiftsService, private readonly receivables: FinanceReceivablesService) {}
+  constructor(private readonly workspace: FinanceWorkspaceService, private readonly payments: PaymentsService, private readonly finance: FinancePersistenceService, private readonly shifts: FinanceShiftsService, private readonly receivables: FinanceReceivablesService) {}
 
   @Get('mine/payments')
   mine(@Req() request: AuthenticatedRequest) { return this.payments.mine(request.auth.accountId); }
 
+  @Get('mine/centers')
+  accountantCenters(@Req() request: AuthenticatedRequest) {
+    return financeHttp(()=>this.workspace.centers(request.auth.accountId));
+  }
+
+  @Get('centers/:centerOrgUnitId/workspace')
+  accountantWorkspace(@Req() request: AuthenticatedRequest, @Param('centerOrgUnitId') centerOrgUnitId: string) {
+    return financeHttp(()=>this.workspace.workspace(request.auth.accountId,centerOrgUnitId));
+  }
+
   @Post('shifts/open')
   openShift(@Req() request: AuthenticatedRequest, @Body() body: { centerOrgUnitId: string; openingBalanceMinor: number }) {
-    return this.shifts.openShift(request.auth.accountId, body.centerOrgUnitId, body.openingBalanceMinor);
+    return financeHttp(()=>this.shifts.openShift(request.auth.accountId, body?.centerOrgUnitId, body?.openingBalanceMinor));
   }
 
   @Post('shifts/:shiftId/entries')
@@ -29,12 +41,12 @@ export class FinanceController {
 
   @Post('shifts/:shiftId/handover')
   requestHandover(@Req() request: AuthenticatedRequest, @Param('shiftId') shiftId: string, @Body() body: { toAccountantId: string; actualCashMinor: number; varianceReason?: string }) {
-    return this.shifts.requestHandover(request.auth.accountId, shiftId, body.toAccountantId, body.actualCashMinor, body.varianceReason);
+    return financeHttp(()=>this.shifts.requestHandover(request.auth.accountId, shiftId, body?.toAccountantId, body?.actualCashMinor, body?.varianceReason));
   }
 
   @Post('shifts/handovers/:handoverId/accept')
   acceptHandover(@Req() request: AuthenticatedRequest, @Param('handoverId') handoverId: string) {
-    return this.shifts.acceptHandover(request.auth.accountId, handoverId);
+    return financeHttp(()=>this.shifts.acceptHandover(request.auth.accountId, handoverId));
   }
 
   @Post('receivables')
