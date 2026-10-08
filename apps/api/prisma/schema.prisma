@@ -251,6 +251,8 @@ model Organization {
   documentReferenceCounters DocumentReferenceCounter[]
   documentBrandSnapshots DocumentBrandSnapshot[]
   documentAssets OrganizationDocumentAsset[]
+  customerCases CustomerCase[] @relation("OrganizationCustomerCases")
+  bookings Booking[]
 }
 
 model OrganizationDocumentAsset {
@@ -604,16 +606,22 @@ model Booking {
   id String @id @default(uuid())
   tripId String
   accountId String
+  organizationId String?
+  bookingRequestKey String? @unique
+  bookingRequestFingerprint String?
   status BookingStatus @default(PENDING)
   seats Int @default(1)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   trip Trip @relation(fields:[tripId], references:[id], onDelete:Restrict)
   account Account @relation(fields:[accountId], references:[id], onDelete:Restrict)
+  organization Organization? @relation(fields:[organizationId], references:[id], onDelete:Restrict)
   participants BookingParticipant[]
   payments Payment[]
-  @@unique([tripId,accountId])
+  safetyIncidents SafetyIncident[]
   @@index([tripId,status])
+  @@index([organizationId,status,createdAt])
+  @@index([tripId,organizationId])
 }
 
 model BookingParticipant {
@@ -738,6 +746,7 @@ enum SafetyIncidentStatus {
 model SafetyIncident {
   id String @id @default(uuid())
   tripId String?
+  bookingId String?
   reportedByAccountId String
   severity SafetyIncidentSeverity
   title String
@@ -750,9 +759,11 @@ model SafetyIncident {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   trip Trip? @relation(fields:[tripId], references:[id], onDelete:Restrict)
+  booking Booking? @relation(fields:[bookingId], references:[id], onDelete:Restrict)
   reportedBy Account @relation("SafetyIncidentReporter", fields:[reportedByAccountId], references:[id], onDelete:Restrict)
   resolvedBy Account? @relation("SafetyIncidentResolver", fields:[resolvedByAccountId], references:[id], onDelete:Restrict)
   @@index([tripId,status,createdAt])
+  @@index([bookingId,status,createdAt])
   @@index([reportedByAccountId,createdAt])
   @@index([status,severity,createdAt])
 }
@@ -1159,6 +1170,7 @@ model CustomerCase {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   customer Account @relation("CustomerCases", fields:[customerId], references:[id], onDelete:Restrict)
+  organization Organization? @relation("OrganizationCustomerCases", fields:[organizationId], references:[id], onDelete:Restrict)
   interactions CustomerInteraction[]
   @@index([customerId,status,createdAt])
   @@index([organizationId,status,createdAt])

@@ -8,7 +8,7 @@ import { PolicyControlService } from './policy-control.service';
 import { TripWeatherReview, TripWeatherReviewService } from './trip-weather-review.service';
 import { WeatherGateService } from './weather-gate.service';
 
-type Mode = 'center' | 'marine' | 'admin' | 'owner';
+type Mode = 'center' | 'marine' | 'admin' | 'owner' | 'organization';
 type Action = 'CONFIRM' | 'CANCEL';
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const stale = () => new ConflictException('تغيرت بيانات الحجز أو شروط التأكيد. حدّث التفاصيل قبل المحاولة.');
@@ -19,7 +19,7 @@ const tripFields = { id: true, title: true, status: true, type: true, startsAt: 
 export class BookingManagementService {
   constructor(private readonly db: DatabaseService, private readonly audit: AuditService, private readonly policies: PolicyControlService, private readonly weather: WeatherGateService, private readonly weatherReviews: TripWeatherReviewService, private readonly crew: CrewAssignmentService) {}
 
-  private async scope(tx: Prisma.TransactionClient, accountId: string, mode: Mode): Promise<Prisma.BookingWhereInput> {
+  private async scope(tx: Prisma.TransactionClient, accountId: string, mode: Mode, organizationId?: string): Promise<Prisma.BookingWhereInput> {
     if (mode === 'marine') {
       if (!await tx.roleAssignment.findFirst({ where: { accountId, role: 'BOAT_OWNER', status: 'ACTIVE', account: { status: 'ACTIVE' } }, select: { id: true } })) throw new ForbiddenException('يتطلب الإجراء حساب وساطة بحرية نشطًا.');
       const memberships = await tx.organizationMember.findMany({ where: { accountId, status: 'ACTIVE', role: { in: ['OWNER', 'ADMIN', 'OPERATOR', 'STAFF'] }, organization: { kind: 'MARINE_OPERATOR', status: 'ACTIVE' } }, select: { organizationId: true } });
@@ -29,7 +29,13 @@ export class BookingManagementService {
     }
     if (mode === 'owner') {
       if (!await tx.account.findFirst({ where: { id: accountId, status: 'ACTIVE' } })) throw new ForbiddenException('الحساب غير نشط.');
-      return { accountId };
+      return { accountId, organizationId: null };
+    }
+    if (mode === 'organization') {
+      if (!organizationId) throw new BadRequestException('معرّف الجهة غير صالح.');
+      const member = await tx.organizationMember.findFirst({ where: { organizationId, accountId, status: 'ACTIVE', organization: { status: 'ACTIVE' } }, select: { id: true } });
+      if (!member) throw new ForbiddenException('تتطلب العملية عضوية نشطة في الجهة.');
+      return { organizationId };
     }
     if (!await tx.roleAssignment.findFirst({ where: { accountId, role: mode === 'center' ? 'DIVE_CENTER' : 'ADMIN', status: 'ACTIVE', account: { status: 'ACTIVE' } } })) throw new ForbiddenException('لا تملك صلاحية إدارة الحجوزات.');
     if (mode === 'admin') return {};
@@ -38,8 +44,8 @@ export class BookingManagementService {
     return { trip: { organizationId: member.organizationId } };
   }
 
-  private async booking(tx: Prisma.TransactionClient, accountId: string, id: string, mode: Mode, tripId?: string) {
-    const scope = await this.scope(tx, accountId, mode);
+  private async booking(tx: Prisma.TransactionClient, accountId: string, id: string, mode: Mode, tripId?: string, organizationId?: string) {
+    const scope = await this.scope(tx, accountId, mode, organizationId);
     const row = await tx.booking.findFirst({ where: { ...scope, id, ...(tripId ? { tripId } : {}) }, include: { trip: { select: tripFields }, account: names } });
     if (!row) throw new NotFoundException('الحجز غير موجود ضمن نطاق حسابك.');
     return row;
@@ -82,6 +88,21 @@ export class BookingManagementService {
 
   private async state(tx: Prisma.TransactionClient, booking: Awaited<ReturnType<BookingManagementService['booking']>>) {
     const { trip } = booking;
+    // Read the canonical reservation in the same transaction as the booking preview.
+    // This exposes reservation health and invalidates stale commands without activating
+    // the proposed confirmation policy or disclosing other trips/resource identities.
+    const calendarEvent = await tx.calendarEvent.findUnique({ where: { referenceType_referenceId: { referenceType: 'TRIP', referenceId: trip.id } }, include: { allocations: { where: { status: 'ACTIVE' }, orderBy: { id: 'asc' }, include: { resource: true } } } });
+    const allocations = calendarEvent?.allocations ?? [];
+    const conflicts = allocations.length ? await tx.calendarAllocation.findMany({ where: { resourceId: { in: allocations.map(a => a.resourceId) }, status: 'ACTIVE', eventId: { not: calendarEvent!.id }, startsAt: { lt: trip.endsAt }, endsAt: { gt: trip.startsAt }, event: { status: 'ACTIVE' } }, orderBy: { id: 'asc' }, select: { id: true, eventId: true, resourceId: true, startsAt: true, endsAt: true, updatedAt: true } }) : [];
+    const requiredTypes = trip.type.toUpperCase().includes('BOAT') ? ['BOAT'] : trip.type.toUpperCase().includes('SHORE') ? ['SITE'] : [];
+    const calendarIssues: string[] = [];
+    if (!calendarEvent || calendarEvent.status !== 'ACTIVE') calendarIssues.push('CALENDAR_EVENT_MISSING_OR_INACTIVE');
+    if (calendarEvent && (calendarEvent.startsAt.getTime() !== trip.startsAt.getTime() || calendarEvent.endsAt.getTime() !== trip.endsAt.getTime())) calendarIssues.push('CALENDAR_TIME_MISMATCH');
+    if (allocations.some(a => !a.resource.active)) calendarIssues.push('CALENDAR_RESOURCE_INACTIVE');
+    if (allocations.some(a => a.startsAt.getTime() !== trip.startsAt.getTime() || a.endsAt.getTime() !== trip.endsAt.getTime())) calendarIssues.push('CALENDAR_ALLOCATION_TIME_MISMATCH');
+    if (requiredTypes.some(type => !allocations.some(a => a.resource.type === type && a.resource.active))) calendarIssues.push('CALENDAR_REQUIRED_RESOURCE_MISSING');
+    if (conflicts.length) calendarIssues.push('CALENDAR_RESOURCE_CONFLICT');
+    const calendarReservation = { status: calendarIssues.length ? 'NEEDS_ATTENTION' : 'RESERVED', issues: calendarIssues, activeAllocationCount: allocations.length, confirmationGateEnforced: false };
     const participants = await tx.bookingParticipant.findMany({ where: { bookingId: booking.id }, orderBy: { id: 'asc' }, select: { id: true, fullName: true, eligibilityStatus: true, certificationTitle: true, updatedAt: true } });
     const payments = await tx.payment.findMany({ where: { bookingId: booking.id }, orderBy: { id: 'asc' }, select: { id: true, status: true, currency: true, amountMinor: true, updatedAt: true } });
     const price = await tx.operationalSetting.findUnique({ where: { key: 'trip-price:' + trip.id }, select: { value: true, updatedAt: true } });
@@ -110,14 +131,21 @@ export class BookingManagementService {
     const financial: Record<string, { currency: string; status: string; count: number; amountMinor: number }> = {};
     for (const p of payments) { const key = p.currency + ':' + p.status; financial[key] ??= { currency: p.currency, status: p.status, count: 0, amountMinor: 0 }; financial[key].count++; financial[key].amountMinor += p.amountMinor; }
     const policyReview = { required: issues.length > 0, issues, states: Object.fromEntries(Object.entries(rules).map(([k, v]) => [k, v.state])), weatherGate: { ...settings, decision: evaluation.decision, reviewStatus: review?.status ?? null, forecastAt: review?.forecastAt ?? null } };
-    return { stateToken: hash([booking.id, booking.status, booking.seats, booking.updatedAt, trip, participants, payments, price, safety, confirmedSeats, settings, rules, review ? [review.id, review.snapshotHash, review.status, review.reviewedAt] : null]), participants, financial: Object.values(financial), requiredAmountMinor: amountValid ? requiredAmountMinor : null, paymentSatisfied: Boolean(captured), confirmedSeats, remainingSeats: Math.max(0, trip.capacity - confirmedSeats), safetyDecision: safety?.decision ?? null, blockers, policyReview, actions: [...(!blockers.length ? ['CONFIRM'] : []), ...(mutable ? ['CANCEL'] : [])], settings };
+    return { stateToken: hash([booking.id, booking.status, booking.seats, booking.updatedAt, trip, participants, payments, price, safety, confirmedSeats, settings, rules, calendarEvent, conflicts, review ? [review.id, review.snapshotHash, review.status, review.reviewedAt] : null]), calendarReservation, participants, financial: Object.values(financial), requiredAmountMinor: amountValid ? requiredAmountMinor : null, paymentSatisfied: Boolean(captured), confirmedSeats, remainingSeats: Math.max(0, trip.capacity - confirmedSeats), safetyDecision: safety?.decision ?? null, blockers, policyReview, actions: [...(!blockers.length ? ['CONFIRM'] : []), ...(mutable ? ['CANCEL'] : [])], settings };
   }
 
-  async detail(accountId: string, id: string, mode: Mode = 'center', tripId?: string) {
+  async detail(accountId: string, id: string, mode: Mode = 'center', tripId?: string, organizationId?: string) {
     return this.db.serializable(async tx => {
-      const booking = await this.booking(tx, accountId, id, mode, tripId), { settings, ...state } = await this.state(tx, booking);
+      const booking = await this.booking(tx, accountId, id, mode, tripId, organizationId), { settings, ...state } = await this.state(tx, booking);
       const latest = await tx.auditEvent.findFirst({ where: { resource: 'Booking', resourceId: id, action: { in: ['BOOKING_CONFIRMED', 'BOOKING_CANCELLED', 'BOOKING_SELF_CANCELLED'] } }, orderBy: { occurredAt: 'desc' }, select: { action: true, occurredAt: true, metadata: true } });
       return { booking: this.row(booking), ...state, financialActionExecuted: false, lastAction: latest ? { action: latest.action, occurredAt: latest.occurredAt, reason: (latest.metadata as Record<string, unknown> | null)?.reason ?? null } : null };
+    });
+  }
+
+  async detailForOrganization(accountId: string, organizationId: string, bookingId: string) {
+    return this.db.serializable(async tx => {
+      const booking = await this.booking(tx, accountId, bookingId, 'organization', undefined, organizationId), { settings: _settings, ...state } = await this.state(tx, booking);
+      return { booking: this.row(booking), stateToken: state.stateToken, canCancel: state.actions.includes('CANCEL'), cancellationRequiresNoRefund: true };
     });
   }
 
@@ -136,12 +164,13 @@ export class BookingManagementService {
     return { action: input.action as Action, requestId: input.requestId, reason: (input.reason as string | undefined)?.trim() || 'تأكيد الحجز بعد مراجعة شروطه' };
   }
 
-  async apply(accountId: string, id: string, input: Record<string, unknown>, mode: Mode = 'center', tripId?: string) {
+  async apply(accountId: string, id: string, input: Record<string, unknown>, mode: Mode = 'center', tripId?: string, organizationId?: string) {
     const command = this.validate(input);
     if (mode === 'owner' && command.action !== 'CANCEL') throw new ForbiddenException('تأكيد الحجز متاح لإدارة المركز فقط.');
-    const fingerprint = hash([accountId, mode, id, Object.keys(input).sort().map(k => [k, input[k]])]);
+    const fingerprint = hash([accountId, mode, organizationId ?? null, id, Object.keys(input).sort().map(k => [k, input[k]])]);
     const check = async (tx: Prisma.TransactionClient) => {
-      const booking = await this.booking(tx, accountId, id, mode, tripId);
+      const booking = await this.booking(tx, accountId, id, mode, tripId, organizationId);
+      if (mode === 'organization' && !await tx.organizationMember.findFirst({ where: { organizationId, accountId, status: 'ACTIVE', role: { in: ['OWNER', 'ADMIN'] }, organization: { status: 'ACTIVE' } }, select: { id: true } })) throw new ForbiddenException('إلغاء الحجوزات متاح لمالك الجهة أو مديرها فقط.');
       const prior = await tx.auditEvent.findFirst({ where: { resource: 'Booking', resourceId: id, action: { in: ['BOOKING_CONFIRMED', 'BOOKING_CANCELLED', 'BOOKING_SELF_CANCELLED'] }, metadata: { path: ['requestId'], equals: command.requestId } }, select: { metadata: true } });
       if (prior) { const data = prior.metadata as Record<string, unknown>; if (data.fingerprint !== fingerprint) throw new ConflictException('استُخدم طلب الحفظ ببيانات مختلفة.'); return { booking, replay: { ...(data.result as object), alreadyApplied: true } }; }
       const state = await this.state(tx, booking);
