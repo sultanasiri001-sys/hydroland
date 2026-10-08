@@ -9,6 +9,7 @@ import {FinanceReceivablesWorkspaceService} from '../dist/finance/finance-receiv
 import {FinanceShiftsService} from '../dist/finance/finance-shifts.service.js';
 import {FinanceReceivablesService} from '../dist/finance/finance-receivables.service.js';
 import {FinanceShiftCloseService} from '../dist/finance/finance-shift-close.service.js';
+import {financeKey} from '../dist/finance/finance-native-key.js';
 import {FinancePersistenceService} from '../dist/finance/finance-persistence.service.js';
 import {PaymentsService} from '../dist/payments/payments.service.js';
 // The real guard delegates token verification to this isolated fixture map.
@@ -42,7 +43,7 @@ export async function checkReceivablesWorkspaceHttp(db,workspace,arWorkspace,shi
   check((await call('/receivables/'+id+'/collections',outsider,collection)).status,403);
   const paid=await call('/receivables/'+id+'/collections',a,collection);check(paid.status,201);check(paid.body.outstandingMinor,0);assert.ok(paid.body.shiftId);count++;
   const final=await call(root+'/receivables/'+id,a);check(final.body.collectable,false);check(final.body.collections[0].receiptNumber,'HTTP-100');check(final.body.collections[0].shiftId,paid.body.shiftId);check(final.body.collections[0].collectedByAccountId,a);
-  const ledger=await db.$queryRaw`SELECT e.\"type\"::text AS type,e.\"amountMinor\",e.\"referenceType\",e.\"referenceId\",e.\"recordedByAccountId\" FROM \"FinanceShiftEntry\" e WHERE e.\"paymentId\"=${paymentId}`;check(ledger.length,1);check(ledger[0].type,'REVENUE');check(ledger[0].amountMinor,100);check(ledger[0].referenceType,'RECEIVABLE_COLLECTION');check(ledger[0].recordedByAccountId,a);
+  const ledger=await db.$queryRaw`SELECT e.\"type\"::text AS type,e.\"amountMinor\",e.\"referenceType\",e.\"referenceId\",e.\"recordedByAccountId\" FROM \"FinanceShiftEntry\" e WHERE e.\"paymentId\"=${financeKey('FinanceShiftEntry','paymentId',paymentId)}`;check(ledger.length,1);check(ledger[0].type,'REVENUE');check(ledger[0].amountMinor,100);check(ledger[0].referenceType,'RECEIVABLE_COLLECTION');check(ledger[0].recordedByAccountId,a);
   check((await call('/receivables/'+id+'/collections',a,collection)).status,400);
   return count;
  }finally{await app.close()}
