@@ -2,6 +2,8 @@
 
 Status: organization profile/membership, customer requests, booking, participant-roster, and safety-report routes/UI are implemented in the local codebase. Additive customer-case and booking/safety migration candidates have not been applied to production. Organization billing remains blocked on Finance policy. The API has been typechecked and built; database migration rehearsal and browser E2E execution remain outstanding.
 
+2026-10-08 verification update: work is recoverable in draft PR #442. The first revision passed API CI, but it did not yet rehearse the forward organization migrations or exercise the new booking permission boundary. The follow-up revision adds TEXT/UUID migration rehearsals and organization-booking HTTP/PostgreSQL regressions. These results must be checked on the latest PR head before release. Personal booking lists, participant routes, cancellation and payment creation exclude organization-owned bookings; the contact account cannot bypass current organization membership through personal routes. Participant writes submit the revision displayed with the form, preserving optimistic concurrency. Production migration, organization billing, calendar booking-gate acceptance and recovery acceptance remain open.
+
 ## Goal
 
 Complete the company and government customer portal on top of the existing organization, booking, customer service, document, finance, calendar, safety, and audit capabilities. The portal is a tenant-scoped view of those domains; it must not introduce a second source of truth for them.
