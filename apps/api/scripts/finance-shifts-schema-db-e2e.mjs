@@ -219,7 +219,7 @@ try {
    const reviewList=await closeService.pending(outsider,unitA);assert.equal(reviewList.length,1);assert.equal(reviewList[0].id,closeSubmission.submissionId);scenarios++;
    await rejects(closeService.review(a,closeSubmission.submissionId,'APPROVED'),'FINANCE_SHIFT_CLOSE_REVIEW_DENIED');
    const rejected=await closeService.review(outsider,closeSubmission.submissionId,'REJECTED','فرق الجرد يحتاج إلى إرفاق محضر');assert.equal(rejected.status,'REJECTED');scenarios++;
-   const resubmitted=await closeService.submit(a,unitA,closeShift.id,0);assert.equal(resubmitted.status,'SUBMITTED');assert.equal(resubmitted.revision,2);scenarios++;
+   const resubmitted=await closeService.submit(a,unitA,closeShift.id,postedShift.totals.expectedCashMinor);assert.equal(resubmitted.status,'SUBMITTED');assert.equal(resubmitted.revision,2);scenarios++;
    const approved=await closeService.review(outsider,resubmitted.submissionId,'APPROVED','تمت مطابقة سجل الصندوق');assert.equal(approved.status,'APPROVED');
    const closed=await db.$queryRawUnsafe(`SELECT status::text AS status FROM "FinanceAccountantShift" WHERE id=${literal(closeShift.id)}`);assert.equal(closed[0].status,'CLOSED');
    const closeAudit=await db.$queryRawUnsafe(`SELECT action FROM "AuditEvent" WHERE "resourceId"=${literal(resubmitted.submissionId)} ORDER BY action`);assert.deepEqual(closeAudit.map(x=>x.action),['FINANCE_SHIFT_CLOSE_APPROVED','FINANCE_SHIFT_CLOSE_SUBMITTED']);scenarios++;
