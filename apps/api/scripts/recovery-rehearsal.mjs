@@ -7,6 +7,7 @@ import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { verifyFreshInstallCandidate, baselineName } from './fresh-install-candidate.mjs';
 import { verifyRawDomainCompletion, completionName } from './raw-domain-completion.mjs';
+import { planNativeTypePreflight, assessNativeTypePreflight } from './native-type-preflight.mjs';
 import { compareProductionColumns } from './production-column-compatibility.mjs';
 import { compareProductionRelations } from './production-relation-compatibility.mjs';
 import { verifyCandidateColumnCompletion, columnCompletionName } from './candidate-column-completion.mjs';
@@ -437,6 +438,11 @@ try {
   for (const enumeration of completion.catalog.enums) assert.deepEqual(before.schema.enums.filter(e => e.typname === enumeration.name).sort((a,b) => a.enumsortorder-b.enumsortorder).map(e => e.enumlabel), enumeration.values);
   check('raw_domain_completion_schema_matches_catalog_with_parent_id_adaptation', true);
   const productionReference = JSON.parse(await readFile(join(apiRoot, 'prisma-fresh-install-candidate/production-column-reference.json'), 'utf8'));
+  const nativePlan=planNativeTypePreflight(productionReference,completedColumns);
+  const nativePreflight=assessNativeTypePreflight(nativePlan,rows(SOURCE,nativePlan.sql));
+  await writeFile(join(evidenceDir,'native-type-preflight.json'),JSON.stringify(nativePreflight,null,2));
+  report.nativeTypePreflight={uuidColumnsScanned:nativePreflight.uuidColumnsScanned,invalidColumns:nativePreflight.invalidColumns.length,timezoneColumns:nativePreflight.timezoneColumns.length,nullabilityColumns:nativePreflight.nullabilityColumns.length,inPlaceConversionApproved:false};
+  check('native_preflight_detects_non_uuid_financial_fixture_keys',nativePreflight.invalidColumns.some(c=>c.table_name==='FinanceAccountantShift' && c.column_name==='id'));
   const compatibility = compareProductionColumns(productionReference, { tables: before.contents.map(t => t.table_name), columns: completedColumns });
   await writeFile(join(evidenceDir, 'production-column-compatibility.json'), JSON.stringify(compatibility,null,2)+'\n');
   report.productionColumnCompatibility = compatibility.counts;
@@ -474,6 +480,8 @@ try {
     check(target + ':empty_target', Number(sql(target, "SELECT COUNT(*) FROM pg_tables WHERE schemaname='public'")) === 0);
     docker(['exec', '-i', CONTAINER, 'pg_restore', '-U', 'hydroland', '-d', target, '--exit-on-error', '--single-transaction', '--no-owner', '--no-acl'], { input: dump });
     const recovered = snapshot(target);
+    assert.deepEqual(assessNativeTypePreflight(nativePlan,rows(target,nativePlan.sql)),nativePreflight);
+    check(target+':native_type_preflight_counts_preserved',true);
     check(target + ':schema_identical', JSON.stringify(recovered.schema) === JSON.stringify(before.schema));
     check(target + ':all_table_data_identical', JSON.stringify(recovered.contents) === JSON.stringify(before.contents));
     check(target + ':entire_real_migration_history_identical', JSON.stringify(recovered.history) === JSON.stringify(before.history));
