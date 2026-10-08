@@ -137,6 +137,26 @@ test('participant save preserves the displayed revision and submitted values dur
  await expect(page.locator('[data-org-note]')).toContainText('تغير الحجز');await expect(form.locator('button')).toBeEnabled();
 });
 
+for(const conflict of [false,true])test(`organization cancellation ${conflict?'loads a fresh snapshot after a stale rejection':'reuses the reviewed command after a lost response'}`,async({page})=>{
+ const state=await install(page);
+ state.bookings.push({id:'booking-1',tripId:'trip-1',status:'PENDING',seats:1,updatedAt:'2026-10-05T09:00:00.000Z',trip:{title:'رحلة الساحل',startsAt:'2026-12-01T08:00:00.000Z'},participants:[]});
+ await page.locator('[data-org-id="org-1"] [data-org-bookings-open]').click();
+ const attempts=[];let reads=0;
+ await page.route(/\/api\/v1\/organizations\/org-1\/bookings\/booking-1$/,route=>{reads++;return json(route,{stateToken:(reads===1?'a':'b').repeat(64),canCancel:true})});
+ await page.route(/\/api\/v1\/organizations\/org-1\/bookings\/booking-1\/cancel$/,async route=>{
+  attempts.push(route.request().postDataJSON());
+  if(attempts.length===1){if(conflict)return json(route,{message:'تغيرت بيانات الحجز. حدّث التفاصيل قبل المحاولة.'},409);state.bookings[0].status='CANCELLED';return route.abort('failed');}
+  state.bookings[0].status='CANCELLED';return json(route,{status:'CANCELLED',alreadyApplied:!conflict,financialActionExecuted:false});
+ });
+ page.on('dialog',dialog=>dialog.accept('إلغاء بطلب الشركة قبل الرحلة'));
+ const cancel=page.locator('[data-org-booking-cancel]');await expect(cancel).toBeVisible();await cancel.click();
+ await expect.poll(()=>attempts.length).toBe(1);await expect(cancel).toBeEnabled();
+ await cancel.click();await expect.poll(()=>attempts.length).toBe(2);await expect(page.locator('[data-org-booking-id="booking-1"]')).toContainText('ملغى');
+ expect(attempts[0].expectedState).toBe('a'.repeat(64));
+ if(conflict){expect(reads).toBe(2);expect(attempts[1].expectedState).toBe('b'.repeat(64));expect(attempts[1].requestId).not.toBe(attempts[0].requestId);}
+ else{expect(reads).toBe(1);expect(attempts[1]).toEqual(attempts[0]);}
+});
+
 test('organization staff submits a booking-linked safety incident',async({page})=>{
  const state=await install(page,{role:'STAFF'});state.bookings.push({id:'booking-1',tripId:'trip-1',status:'CONFIRMED',seats:1,updatedAt:'2026-10-05T09:00:00.000Z',trip:{title:'رحلة الساحل',startsAt:'2026-12-01T08:00:00.000Z'},participants:[]});
  await page.locator('[data-org-id="org-1"] [data-org-safety-open]').click();const panel=page.locator('[data-org-safety]');await expect(panel).toBeVisible();await panel.locator('[name="bookingId"]').selectOption('booking-1');await panel.locator('[name="title"]').fill('ملاحظة معدات');await panel.locator('[name="description"]').fill('تم رصد سترة تحتاج مراجعة قبل الرحلة.');await panel.locator('button[type="submit"]').click();

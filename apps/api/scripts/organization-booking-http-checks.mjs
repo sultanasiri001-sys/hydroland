@@ -54,10 +54,31 @@ try {
   assert.equal((await db.bookingParticipant.findUniqueOrThrow({ where: { id: participant.id } })).fullName, edits.fullName);
   assert.equal(await db.payment.count({ where: { bookingId: booking.id } }), 0);
   assert.equal(await db.auditEvent.count({ where: { action: 'organization.booking.participant.updated', resourceId: participant.id } }), 1);
-  console.log('Organization booking HTTP/DB checks passed: scoped roster edits, stale revision, tenant isolation, viewer/revoked-member denial, personal-route isolation, payment denial and unchanged denied writes.');
+  await db.organizationMember.updateMany({ where: { organizationId: organization.id, accountId: contact.id }, data: { role: 'OWNER', status: 'ACTIVE' } });
+  const preview = await ok(await call(contact, `${scoped}/${booking.id}`));
+  const cancellation = { requestId: randomUUID(), expectedState: preview.stateToken, reason: 'إلغاء بطلب الجهة قبل موعد الرحلة' };
+  // A competing roster edit invalidates the reviewed cancellation snapshot.
+  await ok(await call(contact, rosterPath, 'PATCH', { expectedUpdatedAt: (await db.booking.findUniqueOrThrow({ where: { id: booking.id } })).updatedAt.toISOString(), fullName: 'Concurrent roster change' }));
+  assert.equal((await call(contact, `${scoped}/${booking.id}/cancel`, 'POST', cancellation)).status, 409);
+  assert.equal((await db.booking.findUniqueOrThrow({ where: { id: booking.id } })).status, 'PENDING');
+  assert.equal(await db.auditEvent.count({ where: { action: 'BOOKING_CANCELLED', resourceId: booking.id } }), 0);
+  assert.equal(await db.notification.count({ where: { accountId: contact.id, type: 'BOOKING_CANCELLED' } }), 0);
+  const fresh = await ok(await call(contact, `${scoped}/${booking.id}`));
+  const command = { ...cancellation, requestId: randomUUID(), expectedState: fresh.stateToken };
+  const cancelled = await ok(await call(contact, `${scoped}/${booking.id}/cancel`, 'POST', command));
+  assert.equal(cancelled.status, 'CANCELLED'); assert.equal(cancelled.financialActionExecuted, false); assert.equal(cancelled.alreadyApplied, false);
+  const replay = await ok(await call(contact, `${scoped}/${booking.id}/cancel`, 'POST', command));
+  assert.equal(replay.alreadyApplied, true); assert.equal(replay.financialActionExecuted, false);
+  assert.equal((await call(contact, `${scoped}/${booking.id}/cancel`, 'POST', { ...command, reason: 'سبب مختلف لنفس مفتاح الطلب' })).status, 409);
+  assert.equal(await db.auditEvent.count({ where: { action: 'BOOKING_CANCELLED', resourceId: booking.id } }), 1);
+  assert.equal(await db.notification.count({ where: { accountId: contact.id, type: 'BOOKING_CANCELLED' } }), 1);
+  assert.equal((await db.booking.findUniqueOrThrow({ where: { id: personal.id } })).status, 'PENDING');
+  assert.equal(await db.payment.count({ where: { bookingId: booking.id } }), 0);
+  console.log('Organization booking HTTP/DB checks passed: scoped roster edits, stale revision, tenant isolation, viewer/revoked-member denial, personal-route isolation, payment denial, stale cancellation, exact cancellation replay, single audit/notification and no financial action.');
 } finally {
   // Only synthetic actors in the guarded ephemeral CI database are removed.
   await db.auditEvent.deleteMany({ where: { actorId: { in: people.map(person => person.id) } } });
+  await db.notification.deleteMany({ where: { accountId: { in: accounts.map(account => account.id) } } });
   if (bookingIds.length) { await db.bookingParticipant.deleteMany({ where: { bookingId: { in: bookingIds } } }); await db.booking.deleteMany({ where: { id: { in: bookingIds } } }); }
   if (trip) await db.trip.delete({ where: { id: trip.id } });
   for (const organization of organizations) { await db.organizationMember.deleteMany({ where: { organizationId: organization.id } }); await db.organization.delete({ where: { id: organization.id } }); }

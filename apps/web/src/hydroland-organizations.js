@@ -76,7 +76,7 @@
     if (!client) throw new Error('خدمة المصادقة غير جاهزة.');
     const response = await client(path, options);
     const body = await response.json().catch(() => null);
-    if (!response.ok) throw new Error(body?.message || 'تعذر إكمال الطلب.');
+    if (!response.ok) throw Object.assign(new Error(body?.message || 'تعذر إكمال الطلب.'), { status: response.status });
     return body;
   };
   const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -93,11 +93,13 @@
   let selectedBookingsOrganization = null;
   let bookingLoadVersion = 0;
   let pendingBookingRequest = null;
+  const pendingCancellations = new Map();
   let selectedSafetyOrganization = null;
   let safetyLoadVersion = 0;
   let directoryLoadVersion = 0;
   const clearPrivateViews = () => {
     pendingBookingRequest = null;
+    pendingCancellations.clear();
     for (const selector of ['[data-org-members]', '[data-org-request-list]', '[data-org-booking-list]', '[data-org-incident-list]']) panel.querySelector(selector).innerHTML = '';
     for (const selector of ['[data-org-requests-note]', '[data-org-booking-note]', '[data-org-safety-note]']) panel.querySelector(selector).textContent = '';
     for (const selector of ['[data-org-request-form]', '[data-org-booking-form]', '[data-org-incident-form]']) panel.querySelector(selector).reset();
@@ -255,12 +257,25 @@
     const button = event.target.closest('[data-org-booking-cancel]'); if (!button) return;
     const organizationId = selectedBookingsOrganization, bookingId = button.closest('[data-org-booking-id]')?.dataset.orgBookingId;
     if (!organizationId || !bookingId) return;
-    const reason = window.prompt('اكتب سبب الإلغاء (10 أحرف على الأقل). لن يُنفّذ النظام استردادًا ماليًا.'); if (!reason) return;
+    const reason = window.prompt('اكتب سبب الإلغاء (10 أحرف على الأقل). لن يُنفّذ النظام استردادًا ماليًا.')?.trim(); if (!reason) return;
+    if (reason.length < 10 || reason.length > 1000) { note('اكتب سبب إلغاء من 10 إلى 1000 حرف.'); return; }
     const auth = window.HydrolandAuth, session = auth?.getSessionVersion?.(), version = bookingLoadVersion;
     const current = () => Boolean(auth?.isAuthenticated?.() && session === auth?.getSessionVersion?.() && selectedBookingsOrganization === organizationId && version === bookingLoadVersion);
     button.disabled = true;
-    try { await request('/organizations/' + encodeURIComponent(organizationId) + '/bookings/' + encodeURIComponent(bookingId) + '/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requestId: crypto.randomUUID(), reason }) }); if (current()) await loadOrganizationBookings(organizationId, stateMemberships.find(row => row.organization?.id === organizationId)); }
-    catch (error) { if (current()) note(error instanceof Error ? error.message : 'تعذر إلغاء الحجز.'); } finally { button.disabled = false; }
+    const path = '/organizations/' + encodeURIComponent(organizationId) + '/bookings/' + encodeURIComponent(bookingId);
+    const key = JSON.stringify([session, organizationId, bookingId, reason]);
+    try {
+      let command = pendingCancellations.get(key);
+      if (!command) {
+        const detail = await request(path); if (!current()) return;
+        if (!/^[a-f0-9]{64}$/.test(detail?.stateToken || '')) throw new Error('تعذر تحميل حالة الحجز. حدّث الصفحة قبل الإلغاء.');
+        command = { requestId: crypto.randomUUID(), expectedState: detail.stateToken, reason };
+        pendingCancellations.set(key, command);
+      }
+      await request(path + '/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(command) });
+      if (current()) { pendingCancellations.delete(key); await loadOrganizationBookings(organizationId, stateMemberships.find(row => row.organization?.id === organizationId)); }
+    }
+    catch (error) { if (current()) { if (error?.status >= 400 && error.status < 500) pendingCancellations.delete(key); note(error instanceof Error ? error.message : 'تعذر إلغاء الحجز.'); } } finally { button.disabled = false; }
   });
   panel.querySelector('[data-org-incident-form]')?.addEventListener('submit', async event => {
     event.preventDefault(); const organizationId = selectedSafetyOrganization; if (!organizationId) return;

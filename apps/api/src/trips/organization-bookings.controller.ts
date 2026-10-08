@@ -31,9 +31,8 @@ export class OrganizationBookingsController {
 
   @Post(':bookingId/cancel')
   async cancel(@Req() request: RequestWithAuth, @Param('organizationId') organizationId: string, @Param('bookingId') bookingId: string, @Body() body: Record<string, unknown>) {
-    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => !['requestId', 'reason'].includes(key)) || typeof body.requestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.requestId) || typeof body.reason !== 'string' || body.reason.trim().length < 10 || body.reason.trim().length > 1000) throw new BadRequestException('أدخل رقم طلب وسبب إلغاء صالحين.');
-    const detail = await this.lifecycle.detailForOrganization(request.auth.accountId, organizationId, bookingId);
-    return this.lifecycle.apply(request.auth.accountId, bookingId, { action: 'CANCEL', requestId: body.requestId, expectedState: detail.stateToken, reason: body.reason, financialAcknowledged: true }, 'organization', undefined, organizationId);
+    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => !['requestId', 'expectedState', 'reason'].includes(key)) || typeof body.requestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.requestId) || typeof body.expectedState !== 'string' || !/^[a-f0-9]{64}$/.test(body.expectedState) || typeof body.reason !== 'string' || body.reason.trim().length < 10 || body.reason.trim().length > 1000) throw new BadRequestException('حمّل تفاصيل الحجز وأدخل رقم طلب وسبب إلغاء صالحين.');
+    return this.lifecycle.apply(request.auth.accountId, bookingId, { action: 'CANCEL', requestId: body.requestId, expectedState: body.expectedState, reason: body.reason.trim(), financialAcknowledged: true }, 'organization', undefined, organizationId);
   }
 
   @Patch(':bookingId/participants/:participantId')
