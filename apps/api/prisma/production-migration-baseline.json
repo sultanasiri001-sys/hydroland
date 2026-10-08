@@ -1,23 +1,317 @@
 {
-  "source": "Read-only Render _prisma_migrations snapshot verified 2026-09-27",
+  "source": "Read-only Render _prisma_migrations snapshot verified 2026-10-08; all 78 successfully recorded migrations match repository bytes",
   "migrations": [
-    { "name": "20260914101500_dive_logs", "sha256": "6267bf0d9ca2c95fd82e4dd500159780d6f22c4eca1c02221704d53bbf36753d" },
-    { "name": "20260914213000_booking_participants", "sha256": "12bca6527e776e67ac2e366b5c82b793d84fea9714aa9902542fd8f46c6fec41" },
-    { "name": "20260914221000_trip_completion_dive_logs", "sha256": "195a0c64b458bdc8e210ff1dd4825cf1027cd35bc72798055a2fe7153a8c356d" },
-    { "name": "20260914224000_diver_master_profile", "sha256": "c5a71b100fa3287711e394a8fa1bcd47ee34cd6953e2a8f81ec0c594a364a404" },
-    { "name": "20260914234500_unified_calendar_resources", "sha256": "facab0544eb77b1457a083ab1921cd85f54a7924b39cdaf20001bbad19e0370c" },
-    { "name": "20260915001000_crew_assignment_workflow", "sha256": "02a837d51d09634cc3e823e902f3e36323a250fbebca16e538ef8cc482389228" },
-    { "name": "20260915004500_policy_control_center", "sha256": "535ac1d99b47ed7938c9222f90c4a3650e5d97a09bc5a0d2ef62c5df055be158" },
-    { "name": "20260915023000_trip_compliance_review", "sha256": "58020c4d79573684d5298cd8b61b7e5df33b0cc5f4825d5dba7dacf64ecab408" },
-    { "name": "20260915233000_training", "sha256": "b1ba25cae3e1b92cc99556552b6fad3e59e9d54bbb12b723fc84a344a7cb65ff" },
-    { "name": "20260916050000_workforce_structure", "sha256": "6d2d9c319c3822a8b337723d79fe88bce34ff2bf8c1a99202f9038db031ee546" },
-    { "name": "20260916062000_center_department_hiring_controls", "sha256": "489fd316fdd631e6b325042a34a044b49a2ed793b3edd120526e0d4ce3f814d6" },
-    { "name": "20260916070000_hr_candidate_verification_workflow", "sha256": "8edaaa5a6353827b7b561d13e6745663acca1728ae0c731e809e10c78c06c2c9" },
-    { "name": "20260916071000_hr_candidate_verification_columns", "sha256": "b118e890d85637c292f02b4844d48e364ef84c21cd9caa4f302b78eaf3e91ad5" },
-    { "name": "20260916191500_hr_candidate_verification_fields", "sha256": "7c927f394d96513441c497f3a0980de98635ac00bbb5f89c050531488928d520" },
-    { "name": "20260917003500_finance_accountant_shifts", "sha256": "e90d58f0660960cf926739d971177452a2ccde1b73d653356cf12612919a87bb" },
-    { "name": "20260917014500_finance_deferred_invoice", "sha256": "ca40b3fee020dfbed44f6510a3d27db50dbe7870d3af1d65162fc8312f233425" },
-    { "name": "20260917173000_compliance_assessment_persistence", "sha256": "f29c933d2d12586a24c463edba3f9962599702b8836d15773d997b88338eaaba" },
-    { "name": "20260917203000_center_department_access_levels", "sha256": "7ec33ac64bf8960f842d0226dace4df766923e815cc4b2601e776fa6aae8282d" }
+    {
+      "name": "20260913150000_initial_identity",
+      "sha256": "a10e28806ef1502dd21571941d6552803194dc4ccf7b6f284a6b64848e627ab8"
+    },
+    {
+      "name": "20260913151000_operational_foundation",
+      "sha256": "29ce929e2e6aedcc6aea20cec2ec0ec6cc5df94eed3896126575dde1f415c50c"
+    },
+    {
+      "name": "20260913152000_trips_bookings",
+      "sha256": "8e03fed06cba3e24019cc4c5e8a495fb0cd3abb66d606cd2e7cf7813b516e433"
+    },
+    {
+      "name": "20260913153000_safety_operations",
+      "sha256": "e79b887dfa305d09713c7e95b909bfaea8e3221ac4ac9babffff79d2b013cf7e"
+    },
+    {
+      "name": "20260913154000_payments",
+      "sha256": "1fb10df85cfe553f21cc8cde363386cbdcfbe7bcd456374cd8f4af3ceef34a5e"
+    },
+    {
+      "name": "20260914101500_dive_logs",
+      "sha256": "6267bf0d9ca2c95fd82e4dd500159780d6f22c4eca1c02221704d53bbf36753d"
+    },
+    {
+      "name": "20260914110000_organizations",
+      "sha256": "78d46dc1c0e691553446437c52744fcf492af6bf62596e034a25e223b529b848"
+    },
+    {
+      "name": "20260914202500_theme_management",
+      "sha256": "59d737b4505367cc7f85f0c1200edda7acd904b088455b9b34c78d840dda63e2"
+    },
+    {
+      "name": "20260914213000_booking_participants",
+      "sha256": "12bca6527e776e67ac2e366b5c82b793d84fea9714aa9902542fd8f46c6fec41"
+    },
+    {
+      "name": "20260914221000_trip_completion_dive_logs",
+      "sha256": "195a0c64b458bdc8e210ff1dd4825cf1027cd35bc72798055a2fe7153a8c356d"
+    },
+    {
+      "name": "20260914224000_diver_master_profile",
+      "sha256": "c5a71b100fa3287711e394a8fa1bcd47ee34cd6953e2a8f81ec0c594a364a404"
+    },
+    {
+      "name": "20260914234500_operational_settings",
+      "sha256": "343971efba58e6cdc5aa8abcb79c644dfa61d321e6c7cdece1cfbd9d54a36b1a"
+    },
+    {
+      "name": "20260914234500_unified_calendar_resources",
+      "sha256": "facab0544eb77b1457a083ab1921cd85f54a7924b39cdaf20001bbad19e0370c"
+    },
+    {
+      "name": "20260915001000_crew_assignment_workflow",
+      "sha256": "02a837d51d09634cc3e823e902f3e36323a250fbebca16e538ef8cc482389228"
+    },
+    {
+      "name": "20260915004500_policy_control_center",
+      "sha256": "535ac1d99b47ed7938c9222f90c4a3650e5d97a09bc5a0d2ef62c5df055be158"
+    },
+    {
+      "name": "20260915011500_expand_policy_control_categories",
+      "sha256": "2ab925b2d567ff8db05555a6ff6ac23cf68b4ff29e772d796c0d81e40a52b6dc"
+    },
+    {
+      "name": "20260915013000_participant_dive_logs",
+      "sha256": "29da167387cd6257d704be5ca2a16a05c1980f7e86cfe611d22ba0009c34716e"
+    },
+    {
+      "name": "20260915014500_boat_resource_compliance",
+      "sha256": "83b4f6695e2650d1d4a6aba6cad8b2bcf66186900ae904e975593fb83305600e"
+    },
+    {
+      "name": "20260915023000_trip_compliance_review",
+      "sha256": "58020c4d79573684d5298cd8b61b7e5df33b0cc5f4825d5dba7dacf64ecab408"
+    },
+    {
+      "name": "20260915024500_equipment_barcode_inventory",
+      "sha256": "9538175bd05888f1448c08398aeef58ab70fe899607a3a364a8461deafddc47f"
+    },
+    {
+      "name": "20260915031500_equipment_inspections",
+      "sha256": "841bd032ea5fdaff867da0bda4797959610888bce36755176de574c6746b43b7"
+    },
+    {
+      "name": "20260915042000_inventory_stocktake",
+      "sha256": "802dcfb96fb0f30cb226e60f91d899ecdea2b8e88d1cef79829cff1a097033e5"
+    },
+    {
+      "name": "20260915044000_inventory_asset_value",
+      "sha256": "4e3849a49c500fbdc583ad3e6c232ed8b8c56305e9314b1bff858194dd267441"
+    },
+    {
+      "name": "20260915045500_equipment_rentals",
+      "sha256": "bc73091c3c276f6179314dc957679d1019811789d6a95ce8f7ae9f3011a6b65d"
+    },
+    {
+      "name": "20260915052000_equipment_rental_returns",
+      "sha256": "347cc41acb2d3d9a41c84747d254f5e15a8a1a96aa0ec97af593a98dd50c3e5c"
+    },
+    {
+      "name": "20260915053500_equipment_rental_due_extensions",
+      "sha256": "f0ef1fd982336997be10cb8f6c050d054c4702550ba20514fc92b16284081652"
+    },
+    {
+      "name": "20260915054500_equipment_tag_profiles",
+      "sha256": "0d3b5fc523d94051fb5194e4071cd5c2835023a85d854b7debbcc6a64e126f4a"
+    },
+    {
+      "name": "20260915060000_equipment_rental_handover",
+      "sha256": "ca81de6d5f363af9b9f66a3cd2b6fca7f1996519f36af3152999ab53fcd56e19"
+    },
+    {
+      "name": "20260915233000_training",
+      "sha256": "b1ba25cae3e1b92cc99556552b6fad3e59e9d54bbb12b723fc84a344a7cb65ff"
+    },
+    {
+      "name": "20260916050000_workforce_structure",
+      "sha256": "6d2d9c319c3822a8b337723d79fe88bce34ff2bf8c1a99202f9038db031ee546"
+    },
+    {
+      "name": "20260916062000_center_department_hiring_controls",
+      "sha256": "489fd316fdd631e6b325042a34a044b49a2ed793b3edd120526e0d4ce3f814d6"
+    },
+    {
+      "name": "20260916070000_hr_candidate_verification_workflow",
+      "sha256": "8edaaa5a6353827b7b561d13e6745663acca1728ae0c731e809e10c78c06c2c9"
+    },
+    {
+      "name": "20260916071000_hr_candidate_verification_columns",
+      "sha256": "b118e890d85637c292f02b4844d48e364ef84c21cd9caa4f302b78eaf3e91ad5"
+    },
+    {
+      "name": "20260916191500_hr_candidate_verification_fields",
+      "sha256": "7c927f394d96513441c497f3a0980de98635ac00bbb5f89c050531488928d520"
+    },
+    {
+      "name": "20260916223000_hr_lifecycle",
+      "sha256": "826853ac0f5c9c8fc35cd1ed8959db76c0fc7239e7840a2fb7fc07187db0948f"
+    },
+    {
+      "name": "20260917003500_finance_accountant_shifts",
+      "sha256": "e90d58f0660960cf926739d971177452a2ccde1b73d653356cf12612919a87bb"
+    },
+    {
+      "name": "20260917014500_finance_deferred_invoice",
+      "sha256": "ca40b3fee020dfbed44f6510a3d27db50dbe7870d3af1d65162fc8312f233425"
+    },
+    {
+      "name": "20260917173000_compliance_assessment_persistence",
+      "sha256": "f29c933d2d12586a24c463edba3f9962599702b8836d15773d997b88338eaaba"
+    },
+    {
+      "name": "20260917203000_center_department_access_levels",
+      "sha256": "7ec33ac64bf8960f842d0226dace4df766923e815cc4b2601e776fa6aae8282d"
+    },
+    {
+      "name": "20260918193000_customer_service_cases",
+      "sha256": "6dd71c765c2145e06f4ae76e37a3aec509ab809c5e019a859801b042ab68bd02"
+    },
+    {
+      "name": "20260918195000_finance_persistence",
+      "sha256": "9d672ad47700536c7cc3f7e7dfd893e4983ab064bf0265231b7d64b93f23ec25"
+    },
+    {
+      "name": "20260919012600_store_foundation",
+      "sha256": "b0548af77a3ab1a598bd4d144b5a0d68beff7c4842139978307d864799444fd2"
+    },
+    {
+      "name": "20260919043000_store_payment_foundation",
+      "sha256": "cbd95a4f6846103e37f1dfabe55dbf34200825351eb600e661ce1666b2a8b8c7"
+    },
+    {
+      "name": "20260919051000_wallet_rewards_foundation",
+      "sha256": "7adf8e56bcd08bd6058960c9650ef98892973b93911aa12bd0519c09e76b477b"
+    },
+    {
+      "name": "20260919063500_wallet_rewards_check_constraints",
+      "sha256": "37b2a44dd6e2bed64251e701a29d80e3815a0d95eccbc9fd9aec5b9f32bf3f0f"
+    },
+    {
+      "name": "20260919150000_trip_intelligence_foundation",
+      "sha256": "f192e482732de38057509607ceaf2ada632c6ec9567c51b7d1d09ae8322bdcd9"
+    },
+    {
+      "name": "20260919161000_translation_review_provenance",
+      "sha256": "b6424c719d3f686fa24ad10c661468433d022c816e8688de0dd348d383b2462c"
+    },
+    {
+      "name": "20260919161500_translation_packs_preferences",
+      "sha256": "aa3bcfa5f343d612461fd65a38461adcdb9202591fe966f696400d7c8a08bb03"
+    },
+    {
+      "name": "20260919163000_emergency_phrasebook",
+      "sha256": "195cea309f08900228a26c5ed4f882387575f15a225186474bc03f4c57304127"
+    },
+    {
+      "name": "20260919165000_marine_operations_foundation",
+      "sha256": "53e2a300c21072cd0945a77cb1594619efea939229c5be92cb640c90dc2cf45d"
+    },
+    {
+      "name": "20260919193000_briefing_media_payload_metadata",
+      "sha256": "88078edd67049b9bafad71bc3de856513f3ae1ef33efa63765af7933645df22b"
+    },
+    {
+      "name": "20260919225000_training_enum_reconcile",
+      "sha256": "a4d5d9a7ae4bfbfac26209df4b47942c07ff67b846a6c089f489baa9efd69a3a"
+    },
+    {
+      "name": "20260919230000_training_persistence",
+      "sha256": "2cb9f797992fbf54fb9fe8230b640c26a38aaf4b2da64bd81058ca70fdac4f9b"
+    },
+    {
+      "name": "20260922145000_reconcile_professional_role_enum",
+      "sha256": "ed3730fd64134b09e38329b3526558fcc80d056fd01437fa777a5a9f2fef00f9"
+    },
+    {
+      "name": "20260922233000_hr_authorization_roles",
+      "sha256": "ffa684b840f123a259b2d49507ed4699f681631213aaa26d2f351d095a269460"
+    },
+    {
+      "name": "20260922234500_compensation_approval_provenance",
+      "sha256": "a621bc4c017055d0e65accf79557306d7b904512bbf4ffed795eda1a19092c7f"
+    },
+    {
+      "name": "20260923092000_hr_candidate_verification",
+      "sha256": "62313346e94b44210230a651c6c246bce2ade499e696a5bdd6206f9bee36cdfa"
+    },
+    {
+      "name": "20260923102000_administrative_affairs_persistence",
+      "sha256": "41536e8885f67d6e155fa560cadc978d126e5e387aefdf00b0b127854e6d2503"
+    },
+    {
+      "name": "20260923114000_unified_calendar_events",
+      "sha256": "a81b71e2e1a7156eede9df9b1fb2bdc88b68a18483a957469fab8b61f07da0f3"
+    },
+    {
+      "name": "20260923133000_finance_completion_gate",
+      "sha256": "d46df07303229f73278aa0f397176611210d60f1cf1609fc8858f295a872e895"
+    },
+    {
+      "name": "20260923143000_finance_receivables_completion",
+      "sha256": "d14b36a6b01f161bf8997ee76c08af1e43eaf8dc48bc0dab4586398d84901aee"
+    },
+    {
+      "name": "20260923161000_document_persistence",
+      "sha256": "91dc36e23c73517be55dddbbd26f73c2b88952a57e4a1d08bc5751cbfa43d0ad"
+    },
+    {
+      "name": "20260923163000_document_reference_counter",
+      "sha256": "90d056a26035a2615c193106a449298cc046e523f32b896f4e62674841cb1b20"
+    },
+    {
+      "name": "20260923213000_document_revision_history",
+      "sha256": "6278714c67e6bb37741e89b89ff0e3fc05bf1b1ac51014632fb806563d19cde8"
+    },
+    {
+      "name": "20260923220000_document_branding",
+      "sha256": "88b0f6804073f1939cfc97f338723f9fc3456823c22f6886725f3908c3c065d8"
+    },
+    {
+      "name": "20260925210500_trip_weather_runtime",
+      "sha256": "0dbbcd54e402d0e578b28b1777ced21d4687bd5f8ecfc3552380c5a10a7eed85"
+    },
+    {
+      "name": "20260925221500_safety_incident_runtime",
+      "sha256": "a2d4d2c74f86acb43e5490269c2138bb69f3fea4f49d32d0b018afcadc0ebfa8"
+    },
+    {
+      "name": "20260925224500_messaging_runtime",
+      "sha256": "122499993b47ead838614cea06db179d6847efe055f382692d7e90f5e7c556a6"
+    },
+    {
+      "name": "20260926042000_notification_status_enum",
+      "sha256": "527437b2d2d3e1bf455b72cd31aa47d08920bf86025d9cffc617bfbaa2d3c7ca"
+    },
+    {
+      "name": "20260929163000_document_status_enum",
+      "sha256": "99d687cfcd16e0ff46739aa67f5d90add7347aa0e90e94858aae98e794431738"
+    },
+    {
+      "name": "20260930080000_audit_event_append_only",
+      "sha256": "5d77de905693d97bb1164ef77a6179442e70790f1ae2045d80af4fac2a094349"
+    },
+    {
+      "name": "20260930130000_training_certificates",
+      "sha256": "3a6ccd2a66bd9709f5aae69607e0fd1aa154967e00d978dc929c05a213230640"
+    },
+    {
+      "name": "20260930134500_instructor_earnings",
+      "sha256": "9180b05dd01ef12e06870921ce95a825548915e73308a5420003df67b6147044"
+    },
+    {
+      "name": "20261001003000_trip_center_scope",
+      "sha256": "34925ea17cf1ac5b6cce61f370f06f0a439c04cb938f4a0e24ecdd512e47b3ef"
+    },
+    {
+      "name": "20261001130000_trip_center_scope_uuid_fix",
+      "sha256": "6df186a7b5a46cb8339a0bab37db115fd5eabc738705bdaa4cb425497db731bd"
+    },
+    {
+      "name": "20261001210000_center_equipment_scope",
+      "sha256": "f83c3e8ad347e2a04e4a23d87b0a4cdc6a59df2e4c2055da0db895e90f309291"
+    },
+    {
+      "name": "20261003080000_center_license_attachments",
+      "sha256": "e74996991a45e03ad03f77bb80ab6ee902ab025aeff2f9d9ee604dc3dc7974fc"
+    },
+    {
+      "name": "20261004000000_center_license_platform_review",
+      "sha256": "31bf728bfba5303a035fc44519c6164c2334f0f4a1dd0f967ec66950d72f0e46"
+    }
   ]
 }
