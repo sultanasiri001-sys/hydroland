@@ -1,9 +1,9 @@
 DO $$ BEGIN CREATE TYPE "FinanceShiftCloseSubmissionStatus" AS ENUM ('SUBMITTED','APPROVED','REJECTED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ DECLARE id_type TEXT; shift_type TEXT; center_type TEXT; account_type TEXT; BEGIN
-  SELECT format_type(a.atttypid,a.atttypmod) INTO id_type FROM pg_attribute a WHERE a.attrelid='FinanceAccountantShift'::regclass AND a.attname='id' AND NOT a.attisdropped;
-  SELECT format_type(a.atttypid,a.atttypmod) INTO shift_type FROM pg_attribute a WHERE a.attrelid='FinanceAccountantShift'::regclass AND a.attname='id' AND NOT a.attisdropped;
-  SELECT format_type(a.atttypid,a.atttypmod) INTO center_type FROM pg_attribute a WHERE a.attrelid='OrgUnit'::regclass AND a.attname='id' AND NOT a.attisdropped;
-  SELECT format_type(a.atttypid,a.atttypmod) INTO account_type FROM pg_attribute a WHERE a.attrelid='Account'::regclass AND a.attname='id' AND NOT a.attisdropped;
+  SELECT format_type(a.atttypid,a.atttypmod) INTO id_type FROM pg_attribute a WHERE a.attrelid='"FinanceAccountantShift"'::regclass AND a.attname='id' AND NOT a.attisdropped;
+  SELECT format_type(a.atttypid,a.atttypmod) INTO shift_type FROM pg_attribute a WHERE a.attrelid='"FinanceAccountantShift"'::regclass AND a.attname='id' AND NOT a.attisdropped;
+  SELECT format_type(a.atttypid,a.atttypmod) INTO center_type FROM pg_attribute a WHERE a.attrelid='"OrgUnit"'::regclass AND a.attname='id' AND NOT a.attisdropped;
+  SELECT format_type(a.atttypid,a.atttypmod) INTO account_type FROM pg_attribute a WHERE a.attrelid='"Account"'::regclass AND a.attname='id' AND NOT a.attisdropped;
   EXECUTE format('CREATE TABLE IF NOT EXISTS "FinanceShiftCloseSubmission" (
   "id" %s PRIMARY KEY,
   "shiftId" %s NOT NULL,
