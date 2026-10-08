@@ -15,7 +15,7 @@ Implemented:
 
 Validation scope:
 - Compile/type checks, finance validation and web validation/build.
-- The four core/finance TEXT/UUID PostgreSQL matrices exercise actual migrations and compiled services; added cases cover discovery isolation, pagination, cancelled/required installments, currency exclusions, receipt history and paid-state views.
+- The four core/finance TEXT/UUID PostgreSQL matrices exercise actual migrations and compiled services; added cases cover discovery isolation, pagination, cancelled/required installments, currency exclusions, receipt history and paid-state views. A concurrent creation/collection race proves a captured payment can be allocated only once; payment candidates are also checked beyond 25 records.
 - Real HTTP controller/guard/service/database tests create and fully collect a receivable in each matrix. Token verification alone is fixture-backed.
 - Ten browser cases cover creation with installment validation, collection with receipt evidence, overpayment prevention, pagination, empty permissions, recovery, revoked roles and delayed responses after logout.
 

@@ -210,6 +210,20 @@ try {
    await ar.createDeferredInvoice(a,{...terms,invoiceId:ownedInvoice,paidMinor:100,installments:undefined});
    assert.ok(!(await arView.detail(a,unitA,pagedReceivables[0])).payments.items.some(x=>x.id===ownedPayment));scenarios++;
    await rejects(ar.collect(a,pagedReceivables[0],{paymentId:ownedPayment,amountMinor:100,receiptNumber:'DOUBLE-ORIGIN'}),'FINANCE_PAYMENT_ALLOCATED_TO_OTHER_RECEIVABLE');
+   // Initial invoice settlement and manual allocation compete for one captured payment.
+   const racePayment=await makePayment(originBooking,b,100),raceInvoice=id();
+   await run(`INSERT INTO "Invoice" (id,"paymentId",status) VALUES (${literal(raceInvoice)},${literal(racePayment)},'PAID')`);
+   const allocationRace=await Promise.allSettled([
+    ar.createDeferredInvoice(a,{...terms,invoiceId:raceInvoice,paidMinor:100,installments:undefined}),
+    ar.collect(a,pagedReceivables[1],{paymentId:racePayment,amountMinor:100,receiptNumber:'RACE-ORIGIN'})
+   ]);
+   assert.equal(allocationRace.filter(x=>x.status==='fulfilled').length,1);
+   assert.match(allocationRace.find(x=>x.status==='rejected').reason.message,/FINANCE_(?:INVOICE_PAYMENT_ALREADY_ALLOCATED|PAYMENT_ALLOCATED_TO_OTHER_RECEIVABLE)/);
+   const allocationCount=await db.$queryRawUnsafe(`SELECT (SELECT COUNT(*) FROM "Receivable" WHERE "invoiceId"=${literal(raceInvoice)})+(SELECT COUNT(*) FROM "ReceivablePayment" WHERE "paymentId"=${literal(racePayment)}) AS total`);
+   assert.equal(Number(allocationCount[0].total),1);scenarios++;
+   for(let n=0;n<26;n++)await makePayment(originBooking,b,1);
+   const paymentPage1=(await arView.detail(a,unitA,pagedReceivables[0],'1')).payments,paymentPage2=(await arView.detail(a,unitA,pagedReceivables[0],'2')).payments;
+   assert.equal(paymentPage1.items.length,25);assert.equal(paymentPage2.items.length,2);assert.equal(paymentPage1.total,27);assert.equal(new Set([...paymentPage1.items,...paymentPage2.items].map(x=>x.id)).size,27);scenarios++;
    // Totals include every entry even when the display is capped at the latest 50.
    await run(`UPDATE "Position" SET code='BRANCH_ACCOUNTANT' WHERE id=${literal(wrongPosition)}`);
    for(let n=0;n<55;n++)await run(`INSERT INTO "FinanceShiftEntry" (id,"shiftId",type,"amountMinor","recordedByAccountId") VALUES (${literal(randomUUID())},${literal(second.id)},'ADJUSTMENT',1,${literal(wrong)})`);
