@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { verifyFreshInstallCandidate, baselineName } from './fresh-install-candidate.mjs';
+import { verifyRawDomainCompletion, completionName } from './raw-domain-completion.mjs';
 import { probeOrganizationForwardUpgrade, organizationRevision } from './organization-forward-recovery-probe.mjs';
 
 // This is a local, synthetic restore rehearsal, never a production restore.
@@ -123,6 +124,9 @@ try {
     migrations = [{ name: baselineName, sql: await readFile(join(candidate.candidate, 'migrations', baselineName, 'migration.sql'), 'utf8'), source: 'versioned fresh-install candidate; separate migration ledger' }];
     report.candidateBaselineSha256 = candidate.baselineSha256;
   }
+  const completion = await verifyRawDomainCompletion();
+  migrations.push({ name: completionName, sql: completion.sql, source: 'versioned raw domain completion; schema-only production catalog' });
+  report.rawDomainCompletionSha256 = completion.manifest.migrationSha256;
   check('migration_names_are_unique', new Set(migrations.map(item => item.name)).size === migrations.length);
   for (const migration of migrations) {
     await mkdir(join(work, 'migrations', migration.name));
@@ -176,7 +180,18 @@ try {
   }
   await assertAuditAppendOnly(db, SOURCE);
   await db.$disconnect(); db = null;
+  const completedColumns = rows(SOURCE, `SELECT c.relname AS table_name,a.attname AS name,format_type(a.atttypid,a.atttypmod) AS type,a.attnotnull AS not_null,pg_get_expr(d.adbin,d.adrelid) AS default_sql FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum WHERE n.nspname='public' AND a.attnum>0 AND NOT a.attisdropped`);
+  for (const column of completion.catalog.columns) {
+    const actual = completedColumns.find(c => c.table_name === column.table_name && c.name === column.name);
+    const ref = completion.catalog.constraints.find(c => c.kind === 'f' && c.table_name === column.table_name && c.columns.includes(column.name) && !completion.catalog.tables.some(t => c.referenced_table === identifier(t.name)));
+    const expectedType = ref ? completedColumns.find(c => identifier(c.table_name) === ref.referenced_table && c.name === ref.referenced_columns[0]).type : column.type;
+    check('raw_domain_column:' + column.table_name + '.' + column.name, actual && actual.type === expectedType && actual.not_null === column.not_null && actual.default_sql === column.default_sql);
+  }
   const before = snapshot(SOURCE);
+  for (const constraint of completion.catalog.constraints.filter(c => c.kind !== 'n')) check('raw_domain_constraint:' + constraint.name, before.schema.constraints.some(c => c.table_name === constraint.table_name && c.conname === constraint.name && c.contype === constraint.kind && c.convalidated && c.definition === constraint.definition));
+  for (const index of completion.catalog.indexes) check('raw_domain_index:' + index.name, before.schema.indexes.some(i => i.tablename === index.table_name && i.indexname === index.name && i.indexdef === index.definition));
+  for (const enumeration of completion.catalog.enums) assert.deepEqual(before.schema.enums.filter(e => e.typname === enumeration.name).sort((a,b) => a.enumsortorder-b.enumsortorder).map(e => e.enumlabel), enumeration.values);
+  check('raw_domain_completion_schema_matches_catalog_with_parent_id_adaptation', true);
   report.tableCount = before.contents.length;
   report.populatedTables = before.contents.filter(row => row.row_count > 0).map(row => row.table_name);
   check('representative_data_and_raw_extensions_seeded', ['Account','Credential','Document','OrganizationDocumentAsset','RoleAssignment','Session','Booking','Payment','Invoice','AuditEvent','SafetyIncident','Conversation','Message','TripOperationalLocation'].every(name => report.populatedTables.includes(name)));
