@@ -36,7 +36,7 @@ export async function expectedCompletion() {
     }
     sql += `  EXECUTE format(${literal(ddl)}, ${ordered.map((_,i) => `parent_types[${i+1}]`).join(', ')});\nEND\n$completion$;\n`;
   }
-  for (const c of catalog.constraints.filter(c => c.kind !== 'n')) sql += `ALTER TABLE ${quote(c.table_name)} ADD CONSTRAINT ${quote(c.name)} ${c.definition};\n`;
+  for (const c of catalog.constraints.filter(c => c.kind !== 'n').sort((a,b) => Number(a.kind === 'f') - Number(b.kind === 'f'))) sql += `ALTER TABLE ${quote(c.table_name)} ADD CONSTRAINT ${quote(c.name)} ${c.definition};\n`;
   for (const i of catalog.indexes) sql += i.definition + ';\n';
   return { sql, catalog, manifest: { status: 'CANDIDATE_NOT_PRODUCTION_APPROVED', migrationName: completionName, catalogSha256: hash(bytes), migrationSha256: hash(sql), externalReferenceTypePolicy: 'MATCH_INSTALLED_PARENT_TEXT_OR_UUID', historicalLedgerReplacementApproved: false } };
 }
