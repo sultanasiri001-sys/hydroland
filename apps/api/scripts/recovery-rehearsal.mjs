@@ -130,7 +130,7 @@ try {
   migrations.push({ name: completionName, sql: completion.sql, source: 'versioned raw domain completion; schema-only production catalog' });
   report.rawDomainCompletionSha256 = completion.manifest.migrationSha256;
   const columnCompletion = await verifyCandidateColumnCompletion();
-  migrations.push({ name: columnCompletionName, sql: columnCompletion.sql, source: 'additive candidate production-column completion' });
+  migrations.push({ name: usesCandidate ? columnCompletionName : '20261004090000_candidate_production_column_completion', sql: columnCompletion.sql, source: 'additive candidate production-column completion' });
   // Exercise populated legacy shapes for both native key types in a rolled-back schema.
   for (const parentType of ['text','uuid']) {
     sql(SOURCE, `BEGIN;
