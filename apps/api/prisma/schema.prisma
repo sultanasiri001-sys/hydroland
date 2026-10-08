@@ -176,6 +176,8 @@ model Account {
   crewAssignments CrewAssignment[]
   payments Payment[]
   collectedReceivablePayments ReceivablePayment[] @relation("ReceivableCollector")
+ financeShiftCloseSubmissions FinanceShiftCloseSubmission[] @relation("FinanceShiftCloseSubmitter")
+ financeShiftCloseReviews FinanceShiftCloseSubmission[] @relation("FinanceShiftCloseReviewer")
   diveLogs DiveLog[]
   organizationMemberships OrganizationMember[]
   organizationsOwned Organization[] @relation("OrganizationOwner")
@@ -897,6 +899,7 @@ model OrgUnit {
   administrativeMeetings AdministrativeMeeting[]
   administrativeRoutingsFrom AdministrativeRouting[] @relation("AdministrativeRoutingFromOrgUnit")
   administrativeRoutingsTo AdministrativeRouting[] @relation("AdministrativeRoutingToOrgUnit")
+  financeShiftCloseSubmissions FinanceShiftCloseSubmission[]
 }
 model Position {
  id String @id @default(uuid())
@@ -1258,6 +1261,11 @@ enum FinanceShiftStatus {
   HANDED_OVER
   CLOSED
 }
+enum FinanceShiftCloseSubmissionStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
 enum FinanceHandoverStatus {
   PENDING
   ACCEPTED
@@ -1292,6 +1300,7 @@ model FinanceAccountantShift {
  updatedAt DateTime @updatedAt
  entries FinanceShiftEntry[]
  receivableCollections ReceivablePayment[]
+ closeSubmissions FinanceShiftCloseSubmission[]
  outgoingHandovers FinanceShiftHandover[] @relation("FinanceHandoverFromShift")
  incomingHandovers FinanceShiftHandover[] @relation("FinanceHandoverToShift")
  @@index([centerOrgUnitId,status])
@@ -1331,6 +1340,37 @@ model FinanceShiftHandover {
  toShift FinanceAccountantShift @relation("FinanceHandoverToShift",fields:[toShiftId],references:[id],onDelete:Restrict)
  @@index([fromShiftId,status])
  @@index([toShiftId,status])
+}
+
+model FinanceShiftCloseSubmission {
+ id String @id @default(uuid())
+ shiftId String
+ centerOrgUnitId String
+ revision Int
+ submittedByAccountId String
+ reviewedByAccountId String?
+ openingBalanceMinor Int
+ revenueMinor Int
+ expenseMinor Int
+ refundMinor Int
+ adjustmentMinor Int
+ expectedCashMinor Int
+ actualCashMinor Int
+ varianceMinor Int
+ unresolvedPaymentCount Int @default(0)
+ varianceReason String?
+ status FinanceShiftCloseSubmissionStatus @default(SUBMITTED)
+ reviewNote String?
+ submittedAt DateTime @default(now())
+ reviewedAt DateTime?
+ createdAt DateTime @default(now())
+ shift FinanceAccountantShift @relation(fields:[shiftId],references:[id],onDelete:Restrict)
+ center OrgUnit @relation(fields:[centerOrgUnitId],references:[id],onDelete:Restrict)
+ submittedBy Account @relation("FinanceShiftCloseSubmitter",fields:[submittedByAccountId],references:[id],onDelete:Restrict)
+ reviewedBy Account? @relation("FinanceShiftCloseReviewer",fields:[reviewedByAccountId],references:[id],onDelete:Restrict)
+ @@unique([shiftId,revision])
+ @@index([centerOrgUnitId,status,submittedAt])
+ @@index([submittedByAccountId,status])
 }
 
 model Receivable {

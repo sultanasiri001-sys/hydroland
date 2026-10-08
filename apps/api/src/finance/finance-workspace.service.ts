@@ -30,6 +30,9 @@ export class FinanceWorkspaceService {
           AND "accountantAccountId"=${financeKey('FinanceAccountantShift','accountantAccountId',accountId)}
           AND "status" IN ('OPEN','HANDOVER_PENDING')`;
       const shift=shifts[0]??null;
+      const closeSubmissions=await tx.$queryRaw<Array<{id:string;revision:number;status:string;expectedCashMinor:number;actualCashMinor:number;varianceMinor:number;varianceReason:string|null;reviewNote:string|null;submittedAt:Date;reviewedAt:Date|null}>>`
+        SELECT "id","revision","status"::text AS "status","expectedCashMinor","actualCashMinor","varianceMinor","varianceReason","reviewNote","submittedAt","reviewedAt"
+        FROM "FinanceShiftCloseSubmission" WHERE "centerOrgUnitId"=${financeKey('FinanceShiftCloseSubmission','centerOrgUnitId',centerOrgUnitId)} AND "submittedByAccountId"=${financeKey('FinanceShiftCloseSubmission','submittedByAccountId',accountId)} ORDER BY "submittedAt" DESC,"revision" DESC LIMIT 1`;
       const groups=shift?await tx.$queryRaw<Array<{type:FinanceEntryType;amountMinor:bigint}>>`
         SELECT "type"::text,SUM("amountMinor")::bigint AS "amountMinor" FROM "FinanceShiftEntry"
         WHERE "shiftId"=${financeKey('FinanceShiftEntry','shiftId',shift.id)} GROUP BY "type"`:[];
@@ -65,7 +68,7 @@ export class FinanceWorkspaceService {
           AND source."status"='HANDOVER_PENDING' AND receiver."status"='OPEN'
           AND (h."fromAccountantId"=${financeKey('Account','id',accountId)} OR h."toAccountantId"=${financeKey('Account','id',accountId)})
         ORDER BY h."createdAt",h."id"`;
-      return {centerOrgUnitId,shift,totals,entries,entryLimit:50,receivers,handovers};
+      return {centerOrgUnitId,shift,totals,entries,entryLimit:50,receivers,handovers,closeSubmission:closeSubmissions[0]??null};
     });
   }
 }
