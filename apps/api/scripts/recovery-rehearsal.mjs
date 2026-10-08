@@ -422,7 +422,7 @@ try {
   report.migrationCount=finalManifest.length;
   await writeFile(join(evidenceDir,'fixture-migration-manifest.json'),JSON.stringify(finalManifest,null,2));
   for(const c of relationAlignment.catalog)check('aligned_production_fk:'+c.name,afterAlignment.schema.constraints.some(r=>r.table_name===c.table && r.conname===c.name && r.contype==='f' && r.convalidated && r.definition===c.production.definition));
-  assert.throws(()=>sql(SOURCE,relationAlignment.sql),/Unexpected candidate FK pre-state/);
+  assert.throws(()=>sql(SOURCE,relationAlignment.sql),error=>error.status===1 && String(error.stderr).includes('ERROR:  Unexpected candidate FK pre-state: Account_personId_fkey'));
   check('relation_alignment_rejects_unexpected_prestate_without_partial_change',JSON.stringify(snapshot(SOURCE))===JSON.stringify(afterAlignment));
   const completedColumns = rows(SOURCE, `SELECT c.relname AS table_name,a.attname AS name,format_type(a.atttypid,a.atttypmod) AS type,a.attnotnull AS not_null,pg_get_expr(d.adbin,d.adrelid) AS default_sql FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum WHERE n.nspname='public' AND c.relkind IN ('r','p') AND a.attnum>0 AND NOT a.attisdropped`);
   for (const column of completion.catalog.columns) {
