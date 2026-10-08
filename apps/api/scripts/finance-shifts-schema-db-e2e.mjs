@@ -10,6 +10,7 @@ import {DatabaseService} from '../dist/database/database.service.js';
 import {FinanceAccessService} from '../dist/finance/finance-access.service.js';
 import {FinanceReceivablesService} from '../dist/finance/finance-receivables.service.js';
 import {FinanceShiftsService} from '../dist/finance/finance-shifts.service.js';
+import {FinanceShiftCloseService} from '../dist/finance/finance-shift-close.service.js';
 const base=new URL(process.env.DATABASE_URL??'');
 assert.equal(process.env.NODE_ENV,'test');
 assert.ok(['localhost','127.0.0.1','::1','[::1]'].includes(base.hostname),'Finance fixture requires a loopback database');
@@ -17,6 +18,7 @@ const root=new PrismaClient({datasourceUrl:base.toString()});
 const original=await readFile(new URL('../prisma/migrations/20260917003500_finance_accountant_shifts/migration.sql',import.meta.url),'utf8');
 const receivableSql=await readFile(new URL('../prisma/migrations/20260923143000_finance_receivables_completion/migration.sql',import.meta.url),'utf8');
 const receivableShiftSql=await readFile(new URL('../prisma/migrations/20261009003000_receivable_collector_shift_ledger/migration.sql',import.meta.url),'utf8');
+const closeSql=await readFile(new URL('../prisma/migrations/20261009010000_finance_shift_close_reviews/migration.sql',import.meta.url),'utf8');
 let scenarios=0;
 try {
  for(const coreType of ['text','uuid'])for(const shiftType of ['text','uuid']) {
@@ -45,6 +47,7 @@ try {
    for(const statement of receivableMigration.split(/;\s*(?=(?:DO\s+\$\$|CREATE\s+(?:TABLE|UNIQUE\s+INDEX|INDEX)|ALTER\s+TABLE))/i).map(s=>s.trim()).filter(Boolean))await run(statement);
    let collectionShiftMigration=receivableShiftSql.replaceAll('"shiftId" UUID','"shiftId" '+shiftType).replaceAll('"collectedByAccountId" UUID','"collectedByAccountId" '+coreType);
    for(const statement of collectionShiftMigration.split(/;\s*(?=(?:DO\s+\$\$|CREATE\s+(?:TABLE|UNIQUE\s+INDEX|INDEX)|ALTER\s+TABLE))/i).map(s=>s.trim()).filter(Boolean))await run(statement);
+   for(const statement of closeSql.split(/;\s*(?=(?:DO\s+\$\$|CREATE\s+(?:TABLE|UNIQUE\s+INDEX|INDEX)|ALTER\s+TABLE))/i).map(s=>s.trim()).filter(Boolean))await run(statement);
    const id=()=>coreType==='text'?'text_'+randomUUID():randomUUID();
    const orgA=id(),orgB=id(),unitA=id(),unitB=id(),extra=id(),positionA=id(),positionB=id(),wrongPosition=id();
    const a=id(),b=id(),outsider=id(),wrong=id(),mismatch=id(),employmentB=id();
@@ -60,7 +63,11 @@ try {
    await run(`CREATE TABLE "Person" (id ${coreType} PRIMARY KEY,"firstName" text NOT NULL,"lastName" text NOT NULL)`);
    await run(`ALTER TABLE "Account" ADD COLUMN "personId" ${coreType} REFERENCES "Person"(id)`);
    for(const account of [a,b,outsider,wrong,mismatch]){await run(`INSERT INTO "Person" VALUES (${literal(account)},'Fixture',${literal(account)})`);await run(`UPDATE "Account" SET "personId"=${literal(account)} WHERE id=${literal(account)}`);}
-   const access=new FinanceAccessService(db),service=new FinanceShiftsService(db,access),workspace=new FinanceWorkspaceService(db,access);
+   await run(`CREATE TABLE "RoleAssignment" (id ${coreType} PRIMARY KEY,"accountId" ${coreType} REFERENCES "Account"(id),role text,status text,scope jsonb)`);
+   await run(`CREATE TABLE "AuditEvent" (id ${coreType} PRIMARY KEY,"actorId" ${coreType} REFERENCES "Person"(id),action text NOT NULL,resource text NOT NULL,"resourceId" text,"requestId" text,"ipAddress" text,metadata jsonb,"occurredAt" timestamp NOT NULL DEFAULT NOW())`);
+   const managerPosition=id(),managerEmployment=id(),makerManagerEmployment=id();await run(`INSERT INTO "Position" VALUES (${literal(managerPosition)},${literal(unitA)},'CENTER_MANAGER',TRUE)`);
+   await run(`INSERT INTO "Employment" VALUES (${literal(managerEmployment)},${literal(outsider)},${literal(orgA)},${literal(unitA)},${literal(managerPosition)},'ACTIVE'),(${literal(makerManagerEmployment)},${literal(a)},${literal(orgA)},${literal(unitA)},${literal(managerPosition)},'ACTIVE')`);
+   const access=new FinanceAccessService(db),service=new FinanceShiftsService(db,access),workspace=new FinanceWorkspaceService(db,access);const closeService=new FinanceShiftCloseService(db,access);
    const rejects=async(p,code)=>{await assert.rejects(p,e=>String(e.message).includes(code));scenarios++;};
    assert.deepEqual((await workspace.centers(a)).map(x=>x.id),[unitA]);assert.deepEqual(await workspace.centers(wrong),[]);assert.deepEqual(await workspace.centers(mismatch),[]);scenarios+=3;
    await rejects(workspace.workspace(outsider,unitA),'FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
@@ -201,6 +208,23 @@ try {
    const final=await ar.collect(a,receivable.receivableId,{paymentId:pay60,amountMinor:60,receiptNumber:'AR-60',installmentId:installments[1].id});assert.equal(final.outstandingMinor,0);assert.equal(final.status,'PAID');assert.equal((await ar.branchAr(a,unitA)).length,0);scenarios++;
    detail=await arView.detail(a,unitA,receivable.receivableId);assert.equal(detail.collectable,false);assert.equal(detail.collections.length,2);assert.equal((await arView.list(a,unitA)).total,0);assert.equal((await arView.list(a,unitA,'1','all')).total,1);scenarios++;
    const postedShift=await workspace.workspace(a,unitA);assert.equal(postedShift.totals.revenueMinor,100);assert.ok(postedShift.entries.some(e=>e.type==='REVENUE'&&e.paymentId===pay60&&e.referenceType==='RECEIVABLE_COLLECTION'));scenarios++;
+   const closeShift=activeA[0];
+   await rejects(closeService.submit(a,unitA,closeShift.id,0),'FINANCE_SHIFT_CLOSE_VARIANCE_REASON_REQUIRED');
+   const actualCloseCash=postedShift.totals.expectedCashMinor+5;
+   const closePreview=await closeService.preview(a,unitA,closeShift.id,actualCloseCash,'فرق جرد موثق في الصندوق');assert.equal(closePreview.varianceMinor,5);assert.equal(closePreview.decision,'VARIANCE_REVIEW_REQUIRED');scenarios++;
+   const closeSubmission=await closeService.submit(a,unitA,closeShift.id,actualCloseCash,'فرق جرد موثق في الصندوق');assert.equal(closeSubmission.status,'SUBMITTED');assert.equal(closeSubmission.revision,1);scenarios++;
+   await rejects(service.recordEntry(a,closeShift.id,{type:'EXPENSE',amountMinor:1}),'FINANCE_SHIFT_CLOSE_ALREADY_SUBMITTED');
+   await rejects(closeService.review(a,closeSubmission.submissionId,'REJECTED','سبب رفض موثق للمراجعة'),'FINANCE_SHIFT_CLOSE_REVIEW_SOD_VIOLATION');
+   await rejects(closeService.review(outsider,closeSubmission.submissionId,'REJECTED'),'FINANCE_SHIFT_CLOSE_REJECTION_REASON_REQUIRED');
+   const reviewList=await closeService.pending(outsider,unitA);assert.equal(reviewList.length,1);assert.equal(reviewList[0].id,closeSubmission.submissionId);scenarios++;
+   await rejects(closeService.review(a,closeSubmission.submissionId,'APPROVED'),'FINANCE_SHIFT_CLOSE_REVIEW_SOD_VIOLATION');
+   const rejected=await closeService.review(outsider,closeSubmission.submissionId,'REJECTED','فرق الجرد يحتاج إلى إرفاق محضر');assert.equal(rejected.status,'REJECTED');scenarios++;
+   const resubmitted=await closeService.submit(a,unitA,closeShift.id,postedShift.totals.expectedCashMinor);assert.equal(resubmitted.status,'SUBMITTED');assert.equal(resubmitted.revision,2);scenarios++;
+   const approved=await closeService.review(outsider,resubmitted.submissionId,'APPROVED','تمت مطابقة سجل الصندوق');assert.equal(approved.status,'APPROVED');
+   const closed=await db.$queryRawUnsafe(`SELECT status::text AS status FROM "FinanceAccountantShift" WHERE id=${literal(closeShift.id)}`);assert.equal(closed[0].status,'CLOSED');
+   const closeAudit=await db.$queryRawUnsafe(`SELECT action FROM "AuditEvent" WHERE "resourceId"=${literal(resubmitted.submissionId)} ORDER BY action`);assert.deepEqual(closeAudit.map(x=>x.action),['FINANCE_SHIFT_CLOSE_APPROVED','FINANCE_SHIFT_CLOSE_SUBMITTED']);scenarios++;
+   await rejects(service.recordEntry(a,closeShift.id,{type:'EXPENSE',amountMinor:1}),'FINANCE_SHIFT_NOT_OPEN');
+   await service.openShift(a,unitA,0);
    const newInvoices=[];
    for(let n=0;n<26;n++){const pay=await makePayment(originBooking,b,100),invoice=id();await run(`UPDATE "Payment" SET status='CREATED' WHERE id=${literal(pay)}`);await run(`INSERT INTO "Invoice" (id,"paymentId",status,number) VALUES (${literal(invoice)},${literal(pay)},'ISSUED',${literal('PAGE-'+String(n).padStart(2,'0'))})`);newInvoices.push(invoice);}
    const invoices1=await arView.invoices(a,unitA,'1'),invoices2=await arView.invoices(a,unitA,'2');assert.equal(invoices1.items.length,25);assert.equal(invoices2.items.length,1);assert.equal(invoices1.total,26);assert.equal(new Set([...invoices1.items,...invoices2.items].map(x=>x.id)).size,26);scenarios++;

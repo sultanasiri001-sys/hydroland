@@ -43,6 +43,8 @@ export class FinanceShiftsService {
       const shift=shifts[0]; if(!shift)throw new Error('FINANCE_SHIFT_NOT_FOUND');
       if(shift.accountantAccountId!==accountantAccountId)throw new Error('FINANCE_SHIFT_ACCOUNT_ISOLATION_DENIED');
       if(shift.status!=='OPEN')throw new Error('FINANCE_SHIFT_NOT_OPEN');
+      const closePending=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "FinanceShiftCloseSubmission" WHERE "shiftId"=${financeKey('FinanceShiftCloseSubmission','shiftId',shiftId)} AND "status"='SUBMITTED' LIMIT 1`;
+      if(closePending.length)throw new Error('FINANCE_SHIFT_CLOSE_ALREADY_SUBMITTED');
       const incoming=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "FinanceShiftHandover" WHERE "toShiftId"=${financeKey('FinanceShiftHandover','toShiftId',shiftId)} AND "status"='PENDING'`;
       if(incoming.length)throw new Error('FINANCE_HANDOVER_RECEIVER_ALREADY_PENDING');
       if(input.type==='REVENUE'){
@@ -107,6 +109,8 @@ export class FinanceShiftsService {
       if(handover.status!=='PENDING')throw new Error('FINANCE_HANDOVER_NOT_PENDING');
       const receivers=await tx.$queryRaw<Array<{id:string;openingBalanceMinor:number;status:string;currency:string}>>`SELECT "id","openingBalanceMinor","status"::text AS "status","currency" FROM "FinanceAccountantShift" WHERE "id"=${financeKey('FinanceAccountantShift','id',handover.toShiftId)} AND "accountantAccountId"=${financeKey('FinanceAccountantShift','accountantAccountId',accountantAccountId)} AND "centerOrgUnitId"=${financeKey('FinanceAccountantShift','centerOrgUnitId',scope.centerOrgUnitId)} FOR UPDATE`;
       const receiver=receivers[0]; if(!receiver||receiver.status!=='OPEN')throw new Error('FINANCE_HANDOVER_RECEIVER_SHIFT_INVALID');
+      const receiverClose=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "FinanceShiftCloseSubmission" WHERE "shiftId"=${financeKey('FinanceShiftCloseSubmission','shiftId',handover.toShiftId)} AND "status"='SUBMITTED' LIMIT 1`;
+      if(receiverClose.length)throw new Error('FINANCE_SHIFT_CLOSE_ALREADY_SUBMITTED');
       const sources=await tx.$queryRaw<Array<{status:string;currency:string}>>`SELECT "status"::text AS "status","currency" FROM "FinanceAccountantShift" WHERE "id"=${financeKey('FinanceAccountantShift','id',handover.fromShiftId)} AND "accountantAccountId"=${financeKey('FinanceAccountantShift','accountantAccountId',handover.fromAccountantId)} AND "centerOrgUnitId"=${financeKey('FinanceAccountantShift','centerOrgUnitId',scope.centerOrgUnitId)} FOR UPDATE`;
       if(sources[0]?.status!=='HANDOVER_PENDING')throw new Error('FINANCE_HANDOVER_SOURCE_SHIFT_INVALID');
       if(receiver.currency!=='SAR'||sources[0].currency!==receiver.currency)throw new Error('FINANCE_CURRENCY_UNSUPPORTED');
