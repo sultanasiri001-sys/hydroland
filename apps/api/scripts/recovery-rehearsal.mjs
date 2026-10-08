@@ -131,6 +131,25 @@ try {
   report.rawDomainCompletionSha256 = completion.manifest.migrationSha256;
   const columnCompletion = await verifyCandidateColumnCompletion();
   migrations.push({ name: columnCompletionName, sql: columnCompletion.sql, source: 'additive candidate production-column completion' });
+  // Exercise populated legacy shapes for both native key types in a rolled-back schema.
+  for (const parentType of ['text','uuid']) {
+    sql(SOURCE, `BEGIN;
+      CREATE SCHEMA column_backfill_probe;
+      SET LOCAL search_path TO column_backfill_probe,public;
+      CREATE TABLE "Organization" ("id" ${parentType} PRIMARY KEY);
+      CREATE TABLE "EquipmentBarcode" ("stockStatus" text);
+      CREATE TABLE "FinanceAccountantShift" ("id" text);
+      CREATE TABLE "FinanceShiftHandover" ("id" text,"offeredAt" timestamp(3) NOT NULL,"createdAt" timestamp(3) NOT NULL);
+      INSERT INTO "FinanceShiftHandover" VALUES ('preserve-original','2020-01-02 03:04:05','2020-01-01 01:02:03');
+      ${columnCompletion.sql}
+      DO $probe$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM "FinanceShiftHandover" WHERE "id"='preserve-original' AND "requestedAt"='2020-01-02 03:04:05'::timestamp AND "updatedAt"='2020-01-01 01:02:03'::timestamp AND "offeredAt"='2020-01-02 03:04:05'::timestamp) THEN RAISE EXCEPTION 'Legacy handover timestamp preservation failed'; END IF;
+        IF (SELECT format_type(a.atttypid,a.atttypmod) FROM pg_attribute a WHERE a.attrelid='"EquipmentBarcode"'::regclass AND a.attname='organizationId') <> '${parentType}' THEN RAISE EXCEPTION 'Equipment parent type mismatch'; END IF;
+      END $probe$;
+      ROLLBACK;`);
+    check('populated_column_backfill_preserves_original_timestamps_and_parent_type:' + parentType, true);
+  }
+
   check('migration_names_are_unique', new Set(migrations.map(item => item.name)).size === migrations.length);
   for (const migration of migrations) {
     await mkdir(join(work, 'migrations', migration.name));
