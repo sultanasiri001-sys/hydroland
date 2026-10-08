@@ -10,13 +10,14 @@ import { FinancePersistenceService } from './finance-persistence.service';
 import { FinanceShiftsService } from './finance-shifts.service';
 import { FinanceReceivablesService } from './finance-receivables.service';
 import { FinanceShiftCloseService } from './finance-shift-close.service';
+import { FinancePeriodCloseService } from './finance-period-close.service';
 
 type AuthenticatedRequest = { auth: { accountId: string } };
 
 @UseGuards(AccessTokenGuard)
 @Controller('finance')
 export class FinanceController {
-  constructor(private readonly arWorkspace: FinanceReceivablesWorkspaceService, private readonly workspace: FinanceWorkspaceService, private readonly payments: PaymentsService, private readonly finance: FinancePersistenceService, private readonly shifts: FinanceShiftsService, private readonly receivables: FinanceReceivablesService, private readonly shiftClose: FinanceShiftCloseService) {}
+  constructor(private readonly arWorkspace: FinanceReceivablesWorkspaceService, private readonly workspace: FinanceWorkspaceService, private readonly payments: PaymentsService, private readonly finance: FinancePersistenceService, private readonly shifts: FinanceShiftsService, private readonly receivables: FinanceReceivablesService, private readonly shiftClose: FinanceShiftCloseService, private readonly periodClose: FinancePeriodCloseService) {}
 
   @Get('mine/payments')
   mine(@Req() request: AuthenticatedRequest) { return this.payments.mine(request.auth.accountId); }
@@ -61,6 +62,11 @@ export class FinanceController {
     return financeHttp(()=>this.shiftClose.reviewCenters(request.auth.accountId));
   }
 
+  @Get('mine/period-close-centers')
+  periodCloseCenters(@Req() request:AuthenticatedRequest) {
+    return financeHttp(()=>this.periodClose.reviewCenters(request.auth.accountId));
+  }
+
   @Post('centers/:centerOrgUnitId/shifts/:shiftId/close')
   submitShiftClose(@Req() request:AuthenticatedRequest,@Param('centerOrgUnitId') centerId:string,@Param('shiftId') shiftId:string,@Body() body:{actualCashMinor:number;varianceReason?:string}) {
     return financeHttp(()=>this.shiftClose.submit(request.auth.accountId,centerId,shiftId,body?.actualCashMinor,body?.varianceReason));
@@ -74,6 +80,26 @@ export class FinanceController {
   @Get('centers/:centerOrgUnitId/daily-close-report')
   centerDailyCloseReport(@Req() request:AuthenticatedRequest,@Param('centerOrgUnitId') centerId:string,@Query('businessDate') businessDate:string) {
     return financeHttp(()=>this.shiftClose.dailyReport(request.auth.accountId,centerId,businessDate));
+  }
+
+  @Get('centers/:centerOrgUnitId/period-close-preview')
+  periodClosePreview(@Req() request:AuthenticatedRequest,@Param('centerOrgUnitId') centerId:string,@Query('periodType') periodType:'MONTH'|'QUARTER'|'YEAR',@Query('periodKey') periodKey:string) {
+    return financeHttp(()=>this.periodClose.preview(request.auth.accountId,centerId,periodType,periodKey));
+  }
+
+  @Post('centers/:centerOrgUnitId/period-close-submissions')
+  submitPeriodClose(@Req() request:AuthenticatedRequest,@Param('centerOrgUnitId') centerId:string,@Body() body:{periodType:'MONTH'|'QUARTER'|'YEAR';periodKey:string}) {
+    return financeHttp(()=>this.periodClose.submit(request.auth.accountId,centerId,body?.periodType,body?.periodKey));
+  }
+
+  @Get('centers/:centerOrgUnitId/period-close-reviews')
+  periodCloseReviews(@Req() request:AuthenticatedRequest,@Param('centerOrgUnitId') centerId:string) {
+    return financeHttp(()=>this.periodClose.pending(request.auth.accountId,centerId));
+  }
+
+  @Post('period-close-submissions/:submissionId/decision')
+  decidePeriodClose(@Req() request:AuthenticatedRequest,@Param('submissionId') submissionId:string,@Body() body:{decision:'APPROVED'|'REJECTED';note?:string}) {
+    return financeHttp(()=>this.periodClose.decide(request.auth.accountId,submissionId,body?.decision,body?.note));
   }
 
   @Post('shift-close-reviews/:submissionId/decision')

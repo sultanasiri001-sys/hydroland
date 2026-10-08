@@ -178,6 +178,8 @@ model Account {
   collectedReceivablePayments ReceivablePayment[] @relation("ReceivableCollector")
  financeShiftCloseSubmissions FinanceShiftCloseSubmission[] @relation("FinanceShiftCloseSubmitter")
  financeShiftCloseReviews FinanceShiftCloseSubmission[] @relation("FinanceShiftCloseReviewer")
+ financePeriodCloseSubmissions FinancePeriodCloseSubmission[] @relation("FinancePeriodCloseSubmitter")
+ financePeriodCloseApprovals FinancePeriodCloseApproval[] @relation("FinancePeriodCloseReviewer")
   diveLogs DiveLog[]
   organizationMemberships OrganizationMember[]
   organizationsOwned Organization[] @relation("OrganizationOwner")
@@ -900,6 +902,7 @@ model OrgUnit {
   administrativeRoutingsFrom AdministrativeRouting[] @relation("AdministrativeRoutingFromOrgUnit")
   administrativeRoutingsTo AdministrativeRouting[] @relation("AdministrativeRoutingToOrgUnit")
   financeShiftCloseSubmissions FinanceShiftCloseSubmission[]
+  financePeriodCloseSubmissions FinancePeriodCloseSubmission[]
 }
 model Position {
  id String @id @default(uuid())
@@ -1266,6 +1269,25 @@ enum FinanceShiftCloseSubmissionStatus {
   APPROVED
   REJECTED
 }
+enum FinancePeriodType {
+  MONTH
+  QUARTER
+  YEAR
+}
+enum FinancePeriodCloseStatus {
+  SUBMITTED
+  CLOSED
+  REJECTED
+}
+enum FinancePeriodCloseApprovalDecision {
+  APPROVED
+  REJECTED
+}
+enum FinancePeriodCloseReviewerRole {
+  CENTRAL_FINANCE
+  FINANCE_MANAGER
+  EXECUTIVE
+}
 enum FinanceHandoverStatus {
   PENDING
   ACCEPTED
@@ -1371,6 +1393,39 @@ model FinanceShiftCloseSubmission {
  @@unique([shiftId,revision])
  @@index([centerOrgUnitId,status,submittedAt])
  @@index([submittedByAccountId,status])
+}
+
+model FinancePeriodCloseSubmission {
+ id String @id @default(uuid())
+ centerOrgUnitId String
+ periodType FinancePeriodType
+ periodKey String
+ revision Int
+ submittedByAccountId String
+ status FinancePeriodCloseStatus @default(SUBMITTED)
+ readinessSnapshot Json
+ submittedAt DateTime @default(now())
+ closedAt DateTime?
+ center OrgUnit @relation(fields:[centerOrgUnitId],references:[id],onDelete:Restrict)
+ submittedBy Account @relation("FinancePeriodCloseSubmitter",fields:[submittedByAccountId],references:[id],onDelete:Restrict)
+ approvals FinancePeriodCloseApproval[]
+ @@unique([centerOrgUnitId,periodType,periodKey,revision])
+ @@index([centerOrgUnitId,status,submittedAt])
+ @@index([submittedByAccountId,status])
+}
+
+model FinancePeriodCloseApproval {
+ id String @id @default(uuid())
+ submissionId String
+ reviewerAccountId String
+ reviewerRole FinancePeriodCloseReviewerRole
+ decision FinancePeriodCloseApprovalDecision
+ note String?
+ createdAt DateTime @default(now())
+ submission FinancePeriodCloseSubmission @relation(fields:[submissionId],references:[id],onDelete:Restrict)
+ reviewer Account @relation("FinancePeriodCloseReviewer",fields:[reviewerAccountId],references:[id],onDelete:Restrict)
+ @@unique([submissionId,reviewerAccountId])
+ @@index([reviewerAccountId,decision,createdAt])
 }
 
 model Receivable {
