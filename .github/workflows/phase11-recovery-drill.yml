@@ -8,6 +8,7 @@ on:
       - 'apps/api/prisma-fresh-install-candidate/**'
       - 'apps/api/scripts/fresh-install-candidate.mjs'
       - 'apps/api/scripts/raw-domain-completion.mjs'
+      - 'apps/api/scripts/production-column-compatibility*'
       - 'apps/api/scripts/organization-forward-recovery-probe.mjs'
       - 'apps/api/scripts/recovery-rehearsal.mjs'
       - 'apps/api/scripts/bootstrap-*-runtime-schema.mjs'
@@ -20,6 +21,7 @@ on:
       - 'apps/api/prisma-fresh-install-candidate/**'
       - 'apps/api/scripts/fresh-install-candidate.mjs'
       - 'apps/api/scripts/raw-domain-completion.mjs'
+      - 'apps/api/scripts/production-column-compatibility*'
       - 'apps/api/scripts/organization-forward-recovery-probe.mjs'
       - 'apps/api/scripts/recovery-rehearsal.mjs'
       - 'apps/api/scripts/bootstrap-*-runtime-schema.mjs'
@@ -74,6 +76,7 @@ jobs:
           exit 1
       - name: Install locked dependencies and generate ORM
         run: |
+          node --test apps/api/scripts/production-column-compatibility.test.mjs
           npm ci --ignore-scripts
           npm run db:generate --workspace=@hydroland/api
       - name: Execute current-schema backup and two isolated restores

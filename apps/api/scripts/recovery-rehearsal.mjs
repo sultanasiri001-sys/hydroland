@@ -7,6 +7,7 @@ import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { verifyFreshInstallCandidate, baselineName } from './fresh-install-candidate.mjs';
 import { verifyRawDomainCompletion, completionName } from './raw-domain-completion.mjs';
+import { compareProductionColumns } from './production-column-compatibility.mjs';
 import { probeOrganizationForwardUpgrade, organizationRevision } from './organization-forward-recovery-probe.mjs';
 
 // This is a local, synthetic restore rehearsal, never a production restore.
@@ -213,6 +214,12 @@ try {
   for (const index of completion.catalog.indexes) check('raw_domain_index:' + index.name, before.schema.indexes.some(i => i.tablename === index.table_name && i.indexname === index.name && i.indexdef === index.definition));
   for (const enumeration of completion.catalog.enums) assert.deepEqual(before.schema.enums.filter(e => e.typname === enumeration.name).sort((a,b) => a.enumsortorder-b.enumsortorder).map(e => e.enumlabel), enumeration.values);
   check('raw_domain_completion_schema_matches_catalog_with_parent_id_adaptation', true);
+  const productionReference = JSON.parse(await readFile(join(apiRoot, 'prisma-fresh-install-candidate/production-column-reference.json'), 'utf8'));
+  const compatibility = compareProductionColumns(productionReference, { tables: before.contents.map(t => t.table_name), columns: completedColumns });
+  await writeFile(join(evidenceDir, 'production-column-compatibility.json'), JSON.stringify(compatibility,null,2)+'\n');
+  report.productionColumnCompatibility = compatibility.counts;
+  report.productionColumnMetadataMatches = compatibility.columnMetadataMatches;
+  check('all_production_table_names_covered', compatibility.missingTables.length === 0);
   report.tableCount = before.contents.length;
   report.populatedTables = before.contents.filter(row => row.row_count > 0).map(row => row.table_name);
   check('representative_data_and_raw_extensions_seeded', ['Account','Credential','Document','OrganizationDocumentAsset','RoleAssignment','Session','Booking','Payment','Invoice','AuditEvent','SafetyIncident','Conversation','Message','TripOperationalLocation'].every(name => report.populatedTables.includes(name)));
