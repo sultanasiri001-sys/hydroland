@@ -88,13 +88,10 @@ export class FinancePeriodCloseService {
   private async snapshot(tx:Prisma.TransactionClient,center:PeriodCenter,range:ReturnType<typeof resolveFinancePeriodRange>):Promise<PeriodSnapshot>{
     const rows=await tx.$queryRaw<Array<{openShiftCount:bigint;unresolvedVarianceCount:bigint;unreconciledPaymentCount:bigint;pendingRefundCount:bigint;unpostedReceivableCount:bigint}>>`
       SELECT
-        (SELECT COUNT(*) FROM "FinanceAccountantShift" s WHERE s."centerOrgUnitId"=${financeKey('FinanceAccountantShift','centerOrgUnitId',center.centerOrgUnitId)} AND s."openedAt">=${range.startsAt} AND s."openedAt"<${range.endsAt} AND s."status"='OPEN') AS "openShiftCount",
-        (SELECT COUNT(*) FROM (
-          SELECT DISTINCT ON (submission."shiftId") submission."shiftId",submission."status"::text AS status
-          FROM "FinanceShiftCloseSubmission" submission JOIN "FinanceAccountantShift" s ON s."id"=submission."shiftId"
-          WHERE submission."centerOrgUnitId"=${financeKey('FinanceShiftCloseSubmission','centerOrgUnitId',center.centerOrgUnitId)} AND s."openedAt">=${range.startsAt} AND s."openedAt"<${range.endsAt}
-          ORDER BY submission."shiftId",submission."revision" DESC
-        ) latest WHERE latest.status<>'APPROVED') AS "unresolvedVarianceCount",
+        (SELECT COUNT(*) FROM "FinanceAccountantShift" s WHERE s."centerOrgUnitId"=${financeKey('FinanceAccountantShift','centerOrgUnitId',center.centerOrgUnitId)} AND s."openedAt"<${range.endsAt} AND (s."closedAt" IS NULL OR s."closedAt">=${range.startsAt}) AND s."status" IN ('OPEN','HANDOVER_PENDING')) AS "openShiftCount",
+        (SELECT COUNT(*) FROM "FinanceAccountantShift" s LEFT JOIN LATERAL (
+          SELECT submission."status" FROM "FinanceShiftCloseSubmission" submission WHERE submission."shiftId"=s."id" ORDER BY submission."revision" DESC LIMIT 1
+        ) latest ON TRUE WHERE s."centerOrgUnitId"=${financeKey('FinanceAccountantShift','centerOrgUnitId',center.centerOrgUnitId)} AND s."openedAt"<${range.endsAt} AND (s."closedAt" IS NULL OR s."closedAt">=${range.startsAt}) AND s."status"='CLOSED' AND latest."status" IS DISTINCT FROM 'APPROVED') AS "unresolvedVarianceCount",
         ((SELECT COUNT(*) FROM "FinanceShiftEntry" e JOIN "FinanceAccountantShift" s ON s."id"=e."shiftId"
           WHERE s."centerOrgUnitId"=${financeKey('FinanceAccountantShift','centerOrgUnitId',center.centerOrgUnitId)} AND s."openedAt">=${range.startsAt} AND s."openedAt"<${range.endsAt} AND e."type"='REVENUE' AND (
             e."paymentId" IS NULL OR NOT EXISTS(SELECT 1 FROM "Payment" p JOIN "Booking" b ON b."id"=p."bookingId" JOIN "Trip" t ON t."id"=b."tripId" WHERE p."id"=e."paymentId" AND p."status"='CAPTURED' AND p."currency"='SAR' AND p."amountMinor"=e."amountMinor" AND t."organizationId"=${financeKey('Organization','id',center.organizationId)})
