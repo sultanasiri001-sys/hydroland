@@ -45,7 +45,7 @@ export class FinanceReceivablesService {
   }
 
   async collect(actorAccountId:string,receivableId:string,input:{paymentId:string;amountMinor:number;receiptNumber:string;installmentId?:string}) {
-    if(!input.receiptNumber?.trim())throw new Error('FINANCE_RECEIPT_REQUIRED');
+    if(typeof input?.receiptNumber!=='string'||!input.receiptNumber.trim()||input.receiptNumber.length>100)throw new Error('FINANCE_RECEIPT_REQUIRED');
     if(!Number.isSafeInteger(input.amountMinor)||input.amountMinor<=0)throw new Error('FINANCE_COLLECTION_AMOUNT_INVALID');
     return this.db.serializable(async tx=>{
       const rows=await tx.$queryRaw<Array<{id:string;customerAccountId:string;centerOrgUnitId:string;paidMinor:number;outstandingMinor:number;currency:string}>>`SELECT "id","customerAccountId","centerOrgUnitId","paidMinor","outstandingMinor","currency" FROM "Receivable" WHERE "id"=${financeKey('Receivable','id',receivableId)} FOR UPDATE`;
@@ -59,9 +59,12 @@ export class FinanceReceivablesService {
       const used=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "ReceivablePayment" WHERE "paymentId"=${financeKey('ReceivablePayment','paymentId',input.paymentId)} OR "receiptNumber"=${input.receiptNumber.trim()} LIMIT 1`;
       if(used[0])throw new Error('FINANCE_COLLECTION_ALREADY_RECORDED');
       const next=applyReceivablePayment(r.outstandingMinor,input.amountMinor);
+      const scheduled=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "ReceivableInstallment" WHERE "receivableId"=${financeKey('ReceivableInstallment','receivableId',receivableId)} AND "status"<>'CANCELLED' LIMIT 1`;
+      if(scheduled.length&&!input.installmentId)throw new Error('FINANCE_INSTALLMENT_REQUIRED');
       if(input.installmentId){
-        const inst=await tx.$queryRaw<Array<{id:string;amountMinor:number;paidMinor:number}>>`SELECT "id","amountMinor","paidMinor" FROM "ReceivableInstallment" WHERE "id"=${financeKey('ReceivableInstallment','id',input.installmentId)} AND "receivableId"=${financeKey('ReceivableInstallment','receivableId',receivableId)} FOR UPDATE`;
+        const inst=await tx.$queryRaw<Array<{id:string;amountMinor:number;paidMinor:number;status:string}>>`SELECT "id","amountMinor","paidMinor","status"::text FROM "ReceivableInstallment" WHERE "id"=${financeKey('ReceivableInstallment','id',input.installmentId)} AND "receivableId"=${financeKey('ReceivableInstallment','receivableId',receivableId)} FOR UPDATE`;
         if(!inst[0])throw new Error('FINANCE_INSTALLMENT_NOT_FOUND');
+        if(inst[0].status==='CANCELLED')throw new Error('FINANCE_INSTALLMENT_CANCELLED');
         if(inst[0].paidMinor+input.amountMinor>inst[0].amountMinor)throw new Error('FINANCE_INSTALLMENT_OVERPAYMENT');
         const instPaid=inst[0].paidMinor+input.amountMinor;
         const instStatus=instPaid===inst[0].amountMinor?'PAID':'PARTIALLY_PAID';

@@ -44,7 +44,7 @@ for(const marker of [
   "if(role==='center'&&label==='محترفي الغوص')return 'center-team'",
   "if(role==='center'&&['السلامة','تقارير السلامة'].includes(label))return 'center-safety'",
   'id=actionRoute(role,label,node.dataset.route)',
-  "if(activeRole==='center'&&['center-safety','center-documents','center-equipment','center-customers','center-business-profile','center-operations','center-bookings','center-team','center-reports','center-finance'].includes(route))"
+  "if(activeRole==='center'&&['center-safety','center-documents','center-equipment','center-customers','center-business-profile','center-operations','center-bookings','center-team','center-reports','center-finance','center-receivables'].includes(route))"
 ])if(!dashboards.includes(marker))throw new Error(`Missing scoped center route marker: ${marker}`);
 if(!dashboards.includes("const trainingTarget=document.querySelector('.hl-training');window.HydrolandWorkspaceUI?.show?.(trainingTarget)"))throw new Error('Managed instructor training must route to the actual .hl-training service node.');
 if(!dashboards.includes("target=professionalTraining?document.querySelector('.hl-training'):targetFor(resolvedId)"))throw new Error('Professional training availability must be evaluated against the managed .hl-training service node.');
