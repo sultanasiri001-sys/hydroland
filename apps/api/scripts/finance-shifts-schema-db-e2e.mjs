@@ -4,12 +4,14 @@ import {readFile} from 'node:fs/promises';
 import {PrismaClient} from '@prisma/client';
 import {DatabaseService} from '../dist/database/database.service.js';
 import {FinanceAccessService} from '../dist/finance/finance-access.service.js';
+import {FinanceReceivablesService} from '../dist/finance/finance-receivables.service.js';
 import {FinanceShiftsService} from '../dist/finance/finance-shifts.service.js';
 const base=new URL(process.env.DATABASE_URL??'');
 assert.equal(process.env.NODE_ENV,'test');
 assert.ok(['localhost','127.0.0.1','::1','[::1]'].includes(base.hostname),'Finance fixture requires a loopback database');
 const root=new PrismaClient({datasourceUrl:base.toString()});
 const original=await readFile(new URL('../prisma/migrations/20260917003500_finance_accountant_shifts/migration.sql',import.meta.url),'utf8');
+const receivableSql=await readFile(new URL('../prisma/migrations/20260923143000_finance_receivables_completion/migration.sql',import.meta.url),'utf8');
 let scenarios=0;
 try {
  for(const coreType of ['text','uuid'])for(const shiftType of ['text','uuid']) {
@@ -26,11 +28,16 @@ try {
    await run(`CREATE TABLE "Employment" (id ${coreType} PRIMARY KEY,"accountId" ${coreType} REFERENCES "Account"(id),"organizationId" ${coreType} REFERENCES "Organization"(id),"orgUnitId" ${coreType} REFERENCES "OrgUnit"(id),"positionId" ${coreType} REFERENCES "Position"(id),status text NOT NULL)`);
    await run(`CREATE TABLE "Trip" (id ${coreType} PRIMARY KEY,"organizationId" ${coreType} REFERENCES "Organization"(id))`);
    await run(`CREATE TABLE "Booking" (id ${coreType} PRIMARY KEY,"tripId" ${coreType} REFERENCES "Trip"(id))`);
-   await run(`CREATE TABLE "Payment" (id ${coreType} PRIMARY KEY,"bookingId" ${coreType} REFERENCES "Booking"(id),"amountMinor" integer,status text)`);
+   await run(`CREATE TABLE "Payment" (id ${coreType} PRIMARY KEY,"bookingId" ${coreType} REFERENCES "Booking"(id),"amountMinor" integer,status text,"accountId" ${coreType} REFERENCES "Account"(id),currency text NOT NULL DEFAULT 'SAR')`);
    let migration=original;
    for(const column of ['accountantAccountId','centerOrgUnitId','reviewedByAccountId','paymentId','recordedByAccountId','fromAccountantId','toAccountantId'])migration=migration.replaceAll(`"${column}" UUID`,`"${column}" ${coreType}`);
    for(const column of ['id','shiftId','fromShiftId','toShiftId'])migration=migration.replaceAll(`"${column}" UUID`,`"${column}" ${shiftType}`);
    for(const statement of migration.split(';').map(s=>s.trim()).filter(Boolean))await run(statement);
+   await run(`CREATE TABLE "Invoice" (id ${coreType} PRIMARY KEY,"paymentId" ${coreType} UNIQUE REFERENCES "Payment"(id),status text NOT NULL DEFAULT 'ISSUED')`);
+   let receivableMigration=receivableSql;
+   for(const column of ['invoiceId','customerAccountId','centerOrgUnitId','paymentId'])receivableMigration=receivableMigration.replaceAll(`"${column}" UUID`,`"${column}" ${coreType}`);
+   for(const column of ['id','receivableId','installmentId'])receivableMigration=receivableMigration.replaceAll(`"${column}" UUID`,`"${column}" ${shiftType}`);
+   for(const statement of receivableMigration.split(/;\s*(?=(?:DO\s+\$\$|CREATE\s+(?:TABLE|UNIQUE\s+INDEX|INDEX)|ALTER\s+TABLE))/i).map(s=>s.trim()).filter(Boolean))await run(statement);
    const id=()=>coreType==='text'?'text_'+randomUUID():randomUUID();
    const orgA=id(),orgB=id(),unitA=id(),unitB=id(),extra=id(),positionA=id(),positionB=id(),wrongPosition=id();
    const a=id(),b=id(),outsider=id(),wrong=id(),mismatch=id(),employmentB=id();
@@ -56,7 +63,7 @@ try {
    await rejects(service.recordEntry(b,from.id,{type:'EXPENSE',amountMinor:1}),'FINANCE_SHIFT_ACCOUNT_ISOLATION_DENIED');
    await service.recordEntry(a,from.id,{type:'EXPENSE',amountMinor:20,referenceId:randomUUID()});scenarios++;
    const payments=[];
-   for(const org of [orgA,orgB]){const trip=id(),booking=id(),payment=id();await run(`INSERT INTO "Trip" VALUES (${literal(trip)},${literal(org)})`);await run(`INSERT INTO "Booking" VALUES (${literal(booking)},${literal(trip)})`);await run(`INSERT INTO "Payment" VALUES (${literal(payment)},${literal(booking)},40,'CAPTURED')`);payments.push(payment);}
+   for(const org of [orgA,orgB]){const trip=id(),booking=id(),payment=id();await run(`INSERT INTO "Trip" VALUES (${literal(trip)},${literal(org)})`);await run(`INSERT INTO "Booking" VALUES (${literal(booking)},${literal(trip)})`);await run(`INSERT INTO "Payment" (id,"bookingId","amountMinor",status) VALUES (${literal(payment)},${literal(booking)},40,'CAPTURED')`);payments.push(payment);}
    await rejects(service.recordEntry(a,from.id,{type:'REVENUE',amountMinor:40,paymentId:payments[1]}),'FINANCE_PAYMENT_NOT_FOUND');
    await service.recordEntry(a,from.id,{type:'REVENUE',amountMinor:40,paymentId:payments[0]});scenarios++;
    await assert.rejects(service.recordEntry(a,from.id,{type:'REVENUE',amountMinor:40,paymentId:payments[0]}));scenarios++;
@@ -76,6 +83,53 @@ try {
    const rows=await db.$queryRawUnsafe(`SELECT id,"openingBalanceMinor",status::text FROM "FinanceAccountantShift" ORDER BY id`);
    assert.equal(rows.find(r=>r.id===from.id).status,'HANDED_OVER');assert.equal(rows.find(r=>r.id===to.id).openingBalanceMinor,120);assert.equal(rows.find(r=>r.id===foreign.id).openingBalanceMinor,0);scenarios++;
    const races=await Promise.allSettled([service.openShift(a,unitA,0),service.openShift(a,unitA,0)]);assert.equal(races.filter(r=>r.status==='fulfilled').length,1);assert.ok(races.find(r=>r.status==='rejected').reason.message.includes('FINANCE_ACTIVE_SHIFT_EXISTS'));scenarios++;
+   const ar=new FinanceReceivablesService(db,access);
+   const originTrip=id(),originBooking=id(),originPayment=id(),invoiceId=id(),unlinkedInvoice=id();
+   await run(`INSERT INTO "Trip" VALUES (${literal(originTrip)},${literal(orgA)})`);
+   await run(`INSERT INTO "Booking" VALUES (${literal(originBooking)},${literal(originTrip)})`);
+   await run(`INSERT INTO "Payment" (id,"bookingId","amountMinor",status,"accountId") VALUES (${literal(originPayment)},${literal(originBooking)},100,'CREATED',${literal(b)})`);
+   await run(`INSERT INTO "Invoice" VALUES (${literal(invoiceId)},${literal(originPayment)},'ISSUED'),(${literal(unlinkedInvoice)},NULL,'ISSUED')`);
+   const terms={invoiceId,customerAccountId:b,centerOrgUnitId:unitA,totalMinor:100,dueAt:new Date('2030-01-01'),installments:[{sequence:1,amountMinor:40,dueAt:new Date('2030-01-01')},{sequence:2,amountMinor:60,dueAt:new Date('2030-02-01')}]};
+   await rejects(ar.createDeferredInvoice(outsider,terms),'FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
+   await rejects(ar.createDeferredInvoice(a,{...terms,invoiceId:unlinkedInvoice}),'FINANCE_INVOICE_SCOPE_UNVERIFIED');
+   await rejects(ar.createDeferredInvoice(a,{...terms,customerAccountId:a}),'FINANCE_INVOICE_CUSTOMER_MISMATCH');
+   await rejects(ar.createDeferredInvoice(a,{...terms,totalMinor:200}),'FINANCE_INVOICE_TOTAL_MISMATCH');
+   await rejects(ar.createDeferredInvoice(a,{...terms,paidMinor:20}),'FINANCE_INVOICE_PAID_UNVERIFIED');
+   await run(`UPDATE "Payment" SET currency='USD' WHERE id=${literal(originPayment)}`);
+   await rejects(ar.createDeferredInvoice(a,terms),'FINANCE_CURRENCY_UNSUPPORTED');
+   await run(`UPDATE "Payment" SET currency='SAR' WHERE id=${literal(originPayment)}`);
+   const receivable=await ar.createDeferredInvoice(a,terms);scenarios++;
+   await rejects(ar.createDeferredInvoice(a,terms),'FINANCE_RECEIVABLE_ALREADY_EXISTS');
+   const installments=await db.$queryRawUnsafe(`SELECT id,sequence FROM "ReceivableInstallment" WHERE "receivableId"=${literal(receivable.receivableId)} ORDER BY sequence`);
+   const makePayment=async(booking,account,amount)=>{const payment=id();await run(`INSERT INTO "Payment" (id,"bookingId","amountMinor",status,"accountId") VALUES (${literal(payment)},${literal(booking)},${amount},'CAPTURED',${literal(account)})`);return payment;};
+   const pay40=await makePayment(originBooking,b,40),pay60=await makePayment(originBooking,b,60),wrongCustomer=await makePayment(originBooking,a,40),wrongAmount=await makePayment(originBooking,b,50);
+   const foreignBooking=id(),foreignTrip=id();await run(`INSERT INTO "Trip" VALUES (${literal(foreignTrip)},${literal(orgB)})`);await run(`INSERT INTO "Booking" VALUES (${literal(foreignBooking)},${literal(foreignTrip)})`);
+   const foreignPayment=await makePayment(foreignBooking,b,40);
+   const foreignInvoice=id();await run(`INSERT INTO "Invoice" VALUES (${literal(foreignInvoice)},${literal(foreignPayment)},'ISSUED')`);
+   await rejects(ar.createDeferredInvoice(a,{...terms,invoiceId:foreignInvoice,totalMinor:40,installments:undefined}),'FINANCE_INVOICE_SCOPE_UNVERIFIED');
+   await run(`UPDATE "Payment" SET status='CREATED' WHERE id=${literal(foreignPayment)}`);
+   const foreignReceivable=await ar.createDeferredInvoice(outsider,{invoiceId:foreignInvoice,customerAccountId:b,centerOrgUnitId:unitB,totalMinor:40,dueAt:new Date('2030-01-01')});
+   await run(`UPDATE "Payment" SET status='CAPTURED' WHERE id=${literal(foreignPayment)}`);
+   const otherBooking=id();await run(`INSERT INTO "Booking" VALUES (${literal(otherBooking)},${literal(originTrip)})`);const otherBookingPayment=await makePayment(otherBooking,b,40);
+
+   await rejects(ar.branchAr(outsider,unitA),'FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
+   const listing=await ar.branchAr(a,unitA);assert.equal(listing.length,1);assert.equal(listing[0].id,receivable.receivableId);const foreignListing=await ar.branchAr(outsider,unitB);assert.equal(foreignListing.length,1);assert.equal(foreignListing[0].id,foreignReceivable.receivableId);scenarios++;
+   const collectInput={paymentId:pay40,amountMinor:40,receiptNumber:'AR-40',installmentId:installments[0].id};
+   await rejects(ar.collect(outsider,receivable.receivableId,collectInput),'FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
+   await rejects(ar.collect(a,receivable.receivableId,{...collectInput,paymentId:foreignPayment}),'FINANCE_PAYMENT_NOT_SETTLED');
+   await rejects(ar.collect(a,receivable.receivableId,{...collectInput,paymentId:otherBookingPayment}),'FINANCE_PAYMENT_NOT_SETTLED');
+   await rejects(ar.collect(a,receivable.receivableId,{...collectInput,paymentId:wrongCustomer}),'FINANCE_PAYMENT_CUSTOMER_MISMATCH');
+   await rejects(ar.collect(a,receivable.receivableId,{...collectInput,paymentId:wrongAmount}),'FINANCE_PAYMENT_AMOUNT_MISMATCH');
+   await run(`UPDATE "Payment" SET currency='USD' WHERE id=${literal(pay40)}`);
+   await rejects(ar.collect(a,receivable.receivableId,collectInput),'FINANCE_PAYMENT_CURRENCY_MISMATCH');
+   await run(`UPDATE "Payment" SET currency='SAR' WHERE id=${literal(pay40)}`);
+   const collections=await Promise.allSettled([ar.collect(a,receivable.receivableId,collectInput),ar.collect(a,receivable.receivableId,collectInput)]);assert.equal(collections.filter(r=>r.status==='fulfilled').length,1);assert.ok(collections.find(r=>r.status==='rejected').reason.message.includes('FINANCE_COLLECTION_ALREADY_RECORDED'));const collected=collections.find(r=>r.status==='fulfilled').value;assert.equal(collected.outstandingMinor,60);scenarios++;
+   await rejects(ar.collect(a,receivable.receivableId,collectInput),'FINANCE_COLLECTION_ALREADY_RECORDED');
+   await run(`UPDATE "Employment" SET status='INACTIVE' WHERE "accountId"=${literal(a)}`);
+   await rejects(ar.collect(a,receivable.receivableId,{paymentId:pay60,amountMinor:60,receiptNumber:'AR-60',installmentId:installments[1].id}),'FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
+   await run(`UPDATE "Employment" SET status='ACTIVE' WHERE "accountId"=${literal(a)}`);
+   await rejects(ar.collect(a,receivable.receivableId,{paymentId:pay60,amountMinor:60,receiptNumber:'AR-60',installmentId:installments[0].id}),'FINANCE_INSTALLMENT_OVERPAYMENT');
+   const final=await ar.collect(a,receivable.receivableId,{paymentId:pay60,amountMinor:60,receiptNumber:'AR-60',installmentId:installments[1].id});assert.equal(final.outstandingMinor,0);assert.equal(final.status,'PAID');assert.equal((await ar.branchAr(a,unitA)).length,0);scenarios++;
    console.log(JSON.stringify({coreType,shiftType,status:'PASS'}));
   }finally{await db.$disconnect();await root.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);}
  }
