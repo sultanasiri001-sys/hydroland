@@ -4,6 +4,8 @@ import { createHmac, randomUUID } from 'node:crypto';
 
 const db = new PrismaClient();
 const base = process.env.ORGANIZATION_BOOKING_E2E_BASE_URL || 'http://127.0.0.1:3101/api/v1';
+const databaseUrl = new URL(process.env.DATABASE_URL);
+if (process.env.CI !== 'true' || !['localhost', '127.0.0.1', '[::1]'].includes(databaseUrl.hostname) || !['localhost', '127.0.0.1', '[::1]'].includes(new URL(base).hostname)) throw new Error('Organization booking checks require CI loopback API and PostgreSQL');
 const secret = process.env.JWT_SECRET;
 if (!secret) throw new Error('JWT_SECRET required');
 const suffix = randomUUID(), people = [], accounts = [], organizations = [], bookingIds = [];
@@ -54,10 +56,12 @@ try {
   assert.equal(await db.auditEvent.count({ where: { action: 'organization.booking.participant.updated', resourceId: participant.id } }), 1);
   console.log('Organization booking HTTP/DB checks passed: scoped roster edits, stale revision, tenant isolation, viewer/revoked-member denial, personal-route isolation, payment denial and unchanged denied writes.');
 } finally {
+  // Only synthetic actors in the guarded ephemeral CI database are removed.
+  await db.auditEvent.deleteMany({ where: { actorId: { in: people.map(person => person.id) } } });
   if (bookingIds.length) { await db.bookingParticipant.deleteMany({ where: { bookingId: { in: bookingIds } } }); await db.booking.deleteMany({ where: { id: { in: bookingIds } } }); }
   if (trip) await db.trip.delete({ where: { id: trip.id } });
   for (const organization of organizations) { await db.organizationMember.deleteMany({ where: { organizationId: organization.id } }); await db.organization.delete({ where: { id: organization.id } }); }
-  for (const account of accounts) await db.account.delete({ where: { id: account.id } });
+  for (const account of accounts) { await db.session.deleteMany({ where: { accountId: account.id } }); await db.account.delete({ where: { id: account.id } }); }
   for (const person of people) await db.person.delete({ where: { id: person.id } });
   await db.$disconnect();
 }

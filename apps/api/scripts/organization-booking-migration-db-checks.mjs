@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises';
 const url = new URL(process.env.DATABASE_URL);
 if (process.env.CI !== 'true' || !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) throw new Error('Migration check requires CI loopback PostgreSQL');
 const root = new PrismaClient();
-const sql = await readFile(new URL('../prisma/migrations/20261005130000_organization_booking_safety/migration.sql', import.meta.url), 'utf8');
+const sql = (await readFile(new URL('../prisma/migrations/20261005130000_organization_booking_safety/migration.sql', import.meta.url), 'utf8')).replace(/--[^\n]*/g, '');
 const caseSql = await readFile(new URL('../prisma/migrations/20261005090000_customer_case_organization_relation/migration.sql', import.meta.url), 'utf8');
 // The migration has a single DO block; preserve its internal semicolons.
 const begin = sql.indexOf('DO $$'), end = sql.indexOf('END $$;') + 'END $$;'.length;
