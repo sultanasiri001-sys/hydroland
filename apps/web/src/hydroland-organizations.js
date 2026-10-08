@@ -417,10 +417,10 @@
     } catch (error) { if (!current()) return; note(error instanceof Error ? error.message : 'تعذر إرسال طلب الجهة. تحقق من البيانات المدخلة.'); }
   });
 
-  const show = () => { panel.hidden = false; void refresh(); };
+  const show = () => { panel.hidden = false; window.HydrolandWorkspaceUI?.show?.(panel); void refresh(); };
   const hide = () => { directoryLoadVersion++; clearPrivateViews(); panel.hidden = true; memberLoadVersion++; selectedMembersOrganization = null; requestLoadVersion++; selectedRequestsOrganization = null; bookingLoadVersion++; selectedBookingsOrganization = null; safetyLoadVersion++; selectedSafetyOrganization = null; panel.querySelector('[data-org-requests]').hidden = true; panel.querySelector('[data-org-bookings]').hidden = true; panel.querySelector('[data-org-safety]').hidden = true; };
   document.querySelectorAll('#role-dialog [data-role]').forEach((button) => button.addEventListener('click', () => setTimeout(() => {
-    if (button.dataset.role === 'organization') show(); else hide();
+    if (button.dataset.role === 'organization') { panel.hidden = false; void refresh(); } else hide();
   }, 0)));
   document.addEventListener('hydroland:auth-changed', () => { directoryLoadVersion++; clearPrivateViews(); memberLoadVersion++; selectedMembersOrganization = null; requestLoadVersion++; selectedRequestsOrganization = null; bookingLoadVersion++; selectedBookingsOrganization = null; safetyLoadVersion++; selectedSafetyOrganization = null; panel.querySelector('[data-org-requests]').hidden = true; panel.querySelector('[data-org-bookings]').hidden = true; panel.querySelector('[data-org-safety]').hidden = true; if (!window.HydrolandAuth?.isAuthenticated?.()) { stateMemberships = []; resetForm(); panel.querySelector('[data-org-members]').hidden = true; } if (!panel.hidden) refresh(); });
   window.HydrolandOrganizations = { open: show, refresh };

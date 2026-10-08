@@ -30,6 +30,7 @@ async function install(page,{role='OWNER',displayName='شركة الاختبار
  await page.evaluate(async()=>{window.HydrolandAuth.acceptSession({accessToken:'organization-access',refreshToken:'organization-refresh'},window.HydrolandAuth.beginAuthAttempt());await window.HydrolandProfile.load()});
  await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="organization"]').click();
  await expect(page.locator('.hl-role-dashboard[data-role="organization"]')).toBeVisible();
+ await page.locator('.hl-role-dashboard[data-role="organization"] [data-action-label="بيانات الجهات"]').click();
  await expect(page.locator('.hl-organizations [data-org-list] [data-org-id="org-1"]')).toBeVisible();
  return state;
 }
