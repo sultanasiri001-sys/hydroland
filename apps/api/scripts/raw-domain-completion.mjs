@@ -54,5 +54,5 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     await writeFile(join(root,'manifest.json'), JSON.stringify(expected.manifest,null,2)+'\n');
   }
   const expected = await verifyRawDomainCompletion();
-  console.log(JSON.stringify({ status:'PASS', ...expected.manifest, tableCount: expected.catalog.tables.length }));
+  console.log(JSON.stringify({ ...expected.manifest, verification:'PASS', tableCount: expected.catalog.tables.length }));
 }
