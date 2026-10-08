@@ -69,6 +69,12 @@ try {
   assert.equal(cancelled.status, 'CANCELLED'); assert.equal(cancelled.financialActionExecuted, false); assert.equal(cancelled.alreadyApplied, false);
   const replay = await ok(await call(contact, `${scoped}/${booking.id}/cancel`, 'POST', command));
   assert.equal(replay.alreadyApplied, true); assert.equal(replay.financialActionExecuted, false);
+  assert.equal((await call(foreign, `/organizations/${otherOrganization.id}/bookings/${booking.id}/cancel`, 'POST', command)).status, 404);
+  for (const status of ['ACTIVE', 'SUSPENDED']) {
+    await db.organizationMember.updateMany({ where: { organizationId: organization.id, accountId: contact.id }, data: { role: 'VIEWER', status } });
+    assert.equal((await call(contact, `${scoped}/${booking.id}/cancel`, 'POST', command)).status, 403);
+  }
+  await db.organizationMember.updateMany({ where: { organizationId: organization.id, accountId: contact.id }, data: { role: 'OWNER', status: 'ACTIVE' } });
   assert.equal((await call(contact, `${scoped}/${booking.id}/cancel`, 'POST', { ...command, reason: 'سبب مختلف لنفس مفتاح الطلب' })).status, 409);
   assert.equal(await db.auditEvent.count({ where: { action: 'BOOKING_CANCELLED', resourceId: booking.id } }), 1);
   assert.equal(await db.notification.count({ where: { accountId: contact.id, type: 'BOOKING_CANCELLED' } }), 1);
