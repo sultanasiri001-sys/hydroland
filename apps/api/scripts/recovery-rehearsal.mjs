@@ -11,6 +11,7 @@ import { compareProductionColumns } from './production-column-compatibility.mjs'
 import { compareProductionRelations } from './production-relation-compatibility.mjs';
 import { verifyCandidateColumnCompletion, columnCompletionName } from './candidate-column-completion.mjs';
 import { verifyCandidateConstraintCompletion, constraintCompletionName } from './candidate-constraint-completion.mjs';
+import { verifyCandidateIndexCompletion, indexCompletionName } from './candidate-index-completion.mjs';
 import { probeOrganizationForwardUpgrade, organizationRevision } from './organization-forward-recovery-probe.mjs';
 
 // This is a local, synthetic restore rehearsal, never a production restore.
@@ -93,6 +94,67 @@ async function probeCompletedConstraints(database, catalog) {
       END $probe$;
       ROLLBACK;`);
     check(database+':negative_control:'+c.name,true);
+  }
+}
+
+async function probeFinancialIndexes(database) {
+  for (const spec of [
+    { table:'FinanceAccountantShift', name:'FinanceAccountantShift_active_accountant_center_key', columns:['accountantAccountId','centerOrgUnitId','status'], first:['same','center','OPEN'], conflicting:['same','center','HANDOVER_PENDING'], allowed:[['same','center','CLOSED'],['other','center','OPEN'],['same','other','OPEN']] },
+    { table:'FinanceShiftHandover', name:'FinanceShiftHandover_pending_fromShift_key', columns:['fromShiftId','status'], first:['same','PENDING'], conflicting:['same','PENDING'], allowed:[['same','ACCEPTED'],['same','REJECTED'],['other','PENDING']] },
+  ]) {
+    const definition=rows(database, `SELECT indexdef FROM pg_indexes WHERE schemaname='public' AND indexname=${literal(spec.name)}`)[0]?.indexdef;
+    assert.ok(definition);
+    const insert=values=>`INSERT INTO index_probe_schema.fixture (${spec.columns.map(identifier).join(',')}) VALUES (${values.map(literal).join(',')});`;
+    const create=definition.replace('ON public.'+identifier(spec.table),'ON index_probe_schema.fixture');
+    sql(database, `BEGIN;
+      CREATE SCHEMA index_probe_schema;
+      CREATE TABLE index_probe_schema.fixture AS SELECT ${spec.columns.map(identifier).join(',')} FROM ${identifier(spec.table)} WITH NO DATA;
+      ${create};
+      ${insert(spec.first)}
+      DO $probe$ DECLARE rejected_name text; BEGIN
+        BEGIN
+          ${insert(spec.conflicting)}
+          RAISE EXCEPTION 'Financial index accepted duplicate';
+        EXCEPTION WHEN unique_violation THEN
+          GET STACKED DIAGNOSTICS rejected_name = CONSTRAINT_NAME;
+          IF rejected_name <> ${literal(spec.name)} THEN RAISE EXCEPTION 'Wrong unique index: %',rejected_name; END IF;
+        END;
+      END $probe$;
+      ${spec.allowed.map(insert).join('\n')}
+      ROLLBACK;`);
+    check(database+':financial_partial_unique_rejection_and_allowed_history:'+spec.name,true);
+  }
+}
+
+async function probeForeignKeyUpdateActions(database, differences) {
+  for (const difference of differences) {
+    for (const [variant, object] of [['production',difference.production],['candidate',difference.candidate]]) {
+      const match=object.definition.match(/^FOREIGN KEY \(("[^" ]+"|[A-Za-z_][A-Za-z0-9_]*)\) REFERENCES ("[^" ]+"|[A-Za-z_][A-Za-z0-9_]*)\(("[^" ]+"|[A-Za-z_][A-Za-z0-9_]*)\)/);
+      assert.ok(match,'Unsupported FK action probe');
+      const [,column,parent,parentColumn]=match;
+      const definition=object.definition.replace('REFERENCES '+parent+'('+parentColumn+')','REFERENCES action_probe_schema.parent('+parentColumn+')');
+      const cascade=object.definition.includes(' ON UPDATE CASCADE');
+      sql(database, `BEGIN;
+        CREATE SCHEMA action_probe_schema;
+        CREATE TABLE action_probe_schema.parent AS SELECT ${parentColumn} FROM ${parent} WITH NO DATA;
+        ALTER TABLE action_probe_schema.parent ADD PRIMARY KEY (${parentColumn});
+        CREATE TABLE action_probe_schema.child AS SELECT ${column} FROM ${identifier(object.table_name)} WITH NO DATA;
+        ALTER TABLE action_probe_schema.child ADD CONSTRAINT ${identifier(object.name)} ${definition};
+        INSERT INTO action_probe_schema.parent VALUES ('20000000-0000-4000-8000-000000000001');
+        INSERT INTO action_probe_schema.child VALUES ('20000000-0000-4000-8000-000000000001');
+        DO $probe$ DECLARE rejected_name text; BEGIN
+          ${cascade ? `UPDATE action_probe_schema.parent SET ${parentColumn}='20000000-0000-4000-8000-000000000002';
+            IF NOT EXISTS (SELECT 1 FROM action_probe_schema.child WHERE ${column}='20000000-0000-4000-8000-000000000002') THEN RAISE EXCEPTION 'CASCADE did not update child'; END IF;` : `BEGIN
+            UPDATE action_probe_schema.parent SET ${parentColumn}='20000000-0000-4000-8000-000000000002';
+            RAISE EXCEPTION 'NO ACTION accepted referenced key update';
+          EXCEPTION WHEN foreign_key_violation THEN
+            GET STACKED DIAGNOSTICS rejected_name = CONSTRAINT_NAME;
+            IF rejected_name <> ${literal(object.name)} THEN RAISE EXCEPTION 'Unexpected rejecting FK'; END IF;
+          END;`}
+        END $probe$;
+        ROLLBACK;`);
+      check(database+':foreign_key_update_behavior:'+object.name+':'+variant,true);
+    }
   }
 }
 
@@ -189,6 +251,9 @@ try {
   const constraintCompletion = await verifyCandidateConstraintCompletion();
   migrations.push({ name: usesCandidate ? constraintCompletionName : '20261004100000_candidate_production_constraint_completion', sql: constraintCompletion.sql, source: 'additive candidate foreign keys and checks; no history rewrite' });
   report.constraintCompletionSha256 = constraintCompletion.manifest.sha256;
+  const indexCompletion = await verifyCandidateIndexCompletion();
+  migrations.push({ name: usesCandidate ? indexCompletionName : '20261004110000_candidate_production_index_completion', sql: indexCompletion.sql, source: 'missing lookup and partial financial uniqueness indexes' });
+  report.indexCompletionSha256 = indexCompletion.manifest.sha256;
   // Exercise populated legacy shapes for both native key types in a rolled-back schema.
   for (const parentType of ['text','uuid']) {
     sql(SOURCE, `BEGIN;
@@ -260,8 +325,10 @@ try {
     await writeFile(join(evidenceDir, 'fixture-migration-manifest.json'), JSON.stringify(finalManifest, null, 2));
   }
   const shiftFrom = 'REHEARSAL_SHIFT_FROM', shiftTo = 'REHEARSAL_SHIFT_TO';
-  for (const id of [shiftFrom,shiftTo]) sql(SOURCE, `INSERT INTO "FinanceAccountantShift" ("id","centerOrgUnitId","accountantAccountId","updatedAt") VALUES (${literal(id)},${literal(organization.id)},${literal(account.id)},CURRENT_TIMESTAMP)`);
-  sql(SOURCE, `INSERT INTO "FinanceShiftHandover" ("id","fromShiftId","toShiftId","fromAccountantId","toAccountantId","expectedCashMinor","actualCashMinor","varianceMinor") VALUES ('REHEARSAL_HANDOVER',${literal(shiftFrom)},${literal(shiftTo)},${literal(account.id)},${literal(account.id)},100,100,0)`);
+  const receivingPerson = await db.person.create({ data: { firstName: 'RECEIVER', lastName: 'RESTORE FIXTURE' } });
+  const receivingAccount = await db.account.create({ data: { personId: receivingPerson.id, email: 'receiver@example.invalid', passwordHash: 'not-a-login-hash', status: 'ACTIVE' } });
+  for (const id of [shiftFrom,shiftTo]) sql(SOURCE, `INSERT INTO "FinanceAccountantShift" ("id","centerOrgUnitId","accountantAccountId","updatedAt") VALUES (${literal(id)},${literal(organization.id)},${literal(id === shiftFrom ? account.id : receivingAccount.id)},CURRENT_TIMESTAMP)`);
+  sql(SOURCE, `INSERT INTO "FinanceShiftHandover" ("id","fromShiftId","toShiftId","fromAccountantId","toAccountantId","expectedCashMinor","actualCashMinor","varianceMinor") VALUES ('REHEARSAL_HANDOVER',${literal(shiftFrom)},${literal(shiftTo)},${literal(account.id)},${literal(receivingAccount.id)},100,100,0)`);
   check('completed_handover_timestamps_default_without_client_fields', sql(SOURCE, `SELECT "requestedAt" IS NOT NULL AND "updatedAt" IS NOT NULL AND "offeredAt" IS NOT NULL FROM "FinanceShiftHandover" WHERE "id"='REHEARSAL_HANDOVER'`) === 't');
   // Synthetic raw-domain relationship graph; no production data is copied.
   const rawIds = Object.fromEntries(completion.catalog.tables.map((t,i) => [t.name, '10000000-0000-4000-8000-' + String(i+1).padStart(12,'0')]));
@@ -305,9 +372,14 @@ try {
   report.productionColumnMetadataMatches = compatibility.columnMetadataMatches;
   const relationReference = JSON.parse(await readFile(join(apiRoot,'prisma-fresh-install-candidate/production-relation-reference.json'),'utf8'));
   for (const c of constraintCompletion.catalog) check('completed_constraint:' + c.name, before.schema.constraints.some(r => r.table_name === c.table_name && r.conname === c.name && r.contype === c.kind && r.convalidated && r.definition === c.definition));
+  for (const i of indexCompletion.catalog) check('completed_index:' + i.name, before.schema.indexes.some(r=>r.tablename===i.table_name && r.indexname===i.name && r.indexdef===i.definition));
+  await probeFinancialIndexes(SOURCE);
   await probeCompletedConstraints(SOURCE, constraintCompletion.catalog);
   const relationCompatibility = compareProductionRelations(relationReference,{ constraints: before.schema.constraints.filter(c => c.table_name !== '_prisma_migrations' && c.contype !== 'n').map(c=>({table_name:c.table_name,name:c.conname,kind:c.contype,validated:c.convalidated,definition:c.definition})), indexes: before.schema.indexes.filter(i=>i.tablename !== '_prisma_migrations').map(i=>({table_name:i.tablename,name:i.indexname,definition:i.indexdef})) });
   await writeFile(join(evidenceDir,'production-relation-compatibility.json'),JSON.stringify(relationCompatibility,null,2)+'\n');
+  const actionDifferences=relationCompatibility.constraints.changed.filter(c=>relationCompatibility.review.updateActionDifferences.some(r=>r.table===c.table && r.name===c.name));
+  await probeForeignKeyUpdateActions(SOURCE,actionDifferences);
+  report.productionRelationReview=relationCompatibility.review;
   report.productionRelationCompatibility = relationCompatibility.counts;
   report.productionRelationMetadataMatches = relationCompatibility.metadataMatches;
   check('all_production_table_names_covered', compatibility.missingTables.length === 0);
@@ -343,6 +415,8 @@ try {
     check(target + ':foreign_key_enforced', true);
     await assert.rejects(() => db.roleAssignment.create({ data: { accountId: account.id, role: 'DIVER', status: 'ACTIVE' } }), error => error.code === 'P2002');
     check(target + ':unique_constraint_enforced', true);
+    await probeForeignKeyUpdateActions(target,actionDifferences);
+    await probeFinancialIndexes(target);
     await probeCompletedConstraints(target, constraintCompletion.catalog);
     await assertAuditAppendOnly(db, target);
     await db.$disconnect(); db = null;

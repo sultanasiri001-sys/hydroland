@@ -20,5 +20,13 @@ export function compareProductionRelations(reference,candidate) {
   result.counts[kind]={production:expected.length,candidate:actual.length,missing:missing.length,extra:extra.length,changed:changed.length};
  }
  result.metadataMatches=Object.values(result.counts).every(c=>!c.missing&&!c.extra&&!c.changed);
+ // Conservative triage supplements the exact diff; never hides differences.
+ // Only the index identifier may differ for a rename classification.
+ const indexShape=definition=>definition.replace(/^CREATE (UNIQUE )?INDEX (?:"(?:[^"]|"")+"|[A-Za-z_][A-Za-z0-9_]*) ON /,(_,unique)=>'CREATE '+(unique||'')+'INDEX <name> ON ');
+ result.review={
+  renamedIndexes:result.indexes.missing.map(production=>({production,candidates:result.indexes.extra.filter(candidate=>candidate.table_name===production.table_name && indexShape(candidate.definition)===indexShape(production.definition))})).filter(x=>x.candidates.length),
+  updateActionDifferences:result.constraints.changed.filter(x=>x.production.kind==='f' && x.candidate.kind==='f' && x.production.validated===x.candidate.validated && !x.production.definition.includes('ON UPDATE ') && x.candidate.definition.replace(' ON UPDATE CASCADE','')===x.production.definition).map(x=>({table:x.table,name:x.name,productionUpdate:'NO ACTION',candidateUpdate:'CASCADE',behaviorMatches:false})),
+  productionAdoptionApproved:false,
+ };
  return result;
 }
