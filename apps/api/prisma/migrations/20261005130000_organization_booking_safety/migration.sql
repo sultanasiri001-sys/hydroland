@@ -1,14 +1,24 @@
 -- Organization booking ownership and customer-submitted safety reports.
--- Production key columns use PostgreSQL UUID even though Prisma String fields
--- are declared without @db.Uuid in this legacy schema.
+-- Follow actual referenced key types: production UUID and clean-schema TEXT
+-- must both retain valid foreign keys without changing existing columns.
 DROP INDEX "Booking_tripId_accountId_key";
 
-ALTER TABLE "Booking"
-  ADD COLUMN "organizationId" UUID,
-  ADD COLUMN "bookingRequestKey" TEXT,
-  ADD COLUMN "bookingRequestFingerprint" TEXT;
-
-ALTER TABLE "SafetyIncident" ADD COLUMN "bookingId" UUID;
+DO $$
+DECLARE
+  organization_key_type TEXT;
+  booking_key_type TEXT;
+BEGIN
+  SELECT format_type(atttypid, atttypmod) INTO organization_key_type
+  FROM pg_attribute WHERE attrelid = '"Organization"'::regclass AND attname = 'id' AND NOT attisdropped;
+  SELECT format_type(atttypid, atttypmod) INTO booking_key_type
+  FROM pg_attribute WHERE attrelid = '"Booking"'::regclass AND attname = 'id' AND NOT attisdropped;
+  IF organization_key_type NOT IN ('text', 'uuid') OR booking_key_type NOT IN ('text', 'uuid')
+     OR organization_key_type IS NULL OR booking_key_type IS NULL THEN
+    RAISE EXCEPTION 'Unsupported organization or booking key type';
+  END IF;
+  EXECUTE format('ALTER TABLE "Booking" ADD COLUMN "organizationId" %s, ADD COLUMN "bookingRequestKey" TEXT, ADD COLUMN "bookingRequestFingerprint" TEXT', organization_key_type);
+  EXECUTE format('ALTER TABLE "SafetyIncident" ADD COLUMN "bookingId" %s', booking_key_type);
+END $$;
 
 CREATE UNIQUE INDEX "Booking_bookingRequestKey_key" ON "Booking"("bookingRequestKey");
 CREATE INDEX "Booking_organizationId_status_createdAt_idx" ON "Booking"("organizationId","status","createdAt");

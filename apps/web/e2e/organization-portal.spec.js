@@ -93,7 +93,23 @@ test('organization operator books a trip, submits participant snapshots and can 
  const state=await install(page,{role:'OPERATOR'});await page.locator('[data-org-id="org-1"] [data-org-bookings-open]').click();
  const panel=page.locator('[data-org-bookings]');await expect(panel).toBeVisible();await panel.locator('[name="tripId"]').selectOption('trip-1');await panel.locator('[name="seats"]').fill('1');await panel.locator('[name="participantNames"]').fill('سارة الغامدي');await panel.locator('[data-org-booking-submit]').click();
  await expect(panel).toContainText('تم تسجيل طلب الحجز بحالة انتظار');expect(state.bookingWrites).toHaveLength(1);expect(state.bookingWrites[0]).toMatchObject({tripId:'trip-1',seats:1,participantNames:['سارة الغامدي']});
- const participant=panel.locator('[data-org-participant]');await participant.locator('[name="fullName"]').fill('سارة أ. الغامدي');await participant.locator('button').click();expect(state.participantWrites).toHaveLength(1);expect(state.participantWrites[0].expectedUpdatedAt).toBe('2026-10-05T09:00:00.000Z');
+ const participant=panel.locator('[data-org-participant]');await participant.locator('[name="fullName"]').fill('سارة أ. الغامدي');await participant.locator('button').click();await expect.poll(()=>state.participantWrites.length).toBe(1);expect(state.participantWrites[0].expectedUpdatedAt).toBe('2026-10-05T09:00:00.000Z');
+});
+
+test('participant save preserves the displayed revision and submitted values during a delayed write',async({page})=>{
+ const state=await install(page,{role:'OPERATOR'});
+ state.bookings.push({id:'booking-1',tripId:'trip-1',status:'PENDING',seats:1,updatedAt:'2026-10-05T09:00:00.000Z',trip:{title:'رحلة الساحل',startsAt:'2026-12-01T08:00:00.000Z'},participants:[{id:'participant-0',fullName:'سارة الغامدي',eligibilityStatus:'PENDING'}]});
+ await page.locator('[data-org-id="org-1"] [data-org-bookings-open]').click();
+ const form=page.locator('[data-org-participant]');await expect(form).toBeVisible();
+ // Another manager changed the saved booking after this form was rendered.
+ state.bookings[0].updatedAt='2026-10-05T09:01:00.000Z';
+ let release;const pending=new Promise(resolve=>release=resolve);
+ await page.route(/\/api\/v1\/organizations\/org-1\/bookings\/booking-1\/participants\/participant-0$/,async route=>{state.participantWrites.push(route.request().postDataJSON());await pending;return json(route,{message:'تغير الحجز؛ حدّث الصفحة قبل تعديل القائمة.'},409)});
+ await form.locator('[name="fullName"]').fill('سارة الاسم المرسل');await form.locator('button').click();
+ await expect.poll(()=>state.participantWrites.length).toBe(1);await form.locator('[name="fullName"]').fill('سارة تعديل لاحق');release();
+ expect(state.participantWrites[0].fullName).toBe('سارة الاسم المرسل');
+ expect(state.participantWrites[0].expectedUpdatedAt).toBe('2026-10-05T09:00:00.000Z');
+ await expect(page.locator('[data-org-note]')).toContainText('تغير الحجز');await expect(form.locator('button')).toBeEnabled();
 });
 
 test('organization staff submits a booking-linked safety incident',async({page})=>{

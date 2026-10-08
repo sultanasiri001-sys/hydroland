@@ -174,7 +174,7 @@
       const mayCancel = ['OWNER', 'ADMIN'].includes(membership.role);
       box.innerHTML = rows.length ? rows.map(booking => {
         const canEdit = mayEdit && booking.status === 'PENDING' && new Date(booking.trip?.startsAt) > new Date();
-        return '<article class="hl-org-request" data-org-booking-id="' + esc(booking.id) + '"><div><strong>' + esc(booking.trip?.title || 'رحلة') + '</strong><span>' + esc(bookingStatus(booking.status)) + '</span></div><small>' + esc(new Date(booking.trip?.startsAt).toLocaleString('ar-SA')) + ' · ' + esc(booking.seats) + ' مقعدًا</small><div class="hl-org-participants">' + (booking.participants || []).map(person => '<form data-org-participant data-participant-id="' + esc(person.id) + '"><label>اسم المشارك<input name="fullName" value="' + esc(person.fullName) + '" maxlength="160" required ' + (canEdit ? '' : 'disabled') + '></label><label>المؤهل<input name="certificationTitle" value="' + esc(person.certificationTitle || '') + '" maxlength="160" ' + (canEdit ? '' : 'disabled') + '></label>' + (canEdit ? '<button type="submit">حفظ بيانات المشارك</button>' : '<small>' + esc(person.eligibilityStatus) + '</small>') + '</form>').join('') + '</div>' + (mayCancel && booking.status === 'PENDING' ? '<button type="button" data-org-booking-cancel>إلغاء الحجز (لا ينفذ استردادًا)</button>' : '') + '</article>';
+        return '<article class="hl-org-request" data-org-booking-id="' + esc(booking.id) + '" data-org-booking-version="' + esc(booking.updatedAt) + '"><div><strong>' + esc(booking.trip?.title || 'رحلة') + '</strong><span>' + esc(bookingStatus(booking.status)) + '</span></div><small>' + esc(new Date(booking.trip?.startsAt).toLocaleString('ar-SA')) + ' · ' + esc(booking.seats) + ' مقعدًا</small><div class="hl-org-participants">' + (booking.participants || []).map(person => '<form data-org-participant data-participant-id="' + esc(person.id) + '"><label>اسم المشارك<input name="fullName" value="' + esc(person.fullName) + '" maxlength="160" required ' + (canEdit ? '' : 'disabled') + '></label><label>المؤهل<input name="certificationTitle" value="' + esc(person.certificationTitle || '') + '" maxlength="160" ' + (canEdit ? '' : 'disabled') + '></label>' + (canEdit ? '<button type="submit">حفظ بيانات المشارك</button>' : '<small>' + esc(person.eligibilityStatus) + '</small>') + '</form>').join('') + '</div>' + (mayCancel && booking.status === 'PENDING' ? '<button type="button" data-org-booking-cancel>إلغاء الحجز (لا ينفذ استردادًا)</button>' : '') + '</article>';
       }).join('') : '<p>لا توجد حجوزات مسجلة لهذه الجهة.</p>';
       const tripsSelect = panel.querySelector('[data-org-trip]');
       const availableTrips = (Array.isArray(trips) ? trips : []).filter(trip => trip.status === 'OPEN' && new Date(trip.startsAt) > new Date());
@@ -226,13 +226,10 @@
     const current = () => Boolean(auth?.isAuthenticated?.() && session === auth?.getSessionVersion?.() && selectedBookingsOrganization === organizationId);
     const body = Object.fromEntries(new FormData(form).entries());
     body.certificationTitle ||= null;
+    body.expectedUpdatedAt = form.closest('[data-org-booking-id]')?.dataset.orgBookingVersion;
+    if (!body.expectedUpdatedAt) { note('حدّث قائمة الحجوزات قبل تعديل المشاركين.'); return; }
     const button = form.querySelector('button'); if (button) button.disabled = true;
     try {
-      const result = await request('/organizations/' + encodeURIComponent(organizationId) + '/bookings?page=1&pageSize=50');
-      if (!current()) return;
-      const booking = result?.items?.find(row => row.id === bookingId);
-      if (!booking) throw new Error('لم يعد الحجز ظاهرًا ضمن حجوزات الجهة. حدّث القائمة ثم أعد المحاولة.');
-      body.expectedUpdatedAt = booking.updatedAt;
       await request('/organizations/' + encodeURIComponent(organizationId) + '/bookings/' + encodeURIComponent(bookingId) + '/participants/' + encodeURIComponent(participantId), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (current()) await loadOrganizationBookings(organizationId, stateMemberships.find(row => row.organization?.id === organizationId));
     } catch (error) { if (current()) note(error instanceof Error ? error.message : 'تعذر حفظ بيانات المشارك.'); }

@@ -25,10 +25,10 @@ export class BookingParticipantService {
     return db.$queryRaw<ParticipantRow[]>`SELECT * FROM "BookingParticipant" WHERE "bookingId"::text=${bookingId} ORDER BY "createdAt" ASC`;
   }
 
-  async listForOwner(accountId:string,bookingId:string){const booking=await this.db.booking.findUnique({where:{id:bookingId},select:{accountId:true}});if(!booking||booking.accountId!==accountId)throw new NotFoundException('Booking not found.');return this.db.$queryRaw<ParticipantRow[]>`SELECT * FROM "BookingParticipant" WHERE "bookingId"::text=${bookingId} ORDER BY "createdAt" ASC`;}
+  async listForOwner(accountId:string,bookingId:string){const booking=await this.db.booking.findFirst({where:{id:bookingId,accountId,organizationId:null},select:{id:true}});if(!booking)throw new NotFoundException('Booking not found.');return this.db.$queryRaw<ParticipantRow[]>`SELECT * FROM "BookingParticipant" WHERE "bookingId"::text=${bookingId} ORDER BY "createdAt" ASC`;}
 
   async updateForOwner(accountId:string,bookingId:string,participantId:string,input:ParticipantInput){
-    const booking=await this.db.booking.findUnique({where:{id:bookingId},select:{accountId:true,status:true}});if(!booking||booking.accountId!==accountId)throw new NotFoundException('Booking not found.');if(booking.status==='CANCELLED')throw new ConflictException('Cancelled booking cannot be updated.');
+    const booking=await this.db.booking.findFirst({where:{id:bookingId,accountId,organizationId:null},select:{status:true}});if(!booking)throw new NotFoundException('Booking not found.');if(booking.status==='CANCELLED')throw new ConflictException('Cancelled booking cannot be updated.');
     const fullName=input.fullName?.trim();if(!fullName||fullName.length<3)throw new BadRequestException('Participant full name is required.');
     const rows=await this.db.$queryRaw<ParticipantRow[]>`SELECT * FROM "BookingParticipant" WHERE "id"=${participantId} AND "bookingId"::text=${bookingId} LIMIT 1`;const current=rows[0];if(!current)throw new NotFoundException('Participant not found.');
     const certificationTitle=input.certificationTitle?.trim()||null,certificationNumber=input.certificationNumber?.trim()||null,certificationIssuer=input.certificationIssuer?.trim()||null;

@@ -115,7 +115,7 @@ export class TripsService {
     });
   }
 
-  mine(accountId:string){return this.db.booking.findMany({where:{accountId},include:{trip:true},orderBy:{createdAt:'desc'}});}
+  mine(accountId:string){return this.db.booking.findMany({where:{accountId,organizationId:null},include:{trip:true},orderBy:{createdAt:'desc'}});}
 
   cancelMine(accountId:string,bookingId:string){return this.bookingManagement.legacy(accountId,bookingId,'CANCEL','owner');}
 

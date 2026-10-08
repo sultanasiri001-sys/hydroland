@@ -29,7 +29,7 @@ export class BookingManagementService {
     }
     if (mode === 'owner') {
       if (!await tx.account.findFirst({ where: { id: accountId, status: 'ACTIVE' } })) throw new ForbiddenException('الحساب غير نشط.');
-      return { accountId };
+      return { accountId, organizationId: null };
     }
     if (mode === 'organization') {
       if (!organizationId) throw new BadRequestException('معرّف الجهة غير صالح.');
