@@ -71,6 +71,11 @@ export class FinanceController {
     return financeHttp(()=>this.shiftClose.pending(request.auth.accountId,centerId));
   }
 
+  @Get('centers/:centerOrgUnitId/daily-close-report')
+  centerDailyCloseReport(@Req() request:AuthenticatedRequest,@Param('centerOrgUnitId') centerId:string,@Query('businessDate') businessDate:string) {
+    return financeHttp(()=>this.shiftClose.dailyReport(request.auth.accountId,centerId,businessDate));
+  }
+
   @Post('shift-close-reviews/:submissionId/decision')
   decideShiftClose(@Req() request:AuthenticatedRequest,@Param('submissionId') submissionId:string,@Body() body:{decision:'APPROVED'|'REJECTED';note?:string}) {
     return financeHttp(()=>this.shiftClose.review(request.auth.accountId,submissionId,body?.decision,body?.note));

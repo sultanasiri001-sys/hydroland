@@ -5,6 +5,7 @@ import { DatabaseService } from '../database/database.service';
 import { FinanceAccessService } from './finance-access.service';
 import { financeKey } from './finance-native-key';
 import { prepareAccountantShiftClose } from './finance-shift-close.domain';
+import { prepareCenterDailyClose } from './finance-center-daily-close.domain';
 import { calculateFinanceShiftTotals, FinanceEntryType } from './finance-shift.domain';
 
 type ShiftRow={id:string;accountantAccountId:string;centerOrgUnitId:string;status:string;openingBalanceMinor:number;currency:string};
@@ -44,6 +45,30 @@ export class FinanceShiftCloseService {
         EXISTS(SELECT 1 FROM "Employment" e JOIN "Position" p ON p."id"=e."positionId" AND p."active"=TRUE JOIN "OrgUnit" u ON u."id"=e."orgUnitId" WHERE e."accountId"=a."id" AND e."organizationId"=c."organizationId" AND e."status"='ACTIVE' AND p."code" IN ('CENTRAL_FINANCE','FINANCE_MANAGER','EXECUTIVE') AND u."type"='HQ') OR
         EXISTS(SELECT 1 FROM "RoleAssignment" ra WHERE ra."accountId"=a."id" AND ra."role"='EXECUTIVE_APPROVER' AND ra."status"='ACTIVE' AND (ra."scope" IS NULL OR ra."scope"->>'organizationId'=c."organizationId"::text)
       )) ORDER BY o."displayName",c."nameAr",c."id"`;
+  }
+
+  async dailyReport(accountId:string,centerId:string,businessDate:string) {
+    if(typeof businessDate!=='string'||!(/^\d{4}-\d{2}-\d{2}$/.test(businessDate))||Number.isNaN(Date.parse(businessDate+'T00:00:00.000Z'))||new Date(businessDate+'T00:00:00.000Z').toISOString().slice(0,10)!==businessDate)throw new Error('FINANCE_CENTER_CLOSE_DATE_INVALID');
+    return this.db.serializable(async tx=>{
+      const target=await this.authorizeReviewer(tx,accountId,centerId);
+      const rows=await tx.$queryRaw<Array<{shiftId:string;submissionId:string;revision:number;submittedByName:string|null;reviewedByName:string|null;expectedCashMinor:number;actualCashMinor:number;varianceMinor:number;unresolvedPaymentCount:number;closedAt:Date}>>`
+        SELECT s."id" AS "shiftId",submission."id" AS "submissionId",submission."revision",
+          concat_ws(' ',submitter."firstName",submitter."lastName") AS "submittedByName",
+          concat_ws(' ',reviewer."firstName",reviewer."lastName") AS "reviewedByName",
+          submission."expectedCashMinor",submission."actualCashMinor",submission."varianceMinor",submission."unresolvedPaymentCount",s."closedAt"
+        FROM "FinanceAccountantShift" s
+        JOIN "FinanceShiftCloseSubmission" submission ON submission."shiftId"=s."id" AND submission."status"='APPROVED'
+        JOIN "Account" submitterAccount ON submitterAccount."id"=submission."submittedByAccountId"
+        JOIN "Person" submitter ON submitter."id"=submitterAccount."personId"
+        JOIN "Account" reviewerAccount ON reviewerAccount."id"=submission."reviewedByAccountId"
+        JOIN "Person" reviewer ON reviewer."id"=reviewerAccount."personId"
+        WHERE submission."centerOrgUnitId"=${financeKey('FinanceShiftCloseSubmission','centerOrgUnitId',centerId)}
+          AND s."status"='CLOSED' AND s."closedAt" IS NOT NULL
+          AND (s."closedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Riyadh')::date=${businessDate}::date
+        ORDER BY s."closedAt",s."id"`;
+      const shifts=rows.map(row=>({shiftId:row.shiftId,centerOrgUnitId:centerId,decision:row.unresolvedPaymentCount>0?'BLOCKED' as const:row.varianceMinor===0?'READY_FOR_REVIEW' as const:'VARIANCE_REVIEW_REQUIRED' as const,expectedCashMinor:row.expectedCashMinor,actualCashMinor:row.actualCashMinor,varianceMinor:row.varianceMinor,unresolvedPaymentCount:row.unresolvedPaymentCount}));
+      return {...prepareCenterDailyClose({centerOrgUnitId:centerId,businessDate,shifts}),timeZone:'Asia/Riyadh',shifts:rows};
+    });
   }
 
   async pending(accountId:string,centerId:string) {
