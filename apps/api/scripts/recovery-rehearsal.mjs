@@ -12,6 +12,7 @@ import { compareProductionRelations } from './production-relation-compatibility.
 import { verifyCandidateColumnCompletion, columnCompletionName } from './candidate-column-completion.mjs';
 import { verifyCandidateConstraintCompletion, constraintCompletionName } from './candidate-constraint-completion.mjs';
 import { verifyCandidateIndexCompletion, indexCompletionName } from './candidate-index-completion.mjs';
+import { verifyCandidateRelationAlignment, relationAlignmentName } from './candidate-relation-alignment.mjs';
 import { probeOrganizationForwardUpgrade, organizationRevision } from './organization-forward-recovery-probe.mjs';
 
 // This is a local, synthetic restore rehearsal, never a production restore.
@@ -406,6 +407,23 @@ try {
   check('all_eight_raw_domains_have_synthetic_relationship_rows', completion.catalog.tables.every(t => Number(sql(SOURCE, `SELECT count(*) FROM ${identifier(t.name)}`)) === 1));
   await assertAuditAppendOnly(db, SOURCE);
   await db.$disconnect(); db = null;
+  const relationAlignment = await verifyCandidateRelationAlignment();
+  const beforeAlignment=snapshot(SOURCE);
+  const alignmentName=usesCandidate?relationAlignmentName:'20261004130000_candidate_production_relation_alignment';
+  await mkdir(join(work,'migrations',alignmentName));
+  await writeFile(join(work,'migrations',alignmentName,'migration.sql'),relationAlignment.sql);
+  prisma(['migrate','deploy','--schema',schemaPath]);
+  const afterAlignment=snapshot(SOURCE);
+  assert.deepEqual(afterAlignment.contents.filter(t=>t.table_name!=='_prisma_migrations'),beforeAlignment.contents.filter(t=>t.table_name!=='_prisma_migrations'));
+  check('populated_relation_alignment_preserves_all_application_rows',true);
+  const finalManifest=JSON.parse(await readFile(join(evidenceDir,'fixture-migration-manifest.json'),'utf8'));
+  finalManifest.push({name:alignmentName,sha256:relationAlignment.manifest.sha256,source:'guarded populated candidate FK update-action alignment'});
+  check('relation_alignment_has_real_checksum_matched_migration_history',afterAlignment.history.length===finalManifest.length && finalManifest.every(m=>afterAlignment.history.some(r=>r.migration_name===m.name && r.checksum===m.sha256 && r.finished_at && !r.rolled_back_at)));
+  report.migrationCount=finalManifest.length;
+  await writeFile(join(evidenceDir,'fixture-migration-manifest.json'),JSON.stringify(finalManifest,null,2));
+  for(const c of relationAlignment.catalog)check('aligned_production_fk:'+c.name,afterAlignment.schema.constraints.some(r=>r.table_name===c.table && r.conname===c.name && r.contype==='f' && r.convalidated && r.definition===c.production.definition));
+  assert.throws(()=>sql(SOURCE,relationAlignment.sql),/Unexpected candidate FK pre-state/);
+  check('relation_alignment_rejects_unexpected_prestate_without_partial_change',JSON.stringify(snapshot(SOURCE))===JSON.stringify(afterAlignment));
   const completedColumns = rows(SOURCE, `SELECT c.relname AS table_name,a.attname AS name,format_type(a.atttypid,a.atttypmod) AS type,a.attnotnull AS not_null,pg_get_expr(d.adbin,d.adrelid) AS default_sql FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum WHERE n.nspname='public' AND c.relkind IN ('r','p') AND a.attnum>0 AND NOT a.attisdropped`);
   for (const column of completion.catalog.columns) {
     const actual = completedColumns.find(c => c.table_name === column.table_name && c.name === column.name);
@@ -431,7 +449,8 @@ try {
   await probeCompletedConstraints(SOURCE, constraintCompletion.catalog);
   const relationCompatibility = compareProductionRelations(relationReference,{ constraints: before.schema.constraints.filter(c => c.table_name !== '_prisma_migrations' && c.contype !== 'n').map(c=>({table_name:c.table_name,name:c.conname,kind:c.contype,validated:c.convalidated,definition:c.definition})), indexes: before.schema.indexes.filter(i=>i.tablename !== '_prisma_migrations').map(i=>({table_name:i.tablename,name:i.indexname,definition:i.indexdef})) });
   await writeFile(join(evidenceDir,'production-relation-compatibility.json'),JSON.stringify(relationCompatibility,null,2)+'\n');
-  const actionDifferences=relationCompatibility.constraints.changed.filter(c=>relationCompatibility.review.updateActionDifferences.some(r=>r.table===c.table && r.name===c.name));
+  check('all_production_fk_definitions_match_after_alignment',relationCompatibility.constraints.changed.filter(c=>c.production.kind==='f').length===0);
+  const actionDifferences=relationAlignment.catalog;
   assert.equal(relationCompatibility.review.uniqueIndexProtection.length,2,'Expected DiveLog/payment unique index reviews');
   await probeUniqueIndexProtection(SOURCE,relationCompatibility.review.uniqueIndexProtection);
   await probeForeignKeyUpdateActions(SOURCE,actionDifferences);

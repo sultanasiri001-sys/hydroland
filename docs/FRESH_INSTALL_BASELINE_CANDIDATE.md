@@ -79,3 +79,12 @@ After the eight-index completion, nine production index names remain absent: fiv
 ### Actual incident administrator ordering
 
 `SafetyIncidentsService.listAdmin` orders by status ASC, createdAt DESC, without binding severity. Existing status/severity/time indexes cannot directly provide that complete order. A sixth additive candidate migration adds `(status ASC, createdAt DESC)` while preserving other indexes and the baseline. Each mode runs EXPLAIN on the exact query shape against 1,000 varied synthetic incidents in a rolled-back transaction, before and after restoration, requiring this index and no Sort/Incremental Sort node. Sequential/bitmap scans are disabled only within the probe to test index capability; this is not a production latency benchmark. Ledgers now contain six candidate migrations, eight with organization forward migrations, or 18 in generated-reference mode.
+
+
+### Guarded FK update-action alignment
+
+A seventh independent candidate migration replaces the 21 differing FK definitions with the validated production definitions: implicit ON UPDATE NO ACTION, preserving each parent, key, validation and delete action. One transaction locks affected tables, verifies all original canonical CASCADE definitions before any replacement, and validates the new constraints immediately. Unexpected pre-state aborts without partial replacement. No historical SQL, IDs, data or default production migration path is changed.
+
+The rehearsal applies this through a real migration after seeding linked application and raw-domain rows, including the organization upgrade where selected. Every application-table digest must remain identical; the actual checksum-matched ledger gains one entry (7/9/19 per mode). It verifies all 21 final definitions, zero differing production FK definitions, rejection of an unexpected pre-state with the full snapshot unchanged, no-op migration reruns and both restored schemas/rows/ledgers. Existing isolated action comparisons retain the initial canonical CASCADE definition as a before-alignment reference, not as the final installed candidate behavior.
+
+The stored Prisma schema is the immutable baseline snapshot, not a model of these additional raw constraints/actions. Main Prisma generation and production deployment still use their original paths; future migration generation must use a reviewed final-schema model to avoid regenerating CASCADE. This candidate-only alignment is not an approved production transition. Native type/nullability/timezone/default differences and real production restore remain open.

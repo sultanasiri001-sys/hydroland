@@ -1,0 +1,7 @@
+{
+  "migrationName": "00000000000006_production_relation_alignment",
+  "sha256": "7c4a2afb84a7d7075cb48a2159f040dcc36cc55ec1d54f77b8e58ebd1842483c",
+  "catalogSha256": "b59bbc3803bc34d313cb79ccc8be2f010231036625dadfc2d12010a1a2494fba",
+  "foreignKeys": 21,
+  "productionApproved": false
+}
