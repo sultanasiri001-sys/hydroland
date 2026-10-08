@@ -117,3 +117,15 @@ test('organization staff submits a booking-linked safety incident',async({page})
  await page.locator('[data-org-id="org-1"] [data-org-safety-open]').click();const panel=page.locator('[data-org-safety]');await expect(panel).toBeVisible();await panel.locator('[name="bookingId"]').selectOption('booking-1');await panel.locator('[name="title"]').fill('ملاحظة معدات');await panel.locator('[name="description"]').fill('تم رصد سترة تحتاج مراجعة قبل الرحلة.');await panel.locator('button[type="submit"]').click();
  await expect(panel).toContainText('تم تسجيل البلاغ');expect(state.incidentWrites).toMatchObject([{bookingId:'booking-1',severity:'LOW',title:'ملاحظة معدات'}]);
 });
+
+test('a delayed booking response cannot reopen data or show success after logout',async({page})=>{
+ const state=await install(page,{role:'OPERATOR'});await page.locator('[data-org-id="org-1"] [data-org-bookings-open]').click();
+ const panel=page.locator('[data-org-bookings]');await panel.locator('[name="tripId"]').selectOption('trip-1');await panel.locator('[name="seats"]').fill('1');await panel.locator('[name="participantNames"]').fill('سارة الغامدي');
+ let release,received=false;const pending=new Promise(resolve=>release=resolve);
+ await page.route(/\/api\/v1\/organizations\/org-1\/bookings$/,async route=>{received=true;await pending;return json(route,{id:'late-booking',price:{configured:false}},201)});
+ await panel.locator('[data-org-booking-submit]').click();await expect.poll(()=>received).toBe(true);
+ await page.evaluate(()=>window.HydrolandAuth.terminateSession());release();
+ await expect(panel).toBeHidden();await expect(panel.locator('[data-org-booking-submit]')).toBeEnabled();
+ await expect(panel.locator('[data-org-booking-note]')).toHaveText('');await expect(panel.locator('[data-org-booking-list]')).toHaveText('');
+ expect(state.bookingWrites).toHaveLength(0);
+});

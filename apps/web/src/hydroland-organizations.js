@@ -94,6 +94,12 @@
   let bookingLoadVersion = 0;
   let selectedSafetyOrganization = null;
   let safetyLoadVersion = 0;
+  let directoryLoadVersion = 0;
+  const clearPrivateViews = () => {
+    for (const selector of ['[data-org-members]', '[data-org-request-list]', '[data-org-booking-list]', '[data-org-incident-list]']) panel.querySelector(selector).innerHTML = '';
+    for (const selector of ['[data-org-requests-note]', '[data-org-booking-note]', '[data-org-safety-note]']) panel.querySelector(selector).textContent = '';
+    for (const selector of ['[data-org-request-form]', '[data-org-booking-form]', '[data-org-incident-form]']) panel.querySelector(selector).reset();
+  };
 
   const resetForm = () => {
     editingOrganization = null;
@@ -137,7 +143,9 @@
   async function refresh() {
     const auth = window.HydrolandAuth;
     const session = auth?.getSessionVersion?.();
-    const current = () => Boolean(auth?.isAuthenticated?.() && session === auth?.getSessionVersion?.());
+    const version = ++directoryLoadVersion;
+    const current = () => Boolean(auth?.isAuthenticated?.() && session === auth?.getSessionVersion?.() && version === directoryLoadVersion && !panel.hidden);
+    clearPrivateViews();
     stateMemberships = [];
     memberLoadVersion++;
     selectedMembersOrganization = null;
@@ -209,13 +217,15 @@
     const seats = Number(values.seats), participantNames = String(values.participantNames || '').split(/\r?\n/).map(value => value.trim()).filter(Boolean);
     if (participantNames.length && participantNames.length !== seats) { panel.querySelector('[data-org-booking-note]').textContent = 'اكتب اسمًا لكل مقعد أو اترك الأسماء فارغة لإكمالها لاحقًا.'; return; }
     const button = panel.querySelector('[data-org-booking-submit]'); button.disabled = true;
+    const auth = window.HydrolandAuth, session = auth?.getSessionVersion?.(), version = bookingLoadVersion;
+    const current = () => Boolean(auth?.isAuthenticated?.() && session === auth?.getSessionVersion?.() && selectedBookingsOrganization === organizationId && version === bookingLoadVersion);
     try {
       const result = await request('/organizations/' + encodeURIComponent(organizationId) + '/bookings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tripId: values.tripId, seats, requestKey: crypto.randomUUID(), participantNames }) });
-      if (selectedBookingsOrganization !== organizationId) return;
+      if (!current()) return;
       form.reset(); form.elements.seats.value = '1';
       panel.querySelector('[data-org-booking-note]').textContent = 'تم تسجيل طلب الحجز بحالة انتظار. ' + (result?.price?.configured ? 'السعر ' + (result.price.pricePerSeatMinor / 100).toFixed(2) + ' ر.س للمقعد.' : 'لم يُضبط سعر الرحلة بعد.');
       await loadOrganizationBookings(organizationId, membership);
-    } catch (error) { panel.querySelector('[data-org-booking-note]').textContent = error instanceof Error ? error.message : 'تعذر إرسال طلب الحجز.'; }
+    } catch (error) { if (current()) panel.querySelector('[data-org-booking-note]').textContent = error instanceof Error ? error.message : 'تعذر إرسال طلب الحجز.'; }
     finally { button.disabled = false; }
   });
   panel.querySelector('[data-org-booking-list]')?.addEventListener('submit', async event => {
@@ -240,15 +250,19 @@
     const organizationId = selectedBookingsOrganization, bookingId = button.closest('[data-org-booking-id]')?.dataset.orgBookingId;
     if (!organizationId || !bookingId) return;
     const reason = window.prompt('اكتب سبب الإلغاء (10 أحرف على الأقل). لن يُنفّذ النظام استردادًا ماليًا.'); if (!reason) return;
+    const auth = window.HydrolandAuth, session = auth?.getSessionVersion?.(), version = bookingLoadVersion;
+    const current = () => Boolean(auth?.isAuthenticated?.() && session === auth?.getSessionVersion?.() && selectedBookingsOrganization === organizationId && version === bookingLoadVersion);
     button.disabled = true;
-    try { await request('/organizations/' + encodeURIComponent(organizationId) + '/bookings/' + encodeURIComponent(bookingId) + '/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requestId: crypto.randomUUID(), reason }) }); await loadOrganizationBookings(organizationId, stateMemberships.find(row => row.organization?.id === organizationId)); }
-    catch (error) { note(error instanceof Error ? error.message : 'تعذر إلغاء الحجز.'); } finally { button.disabled = false; }
+    try { await request('/organizations/' + encodeURIComponent(organizationId) + '/bookings/' + encodeURIComponent(bookingId) + '/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requestId: crypto.randomUUID(), reason }) }); if (current()) await loadOrganizationBookings(organizationId, stateMemberships.find(row => row.organization?.id === organizationId)); }
+    catch (error) { if (current()) note(error instanceof Error ? error.message : 'تعذر إلغاء الحجز.'); } finally { button.disabled = false; }
   });
   panel.querySelector('[data-org-incident-form]')?.addEventListener('submit', async event => {
     event.preventDefault(); const organizationId = selectedSafetyOrganization; if (!organizationId) return;
     const form = event.currentTarget, body = Object.fromEntries(new FormData(form).entries()), button = form.querySelector('button[type="submit"]'); button.disabled = true;
-    try { await request('/organizations/' + encodeURIComponent(organizationId) + '/safety/incidents', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); form.reset(); panel.querySelector('[data-org-safety-note]').textContent = 'تم تسجيل البلاغ وربطه بحجز الجهة.'; await loadOrganizationIncidents(organizationId, stateMemberships.find(row => row.organization?.id === organizationId)); }
-    catch (error) { panel.querySelector('[data-org-safety-note]').textContent = error instanceof Error ? error.message : 'تعذر إرسال البلاغ.'; } finally { button.disabled = false; }
+    const auth = window.HydrolandAuth, session = auth?.getSessionVersion?.(), version = safetyLoadVersion;
+    const current = () => Boolean(auth?.isAuthenticated?.() && session === auth?.getSessionVersion?.() && selectedSafetyOrganization === organizationId && version === safetyLoadVersion);
+    try { await request('/organizations/' + encodeURIComponent(organizationId) + '/safety/incidents', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); if (!current()) return; form.reset(); panel.querySelector('[data-org-safety-note]').textContent = 'تم تسجيل البلاغ وربطه بحجز الجهة.'; await loadOrganizationIncidents(organizationId, stateMemberships.find(row => row.organization?.id === organizationId)); }
+    catch (error) { if (current()) panel.querySelector('[data-org-safety-note]').textContent = error instanceof Error ? error.message : 'تعذر إرسال البلاغ.'; } finally { button.disabled = false; }
   });
   panel.querySelector('[data-org-bookings-close]')?.addEventListener('click', () => { bookingLoadVersion++; selectedBookingsOrganization = null; panel.querySelector('[data-org-bookings]').hidden = true; });
   panel.querySelector('[data-org-safety-close]')?.addEventListener('click', () => { safetyLoadVersion++; selectedSafetyOrganization = null; panel.querySelector('[data-org-safety]').hidden = true; });
@@ -354,11 +368,12 @@
     if (!organizationId) return;
     const auth = window.HydrolandAuth, session = auth?.getSessionVersion?.(), current = () => Boolean(auth?.isAuthenticated?.() && session === auth?.getSessionVersion?.() && selectedRequestsOrganization === organizationId);
     const button = panel.querySelector('[data-org-request-submit]'); button.disabled = true;
-    const body = Object.fromEntries(new FormData(event.currentTarget).entries());
+    const form = event.currentTarget;
+    const body = Object.fromEntries(new FormData(form).entries());
     try {
       await request('/organizations/' + encodeURIComponent(organizationId) + '/requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (!current()) return;
-      event.currentTarget.reset(); panel.querySelector('[data-org-requests-note]').textContent = 'تم إرسال الطلب وحفظه في سجل خدمة العملاء.';
+      form.reset(); panel.querySelector('[data-org-requests-note]').textContent = 'تم إرسال الطلب وحفظه في سجل خدمة العملاء.';
       await loadOrganizationRequests(organizationId);
     } catch (error) { if (current()) panel.querySelector('[data-org-requests-note]').textContent = error instanceof Error ? error.message : 'تعذر إرسال الطلب.'; }
     finally { button.disabled = false; }
@@ -388,6 +403,7 @@
     try {
       if (editingOrganization) {
         await request('/organizations/' + encodeURIComponent(editingOrganization), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!current()) return;
         resetForm();
         note('حُفظت تعديلات الجهة.');
       } else {
@@ -402,10 +418,10 @@
   });
 
   const show = () => { panel.hidden = false; void refresh(); };
-  const hide = () => { panel.hidden = true; memberLoadVersion++; selectedMembersOrganization = null; requestLoadVersion++; selectedRequestsOrganization = null; bookingLoadVersion++; selectedBookingsOrganization = null; safetyLoadVersion++; selectedSafetyOrganization = null; panel.querySelector('[data-org-requests]').hidden = true; panel.querySelector('[data-org-bookings]').hidden = true; panel.querySelector('[data-org-safety]').hidden = true; };
+  const hide = () => { directoryLoadVersion++; clearPrivateViews(); panel.hidden = true; memberLoadVersion++; selectedMembersOrganization = null; requestLoadVersion++; selectedRequestsOrganization = null; bookingLoadVersion++; selectedBookingsOrganization = null; safetyLoadVersion++; selectedSafetyOrganization = null; panel.querySelector('[data-org-requests]').hidden = true; panel.querySelector('[data-org-bookings]').hidden = true; panel.querySelector('[data-org-safety]').hidden = true; };
   document.querySelectorAll('#role-dialog [data-role]').forEach((button) => button.addEventListener('click', () => setTimeout(() => {
     if (button.dataset.role === 'organization') show(); else hide();
   }, 0)));
-  document.addEventListener('hydroland:auth-changed', () => { memberLoadVersion++; selectedMembersOrganization = null; requestLoadVersion++; selectedRequestsOrganization = null; bookingLoadVersion++; selectedBookingsOrganization = null; safetyLoadVersion++; selectedSafetyOrganization = null; panel.querySelector('[data-org-requests]').hidden = true; panel.querySelector('[data-org-bookings]').hidden = true; panel.querySelector('[data-org-safety]').hidden = true; if (!window.HydrolandAuth?.isAuthenticated?.()) { stateMemberships = []; resetForm(); panel.querySelector('[data-org-members]').hidden = true; } if (!panel.hidden) refresh(); });
+  document.addEventListener('hydroland:auth-changed', () => { directoryLoadVersion++; clearPrivateViews(); memberLoadVersion++; selectedMembersOrganization = null; requestLoadVersion++; selectedRequestsOrganization = null; bookingLoadVersion++; selectedBookingsOrganization = null; safetyLoadVersion++; selectedSafetyOrganization = null; panel.querySelector('[data-org-requests]').hidden = true; panel.querySelector('[data-org-bookings]').hidden = true; panel.querySelector('[data-org-safety]').hidden = true; if (!window.HydrolandAuth?.isAuthenticated?.()) { stateMemberships = []; resetForm(); panel.querySelector('[data-org-members]').hidden = true; } if (!panel.hidden) refresh(); });
   window.HydrolandOrganizations = { open: show, refresh };
 })();
