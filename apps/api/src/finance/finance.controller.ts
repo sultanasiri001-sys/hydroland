@@ -36,7 +36,7 @@ export class FinanceController {
 
   @Post('shifts/:shiftId/entries')
   recordShiftEntry(@Req() request: AuthenticatedRequest, @Param('shiftId') shiftId: string, @Body() body: { type: 'REVENUE'|'EXPENSE'|'REFUND'|'ADJUSTMENT'; amountMinor: number; paymentId?: string; referenceType?: string; referenceId?: string; description?: string }) {
-    return this.shifts.recordEntry(request.auth.accountId, shiftId, body);
+    return financeHttp(()=>this.shifts.recordEntry(request.auth.accountId, shiftId, body));
   }
 
   @Post('shifts/:shiftId/handover')

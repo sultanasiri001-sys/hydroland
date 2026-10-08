@@ -23,7 +23,7 @@ test('accountant workspace opens from center navigation with scoped totals and e
 test('opens shift with exact minor units and blocks double submission',async({page})=>{
  const state=await setup(page,blank('center-a')),panel=await open(page);let pending;await page.route('**/api/v1/finance/shifts/open',route=>{state.writes.push(route.request().postDataJSON());pending=route});
  await panel.locator('[name=openingBalance]').fill('١٢٣٫٤٥');await panel.getByRole('button',{name:'فتح الوردية',exact:true}).click();await expect.poll(()=>Boolean(pending)).toBe(true);await expect(panel.getByRole('button',{name:'فتح الوردية',exact:true})).toBeDisabled();expect(state.writes).toEqual([{centerOrgUnitId:'center-a',openingBalanceMinor:12345}]);
- state.view=active();await json(pending,{},201);await expect(panel.locator('[role=status]')).toContainText('تم فتح الوردية');await expect(panel).toContainText('وردّيتي الحالية');
+ state.view=active();await json(pending,{},201);await expect(panel.locator('[role=status]')).toContainText('تم فتح الوردية');await expect(panel).toContainText('ورديتي الحالية');
 });
 test('handover requires recipient and variance explanation and sends actual cash precisely',async({page})=>{
  const state=await setup(page),panel=await open(page);await panel.locator('[name=receiver]').selectOption('receiver-b');await panel.locator('[name=actualCash]').fill('1.25');await expect(panel.locator('[data-finance-variance]')).toContainText('0.05');await panel.getByRole('button',{name:'إرسال طلب التسليم'}).click();expect(state.writes).toHaveLength(0);

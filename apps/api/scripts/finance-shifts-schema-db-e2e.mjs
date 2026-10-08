@@ -159,6 +159,19 @@ try {
    await run(`UPDATE "Employment" SET status='ACTIVE' WHERE "accountId"=${literal(a)}`);
    await rejects(ar.collect(a,receivable.receivableId,{paymentId:pay60,amountMinor:60,receiptNumber:'AR-60',installmentId:installments[0].id}),'FINANCE_INSTALLMENT_OVERPAYMENT');
    const final=await ar.collect(a,receivable.receivableId,{paymentId:pay60,amountMinor:60,receiptNumber:'AR-60',installmentId:installments[1].id});assert.equal(final.outstandingMinor,0);assert.equal(final.status,'PAID');assert.equal((await ar.branchAr(a,unitA)).length,0);scenarios++;
+   // Totals include every entry even when the display is capped at the latest 50.
+   await run(`UPDATE "Position" SET code='BRANCH_ACCOUNTANT' WHERE id=${literal(wrongPosition)}`);
+   for(let n=0;n<55;n++)await run(`INSERT INTO "FinanceShiftEntry" (id,"shiftId",type,"amountMinor","recordedByAccountId") VALUES (${literal(randomUUID())},${literal(second.id)},'ADJUSTMENT',1,${literal(wrong)})`);
+   const limited=await workspace.workspace(wrong,unitA);assert.equal(limited.entries.length,50);assert.equal(limited.totals.expectedCashMinor,55);scenarios++;
+   const receiver=id();await run(`INSERT INTO "Person" VALUES (${literal(receiver)},'Concurrent','Receiver')`);
+   await run(`INSERT INTO "Account" (id,status,"personId") VALUES (${literal(receiver)},'ACTIVE',${literal(receiver)})`);
+   await run(`INSERT INTO "Employment" VALUES (${literal(id())},${literal(receiver)},${literal(orgA)},${literal(unitA)},${literal(positionA)},'ACTIVE')`);
+   await service.openShift(receiver,unitA,0);
+   const currentA=await workspace.workspace(a,unitA);
+   const competing=await Promise.allSettled([service.requestHandover(a,currentA.shift.id,receiver,0),service.requestHandover(wrong,second.id,receiver,55)]);
+   assert.equal(competing.filter(x=>x.status==='fulfilled').length,1);
+   assert.ok(competing.find(x=>x.status==='rejected').reason.message.includes('FINANCE_HANDOVER_RECEIVER_ALREADY_PENDING'));
+   assert.equal((await workspace.workspace(receiver,unitA)).handovers.length,1);scenarios++;
    console.log(JSON.stringify({coreType,shiftType,status:'PASS'}));
   }finally{await db.$disconnect();await root.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);}
  }
