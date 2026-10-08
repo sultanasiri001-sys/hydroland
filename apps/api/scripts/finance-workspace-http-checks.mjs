@@ -19,7 +19,7 @@ export async function checkFinanceWorkspaceHttp(db,workspace,shifts,{a,b,outside
  Module({controllers:[FinanceController],providers:[
   {provide:DatabaseService,useValue:db},{provide:AuthService,useValue:{authenticateAccessToken:async token=>{if(!tokens.has(token))throw new UnauthorizedException();return {accountId:tokens.get(token)}}}},
   {provide:FinanceReceivablesWorkspaceService,useValue:{}},{provide:FinanceWorkspaceService,useValue:workspace},{provide:FinanceShiftsService,useValue:shifts},
-  ...[FinanceReceivablesService,FinancePersistenceService,PaymentsService].map(provide=>({provide,useValue:{}})),{provide:FinanceShiftCloseService,useValue:{reviewCenters:async()=>[],pending:async()=>[]}}
+  ...[FinanceReceivablesService,FinancePersistenceService,PaymentsService].map(provide=>({provide,useValue:{}})),{provide:FinanceShiftCloseService,useValue:{reviewCenters:async()=>[],pending:async()=>[],dailyReport:async(_accountId,centerOrgUnitId,businessDate)=>({centerOrgUnitId,businessDate,shiftCount:0,decision:'NO_APPROVED_SHIFT_CLOSES'})}}
  ]})(FixtureModule);
  const app=await NestFactory.create(FixtureModule,{logger:false});let count=0;
  try{
@@ -28,6 +28,7 @@ export async function checkFinanceWorkspaceHttp(db,workspace,shifts,{a,b,outside
   const check=(actual,expected)=>{assert.equal(actual,expected);count++};
   check((await call('/mine/centers')).status,401);check((await call('/mine/centers','invalid')).status,401);check((await call('/mine/shift-close-centers','invalid')).status,401);assert.deepEqual((await call('/mine/shift-close-centers',a)).body,[]);count++;
   const centers=await call('/mine/centers',a);check(centers.status,200);assert.deepEqual(centers.body.map(x=>x.id),[unitA]);count++;
+  const daily=await call('/centers/'+unitA+'/daily-close-report?businessDate=2026-10-08',a);check(daily.status,200);check(daily.body.businessDate,'2026-10-08');
   assert.deepEqual((await call('/mine/centers',wrong)).body,[]);count++;
   const path='/centers/'+unitA+'/workspace';const view=await call(path,a);check(view.status,200);check(view.body.shift.id,from.id);check(view.body.totals.expectedCashMinor,100);
   check((await call(path,outsider)).status,403);check((await call(path,wrong)).status,403);

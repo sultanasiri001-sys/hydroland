@@ -1,4 +1,4 @@
-export type CenterDailyCloseDecision='READY_FOR_REVIEW'|'VARIANCE_REVIEW_REQUIRED'|'BLOCKED';
+export type CenterDailyCloseDecision='NO_APPROVED_SHIFT_CLOSES'|'READY_FOR_REVIEW'|'VARIANCE_REVIEW_REQUIRED'|'BLOCKED';
 
 export type CenterShiftCloseSnapshot={
   shiftId:string;
@@ -13,7 +13,7 @@ export type CenterShiftCloseSnapshot={
 export function prepareCenterDailyClose(input:{centerOrgUnitId:string;businessDate:string;shifts:CenterShiftCloseSnapshot[]}){
   if(!input.centerOrgUnitId)throw new Error('FINANCE_CENTER_CLOSE_CENTER_REQUIRED');
   if(!/^\d{4}-\d{2}-\d{2}$/.test(input.businessDate))throw new Error('FINANCE_CENTER_CLOSE_DATE_INVALID');
-  if(input.shifts.length===0)throw new Error('FINANCE_CENTER_CLOSE_SHIFTS_REQUIRED');
+  if(input.shifts.length===0)return {centerOrgUnitId:input.centerOrgUnitId,businessDate:input.businessDate,shiftCount:0,expectedCashMinor:0,actualCashMinor:0,varianceMinor:0,unresolvedPaymentCount:0,decision:'NO_APPROVED_SHIFT_CLOSES' as const};
   const ids=new Set<string>();
   let expectedCashMinor=0,actualCashMinor=0,varianceMinor=0,unresolvedPaymentCount=0;
   let hasVariance=false,hasBlocked=false;

@@ -2,6 +2,7 @@
  const auth=()=>window.HydrolandAuth,access=()=>window.HydrolandPortalAccess;
  let section=null,version=0,centerId='',snapshot=null,busy=false;
  const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const businessDateToday=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Riyadh'}).format(new Date());
  const eligible=()=>Boolean(auth()?.isAuthenticated?.()&&access()?.roleAllowed?.('center')&&access()?.getCurrentRole?.()==='center');
  const clear=()=>{version++;section?.remove();section=null;centerId='';snapshot=null;busy=false};
  const current=(host,v,session)=>host===section&&host.isConnected&&v===version&&eligible()&&session===auth()?.getSessionVersion?.();
@@ -47,6 +48,7 @@
   if(data.isOperator&&shift?.status==='OPEN'&&data.closeSubmission?.status!=='SUBMITTED')html+=`<article><h3>إرسال إقفال الوردية للمراجعة</h3><form data-finance-operation="close"><label>الجرد الفعلي (ريال)<input name="actualCash" inputmode="decimal" required></label><p data-finance-variance>أدخل الجرد الفعلي لمقارنته بالرصيد المتوقع.</p><label>سبب فرق الجرد<textarea name="varianceReason" maxlength="1000"></textarea></label><button type="submit">إرسال الإقفال</button></form></article>`;
   if(data.canReview)html+='<article><h3>إقفالات بانتظار المراجعة</h3>'+(data.reviewItems.length?data.reviewItems.map(c=>`<div class="hl-finance-handover"><h4>وردية ${esc(c.shiftId)}</h4><p>المتوقع: ${esc(money(c.expectedCashMinor))} · الفعلي: ${esc(money(c.actualCashMinor))} · الفرق: ${esc(money(c.varianceMinor))}</p><p>المحاسب: ${esc(c.submittedByName||'—')} · القيود غير المطابقة: ${esc(c.unresolvedPaymentCount)}</p>${c.varianceReason?`<p>سبب الفرق: ${esc(c.varianceReason)}</p>`:''}<form data-finance-operation="review" data-submission-id="${esc(c.id)}"><label>ملاحظة المراجع<textarea name="reviewNote" maxlength="1000"></textarea></label><button name="decision" value="APPROVED" type="submit">اعتماد الإقفال</button><button name="decision" value="REJECTED" type="submit">رفض مع توضيح السبب</button></form></div>`).join(''):'<p>لا توجد إقفالات بانتظار المراجعة.</p>')+'</article>';
   if(data.isOperator&&shift)html+='<article><h3>أحدث 50 قيدًا للوردية</h3><p>الإجماليات أعلاه تشمل جميع قيود الوردية.</p>'+(data.entries.length?`<div class="hl-finance-table"><table><thead><tr><th scope="col">النوع</th><th scope="col">المبلغ</th><th scope="col">الوصف</th></tr></thead><tbody>${data.entries.map(row=>`<tr><td>${esc(entryLabel[row.type]||row.type)}</td><td>${esc(money(row.amountMinor))}</td><td>${esc(row.description||'—')}</td></tr>`).join('')}</tbody></table></div>`:'<p>لا توجد قيود في الوردية.</p>')+'</article>';
+  if(data.canReview){const report=data.dailyReport,labels={NO_APPROVED_SHIFT_CLOSES:'لا توجد إقفالات معتمدة في هذا اليوم',READY_FOR_REVIEW:'مطابق',VARIANCE_REVIEW_REQUIRED:'معتمد مع فروقات جرد',BLOCKED:'يحتاج إلى معالجة'};html+='<article><h3>تقرير الإقفال اليومي</h3><form data-finance-operation="daily-report"><label>تاريخ العمل<input name="businessDate" type="date" value="'+esc(report?.businessDate||businessDateToday())+'" required></label><button type="submit">عرض التقرير</button></form>';if(report){html+='<p>'+esc(labels[report.decision]||report.decision)+' · '+esc(report.shiftCount)+' ورديات معتمدة · '+esc(report.unresolvedPaymentCount)+' قيود غير مطابقة</p><dl>'+[['الرصيد المتوقع',report.expectedCashMinor],['الجرد الفعلي',report.actualCashMinor],['إجمالي الفرق',report.varianceMinor]].map(([title,value])=>'<div><dt>'+title+'</dt><dd>'+esc(money(value))+'</dd></div>').join('')+'</dl>';if(report.shifts.length)html+='<ul>'+report.shifts.map(x=>'<li>وردية '+esc(x.shiftId)+' · '+esc(x.submittedByName||'—')+' · المراجع '+esc(x.reviewedByName||'—')+' · الفرق '+esc(money(x.varianceMinor))+'</li>').join('')+'</ul>'}html+='</article>'}
   result.innerHTML=html;
  }
  function updateVariance(form){
@@ -91,6 +93,9 @@
   }else if(operation==='review'){
    const decision=submitter?.value;const note=form.elements.reviewNote.value.trim();if(decision==='REJECTED'&&note.length<10){form.elements.reviewNote.setCustomValidity('اكتب سبب رفض من عشرة أحرف على الأقل.');form.elements.reviewNote.reportValidity();form.elements.reviewNote.oninput=()=>form.elements.reviewNote.setCustomValidity('');return}
    if(!snapshot.canReview||!snapshot.reviewItems.some(x=>x.id===form.dataset.submissionId))return;path='/finance/shift-close-reviews/'+encodeURIComponent(form.dataset.submissionId)+'/decision';body={decision,note:note||undefined};
+  }else if(operation==='daily-report'){
+   const date=form.elements.businessDate.value;if(!snapshot.canReview||!form.reportValidity()||!/^\d{4}-\d{2}-\d{2}$/.test(date))return;
+   path='/finance/centers/'+encodeURIComponent(centerId)+'/daily-close-report?businessDate='+encodeURIComponent(date);body=null;
   }else if(operation==='accept'){
    if(!form.reportValidity()||!snapshot.handovers.some(x=>x.id===form.dataset.handoverId&&x.direction==='INCOMING'))return;
    path='/finance/shifts/handovers/'+encodeURIComponent(form.dataset.handoverId)+'/accept';body={};
@@ -98,8 +103,8 @@
   const host=section,v=++version,session=auth().getSessionVersion?.();setBusy(host,true);form.querySelectorAll('button,input,textarea,select').forEach(el=>el.disabled=true);
   try{
    if(!(await authorize(host,v,session)))return;
-   await request(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-   if(current(host,v,session))await load(operation==='open'?'تم فتح الوردية.':operation==='handover'?'تم إرسال طلب التسليم.':operation==='close'?'تم إرسال الإقفال للمراجع وتجميد الوردية.':operation==='review'?'تم تسجيل قرار المراجعة.':'تم قبول العهدة وتحديث رصيد الوردية.');
+   const response=operation==='daily-report'?await request(path):await request(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+   if(current(host,v,session)){if(operation==='daily-report'){snapshot.dailyReport=response;render(host,snapshot);host.querySelector('[data-finance-status]').textContent='تم تحميل تقرير الإقفال اليومي.'}else await load(operation==='open'?'تم فتح الوردية.':operation==='handover'?'تم إرسال طلب التسليم.':operation==='close'?'تم إرسال الإقفال للمراجع وتجميد الوردية.':operation==='review'?'تم تسجيل قرار المراجعة.':'تم قبول العهدة وتحديث رصيد الوردية.')}
   }catch(error){if(current(host,v,session)){snapshot=null;host.querySelector('[data-finance-result]').innerHTML=`<p role="alert">${esc(error.message||'تعذر تأكيد العملية. حدّث البيانات قبل تكرارها.')}</p>`}}
   finally{if(current(host,v,session))setBusy(host,false)}
  }
