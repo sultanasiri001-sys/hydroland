@@ -51,5 +51,5 @@ test('pending collection disables duplicate submit and late result cannot restor
 });
 
 test('collection stays unavailable until the accountant opens an active shift',async({page})=>{
- const state=await setup(page);state.detail={...detail(),collectable:false,collectionShiftId:null,payments:{page:1,pageSize:25,total:0,items:[]}};const panel=await open(page);await openDetail(panel);await expect(panel).toContainText('افتح وردية محاسب نشطة');await expect(panel.locator('form[data-ar-operation=collect]')).toHaveCount(0);expect(state.writes).toHaveLength(0);
+ const state=await setup(page);state.detail={...detail(),collectable:false,collectionShiftId:null,payments:{page:1,pageSize:25,total:0,items:[]}};const panel=await open(page);await panel.getByRole('button',{name:'عرض وتحصيل'}).click();await expect(panel).toContainText('افتح وردية محاسب نشطة');await expect(panel.locator('form[data-ar-operation=collect]')).toHaveCount(0);expect(state.writes).toHaveLength(0);
 });

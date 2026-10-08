@@ -61,6 +61,8 @@ export class FinanceReceivablesService {
       if(r.currency!=='SAR')throw new Error('FINANCE_CURRENCY_UNSUPPORTED');
       const openShifts=await tx.$queryRaw<Array<{id:string;currency:string}>>`SELECT "id","currency" FROM "FinanceAccountantShift" WHERE "accountantAccountId"=${financeKey('FinanceAccountantShift','accountantAccountId',actorAccountId)} AND "centerOrgUnitId"=${financeKey('FinanceAccountantShift','centerOrgUnitId',scope.organizationId)} AND "status"='OPEN' FOR UPDATE`;
       const shift=openShifts[0];if(!shift)throw new Error('FINANCE_OPEN_SHIFT_REQUIRED');if(shift.currency!==r.currency)throw new Error('FINANCE_CURRENCY_UNSUPPORTED');
+      const closePending=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "FinanceShiftCloseSubmission" WHERE "shiftId"=${financeKey('FinanceShiftCloseSubmission','shiftId',shift.id)} AND "status"='SUBMITTED' LIMIT 1`;
+      if(closePending.length)throw new Error('FINANCE_SHIFT_CLOSE_ALREADY_SUBMITTED');
       const payment=await tx.$queryRaw<Array<{id:string;accountId:string;amountMinor:number;status:string;currency:string;invoiceNumber:string}>>`SELECT p."id",p."accountId",p."amountMinor",p."currency",p."status"::text AS "status",i."number" AS "invoiceNumber" FROM "Payment" p JOIN "Booking" b ON b."id"=p."bookingId" JOIN "Trip" t ON t."id"=b."tripId" JOIN "Invoice" i ON i."id"=(SELECT "invoiceId" FROM "Receivable" WHERE "id"=${financeKey('Receivable','id',receivableId)}) JOIN "Payment" origin ON origin."id"=i."paymentId" AND origin."bookingId"=p."bookingId" AND origin."accountId"=${financeKey('Account','id',r.customerAccountId)} WHERE i."status"::text IN ('ISSUED','PAID') AND p."id"=${financeKey('Payment','id',input.paymentId)} AND t."organizationId"=${financeKey('Organization','id',scope.organizationId)} FOR SHARE OF p,b,t,i,origin`;
       if(!payment[0]||payment[0].status!=='CAPTURED')throw new Error('FINANCE_PAYMENT_NOT_SETTLED');
       if(payment[0].currency!==r.currency)throw new Error('FINANCE_PAYMENT_CURRENCY_MISMATCH');
@@ -91,6 +93,16 @@ export class FinanceReceivablesService {
       const outstandingMinor=next.remainingMinor;
       await tx.$executeRaw`UPDATE "Receivable" SET "paidMinor"=${paidMinor},"outstandingMinor"=${outstandingMinor},"status"=${next.status}::"ReceivableStatus","updatedAt"=NOW() WHERE "id"=${financeKey('Receivable','id',receivableId)}`;
       return {receivableId,receiptNumber:input.receiptNumber.trim(),shiftId:shift.id,paidMinor,outstandingMinor,status:next.status};
+    }).catch(async error=>{
+      const code=String(error?.code??'');
+      const sqlState=String(error?.meta?.code??'');
+      const uniqueConflict=code==='P2002'||sqlState==='23505';
+      const serializationConflict=code==='P2034'||sqlState==='40001';
+      if(uniqueConflict||serializationConflict){
+        const duplicate=await this.db.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "ReceivablePayment" WHERE "paymentId"=${financeKey('ReceivablePayment','paymentId',input.paymentId)} OR "receiptNumber"=${input.receiptNumber.trim()} LIMIT 1`;
+        if(duplicate.length)throw new Error('FINANCE_COLLECTION_ALREADY_RECORDED');
+      }
+      throw error;
     });
   }
 
