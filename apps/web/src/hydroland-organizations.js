@@ -140,7 +140,7 @@
     box.hidden = false;
   }
 
-  async function refresh() {
+  async function refresh(successMessage) {
     const auth = window.HydrolandAuth;
     const session = auth?.getSessionVersion?.();
     const version = ++directoryLoadVersion;
@@ -163,7 +163,7 @@
       if (!current()) return;
       stateMemberships = Array.isArray(memberships) ? memberships : [];
       render(stateMemberships);
-      note('تم تحميل بيانات الجهات المرتبطة بحسابك من خادم HYDROLAND.');
+      note(typeof successMessage === 'string' ? successMessage : 'تم تحميل بيانات الجهات المرتبطة بحسابك من خادم HYDROLAND.');
     } catch (error) { if (!current()) return; stateMemberships = []; render([]); panel.querySelector('[data-org-members]').hidden = true; note(error instanceof Error ? error.message : 'تعذر الاتصال بخدمة الجهات.'); }
   }
 
@@ -400,20 +400,21 @@
     if (!current()) { note('سجّل الدخول أولاً قبل إرسال طلب الجهة.'); return; }
     const form = event.currentTarget;
     const body = Object.fromEntries(new FormData(form).entries());
+    let successMessage;
     try {
       if (editingOrganization) {
         await request('/organizations/' + encodeURIComponent(editingOrganization), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         if (!current()) return;
         resetForm();
-        note('حُفظت تعديلات الجهة.');
+        successMessage = 'حُفظت تعديلات الجهة.';
       } else {
         await request('/organizations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         if (!current()) return;
         form.reset();
-        note('تم إرسال الجهة للمراجعة. ستظهر الحالة الفعلية بعد قرار الإدارة.');
+        successMessage = 'تم إرسال الجهة للمراجعة. ستظهر الحالة الفعلية بعد قرار الإدارة.';
       }
       if (!current()) return;
-      await refresh();
+      await refresh(successMessage);
     } catch (error) { if (!current()) return; note(error instanceof Error ? error.message : 'تعذر إرسال طلب الجهة. تحقق من البيانات المدخلة.'); }
   });
 
