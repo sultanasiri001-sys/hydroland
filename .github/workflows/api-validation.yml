@@ -85,6 +85,8 @@ jobs:
       - run: npm run typecheck --workspace=@hydroland/api
       - run: npm run build --workspace=@hydroland/api
       - name: Finance shifts center identity and TEXT/UUID database matrix
+        env:
+          NODE_ENV: test
         run: node apps/api/scripts/finance-shifts-schema-db-e2e.mjs
       - name: Credential upload payload and legacy schema regression
         run: node apps/api/scripts/credential-upload-regression.mjs
