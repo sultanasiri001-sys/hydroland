@@ -49,7 +49,9 @@ export async function probeOrganizationForwardUpgrade({ repoRoot, work, db, pris
   await assert.rejects(() => insert(randomUUID(), organization.id, 'synthetic-organization-request', 'CANCELLED'), error => error.meta?.code === '23505');
   await assert.rejects(() => db.$executeRaw`UPDATE "SafetyIncident" SET "bookingId"=${randomUUID()}`, error => error.meta?.code === '23503');
   await db.$executeRaw`UPDATE "SafetyIncident" SET "bookingId"=${organizationBooking}`;
-  await assert.rejects(() => db.booking.delete({ where: { id: organizationBooking } }), error => error.code === 'P2003');
+  // The baseline ORM does not yet declare this forward relation; inspect the
+  // database's actual RESTRICT violation rather than an ORM relation mapping.
+  await assert.rejects(() => db.$executeRaw`DELETE FROM "Booking" WHERE "id"=${organizationBooking}`, error => error.meta?.code === '23001' && String(error.message).includes('SafetyIncident_bookingId_fkey'));
   check('organization_upgrade_enforces_scope_relations_active_uniqueness_request_keys_and_cancelled_history', true);
   return migrations.map(({ sql: _sql, ...entry }) => entry);
 }
