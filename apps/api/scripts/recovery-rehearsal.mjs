@@ -158,6 +158,25 @@ async function probeUniqueIndexProtection(database, reviews) {
   }
 }
 
+function probeIncidentAdminOrder(database, accountId) {
+  sql(database, `BEGIN;
+    INSERT INTO "SafetyIncident" ("id","reportedByAccountId","severity","status","title","description","updatedAt","createdAt")
+    SELECT '40000000-0000-4000-8000-'||lpad(n::text,12,'0'),${literal(accountId)},
+      (enum_range(NULL::"SafetyIncidentSeverity"))[1+n%array_length(enum_range(NULL::"SafetyIncidentSeverity"),1)],
+      (enum_range(NULL::"SafetyIncidentStatus"))[1+n%array_length(enum_range(NULL::"SafetyIncidentStatus"),1)],
+      'LOCAL PLAN PROBE','Synthetic rolled-back incident query fixture',CURRENT_TIMESTAMP,'2030-01-01'::timestamp+n*interval '1 second'
+    FROM generate_series(1,1000) n;
+    SET LOCAL enable_seqscan=off;
+    SET LOCAL enable_bitmapscan=off;
+    DO $probe$ DECLARE plan json; BEGIN
+      EXECUTE 'EXPLAIN (FORMAT JSON) SELECT * FROM "SafetyIncident" ORDER BY "status" ASC,"createdAt" DESC LIMIT 200' INTO plan;
+      IF plan::text NOT LIKE '%SafetyIncident_status_createdAt_desc_idx%' THEN RAISE EXCEPTION 'Admin order index not selected'; END IF;
+      IF plan::text LIKE '%"Node Type": "Sort"%' OR plan::text LIKE '%"Node Type": "Incremental Sort"%' THEN RAISE EXCEPTION 'Admin index still requires sorting'; END IF;
+    END $probe$;
+    ROLLBACK;`);
+  check(database+':incident_admin_order_index_plan_without_sort',true);
+}
+
 async function probeForeignKeyUpdateActions(database, differences) {
   for (const difference of differences) {
     for (const [variant, object] of [['production',difference.production],['candidate',difference.candidate]]) {
@@ -286,6 +305,8 @@ try {
   const indexCompletion = await verifyCandidateIndexCompletion();
   migrations.push({ name: usesCandidate ? indexCompletionName : '20261004110000_candidate_production_index_completion', sql: indexCompletion.sql, source: 'missing lookup and partial financial uniqueness indexes' });
   report.indexCompletionSha256 = indexCompletion.manifest.sha256;
+  const incidentOrderSql = await readFile(join(apiRoot,'prisma-fresh-install-candidate/migrations/00000000000005_incident_admin_order/migration.sql'),'utf8');
+  migrations.push({name:usesCandidate?'00000000000005_incident_admin_order':'20261004120000_candidate_incident_admin_order',sql:incidentOrderSql,source:'actual admin incident query ordering'});
   // Exercise populated legacy shapes for both native key types in a rolled-back schema.
   for (const parentType of ['text','uuid']) {
     sql(SOURCE, `BEGIN;
@@ -405,6 +426,7 @@ try {
   const relationReference = JSON.parse(await readFile(join(apiRoot,'prisma-fresh-install-candidate/production-relation-reference.json'),'utf8'));
   for (const c of constraintCompletion.catalog) check('completed_constraint:' + c.name, before.schema.constraints.some(r => r.table_name === c.table_name && r.conname === c.name && r.contype === c.kind && r.convalidated && r.definition === c.definition));
   for (const i of indexCompletion.catalog) check('completed_index:' + i.name, before.schema.indexes.some(r=>r.tablename===i.table_name && r.indexname===i.name && r.indexdef===i.definition));
+  probeIncidentAdminOrder(SOURCE,account.id);
   await probeFinancialIndexes(SOURCE);
   await probeCompletedConstraints(SOURCE, constraintCompletion.catalog);
   const relationCompatibility = compareProductionRelations(relationReference,{ constraints: before.schema.constraints.filter(c => c.table_name !== '_prisma_migrations' && c.contype !== 'n').map(c=>({table_name:c.table_name,name:c.conname,kind:c.contype,validated:c.convalidated,definition:c.definition})), indexes: before.schema.indexes.filter(i=>i.tablename !== '_prisma_migrations').map(i=>({table_name:i.tablename,name:i.indexname,definition:i.indexdef})) });
@@ -451,6 +473,7 @@ try {
     check(target + ':unique_constraint_enforced', true);
     await probeUniqueIndexProtection(target,relationCompatibility.review.uniqueIndexProtection);
     await probeForeignKeyUpdateActions(target,actionDifferences);
+    probeIncidentAdminOrder(target,account.id);
     await probeFinancialIndexes(target);
     await probeCompletedConstraints(target, constraintCompletion.catalog);
     await assertAuditAppendOnly(db, target);
