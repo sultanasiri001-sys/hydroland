@@ -7,6 +7,7 @@ on:
       - 'apps/api/prisma/**'
       - 'apps/api/prisma-fresh-install-candidate/**'
       - 'apps/api/scripts/fresh-install-candidate.mjs'
+      - 'apps/api/scripts/organization-forward-recovery-probe.mjs'
       - 'apps/api/scripts/recovery-rehearsal.mjs'
       - 'apps/api/scripts/bootstrap-*-runtime-schema.mjs'
       - '.github/workflows/phase11-recovery-drill.yml'
@@ -17,6 +18,7 @@ on:
       - 'apps/api/prisma/**'
       - 'apps/api/prisma-fresh-install-candidate/**'
       - 'apps/api/scripts/fresh-install-candidate.mjs'
+      - 'apps/api/scripts/organization-forward-recovery-probe.mjs'
       - 'apps/api/scripts/recovery-rehearsal.mjs'
       - 'apps/api/scripts/bootstrap-*-runtime-schema.mjs'
       - '.github/workflows/phase11-recovery-drill.yml'
@@ -33,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        baseline: [GENERATED_REFERENCE, VERSIONED_CANDIDATE]
+        baseline: [GENERATED_REFERENCE, VERSIONED_CANDIDATE, VERSIONED_CANDIDATE_WITH_ORGANIZATIONS]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -43,6 +45,13 @@ jobs:
       DATABASE_URL: postgresql://hydroland:hydroland@127.0.0.1:5432/hydroland_rehearsal_source?schema=public
     steps:
       - uses: actions/checkout@v4
+      - name: Read exact organization candidate migrations
+        if: matrix.baseline == 'VERSIONED_CANDIDATE_WITH_ORGANIZATIONS'
+        uses: actions/checkout@v4
+        with:
+          ref: e6efbf0c2b8c2de52bfcee85b8a3ec2e03259c5b
+          path: portal-candidate
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
