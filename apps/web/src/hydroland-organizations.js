@@ -92,10 +92,12 @@
   let requestPage = 1;
   let selectedBookingsOrganization = null;
   let bookingLoadVersion = 0;
+  let pendingBookingRequest = null;
   let selectedSafetyOrganization = null;
   let safetyLoadVersion = 0;
   let directoryLoadVersion = 0;
   const clearPrivateViews = () => {
+    pendingBookingRequest = null;
     for (const selector of ['[data-org-members]', '[data-org-request-list]', '[data-org-booking-list]', '[data-org-incident-list]']) panel.querySelector(selector).innerHTML = '';
     for (const selector of ['[data-org-requests-note]', '[data-org-booking-note]', '[data-org-safety-note]']) panel.querySelector(selector).textContent = '';
     for (const selector of ['[data-org-request-form]', '[data-org-booking-form]', '[data-org-incident-form]']) panel.querySelector(selector).reset();
@@ -219,9 +221,13 @@
     const button = panel.querySelector('[data-org-booking-submit]'); button.disabled = true;
     const auth = window.HydrolandAuth, session = auth?.getSessionVersion?.(), version = bookingLoadVersion;
     const current = () => Boolean(auth?.isAuthenticated?.() && session === auth?.getSessionVersion?.() && selectedBookingsOrganization === organizationId && version === bookingLoadVersion);
+    const fingerprint = JSON.stringify([session, organizationId, values.tripId, seats, participantNames]);
+    if (pendingBookingRequest?.fingerprint !== fingerprint) pendingBookingRequest = { fingerprint, requestKey: crypto.randomUUID() };
+    const bookingRequest = pendingBookingRequest;
     try {
-      const result = await request('/organizations/' + encodeURIComponent(organizationId) + '/bookings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tripId: values.tripId, seats, requestKey: crypto.randomUUID(), participantNames }) });
+      const result = await request('/organizations/' + encodeURIComponent(organizationId) + '/bookings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tripId: values.tripId, seats, requestKey: bookingRequest.requestKey, participantNames }) });
       if (!current()) return;
+      if (pendingBookingRequest === bookingRequest) pendingBookingRequest = null;
       form.reset(); form.elements.seats.value = '1';
       panel.querySelector('[data-org-booking-note]').textContent = 'تم تسجيل طلب الحجز بحالة انتظار. ' + (result?.price?.configured ? 'السعر ' + (result.price.pricePerSeatMinor / 100).toFixed(2) + ' ر.س للمقعد.' : 'لم يُضبط سعر الرحلة بعد.');
       await loadOrganizationBookings(organizationId, membership);

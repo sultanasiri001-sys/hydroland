@@ -97,6 +97,30 @@ test('organization operator books a trip, submits participant snapshots and can 
  const participant=panel.locator('[data-org-participant]');await participant.locator('[name="fullName"]').fill('سارة أ. الغامدي');await participant.locator('button').click();await expect.poll(()=>state.participantWrites.length).toBe(1);expect(state.participantWrites[0].expectedUpdatedAt).toBe('2026-10-05T09:00:00.000Z');
 });
 
+for(const changed of [false,true])test(`booking retry ${changed?'uses a new key for changed data':'recovers a saved booking after its response is lost'}`,async({page})=>{
+ const state=await install(page,{role:'OPERATOR'});await page.locator('[data-org-id="org-1"] [data-org-bookings-open]').click();
+ const panel=page.locator('[data-org-bookings]'),form=panel.locator('[data-org-booking-form]');
+ await form.locator('[name="tripId"]').selectOption('trip-1');await form.locator('[name="seats"]').fill('1');await form.locator('[name="participantNames"]').fill('سارة الغامدي');
+ const attempts=[],saved=new Map();
+ await page.route(/\/api\/v1\/organizations\/org-1\/bookings$/,async route=>{
+  if(route.request().method()!=='POST')return route.fallback();
+  const body=route.request().postDataJSON();attempts.push(body);
+  if(!saved.has(body.requestKey)){
+   const booking={id:'recovered-'+saved.size,tripId:body.tripId,status:'PENDING',seats:body.seats,updatedAt:'2026-10-05T09:00:00.000Z',trip:{title:'رحلة الساحل',startsAt:'2026-12-01T08:00:00.000Z'},participants:[]};
+   saved.set(body.requestKey,booking);state.bookings.push(booking);
+  }
+  if(attempts.length===1)return route.abort('failed');
+  return json(route,{...saved.get(body.requestKey),alreadyApplied:!changed,price:{configured:false}},201);
+ });
+ await form.locator('[data-org-booking-submit]').click();await expect.poll(()=>attempts.length).toBe(1);
+ await expect(form.locator('[data-org-booking-note]')).not.toBeEmpty();await expect(form.locator('[data-org-booking-submit]')).toBeEnabled();
+ if(changed){await form.locator('[name="seats"]').fill('2');await form.locator('[name="participantNames"]').fill('سارة الغامدي\nنورة الغامدي');}
+ await form.locator('[data-org-booking-submit]').click();await expect(form.locator('[data-org-booking-note]')).toContainText('تم تسجيل طلب الحجز بحالة انتظار');
+ expect(attempts).toHaveLength(2);
+ if(changed){expect(attempts[1].requestKey).not.toBe(attempts[0].requestKey);expect(attempts[1].seats).toBe(2);expect(saved.size).toBe(2);}
+ else{expect(attempts[1]).toEqual(attempts[0]);expect(saved.size).toBe(1);await expect(panel.locator('[data-org-booking-id]')).toHaveCount(1);}
+});
+
 test('participant save preserves the displayed revision and submitted values during a delayed write',async({page})=>{
  const state=await install(page,{role:'OPERATOR'});
  state.bookings.push({id:'booking-1',tripId:'trip-1',status:'PENDING',seats:1,updatedAt:'2026-10-05T09:00:00.000Z',trip:{title:'رحلة الساحل',startsAt:'2026-12-01T08:00:00.000Z'},participants:[{id:'participant-0',fullName:'سارة الغامدي',eligibilityStatus:'PENDING'}]});
