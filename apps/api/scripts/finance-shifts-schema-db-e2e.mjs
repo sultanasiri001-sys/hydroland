@@ -208,10 +208,11 @@ try {
    const final=await ar.collect(a,receivable.receivableId,{paymentId:pay60,amountMinor:60,receiptNumber:'AR-60',installmentId:installments[1].id});assert.equal(final.outstandingMinor,0);assert.equal(final.status,'PAID');assert.equal((await ar.branchAr(a,unitA)).length,0);scenarios++;
    detail=await arView.detail(a,unitA,receivable.receivableId);assert.equal(detail.collectable,false);assert.equal(detail.collections.length,2);assert.equal((await arView.list(a,unitA)).total,0);assert.equal((await arView.list(a,unitA,'1','all')).total,1);scenarios++;
    const postedShift=await workspace.workspace(a,unitA);assert.equal(postedShift.totals.revenueMinor,100);assert.ok(postedShift.entries.some(e=>e.type==='REVENUE'&&e.paymentId===pay60&&e.referenceType==='RECEIVABLE_COLLECTION'));scenarios++;
-   const closeShift=await service.openShift(a,unitA,0);
+   const closeShift=activeA[0];
    await rejects(closeService.submit(a,unitA,closeShift.id,0),'FINANCE_SHIFT_CLOSE_VARIANCE_REASON_REQUIRED');
-   const closePreview=await closeService.preview(a,unitA,closeShift.id,5,'فرق جرد موثق في الصندوق');assert.equal(closePreview.varianceMinor,5);assert.equal(closePreview.decision,'VARIANCE_REVIEW_REQUIRED');scenarios++;
-   const closeSubmission=await closeService.submit(a,unitA,closeShift.id,5,'فرق جرد موثق في الصندوق');assert.equal(closeSubmission.status,'SUBMITTED');assert.equal(closeSubmission.revision,1);scenarios++;
+   const actualCloseCash=postedShift.totals.expectedCashMinor+5;
+   const closePreview=await closeService.preview(a,unitA,closeShift.id,actualCloseCash,'فرق جرد موثق في الصندوق');assert.equal(closePreview.varianceMinor,5);assert.equal(closePreview.decision,'VARIANCE_REVIEW_REQUIRED');scenarios++;
+   const closeSubmission=await closeService.submit(a,unitA,closeShift.id,actualCloseCash,'فرق جرد موثق في الصندوق');assert.equal(closeSubmission.status,'SUBMITTED');assert.equal(closeSubmission.revision,1);scenarios++;
    await rejects(service.recordEntry(a,closeShift.id,{type:'EXPENSE',amountMinor:1}),'FINANCE_SHIFT_CLOSE_ALREADY_SUBMITTED');
    await rejects(closeService.review(a,closeSubmission.submissionId,'REJECTED','سبب رفض موثق للمراجعة'),'FINANCE_SHIFT_CLOSE_REVIEW_DENIED');
    await rejects(closeService.review(outsider,closeSubmission.submissionId,'REJECTED'),'FINANCE_SHIFT_CLOSE_REJECTION_REASON_REQUIRED');
