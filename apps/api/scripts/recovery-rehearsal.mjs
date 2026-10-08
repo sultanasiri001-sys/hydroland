@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { verifyFreshInstallCandidate, baselineName } from './fresh-install-candidate.mjs';
 import { verifyRawDomainCompletion, completionName } from './raw-domain-completion.mjs';
 import { compareProductionColumns } from './production-column-compatibility.mjs';
+import { compareProductionRelations } from './production-relation-compatibility.mjs';
 import { verifyCandidateColumnCompletion, columnCompletionName } from './candidate-column-completion.mjs';
 import { probeOrganizationForwardUpgrade, organizationRevision } from './organization-forward-recovery-probe.mjs';
 
@@ -245,6 +246,11 @@ try {
   await writeFile(join(evidenceDir, 'production-column-compatibility.json'), JSON.stringify(compatibility,null,2)+'\n');
   report.productionColumnCompatibility = compatibility.counts;
   report.productionColumnMetadataMatches = compatibility.columnMetadataMatches;
+  const relationReference = JSON.parse(await readFile(join(apiRoot,'prisma-fresh-install-candidate/production-relation-reference.json'),'utf8'));
+  const relationCompatibility = compareProductionRelations(relationReference,{ constraints: before.schema.constraints.filter(c => c.table_name !== '_prisma_migrations' && c.contype !== 'n').map(c=>({table_name:c.table_name,name:c.conname,kind:c.contype,validated:c.convalidated,definition:c.definition})), indexes: before.schema.indexes.filter(i=>i.tablename !== '_prisma_migrations').map(i=>({table_name:i.tablename,name:i.indexname,definition:i.indexdef})) });
+  await writeFile(join(evidenceDir,'production-relation-compatibility.json'),JSON.stringify(relationCompatibility,null,2)+'\n');
+  report.productionRelationCompatibility = relationCompatibility.counts;
+  report.productionRelationMetadataMatches = relationCompatibility.metadataMatches;
   check('all_production_table_names_covered', compatibility.missingTables.length === 0);
   check('all_production_column_names_covered', compatibility.missingColumns.length === 0);
   const organizationColumn = completedColumns.find(c => c.table_name === 'EquipmentBarcode' && c.name === 'organizationId');
