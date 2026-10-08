@@ -1,4 +1,4 @@
-import {BadRequestException,Injectable,NotFoundException} from '@nestjs/common';
+import {BadRequestException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {AuditService} from '../audit/audit.service';
 import {DatabaseService} from '../database/database.service';
 
@@ -28,6 +28,27 @@ export class SafetyIncidentsService{
   const incident=await this.db.safetyIncident.create({data:{tripId:input.tripId||null,reportedByAccountId:accountId,severity:input.severity,title:this.clean(input.title,'Incident title',3,160),description:this.clean(input.description,'Incident description',3,5000),locationName:this.optional(input.locationName,160)}});
   await this.audit.record({action:'SAFETY_INCIDENT_REPORTED',resource:'SafetyIncident',resourceId:incident.id,metadata:{accountId,tripId:incident.tripId,severity:incident.severity}});
   return incident;
+ }
+
+ async listForOrganization(accountId:string,organizationId:string){
+  return this.db.serializable(async tx=>{
+   const membership=await tx.organizationMember.findFirst({where:{organizationId,accountId,status:'ACTIVE',role:{in:['OWNER','ADMIN','OPERATOR','STAFF']},organization:{status:'ACTIVE'}},select:{id:true}});
+   if(!membership)throw new ForbiddenException('تتطلب العملية دور تشغيل نشطًا في الجهة.');
+   return tx.safetyIncident.findMany({where:{booking:{organizationId}},select:{id:true,bookingId:true,tripId:true,severity:true,title:true,description:true,locationName:true,status:true,createdAt:true,updatedAt:true,trip:{select:{id:true,title:true,startsAt:true,status:true}}},orderBy:[{createdAt:'desc'},{id:'asc'}],take:100});
+  });
+ }
+
+ async createForOrganization(accountId:string,organizationId:string,input:{bookingId:string;severity:IncidentSeverity;title:string;description:string;locationName?:string}){
+  if(!severities.includes(input.severity))throw new BadRequestException('Invalid incident severity.');
+  return this.db.serializable(async tx=>{
+   const membership=await tx.organizationMember.findFirst({where:{organizationId,accountId,status:'ACTIVE',role:{in:['OWNER','ADMIN','OPERATOR','STAFF']},organization:{status:'ACTIVE'},account:{status:'ACTIVE'}},select:{id:true}});
+   if(!membership)throw new ForbiddenException('تتطلب العملية عضوية نشطة تملك صلاحية الإبلاغ.');
+   const booking=await tx.booking.findFirst({where:{id:input.bookingId,organizationId},select:{id:true,tripId:true}});
+   if(!booking)throw new NotFoundException('الحجز غير موجود ضمن هذه الجهة.');
+   const incident=await tx.safetyIncident.create({data:{bookingId:booking.id,tripId:booking.tripId,reportedByAccountId:accountId,severity:input.severity,title:this.clean(input.title,'Incident title',3,160),description:this.clean(input.description,'Incident description',3,5000),locationName:this.optional(input.locationName,160)},select:{id:true,bookingId:true,tripId:true,severity:true,title:true,description:true,locationName:true,status:true,createdAt:true,updatedAt:true}});
+   await this.audit.record({actorId:accountId,action:'organization.safety_incident.reported',resource:'SafetyIncident',resourceId:incident.id,metadata:{organizationId,bookingId:booking.id,tripId:booking.tripId,severity:incident.severity}},tx);
+   return incident;
+  });
  }
  mine(accountId:string){
   return this.db.safetyIncident.findMany({where:{reportedByAccountId:accountId},include:{trip:{select:{id:true,title:true,status:true}}},orderBy:{createdAt:'desc'},take:100});

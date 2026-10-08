@@ -31,7 +31,7 @@ export class OrganizationsController {
   }
 
   @Post(':id/members')
-  addMember(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { accountId: string; role: 'ADMIN' | 'OPERATOR' | 'INSTRUCTOR' | 'STAFF' | 'VIEWER' }) {
+  addMember(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { accountId?: string; email?: string; role: 'ADMIN' | 'OPERATOR' | 'INSTRUCTOR' | 'STAFF' | 'VIEWER' }) {
     return this.organizations.addMember(request.auth.accountId, id, body);
   }
 

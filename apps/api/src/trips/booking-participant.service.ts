@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
@@ -35,6 +35,27 @@ export class BookingParticipantService {
     await this.db.$executeRaw`UPDATE "BookingParticipant" SET "fullName"=${fullName},"certificationTitle"=${certificationTitle},"certificationNumber"=${certificationNumber},"certificationIssuer"=${certificationIssuer},"eligibilityStatus"='PENDING',"updatedAt"=NOW() WHERE "id"=${participantId}`;
     await this.audit.record({action:'BOOKING_PARTICIPANT_UPDATED',resource:'BookingParticipant',resourceId:participantId,metadata:{accountId,bookingId,previousEligibilityStatus:current.eligibilityStatus,eligibilityStatus:'PENDING',previousFullName:current.fullName,fullName,certificationChanged:current.certificationTitle!==certificationTitle||current.certificationNumber!==certificationNumber||current.certificationIssuer!==certificationIssuer}});
     return this.listForOwner(accountId,bookingId);
+  }
+
+  async updateForOrganization(accountId:string,organizationId:string,bookingId:string,participantId:string,input:{expectedUpdatedAt:string;fullName:string;certificationTitle?:string|null}){
+    const fullName=typeof input.fullName==='string'?input.fullName.trim():'';
+    const certificationTitle=typeof input.certificationTitle==='string'?input.certificationTitle.trim()||null:null;
+    const expectedAt=typeof input.expectedUpdatedAt==='string'?new Date(input.expectedUpdatedAt):new Date(Number.NaN);
+    if(fullName.length<3||fullName.length>160||certificationTitle&&certificationTitle.length>160||!Number.isFinite(expectedAt.getTime()))throw new BadRequestException('بيانات المشارك غير صالحة.');
+    return this.db.serializable(async tx=>{
+      const membership=await tx.organizationMember.findFirst({where:{organizationId,accountId,status:'ACTIVE',role:{in:['OWNER','ADMIN','OPERATOR']},organization:{status:'ACTIVE'},account:{status:'ACTIVE'}},select:{id:true}});
+      if(!membership)throw new ForbiddenException('تتطلب العملية صلاحية إدارة قائمة المشاركين.');
+      const booking=await tx.booking.findFirst({where:{id:bookingId,organizationId},select:{id:true,status:true,updatedAt:true,trip:{select:{startsAt:true}}}});
+      if(!booking)throw new NotFoundException('الحجز غير موجود ضمن هذه الجهة.');
+      if(booking.status!=='PENDING'||booking.trip.startsAt<=new Date())throw new ConflictException('لا يمكن تعديل القائمة بعد تأكيد الحجز أو بدء الرحلة.');
+      if(booking.updatedAt.getTime()!==expectedAt.getTime())throw new ConflictException('تغير الحجز؛ حدّث الصفحة قبل تعديل القائمة.');
+      const participant=await tx.bookingParticipant.findFirst({where:{id:participantId,bookingId},select:{id:true,fullName:true,eligibilityStatus:true}});
+      if(!participant)throw new NotFoundException('المشارك غير موجود ضمن هذا الحجز.');
+      await tx.bookingParticipant.update({where:{id:participantId},data:{fullName,certificationTitle,eligibilityStatus:'PENDING'}});
+      await tx.booking.update({where:{id:bookingId},data:{updatedAt:new Date(Math.max(Date.now(),booking.updatedAt.getTime()+1))}});
+      await this.audit.record({actorId:accountId,action:'organization.booking.participant.updated',resource:'BookingParticipant',resourceId:participantId,metadata:{organizationId,bookingId,previousEligibilityStatus:participant.eligibilityStatus,eligibilityStatus:'PENDING'}},tx);
+      return tx.bookingParticipant.findMany({where:{bookingId},select:{id:true,fullName:true,certificationTitle:true,eligibilityStatus:true},orderBy:{createdAt:'asc'}});
+    });
   }
 
   async setEligibility(bookingId:string,participantId:string,status:'ELIGIBLE'|'REJECTED'){if(status!=='ELIGIBLE'&&status!=='REJECTED')throw new BadRequestException('Invalid eligibility status.');const updated=await this.db.$executeRaw`UPDATE "BookingParticipant" SET "eligibilityStatus"=${status},"updatedAt"=NOW() WHERE "id"=${participantId} AND "bookingId"::text=${bookingId}`;if(!updated)throw new NotFoundException('Participant not found.');return this.db.$queryRaw<ParticipantRow[]>`SELECT * FROM "BookingParticipant" WHERE "bookingId"::text=${bookingId} ORDER BY "createdAt" ASC`;}

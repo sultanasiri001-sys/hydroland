@@ -20,6 +20,7 @@
     '.hl-documents':['center','boat','organization','admin'],
     '#hl-marine-documents':['boat','admin'],
     '#hl-marine-readiness':['boat','admin'],
+    '#hl-marine-trips':['boat'],
     '.hl-center-business-profile':['center'],
     '.hl-center-bookings':['center'],
     '.hl-center-safety':['center'],

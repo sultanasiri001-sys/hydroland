@@ -22,8 +22,9 @@ export class OrganizationMembershipService {
   if(isCenter&&role==='INSTRUCTOR'&&!account.roleAssignments.some(row=>row.role==='INSTRUCTOR'))throw new ConflictException('يتطلب دور المدرب حساب محترف غوص نشطًا؛ العضوية لا تمنح اعتمادًا مهنيًا.');
  }
  async invite(accountId:string,input:Record<string,unknown>,organizationId?:string,retry=true):Promise<unknown>{
-  const emailMode=organizationId===undefined,fields=emailMode?['email','role']:['accountId','role'];
-  if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(key=>!fields.includes(key))||typeof input.role!=='string'||![...ordinaryRoles,...(emailMode?[]:['ADMIN'])].includes(input.role))throw new BadRequestException('اختر دورًا مسموحًا لعضو الفريق.');
+  const emailMode=organizationId===undefined||typeof input?.email==='string',fields=emailMode?['email','role']:['accountId','role'];
+  const allowedRoles=[...ordinaryRoles,...(organizationId!==undefined?['ADMIN']:[])];
+  if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(key=>!fields.includes(key))||typeof input.role!=='string'||!allowedRoles.includes(input.role))throw new BadRequestException('اختر دورًا مسموحًا لعضو الفريق.');
   if(emailMode&&(typeof input.email!=='string'||input.email.trim().length>254||!/^\S+@\S+\.\S+$/.test(input.email.trim())))throw new BadRequestException('أدخل البريد المسجل في المنصة.');
   if(!emailMode&&(typeof input.accountId!=='string'||!input.accountId.trim()))throw new BadRequestException('الحساب مطلوب.');
   const role=input.role as OrganizationMemberRole;
@@ -31,6 +32,7 @@ export class OrganizationMembershipService {
    const orgId=organizationId??await this.center(tx,accountId);
    const manager=await tx.organizationMember.findFirst({where:{organizationId:orgId,accountId,status:'ACTIVE',role:{in:['OWNER','ADMIN']},account:{status:'ACTIVE'}},include:{organization:true}});
    if(!manager)throw new ForbiddenException('صلاحية إدارة الجهة مطلوبة.');
+   if(role==='ADMIN'&&(manager.role!=='OWNER'||manager.organization.kind==='DIVE_CENTER'))throw new ForbiddenException('لا يملك هذا الحساب صلاحية دعوة مدير لهذه الجهة.');
    if(manager.organization.kind==='DIVE_CENTER'&&manager.organization.status==='ACTIVE'&&!await tx.roleAssignment.findFirst({where:{accountId,role:'DIVE_CENTER',status:'ACTIVE'}}))throw new ForbiddenException('دور مركز الغوص غير نشط.');
    if(!['ACTIVE','PENDING_REVIEW'].includes(manager.organization.status))throw new ConflictException('الجهة غير متاحة لإضافة أعضاء.');
    if(role==='ADMIN'&&manager.role!=='OWNER')throw new ForbiddenException('تفويض إدارة الجهة من صلاحيات المالك.');
