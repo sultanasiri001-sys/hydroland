@@ -50,7 +50,7 @@ test('admin workspace opens as the first full-width view with private alerts and
   const dashboard=page.locator('.hl-role-dashboard[data-role="admin"]');
   await expect(dashboard).toBeVisible();
   await expect(page.locator('body')).toHaveAttribute('data-hl-workspace-role','admin');
-  expect(await page.evaluate(()=>document.querySelector('#main')?.firstElementChild?.classList.contains('hl-role-dashboard'))).toBe(true);
+  await expect.poll(()=>page.evaluate(()=>document.querySelector('#main')?.firstElementChild?.classList.contains('hl-role-dashboard')===true)).toBe(true);
   await expect(page.locator('#role-console')).toBeHidden();
   await expect(page.locator('.sidebar')).toBeHidden();
   await expect(page.locator('.topbar')).toBeHidden();
