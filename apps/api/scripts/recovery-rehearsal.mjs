@@ -56,6 +56,12 @@ const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const check = (name, condition) => { assert.ok(condition, name); report.checks.push({ name, status: 'PASS' }); };
 const identifier = value => '"' + value.replaceAll('"', '""') + '"';
 const literal = value => "'" + value.replaceAll("'", "''") + "'";
+async function assertAuditAppendOnly(client, label) {
+  for (const query of ['UPDATE "AuditEvent" SET "action"=\'REHEARSAL_TAMPER\'', 'DELETE FROM "AuditEvent"', 'TRUNCATE "AuditEvent"']) {
+    await assert.rejects(() => client.$executeRawUnsafe(query), error => String(error.message).includes('append-only'));
+  }
+  check(label + ':audit_update_delete_truncate_denied', true);
+}
 function sql(database, query) {
   assert.ok([SOURCE, ...TARGETS].includes(database));
   return docker(['exec', CONTAINER, 'psql', '-X', '-U', 'hydroland', '-d', database, '-v', 'ON_ERROR_STOP=1', '-At', '-c', query]).trim();
@@ -156,6 +162,7 @@ try {
   await db.$executeRaw`INSERT INTO "Conversation" ("id","title","createdByAccountId") VALUES (${conversationId},'LOCAL RESTORE FIXTURE',${account.id})`;
   await db.$executeRaw`INSERT INTO "ConversationParticipant" ("conversationId","accountId") VALUES (${conversationId},${account.id})`;
   await db.$executeRaw`INSERT INTO "Message" ("conversationId","senderAccountId","kind","body") VALUES (${conversationId},${account.id},'TEXT','رسالة اصطناعية معزولة')`;
+  await assertAuditAppendOnly(db, SOURCE);
   await db.$disconnect(); db = null;
   const before = snapshot(SOURCE);
   report.tableCount = before.contents.length;
@@ -186,6 +193,7 @@ try {
     check(target + ':foreign_key_enforced', true);
     await assert.rejects(() => db.roleAssignment.create({ data: { accountId: account.id, role: 'DIVER', status: 'ACTIVE' } }), error => error.code === 'P2002');
     check(target + ':unique_constraint_enforced', true);
+    await assertAuditAppendOnly(db, target);
     await db.$disconnect(); db = null;
     report.targets.push({ name: target, status: 'PASS', dataDigest: digest(JSON.stringify(recovered.contents)), schemaDigest: digest(JSON.stringify(recovered.schema)) });
     if (target === TARGETS[0]) {
