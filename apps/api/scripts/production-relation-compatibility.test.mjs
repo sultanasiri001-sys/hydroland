@@ -21,3 +21,16 @@ test('implicit NO ACTION and CASCADE are substantive update behavior differences
  candidate.constraints[0].definition='FOREIGN KEY (center) REFERENCES OrgUnit(id) ON UPDATE CASCADE';assert.equal(compareProductionRelations(fixture,candidate).review.updateActionDifferences.length,0);
  candidate.constraints[0].definition=fixture.constraints[0].definition+' ON UPDATE CASCADE';candidate.constraints[0].validated=false;assert.equal(compareProductionRelations(fixture,candidate).review.updateActionDifferences.length,0);
 });
+
+import {compareUniqueIndexProtection} from './production-relation-compatibility.mjs';
+test('plain unique tuple permutation and exclusion of null key values preserve uniqueness only',()=>{
+ const production={table_name:'DiveLog',name:'old',definition:'CREATE UNIQUE INDEX old ON public."DiveLog" USING btree ("trip", "participant") WHERE ("participant" IS NOT NULL)'};
+ const candidate={table_name:'DiveLog',name:'new',definition:'CREATE UNIQUE INDEX new ON public."DiveLog" USING btree ("participant", "trip")'};
+ const result=compareUniqueIndexProtection(production,candidate);assert.equal(result.uniquenessMatches,true);assert.equal(result.physicalDefinitionMatches,false);assert.equal(result.productionAdoptionApproved,false);
+ for(const definition of ['CREATE UNIQUE INDEX new ON public."DiveLog" USING btree ("participant", "other")','CREATE UNIQUE INDEX new ON public."DiveLog" USING btree ("participant", "trip") NULLS NOT DISTINCT','CREATE UNIQUE INDEX new ON public."DiveLog" USING btree ("participant", "trip") WHERE ("other" IS NOT NULL)','CREATE UNIQUE INDEX new ON public."DiveLog" USING btree ("participant", "trip") WHERE (status = \'ACTIVE\')','CREATE UNIQUE INDEX new ON public."DiveLog" USING btree (lower("participant"), "trip")','CREATE INDEX new ON public."DiveLog" USING btree ("participant", "trip")'])assert.equal(compareUniqueIndexProtection(production,{...candidate,definition}).uniquenessMatches,false);
+});
+test('single nullable payment key partial/full uniqueness matches without hiding changed metadata',()=>{
+ const production={table_name:'FinanceShiftEntry',name:'payment_key',definition:'CREATE UNIQUE INDEX payment_key ON public."FinanceShiftEntry" USING btree ("paymentId") WHERE ("paymentId" IS NOT NULL)'};
+ const candidate={...production,definition:'CREATE UNIQUE INDEX payment_key ON public."FinanceShiftEntry" USING btree ("paymentId")'};
+ const result=compareProductionRelations({constraints:[],indexes:[production]},{constraints:[],indexes:[candidate]});assert.equal(result.review.uniqueIndexProtection.length,1);assert.equal(result.counts.indexes.changed,1);assert.equal(result.metadataMatches,false);
+});

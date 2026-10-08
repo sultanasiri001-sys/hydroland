@@ -1,5 +1,24 @@
 import assert from 'node:assert/strict';
 
+// Restrict this reasoning to plain btree UNIQUE keys with default NULL semantics.
+// Expressions, collations, operator classes and NULLS NOT DISTINCT remain unknown.
+export function compareUniqueIndexProtection(production,candidate) {
+ const identifier='(?:"[A-Za-z_][A-Za-z0-9_]*"|[A-Za-z_][A-Za-z0-9_]*)';
+ const expression=new RegExp('^CREATE UNIQUE INDEX '+identifier+' ON public\\.'+identifier+' USING btree \\(('+identifier+'(?:, '+identifier+')*)\\)(?: WHERE \\(('+identifier+') IS NOT NULL\\))?$');
+ const parse=object=>{
+  const match=object.definition.match(expression);if(!match)return null;
+  const keys=match[1].split(',').map(x=>x.trim());
+  if(!keys.length || !keys.every(x=>new RegExp('^'+identifier+'$').test(x)))return null;
+  const unquote=x=>x.startsWith('"')?x.slice(1,-1):x.toLowerCase();
+  const columns=keys.map(unquote),excludedNullColumn=match[2]?unquote(match[2]):null;
+  if(excludedNullColumn && !columns.includes(excludedNullColumn))return null;
+  return {columns,excludedNullColumn};
+ };
+ const left=parse(production),right=parse(candidate);
+ const uniquenessMatches=!!left && !!right && production.table_name===candidate.table_name && JSON.stringify([...left.columns].sort())===JSON.stringify([...right.columns].sort());
+ return {production,candidate,uniquenessMatches,physicalDefinitionMatches:production.definition===candidate.definition,productionAdoptionApproved:false,scope:'DEFAULT_NULL_PLAIN_BTREE_UNIQUENESS_ONLY'};
+}
+
 // Pure schema metadata comparison; never executes SQL or authorizes deployment.
 export function compareProductionRelations(reference,candidate) {
  const key = x => JSON.stringify([x.table_name,x.name]);
@@ -28,5 +47,12 @@ export function compareProductionRelations(reference,candidate) {
   updateActionDifferences:result.constraints.changed.filter(x=>x.production.kind==='f' && x.candidate.kind==='f' && x.production.validated===x.candidate.validated && !x.production.definition.includes('ON UPDATE ') && x.candidate.definition.replace(' ON UPDATE CASCADE','')===x.production.definition).map(x=>({table:x.table,name:x.name,productionUpdate:'NO ACTION',candidateUpdate:'CASCADE',behaviorMatches:false})),
   productionAdoptionApproved:false,
  };
+ result.review.uniqueIndexProtection=[];
+ for(const production of result.indexes.missing)for(const candidate of result.indexes.extra){
+  const review=compareUniqueIndexProtection(production,candidate);if(review.uniquenessMatches)result.review.uniqueIndexProtection.push(review);
+ }
+ for(const difference of result.indexes.changed){
+  const review=compareUniqueIndexProtection(difference.production,difference.candidate);if(review.uniquenessMatches)result.review.uniqueIndexProtection.push(review);
+ }
  return result;
 }

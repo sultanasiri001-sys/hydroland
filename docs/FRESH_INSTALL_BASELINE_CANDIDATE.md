@@ -65,3 +65,12 @@ All eight definitions are checked. Both partial indexes are tested on the source
 The exact metadata diff now includes conservative review annotations: only an otherwise identical index definition qualifies as renamed; column order, direction, uniqueness or predicate changes do not. The 21 FK differences are production implicit `ON UPDATE NO ACTION` versus canonical `ON UPDATE CASCADE`, with unchanged parent and delete action. Neither behavior is labelled equivalent. Each production/candidate action pair is executed against copied native key types in rolled-back isolated schemas before and after restoration (126 action checks per mode). No existing FK is replaced. No metadata equivalence annotation approves deployment or suppresses the original diff.
 
 Partial-versus-full unique index equivalence (including DiveLog column permutation), opposite scan direction and extra canonical indexes remain separately reviewable. This completion does not resolve native UUID/TEXT, timezone/nullability/default drift or real production recovery approval.
+
+
+### Remaining unique-index behavior (2026-10-08)
+
+A conservative comparator now recognizes plain btree UNIQUE keys with default distinct-NULL semantics, including key permutation and a partial predicate that excludes NULL in one indexed key. It does not recognize expression/collation/operator-class indexes, `NULLS NOT DISTINCT`, other predicates or other key sets. These annotations never suppress exact metadata differences or approve production.
+
+The source and both restored databases test both production and installed candidate index definitions for DiveLog (trip/participant tuple) and FinanceShiftEntry (payment key). Non-null duplicates must fail against the intended index; repeated NULL values and distinct tuples must succeed. This provides 12 index-definition probes per recovery mode. It proves the specified uniqueness behavior, not identical storage, query plans, row-level authorization or all application workflows. No replacement index or migration is added.
+
+After the eight-index completion, nine production index names remain absent: five exact renamed definitions, three SafetyIncident direction differences and the DiveLog unique definition reviewed here. The one changed FinanceShiftEntry payment index is also covered here. Three SafetyIncident direction differences and four extra canonical lookup indexes still need a performance-oriented review; the 21 FK update behaviors remain substantively different and native-type/nullability/default differences remain open.

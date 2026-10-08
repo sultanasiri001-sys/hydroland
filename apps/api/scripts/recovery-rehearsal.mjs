@@ -126,6 +126,38 @@ async function probeFinancialIndexes(database) {
   }
 }
 
+async function probeUniqueIndexProtection(database, reviews) {
+  for (const review of reviews) {
+    assert.equal(review.uniquenessMatches,true);
+    const columns=review.production.table_name==='DiveLog' ? ['sourceTripId','sourceParticipantId'] : ['paymentId'];
+    assert.ok(['DiveLog','FinanceShiftEntry'].includes(review.production.table_name),'Unreviewed uniqueness fixture');
+    const a='30000000-0000-4000-8000-000000000001',b='30000000-0000-4000-8000-000000000002',c='30000000-0000-4000-8000-000000000003';
+    const first=columns.length===1?[a]:[a,b];
+    const allowed=columns.length===1?[[null],[null],[b]]:[[a,c],[c,b],[a,null],[a,null],[null,b],[null,b],[null,null],[null,null]];
+    for (const [variant,object] of [['production',review.production],['candidate',review.candidate]]) {
+      const insert=values=>`INSERT INTO unique_probe_schema.fixture (${columns.map(identifier).join(',')}) VALUES (${values.map(v=>v===null?'NULL':literal(v)).join(',')});`;
+      const definition=object.definition.replace('ON public.'+identifier(object.table_name),'ON unique_probe_schema.fixture');
+      sql(database, `BEGIN;
+        CREATE SCHEMA unique_probe_schema;
+        CREATE TABLE unique_probe_schema.fixture AS SELECT ${columns.map(identifier).join(',')} FROM ${identifier(object.table_name)} WITH NO DATA;
+        ${definition};
+        ${insert(first)}
+        DO $probe$ DECLARE rejected_name text; BEGIN
+          BEGIN
+            ${insert(first)}
+            RAISE EXCEPTION 'Unique key accepted non-null duplicate';
+          EXCEPTION WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS rejected_name = CONSTRAINT_NAME;
+            IF rejected_name <> ${literal(object.name)} THEN RAISE EXCEPTION 'Wrong rejecting unique index'; END IF;
+          END;
+        END $probe$;
+        ${allowed.map(insert).join('\n')}
+        ROLLBACK;`);
+      check(database+':unique_index_nonnull_rejection_nulls_and_distinct_keys:'+object.name+':'+variant,true);
+    }
+  }
+}
+
 async function probeForeignKeyUpdateActions(database, differences) {
   for (const difference of differences) {
     for (const [variant, object] of [['production',difference.production],['candidate',difference.candidate]]) {
@@ -378,6 +410,8 @@ try {
   const relationCompatibility = compareProductionRelations(relationReference,{ constraints: before.schema.constraints.filter(c => c.table_name !== '_prisma_migrations' && c.contype !== 'n').map(c=>({table_name:c.table_name,name:c.conname,kind:c.contype,validated:c.convalidated,definition:c.definition})), indexes: before.schema.indexes.filter(i=>i.tablename !== '_prisma_migrations').map(i=>({table_name:i.tablename,name:i.indexname,definition:i.indexdef})) });
   await writeFile(join(evidenceDir,'production-relation-compatibility.json'),JSON.stringify(relationCompatibility,null,2)+'\n');
   const actionDifferences=relationCompatibility.constraints.changed.filter(c=>relationCompatibility.review.updateActionDifferences.some(r=>r.table===c.table && r.name===c.name));
+  assert.equal(relationCompatibility.review.uniqueIndexProtection.length,2,'Expected DiveLog/payment unique index reviews');
+  await probeUniqueIndexProtection(SOURCE,relationCompatibility.review.uniqueIndexProtection);
   await probeForeignKeyUpdateActions(SOURCE,actionDifferences);
   report.productionRelationReview=relationCompatibility.review;
   report.productionRelationCompatibility = relationCompatibility.counts;
@@ -415,6 +449,7 @@ try {
     check(target + ':foreign_key_enforced', true);
     await assert.rejects(() => db.roleAssignment.create({ data: { accountId: account.id, role: 'DIVER', status: 'ACTIVE' } }), error => error.code === 'P2002');
     check(target + ':unique_constraint_enforced', true);
+    await probeUniqueIndexProtection(target,relationCompatibility.review.uniqueIndexProtection);
     await probeForeignKeyUpdateActions(target,actionDifferences);
     await probeFinancialIndexes(target);
     await probeCompletedConstraints(target, constraintCompletion.catalog);
