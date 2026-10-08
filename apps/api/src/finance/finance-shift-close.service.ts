@@ -100,12 +100,12 @@ export class FinanceShiftCloseService {
             AND t."organizationId"=${financeKey('Organization','id',scope.organizationId)}
             AND EXISTS(SELECT 1 FROM "Invoice" i JOIN "Payment" origin ON origin."id"=i."paymentId" WHERE i."status" IN ('ISSUED','PAID') AND origin."bookingId"=p."bookingId" AND origin."accountId"=p."accountId")
         )) OR (e."referenceType"='RECEIVABLE_COLLECTION' AND NOT EXISTS(
-          SELECT 1 FROM "ReceivablePayment" rp WHERE rp."id"=e."referenceId" AND rp."shiftId"=e."shiftId" AND rp."paymentId"=e."paymentId" AND rp."amountMinor"=e."amountMinor" AND rp."collectedByAccountId"=e."recordedByAccountId"
+          SELECT 1 FROM "ReceivablePayment" rp WHERE rp."id"::text=e."referenceId"::text AND rp."shiftId"=e."shiftId" AND rp."paymentId"=e."paymentId" AND rp."amountMinor"=e."amountMinor" AND rp."collectedByAccountId"=e."recordedByAccountId"
         ))
       )
     ) + (
       SELECT COUNT(*) FROM "ReceivablePayment" rp WHERE rp."shiftId"=${financeKey('FinanceAccountantShift','id',shift.id)} AND NOT EXISTS(
-        SELECT 1 FROM "FinanceShiftEntry" e WHERE e."shiftId"=rp."shiftId" AND e."paymentId"=rp."paymentId" AND e."referenceType"='RECEIVABLE_COLLECTION' AND e."referenceId"=rp."id" AND e."amountMinor"=rp."amountMinor" AND e."recordedByAccountId"=rp."collectedByAccountId"
+        SELECT 1 FROM "FinanceShiftEntry" e WHERE e."shiftId"=rp."shiftId" AND e."paymentId"=rp."paymentId" AND e."referenceType"='RECEIVABLE_COLLECTION' AND e."referenceId"::text=rp."id"::text AND e."amountMinor"=rp."amountMinor" AND e."recordedByAccountId"=rp."collectedByAccountId"
       )
     ) AS count`;
     const base=prepareAccountantShiftClose({accountantAccountId:shift.accountantAccountId,shiftAccountantAccountId:shift.accountantAccountId,shiftStatus:shift.status,openingBalanceMinor:shift.openingBalanceMinor,revenueMinor:totals.revenueMinor,expenseMinor:totals.expenseMinor,refundMinor:totals.refundMinor,adjustmentMinor:totals.adjustmentMinor,actualCashMinor,unresolvedPaymentCount:Number(unresolved[0].count),varianceReason});
