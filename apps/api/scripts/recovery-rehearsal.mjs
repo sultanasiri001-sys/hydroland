@@ -79,11 +79,12 @@ async function probeCompletedConstraints(database, catalog) {
     // Copy only native column types, then install the exact real constraint.
     // This isolates the intended rejection from unrelated NOT NULL/unique checks.
     sql(database, `BEGIN;
-      CREATE TEMP TABLE constraint_probe ON COMMIT DROP AS SELECT ${columns.map(identifier).join(',')} FROM ${identifier(c.table_name)} WITH NO DATA;
-      ALTER TABLE constraint_probe ADD CONSTRAINT ${identifier(c.name)} ${c.definition};
+      CREATE SCHEMA constraint_probe_schema;
+      CREATE TABLE constraint_probe_schema.constraint_probe AS SELECT ${columns.map(identifier).join(',')} FROM ${identifier(c.table_name)} WITH NO DATA;
+      ALTER TABLE constraint_probe_schema.constraint_probe ADD CONSTRAINT ${identifier(c.name)} ${c.definition};
       DO $probe$ DECLARE rejected_name text; BEGIN
         BEGIN
-          INSERT INTO constraint_probe (${Object.keys(values).map(identifier).join(',')}) VALUES (${Object.values(values).join(',')});
+          INSERT INTO constraint_probe_schema.constraint_probe (${Object.keys(values).map(identifier).join(',')}) VALUES (${Object.values(values).join(',')});
           RAISE EXCEPTION 'Constraint accepted invalid input';
         EXCEPTION WHEN ${c.kind==='c'?'check_violation':'foreign_key_violation'} THEN
           GET STACKED DIAGNOSTICS rejected_name = CONSTRAINT_NAME;
