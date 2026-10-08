@@ -10,6 +10,7 @@ import { verifyRawDomainCompletion, completionName } from './raw-domain-completi
 import { compareProductionColumns } from './production-column-compatibility.mjs';
 import { compareProductionRelations } from './production-relation-compatibility.mjs';
 import { verifyCandidateColumnCompletion, columnCompletionName } from './candidate-column-completion.mjs';
+import { verifyCandidateConstraintCompletion, constraintCompletionName } from './candidate-constraint-completion.mjs';
 import { probeOrganizationForwardUpgrade, organizationRevision } from './organization-forward-recovery-probe.mjs';
 
 // This is a local, synthetic restore rehearsal, never a production restore.
@@ -41,6 +42,58 @@ assert.equal(inspection.State.Running, true);
 assert.ok(inspection.Config.Env.includes('POSTGRES_DB=' + SOURCE));
 const binding = inspection.HostConfig.PortBindings?.['5432/tcp'];
 assert.ok(binding?.length === 1 && binding[0].HostIp === '127.0.0.1' && binding[0].HostPort === '5432', 'Rehearsal must bind only to loopback');
+
+async function probeCompletedConstraints(database, catalog) {
+  const invalid = {
+    AdministrativeRecord_license_dates_check: { licenseIssuedAt: "'2030-01-01'" },
+    AdministrativeRecord_license_review_check: { licenseReviewStatus: "'INVALID'" },
+    Booking_seats_check: { seats: '0' },
+    FinanceAccountantShift_openingBalance_nonnegative: { openingBalanceMinor: '-1' },
+    FinanceShiftEntry_amount_positive: { amountMinor: '0' },
+    FinanceShiftHandover_actualCash_nonnegative: { actualCashMinor: '-1' },
+    FinanceShiftHandover_expectedCash_nonnegative: { expectedCashMinor: '-1' },
+    InstructorEarning_amount_positive: { amountMinor: '0' },
+    Payment_amountMinor_check: { amountMinor: '0' },
+    Receivable_amounts_check: { totalMinor: '10', paidMinor: '1', outstandingMinor: '8' },
+    ReceivableInstallment_amounts_check: { amountMinor: '10', paidMinor: '11' },
+    ReceivablePayment_amount_check: { amountMinor: '0' },
+    RewardAccount_points_nonnegative: { points: '-1' },
+    RewardEntry_balanceAfter_nonnegative: { balanceAfter: '-1' },
+    RewardEntry_points_positive: { points: '0' },
+    SafetyIncident_description_length_check: { description: "'  '" },
+    SafetyIncident_location_length_check: { locationName: "repeat('x',161)" },
+    SafetyIncident_title_length_check: { title: "'  '" },
+    ThemeSchedule_valid_status: { status: "'INVALID'" },
+    ThemeSchedule_valid_window: { startsAt: "'2030-01-02'", endsAt: "'2030-01-01'" },
+    Trip_capacity_check: { capacity: '0' },
+    Wallet_balanceMinor_nonnegative: { balanceMinor: '-1' },
+    WalletEntry_amountMinor_positive: { amountMinor: '0' },
+    WalletEntry_balanceAfterMinor_nonnegative: { balanceAfterMinor: '-1' },
+  };
+  for (const c of catalog) {
+    const columns = rows(database, `SELECT a.attname FROM pg_constraint co JOIN pg_class t ON t.oid=co.conrelid JOIN pg_namespace n ON n.oid=t.relnamespace CROSS JOIN LATERAL unnest(co.conkey) WITH ORDINALITY k(attnum,ord) JOIN pg_attribute a ON a.attrelid=t.oid AND a.attnum=k.attnum WHERE n.nspname='public' AND t.relname=${literal(c.table_name)} AND co.conname=${literal(c.name)} ORDER BY k.ord`).map(r=>r.attname);
+    assert.ok(columns.length>0);
+    const values = c.kind==='c' ? invalid[c.name] : Object.fromEntries(columns.map(name=>[name,literal('MISSING_REHEARSAL_PARENT')]));
+    assert.ok(values, 'Missing negative control: '+c.name);
+    assert.ok(Object.keys(values).every(name=>columns.includes(name)));
+    // Copy only native column types, then install the exact real constraint.
+    // This isolates the intended rejection from unrelated NOT NULL/unique checks.
+    sql(database, `BEGIN;
+      CREATE TEMP TABLE constraint_probe ON COMMIT DROP AS SELECT ${columns.map(identifier).join(',')} FROM ${identifier(c.table_name)} WITH NO DATA;
+      ALTER TABLE constraint_probe ADD CONSTRAINT ${identifier(c.name)} ${c.definition};
+      DO $probe$ DECLARE rejected_name text; BEGIN
+        BEGIN
+          INSERT INTO constraint_probe (${Object.keys(values).map(identifier).join(',')}) VALUES (${Object.values(values).join(',')});
+          RAISE EXCEPTION 'Constraint accepted invalid input';
+        EXCEPTION WHEN ${c.kind==='c'?'check_violation':'foreign_key_violation'} THEN
+          GET STACKED DIAGNOSTICS rejected_name = CONSTRAINT_NAME;
+          IF rejected_name <> ${literal(c.name)} THEN RAISE EXCEPTION 'Unexpected rejecting constraint: %',rejected_name; END IF;
+        END;
+      END $probe$;
+      ROLLBACK;`);
+    check(database+':negative_control:'+c.name,true);
+  }
+}
 
 const apiRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = resolve(apiRoot, '../..');
@@ -132,6 +185,9 @@ try {
   report.rawDomainCompletionSha256 = completion.manifest.migrationSha256;
   const columnCompletion = await verifyCandidateColumnCompletion();
   migrations.push({ name: usesCandidate ? columnCompletionName : '20261004090000_candidate_production_column_completion', sql: columnCompletion.sql, source: 'additive candidate production-column completion' });
+  const constraintCompletion = await verifyCandidateConstraintCompletion();
+  migrations.push({ name: usesCandidate ? constraintCompletionName : '20261004100000_candidate_production_constraint_completion', sql: constraintCompletion.sql, source: 'additive candidate foreign keys and checks; no history rewrite' });
+  report.constraintCompletionSha256 = constraintCompletion.manifest.sha256;
   // Exercise populated legacy shapes for both native key types in a rolled-back schema.
   for (const parentType of ['text','uuid']) {
     sql(SOURCE, `BEGIN;
@@ -247,6 +303,8 @@ try {
   report.productionColumnCompatibility = compatibility.counts;
   report.productionColumnMetadataMatches = compatibility.columnMetadataMatches;
   const relationReference = JSON.parse(await readFile(join(apiRoot,'prisma-fresh-install-candidate/production-relation-reference.json'),'utf8'));
+  for (const c of constraintCompletion.catalog) check('completed_constraint:' + c.name, before.schema.constraints.some(r => r.table_name === c.table_name && r.conname === c.name && r.contype === c.kind && r.convalidated && r.definition === c.definition));
+  await probeCompletedConstraints(SOURCE, constraintCompletion.catalog);
   const relationCompatibility = compareProductionRelations(relationReference,{ constraints: before.schema.constraints.filter(c => c.table_name !== '_prisma_migrations' && c.contype !== 'n').map(c=>({table_name:c.table_name,name:c.conname,kind:c.contype,validated:c.convalidated,definition:c.definition})), indexes: before.schema.indexes.filter(i=>i.tablename !== '_prisma_migrations').map(i=>({table_name:i.tablename,name:i.indexname,definition:i.indexdef})) });
   await writeFile(join(evidenceDir,'production-relation-compatibility.json'),JSON.stringify(relationCompatibility,null,2)+'\n');
   report.productionRelationCompatibility = relationCompatibility.counts;
@@ -284,6 +342,7 @@ try {
     check(target + ':foreign_key_enforced', true);
     await assert.rejects(() => db.roleAssignment.create({ data: { accountId: account.id, role: 'DIVER', status: 'ACTIVE' } }), error => error.code === 'P2002');
     check(target + ':unique_constraint_enforced', true);
+    await probeCompletedConstraints(target, constraintCompletion.catalog);
     await assertAuditAppendOnly(db, target);
     await db.$disconnect(); db = null;
     report.targets.push({ name: target, status: 'PASS', dataDigest: digest(JSON.stringify(recovered.contents)), schemaDigest: digest(JSON.stringify(recovered.schema)) });
