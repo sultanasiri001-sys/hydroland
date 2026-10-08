@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { verifyFreshInstallCandidate, baselineName } from './fresh-install-candidate.mjs';
 import { verifyRawDomainCompletion, completionName } from './raw-domain-completion.mjs';
 import { compareProductionColumns } from './production-column-compatibility.mjs';
+import { verifyCandidateColumnCompletion, columnCompletionName } from './candidate-column-completion.mjs';
 import { probeOrganizationForwardUpgrade, organizationRevision } from './organization-forward-recovery-probe.mjs';
 
 // This is a local, synthetic restore rehearsal, never a production restore.
@@ -128,6 +129,8 @@ try {
   const completion = await verifyRawDomainCompletion();
   migrations.push({ name: completionName, sql: completion.sql, source: 'versioned raw domain completion; schema-only production catalog' });
   report.rawDomainCompletionSha256 = completion.manifest.migrationSha256;
+  const columnCompletion = await verifyCandidateColumnCompletion();
+  migrations.push({ name: columnCompletionName, sql: columnCompletion.sql, source: 'additive candidate production-column completion' });
   check('migration_names_are_unique', new Set(migrations.map(item => item.name)).size === migrations.length);
   for (const migration of migrations) {
     await mkdir(join(work, 'migrations', migration.name));
@@ -179,6 +182,10 @@ try {
     report.migrationCount = finalManifest.length;
     await writeFile(join(evidenceDir, 'fixture-migration-manifest.json'), JSON.stringify(finalManifest, null, 2));
   }
+  const shiftFrom = 'REHEARSAL_SHIFT_FROM', shiftTo = 'REHEARSAL_SHIFT_TO';
+  for (const id of [shiftFrom,shiftTo]) sql(SOURCE, `INSERT INTO "FinanceAccountantShift" ("id","centerOrgUnitId","accountantAccountId","updatedAt") VALUES (${literal(id)},${literal(organization.id)},${literal(account.id)},CURRENT_TIMESTAMP)`);
+  sql(SOURCE, `INSERT INTO "FinanceShiftHandover" ("id","fromShiftId","toShiftId","fromAccountantId","toAccountantId","expectedCashMinor","actualCashMinor","varianceMinor") VALUES ('REHEARSAL_HANDOVER',${literal(shiftFrom)},${literal(shiftTo)},${literal(account.id)},${literal(account.id)},100,100,0)`);
+  check('completed_handover_timestamps_default_without_client_fields', sql(SOURCE, `SELECT "requestedAt" IS NOT NULL AND "updatedAt" IS NOT NULL AND "offeredAt" IS NOT NULL FROM "FinanceShiftHandover" WHERE "id"='REHEARSAL_HANDOVER'`) === 't');
   // Synthetic raw-domain relationship graph; no production data is copied.
   const rawIds = Object.fromEntries(completion.catalog.tables.map((t,i) => [t.name, '10000000-0000-4000-8000-' + String(i+1).padStart(12,'0')]));
   const parentIds = { ...rawIds, Account: account.id, Organization: organization.id, Trip: trip.id };
@@ -220,6 +227,10 @@ try {
   report.productionColumnCompatibility = compatibility.counts;
   report.productionColumnMetadataMatches = compatibility.columnMetadataMatches;
   check('all_production_table_names_covered', compatibility.missingTables.length === 0);
+  check('all_production_column_names_covered', compatibility.missingColumns.length === 0);
+  const organizationColumn = completedColumns.find(c => c.table_name === 'EquipmentBarcode' && c.name === 'organizationId');
+  check('equipment_center_column_matches_installed_organization_id_type', organizationColumn.type === completedColumns.find(c => c.table_name === 'Organization' && c.name === 'id').type);
+  check('equipment_center_scope_fk_and_index_exist', before.schema.constraints.some(c => c.conname === 'EquipmentBarcode_organizationId_fkey' && c.convalidated) && before.schema.indexes.some(i => i.indexname === 'EquipmentBarcode_organizationId_stockStatus_idx'));
   report.tableCount = before.contents.length;
   report.populatedTables = before.contents.filter(row => row.row_count > 0).map(row => row.table_name);
   check('representative_data_and_raw_extensions_seeded', ['Account','Credential','Document','OrganizationDocumentAsset','RoleAssignment','Session','Booking','Payment','Invoice','AuditEvent','SafetyIncident','Conversation','Message','TripOperationalLocation'].every(name => report.populatedTables.includes(name)));
