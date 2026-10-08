@@ -77,9 +77,16 @@ try {
    const payments=[];
    for(const org of [orgA,orgB]){const trip=id(),booking=id(),payment=id();await run(`INSERT INTO "Trip" VALUES (${literal(trip)},${literal(org)})`);await run(`INSERT INTO "Booking" VALUES (${literal(booking)},${literal(trip)})`);await run(`INSERT INTO "Payment" (id,"bookingId","amountMinor",status) VALUES (${literal(payment)},${literal(booking)},40,'CAPTURED')`);payments.push(payment);}
    await rejects(service.recordEntry(a,from.id,{type:'REVENUE',amountMinor:40,paymentId:payments[1]}),'FINANCE_PAYMENT_NOT_FOUND');
+   await run(`UPDATE "Payment" SET currency='USD' WHERE id=${literal(payments[0])}`);
+   await rejects(service.recordEntry(a,from.id,{type:'REVENUE',amountMinor:40,paymentId:payments[0]}),'FINANCE_PAYMENT_CURRENCY_MISMATCH');
+   await run(`UPDATE "Payment" SET currency='SAR' WHERE id=${literal(payments[0])}`);
    await service.recordEntry(a,from.id,{type:'REVENUE',amountMinor:40,paymentId:payments[0]});scenarios++;
    await assert.rejects(service.recordEntry(a,from.id,{type:'REVENUE',amountMinor:40,paymentId:payments[0]}));scenarios++;
    await rejects(service.requestHandover(a,from.id,outsider,120),'FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
+   await run(`UPDATE "FinanceAccountantShift" SET currency='USD' WHERE id=${literal(to.id)}`);
+   assert.deepEqual((await workspace.workspace(a,unitA)).receivers,[]);scenarios++;
+   await rejects(service.requestHandover(a,from.id,b,120),'FINANCE_CURRENCY_UNSUPPORTED');
+   await run(`UPDATE "FinanceAccountantShift" SET currency='SAR' WHERE id=${literal(to.id)}`);
    const read=await workspace.workspace(a,unitA);assert.equal(read.totals.expectedCashMinor,120);assert.equal(read.entries.length,2);scenarios++;
    const handover=await service.requestHandover(a,from.id,b,120);scenarios++;
    const incoming=await workspace.workspace(b,unitA),outgoing=await workspace.workspace(a,unitA);
@@ -103,6 +110,9 @@ try {
    await rejects(service.acceptHandover(b,handover.id),'FINANCE_HANDOVER_SOURCE_SHIFT_INVALID');
    assert.deepEqual((await workspace.workspace(b,unitA)).handovers,[]);scenarios++;
    await run(`UPDATE "FinanceShiftHandover" SET "fromShiftId"=${literal(from.id)} WHERE id=${literal(handover.id)}`);
+   await run(`UPDATE "FinanceAccountantShift" SET currency='USD' WHERE id=${literal(from.id)}`);
+   await rejects(service.acceptHandover(b,handover.id),'FINANCE_CURRENCY_UNSUPPORTED');
+   await run(`UPDATE "FinanceAccountantShift" SET currency='SAR' WHERE id=${literal(from.id)}`);
    const accepted=await service.acceptHandover(b,handover.id);assert.equal(accepted.openingBalanceMinor,120);scenarios++;
    const received=await workspace.workspace(b,unitA);assert.equal(received.totals.expectedCashMinor,120);assert.deepEqual(received.handovers,[]);assert.equal((await workspace.workspace(a,unitA)).shift,null);scenarios++;
    await rejects(service.acceptHandover(b,handover.id),'FINANCE_HANDOVER_NOT_PENDING');

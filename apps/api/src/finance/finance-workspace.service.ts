@@ -48,7 +48,7 @@ export class FinanceWorkspaceService {
         WHERE e."orgUnitId"=${financeKey('OrgUnit','id',centerOrgUnitId)} AND e."organizationId"=${financeKey('Organization','id',scope.organizationId)}
           AND a."id"<>${financeKey('Account','id',accountId)} AND a."status"='ACTIVE' AND e."status"='ACTIVE'
           AND p."active"=TRUE AND p."code" IN ('BRANCH_ACCOUNTANT','CENTER_ACCOUNTANT')
-          AND s."status"='OPEN' AND s."openingBalanceMinor"=0
+          AND s."status"='OPEN' AND s."currency"='SAR' AND s."openingBalanceMinor"=0
           AND NOT EXISTS(SELECT 1 FROM "FinanceShiftEntry" x WHERE x."shiftId"=s."id")
           AND NOT EXISTS(SELECT 1 FROM "FinanceShiftHandover" h WHERE h."toShiftId"=s."id" AND h."status"='PENDING')
         ORDER BY "name",a."id"`;

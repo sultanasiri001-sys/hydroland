@@ -39,16 +39,17 @@ export class FinanceShiftsService {
 
     return this.db.serializable(async tx=>{
       await this.access.requireCenterOrganizationAccountant(accountantAccountId,scope.centerOrgUnitId,tx);
-      const shifts=await tx.$queryRaw<Array<{id:string;accountantAccountId:string;status:string}>>`SELECT "id","accountantAccountId","status"::text AS "status" FROM "FinanceAccountantShift" WHERE "id"=${financeKey('FinanceAccountantShift','id',shiftId)} AND "centerOrgUnitId"=${financeKey('FinanceAccountantShift','centerOrgUnitId',scope.centerOrgUnitId)} FOR UPDATE`;
+      const shifts=await tx.$queryRaw<Array<{id:string;accountantAccountId:string;status:string;currency:string}>>`SELECT "id","accountantAccountId","status"::text AS "status","currency" FROM "FinanceAccountantShift" WHERE "id"=${financeKey('FinanceAccountantShift','id',shiftId)} AND "centerOrgUnitId"=${financeKey('FinanceAccountantShift','centerOrgUnitId',scope.centerOrgUnitId)} FOR UPDATE`;
       const shift=shifts[0]; if(!shift)throw new Error('FINANCE_SHIFT_NOT_FOUND');
       if(shift.accountantAccountId!==accountantAccountId)throw new Error('FINANCE_SHIFT_ACCOUNT_ISOLATION_DENIED');
       if(shift.status!=='OPEN')throw new Error('FINANCE_SHIFT_NOT_OPEN');
       const incoming=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "FinanceShiftHandover" WHERE "toShiftId"=${financeKey('FinanceShiftHandover','toShiftId',shiftId)} AND "status"='PENDING'`;
       if(incoming.length)throw new Error('FINANCE_HANDOVER_RECEIVER_ALREADY_PENDING');
       if(input.type==='REVENUE'){
-        const payments=await tx.$queryRaw<Array<{id:string;amountMinor:number;status:string}>>`SELECT p."id",p."amountMinor",p."status"::text AS "status" FROM "Payment" p JOIN "Booking" b ON b."id"=p."bookingId" JOIN "Trip" t ON t."id"=b."tripId" WHERE p."id"=${financeKey('Payment','id',input.paymentId!)} AND t."organizationId"=${financeKey('Organization','id',scope.centerOrgUnitId)} FOR SHARE OF p,b,t`;
+        const payments=await tx.$queryRaw<Array<{id:string;amountMinor:number;status:string;currency:string}>>`SELECT p."id",p."amountMinor",p."status"::text AS "status",p."currency" FROM "Payment" p JOIN "Booking" b ON b."id"=p."bookingId" JOIN "Trip" t ON t."id"=b."tripId" WHERE p."id"=${financeKey('Payment','id',input.paymentId!)} AND t."organizationId"=${financeKey('Organization','id',scope.centerOrgUnitId)} FOR SHARE OF p,b,t`;
         const payment=payments[0]; if(!payment)throw new Error('FINANCE_PAYMENT_NOT_FOUND');
         if(payment.status!=='CAPTURED')throw new Error('FINANCE_PAYMENT_NOT_SETTLED');
+        if(payment.currency!==shift.currency)throw new Error('FINANCE_PAYMENT_CURRENCY_MISMATCH');
         if(payment.amountMinor!==input.amountMinor)throw new Error('FINANCE_PAYMENT_AMOUNT_MISMATCH');
       }
       const rows=await tx.$queryRaw<Array<Record<string,unknown>>>`INSERT INTO "FinanceShiftEntry" ("id","shiftId","type","amountMinor","paymentId","referenceType","referenceId","description","recordedByAccountId") VALUES (${financeKey('FinanceShiftEntry','id',randomUUID())},${financeKey('FinanceShiftEntry','shiftId',shiftId)},${input.type}::"FinanceEntryType",${input.amountMinor},${financeKey('FinanceShiftEntry','paymentId',input.paymentId??null)},${input.referenceType??null},${financeKey('FinanceShiftEntry','referenceId',input.referenceId??null)},${input.description??null},${financeKey('FinanceShiftEntry','recordedByAccountId',accountantAccountId)}) RETURNING *`;
@@ -65,17 +66,19 @@ export class FinanceShiftsService {
     return this.db.serializable(async tx=>{
       await this.access.requireCenterOrganizationAccountant(accountantAccountId,scope.centerOrgUnitId,tx);
       await this.access.requireCenterOrganizationAccountant(toAccountantId,scope.centerOrgUnitId,tx);
-      const shifts=await tx.$queryRaw<Array<{id:string;centerOrgUnitId:string;accountantAccountId:string;status:string;openingBalanceMinor:number}>>`SELECT "id","centerOrgUnitId","accountantAccountId","status"::text AS "status","openingBalanceMinor" FROM "FinanceAccountantShift" WHERE "id"=${financeKey('FinanceAccountantShift','id',shiftId)} AND "centerOrgUnitId"=${financeKey('FinanceAccountantShift','centerOrgUnitId',scope.centerOrgUnitId)} FOR UPDATE`;
+      const shifts=await tx.$queryRaw<Array<{id:string;centerOrgUnitId:string;accountantAccountId:string;status:string;openingBalanceMinor:number;currency:string}>>`SELECT "id","centerOrgUnitId","accountantAccountId","status"::text AS "status","openingBalanceMinor","currency" FROM "FinanceAccountantShift" WHERE "id"=${financeKey('FinanceAccountantShift','id',shiftId)} AND "centerOrgUnitId"=${financeKey('FinanceAccountantShift','centerOrgUnitId',scope.centerOrgUnitId)} FOR UPDATE`;
       const from=shifts[0]; if(!from)throw new Error('FINANCE_SHIFT_NOT_FOUND');
       if(from.accountantAccountId!==accountantAccountId)throw new Error('FINANCE_SHIFT_ACCOUNT_ISOLATION_DENIED');
       if(from.status!=='OPEN')throw new Error('FINANCE_SHIFT_NOT_OPEN');
+      if(from.currency!=='SAR')throw new Error('FINANCE_CURRENCY_UNSUPPORTED');
       const incoming=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "FinanceShiftHandover" WHERE "toShiftId"=${financeKey('FinanceShiftHandover','toShiftId',shiftId)} AND "status"='PENDING'`;
       if(incoming.length)throw new Error('FINANCE_HANDOVER_RECEIVER_ALREADY_PENDING');
       const entries=await tx.$queryRaw<Array<{type:EntryType;amountMinor:number}>>`SELECT "type"::text AS "type","amountMinor" FROM "FinanceShiftEntry" WHERE "shiftId"=${financeKey('FinanceShiftEntry','shiftId',shiftId)}`;
       const totals=calculateFinanceShiftTotals(from.openingBalanceMinor,entries);
       const variance=assertCashVariance({expectedMinor:totals.expectedCashMinor,actualMinor:actualCashMinor,reason:varianceReason});
-      const receivers=await tx.$queryRaw<Array<{id:string;openingBalanceMinor:number}>>`SELECT "id","openingBalanceMinor" FROM "FinanceAccountantShift" WHERE "centerOrgUnitId"=${financeKey('FinanceAccountantShift','centerOrgUnitId',from.centerOrgUnitId)} AND "accountantAccountId"=${financeKey('FinanceAccountantShift','accountantAccountId',toAccountantId)} AND "status"='OPEN' FOR UPDATE`;
+      const receivers=await tx.$queryRaw<Array<{id:string;openingBalanceMinor:number;currency:string}>>`SELECT "id","openingBalanceMinor","currency" FROM "FinanceAccountantShift" WHERE "centerOrgUnitId"=${financeKey('FinanceAccountantShift','centerOrgUnitId',from.centerOrgUnitId)} AND "accountantAccountId"=${financeKey('FinanceAccountantShift','accountantAccountId',toAccountantId)} AND "status"='OPEN' FOR UPDATE`;
       const to=receivers[0]; if(!to)throw new Error('FINANCE_HANDOVER_RECEIVER_SHIFT_REQUIRED');
+      if(to.currency!==from.currency)throw new Error('FINANCE_CURRENCY_UNSUPPORTED');
       const pending=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "FinanceShiftHandover" WHERE "toShiftId"=${financeKey('FinanceShiftHandover','toShiftId',to.id)} AND "status"='PENDING'`;
       if(pending.length)throw new Error('FINANCE_HANDOVER_RECEIVER_ALREADY_PENDING');
       const receiverEntries=await tx.$queryRaw<Array<{count:bigint}>>`SELECT COUNT(*)::bigint AS "count" FROM "FinanceShiftEntry" WHERE "shiftId"=${financeKey('FinanceShiftEntry','shiftId',to.id)}`;
@@ -96,10 +99,11 @@ export class FinanceShiftsService {
       if(handover.toAccountantId!==accountantAccountId)throw new Error('FINANCE_HANDOVER_ACCEPTOR_INVALID');
       if(!Number.isSafeInteger(handover.actualCashMinor)||handover.actualCashMinor<0)throw new Error('FINANCE_HANDOVER_AMOUNT_INVALID');
       if(handover.status!=='PENDING')throw new Error('FINANCE_HANDOVER_NOT_PENDING');
-      const receivers=await tx.$queryRaw<Array<{id:string;openingBalanceMinor:number;status:string}>>`SELECT "id","openingBalanceMinor","status"::text AS "status" FROM "FinanceAccountantShift" WHERE "id"=${financeKey('FinanceAccountantShift','id',handover.toShiftId)} AND "accountantAccountId"=${financeKey('FinanceAccountantShift','accountantAccountId',accountantAccountId)} AND "centerOrgUnitId"=${financeKey('FinanceAccountantShift','centerOrgUnitId',scope.centerOrgUnitId)} FOR UPDATE`;
+      const receivers=await tx.$queryRaw<Array<{id:string;openingBalanceMinor:number;status:string;currency:string}>>`SELECT "id","openingBalanceMinor","status"::text AS "status","currency" FROM "FinanceAccountantShift" WHERE "id"=${financeKey('FinanceAccountantShift','id',handover.toShiftId)} AND "accountantAccountId"=${financeKey('FinanceAccountantShift','accountantAccountId',accountantAccountId)} AND "centerOrgUnitId"=${financeKey('FinanceAccountantShift','centerOrgUnitId',scope.centerOrgUnitId)} FOR UPDATE`;
       const receiver=receivers[0]; if(!receiver||receiver.status!=='OPEN')throw new Error('FINANCE_HANDOVER_RECEIVER_SHIFT_INVALID');
-      const sources=await tx.$queryRaw<Array<{status:string}>>`SELECT "status"::text AS "status" FROM "FinanceAccountantShift" WHERE "id"=${financeKey('FinanceAccountantShift','id',handover.fromShiftId)} AND "accountantAccountId"=${financeKey('FinanceAccountantShift','accountantAccountId',handover.fromAccountantId)} AND "centerOrgUnitId"=${financeKey('FinanceAccountantShift','centerOrgUnitId',scope.centerOrgUnitId)} FOR UPDATE`;
+      const sources=await tx.$queryRaw<Array<{status:string;currency:string}>>`SELECT "status"::text AS "status","currency" FROM "FinanceAccountantShift" WHERE "id"=${financeKey('FinanceAccountantShift','id',handover.fromShiftId)} AND "accountantAccountId"=${financeKey('FinanceAccountantShift','accountantAccountId',handover.fromAccountantId)} AND "centerOrgUnitId"=${financeKey('FinanceAccountantShift','centerOrgUnitId',scope.centerOrgUnitId)} FOR UPDATE`;
       if(sources[0]?.status!=='HANDOVER_PENDING')throw new Error('FINANCE_HANDOVER_SOURCE_SHIFT_INVALID');
+      if(receiver.currency!=='SAR'||sources[0].currency!==receiver.currency)throw new Error('FINANCE_CURRENCY_UNSUPPORTED');
       const receiverEntries=await tx.$queryRaw<Array<{count:bigint}>>`SELECT COUNT(*)::bigint AS "count" FROM "FinanceShiftEntry" WHERE "shiftId"=${financeKey('FinanceShiftEntry','shiftId',handover.toShiftId)}`;
       if(receiver.openingBalanceMinor!==0||Number(receiverEntries[0]?.count??0)!==0)throw new Error('FINANCE_HANDOVER_RECEIVER_SHIFT_NOT_EMPTY');
       await tx.$executeRaw`UPDATE "FinanceShiftHandover" SET "status"='ACCEPTED',"acceptedAt"=NOW() WHERE "id"=${financeKey('FinanceShiftHandover','id',handoverId)}`;

@@ -8,6 +8,7 @@ Implemented:
 - Open a shift, submit counted cash with a mandatory explanation for variance, and accept incoming custody after explicit acknowledgment. The existing service owns all writes.
 - Freeze incoming recipients against entries/outgoing handovers until acceptance, and reject a second pending handover to that recipient. Checks and receiver locks run in serializable transactions.
 - Invalidate web data on role/session loss, fence delayed reads/writes, disable duplicate submissions, clear stale balances after failed refresh, and reload after successful writes.
+- Reject payment/shift currency mismatches and non-SAR or mismatched handovers; recipient discovery excludes unsupported currencies.
 - Preserve native TEXT/UUID keys, existing schema/migrations and accounting policy. No production records are changed by this PR.
 
 Validation:
