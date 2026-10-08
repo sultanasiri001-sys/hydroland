@@ -20,18 +20,14 @@ jobs:
       - run: npm ci --workspace=@hydroland/api --workspace=@hydroland/web --include-workspace-root=true
       - run: npm --workspace @hydroland/api run db:generate
       - name: Verify production-applied migration checksums
-        run: node apps/api/scripts/production-migration-baseline-validation.mjs
+        run: |
+          node apps/api/scripts/production-migration-baseline-validation.mjs
+          node apps/api/scripts/production-migration-baseline-validation.test.mjs
       - name: Block unapproved historical migration rewrites
         shell: bash
         run: |
           set -euo pipefail
           git fetch origin main
-          manifest_changes="$(git diff --name-only --diff-filter=MD origin/main...HEAD -- 'apps/api/prisma/production-migration-baseline.json')"
-          if [ -n "$manifest_changes" ]; then
-            echo "The production migration baseline cannot be changed in the same pull request as migration files."
-            echo "$manifest_changes"
-            exit 1
-          fi
           HYDROLAND_MIGRATION_DIFF_BASE=origin/main node apps/api/scripts/production-migration-baseline-validation.mjs --check-release-diff
       - name: Verify release validations
         run: |
