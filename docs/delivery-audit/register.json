@@ -1,0 +1,253 @@
+{
+  "checkedAtRiyadh": "2026-10-08T23:26:23.930572+03:00",
+  "scope": "PROVISIONAL_DELIVERY_EVIDENCE_REGISTER",
+  "overallCompletionPercent": null,
+  "denominatorApproved": false,
+  "weightsApproved": false,
+  "reason": "Areas overlap and do not yet enumerate all atomic acceptance requirements; never divide accepted areas by total areas as project completion.",
+  "areas": [
+    {
+      "id": "identity",
+      "name": "الهوية ونظام التصميم",
+      "status": "VISUAL_ACCEPTANCE_REQUIRED",
+      "evidence": "docs/PHASE_1_VISUAL_AUDIT_2026_09_28.md",
+      "nextAcceptance": "مطابقة المرجع وقبول النتيجة؛ نجاح الاختبار وحده لا يغلق المطابقة."
+    },
+    {
+      "id": "public",
+      "name": "الواجهات العامة",
+      "status": "ACCEPTANCE_EVIDENCE_REQUIRED",
+      "evidence": "docs/VISITOR_UI_ACCEPTANCE.md",
+      "nextAcceptance": "استكمال أدلة الرحلات والأنشطة والتدريب والمتجر والاستجابة والقبول البصري."
+    },
+    {
+      "id": "account",
+      "name": "الحساب والمصادقة والمستندات",
+      "status": "ACCEPTED_DEFINED_SCOPE",
+      "evidence": "docs/PHASE_3_ACCOUNT_ACCEPTANCE_2026-09-30.md",
+      "nextAcceptance": "إغلاق موثق بقبول المستخدم؛ لا يشمل PITR أو مزودين خارجيين."
+    },
+    {
+      "id": "amateur",
+      "name": "هواة الغوص",
+      "status": "ACCEPTANCE_EVIDENCE_REQUIRED",
+      "evidence": "docs/DIVER_UI_ACCEPTANCE.md",
+      "nextAcceptance": "معايير قبول موجودة؛ لا توجد هنا وثيقة إغلاق كامل معتمدة."
+    },
+    {
+      "id": "professional",
+      "name": "محترفو الغوص — النطاق الداخلي",
+      "status": "ACCEPTED_DEFINED_SCOPE",
+      "evidence": "docs/PROFESSIONAL_PORTAL_CLOSURE.md",
+      "nextAcceptance": "إغلاق النطاق الداخلي؛ الشهادات الخارجية وسياسة إنشاء الأرباح خارج هذا الإغلاق."
+    },
+    {
+      "id": "centers",
+      "name": "مراكز الغوص",
+      "status": "MERGED_ACCEPTANCE_REQUIRED",
+      "evidence": "https://github.com/sultanasiri001-sys/hydroland/pull/409",
+      "nextAcceptance": "الإصلاح السابق مدمج؛ لا يثبت وحده إغلاق جميع المالية والتقارير والتشغيل الإنتاجي."
+    },
+    {
+      "id": "marine-assets",
+      "name": "الوسائط البحرية — الأصول والصيانة",
+      "status": "MERGED_ACCEPTANCE_REQUIRED",
+      "evidence": "apps/web/src/hydroland-marine-readiness.js",
+      "nextAcceptance": "الأساس منشور؛ يلزم إثبات دورة المستخدم والقبول للنطاق الكامل."
+    },
+    {
+      "id": "marine-publish",
+      "name": "الوسائط البحرية — نشر الرحلات",
+      "status": "UNMERGED",
+      "evidence": "https://github.com/sultanasiri001-sys/hydroland/pull/439",
+      "nextAcceptance": "اعتماد ثم دمج ونشر والتحقق من دورة النشر."
+    },
+    {
+      "id": "marine-bookings",
+      "name": "الوسائط البحرية — إدارة الحجوزات",
+      "status": "UNMERGED",
+      "evidence": "https://github.com/sultanasiri001-sys/hydroland/pull/440",
+      "nextAcceptance": "مسودة؛ تحقق التشغيل المنشور بعد الدمج."
+    },
+    {
+      "id": "organizations",
+      "name": "الشركات والجهات الحكومية",
+      "status": "UNMERGED",
+      "evidence": "https://github.com/sultanasiri001-sys/hydroland/pull/442",
+      "nextAcceptance": "مسودة تشمل عزل الحجوزات؛ ليست جاهزية منشورة."
+    },
+    {
+      "id": "finance-shifts",
+      "name": "الوردية والتسليم المالي",
+      "status": "TESTED_UNMERGED",
+      "evidence": "https://github.com/sultanasiri001-sys/hydroland/pull/448",
+      "nextAcceptance": "اختبارات الخدمة وقاعدة البيانات ناجحة؛ يلزم دمج وتحقق إنتاجي."
+    },
+    {
+      "id": "receivables",
+      "name": "الذمم والتحصيل",
+      "status": "TESTED_UNMERGED",
+      "evidence": "https://github.com/sultanasiri001-sys/hydroland/pull/448",
+      "nextAcceptance": "180 حالة في أربع تركيبات للنطاق المالي كله، لا 180 حالة خاصة بهذا البند."
+    },
+    {
+      "id": "database",
+      "name": "نسخة التأسيس والتوافق",
+      "status": "TESTED_UNMERGED",
+      "evidence": "https://github.com/sultanasiri001-sys/hydroland/pull/446",
+      "nextAcceptance": "مطابقة العلاقات واستعادة اصطناعية ناجحة؛ النموذج النهائي والأنواع والتوقيت والقيم الفارغة مفتوحة."
+    },
+    {
+      "id": "ledger",
+      "name": "حماية سجل الترحيلات",
+      "status": "TESTED_UNMERGED",
+      "evidence": "https://github.com/sultanasiri001-sys/hydroland/pull/447",
+      "nextAcceptance": "حماية 78 ترحيلًا، وليست استعادة إنتاج أو اعتماد انتقال."
+    },
+    {
+      "id": "security",
+      "name": "الأمن وإصدار الجوال المستقل",
+      "status": "UNMERGED_WITH_SEPARATE_BLOCKER",
+      "evidence": "https://github.com/sultanasiri001-sys/hydroland/pull/443",
+      "nextAcceptance": "بوابات المنصة الأخيرة ناجحة؛ فشل الجوال المستقل لا يساوي فشل كل المنصة."
+    },
+    {
+      "id": "payments",
+      "name": "الدفع والاسترداد والتسوية",
+      "status": "END_TO_END_EVIDENCE_REQUIRED",
+      "evidence": "docs/PHASE_14_PUBLIC_LAUNCH_OPERATIONS.md",
+      "nextAcceptance": "دورة مزود فعلية وعزل العميل والتكرار والاسترداد وفق السياسة المعتمدة."
+    },
+    {
+      "id": "wallet",
+      "name": "المحفظة والمكافآت",
+      "status": "END_TO_END_EVIDENCE_REQUIRED",
+      "evidence": "apps/api/src/wallet",
+      "nextAcceptance": "وجود الخدمة لا يثبت قبول دورة الرصيد والقيود والمكافآت المنشورة."
+    },
+    {
+      "id": "store",
+      "name": "المتجر والمخزون والتأجير وQR",
+      "status": "END_TO_END_EVIDENCE_REQUIRED",
+      "evidence": "apps/api/src/store",
+      "nextAcceptance": "دورة الطلب والاستلام والإرجاع والمخزون وعزل المستخدم والتتبع."
+    },
+    {
+      "id": "calendar",
+      "name": "التقويم الموحد وتخصيص الموارد",
+      "status": "END_TO_END_EVIDENCE_REQUIRED",
+      "evidence": "apps/api/src/trips/calendar-allocation.service.ts",
+      "nextAcceptance": "معاينة الموارد لا تثبت تطبيق حجز موحد ملزم لجميع المجالات."
+    },
+    {
+      "id": "training",
+      "name": "الشهادات الخارجية وتعويض المدربين",
+      "status": "EXTERNAL_OR_POLICY_BLOCKED",
+      "evidence": "docs/PROFESSIONAL_PORTAL_CLOSURE.md",
+      "nextAcceptance": "مصادر الشهادات الخارجية وسياسة التعويض المعتمدة؛ لا اختراع أسعار."
+    },
+    {
+      "id": "weather",
+      "name": "الطقس وصلاحية النشاط",
+      "status": "PRODUCTION_PROVIDER_EVIDENCE_REQUIRED",
+      "evidence": "docs/PHASE_7_WEATHER_EMERGENCY_OFFICIAL.md",
+      "nextAcceptance": "وثيقة قديمة تصف إعدادًا سابقًا؛ يتطلب إثبات مزود وإعدادات حالية ومراجعة بشرية."
+    },
+    {
+      "id": "maps",
+      "name": "الخرائط البحرية والمصادر الرسمية",
+      "status": "EXTERNAL_EVIDENCE_REQUIRED",
+      "evidence": "docs/CONTINUATION_2026_09_28.md",
+      "nextAcceptance": "الخريطة الداخلية لا تثبت عقدًا أو خرائط بحرية رسمية متصلة."
+    },
+    {
+      "id": "safety",
+      "name": "السلامة والاستغاثة الخارجية",
+      "status": "INTERNAL_SCOPE_EXTERNAL_BLOCKED",
+      "evidence": "docs/PHASE_7_WEATHER_EMERGENCY_OFFICIAL.md",
+      "nextAcceptance": "الحوادث الداخلية منفصلة عن إرسال استغاثة خارجية غير منفذ وفق الوثيقة."
+    },
+    {
+      "id": "community",
+      "name": "المجتمع والرسائل والصوت والتطوع",
+      "status": "END_TO_END_EVIDENCE_REQUIRED",
+      "evidence": "apps/api/src",
+      "nextAcceptance": "أدلة قبول مستقلة للصوت والتطوع والساعات والتواصل؛ ليست إغلاق الحساب."
+    },
+    {
+      "id": "agents",
+      "name": "وكلاء الذكاء الاصطناعي",
+      "status": "GOVERNANCE_IMPLEMENTED_OPERATIONS_UNVERIFIED",
+      "evidence": "docs/PHASE_10_INTEGRATIONS_AND_AI.md",
+      "nextAcceptance": "حوكمة آمنة لا تساوي تشغيلًا فعليًا لكل وكيل أو قناة خارجية."
+    },
+    {
+      "id": "departments",
+      "name": "دورات الإدارات الأربع عشرة",
+      "status": "DEPARTMENT_WORKFLOW_EVIDENCE_REQUIRED",
+      "evidence": "docs/CONTINUATION_2026_09_28.md",
+      "nextAcceptance": "حصر خدمات ودورات كل إدارة؛ وجود الملفات وادعاءات الإغلاق القديمة لا يكفيان لنسبة حالية."
+    },
+    {
+      "id": "documents",
+      "name": "كتالوج المستندات المستهدف",
+      "status": "INVENTORY_REQUIRED",
+      "evidence": "docs",
+      "nextAcceptance": "الهدف 230 مستندًا؛ يجب جرد الملفات والنماذج والإصدارات المقبولة قبل حساب العدد."
+    },
+    {
+      "id": "executive",
+      "name": "مكتب الإدارة العليا والصلاحيات",
+      "status": "END_TO_END_EVIDENCE_REQUIRED",
+      "evidence": "docs/CONTINUATION_2026_09_28.md",
+      "nextAcceptance": "السكرتير ومسؤول المتابعة والمساعد وصلاحيات حساب الإدارة؛ إثبات التنفيذ لا اسم الوحدة فقط."
+    },
+    {
+      "id": "privacy",
+      "name": "القانونية والخصوصية والعقود والتوقيع",
+      "status": "LEGAL_AND_ACCEPTANCE_EVIDENCE_REQUIRED",
+      "evidence": "docs/PHASE_14_PUBLIC_LAUNCH_OPERATIONS.md",
+      "nextAcceptance": "سياسات وإصدارات واعتمادات ومزود توقيع مؤهل حيث يلزم؛ لا افتراض قبول خارجي."
+    },
+    {
+      "id": "backup",
+      "name": "استعادة إنتاج فعلية وPITR",
+      "status": "UNVERIFIED_RELEASE_BLOCKER",
+      "evidence": "docs/PRODUCTION_RECOVERY_RUNBOOK.md",
+      "nextAcceptance": "الاستعادات الاصطناعية لا تغلق استعادة نسخة إنتاج معزولة وRTO/RPO."
+    },
+    {
+      "id": "visual",
+      "name": "القبول البصري الشامل",
+      "status": "VISUAL_ACCEPTANCE_REQUIRED",
+      "evidence": "docs/APPROVED_UI_ACCEPTANCE.md",
+      "nextAcceptance": "البوابات السبع ومقاسات الهاتف والتابلت والكمبيوتر وقبول المستخدم."
+    },
+    {
+      "id": "pilot",
+      "name": "التجربة المحدودة",
+      "status": "UNVERIFIED_RELEASE_BLOCKER",
+      "evidence": "docs/PHASE_13_PILOT_LAUNCH.md",
+      "nextAcceptance": "منطقة واحدة ومركز مسؤول ومستخدمون محدودون وتقرير خروج معتمد."
+    },
+    {
+      "id": "launch",
+      "name": "الإطلاق العام والتشغيل المستمر",
+      "status": "UNVERIFIED_RELEASE_BLOCKER",
+      "evidence": "docs/PHASE_14_PUBLIC_LAUNCH_OPERATIONS.md",
+      "nextAcceptance": "بوابات الإطلاق واعتمادات بشرية ومراقبة واستجابة ودعم؛ لا يستنتج من نجاح CI."
+    }
+  ],
+  "deployments": {
+    "web": {
+      "sha": "05a876bb546a22c80b822330525e32990a195f18",
+      "status": "live"
+    },
+    "api": {
+      "sha": "9a3b4f81fafd73240ab5779036e90ef15af23d25",
+      "status": "live"
+    },
+    "differenceOnlyWebFilesVerified": true
+  },
+  "percentageRule": "Publish a weighted project percentage only after a complete non-overlapping approved acceptance inventory, weights, and per-item implementation/test/merge/deploy/acceptance evidence exist."
+}
