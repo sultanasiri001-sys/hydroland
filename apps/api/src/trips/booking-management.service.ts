@@ -88,6 +88,21 @@ export class BookingManagementService {
 
   private async state(tx: Prisma.TransactionClient, booking: Awaited<ReturnType<BookingManagementService['booking']>>) {
     const { trip } = booking;
+    // Read the canonical reservation in the same transaction as the booking preview.
+    // This exposes reservation health and invalidates stale commands without activating
+    // the proposed confirmation policy or disclosing other trips/resource identities.
+    const calendarEvent = await tx.calendarEvent.findUnique({ where: { referenceType_referenceId: { referenceType: 'TRIP', referenceId: trip.id } }, include: { allocations: { where: { status: 'ACTIVE' }, orderBy: { id: 'asc' }, include: { resource: true } } } });
+    const allocations = calendarEvent?.allocations ?? [];
+    const conflicts = allocations.length ? await tx.calendarAllocation.findMany({ where: { resourceId: { in: allocations.map(a => a.resourceId) }, status: 'ACTIVE', eventId: { not: calendarEvent!.id }, startsAt: { lt: trip.endsAt }, endsAt: { gt: trip.startsAt }, event: { status: 'ACTIVE' } }, orderBy: { id: 'asc' }, select: { id: true, eventId: true, resourceId: true, startsAt: true, endsAt: true, updatedAt: true } }) : [];
+    const requiredTypes = trip.type.toUpperCase().includes('BOAT') ? ['BOAT'] : trip.type.toUpperCase().includes('SHORE') ? ['SITE'] : [];
+    const calendarIssues: string[] = [];
+    if (!calendarEvent || calendarEvent.status !== 'ACTIVE') calendarIssues.push('CALENDAR_EVENT_MISSING_OR_INACTIVE');
+    if (calendarEvent && (calendarEvent.startsAt.getTime() !== trip.startsAt.getTime() || calendarEvent.endsAt.getTime() !== trip.endsAt.getTime())) calendarIssues.push('CALENDAR_TIME_MISMATCH');
+    if (allocations.some(a => !a.resource.active)) calendarIssues.push('CALENDAR_RESOURCE_INACTIVE');
+    if (allocations.some(a => a.startsAt.getTime() !== trip.startsAt.getTime() || a.endsAt.getTime() !== trip.endsAt.getTime())) calendarIssues.push('CALENDAR_ALLOCATION_TIME_MISMATCH');
+    if (requiredTypes.some(type => !allocations.some(a => a.resource.type === type && a.resource.active))) calendarIssues.push('CALENDAR_REQUIRED_RESOURCE_MISSING');
+    if (conflicts.length) calendarIssues.push('CALENDAR_RESOURCE_CONFLICT');
+    const calendarReservation = { status: calendarIssues.length ? 'NEEDS_ATTENTION' : 'RESERVED', issues: calendarIssues, activeAllocationCount: allocations.length, confirmationGateEnforced: false };
     const participants = await tx.bookingParticipant.findMany({ where: { bookingId: booking.id }, orderBy: { id: 'asc' }, select: { id: true, fullName: true, eligibilityStatus: true, certificationTitle: true, updatedAt: true } });
     const payments = await tx.payment.findMany({ where: { bookingId: booking.id }, orderBy: { id: 'asc' }, select: { id: true, status: true, currency: true, amountMinor: true, updatedAt: true } });
     const price = await tx.operationalSetting.findUnique({ where: { key: 'trip-price:' + trip.id }, select: { value: true, updatedAt: true } });
@@ -116,7 +131,7 @@ export class BookingManagementService {
     const financial: Record<string, { currency: string; status: string; count: number; amountMinor: number }> = {};
     for (const p of payments) { const key = p.currency + ':' + p.status; financial[key] ??= { currency: p.currency, status: p.status, count: 0, amountMinor: 0 }; financial[key].count++; financial[key].amountMinor += p.amountMinor; }
     const policyReview = { required: issues.length > 0, issues, states: Object.fromEntries(Object.entries(rules).map(([k, v]) => [k, v.state])), weatherGate: { ...settings, decision: evaluation.decision, reviewStatus: review?.status ?? null, forecastAt: review?.forecastAt ?? null } };
-    return { stateToken: hash([booking.id, booking.status, booking.seats, booking.updatedAt, trip, participants, payments, price, safety, confirmedSeats, settings, rules, review ? [review.id, review.snapshotHash, review.status, review.reviewedAt] : null]), participants, financial: Object.values(financial), requiredAmountMinor: amountValid ? requiredAmountMinor : null, paymentSatisfied: Boolean(captured), confirmedSeats, remainingSeats: Math.max(0, trip.capacity - confirmedSeats), safetyDecision: safety?.decision ?? null, blockers, policyReview, actions: [...(!blockers.length ? ['CONFIRM'] : []), ...(mutable ? ['CANCEL'] : [])], settings };
+    return { stateToken: hash([booking.id, booking.status, booking.seats, booking.updatedAt, trip, participants, payments, price, safety, confirmedSeats, settings, rules, calendarEvent, conflicts, review ? [review.id, review.snapshotHash, review.status, review.reviewedAt] : null]), calendarReservation, participants, financial: Object.values(financial), requiredAmountMinor: amountValid ? requiredAmountMinor : null, paymentSatisfied: Boolean(captured), confirmedSeats, remainingSeats: Math.max(0, trip.capacity - confirmedSeats), safetyDecision: safety?.decision ?? null, blockers, policyReview, actions: [...(!blockers.length ? ['CONFIRM'] : []), ...(mutable ? ['CANCEL'] : [])], settings };
   }
 
   async detail(accountId: string, id: string, mode: Mode = 'center', tripId?: string, organizationId?: string) {
