@@ -73,22 +73,25 @@ export class FinanceReceivablesWorkspaceService {
         WHERE i."id"=${financeKey('Invoice','id',receivable.invoiceId)} AND i."status" IN ('ISSUED','PAID')
           AND origin."accountId"=${financeKey('Account','id',receivable.customerAccountId)}
           AND t."organizationId"=${financeKey('Organization','id',scope.organizationId)} FOR SHARE OF i,origin,b,t`;
-      const collectable=provenance.length===1&&receivable.outstandingMinor>0&&receivable.currency==='SAR';
+      const activeShifts=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "FinanceAccountantShift" WHERE "accountantAccountId"=${financeKey('FinanceAccountantShift','accountantAccountId',accountId)} AND "centerOrgUnitId"=${financeKey('FinanceAccountantShift','centerOrgUnitId',scope.organizationId)} AND "status"='OPEN' AND "currency"='SAR'`;
+      const collectionShift=activeShifts[0]??null;
+      const collectable=provenance.length===1&&receivable.outstandingMinor>0&&receivable.currency==='SAR'&&Boolean(collectionShift);
       const from=Prisma.sql`FROM "Payment" pay JOIN "Payment" origin ON origin."bookingId"=pay."bookingId"
         WHERE origin."id"=${financeKey('Payment','id',provenance[0]?.id??null)} AND pay."status"='CAPTURED'
           AND pay."accountId"=${financeKey('Account','id',receivable.customerAccountId)} AND pay."currency"=${receivable.currency}
           AND pay."amountMinor">0 AND pay."amountMinor"<=${receivable.outstandingMinor}
           AND NOT EXISTS(SELECT 1 FROM "ReceivablePayment" used WHERE used."paymentId"=pay."id")
+          AND NOT EXISTS(SELECT 1 FROM "FinanceShiftEntry" ledger WHERE ledger."paymentId"=pay."id")
           AND NOT EXISTS(SELECT 1 FROM "Invoice" pi JOIN "Receivable" other ON other."invoiceId"=pi."id" WHERE pi."paymentId"=pay."id" AND other."id"<>${financeKey('Receivable','id',receivableId)})`;
       const counts=collectable?await tx.$queryRaw<Array<{total:bigint}>>`SELECT COUNT(*)::bigint AS total ${from}`:[{total:0n}];
       const payments=collectable?await tx.$queryRaw<Array<Record<string,unknown>>>`
         SELECT pay."id",pay."amountMinor",pay."createdAt",pay."providerReference" ${from}
         ORDER BY pay."createdAt" DESC,pay."id" DESC LIMIT ${pageSize} OFFSET ${(page-1)*pageSize}`:[];
       const collections=await tx.$queryRaw<Array<Record<string,unknown>>>`
-        SELECT rp."id",rp."amountMinor",rp."receiptNumber",rp."collectedAt",i."sequence" AS "installmentSequence"
+        SELECT rp."id",rp."amountMinor",rp."receiptNumber",rp."collectedAt",rp."shiftId",rp."collectedByAccountId",i."sequence" AS "installmentSequence"
         FROM "ReceivablePayment" rp LEFT JOIN "ReceivableInstallment" i ON i."id"=rp."installmentId"
         WHERE rp."receivableId"=${financeKey('ReceivablePayment','receivableId',receivableId)} ORDER BY rp."collectedAt" DESC,rp."id" DESC LIMIT 50`;
-      return {centerOrgUnitId:unitId,receivable,installments,collections,collectable,payments:{items:payments,page,pageSize,total:Number(counts[0].total)}};
+      return {centerOrgUnitId:unitId,receivable,installments,collections,collectable,collectionShiftId:collectionShift?.id??null,payments:{items:payments,page,pageSize,total:Number(counts[0].total)}};
     });
   }
 }

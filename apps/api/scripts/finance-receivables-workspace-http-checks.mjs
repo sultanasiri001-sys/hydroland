@@ -35,12 +35,13 @@ export async function checkReceivablesWorkspaceHttp(db,workspace,arWorkspace,shi
   check((await call('/receivables',a,{...body,installments:{}})).status,400);
   check((await call('/receivables',outsider,body)).status,403);
   const created=await call('/receivables',a,body);check(created.status,201);check(created.body.outstandingMinor,100);const id=created.body.receivableId;
-  const detail=await call(root+'/receivables/'+id,a);check(detail.status,200);check(detail.body.collectable,true);assert.ok(detail.body.payments.items.some(x=>x.id===paymentId));count++;
+  const detail=await call(root+'/receivables/'+id,a);check(detail.status,200);check(detail.body.collectable,true);assert.ok(detail.body.collectionShiftId);assert.ok(detail.body.payments.items.some(x=>x.id===paymentId));count++;
   const collection={paymentId,amountMinor:100,receiptNumber:'HTTP-100'};
   check((await call('/receivables/'+id+'/collections',a,{...collection,amountMinor:101})).status,400);
   check((await call('/receivables/'+id+'/collections',outsider,collection)).status,403);
-  const paid=await call('/receivables/'+id+'/collections',a,collection);check(paid.status,201);check(paid.body.outstandingMinor,0);
-  const final=await call(root+'/receivables/'+id,a);check(final.body.collectable,false);check(final.body.collections[0].receiptNumber,'HTTP-100');
+  const paid=await call('/receivables/'+id+'/collections',a,collection);check(paid.status,201);check(paid.body.outstandingMinor,0);assert.ok(paid.body.shiftId);count++;
+  const final=await call(root+'/receivables/'+id,a);check(final.body.collectable,false);check(final.body.collections[0].receiptNumber,'HTTP-100');check(final.body.collections[0].shiftId,paid.body.shiftId);check(final.body.collections[0].collectedByAccountId,a);
+  const ledger=await db.$queryRaw`SELECT e.\"type\"::text AS type,e.\"amountMinor\",e.\"referenceType\",e.\"referenceId\",e.\"recordedByAccountId\" FROM \"FinanceShiftEntry\" e WHERE e.\"paymentId\"=${paymentId}`;check(ledger.length,1);check(ledger[0].type,'REVENUE');check(ledger[0].amountMinor,100);check(ledger[0].referenceType,'RECEIVABLE_COLLECTION');check(ledger[0].recordedByAccountId,a);
   check((await call('/receivables/'+id+'/collections',a,collection)).status,400);
   return count;
  }finally{await app.close()}
