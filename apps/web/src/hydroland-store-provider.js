@@ -75,6 +75,6 @@
  panel.addEventListener('submit',event=>{const form=event.target.closest('[data-offer-form]');if(form){event.preventDefault();void save(form)}});
  panel.addEventListener('click',event=>{if(event.target.closest('[data-offer-refresh]'))void open();else if(event.target.closest('[data-offer-trips]'))void window.HydrolandCenterOperations?.open?.();else{const button=event.target.closest('[data-offer-status],[data-offer-delete]');if(button)void act(button)}});
  for(const name of ['hydroland:session-cleared','hydroland:portal-cleared'])document.addEventListener(name,clear);
- for(const name of ['hydroland:auth-changed','hydroland:role-changed','hydroland:profile-data-ready'])document.addEventListener(name,()=>{toggle.hidden=!eligible();if(!eligible())clear()});
+ for(const name of ['hydroland:auth-changed','hydroland:role-changed','hydroland:profile-data-ready'])document.addEventListener(name,()=>{if(!eligible())clear();queueMicrotask(()=>{toggle.hidden=!eligible()})});
  toggle.hidden=!eligible();window.HydrolandStoreProvider=Object.freeze({open});
 })();

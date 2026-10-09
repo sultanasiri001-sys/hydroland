@@ -12,14 +12,17 @@ async function setup(page,center=false){
  await page.route('**/api/v1/auth/google/config',route=>json(route,{enabled:false}));
  await page.route(/\/api\/v1\/me$/,route=>json(route,{...profile,roleAssignments:state.active?profile.roleAssignments:[]}));
  await page.route('**/api/v1/me/diver-profile',route=>json(route,{profile:null,equipment:[]}));
- await page.route('**/api/v1/center/me/overview',route=>json(route,{center:{displayName:'عالم الغوص'},metrics:{}}));
+ await page.route('**/api/v1/center/me/overview',route=>json(route,{center:{displayName:'عالم الغوص'},metrics:{newBookings:0,tripsToday:0,activeMembers:1,totalTrips:0}}));
  await page.route('**/api/v1/store/products',route=>json(route,[{...service,status:'ACTIVE'}]));
  await page.route('**/api/v1/store/courses',route=>json(route,[course]));
  await page.route('**/api/v1/store/provider/catalog',route=>json(route,{organization:{id:'org',displayName:'عالم الغوص'},products:state.products,courses:state.courses}));
  await page.goto('/',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>Boolean(window.HydrolandStoreProvider&&window.HydrolandAuth&&window.HydrolandProfile));
  await page.evaluate(async()=>{window.HydrolandAuth.acceptSession({accessToken:'store-access',refreshToken:'store-refresh'},window.HydrolandAuth.beginAuthAttempt());await window.HydrolandProfile.load()});
- if(center){await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="center"]').click()}
- await page.evaluate(()=>{window.HydrolandWorkspaceUI.show(document.getElementById('store'))});
+ if(center){
+  await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="center"]').click();
+  await expect.poll(()=>page.evaluate(()=>({role:window.HydrolandPortalAccess.getCurrentRole(),allowed:window.HydrolandPortalAccess.roleAllowed('center')}))).toEqual({role:'center',allowed:true});
+  const link=page.locator('[data-portal-label="المتجر والعروض"]');if(!await link.isVisible())await page.locator('.hl-role-dashboard [data-portal-menu]').click();await link.click();
+ }else await page.evaluate(()=>window.HydrolandWorkspaceUI.show(document.getElementById('store')));
  return state;
 }
 test('one store filters services and courses, then records a training request without a goods order',async({page})=>{
