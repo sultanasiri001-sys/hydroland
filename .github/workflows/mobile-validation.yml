@@ -14,7 +14,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci --workspace=@hydroland/mobile --include-workspace-root=false
-      - run: npm --workspace @hydroland/mobile run test
-      - run: npm --workspace @hydroland/mobile run typecheck
-      - run: npm --workspace @hydroland/mobile run build
+      - name: Diagnose npm lock resolution
+        run: |
+          pwd
+          ls -l "$GITHUB_WORKSPACE/package-lock.json"
+          node -e "const lock=require('./package-lock.json'); console.log(JSON.stringify({lockfileVersion: lock.lockfileVersion, root: lock.packages['']?.name}))"
+          npm config get package-lock
+          npm config get prefix
+      - run: npm ci --prefix "$GITHUB_WORKSPACE" --workspace=@hydroland/mobile --include-workspace-root=false
+      - run: npm --prefix "$GITHUB_WORKSPACE" --workspace @hydroland/mobile run test
+      - run: npm --prefix "$GITHUB_WORKSPACE" --workspace @hydroland/mobile run typecheck
+      - run: npm --prefix "$GITHUB_WORKSPACE" --workspace @hydroland/mobile run build
