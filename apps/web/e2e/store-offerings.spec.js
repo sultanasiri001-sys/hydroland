@@ -16,7 +16,7 @@ async function setup(page,center=false){
  await page.route('**/api/v1/store/products',route=>json(route,[{...service,status:'ACTIVE'}]));
  await page.route('**/api/v1/store/courses',route=>json(route,[course]));
  await page.route('**/api/v1/store/provider/catalog',route=>json(route,{organization:{id:'org',displayName:'عالم الغوص'},products:state.products,courses:state.courses}));
- await page.goto('/',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>Boolean(window.HydrolandStoreProvider&&window.HydrolandAuth&&window.HydrolandProfile));
+ await page.goto('/',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>Boolean(window.HydrolandPublicUI&&window.HydrolandStoreProvider&&window.HydrolandAuth&&window.HydrolandProfile));
  await page.evaluate(async()=>{window.HydrolandAuth.acceptSession({accessToken:'store-access',refreshToken:'store-refresh'},window.HydrolandAuth.beginAuthAttempt());await window.HydrolandProfile.load()});
  if(center){
   await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="center"]').click();
