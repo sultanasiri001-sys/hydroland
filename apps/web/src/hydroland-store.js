@@ -3,7 +3,7 @@
   const grid=section.querySelector('.product-grid');
   const toast=m=>{const t=document.getElementById('toast');if(!t)return;t.textContent=m;t.classList.add('visible');setTimeout(()=>t.classList.remove('visible'),2600)};
   const cart=new Map();
-  const catalog={products:[],status:'loading',filter:'all'};
+  const catalog={products:[],trips:[],status:'loading',filter:'all',typeFilter:'all'};
   const money=(v,c='SAR')=>new Intl.NumberFormat('ar-SA',{style:'currency',currency:c}).format(v/100);
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const auth=()=>window.HydrolandAuth;
@@ -30,16 +30,32 @@
     if(quantity>=product.stockQuantity){toast('لا يمكن تجاوز المخزون المتاح');return false}
     cart.set(id,{...product,quantity:quantity+1});renderCart();toast('تمت إضافة المنتج إلى السلة');return true;
   };
+  const catalogControls=document.createElement('div');catalogControls.className='hl-store-catalog-controls';catalogControls.setAttribute('role','group');catalogControls.setAttribute('aria-label','تصنيف عروض المتجر');catalogControls.innerHTML='<button type="button" data-store-type-filter="all" aria-pressed="true">الكل</button><button type="button" data-store-type-filter="products" aria-pressed="false">السلع</button><button type="button" data-store-type-filter="trips" aria-pressed="false">الرحلات</button>';grid.insertAdjacentElement('beforebegin',catalogControls);
+  catalogControls.querySelectorAll('[data-store-type-filter]').forEach(button=>button.addEventListener('click',()=>{catalog.typeFilter=button.dataset.storeTypeFilter;catalogControls.querySelectorAll('[data-store-type-filter]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));renderProducts()}));
+  const tripDate=trip=>{const value=new Date(trip.startsAt);return Number.isNaN(value.getTime())?'الموعد يحدده المركز':value.toLocaleString('ar-SA',{timeZone:'Asia/Riyadh',dateStyle:'medium',timeStyle:'short'})};
   const renderProducts=()=>{
-    const products=catalog.products.filter(product=>catalog.filter==='all'||(catalog.filter==='available'?product.stockQuantity>0:product.stockQuantity<1));
-    if(!products.length){grid.innerHTML='<article class="hl-public-empty"><span>'+(!catalog.products.length?'لا توجد منتجات متاحة حاليًا.':'لا توجد منتجات مطابقة لهذا الاختيار.')+'</span></article>';return}
-    grid.innerHTML=products.map(p=>'<article data-public-product="'+esc(p.id)+'"><div class="product-art"><svg aria-hidden="true" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 22h28l4 32H14l4-32Z"/><path d="M24 26V18a8 8 0 0 1 16 0v8M25 37h14M25 44h9"/></svg><span class="hl-product-image-state">صورة المنتج غير متاحة</span></div><small>'+esc(p.sku)+'</small><h3>'+esc(p.nameAr)+'</h3><strong>'+money(p.priceMinor,p.currency)+'</strong><small>المتوفر: '+Number(p.stockQuantity)+'</small><div class="hl-public-card-actions"><a data-public-detail="product" href="#product/'+encodeURIComponent(p.id)+'">تفاصيل المنتج</a><button type="button" data-store-add="'+esc(p.id)+'" '+(p.stockQuantity<1?'disabled':'')+'>'+(p.stockQuantity<1?'نفد المخزون':'أضف للسلة')+'</button></div></article>').join('');
+    const products=catalog.typeFilter==='trips'?[]:catalog.products.filter(product=>catalog.filter==='all'||(catalog.filter==='available'?product.stockQuantity>0:product.stockQuantity<1));
+    const trips=catalog.typeFilter==='products'?[]:catalog.trips;
+    if(!products.length&&!trips.length){grid.innerHTML='<article class="hl-public-empty"><span>'+(!catalog.products.length&&!catalog.trips.length?'لا توجد عروض متاحة حاليًا.':'لا توجد عروض مطابقة لهذا الاختيار.')+'</span></article>';return}
+    const productCards=products.map(p=>'<article data-public-product="'+esc(p.id)+'"><div class="product-art"><svg aria-hidden="true" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 22h28l4 32H14l4-32Z"/><path d="M24 26V18a8 8 0 0 1 16 0v8M25 37h14M25 44h9"/></svg><span class="hl-product-image-state">صورة المنتج غير متاحة</span></div><small>سلعة · '+esc(p.sku)+'</small><h3>'+esc(p.nameAr)+'</h3><strong>'+money(p.priceMinor,p.currency)+'</strong><small>المتوفر: '+Number(p.stockQuantity)+'</small><div class="hl-public-card-actions"><a data-public-detail="product" href="#product/'+encodeURIComponent(p.id)+'">تفاصيل المنتج</a><button type="button" data-store-add="'+esc(p.id)+'" '+(p.stockQuantity<1?'disabled':'')+'>'+(p.stockQuantity<1?'نفد المخزون':'أضف للسلة')+'</button></div></article>').join('');
+    const tripCards=trips.map(trip=>'<article data-store-trip="'+esc(trip.id)+'" data-public-service="trip"><div class="product-art"><span class="hl-product-image-state">رحلة غوص</span></div><small>رحلة · '+(String(trip.type||'').toUpperCase().includes('SHORE')?'غوص من الشاطئ':'رحلة بحرية')+'</small><h3>'+esc(trip.title)+'</h3><small>'+esc(trip.location?.locationName||trip.siteName||trip.meetingPoint||'الموقع يحدده المركز')+'</small><small>'+esc(tripDate(trip))+'</small><small>المتاح '+Number(trip.remainingSeats??trip.capacity??0)+' من '+Number(trip.capacity||0)+' مقعد</small><strong>'+esc(window.HydrolandBookings?.formatPrice?.(trip.price)||'السعر حسب بيانات الرحلة')+'</strong><div class="hl-public-card-actions"><a data-public-detail="trip" href="#trip/'+encodeURIComponent(trip.id)+'">تفاصيل الرحلة</a><button type="button" data-book="'+esc(trip.title)+'" data-trip-id="'+esc(trip.id)+'">احجز الرحلة</button></div></article>').join('');
+    grid.innerHTML=productCards+tripCards;
     grid.querySelectorAll('[data-store-add]').forEach(button=>button.addEventListener('click',()=>addToCart(button.dataset.storeAdd)));
+    window.HydrolandBookingAvailability?.refresh?.();
   };
   const loadProducts=async()=>{
-    catalog.status='loading';grid.innerHTML='<article class="hl-public-empty"><span>جارٍ تحميل المنتجات...</span></article>';
-    try{const base=auth()?.apiBase||'https://hydroland.onrender.com/api/v1';const r=await fetch(base+'/store/products');const products=await r.json();if(!r.ok||!Array.isArray(products))throw new Error();catalog.products=products.filter(product=>product&&product.id&&product.nameAr);catalog.status='ready';renderProducts()}
-    catch{catalog.products=[];catalog.status='error';grid.innerHTML='<article class="hl-public-empty"><span>تعذر تحميل المتجر من الخادم حاليًا.</span><button type="button" class="hl-store-retry">إعادة المحاولة</button></article>';grid.querySelector('.hl-store-retry')?.addEventListener('click',loadProducts)}
+    catalog.status='loading';grid.innerHTML='<article class="hl-public-empty"><span>جارٍ تحميل عروض المتجر...</span></article>';
+    try{
+      const base=auth()?.apiBase||'https://hydroland.onrender.com/api/v1';
+      const [productResult,tripResult]=await Promise.allSettled([
+        fetch(base+'/store/products').then(async response=>{if(!response.ok)throw new Error('PRODUCTS_UNAVAILABLE');const rows=await response.json();if(!Array.isArray(rows))throw new Error('INVALID_PRODUCTS');return rows}),
+        fetch(base+'/trips').then(async response=>{if(!response.ok)throw new Error('TRIPS_UNAVAILABLE');const rows=await response.json();if(!Array.isArray(rows))throw new Error('INVALID_TRIPS');return rows})
+      ]);
+      if(productResult.status!=='fulfilled')throw productResult.reason;
+      catalog.products=productResult.value.filter(product=>product&&product.id&&product.nameAr);
+      catalog.trips=tripResult.status==='fulfilled'?tripResult.value.filter(trip=>trip&&trip.id&&trip.title):[];
+      catalog.status='ready';renderProducts();
+    }catch{catalog.products=[];catalog.trips=[];catalog.status='error';grid.innerHTML='<article class="hl-public-empty"><span>تعذر تحميل عروض المتجر من الخادم حاليًا.</span><button type="button" class="hl-store-retry">إعادة المحاولة</button></article>';grid.querySelector('.hl-store-retry')?.addEventListener('click',loadProducts)}
     finally{document.dispatchEvent(new CustomEvent('hydroland:public-products-updated'))}
   };
   const loadOrders=async()=>{
