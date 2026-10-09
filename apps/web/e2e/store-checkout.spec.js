@@ -38,6 +38,8 @@ test('checkout creates one order, survives payment-record failure, and resumes p
   await page.waitForFunction(()=>Boolean(window.HydrolandWorkspaceUI));
   await page.locator('#navigation a[href="#store"]').click();
   const tripCard=page.locator('[data-store-trip="trip-store-e2e"]');await expect(tripCard).toBeVisible();await expect(tripCard).toContainText('رحلة عسير التجريبية');
+  await page.locator('[data-store-type-filter="products"]').click();await expect(tripCard).toBeHidden();await expect(page.locator('[data-public-product="product-store-e2e"]')).toBeVisible();
+  await page.locator('[data-store-type-filter="all"]').click();await expect(tripCard).toBeVisible();
   await tripCard.locator('[data-book]').click();await expect(page.locator('#booking-dialog')).toBeVisible();await expect(page.locator('#booking-title')).toHaveText('رحلة عسير التجريبية');await page.locator('#close-booking').click();
   const add=page.locator('[data-store-add="product-store-e2e"]');await expect(add).toBeVisible();await add.click();
   await expect(page.locator('.hl-store-summary')).toContainText('1 منتج');
