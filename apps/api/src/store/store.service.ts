@@ -8,7 +8,7 @@ export class StoreService {
   constructor(private readonly prisma: DatabaseService, private readonly audit: AuditService) {}
 
   listProducts() {
-    return this.prisma.storeProduct.findMany({ where: { status: 'ACTIVE' }, orderBy: { nameAr: 'asc' } });
+    return this.prisma.storeProduct.findMany({ where: { status: 'ACTIVE', OR:[{organizationId:null},{organization:{status:'ACTIVE'}}] }, include:{organization:{select:{displayName:true}}}, orderBy: { nameAr: 'asc' } });
   }
 
 
@@ -55,7 +55,7 @@ export class StoreService {
 
     return this.prisma.serializable(async (tx) => {
       const products = await tx.storeProduct.findMany({
-        where: { id: { in: normalizedItems.map((item) => item.productId) }, status: 'ACTIVE' },
+        where: { id: { in: normalizedItems.map((item) => item.productId) }, status: 'ACTIVE', OR:[{organizationId:null},{organization:{status:'ACTIVE'}}] },
       });
       const productMap = new Map(products.map((product) => [product.id, product]));
 
@@ -179,3 +179,4 @@ export class StoreService {
     });
   }
 }
+

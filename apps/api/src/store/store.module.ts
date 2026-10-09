@@ -4,5 +4,8 @@ import { AdminModule } from '../admin/admin.module';
 import { AuditModule } from '../audit/audit.module';
 import { StoreController } from './store.controller';
 import { StoreService } from './store.service';
-@Module({imports:[AuthModule,AdminModule,AuditModule],controllers:[StoreController],providers:[StoreService]})
+import { StoreOfferingsController } from './store-offerings.controller';
+import { StoreOfferingsService } from './store-offerings.service';
+@Module({imports:[AuthModule,AdminModule,AuditModule],controllers:[StoreController,StoreOfferingsController],providers:[StoreService,StoreOfferingsService]})
 export class StoreModule {}
+
