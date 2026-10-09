@@ -12,16 +12,18 @@ Implemented:
 - Collection uses the selected payment's exact amount and a receipt number; scheduled receivables require an installment and cancelled installments are denied. Each collection requires an open shift and atomically records the receipt, collector, shift link and one revenue entry with an immutable payment reference. Payments already in the shift ledger are excluded and rejected. Existing transactional guards enforce provenance, duplicate prevention and overpayment limits.
 - Detail shows installment balances and the latest 50 collection receipts. Pagination is available for receivables, eligible invoices and payment candidates.
 - Role/session fencing, duplicate-submit disabling and stale-data clearing follow the accountant workspace pattern.
+- Moyasar settlement imports use exact persisted provider payment IDs and are center scoped by the local booking's organization. Import snapshots contain only sanitized matched lines, are idempotent by content hash, and require two independent reviewer approvals before sign-off.
+- Settlement matching is read-only: it does not create ledger entries, capture/refund payments or initiate bank transfers. Older captured invoices can be synchronized ten at a time before importing; amount mismatches remain visible and cannot be approved.
 
 Validation scope:
 - Compile/type checks, finance validation and web validation/build.
-- The four core/finance TEXT/UUID PostgreSQL matrices exercise actual migrations and compiled services; added cases cover discovery isolation, pagination, cancelled/required installments, currency exclusions, receipt history and paid-state views. A concurrent creation/collection race proves a captured payment can be allocated only once; payment candidates are also checked beyond 25 records.
+- The four core/finance TEXT/UUID PostgreSQL matrices exercise actual migrations and compiled services; added cases cover discovery isolation, pagination, cancelled/required installments, currency exclusions, receipt history, paid-state views and settlement-ID migration/matching/isolation/two-review flow. A concurrent creation/collection race proves a captured payment can be allocated only once; payment candidates are also checked beyond 25 records.
 - Real HTTP controller/guard/service/database tests create and fully collect a receivable in each matrix. Token verification alone is fixture-backed.
 - Eleven browser cases cover creation with installment validation, collection with receipt evidence, overpayment prevention, pagination, empty permissions, recovery, revoked roles and delayed responses after logout.
 
 Remaining before whole-center closure:
-- Shift/day close, review and settlement persistence/UI.
-- Real-user acceptance using approved center/accountant assignments and invoice/payment evidence.
+- Manual end-user acceptance using approved center/accountant assignments and real invoice/payment evidence.
+- Production settlement-provider activation and historical payment-reference synchronization remain operator-controlled; this change does not alter integration lifecycle or provider credentials.
 - The previously observed timing-sensitive global role-revocation/marine-readiness browser checks retain their separate stability follow-up from #450.
 
 No production record is created or collected by these tests or this delivery. This UI records allocations of existing captured payments; provider capture uses the existing payment flow.

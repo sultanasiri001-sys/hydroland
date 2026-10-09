@@ -10,6 +10,7 @@ import {FinanceShiftsService} from '../dist/finance/finance-shifts.service.js';
 import {FinanceReceivablesService} from '../dist/finance/finance-receivables.service.js';
 import {FinanceShiftCloseService} from '../dist/finance/finance-shift-close.service.js';
 import {FinancePeriodCloseService} from '../dist/finance/finance-period-close.service.js';
+import {FinanceSettlementService} from '../dist/finance/finance-settlement.service.js';
 import {financeKey} from '../dist/finance/finance-native-key.js';
 import {FinancePersistenceService} from '../dist/finance/finance-persistence.service.js';
 import {PaymentsService} from '../dist/payments/payments.service.js';
@@ -17,7 +18,7 @@ import {PaymentsService} from '../dist/payments/payments.service.js';
 export async function checkReceivablesWorkspaceHttp(db,workspace,arWorkspace,shifts,ar,{a,b,outsider,unitA,invoiceId,paymentId,foreignId}){
  const tokens=new Set([a,b,outsider]);class FixtureModule{}
  Module({controllers:[FinanceController],providers:[{provide:DatabaseService,useValue:db},{provide:AuthService,useValue:{authenticateAccessToken:async token=>{if(!tokens.has(token))throw new UnauthorizedException();return {accountId:token}}}},
-  ...[[FinanceWorkspaceService,workspace],[FinanceReceivablesWorkspaceService,arWorkspace],[FinanceShiftsService,shifts],[FinanceReceivablesService,ar],[FinancePersistenceService,{}],[PaymentsService,{}],[FinanceShiftCloseService,{reviewCenters:async()=>[],pending:async()=>[]}],[FinancePeriodCloseService,{reviewCenters:async()=>[],preview:async()=>({state:'READY'}),submit:async()=>({status:'SUBMITTED'}),pending:async()=>[],decide:async()=>({status:'CLOSED'})}]].map(([provide,useValue])=>({provide,useValue}))]})(FixtureModule);
+  ...[[FinanceWorkspaceService,workspace],[FinanceReceivablesWorkspaceService,arWorkspace],[FinanceShiftsService,shifts],[FinanceReceivablesService,ar],[FinancePersistenceService,{}],[PaymentsService,{}],[FinanceShiftCloseService,{reviewCenters:async()=>[],pending:async()=>[]}],[FinancePeriodCloseService,{reviewCenters:async()=>[],preview:async()=>({state:'READY'}),submit:async()=>({status:'SUBMITTED'}),pending:async()=>[],decide:async()=>({status:'CLOSED'})}],[FinanceSettlementService,{list:async()=>[],syncPaymentReferences:async()=>({syncedCount:0,failedCount:0,remainingCount:0,batchSize:10}),import:async()=>({}),review:async()=>({})}]].map(([provide,useValue])=>({provide,useValue}))]})(FixtureModule);
  const app=await NestFactory.create(FixtureModule,{logger:false});let count=0;
  try{
   await app.listen(0,'127.0.0.1');const base=await app.getUrl();
