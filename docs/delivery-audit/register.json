@@ -1,5 +1,5 @@
 {
-  "checkedAtRiyadh": "2026-10-08T23:26:23.930572+03:00",
+  "checkedAtRiyadh": "2026-10-09T04:13:19+03:00",
   "scope": "PROVISIONAL_DELIVERY_EVIDENCE_REGISTER",
   "overallCompletionPercent": null,
   "denominatorApproved": false,
@@ -80,15 +80,15 @@
       "id": "finance-shifts",
       "name": "الوردية والتسليم المالي",
       "status": "TESTED_UNMERGED",
-      "evidence": "https://github.com/sultanasiri001-sys/hydroland/pull/448",
-      "nextAcceptance": "اختبارات الخدمة وقاعدة البيانات ناجحة؛ يلزم دمج وتحقق إنتاجي."
+      "evidence": "PR #448 merged baseline; current center finance additions are the open draft stack #450–#455.",
+      "nextAcceptance": "The stack adds the accountant workspace, receivables, shift/day close, period close and Moyasar settlement; all remain unmerged. Complete real-center operational acceptance after review and controlled release."
     },
     {
       "id": "receivables",
       "name": "الذمم والتحصيل",
       "status": "TESTED_UNMERGED",
-      "evidence": "https://github.com/sultanasiri001-sys/hydroland/pull/448",
-      "nextAcceptance": "180 حالة في أربع تركيبات للنطاق المالي كله، لا 180 حالة خاصة بهذا البند."
+      "evidence": "PR #448 merged provenance baseline; center receivables and close controls are in the open draft stack #451–#455.",
+      "nextAcceptance": "Service, PostgreSQL TEXT/UUID, HTTP and browser checks pass on the draft stack; still needs acceptance by a real center accountant after controlled release."
     },
     {
       "id": "database",
@@ -115,8 +115,8 @@
       "id": "payments",
       "name": "الدفع والاسترداد والتسوية",
       "status": "END_TO_END_EVIDENCE_REQUIRED",
-      "evidence": "docs/PHASE_14_PUBLIC_LAUNCH_OPERATIONS.md",
-      "nextAcceptance": "دورة مزود فعلية وعزل العميل والتكرار والاسترداد وفق السياسة المعتمدة."
+      "evidence": "docs/PHASE_14_PUBLIC_LAUNCH_OPERATIONS.md; docs/center-finance/SETTLEMENT_RECONCILIATION.md; draft PR #455 CI.",
+      "nextAcceptance": "Settlement import and matching pass CI without a live provider transaction. A real-account payment/settlement/refund cycle, customer isolation, idempotency, and policy acceptance remain pending."
     },
     {
       "id": "wallet",
