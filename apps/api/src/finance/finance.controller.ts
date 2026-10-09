@@ -1,6 +1,7 @@
+import { FinanceReceivablesWorkspaceService } from './finance-receivables-workspace.service';
 import { FinanceWorkspaceService } from './finance-workspace.service';
 import { financeHttp } from './finance-http';
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { FinanceEntryType } from '@prisma/client';
 import { AdminGuard } from '../admin/admin.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
@@ -14,7 +15,7 @@ type AuthenticatedRequest = { auth: { accountId: string } };
 @UseGuards(AccessTokenGuard)
 @Controller('finance')
 export class FinanceController {
-  constructor(private readonly workspace: FinanceWorkspaceService, private readonly payments: PaymentsService, private readonly finance: FinancePersistenceService, private readonly shifts: FinanceShiftsService, private readonly receivables: FinanceReceivablesService) {}
+  constructor(private readonly arWorkspace: FinanceReceivablesWorkspaceService, private readonly workspace: FinanceWorkspaceService, private readonly payments: PaymentsService, private readonly finance: FinancePersistenceService, private readonly shifts: FinanceShiftsService, private readonly receivables: FinanceReceivablesService) {}
 
   @Get('mine/payments')
   mine(@Req() request: AuthenticatedRequest) { return this.payments.mine(request.auth.accountId); }
@@ -49,14 +50,32 @@ export class FinanceController {
     return financeHttp(()=>this.shifts.acceptHandover(request.auth.accountId, handoverId));
   }
 
+  @Get('centers/:centerOrgUnitId/receivables/workspace')
+  receivablesWorkspace(@Req() request:AuthenticatedRequest,@Param('centerOrgUnitId') unitId:string,@Query('page') page:unknown,@Query('status') status:unknown) {
+    return financeHttp(()=>this.arWorkspace.list(request.auth.accountId,unitId,page,status));
+  }
+
+  @Get('centers/:centerOrgUnitId/receivable-invoices')
+  receivableInvoices(@Req() request:AuthenticatedRequest,@Param('centerOrgUnitId') unitId:string,@Query('page') page:unknown) {
+    return financeHttp(()=>this.arWorkspace.invoices(request.auth.accountId,unitId,page));
+  }
+
+  @Get('centers/:centerOrgUnitId/receivables/:receivableId')
+  receivableDetail(@Req() request:AuthenticatedRequest,@Param('centerOrgUnitId') unitId:string,@Param('receivableId') receivableId:string,@Query('page') page:unknown) {
+    return financeHttp(()=>this.arWorkspace.detail(request.auth.accountId,unitId,receivableId,page));
+  }
+
   @Post('receivables')
   createReceivable(@Req() request: AuthenticatedRequest, @Body() body: { invoiceId: string; customerAccountId: string; centerOrgUnitId: string; totalMinor: number; paidMinor?: number; dueAt: string; creditLimitMinor?: number; installments?: Array<{ sequence: number; amountMinor: number; dueAt: string }> }) {
-    return this.receivables.createDeferredInvoice(request.auth.accountId, { ...body, dueAt: new Date(body.dueAt), installments: body.installments?.map((item) => ({ ...item, dueAt: new Date(item.dueAt) })) });
+    return financeHttp(()=>{
+      if(body?.installments!=null&&!Array.isArray(body.installments))throw new Error('FINANCE_INSTALLMENT_INVALID');
+      return this.receivables.createDeferredInvoice(request.auth.accountId, { ...body, dueAt: new Date(body?.dueAt), installments: body?.installments?.map((item) => ({ ...item, dueAt: new Date(item?.dueAt) })) });
+    });
   }
 
   @Post('receivables/:receivableId/collections')
   collectReceivable(@Req() request: AuthenticatedRequest, @Param('receivableId') receivableId: string, @Body() body: { paymentId: string; amountMinor: number; receiptNumber: string; installmentId?: string }) {
-    return this.receivables.collect(request.auth.accountId, receivableId, body);
+    return financeHttp(()=>this.receivables.collect(request.auth.accountId, receivableId, body));
   }
 
   @Get('centers/:centerOrgUnitId/receivables')

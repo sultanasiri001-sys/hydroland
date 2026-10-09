@@ -175,6 +175,7 @@ model Account {
   diverEquipment DiverEquipment[]
   crewAssignments CrewAssignment[]
   payments Payment[]
+  collectedReceivablePayments ReceivablePayment[] @relation("ReceivableCollector")
   diveLogs DiveLog[]
   organizationMemberships OrganizationMember[]
   organizationsOwned Organization[] @relation("OrganizationOwner")
@@ -1290,6 +1291,7 @@ model FinanceAccountantShift {
  createdAt DateTime @default(now())
  updatedAt DateTime @updatedAt
  entries FinanceShiftEntry[]
+ receivableCollections ReceivablePayment[]
  outgoingHandovers FinanceShiftHandover[] @relation("FinanceHandoverFromShift")
  incomingHandovers FinanceShiftHandover[] @relation("FinanceHandoverToShift")
  @@index([centerOrgUnitId,status])
@@ -1376,9 +1378,14 @@ model ReceivablePayment {
  receiptNumber String @unique
  collectedAt DateTime @default(now())
  createdAt DateTime @default(now())
+ shiftId String?
+ collectedByAccountId String?
  receivable Receivable @relation(fields:[receivableId],references:[id],onDelete:Restrict)
  installment ReceivableInstallment? @relation(fields:[installmentId],references:[id],onDelete:Restrict)
+ shift FinanceAccountantShift? @relation(fields:[shiftId],references:[id],onDelete:Restrict)
+ collectedBy Account? @relation("ReceivableCollector",fields:[collectedByAccountId],references:[id],onDelete:Restrict)
  @@index([receivableId,collectedAt])
+ @@index([shiftId,collectedAt])
 }
 
 enum TrainingEnrollmentStatus {

@@ -1,3 +1,4 @@
+import {FinanceReceivablesWorkspaceService} from '../dist/finance/finance-receivables-workspace.service.js';
 import assert from 'node:assert/strict';
 import {Module,UnauthorizedException} from '@nestjs/common';
 import {NestFactory} from '@nestjs/core';
@@ -16,7 +17,7 @@ export async function checkFinanceWorkspaceHttp(db,workspace,shifts,{a,b,outside
  class FixtureModule{}
  Module({controllers:[FinanceController],providers:[
   {provide:DatabaseService,useValue:db},{provide:AuthService,useValue:{authenticateAccessToken:async token=>{if(!tokens.has(token))throw new UnauthorizedException();return {accountId:tokens.get(token)}}}},
-  {provide:FinanceWorkspaceService,useValue:workspace},{provide:FinanceShiftsService,useValue:shifts},
+  {provide:FinanceReceivablesWorkspaceService,useValue:{}},{provide:FinanceWorkspaceService,useValue:workspace},{provide:FinanceShiftsService,useValue:shifts},
   ...[FinanceReceivablesService,FinancePersistenceService,PaymentsService].map(provide=>({provide,useValue:{}}))
  ]})(FixtureModule);
  const app=await NestFactory.create(FixtureModule,{logger:false});let count=0;

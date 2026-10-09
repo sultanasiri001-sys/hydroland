@@ -51,9 +51,15 @@ export class FinanceShiftsService {
         if(payment.status!=='CAPTURED')throw new Error('FINANCE_PAYMENT_NOT_SETTLED');
         if(payment.currency!==shift.currency)throw new Error('FINANCE_PAYMENT_CURRENCY_MISMATCH');
         if(payment.amountMinor!==input.amountMinor)throw new Error('FINANCE_PAYMENT_AMOUNT_MISMATCH');
+        const used=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "FinanceShiftEntry" WHERE "paymentId"=${financeKey('FinanceShiftEntry','paymentId',input.paymentId!)} LIMIT 1`;
+        if(used.length)throw new Error('FINANCE_PAYMENT_ALREADY_LEDGERED');
       }
       const rows=await tx.$queryRaw<Array<Record<string,unknown>>>`INSERT INTO "FinanceShiftEntry" ("id","shiftId","type","amountMinor","paymentId","referenceType","referenceId","description","recordedByAccountId") VALUES (${financeKey('FinanceShiftEntry','id',randomUUID())},${financeKey('FinanceShiftEntry','shiftId',shiftId)},${input.type}::"FinanceEntryType",${input.amountMinor},${financeKey('FinanceShiftEntry','paymentId',input.paymentId??null)},${input.referenceType??null},${financeKey('FinanceShiftEntry','referenceId',input.referenceId??null)},${input.description??null},${financeKey('FinanceShiftEntry','recordedByAccountId',accountantAccountId)}) RETURNING *`;
       return rows[0];
+    }).catch(error=>{
+      const sqlState=String(error?.meta?.code??'');
+      if(sqlState==='23505'&&String(error?.message).includes('FinanceShiftEntry_paymentId_key'))throw new Error('FINANCE_PAYMENT_ALREADY_LEDGERED');
+      throw error;
     });
   }
 
