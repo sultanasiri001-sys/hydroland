@@ -18,8 +18,7 @@ Validation:
 
 Not claimed closed by this slice:
 - Manual end-user acceptance with real center/accountant assignments.
-- Receivable creation/collection UI with scoped invoice/payment selection.
-- Center shift close/review/settlement workflow and complete center-portal acceptance.
+- Real-account reconciliation acceptance and operator-controlled production settlement-provider activation.
 - Marine and organization portals, historical database adoption (#446), and real production backup/restore verification.
 
 Draft changes require successful CI and review before deployment. A successful synthetic fixture is not proof of a real production operation or backup.

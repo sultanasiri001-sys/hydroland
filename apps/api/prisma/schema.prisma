@@ -180,6 +180,8 @@ model Account {
  financeShiftCloseReviews FinanceShiftCloseSubmission[] @relation("FinanceShiftCloseReviewer")
  financePeriodCloseSubmissions FinancePeriodCloseSubmission[] @relation("FinancePeriodCloseSubmitter")
  financePeriodCloseApprovals FinancePeriodCloseApproval[] @relation("FinancePeriodCloseReviewer")
+ financeSettlementImports FinanceSettlementImport[] @relation("FinanceSettlementImportSubmitter")
+ financeSettlementReviews FinanceSettlementReview[] @relation("FinanceSettlementImportReviewer")
   diveLogs DiveLog[]
   organizationMemberships OrganizationMember[]
   organizationsOwned Organization[] @relation("OrganizationOwner")
@@ -818,6 +820,7 @@ model Payment {
   status PaymentStatus @default(CREATED)
   idempotencyKey String @unique
   providerReference String? @unique
+  moyasarPaymentId String? @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   booking Booking @relation(fields:[bookingId], references:[id], onDelete:Restrict)
@@ -903,6 +906,7 @@ model OrgUnit {
   administrativeRoutingsTo AdministrativeRouting[] @relation("AdministrativeRoutingToOrgUnit")
   financeShiftCloseSubmissions FinanceShiftCloseSubmission[]
   financePeriodCloseSubmissions FinancePeriodCloseSubmission[]
+  financeSettlementImports FinanceSettlementImport[]
 }
 model Position {
  id String @id @default(uuid())
@@ -1288,6 +1292,11 @@ enum FinancePeriodCloseReviewerRole {
   FINANCE_MANAGER
   EXECUTIVE
 }
+enum FinanceSettlementImportStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
 enum FinanceHandoverStatus {
   PENDING
   ACCEPTED
@@ -1426,6 +1435,43 @@ model FinancePeriodCloseApproval {
  reviewer Account @relation("FinancePeriodCloseReviewer",fields:[reviewerAccountId],references:[id],onDelete:Restrict)
  @@unique([submissionId,reviewerAccountId])
  @@index([reviewerAccountId,decision,createdAt])
+}
+
+model FinanceSettlementImport {
+  id String @id @default(uuid())
+  centerOrgUnitId String
+  providerSettlementId String
+  contentHash String
+  currency String
+  grossAmountMinor Int
+  feeMinor Int
+  taxMinor Int
+  matchedLineCount Int
+  mismatchedLineCount Int
+  lines Json
+  status FinanceSettlementImportStatus @default(SUBMITTED)
+  importedByAccountId String
+  submittedAt DateTime @default(now())
+  reviewedAt DateTime?
+  center OrgUnit @relation(fields:[centerOrgUnitId],references:[id],onDelete:Restrict)
+  importedBy Account @relation("FinanceSettlementImportSubmitter",fields:[importedByAccountId],references:[id],onDelete:Restrict)
+  reviews FinanceSettlementReview[]
+  @@unique([centerOrgUnitId,providerSettlementId,contentHash])
+  @@index([centerOrgUnitId,status,submittedAt])
+  @@index([importedByAccountId,status])
+}
+
+model FinanceSettlementReview {
+  id String @id @default(uuid())
+  importId String
+  reviewerAccountId String
+  decision FinancePeriodCloseApprovalDecision
+  note String?
+  createdAt DateTime @default(now())
+  settlementImport FinanceSettlementImport @relation(fields:[importId],references:[id],onDelete:Restrict)
+  reviewer Account @relation("FinanceSettlementImportReviewer",fields:[reviewerAccountId],references:[id],onDelete:Restrict)
+  @@unique([importId,reviewerAccountId])
+  @@index([reviewerAccountId,decision,createdAt])
 }
 
 model Receivable {

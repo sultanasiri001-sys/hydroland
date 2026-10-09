@@ -10,6 +10,10 @@ const closeMigration=read('prisma/migrations/20261009010000_finance_shift_close_
 const periodCloseService=read('src/finance/finance-period-close.service.ts');
 const periodCloseDomain=read('src/finance/finance-period-close.domain.ts');
 const periodCloseMigration=read('prisma/migrations/20261009020000_finance_period_close_workflow/migration.sql');
+const settlementService=read('src/finance/finance-settlement.service.ts');
+const settlementProvider=read('src/payments/moyasar-settlement-provider.service.ts');
+const paymentProvider=read('src/payments/moyasar-payment-provider.service.ts');
+const settlementMigration=read('prisma/migrations/20261010010000_finance_settlement_reconciliation/migration.sql');
 const schema=read('prisma/schema.prisma');
 must(persistence.includes('Finance requester cannot approve or reject their own entry.'),'missing finance self-approval SoD');
 must(persistence.includes('Finance posting requires segregation of duties.'),'missing posting SoD');
@@ -29,4 +33,11 @@ must(moduleFile.includes('FinancePeriodCloseService')&&controller.includes('peri
 must(periodCloseService.includes('FinancePeriodCloseApproval')&&periodCloseService.includes('assertFinancePeriodApproval')&&periodCloseService.includes('FINANCE_PERIOD_NOT_ENDED'),'period close persistence, segregation, or elapsed-period check is missing');
 must(periodCloseMigration.includes('FinancePeriodCloseApproval_submission_reviewer_key')&&periodCloseMigration.includes('FinancePeriodCloseSubmission_values_check'),'period close database constraints are missing');
 must(periodCloseDomain.includes("timeZone:'Asia/Riyadh'")&&periodCloseDomain.includes('FINANCE_PERIOD_KEY_INVALID'),'Saudi-period boundaries or period-key validation are missing');
+must(moduleFile.includes('FinanceSettlementService')&&controller.includes('settlement-imports'),'settlement reconciliation API is not wired');
+must(settlementProvider.includes("method:'GET'")&&!/method\s*:\s*'(POST|PUT|PATCH|DELETE)'/.test(settlementProvider),'settlement connector must stay read-only');
+must(paymentProvider.includes('payments:Array')&&settlementService.includes('moyasarPaymentId'),'provider payment IDs are not persisted separately from invoice IDs');
+must(settlementService.includes('t."organizationId"')&&settlementService.includes('FinanceSettlementReview')&&settlementService.includes('reviewerAccountIds.length+1'),'center scoping or two-review settlement approval is missing');
+must(settlementService.includes('paymentAmountMinor===payment.amountMinor')&&settlementService.includes('mismatchedLineCount>0')&&settlementService.includes('FINANCE_SETTLEMENT_REVIEW_SOD_VIOLATION'),'settlement payment/refund amount mismatch or maker-checker protection is missing');
+must(settlementService.includes('settlement_amount')&&settlementService.includes('transacted_at')&&!settlementService.includes('reference_number'),'settlement lines are not reduced to the safe reconciliation fields');
+must(settlementMigration.includes('format_type')&&settlementMigration.includes('FinanceSettlementImport_center_settlement_hash_key'),'settlement persistence does not support native ID types or idempotent imports');
 console.log('Finance completion validation passed');

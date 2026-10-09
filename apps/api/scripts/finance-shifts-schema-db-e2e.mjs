@@ -12,6 +12,7 @@ import {FinanceReceivablesService} from '../dist/finance/finance-receivables.ser
 import {FinanceShiftsService} from '../dist/finance/finance-shifts.service.js';
 import {FinanceShiftCloseService} from '../dist/finance/finance-shift-close.service.js';
 import {FinancePeriodCloseService} from '../dist/finance/finance-period-close.service.js';
+import {FinanceSettlementService} from '../dist/finance/finance-settlement.service.js';
 const base=new URL(process.env.DATABASE_URL??'');
 assert.equal(process.env.NODE_ENV,'test');
 assert.ok(['localhost','127.0.0.1','::1','[::1]'].includes(base.hostname),'Finance fixture requires a loopback database');
@@ -21,6 +22,7 @@ const receivableSql=await readFile(new URL('../prisma/migrations/20260923143000_
 const receivableShiftSql=await readFile(new URL('../prisma/migrations/20261009003000_receivable_collector_shift_ledger/migration.sql',import.meta.url),'utf8');
 const closeSql=await readFile(new URL('../prisma/migrations/20261009010000_finance_shift_close_reviews/migration.sql',import.meta.url),'utf8');
 const periodCloseSql=await readFile(new URL('../prisma/migrations/20261009020000_finance_period_close_workflow/migration.sql',import.meta.url),'utf8');
+const settlementSql=await readFile(new URL('../prisma/migrations/20261010010000_finance_settlement_reconciliation/migration.sql',import.meta.url),'utf8');
 let scenarios=0;
 try {
  for(const coreType of ['text','uuid'])for(const shiftType of ['text','uuid']) {
@@ -51,6 +53,7 @@ try {
    for(const statement of collectionShiftMigration.split(/;\s*(?=(?:DO\s+\$\$|CREATE\s+(?:TABLE|UNIQUE\s+INDEX|INDEX)|ALTER\s+TABLE))/i).map(s=>s.trim()).filter(Boolean))await run(statement);
    for(const statement of closeSql.split(/;\s*(?=(?:DO\s+\$\$|CREATE\s+(?:TABLE|UNIQUE\s+INDEX|INDEX)|ALTER\s+TABLE))/i).map(s=>s.trim()).filter(Boolean))await run(statement);
    for(const statement of periodCloseSql.split(/;\s*(?=(?:DO\s+\$\$|CREATE\s+(?:TABLE|UNIQUE\s+INDEX|INDEX)|ALTER\s+TABLE))/i).map(s=>s.trim()).filter(Boolean))await run(statement);
+   for(const statement of settlementSql.split(/;\s*(?=(?:DO\s+\$\$|CREATE\s+(?:TABLE|UNIQUE\s+INDEX|INDEX)|ALTER\s+TABLE))/i).map(s=>s.trim()).filter(Boolean))await run(statement);
    const id=()=>coreType==='text'?'text_'+randomUUID():randomUUID();
    const orgA=id(),orgB=id(),unitA=id(),unitB=id(),extra=id(),positionA=id(),positionB=id(),wrongPosition=id();
    const a=id(),b=id(),outsider=id(),wrong=id(),mismatch=id(),employmentB=id();
@@ -97,6 +100,19 @@ try {
    await run(`UPDATE "Payment" SET currency='USD' WHERE id=${literal(payments[0])}`);
    await rejects(service.recordEntry(a,from.id,{type:'REVENUE',amountMinor:40,paymentId:payments[0]}),'FINANCE_PAYMENT_CURRENCY_MISMATCH');
    await run(`UPDATE "Payment" SET currency='SAR' WHERE id=${literal(payments[0])}`);
+   const providerPaymentId=randomUUID(),invoiceReference=randomUUID();
+   await run(`UPDATE "Payment" SET "providerReference"=${literal(invoiceReference)} WHERE id=${literal(payments[0])}`);
+   const settlementId=randomUUID();let settlementLines=[{payment_id:providerPaymentId,type:'payment',currency:'SAR',payment_amount:40,amount:39,settlement_amount:39,fee:1,tax:0,transacted_at:'2026-10-08T10:00:00.000Z'},{payment_id:randomUUID(),type:'payment',currency:'SAR',payment_amount:75,amount:74,settlement_amount:74,fee:1,tax:0,transacted_at:'2026-10-08T10:01:00.000Z'}];
+   const settlementProvider={fetchSettlement:async id=>({id,currency:'SAR'}),listSettlementLines:async(_id,page)=>({lines:page===1?settlementLines:[],meta:{next_page:null}})};
+   const paymentProvider={fetchInvoice:async id=>({id,status:'paid',amount:40,currency:'SAR',url:'https://checkout.example.invalid',metadata:{hydroland_payment_id:payments[0],hydroland_booking_id:(await db.$queryRaw`SELECT "bookingId"::text AS id FROM "Payment" WHERE "id"::text=${payments[0]}`)[0].id},payments:[{id:providerPaymentId,status:'paid',amount:40,currency:'SAR'}]})};
+   const settlementService=new FinanceSettlementService(db,access,settlementProvider,paymentProvider);
+   const synchronized=await settlementService.syncPaymentReferences(a,unitA);assert.deepEqual(synchronized,{syncedCount:1,failedCount:0,remainingCount:0,batchSize:10});scenarios++;
+   const imported=await settlementService.import(a,unitA,settlementId);assert.equal(imported.matchedLineCount,1);assert.equal(imported.lines.length,1);assert.equal(imported.lines[0].localPaymentId,payments[0]);assert.equal(imported.mismatchedLineCount,0);scenarios++;
+   await rejects(settlementService.review(a,imported.id,'APPROVED'),'FINANCE_SETTLEMENT_REVIEW_SOD_VIOLATION');
+   const settlementFirstApproval=await settlementService.review(outsider,imported.id,'APPROVED');assert.equal(settlementFirstApproval.status,'SUBMITTED');assert.equal(settlementFirstApproval.approvalCount,1);scenarios++;
+   const settlementSecondApproval=await settlementService.review(b,imported.id,'APPROVED');assert.equal(settlementSecondApproval.status,'APPROVED');assert.equal(settlementSecondApproval.approvalCount,2);scenarios++;
+   settlementLines=[settlementLines[0],{...settlementLines[0],type:'refund',payment_amount:39}];const mismatched=await settlementService.import(a,unitA,randomUUID());assert.equal(mismatched.matchedLineCount,2);assert.equal(mismatched.mismatchedLineCount,1);await rejects(settlementService.review(outsider,mismatched.id,'APPROVED'),'FINANCE_SETTLEMENT_RECONCILIATION_BLOCKED');settlementLines=[{...settlementLines[0],type:'fee',payment_amount:39}];const feeMismatch=await settlementService.import(a,unitA,randomUUID());assert.equal(feeMismatch.matchedLineCount,1);assert.equal(feeMismatch.mismatchedLineCount,1);await rejects(settlementService.review(outsider,feeMismatch.id,'APPROVED'),'FINANCE_SETTLEMENT_RECONCILIATION_BLOCKED');scenarios++;
+   const centerImports=await settlementService.list(a,unitA);assert.equal(centerImports.length,3);assert.deepEqual(centerImports.map(row=>row.lines.length).sort(),[1,1,2]);assert.ok(centerImports.every(row=>row.lines.every(line=>line.localPaymentId===payments[0])));scenarios++;
    await service.recordEntry(a,from.id,{type:'REVENUE',amountMinor:40,paymentId:payments[0]});scenarios++;
    await assert.rejects(service.recordEntry(a,from.id,{type:'REVENUE',amountMinor:40,paymentId:payments[0]}));scenarios++;
    await rejects(service.requestHandover(a,from.id,outsider,120),'FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
