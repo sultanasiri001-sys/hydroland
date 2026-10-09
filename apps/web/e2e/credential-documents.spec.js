@@ -48,20 +48,19 @@ test('credential can be created, documented, privately opened and submitted from
   await expect(editor).not.toBeVisible();await expect.poll(()=>page.evaluate(()=>window.HydrolandProfileData?.credentials?.length)).toBe(1);
 
   const credentialArticle=certificates.locator(':scope > article').first();await expect(credentialArticle).toContainText('Rescue Diver E2E');
-  const fileInput=credentialArticle.locator('input[type="file"]');await expect(fileInput).toHaveCount(1);
+  const fileInput=credentialArticle.locator('input[data-credential-upload]');await expect(fileInput).toHaveCount(1);
   const png=Buffer.concat([Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]),Buffer.from('web-e2e')]);
   await fileInput.setInputFiles({name:'certificate.png',mimeType:'image/png',buffer:png});
   await expect.poll(()=>state.uploadedPayload?.originalName).toBe('certificate.png');
   expect(Buffer.from(state.uploadedPayload.base64,'base64').equals(png)).toBe(true);
   await expect(credentialArticle).toContainText('1 مستند');await expect(credentialArticle).toContainText('certificate.png');
 
-  const accessRequest=page.waitForRequest(request=>request.url().includes('/credentials/credential-1/documents/document-1/access'));
-  await credentialArticle.getByRole('button',{name:'عرض المستند'}).click();await accessRequest;await expect.poll(()=>state.accessRequests).toBe(1);
-
-  await credentialArticle.getByRole('button',{name:'إرسال للتحقق'}).click();
+  const submitCredential=credentialArticle.locator('[data-credential-submit]').first();await submitCredential.click();
   await expect.poll(()=>page.evaluate(()=>window.HydrolandProfileData?.credentials?.[0]?.verificationStatus)).toBe('PENDING');
-  await expect(credentialArticle.getByRole('button',{name:'إرسال للتحقق'})).toHaveCount(0);
-  await expect(credentialArticle.getByRole('button',{name:'عرض المستند'})).toBeVisible();
+  await expect(credentialArticle.locator('[data-credential-submit]').first()).toBeDisabled();
+  await expect(credentialArticle.getByRole('button',{name:'عرض المستند'}).first()).toBeVisible();
+  const accessRequest=page.waitForRequest(request=>request.url().includes('/credentials/credential-1/documents/document-1/access'));
+  await credentialArticle.getByRole('button',{name:'عرض المستند'}).first().click();await accessRequest;await expect.poll(()=>state.accessRequests).toBe(1);
 });
 
 test('admin records official organization evidence before approving a pending credential',async({page})=>{
