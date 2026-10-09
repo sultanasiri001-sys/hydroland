@@ -112,7 +112,7 @@ try {
    const settlementFirstApproval=await settlementService.review(outsider,imported.id,'APPROVED');assert.equal(settlementFirstApproval.status,'SUBMITTED');assert.equal(settlementFirstApproval.approvalCount,1);scenarios++;
    const settlementSecondApproval=await settlementService.review(b,imported.id,'APPROVED');assert.equal(settlementSecondApproval.status,'APPROVED');assert.equal(settlementSecondApproval.approvalCount,2);scenarios++;
    settlementLines=[settlementLines[0],{...settlementLines[0],type:'refund',payment_amount:39}];const mismatched=await settlementService.import(a,unitA,randomUUID());assert.equal(mismatched.matchedLineCount,2);assert.equal(mismatched.mismatchedLineCount,1);await rejects(settlementService.review(outsider,mismatched.id,'APPROVED'),'FINANCE_SETTLEMENT_RECONCILIATION_BLOCKED');
-   const centerImports=await settlementService.list(a,unitA);assert.equal(centerImports.length,2);assert.ok(centerImports.every(row=>row.lines.length===1&&row.lines.every(line=>line.localPaymentId===payments[0])));scenarios++;
+   const centerImports=await settlementService.list(a,unitA);assert.equal(centerImports.length,2);assert.deepEqual(centerImports.map(row=>row.lines.length).sort(),[1,2]);assert.ok(centerImports.every(row=>row.lines.every(line=>line.localPaymentId===payments[0])));scenarios++;
    await service.recordEntry(a,from.id,{type:'REVENUE',amountMinor:40,paymentId:payments[0]});scenarios++;
    await assert.rejects(service.recordEntry(a,from.id,{type:'REVENUE',amountMinor:40,paymentId:payments[0]}));scenarios++;
    await rejects(service.requestHandover(a,from.id,outsider,120),'FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
