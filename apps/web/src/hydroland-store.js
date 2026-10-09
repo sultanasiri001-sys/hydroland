@@ -41,6 +41,7 @@
     const tripCards=trips.map(trip=>'<article data-store-trip="'+esc(trip.id)+'" data-public-service="trip"><div class="product-art"><span class="hl-product-image-state">رحلة غوص</span></div><small>رحلة · '+(String(trip.type||'').toUpperCase().includes('SHORE')?'غوص من الشاطئ':'رحلة بحرية')+'</small><h3>'+esc(trip.title)+'</h3><small>'+esc(trip.location?.locationName||trip.siteName||trip.meetingPoint||'الموقع يحدده المركز')+'</small><small>'+esc(tripDate(trip))+'</small><small>المتاح '+Number(trip.remainingSeats??trip.capacity??0)+' من '+Number(trip.capacity||0)+' مقعد</small><strong>'+esc(window.HydrolandBookings?.formatPrice?.(trip.price)||'السعر حسب بيانات الرحلة')+'</strong><div class="hl-public-card-actions"><a data-public-detail="trip" href="#trip/'+encodeURIComponent(trip.id)+'">تفاصيل الرحلة</a><button type="button" data-book="'+esc(trip.title)+'" data-trip-id="'+esc(trip.id)+'">احجز الرحلة</button></div></article>').join('');
     grid.innerHTML=productCards+tripCards;
     grid.querySelectorAll('[data-store-add]').forEach(button=>button.addEventListener('click',()=>addToCart(button.dataset.storeAdd)));
+    grid.querySelectorAll('[data-book]').forEach(button=>button.addEventListener('click',()=>window.HydrolandBookings?.openBooking?.(button.dataset.tripId)));
     window.HydrolandBookingAvailability?.refresh?.();
   };
   const loadProducts=async()=>{
