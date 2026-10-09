@@ -11,7 +11,7 @@ const UTIL = require('node-forge/lib/util');
 
 assert.equal(JSON.parse(fs.readFileSync(forgePackagePath, 'utf8')).version, '1.4.1-0');
 const rsaSource = fs.readFileSync(require.resolve('node-forge/lib/rsa'), 'utf8');
-assert.ok(/obj\\.value\\[0\\]\\.value\\.length\\s*!==/.test(rsaSource));
+assert.ok(rsaSource.includes('obj.value[0].value.length !=='));
 
 const modulus = new JSBN.BigInteger(
   'E932AC92252F585B3A80A4DD76A897C8B7652952FE788F6EC8DD640587A1EE56' +
