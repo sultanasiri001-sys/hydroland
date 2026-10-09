@@ -37,7 +37,7 @@ must(moduleFile.includes('FinanceSettlementService')&&controller.includes('settl
 must(settlementProvider.includes("method:'GET'")&&!/method\s*:\s*'(POST|PUT|PATCH|DELETE)'/.test(settlementProvider),'settlement connector must stay read-only');
 must(paymentProvider.includes('payments:Array')&&settlementService.includes('moyasarPaymentId'),'provider payment IDs are not persisted separately from invoice IDs');
 must(settlementService.includes('t."organizationId"')&&settlementService.includes('FinanceSettlementReview')&&settlementService.includes('reviewerAccountIds.length+1'),'center scoping or two-review settlement approval is missing');
-must(settlementService.includes("['payment','refund','capture']")&&settlementService.includes('mismatchedLineCount>0')&&settlementService.includes('FINANCE_SETTLEMENT_REVIEW_SOD_VIOLATION'),'settlement payment/refund amount mismatch or maker-checker protection is missing');
+must(settlementService.includes('paymentAmountMinor===payment.amountMinor')&&settlementService.includes('mismatchedLineCount>0')&&settlementService.includes('FINANCE_SETTLEMENT_REVIEW_SOD_VIOLATION'),'settlement payment/refund amount mismatch or maker-checker protection is missing');
 must(settlementService.includes('settlement_amount')&&settlementService.includes('transacted_at')&&!settlementService.includes('reference_number'),'settlement lines are not reduced to the safe reconciliation fields');
 must(settlementMigration.includes('format_type')&&settlementMigration.includes('FinanceSettlementImport_center_settlement_hash_key'),'settlement persistence does not support native ID types or idempotent imports');
 console.log('Finance completion validation passed');
