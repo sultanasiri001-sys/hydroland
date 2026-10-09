@@ -1,0 +1,443 @@
+[
+  {
+    "table": "Account",
+    "name": "Account_personId_fkey",
+    "attributes": [
+      "definition"
+    ],
+    "production": {
+      "definition": "FOREIGN KEY (\"personId\") REFERENCES \"Person\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Account_personId_fkey",
+      "table_name": "Account",
+      "validated": true
+    },
+    "candidate": {
+      "table_name": "Account",
+      "name": "Account_personId_fkey",
+      "kind": "f",
+      "validated": true,
+      "definition": "FOREIGN KEY (\"personId\") REFERENCES \"Person\"(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+    }
+  },
+  {
+    "table": "ActivationRequest",
+    "name": "ActivationRequest_applicantId_fkey",
+    "attributes": [
+      "definition"
+    ],
+    "production": {
+      "definition": "FOREIGN KEY (\"applicantId\") REFERENCES \"Account\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "ActivationRequest_applicantId_fkey",
+      "table_name": "ActivationRequest",
+      "validated": true
+    },
+    "candidate": {
+      "table_name": "ActivationRequest",
+      "name": "ActivationRequest_applicantId_fkey",
+      "kind": "f",
+      "validated": true,
+      "definition": "FOREIGN KEY (\"applicantId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+    }
+  },
+  {
+    "table": "ActivationRequest",
+    "name": "ActivationRequest_roleAssignmentId_fkey",
+    "attributes": [
+      "definition"
+    ],
+    "production": {
+      "definition": "FOREIGN KEY (\"roleAssignmentId\") REFERENCES \"RoleAssignment\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "ActivationRequest_roleAssignmentId_fkey",
+      "table_name": "ActivationRequest",
+      "validated": true
+    },
+    "candidate": {
+      "table_name": "ActivationRequest",
+      "name": "ActivationRequest_roleAssignmentId_fkey",
+      "kind": "f",
+      "validated": true,
+      "definition": "FOREIGN KEY (\"roleAssignmentId\") REFERENCES \"RoleAssignment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+    }
+  },
+  {
+    "table": "AuditEvent",
+    "name": "AuditEvent_actorId_fkey",
+    "attributes": [
+      "definition"
+    ],
+    "production": {
+      "definition": "FOREIGN KEY (\"actorId\") REFERENCES \"Person\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "AuditEvent_actorId_fkey",
+      "table_name": "AuditEvent",
+      "validated": true
+    },
+    "candidate": {
+      "table_name": "AuditEvent",
+      "name": "AuditEvent_actorId_fkey",
+      "kind": "f",
+      "validated": true,
+      "definition": "FOREIGN KEY (\"actorId\") REFERENCES \"Person\"(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+    }
+  },
+  {
+    "table": "Booking",
+    "name": "Booking_accountId_fkey",
+    "attributes": [
+      "definition"
+    ],
+    "production": {
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Booking_accountId_fkey",
+      "table_name": "Booking",
+      "validated": true
+    },
+    "candidate": {
+      "table_name": "Booking",
+      "name": "Booking_accountId_fkey",
+      "kind": "f",
+      "validated": true,
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+    }
+  },
+  {
+    "table": "Booking",
+    "name": "Booking_tripId_fkey",
+    "attributes": [
+      "definition"
+    ],
+    "production": {
+      "definition": "FOREIGN KEY (\"tripId\") REFERENCES \"Trip\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Booking_tripId_fkey",
+      "table_name": "Booking",
+      "validated": true
+    },
+    "candidate": {
+      "table_name": "Booking",
+      "name": "Booking_tripId_fkey",
+      "kind": "f",
+      "validated": true,
+      "definition": "FOREIGN KEY (\"tripId\") REFERENCES \"Trip\"(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+    }
+  },
+  {
+    "table": "Credential",
+    "name": "Credential_personId_fkey",
+    "attributes": [
+      "definition"
+    ],
+    "production": {
+      "definition": "FOREIGN KEY (\"personId\") REFERENCES \"Person\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Credential_personId_fkey",
+      "table_name": "Credential",
+      "validated": true
+    },
+    "candidate": {
+      "table_name": "Credential",
+      "name": "Credential_personId_fkey",
+      "kind": "f",
+      "validated": true,
+      "definition": "FOREIGN KEY (\"personId\") REFERENCES \"Person\"(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+    }
+  },
+  {
+    "table": "Document",
+    "name": "Document_credentialId_fkey",
+    "attributes": [
+      "definition"
+    ],
+    "production": {
+      "definition": "FOREIGN KEY (\"credentialId\") REFERENCES \"Credential\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Document_credentialId_fkey",
+      "table_name": "Document",
+      "validated": true
+    },
+    "candidate": {
+      "table_name": "Document",
+      "name": "Document_credentialId_fkey",
+      "kind": "f",
+      "validated": true,
+      "definition": "FOREIGN KEY (\"credentialId\") REFERENCES \"Credential\"(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+    }
+  },
+  {
+    "table": "Invoice",
+    "name": "Invoice_paymentId_fkey",
+    "attributes": [
+      "definition"
+    ],
+    "production": {
+      "definition": "FOREIGN KEY (\"paymentId\") REFERENCES \"Payment\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Invoice_paymentId_fkey",
+      "table_name": "Invoice",
+      "validated": true
+    },
+    "candidate": {
+      "table_name": "Invoice",
+      "name": "Invoice_paymentId_fkey",
+      "kind": "f",
+      "validated": true,
+      "definition": "FOREIGN KEY (\"paymentId\") REFERENCES \"Payment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+    }
+  },
+  {
+    "table": "Notification",
+    "name": "Notification_accountId_fkey",
+    "attributes": [
+      "definition"
+    ],
+    "production": {
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Notification_accountId_fkey",
+      "table_name": "Notification",
+      "validated": true
+    },
+    "candidate": {
+      "table_name": "Notification",
+      "name": "Notification_accountId_fkey",
+      "kind": "f",
+      "validated": true,
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+    }
+  },
+  {
+    "table": "Organization",
+    "name": "Organization_ownerId_fkey",
+    "attributes": [
+      "definition"
+    ],
+    "production": {
+      "definition": "FOREIGN KEY (\"ownerId\") REFERENCES \"Account\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Organization_ownerId_fkey",
+      "table_name": "Organization",
+      "validated": true
+    },
+    "candidate": {
+      "table_name": "Organization",
+      "name": "Organization_ownerId_fkey",
+      "kind": "f",
+      "validated": true,
+      "definition": "FOREIGN KEY (\"ownerId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+    }
+  },
+  {
+    "table": "OrganizationMember",
+    "name": "OrganizationMember_accountId_fkey",
+    "attributes": [
+      "definition"
+    ],
+    "production": {
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "OrganizationMember_accountId_fkey",
+      "table_name": "OrganizationMember",
+      "validated": true
+    },
+    "candidate": {
+      "table_name": "OrganizationMember",
+      "name": "OrganizationMember_accountId_fkey",
+      "kind": "f",
+      "validated": true,
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+    }
+  },
+  {
+    "table": "OrganizationMember",
+    "name": "OrganizationMember_organizationId_fkey",
+    "attributes": [
+      "definition"
+    ],
+    "production": {
+      "definition": "FOREIGN KEY (\"organizationId\") REFERENCES \"Organization\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "OrganizationMember_organizationId_fkey",
+      "table_name": "OrganizationMember",
+      "validated": true
+    },
+    "candidate": {
+      "table_name": "OrganizationMember",
+      "name": "OrganizationMember_organizationId_fkey",
+      "kind": "f",
+      "validated": true,
+      "definition": "FOREIGN KEY (\"organizationId\") REFERENCES \"Organization\"(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+    }
+  },
+  {
+    "table": "Payment",
+    "name": "Payment_accountId_fkey",
+    "attributes": [
+      "definition"
+    ],
+    "production": {
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Payment_accountId_fkey",
+      "table_name": "Payment",
+      "validated": true
+    },
+    "candidate": {
+      "table_name": "Payment",
+      "name": "Payment_accountId_fkey",
+      "kind": "f",
+      "validated": true,
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+    }
+  },
+  {
+    "table": "Payment",
+    "name": "Payment_bookingId_fkey",
+    "attributes": [
+      "definition"
+    ],
+    "production": {
+      "definition": "FOREIGN KEY (\"bookingId\") REFERENCES \"Booking\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Payment_bookingId_fkey",
+      "table_name": "Payment",
+      "validated": true
+    },
+    "candidate": {
+      "table_name": "Payment",
+      "name": "Payment_bookingId_fkey",
+      "kind": "f",
+      "validated": true,
+      "definition": "FOREIGN KEY (\"bookingId\") REFERENCES \"Booking\"(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+    }
+  },
+  {
+    "table": "ProfessionalProfile",
+    "name": "ProfessionalProfile_personId_fkey",
+    "attributes": [
+      "definition"
+    ],
+    "production": {
+      "definition": "FOREIGN KEY (\"personId\") REFERENCES \"Person\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "ProfessionalProfile_personId_fkey",
+      "table_name": "ProfessionalProfile",
+      "validated": true
+    },
+    "candidate": {
+      "table_name": "ProfessionalProfile",
+      "name": "ProfessionalProfile_personId_fkey",
+      "kind": "f",
+      "validated": true,
+      "definition": "FOREIGN KEY (\"personId\") REFERENCES \"Person\"(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+    }
+  },
+  {
+    "table": "ReviewDecision",
+    "name": "ReviewDecision_activationRequestId_fkey",
+    "attributes": [
+      "definition"
+    ],
+    "production": {
+      "definition": "FOREIGN KEY (\"activationRequestId\") REFERENCES \"ActivationRequest\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "ReviewDecision_activationRequestId_fkey",
+      "table_name": "ReviewDecision",
+      "validated": true
+    },
+    "candidate": {
+      "table_name": "ReviewDecision",
+      "name": "ReviewDecision_activationRequestId_fkey",
+      "kind": "f",
+      "validated": true,
+      "definition": "FOREIGN KEY (\"activationRequestId\") REFERENCES \"ActivationRequest\"(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+    }
+  },
+  {
+    "table": "ReviewDecision",
+    "name": "ReviewDecision_reviewerId_fkey",
+    "attributes": [
+      "definition"
+    ],
+    "production": {
+      "definition": "FOREIGN KEY (\"reviewerId\") REFERENCES \"Account\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "ReviewDecision_reviewerId_fkey",
+      "table_name": "ReviewDecision",
+      "validated": true
+    },
+    "candidate": {
+      "table_name": "ReviewDecision",
+      "name": "ReviewDecision_reviewerId_fkey",
+      "kind": "f",
+      "validated": true,
+      "definition": "FOREIGN KEY (\"reviewerId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+    }
+  },
+  {
+    "table": "RoleAssignment",
+    "name": "RoleAssignment_accountId_fkey",
+    "attributes": [
+      "definition"
+    ],
+    "production": {
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "RoleAssignment_accountId_fkey",
+      "table_name": "RoleAssignment",
+      "validated": true
+    },
+    "candidate": {
+      "table_name": "RoleAssignment",
+      "name": "RoleAssignment_accountId_fkey",
+      "kind": "f",
+      "validated": true,
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+    }
+  },
+  {
+    "table": "SafetyChecklist",
+    "name": "SafetyChecklist_tripId_fkey",
+    "attributes": [
+      "definition"
+    ],
+    "production": {
+      "definition": "FOREIGN KEY (\"tripId\") REFERENCES \"Trip\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "SafetyChecklist_tripId_fkey",
+      "table_name": "SafetyChecklist",
+      "validated": true
+    },
+    "candidate": {
+      "table_name": "SafetyChecklist",
+      "name": "SafetyChecklist_tripId_fkey",
+      "kind": "f",
+      "validated": true,
+      "definition": "FOREIGN KEY (\"tripId\") REFERENCES \"Trip\"(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+    }
+  },
+  {
+    "table": "Session",
+    "name": "Session_accountId_fkey",
+    "attributes": [
+      "definition"
+    ],
+    "production": {
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON DELETE CASCADE",
+      "kind": "f",
+      "name": "Session_accountId_fkey",
+      "table_name": "Session",
+      "validated": true
+    },
+    "candidate": {
+      "table_name": "Session",
+      "name": "Session_accountId_fkey",
+      "kind": "f",
+      "validated": true,
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    }
+  }
+]

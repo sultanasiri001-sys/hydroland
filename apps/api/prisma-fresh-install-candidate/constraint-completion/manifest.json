@@ -1,0 +1,8 @@
+{
+  "migrationName": "00000000000003_production_constraint_completion",
+  "sha256": "6b9677d0b1dc44e2f0b8b1b9aea80757168cdabeb5181de638a3ec083d16980b",
+  "catalogSha256": "271edfa0e99d80c936999ef328b69e33b5488aff47ca0e144b9ac017f9ee5a8c",
+  "foreignKeys": 15,
+  "checks": 24,
+  "productionApproved": false
+}

@@ -1,0 +1,2281 @@
+{
+  "source": "Read-only production PostgreSQL 18 catalog, 2026-10-08; schema metadata only",
+  "columns": [
+    {
+      "default_sql": null,
+      "name": "id",
+      "not_null": true,
+      "position": 1,
+      "table_name": "ComplianceAssessment",
+      "type": "uuid"
+    },
+    {
+      "default_sql": null,
+      "name": "tripId",
+      "not_null": true,
+      "position": 2,
+      "table_name": "ComplianceAssessment",
+      "type": "uuid"
+    },
+    {
+      "default_sql": null,
+      "name": "safetyChecklistId",
+      "not_null": false,
+      "position": 3,
+      "table_name": "ComplianceAssessment",
+      "type": "uuid"
+    },
+    {
+      "default_sql": null,
+      "name": "decision",
+      "not_null": true,
+      "position": 4,
+      "table_name": "ComplianceAssessment",
+      "type": "text"
+    },
+    {
+      "default_sql": null,
+      "name": "results",
+      "not_null": true,
+      "position": 5,
+      "table_name": "ComplianceAssessment",
+      "type": "jsonb"
+    },
+    {
+      "default_sql": null,
+      "name": "assessedByAccountId",
+      "not_null": false,
+      "position": 6,
+      "table_name": "ComplianceAssessment",
+      "type": "uuid"
+    },
+    {
+      "default_sql": "CURRENT_TIMESTAMP",
+      "name": "assessedAt",
+      "not_null": true,
+      "position": 7,
+      "table_name": "ComplianceAssessment",
+      "type": "timestamp(3) without time zone"
+    },
+    {
+      "default_sql": "CURRENT_TIMESTAMP",
+      "name": "createdAt",
+      "not_null": true,
+      "position": 8,
+      "table_name": "ComplianceAssessment",
+      "type": "timestamp(3) without time zone"
+    },
+    {
+      "default_sql": null,
+      "name": "id",
+      "not_null": true,
+      "position": 1,
+      "table_name": "ComplianceEvidence",
+      "type": "uuid"
+    },
+    {
+      "default_sql": null,
+      "name": "assessmentId",
+      "not_null": true,
+      "position": 2,
+      "table_name": "ComplianceEvidence",
+      "type": "uuid"
+    },
+    {
+      "default_sql": null,
+      "name": "controlId",
+      "not_null": true,
+      "position": 3,
+      "table_name": "ComplianceEvidence",
+      "type": "text"
+    },
+    {
+      "default_sql": null,
+      "name": "evidenceType",
+      "not_null": true,
+      "position": 4,
+      "table_name": "ComplianceEvidence",
+      "type": "text"
+    },
+    {
+      "default_sql": null,
+      "name": "reference",
+      "not_null": false,
+      "position": 5,
+      "table_name": "ComplianceEvidence",
+      "type": "text"
+    },
+    {
+      "default_sql": null,
+      "name": "validFrom",
+      "not_null": false,
+      "position": 6,
+      "table_name": "ComplianceEvidence",
+      "type": "timestamp(3) without time zone"
+    },
+    {
+      "default_sql": null,
+      "name": "validUntil",
+      "not_null": false,
+      "position": 7,
+      "table_name": "ComplianceEvidence",
+      "type": "timestamp(3) without time zone"
+    },
+    {
+      "default_sql": "false",
+      "name": "verified",
+      "not_null": true,
+      "position": 8,
+      "table_name": "ComplianceEvidence",
+      "type": "boolean"
+    },
+    {
+      "default_sql": null,
+      "name": "metadata",
+      "not_null": false,
+      "position": 9,
+      "table_name": "ComplianceEvidence",
+      "type": "jsonb"
+    },
+    {
+      "default_sql": "CURRENT_TIMESTAMP",
+      "name": "createdAt",
+      "not_null": true,
+      "position": 10,
+      "table_name": "ComplianceEvidence",
+      "type": "timestamp(3) without time zone"
+    },
+    {
+      "default_sql": null,
+      "name": "updatedAt",
+      "not_null": true,
+      "position": 11,
+      "table_name": "ComplianceEvidence",
+      "type": "timestamp(3) without time zone"
+    },
+    {
+      "default_sql": null,
+      "name": "id",
+      "not_null": true,
+      "position": 1,
+      "table_name": "TrainingCourse",
+      "type": "uuid"
+    },
+    {
+      "default_sql": null,
+      "name": "title",
+      "not_null": true,
+      "position": 2,
+      "table_name": "TrainingCourse",
+      "type": "text"
+    },
+    {
+      "default_sql": null,
+      "name": "description",
+      "not_null": false,
+      "position": 3,
+      "table_name": "TrainingCourse",
+      "type": "text"
+    },
+    {
+      "default_sql": null,
+      "name": "level",
+      "not_null": false,
+      "position": 4,
+      "table_name": "TrainingCourse",
+      "type": "text"
+    },
+    {
+      "default_sql": "20",
+      "name": "capacity",
+      "not_null": true,
+      "position": 5,
+      "table_name": "TrainingCourse",
+      "type": "integer"
+    },
+    {
+      "default_sql": "'DRAFT'::\"TrainingCourseStatus\"",
+      "name": "status",
+      "not_null": true,
+      "position": 6,
+      "table_name": "TrainingCourse",
+      "type": "\"TrainingCourseStatus\""
+    },
+    {
+      "default_sql": null,
+      "name": "instructorAccountId",
+      "not_null": true,
+      "position": 7,
+      "table_name": "TrainingCourse",
+      "type": "uuid"
+    },
+    {
+      "default_sql": "CURRENT_TIMESTAMP",
+      "name": "createdAt",
+      "not_null": true,
+      "position": 8,
+      "table_name": "TrainingCourse",
+      "type": "timestamp(3) without time zone"
+    },
+    {
+      "default_sql": null,
+      "name": "updatedAt",
+      "not_null": true,
+      "position": 9,
+      "table_name": "TrainingCourse",
+      "type": "timestamp(3) without time zone"
+    },
+    {
+      "default_sql": null,
+      "name": "id",
+      "not_null": true,
+      "position": 1,
+      "table_name": "WorkforceCenterDepartment",
+      "type": "uuid"
+    },
+    {
+      "default_sql": null,
+      "name": "organizationId",
+      "not_null": true,
+      "position": 2,
+      "table_name": "WorkforceCenterDepartment",
+      "type": "uuid"
+    },
+    {
+      "default_sql": null,
+      "name": "departmentId",
+      "not_null": true,
+      "position": 3,
+      "table_name": "WorkforceCenterDepartment",
+      "type": "uuid"
+    },
+    {
+      "default_sql": "'LOCKED'::\"WorkforceCenterDepartmentStatus\"",
+      "name": "status",
+      "not_null": true,
+      "position": 4,
+      "table_name": "WorkforceCenterDepartment",
+      "type": "\"WorkforceCenterDepartmentStatus\""
+    },
+    {
+      "default_sql": "false",
+      "name": "managerAccessEnabled",
+      "not_null": true,
+      "position": 5,
+      "table_name": "WorkforceCenterDepartment",
+      "type": "boolean"
+    },
+    {
+      "default_sql": null,
+      "name": "updatedById",
+      "not_null": false,
+      "position": 6,
+      "table_name": "WorkforceCenterDepartment",
+      "type": "uuid"
+    },
+    {
+      "default_sql": null,
+      "name": "activatedAt",
+      "not_null": false,
+      "position": 7,
+      "table_name": "WorkforceCenterDepartment",
+      "type": "timestamp(3) without time zone"
+    },
+    {
+      "default_sql": "CURRENT_TIMESTAMP",
+      "name": "lockedAt",
+      "not_null": false,
+      "position": 8,
+      "table_name": "WorkforceCenterDepartment",
+      "type": "timestamp(3) without time zone"
+    },
+    {
+      "default_sql": "CURRENT_TIMESTAMP",
+      "name": "createdAt",
+      "not_null": true,
+      "position": 9,
+      "table_name": "WorkforceCenterDepartment",
+      "type": "timestamp(3) without time zone"
+    },
+    {
+      "default_sql": null,
+      "name": "updatedAt",
+      "not_null": true,
+      "position": 10,
+      "table_name": "WorkforceCenterDepartment",
+      "type": "timestamp(3) without time zone"
+    },
+    {
+      "default_sql": "'L1'::text",
+      "name": "maxLevel",
+      "not_null": true,
+      "position": 11,
+      "table_name": "WorkforceCenterDepartment",
+      "type": "text"
+    },
+    {
+      "default_sql": null,
+      "name": "id",
+      "not_null": true,
+      "position": 1,
+      "table_name": "WorkforceDepartment",
+      "type": "uuid"
+    },
+    {
+      "default_sql": null,
+      "name": "code",
+      "not_null": true,
+      "position": 2,
+      "table_name": "WorkforceDepartment",
+      "type": "text"
+    },
+    {
+      "default_sql": null,
+      "name": "nameAr",
+      "not_null": true,
+      "position": 3,
+      "table_name": "WorkforceDepartment",
+      "type": "text"
+    },
+    {
+      "default_sql": null,
+      "name": "nameEn",
+      "not_null": true,
+      "position": 4,
+      "table_name": "WorkforceDepartment",
+      "type": "text"
+    },
+    {
+      "default_sql": null,
+      "name": "description",
+      "not_null": false,
+      "position": 5,
+      "table_name": "WorkforceDepartment",
+      "type": "text"
+    },
+    {
+      "default_sql": "'ENABLED'::\"WorkforceDepartmentStatus\"",
+      "name": "status",
+      "not_null": true,
+      "position": 6,
+      "table_name": "WorkforceDepartment",
+      "type": "\"WorkforceDepartmentStatus\""
+    },
+    {
+      "default_sql": "false",
+      "name": "isHumanResources",
+      "not_null": true,
+      "position": 7,
+      "table_name": "WorkforceDepartment",
+      "type": "boolean"
+    },
+    {
+      "default_sql": "0",
+      "name": "displayOrder",
+      "not_null": true,
+      "position": 8,
+      "table_name": "WorkforceDepartment",
+      "type": "integer"
+    },
+    {
+      "default_sql": "CURRENT_TIMESTAMP",
+      "name": "createdAt",
+      "not_null": true,
+      "position": 9,
+      "table_name": "WorkforceDepartment",
+      "type": "timestamp(3) without time zone"
+    },
+    {
+      "default_sql": null,
+      "name": "updatedAt",
+      "not_null": true,
+      "position": 10,
+      "table_name": "WorkforceDepartment",
+      "type": "timestamp(3) without time zone"
+    },
+    {
+      "default_sql": null,
+      "name": "id",
+      "not_null": true,
+      "position": 1,
+      "table_name": "WorkforceHiringRequest",
+      "type": "uuid"
+    },
+    {
+      "default_sql": null,
+      "name": "organizationId",
+      "not_null": true,
+      "position": 2,
+      "table_name": "WorkforceHiringRequest",
+      "type": "uuid"
+    },
+    {
+      "default_sql": null,
+      "name": "departmentId",
+      "not_null": true,
+      "position": 3,
+      "table_name": "WorkforceHiringRequest",
+      "type": "uuid"
+    },
+    {
+      "default_sql": null,
+      "name": "positionId",
+      "not_null": true,
+      "position": 4,
+      "table_name": "WorkforceHiringRequest",
+      "type": "uuid"
+    },
+    {
+      "default_sql": null,
+      "name": "candidateAccountId",
+      "not_null": true,
+      "position": 5,
+      "table_name": "WorkforceHiringRequest",
+      "type": "uuid"
+    },
+    {
+      "default_sql": null,
+      "name": "targetSeatId",
+      "not_null": false,
+      "position": 6,
+      "table_name": "WorkforceHiringRequest",
+      "type": "uuid"
+    },
+    {
+      "default_sql": null,
+      "name": "requestedById",
+      "not_null": true,
+      "position": 7,
+      "table_name": "WorkforceHiringRequest",
+      "type": "uuid"
+    },
+    {
+      "default_sql": null,
+      "name": "reviewedById",
+      "not_null": false,
+      "position": 8,
+      "table_name": "WorkforceHiringRequest",
+      "type": "uuid"
+    },
+    {
+      "default_sql": "'PENDING_HR_REVIEW'::\"WorkforceHiringRequestStatus\"",
+      "name": "status",
+      "not_null": true,
+      "position": 9,
+      "table_name": "WorkforceHiringRequest",
+      "type": "\"WorkforceHiringRequestStatus\""
+    },
+    {
+      "default_sql": null,
+      "name": "justification",
+      "not_null": false,
+      "position": 10,
+      "table_name": "WorkforceHiringRequest",
+      "type": "text"
+    },
+    {
+      "default_sql": null,
+      "name": "reviewNote",
+      "not_null": false,
+      "position": 11,
+      "table_name": "WorkforceHiringRequest",
+      "type": "text"
+    },
+    {
+      "default_sql": null,
+      "name": "reviewedAt",
+      "not_null": false,
+      "position": 12,
+      "table_name": "WorkforceHiringRequest",
+      "type": "timestamp(3) without time zone"
+    },
+    {
+      "default_sql": null,
+      "name": "assignedAt",
+      "not_null": false,
+      "position": 13,
+      "table_name": "WorkforceHiringRequest",
+      "type": "timestamp(3) without time zone"
+    },
+    {
+      "default_sql": "CURRENT_TIMESTAMP",
+      "name": "createdAt",
+      "not_null": true,
+      "position": 14,
+      "table_name": "WorkforceHiringRequest",
+      "type": "timestamp(3) without time zone"
+    },
+    {
+      "default_sql": null,
+      "name": "updatedAt",
+      "not_null": true,
+      "position": 15,
+      "table_name": "WorkforceHiringRequest",
+      "type": "timestamp(3) without time zone"
+    },
+    {
+      "default_sql": null,
+      "name": "hrReviewedById",
+      "not_null": false,
+      "position": 16,
+      "table_name": "WorkforceHiringRequest",
+      "type": "uuid"
+    },
+    {
+      "default_sql": "'HUMAN_RESOURCES'::\"WorkforceHiringRequestSource\"",
+      "name": "source",
+      "not_null": true,
+      "position": 17,
+      "table_name": "WorkforceHiringRequest",
+      "type": "\"WorkforceHiringRequestSource\""
+    },
+    {
+      "default_sql": null,
+      "name": "hrVerification",
+      "not_null": false,
+      "position": 18,
+      "table_name": "WorkforceHiringRequest",
+      "type": "jsonb"
+    },
+    {
+      "default_sql": null,
+      "name": "hrNote",
+      "not_null": false,
+      "position": 19,
+      "table_name": "WorkforceHiringRequest",
+      "type": "text"
+    },
+    {
+      "default_sql": null,
+      "name": "hrReviewedAt",
+      "not_null": false,
+      "position": 20,
+      "table_name": "WorkforceHiringRequest",
+      "type": "timestamp(3) without time zone"
+    },
+    {
+      "default_sql": null,
+      "name": "id",
+      "not_null": true,
+      "position": 1,
+      "table_name": "WorkforcePosition",
+      "type": "uuid"
+    },
+    {
+      "default_sql": null,
+      "name": "departmentId",
+      "not_null": true,
+      "position": 2,
+      "table_name": "WorkforcePosition",
+      "type": "uuid"
+    },
+    {
+      "default_sql": null,
+      "name": "code",
+      "not_null": true,
+      "position": 3,
+      "table_name": "WorkforcePosition",
+      "type": "text"
+    },
+    {
+      "default_sql": null,
+      "name": "titleAr",
+      "not_null": true,
+      "position": 4,
+      "table_name": "WorkforcePosition",
+      "type": "text"
+    },
+    {
+      "default_sql": null,
+      "name": "titleEn",
+      "not_null": true,
+      "position": 5,
+      "table_name": "WorkforcePosition",
+      "type": "text"
+    },
+    {
+      "default_sql": null,
+      "name": "tier",
+      "not_null": true,
+      "position": 6,
+      "table_name": "WorkforcePosition",
+      "type": "\"WorkforcePositionTier\""
+    },
+    {
+      "default_sql": null,
+      "name": "parentPositionId",
+      "not_null": false,
+      "position": 7,
+      "table_name": "WorkforcePosition",
+      "type": "uuid"
+    },
+    {
+      "default_sql": "true",
+      "name": "aiEnabled",
+      "not_null": true,
+      "position": 8,
+      "table_name": "WorkforcePosition",
+      "type": "boolean"
+    },
+    {
+      "default_sql": "false",
+      "name": "humanEnabled",
+      "not_null": true,
+      "position": 9,
+      "table_name": "WorkforcePosition",
+      "type": "boolean"
+    },
+    {
+      "default_sql": "'AI_ONLY'::\"WorkforceMode\"",
+      "name": "mode",
+      "not_null": true,
+      "position": 10,
+      "table_name": "WorkforcePosition",
+      "type": "\"WorkforceMode\""
+    },
+    {
+      "default_sql": "false",
+      "name": "externalLiaisonEligible",
+      "not_null": true,
+      "position": 11,
+      "table_name": "WorkforcePosition",
+      "type": "boolean"
+    },
+    {
+      "default_sql": "false",
+      "name": "canManageExternalCenter",
+      "not_null": true,
+      "position": 12,
+      "table_name": "WorkforcePosition",
+      "type": "boolean"
+    },
+    {
+      "default_sql": null,
+      "name": "permissions",
+      "not_null": false,
+      "position": 13,
+      "table_name": "WorkforcePosition",
+      "type": "jsonb"
+    },
+    {
+      "default_sql": "0",
+      "name": "displayOrder",
+      "not_null": true,
+      "position": 14,
+      "table_name": "WorkforcePosition",
+      "type": "integer"
+    },
+    {
+      "default_sql": "CURRENT_TIMESTAMP",
+      "name": "createdAt",
+      "not_null": true,
+      "position": 15,
+      "table_name": "WorkforcePosition",
+      "type": "timestamp(3) without time zone"
+    },
+    {
+      "default_sql": null,
+      "name": "updatedAt",
+      "not_null": true,
+      "position": 16,
+      "table_name": "WorkforcePosition",
+      "type": "timestamp(3) without time zone"
+    },
+    {
+      "default_sql": null,
+      "name": "id",
+      "not_null": true,
+      "position": 1,
+      "table_name": "WorkforceSeat",
+      "type": "uuid"
+    },
+    {
+      "default_sql": null,
+      "name": "positionId",
+      "not_null": true,
+      "position": 2,
+      "table_name": "WorkforceSeat",
+      "type": "uuid"
+    },
+    {
+      "default_sql": null,
+      "name": "accountId",
+      "not_null": false,
+      "position": 3,
+      "table_name": "WorkforceSeat",
+      "type": "uuid"
+    },
+    {
+      "default_sql": null,
+      "name": "organizationId",
+      "not_null": false,
+      "position": 4,
+      "table_name": "WorkforceSeat",
+      "type": "uuid"
+    },
+    {
+      "default_sql": "'HEADQUARTERS'::\"WorkforceSeatScope\"",
+      "name": "scope",
+      "not_null": true,
+      "position": 5,
+      "table_name": "WorkforceSeat",
+      "type": "\"WorkforceSeatScope\""
+    },
+    {
+      "default_sql": "'LOCKED'::\"WorkforceSeatAccessStatus\"",
+      "name": "accessStatus",
+      "not_null": true,
+      "position": 6,
+      "table_name": "WorkforceSeat",
+      "type": "\"WorkforceSeatAccessStatus\""
+    },
+    {
+      "default_sql": null,
+      "name": "label",
+      "not_null": false,
+      "position": 7,
+      "table_name": "WorkforceSeat",
+      "type": "text"
+    },
+    {
+      "default_sql": null,
+      "name": "administrativeManagerSeatId",
+      "not_null": false,
+      "position": 8,
+      "table_name": "WorkforceSeat",
+      "type": "uuid"
+    },
+    {
+      "default_sql": null,
+      "name": "technicalDepartmentId",
+      "not_null": false,
+      "position": 9,
+      "table_name": "WorkforceSeat",
+      "type": "uuid"
+    },
+    {
+      "default_sql": null,
+      "name": "enabledAt",
+      "not_null": false,
+      "position": 10,
+      "table_name": "WorkforceSeat",
+      "type": "timestamp(3) without time zone"
+    },
+    {
+      "default_sql": null,
+      "name": "disabledAt",
+      "not_null": false,
+      "position": 11,
+      "table_name": "WorkforceSeat",
+      "type": "timestamp(3) without time zone"
+    },
+    {
+      "default_sql": "CURRENT_TIMESTAMP",
+      "name": "createdAt",
+      "not_null": true,
+      "position": 12,
+      "table_name": "WorkforceSeat",
+      "type": "timestamp(3) without time zone"
+    },
+    {
+      "default_sql": null,
+      "name": "updatedAt",
+      "not_null": true,
+      "position": 13,
+      "table_name": "WorkforceSeat",
+      "type": "timestamp(3) without time zone"
+    }
+  ],
+  "constraints": [
+    {
+      "columns": [
+        "assessedAt"
+      ],
+      "definition": "NOT NULL \"assessedAt\"",
+      "kind": "n",
+      "name": "ComplianceAssessment_assessedAt_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "ComplianceAssessment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "assessedByAccountId"
+      ],
+      "definition": "FOREIGN KEY (\"assessedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE SET NULL",
+      "kind": "f",
+      "name": "ComplianceAssessment_assessedByAccountId_fkey",
+      "referenced_columns": [
+        "id"
+      ],
+      "referenced_table": "\"Account\"",
+      "table_name": "ComplianceAssessment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "createdAt"
+      ],
+      "definition": "NOT NULL \"createdAt\"",
+      "kind": "n",
+      "name": "ComplianceAssessment_createdAt_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "ComplianceAssessment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "decision"
+      ],
+      "definition": "NOT NULL decision",
+      "kind": "n",
+      "name": "ComplianceAssessment_decision_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "ComplianceAssessment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "definition": "NOT NULL id",
+      "kind": "n",
+      "name": "ComplianceAssessment_id_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "ComplianceAssessment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "ComplianceAssessment_pkey",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "ComplianceAssessment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "results"
+      ],
+      "definition": "NOT NULL results",
+      "kind": "n",
+      "name": "ComplianceAssessment_results_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "ComplianceAssessment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "safetyChecklistId"
+      ],
+      "definition": "FOREIGN KEY (\"safetyChecklistId\") REFERENCES \"SafetyChecklist\"(id) ON UPDATE CASCADE ON DELETE SET NULL",
+      "kind": "f",
+      "name": "ComplianceAssessment_safetyChecklistId_fkey",
+      "referenced_columns": [
+        "id"
+      ],
+      "referenced_table": "\"SafetyChecklist\"",
+      "table_name": "ComplianceAssessment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "tripId"
+      ],
+      "definition": "FOREIGN KEY (\"tripId\") REFERENCES \"Trip\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "ComplianceAssessment_tripId_fkey",
+      "referenced_columns": [
+        "id"
+      ],
+      "referenced_table": "\"Trip\"",
+      "table_name": "ComplianceAssessment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "tripId"
+      ],
+      "definition": "NOT NULL \"tripId\"",
+      "kind": "n",
+      "name": "ComplianceAssessment_tripId_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "ComplianceAssessment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "assessmentId"
+      ],
+      "definition": "FOREIGN KEY (\"assessmentId\") REFERENCES \"ComplianceAssessment\"(id) ON UPDATE CASCADE ON DELETE CASCADE",
+      "kind": "f",
+      "name": "ComplianceEvidence_assessmentId_fkey",
+      "referenced_columns": [
+        "id"
+      ],
+      "referenced_table": "\"ComplianceAssessment\"",
+      "table_name": "ComplianceEvidence",
+      "validated": true
+    },
+    {
+      "columns": [
+        "assessmentId"
+      ],
+      "definition": "NOT NULL \"assessmentId\"",
+      "kind": "n",
+      "name": "ComplianceEvidence_assessmentId_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "ComplianceEvidence",
+      "validated": true
+    },
+    {
+      "columns": [
+        "controlId"
+      ],
+      "definition": "NOT NULL \"controlId\"",
+      "kind": "n",
+      "name": "ComplianceEvidence_controlId_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "ComplianceEvidence",
+      "validated": true
+    },
+    {
+      "columns": [
+        "createdAt"
+      ],
+      "definition": "NOT NULL \"createdAt\"",
+      "kind": "n",
+      "name": "ComplianceEvidence_createdAt_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "ComplianceEvidence",
+      "validated": true
+    },
+    {
+      "columns": [
+        "evidenceType"
+      ],
+      "definition": "NOT NULL \"evidenceType\"",
+      "kind": "n",
+      "name": "ComplianceEvidence_evidenceType_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "ComplianceEvidence",
+      "validated": true
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "definition": "NOT NULL id",
+      "kind": "n",
+      "name": "ComplianceEvidence_id_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "ComplianceEvidence",
+      "validated": true
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "ComplianceEvidence_pkey",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "ComplianceEvidence",
+      "validated": true
+    },
+    {
+      "columns": [
+        "updatedAt"
+      ],
+      "definition": "NOT NULL \"updatedAt\"",
+      "kind": "n",
+      "name": "ComplianceEvidence_updatedAt_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "ComplianceEvidence",
+      "validated": true
+    },
+    {
+      "columns": [
+        "verified"
+      ],
+      "definition": "NOT NULL verified",
+      "kind": "n",
+      "name": "ComplianceEvidence_verified_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "ComplianceEvidence",
+      "validated": true
+    },
+    {
+      "columns": [
+        "capacity"
+      ],
+      "definition": "NOT NULL capacity",
+      "kind": "n",
+      "name": "TrainingCourse_capacity_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "TrainingCourse",
+      "validated": true
+    },
+    {
+      "columns": [
+        "createdAt"
+      ],
+      "definition": "NOT NULL \"createdAt\"",
+      "kind": "n",
+      "name": "TrainingCourse_createdAt_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "TrainingCourse",
+      "validated": true
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "definition": "NOT NULL id",
+      "kind": "n",
+      "name": "TrainingCourse_id_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "TrainingCourse",
+      "validated": true
+    },
+    {
+      "columns": [
+        "instructorAccountId"
+      ],
+      "definition": "FOREIGN KEY (\"instructorAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "TrainingCourse_instructorAccountId_fkey",
+      "referenced_columns": [
+        "id"
+      ],
+      "referenced_table": "\"Account\"",
+      "table_name": "TrainingCourse",
+      "validated": true
+    },
+    {
+      "columns": [
+        "instructorAccountId"
+      ],
+      "definition": "NOT NULL \"instructorAccountId\"",
+      "kind": "n",
+      "name": "TrainingCourse_instructorAccountId_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "TrainingCourse",
+      "validated": true
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "TrainingCourse_pkey",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "TrainingCourse",
+      "validated": true
+    },
+    {
+      "columns": [
+        "status"
+      ],
+      "definition": "NOT NULL status",
+      "kind": "n",
+      "name": "TrainingCourse_status_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "TrainingCourse",
+      "validated": true
+    },
+    {
+      "columns": [
+        "title"
+      ],
+      "definition": "NOT NULL title",
+      "kind": "n",
+      "name": "TrainingCourse_title_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "TrainingCourse",
+      "validated": true
+    },
+    {
+      "columns": [
+        "updatedAt"
+      ],
+      "definition": "NOT NULL \"updatedAt\"",
+      "kind": "n",
+      "name": "TrainingCourse_updatedAt_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "TrainingCourse",
+      "validated": true
+    },
+    {
+      "columns": [
+        "createdAt"
+      ],
+      "definition": "NOT NULL \"createdAt\"",
+      "kind": "n",
+      "name": "WorkforceCenterDepartment_createdAt_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceCenterDepartment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "departmentId"
+      ],
+      "definition": "FOREIGN KEY (\"departmentId\") REFERENCES \"WorkforceDepartment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceCenterDepartment_departmentId_fkey",
+      "referenced_columns": [
+        "id"
+      ],
+      "referenced_table": "\"WorkforceDepartment\"",
+      "table_name": "WorkforceCenterDepartment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "departmentId"
+      ],
+      "definition": "NOT NULL \"departmentId\"",
+      "kind": "n",
+      "name": "WorkforceCenterDepartment_departmentId_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceCenterDepartment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "definition": "NOT NULL id",
+      "kind": "n",
+      "name": "WorkforceCenterDepartment_id_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceCenterDepartment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "managerAccessEnabled"
+      ],
+      "definition": "NOT NULL \"managerAccessEnabled\"",
+      "kind": "n",
+      "name": "WorkforceCenterDepartment_managerAccessEnabled_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceCenterDepartment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "maxLevel"
+      ],
+      "definition": "CHECK (\"maxLevel\" = ANY (ARRAY['L1'::text, 'L2'::text, 'L3'::text, 'L4'::text]))",
+      "kind": "c",
+      "name": "WorkforceCenterDepartment_maxLevel_check",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceCenterDepartment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "maxLevel"
+      ],
+      "definition": "NOT NULL \"maxLevel\"",
+      "kind": "n",
+      "name": "WorkforceCenterDepartment_maxLevel_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceCenterDepartment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "organizationId"
+      ],
+      "definition": "FOREIGN KEY (\"organizationId\") REFERENCES \"Organization\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceCenterDepartment_organizationId_fkey",
+      "referenced_columns": [
+        "id"
+      ],
+      "referenced_table": "\"Organization\"",
+      "table_name": "WorkforceCenterDepartment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "organizationId"
+      ],
+      "definition": "NOT NULL \"organizationId\"",
+      "kind": "n",
+      "name": "WorkforceCenterDepartment_organizationId_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceCenterDepartment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "WorkforceCenterDepartment_pkey",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceCenterDepartment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "status"
+      ],
+      "definition": "NOT NULL status",
+      "kind": "n",
+      "name": "WorkforceCenterDepartment_status_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceCenterDepartment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "updatedAt"
+      ],
+      "definition": "NOT NULL \"updatedAt\"",
+      "kind": "n",
+      "name": "WorkforceCenterDepartment_updatedAt_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceCenterDepartment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "updatedById"
+      ],
+      "definition": "FOREIGN KEY (\"updatedById\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceCenterDepartment_updatedById_fkey",
+      "referenced_columns": [
+        "id"
+      ],
+      "referenced_table": "\"Account\"",
+      "table_name": "WorkforceCenterDepartment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "code"
+      ],
+      "definition": "NOT NULL code",
+      "kind": "n",
+      "name": "WorkforceDepartment_code_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceDepartment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "createdAt"
+      ],
+      "definition": "NOT NULL \"createdAt\"",
+      "kind": "n",
+      "name": "WorkforceDepartment_createdAt_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceDepartment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "displayOrder"
+      ],
+      "definition": "NOT NULL \"displayOrder\"",
+      "kind": "n",
+      "name": "WorkforceDepartment_displayOrder_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceDepartment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "definition": "NOT NULL id",
+      "kind": "n",
+      "name": "WorkforceDepartment_id_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceDepartment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "isHumanResources"
+      ],
+      "definition": "NOT NULL \"isHumanResources\"",
+      "kind": "n",
+      "name": "WorkforceDepartment_isHumanResources_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceDepartment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "nameAr"
+      ],
+      "definition": "NOT NULL \"nameAr\"",
+      "kind": "n",
+      "name": "WorkforceDepartment_nameAr_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceDepartment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "nameEn"
+      ],
+      "definition": "NOT NULL \"nameEn\"",
+      "kind": "n",
+      "name": "WorkforceDepartment_nameEn_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceDepartment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "WorkforceDepartment_pkey",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceDepartment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "status"
+      ],
+      "definition": "NOT NULL status",
+      "kind": "n",
+      "name": "WorkforceDepartment_status_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceDepartment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "updatedAt"
+      ],
+      "definition": "NOT NULL \"updatedAt\"",
+      "kind": "n",
+      "name": "WorkforceDepartment_updatedAt_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceDepartment",
+      "validated": true
+    },
+    {
+      "columns": [
+        "candidateAccountId"
+      ],
+      "definition": "FOREIGN KEY (\"candidateAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceHiringRequest_candidateAccountId_fkey",
+      "referenced_columns": [
+        "id"
+      ],
+      "referenced_table": "\"Account\"",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "columns": [
+        "candidateAccountId"
+      ],
+      "definition": "NOT NULL \"candidateAccountId\"",
+      "kind": "n",
+      "name": "WorkforceHiringRequest_candidateAccountId_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "columns": [
+        "createdAt"
+      ],
+      "definition": "NOT NULL \"createdAt\"",
+      "kind": "n",
+      "name": "WorkforceHiringRequest_createdAt_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "columns": [
+        "departmentId"
+      ],
+      "definition": "FOREIGN KEY (\"departmentId\") REFERENCES \"WorkforceDepartment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceHiringRequest_departmentId_fkey",
+      "referenced_columns": [
+        "id"
+      ],
+      "referenced_table": "\"WorkforceDepartment\"",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "columns": [
+        "departmentId"
+      ],
+      "definition": "NOT NULL \"departmentId\"",
+      "kind": "n",
+      "name": "WorkforceHiringRequest_departmentId_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "columns": [
+        "hrReviewedById"
+      ],
+      "definition": "FOREIGN KEY (\"hrReviewedById\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceHiringRequest_hrReviewedById_fkey",
+      "referenced_columns": [
+        "id"
+      ],
+      "referenced_table": "\"Account\"",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "definition": "NOT NULL id",
+      "kind": "n",
+      "name": "WorkforceHiringRequest_id_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "columns": [
+        "organizationId"
+      ],
+      "definition": "FOREIGN KEY (\"organizationId\") REFERENCES \"Organization\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceHiringRequest_organizationId_fkey",
+      "referenced_columns": [
+        "id"
+      ],
+      "referenced_table": "\"Organization\"",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "columns": [
+        "organizationId"
+      ],
+      "definition": "NOT NULL \"organizationId\"",
+      "kind": "n",
+      "name": "WorkforceHiringRequest_organizationId_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "WorkforceHiringRequest_pkey",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "columns": [
+        "positionId"
+      ],
+      "definition": "FOREIGN KEY (\"positionId\") REFERENCES \"WorkforcePosition\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceHiringRequest_positionId_fkey",
+      "referenced_columns": [
+        "id"
+      ],
+      "referenced_table": "\"WorkforcePosition\"",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "columns": [
+        "positionId"
+      ],
+      "definition": "NOT NULL \"positionId\"",
+      "kind": "n",
+      "name": "WorkforceHiringRequest_positionId_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "columns": [
+        "requestedById"
+      ],
+      "definition": "FOREIGN KEY (\"requestedById\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceHiringRequest_requestedById_fkey",
+      "referenced_columns": [
+        "id"
+      ],
+      "referenced_table": "\"Account\"",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "columns": [
+        "requestedById"
+      ],
+      "definition": "NOT NULL \"requestedById\"",
+      "kind": "n",
+      "name": "WorkforceHiringRequest_requestedById_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "columns": [
+        "reviewedById"
+      ],
+      "definition": "FOREIGN KEY (\"reviewedById\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceHiringRequest_reviewedById_fkey",
+      "referenced_columns": [
+        "id"
+      ],
+      "referenced_table": "\"Account\"",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "columns": [
+        "source"
+      ],
+      "definition": "NOT NULL source",
+      "kind": "n",
+      "name": "WorkforceHiringRequest_source_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "columns": [
+        "status"
+      ],
+      "definition": "NOT NULL status",
+      "kind": "n",
+      "name": "WorkforceHiringRequest_status_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "columns": [
+        "targetSeatId"
+      ],
+      "definition": "FOREIGN KEY (\"targetSeatId\") REFERENCES \"WorkforceSeat\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceHiringRequest_targetSeatId_fkey",
+      "referenced_columns": [
+        "id"
+      ],
+      "referenced_table": "\"WorkforceSeat\"",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "columns": [
+        "updatedAt"
+      ],
+      "definition": "NOT NULL \"updatedAt\"",
+      "kind": "n",
+      "name": "WorkforceHiringRequest_updatedAt_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "columns": [
+        "aiEnabled"
+      ],
+      "definition": "NOT NULL \"aiEnabled\"",
+      "kind": "n",
+      "name": "WorkforcePosition_aiEnabled_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforcePosition",
+      "validated": true
+    },
+    {
+      "columns": [
+        "canManageExternalCenter"
+      ],
+      "definition": "NOT NULL \"canManageExternalCenter\"",
+      "kind": "n",
+      "name": "WorkforcePosition_canManageExternalCenter_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforcePosition",
+      "validated": true
+    },
+    {
+      "columns": [
+        "code"
+      ],
+      "definition": "NOT NULL code",
+      "kind": "n",
+      "name": "WorkforcePosition_code_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforcePosition",
+      "validated": true
+    },
+    {
+      "columns": [
+        "createdAt"
+      ],
+      "definition": "NOT NULL \"createdAt\"",
+      "kind": "n",
+      "name": "WorkforcePosition_createdAt_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforcePosition",
+      "validated": true
+    },
+    {
+      "columns": [
+        "departmentId"
+      ],
+      "definition": "FOREIGN KEY (\"departmentId\") REFERENCES \"WorkforceDepartment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforcePosition_departmentId_fkey",
+      "referenced_columns": [
+        "id"
+      ],
+      "referenced_table": "\"WorkforceDepartment\"",
+      "table_name": "WorkforcePosition",
+      "validated": true
+    },
+    {
+      "columns": [
+        "departmentId"
+      ],
+      "definition": "NOT NULL \"departmentId\"",
+      "kind": "n",
+      "name": "WorkforcePosition_departmentId_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforcePosition",
+      "validated": true
+    },
+    {
+      "columns": [
+        "displayOrder"
+      ],
+      "definition": "NOT NULL \"displayOrder\"",
+      "kind": "n",
+      "name": "WorkforcePosition_displayOrder_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforcePosition",
+      "validated": true
+    },
+    {
+      "columns": [
+        "externalLiaisonEligible"
+      ],
+      "definition": "NOT NULL \"externalLiaisonEligible\"",
+      "kind": "n",
+      "name": "WorkforcePosition_externalLiaisonEligible_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforcePosition",
+      "validated": true
+    },
+    {
+      "columns": [
+        "humanEnabled"
+      ],
+      "definition": "NOT NULL \"humanEnabled\"",
+      "kind": "n",
+      "name": "WorkforcePosition_humanEnabled_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforcePosition",
+      "validated": true
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "definition": "NOT NULL id",
+      "kind": "n",
+      "name": "WorkforcePosition_id_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforcePosition",
+      "validated": true
+    },
+    {
+      "columns": [
+        "mode"
+      ],
+      "definition": "NOT NULL mode",
+      "kind": "n",
+      "name": "WorkforcePosition_mode_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforcePosition",
+      "validated": true
+    },
+    {
+      "columns": [
+        "parentPositionId"
+      ],
+      "definition": "FOREIGN KEY (\"parentPositionId\") REFERENCES \"WorkforcePosition\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforcePosition_parentPositionId_fkey",
+      "referenced_columns": [
+        "id"
+      ],
+      "referenced_table": "\"WorkforcePosition\"",
+      "table_name": "WorkforcePosition",
+      "validated": true
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "WorkforcePosition_pkey",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforcePosition",
+      "validated": true
+    },
+    {
+      "columns": [
+        "tier"
+      ],
+      "definition": "NOT NULL tier",
+      "kind": "n",
+      "name": "WorkforcePosition_tier_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforcePosition",
+      "validated": true
+    },
+    {
+      "columns": [
+        "titleAr"
+      ],
+      "definition": "NOT NULL \"titleAr\"",
+      "kind": "n",
+      "name": "WorkforcePosition_titleAr_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforcePosition",
+      "validated": true
+    },
+    {
+      "columns": [
+        "titleEn"
+      ],
+      "definition": "NOT NULL \"titleEn\"",
+      "kind": "n",
+      "name": "WorkforcePosition_titleEn_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforcePosition",
+      "validated": true
+    },
+    {
+      "columns": [
+        "updatedAt"
+      ],
+      "definition": "NOT NULL \"updatedAt\"",
+      "kind": "n",
+      "name": "WorkforcePosition_updatedAt_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforcePosition",
+      "validated": true
+    },
+    {
+      "columns": [
+        "accessStatus"
+      ],
+      "definition": "NOT NULL \"accessStatus\"",
+      "kind": "n",
+      "name": "WorkforceSeat_accessStatus_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceSeat",
+      "validated": true
+    },
+    {
+      "columns": [
+        "accountId"
+      ],
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceSeat_accountId_fkey",
+      "referenced_columns": [
+        "id"
+      ],
+      "referenced_table": "\"Account\"",
+      "table_name": "WorkforceSeat",
+      "validated": true
+    },
+    {
+      "columns": [
+        "administrativeManagerSeatId"
+      ],
+      "definition": "FOREIGN KEY (\"administrativeManagerSeatId\") REFERENCES \"WorkforceSeat\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceSeat_administrativeManagerSeatId_fkey",
+      "referenced_columns": [
+        "id"
+      ],
+      "referenced_table": "\"WorkforceSeat\"",
+      "table_name": "WorkforceSeat",
+      "validated": true
+    },
+    {
+      "columns": [
+        "createdAt"
+      ],
+      "definition": "NOT NULL \"createdAt\"",
+      "kind": "n",
+      "name": "WorkforceSeat_createdAt_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceSeat",
+      "validated": true
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "definition": "NOT NULL id",
+      "kind": "n",
+      "name": "WorkforceSeat_id_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceSeat",
+      "validated": true
+    },
+    {
+      "columns": [
+        "organizationId"
+      ],
+      "definition": "FOREIGN KEY (\"organizationId\") REFERENCES \"Organization\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceSeat_organizationId_fkey",
+      "referenced_columns": [
+        "id"
+      ],
+      "referenced_table": "\"Organization\"",
+      "table_name": "WorkforceSeat",
+      "validated": true
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "WorkforceSeat_pkey",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceSeat",
+      "validated": true
+    },
+    {
+      "columns": [
+        "positionId"
+      ],
+      "definition": "FOREIGN KEY (\"positionId\") REFERENCES \"WorkforcePosition\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceSeat_positionId_fkey",
+      "referenced_columns": [
+        "id"
+      ],
+      "referenced_table": "\"WorkforcePosition\"",
+      "table_name": "WorkforceSeat",
+      "validated": true
+    },
+    {
+      "columns": [
+        "positionId"
+      ],
+      "definition": "NOT NULL \"positionId\"",
+      "kind": "n",
+      "name": "WorkforceSeat_positionId_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceSeat",
+      "validated": true
+    },
+    {
+      "columns": [
+        "scope"
+      ],
+      "definition": "NOT NULL scope",
+      "kind": "n",
+      "name": "WorkforceSeat_scope_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceSeat",
+      "validated": true
+    },
+    {
+      "columns": [
+        "technicalDepartmentId"
+      ],
+      "definition": "FOREIGN KEY (\"technicalDepartmentId\") REFERENCES \"WorkforceDepartment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceSeat_technicalDepartmentId_fkey",
+      "referenced_columns": [
+        "id"
+      ],
+      "referenced_table": "\"WorkforceDepartment\"",
+      "table_name": "WorkforceSeat",
+      "validated": true
+    },
+    {
+      "columns": [
+        "updatedAt"
+      ],
+      "definition": "NOT NULL \"updatedAt\"",
+      "kind": "n",
+      "name": "WorkforceSeat_updatedAt_not_null",
+      "referenced_columns": null,
+      "referenced_table": "-",
+      "table_name": "WorkforceSeat",
+      "validated": true
+    }
+  ],
+  "enums": [
+    {
+      "name": "TrainingCourseStatus",
+      "values": [
+        "DRAFT",
+        "PUBLISHED",
+        "CLOSED",
+        "ARCHIVED"
+      ]
+    },
+    {
+      "name": "WorkforceCenterDepartmentStatus",
+      "values": [
+        "LOCKED",
+        "ENABLED"
+      ]
+    },
+    {
+      "name": "WorkforceDepartmentStatus",
+      "values": [
+        "ENABLED",
+        "DISABLED"
+      ]
+    },
+    {
+      "name": "WorkforceHiringRequestSource",
+      "values": [
+        "CANDIDATE",
+        "CENTER_MANAGER",
+        "HUMAN_RESOURCES"
+      ]
+    },
+    {
+      "name": "WorkforceHiringRequestStatus",
+      "values": [
+        "PENDING_HR_REVIEW",
+        "HR_CHANGES_REQUIRED",
+        "PENDING_EXECUTIVE_APPROVAL",
+        "APPROVED",
+        "REJECTED",
+        "CANCELLED"
+      ]
+    },
+    {
+      "name": "WorkforceMode",
+      "values": [
+        "DISABLED",
+        "AI_ONLY",
+        "HUMAN_ONLY",
+        "HYBRID"
+      ]
+    },
+    {
+      "name": "WorkforcePositionTier",
+      "values": [
+        "MANAGER",
+        "ASSISTANT"
+      ]
+    },
+    {
+      "name": "WorkforceSeatAccessStatus",
+      "values": [
+        "LOCKED",
+        "ENABLED",
+        "SUSPENDED"
+      ]
+    },
+    {
+      "name": "WorkforceSeatScope",
+      "values": [
+        "HEADQUARTERS",
+        "EXTERNAL_CENTER"
+      ]
+    }
+  ],
+  "indexes": [
+    {
+      "definition": "CREATE INDEX \"ComplianceAssessment_decision_assessedAt_idx\" ON public.\"ComplianceAssessment\" USING btree (decision, \"assessedAt\")",
+      "name": "ComplianceAssessment_decision_assessedAt_idx",
+      "table_name": "ComplianceAssessment"
+    },
+    {
+      "definition": "CREATE INDEX \"ComplianceAssessment_safetyChecklistId_idx\" ON public.\"ComplianceAssessment\" USING btree (\"safetyChecklistId\")",
+      "name": "ComplianceAssessment_safetyChecklistId_idx",
+      "table_name": "ComplianceAssessment"
+    },
+    {
+      "definition": "CREATE INDEX \"ComplianceAssessment_tripId_assessedAt_idx\" ON public.\"ComplianceAssessment\" USING btree (\"tripId\", \"assessedAt\")",
+      "name": "ComplianceAssessment_tripId_assessedAt_idx",
+      "table_name": "ComplianceAssessment"
+    },
+    {
+      "definition": "CREATE INDEX \"ComplianceEvidence_assessmentId_controlId_idx\" ON public.\"ComplianceEvidence\" USING btree (\"assessmentId\", \"controlId\")",
+      "name": "ComplianceEvidence_assessmentId_controlId_idx",
+      "table_name": "ComplianceEvidence"
+    },
+    {
+      "definition": "CREATE INDEX \"ComplianceEvidence_controlId_verified_idx\" ON public.\"ComplianceEvidence\" USING btree (\"controlId\", verified)",
+      "name": "ComplianceEvidence_controlId_verified_idx",
+      "table_name": "ComplianceEvidence"
+    },
+    {
+      "definition": "CREATE INDEX \"TrainingCourse_instructorAccountId_status_idx\" ON public.\"TrainingCourse\" USING btree (\"instructorAccountId\", status)",
+      "name": "TrainingCourse_instructorAccountId_status_idx",
+      "table_name": "TrainingCourse"
+    },
+    {
+      "definition": "CREATE INDEX \"TrainingCourse_status_createdAt_idx\" ON public.\"TrainingCourse\" USING btree (status, \"createdAt\")",
+      "name": "TrainingCourse_status_createdAt_idx",
+      "table_name": "TrainingCourse"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforceCenterDepartment_departmentId_status_idx\" ON public.\"WorkforceCenterDepartment\" USING btree (\"departmentId\", status)",
+      "name": "WorkforceCenterDepartment_departmentId_status_idx",
+      "table_name": "WorkforceCenterDepartment"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforceCenterDepartment_org_status_level_idx\" ON public.\"WorkforceCenterDepartment\" USING btree (\"organizationId\", status, \"maxLevel\")",
+      "name": "WorkforceCenterDepartment_org_status_level_idx",
+      "table_name": "WorkforceCenterDepartment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"WorkforceCenterDepartment_organizationId_departmentId_key\" ON public.\"WorkforceCenterDepartment\" USING btree (\"organizationId\", \"departmentId\")",
+      "name": "WorkforceCenterDepartment_organizationId_departmentId_key",
+      "table_name": "WorkforceCenterDepartment"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforceCenterDepartment_organizationId_status_idx\" ON public.\"WorkforceCenterDepartment\" USING btree (\"organizationId\", status)",
+      "name": "WorkforceCenterDepartment_organizationId_status_idx",
+      "table_name": "WorkforceCenterDepartment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"WorkforceDepartment_code_key\" ON public.\"WorkforceDepartment\" USING btree (code)",
+      "name": "WorkforceDepartment_code_key",
+      "table_name": "WorkforceDepartment"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforceDepartment_status_displayOrder_idx\" ON public.\"WorkforceDepartment\" USING btree (status, \"displayOrder\")",
+      "name": "WorkforceDepartment_status_displayOrder_idx",
+      "table_name": "WorkforceDepartment"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforceHiringRequest_candidateAccountId_status_idx\" ON public.\"WorkforceHiringRequest\" USING btree (\"candidateAccountId\", status)",
+      "name": "WorkforceHiringRequest_candidateAccountId_status_idx",
+      "table_name": "WorkforceHiringRequest"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforceHiringRequest_hrReviewedById_status_idx\" ON public.\"WorkforceHiringRequest\" USING btree (\"hrReviewedById\", status)",
+      "name": "WorkforceHiringRequest_hrReviewedById_status_idx",
+      "table_name": "WorkforceHiringRequest"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforceHiringRequest_organizationId_departmentId_status_idx\" ON public.\"WorkforceHiringRequest\" USING btree (\"organizationId\", \"departmentId\", status)",
+      "name": "WorkforceHiringRequest_organizationId_departmentId_status_idx",
+      "table_name": "WorkforceHiringRequest"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforceHiringRequest_status_createdAt_idx\" ON public.\"WorkforceHiringRequest\" USING btree (status, \"createdAt\")",
+      "name": "WorkforceHiringRequest_status_createdAt_idx",
+      "table_name": "WorkforceHiringRequest"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"WorkforcePosition_code_key\" ON public.\"WorkforcePosition\" USING btree (code)",
+      "name": "WorkforcePosition_code_key",
+      "table_name": "WorkforcePosition"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforcePosition_departmentId_tier_displayOrder_idx\" ON public.\"WorkforcePosition\" USING btree (\"departmentId\", tier, \"displayOrder\")",
+      "name": "WorkforcePosition_departmentId_tier_displayOrder_idx",
+      "table_name": "WorkforcePosition"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforcePosition_parentPositionId_idx\" ON public.\"WorkforcePosition\" USING btree (\"parentPositionId\")",
+      "name": "WorkforcePosition_parentPositionId_idx",
+      "table_name": "WorkforcePosition"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforceSeat_accountId_accessStatus_idx\" ON public.\"WorkforceSeat\" USING btree (\"accountId\", \"accessStatus\")",
+      "name": "WorkforceSeat_accountId_accessStatus_idx",
+      "table_name": "WorkforceSeat"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforceSeat_administrativeManagerSeatId_idx\" ON public.\"WorkforceSeat\" USING btree (\"administrativeManagerSeatId\")",
+      "name": "WorkforceSeat_administrativeManagerSeatId_idx",
+      "table_name": "WorkforceSeat"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"WorkforceSeat_one_external_position_per_center_key\" ON public.\"WorkforceSeat\" USING btree (\"positionId\", \"organizationId\") WHERE (scope = 'EXTERNAL_CENTER'::\"WorkforceSeatScope\")",
+      "name": "WorkforceSeat_one_external_position_per_center_key",
+      "table_name": "WorkforceSeat"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"WorkforceSeat_one_headquarters_position_key\" ON public.\"WorkforceSeat\" USING btree (\"positionId\") WHERE ((scope = 'HEADQUARTERS'::\"WorkforceSeatScope\") AND (\"organizationId\" IS NULL))",
+      "name": "WorkforceSeat_one_headquarters_position_key",
+      "table_name": "WorkforceSeat"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforceSeat_organizationId_scope_accessStatus_idx\" ON public.\"WorkforceSeat\" USING btree (\"organizationId\", scope, \"accessStatus\")",
+      "name": "WorkforceSeat_organizationId_scope_accessStatus_idx",
+      "table_name": "WorkforceSeat"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforceSeat_positionId_accessStatus_idx\" ON public.\"WorkforceSeat\" USING btree (\"positionId\", \"accessStatus\")",
+      "name": "WorkforceSeat_positionId_accessStatus_idx",
+      "table_name": "WorkforceSeat"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforceSeat_technicalDepartmentId_idx\" ON public.\"WorkforceSeat\" USING btree (\"technicalDepartmentId\")",
+      "name": "WorkforceSeat_technicalDepartmentId_idx",
+      "table_name": "WorkforceSeat"
+    }
+  ],
+  "policyCount": 0,
+  "tables": [
+    {
+      "name": "ComplianceAssessment",
+      "relforcerowsecurity": false,
+      "relrowsecurity": false
+    },
+    {
+      "name": "ComplianceEvidence",
+      "relforcerowsecurity": false,
+      "relrowsecurity": false
+    },
+    {
+      "name": "TrainingCourse",
+      "relforcerowsecurity": false,
+      "relrowsecurity": false
+    },
+    {
+      "name": "WorkforceCenterDepartment",
+      "relforcerowsecurity": false,
+      "relrowsecurity": false
+    },
+    {
+      "name": "WorkforceDepartment",
+      "relforcerowsecurity": false,
+      "relrowsecurity": false
+    },
+    {
+      "name": "WorkforceHiringRequest",
+      "relforcerowsecurity": false,
+      "relrowsecurity": false
+    },
+    {
+      "name": "WorkforcePosition",
+      "relforcerowsecurity": false,
+      "relrowsecurity": false
+    },
+    {
+      "name": "WorkforceSeat",
+      "relforcerowsecurity": false,
+      "relrowsecurity": false
+    }
+  ],
+  "triggerCount": 0
+}
