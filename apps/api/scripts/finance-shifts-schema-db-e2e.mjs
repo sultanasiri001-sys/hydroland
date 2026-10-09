@@ -1,3 +1,5 @@
+import {FinanceWorkspaceService} from '../dist/finance/finance-workspace.service.js';
+import {checkFinanceWorkspaceHttp} from './finance-workspace-http-checks.mjs';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
@@ -45,19 +47,29 @@ try {
    const literal=x=>"'"+x.replaceAll("'","''")+"'";
    for(const org of [orgA,orgB])await run(`INSERT INTO "Organization" VALUES (${literal(org)})`);
    for(const account of [a,b,outsider,wrong,mismatch])await run(`INSERT INTO "Account" VALUES (${literal(account)},'ACTIVE')`);
-   for(const [unit,org]of [[unitA,orgA],[unitB,orgB]])await run(`INSERT INTO "OrgUnit" VALUES (${literal(unit)},${literal(org)},'CENTER',TRUE)`);
+   for(const [unit,org]of [[unitA,orgA],[unitB,orgB]])await run(`INSERT INTO "OrgUnit" (id,"organizationId",type,active) VALUES (${literal(unit)},${literal(org)},'CENTER',TRUE)`);
    for(const [position,unit,code]of [[positionA,unitA,'BRANCH_ACCOUNTANT'],[positionB,unitB,'CENTER_ACCOUNTANT'],[wrongPosition,unitA,'STAFF']])await run(`INSERT INTO "Position" VALUES (${literal(position)},${literal(unit)},${literal(code)},TRUE)`);
    for(const [account,org,unit,position,employment]of [[a,orgA,unitA,positionA,id()],[b,orgA,unitA,positionA,employmentB],[outsider,orgB,unitB,positionB,id()],[wrong,orgA,unitA,wrongPosition,id()],[mismatch,orgB,unitA,positionA,id()]])await run(`INSERT INTO "Employment" VALUES (${literal(employment)},${literal(account)},${literal(org)},${literal(unit)},${literal(position)},'ACTIVE')`);
-   const access=new FinanceAccessService(db),service=new FinanceShiftsService(db,access);
+   await run(`ALTER TABLE "Organization" ADD COLUMN "displayName" text NOT NULL DEFAULT 'Fixture center'`);
+   await run(`ALTER TABLE "OrgUnit" ADD COLUMN "nameAr" text NOT NULL DEFAULT 'Fixture branch'`);
+   await run(`CREATE TABLE "Person" (id ${coreType} PRIMARY KEY,"firstName" text NOT NULL,"lastName" text NOT NULL)`);
+   await run(`ALTER TABLE "Account" ADD COLUMN "personId" ${coreType} REFERENCES "Person"(id)`);
+   for(const account of [a,b,outsider,wrong,mismatch]){await run(`INSERT INTO "Person" VALUES (${literal(account)},'Fixture',${literal(account)})`);await run(`UPDATE "Account" SET "personId"=${literal(account)} WHERE id=${literal(account)}`);}
+   const access=new FinanceAccessService(db),service=new FinanceShiftsService(db,access),workspace=new FinanceWorkspaceService(db,access);
    const rejects=async(p,code)=>{await assert.rejects(p,e=>String(e.message).includes(code));scenarios++;};
+   assert.deepEqual((await workspace.centers(a)).map(x=>x.id),[unitA]);assert.deepEqual(await workspace.centers(wrong),[]);assert.deepEqual(await workspace.centers(mismatch),[]);scenarios+=3;
+   await rejects(workspace.workspace(outsider,unitA),'FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
    await rejects(service.openShift(outsider,unitA,0),'FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
    await rejects(service.openShift(wrong,unitA,0),'FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
    await rejects(service.openShift(mismatch,unitA,0),'FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
    await rejects(service.openShift(a,unitA,-1),'FINANCE_AMOUNT_INVALID');
-   await run(`INSERT INTO "OrgUnit" VALUES (${literal(extra)},${literal(orgA)},'CENTER',TRUE)`);
+   await run(`INSERT INTO "OrgUnit" (id,"organizationId",type,active) VALUES (${literal(extra)},${literal(orgA)},'CENTER',TRUE)`);
    await rejects(service.openShift(a,unitA,0),'FINANCE_CENTER_MAPPING_AMBIGUOUS');
+   await rejects(workspace.workspace(a,unitA),'FINANCE_CENTER_MAPPING_AMBIGUOUS');
    await run(`DELETE FROM "OrgUnit" WHERE id=${literal(extra)}`);
    const from=await service.openShift(a,unitA,100),to=await service.openShift(b,unitA,0),foreign=await service.openShift(outsider,unitB,0);
+   const initial=await workspace.workspace(a,unitA);assert.equal(initial.shift.id,from.id);assert.deepEqual(initial.receivers.map(x=>x.accountId),[b]);assert.deepEqual(initial.handovers,[]);scenarios++;
+   scenarios+=await checkFinanceWorkspaceHttp(db,workspace,service,{a,b,outsider,wrong,unitA,from,coreType});
    assert.equal(from.centerOrgUnitId,orgA);assert.notEqual(from.centerOrgUnitId,unitA);scenarios++;
    await rejects(service.openShift(a,unitA,0),'FINANCE_ACTIVE_SHIFT_EXISTS');
    await rejects(service.recordEntry(b,from.id,{type:'EXPENSE',amountMinor:1}),'FINANCE_SHIFT_ACCOUNT_ISOLATION_DENIED');
@@ -65,20 +77,44 @@ try {
    const payments=[];
    for(const org of [orgA,orgB]){const trip=id(),booking=id(),payment=id();await run(`INSERT INTO "Trip" VALUES (${literal(trip)},${literal(org)})`);await run(`INSERT INTO "Booking" VALUES (${literal(booking)},${literal(trip)})`);await run(`INSERT INTO "Payment" (id,"bookingId","amountMinor",status) VALUES (${literal(payment)},${literal(booking)},40,'CAPTURED')`);payments.push(payment);}
    await rejects(service.recordEntry(a,from.id,{type:'REVENUE',amountMinor:40,paymentId:payments[1]}),'FINANCE_PAYMENT_NOT_FOUND');
+   await run(`UPDATE "Payment" SET currency='USD' WHERE id=${literal(payments[0])}`);
+   await rejects(service.recordEntry(a,from.id,{type:'REVENUE',amountMinor:40,paymentId:payments[0]}),'FINANCE_PAYMENT_CURRENCY_MISMATCH');
+   await run(`UPDATE "Payment" SET currency='SAR' WHERE id=${literal(payments[0])}`);
    await service.recordEntry(a,from.id,{type:'REVENUE',amountMinor:40,paymentId:payments[0]});scenarios++;
    await assert.rejects(service.recordEntry(a,from.id,{type:'REVENUE',amountMinor:40,paymentId:payments[0]}));scenarios++;
    await rejects(service.requestHandover(a,from.id,outsider,120),'FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
+   await run(`UPDATE "FinanceAccountantShift" SET currency='USD' WHERE id=${literal(to.id)}`);
+   assert.deepEqual((await workspace.workspace(a,unitA)).receivers,[]);scenarios++;
+   await rejects(service.requestHandover(a,from.id,b,120),'FINANCE_CURRENCY_UNSUPPORTED');
+   await run(`UPDATE "FinanceAccountantShift" SET currency='SAR' WHERE id=${literal(to.id)}`);
+   const read=await workspace.workspace(a,unitA);assert.equal(read.totals.expectedCashMinor,120);assert.equal(read.entries.length,2);scenarios++;
    const handover=await service.requestHandover(a,from.id,b,120);scenarios++;
+   const incoming=await workspace.workspace(b,unitA),outgoing=await workspace.workspace(a,unitA);
+   assert.equal(incoming.handovers[0].direction,'INCOMING');assert.equal(outgoing.handovers[0].direction,'OUTGOING');assert.equal(incoming.shift.id,to.id);assert.equal(incoming.entries.length,0);assert.equal((await workspace.workspace(outsider,unitB)).handovers.length,0);assert.deepEqual(outgoing.receivers,[]);scenarios+=4;
+   await rejects(service.recordEntry(b,to.id,{type:'EXPENSE',amountMinor:1}),'FINANCE_HANDOVER_RECEIVER_ALREADY_PENDING');
+   // Another authorized sender cannot strand a second pending handover on the same receiver.
+   await run(`UPDATE "Position" SET code='BRANCH_ACCOUNTANT' WHERE id=${literal(wrongPosition)}`);
+   const second=await service.openShift(wrong,unitA,0);
+   await rejects(service.requestHandover(wrong,second.id,b,0),'FINANCE_HANDOVER_RECEIVER_ALREADY_PENDING');
+   await rejects(service.requestHandover(b,to.id,wrong,0),'FINANCE_HANDOVER_RECEIVER_ALREADY_PENDING');
+   await run(`UPDATE "Position" SET code='STAFF' WHERE id=${literal(wrongPosition)}`);
    await rejects(service.acceptHandover(a,handover.id),'FINANCE_HANDOVER_ACCEPTOR_INVALID');
    await run(`UPDATE "Employment" SET status='INACTIVE' WHERE id=${literal(employmentB)}`);
    await rejects(service.acceptHandover(b,handover.id),'FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
+   await rejects(workspace.workspace(b,unitA),'FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
+   assert.deepEqual(await workspace.centers(b),[]);scenarios++;
    await run(`UPDATE "Employment" SET status='ACTIVE' WHERE id=${literal(employmentB)}`);
    await run(`UPDATE "FinanceShiftHandover" SET "actualCashMinor"=NULL WHERE id=${literal(handover.id)}`);
    await rejects(service.acceptHandover(b,handover.id),'FINANCE_HANDOVER_AMOUNT_INVALID');
    await run(`UPDATE "FinanceShiftHandover" SET "actualCashMinor"=120,"fromShiftId"=${literal(foreign.id)} WHERE id=${literal(handover.id)}`);
    await rejects(service.acceptHandover(b,handover.id),'FINANCE_HANDOVER_SOURCE_SHIFT_INVALID');
+   assert.deepEqual((await workspace.workspace(b,unitA)).handovers,[]);scenarios++;
    await run(`UPDATE "FinanceShiftHandover" SET "fromShiftId"=${literal(from.id)} WHERE id=${literal(handover.id)}`);
+   await run(`UPDATE "FinanceAccountantShift" SET currency='USD' WHERE id=${literal(from.id)}`);
+   await rejects(service.acceptHandover(b,handover.id),'FINANCE_CURRENCY_UNSUPPORTED');
+   await run(`UPDATE "FinanceAccountantShift" SET currency='SAR' WHERE id=${literal(from.id)}`);
    const accepted=await service.acceptHandover(b,handover.id);assert.equal(accepted.openingBalanceMinor,120);scenarios++;
+   const received=await workspace.workspace(b,unitA);assert.equal(received.totals.expectedCashMinor,120);assert.deepEqual(received.handovers,[]);assert.equal((await workspace.workspace(a,unitA)).shift,null);scenarios++;
    await rejects(service.acceptHandover(b,handover.id),'FINANCE_HANDOVER_NOT_PENDING');
    const rows=await db.$queryRawUnsafe(`SELECT id,"openingBalanceMinor",status::text FROM "FinanceAccountantShift" ORDER BY id`);
    assert.equal(rows.find(r=>r.id===from.id).status,'HANDED_OVER');assert.equal(rows.find(r=>r.id===to.id).openingBalanceMinor,120);assert.equal(rows.find(r=>r.id===foreign.id).openingBalanceMinor,0);scenarios++;
@@ -98,7 +134,7 @@ try {
    await run(`UPDATE "Payment" SET currency='USD' WHERE id=${literal(originPayment)}`);
    await rejects(ar.createDeferredInvoice(a,terms),'FINANCE_CURRENCY_UNSUPPORTED');
    await run(`UPDATE "Payment" SET currency='SAR' WHERE id=${literal(originPayment)}`);
-   await run(`INSERT INTO "OrgUnit" VALUES (${literal(extra)},${literal(orgA)},'CENTER',TRUE)`);
+   await run(`INSERT INTO "OrgUnit" (id,"organizationId",type,active) VALUES (${literal(extra)},${literal(orgA)},'CENTER',TRUE)`);
    await rejects(ar.createDeferredInvoice(a,terms),'FINANCE_CENTER_MAPPING_AMBIGUOUS');
    await run(`DELETE FROM "OrgUnit" WHERE id=${literal(extra)}`);
    const receivable=await ar.createDeferredInvoice(a,terms);scenarios++;
@@ -133,6 +169,19 @@ try {
    await run(`UPDATE "Employment" SET status='ACTIVE' WHERE "accountId"=${literal(a)}`);
    await rejects(ar.collect(a,receivable.receivableId,{paymentId:pay60,amountMinor:60,receiptNumber:'AR-60',installmentId:installments[0].id}),'FINANCE_INSTALLMENT_OVERPAYMENT');
    const final=await ar.collect(a,receivable.receivableId,{paymentId:pay60,amountMinor:60,receiptNumber:'AR-60',installmentId:installments[1].id});assert.equal(final.outstandingMinor,0);assert.equal(final.status,'PAID');assert.equal((await ar.branchAr(a,unitA)).length,0);scenarios++;
+   // Totals include every entry even when the display is capped at the latest 50.
+   await run(`UPDATE "Position" SET code='BRANCH_ACCOUNTANT' WHERE id=${literal(wrongPosition)}`);
+   for(let n=0;n<55;n++)await run(`INSERT INTO "FinanceShiftEntry" (id,"shiftId",type,"amountMinor","recordedByAccountId") VALUES (${literal(randomUUID())},${literal(second.id)},'ADJUSTMENT',1,${literal(wrong)})`);
+   const limited=await workspace.workspace(wrong,unitA);assert.equal(limited.entries.length,50);assert.equal(limited.totals.expectedCashMinor,55);scenarios++;
+   const receiver=id();await run(`INSERT INTO "Person" VALUES (${literal(receiver)},'Concurrent','Receiver')`);
+   await run(`INSERT INTO "Account" (id,status,"personId") VALUES (${literal(receiver)},'ACTIVE',${literal(receiver)})`);
+   await run(`INSERT INTO "Employment" VALUES (${literal(id())},${literal(receiver)},${literal(orgA)},${literal(unitA)},${literal(positionA)},'ACTIVE')`);
+   await service.openShift(receiver,unitA,0);
+   const currentA=await workspace.workspace(a,unitA);
+   const competing=await Promise.allSettled([service.requestHandover(a,currentA.shift.id,receiver,0),service.requestHandover(wrong,second.id,receiver,55)]);
+   assert.equal(competing.filter(x=>x.status==='fulfilled').length,1);
+   assert.ok(competing.find(x=>x.status==='rejected').reason.message.includes('FINANCE_HANDOVER_RECEIVER_ALREADY_PENDING'));
+   assert.equal((await workspace.workspace(receiver,unitA)).handovers.length,1);scenarios++;
    console.log(JSON.stringify({coreType,shiftType,status:'PASS'}));
   }finally{await db.$disconnect();await root.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);}
  }
