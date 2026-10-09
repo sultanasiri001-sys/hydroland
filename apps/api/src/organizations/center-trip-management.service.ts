@@ -66,6 +66,34 @@ export class CenterTripManagementService {
    return this.details(tx,tripId);
   });}catch(error){if(!id&&retryUnique&&typeof error==='object'&&error!==null&&'code' in error&&error.code==='P2002')return this.save(accountId,input,undefined,false);throw error}
  }
+ async remove(accountId:string,id:string,input:Record<string,unknown>){
+  this.object(input,['expectedUpdatedAt']);const revision=this.revision(input.expectedUpdatedAt);
+  return this.db.serializable(async tx=>{
+   const organizationId=await this.scope(tx,accountId),trip=await tx.trip.findFirst({where:{id,organizationId}});
+   if(!trip)throw new NotFoundException('الرحلة غير موجودة في المركز.');
+   if(trip.updatedAt.getTime()!==revision.getTime())throw new ConflictException('تغيرت الرحلة. حدّثها قبل الحذف.');
+   if(trip.status!=='DRAFT')throw new ConflictException('يمكن حذف المسودة فقط. استخدم إلغاء الرحلة للرحلات المنشورة.');
+   if(await tx.calendarEvent.count({where:{referenceType:'TRIP',referenceId:id}}))throw new ConflictException('الرحلة مرتبطة بجدول تشغيل ولا يمكن حذفها.');
+   // Inspect every real FK, including operational tables outside Prisma. Never
+   // allow cascading deletion of bookings, safety reviews or operational history.
+   const references=await tx.$queryRaw<Array<{tableName:string;columnName:string;relationName:string}>>`
+    SELECT format('%I.%I',n.nspname,c.relname) AS "tableName",quote_ident(a.attname) AS "columnName",c.relname AS "relationName"
+    FROM pg_constraint f JOIN pg_class c ON c.oid=f.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+    JOIN pg_attribute a ON a.attrelid=f.conrelid AND a.attnum=f.conkey[1]
+    WHERE f.contype='f' AND f.confrelid='"Trip"'::regclass`;
+   for(const ref of references){
+    if(ref.relationName==='TripOperationalLocation')continue;
+    // Identifiers are quoted by PostgreSQL above; the trip ID stays parameterized.
+    const [row]=await tx.$queryRaw<Array<{found:boolean}>>(Prisma.sql`SELECT EXISTS(SELECT 1 FROM ${Prisma.raw(ref.tableName)} WHERE ${Prisma.raw(ref.columnName)}::text=${id}) AS found`);
+    if(row.found)throw new ConflictException('الرحلة مرتبطة بسجلات تشغيلية. استخدم إجراء الإلغاء لحفظها.');
+   }
+   await tx.$executeRaw`DELETE FROM "TripOperationalLocation" WHERE "tripId"::text=${id}`;
+   await tx.operationalSetting.deleteMany({where:{key:'trip-price:'+id}});
+   await tx.trip.delete({where:{id}});
+   await this.audit.record({actorId:accountId,action:'CENTER_TRIP_DRAFT_DELETED',resource:'Trip',resourceId:id,metadata:{organizationId,title:trip.title}},tx);
+   return {id,deleted:true};
+  });
+ }
  async publish(accountId:string,id:string,input:Record<string,unknown>){
   this.object(input,['expectedUpdatedAt']);const revision=this.revision(input.expectedUpdatedAt);
   return this.db.serializable(async tx=>{
@@ -82,3 +110,4 @@ export class CenterTripManagementService {
   });
  }
 }
+

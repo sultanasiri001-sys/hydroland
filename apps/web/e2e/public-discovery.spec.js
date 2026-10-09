@@ -50,7 +50,7 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
     await screenshot(page,testInfo,`activities-${viewport.name}`);
     await page.locator('[data-activity-filter="shore"]').click();await expect(page).toHaveURL(/#trips$/);await expect(page.locator('[data-public-trip]')).toHaveCount(1);
     await expect(page.locator('[data-public-trip-filter="shore"]')).toHaveAttribute('aria-pressed','true');
-    await page.locator('[data-public-detail="trip"]').click();const detail=page.locator('#hl-public-detail');await expect(detail).toBeVisible();await expect(detail.locator('h2')).toHaveText('غوص شاطئي في عمق');await expect(detail.locator('dl')).toContainText('مرسى القحمة');
+    await page.locator('#trips [data-public-detail="trip"]').click();const detail=page.locator('#hl-public-detail');await expect(detail).toBeVisible();await expect(detail.locator('h2')).toHaveText('غوص شاطئي في عمق');await expect(detail.locator('dl')).toContainText('مرسى القحمة');
     await expect(detail.locator('.hl-public-detail-art')).toHaveAttribute('data-public-art','shore');
     const cardArtwork=await page.locator('[data-public-trip] .trip-image').evaluate(node=>getComputedStyle(node).backgroundImage);
     expect(await detail.locator('.hl-public-detail-art').evaluate(node=>getComputedStyle(node).backgroundImage)).toBe(cardArtwork);
@@ -68,7 +68,7 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
     await screenshot(page,testInfo,`product-detail-${viewport.name}`);
     await detail.locator('[data-detail-action]').click();await expect(detail).toBeHidden();await expect(page.locator('.hl-store-summary')).toContainText('1 منتج');
     await page.locator('[data-product-filter="unavailable"]').click();await page.locator('[data-public-detail="product"]').click();await expect(detail.locator('[data-detail-action]')).toBeDisabled();await detail.locator('[data-detail-back]').click();await expect(detail).toBeHidden();
-    await navigate(page,'trips');await page.locator('a[href="#trip/boat-public"]').click();await detail.locator('[data-detail-action]').click();await expect(page.locator('.hl-login')).toBeVisible();await expect(page.locator('#booking-dialog')).toBeHidden();
+    await navigate(page,'trips');await page.locator('#trips a[href="#trip/boat-public"]').click();await detail.locator('[data-detail-action]').click();await expect(page.locator('.hl-login')).toBeVisible();await expect(page.locator('#booking-dialog')).toBeHidden();
     expect(writes).toEqual([]);expect(await page.evaluate(()=>window.HydrolandAuth.isAuthenticated())).toBe(false);
   });
 }
@@ -79,14 +79,14 @@ test('shared trip links recover from a read failure and keep unavailable booking
   const writes=await installApi(page,{tripResponse:route=>unavailable?json(route,{message:'Unavailable'},503):json(route,[sameTitle,blocked])});
   await enter(page,'/#trip/boat-public');const detail=page.locator('#hl-public-detail');await expect(detail).toBeVisible();await expect(detail.locator('h2')).toHaveText('تعذر تحميل التفاصيل');
   unavailable=false;await detail.locator('[data-detail-action]').click();await expect(detail.locator('h2')).toHaveText(blocked.title);await expect(detail.locator('[data-detail-action]')).toBeDisabled();await expect(detail.locator('[data-detail-action]')).toHaveText('السعر لم يُعتمد بعد');
-  await detail.locator('[data-detail-back]').click();await expect(page).toHaveURL(/#trips$/);await expect(page.locator('[data-book][data-trip-id="boat-public"]')).toBeDisabled();await expect(page.locator('[data-book][data-trip-id="other-trip-with-same-title"]')).toBeEnabled();expect(writes).toEqual([]);
+  await detail.locator('[data-detail-back]').click();await expect(page).toHaveURL(/#trips$/);await expect(page.locator('#trips [data-book][data-trip-id="boat-public"]')).toBeDisabled();await expect(page.locator('#trips [data-book][data-trip-id="other-trip-with-same-title"]')).toBeEnabled();expect(writes).toEqual([]);
 });
 
 test('long trip details keep actions reachable and restore keyboard focus on a short mobile screen',async({page})=>{
   await page.setViewportSize({width:390,height:568});
   const longTrip={...trips[0],description:'تعليمات الرحلة المنشورة من المركز. '.repeat(100)};
   await installApi(page,{tripResponse:route=>json(route,[longTrip])});await enter(page);await navigate(page,'trips');
-  const trigger=page.locator('a[href="#trip/boat-public"]');await trigger.click();
+  const trigger=page.locator('#trips a[href="#trip/boat-public"]');await trigger.click();
   const detail=page.locator('#hl-public-detail'),body=detail.locator('.hl-public-detail-body'),action=detail.locator('[data-detail-action]');
   await expect(detail.locator('h2')).toHaveText(longTrip.title);await expect(action).toBeInViewport({ratio:1});
   const before=await action.boundingBox();await body.focus();await page.keyboard.press('End');
@@ -109,7 +109,7 @@ test('opening trip details stops an in-flight page scroll and preserves the view
     window.scrollTo({top:Math.min(650,document.documentElement.scrollHeight-innerHeight),behavior:'smooth'});
     for(let i=0;i<30&&scrollY<20;i++)await frame();
     const startedAt=scrollY;
-    document.querySelector('a[href="#trip/boat-public"]').click();
+    document.querySelector('#trips a[href="#trip/boat-public"]').click();
     const samples=[];
     for(let i=0;i<15;i++){
       await frame();

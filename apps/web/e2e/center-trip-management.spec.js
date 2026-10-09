@@ -33,3 +33,11 @@ test('revoked center role cannot create a trip or retain its form',async({page})
 test('revoked center role cannot publish a saved trip',async({page})=>{
  const state=await setup(page,[trip]);let writes=0;await page.route('**/api/v1/center/me/trips/trip-edit/publish',route=>{writes++;return json(route,{},201)});state.active=false;page.once('dialog',dialog=>dialog.accept());await page.locator('[data-center-trip-publish]').evaluate(node=>node.click());await expect(page.locator('#hl-center-operations')).toHaveCount(0);expect(writes).toBe(0);
 });
+
+test('center can delete an unused draft after confirmation',async({page})=>{
+ const state=await setup(page,[trip]);let writes=0;
+ await page.route('**/api/v1/center/me/trips/trip-edit',route=>{expect(route.request().method()).toBe('DELETE');expect(route.request().postDataJSON()).toEqual({expectedUpdatedAt:trip.updatedAt});writes++;state.rows=[];return json(route,{deleted:true})});
+ page.once('dialog',dialog=>dialog.dismiss());await page.locator('[data-center-trip-delete]').click();expect(writes).toBe(0);
+ page.once('dialog',dialog=>dialog.accept());await page.locator('[data-center-trip-delete]').click();await expect(page.locator('#hl-center-operations')).toContainText('تم حذف مسودة الرحلة');await expect(page.locator('[data-center-trip]')).toHaveCount(0);expect(writes).toBe(1);
+});
+

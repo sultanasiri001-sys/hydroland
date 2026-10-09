@@ -5,6 +5,7 @@ const json=(route,body,status=200)=>route.fulfill({status,contentType:'applicati
 test('checkout creates one order, survives payment-record failure, and resumes payment from existing order',async({page})=>{
   const profile={id:'store-buyer-e2e',email:'store-buyer@hydroland.test',status:'ACTIVE',roleAssignments:[],person:{firstName:'Store',lastName:'Buyer',phone:null,professional:null}};
   const product={id:'product-store-e2e',sku:'REG-E2E',nameAr:'منظم غوص تجريبي',priceMinor:12500,currency:'SAR',stockQuantity:2,status:'ACTIVE'};
+  const trip={id:'trip-store-e2e',title:'رحلة عسير التجريبية',type:'BOAT',status:'OPEN',startsAt:'2031-02-03T06:00:00.000Z',endsAt:'2031-02-03T10:00:00.000Z',capacity:6,remainingSeats:6,price:{pricePerSeatMinor:5500,currency:'SAR',configured:true},location:{locationName:'مرسى القحمة'},safety:{decision:'ALLOWED'},weather:{evaluation:{blocking:false}}};
   const order={id:'order-store-e2e',accountId:'store-buyer-e2e',status:'CREATED',totalMinor:12500,currency:'SAR',createdAt:new Date().toISOString(),items:[{id:'item-store-e2e',productId:product.id,quantity:1,unitPriceMinor:12500,product}]};
   let payment=null,orderCreates=0,paymentAttempts=0,firstPaymentKey=null;
   const requireAuth=request=>request.headers().authorization==='Bearer store-e2e-access';
@@ -13,6 +14,7 @@ test('checkout creates one order, survives payment-record failure, and resumes p
   await page.route(/\/api\/v1\/credentials$/,route=>requireAuth(route.request())?json(route,[]):json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/me\/diver-profile$/,route=>requireAuth(route.request())?json(route,{profile:null,equipment:[]}):json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/store\/products$/,route=>json(route,[product]));
+  await page.route(/\/api\/v1\/trips$/,route=>json(route,[trip]));
   await page.route(/\/api\/v1\/store\/orders$/,route=>{
     if(!requireAuth(route.request()))return json(route,{message:'Unauthorized'},401);
     orderCreates+=1;const body=route.request().postDataJSON();
@@ -35,6 +37,10 @@ test('checkout creates one order, survives payment-record failure, and resumes p
 
   await page.waitForFunction(()=>Boolean(window.HydrolandWorkspaceUI));
   await page.locator('#navigation a[href="#store"]').click();
+  const tripCard=page.locator('[data-store-trip="trip-store-e2e"]');await expect(tripCard).toBeVisible();await expect(tripCard).toContainText('رحلة عسير التجريبية');
+  await page.locator('[data-store-type-filter="products"]').click();await expect(tripCard).toBeHidden();await expect(page.locator('[data-public-product="product-store-e2e"]')).toBeVisible();
+  await page.locator('[data-store-type-filter="all"]').click();await expect(tripCard).toBeVisible();
+  await tripCard.locator('[data-book]').click();await expect(page.locator('#booking-dialog')).toBeVisible();await expect(page.locator('#booking-title')).toHaveText('رحلة عسير التجريبية');await page.locator('#close-booking').click();
   const add=page.locator('[data-store-add="product-store-e2e"]');await expect(add).toBeVisible();await add.click();
   await expect(page.locator('.hl-store-summary')).toContainText('1 منتج');
   await page.locator('.hl-store-checkout').click();
