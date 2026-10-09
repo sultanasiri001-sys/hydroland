@@ -47,8 +47,10 @@
   const tripDescription=trip=>String(trip.description||trip.summary||'تفاصيل الرحلة ومتطلبات المشاركة من بيانات المشغّل.');
   const tripDate=trip=>{const date=new Date(trip.startsAt);return Number.isNaN(date.getTime())?'الموعد من المشغّل':date.toLocaleString('ar-SA',{dateStyle:'medium',timeStyle:'short'})};
   const publicCategory=trip=>{const type=String(trip.type||'').toUpperCase();return type.includes('SHORE')?'shore':type.includes('DIVE')?'dive':'marine'};
-  const openBooking=id=>{
-    const trip=state.trips.find(item=>item.id===id);if(!trip)return;
+  const openBooking=async id=>{
+    let trip=state.trips.find(item=>item.id===id);
+    if(!trip){const trips=await loadTrips();trip=trips.find(item=>item.id===id)}
+    if(!trip)return;
     const reason=window.HydrolandBookingAvailability?.explain?.(trip)||(trip.price?.configured===false?'السعر لم يُعتمد بعد':'');
     if(reason){toast(reason);return}
     state.selected=trip;state.pendingBooking=null;syncBookingDetails(trip);
