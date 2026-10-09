@@ -152,6 +152,7 @@ jobs:
           PAYMENT_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/payment-moyasar-http-e2e.mjs
           MARINE_DOCS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/marine-documents-http-e2e.mjs
           MARINE_READINESS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/marine-readiness-http-e2e.mjs
+          MARINE_TRIPS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/marine-trip-management-http-checks.mjs
           SAFETY_CHECKLIST_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/safety-checklist-http-e2e.mjs
           CENTER_SAFETY_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/center-safety-http-e2e.mjs
           SAFETY_INCIDENTS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/safety-incidents-http-e2e.mjs

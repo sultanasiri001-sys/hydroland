@@ -1,0 +1,41 @@
+import {PrismaClient} from '@prisma/client';
+import {createHmac,randomUUID} from 'node:crypto';
+
+const db=new PrismaClient();
+const base=process.env.MARINE_TRIPS_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1';
+const secret=process.env.JWT_SECRET;if(!secret)throw new Error('JWT_SECRET required');
+const suffix=Date.now().toString(),enc=value=>Buffer.from(JSON.stringify(value)).toString('base64url');
+const tokenFor=id=>{const now=Math.floor(Date.now()/1000),body=enc({alg:'HS256',typ:'JWT'})+'.'+enc({sub:id,iat:now,exp:now+900});return body+'.'+createHmac('sha256',secret).update(body).digest('base64url');};
+const headers=token=>({authorization:'Bearer '+token,'content-type':'application/json'});
+const expectOk=async response=>{const body=await response.json().catch(()=>null);if(!response.ok)throw new Error('HTTP '+response.status+': '+JSON.stringify(body));return body};
+const people=[],accounts=[],roles=[],organizations=[],memberships=[];let trip=null;
+try{
+ for(const name of ['owner','other']){const person=await db.person.create({data:{firstName:name,lastName:'MarineTripsE2E'}});people.push(person);const account=await db.account.create({data:{personId:person.id,email:'marine-trips-'+name+'-'+suffix+'@example.invalid',passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}});accounts.push(account);roles.push(await db.roleAssignment.create({data:{accountId:account.id,role:'BOAT_OWNER',status:'ACTIVE',activeAt:new Date(),scope:{purpose:'MARINE_TRIPS_E2E'}}}));}
+ const owner=accounts[0],other=accounts[1];
+ for(const [account,label] of [[owner,'Owner'],[other,'Other']]){const organization=await db.organization.create({data:{displayName:'Marine Trips '+label+' '+suffix,kind:'MARINE_OPERATOR',status:'ACTIVE',ownerId:account.id}});organizations.push(organization);memberships.push(await db.organizationMember.create({data:{organizationId:organization.id,accountId:account.id,role:'OWNER',status:'ACTIVE'}}));}
+ const ownerToken=tokenFor(owner.id),otherToken=tokenFor(other.id);
+ let response=await fetch(base+'/marine-operations/trips/mine');if(response.status!==401)throw new Error('Anonymous marine trip list expected 401, got '+response.status);
+ const payload={organizationId:organizations[0].id,title:'Marine draft '+suffix,startsAt:new Date(Date.now()+7*86400000).toISOString(),endsAt:new Date(Date.now()+7*86400000+3600000).toISOString(),capacity:8,pricePerSeatMinor:12500,locationName:'Test harbor',latitude:24.7136,longitude:46.6753,requestId:randomUUID()};
+ response=await fetch(base+'/marine-operations/trips',{method:'POST',headers:headers(ownerToken),body:JSON.stringify({...payload,organizationId:organizations[1].id})});if(response.status!==403)throw new Error('Foreign organization draft creation expected 403, got '+response.status);
+ trip=await expectOk(await fetch(base+'/marine-operations/trips',{method:'POST',headers:headers(ownerToken),body:JSON.stringify(payload)}));
+ if(trip.status!=='DRAFT'||trip.organizationId!==organizations[0].id||trip.price?.pricePerSeatMinor!==payload.pricePerSeatMinor||trip.location?.locationName!==payload.locationName)throw new Error('Marine draft fields were not persisted.');
+ let mine=await expectOk(await fetch(base+'/marine-operations/trips/mine',{headers:headers(ownerToken)}));if(!mine.some(row=>row.id===trip.id)||mine.some(row=>row.organizationId===organizations[1].id))throw new Error('Marine trip list crossed organization scope.');
+ const foreign=await expectOk(await fetch(base+'/marine-operations/trips/mine',{headers:headers(otherToken)}));if(foreign.some(row=>row.id===trip.id)||foreign.some(row=>row.organizationId===organizations[0].id))throw new Error('Another operator read a foreign trip.');
+ const replay=await expectOk(await fetch(base+'/marine-operations/trips',{method:'POST',headers:headers(ownerToken),body:JSON.stringify(payload)}));if(replay.id!==trip.id)throw new Error('Identical create retry did not return the saved draft.');
+ response=await fetch(base+'/marine-operations/trips',{method:'POST',headers:headers(ownerToken),body:JSON.stringify({...payload,title:'Conflicting retry'})});if(response.status!==409)throw new Error('Conflicting create retry expected 409, got '+response.status);
+ await db.$executeRaw`DELETE FROM "TripOperationalLocation" WHERE "tripId"::text=${trip.id}`;await db.operationalSetting.deleteMany({where:{key:'trip-price:'+trip.id}});
+ response=await fetch(base+'/marine-operations/trips/'+trip.id+'/publish',{method:'POST',headers:headers(ownerToken),body:JSON.stringify({expectedUpdatedAt:trip.updatedAt})});if(response.status!==409)throw new Error('Publish without price/location expected 409, got '+response.status);
+ const {requestId,...editPayload}=payload;
+ const revised=await expectOk(await fetch(base+'/marine-operations/trips/'+trip.id,{method:'PATCH',headers:headers(ownerToken),body:JSON.stringify({...editPayload,expectedUpdatedAt:trip.updatedAt})}));
+ response=await fetch(base+'/marine-operations/trips/'+trip.id,{method:'PATCH',headers:headers(ownerToken),body:JSON.stringify({...editPayload,title:'Stale revision',expectedUpdatedAt:trip.updatedAt})});if(response.status!==409)throw new Error('Stale trip update expected 409, got '+response.status);
+ response=await fetch(base+'/marine-operations/trips/'+trip.id,{method:'PATCH',headers:headers(otherToken),body:JSON.stringify({...editPayload,organizationId:organizations[1].id,expectedUpdatedAt:revised.updatedAt})});if(response.status!==404)throw new Error('Cross-organization trip edit expected 404, got '+response.status);
+ trip=await expectOk(await fetch(base+'/marine-operations/trips/'+trip.id+'/publish',{method:'POST',headers:headers(ownerToken),body:JSON.stringify({expectedUpdatedAt:revised.updatedAt})}));if(trip.status!=='OPEN')throw new Error('Future marine draft did not publish.');
+ if(await db.safetyChecklist.count({where:{tripId:trip.id}})!==0)throw new Error('Publishing must not create safety approval.');
+ const reviews=await db.$queryRaw`SELECT "status" FROM "TripWeatherReview" WHERE "tripId"::text=${trip.id}`;if(reviews.some(row=>row.status==='APPROVED'))throw new Error('Publishing must not approve weather review.');
+ response=await fetch(base+'/marine-operations/trips/'+trip.id+'/publish',{method:'POST',headers:headers(ownerToken),body:JSON.stringify({expectedUpdatedAt:trip.updatedAt})});if(response.status!==409)throw new Error('Republishing an open trip expected 409, got '+response.status);
+ await db.roleAssignment.update({where:{id:roles[0].id},data:{status:'SUSPENDED'}});response=await fetch(base+'/marine-operations/trips/mine',{headers:headers(ownerToken)});if(response.status!==403)throw new Error('Suspended BOAT_OWNER role expected 403, got '+response.status);
+ console.log('Marine trip management HTTP/DB checks passed: role and organization isolation, idempotent drafts, stale revisions, price/location publish gates and independent safety/weather approval.');
+}finally{
+ if(trip){await db.booking.deleteMany({where:{tripId:trip.id}}).catch(()=>{});await db.safetyChecklist.deleteMany({where:{tripId:trip.id}}).catch(()=>{});await db.$executeRaw`DELETE FROM "TripOperationalLocation" WHERE "tripId"::text=${trip.id}`.catch(()=>{});await db.$executeRaw`DELETE FROM "TripWeatherReview" WHERE "tripId"::text=${trip.id}`.catch(()=>{});await db.operationalSetting.deleteMany({where:{key:'trip-price:'+trip.id}}).catch(()=>{});await db.auditEvent.deleteMany({where:{resource:'Trip',resourceId:trip.id}}).catch(()=>{});await db.trip.deleteMany({where:{id:trip.id}}).catch(()=>{});}
+ for(const membership of memberships)await db.organizationMember.deleteMany({where:{id:membership.id}}).catch(()=>{});for(const organization of organizations)await db.organization.deleteMany({where:{id:organization.id}}).catch(()=>{});for(const role of roles)await db.roleAssignment.deleteMany({where:{id:role.id}}).catch(()=>{});for(const account of accounts){await db.session.deleteMany({where:{accountId:account.id}}).catch(()=>{});await db.account.deleteMany({where:{id:account.id}}).catch(()=>{});}for(const person of people)await db.person.deleteMany({where:{id:person.id}}).catch(()=>{});await db.$disconnect();
+}
