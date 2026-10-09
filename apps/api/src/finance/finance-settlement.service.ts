@@ -74,7 +74,7 @@ export class FinanceSettlementService {
       const type=typeof line.type==='string'?line.type.toLowerCase():'other';
       const currency=typeof line.currency==='string'?line.currency.toUpperCase():'';
       const paymentAmountMinor=intOrNull(line.payment_amount);
-      const amountMatches=payment.currency===currency&&(['payment','capture'].includes(type)?paymentAmountMinor===payment.amountMinor:true);
+      const amountMatches=payment.currency===currency&&(['payment','refund','capture'].includes(type)?paymentAmountMinor===payment.amountMinor:true);
       lines.push({providerPaymentId:line.payment_id,localPaymentId:payment.id,type,currency,paymentAmountMinor,netAmountMinor:intOrNull(line.amount),settlementAmountMinor:intOrNull(line.settlement_amount),feeMinor:intOrNull(line.fee),taxMinor:intOrNull(line.tax),transactedAt:typeof line.transacted_at==='string'&&Number.isFinite(Date.parse(line.transacted_at))?new Date(line.transacted_at).toISOString():null,amountMatches});
     }
     const stableLines=lines.sort((a,b)=>a.providerPaymentId.localeCompare(b.providerPaymentId)||a.type.localeCompare(b.type)||String(a.transactedAt).localeCompare(String(b.transactedAt)));
