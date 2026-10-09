@@ -66,8 +66,8 @@
   const loadProducts=async()=>{
     const version=++catalogVersion;catalog.status='loading';grid.innerHTML='<article class="hl-public-empty"><span>جارٍ تحميل عروض المتجر...</span></article>';
     const base=auth()?.apiBase||'https://hydroland.onrender.com/api/v1';
-    const sources=[['products','/store/products'],['trips','/trips'],['courses','/store/courses']];
-    const results=await Promise.allSettled(sources.map(([,path])=>fetch(base+path).then(async response=>{const rows=await parse(response);if(!Array.isArray(rows))throw new Error('INVALID_CATALOG');return rows})));
+    const sources=[['products',fetch(base+'/store/products')],['trips',fetch(base+'/trips')],['courses',fetch(base+'/store/courses')]];
+    const results=await Promise.allSettled(sources.map(([,request])=>request.then(async response=>{const rows=await parse(response);if(!Array.isArray(rows))throw new Error('INVALID_CATALOG');return rows})));
     if(version!==catalogVersion)return;
     catalog.errors=[];
     results.forEach((result,index)=>{const key=sources[index][0];catalog[key]=result.status==='fulfilled'?result.value.filter(row=>row&&row.id&&(row.nameAr||row.title)):[];if(result.status==='rejected')catalog.errors.push(key)});

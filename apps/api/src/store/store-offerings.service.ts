@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, StoreProductStatus } from '@prisma/client';
+import { Prisma, StoreProductKind, StoreProductStatus } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 
 const productFields = ['sku','nameAr','description','priceMinor','stockQuantity','kind','status'];
@@ -71,7 +71,7 @@ export class StoreOfferingsService {
     this.object(input,[...productFields,id?'expectedUpdatedAt':'requestId']);
     const kind=input.kind;
     if (kind!=='GOODS' && kind!=='SERVICE') throw new BadRequestException('اختر سلعة أو خدمة.');
-    const data={sku:this.text(input,'sku',80),nameAr:this.text(input,'nameAr',240),description:this.text(input,'description',4000,true),priceMinor:this.integer(input,'priceMinor'),stockQuantity:this.integer(input,'stockQuantity'),kind,status:this.status(input),currency:'SAR'};
+    const data={sku:this.text(input,'sku',80),nameAr:this.text(input,'nameAr',240),description:this.text(input,'description',4000,true),priceMinor:this.integer(input,'priceMinor'),stockQuantity:this.integer(input,'stockQuantity'),kind:kind as StoreProductKind,status:this.status(input),currency:'SAR'};
     const productId=id||this.requestId(input.requestId);
     return this.retryUnique(()=>this.db.serializable(async tx=>{
       const organization=await this.scope(tx,accountId),before=await tx.storeProduct.findUnique({where:{id:productId}});

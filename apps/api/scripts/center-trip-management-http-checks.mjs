@@ -36,8 +36,18 @@ export async function checkCenterTripManagement(db,{base,a,b,ownerA,ta,tb,ts},ch
   const second=await db.trip.findUniqueOrThrow({where:{id:ids[1]}});
   await db.operationalSetting.delete({where:{key:'trip-price:'+ids[1]}});check((await request(ta,'/'+ids[1]+'/publish','POST',{expectedUpdatedAt:second.updatedAt})).status===409,'Missing price blocks publication');
   await db.operationalSetting.create({data:{key:'trip-price:'+ids[1],value:{pricePerSeatMinor:100,currency:'SAR'}}});await db.$executeRaw`DELETE FROM "TripOperationalLocation" WHERE "tripId"::text=${ids[1]}`;check((await request(ta,'/'+ids[1]+'/publish','POST',{expectedUpdatedAt:second.updatedAt})).status===409,'Missing location blocks publication');
+  check((await request(ta,'/'+ids[0],'DELETE',{expectedUpdatedAt:published.updatedAt})).status===409,'Published trips retain their history and use cancellation');
+  check((await request(tb,'/'+ids[1],'DELETE',{expectedUpdatedAt:second.updatedAt})).status===404,'Other center cannot delete draft');
+  check((await request(ts,'/'+ids[1],'DELETE',{expectedUpdatedAt:second.updatedAt})).status===403,'Staff cannot delete draft');
+  check((await request(ta,'/'+ids[1],'DELETE',{expectedUpdatedAt:'2000-01-01T00:00:00.000Z'})).status===409,'Stale revision cannot delete draft');
+  const event=await db.calendarEvent.create({data:{type:'TRIP',referenceType:'TRIP',referenceId:ids[1],title:'Draft allocation',startsAt:second.startsAt,endsAt:second.endsAt,organizationId:a.org.id}});
+  check((await request(ta,'/'+ids[1],'DELETE',{expectedUpdatedAt:second.updatedAt})).status===409,'Operational calendar record blocks draft deletion');
+  await db.calendarEvent.delete({where:{id:event.id}});
+  check((await request(ta,'/'+ids[1],'DELETE',{expectedUpdatedAt:second.updatedAt})).status===200,'Unused draft can be deleted by its center');
+  check(await db.trip.count({where:{id:ids[1]}})===0,'Draft deletion persisted');
  }finally{
   await db.organization.update({where:{id:a.org.id},data:{status:'ACTIVE'}});await db.roleAssignment.update({where:{accountId_role:{accountId:ownerA.id,role:'DIVE_CENTER'}},data:{status:'ACTIVE'}});
   await db.operationalSetting.deleteMany({where:{key:{in:ids.map(id=>'trip-price:'+id)}}});await db.auditEvent.deleteMany({where:{resourceId:{in:ids}}});await db.trip.deleteMany({where:{id:{in:ids}}});
  }
 }
+
