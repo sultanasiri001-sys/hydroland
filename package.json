@@ -12,7 +12,8 @@
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "postinstall": "node scripts/apply-node-forge-security-backport.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1138.0",
@@ -21,7 +22,7 @@
   "overrides": {
     "deepmerge-ts": "^8.0.1",
     "multer": "^2.3.0",
-    "node-forge": "git+https://github.com/Krysthyan/forge.git#ceba34402e329f0365134f23fe19898756527d65",
+    "node-forge": "1.4.0",
     "shell-quote": "1.11.0",
     "source-map-js": "1.2.2"
   },
