@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {PrismaClient} from '@prisma/client';
 import {createHmac,randomUUID} from 'node:crypto';
+import {checkCenterTripManagement} from './center-trip-management-http-checks.mjs';
 const db=new PrismaClient(),base=process.env.STORE_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1';
 const secret=process.env.JWT_SECRET;if(!secret)throw new Error('JWT_SECRET required');
 const enc=value=>Buffer.from(JSON.stringify(value)).toString('base64url');
@@ -24,6 +25,7 @@ try{
  }
  await db.organizationMember.create({data:{organizationId:organizations[0].id,accountId:staff.id,role:'STAFF',status:'ACTIVE'}});
  await db.roleAssignment.create({data:{accountId:staff.id,role:'DIVE_CENTER',status:'ACTIVE'}});
+ await checkCenterTripManagement(db,{base,a:{org:organizations[0]},b:{org:organizations[1]},ownerA:a,ta:token(a.id),tb:token(b.id),ts:token(staff.id)},(condition,message)=>assert.ok(condition,message));
  assert.equal((await request(null,'/store/provider/catalog')).status,401);
  assert.equal((await request(staff,'/store/provider/catalog')).status,403);
  const productId=randomUUID();ids.push(productId);

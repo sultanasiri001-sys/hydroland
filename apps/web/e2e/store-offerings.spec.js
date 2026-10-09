@@ -1,6 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {openWorkspaceSwitcher} from './portal-test-helpers.js';
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
+test.use({viewport:{width:390,height:844}});
 const revision='2026-10-09T01:00:00.000Z';
 const course={id:'course-1',title:'دورة مياه مفتوحة',courseCode:'OW',description:'تدريب عملي',locationName:'جدة',startsAt:'2031-02-03T06:00:00.000Z',endsAt:'2031-02-05T10:00:00.000Z',capacity:3,remainingSeats:3,priceMinor:100000,currency:'SAR',status:'ACTIVE',organization:{displayName:'عالم الغوص'},updatedAt:revision,_count:{enrollments:0}};
 const service={id:'service-1',sku:'SERVICE-1',nameAr:'صيانة معدات',description:'موعد الخدمة بالتنسيق',kind:'SERVICE',priceMinor:12550,stockQuantity:2,status:'DRAFT',currency:'SAR',updatedAt:revision,_count:{items:0}};
@@ -25,7 +26,7 @@ test('one store filters services and courses, then records a training request wi
  await setup(page);let enrolls=0,orders=0;
  await page.route('**/api/v1/store/courses/course-1/enroll',route=>{enrolls++;expect(route.request().method()).toBe('POST');return json(route,{id:'enrollment',status:'PENDING'},201)});
  await page.route(/\/api\/v1\/store\/orders$/,route=>{orders++;return json(route,{},201)});
- await page.locator('[data-store-type-filter="courses"]').click();await expect(page.locator('[data-store-course]')).toBeVisible();await expect(page.locator('[data-public-product="service-1"]')).toHaveCount(0);
+ await page.evaluate(()=>window.HydrolandPublicUI.navigate('training'));await page.locator('[data-public-training-store]').click();await expect(page.locator('[data-store-type-filter="courses"]')).toHaveAttribute('aria-pressed','true');await expect(page.locator('[data-store-course]')).toBeVisible();await expect(page.locator('[data-public-product="service-1"]')).toHaveCount(0);
  await page.locator('[data-store-course] summary').click();await expect(page.locator('[data-store-course]')).toContainText('تدريب عملي');
  page.once('dialog',d=>d.dismiss());await page.locator('[data-store-enroll]').click();expect(enrolls).toBe(0);
  page.once('dialog',d=>d.accept());await page.locator('[data-store-enroll]').click();await expect.poll(()=>enrolls).toBe(1);expect(orders).toBe(0);
@@ -56,11 +57,13 @@ test('center creates and edits a service, stops it and deletes the unused offer'
  page.once('dialog',d=>d.accept());await row.locator('[data-offer-delete]').click();await expect(page.locator('[data-managed-offer]')).toHaveCount(0);
  expect(state.writes[1].expectedUpdatedAt).toBe(revision);expect(state.writes.at(-1).expectedUpdatedAt).toBe('2026-10-09T01:00:09.000Z');
 });
-test('course form preserves failed values and retry identity with Riyadh dates',async({page})=>{
+test('course form preserves failed values and retry identity with Riyadh dates',async({page},testInfo)=>{
  await setup(page,true);const writes=[];await page.route('**/api/v1/store/provider/courses',route=>{writes.push(route.request().postDataJSON());return json(route,{message:'تعذر الحفظ مؤقتًا'},503)});
  await page.locator('[data-store-manage]').click();const form=page.locator('[data-offer-form][data-type="courses"][data-id=""]');await form.locator('..').locator('summary').click();
  for(const[key,value]of Object.entries({title:'دورة جديدة',courseCode:'OW',locationName:'جدة',startsAt:'2031-02-03T09:00',endsAt:'2031-02-05T13:00',capacity:'3',price:'1000'}))await form.locator(`[name=${key}]`).fill(value);
  for(let i=0;i<2;i++){await form.locator('[type=submit]').click();await expect(form.locator('[data-offer-feedback]')).toHaveText('تعذر الحفظ مؤقتًا');await expect(form.locator('[name=title]')).toHaveValue('دورة جديدة')}
+ await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ await page.screenshot({path:testInfo.outputPath('public-store-provider-mobile.png'),fullPage:true});
  expect(writes).toHaveLength(2);expect(writes[0].requestId).toBe(writes[1].requestId);expect(writes[0].startsAt).toBe(course.startsAt);expect(writes[0].priceMinor).toBe(100000);
 });
 test('revoked role clears provider data and prevents writes',async({page})=>{

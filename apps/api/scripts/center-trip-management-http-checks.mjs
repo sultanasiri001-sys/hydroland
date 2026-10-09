@@ -47,6 +47,7 @@ export async function checkCenterTripManagement(db,{base,a,b,ownerA,ta,tb,ts},ch
   check(await db.trip.count({where:{id:ids[1]}})===0,'Draft deletion persisted');
  }finally{
   await db.organization.update({where:{id:a.org.id},data:{status:'ACTIVE'}});await db.roleAssignment.update({where:{accountId_role:{accountId:ownerA.id,role:'DIVE_CENTER'}},data:{status:'ACTIVE'}});
+  await db.calendarEvent.deleteMany({where:{referenceType:'TRIP',referenceId:{in:ids}}});
   await db.operationalSetting.deleteMany({where:{key:{in:ids.map(id=>'trip-price:'+id)}}});await db.auditEvent.deleteMany({where:{resourceId:{in:ids}}});await db.trip.deleteMany({where:{id:{in:ids}}});
  }
 }
