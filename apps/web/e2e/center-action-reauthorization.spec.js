@@ -55,10 +55,8 @@ for(const kind of ['equipment','operations']){
    release();
    // The central authorization layer intentionally coalesces same-session /me refreshes.
    await expect.poll(()=>intercepted).toBe(1);
-   await page.waitForTimeout(50);
-   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
-   // A removed workspace cannot issue a sensitive read; the shared authoritative refresh may safely update role state.
-   expect(await page.evaluate(()=>window.HydrolandProfileData?.profile?.id)).toBe('focused-center');
+   // The shared authoritative refresh may safely update role state, but CI response latency is variable.
+   await expect.poll(()=>page.evaluate(()=>window.HydrolandProfileData?.profile?.id)).toBe('focused-center');
    expect(state.reads).toBe(reads);
    await expect(panel).toBeVisible();
    await expect(panel).not.toContainText(kind==='equipment'?'إرجاع':'عميل');
