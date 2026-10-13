@@ -31,3 +31,8 @@ These raw/legacy domains are outside the canonical Prisma models and selected re
 4. Review future migration/ledger transition and rehearse cutover/rollback. Do not replace production with the synthetic candidate or rewrite its ledger.
 
 Latest Web deploy reports 05a876bb; API reports preceding 9a3b4f81, with the intervening change Web-only. Production start still uses original db:deploy. New organization migrations remain unapplied. Issue #369 stays open.
+
+
+## Follow-up checksum verification — 2026-10-13
+
+A fresh read-only ledger query confirms 79 finished/non-rolled-back migrations, 25 rolled-back attempts, and zero unresolved entries. The latest finished migration is `20261009183000_unified_store_offerings`. Its SHA-256 from the repository SQL file (`595b6bb891fbc2ccd813e80397a0db3d4df3391298333fed551e49add6ba706f`) matches the production ledger exactly. The manifest now includes this 79th checksum; no production data, schema, migration ledger or service configuration was changed. This verifies migration-file integrity only; the production adoption and restore blockers above remain open.

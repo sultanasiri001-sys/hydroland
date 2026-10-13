@@ -1,5 +1,5 @@
 {
-  "source": "Read-only Render _prisma_migrations snapshot verified 2026-10-08; all 78 successfully recorded migrations match repository bytes",
+  "source": "Read-only Render _prisma_migrations snapshot verified 2026-10-13; all 79 successfully recorded migrations match repository bytes",
   "migrations": [
     {
       "name": "20260913150000_initial_identity",
@@ -312,6 +312,10 @@
     {
       "name": "20261004000000_center_license_platform_review",
       "sha256": "31bf728bfba5303a035fc44519c6164c2334f0f4a1dd0f967ec66950d72f0e46"
+    },
+    {
+      "name": "20261009183000_unified_store_offerings",
+      "sha256": "595b6bb891fbc2ccd813e80397a0db3d4df3391298333fed551e49add6ba706f"
     }
   ]
 }
