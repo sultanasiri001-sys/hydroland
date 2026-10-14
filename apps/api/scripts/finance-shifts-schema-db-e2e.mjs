@@ -1,3 +1,5 @@
+import {checkReceivablesWorkspaceHttp} from './finance-receivables-workspace-http-checks.mjs';
+import {FinanceReceivablesWorkspaceService} from '../dist/finance/finance-receivables-workspace.service.js';
 import {FinanceWorkspaceService} from '../dist/finance/finance-workspace.service.js';
 import {checkFinanceWorkspaceHttp} from './finance-workspace-http-checks.mjs';
 import assert from 'node:assert/strict';
@@ -14,6 +16,7 @@ assert.ok(['localhost','127.0.0.1','::1','[::1]'].includes(base.hostname),'Finan
 const root=new PrismaClient({datasourceUrl:base.toString()});
 const original=await readFile(new URL('../prisma/migrations/20260917003500_finance_accountant_shifts/migration.sql',import.meta.url),'utf8');
 const receivableSql=await readFile(new URL('../prisma/migrations/20260923143000_finance_receivables_completion/migration.sql',import.meta.url),'utf8');
+const receivableShiftSql=await readFile(new URL('../prisma/migrations/20261009003000_receivable_collector_shift_ledger/migration.sql',import.meta.url),'utf8');
 let scenarios=0;
 try {
  for(const coreType of ['text','uuid'])for(const shiftType of ['text','uuid']) {
@@ -30,16 +33,18 @@ try {
    await run(`CREATE TABLE "Employment" (id ${coreType} PRIMARY KEY,"accountId" ${coreType} REFERENCES "Account"(id),"organizationId" ${coreType} REFERENCES "Organization"(id),"orgUnitId" ${coreType} REFERENCES "OrgUnit"(id),"positionId" ${coreType} REFERENCES "Position"(id),status text NOT NULL)`);
    await run(`CREATE TABLE "Trip" (id ${coreType} PRIMARY KEY,"organizationId" ${coreType} REFERENCES "Organization"(id))`);
    await run(`CREATE TABLE "Booking" (id ${coreType} PRIMARY KEY,"tripId" ${coreType} REFERENCES "Trip"(id))`);
-   await run(`CREATE TABLE "Payment" (id ${coreType} PRIMARY KEY,"bookingId" ${coreType} REFERENCES "Booking"(id),"amountMinor" integer,status text,"accountId" ${coreType} REFERENCES "Account"(id),currency text NOT NULL DEFAULT 'SAR')`);
+   await run(`CREATE TABLE "Payment" (id ${coreType} PRIMARY KEY,"bookingId" ${coreType} REFERENCES "Booking"(id),"amountMinor" integer,status text,"accountId" ${coreType} REFERENCES "Account"(id),currency text NOT NULL DEFAULT 'SAR',"createdAt" timestamp NOT NULL DEFAULT NOW(),"providerReference" text)`);
    let migration=original;
    for(const column of ['accountantAccountId','centerOrgUnitId','reviewedByAccountId','paymentId','recordedByAccountId','fromAccountantId','toAccountantId'])migration=migration.replaceAll(`"${column}" UUID`,`"${column}" ${coreType}`);
    for(const column of ['id','shiftId','fromShiftId','toShiftId'])migration=migration.replaceAll(`"${column}" UUID`,`"${column}" ${shiftType}`);
    for(const statement of migration.split(';').map(s=>s.trim()).filter(Boolean))await run(statement);
-   await run(`CREATE TABLE "Invoice" (id ${coreType} PRIMARY KEY,"paymentId" ${coreType} UNIQUE REFERENCES "Payment"(id),status text NOT NULL DEFAULT 'ISSUED')`);
+   await run(`CREATE TABLE "Invoice" (id ${coreType} PRIMARY KEY,"paymentId" ${coreType} UNIQUE REFERENCES "Payment"(id),status text NOT NULL DEFAULT 'ISSUED',number text NOT NULL DEFAULT 'INV-fixture')`);
    let receivableMigration=receivableSql;
    for(const column of ['invoiceId','customerAccountId','centerOrgUnitId','paymentId'])receivableMigration=receivableMigration.replaceAll(`"${column}" UUID`,`"${column}" ${coreType}`);
    for(const column of ['id','receivableId','installmentId'])receivableMigration=receivableMigration.replaceAll(`"${column}" UUID`,`"${column}" ${shiftType}`);
    for(const statement of receivableMigration.split(/;\s*(?=(?:DO\s+\$\$|CREATE\s+(?:TABLE|UNIQUE\s+INDEX|INDEX)|ALTER\s+TABLE))/i).map(s=>s.trim()).filter(Boolean))await run(statement);
+   let collectionShiftMigration=receivableShiftSql.replaceAll('"shiftId" UUID','"shiftId" '+shiftType).replaceAll('"collectedByAccountId" UUID','"collectedByAccountId" '+coreType);
+   for(const statement of collectionShiftMigration.split(/;\s*(?=(?:DO\s+\$\$|CREATE\s+(?:TABLE|UNIQUE\s+INDEX|INDEX)|ALTER\s+TABLE))/i).map(s=>s.trim()).filter(Boolean))await run(statement);
    const id=()=>coreType==='text'?'text_'+randomUUID():randomUUID();
    const orgA=id(),orgB=id(),unitA=id(),unitB=id(),extra=id(),positionA=id(),positionB=id(),wrongPosition=id();
    const a=id(),b=id(),outsider=id(),wrong=id(),mismatch=id(),employmentB=id();
@@ -119,13 +124,22 @@ try {
    const rows=await db.$queryRawUnsafe(`SELECT id,"openingBalanceMinor",status::text FROM "FinanceAccountantShift" ORDER BY id`);
    assert.equal(rows.find(r=>r.id===from.id).status,'HANDED_OVER');assert.equal(rows.find(r=>r.id===to.id).openingBalanceMinor,120);assert.equal(rows.find(r=>r.id===foreign.id).openingBalanceMinor,0);scenarios++;
    const races=await Promise.allSettled([service.openShift(a,unitA,0),service.openShift(a,unitA,0)]);assert.equal(races.filter(r=>r.status==='fulfilled').length,1);assert.ok(races.find(r=>r.status==='rejected').reason.message.includes('FINANCE_ACTIVE_SHIFT_EXISTS'));scenarios++;
-   const ar=new FinanceReceivablesService(db,access);
+   const ar=new FinanceReceivablesService(db,access),arView=new FinanceReceivablesWorkspaceService(db,access);
    const originTrip=id(),originBooking=id(),originPayment=id(),invoiceId=id(),unlinkedInvoice=id();
    await run(`INSERT INTO "Trip" VALUES (${literal(originTrip)},${literal(orgA)})`);
    await run(`INSERT INTO "Booking" VALUES (${literal(originBooking)},${literal(originTrip)})`);
    await run(`INSERT INTO "Payment" (id,"bookingId","amountMinor",status,"accountId") VALUES (${literal(originPayment)},${literal(originBooking)},100,'CREATED',${literal(b)})`);
-   await run(`INSERT INTO "Invoice" VALUES (${literal(invoiceId)},${literal(originPayment)},'ISSUED'),(${literal(unlinkedInvoice)},NULL,'ISSUED')`);
+   await run(`INSERT INTO "Invoice" (id,"paymentId",status) VALUES (${literal(invoiceId)},${literal(originPayment)},'ISSUED'),(${literal(unlinkedInvoice)},NULL,'ISSUED')`);
    const terms={invoiceId,customerAccountId:b,centerOrgUnitId:unitA,totalMinor:100,dueAt:new Date('2030-01-01'),installments:[{sequence:1,amountMinor:40,dueAt:new Date('2030-01-01')},{sequence:2,amountMinor:60,dueAt:new Date('2030-02-01')}]};
+   assert.deepEqual((await arView.invoices(a,unitA)).items.map(x=>x.id),[invoiceId]);scenarios++;
+   await rejects(arView.invoices(outsider,unitA),'FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
+   await rejects(arView.list(outsider,unitA),'FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
+   await rejects(arView.list(a,unitA,'0'),'FINANCE_PAGE_INVALID');
+   await rejects(arView.list(a,unitA,'1',['open']),'FINANCE_FILTER_INVALID');
+   await run(`UPDATE "Invoice" SET status='DRAFT' WHERE id=${literal(invoiceId)}`);
+   assert.deepEqual((await arView.invoices(a,unitA)).items,[]);scenarios++;
+   await rejects(ar.createDeferredInvoice(a,terms),'FINANCE_INVOICE_SCOPE_UNVERIFIED');
+   await run(`UPDATE "Invoice" SET status='ISSUED' WHERE id=${literal(invoiceId)}`);
    await rejects(ar.createDeferredInvoice(outsider,terms),'FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
    await rejects(ar.createDeferredInvoice(a,{...terms,invoiceId:unlinkedInvoice}),'FINANCE_INVOICE_SCOPE_UNVERIFIED');
    await rejects(ar.createDeferredInvoice(a,{...terms,customerAccountId:a}),'FINANCE_INVOICE_CUSTOMER_MISMATCH');
@@ -144,7 +158,7 @@ try {
    const pay40=await makePayment(originBooking,b,40),pay60=await makePayment(originBooking,b,60),wrongCustomer=await makePayment(originBooking,a,40),wrongAmount=await makePayment(originBooking,b,50);
    const foreignBooking=id(),foreignTrip=id();await run(`INSERT INTO "Trip" VALUES (${literal(foreignTrip)},${literal(orgB)})`);await run(`INSERT INTO "Booking" VALUES (${literal(foreignBooking)},${literal(foreignTrip)})`);
    const foreignPayment=await makePayment(foreignBooking,b,40);
-   const foreignInvoice=id();await run(`INSERT INTO "Invoice" VALUES (${literal(foreignInvoice)},${literal(foreignPayment)},'ISSUED')`);
+   const foreignInvoice=id();await run(`INSERT INTO "Invoice" (id,"paymentId",status) VALUES (${literal(foreignInvoice)},${literal(foreignPayment)},'ISSUED')`);
    await rejects(ar.createDeferredInvoice(a,{...terms,invoiceId:foreignInvoice,totalMinor:40,installments:undefined}),'FINANCE_INVOICE_SCOPE_UNVERIFIED');
    await run(`UPDATE "Payment" SET status='CREATED' WHERE id=${literal(foreignPayment)}`);
    const foreignReceivable=await ar.createDeferredInvoice(outsider,{invoiceId:foreignInvoice,customerAccountId:b,centerOrgUnitId:unitB,totalMinor:40,dueAt:new Date('2030-01-01')});
@@ -154,6 +168,19 @@ try {
    await rejects(ar.branchAr(outsider,unitA),'FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
    const listing=await ar.branchAr(a,unitA);assert.equal(listing.length,1);assert.equal(listing[0].id,receivable.receivableId);const foreignListing=await ar.branchAr(outsider,unitB);assert.equal(foreignListing.length,1);assert.equal(foreignListing[0].id,foreignReceivable.receivableId);scenarios++;
    const collectInput={paymentId:pay40,amountMinor:40,receiptNumber:'AR-40',installmentId:installments[0].id};
+   const arList=await arView.list(a,unitA);assert.equal(arList.total,1);assert.equal(arList.items[0].id,receivable.receivableId);assert.deepEqual((await arView.invoices(a,unitA)).items,[]);scenarios++;
+   await rejects(arView.detail(outsider,unitA,receivable.receivableId),'FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
+   await rejects(arView.detail(a,unitA,foreignReceivable.receivableId),'FINANCE_RECEIVABLE_NOT_FOUND');
+   let detail=await arView.detail(a,unitA,receivable.receivableId);
+   assert.equal(detail.collectable,true);assert.equal(detail.installments.length,2);assert.deepEqual(new Set(detail.payments.items.map(x=>x.id)),new Set([pay40,pay60,wrongAmount]));assert.equal(detail.collections.length,0);scenarios++;
+   const activeA=await db.$queryRawUnsafe(`SELECT id FROM \"FinanceAccountantShift\" WHERE \"accountantAccountId\"=${literal(a)} AND \"status\"='OPEN'`);assert.equal(activeA.length,1);await run(`UPDATE \"FinanceAccountantShift\" SET \"status\"='CLOSED' WHERE id=${literal(activeA[0].id)}`);const noShift=await arView.detail(a,unitA,receivable.receivableId);assert.equal(noShift.collectable,false);assert.equal(noShift.collectionShiftId,null);assert.deepEqual(noShift.payments.items,[]);await rejects(ar.collect(a,receivable.receivableId,collectInput),'FINANCE_OPEN_SHIFT_REQUIRED');await run(`UPDATE \"FinanceAccountantShift\" SET \"status\"='OPEN' WHERE id=${literal(activeA[0].id)}`);scenarios++;
+   await run(`UPDATE "Invoice" SET status='VOID' WHERE id=${literal(invoiceId)}`);
+   detail=await arView.detail(a,unitA,receivable.receivableId);assert.equal(detail.collectable,false);assert.deepEqual(detail.payments.items,[]);scenarios++;
+   await run(`UPDATE "Invoice" SET status='ISSUED' WHERE id=${literal(invoiceId)}`);
+   await rejects(ar.collect(a,receivable.receivableId,{...collectInput,installmentId:undefined}),'FINANCE_INSTALLMENT_REQUIRED');
+   await run(`UPDATE "ReceivableInstallment" SET status='CANCELLED' WHERE id=${literal(installments[0].id)}`);
+   await rejects(ar.collect(a,receivable.receivableId,collectInput),'FINANCE_INSTALLMENT_CANCELLED');
+   await run(`UPDATE "ReceivableInstallment" SET status='PENDING' WHERE id=${literal(installments[0].id)}`);
    await rejects(ar.collect(outsider,receivable.receivableId,collectInput),'FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
    await rejects(ar.collect(a,receivable.receivableId,{...collectInput,paymentId:foreignPayment}),'FINANCE_PAYMENT_NOT_SETTLED');
    await rejects(ar.collect(a,receivable.receivableId,{...collectInput,paymentId:otherBookingPayment}),'FINANCE_PAYMENT_NOT_SETTLED');
@@ -161,14 +188,48 @@ try {
    await rejects(ar.collect(a,receivable.receivableId,{...collectInput,paymentId:wrongAmount}),'FINANCE_PAYMENT_AMOUNT_MISMATCH');
    await run(`UPDATE "Payment" SET currency='USD' WHERE id=${literal(pay40)}`);
    await rejects(ar.collect(a,receivable.receivableId,collectInput),'FINANCE_PAYMENT_CURRENCY_MISMATCH');
+   assert.ok(!(await arView.detail(a,unitA,receivable.receivableId)).payments.items.some(x=>x.id===pay40));scenarios++;
    await run(`UPDATE "Payment" SET currency='SAR' WHERE id=${literal(pay40)}`);
    const collections=await Promise.allSettled([ar.collect(a,receivable.receivableId,collectInput),ar.collect(a,receivable.receivableId,collectInput)]);assert.equal(collections.filter(r=>r.status==='fulfilled').length,1);assert.ok(collections.find(r=>r.status==='rejected').reason.message.includes('FINANCE_COLLECTION_ALREADY_RECORDED'));const collected=collections.find(r=>r.status==='fulfilled').value;assert.equal(collected.outstandingMinor,60);scenarios++;
    await rejects(ar.collect(a,receivable.receivableId,collectInput),'FINANCE_COLLECTION_ALREADY_RECORDED');
+   detail=await arView.detail(a,unitA,receivable.receivableId);assert.equal(detail.collections[0].receiptNumber,'AR-40');assert.ok(!detail.payments.items.some(x=>x.id===pay40));assert.equal(detail.receivable.outstandingMinor,60);scenarios++;
+   const linked=await db.$queryRawUnsafe(`SELECT rp.\"shiftId\",rp.\"collectedByAccountId\",s.\"accountantAccountId\",e.\"type\"::text AS type,e.\"referenceType\",e.\"referenceId\",e.\"amountMinor\" FROM \"ReceivablePayment\" rp JOIN \"FinanceAccountantShift\" s ON s.id=rp.\"shiftId\" JOIN \"FinanceShiftEntry\" e ON e.\"paymentId\"=rp.\"paymentId\" WHERE rp.\"paymentId\"=${literal(pay40)}`);assert.equal(linked.length,1);assert.equal(linked[0].collectedByAccountId,a);assert.equal(linked[0].accountantAccountId,a);assert.equal(linked[0].type,'REVENUE');assert.equal(linked[0].referenceType,'RECEIVABLE_COLLECTION');assert.equal(linked[0].referenceId,detail.collections[0].id);assert.equal(linked[0].amountMinor,40);scenarios++;await rejects(service.recordEntry(a,activeA[0].id,{type:'REVENUE',amountMinor:40,paymentId:pay40}),'FINANCE_PAYMENT_ALREADY_LEDGERED');
    await run(`UPDATE "Employment" SET status='INACTIVE' WHERE "accountId"=${literal(a)}`);
    await rejects(ar.collect(a,receivable.receivableId,{paymentId:pay60,amountMinor:60,receiptNumber:'AR-60',installmentId:installments[1].id}),'FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
    await run(`UPDATE "Employment" SET status='ACTIVE' WHERE "accountId"=${literal(a)}`);
    await rejects(ar.collect(a,receivable.receivableId,{paymentId:pay60,amountMinor:60,receiptNumber:'AR-60',installmentId:installments[0].id}),'FINANCE_INSTALLMENT_OVERPAYMENT');
    const final=await ar.collect(a,receivable.receivableId,{paymentId:pay60,amountMinor:60,receiptNumber:'AR-60',installmentId:installments[1].id});assert.equal(final.outstandingMinor,0);assert.equal(final.status,'PAID');assert.equal((await ar.branchAr(a,unitA)).length,0);scenarios++;
+   detail=await arView.detail(a,unitA,receivable.receivableId);assert.equal(detail.collectable,false);assert.equal(detail.collections.length,2);assert.equal((await arView.list(a,unitA)).total,0);assert.equal((await arView.list(a,unitA,'1','all')).total,1);scenarios++;
+   const postedShift=await workspace.workspace(a,unitA);assert.equal(postedShift.totals.revenueMinor,100);assert.ok(postedShift.entries.some(e=>e.type==='REVENUE'&&e.paymentId===pay60&&e.referenceType==='RECEIVABLE_COLLECTION'));scenarios++;
+   const newInvoices=[];
+   for(let n=0;n<26;n++){const pay=await makePayment(originBooking,b,100),invoice=id();await run(`UPDATE "Payment" SET status='CREATED' WHERE id=${literal(pay)}`);await run(`INSERT INTO "Invoice" (id,"paymentId",status,number) VALUES (${literal(invoice)},${literal(pay)},'ISSUED',${literal('PAGE-'+String(n).padStart(2,'0'))})`);newInvoices.push(invoice);}
+   const invoices1=await arView.invoices(a,unitA,'1'),invoices2=await arView.invoices(a,unitA,'2');assert.equal(invoices1.items.length,25);assert.equal(invoices2.items.length,1);assert.equal(invoices1.total,26);assert.equal(new Set([...invoices1.items,...invoices2.items].map(x=>x.id)).size,26);scenarios++;
+   const pagedReceivables=[];for(const invoice of newInvoices)pagedReceivables.push((await ar.createDeferredInvoice(a,{...terms,invoiceId:invoice,installments:undefined})).receivableId);
+   const page1=await arView.list(a,unitA,'1','all'),page2=await arView.list(a,unitA,'2','all');assert.equal(page1.items.length,25);assert.equal(page2.items.length,2);assert.equal(page1.total,27);assert.equal(new Set([...page1.items,...page2.items].map(x=>x.id)).size,27);scenarios++;
+   const httpOrigin=await makePayment(originBooking,b,100),httpInvoice=id(),httpPayment=await makePayment(originBooking,b,100);
+   await run(`UPDATE "Payment" SET status='CREATED' WHERE id=${literal(httpOrigin)}`);
+   await run(`INSERT INTO "Invoice" (id,"paymentId",status) VALUES (${literal(httpInvoice)},${literal(httpOrigin)},'ISSUED')`);
+   scenarios+=await checkReceivablesWorkspaceHttp(db,workspace,arView,service,ar,{a,b,outsider,unitA,invoiceId:httpInvoice,paymentId:httpPayment,foreignId:foreignReceivable.receivableId});
+   const allocatedInvoice=id();await run(`INSERT INTO "Invoice" (id,"paymentId",status) VALUES (${literal(allocatedInvoice)},${literal(httpPayment)},'PAID')`);
+   await rejects(ar.createDeferredInvoice(a,{...terms,invoiceId:allocatedInvoice,paidMinor:100,installments:undefined}),'FINANCE_INVOICE_PAYMENT_ALREADY_ALLOCATED');
+   const ownedPayment=await makePayment(originBooking,b,100),ownedInvoice=id();await run(`INSERT INTO "Invoice" (id,"paymentId",status) VALUES (${literal(ownedInvoice)},${literal(ownedPayment)},'PAID')`);
+   await ar.createDeferredInvoice(a,{...terms,invoiceId:ownedInvoice,paidMinor:100,installments:undefined});
+   assert.ok(!(await arView.detail(a,unitA,pagedReceivables[0])).payments.items.some(x=>x.id===ownedPayment));scenarios++;
+   await rejects(ar.collect(a,pagedReceivables[0],{paymentId:ownedPayment,amountMinor:100,receiptNumber:'DOUBLE-ORIGIN'}),'FINANCE_PAYMENT_ALLOCATED_TO_OTHER_RECEIVABLE');
+   // Initial invoice settlement and manual allocation compete for one captured payment.
+   const racePayment=await makePayment(originBooking,b,100),raceInvoice=id();
+   await run(`INSERT INTO "Invoice" (id,"paymentId",status) VALUES (${literal(raceInvoice)},${literal(racePayment)},'PAID')`);
+   const allocationRace=await Promise.allSettled([
+    ar.createDeferredInvoice(a,{...terms,invoiceId:raceInvoice,paidMinor:100,installments:undefined}),
+    ar.collect(a,pagedReceivables[1],{paymentId:racePayment,amountMinor:100,receiptNumber:'RACE-ORIGIN'})
+   ]);
+   assert.equal(allocationRace.filter(x=>x.status==='fulfilled').length,1);
+   assert.match(allocationRace.find(x=>x.status==='rejected').reason.message,/FINANCE_(?:INVOICE_PAYMENT_ALREADY_ALLOCATED|PAYMENT_ALLOCATED_TO_OTHER_RECEIVABLE)/);
+   const allocationCount=await db.$queryRawUnsafe(`SELECT (SELECT COUNT(*) FROM "Receivable" WHERE "invoiceId"=${literal(raceInvoice)})+(SELECT COUNT(*) FROM "ReceivablePayment" WHERE "paymentId"=${literal(racePayment)}) AS total`);
+   assert.equal(Number(allocationCount[0].total),1);scenarios++;
+   for(let n=0;n<26;n++)await makePayment(originBooking,b,1);
+   const paymentPage1=(await arView.detail(a,unitA,pagedReceivables[0],'1')).payments,paymentPage2=(await arView.detail(a,unitA,pagedReceivables[0],'2')).payments;
+   assert.equal(paymentPage1.items.length,25);assert.equal(paymentPage2.items.length,2);assert.equal(paymentPage1.total,27);assert.equal(new Set([...paymentPage1.items,...paymentPage2.items].map(x=>x.id)).size,27);scenarios++;
    // Totals include every entry even when the display is capped at the latest 50.
    await run(`UPDATE "Position" SET code='BRANCH_ACCOUNTANT' WHERE id=${literal(wrongPosition)}`);
    for(let n=0;n<55;n++)await run(`INSERT INTO "FinanceShiftEntry" (id,"shiftId",type,"amountMinor","recordedByAccountId") VALUES (${literal(randomUUID())},${literal(second.id)},'ADJUSTMENT',1,${literal(wrong)})`);
@@ -178,7 +239,7 @@ try {
    await run(`INSERT INTO "Employment" VALUES (${literal(id())},${literal(receiver)},${literal(orgA)},${literal(unitA)},${literal(positionA)},'ACTIVE')`);
    await service.openShift(receiver,unitA,0);
    const currentA=await workspace.workspace(a,unitA);
-   const competing=await Promise.allSettled([service.requestHandover(a,currentA.shift.id,receiver,0),service.requestHandover(wrong,second.id,receiver,55)]);
+   const competing=await Promise.allSettled([service.requestHandover(a,currentA.shift.id,receiver,currentA.totals.expectedCashMinor),service.requestHandover(wrong,second.id,receiver,55)]);
    assert.equal(competing.filter(x=>x.status==='fulfilled').length,1);
    assert.ok(competing.find(x=>x.status==='rejected').reason.message.includes('FINANCE_HANDOVER_RECEIVER_ALREADY_PENDING'));
    assert.equal((await workspace.workspace(receiver,unitA)).handovers.length,1);scenarios++;

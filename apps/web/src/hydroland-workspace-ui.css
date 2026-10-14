@@ -147,3 +147,8 @@ body.hl-visitor-mode #role-switch{display:none!important}
 .hl-finance-handover label{display:flex;align-items:center;gap:8px}
 .hl-finance-table{overflow:auto}.hl-finance-table table{width:100%;border-collapse:collapse}
 .hl-finance-table th,.hl-finance-table td{text-align:start;padding:10px;border-bottom:1px solid var(--hl-border,#345)}
+
+.hl-center-receivables fieldset{min-width:0;width:100%;box-sizing:border-box;border:1px solid var(--hl-border,#345);padding:12px}
+.hl-ar-installment{display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin-block:12px}
+.hl-center-receivables nav{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-block:16px}
+.hl-center-receivables [data-ar-controls]{display:flex;flex-wrap:wrap;gap:14px;align-items:end;margin-block:16px}

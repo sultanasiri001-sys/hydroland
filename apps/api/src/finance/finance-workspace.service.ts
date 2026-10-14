@@ -35,8 +35,8 @@ export class FinanceWorkspaceService {
         WHERE "shiftId"=${financeKey('FinanceShiftEntry','shiftId',shift.id)} GROUP BY "type"`:[];
       const totals=shift?calculateFinanceShiftTotals(shift.openingBalanceMinor,groups.map(row=>({...row,amountMinor:Number(row.amountMinor)}))):null;
       if(totals&&Object.values(totals).some(value=>!Number.isSafeInteger(value)))throw new Error('FINANCE_AMOUNT_INVALID');
-      const entries=shift?await tx.$queryRaw<Array<{id:string;type:string;amountMinor:number;description:string|null;createdAt:Date}>>`
-        SELECT "id","type"::text,"amountMinor","description","createdAt" FROM "FinanceShiftEntry"
+      const entries=shift?await tx.$queryRaw<Array<{id:string;type:string;amountMinor:number;paymentId:string|null;referenceType:string|null;referenceId:string|null;description:string|null;createdAt:Date}>>`
+        SELECT "id","type"::text,"amountMinor","paymentId","referenceType","referenceId","description","createdAt" FROM "FinanceShiftEntry"
         WHERE "shiftId"=${financeKey('FinanceShiftEntry','shiftId',shift.id)} ORDER BY "createdAt" DESC,"id" DESC LIMIT 50`:[];
       // Recipient discovery exposes only names and IDs of eligible, empty shifts in this center.
       const receivers=await tx.$queryRaw<Array<{accountId:string;name:string}>>`

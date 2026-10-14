@@ -1,3 +1,4 @@
+import { FinanceReceivablesWorkspaceService } from './finance-receivables-workspace.service';
 import { FinanceWorkspaceService } from './finance-workspace.service';
 import { Module } from '@nestjs/common';
 import { AdminModule } from '../admin/admin.module';
@@ -16,7 +17,7 @@ import { FinanceReceivablesService } from './finance-receivables.service';
 @Module({
   imports: [AuthModule, AdminModule, PaymentsModule],
   controllers: [FinanceController],
-  providers: [FinanceWorkspaceService, FinanceFoundationService, FinanceWorkflowService, FinanceOperationsService, FinanceGovernanceService, FinancePersistenceService, FinanceAccessService, FinanceShiftsService, FinanceReceivablesService],
+  providers: [FinanceReceivablesWorkspaceService, FinanceWorkspaceService, FinanceFoundationService, FinanceWorkflowService, FinanceOperationsService, FinanceGovernanceService, FinancePersistenceService, FinanceAccessService, FinanceShiftsService, FinanceReceivablesService],
   exports: [FinanceFoundationService, FinanceWorkflowService, FinanceOperationsService, FinanceGovernanceService, FinancePersistenceService, FinanceAccessService, FinanceShiftsService, FinanceReceivablesService],
 })
 export class FinanceModule {}
