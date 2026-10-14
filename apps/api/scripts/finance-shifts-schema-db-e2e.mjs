@@ -13,6 +13,7 @@ import {FinanceShiftsService} from '../dist/finance/finance-shifts.service.js';
 import {FinanceShiftCloseService} from '../dist/finance/finance-shift-close.service.js';
 import {FinancePeriodCloseService} from '../dist/finance/finance-period-close.service.js';
 import {FinanceSettlementService} from '../dist/finance/finance-settlement.service.js';
+import {checkSettlementSyncRaces,checkSettlementImportRaces} from './finance-settlement-race-checks.mjs';
 const base=new URL(process.env.DATABASE_URL??'');
 assert.equal(process.env.NODE_ENV,'test');
 assert.ok(['localhost','127.0.0.1','::1','[::1]'].includes(base.hostname),'Finance fixture requires a loopback database');
@@ -106,8 +107,10 @@ try {
    const settlementProvider={fetchSettlement:async id=>({id,currency:'SAR'}),listSettlementLines:async(_id,page)=>({lines:page===1?settlementLines:[],meta:{next_page:null}})};
    const paymentProvider={fetchInvoice:async id=>({id,status:'paid',amount:40,currency:'SAR',url:'https://checkout.example.invalid',metadata:{hydroland_payment_id:payments[0],hydroland_booking_id:(await db.$queryRaw`SELECT "bookingId"::text AS id FROM "Payment" WHERE "id"::text=${payments[0]}`)[0].id},payments:[{id:providerPaymentId,status:'paid',amount:40,currency:'SAR'}]})};
    const settlementService=new FinanceSettlementService(db,access,settlementProvider,paymentProvider);
+   scenarios+=await checkSettlementSyncRaces(db,access,settlementProvider,paymentProvider,{accountId:a,centerId:unitA,paymentId:payments[0],foreignOrganizationId:orgB});
    const synchronized=await settlementService.syncPaymentReferences(a,unitA);assert.deepEqual(synchronized,{syncedCount:1,failedCount:0,remainingCount:0,batchSize:10});scenarios++;
    const imported=await settlementService.import(a,unitA,settlementId);assert.equal(imported.matchedLineCount,1);assert.equal(imported.lines.length,1);assert.equal(imported.lines[0].localPaymentId,payments[0]);assert.equal(imported.mismatchedLineCount,0);scenarios++;
+   scenarios+=await checkSettlementImportRaces(db,access,settlementProvider,paymentProvider,{accountId:a,centerId:unitA,settlementId,importId:imported.id});
    await rejects(settlementService.review(a,imported.id,'APPROVED'),'FINANCE_SETTLEMENT_REVIEW_SOD_VIOLATION');
    const settlementFirstApproval=await settlementService.review(outsider,imported.id,'APPROVED');assert.equal(settlementFirstApproval.status,'SUBMITTED');assert.equal(settlementFirstApproval.approvalCount,1);scenarios++;
    const settlementSecondApproval=await settlementService.review(b,imported.id,'APPROVED');assert.equal(settlementSecondApproval.status,'APPROVED');assert.equal(settlementSecondApproval.approvalCount,2);scenarios++;

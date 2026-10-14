@@ -42,13 +42,28 @@ export class FinanceSettlementService {
         if(invoice.metadata.hydroland_payment_id!==payment.id||invoice.metadata.hydroland_booking_id!==payment.bookingId||invoice.amount!==payment.amountMinor||invoice.currency!==payment.currency||!['paid','captured'].includes(invoice.status))return false;
         const completed=invoice.payments.filter(item=>['paid','captured'].includes(item.status)&&item.amount===payment.amountMinor&&item.currency===payment.currency);
         if(completed.length!==1||!/^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.test(completed[0].id))return false;
-        await this.db.$executeRaw`UPDATE "Payment" SET "moyasarPaymentId"=${completed[0].id.toLowerCase()} WHERE "id"::text=${payment.id} AND "providerReference"=${payment.providerReference} AND "moyasarPaymentId" IS NULL`;
-        return true;
+        return this.db.serializable(async tx=>{
+          const current=await this.access.requireBranchAccountant(accountId,centerId,tx);
+          await this.access.requireCenterOrganizationAccountant(accountId,current.organizationId,tx);
+          if(current.organizationId!==scope.organizationId)throw new Error('FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
+          // Provider I/O is outside this transaction. Recheck the payment and its
+          // tenant at the write boundary; a stale response must not link it.
+          const updated=await tx.$executeRaw`UPDATE "Payment" p SET "moyasarPaymentId"=${completed[0].id.toLowerCase()} FROM "Booking" b,"Trip" t WHERE p."id"::text=${payment.id} AND b."id"=p."bookingId" AND t."id"=b."tripId" AND t."organizationId"=${financeKey('Organization','id',current.organizationId)} AND p."bookingId"::text=${payment.bookingId} AND p."status"='CAPTURED' AND p."amountMinor"=${payment.amountMinor} AND p."currency"=${payment.currency} AND p."providerReference"=${payment.providerReference} AND p."moyasarPaymentId" IS NULL`;
+          return updated===1;
+        });
       }));
-      for(const result of results)if(result.status==='fulfilled'&&result.value)syncedCount++;else failedCount++;
+      for(const result of results){
+        if(result.status==='rejected'&&result.reason instanceof Error&&/^FINANCE_(BRANCH_ACCOUNTANT_ACCESS_DENIED|CENTER_MAPPING_AMBIGUOUS)$/.test(result.reason.message))throw result.reason;
+        if(result.status==='fulfilled'&&result.value)syncedCount++;else failedCount++;
+      }
     }
-    const counts=await this.db.$queryRaw<Array<{remaining:bigint}>>`SELECT COUNT(*)::bigint AS "remaining" FROM "Payment" p JOIN "Booking" b ON b."id"=p."bookingId" JOIN "Trip" t ON t."id"=b."tripId" WHERE t."organizationId"=${financeKey('Organization','id',scope.organizationId)} AND p."status"='CAPTURED' AND p."providerReference" IS NOT NULL AND p."moyasarPaymentId" IS NULL`;
-    return{syncedCount,failedCount,remainingCount:Number(counts[0]?.remaining??0),batchSize:10};
+    return this.db.serializable(async tx=>{
+      const current=await this.access.requireBranchAccountant(accountId,centerId,tx);
+      await this.access.requireCenterOrganizationAccountant(accountId,current.organizationId,tx);
+      if(current.organizationId!==scope.organizationId)throw new Error('FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
+      const counts=await tx.$queryRaw<Array<{remaining:bigint}>>`SELECT COUNT(*)::bigint AS "remaining" FROM "Payment" p JOIN "Booking" b ON b."id"=p."bookingId" JOIN "Trip" t ON t."id"=b."tripId" WHERE t."organizationId"=${financeKey('Organization','id',current.organizationId)} AND p."status"='CAPTURED' AND p."providerReference" IS NOT NULL AND p."moyasarPaymentId" IS NULL`;
+      return{syncedCount,failedCount,remainingCount:Number(counts[0]?.remaining??0),batchSize:10};
+    });
   }
 
   async import(accountId:string,centerId:string,settlementId:string){
@@ -63,42 +78,44 @@ export class FinanceSettlementService {
     if(typeof settlement.id!=='string'||settlement.id.toLowerCase()!==settlementRef)throw new ConflictException('Provider settlement reference mismatch.');
     const rawLines=await this.allLines(settlementRef);
     const providerIds=[...new Set(rawLines.flatMap(row=>typeof row.payment_id==='string'&&/^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.test(row.payment_id)?[row.payment_id]:[]))];
-    let payments:Array<{id:string;moyasarPaymentId:string;amountMinor:number;currency:string}>=[];
-    if(providerIds.length)payments=await this.db.$queryRaw<Array<{id:string;moyasarPaymentId:string;amountMinor:number;currency:string}>>`SELECT p."id"::text AS "id",p."moyasarPaymentId",p."amountMinor",p."currency" FROM "Payment" p JOIN "Booking" b ON b."id"=p."bookingId" JOIN "Trip" t ON t."id"=b."tripId" WHERE p."moyasarPaymentId"=ANY(${providerIds}::text[]) AND t."organizationId"=${financeKey('Organization','id',center.organizationId)}`;
-    const byProviderId=new Map(payments.map(payment=>[payment.moyasarPaymentId,payment]));
-    const lines:SafeLine[]=[];
-    for(const line of rawLines){
-      if(typeof line.payment_id!=='string')continue;
-      const payment=byProviderId.get(line.payment_id);
-      if(!payment)continue;
-      const type=typeof line.type==='string'?line.type.toLowerCase():'other';
-      const currency=typeof line.currency==='string'?line.currency.toUpperCase():'';
-      const paymentAmountMinor=intOrNull(line.payment_amount);
-      const amountMatches=payment.currency===currency&&paymentAmountMinor===payment.amountMinor;
-      lines.push({providerPaymentId:line.payment_id,localPaymentId:payment.id,type,currency,paymentAmountMinor,netAmountMinor:intOrNull(line.amount),settlementAmountMinor:intOrNull(line.settlement_amount),feeMinor:intOrNull(line.fee),taxMinor:intOrNull(line.tax),transactedAt:typeof line.transacted_at==='string'&&Number.isFinite(Date.parse(line.transacted_at))?new Date(line.transacted_at).toISOString():null,amountMatches});
-    }
-    const stableLines=lines.sort((a,b)=>a.providerPaymentId.localeCompare(b.providerPaymentId)||a.type.localeCompare(b.type)||String(a.transactedAt).localeCompare(String(b.transactedAt)));
-    const contentHash=createHash('sha256').update(JSON.stringify({settlementId:settlementRef,currency:settlement.currency,lines:stableLines})).digest('hex');
-    const matchedGross=stableLines.reduce((sum,line)=>sum+(line.type==='payment'?line.paymentAmountMinor??0:0),0);
-    const feeMinor=stableLines.reduce((sum,line)=>sum+(line.feeMinor??0)-(line.taxMinor??0),0);
-    const taxMinor=stableLines.reduce((sum,line)=>sum+(line.taxMinor??0),0);
-    if(!Number.isSafeInteger(matchedGross)||matchedGross<0||matchedGross>2147483647||![feeMinor,taxMinor].every(value=>Number.isSafeInteger(value)&&Math.abs(value)<=2147483647))throw new Error('FINANCE_AMOUNT_INVALID');
-    const existingRows=await this.db.$queryRaw<Array<Record<string,unknown>>>`SELECT "id"::text AS "id","providerSettlementId","status"::text AS "status","matchedLineCount","mismatchedLineCount" FROM "FinanceSettlementImport" WHERE "centerOrgUnitId"=${financeKey('FinanceSettlementImport','centerOrgUnitId',centerId)} AND "providerSettlementId"=${settlementRef} AND "contentHash"=${contentHash} LIMIT 1`;
-    const existing=existingRows[0];
-    if(existing)return existing;
-    try{
+    const persist=()=>this.db.serializable(async tx=>{
+      const current=await this.access.requireBranchAccountant(accountId,centerId,tx);
+      await this.access.requireCenterOrganizationAccountant(accountId,current.organizationId,tx);
+      if(current.organizationId!==center.organizationId)throw new Error('FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
+      let payments:Array<{id:string;moyasarPaymentId:string;amountMinor:number;currency:string}>=[];
+      if(providerIds.length)payments=await tx.$queryRaw<Array<{id:string;moyasarPaymentId:string;amountMinor:number;currency:string}>>`SELECT p."id"::text AS "id",p."moyasarPaymentId",p."amountMinor",p."currency" FROM "Payment" p JOIN "Booking" b ON b."id"=p."bookingId" JOIN "Trip" t ON t."id"=b."tripId" WHERE p."moyasarPaymentId"=ANY(${providerIds}::text[]) AND t."organizationId"=${financeKey('Organization','id',center.organizationId)}`;
+      const byProviderId=new Map(payments.map(payment=>[payment.moyasarPaymentId,payment]));
+      const lines:SafeLine[]=[];
+      for(const line of rawLines){
+        if(typeof line.payment_id!=='string')continue;
+        const payment=byProviderId.get(line.payment_id);
+        if(!payment)continue;
+        const type=typeof line.type==='string'?line.type.toLowerCase():'other';
+        const currency=typeof line.currency==='string'?line.currency.toUpperCase():'';
+        const paymentAmountMinor=intOrNull(line.payment_amount);
+        const amountMatches=payment.currency===currency&&paymentAmountMinor===payment.amountMinor;
+        lines.push({providerPaymentId:line.payment_id,localPaymentId:payment.id,type,currency,paymentAmountMinor,netAmountMinor:intOrNull(line.amount),settlementAmountMinor:intOrNull(line.settlement_amount),feeMinor:intOrNull(line.fee),taxMinor:intOrNull(line.tax),transactedAt:typeof line.transacted_at==='string'&&Number.isFinite(Date.parse(line.transacted_at))?new Date(line.transacted_at).toISOString():null,amountMatches});
+      }
+      const stableLines=lines.sort((a,b)=>a.providerPaymentId.localeCompare(b.providerPaymentId)||a.type.localeCompare(b.type)||String(a.transactedAt).localeCompare(String(b.transactedAt)));
+      const contentHash=createHash('sha256').update(JSON.stringify({settlementId:settlementRef,currency:settlement.currency,lines:stableLines})).digest('hex');
+      const matchedGross=stableLines.reduce((sum,line)=>sum+(line.type==='payment'?line.paymentAmountMinor??0:0),0);
+      const feeMinor=stableLines.reduce((sum,line)=>sum+(line.feeMinor??0)-(line.taxMinor??0),0);
+      const taxMinor=stableLines.reduce((sum,line)=>sum+(line.taxMinor??0),0);
+      if(!Number.isSafeInteger(matchedGross)||matchedGross<0||matchedGross>2147483647||![feeMinor,taxMinor].every(value=>Number.isSafeInteger(value)&&Math.abs(value)<=2147483647))throw new Error('FINANCE_AMOUNT_INVALID');
+      const existingRows=await tx.$queryRaw<Array<Record<string,unknown>>>`SELECT "id"::text AS "id","providerSettlementId","status"::text AS "status","matchedLineCount","mismatchedLineCount" FROM "FinanceSettlementImport" WHERE "centerOrgUnitId"=${financeKey('FinanceSettlementImport','centerOrgUnitId',centerId)} AND "providerSettlementId"=${settlementRef} AND "contentHash"=${contentHash} LIMIT 1`;
+      const existing=existingRows[0];
+      if(existing)return existing;
       const id=randomUUID(),currency=typeof settlement.currency==='string'?settlement.currency:'SAR',mismatchedLineCount=stableLines.filter(line=>!line.amountMatches).length;
-      await this.db.$transaction(async tx=>{
-        await tx.$executeRaw`INSERT INTO "FinanceSettlementImport" ("id","centerOrgUnitId","providerSettlementId","contentHash","currency","grossAmountMinor","feeMinor","taxMinor","matchedLineCount","mismatchedLineCount","lines","status","importedByAccountId") VALUES (${financeKey('FinanceSettlementImport','id',id)},${financeKey('FinanceSettlementImport','centerOrgUnitId',centerId)},${settlementRef},${contentHash},${currency},${matchedGross},${feeMinor},${taxMinor},${stableLines.length},${mismatchedLineCount},${JSON.stringify(stableLines)}::jsonb,'SUBMITTED'::"FinanceSettlementImportStatus",${financeKey('FinanceSettlementImport','importedByAccountId',accountId)})`;
-        await tx.auditEvent.create({data:{action:'FINANCE_SETTLEMENT_IMPORTED',resource:'FinanceSettlementImport',resourceId:id,metadata:{centerOrgUnitId:centerId,provider:'MOYASAR',providerSettlementId:settlementRef,matchedLineCount:stableLines.length,mismatchedLineCount,contentHash}}});
-      });
+      await tx.$executeRaw`INSERT INTO "FinanceSettlementImport" ("id","centerOrgUnitId","providerSettlementId","contentHash","currency","grossAmountMinor","feeMinor","taxMinor","matchedLineCount","mismatchedLineCount","lines","status","importedByAccountId") VALUES (${financeKey('FinanceSettlementImport','id',id)},${financeKey('FinanceSettlementImport','centerOrgUnitId',centerId)},${settlementRef},${contentHash},${currency},${matchedGross},${feeMinor},${taxMinor},${stableLines.length},${mismatchedLineCount},${JSON.stringify(stableLines)}::jsonb,'SUBMITTED'::"FinanceSettlementImportStatus",${financeKey('FinanceSettlementImport','importedByAccountId',accountId)})`;
+      await tx.auditEvent.create({data:{action:'FINANCE_SETTLEMENT_IMPORTED',resource:'FinanceSettlementImport',resourceId:id,metadata:{centerOrgUnitId:centerId,provider:'MOYASAR',providerSettlementId:settlementRef,matchedLineCount:stableLines.length,mismatchedLineCount,contentHash}}});
       return{id,providerSettlementId:settlementRef,currency,grossAmountMinor:matchedGross,feeMinor,taxMinor,matchedLineCount:stableLines.length,mismatchedLineCount,lines:stableLines,status:'SUBMITTED',submittedAt:new Date(),reviewedAt:null,importedByAccountId:accountId};
-    }catch(error){
+    });
+    try{return await persist();}catch(error){
       const databaseError=error&&typeof error==='object'?error as {code?:unknown;meta?:{code?:unknown}}:null;
       if(databaseError&&(databaseError.code==='P2002'||databaseError.meta?.code==='23505')){
-        const duplicates=await this.db.$queryRaw<Array<Record<string,unknown>>>`SELECT "id"::text AS "id","providerSettlementId","status"::text AS "status","matchedLineCount","mismatchedLineCount" FROM "FinanceSettlementImport" WHERE "centerOrgUnitId"=${financeKey('FinanceSettlementImport','centerOrgUnitId',centerId)} AND "providerSettlementId"=${settlementRef} AND "contentHash"=${contentHash} LIMIT 1`;
-        const duplicate=duplicates[0];
-        if(duplicate)return duplicate;
+        // A concurrent import may have won. Retry the scoped lookup only after
+        // reacquiring current authorization in a fresh transaction.
+        return persist();
       }
       throw error;
     }
