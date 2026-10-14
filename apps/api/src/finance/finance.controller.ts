@@ -11,13 +11,34 @@ import { FinanceShiftsService } from './finance-shifts.service';
 import { FinanceReceivablesService } from './finance-receivables.service';
 import { FinanceShiftCloseService } from './finance-shift-close.service';
 import { FinancePeriodCloseService } from './finance-period-close.service';
+import { FinanceSettlementService } from './finance-settlement.service';
 
 type AuthenticatedRequest = { auth: { accountId: string } };
 
 @UseGuards(AccessTokenGuard)
 @Controller('finance')
 export class FinanceController {
-  constructor(private readonly arWorkspace: FinanceReceivablesWorkspaceService, private readonly workspace: FinanceWorkspaceService, private readonly payments: PaymentsService, private readonly finance: FinancePersistenceService, private readonly shifts: FinanceShiftsService, private readonly receivables: FinanceReceivablesService, private readonly shiftClose: FinanceShiftCloseService, private readonly periodClose: FinancePeriodCloseService) {}
+  constructor(private readonly arWorkspace: FinanceReceivablesWorkspaceService, private readonly workspace: FinanceWorkspaceService, private readonly payments: PaymentsService, private readonly finance: FinancePersistenceService, private readonly shifts: FinanceShiftsService, private readonly receivables: FinanceReceivablesService, private readonly shiftClose: FinanceShiftCloseService, private readonly periodClose: FinancePeriodCloseService, private readonly settlements: FinanceSettlementService) {}
+
+  @Get('centers/:centerOrgUnitId/settlement-imports')
+  settlementImports(@Req() request:AuthenticatedRequest,@Param('centerOrgUnitId') centerId:string) {
+    return financeHttp(()=>this.settlements.list(request.auth.accountId,centerId));
+  }
+
+  @Post('centers/:centerOrgUnitId/settlement-imports')
+  importSettlement(@Req() request:AuthenticatedRequest,@Param('centerOrgUnitId') centerId:string,@Body() body:{settlementId:string}) {
+    return financeHttp(()=>this.settlements.import(request.auth.accountId,centerId,body?.settlementId));
+  }
+
+  @Post('centers/:centerOrgUnitId/settlement-payment-sync')
+  syncSettlementPaymentReferences(@Req() request:AuthenticatedRequest,@Param('centerOrgUnitId') centerId:string) {
+    return financeHttp(()=>this.settlements.syncPaymentReferences(request.auth.accountId,centerId));
+  }
+
+  @Post('settlement-imports/:importId/decision')
+  reviewSettlement(@Req() request:AuthenticatedRequest,@Param('importId') importId:string,@Body() body:{decision:'APPROVED'|'REJECTED';note?:string}) {
+    return financeHttp(()=>this.settlements.review(request.auth.accountId,importId,body?.decision,body?.note));
+  }
 
   @Get('mine/payments')
   mine(@Req() request: AuthenticatedRequest) { return this.payments.mine(request.auth.accountId); }

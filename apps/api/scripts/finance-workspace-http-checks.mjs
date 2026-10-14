@@ -10,6 +10,7 @@ import {FinanceShiftsService} from '../dist/finance/finance-shifts.service.js';
 import {FinanceReceivablesService} from '../dist/finance/finance-receivables.service.js';
 import {FinanceShiftCloseService} from '../dist/finance/finance-shift-close.service.js';
 import {FinancePeriodCloseService} from '../dist/finance/finance-period-close.service.js';
+import {FinanceSettlementService} from '../dist/finance/finance-settlement.service.js';
 import {FinancePersistenceService} from '../dist/finance/finance-persistence.service.js';
 import {PaymentsService} from '../dist/payments/payments.service.js';
 // Real HTTP routing, AccessTokenGuard, controller, compiled services and PostgreSQL.
@@ -20,7 +21,7 @@ export async function checkFinanceWorkspaceHttp(db,workspace,shifts,{a,b,outside
  Module({controllers:[FinanceController],providers:[
   {provide:DatabaseService,useValue:db},{provide:AuthService,useValue:{authenticateAccessToken:async token=>{if(!tokens.has(token))throw new UnauthorizedException();return {accountId:tokens.get(token)}}}},
   {provide:FinanceReceivablesWorkspaceService,useValue:{}},{provide:FinanceWorkspaceService,useValue:workspace},{provide:FinanceShiftsService,useValue:shifts},
-  ...[FinanceReceivablesService,FinancePersistenceService,PaymentsService].map(provide=>({provide,useValue:{}})),{provide:FinanceShiftCloseService,useValue:{reviewCenters:async()=>[],pending:async()=>[],dailyReport:async(_accountId,centerOrgUnitId,businessDate)=>({centerOrgUnitId,businessDate,shiftCount:0,decision:'NO_APPROVED_SHIFT_CLOSES'})}},{provide:FinancePeriodCloseService,useValue:{reviewCenters:async()=>[],preview:async(_accountId,centerOrgUnitId,periodType,periodKey)=>({centerOrgUnitId,periodType,periodKey,state:'READY'}),submit:async()=>({status:'SUBMITTED'}),pending:async()=>[],decide:async()=>({status:'CLOSED'})}}
+  ...[FinanceReceivablesService,FinancePersistenceService,PaymentsService].map(provide=>({provide,useValue:{}})),{provide:FinanceShiftCloseService,useValue:{reviewCenters:async()=>[],pending:async()=>[],dailyReport:async(_accountId,centerOrgUnitId,businessDate)=>({centerOrgUnitId,businessDate,shiftCount:0,decision:'NO_APPROVED_SHIFT_CLOSES'})}},{provide:FinancePeriodCloseService,useValue:{reviewCenters:async()=>[],preview:async(_accountId,centerOrgUnitId,periodType,periodKey)=>({centerOrgUnitId,periodType,periodKey,state:'READY'}),submit:async()=>({status:'SUBMITTED'}),pending:async()=>[],decide:async()=>({status:'CLOSED'})}},{provide:FinanceSettlementService,useValue:{list:async()=>[],syncPaymentReferences:async()=>({syncedCount:0,failedCount:0,remainingCount:0,batchSize:10}),import:async()=>({}),review:async()=>({})}}
  ]})(FixtureModule);
  const app=await NestFactory.create(FixtureModule,{logger:false});let count=0;
  try{
