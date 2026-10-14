@@ -9,13 +9,14 @@ import { PaymentsService } from '../payments/payments.service';
 import { FinancePersistenceService } from './finance-persistence.service';
 import { FinanceShiftsService } from './finance-shifts.service';
 import { FinanceReceivablesService } from './finance-receivables.service';
+import { FinanceShiftCloseService } from './finance-shift-close.service';
 
 type AuthenticatedRequest = { auth: { accountId: string } };
 
 @UseGuards(AccessTokenGuard)
 @Controller('finance')
 export class FinanceController {
-  constructor(private readonly arWorkspace: FinanceReceivablesWorkspaceService, private readonly workspace: FinanceWorkspaceService, private readonly payments: PaymentsService, private readonly finance: FinancePersistenceService, private readonly shifts: FinanceShiftsService, private readonly receivables: FinanceReceivablesService) {}
+  constructor(private readonly arWorkspace: FinanceReceivablesWorkspaceService, private readonly workspace: FinanceWorkspaceService, private readonly payments: PaymentsService, private readonly finance: FinancePersistenceService, private readonly shifts: FinanceShiftsService, private readonly receivables: FinanceReceivablesService, private readonly shiftClose: FinanceShiftCloseService) {}
 
   @Get('mine/payments')
   mine(@Req() request: AuthenticatedRequest) { return this.payments.mine(request.auth.accountId); }
@@ -48,6 +49,31 @@ export class FinanceController {
   @Post('shifts/handovers/:handoverId/accept')
   acceptHandover(@Req() request: AuthenticatedRequest, @Param('handoverId') handoverId: string) {
     return financeHttp(()=>this.shifts.acceptHandover(request.auth.accountId, handoverId));
+  }
+
+  @Post('centers/:centerOrgUnitId/shifts/:shiftId/close/preview')
+  previewShiftClose(@Req() request:AuthenticatedRequest,@Param('centerOrgUnitId') centerId:string,@Param('shiftId') shiftId:string,@Body() body:{actualCashMinor:number;varianceReason?:string}) {
+    return financeHttp(()=>this.shiftClose.preview(request.auth.accountId,centerId,shiftId,body?.actualCashMinor,body?.varianceReason));
+  }
+
+  @Get('mine/shift-close-centers')
+  shiftCloseCenters(@Req() request:AuthenticatedRequest) {
+    return financeHttp(()=>this.shiftClose.reviewCenters(request.auth.accountId));
+  }
+
+  @Post('centers/:centerOrgUnitId/shifts/:shiftId/close')
+  submitShiftClose(@Req() request:AuthenticatedRequest,@Param('centerOrgUnitId') centerId:string,@Param('shiftId') shiftId:string,@Body() body:{actualCashMinor:number;varianceReason?:string}) {
+    return financeHttp(()=>this.shiftClose.submit(request.auth.accountId,centerId,shiftId,body?.actualCashMinor,body?.varianceReason));
+  }
+
+  @Get('centers/:centerOrgUnitId/shift-close-reviews')
+  pendingShiftCloseReviews(@Req() request:AuthenticatedRequest,@Param('centerOrgUnitId') centerId:string) {
+    return financeHttp(()=>this.shiftClose.pending(request.auth.accountId,centerId));
+  }
+
+  @Post('shift-close-reviews/:submissionId/decision')
+  decideShiftClose(@Req() request:AuthenticatedRequest,@Param('submissionId') submissionId:string,@Body() body:{decision:'APPROVED'|'REJECTED';note?:string}) {
+    return financeHttp(()=>this.shiftClose.review(request.auth.accountId,submissionId,body?.decision,body?.note));
   }
 
   @Get('centers/:centerOrgUnitId/receivables/workspace')
