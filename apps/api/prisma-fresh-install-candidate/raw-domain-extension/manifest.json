@@ -1,0 +1,8 @@
+{
+  "status": "CANDIDATE_NOT_PRODUCTION_APPROVED",
+  "migrationName": "00000000000001_raw_domain_completion",
+  "catalogSha256": "6d4dcc926c14279eafcef4db572c5ad5182447759b242d0f08d76d828295891b",
+  "migrationSha256": "cc85781cd7c2830212a4b380b23e06f76e05f0f0dcd580c75b2d26dfa399ae3b",
+  "externalReferenceTypePolicy": "MATCH_INSTALLED_PARENT_TEXT_OR_UUID",
+  "historicalLedgerReplacementApproved": false
+}

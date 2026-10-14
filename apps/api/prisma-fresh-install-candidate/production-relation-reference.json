@@ -1,0 +1,4343 @@
+{
+  "constraints": [
+    {
+      "definition": "UNIQUE (email)",
+      "kind": "u",
+      "name": "Account_email_key",
+      "table_name": "Account",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"personId\") REFERENCES \"Person\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Account_personId_fkey",
+      "table_name": "Account",
+      "validated": true
+    },
+    {
+      "definition": "UNIQUE (\"personId\")",
+      "kind": "u",
+      "name": "Account_personId_key",
+      "table_name": "Account",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "Account_pkey",
+      "table_name": "Account",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"applicantId\") REFERENCES \"Account\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "ActivationRequest_applicantId_fkey",
+      "table_name": "ActivationRequest",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "ActivationRequest_pkey",
+      "table_name": "ActivationRequest",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"roleAssignmentId\") REFERENCES \"RoleAssignment\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "ActivationRequest_roleAssignmentId_fkey",
+      "table_name": "ActivationRequest",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"organizationId\") REFERENCES \"Organization\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "AdministrativeMeeting_organizationId_fkey",
+      "table_name": "AdministrativeMeeting",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"organizerAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "AdministrativeMeeting_organizerAccountId_fkey",
+      "table_name": "AdministrativeMeeting",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "AdministrativeMeeting_pkey",
+      "table_name": "AdministrativeMeeting",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"unitId\") REFERENCES \"OrgUnit\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "AdministrativeMeeting_unitId_fkey",
+      "table_name": "AdministrativeMeeting",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"licenseAssetId\") REFERENCES \"OrganizationDocumentAsset\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "AdministrativeRecord_licenseAssetId_fkey",
+      "table_name": "AdministrativeRecord",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"licenseReviewDecidedById\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "AdministrativeRecord_licenseReviewDecidedById_fkey",
+      "table_name": "AdministrativeRecord",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"licenseReviewSubmittedById\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "AdministrativeRecord_licenseReviewSubmittedById_fkey",
+      "table_name": "AdministrativeRecord",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (\"licenseAssetId\" IS NULL AND \"licenseIssuedAt\" IS NULL AND \"licenseExpiresAt\" IS NULL OR \"licenseAssetId\" IS NOT NULL AND \"licenseIssuedAt\" IS NOT NULL AND \"licenseExpiresAt\" IS NOT NULL AND \"licenseExpiresAt\" > \"licenseIssuedAt\")",
+      "kind": "c",
+      "name": "AdministrativeRecord_license_dates_check",
+      "table_name": "AdministrativeRecord",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (\"licenseReviewStatus\" IS NULL AND \"licenseReviewSubmittedAt\" IS NULL AND \"licenseReviewSubmittedById\" IS NULL AND \"licenseReviewDecidedAt\" IS NULL AND \"licenseReviewDecidedById\" IS NULL AND \"licenseReviewReason\" IS NULL OR \"licenseReviewStatus\" IS NOT NULL AND (\"licenseReviewStatus\" = ANY (ARRAY['PENDING'::text, 'APPROVED'::text, 'REJECTED'::text])) AND \"licenseReviewSubmittedAt\" IS NOT NULL AND \"licenseReviewSubmittedById\" IS NOT NULL AND (\"licenseReviewStatus\" = 'PENDING'::text AND \"licenseReviewDecidedAt\" IS NULL AND \"licenseReviewDecidedById\" IS NULL AND \"licenseReviewReason\" IS NULL OR (\"licenseReviewStatus\" = ANY (ARRAY['APPROVED'::text, 'REJECTED'::text])) AND \"licenseReviewDecidedAt\" IS NOT NULL AND \"licenseReviewDecidedById\" IS NOT NULL AND \"licenseReviewDecidedById\" <> \"licenseReviewSubmittedById\" AND (\"licenseReviewStatus\" = 'APPROVED'::text OR \"licenseReviewReason\" IS NOT NULL AND length(TRIM(BOTH FROM \"licenseReviewReason\")) >= 5)))",
+      "kind": "c",
+      "name": "AdministrativeRecord_license_review_check",
+      "table_name": "AdministrativeRecord",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"organizationId\") REFERENCES \"Organization\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "AdministrativeRecord_organizationId_fkey",
+      "table_name": "AdministrativeRecord",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"ownerAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "AdministrativeRecord_ownerAccountId_fkey",
+      "table_name": "AdministrativeRecord",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "AdministrativeRecord_pkey",
+      "table_name": "AdministrativeRecord",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"unitId\") REFERENCES \"OrgUnit\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "AdministrativeRecord_unitId_fkey",
+      "table_name": "AdministrativeRecord",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"assignedToAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "AdministrativeRouting_assignedToAccountId_fkey",
+      "table_name": "AdministrativeRouting",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"decidedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "AdministrativeRouting_decidedByAccountId_fkey",
+      "table_name": "AdministrativeRouting",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"fromUnitId\") REFERENCES \"OrgUnit\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "AdministrativeRouting_fromUnitId_fkey",
+      "table_name": "AdministrativeRouting",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"organizationId\") REFERENCES \"Organization\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "AdministrativeRouting_organizationId_fkey",
+      "table_name": "AdministrativeRouting",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "AdministrativeRouting_pkey",
+      "table_name": "AdministrativeRouting",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"recordId\") REFERENCES \"AdministrativeRecord\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "AdministrativeRouting_recordId_fkey",
+      "table_name": "AdministrativeRouting",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"requestedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "AdministrativeRouting_requestedByAccountId_fkey",
+      "table_name": "AdministrativeRouting",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"toUnitId\") REFERENCES \"OrgUnit\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "AdministrativeRouting_toUnitId_fkey",
+      "table_name": "AdministrativeRouting",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"employmentId\") REFERENCES \"Employment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "AttendanceEntry_employmentId_fkey",
+      "table_name": "AttendanceEntry",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "AttendanceEntry_pkey",
+      "table_name": "AttendanceEntry",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"actorId\") REFERENCES \"Person\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "AuditEvent_actorId_fkey",
+      "table_name": "AuditEvent",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "AuditEvent_pkey",
+      "table_name": "AuditEvent",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "BoatResourceCompliance_pkey",
+      "table_name": "BoatResourceCompliance",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"resourceId\") REFERENCES \"CalendarResource\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "BoatResourceCompliance_resourceId_fkey",
+      "table_name": "BoatResourceCompliance",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Booking_accountId_fkey",
+      "table_name": "Booking",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "Booking_pkey",
+      "table_name": "Booking",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (seats > 0)",
+      "kind": "c",
+      "name": "Booking_seats_check",
+      "table_name": "Booking",
+      "validated": true
+    },
+    {
+      "definition": "UNIQUE (\"tripId\", \"accountId\")",
+      "kind": "u",
+      "name": "Booking_tripId_accountId_key",
+      "table_name": "Booking",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"tripId\") REFERENCES \"Trip\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Booking_tripId_fkey",
+      "table_name": "Booking",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "BookingParticipant_accountId_fkey",
+      "table_name": "BookingParticipant",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"bookingId\") REFERENCES \"Booking\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "BookingParticipant_bookingId_fkey",
+      "table_name": "BookingParticipant",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "BookingParticipant_pkey",
+      "table_name": "BookingParticipant",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"briefingId\") REFERENCES \"TripBriefing\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "BriefingMedia_briefingId_fkey",
+      "table_name": "BriefingMedia",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "BriefingMedia_pkey",
+      "table_name": "BriefingMedia",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"briefingId\") REFERENCES \"TripBriefing\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "BriefingTranslation_briefingId_fkey",
+      "table_name": "BriefingTranslation",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "BriefingTranslation_pkey",
+      "table_name": "BriefingTranslation",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"eventId\") REFERENCES \"CalendarEvent\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "CalendarAllocation_eventId_fkey",
+      "table_name": "CalendarAllocation",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "CalendarAllocation_pkey",
+      "table_name": "CalendarAllocation",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"resourceId\") REFERENCES \"CalendarResource\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "CalendarAllocation_resourceId_fkey",
+      "table_name": "CalendarAllocation",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "CalendarEvent_pkey",
+      "table_name": "CalendarEvent",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "CalendarResource_pkey",
+      "table_name": "CalendarResource",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"approvedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "CompensationTerm_approvedByAccountId_fkey",
+      "table_name": "CompensationTerm",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"employmentId\") REFERENCES \"Employment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "CompensationTerm_employmentId_fkey",
+      "table_name": "CompensationTerm",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "CompensationTerm_pkey",
+      "table_name": "CompensationTerm",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"requestedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "CompensationTerm_requestedByAccountId_fkey",
+      "table_name": "CompensationTerm",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"reviewedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "CompensationTerm_reviewedByAccountId_fkey",
+      "table_name": "CompensationTerm",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"assessedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE SET NULL",
+      "kind": "f",
+      "name": "ComplianceAssessment_assessedByAccountId_fkey",
+      "table_name": "ComplianceAssessment",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "ComplianceAssessment_pkey",
+      "table_name": "ComplianceAssessment",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"safetyChecklistId\") REFERENCES \"SafetyChecklist\"(id) ON UPDATE CASCADE ON DELETE SET NULL",
+      "kind": "f",
+      "name": "ComplianceAssessment_safetyChecklistId_fkey",
+      "table_name": "ComplianceAssessment",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"tripId\") REFERENCES \"Trip\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "ComplianceAssessment_tripId_fkey",
+      "table_name": "ComplianceAssessment",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"assessmentId\") REFERENCES \"ComplianceAssessment\"(id) ON UPDATE CASCADE ON DELETE CASCADE",
+      "kind": "f",
+      "name": "ComplianceEvidence_assessmentId_fkey",
+      "table_name": "ComplianceEvidence",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "ComplianceEvidence_pkey",
+      "table_name": "ComplianceEvidence",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"createdByAccountId\") REFERENCES \"Account\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Conversation_createdByAccountId_fkey",
+      "table_name": "Conversation",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "Conversation_pkey",
+      "table_name": "Conversation",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (title IS NULL OR char_length(title) >= 1 AND char_length(title) <= 120)",
+      "kind": "c",
+      "name": "Conversation_title_length_check",
+      "table_name": "Conversation",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "ConversationParticipant_accountId_fkey",
+      "table_name": "ConversationParticipant",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"conversationId\") REFERENCES \"Conversation\"(id) ON DELETE CASCADE",
+      "kind": "f",
+      "name": "ConversationParticipant_conversationId_fkey",
+      "table_name": "ConversationParticipant",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "ConversationParticipant_pkey",
+      "table_name": "ConversationParticipant",
+      "validated": true
+    },
+    {
+      "definition": "UNIQUE (\"conversationId\", \"accountId\")",
+      "kind": "u",
+      "name": "ConversationParticipant_unique",
+      "table_name": "ConversationParticipant",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"personId\") REFERENCES \"Person\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Credential_personId_fkey",
+      "table_name": "Credential",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "Credential_pkey",
+      "table_name": "Credential",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "CrewAssignment_accountId_fkey",
+      "table_name": "CrewAssignment",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "CrewAssignment_pkey",
+      "table_name": "CrewAssignment",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"resourceId\") REFERENCES \"CalendarResource\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "CrewAssignment_resourceId_fkey",
+      "table_name": "CrewAssignment",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"tripId\") REFERENCES \"Trip\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "CrewAssignment_tripId_fkey",
+      "table_name": "CrewAssignment",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"customerId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "CustomerCase_customerId_fkey",
+      "table_name": "CustomerCase",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "CustomerCase_pkey",
+      "table_name": "CustomerCase",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"actorId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "CustomerInteraction_actorId_fkey",
+      "table_name": "CustomerInteraction",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"caseId\") REFERENCES \"CustomerCase\"(id) ON UPDATE CASCADE ON DELETE CASCADE",
+      "kind": "f",
+      "name": "CustomerInteraction_caseId_fkey",
+      "table_name": "CustomerInteraction",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "CustomerInteraction_pkey",
+      "table_name": "CustomerInteraction",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "DiveLog_accountId_fkey",
+      "table_name": "DiveLog",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "DiveLog_pkey",
+      "table_name": "DiveLog",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"sourceParticipantId\") REFERENCES \"BookingParticipant\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "DiveLog_sourceParticipantId_fkey",
+      "table_name": "DiveLog",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"sourceTripId\") REFERENCES \"Trip\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "DiveLog_sourceTripId_fkey",
+      "table_name": "DiveLog",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "DivePlan_pkey",
+      "table_name": "DivePlan",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"tripId\") REFERENCES \"Trip\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "DivePlan_tripId_fkey",
+      "table_name": "DivePlan",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "DiverEquipment_accountId_fkey",
+      "table_name": "DiverEquipment",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "DiverEquipment_pkey",
+      "table_name": "DiverEquipment",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "DiverProfile_accountId_fkey",
+      "table_name": "DiverProfile",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "DiverProfile_pkey",
+      "table_name": "DiverProfile",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"credentialId\") REFERENCES \"Credential\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Document_credentialId_fkey",
+      "table_name": "Document",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "Document_pkey",
+      "table_name": "Document",
+      "validated": true
+    },
+    {
+      "definition": "UNIQUE (sha256)",
+      "kind": "u",
+      "name": "Document_sha256_key",
+      "table_name": "Document",
+      "validated": true
+    },
+    {
+      "definition": "UNIQUE (\"storageKey\")",
+      "kind": "u",
+      "name": "Document_storageKey_key",
+      "table_name": "Document",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"organizationId\") REFERENCES \"Organization\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "DocumentBrandSnapshot_organizationId_fkey",
+      "table_name": "DocumentBrandSnapshot",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "DocumentBrandSnapshot_pkey",
+      "table_name": "DocumentBrandSnapshot",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"actorAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "DocumentLifecycleEvent_actorAccountId_fkey",
+      "table_name": "DocumentLifecycleEvent",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"documentId\") REFERENCES \"ManagedDocument\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "DocumentLifecycleEvent_documentId_fkey",
+      "table_name": "DocumentLifecycleEvent",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "DocumentLifecycleEvent_pkey",
+      "table_name": "DocumentLifecycleEvent",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"organizationId\") REFERENCES \"Organization\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "DocumentReferenceCounter_organizationId_fkey",
+      "table_name": "DocumentReferenceCounter",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "DocumentReferenceCounter_pkey",
+      "table_name": "DocumentReferenceCounter",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"createdByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "DocumentRevision_createdByAccountId_fkey",
+      "table_name": "DocumentRevision",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"documentId\") REFERENCES \"ManagedDocument\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "DocumentRevision_documentId_fkey",
+      "table_name": "DocumentRevision",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "DocumentRevision_pkey",
+      "table_name": "DocumentRevision",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"organizationId\") REFERENCES \"Organization\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "DocumentTemplate_organizationId_fkey",
+      "table_name": "DocumentTemplate",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "DocumentTemplate_pkey",
+      "table_name": "DocumentTemplate",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "EmergencyPhrase_pkey",
+      "table_name": "EmergencyPhrase",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"phraseId\") REFERENCES \"EmergencyPhrase\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "EmergencyPhraseTranslation_phraseId_fkey",
+      "table_name": "EmergencyPhraseTranslation",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "EmergencyPhraseTranslation_pkey",
+      "table_name": "EmergencyPhraseTranslation",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "EmergencyPlan_pkey",
+      "table_name": "EmergencyPlan",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"tripId\") REFERENCES \"Trip\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "EmergencyPlan_tripId_fkey",
+      "table_name": "EmergencyPlan",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"approvedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "EmployeeRelationsCase_approvedByAccountId_fkey",
+      "table_name": "EmployeeRelationsCase",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"employmentId\") REFERENCES \"Employment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "EmployeeRelationsCase_employmentId_fkey",
+      "table_name": "EmployeeRelationsCase",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"openedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "EmployeeRelationsCase_openedByAccountId_fkey",
+      "table_name": "EmployeeRelationsCase",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "EmployeeRelationsCase_pkey",
+      "table_name": "EmployeeRelationsCase",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"reviewedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "EmployeeRelationsCase_reviewedByAccountId_fkey",
+      "table_name": "EmployeeRelationsCase",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Employment_accountId_fkey",
+      "table_name": "Employment",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"managerEmploymentId\") REFERENCES \"Employment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Employment_managerEmploymentId_fkey",
+      "table_name": "Employment",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"orgUnitId\") REFERENCES \"OrgUnit\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Employment_orgUnitId_fkey",
+      "table_name": "Employment",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"organizationId\") REFERENCES \"Organization\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Employment_organizationId_fkey",
+      "table_name": "Employment",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "Employment_pkey",
+      "table_name": "Employment",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"positionId\") REFERENCES \"Position\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Employment_positionId_fkey",
+      "table_name": "Employment",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"documentId\") REFERENCES \"Document\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "EmploymentContract_documentId_fkey",
+      "table_name": "EmploymentContract",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"employmentId\") REFERENCES \"Employment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "EmploymentContract_employmentId_fkey",
+      "table_name": "EmploymentContract",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "EmploymentContract_pkey",
+      "table_name": "EmploymentContract",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"approvedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "EmploymentMovement_approvedByAccountId_fkey",
+      "table_name": "EmploymentMovement",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"employmentId\") REFERENCES \"Employment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "EmploymentMovement_employmentId_fkey",
+      "table_name": "EmploymentMovement",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"fromOrgUnitId\") REFERENCES \"OrgUnit\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "EmploymentMovement_fromOrgUnitId_fkey",
+      "table_name": "EmploymentMovement",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"fromPositionId\") REFERENCES \"Position\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "EmploymentMovement_fromPositionId_fkey",
+      "table_name": "EmploymentMovement",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "EmploymentMovement_pkey",
+      "table_name": "EmploymentMovement",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"requestedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "EmploymentMovement_requestedByAccountId_fkey",
+      "table_name": "EmploymentMovement",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"reviewedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "EmploymentMovement_reviewedByAccountId_fkey",
+      "table_name": "EmploymentMovement",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"toOrgUnitId\") REFERENCES \"OrgUnit\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "EmploymentMovement_toOrgUnitId_fkey",
+      "table_name": "EmploymentMovement",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"toPositionId\") REFERENCES \"Position\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "EmploymentMovement_toPositionId_fkey",
+      "table_name": "EmploymentMovement",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (\"acquisitionCostHalala\" IS NULL OR \"acquisitionCostHalala\" >= 0)",
+      "kind": "c",
+      "name": "EquipmentBarcode_acquisitionCostHalala_check",
+      "table_name": "EquipmentBarcode",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"organizationId\") REFERENCES \"Organization\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "EquipmentBarcode_organizationId_fkey",
+      "table_name": "EquipmentBarcode",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "EquipmentBarcode_pkey",
+      "table_name": "EquipmentBarcode",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"resourceId\") REFERENCES \"CalendarResource\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "EquipmentBarcode_resourceId_fkey",
+      "table_name": "EquipmentBarcode",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (\"tagMethod\" = ANY (ARRAY['ADHESIVE_LABEL'::text, 'HANG_TAG'::text, 'MICRO_QR'::text, 'DATA_MATRIX'::text, 'NFC_RFID'::text]))",
+      "kind": "c",
+      "name": "EquipmentBarcode_tag_method_check",
+      "table_name": "EquipmentBarcode",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "EquipmentInspection_pkey",
+      "table_name": "EquipmentInspection",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (status = ANY (ARRAY['PASS'::text, 'REVIEW'::text, 'FAIL'::text]))",
+      "kind": "c",
+      "name": "EquipmentInspection_status_check",
+      "table_name": "EquipmentInspection",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "EquipmentMovement_pkey",
+      "table_name": "EquipmentMovement",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"resourceId\") REFERENCES \"CalendarResource\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "EquipmentMovement_resourceId_fkey",
+      "table_name": "EquipmentMovement",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (\"extensionStatus\" IS NULL OR (\"extensionStatus\" = ANY (ARRAY['PENDING'::text, 'APPROVED'::text, 'REJECTED'::text])))",
+      "kind": "c",
+      "name": "EquipmentRental_extension_status_check",
+      "table_name": "EquipmentRental",
+      "validated": true
+    },
+    {
+      "definition": "UNIQUE (\"invoiceNumber\")",
+      "kind": "u",
+      "name": "EquipmentRental_invoiceNumber_key",
+      "table_name": "EquipmentRental",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (\"paymentStatus\" = ANY (ARRAY['PENDING'::text, 'PAID'::text, 'REFUNDED'::text]))",
+      "kind": "c",
+      "name": "EquipmentRental_payment_check",
+      "table_name": "EquipmentRental",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "EquipmentRental_pkey",
+      "table_name": "EquipmentRental",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (status = ANY (ARRAY['RESERVED'::text, 'ACTIVE'::text, 'RETURNED'::text, 'CANCELLED'::text]))",
+      "kind": "c",
+      "name": "EquipmentRental_status_check",
+      "table_name": "EquipmentRental",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "EquipmentRentalItem_pkey",
+      "table_name": "EquipmentRentalItem",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"rentalId\") REFERENCES \"EquipmentRental\"(id) ON DELETE CASCADE",
+      "kind": "f",
+      "name": "EquipmentRentalItem_rental_fk",
+      "table_name": "EquipmentRentalItem",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (\"returnCondition\" IS NULL OR (\"returnCondition\" = ANY (ARRAY['OK'::text, 'DAMAGED'::text, 'REVIEW'::text])))",
+      "kind": "c",
+      "name": "EquipmentRentalItem_return_condition_check",
+      "table_name": "EquipmentRentalItem",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "FinanceAccount_pkey",
+      "table_name": "FinanceAccount",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"accountantAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "FinanceAccountantShift_accountantAccountId_fkey",
+      "table_name": "FinanceAccountantShift",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"centerOrgUnitId\") REFERENCES \"Organization\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "FinanceAccountantShift_centerOrgUnitId_fkey",
+      "table_name": "FinanceAccountantShift",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (\"openingBalanceMinor\" >= 0)",
+      "kind": "c",
+      "name": "FinanceAccountantShift_openingBalance_nonnegative",
+      "table_name": "FinanceAccountantShift",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "FinanceAccountantShift_pkey",
+      "table_name": "FinanceAccountantShift",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"reviewedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "FinanceAccountantShift_reviewedByAccountId_fkey",
+      "table_name": "FinanceAccountantShift",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"financeEntryId\") REFERENCES \"FinanceEntry\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "FinanceApproval_financeEntryId_fkey",
+      "table_name": "FinanceApproval",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "FinanceApproval_pkey",
+      "table_name": "FinanceApproval",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"financeAccountId\") REFERENCES \"FinanceAccount\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "FinanceEntry_financeAccountId_fkey",
+      "table_name": "FinanceEntry",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "FinanceEntry_pkey",
+      "table_name": "FinanceEntry",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"postedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "FinanceEntry_postedByAccountId_fkey",
+      "table_name": "FinanceEntry",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (\"amountMinor\" > 0)",
+      "kind": "c",
+      "name": "FinanceShiftEntry_amount_positive",
+      "table_name": "FinanceShiftEntry",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"paymentId\") REFERENCES \"Payment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "FinanceShiftEntry_paymentId_fkey",
+      "table_name": "FinanceShiftEntry",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "FinanceShiftEntry_pkey",
+      "table_name": "FinanceShiftEntry",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"recordedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "FinanceShiftEntry_recordedByAccountId_fkey",
+      "table_name": "FinanceShiftEntry",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"shiftId\") REFERENCES \"FinanceAccountantShift\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "FinanceShiftEntry_shiftId_fkey",
+      "table_name": "FinanceShiftEntry",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (\"actualCashMinor\" IS NULL OR \"actualCashMinor\" >= 0)",
+      "kind": "c",
+      "name": "FinanceShiftHandover_actualCash_nonnegative",
+      "table_name": "FinanceShiftHandover",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (\"expectedCashMinor\" >= 0)",
+      "kind": "c",
+      "name": "FinanceShiftHandover_expectedCash_nonnegative",
+      "table_name": "FinanceShiftHandover",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"fromAccountantId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "FinanceShiftHandover_fromAccountantId_fkey",
+      "table_name": "FinanceShiftHandover",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"fromShiftId\") REFERENCES \"FinanceAccountantShift\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "FinanceShiftHandover_fromShiftId_fkey",
+      "table_name": "FinanceShiftHandover",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "FinanceShiftHandover_pkey",
+      "table_name": "FinanceShiftHandover",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"toAccountantId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "FinanceShiftHandover_toAccountantId_fkey",
+      "table_name": "FinanceShiftHandover",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"toShiftId\") REFERENCES \"FinanceAccountantShift\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "FinanceShiftHandover_toShiftId_fkey",
+      "table_name": "FinanceShiftHandover",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"personId\") REFERENCES \"Person\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "HrCandidate_personId_fkey",
+      "table_name": "HrCandidate",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "HrCandidate_pkey",
+      "table_name": "HrCandidate",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"verifiedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "HrCandidate_verifiedByAccountId_fkey",
+      "table_name": "HrCandidate",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (\"amountMinor\" > 0)",
+      "kind": "c",
+      "name": "InstructorEarning_amount_positive",
+      "table_name": "InstructorEarning",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "InstructorEarning_pkey",
+      "table_name": "InstructorEarning",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"trainingEnrollmentId\") REFERENCES \"TrainingEnrollment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "InstructorEarning_trainingEnrollmentId_fkey",
+      "table_name": "InstructorEarning",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "InventoryStocktake_pkey",
+      "table_name": "InventoryStocktake",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "InventoryStocktakeScan_pkey",
+      "table_name": "InventoryStocktakeScan",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"stocktakeId\") REFERENCES \"InventoryStocktake\"(id) ON DELETE CASCADE",
+      "kind": "f",
+      "name": "InventoryStocktakeScan_stocktakeId_fkey",
+      "table_name": "InventoryStocktakeScan",
+      "validated": true
+    },
+    {
+      "definition": "UNIQUE (number)",
+      "kind": "u",
+      "name": "Invoice_number_key",
+      "table_name": "Invoice",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"paymentId\") REFERENCES \"Payment\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Invoice_paymentId_fkey",
+      "table_name": "Invoice",
+      "validated": true
+    },
+    {
+      "definition": "UNIQUE (\"paymentId\")",
+      "kind": "u",
+      "name": "Invoice_paymentId_key",
+      "table_name": "Invoice",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "Invoice_pkey",
+      "table_name": "Invoice",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "LanguagePack_pkey",
+      "table_name": "LanguagePack",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"approvedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "LeaveRequest_approvedByAccountId_fkey",
+      "table_name": "LeaveRequest",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"employmentId\") REFERENCES \"Employment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "LeaveRequest_employmentId_fkey",
+      "table_name": "LeaveRequest",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "LeaveRequest_pkey",
+      "table_name": "LeaveRequest",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"requestedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "LeaveRequest_requestedByAccountId_fkey",
+      "table_name": "LeaveRequest",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"approvedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "ManagedDocument_approvedByAccountId_fkey",
+      "table_name": "ManagedDocument",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"archivedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "ManagedDocument_archivedByAccountId_fkey",
+      "table_name": "ManagedDocument",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"createdByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "ManagedDocument_createdByAccountId_fkey",
+      "table_name": "ManagedDocument",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"organizationId\") REFERENCES \"Organization\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "ManagedDocument_organizationId_fkey",
+      "table_name": "ManagedDocument",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "ManagedDocument_pkey",
+      "table_name": "ManagedDocument",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"signedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "ManagedDocument_signedByAccountId_fkey",
+      "table_name": "ManagedDocument",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"templateId\") REFERENCES \"DocumentTemplate\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "ManagedDocument_templateId_fkey",
+      "table_name": "ManagedDocument",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "MarineAsset_pkey",
+      "table_name": "MarineAsset",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"marineAssetId\") REFERENCES \"MarineAsset\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "MarineAssetDocument_marineAssetId_fkey",
+      "table_name": "MarineAssetDocument",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "MarineAssetDocument_pkey",
+      "table_name": "MarineAssetDocument",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"marineAssetId\") REFERENCES \"MarineAsset\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "MarineMaintenanceRecord_marineAssetId_fkey",
+      "table_name": "MarineMaintenanceRecord",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "MarineMaintenanceRecord_pkey",
+      "table_name": "MarineMaintenanceRecord",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"marineAssetId\") REFERENCES \"MarineAsset\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "MarineReadinessSnapshot_marineAssetId_fkey",
+      "table_name": "MarineReadinessSnapshot",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "MarineReadinessSnapshot_pkey",
+      "table_name": "MarineReadinessSnapshot",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"conversationId\") REFERENCES \"Conversation\"(id) ON DELETE CASCADE",
+      "kind": "f",
+      "name": "Message_conversationId_fkey",
+      "table_name": "Message",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (kind = ANY (ARRAY['TEXT'::text, 'VOICE'::text]))",
+      "kind": "c",
+      "name": "Message_kind_check",
+      "table_name": "Message",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (kind = 'TEXT'::text AND body IS NOT NULL AND char_length(btrim(body)) >= 1 AND char_length(btrim(body)) <= 4000 AND \"mediaUrl\" IS NULL AND \"durationSec\" IS NULL OR kind = 'VOICE'::text AND body IS NULL AND \"mediaUrl\" ~ '^https://[^[:space:]]+$'::text AND \"durationSec\" >= 1 AND \"durationSec\" <= 600)",
+      "kind": "c",
+      "name": "Message_payload_check",
+      "table_name": "Message",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "Message_pkey",
+      "table_name": "Message",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"senderAccountId\") REFERENCES \"Account\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Message_senderAccountId_fkey",
+      "table_name": "Message",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Notification_accountId_fkey",
+      "table_name": "Notification",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "Notification_pkey",
+      "table_name": "Notification",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"employmentId\") REFERENCES \"Employment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "OffboardingCase_employmentId_fkey",
+      "table_name": "OffboardingCase",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "OffboardingCase_pkey",
+      "table_name": "OffboardingCase",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"briefingId\") REFERENCES \"TripBriefing\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "OfflineTripPackage_briefingId_fkey",
+      "table_name": "OfflineTripPackage",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "OfflineTripPackage_pkey",
+      "table_name": "OfflineTripPackage",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (key)",
+      "kind": "p",
+      "name": "OperationalSetting_pkey",
+      "table_name": "OperationalSetting",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"organizationId\") REFERENCES \"Organization\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "OrgUnit_organizationId_fkey",
+      "table_name": "OrgUnit",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"parentId\") REFERENCES \"OrgUnit\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "OrgUnit_parentId_fkey",
+      "table_name": "OrgUnit",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "OrgUnit_pkey",
+      "table_name": "OrgUnit",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"ownerId\") REFERENCES \"Account\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Organization_ownerId_fkey",
+      "table_name": "Organization",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "Organization_pkey",
+      "table_name": "Organization",
+      "validated": true
+    },
+    {
+      "definition": "UNIQUE (\"registrationNumber\")",
+      "kind": "u",
+      "name": "Organization_registrationNumber_key",
+      "table_name": "Organization",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"organizationId\") REFERENCES \"Organization\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "OrganizationDocumentAsset_organizationId_fkey",
+      "table_name": "OrganizationDocumentAsset",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "OrganizationDocumentAsset_pkey",
+      "table_name": "OrganizationDocumentAsset",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "OrganizationMember_accountId_fkey",
+      "table_name": "OrganizationMember",
+      "validated": true
+    },
+    {
+      "definition": "UNIQUE (\"organizationId\", \"accountId\")",
+      "kind": "u",
+      "name": "OrganizationMember_organizationId_accountId_key",
+      "table_name": "OrganizationMember",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"organizationId\") REFERENCES \"Organization\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "OrganizationMember_organizationId_fkey",
+      "table_name": "OrganizationMember",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "OrganizationMember_pkey",
+      "table_name": "OrganizationMember",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Payment_accountId_fkey",
+      "table_name": "Payment",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (\"amountMinor\" > 0)",
+      "kind": "c",
+      "name": "Payment_amountMinor_check",
+      "table_name": "Payment",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"bookingId\") REFERENCES \"Booking\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Payment_bookingId_fkey",
+      "table_name": "Payment",
+      "validated": true
+    },
+    {
+      "definition": "UNIQUE (\"idempotencyKey\")",
+      "kind": "u",
+      "name": "Payment_idempotencyKey_key",
+      "table_name": "Payment",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "Payment_pkey",
+      "table_name": "Payment",
+      "validated": true
+    },
+    {
+      "definition": "UNIQUE (\"providerReference\")",
+      "kind": "u",
+      "name": "Payment_providerReference_key",
+      "table_name": "Payment",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"employmentId\") REFERENCES \"Employment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "PerformanceCycle_employmentId_fkey",
+      "table_name": "PerformanceCycle",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "PerformanceCycle_pkey",
+      "table_name": "PerformanceCycle",
+      "validated": true
+    },
+    {
+      "definition": "UNIQUE (phone)",
+      "kind": "u",
+      "name": "Person_phone_key",
+      "table_name": "Person",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "Person_pkey",
+      "table_name": "Person",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "PolicyControl_pkey",
+      "table_name": "PolicyControl",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"updatedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE SET NULL",
+      "kind": "f",
+      "name": "PolicyControl_updatedByAccountId_fkey",
+      "table_name": "PolicyControl",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"orgUnitId\") REFERENCES \"OrgUnit\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Position_orgUnitId_fkey",
+      "table_name": "Position",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "Position_pkey",
+      "table_name": "Position",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"personId\") REFERENCES \"Person\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "ProfessionalProfile_personId_fkey",
+      "table_name": "ProfessionalProfile",
+      "validated": true
+    },
+    {
+      "definition": "UNIQUE (\"personId\")",
+      "kind": "u",
+      "name": "ProfessionalProfile_personId_key",
+      "table_name": "ProfessionalProfile",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "ProfessionalProfile_pkey",
+      "table_name": "ProfessionalProfile",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (\"totalMinor\" > 0 AND \"paidMinor\" >= 0 AND \"outstandingMinor\" >= 0 AND (\"paidMinor\" + \"outstandingMinor\") = \"totalMinor\")",
+      "kind": "c",
+      "name": "Receivable_amounts_check",
+      "table_name": "Receivable",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"centerOrgUnitId\") REFERENCES \"OrgUnit\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Receivable_centerOrgUnitId_fkey",
+      "table_name": "Receivable",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"customerAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Receivable_customerAccountId_fkey",
+      "table_name": "Receivable",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"invoiceId\") REFERENCES \"Invoice\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Receivable_invoiceId_fkey",
+      "table_name": "Receivable",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "Receivable_pkey",
+      "table_name": "Receivable",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (\"amountMinor\" > 0 AND \"paidMinor\" >= 0 AND \"paidMinor\" <= \"amountMinor\")",
+      "kind": "c",
+      "name": "ReceivableInstallment_amounts_check",
+      "table_name": "ReceivableInstallment",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "ReceivableInstallment_pkey",
+      "table_name": "ReceivableInstallment",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"receivableId\") REFERENCES \"Receivable\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "ReceivableInstallment_receivableId_fkey",
+      "table_name": "ReceivableInstallment",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (\"amountMinor\" > 0)",
+      "kind": "c",
+      "name": "ReceivablePayment_amount_check",
+      "table_name": "ReceivablePayment",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"installmentId\") REFERENCES \"ReceivableInstallment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "ReceivablePayment_installmentId_fkey",
+      "table_name": "ReceivablePayment",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"paymentId\") REFERENCES \"Payment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "ReceivablePayment_paymentId_fkey",
+      "table_name": "ReceivablePayment",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "ReceivablePayment_pkey",
+      "table_name": "ReceivablePayment",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"receivableId\") REFERENCES \"Receivable\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "ReceivablePayment_receivableId_fkey",
+      "table_name": "ReceivablePayment",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"activationRequestId\") REFERENCES \"ActivationRequest\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "ReviewDecision_activationRequestId_fkey",
+      "table_name": "ReviewDecision",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "ReviewDecision_pkey",
+      "table_name": "ReviewDecision",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"reviewerId\") REFERENCES \"Account\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "ReviewDecision_reviewerId_fkey",
+      "table_name": "ReviewDecision",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "RewardAccount_accountId_fkey",
+      "table_name": "RewardAccount",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "RewardAccount_pkey",
+      "table_name": "RewardAccount",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (points >= 0)",
+      "kind": "c",
+      "name": "RewardAccount_points_nonnegative",
+      "table_name": "RewardAccount",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (\"balanceAfter\" >= 0)",
+      "kind": "c",
+      "name": "RewardEntry_balanceAfter_nonnegative",
+      "table_name": "RewardEntry",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "RewardEntry_pkey",
+      "table_name": "RewardEntry",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (points > 0)",
+      "kind": "c",
+      "name": "RewardEntry_points_positive",
+      "table_name": "RewardEntry",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"rewardAccountId\") REFERENCES \"RewardAccount\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "RewardEntry_rewardAccountId_fkey",
+      "table_name": "RewardEntry",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "RoleAssignment_accountId_fkey",
+      "table_name": "RoleAssignment",
+      "validated": true
+    },
+    {
+      "definition": "UNIQUE (\"accountId\", role)",
+      "kind": "u",
+      "name": "RoleAssignment_accountId_role_key",
+      "table_name": "RoleAssignment",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "RoleAssignment_pkey",
+      "table_name": "RoleAssignment",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "SafetyChecklist_pkey",
+      "table_name": "SafetyChecklist",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"tripId\") REFERENCES \"Trip\"(id) ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "SafetyChecklist_tripId_fkey",
+      "table_name": "SafetyChecklist",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (char_length(btrim(description)) >= 3 AND char_length(btrim(description)) <= 5000)",
+      "kind": "c",
+      "name": "SafetyIncident_description_length_check",
+      "table_name": "SafetyIncident",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (\"locationName\" IS NULL OR char_length(btrim(\"locationName\")) <= 160)",
+      "kind": "c",
+      "name": "SafetyIncident_location_length_check",
+      "table_name": "SafetyIncident",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "SafetyIncident_pkey",
+      "table_name": "SafetyIncident",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"reportedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "SafetyIncident_reportedByAccountId_fkey",
+      "table_name": "SafetyIncident",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"resolvedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "SafetyIncident_resolvedByAccountId_fkey",
+      "table_name": "SafetyIncident",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (char_length(btrim(title)) >= 3 AND char_length(btrim(title)) <= 160)",
+      "kind": "c",
+      "name": "SafetyIncident_title_length_check",
+      "table_name": "SafetyIncident",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"tripId\") REFERENCES \"Trip\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "SafetyIncident_tripId_fkey",
+      "table_name": "SafetyIncident",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON DELETE CASCADE",
+      "kind": "f",
+      "name": "Session_accountId_fkey",
+      "table_name": "Session",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "Session_pkey",
+      "table_name": "Session",
+      "validated": true
+    },
+    {
+      "definition": "UNIQUE (\"tokenHash\")",
+      "kind": "u",
+      "name": "Session_tokenHash_key",
+      "table_name": "Session",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"employmentId\") REFERENCES \"Employment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "ShiftAssignment_employmentId_fkey",
+      "table_name": "ShiftAssignment",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "ShiftAssignment_pkey",
+      "table_name": "ShiftAssignment",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"paymentId\") REFERENCES \"StorePayment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "StoreInvoice_paymentId_fkey",
+      "table_name": "StoreInvoice",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "StoreInvoice_pkey",
+      "table_name": "StoreInvoice",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "StoreOrder_accountId_fkey",
+      "table_name": "StoreOrder",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "StoreOrder_pkey",
+      "table_name": "StoreOrder",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"orderId\") REFERENCES \"StoreOrder\"(id) ON UPDATE CASCADE ON DELETE CASCADE",
+      "kind": "f",
+      "name": "StoreOrderItem_orderId_fkey",
+      "table_name": "StoreOrderItem",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "StoreOrderItem_pkey",
+      "table_name": "StoreOrderItem",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"productId\") REFERENCES \"StoreProduct\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "StoreOrderItem_productId_fkey",
+      "table_name": "StoreOrderItem",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "StorePayment_accountId_fkey",
+      "table_name": "StorePayment",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"orderId\") REFERENCES \"StoreOrder\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "StorePayment_orderId_fkey",
+      "table_name": "StorePayment",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "StorePayment_pkey",
+      "table_name": "StorePayment",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "StoreProduct_pkey",
+      "table_name": "StoreProduct",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "ThemeSchedule_pkey",
+      "table_name": "ThemeSchedule",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (status = ANY (ARRAY['DRAFT'::text, 'PUBLISHED'::text, 'ARCHIVED'::text]))",
+      "kind": "c",
+      "name": "ThemeSchedule_valid_status",
+      "table_name": "ThemeSchedule",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (\"endsAt\" > \"startsAt\")",
+      "kind": "c",
+      "name": "ThemeSchedule_valid_window",
+      "table_name": "ThemeSchedule",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "TrainingCertificate_pkey",
+      "table_name": "TrainingCertificate",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"trainingRecordId\") REFERENCES \"TrainingRecord\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "TrainingCertificate_trainingRecordId_fkey",
+      "table_name": "TrainingCertificate",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"instructorAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "TrainingCourse_instructorAccountId_fkey",
+      "table_name": "TrainingCourse",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "TrainingCourse_pkey",
+      "table_name": "TrainingCourse",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "TrainingEnrollment_pkey",
+      "table_name": "TrainingEnrollment",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"enrollmentId\") REFERENCES \"TrainingEnrollment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "TrainingRecord_enrollmentId_fkey",
+      "table_name": "TrainingRecord",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "TrainingRecord_pkey",
+      "table_name": "TrainingRecord",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "TrainingSession_pkey",
+      "table_name": "TrainingSession",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"trainingRecordId\") REFERENCES \"TrainingRecord\"(id) ON UPDATE CASCADE ON DELETE CASCADE",
+      "kind": "f",
+      "name": "TrainingSession_trainingRecordId_fkey",
+      "table_name": "TrainingSession",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "TrainingSkill_pkey",
+      "table_name": "TrainingSkill",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"trainingStageId\") REFERENCES \"TrainingStage\"(id) ON UPDATE CASCADE ON DELETE CASCADE",
+      "kind": "f",
+      "name": "TrainingSkill_trainingStageId_fkey",
+      "table_name": "TrainingSkill",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "TrainingStage_pkey",
+      "table_name": "TrainingStage",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"trainingRecordId\") REFERENCES \"TrainingRecord\"(id) ON UPDATE CASCADE ON DELETE CASCADE",
+      "kind": "f",
+      "name": "TrainingStage_trainingRecordId_fkey",
+      "table_name": "TrainingStage",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "TranslationPreference_accountId_fkey",
+      "table_name": "TranslationPreference",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "TranslationPreference_pkey",
+      "table_name": "TranslationPreference",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (capacity > 0)",
+      "kind": "c",
+      "name": "Trip_capacity_check",
+      "table_name": "Trip",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"organizationId\") REFERENCES \"Organization\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Trip_organizationId_fkey",
+      "table_name": "Trip",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "Trip_pkey",
+      "table_name": "Trip",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "TripBriefing_pkey",
+      "table_name": "TripBriefing",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"tripId\") REFERENCES \"Trip\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "TripBriefing_tripId_fkey",
+      "table_name": "TripBriefing",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "TripComplianceReview_pkey",
+      "table_name": "TripComplianceReview",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"reviewedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE SET NULL",
+      "kind": "f",
+      "name": "TripComplianceReview_reviewedByAccountId_fkey",
+      "table_name": "TripComplianceReview",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"tripId\") REFERENCES \"Trip\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "TripComplianceReview_tripId_fkey",
+      "table_name": "TripComplianceReview",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (latitude >= '-90'::integer::double precision AND latitude <= 90::double precision)",
+      "kind": "c",
+      "name": "TripOperationalLocation_latitude_check",
+      "table_name": "TripOperationalLocation",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (longitude >= '-180'::integer::double precision AND longitude <= 180::double precision)",
+      "kind": "c",
+      "name": "TripOperationalLocation_longitude_check",
+      "table_name": "TripOperationalLocation",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (\"tripId\")",
+      "kind": "p",
+      "name": "TripOperationalLocation_pkey",
+      "table_name": "TripOperationalLocation",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"tripId\") REFERENCES \"Trip\"(id) ON DELETE CASCADE",
+      "kind": "f",
+      "name": "TripOperationalLocation_tripId_fkey",
+      "table_name": "TripOperationalLocation",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "TripWeatherReview_pkey",
+      "table_name": "TripWeatherReview",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"reviewedByAccountId\") REFERENCES \"Account\"(id) ON DELETE SET NULL",
+      "kind": "f",
+      "name": "TripWeatherReview_reviewedByAccountId_fkey",
+      "table_name": "TripWeatherReview",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (status = ANY (ARRAY['PENDING'::text, 'APPROVED'::text, 'REJECTED'::text]))",
+      "kind": "c",
+      "name": "TripWeatherReview_status_check",
+      "table_name": "TripWeatherReview",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"tripId\") REFERENCES \"Trip\"(id) ON DELETE CASCADE",
+      "kind": "f",
+      "name": "TripWeatherReview_tripId_fkey",
+      "table_name": "TripWeatherReview",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "Wallet_accountId_fkey",
+      "table_name": "Wallet",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (\"balanceMinor\" >= 0)",
+      "kind": "c",
+      "name": "Wallet_balanceMinor_nonnegative",
+      "table_name": "Wallet",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "Wallet_pkey",
+      "table_name": "Wallet",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (\"amountMinor\" > 0)",
+      "kind": "c",
+      "name": "WalletEntry_amountMinor_positive",
+      "table_name": "WalletEntry",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (\"balanceAfterMinor\" >= 0)",
+      "kind": "c",
+      "name": "WalletEntry_balanceAfterMinor_nonnegative",
+      "table_name": "WalletEntry",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "WalletEntry_pkey",
+      "table_name": "WalletEntry",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"walletId\") REFERENCES \"Wallet\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WalletEntry_walletId_fkey",
+      "table_name": "WalletEntry",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"departmentId\") REFERENCES \"WorkforceDepartment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceCenterDepartment_departmentId_fkey",
+      "table_name": "WorkforceCenterDepartment",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (\"maxLevel\" = ANY (ARRAY['L1'::text, 'L2'::text, 'L3'::text, 'L4'::text]))",
+      "kind": "c",
+      "name": "WorkforceCenterDepartment_maxLevel_check",
+      "table_name": "WorkforceCenterDepartment",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"organizationId\") REFERENCES \"Organization\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceCenterDepartment_organizationId_fkey",
+      "table_name": "WorkforceCenterDepartment",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "WorkforceCenterDepartment_pkey",
+      "table_name": "WorkforceCenterDepartment",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"updatedById\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceCenterDepartment_updatedById_fkey",
+      "table_name": "WorkforceCenterDepartment",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "WorkforceDepartment_pkey",
+      "table_name": "WorkforceDepartment",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"candidateAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceHiringRequest_candidateAccountId_fkey",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"departmentId\") REFERENCES \"WorkforceDepartment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceHiringRequest_departmentId_fkey",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"hrReviewedById\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceHiringRequest_hrReviewedById_fkey",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"organizationId\") REFERENCES \"Organization\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceHiringRequest_organizationId_fkey",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "WorkforceHiringRequest_pkey",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"positionId\") REFERENCES \"WorkforcePosition\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceHiringRequest_positionId_fkey",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"requestedById\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceHiringRequest_requestedById_fkey",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"reviewedById\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceHiringRequest_reviewedById_fkey",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"targetSeatId\") REFERENCES \"WorkforceSeat\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceHiringRequest_targetSeatId_fkey",
+      "table_name": "WorkforceHiringRequest",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"departmentId\") REFERENCES \"WorkforceDepartment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforcePosition_departmentId_fkey",
+      "table_name": "WorkforcePosition",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"parentPositionId\") REFERENCES \"WorkforcePosition\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforcePosition_parentPositionId_fkey",
+      "table_name": "WorkforcePosition",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "WorkforcePosition_pkey",
+      "table_name": "WorkforcePosition",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"accountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceSeat_accountId_fkey",
+      "table_name": "WorkforceSeat",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"administrativeManagerSeatId\") REFERENCES \"WorkforceSeat\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceSeat_administrativeManagerSeatId_fkey",
+      "table_name": "WorkforceSeat",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"organizationId\") REFERENCES \"Organization\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceSeat_organizationId_fkey",
+      "table_name": "WorkforceSeat",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (id)",
+      "kind": "p",
+      "name": "WorkforceSeat_pkey",
+      "table_name": "WorkforceSeat",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"positionId\") REFERENCES \"WorkforcePosition\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceSeat_positionId_fkey",
+      "table_name": "WorkforceSeat",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (\"technicalDepartmentId\") REFERENCES \"WorkforceDepartment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "kind": "f",
+      "name": "WorkforceSeat_technicalDepartmentId_fkey",
+      "table_name": "WorkforceSeat",
+      "validated": true
+    }
+  ],
+  "indexes": [
+    {
+      "definition": "CREATE UNIQUE INDEX \"Account_email_key\" ON public.\"Account\" USING btree (email)",
+      "name": "Account_email_key",
+      "table_name": "Account"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Account_personId_key\" ON public.\"Account\" USING btree (\"personId\")",
+      "name": "Account_personId_key",
+      "table_name": "Account"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Account_pkey\" ON public.\"Account\" USING btree (id)",
+      "name": "Account_pkey",
+      "table_name": "Account"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"ActivationRequest_pkey\" ON public.\"ActivationRequest\" USING btree (id)",
+      "name": "ActivationRequest_pkey",
+      "table_name": "ActivationRequest"
+    },
+    {
+      "definition": "CREATE INDEX \"ActivationRequest_status_createdAt_idx\" ON public.\"ActivationRequest\" USING btree (status, \"createdAt\")",
+      "name": "ActivationRequest_status_createdAt_idx",
+      "table_name": "ActivationRequest"
+    },
+    {
+      "definition": "CREATE INDEX \"AdministrativeMeeting_organizationId_unitId_scheduledAt_idx\" ON public.\"AdministrativeMeeting\" USING btree (\"organizationId\", \"unitId\", \"scheduledAt\")",
+      "name": "AdministrativeMeeting_organizationId_unitId_scheduledAt_idx",
+      "table_name": "AdministrativeMeeting"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"AdministrativeMeeting_pkey\" ON public.\"AdministrativeMeeting\" USING btree (id)",
+      "name": "AdministrativeMeeting_pkey",
+      "table_name": "AdministrativeMeeting"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"AdministrativeRecord_organizationId_referenceNumber_key\" ON public.\"AdministrativeRecord\" USING btree (\"organizationId\", \"referenceNumber\")",
+      "name": "AdministrativeRecord_organizationId_referenceNumber_key",
+      "table_name": "AdministrativeRecord"
+    },
+    {
+      "definition": "CREATE INDEX \"AdministrativeRecord_organizationId_unitId_status_idx\" ON public.\"AdministrativeRecord\" USING btree (\"organizationId\", \"unitId\", status)",
+      "name": "AdministrativeRecord_organizationId_unitId_status_idx",
+      "table_name": "AdministrativeRecord"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"AdministrativeRecord_pkey\" ON public.\"AdministrativeRecord\" USING btree (id)",
+      "name": "AdministrativeRecord_pkey",
+      "table_name": "AdministrativeRecord"
+    },
+    {
+      "definition": "CREATE INDEX \"CenterLicense_platform_review_queue_idx\" ON public.\"AdministrativeRecord\" USING btree (\"licenseReviewStatus\", \"licenseReviewSubmittedAt\")",
+      "name": "CenterLicense_platform_review_queue_idx",
+      "table_name": "AdministrativeRecord"
+    },
+    {
+      "definition": "CREATE INDEX \"AdministrativeRouting_assignedToAccountId_decision_idx\" ON public.\"AdministrativeRouting\" USING btree (\"assignedToAccountId\", decision)",
+      "name": "AdministrativeRouting_assignedToAccountId_decision_idx",
+      "table_name": "AdministrativeRouting"
+    },
+    {
+      "definition": "CREATE INDEX \"AdministrativeRouting_organizationId_recordId_idx\" ON public.\"AdministrativeRouting\" USING btree (\"organizationId\", \"recordId\")",
+      "name": "AdministrativeRouting_organizationId_recordId_idx",
+      "table_name": "AdministrativeRouting"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"AdministrativeRouting_pkey\" ON public.\"AdministrativeRouting\" USING btree (id)",
+      "name": "AdministrativeRouting_pkey",
+      "table_name": "AdministrativeRouting"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"AttendanceEntry_employmentId_workDate_key\" ON public.\"AttendanceEntry\" USING btree (\"employmentId\", \"workDate\")",
+      "name": "AttendanceEntry_employmentId_workDate_key",
+      "table_name": "AttendanceEntry"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"AttendanceEntry_pkey\" ON public.\"AttendanceEntry\" USING btree (id)",
+      "name": "AttendanceEntry_pkey",
+      "table_name": "AttendanceEntry"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"AuditEvent_pkey\" ON public.\"AuditEvent\" USING btree (id)",
+      "name": "AuditEvent_pkey",
+      "table_name": "AuditEvent"
+    },
+    {
+      "definition": "CREATE INDEX \"AuditEvent_resource_resourceId_occurredAt_idx\" ON public.\"AuditEvent\" USING btree (resource, \"resourceId\", \"occurredAt\")",
+      "name": "AuditEvent_resource_resourceId_occurredAt_idx",
+      "table_name": "AuditEvent"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"BoatResourceCompliance_pkey\" ON public.\"BoatResourceCompliance\" USING btree (id)",
+      "name": "BoatResourceCompliance_pkey",
+      "table_name": "BoatResourceCompliance"
+    },
+    {
+      "definition": "CREATE INDEX \"BoatResourceCompliance_registrationStatus_idx\" ON public.\"BoatResourceCompliance\" USING btree (\"registrationStatus\")",
+      "name": "BoatResourceCompliance_registrationStatus_idx",
+      "table_name": "BoatResourceCompliance"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"BoatResourceCompliance_resourceId_key\" ON public.\"BoatResourceCompliance\" USING btree (\"resourceId\")",
+      "name": "BoatResourceCompliance_resourceId_key",
+      "table_name": "BoatResourceCompliance"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Booking_pkey\" ON public.\"Booking\" USING btree (id)",
+      "name": "Booking_pkey",
+      "table_name": "Booking"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Booking_tripId_accountId_key\" ON public.\"Booking\" USING btree (\"tripId\", \"accountId\")",
+      "name": "Booking_tripId_accountId_key",
+      "table_name": "Booking"
+    },
+    {
+      "definition": "CREATE INDEX \"Booking_tripId_status_idx\" ON public.\"Booking\" USING btree (\"tripId\", status)",
+      "name": "Booking_tripId_status_idx",
+      "table_name": "Booking"
+    },
+    {
+      "definition": "CREATE INDEX \"BookingParticipant_accountId_idx\" ON public.\"BookingParticipant\" USING btree (\"accountId\")",
+      "name": "BookingParticipant_accountId_idx",
+      "table_name": "BookingParticipant"
+    },
+    {
+      "definition": "CREATE INDEX \"BookingParticipant_bookingId_eligibilityStatus_idx\" ON public.\"BookingParticipant\" USING btree (\"bookingId\", \"eligibilityStatus\")",
+      "name": "BookingParticipant_bookingId_eligibilityStatus_idx",
+      "table_name": "BookingParticipant"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"BookingParticipant_pkey\" ON public.\"BookingParticipant\" USING btree (id)",
+      "name": "BookingParticipant_pkey",
+      "table_name": "BookingParticipant"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"BriefingMedia_briefingId_mediaKey_key\" ON public.\"BriefingMedia\" USING btree (\"briefingId\", \"mediaKey\")",
+      "name": "BriefingMedia_briefingId_mediaKey_key",
+      "table_name": "BriefingMedia"
+    },
+    {
+      "definition": "CREATE INDEX \"BriefingMedia_briefingId_status_idx\" ON public.\"BriefingMedia\" USING btree (\"briefingId\", status)",
+      "name": "BriefingMedia_briefingId_status_idx",
+      "table_name": "BriefingMedia"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"BriefingMedia_pkey\" ON public.\"BriefingMedia\" USING btree (id)",
+      "name": "BriefingMedia_pkey",
+      "table_name": "BriefingMedia"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"BriefingTranslation_briefingId_languageCode_key\" ON public.\"BriefingTranslation\" USING btree (\"briefingId\", \"languageCode\")",
+      "name": "BriefingTranslation_briefingId_languageCode_key",
+      "table_name": "BriefingTranslation"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"BriefingTranslation_pkey\" ON public.\"BriefingTranslation\" USING btree (id)",
+      "name": "BriefingTranslation_pkey",
+      "table_name": "BriefingTranslation"
+    },
+    {
+      "definition": "CREATE INDEX \"BriefingTranslation_reviewStatus_idx\" ON public.\"BriefingTranslation\" USING btree (\"reviewStatus\")",
+      "name": "BriefingTranslation_reviewStatus_idx",
+      "table_name": "BriefingTranslation"
+    },
+    {
+      "definition": "CREATE INDEX \"CalendarAllocation_eventId_status_idx\" ON public.\"CalendarAllocation\" USING btree (\"eventId\", status)",
+      "name": "CalendarAllocation_eventId_status_idx",
+      "table_name": "CalendarAllocation"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"CalendarAllocation_pkey\" ON public.\"CalendarAllocation\" USING btree (id)",
+      "name": "CalendarAllocation_pkey",
+      "table_name": "CalendarAllocation"
+    },
+    {
+      "definition": "CREATE INDEX \"CalendarAllocation_resourceId_startsAt_endsAt_idx\" ON public.\"CalendarAllocation\" USING btree (\"resourceId\", \"startsAt\", \"endsAt\")",
+      "name": "CalendarAllocation_resourceId_startsAt_endsAt_idx",
+      "table_name": "CalendarAllocation"
+    },
+    {
+      "definition": "CREATE INDEX \"CalendarEvent_organizationId_startsAt_endsAt_idx\" ON public.\"CalendarEvent\" USING btree (\"organizationId\", \"startsAt\", \"endsAt\")",
+      "name": "CalendarEvent_organizationId_startsAt_endsAt_idx",
+      "table_name": "CalendarEvent"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"CalendarEvent_pkey\" ON public.\"CalendarEvent\" USING btree (id)",
+      "name": "CalendarEvent_pkey",
+      "table_name": "CalendarEvent"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"CalendarEvent_referenceType_referenceId_key\" ON public.\"CalendarEvent\" USING btree (\"referenceType\", \"referenceId\")",
+      "name": "CalendarEvent_referenceType_referenceId_key",
+      "table_name": "CalendarEvent"
+    },
+    {
+      "definition": "CREATE INDEX \"CalendarEvent_type_status_startsAt_idx\" ON public.\"CalendarEvent\" USING btree (type, status, \"startsAt\")",
+      "name": "CalendarEvent_type_status_startsAt_idx",
+      "table_name": "CalendarEvent"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"CalendarResource_pkey\" ON public.\"CalendarResource\" USING btree (id)",
+      "name": "CalendarResource_pkey",
+      "table_name": "CalendarResource"
+    },
+    {
+      "definition": "CREATE INDEX \"CalendarResource_referenceId_idx\" ON public.\"CalendarResource\" USING btree (\"referenceId\")",
+      "name": "CalendarResource_referenceId_idx",
+      "table_name": "CalendarResource"
+    },
+    {
+      "definition": "CREATE INDEX \"CalendarResource_type_active_idx\" ON public.\"CalendarResource\" USING btree (type, active)",
+      "name": "CalendarResource_type_active_idx",
+      "table_name": "CalendarResource"
+    },
+    {
+      "definition": "CREATE INDEX \"CompensationTerm_employmentId_effectiveFrom_idx\" ON public.\"CompensationTerm\" USING btree (\"employmentId\", \"effectiveFrom\")",
+      "name": "CompensationTerm_employmentId_effectiveFrom_idx",
+      "table_name": "CompensationTerm"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"CompensationTerm_pkey\" ON public.\"CompensationTerm\" USING btree (id)",
+      "name": "CompensationTerm_pkey",
+      "table_name": "CompensationTerm"
+    },
+    {
+      "definition": "CREATE INDEX \"CompensationTerm_requestedByAccountId_idx\" ON public.\"CompensationTerm\" USING btree (\"requestedByAccountId\")",
+      "name": "CompensationTerm_requestedByAccountId_idx",
+      "table_name": "CompensationTerm"
+    },
+    {
+      "definition": "CREATE INDEX \"CompensationTerm_reviewedByAccountId_idx\" ON public.\"CompensationTerm\" USING btree (\"reviewedByAccountId\")",
+      "name": "CompensationTerm_reviewedByAccountId_idx",
+      "table_name": "CompensationTerm"
+    },
+    {
+      "definition": "CREATE INDEX \"CompensationTerm_status_idx\" ON public.\"CompensationTerm\" USING btree (status)",
+      "name": "CompensationTerm_status_idx",
+      "table_name": "CompensationTerm"
+    },
+    {
+      "definition": "CREATE INDEX \"ComplianceAssessment_decision_assessedAt_idx\" ON public.\"ComplianceAssessment\" USING btree (decision, \"assessedAt\")",
+      "name": "ComplianceAssessment_decision_assessedAt_idx",
+      "table_name": "ComplianceAssessment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"ComplianceAssessment_pkey\" ON public.\"ComplianceAssessment\" USING btree (id)",
+      "name": "ComplianceAssessment_pkey",
+      "table_name": "ComplianceAssessment"
+    },
+    {
+      "definition": "CREATE INDEX \"ComplianceAssessment_safetyChecklistId_idx\" ON public.\"ComplianceAssessment\" USING btree (\"safetyChecklistId\")",
+      "name": "ComplianceAssessment_safetyChecklistId_idx",
+      "table_name": "ComplianceAssessment"
+    },
+    {
+      "definition": "CREATE INDEX \"ComplianceAssessment_tripId_assessedAt_idx\" ON public.\"ComplianceAssessment\" USING btree (\"tripId\", \"assessedAt\")",
+      "name": "ComplianceAssessment_tripId_assessedAt_idx",
+      "table_name": "ComplianceAssessment"
+    },
+    {
+      "definition": "CREATE INDEX \"ComplianceEvidence_assessmentId_controlId_idx\" ON public.\"ComplianceEvidence\" USING btree (\"assessmentId\", \"controlId\")",
+      "name": "ComplianceEvidence_assessmentId_controlId_idx",
+      "table_name": "ComplianceEvidence"
+    },
+    {
+      "definition": "CREATE INDEX \"ComplianceEvidence_controlId_verified_idx\" ON public.\"ComplianceEvidence\" USING btree (\"controlId\", verified)",
+      "name": "ComplianceEvidence_controlId_verified_idx",
+      "table_name": "ComplianceEvidence"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"ComplianceEvidence_pkey\" ON public.\"ComplianceEvidence\" USING btree (id)",
+      "name": "ComplianceEvidence_pkey",
+      "table_name": "ComplianceEvidence"
+    },
+    {
+      "definition": "CREATE INDEX \"Conversation_created_idx\" ON public.\"Conversation\" USING btree (\"createdAt\" DESC)",
+      "name": "Conversation_created_idx",
+      "table_name": "Conversation"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Conversation_pkey\" ON public.\"Conversation\" USING btree (id)",
+      "name": "Conversation_pkey",
+      "table_name": "Conversation"
+    },
+    {
+      "definition": "CREATE INDEX \"ConversationParticipant_account_idx\" ON public.\"ConversationParticipant\" USING btree (\"accountId\", \"joinedAt\" DESC)",
+      "name": "ConversationParticipant_account_idx",
+      "table_name": "ConversationParticipant"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"ConversationParticipant_pkey\" ON public.\"ConversationParticipant\" USING btree (id)",
+      "name": "ConversationParticipant_pkey",
+      "table_name": "ConversationParticipant"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"ConversationParticipant_unique\" ON public.\"ConversationParticipant\" USING btree (\"conversationId\", \"accountId\")",
+      "name": "ConversationParticipant_unique",
+      "table_name": "ConversationParticipant"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Credential_pkey\" ON public.\"Credential\" USING btree (id)",
+      "name": "Credential_pkey",
+      "table_name": "Credential"
+    },
+    {
+      "definition": "CREATE INDEX \"CrewAssignment_accountId_status_idx\" ON public.\"CrewAssignment\" USING btree (\"accountId\", status)",
+      "name": "CrewAssignment_accountId_status_idx",
+      "table_name": "CrewAssignment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"CrewAssignment_pkey\" ON public.\"CrewAssignment\" USING btree (id)",
+      "name": "CrewAssignment_pkey",
+      "table_name": "CrewAssignment"
+    },
+    {
+      "definition": "CREATE INDEX \"CrewAssignment_resourceId_idx\" ON public.\"CrewAssignment\" USING btree (\"resourceId\")",
+      "name": "CrewAssignment_resourceId_idx",
+      "table_name": "CrewAssignment"
+    },
+    {
+      "definition": "CREATE INDEX \"CrewAssignment_tripId_status_idx\" ON public.\"CrewAssignment\" USING btree (\"tripId\", status)",
+      "name": "CrewAssignment_tripId_status_idx",
+      "table_name": "CrewAssignment"
+    },
+    {
+      "definition": "CREATE INDEX \"CustomerCase_assignedAccountId_status_idx\" ON public.\"CustomerCase\" USING btree (\"assignedAccountId\", status)",
+      "name": "CustomerCase_assignedAccountId_status_idx",
+      "table_name": "CustomerCase"
+    },
+    {
+      "definition": "CREATE INDEX \"CustomerCase_customerId_status_createdAt_idx\" ON public.\"CustomerCase\" USING btree (\"customerId\", status, \"createdAt\")",
+      "name": "CustomerCase_customerId_status_createdAt_idx",
+      "table_name": "CustomerCase"
+    },
+    {
+      "definition": "CREATE INDEX \"CustomerCase_organizationId_status_createdAt_idx\" ON public.\"CustomerCase\" USING btree (\"organizationId\", status, \"createdAt\")",
+      "name": "CustomerCase_organizationId_status_createdAt_idx",
+      "table_name": "CustomerCase"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"CustomerCase_pkey\" ON public.\"CustomerCase\" USING btree (id)",
+      "name": "CustomerCase_pkey",
+      "table_name": "CustomerCase"
+    },
+    {
+      "definition": "CREATE INDEX \"CustomerInteraction_caseId_createdAt_idx\" ON public.\"CustomerInteraction\" USING btree (\"caseId\", \"createdAt\")",
+      "name": "CustomerInteraction_caseId_createdAt_idx",
+      "table_name": "CustomerInteraction"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"CustomerInteraction_pkey\" ON public.\"CustomerInteraction\" USING btree (id)",
+      "name": "CustomerInteraction_pkey",
+      "table_name": "CustomerInteraction"
+    },
+    {
+      "definition": "CREATE INDEX \"DiveLog_accountId_diveDate_idx\" ON public.\"DiveLog\" USING btree (\"accountId\", \"diveDate\")",
+      "name": "DiveLog_accountId_diveDate_idx",
+      "table_name": "DiveLog"
+    },
+    {
+      "definition": "CREATE INDEX \"DiveLog_accountId_status_idx\" ON public.\"DiveLog\" USING btree (\"accountId\", status)",
+      "name": "DiveLog_accountId_status_idx",
+      "table_name": "DiveLog"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"DiveLog_pkey\" ON public.\"DiveLog\" USING btree (id)",
+      "name": "DiveLog_pkey",
+      "table_name": "DiveLog"
+    },
+    {
+      "definition": "CREATE INDEX \"DiveLog_sourceParticipantId_idx\" ON public.\"DiveLog\" USING btree (\"sourceParticipantId\")",
+      "name": "DiveLog_sourceParticipantId_idx",
+      "table_name": "DiveLog"
+    },
+    {
+      "definition": "CREATE INDEX \"DiveLog_sourceTripId_idx\" ON public.\"DiveLog\" USING btree (\"sourceTripId\")",
+      "name": "DiveLog_sourceTripId_idx",
+      "table_name": "DiveLog"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"DiveLog_sourceTripId_sourceParticipantId_key\" ON public.\"DiveLog\" USING btree (\"sourceTripId\", \"sourceParticipantId\") WHERE (\"sourceParticipantId\" IS NOT NULL)",
+      "name": "DiveLog_sourceTripId_sourceParticipantId_key",
+      "table_name": "DiveLog"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"DivePlan_pkey\" ON public.\"DivePlan\" USING btree (id)",
+      "name": "DivePlan_pkey",
+      "table_name": "DivePlan"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"DivePlan_tripId_version_key\" ON public.\"DivePlan\" USING btree (\"tripId\", version)",
+      "name": "DivePlan_tripId_version_key",
+      "table_name": "DivePlan"
+    },
+    {
+      "definition": "CREATE INDEX \"DiverEquipment_accountId_category_idx\" ON public.\"DiverEquipment\" USING btree (\"accountId\", category)",
+      "name": "DiverEquipment_accountId_category_idx",
+      "table_name": "DiverEquipment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"DiverEquipment_pkey\" ON public.\"DiverEquipment\" USING btree (id)",
+      "name": "DiverEquipment_pkey",
+      "table_name": "DiverEquipment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"DiverProfile_accountId_key\" ON public.\"DiverProfile\" USING btree (\"accountId\")",
+      "name": "DiverProfile_accountId_key",
+      "table_name": "DiverProfile"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"DiverProfile_pkey\" ON public.\"DiverProfile\" USING btree (id)",
+      "name": "DiverProfile_pkey",
+      "table_name": "DiverProfile"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Document_pkey\" ON public.\"Document\" USING btree (id)",
+      "name": "Document_pkey",
+      "table_name": "Document"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Document_sha256_key\" ON public.\"Document\" USING btree (sha256)",
+      "name": "Document_sha256_key",
+      "table_name": "Document"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Document_storageKey_key\" ON public.\"Document\" USING btree (\"storageKey\")",
+      "name": "Document_storageKey_key",
+      "table_name": "Document"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"DocumentBrandSnapshot_organizationId_brandVersion_key\" ON public.\"DocumentBrandSnapshot\" USING btree (\"organizationId\", \"brandVersion\")",
+      "name": "DocumentBrandSnapshot_organizationId_brandVersion_key",
+      "table_name": "DocumentBrandSnapshot"
+    },
+    {
+      "definition": "CREATE INDEX \"DocumentBrandSnapshot_organizationId_createdAt_idx\" ON public.\"DocumentBrandSnapshot\" USING btree (\"organizationId\", \"createdAt\")",
+      "name": "DocumentBrandSnapshot_organizationId_createdAt_idx",
+      "table_name": "DocumentBrandSnapshot"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"DocumentBrandSnapshot_pkey\" ON public.\"DocumentBrandSnapshot\" USING btree (id)",
+      "name": "DocumentBrandSnapshot_pkey",
+      "table_name": "DocumentBrandSnapshot"
+    },
+    {
+      "definition": "CREATE INDEX \"DocumentLifecycleEvent_actorAccountId_occurredAt_idx\" ON public.\"DocumentLifecycleEvent\" USING btree (\"actorAccountId\", \"occurredAt\")",
+      "name": "DocumentLifecycleEvent_actorAccountId_occurredAt_idx",
+      "table_name": "DocumentLifecycleEvent"
+    },
+    {
+      "definition": "CREATE INDEX \"DocumentLifecycleEvent_documentId_occurredAt_idx\" ON public.\"DocumentLifecycleEvent\" USING btree (\"documentId\", \"occurredAt\")",
+      "name": "DocumentLifecycleEvent_documentId_occurredAt_idx",
+      "table_name": "DocumentLifecycleEvent"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"DocumentLifecycleEvent_pkey\" ON public.\"DocumentLifecycleEvent\" USING btree (id)",
+      "name": "DocumentLifecycleEvent_pkey",
+      "table_name": "DocumentLifecycleEvent"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"DocumentReferenceCounter_organizationId_department_year_key\" ON public.\"DocumentReferenceCounter\" USING btree (\"organizationId\", department, year)",
+      "name": "DocumentReferenceCounter_organizationId_department_year_key",
+      "table_name": "DocumentReferenceCounter"
+    },
+    {
+      "definition": "CREATE INDEX \"DocumentReferenceCounter_organizationId_year_idx\" ON public.\"DocumentReferenceCounter\" USING btree (\"organizationId\", year)",
+      "name": "DocumentReferenceCounter_organizationId_year_idx",
+      "table_name": "DocumentReferenceCounter"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"DocumentReferenceCounter_pkey\" ON public.\"DocumentReferenceCounter\" USING btree (id)",
+      "name": "DocumentReferenceCounter_pkey",
+      "table_name": "DocumentReferenceCounter"
+    },
+    {
+      "definition": "CREATE INDEX \"DocumentRevision_createdByAccountId_createdAt_idx\" ON public.\"DocumentRevision\" USING btree (\"createdByAccountId\", \"createdAt\")",
+      "name": "DocumentRevision_createdByAccountId_createdAt_idx",
+      "table_name": "DocumentRevision"
+    },
+    {
+      "definition": "CREATE INDEX \"DocumentRevision_documentId_createdAt_idx\" ON public.\"DocumentRevision\" USING btree (\"documentId\", \"createdAt\")",
+      "name": "DocumentRevision_documentId_createdAt_idx",
+      "table_name": "DocumentRevision"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"DocumentRevision_documentId_version_key\" ON public.\"DocumentRevision\" USING btree (\"documentId\", version)",
+      "name": "DocumentRevision_documentId_version_key",
+      "table_name": "DocumentRevision"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"DocumentRevision_pkey\" ON public.\"DocumentRevision\" USING btree (id)",
+      "name": "DocumentRevision_pkey",
+      "table_name": "DocumentRevision"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"DocumentTemplate_organizationId_code_version_key\" ON public.\"DocumentTemplate\" USING btree (\"organizationId\", code, version)",
+      "name": "DocumentTemplate_organizationId_code_version_key",
+      "table_name": "DocumentTemplate"
+    },
+    {
+      "definition": "CREATE INDEX \"DocumentTemplate_organizationId_department_status_idx\" ON public.\"DocumentTemplate\" USING btree (\"organizationId\", department, status)",
+      "name": "DocumentTemplate_organizationId_department_status_idx",
+      "table_name": "DocumentTemplate"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"DocumentTemplate_pkey\" ON public.\"DocumentTemplate\" USING btree (id)",
+      "name": "DocumentTemplate_pkey",
+      "table_name": "DocumentTemplate"
+    },
+    {
+      "definition": "CREATE INDEX \"EmergencyPhrase_category_status_idx\" ON public.\"EmergencyPhrase\" USING btree (category, status)",
+      "name": "EmergencyPhrase_category_status_idx",
+      "table_name": "EmergencyPhrase"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"EmergencyPhrase_key_key\" ON public.\"EmergencyPhrase\" USING btree (key)",
+      "name": "EmergencyPhrase_key_key",
+      "table_name": "EmergencyPhrase"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"EmergencyPhrase_pkey\" ON public.\"EmergencyPhrase\" USING btree (id)",
+      "name": "EmergencyPhrase_pkey",
+      "table_name": "EmergencyPhrase"
+    },
+    {
+      "definition": "CREATE INDEX \"EmergencyPhraseTranslation_languageCode_reviewedAt_idx\" ON public.\"EmergencyPhraseTranslation\" USING btree (\"languageCode\", \"reviewedAt\")",
+      "name": "EmergencyPhraseTranslation_languageCode_reviewedAt_idx",
+      "table_name": "EmergencyPhraseTranslation"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"EmergencyPhraseTranslation_phraseId_languageCode_key\" ON public.\"EmergencyPhraseTranslation\" USING btree (\"phraseId\", \"languageCode\")",
+      "name": "EmergencyPhraseTranslation_phraseId_languageCode_key",
+      "table_name": "EmergencyPhraseTranslation"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"EmergencyPhraseTranslation_pkey\" ON public.\"EmergencyPhraseTranslation\" USING btree (id)",
+      "name": "EmergencyPhraseTranslation_pkey",
+      "table_name": "EmergencyPhraseTranslation"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"EmergencyPlan_pkey\" ON public.\"EmergencyPlan\" USING btree (id)",
+      "name": "EmergencyPlan_pkey",
+      "table_name": "EmergencyPlan"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"EmergencyPlan_tripId_version_key\" ON public.\"EmergencyPlan\" USING btree (\"tripId\", version)",
+      "name": "EmergencyPlan_tripId_version_key",
+      "table_name": "EmergencyPlan"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"EmployeeRelationsCase_pkey\" ON public.\"EmployeeRelationsCase\" USING btree (id)",
+      "name": "EmployeeRelationsCase_pkey",
+      "table_name": "EmployeeRelationsCase"
+    },
+    {
+      "definition": "CREATE INDEX \"Employment_accountId_status_idx\" ON public.\"Employment\" USING btree (\"accountId\", status)",
+      "name": "Employment_accountId_status_idx",
+      "table_name": "Employment"
+    },
+    {
+      "definition": "CREATE INDEX \"Employment_organizationId_orgUnitId_status_idx\" ON public.\"Employment\" USING btree (\"organizationId\", \"orgUnitId\", status)",
+      "name": "Employment_organizationId_orgUnitId_status_idx",
+      "table_name": "Employment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Employment_pkey\" ON public.\"Employment\" USING btree (id)",
+      "name": "Employment_pkey",
+      "table_name": "Employment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"EmploymentContract_employmentId_version_key\" ON public.\"EmploymentContract\" USING btree (\"employmentId\", version)",
+      "name": "EmploymentContract_employmentId_version_key",
+      "table_name": "EmploymentContract"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"EmploymentContract_pkey\" ON public.\"EmploymentContract\" USING btree (id)",
+      "name": "EmploymentContract_pkey",
+      "table_name": "EmploymentContract"
+    },
+    {
+      "definition": "CREATE INDEX \"EmploymentMovement_employmentId_status_idx\" ON public.\"EmploymentMovement\" USING btree (\"employmentId\", status)",
+      "name": "EmploymentMovement_employmentId_status_idx",
+      "table_name": "EmploymentMovement"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"EmploymentMovement_pkey\" ON public.\"EmploymentMovement\" USING btree (id)",
+      "name": "EmploymentMovement_pkey",
+      "table_name": "EmploymentMovement"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"EquipmentBarcode_assetCode_key\" ON public.\"EquipmentBarcode\" USING btree (\"assetCode\")",
+      "name": "EquipmentBarcode_assetCode_key",
+      "table_name": "EquipmentBarcode"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"EquipmentBarcode_barcodeValue_key\" ON public.\"EquipmentBarcode\" USING btree (\"barcodeValue\")",
+      "name": "EquipmentBarcode_barcodeValue_key",
+      "table_name": "EquipmentBarcode"
+    },
+    {
+      "definition": "CREATE INDEX \"EquipmentBarcode_organizationId_stockStatus_idx\" ON public.\"EquipmentBarcode\" USING btree (\"organizationId\", \"stockStatus\")",
+      "name": "EquipmentBarcode_organizationId_stockStatus_idx",
+      "table_name": "EquipmentBarcode"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"EquipmentBarcode_pkey\" ON public.\"EquipmentBarcode\" USING btree (id)",
+      "name": "EquipmentBarcode_pkey",
+      "table_name": "EquipmentBarcode"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"EquipmentBarcode_qrValue_key\" ON public.\"EquipmentBarcode\" USING btree (\"qrValue\")",
+      "name": "EquipmentBarcode_qrValue_key",
+      "table_name": "EquipmentBarcode"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"EquipmentBarcode_resourceId_key\" ON public.\"EquipmentBarcode\" USING btree (\"resourceId\")",
+      "name": "EquipmentBarcode_resourceId_key",
+      "table_name": "EquipmentBarcode"
+    },
+    {
+      "definition": "CREATE INDEX \"EquipmentBarcode_serialNumber_idx\" ON public.\"EquipmentBarcode\" USING btree (\"serialNumber\")",
+      "name": "EquipmentBarcode_serialNumber_idx",
+      "table_name": "EquipmentBarcode"
+    },
+    {
+      "definition": "CREATE INDEX \"EquipmentBarcode_stockStatus_idx\" ON public.\"EquipmentBarcode\" USING btree (\"stockStatus\")",
+      "name": "EquipmentBarcode_stockStatus_idx",
+      "table_name": "EquipmentBarcode"
+    },
+    {
+      "definition": "CREATE INDEX \"EquipmentBarcode_tag_method_idx\" ON public.\"EquipmentBarcode\" USING btree (\"tagMethod\")",
+      "name": "EquipmentBarcode_tag_method_idx",
+      "table_name": "EquipmentBarcode"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"EquipmentInspection_pkey\" ON public.\"EquipmentInspection\" USING btree (id)",
+      "name": "EquipmentInspection_pkey",
+      "table_name": "EquipmentInspection"
+    },
+    {
+      "definition": "CREATE INDEX \"EquipmentInspection_resourceId_inspectedAt_idx\" ON public.\"EquipmentInspection\" USING btree (\"resourceId\", \"inspectedAt\" DESC)",
+      "name": "EquipmentInspection_resourceId_inspectedAt_idx",
+      "table_name": "EquipmentInspection"
+    },
+    {
+      "definition": "CREATE INDEX \"EquipmentInspection_status_idx\" ON public.\"EquipmentInspection\" USING btree (status)",
+      "name": "EquipmentInspection_status_idx",
+      "table_name": "EquipmentInspection"
+    },
+    {
+      "definition": "CREATE INDEX \"EquipmentMovement_assignedAccountId_idx\" ON public.\"EquipmentMovement\" USING btree (\"assignedAccountId\")",
+      "name": "EquipmentMovement_assignedAccountId_idx",
+      "table_name": "EquipmentMovement"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"EquipmentMovement_pkey\" ON public.\"EquipmentMovement\" USING btree (id)",
+      "name": "EquipmentMovement_pkey",
+      "table_name": "EquipmentMovement"
+    },
+    {
+      "definition": "CREATE INDEX \"EquipmentMovement_resourceId_occurredAt_idx\" ON public.\"EquipmentMovement\" USING btree (\"resourceId\", \"occurredAt\")",
+      "name": "EquipmentMovement_resourceId_occurredAt_idx",
+      "table_name": "EquipmentMovement"
+    },
+    {
+      "definition": "CREATE INDEX \"EquipmentMovement_tripId_idx\" ON public.\"EquipmentMovement\" USING btree (\"tripId\")",
+      "name": "EquipmentMovement_tripId_idx",
+      "table_name": "EquipmentMovement"
+    },
+    {
+      "definition": "CREATE INDEX \"EquipmentRental_due_idx\" ON public.\"EquipmentRental\" USING btree (status, \"dueAt\")",
+      "name": "EquipmentRental_due_idx",
+      "table_name": "EquipmentRental"
+    },
+    {
+      "definition": "CREATE INDEX \"EquipmentRental_extension_idx\" ON public.\"EquipmentRental\" USING btree (\"extensionStatus\", \"extensionRequestedAt\")",
+      "name": "EquipmentRental_extension_idx",
+      "table_name": "EquipmentRental"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"EquipmentRental_invoiceNumber_key\" ON public.\"EquipmentRental\" USING btree (\"invoiceNumber\")",
+      "name": "EquipmentRental_invoiceNumber_key",
+      "table_name": "EquipmentRental"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"EquipmentRental_pkey\" ON public.\"EquipmentRental\" USING btree (id)",
+      "name": "EquipmentRental_pkey",
+      "table_name": "EquipmentRental"
+    },
+    {
+      "definition": "CREATE INDEX \"EquipmentRental_renter_idx\" ON public.\"EquipmentRental\" USING btree (\"renterAccountId\", \"createdAt\" DESC)",
+      "name": "EquipmentRental_renter_idx",
+      "table_name": "EquipmentRental"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"EquipmentRentalItem_pkey\" ON public.\"EquipmentRentalItem\" USING btree (id)",
+      "name": "EquipmentRentalItem_pkey",
+      "table_name": "EquipmentRentalItem"
+    },
+    {
+      "definition": "CREATE INDEX \"EquipmentRentalItem_rental_handover_idx\" ON public.\"EquipmentRentalItem\" USING btree (\"rentalId\", \"handedOverAt\")",
+      "name": "EquipmentRentalItem_rental_handover_idx",
+      "table_name": "EquipmentRentalItem"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"EquipmentRentalItem_rental_resource_uq\" ON public.\"EquipmentRentalItem\" USING btree (\"rentalId\", \"resourceId\")",
+      "name": "EquipmentRentalItem_rental_resource_uq",
+      "table_name": "EquipmentRentalItem"
+    },
+    {
+      "definition": "CREATE INDEX \"EquipmentRentalItem_resource_idx\" ON public.\"EquipmentRentalItem\" USING btree (\"resourceId\")",
+      "name": "EquipmentRentalItem_resource_idx",
+      "table_name": "EquipmentRentalItem"
+    },
+    {
+      "definition": "CREATE INDEX \"EquipmentRentalItem_returned_idx\" ON public.\"EquipmentRentalItem\" USING btree (\"rentalId\", \"returnedAt\")",
+      "name": "EquipmentRentalItem_returned_idx",
+      "table_name": "EquipmentRentalItem"
+    },
+    {
+      "definition": "CREATE INDEX \"FinanceAccount_organizationId_active_idx\" ON public.\"FinanceAccount\" USING btree (\"organizationId\", active)",
+      "name": "FinanceAccount_organizationId_active_idx",
+      "table_name": "FinanceAccount"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"FinanceAccount_pkey\" ON public.\"FinanceAccount\" USING btree (id)",
+      "name": "FinanceAccount_pkey",
+      "table_name": "FinanceAccount"
+    },
+    {
+      "definition": "CREATE INDEX \"FinanceAccountantShift_accountant_status_idx\" ON public.\"FinanceAccountantShift\" USING btree (\"accountantAccountId\", status)",
+      "name": "FinanceAccountantShift_accountant_status_idx",
+      "table_name": "FinanceAccountantShift"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"FinanceAccountantShift_active_accountant_center_key\" ON public.\"FinanceAccountantShift\" USING btree (\"accountantAccountId\", \"centerOrgUnitId\") WHERE (status = ANY (ARRAY['OPEN'::\"FinanceShiftStatus\", 'HANDOVER_PENDING'::\"FinanceShiftStatus\"]))",
+      "name": "FinanceAccountantShift_active_accountant_center_key",
+      "table_name": "FinanceAccountantShift"
+    },
+    {
+      "definition": "CREATE INDEX \"FinanceAccountantShift_center_status_idx\" ON public.\"FinanceAccountantShift\" USING btree (\"centerOrgUnitId\", status)",
+      "name": "FinanceAccountantShift_center_status_idx",
+      "table_name": "FinanceAccountantShift"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"FinanceAccountantShift_pkey\" ON public.\"FinanceAccountantShift\" USING btree (id)",
+      "name": "FinanceAccountantShift_pkey",
+      "table_name": "FinanceAccountantShift"
+    },
+    {
+      "definition": "CREATE INDEX \"FinanceApproval_decidedByAccountId_status_idx\" ON public.\"FinanceApproval\" USING btree (\"decidedByAccountId\", status)",
+      "name": "FinanceApproval_decidedByAccountId_status_idx",
+      "table_name": "FinanceApproval"
+    },
+    {
+      "definition": "CREATE INDEX \"FinanceApproval_financeEntryId_status_idx\" ON public.\"FinanceApproval\" USING btree (\"financeEntryId\", status)",
+      "name": "FinanceApproval_financeEntryId_status_idx",
+      "table_name": "FinanceApproval"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"FinanceApproval_pkey\" ON public.\"FinanceApproval\" USING btree (id)",
+      "name": "FinanceApproval_pkey",
+      "table_name": "FinanceApproval"
+    },
+    {
+      "definition": "CREATE INDEX \"FinanceApproval_requestedByAccountId_status_idx\" ON public.\"FinanceApproval\" USING btree (\"requestedByAccountId\", status)",
+      "name": "FinanceApproval_requestedByAccountId_status_idx",
+      "table_name": "FinanceApproval"
+    },
+    {
+      "definition": "CREATE INDEX \"FinanceEntry_financeAccountId_status_idx\" ON public.\"FinanceEntry\" USING btree (\"financeAccountId\", status)",
+      "name": "FinanceEntry_financeAccountId_status_idx",
+      "table_name": "FinanceEntry"
+    },
+    {
+      "definition": "CREATE INDEX \"FinanceEntry_organizationId_status_createdAt_idx\" ON public.\"FinanceEntry\" USING btree (\"organizationId\", status, \"createdAt\")",
+      "name": "FinanceEntry_organizationId_status_createdAt_idx",
+      "table_name": "FinanceEntry"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"FinanceEntry_pkey\" ON public.\"FinanceEntry\" USING btree (id)",
+      "name": "FinanceEntry_pkey",
+      "table_name": "FinanceEntry"
+    },
+    {
+      "definition": "CREATE INDEX \"FinanceEntry_postedByAccountId_idx\" ON public.\"FinanceEntry\" USING btree (\"postedByAccountId\")",
+      "name": "FinanceEntry_postedByAccountId_idx",
+      "table_name": "FinanceEntry"
+    },
+    {
+      "definition": "CREATE INDEX \"FinanceEntry_referenceType_referenceId_idx\" ON public.\"FinanceEntry\" USING btree (\"referenceType\", \"referenceId\")",
+      "name": "FinanceEntry_referenceType_referenceId_idx",
+      "table_name": "FinanceEntry"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"FinanceShiftEntry_paymentId_key\" ON public.\"FinanceShiftEntry\" USING btree (\"paymentId\") WHERE (\"paymentId\" IS NOT NULL)",
+      "name": "FinanceShiftEntry_paymentId_key",
+      "table_name": "FinanceShiftEntry"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"FinanceShiftEntry_pkey\" ON public.\"FinanceShiftEntry\" USING btree (id)",
+      "name": "FinanceShiftEntry_pkey",
+      "table_name": "FinanceShiftEntry"
+    },
+    {
+      "definition": "CREATE INDEX \"FinanceShiftEntry_recordedBy_idx\" ON public.\"FinanceShiftEntry\" USING btree (\"recordedByAccountId\", \"createdAt\")",
+      "name": "FinanceShiftEntry_recordedBy_idx",
+      "table_name": "FinanceShiftEntry"
+    },
+    {
+      "definition": "CREATE INDEX \"FinanceShiftEntry_reference_idx\" ON public.\"FinanceShiftEntry\" USING btree (\"referenceType\", \"referenceId\")",
+      "name": "FinanceShiftEntry_reference_idx",
+      "table_name": "FinanceShiftEntry"
+    },
+    {
+      "definition": "CREATE INDEX \"FinanceShiftEntry_shift_createdAt_idx\" ON public.\"FinanceShiftEntry\" USING btree (\"shiftId\", \"createdAt\")",
+      "name": "FinanceShiftEntry_shift_createdAt_idx",
+      "table_name": "FinanceShiftEntry"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"FinanceShiftHandover_pending_fromShift_key\" ON public.\"FinanceShiftHandover\" USING btree (\"fromShiftId\") WHERE (status = 'PENDING'::\"FinanceHandoverStatus\")",
+      "name": "FinanceShiftHandover_pending_fromShift_key",
+      "table_name": "FinanceShiftHandover"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"FinanceShiftHandover_pkey\" ON public.\"FinanceShiftHandover\" USING btree (id)",
+      "name": "FinanceShiftHandover_pkey",
+      "table_name": "FinanceShiftHandover"
+    },
+    {
+      "definition": "CREATE INDEX \"FinanceShiftHandover_receiver_status_idx\" ON public.\"FinanceShiftHandover\" USING btree (\"toAccountantId\", status)",
+      "name": "FinanceShiftHandover_receiver_status_idx",
+      "table_name": "FinanceShiftHandover"
+    },
+    {
+      "definition": "CREATE INDEX \"FinanceShiftHandover_toShift_status_idx\" ON public.\"FinanceShiftHandover\" USING btree (\"toShiftId\", status)",
+      "name": "FinanceShiftHandover_toShift_status_idx",
+      "table_name": "FinanceShiftHandover"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"HrCandidate_organizationId_personId_key\" ON public.\"HrCandidate\" USING btree (\"organizationId\", \"personId\")",
+      "name": "HrCandidate_organizationId_personId_key",
+      "table_name": "HrCandidate"
+    },
+    {
+      "definition": "CREATE INDEX \"HrCandidate_organizationId_status_idx\" ON public.\"HrCandidate\" USING btree (\"organizationId\", status)",
+      "name": "HrCandidate_organizationId_status_idx",
+      "table_name": "HrCandidate"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"HrCandidate_pkey\" ON public.\"HrCandidate\" USING btree (id)",
+      "name": "HrCandidate_pkey",
+      "table_name": "HrCandidate"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"InstructorEarning_financeEntryId_key\" ON public.\"InstructorEarning\" USING btree (\"financeEntryId\")",
+      "name": "InstructorEarning_financeEntryId_key",
+      "table_name": "InstructorEarning"
+    },
+    {
+      "definition": "CREATE INDEX \"InstructorEarning_instructorAccountId_status_createdAt_idx\" ON public.\"InstructorEarning\" USING btree (\"instructorAccountId\", status, \"createdAt\")",
+      "name": "InstructorEarning_instructorAccountId_status_createdAt_idx",
+      "table_name": "InstructorEarning"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"InstructorEarning_pkey\" ON public.\"InstructorEarning\" USING btree (id)",
+      "name": "InstructorEarning_pkey",
+      "table_name": "InstructorEarning"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"InstructorEarning_trainingEnrollmentId_key\" ON public.\"InstructorEarning\" USING btree (\"trainingEnrollmentId\")",
+      "name": "InstructorEarning_trainingEnrollmentId_key",
+      "table_name": "InstructorEarning"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"InventoryStocktake_pkey\" ON public.\"InventoryStocktake\" USING btree (id)",
+      "name": "InventoryStocktake_pkey",
+      "table_name": "InventoryStocktake"
+    },
+    {
+      "definition": "CREATE INDEX \"InventoryStocktake_status_idx\" ON public.\"InventoryStocktake\" USING btree (status, \"startedAt\")",
+      "name": "InventoryStocktake_status_idx",
+      "table_name": "InventoryStocktake"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"InventoryStocktakeScan_pkey\" ON public.\"InventoryStocktakeScan\" USING btree (id)",
+      "name": "InventoryStocktakeScan_pkey",
+      "table_name": "InventoryStocktakeScan"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"InventoryStocktakeScan_session_resource_key\" ON public.\"InventoryStocktakeScan\" USING btree (\"stocktakeId\", \"resourceId\") WHERE (\"resourceId\" IS NOT NULL)",
+      "name": "InventoryStocktakeScan_session_resource_key",
+      "table_name": "InventoryStocktakeScan"
+    },
+    {
+      "definition": "CREATE INDEX \"InventoryStocktakeScan_stocktake_idx\" ON public.\"InventoryStocktakeScan\" USING btree (\"stocktakeId\", \"scannedAt\")",
+      "name": "InventoryStocktakeScan_stocktake_idx",
+      "table_name": "InventoryStocktakeScan"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Invoice_number_key\" ON public.\"Invoice\" USING btree (number)",
+      "name": "Invoice_number_key",
+      "table_name": "Invoice"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Invoice_paymentId_key\" ON public.\"Invoice\" USING btree (\"paymentId\")",
+      "name": "Invoice_paymentId_key",
+      "table_name": "Invoice"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Invoice_pkey\" ON public.\"Invoice\" USING btree (id)",
+      "name": "Invoice_pkey",
+      "table_name": "Invoice"
+    },
+    {
+      "definition": "CREATE INDEX \"LanguagePack_languageCode_status_idx\" ON public.\"LanguagePack\" USING btree (\"languageCode\", status)",
+      "name": "LanguagePack_languageCode_status_idx",
+      "table_name": "LanguagePack"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"LanguagePack_languageCode_version_key\" ON public.\"LanguagePack\" USING btree (\"languageCode\", version)",
+      "name": "LanguagePack_languageCode_version_key",
+      "table_name": "LanguagePack"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"LanguagePack_pkey\" ON public.\"LanguagePack\" USING btree (id)",
+      "name": "LanguagePack_pkey",
+      "table_name": "LanguagePack"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"LeaveRequest_pkey\" ON public.\"LeaveRequest\" USING btree (id)",
+      "name": "LeaveRequest_pkey",
+      "table_name": "LeaveRequest"
+    },
+    {
+      "definition": "CREATE INDEX \"ManagedDocument_organizationId_department_status_idx\" ON public.\"ManagedDocument\" USING btree (\"organizationId\", department, status)",
+      "name": "ManagedDocument_organizationId_department_status_idx",
+      "table_name": "ManagedDocument"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"ManagedDocument_organizationId_referenceNumber_key\" ON public.\"ManagedDocument\" USING btree (\"organizationId\", \"referenceNumber\")",
+      "name": "ManagedDocument_organizationId_referenceNumber_key",
+      "table_name": "ManagedDocument"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"ManagedDocument_pkey\" ON public.\"ManagedDocument\" USING btree (id)",
+      "name": "ManagedDocument_pkey",
+      "table_name": "ManagedDocument"
+    },
+    {
+      "definition": "CREATE INDEX \"ManagedDocument_templateId_status_idx\" ON public.\"ManagedDocument\" USING btree (\"templateId\", status)",
+      "name": "ManagedDocument_templateId_status_idx",
+      "table_name": "ManagedDocument"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"MarineAsset_calendarResourceId_key\" ON public.\"MarineAsset\" USING btree (\"calendarResourceId\")",
+      "name": "MarineAsset_calendarResourceId_key",
+      "table_name": "MarineAsset"
+    },
+    {
+      "definition": "CREATE INDEX \"MarineAsset_organizationId_status_idx\" ON public.\"MarineAsset\" USING btree (\"organizationId\", status)",
+      "name": "MarineAsset_organizationId_status_idx",
+      "table_name": "MarineAsset"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"MarineAsset_pkey\" ON public.\"MarineAsset\" USING btree (id)",
+      "name": "MarineAsset_pkey",
+      "table_name": "MarineAsset"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"MarineAsset_registrationNumber_key\" ON public.\"MarineAsset\" USING btree (\"registrationNumber\")",
+      "name": "MarineAsset_registrationNumber_key",
+      "table_name": "MarineAsset"
+    },
+    {
+      "definition": "CREATE INDEX \"MarineAssetDocument_marineAssetId_status_expiresAt_idx\" ON public.\"MarineAssetDocument\" USING btree (\"marineAssetId\", status, \"expiresAt\")",
+      "name": "MarineAssetDocument_marineAssetId_status_expiresAt_idx",
+      "table_name": "MarineAssetDocument"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"MarineAssetDocument_pkey\" ON public.\"MarineAssetDocument\" USING btree (id)",
+      "name": "MarineAssetDocument_pkey",
+      "table_name": "MarineAssetDocument"
+    },
+    {
+      "definition": "CREATE INDEX \"MarineMaintenanceRecord_marineAssetId_status_dueAt_idx\" ON public.\"MarineMaintenanceRecord\" USING btree (\"marineAssetId\", status, \"dueAt\")",
+      "name": "MarineMaintenanceRecord_marineAssetId_status_dueAt_idx",
+      "table_name": "MarineMaintenanceRecord"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"MarineMaintenanceRecord_pkey\" ON public.\"MarineMaintenanceRecord\" USING btree (id)",
+      "name": "MarineMaintenanceRecord_pkey",
+      "table_name": "MarineMaintenanceRecord"
+    },
+    {
+      "definition": "CREATE INDEX \"MarineReadinessSnapshot_marineAssetId_checkedAt_idx\" ON public.\"MarineReadinessSnapshot\" USING btree (\"marineAssetId\", \"checkedAt\")",
+      "name": "MarineReadinessSnapshot_marineAssetId_checkedAt_idx",
+      "table_name": "MarineReadinessSnapshot"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"MarineReadinessSnapshot_pkey\" ON public.\"MarineReadinessSnapshot\" USING btree (id)",
+      "name": "MarineReadinessSnapshot_pkey",
+      "table_name": "MarineReadinessSnapshot"
+    },
+    {
+      "definition": "CREATE INDEX \"MarineReadinessSnapshot_tripId_status_idx\" ON public.\"MarineReadinessSnapshot\" USING btree (\"tripId\", status)",
+      "name": "MarineReadinessSnapshot_tripId_status_idx",
+      "table_name": "MarineReadinessSnapshot"
+    },
+    {
+      "definition": "CREATE INDEX \"Message_conversation_created_idx\" ON public.\"Message\" USING btree (\"conversationId\", \"createdAt\")",
+      "name": "Message_conversation_created_idx",
+      "table_name": "Message"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Message_pkey\" ON public.\"Message\" USING btree (id)",
+      "name": "Message_pkey",
+      "table_name": "Message"
+    },
+    {
+      "definition": "CREATE INDEX \"Message_sender_created_idx\" ON public.\"Message\" USING btree (\"senderAccountId\", \"createdAt\" DESC)",
+      "name": "Message_sender_created_idx",
+      "table_name": "Message"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Notification_pkey\" ON public.\"Notification\" USING btree (id)",
+      "name": "Notification_pkey",
+      "table_name": "Notification"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"OffboardingCase_pkey\" ON public.\"OffboardingCase\" USING btree (id)",
+      "name": "OffboardingCase_pkey",
+      "table_name": "OffboardingCase"
+    },
+    {
+      "definition": "CREATE INDEX \"OfflineTripPackage_briefingId_status_idx\" ON public.\"OfflineTripPackage\" USING btree (\"briefingId\", status)",
+      "name": "OfflineTripPackage_briefingId_status_idx",
+      "table_name": "OfflineTripPackage"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"OfflineTripPackage_pkey\" ON public.\"OfflineTripPackage\" USING btree (id)",
+      "name": "OfflineTripPackage_pkey",
+      "table_name": "OfflineTripPackage"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"OperationalSetting_pkey\" ON public.\"OperationalSetting\" USING btree (key)",
+      "name": "OperationalSetting_pkey",
+      "table_name": "OperationalSetting"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"OrgUnit_organizationId_code_key\" ON public.\"OrgUnit\" USING btree (\"organizationId\", code)",
+      "name": "OrgUnit_organizationId_code_key",
+      "table_name": "OrgUnit"
+    },
+    {
+      "definition": "CREATE INDEX \"OrgUnit_organizationId_parentId_type_idx\" ON public.\"OrgUnit\" USING btree (\"organizationId\", \"parentId\", type)",
+      "name": "OrgUnit_organizationId_parentId_type_idx",
+      "table_name": "OrgUnit"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"OrgUnit_pkey\" ON public.\"OrgUnit\" USING btree (id)",
+      "name": "OrgUnit_pkey",
+      "table_name": "OrgUnit"
+    },
+    {
+      "definition": "CREATE INDEX \"Organization_ownerId_status_idx\" ON public.\"Organization\" USING btree (\"ownerId\", status)",
+      "name": "Organization_ownerId_status_idx",
+      "table_name": "Organization"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Organization_pkey\" ON public.\"Organization\" USING btree (id)",
+      "name": "Organization_pkey",
+      "table_name": "Organization"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Organization_registrationNumber_key\" ON public.\"Organization\" USING btree (\"registrationNumber\")",
+      "name": "Organization_registrationNumber_key",
+      "table_name": "Organization"
+    },
+    {
+      "definition": "CREATE INDEX \"Organization_status_createdAt_idx\" ON public.\"Organization\" USING btree (status, \"createdAt\")",
+      "name": "Organization_status_createdAt_idx",
+      "table_name": "Organization"
+    },
+    {
+      "definition": "CREATE INDEX \"OrganizationDocumentAsset_organizationId_kind_createdAt_idx\" ON public.\"OrganizationDocumentAsset\" USING btree (\"organizationId\", kind, \"createdAt\")",
+      "name": "OrganizationDocumentAsset_organizationId_kind_createdAt_idx",
+      "table_name": "OrganizationDocumentAsset"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"OrganizationDocumentAsset_organizationId_sha256_key\" ON public.\"OrganizationDocumentAsset\" USING btree (\"organizationId\", sha256)",
+      "name": "OrganizationDocumentAsset_organizationId_sha256_key",
+      "table_name": "OrganizationDocumentAsset"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"OrganizationDocumentAsset_pkey\" ON public.\"OrganizationDocumentAsset\" USING btree (id)",
+      "name": "OrganizationDocumentAsset_pkey",
+      "table_name": "OrganizationDocumentAsset"
+    },
+    {
+      "definition": "CREATE INDEX \"OrganizationMember_accountId_status_idx\" ON public.\"OrganizationMember\" USING btree (\"accountId\", status)",
+      "name": "OrganizationMember_accountId_status_idx",
+      "table_name": "OrganizationMember"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"OrganizationMember_organizationId_accountId_key\" ON public.\"OrganizationMember\" USING btree (\"organizationId\", \"accountId\")",
+      "name": "OrganizationMember_organizationId_accountId_key",
+      "table_name": "OrganizationMember"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"OrganizationMember_pkey\" ON public.\"OrganizationMember\" USING btree (id)",
+      "name": "OrganizationMember_pkey",
+      "table_name": "OrganizationMember"
+    },
+    {
+      "definition": "CREATE INDEX \"Payment_accountId_status_idx\" ON public.\"Payment\" USING btree (\"accountId\", status)",
+      "name": "Payment_accountId_status_idx",
+      "table_name": "Payment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Payment_idempotencyKey_key\" ON public.\"Payment\" USING btree (\"idempotencyKey\")",
+      "name": "Payment_idempotencyKey_key",
+      "table_name": "Payment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Payment_pkey\" ON public.\"Payment\" USING btree (id)",
+      "name": "Payment_pkey",
+      "table_name": "Payment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Payment_providerReference_key\" ON public.\"Payment\" USING btree (\"providerReference\")",
+      "name": "Payment_providerReference_key",
+      "table_name": "Payment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"PerformanceCycle_pkey\" ON public.\"PerformanceCycle\" USING btree (id)",
+      "name": "PerformanceCycle_pkey",
+      "table_name": "PerformanceCycle"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Person_phone_key\" ON public.\"Person\" USING btree (phone)",
+      "name": "Person_phone_key",
+      "table_name": "Person"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Person_pkey\" ON public.\"Person\" USING btree (id)",
+      "name": "Person_pkey",
+      "table_name": "Person"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"PolicyControl_category_ruleKey_key\" ON public.\"PolicyControl\" USING btree (category, \"ruleKey\")",
+      "name": "PolicyControl_category_ruleKey_key",
+      "table_name": "PolicyControl"
+    },
+    {
+      "definition": "CREATE INDEX \"PolicyControl_category_state_idx\" ON public.\"PolicyControl\" USING btree (category, state)",
+      "name": "PolicyControl_category_state_idx",
+      "table_name": "PolicyControl"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"PolicyControl_pkey\" ON public.\"PolicyControl\" USING btree (id)",
+      "name": "PolicyControl_pkey",
+      "table_name": "PolicyControl"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Position_orgUnitId_code_key\" ON public.\"Position\" USING btree (\"orgUnitId\", code)",
+      "name": "Position_orgUnitId_code_key",
+      "table_name": "Position"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Position_pkey\" ON public.\"Position\" USING btree (id)",
+      "name": "Position_pkey",
+      "table_name": "Position"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"ProfessionalProfile_personId_key\" ON public.\"ProfessionalProfile\" USING btree (\"personId\")",
+      "name": "ProfessionalProfile_personId_key",
+      "table_name": "ProfessionalProfile"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"ProfessionalProfile_pkey\" ON public.\"ProfessionalProfile\" USING btree (id)",
+      "name": "ProfessionalProfile_pkey",
+      "table_name": "ProfessionalProfile"
+    },
+    {
+      "definition": "CREATE INDEX \"Receivable_centerOrgUnitId_status_dueAt_idx\" ON public.\"Receivable\" USING btree (\"centerOrgUnitId\", status, \"dueAt\")",
+      "name": "Receivable_centerOrgUnitId_status_dueAt_idx",
+      "table_name": "Receivable"
+    },
+    {
+      "definition": "CREATE INDEX \"Receivable_customerAccountId_status_idx\" ON public.\"Receivable\" USING btree (\"customerAccountId\", status)",
+      "name": "Receivable_customerAccountId_status_idx",
+      "table_name": "Receivable"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Receivable_invoiceId_key\" ON public.\"Receivable\" USING btree (\"invoiceId\")",
+      "name": "Receivable_invoiceId_key",
+      "table_name": "Receivable"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Receivable_pkey\" ON public.\"Receivable\" USING btree (id)",
+      "name": "Receivable_pkey",
+      "table_name": "Receivable"
+    },
+    {
+      "definition": "CREATE INDEX \"ReceivableInstallment_dueAt_status_idx\" ON public.\"ReceivableInstallment\" USING btree (\"dueAt\", status)",
+      "name": "ReceivableInstallment_dueAt_status_idx",
+      "table_name": "ReceivableInstallment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"ReceivableInstallment_pkey\" ON public.\"ReceivableInstallment\" USING btree (id)",
+      "name": "ReceivableInstallment_pkey",
+      "table_name": "ReceivableInstallment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"ReceivableInstallment_receivableId_sequence_key\" ON public.\"ReceivableInstallment\" USING btree (\"receivableId\", sequence)",
+      "name": "ReceivableInstallment_receivableId_sequence_key",
+      "table_name": "ReceivableInstallment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"ReceivablePayment_paymentId_key\" ON public.\"ReceivablePayment\" USING btree (\"paymentId\")",
+      "name": "ReceivablePayment_paymentId_key",
+      "table_name": "ReceivablePayment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"ReceivablePayment_pkey\" ON public.\"ReceivablePayment\" USING btree (id)",
+      "name": "ReceivablePayment_pkey",
+      "table_name": "ReceivablePayment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"ReceivablePayment_receiptNumber_key\" ON public.\"ReceivablePayment\" USING btree (\"receiptNumber\")",
+      "name": "ReceivablePayment_receiptNumber_key",
+      "table_name": "ReceivablePayment"
+    },
+    {
+      "definition": "CREATE INDEX \"ReceivablePayment_receivableId_collectedAt_idx\" ON public.\"ReceivablePayment\" USING btree (\"receivableId\", \"collectedAt\")",
+      "name": "ReceivablePayment_receivableId_collectedAt_idx",
+      "table_name": "ReceivablePayment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"ReviewDecision_pkey\" ON public.\"ReviewDecision\" USING btree (id)",
+      "name": "ReviewDecision_pkey",
+      "table_name": "ReviewDecision"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"RewardAccount_accountId_key\" ON public.\"RewardAccount\" USING btree (\"accountId\")",
+      "name": "RewardAccount_accountId_key",
+      "table_name": "RewardAccount"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"RewardAccount_pkey\" ON public.\"RewardAccount\" USING btree (id)",
+      "name": "RewardAccount_pkey",
+      "table_name": "RewardAccount"
+    },
+    {
+      "definition": "CREATE INDEX \"RewardEntry_expiresAt_idx\" ON public.\"RewardEntry\" USING btree (\"expiresAt\")",
+      "name": "RewardEntry_expiresAt_idx",
+      "table_name": "RewardEntry"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"RewardEntry_idempotencyKey_key\" ON public.\"RewardEntry\" USING btree (\"idempotencyKey\")",
+      "name": "RewardEntry_idempotencyKey_key",
+      "table_name": "RewardEntry"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"RewardEntry_pkey\" ON public.\"RewardEntry\" USING btree (id)",
+      "name": "RewardEntry_pkey",
+      "table_name": "RewardEntry"
+    },
+    {
+      "definition": "CREATE INDEX \"RewardEntry_rewardAccountId_createdAt_idx\" ON public.\"RewardEntry\" USING btree (\"rewardAccountId\", \"createdAt\")",
+      "name": "RewardEntry_rewardAccountId_createdAt_idx",
+      "table_name": "RewardEntry"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"RoleAssignment_accountId_role_key\" ON public.\"RoleAssignment\" USING btree (\"accountId\", role)",
+      "name": "RoleAssignment_accountId_role_key",
+      "table_name": "RoleAssignment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"RoleAssignment_pkey\" ON public.\"RoleAssignment\" USING btree (id)",
+      "name": "RoleAssignment_pkey",
+      "table_name": "RoleAssignment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"SafetyChecklist_pkey\" ON public.\"SafetyChecklist\" USING btree (id)",
+      "name": "SafetyChecklist_pkey",
+      "table_name": "SafetyChecklist"
+    },
+    {
+      "definition": "CREATE INDEX \"SafetyChecklist_tripId_decision_idx\" ON public.\"SafetyChecklist\" USING btree (\"tripId\", decision)",
+      "name": "SafetyChecklist_tripId_decision_idx",
+      "table_name": "SafetyChecklist"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"SafetyIncident_pkey\" ON public.\"SafetyIncident\" USING btree (id)",
+      "name": "SafetyIncident_pkey",
+      "table_name": "SafetyIncident"
+    },
+    {
+      "definition": "CREATE INDEX \"SafetyIncident_reporter_created_idx\" ON public.\"SafetyIncident\" USING btree (\"reportedByAccountId\", \"createdAt\" DESC)",
+      "name": "SafetyIncident_reporter_created_idx",
+      "table_name": "SafetyIncident"
+    },
+    {
+      "definition": "CREATE INDEX \"SafetyIncident_status_severity_created_idx\" ON public.\"SafetyIncident\" USING btree (status, severity, \"createdAt\" DESC)",
+      "name": "SafetyIncident_status_severity_created_idx",
+      "table_name": "SafetyIncident"
+    },
+    {
+      "definition": "CREATE INDEX \"SafetyIncident_trip_status_created_idx\" ON public.\"SafetyIncident\" USING btree (\"tripId\", status, \"createdAt\" DESC)",
+      "name": "SafetyIncident_trip_status_created_idx",
+      "table_name": "SafetyIncident"
+    },
+    {
+      "definition": "CREATE INDEX \"Session_accountId_expiresAt_idx\" ON public.\"Session\" USING btree (\"accountId\", \"expiresAt\")",
+      "name": "Session_accountId_expiresAt_idx",
+      "table_name": "Session"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Session_pkey\" ON public.\"Session\" USING btree (id)",
+      "name": "Session_pkey",
+      "table_name": "Session"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Session_tokenHash_key\" ON public.\"Session\" USING btree (\"tokenHash\")",
+      "name": "Session_tokenHash_key",
+      "table_name": "Session"
+    },
+    {
+      "definition": "CREATE INDEX \"ShiftAssignment_employmentId_startsAt_idx\" ON public.\"ShiftAssignment\" USING btree (\"employmentId\", \"startsAt\")",
+      "name": "ShiftAssignment_employmentId_startsAt_idx",
+      "table_name": "ShiftAssignment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"ShiftAssignment_pkey\" ON public.\"ShiftAssignment\" USING btree (id)",
+      "name": "ShiftAssignment_pkey",
+      "table_name": "ShiftAssignment"
+    },
+    {
+      "definition": "CREATE INDEX \"ShiftAssignment_status_idx\" ON public.\"ShiftAssignment\" USING btree (status)",
+      "name": "ShiftAssignment_status_idx",
+      "table_name": "ShiftAssignment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"StoreInvoice_number_key\" ON public.\"StoreInvoice\" USING btree (number)",
+      "name": "StoreInvoice_number_key",
+      "table_name": "StoreInvoice"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"StoreInvoice_paymentId_key\" ON public.\"StoreInvoice\" USING btree (\"paymentId\")",
+      "name": "StoreInvoice_paymentId_key",
+      "table_name": "StoreInvoice"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"StoreInvoice_pkey\" ON public.\"StoreInvoice\" USING btree (id)",
+      "name": "StoreInvoice_pkey",
+      "table_name": "StoreInvoice"
+    },
+    {
+      "definition": "CREATE INDEX \"StoreOrder_accountId_status_createdAt_idx\" ON public.\"StoreOrder\" USING btree (\"accountId\", status, \"createdAt\")",
+      "name": "StoreOrder_accountId_status_createdAt_idx",
+      "table_name": "StoreOrder"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"StoreOrder_pkey\" ON public.\"StoreOrder\" USING btree (id)",
+      "name": "StoreOrder_pkey",
+      "table_name": "StoreOrder"
+    },
+    {
+      "definition": "CREATE INDEX \"StoreOrderItem_orderId_idx\" ON public.\"StoreOrderItem\" USING btree (\"orderId\")",
+      "name": "StoreOrderItem_orderId_idx",
+      "table_name": "StoreOrderItem"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"StoreOrderItem_pkey\" ON public.\"StoreOrderItem\" USING btree (id)",
+      "name": "StoreOrderItem_pkey",
+      "table_name": "StoreOrderItem"
+    },
+    {
+      "definition": "CREATE INDEX \"StoreOrderItem_productId_idx\" ON public.\"StoreOrderItem\" USING btree (\"productId\")",
+      "name": "StoreOrderItem_productId_idx",
+      "table_name": "StoreOrderItem"
+    },
+    {
+      "definition": "CREATE INDEX \"StorePayment_accountId_status_idx\" ON public.\"StorePayment\" USING btree (\"accountId\", status)",
+      "name": "StorePayment_accountId_status_idx",
+      "table_name": "StorePayment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"StorePayment_idempotencyKey_key\" ON public.\"StorePayment\" USING btree (\"idempotencyKey\")",
+      "name": "StorePayment_idempotencyKey_key",
+      "table_name": "StorePayment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"StorePayment_orderId_key\" ON public.\"StorePayment\" USING btree (\"orderId\")",
+      "name": "StorePayment_orderId_key",
+      "table_name": "StorePayment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"StorePayment_pkey\" ON public.\"StorePayment\" USING btree (id)",
+      "name": "StorePayment_pkey",
+      "table_name": "StorePayment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"StorePayment_providerReference_key\" ON public.\"StorePayment\" USING btree (\"providerReference\")",
+      "name": "StorePayment_providerReference_key",
+      "table_name": "StorePayment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"StoreProduct_pkey\" ON public.\"StoreProduct\" USING btree (id)",
+      "name": "StoreProduct_pkey",
+      "table_name": "StoreProduct"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"StoreProduct_sku_key\" ON public.\"StoreProduct\" USING btree (sku)",
+      "name": "StoreProduct_sku_key",
+      "table_name": "StoreProduct"
+    },
+    {
+      "definition": "CREATE INDEX \"StoreProduct_status_nameAr_idx\" ON public.\"StoreProduct\" USING btree (status, \"nameAr\")",
+      "name": "StoreProduct_status_nameAr_idx",
+      "table_name": "StoreProduct"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"ThemeSchedule_pkey\" ON public.\"ThemeSchedule\" USING btree (id)",
+      "name": "ThemeSchedule_pkey",
+      "table_name": "ThemeSchedule"
+    },
+    {
+      "definition": "CREATE INDEX \"ThemeSchedule_status_startsAt_endsAt_idx\" ON public.\"ThemeSchedule\" USING btree (status, \"startsAt\", \"endsAt\")",
+      "name": "ThemeSchedule_status_startsAt_endsAt_idx",
+      "table_name": "ThemeSchedule"
+    },
+    {
+      "definition": "CREATE INDEX \"ThemeSchedule_themeId_idx\" ON public.\"ThemeSchedule\" USING btree (\"themeId\")",
+      "name": "ThemeSchedule_themeId_idx",
+      "table_name": "ThemeSchedule"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"TrainingCertificate_certificateNumber_key\" ON public.\"TrainingCertificate\" USING btree (\"certificateNumber\")",
+      "name": "TrainingCertificate_certificateNumber_key",
+      "table_name": "TrainingCertificate"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"TrainingCertificate_pkey\" ON public.\"TrainingCertificate\" USING btree (id)",
+      "name": "TrainingCertificate_pkey",
+      "table_name": "TrainingCertificate"
+    },
+    {
+      "definition": "CREATE INDEX \"TrainingCertificate_status_createdAt_idx\" ON public.\"TrainingCertificate\" USING btree (status, \"createdAt\")",
+      "name": "TrainingCertificate_status_createdAt_idx",
+      "table_name": "TrainingCertificate"
+    },
+    {
+      "definition": "CREATE INDEX \"TrainingCertificate_studentAccountId_status_idx\" ON public.\"TrainingCertificate\" USING btree (\"studentAccountId\", status)",
+      "name": "TrainingCertificate_studentAccountId_status_idx",
+      "table_name": "TrainingCertificate"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"TrainingCertificate_trainingRecordId_key\" ON public.\"TrainingCertificate\" USING btree (\"trainingRecordId\")",
+      "name": "TrainingCertificate_trainingRecordId_key",
+      "table_name": "TrainingCertificate"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"TrainingCertificate_verificationTokenHash_key\" ON public.\"TrainingCertificate\" USING btree (\"verificationTokenHash\")",
+      "name": "TrainingCertificate_verificationTokenHash_key",
+      "table_name": "TrainingCertificate"
+    },
+    {
+      "definition": "CREATE INDEX \"TrainingCourse_instructorAccountId_status_idx\" ON public.\"TrainingCourse\" USING btree (\"instructorAccountId\", status)",
+      "name": "TrainingCourse_instructorAccountId_status_idx",
+      "table_name": "TrainingCourse"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"TrainingCourse_pkey\" ON public.\"TrainingCourse\" USING btree (id)",
+      "name": "TrainingCourse_pkey",
+      "table_name": "TrainingCourse"
+    },
+    {
+      "definition": "CREATE INDEX \"TrainingCourse_status_createdAt_idx\" ON public.\"TrainingCourse\" USING btree (status, \"createdAt\")",
+      "name": "TrainingCourse_status_createdAt_idx",
+      "table_name": "TrainingCourse"
+    },
+    {
+      "definition": "CREATE INDEX \"TrainingEnrollment_centerOrganizationId_status_idx\" ON public.\"TrainingEnrollment\" USING btree (\"centerOrganizationId\", status)",
+      "name": "TrainingEnrollment_centerOrganizationId_status_idx",
+      "table_name": "TrainingEnrollment"
+    },
+    {
+      "definition": "CREATE INDEX \"TrainingEnrollment_courseCode_status_idx\" ON public.\"TrainingEnrollment\" USING btree (\"courseCode\", status)",
+      "name": "TrainingEnrollment_courseCode_status_idx",
+      "table_name": "TrainingEnrollment"
+    },
+    {
+      "definition": "CREATE INDEX \"TrainingEnrollment_instructorAccountId_status_idx\" ON public.\"TrainingEnrollment\" USING btree (\"instructorAccountId\", status)",
+      "name": "TrainingEnrollment_instructorAccountId_status_idx",
+      "table_name": "TrainingEnrollment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"TrainingEnrollment_pkey\" ON public.\"TrainingEnrollment\" USING btree (id)",
+      "name": "TrainingEnrollment_pkey",
+      "table_name": "TrainingEnrollment"
+    },
+    {
+      "definition": "CREATE INDEX \"TrainingEnrollment_studentAccountId_status_idx\" ON public.\"TrainingEnrollment\" USING btree (\"studentAccountId\", status)",
+      "name": "TrainingEnrollment_studentAccountId_status_idx",
+      "table_name": "TrainingEnrollment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"TrainingRecord_enrollmentId_key\" ON public.\"TrainingRecord\" USING btree (\"enrollmentId\")",
+      "name": "TrainingRecord_enrollmentId_key",
+      "table_name": "TrainingRecord"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"TrainingRecord_pkey\" ON public.\"TrainingRecord\" USING btree (id)",
+      "name": "TrainingRecord_pkey",
+      "table_name": "TrainingRecord"
+    },
+    {
+      "definition": "CREATE INDEX \"TrainingRecord_status_updatedAt_idx\" ON public.\"TrainingRecord\" USING btree (status, \"updatedAt\")",
+      "name": "TrainingRecord_status_updatedAt_idx",
+      "table_name": "TrainingRecord"
+    },
+    {
+      "definition": "CREATE INDEX \"TrainingSession_instructorAccountId_startsAt_idx\" ON public.\"TrainingSession\" USING btree (\"instructorAccountId\", \"startsAt\")",
+      "name": "TrainingSession_instructorAccountId_startsAt_idx",
+      "table_name": "TrainingSession"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"TrainingSession_pkey\" ON public.\"TrainingSession\" USING btree (id)",
+      "name": "TrainingSession_pkey",
+      "table_name": "TrainingSession"
+    },
+    {
+      "definition": "CREATE INDEX \"TrainingSession_trainingRecordId_status_startsAt_idx\" ON public.\"TrainingSession\" USING btree (\"trainingRecordId\", status, \"startsAt\")",
+      "name": "TrainingSession_trainingRecordId_status_startsAt_idx",
+      "table_name": "TrainingSession"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"TrainingSkill_pkey\" ON public.\"TrainingSkill\" USING btree (id)",
+      "name": "TrainingSkill_pkey",
+      "table_name": "TrainingSkill"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"TrainingSkill_trainingStageId_skillCode_key\" ON public.\"TrainingSkill\" USING btree (\"trainingStageId\", \"skillCode\")",
+      "name": "TrainingSkill_trainingStageId_skillCode_key",
+      "table_name": "TrainingSkill"
+    },
+    {
+      "definition": "CREATE INDEX \"TrainingSkill_trainingStageId_status_idx\" ON public.\"TrainingSkill\" USING btree (\"trainingStageId\", status)",
+      "name": "TrainingSkill_trainingStageId_status_idx",
+      "table_name": "TrainingSkill"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"TrainingStage_pkey\" ON public.\"TrainingStage\" USING btree (id)",
+      "name": "TrainingStage_pkey",
+      "table_name": "TrainingStage"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"TrainingStage_trainingRecordId_sequence_key\" ON public.\"TrainingStage\" USING btree (\"trainingRecordId\", sequence)",
+      "name": "TrainingStage_trainingRecordId_sequence_key",
+      "table_name": "TrainingStage"
+    },
+    {
+      "definition": "CREATE INDEX \"TrainingStage_trainingRecordId_status_idx\" ON public.\"TrainingStage\" USING btree (\"trainingRecordId\", status)",
+      "name": "TrainingStage_trainingRecordId_status_idx",
+      "table_name": "TrainingStage"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"TranslationPreference_accountId_key\" ON public.\"TranslationPreference\" USING btree (\"accountId\")",
+      "name": "TranslationPreference_accountId_key",
+      "table_name": "TranslationPreference"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"TranslationPreference_pkey\" ON public.\"TranslationPreference\" USING btree (id)",
+      "name": "TranslationPreference_pkey",
+      "table_name": "TranslationPreference"
+    },
+    {
+      "definition": "CREATE INDEX \"Trip_organizationId_status_startsAt_idx\" ON public.\"Trip\" USING btree (\"organizationId\", status, \"startsAt\")",
+      "name": "Trip_organizationId_status_startsAt_idx",
+      "table_name": "Trip"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Trip_pkey\" ON public.\"Trip\" USING btree (id)",
+      "name": "Trip_pkey",
+      "table_name": "Trip"
+    },
+    {
+      "definition": "CREATE INDEX \"Trip_status_startsAt_idx\" ON public.\"Trip\" USING btree (status, \"startsAt\")",
+      "name": "Trip_status_startsAt_idx",
+      "table_name": "Trip"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"TripBriefing_pkey\" ON public.\"TripBriefing\" USING btree (id)",
+      "name": "TripBriefing_pkey",
+      "table_name": "TripBriefing"
+    },
+    {
+      "definition": "CREATE INDEX \"TripBriefing_tripId_status_idx\" ON public.\"TripBriefing\" USING btree (\"tripId\", status)",
+      "name": "TripBriefing_tripId_status_idx",
+      "table_name": "TripBriefing"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"TripBriefing_tripId_version_key\" ON public.\"TripBriefing\" USING btree (\"tripId\", version)",
+      "name": "TripBriefing_tripId_version_key",
+      "table_name": "TripBriefing"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"TripComplianceReview_pkey\" ON public.\"TripComplianceReview\" USING btree (id)",
+      "name": "TripComplianceReview_pkey",
+      "table_name": "TripComplianceReview"
+    },
+    {
+      "definition": "CREATE INDEX \"TripComplianceReview_regulatoryStatus_permitStatus_idx\" ON public.\"TripComplianceReview\" USING btree (\"regulatoryStatus\", \"permitStatus\")",
+      "name": "TripComplianceReview_regulatoryStatus_permitStatus_idx",
+      "table_name": "TripComplianceReview"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"TripComplianceReview_tripId_key\" ON public.\"TripComplianceReview\" USING btree (\"tripId\")",
+      "name": "TripComplianceReview_tripId_key",
+      "table_name": "TripComplianceReview"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"TripOperationalLocation_pkey\" ON public.\"TripOperationalLocation\" USING btree (\"tripId\")",
+      "name": "TripOperationalLocation_pkey",
+      "table_name": "TripOperationalLocation"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"TripWeatherReview_pkey\" ON public.\"TripWeatherReview\" USING btree (id)",
+      "name": "TripWeatherReview_pkey",
+      "table_name": "TripWeatherReview"
+    },
+    {
+      "definition": "CREATE INDEX \"TripWeatherReview_trip_fetched_idx\" ON public.\"TripWeatherReview\" USING btree (\"tripId\", \"fetchedAt\" DESC)",
+      "name": "TripWeatherReview_trip_fetched_idx",
+      "table_name": "TripWeatherReview"
+    },
+    {
+      "definition": "CREATE INDEX \"TripWeatherReview_trip_status_idx\" ON public.\"TripWeatherReview\" USING btree (\"tripId\", status, \"fetchedAt\" DESC)",
+      "name": "TripWeatherReview_trip_status_idx",
+      "table_name": "TripWeatherReview"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Wallet_accountId_key\" ON public.\"Wallet\" USING btree (\"accountId\")",
+      "name": "Wallet_accountId_key",
+      "table_name": "Wallet"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"Wallet_pkey\" ON public.\"Wallet\" USING btree (id)",
+      "name": "Wallet_pkey",
+      "table_name": "Wallet"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"WalletEntry_idempotencyKey_key\" ON public.\"WalletEntry\" USING btree (\"idempotencyKey\")",
+      "name": "WalletEntry_idempotencyKey_key",
+      "table_name": "WalletEntry"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"WalletEntry_pkey\" ON public.\"WalletEntry\" USING btree (id)",
+      "name": "WalletEntry_pkey",
+      "table_name": "WalletEntry"
+    },
+    {
+      "definition": "CREATE INDEX \"WalletEntry_walletId_createdAt_idx\" ON public.\"WalletEntry\" USING btree (\"walletId\", \"createdAt\")",
+      "name": "WalletEntry_walletId_createdAt_idx",
+      "table_name": "WalletEntry"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforceCenterDepartment_departmentId_status_idx\" ON public.\"WorkforceCenterDepartment\" USING btree (\"departmentId\", status)",
+      "name": "WorkforceCenterDepartment_departmentId_status_idx",
+      "table_name": "WorkforceCenterDepartment"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforceCenterDepartment_org_status_level_idx\" ON public.\"WorkforceCenterDepartment\" USING btree (\"organizationId\", status, \"maxLevel\")",
+      "name": "WorkforceCenterDepartment_org_status_level_idx",
+      "table_name": "WorkforceCenterDepartment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"WorkforceCenterDepartment_organizationId_departmentId_key\" ON public.\"WorkforceCenterDepartment\" USING btree (\"organizationId\", \"departmentId\")",
+      "name": "WorkforceCenterDepartment_organizationId_departmentId_key",
+      "table_name": "WorkforceCenterDepartment"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforceCenterDepartment_organizationId_status_idx\" ON public.\"WorkforceCenterDepartment\" USING btree (\"organizationId\", status)",
+      "name": "WorkforceCenterDepartment_organizationId_status_idx",
+      "table_name": "WorkforceCenterDepartment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"WorkforceCenterDepartment_pkey\" ON public.\"WorkforceCenterDepartment\" USING btree (id)",
+      "name": "WorkforceCenterDepartment_pkey",
+      "table_name": "WorkforceCenterDepartment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"WorkforceDepartment_code_key\" ON public.\"WorkforceDepartment\" USING btree (code)",
+      "name": "WorkforceDepartment_code_key",
+      "table_name": "WorkforceDepartment"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"WorkforceDepartment_pkey\" ON public.\"WorkforceDepartment\" USING btree (id)",
+      "name": "WorkforceDepartment_pkey",
+      "table_name": "WorkforceDepartment"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforceDepartment_status_displayOrder_idx\" ON public.\"WorkforceDepartment\" USING btree (status, \"displayOrder\")",
+      "name": "WorkforceDepartment_status_displayOrder_idx",
+      "table_name": "WorkforceDepartment"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforceHiringRequest_candidateAccountId_status_idx\" ON public.\"WorkforceHiringRequest\" USING btree (\"candidateAccountId\", status)",
+      "name": "WorkforceHiringRequest_candidateAccountId_status_idx",
+      "table_name": "WorkforceHiringRequest"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforceHiringRequest_hrReviewedById_status_idx\" ON public.\"WorkforceHiringRequest\" USING btree (\"hrReviewedById\", status)",
+      "name": "WorkforceHiringRequest_hrReviewedById_status_idx",
+      "table_name": "WorkforceHiringRequest"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforceHiringRequest_organizationId_departmentId_status_idx\" ON public.\"WorkforceHiringRequest\" USING btree (\"organizationId\", \"departmentId\", status)",
+      "name": "WorkforceHiringRequest_organizationId_departmentId_status_idx",
+      "table_name": "WorkforceHiringRequest"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"WorkforceHiringRequest_pkey\" ON public.\"WorkforceHiringRequest\" USING btree (id)",
+      "name": "WorkforceHiringRequest_pkey",
+      "table_name": "WorkforceHiringRequest"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforceHiringRequest_status_createdAt_idx\" ON public.\"WorkforceHiringRequest\" USING btree (status, \"createdAt\")",
+      "name": "WorkforceHiringRequest_status_createdAt_idx",
+      "table_name": "WorkforceHiringRequest"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"WorkforcePosition_code_key\" ON public.\"WorkforcePosition\" USING btree (code)",
+      "name": "WorkforcePosition_code_key",
+      "table_name": "WorkforcePosition"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforcePosition_departmentId_tier_displayOrder_idx\" ON public.\"WorkforcePosition\" USING btree (\"departmentId\", tier, \"displayOrder\")",
+      "name": "WorkforcePosition_departmentId_tier_displayOrder_idx",
+      "table_name": "WorkforcePosition"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforcePosition_parentPositionId_idx\" ON public.\"WorkforcePosition\" USING btree (\"parentPositionId\")",
+      "name": "WorkforcePosition_parentPositionId_idx",
+      "table_name": "WorkforcePosition"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"WorkforcePosition_pkey\" ON public.\"WorkforcePosition\" USING btree (id)",
+      "name": "WorkforcePosition_pkey",
+      "table_name": "WorkforcePosition"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforceSeat_accountId_accessStatus_idx\" ON public.\"WorkforceSeat\" USING btree (\"accountId\", \"accessStatus\")",
+      "name": "WorkforceSeat_accountId_accessStatus_idx",
+      "table_name": "WorkforceSeat"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforceSeat_administrativeManagerSeatId_idx\" ON public.\"WorkforceSeat\" USING btree (\"administrativeManagerSeatId\")",
+      "name": "WorkforceSeat_administrativeManagerSeatId_idx",
+      "table_name": "WorkforceSeat"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"WorkforceSeat_one_external_position_per_center_key\" ON public.\"WorkforceSeat\" USING btree (\"positionId\", \"organizationId\") WHERE (scope = 'EXTERNAL_CENTER'::\"WorkforceSeatScope\")",
+      "name": "WorkforceSeat_one_external_position_per_center_key",
+      "table_name": "WorkforceSeat"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"WorkforceSeat_one_headquarters_position_key\" ON public.\"WorkforceSeat\" USING btree (\"positionId\") WHERE ((scope = 'HEADQUARTERS'::\"WorkforceSeatScope\") AND (\"organizationId\" IS NULL))",
+      "name": "WorkforceSeat_one_headquarters_position_key",
+      "table_name": "WorkforceSeat"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforceSeat_organizationId_scope_accessStatus_idx\" ON public.\"WorkforceSeat\" USING btree (\"organizationId\", scope, \"accessStatus\")",
+      "name": "WorkforceSeat_organizationId_scope_accessStatus_idx",
+      "table_name": "WorkforceSeat"
+    },
+    {
+      "definition": "CREATE UNIQUE INDEX \"WorkforceSeat_pkey\" ON public.\"WorkforceSeat\" USING btree (id)",
+      "name": "WorkforceSeat_pkey",
+      "table_name": "WorkforceSeat"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforceSeat_positionId_accessStatus_idx\" ON public.\"WorkforceSeat\" USING btree (\"positionId\", \"accessStatus\")",
+      "name": "WorkforceSeat_positionId_accessStatus_idx",
+      "table_name": "WorkforceSeat"
+    },
+    {
+      "definition": "CREATE INDEX \"WorkforceSeat_technicalDepartmentId_idx\" ON public.\"WorkforceSeat\" USING btree (\"technicalDepartmentId\")",
+      "name": "WorkforceSeat_technicalDepartmentId_idx",
+      "table_name": "WorkforceSeat"
+    }
+  ],
+  "source": "Read-only production relation/index metadata, 2026-10-08; no rows or credentials"
+}
