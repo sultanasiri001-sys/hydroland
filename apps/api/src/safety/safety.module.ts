@@ -5,6 +5,7 @@ import { AuthModule } from '../auth/auth.module';
 import { IntegrationModule } from '../integrations/integration.module';
 import { SafetyController } from './safety.controller';
 import { SafetyIncidentsController } from './safety-incidents.controller';
+import { OrganizationSafetyIncidentsController } from './organization-safety-incidents.controller';
 import { SafetyDistressService } from './safety-distress.service';
 import { SafetyIncidentsService } from './safety-incidents.service';
 import { SafetyReviewService } from './safety-review.service';
@@ -16,7 +17,7 @@ import { SafetyComplianceRiskGovernanceService } from './safety-compliance-risk-
 
 @Module({
   imports: [AuthModule, AdminModule, AuditModule, IntegrationModule],
-  controllers: [SafetyController, SafetyIncidentsController],
+  controllers: [SafetyController, SafetyIncidentsController, OrganizationSafetyIncidentsController],
   providers: [SafetyService, SafetyReviewService, SafetyComplianceRiskFoundationService, SafetyComplianceRiskWorkflowService, SafetyComplianceRiskOperationsService, SafetyComplianceRiskGovernanceService, SafetyIncidentsService, SafetyDistressService],
   exports: [SafetyComplianceRiskFoundationService, SafetyComplianceRiskWorkflowService, SafetyComplianceRiskOperationsService, SafetyComplianceRiskGovernanceService],
 })

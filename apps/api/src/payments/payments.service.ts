@@ -35,7 +35,7 @@ export class PaymentsService {
   async create(accountId:string,input:{bookingId:string;idempotencyKey:string}){
     if(!input.bookingId?.trim()||!input.idempotencyKey?.trim())throw new BadRequestException('Invalid payment.');
     const paymentPolicy=await this.policies.decision('PAYMENT','PAYMENT_REQUIRED');
-    const booking=await this.db.booking.findFirst({where:{id:input.bookingId,accountId},include:{trip:true}});
+    const booking=await this.db.booking.findFirst({where:{id:input.bookingId,accountId,organizationId:null},include:{trip:true}});
     if(!booking)throw new NotFoundException('Booking not found.');
     if(booking.status==='CANCELLED')throw new ConflictException('Cancelled booking cannot create a payment.');
     if(paymentPolicy.bypass)return{bookingId:booking.id,status:'BYPASSED',provider:'BYPASSED',policyReview:{required:false,issues:[],states:{payment:paymentPolicy.state}}};

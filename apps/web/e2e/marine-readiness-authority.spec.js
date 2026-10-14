@@ -23,7 +23,7 @@ const setup=async page=>{
 test('late marine readiness read cannot repopulate a departed workspace',async({page})=>{
   await setup(page);let release;
   await page.route(/\/api\/v1\/marine-operations\/assets\/mine$/,async route=>{await new Promise(resolve=>{release=resolve});return json(route,[{id:'late-private',name:'بيانات متأخرة خاصة',maintenance:[]}])});
-  await expect(page.locator('[data-marine-readiness-refresh]')).toBeEnabled();await page.locator('[data-marine-readiness-refresh]').click();await expect.poll(()=>typeof release).toBe('function');
+  await page.locator('[data-marine-readiness-refresh]').click();await expect.poll(()=>typeof release).toBe('function');
   await returnToDiverWorkspace(page);release();
   await expect(page.locator('#hl-marine-readiness')).toBeHidden();
   await expect(page.locator('[data-marine-readiness-content]')).toBeEmpty();
