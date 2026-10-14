@@ -16,5 +16,10 @@ test('professional portal loads privacy-safe live profile metrics and clears the
  const dash=page.locator('.hl-role-dashboard[data-role="instructor"]');await expect(dash).toBeVisible();await expect(dash).toHaveAttribute('data-professional-profile-loaded','1');
  const values=await dash.locator('.hl-role-tile b').allTextContents();expect(values.slice(0,4)).toEqual(['7','2','1','14']);
  await expect(dash).toContainText('مدرب اختبار');await expect(dash).not.toContainText('O+');await expect(dash).not.toContainText('private@example.invalid');
- state.active=false;await openWorkspaceSwitcher(page);await expect(page.locator('#role-dialog [data-role="instructor"]')).toBeDisabled();await expect(page.locator('.hl-role-dashboard[data-role="instructor"]')).toHaveCount(0);
+ state.active=false;
+ // Observe role loss before using the switcher: freshness can remove the dashboard
+ // during a pointer click, so its old switch button is no longer a stable target.
+ await page.evaluate(async()=>{await window.HydrolandPortalAccess.refreshPortalAccess();window.HydrolandPortalFreshness.enforce()});
+ await expect(page.locator('.hl-role-dashboard[data-role="instructor"]')).toHaveCount(0);
+ await openWorkspaceSwitcher(page);await expect(page.locator('#role-dialog [data-role="instructor"]')).toBeDisabled();
 });

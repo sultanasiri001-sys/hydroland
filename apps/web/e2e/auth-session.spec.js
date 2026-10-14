@@ -23,10 +23,10 @@ const seedSession = async (page,profileOptions={}) => {
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await waitForApp(page);
   await page.evaluate(() => {
-    sessionStorage.setItem('hl-access-token','e2e-access');
-    sessionStorage.setItem('hl-refresh-token','e2e-refresh');
-    window.HydrolandAuth.syncAuthUi();
+    const attempt=window.HydrolandAuth.beginAuthAttempt();
+    window.HydrolandAuth.acceptSession({accessToken:'e2e-access',refreshToken:'e2e-refresh'},attempt);
   });
+  await page.waitForFunction(() => Boolean(window.HydrolandProfileData?.profile));
 };
 
 test('registration remains unauthenticated until email verification', async ({ page }) => {

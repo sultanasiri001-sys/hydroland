@@ -15,7 +15,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci
+      - run: npm ci --workspace=@hydroland/api --workspace=@hydroland/web --include-workspace-root=true
       - run: npm --workspace @hydroland/api run db:generate
       - name: API domain validations
         run: |
@@ -29,9 +29,9 @@ jobs:
           npm run validate:translation -w @hydroland/api
           npm run validate:marine -w @hydroland/api
           npm run validate:integrations -w @hydroland/api
-      - name: Workspace tests
-        run: npm test
-      - name: Typecheck all workspaces
-        run: npm run typecheck
-      - name: Build all workspaces
-        run: npm run build
+      - name: Web/API release tests
+        run: npm test --workspace=@hydroland/api --workspace=@hydroland/web --if-present
+      - name: Typecheck web/API release
+        run: npm run typecheck --workspace=@hydroland/api --workspace=@hydroland/web --if-present
+      - name: Build web/API release
+        run: npm run build --workspace=@hydroland/api --workspace=@hydroland/web --if-present

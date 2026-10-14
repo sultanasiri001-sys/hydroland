@@ -1,7 +1,9 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { Injectable } from '@nestjs/common';
-import { Prisma, TrainingEnrollmentStatus, TrainingRecordStatus, TrainingSessionStatus } from '@prisma/client';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { Prisma, TrainingEnrollmentStatus, TrainingRecordStatus } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
+import { TrainingAssignmentService } from './training-assignment.service';
+import { TrainingSessionService } from './training-session.service';
 
 export interface CreateTrainingEnrollmentInput {
   studentAccountId: string;
@@ -13,7 +15,7 @@ export interface CreateTrainingEnrollmentInput {
 
 @Injectable()
 export class TrainingRepositoryService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(private readonly db: DatabaseService,private readonly sessions:TrainingSessionService,private readonly assignments:TrainingAssignmentService) {}
 
   createEnrollment(input: CreateTrainingEnrollmentInput) {
     return this.db.trainingEnrollment.create({
@@ -43,17 +45,20 @@ export class TrainingRepositoryService {
     });
   }
 
-  assignInstructor(enrollmentId: string, instructorAccountId: string) {
-    return this.db.trainingEnrollment.update({
-      where: { id: enrollmentId },
-      data: { instructorAccountId },
-    });
-  }
+  assignInstructor(enrollmentId:string,input:Record<string,unknown>,actorId:string){return this.assignments.assignEnrollment(actorId,enrollmentId,input);}
 
   setEnrollmentStatus(enrollmentId: string, status: TrainingEnrollmentStatus) {
-    return this.db.trainingEnrollment.update({
-      where: { id: enrollmentId },
-      data: { status, completedAt: status === TrainingEnrollmentStatus.COMPLETED ? new Date() : undefined },
+    if(!Object.values(TrainingEnrollmentStatus).includes(status))throw new BadRequestException('حالة التسجيل غير صالحة.');
+    return this.db.serializable(async tx=>{
+      const current=await tx.trainingEnrollment.findUniqueOrThrow({where:{id:enrollmentId}});
+      if(current.storeCourseOfferId&&current.status==='CANCELLED'&&status!=='CANCELLED'){
+        const offer=await tx.storeCourseOffer.findFirst({where:{id:current.storeCourseOfferId,status:'ACTIVE',startsAt:{gt:new Date()},organization:{status:'ACTIVE'}}});
+        if(!offer)throw new ConflictException('الدورة غير متاحة لإعادة التسجيل.');
+        const duplicate=await tx.trainingEnrollment.findFirst({where:{storeCourseOfferId:offer.id,studentAccountId:current.studentAccountId,status:{not:'CANCELLED'}}});
+        const seats=await tx.trainingEnrollment.count({where:{storeCourseOfferId:offer.id,status:{not:'CANCELLED'}}});
+        if(duplicate||seats>=offer.capacity)throw new ConflictException('التسجيل مكرر أو اكتملت مقاعد الدورة.');
+      }
+      return tx.trainingEnrollment.update({where:{id:enrollmentId},data:{status,completedAt:status===TrainingEnrollmentStatus.COMPLETED?new Date():undefined}});
     });
   }
 
@@ -97,7 +102,7 @@ export class TrainingRepositoryService {
     if (record.enrollment.instructorAccountId !== instructorAccountId) throw new Error('Instructor is not assigned to this training record.');
     if (record.status !== 'COMPLETED' || record.progressPercent !== 100) throw new Error('Training record must be completed at 100%.');
     const skills=record.stages.flatMap(stage=>stage.skills);
-    if (!skills.length || skills.some(skill=>skill.status!=='COMPETENT'||skill.signedOffByInstructorId!==instructorAccountId)) throw new Error('All required skills must be competent and signed off by the assigned instructor.');
+    if (!skills.length || skills.some(skill=>skill.status!=='COMPETENT'||!skill.signedOffByInstructorId||!skill.signedOffAt)) throw new ConflictException('يجب إتقان جميع المهارات وتوثيق توقيع المدرب وتاريخه قبل التوصية.');
     if (record.sessions.some(session=>session.status!=='COMPLETED'&&session.status!=='CANCELLED')) throw new Error('All training sessions must be completed or cancelled before recommendation.');
     if (record.certificate) return record.certificate;
     return this.db.trainingCertificate.create({data:{trainingRecordId,studentAccountId:record.enrollment.studentAccountId,courseCode:record.enrollment.courseCode,recommendedByInstructorId:instructorAccountId}});
@@ -125,26 +130,10 @@ export class TrainingRepositoryService {
     });
   }
 
-  createSession(input: {
-    trainingRecordId: string;
-    instructorAccountId: string;
-    startsAt: Date;
-    trainingStageId?: string;
-    facilityOrSiteId?: string;
-    tripId?: string;
-    vesselId?: string;
-  }) {
-    return this.db.trainingSession.create({ data: input });
-  }
+  createSession(id:string,input:Record<string,unknown>,actorId:string){return this.sessions.create(actorId,id,input,false);}
 
-  getSession(id: string) {
-    return this.db.trainingSession.findUniqueOrThrow({ where: { id } });
-  }
+  setSessionAttendance(id:string,input:Record<string,unknown>,actorId:string){return this.sessions.act(actorId,id,input,'professional');}
 
-  setSessionStatus(id: string, status: TrainingSessionStatus, evidence?: Prisma.InputJsonValue) {
-    return this.db.trainingSession.update({
-      where: { id },
-      data: { status, evidence },
-    });
-  }
+  setSessionStatus(id:string,input:Record<string,unknown>,actorId:string){return this.sessions.legacyStatus(actorId,id,input);}
 }
+

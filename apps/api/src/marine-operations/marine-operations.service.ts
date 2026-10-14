@@ -7,6 +7,20 @@ type MarineAssetDecision='ACTIVE'|'SUSPENDED'|'OUT_OF_SERVICE';
 @Injectable()
 export class MarineOperationsService{
  constructor(private readonly db:DatabaseService){}
+ async overviewMine(accountId:string){
+  const role=await this.db.roleAssignment.findFirst({where:{accountId,role:'BOAT_OWNER',status:'ACTIVE',account:{status:'ACTIVE'}},select:{id:true}});
+  if(!role)throw new ForbiddenException('Active marine brokerage role required.');
+  const memberships=await this.db.organizationMember.findMany({where:{accountId,status:'ACTIVE',organization:{status:'ACTIVE'}},select:{organizationId:true}});
+  const ids=memberships.map(x=>x.organizationId);if(!ids.length)return{generatedAt:new Date(),metrics:{activeAssets:0,scheduledTrips:0,openMaintenance:0,confirmedBookings:0}};
+  const now=new Date(),scope={organizationId:{in:ids}};
+  const [activeAssets,scheduledTrips,openMaintenance,confirmedBookings]=await Promise.all([
+   this.db.marineAsset.count({where:{...scope,status:'ACTIVE'}}),
+   this.db.trip.count({where:{...scope,status:'OPEN',startsAt:{gte:now}}}),
+   this.db.marineMaintenanceRecord.count({where:{status:{not:'COMPLETED'},marineAsset:{organizationId:{in:ids}}}}),
+   this.db.booking.count({where:{status:'CONFIRMED',trip:{...scope,status:'OPEN',startsAt:{gte:now}}}}),
+  ]);
+  return{generatedAt:now,metrics:{activeAssets,scheduledTrips,openMaintenance,confirmedBookings}};
+ }
  private async requireMember(accountId:string,organizationId:string,write=false){
   const member=await this.db.organizationMember.findUnique({where:{organizationId_accountId:{organizationId,accountId}}});
   if(!member||member.status!=='ACTIVE')throw new ForbiddenException('Active organization membership required.');

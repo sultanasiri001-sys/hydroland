@@ -1,3 +1,14 @@
+import { CenterOverviewService } from './center-overview.service';
+import { CenterSafetyService } from './center-safety.service';
+import { CenterCustomerService } from './center-customer.service';
+import { GovernanceModule } from '../governance/governance.module';
+import { OrganizationMembershipService } from './organization-membership.service';
+import { CenterEquipmentManagementService } from './center-equipment-management.service';
+import { CenterTripManagementService } from './center-trip-management.service';
+import {CenterLicensePlatformReviewService} from './center-license-platform-review.service';
+import {CenterLicensePlatformReviewController} from './center-license-platform-review.controller';
+import { AdministrativeAffairsModule } from '../administrative-affairs/administrative-affairs.module';
+import { CenterLicenseService } from './center-license.service';
 import { Module } from '@nestjs/common';
 import { AdminModule } from '../admin/admin.module';
 import { AuditModule } from '../audit/audit.module';
@@ -10,8 +21,8 @@ import { DiveCenterPortalController } from './dive-center-portal.controller';
 import { DiveCenterPortalService } from './dive-center-portal.service';
 
 @Module({
-  imports: [AuthModule, AdminModule, AuditModule, NotificationsModule, TripsModule],
-  controllers: [OrganizationsController, DiveCenterPortalController],
-  providers: [OrganizationsService, DiveCenterPortalService],
+  imports: [GovernanceModule, AdministrativeAffairsModule, AuthModule, AdminModule, AuditModule, NotificationsModule, TripsModule],
+  controllers: [CenterLicensePlatformReviewController, OrganizationsController, DiveCenterPortalController],
+  providers: [CenterOverviewService,CenterSafetyService,CenterCustomerService,OrganizationMembershipService, CenterEquipmentManagementService, CenterTripManagementService, CenterLicensePlatformReviewService, OrganizationsService, DiveCenterPortalService, CenterLicenseService],
 })
 export class OrganizationsModule {}

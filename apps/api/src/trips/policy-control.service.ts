@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
@@ -39,8 +40,8 @@ export class PolicyControlService {
     return rows[0];
   }
 
-  async state(category:string,ruleKey:string,fallback:PolicyState='ENABLED'):Promise<PolicyState>{
-    const rows=await this.db.$queryRaw<Array<{state:string}>>`
+  async state(category:string,ruleKey:string,fallback:PolicyState='ENABLED',tx:Prisma.TransactionClient=this.db):Promise<PolicyState>{
+    const rows=await tx.$queryRaw<Array<{state:string}>>`
       SELECT "state" FROM "PolicyControl"
       WHERE "category"=${category.toUpperCase()} AND "ruleKey"=${ruleKey.toUpperCase()}
       LIMIT 1
@@ -96,8 +97,8 @@ export class PolicyControlService {
     return rows[0];
   }
 
-  async decision(category:string,ruleKey:string){
-    const state=await this.state(category,ruleKey);
+  async decision(category:string,ruleKey:string,tx:Prisma.TransactionClient=this.db){
+    const state=await this.state(category,ruleKey,'ENABLED',tx);
     return {state,enforce:state==='ENABLED',review:state==='REVIEW',bypass:state==='DISABLED'};
   }
 }

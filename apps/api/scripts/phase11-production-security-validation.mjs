@@ -6,7 +6,7 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..')
 const read=relative=>readFile(path.join(root,relative),'utf8');
 const requireToken=(source,token,label)=>{if(!source.includes(token))throw new Error(`Phase 11 control missing (${label}): ${token}`)};
 
-const [rootDocker,apiDocker,compose,envTemplate,main,securityWorkflow,mfaService,totp]=await Promise.all([
+const [rootDocker,apiDocker,compose,envTemplate,main,securityWorkflow,mfaService,totp,auditValidator,mobileSecurity]=await Promise.all([
   read('Dockerfile'),
   read('apps/api/Dockerfile'),
   read('infra/docker-compose.production.yml'),
@@ -15,6 +15,8 @@ const [rootDocker,apiDocker,compose,envTemplate,main,securityWorkflow,mfaService
   read('.github/workflows/security-audit.yml'),
   read('apps/api/src/auth/mfa.service.ts'),
   read('apps/api/src/auth/totp.ts'),
+  read('scripts/release-dependency-audit.mjs'),
+  read('.github/workflows/mobile-security.yml'),
 ]);
 
 requireToken(rootDocker,'USER node','root production image runs non-root');
@@ -40,8 +42,11 @@ for(const token of ['Strict-Transport-Security','X-Content-Type-Options','X-Fram
 }
 requireToken(mfaService,'MfaService','MFA service exists');
 requireToken(totp,'verifyTotp','TOTP verification exists');
-requireToken(securityWorkflow,"['high','critical']",'dependency severity gate');
-requireToken(securityWorkflow,'process.exit(1)','security audit fails closed');
+requireToken(auditValidator,"['high','critical']",'dependency severity gate');
+requireToken(auditValidator,'process.exitCode=1','security audit fails closed');
 requireToken(securityWorkflow,'if: always()','audit evidence retained on failure');
+requireToken(securityWorkflow,'web-api audit.json','web/API release audit scope');
+requireToken(mobileSecurity,'mobile mobile-audit.json','independent mobile release gate');
+requireToken(mobileSecurity,'repository repository-audit.json','full repository audit retained');
 
 console.log('Phase 11 repository controls validated: non-root container, read-only/no-new-privileges baseline, private DB topology, secret template, HTTP headers, MFA and fail-closed dependency audit.');

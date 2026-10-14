@@ -30,7 +30,12 @@
   };
   const authorizedFetch=async(path,options={})=>{
     const version=state.sessionVersion,assertSession=()=>{if(version!==state.sessionVersion||!isAuthenticated())throw new Error('AUTH_CANCELLED')};
-    const execute=access=>fetch(`${API_BASE}${path}`,{...options,headers:{...(options.body?{'Content-Type':'application/json'}:{}),...(options.headers||{}),Authorization:`Bearer ${access}`}});
+    const execute=access=>{
+      const headers=new Headers(options.headers);
+      if(options.body&&!headers.has('Content-Type')&&!(options.body instanceof FormData))headers.set('Content-Type','application/json');
+      headers.set('Authorization',`Bearer ${access}`);
+      return fetch(`${API_BASE}${path}`,{...options,headers});
+    };
     let access=sessionStorage.getItem('hl-access-token');if(!access){if(!sessionStorage.getItem('hl-refresh-token'))throw new Error('AUTH_REQUIRED');access=await refreshSession()}
     assertSession();let response=await execute(access);assertSession();if(response.status!==401)return response;access=await refreshSession();assertSession();response=await execute(access);assertSession();if(response.status===401){clearSession();emitAuthChanged();showLogin('انتهت الجلسة، سجّل الدخول من جديد')}return response;
   };

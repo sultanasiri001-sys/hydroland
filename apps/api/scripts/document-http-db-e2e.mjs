@@ -1,3 +1,4 @@
+import {checkDocumentTransitionRace} from './document-transition-race-db-checks.mjs';
 import { PrismaClient } from '@prisma/client';
 import { PDFDocument } from 'pdf-lib';
 import { createHmac } from 'node:crypto';
@@ -81,6 +82,7 @@ try{
  if(rs.some(x=>!x.ok))throw new Error('Concurrent create failed: '+rs.map(x=>x.status).join(','));
  const docs=await Promise.all(rs.map(x=>x.json())),refs=new Set(docs.map(x=>x.referenceNumber));
  if(refs.size!==docs.length)throw new Error('Concurrent reference numbers not unique');
+ await checkDocumentTransitionRace({base,call,creatorToken:token(creator.id),creatorId:creator.id,body:latestBody});
  console.log('Document Template Revision validation passed.');
  console.log('Document PDF Rendering validation passed.');
  console.log('Document HTTP/DB E2E validation passed.');
