@@ -21,8 +21,6 @@ export class DiveCenterPortalController {
   @Patch(':id/business-profile') updateBusinessProfile(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.portal.updateBusinessProfile(request.auth.accountId,id,body);}
   @Get('me/reports') reports(@Req() request:AuthenticatedRequest,@Query('from') from?:string,@Query('to') to?:string){return this.portal.reports(request.auth.accountId,from,to);}
   @Get('me/overview') overview(@Req() request:AuthenticatedRequest,@Query() query:Record<string,unknown>){return this.overviewWorkspace.overview(request.auth.accountId,query);}
-    @Get('me/equipment/:resourceId/inspections') equipmentInspections(@Req() request:AuthenticatedRequest,@Param('resourceId') resourceId:string){return this.portal.equipmentInspections(request.auth.accountId,resourceId);}
-    @Post('me/equipment/:resourceId/inspections') equipmentInspectionRecord(@Req() request:AuthenticatedRequest,@Param('resourceId') resourceId:string,@Body() body:{status?:string;inspectedAt?:string;serviceExpiresAt?:string|null;notes?:string|null}){return this.portal.recordEquipmentInspection(request.auth.accountId,resourceId,body);}
   @Get('me/safety') safety(@Req() request:AuthenticatedRequest,@Query() query:Record<string,unknown>){return this.safetyWorkspace.list(request.auth.accountId,query);}
   @Get('me/safety/trips') safetyTrips(@Req() request:AuthenticatedRequest,@Query() query:Record<string,unknown>){return this.safetyWorkspace.trips(request.auth.accountId,query);}
   @Get('me/safety/trips/:id') safetyTrip(@Req() request:AuthenticatedRequest,@Param('id') id:string){return this.safetyWorkspace.preview(request.auth.accountId,id);}
