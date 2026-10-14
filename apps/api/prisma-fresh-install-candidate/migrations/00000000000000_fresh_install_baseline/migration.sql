@@ -129,6 +129,9 @@ CREATE TYPE "StoreProductStatus" AS ENUM ('DRAFT', 'ACTIVE', 'INACTIVE');
 CREATE TYPE "StoreOrderStatus" AS ENUM ('CREATED', 'CONFIRMED', 'CANCELLED', 'FULFILLED');
 
 -- CreateEnum
+CREATE TYPE "StoreProductKind" AS ENUM ('GOODS', 'SERVICE');
+
+-- CreateEnum
 CREATE TYPE "WalletEntryType" AS ENUM ('CREDIT', 'DEBIT', 'REFUND', 'ADJUSTMENT');
 
 -- CreateEnum
@@ -1151,6 +1154,7 @@ CREATE TABLE "ReceivablePayment" (
 -- CreateTable
 CREATE TABLE "TrainingEnrollment" (
     "id" TEXT NOT NULL,
+    "storeCourseOfferId" TEXT,
     "studentAccountId" TEXT NOT NULL,
     "courseCode" TEXT NOT NULL,
     "centerOrganizationId" TEXT,
@@ -1274,6 +1278,8 @@ CREATE TABLE "TrainingSession" (
 -- CreateTable
 CREATE TABLE "StoreProduct" (
     "id" TEXT NOT NULL,
+    "organizationId" TEXT,
+    "kind" "StoreProductKind" NOT NULL DEFAULT 'GOODS',
     "sku" TEXT NOT NULL,
     "nameAr" TEXT NOT NULL,
     "nameEn" TEXT,
@@ -1286,6 +1292,26 @@ CREATE TABLE "StoreProduct" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "StoreProduct_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "StoreCourseOffer" (
+    "id" TEXT NOT NULL,
+    "organizationId" TEXT NOT NULL,
+    "courseCode" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "description" TEXT NOT NULL,
+    "locationName" TEXT NOT NULL,
+    "startsAt" TIMESTAMP(3) NOT NULL,
+    "endsAt" TIMESTAMP(3) NOT NULL,
+    "capacity" INTEGER NOT NULL,
+    "priceMinor" INTEGER NOT NULL,
+    "currency" TEXT NOT NULL DEFAULT 'SAR',
+    "status" "StoreProductStatus" NOT NULL DEFAULT 'DRAFT',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "StoreCourseOffer_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -2029,6 +2055,9 @@ CREATE INDEX "TrainingEnrollment_instructorAccountId_status_idx" ON "TrainingEnr
 CREATE INDEX "TrainingEnrollment_courseCode_status_idx" ON "TrainingEnrollment"("courseCode", "status");
 
 -- CreateIndex
+CREATE INDEX "TrainingEnrollment_storeOffer_student_status_idx" ON "TrainingEnrollment"("storeCourseOfferId", "studentAccountId", "status");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "TrainingRecord_enrollmentId_key" ON "TrainingRecord"("enrollmentId");
 
 -- CreateIndex
@@ -2081,6 +2110,15 @@ CREATE UNIQUE INDEX "StoreProduct_sku_key" ON "StoreProduct"("sku");
 
 -- CreateIndex
 CREATE INDEX "StoreProduct_status_nameAr_idx" ON "StoreProduct"("status", "nameAr");
+
+-- CreateIndex
+CREATE INDEX "StoreProduct_organizationId_status_idx" ON "StoreProduct"("organizationId", "status");
+
+-- CreateIndex
+CREATE INDEX "StoreCourseOffer_organizationId_status_idx" ON "StoreCourseOffer"("organizationId", "status");
+
+-- CreateIndex
+CREATE INDEX "StoreCourseOffer_status_startsAt_idx" ON "StoreCourseOffer"("status", "startsAt");
 
 -- CreateIndex
 CREATE INDEX "StoreOrder_accountId_status_createdAt_idx" ON "StoreOrder"("accountId", "status", "createdAt");
@@ -2539,6 +2577,9 @@ ALTER TABLE "ReceivablePayment" ADD CONSTRAINT "ReceivablePayment_receivableId_f
 ALTER TABLE "ReceivablePayment" ADD CONSTRAINT "ReceivablePayment_installmentId_fkey" FOREIGN KEY ("installmentId") REFERENCES "ReceivableInstallment"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "TrainingEnrollment" ADD CONSTRAINT "TrainingEnrollment_storeCourseOfferId_fkey" FOREIGN KEY ("storeCourseOfferId") REFERENCES "StoreCourseOffer"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "TrainingRecord" ADD CONSTRAINT "TrainingRecord_enrollmentId_fkey" FOREIGN KEY ("enrollmentId") REFERENCES "TrainingEnrollment"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -2555,6 +2596,12 @@ ALTER TABLE "TrainingCertificate" ADD CONSTRAINT "TrainingCertificate_trainingRe
 
 -- AddForeignKey
 ALTER TABLE "TrainingSession" ADD CONSTRAINT "TrainingSession_trainingRecordId_fkey" FOREIGN KEY ("trainingRecordId") REFERENCES "TrainingRecord"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "StoreProduct" ADD CONSTRAINT "StoreProduct_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "StoreCourseOffer" ADD CONSTRAINT "StoreCourseOffer_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "StoreOrder" ADD CONSTRAINT "StoreOrder_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "Account"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

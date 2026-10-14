@@ -1,12 +1,12 @@
 {
   "status": "CANDIDATE_NOT_PRODUCTION_APPROVED",
   "baselineName": "00000000000000_fresh_install_baseline",
-  "schemaSha256": "4eeaba16079bbd915d5ea97dc09eb86e1cdf12d263d1c5b5c9cf3dc9e16df1df",
-  "baselineSha256": "fe4e99baad5e980ceb780534a373ddaa3f17d76db908f418812479cbe2f30242",
+  "schemaSha256": "7d20ae30b555f0b5bef31f0744feaee78855973d663d91d4723621837a314076",
+  "baselineSha256": "e560a1f3d29b79ad98c313891368b81e7ec6a7d93f8511b5b36af2d1f1d09b68",
   "components": [
     {
       "source": "prisma/schema.prisma",
-      "sha256": "b2b0b87e5d9f42bd303e2df51ab0fa76b90196b86e595b8e353179d8824c468a"
+      "sha256": "5315208395b01ef7854fa5e3f8c34a5775168ef4b806c107230d8dce4c5e8e35"
     },
     {
       "source": "prisma/migrations/20260915024500_equipment_barcode_inventory/migration.sql",
