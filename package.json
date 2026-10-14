@@ -20,7 +20,9 @@
   },
   "overrides": {
     "deepmerge-ts": "^8.0.1",
-    "multer": "^2.3.0"
+    "multer": "^2.3.0",
+    "shell-quote": "1.11.0",
+    "source-map-js": "1.2.2"
   },
   "engines": {
     "node": "22.x"

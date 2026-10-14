@@ -41,6 +41,8 @@ jobs:
         run: node apps/api/scripts/center-license-migration-db-e2e.mjs
       - name: Center license platform-review forward migration
         run: node apps/api/scripts/center-license-platform-review-migration-checks.mjs
+      - name: Unified store forward migration on TEXT and UUID organization keys
+        run: node apps/api/scripts/store-offerings-migration-db-e2e.mjs
       - name: Bootstrap raw equipment operational schema
         run: node apps/api/scripts/bootstrap-equipment-runtime-schema.mjs
       - name: Bootstrap trip weather operational schema
@@ -149,6 +151,7 @@ jobs:
           MESSAGING_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/messaging-http-e2e.mjs
           NOTIFICATIONS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/notifications-http-e2e.mjs
           STORE_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/store-checkout-http-e2e.mjs
+          STORE_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/store-offerings-http-e2e.mjs
           PAYMENT_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/payment-moyasar-http-e2e.mjs
           MARINE_DOCS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/marine-documents-http-e2e.mjs
           MARINE_READINESS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/marine-readiness-http-e2e.mjs
@@ -190,3 +193,4 @@ jobs:
 
       - name: Phase 4 append-only audit database boundary
         run: node apps/api/scripts/audit-append-only-validation.mjs
+
