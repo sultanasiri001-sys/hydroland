@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
-import {validateAuditReport,auditScopes} from './release-dependency-audit.mjs';
+import {validateAuditReport,auditScopes,summarizeAuditReport} from './release-dependency-audit.mjs';
 const valid=()=>({metadata:{vulnerabilities:{high:0,critical:0}},vulnerabilities:{}});
+const detailed={vulnerabilities:{
+  'node-forge':{severity:'high',range:'<=1.4.0',fixAvailable:false,nodes:['node_modules/node-forge'],via:[{name:'node-forge',title:'Signature verification issue',severity:'high',range:'<=1.4.0',url:'https://example.invalid/advisory'}]},
+  'some-parent':{severity:'moderate',via:['nested advisory']},
+}};
+assert.deepEqual(summarizeAuditReport(detailed),[
+  {package:'node-forge',severity:'high',range:'<=1.4.0',fixAvailable:false,via:[{name:'node-forge',title:'Signature verification issue',severity:'high',range:'<=1.4.0',url:'https://example.invalid/advisory'}],nodes:['node_modules/node-forge']},
+  {package:'some-parent',severity:'moderate',range:undefined,fixAvailable:undefined,via:[{name:'nested advisory'}],nodes:[]},
+]);
 assert.doesNotThrow(()=>validateAuditReport(valid(),0));
 const moderate=valid();moderate.vulnerabilities.example={severity:'moderate'};
 assert.doesNotThrow(()=>validateAuditReport(moderate,1));
