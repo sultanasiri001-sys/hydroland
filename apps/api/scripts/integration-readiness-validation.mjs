@@ -69,7 +69,8 @@ for(const marker of [
   "setMarineWeatherState('غير مفعّل')",
 ])if(!webMap.includes(marker))throw new Error(`Marine weather status UI invariant missing: ${marker}`);
 for(const marker of ["script.dataset.hlWeatherAdmin='1'","script.src='./hydroland-weather-admin.js'","if(role==='admin')ensureWeatherAdmin()"]){if(!webRoleDashboards.includes(marker))throw new Error(`Weather admin runtime loader missing: ${marker}`)}
-if(!tripAdmin.includes('weatherReviews.refresh(reviewerAccountId,tripId)')||!tripAdmin.includes("rows[0]?.status!=='APPROVED'"))throw new Error('Booking confirmation does not revalidate and require human approval of the fresh weather snapshot.');
+const bookingManagement=read('src/trips/booking-management.service.ts');
+if(!tripAdmin.includes("bookingManagement.legacy(reviewerAccountId,bookingId,'CONFIRM','admin',tripId)")||!bookingManagement.includes('this.weatherReviews.refresh(accountId, before.booking.tripId)')||!bookingManagement.includes('this.weather.evaluateReview(review?.snapshot, review?.status, settings)')||!bookingManagement.includes("require(!evaluation.blocking, 'weather', 'WEATHER_GATE')"))throw new Error('Booking confirmation must use the shared transactional fresh weather approval gate.');
 if(!render.includes('key: STORMGLASS_API_KEY')||!render.includes('key: HYDROLAND_INTEGRATION_WEATHER_MARINE_STATUS'))throw new Error('Render blueprint does not declare Stormglass activation inputs.');
 
 for(const marker of [

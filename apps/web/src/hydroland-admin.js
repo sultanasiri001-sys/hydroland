@@ -1,4 +1,7 @@
 (() => {
+  if (!document.querySelector('script[src="./hydroland-center-license-admin.js"]')) {
+    const module=document.createElement('script');module.src='./hydroland-center-license-admin.js';module.defer=true;document.body.appendChild(module);
+  }
   if (!document.querySelector('script[src="./hydroland-booking-admin.js"]')) {
     const module = document.createElement('script'); module.src = './hydroland-booking-admin.js'; module.defer = true; document.body.appendChild(module);
   }

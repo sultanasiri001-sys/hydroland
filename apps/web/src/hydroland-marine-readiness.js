@@ -4,13 +4,30 @@
   const panel=document.createElement('section');panel.id='hl-marine-readiness';panel.hidden=true;
   const css=document.createElement('style');css.textContent='#hl-marine-readiness{margin:1rem 0;padding:1rem;border:1px solid rgba(120,191,224,.18);border-radius:20px;background:rgba(3,25,39,.92);color:#eaf5fa}#hl-marine-readiness[hidden]{display:none}.hl-mr-head,.hl-mr-row,.hl-mr-actions{display:flex;gap:.65rem;align-items:center;justify-content:space-between;flex-wrap:wrap}.hl-mr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:.85rem}.hl-mr-card{border:1px solid rgba(120,191,224,.14);border-radius:16px;padding:.85rem;background:rgba(255,255,255,.025)}.hl-mr-card h4,.hl-mr-card h5{margin:.1rem 0 .55rem}.hl-mr-card p{margin:.35rem 0}.hl-mr-form{display:grid;gap:.5rem;margin-top:.75rem}.hl-mr-form label{display:grid;gap:.25rem;font-weight:700}.hl-mr-form input,.hl-mr-form textarea{width:100%;box-sizing:border-box;border:1px solid rgba(120,191,224,.2);border-radius:10px;background:#0b293c;color:#fff;padding:.6rem}.hl-mr-form textarea{min-height:62px;resize:vertical}.hl-mr-list{display:grid;gap:.45rem}.hl-mr-record{padding:.55rem;border-top:1px solid rgba(120,191,224,.1)}.hl-mr-note{color:#9cb7c7}.hl-mr-state{font-size:.78rem;padding:.2rem .45rem;border-radius:999px;background:rgba(229,180,95,.14);color:#f3d496}.hl-mr-state.ready{background:rgba(96,208,159,.15);color:#9ee5bd}.hl-mr-state.not-ready{background:rgba(236,117,117,.16);color:#ffb4b4}#hl-marine-readiness button{border:1px solid rgba(120,191,224,.22);border-radius:10px;background:#12364b;color:#fff;padding:.55rem .75rem;font-weight:800;cursor:pointer}#hl-marine-readiness button.primary{border:0;background:linear-gradient(135deg,#f4d18c,#e5b45f);color:#102131}#hl-marine-readiness button.danger{background:#58262c}@media(max-width:760px){#hl-marine-readiness{padding:.75rem}}';
   panel.appendChild(css);
-  const header=document.createElement('header');header.className='hl-mr-head';header.innerHTML='<div><small>MARINE READINESS · الوسائط البحرية</small><h3>الصيانة والجاهزية التشغيلية</h3><p class="hl-mr-note">لا يُفعّل الأصل البحري إلا بعد التحقق الإداري من الوثائق والصيانة. ربط مورد التقويم يُظهر كتنبيه تشغيلي منفصل.</p></div>';
+  const header=document.createElement('header');header.className='hl-mr-head';header.innerHTML='<div><small>MARINE READINESS · الوساطة البحرية</small><h3>الصيانة والجاهزية التشغيلية</h3><p class="hl-mr-note">لا يُفعّل الأصل البحري إلا بعد التحقق الإداري من الوثائق والصيانة. ربط مورد التقويم يُظهر كتنبيه تشغيلي منفصل.</p></div>';
   const refreshButton=document.createElement('button');refreshButton.type='button';refreshButton.textContent='تحديث';refreshButton.dataset.marineReadinessRefresh='1';header.appendChild(refreshButton);panel.appendChild(header);
   const content=document.createElement('div');content.dataset.marineReadinessContent='1';panel.appendChild(content);
   const anchor=document.getElementById('hl-marine-documents')||host;anchor.insertAdjacentElement('afterend',panel);
-  const state={role:'diver'};
-  const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-  const request=async(path,options={})=>{const response=await window.HydrolandAuth.authorizedFetch(path,options);const body=await response.json().catch(()=>null);if(!response.ok)throw new Error(body?.message||('HTTP '+response.status));return body};
+  const state={role:'diver',generation:0,load:0};
+  const auth=()=>window.HydrolandAuth,access=()=>window.HydrolandPortalAccess;
+  const eligible=role=>['boat','admin'].includes(role)&&auth()?.isAuthenticated?.()&&access()?.getCurrentRole?.()===role&&access()?.roleAllowed?.(role);
+  const context=()=>({role:state.role,generation:state.generation,session:auth()?.getSessionVersion?.()});
+  const alive=c=>c.generation===state.generation&&c.role===state.role&&c.session===auth()?.getSessionVersion?.()&&auth()?.isAuthenticated?.()&&access()?.getCurrentRole?.()===c.role;
+  const current=c=>alive(c)&&eligible(c.role);
+  const close=()=>{state.generation++;state.load++;state.role='diver';content.replaceChildren();panel.hidden=true;refreshButton.disabled=false;content.removeAttribute('aria-busy')};
+  const stale=()=>Object.assign(new Error('Marine workspace changed.'),{stale:true});
+  const authorize=async c=>{
+    if(!alive(c))throw stale();
+    const allowed=typeof access()?.authorizeRole==='function'&&await access().authorizeRole(c.role,{sessionVersion:c.session,isCurrent:()=>alive(c)});
+    if(!allowed||!current(c)){if(alive(c))close();throw stale()}
+  };
+  const request=async(c,path,options={})=>{
+    if(!current(c))throw stale();
+    const response=await auth().authorizedFetch(path,options),body=await response.json().catch(()=>null);
+    if(!current(c))throw stale();
+    if(!response.ok){if([401,403].includes(response.status)){close();throw stale()}throw new Error(body?.message||('HTTP '+response.status))}
+    return body;
+  };
   const date=value=>value?new Date(value).toLocaleDateString('ar-SA'):'بدون موعد';
   const statusClass=value=>String(value||'').toLowerCase().replace(/_/g,'-');
   const assetLabel=asset=>(asset.name||'أصل بحري')+' · '+(asset.registrationNumber||asset.assetType||'');
@@ -38,15 +55,45 @@
   };
   const renderBoat=assets=>{clear();const grid=document.createElement('div');grid.className='hl-mr-grid';if(!assets.length)grid.appendChild(note('لا توجد أصول بحرية مرتبطة بعضويتك بعد.'));assets.forEach(asset=>{const card=document.createElement('article');card.className='hl-mr-card';card.dataset.marineReadinessAsset=asset.id;const row=document.createElement('div');row.className='hl-mr-row';const title=document.createElement('h4');title.textContent=assetLabel(asset);row.append(title,badge(asset.status));card.appendChild(row);renderReadiness(asset,card);renderMaintenance(asset,card);grid.appendChild(card)});content.appendChild(grid)};
   const renderAdmin=assets=>{clear();const grid=document.createElement('div');grid.className='hl-mr-grid';if(!assets.length)grid.appendChild(note('لا توجد أصول بحرية للمراجعة.'));assets.forEach(asset=>{const card=document.createElement('article');card.className='hl-mr-card';card.dataset.marineReadinessReview=asset.id;const row=document.createElement('div');row.className='hl-mr-row';const title=document.createElement('h4');title.textContent=assetLabel(asset);row.append(title,badge(asset.status));card.appendChild(row);const documents=document.createElement('p');documents.className='hl-mr-note';documents.textContent='الوثائق: '+(asset.documents||[]).map(doc=>doc.documentType+' '+doc.status).join(' · ');card.appendChild(documents);const maintenance=document.createElement('p');maintenance.className='hl-mr-note';maintenance.textContent='الصيانة: '+((asset.maintenance||[]).length?(asset.maintenance||[]).map(record=>record.maintenanceType+' '+record.status).join(' · '):'لا توجد سجلات');card.appendChild(maintenance);const latest=asset.readiness&&asset.readiness[0];if(latest){const readiness=document.createElement('p');readiness.className='hl-mr-note';readiness.textContent='آخر جاهزية: '+latest.status+(latest.reasonCodes?.length?' · '+latest.reasonCodes.join(' · '):'');card.appendChild(readiness)}const actions=document.createElement('div');actions.className='hl-mr-actions';if(asset.status!=='ACTIVE'){const active=button('تفعيل الأصل','primary');active.dataset.marineAssetStatus='ACTIVE';active.dataset.marineAssetId=asset.id;actions.appendChild(active)}if(asset.status!=='SUSPENDED'){const suspend=button('تعليق');suspend.dataset.marineAssetStatus='SUSPENDED';suspend.dataset.marineAssetId=asset.id;actions.appendChild(suspend)}if(asset.status!=='OUT_OF_SERVICE'){const offline=button('إخراج من الخدمة','danger');offline.dataset.marineAssetStatus='OUT_OF_SERVICE';offline.dataset.marineAssetId=asset.id;actions.appendChild(offline)}card.appendChild(actions);grid.appendChild(card)});content.appendChild(grid)};
-  async function refresh(){if(!window.HydrolandAuth?.isAuthenticated?.()){panel.hidden=true;return}try{if(state.role==='boat'){renderBoat(await request('/marine-operations/assets/mine'))}else if(state.role==='admin'){renderAdmin(await request('/marine-operations/admin/assets/review'))}}catch(error){clear();content.appendChild(note(error instanceof Error?error.message:'تعذر تحميل بيانات الجاهزية البحرية'))}}
-  function open(role,focus=false){state.role=role;panel.hidden=false;void refresh();if(focus)panel.scrollIntoView({behavior:'smooth',block:'start'})}
+  async function refresh(){
+    if(!eligible(state.role)){close();return}
+    const c=context(),load=++state.load;clear();content.appendChild(note('جارٍ تحميل بيانات الجاهزية البحرية…'));content.setAttribute('aria-busy','true');refreshButton.disabled=true;
+    try{
+      await authorize(c);if(load!==state.load)throw stale();
+      const assets=await request(c,c.role==='boat'?'/marine-operations/assets/mine':'/marine-operations/admin/assets/review');
+      if(load!==state.load||!current(c))throw stale();
+      if(!Array.isArray(assets))throw new Error('تعذر قراءة بيانات الجاهزية البحرية.');
+      c.role==='boat'?renderBoat(assets):renderAdmin(assets);
+    }catch(error){if(!error.stale&&current(c)&&load===state.load){clear();content.appendChild(note(error instanceof Error?error.message:'تعذر تحميل بيانات الجاهزية البحرية'))}}
+    finally{if(current(c)&&load===state.load){content.removeAttribute('aria-busy');refreshButton.disabled=false}}
+  }
+  function open(role,focus=false){if(!eligible(role)){close();return}if(state.role!==role){close();state.role=role}panel.hidden=false;void refresh();if(focus)panel.scrollIntoView({behavior:'smooth',block:'start'})}
   refreshButton.addEventListener('click',()=>void refresh());
-  content.addEventListener('submit',async event=>{const form=event.target;if(!(form instanceof HTMLFormElement)||!form.matches('[data-marine-maintenance]'))return;event.preventDefault();const assetId=form.dataset.marineMaintenance;const data=Object.fromEntries(new FormData(form).entries());if(!data.dueAt)delete data.dueAt;try{await request('/marine-operations/assets/'+encodeURIComponent(assetId)+'/maintenance',{method:'POST',body:JSON.stringify(data)});await refresh()}catch(error){alert(error instanceof Error?error.message:'تعذر حفظ عمل الصيانة')}});
-  content.addEventListener('click',async event=>{const target=event.target instanceof Element?event.target.closest('button'):null;if(!target)return;target.disabled=true;try{if(target.dataset.marineReadinessCheck){await request('/marine-operations/assets/'+encodeURIComponent(target.dataset.marineReadinessCheck)+'/readiness',{method:'POST',body:'{}'});await refresh()}else if(target.dataset.marineMaintenanceComplete){await request('/marine-operations/assets/'+encodeURIComponent(target.dataset.marineAssetId)+'/maintenance/'+encodeURIComponent(target.dataset.marineMaintenanceComplete)+'/complete',{method:'POST',body:'{}'});await refresh()}else if(target.dataset.marineAssetStatus){await request('/marine-operations/admin/assets/'+encodeURIComponent(target.dataset.marineAssetId)+'/status',{method:'POST',body:JSON.stringify({status:target.dataset.marineAssetStatus})});await refresh()}}catch(error){alert(error instanceof Error?error.message:'تعذر تنفيذ الإجراء')}finally{target.disabled=false}});
+  content.addEventListener('submit',async event=>{
+    const form=event.target;if(!(form instanceof HTMLFormElement)||!form.matches('[data-marine-maintenance]'))return;event.preventDefault();
+    const c=context();if(c.role!=='boat'||!current(c))return;
+    const assetId=form.dataset.marineMaintenance,data=Object.fromEntries(new FormData(form).entries()),submit=form.querySelector('[type="submit"]');if(!data.dueAt)delete data.dueAt;if(submit?.disabled)return;if(submit)submit.disabled=true;
+    try{await authorize(c);await request(c,'/marine-operations/assets/'+encodeURIComponent(assetId)+'/maintenance',{method:'POST',body:JSON.stringify(data)});if(current(c)){await refresh();document.dispatchEvent(new CustomEvent('hydroland:marine-assets-changed'))}}
+    catch(error){if(!error.stale&&current(c))alert(error instanceof Error?error.message:'تعذر حفظ عمل الصيانة')}
+    finally{if(current(c)&&submit?.isConnected)submit.disabled=false}
+  });
+  content.addEventListener('click',async event=>{
+    const target=event.target instanceof Element?event.target.closest('button'):null;if(!target||target.type==='submit')return;
+    const c=context();if(!current(c))return;
+    let path,body='{}';
+    if(c.role==='boat'&&target.dataset.marineReadinessCheck)path='/marine-operations/assets/'+encodeURIComponent(target.dataset.marineReadinessCheck)+'/readiness';
+    else if(c.role==='boat'&&target.dataset.marineMaintenanceComplete)path='/marine-operations/assets/'+encodeURIComponent(target.dataset.marineAssetId)+'/maintenance/'+encodeURIComponent(target.dataset.marineMaintenanceComplete)+'/complete';
+    else if(c.role==='admin'&&target.dataset.marineAssetStatus){path='/marine-operations/admin/assets/'+encodeURIComponent(target.dataset.marineAssetId)+'/status';body=JSON.stringify({status:target.dataset.marineAssetStatus})}
+    if(!path)return;target.disabled=true;
+    try{await authorize(c);await request(c,path,{method:'POST',body});if(current(c)){await refresh();if(c.role==='boat'&&target.dataset.marineMaintenanceComplete)document.dispatchEvent(new CustomEvent('hydroland:marine-assets-changed'))}}
+    catch(error){if(!error.stale&&current(c))alert(error instanceof Error?error.message:'تعذر تنفيذ الإجراء')}
+    finally{if(current(c)&&target.isConnected)target.disabled=false}
+  });
   const connect=root=>root.querySelectorAll?.('button').forEach(control=>{const label=(control.textContent||'').trim();if(label!=='فحص القارب'||control.dataset.hlMarineReadinessConnected)return;control.dataset.hlMarineReadinessConnected='1';control.disabled=false;control.removeAttribute('aria-disabled');control.title='';control.addEventListener('click',()=>open('boat',true))});
   const observer=new MutationObserver(records=>records.forEach(record=>record.addedNodes.forEach(node=>{if(node.nodeType===1)connect(node)})));observer.observe(document.body,{childList:true,subtree:true});
-  document.addEventListener('hydroland:role-changed',event=>{const role=event.detail?.role;if(role==='boat'||role==='admin')open(role);else panel.hidden=true});
-  document.addEventListener('hydroland:auth-changed',()=>{if(!window.HydrolandAuth?.isAuthenticated?.())panel.hidden=true});
+  document.addEventListener('hydroland:role-changed',event=>{const role=event.detail?.role;close();if(eligible(role))open(role)});
+  document.addEventListener('hydroland:auth-changed',()=>{const role=access()?.getCurrentRole?.();close();if(eligible(role))open(role)});
+  document.addEventListener('hydroland:profile-data-ready',()=>{if(!eligible(state.role))close()});
   const initial=window.HydrolandPortalAccess?.getCurrentRole?.();if(initial==='boat'||initial==='admin')open(initial);
   window.HydrolandMarineReadiness={open,refresh};
 })();

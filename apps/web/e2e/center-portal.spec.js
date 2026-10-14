@@ -14,6 +14,7 @@ const installCenterFixture=async page=>{
   await page.route(/\/api\/v1\/credentials$/,route=>authorized(route.request())?json(route,[]):json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/organizations\/mine$/,route=>authorized(route.request())?json(route,[center]):json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/marine-operations\/assets\/mine$/,route=>authorized(route.request())?json(route,[]):json(route,{message:'Unauthorized'},401));
+  await page.route(/\/api\/v1\/center\/me\/documents$/,route=>authorized(route.request())?json(route,{assets:[],licenses:[{id:'center-license-001',type:'LICENSE',referenceNumber:'LIC-E2E-001',subject:'ترخيص مركز الاختبار',status:'ACTIVE',updatedAt:'2026-10-02T00:00:00Z'}]}):json(route,{message:'Unauthorized'},401));
   await page.route(new RegExp(`/api/v1/documents/organizations/${center.organization.id}/templates$`),route=>authorized(route.request())?json(route,[template]):json(route,{message:'Unauthorized'},401));
   await page.route(new RegExp(`/api/v1/documents/organizations/${center.organization.id}/list$`),route=>authorized(route.request())?json(route,state.documents):json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/documents$/,async route=>{
@@ -43,18 +44,12 @@ test('center portal opens center documents and saves a test report under its act
   await expect(dashboard.locator('.hl-portal-nav-item[data-portal-label="المستندات والتراخيص"]')).toBeEnabled();
   await dashboard.locator('.hl-portal-nav-item[data-portal-label="المستندات والتراخيص"]').click();
 
-  const panel=page.locator('#hl-documents');
+  const panel=page.locator('#hl-center-documents');
   await expect(panel).toBeVisible();
-  await expect(panel.locator('[data-doc-org]')).toContainText('مركز HYDROLAND للاختبار');
-  await expect(panel.locator('[data-doc-template]')).toContainText('تقرير تشغيل مركز الغوص');
-  await panel.locator('[name="summary"]').fill('فحص تشغيل مركز الغوص التجريبي');
-  await panel.locator('[data-doc-save]').click();
-  await expect.poll(()=>state.createdPayload?.payload?.summary).toBe('فحص تشغيل مركز الغوص التجريبي');
-  await expect(panel.locator('[data-document-id="center-document-001"]')).toContainText('HYD-CENTER-E2E-001');
-  await expect(panel.locator('[data-doc-note]')).toContainText('تم حفظ المستند كمسودة.');
+  await expect(panel.locator('[data-center-license="center-license-001"]')).toContainText('LIC-E2E-001');
+  await expect(page.locator('#hl-documents')).toBeHidden();
   await dashboard.locator('[data-portal-home]').click();
   await expect(dashboard.locator('.hl-portal-content')).toBeVisible();
-  await page.evaluate(()=>{document.getElementById('hl-documents').hidden=true});
   await dashboard.locator('.hl-portal-nav-item[data-portal-label="المستندات والتراخيص"]').click();
   await expect(panel).toBeVisible();
 });

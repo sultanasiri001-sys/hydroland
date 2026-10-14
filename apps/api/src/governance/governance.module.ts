@@ -1,3 +1,5 @@
+import { TrainingSessionService } from './training-session.service';
+import { TrainingAssignmentService } from './training-assignment.service';
 import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
 import { AuthModule } from '../auth/auth.module';
@@ -15,7 +17,7 @@ import { TrainingController } from './training.controller';
 @Module({
   imports: [AuditModule, AuthModule],
   controllers: [TrainingController],
-  providers: [PolicyEngineService, ApprovalEngineService, TrainingAuthorizationService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService, TrainingGovernanceService, TrainingRepositoryService, TrainingProfessionalProfileService],
-  exports: [PolicyEngineService, ApprovalEngineService, TrainingAuthorizationService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService, TrainingGovernanceService, TrainingRepositoryService, TrainingProfessionalProfileService, AuditModule],
+  providers: [TrainingSessionService, TrainingAssignmentService, PolicyEngineService, ApprovalEngineService, TrainingAuthorizationService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService, TrainingGovernanceService, TrainingRepositoryService, TrainingProfessionalProfileService],
+  exports: [TrainingSessionService, TrainingAssignmentService, PolicyEngineService, ApprovalEngineService, TrainingAuthorizationService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService, TrainingGovernanceService, TrainingRepositoryService, TrainingProfessionalProfileService, AuditModule],
 })
 export class GovernanceModule {}

@@ -40,7 +40,13 @@ test('revoked protected role closes an already-open portal in the same session',
   await openWorkspaceSwitcher(page);
   await page.locator('#role-dialog [data-role="admin"]').click();
   await expect.poll(()=>page.evaluate(()=>window.HydrolandPortalAccess.getCurrentRole())).toBe('admin');
+  await expect(page.locator('.hl-role-dashboard[data-role="admin"]')).toBeVisible();
   state.roles=[];
+  // Returning to the visible tab refreshes authority and may remove the old
+  // dashboard switch while a pointer click is waiting for layout stability.
+  await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
+  await expect(page.locator('.hl-role-dashboard[data-role="admin"]')).toHaveCount(0);
+  await expect.poll(()=>page.evaluate(()=>window.HydrolandPortalAccess.getCurrentRole())).toBe('diver');
   await openWorkspaceSwitcher(page);
   await expect(page.locator('#role-dialog')).toBeVisible();
   await expectDenied(page);

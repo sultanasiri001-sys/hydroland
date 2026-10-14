@@ -13,7 +13,7 @@ export class TripComplianceService{
 
   async get(tripId:string){
     const trip=await this.db.trip.findUnique({where:{id:tripId},select:{id:true}});if(!trip)throw new NotFoundException('Trip not found.');
-    const rows=await this.db.$queryRaw<ComplianceRow[]>`SELECT * FROM "TripComplianceReview" WHERE "tripId"=${tripId} LIMIT 1`;
+    const rows=await this.db.$queryRaw<ComplianceRow[]>`SELECT * FROM "TripComplianceReview" WHERE "tripId"::text=${tripId} LIMIT 1`;
     const record=rows[0]??null,{regulatory,permit}=await this.policy();
     const regulatoryOk=record?.regulatoryStatus==='APPROVED',permitOk=record?.permitStatus==='APPROVED',issues:string[]=[];
     if(!regulatoryOk&&!regulatory.bypass)issues.push('COMPLIANCE_REGULATORY_REVIEW');
@@ -26,9 +26,9 @@ export class TripComplianceService{
     if(input.regulatoryStatus&&!valid.includes(input.regulatoryStatus))throw new BadRequestException('Invalid regulatory status.');
     if(input.permitStatus&&!valid.includes(input.permitStatus))throw new BadRequestException('Invalid permit status.');
     const trip=await this.db.trip.findUnique({where:{id:tripId},select:{id:true}});if(!trip)throw new NotFoundException('Trip not found.');
-    const current=await this.db.$queryRaw<ComplianceRow[]>`SELECT * FROM "TripComplianceReview" WHERE "tripId"=${tripId} LIMIT 1`,row=current[0];
+    const current=await this.db.$queryRaw<ComplianceRow[]>`SELECT * FROM "TripComplianceReview" WHERE "tripId"::text=${tripId} LIMIT 1`,row=current[0];
     const regulatoryStatus=input.regulatoryStatus??row?.regulatoryStatus??'PENDING',permitStatus=input.permitStatus??row?.permitStatus??'PENDING';
-    if(row){await this.db.$executeRaw`UPDATE "TripComplianceReview" SET "regulatoryStatus"=${regulatoryStatus},"permitStatus"=${permitStatus},"permitReference"=${input.permitReference??row.permitReference},"authorityReference"=${input.authorityReference??row.authorityReference},"notes"=${input.notes??row.notes},"reviewedByAccountId"=${accountId},"reviewedAt"=NOW(),"updatedAt"=NOW() WHERE "id"=${row.id}`;}else{await this.db.$executeRaw`INSERT INTO "TripComplianceReview"("id","tripId","regulatoryStatus","permitStatus","permitReference","authorityReference","notes","reviewedByAccountId","reviewedAt","createdAt","updatedAt") VALUES(gen_random_uuid()::text,${tripId},${regulatoryStatus},${permitStatus},${input.permitReference??null},${input.authorityReference??null},${input.notes??null},${accountId},NOW(),NOW(),NOW())`;}
+    if(row){await this.db.$executeRaw`UPDATE "TripComplianceReview" SET "regulatoryStatus"=${regulatoryStatus},"permitStatus"=${permitStatus},"permitReference"=${input.permitReference??row.permitReference},"authorityReference"=${input.authorityReference??row.authorityReference},"notes"=${input.notes??row.notes},"reviewedByAccountId"=(SELECT "id" FROM "Account" WHERE "id"::text=${accountId}),"reviewedAt"=NOW(),"updatedAt"=NOW() WHERE "id"=${row.id}`;}else{await this.db.$executeRaw`INSERT INTO "TripComplianceReview"("id","tripId","regulatoryStatus","permitStatus","permitReference","authorityReference","notes","reviewedByAccountId","reviewedAt","createdAt","updatedAt") SELECT gen_random_uuid()::text,t."id",${regulatoryStatus},${permitStatus},${input.permitReference??null},${input.authorityReference??null},${input.notes??null},ac."id",NOW(),NOW(),NOW() FROM "Trip" t JOIN "Account" ac ON ac."id"::text=${accountId} WHERE t."id"::text=${tripId}`;}
     await this.audit.record({action:'TRIP_COMPLIANCE_REVIEW_UPDATED',resource:'TripComplianceReview',resourceId:tripId,metadata:{accountId,previousRegulatoryStatus:row?.regulatoryStatus??null,previousPermitStatus:row?.permitStatus??null,regulatoryStatus,permitStatus,permitReference:input.permitReference??row?.permitReference??null,authorityReference:input.authorityReference??row?.authorityReference??null}});
     return this.get(tripId);
   }

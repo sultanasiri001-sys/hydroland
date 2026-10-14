@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
@@ -31,11 +32,11 @@ export class EquipmentInspectionService{
     return inspection;
   }
 
-  async evaluate(resourceIds:string[]):Promise<EquipmentReadiness>{
+  async evaluate(resourceIds:string[],tx:Prisma.TransactionClient=this.db):Promise<EquipmentReadiness>{
     const unique=[...new Set(resourceIds.filter(Boolean))];
     const [inspectionPolicy,expiryPolicy]=await Promise.all([this.policies.decision('EQUIPMENT','INSPECTION_STATUS'),this.policies.decision('EQUIPMENT','SERVICE_EXPIRY')]);
     if(!unique.length)return{ready:true,blocked:false,reviewRequired:false,issues:[],states:{inspection:inspectionPolicy.state,serviceExpiry:expiryPolicy.state},latest:[]};
-    const latest=await this.db.$queryRaw<EquipmentInspectionRow[]>`SELECT DISTINCT ON ("resourceId") * FROM "EquipmentInspection" WHERE "resourceId"=ANY(${unique}::text[]) ORDER BY "resourceId","inspectedAt" DESC,"createdAt" DESC`;
+    const latest=await tx.$queryRaw<EquipmentInspectionRow[]>`SELECT DISTINCT ON ("resourceId") * FROM "EquipmentInspection" WHERE "resourceId"=ANY(${unique}::text[]) ORDER BY "resourceId","inspectedAt" DESC,"createdAt" DESC`;
     const byResource=new Map<string,EquipmentInspectionRow>(latest.map((row:EquipmentInspectionRow)=>[row.resourceId,row]));const issues:string[]=[];let blocked=false,reviewRequired=false;const now=new Date();
     for(const resourceId of unique){
       const row:EquipmentInspectionRow|undefined=byResource.get(resourceId);const inspectionInvalid=!row||row.status!=='PASS';const expiryInvalid=!row?.serviceExpiresAt||row.serviceExpiresAt<=now;

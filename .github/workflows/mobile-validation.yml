@@ -14,7 +14,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci
+      - run: npm ci --workspace=@hydroland/mobile --include-workspace-root=false
       - run: npm --workspace @hydroland/mobile run test
       - run: npm --workspace @hydroland/mobile run typecheck
       - run: npm --workspace @hydroland/mobile run build

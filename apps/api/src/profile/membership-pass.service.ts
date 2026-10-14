@@ -6,7 +6,7 @@ const PURPOSE = Buffer.from('HYDROLAND_MEMBERSHIP_REFERENCE_V1');
 const NOTICE = 'بطاقة حساب داخلية في HYDROLAND، وليست رخصة غوص أو إثبات لياقة أو اعتمادًا مهنيًا.';
 const MEMBER_ROLES: Readonly<Record<string, string>> = {
   DIVER: 'هواة الغوص', INSTRUCTOR: 'محترفي الغوص', DIVE_CENTER: 'مركز غوص',
-  BOAT_OWNER: 'الوسائط البحرية', ORGANIZATION: 'جهة',
+  BOAT_OWNER: 'الوساطة البحرية', ORGANIZATION: 'جهة',
 };
 
 @Injectable()

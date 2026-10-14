@@ -5,11 +5,15 @@ on:
   pull_request:
     paths:
       - 'apps/web/**'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/web-validation.yml'
   push:
     branches: [main]
     paths:
       - 'apps/web/**'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/web-validation.yml'
 
 jobs:
@@ -21,7 +25,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci --ignore-scripts
+      - run: npm ci --workspace=@hydroland/web --include-workspace-root=true --ignore-scripts
       - name: Static web validation
         run: npm run test -w @hydroland/web
       - name: Production web build
@@ -31,7 +35,8 @@ jobs:
       - name: Browser E2E
         run: npm run test:e2e -w @hydroland/web
       - name: Phase 4 notification focused regression
-        run: npm run test:e2e -w @hydroland/web -- safety-notifications.spec.js
+        # Keep the full-suite test-results directory intact for the visual-review artifact steps below.
+        run: npm run test:e2e -w @hydroland/web -- safety-notifications.spec.js --output=test-results-focused
       - name: Public interface review screenshots
         if: always()
         uses: actions/upload-artifact@v4
