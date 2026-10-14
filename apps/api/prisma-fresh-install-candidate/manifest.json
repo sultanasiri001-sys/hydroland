@@ -1,7 +1,7 @@
 {
   "status": "CANDIDATE_NOT_PRODUCTION_APPROVED",
   "baselineName": "00000000000000_fresh_install_baseline",
-  "schemaSha256": "7d20ae30b555f0b5bef31f0744feaee78855973d663d91d4723621837a314076",
+  "schemaSha256": "f5c642e185f4b3b4927f569e00c4c070bcdac306c5549ceb4572922408a0d70b",
   "baselineSha256": "e560a1f3d29b79ad98c313891368b81e7ec6a7d93f8511b5b36af2d1f1d09b68",
   "components": [
     {
