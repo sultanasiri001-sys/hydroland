@@ -223,6 +223,11 @@ try {
    const approved=await closeService.review(outsider,resubmitted.submissionId,'APPROVED','تمت مطابقة سجل الصندوق');assert.equal(approved.status,'APPROVED');
    const closed=await db.$queryRawUnsafe(`SELECT status::text AS status FROM "FinanceAccountantShift" WHERE id=${literal(closeShift.id)}`);assert.equal(closed[0].status,'CLOSED');
    const closeAudit=await db.$queryRawUnsafe(`SELECT action FROM "AuditEvent" WHERE "resourceId"=${literal(resubmitted.submissionId)} ORDER BY action`);assert.deepEqual(closeAudit.map(x=>x.action),['FINANCE_SHIFT_CLOSE_APPROVED','FINANCE_SHIFT_CLOSE_SUBMITTED']);scenarios++;
+   const businessDate=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Riyadh'}).format(new Date());
+   const dailyReport=await closeService.dailyReport(outsider,unitA,businessDate);assert.equal(dailyReport.shiftCount,1);assert.equal(dailyReport.decision,'READY_FOR_REVIEW');assert.equal(dailyReport.shifts[0].shiftId,closeShift.id);scenarios++;
+   const emptyDailyReport=await closeService.dailyReport(outsider,unitA,'2000-01-01');assert.equal(emptyDailyReport.decision,'NO_APPROVED_SHIFT_CLOSES');assert.equal(emptyDailyReport.shiftCount,0);scenarios++;
+   await rejects(closeService.dailyReport(wrong,unitA,businessDate),'FINANCE_SHIFT_CLOSE_REVIEW_DENIED');
+   await rejects(closeService.dailyReport(outsider,unitA,'2026-02-30'),'FINANCE_CENTER_CLOSE_DATE_INVALID');
    await rejects(service.recordEntry(a,closeShift.id,{type:'EXPENSE',amountMinor:1}),'FINANCE_SHIFT_NOT_OPEN');
    await service.openShift(a,unitA,0);
    const newInvoices=[];

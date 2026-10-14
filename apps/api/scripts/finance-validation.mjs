@@ -5,6 +5,7 @@ const persistence=read('src/finance/finance-persistence.service.ts');
 const controller=read('src/finance/finance.controller.ts');
 const moduleFile=read('src/finance/finance.module.ts');
 const closeService=read('src/finance/finance-shift-close.service.ts');
+const dailyCloseDomain=read('src/finance/finance-center-daily-close.domain.ts');
 const closeMigration=read('prisma/migrations/20261009010000_finance_shift_close_reviews/migration.sql');
 const schema=read('prisma/schema.prisma');
 must(persistence.includes('Finance requester cannot approve or reject their own entry.'),'missing finance self-approval SoD');
@@ -20,4 +21,5 @@ must(moduleFile.includes('FinanceShiftCloseService')&&controller.includes("shift
 must(closeService.includes('FINANCE_SHIFT_CLOSE_REVIEW_SOD_VIOLATION')&&closeService.includes('FINANCE_SHIFT_CLOSE_RECONCILIATION_BLOCKED'),'shift close review safeguards missing');
 must(closeService.includes('FINANCE_SHIFT_CLOSE_SUBMITTED')&&closeService.includes('FINANCE_SHIFT_CLOSE_${decision}'),'shift close audit trail missing');
 must(closeMigration.includes('FinanceShiftCloseSubmission_one_pending_per_shift_key')&&closeMigration.includes('FinanceShiftCloseSubmission_values_check'),'shift close persistence constraints missing');
+must(closeService.includes('async dailyReport')&&controller.includes("daily-close-report")&&dailyCloseDomain.includes('NO_APPROVED_SHIFT_CLOSES'),'center daily close report is not wired or empty dates are ambiguous');
 console.log('Finance completion validation passed');
