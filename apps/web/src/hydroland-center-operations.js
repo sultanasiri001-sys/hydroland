@@ -21,6 +21,11 @@
    form.dataset.busy='true';button.disabled=true;feedback.textContent='جارٍ حفظ الرحلة…';
    try{if(!(await authorize(host,version,session)))return;const id=form.dataset.tripId,response=await auth().authorizedFetch('/center/me/trips'+(id?'/'+encodeURIComponent(id):''),{method:id?'PATCH':'POST',body:JSON.stringify(body)}),data=await response.json().catch(()=>null);if(!current(host,version,session))return;if(!response.ok)throw new Error(data?.message||'تعذر حفظ الرحلة.');document.dispatchEvent(new CustomEvent('hydroland:center-trips-changed'));await open('تم حفظ الرحلة. يمكنك مراجعتها ثم فتح الحجز.')}catch(error){if(current(host,version,session))feedback.textContent=error.message||'تعذر حفظ الرحلة.'}finally{delete form.dataset.busy;button.disabled=false}
  }
+ async function deleteTrip(button){
+   if(button.disabled||!window.confirm('حذف مسودة الرحلة نهائيًا؟ الرحلات المرتبطة بسجلات تشغيلية لا تُحذف.'))return;
+   const article=button.closest('[data-center-trip]'),host=section,version=viewVersion,session=auth()?.getSessionVersion?.(),feedback=article.querySelector('[data-trip-publish-feedback]');button.disabled=true;
+   try{if(!(await authorize(host,version,session)))return;const response=await auth().authorizedFetch('/center/me/trips/'+encodeURIComponent(article.dataset.centerTrip),{method:'DELETE',body:JSON.stringify({expectedUpdatedAt:button.dataset.version})}),data=await response.json().catch(()=>null);if(!current(host,version,session))return;if(!response.ok)throw new Error(data?.message||'تعذر حذف المسودة.');document.dispatchEvent(new CustomEvent('hydroland:center-trips-changed'));await open('تم حذف مسودة الرحلة.')}catch(error){if(current(host,version,session))feedback.textContent=error.message||'تعذر حذف المسودة.'}finally{button.disabled=false}
+ }
  async function publishTrip(button){
    if(button.disabled||!window.confirm('فتح هذه الرحلة للحجز؟ تبقى اشتراطات السلامة والطقس سارية.'))return;
    const article=button.closest('[data-center-trip]'),host=section,version=viewVersion,session=auth()?.getSessionVersion?.(),feedback=article.querySelector('[data-trip-publish-feedback]');button.disabled=true;feedback.textContent='جارٍ فتح الحجز…';
@@ -59,7 +64,7 @@
      if(!current(host,version,session))return;
      if(!response.ok)throw new Error(response.status===403?'لا تملك صلاحية عرض رحلات هذا المركز.':rows?.message||'تعذر تحميل الرحلات');
      if(!Array.isArray(rows))throw new Error('استجابة رحلات المركز غير مكتملة. أعد المحاولة.');
-     list.innerHTML=(notice?`<p role="status">${esc(notice)}</p>`:'')+editor()+(rows.length?rows.map(row=>`<article class="hl-course" data-center-trip="${esc(row.id)}"><div class="hl-course-top"><div><b>${esc(row.title||'رحلة المركز')}</b><small>${esc(date(row.startsAt))} (توقيت الرياض) · ${esc(tripType(row.type))}</small></div><span>${esc(tripStatus(row.status))}</span></div><small>السعة: ${count(row.capacity)} · الحجوزات: ${count(row._count?.bookings)}</small><p>${row.location?.locationName?`الموقع: ${esc(row.location.locationName)} · `:''}${Number.isSafeInteger(row.price?.pricePerSeatMinor)?`سعر المقعد: ${(row.price.pricePerSeatMinor/100).toFixed(2)} ريال`:'السعر غير محدد'}</p><button type="button" data-center-bookings>عرض الحجوزات</button><button type="button" data-center-trip-lifecycle>إجراءات الرحلة</button>${row.status==='DRAFT'&&row.updatedAt?`${editor(row)}<button type="button" data-center-trip-publish data-version="${esc(row.updatedAt)}">فتح الحجز</button><p data-trip-publish-feedback role="status"></p>`:''}</article>`).join(''):'<p>لا توجد رحلات مرتبطة بهذا المركز حاليًا.</p>');
+     list.innerHTML=(notice?`<p role="status">${esc(notice)}</p>`:'')+editor()+(rows.length?rows.map(row=>`<article class="hl-course" data-center-trip="${esc(row.id)}"><div class="hl-course-top"><div><b>${esc(row.title||'رحلة المركز')}</b><small>${esc(date(row.startsAt))} (توقيت الرياض) · ${esc(tripType(row.type))}</small></div><span>${esc(tripStatus(row.status))}</span></div><small>السعة: ${count(row.capacity)} · الحجوزات: ${count(row._count?.bookings)}</small><p>${row.location?.locationName?`الموقع: ${esc(row.location.locationName)} · `:''}${Number.isSafeInteger(row.price?.pricePerSeatMinor)?`سعر المقعد: ${(row.price.pricePerSeatMinor/100).toFixed(2)} ريال`:'السعر غير محدد'}</p><button type="button" data-center-bookings>عرض الحجوزات</button><button type="button" data-center-trip-lifecycle>إجراءات الرحلة</button>${row.status==='DRAFT'&&row.updatedAt?`${editor(row)}<button type="button" data-center-trip-publish data-version="${esc(row.updatedAt)}">فتح الحجز</button><button type="button" data-center-trip-delete data-version="${esc(row.updatedAt)}">حذف المسودة</button><p data-trip-publish-feedback role="status"></p>`:''}</article>`).join(''):'<p>لا توجد رحلات مرتبطة بهذا المركز حاليًا.</p>');
    }catch(error){if(current(host,version,session))list.innerHTML=`<p role="alert">${esc(error instanceof Error?error.message:'تعذر تحميل الرحلات')}</p><button type="button" data-center-operations-retry>إعادة المحاولة</button>`}
    finally{if(current(host,version,session))list.removeAttribute('aria-busy')}
  }
@@ -73,6 +78,7 @@
      const path='/center/me/trips/'+encodeURIComponent(article.dataset.centerTrip);
      window.HydrolandTripLifecycle.mount(box,{isCurrent:()=>current(host,version,session),authorize:()=>authorize(host,version,session),load:()=>auth().authorizedFetch(path+'/lifecycle'),send:body=>auth().authorizedFetch(path+'/actions',{method:'POST',body:JSON.stringify(body)}),onSaved:async()=>{document.dispatchEvent(new CustomEvent('hydroland:center-trips-changed'));await open('تم حفظ إجراء الرحلة وتحديث سجلاتها.')}});return
    }
+   const remove=event.target.closest?.('[data-center-trip-delete]');if(remove){void deleteTrip(remove);return}
    const publish=event.target.closest?.('[data-center-trip-publish]');if(publish){void publishTrip(publish);return}
    if(event.target.closest?.('[data-center-operations-retry]')){void open();return}
    const button=event.target.closest?.('[data-center-bookings]');if(!button||button.disabled)return;
@@ -88,3 +94,4 @@
  for(const name of ['hydroland:auth-changed','hydroland:role-changed','hydroland:profile-data-ready'])document.addEventListener(name,()=>{if(!eligible())clear()});
  window.HydrolandCenterOperations=Object.freeze({open});
 })();
+
