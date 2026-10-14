@@ -8,7 +8,7 @@ import { TrainingAssignmentService } from '../governance/training-assignment.ser
 import { OrganizationMembershipService } from './organization-membership.service';
 import { CenterEquipmentManagementService } from './center-equipment-management.service';
 import { CenterTripManagementService } from './center-trip-management.service';
-import { Body, Controller, Get, Param, Patch, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 type AuthenticatedRequest = { auth: { accountId: string } };
 import { LicenseAttachmentInput, LicenseRecordInput } from './center-license.service';
@@ -79,9 +79,11 @@ export class DiveCenterPortalController {
 
   @Post('me/trips') createTrip(@Req() request:AuthenticatedRequest,@Body() body:Record<string,unknown>){return this.tripManagement.save(request.auth.accountId,body);}
   @Patch('me/trips/:tripId') updateTrip(@Req() request:AuthenticatedRequest,@Param('tripId') tripId:string,@Body() body:Record<string,unknown>){return this.tripManagement.save(request.auth.accountId,body,tripId);}
+  @Delete('me/trips/:tripId') deleteTrip(@Req() request:AuthenticatedRequest,@Param('tripId') tripId:string,@Body() body:Record<string,unknown>){return this.tripManagement.remove(request.auth.accountId,tripId,body);}
   @Post('me/trips/:tripId/publish') publishTrip(@Req() request:AuthenticatedRequest,@Param('tripId') tripId:string,@Body() body:Record<string,unknown>){return this.tripManagement.publish(request.auth.accountId,tripId,body);}
   @Get('me/trips/:tripId/lifecycle') tripLifecyclePreview(@Req() request:AuthenticatedRequest,@Param('tripId') tripId:string){return this.tripLifecycle.preview(request.auth.accountId,tripId);}
   @Post('me/trips/:tripId/actions') tripAction(@Req() request:AuthenticatedRequest,@Param('tripId') tripId:string,@Body() body:Record<string,unknown>){return this.tripLifecycle.apply(request.auth.accountId,tripId,body);}
   @Get('me/trips') trips(@Req() request:AuthenticatedRequest){return this.tripManagement.list(request.auth.accountId);}
   @Get('me/trips/:tripId/bookings') bookings(@Req() request:AuthenticatedRequest,@Param('tripId') tripId:string){return this.portal.bookings(request.auth.accountId,tripId);}
 }
+
