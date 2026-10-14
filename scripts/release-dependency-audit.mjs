@@ -16,6 +16,19 @@ export function validateAuditReport(report,status){
   return counts;
 }
 
+export function summarizeAuditReport(report){
+  return Object.entries(report?.vulnerabilities||{}).map(([name,v])=>({
+    package:name,
+    severity:v?.severity,
+    range:v?.range,
+    fixAvailable:v?.fixAvailable,
+    via:(Array.isArray(v?.via)?v.via:[]).map(item=>typeof item==='string'?{name:item}:{
+      name:item?.name,title:item?.title,severity:item?.severity,range:item?.range,url:item?.url
+    }),
+    nodes:Array.isArray(v?.nodes)?v.nodes:[],
+  }));
+}
+
 export const auditScopes={
   'web-api':['--workspace=@hydroland/api','--workspace=@hydroland/web','--include-workspace-root=true'],
   mobile:['--workspace=@hydroland/mobile','--include-workspace-root=false'],
@@ -31,7 +44,7 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
     fs.writeFileSync(output,result.stdout||'');
     if(result.error)throw result.error;
     const report=JSON.parse(result.stdout);
-    console.log(JSON.stringify({scope,counts:report.metadata?.vulnerabilities,affected:Object.keys(report.vulnerabilities||{})},null,2));
+    console.log(JSON.stringify({scope,counts:report.metadata?.vulnerabilities,affected:summarizeAuditReport(report)},null,2));
     validateAuditReport(report,result.status);
     console.log(`Dependency security passed for ${scope}.`);
   }catch(error){console.error(`Dependency security failed for ${scope}: ${error.message}`);process.exitCode=1;}

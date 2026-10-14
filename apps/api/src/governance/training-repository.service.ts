@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { Prisma, TrainingEnrollmentStatus, TrainingRecordStatus } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { TrainingAssignmentService } from './training-assignment.service';
@@ -48,9 +48,17 @@ export class TrainingRepositoryService {
   assignInstructor(enrollmentId:string,input:Record<string,unknown>,actorId:string){return this.assignments.assignEnrollment(actorId,enrollmentId,input);}
 
   setEnrollmentStatus(enrollmentId: string, status: TrainingEnrollmentStatus) {
-    return this.db.trainingEnrollment.update({
-      where: { id: enrollmentId },
-      data: { status, completedAt: status === TrainingEnrollmentStatus.COMPLETED ? new Date() : undefined },
+    if(!Object.values(TrainingEnrollmentStatus).includes(status))throw new BadRequestException('حالة التسجيل غير صالحة.');
+    return this.db.serializable(async tx=>{
+      const current=await tx.trainingEnrollment.findUniqueOrThrow({where:{id:enrollmentId}});
+      if(current.storeCourseOfferId&&current.status==='CANCELLED'&&status!=='CANCELLED'){
+        const offer=await tx.storeCourseOffer.findFirst({where:{id:current.storeCourseOfferId,status:'ACTIVE',startsAt:{gt:new Date()},organization:{status:'ACTIVE'}}});
+        if(!offer)throw new ConflictException('الدورة غير متاحة لإعادة التسجيل.');
+        const duplicate=await tx.trainingEnrollment.findFirst({where:{storeCourseOfferId:offer.id,studentAccountId:current.studentAccountId,status:{not:'CANCELLED'}}});
+        const seats=await tx.trainingEnrollment.count({where:{storeCourseOfferId:offer.id,status:{not:'CANCELLED'}}});
+        if(duplicate||seats>=offer.capacity)throw new ConflictException('التسجيل مكرر أو اكتملت مقاعد الدورة.');
+      }
+      return tx.trainingEnrollment.update({where:{id:enrollmentId},data:{status,completedAt:status===TrainingEnrollmentStatus.COMPLETED?new Date():undefined}});
     });
   }
 
@@ -128,3 +136,4 @@ export class TrainingRepositoryService {
 
   setSessionStatus(id:string,input:Record<string,unknown>,actorId:string){return this.sessions.legacyStatus(actorId,id,input);}
 }
+

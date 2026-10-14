@@ -1,0 +1,14 @@
+{
+  "name": "braces",
+  "version": "3.0.4",
+  "private": true,
+  "description": "Hydroland-maintained security backport of micromatch/braces 3.0.3",
+  "license": "MIT",
+  "main": "index.js",
+  "engines": {
+    "node": ">=8"
+  },
+  "dependencies": {
+    "fill-range": "^7.1.1"
+  }
+}
