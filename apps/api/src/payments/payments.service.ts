@@ -75,6 +75,7 @@ export class PaymentsService {
         this.assertProviderInvoice(payment,providerInvoice);
       }
     }
+    await this.syncMoyasarPaymentId(payment.id,providerInvoice);
     return{...payment,provider:'MOYASAR',checkoutUrl:providerInvoice.url,providerStatus:providerInvoice.status,policyReview:{required:paymentPolicy.review,issues:paymentPolicy.review?['PAYMENT_REQUIRED']:[],states:{payment:paymentPolicy.state}}};
   }
 
@@ -84,6 +85,7 @@ export class PaymentsService {
     if(!payment.providerReference)return{...payment,provider:'MOYASAR',checkoutReady:false};
     const invoice=await this.moyasar.fetchInvoice(payment.providerReference);
     this.assertProviderInvoice(payment,invoice);
+    await this.syncMoyasarPaymentId(payment.id,invoice);
     const status=this.statusFromInvoice(invoice.status);
     const updated=status===payment.status?payment:await this.db.payment.update({where:{id:payment.id},data:{status}});
     if(status!==payment.status)await this.audit.record({action:'PAYMENT_PROVIDER_RECONCILED',resource:'Payment',resourceId:payment.id,metadata:{accountId,provider:'MOYASAR',providerReference:payment.providerReference,from:payment.status,to:status,providerStatus:invoice.status}});
@@ -103,6 +105,7 @@ export class PaymentsService {
     }
     const providerInvoice=await this.moyasar.fetchInvoice(invoiceId);
     this.assertProviderInvoice(payment,providerInvoice);
+    await this.syncMoyasarPaymentId(payment.id,providerInvoice);
     const next=this.statusFromInvoice(providerInvoice.status);
     return this.db.$transaction(async(tx:Prisma.TransactionClient)=>{
       const repeated=await tx.auditEvent.findFirst({where:{resource:'PaymentProviderWebhook',resourceId:event.id},select:{id:true}});
@@ -147,6 +150,23 @@ export class PaymentsService {
   private assertProviderInvoice(payment:{id:string;bookingId:string;amountMinor:number;currency:string},invoice:MoyasarInvoice){
     if(invoice.amount!==payment.amountMinor||invoice.currency!==payment.currency)throw new ConflictException('Provider invoice does not match local payment.');
     if(invoice.metadata.hydroland_payment_id!==payment.id||invoice.metadata.hydroland_booking_id!==payment.bookingId)throw new ConflictException('Provider invoice metadata does not match local payment.');
+  }
+  private async syncMoyasarPaymentId(paymentId:string,invoice:MoyasarInvoice){
+    const paid=invoice.payments.filter(item=>['paid','captured'].includes(item.status)&&item.amount>0&&item.currency===invoice.currency);
+    if(paid.length!==1)return;
+    const providerPaymentId=paid[0].id.trim();
+    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(providerPaymentId))return;
+    try{
+      const updated=await this.db.$executeRaw`UPDATE "Payment" SET "moyasarPaymentId"=${providerPaymentId} WHERE "id"::text=${paymentId} AND ("moyasarPaymentId" IS NULL OR "moyasarPaymentId"=${providerPaymentId})`;
+      if(updated===0){
+        const current=await this.db.$queryRaw<Array<{moyasarPaymentId:string|null}>>`SELECT "moyasarPaymentId" FROM "Payment" WHERE "id"::text=${paymentId}`;
+        if(current[0]?.moyasarPaymentId&&current[0].moyasarPaymentId!==providerPaymentId)throw new ConflictException('Provider payment reference changed during reconciliation.');
+      }
+    }catch(error){
+      if(error instanceof ConflictException)throw error;
+      if(error&&typeof error==='object'&&'code'in error&&['P2002','23505'].includes(String((error as {code?:unknown}).code)))throw new ConflictException('Provider payment reference is already linked to another payment.');
+      throw error;
+    }
   }
   private statusFromInvoice(status:string):PaymentStatus{switch(status){case'paid':return PaymentStatus.CAPTURED;case'refunded':return PaymentStatus.REFUNDED;case'failed':return PaymentStatus.FAILED;case'canceled':case'voided':case'expired':return PaymentStatus.CANCELLED;case'on_hold':case'initiated':default:return PaymentStatus.PENDING}}
 }
