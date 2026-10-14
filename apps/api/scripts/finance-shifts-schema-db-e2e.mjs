@@ -11,6 +11,7 @@ import {FinanceAccessService} from '../dist/finance/finance-access.service.js';
 import {FinanceReceivablesService} from '../dist/finance/finance-receivables.service.js';
 import {FinanceShiftsService} from '../dist/finance/finance-shifts.service.js';
 import {FinanceShiftCloseService} from '../dist/finance/finance-shift-close.service.js';
+import {FinancePeriodCloseService} from '../dist/finance/finance-period-close.service.js';
 const base=new URL(process.env.DATABASE_URL??'');
 assert.equal(process.env.NODE_ENV,'test');
 assert.ok(['localhost','127.0.0.1','::1','[::1]'].includes(base.hostname),'Finance fixture requires a loopback database');
@@ -19,6 +20,7 @@ const original=await readFile(new URL('../prisma/migrations/20260917003500_finan
 const receivableSql=await readFile(new URL('../prisma/migrations/20260923143000_finance_receivables_completion/migration.sql',import.meta.url),'utf8');
 const receivableShiftSql=await readFile(new URL('../prisma/migrations/20261009003000_receivable_collector_shift_ledger/migration.sql',import.meta.url),'utf8');
 const closeSql=await readFile(new URL('../prisma/migrations/20261009010000_finance_shift_close_reviews/migration.sql',import.meta.url),'utf8');
+const periodCloseSql=await readFile(new URL('../prisma/migrations/20261009020000_finance_period_close_workflow/migration.sql',import.meta.url),'utf8');
 let scenarios=0;
 try {
  for(const coreType of ['text','uuid'])for(const shiftType of ['text','uuid']) {
@@ -48,6 +50,7 @@ try {
    let collectionShiftMigration=receivableShiftSql.replaceAll('"shiftId" UUID','"shiftId" '+shiftType).replaceAll('"collectedByAccountId" UUID','"collectedByAccountId" '+coreType);
    for(const statement of collectionShiftMigration.split(/;\s*(?=(?:DO\s+\$\$|CREATE\s+(?:TABLE|UNIQUE\s+INDEX|INDEX)|ALTER\s+TABLE))/i).map(s=>s.trim()).filter(Boolean))await run(statement);
    for(const statement of closeSql.split(/;\s*(?=(?:DO\s+\$\$|CREATE\s+(?:TABLE|UNIQUE\s+INDEX|INDEX)|ALTER\s+TABLE))/i).map(s=>s.trim()).filter(Boolean))await run(statement);
+   for(const statement of periodCloseSql.split(/;\s*(?=(?:DO\s+\$\$|CREATE\s+(?:TABLE|UNIQUE\s+INDEX|INDEX)|ALTER\s+TABLE))/i).map(s=>s.trim()).filter(Boolean))await run(statement);
    const id=()=>coreType==='text'?'text_'+randomUUID():randomUUID();
    const orgA=id(),orgB=id(),unitA=id(),unitB=id(),extra=id(),positionA=id(),positionB=id(),wrongPosition=id();
    const a=id(),b=id(),outsider=id(),wrong=id(),mismatch=id(),employmentB=id();
@@ -65,9 +68,11 @@ try {
    for(const account of [a,b,outsider,wrong,mismatch]){await run(`INSERT INTO "Person" VALUES (${literal(account)},'Fixture',${literal(account)})`);await run(`UPDATE "Account" SET "personId"=${literal(account)} WHERE id=${literal(account)}`);}
    await run(`CREATE TABLE "RoleAssignment" (id ${coreType} PRIMARY KEY,"accountId" ${coreType} REFERENCES "Account"(id),role text,status text,scope jsonb)`);
    await run(`CREATE TABLE "AuditEvent" (id ${coreType} PRIMARY KEY,"actorId" ${coreType} REFERENCES "Person"(id),action text NOT NULL,resource text NOT NULL,"resourceId" text,"requestId" text,"ipAddress" text,metadata jsonb,"occurredAt" timestamp NOT NULL DEFAULT NOW())`);
+   await run(`CREATE TABLE "FinanceEntry" (id ${coreType} PRIMARY KEY,"organizationId" ${coreType} NOT NULL,"status" text NOT NULL,"referenceType" text NOT NULL,"referenceId" text NOT NULL)`);
    const managerPosition=id(),managerEmployment=id(),makerManagerEmployment=id();await run(`INSERT INTO "Position" VALUES (${literal(managerPosition)},${literal(unitA)},'CENTER_MANAGER',TRUE)`);
    await run(`INSERT INTO "Employment" VALUES (${literal(managerEmployment)},${literal(outsider)},${literal(orgA)},${literal(unitA)},${literal(managerPosition)},'ACTIVE'),(${literal(makerManagerEmployment)},${literal(a)},${literal(orgA)},${literal(unitA)},${literal(managerPosition)},'ACTIVE')`);
-   const access=new FinanceAccessService(db),service=new FinanceShiftsService(db,access),workspace=new FinanceWorkspaceService(db,access);const closeService=new FinanceShiftCloseService(db,access);
+   const hq=id(),financePosition=id(),financeEmployment=id(),financePosition2=id(),financeEmployment2=id(),financePosition3=id(),financeEmployment3=id();await run(`INSERT INTO "OrgUnit" (id,"organizationId",type,active) VALUES (${literal(hq)},${literal(orgA)},'HQ',TRUE)`);await run(`INSERT INTO "Position" VALUES (${literal(financePosition)},${literal(hq)},'CENTRAL_FINANCE',TRUE),(${literal(financePosition2)},${literal(hq)},'FINANCE_MANAGER',TRUE),(${literal(financePosition3)},${literal(hq)},'EXECUTIVE',TRUE)`);await run(`INSERT INTO "Employment" VALUES (${literal(financeEmployment)},${literal(outsider)},${literal(orgA)},${literal(hq)},${literal(financePosition)},'ACTIVE'),(${literal(financeEmployment2)},${literal(b)},${literal(orgA)},${literal(hq)},${literal(financePosition2)},'ACTIVE'),(${literal(financeEmployment3)},${literal(a)},${literal(orgA)},${literal(hq)},${literal(financePosition3)},'ACTIVE')`);
+   const access=new FinanceAccessService(db),service=new FinanceShiftsService(db,access),workspace=new FinanceWorkspaceService(db,access);const closeService=new FinanceShiftCloseService(db,access),periodCloseService=new FinancePeriodCloseService(db,access);
    const rejects=async(p,code)=>{await assert.rejects(p,e=>String(e.message).includes(code));scenarios++;};
    assert.deepEqual((await workspace.centers(a)).map(x=>x.id),[unitA]);assert.deepEqual(await workspace.centers(wrong),[]);assert.deepEqual(await workspace.centers(mismatch),[]);scenarios+=3;
    await rejects(workspace.workspace(outsider,unitA),'FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');
@@ -208,6 +213,15 @@ try {
    const final=await ar.collect(a,receivable.receivableId,{paymentId:pay60,amountMinor:60,receiptNumber:'AR-60',installmentId:installments[1].id});assert.equal(final.outstandingMinor,0);assert.equal(final.status,'PAID');assert.equal((await ar.branchAr(a,unitA)).length,0);scenarios++;
    detail=await arView.detail(a,unitA,receivable.receivableId);assert.equal(detail.collectable,false);assert.equal(detail.collections.length,2);assert.equal((await arView.list(a,unitA)).total,0);assert.equal((await arView.list(a,unitA,'1','all')).total,1);scenarios++;
    const postedShift=await workspace.workspace(a,unitA);assert.equal(postedShift.totals.revenueMinor,100);assert.ok(postedShift.entries.some(e=>e.type==='REVENUE'&&e.paymentId===pay60&&e.referenceType==='RECEIVABLE_COLLECTION'));scenarios++;
+   const periodPreview=await periodCloseService.preview(a,unitA,'MONTH','2000-01');assert.equal(periodPreview.state,'READY');assert.equal(periodPreview.timeZone,'Asia/Riyadh');scenarios++;
+   await rejects(periodCloseService.preview(a,unitA,'MONTH','2000-13'),'FINANCE_PERIOD_KEY_INVALID');
+   const periodRequest=await periodCloseService.submit(a,unitA,'MONTH','2000-01');assert.equal(periodRequest.status,'SUBMITTED');assert.equal(periodRequest.requiredApprovals,2);scenarios++;
+   await rejects(periodCloseService.decide(a,periodRequest.submissionId,'APPROVED'),'FINANCE_PERIOD_REVIEW_SOD_VIOLATION');
+   const firstApproval=await periodCloseService.decide(outsider,periodRequest.submissionId,'APPROVED','تمت مراجعة مستندات الفترة');assert.equal(firstApproval.approvalCount,1);assert.equal(firstApproval.status,'SUBMITTED');scenarios++;
+   const periodPending=await periodCloseService.pending(b,unitA);assert.equal(periodPending.length,1);assert.equal(periodPending[0].approvals.length,1);scenarios++;
+   await rejects(periodCloseService.decide(outsider,periodRequest.submissionId,'APPROVED'),'FINANCE_PERIOD_REVIEW_SOD_VIOLATION');
+   const secondApproval=await periodCloseService.decide(b,periodRequest.submissionId,'APPROVED','اعتماد مستقل ثانٍ');assert.equal(secondApproval.status,'CLOSED');assert.equal(secondApproval.approvalCount,2);scenarios++;
+   await rejects(periodCloseService.submit(a,unitA,'MONTH','2000-01'),'FINANCE_PERIOD_ALREADY_CLOSED');
    const closeShift=activeA[0];
    await rejects(closeService.submit(a,unitA,closeShift.id,0),'FINANCE_SHIFT_CLOSE_VARIANCE_REASON_REQUIRED');
    const actualCloseCash=postedShift.totals.expectedCashMinor+5;

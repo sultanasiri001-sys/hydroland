@@ -14,11 +14,12 @@ import { FinanceAccessService } from './finance-access.service';
 import { FinanceShiftsService } from './finance-shifts.service';
 import { FinanceReceivablesService } from './finance-receivables.service';
 import { FinanceShiftCloseService } from './finance-shift-close.service';
+import { FinancePeriodCloseService } from './finance-period-close.service';
 
 @Module({
   imports: [AuthModule, AdminModule, PaymentsModule],
   controllers: [FinanceController],
-  providers: [FinanceReceivablesWorkspaceService, FinanceWorkspaceService, FinanceFoundationService, FinanceWorkflowService, FinanceOperationsService, FinanceGovernanceService, FinancePersistenceService, FinanceAccessService, FinanceShiftsService, FinanceReceivablesService, FinanceShiftCloseService],
-  exports: [FinanceFoundationService, FinanceWorkflowService, FinanceOperationsService, FinanceGovernanceService, FinancePersistenceService, FinanceAccessService, FinanceShiftsService, FinanceReceivablesService, FinanceShiftCloseService],
+  providers: [FinanceReceivablesWorkspaceService, FinanceWorkspaceService, FinanceFoundationService, FinanceWorkflowService, FinanceOperationsService, FinanceGovernanceService, FinancePersistenceService, FinanceAccessService, FinanceShiftsService, FinanceReceivablesService, FinanceShiftCloseService, FinancePeriodCloseService],
+  exports: [FinanceFoundationService, FinanceWorkflowService, FinanceOperationsService, FinanceGovernanceService, FinancePersistenceService, FinanceAccessService, FinanceShiftsService, FinanceReceivablesService, FinanceShiftCloseService, FinancePeriodCloseService],
 })
 export class FinanceModule {}
