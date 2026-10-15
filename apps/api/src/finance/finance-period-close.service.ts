@@ -24,7 +24,7 @@ export class FinancePeriodCloseService {
 
   async reviewCenters(accountId:string){
     return this.db.$queryRaw<Array<{id:string;name:string;organizationName:string}>>`SELECT DISTINCT c."id",c."nameAr" AS "name",o."displayName" AS "organizationName" FROM "OrgUnit" c JOIN "Organization" o ON o."id"=c."organizationId" JOIN "Account" a ON a."id"=${financeKey('Account','id',accountId)} AND a."status"='ACTIVE' WHERE c."type"='CENTER' AND c."active"=TRUE AND (
-      EXISTS(SELECT 1 FROM "Employment" e JOIN "Position" p ON p."id"=e."positionId" AND p."active"=TRUE JOIN "OrgUnit" u ON u."id"=e."orgUnitId" WHERE e."accountId"=a."id" AND e."organizationId"=c."organizationId" AND e."status"='ACTIVE' AND p."code" IN ('CENTRAL_FINANCE','FINANCE_MANAGER','EXECUTIVE') AND u."type"='HQ') OR
+      EXISTS(SELECT 1 FROM "Employment" e JOIN "Position" p ON p."id"=e."positionId" AND p."active"=TRUE AND p."orgUnitId"=e."orgUnitId" JOIN "OrgUnit" u ON u."id"=e."orgUnitId" AND u."active"=TRUE AND u."organizationId"=e."organizationId" WHERE e."accountId"=a."id" AND e."organizationId"=c."organizationId" AND e."status"='ACTIVE' AND p."code" IN ('CENTRAL_FINANCE','FINANCE_MANAGER','EXECUTIVE') AND u."type"='HQ') OR
       EXISTS(SELECT 1 FROM "RoleAssignment" ra WHERE ra."accountId"=a."id" AND ra."role"='EXECUTIVE_APPROVER' AND ra."status"='ACTIVE' AND (ra."scope" IS NULL OR ra."scope"->>'organizationId'=c."organizationId"::text))) ORDER BY o."displayName",c."nameAr",c."id"`;
   }
 
@@ -106,8 +106,8 @@ export class FinancePeriodCloseService {
 
   private async authorizeCenterReviewer(tx:Prisma.TransactionClient,accountId:string,centerId:string){
     const rows=await tx.$queryRaw<Array<{centerOrgUnitId:string;organizationId:string}>>`SELECT c."id" AS "centerOrgUnitId",c."organizationId" FROM "OrgUnit" c JOIN "Account" a ON a."id"=${financeKey('Account','id',accountId)} AND a."status"='ACTIVE' WHERE c."id"=${financeKey('OrgUnit','id',centerId)} AND c."type"='CENTER' AND c."active"=TRUE AND (
-      EXISTS(SELECT 1 FROM "Employment" e JOIN "Position" p ON p."id"=e."positionId" AND p."active"=TRUE JOIN "OrgUnit" u ON u."id"=e."orgUnitId" WHERE e."accountId"=a."id" AND e."organizationId"=c."organizationId" AND e."status"='ACTIVE' AND p."code"='CENTER_MANAGER' AND u."id"=c."id") OR
-      EXISTS(SELECT 1 FROM "Employment" e JOIN "Position" p ON p."id"=e."positionId" AND p."active"=TRUE JOIN "OrgUnit" u ON u."id"=e."orgUnitId" WHERE e."accountId"=a."id" AND e."organizationId"=c."organizationId" AND e."status"='ACTIVE' AND p."code" IN ('CENTRAL_FINANCE','FINANCE_MANAGER','EXECUTIVE') AND u."type"='HQ') OR
+      EXISTS(SELECT 1 FROM "Employment" e JOIN "Position" p ON p."id"=e."positionId" AND p."active"=TRUE AND p."orgUnitId"=e."orgUnitId" JOIN "OrgUnit" u ON u."id"=e."orgUnitId" AND u."active"=TRUE AND u."organizationId"=e."organizationId" WHERE e."accountId"=a."id" AND e."organizationId"=c."organizationId" AND e."status"='ACTIVE' AND p."code"='CENTER_MANAGER' AND u."id"=c."id") OR
+      EXISTS(SELECT 1 FROM "Employment" e JOIN "Position" p ON p."id"=e."positionId" AND p."active"=TRUE AND p."orgUnitId"=e."orgUnitId" JOIN "OrgUnit" u ON u."id"=e."orgUnitId" AND u."active"=TRUE AND u."organizationId"=e."organizationId" WHERE e."accountId"=a."id" AND e."organizationId"=c."organizationId" AND e."status"='ACTIVE' AND p."code" IN ('CENTRAL_FINANCE','FINANCE_MANAGER','EXECUTIVE') AND u."type"='HQ') OR
       EXISTS(SELECT 1 FROM "RoleAssignment" ra WHERE ra."accountId"=a."id" AND ra."role"='EXECUTIVE_APPROVER' AND ra."status"='ACTIVE' AND (ra."scope" IS NULL OR ra."scope"->>'organizationId'=c."organizationId"::text))) FOR SHARE OF a,c`;
     if(!rows[0])throw new Error('FINANCE_PERIOD_CLOSE_REVIEW_DENIED');
     return rows[0];
@@ -115,7 +115,7 @@ export class FinancePeriodCloseService {
 
   private async authorizePeriodApprover(tx:Prisma.TransactionClient,accountId:string,organizationId:string):Promise<ReviewerRole|null>{
     const rows=await tx.$queryRaw<Array<{reviewerRole:ReviewerRole}>>`SELECT role."reviewerRole" FROM (
-      SELECT p."code" AS "reviewerRole" FROM "Employment" e JOIN "Account" a ON a."id"=e."accountId" AND a."status"='ACTIVE' JOIN "Position" p ON p."id"=e."positionId" AND p."active"=TRUE JOIN "OrgUnit" u ON u."id"=e."orgUnitId" AND u."type"='HQ' AND u."organizationId"=e."organizationId" WHERE e."accountId"=${financeKey('Account','id',accountId)} AND e."organizationId"=${financeKey('Organization','id',organizationId)} AND e."status"='ACTIVE' AND p."code" IN ('CENTRAL_FINANCE','FINANCE_MANAGER','EXECUTIVE')
+      SELECT p."code" AS "reviewerRole" FROM "Employment" e JOIN "Account" a ON a."id"=e."accountId" AND a."status"='ACTIVE' JOIN "Position" p ON p."id"=e."positionId" AND p."active"=TRUE AND p."orgUnitId"=e."orgUnitId" JOIN "OrgUnit" u ON u."id"=e."orgUnitId" AND u."active"=TRUE AND u."organizationId"=e."organizationId" AND u."type"='HQ' WHERE e."accountId"=${financeKey('Account','id',accountId)} AND e."organizationId"=${financeKey('Organization','id',organizationId)} AND e."status"='ACTIVE' AND p."code" IN ('CENTRAL_FINANCE','FINANCE_MANAGER','EXECUTIVE')
       UNION ALL SELECT 'EXECUTIVE' AS "reviewerRole" FROM "RoleAssignment" ra JOIN "Account" a ON a."id"=ra."accountId" AND a."status"='ACTIVE' WHERE ra."accountId"=${financeKey('Account','id',accountId)} AND ra."role"='EXECUTIVE_APPROVER' AND ra."status"='ACTIVE' AND (ra."scope" IS NULL OR ra."scope"->>'organizationId'=${organizationId})
     ) role LIMIT 1`;
     return rows[0]?.reviewerRole??null;

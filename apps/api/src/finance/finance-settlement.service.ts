@@ -151,8 +151,8 @@ export class FinanceSettlementService {
     const rows=await client.$queryRaw<Array<{allowed:boolean}>>`SELECT EXISTS(
       SELECT 1 FROM "OrgUnit" c JOIN "Account" a ON a."id"=${financeKey('Account','id',accountId)} AND a."status"='ACTIVE'
       WHERE c."id"=${financeKey('OrgUnit','id',centerId)} AND c."type"='CENTER' AND c."active"=TRUE AND (
-        EXISTS(SELECT 1 FROM "Employment" e JOIN "Position" p ON p."id"=e."positionId" AND p."active"=TRUE WHERE e."accountId"=a."id" AND e."organizationId"=c."organizationId" AND e."orgUnitId"=c."id" AND e."status"='ACTIVE' AND p."code"='CENTER_MANAGER') OR
-        EXISTS(SELECT 1 FROM "Employment" e JOIN "Position" p ON p."id"=e."positionId" AND p."active"=TRUE JOIN "OrgUnit" u ON u."id"=e."orgUnitId" WHERE e."accountId"=a."id" AND e."organizationId"=c."organizationId" AND u."type"='HQ' AND e."status"='ACTIVE' AND p."code" IN ('CENTRAL_FINANCE','FINANCE_MANAGER','EXECUTIVE')) OR
+        EXISTS(SELECT 1 FROM "Employment" e JOIN "Position" p ON p."id"=e."positionId" AND p."active"=TRUE AND p."orgUnitId"=e."orgUnitId" WHERE e."accountId"=a."id" AND e."organizationId"=c."organizationId" AND e."orgUnitId"=c."id" AND e."status"='ACTIVE' AND p."code"='CENTER_MANAGER') OR
+        EXISTS(SELECT 1 FROM "Employment" e JOIN "Position" p ON p."id"=e."positionId" AND p."active"=TRUE AND p."orgUnitId"=e."orgUnitId" JOIN "OrgUnit" u ON u."id"=e."orgUnitId" AND u."active"=TRUE AND u."organizationId"=e."organizationId" WHERE e."accountId"=a."id" AND e."organizationId"=c."organizationId" AND u."type"='HQ' AND e."status"='ACTIVE' AND p."code" IN ('CENTRAL_FINANCE','FINANCE_MANAGER','EXECUTIVE')) OR
         EXISTS(SELECT 1 FROM "RoleAssignment" ra WHERE ra."accountId"=a."id" AND ra."role"='EXECUTIVE_APPROVER' AND ra."status"='ACTIVE' AND (ra."scope" IS NULL OR ra."scope"->>'organizationId'=c."organizationId"::text))
       )
     ) AS "allowed"`;
