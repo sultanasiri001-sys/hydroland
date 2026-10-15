@@ -12,6 +12,7 @@ export async function checkFinanceReviewerScopes(db, {coreType, orgA, orgB, unit
     ? ['CENTRAL_FINANCE', 'FINANCE_MANAGER', 'EXECUTIVE']
     : ['CENTER_MANAGER', 'CENTRAL_FINANCE', 'FINANCE_MANAGER', 'EXECUTIVE'];
   let scenarios = 0;
+  const reads = operations.reads ?? [operations.read];
   // The complete decision, submission and audit rows must remain unchanged.
   const snapshot = async () => {
     const result = {};
@@ -34,14 +35,14 @@ export async function checkFinanceReviewerScopes(db, {coreType, orgA, orgB, unit
         await run(`INSERT INTO "Employment" VALUES (${literal(employment)},${literal(account)},${literal(orgA)},${literal(unit)},${literal(position)},'ACTIVE')`);
         const allowed = async () => {
           if (operations.discover) assert.ok((await operations.discover(account)).some(center => center.id === unitA));
-          await operations.read(account);
+          for (const read of reads) await read(account);
           scenarios++;
         };
         const denied = async label => {
           const before = await snapshot();
           if (operations.discover) assert.ok(!(await operations.discover(account)).some(center => center.id === unitA), label + ': discovery');
           const expected = error => String(error.message).includes(operations.denial);
-          await assert.rejects(operations.read(account), expected, label + ': read');
+          for (const read of reads) await assert.rejects(read(account), expected, label + ': read');
           await assert.rejects(operations.decide(account), error => String(error.message).includes(operations.decisionDenial ?? operations.denial), label + ': decision');
           assert.deepEqual(await snapshot(), before, label + ': no decision or audit write');
           scenarios++;
