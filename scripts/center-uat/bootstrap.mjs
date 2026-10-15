@@ -4,6 +4,7 @@ import path from 'node:path';
 import {assertUatEnvironment} from './guard.mjs';
 import {prepareSchema, root} from './schema.mjs';
 import {seedUat} from './seed.mjs';
+import {seedFinanceFixtures} from './finance-fixtures.mjs';
 
 const {database} = assertUatEnvironment();
 const {file, schemaHash} = await prepareSchema();
@@ -26,5 +27,6 @@ try {
     }
   }, {timeout:120000});
   await seedUat(db, process.env.HYDROLAND_UAT_PASSWORD);
+  await seedFinanceFixtures(db);
   console.log(JSON.stringify({event:'center_uat_ready',synthetic:true,schemaHash}));
 } finally { await db.$disconnect(); }

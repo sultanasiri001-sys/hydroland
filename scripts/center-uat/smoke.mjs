@@ -3,6 +3,7 @@ import {randomBytes} from 'node:crypto';
 import {spawn, spawnSync} from 'node:child_process';
 import {PrismaClient} from '@prisma/client';
 import {actors, passwordFor} from './seed.mjs';
+import {prepareReceivableChecks} from './receivables-smoke.mjs';
 
 // Destructive acceptance actions are confined to a freshly created CI database.
 assert.equal(process.env.GITHUB_ACTIONS, 'true', 'Smoke is CI-only; never run against deployed acceptance data');
@@ -29,7 +30,7 @@ try {
   result=boot();
   ok(result.status===0, 'fresh bootstrap: '+result.stderr);
   const ids=await db.account.findMany({select:{id:true,email:true,passwordHash:true},orderBy:{email:'asc'}});
-  ok(ids.length===7,'exactly seven synthetic accounts');
+  ok(ids.length===9&&ids.filter(x=>x.passwordHash.includes(':')).length===7,'seven sign-in accounts and two customers without passwords');
   result=boot();
   ok(result.status===0,'repeat bootstrap');
   assert.deepEqual(await db.account.findMany({select:{id:true,email:true,passwordHash:true},orderBy:{email:'asc'}}),ids); checks++;
@@ -49,23 +50,27 @@ try {
   await call(null,'/finance/mine/centers',undefined,[401]);
   for(const actor of actors){const login=await call(null,'/auth/login',{email:actor+'@center-uat.hydroland.test',password:passwordFor(actor,secret)});ok(typeof login.accessToken==='string','real login '+actor);tokens[actor]=login.accessToken;}
   ok(await db.session.count()===7,'real stored sessions, no CI auth bypass');
+  await call(null,'/auth/login',{email:'customer-a@fixtures.hydroland.test',password:'UAT_CUSTOMER_LOGIN_DISABLED'},[401]);
   await call('manager','/center/me/overview');
   await call('admin','/center/me/overview',undefined,[403]);
   const centers=await call('accountant1','/finance/mine/centers');
   ok(centers.length===1&&centers[0].id===center.id,'accountant center scope');
   await call('outsider',`/finance/centers/${center.id}/workspace`,undefined,[403]);
   await call('admin','/finance/shifts/open',{centerOrgUnitId:center.id,openingBalanceMinor:0},[403]);
+  const receivables=await prepareReceivableChecks({db,call,ok,center,account});
   const first=await call('accountant1','/finance/shifts/open',{centerOrgUnitId:center.id,openingBalanceMinor:10000});
   await call('accountant1','/finance/shifts/open',{centerOrgUnitId:center.id,openingBalanceMinor:0},[409]);
   const second=await call('accountant2','/finance/shifts/open',{centerOrgUnitId:center.id,openingBalanceMinor:0});
   await call('accountant2',`/finance/shifts/${first.id}/entries`,{type:'EXPENSE',amountMinor:100},[403]);
   await call('accountant1',`/finance/shifts/${first.id}/entries`,{type:'EXPENSE',amountMinor:1000,description:'مصروف وهمي لقبول النظام'});
-  const handover=await call('accountant1',`/finance/shifts/${first.id}/handover`,{toAccountantId:account.accountant2,actualCashMinor:9000});
+  await receivables.collectFirst(first.id);
+  const handover=await call('accountant1',`/finance/shifts/${first.id}/handover`,{toAccountantId:account.accountant2,actualCashMinor:49000});
   await call('accountant1',`/finance/shifts/handovers/${handover.id}/accept`,{},[403]);
   const accepted=await call('accountant2',`/finance/shifts/handovers/${handover.id}/accept`,{});
-  ok(accepted.openingBalanceMinor===9000,'handover amount preserved');
+  ok(accepted.openingBalanceMinor===49000,'handover includes collected amount');
   await call('accountant2',`/finance/shifts/handovers/${handover.id}/accept`,{},[409]);
-  const close=await call('accountant2',`/finance/centers/${center.id}/shifts/${second.id}/close`,{actualCashMinor:9000});
+  await receivables.collectSecond(second.id);
+  const close=await call('accountant2',`/finance/centers/${center.id}/shifts/${second.id}/close`,{actualCashMinor:109000});
   await call('accountant2',`/finance/shift-close-reviews/${close.submissionId}/decision`,{decision:'APPROVED'},[403]);
   const reviewed=await call('manager',`/finance/shift-close-reviews/${close.submissionId}/decision`,{decision:'APPROVED'});
   ok(reviewed.status==='APPROVED','independent close review');
@@ -77,6 +82,7 @@ try {
   ok(approval2.status==='CLOSED'&&approval2.approvalCount===2,'two independent approvals');
   result=boot();ok(result.status===0,'restart after transactions');
   ok(await db.financeAccountantShift.count()===2,'restart preserves finance history');
+  await receivables.verifyRestart();
   console.log(JSON.stringify({suite:'center-uat-real-auth',checks,synthetic:true,productionWrites:0,externalProviderCalls:0}));
 } finally {
   child?.kill('SIGTERM');
