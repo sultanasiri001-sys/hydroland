@@ -1,3 +1,4 @@
+import {checkFinanceReviewerScopes} from './finance-reviewer-scope-checks.mjs';
 import {checkReceivablesWorkspaceHttp} from './finance-receivables-workspace-http-checks.mjs';
 import {FinanceReceivablesWorkspaceService} from '../dist/finance/finance-receivables-workspace.service.js';
 import {FinanceWorkspaceService} from '../dist/finance/finance-workspace.service.js';
@@ -111,6 +112,7 @@ try {
    const synchronized=await settlementService.syncPaymentReferences(a,unitA);assert.deepEqual(synchronized,{syncedCount:1,failedCount:0,remainingCount:0,batchSize:10});scenarios++;
    const imported=await settlementService.import(a,unitA,settlementId);assert.equal(imported.matchedLineCount,1);assert.equal(imported.lines.length,1);assert.equal(imported.lines[0].localPaymentId,payments[0]);assert.equal(imported.mismatchedLineCount,0);scenarios++;
    scenarios+=await checkSettlementImportRaces(db,access,settlementProvider,paymentProvider,{accountId:a,centerId:unitA,settlementId,importId:imported.id});
+   scenarios+=await checkFinanceReviewerScopes(db,{coreType,orgA,orgB,unitA,unitB},{kind:'settlement',read:account=>settlementService.list(account,unitA),decide:account=>settlementService.review(account,imported.id,'APPROVED'),denial:'FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED',decisionDenial:'FINANCE_SETTLEMENT_REVIEW_DENIED'});
    await rejects(settlementService.review(a,imported.id,'APPROVED'),'FINANCE_SETTLEMENT_REVIEW_SOD_VIOLATION');
    const settlementFirstApproval=await settlementService.review(outsider,imported.id,'APPROVED');assert.equal(settlementFirstApproval.status,'SUBMITTED');assert.equal(settlementFirstApproval.approvalCount,1);scenarios++;
    const settlementSecondApproval=await settlementService.review(b,imported.id,'APPROVED');assert.equal(settlementSecondApproval.status,'APPROVED');assert.equal(settlementSecondApproval.approvalCount,2);scenarios++;
@@ -235,6 +237,7 @@ try {
    const periodPreview=await periodCloseService.preview(a,unitA,'MONTH','2000-01');assert.equal(periodPreview.state,'READY');assert.equal(periodPreview.timeZone,'Asia/Riyadh');scenarios++;
    await rejects(periodCloseService.preview(a,unitA,'MONTH','2000-13'),'FINANCE_PERIOD_KEY_INVALID');
    const periodRequest=await periodCloseService.submit(a,unitA,'MONTH','2000-01');assert.equal(periodRequest.status,'SUBMITTED');assert.equal(periodRequest.requiredApprovals,2);scenarios++;
+   scenarios+=await checkFinanceReviewerScopes(db,{coreType,orgA,orgB,unitA,unitB},{kind:'period',discover:account=>periodCloseService.reviewCenters(account),read:account=>periodCloseService.pending(account,unitA),decide:account=>periodCloseService.decide(account,periodRequest.submissionId,'APPROVED'),denial:'FINANCE_PERIOD_CLOSE_REVIEW_DENIED'});
    await rejects(periodCloseService.decide(a,periodRequest.submissionId,'APPROVED'),'FINANCE_PERIOD_REVIEW_SOD_VIOLATION');
    const firstApproval=await periodCloseService.decide(outsider,periodRequest.submissionId,'APPROVED','تمت مراجعة مستندات الفترة');assert.equal(firstApproval.approvalCount,1);assert.equal(firstApproval.status,'SUBMITTED');scenarios++;
    const periodPending=await periodCloseService.pending(b,unitA);assert.equal(periodPending.length,1);assert.equal(periodPending[0].approvals.length,1);scenarios++;
@@ -247,6 +250,7 @@ try {
    const closePreview=await closeService.preview(a,unitA,closeShift.id,actualCloseCash,'فرق جرد موثق في الصندوق');assert.equal(closePreview.varianceMinor,5);assert.equal(closePreview.decision,'VARIANCE_REVIEW_REQUIRED');scenarios++;
    const closeSubmission=await closeService.submit(a,unitA,closeShift.id,actualCloseCash,'فرق جرد موثق في الصندوق');assert.equal(closeSubmission.status,'SUBMITTED');assert.equal(closeSubmission.revision,1);scenarios++;
    await rejects(service.recordEntry(a,closeShift.id,{type:'EXPENSE',amountMinor:1}),'FINANCE_SHIFT_CLOSE_ALREADY_SUBMITTED');
+   scenarios+=await checkFinanceReviewerScopes(db,{coreType,orgA,orgB,unitA,unitB},{kind:'shift',discover:account=>closeService.reviewCenters(account),read:async account=>{await closeService.pending(account,unitA);await closeService.dailyReport(account,unitA,'2000-01-01')},decide:account=>closeService.review(account,closeSubmission.submissionId,'APPROVED'),denial:'FINANCE_SHIFT_CLOSE_REVIEW_DENIED'});
    await rejects(closeService.review(a,closeSubmission.submissionId,'REJECTED','سبب رفض موثق للمراجعة'),'FINANCE_SHIFT_CLOSE_REVIEW_SOD_VIOLATION');
    await rejects(closeService.review(outsider,closeSubmission.submissionId,'REJECTED'),'FINANCE_SHIFT_CLOSE_REJECTION_REASON_REQUIRED');
    const reviewList=await closeService.pending(outsider,unitA);assert.equal(reviewList.length,1);assert.equal(reviewList[0].id,closeSubmission.submissionId);scenarios++;
