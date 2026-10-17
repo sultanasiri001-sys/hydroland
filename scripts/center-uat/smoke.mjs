@@ -4,6 +4,7 @@ import {spawn, spawnSync} from 'node:child_process';
 import {PrismaClient} from '@prisma/client';
 import {actors, passwordFor} from './seed.mjs';
 import {prepareReceivableChecks} from './receivables-smoke.mjs';
+import {prepareLicenseChecks} from './licenses-smoke.mjs';
 
 // Destructive acceptance actions are confined to a freshly created CI database.
 assert.equal(process.env.GITHUB_ACTIONS, 'true', 'Smoke is CI-only; never run against deployed acceptance data');
@@ -16,8 +17,11 @@ let checks=0;
 const ok=(condition,message)=>{assert(condition,message);checks++;};
 const boot=()=>spawnSync(process.execPath,['scripts/center-uat/bootstrap.mjs'],{env,encoding:'utf8',timeout:120000});
 const tokens={};
-async function call(actor,path,body,expected){
-  const res=await fetch('http://127.0.0.1:4173/api/v1'+path,{method:body===undefined?'GET':'POST',headers:{'content-type':'application/json',...(tokens[actor]?{authorization:'Bearer '+tokens[actor]}:{})},body:body===undefined?undefined:JSON.stringify(body)});
+async function request(actor,path,body,method){
+  return fetch('http://127.0.0.1:4173/api/v1'+path,{method:method??(body===undefined?'GET':'POST'),headers:{'content-type':'application/json',...(tokens[actor]?{authorization:'Bearer '+tokens[actor]}:{})},body:body===undefined?undefined:JSON.stringify(body)});
+}
+async function call(actor,path,body,expected,method){
+  const res=await request(actor,path,body,method);
   const text=await res.text();
   ok(expected?expected.includes(res.status):res.ok,`${actor} ${path}: HTTP ${res.status} ${text.slice(0,500)}`);
   return text?JSON.parse(text):null;
@@ -58,6 +62,7 @@ try {
   await call('outsider',`/finance/centers/${center.id}/workspace`,undefined,[403]);
   await call('admin','/finance/shifts/open',{centerOrgUnitId:center.id,openingBalanceMinor:0},[403]);
   const receivables=await prepareReceivableChecks({db,call,ok,center,account});
+  const licenses=await prepareLicenseChecks({db,call,request,ok,center,account});
   const first=await call('accountant1','/finance/shifts/open',{centerOrgUnitId:center.id,openingBalanceMinor:10000});
   await call('accountant1','/finance/shifts/open',{centerOrgUnitId:center.id,openingBalanceMinor:0},[409]);
   const second=await call('accountant2','/finance/shifts/open',{centerOrgUnitId:center.id,openingBalanceMinor:0});
@@ -83,6 +88,7 @@ try {
   result=boot();ok(result.status===0,'restart after transactions');
   ok(await db.financeAccountantShift.count()===2,'restart preserves finance history');
   await receivables.verifyRestart();
+  await licenses.verifyRestart();
   console.log(JSON.stringify({suite:'center-uat-real-auth',checks,synthetic:true,productionWrites:0,externalProviderCalls:0}));
 } finally {
   child?.kill('SIGTERM');
