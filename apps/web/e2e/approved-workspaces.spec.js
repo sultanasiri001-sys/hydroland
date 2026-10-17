@@ -27,6 +27,7 @@ test('visitor gets the approved public view and no account-only modules',async({
 });
 
 test('admin workspace opens as the first full-width view with private alerts and messages',async({page})=>{
+  await page.route('**/api/v1/**',route=>json(route,{message:'Unavailable in workspace layout fixture'},503));
   const authorized=request=>request.headers().authorization==='Bearer approved-workspace-access';
   await page.route(/\/api\/v1\/me$/,route=>authorized(route.request())
     ?json(route,{id:'approved-ui-admin',email:'admin@hydroland.test',status:'ACTIVE',roleAssignments:[{id:'admin-role',role:'ADMIN',status:'ACTIVE'}],person:{firstName:'مشرف',lastName:'اختبار',professional:null}})
@@ -37,7 +38,7 @@ test('admin workspace opens as the first full-width view with private alerts and
     :json(route,{message:'Unauthorized'},401));
 
   await page.goto('/',{waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandWorkspaceUI));
+  await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandWorkspaceUI&&window.HydrolandPaymentReadiness));
   await page.evaluate(async()=>{
     sessionStorage.setItem('hl-access-token','approved-workspace-access');
     sessionStorage.setItem('hl-refresh-token','approved-workspace-refresh');
@@ -57,7 +58,9 @@ test('admin workspace opens as the first full-width view with private alerts and
   await expect(dashboard.locator('[data-portal-notifications]')).toBeVisible();
   await expect(dashboard.locator('[data-portal-messages]')).toBeVisible();
   await expect(dashboard.locator('[data-portal-switch]')).toBeVisible();
-  await expect(dashboard.locator('.hl-insight-cards article').filter({hasText:'الجهات الخارجية · مؤجل'}).getByRole('button')).toBeDisabled();
+  const readiness=dashboard.locator('.hl-insight-cards article').filter({hasText:'جاهزية الدفع والتسوية'}).getByRole('button',{name:'فحص إعدادات الدفع والتسوية'});
+  await expect(readiness).toBeEnabled();
+  await expect(readiness).toHaveAttribute('data-route','admin');
 
   await dashboard.locator('[data-portal-switch]').click();
   await expect(page.locator('#role-dialog')).toBeVisible();
