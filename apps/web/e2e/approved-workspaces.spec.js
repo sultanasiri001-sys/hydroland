@@ -57,7 +57,9 @@ test('admin workspace opens as the first full-width view with private alerts and
   await expect(dashboard.locator('[data-portal-notifications]')).toBeVisible();
   await expect(dashboard.locator('[data-portal-messages]')).toBeVisible();
   await expect(dashboard.locator('[data-portal-switch]')).toBeVisible();
-  await expect(dashboard.locator('.hl-insight-cards article').filter({hasText:'الجهات الخارجية · مؤجل'}).getByRole('button')).toBeDisabled();
+  const readiness=dashboard.locator('.hl-insight-cards article').filter({hasText:'جاهزية الدفع والتسوية'}).getByRole('button',{name:'فحص إعدادات الدفع والتسوية'});
+  await expect(readiness).toBeEnabled();
+  await expect(readiness).toHaveAttribute('data-route','admin');
 
   await dashboard.locator('[data-portal-switch]').click();
   await expect(page.locator('#role-dialog')).toBeVisible();
