@@ -1,0 +1,26 @@
+{
+  "sourceCommit": "e421e062e54be694db838bb2b205e2b49c71a6aa",
+  "purpose": "Synthetic UAT only; not production baseline adoption",
+  "files": [
+    {
+      "file": "raw-domain-extension.sql",
+      "source": "apps/api/prisma-fresh-install-candidate/raw-domain-extension/migration.sql",
+      "sha256": "cc85781cd7c2830212a4b380b23e06f76e05f0f0dcd580c75b2d26dfa399ae3b"
+    },
+    {
+      "file": "column-completion.sql",
+      "source": "apps/api/prisma-fresh-install-candidate/column-completion/migration.sql",
+      "sha256": "71ba92224bfb1a4fe4904a16f7ca9d0a100ca6da6368c271e00ae2e684b79e8f"
+    },
+    {
+      "file": "constraint-completion.sql",
+      "source": "apps/api/prisma-fresh-install-candidate/constraint-completion/migration.sql",
+      "sha256": "6b9677d0b1dc44e2f0b8b1b9aea80757168cdabeb5181de638a3ec083d16980b"
+    },
+    {
+      "file": "index-completion.sql",
+      "source": "apps/api/prisma-fresh-install-candidate/index-completion/migration.sql",
+      "sha256": "219162aed4acc47bd9d0ef0832a2de29d8d4d480b5d40d7705506ac3f8345348"
+    }
+  ]
+}

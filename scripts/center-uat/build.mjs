@@ -1,0 +1,18 @@
+import {spawnSync} from 'node:child_process';
+import {readFile, writeFile} from 'node:fs/promises';
+import path from 'node:path';
+import {root, prepareSchema} from './schema.mjs';
+process.chdir(root);
+const run = args => { const result = spawnSync('npm', args, {stdio:'inherit'}); if (result.status !== 0) throw new Error('UAT_BUILD_FAILED'); };
+run(['ci','--workspace=@hydroland/api','--workspace=@hydroland/web','--include-workspace-root=true','--include=dev','--ignore-scripts']);
+run(['run','db:generate','-w','@hydroland/api']);
+run(['run','build','-w','@hydroland/api']);
+run(['run','build','-w','@hydroland/web']);
+await prepareSchema();
+const index = path.join(root,'apps/web/dist/index.html');
+let html = await readFile(index,'utf8');
+html = html.replace('<head>', '<head><meta name="robots" content="noindex,nofollow"><script>window.HYDROLAND_API_BASE=window.location.origin+"/api/v1";</script>');
+html = html.replace(/(<body[^>]*>)/, '$1<aside role="note" style="position:relative;z-index:99999;padding:12px;text-align:center;background:#78350f;color:white;font:700 16px sans-serif">بيئة اختبار — بيانات وهمية فقط — لا دفع حقيقي ولا رسائل خارجية</aside>');
+await writeFile(index, html);
+const audit = spawnSync(process.execPath,['scripts/release-dependency-audit.mjs','web-api','.uat/dependency-audit.json'],{stdio:'inherit'});
+if (audit.status !== 0) throw new Error('UAT_DEPENDENCY_AUDIT_FAILED');
