@@ -38,10 +38,10 @@ export class MoyasarPaymentProviderService {
     const id=typeof event.id==='string'?event.id.trim():'';
     const type=typeof event.type==='string'?event.type.trim():'';
     const secret=typeof event.secret_token==='string'?event.secret_token:'';
-    const live=event.live===true;
+    const live=event.live;
     const data=event.data&&typeof event.data==='object'&&!Array.isArray(event.data)?event.data as Record<string,unknown>:null;
     const expected=process.env.MOYASAR_WEBHOOK_SECRET?.trim()||'';
-    if(!id||!type||!data||!expected||secret.length!==expected.length||!timingSafeEqual(Buffer.from(secret),Buffer.from(expected)))throw new UnauthorizedException('Invalid payment webhook.');
+    if(!id||!type||!data||typeof live!=='boolean'||!expected||Buffer.byteLength(secret)!==Buffer.byteLength(expected)||!timingSafeEqual(Buffer.from(secret),Buffer.from(expected)))throw new UnauthorizedException('Invalid payment webhook.');
     const integration=this.integrations.requireOperational('PAYMENT_PSP',{allowSandbox:true});
     if(integration.status==='PRODUCTION_ENABLED'&&!live)throw new UnauthorizedException('Sandbox payment webhook rejected in production mode.');
     if(integration.status==='SANDBOX'&&live)throw new UnauthorizedException('Live payment webhook rejected in sandbox mode.');
