@@ -86,6 +86,8 @@ jobs:
       - run: npm run validate:integrations -w @hydroland/api
       - run: npm run typecheck --workspace=@hydroland/api
       - run: npm run build --workspace=@hydroland/api
+      - name: Booking safety policy enforcement and audit
+        run: node apps/api/scripts/booking-safety-policy-validation.cjs
       - name: Finance shifts and receivables center isolation TEXT/UUID matrix
         env:
           NODE_ENV: test
