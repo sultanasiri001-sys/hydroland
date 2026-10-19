@@ -39,7 +39,7 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
      expect(content.y+content.height,`${selector} must not be clipped`).toBeLessThanOrEqual(hero.y+hero.height);
     }
    }
-   await expect(board.locator(role==='diver'?'.hl-diver-action-grid>button':'.hl-command-grid>button')).toHaveCount(['organization','admin','boat'].includes(role)?10:6);
+   await expect(board.locator(role==='diver'?'.hl-diver-action-grid>button':'.hl-command-grid>button')).toHaveCount(role==='admin'?11:['organization','boat'].includes(role)?10:6);
    await expect(page.locator('#toast')).not.toHaveClass(/visible/);
    await page.screenshot({path:testInfo.outputPath(`portal-${role}-${viewport.name}.png`),fullPage:true});
    if(role==='boat')await expect(board.locator('[data-action-label="إنشاء رحلة"]')).toBeDisabled();

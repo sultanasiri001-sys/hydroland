@@ -1,3 +1,4 @@
+import { trainingOperationalPolicy } from './training-operational-policy';
 import { sessionControls } from './training-session-policy';
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
@@ -64,6 +65,7 @@ export class TrainingProfessionalProfileService {
   }
 
   async listSchedule(accountId: string) {
+    const operationalPolicy=await trainingOperationalPolicy(this.db);
     await this.requireActiveInstructor(accountId);
     const scope=await instructorCenterScope(this.db,accountId);
     const sessions = await this.db.trainingSession.findMany({
@@ -85,7 +87,7 @@ export class TrainingProfessionalProfileService {
       id:row.id,courseCode:row.trainingRecord.enrollment.courseCode,
       student:{displayName:names.get(row.trainingRecord.enrollment.studentAccountId)||'طالب'},
       status:row.status,startsAt:row.startsAt,endsAt:row.endsAt,updatedAt:row.updatedAt,
-      actions:sessionControls({...row.trainingRecord.enrollment,record:row.trainingRecord},row).actions.filter(action=>['OPEN','INSTRUCTOR_CHECK_IN'].includes(action)),
+      actions:sessionControls({...row.trainingRecord.enrollment,record:row.trainingRecord},row,new Date(),operationalPolicy).actions.filter(action=>['OPEN','INSTRUCTOR_CHECK_IN'].includes(action)),
       facilityOrSiteId:row.facilityOrSiteId,tripId:row.tripId,vesselId:row.vesselId,
       attendance:{
         instructorCheckedIn:Boolean(row.evidence&&typeof row.evidence==='object'&&!Array.isArray(row.evidence)&&(row.evidence as Record<string,unknown>).instructorCheckInAt),

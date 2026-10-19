@@ -79,5 +79,16 @@ export class OperationalClearanceService {
 
   async status(tripId:string){await this.revokeIfStale(tripId);const latest=await this.latestEvent(tripId);if(!latest)return {status:'MISSING' as const,event:null};if(latest.action==='OPERATIONAL_CLEARANCE_REVOKED')return {status:'REVOKED' as const,event:latest};return {status:'ACTIVE' as const,event:latest,reviewRequired:latest.action==='OPERATIONAL_REVIEW_APPROVED'};}
 
+  async assertReadinessWithoutClearance(tripId:string){
+    const changedAt=await this.latestOperationalChange(tripId);
+    const readiness=await this.calendar.readinessForTrip(tripId);this.assertHardBlocks(readiness);
+    if(readiness.status==='NOT_READY')throw new ConflictException(`Trip is NOT_READY: ${readiness.blockers.join(', ')}`);
+    return {changedAt};
+  }
+  async assertReadinessUnchanged(tripId:string,changedAt:Date|null,tx:Prisma.TransactionClient){
+    const current=await this.latestOperationalChange(tripId,tx);
+    if(current?.getTime()!==changedAt?.getTime())throw new ConflictException('تغيرت جاهزية الرحلة. أعد المحاولة بعد تحديث التفاصيل.');
+  }
+
   async assertValid(tripId:string){await this.revokeIfStale(tripId);const latest=await this.latestEvent(tripId);if(!latest||latest.action==='OPERATIONAL_CLEARANCE_REVOKED')throw new ConflictException('A current operational clearance is required.');const readiness=await this.calendar.readinessForTrip(tripId);this.assertHardBlocks(readiness);if(readiness.status==='NOT_READY')throw new ConflictException(`Trip is NOT_READY: ${readiness.blockers.join(', ')}`);if(readiness.status==='REVIEW_REQUIRED'&&latest.action!=='OPERATIONAL_REVIEW_APPROVED')throw new ConflictException('Current readiness requires documented administrative review approval.');return {clearance:latest,readiness};}
 }

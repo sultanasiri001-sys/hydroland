@@ -118,12 +118,17 @@ export class TripLifecycleService {
     // Resolve expensive readiness only after authorization; check the same clearance again inside the write transaction.
     const before = await this.db.serializable(check);
     if (before.replay) return before.replay;
-    const operational = ['CLOSE', 'COMPLETE'].includes(command.action) ? await this.clearance.assertValid(tripId) : null;
+    const operationalAction=['CLOSE','COMPLETE'].includes(command.action);
+    const clearancePolicy=await this.policies.decision('TRIP','OPERATIONAL_CLEARANCE');
+    const operational=operationalAction&&clearancePolicy.enforce?await this.clearance.assertValid(tripId):null;
+    const readiness=operationalAction&&!clearancePolicy.enforce?await this.clearance.assertReadinessWithoutClearance(tripId):null;
     return this.db.serializable(async tx => {
       const checked = await check(tx);
       if (checked.replay) return checked.replay;
       const { trip, state } = checked;
       if (!state) throw stale();
+      if(operationalAction&&(await this.policies.decision('TRIP','OPERATIONAL_CLEARANCE',tx)).state!==clearancePolicy.state)throw stale();
+      if(readiness)await this.clearance.assertReadinessUnchanged(tripId,readiness.changedAt,tx);
       if (operational) await this.clearance.assertCurrent(tripId, operational.clearance.id, tx);
       const nextStatus = { PUBLISH: 'OPEN', REOPEN: 'OPEN', CLOSE: 'CLOSED', CANCEL: 'CANCELLED', COMPLETE: 'COMPLETED' }[command.action] as Trip['status'];
       if (nextStatus === 'OPEN') {
@@ -136,7 +141,8 @@ export class TripLifecycleService {
       const reviewIssues: string[] = [];
       if (command.action === 'COMPLETE') {
         const safety = await tx.safetyChecklist.findFirst({ where: { tripId }, orderBy: { createdAt: 'desc' }, select: { decision: true } });
-        if (safety?.decision !== 'ALLOWED') throw new ConflictException('يتطلب الإنهاء قرار سلامة ساريًا بالموافقة.');
+        const safetyPolicy=await this.policies.decision('TRIP','SAFETY_CLEARANCE',tx);
+        if (safety?.decision === 'DEFERRED'||(safetyPolicy.enforce&&safety?.decision !== 'ALLOWED')) throw new ConflictException('يتطلب الإنهاء قرار سلامة ساريًا بالموافقة.');
         const [eligibility, capacity] = await Promise.all([this.policies.decision('DIVE_LOG', 'PARTICIPANT_ELIGIBILITY', tx), this.policies.decision('BOOKING', 'CAPACITY_LIMIT', tx)]);
         const seats = state.bookings.filter(b => b.status === 'CONFIRMED').reduce((sum, b) => sum + b.seats, 0);
         if (seats > trip.capacity) { if (capacity.enforce) throw new ConflictException('المقاعد المؤكدة تتجاوز سعة الرحلة.'); if (capacity.review) reviewIssues.push('CAPACITY_LIMIT'); }

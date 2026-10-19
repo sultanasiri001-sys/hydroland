@@ -58,20 +58,15 @@ export class WeatherGateService {
   }
 
   async configure(accountId:string,input: { enabled?: boolean; mode?: WeatherGateMode }) {
-    const current = await this.settings();
-    const next: WeatherGateSettings = {
-      ...current,
-      provider:'STORMGLASS',
-      enabled: typeof input.enabled === 'boolean' ? input.enabled : current.enabled,
-      mode: input.mode === 'ENFORCE' || input.mode === 'ADVISORY' ? input.mode : current.mode,
-    };
-    await this.db.$executeRaw`
-      INSERT INTO "OperationalSetting" ("key", "value", "updatedAt")
-      VALUES ('WEATHER_GATE', ${JSON.stringify(next)}::jsonb, NOW())
-      ON CONFLICT ("key") DO UPDATE SET "value" = EXCLUDED."value", "updatedAt" = NOW()
-    `;
-    await this.audit.record({action:'WEATHER_GATE_CONFIGURED',resource:'OperationalSetting',resourceId:'WEATHER_GATE',metadata:{accountId,previous:current,current:next}});
-    return next;
+    return this.db.serializable(async tx=>{
+      const current=await this.settings(tx);
+      const next:WeatherGateSettings={...current,provider:'STORMGLASS',enabled:typeof input.enabled==='boolean'?input.enabled:current.enabled,mode:input.mode==='ENFORCE'||input.mode==='ADVISORY'?input.mode:current.mode};
+      await tx.$executeRaw`INSERT INTO "OperationalSetting" ("key","value","updatedAt") VALUES ('WEATHER_GATE',${JSON.stringify(next)}::jsonb,NOW()) ON CONFLICT ("key") DO UPDATE SET "value"=EXCLUDED."value","updatedAt"=clock_timestamp()`;
+      const state=next.enabled&&next.mode==='ENFORCE'?'ENABLED':'DISABLED';
+      await tx.$executeRaw`INSERT INTO "PolicyControl" ("id","category","ruleKey","labelAr","state","updatedByAccountId","createdAt","updatedAt") VALUES (gen_random_uuid()::text,'WEATHER','WEATHER_GATE','اشتراط مراجعة الطقس',${state},${accountId}::uuid,NOW(),NOW()) ON CONFLICT ("category","ruleKey") DO UPDATE SET "state"=EXCLUDED."state","updatedByAccountId"=EXCLUDED."updatedByAccountId","updatedAt"=clock_timestamp()`;
+      await this.audit.record({actorId:accountId,action:'WEATHER_GATE_CONFIGURED',resource:'OperationalSetting',resourceId:'WEATHER_GATE',metadata:{accountId,previous:current,current:next,policyState:state}},tx);
+      return next;
+    });
   }
 
   evaluate(snapshot: WeatherSnapshot | null | undefined, settings: WeatherGateSettings) {
