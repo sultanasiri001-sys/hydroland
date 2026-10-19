@@ -2238,4 +2238,3 @@ model DocumentReferenceCounter {
   @@unique([organizationId,department,year])
   @@index([organizationId,year])
 }
-

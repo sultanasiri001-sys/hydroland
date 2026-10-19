@@ -1,0 +1,7 @@
+{
+  "migrationName": "00000000000004_production_index_completion",
+  "sha256": "219162aed4acc47bd9d0ef0832a2de29d8d4d480b5d40d7705506ac3f8345348",
+  "catalogSha256": "3c665a2aa82b8745cecab82ed22a6eeb4ab4d0f34956b27e1be678bf39bef5f2",
+  "indexes": 8,
+  "productionApproved": false
+}

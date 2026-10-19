@@ -5,6 +5,16 @@ import { mkdir, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { verifyFreshInstallCandidate, baselineName } from './fresh-install-candidate.mjs';
+import { verifyRawDomainCompletion, completionName } from './raw-domain-completion.mjs';
+import { planNativeTypePreflight, assessNativeTypePreflight } from './native-type-preflight.mjs';
+import { compareProductionColumns } from './production-column-compatibility.mjs';
+import { compareProductionRelations } from './production-relation-compatibility.mjs';
+import { verifyCandidateColumnCompletion, columnCompletionName } from './candidate-column-completion.mjs';
+import { verifyCandidateConstraintCompletion, constraintCompletionName } from './candidate-constraint-completion.mjs';
+import { verifyCandidateIndexCompletion, indexCompletionName } from './candidate-index-completion.mjs';
+import { verifyCandidateRelationAlignment, relationAlignmentName } from './candidate-relation-alignment.mjs';
+import { probeOrganizationForwardUpgrade, organizationRevision } from './organization-forward-recovery-probe.mjs';
 
 // This is a local, synthetic restore rehearsal, never a production restore.
 // Refuse other hosts/databases and verify the exact disposable Docker boundary
@@ -14,6 +24,9 @@ const TARGETS = ['hydroland_rehearsal_restore_1', 'hydroland_rehearsal_restore_2
 const CONTAINER = 'phase11-postgres';
 assert.equal(process.env.NODE_ENV, 'test', 'Recovery rehearsal requires NODE_ENV=test');
 assert.equal(process.env.RECOVERY_REHEARSAL_CONFIRM, 'DISPOSABLE_LOCAL_ONLY', 'Explicit disposable-rehearsal confirmation required');
+const baselineSource = process.env.RECOVERY_BASELINE_SOURCE || 'GENERATED_REFERENCE';
+assert.ok(['GENERATED_REFERENCE', 'VERSIONED_CANDIDATE', 'VERSIONED_CANDIDATE_WITH_ORGANIZATIONS'].includes(baselineSource), 'Unknown baseline source');
+const usesCandidate = baselineSource !== 'GENERATED_REFERENCE';
 const sourceUrl = new URL(process.env.DATABASE_URL || '');
 assert.equal(sourceUrl.protocol, 'postgresql:');
 assert.equal(sourceUrl.hostname, '127.0.0.1', 'Remote database hosts are prohibited');
@@ -33,6 +46,171 @@ assert.ok(inspection.Config.Env.includes('POSTGRES_DB=' + SOURCE));
 const binding = inspection.HostConfig.PortBindings?.['5432/tcp'];
 assert.ok(binding?.length === 1 && binding[0].HostIp === '127.0.0.1' && binding[0].HostPort === '5432', 'Rehearsal must bind only to loopback');
 
+async function probeCompletedConstraints(database, catalog) {
+  const invalid = {
+    AdministrativeRecord_license_dates_check: { licenseIssuedAt: "'2030-01-01'" },
+    AdministrativeRecord_license_review_check: { licenseReviewStatus: "'INVALID'" },
+    Booking_seats_check: { seats: '0' },
+    FinanceAccountantShift_openingBalance_nonnegative: { openingBalanceMinor: '-1' },
+    FinanceShiftEntry_amount_positive: { amountMinor: '0' },
+    FinanceShiftHandover_actualCash_nonnegative: { actualCashMinor: '-1' },
+    FinanceShiftHandover_expectedCash_nonnegative: { expectedCashMinor: '-1' },
+    InstructorEarning_amount_positive: { amountMinor: '0' },
+    Payment_amountMinor_check: { amountMinor: '0' },
+    Receivable_amounts_check: { totalMinor: '10', paidMinor: '1', outstandingMinor: '8' },
+    ReceivableInstallment_amounts_check: { amountMinor: '10', paidMinor: '11' },
+    ReceivablePayment_amount_check: { amountMinor: '0' },
+    RewardAccount_points_nonnegative: { points: '-1' },
+    RewardEntry_balanceAfter_nonnegative: { balanceAfter: '-1' },
+    RewardEntry_points_positive: { points: '0' },
+    SafetyIncident_description_length_check: { description: "'  '" },
+    SafetyIncident_location_length_check: { locationName: "repeat('x',161)" },
+    SafetyIncident_title_length_check: { title: "'  '" },
+    ThemeSchedule_valid_status: { status: "'INVALID'" },
+    ThemeSchedule_valid_window: { startsAt: "'2030-01-02'", endsAt: "'2030-01-01'" },
+    Trip_capacity_check: { capacity: '0' },
+    Wallet_balanceMinor_nonnegative: { balanceMinor: '-1' },
+    WalletEntry_amountMinor_positive: { amountMinor: '0' },
+    WalletEntry_balanceAfterMinor_nonnegative: { balanceAfterMinor: '-1' },
+  };
+  for (const c of catalog) {
+    const columns = rows(database, `SELECT a.attname FROM pg_constraint co JOIN pg_class t ON t.oid=co.conrelid JOIN pg_namespace n ON n.oid=t.relnamespace CROSS JOIN LATERAL unnest(co.conkey) WITH ORDINALITY k(attnum,ord) JOIN pg_attribute a ON a.attrelid=t.oid AND a.attnum=k.attnum WHERE n.nspname='public' AND t.relname=${literal(c.table_name)} AND co.conname=${literal(c.name)} ORDER BY k.ord`).map(r=>r.attname);
+    assert.ok(columns.length>0);
+    const values = c.kind==='c' ? invalid[c.name] : Object.fromEntries(columns.map(name=>[name,literal('MISSING_REHEARSAL_PARENT')]));
+    assert.ok(values, 'Missing negative control: '+c.name);
+    assert.ok(Object.keys(values).every(name=>columns.includes(name)));
+    // Copy only native column types, then install the exact real constraint.
+    // This isolates the intended rejection from unrelated NOT NULL/unique checks.
+    sql(database, `BEGIN;
+      CREATE SCHEMA constraint_probe_schema;
+      CREATE TABLE constraint_probe_schema.constraint_probe AS SELECT ${columns.map(identifier).join(',')} FROM ${identifier(c.table_name)} WITH NO DATA;
+      ALTER TABLE constraint_probe_schema.constraint_probe ADD CONSTRAINT ${identifier(c.name)} ${c.definition};
+      DO $probe$ DECLARE rejected_name text; BEGIN
+        BEGIN
+          INSERT INTO constraint_probe_schema.constraint_probe (${Object.keys(values).map(identifier).join(',')}) VALUES (${Object.values(values).join(',')});
+          RAISE EXCEPTION 'Constraint accepted invalid input';
+        EXCEPTION WHEN ${c.kind==='c'?'check_violation':'foreign_key_violation'} THEN
+          GET STACKED DIAGNOSTICS rejected_name = CONSTRAINT_NAME;
+          IF rejected_name <> ${literal(c.name)} THEN RAISE EXCEPTION 'Unexpected rejecting constraint: %',rejected_name; END IF;
+        END;
+      END $probe$;
+      ROLLBACK;`);
+    check(database+':negative_control:'+c.name,true);
+  }
+}
+
+async function probeFinancialIndexes(database) {
+  for (const spec of [
+    { table:'FinanceAccountantShift', name:'FinanceAccountantShift_active_accountant_center_key', columns:['accountantAccountId','centerOrgUnitId','status'], first:['same','center','OPEN'], conflicting:['same','center','HANDOVER_PENDING'], allowed:[['same','center','CLOSED'],['other','center','OPEN'],['same','other','OPEN']] },
+    { table:'FinanceShiftHandover', name:'FinanceShiftHandover_pending_fromShift_key', columns:['fromShiftId','status'], first:['same','PENDING'], conflicting:['same','PENDING'], allowed:[['same','ACCEPTED'],['same','REJECTED'],['other','PENDING']] },
+  ]) {
+    const definition=rows(database, `SELECT indexdef FROM pg_indexes WHERE schemaname='public' AND indexname=${literal(spec.name)}`)[0]?.indexdef;
+    assert.ok(definition);
+    const insert=values=>`INSERT INTO index_probe_schema.fixture (${spec.columns.map(identifier).join(',')}) VALUES (${values.map(literal).join(',')});`;
+    const create=definition.replace('ON public.'+identifier(spec.table),'ON index_probe_schema.fixture');
+    sql(database, `BEGIN;
+      CREATE SCHEMA index_probe_schema;
+      CREATE TABLE index_probe_schema.fixture AS SELECT ${spec.columns.map(identifier).join(',')} FROM ${identifier(spec.table)} WITH NO DATA;
+      ${create};
+      ${insert(spec.first)}
+      DO $probe$ DECLARE rejected_name text; BEGIN
+        BEGIN
+          ${insert(spec.conflicting)}
+          RAISE EXCEPTION 'Financial index accepted duplicate';
+        EXCEPTION WHEN unique_violation THEN
+          GET STACKED DIAGNOSTICS rejected_name = CONSTRAINT_NAME;
+          IF rejected_name <> ${literal(spec.name)} THEN RAISE EXCEPTION 'Wrong unique index: %',rejected_name; END IF;
+        END;
+      END $probe$;
+      ${spec.allowed.map(insert).join('\n')}
+      ROLLBACK;`);
+    check(database+':financial_partial_unique_rejection_and_allowed_history:'+spec.name,true);
+  }
+}
+
+async function probeUniqueIndexProtection(database, reviews) {
+  for (const review of reviews) {
+    assert.equal(review.uniquenessMatches,true);
+    const columns=review.production.table_name==='DiveLog' ? ['sourceTripId','sourceParticipantId'] : ['paymentId'];
+    assert.ok(['DiveLog','FinanceShiftEntry'].includes(review.production.table_name),'Unreviewed uniqueness fixture');
+    const a='30000000-0000-4000-8000-000000000001',b='30000000-0000-4000-8000-000000000002',c='30000000-0000-4000-8000-000000000003';
+    const first=columns.length===1?[a]:[a,b];
+    const allowed=columns.length===1?[[null],[null],[b]]:[[a,c],[c,b],[a,null],[a,null],[null,b],[null,b],[null,null],[null,null]];
+    for (const [variant,object] of [['production',review.production],['candidate',review.candidate]]) {
+      const insert=values=>`INSERT INTO unique_probe_schema.fixture (${columns.map(identifier).join(',')}) VALUES (${values.map(v=>v===null?'NULL':literal(v)).join(',')});`;
+      const definition=object.definition.replace('ON public.'+identifier(object.table_name),'ON unique_probe_schema.fixture');
+      sql(database, `BEGIN;
+        CREATE SCHEMA unique_probe_schema;
+        CREATE TABLE unique_probe_schema.fixture AS SELECT ${columns.map(identifier).join(',')} FROM ${identifier(object.table_name)} WITH NO DATA;
+        ${definition};
+        ${insert(first)}
+        DO $probe$ DECLARE rejected_name text; BEGIN
+          BEGIN
+            ${insert(first)}
+            RAISE EXCEPTION 'Unique key accepted non-null duplicate';
+          EXCEPTION WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS rejected_name = CONSTRAINT_NAME;
+            IF rejected_name <> ${literal(object.name)} THEN RAISE EXCEPTION 'Wrong rejecting unique index'; END IF;
+          END;
+        END $probe$;
+        ${allowed.map(insert).join('\n')}
+        ROLLBACK;`);
+      check(database+':unique_index_nonnull_rejection_nulls_and_distinct_keys:'+object.name+':'+variant,true);
+    }
+  }
+}
+
+function probeIncidentAdminOrder(database, accountId) {
+  sql(database, `BEGIN;
+    INSERT INTO "SafetyIncident" ("id","reportedByAccountId","severity","status","title","description","updatedAt","createdAt")
+    SELECT '40000000-0000-4000-8000-'||lpad(n::text,12,'0'),${literal(accountId)},
+      (enum_range(NULL::"SafetyIncidentSeverity"))[1+n%array_length(enum_range(NULL::"SafetyIncidentSeverity"),1)],
+      (enum_range(NULL::"SafetyIncidentStatus"))[1+n%array_length(enum_range(NULL::"SafetyIncidentStatus"),1)],
+      'LOCAL PLAN PROBE','Synthetic rolled-back incident query fixture',CURRENT_TIMESTAMP,'2030-01-01'::timestamp+n*interval '1 second'
+    FROM generate_series(1,1000) n;
+    SET LOCAL enable_seqscan=off;
+    SET LOCAL enable_bitmapscan=off;
+    DO $probe$ DECLARE plan json; BEGIN
+      EXECUTE 'EXPLAIN (FORMAT JSON) SELECT * FROM "SafetyIncident" ORDER BY "status" ASC,"createdAt" DESC LIMIT 200' INTO plan;
+      IF plan::text NOT LIKE '%SafetyIncident_status_createdAt_desc_idx%' THEN RAISE EXCEPTION 'Admin order index not selected'; END IF;
+      IF plan::text LIKE '%"Node Type": "Sort"%' OR plan::text LIKE '%"Node Type": "Incremental Sort"%' THEN RAISE EXCEPTION 'Admin index still requires sorting'; END IF;
+    END $probe$;
+    ROLLBACK;`);
+  check(database+':incident_admin_order_index_plan_without_sort',true);
+}
+
+async function probeForeignKeyUpdateActions(database, differences) {
+  for (const difference of differences) {
+    for (const [variant, object] of [['production',difference.production],['candidate',difference.candidate]]) {
+      const match=object.definition.match(/^FOREIGN KEY \(("[^" ]+"|[A-Za-z_][A-Za-z0-9_]*)\) REFERENCES ("[^" ]+"|[A-Za-z_][A-Za-z0-9_]*)\(("[^" ]+"|[A-Za-z_][A-Za-z0-9_]*)\)/);
+      assert.ok(match,'Unsupported FK action probe');
+      const [,column,parent,parentColumn]=match;
+      const definition=object.definition.replace('REFERENCES '+parent+'('+parentColumn+')','REFERENCES action_probe_schema.parent('+parentColumn+')');
+      const cascade=object.definition.includes(' ON UPDATE CASCADE');
+      sql(database, `BEGIN;
+        CREATE SCHEMA action_probe_schema;
+        CREATE TABLE action_probe_schema.parent AS SELECT ${parentColumn} FROM ${parent} WITH NO DATA;
+        ALTER TABLE action_probe_schema.parent ADD PRIMARY KEY (${parentColumn});
+        CREATE TABLE action_probe_schema.child AS SELECT ${column} FROM ${identifier(object.table_name)} WITH NO DATA;
+        ALTER TABLE action_probe_schema.child ADD CONSTRAINT ${identifier(object.name)} ${definition};
+        INSERT INTO action_probe_schema.parent VALUES ('20000000-0000-4000-8000-000000000001');
+        INSERT INTO action_probe_schema.child VALUES ('20000000-0000-4000-8000-000000000001');
+        DO $probe$ DECLARE rejected_name text; BEGIN
+          ${cascade ? `UPDATE action_probe_schema.parent SET ${parentColumn}='20000000-0000-4000-8000-000000000002';
+            IF NOT EXISTS (SELECT 1 FROM action_probe_schema.child WHERE ${column}='20000000-0000-4000-8000-000000000002') THEN RAISE EXCEPTION 'CASCADE did not update child'; END IF;` : `BEGIN
+            UPDATE action_probe_schema.parent SET ${parentColumn}='20000000-0000-4000-8000-000000000002';
+            RAISE EXCEPTION 'NO ACTION accepted referenced key update';
+          EXCEPTION WHEN foreign_key_violation THEN
+            GET STACKED DIAGNOSTICS rejected_name = CONSTRAINT_NAME;
+            IF rejected_name <> ${literal(object.name)} THEN RAISE EXCEPTION 'Unexpected rejecting FK'; END IF;
+          END;`}
+        END $probe$;
+        ROLLBACK;`);
+      check(database+':foreign_key_update_behavior:'+object.name+':'+variant,true);
+    }
+  }
+}
+
 const apiRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = resolve(apiRoot, '../..');
 const prismaCli = join(repoRoot, 'node_modules/prisma/build/index.js');
@@ -42,6 +220,7 @@ const report = {
   scope: 'SYNTHETIC_LOCAL_LOGICAL_RESTORE', sourceCommit: process.env.GITHUB_SHA || 'local',
   runId: process.env.GITHUB_RUN_ID || 'local', startedAt: new Date().toISOString(),
   status: 'RUNNING', productionRecoveryVerified: false, historicalProductionReplayVerified: false,
+  baselineSource, freshInstallCandidateVerified: false,
   notes: ['No production credentials, records or provider were used.',
     'CI baseline migrations are actually executed; no migrate resolve or fabricated historical records.',
     'This tests a logical backup/restore of the current canonical schema plus its raw-SQL extensions.',
@@ -52,6 +231,12 @@ const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const check = (name, condition) => { assert.ok(condition, name); report.checks.push({ name, status: 'PASS' }); };
 const identifier = value => '"' + value.replaceAll('"', '""') + '"';
 const literal = value => "'" + value.replaceAll("'", "''") + "'";
+async function assertAuditAppendOnly(client, label) {
+  for (const query of ['UPDATE "AuditEvent" SET "action"=\'REHEARSAL_TAMPER\'', 'DELETE FROM "AuditEvent"', 'TRUNCATE "AuditEvent"']) {
+    await assert.rejects(() => client.$executeRawUnsafe(query), error => String(error.message).includes('append-only'));
+  }
+  check(label + ':audit_update_delete_truncate_denied', true);
+}
 function sql(database, query) {
   assert.ok([SOURCE, ...TARGETS].includes(database));
   return docker(['exec', CONTAINER, 'psql', '-X', '-U', 'hydroland', '-d', database, '-v', 'ON_ERROR_STOP=1', '-At', '-c', query]).trim();
@@ -93,7 +278,7 @@ try {
   await writeFile(join(work, 'migrations/migration_lock.toml'), 'provider = "postgresql"\n');
   const baseline = prisma(['migrate', 'diff', '--from-empty', '--to-schema-datamodel', join(apiRoot, 'prisma/schema.prisma'), '--script']);
   check('canonical_baseline_has_tables', baseline.includes('CREATE TABLE'));
-  const migrations = [{ name: '00000000000000_ci_canonical_baseline', sql: baseline, source: 'generated from current Prisma schema' }];
+  let migrations = [{ name: '00000000000000_ci_canonical_baseline', sql: baseline, source: 'generated from current Prisma schema' }];
   // Use the same exact operational-extension lists as the existing API suite.
   for (const file of ['bootstrap-equipment-runtime-schema.mjs', 'bootstrap-trip-weather-runtime-schema.mjs', 'bootstrap-messaging-runtime-schema.mjs']) {
     const bootstrap = await readFile(join(apiRoot, 'scripts', file), 'utf8');
@@ -105,6 +290,44 @@ try {
   }
   const appendOnlyAuditName = '20260930080000_audit_event_append_only';
   migrations.push({ name: appendOnlyAuditName, sql: await readFile(join(apiRoot, 'prisma/migrations', appendOnlyAuditName, 'migration.sql'), 'utf8'), source: 'phase4 append-only audit ledger' });
+  if (usesCandidate) {
+    const candidate = await verifyFreshInstallCandidate();
+    check('versioned_candidate_matches_canonical_schema_and_exact_raw_sql', true);
+    migrations = [{ name: baselineName, sql: await readFile(join(candidate.candidate, 'migrations', baselineName, 'migration.sql'), 'utf8'), source: 'versioned fresh-install candidate; separate migration ledger' }];
+    report.candidateBaselineSha256 = candidate.baselineSha256;
+  }
+  const completion = await verifyRawDomainCompletion();
+  migrations.push({ name: completionName, sql: completion.sql, source: 'versioned raw domain completion; schema-only production catalog' });
+  report.rawDomainCompletionSha256 = completion.manifest.migrationSha256;
+  const columnCompletion = await verifyCandidateColumnCompletion();
+  migrations.push({ name: usesCandidate ? columnCompletionName : '20261004090000_candidate_production_column_completion', sql: columnCompletion.sql, source: 'additive candidate production-column completion' });
+  const constraintCompletion = await verifyCandidateConstraintCompletion();
+  migrations.push({ name: usesCandidate ? constraintCompletionName : '20261004100000_candidate_production_constraint_completion', sql: constraintCompletion.sql, source: 'additive candidate foreign keys and checks; no history rewrite' });
+  report.constraintCompletionSha256 = constraintCompletion.manifest.sha256;
+  const indexCompletion = await verifyCandidateIndexCompletion();
+  migrations.push({ name: usesCandidate ? indexCompletionName : '20261004110000_candidate_production_index_completion', sql: indexCompletion.sql, source: 'missing lookup and partial financial uniqueness indexes' });
+  report.indexCompletionSha256 = indexCompletion.manifest.sha256;
+  const incidentOrderSql = await readFile(join(apiRoot,'prisma-fresh-install-candidate/migrations/00000000000005_incident_admin_order/migration.sql'),'utf8');
+  migrations.push({name:usesCandidate?'00000000000005_incident_admin_order':'20261004120000_candidate_incident_admin_order',sql:incidentOrderSql,source:'actual admin incident query ordering'});
+  // Exercise populated legacy shapes for both native key types in a rolled-back schema.
+  for (const parentType of ['text','uuid']) {
+    sql(SOURCE, `BEGIN;
+      CREATE SCHEMA column_backfill_probe;
+      SET LOCAL search_path TO column_backfill_probe,public;
+      CREATE TABLE "Organization" ("id" ${parentType} PRIMARY KEY);
+      CREATE TABLE "EquipmentBarcode" ("stockStatus" text);
+      CREATE TABLE "FinanceAccountantShift" ("id" text);
+      CREATE TABLE "FinanceShiftHandover" ("id" text,"offeredAt" timestamp(3) NOT NULL,"createdAt" timestamp(3) NOT NULL);
+      INSERT INTO "FinanceShiftHandover" VALUES ('preserve-original','2020-01-02 03:04:05','2020-01-01 01:02:03');
+      ${columnCompletion.sql}
+      DO $probe$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM "FinanceShiftHandover" WHERE "id"='preserve-original' AND "requestedAt"='2020-01-02 03:04:05'::timestamp AND "updatedAt"='2020-01-01 01:02:03'::timestamp AND "offeredAt"='2020-01-02 03:04:05'::timestamp) THEN RAISE EXCEPTION 'Legacy handover timestamp preservation failed'; END IF;
+        IF (SELECT format_type(a.atttypid,a.atttypmod) FROM pg_attribute a WHERE a.attrelid='"EquipmentBarcode"'::regclass AND a.attname='organizationId') <> '${parentType}' THEN RAISE EXCEPTION 'Equipment parent type mismatch'; END IF;
+      END $probe$;
+      ROLLBACK;`);
+    check('populated_column_backfill_preserves_original_timestamps_and_parent_type:' + parentType, true);
+  }
+
   check('migration_names_are_unique', new Set(migrations.map(item => item.name)).size === migrations.length);
   for (const migration of migrations) {
     await mkdir(join(work, 'migrations', migration.name));
@@ -146,8 +369,105 @@ try {
   await db.$executeRaw`INSERT INTO "Conversation" ("id","title","createdByAccountId") VALUES (${conversationId},'LOCAL RESTORE FIXTURE',${account.id})`;
   await db.$executeRaw`INSERT INTO "ConversationParticipant" ("conversationId","accountId") VALUES (${conversationId},${account.id})`;
   await db.$executeRaw`INSERT INTO "Message" ("conversationId","senderAccountId","kind","body") VALUES (${conversationId},${account.id},'TEXT','رسالة اصطناعية معزولة')`;
+  if (baselineSource === 'VERSIONED_CANDIDATE_WITH_ORGANIZATIONS') {
+    const forward = await probeOrganizationForwardUpgrade({ repoRoot, work, db, prisma, account, organization, trip, booking, payment, check });
+    const finalManifest = [...manifest, ...forward];
+    const history = rows(SOURCE, 'SELECT migration_name,checksum,finished_at,rolled_back_at FROM "_prisma_migrations"');
+    check('organization_forward_migrations_have_real_checksum_matched_ledger_entries', history.length === finalManifest.length && finalManifest.every(item => history.some(row => row.migration_name === item.name && row.checksum === item.sha256 && row.finished_at && !row.rolled_back_at)));
+    report.organizationCandidateRevision = organizationRevision;
+    report.organizationForwardUpgradeVerified = true;
+    report.migrationCount = finalManifest.length;
+    await writeFile(join(evidenceDir, 'fixture-migration-manifest.json'), JSON.stringify(finalManifest, null, 2));
+  }
+  const shiftFrom = 'REHEARSAL_SHIFT_FROM', shiftTo = 'REHEARSAL_SHIFT_TO';
+  const receivingPerson = await db.person.create({ data: { firstName: 'RECEIVER', lastName: 'RESTORE FIXTURE' } });
+  const receivingAccount = await db.account.create({ data: { personId: receivingPerson.id, email: 'receiver@example.invalid', passwordHash: 'not-a-login-hash', status: 'ACTIVE' } });
+  for (const id of [shiftFrom,shiftTo]) sql(SOURCE, `INSERT INTO "FinanceAccountantShift" ("id","centerOrgUnitId","accountantAccountId","updatedAt") VALUES (${literal(id)},${literal(organization.id)},${literal(id === shiftFrom ? account.id : receivingAccount.id)},CURRENT_TIMESTAMP)`);
+  sql(SOURCE, `INSERT INTO "FinanceShiftHandover" ("id","fromShiftId","toShiftId","fromAccountantId","toAccountantId","expectedCashMinor","actualCashMinor","varianceMinor") VALUES ('REHEARSAL_HANDOVER',${literal(shiftFrom)},${literal(shiftTo)},${literal(account.id)},${literal(receivingAccount.id)},100,100,0)`);
+  check('completed_handover_timestamps_default_without_client_fields', sql(SOURCE, `SELECT "requestedAt" IS NOT NULL AND "updatedAt" IS NOT NULL AND "offeredAt" IS NOT NULL FROM "FinanceShiftHandover" WHERE "id"='REHEARSAL_HANDOVER'`) === 't');
+  // Synthetic raw-domain relationship graph; no production data is copied.
+  const rawIds = Object.fromEntries(completion.catalog.tables.map((t,i) => [t.name, '10000000-0000-4000-8000-' + String(i+1).padStart(12,'0')]));
+  const parentIds = { ...rawIds, Account: account.id, Organization: organization.id, Trip: trip.id };
+  for (const name of ['WorkforceDepartment','WorkforcePosition','WorkforceSeat','WorkforceCenterDepartment','WorkforceHiringRequest','TrainingCourse','ComplianceAssessment','ComplianceEvidence']) {
+    const values = new Map();
+    for (const column of completion.catalog.columns.filter(c => c.table_name === name)) {
+      const ref = completion.catalog.constraints.find(c => c.kind === 'f' && c.table_name === name && c.columns.includes(column.name));
+      const parent = ref?.referenced_table.replaceAll('"','');
+      if (column.name === 'id') values.set(column.name, literal(rawIds[name]) + '::uuid');
+      else if (ref && parentIds[parent] && parent !== name) values.set(column.name, literal(parentIds[parent]));
+      else if (column.not_null && column.default_sql === null) {
+        if (column.type.startsWith('timestamp')) values.set(column.name, 'CURRENT_TIMESTAMP');
+        else if (column.type === 'jsonb') values.set(column.name, "'[]'::jsonb");
+        else if (column.type === '"WorkforcePositionTier"') values.set(column.name, "'MANAGER'");
+        else { assert.equal(column.type, 'text', 'Unhandled required raw fixture column'); values.set(column.name, literal('REHEARSAL_' + name + '_' + column.name)); }
+      }
+    }
+    if (name === 'WorkforceSeat') values.set('scope', "'EXTERNAL_CENTER'");
+    sql(SOURCE, `INSERT INTO ${identifier(name)} (${[...values.keys()].map(identifier).join(',')}) VALUES (${[...values.values()].join(',')})`);
+  }
+  check('all_eight_raw_domains_have_synthetic_relationship_rows', completion.catalog.tables.every(t => Number(sql(SOURCE, `SELECT count(*) FROM ${identifier(t.name)}`)) === 1));
+  await assertAuditAppendOnly(db, SOURCE);
   await db.$disconnect(); db = null;
+  const relationAlignment = await verifyCandidateRelationAlignment();
+  const beforeAlignment=snapshot(SOURCE);
+  const alignmentName=usesCandidate?relationAlignmentName:'20261004130000_candidate_production_relation_alignment';
+  await mkdir(join(work,'migrations',alignmentName));
+  await writeFile(join(work,'migrations',alignmentName,'migration.sql'),relationAlignment.sql);
+  prisma(['migrate','deploy','--schema',schemaPath]);
+  const afterAlignment=snapshot(SOURCE);
+  assert.deepEqual(afterAlignment.contents.filter(t=>t.table_name!=='_prisma_migrations'),beforeAlignment.contents.filter(t=>t.table_name!=='_prisma_migrations'));
+  check('populated_relation_alignment_preserves_all_application_rows',true);
+  const finalManifest=JSON.parse(await readFile(join(evidenceDir,'fixture-migration-manifest.json'),'utf8'));
+  finalManifest.push({name:alignmentName,sha256:relationAlignment.manifest.sha256,source:'guarded populated candidate FK update-action alignment'});
+  check('relation_alignment_has_real_checksum_matched_migration_history',afterAlignment.history.length===finalManifest.length && finalManifest.every(m=>afterAlignment.history.some(r=>r.migration_name===m.name && r.checksum===m.sha256 && r.finished_at && !r.rolled_back_at)));
+  report.migrationCount=finalManifest.length;
+  await writeFile(join(evidenceDir,'fixture-migration-manifest.json'),JSON.stringify(finalManifest,null,2));
+  for(const c of relationAlignment.catalog)check('aligned_production_fk:'+c.name,afterAlignment.schema.constraints.some(r=>r.table_name===c.table && r.conname===c.name && r.contype==='f' && r.convalidated && r.definition===c.production.definition));
+  assert.throws(()=>sql(SOURCE,relationAlignment.sql),error=>error.status===1 && String(error.stderr).includes('ERROR:  Unexpected candidate FK pre-state: Account_personId_fkey'));
+  check('relation_alignment_rejects_unexpected_prestate_without_partial_change',JSON.stringify(snapshot(SOURCE))===JSON.stringify(afterAlignment));
+  const completedColumns = rows(SOURCE, `SELECT c.relname AS table_name,a.attname AS name,format_type(a.atttypid,a.atttypmod) AS type,a.attnotnull AS not_null,pg_get_expr(d.adbin,d.adrelid) AS default_sql FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum WHERE n.nspname='public' AND c.relkind IN ('r','p') AND a.attnum>0 AND NOT a.attisdropped`);
+  for (const column of completion.catalog.columns) {
+    const actual = completedColumns.find(c => c.table_name === column.table_name && c.name === column.name);
+    const ref = completion.catalog.constraints.find(c => c.kind === 'f' && c.table_name === column.table_name && c.columns.includes(column.name) && !completion.catalog.tables.some(t => c.referenced_table === identifier(t.name)));
+    const expectedType = ref ? completedColumns.find(c => identifier(c.table_name) === ref.referenced_table && c.name === ref.referenced_columns[0]).type : column.type;
+    check('raw_domain_column:' + column.table_name + '.' + column.name, actual && actual.type === expectedType && actual.not_null === column.not_null && actual.default_sql === column.default_sql);
+  }
   const before = snapshot(SOURCE);
+  for (const constraint of completion.catalog.constraints.filter(c => c.kind !== 'n')) check('raw_domain_constraint:' + constraint.name, before.schema.constraints.some(c => c.table_name === constraint.table_name && c.conname === constraint.name && c.contype === constraint.kind && c.convalidated && c.definition === constraint.definition));
+  for (const index of completion.catalog.indexes) check('raw_domain_index:' + index.name, before.schema.indexes.some(i => i.tablename === index.table_name && i.indexname === index.name && i.indexdef === index.definition));
+  for (const enumeration of completion.catalog.enums) assert.deepEqual(before.schema.enums.filter(e => e.typname === enumeration.name).sort((a,b) => a.enumsortorder-b.enumsortorder).map(e => e.enumlabel), enumeration.values);
+  check('raw_domain_completion_schema_matches_catalog_with_parent_id_adaptation', true);
+  const productionReference = JSON.parse(await readFile(join(apiRoot, 'prisma-fresh-install-candidate/production-column-reference.json'), 'utf8'));
+  const nativePlan=planNativeTypePreflight(productionReference,completedColumns);
+  const nativePreflight=assessNativeTypePreflight(nativePlan,rows(SOURCE,nativePlan.sql));
+  await writeFile(join(evidenceDir,'native-type-preflight.json'),JSON.stringify(nativePreflight,null,2));
+  report.nativeTypePreflight={uuidColumnsScanned:nativePreflight.uuidColumnsScanned,invalidColumns:nativePreflight.invalidColumns.length,timezoneColumns:nativePreflight.timezoneColumns.length,nullabilityColumns:nativePreflight.nullabilityColumns.length,inPlaceConversionApproved:false};
+  check('native_preflight_detects_non_uuid_financial_fixture_keys',nativePreflight.invalidColumns.some(c=>c.table_name==='FinanceAccountantShift' && c.column_name==='id'));
+  const compatibility = compareProductionColumns(productionReference, { tables: before.contents.map(t => t.table_name), columns: completedColumns });
+  await writeFile(join(evidenceDir, 'production-column-compatibility.json'), JSON.stringify(compatibility,null,2)+'\n');
+  report.productionColumnCompatibility = compatibility.counts;
+  report.productionColumnMetadataMatches = compatibility.columnMetadataMatches;
+  const relationReference = JSON.parse(await readFile(join(apiRoot,'prisma-fresh-install-candidate/production-relation-reference.json'),'utf8'));
+  for (const c of constraintCompletion.catalog) check('completed_constraint:' + c.name, before.schema.constraints.some(r => r.table_name === c.table_name && r.conname === c.name && r.contype === c.kind && r.convalidated && r.definition === c.definition));
+  for (const i of indexCompletion.catalog) check('completed_index:' + i.name, before.schema.indexes.some(r=>r.tablename===i.table_name && r.indexname===i.name && r.indexdef===i.definition));
+  probeIncidentAdminOrder(SOURCE,account.id);
+  await probeFinancialIndexes(SOURCE);
+  await probeCompletedConstraints(SOURCE, constraintCompletion.catalog);
+  const relationCompatibility = compareProductionRelations(relationReference,{ constraints: before.schema.constraints.filter(c => c.table_name !== '_prisma_migrations' && c.contype !== 'n').map(c=>({table_name:c.table_name,name:c.conname,kind:c.contype,validated:c.convalidated,definition:c.definition})), indexes: before.schema.indexes.filter(i=>i.tablename !== '_prisma_migrations').map(i=>({table_name:i.tablename,name:i.indexname,definition:i.indexdef})) });
+  await writeFile(join(evidenceDir,'production-relation-compatibility.json'),JSON.stringify(relationCompatibility,null,2)+'\n');
+  check('all_production_fk_definitions_match_after_alignment',relationCompatibility.constraints.changed.filter(c=>c.production.kind==='f').length===0);
+  const actionDifferences=relationAlignment.catalog;
+  assert.equal(relationCompatibility.review.uniqueIndexProtection.length,2,'Expected DiveLog/payment unique index reviews');
+  await probeUniqueIndexProtection(SOURCE,relationCompatibility.review.uniqueIndexProtection);
+  await probeForeignKeyUpdateActions(SOURCE,actionDifferences);
+  report.productionRelationReview=relationCompatibility.review;
+  report.productionRelationCompatibility = relationCompatibility.counts;
+  report.productionRelationMetadataMatches = relationCompatibility.metadataMatches;
+  check('all_production_table_names_covered', compatibility.missingTables.length === 0);
+  check('all_production_column_names_covered', compatibility.missingColumns.length === 0);
+  const organizationColumn = completedColumns.find(c => c.table_name === 'EquipmentBarcode' && c.name === 'organizationId');
+  check('equipment_center_column_matches_installed_organization_id_type', organizationColumn.type === completedColumns.find(c => c.table_name === 'Organization' && c.name === 'id').type);
+  check('equipment_center_scope_fk_and_index_exist', before.schema.constraints.some(c => c.conname === 'EquipmentBarcode_organizationId_fkey' && c.convalidated) && before.schema.indexes.some(i => i.indexname === 'EquipmentBarcode_organizationId_stockStatus_idx'));
   report.tableCount = before.contents.length;
   report.populatedTables = before.contents.filter(row => row.row_count > 0).map(row => row.table_name);
   check('representative_data_and_raw_extensions_seeded', ['Account','Credential','Document','OrganizationDocumentAsset','RoleAssignment','Session','Booking','Payment','Invoice','AuditEvent','SafetyIncident','Conversation','Message','TripOperationalLocation'].every(name => report.populatedTables.includes(name)));
@@ -160,6 +480,8 @@ try {
     check(target + ':empty_target', Number(sql(target, "SELECT COUNT(*) FROM pg_tables WHERE schemaname='public'")) === 0);
     docker(['exec', '-i', CONTAINER, 'pg_restore', '-U', 'hydroland', '-d', target, '--exit-on-error', '--single-transaction', '--no-owner', '--no-acl'], { input: dump });
     const recovered = snapshot(target);
+    assert.deepEqual(assessNativeTypePreflight(nativePlan,rows(target,nativePlan.sql)),nativePreflight);
+    check(target+':native_type_preflight_counts_preserved',true);
     check(target + ':schema_identical', JSON.stringify(recovered.schema) === JSON.stringify(before.schema));
     check(target + ':all_table_data_identical', JSON.stringify(recovered.contents) === JSON.stringify(before.contents));
     check(target + ':entire_real_migration_history_identical', JSON.stringify(recovered.history) === JSON.stringify(before.history));
@@ -176,6 +498,12 @@ try {
     check(target + ':foreign_key_enforced', true);
     await assert.rejects(() => db.roleAssignment.create({ data: { accountId: account.id, role: 'DIVER', status: 'ACTIVE' } }), error => error.code === 'P2002');
     check(target + ':unique_constraint_enforced', true);
+    await probeUniqueIndexProtection(target,relationCompatibility.review.uniqueIndexProtection);
+    await probeForeignKeyUpdateActions(target,actionDifferences);
+    probeIncidentAdminOrder(target,account.id);
+    await probeFinancialIndexes(target);
+    await probeCompletedConstraints(target, constraintCompletion.catalog);
+    await assertAuditAppendOnly(db, target);
     await db.$disconnect(); db = null;
     report.targets.push({ name: target, status: 'PASS', dataDigest: digest(JSON.stringify(recovered.contents)), schemaDigest: digest(JSON.stringify(recovered.schema)) });
     if (target === TARGETS[0]) {
@@ -184,6 +512,7 @@ try {
     }
   }
   check('source_unchanged_by_both_restores', JSON.stringify(snapshot(SOURCE)) === JSON.stringify(before));
+  report.freshInstallCandidateVerified = usesCandidate;
   report.status = 'PASS';
 } catch (error) {
   report.status = 'FAIL'; report.failure = String(error?.message || error).slice(0, 2500);

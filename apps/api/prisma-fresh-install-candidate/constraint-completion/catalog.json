@@ -1,0 +1,275 @@
+[
+  {
+    "definition": "CHECK (\"licenseAssetId\" IS NULL AND \"licenseIssuedAt\" IS NULL AND \"licenseExpiresAt\" IS NULL OR \"licenseAssetId\" IS NOT NULL AND \"licenseIssuedAt\" IS NOT NULL AND \"licenseExpiresAt\" IS NOT NULL AND \"licenseExpiresAt\" > \"licenseIssuedAt\")",
+    "kind": "c",
+    "name": "AdministrativeRecord_license_dates_check",
+    "table_name": "AdministrativeRecord",
+    "validated": true
+  },
+  {
+    "definition": "CHECK (\"licenseReviewStatus\" IS NULL AND \"licenseReviewSubmittedAt\" IS NULL AND \"licenseReviewSubmittedById\" IS NULL AND \"licenseReviewDecidedAt\" IS NULL AND \"licenseReviewDecidedById\" IS NULL AND \"licenseReviewReason\" IS NULL OR \"licenseReviewStatus\" IS NOT NULL AND (\"licenseReviewStatus\" = ANY (ARRAY['PENDING'::text, 'APPROVED'::text, 'REJECTED'::text])) AND \"licenseReviewSubmittedAt\" IS NOT NULL AND \"licenseReviewSubmittedById\" IS NOT NULL AND (\"licenseReviewStatus\" = 'PENDING'::text AND \"licenseReviewDecidedAt\" IS NULL AND \"licenseReviewDecidedById\" IS NULL AND \"licenseReviewReason\" IS NULL OR (\"licenseReviewStatus\" = ANY (ARRAY['APPROVED'::text, 'REJECTED'::text])) AND \"licenseReviewDecidedAt\" IS NOT NULL AND \"licenseReviewDecidedById\" IS NOT NULL AND \"licenseReviewDecidedById\" <> \"licenseReviewSubmittedById\" AND (\"licenseReviewStatus\" = 'APPROVED'::text OR \"licenseReviewReason\" IS NOT NULL AND length(TRIM(BOTH FROM \"licenseReviewReason\")) >= 5)))",
+    "kind": "c",
+    "name": "AdministrativeRecord_license_review_check",
+    "table_name": "AdministrativeRecord",
+    "validated": true
+  },
+  {
+    "definition": "FOREIGN KEY (\"resourceId\") REFERENCES \"CalendarResource\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+    "kind": "f",
+    "name": "BoatResourceCompliance_resourceId_fkey",
+    "table_name": "BoatResourceCompliance",
+    "validated": true
+  },
+  {
+    "definition": "CHECK (seats > 0)",
+    "kind": "c",
+    "name": "Booking_seats_check",
+    "table_name": "Booking",
+    "validated": true
+  },
+  {
+    "definition": "FOREIGN KEY (\"accountantAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+    "kind": "f",
+    "name": "FinanceAccountantShift_accountantAccountId_fkey",
+    "table_name": "FinanceAccountantShift",
+    "validated": true
+  },
+  {
+    "definition": "FOREIGN KEY (\"centerOrgUnitId\") REFERENCES \"Organization\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+    "kind": "f",
+    "name": "FinanceAccountantShift_centerOrgUnitId_fkey",
+    "table_name": "FinanceAccountantShift",
+    "validated": true
+  },
+  {
+    "definition": "CHECK (\"openingBalanceMinor\" >= 0)",
+    "kind": "c",
+    "name": "FinanceAccountantShift_openingBalance_nonnegative",
+    "table_name": "FinanceAccountantShift",
+    "validated": true
+  },
+  {
+    "definition": "FOREIGN KEY (\"reviewedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+    "kind": "f",
+    "name": "FinanceAccountantShift_reviewedByAccountId_fkey",
+    "table_name": "FinanceAccountantShift",
+    "validated": true
+  },
+  {
+    "definition": "FOREIGN KEY (\"postedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+    "kind": "f",
+    "name": "FinanceEntry_postedByAccountId_fkey",
+    "table_name": "FinanceEntry",
+    "validated": true
+  },
+  {
+    "definition": "CHECK (\"amountMinor\" > 0)",
+    "kind": "c",
+    "name": "FinanceShiftEntry_amount_positive",
+    "table_name": "FinanceShiftEntry",
+    "validated": true
+  },
+  {
+    "definition": "FOREIGN KEY (\"paymentId\") REFERENCES \"Payment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+    "kind": "f",
+    "name": "FinanceShiftEntry_paymentId_fkey",
+    "table_name": "FinanceShiftEntry",
+    "validated": true
+  },
+  {
+    "definition": "FOREIGN KEY (\"recordedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+    "kind": "f",
+    "name": "FinanceShiftEntry_recordedByAccountId_fkey",
+    "table_name": "FinanceShiftEntry",
+    "validated": true
+  },
+  {
+    "definition": "CHECK (\"actualCashMinor\" IS NULL OR \"actualCashMinor\" >= 0)",
+    "kind": "c",
+    "name": "FinanceShiftHandover_actualCash_nonnegative",
+    "table_name": "FinanceShiftHandover",
+    "validated": true
+  },
+  {
+    "definition": "CHECK (\"expectedCashMinor\" >= 0)",
+    "kind": "c",
+    "name": "FinanceShiftHandover_expectedCash_nonnegative",
+    "table_name": "FinanceShiftHandover",
+    "validated": true
+  },
+  {
+    "definition": "FOREIGN KEY (\"fromAccountantId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+    "kind": "f",
+    "name": "FinanceShiftHandover_fromAccountantId_fkey",
+    "table_name": "FinanceShiftHandover",
+    "validated": true
+  },
+  {
+    "definition": "FOREIGN KEY (\"toAccountantId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+    "kind": "f",
+    "name": "FinanceShiftHandover_toAccountantId_fkey",
+    "table_name": "FinanceShiftHandover",
+    "validated": true
+  },
+  {
+    "definition": "CHECK (\"amountMinor\" > 0)",
+    "kind": "c",
+    "name": "InstructorEarning_amount_positive",
+    "table_name": "InstructorEarning",
+    "validated": true
+  },
+  {
+    "definition": "CHECK (\"amountMinor\" > 0)",
+    "kind": "c",
+    "name": "Payment_amountMinor_check",
+    "table_name": "Payment",
+    "validated": true
+  },
+  {
+    "definition": "CHECK (\"totalMinor\" > 0 AND \"paidMinor\" >= 0 AND \"outstandingMinor\" >= 0 AND (\"paidMinor\" + \"outstandingMinor\") = \"totalMinor\")",
+    "kind": "c",
+    "name": "Receivable_amounts_check",
+    "table_name": "Receivable",
+    "validated": true
+  },
+  {
+    "definition": "FOREIGN KEY (\"centerOrgUnitId\") REFERENCES \"OrgUnit\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+    "kind": "f",
+    "name": "Receivable_centerOrgUnitId_fkey",
+    "table_name": "Receivable",
+    "validated": true
+  },
+  {
+    "definition": "FOREIGN KEY (\"customerAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+    "kind": "f",
+    "name": "Receivable_customerAccountId_fkey",
+    "table_name": "Receivable",
+    "validated": true
+  },
+  {
+    "definition": "FOREIGN KEY (\"invoiceId\") REFERENCES \"Invoice\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+    "kind": "f",
+    "name": "Receivable_invoiceId_fkey",
+    "table_name": "Receivable",
+    "validated": true
+  },
+  {
+    "definition": "CHECK (\"amountMinor\" > 0 AND \"paidMinor\" >= 0 AND \"paidMinor\" <= \"amountMinor\")",
+    "kind": "c",
+    "name": "ReceivableInstallment_amounts_check",
+    "table_name": "ReceivableInstallment",
+    "validated": true
+  },
+  {
+    "definition": "CHECK (\"amountMinor\" > 0)",
+    "kind": "c",
+    "name": "ReceivablePayment_amount_check",
+    "table_name": "ReceivablePayment",
+    "validated": true
+  },
+  {
+    "definition": "FOREIGN KEY (\"paymentId\") REFERENCES \"Payment\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+    "kind": "f",
+    "name": "ReceivablePayment_paymentId_fkey",
+    "table_name": "ReceivablePayment",
+    "validated": true
+  },
+  {
+    "definition": "CHECK (points >= 0)",
+    "kind": "c",
+    "name": "RewardAccount_points_nonnegative",
+    "table_name": "RewardAccount",
+    "validated": true
+  },
+  {
+    "definition": "CHECK (\"balanceAfter\" >= 0)",
+    "kind": "c",
+    "name": "RewardEntry_balanceAfter_nonnegative",
+    "table_name": "RewardEntry",
+    "validated": true
+  },
+  {
+    "definition": "CHECK (points > 0)",
+    "kind": "c",
+    "name": "RewardEntry_points_positive",
+    "table_name": "RewardEntry",
+    "validated": true
+  },
+  {
+    "definition": "CHECK (char_length(btrim(description)) >= 3 AND char_length(btrim(description)) <= 5000)",
+    "kind": "c",
+    "name": "SafetyIncident_description_length_check",
+    "table_name": "SafetyIncident",
+    "validated": true
+  },
+  {
+    "definition": "CHECK (\"locationName\" IS NULL OR char_length(btrim(\"locationName\")) <= 160)",
+    "kind": "c",
+    "name": "SafetyIncident_location_length_check",
+    "table_name": "SafetyIncident",
+    "validated": true
+  },
+  {
+    "definition": "CHECK (char_length(btrim(title)) >= 3 AND char_length(btrim(title)) <= 160)",
+    "kind": "c",
+    "name": "SafetyIncident_title_length_check",
+    "table_name": "SafetyIncident",
+    "validated": true
+  },
+  {
+    "definition": "CHECK (status = ANY (ARRAY['DRAFT'::text, 'PUBLISHED'::text, 'ARCHIVED'::text]))",
+    "kind": "c",
+    "name": "ThemeSchedule_valid_status",
+    "table_name": "ThemeSchedule",
+    "validated": true
+  },
+  {
+    "definition": "CHECK (\"endsAt\" > \"startsAt\")",
+    "kind": "c",
+    "name": "ThemeSchedule_valid_window",
+    "table_name": "ThemeSchedule",
+    "validated": true
+  },
+  {
+    "definition": "CHECK (capacity > 0)",
+    "kind": "c",
+    "name": "Trip_capacity_check",
+    "table_name": "Trip",
+    "validated": true
+  },
+  {
+    "definition": "FOREIGN KEY (\"reviewedByAccountId\") REFERENCES \"Account\"(id) ON UPDATE CASCADE ON DELETE SET NULL",
+    "kind": "f",
+    "name": "TripComplianceReview_reviewedByAccountId_fkey",
+    "table_name": "TripComplianceReview",
+    "validated": true
+  },
+  {
+    "definition": "FOREIGN KEY (\"tripId\") REFERENCES \"Trip\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+    "kind": "f",
+    "name": "TripComplianceReview_tripId_fkey",
+    "table_name": "TripComplianceReview",
+    "validated": true
+  },
+  {
+    "definition": "CHECK (\"balanceMinor\" >= 0)",
+    "kind": "c",
+    "name": "Wallet_balanceMinor_nonnegative",
+    "table_name": "Wallet",
+    "validated": true
+  },
+  {
+    "definition": "CHECK (\"amountMinor\" > 0)",
+    "kind": "c",
+    "name": "WalletEntry_amountMinor_positive",
+    "table_name": "WalletEntry",
+    "validated": true
+  },
+  {
+    "definition": "CHECK (\"balanceAfterMinor\" >= 0)",
+    "kind": "c",
+    "name": "WalletEntry_balanceAfterMinor_nonnegative",
+    "table_name": "WalletEntry",
+    "validated": true
+  }
+]
