@@ -36,7 +36,7 @@
   }
   const syncSeats=trip=>{
     if(!seatsInput)return;
-    const remaining=Math.max(1,Number(trip?.remainingSeats??trip?.capacity??1));
+    const remaining=['DISABLED','REVIEW'].includes(trip?.bookingPolicy?.capacityLimit)?2000:Math.max(1,Number(trip?.remainingSeats??trip?.capacity??1));
     seatsInput.max=String(remaining);
     const current=Number(seatsInput.value||1);seatsInput.value=String(Math.min(Math.max(1,current),remaining));
     const hint=document.getElementById('booking-seats-hint');if(hint)hint.textContent=trip?`المتاح ${remaining} مقعد`:'اختر عدد المقاعد';
@@ -152,7 +152,7 @@
     if(trip.price?.configured===false){toast('سعر الرحلة لم يُعتمد بعد');return;}
     const seats=Number(seatsInput?.value||1),remaining=Number(trip.remainingSeats??trip.capacity??0);
     if(!Number.isInteger(seats)||seats<1){toast('اختر عدد مقاعد صحيح');seatsInput?.focus();return;}
-    if(remaining>0&&seats>remaining){toast(`المتاح حاليًا ${remaining} مقعد فقط`);seatsInput?.focus();return;}
+    if(!['DISABLED','REVIEW'].includes(trip.bookingPolicy?.capacityLimit)&&remaining>0&&seats>remaining){toast(`المتاح حاليًا ${remaining} مقعد فقط`);seatsInput?.focus();return;}
     confirm.disabled=true;const original=confirm.textContent;
     try{
       let booking=state.pendingBooking&&state.pendingBooking.tripId===trip.id?state.pendingBooking:null;

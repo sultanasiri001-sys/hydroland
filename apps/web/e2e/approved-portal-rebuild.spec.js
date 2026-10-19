@@ -39,10 +39,10 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
      expect(content.y+content.height,`${selector} must not be clipped`).toBeLessThanOrEqual(hero.y+hero.height);
     }
    }
-   await expect(board.locator(role==='diver'?'.hl-diver-action-grid>button':'.hl-command-grid>button')).toHaveCount(['organization','admin','boat'].includes(role)?10:6);
+   await expect(board.locator(role==='diver'?'.hl-diver-action-grid>button':'.hl-command-grid>button')).toHaveCount(role==='admin'?11:['organization','boat'].includes(role)?10:6);
    await expect(page.locator('#toast')).not.toHaveClass(/visible/);
    await page.screenshot({path:testInfo.outputPath(`portal-${role}-${viewport.name}.png`),fullPage:true});
-   if(role==='boat')await expect(board.locator('[data-action-label="إنشاء رحلة"]')).toBeDisabled();
+   if(role==='boat'){const createTrip=board.locator('[data-action-label="إنشاء رحلة"]');await expect(createTrip).toBeEnabled();await expect(createTrip).toHaveAttribute('data-hl-route','marine-trips');await createTrip.click();await expect(page.locator('#hl-marine-trips')).toBeVisible();}
    // Exercise routing through the real workspace shell, then restore its home.
    if(role==='diver'){
     await board.locator('[data-diver-route="trips"]').first().click();

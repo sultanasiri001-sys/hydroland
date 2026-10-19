@@ -1,0 +1,57 @@
+name: Organization migration recovery
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/scripts/organization-booking-migration-recovery.mjs'
+      - 'apps/api/scripts/organization-booking-migration-db-checks.mjs'
+      - 'apps/api/prisma/migrations/20261005090000_customer_case_organization_relation/**'
+      - 'apps/api/prisma/migrations/20261005130000_organization_booking_safety/**'
+      - 'apps/api/package.json'
+      - 'package-lock.json'
+      - '.github/workflows/organization-migration-recovery.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/api/scripts/organization-booking-migration-recovery.mjs'
+      - 'apps/api/scripts/organization-booking-migration-db-checks.mjs'
+      - 'apps/api/prisma/migrations/20261005090000_customer_case_organization_relation/**'
+      - 'apps/api/prisma/migrations/20261005130000_organization_booking_safety/**'
+      - 'apps/api/package.json'
+      - 'package-lock.json'
+      - '.github/workflows/organization-migration-recovery.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-18:
+    name: Constraint recovery on PostgreSQL 18
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: hydroland
+          POSTGRES_PASSWORD: hydroland
+          POSTGRES_DB: hydroland
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hydroland -d hydroland"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      CI: 'true'
+      DATABASE_URL: postgresql://hydroland:hydroland@localhost:5432/hydroland
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --workspace=@hydroland/api --include-workspace-root=true
+      - run: npm --workspace @hydroland/api run db:generate
+      - name: Reproduce and recover constraint-backed booking migration
+        run: node apps/api/scripts/organization-booking-migration-db-checks.mjs
