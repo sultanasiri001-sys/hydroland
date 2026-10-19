@@ -45,6 +45,7 @@ import { TripPricingGovernanceService } from './trip-pricing-governance.service'
 import { TripWeatherReviewService } from './trip-weather-review.service';
 import { TripsController } from './trips.controller';
 import { MarineTripBookingsController } from './marine-trip-bookings.controller';
+import { OrganizationBookingsController } from './organization-bookings.controller';
 import { TripsService } from './trips.service';
 import { WeatherGateController } from './weather-gate.controller';
 import { WeatherGateService } from './weather-gate.service';
@@ -52,7 +53,7 @@ import { StormglassWeatherService } from './stormglass-weather.service';
 
 @Module({
   imports: [AuthModule, AdminModule, AuditModule, NotificationsModule, IntegrationModule, MarineOperationsModule],
-  controllers: [OperationalControlsController,TripsController,MarineTripBookingsController,TripAdminController,TripCompletionController,WeatherGateController,CalendarAllocationController,CrewAssignmentController,PolicyControlController,BoatComplianceController,TripComplianceController,EquipmentInspectionController,EquipmentInventoryController,InventoryStocktakeController,EquipmentRentalController,EquipmentRentalAdminController,EquipmentRentalHandoverController],
+  controllers: [OperationalControlsController,TripsController,MarineTripBookingsController,OrganizationBookingsController,TripAdminController,TripCompletionController,WeatherGateController,CalendarAllocationController,CrewAssignmentController,PolicyControlController,BoatComplianceController,TripComplianceController,EquipmentInspectionController,EquipmentInventoryController,InventoryStocktakeController,EquipmentRentalController,EquipmentRentalAdminController,EquipmentRentalHandoverController],
   providers: [OperationalControlsService,BookingManagementService,TripLifecycleService,TripsService,TripAdminService,TripPricingGovernanceService,PaymentConfirmationGuard,TripCompletionService,WeatherGateService,StormglassWeatherService,TripWeatherReviewService,CalendarAllocationService,CalendarResourceService,CrewAssignmentService,CrewEscalationScheduler,OperationalClearanceService,OperationalClearanceScheduler,BookingParticipantService,PolicyControlService,BoatComplianceService,TripComplianceService,EquipmentInspectionService,EquipmentInventoryService,InventoryStocktakeService,EquipmentRentalService,EquipmentRentalAdminService,EquipmentRentalHandoverService],
   exports: [BookingManagementService,TripLifecycleService,PolicyControlService,BoatComplianceService,TripComplianceService,EquipmentInspectionService,EquipmentInventoryService,InventoryStocktakeService,EquipmentRentalService,TripWeatherReviewService],
 })
