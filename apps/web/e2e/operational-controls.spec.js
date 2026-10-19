@@ -1,6 +1,12 @@
 import {test,expect} from '@playwright/test';
 import {openWorkspaceSwitcher,returnToDiverWorkspace} from './portal-test-helpers.js';
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
+async function openControls(page){
+ const board=page.locator('.hl-role-dashboard[data-role="admin"]');await expect(board).toBeVisible();
+ const nav=board.locator('.hl-portal-nav-item').filter({hasText:'ضوابط الرحلات والتدريب'});
+ if(!await nav.isVisible())await board.locator('[data-portal-menu]').click();
+ await nav.click();
+}
 async function setup(page){
  const state={active:true,failed:false,writes:[],revision:1};
  const rules=[{id:'WEATHER.WEATHER_GATE',group:'الحجز والسلامة',labelAr:'اشتراط مراجعة الطقس',description:'اختبار حالة الطقس',state:'DISABLED',revision:'a'.repeat(64)},{id:'TRAINING.ATTENDANCE_REQUIRED',group:'التدريب',labelAr:'الحضور قبل بدء الجلسة وإنهائها',description:'الإيقاف لا يسجل حضورًا ولا يمنح شهادة تلقائيًا.',state:'ENABLED',revision:'b'.repeat(64)}];
@@ -16,7 +22,7 @@ async function setup(page){
  await page.goto('/',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>Boolean(window.HydrolandPolicyAdmin&&window.HydrolandProfile));
  await page.evaluate(async()=>{window.HydrolandAuth.acceptSession({accessToken:'control-test',refreshToken:'control-refresh'},window.HydrolandAuth.beginAuthAttempt());await window.HydrolandProfile.load();});
  await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role=admin]').click();
- await page.locator('.hl-portal-nav-item').filter({hasText:'ضوابط الرحلات والتدريب'}).click();
+ await openControls(page);
  await expect(page.locator('.hl-policy-center')).toBeVisible();await expect(page.locator('[data-control-id="WEATHER.WEATHER_GATE"]')).toContainText('موقوف — OFF');
  return state;
 }
@@ -26,7 +32,7 @@ test('central controls preserve current state, require a reason, toggle off/on a
  await card.getByRole('textbox').fill('تجربة موثقة للضابط التدريبي');await card.getByRole('button',{name:'إيقاف — OFF'}).click();await expect(card.locator('[data-control-status]')).toHaveText('موقوف — OFF');
  expect(state.writes[0]).toMatchObject({id:'TRAINING.ATTENDANCE_REQUIRED',state:'DISABLED',expectedRevision:'b'.repeat(64)});
  await card.getByRole('textbox').fill('إعادة تفعيل حضور التدريب');await card.getByRole('button',{name:'تشغيل — ON'}).click();await expect(card.locator('[data-control-status]')).toHaveText('مفعّل — ON');
- await returnToDiverWorkspace(page);await expect(panel).toBeHidden();await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role=admin]').click();await page.locator('.hl-portal-nav-item').filter({hasText:'ضوابط الرحلات والتدريب'}).click();await expect(card.locator('[data-control-status]')).toHaveText('مفعّل — ON');expect(state.writes).toHaveLength(2);
+ await returnToDiverWorkspace(page);await expect(panel).toBeHidden();await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role=admin]').click();await openControls(page);await expect(card.locator('[data-control-status]')).toHaveText('مفعّل — ON');expect(state.writes).toHaveLength(2);
 });
 test('stale update clears usable state and requires refresh',async({page})=>{
  const state=await setup(page);state.failed=true;const panel=page.locator('.hl-policy-center'),card=panel.locator('[data-control-id="WEATHER.WEATHER_GATE"]');
