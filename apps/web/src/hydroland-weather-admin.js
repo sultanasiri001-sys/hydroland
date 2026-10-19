@@ -41,6 +41,7 @@
   const applyRole=role=>{const active=role==='admin';panel.hidden=!active;if(active)load()};
   document.addEventListener('hydroland:role-changed',e=>applyRole(e.detail?.role));
   document.addEventListener('hydroland:auth-changed',()=>{if(!panel.hidden)load()});
+  document.addEventListener('hydroland:operational-controls-changed',event=>{if(event.detail?.id==='WEATHER.WEATHER_GATE'&&window.HydrolandPortalAccess?.getCurrentRole?.()==='admin')void load()});
   document.addEventListener('hydroland:trip-location-changed',()=>{if(!panel.hidden)loadTrips()});
   applyRole(window.HydrolandPortalAccess?.getCurrentRole?.()||'diver');
 })();

@@ -5,7 +5,7 @@
   const explain=trip=>{
     if(!trip)return'غير متاحة';
     if(trip.price?.configured===false)return'السعر لم يُعتمد بعد';
-    if(Number(trip.remainingSeats)<=0)return'مكتملة السعة';
+    if(!['DISABLED','REVIEW'].includes(trip.bookingPolicy?.capacityLimit)&&Number(trip.remainingSeats)<=0)return'مكتملة السعة';
     if(trip.safety?.decision==='DEFERRED')return'مؤجلة بقرار السلامة';
     const safetyOptional=['DISABLED','REVIEW'].includes(trip.bookingPolicy?.safetyApproval);
     if(!safetyOptional&&trip.safety?.decision!=='ALLOWED')return'تحتاج اعتماد السلامة';
