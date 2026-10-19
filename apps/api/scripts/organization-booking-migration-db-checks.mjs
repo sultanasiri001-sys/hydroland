@@ -16,7 +16,10 @@ const sql = await readFile(new URL(`../prisma/migrations/${ORGANIZATION_BOOKING_
 const caseMigration = '20261005090000_customer_case_organization_relation';
 const caseSql = await readFile(new URL(`../prisma/migrations/${caseMigration}/migration.sql`, import.meta.url), 'utf8');
 assert.equal(createHash('sha256').update(sql).digest('hex'), EXPECTED_ORGANIZATION_BOOKING_CHECKSUM);
-const expectSqlState = (operation, code) => assert.rejects(operation, error => error?.meta?.code === code, `Expected PostgreSQL ${code}`);
+const expectSqlState = (operation, code) => {
+  const codes = Array.isArray(code) ? code : [code];
+  return assert.rejects(operation, error => codes.includes(error?.meta?.code), `Expected PostgreSQL ${codes.join(' or ')}`);
+};
 const noResolve = () => { throw new Error('Unexpected Prisma resolve call'); };
 
 async function fixture(organizationType, bookingType, shape, work) {
@@ -104,8 +107,10 @@ async function checkResult(f) {
   await expectSqlState(() => insert(randomUUID(), randomUUID(), contact, 'PENDING', randomUUID(), 'request-3'), '23503');
   await db.$executeRawUnsafe(`INSERT INTO "SafetyIncident" ("id","status","bookingId") VALUES ('report','OPEN',$1::${bookingType})`, organizationBooking);
   await expectSqlState(() => db.$executeRawUnsafe(`INSERT INTO "SafetyIncident" ("id","status","bookingId") VALUES ('invalid','OPEN',$1::${bookingType})`, randomUUID()), '23503');
-  await expectSqlState(() => db.$executeRawUnsafe(`DELETE FROM "Booking" WHERE "id"=$1::${bookingType}`, organizationBooking), '23503');
-  await expectSqlState(() => db.$executeRawUnsafe(`DELETE FROM "Organization" WHERE "id"=$1::${organizationType}`, organization), '23503');
+  // PostgreSQL 16 reports foreign_key_violation; PostgreSQL 18 reports
+  // restrict_violation for these same ON DELETE RESTRICT relationships.
+  await expectSqlState(() => db.$executeRawUnsafe(`DELETE FROM "Booking" WHERE "id"=$1::${bookingType}`, organizationBooking), ['23503', '23001']);
+  await expectSqlState(() => db.$executeRawUnsafe(`DELETE FROM "Organization" WHERE "id"=$1::${organizationType}`, organization), ['23503', '23001']);
   const old = await db.$queryRawUnsafe(`SELECT "organizationId","bookingRequestKey","bookingRequestFingerprint" FROM "Booking" WHERE "id"=$1::${bookingType}`, legacyBooking);
   assert.deepEqual(old, [{ organizationId: null, bookingRequestKey: null, bookingRequestFingerprint: null }]);
   const [applied] = await db.$queryRawUnsafe('SELECT checksum FROM "_prisma_migrations" WHERE migration_name=$1 AND finished_at IS NOT NULL AND rolled_back_at IS NULL', ORGANIZATION_BOOKING_MIGRATION);
