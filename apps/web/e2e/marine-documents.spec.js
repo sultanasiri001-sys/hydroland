@@ -36,7 +36,8 @@ test('boat operator registers marine asset and license metadata, admin verifies 
   await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','marine-e2e-access');sessionStorage.setItem('hl-refresh-token','marine-e2e-refresh');window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));await window.HydrolandProfile.load()});
   await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="boat"]').click();
   const panel=page.locator('#hl-marine-documents');
-  const dashboard=page.locator('.hl-role-dashboard[data-role="boat"]');await expect(dashboard.locator('.hl-role-tile b').nth(0)).toHaveText('0');
+  const dashboard=page.locator('.hl-role-dashboard[data-role="boat"]');
+  await expect(dashboard.locator('.hl-role-tile b').nth(0)).toHaveText('0');
 
   await dashboard.locator('[data-action-label="المستندات والتراخيص"]').click();
   await expect(panel).toBeVisible();
