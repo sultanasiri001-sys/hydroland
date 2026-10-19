@@ -56,13 +56,40 @@ checks if production records change before deployment.
 ## Release gates and acceptance boundary
 
 Local API build and Web validation/build passed. Exact-head CI must pass before
-merge. A current durable production backup must be verified before applying the
-two candidate migrations, as required by the existing organization contract.
-The Render connector cannot create/inspect database backups; the Dashboard
-currently requires sign-in. No production migration or release is claimed here.
+merge. The organization contract requires a current durable production backup
+before applying the two candidate migrations. That gate was initially held by
+Dashboard sign-in and was completed by the refreshed preflight recorded below.
+No production migration or release is claimed by this preflight record.
 
 After deployment, verify migration checksums/indexes/FKs, preserved records,
 runtime readiness and tenant-scoped UI. Operator acceptance, organization billing
 decisions, canonical calendar confirmation-gate acceptance and the remaining
 full production recovery exercise are separate. Calendar reservation details
 are visibility/staleness protection and do not grant departure clearance.
+
+## Release preflight refresh — 20 October 2026 (Saudi Arabia)
+
+The production backup gate was completed before deployment. In the authenticated
+Render Recovery page for `hydroland-db` (`dpg-dakd8g5g1s2s73bu70bg-a`), a fresh
+logical export dated `2026-10-19T21:23Z` completed successfully and exposed its
+`.dir.tar.gz` download. The provider retains exports for at least seven days;
+the prior `19:26Z` export also remains available. The page shows the three-day
+PITR window. No credentials or signed download URLs are included in this record.
+This establishes the current provider-held pre-migration backup, while full
+application/object-storage recovery acceptance remains tracked by #369.
+
+At `2026-10-19T21:24:43.542228Z`, a fresh read-only production transaction
+confirmed all 84 latest successful migration checksums against this candidate,
+zero unresolved or mismatched migrations, and exactly the two pending
+organization migrations named above. The ledger has 109 historical records,
+including 25 rolled-back records; these are retained as history and are not
+unresolved failures. Native UUID keys, the original personal booking unique
+index and 11 existing foreign keys are valid, with no orphan organization
+references. All five protected row counts and fingerprints above match exactly.
+
+The candidate is synchronized with main `8ea3db7f5ec2845c2788cb778fe42046963e1919`,
+preserving #471's protection of all 84 applied migration files. The merge was
+clean and local checksum validation passed. Full CI for the synchronized head
+must pass before merge; deployment and post-migration verification are recorded
+separately. This refresh does not activate organization billing or confirm any
+booking, payment, safety or operational decision.
