@@ -19,6 +19,11 @@ controls. Organization billing policy is not activated or inferred as approved.
 - HTTP/PostgreSQL regressions exercise those boundaries, booking replay and
   changed-payload denial, and unchanged personal-case access. Test actors and
   policy overrides are confined to a guarded ephemeral CI database.
+- Organization navigation now opens the scoped directory for requests, rosters
+  and safety reports. Read-only members can view bookings without edit/create/
+  cancellation controls. Request forms show the per-seat and selected-seat
+  prices before submission and distinguish an unconfigured price from a free
+  trip. Prices are informational; no invoice, charge or confirmation is created.
 
 ## Read-only production preflight
 

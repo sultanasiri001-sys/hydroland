@@ -49,7 +49,8 @@
         <label>الرحلة<select name="tripId" data-org-trip required><option value="">جارٍ تحميل الرحلات…</option></select></label>
         <label>عدد المقاعد<input name="seats" type="number" min="1" max="30" value="1" required></label>
         <label>أسماء المشاركين، اسم في كل سطر (اختياري)<textarea name="participantNames" maxlength="5000" rows="4" placeholder="اتركه فارغًا لإكمال الأسماء لاحقًا"></textarea></label>
-        <small>أسماء المشاركين مطلوبة قبل اعتماد الحجز. الأسعار وشروط الرحلة تظهر بعد اختيارها.</small>
+        <small>أسماء المشاركين مطلوبة قبل اعتماد الحجز. إرسال الطلب لا يؤكد الحجز ولا ينفذ دفعة.</small>
+        <p data-org-trip-summary role="status">اختر الرحلة لعرض سعر المقاعد.</p>
         <button type="submit" data-org-booking-submit>إرسال طلب الحجز</button><p data-org-booking-note role="status"></p>
       </form>
     </section>
@@ -93,12 +94,15 @@
   let selectedBookingsOrganization = null;
   let bookingLoadVersion = 0;
   let pendingBookingRequest = null;
+  let bookingTripQuotes = new Map();
   const pendingCancellations = new Map();
   let selectedSafetyOrganization = null;
   let safetyLoadVersion = 0;
   let directoryLoadVersion = 0;
   const clearPrivateViews = () => {
     pendingBookingRequest = null;
+    bookingTripQuotes.clear();
+    panel.querySelector('[data-org-trip-summary]').textContent = 'اختر الرحلة لعرض سعر المقاعد.';
     pendingCancellations.clear();
     for (const selector of ['[data-org-members]', '[data-org-request-list]', '[data-org-booking-list]', '[data-org-incident-list]']) panel.querySelector(selector).innerHTML = '';
     for (const selector of ['[data-org-requests-note]', '[data-org-booking-note]', '[data-org-safety-note]']) panel.querySelector(selector).textContent = '';
@@ -122,7 +126,7 @@
       const canViewRequests = status === 'ACTIVE' && organization.status === 'ACTIVE';
       const canOperate = status === 'ACTIVE' && organization.status === 'ACTIVE' && ['OWNER', 'ADMIN', 'OPERATOR'].includes(role);
       const canReportSafety = status === 'ACTIVE' && organization.status === 'ACTIVE' && ['OWNER', 'ADMIN', 'OPERATOR', 'STAFF'].includes(role);
-      return '<article class="hl-org-item" data-org-id="' + esc(organization.id) + '"><div><strong>' + esc(organization.displayName) + '</strong><small>' + esc(organization.kind) + ' · دورك: ' + esc(roleLabel(role)) + '</small></div><span class="hl-org-status ' + esc(organization.status.toLowerCase()) + '">' + esc(statusLabel(organization.status)) + '</span><small>العضوية: ' + esc(status) + '</small>' + ((manager || canViewRequests || canOperate || canReportSafety) ? '<div class="hl-org-item-actions">' + (manager ? '<button type="button" data-org-edit>تعديل بيانات الجهة</button><button type="button" data-org-view-members>عرض العضويات</button>' : '') + (canViewRequests ? '<button type="button" data-org-requests-open>طلبات الخدمات</button>' : '') + (canOperate ? '<button type="button" data-org-bookings-open>الحجوزات</button>' : '') + (canReportSafety ? '<button type="button" data-org-safety-open>السلامة والبلاغات</button>' : '') + '</div>' : '') + '</article>';
+      return '<article class="hl-org-item" data-org-id="' + esc(organization.id) + '"><div><strong>' + esc(organization.displayName) + '</strong><small>' + esc(organization.kind) + ' · دورك: ' + esc(roleLabel(role)) + '</small></div><span class="hl-org-status ' + esc(organization.status.toLowerCase()) + '">' + esc(statusLabel(organization.status)) + '</span><small>العضوية: ' + esc(status) + '</small>' + ((manager || canViewRequests || canOperate || canReportSafety) ? '<div class="hl-org-item-actions">' + (manager ? '<button type="button" data-org-edit>تعديل بيانات الجهة</button><button type="button" data-org-view-members>عرض العضويات</button>' : '') + (canViewRequests ? '<button type="button" data-org-requests-open>طلبات الخدمات</button>' : '') + (canViewRequests ? '<button type="button" data-org-bookings-open>الحجوزات</button>' : '') + (canReportSafety ? '<button type="button" data-org-safety-open>السلامة والبلاغات</button>' : '') + '</div>' : '') + '</article>';
     }).join('');
   }
 
@@ -173,10 +177,23 @@
 
   const bookingStatus = (status) => ({ PENDING: 'بانتظار الاعتماد', CONFIRMED: 'مؤكد', CANCELLED: 'ملغى', COMPLETED: 'مكتمل' }[status] || status);
   const severityLabel = (severity) => ({ LOW: 'منخفضة', MEDIUM: 'متوسطة', HIGH: 'عالية', CRITICAL: 'حرجة' }[severity] || severity);
+  const updateBookingQuote = () => {
+    const form = panel.querySelector('[data-org-booking-form]'), summary = panel.querySelector('[data-org-trip-summary]');
+    const id = form.elements.tripId.value, price = bookingTripQuotes.get(id), seats = Number(form.elements.seats.value);
+    if (!id) { summary.textContent = 'اختر الرحلة لعرض سعر المقاعد.'; return; }
+    if (!price?.configured || !Number.isSafeInteger(price.pricePerSeatMinor) || price.pricePerSeatMinor < 0 || price.currency !== 'SAR') { summary.textContent = 'سعر الرحلة غير محدد؛ يرسل الطلب للمراجعة ولا ينفذ دفعة.'; return; }
+    const total = price.pricePerSeatMinor * seats;
+    summary.textContent = 'سعر المقعد: ' + (price.pricePerSeatMinor / 100).toFixed(2) + ' ر.س.' + (Number.isInteger(seats) && seats >= 1 && seats <= 30 && Number.isSafeInteger(total) ? ' إجمالي المقاعد المختارة: ' + (total / 100).toFixed(2) + ' ر.س.' : ' أدخل عدد مقاعد صالحًا.') + ' السعر المعروض قبل مراجعة الطلب؛ لا تُنفذ دفعة هنا.';
+  };
+  panel.querySelector('[data-org-trip]').addEventListener('change', updateBookingQuote);
+  panel.querySelector('[data-org-booking-form] [name="seats"]').addEventListener('input', updateBookingQuote);
   async function loadOrganizationBookings(organizationId, membership) {
     const auth = window.HydrolandAuth, session = auth?.getSessionVersion?.(), version = ++bookingLoadVersion;
     selectedBookingsOrganization = organizationId;
     const current = () => Boolean(auth?.isAuthenticated?.() && session === auth?.getSessionVersion?.() && version === bookingLoadVersion && selectedBookingsOrganization === organizationId);
+    bookingTripQuotes.clear();
+    panel.querySelector('[data-org-booking-form]').hidden = true;
+    panel.querySelector('[data-org-trip-summary]').textContent = 'جارٍ تحميل أسعار الرحلات…';
     const box = panel.querySelector('[data-org-booking-list]'); box.innerHTML = '<p>جارٍ تحميل الحجوزات…</p>';
     try {
       const [result, trips] = await Promise.all([request('/organizations/' + encodeURIComponent(organizationId) + '/bookings?page=1&pageSize=50'), request('/trips')]);
@@ -190,9 +207,11 @@
       }).join('') : '<p>لا توجد حجوزات مسجلة لهذه الجهة.</p>';
       const tripsSelect = panel.querySelector('[data-org-trip]');
       const availableTrips = (Array.isArray(trips) ? trips : []).filter(trip => trip.status === 'OPEN' && new Date(trip.startsAt) > new Date());
+      bookingTripQuotes = new Map(availableTrips.map(trip => [trip.id, trip.price]));
       tripsSelect.innerHTML = '<option value="">اختر رحلة متاحة</option>' + availableTrips.map(trip => '<option value="' + esc(trip.id) + '">' + esc(trip.title) + ' · ' + esc(new Date(trip.startsAt).toLocaleString('ar-SA')) + ' · المتبقي ' + esc(trip.remainingSeats) + '</option>').join('');
       tripsSelect.disabled = !mayEdit || availableTrips.length === 0;
       panel.querySelector('[data-org-booking-form]').hidden = !mayEdit || availableTrips.length === 0;
+      updateBookingQuote();
     } catch (error) { if (current()) box.innerHTML = '<p class="hl-org-error">' + esc(error instanceof Error ? error.message : 'تعذر تحميل الحجوزات.') + '</p>'; }
   }
   async function loadOrganizationIncidents(organizationId, membership) {
@@ -298,7 +317,7 @@
     const membership = stateMemberships.find(row => row.organization?.id === organizationId);
     if (!membership || membership.status !== 'ACTIVE') return;
     if (button.matches('[data-org-bookings-open]')) {
-      if (membership.organization.status !== 'ACTIVE' || !['OWNER', 'ADMIN', 'OPERATOR'].includes(membership.role)) return;
+      if (membership.organization.status !== 'ACTIVE') return;
       selectedBookingsOrganization = organizationId; panel.querySelector('[data-org-bookings-title]').textContent = 'حجوزات ' + membership.organization.displayName; panel.querySelector('[data-org-bookings]').hidden = false;
       panel.querySelector('[data-org-safety]').hidden = true; selectedSafetyOrganization = null; safetyLoadVersion++;
       await loadOrganizationBookings(organizationId, membership); return;

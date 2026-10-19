@@ -92,9 +92,26 @@ test('organization request content is escaped and late list data is discarded af
 
 test('organization operator books a trip, submits participant snapshots and can update the roster',async({page})=>{
  const state=await install(page,{role:'OPERATOR'});await page.locator('[data-org-id="org-1"] [data-org-bookings-open]').click();
- const panel=page.locator('[data-org-bookings]');await expect(panel).toBeVisible();await panel.locator('[name="tripId"]').selectOption('trip-1');await panel.locator('[name="seats"]').fill('1');await panel.locator('[name="participantNames"]').fill('سارة الغامدي');await panel.locator('[data-org-booking-submit]').click();
+ const panel=page.locator('[data-org-bookings]');await expect(panel).toBeVisible();await panel.locator('[name="tripId"]').selectOption('trip-1');await panel.locator('[name="seats"]').fill('2');await expect(panel.locator('[data-org-trip-summary]')).toContainText('500.00');await panel.locator('[name="seats"]').fill('1');await expect(panel.locator('[data-org-trip-summary]')).toContainText('250.00');await expect(panel.locator('[data-org-trip-summary]')).toContainText('لا تُنفذ دفعة');await panel.locator('[name="participantNames"]').fill('سارة الغامدي');await panel.locator('[data-org-booking-submit]').click();
  await expect(panel).toContainText('تم تسجيل طلب الحجز بحالة انتظار');expect(state.bookingWrites).toHaveLength(1);expect(state.bookingWrites[0]).toMatchObject({tripId:'trip-1',seats:1,participantNames:['سارة الغامدي']});
  const participant=panel.locator('[data-org-participant]');await participant.locator('[name="fullName"]').fill('سارة أ. الغامدي');await participant.locator('button').click();await expect.poll(()=>state.participantWrites.length).toBe(1);expect(state.participantWrites[0].expectedUpdatedAt).toBe('2026-10-05T09:00:00.000Z');
+});
+
+test('organization viewer reads existing bookings without booking, roster or cancellation controls',async({page})=>{
+ const state=await install(page,{role:'VIEWER'});
+ state.bookings.push({id:'booking-1',tripId:'trip-1',status:'PENDING',seats:1,updatedAt:'2026-10-05T09:00:00.000Z',trip:{title:'رحلة الساحل',startsAt:'2026-12-01T08:00:00.000Z'},participants:[{id:'participant-0',fullName:'مشارك للعرض فقط',eligibilityStatus:'PENDING'}]});
+ await page.locator('[data-org-id="org-1"] [data-org-bookings-open]').click();const panel=page.locator('[data-org-bookings]');
+ await expect(panel).toContainText('رحلة الساحل');await expect(panel.locator('[data-org-booking-form]')).toBeHidden();
+ await expect(panel.locator('[data-org-participant] [name="fullName"]')).toBeDisabled();
+ await expect(panel.locator('[data-org-participant] button')).toHaveCount(0);await expect(panel.locator('[data-org-booking-cancel]')).toHaveCount(0);
+ expect(state.bookingWrites).toHaveLength(0);expect(state.participantWrites).toHaveLength(0);expect(state.cancellations).toHaveLength(0);
+});
+
+test('organization booking request distinguishes an unconfigured price from a free trip',async({page})=>{
+ await install(page,{role:'OPERATOR'});
+ await page.route(/\/api\/v1\/trips$/,route=>json(route,[{id:'trip-1',title:'رحلة بدون سعر',status:'OPEN',startsAt:'2026-12-01T08:00:00.000Z',remainingSeats:8,price:{configured:false,pricePerSeatMinor:0,currency:'SAR'}}]));
+ await page.locator('[data-org-id="org-1"] [data-org-bookings-open]').click();const panel=page.locator('[data-org-bookings]');
+ await panel.locator('[name="tripId"]').selectOption('trip-1');await expect(panel.locator('[data-org-trip-summary]')).toContainText('سعر الرحلة غير محدد');await expect(panel.locator('[data-org-trip-summary]')).not.toContainText('0.00');
 });
 
 for(const changed of [false,true])test(`booking retry ${changed?'uses a new key for changed data':'recovers a saved booking after its response is lost'}`,async({page})=>{
