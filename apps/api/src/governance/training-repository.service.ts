@@ -1,3 +1,4 @@
+import { trainingOperationalPolicy } from './training-operational-policy';
 import { createHash, randomBytes } from 'node:crypto';
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { Prisma, TrainingEnrollmentStatus, TrainingRecordStatus } from '@prisma/client';
@@ -56,7 +57,7 @@ export class TrainingRepositoryService {
         if(!offer)throw new ConflictException('الدورة غير متاحة لإعادة التسجيل.');
         const duplicate=await tx.trainingEnrollment.findFirst({where:{storeCourseOfferId:offer.id,studentAccountId:current.studentAccountId,status:{not:'CANCELLED'}}});
         const seats=await tx.trainingEnrollment.count({where:{storeCourseOfferId:offer.id,status:{not:'CANCELLED'}}});
-        if(duplicate||seats>=offer.capacity)throw new ConflictException('التسجيل مكرر أو اكتملت مقاعد الدورة.');
+        if(duplicate||((await trainingOperationalPolicy(tx)).capacityLimit&&seats>=offer.capacity))throw new ConflictException('التسجيل مكرر أو اكتملت مقاعد الدورة.');
       }
       return tx.trainingEnrollment.update({where:{id:enrollmentId},data:{status,completedAt:status===TrainingEnrollmentStatus.COMPLETED?new Date():undefined}});
     });

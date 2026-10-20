@@ -68,6 +68,26 @@ try{
   response=await fetch(`${base}/payments/provider/moyasar/webhook`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...validWebhook('evt-payment-bad-secret','payment_paid'),secret_token:'wrong-secret'})});
   if(response.status!==401)throw new Error(`Invalid webhook secret expected 401, got ${response.status}`);
 
+  const beforeRejected=await db.payment.findUniqueOrThrow({where:{id:created.id}});
+  const fetchCallsBeforeRejected=fetchCalls;
+  const rejectedEvents=[];
+  const invalidWebhookVariants=[
+    ['unicode-secret',{secret_token:'é'.repeat(webhookSecret.length)}],
+    ['missing-mode',{live:undefined}],['null-mode',{live:null}],
+    ['false-string-mode',{live:'false'}],['true-string-mode',{live:'true'}],
+    ['numeric-mode',{live:0}],['array-mode',{live:[]}],['object-mode',{live:{}}],
+    ['production-mode',{live:true}],
+  ];
+  for(const [name,override] of invalidWebhookVariants){
+    const eventId=`evt-payment-rejected-${name}-${suffix}`;rejectedEvents.push(eventId);
+    response=await fetch(`${base}/payments/provider/moyasar/webhook`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...validWebhook(eventId,'payment_paid'),...override})});
+    if(response.status!==401)throw new Error(`Rejected webhook ${name} expected 401, got ${response.status}`);
+  }
+  if(fetchCalls!==fetchCallsBeforeRejected)throw new Error('Rejected webhooks contacted the payment provider');
+  const afterRejected=await db.payment.findUniqueOrThrow({where:{id:created.id}});
+  if(JSON.stringify(afterRejected)!==JSON.stringify(beforeRejected))throw new Error('Rejected webhooks changed the payment record');
+  if(await db.auditEvent.count({where:{resource:'PaymentProviderWebhook',resourceId:{in:rejectedEvents}}}))throw new Error('Rejected webhooks were recorded as processed events');
+
   providerMetadata={...providerMetadata,hydroland_payment_id:'tampered-local-id'};
   response=await fetch(`${base}/payments/${created.id}/refresh`,{method:'POST',headers:auth(token)});if(response.status!==409)throw new Error(`Provider metadata mismatch expected 409, got ${response.status}`);
   providerMetadata={hydroland_payment_id:created.id,hydroland_booking_id:booking.id};
@@ -82,7 +102,7 @@ try{
   if(cancelCalls!==0)throw new Error('Normal idempotent payment flow unexpectedly cancelled an invoice');
   if(providerRequests.some(row=>row.authorization!==`Basic ${Buffer.from(`${providerSecret}:`).toString('base64')}`))throw new Error('Provider call used incorrect Basic authorization');
 
-  console.log('Moyasar payment HTTP/DB E2E passed: server-owned pricing, provider metadata binding, idempotency, webhook secret enforcement, provider re-verification, tamper rejection and captured reconciliation.');
+  console.log('Moyasar payment HTTP/DB E2E passed: server-owned pricing, provider metadata binding, idempotency, webhook UTF-8 secret and boolean mode enforcement, rejected-event non-mutation, provider re-verification, tamper rejection and captured reconciliation.');
 } finally {
   if(payment?.id)await db.auditEvent.deleteMany({where:{OR:[{resourceId:payment.id},{resource:'PaymentProviderWebhook'}]}}).catch(()=>{});
   if(payment?.id)await db.invoice.deleteMany({where:{paymentId:payment.id}}).catch(()=>{});

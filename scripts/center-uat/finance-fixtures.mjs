@@ -26,7 +26,7 @@ export async function seedFinanceFixtures(db) {
     for(const scenario of scenarios) {
       const accountId=customers[scenario.center].id;
       const trip=await tx.trip.create({data:{organizationId:centers[scenario.center].organizationId,title:'اختبار مالي وهمي '+scenario.key,type:'UAT_SYNTHETIC',status:'DRAFT',startsAt:new Date('2030-01-01T06:00:00Z'),endsAt:new Date('2030-01-01T08:00:00Z'),capacity:1}});
-      const booking=await tx.booking.create({data:{tripId:trip.id,accountId,status:'PENDING'}});
+      const booking=await tx.booking.create({data:{tripId:trip.id,accountId,status:'PENDING'},select:{id:true}});
       await tx.payment.create({data:{bookingId:booking.id,accountId,amountMinor:scenario.total,currency:'SAR',status:'CREATED',idempotencyKey:'center-uat-v1:'+scenario.key+':invoice',invoice:{create:{number:'UAT-'+scenario.key,status:'ISSUED',issuedAt:new Date()}}}});
       for(const [i,amountMinor] of scenario.parts.entries()) {
         await tx.payment.create({data:{bookingId:booking.id,accountId,amountMinor,currency:'SAR',status:'CAPTURED',idempotencyKey:'center-uat-v1:'+scenario.key+':collection-'+(i+1)}});

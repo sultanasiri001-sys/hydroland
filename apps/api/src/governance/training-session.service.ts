@@ -1,3 +1,4 @@
+import { trainingOperationalPolicy } from './training-operational-policy';
 import { createHash } from 'node:crypto';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, TrainingSessionStatus } from '@prisma/client';
@@ -44,6 +45,7 @@ export class TrainingSessionService {
   if(!active||!await hasInstructorCenterAccess(tx,instructorId,centerId))throw new ConflictException('المدرب غير مؤهل حاليًا أو عضويته غير نشطة في المركز.');
  }
  async assertAvailable(tx:Prisma.TransactionClient,instructorId:string,studentId:string,startsAt:Date,endsAt:Date,excludeId?:string){
+  if(!(await trainingOperationalPolicy(tx)).scheduleConflict)return;
   const conflict=await tx.trainingSession.findFirst({where:{...(excludeId?{id:{not:excludeId}}:{}),status:{in:['SCHEDULED','CHECK_IN_OPEN','IN_PROGRESS']},AND:[{OR:[{instructorAccountId:instructorId},{trainingRecord:{enrollment:{studentAccountId:studentId}}}]},{OR:[{status:'IN_PROGRESS'},{startsAt:{lt:endsAt},OR:[{endsAt:{gt:startsAt}},{endsAt:null}]}]}]},select:{id:true}});
   if(conflict)throw new ConflictException('يوجد تعارض في جدول المدرب أو المتدرب، أو جلسة مفتوحة بلا وقت انتهاء. راجع المواعيد.');
  }
@@ -136,7 +138,8 @@ export class TrainingSessionService {
     await this.eligible(tx,actorId,course.centerOrganizationId);
    }
    if(row.updatedAt.getTime()!==revision.getTime())throw new ConflictException('تغيرت الجلسة. حدّث القائمة قبل الحفظ.');
-   const now=new Date(),controls=sessionControls(course,row,now);
+   const policy=await trainingOperationalPolicy(tx);
+   const now=new Date(),controls=sessionControls(course,row,now,policy);
    if(!controls.actions.includes(action))throw new ConflictException('الإجراء غير متاح في حالة الجلسة الحالية. يفتح الحضور قبل الموعد بـ30 دقيقة، ويبدأ التدريب بعد تسجيل الحضورين وحلول الموعد.');
    if(action!=='CANCEL')await this.eligible(tx,row.instructorAccountId,course.centerOrganizationId);
    if(action==='START')await this.assertAvailable(tx,row.instructorAccountId,course.studentAccountId,row.startsAt,row.endsAt!,id);
@@ -153,7 +156,7 @@ export class TrainingSessionService {
    if(changed.count!==1)throw new ConflictException('تغيرت الجلسة. حدّث القائمة.');
    await this.touch(tx,course,action==='START'&&course.status==='PENDING');
    if(action==='START')await tx.trainingRecord.update({where:{id:row.trainingRecordId},data:{status:'IN_PROGRESS',startedAt:row.trainingRecord.startedAt||now}});
-   await this.audit.record({actorId,action:'training.session_action',resource:'trainingSession',resourceId:id,metadata:{enrollmentId:course.id,action,reason,source:scope,from:row.status,to:status}},tx);
+   await this.audit.record({actorId,action:'training.session_action',resource:'trainingSession',resourceId:id,metadata:{enrollmentId:course.id,action,reason,source:scope,from:row.status,to:status,operationalPolicy:policy}},tx);
    if(action==='CANCEL')await this.notify(tx,[course.studentAccountId,row.instructorAccountId],{title:'إلغاء جلسة تدريب',message:'أُلغيت جلسة للدورة '+course.courseCode+' مع حفظ سجلها.',enrollmentId:course.id,sessionId:id});
    return {id,status,updatedAt,attendance:sessionControls(course,{...row,status,evidence}).attendance};
   });

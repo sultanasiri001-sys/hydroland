@@ -3,12 +3,16 @@ import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
+import {LEGACY_PRISMA_HASH, LEGACY_SCHEMA_HASH, UPGRADE_LEDGER_SQL, readUpgradeMigrations} from './upgrade.mjs';
 
 export const root = fileURLToPath(new URL('../../', import.meta.url));
 const digest = value => createHash('sha256').update(value).digest('hex');
-export async function prepareSchema() {
+export async function prepareSchema({legacySchemaPath}={}) {
+  // A pinned historical input is used only by the disposable CI upgrade test.
+  // Runtime always builds the current canonical schema.
+  if (legacySchemaPath && digest(await readFile(legacySchemaPath))!==LEGACY_PRISMA_HASH) throw new Error('UAT_LEGACY_FIXTURE_SOURCE_CHANGED');
   const cli = path.join(root, 'node_modules/prisma/build/index.js');
-  let sql = execFileSync(process.execPath, [cli, 'migrate', 'diff', '--from-empty', '--to-schema-datamodel', path.join(root, 'apps/api/prisma/schema.prisma'), '--script'], {encoding:'utf8', maxBuffer:32*1024*1024});
+  let sql = execFileSync(process.execPath, [cli, 'migrate', 'diff', '--from-empty', '--to-schema-datamodel', legacySchemaPath || path.join(root, 'apps/api/prisma/schema.prisma'), '--script'], {encoding:'utf8', maxBuffer:32*1024*1024,stdio:'pipe'});
   for (const file of ['bootstrap-equipment-runtime-schema.mjs', 'bootstrap-trip-weather-runtime-schema.mjs', 'bootstrap-messaging-runtime-schema.mjs']) {
     const text = await readFile(path.join(root, 'apps/api/scripts', file), 'utf8');
     const list = text.match(/const migrations\s*=\s*\[([\s\S]*?)\];/);
@@ -36,11 +40,18 @@ export async function prepareSchema() {
   }
   if (checks.length !== 5) throw new Error('UAT_FINANCE_CHECKS_CHANGED');
   sql += '\n' + await readFile(path.join(root, 'apps/api/prisma/migrations/20260930080000_audit_event_append_only/migration.sql'), 'utf8');
+  if (!legacySchemaPath) {
+    const migrations=await readUpgradeMigrations();
+    const partialIndexes=migrations[2].sql.match(/CREATE UNIQUE INDEX "Booking_(?:personal_active_trip_account|organization_active_trip)_key"[\s\S]*?;/g);
+    if(partialIndexes?.length!==2) throw new Error('UAT_BOOKING_PARTIAL_INDEXES_MISSING');
+    sql+='\n'+partialIndexes.join('\n')+'\n'+UPGRADE_LEDGER_SQL+'\n';
+  }
   const schemaHash = digest(sql);
+  if(legacySchemaPath && schemaHash!==LEGACY_SCHEMA_HASH) throw new Error('UAT_LEGACY_FIXTURE_SCHEMA_CHANGED');
   // An honest UAT marker, never fabricated production migration history.
   sql += `\nCREATE TABLE "HydrolandUatState" (id integer PRIMARY KEY CHECK (id=1), "schemaHash" text NOT NULL, seeded boolean NOT NULL DEFAULT false);\nINSERT INTO "HydrolandUatState" (id,"schemaHash") VALUES (1,'${schemaHash}');\n`;
   await mkdir(path.join(root, '.uat'), {recursive:true});
-  const file = path.join(root, '.uat/schema.sql');
+  const file = path.join(root, '.uat', legacySchemaPath?'legacy-schema.sql':'schema.sql');
   await writeFile(file, 'BEGIN;\n' + sql + '\nCOMMIT;\n');
   return {file, schemaHash};
 }

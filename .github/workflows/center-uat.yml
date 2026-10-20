@@ -26,9 +26,12 @@ jobs:
       DATABASE_URL: postgresql://hydroland:ephemeral-ci-only@localhost:5432/hydroland_center_uat
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Reproduce the exact historical UAT schema in disposable upgrade checks.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: node scripts/center-uat/build.mjs
       - run: node --test scripts/center-uat/guard.test.mjs
+      - run: node scripts/center-uat/upgrade-checks.mjs
       - run: node scripts/center-uat/smoke.mjs
