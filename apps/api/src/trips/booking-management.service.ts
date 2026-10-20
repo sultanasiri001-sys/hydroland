@@ -121,7 +121,9 @@ export class BookingManagementService {
     const require = (valid: boolean, key: keyof typeof rules, code: string) => { if (!valid) { if (rules[key].enforce) blockers.push(code); else if (rules[key].review) issues.push(code); } };
     require(participants.length === booking.seats, 'participant', 'PARTICIPANT_COUNT_MISMATCH');
     require(participants.every(p => p.eligibilityStatus === 'ELIGIBLE'), 'participant', 'PARTICIPANT_ELIGIBILITY_PENDING');
-    require(safety?.decision === 'ALLOWED', 'safety', 'SAFETY_APPROVAL');
+    // Optional approval does not override an explicit trip deferral, matching booking creation.
+    if (safety?.decision === 'DEFERRED') blockers.push('SAFETY_APPROVAL');
+    else require(safety?.decision === 'ALLOWED', 'safety', 'SAFETY_APPROVAL');
     require(confirmedSeats + (booking.status === 'CONFIRMED' ? 0 : booking.seats) <= trip.capacity, 'capacity', 'CAPACITY_LIMIT');
     if (!amountValid && !rules.payment.bypass) blockers.push('PRICE_NOT_CONFIGURED');
     else require(Boolean(captured), 'payment', 'PAYMENT_REQUIRED');
