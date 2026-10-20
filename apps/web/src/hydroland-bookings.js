@@ -1,7 +1,7 @@
 (()=>{
   const auth=()=>window.HydrolandAuth;
   const toast=message=>{const t=document.getElementById('toast');if(!t)return;t.textContent=message;t.classList.add('visible');setTimeout(()=>t.classList.remove('visible'),2600)};
-  const state={trips:[],selected:null,pendingBooking:null,paymentReturnHandled:false,publicStatus:'loading',filter:'all'};
+  const state={trips:[],selected:null,pendingBooking:null,paymentReturnHandled:null,paymentId:null,publicStatus:'loading',filter:'all'};
   const normalize=value=>String(value||'').trim().toLowerCase();
   const locationText=trip=>{const location=trip?.location;if(location&&typeof location==='object')return String(location.locationName||trip?.siteName||trip?.meetingPoint||'حسب بيانات الرحلة');if(typeof location==='string'&&location.trim())return location;return trip?.siteName||trip?.meetingPoint||'حسب بيانات الرحلة'};
   const request=async(path,options={})=>{
@@ -118,23 +118,79 @@
     if(checkout.protocol!=='https:'&&!['localhost','127.0.0.1'].includes(checkout.hostname))throw new Error('رابط الدفع غير آمن');
     window.location.assign(checkout.toString());return{redirected:true};
   };
-  const cleanPaymentReturn=()=>{const url=new URL(window.location.href);url.searchParams.delete('payment');url.searchParams.delete('payment_id');history.replaceState(null,'',`${url.pathname}${url.search}${url.hash}`)};
-  const reconcilePaymentReturn=async()=>{
-    if(state.paymentReturnHandled)return;
-    const params=new URL(window.location.href).searchParams,paymentId=params.get('payment_id');if(!paymentId)return;
+  const paymentReturnKey='hl-payment-return-id';
+  let paymentViewVersion=0,paymentSessionVersion=auth()?.getSessionVersion?.(),paymentToast=null,paymentResumePending=false;
+  const cleanPaymentReturn=paymentId=>{const url=new URL(window.location.href);if(url.searchParams.get('payment_id')!==paymentId)return;url.searchParams.delete('payment');url.searchParams.delete('payment_id');history.replaceState(null,'',`${url.pathname}${url.search}${url.hash}`)};
+  const rememberPayment=id=>{try{if(id)sessionStorage.setItem(paymentReturnKey,id);else sessionStorage.removeItem(paymentReturnKey)}catch{}};
+  const storedPayment=()=>{try{return sessionStorage.getItem(paymentReturnKey)}catch{return null}};
+  const clearPaymentToast=()=>{const notice=document.getElementById('toast');if(paymentToast&&notice?.textContent===paymentToast){notice.textContent='';notice.classList.remove('visible')}paymentToast=null;};
+  const forgetPayment=()=>{
+    paymentViewVersion++;
+    if(state.paymentId)cleanPaymentReturn(state.paymentId);
+    state.paymentId=null;paymentResumePending=false;rememberPayment(null);
+    clearPaymentToast();
+  };
+  const clearPaymentView=event=>{
+    // Expiry preserves only an opaque verification intent. Re-authentication must
+    // repeat the protected payment lookup before any result is shown again.
+    const resume=event?.detail?.reason==='expired'?(state.paymentId||paymentResumePending&&storedPayment()):null;
+    forgetPayment();document.getElementById('hl-payment-status-dialog')?.remove();
+    if(resume){paymentResumePending=true;state.paymentReturnHandled=null;rememberPayment(resume)}
+  };
+  const paymentDialog=()=>{
+    let dialog=document.getElementById('hl-payment-status-dialog');if(dialog)return dialog;
+    dialog=document.createElement('dialog');dialog.id='hl-payment-status-dialog';dialog.className='booking-dialog';dialog.setAttribute('aria-labelledby','hl-payment-status-title');
+    dialog.innerHTML='<div class="dialog-head"><h2 id="hl-payment-status-title">حالة الدفع والحجز</h2><button type="button" data-payment-status-close aria-label="إغلاق حالة الدفع">×</button></div><p data-payment-trip></p><div class="booking-grid"><div><small>الدفع</small><b data-payment-state>جارٍ التحقق…</b></div><div><small>الحجز</small><b data-payment-booking-state>جارٍ التحقق…</b></div></div><p data-payment-summary role="status" aria-live="polite"></p><p data-payment-next-step></p><button type="button" class="primary-button" data-payment-status-refresh>تحديث حالة الدفع والحجز</button>';
+    dialog.querySelector('[data-payment-status-close]').addEventListener('click',()=>dialog.close());
+    dialog.addEventListener('close',()=>{if(dialog.isConnected)forgetPayment()});
+    dialog.querySelector('[data-payment-status-refresh]').addEventListener('click',()=>{if(state.paymentId)void refreshPaymentStatus(state.paymentId)});
+    document.body.appendChild(dialog);return dialog;
+  };
+  const refreshPaymentStatus=async paymentId=>{
     if(!auth()?.isAuthenticated?.())return;
-    state.paymentReturnHandled=true;
+    const dialog=paymentDialog(),version=++paymentViewVersion,session=auth()?.getSessionVersion?.();
+    state.paymentId=paymentId;paymentSessionVersion=session;paymentResumePending=false;rememberPayment(paymentId);
+    if(!dialog.open)dialog.showModal();
+    const current=()=>version===paymentViewVersion&&session===auth()?.getSessionVersion?.()&&auth()?.isAuthenticated?.()&&dialog.isConnected&&dialog.open&&state.paymentId===paymentId;
+    const field=name=>dialog.querySelector(`[data-payment-${name}]`),refresh=field('status-refresh');
+    clearPaymentToast();
+    refresh.disabled=true;field('state').textContent='جارٍ التحقق…';field('booking-state').textContent='جارٍ التحقق…';field('trip').textContent='';field('summary').textContent='جارٍ تحديث حالة الدفع والحجز…';field('next-step').textContent='';
     try{
       const payment=await request(`/payments/${encodeURIComponent(paymentId)}/refresh`,{method:'POST'});
-      if(payment?.status==='CAPTURED')toast('تم التحقق من الدفع بنجاح');
-      else if(payment?.status==='REFUNDED')toast('تم التحقق من حالة الدفع · مسترد');
-      else if(['FAILED','CANCELLED'].includes(payment?.status))toast('لم تكتمل عملية الدفع');
-      else toast('تم التحقق من العملية، والدفع ما زال قيد المعالجة');
+      if(!current())return;
+      if(payment?.id!==paymentId||typeof payment?.bookingId!=='string'||!payment.bookingId)throw new Error('INVALID_PAYMENT_RESPONSE');
+      let booking=null;
+      try{const rows=await request('/trips/bookings/mine',{method:'GET'});if(Array.isArray(rows))booking=rows.find(row=>row?.id===payment.bookingId)||null}catch{}
+      if(!current())return;
+      const paymentLabels={CAPTURED:'تم الدفع بنجاح',REFUNDED:'مسترد',FAILED:'لم يكتمل الدفع',CANCELLED:'عملية الدفع ملغاة',CREATED:'قيد المعالجة',PENDING:'قيد المعالجة',AUTHORIZED:'محجوز ماليًا — لم يُحصّل'};
+      const bookingLabels={PENDING:'بانتظار تأكيد المشغّل',CONFIRMED:'مؤكد',CANCELLED:'ملغى'};
+      field('state').textContent=paymentLabels[payment.status]||'حالة غير معروفة';
+      field('booking-state').textContent=bookingLabels[booking?.status]||'تعذر التحقق من حالة الحجز';
+      field('trip').textContent=typeof booking?.trip?.title==='string'?booking.trip.title:'';
+      let message;
+      if(payment.status==='CAPTURED'){
+        message=booking?.status==='PENDING'?'تم الدفع بنجاح، وحجزك بانتظار تأكيد المشغّل.':booking?.status==='CONFIRMED'?'تم الدفع بنجاح، وحجزك مؤكد.':booking?.status==='CANCELLED'?'تم الدفع بنجاح، لكن الحجز ملغى.':'تم الدفع بنجاح. تعذر التحقق من حالة الحجز.';
+        field('next-step').textContent=booking?.status==='PENDING'?'يراجع المشغّل متطلبات الحجز ثم يؤكده. يمكنك تحديث الحالة هنا دون تكرار الدفع.':booking?.status==='CANCELLED'?'راجع المشغّل لمتابعة المبلغ المدفوع؛ إلغاء الحجز لا يعني استرداده تلقائيًا.':booking?.status==='CONFIRMED'?'يمكنك متابعة تفاصيل الرحلة من حجوزاتي.':'حدّث الحالة أو راجع المشغّل، ولا تكرر الدفع.';
+      }else{
+        message=payment.status==='REFUNDED'?'تم التحقق من حالة الدفع · مسترد':payment.status==='FAILED'||payment.status==='CANCELLED'?'لم تكتمل عملية الدفع':['CREATED','PENDING','AUTHORIZED'].includes(payment.status)?'تم التحقق من العملية، والدفع ما زال قيد المعالجة':'تعذر التحقق من حالة الدفع.';
+        field('next-step').textContent='تظهر حالة الحجز مستقلة عن الدفع. حدّث الحالة أو راجع المشغّل قبل محاولة الدفع مجددًا.';
+      }
+      field('summary').textContent=message;paymentToast=message;toast(message);
       window.dispatchEvent(new CustomEvent('hydroland:payment-reconciled',{detail:payment}));
-    }catch(error){toast(error instanceof Error?error.message:'تعذر التحقق من حالة الدفع');}
-    finally{cleanPaymentReturn();}
+    }catch{
+      if(!current())return;
+      field('state').textContent='تعذر التحقق من الدفع';field('booking-state').textContent='تعذر التحقق من حالة الحجز';field('summary').textContent='تعذر تحديث الحالة الآن.';field('next-step').textContent='أعد التحديث أو راجع المشغّل، ولا تكرر الدفع قبل معرفة نتيجة العملية.';
+    }finally{if(current()){refresh.disabled=false;cleanPaymentReturn(paymentId)}}
   };
-  document.addEventListener('hydroland:auth-changed',()=>void reconcilePaymentReturn());
+  const reconcilePaymentReturn=async()=>{
+    const params=new URL(window.location.href).searchParams,paymentId=params.get('payment_id')||storedPayment();
+    if(!paymentId||paymentId.length>200||state.paymentReturnHandled===paymentId)return;
+    if(!auth()?.isAuthenticated?.())return;
+    state.paymentReturnHandled=paymentId;
+    await refreshPaymentStatus(paymentId);
+  };
+  document.addEventListener('hydroland:session-cleared',clearPaymentView);
+  document.addEventListener('hydroland:auth-changed',()=>{const session=auth()?.getSessionVersion?.();if((!auth()?.isAuthenticated?.()&&!paymentResumePending)||(state.paymentId&&session!==paymentSessionVersion))clearPaymentView();paymentSessionVersion=session;void reconcilePaymentReturn()});
   setTimeout(()=>void reconcilePaymentReturn(),0);
   document.addEventListener('click',event=>{
     const button=event.target.closest?.('[data-book]');if(!button||button.disabled)return;

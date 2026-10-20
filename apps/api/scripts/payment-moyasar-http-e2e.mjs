@@ -48,6 +48,12 @@ try{
   trip=await db.trip.create({data:{title:`Payment E2E ${suffix}`,type:'BOAT_DIVE',startsAt:new Date(Date.now()+86400000),endsAt:new Date(Date.now()+90000000),capacity:4,status:'OPEN'}});
   await db.operationalSetting.create({data:{key:`trip-price:${trip.id}`,value:{pricePerSeatMinor:12345,currency:'SAR'}}});
   booking=await db.booking.create({data:{tripId:trip.id,accountId:account.id,seats:2,status:'PENDING'}});
+  const expectBookingAwaitingConfirmation=async stage=>{
+    const current=await db.booking.findUniqueOrThrow({where:{id:booking.id}});
+    if(current.status!=='PENDING'||current.updatedAt.getTime()!==booking.updatedAt.getTime())throw new Error(`${stage} implicitly changed the booking before operator confirmation`);
+    if(await db.auditEvent.count({where:{resource:'Booking',resourceId:booking.id,action:'BOOKING_CONFIRMED'}}))throw new Error(`${stage} created an implicit booking confirmation audit`);
+    if(await db.notification.count({where:{type:'BOOKING_CONFIRMED',payload:{path:['bookingId'],equals:booking.id}}}))throw new Error(`${stage} sent an implicit booking confirmation notice`);
+  };
   const token=tokenFor(account.id);
 
   let response=await fetch(`${base}/payments`,{method:'POST',headers:auth(token),body:JSON.stringify({bookingId:booking.id,idempotencyKey:`payment-e2e:${suffix}`,amountMinor:1})});
@@ -96,13 +102,19 @@ try{
   response=await fetch(`${base}/payments/provider/moyasar/webhook`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(validWebhook('evt-payment-paid','payment_paid'))});
   const paidWebhook=await expectOk(response);if(paidWebhook.status!=='CAPTURED')throw new Error(`Verified paid provider invoice expected CAPTURED, got ${paidWebhook.status}`);
   const captured=await db.payment.findUniqueOrThrow({where:{id:created.id}});if(captured.status!=='CAPTURED')throw new Error('Verified provider paid state was not persisted');
+  await expectBookingAwaitingConfirmation('Verified paid webhook');
+
+  response=await fetch(`${base}/payments/provider/moyasar/webhook`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(validWebhook('evt-payment-paid','payment_paid'))});
+  const duplicatePaid=await expectOk(response);if(duplicatePaid.duplicate!==true)throw new Error('Repeated paid webhook was not recognized as a duplicate');
+  await expectBookingAwaitingConfirmation('Repeated paid webhook');
 
   response=await fetch(`${base}/payments/${created.id}/refresh`,{method:'POST',headers:auth(token)});const refreshed=await expectOk(response);if(refreshed.status!=='CAPTURED'||refreshed.providerStatus!=='paid')throw new Error('Authenticated provider reconciliation did not preserve CAPTURED state');
+  await expectBookingAwaitingConfirmation('Authenticated payment refresh');
   if(fetchCalls<4)throw new Error(`Expected provider GET verification across replay/webhooks/refresh, got ${fetchCalls}`);
   if(cancelCalls!==0)throw new Error('Normal idempotent payment flow unexpectedly cancelled an invoice');
   if(providerRequests.some(row=>row.authorization!==`Basic ${Buffer.from(`${providerSecret}:`).toString('base64')}`))throw new Error('Provider call used incorrect Basic authorization');
 
-  console.log('Moyasar payment HTTP/DB E2E passed: server-owned pricing, provider metadata binding, idempotency, webhook UTF-8 secret and boolean mode enforcement, rejected-event non-mutation, provider re-verification, tamper rejection and captured reconciliation.');
+  console.log('Moyasar payment HTTP/DB E2E passed: server-owned pricing, provider metadata binding, idempotency, webhook UTF-8 secret and boolean mode enforcement, rejected-event non-mutation, provider re-verification, tamper rejection, captured reconciliation and independent operator booking confirmation.');
 } finally {
   if(payment?.id)await db.auditEvent.deleteMany({where:{OR:[{resourceId:payment.id},{resource:'PaymentProviderWebhook'}]}}).catch(()=>{});
   if(payment?.id)await db.invoice.deleteMany({where:{paymentId:payment.id}}).catch(()=>{});
