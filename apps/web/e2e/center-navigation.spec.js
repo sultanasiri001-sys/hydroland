@@ -3,7 +3,7 @@ import {openWorkspaceSwitcher} from './portal-test-helpers.js';
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 const sections=[
  ['إدارة الحجوزات','#hl-center-bookings'],['الرحلات','#hl-center-operations'],['المتجر والعروض','#store'],
- ['المعدات والمخزون','#hl-center-equipment'],['محترفي الغوص','#hl-center-team'],['العملاء','#hl-center-customers'],
+ ['المعدات والمخزون','#hl-center-equipment'],['محترفي الغوص','#hl-center-team'],['التدريب والدورات','#hl-center-training'],['العملاء','#hl-center-customers'],
  ['المستندات والتراخيص','#hl-center-documents'],['السلامة','#hl-center-safety'],['ورديات المحاسب','#hl-center-finance'],
  ['الذمم والتحصيل','#hl-center-receivables'],['التقارير','#hl-center-reports'],['الملف التجاري','#hl-center-business-profile']
 ];

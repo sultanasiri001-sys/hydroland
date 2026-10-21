@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+export async function checkStoreCourseTraining(db,{base,owner,foreignOwner,student,organizationId,request,ok,accounts,persons,ids}){
+ const loopback=url=>['localhost','127.0.0.1','[::1]'].includes(new URL(url).hostname);
+ assert.equal(process.env.CI,'true');assert.ok(loopback(base)&&loopback(process.env.DATABASE_URL),'Isolated CI API and database required');
+ const person=await db.person.create({data:{firstName:'Store course instructor',lastName:'Isolated test'}});persons.push(person);
+ const instructor=await db.account.create({data:{personId:person.id,email:'store-training-'+randomUUID()+'@example.invalid',passwordHash:'test',status:'ACTIVE',emailVerifiedAt:new Date()}});accounts.push(instructor);
+ await db.roleAssignment.create({data:{accountId:instructor.id,role:'INSTRUCTOR',status:'ACTIVE'}});
+ await db.organizationMember.create({data:{organizationId,accountId:instructor.id,role:'INSTRUCTOR',status:'ACTIVE'}});
+ const offerId=randomUUID();ids.push(offerId);const startsAt=new Date(Date.now()+600000).toISOString(),endsAt=new Date(Date.now()+3600000).toISOString();
+ ok(await request(owner,'/store/provider/courses','POST',{requestId:offerId,courseCode:'STORE-TRAINING-QA',title:'اختبار مسار دورة منشورة — لا يوجد تدريب فعلي',description:'سجل اختبار معزول',locationName:'بيئة الاختبار',startsAt,endsAt,capacity:1,priceMinor:0,status:'ACTIVE'}));
+ assert.ok(ok(await request(null,'/store/courses')).some(row=>row.id===offerId));
+ const enrollment=ok(await request(student,'/store/courses/'+offerId+'/enroll','POST'));
+ assert.equal(enrollment.status,'PENDING');assert.equal(enrollment.storeCourseOfferId,offerId);assert.equal(enrollment.centerOrganizationId,organizationId);
+ assert.ok(ok(await request(owner,'/center/me/training')).enrollments.some(row=>row.id===enrollment.id));
+ assert.ok(!ok(await request(foreignOwner,'/center/me/training')).enrollments.some(row=>row.id===enrollment.id));
+ const assignment={instructorAccountId:instructor.id,expectedUpdatedAt:enrollment.updatedAt,reason:'اختبار تكليف دورة المتجر',transferUpcomingSessions:true};
+ assert.equal((await request(foreignOwner,'/center/me/training/enrollments/'+enrollment.id+'/instructor','PATCH',assignment)).status,404);
+ ok(await request(owner,'/center/me/training/enrollments/'+enrollment.id+'/instructor','PATCH',assignment));
+ const assigned=await db.trainingEnrollment.findUniqueOrThrow({where:{id:enrollment.id}});assert.equal(assigned.instructorAccountId,instructor.id);assert.equal(assigned.storeCourseOfferId,offerId);
+ const sessionId=randomUUID();
+ ok(await request(owner,'/center/me/training/enrollments/'+enrollment.id+'/sessions','POST',{requestId:sessionId,instructorAccountId:instructor.id,expectedUpdatedAt:assigned.updatedAt.toISOString(),startsAt,endsAt,reason:'جدولة جلسة اختبار لدورة المتجر'}));
+ const session=()=>db.trainingSession.findUniqueOrThrow({where:{id:sessionId}});
+ const action=async(account,name,professional=false)=>{const row=await session();return request(account,professional?'/training/professional/me/sessions/'+sessionId+'/attendance':'/center/me/training/sessions/'+sessionId+'/actions','PATCH',{action:name,expectedUpdatedAt:row.updatedAt.toISOString(),...(!professional?{reason:'توثيق اختبار الحضور في بيئة معزولة'}:{})})};
+ assert.equal((await action(foreignOwner,'OPEN')).status,404);ok(await action(owner,'OPEN'));
+ ok(await action(instructor,'INSTRUCTOR_CHECK_IN',true));ok(await action(owner,'STUDENT_CHECK_IN'));
+ const view=ok(await request(owner,'/center/me/training')).enrollments.find(row=>row.id===enrollment.id),visible=view.record.sessions.find(row=>row.id===sessionId);
+ assert.equal(visible.attendance.instructorCheckedIn,true);assert.equal(visible.attendance.studentCheckedIn,true);assert.equal(visible.attendance.studentRecordedByCenter,true);assert.equal(visible.status,'CHECK_IN_OPEN');
+ assert.equal((await db.trainingEnrollment.findUniqueOrThrow({where:{id:enrollment.id}})).status,'PENDING');
+ assert.equal(await db.trainingCertificate.count({where:{trainingRecord:{enrollmentId:enrollment.id}}}),0);
+ assert.equal((await db.trainingRecord.findUniqueOrThrow({where:{enrollmentId:enrollment.id}})).status,'SCHEDULED');
+ console.log('Store course training HTTP/DB path passed: published offer -> enrollment -> center-isolated instructor assignment -> scheduled session -> self/center attendance, without certification.');
+}
