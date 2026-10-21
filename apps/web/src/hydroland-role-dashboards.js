@@ -163,7 +163,7 @@
   document.addEventListener('hydroland:workspace-selected',event=>{
     const d=document.querySelector('.hl-role-dashboard[data-role="center"]'),target=event.detail?.target;
     if(!d||!(target instanceof Element)||window.HydrolandPortalAccess?.getCurrentRole?.()!=='center')return;
-    const home=target===d||target.id==='home',route=target.id==='hl-center-team'&&target.dataset.centerTeamMode==='assignments'?'center-training':centerNavigationTargets[target.id]||(target.matches('.hl-training')?'center-training':null);
+    const home=target===d||target.id==='home',route=target.id==='hl-center-team'&&target.dataset.centerTrainingView==='assignments'?'center-training':centerNavigationTargets[target.id]||(target.matches('.hl-training')?'center-training':null);
     d.querySelectorAll('.hl-portal-nav-item').forEach((item,index)=>{
       const active=home?index===0:Boolean(route&&item.dataset.hlNavRoute===route);
       item.classList.toggle('active',active);

@@ -140,7 +140,7 @@
    host.querySelector('[data-team-feedback]').textContent=notice;
    host.querySelector('[data-team-invitation]').hidden=mode==='assignments';
    host.querySelectorAll('[data-center-team-mode]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.centerTeamMode===mode)));
-   host.dataset.centerTeamMode=mode;host.hidden=false;window.HydrolandWorkspaceUI?.show?.(host);list.setAttribute('aria-busy','true');list.innerHTML='<p>جارٍ التحميل...</p>';
+   host.dataset.centerTrainingView=mode;host.hidden=false;window.HydrolandWorkspaceUI?.show?.(host);list.setAttribute('aria-busy','true');list.innerHTML='<p>جارٍ التحميل...</p>';
    try{if(!(await authorize(host,version,session)))return;
      const response=await auth().authorizedFetch(mode==='assignments'?'/center/me/training'+(cursor?'?cursor='+encodeURIComponent(cursor):''):mode==='professionals'?'/center/me/professionals':'/center/me/team'),rows=await response.json().catch(()=>null);
      if(!current(host,version,session))return;if(!response.ok)throw new Error(response.status===403?'لا تملك صلاحية عرض أعضاء هذا المركز.':rows?.message||'تعذر التحميل');if(mode==='assignments'){if(!rows||!Array.isArray(rows.enrollments)||!Array.isArray(rows.instructors))throw new Error('استجابة التكليفات غير مكتملة. أعد المحاولة.');list.innerHTML=renderAssignments(rows,cursor);return}if(!Array.isArray(rows))throw new Error('استجابة أعضاء المركز غير مكتملة. أعد المحاولة.');
