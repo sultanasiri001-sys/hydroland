@@ -74,3 +74,36 @@ test('revoked role clears provider data and prevents writes',async({page})=>{
  await page.locator('[data-store-manage]').click();await expect(page.locator('[data-managed-offer]')).toBeVisible();state.active=false;
  page.once('dialog',d=>d.accept());await page.locator('[data-offer-status]').click();await expect(page.locator('.hl-store-provider')).toBeHidden();await expect(page.locator('[data-managed-offer]')).toHaveCount(0);expect(writes).toBe(0);
 });
+
+for(const kind of ['course','product'])test('center '+kind+' image add, persistence, replace, public display and delete',async({page})=>{
+ const state=await setup(page,true);state.courses=[course];state.products=[service];
+ const id=kind==='course'?course.id:service.id;
+ // A valid small PNG; the server test separately verifies conversion to WebP.
+ const bytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVQImWOQ2HlOYuc5BggFACqaBn3CUZ9jAAAAAElFTkSuQmCC','base64');
+ let saved={revision:null,image:null},writes=0;
+ await page.route('**/api/v1/service-images/'+kind+'/'+id+'**',route=>{
+  const req=route.request(),url=new URL(req.url());
+  if(url.pathname.endsWith('/content'))return saved.image?route.fulfill({contentType:'image/png',body:bytes}):route.fulfill({status:204});
+  if(req.method()==='GET')return json(route,saved);
+  const body=req.postDataJSON();expect(body.expectedRevision).toBe(saved.revision);writes++;
+  saved={revision:String(writes),image:req.method()==='DELETE'?null:'data:image/png;base64,'+body.base64};return json(route,saved);
+ });
+ await page.evaluate(()=>window.HydrolandStoreProvider.open());
+ const editor=page.locator('[data-managed-offer="'+id+'"] [data-service-image-editor]');await editor.locator('summary').click();
+ const file=editor.locator('input[type=file]');await expect(file).toBeVisible();await file.setInputFiles({name:'test.png',mimeType:'image/png',buffer:bytes});
+ await expect(editor.getByRole('status')).toHaveText('تم حفظ الصورة.');await expect(editor.locator('img')).toBeVisible();
+ await page.evaluate(()=>window.HydrolandStoreProvider.open());await editor.locator('summary').click();await expect(editor.locator('img')).toBeVisible();
+ await editor.locator('input[type=file]').setInputFiles({name:'replacement.png',mimeType:'image/png',buffer:bytes});await expect.poll(()=>writes).toBe(2);
+ await page.evaluate(()=>window.HydrolandStore.reloadProducts());const card=page.locator(kind==='course'?'[data-store-course="'+id+'"]':'[data-public-product="'+id+'"]');await expect(card.locator('img.hl-service-image')).toBeVisible();
+ page.once('dialog',d=>d.accept());await editor.getByRole('button',{name:'حذف الصورة',exact:true}).click();await expect(editor.getByRole('status')).toHaveText('تم حذف الصورة.');await expect(editor.locator('img')).toBeHidden();await expect(card.locator('img.hl-service-image')).toBeHidden();
+ await page.evaluate(()=>window.HydrolandStoreProvider.open());await editor.locator('summary').click();await expect(editor.locator('img')).toBeHidden();expect(writes).toBe(3);
+});
+
+test('image errors retain the existing preview and revoked center cannot upload',async({page})=>{
+ const state=await setup(page,true);state.courses=[course];
+ await page.route('**/api/v1/service-images/course/course-1',route=>json(route,route.request().method()==='GET'?{revision:'r1',image:null}:{message:'تغيّرت الصورة. حدّث الصورة ثم أعد المحاولة.'},route.request().method()==='GET'?200:409));
+ await page.evaluate(()=>window.HydrolandStoreProvider.open());const editor=page.locator('[data-service-image-editor="course"]');await editor.locator('summary').click();
+ const file={name:'test.png',mimeType:'image/png',buffer:Buffer.from('image')};await editor.locator('input').setInputFiles(file);await expect(editor.getByRole('status')).toContainText('تغيّرت الصورة');
+ state.active=false;let writes=0;await page.route('**/api/v1/service-images/course/course-1',route=>{writes++;return json(route,{},403)});
+ await editor.locator('input').setInputFiles(file);await expect(editor).toHaveCount(0);expect(writes).toBe(0);
+});
