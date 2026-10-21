@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import sharp from 'sharp';
 import {PrismaClient} from '@prisma/client';
 import {createHmac,randomUUID} from 'node:crypto';
+import {checkStoreCourseTraining} from './store-course-training-http-checks.mjs';
 import {checkCenterTripManagement} from './center-trip-management-http-checks.mjs';
 const db=new PrismaClient(),base=process.env.STORE_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1';
 const secret=process.env.JWT_SECRET;if(!secret)throw new Error('JWT_SECRET required');
@@ -83,6 +84,7 @@ try{
    assert.equal((await request(b,'/store/provider/'+type+'/'+id,'DELETE',{expectedUpdatedAt:row.updatedAt})).status,404);
    ok(await request(a,'/store/provider/'+type+'/'+id,'DELETE',{expectedUpdatedAt:row.updatedAt}));
  }
+ await checkStoreCourseTraining(db,{base,owner:a,foreignOwner:b,student:buyer,organizationId:organizations[0].id,request,ok,accounts,persons,ids});
  // Suspended providers disappear from the public catalog and cannot sell via stale IDs.
  p=await db.storeProduct.update({where:{id:productId},data:{status:'ACTIVE'}});
  await db.storeCourseOffer.update({where:{id:courseId},data:{status:'ACTIVE'}});
@@ -109,7 +111,10 @@ try{
  console.log('Unified store HTTP/DB E2E passed: provider isolation, stale revisions, idempotent creation/enrollment, concurrent capacity, price snapshots, suspension, stopping and restricted deletion.');
 }finally{
  const enrollments=await db.trainingEnrollment.findMany({where:{storeCourseOfferId:{in:ids}},select:{id:true}});
- await db.auditEvent.deleteMany({where:{resourceId:{in:[...ids,...enrollments.map(row=>row.id)]}}});
+ const records=await db.trainingRecord.findMany({where:{enrollmentId:{in:enrollments.map(row=>row.id)}},select:{id:true,sessions:{select:{id:true}}}});
+ await db.auditEvent.deleteMany({where:{resourceId:{in:[...ids,...enrollments.map(row=>row.id),...records.map(row=>row.id),...records.flatMap(row=>row.sessions.map(session=>session.id))]}}});
+ await db.notification.deleteMany({where:{accountId:{in:accounts.map(row=>row.id)}}});
+ await db.trainingRecord.deleteMany({where:{id:{in:records.map(row=>row.id)}}});
  await db.trainingEnrollment.deleteMany({where:{storeCourseOfferId:{in:ids}}});
  await db.storeOrderItem.deleteMany({where:{orderId:{in:orderIds}}});await db.storeOrder.deleteMany({where:{id:{in:orderIds}}});
  await db.storeProduct.deleteMany({where:{id:{in:ids}}});await db.storeCourseOffer.deleteMany({where:{id:{in:ids}}});

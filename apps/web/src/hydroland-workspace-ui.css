@@ -154,3 +154,5 @@ body.hl-visitor-mode #role-switch{display:none!important}
 .hl-center-receivables [data-ar-controls]{display:flex;flex-wrap:wrap;gap:14px;align-items:end;margin-block:16px}
 
 .hl-center-report-links{display:flex;flex-wrap:wrap;gap:.6rem;margin:1rem 0}.hl-center-report-links button{max-width:100%}
+
+.hl-center-training{padding:1.25rem}.hl-center-training-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:1rem}.hl-center-training-cards article{border:1px solid var(--hl-line-soft,#6195ae);border-radius:12px;padding:1rem}.hl-center-training-cards button{max-width:100%;margin-top:.5rem}
