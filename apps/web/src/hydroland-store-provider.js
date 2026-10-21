@@ -31,12 +31,13 @@
  }
  async function open(notice=''){
    if(!eligible()){clear();return}
+   window.HydrolandWorkspaceUI?.show?.(store);const heading=document.querySelector('[data-service-title]');if(heading)heading.textContent='إدارة عروض المركز';
    panel.hidden=false;toggle.setAttribute('aria-expanded','true');const v=++version,session=auth().getSessionVersion?.();panel.innerHTML='<p>جارٍ تحميل عروض المركز...</p>';
    try{
      if(!(await authorize(v,session)))return;
      const data=await request('/store/provider/catalog');if(!live(v,session))return;
      if(!data?.organization||!Array.isArray(data.products)||!Array.isArray(data.courses))throw new Error('استجابة العروض غير مكتملة.');
-     panel.innerHTML=`<h3>عروض ${esc(data.organization.displayName)}</h3><p>العروض المنشورة تظهر في المتجر للجميع. إيقاف العرض يمنع الطلبات الجديدة ويحفظ الطلبات والتسجيلات السابقة.</p>${notice?`<p role="status">${esc(notice)}</p>`:''}<button type="button" data-offer-refresh>تحديث العروض</button><button type="button" data-offer-trips>إدارة الرحلات والحجوزات</button>${editor('products')}${editor('courses')}<div data-managed-offers>${data.products.map(row=>rowHtml('products',row)).join('')}${data.courses.map(row=>rowHtml('courses',row)).join('')}${!data.products.length&&!data.courses.length?'<p>لا توجد عروض للمركز بعد.</p>':''}</div>`;
+     panel.innerHTML=`<h3>عروض ${esc(data.organization.displayName)}</h3><p>العروض المنشورة تظهر في المتجر للجميع. إيقاف العرض يمنع الطلبات الجديدة ويحفظ الطلبات والتسجيلات السابقة.</p>${notice?`<p role="status">${esc(notice)}</p>`:''}<button type="button" data-offer-refresh>تحديث العروض</button><button type="button" data-offer-preview>معاينة المتجر</button><button type="button" data-offer-trips>إدارة الرحلات والحجوزات</button>${editor('products')}${editor('courses')}<div data-managed-offers>${data.products.map(row=>rowHtml('products',row)).join('')}${data.courses.map(row=>rowHtml('courses',row)).join('')}${!data.products.length&&!data.courses.length?'<p>لا توجد عروض للمركز بعد.</p>':''}</div>`;
    }catch(error){if(live(v,session))panel.innerHTML=`<p role="alert">${esc(error.message)}</p><button type="button" data-offer-refresh>إعادة المحاولة</button>`}
  }
  async function save(form){
@@ -71,9 +72,10 @@
    }catch(error){if(live(v,session))feedback.textContent=error.message}
    finally{button.disabled=false}
  }
- toggle.addEventListener('click',()=>panel.hidden?void open():clear());
+ const preview=()=>{if(!eligible()){clear();return}clear();window.HydrolandWorkspaceUI?.show?.(store);void window.HydrolandStore?.reloadProducts?.()};
+ toggle.addEventListener('click',()=>panel.hidden?void open():preview());
  panel.addEventListener('submit',event=>{const form=event.target.closest('[data-offer-form]');if(form){event.preventDefault();void save(form)}});
- panel.addEventListener('click',event=>{if(event.target.closest('[data-offer-refresh]'))void open();else if(event.target.closest('[data-offer-trips]'))void window.HydrolandCenterOperations?.open?.();else{const button=event.target.closest('[data-offer-status],[data-offer-delete]');if(button)void act(button)}});
+ panel.addEventListener('click',event=>{if(event.target.closest('[data-offer-refresh]'))void open();else if(event.target.closest('[data-offer-preview]'))preview();else if(event.target.closest('[data-offer-trips]'))void window.HydrolandCenterOperations?.open?.();else{const button=event.target.closest('[data-offer-status],[data-offer-delete]');if(button)void act(button)}});
  for(const name of ['hydroland:session-cleared','hydroland:portal-cleared'])document.addEventListener(name,clear);
  for(const name of ['hydroland:auth-changed','hydroland:role-changed','hydroland:profile-data-ready'])document.addEventListener(name,()=>{if(!eligible())clear();queueMicrotask(()=>{toggle.hidden=!eligible()})});
  toggle.hidden=!eligible();window.HydrolandStoreProvider=Object.freeze({open});

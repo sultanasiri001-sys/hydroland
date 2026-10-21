@@ -21,7 +21,7 @@ async function setup(page,center=false){
  if(center){
   await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="center"]').click();
   await expect.poll(()=>page.evaluate(()=>({role:window.HydrolandPortalAccess.getCurrentRole(),allowed:window.HydrolandPortalAccess.roleAllowed('center')}))).toEqual({role:'center',allowed:true});
-  const link=page.locator('[data-portal-label="المتجر والعروض"]');if(!await link.isVisible())await page.locator('.hl-role-dashboard [data-portal-menu]').click();await link.click();
+  const link=page.locator('[data-portal-label="المتجر والعروض"]');if(!await link.isVisible())await page.locator('.hl-role-dashboard [data-portal-menu]').click();await link.click();await expect(page.locator('.hl-store-provider [data-offer-refresh]')).toBeVisible();
  }else await page.evaluate(()=>window.HydrolandWorkspaceUI.show(document.getElementById('store')));
  return state;
 }
@@ -42,10 +42,10 @@ test('partial catalog failure retains other offers and retry restores the failed
  await page.evaluate(()=>window.HydrolandStore.reloadProducts());await expect(page.locator('#store .hl-store-retry')).toBeVisible();await expect(page.locator('[data-store-course]')).toBeVisible();
  await page.route('**/api/v1/store/products',route=>json(route,[service]));await page.locator('#store .hl-store-retry').click();await expect(page.locator('[data-public-product="service-1"]')).toBeVisible();await expect(page.locator('#store .hl-store-retry')).toHaveCount(0);
 });
-test('center creates and edits a service, stops it and deletes the unused offer',async({page})=>{
+test('center directly creates, edits, stops, republishes and deletes an unused offer',async({page})=>{
  const state=await setup(page,true);
  await page.route('**/api/v1/store/provider/products',route=>{const body=route.request().postDataJSON();state.writes.push(body);state.products=[{...service,...body,id:body.requestId}];return json(route,state.products[0],201)});
- await page.locator('[data-store-manage]').click();const form=page.locator('[data-offer-form][data-type="products"][data-id=""]');await form.locator('..').locator('summary').click();
+ await expect(page.locator('.hl-store-provider')).toBeVisible();const form=page.locator('[data-offer-form][data-type="products"][data-id=""]');await form.locator('..').locator('summary').click();
  for(const[key,value]of Object.entries({nameAr:'خدمة جديدة',sku:'NEW-SERVICE',price:'125.50',stockQuantity:'2'}))await form.locator(`[name=${key}]`).fill(value);
  await form.locator('[name=kind]').selectOption('SERVICE');await form.locator('[name=status]').selectOption('ACTIVE');await form.locator('[type=submit]').click();
  await expect(page.locator('.hl-store-provider')).toContainText('تم حفظ العرض');expect(state.writes[0]).toMatchObject({kind:'SERVICE',priceMinor:12550,stockQuantity:2});expect(state.writes[0]).not.toHaveProperty('organizationId');
@@ -54,15 +54,17 @@ test('center creates and edits a service, stops it and deletes the unused offer'
    state.writes.push(route.request().postDataJSON());if(route.request().method()==='DELETE'){state.products=[];return json(route,{deleted:true})}
    state.products=[{...state.products[0],...route.request().postDataJSON(),updatedAt:`2026-10-09T01:00:0${++revisionCount}.000Z`}];return json(route,state.products[0]);
  });
- await page.route('**/api/v1/store/provider/products/'+id+'/status',route=>{state.writes.push(route.request().postDataJSON());state.products[0]={...state.products[0],status:'INACTIVE',updatedAt:'2026-10-09T01:00:09.000Z'};return json(route,{status:'INACTIVE'})});
+ let statusRevision=8;await page.route('**/api/v1/store/provider/products/'+id+'/status',route=>{const body=route.request().postDataJSON();state.writes.push(body);state.products[0]={...state.products[0],status:body.status,updatedAt:'2026-10-09T01:00:'+String(++statusRevision).padStart(2,'0')+'.000Z'};return json(route,{status:body.status})});
  let row=page.locator('[data-managed-offer]');await row.getByText('تعديل العرض',{exact:true}).click();await row.locator('[name=nameAr]').fill('خدمة معدلة');await row.locator('[type=submit]').click();await expect(row).toContainText('خدمة معدلة');
- page.once('dialog',d=>d.accept());await row.locator('[data-offer-status]').click();await expect(row).toContainText('متوقف');
+ page.once('dialog',d=>d.accept());await row.locator('[data-offer-status]').click();await expect(row.locator(':scope > p').first()).toContainText('متوقف');
+ page.once('dialog',d=>d.accept());await row.locator('[data-offer-status]').click();await expect(row.locator(':scope > p').first()).toContainText('منشور');
+ page.once('dialog',d=>d.accept());await row.locator('[data-offer-status]').click();await expect(row.locator(':scope > p').first()).toContainText('متوقف');
  page.once('dialog',d=>d.accept());await row.locator('[data-offer-delete]').click();await expect(page.locator('[data-managed-offer]')).toHaveCount(0);
- expect(state.writes[1].expectedUpdatedAt).toBe(revision);expect(state.writes.at(-1).expectedUpdatedAt).toBe('2026-10-09T01:00:09.000Z');
+ expect(state.writes[1].expectedUpdatedAt).toBe(revision);expect(state.writes.at(-1).expectedUpdatedAt).toBe('2026-10-09T01:00:11.000Z');
 });
 test('course form preserves failed values and retry identity with Riyadh dates',async({page},testInfo)=>{
  await setup(page,true);const writes=[];await page.route('**/api/v1/store/provider/courses',route=>{writes.push(route.request().postDataJSON());return json(route,{message:'تعذر الحفظ مؤقتًا'},503)});
- await page.locator('[data-store-manage]').click();const form=page.locator('[data-offer-form][data-type="courses"][data-id=""]');await form.locator('..').locator('summary').click();
+ await expect(page.locator('.hl-store-provider')).toBeVisible();const form=page.locator('[data-offer-form][data-type="courses"][data-id=""]');await form.locator('..').locator('summary').click();
  for(const[key,value]of Object.entries({title:'دورة جديدة',courseCode:'OW',locationName:'جدة',startsAt:'2031-02-03T09:00',endsAt:'2031-02-05T13:00',capacity:'3',price:'1000'}))await form.locator(`[name=${key}]`).fill(value);
  for(let i=0;i<2;i++){await form.locator('[type=submit]').click();await expect(form.locator('[data-offer-feedback]')).toHaveText('تعذر الحفظ مؤقتًا');await expect(form.locator('[name=title]')).toHaveValue('دورة جديدة')}
  await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
@@ -71,7 +73,7 @@ test('course form preserves failed values and retry identity with Riyadh dates',
 });
 test('revoked role clears provider data and prevents writes',async({page})=>{
  const state=await setup(page,true);state.products=[service];let writes=0;await page.route('**/api/v1/store/provider/products/service-1/status',route=>{writes++;return json(route,{})});
- await page.locator('[data-store-manage]').click();await expect(page.locator('[data-managed-offer]')).toBeVisible();state.active=false;
+ await page.locator('[data-offer-refresh]').click();await expect(page.locator('[data-managed-offer]')).toBeVisible();state.active=false;
  page.once('dialog',d=>d.accept());await page.locator('[data-offer-status]').click();await expect(page.locator('.hl-store-provider')).toBeHidden();await expect(page.locator('[data-managed-offer]')).toHaveCount(0);expect(writes).toBe(0);
 });
 
@@ -106,4 +108,15 @@ test('image errors retain the existing preview and revoked center cannot upload'
  const file={name:'test.png',mimeType:'image/png',buffer:Buffer.from('image')};await editor.locator('input').setInputFiles(file);await expect(editor.getByRole('status')).toContainText('تغيّرت الصورة');
  state.active=false;let writes=0;await page.route('**/api/v1/service-images/course/course-1',route=>{writes++;return json(route,{},403)});
  await editor.locator('input').setInputFiles(file);await expect(editor).toHaveCount(0);expect(writes).toBe(0);
+});
+
+
+test('center store entry opens management directly and retains a public preview',async({page})=>{
+ await setup(page,true);const panel=page.locator('.hl-store-provider');
+ await expect(panel).toBeVisible();await expect(page.locator('[data-service-title]')).toHaveText('إدارة عروض المركز');
+ await expect(page.locator('[data-store-manage]')).toHaveAttribute('aria-expanded','true');
+ await panel.getByRole('button',{name:'معاينة المتجر',exact:true}).click();
+ await expect(panel).toBeHidden();await expect(page.locator('[data-public-product="service-1"]')).toBeVisible();await expect(page.locator('[data-service-title]')).toHaveText('المتجر البحري');
+ await page.locator('[data-store-manage]').click();await expect(panel.locator('[data-offer-refresh]')).toBeVisible();
+ await expect(page.locator('[data-service-title]')).toHaveText('إدارة عروض المركز');
 });
