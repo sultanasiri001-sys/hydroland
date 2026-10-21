@@ -77,7 +77,17 @@ export class BookingManagementService {
       const selectedTripId = routeTripId || tripId;
       if (selectedTripId && !await tx.trip.findFirst({ where: { id: selectedTripId, ...(scope.trip as Prisma.TripWhereInput) } })) throw new NotFoundException(mode === 'center' ? 'الرحلة غير موجودة في المركز.' : 'الرحلة غير موجودة ضمن جهاتك البحرية.');
       const needle = q.replace(/[\\%_]/g, '\\$&');
-      const where: Prisma.BookingWhereInput = { AND: [scope, ...(selectedTripId ? [{ tripId: selectedTripId }] : []), ...(q ? [{ OR: [{ id: { contains: needle, mode: 'insensitive' as const } }, { trip: { title: { contains: needle, mode: 'insensitive' as const } } }, { AND: needle.split(/\s+/).map(part => ({ account: { person: { OR: [{ firstName: { contains: part, mode: 'insensitive' as const } }, { lastName: { contains: part, mode: 'insensitive' as const } }] } } })) }] }] : [])] };
+      // Production Booking keys can be UUID, while the canonical schema uses TEXT.
+      // Cast only for substring matching; keep both this lookup and final results scoped.
+      const organizationFilter = (scope.trip as Prisma.TripWhereInput).organizationId;
+      const organizationIds = typeof organizationFilter === 'string' ? [organizationFilter] : (organizationFilter as Prisma.StringNullableFilter).in ?? [];
+      const matchingIds = q && organizationIds.length ? await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT b.id::text AS id FROM "Booking" b JOIN "Trip" t ON t.id = b."tripId"
+        WHERE t."organizationId"::text IN (${Prisma.join(organizationIds)})
+          AND b.id::text ILIKE ${'%' + needle + '%'}
+          ${selectedTripId ? Prisma.sql`AND b."tripId"::text = ${selectedTripId}` : Prisma.empty}
+      `) : [];
+      const where: Prisma.BookingWhereInput = { AND: [scope, ...(selectedTripId ? [{ tripId: selectedTripId }] : []), ...(q ? [{ OR: [{ id: { in: matchingIds.map(row => row.id) } }, { trip: { title: { contains: needle, mode: 'insensitive' as const } } }, { AND: needle.split(/\s+/).map(part => ({ account: { person: { OR: [{ firstName: { contains: part, mode: 'insensitive' as const } }, { lastName: { contains: part, mode: 'insensitive' as const } }] } } })) }] }] : [])] };
       const counts = await tx.booking.groupBy({ by: ['status'], where, _count: { _all: true }, _sum: { seats: true } });
       const filtered = { AND: [where, ...(status === 'ALL' ? [] : [{ status: status as BookingStatus }])] };
       const total = await tx.booking.count({ where: filtered }), totalPages = Math.max(1, Math.ceil(total / pageSize)), page = Math.min(requestedPage, totalPages);
