@@ -92,6 +92,10 @@ jobs:
       - run: npm run build --workspace=@hydroland/api
       - name: Booking safety policy enforcement and audit
         run: node apps/api/scripts/booking-safety-policy-validation.cjs && node apps/api/scripts/operational-controls-validation.cjs
+      - name: Service images TEXT/UUID persistence and access regression
+        env:
+          NODE_ENV: test
+        run: node apps/api/scripts/service-images-schema-db-e2e.mjs
       - name: Booking search TEXT/UUID production schema regression
         env:
           NODE_ENV: test

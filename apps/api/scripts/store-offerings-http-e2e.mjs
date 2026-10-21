@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import sharp from 'sharp';
 import {PrismaClient} from '@prisma/client';
 import {createHmac,randomUUID} from 'node:crypto';
 import {checkCenterTripManagement} from './center-trip-management-http-checks.mjs';
@@ -85,6 +86,20 @@ try{
  // Suspended providers disappear from the public catalog and cannot sell via stale IDs.
  p=await db.storeProduct.update({where:{id:productId},data:{status:'ACTIVE'}});
  await db.storeCourseOffer.update({where:{id:courseId},data:{status:'ACTIVE'}});
+ const imageBytes=await sharp({create:{width:10,height:12,channels:3,background:'#18b9ce'}}).png().toBuffer();
+ for(const [kind,id] of [['product',productId],['course',courseId]]){
+  const imagePath='/service-images/'+kind+'/'+id;
+  assert.equal((await request(null,imagePath)).status,401);
+  assert.equal((await request(staff,imagePath)).status,403);
+  assert.equal((await request(b,imagePath)).status,404);
+  assert.equal(ok(await request(a,imagePath)).image,null);
+  const uploaded=ok(await request(a,imagePath,'PUT',{expectedRevision:null,base64:imageBytes.toString('base64')}));
+  assert.ok(uploaded.image.startsWith('data:image/webp;base64,'));
+  const publicImage=await fetch(base+imagePath+'/content');assert.equal(publicImage.status,200);assert.equal(publicImage.headers.get('cache-control'),'no-store');assert.equal(publicImage.headers.get('content-type'),'image/webp');
+  assert.equal((await sharp(Buffer.from(await publicImage.arrayBuffer())).metadata()).format,'webp');
+  assert.equal((await request(b,imagePath,'DELETE',{expectedRevision:uploaded.revision})).status,404);
+  ok(await request(a,imagePath,'DELETE',{expectedRevision:uploaded.revision}));assert.equal((await fetch(base+imagePath+'/content')).status,204);
+ }
  await db.organization.update({where:{id:organizations[0].id},data:{status:'SUSPENDED'}});
  assert.equal((await request(a,'/store/provider/catalog')).status,403);
  assert.ok(!ok(await request(null,'/store/products')).some(row=>row.id===productId));

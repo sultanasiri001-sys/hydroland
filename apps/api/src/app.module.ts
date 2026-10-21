@@ -1,3 +1,4 @@
+import { ServiceImagesModule } from './service-images/service-images.module';
 import { Module } from '@nestjs/common';
 import { AdminModule } from './admin/admin.module';
 import { AgentModule } from './agents/agent.module';
@@ -38,7 +39,7 @@ import { HrModule } from './hr/hr.module';
 import { DocumentFormModule } from './document-forms/document-form.module';
 
 @Module({
-  imports: [DatabaseModule, AuthModule, ProfileModule, CredentialsModule, ActivationModule, AuditModule, NotificationsModule, MessagingModule, GovernanceModule, TripsModule, SafetyModule, PaymentsModule, AdminModule, DiveLogsModule, OrganizationsModule, IntegrationModule, InventoryModule, FinanceModule, CustomerServiceModule,
+  imports: [ServiceImagesModule, DatabaseModule, AuthModule, ProfileModule, CredentialsModule, ActivationModule, AuditModule, NotificationsModule, MessagingModule, GovernanceModule, TripsModule, SafetyModule, PaymentsModule, AdminModule, DiveLogsModule, OrganizationsModule, IntegrationModule, InventoryModule, FinanceModule, CustomerServiceModule,
     MarketingModule,
     TechnologySecurityModule,
     FacilitiesMaintenanceModule,

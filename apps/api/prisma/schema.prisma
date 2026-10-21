@@ -2251,3 +2251,12 @@ model DocumentReferenceCounter {
   @@index([organizationId,year])
 }
 
+
+model ServiceImage {
+  kind String
+  entityId String
+  revision String
+  content Bytes?
+  updatedAt DateTime @default(now())
+  @@id([kind,entityId])
+}
