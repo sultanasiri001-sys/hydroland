@@ -20,8 +20,8 @@
   const area=document.createElement('div');box.append(area);host.append(box);
   let loaded=false,busy=false,revision=null,session=null,generation=0;
   const live=token=>token===generation&&box.isConnected&&eligible()&&session===auth()?.getSessionVersion?.();
-  const authorize=async token=>live(token)&&await access()?.authorizeRole?.('center',{sessionVersion:session,isCurrent:()=>live(token)})&&live(token);
-  const request=async(options={})=>{const response=await auth().authorizedFetch(path(kind,id),options),data=await response.json().catch(()=>null);if(!response.ok)throw new Error(data?.message||'تعذر حفظ الصورة.');return data};
+  const authorize=async token=>{if(!live(token))return false;const ok=await access()?.authorizeRole?.('center',{sessionVersion:session,isCurrent:()=>live(token)});if(!ok||!live(token)){if(token===generation){generation++;loaded=false;area.replaceChildren();box.open=false;access()?.clearProtectedPortal?.()}return false}return true};
+  const request=async(options={})=>{const response=await auth().authorizedFetch(path(kind,id),options),data=await response.json().catch(()=>null);if(!response.ok){if([401,403].includes(response.status))access()?.clearProtectedPortal?.();throw new Error(data?.message||'تعذر حفظ الصورة.');}return data};
   function render(data){
    revision=data.revision;area.replaceChildren();
    const preview=document.createElement('img');preview.alt='صورة '+labels[kind]+' الحالية';preview.hidden=!data.image;if(data.image)preview.src=data.image;area.append(preview);
