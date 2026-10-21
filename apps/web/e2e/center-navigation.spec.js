@@ -43,7 +43,7 @@ for(const viewport of [{width:1440,height:1000},{width:390,height:844}])test('ce
 });
 test('center shortcuts and controller opens update the same accessible selection',async({page})=>{
  await setup(page);const d=dashboard(page);
- for(const [shortcut,label] of [['إدارة الحجوزات','إدارة الحجوزات'],['إدارة الرحلات','الرحلات'],['المخزون والمعدات','المعدات والمخزون'],['الطاقم والمدربين','محترفي الغوص'],['تقارير السلامة','السلامة'],['التقارير المالية','التقارير']]){
+ for(const [shortcut,label] of [['إدارة الحجوزات','إدارة الحجوزات'],['إدارة الرحلات','الرحلات'],['المخزون والمعدات','المعدات والمخزون'],['الطاقم والمدربين','محترفي الغوص'],['تقارير السلامة','السلامة'],['تقارير الحجوزات والمدفوعات','التقارير']]){
   await d.locator('.hl-command [data-action-label="'+shortcut+'"]').click();await expectCurrent(page,label);await d.locator('[data-portal-home]').click();
  }
  await page.evaluate(()=>window.HydrolandCenterEquipment.search('HYD-TEST'));await expectCurrent(page,'المعدات والمخزون');
