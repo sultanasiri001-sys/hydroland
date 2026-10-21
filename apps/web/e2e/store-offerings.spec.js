@@ -55,7 +55,7 @@ test('center creates and edits a service, stops it and deletes the unused offer'
    state.products=[{...state.products[0],...route.request().postDataJSON(),updatedAt:`2026-10-09T01:00:0${++revisionCount}.000Z`}];return json(route,state.products[0]);
  });
  await page.route('**/api/v1/store/provider/products/'+id+'/status',route=>{state.writes.push(route.request().postDataJSON());state.products[0]={...state.products[0],status:'INACTIVE',updatedAt:'2026-10-09T01:00:09.000Z'};return json(route,{status:'INACTIVE'})});
- let row=page.locator('[data-managed-offer]');await row.locator('summary').click();await row.locator('[name=nameAr]').fill('خدمة معدلة');await row.locator('[type=submit]').click();await expect(row).toContainText('خدمة معدلة');
+ let row=page.locator('[data-managed-offer]');await row.getByText('تعديل العرض',{exact:true}).click();await row.locator('[name=nameAr]').fill('خدمة معدلة');await row.locator('[type=submit]').click();await expect(row).toContainText('خدمة معدلة');
  page.once('dialog',d=>d.accept());await row.locator('[data-offer-status]').click();await expect(row).toContainText('متوقف');
  page.once('dialog',d=>d.accept());await row.locator('[data-offer-delete]').click();await expect(page.locator('[data-managed-offer]')).toHaveCount(0);
  expect(state.writes[1].expectedUpdatedAt).toBe(revision);expect(state.writes.at(-1).expectedUpdatedAt).toBe('2026-10-09T01:00:09.000Z');
