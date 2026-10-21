@@ -152,3 +152,5 @@ body.hl-visitor-mode #role-switch{display:none!important}
 .hl-ar-installment{display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin-block:12px}
 .hl-center-receivables nav{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-block:16px}
 .hl-center-receivables [data-ar-controls]{display:flex;flex-wrap:wrap;gap:14px;align-items:end;margin-block:16px}
+
+.hl-center-report-links{display:flex;flex-wrap:wrap;gap:.6rem;margin:1rem 0}.hl-center-report-links button{max-width:100%}
