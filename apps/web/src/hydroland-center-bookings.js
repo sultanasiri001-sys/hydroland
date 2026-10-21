@@ -69,5 +69,6 @@
  }
  for(const name of ['hydroland:session-cleared','hydroland:portal-cleared'])document.addEventListener(name,clear);
  for(const name of ['hydroland:auth-changed','hydroland:role-changed','hydroland:profile-data-ready'])document.addEventListener(name,()=>{if(!eligible())clear()});
- window.HydrolandCenterBookings=Object.freeze({open});
+ const search=q=>{if(typeof q!=='string'||!q.trim()||q.trim().length>120)return;filters={q:q.trim(),status:'ALL',page:1};return open()};
+ window.HydrolandCenterBookings=Object.freeze({open,search});
 })();
