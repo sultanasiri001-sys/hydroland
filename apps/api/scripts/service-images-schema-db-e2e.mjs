@@ -30,7 +30,7 @@ try{for(const keyType of ['text','uuid']){
   await run(`CREATE TABLE "CalendarResource" (id ${keyType} PRIMARY KEY,type text)`);
   await run(`CREATE TABLE "EquipmentBarcode" ("resourceId" ${keyType},"organizationId" ${keyType})`);
   // Split around the dollar-quoted function, not its internal semicolons.
-  const parts=migration.split('CREATE FUNCTION');for(const statement of parts[0].split(';').filter(s=>s.trim()))await run(statement);
+  const parts=migration.split('CREATE FUNCTION');for(const statement of parts[0].replace(/--[^\n]*/g,'').split(';').filter(s=>s.trim()))await run(statement);
   const [func,triggers]=parts[1].split('$$;');await run('CREATE FUNCTION'+func+'$$;');for(const statement of triggers.split(';').filter(s=>s.trim()))await run(statement);
   const owner=id(),other=id(),org=id(),foreign=id();
   for(const [account,organization] of [[owner,org],[other,foreign]]){

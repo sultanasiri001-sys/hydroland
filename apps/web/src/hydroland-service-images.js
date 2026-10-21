@@ -8,7 +8,7 @@
  const editors=new Set(),publicImages=new Set(),seen=new WeakSet();
  function showPublic(host,kind,id,title){
   if(!host||!id)return;
-  host.classList.add('hl-service-image-host');const img=document.createElement('img');img.className='hl-service-image';img.alt='صورة '+(title||labels[kind]);img.loading='lazy';img.hidden=true;
+  host.classList.add('hl-service-image-host');const img=document.createElement('img');img.className='hl-service-image';img.alt='صورة '+(title||labels[kind]);img.decoding='async';img.hidden=true;
   img.addEventListener('load',()=>{img.hidden=false;host.classList.add('hl-has-service-image');host.removeAttribute('aria-hidden');host.removeAttribute('role');host.removeAttribute('aria-label')});
   img.addEventListener('error',()=>{img.hidden=true;host.classList.remove('hl-has-service-image')});
   img.src=publicUrl(kind,id);host.append(img);publicImages.add({host,img,kind,id});
