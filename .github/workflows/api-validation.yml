@@ -90,6 +90,28 @@ jobs:
       - run: npm run validate:integrations -w @hydroland/api
       - run: npm run typecheck --workspace=@hydroland/api
       - run: npm run build --workspace=@hydroland/api
+      - name: Staff provisioning and scoped IAM HTTP and PostgreSQL
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci-staffing-lifecycle-secret-at-least-32-characters
+          PORT: 3103
+          GOOGLE_CLIENT_ID: ci-staffing.apps.googleusercontent.com
+          HYDROLAND_INTEGRATION_EMAIL_STATUS: SANDBOX
+          HYDROLAND_EMAIL_PROVIDER: RESEND
+          HYDROLAND_EMAIL_FROM: HYDROLAND <test@example.invalid>
+          HYDROLAND_EMAIL_TEST_RECIPIENT: staff-ci-${{ github.run_id }}-${{ github.run_attempt }}@example.invalid
+          HYDROLAND_PUBLIC_WEB_ORIGIN: http://127.0.0.1:4173
+          RESEND_API_KEY: ci-staffing-not-a-real-key
+          RESEND_API_BASE_URL: http://127.0.0.1:3317
+        run: |
+          node apps/api/dist/main.js > /tmp/hydroland-staffing-api.log 2>&1 &
+          STAFFING_API_PID=$!
+          trap 'STAFFING_EXIT=$?; kill $STAFFING_API_PID || true; if [ "$STAFFING_EXIT" -ne 0 ]; then cat /tmp/hydroland-staffing-api.log; fi' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3103/api/v1/health/ready > /dev/null; then break; fi
+            sleep 1
+          done
+          node apps/api/scripts/staffing-admin-http-e2e.mjs
       - name: Admin account lifecycle HTTP and PostgreSQL
         env:
           NODE_ENV: test

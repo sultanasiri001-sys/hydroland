@@ -14,6 +14,7 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
    if(path.endsWith('/themes/active'))return json(route,{themeId:'ocean-horizon'});
    if(path.endsWith('/maps/public-config'))return json(route,{enabled:false,status:'NOT_SELECTED'});
    if(path.endsWith('/weather/public-config'))return json(route,{configured:false,status:'NOT_SELECTED'});
+   if(path.endsWith('/admin/employees'))return json(route,{initialized:false,departments:[],profiles:[],items:[],nextCursor:null,email:{enabled:false},google:{enabled:false}});
    return json(route,[]);
   });
   await page.goto('/',{waitUntil:'domcontentloaded'});
@@ -39,9 +40,14 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
      expect(content.y+content.height,`${selector} must not be clipped`).toBeLessThanOrEqual(hero.y+hero.height);
     }
    }
-   await expect(board.locator(role==='diver'?'.hl-diver-action-grid>button':'.hl-command-grid>button')).toHaveCount(role==='admin'?11:['organization','boat'].includes(role)?10:6);
+   await expect(board.locator(role==='diver'?'.hl-diver-action-grid>button':'.hl-command-grid>button')).toHaveCount(role==='admin'?12:['organization','boat'].includes(role)?10:6);
    await expect(page.locator('#toast')).not.toHaveClass(/visible/);
    await page.screenshot({path:testInfo.outputPath(`portal-${role}-${viewport.name}.png`),fullPage:true});
+   if(role==='admin'){
+    const employees=board.locator('[data-action-label="إدارة الموظفين"]');await expect(employees).toBeEnabled();await expect(employees).toHaveAttribute('data-hl-route','admin-employees');await employees.click();
+    await expect(page.locator('#hl-admin-employees')).toBeVisible();await expect(page.getByRole('heading',{name:'تهيئة الهيكل الداخلي',exact:true})).toBeVisible();
+    await board.locator('[data-portal-home]').click();await expect(board.locator('.hl-portal-content')).toBeVisible();await expect(page.locator('#hl-admin-employees')).toBeHidden();
+   }
    if(role==='boat'){const createTrip=board.locator('[data-action-label="إنشاء رحلة"]');await expect(createTrip).toBeEnabled();await expect(createTrip).toHaveAttribute('data-hl-route','marine-trips');await createTrip.click();await expect(page.locator('#hl-marine-trips')).toBeVisible();}
    // Exercise routing through the real workspace shell, then restore its home.
    if(role==='diver'){

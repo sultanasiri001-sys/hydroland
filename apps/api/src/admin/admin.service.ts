@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
+import { lockAdminIdentities, requireVerifiedAdmin } from './admin-authorization';
 
 type AccountStatusValue='ACTIVE'|'SUSPENDED';
 // Never return the account record itself: it also contains authentication secrets.
@@ -17,9 +18,7 @@ export class AdminService {
   queue(){return this.db.activationRequest.findMany({where:{status:{in:['SUBMITTED','UNDER_REVIEW','RESUBMITTED']}},include:{applicant:{select:{id:true,email:true}},roleAssignment:true},orderBy:{createdAt:'asc'}})}
 
   private async requireAdminRole(accountId:string,tx:Prisma.TransactionClient=this.db){
-    const account=await tx.account.findFirst({where:{id:accountId,status:'ACTIVE',emailVerifiedAt:{not:null},roleAssignments:{some:{role:'ADMIN',status:'ACTIVE'}}},select:{id:true,personId:true}});
-    if(!account)throw new ForbiddenException('Active verified ADMIN account required.');
-    return account;
+    return requireVerifiedAdmin(tx,accountId);
   }
 
   async listAccounts(adminAccountId:string,input:{cursor?:string;search?:string}={}){
@@ -43,9 +42,7 @@ export class AdminService {
       // Serialize status decisions and lock identities/roles before rechecking authority.
       // Cast identifiers for both legacy TEXT and native UUID production schemas.
       await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext('hydroland.admin.account-status')::bigint)`;
-      await tx.$queryRaw`SELECT "id" FROM "Account" WHERE "id"::text IN (${adminAccountId},${accountId}) ORDER BY "id" FOR UPDATE`;
-      await tx.$queryRaw`SELECT "id" FROM "RoleAssignment" WHERE "accountId"::text IN (${adminAccountId},${accountId}) AND "role"='ADMIN' ORDER BY "id" FOR UPDATE`;
-      const actor=await this.requireAdminRole(adminAccountId,tx);
+      const actor=await lockAdminIdentities(tx,adminAccountId,accountId);
       const account=await tx.account.findUnique({where:{id:accountId},select:accountView});
       if(!account)throw new NotFoundException('Account not found.');
       if(account.updatedAt.getTime()!==Date.parse(expectedUpdatedAt))throw new ConflictException('تغير الحساب؛ حدّث البيانات وراجع القرار مجددًا.');
