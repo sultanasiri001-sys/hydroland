@@ -22,5 +22,12 @@ try{for(const type of ['text','uuid']){
   const rows=await db.$queryRawUnsafe('SELECT "state","reservedCostMicroUsd" FROM "AiAgentTask" WHERE "id"=$1',task);assert.equal(rows[0].state,'QUEUED');assert.equal(rows[0].reservedCostMicroUsd,0);
   await assert.rejects(()=>db.$transaction(async tx=>{await tx.$executeRawUnsafe('UPDATE "AiAgentTask" SET "state"=\'RUNNING\' WHERE "id"=$1',task);throw new Error('rollback');}));
   assert.equal((await db.$queryRawUnsafe('SELECT "state" FROM "AiAgentTask" WHERE "id"=$1',task))[0].state,'QUEUED');
+  // Exercise generated-client writes and filters too, including production UUID
+  // actor columns; raw SQL migration success alone does not prove this codec.
+  await db.aiAgentRuntime.create({data:{key:'INVENTORY',lastAdminAccountId:actor}});
+  const native=await db.aiAgentTask.create({data:{agentKey:'INVENTORY',requestedByAccountId:actor,requestKey:randomUUID(),fingerprint:'native-client',action:'READ_OPERATIONS',language:'ar-SA',prompt:'native identity fixture'}});
+  assert.equal((await db.aiAgentTask.findUniqueOrThrow({where:{requestedByAccountId_requestKey:{requestedByAccountId:actor,requestKey:native.requestKey}}})).id,native.id);
+  assert.equal((await db.aiAgentTask.update({where:{id:native.id},data:{state:'REVIEWED',reviewedByAccountId:actor,reviewedAt:new Date()}})).reviewedByAccountId,actor);
+  assert.equal((await db.aiAgentRuntime.update({where:{key:'INVENTORY'},data:{lastAdminAccountId:actor,state:'ENABLED'}})).lastAdminAccountId,actor);
  }finally{await db.$disconnect();await root.$executeRawUnsafe(`DROP SCHEMA "${schema}" CASCADE`);}
 }console.log('AI runtime forward migration passed: TEXT/UUID canonical accounts, preserved identities, FKs, idempotency constraint, state/cost bounds and transaction rollback.');}finally{await root.$disconnect();}
