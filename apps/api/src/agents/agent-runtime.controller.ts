@@ -1,0 +1,16 @@
+import { Body, Controller, Get, Header, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { AccessTokenGuard } from '../auth/access-token.guard';
+import { AdminGuard } from '../admin/admin.guard';
+import { AgentRuntimeService } from './agent-runtime.service';
+
+@UseGuards(AccessTokenGuard,AdminGuard)
+@Controller('admin/agents')
+export class AgentRuntimeController {
+  constructor(private readonly runtime:AgentRuntimeService){}
+  @Get() @Header('Cache-Control','no-store') catalog(@Req()req:{auth:{accountId:string}}){return this.runtime.catalog(req.auth.accountId);}
+  @Post('initialize') initialize(@Req()req:{auth:{accountId:string}},@Body()body:unknown){return this.runtime.initialize(req.auth.accountId,body);}
+  @Patch(':key/control') control(@Req()req:{auth:{accountId:string}},@Param('key')key:string,@Body()body:unknown){return this.runtime.control(req.auth.accountId,key,body);}
+  @Get(':key/tasks') @Header('Cache-Control','no-store') tasks(@Req()req:{auth:{accountId:string}},@Param('key')key:string,@Query('cursor')cursor?:string){return this.runtime.tasks(req.auth.accountId,key,cursor);}
+  @Post(':key/tasks') enqueue(@Req()req:{auth:{accountId:string}},@Param('key')key:string,@Body()body:unknown){return this.runtime.enqueue(req.auth.accountId,key,body);}
+  @Patch('tasks/:id/decision') decide(@Req()req:{auth:{accountId:string}},@Param('id')id:string,@Body()body:unknown){return this.runtime.decideTask(req.auth.accountId,id,body);}
+}

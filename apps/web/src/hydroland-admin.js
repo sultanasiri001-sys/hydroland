@@ -1,5 +1,5 @@
 (() => {
-  for(const [tag,attribute,file] of [['link','href','hydroland-admin-accounts.css'],['script','src','hydroland-admin-accounts.js'],['link','href','hydroland-admin-employees.css'],['script','src','hydroland-admin-employees.js']]){
+  for(const [tag,attribute,file] of [['link','href','hydroland-admin-accounts.css'],['script','src','hydroland-admin-accounts.js'],['link','href','hydroland-admin-employees.css'],['script','src','hydroland-admin-employees.js'],['link','href','hydroland-admin-agents.css'],['script','src','hydroland-admin-agents.js']]){
     if(document.querySelector(`${tag}[${attribute}="./${file}"]`))continue;
     const node=document.createElement(tag);if(tag==='link')node.rel='stylesheet';else node.defer=true;node[attribute]='./'+file;(tag==='link'?document.head:document.body).appendChild(node);
   }

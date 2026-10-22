@@ -6,6 +6,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:16-alpine
@@ -27,7 +28,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci --workspace=@hydroland/api --include-workspace-root=true
+      - run: npm ci --workspace=@hydroland/api --workspace=@hydroland/web --include-workspace-root=true
       - run: npm --workspace @hydroland/api run db:generate
       # Legacy migration history contains pre-production migrations whose original SQL
       # cannot bootstrap a clean database (for example TEXT -> UUID FK drift).
@@ -41,6 +42,8 @@ jobs:
         run: node apps/api/scripts/center-license-migration-db-e2e.mjs
       - name: Center license platform-review forward migration
         run: node apps/api/scripts/center-license-platform-review-migration-checks.mjs
+      - name: AI runtime forward migration on TEXT and UUID account keys
+        run: node apps/api/scripts/agent-runtime-migration-db-e2e.mjs
       - name: Unified store forward migration on TEXT and UUID organization keys
         run: node apps/api/scripts/store-offerings-migration-db-e2e.mjs
       - name: Organization booking forward migrations on TEXT and UUID keys
@@ -90,6 +93,37 @@ jobs:
       - run: npm run validate:integrations -w @hydroland/api
       - run: npm run typecheck --workspace=@hydroland/api
       - run: npm run build --workspace=@hydroland/api
+      - name: Build connected browser fixture
+        run: npm run build -w @hydroland/web
+      - name: Install connected browser Chromium
+        # Ubuntu's runner already provides the native browser libraries. The
+        # connected fixture launches Chromium and verifies those dependencies.
+        # Avoid unrelated OS/font upgrades in the API validation job.
+        run: npx playwright install --only-shell chromium
+      - name: Durable AI queue and controls HTTP and PostgreSQL
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci-ai-runtime-secret-at-least-32-characters
+          PORT: 3110
+          HYDROLAND_AI_TEST_MANUAL_WORKER: '1'
+          AI_E2E_BROWSER: '1'
+          HYDROLAND_INTEGRATION_AI_MODEL_STATUS: SANDBOX
+          HYDROLAND_AI_PROVIDER: OPENAI
+          OPENAI_API_KEY: ci-ai-runtime-not-a-real-key
+          HYDROLAND_AI_MODEL: fixture-model
+          HYDROLAND_AI_INPUT_MICRO_USD_PER_MILLION: '1000000'
+          HYDROLAND_AI_OUTPUT_MICRO_USD_PER_MILLION: '1000000'
+          HYDROLAND_AI_DAILY_BUDGET_MICRO_USD: '1000000'
+          HYDROLAND_AI_TEST_BASE_URL: http://127.0.0.1:3321/v1
+        run: |
+          node apps/api/dist/main.js > /tmp/hydroland-ai-runtime-api.log 2>&1 &
+          AI_RUNTIME_API_PID=$!
+          trap 'AI_RUNTIME_EXIT=$?; kill $AI_RUNTIME_API_PID || true; if [ "$AI_RUNTIME_EXIT" -ne 0 ]; then cat /tmp/hydroland-ai-runtime-api.log; fi' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3110/api/v1/health/ready > /dev/null; then break; fi
+            sleep 1
+          done
+          node apps/api/scripts/agent-runtime-http-e2e.mjs
       - name: Staff provisioning and scoped IAM HTTP and PostgreSQL
         env:
           NODE_ENV: test

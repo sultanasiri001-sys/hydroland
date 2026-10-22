@@ -6,5 +6,5 @@ import {AdminGuard} from './admin.guard';
 import {ReviewGuard} from './review.guard';
 import {AdminService} from './admin.service';
 
-@Module({imports:[AuthModule,AuditModule],controllers:[AdminController],providers:[AdminGuard,ReviewGuard,AdminService],exports:[AdminGuard,ReviewGuard]})
+@Module({imports:[AuthModule,AuditModule],controllers:[AdminController],providers:[AdminGuard,ReviewGuard,AdminService],exports:[AdminGuard,ReviewGuard,AdminService]})
 export class AdminModule {}
