@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { DatabaseService } from '../database/database.service';
@@ -32,6 +32,20 @@ export class AuthService {
       return created;
     });
     return{email:account.email,status:'PENDING_VERIFICATION',requiresEmailVerification:true};
+  }
+
+  // Administrative provisioning creates identity only. No session, verified flag,
+  // password or authentication challenge is returned to the administrator.
+  async provisionPendingAccount(tx:Prisma.TransactionClient,input:{email:string;firstName:string;lastName:string},method:'EMAIL'|'GOOGLE'='EMAIL'){
+    const email=this.email(input.email);
+    if(method==='EMAIL')assertAuthEmailRecipient(email);
+    else if(method!=='GOOGLE'||!this.google.config().enabled)throw new ServiceUnavailableException('التحقق عبر Google غير متاح.');
+    if(await tx.account.findFirst({where:{email:{equals:email,mode:'insensitive'}},select:{id:true}}))throw new ConflictException('الحساب موجود؛ اختر ربط حساب موجود.');
+    let account;
+    try{account=await tx.account.create({data:{email,passwordHash:this.hash(randomBytes(48).toString('base64url')),person:{create:{firstName:input.firstName,lastName:input.lastName}}},select:{id:true,personId:true,email:true,status:true,emailVerifiedAt:true}});}
+    catch(error){if(error&&typeof error==='object'&&'code' in error&&error.code==='P2002')throw new ConflictException('الحساب موجود؛ اختر ربط حساب موجود.');throw error;}
+    if(method==='EMAIL')await this.replaceChallenge(tx,account.id,'VERIFY_EMAIL',VERIFY_TTL_MS);
+    return account;
   }
 
   async requestEmailVerification(emailInput:string){
