@@ -1,4 +1,8 @@
 (() => {
+  for(const [tag,attribute,file] of [['link','href','hydroland-admin-accounts.css'],['script','src','hydroland-admin-accounts.js']]){
+    if(document.querySelector(`${tag}[${attribute}="./${file}"]`))continue;
+    const node=document.createElement(tag);if(tag==='link')node.rel='stylesheet';else node.defer=true;node[attribute]='./'+file;(tag==='link'?document.head:document.body).appendChild(node);
+  }
   if (!document.querySelector('link[href="./hydroland-training-certificate-admin.css"]')) {
     const link=document.createElement('link');link.rel='stylesheet';link.href='./hydroland-training-certificate-admin.css';document.head.appendChild(link);
   }

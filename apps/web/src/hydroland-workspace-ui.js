@@ -28,6 +28,7 @@
     '.hl-center-safety':['center'],
     '.hl-organizations':['center','boat','organization','admin'],
     '.hl-admin':['admin'],
+    '.hl-admin-accounts':['admin'],
     '.hl-theme-admin':['admin'],
     '.hl-trip-admin':['admin'],
     '.hl-store-admin':['center','admin'],
