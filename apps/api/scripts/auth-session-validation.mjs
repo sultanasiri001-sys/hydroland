@@ -104,7 +104,7 @@ assert.ok(!service.includes("payload:{purpose,expiresAt:expiresAt.toISOString(),
 
 const requiredWeb=[
   "if(state.refreshPromise)return state.refreshPromise","if(response.status!==401)return response","access=await refreshSession()",
-  "if(response.status===401){clearSession('expired');emitAuthChanged();showLogin('انتهت الجلسة، سجّل الدخول من جديد','expired')}","if(state.mode==='register')",
+  "if(refreshed){clearSession('expired');emitAuthChanged();showLogin('انتهت الجلسة، سجّل الدخول من جديد','expired');return response}","if(state.mode==='register')",
   "body?.status!=='PENDING_VERIFICATION'||body?.requiresEmailVerification!==true","clearSession();clearProtectedView();setAuthUi(false);emitAuthChanged()",
   "تم إنشاء الحساب. يلزم التحقق من البريد الإلكتروني قبل تسجيل الدخول","storeTokens(body);state.sessionVersion++;setAuthUi(true)","setTimeout(emitAuthChanged,0)","fetch(`${API_BASE}/auth/logout`",
   "params.get('reset_token')","searchParams.get('verify_email')","'/auth/email-verification/confirm'","'/auth/password-reset/confirm'","requestEmailVerification","requestPasswordReset"
