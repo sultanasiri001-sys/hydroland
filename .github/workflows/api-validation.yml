@@ -6,6 +6,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:16-alpine
@@ -27,7 +28,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci --workspace=@hydroland/api --include-workspace-root=true
+      - run: npm ci --workspace=@hydroland/api --workspace=@hydroland/web --include-workspace-root=true
       - run: npm --workspace @hydroland/api run db:generate
       # Legacy migration history contains pre-production migrations whose original SQL
       # cannot bootstrap a clean database (for example TEXT -> UUID FK drift).
@@ -92,12 +93,17 @@ jobs:
       - run: npm run validate:integrations -w @hydroland/api
       - run: npm run typecheck --workspace=@hydroland/api
       - run: npm run build --workspace=@hydroland/api
+      - name: Build connected browser fixture
+        run: npm run build -w @hydroland/web
+      - name: Install connected browser Chromium
+        run: npx playwright install --with-deps chromium
       - name: Durable AI queue and controls HTTP and PostgreSQL
         env:
           NODE_ENV: test
           JWT_SECRET: ci-ai-runtime-secret-at-least-32-characters
           PORT: 3110
           HYDROLAND_AI_TEST_MANUAL_WORKER: '1'
+          AI_E2E_BROWSER: '1'
           HYDROLAND_INTEGRATION_AI_MODEL_STATUS: SANDBOX
           HYDROLAND_AI_PROVIDER: OPENAI
           OPENAI_API_KEY: ci-ai-runtime-not-a-real-key
