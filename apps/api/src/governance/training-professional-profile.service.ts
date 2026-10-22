@@ -3,6 +3,7 @@ import { sessionControls } from './training-session-policy';
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { instructorCenterScope } from './training-center-scope';
+import { trainingCompletion, trainingRecordEditable } from './training-completion-policy';
 
 @Injectable()
 export class TrainingProfessionalProfileService {
@@ -39,7 +40,7 @@ export class TrainingProfessionalProfileService {
     const studentIds=[...new Set(records.map(row=>row.enrollment.studentAccountId))];
     const students=studentIds.length?await this.db.account.findMany({where:{id:{in:studentIds}},select:{id:true,person:{select:{firstName:true,lastName:true}}}}):[];
     const names=new Map(students.map(student=>[student.id,[student.person.firstName,student.person.lastName].filter(Boolean).join(' ').trim()||'طالب']));
-    return records.map(record=>{const skills=record.stages.flatMap(stage=>stage.skills);const ready=record.status==='COMPLETED'&&record.progressPercent===100&&skills.length>0&&skills.every(skill=>skill.status==='COMPETENT'&&Boolean(skill.signedOffByInstructorId&&skill.signedOffAt))&&record.sessions.every(session=>['COMPLETED','CANCELLED'].includes(session.status));return {trainingRecordId:record.id,courseCode:record.enrollment.courseCode,student:{displayName:names.get(record.enrollment.studentAccountId)||'طالب'},readyForRecommendation:ready,certificate:record.certificate};});
+    return records.map(record=>{const ready=record.status==='COMPLETED'&&record.progressPercent===100&&trainingCompletion(record).ready;return {trainingRecordId:record.id,courseCode:record.enrollment.courseCode,student:{displayName:names.get(record.enrollment.studentAccountId)||'طالب'},readyForRecommendation:ready,certificate:record.certificate};});
   }
 
   async listSkills(accountId: string) {
@@ -49,7 +50,7 @@ export class TrainingProfessionalProfileService {
       where: { trainingRecord: { enrollment: { instructorAccountId: accountId, ...scope } } },
       select: {
         id: true, stageType: true, sequence: true,
-        trainingRecord: { select: { enrollment: { select: { courseCode: true, studentAccountId: true } } } },
+        trainingRecord: { select: { status:true,certificate:{select:{id:true}},enrollment: { select: { status:true,courseCode: true, studentAccountId: true } } } },
         skills: { select: { id: true, skillCode: true, name: true, status: true, signedOffAt: true }, orderBy: { createdAt: 'asc' } },
       },
       orderBy: { sequence: 'asc' },
@@ -59,7 +60,7 @@ export class TrainingProfessionalProfileService {
     const students=studentIds.length?await this.db.account.findMany({where:{id:{in:studentIds}},select:{id:true,person:{select:{firstName:true,lastName:true}}}}):[];
     const names=new Map(students.map(student=>[student.id,[student.person.firstName,student.person.lastName].filter(Boolean).join(' ').trim()||'طالب']));
     return stages.flatMap(stage=>stage.skills.map(skill=>({
-      ...skill,stageType:stage.stageType,courseCode:stage.trainingRecord.enrollment.courseCode,
+      ...skill,stageType:stage.stageType,courseCode:stage.trainingRecord.enrollment.courseCode,canAssess:trainingRecordEditable(stage.trainingRecord),
       student:{displayName:names.get(stage.trainingRecord.enrollment.studentAccountId)||'طالب'},
     })));
   }
