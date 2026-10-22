@@ -24,7 +24,7 @@
     const refreshToken=sessionStorage.getItem('hl-refresh-token');
     if(!refreshToken){clearSession('expired');emitAuthChanged();showLogin('انتهت الجلسة، سجّل الدخول من جديد','expired');throw new Error('SESSION_EXPIRED')}
     const version=state.sessionVersion,current=()=>version===state.sessionVersion&&refreshToken===sessionStorage.getItem('hl-refresh-token');
-    const pending=(async()=>{try{const response=await fetch(`${API_BASE}/auth/refresh`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken})});const body=await response.json().catch(()=>({}));if(!current())throw new Error('AUTH_CANCELLED');if(!response.ok)throw new Error(body.message||'SESSION_EXPIRED');storeTokens(body);emitAuthChanged();return body.accessToken}catch(error){if(current()){clearSession('expired');emitAuthChanged();showLogin('انتهت الجلسة، سجّل الدخول من جديد','expired')}throw error}})();
+    const pending=(async()=>{try{const response=await fetch(`${API_BASE}/auth/refresh`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken})});const body=await response.json().catch(()=>({}));if(!current())throw new Error('AUTH_CANCELLED');if(!response.ok)throw new Error(body.message||'SESSION_EXPIRED');storeTokens(body);document.dispatchEvent(new CustomEvent('hydroland:session-refreshed'));return body.accessToken}catch(error){if(current()){clearSession('expired');emitAuthChanged();showLogin('انتهت الجلسة، سجّل الدخول من جديد','expired')}throw error}})();
     state.refreshPromise=pending;
     try{return await pending}finally{if(state.refreshPromise===pending)state.refreshPromise=null}
   };
@@ -36,8 +36,20 @@
       headers.set('Authorization',`Bearer ${access}`);
       return fetch(`${API_BASE}${path}`,{...options,headers});
     };
-    let access=sessionStorage.getItem('hl-access-token');if(!access){if(!sessionStorage.getItem('hl-refresh-token'))throw new Error('AUTH_REQUIRED');access=await refreshSession()}
-    assertSession();let response=await execute(access);assertSession();if(response.status!==401)return response;access=await refreshSession();assertSession();response=await execute(access);assertSession();if(response.status===401){clearSession('expired');emitAuthChanged();showLogin('انتهت الجلسة، سجّل الدخول من جديد','expired')}return response;
+    let access=sessionStorage.getItem('hl-access-token'),refreshed=false;
+    if(!access){if(!sessionStorage.getItem('hl-refresh-token'))throw new Error('AUTH_REQUIRED');access=await refreshSession();refreshed=true}
+    for(let attempt=0;attempt<3;attempt++){
+      assertSession();const response=await execute(access);assertSession();if(response.status!==401)return response;
+      // A delayed response can belong to a token another request already replaced.
+      // Reuse that replacement before rotating again or expiring the current session.
+      if(state.refreshPromise){access=await state.refreshPromise;refreshed=true;continue}
+      const latest=sessionStorage.getItem('hl-access-token');
+      if(latest&&latest!==access){access=latest;continue}
+      if(!refreshed&&attempt<2){access=await refreshSession();refreshed=true;continue}
+      if(refreshed){clearSession('expired');emitAuthChanged();showLogin('انتهت الجلسة، سجّل الدخول من جديد','expired');return response}
+      break;
+    }
+    throw Object.assign(new Error('تجددت الجلسة أثناء الطلب. أعد المحاولة.'),{code:'AUTH_RETRY_REQUIRED'});
   };
   const setPanelStatus=(message,error=false)=>{const status=login()?.querySelector('.hl-auth-status');if(status){status.textContent=message;status.classList.toggle('is-error',error)}};
   let emailAvailabilityPromise=null;
