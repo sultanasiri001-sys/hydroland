@@ -21,7 +21,7 @@ export class AgentRuntimeService {
 
   private descriptor(key:string){const found=this.agents.list().find(a=>a.key===key);if(!found)throw new NotFoundException('الوكيل غير موجود.');return found;}
   private async guard(tx:Prisma.TransactionClient){
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('hydroland.ai-runtime')::bigint)`;
+    await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext('hydroland.ai-runtime')::bigint)`;
     // Force a fresh serializable snapshot for waiters, including absent task IDs.
     await tx.$executeRaw`INSERT INTO "OperationalSetting" ("key","value","updatedAt") VALUES (${RUNTIME_GUARD_KEY},'{}'::jsonb,clock_timestamp()) ON CONFLICT ("key") DO UPDATE SET "updatedAt"=clock_timestamp()`;
   }
