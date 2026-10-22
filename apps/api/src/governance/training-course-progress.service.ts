@@ -18,8 +18,8 @@ export class TrainingCourseProgressService {
  private editable(record:TrainingGraph){return trainingRecordEditable(record);}
  private view(record:TrainingGraph){
   const completion=trainingCompletion(record),canEdit=this.editable(record),reasons=[...completion.reasons];
-  if(record.enrollment.status!=='ACTIVE')reasons.push('يجب أن تكون الدورة نشطة لإتمامها.');
-  if(!canEdit)reasons.push('السجل مغلق أو موقوف ولا يقبل تعديلات.');
+  if(record.status==='COMPLETED'&&record.enrollment.status==='COMPLETED'&&completion.ready)reasons.push('اكتمل سجل الدورة. الشهادة تتطلب توصية ومراجعة مستقلة.');
+  else{if(record.enrollment.status!=='ACTIVE')reasons.push('يجب أن تكون الدورة نشطة لإتمامها.');if(!canEdit)reasons.push('السجل مغلق أو موقوف ولا يقبل تعديلات.');}
   return {enrollmentId:record.enrollmentId,courseCode:record.enrollment.courseCode,enrollmentStatus:record.enrollment.status,record:{id:record.id,status:record.status,updatedAt:record.updatedAt,progressPercent:completion.progressPercent},stages:record.stages.map(stage=>({id:stage.id,stageType:stage.stageType,deliveryMode:stage.deliveryMode,sequence:stage.sequence,skills:stage.skills.map(skill=>({id:skill.id,skillCode:skill.skillCode,name:skill.name,status:skill.status,signedOffAt:skill.signedOffAt}))})),canEdit,canComplete:reasons.length===0,completionReasons:reasons};
  }
  async plan(actorId:string,enrollmentId:string){

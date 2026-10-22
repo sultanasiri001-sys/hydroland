@@ -61,7 +61,7 @@ export async function checkStoreCourseTraining(db,{base,owner,foreignOwner,stude
  assert.equal(finished.status,'COMPLETED');assert.equal(finished.record.status,'COMPLETED');assert.equal(finished.record.progressPercent,100);
  assert.equal(await db.auditEvent.count({where:{action:'training.course_completed',resourceId:enrollment.id}}),1);
  assert.equal(await db.auditEvent.count({where:{action:'training.plan_skill_added',resourceId:skillId}}),1);
- plan=ok(await request(instructor,planPath));assert.equal(plan.canEdit,false);
+ plan=ok(await request(instructor,planPath));assert.equal(plan.canEdit,false);assert.equal(plan.canComplete,false);assert.ok(plan.completionReasons.some(reason=>reason.includes('اكتمل سجل الدورة')),'completed plans show a completion notice rather than a reactivation requirement');
  assert.equal((await request(instructor,planPath,'POST',{...add,requestId:randomUUID(),expectedUpdatedAt:plan.record.updatedAt,skillCode:'CLOSED'})).status,409);
  assert.equal((await request(instructor,'/training/skills/'+skillId+'/assessment','PATCH',{status:'NEEDS_REVIEW'})).status,409);
  assert.equal((await request(instructor,'/training/records/'+plan.record.id+'/stages','POST',{stageType:'bypass',deliveryMode:'THEORY',sequence:2})).status,409);
