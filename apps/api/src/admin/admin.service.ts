@@ -42,7 +42,7 @@ export class AdminService {
     return this.db.serializable(async tx=>{
       // Serialize status decisions and lock identities/roles before rechecking authority.
       // Cast identifiers for both legacy TEXT and native UUID production schemas.
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('hydroland.admin.account-status')::bigint)`;
+      await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext('hydroland.admin.account-status')::bigint)`;
       await tx.$queryRaw`SELECT "id" FROM "Account" WHERE "id"::text IN (${adminAccountId},${accountId}) ORDER BY "id" FOR UPDATE`;
       await tx.$queryRaw`SELECT "id" FROM "RoleAssignment" WHERE "accountId"::text IN (${adminAccountId},${accountId}) AND "role"='ADMIN' ORDER BY "id" FOR UPDATE`;
       const actor=await this.requireAdminRole(adminAccountId,tx);

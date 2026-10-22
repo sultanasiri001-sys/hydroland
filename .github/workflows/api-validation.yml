@@ -98,7 +98,7 @@ jobs:
         run: |
           node apps/api/dist/main.js > /tmp/hydroland-accounts-api.log 2>&1 &
           ACCOUNTS_API_PID=$!
-          trap 'kill $ACCOUNTS_API_PID || true' EXIT
+          trap 'ACCOUNTS_EXIT=$?; kill $ACCOUNTS_API_PID || true; if [ "$ACCOUNTS_EXIT" -ne 0 ]; then cat /tmp/hydroland-accounts-api.log; fi' EXIT
           ACCOUNTS_READY=0
           for i in {1..30}; do
             if curl -fsS http://127.0.0.1:3102/api/v1/health >/dev/null; then ACCOUNTS_READY=1; break; fi
