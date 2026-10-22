@@ -1,6 +1,6 @@
 import { BookingManagementService } from './booking-management.service';
 import { TripLifecycleService } from './trip-lifecycle.service';
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -58,18 +58,27 @@ export class TripAdminService {
 
   confirmBooking(reviewerAccountId:string,tripId:string,bookingId:string){return this.bookingManagement.legacy(reviewerAccountId,bookingId,'CONFIRM','admin',tripId);}
 
-  async setParticipantEligibility(reviewerAccountId:string,tripId:string,bookingId:string,participantId:string,status:'ELIGIBLE'|'REJECTED'){
-    const booking=await this.db.booking.findUnique({where:{id:bookingId},select:{tripId:true,status:true,accountId:true}});
-    if(!booking||booking.tripId!==tripId)throw new NotFoundException('Booking not found for this trip.');
-    if(booking.status==='CANCELLED')throw new ConflictException('Cancelled booking cannot be reviewed.');
-    const existing=await this.db.$queryRaw<Array<{id:string;bookingId:string;accountId:string|null;eligibilityStatus:string}>>`SELECT "id","bookingId","accountId","eligibilityStatus" FROM "BookingParticipant" WHERE "id"=${participantId} AND "bookingId"::text=${bookingId} LIMIT 1`;
-    if(!existing[0])throw new NotFoundException('Participant not found.');
-    const rows=await this.participants.setEligibility(bookingId,participantId,status);
-    const payload={participantId,bookingId,tripId,status,previousStatus:existing[0].eligibilityStatus};
-    const recipients=new Set<string>([booking.accountId]);if(existing[0].accountId)recipients.add(existing[0].accountId);
-    await Promise.all([...recipients].map(accountId=>this.notifyQuietly(accountId,'PARTICIPANT_ELIGIBILITY_CHANGED',payload)));
-    await this.audit.record({action:'BOOKING_PARTICIPANT_ELIGIBILITY_CHANGED',resource:'BookingParticipant',resourceId:participantId,metadata:{reviewerAccountId,tripId,bookingId,previousStatus:existing[0].eligibilityStatus,status,notifiedAccounts:recipients.size}});
-    return rows;
+  async setParticipantEligibility(reviewerAccountId:string,tripId:string,bookingId:string,participantId:string,input:{status:'ELIGIBLE'|'REJECTED';expectedUpdatedAt:string;reason:string;reviewed:boolean}){
+    const status=input?.status,reason=typeof input?.reason==='string'?input.reason.trim():'';
+    const expectedAt=typeof input?.expectedUpdatedAt==='string'?new Date(input.expectedUpdatedAt):new Date(NaN);
+    if(!['ELIGIBLE','REJECTED'].includes(status)||input?.reviewed!==true||reason.length<5||reason.length>1000||!Number.isFinite(expectedAt.getTime()))throw new BadRequestException('اختر القرار وأكد المراجعة وأضف ملاحظات من 5 إلى 1000 حرف.');
+    const result=await this.db.serializable(async tx=>{
+      const admin=await tx.roleAssignment.findFirst({where:{accountId:reviewerAccountId,role:'ADMIN',status:'ACTIVE',account:{status:'ACTIVE'}},select:{id:true}});
+      if(!admin)throw new ForbiddenException('تتطلب مراجعة الأهلية حساب إدارة نشطًا.');
+      const booking=await tx.booking.findFirst({where:{id:bookingId,tripId},select:{id:true,status:true,accountId:true,updatedAt:true,trip:{select:{status:true,startsAt:true}}}});
+      if(!booking)throw new NotFoundException('Booking not found for this trip.');
+      if(booking.status!=='PENDING'||['CANCELLED','COMPLETED'].includes(booking.trip.status)||booking.trip.startsAt<=new Date())throw new ConflictException('تقتصر مراجعة الأهلية على الحجوزات المنتظرة قبل بدء الرحلة.');
+      const participant=await tx.bookingParticipant.findFirst({where:{id:participantId,bookingId}});
+      if(!participant)throw new NotFoundException('Participant not found.');
+      if(participant.updatedAt.getTime()!==expectedAt.getTime())throw new ConflictException('تغيرت بيانات المشارك؛ حدّث الحجوزات وراجعها مجددًا.');
+      await tx.bookingParticipant.update({where:{id:participantId},data:{eligibilityStatus:status,updatedAt:new Date(Math.max(Date.now(),participant.updatedAt.getTime()+1))}});
+      await tx.booking.update({where:{id:bookingId},data:{updatedAt:new Date(Math.max(Date.now(),booking.updatedAt.getTime()+1))}});
+      const recipients=[...new Set([booking.accountId,...(participant.accountId?[participant.accountId]:[])])];
+      await this.audit.record({actorId:reviewerAccountId,action:'BOOKING_PARTICIPANT_ELIGIBILITY_CHANGED',resource:'BookingParticipant',resourceId:participantId,metadata:{reviewerAccountId,tripId,bookingId,previousStatus:participant.eligibilityStatus,status,reason,reviewed:true}},tx);
+      return {rows:await tx.bookingParticipant.findMany({where:{bookingId},orderBy:{createdAt:'asc'}}),recipients};
+    });
+    await Promise.all(result.recipients.map(accountId=>this.notifyQuietly(accountId,'PARTICIPANT_ELIGIBILITY_CHANGED',{participantId,bookingId,tripId,status})));
+    return result.rows;
   }
 
   cancelBooking(reviewerAccountId:string,tripId:string,bookingId:string){return this.bookingManagement.legacy(reviewerAccountId,bookingId,'CANCEL','admin',tripId);}

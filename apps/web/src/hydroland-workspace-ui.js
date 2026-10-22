@@ -48,7 +48,7 @@
       document.querySelectorAll(selector).forEach(node=>node.classList.toggle('hl-workspace-hidden',!isAuthed||!roles.includes(role)));
     }
     syncNavigation(role);
-    if(selected?.isConnected&&isAuthed){selected.classList.add('hl-workspace-selected');if(document.body.dataset.hlWorkspaceService==='hl-training-service'){const training=selected.matches('.hl-training')?selected:selected.querySelector?.('.hl-training');training?.classList.add('hl-workspace-selected');selected.classList.add('hl-managed-service-root')}}
+    if(selected?.isConnected&&isAuthed){selected.classList.add('hl-workspace-selected');if(selected.matches('.hl-trip-admin'))document.querySelectorAll('.hl-booking-admin:not(.hl-workspace-hidden)').forEach(item=>item.classList.add('hl-workspace-selected'));if(document.body.dataset.hlWorkspaceService==='hl-training-service'){const training=selected.matches('.hl-training')?selected:selected.querySelector?.('.hl-training');training?.classList.add('hl-workspace-selected');selected.classList.add('hl-managed-service-root')}}
     const home=document.querySelector('#navigation > a[href="#home"],#navigation > a[href="#hl-diver-dashboard"]');
     if(home){
       const label=home.querySelector('span:last-child');
@@ -87,7 +87,7 @@
     if(!managedTraining&&node.parentElement!==main)return false;
     if(managedTraining){let serviceRoot=managedTraining;while(serviceRoot.parentElement&&serviceRoot.parentElement!==main)serviceRoot=serviceRoot.parentElement;if(serviceRoot.parentElement!==main)return false;selected=serviceRoot;serviceRoot.classList.add('hl-workspace-selected','hl-managed-service-root');managedTraining.classList.add('hl-workspace-selected');document.body.dataset.hlWorkspaceView='service';document.body.dataset.hlWorkspaceService='hl-training-service';if(heading){heading.hidden=false;heading.querySelector('[data-service-title]').textContent=managedTraining.querySelector('h1,h2,h3')?.textContent||'مساحة التدريب'}document.querySelector('.hl-role-dashboard')?.classList.remove('hl-portal-nav-open');document.querySelector('.sidebar')?.classList.remove('open');if(!managedTraining.hasAttribute('tabindex'))managedTraining.tabIndex=-1;managedTraining.focus({preventScroll:true});window.scrollTo({top:0,behavior:'instant'});announceSelection(managedTraining);return true}
     selected=node;node.classList.add('hl-workspace-selected');document.body.dataset.hlWorkspaceView='service';
-    for(const selector of serviceGroups[node.id]||[])document.querySelectorAll(selector).forEach(item=>{if(!item.classList.contains('hl-workspace-hidden'))item.classList.add('hl-workspace-selected')});
+    for(const selector of (node.matches('.hl-trip-admin')?['.hl-booking-admin']:serviceGroups[node.id]||[]))document.querySelectorAll(selector).forEach(item=>{if(!item.classList.contains('hl-workspace-hidden'))item.classList.add('hl-workspace-selected')});
     if(heading){heading.hidden=false;heading.querySelector('[data-service-title]').textContent=node.querySelector('h1,h2,h3')?.textContent||'مساحة الخدمة'}
     document.querySelector('.hl-role-dashboard')?.classList.remove('hl-portal-nav-open');document.querySelector('.sidebar')?.classList.remove('open');
     if(!node.hasAttribute('tabindex'))node.tabIndex=-1;node.focus({preventScroll:true});window.scrollTo({top:0,behavior:'instant'});announceSelection(typeof target==='string'?document.getElementById(target):target);return true;
