@@ -17,8 +17,8 @@ export async function browserAcceptance({db,actor,session,getCalls,holdGeneratio
  const stop=async()=>{if(!child||child.exitCode!==null)return;const current=child;await new Promise(resolve=>{const timer=setTimeout(()=>current.kill('SIGKILL'),5000);current.once('exit',()=>{clearTimeout(timer);resolve()});current.kill('SIGTERM')});child=null;};
  const open=async()=>{
   await page.goto(origin,{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>Boolean(window.HydrolandAdminAgentWorkforce&&window.HydrolandAuth&&window.HydrolandProfile));
-  if(!await page.evaluate(()=>window.HydrolandAuth.isAuthenticated()))await page.evaluate(async tokens=>{window.HydrolandAuth.acceptSession(tokens,window.HydrolandAuth.beginAuthAttempt());await window.HydrolandProfile.load()},session);
-  await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="admin"]').click();await page.locator('[data-portal-label="الذكاء الاصطناعي"]').click();await expect(page.locator('[data-ai-feedback]')).toContainText('تم تحميل');await page.locator('[data-ai-agent-select]').selectOption('INVENTORY');await expect(page.locator('[data-ai-feedback]')).toContainText('تم تحميل');
+  await page.evaluate(async tokens=>{if(!window.HydrolandAuth.isAuthenticated())window.HydrolandAuth.acceptSession(tokens,window.HydrolandAuth.beginAuthAttempt());await window.HydrolandProfile.load()},session);await expect(page.locator('.hl-role-dashboard')).toBeVisible();
+  await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="admin"]').click();await expect(page.locator('.hl-role-dashboard[data-role="admin"]')).toBeVisible();await page.locator('[data-portal-label="الذكاء الاصطناعي"]').click();await expect(page.locator('[data-ai-feedback]')).toContainText('تم تحميل');await page.locator('[data-ai-agent-select]').selectOption('INVENTORY');await expect(page.locator('[data-ai-feedback]')).toContainText('تم تحميل');
  };
  const control=()=>page.locator('[data-ai-control][data-key="INVENTORY"]');
  const review=async form=>{await form.locator('[name="reason"]').fill('Isolated browser acceptance review');await form.getByRole('checkbox').check();};
