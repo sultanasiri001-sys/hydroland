@@ -96,7 +96,10 @@ jobs:
       - name: Build connected browser fixture
         run: npm run build -w @hydroland/web
       - name: Install connected browser Chromium
-        run: npx playwright install --with-deps chromium
+        # Ubuntu's runner already provides the native browser libraries. The
+        # connected fixture launches Chromium and verifies those dependencies.
+        # Avoid unrelated OS/font upgrades in the API validation job.
+        run: npx playwright install --only-shell chromium
       - name: Durable AI queue and controls HTTP and PostgreSQL
         env:
           NODE_ENV: test
