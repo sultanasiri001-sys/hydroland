@@ -48,6 +48,25 @@ test('center invitation submission rechecks authority before writing',async({pag
  await panel.locator('[data-center-team-invite]').evaluate(form=>form.requestSubmit());await expect(panel).toHaveCount(0);expect(writes).toBe(0);
 });
 
+test('center invitation waits for an older role response then requests current authority',async({page})=>{
+ const state=await install(page);let writes=0,roleRequests=0,pending;
+ await page.route('**/api/v1/center/me/team/invitations',route=>{writes++;return json(route,{id:'pending',status:'PENDING'},201)});
+ await page.locator('[data-portal-label="محترفي الغوص"]').click();const panel=page.locator('#hl-center-team');await expect(panel).toContainText('محترف المركز');
+ await panel.getByText('دعوة عضو للمركز',{exact:true}).click();await panel.locator('[name="email"]').fill('member@example.invalid');
+ await page.evaluate(async()=>{await window.HydrolandPortalAccess.refreshPortalAccess()});
+ const oldProfile=await page.evaluate(()=>window.HydrolandProfileData.profile);
+ await page.route(/\/api\/v1\/me$/,route=>{
+  roleRequests++;
+  if(roleRequests===1){pending=route;return}
+  return json(route,{...oldProfile,roleAssignments:state.active?oldProfile.roleAssignments:[],roles:state.active?oldProfile.roles:[]});
+ });
+ await page.evaluate(()=>{window.HydrolandPortalAccess.refreshPortalAccess()});
+ await expect.poll(()=>Boolean(pending)).toBe(true);state.active=false;
+ await panel.locator('[data-center-team-invite]').evaluate(form=>form.requestSubmit());expect(writes).toBe(0);
+ await json(pending,oldProfile);
+ await expect(panel).toHaveCount(0);expect(writes).toBe(0);expect(roleRequests).toBeGreaterThanOrEqual(2);
+});
+
 const managedMember=()=>({...team[0],updatedAt:'2026-10-04T08:00:00.000Z',canChangeRole:true,canSuspend:true,canReactivate:false,openTrainingEnrollments:2,openTrainingSessions:3});
 async function openManagedTeam(page,state){
  state.team=[managedMember(),{membershipId:'owner',role:'OWNER',status:'ACTIVE',person:{displayName:'مالك المركز'}},{membershipId:'pending',role:'STAFF',status:'PENDING',person:{displayName:'العضو المدعو'}}];

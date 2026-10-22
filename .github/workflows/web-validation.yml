@@ -32,8 +32,8 @@ jobs:
         run: npm run build -w @hydroland/web
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
-      - name: Admin account lifecycle regression
-        run: npm run test:e2e -w @hydroland/web -- admin-account-lifecycle.spec.js --output=test-results-admin-accounts
+      - name: Account lifecycle and fresh action authorization regression
+        run: npm run test:e2e -w @hydroland/web -- admin-account-lifecycle.spec.js center-team-review.spec.js portal-action-authorization.spec.js --output=test-results-admin-accounts
       - name: Center workflow focused regression
         run: npm run test:e2e -w @hydroland/web -- center-navigation.spec.js store-offerings.spec.js center-reports.spec.js center-training-entry.spec.js portal-selection-reload.spec.js --output=test-results-center-navigation
       - name: Organization portal focused regression

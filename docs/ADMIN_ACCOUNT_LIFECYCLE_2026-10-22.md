@@ -10,6 +10,8 @@ Password/Google login session issuance, refresh rotation and MFA challenges shar
 
 The browser uses the existing authorized request and portal-freshness controllers, captures form data before asynchronous authorization, and fences late responses by session and view generation. Leaving the view, logging out or losing the role clears private records. Error responses retain decision notes for review.
 
+Action authorization also waits for any older role refresh before starting a current request. A delayed response sampled before revocation cannot authorize a later write; a deterministic invitation regression holds that older response and verifies that no write occurs after the role is revoked.
+
 Validation includes API typecheck/build and auth invariants, web static checks/build, four browser regressions, and a loopback-only HTTP/PostgreSQL fixture. The database fixture verifies credential-field exclusion, search/pagination, audit-failure rollback, stale and concurrent decisions, administrator loss, session/refresh/MFA races, rejection while suspended, fresh-login reactivation and retained center data. It creates and removes only synthetic accounts in an isolated test database.
 
 This delivers the account lifecycle portion of issue #472. Employee creation/linking and job/department/IAM assignment, plus durable agent execution, live workload metrics and agent pause/resume acceptance, remain open. No production employee account is changed by these tests, and no new schema migration is required.
