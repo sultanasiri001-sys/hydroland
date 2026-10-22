@@ -130,5 +130,6 @@
   document.addEventListener('click',event=>{const btn=event.target.closest?.('[data-hl-action="diver-profile"]');if(!btn)return;event.preventDefault();if(!auth()?.isAuthenticated?.()){toast('سجل الدخول أولًا');return}openDiverEditor()});
   document.addEventListener('click',async event=>{const btn=event.target.closest?.('[data-hl-action="settings"]');if(!btn)return;event.preventDefault();if(!auth()?.isAuthenticated?.()){toast('سجل الدخول أولًا لفتح بيانات الحساب');return}let current=window.HydrolandProfileData?.profile;if(!current){toast('جارٍ تحميل بيانات الحساب...');await load();current=window.HydrolandProfileData?.profile;if(!current)return}openProfileEditor(current)});
   document.addEventListener('hydroland:session-cleared',()=>{loadVersion++;latestLoad=null;loadPromises.clear();window.HydrolandProfileData=undefined;renderProfile({},[])});
+  document.addEventListener('hydroland:session-refreshed',()=>void load());
   document.addEventListener('hydroland:auth-changed',()=>{if(!auth()?.isAuthenticated?.())window.HydrolandProfileData=undefined;load()});setTimeout(load,500);window.HydrolandProfile={load,saveProfile};
 })();

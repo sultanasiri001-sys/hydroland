@@ -24,7 +24,7 @@
     const refreshToken=sessionStorage.getItem('hl-refresh-token');
     if(!refreshToken){clearSession('expired');emitAuthChanged();showLogin('انتهت الجلسة، سجّل الدخول من جديد','expired');throw new Error('SESSION_EXPIRED')}
     const version=state.sessionVersion,current=()=>version===state.sessionVersion&&refreshToken===sessionStorage.getItem('hl-refresh-token');
-    const pending=(async()=>{try{const response=await fetch(`${API_BASE}/auth/refresh`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken})});const body=await response.json().catch(()=>({}));if(!current())throw new Error('AUTH_CANCELLED');if(!response.ok)throw new Error(body.message||'SESSION_EXPIRED');storeTokens(body);emitAuthChanged();return body.accessToken}catch(error){if(current()){clearSession('expired');emitAuthChanged();showLogin('انتهت الجلسة، سجّل الدخول من جديد','expired')}throw error}})();
+    const pending=(async()=>{try{const response=await fetch(`${API_BASE}/auth/refresh`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken})});const body=await response.json().catch(()=>({}));if(!current())throw new Error('AUTH_CANCELLED');if(!response.ok)throw new Error(body.message||'SESSION_EXPIRED');storeTokens(body);document.dispatchEvent(new CustomEvent('hydroland:session-refreshed'));return body.accessToken}catch(error){if(current()){clearSession('expired');emitAuthChanged();showLogin('انتهت الجلسة، سجّل الدخول من جديد','expired')}throw error}})();
     state.refreshPromise=pending;
     try{return await pending}finally{if(state.refreshPromise===pending)state.refreshPromise=null}
   };

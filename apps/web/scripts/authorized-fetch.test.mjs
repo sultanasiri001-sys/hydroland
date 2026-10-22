@@ -32,7 +32,7 @@ function rotatingSession(handler){
  const rotate=()=>{generation++;return {accessToken:'access-'+generation,refreshToken:'refresh-'+generation}};
  const clearSession=reason=>{state.sessionVersion++;state.refreshPromise=null;storage.clear();cleared.push(reason)};
  const f={requests,cleared,login,install,rotate,logout:()=>clearSession('logout'),token:()=>storage.get('hl-access-token'),authenticated:()=>storage.has('hl-refresh-token')};
- const context=vm.createContext({Headers,FormData,state,API_BASE:'https://example.invalid/api/v1',isAuthenticated:f.authenticated,sessionStorage:{getItem:key=>storage.get(key)||null},storeTokens:install,clearSession,emitAuthChanged(){},showLogin:message=>login.push(message),fetch:async(url,options)=>{const request=new Request(url,options);requests.push(request);return handler(request,f)}});
+ const context=vm.createContext({Headers,FormData,CustomEvent:class{constructor(type){this.type=type}},document:{dispatchEvent(){}},state,API_BASE:'https://example.invalid/api/v1',isAuthenticated:f.authenticated,sessionStorage:{getItem:key=>storage.get(key)||null},storeTokens:install,clearSession,emitAuthChanged(){},showLogin:message=>login.push(message),fetch:async(url,options)=>{const request=new Request(url,options);requests.push(request);return handler(request,f)}});
  const start=source.indexOf('  const refreshSession=');const end=source.indexOf('  const setPanelStatus=',start);assert.ok(start>=0&&end>start);
  vm.runInContext(source.slice(start,end)+'\nthis.send=authorizedFetch;this.refresh=refreshSession;',context);
  f.send=context.send;f.refresh=context.refresh;return f;

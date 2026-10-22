@@ -25,6 +25,23 @@ async function setup(page,center=false){
  }else await page.evaluate(()=>window.HydrolandWorkspaceUI.show(document.getElementById('store')));
  return state;
 }
+test('background token refresh preserves the center editor and unsaved fields',async({page})=>{
+ await setup(page,true);const form=page.locator('[data-offer-form][data-type="products"][data-id=""]');
+ await form.locator('..').locator('summary').click();await form.locator('[name=nameAr]').fill('مسودة محفوظة في النموذج');
+ let refreshes=0;await page.route('**/api/v1/auth/refresh',route=>{refreshes++;return json(route,{accessToken:'store-renewed-access',refreshToken:'store-renewed-refresh'})});
+ await page.route('**/api/v1/session-preservation',route=>json(route,{ok:true},route.request().headers().authorization==='Bearer store-renewed-access'?200:401));
+ expect(await page.evaluate(async()=>{const response=await window.HydrolandAuth.authorizedFetch('/session-preservation');return response.status})).toBe(200);
+ expect(refreshes).toBe(1);await expect(form).toBeVisible();await expect(form.locator('[name=nameAr]')).toHaveValue('مسودة محفوظة في النموذج');
+ await expect(page.locator('[data-portal-label="المتجر والعروض"]')).toHaveAttribute('aria-current','page');await expect(page.locator('.hl-login')).toBeHidden();
+});
+test('background token refresh still clears a revoked center role',async({page})=>{
+ const state=await setup(page,true);state.active=false;
+ await page.route('**/api/v1/auth/refresh',route=>json(route,{accessToken:'store-renewed-access',refreshToken:'store-renewed-refresh'}));
+ await page.route('**/api/v1/session-preservation',route=>json(route,{ok:true},route.request().headers().authorization==='Bearer store-renewed-access'?200:401));
+ expect(await page.evaluate(async()=>{const response=await window.HydrolandAuth.authorizedFetch('/session-preservation');return response.status})).toBe(200);
+ await expect(page.locator('.hl-role-dashboard[data-role="center"]')).toHaveCount(0);await expect(page.locator('.hl-store-provider')).toBeHidden();
+ expect(await page.evaluate(()=>window.HydrolandAuth.isAuthenticated())).toBe(true);
+});
 test('one store filters services and courses, then records a training request without a goods order',async({page})=>{
  await setup(page);let enrolls=0,orders=0;
  await page.route('**/api/v1/store/courses/course-1/enroll',route=>{enrolls++;expect(route.request().method()).toBe('POST');return json(route,{id:'enrollment',status:'PENDING'},201)});
