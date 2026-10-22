@@ -13,12 +13,13 @@ import { TrainingGovernanceService } from './training-governance.service';
 import { TrainingRepositoryService } from './training-repository.service';
 import { TrainingProfessionalProfileService } from './training-professional-profile.service';
 import { TrainingCourseProgressService } from './training-course-progress.service';
+import { TrainingCertificateService } from './training-certificate.service';
 import { TrainingController } from './training.controller';
 
 @Module({
   imports: [AuditModule, AuthModule],
   controllers: [TrainingController],
-  providers: [TrainingCourseProgressService, TrainingSessionService, TrainingAssignmentService, PolicyEngineService, ApprovalEngineService, TrainingAuthorizationService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService, TrainingGovernanceService, TrainingRepositoryService, TrainingProfessionalProfileService],
+  providers: [TrainingCertificateService, TrainingCourseProgressService, TrainingSessionService, TrainingAssignmentService, PolicyEngineService, ApprovalEngineService, TrainingAuthorizationService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService, TrainingGovernanceService, TrainingRepositoryService, TrainingProfessionalProfileService],
   exports: [TrainingSessionService, TrainingAssignmentService, PolicyEngineService, ApprovalEngineService, TrainingAuthorizationService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService, TrainingGovernanceService, TrainingRepositoryService, TrainingProfessionalProfileService, AuditModule],
 })
 export class GovernanceModule {}

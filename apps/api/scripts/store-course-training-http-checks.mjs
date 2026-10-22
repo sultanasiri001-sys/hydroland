@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
+import {checkTrainingCertificates} from './training-certificate-http-checks.mjs';
 export async function checkStoreCourseTraining(db,{base,owner,foreignOwner,student,organizationId,request,ok,accounts,persons,ids}){
  const loopback=url=>['localhost','127.0.0.1','[::1]'].includes(new URL(url).hostname);
  assert.equal(process.env.CI,'true');assert.ok(loopback(base)&&loopback(process.env.DATABASE_URL),'Isolated CI API and database required');
@@ -69,7 +70,8 @@ export async function checkStoreCourseTraining(db,{base,owner,foreignOwner,stude
  assert.equal((await request(owner,'/training/enrollments/'+enrollment.id+'/status','PATCH',{status:'ACTIVE'})).status,409);
  assert.equal(ok(await request(instructor,'/training/professional/me/certificates')).find(row=>row.trainingRecordId===plan.record.id).readyForRecommendation,true);
  assert.equal(await db.trainingCertificate.count({where:{trainingRecord:{enrollmentId:enrollment.id}}}),0,'completion never issues or recommends a certificate');
+ await checkTrainingCertificates(db,{base,instructor,student,owner,foreignOwner,organizationId,offerId,recordId:plan.record.id,accounts,persons,ids,request,ok});
  await db.roleAssignment.update({where:{accountId_role:{accountId:instructor.id,role:'INSTRUCTOR'}},data:{status:'SUSPENDED'}});
  assert.equal((await request(instructor,planPath)).status,403);assert.equal((await request(instructor,completePath,'POST',complete())).status,403);
- console.log('Store course training HTTP/DB path passed: offer -> enrollment -> scoped instructor -> session attendance -> signed skills and derived progress -> guarded atomic course completion, with stale/replay/role-loss checks and zero certificates.');
+ console.log('Store course training HTTP/DB path passed: offer -> enrollment -> scoped instructor -> session attendance -> signed skills and derived progress -> guarded atomic course completion, with stale/replay/role-loss checks. Course completion created zero certificates before separate isolated certificate review tests.');
 }

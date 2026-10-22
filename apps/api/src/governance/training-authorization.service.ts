@@ -56,9 +56,9 @@ export class TrainingAuthorizationService {
     this.deny();
   }
 
-  async assertReviewer(accountId: string) {
-    const reviewer = await this.db.roleAssignment.findFirst({
-      where: { accountId, status: 'ACTIVE', role: { in: ['REVIEWER','ADMIN'] } },
+  async assertReviewer(accountId: string, db:Prisma.TransactionClient=this.db) {
+    const reviewer = await db.roleAssignment.findFirst({
+      where: { accountId, status: 'ACTIVE', account:{status:'ACTIVE'}, role: { in: ['REVIEWER','ADMIN'] } },
       select: { id: true },
     });
     if (!reviewer) this.deny();

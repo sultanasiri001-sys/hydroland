@@ -102,6 +102,7 @@ export async function checkCenterTrainingAssignments(db,{base,a,b,ownerA,ta,tb,t
   // A new lead instructor can recommend completed training without rewriting
   // earlier instructors' signed assessments.
   await db.trainingRecord.update({where:{id:own.record.id},data:{status:'COMPLETED',progressPercent:100}});
+  await db.trainingEnrollment.update({where:{id:own.id},data:{status:'COMPLETED'}});
   await db.trainingSession.updateMany({where:{trainingRecordId:own.record.id},data:{status:'COMPLETED'}});
   await db.trainingSkill.update({where:{id:skill.id},data:{signedOffAt:null}});
   r=await request(newToken,'/training/professional/me/certificates');check(r.body.find(row=>row.trainingRecordId===own.record.id)?.readyForRecommendation===false,'missing historical signature date blocks readiness');

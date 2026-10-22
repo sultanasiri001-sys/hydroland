@@ -1,4 +1,10 @@
 (() => {
+  if (!document.querySelector('link[href="./hydroland-training-certificate-admin.css"]')) {
+    const link=document.createElement('link');link.rel='stylesheet';link.href='./hydroland-training-certificate-admin.css';document.head.appendChild(link);
+  }
+  if (!document.querySelector('script[src="./hydroland-training-certificate-admin.js"]')) {
+    const module=document.createElement('script');module.src='./hydroland-training-certificate-admin.js';module.defer=true;document.body.appendChild(module);
+  }
   if (!document.querySelector('script[src="./hydroland-payment-readiness.js"]')) {
     const module=document.createElement('script');module.src='./hydroland-payment-readiness.js';module.defer=true;document.body.appendChild(module);
   }

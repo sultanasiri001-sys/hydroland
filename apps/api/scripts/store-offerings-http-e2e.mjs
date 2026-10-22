@@ -114,6 +114,7 @@ try{
  const records=await db.trainingRecord.findMany({where:{enrollmentId:{in:enrollments.map(row=>row.id)}},select:{id:true,sessions:{select:{id:true}}}});
  await db.auditEvent.deleteMany({where:{resourceId:{in:[...ids,...enrollments.map(row=>row.id),...records.map(row=>row.id),...records.flatMap(row=>row.sessions.map(session=>session.id))]}}});
  await db.notification.deleteMany({where:{accountId:{in:accounts.map(row=>row.id)}}});
+ await db.trainingCertificate.deleteMany({where:{trainingRecordId:{in:records.map(row=>row.id)}}});
  await db.trainingRecord.deleteMany({where:{id:{in:records.map(row=>row.id)}}});
  await db.trainingEnrollment.deleteMany({where:{storeCourseOfferId:{in:ids}}});
  await db.storeOrderItem.deleteMany({where:{orderId:{in:orderIds}}});await db.storeOrder.deleteMany({where:{id:{in:orderIds}}});
