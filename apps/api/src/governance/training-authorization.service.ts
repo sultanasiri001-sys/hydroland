@@ -73,6 +73,11 @@ export class TrainingAuthorizationService {
     await this.assertScope(accountId, enrollment, allowStudent);
   }
 
+  async assertProfessionalEnrollmentAccess(accountId:string,enrollmentId:string,db:Prisma.TransactionClient=this.db){
+    const enrollment=await db.trainingEnrollment.findUnique({where:{id:enrollmentId},select:{studentAccountId:true,instructorAccountId:true,centerOrganizationId:true}});
+    if(!enrollment||!await this.isAssignedInstructor(accountId,enrollment,db))this.deny();
+  }
+
   async assertRecordAccess(accountId: string, recordId: string, db:Prisma.TransactionClient=this.db) {
     const record = await db.trainingRecord.findUnique({
       where: { id: recordId },

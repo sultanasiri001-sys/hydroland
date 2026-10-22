@@ -4,6 +4,7 @@ import { AccessTokenGuard } from '../auth/access-token.guard';
 import { TrainingAuthorizationService } from './training-authorization.service';
 import { TrainingRepositoryService } from './training-repository.service';
 import { TrainingProfessionalProfileService } from './training-professional-profile.service';
+import { TrainingCourseProgressService } from './training-course-progress.service';
 
 type AuthenticatedRequest = { auth: { accountId: string } };
 
@@ -14,7 +15,17 @@ export class TrainingController {
     private readonly training: TrainingRepositoryService,
     private readonly authorization: TrainingAuthorizationService,
     private readonly professionalProfile: TrainingProfessionalProfileService,
+    private readonly progress: TrainingCourseProgressService,
   ) {}
+
+  @Get('professional/me/enrollments/:id/plan')
+  professionalPlan(@Req() request:AuthenticatedRequest,@Param('id') id:string){return this.progress.plan(request.auth.accountId,id);}
+
+  @Post('professional/me/enrollments/:id/plan')
+  addPlanSkill(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.progress.addPlanSkill(request.auth.accountId,id,body);}
+
+  @Post('professional/me/enrollments/:id/complete')
+  completeCourse(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.progress.complete(request.auth.accountId,id,body);}
 
   @Get('professional/me/earnings')
   professionalEarnings(@Req() request: AuthenticatedRequest) {

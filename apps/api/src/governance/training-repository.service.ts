@@ -5,6 +5,8 @@ import { Prisma, TrainingEnrollmentStatus, TrainingRecordStatus } from '@prisma/
 import { DatabaseService } from '../database/database.service';
 import { TrainingAssignmentService } from './training-assignment.service';
 import { TrainingSessionService } from './training-session.service';
+import { TrainingCourseProgressService } from './training-course-progress.service';
+import { trainingCompletion, trainingRecordEditable } from './training-completion-policy';
 
 export interface CreateTrainingEnrollmentInput {
   studentAccountId: string;
@@ -16,7 +18,7 @@ export interface CreateTrainingEnrollmentInput {
 
 @Injectable()
 export class TrainingRepositoryService {
-  constructor(private readonly db: DatabaseService,private readonly sessions:TrainingSessionService,private readonly assignments:TrainingAssignmentService) {}
+  constructor(private readonly db: DatabaseService,private readonly sessions:TrainingSessionService,private readonly assignments:TrainingAssignmentService,private readonly progress:TrainingCourseProgressService) {}
 
   createEnrollment(input: CreateTrainingEnrollmentInput) {
     return this.db.trainingEnrollment.create({
@@ -51,7 +53,10 @@ export class TrainingRepositoryService {
   setEnrollmentStatus(enrollmentId: string, status: TrainingEnrollmentStatus) {
     if(!Object.values(TrainingEnrollmentStatus).includes(status))throw new BadRequestException('حالة التسجيل غير صالحة.');
     return this.db.serializable(async tx=>{
-      const current=await tx.trainingEnrollment.findUniqueOrThrow({where:{id:enrollmentId}});
+      const current=await tx.trainingEnrollment.findUniqueOrThrow({where:{id:enrollmentId},include:{record:{include:{stages:{include:{skills:true}},sessions:true,certificate:true}}}});
+      if(status==='COMPLETED'&&(!current.record||current.record.status!=='COMPLETED'||!trainingCompletion(current.record).ready))throw new ConflictException('أكمل سجل التدريب والمهارات والجلسات قبل إتمام التسجيل.');
+      if(current.record?.certificate&&current.status!==status)throw new ConflictException('لا يمكن تغيير تسجيل مرتبط بشهادة.');
+      if(current.record?.status==='COMPLETED'&&status!=='COMPLETED')throw new ConflictException('سجل التدريب مكتمل ولا يمكن إعادة فتح التسجيل بهذا الإجراء.');
       if(current.storeCourseOfferId&&current.status==='CANCELLED'&&status!=='CANCELLED'){
         const offer=await tx.storeCourseOffer.findFirst({where:{id:current.storeCourseOfferId,status:'ACTIVE',startsAt:{gt:new Date()},organization:{status:'ACTIVE'}}});
         if(!offer)throw new ConflictException('الدورة غير متاحة لإعادة التسجيل.');
@@ -70,9 +75,14 @@ export class TrainingRepositoryService {
     });
   }
 
-  setRecordProgress(id: string, progressPercent: number, status?: TrainingRecordStatus) {
+  async setRecordProgress(id: string, progressPercent: number, status?: TrainingRecordStatus) {
+    if(!Number.isFinite(progressPercent))throw new BadRequestException('نسبة التقدم غير صالحة.');
     const progress = Math.max(0, Math.min(100, Math.round(progressPercent)));
-    return this.db.trainingRecord.update({
+    return this.db.serializable(async tx=>{
+    const current=await tx.trainingRecord.findUniqueOrThrow({where:{id},include:{enrollment:true,stages:{include:{skills:true}},sessions:true,certificate:true}});
+    if(!trainingRecordEditable(current))throw new ConflictException('السجل مغلق ولا يقبل تعديل التقدم.');
+    if((progress===100||status==='COMPLETED')&&(!trainingCompletion(current).ready||progress!==100))throw new ConflictException('إتمام السجل يتطلب جميع المهارات الموقعة والجلسات المغلقة.');
+    const updated=await tx.trainingRecord.update({
       where: { id },
       data: {
         progressPercent: progress,
@@ -81,18 +91,29 @@ export class TrainingRepositoryService {
         completedAt: status === TrainingRecordStatus.COMPLETED ? new Date() : undefined,
       },
     });
+    if(status==='COMPLETED')await tx.trainingEnrollment.update({where:{id:current.enrollmentId},data:{status:'COMPLETED',completedAt:updated.completedAt}});
+    return updated;});
   }
 
   addStage(trainingRecordId: string, stageType: string, deliveryMode: string, sequence: number) {
-    return this.db.trainingStage.create({
+    return this.db.serializable(async tx=>{
+    const record=await tx.trainingRecord.findUniqueOrThrow({where:{id:trainingRecordId},include:{enrollment:true,certificate:true}});
+    if(!trainingRecordEditable(record))throw new ConflictException('السجل مغلق ولا يقبل تعديل الخطة.');
+    const stage=await tx.trainingStage.create({
       data: { trainingRecordId, stageType, deliveryMode, sequence },
     });
+    await tx.trainingRecord.update({where:{id:trainingRecordId},data:{updatedAt:new Date(Math.max(Date.now(),record.updatedAt.getTime()+1))}});return stage;});
   }
 
   addSkill(trainingStageId: string, skillCode: string, name: string) {
-    return this.db.trainingSkill.create({
+    return this.db.serializable(async tx=>{
+    const stage=await tx.trainingStage.findUniqueOrThrow({where:{id:trainingStageId},include:{trainingRecord:{include:{enrollment:true,certificate:true}}}});
+    if(!trainingRecordEditable(stage.trainingRecord))throw new ConflictException('السجل مغلق ولا يقبل تعديل الخطة.');
+    const skill=await tx.trainingSkill.create({
       data: { trainingStageId, skillCode, name },
     });
+    const record=await tx.trainingRecord.findUniqueOrThrow({where:{id:stage.trainingRecordId},include:{stages:{include:{skills:true}},sessions:true}});
+    await tx.trainingRecord.update({where:{id:record.id},data:{progressPercent:trainingCompletion(record).progressPercent,updatedAt:new Date(Math.max(Date.now(),record.updatedAt.getTime()+1))}});return skill;});
   }
 
   async recommendCertificate(trainingRecordId: string, instructorAccountId: string) {
@@ -102,8 +123,7 @@ export class TrainingRepositoryService {
     });
     if (record.enrollment.instructorAccountId !== instructorAccountId) throw new Error('Instructor is not assigned to this training record.');
     if (record.status !== 'COMPLETED' || record.progressPercent !== 100) throw new Error('Training record must be completed at 100%.');
-    const skills=record.stages.flatMap(stage=>stage.skills);
-    if (!skills.length || skills.some(skill=>skill.status!=='COMPETENT'||!skill.signedOffByInstructorId||!skill.signedOffAt)) throw new ConflictException('يجب إتقان جميع المهارات وتوثيق توقيع المدرب وتاريخه قبل التوصية.');
+    if(!trainingCompletion(record).ready)throw new ConflictException('يجب إتقان جميع المهارات الموقعة وإتمام الجلسات قبل التوصية.');
     if (record.sessions.some(session=>session.status!=='COMPLETED'&&session.status!=='CANCELLED')) throw new Error('All training sessions must be completed or cancelled before recommendation.');
     if (record.certificate) return record.certificate;
     return this.db.trainingCertificate.create({data:{trainingRecordId,studentAccountId:record.enrollment.studentAccountId,courseCode:record.enrollment.courseCode,recommendedByInstructorId:instructorAccountId}});
@@ -121,14 +141,7 @@ export class TrainingRepositoryService {
   }
 
   assessSkill(id: string, status: string, instructorAccountId: string) {
-    return this.db.trainingSkill.update({
-      where: { id },
-      data: {
-        status,
-        signedOffByInstructorId: status === 'COMPETENT' ? instructorAccountId : null,
-        signedOffAt: status === 'COMPETENT' ? new Date() : null,
-      },
-    });
+    return this.progress.assessSkill(instructorAccountId,id,status);
   }
 
   createSession(id:string,input:Record<string,unknown>,actorId:string){return this.sessions.create(actorId,id,input,false);}
