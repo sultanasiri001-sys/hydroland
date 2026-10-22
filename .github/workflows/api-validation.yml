@@ -90,6 +90,23 @@ jobs:
       - run: npm run validate:integrations -w @hydroland/api
       - run: npm run typecheck --workspace=@hydroland/api
       - run: npm run build --workspace=@hydroland/api
+      - name: Admin account lifecycle HTTP and PostgreSQL
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci-account-lifecycle-secret-at-least-32-characters
+          PORT: 3102
+        run: |
+          node apps/api/dist/main.js > /tmp/hydroland-accounts-api.log 2>&1 &
+          ACCOUNTS_API_PID=$!
+          trap 'kill $ACCOUNTS_API_PID || true' EXIT
+          ACCOUNTS_READY=0
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3102/api/v1/health >/dev/null; then ACCOUNTS_READY=1; break; fi
+            if ! kill -0 $ACCOUNTS_API_PID 2>/dev/null; then cat /tmp/hydroland-accounts-api.log; exit 1; fi
+            sleep 1
+          done
+          if [ "$ACCOUNTS_READY" -ne 1 ]; then cat /tmp/hydroland-accounts-api.log; exit 1; fi
+          ACCOUNTS_E2E_BASE_URL=http://127.0.0.1:3102/api/v1 node apps/api/scripts/admin-account-lifecycle-http-e2e.mjs
       - name: Booking safety policy enforcement and audit
         run: node apps/api/scripts/booking-safety-policy-validation.cjs && node apps/api/scripts/operational-controls-validation.cjs
       - name: Service images TEXT/UUID persistence and access regression
@@ -158,7 +175,6 @@ jobs:
             exit 1
           fi
           HR_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/hr-http-e2e.mjs
-          ACCOUNTS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/admin-account-lifecycle-http-e2e.mjs
           ADMIN_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/administrative-affairs-http-e2e.mjs
           RBAC_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/runtime-rbac-ownership-http-e2e.mjs
           FINANCE_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/finance-http-e2e.mjs

@@ -23,6 +23,7 @@ export class AdminService {
   }
 
   async listAccounts(adminAccountId:string,input:{cursor?:string;search?:string}={}){
+    if(input.search!==undefined&&typeof input.search!=='string'||input.cursor!==undefined&&typeof input.cursor!=='string')throw new BadRequestException('Invalid account search.');
     const search=typeof input.search==='string'?input.search.trim():'';
     if(search.length>120||input.cursor&&(!/^[a-zA-Z0-9-]{1,100}$/.test(input.cursor)))throw new BadRequestException('Invalid account search.');
     return this.db.serializable(async tx=>{
@@ -36,7 +37,7 @@ export class AdminService {
   async setAccountStatus(adminAccountId:string,accountId:string,status:AccountStatusValue,reason:unknown,expectedUpdatedAt:unknown,reviewed:unknown){
     if(!['ACTIVE','SUSPENDED'].includes(status))throw new BadRequestException('Only suspension and reactivation are supported here.');
     if(typeof reason!=='string'||reason.trim().length<5||reason.trim().length>1000||reviewed!==true)throw new BadRequestException('Confirm the decision and provide a reason of 5–1000 characters.');
-    if(typeof expectedUpdatedAt!=='string'||!Number.isFinite(Date.parse(expectedUpdatedAt)))throw new BadRequestException('Current account revision required.');
+    if(typeof expectedUpdatedAt!=='string'||expectedUpdatedAt.length>40||!Number.isFinite(Date.parse(expectedUpdatedAt)))throw new BadRequestException('Current account revision required.');
     if(adminAccountId===accountId&&status==='SUSPENDED')throw new BadRequestException('Administrators cannot suspend their own account.');
     return this.db.serializable(async tx=>{
       // Serialize status decisions and lock identities/roles before rechecking authority.

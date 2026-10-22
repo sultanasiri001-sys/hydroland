@@ -28,6 +28,8 @@ try{
  const equipment=await db.diverEquipment.create({data:{accountId:staff.id,category:'Lifecycle fixture',ownership:'OWNED'}});
  assert.equal((await call('/admin/accounts')).status,401);
  assert.equal((await call('/admin/accounts',ot.body.accessToken)).status,403);
+ assert.equal((await call('/admin/accounts?cursor=x&cursor=y',token)).status,400);
+ assert.equal((await call('/admin/accounts?search='+('x'.repeat(121)),token)).status,400);
  assert.equal((await change(ot.body.accessToken,staff.id,'SUSPENDED')).status,403);
  const page=await call('/admin/accounts?search='+encodeURIComponent(suffix),token);assert.equal(page.status,200);safe(page.body);assert.equal(page.body.items.length,5);assert.equal(page.body.items.find(x=>x.id===a.id).isCurrentAccount,true);
  assert.equal((await change(token,staff.id,'ARCHIVED')).status,400);
