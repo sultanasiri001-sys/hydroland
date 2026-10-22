@@ -23,7 +23,7 @@ try{
  const at=await login(a),bt=await login(b),st=await login(staff),second=await login(staff),ot=await login(other);
  for(const result of [at,bt,st,second,ot])assert.equal(result.status,200);
  const token=at.body.accessToken;
- organization=await db.organization.create({data:{ownerAccountId:a.id,kind:'DIVE_CENTER',displayName:`Lifecycle ${suffix}`,status:'ACTIVE'}});
+ organization=await db.organization.create({data:{ownerId:a.id,kind:'DIVE_CENTER',displayName:`Lifecycle ${suffix}`,status:'ACTIVE'}});
  const membership=await db.organizationMember.create({data:{accountId:staff.id,organizationId:organization.id,role:'STAFF',status:'ACTIVE'}});
  const equipment=await db.diverEquipment.create({data:{accountId:staff.id,category:'Lifecycle fixture',ownership:'OWNED'}});
  assert.equal((await call('/admin/accounts')).status,401);
