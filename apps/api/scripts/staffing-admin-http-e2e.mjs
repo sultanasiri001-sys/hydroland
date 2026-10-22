@@ -101,9 +101,16 @@ try{
  await db.roleAssignment.update({where:{accountId_role:{accountId:maker.id,role:'ADMIN'}},data:{status:'SUSPENDED'}});
  const auditBefore=await noSuccess();await assert.rejects(()=>service.request(maker.id,{...createBody,requestId:randomUUID()}),e=>e.getStatus?.()===403);assert.equal(await noSuccess(),auditBefore);
  // Account suspension is independent of employment and continues to revoke access.
- const revision=(await db.account.findUniqueOrThrow({where:{id:createdAccount.id}})).updatedAt.toISOString();await accountAdmin.setAccountStatus(approver.id,createdAccount.id,'SUSPENDED','Isolated employee suspension',revision,true);
- assert.equal((await call('/me',employeeTokens.accessToken)).status,401);assert.equal((await db.employment.findUniqueOrThrow({where:{id:row.employment.id}})).status,'ACTIVE');
- console.log('Staffing HTTP/PostgreSQL passed: canonical initialization; private identity provisioning and one-time email/Google verification; idempotent creation/linking; independent maker/reviewer/approver; fail-closed HR compliance; atomic audit/IAM rollback; concurrent request/approval; effective scoped HR permissions; fresh-login grants; preserved center data; inactive-role and revoked-admin denial.');
+ const revision=(await db.account.findUniqueOrThrow({where:{id:createdAccount.id}})).updatedAt.toISOString();
+ const suspended=await call(`/admin/accounts/${createdAccount.id}/status`,at.accessToken,{status:'SUSPENDED',reason:'Isolated employee suspension',expectedUpdatedAt:revision,reviewed:true},'PATCH');assert.equal(suspended.status,200);clean(suspended.body);
+ assert.equal((await call('/me',employeeTokens.accessToken)).status,401);assert.equal((await call('/auth/login',null,{email:createdAccount.email,password})).status,401);
+ assert.equal((await db.employment.findUniqueOrThrow({where:{id:row.employment.id}})).status,'ACTIVE');
+ const reactivated=await call(`/admin/accounts/${createdAccount.id}/status`,at.accessToken,{status:'ACTIVE',reason:'Isolated employee reactivation',expectedUpdatedAt:suspended.body.updatedAt,reviewed:true},'PATCH');assert.equal(reactivated.status,200);clean(reactivated.body);
+ assert.equal((await call('/me',employeeTokens.accessToken)).status,401);assert.equal((await call('/auth/refresh',null,{refreshToken:employeeTokens.refreshToken})).status,401);
+ const freshEmployee=await login(createdAccount);assert.equal((await call('/me',freshEmployee.accessToken)).status,200);
+ assert.equal((await db.employment.findUniqueOrThrow({where:{id:row.employment.id}})).status,'ACTIVE');assert.equal((await db.roleAssignment.findUniqueOrThrow({where:{accountId_role:{accountId:createdAccount.id,role:'HR_MANAGER'}}})).status,'ACTIVE');
+ assert.equal(await db.auditEvent.count({where:{action:'ACCOUNT_STATUS_CHANGED',resourceId:createdAccount.id}}),2);
+ console.log('Staffing HTTP/PostgreSQL passed: canonical initialization; private identity provisioning and one-time email/Google verification; idempotent creation/linking; independent maker/reviewer/approver; fail-closed HR compliance; atomic audit/IAM rollback; concurrent request/approval; effective scoped HR permissions; fresh-login grants; preserved center data; inactive-role and revoked-admin denial; same-employee suspension/reactivation with old-session denial and retained employment.');
 }finally{
  const owned=await db.employment.findMany({where:{accountId:{in:accounts}},select:{id:true}}),employmentIds=owned.map(e=>e.id);
  const movements=await db.employmentMovement.findMany({where:{employmentId:{in:employmentIds}},select:{id:true}}),movementIds=movements.map(e=>e.id);
