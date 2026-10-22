@@ -33,7 +33,7 @@ async function fillSkill(page){
 }
 test('assigned instructor defines skills, assesses progress and explicitly completes a course without issuing a certificate',async({page})=>{
  const state=await setup(page);await expect(page.getByRole('button',{name:'إتمام سجل الدورة',exact:true})).toHaveCount(0);
- const form=await fillSkill(page);await form.getByRole('button',{name:'حفظ المهارة في الخطة',exact:true}).click();await expect(page.locator('[data-training-plan-view]')).toContainText('مهارة اختبار إجرائي');
+ const form=await fillSkill(page),viewport=page.viewportSize();await page.setViewportSize({width:390,height:844});expect(await form.evaluate(element=>element.scrollWidth<=element.clientWidth)).toBe(true);await page.setViewportSize(viewport);await form.getByRole('button',{name:'حفظ المهارة في الخطة',exact:true}).click();await expect(page.locator('[data-training-plan-view]')).toContainText('مهارة اختبار إجرائي');
  await page.getByRole('button',{name:'التقييمات',exact:true}).click();await page.locator('[data-skill-status="COMPETENT"]').click();await expect(page.locator('.hl-training')).toContainText('COMPETENT');
  await page.getByRole('button',{name:'إدارة الدورات',exact:true}).filter({visible:true}).click();await expect(page.locator('[data-professional-enrollment]')).toContainText('100%');
  await page.getByRole('button',{name:'خطة التدريب وإتمام الدورة',exact:true}).click();await expect(page.locator('[data-training-plan-view]')).toContainText('تقدم المهارات: 100%');
