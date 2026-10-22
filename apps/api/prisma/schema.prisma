@@ -165,6 +165,9 @@ model Account {
   updatedAt DateTime @updatedAt
   person Person @relation(fields:[personId], references:[id], onDelete:Restrict)
   sessions Session[]
+  aiControlChanges AiAgentRuntime[] @relation("AiAgentControlActor")
+  aiTasksRequested AiAgentTask[] @relation("AiAgentTaskRequester")
+  aiTasksReviewed AiAgentTask[] @relation("AiAgentTaskReviewer")
   roleAssignments RoleAssignment[]
   activationRequests ActivationRequest[] @relation("ApplicantRequests")
   reviewDecisions ReviewDecision[] @relation("ReviewerDecisions")
@@ -555,6 +558,54 @@ model OperationalSetting {
   key String @id
   value Json
   updatedAt DateTime @default(now())
+}
+
+model AiAgentRuntime {
+  key String @id
+  state String @default("PAUSED")
+  revision String @default(uuid())
+  updatedAt DateTime @updatedAt
+  lastAdminAccountId String
+  lastAdmin Account @relation("AiAgentControlActor", fields:[lastAdminAccountId], references:[id], onDelete:Restrict)
+  tasks AiAgentTask[]
+}
+
+model AiAgentTask {
+  id String @id @default(uuid())
+  agentKey String
+  requestedByAccountId String
+  requestKey String
+  fingerprint String
+  action String
+  language String
+  prompt String
+  state String @default("QUEUED")
+  revision String @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  startedAt DateTime?
+  finishedAt DateTime?
+  leaseExpiresAt DateTime?
+  claimId String?
+  dispatchedAt DateTime?
+  executionPolicy Json?
+  model String?
+  reservedCostMicroUsd Int @default(0)
+  reservationDate DateTime? @db.Date
+  inputTokens Int?
+  outputTokens Int?
+  estimatedCostMicroUsd Int?
+  result String?
+  errorCode String?
+  reviewedAt DateTime?
+  reviewedByAccountId String?
+  agent AiAgentRuntime @relation(fields:[agentKey], references:[key], onDelete:Restrict)
+  requestedBy Account @relation("AiAgentTaskRequester", fields:[requestedByAccountId], references:[id], onDelete:Restrict)
+  reviewedBy Account? @relation("AiAgentTaskReviewer", fields:[reviewedByAccountId], references:[id], onDelete:Restrict)
+  @@unique([requestedByAccountId,requestKey])
+  @@index([agentKey,state,createdAt])
+  @@index([state,leaseExpiresAt])
+  @@index([reservationDate])
 }
 
 model PolicyControl {
