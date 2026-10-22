@@ -37,6 +37,22 @@ A negative control deliberately alters only the FIRST disposable restored target
 
 The artifact retains sanitized JSON results and the fixture-migration source/checksum manifest for 30 days. It does not upload database backups, production records, provider secrets or authentication credentials. Successful output explicitly retains `productionRecoveryVerified=false` and `historicalProductionReplayVerified=false`.
 
+## Unmodified historical replay
+
+`historical-migration-replay.yml` independently executes the repository's exact
+migration directory on a new, empty, loopback PostgreSQL 18 CI database.
+`historical-migration-replay.mjs` refuses other database names, hosts and modes.
+It records every SQL file's SHA-256, actual completed migration count, the first
+failed migration and database error, and verifies the files remain unchanged.
+Success requires every recorded checksum to match and a second deployment to
+leave migration history unchanged. Failure fails the job and retains evidence;
+no resolve, bootstrap or SQL transformation is used to hide a historical error.
+
+The current-schema two-target restore drill remains a separate verification.
+Historical replay success alone does not certify production backup restoration,
+provider PITR, data recovery or application schema compatibility. Issue #369
+stays open until its production-specific acceptance evidence is complete.
+
 ## Release blockers not waived by CI
 
 Production recovery/launch remains blocked if managed PITR or a separately approved recovery method is unavailable/unverified; production ingress is unrestricted without approval; the current rehearsal fails; no production owner can approve cutover; or the real backup/restore strategy has not met the approved RPO/RTO.
