@@ -11,3 +11,6 @@
 .hl-training [data-plan-complete] [type="checkbox"]{flex:0 0 auto;min-width:20px;min-height:20px}
 .hl-training [data-plan-new-stage][hidden]{display:none!important}
 .hl-training [data-plan-skill] button,.hl-training [data-plan-complete] button{min-height:44px}
+.hl-training [data-certificate-recommend-form] fieldset{display:grid;gap:1rem;min-width:0;margin:.8rem 0;padding:.8rem;border:1px solid var(--hl-border,rgba(120,191,224,.3));border-radius:12px}
+.hl-training [data-certificate-recommend-form] label{display:flex;gap:.65rem;align-items:start}
+.hl-training [data-certificate-recommend-form] [type=checkbox]{flex:0 0 auto;min-width:20px;min-height:20px}

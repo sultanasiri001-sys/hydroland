@@ -1,5 +1,4 @@
 import { trainingOperationalPolicy } from './training-operational-policy';
-import { createHash, randomBytes } from 'node:crypto';
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { Prisma, TrainingEnrollmentStatus, TrainingRecordStatus } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
@@ -7,6 +6,7 @@ import { TrainingAssignmentService } from './training-assignment.service';
 import { TrainingSessionService } from './training-session.service';
 import { TrainingCourseProgressService } from './training-course-progress.service';
 import { trainingCompletion, trainingRecordEditable } from './training-completion-policy';
+import { TrainingCertificateService } from './training-certificate.service';
 
 export interface CreateTrainingEnrollmentInput {
   studentAccountId: string;
@@ -18,7 +18,7 @@ export interface CreateTrainingEnrollmentInput {
 
 @Injectable()
 export class TrainingRepositoryService {
-  constructor(private readonly db: DatabaseService,private readonly sessions:TrainingSessionService,private readonly assignments:TrainingAssignmentService,private readonly progress:TrainingCourseProgressService) {}
+  constructor(private readonly db: DatabaseService,private readonly sessions:TrainingSessionService,private readonly assignments:TrainingAssignmentService,private readonly progress:TrainingCourseProgressService,private readonly certificates:TrainingCertificateService) {}
 
   createEnrollment(input: CreateTrainingEnrollmentInput) {
     return this.db.trainingEnrollment.create({
@@ -117,27 +117,7 @@ export class TrainingRepositoryService {
   }
 
   async recommendCertificate(trainingRecordId: string, instructorAccountId: string) {
-    const record = await this.db.trainingRecord.findUniqueOrThrow({
-      where: { id: trainingRecordId },
-      include: { enrollment: true, stages: { include: { skills: true } }, sessions: true, certificate: true },
-    });
-    if (record.enrollment.instructorAccountId !== instructorAccountId) throw new Error('Instructor is not assigned to this training record.');
-    if (record.status !== 'COMPLETED' || record.progressPercent !== 100) throw new Error('Training record must be completed at 100%.');
-    if(!trainingCompletion(record).ready)throw new ConflictException('يجب إتقان جميع المهارات الموقعة وإتمام الجلسات قبل التوصية.');
-    if (record.sessions.some(session=>session.status!=='COMPLETED'&&session.status!=='CANCELLED')) throw new Error('All training sessions must be completed or cancelled before recommendation.');
-    if (record.certificate) return record.certificate;
-    return this.db.trainingCertificate.create({data:{trainingRecordId,studentAccountId:record.enrollment.studentAccountId,courseCode:record.enrollment.courseCode,recommendedByInstructorId:instructorAccountId}});
-  }
-
-  async decideCertificate(id: string, outcome: 'APPROVED'|'REJECTED', reviewerId: string, reason?: string) {
-    const certificate=await this.db.trainingCertificate.findUniqueOrThrow({where:{id}});
-    if (certificate.recommendedByInstructorId===reviewerId) throw new Error('Instructor cannot approve their own certificate recommendation.');
-    if (certificate.status!=='RECOMMENDED') throw new Error('Certificate recommendation is no longer pending review.');
-    if (outcome==='REJECTED') return this.db.trainingCertificate.update({where:{id},data:{status:'REJECTED',reviewedByAccountId:reviewerId,reviewedAt:new Date(),reviewReason:reason||null}});
-    const raw=randomBytes(24).toString('base64url'),hash=createHash('sha256').update(raw).digest('hex');
-    const number='HYD-TRN-'+new Date().getUTCFullYear()+'-'+randomBytes(5).toString('hex').toUpperCase();
-    const approved=await this.db.trainingCertificate.update({where:{id},data:{status:'APPROVED',reviewedByAccountId:reviewerId,reviewedAt:new Date(),reviewReason:reason||null,certificateNumber:number,verificationTokenHash:hash,issuedAt:new Date()}});
-    return {...approved,verificationToken:raw};
+    return this.certificates.recommend(trainingRecordId,instructorAccountId);
   }
 
   assessSkill(id: string, status: string, instructorAccountId: string) {

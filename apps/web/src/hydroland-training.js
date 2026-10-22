@@ -8,11 +8,13 @@
   host.insertAdjacentElement('afterend',section);
 
   const label=status=>({PENDING:'بانتظار التفعيل',ACTIVE:'نشط',SUSPENDED:'موقوف',COMPLETED:'مكتمل',CANCELLED:'ملغي'}[status]||status||'—');
-  let planVersion=0,planEnrollment=null;
+  let planVersion=0,planEnrollment=null,certificateVersion=0;
+  const certificateCurrent=(version,session)=>version===certificateVersion&&session===auth?.getSessionVersion?.()&&auth?.isAuthenticated()&&section.dataset.trainingMode==='professional-certificates'&&window.HydrolandPortalAccess?.getCurrentRole?.()==='instructor';
+  const certificateAuthorized=async(version,session)=>{const authorize=window.HydrolandPortalAccess?.authorizeRole;return typeof authorize==='function'&&await authorize('instructor',{sessionVersion:session,isCurrent:()=>certificateCurrent(version,session)})&&certificateCurrent(version,session)};
   const planCurrent=(version,session)=>version===planVersion&&session===auth?.getSessionVersion?.()&&auth?.isAuthenticated()&&section.dataset.trainingMode==='professional-plan'&&window.HydrolandPortalAccess?.getCurrentRole?.()==='instructor';
   const planAuthorized=async(version,session)=>{const authorize=window.HydrolandPortalAccess?.authorizeRole;return typeof authorize==='function'&&await authorize('instructor',{sessionVersion:session,isCurrent:()=>planCurrent(version,session)})&&planCurrent(version,session)};
   async function openPlan(enrollmentId){
-    scheduleVersion++;planEnrollment=enrollmentId;const version=++planVersion,session=auth?.getSessionVersion?.(),list=section.querySelector('[data-training-list]');
+    scheduleVersion++;certificateVersion++;planEnrollment=enrollmentId;const version=++planVersion,session=auth?.getSessionVersion?.(),list=section.querySelector('[data-training-list]');
     section.dataset.trainingMode='professional-plan';section.querySelector('.hl-training-grid').hidden=true;section.querySelector('.hl-training-head h3').textContent='خطة التدريب وإتمام الدورة';section.querySelector('.hl-training-head span').textContent='التقدم من المهارات الموقعة، وإتمام الدورة بعد إغلاق الجلسات';
     list.innerHTML='<p>جارٍ تحميل خطة التدريب...</p>';
     try{
@@ -54,13 +56,27 @@
     }catch(error){list.innerHTML=`<p>${esc(error instanceof Error?error.message:'تعذر تحميل الاستحقاقات')}</p>`;}
   }
   async function loadProfessionalCertificates(){
-    const list=section.querySelector('[data-training-list]');section.dataset.trainingMode='professional-certificates';
+    const list=section.querySelector('[data-training-list]'),version=++certificateVersion,session=auth?.getSessionVersion?.();section.dataset.trainingMode='professional-certificates';
     section.querySelector('.hl-training-head h3').textContent='الشهادات';section.querySelector('.hl-training-head span').textContent='توصية المدرب ثم اعتماد مستقل قبل الإصدار';
     list.innerHTML='<p>جارٍ تحميل حالة الشهادات...</p>';
-    try{const response=await auth.authorizedFetch('/training/professional/me/certificates'),rows=await response.json().catch(()=>[]);if(!response.ok)throw new Error(rows?.message||'تعذر تحميل الشهادات');
-      list.innerHTML=(Array.isArray(rows)&&rows.length)?rows.map(item=>`<article class="hl-course" data-certificate-record="${esc(item.trainingRecordId)}"><div class="hl-course-top"><div><b>${esc(item.courseCode)}</b><small>${esc(item.student?.displayName||'طالب')}</small></div><span>${esc(item.certificate?.status|| (item.readyForRecommendation?'جاهز للتوصية':'غير مكتمل'))}</span></div>${item.readyForRecommendation&&!item.certificate?'<button type="button" data-certificate-recommend>إرسال توصية الاعتماد</button>':''}${item.certificate?.certificateNumber?`<small>رقم الشهادة الداخلية: ${esc(item.certificate.certificateNumber)}</small>`:''}</article>`).join(''):'<p>لا توجد سجلات تدريب مرتبطة بك.</p>';
-    }catch(error){list.innerHTML=`<p>${esc(error instanceof Error?error.message:'تعذر تحميل الشهادات')}</p>`;}
+    try{
+      if(!await certificateAuthorized(version,session))return;
+      const response=await auth.authorizedFetch('/training/professional/me/certificates'),rows=await response.json().catch(()=>null);if(!certificateCurrent(version,session))return;if(!response.ok||!Array.isArray(rows))throw new Error(rows?.message||'تعذر تحميل الشهادات');
+      const states={RECOMMENDED:'بانتظار مراجعة الإدارة',APPROVED:'معتمد',REJECTED:'مرفوض',REVOKED:'ملغى'};
+      list.innerHTML=rows.length?rows.map(item=>`<article class="hl-course" data-certificate-record="${esc(item.trainingRecordId)}"><div class="hl-course-top"><div><b>${esc(item.courseCode)}</b><small>${esc(item.student?.displayName||'طالب')}</small></div><span>${esc(item.certificate?(states[item.certificate.status]||item.certificate.status):(item.readyForRecommendation?'جاهز للتوصية':'غير مكتمل'))}</span></div>${item.readyForRecommendation&&!item.certificate?'<details><summary>توصية المدرب بالشهادة</summary><form data-certificate-recommend-form><fieldset><p>التوصية وحدها لا تصدر شهادة. القرار لمراجع مستقل.</p><label><input type="checkbox" name="reviewed" required>راجعت اكتمال سجل التدريب قبل التوصية</label><button type="submit" data-certificate-recommend>إرسال توصية الاعتماد</button></fieldset><p data-certificate-feedback role="status"></p></form></details>':''}${item.certificate?.reviewReason?`<p>ملاحظات الإدارة: ${esc(item.certificate.reviewReason)}</p>`:''}${item.certificate?.certificateNumber?`<small>رقم الشهادة الداخلية: ${esc(item.certificate.certificateNumber)}</small>`:''}</article>`).join(''):'<p>لا توجد سجلات تدريب مرتبطة بك.</p>';
+    }catch(error){if(certificateCurrent(version,session))list.innerHTML=`<p role="alert">${esc(error instanceof Error?error.message:'تعذر تحميل الشهادات')}</p>`;}
   }
+  section.addEventListener('submit',async event=>{
+    const form=event.target;if(!form.matches('[data-certificate-recommend-form]'))return;event.preventDefault();if(form.dataset.busy||!form.elements.reviewed.checked)return;
+    const version=certificateVersion,session=auth?.getSessionVersion?.(),id=form.closest('[data-certificate-record]').dataset.certificateRecord,live=()=>certificateCurrent(version,session)&&form.isConnected;
+    form.dataset.busy='true';form.querySelector('fieldset').disabled=true;
+    try{
+      if(!await certificateAuthorized(version,session)||!live())return;
+      const response=await auth.authorizedFetch('/training/professional/me/records/'+encodeURIComponent(id)+'/certificate-recommendation',{method:'POST'}),data=await response.json().catch(()=>null);
+      if(!live())return;if(!response.ok||data?.trainingRecordId!==id)throw new Error(data?.message||'تعذر إرسال التوصية');await loadProfessionalCertificates();
+    }catch(error){if(live())form.querySelector('[data-certificate-feedback]').textContent=error.message||'تعذر إرسال التوصية';}
+    finally{delete form.dataset.busy;form.querySelector('fieldset').disabled=false}
+  });
   async function loadProfessionalSkills(){
     const list=section.querySelector('[data-training-list]');section.dataset.trainingMode='professional-skills';
     section.querySelector('.hl-training-head h3').textContent='تقييم المهارات';section.querySelector('.hl-training-head span').textContent='مهارات الطلاب المعيّنين لك فقط';
@@ -114,7 +130,7 @@
   }
 
   async function load(mode){
-    scheduleVersion++;planVersion++;planEnrollment=null;section.querySelector('.hl-training-grid').hidden=false;
+    scheduleVersion++;planVersion++;certificateVersion++;planEnrollment=null;section.querySelector('.hl-training-grid').hidden=false;
     if(mode)requestedMode=mode;
     const instructorPortal=document.querySelector('.hl-role-dashboard[data-role="instructor"]');
     if(!mode&&instructorPortal&&window.HydrolandPortalAccess?.getCurrentRole?.()==='instructor')requestedMode='instructor';
@@ -152,8 +168,6 @@
     if(event.target.closest?.('[data-plan-back]')){await load('instructor');return}
     if(event.target.closest?.('[data-plan-refresh]')){if(planEnrollment)await openPlan(planEnrollment);return}
     if(event.target.closest?.('[data-training-schedule-refresh]')){await loadProfessionalSchedule();return}
-    const certificateButton=event.target.closest?.('[data-certificate-recommend]');
-    if(certificateButton){const article=certificateButton.closest('[data-certificate-record]'),id=article?.dataset.certificateRecord;if(!id)return;certificateButton.disabled=true;try{const response=await auth.authorizedFetch('/training/professional/me/records/'+encodeURIComponent(id)+'/certificate-recommendation',{method:'POST'});if(!response.ok){const body=await response.json().catch(()=>null);throw new Error(body?.message||'تعذر إرسال التوصية')}await loadProfessionalCertificates();}catch(error){certificateButton.disabled=false;section.querySelector('[data-training-list]').insertAdjacentHTML('afterbegin',`<p role="alert">${esc(error instanceof Error?error.message:'تعذر إرسال التوصية')}</p>`);}return;}
     const skillButton=event.target.closest?.('[data-skill-status]');
     if(skillButton){
       const article=skillButton.closest('[data-professional-skill]'),id=article?.dataset.professionalSkill;if(!id)return;
@@ -175,7 +189,8 @@
     }catch(error){if(live())article.insertAdjacentHTML('beforeend',`<p role="alert">${esc(error instanceof Error?error.message:'تعذر تحديث الحضور')}</p><button type="button" data-training-schedule-refresh>تحديث الجدول</button>`);}
     finally{button.disabled=false}
   });
-  document.addEventListener('hydroland:session-cleared',()=>{scheduleVersion++;planVersion++;planEnrollment=null;if(['professional-schedule','professional-plan'].includes(section.dataset.trainingMode))section.querySelector('[data-training-list]').textContent='سجل الدخول لعرض بيانات التدريب.'});
+  document.addEventListener('hydroland:session-cleared',()=>{scheduleVersion++;planVersion++;certificateVersion++;planEnrollment=null;if(['professional-schedule','professional-plan','professional-certificates'].includes(section.dataset.trainingMode))section.querySelector('[data-training-list]').textContent='سجل الدخول لعرض بيانات التدريب.'});
+  document.addEventListener('hydroland:role-changed',()=>{if(section.dataset.trainingMode==='professional-certificates'&&window.HydrolandPortalAccess?.getCurrentRole?.()!=='instructor'){certificateVersion++;section.querySelector('[data-training-list]').textContent=''}});
   document.addEventListener('hydroland:auth-changed',()=>load(requestedMode));
   window.HydrolandTraining={reload:mode=>load(mode)};
   setTimeout(load,0);

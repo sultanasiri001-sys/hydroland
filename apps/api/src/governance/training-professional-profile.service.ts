@@ -34,13 +34,13 @@ export class TrainingProfessionalProfileService {
     const scope=await instructorCenterScope(this.db,accountId);
     const records = await this.db.trainingRecord.findMany({
       where: { enrollment: { instructorAccountId: accountId, ...scope } },
-      select: { id:true,status:true,progressPercent:true,enrollment:{select:{courseCode:true,studentAccountId:true}},stages:{select:{skills:{select:{status:true,signedOffByInstructorId:true,signedOffAt:true}}}},sessions:{select:{status:true}},certificate:{select:{id:true,status:true,recommendedAt:true,issuedAt:true,certificateNumber:true}} },
+      select: { id:true,status:true,progressPercent:true,enrollment:{select:{status:true,courseCode:true,studentAccountId:true}},stages:{select:{skills:{select:{status:true,signedOffByInstructorId:true,signedOffAt:true}}}},sessions:{select:{status:true}},certificate:{select:{id:true,status:true,recommendedAt:true,reviewedAt:true,reviewReason:true,issuedAt:true,certificateNumber:true}} },
       orderBy:{updatedAt:'desc'},take:200,
     });
     const studentIds=[...new Set(records.map(row=>row.enrollment.studentAccountId))];
     const students=studentIds.length?await this.db.account.findMany({where:{id:{in:studentIds}},select:{id:true,person:{select:{firstName:true,lastName:true}}}}):[];
     const names=new Map(students.map(student=>[student.id,[student.person.firstName,student.person.lastName].filter(Boolean).join(' ').trim()||'طالب']));
-    return records.map(record=>{const ready=record.status==='COMPLETED'&&record.progressPercent===100&&trainingCompletion(record).ready;return {trainingRecordId:record.id,courseCode:record.enrollment.courseCode,student:{displayName:names.get(record.enrollment.studentAccountId)||'طالب'},readyForRecommendation:ready,certificate:record.certificate};});
+    return records.map(record=>{const ready=record.enrollment.status==='COMPLETED'&&record.status==='COMPLETED'&&record.progressPercent===100&&trainingCompletion(record).ready;return {trainingRecordId:record.id,courseCode:record.enrollment.courseCode,student:{displayName:names.get(record.enrollment.studentAccountId)||'طالب'},readyForRecommendation:ready,certificate:record.certificate};});
   }
 
   async listSkills(accountId: string) {
