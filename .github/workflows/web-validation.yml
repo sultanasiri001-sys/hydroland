@@ -40,6 +40,8 @@ jobs:
         run: npm run test:e2e -w @hydroland/web -- professional-training-plan.spec.js --output=test-results-professional-training
       - name: Training certificate review regression
         run: npm run test:e2e -w @hydroland/web -- training-certificate-review.spec.js professional-portal-closure.spec.js --output=test-results-training-certificates
+      - name: Booking participant review regression
+        run: npm run test:e2e -w @hydroland/web -- booking-participant-review.spec.js --output=test-results-booking-review
       - name: Browser E2E
         run: npm run test:e2e -w @hydroland/web
       - name: Phase 4 notification focused regression
