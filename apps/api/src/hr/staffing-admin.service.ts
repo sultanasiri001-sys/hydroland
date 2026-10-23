@@ -1,14 +1,16 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseService } from '../database/database.service';
 import { AuditService } from '../audit/audit.service';
-import { lockAdminIdentities, requireVerifiedAdmin } from '../admin/admin-authorization';
+import { lockAccountIdentities, lockAdminIdentities, requireVerifiedAdmin } from '../admin/admin-authorization';
 import { AuthService } from '../auth/auth.service';
 import { EmailDeliveryService } from '../integrations/email-delivery.service';
 import { StaffingIamService } from '../technology-security/staffing-iam.service';
 import { HrService } from './hr.service';
 import { intentKey, platformOrganization, platformOwnerCanReview, PLATFORM_STAFFING_KEY, PLATFORM_STAFFING_KIND, profileFor, readIntent, record, reviewedReason, STAFFING_DEPARTMENTS, STAFFING_PROFILES, StaffingIntent, textField } from './staffing-catalog';
+
+import { delegationKey, eligibleDelegate, readDelegations, requireDelegationOwner, requireStaffApprovalAuthority, staffApprovalAuthority } from './staff-approval-authority';
 
 const publicAccount={id:true,email:true,status:true,emailVerifiedAt:true,person:{select:{firstName:true,lastName:true}}} as const;
 const movementView={id:true,type:true,status:true,reason:true,requestedByAccountId:true,reviewedByAccountId:true,approvedByAccountId:true,createdAt:true,updatedAt:true,effectiveAt:true,
@@ -39,7 +41,7 @@ export class StaffingAdminService {
     return {kind:'PLATFORM_OWNER' as const,available:Boolean(owner),isCurrentAccount:Boolean(owner&&owner.id===actorId)};
   }
 
-  private async approvalReadiness(tx:Prisma.TransactionClient,organization:{ownerId:string}|null,actorId:string){
+  private async approvalReadiness(tx:Prisma.TransactionClient,organization:{id:string;ownerId:string}|null,actorId:string){
     const available=await tx.account.count({where:{status:'ACTIVE',emailVerifiedAt:{not:null},roleAssignments:{some:{role:'ADMIN',status:'ACTIVE'}}}});
     let compliance={ready:true,reason:'READY'};
     try{await this.hr.assertProductionCompliance('APPROVE_APPOINTMENT',tx);}
@@ -49,7 +51,66 @@ export class StaffingAdminService {
       // Only the category is returned, never control references or evidence.
       compliance={ready:false,reason};
     }
-    return {checkedAt:new Date().toISOString(),independentAdministrators:{required:2,available},reviewAuthority:await this.reviewAuthority(tx,organization,actorId),compliance};
+    return {checkedAt:new Date().toISOString(),independentAdministrators:{required:1,available},approvalAuthority:organization?{kind:(await staffApprovalAuthority(tx,organization,actorId))?.kind??null,canManageDelegations:organization.ownerId===actorId}:null,reviewAuthority:await this.reviewAuthority(tx,organization,actorId),compliance};
+  }
+
+  async delegationList(actorId:string){
+    return this.db.serializable(async tx=>{
+      const organization=await platformOrganization(tx);if(!organization)throw new ConflictException('هيّئ الهيكل الداخلي أولًا.');
+      await requireDelegationOwner(tx,organization,actorId);
+      return this.presentDelegations(tx,organization);
+    });
+  }
+
+  private async presentDelegations(tx:Prisma.TransactionClient,organization:{id:string;ownerId:string}){
+    const state=await readDelegations(tx,organization);
+    const items=await Promise.all(state.grants.map(async grant=>{
+      const account=await tx.account.findUnique({where:{id:grant.accountId},select:{id:true,email:true,person:{select:{firstName:true,lastName:true}}}});
+      return {accountId:grant.accountId,email:account?.email??null,person:account?.person??null,createdAt:grant.createdAt,eligible:Boolean(await eligibleDelegate(tx,organization.id,grant.accountId))};
+    }));
+    return {revision:state.revision,scope:'ALL_INTERNAL_DEPARTMENTS',items};
+  }
+
+  async changeDelegation(actorId:string,body:unknown){
+    const x=record(body),reason=reviewedReason(body,['action','email','accountId','expectedRevision','reason','reviewed']);
+    if(!['GRANT','REVOKE'].includes(String(x.action))||typeof x.expectedRevision!=='string'||x.expectedRevision.length>40||x.action==='GRANT'&&(x.accountId!==undefined||typeof x.email!=='string'||x.email.length>254||! /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(x.email.trim()))||x.action==='REVOKE'&&(x.email!==undefined||!uuid(x.accountId)))throw new BadRequestException('بيانات تفويض الاعتماد غير صالحة.');
+    return this.db.serializable(async tx=>{
+      await this.lockWrites(tx);
+      const organization=await platformOrganization(tx);if(!organization)throw new ConflictException('هيّئ الهيكل الداخلي أولًا.');
+      // Check ownership before looking up the submitted employee email.
+      await requireDelegationOwner(tx,organization,actorId);
+      const target=x.action==='GRANT'?await tx.account.findFirst({where:{email:{equals:(x.email as string).trim(),mode:'insensitive'}},select:{id:true}}):{id:x.accountId as string};
+      if(!target)throw new NotFoundException('لا يوجد حساب موظف مطابق للبريد.');
+      await lockAccountIdentities(tx,[actorId,target.id,organization.ownerId]);
+      await tx.$queryRaw`SELECT "id" FROM "Organization" WHERE "id"::text=${organization.id} FOR UPDATE`;
+      const actor=await requireDelegationOwner(tx,organization,actorId),state=await readDelegations(tx,organization);
+      if(state.revision!==x.expectedRevision)throw new ConflictException('تغيرت التفويضات؛ حدّث القائمة وراجع الإجراء.');
+      if(target.id===organization.ownerId)throw new BadRequestException('مالك الجهة يملك صلاحية الاعتماد بالفعل.');
+      let grants=state.grants;
+      if(x.action==='GRANT'){
+        if(!await eligibleDelegate(tx,organization.id,target.id))throw new ConflictException('التفويض يتطلب موظفًا نشطًا في هيدرولاند، بحساب وبريد وصلاحية موظف وعضوية داخلية نشطة.');
+        if(grants.some(g=>g.accountId===target.id))throw new ConflictException('الموظف مفوض بالفعل.');
+        if(grants.length>=20)throw new ConflictException('وصل عدد المفوضين إلى الحد المتاح.');
+        grants=[...grants,{accountId:target.id,createdAt:new Date().toISOString()}];
+      }else{
+        if(!grants.some(g=>g.accountId===target.id))throw new ConflictException('التفويض غير موجود أو تغير مالك الجهة.');
+        grants=grants.filter(g=>g.accountId!==target.id);
+      }
+      const organizationRevision=(await tx.organization.findUniqueOrThrow({where:{id:organization.id},select:{updatedAt:true}})).updatedAt.toISOString();
+      const next={version:1,ownerId:organization.ownerId,organizationRevision,revision:randomUUID(),grants};
+      await tx.operationalSetting.upsert({where:{key:delegationKey(organization.id)},create:{key:delegationKey(organization.id),value:next},update:{value:next}});
+      await this.audit.record({actorId:actor.personId,action:x.action==='GRANT'?'STAFF_APPROVAL_DELEGATED':'STAFF_APPROVAL_REVOKED',resource:'Organization',resourceId:organization.id,metadata:{accountId:target.id,reason,scope:'ALL_INTERNAL_DEPARTMENTS',previousRevision:state.revision,revision:next.revision}},tx);
+      return this.presentDelegations(tx,organization);
+    });
+  }
+
+  async approvalCapability(actorId:string){
+    return this.db.serializable(async tx=>{const organization=await platformOrganization(tx);const authority=organization?await staffApprovalAuthority(tx,organization,actorId):null;return {canApprove:Boolean(authority),kind:authority?.kind??null};});
+  }
+
+  async delegatedDecision(actorId:string,id:string,body:unknown){
+    if(record(body).action!=='APPROVE')throw new ForbiddenException('هذا المسار لاعتماد التعيين فقط.');
+    return this.decide(actorId,id,body);
   }
 
   async initialize(actorId:string,body:unknown){
@@ -78,12 +139,13 @@ export class StaffingAdminService {
     });
   }
 
-  async list(actorId:string,input:{search?:unknown;cursor?:unknown}={}){
+  async list(actorId:string,input:{search?:unknown;cursor?:unknown}={},delegated=false){
     if(input.search!==undefined&&typeof input.search!=='string'||input.cursor!==undefined&&typeof input.cursor!=='string')throw new BadRequestException('بحث الموظفين غير صالح.');
     const search=typeof input.search==='string'?input.search.trim():'';
     if(search.length>120||input.cursor&&!uuid(input.cursor))throw new BadRequestException('بحث الموظفين غير صالح.');
     return this.db.serializable(async tx=>{
-      await requireVerifiedAdmin(tx,actorId);const organization=await platformOrganization(tx);
+      const organization=await platformOrganization(tx);
+      if(delegated){if(!organization)throw new ForbiddenException();await requireStaffApprovalAuthority(tx,organization,actorId);}else await requireVerifiedAdmin(tx,actorId);
       const email=this.email.publicConfig(),google={enabled:this.auth.googleConfig().enabled};
       const approvalReadiness=await this.approvalReadiness(tx,organization,actorId);
       if(!organization)return {initialized:false,departments:[],profiles:STAFFING_PROFILES,email,google,approvalReadiness,items:[],nextCursor:null};
@@ -142,7 +204,8 @@ export class StaffingAdminService {
       await this.lockWrites(tx);
       const organization=await platformOrganization(tx);if(!organization)throw new NotFoundException('طلب التوظيف غير موجود.');
       const reference=await tx.employmentMovement.findFirst({where:{id,employment:{organizationId:organization.id}},select:{requestedByAccountId:true,reviewedByAccountId:true,employment:{select:{accountId:true}}}});
-      const actor=await lockAdminIdentities(tx,actorId,reference?.employment.accountId,[organization.ownerId,...(reference?[reference.requestedByAccountId,...(reference.reviewedByAccountId?[reference.reviewedByAccountId]:[])]:[])]);
+      await lockAccountIdentities(tx,[actorId,organization.ownerId,...(reference?[reference.employment.accountId,reference.requestedByAccountId,...(reference.reviewedByAccountId?[reference.reviewedByAccountId]:[])]:[])]);
+      const actor=x.action==='APPROVE'?await requireStaffApprovalAuthority(tx,organization,actorId,reference?.employment.accountId):await requireVerifiedAdmin(tx,actorId);
       await tx.$queryRaw`SELECT "id" FROM "Organization" WHERE "id"::text=${organization.id} FOR UPDATE`;
       await tx.$queryRaw`SELECT "id" FROM "EmploymentMovement" WHERE "id"::text=${id} FOR UPDATE`;
       const row=await tx.employmentMovement.findFirst({where:{id,type:'APPOINTMENT',employment:{organizationId:organization.id}},select:movementView});
@@ -157,14 +220,15 @@ export class StaffingAdminService {
       }else{
         if(actor.id===employment.accountId)throw new ForbiddenException('لا يمكن للموظف مراجعة أو اعتماد تعيينه.');
         if(['REVIEW','REJECT'].includes(action)&&!platformOwnerCanReview(organization,actor.id,employment.accountId))throw new ForbiddenException('مراجعة موظفي هيدرولاند مسؤولية حساب الإدارة العليا المالك للجهة.');
-        if(action==='APPROVE'&&[row.requestedByAccountId,row.reviewedByAccountId].includes(actor.id))throw new ForbiddenException('يلزم معتمد مستقل عن مقدم الطلب ومسؤول المراجعة.');
+
       }
 
       if(action==='REVIEW'||action==='APPROVE'){
         if(employment.account.status!=='ACTIVE'||!employment.account.emailVerifiedAt||!employment.orgUnit.active||!employment.position?.active)throw new ConflictException('يلزم حساب متحقق نشط وإدارة ووظيفة متاحتان قبل المراجعة.');
         profileFor(intent.profile,employment.orgUnit.code);
       }
-      // Only a freshly verified global ADMIN reaches this adapter, and only for
+      // Review requires the internal owner; approval requires that owner or a
+      // current employee delegate. This adapter only handles
       // the reserved internal organization. These are workflow capacities, never
       // RoleAssignment grants. External-center HR authority is unchanged.
       const hrActor={accountId:actor.id,roles:['HR_MANAGER','HR_REVIEWER','HR_EXECUTIVE'],organizationId:organization.id};
@@ -183,7 +247,7 @@ export class StaffingAdminService {
           if(row.status!=='APPROVAL_REQUIRED'||!row.reviewedByAccountId)throw new ConflictException('يلزم إكمال مراجعة الموارد البشرية أولًا.');
           if(!platformOwnerCanReview(organization,row.reviewedByAccountId,employment.accountId))throw new ConflictException('تغير مسؤول المراجعة؛ يلزم أن يعيد مالك الجهة الحالي مراجعة الطلب.');
           await requireVerifiedAdmin(tx,organization.ownerId);await requireVerifiedAdmin(tx,row.requestedByAccountId);
-          this.hr.authorize(hrActor,'APPROVE_APPOINTMENT',{organizationId:organization.id,requesterAccountId:row.requestedByAccountId,reviewerAccountId:row.reviewedByAccountId,approverAccountId:actor.id});
+          await requireStaffApprovalAuthority(tx,organization,actor.id,employment.accountId);
           this.hr.validateEmploymentTransition(employment.status,'ACTIVE');
           await this.hr.assertProductionCompliance('APPROVE_APPOINTMENT',tx);
           const now=new Date();
@@ -199,11 +263,11 @@ export class StaffingAdminService {
         }
       }catch(error){
         const code=error instanceof Error?error.message:'';
-        if(/HR_.*(APPROVAL_REQUIRED|PERMISSION_REQUIRED|SELF_APPROVAL_DENIED|SEGREGATION_OF_DUTIES_DENIED)/.test(code))throw new ForbiddenException('يلزم اعتماد من إدارة مستقلة عن مقدم الطلب والمراجع.');
+        if(/HR_.*(APPROVAL_REQUIRED|PERMISSION_REQUIRED|SELF_APPROVAL_DENIED|SEGREGATION_OF_DUTIES_DENIED)/.test(code))throw new ForbiddenException('لا تملك صلاحية إتمام إجراء التوظيف المطلوب.');
         if(code.startsWith('HR_COMPLIANCE_'))throw new ConflictException(`ضوابط التوظيف غير مكتملة: ${code}`);
         throw error;
       }
-      await this.audit.record({actorId:actor.personId,action:`STAFFING_${action}`,resource:'Employment',resourceId:employment.id,metadata:{movementId:id,organizationId:organization.id,accountId:employment.accountId,reason,fromStatus:row.status,toStatus:nextStatus,profile:intent.profile,...(action==='REVIEW'?{reviewAuthority:'PLATFORM_OWNER',requesterAlsoReviewer:row.requestedByAccountId===actor.id,previousReviewerAccountId:row.reviewedByAccountId}:{})}},tx);
+      await this.audit.record({actorId:actor.personId,action:`STAFFING_${action}`,resource:'Employment',resourceId:employment.id,metadata:{movementId:id,organizationId:organization.id,accountId:employment.accountId,reason,fromStatus:row.status,toStatus:nextStatus,profile:intent.profile,...(action==='APPROVE'?{approvalAuthority:(await requireStaffApprovalAuthority(tx,organization,actor.id,employment.accountId)).kind}:{}),...(action==='REVIEW'?{reviewAuthority:'PLATFORM_OWNER',requesterAlsoReviewer:row.requestedByAccountId===actor.id,previousReviewerAccountId:row.reviewedByAccountId}:{})}},tx);
       return this.get(tx,id,actor.id,organization);
     });
   }
@@ -218,7 +282,7 @@ export class StaffingAdminService {
     return this.present(tx,row,actorId,organization,await this.reviewAuthority(tx,organization,actorId));
   }
 
-  private async present(tx:Prisma.TransactionClient,row:MovementView,actorId:string,organization:{ownerId:string},reviewAuthority:{available:boolean;isCurrentAccount:boolean}){
+  private async present(tx:Prisma.TransactionClient,row:MovementView,actorId:string,organization:{id:string;ownerId:string},reviewAuthority:{available:boolean;isCurrentAccount:boolean}){
     const setting=await tx.operationalSetting.findUnique({where:{key:intentKey(row.id)}});
     let intent:StaffingIntent|null=null;try{intent=readIntent(setting?.value);}catch{}
     const employment=row.employment,account=employment.account;
@@ -231,7 +295,7 @@ export class StaffingAdminService {
     const pending=employment.status==='PENDING_APPROVAL';
     return {id:row.id,status:row.status,reason:row.reason,createdAt:row.createdAt,updatedAt:row.updatedAt,effectiveAt:row.effectiveAt,employment:{id:employment.id,status:employment.status,department:employment.orgUnit,position:employment.position},account:{id:account.id,email:account.email,status:account.status,emailVerifiedAt:account.emailVerifiedAt,person:account.person},requestedProfile:profile?.code??null,verificationMethod:intent?.verificationMethod??null,grantedRoles,effectiveAccess,
       canReview:Boolean(intent&&pending&&ready&&reviewAuthority.available&&platformOwnerCanReview(organization,actorId,account.id)&&(row.status==='HR_REVIEW'||row.status==='APPROVAL_REQUIRED'&&row.reviewedByAccountId!==organization.ownerId)),
-      canApprove:Boolean(intent&&pending&&ready&&reviewAuthority.available&&row.status==='APPROVAL_REQUIRED'&&row.reviewedByAccountId===organization.ownerId&&![row.requestedByAccountId,row.reviewedByAccountId,account.id].includes(actorId)),
+      canApprove:Boolean(intent&&pending&&ready&&reviewAuthority.available&&row.status==='APPROVAL_REQUIRED'&&row.reviewedByAccountId===organization.ownerId&&actorId!==account.id&&await staffApprovalAuthority(tx,organization,actorId)),
       canReject:Boolean(intent&&pending&&['HR_REVIEW','APPROVAL_REQUIRED'].includes(row.status)&&platformOwnerCanReview(organization,actorId,account.id)),
       canCancel:Boolean(intent&&pending&&['HR_REVIEW','APPROVAL_REQUIRED'].includes(row.status)&&actorId===row.requestedByAccountId)};
   }

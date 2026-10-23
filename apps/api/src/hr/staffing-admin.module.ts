@@ -6,10 +6,10 @@ import { DatabaseModule } from '../database/database.module';
 import { IntegrationModule } from '../integrations/integration.module';
 import { TechnologySecurityModule } from '../technology-security/technology-security.module';
 import { HrModule } from './hr.module';
-import { StaffingAdminController } from './staffing-admin.controller';
+import { EmployeeApprovalsController, StaffingAdminController } from './staffing-admin.controller';
 import { StaffingAdminService } from './staffing-admin.service';
 import { HrControlReviewController } from './hr-control-review.controller';
 import { HrControlReviewService } from './hr-control-review.service';
 
-@Module({imports:[DatabaseModule,AdminModule,AuditModule,AuthModule,HrModule,IntegrationModule,TechnologySecurityModule],controllers:[StaffingAdminController,HrControlReviewController],providers:[StaffingAdminService,HrControlReviewService]})
+@Module({imports:[DatabaseModule,AdminModule,AuditModule,AuthModule,HrModule,IntegrationModule,TechnologySecurityModule],controllers:[StaffingAdminController,EmployeeApprovalsController,HrControlReviewController],providers:[StaffingAdminService,HrControlReviewService]})
 export class StaffingAdminModule {}
