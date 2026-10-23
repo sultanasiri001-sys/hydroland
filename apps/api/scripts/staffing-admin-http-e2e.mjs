@@ -18,7 +18,7 @@ const password='Isolated-staffing-2026-password!',salt='staffing-fixture',passwo
 const accounts=[],people=[],organizations=[];let controlId,initializedByFixture=false;
 const received=[];const mailServer=createServer(async(req,res)=>{let body='';for await(const chunk of req)body+=chunk;received.push(JSON.parse(body));res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({id:randomUUID()}));});
 await new Promise(resolve=>mailServer.listen(Number(new URL(process.env.RESEND_API_BASE_URL).port),'127.0.0.1',resolve));
-const call=async(path,token,body,method=body?'POST':'GET')=>{const response=await fetch(base+path,{method,headers:{'content-type':'application/json',...(token?{authorization:`Bearer ${token}`}:{})},...(body?{body:JSON.stringify(body)}:{})});return {status:response.status,body:await response.json().catch(()=>null)}};
+const call=async(path,token,body,method=body?'POST':'GET')=>{const response=await fetch(base+path,{method,headers:{'content-type':'application/json',...(token?{authorization:`Bearer ${token}`}:{})},...(body?{body:JSON.stringify(body)}:{})});return {status:response.status,cacheControl:response.headers.get('cache-control'),body:await response.json().catch(()=>null)}};
 const fixture=async(label,role)=>{const person=await db.person.create({data:{firstName:'Staffing',lastName:label}});people.push(person.id);const account=await db.account.create({data:{personId:person.id,email:`staffing-${label}-${suffix}@example.invalid`,passwordHash,status:'ACTIVE',emailVerifiedAt:new Date()}});accounts.push(account.id);if(role)await db.roleAssignment.create({data:{accountId:account.id,role,status:'ACTIVE'}});return account};
 const login=async account=>{const response=await call('/auth/login',null,{email:account.email,password});assert.equal(response.status,200);return response.body};
 const clean=value=>{if(!value||typeof value!=='object')return;for(const [key,child] of Object.entries(value)){assert(!/password|token|secret/i.test(key),`Private auth data returned: ${key}`);clean(child)}};
@@ -26,11 +26,19 @@ const proposal=(accountId,extra={})=>({mode:'LINK',accountId,departmentCode:'TRA
 const decision=async(token,row,action,extra={})=>call(`/admin/employees/${row.id}/decision`,token,{action,reason:'قرار موارد بشرية في اختبار معزول',reviewed:true,expectedUpdatedAt:row.updatedAt,...extra},'PATCH');
 const fresh=async(id,token)=>{const response=await call('/admin/employees',token);assert.equal(response.status,200);return response.body.items.find(r=>r.id===id)};
 const noSuccess=()=>db.auditEvent.count({where:{action:{startsWith:'STAFFING_'}}});
+const readEffects=()=>Promise.all([db.account.count(),db.roleAssignment.count(),db.employment.count(),db.organizationMember.count(),db.notification.count(),db.auditEvent.count()]);
 try{
  const maker=await fixture('maker','ADMIN'),reviewer=await fixture('reviewer','ADMIN'),approver=await fixture('approver','ADMIN'),member=await fixture('member','DIVER'),blocked=await fixture('blocked','DIVER');
  const mt=await login(maker),rt=await login(reviewer),at=await login(approver),ut=await login(member);
  assert.equal((await call('/admin/employees')).status,401);assert.equal((await call('/admin/employees',ut.accessToken)).status,403);
- assert.equal((await call('/admin/employees',mt.accessToken)).body.initialized,false);
+ const beforeRead=await readEffects();
+ await db.account.update({where:{id:reviewer.id},data:{emailVerifiedAt:null}});await db.roleAssignment.update({where:{accountId_role:{accountId:approver.id,role:'ADMIN'}},data:{status:'DRAFT'}});
+ const initial=await call('/admin/employees',mt.accessToken);assert.equal(initial.status,200);assert.equal(initial.body.initialized,false);assert.equal(initial.cacheControl,'no-store');
+ assert.deepEqual(initial.body.approvalReadiness.independentAdministrators,{required:3,available:1});assert.deepEqual(initial.body.approvalReadiness.compliance,{ready:false,reason:'HR_COMPLIANCE_CONTROLS_MISSING'});assert(Math.abs(Date.now()-Date.parse(initial.body.approvalReadiness.checkedAt))<30000);clean(initial.body);
+ await db.account.update({where:{id:reviewer.id},data:{emailVerifiedAt:new Date(),status:'SUSPENDED'}});assert.equal((await call('/admin/employees',mt.accessToken)).body.approvalReadiness.independentAdministrators.available,1);
+ await db.account.update({where:{id:reviewer.id},data:{status:'ACTIVE'}});await db.roleAssignment.update({where:{accountId_role:{accountId:approver.id,role:'ADMIN'}},data:{status:'ACTIVE'}});
+ assert.deepEqual((await call('/admin/employees',mt.accessToken)).body.approvalReadiness.independentAdministrators,{required:3,available:3});assert.deepEqual(await readEffects(),beforeRead,'Readiness cannot create accounts, roles, employment, membership, messages or audits');
+ const brokenRead=new StaffingAdminService(runtime,audit,auth,{assertProductionCompliance:async()=>{throw new Error('Unexpected compliance read failure')}},iam,email);await assert.rejects(()=>brokenRead.list(maker.id),/Unexpected compliance read failure/);
  assert.equal(await db.organization.count({where:{kind:'HYDROLAND_INTERNAL_PLATFORM'}}),0,'Use a clean isolated staffing database');
  assert.equal((await call('/admin/employees/initialize',mt.accessToken,{reason:'bad',reviewed:true})).status,400);
  const initialized=await call('/admin/employees/initialize',mt.accessToken,{reason:'تهيئة نطاق هيدرولاند الداخلي للاختبار',reviewed:true});assert.equal(initialized.status,201);initializedByFixture=true;organizations.push(initialized.body.organizationId);
@@ -67,6 +75,12 @@ try{
  assert.equal((await decision(rt.accessToken,row,'APPROVE')).status,403);assert.equal((await decision(mt.accessToken,row,'APPROVE')).status,403);
  assert.equal((await decision(at.accessToken,row,'APPROVE')).status,409);assert.equal(await db.roleAssignment.count({where:{accountId:createdAccount.id}}),0);
  const policy=await db.policyControl.create({data:{category:'HR_COMPLIANCE',ruleKey:`STAFFING_TEST_${suffix}`,labelAr:'Isolated staffing control',state:'ENABLED',metadata:{mandatory:true,applicable:true,regulatoryRequirementId:'isolated-fixture',regulatoryVersion:'test-only',evidenceIds:['isolated-evidence'],validationStatus:'VALID'}}});controlId=policy.id;
+ for(const [override,reason] of [[{regulatoryRequirementId:null},'HR_COMPLIANCE_REQUIREMENT_MISSING'],[{evidenceIds:[]},'HR_COMPLIANCE_EVIDENCE_MISSING'],[{validationStatus:'EXPIRED'},'HR_COMPLIANCE_VALIDATION_FAILED'],[{blockingFinding:true},'HR_COMPLIANCE_BLOCKING_FINDING']]){
+  await db.policyControl.update({where:{id:controlId},data:{metadata:{...policy.metadata,...override}}});
+  const snapshot=await readEffects(),result=await call('/admin/employees',mt.accessToken);assert.equal(result.status,200);assert.deepEqual(result.body.approvalReadiness.compliance,{ready:false,reason});assert(!JSON.stringify(result.body.approvalReadiness).includes(policy.ruleKey));assert(!JSON.stringify(result.body.approvalReadiness).includes('isolated-evidence'));assert.deepEqual(await readEffects(),snapshot);
+  assert.equal((await decision(at.accessToken,row,'APPROVE')).status,409,'Readiness never bypasses production compliance');assert.equal(await db.roleAssignment.count({where:{accountId:createdAccount.id}}),0);
+ }
+ await db.policyControl.update({where:{id:controlId},data:{metadata:policy.metadata}});assert.deepEqual((await call('/admin/employees',mt.accessToken)).body.approvalReadiness.compliance,{ready:true,reason:'READY'});
  const failedIam=new StaffingAdminService(runtime,audit,auth,hr,{applyAppointment:async()=>{throw new Error('Injected IAM failure')}},email);
  await assert.rejects(()=>failedIam.decide(approver.id,row.id,{action:'APPROVE',reason:'اختبار التراجع عند فشل الصلاحيات',reviewed:true,expectedUpdatedAt:row.updatedAt}),/Injected IAM failure/);
  assert.equal((await db.employment.findUniqueOrThrow({where:{id:row.employment.id}})).status,'PENDING_APPROVAL');assert.equal((await fresh(row.id,at.accessToken)).updatedAt,row.updatedAt);assert.equal(await db.roleAssignment.count({where:{accountId:createdAccount.id}}),0);
