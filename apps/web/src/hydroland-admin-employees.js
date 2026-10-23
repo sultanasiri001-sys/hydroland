@@ -44,7 +44,7 @@
   if(create&&!canCreate){form.mode.value='LINK';syncForm();}
  }
  function lock(){
-  panel.querySelectorAll('fieldset,button').forEach(e=>{if(!e.closest('[data-agent-workforce]'))e.disabled=busy;});
+  panel.querySelectorAll('fieldset,button').forEach(e=>{if(!e.closest('[data-agent-workforce],[data-hr-control-review]'))e.disabled=busy;});
   syncForm();panel.querySelector('[data-staff-previous]').disabled=busy||!history.length;panel.querySelector('[data-staff-next]').disabled=busy||!nextCursor;
  }
  function clear(){version++;busy=false;catalog=null;cursor=nextCursor=null;history=[];search='';panel.hidden=true;list.replaceChildren();feedback.textContent='';readinessPanel.hidden=true;readinessPanel.querySelectorAll('[data-staff-readiness-status],[data-staff-readiness-admins],[data-staff-readiness-compliance]').forEach(e=>e.textContent='');panel.querySelectorAll('form').forEach(f=>f.reset());delete requestForm.dataset.requestId;requestForm.elements.accountId.innerHTML='<option value="">ابحث ثم اختر حسابًا متحققًا</option>';panel.querySelector('[data-staff-lookup-feedback]').textContent='';panel.querySelectorAll('[data-form-feedback]').forEach(e=>e.textContent='');syncForm();}
