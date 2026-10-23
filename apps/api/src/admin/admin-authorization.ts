@@ -8,8 +8,9 @@ export async function requireVerifiedAdmin(tx:Prisma.TransactionClient,accountId
 }
 
 // All admin identity writes use the same deterministic order as session issuance.
-export async function lockAdminIdentities(tx:Prisma.TransactionClient,actorId:string,targetId=actorId){
-  await tx.$queryRaw`SELECT "id" FROM "Account" WHERE "id"::text IN (${actorId},${targetId}) ORDER BY "id" FOR UPDATE`;
-  await tx.$queryRaw`SELECT "id" FROM "RoleAssignment" WHERE "accountId"::text IN (${actorId},${targetId}) AND "role"='ADMIN' ORDER BY "id" FOR UPDATE`;
+export async function lockAdminIdentities(tx:Prisma.TransactionClient,actorId:string,targetId=actorId,additionalAccountIds:string[]=[]){
+  const ids=[...new Set([actorId,targetId,...additionalAccountIds])].sort();
+  await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Account" WHERE "id"::text IN (${Prisma.join(ids)}) ORDER BY "id" FOR UPDATE`);
+  await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "RoleAssignment" WHERE "accountId"::text IN (${Prisma.join(ids)}) AND "role"='ADMIN' ORDER BY "id" FOR UPDATE`);
   return requireVerifiedAdmin(tx,actorId);
 }

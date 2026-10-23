@@ -8,7 +8,7 @@ import { AuthService } from '../auth/auth.service';
 import { EmailDeliveryService } from '../integrations/email-delivery.service';
 import { StaffingIamService } from '../technology-security/staffing-iam.service';
 import { HrService } from './hr.service';
-import { intentKey, platformOrganization, PLATFORM_STAFFING_KEY, PLATFORM_STAFFING_KIND, profileFor, readIntent, record, reviewedReason, STAFFING_DEPARTMENTS, STAFFING_PROFILES, StaffingIntent, textField } from './staffing-catalog';
+import { intentKey, platformOrganization, platformOwnerCanReview, PLATFORM_STAFFING_KEY, PLATFORM_STAFFING_KIND, profileFor, readIntent, record, reviewedReason, STAFFING_DEPARTMENTS, STAFFING_PROFILES, StaffingIntent, textField } from './staffing-catalog';
 
 const publicAccount={id:true,email:true,status:true,emailVerifiedAt:true,person:{select:{firstName:true,lastName:true}}} as const;
 const movementView={id:true,type:true,status:true,reason:true,requestedByAccountId:true,reviewedByAccountId:true,approvedByAccountId:true,createdAt:true,updatedAt:true,effectiveAt:true,
@@ -34,7 +34,12 @@ export class StaffingAdminService {
     return lockAdminIdentities(tx,actorId,targetId);
   }
 
-  private async approvalReadiness(tx:Prisma.TransactionClient){
+  private async reviewAuthority(tx:Prisma.TransactionClient,organization:{ownerId:string}|null,actorId:string){
+    const owner=organization?await tx.account.findFirst({where:{id:organization.ownerId,status:'ACTIVE',emailVerifiedAt:{not:null},roleAssignments:{some:{role:'ADMIN',status:'ACTIVE'}}},select:{id:true}}):null;
+    return {kind:'PLATFORM_OWNER' as const,available:Boolean(owner),isCurrentAccount:Boolean(owner&&owner.id===actorId)};
+  }
+
+  private async approvalReadiness(tx:Prisma.TransactionClient,organization:{ownerId:string}|null,actorId:string){
     const available=await tx.account.count({where:{status:'ACTIVE',emailVerifiedAt:{not:null},roleAssignments:{some:{role:'ADMIN',status:'ACTIVE'}}}});
     let compliance={ready:true,reason:'READY'};
     try{await this.hr.assertProductionCompliance('APPROVE_APPOINTMENT',tx);}
@@ -44,7 +49,7 @@ export class StaffingAdminService {
       // Only the category is returned, never control references or evidence.
       compliance={ready:false,reason};
     }
-    return {checkedAt:new Date().toISOString(),independentAdministrators:{required:3,available},compliance};
+    return {checkedAt:new Date().toISOString(),independentAdministrators:{required:2,available},reviewAuthority:await this.reviewAuthority(tx,organization,actorId),compliance};
   }
 
   async initialize(actorId:string,body:unknown){
@@ -54,9 +59,9 @@ export class StaffingAdminService {
       let organization=await platformOrganization(tx);
       const configuredNow=!organization;
       if(!organization){
-        const candidates=await tx.organization.findMany({where:{kind:PLATFORM_STAFFING_KIND},select:{id:true,status:true},take:2});
+        const candidates=await tx.organization.findMany({where:{kind:PLATFORM_STAFFING_KIND},select:{id:true,status:true,ownerId:true},take:2});
         if(candidates.length>1||candidates.some(o=>o.status!=='ACTIVE'))throw new ConflictException('يلزم توحيد جهة هيدرولاند الداخلية قبل التهيئة.');
-        organization=candidates[0]?{...candidates[0],kind:PLATFORM_STAFFING_KIND}:await tx.organization.create({data:{displayName:'هيدرولاند — الجهة الداخلية',kind:PLATFORM_STAFFING_KIND,status:'ACTIVE',ownerId:actor.id},select:{id:true,kind:true,status:true}});
+        organization=candidates[0]?{...candidates[0],kind:PLATFORM_STAFFING_KIND}:await tx.organization.create({data:{displayName:'هيدرولاند — الجهة الداخلية',kind:PLATFORM_STAFFING_KIND,status:'ACTIVE',ownerId:actor.id},select:{id:true,kind:true,status:true,ownerId:true}});
         await tx.operationalSetting.create({data:{key:PLATFORM_STAFFING_KEY,value:{version:1,organizationId:organization.id}}});
       }
       let hq=await tx.orgUnit.findUnique({where:{organizationId_code:{organizationId:organization.id,code:'HYDROLAND_HQ'}}});
@@ -80,11 +85,11 @@ export class StaffingAdminService {
     return this.db.serializable(async tx=>{
       await requireVerifiedAdmin(tx,actorId);const organization=await platformOrganization(tx);
       const email=this.email.publicConfig(),google={enabled:this.auth.googleConfig().enabled};
-      const approvalReadiness=await this.approvalReadiness(tx);
+      const approvalReadiness=await this.approvalReadiness(tx,organization,actorId);
       if(!organization)return {initialized:false,departments:[],profiles:STAFFING_PROFILES,email,google,approvalReadiness,items:[],nextCursor:null};
       const departments=await tx.orgUnit.findMany({where:{organizationId:organization.id,type:'DEPARTMENT',code:{in:STAFFING_DEPARTMENTS.map(d=>d.code)}},select:{id:true,code:true,nameAr:true,active:true},orderBy:{code:'asc'}});
       const rows=await tx.employmentMovement.findMany({where:{type:'APPOINTMENT',employment:{organizationId:organization.id,...(search?{account:{OR:[{email:{contains:search,mode:'insensitive'}},{person:{firstName:{contains:search,mode:'insensitive'}}},{person:{lastName:{contains:search,mode:'insensitive'}}}]}}:{})}},select:movementView,orderBy:[{createdAt:'desc'},{id:'desc'}],take:21,...(input.cursor?{cursor:{id:input.cursor as string},skip:1}:{})});
-      const items=await Promise.all(rows.slice(0,20).map(row=>this.present(tx,row,actorId)));
+      const items=await Promise.all(rows.slice(0,20).map(row=>this.present(tx,row,actorId,organization,approvalReadiness.reviewAuthority)));
       return {initialized:true,departments,profiles:STAFFING_PROFILES,email,google,approvalReadiness,items,nextCursor:rows.length>20?rows[19].id:null};
     });
   }
@@ -103,7 +108,7 @@ export class StaffingAdminService {
       const actor=await this.writeLock(tx,actorId,x.mode==='LINK'?x.accountId as string:undefined);
       const organization=await platformOrganization(tx);if(!organization)throw new ConflictException('هيّئ الهيكل الداخلي أولًا.');
       const replay=record((await tx.operationalSetting.findUnique({where:{key:retryKey}}))?.value);
-      if(replay.movementId){if(replay.fingerprint!==fingerprint)throw new ConflictException('مفتاح الطلب مستخدم ببيانات مختلفة.');return this.get(tx,String(replay.movementId),actorId,organization.id);}
+      if(replay.movementId){if(replay.fingerprint!==fingerprint)throw new ConflictException('مفتاح الطلب مستخدم ببيانات مختلفة.');return this.get(tx,String(replay.movementId),actorId,organization);}
       const unit=await tx.orgUnit.findUnique({where:{organizationId_code:{organizationId:organization.id,code:departmentCode}}});
       if(!unit?.active||unit.type!=='DEPARTMENT')throw new ConflictException('الإدارة غير متاحة للتوظيف.');
       if(identity&&x.verificationMethod==='EMAIL'&&!this.email.publicConfig().enabled)throw new ServiceUnavailableException('خدمة التحقق بالبريد غير جاهزة لإنشاء حساب جديد. اختر Google أو اربط حسابًا متحققًا موجودًا.');
@@ -126,7 +131,7 @@ export class StaffingAdminService {
       await tx.operationalSetting.create({data:{key:intentKey(movement.id),value:intent}});
       await tx.operationalSetting.create({data:{key:retryKey,value:{version:1,fingerprint,movementId:movement.id}}});
       await this.audit.record({actorId:actor.personId,action:'STAFFING_REQUESTED',resource:'Employment',resourceId:employment.id,metadata:{movementId:movement.id,accountId:account.id,organizationId:organization.id,departmentCode,positionId:position.id,profile:profile.code,verificationMethod:intent.verificationMethod,reason,identityCreated:Boolean(identity),fromStatus:null,toStatus:'HR_REVIEW',permissionsApplied:false}},tx);
-      return this.get(tx,movement.id,actor.id,organization.id);
+      return this.get(tx,movement.id,actor.id,organization);
     });
   }
 
@@ -135,9 +140,10 @@ export class StaffingAdminService {
     if(!uuid(id)||!['REVIEW','APPROVE','REJECT','CANCEL'].includes(String(x.action))||typeof x.expectedUpdatedAt!=='string'||x.expectedUpdatedAt.length>40||!Number.isFinite(Date.parse(x.expectedUpdatedAt)))throw new BadRequestException('الإجراء أو نسخة الطلب غير صالحين.');
     return this.db.serializable(async tx=>{
       await this.lockWrites(tx);
-      const reference=await tx.employmentMovement.findUnique({where:{id},select:{employment:{select:{accountId:true}}}});
-      const actor=await lockAdminIdentities(tx,actorId,reference?.employment.accountId);
       const organization=await platformOrganization(tx);if(!organization)throw new NotFoundException('طلب التوظيف غير موجود.');
+      const reference=await tx.employmentMovement.findFirst({where:{id,employment:{organizationId:organization.id}},select:{requestedByAccountId:true,reviewedByAccountId:true,employment:{select:{accountId:true}}}});
+      const actor=await lockAdminIdentities(tx,actorId,reference?.employment.accountId,[organization.ownerId,...(reference?[reference.requestedByAccountId,...(reference.reviewedByAccountId?[reference.reviewedByAccountId]:[])]:[])]);
+      await tx.$queryRaw`SELECT "id" FROM "Organization" WHERE "id"::text=${organization.id} FOR UPDATE`;
       await tx.$queryRaw`SELECT "id" FROM "EmploymentMovement" WHERE "id"::text=${id} FOR UPDATE`;
       const row=await tx.employmentMovement.findFirst({where:{id,type:'APPOINTMENT',employment:{organizationId:organization.id}},select:movementView});
       if(!row)throw new NotFoundException('طلب التوظيف غير موجود.');
@@ -148,7 +154,11 @@ export class StaffingAdminService {
       const action=x.action as string;
       if(action==='CANCEL'){
         if(row.requestedByAccountId!==actor.id)throw new ForbiddenException('إلغاء الطلب متاح لصاحبه.');
-      }else if([row.requestedByAccountId,employment.accountId].includes(actor.id))throw new ForbiddenException('يجب أن ينفذ المراجعة والاعتماد شخص مستقل عن مقدم الطلب والموظف.');
+      }else{
+        if(actor.id===employment.accountId)throw new ForbiddenException('لا يمكن للموظف مراجعة أو اعتماد تعيينه.');
+        if(['REVIEW','REJECT'].includes(action)&&!platformOwnerCanReview(organization,actor.id,employment.accountId))throw new ForbiddenException('مراجعة موظفي هيدرولاند مسؤولية حساب الإدارة العليا المالك للجهة.');
+        if(action==='APPROVE'&&[row.requestedByAccountId,row.reviewedByAccountId].includes(actor.id))throw new ForbiddenException('يلزم معتمد مستقل عن مقدم الطلب ومسؤول المراجعة.');
+      }
 
       if(action==='REVIEW'||action==='APPROVE'){
         if(employment.account.status!=='ACTIVE'||!employment.account.emailVerifiedAt||!employment.orgUnit.active||!employment.position?.active)throw new ConflictException('يلزم حساب متحقق نشط وإدارة ووظيفة متاحتان قبل المراجعة.');
@@ -161,16 +171,18 @@ export class StaffingAdminService {
       let nextStatus:'APPROVAL_REQUIRED'|'EFFECTIVE'|'REJECTED'|'CANCELLED';
       try{
         if(action==='REVIEW'){
-          if(row.status!=='HR_REVIEW')throw new ConflictException('الطلب ليس بانتظار مراجعة الموارد البشرية.');
+          if(row.status!=='HR_REVIEW'&&!(row.status==='APPROVAL_REQUIRED'&&row.reviewedByAccountId!==organization.ownerId))throw new ConflictException('الطلب ليس بانتظار مراجعة مسؤول الجهة الحالي.');
           this.hr.authorize(hrActor,'VERIFY_CANDIDATE',{organizationId:organization.id});
           const account=await tx.account.findUniqueOrThrow({where:{id:employment.accountId},select:{personId:true}});
           const candidate=await tx.hrCandidate.findUniqueOrThrow({where:{organizationId_personId:{organizationId:organization.id,personId:account.personId}}});
           await tx.hrCandidate.update({where:{id:candidate.id},data:{status:'APPROVED',verifiedByAccountId:actor.id,verifiedAt:new Date(),verificationNotes:reason}});
-          await this.audit.record({actorId:actor.personId,action:'HR_CANDIDATE_VERIFIED',resource:'HrCandidate',resourceId:candidate.id,metadata:{organizationId:organization.id,movementId:id,reason,previousStatus:candidate.status,status:'APPROVED'}},tx);
+          await this.audit.record({actorId:actor.personId,action:'HR_CANDIDATE_VERIFIED',resource:'HrCandidate',resourceId:candidate.id,metadata:{organizationId:organization.id,movementId:id,reason,previousStatus:candidate.status,status:'APPROVED',reviewAuthority:'PLATFORM_OWNER',requesterAlsoReviewer:row.requestedByAccountId===actor.id,previousReviewerAccountId:row.reviewedByAccountId}},tx);
           await tx.employmentMovement.update({where:{id},data:{status:'APPROVAL_REQUIRED',reviewedByAccountId:actor.id}});
           nextStatus='APPROVAL_REQUIRED';
         }else if(action==='APPROVE'){
           if(row.status!=='APPROVAL_REQUIRED'||!row.reviewedByAccountId)throw new ConflictException('يلزم إكمال مراجعة الموارد البشرية أولًا.');
+          if(!platformOwnerCanReview(organization,row.reviewedByAccountId,employment.accountId))throw new ConflictException('تغير مسؤول المراجعة؛ يلزم أن يعيد مالك الجهة الحالي مراجعة الطلب.');
+          await requireVerifiedAdmin(tx,organization.ownerId);await requireVerifiedAdmin(tx,row.requestedByAccountId);
           this.hr.authorize(hrActor,'APPROVE_APPOINTMENT',{organizationId:organization.id,requesterAccountId:row.requestedByAccountId,reviewerAccountId:row.reviewedByAccountId,approverAccountId:actor.id});
           this.hr.validateEmploymentTransition(employment.status,'ACTIVE');
           await this.hr.assertProductionCompliance('APPROVE_APPOINTMENT',tx);
@@ -191,8 +203,8 @@ export class StaffingAdminService {
         if(code.startsWith('HR_COMPLIANCE_'))throw new ConflictException(`ضوابط التوظيف غير مكتملة: ${code}`);
         throw error;
       }
-      await this.audit.record({actorId:actor.personId,action:`STAFFING_${action}`,resource:'Employment',resourceId:employment.id,metadata:{movementId:id,organizationId:organization.id,accountId:employment.accountId,reason,fromStatus:row.status,toStatus:nextStatus,profile:intent.profile}},tx);
-      return this.get(tx,id,actor.id,organization.id);
+      await this.audit.record({actorId:actor.personId,action:`STAFFING_${action}`,resource:'Employment',resourceId:employment.id,metadata:{movementId:id,organizationId:organization.id,accountId:employment.accountId,reason,fromStatus:row.status,toStatus:nextStatus,profile:intent.profile,...(action==='REVIEW'?{reviewAuthority:'PLATFORM_OWNER',requesterAlsoReviewer:row.requestedByAccountId===actor.id,previousReviewerAccountId:row.reviewedByAccountId}:{})}},tx);
+      return this.get(tx,id,actor.id,organization);
     });
   }
 
@@ -200,13 +212,13 @@ export class StaffingAdminService {
     return intent.employmentId===employment.id&&intent.accountId===employment.accountId&&intent.organizationId===employment.organizationId&&intent.orgUnitId===employment.orgUnitId&&intent.positionId===employment.positionId&&employment.position?.orgUnitId===employment.orgUnitId;
   }
 
-  private async get(tx:Prisma.TransactionClient,id:string,actorId:string,organizationId:string){
-    const row=await tx.employmentMovement.findFirst({where:{id,type:'APPOINTMENT',employment:{organizationId}},select:movementView});
+  private async get(tx:Prisma.TransactionClient,id:string,actorId:string,organization:{id:string;ownerId:string}){
+    const row=await tx.employmentMovement.findFirst({where:{id,type:'APPOINTMENT',employment:{organizationId:organization.id}},select:movementView});
     if(!row)throw new NotFoundException('طلب التوظيف غير موجود.');
-    return this.present(tx,row,actorId);
+    return this.present(tx,row,actorId,organization,await this.reviewAuthority(tx,organization,actorId));
   }
 
-  private async present(tx:Prisma.TransactionClient,row:MovementView,actorId:string){
+  private async present(tx:Prisma.TransactionClient,row:MovementView,actorId:string,organization:{ownerId:string},reviewAuthority:{available:boolean;isCurrentAccount:boolean}){
     const setting=await tx.operationalSetting.findUnique({where:{key:intentKey(row.id)}});
     let intent:StaffingIntent|null=null;try{intent=readIntent(setting?.value);}catch{}
     const employment=row.employment,account=employment.account;
@@ -218,9 +230,9 @@ export class StaffingAdminService {
     const effectiveAccess=Boolean(row.status==='EFFECTIVE'&&employment.status==='ACTIVE'&&ready&&member&&profile?.roles.every(role=>grantedRoles.includes(role)));
     const pending=employment.status==='PENDING_APPROVAL';
     return {id:row.id,status:row.status,reason:row.reason,createdAt:row.createdAt,updatedAt:row.updatedAt,effectiveAt:row.effectiveAt,employment:{id:employment.id,status:employment.status,department:employment.orgUnit,position:employment.position},account:{id:account.id,email:account.email,status:account.status,emailVerifiedAt:account.emailVerifiedAt,person:account.person},requestedProfile:profile?.code??null,verificationMethod:intent?.verificationMethod??null,grantedRoles,effectiveAccess,
-      canReview:Boolean(intent&&pending&&ready&&row.status==='HR_REVIEW'&&actorId!==row.requestedByAccountId&&actorId!==account.id),
-      canApprove:Boolean(intent&&pending&&ready&&row.status==='APPROVAL_REQUIRED'&&row.reviewedByAccountId&&![row.requestedByAccountId,row.reviewedByAccountId,account.id].includes(actorId)),
-      canReject:Boolean(intent&&pending&&['HR_REVIEW','APPROVAL_REQUIRED'].includes(row.status)&&actorId!==row.requestedByAccountId&&actorId!==account.id),
+      canReview:Boolean(intent&&pending&&ready&&reviewAuthority.available&&platformOwnerCanReview(organization,actorId,account.id)&&(row.status==='HR_REVIEW'||row.status==='APPROVAL_REQUIRED'&&row.reviewedByAccountId!==organization.ownerId)),
+      canApprove:Boolean(intent&&pending&&ready&&reviewAuthority.available&&row.status==='APPROVAL_REQUIRED'&&row.reviewedByAccountId===organization.ownerId&&![row.requestedByAccountId,row.reviewedByAccountId,account.id].includes(actorId)),
+      canReject:Boolean(intent&&pending&&['HR_REVIEW','APPROVAL_REQUIRED'].includes(row.status)&&platformOwnerCanReview(organization,actorId,account.id)),
       canCancel:Boolean(intent&&pending&&['HR_REVIEW','APPROVAL_REQUIRED'].includes(row.status)&&actorId===row.requestedByAccountId)};
   }
 }

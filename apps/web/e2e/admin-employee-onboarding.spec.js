@@ -5,7 +5,7 @@ const json=(route,body,status=200)=>route.fulfill({status,contentType:'applicati
 const accountId='11111111-1111-4111-8111-111111111111',recordId='22222222-2222-4222-8222-222222222222',revision='2026-10-22T17:00:00.000Z';
 const departments=[{id:'hr-unit',code:'HR',nameAr:'الموارد البشرية',active:true},{id:'training-unit',code:'TRAINING',nameAr:'التدريب',active:true}];
 const profiles=[{code:'STAFF',label:'موظف',description:'صلاحيات موظف دون إدارة.'},{code:'HR_REVIEWER',label:'مراجع موارد بشرية',description:'مراجعة المرشحين في النطاق الداخلي.'},{code:'HR_MANAGER',label:'مدير موارد بشرية',description:'إدارة طلبات الموارد البشرية في النطاق الداخلي.'}];
-const readiness=(available=3,reason='READY')=>({checkedAt:new Date().toISOString(),independentAdministrators:{required:3,available},compliance:{ready:reason==='READY',reason}});
+const readiness=(available=3,reason='READY')=>({checkedAt:new Date().toISOString(),independentAdministrators:{required:2,available},reviewAuthority:{kind:'PLATFORM_OWNER',available:true,isCurrentAccount:true},compliance:{ready:reason==='READY',reason}});
 const row=(extra={})=>({id:recordId,status:'HR_REVIEW',reason:'طلب توظيف تجريبي',updatedAt:revision,employment:{id:'employment-fixture',status:'PENDING_APPROVAL',department:departments[1],position:{titleAr:'منسق التدريب'}},account:{id:accountId,email:'employee@example.invalid',status:'ACTIVE',emailVerifiedAt:revision,person:{firstName:'موظف',lastName:'اختبار'}},requestedProfile:'STAFF',verificationMethod:'EXISTING',grantedRoles:[],effectiveAccess:false,canReview:false,canApprove:false,canReject:false,canCancel:false,...extra});
 async function setup(page,options={}){
  const state={admin:true,initialized:true,approvalReadiness:readiness(),rows:[row()],writes:[],lookups:[],queries:[],initWrites:0,failCreate:false,failInit:false,conflict:false,delay:false,release:null,pages:false,...options};
@@ -66,6 +66,17 @@ test('existing account lookup links identity without new-name or verification fi
 });
 test('reviewer sees independent approval pending and no permission grant after review',async({page})=>{
  const state=await setup(page,{rows:[row({canReview:true,canReject:true})]}),form=await fillDecision(page);await form.getByRole('button',{name:'حفظ مراجعة الموارد البشرية',exact:true}).click();await expect(page.locator('[data-staffing-record]')).toContainText('بانتظار اعتماد مستقل');await expect(page.locator('[data-staffing-record]')).toContainText('لم تُفعّل');await expect(page.getByRole('button',{name:'اعتماد التعيين وتفعيل الصلاحيات',exact:true})).toHaveCount(0);expect(state.writes[0].body).toEqual({action:'REVIEW',reason:'مراجعة وظيفية مستقلة في الاختبار',reviewed:true,expectedUpdatedAt:revision});
+});
+test('the responsible internal owner reviews an owner-created request while final approval stays separate',async({page})=>{
+ const state=await setup(page,{rows:[row({canReview:true,canCancel:true})],approvalReadiness:readiness(2)});
+ await expect(page.locator('[data-staff-review-authority]')).toContainText('حسابك هو مسؤول مراجعة');await expect(page.locator('[data-staff-review-authority]')).toContainText('يمكنك مراجعة الطلب الذي أنشأته');await expect(page.locator('[data-staff-readiness-admins]')).toContainText('معتمد مستقل: 2');
+ const form=await fillDecision(page);await form.getByRole('button',{name:'حفظ مراجعة الموارد البشرية',exact:true}).click();await expect(page.locator('[data-staffing-record]')).toContainText('بانتظار اعتماد مستقل');await expect(page.locator('[data-staffing-record]')).toContainText('لم تُفعّل');await expect(page.getByRole('button',{name:'اعتماد التعيين وتفعيل الصلاحيات',exact:true})).toHaveCount(0);expect(state.writes[0].body.action).toBe('REVIEW');
+});
+test('another administrator sees the responsible review account without an owner-review action',async({page})=>{
+ const value=readiness(2);value.reviewAuthority.isCurrentAccount=false;
+ const state=await setup(page,{approvalReadiness:value,rows:[row({canReview:false})]});await expect(page.locator('[data-staff-review-authority]')).toContainText('المالك للجهة');await expect(page.getByRole('button',{name:'حفظ مراجعة الموارد البشرية',exact:true})).toHaveCount(0);
+ state.approvalReadiness={...value,reviewAuthority:{kind:'PLATFORM_OWNER',available:false,isCurrentAccount:false}};await page.getByRole('button',{name:'تحديث الموظفين',exact:true}).click();await expect(page.locator('[data-staff-review-authority]')).toContainText('غير متاح');expect(state.writes).toHaveLength(0);
+ await page.evaluate(()=>window.HydrolandAuth.terminateSession());await expect(page.locator('[data-staff-review-authority]')).toBeEmpty();
 });
 test('approval retains conflict notes then displays persisted effective permissions',async({page})=>{
  const state=await setup(page,{conflict:true,rows:[row({status:'APPROVAL_REQUIRED',requestedProfile:'HR_MANAGER',canApprove:true})]}),form=await fillDecision(page);

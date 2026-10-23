@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { requireVerifiedAdmin } from '../admin/admin-authorization';
 import { lockActiveSessionAccount } from '../auth/account-session-lock';
-import { intentKey, platformOrganization, profileFor, readIntent, record } from '../hr/staffing-catalog';
+import { intentKey, platformOrganization, platformOwnerCanReview, profileFor, readIntent, record } from '../hr/staffing-catalog';
 
 @Injectable()
 export class StaffingIamService {
@@ -17,13 +17,15 @@ export class StaffingIamService {
     const intent=readIntent((await tx.operationalSetting.findUnique({where:{key:intentKey(movement.id)}}))?.value);
     if(!organization||movement.type!=='APPOINTMENT'||movement.status!=='APPROVED'||employment.status!=='ACTIVE'||
       !movement.reviewedByAccountId||!movement.approvedByAccountId||
-      new Set([movement.requestedByAccountId,movement.reviewedByAccountId,movement.approvedByAccountId]).size!==3||
+      movement.approvedByAccountId===movement.requestedByAccountId||movement.approvedByAccountId===movement.reviewedByAccountId||
+      !platformOwnerCanReview(organization,movement.reviewedByAccountId,employment.accountId)||
       [movement.reviewedByAccountId,movement.approvedByAccountId].includes(employment.accountId)||
       organization.id!==employment.organizationId||!employment.orgUnit.active||!employment.position?.active||employment.position.orgUnitId!==employment.orgUnitId||movement.toOrgUnitId!==employment.orgUnitId||movement.toPositionId!==employment.positionId||
       intent.employmentId!==employment.id||intent.accountId!==employment.accountId||intent.organizationId!==organization.id||intent.orgUnitId!==employment.orgUnitId||intent.positionId!==employment.positionId){
       throw new ConflictException('تطبيق الصلاحيات يتطلب تعيينًا معتمدًا مستقلًا مطابقًا للطلب.');
     }
     const actor=await requireVerifiedAdmin(tx,movement.approvedByAccountId);
+    await requireVerifiedAdmin(tx,movement.reviewedByAccountId);await requireVerifiedAdmin(tx,movement.requestedByAccountId);
     await lockActiveSessionAccount(tx,employment.accountId);
     const candidate=await tx.hrCandidate.findUnique({where:{organizationId_personId:{organizationId:organization.id,personId:(await tx.account.findUniqueOrThrow({where:{id:employment.accountId},select:{personId:true}})).personId}}});
     if(candidate?.status!=='APPROVED'||candidate.verifiedByAccountId!==movement.reviewedByAccountId)throw new ConflictException('يلزم تحقق الموارد البشرية المطابق للمراجعة.');

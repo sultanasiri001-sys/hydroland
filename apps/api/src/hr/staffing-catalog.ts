@@ -20,6 +20,12 @@ export function profileFor(code:unknown,departmentCode?:string){
   return profile;
 }
 export function record(value:unknown):Record<string,unknown>{return value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:{};}
+// The canonical internal organization's owner is responsible for its staff
+// review, including requests the owner created. This is not a platform-wide
+// exception for other administrators, center memberships or final approval.
+export function platformOwnerCanReview(organization:{ownerId:string},actorId:string,employeeId:string){
+  return actorId===organization.ownerId&&actorId!==employeeId;
+}
 export function readIntent(value:Prisma.JsonValue|undefined):StaffingIntent{
   const x=record(value);
   if(x.version!==1||!['employmentId','accountId','organizationId','orgUnitId','positionId'].every(k=>typeof x[k]==='string'&&x[k])||!STAFFING_PROFILES.some(p=>p.code===x.profile))throw new ConflictException('بيانات طلب الصلاحيات غير مكتملة؛ يلزم مراجعة الطلب.');
@@ -28,7 +34,7 @@ export function readIntent(value:Prisma.JsonValue|undefined):StaffingIntent{
 export async function platformOrganization(tx:Prisma.TransactionClient){
   const setting=await tx.operationalSetting.findUnique({where:{key:PLATFORM_STAFFING_KEY}}),id=record(setting?.value).organizationId;
   if(typeof id!=='string'){if(setting)throw new ConflictException('إعداد الجهة الداخلية غير صالح.');return null;}
-  const organization=await tx.organization.findUnique({where:{id},select:{id:true,kind:true,status:true}});
+  const organization=await tx.organization.findUnique({where:{id},select:{id:true,kind:true,status:true,ownerId:true}});
   if(!organization||organization.kind!==PLATFORM_STAFFING_KIND||organization.status!=='ACTIVE')throw new ConflictException('الهيكل الداخلي غير متاح؛ راجع حالة جهة هيدرولاند.');
   return organization;
 }
