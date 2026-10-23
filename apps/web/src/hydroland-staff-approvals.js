@@ -4,9 +4,9 @@
  const auth=()=>window.HydrolandAuth,session=()=>auth()?.getSessionVersion?.(),signedIn=()=>Boolean(auth()?.isAuthenticated?.());
  const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const ownerPanel=document.createElement('section');ownerPanel.dataset.staffDelegations='';ownerPanel.hidden=true;
- ownerPanel.innerHTML='<h4>تفويض اعتماد الموظفين</h4><p>يعتمد حساب مالك هيدرولاند موظفي الإدارة العليا وجميع الإدارات الداخلية. يمكنك تفويض موظف نشط لاعتماد تعييناتهم دون منحه إدارة المنصة. لا يشمل التفويض موظفي المراكز ولا يسمح بإعادة التفويض أو اعتماد الموظف لتعيينه.</p><form data-delegation-grant><fieldset><label>بريد الموظف المفوض<input name="email" type="email" required maxlength="254" autocomplete="off"></label><label>سبب التفويض<textarea name="reason" required minlength="5" maxlength="1000"></textarea></label><label><input type="checkbox" name="reviewed" required>راجعت تفويض اعتماد موظفي جميع الإدارات الداخلية</label><button type="submit">تفويض الاعتماد</button></fieldset></form><div data-delegation-items></div><p role="status" data-delegation-feedback></p>';
+ ownerPanel.innerHTML='<h4>تفويض اعتماد الموظفين</h4><button type="button" data-delegation-refresh>تحديث التفويضات</button><p>يعتمد حساب مالك هيدرولاند موظفي الإدارة العليا وجميع الإدارات الداخلية. يمكنك تفويض موظف نشط لاعتماد تعييناتهم دون منحه إدارة المنصة. لا يشمل التفويض موظفي المراكز ولا يسمح بإعادة التفويض أو اعتماد الموظف لتعيينه.</p><form data-delegation-grant><fieldset><label>بريد الموظف المفوض<input name="email" type="email" required maxlength="254" autocomplete="off"></label><label>سبب التفويض<textarea name="reason" required minlength="5" maxlength="1000"></textarea></label><label><input type="checkbox" name="reviewed" required>راجعت تفويض اعتماد موظفي جميع الإدارات الداخلية</label><button type="submit">تفويض الاعتماد</button></fieldset></form><div data-delegation-items></div><p role="status" data-delegation-feedback></p>';
  document.getElementById('hl-admin-employees')?.querySelector('[data-staff-readiness]')?.after(ownerPanel);
- const panel=document.createElement('section');panel.id='hl-staff-approvals';panel.className='hl-staff-approvals hl-admin-employees';panel.hidden=true;
+ const panel=document.createElement('section');panel.id='hl-staff-approvals';panel.className='hl-staff-approvals';panel.hidden=true;
  panel.innerHTML='<h3>اعتماد موظفي هيدرولاند</h3><p>اعتماد التعيينات التي راجعها مالك هيدرولاند في جميع الإدارات الداخلية. تُراجع صلاحيتك وحالة الحساب وضوابط الموارد البشرية عند كل قرار.</p><button type="button" data-approval-refresh>تحديث طلبات الاعتماد</button><form data-approval-search><label>البحث في طلبات الاعتماد<input name="search" maxlength="120"></label><button type="submit">بحث طلبات الاعتماد</button></form><p role="status" data-approval-feedback></p><div data-approval-items></div><button type="button" data-approval-more hidden>طلبات الاعتماد التالية</button>';
  root.after(panel);
  let generation=0,ownerGeneration=0,capabilityGeneration=0,revision=null,busy=false,ownerBusy=false,cursor=null,search='';
@@ -26,6 +26,7 @@
   try{const data=await call('/admin/employees/approval-delegations');if(!ownerValid(v,s))return;renderDelegations(data);ownerMessage.textContent='';}
   catch(error){if(ownerValid(v,s)&&error.status!==403){ownerPanel.hidden=false;ownerMessage.textContent=error.message;}}
  }
+ ownerPanel.querySelector('[data-delegation-refresh]').addEventListener('click',()=>{if(!ownerBusy)void loadDelegations();});
  ownerPanel.addEventListener('submit',async event=>{
   event.preventDefault();if(ownerBusy||!revision)return;const form=event.target,values=Object.fromEntries(new FormData(form));if(values.reviewed!=='on')return;
   const v=ownerGeneration,s=session(),grant=form.matches('[data-delegation-grant]');if(!ownerValid(v,s))return;

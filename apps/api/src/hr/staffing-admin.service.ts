@@ -263,7 +263,7 @@ export class StaffingAdminService {
         }
       }catch(error){
         const code=error instanceof Error?error.message:'';
-        if(/HR_.*(APPROVAL_REQUIRED|PERMISSION_REQUIRED|SELF_APPROVAL_DENIED|SEGREGATION_OF_DUTIES_DENIED)/.test(code))throw new ForbiddenException('يلزم اعتماد من إدارة مستقلة عن مقدم الطلب والمراجع.');
+        if(/HR_.*(APPROVAL_REQUIRED|PERMISSION_REQUIRED|SELF_APPROVAL_DENIED|SEGREGATION_OF_DUTIES_DENIED)/.test(code))throw new ForbiddenException('لا تملك صلاحية إتمام إجراء التوظيف المطلوب.');
         if(code.startsWith('HR_COMPLIANCE_'))throw new ConflictException(`ضوابط التوظيف غير مكتملة: ${code}`);
         throw error;
       }
