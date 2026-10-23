@@ -128,7 +128,7 @@ try{
 
  // Delegation is a live scoped capability, never an ADMIN/HR role grant.
  assert.equal((await call('/employee-approvals')).status,401);
- assert.equal((await call('/employee-approvals/capability',ut.accessToken)).body.canApprove,false);
+ const ordinaryCapability=await call('/employee-approvals/capability',(await login(member)).accessToken);assert.equal(ordinaryCapability.status,200);assert.equal(ordinaryCapability.body.canApprove,false);
  assert.equal((await call('/admin/employees/approval-delegations',mt.accessToken)).status,403);
  let delegationState=(await call('/admin/employees/approval-delegations',rt.accessToken)).body;
  const grantBody=()=>({action:'GRANT',email:createdAccount.email,expectedRevision:delegationState.revision,reason:'تفويض موظف فعلي في اختبار قاعدة معزولة',reviewed:true});
