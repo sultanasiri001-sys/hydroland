@@ -19,7 +19,14 @@ export class ProfileService {
       },
     });
   }
-  async update(accountId: string, input: { firstName?: string; lastName?: string; phone?: string; headline?: string; bio?: string; regionCode?: string }) {
+  async update(accountId: string, input: { firstName?: string; lastName?: string; phone?: string; headline?: string; bio?: string; regionCode?: string; nationalLicenseCredentialId?: string | null; qualificationCredentialId?: string | null; eligibilityEvidenceReference?: string | null }) {
+    const sourceKeys=['nationalLicenseCredentialId','qualificationCredentialId','eligibilityEvidenceReference'] as const;
+    for(const key of sourceKeys){const value=input[key];if(value!==undefined&&value!==null&&(typeof value!=='string'||value.length>(key==='eligibilityEvidenceReference'?500:80)||/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/u.test(value)))throw new BadRequestException('بيانات مراجع العضوية غير صالحة.');}
+    const account=await this.db.account.findUniqueOrThrow({where:{id:accountId},select:{personId:true}});
+    for(const key of ['nationalLicenseCredentialId','qualificationCredentialId'] as const){
+      const value=input[key]?.trim();if(value&&!await this.db.credential.findFirst({where:{id:value,personId:account.personId},select:{id:true}}))throw new BadRequestException('اختر شهادة مسجلة في حسابك.');
+    }
+    const sourcePatch=Object.fromEntries(sourceKeys.filter(k=>input[k]!==undefined).map(k=>[k,input[k]?.trim()||null]));
     if (input.firstName !== undefined && !input.firstName.trim()) throw new BadRequestException('First name cannot be empty.');
     return this.db.account.update({
       where: { id: accountId },
@@ -31,8 +38,8 @@ export class ProfileService {
             phone: input.phone,
             professional: {
               upsert: {
-                create: { headline: input.headline, bio: input.bio, regionCode: input.regionCode },
-                update: { headline: input.headline, bio: input.bio, regionCode: input.regionCode }
+                create: { ...sourcePatch, headline: input.headline, bio: input.bio, regionCode: input.regionCode },
+                update: { ...sourcePatch, headline: input.headline, bio: input.bio, regionCode: input.regionCode }
               }
             }
           }

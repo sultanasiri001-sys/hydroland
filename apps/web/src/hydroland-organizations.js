@@ -1,4 +1,10 @@
 (() => {
+  if (!document.querySelector('script[data-hl-contract-library]')) {
+    const library=document.createElement('script');library.src='./hydroland-contract-library.js';library.dataset.hlContractLibrary='1';document.body.appendChild(library);
+  }
+  if (!document.querySelector('script[data-hl-contracts]')) {
+    const contracts=document.createElement('script');contracts.src='./hydroland-contracts.js';contracts.dataset.hlContracts='1';document.body.appendChild(contracts);
+  }
   if (!document.querySelector('script[data-hl-documents]')) {
     const documents = document.createElement('script');
     documents.src = './hydroland-documents.js';

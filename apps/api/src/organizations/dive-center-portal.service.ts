@@ -18,7 +18,7 @@ export class DiveCenterPortalService {
   ) {}
 
   async updateBusinessProfile(accountId:string,id:string,input:Record<string,unknown>){
-    const allowed=['displayName','legalName','registrationNumber','regionCode','expectedUpdatedAt'];
+    const allowed=['displayName','legalName','registrationNumber','regionCode','address','trainingMembershipReference','expectedUpdatedAt'];
     if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(key=>!allowed.includes(key)))throw new BadRequestException('يُسمح بتعديل بيانات الملف التجاري فقط.');
     if(typeof input.expectedUpdatedAt!=='string'||!Number.isFinite(Date.parse(input.expectedUpdatedAt)))throw new BadRequestException('حدّث بيانات المركز قبل الحفظ.');
     const expectedUpdatedAt=new Date(input.expectedUpdatedAt);
@@ -40,7 +40,9 @@ export class DiveCenterPortalService {
       const registrationNumber=input.registrationNumber===undefined?before.registrationNumber:clean(input.registrationNumber,120);
       let regionCode=input.regionCode===undefined?before.regionCode:clean(input.regionCode,32);
       if(regionCode==='عسير'||regionCode?.toUpperCase()==='ASIR')regionCode='ASIR';
-      const data={displayName,legalName,registrationNumber,regionCode};
+      const address=input.address===undefined?before.address:clean(input.address,300);
+      const trainingMembershipReference=input.trainingMembershipReference===undefined?before.trainingMembershipReference:clean(input.trainingMembershipReference,300);
+      const data={displayName,legalName,registrationNumber,regionCode,address,trainingMembershipReference};
       const changedFields=(Object.keys(data) as Array<keyof typeof data>).filter(key=>data[key]!==before[key]);
       if(!changedFields.length)return {id:before.id,...data,status:before.status,updatedAt:before.updatedAt};
       // Editing business metadata cannot activate a center or transfer ownership.
@@ -48,7 +50,7 @@ export class DiveCenterPortalService {
       const claimed=await tx.organization.updateMany({where:{id,updatedAt:expectedUpdatedAt,status:before.status},data:{...data,...review}});
       if(claimed.count!==1)throw new ConflictException('تغيرت بيانات المركز. أعد تحميلها قبل الحفظ.');
       await this.audit.record({actorId:accountId,action:'CENTER_BUSINESS_PROFILE_UPDATED',resource:'organization',resourceId:id,metadata:{changedFields,previousStatus:before.status,status:review.status||before.status}},tx);
-      return tx.organization.findUniqueOrThrow({where:{id},select:{id:true,displayName:true,legalName:true,registrationNumber:true,regionCode:true,status:true,updatedAt:true}});
+      return tx.organization.findUniqueOrThrow({where:{id},select:{id:true,displayName:true,legalName:true,registrationNumber:true,regionCode:true,address:true,trainingMembershipReference:true,status:true,updatedAt:true}});
     });}catch(error){if(typeof error==='object'&&error!==null&&'code' in error&&error.code==='P2002')throw new ConflictException('رقم السجل مستخدم لدى مركز أو جهة أخرى.');throw error}
   }
 

@@ -284,6 +284,16 @@ jobs:
             cat /tmp/hydroland-api.log
             exit 1
           fi
+          if ! CONTRACT_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/contract-library-http-e2e.mjs; then
+            echo "Contract library HTTP/PostgreSQL failed; API log follows"
+            cat /tmp/hydroland-api.log
+            exit 1
+          fi
+          if ! CONTRACT_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/cooperation-contract-http-e2e.mjs; then
+            echo "Cooperation contract HTTP/PostgreSQL failed; API log follows"
+            cat /tmp/hydroland-api.log
+            exit 1
+          fi
 
       - name: Phase 4 append-only audit database boundary
         run: node apps/api/scripts/audit-append-only-validation.mjs
