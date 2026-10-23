@@ -11,4 +11,5 @@
 .hl-admin-employees button{font:inherit;padding:.65rem 1rem;border:1px solid #7894a777;border-radius:8px;color:inherit;background:var(--surface,#132d43);cursor:pointer;max-width:100%}
 .hl-admin-employees button:disabled{opacity:.5;cursor:default}.hl-admin-employees [hidden]{display:none!important}
 .hl-admin-employees dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr));gap:.8rem}.hl-admin-employees dt{font-weight:700}.hl-admin-employees dd{margin:0;line-height:1.8}
+.hl-staff-controls{border:1px solid #7894a755;border-radius:14px;margin-block:1rem;min-width:0}.hl-staff-controls>summary{padding:1rem;cursor:pointer;font-weight:700}.hl-staff-controls>section{padding:0 1rem 1rem;min-width:0}
 @media(max-width:600px){.hl-admin-employees{padding:.75rem}.hl-admin-employees fieldset{padding:.7rem}.hl-staff-actions button{width:100%}}

@@ -8,6 +8,8 @@ import { TechnologySecurityModule } from '../technology-security/technology-secu
 import { HrModule } from './hr.module';
 import { StaffingAdminController } from './staffing-admin.controller';
 import { StaffingAdminService } from './staffing-admin.service';
+import { HrControlReviewController } from './hr-control-review.controller';
+import { HrControlReviewService } from './hr-control-review.service';
 
-@Module({imports:[DatabaseModule,AdminModule,AuditModule,AuthModule,HrModule,IntegrationModule,TechnologySecurityModule],controllers:[StaffingAdminController],providers:[StaffingAdminService]})
+@Module({imports:[DatabaseModule,AdminModule,AuditModule,AuthModule,HrModule,IntegrationModule,TechnologySecurityModule],controllers:[StaffingAdminController,HrControlReviewController],providers:[StaffingAdminService,HrControlReviewService]})
 export class StaffingAdminModule {}
