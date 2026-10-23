@@ -8,6 +8,10 @@ export interface AiModelConfiguration {
   maxInputTokens:number;maxOutputTokens:number;inputRate:number;outputRate:number;dailyBudgetMicroUsd:number;reserveMicroUsd:number;
 }
 export interface AiModelResult {text:string;inputTokens:number;outputTokens:number;estimatedCostMicroUsd:number}
+export interface AiModelConnectionCheck {
+  connected:boolean;reason:string;provider:'OPENAI';model:string|null;checkedAt:string;
+  scope:'MODEL_ACCESS_ONLY';generationTested:false;
+}
 export class AiProviderError extends Error {
   constructor(readonly code:string,readonly uncertain=false){super(code)}
 }
@@ -43,6 +47,29 @@ export class AgentModelProviderService {
     if(!override)return 'https://api.openai.com/v1';
     try{const url=new URL(override);if(process.env.NODE_ENV==='test'&&url.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(url.hostname)&&url.pathname==='/v1'&&!url.username&&!url.password&&!url.search&&!url.hash)return url.href.replace(/\/$/,'');}catch{}
     return null;
+  }
+
+  // This explicit diagnostic reads model metadata only. It cannot create a
+  // response, dispatch a task, change agent controls, or establish paid quota.
+  async checkConnection():Promise<AiModelConnectionCheck>{
+    const config=this.configuration();
+    const result=(connected:boolean,reason:string):AiModelConnectionCheck=>({connected,reason,provider:'OPENAI',model:config.model,checkedAt:new Date().toISOString(),scope:'MODEL_ACCESS_ONLY',generationTested:false});
+    if(!config.ready||!config.model)return result(false,config.reason);
+    const base=this.baseUrl();if(!base)return result(false,'PROVIDER_CONFIGURATION_INVALID');
+    let response:Response;
+    try{response=await fetch(base+'/models/'+encodeURIComponent(config.model),{method:'GET',redirect:'error',cache:'no-store',headers:{Authorization:'Bearer '+(process.env.OPENAI_API_KEY?.trim()||'')},signal:AbortSignal.timeout(5000)});}
+    catch{return result(false,'PROVIDER_CONNECTION_FAILED');}
+    if(!response.ok){
+      await response.body?.cancel().catch(()=>{});
+      return result(false,response.status===401?'PROVIDER_AUTH_FAILED':response.status===403?'PROVIDER_ACCESS_DENIED':response.status===429?'PROVIDER_RATE_LIMITED':'PROVIDER_REQUEST_FAILED');
+    }
+    try{
+      const reader=response.body?.getReader();if(!reader)throw new Error();const buffers:Uint8Array[]=[];let length=0;
+      while(true){const part=await reader.read();if(part.done)break;length+=part.value.length;if(length>16*1024){await reader.cancel();throw new Error();}buffers.push(part.value);}
+      const metadata=JSON.parse(Buffer.concat(buffers).toString('utf8'));
+      if(metadata?.object!=='model'||metadata.id!==config.model)throw new Error();
+      return result(true,'MODEL_ACCESS_VERIFIED');
+    }catch{return result(false,'PROVIDER_RESPONSE_INVALID');}
   }
 
   private async request(path:string,body:object,timeout:number){

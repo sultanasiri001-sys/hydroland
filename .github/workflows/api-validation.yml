@@ -93,6 +93,8 @@ jobs:
       - run: npm run validate:integrations -w @hydroland/api
       - run: npm run typecheck --workspace=@hydroland/api
       - run: npm run build --workspace=@hydroland/api
+      - name: Read-only model connection diagnostics without generation
+        run: node apps/api/scripts/agent-provider-connection-check.mjs
       - name: Build connected browser fixture
         run: npm run build -w @hydroland/web
       - name: Install connected browser Chromium

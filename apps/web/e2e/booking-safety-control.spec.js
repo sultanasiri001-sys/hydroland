@@ -6,7 +6,7 @@ async function setup(page){
   const rule=()=>({category:'BOOKING',ruleKey:'SAFETY_APPROVAL',state:state.policy});
   await page.route('**/api/v1/**',route=>json(route,[]));
   await page.route('**/api/v1/auth/google/config',route=>json(route,{enabled:false}));
-  await page.route(/\/api\/v1\/me$/,route=>json(route,{id:'policy-admin',status:'ACTIVE',email:'admin@example.invalid',person:{firstName:'مدير',lastName:'اختبار'},roleAssignments:[{role:state.active?'ADMIN':'DIVER',status:'ACTIVE'}]}));
+  await page.route(/\/api\/v1\/me$/,async route=>{if(state.authorizationGate)await state.authorizationGate;return json(route,{id:'policy-admin',status:'ACTIVE',email:'admin@example.invalid',person:{firstName:'مدير',lastName:'اختبار'},roleAssignments:[{role:state.active?'ADMIN':'DIVER',status:'ACTIVE'}]});});
   await page.route(/\/api\/v1\/admin\/policies(?:\?.*)?$/,route=>json(route,[rule()]));
   await page.route('**/api/v1/admin/policies/BOOKING/SAFETY_APPROVAL/state',route=>{
     state.writes.push(route.request().postDataJSON());
@@ -47,8 +47,12 @@ test('failed writes require a fresh state read instead of claiming success',asyn
   await panel.getByRole('button',{name:'تحديث حالة اشتراط السلامة'}).click();await expect(panel).toContainText('مفعّل — اعتماد السلامة مطلوب');
 });
 test('fresh role authorization prevents a revoked administrator from changing policy',async({page})=>{
-  const state=await setup(page);state.active=false;const panel=page.locator('[data-booking-safety-control]');
-  await panel.getByLabel('سبب تغيير اشتراط السلامة').fill('يجب رفض تغيير غير مخول');await panel.getByRole('button',{name:'إيقاف اشتراط السلامة',exact:true}).click();
+  const state=await setup(page),panel=page.locator('[data-booking-safety-control]'),button=panel.getByRole('button',{name:'إيقاف اشتراط السلامة',exact:true});
+  await panel.getByLabel('سبب تغيير اشتراط السلامة').fill('يجب رفض تغيير غير مخول');await expect(button).toBeEnabled();
+  // Hold revoked refresh responses until the real click dispatches. Otherwise
+  // correct background enforcement can remove the form before the test acts.
+  let release;state.authorizationGate=new Promise(resolve=>release=resolve);state.active=false;
+  try{await button.click()}finally{release();state.authorizationGate=null}
   await expect(panel).toBeHidden();expect(state.writes).toEqual([]);
 });
 test('missing or malformed policy stays enforced; optional approval never ignores deferral or weather',async({page})=>{
