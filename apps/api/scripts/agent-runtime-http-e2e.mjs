@@ -10,10 +10,11 @@ const require=createRequire(import.meta.url),{DatabaseService}=require('../dist/
 const db=new PrismaClient(),runtimeDb=new DatabaseService(),audit=new AuditService(runtimeDb),admin=new AdminService(runtimeDb,audit),integrations=new IntegrationService(audit),agents=new AgentService(audit),provider=new AgentModelProviderService(integrations);
 const runtime=(writer=audit,model=provider)=>new AgentRuntimeService(runtimeDb,writer,agents,model,admin),service=runtime();
 const people=[],accounts=[],suffix=randomUUID(),password='Ai-runtime-fixture-only-2026!',salt='ai-runtime-fixture',passwordHash=`${salt}:${scryptSync(password,salt,64).toString('hex')}`;
-let initialized=false,modelCalls=0,countCalls=0,release,modelEntered=false,hold=false,breakConnection=false,tokenCount=64,invalidOutput=false;
+let initialized=false,modelCalls=0,countCalls=0,metadataCalls=0,release,modelEntered=false,hold=false,breakConnection=false,tokenCount=64,invalidOutput=false;
 const payloads=[];
 const model=createServer(async(req,res)=>{
  let text='';for await(const chunk of req)text+=chunk;const data=JSON.parse(text||'{}');
+ if(req.url==='/v1/models/fixture-model'){metadataCalls++;assert.equal(req.method,'GET');assert.equal(text,'');return res.writeHead(200,{'content-type':'application/json'}).end(JSON.stringify({object:'model',id:'fixture-model'}));}
  if(req.url==='/v1/responses/input_tokens'){countCalls++;return res.writeHead(200,{'content-type':'application/json'}).end(JSON.stringify({object:'response.input_tokens',input_tokens:tokenCount}));}
  if(req.url!=='/v1/responses')return res.writeHead(404).end();modelCalls++;payloads.push(data);modelEntered=true;
  if(breakConnection){req.socket.destroy();return;}if(hold)await new Promise(resolve=>{release=resolve;});
@@ -33,6 +34,8 @@ try{
  assert.equal(await db.aiAgentRuntime.count(),0,'Refuse a database containing pre-existing agent runtimes');
  actor=await fixture('admin','ADMIN');const ordinary=await fixture('ordinary','STAFF');token=(await login(actor)).accessToken;const other=(await login(ordinary)).accessToken;
  assert.equal((await call('/admin/agents')).status,401);assert.equal((await call('/admin/agents',other)).status,403);
+ assert.equal((await call('/admin/agents/provider-connection')).status,401);assert.equal((await call('/admin/agents/provider-connection',other)).status,403);assert.equal(metadataCalls,0);
+ const connection=await call('/admin/agents/provider-connection',token);assert.equal(connection.status,200);assert.equal(connection.body.connected,true);assert.equal(connection.body.scope,'MODEL_ACCESS_ONLY');assert.equal(connection.body.generationTested,false);safe(connection.body);assert.equal(metadataCalls,1);assert.equal(modelCalls,0);assert.equal(countCalls,0);assert.equal(await db.aiAgentRuntime.count(),0);assert.equal(await db.aiAgentTask.count(),0,'A connection check creates no agent controls or tasks');
  assert.equal((await call('/admin/agents/initialize',other,{reason:'Denied fixture',reviewed:true})).status,403);
  const before=await catalog();assert.equal(before.initialized,false);assert.equal(before.items.length,8);assert(before.items.every(x=>x.counts===null&&x.workload==='UNAVAILABLE'&&x.state==='UNINITIALIZED'));
  const broken=runtime({record:async()=>{throw new Error('Injected runtime audit failure');}});

@@ -2,6 +2,7 @@
 .hl-ai-workforce>summary{padding:18px;font-weight:700;cursor:pointer;line-height:1.7}
 .hl-ai-workforce .hl-ai-body{padding:0 18px 18px}
 .hl-ai-workforce header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.hl-ai-workforce .hl-ai-provider-actions{display:flex;gap:10px;flex-wrap:wrap}
 .hl-ai-workforce h4,.hl-ai-workforce h5{margin:0 0 8px;font-size:1.05rem}
 .hl-ai-workforce p{line-height:1.8;overflow-wrap:anywhere}
 .hl-ai-workforce .hl-ai-explainer{font-size:.9rem;opacity:.85}

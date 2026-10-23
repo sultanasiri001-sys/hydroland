@@ -43,6 +43,14 @@ export class AgentRuntimeService {
     });
   }
 
+  async checkProviderConnection(actorId:string){
+    await this.db.serializable(tx=>requireVerifiedAdmin(tx,actorId));
+    const result=await this.model.checkConnection();
+    // Access may be revoked while the remote metadata request is in flight.
+    await this.db.serializable(tx=>requireVerifiedAdmin(tx,actorId));
+    return result;
+  }
+
   async catalog(actorId:string){
     return this.db.serializable(async tx=>{
       await requireVerifiedAdmin(tx,actorId);const now=await this.now(tx),config=this.model.configuration(),worker=await this.workerState(tx,config,now),budget=await this.reserved(tx,now);
