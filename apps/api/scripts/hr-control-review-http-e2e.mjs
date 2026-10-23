@@ -14,7 +14,7 @@ const endpoint='/admin/employees/compliance-controls';
 const fixture=async(name,role)=>{const p=await db.person.create({data:{firstName:'HR control',lastName:name}});people.push(p.id);const a=await db.account.create({data:{personId:p.id,email:`hr-control-${name}-${suffix}@example.invalid`,passwordHash,status:'ACTIVE',emailVerifiedAt:new Date()}});accounts.push(a.id);await db.roleAssignment.create({data:{accountId:a.id,role,status:'ACTIVE'}});return a};
 const login=async a=>{const r=await call('/auth/login',null,{email:a.email,password});assert.equal(r.status,200);return r.body.accessToken};
 const control=(extra={})=>({ruleKey:key,labelAr:'ضابط مراجع معزول',regulatoryRequirementId:'isolated-registry-requirement',regulatoryVersion:'isolated-v1',legalApprovalReference:'isolated-legal-approval',evidenceIds:['isolated-evidence-a','isolated-evidence-b'],...extra});
-const draft=(extra={},baseRevision=null)=>{const id=randomUUID();requestIds.push(id);return {requestId:id,control:control(extra),baseRevision,reason:'طلب مراجع في قاعدة اختبار معزولة',reviewed:true}};
+const draft=(extra={},baseRevision=null)=>{const id=randomUUID();requestIds.push(id);return {requestId:id,control:control(extra),baseRevision,reason:'طلب مراجع في قاعدة اختبار معزولة\nمع سبب متعدد الأسطر',reviewed:true}};
 const decision=(token,p,action,extra={})=>call(`${endpoint}/${p.id}/decision`,token,{action,expectedRevision:p.revision,reason:'قرار مستقل في اختبار معزول',reviewed:true,...extra});
 const policy=()=>db.policyControl.findUnique({where:{category_ruleKey:{category:'HR_COMPLIANCE',ruleKey:key}}});
 const effects=()=>Promise.all([db.account.count(),db.roleAssignment.count(),db.employment.count(),db.organizationMember.count(),db.aiAgentTask.count()]);
