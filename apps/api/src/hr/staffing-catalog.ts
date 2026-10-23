@@ -22,7 +22,8 @@ export function profileFor(code:unknown,departmentCode?:string){
 export function record(value:unknown):Record<string,unknown>{return value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:{};}
 // The canonical internal organization's owner is responsible for its staff
 // review, including requests the owner created. This is not a platform-wide
-// exception for other administrators, center memberships or final approval.
+// exception for other administrators or center memberships. Final appointment
+// approval is separately checked against the owner/delegation authority.
 export function platformOwnerCanReview(organization:{ownerId:string},actorId:string,employeeId:string){
   return actorId===organization.ownerId&&actorId!==employeeId;
 }

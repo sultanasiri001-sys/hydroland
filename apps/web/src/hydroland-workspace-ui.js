@@ -30,6 +30,7 @@
     '.hl-admin':['admin'],
     '.hl-admin-accounts':['admin'],
     '.hl-admin-employees':['admin'],
+    '.hl-staff-approvals':['diver','instructor','center','boat','organization','admin'],
     '.hl-theme-admin':['admin'],
     '.hl-trip-admin':['admin'],
     '.hl-store-admin':['center','admin'],
