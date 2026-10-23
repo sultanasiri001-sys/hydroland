@@ -16,6 +16,7 @@ const movementView={id:true,type:true,status:true,reason:true,requestedByAccount
 type MovementView=Prisma.EmploymentMovementGetPayload<{select:typeof movementView}>;
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const uuid=(value:unknown)=>typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+const complianceReasons=new Set(['HR_COMPLIANCE_CONTROLS_MISSING','HR_COMPLIANCE_REQUIREMENT_MISSING','HR_COMPLIANCE_EVIDENCE_MISSING','HR_COMPLIANCE_VALIDATION_FAILED','HR_COMPLIANCE_BLOCKING_FINDING']);
 
 @Injectable()
 export class StaffingAdminService {
@@ -31,6 +32,19 @@ export class StaffingAdminService {
   private async writeLock(tx:Prisma.TransactionClient,actorId:string,targetId?:string){
     await this.lockWrites(tx);
     return lockAdminIdentities(tx,actorId,targetId);
+  }
+
+  private async approvalReadiness(tx:Prisma.TransactionClient){
+    const available=await tx.account.count({where:{status:'ACTIVE',emailVerifiedAt:{not:null},roleAssignments:{some:{role:'ADMIN',status:'ACTIVE'}}}});
+    let compliance={ready:true,reason:'READY'};
+    try{await this.hr.assertProductionCompliance('APPROVE_APPOINTMENT',tx);}
+    catch(error){
+      const reason=error instanceof Error?error.message.split(':')[0]:'';
+      if(!complianceReasons.has(reason))throw error;
+      // Only the category is returned, never control references or evidence.
+      compliance={ready:false,reason};
+    }
+    return {checkedAt:new Date().toISOString(),independentAdministrators:{required:3,available},compliance};
   }
 
   async initialize(actorId:string,body:unknown){
@@ -66,11 +80,12 @@ export class StaffingAdminService {
     return this.db.serializable(async tx=>{
       await requireVerifiedAdmin(tx,actorId);const organization=await platformOrganization(tx);
       const email=this.email.publicConfig(),google={enabled:this.auth.googleConfig().enabled};
-      if(!organization)return {initialized:false,departments:[],profiles:STAFFING_PROFILES,email,google,items:[],nextCursor:null};
+      const approvalReadiness=await this.approvalReadiness(tx);
+      if(!organization)return {initialized:false,departments:[],profiles:STAFFING_PROFILES,email,google,approvalReadiness,items:[],nextCursor:null};
       const departments=await tx.orgUnit.findMany({where:{organizationId:organization.id,type:'DEPARTMENT',code:{in:STAFFING_DEPARTMENTS.map(d=>d.code)}},select:{id:true,code:true,nameAr:true,active:true},orderBy:{code:'asc'}});
       const rows=await tx.employmentMovement.findMany({where:{type:'APPOINTMENT',employment:{organizationId:organization.id,...(search?{account:{OR:[{email:{contains:search,mode:'insensitive'}},{person:{firstName:{contains:search,mode:'insensitive'}}},{person:{lastName:{contains:search,mode:'insensitive'}}}]}}:{})}},select:movementView,orderBy:[{createdAt:'desc'},{id:'desc'}],take:21,...(input.cursor?{cursor:{id:input.cursor as string},skip:1}:{})});
       const items=await Promise.all(rows.slice(0,20).map(row=>this.present(tx,row,actorId)));
-      return {initialized:true,departments,profiles:STAFFING_PROFILES,email,google,items,nextCursor:rows.length>20?rows[19].id:null};
+      return {initialized:true,departments,profiles:STAFFING_PROFILES,email,google,approvalReadiness,items,nextCursor:rows.length>20?rows[19].id:null};
     });
   }
 

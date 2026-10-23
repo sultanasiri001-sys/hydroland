@@ -10,6 +10,9 @@
  <label>سبب طلب التعيين<textarea name="reason" required minlength="5" maxlength="1000" rows="3"></textarea></label><label class="hl-staff-ack"><input type="checkbox" name="reviewed" required>راجعت الحساب والوظيفة والصلاحيات المطلوبة</label><p>الصلاحيات لا تتفعل بمجرد حفظ الطلب. الاعتماد يتطلب اكتمال ضوابط الموارد البشرية، وتفعيل الصلاحيات يستلزم دخولًا جديدًا للموظف.</p><button type="submit">حفظ طلب التعيين</button></fieldset><p role="status" data-form-feedback></p></form></section>
  <form data-staff-search hidden><fieldset><label>البحث في طلبات الموظفين<input name="search" maxlength="120" autocomplete="off"></label><button type="submit">بحث الموظفين</button></fieldset></form><div data-staff-list aria-live="polite"></div><nav aria-label="صفحات الموظفين" hidden><button type="button" data-staff-previous>طلبات أحدث</button><button type="button" data-staff-next>طلبات أقدم</button></nav>`;
  root.insertAdjacentElement('afterend',panel);
+ const readinessPanel=document.createElement('section');readinessPanel.dataset.staffReadiness='';readinessPanel.hidden=true;readinessPanel.setAttribute('aria-labelledby','hl-staff-readiness-title');
+ readinessPanel.innerHTML='<h4 id="hl-staff-readiness-title">متطلبات اعتماد التعيين</h4><p role="status" data-staff-readiness-status></p><p data-staff-readiness-admins></p><p data-staff-readiness-compliance></p><p>يمكن حفظ الطلب قبل اكتمال متطلبات الاعتماد. هذه قراءة عامة؛ يُعاد التحقق من استقلال الأطراف عن الموظف ومن حالة الحساب والضوابط عند كل قرار.</p>';
+ panel.querySelector('[data-staff-setup]').before(readinessPanel);
  const auth=()=>window.HydrolandAuth,access=()=>window.HydrolandPortalAccess;
  const eligible=()=>Boolean(auth()?.isAuthenticated?.()&&access()?.roleAllowed?.('admin')&&access()?.getCurrentRole?.()==='admin');
  const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -17,8 +20,18 @@
  const stateLabels={HR_REVIEW:'بانتظار مراجعة الموارد البشرية',APPROVAL_REQUIRED:'بانتظار اعتماد مستقل',EFFECTIVE:'تعيين معتمد',REJECTED:'طلب مرفوض',CANCELLED:'طلب ملغى'};
  const accountLabels={ACTIVE:'نشط',PENDING_VERIFICATION:'بانتظار التحقق',SUSPENDED:'معلق',ARCHIVED:'مؤرشف'};
  const roleLabels={STAFF:'موظف',HR_REVIEWER:'مراجع موارد بشرية',HR_MANAGER:'مدير موارد بشرية',ADMIN:'إدارة المنصة',DIVER:'هواة الغوص',INSTRUCTOR:'محترف غوص',DIVE_CENTER:'مركز غوص',BOAT_OWNER:'وسائط بحرية',ORGANIZATION:'جهة',REVIEWER:'مراجع',HR_EXECUTIVE:'إدارة الموارد البشرية',EXECUTIVE_APPROVER:'اعتماد تنفيذي',IAM_SERVICE:'خدمة الصلاحيات',CENTER_MANAGER:'إدارة مركز'};
+ const complianceLabels={READY:'ضوابط الموارد البشرية مكتملة بحسب القراءة الحالية.',HR_COMPLIANCE_CONTROLS_MISSING:'لم تُضبط ضوابط الموارد البشرية للاعتماد.',HR_COMPLIANCE_REQUIREMENT_MISSING:'بعض الضوابط تفتقد مرجع المتطلب أو نسخته.',HR_COMPLIANCE_EVIDENCE_MISSING:'أدلة بعض ضوابط الموارد البشرية غير مكتملة.',HR_COMPLIANCE_VALIDATION_FAILED:'بعض ضوابط الموارد البشرية لم تجتز التحقق أو انتهت صلاحيتها.',HR_COMPLIANCE_BLOCKING_FINDING:'توجد ملاحظة مانعة في ضوابط الموارد البشرية.'};
  let catalog=null,version=0,busy=false,cursor=null,nextCursor=null,history=[],search='';
  const current=(v,session)=>v===version&&session===auth()?.getSessionVersion?.()&&eligible()&&!panel.hidden;
+ function renderReadiness(value,unavailable='تعذر التحقق من متطلبات الاعتماد؛ حدّث الموظفين لقراءة الحالة.'){
+  const status=readinessPanel.querySelector('[data-staff-readiness-status]'),admins=readinessPanel.querySelector('[data-staff-readiness-admins]'),compliance=readinessPanel.querySelector('[data-staff-readiness-compliance]');
+  admins.textContent=compliance.textContent='';readinessPanel.hidden=false;
+  const counts=value?.independentAdministrators,control=value?.compliance,time=typeof value?.checkedAt==='string'?Date.parse(value.checkedAt):NaN;
+  if(!Number.isFinite(time)||!Number.isInteger(counts?.available)||counts.available<0||counts.required!==3||typeof control?.ready!=='boolean'||!Object.hasOwn(complianceLabels,control.reason)||control.ready!==(control.reason==='READY')){status.textContent=unavailable;return;}
+  status.textContent='وقت القراءة: '+new Intl.DateTimeFormat('ar-SA',{dateStyle:'medium',timeStyle:'medium'}).format(time);
+  admins.textContent=`حسابات الإدارة النشطة والمتحققة: ${counts.available}؛ الحد الأدنى لفصل مقدم الطلب والمراجع والمعتمد: ${counts.required}. `+(counts.available<counts.required?'العدد الحالي لا يكفي لإتمام الاعتماد المستقل.':'يتوفر العدد الأدنى؛ تُراجع أهلية الأطراف لكل طلب.');
+  compliance.textContent=complianceLabels[control.reason];
+ }
  function syncForm(){
   const form=requestForm.elements,create=form.mode.value==='CREATE';
   for(const [selector,enabled] of [['[data-staff-create]',create],['[data-staff-link]',!create]]){const group=requestForm.querySelector(selector);group.hidden=!enabled;group.querySelectorAll('input,select,button').forEach(e=>e.disabled=!enabled);}
@@ -34,7 +47,7 @@
   panel.querySelectorAll('fieldset,button').forEach(e=>{if(!e.closest('[data-agent-workforce]'))e.disabled=busy;});
   syncForm();panel.querySelector('[data-staff-previous]').disabled=busy||!history.length;panel.querySelector('[data-staff-next]').disabled=busy||!nextCursor;
  }
- function clear(){version++;busy=false;catalog=null;cursor=nextCursor=null;history=[];search='';panel.hidden=true;list.replaceChildren();feedback.textContent='';panel.querySelectorAll('form').forEach(f=>f.reset());delete requestForm.dataset.requestId;requestForm.elements.accountId.innerHTML='<option value="">ابحث ثم اختر حسابًا متحققًا</option>';panel.querySelector('[data-staff-lookup-feedback]').textContent='';panel.querySelectorAll('[data-form-feedback]').forEach(e=>e.textContent='');syncForm();}
+ function clear(){version++;busy=false;catalog=null;cursor=nextCursor=null;history=[];search='';panel.hidden=true;list.replaceChildren();feedback.textContent='';readinessPanel.hidden=true;readinessPanel.querySelectorAll('[data-staff-readiness-status],[data-staff-readiness-admins],[data-staff-readiness-compliance]').forEach(e=>e.textContent='');panel.querySelectorAll('form').forEach(f=>f.reset());delete requestForm.dataset.requestId;requestForm.elements.accountId.innerHTML='<option value="">ابحث ثم اختر حسابًا متحققًا</option>';panel.querySelector('[data-staff-lookup-feedback]').textContent='';panel.querySelectorAll('[data-form-feedback]').forEach(e=>e.textContent='');syncForm();}
  async function authorize(v,session){const allowed=await access()?.authorizeRole?.('admin',{sessionVersion:session,isCurrent:()=>v===version&&!panel.hidden});if(!allowed||!current(v,session)){if(v===version)clear();return false}return true;}
  async function responseBody(response,v,session){const data=await response.json().catch(()=>null);if(response.status===403&&current(v,session))await authorize(v,session);if(!response.ok)throw new Error(response.status===409?(data?.message||'تغير الطلب؛ حدّث الموظفين وراجع القرار.'):data?.message||'تعذر إكمال الطلب.');return data;}
  function renderRows(rows){
@@ -46,14 +59,14 @@
   }).join(''):'<p>لا توجد طلبات موظفين مطابقة في النطاق الداخلي.</p>';
  }
  async function load(){
-  if(!eligible()){clear();return}const v=++version,session=auth()?.getSessionVersion?.();panel.hidden=false;busy=true;feedback.textContent='جارٍ تحميل طلبات الموظفين…';list.replaceChildren();lock();
+  if(!eligible()){clear();return}const v=++version,session=auth()?.getSessionVersion?.();panel.hidden=false;busy=true;feedback.textContent='جارٍ تحميل طلبات الموظفين…';list.replaceChildren();renderReadiness(null,'جارٍ قراءة متطلبات الاعتماد…');lock();
   try{if(!await authorize(v,session))return;const query=new URLSearchParams();if(cursor)query.set('cursor',cursor);if(search)query.set('search',search);const response=await auth().authorizedFetch('/admin/employees'+(query.size?'?'+query:''));const data=await responseBody(response,v,session);if(!current(v,session))return;if(!Array.isArray(data?.items)||!Array.isArray(data.departments)||!Array.isArray(data.profiles))throw new Error('استجابة الموظفين غير مكتملة.');
-   catalog={initialized:data.initialized,departments:data.departments,profiles:data.profiles,email:data.email,google:data.google};nextCursor=data.nextCursor||null;
+   catalog={initialized:data.initialized,departments:data.departments,profiles:data.profiles,email:data.email,google:data.google};nextCursor=data.nextCursor||null;renderReadiness(data.approvalReadiness);
    panel.querySelector('[data-staff-setup]').hidden=Boolean(data.initialized);panel.querySelector('[data-staff-request-section]').hidden=!data.initialized;searchForm.hidden=!data.initialized;panel.querySelector('nav[aria-label="صفحات الموظفين"]').hidden=!data.initialized;
    const selected=requestForm.elements.departmentCode.value;requestForm.elements.departmentCode.innerHTML=data.departments.filter(d=>d.active).map(d=>`<option value="${esc(d.code)}">${esc(d.nameAr)}</option>`).join('');if(data.departments.some(d=>d.active&&d.code===selected))requestForm.elements.departmentCode.value=selected;
    panel.querySelector('[data-staff-auth-note]').textContent=data.email?.restricted?'إرسال البريد التجريبي مقيد. يمكن اختيار Google إذا كان متاحًا أو ربط حساب متحقق موجود.':!data.email?.enabled?'التحقق بالبريد غير جاهز. يمكن استخدام Google إذا كان متاحًا أو ربط حساب متحقق.':'إنشاء الحساب بالبريد يرسل رسالة تحقق آمنة إلى صاحبه.';
    renderRows(data.items);feedback.textContent=data.initialized?`تم تحميل ${data.items.length} طلبًا من الخادم.`:'الهيكل الداخلي لم يُهيأ بعد. ابدأ بالتهيئة لإضافة الموظفين.';
-  }catch(error){if(current(v,session)){nextCursor=null;feedback.textContent=error.message||'تعذر تحميل الموظفين.';}}
+  }catch(error){if(current(v,session)){nextCursor=null;renderReadiness(null);feedback.textContent=error.message||'تعذر تحميل الموظفين.';}}
   finally{if(current(v,session)){busy=false;lock();}}
  }
  async function mutate(form,path,body,method,success){
