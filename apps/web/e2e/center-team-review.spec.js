@@ -15,7 +15,7 @@ async function install(page){
 }
 test('center professionals can switch to center team membership',async({page})=>{
  await install(page);await page.locator('[data-portal-label="محترفي الغوص"]').click();const panel=page.locator('#hl-center-team');await expect(panel).toBeVisible();await expect(panel).toContainText('محترف المركز');await expect(panel).toContainText('التكليفات التدريبية: 4');
- await panel.locator('[data-center-team-mode="team"]').click();await expect(panel).toContainText('عضو المركز');await expect(panel).toContainText('Dive Instructor');
+ await panel.locator('[data-center-team-mode="team"]').click();await expect(panel).toContainText('عضو المركز');await expect(panel).toContainText('Dive Instructor');await expect(panel.locator('[data-center-team-description]')).toContainText('من حساب إدارة المركز');
 });
 test('center team rejects malformed payload and clears on logout',async({page})=>{
  const state=await install(page);state.pros={members:[]};await page.locator('[data-portal-label="محترفي الغوص"]').click();const panel=page.locator('#hl-center-team');await expect(panel.locator('[role="alert"]')).toContainText('غير مكتملة');
