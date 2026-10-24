@@ -2,9 +2,11 @@ import { test, expect } from '@playwright/test';
 import { openWorkspaceSwitcher } from './portal-test-helpers.js';
 const json = (route, value, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
 const codes = ['HR','TRAINING','MARINE_OPERATIONS','INVENTORY_LOGISTICS','FINANCE','SAFETY_COMPLIANCE_RISK','CUSTOMER_EXPERIENCE','MARKETING_GROWTH','TECHNOLOGY_CYBERSECURITY','FACILITIES_ASSETS_MAINTENANCE','ADMIN_AFFAIRS_RECORDS','EXECUTIVE_GOVERNANCE','RND_MARKET_INTELLIGENCE','LEGAL_CONTRACTS_INSURANCE'];
+const operatingCycle = code => ({ departmentClosed:false, closureAssessment:'NOT_ASSESSED', sharedEngineBoundaryAr:'التنفيذ والتحقق والإقفال أعمال في المجال المختص', cycles:[{titleAr:'دورة تشغيل '+code,stepsAr:['طلب','مراجعة','اعتماد','تنفيذ','تحقق','إقفال وأرشفة']}],closureEvidenceAr:['دليل تنفيذ مرتبط بالسجل'],templates:[{code:code+'-SOURCE',titleAr:'نموذج مصدري للاختبار',availability:code==='HR'?'MULTIPLE_ACTIVE_VERSIONS':'NO_ACTIVE_VERSION_RECORDED',recordedVersions:[]}],documentCounts:[{status:'ARCHIVED',count:5}],closureGates:[{labelAr:'إثبات الإجراء والصلاحيات والنتيجة'}] });
 const snapshot = () => ({
-  catalogVersion: 'isolated-v1', referenceOnly: true, canActivate: false, canonicalDepartmentCount: 14, recordedDepartmentCount: 14, effectivePolicyCount: 1, policiesWithRecordedReferences: 0, observedAt: new Date().toISOString(),
-  departments: codes.map(code => ({ code, nameAr: code === 'HR' ? 'الموارد البشرية' : code === 'FINANCE' ? 'المالية' : code, unitRecorded: true, unitActive: true, authorityIds: ['GOV-1'], legalReferenceIds: ['LEG-1'], marineArchiveIds: code === 'HR' ? ['MAR-ARCH-1'] : [], hrSourceIds: code === 'HR' ? ['HR-1'] : [], policies: [{ category: 'FIXTURE', ruleKey: 'FIXTURE-CONTROL', labelAr: 'ضابط مشترك للاختبار', state: 'ENABLED', referencesRecorded: false }], canActivate: false })),
+  catalogVersion: 'isolated-v2', referenceOnly: true, canActivate: false, completeDocumentInventoryVerified:false, canonicalDepartmentCount: 14, recordedDepartmentCount: 14, effectivePolicyCount: 1, policiesWithRecordedReferences: 0, observedAt: new Date().toISOString(),
+  departments: codes.map(code => ({ code, nameAr: code === 'HR' ? 'الموارد البشرية' : code === 'FINANCE' ? 'المالية' : code, unitRecorded: true, unitActive: true, authorityIds: ['GOV-1'], legalReferenceIds: ['LEG-1'], marineArchiveIds: code === 'HR' ? ['MAR-ARCH-1'] : [], hrSourceIds: code === 'HR' ? ['HR-1'] : [],isoReferenceIds:['ISO-9001'],operatingCycle:operatingCycle(code), policies: [{ category: 'FIXTURE', ruleKey: 'FIXTURE-CONTROL', labelAr: 'ضابط مشترك للاختبار', state: 'ENABLED', referencesRecorded: false }], canActivate: false })),
+  isoReferences:[{id:'ISO-9001',designation:'ISO 9001:2026',titleAr:'إدارة الجودة',snapshotDate:'2026-10-24',scopeAr:'قرار الانتقال معلق',url:'https://www.iso.org/standard/9001'}],
   authorities: [{ id: 'GOV-1', nameAr: 'جهة اختبار معزولة', recordedStatus: 'قيد الاستكمال', snapshotDate: '2026-09-17', scope: 'نطاق مرجعي تجريبي', routingStatus: 'PROPOSED_OWNER_ROUTING', sourceLibraryFileId: 'libfile_fixtureauthority' }],
   legalReferences: [{ id: 'LEG-1', titleAr: 'مرجع قانوني للاختبار', recordedStatus: 'Active', snapshotDate: '2026-09-16', url: 'https://example.invalid/official-reference', sourceLibraryFileId: 'libfile_fixturelegal' }],
   marineArchives: [{ id: 'MAR-ARCH-1', titleAr: 'ملف غوص محفوظ للاختبار', recordedStatus: 'الإصدار وقابلية الانطباق قيد التحقق', snapshotDate: '2026-10-24', sourceLibraryFileId: 'libfile_fixturemarine' }],
@@ -43,6 +45,12 @@ test('department source discovery is lazy, read only and separate from approval'
   await expect(page.locator('[data-reference-detail] a[href*="libfile_fixturemarine"]')).toHaveCount(1);
   await expect(page.locator('[data-reference-detail]')).toContainText('مفعّل تشغيليًا');
   await expect(page.locator('[data-reference-detail]')).toContainText('ربط المتطلب ونسخته وأدلته ومرجع اعتماده غير مكتمل');
+  await expect(page.locator('[data-reference-detail]')).toContainText('دورة تشغيل HR');
+  await expect(page.locator('[data-reference-detail]')).toContainText('إقفال وأرشفة');
+  await expect(page.locator('[data-reference-detail]')).toContainText('تعارض: أكثر من نسخة نشطة');
+  await expect(page.locator('[data-reference-detail]')).toContainText('العدد لا يقيس اكتمال الإجراء');
+  await expect(page.locator('[data-reference-detail]')).toContainText('ISO 9001:2026');
+  await expect(page.locator('[data-reference-detail]')).toContainText('حالة تحقق إقفال الإدارة: لم تُقيّم');
   expect(state.writes).toBe(0);
   await page.getByRole('button', { name: 'فتح مسار مراجعة ضوابط الموارد البشرية', exact: true }).click();
   await expect(page.locator('[data-hr-control-review]')).toHaveAttribute('open', '');
@@ -50,6 +58,8 @@ test('department source discovery is lazy, read only and separate from approval'
   await expect(page.locator('[data-hr-control-request] [name=legalApprovalReference]')).toHaveValue(''); expect(state.writes).toBe(0);
   await page.getByLabel('إدارة المراجع').selectOption('FINANCE');
   await expect(page.locator('[data-reference-detail]')).toContainText('المالية');
+  await expect(page.locator('[data-reference-detail]')).toContainText('دورة تشغيل FINANCE');
+  await expect(page.locator('[data-reference-detail]')).not.toContainText('دورة تشغيل HR');
   await expect(page.locator('[data-reference-detail]')).not.toContainText('مواصفة دليل تجريبية');
 });
 test('late source data cannot reappear after leaving the department workspace', async ({ page }) => {
@@ -77,6 +87,9 @@ test('failed and malformed refreshes remove stale reference claims', async ({ pa
   await expect(page.locator('[data-reference-detail]')).toBeEmpty(); await expect(page.getByLabel('إدارة المراجع')).toBeDisabled();
   state.fail = false; state.data.referenceOnly = false;
   await page.getByRole('button', { name: 'تحديث المراجع', exact: true }).click(); await expect(page.locator('[data-reference-status]')).toContainText('غير مكتملة');
+  await expect(page.locator('[data-reference-detail]')).toBeEmpty(); expect(state.writes).toBe(0);
+  state.data.referenceOnly=true; state.data.departments[0].operatingCycle.departmentClosed=true;
+  await page.getByRole('button',{name:'تحديث المراجع',exact:true}).click(); await expect(page.locator('[data-reference-status]')).toContainText('دورة الإدارة غير مكتملة');
   await expect(page.locator('[data-reference-detail]')).toBeEmpty(); expect(state.writes).toBe(0);
 });
 test('mobile reference discovery fits the workspace and logout clears its content', async ({ page }) => {
