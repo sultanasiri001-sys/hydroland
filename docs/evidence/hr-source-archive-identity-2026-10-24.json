@@ -4,14 +4,24 @@
   "bytes": 1141447,
   "sha256": "cfb8e0e6bb0176ebe045e38aed072fc4f7ce5c2f72ee796f4de0beb216c4b5d6",
   "scope": "EXISTING_LIBRARY_ARCHIVE_IDENTITY_ONLY",
-  "officialSourceByteIdentityVerified": false,
+  "officialSourceByteIdentityVerified": true,
   "legalApprovalRecorded": false,
   "officialSourceComparison": {
+    "url": "https://www.hrsd.gov.sa/sites/default/files/2025-11/labor-law.pdf",
+    "observedAtUtc": "2026-10-24T21:07:24.548239+00:00",
+    "method": "OFFICIAL_BROWSER_PDF_DOWNLOAD_AND_SHA256_MATCH",
+    "httpStatus": null,
+    "result": "BYTE_IDENTICAL_TO_RECORDED_LIBRARY_ARCHIVE",
+    "bytes": 1141447,
+    "sha256": "cfb8e0e6bb0176ebe045e38aed072fc4f7ce5c2f72ee796f4de0beb216c4b5d6",
+    "responseStatusExposedByBrowserDownload": false
+  },
+  "sourceFileId": "file_0000000099d88211a329b7cf2bce75cc",
+  "sourceLibraryVersion": 0,
+  "previousOfficialSourceComparison": {
     "url": "https://www.hrsd.gov.sa/sites/default/files/2025-11/labor-law.pdf",
     "observedAtUtc": "2026-10-24T17:50:22+00:00",
     "httpStatus": 503,
     "result": "HTTPError"
-  },
-  "sourceFileId": "file_0000000099d88211a329b7cf2bce75cc",
-  "sourceLibraryVersion": 0
+  }
 }
