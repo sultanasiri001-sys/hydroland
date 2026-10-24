@@ -17,7 +17,7 @@ This is a release/acceptance register, not a project completion percentage.
 
 | Priority | Tracking | Required concrete result |
 | --- | --- | --- |
-| 1 — HR legal references | Existing HR Mapping/Reference Pack; #493/#500/#501 | Match official source/archive bytes and versions, complete applicability/requirement references and obtain real independent review. The later labor-law.pdf exists and has a recorded hash; its official-source identity is not yet certified. Seven controls remain disabled. Owner 001 responsibility and three internal-draft template approvals are already complete and must not be repeated. |
+| 1 — HR legal references | Existing HR Mapping/Reference Pack; #493/#500/#501 | Five official PDFs are now archived and the labor-law bytes match the existing Library archive; see evidence/hr-official-source-verification-2026-10-24.json and reference pack revision 3. Regulation decision 115921 issue/effective Hijri dates and the original 75506 date rule are observed; the latter web-page date conflict remains explicit. Complete actual independent legal review, applicable requirement/version decisions and real employee evidence. Seven candidate controls remain disabled. Owner 001 responsibility and three internal-draft approvals remain completed. |
 | 2 — Full recovery acceptance | #369 and production runbook | Native logical restoration is verified. Separately complete provider PITR or formally accept the complete alternative, referenced object recovery, applicable owner/ACL transfer, agreed RPO/RTO and cutover/rollback review. No permission to create a new paid resource is inferred. |
 | 3 — Fresh installation | Draft #446 | Resolve complete domain/type/time/null/default/index equivalence and explicit ledger transition. Existing production and history remain unchanged; native archive evidence does not adopt the candidate. |
 | 4 — Organization commercial policy | Inactive #445 proposal | Record issuer/customer, payment terms, delegated authority, invoice/tax/refund rules and the canonical calendar confirmation policy before implementation. Published portal #470 and completed provider tests are separate evidence. |
@@ -39,3 +39,10 @@ they do not establish every provider's current status.
 The delivery register reconciles 13 of 33 overlapping areas; 20 retain explicit
 historical evidence dates. Accepted account/professional scopes are preserved.
 No overall percentage or new human/legal/operational approval is invented.
+
+## Bounded source and document updates
+
+- #505 is merged at d101ce1530f4424b63434cb6e8d33f61e302f5b0 and published. The authorized UI step saved all 21 HR source templates; a fresh inventory read showed 21 prepared, zero unconfigured and zero actual managed documents. Do not repeat template setup or infer employee decisions from it.
+- Official PDF source archives and the law byte comparison are complete for this five-file set. Four new direct PDF archives were saved; the existing labor-law.pdf identity was reused. Four direct PDFs are byte-identical; the 115921 display PDF has appended provenance with unchanged page rendering. All five original PDFs are separately preserved byte-for-byte in ZIP libfile_00592897d9b481918e1678fd4782b55e; the ZIP and every member were materialized and hash-verified. Preserve both the former failed HTTP observations and the successful origin-download evidence.
+- The 115921 original shows issue 19/8/1446 and operation from 20/8/1446. The original 75506 shows issue 5/5/1444 and its fourth clause ties operation to its date; the displayed page effective date is not silently adopted or resolved by this evidence update.
+- This metadata release does not approve legal applicability, populate approved requirements, provide employee evidence or activate HR controls. Three web-source snapshots and any later legislative changes still require their own verification.
