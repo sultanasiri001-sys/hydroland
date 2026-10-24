@@ -51,6 +51,7 @@ for (const source of result.isoReferences) {
   for (const code of source.departmentCodes) assert(HYDROLAND_DEPARTMENTS.some(d=>d.code===code));
 }
 assert.equal(result.isoReferences.find(s=>s.id==='ISO-9001').designation,'ISO 9001:2026');
+for (const number of ['9001','45001','31000']) assert.equal(new URL(result.isoReferences.find(s=>s.id==='ISO-'+number).url).pathname,'/standard/'+number,'Management standards use publisher edition landing URLs, not numeric catalog-item IDs');
 for (const source of result.marineArchives) { assert.equal(source.officialSourceByteIdentityVerified, false); assert.equal(source.regulatoryVersion, null); assert.equal(source.legalApprovalReference, null); assert(source.sourceLibraryFileId.startsWith('libfile_')); assert(source.sourceFileId.startsWith('file_')); }
 assert.deepEqual(result.departments.map(d => d.code), HYDROLAND_DEPARTMENTS.map(d => d.code));
 assert.equal(result.effectivePolicyCount, 2); assert.equal(result.policiesWithRecordedReferences, 1);
