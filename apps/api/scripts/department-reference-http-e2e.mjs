@@ -30,8 +30,9 @@ try {
   assert.equal((await call(endpoint+'?department=UNKNOWN',token)).status,400); assert.equal((await call(endpoint+'?department=HR&department=FINANCE',token)).status,400);
   assert.equal((await call(endpoint,token,{activate:true})).status,404);
   assert(!/passwordHash|accessToken|refreshToken|requestedByAccountId|approvedByAccountId/.test(JSON.stringify(data)), 'No private identity or raw policy metadata');
-  await db.account.update({where:{id:admin.id},data:{emailVerifiedAt:null}}); assert.equal((await call(endpoint,token)).status,403);
+  await db.account.update({where:{id:admin.id},data:{emailVerifiedAt:null}}); assert.equal((await call(endpoint,token)).status,401, 'Unverified accounts are rejected by the existing session guard');
   await db.account.update({where:{id:admin.id},data:{emailVerifiedAt:new Date()}});
+  assert.equal((await call(endpoint,token)).status,200, 'Reverified account retains its unchanged valid session and role');
   await db.roleAssignment.update({where:{accountId_role:{accountId:admin.id,role:'ADMIN'}},data:{status:'SUSPENDED'}}); assert.equal((await call(endpoint,token)).status,403);
   assert.deepEqual(await effects(),before,'Discovery cannot alter policies, employees, memberships, documents or AI tasks');
   console.log('Department reference HTTP/PostgreSQL passed: real guards and fresh revocation, uncached discovery, canonical sources, bounded filtering, no activation route and no business-state changes.');
