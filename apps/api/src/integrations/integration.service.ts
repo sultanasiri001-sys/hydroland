@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { AuditService } from '../audit/audit.service';
 import { IntegrationDescriptor, IntegrationKey, MapsPublicConfigPayload, VerifiedWebhook, WeatherPublicConfigPayload } from './integration.types';
 const catalog:readonly IntegrationDescriptor[]=[
+ {key:'AI_MODEL',name:'Bounded AI task execution',category:'ai',status:'NOT_SELECTED',requiresHumanApproval:true,supportsWebhook:false},
  {key:'WEATHER_MARINE',name:'Weather & marine data',category:'marine',status:'NOT_SELECTED',requiresHumanApproval:false,supportsWebhook:false},
  {key:'EMAIL',name:'Email delivery',category:'messaging',status:'NOT_SELECTED',requiresHumanApproval:false,supportsWebhook:true},
  {key:'SMS',name:'SMS delivery',category:'messaging',status:'NOT_SELECTED',requiresHumanApproval:false,supportsWebhook:true},

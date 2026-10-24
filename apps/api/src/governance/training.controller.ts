@@ -1,9 +1,11 @@
-import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { TrainingEnrollmentStatus, TrainingRecordStatus } from '@prisma/client';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { TrainingAuthorizationService } from './training-authorization.service';
 import { TrainingRepositoryService } from './training-repository.service';
 import { TrainingProfessionalProfileService } from './training-professional-profile.service';
+import { TrainingCourseProgressService } from './training-course-progress.service';
+import { TrainingCertificateService } from './training-certificate.service';
 
 type AuthenticatedRequest = { auth: { accountId: string } };
 
@@ -14,7 +16,18 @@ export class TrainingController {
     private readonly training: TrainingRepositoryService,
     private readonly authorization: TrainingAuthorizationService,
     private readonly professionalProfile: TrainingProfessionalProfileService,
+    private readonly progress: TrainingCourseProgressService,
+    private readonly certificates: TrainingCertificateService,
   ) {}
+
+  @Get('professional/me/enrollments/:id/plan')
+  professionalPlan(@Req() request:AuthenticatedRequest,@Param('id') id:string){return this.progress.plan(request.auth.accountId,id);}
+
+  @Post('professional/me/enrollments/:id/plan')
+  addPlanSkill(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.progress.addPlanSkill(request.auth.accountId,id,body);}
+
+  @Post('professional/me/enrollments/:id/complete')
+  completeCourse(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.progress.complete(request.auth.accountId,id,body);}
 
   @Get('professional/me/earnings')
   professionalEarnings(@Req() request: AuthenticatedRequest) {
@@ -33,11 +46,13 @@ export class TrainingController {
   }
 
   @Post('certificates/:id/decision')
-  async decideCertificate(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { outcome: 'APPROVED'|'REJECTED'; reason?: string }) {
+  async decideCertificate(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: Record<string,unknown>) {
     await this.authorization.assertReviewer(request.auth.accountId);
-    if (!['APPROVED','REJECTED'].includes(body.outcome)) throw new BadRequestException('Unsupported certificate decision.');
-    return this.training.decideCertificate(id, body.outcome, request.auth.accountId, body.reason);
+    return this.certificates.decide(id, request.auth.accountId, body);
   }
+
+  @Get('certificates')
+  certificateQueue(@Req() request:AuthenticatedRequest,@Query('status') status?:string,@Query('cursor') cursor?:string){return this.certificates.list(request.auth.accountId,status,cursor);}
 
   @Get('professional/me/skills')
   professionalSkills(@Req() request: AuthenticatedRequest) {

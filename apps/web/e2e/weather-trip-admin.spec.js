@@ -49,7 +49,7 @@ test('admin can create a geolocated trip, refresh Stormglass and approve the for
   await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','weather-e2e-access');sessionStorage.setItem('hl-refresh-token','weather-e2e-refresh');window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));await window.HydrolandProfile.load()});
   await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="admin"]').click();
 
-  await page.locator('.hl-role-dashboard [data-action-label="الرحلات والحجوزات"]').click();
+  await page.locator('.hl-role-dashboard .hl-portal-nav-item').filter({hasText:'الرحلات والحجوزات'}).click();
   const tripPanel=page.locator('.hl-trip-admin');const weatherPanel=page.locator('.hl-weather-admin');
   await expect(tripPanel).toBeVisible();await expect(weatherPanel).toHaveCount(1);
   const form=tripPanel.locator('[data-trip-admin-form]');
@@ -61,10 +61,12 @@ test('admin can create a geolocated trip, refresh Stormglass and approve the for
   await form.locator('[name="startsAt"]').fill(startsAt.toISOString().slice(0,16));
   await form.locator('[name="endsAt"]').fill(endsAt.toISOString().slice(0,16));
   await form.locator('[name="capacity"]').fill('8');
+  await form.locator('[name="price"]').fill('1.25');
   await form.locator('[name="status"]').selectOption('OPEN');
   await form.locator('button[type="submit"]').click();
 
   await expect.poll(()=>state.created?.title).toBe('رحلة طقس تجريبية');
+  expect(state.created?.pricePerSeatMinor).toBe(125);
   expect(state.created?.locationName).toBe('مرسى القحمة');expect(state.created?.latitude).toBe(18.015432);expect(state.created?.longitude).toBe(41.708765);
   const tripRow=tripPanel.locator('[data-trip-row="trip-weather-e2e"]');await expect(tripRow).toBeVisible();
 

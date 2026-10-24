@@ -1,6 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { DocumentAuthorizationService } from './document-authorization.service';
+import { CooperationContractService } from './cooperation-contract.service';
+import { COOPERATION_CODE, CONTRACT_FIELDS } from './cooperation-contract.domain';
+import { isLibraryCode } from './contract-library.domain';
 
 export interface DocumentPrintContract {
   documentId:string;
@@ -16,16 +19,20 @@ export interface DocumentPrintContract {
   approvals:{createdByAccountId:string;approvedByAccountId:string|null;signedByAccountId:string|null;archivedByAccountId:string|null;approvedAt:Date|null;signedAt:Date|null;archivedAt:Date|null};
   createdAt:Date;
   updatedAt:Date;
+  cooperation?:Awaited<ReturnType<CooperationContractService['get']>>;
 }
 
 @Injectable()
 export class DocumentPrintService {
-  constructor(private readonly db:DatabaseService,private readonly authz:DocumentAuthorizationService){}
+  constructor(private readonly db:DatabaseService,private readonly authz:DocumentAuthorizationService,private readonly cooperation:CooperationContractService){}
 
   async contract(accountId:string,id:string):Promise<DocumentPrintContract>{
     const d=await this.db.managedDocument.findUnique({where:{id},include:{template:true}});
     if(!d) throw new NotFoundException('Document not found.');
-    await this.authz.assert(accountId,d.organizationId,'DOCUMENT_READ');
+    if(isLibraryCode(d.template.code)) throw new BadRequestException('القالب ليس عقداً منفذاً؛ افتحه من مكتبة العقود.');
+    const cooperation=d.template.code===COOPERATION_CODE?await this.cooperation.get(accountId,id):undefined;
+    if(cooperation&&(cooperation.version!==d.version||cooperation.contentHash!==d.contentHash||(cooperation.status==='APPROVED')!==(d.status==='SIGNED'))) throw new BadRequestException('تغير العقد أثناء إعداد النسخة؛ أعد المحاولة.');
+    if(!cooperation) await this.authz.assert(accountId,d.organizationId,'DOCUMENT_READ');
     if(!d.template.printable) throw new BadRequestException('Document template is not printable.');
     const brandVersion=d.documentBrandVersion;
     if(!brandVersion) throw new BadRequestException('Document branding version is not pinned.');
@@ -33,7 +40,10 @@ export class DocumentPrintService {
     if(!branding) throw new BadRequestException('Pinned document branding snapshot was not found.');
     const definitions=Array.isArray(d.template.fields)?d.template.fields as Array<Record<string,unknown>>:[];
     const payload=d.payload&&typeof d.payload==='object'&&!Array.isArray(d.payload)?d.payload as Record<string,unknown>:{};
-    const fields=definitions.map(f=>({
+    const fields=cooperation?[
+      ...CONTRACT_FIELDS.map(([section,key,labelAr])=>({key:section+'.'+key,labelAr,labelEn:key,type:'TEXT',required:true,value:cooperation.values[section][key]})),
+      ...cooperation.clauses.map((value,i)=>({key:'clause-'+i,labelAr:`البند ${i+1}`,labelEn:`Clause ${i+1}`,type:'TEXT',required:true,value})),
+    ]:definitions.map(f=>({
       key:String(f.key??''),
       labelAr:String(f.labelAr??''),
       labelEn:String(f.labelEn??''),
@@ -49,6 +59,7 @@ export class DocumentPrintService {
       fields,
       approvals:{createdByAccountId:d.createdByAccountId,approvedByAccountId:d.approvedByAccountId,signedByAccountId:d.signedByAccountId,archivedByAccountId:d.archivedByAccountId,approvedAt:d.approvedAt,signedAt:d.signedAt,archivedAt:d.archivedAt},
       createdAt:d.createdAt,updatedAt:d.updatedAt,
+      ...(cooperation?{cooperation}:{}),
     };
   }
 }

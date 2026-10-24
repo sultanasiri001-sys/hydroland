@@ -1,3 +1,4 @@
+import { trainingOperationalPolicy } from './training-operational-policy';
 import { TrainingSessionService } from './training-session.service';
 import { courseSchedulable, sessionControls } from './training-session-policy';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
@@ -45,6 +46,7 @@ export class TrainingAssignmentService {
  async listCenter(accountId:string,cursor?:string){
   if(cursor!==undefined&&(typeof cursor!=='string'||cursor.length>100))throw new BadRequestException('مؤشر الصفحة غير صالح.');
   return this.db.serializable(async tx=>{
+   const operationalPolicy=await trainingOperationalPolicy(tx);
    const center=await this.center(tx,accountId),now=new Date();
    const anchor=cursor?await tx.trainingEnrollment.findFirst({where:{id:cursor,centerOrganizationId:center.id},select:{id:true,enrolledAt:true}}):null;
    if(cursor&&!anchor)throw new NotFoundException('الصفحة غير موجودة في المركز.');
@@ -56,7 +58,7 @@ export class TrainingAssignmentService {
    const name=(person:{firstName:string;lastName:string|null})=>[person.firstName,person.lastName].filter(Boolean).join(' ').trim()||'مستخدم';
    const names=new Map(accounts.map(row=>[row.id,name(row.person)])),eligibleIds=new Set(members.map(row=>row.accountId));
    const instructor=(id:string|null)=>id?{accountId:id,displayName:names.get(id)||'مدرب سابق',eligible:eligibleIds.has(id)}:null;
-   return {center:{displayName:center.displayName},timeZone:'Asia/Riyadh',instructors:members.map(row=>({accountId:row.accountId,displayName:name(row.account.person)})),enrollments:page.map(row=>({id:row.id,courseCode:row.courseCode,status:row.status,enrolledAt:row.enrolledAt,updatedAt:row.updatedAt,student:{displayName:names.get(row.studentAccountId)||'متدرب'},instructor:instructor(row.instructorAccountId),canCreateSession:courseSchedulable(row),canAssign:mutableEnrollment(row)&&!row.record?.sessions.some(item=>openSession(item,now)),record:row.record?{id:row.record.id,status:row.record.status,sessions:row.record.sessions.map(item=>({id:item.id,status:item.status,startsAt:item.startsAt,endsAt:item.endsAt,updatedAt:item.updatedAt,instructor:instructor(item.instructorAccountId),...sessionControls(row,item,now),canAssign:mutableEnrollment(row)&&movableSession(item,now)}))}:null})),nextCursor:rows.length>50?page[page.length-1].id:null};
+   return {center:{displayName:center.displayName},timeZone:'Asia/Riyadh',instructors:members.map(row=>({accountId:row.accountId,displayName:name(row.account.person)})),enrollments:page.map(row=>({id:row.id,courseCode:row.courseCode,status:row.status,enrolledAt:row.enrolledAt,updatedAt:row.updatedAt,student:{displayName:names.get(row.studentAccountId)||'متدرب'},instructor:instructor(row.instructorAccountId),canCreateSession:courseSchedulable(row),canAssign:mutableEnrollment(row)&&!row.record?.sessions.some(item=>openSession(item,now)),record:row.record?{id:row.record.id,status:row.record.status,sessions:row.record.sessions.map(item=>({id:item.id,status:item.status,startsAt:item.startsAt,endsAt:item.endsAt,updatedAt:item.updatedAt,instructor:instructor(item.instructorAccountId),...sessionControls(row,item,now,operationalPolicy),canAssign:mutableEnrollment(row)&&movableSession(item,now)}))}:null})),nextCursor:rows.length>50?page[page.length-1].id:null};
   });
  }
 

@@ -18,13 +18,21 @@
     '.hl-crew-assignments':['instructor','center','boat','admin'],
     '.hl-dive-review':['instructor','center','admin'],
     '.hl-documents':['center','boat','organization','admin'],
-    '#hl-marine-documents':['boat','admin'],
+    '#hl-contracts':['center','instructor','admin'],
+    '#hl-contract-library':['diver','instructor','center','boat','organization','admin'],
+    '#hl-marine-documents':['center','boat','admin'],
     '#hl-marine-readiness':['boat','admin'],
+    '#hl-marine-trips':['boat'],
+    '.hl-center-training':['center'],
     '.hl-center-business-profile':['center'],
+    '.hl-center-finance':['center'],
     '.hl-center-bookings':['center'],
     '.hl-center-safety':['center'],
     '.hl-organizations':['center','boat','organization','admin'],
     '.hl-admin':['admin'],
+    '.hl-admin-accounts':['admin'],
+    '.hl-admin-employees':['admin'],
+    '.hl-staff-approvals':['diver','instructor','center','boat','organization','admin'],
     '.hl-theme-admin':['admin'],
     '.hl-trip-admin':['admin'],
     '.hl-store-admin':['center','admin'],
@@ -45,7 +53,7 @@
       document.querySelectorAll(selector).forEach(node=>node.classList.toggle('hl-workspace-hidden',!isAuthed||!roles.includes(role)));
     }
     syncNavigation(role);
-    if(selected?.isConnected&&isAuthed){selected.classList.add('hl-workspace-selected');if(document.body.dataset.hlWorkspaceService==='hl-training-service'){const training=selected.matches('.hl-training')?selected:selected.querySelector?.('.hl-training');training?.classList.add('hl-workspace-selected');selected.classList.add('hl-managed-service-root')}}
+    if(selected?.isConnected&&isAuthed){selected.classList.add('hl-workspace-selected');if(selected.matches('.hl-trip-admin'))document.querySelectorAll('.hl-booking-admin:not(.hl-workspace-hidden)').forEach(item=>item.classList.add('hl-workspace-selected'));if(document.body.dataset.hlWorkspaceService==='hl-training-service'){const training=selected.matches('.hl-training')?selected:selected.querySelector?.('.hl-training');training?.classList.add('hl-workspace-selected');selected.classList.add('hl-managed-service-root')}}
     const home=document.querySelector('#navigation > a[href="#home"],#navigation > a[href="#hl-diver-dashboard"]');
     if(home){
       const label=home.querySelector('span:last-child');
@@ -69,6 +77,7 @@
   const main=document.getElementById('main');
   const serviceGroups={'hl-marine-documents':['#hl-marine-documents','#hl-marine-readiness'],'hl-training-service':['.hl-training'],training:['#training','.hl-training'],community:['#community','.hl-community','.hl-support','.hl-members'],safety:['#safety','.hl-safety-center','.hl-safety-review','#hl-safety-incidents','#hl-marine-readiness']};
   let selected=null;
+  const announceSelection=target=>document.dispatchEvent(new CustomEvent('hydroland:workspace-selected',{detail:{target}}));
   const show=target=>{
     if(!auth()||!target)return false;
     setWorkspace();
@@ -76,17 +85,17 @@
     const role=currentRole(),home=node.matches('.hl-role-dashboard,#hl-diver-dashboard,#home');
     main.querySelectorAll('.hl-workspace-selected').forEach(item=>item.classList.remove('hl-workspace-selected'));
     const heading=document.querySelector('.hl-service-heading');
-    if(home){selected=null;document.querySelectorAll('.hl-managed-service-root').forEach(item=>item.classList.remove('hl-managed-service-root','hl-workspace-selected'));delete document.body.dataset.hlWorkspaceView;delete document.body.dataset.hlWorkspaceService;if(heading)heading.hidden=true;history.replaceState(null,'','#'+(role==='diver'?'hl-diver-dashboard':'home'));document.querySelectorAll('.hl-portal-nav-item').forEach((item,index)=>{item.classList.toggle('active',index===0);if(index===0)item.setAttribute('aria-current','page');else item.removeAttribute('aria-current')});window.scrollTo({top:0,behavior:'instant'});if(role==='center')document.dispatchEvent(new CustomEvent('hydroland:workspace-home'));return true}
+    if(home){selected=null;document.querySelectorAll('.hl-managed-service-root').forEach(item=>item.classList.remove('hl-managed-service-root','hl-workspace-selected'));delete document.body.dataset.hlWorkspaceView;delete document.body.dataset.hlWorkspaceService;if(heading)heading.hidden=true;history.replaceState(null,'','#'+(role==='diver'?'hl-diver-dashboard':'home'));document.querySelectorAll('.hl-portal-nav-item').forEach((item,index)=>{item.classList.toggle('active',index===0);if(index===0)item.setAttribute('aria-current','page');else item.removeAttribute('aria-current')});window.scrollTo({top:0,behavior:'instant'});if(role==='center')document.dispatchEvent(new CustomEvent('hydroland:workspace-home'));announceSelection(node);return true}
     if(node.classList.contains('hl-workspace-hidden'))return false;
     const managedTraining=node.matches('.hl-training')?node:null;
     while(!managedTraining&&node.parentElement&&node.parentElement!==main)node=node.parentElement;
     if(!managedTraining&&node.parentElement!==main)return false;
-    if(managedTraining){let serviceRoot=managedTraining;while(serviceRoot.parentElement&&serviceRoot.parentElement!==main)serviceRoot=serviceRoot.parentElement;if(serviceRoot.parentElement!==main)return false;selected=serviceRoot;serviceRoot.classList.add('hl-workspace-selected','hl-managed-service-root');managedTraining.classList.add('hl-workspace-selected');document.body.dataset.hlWorkspaceView='service';document.body.dataset.hlWorkspaceService='hl-training-service';if(heading){heading.hidden=false;heading.querySelector('[data-service-title]').textContent=managedTraining.querySelector('h1,h2,h3')?.textContent||'مساحة التدريب'}document.querySelector('.hl-role-dashboard')?.classList.remove('hl-portal-nav-open');document.querySelector('.sidebar')?.classList.remove('open');if(!managedTraining.hasAttribute('tabindex'))managedTraining.tabIndex=-1;managedTraining.focus({preventScroll:true});window.scrollTo({top:0,behavior:'instant'});return true}
+    if(managedTraining){let serviceRoot=managedTraining;while(serviceRoot.parentElement&&serviceRoot.parentElement!==main)serviceRoot=serviceRoot.parentElement;if(serviceRoot.parentElement!==main)return false;selected=serviceRoot;serviceRoot.classList.add('hl-workspace-selected','hl-managed-service-root');managedTraining.classList.add('hl-workspace-selected');document.body.dataset.hlWorkspaceView='service';document.body.dataset.hlWorkspaceService='hl-training-service';if(heading){heading.hidden=false;heading.querySelector('[data-service-title]').textContent=managedTraining.querySelector('h1,h2,h3')?.textContent||'مساحة التدريب'}document.querySelector('.hl-role-dashboard')?.classList.remove('hl-portal-nav-open');document.querySelector('.sidebar')?.classList.remove('open');if(!managedTraining.hasAttribute('tabindex'))managedTraining.tabIndex=-1;managedTraining.focus({preventScroll:true});window.scrollTo({top:0,behavior:'instant'});announceSelection(managedTraining);return true}
     selected=node;node.classList.add('hl-workspace-selected');document.body.dataset.hlWorkspaceView='service';
-    for(const selector of serviceGroups[node.id]||[])document.querySelectorAll(selector).forEach(item=>{if(!item.classList.contains('hl-workspace-hidden'))item.classList.add('hl-workspace-selected')});
+    for(const selector of (node.matches('.hl-trip-admin')?['.hl-booking-admin']:serviceGroups[node.id]||[]))document.querySelectorAll(selector).forEach(item=>{if(!item.classList.contains('hl-workspace-hidden'))item.classList.add('hl-workspace-selected')});
     if(heading){heading.hidden=false;heading.querySelector('[data-service-title]').textContent=node.querySelector('h1,h2,h3')?.textContent||'مساحة الخدمة'}
     document.querySelector('.hl-role-dashboard')?.classList.remove('hl-portal-nav-open');document.querySelector('.sidebar')?.classList.remove('open');
-    if(!node.hasAttribute('tabindex'))node.tabIndex=-1;node.focus({preventScroll:true});window.scrollTo({top:0,behavior:'instant'});return true;
+    if(!node.hasAttribute('tabindex'))node.tabIndex=-1;node.focus({preventScroll:true});window.scrollTo({top:0,behavior:'instant'});announceSelection(typeof target==='string'?document.getElementById(target):target);return true;
   };
   const reset=()=>{selected=null;document.querySelectorAll('.hl-managed-service-root').forEach(item=>item.classList.remove('hl-managed-service-root','hl-workspace-selected'));delete document.body.dataset.hlWorkspaceService;main.querySelectorAll('.hl-workspace-selected').forEach(item=>item.classList.remove('hl-workspace-selected'));delete document.body.dataset.hlWorkspaceView;const heading=document.querySelector('.hl-service-heading');if(heading)heading.hidden=true};
   document.addEventListener('click',event=>{

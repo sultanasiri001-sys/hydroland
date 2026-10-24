@@ -1,3 +1,5 @@
+import { EmploymentContractLibraryController } from './employment-contract-library.controller';
+import { EmploymentContractLibraryService } from './employment-contract-library.service';
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../database/database.module';
 import { AuthModule } from '../auth/auth.module';
@@ -6,8 +8,8 @@ import { HrController } from './hr.controller';
 
 @Module({
   imports: [DatabaseModule, AuthModule],
-  controllers: [HrController],
-  providers: [HrService],
+  controllers: [HrController, EmploymentContractLibraryController],
+  providers: [HrService, EmploymentContractLibraryService],
   exports: [HrService],
 })
 export class HrModule {}
