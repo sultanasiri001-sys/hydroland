@@ -89,6 +89,9 @@ try{
  eq((await call(mode,ot,change('DISABLE',active.revision))).body.active,false);
  eq((await db.documentTemplate.findUniqueOrThrow({where:{id:pending.id}})).status,'ACTIVE','Expiration and revocation preserve already completed historical decisions');
  eq((await db.documentTemplate.findUniqueOrThrow({where:{id:template.id}})).fields.state,'RETIRED','The replaced publication remains in history');
+ await db.organization.update({where:{id:org.id},data:{status:'SUSPENDED'}});
+ eq((await call(controls,at)).status,200,'An unavailable canonical organization disables the optional exception without changing the ordinary independent HR-control workflow');
+ eq((await call(controls,at)).body.temporaryOwnerReview.active,false);
  console.log(`Temporary owner review HTTP/PostgreSQL: ${checks} checks passed; bounded owner-only grant, rollback, stale/concurrent changes, scoped decisions, self-appointment denial, expiry, revocation, transfer/regrant fencing, history and zero implicit identity grants.`);
 }finally{
  if(org){

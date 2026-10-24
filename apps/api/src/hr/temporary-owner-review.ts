@@ -14,6 +14,9 @@ export function validOwnerReviewEvidence(value:unknown):value is OwnerReviewEvid
 export function ownerReviewLive(g:OwnerReviewGrant,now=Date.now()) {return g.enabled&&Date.parse(g.issuedAt)<=now&&now<Date.parse(g.expiresAt);}
 export function ownerReviewEvidence(g:OwnerReviewGrant):OwnerReviewEvidence {const {grantId,ownerId,organizationId,organizationRevision,issuedAt,expiresAt}=g;return {grantId,ownerId,organizationId,organizationRevision,issuedAt,expiresAt};}
 export function sameOwnerReview(e:unknown,g:OwnerReviewGrant|null) {return Boolean(g&&validOwnerReviewEvidence(e)&&Object.entries(ownerReviewEvidence(g)).every(([k,v])=>e[k as keyof OwnerReviewEvidence]===v));}
+async function reviewPlatform(tx:Prisma.TransactionClient) {
+  try{return await platformOrganization(tx);}catch(error){if(error instanceof ConflictException)return null;throw error;}
+}
 
 // Every grant change and every affected workflow mutation takes this barrier
 // first. Revocation cannot race a decision using an older serializable snapshot.
@@ -21,7 +24,7 @@ export async function lockOwnerReview(tx:Prisma.TransactionClient) {
   await tx.$queryRaw`INSERT INTO "OperationalSetting" ("key","value","updatedAt") VALUES ('TEMPORARY_OWNER_REVIEW_WRITE:v1','{"version":1}'::jsonb,clock_timestamp()) ON CONFLICT ("key") DO UPDATE SET "updatedAt"=clock_timestamp() RETURNING "key"`;
 }
 export async function currentOwnerReview(tx:Prisma.TransactionClient,actorId:string):Promise<OwnerReviewGrant|null> {
-  const platform=await platformOrganization(tx);if(!platform||platform.ownerId!==actorId)return null;
+  const platform=await reviewPlatform(tx);if(!platform||platform.ownerId!==actorId)return null;
   const [actor,org,setting]=await Promise.all([
     tx.account.findFirst({where:{id:actorId,status:'ACTIVE',emailVerifiedAt:{not:null},roleAssignments:{some:{role:'ADMIN',status:'ACTIVE'}}},select:{id:true}}),
     tx.organization.findUnique({where:{id:platform.id},select:{updatedAt:true}}),
@@ -32,7 +35,7 @@ export async function currentOwnerReview(tx:Prisma.TransactionClient,actorId:str
   const grant=g as unknown as OwnerReviewGrant;return ownerReviewLive(grant)?grant:null;
 }
 export async function ownerReviewStatus(tx:Prisma.TransactionClient,actorId:string) {
-  const platform=await platformOrganization(tx);
+  const platform=await reviewPlatform(tx);
   const owner=Boolean(platform?.ownerId===actorId&&await tx.account.findFirst({where:{id:actorId,status:'ACTIVE',emailVerifiedAt:{not:null},roleAssignments:{some:{role:'ADMIN',status:'ACTIVE'}}},select:{id:true}}));
   if(!owner||!platform)return {canManage:false,active:false,revision:null,expiresAt:null,scopes:[]};
   const stored=record((await tx.operationalSetting.findUnique({where:{key:ownerReviewKey(platform.id)}}))?.value),grant=await currentOwnerReview(tx,actorId);
