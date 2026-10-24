@@ -67,7 +67,9 @@ export class DocumentPersistenceService {
       }
       const d=await tx.managedDocument.create({data:{organizationId:input.organizationId,templateId:t.id,referenceNumber,department:t.department,contentHash:input.contentHash,documentBrandVersion:org.documentBrandVersion,payload:input.payload as Prisma.InputJsonValue,createdByAccountId:accountId}});
       await tx.documentRevision.create({data:{documentId:d.id,version:d.version,contentHash:d.contentHash,payload:d.payload as Prisma.InputJsonValue,createdByAccountId:accountId}});
-      await tx.documentLifecycleEvent.create({data:{documentId:d.id,actorAccountId:accountId,action:'CREATE',toStatus:ManagedDocumentStatus.DRAFT,version:d.version}});
+      // Server-owned presentation evidence is pinned only for newly created
+      // administrative documents. Do not backfill or revise existing records.
+      await tx.documentLifecycleEvent.create({data:{documentId:d.id,actorAccountId:accountId,action:'CREATE',toStatus:ManagedDocumentStatus.DRAFT,version:d.version,metadata:{pdfProfile:'ADMINISTRATIVE_FORM_V1'} as Prisma.InputJsonValue}});
       return d;
     });
   }
