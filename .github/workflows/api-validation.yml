@@ -30,6 +30,12 @@ jobs:
           node-version: 22
       - run: npm ci --workspace=@hydroland/api --workspace=@hydroland/web --include-workspace-root=true
       - run: npm --workspace @hydroland/api run db:generate
+      - name: Production recovery refuses absent and empty migration history
+        env:
+          RECOVERY_HISTORY_CHECK_CONFIRM: NEW_LOOPBACK_DATABASES_ONLY
+        run: node apps/api/scripts/production-recovery-history-checks.mjs
+      - name: Native archive operator refuses unsafe configuration
+        run: python3 -B -m unittest discover -s apps/api/scripts -p 'native_archive_restore_test.py'
       # Legacy migration history contains pre-production migrations whose original SQL
       # cannot bootstrap a clean database (for example TEXT -> UUID FK drift).
       # Historical files are immutable and production already has repaired/applied state.
