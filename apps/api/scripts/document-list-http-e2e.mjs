@@ -31,7 +31,8 @@ try{
   const url=`${base}/documents/organizations/${org.id}/inventory`;
   assert.equal((await fetch(url)).status,401);
   assert.equal((await fetch(url,{headers:auth(tokenFor(outsider.id))})).status,403);
-  const read=async()=>{const response=await fetch(url,{headers:auth(tokenFor(viewer.id))});assert.equal(response.status,200);assert.match(response.headers.get('cache-control'),/no-store/);return response.json();};
+  let inventoryReader=viewer;
+  const read=async()=>{const response=await fetch(url,{headers:auth(tokenFor(inventoryReader.id))});assert.equal(response.status,200);assert.match(response.headers.get('cache-control'),/no-store/);return response.json();};
   let inventory=await read();assert.equal(inventory.baselineTemplateCount,0,'Center must not inherit internal department obligations');
   assert.equal(inventory.departments.find(d=>d.code==='OPERATIONS').summary.total,1);
   assert.equal(inventory.departments.find(d=>d.code==='HR').items.length,0);
@@ -43,10 +44,16 @@ try{
   previousSetting=await db.operationalSetting.findUnique({where:{key:staffingKey}});
   await db.organization.update({where:{id:org.id},data:{kind:'HYDROLAND_INTERNAL_PLATFORM'}});
   await db.operationalSetting.upsert({where:{key:staffingKey},create:{key:staffingKey,value:{organizationId:org.id}},update:{value:{organizationId:org.id}}});settingChanged=true;
-  inventory=await read();assert.equal(inventory.baselineTemplateCount,42);
-  for(const d of inventory.departments.filter(d=>d.code!=='OPERATIONS')){assert.equal(d.items.length,3);assert.equal(d.summary.noRecord,3);assert.equal(d.summary.notConfigured,3);}
+  await db.roleAssignment.create({data:{accountId:owner.id,role:'ADMIN',status:'ACTIVE'}});
+  await db.organizationMember.delete({where:{organizationId_accountId:{organizationId:org.id,accountId:owner.id}}});
+  inventoryReader=owner;
+  assert.equal((await fetch(url,{headers:auth(tokenFor(viewer.id))})).status,403,'Internal personnel documents are not ordinary member data');
+  const workspaceResponse=await fetch(`${base}/documents/workspace`,{headers:auth(tokenFor(owner.id))});assert.equal(workspaceResponse.status,200);
+  const workspace=await workspaceResponse.json();assert.equal(workspace.find(x=>x.organization.id===org.id)?.accessBasis,'PLATFORM_OWNER');
+  inventory=await read();assert.equal(inventory.baselineTemplateCount,42);assert.equal(inventory.extensionTemplateCount,18);assert.equal(inventory.sourceTemplateCount,60);
+  for(const d of inventory.departments.filter(d=>d.code!=='OPERATIONS')){const expected=d.code==='HR'?21:3;assert.equal(d.items.length,expected);assert.equal(d.summary.noRecord,expected);assert.equal(d.summary.notConfigured,expected);}
   const source=inventory.departments.find(d=>d.code==='HR').items.find(t=>t.code==='HR-EMPLOYEE-REPORT');
-  assert.equal(source.setup,null,'Viewer must not receive setup payload');
+  assert.equal(source.setup.department,'HR');
   const ownerRead=await fetch(url,{headers:auth(tokenFor(owner.id))});assert.equal(ownerRead.status,200);
   const ownerInventory=await ownerRead.json(),setup=ownerInventory.departments.find(d=>d.code==='TRAINING').items.find(t=>t.code==='TRN-COURSE-REPORT').setup;
   assert.equal(setup.organizationId,org.id);assert.equal(setup.department,'TRAINING');
@@ -71,9 +78,13 @@ try{
   assert.equal(inventory.inconsistentRecordCount,1);assert.equal(inventory.completeDocumentInventoryVerified,false);assert.equal(inventory.specializedContractsIncluded,false);
   assert.doesNotMatch(JSON.stringify(inventory),/DO-NOT-DISCLOSE|CLIB-PRIVATE|createdByAccountId|contentHash/);
   const before=await db.managedDocument.count({where:{organizationId:org.id}});await read();assert.equal(await db.managedDocument.count({where:{organizationId:org.id}}),before,'Inventory read must not create or approve documents');
-  await db.organizationMember.update({where:{organizationId_accountId:{organizationId:org.id,accountId:viewer.id}},data:{status:'SUSPENDED'}});
-  assert.equal((await fetch(url,{headers:auth(tokenFor(viewer.id))})).status,403,'Fresh membership revocation must take effect');
-  console.log('Department inventory HTTP/PostgreSQL passed: 14 departments/42 source types, scoped all-version counts, archive-only/missing/conflict states, no contract or payload disclosure, read-only behavior and fresh revocation.');
+  await db.organization.update({where:{id:org.id},data:{ownerId:outsider.id}});
+  assert.equal((await fetch(url,{headers:auth(tokenFor(owner.id))})).status,403,'Ownership loss must revoke internal access');
+  await db.organization.update({where:{id:org.id},data:{ownerId:owner.id}});
+  await db.roleAssignment.update({where:{accountId_role:{accountId:owner.id,role:'ADMIN'}},data:{status:'SUSPENDED'}});
+  assert.equal((await fetch(url,{headers:auth(tokenFor(owner.id))})).status,403,'Fresh admin revocation must take effect');
+  await db.roleAssignment.delete({where:{accountId_role:{accountId:owner.id,role:'ADMIN'}}});
+  console.log('Department inventory HTTP/PostgreSQL passed: 14 departments/60 source types and owner-only internal privacy, scoped all-version counts, archive-only/missing/conflict states, no contract or payload disclosure, read-only behavior and fresh revocation.');
 } finally {
   if(settingChanged){if(previousSetting)await db.operationalSetting.update({where:{key:staffingKey},data:{value:previousSetting.value,updatedAt:previousSetting.updatedAt}});else await db.operationalSetting.delete({where:{key:staffingKey}});}
   for(const d of extraDocuments.reverse())await db.managedDocument.delete({where:{id:d.id}});
@@ -81,7 +92,7 @@ try{
   if(document)await db.managedDocument.delete({where:{id:document.id}}).catch(()=>{});
   if(template)await db.documentTemplate.delete({where:{id:template.id}}).catch(()=>{});
   for(const organization of [org,other].filter(Boolean)){await db.organizationMember.deleteMany({where:{organizationId:organization.id}}).catch(()=>{});await db.organization.delete({where:{id:organization.id}}).catch(()=>{})}
-  for(const account of accounts.reverse()){await db.session.deleteMany({where:{accountId:account.id}}).catch(()=>{});await db.account.delete({where:{id:account.id}}).catch(()=>{})}
+  for(const account of accounts.reverse()){await db.roleAssignment.deleteMany({where:{accountId:account.id}});await db.session.deleteMany({where:{accountId:account.id}}).catch(()=>{});await db.account.delete({where:{id:account.id}}).catch(()=>{})}
   for(const person of people.reverse())await db.person.delete({where:{id:person.id}}).catch(()=>{});
   await db.$disconnect();
 }

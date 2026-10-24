@@ -4,6 +4,8 @@ import { requireVerifiedAdmin } from '../admin/admin-authorization';
 import { HYDROLAND_DEPARTMENTS, DepartmentCode } from '../governance/department-ownership.domain';
 import { STAFFING_DEPARTMENTS, platformOrganization } from '../hr/staffing-catalog';
 import { DEPARTMENT_REFERENCE_CATALOG as catalog } from './department-reference-catalog';
+import { ISO_REFERENCE_CATALOG } from './iso-reference-catalog';
+import { departmentOperatingCycle } from '../document-forms/department-operating-cycle.catalog';
 
 // These are discovery/ownership links to existing capabilities, not permission
 // grants, new enforcement rules or a legal determination of applicability.
@@ -46,6 +48,18 @@ export class DepartmentReferencesService {
         select: { category: true, ruleKey: true, labelAr: true, state: true, metadata: true },
         orderBy: [{ category: 'asc' }, { ruleKey: 'asc' }],
       });
+      const specifications = HYDROLAND_DEPARTMENTS.map(d => ({ code: d.code, specification: departmentOperatingCycle(d.code) }));
+      const templateCodes = specifications.flatMap(d => d.specification.canonicalTemplates.map(t => t.code));
+      const templates = organization ? await tx.documentTemplate.findMany({
+        where: { organizationId: organization.id, code: { in: templateCodes } },
+        select: { code: true, department: true, version: true, status: true, printable: true },
+        orderBy: [{ code: 'asc' }, { version: 'desc' }],
+      }) : [];
+      const documentCounts = organization ? await tx.managedDocument.groupBy({
+        by: ['department', 'status'],
+        where: { organizationId: organization.id, template: { code: { in: templateCodes } } },
+        _count: { _all: true },
+      }) : [];
       const policyViews = controls.map(c => {
         const m = object(c.metadata);
         // Recorded references are evidence of stored metadata only. They do not
@@ -65,6 +79,18 @@ export class DepartmentReferencesService {
         legalReferenceIds: catalog.legalReferences.filter(r => (r.departmentCodes as readonly string[]).includes(d.code)).map(r => r.id),
         marineArchiveIds: catalog.marineArchives.filter(r => (r.departmentCodes as readonly string[]).includes(d.code)).map(r => r.id),
         hrSourceIds: d.code === 'HR' || d.code === 'LEGAL_CONTRACTS_INSURANCE' ? catalog.hrSources.map(s => s.id) : [],
+        isoReferenceIds: ISO_REFERENCE_CATALOG.filter(s => s.departmentCodes.includes(d.code)).map(s => s.id),
+        operatingCycle: {
+          ...specifications.find(s => s.code === d.code)!.specification,
+          organizationRecorded: Boolean(organization),
+          templates: specifications.find(s => s.code === d.code)!.specification.canonicalTemplates.map(t => {
+            const versions = templates.filter(v => v.code === t.code && v.department === d.code);
+            const active = versions.filter(v => v.status === 'ACTIVE');
+            return { ...t, recordedVersions: versions, availability: !organization ? 'ORGANIZATION_NOT_RECORDED' : active.length === 1 ? 'ACTIVE_VERSION_RECORDED' : active.length > 1 ? 'MULTIPLE_ACTIVE_VERSIONS' : 'NO_ACTIVE_VERSION_RECORDED' };
+          }),
+          documentCounts: documentCounts.filter(c => c.department === d.code).map(c => ({ status: c.status, count: c._count._all })),
+          countScope: 'SOURCE_CATALOG_CODES_ONLY',
+        },
         policies: policyViews.filter(p => boundaries[d.code].categories.includes(p.category)),
         businessOwner: d.code,
         legalReviewOwner: 'LEGAL_CONTRACTS_INSURANCE',
@@ -75,6 +101,11 @@ export class DepartmentReferencesService {
       }));
       return JSON.parse(JSON.stringify({
         ...catalog,
+        catalogVersion: '2026-10-24.v2',
+        isoReferences: ISO_REFERENCE_CATALOG,
+        referencePrecedence: ['SAUDI_APPLICABLE_REGULATION', 'ISO_APPLICABLE_SCOPE', 'WRSTC_APPLICABLE_SCOPE', 'TRAINING_AGENCY_PROGRAM_VERSION'],
+        canonicalSourceTemplateCount: templateCodes.length,
+        completeDocumentInventoryVerified: false,
         observedAt: new Date().toISOString(),
         canonicalDepartmentCount: HYDROLAND_DEPARTMENTS.length,
         recordedDepartmentCount: new Set(units.filter(u => HYDROLAND_DEPARTMENTS.some(d => d.code === u.code)).map(u => u.code)).size,

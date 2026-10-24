@@ -11,7 +11,7 @@ const installApi=async page=>{
   await page.route(/\/api\/v1\/me$/,route=>authorized(route.request())?json(route,profile):json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/me\/diver-profile$/,route=>authorized(route.request())?json(route,{profile:null,equipment:[]}):json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/credentials$/,route=>authorized(route.request())?json(route,[]):json(route,{message:'Unauthorized'},401));
-  await page.route(/\/api\/v1\/organizations\/mine$/,route=>authorized(route.request())?json(route,[membership]):json(route,{message:'Unauthorized'},401));
+  await page.route(/\/api\/v1\/(?:documents\/workspace|organizations\/mine)$/,route=>authorized(route.request())?json(route,[membership]):json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/documents\/organizations\/org-1\/templates$/,route=>authorized(route.request())?json(route,[template]):json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/documents\/organizations\/org-1\/list$/,route=>authorized(route.request())?json(route,state.documents):json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/documents\/organizations\/org-1\/inventory$/,route=>{
@@ -120,7 +120,7 @@ test('department inventory filters gaps and prepares the exact missing template 
 
 test('viewer sees pending gaps without template setup or document creation actions',async({page})=>{
   await seed(page);
-  await page.route(/\/organizations\/mine$/,route=>route.fulfill({json:[{organization:{id:'org-1',displayName:'اختبار المشاهد'},role:'VIEWER',status:'ACTIVE'}]}));
+  await page.route(/\/documents\/workspace$/,route=>route.fulfill({json:[{organization:{id:'org-1',displayName:'اختبار المشاهد'},role:'VIEWER',status:'ACTIVE'}]}));
   await page.route(/\/documents\/organizations\/org-1\/inventory$/,route=>route.fulfill({json:inventoryFor('org-1',[department('HR','الموارد البشرية',[{code:'HR-LEAVE-REQUEST',titleAr:'طلب إجازة',templateStatus:'NOT_CONFIGURED',recordStatus:'NO_RECORD',counts:counts(),total:0,setup:{code:'SHOULD-NOT-POST'}}])])}));
   await openDocuments(page);const panel=page.locator('#hl-documents');
   await expect(panel.locator('[data-doc-inventory]')).toContainText('طلب إجازة');
@@ -131,7 +131,7 @@ test('viewer sees pending gaps without template setup or document creation actio
 test('late organization inventory cannot repopulate another organization or a cleared session',async({page})=>{
   await seed(page);let release,requested=false;
   const gate=new Promise(resolve=>{release=resolve});
-  await page.route(/\/organizations\/mine$/,route=>route.fulfill({json:['org-1','org-2'].map(id=>({organization:{id,displayName:id},role:'OWNER',status:'ACTIVE'}))}));
+  await page.route(/\/documents\/workspace$/,route=>route.fulfill({json:['org-1','org-2'].map(id=>({organization:{id,displayName:id},role:'OWNER',status:'ACTIVE'}))}));
   await page.route(/\/documents\/organizations\/org-1\/inventory$/,async route=>{requested=true;await gate;await route.fulfill({json:inventoryFor('org-1',[department('HR','SECRET-OLD-DEPARTMENT',[])])});});
   await page.route(/\/documents\/organizations\/org-2\/(templates|list)$/,route=>route.fulfill({json:[]}));
   await page.route(/\/documents\/organizations\/org-2\/inventory$/,route=>route.fulfill({json:inventoryFor('org-2',[department('FINANCE','جهة ثانية',[])])}));
@@ -152,4 +152,19 @@ test('document quick actions are connected instead of disabled placeholders',asy
     await expect(button).toBeEnabled();await expect(button).toHaveAttribute('data-hl-route','documents');
   }
   await dashboard.getByRole('button',{name:'متابعة اعتماد المستندات',exact:true}).click();await expect(page.locator('#hl-documents')).toBeVisible();
+});
+
+
+test('HR library setup resumes missing types and retains the existing contract workspace',async({page})=>{
+  const state=await seed(page);let created=[],fail=true;
+  const source=code=>({organizationId:'org-1',department:'HR',code,titleAr:code,titleEn:code,fields:[{key:'sourceReference',labelAr:'مرجع الإجراء',labelEn:'Source reference',type:'TEXT',required:true}]});
+  await page.route(/\/documents\/workspace$/,route=>route.fulfill({json:[{organization:{id:'org-1',displayName:'هيدرولاند الداخلية',kind:'HYDROLAND_INTERNAL_PLATFORM'},role:'OWNER',status:'ACTIVE',accessBasis:'PLATFORM_OWNER'}]}));
+  await page.route(/\/documents\/organizations\/org-1\/inventory$/,route=>route.fulfill({json:inventoryFor('org-1',[department('HR','الموارد البشرية',['HR-STAFFING-NEED','HR-JOB-DESCRIPTION'].map(code=>({code,titleAr:code,department:'HR',templateStatus:created.includes(code)?'READY':'NOT_CONFIGURED',recordStatus:'NO_RECORD',counts:counts(),total:0,setup:created.includes(code)?null:source(code)})))])}));
+  await page.route(/\/documents\/templates$/,route=>{const x=route.request().postDataJSON();if(x.code==='HR-JOB-DESCRIPTION'&&fail){fail=false;return route.fulfill({status:503,json:{message:'إعادة المحاولة'}});}created.push(x.code);return route.fulfill({status:201,json:{id:x.code,...x}});});
+  await page.evaluate(()=>{window.HydrolandContractLibrary={open:()=>{window.__hrContractsOpened=(window.__hrContractsOpened||0)+1}};});
+  await openDocuments(page);const panel=page.locator('#hl-documents');await panel.locator('[data-doc-department]').selectOption('HR');
+  await panel.locator('[data-doc-setup-hr]').click();await expect(panel.locator('[data-doc-note]')).toContainText('حُفظ 1 نموذج');
+  await panel.locator('[data-doc-setup-hr]').click();await expect(panel.locator('[data-doc-note]')).toContainText('تم حفظ 1 نموذج');
+  expect(created).toEqual(['HR-STAFFING-NEED','HR-JOB-DESCRIPTION']);expect(state.documents).toEqual([]);
+  await panel.locator('[data-doc-hr-contracts]').click();expect(await page.evaluate(()=>window.__hrContractsOpened)).toBe(1);
 });

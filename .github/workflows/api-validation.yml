@@ -101,6 +101,8 @@ jobs:
       - run: npm run validate:integrations -w @hydroland/api
       - run: npm run typecheck --workspace=@hydroland/api
       - run: npm run build --workspace=@hydroland/api
+      - name: Internal document owner boundary
+        run: node apps/api/scripts/document-internal-owner-checks.mjs
       - name: Read-only model connection diagnostics without generation
         run: node apps/api/scripts/agent-provider-connection-check.mjs
       - name: Build connected browser fixture

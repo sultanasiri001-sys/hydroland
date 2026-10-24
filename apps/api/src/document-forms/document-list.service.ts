@@ -5,11 +5,13 @@ import { COOPERATION_CODE } from './cooperation-contract.domain';
 import { LIBRARY_PREFIX } from './contract-library.domain';
 import { buildDepartmentTemplateCatalog } from './document-template-catalog';
 import { buildOperationalDocumentCatalog } from './operational-document-catalog';
+import { buildHrDocumentCatalog } from './hr-document-catalog';
 import { PLATFORM_STAFFING_KEY, PLATFORM_STAFFING_KIND, STAFFING_DEPARTMENTS, record } from '../hr/staffing-catalog';
 
 @Injectable()
 export class DocumentListService {
   constructor(private readonly db:DatabaseService,private readonly authz:DocumentAuthorizationService){}
+  workspaces(accountId:string){return this.authz.workspaces(accountId);}
 
   async list(accountId:string,organizationId:string){
     await this.authz.assert(accountId,organizationId,'DOCUMENT_LIST');
@@ -32,6 +34,8 @@ export class DocumentListService {
       // The 42 existing source templates apply to the internal platform only.
       // They are a known baseline, not a certified complete/mandatory inventory.
       const baseline=internal?[...buildDepartmentTemplateCatalog(organizationId),...buildOperationalDocumentCatalog(organizationId)]:[];
+      const extensions=internal?buildHrDocumentCatalog(organizationId):[];
+      const sourceTemplates=[...baseline,...extensions];
       const templates=await tx.documentTemplate.findMany({
         where:{organizationId,NOT:[{code:COOPERATION_CODE},{code:{startsWith:LIBRARY_PREFIX}}]},
         select:{id:true,code:true,titleAr:true,titleEn:true,department:true,version:true,status:true},
@@ -46,14 +50,14 @@ export class DocumentListService {
       for(const t of templates)if(!codes.has(t.department))codes.set(t.department,t.department);
       const departments=[...codes].map(([code,nameAr])=>{
         const definitions=new Map<string,{code:string;titleAr:string;titleEn:string}>();
-        for(const t of baseline.filter(t=>t.department===code))definitions.set(t.code,{code:t.code,titleAr:t.titleAr,titleEn:t.titleEn});
+        for(const t of sourceTemplates.filter(t=>t.department===code))definitions.set(t.code,{code:t.code,titleAr:t.titleAr,titleEn:t.titleEn});
         for(const t of templates.filter(t=>t.department===code))if(!definitions.has(t.code))definitions.set(t.code,{code:t.code,titleAr:t.titleAr,titleEn:t.titleEn});
         const items=[...definitions.values()].map(definition=>{
           const versions=templates.filter(t=>t.code===definition.code&&t.department===code);
           const active=versions.filter(t=>t.status==='ACTIVE');
-          const source=baseline.find(t=>t.code===definition.code&&t.department===code);
+          const source=sourceTemplates.find(t=>t.code===definition.code&&t.department===code);
           const otherDepartment=templates.some(t=>t.code===definition.code&&t.department!==code)
-            || baseline.some(t=>t.code===definition.code&&t.department!==code);
+            || sourceTemplates.some(t=>t.code===definition.code&&t.department!==code);
           const status=otherDepartment?'DEPARTMENT_CONFLICT':active.length>1?'ACTIVE_VERSION_CONFLICT':active.length===1?'READY':versions.length?'INACTIVE':'NOT_CONFIGURED';
           const counts={DRAFT:0,PENDING_APPROVAL:0,APPROVED:0,SIGNED:0,ARCHIVED:0};
           for(const g of groups)if(g.department===code&&versions.some(t=>t.id===g.templateId))counts[g.status]+=g._count._all;
@@ -84,7 +88,7 @@ export class DocumentListService {
       });
       const inconsistentRecordCount=groups.filter(g=>!templates.some(t=>t.id===g.templateId&&t.department===g.department)).reduce((n,g)=>n+g._count._all,0);
       return {organizationId,observedAt:new Date().toISOString(),internalPlatform:internal,
-        baselineTemplateCount:baseline.length,completeDocumentInventoryVerified:false,
+        baselineTemplateCount:baseline.length,extensionTemplateCount:extensions.length,sourceTemplateCount:sourceTemplates.length,completeDocumentInventoryVerified:false,
         countScope:'GENERIC_DOCUMENTS_ALL_RECORDED_VERSIONS',
         specializedContractsIncluded:false,inconsistentRecordCount,departments};
     });

@@ -14,7 +14,7 @@ export class DocumentPersistenceService {
     await this.authz.assert(accountId,input.organizationId,'TEMPLATE_CREATE');
     if(input.code===COOPERATION_CODE||isLibraryCode(String(input.code??'').trim().toUpperCase())) throw new ForbiddenException('نموذج العقد محكوم بمكتبة العقود ومسار التوقيع.');
     if(!input.code?.trim()||!input.titleAr?.trim()||!input.titleEn?.trim()||!input.department||!input.fields?.length) throw new BadRequestException('Template identity and fields are required.');
-    return this.db.documentTemplate.create({data:{organizationId:input.organizationId,code:input.code,titleAr:input.titleAr,titleEn:input.titleEn,department:input.department,fields:input.fields as never,printable:input.printable!==false}});
+    return this.db.serializable(async tx=>{await this.authz.assert(accountId,input.organizationId,'TEMPLATE_CREATE',tx);return tx.documentTemplate.create({data:{organizationId:input.organizationId,code:input.code,titleAr:input.titleAr,titleEn:input.titleEn,department:input.department,fields:input.fields as never,printable:input.printable!==false}});});
   }
 
   async updateTemplate(accountId:string,id:string,input:{titleAr?:string;titleEn?:string;fields?:Field[];printable?:boolean}){
@@ -28,6 +28,7 @@ export class DocumentPersistenceService {
     const fields=input.fields??(current.fields as unknown as Field[]);
     if(!titleAr||!titleEn||!Array.isArray(fields)||!fields.length) throw new BadRequestException('Template identity and fields are required.');
     return this.db.serializable(async tx=>{
+      await this.authz.assert(accountId,current.organizationId,'TEMPLATE_UPDATE',tx);
       const latest=await tx.documentTemplate.findUnique({where:{id}});
       if(!latest||latest.status!=='ACTIVE'||latest.version!==current.version) throw new BadRequestException('Template changed concurrently; reload before revising.');
       await tx.documentTemplate.update({where:{id},data:{status:'INACTIVE'}});
@@ -48,6 +49,7 @@ export class DocumentPersistenceService {
     if(t.department!==input.department) throw new BadRequestException('Document department does not match template.');
     if(!input.contentHash?.trim()) throw new BadRequestException('Content hash is required.');
     return this.db.serializable(async tx=>{
+      await this.authz.assert(accountId,input.organizationId,'DOCUMENT_CREATE',tx);
       const year=new Date().getUTCFullYear();
       const counter=await tx.documentReferenceCounter.upsert({
         where:{organizationId_department_year:{organizationId:input.organizationId,department:t.department,year}},
@@ -78,6 +80,7 @@ export class DocumentPersistenceService {
     if(d.status!=='DRAFT') throw new BadRequestException('Only DRAFT documents can be revised. Approved, signed and archived records are immutable.');
     if(!input.contentHash?.trim()) throw new BadRequestException('Content hash is required.');
     return this.db.serializable(async tx=>{
+      await this.authz.assert(accountId,d.organizationId,'REVISE',tx);
       const current=await tx.managedDocument.findUnique({where:{id}});
       if(!current) throw new NotFoundException('Document not found.');
       if(current.status!=='DRAFT'||current.version!==d.version) throw new BadRequestException('Document changed concurrently; reload before revising.');
@@ -101,6 +104,7 @@ export class DocumentPersistenceService {
     if(to==='APPROVED' && accountId===d.createdByAccountId) throw new BadRequestException('Creator cannot approve own document.');
     if(to==='SIGNED' && (accountId===d.createdByAccountId||accountId===d.approvedByAccountId)) throw new BadRequestException('Signer must be independent from creator and approver.');
     return this.db.serializable(async tx=>{
+      await this.authz.assert(accountId,d.organizationId,to==='PENDING_APPROVAL'?'SUBMIT':to==='APPROVED'?'APPROVE':to==='SIGNED'?'SIGN':'ARCHIVE',tx);
       const current=await tx.managedDocument.findUnique({where:{id}});
       if(!current) throw new NotFoundException('Document not found.');
       if(current.status!==d.status||current.version!==d.version) throw new BadRequestException('Document status or version changed concurrently; reload before transition.');

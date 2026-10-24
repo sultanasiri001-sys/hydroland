@@ -8,7 +8,7 @@
     box.className = 'hl-staff-controls hl-staff-references';
     box.innerHTML = `<summary>مراجع الإدارات واللوائح</summary><section>
       <header><h4>المراجع المرتبطة بالإدارات الأربع عشرة</h4><button type="button" data-reference-refresh>تحديث المراجع</button></header>
-      <p>مراجع التأسيس المحفوظة، والجهات المقترحة لكل إدارة، والضوابط المسجلة حاليًا. إدراج المصدر أو تفعيل ضابط لا يثبت وحده اكتمال المراجعة القانونية أو إقفال الإدارة.</p>
+      <p>دورة العمل والمستندات، ومراجع التأسيس والآيزو، والضوابط المسجلة لكل إدارة. إدراج المصدر أو النموذج لا يثبت اكتمال المراجعة أو التنفيذ أو إقفال الإدارة.</p>
       <p role="status" data-reference-status></p>
       <label>إدارة المراجع<select data-reference-department aria-label="إدارة المراجع" disabled></select></label>
       <div data-reference-detail></div>
@@ -44,6 +44,45 @@
       link(item, 'المصدر الرسمي المسجل', source.url);
       libraryLink(item, source.sourceLibraryFileId);
     }
+    function renderCycle(department) {
+      const cycle = department.operatingCycle;
+      node('h5', 'دورة العمل والمستندات التشغيلية', detail);
+      node('p', 'نطاق الإقفال محدد من مسارات الإدارات السابقة. حالة تحقق إقفال الإدارة: لم تُقيّم في هذا العرض.', detail);
+      node('p', cycle.sharedEngineBoundaryAr, detail);
+      for (const flow of cycle.cycles) {
+        const item = node('article', undefined, detail);
+        node('h6', flow.titleAr, item);
+        const steps = node('ol', undefined, item);
+        flow.stepsAr.forEach(step => node('li', step, steps));
+      }
+      node('h6', 'أدلة نتيجة الإجراء وإقفاله', detail);
+      const evidence = node('ul', undefined, detail);
+      cycle.closureEvidenceAr.forEach(value => node('li', value, evidence));
+      node('h6', 'النماذج المصدرية وحالتها المحفوظة', detail);
+      node('p', 'هذه النماذج الثلاثة لكل إدارة بداية الكتالوج؛ ليست حصرًا لجميع مستندات دورة العمل.', detail);
+      for (const template of cycle.templates) {
+        const item = node('article', undefined, detail);
+        node('h6', template.titleAr + ' · ' + template.code, item);
+        const availability = { ACTIVE_VERSION_RECORDED: 'نسخة نشطة مسجلة', MULTIPLE_ACTIVE_VERSIONS: 'تعارض: أكثر من نسخة نشطة', NO_ACTIVE_VERSION_RECORDED: 'لم تظهر نسخة نشطة في الجهة المفحوصة', ORGANIZATION_NOT_RECORDED: 'الجهة الداخلية غير مسجلة' };
+        node('p', availability[template.availability] || 'تحتاج الحالة إلى مراجعة', item);
+        template.recordedVersions.forEach(v => node('p', 'الإصدار ' + v.version + ' · ' + (v.status === 'ACTIVE' ? 'نشط' : 'محفوظ سابقًا'), item));
+      }
+      const count = cycle.documentCounts.reduce((sum, row) => sum + row.count, 0);
+      node('p', 'مستندات محفوظة مرتبطة بهذه الرموز في الجهة المفحوصة: ' + count + '. العدد لا يقيس اكتمال الإجراء ولا يشمل السجلات المحفوظة في المجالات الأخرى.', detail);
+      node('h6', 'شروط إقفال الإدارة', detail);
+      const gates = node('ul', undefined, detail);
+      cycle.closureGates.forEach(gate => node('li', gate.labelAr + ' — لم يُقيّم هنا', gates));
+      node('h5', 'مراجع الآيزو المرتبطة بنطاق المراجعة', detail);
+      node('p', 'يراجع النظام السعودي المنطبق أولًا، ثم الآيزو وWRSTC ثم إصدار برنامج الجهة التدريبية حيث تنطبق. بيانات الإصدار أدناه متحقق منها بتاريخها؛ قرار اعتماد كل معيار ومواده لكل إجراء يحتاج مرجعه المحفوظ. لا يُثبت هذا العرض شهادة آيزو أو توفر نسخة مرخصة.', detail);
+      for (const source of data.isoReferences.filter(s => department.isoReferenceIds.includes(s.id))) {
+        const item = node('article', undefined, detail);
+        node('h6', source.designation + ' · ' + source.titleAr, item);
+        node('p', 'تاريخ التحقق من بيانات الناشر: ' + source.snapshotDate, item);
+        node('p', source.scopeAr, item);
+        node('p', 'ربط الانطباق ومواد المعيار ومرجع قرار اعتماده: قيد المراجعة.', item);
+        link(item, 'بيانات الإصدار لدى ISO', source.url);
+      }
+    }
     function render() {
       detail.replaceChildren();
       const department = data?.departments.find(d => d.code === select.value);
@@ -59,6 +98,7 @@
       node('p', department.unitRecorded ? (department.unitActive ? 'الإدارة موجودة ومفعّلة في الهيكل الداخلي.' : 'الإدارة موجودة وغير مفعّلة حاليًا.') : 'لم يظهر سجل للإدارة في الهيكل الداخلي.', detail);
       node('p', 'تُراجع الصلاحية بحسب الدور والإجراء والمورد والإدارة والمركز والشروط وفترة التفويض. تبقى المراجعة القانونية لدى القانونية، وملكية الإجراء لدى الإدارة المختصة.', detail);
       node('p', 'لاستكمال الربط: المصدر وإصداره، المادة أو المتطلب المعتمد، قابلية الانطباق، الإجراء والصلاحية، الدليل المتحقق منه، ومرجع الاعتماد.', detail);
+      renderCycle(department);
       const authorities = data.authorities.filter(a => department.authorityIds.includes(a.id));
       node('h5', 'الجهات والخدمات المرجعية', detail);
       if (!authorities.length) node('p', 'مراجع هذه الإدارة واردة في السجل القانوني أدناه.', detail);
@@ -103,8 +143,9 @@
         if (!current(g, session)) return;
         if ([401, 403].includes(response.status)) { clear(); await access()?.authorizeRole?.('admin'); return; }
         if (!response.ok) throw new Error(typeof result?.message === 'string' ? result.message : 'تعذر تحميل مراجع الإدارات.');
-        const arrays = ['departments', 'authorities', 'legalReferences', 'marineArchives', 'hrSources', 'hrControlCandidates'];
+        const arrays = ['departments', 'authorities', 'legalReferences', 'marineArchives', 'hrSources', 'hrControlCandidates', 'isoReferences'];
         if (result?.referenceOnly !== true || result.canActivate !== false || result.canonicalDepartmentCount !== 14 || !arrays.every(k => Array.isArray(result[k])) || result.departments.length !== 14 || new Set(result.departments.map(d => d.code)).size !== 14 || !Number.isFinite(Date.parse(result.observedAt))) throw new Error('استجابة مراجع الإدارات غير مكتملة.');
+        if (result.completeDocumentInventoryVerified !== false || !result.departments.every(d => d.operatingCycle?.departmentClosed === false && d.operatingCycle.closureAssessment === 'NOT_ASSESSED' && ['cycles', 'templates', 'closureEvidenceAr', 'closureGates', 'documentCounts'].every(k => Array.isArray(d.operatingCycle[k])) && Array.isArray(d.isoReferenceIds))) throw new Error('استجابة دورة الإدارة غير مكتملة.');
         data = result; select.replaceChildren();
         for (const department of data.departments) { const option = node('option', department.nameAr, select); option.value = department.code; }
         if (data.departments.some(d => d.code === chosen)) select.value = chosen;

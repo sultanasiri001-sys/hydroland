@@ -7,7 +7,7 @@
   const panel=document.createElement('section');panel.id='hl-documents';panel.className='hl-documents';panel.hidden=true;panel.innerHTML=`
     <header class="hl-doc-head"><div><small>DOCUMENT CONTROL · إدارة المستندات</small><h3>المستندات والنماذج التشغيلية</h3><p>إنشاء، تعديل، متابعة، اعتماد وتوقيع المستندات حسب صلاحيتك الفعلية في الجهة.</p></div><button type="button" data-doc-refresh>تحديث</button></header>
     <div class="hl-doc-toolbar"><label>الجهة<select data-doc-org></select></label><label>إدارة المستندات<select data-doc-department aria-label="إدارة المستندات"><option value="">كل الإدارات</option></select></label><span class="hl-doc-note" role="status" data-doc-note>اختر جهة لعرض مستنداتها.</span></div>
-    <section class="hl-doc-card"><h4>مستندات الإدارات والنواقص</h4><p class="hl-doc-note" data-doc-inventory-scope></p><div data-doc-departments class="hl-doc-departments"></div><label>عرض الأنواع<select data-doc-gap-filter><option value="ALL">كل الأنواع</option><option value="NO_RECORD">بلا مستند محفوظ</option><option value="PENDING">تنتظر الاعتماد</option><option value="SETUP">تحتاج تهيئة أو تصحيح النموذج</option><option value="ARCHIVE_ONLY">نسخ مؤرشفة فقط</option></select></label><div data-doc-inventory></div></section>
+    <section class="hl-doc-card"><h4>مستندات الإدارات والنواقص</h4><p class="hl-doc-note" data-doc-inventory-scope></p><div data-doc-departments class="hl-doc-departments"></div><label>عرض الأنواع<select data-doc-gap-filter><option value="ALL">كل الأنواع</option><option value="NO_RECORD">بلا مستند محفوظ</option><option value="PENDING">تنتظر الاعتماد</option><option value="SETUP">تحتاج تهيئة أو تصحيح النموذج</option><option value="ARCHIVE_ONLY">نسخ مؤرشفة فقط</option></select></label><div class="hl-doc-actions"><button type="button" data-doc-setup-hr hidden>حفظ نماذج دورة الموارد البشرية الناقصة</button><button type="button" data-doc-hr-contracts hidden>قوالب عقود الموظفين الموجودة</button></div><p class="hl-doc-note" data-doc-hr-guidance hidden>نماذج توثيق للإجراءات وربط مراجعها؛ التعيين والأجور وتعديل العقد وإيقاف الوصول تُنفّذ في مساراتها المختصة. قوالب العقود تُفتح من المكتبة نفسها.</p><div data-doc-inventory></div></section>
     <div class="hl-doc-layout"><form class="hl-doc-card" data-doc-form><h4 data-doc-form-title>إنشاء مستند</h4><label>النموذج<select data-doc-template required></select></label><div class="hl-doc-fields" data-doc-fields></div><div class="hl-doc-actions"><button class="primary" type="submit" data-doc-save>حفظ المسودة</button><button type="button" data-doc-cancel hidden>إلغاء التعديل</button></div></form><section class="hl-doc-card"><h4>مستندات الجهة</h4><div class="hl-doc-list" data-doc-list><p>لم يتم تحميل المستندات بعد.</p></div></section></div>`;
   host.insertAdjacentElement('afterend',panel);
   const extraStyle=document.createElement('style');extraStyle.textContent='.hl-doc-departments{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.5rem;margin:.7rem 0}.hl-doc-departments button{text-align:right}.hl-doc-departments small{display:block;color:#b3c9d6}.hl-doc-inventory-table{overflow:auto;margin:.8rem 0}.hl-doc-inventory-table table{width:100%;border-collapse:collapse;min-width:620px}.hl-doc-inventory-table th,.hl-doc-inventory-table td{text-align:right;border-bottom:1px solid #25485b;padding:.6rem}.hl-doc-inventory-table caption{text-align:right;font-weight:700;padding:.5rem}.hl-documents [aria-pressed="true"]{outline:2px solid #e5b45f}';document.head.appendChild(extraStyle);
@@ -31,7 +31,8 @@
   const templateStatus=s=>({READY:'نموذج مهيأ',NOT_CONFIGURED:'النموذج غير مهيأ',INACTIVE:'النموذج غير نشط',ACTIVE_VERSION_CONFLICT:'تعارض الإصدارات النشطة',DEPARTMENT_CONFLICT:'تعارض الإدارة'}[s]||s);
   function renderInventory(){
     const inventory=state.inventory,departments=inventory?.departments||[],filter=panel.querySelector('[data-doc-gap-filter]').value;
-    panel.querySelector('[data-doc-inventory-scope]').textContent=inventory?`${inventory.internalPlatform?'يشمل ٤٢ نوعًا أساسيًا معروفًا، وأي نماذج إضافية مسجلة.':'يشمل الأنواع المسجلة لهذه الجهة.'} عدم وجود مستند يحدد فجوة في السجل؛ تحديد وجوبه بحسب الإجراء والحالة يحتاج مراجعة. الحصر الكامل لمستندات الإدارة لم يُعتمد بعد. العقود في مكتبة العقود، والتراخيص في مسارها المختص. وقت القراءة: ${new Date(inventory.observedAt).toLocaleString('ar-SA',{timeZone:'Asia/Riyadh'})}${inventory.inconsistentRecordCount?' · توجد سجلات بتعارض في الإدارة تحتاج مراجعة.':''}`:'';
+    const hr=Boolean(inventory?.internalPlatform&&state.department==='HR'&&canManage());for(const selector of ['[data-doc-setup-hr]','[data-doc-hr-contracts]','[data-doc-hr-guidance]'])panel.querySelector(selector).hidden=!hr;
+    panel.querySelector('[data-doc-inventory-scope]').textContent=inventory?`${inventory.internalPlatform?`يشمل ${inventory.baselineTemplateCount} نوعًا أساسيًا و${inventory.extensionTemplateCount||0} نموذجًا لاستكمال الموارد البشرية، وأي نماذج إضافية مسجلة.`:'يشمل الأنواع المسجلة لهذه الجهة.'} عدم وجود مستند يحدد فجوة في السجل؛ تحديد وجوبه بحسب الإجراء والحالة يحتاج مراجعة. الحصر الكامل لمستندات الإدارة لم يُعتمد بعد. العقود في مكتبة العقود، والتراخيص في مسارها المختص. وقت القراءة: ${new Date(inventory.observedAt).toLocaleString('ar-SA',{timeZone:'Asia/Riyadh'})}${inventory.inconsistentRecordCount?' · توجد سجلات بتعارض في الإدارة تحتاج مراجعة.':''}`:'';
     panel.querySelector('[data-doc-departments]').innerHTML=departments.map(d=>`<button type="button" data-doc-department-card="${esc(d.code)}" aria-pressed="${state.department===d.code}"><strong>${esc(d.nameAr)}</strong><small>${d.summary.types} نوع · ${d.summary.noRecord} بلا مستند · ${d.summary.pendingApproval} بانتظار الاعتماد</small></button>`).join('');
     const shown=departments.filter(d=>!state.department||d.code===state.department);
     panel.querySelector('[data-doc-inventory]').innerHTML=shown.map(d=>{
@@ -61,7 +62,7 @@
       state.templates=Array.isArray(templates)?templates:[];state.documents=Array.isArray(documents)?documents:[];state.inventory=inventory;
       if(!inventory.departments.some(d=>d.code===state.department))state.department='';
       const select=panel.querySelector('[data-doc-department]');select.innerHTML='<option value="">كل الإدارات</option>'+inventory.departments.map(d=>`<option value="${esc(d.code)}">${esc(d.nameAr)}</option>`).join('');select.value=state.department;
-      renderSelection();note(`تم تحميل ${state.documents.length} مستند · صلاحيتك: ${state.member?.role||'—'}`);
+      renderSelection();note(`تم تحميل ${state.documents.length} مستند · صلاحيتك: ${state.member?.accessBasis==='PLATFORM_OWNER'?'مالك هيدرولاند الداخلي':state.member?.role||'—'}`);
     }catch(error){if(current(c)){clearData();note(error instanceof Error?error.message:'تعذر تحميل المستندات');}}
     finally{if(current(c))state.loading=false;}
   }
@@ -69,15 +70,25 @@
     state.generation++;const c=context();state.loading=true;clearData();
     if(!window.HydrolandAuth?.isAuthenticated?.()){state.memberships=[];panel.hidden=true;return;}
     try{
-      const memberships=await request('/organizations/mine');if(!current(c))return;
+      const memberships=await request('/documents/workspace');if(!current(c))return;
       state.memberships=(Array.isArray(memberships)?memberships:[]).filter(x=>x.status==='ACTIVE');
       const orgSelect=panel.querySelector('[data-doc-org]');orgSelect.innerHTML=state.memberships.map(x=>`<option value="${esc(x.organization.id)}">${esc(x.organization.displayName)} · ${esc(x.role)}</option>`).join('');
-      if(!state.memberships.length){state.orgId=null;state.loading=false;note('لا توجد عضوية نشطة في جهة لاستخدام مركز المستندات.');return;}
+      if(!state.memberships.length){state.orgId=null;state.loading=false;note('لا توجد جهة مستندات متاحة لصلاحيتك الحالية.');return;}
       const internal=state.memberships.find(x=>x.organization.kind==='HYDROLAND_INTERNAL_PLATFORM');
       const wanted=state.preferInternal&&internal?internal.organization.id:state.memberships.some(x=>x.organization.id===state.orgId)?state.orgId:state.memberships[0].organization.id;
       state.preferInternal=false;orgSelect.value=wanted;await loadOrganization(wanted);
     }catch(error){if(current(c)){state.loading=false;note(error instanceof Error?error.message:'تعذر تحميل الجهات');}}
   }
+  panel.querySelector('[data-doc-hr-contracts]').addEventListener('click',()=>{if(!canManage()||state.department!=='HR'||!state.inventory?.internalPlatform)return;if(window.HydrolandContractLibrary?.open)window.HydrolandContractLibrary.open();else note('افتح مكتبة عقود هيدرولاند من الملف الشخصي.');});
+  panel.querySelector('[data-doc-setup-hr]').addEventListener('click',async()=>{
+    if(state.loading||!canManage()||state.department!=='HR'||!state.inventory?.internalPlatform)return;
+    const c=context(),button=panel.querySelector('[data-doc-setup-hr]'),items=state.inventory.departments.find(d=>d.code==='HR')?.items.filter(t=>t.setup)||[];
+    if(!items.length){note('نماذج الموارد البشرية الموجودة محفوظة؛ لا توجد نماذج جديدة تحتاج تهيئة.');return;}
+    state.loading=true;button.disabled=true;let saved=0,failure='';
+    try{for(const item of items){if(!current(c)||panel.hidden||state.department!=='HR')return;await request('/documents/templates',{method:'POST',body:JSON.stringify(item.setup)});saved++;if(current(c))note(`تم حفظ ${saved} من ${items.length} نموذج في المكتبة...`);}}
+    catch(error){failure=error instanceof Error?error.message:'تعذر استكمال حفظ النماذج';}
+    finally{button.disabled=false;if(current(c)){state.loading=false;await loadOrganization(c.orgId);note(failure?`حُفظ ${saved} نموذج؛ ${failure}. يمكن استكمال الأنواع الناقصة من الحالة المحدّثة.`:`تم حفظ ${saved} نموذج في مكتبة المستندات. لا تُنشأ سجلات موظفين أو قرارات تعيين من تهيئة النماذج.`);}}
+  });
   function chooseDepartment(code){state.department=code;state.typeCode='';panel.querySelector('[data-doc-department]').value=code;renderSelection();}
   panel.querySelector('[data-doc-department]').addEventListener('change',event=>chooseDepartment(event.target.value));
   panel.querySelector('[data-doc-gap-filter]').addEventListener('change',renderInventory);

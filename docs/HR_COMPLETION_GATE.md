@@ -40,4 +40,16 @@ This gate is the authoritative checklist before moving from Human Resources to O
 
 ## Closure rule
 HR is NOT COMPLETE until every unchecked item above is implemented and validated. This branch has a green completion gate, but department closure additionally requires merge to `main` and the required post-merge validation checks to remain green.
+
+Current operating acceptance clarification (24 October 2026): the checked items
+above preserve the approved architecture and prior technical validation; they do
+not certify current production regulatory population or exercise every HR
+document family. The current legal-review pack remains a draft, and source,
+version, applicability, verified evidence and an independent legal-approval
+reference must pass the existing fail-closed workflow. Internal template
+approval and the owner responsibility already recorded are retained and are not
+substitutes for that legal review. Full department acceptance follows the seven
+gates in [the operating/document-cycle baseline](DEPARTMENT_OPERATING_DOCUMENT_CYCLES_2026-10-24.md), including execution, IAM handoff, verification,
+exceptions, immutable evidence, Arabic print and offboarding. Discovery counts
+and green component CI do not close these production acceptance gates.
 - [x] IAM offboarding E2E passes: incomplete clearance is fail-closed; approved completed clearance atomically offboards employment, revokes active sessions, archives active roles with `endedAt`, closes the offboarding case with IAM timestamps, and emits audit evidence.
