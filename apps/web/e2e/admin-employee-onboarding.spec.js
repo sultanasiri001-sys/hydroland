@@ -139,3 +139,41 @@ test('delegated approval persists and late private data cannot return after logo
  const panel=page.locator('#hl-staff-approvals'),form=panel.locator('[data-delegated-decision]');await form.getByLabel('سبب اعتماد التعيين').fill('اعتماد تعيين من المفوض في اختبار متصفح');await form.getByRole('checkbox').check();await form.getByRole('button',{name:'اعتماد التعيين وتفعيل الصلاحيات',exact:true}).click();await expect(panel).toContainText('تم اعتماد التعيين وتفعيل الصلاحيات');
  state.rows=[row({canApprove:true})];state.delayApproval=true;await panel.getByRole('button',{name:'تحديث طلبات الاعتماد',exact:true}).click();await expect.poll(()=>Boolean(state.releaseApproval)).toBe(true);await page.evaluate(()=>window.HydrolandAuth.terminateSession());state.releaseApproval();await expect(panel).toBeHidden();await expect(panel.locator('[data-approval-items]')).toBeEmpty();await expect(page.locator('[data-open-staff-approvals]')).toHaveCount(0);
 });
+
+const hrContractTemplate={id:'template-hr',code:'CLIB-HR-PERMANENT',titleAr:'عقد عمل غير محدد المدة',version:2,contentHash:'sha256:template',content:{fields:[{key:'employeeName',label:'اسم العامل',source:'EMPLOYMENT_ACCOUNT',required:true},{key:'pay',label:'الأجر',source:'CONTRACT_TERMS',required:true}],clauses:['بند موظف معتمد للاختبار']}};
+function hrContractWorkspace(templates=[hrContractTemplate]){return {employeeName:'موظف اختبار',employmentUpdatedAt:revision,sourceHash:'sha256:source',expectedContractVersion:0,sourceValues:{employeeName:'موظف اختبار'},canCreate:true,templates,items:[],execution:'DRAFT_ONLY'};}
+async function openHrContracts(page,options={}){
+ const state=await setup(page,{rows:[row({canManageContractDrafts:true})]});const workspace=hrContractWorkspace(options.templates);const writes=[];
+ await page.route('**/hr/employments/employment-fixture/contracts',async route=>{
+  if(options.delay)await new Promise(resolve=>options.release=resolve);
+  if(route.request().method()==='POST'){
+   const body=route.request().postDataJSON();writes.push(body);
+   if(options.deny)return json(route,{message:'Permission revoked'},403);
+   if(options.conflict)return json(route,{message:'تغير سجل الموظف؛ حدّث البيانات.'},409);
+   const result={id:'hr-contract',version:1,contractType:'CLIB-HR-PERMANENT',status:'DRAFT',effectiveFrom:body.effectiveFrom+'T00:00:00.000Z',librarySnapshot:{template:hrContractTemplate,values:{employeeName:'موظف اختبار',...body.values},snapshotHash:'sha256:saved'}};
+   workspace.items=[result];workspace.expectedContractVersion=1;return json(route,result,201);
+  }return json(route,workspace);
+ });
+ await page.getByRole('button',{name:'عقود الموظف من المكتبة',exact:true}).click();
+ return {state,workspace,writes,box:page.locator('[data-employment-contract-box]')};
+}
+async function fillHrContract(box){const form=box.locator('[data-employment-contract-draft]');await form.getByLabel('الأجر',{exact:true}).fill('أجر تجريبي');await form.getByLabel('تاريخ سريان المسودة').fill('2027-01-01');await form.getByLabel('سبب إعداد مسودة العقد').fill('إعداد مسودة للاختبار فقط');await form.getByRole('checkbox').check();return form;}
+
+test('employee contract draft pins approved template and canonical identity without staffing writes',async({page})=>{
+ const {state,writes,box}=await openHrContracts(page);await expect(box).toContainText('توقيع العامل والتوثيق الرسمي لهما إجراء لاحق');
+ await expect(box.locator('[name="value.employeeName"]')).toHaveCount(0);
+ const form=await fillHrContract(box);await form.getByRole('button',{name:'حفظ مسودة عقد الموظف',exact:true}).click();
+ await expect(box).toContainText('sha256:saved');expect(writes).toHaveLength(1);expect(writes[0]).toMatchObject({expectedContractVersion:0,expectedSourceHash:'sha256:source',templateId:'template-hr',expectedTemplateVersion:2,expectedTemplateContentHash:'sha256:template',reviewed:true,values:{pay:'أجر تجريبي'}});expect(state.writes).toHaveLength(0);
+});
+test('no published HR template explains the blocker without an enabled draft form',async({page})=>{
+ const {box,writes}=await openHrContracts(page,{templates:[]});await expect(box).toContainText('يلزم اعتماد قالب موظفين');await expect(box.locator('form')).toHaveCount(0);expect(writes).toHaveLength(0);
+});
+test('employee contract conflict keeps entered terms and never applies an employment decision',async({page})=>{
+ const {box,state,writes}=await openHrContracts(page,{conflict:true});const form=await fillHrContract(box);await form.getByRole('button',{name:'حفظ مسودة عقد الموظف',exact:true}).click();await expect(box).toContainText('تغير سجل الموظف');await expect(form.getByLabel('الأجر',{exact:true})).toHaveValue('أجر تجريبي');expect(writes).toHaveLength(1);expect(state.writes).toHaveLength(0);
+});
+test('lost employee contract authority removes private draft values',async({page})=>{
+ const {box}=await openHrContracts(page,{deny:true});const form=await fillHrContract(box);await form.getByRole('button',{name:'حفظ مسودة عقد الموظف',exact:true}).click();await expect(box).toContainText('لم تعد صلاحية عقود الموظف متاحة');await expect(box.locator('form')).toHaveCount(0);await expect(box).not.toContainText('أجر تجريبي');
+});
+test('late employee contract workspace cannot return after logout',async({page})=>{
+ const options={delay:true};const {box}=await openHrContracts(page,options);await expect.poll(()=>Boolean(options.release)).toBe(true);await page.evaluate(()=>window.HydrolandAuth.terminateSession());options.release();await expect(page.locator('[data-employment-contract-box]')).toHaveCount(0);await expect(page.locator('#hl-admin-employees')).toBeHidden();
+});
