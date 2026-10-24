@@ -4,6 +4,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { DatabaseService } from '../database/database.service';
 import { createRecoveryCode, encodeBase32, protectSecret, recoveryHash, revealSecret } from './mfa-crypto';
 import { verifyTotp } from './totp';
+import { lockActiveSessionAccount } from './account-session-lock';
 
 type Credential={version:1;enabledAt:string|null;setupExpiresAt:string|null;encryptedSecret:string;recoveryCodeHashes:string[]};
 
@@ -13,11 +14,17 @@ export class MfaService{
 
   async isEnabled(accountId:string){return Boolean((await this.credential(accountId))?.enabledAt)}
 
-  async beginChallenge(accountId:string){const challengeToken=randomBytes(48).toString('base64url');await this.db.session.create({data:{accountId,tokenHash:this.challengeHash(challengeToken),expiresAt:new Date(Date.now()+5*60*1000)}});return{mfaRequired:true as const,challengeToken}}
+  async beginChallenge(accountId:string){return this.db.serializable(async tx=>{
+    await lockActiveSessionAccount(tx,accountId);
+    const challengeToken=randomBytes(48).toString('base64url');await tx.session.create({data:{accountId,tokenHash:this.challengeHash(challengeToken),expiresAt:new Date(Date.now()+5*60*1000)}});return{mfaRequired:true as const,challengeToken};
+  })}
 
   // The caller's transaction includes issuing the resulting authenticated session.
   async verifyChallenge(challengeToken:string,code:string,tx:Prisma.TransactionClient){
     const token=this.requireChallenge(challengeToken),now=new Date();
+    const reference=await tx.session.findUnique({where:{tokenHash:this.challengeHash(token)},select:{accountId:true}});
+    if(!reference)throw new UnauthorizedException('Invalid MFA challenge.');
+    await lockActiveSessionAccount(tx,reference.accountId);
     const session=await tx.session.findUnique({where:{tokenHash:this.challengeHash(token)},include:{account:{select:{status:true,emailVerifiedAt:true}}}});
     if(!session||session.revokedAt||session.expiresAt<=now||session.account.status!=='ACTIVE'||!session.account.emailVerifiedAt)throw new UnauthorizedException('Invalid MFA challenge.');
     const credential=await this.credential(session.accountId,tx);

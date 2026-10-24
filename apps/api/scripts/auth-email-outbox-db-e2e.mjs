@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { createRequire } from 'node:module';
-import { PrismaClient } from '@prisma/client';
 
 // This test writes isolated fixtures and uses a loopback-only fake provider.
 // Refuse non-local databases even if an operator accidentally supplies production env.
@@ -14,7 +13,8 @@ const { AuthEmailOutboxWorker }=require('../dist/auth/auth-email-outbox.worker.j
 const { AuthService }=require('../dist/auth/auth.service.js');
 const { EmailDeliveryService }=require('../dist/integrations/email-delivery.service.js');
 const { IntegrationService }=require('../dist/integrations/integration.service.js');
-const db=new PrismaClient();
+const { DatabaseService }=require('../dist/database/database.service.js');
+const db=new DatabaseService();
 const attempts=[],auditEvents=[],providerErrors=[];
 let rejectNext=false;
 const provider=createServer(async(req,res)=>{

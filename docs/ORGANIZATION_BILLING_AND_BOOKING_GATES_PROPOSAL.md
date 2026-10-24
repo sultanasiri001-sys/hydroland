@@ -3,7 +3,7 @@
 Status: **PROPOSED, NOT ACTIVE**. No user selection of payment terms has been
 received. Prepayment is the working design assumption; this document grants no
 credit, issues no invoices, changes no policies and authorizes no production
-migration. The existing organization portal implementation is in PR #442.
+migration. The organization portal was published through PR #470. Its publication does not activate this billing/calendar proposal.
 
 ## Business decisions to record before implementation
 
@@ -82,3 +82,18 @@ Organization payment must not be implemented by removing that boundary.
 
 This proposal is ready for a business decision and implementation review. It does
 not close organization billing, calendar-gate or production recovery acceptance.
+
+## Publication checkpoint — 24 October 2026
+
+This document is retained as an inactive implementation proposal. No Finance
+selection or policy approval is recorded by merging it. Current source still
+excludes organization-owned bookings from the personal payment route, and the
+canonical Invoice model still lacks the proposed issued customer/issuer and
+amount snapshot. Those are implementation gaps, not authorization to relax the
+existing boundary.
+
+Billing ownership, payment terms, delegated authority, invoice/tax requirements,
+refund rules and the confirmation/calendar policy require explicit decisions
+through the existing governance workflow before any executable change. Existing
+payment-provider verification and the published organization portal are separate
+evidence; neither is repeated or relabeled as approval of this proposal.

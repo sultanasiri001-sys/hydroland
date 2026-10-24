@@ -135,7 +135,7 @@ for(const marker of [
   "bookingId:booking.id",
   "idempotencyKey:`booking:${booking.id}`",
   "request(`/payments/${encodeURIComponent(paymentId)}/refresh`",
-  "payment?.status==='CAPTURED'",
+  "payment.status==='CAPTURED'",
 ])if(!webBookings.includes(marker))throw new Error(`Web payment checkout invariant missing: ${marker}`);
 if(webBookings.includes('amountMinor'))throw new Error('Web checkout must not submit a payment amount.');
 if(!paymentWebhook.includes("@Controller('payments/provider')")||!paymentWebhook.includes("@Post('moyasar/webhook')")||paymentWebhook.includes('UseGuards'))throw new Error('Moyasar public webhook boundary is missing or incorrectly guarded.');

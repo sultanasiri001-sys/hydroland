@@ -2,6 +2,8 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { ManagedDocumentStatus, Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { DocumentAuthorizationService } from './document-authorization.service';
+import { COOPERATION_CODE } from './cooperation-contract.domain';
+import { isLibraryCode, LIBRARY_PREFIX } from './contract-library.domain';
 
 type Field={key:string;labelAr:string;labelEn:string;type:string;required:boolean;options?:string[]};
 @Injectable()
@@ -10,6 +12,7 @@ export class DocumentPersistenceService {
 
   async createTemplate(accountId:string,input:{organizationId:string;code:string;titleAr:string;titleEn:string;department:string;fields:Field[];printable?:boolean}){
     await this.authz.assert(accountId,input.organizationId,'TEMPLATE_CREATE');
+    if(input.code===COOPERATION_CODE||isLibraryCode(String(input.code??'').trim().toUpperCase())) throw new ForbiddenException('نموذج العقد محكوم بمكتبة العقود ومسار التوقيع.');
     if(!input.code?.trim()||!input.titleAr?.trim()||!input.titleEn?.trim()||!input.department||!input.fields?.length) throw new BadRequestException('Template identity and fields are required.');
     return this.db.documentTemplate.create({data:{organizationId:input.organizationId,code:input.code,titleAr:input.titleAr,titleEn:input.titleEn,department:input.department,fields:input.fields as never,printable:input.printable!==false}});
   }
@@ -17,6 +20,7 @@ export class DocumentPersistenceService {
   async updateTemplate(accountId:string,id:string,input:{titleAr?:string;titleEn?:string;fields?:Field[];printable?:boolean}){
     const current=await this.db.documentTemplate.findUnique({where:{id}});
     if(!current) throw new NotFoundException('Document template not found.');
+    if(current.code===COOPERATION_CODE||isLibraryCode(current.code)) throw new ForbiddenException('نموذج العقد محدد الإصدار ولا يعدل من مسار المستندات.');
     await this.authz.assert(accountId,current.organizationId,'TEMPLATE_UPDATE');
     if(current.status!=='ACTIVE') throw new BadRequestException('Only ACTIVE templates can be revised.');
     const titleAr=input.titleAr?.trim()||current.titleAr;
@@ -33,13 +37,14 @@ export class DocumentPersistenceService {
 
   async listTemplates(accountId:string,organizationId:string,department?:string){
     await this.authz.assert(accountId,organizationId,'TEMPLATE_LIST');
-    return this.db.documentTemplate.findMany({where:{organizationId,status:'ACTIVE',...(department?{department}:{})},orderBy:[{department:'asc'},{code:'asc'}]});
+    return this.db.documentTemplate.findMany({where:{organizationId,status:'ACTIVE',NOT:[{code:COOPERATION_CODE},{code:{startsWith:LIBRARY_PREFIX}}],...(department?{department}:{})},orderBy:[{department:'asc'},{code:'asc'}]});
   }
 
   async createDocument(accountId:string,input:{organizationId:string;templateId:string;department:string;contentHash:string;payload:Record<string,unknown>}){
     await this.authz.assert(accountId,input.organizationId,'DOCUMENT_CREATE');
     const t=await this.db.documentTemplate.findFirst({where:{id:input.templateId,organizationId:input.organizationId,status:'ACTIVE'}});
     if(!t) throw new NotFoundException('Active document template not found in organization scope.');
+    if(t.code===COOPERATION_CODE||isLibraryCode(t.code)) throw new ForbiddenException('أنشئ العقد من مساحة العقود لضبط الأطراف والتوقيعات.');
     if(t.department!==input.department) throw new BadRequestException('Document department does not match template.');
     if(!input.contentHash?.trim()) throw new BadRequestException('Content hash is required.');
     return this.db.serializable(async tx=>{
@@ -66,8 +71,9 @@ export class DocumentPersistenceService {
   }
 
   async revise(accountId:string,id:string,input:{contentHash:string;payload:Record<string,unknown>}){
-    const d=await this.db.managedDocument.findUnique({where:{id}});
+    const d=await this.db.managedDocument.findUnique({where:{id},include:{template:true}});
     if(!d) throw new NotFoundException('Document not found.');
+    this.assertGeneric(d.template.code);
     await this.authz.assert(accountId,d.organizationId,'REVISE');
     if(d.status!=='DRAFT') throw new BadRequestException('Only DRAFT documents can be revised. Approved, signed and archived records are immutable.');
     if(!input.contentHash?.trim()) throw new BadRequestException('Content hash is required.');
@@ -86,8 +92,9 @@ export class DocumentPersistenceService {
   }
 
   async transition(accountId:string,id:string,to:ManagedDocumentStatus){
-    const d=await this.db.managedDocument.findUnique({where:{id}});
+    const d=await this.db.managedDocument.findUnique({where:{id},include:{template:true}});
     if(!d) throw new NotFoundException('Document not found.');
+    this.assertGeneric(d.template.code);
     await this.authz.assert(accountId,d.organizationId,to==='PENDING_APPROVAL'?'SUBMIT':to==='APPROVED'?'APPROVE':to==='SIGNED'?'SIGN':'ARCHIVE');
     const allowed:Record<string,string[]>={DRAFT:['PENDING_APPROVAL'],PENDING_APPROVAL:['APPROVED'],APPROVED:['SIGNED'],SIGNED:['ARCHIVED'],ARCHIVED:[]};
     if(!allowed[d.status]?.includes(to)) throw new BadRequestException(`Invalid document transition ${d.status} -> ${to}`);
@@ -110,16 +117,18 @@ export class DocumentPersistenceService {
   }
 
   async listRevisions(accountId:string,id:string){
-    const d=await this.db.managedDocument.findUnique({where:{id},select:{organizationId:true}});
+    const d=await this.db.managedDocument.findUnique({where:{id},select:{organizationId:true,template:{select:{code:true}}}});
     if(!d) throw new NotFoundException('Document not found.');
+    this.assertGeneric(d.template.code);
     await this.authz.assert(accountId,d.organizationId,'DOCUMENT_READ');
     return this.db.documentRevision.findMany({where:{documentId:id},orderBy:{version:'asc'}});
   }
 
   async getRevision(accountId:string,id:string,version:number){
     if(!Number.isInteger(version)||version<1) throw new BadRequestException('Revision version must be a positive integer.');
-    const d=await this.db.managedDocument.findUnique({where:{id},select:{organizationId:true}});
+    const d=await this.db.managedDocument.findUnique({where:{id},select:{organizationId:true,template:{select:{code:true}}}});
     if(!d) throw new NotFoundException('Document not found.');
+    this.assertGeneric(d.template.code);
     await this.authz.assert(accountId,d.organizationId,'DOCUMENT_READ');
     const revision=await this.db.documentRevision.findUnique({where:{documentId_version:{documentId:id,version}}});
     if(!revision) throw new NotFoundException('Document revision not found.');
@@ -129,7 +138,12 @@ export class DocumentPersistenceService {
   async get(accountId:string,id:string){
     const d=await this.db.managedDocument.findUnique({where:{id},include:{lifecycleEvents:{orderBy:{occurredAt:'asc'}},template:true}});
     if(!d) throw new NotFoundException('Document not found.');
+    this.assertGeneric(d.template.code);
     await this.authz.assert(accountId,d.organizationId,'DOCUMENT_READ');
     return d;
+  }
+
+  private assertGeneric(code:string){
+    if(code===COOPERATION_CODE||isLibraryCode(code)) throw new ForbiddenException('استخدم مكتبة العقود أو مساحة أطراف العقد.');
   }
 }

@@ -5,6 +5,7 @@ export async function checkCenterBookings(db,{base,a,b,ownerA,ta,tb,ts,personAcc
  const trips=[],bookingIds=[],resources=[],events=[],tag='BookingManagerCI-'+randomUUID();
  const weatherBefore=await db.operationalSetting.findUnique({where:{key:'WEATHER_GATE'}});
  const policyBefore=await db.$queryRaw`SELECT * FROM "PolicyControl" WHERE "category"='BOOKING' AND "ruleKey"='PARTICIPANT_ELIGIBILITY'`;
+ const safetyPolicyBefore=await db.$queryRaw`SELECT * FROM "PolicyControl" WHERE "category"='BOOKING' AND "ruleKey"='SAFETY_APPROVAL'`;
  const call=async(token,path,method='GET',body)=>{const r=await fetch(base+path,{method,headers:{...(token?{authorization:'Bearer '+token}:{}),'content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,body:await r.json().catch(()=>null)}};
  const path=id=>'/center/me/bookings'+(id?'/'+id:'');
  const preview=async id=>{const r=await call(ta,path(id));check(r.status===200,'Booking preview succeeds: '+JSON.stringify(r));return r.body};
@@ -48,10 +49,67 @@ export async function checkCenterBookings(db,{base,a,b,ownerA,ta,tb,ts,personAcc
   p=await preview(booking.id);check(p.actions.includes('CONFIRM')&&p.policyReview.required,'Review policy exposes explicit review issues');check((await apply(booking.id,command(p))).status===409,'Review issues need acknowledgment');
   await db.$executeRaw`UPDATE "PolicyControl" SET "state"='ENABLED',"updatedAt"=NOW() WHERE "category"='BOOKING' AND "ruleKey"='PARTICIPANT_ELIGIBILITY'`;
   check((await apply(booking.id,command(p,'CONFIRM',{policyReviewAcknowledged:true}))).status===409,'Changed policy cannot reuse a looser preview');await db.bookingParticipant.update({where:{id:participant.id},data:{eligibilityStatus:'ELIGIBLE'}});
-  await db.safetyChecklist.updateMany({where:{tripId:trip.id},data:{decision:'DEFERRED'}});p=await preview(booking.id);check(p.blockers.includes('SAFETY_APPROVAL'),'Safety rejection blocks confirmation');await db.safetyChecklist.updateMany({where:{tripId:trip.id},data:{decision:'ALLOWED'}});
+  for(const state of ['ENABLED','REVIEW','DISABLED']){
+   await db.$executeRaw`INSERT INTO "PolicyControl"("id","category","ruleKey","labelAr","state","createdAt","updatedAt") VALUES(${randomUUID()},'BOOKING','SAFETY_APPROVAL','CI safety approval',${state},NOW(),NOW()) ON CONFLICT("category","ruleKey") DO UPDATE SET "state"=EXCLUDED."state","updatedAt"=NOW()`;
+   for(const decision of [null,'REVIEW_REQUIRED','ALLOWED','DEFERRED']){
+    const safetyTrip=await makeTrip();
+    // Keep the matrix fixtures outside the directory/pagination scenario below.
+    await db.trip.update({where:{id:safetyTrip.id},data:{title:'SafetyParityCI-'+randomUUID()}});
+    const safetyBooking=await makeBooking(safetyTrip,customer),safetyPayment=await pay(safetyBooking);
+    if(decision===null)await db.safetyChecklist.deleteMany({where:{tripId:safetyTrip.id}});
+    else await db.safetyChecklist.updateMany({where:{tripId:safetyTrip.id},data:{decision}});
+    const label=state+'/'+(decision??'MISSING'),safetyPreview=await preview(safetyBooking.id);
+    check(safetyPreview.safetyDecision===decision,'Latest safety decision is shown: '+label);
+    const blocked=decision==='DEFERRED'||(state==='ENABLED'&&decision!=='ALLOWED');
+    if(blocked){
+     check(safetyPreview.blockers.includes('SAFETY_APPROVAL')&&!safetyPreview.actions.includes('CONFIRM'),'Safety prevents confirmation: '+label);
+     check((await apply(safetyBooking.id,command(safetyPreview,'CONFIRM',{policyReviewAcknowledged:true}))).status===409,'Center cannot override blocked safety: '+label);
+     check((await call(adminToken,'/trips/admin/'+safetyTrip.id+'/bookings/'+safetyBooking.id+'/confirm','PATCH')).status===409,'Legacy admin cannot override blocked safety: '+label);
+     const unchanged=await db.booking.findUniqueOrThrow({where:{id:safetyBooking.id}});
+     check(unchanged.status==='PENDING'&&unchanged.updatedAt.getTime()===safetyBooking.updatedAt.getTime(),'Blocked confirmation preserves booking: '+label);
+     check(await db.auditEvent.count({where:{resource:'Booking',resourceId:safetyBooking.id,action:'BOOKING_CONFIRMED'}})===0,'Blocked safety has no confirmation audit: '+label);
+     check(await db.notification.count({where:{type:'BOOKING_CONFIRMED',payload:{path:['bookingId'],equals:safetyBooking.id}}})===0,'Blocked safety sends no confirmation notice: '+label);
+    }else{
+     check(safetyPreview.actions.includes('CONFIRM')&&!safetyPreview.blockers.includes('SAFETY_APPROVAL'),'Optional or approved safety permits confirmation: '+label);
+     const reviewRequired=state==='REVIEW'&&decision!=='ALLOWED';
+     check(safetyPreview.policyReview.required===reviewRequired,'Safety review requirement is preserved: '+label);
+     if(reviewRequired)check((await apply(safetyBooking.id,command(safetyPreview))).status===409,'Optional review still requires acknowledgment: '+label);
+     const confirmed=await apply(safetyBooking.id,command(safetyPreview,'CONFIRM',{policyReviewAcknowledged:true}));
+     check(confirmed.status===201&&confirmed.body.status==='CONFIRMED','Authorized confirmation succeeds: '+label);
+     check((await db.booking.findUniqueOrThrow({where:{id:safetyBooking.id}})).status==='CONFIRMED','Allowed confirmation persists: '+label);
+     check(await db.auditEvent.count({where:{resource:'Booking',resourceId:safetyBooking.id,action:'BOOKING_CONFIRMED'}})===1,'Allowed confirmation audited once: '+label);
+    }
+    check((await db.payment.findUniqueOrThrow({where:{id:safetyPayment.id}})).status==='CAPTURED','Safety confirmation leaves payment unchanged: '+label);
+   }
+  }
+  await db.$executeRaw`UPDATE "PolicyControl" SET "state"='ENABLED',"updatedAt"=NOW() WHERE "category"='BOOKING' AND "ruleKey"='SAFETY_APPROVAL'`;
   await db.operationalSetting.update({where:{key:'WEATHER_GATE'},data:{value:{enabled:true,mode:'ENFORCE'}}});p=await preview(booking.id);check(p.blockers.includes('WEATHER_GATE'),'Unapproved weather blocks confirmation');check((await apply(booking.id,command(p))).status===409,'Weather gate cannot be skipped by center');await db.operationalSetting.update({where:{key:'WEATHER_GATE'},data:{value:{enabled:false}}});
   await db.roleAssignment.create({data:{accountId:other.id,role:'STAFF',status:'ACTIVE'}});
   const resource=await db.calendarResource.create({data:{type:'CREW',referenceId:other.id,name:'Booking crew'}});resources.push(resource.id);const event=await db.calendarEvent.create({data:{organizationId:a.org.id,type:'TRIP',referenceType:'TRIP',referenceId:trip.id,title:'Booking crew',startsAt:trip.startsAt,endsAt:trip.endsAt}});events.push(event.id);await db.calendarAllocation.create({data:{eventId:event.id,resourceId:resource.id,startsAt:trip.startsAt,endsAt:trip.endsAt}});
+  p=await preview(booking.id);c=command(p);
+  check(p.calendarReservation.status==='NEEDS_ATTENTION'&&p.calendarReservation.issues.includes('CALENDAR_REQUIRED_RESOURCE_MISSING')&&p.calendarReservation.confirmationGateEnforced===false,'Calendar reports missing shore site without activating a proposed policy');
+  await db.calendarEvent.update({where:{id:event.id},data:{status:'INACTIVE'}});
+  check((await apply(booking.id,c)).status===409,'Calendar event changes invalidate saved booking preview');
+  p=await preview(booking.id);check(p.calendarReservation.issues.includes('CALENDAR_EVENT_MISSING_OR_INACTIVE'),'Inactive calendar event is reported truthfully');
+  await db.calendarEvent.update({where:{id:event.id},data:{status:'ACTIVE'}});
+  const site=await db.calendarResource.create({data:{type:'SITE',name:'Booking shore site'}});resources.push(site.id);
+  await db.calendarAllocation.create({data:{eventId:event.id,resourceId:site.id,startsAt:trip.startsAt,endsAt:trip.endsAt}});
+  p=await preview(booking.id);c=command(p);check(p.calendarReservation.status==='RESERVED'&&p.calendarReservation.activeAllocationCount===2,'Calendar reports complete trip reservation');
+  await db.calendarResource.update({where:{id:site.id},data:{active:false}});
+  check((await apply(booking.id,c)).status===409,'Resource deactivation invalidates confirmation preview');
+  p=await preview(booking.id);check(p.calendarReservation.issues.includes('CALENDAR_RESOURCE_INACTIVE'),'Inactive allocated resource is reported');
+  await db.calendarResource.update({where:{id:site.id},data:{active:true}});
+  const conflictEvent=await db.calendarEvent.create({data:{organizationId:b.org.id,type:'TRIP',referenceType:'TRIP',referenceId:foreignTrip.id,title:'PRIVATE_FOREIGN_EVENT',startsAt:trip.startsAt,endsAt:trip.endsAt}});events.push(conflictEvent.id);
+  p=await preview(booking.id);c=command(p);
+  await db.calendarAllocation.create({data:{eventId:conflictEvent.id,resourceId:site.id,startsAt:trip.startsAt,endsAt:trip.endsAt}});
+  check((await apply(booking.id,c)).status===409,'New overlapping reservation invalidates saved confirmation');
+  p=await preview(booking.id);check(p.calendarReservation.issues.includes('CALENDAR_RESOURCE_CONFLICT'),'Overlapping resource allocation is reported');
+  check(!JSON.stringify(p.calendarReservation).includes(foreignTrip.id)&&!JSON.stringify(p).includes('PRIVATE_FOREIGN_EVENT'),'Calendar preview does not disclose foreign trip identities');
+  await db.calendarEvent.update({where:{id:conflictEvent.id},data:{status:'INACTIVE'}});
+  p=await preview(booking.id);check(!p.calendarReservation.issues.includes('CALENDAR_RESOURCE_CONFLICT'),'Inactive event does not count as an active reservation conflict');
+  await db.calendarEvent.update({where:{id:event.id},data:{endsAt:new Date(trip.endsAt.getTime()+60000)}});
+  p=await preview(booking.id);check(p.calendarReservation.issues.includes('CALENDAR_TIME_MISMATCH'),'Event time mismatch is reported');
+  await db.calendarEvent.update({where:{id:event.id},data:{endsAt:trip.endsAt}});
   p=await preview(booking.id);c=command(p);
   if(!/^[a-f0-9-]{36}$/.test(booking.id))throw new Error('Invalid CI fixture ID');
   await db.$executeRawUnsafe(`ALTER TABLE "Notification" ADD CONSTRAINT booking_ci_notice_failure CHECK (("payload"->>'bookingId') IS DISTINCT FROM '${booking.id}') NOT VALID`);
@@ -83,6 +141,7 @@ export async function checkCenterBookings(db,{base,a,b,ownerA,ta,tb,ts,personAcc
   await db.roleAssignment.update({where:{accountId_role:{accountId:ownerA.id,role:'DIVE_CENTER'}},data:{status:'ACTIVE'}});await db.organizationMember.update({where:{id:a.member.id},data:{status:'ACTIVE'}});await db.organization.update({where:{id:a.org.id},data:{status:'ACTIVE'}});
   if(weatherBefore)await db.operationalSetting.update({where:{key:'WEATHER_GATE'},data:{value:weatherBefore.value}});else await db.operationalSetting.deleteMany({where:{key:'WEATHER_GATE'}});
   if(policyBefore[0])await db.$executeRaw`UPDATE "PolicyControl" SET "state"=${policyBefore[0].state},"updatedAt"=${policyBefore[0].updatedAt} WHERE "category"='BOOKING' AND "ruleKey"='PARTICIPANT_ELIGIBILITY'`;else await db.$executeRaw`DELETE FROM "PolicyControl" WHERE "category"='BOOKING' AND "ruleKey"='PARTICIPANT_ELIGIBILITY'`;
+  if(safetyPolicyBefore[0])await db.$executeRaw`UPDATE "PolicyControl" SET "state"=${safetyPolicyBefore[0].state},"updatedAt"=${safetyPolicyBefore[0].updatedAt} WHERE "category"='BOOKING' AND "ruleKey"='SAFETY_APPROVAL'`;else await db.$executeRaw`DELETE FROM "PolicyControl" WHERE "category"='BOOKING' AND "ruleKey"='SAFETY_APPROVAL'`;
   await db.invoice.deleteMany({where:{payment:{bookingId:{in:bookingIds}}}});await db.payment.deleteMany({where:{bookingId:{in:bookingIds}}});await db.bookingParticipant.deleteMany({where:{bookingId:{in:bookingIds}}});await db.booking.deleteMany({where:{id:{in:bookingIds}}});await db.crewAssignment.deleteMany({where:{tripId:{in:trips}}});await db.calendarAllocation.deleteMany({where:{eventId:{in:events}}});await db.calendarEvent.deleteMany({where:{id:{in:events}}});await db.calendarResource.deleteMany({where:{id:{in:resources}}});await db.safetyChecklist.deleteMany({where:{tripId:{in:trips}}});await db.operationalSetting.deleteMany({where:{key:{in:trips.map(id=>'trip-price:'+id)}}});await db.trip.deleteMany({where:{id:{in:trips}}});
  }
 }

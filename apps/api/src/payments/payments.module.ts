@@ -10,5 +10,5 @@ import {SettlementReadinessController} from './settlement-readiness.controller';
 import {PaymentsService} from './payments.service';
 import {MoyasarPaymentProviderService} from './moyasar-payment-provider.service';
 import {MoyasarSettlementProviderService} from './moyasar-settlement-provider.service';
-@Module({imports:[AdminModule,AuthModule,AuditModule,TripsModule,IntegrationModule],controllers:[PaymentsController,PaymentsWebhookController,SettlementReadinessController],providers:[PaymentsService,MoyasarPaymentProviderService,MoyasarSettlementProviderService],exports:[PaymentsService,MoyasarSettlementProviderService]})
+@Module({imports:[AdminModule,AuthModule,AuditModule,TripsModule,IntegrationModule],controllers:[PaymentsController,PaymentsWebhookController,SettlementReadinessController],providers:[PaymentsService,MoyasarPaymentProviderService,MoyasarSettlementProviderService],exports:[PaymentsService,MoyasarPaymentProviderService,MoyasarSettlementProviderService]})
 export class PaymentsModule {}

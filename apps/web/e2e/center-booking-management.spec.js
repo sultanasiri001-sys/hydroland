@@ -50,3 +50,9 @@ test('directory and detail errors clear previous records and can retry',async({p
 test('review policy acknowledgement accompanies confirmation',async({page})=>{
  const state=await install(page);state.data=details({policyReview:{required:true,issues:['PAYMENT_REQUIRED']}});await openDetail(page);const form=panel(page).locator('[data-booking-action="CONFIRM"]');await form.getByRole('button',{name:'تأكيد الحجز'}).click();expect(state.posts.length).toBe(0);await form.getByRole('checkbox').check();await form.getByRole('button',{name:'تأكيد الحجز'}).click();await expect.poll(()=>state.posts.length).toBe(1);expect(state.posts[0].policyReviewAcknowledged).toBe(true);
 });
+
+
+test('booking detail reports canonical calendar reservation and refreshes changed health',async({page})=>{
+ const state=await install(page);state.data=details({calendarReservation:{status:'RESERVED',issues:[],activeAllocationCount:2,confirmationGateEnforced:false}});await openDetail(page);const box=panel(page).locator('[data-booking-detail]');await expect(box).toContainText('موارد الرحلة محجوزة في موعدها');await expect(box).toContainText('2 تخصيص نشط');
+ state.data=details({calendarReservation:{status:'NEEDS_ATTENTION',issues:['CALENDAR_RESOURCE_INACTIVE','CALENDAR_RESOURCE_CONFLICT'],activeAllocationCount:2,confirmationGateEnforced:false}});await box.getByRole('button',{name:'تحديث التفاصيل'}).click();await expect(box).toContainText('حجز موارد الرحلة يحتاج مراجعة');await expect(box).toContainText('أحد موارد الرحلة غير نشط');await expect(box).toContainText('يوجد تعارض في حجز مورد للرحلة');await expect(box.getByRole('button',{name:'تأكيد الحجز',exact:true})).toBeEnabled();expect(state.posts).toHaveLength(0);
+});

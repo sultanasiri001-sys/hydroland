@@ -1,0 +1,11 @@
+.hl-admin-accounts{padding:1.25rem;min-width:0;color:var(--text,#eaf5ff)}
+.hl-admin-accounts header,.hl-admin-accounts nav{display:flex;align-items:start;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+.hl-admin-accounts header>div{flex:1;min-width:14rem}
+.hl-admin-accounts article{border:1px solid #7894a755;border-radius:14px;padding:1rem;margin-block:1rem;overflow-wrap:anywhere}
+.hl-admin-accounts fieldset{border:1px solid #7894a744;border-radius:10px;padding:1rem;min-width:0}
+.hl-admin-accounts label{display:grid;gap:.5rem;margin-block:.6rem}
+.hl-admin-accounts .hl-admin-accounts__ack{display:flex;align-items:start}
+.hl-admin-accounts input:not([type=checkbox]),.hl-admin-accounts textarea{width:100%;max-width:100%;box-sizing:border-box;padding:.65rem;border:1px solid #7894a777;border-radius:8px;color:inherit;background:var(--surface,#132d43);font:inherit}
+.hl-admin-accounts button{font:inherit;padding:.6rem 1rem;border:1px solid #7894a777;border-radius:8px;color:inherit;background:var(--surface,#132d43);cursor:pointer}
+.hl-admin-accounts button:disabled{opacity:.5;cursor:default}
+.hl-admin-accounts [role=status]{overflow-wrap:anywhere}

@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import { trainingCompletion, trainingRecordEditable } from './training-completion-policy';
+const signed={status:'COMPETENT',signedOffByInstructorId:'assigned-instructor',signedOffAt:new Date()};
+assert.equal(trainingCompletion({stages:[],sessions:[]}).ready,false);
+assert.equal(trainingCompletion({stages:[{skills:[signed]}],sessions:[]}).ready,false,'a skill alone cannot replace a completed session');
+assert.equal(trainingCompletion({stages:[{skills:[{status:'COMPETENT'}]}],sessions:[{status:'COMPLETED'}]}).progressPercent,0,'unsigned competence must not count');
+assert.equal(trainingCompletion({stages:[{skills:[signed,{status:'NEEDS_REVIEW'}]}],sessions:[{status:'COMPLETED'}]}).progressPercent,50);
+assert.equal(trainingCompletion({stages:[{skills:[...Array(199).fill(signed),{status:'NOT_STARTED'}]}],sessions:[{status:'COMPLETED'}]}).progressPercent,99,'partial progress cannot round up to 100');
+assert.equal(trainingCompletion({stages:[{skills:[signed]},{skills:[]}],sessions:[{status:'COMPLETED'}]}).ready,false,'each stage needs requirements');
+assert.equal(trainingCompletion({stages:[{skills:[signed]}],sessions:[{status:'COMPLETED'},{status:'CHECK_IN_OPEN'}]}).ready,false);
+assert.equal(trainingCompletion({stages:[{skills:[signed]}],sessions:[{status:'COMPLETED'},{status:'CANCELLED'}]}).ready,true);
+for(const status of ['COMPLETED','SUSPENDED'])assert.equal(trainingRecordEditable({status,certificate:null,enrollment:{status:'ACTIVE'}}),false);
+assert.equal(trainingRecordEditable({status:'IN_PROGRESS',certificate:{id:'certificate'},enrollment:{status:'ACTIVE'}}),false);
+assert.equal(trainingRecordEditable({status:'IN_PROGRESS',certificate:null,enrollment:{status:'CANCELLED'}}),false);
+assert.equal(trainingRecordEditable({status:'IN_PROGRESS',certificate:null,enrollment:{status:'ACTIVE'}}),true);
+console.log('Training completion policy passed: signed skills, stage requirements, completed session, open-session blocking and immutable records.');
