@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { execFileSync } from 'node:child_process';
+import { requireExistingMigrationHistory } from './production-recovery-history.mjs';
 
 const prisma = new PrismaClient();
 const HR = '20260923092000_hr_candidate_verification';
@@ -372,6 +373,7 @@ async function recoverUnifiedCalendar() {
 }
 
 async function main() {
+  await requireExistingMigrationHistory(prisma);
   await recoverHr();
   await recoverAdministrativeAffairs();
   await recoverUnifiedCalendar();

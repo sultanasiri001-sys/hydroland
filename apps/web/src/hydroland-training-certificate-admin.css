@@ -1,0 +1,15 @@
+.hl-training-certificate-review{grid-column:1/-1;min-width:0;overflow-wrap:anywhere}
+.hl-training-certificate-review [data-training-certificate-list]{display:grid;gap:1rem;margin-top:1rem}
+.hl-training-certificate-filters{display:flex;flex-wrap:wrap;gap:1rem;align-items:end}
+.hl-training-certificate-review label{display:grid;gap:.5rem;min-width:0}
+.hl-training-certificate-review fieldset{display:grid;gap:1rem;min-width:0;margin:1rem 0 0;padding:0;border:0}
+.hl-training-certificate-review .hl-admin__credential-card{min-width:0}
+.hl-training-certificate-review input:not([type=checkbox]),.hl-training-certificate-review select,.hl-training-certificate-review textarea{box-sizing:border-box;width:100%;min-width:0;min-height:44px;padding:.65rem;border:1px solid var(--hl-border,rgba(120,191,224,.3));border-radius:10px;background:var(--hl-surface,#102b3b);color:inherit;font:inherit}
+.hl-training-certificate-review textarea{min-height:90px;resize:vertical}
+.hl-training-certificate-review select{max-width:100%}
+.hl-training-certificate-review .hl-training-certificate-confirm{display:flex;align-items:start;gap:.65rem}
+.hl-training-certificate-confirm [type=checkbox]{flex:0 0 auto;min-width:20px;min-height:20px}
+.hl-training-certificate-review button,.hl-training-certificate-review summary{min-height:44px}
+.hl-training-certificate-review details{padding:.8rem;border:1px solid var(--hl-border,rgba(120,191,224,.2));border-radius:12px}
+.hl-training-certificate-review li{margin:.5rem 0}
+@media(max-width:600px){.hl-training-certificate-filters{display:grid;grid-template-columns:1fr}.hl-training-certificate-review header{flex-direction:column}}

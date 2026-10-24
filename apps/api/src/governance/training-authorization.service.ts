@@ -56,9 +56,9 @@ export class TrainingAuthorizationService {
     this.deny();
   }
 
-  async assertReviewer(accountId: string) {
-    const reviewer = await this.db.roleAssignment.findFirst({
-      where: { accountId, status: 'ACTIVE', role: { in: ['REVIEWER','ADMIN'] } },
+  async assertReviewer(accountId: string, db:Prisma.TransactionClient=this.db) {
+    const reviewer = await db.roleAssignment.findFirst({
+      where: { accountId, status: 'ACTIVE', account:{status:'ACTIVE'}, role: { in: ['REVIEWER','ADMIN'] } },
       select: { id: true },
     });
     if (!reviewer) this.deny();
@@ -71,6 +71,11 @@ export class TrainingAuthorizationService {
     });
     if (!enrollment) this.deny();
     await this.assertScope(accountId, enrollment, allowStudent);
+  }
+
+  async assertProfessionalEnrollmentAccess(accountId:string,enrollmentId:string,db:Prisma.TransactionClient=this.db){
+    const enrollment=await db.trainingEnrollment.findUnique({where:{id:enrollmentId},select:{studentAccountId:true,instructorAccountId:true,centerOrganizationId:true}});
+    if(!enrollment||!await this.isAssignedInstructor(accountId,enrollment,db))this.deny();
   }
 
   async assertRecordAccess(accountId: string, recordId: string, db:Prisma.TransactionClient=this.db) {

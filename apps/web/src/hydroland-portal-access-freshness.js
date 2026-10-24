@@ -34,6 +34,12 @@
     const stillCurrent=()=>authenticated()&&session===auth.getSessionVersion?.()&&(!context.isCurrent||context.isCurrent());
     if(role==='diver')return stillCurrent();
     if(!stillCurrent())return false;
+    // A request already in flight may have sampled roles before this action.
+    // Finish it first, then authorize against a request started by this action.
+    if(refreshPromise){
+      await refreshPromise;
+      if(!stillCurrent())return false;
+    }
     const refreshed=await refreshPortalAccess();
     if(!refreshed||!stillCurrent())return false;
     if(!access.roleAllowed(role)){

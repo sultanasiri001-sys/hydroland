@@ -2,6 +2,12 @@
 
 Status: production recovery acceptance is OPEN. A synthetic CI rehearsal is not a production backup restore or evidence that provider PITR is active.
 
+24 October update: real production-archive logical restoration is now verified
+on two native PostgreSQL 18.6 targets in the existing recovery instance. See
+`NATIVE_PRODUCTION_ARCHIVE_RESTORE_2026-10-24.md` and its sanitized evidence.
+Provider PITR, external object recovery, owner/ACL transfer, agreed RPO/RTO and
+production cutover acceptance remain separate and OPEN.
+
 ## Objectives and independent recovery modes
 
 PostgreSQL is the system of record. Keep these operations separate:
@@ -24,6 +30,11 @@ PostgreSQL is the system of record. Keep these operations separate:
 9. Preserve evidence of achieved RPO/RTO and document any remaining limitations.
 
 ## Synthetic automated rehearsal
+
+The production repair entry point refuses absent or empty Prisma history with
+`MIGRATION_HISTORY_REQUIRED` before querying repair candidates. It does not
+bootstrap a database, create history or treat a missing ledger as healthy.
+Restore a verified archive or use a separately reviewed fresh-install path.
 
 The old CI drill failed before taking a backup: it invoked production-repair helpers against an empty database lacking `_prisma_migrations`. The repository's historical migration chain also contains documented TEXT/UUID drift and cannot be treated as a validated fresh-install path merely by skipping that initial error. See issue #369 and API validation.
 

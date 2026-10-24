@@ -165,6 +165,9 @@ model Account {
   updatedAt DateTime @updatedAt
   person Person @relation(fields:[personId], references:[id], onDelete:Restrict)
   sessions Session[]
+  aiControlChanges AiAgentRuntime[] @relation("AiAgentControlActor")
+  aiTasksRequested AiAgentTask[] @relation("AiAgentTaskRequester")
+  aiTasksReviewed AiAgentTask[] @relation("AiAgentTaskReviewer")
   roleAssignments RoleAssignment[]
   activationRequests ActivationRequest[] @relation("ApplicantRequests")
   reviewDecisions ReviewDecision[] @relation("ReviewerDecisions")
@@ -175,6 +178,13 @@ model Account {
   diverEquipment DiverEquipment[]
   crewAssignments CrewAssignment[]
   payments Payment[]
+  collectedReceivablePayments ReceivablePayment[] @relation("ReceivableCollector")
+ financeShiftCloseSubmissions FinanceShiftCloseSubmission[] @relation("FinanceShiftCloseSubmitter")
+ financeShiftCloseReviews FinanceShiftCloseSubmission[] @relation("FinanceShiftCloseReviewer")
+ financePeriodCloseSubmissions FinancePeriodCloseSubmission[] @relation("FinancePeriodCloseSubmitter")
+ financePeriodCloseApprovals FinancePeriodCloseApproval[] @relation("FinancePeriodCloseReviewer")
+ financeSettlementImports FinanceSettlementImport[] @relation("FinanceSettlementImportSubmitter")
+ financeSettlementReviews FinanceSettlementReview[] @relation("FinanceSettlementImportReviewer")
   diveLogs DiveLog[]
   organizationMemberships OrganizationMember[]
   organizationsOwned Organization[] @relation("OrganizationOwner")
@@ -222,6 +232,8 @@ model Organization {
   legalName String?
   kind String
   registrationNumber String? @unique
+  address String?
+  trainingMembershipReference String?
   regionCode String?
   documentLogoUrl String?
   documentLogoAssetId String?
@@ -253,6 +265,8 @@ model Organization {
   documentReferenceCounters DocumentReferenceCounter[]
   documentBrandSnapshots DocumentBrandSnapshot[]
   documentAssets OrganizationDocumentAsset[]
+  customerCases CustomerCase[] @relation("OrganizationCustomerCases")
+  bookings Booking[]
 }
 
 model OrganizationDocumentAsset {
@@ -314,6 +328,9 @@ model Session {
 model ProfessionalProfile {
   id String @id @default(uuid())
   personId String @unique
+  nationalLicenseCredentialId String?
+  qualificationCredentialId String?
+  eligibilityEvidenceReference String?
   headline String?
   bio String?
   regionCode String?
@@ -548,6 +565,54 @@ model OperationalSetting {
   updatedAt DateTime @default(now())
 }
 
+model AiAgentRuntime {
+  key String @id
+  state String @default("PAUSED")
+  revision String @default(uuid())
+  updatedAt DateTime @updatedAt
+  lastAdminAccountId String
+  lastAdmin Account @relation("AiAgentControlActor", fields:[lastAdminAccountId], references:[id], onDelete:Restrict)
+  tasks AiAgentTask[]
+}
+
+model AiAgentTask {
+  id String @id @default(uuid())
+  agentKey String
+  requestedByAccountId String
+  requestKey String
+  fingerprint String
+  action String
+  language String
+  prompt String
+  state String @default("QUEUED")
+  revision String @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  startedAt DateTime?
+  finishedAt DateTime?
+  leaseExpiresAt DateTime?
+  claimId String?
+  dispatchedAt DateTime?
+  executionPolicy Json?
+  model String?
+  reservedCostMicroUsd Int @default(0)
+  reservationDate DateTime? @db.Date
+  inputTokens Int?
+  outputTokens Int?
+  estimatedCostMicroUsd Int?
+  result String?
+  errorCode String?
+  reviewedAt DateTime?
+  reviewedByAccountId String?
+  agent AiAgentRuntime @relation(fields:[agentKey], references:[key], onDelete:Restrict)
+  requestedBy Account @relation("AiAgentTaskRequester", fields:[requestedByAccountId], references:[id], onDelete:Restrict)
+  reviewedBy Account? @relation("AiAgentTaskReviewer", fields:[reviewedByAccountId], references:[id], onDelete:Restrict)
+  @@unique([requestedByAccountId,requestKey])
+  @@index([agentKey,state,createdAt])
+  @@index([state,leaseExpiresAt])
+  @@index([reservationDate])
+}
+
 model PolicyControl {
   id String @id @default(uuid())
   category String
@@ -606,16 +671,22 @@ model Booking {
   id String @id @default(uuid())
   tripId String
   accountId String
+  organizationId String?
+  bookingRequestKey String? @unique
+  bookingRequestFingerprint String?
   status BookingStatus @default(PENDING)
   seats Int @default(1)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   trip Trip @relation(fields:[tripId], references:[id], onDelete:Restrict)
   account Account @relation(fields:[accountId], references:[id], onDelete:Restrict)
+  organization Organization? @relation(fields:[organizationId], references:[id], onDelete:Restrict)
   participants BookingParticipant[]
   payments Payment[]
-  @@unique([tripId,accountId])
+  safetyIncidents SafetyIncident[]
   @@index([tripId,status])
+  @@index([organizationId,status,createdAt])
+  @@index([tripId,organizationId])
 }
 
 model BookingParticipant {
@@ -740,6 +811,7 @@ enum SafetyIncidentStatus {
 model SafetyIncident {
   id String @id @default(uuid())
   tripId String?
+  bookingId String?
   reportedByAccountId String
   severity SafetyIncidentSeverity
   title String
@@ -752,9 +824,11 @@ model SafetyIncident {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   trip Trip? @relation(fields:[tripId], references:[id], onDelete:Restrict)
+  booking Booking? @relation(fields:[bookingId], references:[id], onDelete:Restrict)
   reportedBy Account @relation("SafetyIncidentReporter", fields:[reportedByAccountId], references:[id], onDelete:Restrict)
   resolvedBy Account? @relation("SafetyIncidentResolver", fields:[resolvedByAccountId], references:[id], onDelete:Restrict)
   @@index([tripId,status,createdAt])
+  @@index([bookingId,status,createdAt])
   @@index([reportedByAccountId,createdAt])
   @@index([status,severity,createdAt])
 }
@@ -815,6 +889,7 @@ model Payment {
   status PaymentStatus @default(CREATED)
   idempotencyKey String @unique
   providerReference String? @unique
+  moyasarPaymentId String? @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   booking Booking @relation(fields:[bookingId], references:[id], onDelete:Restrict)
@@ -898,6 +973,9 @@ model OrgUnit {
   administrativeMeetings AdministrativeMeeting[]
   administrativeRoutingsFrom AdministrativeRouting[] @relation("AdministrativeRoutingFromOrgUnit")
   administrativeRoutingsTo AdministrativeRouting[] @relation("AdministrativeRoutingToOrgUnit")
+  financeShiftCloseSubmissions FinanceShiftCloseSubmission[]
+  financePeriodCloseSubmissions FinancePeriodCloseSubmission[]
+  financeSettlementImports FinanceSettlementImport[]
 }
 model Position {
  id String @id @default(uuid())
@@ -962,6 +1040,7 @@ model Employment {
  @@index([organizationId,orgUnitId,status])
 }
 model EmploymentContract {
+ librarySnapshot Json?
  id String @id @default(uuid())
  employmentId String
  version Int @default(1)
@@ -1161,6 +1240,7 @@ model CustomerCase {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   customer Account @relation("CustomerCases", fields:[customerId], references:[id], onDelete:Restrict)
+  organization Organization? @relation("OrganizationCustomerCases", fields:[organizationId], references:[id], onDelete:Restrict)
   interactions CustomerInteraction[]
   @@index([customerId,status,createdAt])
   @@index([organizationId,status,createdAt])
@@ -1259,6 +1339,35 @@ enum FinanceShiftStatus {
   HANDED_OVER
   CLOSED
 }
+enum FinanceShiftCloseSubmissionStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+enum FinancePeriodType {
+  MONTH
+  QUARTER
+  YEAR
+}
+enum FinancePeriodCloseStatus {
+  SUBMITTED
+  CLOSED
+  REJECTED
+}
+enum FinancePeriodCloseApprovalDecision {
+  APPROVED
+  REJECTED
+}
+enum FinancePeriodCloseReviewerRole {
+  CENTRAL_FINANCE
+  FINANCE_MANAGER
+  EXECUTIVE
+}
+enum FinanceSettlementImportStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
 enum FinanceHandoverStatus {
   PENDING
   ACCEPTED
@@ -1292,6 +1401,8 @@ model FinanceAccountantShift {
  createdAt DateTime @default(now())
  updatedAt DateTime @updatedAt
  entries FinanceShiftEntry[]
+ receivableCollections ReceivablePayment[]
+ closeSubmissions FinanceShiftCloseSubmission[]
  outgoingHandovers FinanceShiftHandover[] @relation("FinanceHandoverFromShift")
  incomingHandovers FinanceShiftHandover[] @relation("FinanceHandoverToShift")
  @@index([centerOrgUnitId,status])
@@ -1331,6 +1442,107 @@ model FinanceShiftHandover {
  toShift FinanceAccountantShift @relation("FinanceHandoverToShift",fields:[toShiftId],references:[id],onDelete:Restrict)
  @@index([fromShiftId,status])
  @@index([toShiftId,status])
+}
+
+model FinanceShiftCloseSubmission {
+ id String @id @default(uuid())
+ shiftId String
+ centerOrgUnitId String
+ revision Int
+ submittedByAccountId String
+ reviewedByAccountId String?
+ openingBalanceMinor Int
+ revenueMinor Int
+ expenseMinor Int
+ refundMinor Int
+ adjustmentMinor Int
+ expectedCashMinor Int
+ actualCashMinor Int
+ varianceMinor Int
+ unresolvedPaymentCount Int @default(0)
+ varianceReason String?
+ status FinanceShiftCloseSubmissionStatus @default(SUBMITTED)
+ reviewNote String?
+ submittedAt DateTime @default(now())
+ reviewedAt DateTime?
+ createdAt DateTime @default(now())
+ shift FinanceAccountantShift @relation(fields:[shiftId],references:[id],onDelete:Restrict)
+ center OrgUnit @relation(fields:[centerOrgUnitId],references:[id],onDelete:Restrict)
+ submittedBy Account @relation("FinanceShiftCloseSubmitter",fields:[submittedByAccountId],references:[id],onDelete:Restrict)
+ reviewedBy Account? @relation("FinanceShiftCloseReviewer",fields:[reviewedByAccountId],references:[id],onDelete:Restrict)
+ @@unique([shiftId,revision])
+ @@index([centerOrgUnitId,status,submittedAt])
+ @@index([submittedByAccountId,status])
+}
+
+model FinancePeriodCloseSubmission {
+ id String @id @default(uuid())
+ centerOrgUnitId String
+ periodType FinancePeriodType
+ periodKey String
+ revision Int
+ submittedByAccountId String
+ status FinancePeriodCloseStatus @default(SUBMITTED)
+ readinessSnapshot Json
+ submittedAt DateTime @default(now())
+ closedAt DateTime?
+ center OrgUnit @relation(fields:[centerOrgUnitId],references:[id],onDelete:Restrict)
+ submittedBy Account @relation("FinancePeriodCloseSubmitter",fields:[submittedByAccountId],references:[id],onDelete:Restrict)
+ approvals FinancePeriodCloseApproval[]
+ @@unique([centerOrgUnitId,periodType,periodKey,revision])
+ @@index([centerOrgUnitId,status,submittedAt])
+ @@index([submittedByAccountId,status])
+}
+
+model FinancePeriodCloseApproval {
+ id String @id @default(uuid())
+ submissionId String
+ reviewerAccountId String
+ reviewerRole FinancePeriodCloseReviewerRole
+ decision FinancePeriodCloseApprovalDecision
+ note String?
+ createdAt DateTime @default(now())
+ submission FinancePeriodCloseSubmission @relation(fields:[submissionId],references:[id],onDelete:Restrict)
+ reviewer Account @relation("FinancePeriodCloseReviewer",fields:[reviewerAccountId],references:[id],onDelete:Restrict)
+ @@unique([submissionId,reviewerAccountId])
+ @@index([reviewerAccountId,decision,createdAt])
+}
+
+model FinanceSettlementImport {
+  id String @id @default(uuid())
+  centerOrgUnitId String
+  providerSettlementId String
+  contentHash String
+  currency String
+  grossAmountMinor Int
+  feeMinor Int
+  taxMinor Int
+  matchedLineCount Int
+  mismatchedLineCount Int
+  lines Json
+  status FinanceSettlementImportStatus @default(SUBMITTED)
+  importedByAccountId String
+  submittedAt DateTime @default(now())
+  reviewedAt DateTime?
+  center OrgUnit @relation(fields:[centerOrgUnitId],references:[id],onDelete:Restrict)
+  importedBy Account @relation("FinanceSettlementImportSubmitter",fields:[importedByAccountId],references:[id],onDelete:Restrict)
+  reviews FinanceSettlementReview[]
+  @@unique([centerOrgUnitId,providerSettlementId,contentHash])
+  @@index([centerOrgUnitId,status,submittedAt])
+  @@index([importedByAccountId,status])
+}
+
+model FinanceSettlementReview {
+  id String @id @default(uuid())
+  importId String
+  reviewerAccountId String
+  decision FinancePeriodCloseApprovalDecision
+  note String?
+  createdAt DateTime @default(now())
+  settlementImport FinanceSettlementImport @relation(fields:[importId],references:[id],onDelete:Restrict)
+  reviewer Account @relation("FinanceSettlementImportReviewer",fields:[reviewerAccountId],references:[id],onDelete:Restrict)
+  @@unique([importId,reviewerAccountId])
+  @@index([reviewerAccountId,decision,createdAt])
 }
 
 model Receivable {
@@ -1378,9 +1590,14 @@ model ReceivablePayment {
  receiptNumber String @unique
  collectedAt DateTime @default(now())
  createdAt DateTime @default(now())
+ shiftId String?
+ collectedByAccountId String?
  receivable Receivable @relation(fields:[receivableId],references:[id],onDelete:Restrict)
  installment ReceivableInstallment? @relation(fields:[installmentId],references:[id],onDelete:Restrict)
+ shift FinanceAccountantShift? @relation(fields:[shiftId],references:[id],onDelete:Restrict)
+ collectedBy Account? @relation("ReceivableCollector",fields:[collectedByAccountId],references:[id],onDelete:Restrict)
  @@index([receivableId,collectedAt])
+ @@index([shiftId,collectedAt])
 }
 
 enum TrainingEnrollmentStatus {
@@ -1944,6 +2161,11 @@ model MarineAssetDocument {
   expiresAt DateTime?
   verifiedAt DateTime?
   status String @default("PENDING")
+  storageKey String? @unique
+  originalName String?
+  mimeType String?
+  byteSize Int?
+  sha256 String? @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   marineAsset MarineAsset @relation(fields:[marineAssetId],references:[id],onDelete:Restrict)
@@ -2086,3 +2308,12 @@ model DocumentReferenceCounter {
   @@index([organizationId,year])
 }
 
+
+model ServiceImage {
+  kind String
+  entityId String
+  revision String
+  content Bytes?
+  updatedAt DateTime @default(now())
+  @@id([kind,entityId])
+}

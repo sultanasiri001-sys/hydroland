@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, ServiceUnavailableException, Unauthori
 import { timingSafeEqual } from 'node:crypto';
 import { IntegrationService } from '../integrations/integration.service';
 
-export type MoyasarInvoice={id:string;status:string;amount:number;currency:string;url:string;metadata:Record<string,string>};
+export type MoyasarInvoice={id:string;status:string;amount:number;currency:string;url:string;metadata:Record<string,string>;payments:Array<{id:string;status:string;amount:number;currency:string}>};
 export type MoyasarWebhook={id:string;type:string;secret_token:string;live:boolean;data:Record<string,unknown>};
 
 @Injectable()
@@ -38,10 +38,10 @@ export class MoyasarPaymentProviderService {
     const id=typeof event.id==='string'?event.id.trim():'';
     const type=typeof event.type==='string'?event.type.trim():'';
     const secret=typeof event.secret_token==='string'?event.secret_token:'';
-    const live=event.live===true;
+    const live=event.live;
     const data=event.data&&typeof event.data==='object'&&!Array.isArray(event.data)?event.data as Record<string,unknown>:null;
     const expected=process.env.MOYASAR_WEBHOOK_SECRET?.trim()||'';
-    if(!id||!type||!data||!expected||secret.length!==expected.length||!timingSafeEqual(Buffer.from(secret),Buffer.from(expected)))throw new UnauthorizedException('Invalid payment webhook.');
+    if(!id||!type||!data||typeof live!=='boolean'||!expected||Buffer.byteLength(secret)!==Buffer.byteLength(expected)||!timingSafeEqual(Buffer.from(secret),Buffer.from(expected)))throw new UnauthorizedException('Invalid payment webhook.');
     const integration=this.integrations.requireOperational('PAYMENT_PSP',{allowSandbox:true});
     if(integration.status==='PRODUCTION_ENABLED'&&!live)throw new UnauthorizedException('Sandbox payment webhook rejected in production mode.');
     if(integration.status==='SANDBOX'&&live)throw new UnauthorizedException('Live payment webhook rejected in sandbox mode.');
@@ -76,7 +76,13 @@ export class MoyasarPaymentProviderService {
     if(expectedMetadata)for(const[key,value]of Object.entries(expectedMetadata))if(metadata[key]!==value)throw new ServiceUnavailableException('Payment provider metadata mismatch.');
     let checkout:URL;try{checkout=new URL(url);}catch{throw new ServiceUnavailableException('Payment provider returned an invalid checkout URL.');}
     if(checkout.protocol!=='https:'&&!['localhost','127.0.0.1'].includes(checkout.hostname))throw new ServiceUnavailableException('Payment checkout URL must use HTTPS.');
-    return{id,status,amount,currency,url:checkout.toString(),metadata};
+    const payments=Array.isArray(row.payments)?row.payments.flatMap(value=>{
+      if(!value||typeof value!=='object'||Array.isArray(value))return[];
+      const payment=value as Record<string,unknown>;
+      if(typeof payment.id!=='string'||typeof payment.status!=='string'||!Number.isInteger(payment.amount)||typeof payment.currency!=='string')return[];
+      return[{id:payment.id,status:payment.status,amount:payment.amount as number,currency:payment.currency}];
+    }):[];
+    return{id,status,amount,currency,url:checkout.toString(),metadata,payments};
   }
 
   private publicWebOrigin(){

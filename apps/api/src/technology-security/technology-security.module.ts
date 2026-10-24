@@ -3,9 +3,12 @@ import { TechnologySecurityFoundationService } from './technology-security-found
 import { TechnologySecurityWorkflowService } from './technology-security-workflow.service';
 import { TechnologySecurityOperationsService } from './technology-security-operations.service';
 import { TechnologySecurityGovernanceService } from './technology-security-governance.service';
+import { AuditModule } from '../audit/audit.module';
+import { StaffingIamService } from './staffing-iam.service';
 
 @Module({
-  providers: [TechnologySecurityFoundationService, TechnologySecurityWorkflowService, TechnologySecurityOperationsService, TechnologySecurityGovernanceService],
-  exports: [TechnologySecurityFoundationService, TechnologySecurityWorkflowService, TechnologySecurityOperationsService, TechnologySecurityGovernanceService],
+  imports: [AuditModule],
+  providers: [TechnologySecurityFoundationService, TechnologySecurityWorkflowService, TechnologySecurityOperationsService, TechnologySecurityGovernanceService,StaffingIamService],
+  exports: [TechnologySecurityFoundationService, TechnologySecurityWorkflowService, TechnologySecurityOperationsService, TechnologySecurityGovernanceService,StaffingIamService],
 })
 export class TechnologySecurityModule {}

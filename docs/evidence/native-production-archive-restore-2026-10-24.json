@@ -1,0 +1,91 @@
+{
+  "kind": "REAL_ARCHIVE_NATIVE_RECOVERY_V1",
+  "sourceArchiveSha256": "4514bac1e5dc6779b81edfb07ab68a49eb5d2b27b8fc07b015154db7afb1c787",
+  "sourceArchiveBytes": 1980853,
+  "recoveryResource": "dpg-db7v3mks728c739pb05g-a",
+  "applicationCommit": "9a353ae274fc66843e1d0d61505c545904fe73b9",
+  "operatorScriptSha256": "613fa1360a3b76c0d7d2d4769c85f48e4fd26c199f294ecd1cd897694a3d8c33",
+  "productionWrites": 0,
+  "newPaidResources": 0,
+  "applicationWorkersStarted": false,
+  "businessProviderCredentialsPassed": false,
+  "providerPitrVerified": false,
+  "cutoverPerformed": false,
+  "ownerAclTransferVerified": false,
+  "targets": [
+    {
+      "database": "hydroland_restore_20261024_4514_a",
+      "archiveCopyRoundTrips": 126,
+      "tableCount": 126,
+      "historyRecords": 116,
+      "appliedMigrations": 90,
+      "migrationRerunNoop": true,
+      "application": {
+        "accountRelationships": true,
+        "bookingPaymentInvoiceRelationships": true,
+        "employmentRelationships": true,
+        "readiness": "ready"
+      },
+      "constraints": [
+        "23505",
+        "23503"
+      ],
+      "snapshotSha256": "2f752dfb76fff389b84c82d0ce1a956300fe4578c5b876b38f79dd423823e56b",
+      "catalogSha256": "30965ac9647c4ae8a4cb99e6d2441e8f690358394ff7ba96bf2e007a334afec6",
+      "catalogCounts": {
+        "tables": 126,
+        "columns": 1318,
+        "constraints": 1339,
+        "indexes": 400,
+        "enums": 306,
+        "sequences": 0,
+        "triggers": 6,
+        "functions": 39,
+        "views": 0,
+        "policies": 0,
+        "extensions": 2
+      }
+    },
+    {
+      "database": "hydroland_restore_20261024_4514_b",
+      "archiveCopyRoundTrips": 126,
+      "tableCount": 126,
+      "historyRecords": 116,
+      "appliedMigrations": 90,
+      "migrationRerunNoop": true,
+      "application": {
+        "accountRelationships": true,
+        "bookingPaymentInvoiceRelationships": true,
+        "employmentRelationships": true,
+        "readiness": "ready"
+      },
+      "constraints": [
+        "23505",
+        "23503"
+      ],
+      "snapshotSha256": "2f752dfb76fff389b84c82d0ce1a956300fe4578c5b876b38f79dd423823e56b",
+      "catalogSha256": "30965ac9647c4ae8a4cb99e6d2441e8f690358394ff7ba96bf2e007a334afec6",
+      "catalogCounts": {
+        "tables": 126,
+        "columns": 1318,
+        "constraints": 1339,
+        "indexes": 400,
+        "enums": 306,
+        "sequences": 0,
+        "triggers": 6,
+        "functions": 39,
+        "views": 0,
+        "policies": 0,
+        "extensions": 2
+      }
+    }
+  ],
+  "nativeServer": "18.6 (Debian 18.6-1.pgdg12+2)",
+  "tls": true,
+  "originalRecoverySnapshotSha256": "0a4583e3539e8b75d79550d9f0103a4361b234690c9ffea7e3524ac25c76e903",
+  "negativeControlDetected": true,
+  "negativeControlCleaned": true,
+  "originalRecoveryDatabaseUnchanged": true,
+  "elapsedSeconds": 118.704,
+  "nativeLogicalRestoreVerified": true
+}

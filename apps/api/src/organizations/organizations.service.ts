@@ -8,7 +8,7 @@ import { PolicyControlService } from '../trips/policy-control.service';
 
 type CreateOrganizationInput = { displayName: string; legalName?: string; kind: string; registrationNumber?: string; regionCode?: string };
 type UpdateOrganizationInput = Partial<CreateOrganizationInput>;
-type AddMemberInput = { accountId: string; role: 'ADMIN' | 'OPERATOR' | 'INSTRUCTOR' | 'STAFF' | 'VIEWER' };
+type AddMemberInput = { accountId?: string; email?: string; role: 'ADMIN' | 'OPERATOR' | 'INSTRUCTOR' | 'STAFF' | 'VIEWER' };
 const isUniqueConstraintError=(error:unknown):error is {code:string}=>typeof error==='object'&&error!==null&&'code' in error&&(error as {code?:unknown}).code==='P2002';
 
 @Injectable()

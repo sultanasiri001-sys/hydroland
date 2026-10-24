@@ -1,5 +1,5 @@
 {
-  "checkedAtRiyadh": "2026-10-09T04:13:19+03:00",
+  "checkedAtRiyadh": "2026-10-24T20:58:34+03:00",
   "scope": "PROVISIONAL_DELIVERY_EVIDENCE_REGISTER",
   "overallCompletionPercent": null,
   "denominatorApproved": false,
@@ -11,243 +11,361 @@
       "name": "الهوية ونظام التصميم",
       "status": "VISUAL_ACCEPTANCE_REQUIRED",
       "evidence": "docs/PHASE_1_VISUAL_AUDIT_2026_09_28.md",
-      "nextAcceptance": "مطابقة المرجع وقبول النتيجة؛ نجاح الاختبار وحده لا يغلق المطابقة."
+      "nextAcceptance": "مطابقة المرجع وقبول النتيجة؛ نجاح الاختبار وحده لا يغلق المطابقة.",
+      "evidenceSnapshotAtRiyadh": "2026-10-09T04:13:19+03:00"
     },
     {
       "id": "public",
       "name": "الواجهات العامة",
       "status": "ACCEPTANCE_EVIDENCE_REQUIRED",
       "evidence": "docs/VISITOR_UI_ACCEPTANCE.md",
-      "nextAcceptance": "استكمال أدلة الرحلات والأنشطة والتدريب والمتجر والاستجابة والقبول البصري."
+      "nextAcceptance": "استكمال أدلة الرحلات والأنشطة والتدريب والمتجر والاستجابة والقبول البصري.",
+      "evidenceSnapshotAtRiyadh": "2026-10-09T04:13:19+03:00"
     },
     {
       "id": "account",
       "name": "الحساب والمصادقة والمستندات",
       "status": "ACCEPTED_DEFINED_SCOPE",
       "evidence": "docs/PHASE_3_ACCOUNT_ACCEPTANCE_2026-09-30.md",
-      "nextAcceptance": "إغلاق موثق بقبول المستخدم؛ لا يشمل PITR أو مزودين خارجيين."
+      "nextAcceptance": "إغلاق موثق بقبول المستخدم؛ لا يشمل PITR أو مزودين خارجيين.",
+      "evidenceSnapshotAtRiyadh": "2026-10-09T04:13:19+03:00"
     },
     {
       "id": "amateur",
       "name": "هواة الغوص",
       "status": "ACCEPTANCE_EVIDENCE_REQUIRED",
       "evidence": "docs/DIVER_UI_ACCEPTANCE.md",
-      "nextAcceptance": "معايير قبول موجودة؛ لا توجد هنا وثيقة إغلاق كامل معتمدة."
+      "nextAcceptance": "معايير قبول موجودة؛ لا توجد هنا وثيقة إغلاق كامل معتمدة.",
+      "evidenceSnapshotAtRiyadh": "2026-10-09T04:13:19+03:00"
     },
     {
       "id": "professional",
       "name": "محترفو الغوص — النطاق الداخلي",
       "status": "ACCEPTED_DEFINED_SCOPE",
       "evidence": "docs/PROFESSIONAL_PORTAL_CLOSURE.md",
-      "nextAcceptance": "إغلاق النطاق الداخلي؛ الشهادات الخارجية وسياسة إنشاء الأرباح خارج هذا الإغلاق."
+      "nextAcceptance": "إغلاق النطاق الداخلي؛ الشهادات الخارجية وسياسة إنشاء الأرباح خارج هذا الإغلاق.",
+      "evidenceSnapshotAtRiyadh": "2026-10-09T04:13:19+03:00"
     },
     {
       "id": "centers",
       "name": "مراكز الغوص",
-      "status": "MERGED_ACCEPTANCE_REQUIRED",
-      "evidence": "https://github.com/sultanasiri001-sys/hydroland/pull/409",
-      "nextAcceptance": "الإصلاح السابق مدمج؛ لا يثبت وحده إغلاق جميع المالية والتقارير والتشغيل الإنتاجي."
+      "status": "PUBLISHED_REPRESENTATIVE_ACCEPTANCE_REQUIRED",
+      "evidence": "#460/#461/#462; docs/center-finance/REAL_USER_ACCEPTANCE_AR.md",
+      "nextAcceptance": "النطاق التقني منشور وبيئة القبول تعمل؛ يلزم قبول ممثل مركز مسمى. لا تعاد الاختبارات المقبولة ولا تنشأ تعيينات مالية إنتاجية لإغلاق القائمة.",
+      "lastReconciledAtRiyadh": "2026-10-24T20:58:34+03:00"
     },
     {
       "id": "marine-assets",
       "name": "الوسائط البحرية — الأصول والصيانة",
       "status": "MERGED_ACCEPTANCE_REQUIRED",
       "evidence": "apps/web/src/hydroland-marine-readiness.js",
-      "nextAcceptance": "الأساس منشور؛ يلزم إثبات دورة المستخدم والقبول للنطاق الكامل."
+      "nextAcceptance": "الأساس منشور؛ يلزم إثبات دورة المستخدم والقبول للنطاق الكامل.",
+      "evidenceSnapshotAtRiyadh": "2026-10-09T04:13:19+03:00"
     },
     {
       "id": "marine-publish",
       "name": "الوسائط البحرية — نشر الرحلات",
-      "status": "UNMERGED",
-      "evidence": "https://github.com/sultanasiri001-sys/hydroland/pull/439",
-      "nextAcceptance": "اعتماد ثم دمج ونشر والتحقق من دورة النشر."
+      "status": "PUBLISHED_OPERATOR_ACCEPTANCE_REQUIRED",
+      "evidence": "#468; docs/MARINE_TRIP_DELIVERY_2026-10-19.md",
+      "nextAcceptance": "نشر الرحلات مدمج ومنشور؛ قبول المشغل والتصاريح التشغيلية الخارجية منفصلان. لا تعاد مهام #439.",
+      "lastReconciledAtRiyadh": "2026-10-24T20:58:34+03:00"
     },
     {
       "id": "marine-bookings",
       "name": "الوسائط البحرية — إدارة الحجوزات",
-      "status": "UNMERGED",
-      "evidence": "https://github.com/sultanasiri001-sys/hydroland/pull/440",
-      "nextAcceptance": "مسودة؛ تحقق التشغيل المنشور بعد الدمج."
+      "status": "PUBLISHED_OPERATOR_ACCEPTANCE_REQUIRED",
+      "evidence": "#468 integrates #439/#440",
+      "nextAcceptance": "عرض الحجوزات البحرية منشور؛ لا يمنح تأكيدًا أو إلغاء أو استردادًا أو تصريح مغادرة. يبقى قبول المشغل.",
+      "lastReconciledAtRiyadh": "2026-10-24T20:58:34+03:00"
     },
     {
       "id": "organizations",
       "name": "الشركات والجهات الحكومية",
-      "status": "UNMERGED",
-      "evidence": "https://github.com/sultanasiri001-sys/hydroland/pull/442",
-      "nextAcceptance": "مسودة تشمل عزل الحجوزات؛ ليست جاهزية منشورة."
+      "status": "PUBLISHED_COMMERCIAL_POLICY_OPEN",
+      "evidence": "#470/#473; docs/ORGANIZATION_PORTAL_DELIVERY_2026-10-19.md; inactive #445",
+      "nextAcceptance": "بوابة الجهات منشورة وعزل الحالات الشخصية مصحح. مقترح الفوترة والتقويم محفوظ وغير مفعل؛ شروط الدفع والجهة المصدرة تتطلب قرارًا صريحًا.",
+      "lastReconciledAtRiyadh": "2026-10-24T20:58:34+03:00"
     },
     {
       "id": "finance-shifts",
       "name": "الوردية والتسليم المالي",
-      "status": "TESTED_UNMERGED",
-      "evidence": "PR #448 merged baseline; current center finance additions are the open draft stack #450–#455.",
-      "nextAcceptance": "The stack adds the accountant workspace, receivables, shift/day close, period close and Moyasar settlement; all remain unmerged. Complete real-center operational acceptance after review and controlled release."
+      "status": "PUBLISHED_REPRESENTATIVE_ACCEPTANCE_REQUIRED",
+      "evidence": "#460 integrates #450–#455; #459/#461",
+      "nextAcceptance": "الورديات والعهدة والإقفالات والتسوية منشورة تقنيًا؛ يبقى قبول محاسب ومراجع مركز في بيئة القبول. السلسلة ليست مسودات غير منشورة.",
+      "lastReconciledAtRiyadh": "2026-10-24T20:58:34+03:00"
     },
     {
       "id": "receivables",
       "name": "الذمم والتحصيل",
-      "status": "TESTED_UNMERGED",
-      "evidence": "PR #448 merged provenance baseline; center receivables and close controls are in the open draft stack #451–#455.",
-      "nextAcceptance": "Service, PostgreSQL TEXT/UUID, HTTP and browser checks pass on the draft stack; still needs acceptance by a real center accountant after controlled release."
+      "status": "PUBLISHED_REPRESENTATIVE_ACCEPTANCE_REQUIRED",
+      "evidence": "#460/#461; docs/center-finance/RECEIVABLES_ACCEPTANCE.md",
+      "nextAcceptance": "الذمم والأقساط والتخصيص وضوابط المراجعين منشورة؛ يبقى قبول المركز والتسوية التشغيلية دون منح صلاحيات تلقائية.",
+      "lastReconciledAtRiyadh": "2026-10-24T20:58:34+03:00"
     },
     {
       "id": "database",
       "name": "نسخة التأسيس والتوافق",
-      "status": "TESTED_UNMERGED",
-      "evidence": "https://github.com/sultanasiri001-sys/hydroland/pull/446",
-      "nextAcceptance": "مطابقة العلاقات واستعادة اصطناعية ناجحة؛ النموذج النهائي والأنواع والتوقيت والقيم الفارغة مفتوحة."
+      "status": "DRAFT_FRESH_INSTALL_ADOPTION_OPEN",
+      "evidence": "#446; docs/NATIVE_PRODUCTION_ARCHIVE_RESTORE_2026-10-24.md",
+      "nextAcceptance": "استعادة النسخة الفعلية لا تعتمد نسخة تأسيس جديدة. مطابقة الأنواع والمجالات والتوقيت والقيم الفارغة والانتقال الصريح للسجل في #446 مفتوحة؛ لا يطبق المرشح على الإنتاج.",
+      "lastReconciledAtRiyadh": "2026-10-24T20:58:34+03:00"
     },
     {
       "id": "ledger",
       "name": "حماية سجل الترحيلات",
-      "status": "TESTED_UNMERGED",
-      "evidence": "https://github.com/sultanasiri001-sys/hydroland/pull/447",
-      "nextAcceptance": "حماية 78 ترحيلًا، وليست استعادة إنتاج أو اعتماد انتقال."
+      "status": "MERGED_ADDITIVE_CHECKSUM_GUARD",
+      "evidence": "#447/#471/#444; apps/api/prisma/production-migration-baseline.json",
+      "nextAcceptance": "حارس الإصدار يحمي 84 بصمة في البيان الحالي. بصورة مستقلة تطابقت أسماء وبصمات الترحيلات الناجحة التسعين في الأرشيف مع المصدر. لا يعني اختلاف العدد اعتماد انتقال للسجل.",
+      "lastReconciledAtRiyadh": "2026-10-24T20:58:34+03:00"
     },
     {
       "id": "security",
       "name": "الأمن وإصدار الجوال المستقل",
-      "status": "UNMERGED_WITH_SEPARATE_BLOCKER",
-      "evidence": "https://github.com/sultanasiri001-sys/hydroland/pull/443",
-      "nextAcceptance": "بوابات المنصة الأخيرة ناجحة؛ فشل الجوال المستقل لا يساوي فشل كل المنصة."
+      "status": "RELEASE_SECURITY_GATE_PASSED_MODERATE_FINDINGS_REMAIN",
+      "evidence": "#443; tested eaaac5f24d24ca16adca871d380314f850b442db; merge 32e8ec6674e5aab9628acdda84786475d27b5d46",
+      "nextAcceptance": "اجتازت بوابات الجوال والإصدار؛ صفر عال وصفر حرج وستة متوسطة. لا يعاد فتح العائق المغلق ولا يستنتج إصدار متجر التطبيقات أو اختبار أجهزة فعلية.",
+      "lastReconciledAtRiyadh": "2026-10-24T20:58:34+03:00"
     },
     {
       "id": "payments",
       "name": "الدفع والاسترداد والتسوية",
-      "status": "END_TO_END_EVIDENCE_REQUIRED",
-      "evidence": "docs/PHASE_14_PUBLIC_LAUNCH_OPERATIONS.md; docs/center-finance/SETTLEMENT_RECONCILIATION.md; draft PR #455 CI.",
-      "nextAcceptance": "Settlement import and matching pass CI without a live provider transaction. A real-account payment/settlement/refund cycle, customer isolation, idempotency, and policy acceptance remain pending."
+      "status": "CAPTURED_TEST_PRESERVED_SETTLEMENT_ACCEPTANCE_OPEN",
+      "evidence": "Prior-session successful captured Moyasar test preserved; #460/#461; docs/center-finance/SETTLEMENT_RECONCILIATION.md",
+      "nextAcceptance": "المعاملة الاختبارية الملتقطة السابقة دليل محدود لنطاقها؛ لا تعادل قبول التسوية والاسترداد لمركز أو سياسة فوترة الجهات. لا تعاد المعاملة المنجزة.",
+      "lastReconciledAtRiyadh": "2026-10-24T20:58:34+03:00",
+      "verificationProvenance": "Prior completed session evidence preserved; no provider transaction rerun or universal provider-readiness claim."
     },
     {
       "id": "wallet",
       "name": "المحفظة والمكافآت",
       "status": "END_TO_END_EVIDENCE_REQUIRED",
       "evidence": "apps/api/src/wallet",
-      "nextAcceptance": "وجود الخدمة لا يثبت قبول دورة الرصيد والقيود والمكافآت المنشورة."
+      "nextAcceptance": "وجود الخدمة لا يثبت قبول دورة الرصيد والقيود والمكافآت المنشورة.",
+      "evidenceSnapshotAtRiyadh": "2026-10-09T04:13:19+03:00"
     },
     {
       "id": "store",
       "name": "المتجر والمخزون والتأجير وQR",
       "status": "END_TO_END_EVIDENCE_REQUIRED",
       "evidence": "apps/api/src/store",
-      "nextAcceptance": "دورة الطلب والاستلام والإرجاع والمخزون وعزل المستخدم والتتبع."
+      "nextAcceptance": "دورة الطلب والاستلام والإرجاع والمخزون وعزل المستخدم والتتبع.",
+      "evidenceSnapshotAtRiyadh": "2026-10-09T04:13:19+03:00"
     },
     {
       "id": "calendar",
       "name": "التقويم الموحد وتخصيص الموارد",
       "status": "END_TO_END_EVIDENCE_REQUIRED",
       "evidence": "apps/api/src/trips/calendar-allocation.service.ts",
-      "nextAcceptance": "معاينة الموارد لا تثبت تطبيق حجز موحد ملزم لجميع المجالات."
+      "nextAcceptance": "معاينة الموارد لا تثبت تطبيق حجز موحد ملزم لجميع المجالات.",
+      "evidenceSnapshotAtRiyadh": "2026-10-09T04:13:19+03:00"
     },
     {
       "id": "training",
       "name": "الشهادات الخارجية وتعويض المدربين",
       "status": "EXTERNAL_OR_POLICY_BLOCKED",
       "evidence": "docs/PROFESSIONAL_PORTAL_CLOSURE.md",
-      "nextAcceptance": "مصادر الشهادات الخارجية وسياسة التعويض المعتمدة؛ لا اختراع أسعار."
+      "nextAcceptance": "مصادر الشهادات الخارجية وسياسة التعويض المعتمدة؛ لا اختراع أسعار.",
+      "evidenceSnapshotAtRiyadh": "2026-10-09T04:13:19+03:00"
     },
     {
       "id": "weather",
       "name": "الطقس وصلاحية النشاط",
       "status": "PRODUCTION_PROVIDER_EVIDENCE_REQUIRED",
       "evidence": "docs/PHASE_7_WEATHER_EMERGENCY_OFFICIAL.md",
-      "nextAcceptance": "وثيقة قديمة تصف إعدادًا سابقًا؛ يتطلب إثبات مزود وإعدادات حالية ومراجعة بشرية."
+      "nextAcceptance": "وثيقة قديمة تصف إعدادًا سابقًا؛ يتطلب إثبات مزود وإعدادات حالية ومراجعة بشرية.",
+      "evidenceSnapshotAtRiyadh": "2026-10-09T04:13:19+03:00"
     },
     {
       "id": "maps",
       "name": "الخرائط البحرية والمصادر الرسمية",
       "status": "EXTERNAL_EVIDENCE_REQUIRED",
       "evidence": "docs/CONTINUATION_2026_09_28.md",
-      "nextAcceptance": "الخريطة الداخلية لا تثبت عقدًا أو خرائط بحرية رسمية متصلة."
+      "nextAcceptance": "الخريطة الداخلية لا تثبت عقدًا أو خرائط بحرية رسمية متصلة.",
+      "evidenceSnapshotAtRiyadh": "2026-10-09T04:13:19+03:00"
     },
     {
       "id": "safety",
       "name": "السلامة والاستغاثة الخارجية",
       "status": "INTERNAL_SCOPE_EXTERNAL_BLOCKED",
       "evidence": "docs/PHASE_7_WEATHER_EMERGENCY_OFFICIAL.md",
-      "nextAcceptance": "الحوادث الداخلية منفصلة عن إرسال استغاثة خارجية غير منفذ وفق الوثيقة."
+      "nextAcceptance": "الحوادث الداخلية منفصلة عن إرسال استغاثة خارجية غير منفذ وفق الوثيقة.",
+      "evidenceSnapshotAtRiyadh": "2026-10-09T04:13:19+03:00"
     },
     {
       "id": "community",
       "name": "المجتمع والرسائل والصوت والتطوع",
       "status": "END_TO_END_EVIDENCE_REQUIRED",
       "evidence": "apps/api/src",
-      "nextAcceptance": "أدلة قبول مستقلة للصوت والتطوع والساعات والتواصل؛ ليست إغلاق الحساب."
+      "nextAcceptance": "أدلة قبول مستقلة للصوت والتطوع والساعات والتواصل؛ ليست إغلاق الحساب.",
+      "evidenceSnapshotAtRiyadh": "2026-10-09T04:13:19+03:00"
     },
     {
       "id": "agents",
       "name": "وكلاء الذكاء الاصطناعي",
-      "status": "GOVERNANCE_IMPLEMENTED_OPERATIONS_UNVERIFIED",
-      "evidence": "docs/PHASE_10_INTEGRATIONS_AND_AI.md",
-      "nextAcceptance": "حوكمة آمنة لا تساوي تشغيلًا فعليًا لكل وكيل أو قناة خارجية."
+      "status": "GOVERNANCE_AND_DURABLE_RUNTIME_PUBLISHED",
+      "evidence": "#490/#491; docs/AI_AGENT_RUNTIME_2026-10-22.md",
+      "nextAcceptance": "السجل الدائم والعامل والقياس منشورة؛ فحص بيانات النموذج دون توليد منفصل عن تنفيذ مهمة فعلية. لا يفترض قبول توليد إنتاجي أو تشغيل جميع الوكلاء.",
+      "lastReconciledAtRiyadh": "2026-10-24T20:58:34+03:00"
     },
     {
       "id": "departments",
       "name": "دورات الإدارات الأربع عشرة",
       "status": "DEPARTMENT_WORKFLOW_EVIDENCE_REQUIRED",
       "evidence": "docs/CONTINUATION_2026_09_28.md",
-      "nextAcceptance": "حصر خدمات ودورات كل إدارة؛ وجود الملفات وادعاءات الإغلاق القديمة لا يكفيان لنسبة حالية."
+      "nextAcceptance": "حصر خدمات ودورات كل إدارة؛ وجود الملفات وادعاءات الإغلاق القديمة لا يكفيان لنسبة حالية.",
+      "evidenceSnapshotAtRiyadh": "2026-10-09T04:13:19+03:00"
     },
     {
       "id": "documents",
       "name": "كتالوج المستندات المستهدف",
       "status": "INVENTORY_REQUIRED",
       "evidence": "docs",
-      "nextAcceptance": "الهدف 230 مستندًا؛ يجب جرد الملفات والنماذج والإصدارات المقبولة قبل حساب العدد."
+      "nextAcceptance": "الهدف 230 مستندًا؛ يجب جرد الملفات والنماذج والإصدارات المقبولة قبل حساب العدد.",
+      "evidenceSnapshotAtRiyadh": "2026-10-09T04:13:19+03:00"
     },
     {
       "id": "executive",
       "name": "مكتب الإدارة العليا والصلاحيات",
       "status": "END_TO_END_EVIDENCE_REQUIRED",
       "evidence": "docs/CONTINUATION_2026_09_28.md",
-      "nextAcceptance": "السكرتير ومسؤول المتابعة والمساعد وصلاحيات حساب الإدارة؛ إثبات التنفيذ لا اسم الوحدة فقط."
+      "nextAcceptance": "السكرتير ومسؤول المتابعة والمساعد وصلاحيات حساب الإدارة؛ إثبات التنفيذ لا اسم الوحدة فقط.",
+      "evidenceSnapshotAtRiyadh": "2026-10-09T04:13:19+03:00"
     },
     {
       "id": "privacy",
       "name": "القانونية والخصوصية والعقود والتوقيع",
-      "status": "LEGAL_AND_ACCEPTANCE_EVIDENCE_REQUIRED",
-      "evidence": "docs/PHASE_14_PUBLIC_LAUNCH_OPERATIONS.md",
-      "nextAcceptance": "سياسات وإصدارات واعتمادات ومزود توقيع مؤهل حيث يلزم؛ لا افتراض قبول خارجي."
+      "status": "PUBLISHED_CONTRACT_WORKFLOW_INDEPENDENT_LEGAL_OPEN",
+      "evidence": "#493/#496–#502; docs/CONTRACT_LIBRARY_2026-10-24.md; Library HR mapping/reference pack v1",
+      "nextAcceptance": "المكتبة والإصدارات وعقد تعاون محترف غوص ومسودات الموظفين ومقارنتها منشورة. مسؤولية 001 واعتماد قوالب HR الثلاثة إداريًا منجزان للمسودات الداخلية فقط؛ الربط النظامي والمراجعة المستقلة والتوقيع الموظفي منفصلة.",
+      "lastReconciledAtRiyadh": "2026-10-24T20:58:34+03:00"
     },
     {
       "id": "backup",
       "name": "استعادة إنتاج فعلية وPITR",
-      "status": "UNVERIFIED_RELEASE_BLOCKER",
-      "evidence": "docs/PRODUCTION_RECOVERY_RUNBOOK.md",
-      "nextAcceptance": "الاستعادات الاصطناعية لا تغلق استعادة نسخة إنتاج معزولة وRTO/RPO."
+      "status": "NATIVE_ARCHIVE_VERIFIED_FULL_RECOVERY_ACCEPTANCE_OPEN",
+      "evidence": "#444/#369; docs/NATIVE_PRODUCTION_ARCHIVE_RESTORE_2026-10-24.md; docs/evidence/native-production-archive-restore-2026-10-24.json",
+      "nextAcceptance": "استعيدت النسخة الفعلية إلى هدفين PostgreSQL أصليين على المورد الموجود: 126 جدولًا لكل هدف، 116 سجل ترحيل، 90 ناجحًا، وتطابق كامل وإعادة بلا تغيير. تبقى PITR أو قبول البديل الكامل والملفات الخارجية وACL وRPO/RTO والتحويل مفتوحة.",
+      "lastReconciledAtRiyadh": "2026-10-24T20:58:34+03:00"
     },
     {
       "id": "visual",
       "name": "القبول البصري الشامل",
       "status": "VISUAL_ACCEPTANCE_REQUIRED",
       "evidence": "docs/APPROVED_UI_ACCEPTANCE.md",
-      "nextAcceptance": "البوابات السبع ومقاسات الهاتف والتابلت والكمبيوتر وقبول المستخدم."
+      "nextAcceptance": "البوابات السبع ومقاسات الهاتف والتابلت والكمبيوتر وقبول المستخدم.",
+      "evidenceSnapshotAtRiyadh": "2026-10-09T04:13:19+03:00"
     },
     {
       "id": "pilot",
       "name": "التجربة المحدودة",
       "status": "UNVERIFIED_RELEASE_BLOCKER",
       "evidence": "docs/PHASE_13_PILOT_LAUNCH.md",
-      "nextAcceptance": "منطقة واحدة ومركز مسؤول ومستخدمون محدودون وتقرير خروج معتمد."
+      "nextAcceptance": "منطقة واحدة ومركز مسؤول ومستخدمون محدودون وتقرير خروج معتمد.",
+      "evidenceSnapshotAtRiyadh": "2026-10-09T04:13:19+03:00"
     },
     {
       "id": "launch",
       "name": "الإطلاق العام والتشغيل المستمر",
       "status": "UNVERIFIED_RELEASE_BLOCKER",
       "evidence": "docs/PHASE_14_PUBLIC_LAUNCH_OPERATIONS.md",
-      "nextAcceptance": "بوابات الإطلاق واعتمادات بشرية ومراقبة واستجابة ودعم؛ لا يستنتج من نجاح CI."
+      "nextAcceptance": "بوابات الإطلاق واعتمادات بشرية ومراقبة واستجابة ودعم؛ لا يستنتج من نجاح CI.",
+      "evidenceSnapshotAtRiyadh": "2026-10-09T04:13:19+03:00"
     }
   ],
   "deployments": {
-    "web": {
-      "sha": "05a876bb546a22c80b822330525e32990a195f18",
-      "status": "live"
-    },
+    "verifiedAtUtc": "2026-10-24T17:58:09+00:00",
     "api": {
-      "sha": "9a3b4f81fafd73240ab5779036e90ef15af23d25",
-      "status": "live"
+      "sha": "e3cdc5d5223c2c87d8c1c7036546f8aaf4f7e6d2",
+      "deploymentId": "dep-dbeep449v7es73ceie7g",
+      "status": "live",
+      "readinessHttpStatus": 200,
+      "database": "ok"
     },
-    "differenceOnlyWebFilesVerified": true
+    "web": {
+      "sha": "89aca63a000e2b0c19644b5f7a2aff02ac084ca0",
+      "deploymentId": "dep-dbef2ak9v7es73cetheg",
+      "status": "live",
+      "httpStatus": 200,
+      "servedAppJsMatchesCommit": true,
+      "appJsSha256": "2c914cce4ee0c9f2f8538d8b3ffa214be6099ae93137565ebe6e39a514499899"
+    },
+    "differentServiceCommitsAreNotAnOutage": true,
+    "serviceInputDifference": "Relative to API commit e3cdc5d5, Web commit 89aca63a adds one inactive proposal document, one portal reconciliation document and one browser test; no API runtime input changed."
   },
-  "percentageRule": "Publish a weighted project percentage only after a complete non-overlapping approved acceptance inventory, weights, and per-item implementation/test/merge/deploy/acceptance evidence exist."
+  "percentageRule": "Publish a weighted project percentage only after a complete non-overlapping approved acceptance inventory, weights, and per-item implementation/test/merge/deploy/acceptance evidence exist.",
+  "previousSnapshotAtRiyadh": "2026-10-09T04:13:19+03:00",
+  "reconciliation": {
+    "scope": "TARGETED_CURRENT_EVIDENCE_RECONCILIATION",
+    "updatedAreaIds": [
+      "centers",
+      "marine-publish",
+      "marine-bookings",
+      "organizations",
+      "finance-shifts",
+      "receivables",
+      "database",
+      "ledger",
+      "security",
+      "payments",
+      "agents",
+      "privacy",
+      "backup"
+    ],
+    "unchangedAreasRetainHistoricalEvidence": true,
+    "acceptedScopeIdsPreserved": [
+      "account",
+      "professional"
+    ],
+    "newHumanAcceptancesRecorded": 0,
+    "newProviderTransactions": 0,
+    "completedOwnerAndTemplateDecisionsRepeated": false,
+    "historicalReport": "REPORT_2026-10-08.md",
+    "currentReport": "REPORT_2026-10-24.md"
+  },
+  "legalReferences": {
+    "referencePackStatus": "DRAFT_FOR_LEGAL_REVIEW",
+    "readyForProduction": false,
+    "legalApprovalReference": null,
+    "enabledControlCount": 0,
+    "controlCount": 7,
+    "mappingLibraryFileId": "libfile_cce1fc6f9f3881918c3dac2d4d262a18",
+    "packLibraryFileId": "libfile_1a456a366bc8819180f339b98fa0ca50",
+    "laterArchiveCandidate": {
+      "name": "labor-law.pdf",
+      "libraryFileId": "libfile_3414adb0b88481919392a8ec83db67a1",
+      "bytes": 1141447,
+      "sha256": "cfb8e0e6bb0176ebe045e38aed072fc4f7ce5c2f72ee796f4de0beb216c4b5d6",
+      "scope": "EXISTING_LIBRARY_ARCHIVE_IDENTITY_ONLY",
+      "officialSourceByteIdentityVerified": false,
+      "legalApprovalRecorded": false,
+      "officialSourceComparison": {
+        "url": "https://www.hrsd.gov.sa/sites/default/files/2025-11/labor-law.pdf",
+        "observedAtUtc": "2026-10-24T17:50:22+00:00",
+        "httpStatus": 503,
+        "result": "HTTPError"
+      },
+      "sourceFileId": "file_0000000099d88211a329b7cf2bce75cc",
+      "sourceLibraryVersion": 0
+    },
+    "remaining": "Later Library PDF exists and is hashed. Official-source byte identity, version/applicability mapping, requirement IDs and independent review are not certified. Historical 503 results do not prove no archive is available now."
+  },
+  "closeoutRequests": {
+    "443": "MERGED_CURRENT_SECURITY_FIX",
+    "444": "MERGED_NATIVE_ARCHIVE_AND_HISTORY_GUARD",
+    "445": {
+      "status": "MERGED_INACTIVE_PROPOSAL",
+      "merge": "3de5bbd1adc91a83edd346b8935f11eb2d026b6d",
+      "businessPolicyActivated": false
+    },
+    "352": {
+      "status": "MERGED_DEFERRED_LOAD_REGRESSION",
+      "merge": "89aca63a000e2b0c19644b5f7a2aff02ac084ca0",
+      "testedHead": "816197bc645e382e0e43338feddd79b9a9f93d1d",
+      "workflowCount": 9,
+      "webFullSuitePassed": 495
+    },
+    "446": "DRAFT_FRESH_INSTALL_NOT_ADOPTED",
+    "462": "DRAFT_UAT_LIVE_HUMAN_ACCEPTANCE_OPEN",
+    "449": "CURRENT_REGISTER_RECONCILIATION"
+  }
 }

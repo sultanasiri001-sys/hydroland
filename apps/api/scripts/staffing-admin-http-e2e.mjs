@@ -1,0 +1,208 @@
+import assert from 'node:assert/strict';
+import {randomUUID,scryptSync} from 'node:crypto';
+import {createRequire} from 'node:module';
+import {createServer} from 'node:http';
+import {PrismaClient} from '@prisma/client';
+
+const base=process.env.STAFFING_E2E_BASE_URL||'http://127.0.0.1:3103/api/v1';
+for(const value of [base,process.env.DATABASE_URL||'postgresql://missing',process.env.RESEND_API_BASE_URL||'http://missing'])assert(['localhost','127.0.0.1','[::1]'].includes(new URL(value).hostname),'Staffing fixtures require loopback API, database and email provider');
+assert(process.env.CI==='true'||process.env.NODE_ENV==='test','Staffing fixtures are test-only');
+const recipient=process.env.HYDROLAND_EMAIL_TEST_RECIPIENT;assert(recipient?.endsWith('@example.invalid'),'Use an isolated test recipient');
+const require=createRequire(import.meta.url);
+const {DatabaseService}=require('../dist/database/database.service.js'),{AuditService}=require('../dist/audit/audit.service.js'),{AuthService}=require('../dist/auth/auth.service.js'),{MfaService}=require('../dist/auth/mfa.service.js'),{HrService}=require('../dist/hr/hr.service.js'),{StaffingIamService}=require('../dist/technology-security/staffing-iam.service.js'),{StaffingAdminService}=require('../dist/hr/staffing-admin.service.js'),{AdminService}=require('../dist/admin/admin.service.js'),{EmailDeliveryService}=require('../dist/integrations/email-delivery.service.js'),{IntegrationService}=require('../dist/integrations/integration.service.js'),{AuthEmailOutboxWorker}=require('../dist/auth/auth-email-outbox.worker.js');
+const db=new PrismaClient(),runtime=new DatabaseService(),audit=new AuditService(runtime),mfa=new MfaService(runtime),hr=new HrService(runtime),iam=new StaffingIamService(audit),integrations=new IntegrationService(audit),email=new EmailDeliveryService(integrations,audit);
+const suffix=randomUUID(),googleEmail=`staffing-${suffix}@gmail.com`,googleSubject=`staffing-${suffix}`;
+const google={config:()=>({enabled:true}),verifyCredential:async()=>({subject:googleSubject,email:googleEmail,givenName:'Google',familyName:'Fixture',hostedDomain:null})};
+const auth=new AuthService(runtime,mfa,google),service=new StaffingAdminService(runtime,audit,auth,hr,iam,email),accountAdmin=new AdminService(runtime,audit);
+const password='Isolated-staffing-2026-password!',salt='staffing-fixture',passwordHash=`${salt}:${scryptSync(password,salt,64).toString('hex')}`;
+const accounts=[],people=[],organizations=[];let controlId,initializedByFixture=false;
+const received=[];const mailServer=createServer(async(req,res)=>{let body='';for await(const chunk of req)body+=chunk;received.push(JSON.parse(body));res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({id:randomUUID()}));});
+await new Promise(resolve=>mailServer.listen(Number(new URL(process.env.RESEND_API_BASE_URL).port),'127.0.0.1',resolve));
+const call=async(path,token,body,method=body?'POST':'GET')=>{const response=await fetch(base+path,{method,headers:{'content-type':'application/json',...(token?{authorization:`Bearer ${token}`}:{})},...(body?{body:JSON.stringify(body)}:{})});return {status:response.status,cacheControl:response.headers.get('cache-control'),body:await response.json().catch(()=>null)}};
+const fixture=async(label,role)=>{const person=await db.person.create({data:{firstName:'Staffing',lastName:label}});people.push(person.id);const account=await db.account.create({data:{personId:person.id,email:`staffing-${label}-${suffix}@example.invalid`,passwordHash,status:'ACTIVE',emailVerifiedAt:new Date()}});accounts.push(account.id);if(role)await db.roleAssignment.create({data:{accountId:account.id,role,status:'ACTIVE'}});return account};
+const login=async account=>{const response=await call('/auth/login',null,{email:account.email,password});assert.equal(response.status,200);return response.body};
+const clean=value=>{if(!value||typeof value!=='object')return;for(const [key,child] of Object.entries(value)){assert(!/password|token|secret/i.test(key),`Private auth data returned: ${key}`);clean(child)}};
+const proposal=(accountId,extra={})=>({mode:'LINK',accountId,departmentCode:'TRAINING',jobTitle:'منسق تدريب معزول',profile:'STAFF',reason:'اختبار توظيف في قاعدة بيانات معزولة',reviewed:true,requestId:randomUUID(),...extra});
+const decision=async(token,row,action,extra={})=>call(`/admin/employees/${row.id}/decision`,token,{action,reason:'قرار موارد بشرية في اختبار معزول',reviewed:true,expectedUpdatedAt:row.updatedAt,...extra},'PATCH');
+const fresh=async(id,token)=>{const response=await call('/admin/employees',token);assert.equal(response.status,200);return response.body.items.find(r=>r.id===id)};
+const noSuccess=()=>db.auditEvent.count({where:{action:{startsWith:'STAFFING_'}}});
+const readEffects=()=>Promise.all([db.account.count(),db.roleAssignment.count(),db.employment.count(),db.organizationMember.count(),db.notification.count(),db.auditEvent.count()]);
+try{
+ const maker=await fixture('maker','ADMIN'),reviewer=await fixture('reviewer','ADMIN'),approver=await fixture('approver','ADMIN'),member=await fixture('member','DIVER'),blocked=await fixture('blocked','DIVER');
+ const mt=await login(maker),rt=await login(reviewer),at=await login(approver),ut=await login(member);
+ assert.equal((await call('/admin/employees')).status,401);assert.equal((await call('/admin/employees',ut.accessToken)).status,403);
+ const beforeRead=await readEffects();
+ await db.account.update({where:{id:reviewer.id},data:{emailVerifiedAt:null}});await db.roleAssignment.update({where:{accountId_role:{accountId:approver.id,role:'ADMIN'}},data:{status:'DRAFT'}});
+ const initial=await call('/admin/employees',mt.accessToken);assert.equal(initial.status,200);assert.equal(initial.body.initialized,false);assert.equal(initial.cacheControl,'no-store');
+ assert.deepEqual(initial.body.approvalReadiness.independentAdministrators,{required:1,available:1});assert.deepEqual(initial.body.approvalReadiness.compliance,{ready:false,reason:'HR_COMPLIANCE_CONTROLS_MISSING'});assert(Math.abs(Date.now()-Date.parse(initial.body.approvalReadiness.checkedAt))<30000);clean(initial.body);
+ await db.account.update({where:{id:reviewer.id},data:{emailVerifiedAt:new Date(),status:'SUSPENDED'}});assert.equal((await call('/admin/employees',mt.accessToken)).body.approvalReadiness.independentAdministrators.available,1);
+ await db.account.update({where:{id:reviewer.id},data:{status:'ACTIVE'}});await db.roleAssignment.update({where:{accountId_role:{accountId:approver.id,role:'ADMIN'}},data:{status:'ACTIVE'}});
+ assert.deepEqual((await call('/admin/employees',mt.accessToken)).body.approvalReadiness.independentAdministrators,{required:1,available:3});assert.deepEqual(await readEffects(),beforeRead,'Readiness cannot create accounts, roles, employment, membership, messages or audits');
+ const brokenRead=new StaffingAdminService(runtime,audit,auth,{assertProductionCompliance:async()=>{throw new Error('Unexpected compliance read failure')}},iam,email);await assert.rejects(()=>brokenRead.list(maker.id),/Unexpected compliance read failure/);
+ assert.equal(await db.organization.count({where:{kind:'HYDROLAND_INTERNAL_PLATFORM'}}),0,'Use a clean isolated staffing database');
+ assert.equal((await call('/admin/employees/initialize',mt.accessToken,{reason:'bad',reviewed:true})).status,400);
+ const initialized=await call('/admin/employees/initialize',rt.accessToken,{reason:'تهيئة نطاق هيدرولاند الداخلي للاختبار',reviewed:true});assert.equal(initialized.status,201);initializedByFixture=true;organizations.push(initialized.body.organizationId);
+ const structure=await call('/admin/employees',mt.accessToken);assert.equal(structure.body.departments.length,14);assert.equal(structure.body.google.enabled,true);clean(structure.body);
+ assert.deepEqual(structure.body.approvalReadiness.reviewAuthority,{kind:'PLATFORM_OWNER',available:true,isCurrentAccount:false});assert.deepEqual((await call('/admin/employees',rt.accessToken)).body.approvalReadiness.reviewAuthority,{kind:'PLATFORM_OWNER',available:true,isCurrentAccount:true});
+ const audits=await noSuccess();assert.equal((await call('/admin/employees/initialize',mt.accessToken,{reason:'إعادة طلب التهيئة في الاختبار',reviewed:true})).status,201);assert.equal(await noSuccess(),audits);
+ const external=await db.organization.create({data:{ownerId:maker.id,kind:'DIVE_CENTER',displayName:'Staffing external fixture',status:'ACTIVE'}});organizations.push(external.id);
+ const membership=await db.organizationMember.create({data:{organizationId:external.id,accountId:member.id,role:'STAFF',status:'ACTIVE'}});
+ const equipment=await db.diverEquipment.create({data:{accountId:member.id,category:'Fixture',ownership:'OWNED'}});
+ const createBody=proposal(undefined,{mode:'CREATE',email:recipient,firstName:'موظف',lastName:'تجريبي',departmentCode:'HR',jobTitle:'منسق موارد بشرية',profile:'HR_MANAGER',verificationMethod:'EMAIL'});delete createBody.accountId;
+ const broken=new StaffingAdminService(runtime,{record:async()=>{throw new Error('Injected staffing audit failure')}},auth,hr,iam,email);
+ const positionsBefore=await db.position.count();
+ await assert.rejects(()=>broken.request(maker.id,createBody),/Injected staffing audit failure/);
+ assert.equal(await db.account.count({where:{email:recipient}}),0);assert.equal(await db.position.count(),positionsBefore);
+ assert.equal(await db.operationalSetting.count({where:{key:`STAFFING_REQUEST:${maker.id}:${createBody.requestId}`}}),0);
+ const created=await call('/admin/employees',mt.accessToken,createBody);assert.equal(created.status,201);clean(created.body);assert.equal(created.body.account.status,'PENDING_VERIFICATION');assert.equal(created.body.effectiveAccess,false);assert.deepEqual(created.body.grantedRoles,[]);
+ const createdAccount=await db.account.findUniqueOrThrow({where:{id:created.body.account.id}});accounts.push(createdAccount.id);people.push(createdAccount.personId);
+ assert.equal(await db.session.count({where:{accountId:createdAccount.id}}),0);
+ const replay=await call('/admin/employees',mt.accessToken,createBody);assert.equal(replay.status,201);assert.equal(replay.body.id,created.body.id);
+ assert.equal((await call('/admin/employees',mt.accessToken,{...createBody,jobTitle:'وظيفة مختلفة'})).status,409);
+ assert.equal((await call('/admin/employees',mt.accessToken,{...createBody,requestId:randomUUID()})).status,409);
+ assert.equal((await call('/admin/employees',mt.accessToken,{...createBody,email:`disallowed-${suffix}@example.invalid`,requestId:randomUUID()})).status,403);
+ assert.equal(await db.account.count({where:{email:`disallowed-${suffix}@example.invalid`}}),0);
+ assert.equal((await decision(rt.accessToken,created.body,'REVIEW')).status,409);
+ const outbox=new AuthEmailOutboxWorker(runtime,auth,email,integrations);await outbox.run();assert(received.some(message=>message.to?.includes(recipient)),'Verification is delivered to the isolated email provider');assert(received.every(message=>message.to.every(to=>to===recipient)),'No mail to other recipients');
+ const verification=await db.notification.findFirstOrThrow({where:{accountId:createdAccount.id,type:'AUTH_EMAIL_VERIFICATION',status:'PENDING'}});
+ const challenge=await auth.materializePendingChallenge(verification.id);const verified=await call('/auth/email-verification/confirm',null,{token:challenge.token});assert.equal(verified.status,200);
+ assert.equal((await call('/auth/password-reset/request',null,{email:recipient})).status,202);
+ const reset=await db.notification.findFirstOrThrow({where:{accountId:createdAccount.id,type:'AUTH_PASSWORD_RESET',status:'PENDING'}}),resetChallenge=await auth.materializePendingChallenge(reset.id);
+ assert.equal((await call('/auth/password-reset/confirm',null,{token:resetChallenge.token,password})).status,200);
+ const beforeAppointment=await login(createdAccount);
+ let row=await fresh(created.body.id,mt.accessToken);assert.equal((await decision(mt.accessToken,row,'REVIEW')).status,403);
+ row=(await decision(rt.accessToken,row,'REVIEW')).body;assert.equal(row.status,'APPROVAL_REQUIRED');
+ assert.equal((await decision(rt.accessToken,row,'APPROVE',{expectedUpdatedAt:'2000-01-01T00:00:00.000Z'})).status,409);
+ assert.equal(row.canApprove,true);assert.equal((await fresh(row.id,rt.accessToken)).canApprove,true);assert.equal((await decision(mt.accessToken,row,'APPROVE')).status,403);assert.equal((await decision(at.accessToken,row,'APPROVE')).status,403);
+ assert.equal((await decision(rt.accessToken,row,'APPROVE')).status,409);assert.equal(await db.roleAssignment.count({where:{accountId:createdAccount.id}}),0);
+ const policy=await db.policyControl.create({data:{category:'HR_COMPLIANCE',ruleKey:`STAFFING_TEST_${suffix}`,labelAr:'Isolated staffing control',state:'ENABLED',metadata:{mandatory:true,applicable:true,regulatoryRequirementId:'isolated-fixture',regulatoryVersion:'test-only',evidenceIds:['isolated-evidence'],validationStatus:'VALID'}}});controlId=policy.id;
+ for(const [override,reason] of [[{regulatoryRequirementId:null},'HR_COMPLIANCE_REQUIREMENT_MISSING'],[{evidenceIds:[]},'HR_COMPLIANCE_EVIDENCE_MISSING'],[{validationStatus:'EXPIRED'},'HR_COMPLIANCE_VALIDATION_FAILED'],[{blockingFinding:true},'HR_COMPLIANCE_BLOCKING_FINDING']]){
+  await db.policyControl.update({where:{id:controlId},data:{metadata:{...policy.metadata,...override}}});
+  const snapshot=await readEffects(),result=await call('/admin/employees',mt.accessToken);assert.equal(result.status,200);assert.deepEqual(result.body.approvalReadiness.compliance,{ready:false,reason});assert(!JSON.stringify(result.body.approvalReadiness).includes(policy.ruleKey));assert(!JSON.stringify(result.body.approvalReadiness).includes('isolated-evidence'));assert.deepEqual(await readEffects(),snapshot);
+  assert.equal((await decision(rt.accessToken,row,'APPROVE')).status,409,'Readiness never bypasses production compliance');assert.equal(await db.roleAssignment.count({where:{accountId:createdAccount.id}}),0);
+ }
+ await db.policyControl.update({where:{id:controlId},data:{metadata:policy.metadata}});assert.deepEqual((await call('/admin/employees',mt.accessToken)).body.approvalReadiness.compliance,{ready:true,reason:'READY'});
+ const failedIam=new StaffingAdminService(runtime,audit,auth,hr,{applyAppointment:async()=>{throw new Error('Injected IAM failure')}},email);
+ await assert.rejects(()=>failedIam.decide(reviewer.id,row.id,{action:'APPROVE',reason:'اختبار التراجع عند فشل الصلاحيات',reviewed:true,expectedUpdatedAt:row.updatedAt}),/Injected IAM failure/);
+ assert.equal((await db.employment.findUniqueOrThrow({where:{id:row.employment.id}})).status,'PENDING_APPROVAL');assert.equal((await fresh(row.id,at.accessToken)).updatedAt,row.updatedAt);assert.equal(await db.roleAssignment.count({where:{accountId:createdAccount.id}}),0);
+ const approvals=await Promise.all([decision(rt.accessToken,row,'APPROVE'),decision(rt.accessToken,row,'APPROVE')]);assert.deepEqual(approvals.map(r=>r.status).sort(),[200,409]);row=approvals.find(r=>r.status===200).body;clean(row);assert.equal(row.status,'EFFECTIVE');assert.equal(row.effectiveAccess,true);assert.deepEqual(row.grantedRoles.sort(),['HR_MANAGER','STAFF']);
+ assert.equal(await db.auditEvent.count({where:{action:'STAFFING_IAM_APPLIED',resourceId:row.employment.id}}),1);
+ assert.equal((await call('/me',beforeAppointment.accessToken)).status,401);assert.equal((await call('/auth/refresh',null,{refreshToken:beforeAppointment.refreshToken})).status,401);
+ const employeeTokens=await login(createdAccount);
+ const scope=(await db.roleAssignment.findUniqueOrThrow({where:{accountId_role:{accountId:createdAccount.id,role:'HR_MANAGER'}}})).scope;assert.deepEqual(scope.organizationIds,[organizations[0]]);
+ assert.equal(await db.roleAssignment.count({where:{accountId:createdAccount.id,role:{in:['ADMIN','REVIEWER','HR_EXECUTIVE','EXECUTIVE_APPROVER','IAM_SERVICE']}}}),0);
+ const candidatePerson=await db.person.create({data:{firstName:'Scoped',lastName:'Candidate'}});people.push(candidatePerson.id);
+ const candidate=await db.hrCandidate.create({data:{organizationId:organizations[0],personId:candidatePerson.id,status:'SUBMITTED'}}),foreign=await db.hrCandidate.create({data:{organizationId:external.id,personId:candidatePerson.id,status:'SUBMITTED'}});
+ assert.equal((await call(`/hr/employments/candidates/${candidate.id}/verify`,employeeTokens.accessToken,{notes:'Scoped actual HR permission'},'PATCH')).status,200);
+ assert.equal((await call(`/hr/employments/candidates/${foreign.id}/verify`,employeeTokens.accessToken,{notes:'Cross scope must fail'},'PATCH')).status,403);
+ assert.equal((await call('/admin/employees',employeeTokens.accessToken)).status,403);
+ assert.equal((await call('/admin/employees',mt.accessToken,proposal(member.id,{organizationId:external.id}))).status,400);
+ assert.equal((await call('/admin/employees',mt.accessToken,proposal(member.id,{profile:'ADMIN'}))).status,400);
+ assert.equal((await call('/admin/employees',mt.accessToken,proposal(member.id,{profile:'HR_MANAGER'}))).status,400);
+ const concurrent=await Promise.all([call('/admin/employees',mt.accessToken,proposal(member.id)),call('/admin/employees',mt.accessToken,proposal(member.id))]);assert.deepEqual(concurrent.map(r=>r.status).sort(),[201,409]);
+ let linked=concurrent.find(r=>r.status===201).body;assert.equal(linked.account.id,member.id);assert.equal(await db.account.count({where:{id:member.id}}),1);
+ linked=(await decision(rt.accessToken,linked,'REVIEW')).body;linked=(await decision(rt.accessToken,linked,'APPROVE')).body;assert.equal(linked.status,'EFFECTIVE');
+ assert.equal((await db.organizationMember.findUniqueOrThrow({where:{id:membership.id}})).status,'ACTIVE');assert.equal((await db.diverEquipment.findUniqueOrThrow({where:{id:equipment.id}})).accountId,member.id);assert.equal((await db.roleAssignment.findUniqueOrThrow({where:{accountId_role:{accountId:member.id,role:'DIVER'}}})).status,'ACTIVE');
+ const googleBody=proposal(undefined,{mode:'CREATE',email:googleEmail,firstName:'موظف',lastName:'جوجل',verificationMethod:'GOOGLE'});delete googleBody.accountId;
+ let googleRow=(await call('/admin/employees',mt.accessToken,googleBody)).body;clean(googleRow);assert.equal(googleRow.account.status,'PENDING_VERIFICATION');
+ const ga=await db.account.findUniqueOrThrow({where:{id:googleRow.account.id}});accounts.push(ga.id);people.push(ga.personId);assert.equal(await db.notification.count({where:{accountId:ga.id}}),0);
+ const googleSession=await auth.loginWithGoogle('isolated-verified-provider-identity');assert(googleSession.accessToken);assert.equal(await db.account.count({where:{email:googleEmail}}),1);assert.equal((await db.account.findUniqueOrThrow({where:{id:ga.id}})).emailVerifiedAt instanceof Date,true);
+ googleRow=await fresh(googleRow.id,mt.accessToken);googleRow=(await decision(rt.accessToken,googleRow,'REVIEW')).body;googleRow=(await decision(rt.accessToken,googleRow,'APPROVE')).body;assert.equal(googleRow.effectiveAccess,true);assert.equal((await call('/me',googleSession.accessToken)).status,401);
+ await db.roleAssignment.create({data:{accountId:blocked.id,role:'HR_MANAGER',status:'SUSPENDED',scope:{organizationIds:[external.id]}}});
+ let blockedRow=(await call('/admin/employees',mt.accessToken,proposal(blocked.id,{departmentCode:'HR',profile:'HR_MANAGER'}))).body;blockedRow=(await decision(rt.accessToken,blockedRow,'REVIEW')).body;
+ assert.equal((await decision(rt.accessToken,blockedRow,'APPROVE')).status,409);assert.equal((await db.roleAssignment.findUniqueOrThrow({where:{accountId_role:{accountId:blocked.id,role:'HR_MANAGER'}}})).status,'SUSPENDED');assert.equal(await db.roleAssignment.count({where:{accountId:blocked.id,role:'STAFF'}}),0);
+ const cancelled=await decision(mt.accessToken,blockedRow,'CANCEL');assert.equal(cancelled.status,200);assert.equal(cancelled.body.status,'CANCELLED');
+ const rerequest=await call('/admin/employees',mt.accessToken,proposal(blocked.id));assert.equal(rerequest.status,201);assert.equal(rerequest.body.employment.id,blockedRow.employment.id);assert.notEqual(rerequest.body.id,blockedRow.id);
+ // The internal owner may review a request the same account created. A
+ // owner final approval and the actual HR compliance gate still control IAM.
+ const ownerEmployee=await fixture('owner-requested-employee','DIVER');
+ let ownerRow=(await call('/admin/employees',rt.accessToken,proposal(ownerEmployee.id))).body;assert.equal(ownerRow.canReview,true);assert.equal((await fresh(ownerRow.id,mt.accessToken)).canReview,false);
+ const beforeOwnerDenial=await noSuccess();assert.equal((await decision(mt.accessToken,ownerRow,'REVIEW')).status,403);assert.equal(await noSuccess(),beforeOwnerDenial);
+ await assert.rejects(()=>broken.decide(reviewer.id,ownerRow.id,{action:'REVIEW',reason:'فشل تدقيق مراجعة مالك الجهة في اختبار معزول',reviewed:true,expectedUpdatedAt:ownerRow.updatedAt}),/Injected staffing audit failure/);assert.equal((await fresh(ownerRow.id,rt.accessToken)).status,'HR_REVIEW');
+ ownerRow=(await decision(rt.accessToken,ownerRow,'REVIEW')).body;assert.equal(ownerRow.status,'APPROVAL_REQUIRED');assert.equal(ownerRow.effectiveAccess,false);assert.equal(await db.roleAssignment.count({where:{accountId:ownerEmployee.id,role:'STAFF'}}),0);assert.equal(ownerRow.canApprove,true);
+ const ownerReviewAudit=await db.auditEvent.findFirstOrThrow({where:{action:'STAFFING_REVIEW',resourceId:ownerRow.employment.id}});assert.equal(ownerReviewAudit.metadata.requesterAlsoReviewer,true);assert.equal(ownerReviewAudit.metadata.reviewAuthority,'PLATFORM_OWNER');
+ await db.roleAssignment.update({where:{accountId_role:{accountId:reviewer.id,role:'ADMIN'}},data:{status:'SUSPENDED'}});assert.equal((await call('/admin/employees',at.accessToken)).body.approvalReadiness.reviewAuthority.available,false);assert.equal((await decision(at.accessToken,ownerRow,'APPROVE')).status,403);assert.equal(await db.roleAssignment.count({where:{accountId:ownerEmployee.id,role:'STAFF'}}),0);await db.roleAssignment.update({where:{accountId_role:{accountId:reviewer.id,role:'ADMIN'}},data:{status:'ACTIVE'}});
+ await db.organization.update({where:{id:organizations[0]},data:{ownerId:maker.id}});assert.equal((await decision(mt.accessToken,ownerRow,'APPROVE')).status,409);assert.equal((await fresh(ownerRow.id,mt.accessToken)).canReview,true);assert.equal((await decision(rt.accessToken,ownerRow,'REVIEW')).status,403);
+ ownerRow=(await decision(mt.accessToken,ownerRow,'REVIEW')).body;assert.equal(ownerRow.status,'APPROVAL_REQUIRED');await db.organization.update({where:{id:organizations[0]},data:{ownerId:reviewer.id}});assert.equal((await decision(rt.accessToken,ownerRow,'APPROVE')).status,409);ownerRow=(await decision(rt.accessToken,ownerRow,'REVIEW')).body;
+ ownerRow=(await decision(rt.accessToken,ownerRow,'APPROVE')).body;assert.equal(ownerRow.status,'EFFECTIVE');assert.deepEqual(ownerRow.grantedRoles,['STAFF']);
+
+ // Delegation is a live scoped capability, never an ADMIN/HR role grant.
+ assert.equal((await call('/employee-approvals')).status,401);
+ const ordinaryCapability=await call('/employee-approvals/capability',(await login(member)).accessToken);assert.equal(ordinaryCapability.status,200);assert.equal(ordinaryCapability.body.canApprove,false);
+ assert.equal((await call('/admin/employees/approval-delegations',mt.accessToken)).status,403);
+ let delegationState=(await call('/admin/employees/approval-delegations',rt.accessToken)).body;
+ const grantBody=()=>({action:'GRANT',email:createdAccount.email,expectedRevision:delegationState.revision,reason:'تفويض موظف فعلي في اختبار قاعدة معزولة',reviewed:true});
+ assert.equal((await call('/admin/employees/approval-delegations',rt.accessToken,{...grantBody(),email:'missing@example.invalid'})).status,404);
+ assert.equal((await call('/admin/employees/approval-delegations',rt.accessToken,{...grantBody(),email:blocked.email})).status,409);
+ await assert.rejects(()=>broken.changeDelegation(reviewer.id,grantBody()),/Injected staffing audit failure/);
+ assert.equal((await call('/admin/employees/approval-delegations',rt.accessToken)).body.items.length,0);
+ const delegateRoles=await db.roleAssignment.findMany({where:{accountId:createdAccount.id},orderBy:{role:'asc'}});
+ let grant=(await call('/admin/employees/approval-delegations',rt.accessToken,grantBody()));assert.equal(grant.status,201);delegationState=grant.body;assert.equal(delegationState.items[0].eligible,true);
+ assert.deepEqual(await db.roleAssignment.findMany({where:{accountId:createdAccount.id},orderBy:{role:'asc'}}),delegateRoles);
+ assert.equal((await call('/employee-approvals/capability',employeeTokens.accessToken)).body.kind,'DELEGATE');
+ assert.equal((await call('/admin/employees',employeeTokens.accessToken)).status,403);
+ assert.equal((await call('/admin/employees/approval-delegations',employeeTokens.accessToken,grantBody())).status,403);
+ assert.equal((await call('/employee-approvals',employeeTokens.accessToken)).cacheControl,'no-store');
+ const delegatedEmployee=await fixture('delegated-approval-employee','DIVER');
+ let delegatedRow=(await call('/admin/employees',rt.accessToken,proposal(delegatedEmployee.id,{departmentCode:'FINANCE'}))).body;
+ delegatedRow=(await decision(rt.accessToken,delegatedRow,'REVIEW')).body;
+ const delegatedDecision=(target,action='APPROVE')=>call(`/employee-approvals/${target.id}/decision`,employeeTokens.accessToken,{action,reason:'اعتماد من الموظف المفوض في اختبار معزول',reviewed:true,expectedUpdatedAt:target.updatedAt},'PATCH');
+ assert.equal((await delegatedDecision(delegatedRow,'REVIEW')).status,403);
+ assert.equal((await delegatedDecision(row)).status,403,'A delegate cannot approve their own appointment');
+ // Every source of delegate eligibility is checked afresh, even with an old access token.
+ for(const [model,where,disabled,enabled] of [
+  ['account',{id:createdAccount.id},{status:'SUSPENDED'},{status:'ACTIVE'}],
+  ['roleAssignment',{accountId_role:{accountId:createdAccount.id,role:'STAFF'}},{status:'SUSPENDED'},{status:'ACTIVE'}],
+  ['employment',{id:row.employment.id},{status:'SUSPENDED'},{status:'ACTIVE'}],
+  ['organizationMember',{organizationId_accountId:{organizationId:organizations[0],accountId:createdAccount.id}},{status:'SUSPENDED'},{status:'ACTIVE'}]
+ ]){await db[model].update({where,data:disabled});assert([401,403].includes((await delegatedDecision(delegatedRow)).status));await db[model].update({where,data:enabled});}
+ let revoke={action:'REVOKE',accountId:createdAccount.id,expectedRevision:delegationState.revision,reason:'سحب تفويض موظف لاختبار الأثر الفوري',reviewed:true};
+ assert.equal((await call('/admin/employees/approval-delegations',rt.accessToken,{...revoke,expectedRevision:'stale'})).status,409);
+ await assert.rejects(()=>broken.changeDelegation(reviewer.id,revoke),/Injected staffing audit failure/);assert.equal((await call('/employee-approvals/capability',employeeTokens.accessToken)).body.canApprove,true);
+ delegationState=(await call('/admin/employees/approval-delegations',rt.accessToken,revoke)).body;
+ assert.equal((await delegatedDecision(delegatedRow)).status,403);assert.equal((await call('/employee-approvals',employeeTokens.accessToken)).status,403);
+ delegationState=(await call('/admin/employees/approval-delegations',rt.accessToken,grantBody())).body;
+ const delegatedApproved=await delegatedDecision(delegatedRow);assert.equal(delegatedApproved.status,200);assert.equal(delegatedApproved.body.status,'EFFECTIVE');
+ assert.equal((await db.employmentMovement.findUniqueOrThrow({where:{id:delegatedRow.id}})).approvedByAccountId,createdAccount.id);
+ assert.equal((await db.auditEvent.findFirstOrThrow({where:{action:'STAFFING_APPROVE',resourceId:delegatedRow.employment.id}})).metadata.approvalAuthority,'DELEGATE');
+ await db.organization.update({where:{id:organizations[0]},data:{ownerId:maker.id}});assert.equal((await call('/employee-approvals',employeeTokens.accessToken)).status,403);
+ await db.organization.update({where:{id:organizations[0]},data:{ownerId:reviewer.id}});assert.equal((await call('/employee-approvals',employeeTokens.accessToken)).status,403,'Ownership transfer cannot revive prior delegations');
+ assert.equal(await db.roleAssignment.count({where:{accountId:createdAccount.id,role:'ADMIN'}}),0);
+ let selfEmployment=(await call('/admin/employees',mt.accessToken,proposal(reviewer.id))).body;assert.equal((await fresh(selfEmployment.id,rt.accessToken)).canReview,false);assert.equal((await decision(rt.accessToken,selfEmployment,'REVIEW')).status,403);assert.equal((await decision(mt.accessToken,selfEmployment,'CANCEL')).status,200);
+ // Center management is resolved from that center's active manager membership;
+ // neither another center nor the internal staff owner may operate it.
+ const centerOwner=await fixture('center-owner','DIVE_CENTER'),otherCenterOwner=await fixture('other-center-owner','DIVE_CENTER'),ct=await login(centerOwner),bt=await login(otherCenterOwner);
+ await db.organization.update({where:{id:external.id},data:{ownerId:centerOwner.id}});await db.organizationMember.create({data:{organizationId:external.id,accountId:centerOwner.id,role:'OWNER',status:'ACTIVE'}});
+ const otherCenter=await db.organization.create({data:{ownerId:otherCenterOwner.id,kind:'DIVE_CENTER',displayName:'Other scoped center fixture',status:'ACTIVE'}});organizations.push(otherCenter.id);await db.organizationMember.create({data:{organizationId:otherCenter.id,accountId:otherCenterOwner.id,role:'OWNER',status:'ACTIVE'}});
+ const team=await call('/center/me/team',ct.accessToken);assert.equal(team.status,200);const centerMember=team.body.find(item=>item.membershipId===membership.id);assert(centerMember?.canSuspend);assert.equal((await call('/admin/employees',ct.accessToken)).status,403);assert.equal((await decision(ct.accessToken,ownerRow,'REVIEW')).status,403);assert.equal((await call('/center/me/team',rt.accessToken)).status,403);
+ const otherTeam=await call('/center/me/team',bt.accessToken);assert.equal(otherTeam.status,200);assert(!otherTeam.body.some(item=>item.membershipId===membership.id));
+ const centerSuspended=await call('/center/me/team/'+membership.id,ct.accessToken,{action:'SUSPEND',reason:'مراجعة عضوية داخل المركز صاحب الصلاحية',expectedUpdatedAt:centerMember.updatedAt},'PATCH');assert.equal(centerSuspended.status,200);
+ assert.equal((await call('/center/me/team/'+membership.id,bt.accessToken,{action:'REACTIVATE',reason:'يجب رفض تعديل مركز آخر',expectedUpdatedAt:centerSuspended.body.updatedAt},'PATCH')).status,404);assert.equal((await call('/center/me/team/'+membership.id,rt.accessToken,{action:'REACTIVATE',reason:'لا يمنح مالك الجهة الداخلية إدارة المركز',expectedUpdatedAt:centerSuspended.body.updatedAt},'PATCH')).status,403);
+ assert.equal((await db.organizationMember.findUniqueOrThrow({where:{id:membership.id}})).status,'SUSPENDED');assert.equal((await call('/center/me/team/'+membership.id,ct.accessToken,{action:'REACTIVATE',reason:'استعادة العضوية من حساب إدارة مركزها',expectedUpdatedAt:centerSuspended.body.updatedAt},'PATCH')).status,200);assert.equal((await db.account.findUniqueOrThrow({where:{id:member.id}})).status,'ACTIVE');
+ await db.roleAssignment.update({where:{accountId_role:{accountId:maker.id,role:'ADMIN'}},data:{status:'SUSPENDED'}});
+ const auditBefore=await noSuccess();await assert.rejects(()=>service.request(maker.id,{...createBody,requestId:randomUUID()}),e=>e.getStatus?.()===403);assert.equal(await noSuccess(),auditBefore);
+ // Account suspension is independent of employment and continues to revoke access.
+ const revision=(await db.account.findUniqueOrThrow({where:{id:createdAccount.id}})).updatedAt.toISOString();
+ const suspended=await call(`/admin/accounts/${createdAccount.id}/status`,at.accessToken,{status:'SUSPENDED',reason:'Isolated employee suspension',expectedUpdatedAt:revision,reviewed:true},'PATCH');assert.equal(suspended.status,200);clean(suspended.body);
+ assert.equal((await call('/me',employeeTokens.accessToken)).status,401);assert.equal((await call('/auth/login',null,{email:createdAccount.email,password})).status,401);
+ assert.equal((await db.employment.findUniqueOrThrow({where:{id:row.employment.id}})).status,'ACTIVE');
+ const reactivated=await call(`/admin/accounts/${createdAccount.id}/status`,at.accessToken,{status:'ACTIVE',reason:'Isolated employee reactivation',expectedUpdatedAt:suspended.body.updatedAt,reviewed:true},'PATCH');assert.equal(reactivated.status,200);clean(reactivated.body);
+ assert.equal((await call('/me',employeeTokens.accessToken)).status,401);assert.equal((await call('/auth/refresh',null,{refreshToken:employeeTokens.refreshToken})).status,401);
+ const freshEmployee=await login(createdAccount);assert.equal((await call('/me',freshEmployee.accessToken)).status,200);
+ assert.equal((await db.employment.findUniqueOrThrow({where:{id:row.employment.id}})).status,'ACTIVE');assert.equal((await db.roleAssignment.findUniqueOrThrow({where:{accountId_role:{accountId:createdAccount.id,role:'HR_MANAGER'}}})).status,'ACTIVE');
+ assert.equal(await db.auditEvent.count({where:{action:'ACCOUNT_STATUS_CHANGED',resourceId:createdAccount.id}}),2);
+ console.log('Staffing HTTP/PostgreSQL passed: canonical initialization; private identity provisioning and one-time email/Google verification; idempotent creation/linking; responsible internal-owner review including own requests; owner/delegate final approval; scoped delegation/revocation, no privilege escalation, no self-approval, inactive employee denial and ownership-transfer invalidation; current-owner authority, revocation and transfer re-review; center-owner management with cross-center and internal/center denial; fail-closed HR compliance; atomic audit/IAM rollback; concurrent request/approval; effective scoped HR permissions; fresh-login grants; preserved center data; same-employee suspension/reactivation with old-session denial and retained employment.');
+}finally{
+ const owned=await db.employment.findMany({where:{accountId:{in:accounts}},select:{id:true}}),employmentIds=owned.map(e=>e.id);
+ const movements=await db.employmentMovement.findMany({where:{employmentId:{in:employmentIds}},select:{id:true}}),movementIds=movements.map(e=>e.id);
+ const notifications=await db.notification.findMany({where:{accountId:{in:accounts}},select:{id:true}});
+ const candidates=await db.hrCandidate.findMany({where:{personId:{in:people}},select:{id:true}});
+ await db.auditEvent.deleteMany({where:{OR:[{actorId:{in:people}},{resourceId:{in:[...organizations,...employmentIds,...movementIds,...notifications.map(n=>n.id),...candidates.map(c=>c.id)]}}]}});
+ await db.operationalSetting.deleteMany({where:{OR:[{key:{in:[...(initializedByFixture?['PLATFORM_STAFFING_ORGANIZATION:v1','STAFFING_WRITE_SERIALIZATION:v1',...organizations.map(id=>`STAFF_APPROVAL_DELEGATIONS:v1:${id}`)]:[]),...movementIds.map(id=>`STAFFING_APPOINTMENT:${id}`),auth.googleSubjectKey(googleSubject)]}},...accounts.map(id=>({key:{startsWith:`STAFFING_REQUEST:${id}:`}}))]}});
+ await db.employmentMovement.deleteMany({where:{id:{in:movementIds}}});await db.employment.deleteMany({where:{id:{in:employmentIds}}});await db.hrCandidate.deleteMany({where:{id:{in:candidates.map(c=>c.id)}}});
+ await db.position.deleteMany({where:{orgUnit:{organizationId:{in:organizations}}}});await db.orgUnit.deleteMany({where:{organizationId:{in:organizations},type:'DEPARTMENT'}});await db.orgUnit.deleteMany({where:{organizationId:{in:organizations}}});
+ await db.diverEquipment.deleteMany({where:{accountId:{in:accounts}}});await db.organizationMember.deleteMany({where:{accountId:{in:accounts}}});await db.organization.deleteMany({where:{id:{in:organizations}}});
+ await db.notification.deleteMany({where:{accountId:{in:accounts}}});await db.session.deleteMany({where:{accountId:{in:accounts}}});await db.roleAssignment.deleteMany({where:{accountId:{in:accounts}}});await db.account.deleteMany({where:{id:{in:accounts}}});await db.person.deleteMany({where:{id:{in:people}}});
+ if(controlId)await db.policyControl.delete({where:{id:controlId}});
+ await runtime.$disconnect();await db.$disconnect();await new Promise(resolve=>mailServer.close(resolve));
+}

@@ -60,42 +60,63 @@ jobs:
           echo "Payment readiness diagnostics are correctly protected from unauthenticated access."
 
       - name: Check web shell
+        id: web_shell
         run: |
+          set -uo pipefail
+          saw_rate_limit=false
+          saw_other_failure=false
           for attempt in $(seq 1 12); do
-            if curl --fail --silent --show-error --max-time 20 https://hydroland-web.onrender.com/ | grep -q '<title>HYDROLAND'; then
+            body_file="$(mktemp)"
+            status="$(curl --silent --show-error --max-time 20 --output "$body_file" --write-out '%{http_code}' https://hydroland-web.onrender.com/ 2>/dev/null || true)"
+            if [ "$status" = "200" ] && grep -q '<title>HYDROLAND' "$body_file"; then
+              rm -f "$body_file"
+              echo "result=healthy" >> "$GITHUB_OUTPUT"
               exit 0
+            elif [ "$status" = "429" ]; then
+              saw_rate_limit=true
+            else
+              saw_other_failure=true
+              echo "Web shell check returned HTTP ${status:-no-response} (attempt $attempt/12)."
             fi
-            echo "Web shell not ready yet (attempt $attempt/12)."
-            sleep 10
+            rm -f "$body_file"
+            [ "$attempt" -eq 12 ] || sleep 10
           done
+          if [ "$saw_rate_limit" = true ] && [ "$saw_other_failure" = false ]; then
+            echo "result=rate_limited" >> "$GITHUB_OUTPUT"
+            echo "::warning::Web check was rate-limited (HTTP 429); uptime is inconclusive and any existing outage alert will remain open."
+            exit 0
+          fi
+          echo "result=failed" >> "$GITHUB_OUTPUT"
           exit 1
 
       - name: Create or update production outage alert
         if: ${{ failure() && github.event_name != 'pull_request' }}
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
           label='production-uptime'
-          gh label create "$label" --color B60205 --description 'Automated production uptime alert' --force
-          issue="$(gh issue list --state open --label "$label" --json number --jq '.[0].number // empty')"
-          body="Production uptime verification failed. Workflow run: $RUN_URL\n\nAutomated check time (UTC): $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          gh label create "$label" --color B60205 --description 'Automated production uptime alert' --force --repo "$GH_REPO"
+          issue="$(gh issue list --repo "$GH_REPO" --state open --label "$label" --json number --jq '.[0].number // empty')"
+          body="Production uptime verification failed. Workflow run: $RUN_URL\\n\\nAutomated check time (UTC): $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           if [ -n "$issue" ]; then
-            gh issue comment "$issue" --body "$body"
+            gh issue comment "$issue" --repo "$GH_REPO" --body "$body"
           else
-            gh issue create --title 'Production uptime incident' --label "$label" --body "$body"
+            gh issue create --repo "$GH_REPO" --title 'Production uptime incident' --label "$label" --body "$body"
           fi
 
       - name: Close resolved production outage alert
-        if: ${{ success() && github.event_name != 'pull_request' }}
+        if: ${{ success() && github.event_name != 'pull_request' && steps.web_shell.outputs.result != 'rate_limited' }}
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          issue="$(gh issue list --state open --label 'production-uptime' --json number --jq '.[0].number // empty' 2>/dev/null || true)"
+          issue="$(gh issue list --repo "$GH_REPO" --state open --label 'production-uptime' --json number --jq '.[0].number // empty' 2>/dev/null || true)"
           if [ -n "$issue" ]; then
-            gh issue comment "$issue" --body "Production uptime checks recovered successfully. Workflow run: $RUN_URL"
-            gh issue close "$issue" --reason completed
+            gh issue comment "$issue" --repo "$GH_REPO" --body "Production uptime checks recovered successfully. Workflow run: $RUN_URL"
+            gh issue close "$issue" --repo "$GH_REPO" --reason completed
           fi

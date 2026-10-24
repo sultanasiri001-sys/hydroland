@@ -1,0 +1,24 @@
+.hl-ai-workforce{margin:18px 0;border:1px solid var(--line,#365467);border-radius:16px;background:rgba(5,26,41,.45);overflow:hidden}
+.hl-ai-workforce>summary{padding:18px;font-weight:700;cursor:pointer;line-height:1.7}
+.hl-ai-workforce .hl-ai-body{padding:0 18px 18px}
+.hl-ai-workforce header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.hl-ai-workforce .hl-ai-provider-actions{display:flex;gap:10px;flex-wrap:wrap}
+.hl-ai-workforce h4,.hl-ai-workforce h5{margin:0 0 8px;font-size:1.05rem}
+.hl-ai-workforce p{line-height:1.8;overflow-wrap:anywhere}
+.hl-ai-workforce .hl-ai-explainer{font-size:.9rem;opacity:.85}
+.hl-ai-workforce .hl-ai-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(265px,1fr));gap:14px;margin:18px 0}
+.hl-ai-workforce article{min-width:0;padding:16px;border:1px solid var(--line,#365467);border-radius:14px;background:rgba(3,19,32,.4)}
+.hl-ai-workforce dl{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.hl-ai-workforce dl>div{padding:8px;border:1px solid var(--line,#365467);border-radius:10px}
+.hl-ai-workforce dt{font-size:.85rem}.hl-ai-workforce dd{margin:4px 0 0;font-weight:700;font-size:1.2rem}
+.hl-ai-workforce label{display:block;line-height:1.8;margin:10px 0}
+.hl-ai-workforce fieldset{border:0;padding:0;margin:0;min-width:0}
+.hl-ai-workforce select,.hl-ai-workforce textarea{display:block;width:100%;max-width:100%;padding:11px;border:1px solid var(--line,#365467);border-radius:10px;color:inherit;background:#132f43;font:inherit}
+.hl-ai-workforce input[type=checkbox]{width:auto;margin-inline-end:8px}
+.hl-ai-workforce button{padding:10px 14px;border:1px solid var(--line,#365467);border-radius:10px;background:#16384b;color:inherit;font:inherit;cursor:pointer}
+.hl-ai-workforce button:disabled{opacity:.5;cursor:not-allowed}.hl-ai-workforce :focus-visible{outline:2px solid #31cbe4;outline-offset:3px}
+.hl-ai-workforce .hl-ai-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.hl-ai-workforce [data-ai-task-list]{display:grid;gap:12px;margin:18px 0}
+.hl-ai-workforce pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.8;max-width:100%}
+.hl-ai-workforce nav{display:flex;gap:10px;flex-wrap:wrap}
+@media(max-width:620px){.hl-ai-workforce .hl-ai-cards,.hl-ai-workforce .hl-ai-grid{grid-template-columns:minmax(0,1fr)}.hl-ai-workforce .hl-ai-body{padding:0 12px 12px}}
