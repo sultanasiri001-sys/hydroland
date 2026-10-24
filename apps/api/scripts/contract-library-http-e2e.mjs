@@ -126,6 +126,7 @@ try{
   eq((await call(owner,path,'POST',input(w,{templateId:dive.id}))).status,409,'Cooperation template is not an employment template');
   eq((await call(owner,path,'POST',input(w,{values:{employeeName:'forged'}}))).status,400,'Canonical identity cannot be supplied in manual fields');
   eq((await call(owner,path,'POST',input(w,{status:'SIGNED'}))).status,400);
+  for(const extra of [{values:{pay:{nested:['invalid']}}},{expectedSourceHash:{nested:'invalid'}},{values:Object.fromEntries(Array.from({length:61},(_,i)=>['field'+i,'value']))}])eq((await call(owner,path,'POST',input(w,extra))).status,400,'Reject malformed revision and nested/oversized value maps before hashing');
   eq((await call(owner,path,'POST',input(w,{effectiveFrom:'2027-02-31'}))).status,400);
   eq((await call(owner,path,'POST',input(w,{reviewed:false}))).status,400);
   const stale=input(w);await db.person.update({where:{id:legal.personId},data:{firstName:'Changed identity'}});

@@ -60,6 +60,9 @@ export class EmploymentContractLibraryService {
   const reason=contractText(x.reason,1000);if(reason.length<5)throw new BadRequestException('اكتب سبب إعداد المسودة.');
   const effectiveFrom=date(x.effectiveFrom)!,effectiveTo=date(x.effectiveTo,true);
   if(effectiveTo&&effectiveTo<effectiveFrom)throw new BadRequestException('نهاية العقد تسبق بدايته.');
+  if(typeof x.expectedEmploymentUpdatedAt!=='string'||x.expectedEmploymentUpdatedAt.length>40||typeof x.expectedSourceHash!=='string'||!/^sha256:[a-f0-9]{64}$/.test(x.expectedSourceHash)||typeof x.expectedTemplateContentHash!=='string'||!/^sha256:[a-f0-9]{64}$/.test(x.expectedTemplateContentHash)||!Number.isInteger(x.expectedContractVersion)||Number(x.expectedContractVersion)<0||Number(x.expectedContractVersion)>2147483646||!Number.isInteger(x.expectedTemplateVersion)||Number(x.expectedTemplateVersion)<1)throw new BadRequestException('راجع مراجع إصدار الموظف والقالب.');
+  const rawValues=x.values??{};
+  if(!rawValues||typeof rawValues!=='object'||Array.isArray(rawValues)||Object.keys(rawValues).length>60||Object.values(rawValues).some(v=>typeof v!=='string'||v.length>2000))throw new BadRequestException('شروط المسودة نصوص محدودة الطول فقط.');
   const commandHash=digest(x);
   return this.db.serializable(async tx=>{
    await lockOwnerReview(tx);
