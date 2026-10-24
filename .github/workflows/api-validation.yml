@@ -157,6 +157,8 @@ jobs:
           done
           node apps/api/scripts/staffing-admin-http-e2e.mjs
           node apps/api/scripts/hr-control-review-http-e2e.mjs
+          node apps/api/scripts/department-reference-validation.mjs
+          node apps/api/scripts/department-reference-http-e2e.mjs
           node apps/api/scripts/temporary-owner-review-http-e2e.mjs
       - name: Admin account lifecycle HTTP and PostgreSQL
         env:

@@ -45,7 +45,7 @@
   if(create&&!canCreate){form.mode.value='LINK';syncForm();}
  }
  function lock(){
-  panel.querySelectorAll('fieldset,button').forEach(e=>{if(!e.closest('[data-agent-workforce],[data-hr-control-review]'))e.disabled=busy;});
+  panel.querySelectorAll('fieldset,button').forEach(e=>{if(!e.closest('[data-agent-workforce],[data-hr-control-review],[data-department-references]'))e.disabled=busy;});
   panel.querySelectorAll('[data-contract-save]').forEach(e=>e.disabled=busy||e.dataset.unchanged==='true');
   syncForm();panel.querySelector('[data-staff-previous]').disabled=busy||!history.length;panel.querySelector('[data-staff-next]').disabled=busy||!nextCursor;
  }
