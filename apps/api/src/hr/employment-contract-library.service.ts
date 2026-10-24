@@ -6,7 +6,7 @@ import { lockAccountIdentities, requireVerifiedAdmin } from '../admin/admin-auth
 import { platformOrganization } from './staffing-catalog';
 import { lockOwnerReview } from './temporary-owner-review';
 import { contractKeys, contractText } from '../document-forms/cooperation-contract.domain';
-import { readLibrary } from '../document-forms/contract-library.domain';
+import { independentEmploymentLegalReview, readLibrary } from '../document-forms/contract-library.domain';
 type Tx=Prisma.TransactionClient;
 const canonical=(v:any):string=>JSON.stringify(v===null||typeof v!=='object'?v:Array.isArray(v)?v.map(x=>JSON.parse(canonical(x))):Object.fromEntries(Object.keys(v).sort().map(k=>[k,JSON.parse(canonical(v[k]))])));
 const digest=(v:unknown)=>'sha256:'+createHash('sha256').update(canonical(v)).digest('hex');
@@ -38,7 +38,7 @@ export class EmploymentContractLibraryService {
   const seen=new Set<string>(),items=[];
   for(const row of rows){const e=readLibrary(row);if(e.content.category!=='EMPLOYMENT')continue;
    if(seen.has(row.code))throw new ConflictException('توجد نسخ فعالة متعارضة لقالب الموظف.');seen.add(row.code);
-   if(e.state!=='PUBLISHED'||e.content.workflow!=='HR_EMPLOYMENT_TEMPLATE_V1'||!e.publishedBy||!e.legalReview||!e.hrReview||e.legalReview.contentHash!==e.contentHash||e.hrReview.contentHash!==e.contentHash)throw new ConflictException('قالب الموظف لم يستكمل الاعتماد.');
+   if(e.state!=='PUBLISHED'||e.content.workflow!=='HR_EMPLOYMENT_TEMPLATE_V1'||!e.publishedBy||!independentEmploymentLegalReview(e)||!e.hrReview||e.hrReview.contentHash!==e.contentHash)throw new ConflictException('قالب الموظف لم يستكمل الاعتماد والمراجعة القانونية المستقلة.');
    items.push({id:row.id,code:row.code,titleAr:row.titleAr,titleEn:row.titleEn,version:row.version,contentHash:e.contentHash,content:e.content});
   }return items;
  }

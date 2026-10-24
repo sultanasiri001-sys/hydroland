@@ -22,10 +22,11 @@ export type LibraryContent = {
   source: { name: string; revision: string; status: 'ADAPTED_DRAFT' };
 };
 type Review = { accountId: string; at: string; contentHash: string; reference: string; temporaryOwnerReview?:OwnerReviewEvidence };
+export type InternalApproval = { accountId: string; at: string; contentHash: string; reference: string; purpose: 'INTERNAL_DRAFT_PREPARATION_ONLY' };
 export type LibraryEnvelope = {
   kind: 'CONTRACT_LIBRARY_V1'; state: LibraryState; content: LibraryContent; contentHash: string;
   createdBy: string; createdAt: string; changeReason: string; previousId: string | null;
-  legalReview?: Review; hrReview?: Review; publishedBy?: string; publishedAt?: string;
+  internalApproval?: InternalApproval; legalReview?: Review; hrReview?: Review; publishedBy?: string; publishedAt?: string;
 };
 export function libraryHash(code: string, titleAr: string, titleEn: string, content: LibraryContent) {
   // JSONB sorts object keys; recursive canonical ordering is part of this hash contract.
@@ -36,7 +37,17 @@ export function readLibrary(row: { code: string; titleAr: string; titleEn: strin
   const e = contractRecord(row.fields) as unknown as LibraryEnvelope;
   if (!isLibraryCode(row.code) || e.kind !== 'CONTRACT_LIBRARY_V1' || !['DRAFT','IN_REVIEW','PUBLISHED','RETIRED','SUPERSEDED'].includes(e.state) || !e.content || e.content.schemaVersion !== 1 || !Array.isArray(e.content.fields) || !Array.isArray(e.content.clauses) || libraryHash(row.code,row.titleAr,row.titleEn,e.content)!==e.contentHash) throw new ConflictException('سجل قالب العقد يحتاج مراجعة.');
   for(const review of [e.legalReview,e.hrReview])if(review?.temporaryOwnerReview&&(!validOwnerReviewEvidence(review.temporaryOwnerReview)||review.temporaryOwnerReview.ownerId!==review.accountId))throw new ConflictException('بيانات صلاحية المراجعة المؤقتة تحتاج مراجعة.');
+  if(e.internalApproval!==undefined){
+    const approval=e.internalApproval;
+    if(!approval||Array.isArray(approval)||e.content.category!=='EMPLOYMENT'||Object.keys(approval).some(k=>!['accountId','at','contentHash','reference','purpose'].includes(k))||typeof approval.accountId!=='string'||!approval.accountId||typeof approval.at!=='string'||!Number.isFinite(Date.parse(approval.at))||new Date(approval.at).toISOString()!==approval.at||approval.contentHash!==e.contentHash||typeof approval.reference!=='string'||approval.reference.trim().length<3||approval.reference.length>240||approval.purpose!=='INTERNAL_DRAFT_PREPARATION_ONLY')throw new ConflictException('بيانات الموافقة الداخلية تحتاج مراجعة.');
+  }
   return e;
+}
+// This static provenance check also protects consumption of historical HR
+// publications. An internal approval or owner exception is never legal review.
+export function independentEmploymentLegalReview(e:LibraryEnvelope,ownerId?:string){
+  const review=e.legalReview;
+  return Boolean(review&&typeof review.accountId==='string'&&review.accountId&&review.contentHash===e.contentHash&&!review.temporaryOwnerReview&&review.accountId!==e.createdBy&&review.accountId!==e.publishedBy&&review.accountId!==ownerId);
 }
 export function editLibraryContent(body: unknown, current: LibraryContent) {
   const x=contractKeys(body,['titleAr','titleEn','clauses','usageNotes']);
