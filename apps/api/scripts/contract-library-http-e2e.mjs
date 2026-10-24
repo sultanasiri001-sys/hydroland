@@ -92,14 +92,49 @@ try{
   const newer=(await call(center,'/contracts/cooperation','POST',{organizationId:org.id,professionalEmail:pro.email})).body;eq(newer.librarySource.templateId,next.id);eq(newer.clauses.length,contract.clauses.length+1);
   eq((await call(owner,'/contracts/library/'+next.id+'/history')).body.items.length,2);
   // HR templates require both scoped HR and independent legal review.
-  eq((await decision(owner,employment,'SUBMIT')).status,201);eq((await decision(legal,employment,'LEGAL_REVIEW')).status,201);eq((await decision(owner,employment,'PUBLISH')).status,403);
+  eq((await decision(owner,employment,'INTERNAL_APPROVAL')).status,403,'Internal approval is confined to the review stage');
+  eq((await decision(owner,dive,'INTERNAL_APPROVAL')).status,403,'Internal employment approval cannot affect cooperation contracts');
+  eq((await decision(owner,employment,'SUBMIT')).status,201);
+  for(const actor of [legal,hr,admin])eq((await decision(actor,employment,'INTERNAL_APPROVAL')).status,403,'Only the canonical owner records internal drafting approval');
+  eq((await decision(owner,employment,'INTERNAL_APPROVAL',{reference:''})).status,400);
+  eq((await decision(owner,employment,'INTERNAL_APPROVAL',{reviewed:false})).status,400);
+  eq((await decision(owner,employment,'INTERNAL_APPROVAL',{expectedContentHash:'sha256:stale'})).status,409);
+  {
+    const {DatabaseService}=require('../dist/database/database.service.js'),{ContractLibraryService}=require('../dist/document-forms/contract-library.service.js'),runtime=new DatabaseService();
+    const broken={serializable:work=>runtime.serializable(tx=>work(new Proxy(tx,{get(target,k){if(k==='auditEvent')return {create:async()=>{throw new Error('Injected internal approval audit failure')}};return Reflect.get(target,k)}})))};
+    await assert.rejects(()=>new ContractLibraryService(broken).decide(owner.id,employment.id,{...expected(employment),action:'INTERNAL_APPROVAL',reason:'Isolated approval audit rollback',reference:'FIXTURE-INTERNAL',reviewed:true}),/Injected internal approval audit failure/);checks++;
+    eq((await call(owner,'/contracts/library/'+employment.id)).body.internalApproval,null);await runtime.$disconnect();
+  }
+  let internal=(await decision(owner,employment,'INTERNAL_APPROVAL')).body;
+  eq(internal.state,'IN_REVIEW');eq(internal.internalApproval,{accountId:owner.id,at:internal.internalApproval.at,contentHash:employment.contentHash,reference:'FIXTURE-REVIEW-2026',purpose:'INTERNAL_DRAFT_PREPARATION_ONLY'});
+  eq(internal.reviews,{legal:null,hr:null});eq(internal.capabilities.publish,false);eq((await decision(owner,employment,'PUBLISH')).status,403);
+  eq((await decision(owner,employment,'INTERNAL_APPROVAL')).status,403,'A repeated approval cannot replace the recorded owner decision');
+  const internalAudit=await db.auditEvent.findFirstOrThrow({where:{resourceId:employment.id,action:'CONTRACT_TEMPLATE_INTERNAL_APPROVAL'}});eq(internalAudit.metadata.internalApproval,internal.internalApproval);
+  const internalStored=await db.documentTemplate.findUniqueOrThrow({where:{id:employment.id}});
+  for(const forged of [{...internal.internalApproval,purpose:'LEGAL_APPROVAL'},{...internal.internalApproval,contentHash:'sha256:forged'},{...internal.internalApproval,at:'invalid'},{...internal.internalApproval,extra:'unexpected'}]){
+    await db.documentTemplate.update({where:{id:employment.id},data:{fields:{...internalStored.fields,internalApproval:forged}}});
+    eq((await call(owner,'/contracts/library/'+employment.id)).status,409,'Malformed or cross-content internal evidence is rejected');
+  }
+  await db.documentTemplate.update({where:{id:employment.id},data:{fields:internalStored.fields}});
+  const legalEmployment=await db.employment.findFirstOrThrow({where:{accountId:legal.id,organizationId:platform.id}}),internalPath=`/hr/employments/${legalEmployment.id}/contracts`,internalWorkspace=(await call(owner,internalPath)).body;
+  eq(internalWorkspace.templates,[],'Internal approval never makes an HR template eligible for use');
+  eq((await call(owner,internalPath,'POST',{requestId:randomUUID(),expectedEmploymentUpdatedAt:internalWorkspace.employmentUpdatedAt,expectedSourceHash:internalWorkspace.sourceHash,expectedContractVersion:0,templateId:employment.id,expectedTemplateVersion:employment.version,expectedTemplateContentHash:employment.contentHash,effectiveFrom:'2027-01-01',effectiveTo:null,values:{},reviewed:true,reason:'اختبار منع استخدام الموافقة الداخلية'})).status,409);
+  eq(await db.employmentContract.count(),0);
+  eq((await decision(owner,employment,'RETURN')).status,201);eq((await call(owner,'/contracts/library/'+employment.id)).body.internalApproval,null,'Returning a template invalidates its internal approval');
+  eq((await decision(owner,employment,'SUBMIT')).status,201);eq((await decision(owner,employment,'INTERNAL_APPROVAL')).status,201);
+  eq((await decision(owner,employment,'LEGAL_REVIEW')).status,403);
+  eq((await decision(legal,employment,'LEGAL_REVIEW')).status,201);
+  eq((await decision(owner,employment,'PUBLISH')).status,403);
   eq((await decision(legal,employment,'HR_REVIEW')).status,403);eq((await decision(hr,employment,'HR_REVIEW')).status,201);
+  await db.orgUnit.update({where:{id:legalUnit.id},data:{active:false}});eq((await decision(owner,employment,'PUBLISH')).status,403,'HR publication rechecks present legal employment scope');
+  await db.orgUnit.update({where:{id:legalUnit.id},data:{active:true}});
   await db.roleAssignment.update({where:{accountId_role:{accountId:hr.id,role:'HR_MANAGER'}},data:{status:'SUSPENDED'}});
   eq((await decision(owner,employment,'PUBLISH')).status,403);
   await db.roleAssignment.update({where:{accountId_role:{accountId:hr.id,role:'HR_MANAGER'}},data:{status:'ACTIVE'}});
   eq((await decision(owner,employment,'PUBLISH')).status,201);
   eq((await call(pro,'/contracts/library/'+employment.id)).status,403,'HR templates stay internal after publish');
-  const copied=await call(hr,`/contracts/library/${employment.id}/copy`,'POST',change(employment,{titleAr:'ملحق مهام الموظف',titleEn:'Employee duties addendum'}));eq(copied.status,201);eq(copied.body.version,1);eq(copied.body.state,'DRAFT');
+  const copied=await call(hr,`/contracts/library/${employment.id}/copy`,'POST',change(employment,{titleAr:'ملحق مهام الموظف',titleEn:'Employee duties addendum'}));eq(copied.status,201);eq(copied.body.version,1);eq(copied.body.state,'DRAFT');eq(copied.body.internalApproval,null,'A copied template cannot inherit internal approval');
+  const legalAuthored=(await call(legal,`/contracts/library/${employment.id}/copy`,'POST',change(employment,{titleAr:'قالب موارد بشرية للمراجعة المستقلة',titleEn:'Independent HR review fixture'}))).body;eq((await decision(legal,legalAuthored,'SUBMIT')).status,201);eq((await decision(legal,legalAuthored,'LEGAL_REVIEW')).status,403,'A scoped legal employee cannot review their own version');
   const copiedDive=await call(legal,`/contracts/library/${next.id}/copy`,'POST',change(next,{titleAr:'اتفاق تعاون عام',titleEn:'General cooperation'}));eq(copiedDive.status,201);eq(copiedDive.body.content.workflow,'REFERENCE_TEMPLATE_V1');eq(copiedDive.body.integration.canCreateCooperation,false);
   let hrDraft=copied.body;eq((await decision(hr,hrDraft,'SUBMIT')).status,201);eq((await decision(hr,hrDraft,'HR_REVIEW')).status,403,'HR author cannot self review');eq((await decision(legal,hrDraft,'LEGAL_REVIEW')).status,201);eq((await decision(owner,hrDraft,'RETURN')).status,201);
   hrDraft=(await call(hr,'/contracts/library/'+hrDraft.id)).body;eq(hrDraft.state,'DRAFT');eq(hrDraft.reviews,{legal:null,hr:null});
@@ -120,6 +155,13 @@ try{
   const target=await db.employment.findFirstOrThrow({where:{accountId:legal.id,organizationId:platform.id}}),path=`/hr/employments/${target.id}/contracts`;
   eq((await call(null,path)).status,401);
   for(const actor of [admin,legal,pro,center,outsider])eq((await call(actor,path)).status,403,'No implicit employee-contract access from admin, legal or own employee identity');
+  const employmentPublished=await db.documentTemplate.findUniqueOrThrow({where:{id:employment.id}});
+  const historicalTemporaryEvidence={grantId:randomUUID(),ownerId:legal.id,organizationId:platform.id,organizationRevision:platform.updatedAt.toISOString(),issuedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+3600000).toISOString()};
+  for(const forged of [{...employmentPublished.fields,legalReview:{...employmentPublished.fields.legalReview,accountId:owner.id}},{...employmentPublished.fields,createdBy:legal.id},{...employmentPublished.fields,legalReview:{...employmentPublished.fields.legalReview,temporaryOwnerReview:historicalTemporaryEvidence}}]){
+    await db.documentTemplate.update({where:{id:employment.id},data:{fields:forged}});
+    eq((await call(owner,path)).status,409,'Historical owner or author legal evidence cannot be consumed as an HR template');
+  }
+  await db.documentTemplate.update({where:{id:employment.id},data:{fields:employmentPublished.fields}});
   let w=(await call(owner,path)).body;eq(w.templates.length,1);eq(w.templates[0].id,employment.id);eq(w.items,[]);eq(w.execution,'DRAFT_ONLY');
   const input=(workspace,extra={})=>({requestId:randomUUID(),expectedEmploymentUpdatedAt:workspace.employmentUpdatedAt,expectedSourceHash:workspace.sourceHash,expectedContractVersion:workspace.expectedContractVersion,templateId:employment.id,expectedTemplateVersion:employment.version,expectedTemplateContentHash:employment.contentHash,effectiveFrom:'2027-01-01',effectiveTo:null,values:{pay:'أجر تجريبي للمسودة فقط'},reviewed:true,reason:'إنشاء مسودة ربط معزولة للاختبار',...extra});
   eq((await call(owner,path,'POST',input(w,{templateId:hrDraft.id}))).status,409,'Unpublished HR template cannot instantiate a draft');

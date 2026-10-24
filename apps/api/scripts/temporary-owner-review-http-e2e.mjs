@@ -21,11 +21,14 @@ const libraryDecision=(p,action)=>({action,expectedVersion:p.version,expectedCon
 const effects=()=>Promise.all([db.account.count(),db.roleAssignment.count(),db.employment.count(),db.organizationMember.count()]);
 try{
  eq(await db.operationalSetting.count({where:{key}}),0,'Use an isolated canonical organization');
- const owner=await fixture('owner','ADMIN'),other=await fixture('other-admin','ADMIN'),ordinary=await fixture('ordinary','DIVER');
+ const owner=await fixture('owner','ADMIN'),other=await fixture('other-admin','ADMIN'),ordinary=await fixture('ordinary','DIVER'),legal=await fixture('legal','STAFF');
  org=await db.organization.create({data:{displayName:'Isolated temporary owner review',kind:'HYDROLAND_INTERNAL_PLATFORM',status:'ACTIVE',ownerId:owner.id}});
  await db.operationalSetting.create({data:{key,value:{version:1,organizationId:org.id}}});
  unit=await db.orgUnit.create({data:{organizationId:org.id,type:'DEPARTMENT',code:'TRAINING',nameAr:'تدريب معزول'}});
- const ot=await login(owner),at=await login(other),ut=await login(ordinary);
+ const legalUnit=await db.orgUnit.create({data:{organizationId:org.id,type:'DEPARTMENT',code:'LEGAL_CONTRACTS_INSURANCE',nameAr:'قانونية معزولة'}});
+ await db.organizationMember.create({data:{organizationId:org.id,accountId:legal.id,role:'STAFF',status:'ACTIVE'}});
+ await db.employment.create({data:{organizationId:org.id,accountId:legal.id,orgUnitId:legalUnit.id,workerClass:'EMPLOYEE',status:'ACTIVE'}});
+ const ot=await login(owner),at=await login(other),ut=await login(ordinary),lt=await login(legal);
  eq((await call(mode)).status,401);eq((await call(mode,at)).status,403);eq((await call(mode,ut)).status,403);
  const initial=await call(mode,ot);eq(initial.status,200);eq(initial.cache,'no-store');eq(initial.body.active,false);eq(initial.body.revision,null);
  eq(await db.operationalSetting.count({where:{key:ownerReviewKey(org.id)}}),0,'Reading cannot create a grant');
@@ -50,20 +53,26 @@ try{
  eq(await db.auditEvent.count({where:{resourceId:late.control.ruleKey,action:'HR_CONTROL_REVIEWED'}}),0);
  eq((await call('/contracts/library/workspace',ot)).body.temporaryOwnerReview.active,true);
  for(const invalid of [{legalApprovalReference:''},{evidenceIds:[]}]){const input=controlInput();input.control={...input.control,...invalid};eq((await call(controls,ot,input)).status,400,'The temporary grant cannot bypass required legal references or evidence');}
- const capabilities=(await call('/contracts/library/'+template.id,ot)).body.capabilities;eq(capabilities.legalReview,true);eq(capabilities.hrReview,true);
+ const capabilities=(await call('/contracts/library/'+template.id,ot)).body.capabilities;eq(capabilities.legalReview,false,'Temporary owner authority cannot supply HR legal review');eq(capabilities.hrReview,true);eq(capabilities.internalApprove,true);
+ eq((await call(`/contracts/library/${template.id}/decision`,ot,libraryDecision(template,'LEGAL_REVIEW'))).status,403);
+ let dive=templates.find(x=>x.code==='CLIB-DIVE-COOPERATION');
+ for(const action of ['SUBMIT','LEGAL_REVIEW','PUBLISH']){const response=await call(`/contracts/library/${dive.id}/decision`,ot,libraryDecision(dive,action));eq(response.status,201);dive=response.body;}
+ eq(dive.reviews.legal.temporaryOwnerReview.grantId,active.revision,'The separately scoped diving workflow is preserved');
  eq((await call(controls,at)).body.temporaryOwnerReview,{canManage:false,active:false,revision:null,expiresAt:null,scopes:[]});
  const otherProposal=(await call(controls,at,controlInput())).body;eq(otherProposal.canReview,false);eq((await call(`${controls}/${otherProposal.id}/decision`,at,controlDecision(otherProposal,'REVIEW'))).status,403,'Another administrator cannot use the owner exception');
  eq((await call(`/admin/employees/${ownAppointment.body.id}/decision`,ot,{action:'REVIEW',reason:'اختبار منع مراجعة التعيين الشخصي',reviewed:true,expectedUpdatedAt:ownAppointment.body.updatedAt},'PATCH')).status,403);
  eq((await call(`/admin/employees/${ownAppointment.body.id}/decision`,ot,{action:'APPROVE',reason:'اختبار منع اعتماد التعيين الشخصي',reviewed:true,expectedUpdatedAt:ownAppointment.body.updatedAt},'PATCH')).status,403);
- for(const action of ['LEGAL_REVIEW','HR_REVIEW','PUBLISH']){const r=await call(`/contracts/library/${template.id}/decision`,ot,libraryDecision(template,action));eq(r.status,201);template=r.body;}
- eq(template.state,'PUBLISHED');eq(template.reviews.legal.temporaryOwnerReview.grantId,active.revision);eq(template.reviews.hr.temporaryOwnerReview.grantId,active.revision);
+ for(const action of ['INTERNAL_APPROVAL','HR_REVIEW']){const r=await call(`/contracts/library/${template.id}/decision`,ot,libraryDecision(template,action));eq(r.status,201);template=r.body;}
+ eq(template.state,'IN_REVIEW');eq(template.reviews.legal,null);eq(template.capabilities.publish,false);eq((await call(`/contracts/library/${template.id}/decision`,ot,libraryDecision(template,'PUBLISH'))).status,403);
+ for(const action of ['LEGAL_REVIEW','PUBLISH']){const r=await call(`/contracts/library/${template.id}/decision`,action==='LEGAL_REVIEW'?lt:ot,libraryDecision(template,action));eq(r.status,201);template=r.body;}
+ eq(template.state,'PUBLISHED');eq(template.reviews.legal.temporaryOwnerReview,undefined);eq(template.reviews.hr.temporaryOwnerReview.grantId,active.revision);
  let r=await call(`${controls}/${first.id}/decision`,ot,controlDecision(first,'REVIEW'));eq(r.status,201);first=r.body;r=await call(`${controls}/${first.id}/decision`,ot,controlDecision(first,'APPROVE'));eq(r.status,201);
  const applied=await db.policyControl.findUniqueOrThrow({where:{category_ruleKey:{category:'HR_COMPLIANCE',ruleKey:first.control.ruleKey}}});eq(applied.metadata.temporaryOwnerReview.grantId,active.revision);eq(applied.metadata.approval.requestedByAccountId,owner.id);eq(applied.metadata.approval.reviewedByAccountId,owner.id);eq(applied.metadata.approval.approvedByAccountId,owner.id);
  eq(await effects(),before,'The grant and review decisions cannot create employment or role assignments');
  await assert.rejects(()=>broken.change(owner.id,change('DISABLE',active.revision)),/Isolated owner grant audit failure/);checks++;eq((await call(mode,ot)).body.active,true);
  const edit={expectedVersion:template.version,expectedContentHash:template.contentHash,titleAr:template.titleAr,titleEn:template.titleEn,clauses:template.content.clauses,usageNotes:template.content.usageNotes+' اختبار مراجعة لاحقة',reason:'إصدار لاحق في قاعدة اختبار معزولة'};
  let pending=(await call(`/contracts/library/${template.id}/revise`,ot,edit)).body;
- for(const action of ['SUBMIT','LEGAL_REVIEW','HR_REVIEW']){const response=await call(`/contracts/library/${pending.id}/decision`,ot,libraryDecision(pending,action));eq(response.status,201);pending=response.body;}
+ for(const action of ['SUBMIT','LEGAL_REVIEW','HR_REVIEW']){const response=await call(`/contracts/library/${pending.id}/decision`,action==='LEGAL_REVIEW'?lt:ot,libraryDecision(pending,action));eq(response.status,201);pending=response.body;}
  let pendingControl=(await call(controls,ot,controlInput())).body;pendingControl=(await call(`${controls}/${pendingControl.id}/decision`,ot,controlDecision(pendingControl,'REVIEW'))).body;
  const original=(await db.operationalSetting.findUniqueOrThrow({where:{key:ownerReviewKey(org.id)}})).value;
  assert(validOwnerReviewEvidence(original));checks++;eq(ownerReviewLive(original,Date.parse(original.expiresAt)),false,'The expiry boundary is exclusive');eq(ownerReviewLive(original,Date.parse(original.issuedAt)-1),false);eq(validOwnerReviewEvidence({...original,expiresAt:new Date(Date.parse(original.issuedAt)+86400001).toISOString()}),false);
@@ -84,8 +93,8 @@ try{
  disabled=(await call(mode,ot,change('DISABLE',active.revision))).body;
  const concurrent=await Promise.all([call(mode,ot,change('ENABLE',disabled.revision)),call(mode,ot,change('ENABLE',disabled.revision))]);eq(concurrent.map(x=>x.status).sort(),[201,409]);active=concurrent.find(x=>x.status===201).body;
  const grantAudits=await db.auditEvent.findMany({where:{resourceId:org.id,action:'TEMPORARY_OWNER_REVIEW_ENABLED'}});assert(grantAudits.length>=3);checks++;assert(grantAudits.every(e=>e.metadata.permissionsApplied===false&&e.metadata.scopes.length===2));checks++;
- for(const action of ['RETURN','SUBMIT','LEGAL_REVIEW','HR_REVIEW','PUBLISH']){const response=await call(`/contracts/library/${pending.id}/decision`,ot,libraryDecision(pending,action));eq(response.status,201);pending=response.body;}
- eq(pending.reviews.legal.temporaryOwnerReview.grantId,active.revision,'A regrant needs fresh reviews before publication');
+ for(const action of ['RETURN','SUBMIT','LEGAL_REVIEW','HR_REVIEW','PUBLISH']){const response=await call(`/contracts/library/${pending.id}/decision`,action==='LEGAL_REVIEW'?lt:ot,libraryDecision(pending,action));eq(response.status,201);pending=response.body;}
+ eq(pending.reviews.hr.temporaryOwnerReview.grantId,active.revision,'A regrant needs fresh reviews before publication');eq(pending.reviews.legal.temporaryOwnerReview,undefined);
  eq((await call(mode,ot,change('DISABLE',active.revision))).body.active,false);
  eq((await db.documentTemplate.findUniqueOrThrow({where:{id:pending.id}})).status,'ACTIVE','Expiration and revocation preserve already completed historical decisions');
  eq((await db.documentTemplate.findUniqueOrThrow({where:{id:template.id}})).fields.state,'RETIRED','The replaced publication remains in history');

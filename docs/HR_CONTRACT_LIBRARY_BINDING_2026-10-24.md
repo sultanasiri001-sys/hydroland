@@ -18,6 +18,8 @@ Snapshots are immutable. Creating another draft increments the employee contract
 
 ## Boundaries
 
+An owner internal drafting approval is separate from HR/legal review and never makes a template eligible for draft creation. Consumption rejects historical owner/author legal reviews and temporary-owner legal evidence, even if a row is still marked published. HR legal review requires an independent currently scoped Legal employee; publication rechecks that authority.
+
 Saving is DRAFT_ONLY and does not sign, approve or activate employment, pay, benefits or permissions. Incomplete fields remain visibly missing. HR/legal template approvals, worker/establishment eligibility, official documentation and the employee's later consent remain separate. HR templates currently awaiting review in production are not silently published by this release.
 
 GET/POST `/hr/employments/:employmentId/contracts` returns a private workspace or creates one draft. No mutation endpoint changes a pinned snapshot.

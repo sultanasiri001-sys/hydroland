@@ -1,11 +1,11 @@
 import {test,expect} from '@playwright/test';
 import {openWorkspaceSwitcher} from './portal-test-helpers.js';
 
-async function seed(page,{reader=false,staff=false,empty=false,state='DRAFT',temporaryOwnerReview=null}={}){
+async function seed(page,{reader=false,staff=false,empty=false,state='DRAFT',temporaryOwnerReview=null,employment=false}={}){
   const calls={revisions:[],decisions:[],initializations:0,filters:[],blocked:false};let latest=1;
-  const content={schemaVersion:1,category:'COOPERATION',fields:[{key:'center.legalName',label:'اسم المركز',source:'CENTER_PROFILE',required:true},{key:'professional.fullName',label:'اسم المحترف',source:'MEMBER_PROFILE',required:true}],clauses:['يوقع الطرفان النسخة نفسها.','نص <img src=x onerror=alert(1)> يحفظ كنص.'],usageNotes:'مراجعة التراخيص قبل الاستخدام.',source:{name:'نموذج هيدرولاند السابق',revision:'3'}};
+  const content={schemaVersion:1,category:employment?'EMPLOYMENT':'COOPERATION',fields:[{key:'center.legalName',label:'اسم المركز',source:'CENTER_PROFILE',required:true},{key:'professional.fullName',label:'اسم المحترف',source:'MEMBER_PROFILE',required:true}],clauses:['يوقع الطرفان النسخة نفسها.','نص <img src=x onerror=alert(1)> يحفظ كنص.'],usageNotes:'مراجعة التراخيص قبل الاستخدام.',source:{name:'نموذج هيدرولاند السابق',revision:'3'}};
   const versions=new Map();
-  const view=(version=latest)=>versions.get(version)||({id:'template-'+version,code:'CLIB-DIVE-COOPERATION',titleAr:'عقد تعاون محترف غوص',titleEn:'Diving Professional Cooperation Contract',version,state:reader?'PUBLISHED':state,contentHash:'sha256:template-'+version,content:structuredClone(content),changeReason:'إضافة المسودة',publishedAt:null,reviews:{legal:null,hr:null},integration:{canCreateCooperation:reader},capabilities:{edit:!reader,submit:!reader&&state==='DRAFT',legalReview:false,hrReview:false,publish:!reader&&state==='IN_REVIEW',return:!reader&&state==='IN_REVIEW',retire:false,history:!reader},versionCount:version,publishedVersion:reader?1:null});
+  const view=(version=latest)=>versions.get(version)||({id:'template-'+version,code:employment?'CLIB-HR-PERMANENT':'CLIB-DIVE-COOPERATION',titleAr:employment?'عقد عمل غير محدد المدة':'عقد تعاون محترف غوص',titleEn:'Diving Professional Cooperation Contract',version,state:reader?'PUBLISHED':state,contentHash:'sha256:template-'+version,content:structuredClone(content),changeReason:'إضافة المسودة',publishedAt:null,internalApproval:null,reviews:{legal:null,hr:null},integration:{canCreateCooperation:reader},capabilities:{edit:!reader,submit:!reader&&state==='DRAFT',internalApprove:!reader&&employment&&state==='IN_REVIEW',legalReview:false,hrReview:false,publish:!reader&&!employment&&state==='IN_REVIEW',return:!reader&&state==='IN_REVIEW',retire:false,history:!reader},versionCount:version,publishedVersion:reader?1:null});
   const json=(r,b,status=200)=>r.fulfill({status,contentType:'application/json',body:JSON.stringify(b)});
   const profile={id:'library-owner',email:'owner@example.invalid',status:'ACTIVE',emailVerifiedAt:'2026-10-24T00:00:00Z',roleAssignments:[{id:'role',role:reader?'INSTRUCTOR':'ADMIN',status:'ACTIVE'}],person:{firstName:'مراجع',lastName:'تجريبي',professional:null}};
   if(staff)profile.roleAssignments=[{id:'staff',role:'STAFF',status:'ACTIVE'},{id:'hr-manager',role:'HR_MANAGER',status:'ACTIVE'}];
@@ -19,8 +19,8 @@ async function seed(page,{reader=false,staff=false,empty=false,state='DRAFT',tem
     if(path.endsWith('/initialize')){calls.initializations++;empty=false;return json(r,{created:4},201);}
     if(path.endsWith('/history'))return json(r,{items:[view(latest),view(1)]});
     if(path.endsWith('/events'))return json(r,{items:[{action:'CONTRACT_TEMPLATE_INITIALIZED',occurredAt:'2026-10-24T00:00:00Z',metadata:{reason:'إضافة مسودة للمراجعة'}}]});
-    if(path.endsWith('/revise')||path.endsWith('/copy')){calls.revisions.push(body);const old=view();versions.set(latest,{...old,state:'SUPERSEDED',capabilities:{...old.capabilities,edit:false,submit:false}});latest++;const v={...old,id:'template-'+latest,version:latest,contentHash:'sha256:template-'+latest,state:'DRAFT',content:{...old.content,clauses:body.clauses,usageNotes:body.usageNotes},reviews:{legal:null,hr:null}};versions.set(latest,v);return json(r,v,201);}
-    if(path.endsWith('/decision')){calls.decisions.push(body);const v={...view(),state:body.action==='PUBLISH'?'PUBLISHED':'IN_REVIEW',capabilities:{edit:true,history:true}};versions.set(latest,v);return json(r,v,201);}
+    if(path.endsWith('/revise')||path.endsWith('/copy')){calls.revisions.push(body);const old=view();versions.set(latest,{...old,state:'SUPERSEDED',capabilities:{...old.capabilities,edit:false,submit:false}});latest++;const v={...old,id:'template-'+latest,version:latest,contentHash:'sha256:template-'+latest,state:'DRAFT',content:{...old.content,clauses:body.clauses,usageNotes:body.usageNotes},internalApproval:null,reviews:{legal:null,hr:null}};versions.set(latest,v);return json(r,v,201);}
+    if(path.endsWith('/decision')){calls.decisions.push(body);const v={...view(),state:body.action==='PUBLISH'?'PUBLISHED':'IN_REVIEW',...(body.action==='INTERNAL_APPROVAL'?{internalApproval:{accountId:'library-owner',at:new Date().toISOString(),contentHash:view().contentHash,reference:body.reference,purpose:'INTERNAL_DRAFT_PREPARATION_ONLY'}}:{}),capabilities:{edit:true,history:true}};versions.set(latest,v);return json(r,v,201);}
     const id=path.match(/\/template-(\d+)$/);if(id)return json(r,view(Number(id[1])));
     calls.filters.push(Object.fromEntries(url.searchParams));return json(r,{items:empty?[]:[view()],total:empty?0:1});
   });
@@ -85,4 +85,20 @@ test('revocation during a decision clears private text and editing controls',asy
 test('library identifies the temporary owner review and clears its notice on logout',async({page})=>{
  const {panel}=await seed(page,{temporaryOwnerReview:{active:true,expiresAt:new Date(Date.now()+3600000).toISOString()}});await expect(panel.locator('[data-library-owner-review]')).toBeVisible();await expect(panel.locator('[data-library-owner-review]')).toContainText('مراجعة المالك المؤقتة');
  await page.evaluate(()=>window.HydrolandAuth.terminateSession());await expect(panel.locator('[data-library-owner-review]')).toBeHidden();await expect(panel.locator('[data-library-owner-review]')).toHaveText('');
+});
+
+
+test('internal drafting approval remains distinct from legal review and publication',async({page})=>{
+ const {panel,calls,open}=await seed(page,{employment:true,state:'IN_REVIEW'});await open();
+ await expect(panel.getByRole('button',{name:'تسجيل المراجعة القانونية',exact:true})).toHaveCount(0);
+ await expect(panel.getByRole('button',{name:'اعتماد للاستخدام',exact:true})).toHaveCount(0);
+ const form=panel.locator('[data-library-decision]');await form.getByLabel('مرجع المراجعة أو الموافقة الداخلية').fill('موافقة داخلية تجريبية <b>نص</b>');await form.getByLabel('سبب القرار أو الملاحظة').fill('موافقة المالك على تجهيز الصياغة للمراجعة');await form.getByRole('button',{name:'تسجيل الموافقة الداخلية على الصياغة'}).click();expect(calls.decisions).toHaveLength(0);
+ await form.getByRole('checkbox').check();await form.getByRole('button',{name:'تسجيل الموافقة الداخلية على الصياغة'}).click();
+ await expect.poll(()=>calls.decisions.length).toBe(1);expect(calls.decisions[0]).toMatchObject({action:'INTERNAL_APPROVAL',expectedVersion:1,expectedContentHash:'sha256:template-1',reviewed:true});
+ await expect(panel.locator('.hl-library-state')).toHaveText('قيد المراجعة');await expect(panel.locator('.hl-library-reviews')).toContainText('الموافقة الداخلية على الصياغة: مسجلة');await expect(panel.locator('.hl-library-reviews')).toContainText('بانتظار المراجعة المستقلة');await expect(panel.locator('.hl-library-reviews')).toContainText('لا تتيح استخدام القالب');await expect(panel.locator('.hl-library-reviews b')).toHaveCount(0);
+ await expect(panel.getByRole('button',{name:'تسجيل الموافقة الداخلية على الصياغة'})).toHaveCount(0);await expect(panel.getByRole('button',{name:'اعتماد للاستخدام',exact:true})).toHaveCount(0);
+});
+
+test('temporary owner notice preserves the independent HR legal-review requirement',async({page})=>{
+ const {panel,open}=await seed(page,{employment:true,state:'IN_REVIEW',temporaryOwnerReview:{active:true,expiresAt:new Date(Date.now()+3600000).toISOString()}});await open();await expect(panel.locator('[data-library-owner-review]')).toContainText('قوالب الموظفين تتطلب مراجعة قانونية مستقلة لا يتيحها هذا الوضع');await expect(panel.getByRole('button',{name:'تسجيل المراجعة القانونية',exact:true})).toHaveCount(0);
 });
