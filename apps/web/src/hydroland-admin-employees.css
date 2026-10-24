@@ -12,6 +12,7 @@
 :is(.hl-admin-employees,.hl-staff-approvals) button:disabled{opacity:.5;cursor:default}:is(.hl-admin-employees,.hl-staff-approvals) [hidden]{display:none!important}
 :is(.hl-admin-employees,.hl-staff-approvals) dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr));gap:.8rem}:is(.hl-admin-employees,.hl-staff-approvals) dt{font-weight:700}:is(.hl-admin-employees,.hl-staff-approvals) dd{margin:0;line-height:1.8}
 .hl-staff-controls{border:1px solid #7894a755;border-radius:14px;margin-block:1rem;min-width:0}.hl-staff-controls>summary{padding:1rem;cursor:pointer;font-weight:700}.hl-staff-controls>section{padding:0 1rem 1rem;min-width:0}
+.hl-staff-references h5,.hl-staff-references h6{font-size:1rem;margin-block:.7rem}.hl-staff-references a{display:inline-block;max-width:100%;margin-inline-end:1rem;overflow-wrap:anywhere}.hl-staff-references ul{padding-inline-start:1.5rem;line-height:1.8}
 .hl-contract-comparison{width:100%;table-layout:fixed;border-collapse:collapse;font-size:.92rem;line-height:1.8}
 .hl-contract-comparison caption{text-align:start;font-weight:700;margin-block:.5rem}
 .hl-contract-comparison th,.hl-contract-comparison td{border:1px solid #7894a755;padding:.6rem;text-align:start;vertical-align:top;overflow-wrap:anywhere;white-space:pre-wrap}
