@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { createHmac } from 'node:crypto';
+import assert from 'node:assert/strict';
 
 const db=new PrismaClient();
 const base=process.env.DOCUMENT_LIST_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1';
@@ -9,7 +10,8 @@ const suffix=Date.now().toString();
 const enc=v=>Buffer.from(JSON.stringify(v)).toString('base64url');
 const tokenFor=id=>{const now=Math.floor(Date.now()/1000),body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:id,iat:now,exp:now+900})}`;return `${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`};
 const auth=t=>({authorization:`Bearer ${t}`});
-const people=[],accounts=[];let org,other,template,document;
+const people=[],accounts=[],extraTemplates=[],extraDocuments=[];let org,other,template,document,previousSetting,settingChanged=false;
+const staffingKey='PLATFORM_STAFFING_ORGANIZATION:v1';
 const mk=async label=>{const p=await db.person.create({data:{firstName:'DocumentList',lastName:label}});people.push(p);const a=await db.account.create({data:{personId:p.id,email:`doc-list-${label.toLowerCase()}-${suffix}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}});accounts.push(a);return a};
 try{
   const owner=await mk('Owner'),viewer=await mk('Viewer'),outsider=await mk('Outsider');
@@ -24,7 +26,49 @@ try{
   if(rows.length!==1||rows[0].id!==document.id||rows[0].template?.id!==template.id||rows[0].payload?.summary!=='list-e2e')throw new Error('Organization document list payload mismatch');
   r=await fetch(`${base}/documents/organizations/${org.id}/list`,{headers:auth(tokenFor(outsider.id))});if(r.status!==403)throw new Error('Cross-organization document list expected 403, got '+r.status);
   console.log('Organization Document List HTTP/DB E2E passed: auth guard, viewer read, template payload, cross-organization denial.');
+
+  const url=`${base}/documents/organizations/${org.id}/inventory`;
+  assert.equal((await fetch(url)).status,401);
+  assert.equal((await fetch(url,{headers:auth(tokenFor(outsider.id))})).status,403);
+  const read=async()=>{const response=await fetch(url,{headers:auth(tokenFor(viewer.id))});assert.equal(response.status,200);assert.match(response.headers.get('cache-control'),/no-store/);return response.json();};
+  let inventory=await read();assert.equal(inventory.baselineTemplateCount,0,'Center must not inherit internal department obligations');
+  assert.equal(inventory.departments.find(d=>d.code==='OPERATIONS').summary.total,1);
+  assert.equal(inventory.departments.find(d=>d.code==='HR').items.length,0);
+
+  // These are synthetic fixtures in the ephemeral CI database. Restore the
+  // previous staffing pointer exactly; never populate real platform documents.
+  const host=new URL(process.env.DATABASE_URL).hostname;
+  if(!['localhost','127.0.0.1','[::1]'].includes(host))throw new Error('Inventory fixtures require a loopback-only test database.');
+  previousSetting=await db.operationalSetting.findUnique({where:{key:staffingKey}});
+  await db.organization.update({where:{id:org.id},data:{kind:'HYDROLAND_INTERNAL_PLATFORM'}});
+  await db.operationalSetting.upsert({where:{key:staffingKey},create:{key:staffingKey,value:{organizationId:org.id}},update:{value:{organizationId:org.id}}});settingChanged=true;
+  inventory=await read();assert.equal(inventory.baselineTemplateCount,42);
+  for(const d of inventory.departments.filter(d=>d.code!=='OPERATIONS')){assert.equal(d.items.length,3);assert.equal(d.summary.noRecord,3);assert.equal(d.summary.notConfigured,3);}
+  const source=inventory.departments.find(d=>d.code==='HR').items.find(t=>t.code==='HR-EMPLOYEE-REPORT');
+  assert.equal(source.setup,null,'Viewer must not receive setup payload');
+  const makeTemplate=async(code,department,version,status='ACTIVE',organizationId=org.id)=>{const t=await db.documentTemplate.create({data:{organizationId,code,department,version,status,titleAr:'اختبار حصر '+code,titleEn:'Inventory Fixture',fields:[]}});extraTemplates.push(t);return t;};
+  const makeDocument=async(t,status,department=t.department)=>{const d=await db.managedDocument.create({data:{organizationId:t.organizationId,templateId:t.id,department,status,referenceNumber:'INV-E2E-'+suffix+'-'+extraDocuments.length,contentHash:'synthetic',payload:{privateEmployeeData:'DO-NOT-DISCLOSE'},createdByAccountId:owner.id}});extraDocuments.push(d);return d;};
+  const old=await makeTemplate('HR-EMPLOYEE-REPORT','HR',1,'INACTIVE');await makeDocument(old,'DRAFT');
+  const fresh=await makeTemplate('HR-EMPLOYEE-REPORT','HR',2);await makeDocument(fresh,'PENDING_APPROVAL');
+  const leave=await makeTemplate('HR-LEAVE-REQUEST','HR',1);await makeDocument(leave,'ARCHIVED');
+  await makeTemplate('HR-PERFORMANCE-REVIEW','HR',1);await makeTemplate('HR-PERFORMANCE-REVIEW','HR',2);
+  const privateContract=await makeTemplate('CLIB-PRIVATE-'+suffix,'LEGAL_CONTRACTS_INSURANCE',1);await makeDocument(privateContract,'APPROVED');
+  const outside=await makeTemplate('HR-EMPLOYEE-REPORT','HR',1,'ACTIVE',other.id);await makeDocument(outside,'SIGNED');
+  const mismatch=await makeTemplate('INV-MISMATCH-'+suffix,'FINANCE',1);await makeDocument(mismatch,'DRAFT','HR');
+  inventory=await read();const hr=inventory.departments.find(d=>d.code==='HR');
+  const employee=hr.items.find(t=>t.code==='HR-EMPLOYEE-REPORT');assert.equal(employee.activeTemplateId,fresh.id);assert.equal(employee.total,2);assert.equal(employee.counts.DRAFT,1);assert.equal(employee.counts.PENDING_APPROVAL,1);assert.equal(employee.counts.SIGNED,0);
+  assert.equal(hr.items.find(t=>t.code==='HR-LEAVE-REQUEST').recordStatus,'ARCHIVE_ONLY');
+  const conflict=hr.items.find(t=>t.code==='HR-PERFORMANCE-REVIEW');assert.equal(conflict.templateStatus,'ACTIVE_VERSION_CONFLICT');assert.equal(conflict.activeTemplateId,null);assert.equal(conflict.setup,null);
+  assert.equal(inventory.inconsistentRecordCount,1);assert.equal(inventory.completeDocumentInventoryVerified,false);assert.equal(inventory.specializedContractsIncluded,false);
+  assert.doesNotMatch(JSON.stringify(inventory),/DO-NOT-DISCLOSE|CLIB-PRIVATE|createdByAccountId|contentHash/);
+  const before=await db.managedDocument.count({where:{organizationId:org.id}});await read();assert.equal(await db.managedDocument.count({where:{organizationId:org.id}}),before,'Inventory read must not create or approve documents');
+  await db.organizationMember.update({where:{organizationId_accountId:{organizationId:org.id,accountId:viewer.id}},data:{status:'SUSPENDED'}});
+  assert.equal((await fetch(url,{headers:auth(tokenFor(viewer.id))})).status,403,'Fresh membership revocation must take effect');
+  console.log('Department inventory HTTP/PostgreSQL passed: 14 departments/42 source types, scoped all-version counts, archive-only/missing/conflict states, no contract or payload disclosure, read-only behavior and fresh revocation.');
 } finally {
+  if(settingChanged){if(previousSetting)await db.operationalSetting.update({where:{key:staffingKey},data:{value:previousSetting.value,updatedAt:previousSetting.updatedAt}});else await db.operationalSetting.delete({where:{key:staffingKey}});}
+  for(const d of extraDocuments.reverse())await db.managedDocument.delete({where:{id:d.id}});
+  for(const t of extraTemplates.reverse())await db.documentTemplate.delete({where:{id:t.id}});
   if(document)await db.managedDocument.delete({where:{id:document.id}}).catch(()=>{});
   if(template)await db.documentTemplate.delete({where:{id:template.id}}).catch(()=>{});
   for(const organization of [org,other].filter(Boolean)){await db.organizationMember.deleteMany({where:{organizationId:organization.id}}).catch(()=>{});await db.organization.delete({where:{id:organization.id}}).catch(()=>{})}

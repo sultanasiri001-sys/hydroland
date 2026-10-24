@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
-import { OrganizationMemberRole } from '@prisma/client';
+import { OrganizationMemberRole, Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 
 export type DocumentAction='TEMPLATE_CREATE'|'TEMPLATE_UPDATE'|'TEMPLATE_LIST'|'DOCUMENT_CREATE'|'DOCUMENT_LIST'|'DOCUMENT_READ'|'REVISE'|'SUBMIT'|'APPROVE'|'SIGN'|'ARCHIVE'|'BRAND_READ'|'BRAND_UPDATE';
@@ -14,8 +14,8 @@ const permissions:Record<OrganizationMemberRole,ReadonlySet<DocumentAction>>={
 @Injectable()
 export class DocumentAuthorizationService{
  constructor(private readonly db:DatabaseService){}
- async assert(accountId:string,organizationId:string,action:DocumentAction){
-  const member=await this.db.organizationMember.findUnique({where:{organizationId_accountId:{organizationId,accountId}}});
+ async assert(accountId:string,organizationId:string,action:DocumentAction,client:Prisma.TransactionClient|DatabaseService=this.db){
+  const member=await client.organizationMember.findUnique({where:{organizationId_accountId:{organizationId,accountId}}});
   if(!member||member.status!=='ACTIVE') throw new ForbiddenException('Active organization membership is required.');
   if(!permissions[member.role].has(action)) throw new ForbiddenException(`Document action ${action} is not permitted for role ${member.role}.`);
   return member;

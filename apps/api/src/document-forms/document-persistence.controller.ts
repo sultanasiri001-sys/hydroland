@@ -1,4 +1,4 @@
-import { Res, Body, Controller, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common';
+import { Res, Body, Controller, Get, Header, Param, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { ManagedDocumentStatus } from '@prisma/client';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { DocumentPersistenceService } from './document-persistence.service';
@@ -16,6 +16,9 @@ export class DocumentPersistenceController {
   @Put('templates/:id') updateTemplate(@Req() r:ReqAuth,@Param('id') id:string,@Body() b:any){return this.documents.updateTemplate(r.auth.accountId,id,b);}
   @Get('organizations/:organizationId/templates') listTemplates(@Req() r:ReqAuth,@Param('organizationId') org:string){return this.documents.listTemplates(r.auth.accountId,org);}
   @Get('organizations/:organizationId/list') listDocuments(@Req() r:ReqAuth,@Param('organizationId') org:string){return this.list.list(r.auth.accountId,org);}
+  @Get('organizations/:organizationId/inventory')
+  @Header('Cache-Control','private, no-store')
+  inventory(@Req() r:ReqAuth,@Param('organizationId') org:string){return this.list.inventory(r.auth.accountId,org);}
   @Post('organizations/:organizationId/logo') async uploadLogo(@Req() r:ReqAuth,@Param('organizationId') org:string,@Body() b:{mimeType:string;base64:string}){
     const bytes=Buffer.from(b.base64||'','base64');
     return this.assets.uploadLogo(r.auth.accountId,org,b.mimeType,bytes);
