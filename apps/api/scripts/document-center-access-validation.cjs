@@ -7,7 +7,7 @@ const memberships=[
   {id:'center-inactive-membership',organizationId:'center-e2e-001',accountId:'center-inactive-001',role:'OWNER',status:'SUSPENDED'}
 ];
 const queries=[];
-const db={organizationMember:{findUnique:async({where})=>{
+const db={operationalSetting:{findUnique:async()=>null},organizationMember:{findUnique:async({where})=>{
   const key=where.organizationId_accountId;
   queries.push(key);
   return memberships.find(member=>member.organizationId===key.organizationId&&member.accountId===key.accountId)||null;

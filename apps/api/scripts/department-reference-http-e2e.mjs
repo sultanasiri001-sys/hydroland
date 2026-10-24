@@ -40,11 +40,11 @@ try {
   const data = response.body; assert.equal(data.referenceOnly,true); assert.equal(data.canActivate,false); assert.equal(data.canonicalDepartmentCount,14); assert.equal(data.departments.length,14);
   assert.equal(data.authorities.length,19); assert.equal(data.legalReferences.length,15); assert.equal(data.hrSources.length,6); assert.equal(data.hrControlCandidates.length,7);
   assert.equal(data.marineArchives.length,10); for (const source of data.marineArchives) { assert.equal(source.officialSourceByteIdentityVerified,false); assert.equal(source.regulatoryVersion,null); assert.equal(source.legalApprovalReference,null); }
-  assert.equal(data.isoReferences.length,11); assert.equal(data.canonicalSourceTemplateCount,42); assert.equal(data.completeDocumentInventoryVerified,false);
+  assert.equal(data.isoReferences.length,11); assert.equal(data.canonicalSourceTemplateCount,60); assert.equal(data.completeDocumentInventoryVerified,false);
   for (const source of data.isoReferences) { assert.equal(source.adoptionDecisionReference,null); assert.equal(source.certificationClaim,false); }
   for (const candidate of data.hrControlCandidates) { assert.equal(candidate.enabled,false); assert.equal(candidate.legalApprovalReference,null); assert.deepEqual(candidate.evidenceIds,[]); }
   for (const department of data.departments) {
-    assert.equal(department.canActivate,false); assert.equal(department.operatingCycle.templates.length,3); assert.equal(department.operatingCycle.departmentClosed,false);
+    assert.equal(department.canActivate,false); assert.equal(department.operatingCycle.templates.length,department.code==='HR'?21:3); assert.equal(department.operatingCycle.departmentClosed,false);
     assert.equal(department.operatingCycle.closureAssessment,'NOT_ASSESSED'); assert.equal(department.operatingCycle.closureGates.length,7);
     assert(department.operatingCycle.documentCounts.every(row=>Number.isSafeInteger(row.count)&&row.count>=0));
   }

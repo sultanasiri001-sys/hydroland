@@ -88,6 +88,13 @@
       const department = data?.departments.find(d => d.code === select.value);
       if (!department) return;
       node('h5', department.nameAr, detail);
+      const documentsButton = node('button', 'إدارة مستندات هذه الإدارة والنواقص', detail); documentsButton.type = 'button';
+      documentsButton.addEventListener('click', async () => {
+        if (!eligible()) return;
+        const s = auth()?.getSessionVersion?.(), g = generation;
+        const allowed = await access()?.authorizeRole?.('admin', { sessionVersion: s, isCurrent: () => eligible() && generation === g });
+        if (allowed && current(g, s)) window.HydrolandDocuments?.open?.({ department: department.code, internal: true });
+      });
       node('p', department.unitRecorded ? (department.unitActive ? 'الإدارة موجودة ومفعّلة في الهيكل الداخلي.' : 'الإدارة موجودة وغير مفعّلة حاليًا.') : 'لم يظهر سجل للإدارة في الهيكل الداخلي.', detail);
       node('p', 'تُراجع الصلاحية بحسب الدور والإجراء والمورد والإدارة والمركز والشروط وفترة التفويض. تبقى المراجعة القانونية لدى القانونية، وملكية الإجراء لدى الإدارة المختصة.', detail);
       node('p', 'لاستكمال الربط: المصدر وإصداره، المادة أو المتطلب المعتمد، قابلية الانطباق، الإجراء والصلاحية، الدليل المتحقق منه، ومرجع الاعتماد.', detail);

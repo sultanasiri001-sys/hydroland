@@ -1,6 +1,7 @@
 import { DepartmentCode } from '../governance/department-ownership.domain';
 import { buildDepartmentTemplateCatalog } from './document-template-catalog';
 import { buildOperationalDocumentCatalog } from './operational-document-catalog';
+import { buildHrDocumentCatalog } from './hr-document-catalog';
 
 type Cycle = { titleAr: string; stepsAr: readonly string[]; sourcePaths: readonly string[] };
 type Definition = { cycles: readonly Cycle[]; handoffs: readonly DepartmentCode[]; closureEvidenceAr: readonly string[] };
@@ -53,7 +54,7 @@ export const OPERATING_CYCLE_CLOSURE_GATES = [
 ] as const;
 
 export function departmentOperatingCycle(code: DepartmentCode) {
-  const templates = [...buildDepartmentTemplateCatalog('catalog-scope'), ...buildOperationalDocumentCatalog('catalog-scope')].filter(t => t.department === code);
+  const templates = [...buildDepartmentTemplateCatalog('catalog-scope'), ...buildOperationalDocumentCatalog('catalog-scope'), ...buildHrDocumentCatalog('catalog-scope')].filter(t => t.department === code);
   return {
     specificationVersion: '2026-10-24.v1',
     scopeStatus: 'EXISTING_BASELINES_AND_CURRENT_USER_SCOPE',

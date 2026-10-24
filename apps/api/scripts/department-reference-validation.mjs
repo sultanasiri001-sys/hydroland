@@ -24,7 +24,7 @@ const tx = {
   orgUnit: { findMany: async ({ where }) => { assert.deepEqual(where, { organizationId: 'fixture-platform', type: 'DEPARTMENT' }); return HYDROLAND_DEPARTMENTS.map(d => ({ code: d.code, active: true })); } },
   policyControl: { findMany: async () => { privateReads++; return structuredClone(controls); } },
   documentTemplate: { findMany: async ({where,select}) => {
-    privateReads++; assert.equal(where.organizationId,'fixture-platform'); assert.equal(new Set(where.code.in).size,42); assert.equal(select.fields,undefined);
+    privateReads++; assert.equal(where.organizationId,'fixture-platform'); assert.equal(new Set(where.code.in).size,60); assert.equal(select.fields,undefined);
     return [
       { code:'HR-EMPLOYEE-REPORT',department:'HR',version:1,status:'INACTIVE',printable:true },
       { code:'HR-EMPLOYEE-REPORT',department:'HR',version:2,status:'ACTIVE',printable:true },
@@ -34,7 +34,7 @@ const tx = {
     ];
   } },
   managedDocument: { groupBy: async ({where,by}) => {
-    privateReads++; assert.equal(where.organizationId,'fixture-platform'); assert.equal(where.template.code.in.length,42); assert.deepEqual(by,['department','status']);
+    privateReads++; assert.equal(where.organizationId,'fixture-platform'); assert.equal(where.template.code.in.length,60); assert.deepEqual(by,['department','status']);
     return [{department:'HR',status:'DRAFT',_count:{_all:2}},{department:'HR',status:'ARCHIVED',_count:{_all:5}}];
   } },
 };
@@ -44,7 +44,7 @@ assert.equal(result.referenceOnly, true); assert.equal(result.canActivate, false
 assert.equal(result.canonicalDepartmentCount, 14); assert.equal(result.recordedDepartmentCount, 14);
 assert.equal(result.authorities.length, 19); assert.equal(result.legalReferences.length, 15); assert.equal(result.hrSources.length, 6); assert.equal(result.hrControlCandidates.length, 7);
 assert.equal(result.marineArchives.length, 10);
-assert.equal(result.isoReferences.length,11); assert.equal(result.canonicalSourceTemplateCount,42); assert.equal(result.completeDocumentInventoryVerified,false);
+assert.equal(result.isoReferences.length,11); assert.equal(result.canonicalSourceTemplateCount,60); assert.equal(result.completeDocumentInventoryVerified,false);
 assert.deepEqual(result.referencePrecedence,['SAUDI_APPLICABLE_REGULATION','ISO_APPLICABLE_SCOPE','WRSTC_APPLICABLE_SCOPE','TRAINING_AGENCY_PROGRAM_VERSION']);
 for (const source of result.isoReferences) {
   assert.equal(new URL(source.url).hostname,'www.iso.org'); assert.equal(source.adoptionDecisionReference,null); assert.equal(source.licensedCopyLibraryFileId,null); assert.equal(source.certificationClaim,false); assert.equal(source.clauseMappingStatus,'REVIEW_REQUIRED');
@@ -66,7 +66,7 @@ for (const department of result.departments) {
   assert(refs.length > 0, department.code); for (const id of refs) assert(ids.includes(id));
   const cycle=department.operatingCycle;
   assert.equal(cycle.departmentClosed,false); assert.equal(cycle.closureAssessment,'NOT_ASSESSED'); assert.equal(cycle.completeDocumentInventoryVerified,false); assert.equal(cycle.closureDecisionReference,null);
-  assert.equal(cycle.templates.length,3); assert.equal(cycle.closureGates.length,7); assert(cycle.closureGates.every(g=>g.verificationStatus==='NOT_ASSESSED'));
+  assert.equal(cycle.templates.length,department.code==='HR'?21:3); assert.equal(cycle.closureGates.length,7); assert(cycle.closureGates.every(g=>g.verificationStatus==='NOT_ASSESSED'));
   for (const flow of cycle.cycles) { assert(flow.stepsAr.length>=6); for (const path of flow.sourcePaths) assert(existsSync(fileURLToPath(new URL('../../../'+path,import.meta.url))),path); }
   assert.deepEqual(cycle.sharedDocumentStates,['DRAFT','PENDING_APPROVAL','APPROVED','SIGNED','ARCHIVED']);
   for (const id of department.isoReferenceIds) assert(result.isoReferences.some(s=>s.id===id));
@@ -97,4 +97,4 @@ const noOrg=await service.list(actorId); assert.equal(noOrg.recordedDepartmentCo
 tx.operationalSetting.findUnique=savedOrganization;
 permitted = false; const reads = privateReads;
 await assert.rejects(() => service.list(actorId), e => e.getStatus?.() === 403); assert.equal(privateReads, reads, 'No private data read before fresh authorization');
-console.log('Department reference validation passed: canonical ownership, 14 operating-cycle scopes, 42 source templates without a false completeness claim, ISO metadata without adoption/certification, missing/conflicting versions, scoped counts, source paths, fresh authorization, privacy and no writes.');
+console.log('Department reference validation passed: canonical ownership, 14 operating-cycle scopes, 60 source templates without a false completeness claim, ISO metadata without adoption/certification, missing/conflicting versions, scoped counts, source paths, fresh authorization, privacy and no writes.');
