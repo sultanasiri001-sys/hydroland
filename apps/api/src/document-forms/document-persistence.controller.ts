@@ -15,7 +15,9 @@ export class DocumentPersistenceController {
   @Get('workspace') @Header('Cache-Control','no-store') workspace(@Req() r:ReqAuth){return this.list.workspaces(r.auth.accountId);}
   @Post('templates') createTemplate(@Req() r:ReqAuth,@Body() b:any){return this.documents.createTemplate(r.auth.accountId,b);}
   @Put('templates/:id') updateTemplate(@Req() r:ReqAuth,@Param('id') id:string,@Body() b:any){return this.documents.updateTemplate(r.auth.accountId,id,b);}
-  @Get('organizations/:organizationId/templates') listTemplates(@Req() r:ReqAuth,@Param('organizationId') org:string){return this.documents.listTemplates(r.auth.accountId,org);}
+  @Get('organizations/:organizationId/templates')
+  @Header('Cache-Control','private, no-store')
+  listTemplates(@Req() r:ReqAuth,@Param('organizationId') org:string){return this.documents.listTemplates(r.auth.accountId,org);}
   @Get('organizations/:organizationId/list') listDocuments(@Req() r:ReqAuth,@Param('organizationId') org:string){return this.list.list(r.auth.accountId,org);}
   @Get('organizations/:organizationId/inventory')
   @Header('Cache-Control','private, no-store')
@@ -24,7 +26,9 @@ export class DocumentPersistenceController {
     const bytes=Buffer.from(b.base64||'','base64');
     return this.assets.uploadLogo(r.auth.accountId,org,b.mimeType,bytes);
   }
-  @Get('organizations/:organizationId/branding') brandingCurrent(@Req() r:ReqAuth,@Param('organizationId') org:string){return this.branding.current(r.auth.accountId,org);}
+  @Get('organizations/:organizationId/branding')
+  @Header('Cache-Control','private, no-store')
+  brandingCurrent(@Req() r:ReqAuth,@Param('organizationId') org:string){return this.branding.current(r.auth.accountId,org);}
   @Put('organizations/:organizationId/branding') brandingUpdate(@Req() r:ReqAuth,@Param('organizationId') org:string,@Body() b:any){return this.branding.update(r.auth.accountId,org,b);}
   @Post() create(@Req() r:ReqAuth,@Body() b:any){return this.documents.createDocument(r.auth.accountId,b);}
   @Get(':id') get(@Req() r:ReqAuth,@Param('id') id:string){return this.documents.get(r.auth.accountId,id);}
