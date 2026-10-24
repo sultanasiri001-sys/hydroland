@@ -18,7 +18,8 @@ const fixture=async(label,role)=>{const person=await db.person.create({data:{fir
 const call=async(actor,path,method='GET',body)=>{const response=await fetch(base+path,{method,headers:{'Content-Type':'application/json',...(actor?{authorization:'Bearer '+actor.token}:{})},...(body?{body:JSON.stringify(body)}:{})});return {status:response.status,body:await response.json().catch(()=>null)}};
 const expected=d=>({expectedVersion:d.version,expectedContentHash:d.contentHash});
 const reason={reviewed:true,reason:'قرار اختبار معزول للعقد الإلكتروني'};
-const sign=(a,d)=>call(a,`/contracts/cooperation/${d.id}/sign`,'POST',{...expected(d),signatureName:a.name,consent:true});
+const centerStamp={mimeType:'image/png',base64:(await require('sharp')(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="180" height="100"><rect x="5" y="5" width="170" height="90" fill="white" stroke="blue" stroke-width="4"/><text x="20" y="55" fill="blue">TEST CENTER SEAL</text></svg>')).png().toBuffer()).toString('base64')};
+const sign=(a,d)=>call(a,`/contracts/cooperation/${d.id}/sign`,'POST',{...expected(d),signatureName:a.name,consent:true,...(a.id===d.participants.centerAccountId?{centerSeal:centerStamp,centerSealConsent:true}:{})});
 const fresh=async(a,id)=>{const r=await call(a,'/contracts/cooperation/'+id);equal(r.status,200);return r.body};
 try{
   equal(await db.operationalSetting.count({where:{key:platformKey}}),0,'Contract test requires an unconfigured isolated platform');
@@ -101,16 +102,43 @@ try{
   equal((await call(professional,`/contracts/cooperation/${d.id}/sign`,'POST',{...expected(d),signatureName:professional.name,consent:false})).status,400);
   equal((await call(professional,`/contracts/cooperation/${d.id}/sign`,'POST',{...expected(d),signatureName:center.name,consent:true})).status,400);
   equal((await call(professional,`/contracts/cooperation/${d.id}/sign`,'POST',{...expected(d),expectedContentHash:'sha256:wrong',signatureName:professional.name,consent:true})).status,409);
+  equal(d.centerSealRequired,true);equal(d.centerSeal,null);
+  equal((await call(center,`/contracts/cooperation/${d.id}/center-seal`)).status,404);
+  equal((await call(center,`/contracts/cooperation/${d.id}/sign`,'POST',{...expected(d),signatureName:center.name,consent:true})).status,400,'New center signature requires its own seal');
+  equal((await call(center,`/contracts/cooperation/${d.id}/sign`,'POST',{...expected(d),signatureName:center.name,consent:true,centerSeal:centerStamp,centerSealConsent:false})).status,400,'Seal needs explicit authorized application consent');
+  equal((await call(professional,`/contracts/cooperation/${d.id}/sign`,'POST',{...expected(d),signatureName:professional.name,consent:true,centerSeal:centerStamp,centerSealConsent:true})).status,403,'Professional cannot apply a center seal');
+  for(const image of [{mimeType:'image/svg+xml',base64:centerStamp.base64},{mimeType:'image/png',base64:'not-base64'},{mimeType:'image/jpeg',base64:centerStamp.base64},{mimeType:'image/png',base64:Buffer.from('not an image').toString('base64')}])equal((await call(center,`/contracts/cooperation/${d.id}/sign`,'POST',{...expected(d),signatureName:center.name,consent:true,centerSeal:image,centerSealConsent:true})).status,400);
+  {
+    const {DatabaseService}=require('../dist/database/database.service.js'),{CooperationContractService}=require('../dist/document-forms/cooperation-contract.service.js');
+    const runtime=new DatabaseService(),assetCount=await db.organizationDocumentAsset.count({where:{organizationId:org.id,kind:'CENTER_SEAL'}});
+    const broken={serializable:work=>runtime.serializable(tx=>work(new Proxy(tx,{get(target,key){if(key==='auditEvent')return {create:async()=>{throw new Error('Injected stamp audit failure')}};return Reflect.get(target,key)}})))};
+    await assert.rejects(()=>new CooperationContractService(broken).sign(center.id,d.id,{...expected(d),signatureName:center.name,consent:true,centerSeal:centerStamp,centerSealConsent:true}),/Injected stamp audit failure/);checks++;
+    equal(await db.organizationDocumentAsset.count({where:{organizationId:org.id,kind:'CENTER_SEAL'}}),assetCount,'Failed audit rolls back uploaded stamp bytes');
+    equal((await fresh(center,d.id)).signatures,[],'Failed audit rolls back stamp and signature');
+    await runtime.$disconnect();
+  }
   const pair=await Promise.all([sign(center,d),sign(professional,d)]);equal(pair.map(x=>x.status),[201,201]);
   d=await fresh(owner,d.id);equal(d.status,'AWAITING_PLATFORM_APPROVAL');equal(d.signatures.length,2);equal(d.seal,null);
+  equal(d.centerSeal.kind,'CENTER_UPLOADED_SEAL');equal(d.centerSeal.accountId,center.id);equal(d.centerSeal.contentHash,d.contentHash);
+  const stamped=await fetch(base+`/contracts/cooperation/${d.id}/center-seal`,{headers:{authorization:'Bearer '+professional.token}});equal(stamped.status,200);equal(stamped.headers.get('cache-control'),'private, no-store');equal(Buffer.from(await stamped.arrayBuffer()).toString('base64'),centerStamp.base64);
+  equal((await call(outsider,`/contracts/cooperation/${d.id}/center-seal`)).status,403);equal((await call(otherAdmin,`/contracts/cooperation/${d.id}/center-seal`)).status,403);
+  equal(await db.auditEvent.count({where:{resourceId:d.id,action:'CONTRACT_SIGN_CENTER',metadata:{path:['centerSeal','sealId'],equals:d.centerSeal.sealId}}}),1,'Stamp proof is audited with the center signature');
+
   equal((await sign(professional,d)).body.signatures.length,2,'Lost response retry does not create a third signature');
+  equal((await sign(center,d)).body.centerSeal.sealId,d.centerSeal.sealId,'Lost center response does not replace stamp proof');
+  const stampAsset=await db.organizationDocumentAsset.findUniqueOrThrow({where:{id:d.centerSeal.assetId}});
+  await db.organizationDocumentAsset.update({where:{id:stampAsset.id},data:{content:new Uint8Array([1,2,3])}});
+  equal((await call(owner,`/contracts/cooperation/${d.id}`)).status,409,'Tampered stamp bytes block the contract');
+  equal((await call(owner,`/contracts/cooperation/${d.id}/decision`,'POST',{...expected(d),...reason,action:'APPROVE'})).status,409,'Tampered stamp cannot be approved');
+  await db.organizationDocumentAsset.update({where:{id:stampAsset.id},data:{content:stampAsset.content}});
+
   equal((await call(otherAdmin,`/contracts/cooperation/${d.id}/decision`,'POST',{...expected(d),...reason,action:'APPROVE'})).status,403);
   await db.professionalProfile.update({where:{personId:professional.personId},data:{eligibilityEvidenceReference:'مرجع أهلية محدّث للمراجعة'}});
   equal((await call(owner,`/contracts/cooperation/${d.id}/decision`,'POST',{...expected(d),...reason,action:'APPROVE'})).status,409,'Changed source cannot be sealed under old signatures');
   equal((await call(center,`/contracts/cooperation/${d.id}/sync`,'POST',expected(d))).status,409,'Issued snapshots cannot silently refresh');
   // Returning to fields preserves old evidence but invalidates both signatures.
   r=await call(owner,`/contracts/cooperation/${d.id}/decision`,'POST',{...expected(d),...reason,action:'RETURN'});equal(r.status,201);const prior=d;d=r.body;
-  equal(d.version,prior.version+1);equal(d.signatures,[]);equal(d.seal,null);
+  equal(d.version,prior.version+1);equal(d.signatures,[]);equal(d.seal,null);equal(d.centerSeal,null);equal((await call(center,`/contracts/cooperation/${d.id}/center-seal`)).status,404,'Returning invalidates the old center seal');
   equal((await sign(professional,prior)).status,409);
   equal(await db.documentLifecycleEvent.count({where:{documentId:d.id,version:prior.version,action:{in:['CONTRACT_SIGN_CENTER','CONTRACT_SIGN_PROFESSIONAL']}}}),2);
   r=await call(owner,`/contracts/cooperation/${d.id}/sync`,'POST',expected(d));equal(r.status,201);d=r.body;
@@ -139,6 +167,12 @@ try{
   if(process.env.CONTRACT_E2E_PDF){await mkdir(new URL('.', 'file://'+process.env.CONTRACT_E2E_PDF).pathname,{recursive:true});await writeFile(process.env.CONTRACT_E2E_PDF,bytes);}
   await db.person.update({where:{id:professional.personId},data:{firstName:'Changed after approval'}});
   equal((await fresh(owner,d.id)).values.professional.fullName,professional.name,'Approved identity snapshot stays unchanged after profile edit');
+  const legacyCreated=await call(center,'/contracts/cooperation','POST',create);equal(legacyCreated.status,201);
+  const legacyStored=await db.managedDocument.findUniqueOrThrow({where:{id:legacyCreated.body.id}});
+  const legacyPayload={...legacyStored.payload};delete legacyPayload.centerSealRequired;
+  const {contractHash,readCooperation}=require('../dist/document-forms/cooperation-contract.domain.js');
+  await db.managedDocument.update({where:{id:legacyStored.id},data:{payload:legacyPayload,contentHash:contractHash(readCooperation(legacyPayload),legacyStored.templateId,legacyStored.documentBrandVersion)}});
+  const legacyRead=await fresh(center,legacyStored.id);equal(legacyRead.centerSealRequired,false);equal(legacyRead.centerSeal,null,'Old contracts do not acquire stamp evidence');
   const rejected=await call(center,'/contracts/cooperation','POST',create);equal(rejected.status,201);
   equal((await call(center,`/contracts/cooperation/${rejected.body.id}/decision`,'POST',{...expected(rejected.body),...reason,action:'REJECT'})).status,403);
   const reject=await call(owner,`/contracts/cooperation/${rejected.body.id}/decision`,'POST',{...expected(rejected.body),...reason,action:'REJECT'});equal(reject.status,201);equal(reject.body.status,'REJECTED');equal(reject.body.seal,null);

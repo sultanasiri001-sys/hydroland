@@ -49,3 +49,5 @@
 .hl-contract-paper footer{position:relative;border:0;background:#002b47;color:white;padding:2rem 1rem 1rem;margin:2.5rem -.5rem -.5rem;border-radius:0 0 4px 4px}
 .hl-contract-paper footer:before{content:"";position:absolute;left:0;right:0;top:-17px;height:22px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 24' preserveAspectRatio='none'%3E%3Cpath fill='%23dba129' d='M0 5 C90 -8 140 24 220 11 S350 0 430 9 S520 2 600 7 V24 H0Z'/%3E%3Cpath fill='%2300b9f5' d='M0 8 C90 -5 140 27 220 14 S350 3 430 12 S520 5 600 10 V24 H0Z'/%3E%3Cpath fill='%23002b47' d='M0 12 C90 -1 140 31 220 18 S350 7 430 16 S520 9 600 14 V24 H0Z'/%3E%3C/svg%3E") center/100% 100% no-repeat}
 @media(max-width:600px){.hl-contract-paper{padding:.8rem}.hl-contract-paper-head{padding:.8rem;gap:.8rem}.hl-contract-paper-head .hl-contract-brand img{width:52px;height:46px}.hl-contract-paper-head .hl-contract-brand b{font-size:1.25rem}.hl-contract-paper-head h3{font-size:1.6rem}.hl-contract-paper-title{min-width:100%;text-align:right}}
+
+.hl-contract-center-seal{display:block;max-width:180px;max-height:130px;object-fit:contain;margin:16px 0}

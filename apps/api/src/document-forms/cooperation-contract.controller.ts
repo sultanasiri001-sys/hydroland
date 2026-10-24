@@ -18,6 +18,13 @@ export class CooperationContractController {
     res.setHeader('Content-Type',asset.mimeType);res.setHeader('Cache-Control','private, no-store');res.setHeader('X-Content-Type-Options','nosniff');
     return res.send(bytes);
   }
+  @Get(':id/center-seal') async centerSeal(@Req() r:Request,@Param('id') id:string,@Res() res:any){
+    const contract=await this.contracts.get(r.auth.accountId,id);
+    if(!contract.centerSeal)throw new NotFoundException('لا يوجد ختم مركز مثبت لهذا الإصدار.');
+    const {asset,bytes}=await this.assets.bytesForCenterSeal(contract.organizationId,contract.centerSeal.assetId);
+    res.setHeader('Content-Type',asset.mimeType);res.setHeader('Cache-Control','private, no-store');res.setHeader('X-Content-Type-Options','nosniff');
+    return res.send(bytes);
+  }
   @Post(':id/sync') sync(@Req() r:Request,@Param('id') id:string,@Body() b:unknown){return this.contracts.sync(r.auth.accountId,id,b);}
   @Put(':id/fields') save(@Req() r: Request, @Param('id') id: string, @Body() b: unknown) { return this.contracts.save(r.auth.accountId, id, b); }
   @Post(':id/issue') issue(@Req() r: Request, @Param('id') id: string, @Body() b: unknown) { return this.contracts.issue(r.auth.accountId, id, b); }

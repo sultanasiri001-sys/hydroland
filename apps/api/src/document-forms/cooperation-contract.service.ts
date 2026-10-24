@@ -1,7 +1,8 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { cooperationSources } from './cooperation-contract-sources';
 import { Prisma } from '@prisma/client';
-import { randomUUID } from 'node:crypto';
+import { decodeCenterSeal } from './cooperation-center-seal';
+import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseService } from '../database/database.service';
 import { lockAccountIdentities, requireVerifiedAdmin } from '../admin/admin-authorization';
 import { platformOrganization } from '../hr/staffing-catalog';
@@ -46,7 +47,9 @@ export class CooperationContractService {
       const m = contractRecord(e.metadata);
       const expected=e.action===signatureActions[0]?payload.centerAccountId:payload.professionalAccountId;
       if (e.actorAccountId!==expected||m.consent!==true||m.contentHash !== d.contentHash || typeof m.signedName !== 'string' || m.method !== 'AUTHENTICATED_ACKNOWLEDGEMENT') throw new ConflictException('أدلة توقيع العقد تحتاج مراجعة.');
-      return { role: e.action === signatureActions[0] ? 'CENTER' : 'PROFESSIONAL', accountId: e.actorAccountId, name: m.signedName, at: e.occurredAt, contentHash: d.contentHash, method: m.method };
+      const seal=m.centerSeal===undefined?null:contractRecord(m.centerSeal);
+      if(seal&&(e.action!==signatureActions[0]||seal.consent!==true||typeof seal.assetId!=='string'||typeof seal.sha256!=='string'||!/^[a-f0-9]{64}$/.test(seal.sha256)||typeof seal.sealId!=='string')||payload.centerSealRequired&&e.action===signatureActions[0]&&!seal)throw new ConflictException('دليل ختم المركز غير مكتمل.');
+      return { centerSeal:seal?{assetId:seal.assetId as string,sha256:seal.sha256 as string,sealId:seal.sealId as string}:null, role: e.action === signatureActions[0] ? 'CENTER' : 'PROFESSIONAL', accountId: e.actorAccountId, name: m.signedName, at: e.occurredAt, contentHash: d.contentHash, method: m.method };
     });
     if(result.length>2||new Set(result.map(s=>s.role)).size!==result.length)throw new ConflictException('توجد أدلة توقيع متعارضة.');
     return result;
@@ -86,6 +89,8 @@ export class CooperationContractService {
   private async present(tx: Tx, c: Awaited<ReturnType<CooperationContractService['context']>>) {
     const { d, payload, actor, owner, isCenter, isProfessional } = c;
     const signatures = this.signatures(d);
+    const stamped=signatures.find(s=>s.role==='CENTER'&&s.centerSeal);
+    if(stamped?.centerSeal){const asset=await tx.organizationDocumentAsset.findFirst({where:{id:stamped.centerSeal.assetId,organizationId:d.organizationId,kind:'CENTER_SEAL'}});if(!asset||asset.sha256!==stamped.centerSeal.sha256||createHash('sha256').update(asset.content).digest('hex')!==asset.sha256)throw new ConflictException('تعذر التحقق من صورة ختم المركز.');}
     const source=d.status==='DRAFT'||d.status==='PENDING_APPROVAL'?await cooperationSources(tx,d.organizationId,payload.centerAccountId,payload.professionalAccountId):null;
     const sourceChanged=Boolean(source&&source.snapshot.fingerprint!==payload.sourceSnapshot?.fingerprint);
     const missingSourceFields=source?CONTRACT_FIELDS.filter(([section,key])=>section!=='terms'&&!source.values[section][key]).map(([section,key,label])=>({section,key,label})):[];
@@ -107,10 +112,11 @@ export class CooperationContractService {
       fields: CONTRACT_FIELDS.map(([section, key, label, max]) => ({ section, key, label, max })),
       branding: { brandVersion: branding.brandVersion, name: branding.brandNameAr || branding.brandNameEn, logoAssetId: branding.logoAssetId },
       participants: { centerAccountId: payload.centerAccountId, professionalAccountId: payload.professionalAccountId, centerName: name(centerActor), professionalName: name(professionalActor) },
+      centerSealRequired:payload.centerSealRequired===true,centerSeal:stamped?.centerSeal?{...stamped.centerSeal,accountId:stamped.accountId,at:stamped.at,contentHash:d.contentHash,version:d.version,kind:'CENTER_UPLOADED_SEAL' as const}:null,
       signatures, seal: approval&&approvalMetadata ? { accountId: approval.actorAccountId, at: approval.occurredAt, decisionId: approvalMetadata.decisionId as string, contentHash:d.contentHash, kind:'INTERNAL_PLATFORM_APPROVAL' } : null,
       signatureName: [actor.person.firstName, actor.person.lastName].filter(Boolean).join(' '),
       capabilities: {
-        manageCenterProfile:isCenter,manageMemberProfile:isProfessional,editCenter:false, editProfessional:false, editTerms:d.status==='DRAFT'&&(isCenter||owner), sync:d.status==='DRAFT', review:(d.status==='DRAFT'||d.status==='PENDING_APPROVAL')&&owner&&!isCenter&&!isProfessional,
+        applyCenterSeal:isCenter&&payload.centerSealRequired===true,manageCenterProfile:isCenter,manageMemberProfile:isProfessional,editCenter:false, editProfessional:false, editTerms:d.status==='DRAFT'&&(isCenter||owner), sync:d.status==='DRAFT', review:(d.status==='DRAFT'||d.status==='PENDING_APPROVAL')&&owner&&!isCenter&&!isProfessional,
         issue: d.status === 'DRAFT' && isCenter,
         sign: d.status === 'PENDING_APPROVAL' && (isCenter || isProfessional) && !signatures.some(s => s.accountId === actor.id),
         approve: d.status === 'PENDING_APPROVAL' && complete && owner && !isCenter && !isProfessional,
@@ -169,7 +175,7 @@ export class CooperationContractService {
       await tx.documentBrandSnapshot.upsert({ where: { organizationId_brandVersion: { organizationId, brandVersion: org.documentBrandVersion } }, create: { organizationId, brandVersion: org.documentBrandVersion, logoAssetId: org.documentLogoAssetId, brandNameAr: org.documentBrandNameAr || org.displayName, brandNameEn: org.documentBrandNameEn, footerAr: org.documentFooterAr, footerEn: org.documentFooterEn }, update: {} });
       const source=await cooperationSources(tx,organizationId,actorId,professional.id);
       const values=source.values;
-      const payload: CooperationPayload = { ...values, workflow: 'DIVE_COOPERATION_V1', identityVersion: CONTRACT_IDENTITY, centerAccountId: actorId, professionalAccountId: professional.id, sourceSnapshot:source.snapshot, librarySource:{templateId:library.row.id,version:library.row.version,contentHash:library.envelope.contentHash}, clauses: [...library.envelope.content.clauses] };
+      const payload: CooperationPayload = { ...values, centerSealRequired:true, workflow: 'DIVE_COOPERATION_V1', identityVersion: CONTRACT_IDENTITY, centerAccountId: actorId, professionalAccountId: professional.id, sourceSnapshot:source.snapshot, librarySource:{templateId:library.row.id,version:library.row.version,contentHash:library.envelope.contentHash}, clauses: [...library.envelope.content.clauses] };
       const year = new Date().getUTCFullYear();
       const counter = await tx.documentReferenceCounter.upsert({ where: { organizationId_department_year: { organizationId, department: CONTRACT_DEPARTMENT, year } }, create: { organizationId, department: CONTRACT_DEPARTMENT, year, lastNumber: 1 }, update: { lastNumber: { increment: 1 } } });
       const document = await tx.managedDocument.create({ data: { organizationId, templateId: template.id, department: CONTRACT_DEPARTMENT, referenceNumber: `HYD-LEG-${year}-${String(counter.lastNumber).padStart(6, '0')}`, documentBrandVersion: org.documentBrandVersion, createdByAccountId: actorId, contentHash: contractHash(payload, template.id, org.documentBrandVersion), payload: json(payload) }, include });
@@ -236,7 +242,7 @@ export class CooperationContractService {
     });
   }
   async sign(actorId: string, id: string, body: unknown) {
-    const x = contractKeys(body, ['expectedVersion', 'expectedContentHash', 'signatureName', 'consent']);
+    const x = contractKeys(body, ['expectedVersion', 'expectedContentHash', 'signatureName', 'consent','centerSeal','centerSealConsent']);
     const signedName = contractText(x.signatureName, 240);
     if (x.consent !== true || !signedName) throw new BadRequestException('راجع العقد وأقر بالتوقيع الإلكتروني باسمك.');
     return this.db.serializable(async tx => {
@@ -249,8 +255,18 @@ export class CooperationContractService {
       await this.assertSourcesCurrent(tx,d,payload);
       const signatures = this.signatures(d);
       if (signatures.some(s => s.accountId === actorId)) return this.present(tx, c); // Safe lost-response retry.
+      let centerSeal: {assetId:string;sha256:string;sealId:string;consent:true}|undefined;
+      if(!c.isCenter&&(x.centerSeal!==undefined||x.centerSealConsent!==undefined))throw new ForbiddenException('ختم المركز من صلاحية ممثله الموقع فقط.');
+      if(c.isCenter&&(payload.centerSealRequired||x.centerSeal!==undefined)){
+        if(x.centerSealConsent!==true||x.centerSeal===undefined)throw new BadRequestException('ارفع ختم المركز وأقر بتفويضك لاستخدامه على هذا الإصدار.');
+        const image=await decodeCenterSeal(x.centerSeal);
+        let asset=await tx.organizationDocumentAsset.findUnique({where:{organizationId_sha256:{organizationId:d.organizationId,sha256:image.sha256}}});
+        if(asset&&asset.kind!=='CENTER_SEAL')throw new BadRequestException('ارفع صورة ختم مستقلة عن شعار المركز والمرفقات الأخرى.');
+        if(!asset)asset=await tx.organizationDocumentAsset.create({data:{organizationId:d.organizationId,kind:'CENTER_SEAL',mimeType:image.mimeType,byteSize:image.bytes.length,sha256:image.sha256,content:new Uint8Array(image.bytes)}});
+        centerSeal={assetId:asset.id,sha256:image.sha256,sealId:randomUUID(),consent:true};
+      }
       const action = c.isCenter ? signatureActions[0] : signatureActions[1];
-      await this.event(tx, d, actorId, action, d.status, { signedName, contentHash: d.contentHash, method: 'AUTHENTICATED_ACKNOWLEDGEMENT', consent: true });
+      await this.event(tx, d, actorId, action, d.status, { signedName, contentHash: d.contentHash, method: 'AUTHENTICATED_ACKNOWLEDGEMENT', consent: true,...(centerSeal?{centerSeal}:{}) });
       // Touch the record so serializable waiters retry against the new evidence.
       await tx.managedDocument.update({ where: { id }, data: { updatedAt: new Date() } });
       if (signatures.length === 1) {
