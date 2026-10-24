@@ -1040,6 +1040,7 @@ model Employment {
  @@index([organizationId,orgUnitId,status])
 }
 model EmploymentContract {
+ librarySnapshot Json?
  id String @id @default(uuid())
  employmentId String
  version Int @default(1)
