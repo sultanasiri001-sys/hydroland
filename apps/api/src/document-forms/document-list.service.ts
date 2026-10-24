@@ -52,7 +52,8 @@ export class DocumentListService {
           const versions=templates.filter(t=>t.code===definition.code&&t.department===code);
           const active=versions.filter(t=>t.status==='ACTIVE');
           const source=baseline.find(t=>t.code===definition.code&&t.department===code);
-          const otherDepartment=templates.some(t=>t.code===definition.code&&t.department!==code);
+          const otherDepartment=templates.some(t=>t.code===definition.code&&t.department!==code)
+            || baseline.some(t=>t.code===definition.code&&t.department!==code);
           const status=otherDepartment?'DEPARTMENT_CONFLICT':active.length>1?'ACTIVE_VERSION_CONFLICT':active.length===1?'READY':versions.length?'INACTIVE':'NOT_CONFIGURED';
           const counts={DRAFT:0,PENDING_APPROVAL:0,APPROVED:0,SIGNED:0,ARCHIVED:0};
           for(const g of groups)if(g.department===code&&versions.some(t=>t.id===g.templateId))counts[g.status]+=g._count._all;

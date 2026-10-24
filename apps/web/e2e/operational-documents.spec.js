@@ -78,6 +78,7 @@ const inventoryFor=(orgId,departments)=>({organizationId:orgId,observedAt:'2026-
 const department=(code,nameAr,items)=>({code,nameAr,items,summary:{types:items.length,noRecord:items.filter(t=>t.recordStatus==='NO_RECORD').length,pendingApproval:items.reduce((n,t)=>n+t.counts.PENDING_APPROVAL,0)}});
 
 test('department inventory filters gaps and prepares the exact missing template without creating or approving documents',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
   await seed(page);
   const hr={id:'hr-existing',code:'HR-EMPLOYEE-REPORT',titleAr:'تقرير بيانات موظف',titleEn:'Employee report',department:'HR',fields:[{key:'employeeNo',labelAr:'رقم الموظف',type:'TEXT',required:true}],status:'ACTIVE'};
   const finance={id:'fin-existing',code:'FIN-RECEIPT-VOUCHER',titleAr:'سند قبض',titleEn:'Receipt',department:'FINANCE',fields:[],status:'ACTIVE'};
@@ -114,6 +115,7 @@ test('department inventory filters gaps and prepares the exact missing template 
   await panel.locator('[data-doc-gap-filter]').selectOption('ARCHIVE_ONLY');
   await expect(panel.locator('[data-doc-inventory]')).toContainText('مؤرشف فقط');
   await expect(panel.locator('[data-doc-list]')).not.toContainText('HR-PRIVATE');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
 });
 
 test('viewer sees pending gaps without template setup or document creation actions',async({page})=>{

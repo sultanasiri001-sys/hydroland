@@ -49,6 +49,7 @@
   }
   function clearData(){state.templates=[];state.documents=[];state.inventory=null;state.member=null;state.editing=null;panel.querySelector('[data-doc-template]').replaceChildren();panel.querySelector('[data-doc-department]').innerHTML='<option value="">كل الإدارات</option>';renderSelection();}
   async function loadOrganization(orgId){
+    if(state.orgId!==orgId)state.typeCode='';
     state.generation++;state.loading=true;state.orgId=orgId;const c=context();clearData();
     state.member=state.memberships.find(x=>x.organization?.id===orgId)||null;
     note('جارٍ تحميل مستندات الإدارات وحصر النواقص...');

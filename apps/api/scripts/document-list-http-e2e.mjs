@@ -8,11 +8,12 @@ const secret=process.env.JWT_SECRET;
 if(!secret)throw new Error('JWT_SECRET required');
 const suffix=Date.now().toString();
 const enc=v=>Buffer.from(JSON.stringify(v)).toString('base64url');
-const tokenFor=id=>{const now=Math.floor(Date.now()/1000),body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:id,iat:now,exp:now+900})}`;return `${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`};
+const sessions=new Map();
+const tokenFor=id=>{const now=Math.floor(Date.now()/1000),body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:id,sid:sessions.get(id),iat:now,exp:now+900})}`;return `${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`};
 const auth=t=>({authorization:`Bearer ${t}`});
 const people=[],accounts=[],extraTemplates=[],extraDocuments=[];let org,other,template,document,previousSetting,settingChanged=false;
 const staffingKey='PLATFORM_STAFFING_ORGANIZATION:v1';
-const mk=async label=>{const p=await db.person.create({data:{firstName:'DocumentList',lastName:label}});people.push(p);const a=await db.account.create({data:{personId:p.id,email:`doc-list-${label.toLowerCase()}-${suffix}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}});accounts.push(a);return a};
+const mk=async label=>{const p=await db.person.create({data:{firstName:'DocumentList',lastName:label}});people.push(p);const a=await db.account.create({data:{personId:p.id,email:`doc-list-${label.toLowerCase()}-${suffix}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}});accounts.push(a);const session=await db.session.create({data:{accountId:a.id,tokenHash:'document-inventory-fixture-'+suffix+'-'+label,expiresAt:new Date(Date.now()+900000)}});sessions.set(a.id,session.id);return a};
 try{
   const owner=await mk('Owner'),viewer=await mk('Viewer'),outsider=await mk('Outsider');
   org=await db.organization.create({data:{displayName:'Document List E2E '+suffix,kind:'DIVE_CENTER',ownerId:owner.id,status:'ACTIVE'}});
@@ -46,6 +47,12 @@ try{
   for(const d of inventory.departments.filter(d=>d.code!=='OPERATIONS')){assert.equal(d.items.length,3);assert.equal(d.summary.noRecord,3);assert.equal(d.summary.notConfigured,3);}
   const source=inventory.departments.find(d=>d.code==='HR').items.find(t=>t.code==='HR-EMPLOYEE-REPORT');
   assert.equal(source.setup,null,'Viewer must not receive setup payload');
+  const ownerRead=await fetch(url,{headers:auth(tokenFor(owner.id))});assert.equal(ownerRead.status,200);
+  const ownerInventory=await ownerRead.json(),setup=ownerInventory.departments.find(d=>d.code==='TRAINING').items.find(t=>t.code==='TRN-COURSE-REPORT').setup;
+  assert.equal(setup.organizationId,org.id);assert.equal(setup.department,'TRAINING');
+  const setupResponse=await fetch(`${base}/documents/templates`,{method:'POST',headers:{...auth(tokenFor(owner.id)),'content-type':'application/json'},body:JSON.stringify(setup)});assert.equal(setupResponse.status,201);extraTemplates.push(await setupResponse.json());
+  assert.equal((await fetch(`${base}/documents/templates`,{method:'POST',headers:{...auth(tokenFor(viewer.id)),'content-type':'application/json'},body:JSON.stringify(setup)})).status,403);
+  const afterSetup=(await read()).departments.find(d=>d.code==='TRAINING').items.find(t=>t.code===setup.code);assert.equal(afterSetup.templateStatus,'READY');assert.equal(afterSetup.recordStatus,'NO_RECORD','Template setup must not fabricate a completed document');
   const makeTemplate=async(code,department,version,status='ACTIVE',organizationId=org.id)=>{const t=await db.documentTemplate.create({data:{organizationId,code,department,version,status,titleAr:'اختبار حصر '+code,titleEn:'Inventory Fixture',fields:[]}});extraTemplates.push(t);return t;};
   const makeDocument=async(t,status,department=t.department)=>{const d=await db.managedDocument.create({data:{organizationId:t.organizationId,templateId:t.id,department,status,referenceNumber:'INV-E2E-'+suffix+'-'+extraDocuments.length,contentHash:'synthetic',payload:{privateEmployeeData:'DO-NOT-DISCLOSE'},createdByAccountId:owner.id}});extraDocuments.push(d);return d;};
   const old=await makeTemplate('HR-EMPLOYEE-REPORT','HR',1,'INACTIVE');await makeDocument(old,'DRAFT');
@@ -55,10 +62,12 @@ try{
   const privateContract=await makeTemplate('CLIB-PRIVATE-'+suffix,'LEGAL_CONTRACTS_INSURANCE',1);await makeDocument(privateContract,'APPROVED');
   const outside=await makeTemplate('HR-EMPLOYEE-REPORT','HR',1,'ACTIVE',other.id);await makeDocument(outside,'SIGNED');
   const mismatch=await makeTemplate('INV-MISMATCH-'+suffix,'FINANCE',1);await makeDocument(mismatch,'DRAFT','HR');
+  await makeTemplate('FIN-RECEIPT-VOUCHER','HR',1);
   inventory=await read();const hr=inventory.departments.find(d=>d.code==='HR');
   const employee=hr.items.find(t=>t.code==='HR-EMPLOYEE-REPORT');assert.equal(employee.activeTemplateId,fresh.id);assert.equal(employee.total,2);assert.equal(employee.counts.DRAFT,1);assert.equal(employee.counts.PENDING_APPROVAL,1);assert.equal(employee.counts.SIGNED,0);
   assert.equal(hr.items.find(t=>t.code==='HR-LEAVE-REQUEST').recordStatus,'ARCHIVE_ONLY');
   const conflict=hr.items.find(t=>t.code==='HR-PERFORMANCE-REVIEW');assert.equal(conflict.templateStatus,'ACTIVE_VERSION_CONFLICT');assert.equal(conflict.activeTemplateId,null);assert.equal(conflict.setup,null);
+  for(const code of ['HR','FINANCE'])assert.equal(inventory.departments.find(d=>d.code===code).items.find(t=>t.code==='FIN-RECEIPT-VOUCHER').templateStatus,'DEPARTMENT_CONFLICT');
   assert.equal(inventory.inconsistentRecordCount,1);assert.equal(inventory.completeDocumentInventoryVerified,false);assert.equal(inventory.specializedContractsIncluded,false);
   assert.doesNotMatch(JSON.stringify(inventory),/DO-NOT-DISCLOSE|CLIB-PRIVATE|createdByAccountId|contentHash/);
   const before=await db.managedDocument.count({where:{organizationId:org.id}});await read();assert.equal(await db.managedDocument.count({where:{organizationId:org.id}}),before,'Inventory read must not create or approve documents');
