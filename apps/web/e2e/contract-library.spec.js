@@ -1,7 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {openWorkspaceSwitcher} from './portal-test-helpers.js';
 
-async function seed(page,{reader=false,staff=false,empty=false,state='DRAFT'}={}){
+async function seed(page,{reader=false,staff=false,empty=false,state='DRAFT',temporaryOwnerReview=null}={}){
   const calls={revisions:[],decisions:[],initializations:0,filters:[],blocked:false};let latest=1;
   const content={schemaVersion:1,category:'COOPERATION',fields:[{key:'center.legalName',label:'اسم المركز',source:'CENTER_PROFILE',required:true},{key:'professional.fullName',label:'اسم المحترف',source:'MEMBER_PROFILE',required:true}],clauses:['يوقع الطرفان النسخة نفسها.','نص <img src=x onerror=alert(1)> يحفظ كنص.'],usageNotes:'مراجعة التراخيص قبل الاستخدام.',source:{name:'نموذج هيدرولاند السابق',revision:'3'}};
   const versions=new Map();
@@ -15,7 +15,7 @@ async function seed(page,{reader=false,staff=false,empty=false,state='DRAFT'}={}
   await page.route(/\/api\/v1\/contracts\/library(?:\/.*|\?.*)?$/,async r=>{
     const request=r.request(),url=new URL(request.url()),path=url.pathname,body=request.postDataJSON();
     if(calls.blocked)return json(r,{message:'سحبت صلاحية مكتبة العقود'},403);
-    if(path.endsWith('/workspace'))return json(r,{canInitialize:!reader,internal:!reader,canCreate:!reader,owner:!reader});
+    if(path.endsWith('/workspace'))return json(r,{canInitialize:!reader,internal:!reader,canCreate:!reader,owner:!reader,temporaryOwnerReview});
     if(path.endsWith('/initialize')){calls.initializations++;empty=false;return json(r,{created:4},201);}
     if(path.endsWith('/history'))return json(r,{items:[view(latest),view(1)]});
     if(path.endsWith('/events'))return json(r,{items:[{action:'CONTRACT_TEMPLATE_INITIALIZED',occurredAt:'2026-10-24T00:00:00Z',metadata:{reason:'إضافة مسودة للمراجعة'}}]});
@@ -80,4 +80,9 @@ test('HR staff opens library from profile without platform administrator access'
 });
 test('revocation during a decision clears private text and editing controls',async({page})=>{
   const {panel,calls,open}=await seed(page);await open();const form=panel.locator('[data-library-decision]');await form.locator('[name=reason]').fill('إرسال النسخة للمراجعة القانونية');await form.locator('[name=reviewed]').check();calls.blocked=true;await form.getByRole('button',{name:'إرسال للمراجعة'}).click();await expect(panel.locator('[data-library-detail]')).toBeEmpty();await expect(panel.locator('[data-library-note]')).toContainText('سحبت صلاحية');
+});
+
+test('library identifies the temporary owner review and clears its notice on logout',async({page})=>{
+ const {panel}=await seed(page,{temporaryOwnerReview:{active:true,expiresAt:new Date(Date.now()+3600000).toISOString()}});await expect(panel.locator('[data-library-owner-review]')).toBeVisible();await expect(panel.locator('[data-library-owner-review]')).toContainText('مراجعة المالك المؤقتة');
+ await page.evaluate(()=>window.HydrolandAuth.terminateSession());await expect(panel.locator('[data-library-owner-review]')).toBeHidden();await expect(panel.locator('[data-library-owner-review]')).toHaveText('');
 });

@@ -10,6 +10,8 @@ import { EmployeeApprovalsController, StaffingAdminController } from './staffing
 import { StaffingAdminService } from './staffing-admin.service';
 import { HrControlReviewController } from './hr-control-review.controller';
 import { HrControlReviewService } from './hr-control-review.service';
+import { TemporaryOwnerReviewController } from './temporary-owner-review.controller';
+import { TemporaryOwnerReviewService } from './temporary-owner-review.service';
 
-@Module({imports:[DatabaseModule,AdminModule,AuditModule,AuthModule,HrModule,IntegrationModule,TechnologySecurityModule],controllers:[StaffingAdminController,EmployeeApprovalsController,HrControlReviewController],providers:[StaffingAdminService,HrControlReviewService]})
+@Module({imports:[DatabaseModule,AdminModule,AuditModule,AuthModule,HrModule,IntegrationModule,TechnologySecurityModule],controllers:[StaffingAdminController,EmployeeApprovalsController,HrControlReviewController,TemporaryOwnerReviewController],providers:[StaffingAdminService,HrControlReviewService,TemporaryOwnerReviewService]})
 export class StaffingAdminModule {}

@@ -5,13 +5,17 @@ const json=(route,value,status=200)=>route.fulfill({status,contentType:'applicat
 const control={ruleKey:'HR-LAB-EMP-001',labelAr:'ضابط تعيين تجريبي',regulatoryRequirementId:'fixture-requirement',regulatoryVersion:'fixture-v1',legalApprovalReference:'fixture-legal-approval',evidenceIds:['fixture-evidence-a','fixture-evidence-b']};
 const proposal=(extra={})=>({id:randomUUID(),control,status:'PROPOSED',revision:randomUUID(),reason:'طلب مراجع اختبار معزول',canReview:false,canApprove:false,canReject:false,...extra});
 async function setup(page,options={}){
- const state={admin:true,controls:[],items:[],writes:[],reads:0,employeeReads:0,failSave:false,conflict:false,delay:false,release:null,pages:false,...options};
+ const state={admin:true,controls:[],items:[],writes:[],reads:0,employeeReads:0,failSave:false,conflict:false,delay:false,release:null,pages:false,ownerMode:null,modeWrites:[],modeConflict:false,...options};
  await page.route('**/api/v1/**',r=>json(r,[]));await page.route('**/auth/google/config',r=>json(r,{enabled:false}));
  await page.route(/\/api\/v1\/me$/,async r=>{if(state.authorizationGate)await state.authorizationGate;return json(r,{id:'hr-control-browser-admin',status:'ACTIVE',person:{firstName:'إدارة',lastName:'اختبار'},roleAssignments:state.admin?[{role:'ADMIN',status:'ACTIVE'}]:[]})});
  await page.route(/\/admin\/employees(?:\?.*)?$/,r=>{state.employeeReads++;return json(r,{initialized:true,departments:[],profiles:[],items:[],nextCursor:null,email:{enabled:false},google:{enabled:false}})});
  await page.route(/\/admin\/employees\/compliance-controls(?:\?.*)?$/,async r=>{
   if(r.request().method()==='POST'){const body=r.request().postDataJSON();state.writes.push(body);if(state.failSave)return json(r,{message:'تعذر الحفظ مؤقتًا، أعد المحاولة'},503);const created=proposal({id:body.requestId,control:body.control,reason:body.reason});state.items=[created];return json(r,created,201);}
-  state.reads++;if(state.delay)await new Promise(resolve=>state.release=resolve);const query=new URL(r.request().url()).searchParams;return json(r,{observedAt:new Date().toISOString(),controls:state.controls,items:state.items,nextCursor:state.pages&&!query.has('cursor')?'33333333-3333-4333-8333-333333333333':null});
+  state.reads++;if(state.delay)await new Promise(resolve=>state.release=resolve);const query=new URL(r.request().url()).searchParams;return json(r,{observedAt:new Date().toISOString(),temporaryOwnerReview:state.ownerMode,controls:state.controls,items:state.items,nextCursor:state.pages&&!query.has('cursor')?'33333333-3333-4333-8333-333333333333':null});
+ });
+ await page.route(/\/admin\/employees\/temporary-owner-review$/,async r=>{
+  const body=r.request().postDataJSON();state.modeWrites.push(body);if(state.modeConflict)return json(r,{message:'تغير إعداد المراجعة المؤقتة؛ حدّث البيانات وأكد الإجراء من جديد.'},409);
+  state.ownerMode={canManage:true,active:body.action==='ENABLE',revision:randomUUID(),expiresAt:body.action==='ENABLE'?new Date(Date.now()+body.durationMinutes*60000).toISOString():null,scopes:['CONTRACT_LIBRARY','HR_CONTROL_REFERENCES']};return json(r,state.ownerMode,201);
  });
  await page.route('**/compliance-controls/*/decision',r=>{const body=r.request().postDataJSON();state.writes.push(body);if(state.conflict)return json(r,{message:'تغير طلب الضابط؛ حدّث البيانات وراجع القرار.'},409);const prior=state.items[0];state.items=[{...prior,status:body.action==='REVIEW'?'REVIEWED':body.action==='APPROVE'?'APPLIED':'REJECTED',revision:randomUUID(),canReview:false,canApprove:false,canReject:false,...(body.action==='REVIEW'?{reviewReason:body.reason}:{decisionReason:body.reason})}];if(body.action==='APPROVE')state.controls=[{...control,state:'ENABLED',revision:new Date().toISOString(),validationStatus:'VALID'}];return json(r,state.items[0],201)});
  await page.goto('/',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>Boolean(window.HydrolandHrControlReview&&window.HydrolandAuth&&window.HydrolandProfile));
@@ -46,4 +50,30 @@ test('a late private control response cannot restore content after leaving the w
 test('references are escaped, pagination stays protected and mobile layout and logout remain private',async({page})=>{
  const state=await setup(page,{pages:true,items:[proposal({control:{...control,labelAr:'<img src=x onerror=alert(1)>',evidenceIds:['<svg onload=alert(1)>']}})]});await expect(page.locator('[data-hr-control-proposal]')).toContainText('<img src=x');await expect(page.locator('[data-hr-control-review] img, [data-hr-control-review] svg')).toHaveCount(0);await page.getByRole('button',{name:'طلبات ضوابط أقدم',exact:true}).click();await expect(page.getByRole('button',{name:'طلبات ضوابط أحدث',exact:true})).toBeEnabled();await expect(page.getByRole('button',{name:'طلبات ضوابط أقدم',exact:true})).toBeDisabled();
  await page.setViewportSize({width:390,height:844});expect(await page.locator('#hl-admin-employees').evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);await page.evaluate(()=>window.HydrolandAuth.terminateSession());await expect(page.locator('[data-hr-control-proposals]')).toBeEmpty();expect(state.writes).toHaveLength(0);
+});
+
+const modeForm=page=>page.locator('[data-owner-review-change]');
+async function fillMode(page){const f=modeForm(page);await f.getByLabel('سبب تغيير صلاحية المراجعة المؤقتة').fill('اختبار إعداد المالك في حساب معزول');await f.getByRole('checkbox').check();return f;}
+test('owner mode stays off on read, enables only the chosen duration, and can be revoked with the fresh revision',async({page})=>{
+ const state=await setup(page,{ownerMode:{canManage:true,active:false,revision:null,expiresAt:null}}),f=await fillMode(page);
+ expect(state.modeWrites).toHaveLength(0);await f.getByLabel('مدة مراجعة المالك المؤقتة').selectOption('240');await f.getByRole('button',{name:'تفعيل مراجعة المالك مؤقتًا',exact:true}).click();
+ await expect(page.locator('[data-owner-review-status]')).toContainText('مفعّلة حتى');expect(state.modeWrites).toHaveLength(1);expect(state.modeWrites[0]).toEqual({action:'ENABLE',expectedRevision:null,durationMinutes:240,reason:'اختبار إعداد المالك في حساب معزول',reviewed:true});expect(state.writes).toHaveLength(0);
+ await expect(f.getByRole('checkbox')).not.toBeChecked();await expect(f.getByRole('button',{name:'تفعيل مراجعة المالك مؤقتًا',exact:true})).toBeDisabled();const revision=state.ownerMode.revision;
+ await fillMode(page);await f.getByRole('button',{name:'إيقاف مراجعة المالك المؤقتة',exact:true}).click();await expect(page.locator('[data-owner-review-status]')).toContainText('غير مفعّلة');expect(state.modeWrites[1]).toMatchObject({action:'DISABLE',expectedRevision:revision});expect(state.modeWrites[1].durationMinutes).toBeUndefined();expect(state.writes).toHaveLength(0);
+});
+test('owner mode preserves a conflicting request and requires acknowledgment again after the setting changes',async({page})=>{
+ const state=await setup(page,{ownerMode:{canManage:true,active:false,revision:null,expiresAt:null},modeConflict:true}),f=await fillMode(page);
+ await f.getByRole('button',{name:'تفعيل مراجعة المالك مؤقتًا',exact:true}).click();await expect(f).toContainText('تغير إعداد');await expect(f.getByLabel('سبب تغيير صلاحية المراجعة المؤقتة')).toHaveValue('اختبار إعداد المالك في حساب معزول');
+ state.ownerMode={...state.ownerMode,revision:randomUUID()};state.modeConflict=false;await page.getByRole('button',{name:'تحديث الضوابط',exact:true}).click();await expect(f.getByRole('checkbox')).not.toBeChecked();expect(state.modeWrites).toHaveLength(1);
+ const expectedRevision=state.ownerMode.revision;await f.getByRole('checkbox').check();await f.getByRole('button',{name:'تفعيل مراجعة المالك مؤقتًا',exact:true}).click();await expect(page.locator('[data-owner-review-status]')).toContainText('مفعّلة حتى');expect(state.modeWrites[1].expectedRevision).toBe(expectedRevision);
+});
+test('fresh role loss prevents an owner grant and clears the private mode form',async({page})=>{
+ const state=await setup(page,{ownerMode:{canManage:true,active:false,revision:null,expiresAt:null}}),f=await fillMode(page);let release;state.authorizationGate=new Promise(resolve=>release=resolve);state.admin=false;
+ try{await f.getByRole('button',{name:'تفعيل مراجعة المالك مؤقتًا',exact:true}).click();}finally{state.authorizationGate=null;release();}
+ await expect(page.locator('#hl-admin-employees')).toBeHidden();await expect(page.locator('[data-owner-review-panel]')).toBeHidden();await expect(f.getByLabel('سبب تغيير صلاحية المراجعة المؤقتة')).toHaveValue('');expect(state.modeWrites).toHaveLength(0);
+});
+test('the temporary review panel is owner-only and fits mobile without displaying an unvalidated expiry',async({page})=>{
+ const state=await setup(page);await expect(page.locator('[data-owner-review-panel]')).toBeHidden();state.ownerMode={canManage:true,active:false,revision:null,expiresAt:null};await page.getByRole('button',{name:'تحديث الضوابط',exact:true}).click();await expect(page.locator('[data-owner-review-panel]')).toBeVisible();
+ await page.setViewportSize({width:390,height:844});expect(await page.locator('#hl-admin-employees').evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+ state.ownerMode={...state.ownerMode,active:true,expiresAt:'<img src=x onerror=alert(1)>'};await page.getByRole('button',{name:'تحديث الضوابط',exact:true}).click();await expect(page.locator('[data-hr-control-feedback]')).toContainText('غير مكتملة');await expect(page.locator('[data-owner-review-panel] img')).toHaveCount(0);
 });
