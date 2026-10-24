@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseService } from '../database/database.service';
 import { lockAccountIdentities, requireVerifiedAdmin } from '../admin/admin-authorization';
 import { platformOrganization } from './staffing-catalog';
+import { ownerDepartmentStatus, sameOwnerDepartmentResponsibility } from './owner-department-responsibility';
 import { lockOwnerReview } from './temporary-owner-review';
 import { contractKeys, contractText } from '../document-forms/cooperation-contract.domain';
 import { independentEmploymentLegalReview, readLibrary } from '../document-forms/contract-library.domain';
@@ -35,11 +36,15 @@ export class EmploymentContractLibraryService {
  }
  private async templates(tx:Tx,organizationId:string){
   const rows=await tx.documentTemplate.findMany({where:{organizationId,code:{startsWith:'CLIB-'},status:'ACTIVE'},orderBy:[{code:'asc'},{version:'desc'}]});
-  const seen=new Set<string>(),items=[];
+  const seen=new Set<string>(),items=[],responsibility=await ownerDepartmentStatus(tx);
   for(const row of rows){const e=readLibrary(row);if(e.content.category!=='EMPLOYMENT')continue;
    if(seen.has(row.code))throw new ConflictException('توجد نسخ فعالة متعارضة لقالب الموظف.');seen.add(row.code);
-   if(e.state!=='PUBLISHED'||e.content.workflow!=='HR_EMPLOYMENT_TEMPLATE_V1'||!e.publishedBy||!independentEmploymentLegalReview(e)||!e.hrReview||e.hrReview.contentHash!==e.contentHash)throw new ConflictException('قالب الموظف لم يستكمل الاعتماد والمراجعة القانونية المستقلة.');
-   items.push({id:row.id,code:row.code,titleAr:row.titleAr,titleEn:row.titleEn,version:row.version,contentHash:e.contentHash,content:e.content});
+   const ownerApproval=e.state==='APPROVED_FOR_DRAFTS'?e.ownerDepartmentApproval:null;
+   if(ownerApproval){
+    if(!sameOwnerDepartmentResponsibility(ownerApproval.authority,responsibility.grant))continue;
+   }else if(e.state!=='PUBLISHED'||e.content.workflow!=='HR_EMPLOYMENT_TEMPLATE_V1'||!e.publishedBy||!independentEmploymentLegalReview(e)||!e.hrReview||e.hrReview.contentHash!==e.contentHash)throw new ConflictException('قالب الموظف لم يستكمل الاعتماد والمراجعة القانونية المستقلة.');
+   const approval=ownerApproval?{basis:'OWNER_COMBINED_INTERNAL_DRAFTS',scope:'INTERNAL_HR_DRAFTS_ONLY',independentLegalReviewComplete:false,reference:ownerApproval.reference,authority:ownerApproval.authority}:{basis:'INDEPENDENT_LEGAL_AND_HR',scope:'INTERNAL_HR_DRAFTS_ONLY',independentLegalReviewComplete:true};
+   items.push({id:row.id,code:row.code,titleAr:row.titleAr,titleEn:row.titleEn,version:row.version,contentHash:e.contentHash,content:e.content,approval});
   }return items;
  }
  private source(e:Awaited<ReturnType<EmploymentContractLibraryService['access']>>['employment']){
@@ -87,9 +92,9 @@ export class EmploymentContractLibraryService {
    const values:Record<string,string>={},source=this.source(a.employment) as Record<string,string>;
    for(const f of template.content.fields)values[f.key]=automatic.has(f.source)?source[f.key]??'':contractText(input[f.key],2000,true);
    const contractId=randomUUID(),contractVersion=(rows[0]?.version??0)+1;
-   const snapshot={contractId,contractVersion,effectiveFrom:effectiveFrom.toISOString(),effectiveTo:effectiveTo?.toISOString()??null,kind:'HR_CONTRACT_LIBRARY_SNAPSHOT_V1',requestId:x.requestId,requestedBy:actorId,commandHash,capturedAt:new Date().toISOString(),template:{id:template.id,code:template.code,version:template.version,contentHash:template.contentHash,titleAr:template.titleAr,titleEn:template.titleEn,content:template.content},employment:{id:employmentId,accountId:a.employment.accountId,organizationId:a.platform.id,orgUnitId:a.employment.orgUnitId,positionId:a.employment.positionId,updatedAt:a.employment.updatedAt.toISOString()},values,missingFields:template.content.fields.filter(f=>f.required&&!values[f.key]).map(f=>({key:f.key,label:f.label})),reason};
+   const snapshot={contractId,contractVersion,effectiveFrom:effectiveFrom.toISOString(),effectiveTo:effectiveTo?.toISOString()??null,kind:'HR_CONTRACT_LIBRARY_SNAPSHOT_V1',requestId:x.requestId,requestedBy:actorId,commandHash,capturedAt:new Date().toISOString(),template:{id:template.id,code:template.code,version:template.version,contentHash:template.contentHash,titleAr:template.titleAr,titleEn:template.titleEn,content:template.content,approval:template.approval},employment:{id:employmentId,accountId:a.employment.accountId,organizationId:a.platform.id,orgUnitId:a.employment.orgUnitId,positionId:a.employment.positionId,updatedAt:a.employment.updatedAt.toISOString()},values,missingFields:template.content.fields.filter(f=>f.required&&!values[f.key]).map(f=>({key:f.key,label:f.label})),reason};
    const row=await tx.employmentContract.create({data:{id:contractId,employmentId,version:contractVersion,contractType:template.code,effectiveFrom,effectiveTo,status:'DRAFT',librarySnapshot:{...snapshot,snapshotHash:digest(snapshot)} as unknown as Prisma.InputJsonValue}});
-   await tx.auditEvent.create({data:{actorId:a.actor.personId,action:'HR_CONTRACT_DRAFT_CREATED',resource:'EmploymentContract',resourceId:row.id,metadata:{organizationId:a.platform.id,employmentId,version:row.version,templateId:template.id,templateVersion:template.version,templateContentHash:template.contentHash,snapshotHash:digest(snapshot),reason,permissionsApplied:false}}});
+   await tx.auditEvent.create({data:{actorId:a.actor.personId,action:'HR_CONTRACT_DRAFT_CREATED',resource:'EmploymentContract',resourceId:row.id,metadata:{organizationId:a.platform.id,employmentId,version:row.version,templateId:template.id,templateVersion:template.version,templateContentHash:template.contentHash,templateApproval:template.approval,snapshotHash:digest(snapshot),reason,permissionsApplied:false}}});
    return this.view(row);
   });
  }

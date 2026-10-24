@@ -202,5 +202,54 @@ try{
   eq((await call(owner,path,'POST',input(w))).status,409,'Retired template cannot create another draft');
   const centerUnit=await db.orgUnit.create({data:{organizationId:org.id,code:'HR-DRAFT-FOREIGN',nameAr:'نطاق آخر',type:'CENTER'}}),foreignEmployment=await db.employment.create({data:{organizationId:org.id,accountId:center.id,orgUnitId:centerUnit.id,workerClass:'EMPLOYEE',status:'ACTIVE'}});
   eq((await call(owner,`/hr/employments/${foreignEmployment.id}/contracts`)).status,404,'Internal drafts cannot expose center employment');
+  // Explicit owner department responsibility is separate from independent Legal review.
+  const responsibilityPath='/contracts/library/owner-responsibility',responsibilityKey='OWNER_DEPARTMENT_RESPONSIBILITY:v1:'+platform.id;
+  const appoint=(revision=null,extra={})=>({action:'ASSIGN',expectedRevision:revision,scope:'INTERNAL_HR_DRAFTS_ONLY',reference:'ISOLATED-OWNER-DEPARTMENTS',reason:'تكليف إداري معزول للمسودات فقط',reviewed:true,acknowledgeCombinedApproval:true,...extra});
+  const ownerEffects=await sideEffects();
+  eq((await call(owner,'/contracts/library/workspace')).body.ownerDepartmentResponsibility.active,false);eq(await db.operationalSetting.count({where:{key:responsibilityKey}}),0,'Reading never assigns a responsibility');
+  eq((await call(null,responsibilityPath,'POST',appoint())).status,401);
+  for(const actor of [admin,legal,hr,center,pro])eq((await call(actor,responsibilityPath,'POST',appoint())).status,403);
+  for(const extra of [{reviewed:false},{acknowledgeCombinedApproval:false},{scope:'ALL_HR_ACTIONS'},{ownerId:admin.id},{expectedRevision:undefined},{reference:''}])eq((await call(owner,responsibilityPath,'POST',appoint(null,extra))).status,400);
+  const ownerRuntime=new DatabaseService(),ownerBroken={serializable:work=>ownerRuntime.serializable(tx=>work(new Proxy(tx,{get(target,k){if(k==='auditEvent')return {create:async()=>{throw new Error('Injected owner responsibility audit failure')}};return Reflect.get(target,k)}})))},ownerBrokenService=new ContractLibraryService(ownerBroken);
+  await assert.rejects(()=>ownerBrokenService.changeOwnerResponsibility(owner.id,appoint()),/Injected owner responsibility audit failure/);checks++;eq(await db.operationalSetting.count({where:{key:responsibilityKey}}),0);
+  let ownerTemplate=all.find(t=>t.code==='CLIB-HR-TEMPORARY');
+  eq((await decision(owner,ownerTemplate,'APPROVE_FOR_DRAFTS')).status,403);
+  ownerTemplate=(await decision(owner,ownerTemplate,'SUBMIT')).body;ownerTemplate=(await decision(owner,ownerTemplate,'INTERNAL_APPROVAL')).body;
+  eq((await decision(owner,ownerTemplate,'APPROVE_FOR_DRAFTS')).status,403,'Internal consent alone never authorizes drafts');
+  const assignedPair=await Promise.all([call(owner,responsibilityPath,'POST',appoint()),call(owner,responsibilityPath,'POST',appoint())]);eq(assignedPair.map(r=>r.status).sort(),[201,409]);let assigned=assignedPair.find(r=>r.status===201).body;
+  eq(assigned.active,true);eq(assigned.account.id,owner.id);eq(assigned.departments,['HR','LEGAL_CONTRACTS_INSURANCE']);eq(assigned.scope,'INTERNAL_HR_DRAFTS_ONLY');eq(await sideEffects(),ownerEffects,'Responsibility creates no employment, IAM roles or contracts');
+  eq((await call(owner,responsibilityPath,'POST',appoint())).status,409);
+  for(const actor of [legal,hr])eq((await decision(actor,ownerTemplate,'APPROVE_FOR_DRAFTS')).status,403);
+  eq((await decision(owner,ownerTemplate,'APPROVE_FOR_DRAFTS',{reference:''})).status,400);eq((await decision(owner,ownerTemplate,'APPROVE_FOR_DRAFTS',{expectedVersion:99})).status,409);
+  eq((await decision(owner,ownerTemplate,'LEGAL_REVIEW')).status,403,'Owner responsibility never fabricates independent Legal review');eq((await decision(owner,ownerTemplate,'PUBLISH')).status,403);
+  await assert.rejects(()=>ownerBrokenService.decide(owner.id,ownerTemplate.id,{...expected(ownerTemplate),action:'APPROVE_FOR_DRAFTS',reference:'ISOLATED-DRAFT-APPROVAL',reason:'مراجعة معزولة لفشل التدقيق',reviewed:true}),/Injected owner responsibility audit failure/);checks++;eq((await call(owner,'/contracts/library/'+ownerTemplate.id)).body.state,'IN_REVIEW');await ownerRuntime.$disconnect();
+  ownerTemplate=(await decision(owner,ownerTemplate,'APPROVE_FOR_DRAFTS')).body;eq(ownerTemplate.state,'APPROVED_FOR_DRAFTS');eq(ownerTemplate.draftUseAvailable,true);eq(ownerTemplate.reviews,{legal:null,hr:null});eq(ownerTemplate.publishedAt,null);eq(ownerTemplate.capabilities.publish,false);eq(ownerTemplate.ownerDepartmentApproval.authority.revision,assigned.revision);eq(ownerTemplate.ownerDepartmentApproval.purpose,'INTERNAL_DRAFT_PREPARATION_ONLY');
+  eq((await call(owner,'/contracts/library?state=APPROVED_FOR_DRAFTS')).body.total,1);eq((await call(center,'/contracts/library/'+ownerTemplate.id)).status,403);eq(await sideEffects(),ownerEffects,'Administrative template approval creates no employee contract or access grant');
+  w=(await call(owner,path)).body;eq(w.templates.length,1);eq(w.templates[0].approval.basis,'OWNER_COMBINED_INTERNAL_DRAFTS');eq(w.templates[0].approval.independentLegalReviewComplete,false);
+  const ownerInput=(workspace)=>input(workspace,{templateId:ownerTemplate.id,expectedTemplateVersion:ownerTemplate.version,expectedTemplateContentHash:ownerTemplate.contentHash});
+  const ownerDraft=(await call(owner,path,'POST',ownerInput(w))).body;eq(ownerDraft.status,'DRAFT');eq(ownerDraft.documentId,null);eq(ownerDraft.librarySnapshot.template.approval.basis,'OWNER_COMBINED_INTERNAL_DRAFTS');eq(ownerDraft.librarySnapshot.template.approval.independentLegalReviewComplete,false);
+  const ownerStored=await db.documentTemplate.findUniqueOrThrow({where:{id:ownerTemplate.id}});
+  for(const fields of [{...ownerStored.fields,ownerDepartmentApproval:undefined},{...ownerStored.fields,ownerDepartmentApproval:{...ownerStored.fields.ownerDepartmentApproval,contentHash:'sha256:forged'}},{...ownerStored.fields,ownerDepartmentApproval:{...ownerStored.fields.ownerDepartmentApproval,authority:{...ownerStored.fields.ownerDepartmentApproval.authority,scope:'OFFICIAL_CONTRACT_EXECUTION'}}}]){
+   await db.documentTemplate.update({where:{id:ownerTemplate.id},data:{fields:JSON.parse(JSON.stringify(fields))}});eq((await call(owner,path)).status,409,'Invalid administrative approval evidence fails closed');
+  }
+  await db.documentTemplate.update({where:{id:ownerTemplate.id},data:{fields:ownerStored.fields}});
+  await db.orgUnit.update({where:{id:legalUnit.id},data:{active:false}});eq((await call(owner,path)).body.templates,[],'Both department units must remain active');await db.orgUnit.update({where:{id:legalUnit.id},data:{active:true}});
+  await db.roleAssignment.update({where:{accountId_role:{accountId:owner.id,role:'ADMIN'}},data:{status:'SUSPENDED'}});eq((await call(hr,path)).body.templates,[],'Loss of the owner ADMIN role invalidates administrative draft authority');await db.roleAssignment.update({where:{accountId_role:{accountId:owner.id,role:'ADMIN'}},data:{status:'ACTIVE'}});
+  await db.account.update({where:{id:owner.id},data:{emailVerifiedAt:null}});eq((await call(hr,path)).body.templates,[],'The responsible owner must remain verified');await db.account.update({where:{id:owner.id},data:{emailVerifiedAt:new Date()}});
+  await db.account.update({where:{id:owner.id},data:{status:'SUSPENDED'}});eq((await call(hr,path)).body.templates,[],'The responsible owner must remain active');await db.account.update({where:{id:owner.id},data:{status:'ACTIVE'}});
+  eq((await call(owner,responsibilityPath,'POST',appoint(assigned.revision,{action:'REVOKE'}))).status,201);assigned=(await call(owner,'/contracts/library/workspace')).body.ownerDepartmentResponsibility;eq(assigned.active,false);eq((await call(owner,'/contracts/library/'+ownerTemplate.id)).body.draftUseAvailable,false);
+  w=(await call(owner,path)).body;eq(w.templates,[]);eq(w.items.find(r=>r.id===ownerDraft.id).librarySnapshot,ownerDraft.librarySnapshot,'Revocation preserves prior draft evidence');eq((await call(owner,path,'POST',ownerInput(w))).status,409,'A revoked responsibility cannot prepare another draft');
+  assigned=(await call(owner,responsibilityPath,'POST',appoint(assigned.revision))).body;eq(assigned.active,true);eq((await call(owner,path)).body.templates,[],'Reassignment cannot revive an approval from an earlier assignment');
+  eq((await decision(owner,ownerTemplate,'RETIRE')).status,201);ownerTemplate=(await call(owner,`/contracts/library/${ownerTemplate.id}/revise`,'POST',change(ownerTemplate))).body;eq(ownerTemplate.ownerDepartmentApproval,null);eq(ownerTemplate.internalApproval,null);
+  for(const action of ['SUBMIT','INTERNAL_APPROVAL','APPROVE_FOR_DRAFTS'])ownerTemplate=(await decision(owner,ownerTemplate,action)).body;
+  eq(ownerTemplate.ownerDepartmentApproval.authority.revision,assigned.revision);eq((await call(owner,path)).body.templates.length,1);
+  let independentlyPublished=(await call(owner,`/contracts/library/${employment.id}/revise`,'POST',change(employment))).body;
+  for(const [action,actor] of [['SUBMIT',owner],['LEGAL_REVIEW',legal],['HR_REVIEW',hr],['PUBLISH',owner]]){const result=await decision(actor,independentlyPublished,action);eq(result.status,201);independentlyPublished=result.body;}
+  const replacement=(await call(owner,`/contracts/library/${independentlyPublished.id}/revise`,'POST',change(independentlyPublished))).body;
+  for(const action of ['SUBMIT','INTERNAL_APPROVAL'])eq((await decision(owner,replacement,action)).status,201);
+  eq((await decision(owner,replacement,'APPROVE_FOR_DRAFTS')).status,409,'Administrative approval cannot replace an independently reviewed active publication');eq((await db.documentTemplate.findUniqueOrThrow({where:{id:independentlyPublished.id}})).status,'ACTIVE');
+  await db.organization.update({where:{id:platform.id},data:{ownerId:admin.id,updatedAt:new Date(Date.now()+1)}});eq((await call(admin,'/contracts/library/workspace')).body.ownerDepartmentResponsibility.active,false);
+  await db.organization.update({where:{id:platform.id},data:{ownerId:owner.id,updatedAt:new Date(Date.now()+10)}});eq((await call(owner,'/contracts/library/workspace')).body.ownerDepartmentResponsibility.active,false,'Transferring ownership back does not revive an assignment');eq((await call(owner,path)).body.templates.map(t=>t.id),[independentlyPublished.id],'An independent publication remains available after administrative assignment revocation');
+  eq(await db.auditEvent.count({where:{action:'OWNER_DEPARTMENT_RESPONSIBILITY_ASSIGNED',resourceId:platform.id}}),2);eq(await db.auditEvent.count({where:{action:'CONTRACT_TEMPLATE_APPROVE_FOR_DRAFTS'}}),2);
   console.log(`Contract library HTTP/PostgreSQL: ${checks} checks passed`);
 }finally{if(configured)await db.operationalSetting.delete({where:{key}});await db.$disconnect();}
