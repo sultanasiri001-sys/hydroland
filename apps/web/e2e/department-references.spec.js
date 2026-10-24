@@ -4,9 +4,10 @@ const json = (route, value, status = 200) => route.fulfill({ status, contentType
 const codes = ['HR','TRAINING','MARINE_OPERATIONS','INVENTORY_LOGISTICS','FINANCE','SAFETY_COMPLIANCE_RISK','CUSTOMER_EXPERIENCE','MARKETING_GROWTH','TECHNOLOGY_CYBERSECURITY','FACILITIES_ASSETS_MAINTENANCE','ADMIN_AFFAIRS_RECORDS','EXECUTIVE_GOVERNANCE','RND_MARKET_INTELLIGENCE','LEGAL_CONTRACTS_INSURANCE'];
 const snapshot = () => ({
   catalogVersion: 'isolated-v1', referenceOnly: true, canActivate: false, canonicalDepartmentCount: 14, recordedDepartmentCount: 14, effectivePolicyCount: 1, policiesWithRecordedReferences: 0, observedAt: new Date().toISOString(),
-  departments: codes.map(code => ({ code, nameAr: code === 'HR' ? 'الموارد البشرية' : code === 'FINANCE' ? 'المالية' : code, unitRecorded: true, unitActive: true, authorityIds: ['GOV-1'], legalReferenceIds: ['LEG-1'], hrSourceIds: code === 'HR' ? ['HR-1'] : [], policies: [{ category: 'FIXTURE', ruleKey: 'FIXTURE-CONTROL', labelAr: 'ضابط مشترك للاختبار', state: 'ENABLED', referencesRecorded: false }], canActivate: false })),
+  departments: codes.map(code => ({ code, nameAr: code === 'HR' ? 'الموارد البشرية' : code === 'FINANCE' ? 'المالية' : code, unitRecorded: true, unitActive: true, authorityIds: ['GOV-1'], legalReferenceIds: ['LEG-1'], marineArchiveIds: code === 'HR' ? ['MAR-ARCH-1'] : [], hrSourceIds: code === 'HR' ? ['HR-1'] : [], policies: [{ category: 'FIXTURE', ruleKey: 'FIXTURE-CONTROL', labelAr: 'ضابط مشترك للاختبار', state: 'ENABLED', referencesRecorded: false }], canActivate: false })),
   authorities: [{ id: 'GOV-1', nameAr: 'جهة اختبار معزولة', recordedStatus: 'قيد الاستكمال', snapshotDate: '2026-09-17', scope: 'نطاق مرجعي تجريبي', routingStatus: 'PROPOSED_OWNER_ROUTING', sourceLibraryFileId: 'libfile_fixtureauthority' }],
   legalReferences: [{ id: 'LEG-1', titleAr: 'مرجع قانوني للاختبار', recordedStatus: 'Active', snapshotDate: '2026-09-16', url: 'https://example.invalid/official-reference', sourceLibraryFileId: 'libfile_fixturelegal' }],
+  marineArchives: [{ id: 'MAR-ARCH-1', titleAr: 'ملف غوص محفوظ للاختبار', recordedStatus: 'الإصدار وقابلية الانطباق قيد التحقق', snapshotDate: '2026-10-24', sourceLibraryFileId: 'libfile_fixturemarine' }],
   hrSources: [{ id: 'HR-1', titleAr: 'مصدر موارد بشرية للاختبار', snapshotDate: '2026-10-23', url: 'https://example.invalid/hr-source', sourceLibraryFileId: 'libfile_fixturehr' }],
   hrControlCandidates: [{ ruleKey: 'HR-FIXTURE-001', labelAr: 'ضابط مرشح معزول', sourceIds: ['HR-1'], clauseReferences: ['مادة تجريبية'], evidenceSpecification: ['مواصفة دليل تجريبية وليست دليلًا فعليًا'], limitations: 'المراجعة القانونية معلقة', enabled: false, regulatoryRequirementId: null, legalApprovalReference: null }],
 });
@@ -37,7 +38,9 @@ test('department source discovery is lazy, read only and separate from approval'
   const state = await setup(page); await open(page);
   await expect(page.getByLabel('إدارة المراجع').locator('option')).toHaveCount(14);
   await expect(page.locator('[data-reference-detail]')).toContainText('لم يُثبت متطلب معتمد');
-  await expect(page.locator('[data-reference-detail]')).toContainText('ربط الجهة بالإدارة مقترح');
+  await expect(page.locator('[data-reference-detail]')).toContainText('ربط المصدر بالإدارة مقترح');
+  await expect(page.locator('[data-reference-detail]')).toContainText('ملف غوص محفوظ للاختبار');
+  await expect(page.locator('[data-reference-detail] a[href*="libfile_fixturemarine"]')).toHaveCount(1);
   await expect(page.locator('[data-reference-detail]')).toContainText('مفعّل تشغيليًا');
   await expect(page.locator('[data-reference-detail]')).toContainText('ربط المتطلب ونسخته وأدلته ومرجع اعتماده غير مكتمل');
   expect(state.writes).toBe(0);

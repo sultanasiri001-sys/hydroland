@@ -40,7 +40,7 @@
       if (source.recordedStatus) node('p', 'الحالة المسجلة وقت اللقطة: ' + source.recordedStatus, item);
       if (source.versionLabel) node('p', source.versionLabel, item);
       if (source.scope) node('p', source.scope, item);
-      if (source.routingStatus) node('p', 'ربط الجهة بالإدارة مقترح للمراجعة؛ لم يُعتمد انطباق متطلباتها تلقائيًا.', item);
+      if (source.routingStatus) node('p', 'ربط المصدر بالإدارة مقترح للمراجعة؛ لم يُعتمد انطباق متطلباته تلقائيًا.', item);
       link(item, 'المصدر الرسمي المسجل', source.url);
       libraryLink(item, source.sourceLibraryFileId);
     }
@@ -56,7 +56,7 @@
       node('h5', 'الجهات والخدمات المرجعية', detail);
       if (!authorities.length) node('p', 'مراجع هذه الإدارة واردة في السجل القانوني أدناه.', detail);
       authorities.forEach(a => renderSource(a, detail));
-      const sources = [...data.legalReferences.filter(r => department.legalReferenceIds.includes(r.id)), ...data.hrSources.filter(r => department.hrSourceIds.includes(r.id))];
+      const sources = [...data.legalReferences.filter(r => department.legalReferenceIds.includes(r.id)), ...data.marineArchives.filter(r => department.marineArchiveIds.includes(r.id)), ...data.hrSources.filter(r => department.hrSourceIds.includes(r.id))];
       node('h5', 'المراجع المحفوظة', detail);
       sources.forEach(s => renderSource(s, detail));
       if (!sources.length) node('p', 'استكمال نسخ المصادر وربط موادها ما زال مطلوبًا لهذه الإدارة.', detail);
@@ -96,7 +96,7 @@
         if (!current(g, session)) return;
         if ([401, 403].includes(response.status)) { clear(); await access()?.authorizeRole?.('admin'); return; }
         if (!response.ok) throw new Error(typeof result?.message === 'string' ? result.message : 'تعذر تحميل مراجع الإدارات.');
-        const arrays = ['departments', 'authorities', 'legalReferences', 'hrSources', 'hrControlCandidates'];
+        const arrays = ['departments', 'authorities', 'legalReferences', 'marineArchives', 'hrSources', 'hrControlCandidates'];
         if (result?.referenceOnly !== true || result.canActivate !== false || result.canonicalDepartmentCount !== 14 || !arrays.every(k => Array.isArray(result[k])) || result.departments.length !== 14 || new Set(result.departments.map(d => d.code)).size !== 14 || !Number.isFinite(Date.parse(result.observedAt))) throw new Error('استجابة مراجع الإدارات غير مكتملة.');
         data = result; select.replaceChildren();
         for (const department of data.departments) { const option = node('option', department.nameAr, select); option.value = department.code; }

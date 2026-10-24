@@ -790,5 +790,204 @@ export const DEPARTMENT_REFERENCE_CATALOG = {
       "evidenceIds": [],
       "enabled": false
     }
+  ],
+  "marineArchives": [
+    {
+      "id": "MAR-ARCH-001",
+      "titleAr": "الائحة التنظيمية لرياضة الغوص",
+      "fileName": "الائحة التنظيمية لرياضة الغوص.pdf",
+      "sourceLibraryFileId": "libfile_fcd3b7498b648191aba6053399098b2c",
+      "sourceFileId": "file_00000000281c8211874cfa1196d0ad58",
+      "departmentCodes": [
+        "TRAINING",
+        "MARINE_OPERATIONS",
+        "SAFETY_COMPLIANCE_RISK",
+        "LEGAL_CONTRACTS_INSURANCE"
+      ],
+      "snapshotDate": "2026-10-24",
+      "recordedStatus": "ملف محفوظ؛ الإصدار وقابلية الانطباق قيد التحقق",
+      "sourceType": "USER_ARCHIVED_PDF",
+      "routingStatus": "PROPOSED_OWNER_ROUTING",
+      "officialSourceByteIdentityVerified": false,
+      "regulatoryVersion": null,
+      "legalApprovalReference": null
+    },
+    {
+      "id": "MAR-ARCH-002",
+      "titleAr": "ضوابط عضوية رياضة الغوص",
+      "fileName": "ضوابط عضوية رياضة الغوص.pdf",
+      "sourceLibraryFileId": "libfile_375fc078b18081919218e5ca025ed12c",
+      "sourceFileId": "file_0000000032c8821199227f255b6beb78",
+      "departmentCodes": [
+        "TRAINING",
+        "MARINE_OPERATIONS",
+        "ADMIN_AFFAIRS_RECORDS",
+        "LEGAL_CONTRACTS_INSURANCE"
+      ],
+      "snapshotDate": "2026-10-24",
+      "recordedStatus": "ملف محفوظ؛ الإصدار وقابلية الانطباق قيد التحقق",
+      "sourceType": "USER_ARCHIVED_PDF",
+      "routingStatus": "PROPOSED_OWNER_ROUTING",
+      "officialSourceByteIdentityVerified": false,
+      "regulatoryVersion": null,
+      "legalApprovalReference": null
+    },
+    {
+      "id": "MAR-ARCH-003",
+      "titleAr": "ضوابط الترخيص الوطني لرياضة الغوص للمحترفين",
+      "fileName": "ضوابط الترخيص الوطني لرياضة الغوص للمحترفين.pdf",
+      "sourceLibraryFileId": "libfile_ddb7f75efe80819187274af90d01208a",
+      "sourceFileId": "file_0000000003988211b7ea328cb603f130",
+      "departmentCodes": [
+        "HR",
+        "TRAINING",
+        "MARINE_OPERATIONS",
+        "LEGAL_CONTRACTS_INSURANCE"
+      ],
+      "snapshotDate": "2026-10-24",
+      "recordedStatus": "ملف محفوظ؛ الإصدار وقابلية الانطباق قيد التحقق",
+      "sourceType": "USER_ARCHIVED_PDF",
+      "routingStatus": "PROPOSED_OWNER_ROUTING",
+      "officialSourceByteIdentityVerified": false,
+      "regulatoryVersion": null,
+      "legalApprovalReference": null
+    },
+    {
+      "id": "MAR-ARCH-004",
+      "titleAr": "ضوابط تنظيم رحلات الغوص",
+      "fileName": "ضوابط تنظيم رحلات الغوص.pdf",
+      "sourceLibraryFileId": "libfile_2690ebc3d8848191a29e165f6df1d256",
+      "sourceFileId": "file_0000000057fc821184821e05ea17dab6",
+      "departmentCodes": [
+        "MARINE_OPERATIONS",
+        "SAFETY_COMPLIANCE_RISK",
+        "LEGAL_CONTRACTS_INSURANCE"
+      ],
+      "snapshotDate": "2026-10-24",
+      "recordedStatus": "ملف محفوظ؛ الإصدار وقابلية الانطباق قيد التحقق",
+      "sourceType": "USER_ARCHIVED_PDF",
+      "routingStatus": "PROPOSED_OWNER_ROUTING",
+      "officialSourceByteIdentityVerified": false,
+      "regulatoryVersion": null,
+      "legalApprovalReference": null
+    },
+    {
+      "id": "MAR-ARCH-005",
+      "titleAr": "ضوابط الترخيص لغير المحترفين",
+      "fileName": "ضوابط الترخيص لغير المحترفين.pdf",
+      "sourceLibraryFileId": "libfile_cb1d4a2d28f08191ba47697d2d781916",
+      "sourceFileId": "file_00000000c9148211bc1f535eef7a8869",
+      "departmentCodes": [
+        "TRAINING",
+        "MARINE_OPERATIONS",
+        "SAFETY_COMPLIANCE_RISK",
+        "LEGAL_CONTRACTS_INSURANCE"
+      ],
+      "snapshotDate": "2026-10-24",
+      "recordedStatus": "ملف محفوظ؛ الإصدار وقابلية الانطباق قيد التحقق",
+      "sourceType": "USER_ARCHIVED_PDF",
+      "routingStatus": "PROPOSED_OWNER_ROUTING",
+      "officialSourceByteIdentityVerified": false,
+      "regulatoryVersion": null,
+      "legalApprovalReference": null
+    },
+    {
+      "id": "MAR-ARCH-006",
+      "titleAr": "دليل التسجيل في زاول للوساذط البحرية",
+      "fileName": "دليل التسجيل في زاول للوساذط البحرية.pdf",
+      "sourceLibraryFileId": "libfile_bf8b89e2dba481919e243d1b220209fd",
+      "sourceFileId": "file_00000000c2e8821184a50b51642fa1a2",
+      "departmentCodes": [
+        "MARINE_OPERATIONS",
+        "ADMIN_AFFAIRS_RECORDS",
+        "LEGAL_CONTRACTS_INSURANCE"
+      ],
+      "snapshotDate": "2026-10-24",
+      "recordedStatus": "ملف محفوظ؛ الإصدار وقابلية الانطباق قيد التحقق",
+      "sourceType": "USER_ARCHIVED_PDF",
+      "routingStatus": "PROPOSED_OWNER_ROUTING",
+      "officialSourceByteIdentityVerified": false,
+      "regulatoryVersion": null,
+      "legalApprovalReference": null
+    },
+    {
+      "id": "MAR-ARCH-007",
+      "titleAr": "شروط الوساذط البحريةللغوص",
+      "fileName": "شروط الوساذط البحريةللغوص.pdf",
+      "sourceLibraryFileId": "libfile_94131ae0c9248191a50a8e0ec356f144",
+      "sourceFileId": "file_00000000ae0c8211bbcbfffc56be01e7",
+      "departmentCodes": [
+        "MARINE_OPERATIONS",
+        "FACILITIES_ASSETS_MAINTENANCE",
+        "SAFETY_COMPLIANCE_RISK",
+        "LEGAL_CONTRACTS_INSURANCE"
+      ],
+      "snapshotDate": "2026-10-24",
+      "recordedStatus": "ملف محفوظ؛ الإصدار وقابلية الانطباق قيد التحقق",
+      "sourceType": "USER_ARCHIVED_PDF",
+      "routingStatus": "PROPOSED_OWNER_ROUTING",
+      "officialSourceByteIdentityVerified": false,
+      "regulatoryVersion": null,
+      "legalApprovalReference": null
+    },
+    {
+      "id": "MAR-ARCH-008",
+      "titleAr": "مزايا الترخيص والمحفزات",
+      "fileName": "مزايا الترخيص والمحفزات.pdf",
+      "sourceLibraryFileId": "libfile_0d9f59edabe4819187f22259820497eb",
+      "sourceFileId": "file_00000000ebd08211b39a94869516818c",
+      "departmentCodes": [
+        "EXECUTIVE_GOVERNANCE",
+        "FINANCE",
+        "MARINE_OPERATIONS",
+        "LEGAL_CONTRACTS_INSURANCE"
+      ],
+      "snapshotDate": "2026-10-24",
+      "recordedStatus": "ملف محفوظ؛ الإصدار وقابلية الانطباق قيد التحقق",
+      "sourceType": "USER_ARCHIVED_PDF",
+      "routingStatus": "PROPOSED_OWNER_ROUTING",
+      "officialSourceByteIdentityVerified": false,
+      "regulatoryVersion": null,
+      "legalApprovalReference": null
+    },
+    {
+      "id": "MAR-ARCH-009",
+      "titleAr": "ضوابط عقود العمل مع محترفين الغوص",
+      "fileName": "ضوابط عقود العمل مع محترفين الغوص.pdf",
+      "sourceLibraryFileId": "libfile_675298a1012c81918e682582a6bec341",
+      "sourceFileId": "file_00000000b8e4821183b05d68d695dfdd",
+      "departmentCodes": [
+        "HR",
+        "TRAINING",
+        "MARINE_OPERATIONS",
+        "LEGAL_CONTRACTS_INSURANCE"
+      ],
+      "snapshotDate": "2026-10-24",
+      "recordedStatus": "ملف محفوظ؛ الإصدار وقابلية الانطباق قيد التحقق",
+      "sourceType": "USER_ARCHIVED_PDF",
+      "routingStatus": "PROPOSED_OWNER_ROUTING",
+      "officialSourceByteIdentityVerified": false,
+      "regulatoryVersion": null,
+      "legalApprovalReference": null
+    },
+    {
+      "id": "MAR-ARCH-010",
+      "titleAr": "الية تصريح الغوص من الشاطئ",
+      "fileName": "الية تصريح الغوص من الشاطئ.pdf",
+      "sourceLibraryFileId": "libfile_7154faaa75948191a45117f472afaa66",
+      "sourceFileId": "file_0000000041d88211be02da79939c8ee2",
+      "departmentCodes": [
+        "MARINE_OPERATIONS",
+        "SAFETY_COMPLIANCE_RISK",
+        "LEGAL_CONTRACTS_INSURANCE"
+      ],
+      "snapshotDate": "2026-10-24",
+      "recordedStatus": "ملف محفوظ؛ الإصدار وقابلية الانطباق قيد التحقق",
+      "sourceType": "USER_ARCHIVED_PDF",
+      "routingStatus": "PROPOSED_OWNER_ROUTING",
+      "officialSourceByteIdentityVerified": false,
+      "regulatoryVersion": null,
+      "legalApprovalReference": null
+    }
   ]
 } as const;

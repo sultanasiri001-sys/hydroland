@@ -28,16 +28,18 @@ const before = JSON.stringify(controls), result = await service.list(actorId);
 assert.equal(result.referenceOnly, true); assert.equal(result.canActivate, false);
 assert.equal(result.canonicalDepartmentCount, 14); assert.equal(result.recordedDepartmentCount, 14);
 assert.equal(result.authorities.length, 19); assert.equal(result.legalReferences.length, 15); assert.equal(result.hrSources.length, 6); assert.equal(result.hrControlCandidates.length, 7);
+assert.equal(result.marineArchives.length, 10);
+for (const source of result.marineArchives) { assert.equal(source.officialSourceByteIdentityVerified, false); assert.equal(source.regulatoryVersion, null); assert.equal(source.legalApprovalReference, null); assert(source.sourceLibraryFileId.startsWith('libfile_')); assert(source.sourceFileId.startsWith('file_')); }
 assert.deepEqual(result.departments.map(d => d.code), HYDROLAND_DEPARTMENTS.map(d => d.code));
 assert.equal(result.effectivePolicyCount, 2); assert.equal(result.policiesWithRecordedReferences, 1);
-const ids = [...result.authorities, ...result.legalReferences, ...result.hrSources].map(s => s.id);
+const ids = [...result.authorities, ...result.legalReferences, ...result.marineArchives, ...result.hrSources].map(s => s.id);
 assert.equal(new Set(ids).size, ids.length);
 for (const department of result.departments) {
   assert(department.nameAr); assert(department.unitRecorded); assert(department.unitActive); assert.equal(department.canActivate, false);
   assert.equal(department.applicabilityStatus, 'REVIEW_REQUIRED'); assert.equal(department.businessOwner, department.code);
   assert.equal(department.legalReviewOwner, 'LEGAL_CONTRACTS_INSURANCE');
   assert(existsSync(fileURLToPath(new URL('../../../' + department.sourceBoundary, import.meta.url))), department.sourceBoundary);
-  const refs = [...department.authorityIds, ...department.legalReferenceIds, ...department.hrSourceIds];
+  const refs = [...department.authorityIds, ...department.legalReferenceIds, ...department.marineArchiveIds, ...department.hrSourceIds];
   assert(refs.length > 0, department.code); for (const id of refs) assert(ids.includes(id));
 }
 for (const a of result.authorities) { assert.equal(a.routingStatus, 'PROPOSED_OWNER_ROUTING'); for (const code of a.departmentCodes) assert(result.departments.some(d => d.code === code)); }

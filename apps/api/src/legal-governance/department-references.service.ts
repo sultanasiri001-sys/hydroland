@@ -63,6 +63,7 @@ export class DepartmentReferencesService {
         sourceBoundary: boundaries[d.code].path,
         authorityIds: catalog.authorities.filter(a => (a.departmentCodes as readonly string[]).includes(d.code)).map(a => a.id),
         legalReferenceIds: catalog.legalReferences.filter(r => (r.departmentCodes as readonly string[]).includes(d.code)).map(r => r.id),
+        marineArchiveIds: catalog.marineArchives.filter(r => (r.departmentCodes as readonly string[]).includes(d.code)).map(r => r.id),
         hrSourceIds: d.code === 'HR' || d.code === 'LEGAL_CONTRACTS_INSURANCE' ? catalog.hrSources.map(s => s.id) : [],
         policies: policyViews.filter(p => boundaries[d.code].categories.includes(p.category)),
         businessOwner: d.code,

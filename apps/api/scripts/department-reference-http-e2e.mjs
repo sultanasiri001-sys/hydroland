@@ -24,6 +24,7 @@ try {
   const response = await call(endpoint,token); assert.equal(response.status,200); assert.equal(response.cache,'no-store');
   const data = response.body; assert.equal(data.referenceOnly,true); assert.equal(data.canActivate,false); assert.equal(data.canonicalDepartmentCount,14); assert.equal(data.departments.length,14);
   assert.equal(data.authorities.length,19); assert.equal(data.legalReferences.length,15); assert.equal(data.hrSources.length,6); assert.equal(data.hrControlCandidates.length,7);
+  assert.equal(data.marineArchives.length,10); for (const source of data.marineArchives) { assert.equal(source.officialSourceByteIdentityVerified,false); assert.equal(source.regulatoryVersion,null); assert.equal(source.legalApprovalReference,null); }
   for (const candidate of data.hrControlCandidates) { assert.equal(candidate.enabled,false); assert.equal(candidate.legalApprovalReference,null); assert.deepEqual(candidate.evidenceIds,[]); }
   for (const department of data.departments) assert.equal(department.canActivate,false);
   const filtered = await call(endpoint+'?department=HR',token); assert.equal(filtered.status,200); assert.equal(filtered.body.departments.length,1); assert.equal(filtered.body.departments[0].code,'HR');

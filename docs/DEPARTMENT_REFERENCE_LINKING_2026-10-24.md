@@ -18,6 +18,13 @@ effective rule store:
 - Six HR sources and seven candidate controls, dated 23 October:
   `libfile_1a456a366bc8819180f339b98fa0ca50` and mapping
   `libfile_cce1fc6f9f3881918c3dac2d4d262a18`.
+- Ten existing diving/marine PDF archives uploaded on 24 October are linked by
+  their resolved Library and backing-file identities: diving regulation,
+  membership, professional/non-professional licensing, trip organization, Zawil,
+  vessel conditions, licensing incentives, cooperation contracts and shore-dive
+  permits. Their department routing is proposed. File presence is verified;
+  issuer/source-byte identity, effective version and legal approval are not
+  certified. The snapshot date is the inventory date, not the regulation date.
 
 The legal registry's existing department links are retained. New routing of the
 nineteen authority/service entries is explicitly **proposed ownership routing**.
