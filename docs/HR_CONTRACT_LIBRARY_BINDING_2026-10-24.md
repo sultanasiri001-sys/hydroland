@@ -24,8 +24,16 @@ Saving is DRAFT_ONLY and does not sign, approve or activate employment, pay, ben
 
 GET/POST `/hr/employments/:employmentId/contracts` returns a private workspace or creates one draft. No mutation endpoint changes a pinned snapshot.
 
+## Revising saved drafts
+
+An authorized creator can choose **إنشاء إصدار جديد من المسودة** on a bound DRAFT. The form uses the currently eligible template of the same contract type, refreshes automatic employee/employer values, and carries manual terms only when key, label and source still match. Changed or new fields need fresh input. A before/after table includes dates, field values, template versions, clauses and usage notes. Editing clears the review acknowledgment; cancellation clears the copied terms and source.
+
+POST accepts an optional strict `revisesContract: { id, expectedSnapshotHash }`. Inside the existing serializable locks, the server checks that the source is a valid bound DRAFT for this exact employee, validates its digest, requires the same contract type and a currently eligible template, and rejects revisions with unchanged values/dates/template. A changed reason alone cannot create an empty revision. The next employee contract version stores `revisionOf: { id, version, snapshotHash }` inside its immutable digest and the atomic `HR_CONTRACT_DRAFT_REVISED` audit event. Retry identity covers the source as well as the new terms. Older drafts, ordinary creations and legacy null snapshots remain intact. Administrative-only template approval remains administrative-only in the new version; revocation cannot be bypassed using a saved source.
+
 ## Validation and rollout
 
 API build; Web unit/design/access validation; 20 onboarding browser tests including five draft/privacy cases; isolated Nest/PGlite library/HR binding checks and cooperation regressions. A dedicated migration check applies the real additive SQL to TEXT and UUID fixture rows and confirms signed status/evidence references survive. Native PostgreSQL CI is required before release.
+
+Revision follow-up adds six focused browser checks for before/after comparison, current-source refresh, changed field meanings, cancellation, read-only/unavailable templates, conflicts, permission loss and Arabic mobile layout. Local API build and Web validation passed; the isolated library/HR HTTP suite passed 296 assertions, including revision concurrency, retry identity, audit rollback and unchanged source snapshots. This follow-up adds no schema migration or production fixture.
 
 Rollout adds one nullable column; there is no backfill. Do not drop it on rollback. Older builds do not expose the new feature; keep stored snapshots and evidence intact and ensure the reader remains available before resuming draft operations. No production draft is created as part of deployment verification.

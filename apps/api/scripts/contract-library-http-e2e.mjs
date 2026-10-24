@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {createHmac,randomUUID,randomBytes} from 'node:crypto';
 import {createRequire} from 'node:module';
-import {PrismaClient} from '@prisma/client';
+import {PrismaClient,Prisma} from '@prisma/client';
 const base=process.env.CONTRACT_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1';
 const loopback=url=>['localhost','127.0.0.1','[::1]'].includes(new URL(url).hostname);
 assert(process.env.CI==='true'||process.env.NODE_ENV==='test');
@@ -189,8 +189,29 @@ try{
   const pair=await Promise.all([call(hr,path,'POST',input(w)),call(owner,path,'POST',input(w))]);eq(pair.map(r=>r.status).sort(),[201,409],'Concurrent creators cannot duplicate the next contract revision');
   w=(await call(hr,path)).body;eq(w.items.length,2);eq(w.items.map(r=>r.version),[2,1]);
   const firstSnapshot=w.items[1].librarySnapshot;
+  const revisesContract={id:made.body.id,expectedSnapshotHash:firstSnapshot.snapshotHash};
+  for(const revisesContract of [null,{},[],{id:made.body.id,expectedSnapshotHash:'invalid'},{id:made.body.id,expectedSnapshotHash:firstSnapshot.snapshotHash,version:1}])eq((await call(owner,path,'POST',input(w,{revisesContract}))).status,400,'Revision source is a strict ID/hash pair');
+  eq((await call(owner,path,'POST',input(w,{revisesContract:{...revisesContract,id:randomUUID()}}))).status,409,'Missing or foreign source cannot become a revision parent');
+  eq((await call(owner,path,'POST',input(w,{revisesContract:{...revisesContract,expectedSnapshotHash:'sha256:'+'0'.repeat(64)}}))).status,409,'Source fingerprint is required');
+  eq((await call(owner,path,'POST',input(w,{revisesContract,values:{pay:'  '+firstSnapshot.values.pay+'  '},reason:'سبب جديد وحده لا يغير المسودة'}))).status,409,'Unchanged normalized drafts cannot create empty revisions');
+  const otherEmployee=await db.employment.findFirstOrThrow({where:{accountId:hr.id,organizationId:platform.id}}),otherPath=`/hr/employments/${otherEmployee.id}/contracts`,otherWorkspace=(await call(owner,otherPath)).body;
+  eq((await call(owner,otherPath,'POST',input(otherWorkspace,{revisesContract}))).status,409,'An internal employee cannot reference another employee draft');
+  const sourceRow=await db.employmentContract.findUniqueOrThrow({where:{id:made.body.id}});
+  for(const data of [{status:'SIGNED'},{librarySnapshot:Prisma.DbNull}]){
+   await db.employmentContract.update({where:{id:sourceRow.id},data});
+   eq((await call(owner,path,'POST',input(w,{revisesContract,values:{pay:'تعديل مرفوض على مصدر غير مؤهل'}}))).status,409,'Only a bound DRAFT may be revised');
+   await db.employmentContract.update({where:{id:sourceRow.id},data:{status:sourceRow.status,librarySnapshot:sourceRow.librarySnapshot}});
+  }
   await db.person.update({where:{id:legal.personId},data:{firstName:'Later identity'}});w=(await call(owner,path)).body;
   eq(w.items[1].librarySnapshot,firstSnapshot,'Historical draft snapshots survive profile changes');
+  const revisionCommand=input(w,{revisesContract,values:{pay:'أجر معدل في إصدار مسودة جديد'}}),revisionEffects=await sideEffects();
+  const revisionRuntime=new DatabaseService(),revisionBroken={serializable:work=>revisionRuntime.serializable(tx=>work(new Proxy(tx,{get(target,k){if(k==='auditEvent')return {create:async()=>{throw new Error('Injected draft revision audit failure')}};return Reflect.get(target,k)}})))};
+  await assert.rejects(()=>new EmploymentContractLibraryService(revisionBroken).create(owner.id,target.id,revisionCommand),/Injected draft revision audit failure/);checks++;await revisionRuntime.$disconnect();eq(await sideEffects(),revisionEffects,'Revision and its provenance roll back on audit failure');
+  const revisionCommands=[revisionCommand,{...revisionCommand,requestId:randomUUID()}],revisionRace=await Promise.all(revisionCommands.map(command=>call(owner,path,'POST',command)));eq(revisionRace.map(r=>r.status).sort(),[201,409],'Concurrent revisions cannot allocate the same next version');
+  const revised=revisionRace.find(r=>r.status===201),winningCommand=revisionCommands[revisionRace.indexOf(revised)];eq(revised.body.version,3);eq(revised.body.librarySnapshot.revisionOf,{id:made.body.id,version:1,snapshotHash:firstSnapshot.snapshotHash});eq(revised.body.librarySnapshot.values.employeeName,'Later identity LibraryFixture');eq(revised.body.librarySnapshot.values.pay,'أجر معدل في إصدار مسودة جديد');eq(revised.body.status,'DRAFT');eq(revised.body.documentId,null);
+  eq((await call(owner,path,'POST',winningCommand)).body.id,revised.body.id,'A lost revision response never duplicates the new version');eq((await call(owner,path,'POST',{...winningCommand,revisesContract:{...revisesContract,id:randomUUID()}})).status,409,'Retry cannot change the source');
+  w=(await call(owner,path)).body;eq(w.items.map(r=>r.version),[3,2,1]);eq(w.items[2].librarySnapshot,firstSnapshot,'Revising an older draft preserves its exact snapshot');
+  eq((await db.auditEvent.findFirstOrThrow({where:{action:'HR_CONTRACT_DRAFT_REVISED',resourceId:revised.body.id}})).metadata.revisionOf,revised.body.librarySnapshot.revisionOf);eq([await db.employment.count(),await db.roleAssignment.count(),await db.organizationMember.count()],[revisionEffects[0],revisionEffects[2],revisionEffects[3]],'Revision changes no employment, membership or IAM state');
   const saved=await db.employmentContract.findUniqueOrThrow({where:{id:made.body.id}});
   await db.employmentContract.update({where:{id:saved.id},data:{librarySnapshot:{...saved.librarySnapshot,values:{employeeName:'tampered'}}}});
   eq((await call(owner,path)).status,409,'Tampered snapshot is rejected');await db.employmentContract.update({where:{id:saved.id},data:{librarySnapshot:saved.librarySnapshot}});
@@ -198,8 +219,9 @@ try{
   eq((await call(hr,path)).status,403,'Current HR authority is required');
   await db.roleAssignment.create({data:{accountId:hr.id,role:'HR_REVIEWER',status:'ACTIVE'}});
   const reader=(await call(hr,path)).body;eq(reader.canCreate,false);eq((await call(hr,path,'POST',input(reader))).status,403,'HR reviewer may read but cannot create');
-  eq((await decision(owner,employment,'RETIRE')).status,201);w=(await call(owner,path)).body;eq(w.templates,[]);eq(w.items.length,2,'Retiring a template retains existing drafts');
+  eq((await decision(owner,employment,'RETIRE')).status,201);w=(await call(owner,path)).body;eq(w.templates,[]);eq(w.items.length,3,'Retiring a template retains existing drafts');
   eq((await call(owner,path,'POST',input(w))).status,409,'Retired template cannot create another draft');
+  eq((await call(owner,path,'POST',input(w,{revisesContract,values:{pay:'تعديل مع قالب مسحوب'}}))).status,409,'Revision cannot revive a retired template');
   const centerUnit=await db.orgUnit.create({data:{organizationId:org.id,code:'HR-DRAFT-FOREIGN',nameAr:'نطاق آخر',type:'CENTER'}}),foreignEmployment=await db.employment.create({data:{organizationId:org.id,accountId:center.id,orgUnitId:centerUnit.id,workerClass:'EMPLOYEE',status:'ACTIVE'}});
   eq((await call(owner,`/hr/employments/${foreignEmployment.id}/contracts`)).status,404,'Internal drafts cannot expose center employment');
   // Explicit owner department responsibility is separate from independent Legal review.
@@ -227,7 +249,9 @@ try{
   eq((await call(owner,'/contracts/library?state=APPROVED_FOR_DRAFTS')).body.total,1);eq((await call(center,'/contracts/library/'+ownerTemplate.id)).status,403);eq(await sideEffects(),ownerEffects,'Administrative template approval creates no employee contract or access grant');
   w=(await call(owner,path)).body;eq(w.templates.length,1);eq(w.templates[0].approval.basis,'OWNER_COMBINED_INTERNAL_DRAFTS');eq(w.templates[0].approval.independentLegalReviewComplete,false);
   const ownerInput=(workspace)=>input(workspace,{templateId:ownerTemplate.id,expectedTemplateVersion:ownerTemplate.version,expectedTemplateContentHash:ownerTemplate.contentHash});
+  eq((await call(owner,path,'POST',{...ownerInput(w),revisesContract})).status,400,'A revision cannot switch contract types');
   const ownerDraft=(await call(owner,path,'POST',ownerInput(w))).body;eq(ownerDraft.status,'DRAFT');eq(ownerDraft.documentId,null);eq(ownerDraft.librarySnapshot.template.approval.basis,'OWNER_COMBINED_INTERNAL_DRAFTS');eq(ownerDraft.librarySnapshot.template.approval.independentLegalReviewComplete,false);
+  w=(await call(owner,path)).body;const ownerRevision=await call(owner,path,'POST',{...ownerInput(w),revisesContract:{id:ownerDraft.id,expectedSnapshotHash:ownerDraft.librarySnapshot.snapshotHash},values:{pay:'أجر معدل لمسودة إدارية فقط'}});eq(ownerRevision.status,201);eq(ownerRevision.body.librarySnapshot.template.approval.independentLegalReviewComplete,false);eq(ownerRevision.body.librarySnapshot.revisionOf.id,ownerDraft.id);
   const ownerStored=await db.documentTemplate.findUniqueOrThrow({where:{id:ownerTemplate.id}});
   for(const fields of [{...ownerStored.fields,ownerDepartmentApproval:undefined},{...ownerStored.fields,ownerDepartmentApproval:{...ownerStored.fields.ownerDepartmentApproval,contentHash:'sha256:forged'}},{...ownerStored.fields,ownerDepartmentApproval:{...ownerStored.fields.ownerDepartmentApproval,authority:{...ownerStored.fields.ownerDepartmentApproval.authority,scope:'OFFICIAL_CONTRACT_EXECUTION'}}}]){
    await db.documentTemplate.update({where:{id:ownerTemplate.id},data:{fields:JSON.parse(JSON.stringify(fields))}});eq((await call(owner,path)).status,409,'Invalid administrative approval evidence fails closed');
@@ -239,9 +263,11 @@ try{
   await db.account.update({where:{id:owner.id},data:{status:'SUSPENDED'}});eq((await call(hr,path)).body.templates,[],'The responsible owner must remain active');await db.account.update({where:{id:owner.id},data:{status:'ACTIVE'}});
   eq((await call(owner,responsibilityPath,'POST',appoint(assigned.revision,{action:'REVOKE'}))).status,201);assigned=(await call(owner,'/contracts/library/workspace')).body.ownerDepartmentResponsibility;eq(assigned.active,false);eq((await call(owner,'/contracts/library/'+ownerTemplate.id)).body.draftUseAvailable,false);
   w=(await call(owner,path)).body;eq(w.templates,[]);eq(w.items.find(r=>r.id===ownerDraft.id).librarySnapshot,ownerDraft.librarySnapshot,'Revocation preserves prior draft evidence');eq((await call(owner,path,'POST',ownerInput(w))).status,409,'A revoked responsibility cannot prepare another draft');
+  eq((await call(owner,path,'POST',{...ownerInput(w),revisesContract:{id:ownerDraft.id,expectedSnapshotHash:ownerDraft.librarySnapshot.snapshotHash},values:{pay:'تعديل بعد سحب التكليف'}})).status,409,'A saved administrative draft cannot bypass revoked responsibility');
   assigned=(await call(owner,responsibilityPath,'POST',appoint(assigned.revision))).body;eq(assigned.active,true);eq((await call(owner,path)).body.templates,[],'Reassignment cannot revive an approval from an earlier assignment');
   eq((await decision(owner,ownerTemplate,'RETIRE')).status,201);ownerTemplate=(await call(owner,`/contracts/library/${ownerTemplate.id}/revise`,'POST',change(ownerTemplate))).body;eq(ownerTemplate.ownerDepartmentApproval,null);eq(ownerTemplate.internalApproval,null);
   for(const action of ['SUBMIT','INTERNAL_APPROVAL','APPROVE_FOR_DRAFTS'])ownerTemplate=(await decision(owner,ownerTemplate,action)).body;
+  w=(await call(owner,path)).body;const upgraded=await call(owner,path,'POST',{...ownerInput(w),revisesContract:{id:ownerDraft.id,expectedSnapshotHash:ownerDraft.librarySnapshot.snapshotHash}});eq(upgraded.status,201);eq(upgraded.body.librarySnapshot.template.id,ownerTemplate.id);eq(upgraded.body.librarySnapshot.revisionOf.id,ownerDraft.id);eq((await call(owner,path)).body.items.find(r=>r.id===ownerDraft.id).librarySnapshot,ownerDraft.librarySnapshot,'A current replacement template can revise an older draft without reviving its withdrawn approval');
   eq(ownerTemplate.ownerDepartmentApproval.authority.revision,assigned.revision);eq((await call(owner,path)).body.templates.length,1);
   let independentlyPublished=(await call(owner,`/contracts/library/${employment.id}/revise`,'POST',change(employment))).body;
   for(const [action,actor] of [['SUBMIT',owner],['LEGAL_REVIEW',legal],['HR_REVIEW',hr],['PUBLISH',owner]]){const result=await decision(actor,independentlyPublished,action);eq(result.status,201);independentlyPublished=result.body;}

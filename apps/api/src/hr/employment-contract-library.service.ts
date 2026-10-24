@@ -52,7 +52,10 @@ export class EmploymentContractLibraryService {
  }
  private view(row:EmploymentContract){
   const snapshot=row.librarySnapshot as any;
-  if(snapshot){const {snapshotHash,...body}=snapshot;if(snapshot.kind!=='HR_CONTRACT_LIBRARY_SNAPSHOT_V1'||snapshot.contractId!==row.id||snapshot.contractVersion!==row.version||snapshot.employment?.id!==row.employmentId||snapshot.template?.code!==row.contractType||snapshot.effectiveFrom!==row.effectiveFrom.toISOString()||snapshot.effectiveTo!==(row.effectiveTo?.toISOString()??null)||row.status!=='DRAFT'||row.documentId!==null||snapshotHash!==digest(body))throw new ConflictException('بصمة مسودة عقد الموظف غير متطابقة.');}
+  if(snapshot){const {snapshotHash,...body}=snapshot;if(snapshot.kind!=='HR_CONTRACT_LIBRARY_SNAPSHOT_V1'||snapshot.contractId!==row.id||snapshot.contractVersion!==row.version||snapshot.employment?.id!==row.employmentId||snapshot.template?.code!==row.contractType||snapshot.effectiveFrom!==row.effectiveFrom.toISOString()||snapshot.effectiveTo!==(row.effectiveTo?.toISOString()??null)||row.status!=='DRAFT'||row.documentId!==null||snapshotHash!==digest(body))throw new ConflictException('بصمة مسودة عقد الموظف غير متطابقة.');
+   const r=snapshot.revisionOf;
+   if(r!==undefined&&(!r||typeof r!=='object'||Array.isArray(r)||Object.keys(r).some(k=>!['id','version','snapshotHash'].includes(k))||!uuid(r.id)||r.id===row.id||!Number.isInteger(r.version)||r.version<1||r.version>=row.version||typeof r.snapshotHash!=='string'||!/^sha256:[a-f0-9]{64}$/.test(r.snapshotHash)))throw new ConflictException('مرجع إصدار مسودة الموظف غير صالح.');
+  }
   return {id:row.id,version:row.version,contractType:row.contractType,status:row.status,effectiveFrom:row.effectiveFrom,effectiveTo:row.effectiveTo,documentId:row.documentId,createdAt:row.createdAt,librarySnapshot:snapshot??null,execution:'DRAFT_ONLY',permissionsApplied:false};
  }
  async workspace(actorId:string,employmentId:string){return this.db.serializable(async tx=>{
@@ -60,8 +63,14 @@ export class EmploymentContractLibraryService {
   return {employmentId,employmentUpdatedAt:a.employment.updatedAt.toISOString(),expectedContractVersion:rows[0]?.version??0,employeeName:this.source(a.employment).employeeName,sourceValues:this.source(a.employment),sourceHash:digest(this.source(a.employment)),canCreate:a.canCreate,templates:await this.templates(tx,a.platform.id),items:rows.map(r=>this.view(r)),execution:'DRAFT_ONLY'};
  });}
  async create(actorId:string,employmentId:string,body:unknown){
-  const x=contractKeys(body,['requestId','expectedEmploymentUpdatedAt','expectedSourceHash','expectedContractVersion','templateId','expectedTemplateVersion','expectedTemplateContentHash','effectiveFrom','effectiveTo','values','reason','reviewed']);
+  const x=contractKeys(body,['requestId','expectedEmploymentUpdatedAt','expectedSourceHash','expectedContractVersion','templateId','expectedTemplateVersion','expectedTemplateContentHash','effectiveFrom','effectiveTo','values','reason','reviewed','revisesContract']);
   if(!uuid(x.requestId)||!uuid(x.templateId)||x.reviewed!==true)throw new BadRequestException('راجع بيانات المسودة وحدد القالب المعتمد.');
+  let revises:{id:string;expectedSnapshotHash:string}|undefined;
+  if(x.revisesContract!==undefined){
+   const r=contractKeys(x.revisesContract,['id','expectedSnapshotHash']);
+   if(!uuid(r.id)||typeof r.expectedSnapshotHash!=='string'||!/^sha256:[a-f0-9]{64}$/.test(r.expectedSnapshotHash))throw new BadRequestException('راجع مرجع المسودة السابقة وبصمتها.');
+   revises={id:r.id,expectedSnapshotHash:r.expectedSnapshotHash};
+  }
   const reason=contractText(x.reason,1000);if(reason.length<5)throw new BadRequestException('اكتب سبب إعداد المسودة.');
   const effectiveFrom=date(x.effectiveFrom)!,effectiveTo=date(x.effectiveTo,true);
   if(effectiveTo&&effectiveTo<effectiveFrom)throw new BadRequestException('نهاية العقد تسبق بدايته.');
@@ -91,10 +100,20 @@ export class EmploymentContractLibraryService {
    const manual=template.content.fields.filter(f=>!automatic.has(f.source)),input=contractKeys(x.values??{},manual.map(f=>f.key));
    const values:Record<string,string>={},source=this.source(a.employment) as Record<string,string>;
    for(const f of template.content.fields)values[f.key]=automatic.has(f.source)?source[f.key]??'':contractText(input[f.key],2000,true);
+   let revisionOf:{id:string;version:number;snapshotHash:string}|undefined;
+   if(revises){
+    const prior=rows.find(r=>r.id===revises.id);
+    if(!prior||prior.status!=='DRAFT'||!prior.librarySnapshot)throw new ConflictException('المسودة السابقة غير متاحة ضمن عقود هذا الموظف.');
+    const old=this.view(prior).librarySnapshot;
+    if(old.snapshotHash!==revises.expectedSnapshotHash)throw new ConflictException('تغير مرجع المسودة السابقة؛ حدّث عقود الموظف.');
+    if(old.template.code!==template.code)throw new BadRequestException('إصدار المسودة الجديد يتطلب النوع نفسه من العقد.');
+    if(old.template.id===template.id&&old.template.contentHash===template.contentHash&&canonical(old.values)===canonical(values)&&prior.effectiveFrom.getTime()===effectiveFrom.getTime()&&(prior.effectiveTo?.getTime()??null)===(effectiveTo?.getTime()??null))throw new ConflictException('لم تتغير بيانات المسودة؛ راجع التعديلات قبل إنشاء إصدار جديد.');
+    revisionOf={id:prior.id,version:prior.version,snapshotHash:old.snapshotHash};
+   }
    const contractId=randomUUID(),contractVersion=(rows[0]?.version??0)+1;
-   const snapshot={contractId,contractVersion,effectiveFrom:effectiveFrom.toISOString(),effectiveTo:effectiveTo?.toISOString()??null,kind:'HR_CONTRACT_LIBRARY_SNAPSHOT_V1',requestId:x.requestId,requestedBy:actorId,commandHash,capturedAt:new Date().toISOString(),template:{id:template.id,code:template.code,version:template.version,contentHash:template.contentHash,titleAr:template.titleAr,titleEn:template.titleEn,content:template.content,approval:template.approval},employment:{id:employmentId,accountId:a.employment.accountId,organizationId:a.platform.id,orgUnitId:a.employment.orgUnitId,positionId:a.employment.positionId,updatedAt:a.employment.updatedAt.toISOString()},values,missingFields:template.content.fields.filter(f=>f.required&&!values[f.key]).map(f=>({key:f.key,label:f.label})),reason};
+   const snapshot={contractId,contractVersion,effectiveFrom:effectiveFrom.toISOString(),effectiveTo:effectiveTo?.toISOString()??null,kind:'HR_CONTRACT_LIBRARY_SNAPSHOT_V1',requestId:x.requestId,requestedBy:actorId,commandHash,capturedAt:new Date().toISOString(),...(revisionOf?{revisionOf}:{}),template:{id:template.id,code:template.code,version:template.version,contentHash:template.contentHash,titleAr:template.titleAr,titleEn:template.titleEn,content:template.content,approval:template.approval},employment:{id:employmentId,accountId:a.employment.accountId,organizationId:a.platform.id,orgUnitId:a.employment.orgUnitId,positionId:a.employment.positionId,updatedAt:a.employment.updatedAt.toISOString()},values,missingFields:template.content.fields.filter(f=>f.required&&!values[f.key]).map(f=>({key:f.key,label:f.label})),reason};
    const row=await tx.employmentContract.create({data:{id:contractId,employmentId,version:contractVersion,contractType:template.code,effectiveFrom,effectiveTo,status:'DRAFT',librarySnapshot:{...snapshot,snapshotHash:digest(snapshot)} as unknown as Prisma.InputJsonValue}});
-   await tx.auditEvent.create({data:{actorId:a.actor.personId,action:'HR_CONTRACT_DRAFT_CREATED',resource:'EmploymentContract',resourceId:row.id,metadata:{organizationId:a.platform.id,employmentId,version:row.version,templateId:template.id,templateVersion:template.version,templateContentHash:template.contentHash,templateApproval:template.approval,snapshotHash:digest(snapshot),reason,permissionsApplied:false}}});
+   await tx.auditEvent.create({data:{actorId:a.actor.personId,action:revisionOf?'HR_CONTRACT_DRAFT_REVISED':'HR_CONTRACT_DRAFT_CREATED',resource:'EmploymentContract',resourceId:row.id,metadata:{organizationId:a.platform.id,employmentId,version:row.version,...(revisionOf?{revisionOf}:{}),templateId:template.id,templateVersion:template.version,templateContentHash:template.contentHash,templateApproval:template.approval,snapshotHash:digest(snapshot),reason,permissionsApplied:false}}});
    return this.view(row);
   });
  }
