@@ -15,8 +15,19 @@
  function ensure(){
   if(section?.isConnected)return section;const host=document.createElement('section');host.id='hl-center-reports';host.className='hl-center-reports';
   const today=new Date(Date.now()+3*3600000).toISOString().slice(0,10);
-  host.innerHTML=`<header><small>DIVE CENTER · مركز الغوص</small><h2>تقارير المركز</h2><p>الرحلات والحجوزات وسجلات الدفع المرتبطة بالمركز، حسب موعد بداية الرحلة بتوقيت الرياض.</p></header><form data-center-report-filter><label>من تاريخ<input type="date" name="from" required value="${today.slice(0,8)+'01'}"></label><label>إلى تاريخ<input type="date" name="to" required value="${today}"></label><button type="submit">عرض التقرير</button></form><div data-center-report-result aria-live="polite"></div>`;
-  host.addEventListener('submit',event=>{if(event.target.matches('[data-center-report-filter]')){event.preventDefault();void load()}});host.addEventListener('click',event=>{if(event.target.closest('[data-center-report-retry]'))void load()});section=host;document.getElementById('main')?.append(host);return host;
+  host.innerHTML=`<header><small>DIVE CENTER · مركز الغوص</small><h2>تقارير الحجوزات والمدفوعات</h2><p>الرحلات والحجوزات وسجلات الدفع المرتبطة بالمركز، حسب موعد بداية الرحلة بتوقيت الرياض.</p></header><nav class="hl-center-report-links" aria-label="مساحات المالية للمركز"><button type="button" data-center-report-route="finance">ورديات المحاسب والإقفالات</button><button type="button" data-center-report-route="receivables">الذمم والتحصيل</button></nav><p>التقرير اليومي وإقفالات الورديات والفترات داخل صفحة الورديات. تظهر العمليات المتاحة بحسب صلاحيات حسابك.</p><p data-center-report-links-feedback role="status"></p><form data-center-report-filter><label>من تاريخ<input type="date" name="from" required value="${today.slice(0,8)+'01'}"></label><label>إلى تاريخ<input type="date" name="to" required value="${today}"></label><button type="submit">عرض التقرير</button></form><div data-center-report-result aria-live="polite"></div>`;
+  host.addEventListener('submit',event=>{if(event.target.matches('[data-center-report-filter]')){event.preventDefault();void load()}});host.addEventListener('click',event=>{if(event.target.closest('[data-center-report-retry]'))void load();const button=event.target.closest('[data-center-report-route]');if(button)void openFinancialWorkspace(button)});section=host;document.getElementById('main')?.append(host);return host;
+ }
+ async function openFinancialWorkspace(button){
+  if(!section||button.disabled||!eligible())return;
+  const host=section,version=viewVersion,session=auth().getSessionVersion?.(),feedback=host.querySelector('[data-center-report-links-feedback]');button.disabled=true;feedback.textContent='';
+  try{
+   if(!(await authorize(host,version,session)))return;
+   const service=button.dataset.centerReportRoute==='finance'?window.HydrolandCenterFinance:window.HydrolandCenterReceivables;
+   if(typeof service?.open!=='function')throw new Error('الخدمة جارٍ تحميلها. أعد المحاولة.');
+   await service.open();
+  }catch(error){if(current(host,version,session))feedback.textContent=error.message||'تعذر فتح مساحة المالية.'}
+  finally{if(current(host,version,session))button.disabled=false}
  }
  async function load(){
   if(!eligible()){clear();return}const host=ensure(),version=++viewVersion,session=auth().getSessionVersion?.(),form=host.querySelector('form'),result=host.querySelector('[data-center-report-result]'),button=form.querySelector('button');

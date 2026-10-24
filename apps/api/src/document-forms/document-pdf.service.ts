@@ -3,6 +3,7 @@ import { PDFDocument, StandardFonts, degrees, rgb, PDFFont, PDFPage } from 'pdf-
 import * as fontkitNamespace from '@pdf-lib/fontkit';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { renderCooperationContractPdf } from './cooperation-contract-pdf';
 import { DocumentPrintService } from './document-print.service';
 import { DocumentAssetService } from './document-asset.service';
 import { assertArabicPdfSourceText, containsArabic, pdfTextX, pdfVisualText, preferredLocalizedText } from './document-pdf-arabic.contract';
@@ -30,6 +31,7 @@ export class DocumentPdfService {
 
   async render(accountId:string,id:string){
     const c=await this.print.contract(accountId,id);
+    if(c.cooperation)return renderCooperationContractPdf(c,this.assets);
     const pdf=await PDFDocument.create();
     const latin=await pdf.embedFont(StandardFonts.Helvetica);
     const latinBold=await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -46,7 +48,7 @@ export class DocumentPdfService {
     const title=preferredLocalizedText(c.template.titleAr,c.template.titleEn,'مستند تشغيلي');
     const marineIncident=c.template.code==='SAF-INCIDENT'||c.template.code==='SAF-INCIDENT-REPORT';
     const documentLabel=marineIncident?'بلاغ حادث بحري':title;
-    let page:PDFPage;
+    let page!:PDFPage;
     let y=0;
     let pageNumber=0;
     const selectedFont=(raw:string,bold=false):PDFFont=>containsArabic(raw)?(bold?arabicBold:arabic):(bold?latinBold:latin);
@@ -61,8 +63,15 @@ export class DocumentPdfService {
     };
     const wrap=(raw:unknown,size:number,bold:boolean,maxWidth:number)=>{
       const source=assertArabicPdfSourceText(raw).trim()||'—';
-      const words=source.split(/\s+/u);
       const font=selectedFont(source,bold);
+      const words:string[]=[];
+      for(const word of source.split(/\s+/u)){
+        let part='';
+        for(const char of word){
+          if(part&&font.widthOfTextAtSize(visual(part+char),size)>maxWidth){words.push(part);part=char;}else part+=char;
+        }
+        if(part)words.push(part);
+      }
       const lines:string[]=[];
       let line='';
       for(const word of words){
@@ -80,9 +89,11 @@ export class DocumentPdfService {
         const scaled=logo.scale(Math.min(1,62/logo.width,44/logo.height));
         page.drawImage(logo,{x:PAPER.margin,y:PAPER.height-68,width:scaled.width,height:scaled.height});
       }
-      draw(brand,PAPER.margin+(logo?76:0),PAPER.height-38,13,true,COLOR.white);
-      draw('وثيقة تشغيلية موثّقة',PAPER.margin+(logo?76:0),PAPER.height-58,8,false,rgb(.74,.88,.90));
-      draw(documentLabel,PAPER.margin,PAPER.height-84,16,true,COLOR.white,true);
+      {
+        draw(brand,PAPER.margin+(logo?76:0),PAPER.height-38,13,true,COLOR.white);
+        draw('وثيقة تشغيلية موثّقة',PAPER.margin+(logo?76:0),PAPER.height-58,8,false,rgb(.74,.88,.90));
+        draw(documentLabel,PAPER.margin,PAPER.height-84,16,true,COLOR.white,true);
+      }
       page.drawRectangle({x:PAPER.margin,y:PAPER.height-PAPER.header-28,width:PAPER.width-PAPER.margin*2,height:21,color:COLOR.card,borderColor:COLOR.line,borderWidth:.6});
       draw(`المرجع: ${c.referenceNumber}`,PAPER.margin+8,PAPER.height-PAPER.header-20,8,true,COLOR.ink);
       draw(`الحالة: ${statusLabel(c.status)}`,PAPER.margin+8,PAPER.height-PAPER.header-20,8,true,COLOR.ink,true);
@@ -96,7 +107,7 @@ export class DocumentPdfService {
     };
     const decorate=()=>{
       header();
-      if(!['SIGNED','ARCHIVED'].includes(c.status)) page.drawText(statusLabel(c.status),{x:175,y:360,size:38,font:arabicBold,color:rgb(.86,.89,.90),rotate:degrees(34),opacity:.50});
+      if(!['SIGNED','ARCHIVED'].includes(c.status)) page.drawText(pdfVisualText(statusLabel(c.status)),{x:175,y:360,size:38,font:arabicBold,color:rgb(.86,.89,.90),rotate:degrees(34),opacity:.50});
       footer();
       y=PAPER.height-PAPER.header-44;
     };
@@ -125,10 +136,12 @@ export class DocumentPdfService {
     section('التحكم والتدقيق');
     field('إصدار المستند',`الإصدار ${c.documentVersion} · إصدار الهوية ${c.branding.brandVersion}`);
     field('معرّف التحقق',c.contentHash);
-    field('أنشئ بواسطة',c.approvals.createdByAccountId);
-    if(c.approvals.approvedByAccountId) field('اعتمد بواسطة',c.approvals.approvedByAccountId);
-    if(c.approvals.signedByAccountId) field('وُقّع بواسطة',c.approvals.signedByAccountId);
-    if(c.approvals.archivedByAccountId) field('أرشف بواسطة',c.approvals.archivedByAccountId);
+    {
+      field('أنشئ بواسطة',c.approvals.createdByAccountId);
+      if(c.approvals.approvedByAccountId) field('اعتمد بواسطة',c.approvals.approvedByAccountId);
+      if(c.approvals.signedByAccountId) field('وُقّع بواسطة',c.approvals.signedByAccountId);
+      if(c.approvals.archivedByAccountId) field('أرشف بواسطة',c.approvals.archivedByAccountId);
+    }
     return {bytes:Buffer.from(await pdf.save()),filename:`${c.referenceNumber}.pdf`,status:c.status};
   }
 }

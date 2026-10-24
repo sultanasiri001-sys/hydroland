@@ -1,3 +1,5 @@
+import { FinanceReceivablesWorkspaceService } from './finance-receivables-workspace.service';
+import { FinanceWorkspaceService } from './finance-workspace.service';
 import { Module } from '@nestjs/common';
 import { AdminModule } from '../admin/admin.module';
 import { AuthModule } from '../auth/auth.module';
@@ -11,11 +13,14 @@ import { FinancePersistenceService } from './finance-persistence.service';
 import { FinanceAccessService } from './finance-access.service';
 import { FinanceShiftsService } from './finance-shifts.service';
 import { FinanceReceivablesService } from './finance-receivables.service';
+import { FinanceShiftCloseService } from './finance-shift-close.service';
+import { FinancePeriodCloseService } from './finance-period-close.service';
+import { FinanceSettlementService } from './finance-settlement.service';
 
 @Module({
   imports: [AuthModule, AdminModule, PaymentsModule],
   controllers: [FinanceController],
-  providers: [FinanceFoundationService, FinanceWorkflowService, FinanceOperationsService, FinanceGovernanceService, FinancePersistenceService, FinanceAccessService, FinanceShiftsService, FinanceReceivablesService],
-  exports: [FinanceFoundationService, FinanceWorkflowService, FinanceOperationsService, FinanceGovernanceService, FinancePersistenceService, FinanceAccessService, FinanceShiftsService, FinanceReceivablesService],
+  providers: [FinanceReceivablesWorkspaceService, FinanceWorkspaceService, FinanceFoundationService, FinanceWorkflowService, FinanceOperationsService, FinanceGovernanceService, FinancePersistenceService, FinanceAccessService, FinanceShiftsService, FinanceReceivablesService, FinanceShiftCloseService, FinancePeriodCloseService, FinanceSettlementService],
+  exports: [FinanceFoundationService, FinanceWorkflowService, FinanceOperationsService, FinanceGovernanceService, FinancePersistenceService, FinanceAccessService, FinanceShiftsService, FinanceReceivablesService, FinanceShiftCloseService, FinancePeriodCloseService, FinanceSettlementService],
 })
 export class FinanceModule {}

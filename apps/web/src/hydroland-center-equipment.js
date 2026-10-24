@@ -146,5 +146,13 @@
  }
  for(const name of ['hydroland:session-cleared','hydroland:portal-cleared'])document.addEventListener(name,clear);
  for(const name of ['hydroland:auth-changed','hydroland:role-changed','hydroland:profile-data-ready'])document.addEventListener(name,()=>{if(!eligible())clear()});
- window.HydrolandCenterEquipment=Object.freeze({open});
+ const search=code=>{
+   if(typeof code!=='string'||!code.trim()||code.trim().length>120)return;
+   if(!eligible()){clear();return}
+   const host=ensure(),form=host.querySelector('[data-equipment-lookup]');
+   form.querySelector('[name=code]').value=code.trim();host.hidden=false;window.HydrolandWorkspaceUI?.show?.(host);
+   host.querySelector('[data-center-equipment]').textContent='جارٍ البحث عن المعدة…';
+   return lookup({preventDefault(){},currentTarget:form});
+ };
+ window.HydrolandCenterEquipment=Object.freeze({open,search});
 })();

@@ -23,6 +23,8 @@ jobs:
         run: npm ci --workspace=@hydroland/api --workspace=@hydroland/web --include-workspace-root=true
       - name: Verify fail-closed audit contract
         run: node scripts/release-dependency-audit.test.mjs
+      - name: Request parser and upload process survival regression
+        run: node --test apps/api/scripts/request-body-security.test.mjs
       - name: Audit web/API release including build dependencies
         run: node scripts/release-dependency-audit.mjs web-api audit.json
       - name: Upload audit report

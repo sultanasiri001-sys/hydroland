@@ -113,3 +113,7 @@ Before adding persistence for the full organization tree, multi-center/multi-dep
 ## 12. Freeze rule
 
 Architecture Freeze v1 freezes the logical target and ownership boundaries, **not implementation completeness**. It does not claim TypeScript compilation, Prisma validation, CI, Render deployment or runtime validation. Those are separate implementation gates.
+
+## Scoped owner administrative responsibility — 24 October 2026
+
+The explicit owner request to manage HR and Legal from one account is implemented in `OWNER_HR_LEGAL_RESPONSIBILITY_2026-10-24.md`. It introduces a separately consented, owner-only administrative draft approval state, not independent Legal review or ordinary contract publication. Employment/IAM, self-appointment denial and official signing requirements retain their existing boundaries.

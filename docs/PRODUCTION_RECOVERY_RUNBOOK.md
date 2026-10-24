@@ -2,6 +2,12 @@
 
 Status: production recovery acceptance is OPEN. A synthetic CI rehearsal is not a production backup restore or evidence that provider PITR is active.
 
+24 October update: real production-archive logical restoration is now verified
+on two native PostgreSQL 18.6 targets in the existing recovery instance. See
+`NATIVE_PRODUCTION_ARCHIVE_RESTORE_2026-10-24.md` and its sanitized evidence.
+Provider PITR, external object recovery, owner/ACL transfer, agreed RPO/RTO and
+production cutover acceptance remain separate and OPEN.
+
 ## Objectives and independent recovery modes
 
 PostgreSQL is the system of record. Keep these operations separate:
@@ -25,6 +31,11 @@ PostgreSQL is the system of record. Keep these operations separate:
 
 ## Synthetic automated rehearsal
 
+The production repair entry point refuses absent or empty Prisma history with
+`MIGRATION_HISTORY_REQUIRED` before querying repair candidates. It does not
+bootstrap a database, create history or treat a missing ledger as healthy.
+Restore a verified archive or use a separately reviewed fresh-install path.
+
 The old CI drill failed before taking a backup: it invoked production-repair helpers against an empty database lacking `_prisma_migrations`. The repository's historical migration chain also contains documented TEXT/UUID drift and cannot be treated as a validated fresh-install path merely by skipping that initial error. See issue #369 and API validation.
 
 `.github/workflows/phase11-recovery-drill.yml` now invokes `apps/api/scripts/recovery-rehearsal.mjs` on an explicitly labelled, loopback-only disposable PostgreSQL 18 container. The script refuses production mode, unconfirmed operation, remote hosts, any database outside its fixed test names, an unlabelled container or non-loopback binding. It requires an empty source database before schema creation.
@@ -36,22 +47,6 @@ It creates synthetic account, role, revoked-session, profile, credential, docume
 A negative control deliberately alters only the FIRST disposable restored target and must detect the changed data. The second restore must still match the source, which must remain unchanged throughout. This is a stronger rehearsal than checking a single sentinel or merely bootstrapping an empty schema.
 
 The artifact retains sanitized JSON results and the fixture-migration source/checksum manifest for 30 days. It does not upload database backups, production records, provider secrets or authentication credentials. Successful output explicitly retains `productionRecoveryVerified=false` and `historicalProductionReplayVerified=false`.
-
-## Unmodified historical replay
-
-`historical-migration-replay.yml` independently executes the repository's exact
-migration directory on a new, empty, loopback PostgreSQL 18 CI database.
-`historical-migration-replay.mjs` refuses other database names, hosts and modes.
-It records every SQL file's SHA-256, actual completed migration count, the first
-failed migration and database error, and verifies the files remain unchanged.
-Success requires every recorded checksum to match and a second deployment to
-leave migration history unchanged. Failure fails the job and retains evidence;
-no resolve, bootstrap or SQL transformation is used to hide a historical error.
-
-The current-schema two-target restore drill remains a separate verification.
-Historical replay success alone does not certify production backup restoration,
-provider PITR, data recovery or application schema compatibility. Issue #369
-stays open until its production-specific acceptance evidence is complete.
 
 ## Release blockers not waived by CI
 

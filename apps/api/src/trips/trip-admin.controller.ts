@@ -40,8 +40,8 @@ export class TripAdminController {
     @Param('id') id:string,
     @Param('bookingId') bookingId:string,
     @Param('participantId') participantId:string,
-    @Body() body:{status:'ELIGIBLE'|'REJECTED'},
-  ){return this.trips.setParticipantEligibility(req.auth.accountId,id,bookingId,participantId,body.status);}
+    @Body() body:{status:'ELIGIBLE'|'REJECTED';expectedUpdatedAt:string;reason:string;reviewed:boolean},
+  ){return this.trips.setParticipantEligibility(req.auth.accountId,id,bookingId,participantId,body);}
 
   @Patch(':id/bookings/:bookingId/confirm')
   @UseGuards(PaymentConfirmationGuard)

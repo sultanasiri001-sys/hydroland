@@ -1,3 +1,4 @@
+import { trainingOperationalPolicy } from '../governance/training-operational-policy';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, StoreProductKind, StoreProductStatus } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
@@ -135,8 +136,9 @@ export class StoreOfferingsService {
   }
 
   async publicCourses(){
+    const policy=await trainingOperationalPolicy(this.db);
     const rows=await this.db.storeCourseOffer.findMany({where:{status:'ACTIVE',startsAt:{gt:new Date()},organization:{status:'ACTIVE'}},orderBy:{startsAt:'asc'},include:{organization:{select:{displayName:true}},_count:{select:{enrollments:{where:{status:{not:'CANCELLED'}}}}}}});
-    return rows.map(({_count,...row})=>({...row,remainingSeats:Math.max(0,row.capacity-_count.enrollments)}));
+    return rows.map(({_count,...row})=>({...row,bookingPolicy:{capacityLimit:policy.capacityLimit?'ENABLED':'DISABLED'},remainingSeats:Math.max(0,row.capacity-_count.enrollments)}));
   }
 
   enroll(accountId:string,courseId:string){
@@ -148,8 +150,9 @@ export class StoreOfferingsService {
       const existing=await tx.trainingEnrollment.findFirst({where:{storeCourseOfferId:courseId,studentAccountId:accountId,status:{not:'CANCELLED'}}});
       if(existing)return existing;
       const count=await tx.trainingEnrollment.count({where:{storeCourseOfferId:courseId,status:{not:'CANCELLED'}}});
-      if(count>=course.capacity)throw new ConflictException('اكتملت مقاعد الدورة.');
-      const enrollment=await tx.trainingEnrollment.create({data:{studentAccountId:accountId,courseCode:course.courseCode,centerOrganizationId:course.organizationId,storeCourseOfferId:course.id,status:'PENDING',metadata:{source:'UNIFIED_STORE',title:course.title,priceMinor:course.priceMinor,currency:course.currency,startsAt:course.startsAt.toISOString(),endsAt:course.endsAt.toISOString(),locationName:course.locationName,financialActionExecuted:false}}});
+      const policy=await trainingOperationalPolicy(tx);
+      if(policy.capacityLimit&&count>=course.capacity)throw new ConflictException('اكتملت مقاعد الدورة.');
+      const enrollment=await tx.trainingEnrollment.create({data:{studentAccountId:accountId,courseCode:course.courseCode,centerOrganizationId:course.organizationId,storeCourseOfferId:course.id,status:'PENDING',metadata:{source:'UNIFIED_STORE',title:course.title,priceMinor:course.priceMinor,currency:course.currency,startsAt:course.startsAt.toISOString(),endsAt:course.endsAt.toISOString(),locationName:course.locationName,financialActionExecuted:false,operationalPolicy:policy}}});
       await this.audited(tx,accountId,course.organizationId,'TrainingEnrollment',enrollment.id,'STORE_COURSE_ENROLLED');
       return enrollment;
     });
