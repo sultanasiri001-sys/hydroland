@@ -52,10 +52,12 @@
   }
   async function request(path, options={}) {
     if (!auth()?.isAuthenticated?.()) throw new Error('سجّل الدخول للمتابعة.');
+    const call = context();
     const response = await auth().authorizedFetch(path, {cache:'no-store', ...options});
     const body = await response.json().catch(()=>null);
     if (!response.ok) {
-      if ([401,403].includes(response.status)) clear();
+      // A late denial from an older session must not erase the newer editor.
+      if ([401,403].includes(response.status) && current(call)) clear();
       throw new Error(Array.isArray(body?.message)?body.message.join('، '):body?.message||'تعذر إكمال إجراء مكتبة النماذج.');
     }
     return body;
@@ -119,6 +121,7 @@
   }
   function open() {
     if(!auth()?.isAuthenticated?.()||!selectedOrg())return;
+    if(dialog.open&&(state.busy||!discardAllowed()))return;
     if(!dialog.open)dialog.showModal();
     $('[data-hfl-department]').value=document.querySelector('#hl-documents [data-doc-department]')?.value||'';
     lastDepartment=$('[data-hfl-department]').value;
