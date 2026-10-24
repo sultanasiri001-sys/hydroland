@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { contractKeys, contractRecord, contractText, CONTRACT_FIELDS, COOPERATION_CLAUSES } from './cooperation-contract.domain';
 import { platformOrganization } from '../hr/staffing-catalog';
+import { OwnerReviewEvidence, validOwnerReviewEvidence } from '../hr/temporary-owner-review';
 
 export const LIBRARY_PREFIX = 'CLIB-';
 export const DIVE_LIBRARY_CODE = 'CLIB-DIVE-COOPERATION';
@@ -20,7 +21,7 @@ export type LibraryContent = {
   usageNotes: string;
   source: { name: string; revision: string; status: 'ADAPTED_DRAFT' };
 };
-type Review = { accountId: string; at: string; contentHash: string; reference: string };
+type Review = { accountId: string; at: string; contentHash: string; reference: string; temporaryOwnerReview?:OwnerReviewEvidence };
 export type LibraryEnvelope = {
   kind: 'CONTRACT_LIBRARY_V1'; state: LibraryState; content: LibraryContent; contentHash: string;
   createdBy: string; createdAt: string; changeReason: string; previousId: string | null;
@@ -34,6 +35,7 @@ export function libraryHash(code: string, titleAr: string, titleEn: string, cont
 export function readLibrary(row: { code: string; titleAr: string; titleEn: string; fields: unknown }): LibraryEnvelope {
   const e = contractRecord(row.fields) as unknown as LibraryEnvelope;
   if (!isLibraryCode(row.code) || e.kind !== 'CONTRACT_LIBRARY_V1' || !['DRAFT','IN_REVIEW','PUBLISHED','RETIRED','SUPERSEDED'].includes(e.state) || !e.content || e.content.schemaVersion !== 1 || !Array.isArray(e.content.fields) || !Array.isArray(e.content.clauses) || libraryHash(row.code,row.titleAr,row.titleEn,e.content)!==e.contentHash) throw new ConflictException('سجل قالب العقد يحتاج مراجعة.');
+  for(const review of [e.legalReview,e.hrReview])if(review?.temporaryOwnerReview&&(!validOwnerReviewEvidence(review.temporaryOwnerReview)||review.temporaryOwnerReview.ownerId!==review.accountId))throw new ConflictException('بيانات صلاحية المراجعة المؤقتة تحتاج مراجعة.');
   return e;
 }
 export function editLibraryContent(body: unknown, current: LibraryContent) {

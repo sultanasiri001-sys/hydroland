@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { DatabaseService } from '../database/database.service';
 import { lockAccountIdentities, requireVerifiedAdmin } from '../admin/admin-authorization';
 import { platformOrganization } from '../hr/staffing-catalog';
+import { assertOwnerReviewUnexpired, currentOwnerReview, lockOwnerReview, ownerReviewEvidence, sameOwnerReview } from '../hr/temporary-owner-review';
 import { contractKeys, contractText } from './cooperation-contract.domain';
 import { DIVE_LIBRARY_CODE, editLibraryContent, isLibraryCode, LIBRARY_PREFIX, LibraryContent, LibraryEnvelope, libraryHash, readLibrary, starterContracts } from './contract-library.domain';
 
@@ -28,7 +29,7 @@ export class ContractLibraryService {
     const center=await tx.organizationMember.findFirst({where:{accountId:actorId,status:'ACTIVE',role:{in:['OWNER','ADMIN']},organization:{kind:'DIVE_CENTER',status:'ACTIVE'}},select:{id:true}});
     const reader=Boolean(center)||actor.roleAssignments.some(r=>r.role==='INSTRUCTOR');
     if(!owner&&!legal&&!hr&&!reader)throw new ForbiddenException('مكتبة العقود متاحة للمختصين وأطراف عقود التعاون.');
-    return {actor,platform,owner,legal,hr,reader,internal:owner||legal||hr};
+    return {actor,platform,owner,legal,hr,reader,internal:owner||legal||hr,temporaryOwnerReview:owner?await currentOwnerReview(tx,actorId):null};
   }
   private canEdit(a:Awaited<ReturnType<ContractLibraryService['access']>>,content:LibraryContent){return a.owner||a.legal||a.hr&&content.category==='EMPLOYMENT';}
   private visible(a:Awaited<ReturnType<ContractLibraryService['access']>>,row:DocumentTemplate,e:LibraryEnvelope){
@@ -42,6 +43,7 @@ export class ContractLibraryService {
     return {a,row,e};
   }
   private async locks(tx:Tx,actorId:string){
+    await lockOwnerReview(tx);
     // An existing row written by every library mutation also serializes two
     // first versions and two publishes, including serializable stale snapshots.
     await tx.$queryRaw`INSERT INTO "OperationalSetting" ("key","value","updatedAt") VALUES ('CONTRACT_LIBRARY_WRITE:v1','{"version":1}'::jsonb,clock_timestamp()) ON CONFLICT ("key") DO UPDATE SET "updatedAt"=clock_timestamp() RETURNING "key"`;
@@ -56,16 +58,17 @@ export class ContractLibraryService {
     await tx.$queryRaw`SELECT "id" FROM "OrgUnit" WHERE "organizationId"::text=${platform.id} FOR SHARE`;
   }
   private async audit(tx:Tx,personId:string,row:DocumentTemplate,e:LibraryEnvelope,action:string,reason:string){
-    await tx.auditEvent.create({data:{actorId:personId,resource:'DocumentTemplate',resourceId:row.id,action,metadata:json({organizationId:row.organizationId,code:row.code,version:row.version,contentHash:e.contentHash,state:e.state,reason})}});
+    const authorities=[e.legalReview?.temporaryOwnerReview,e.hrReview?.temporaryOwnerReview].filter(Boolean);
+    await tx.auditEvent.create({data:{actorId:personId,resource:'DocumentTemplate',resourceId:row.id,action,metadata:json({organizationId:row.organizationId,code:row.code,version:row.version,contentHash:e.contentHash,state:e.state,reason,...(authorities.length?{temporaryOwnerReviews:authorities}:{})})}});
   }
   private view(a:Awaited<ReturnType<ContractLibraryService['access']>>,row:DocumentTemplate,e:LibraryEnvelope,latest=true){
-    const own=e.createdBy===a.actor.id,review=e.state==='IN_REVIEW';
+    const own=e.createdBy===a.actor.id,review=e.state==='IN_REVIEW',temporary=Boolean(a.temporaryOwnerReview);
     return {id:row.id,code:row.code,titleAr:row.titleAr,titleEn:row.titleEn,version:row.version,state:e.state,contentHash:e.contentHash,content:e.content,createdAt:row.createdAt,changeReason:a.internal?e.changeReason:null,previousId:a.internal?e.previousId:null,
       reviews:{legal:e.legalReview?(a.internal?e.legalReview:{at:e.legalReview.at,reference:'مراجعة داخلية مكتملة'}):null,hr:a.internal?e.hrReview??null:null},publishedAt:e.publishedAt??null,
       integration:{legal:{department:'LEGAL_CONTRACTS_INSURANCE',reviewRequired:true},hr:e.content.category==='EMPLOYMENT'?{department:'HR',sourceOfTruth:'Employment',binding:{templateId:row.id,templateVersion:row.version,templateContentHash:e.contentHash},execution:'HR_WORKFLOW_REQUIRED'}:null,documents:{sourceOfTruth:'ManagedDocument',identityVersion:'MARINE-INCIDENT-IDENTITY-1'},canCreateCooperation:row.code===DIVE_LIBRARY_CODE&&e.state==='PUBLISHED'},
-      capabilities:{edit:latest&&this.canEdit(a,e.content)&&e.state!=='SUPERSEDED',submit:this.canEdit(a,e.content)&&e.state==='DRAFT',legalReview:review&&(a.legal||a.owner)&&!own&&!e.legalReview,hrReview:review&&e.content.category==='EMPLOYMENT'&&a.hr&&!own&&!e.hrReview,publish:review&&a.owner&&Boolean(e.legalReview)&&(e.content.category!=='EMPLOYMENT'||Boolean(e.hrReview)),return:review&&this.canEdit(a,e.content),retire:e.state==='PUBLISHED'&&a.owner,history:a.internal}};
+      capabilities:{edit:latest&&this.canEdit(a,e.content)&&e.state!=='SUPERSEDED',submit:this.canEdit(a,e.content)&&e.state==='DRAFT',legalReview:review&&(a.legal||a.owner)&&(!own||temporary)&&!e.legalReview,hrReview:review&&e.content.category==='EMPLOYMENT'&&(a.hr||temporary)&&(!own||temporary)&&!e.hrReview,publish:review&&a.owner&&Boolean(e.legalReview)&&(e.content.category!=='EMPLOYMENT'||Boolean(e.hrReview))&&[e.legalReview,e.hrReview].every(r=>!r?.temporaryOwnerReview||sameOwnerReview(r.temporaryOwnerReview,a.temporaryOwnerReview)),return:review&&this.canEdit(a,e.content),retire:e.state==='PUBLISHED'&&a.owner,history:a.internal}};
   }
-  async workspace(actorId:string){return this.db.serializable(async tx=>{const a=await this.access(tx,actorId);return {canInitialize:a.owner,canCreate:a.owner||a.legal||a.hr,internal:a.internal,departments:['LEGAL_CONTRACTS_INSURANCE',...(a.hr||a.owner||a.legal?['HR']:[])],owner:a.owner};});}
+  async workspace(actorId:string){return this.db.serializable(async tx=>{const a=await this.access(tx,actorId);return {canInitialize:a.owner,canCreate:a.owner||a.legal||a.hr,internal:a.internal,departments:['LEGAL_CONTRACTS_INSURANCE',...(a.hr||a.owner||a.legal?['HR']:[])],owner:a.owner,temporaryOwnerReview:{active:Boolean(a.temporaryOwnerReview),expiresAt:a.temporaryOwnerReview?.expiresAt??null}};});}
   async list(actorId:string,query:{q?:string;category?:string;state?:string}){
     const q=contractText(query.q??'',160),category=query.category,state=query.state;
     if(category&&!['COOPERATION','EMPLOYMENT','GENERAL'].includes(category)||state&&!['DRAFT','IN_REVIEW','PUBLISHED','RETIRED','SUPERSEDED'].includes(state))throw new BadRequestException('مرشح المكتبة غير صالح.');
@@ -126,7 +129,9 @@ export class ContractLibraryService {
       if(action==='LEGAL_REVIEW'||action==='HR_REVIEW'){
         if(!(action==='LEGAL_REVIEW'?caps.legalReview:caps.hrReview))throw new ForbiddenException('المراجعة تتطلب مختصاً مستقلاً عن محرر النسخة.');
         if(reference.length<3)throw new BadRequestException('سجل مرجع المراجعة.');
-        next[action==='LEGAL_REVIEW'?'legalReview':'hrReview']={accountId:actorId,at:new Date().toISOString(),contentHash:e.contentHash,reference};
+        const exception=e.createdBy===actorId||action==='HR_REVIEW'&&!a.hr;
+        if(exception&&a.temporaryOwnerReview)assertOwnerReviewUnexpired(a.temporaryOwnerReview);
+        next[action==='LEGAL_REVIEW'?'legalReview':'hrReview']={accountId:actorId,at:new Date().toISOString(),contentHash:e.contentHash,reference,...(exception&&a.temporaryOwnerReview?{temporaryOwnerReview:ownerReviewEvidence(a.temporaryOwnerReview)}:{})};
       }
       if(action==='PUBLISH'){
         if(!caps.publish)throw new ForbiddenException('الاعتماد لمالك هيدرولاند بعد اكتمال المراجعات المستقلة.');
@@ -138,7 +143,9 @@ export class ContractLibraryService {
           await tx.$queryRaw`SELECT "id" FROM "OrganizationMember" WHERE "accountId"::text=${review.accountId} AND "organizationId"::text=${a.platform.id} FOR SHARE`;
           await tx.$queryRaw`SELECT "id" FROM "Employment" WHERE "accountId"::text=${review.accountId} AND "organizationId"::text=${a.platform.id} FOR SHARE`;
           const reviewer=await this.access(tx,review.accountId);
-          if(review.contentHash!==e.contentHash||review.accountId===e.createdBy||!(kind==='LEGAL'?(reviewer.legal||reviewer.owner):reviewer.hr))throw new ConflictException('صلاحية المراجع أو بصمة مراجعته تغيرت.');
+          const temporary=Boolean(review.temporaryOwnerReview&&sameOwnerReview(review.temporaryOwnerReview,reviewer.temporaryOwnerReview));
+          if(review.temporaryOwnerReview&&!temporary||review.contentHash!==e.contentHash||review.accountId===e.createdBy&&!temporary||!(kind==='LEGAL'?(reviewer.legal||reviewer.owner):reviewer.hr||temporary))throw new ConflictException('صلاحية المراجع أو بصمة مراجعته تغيرت.');
+          if(temporary&&reviewer.temporaryOwnerReview)assertOwnerReviewUnexpired(reviewer.temporaryOwnerReview);
         }
         const active=await tx.documentTemplate.findMany({where:{organizationId:a.platform.id,code:row.code,status:'ACTIVE'}});
         for(const old of active){const oldEnvelope=readLibrary(old);await tx.documentTemplate.update({where:{id:old.id},data:{status:'INACTIVE',fields:json({...oldEnvelope,state:'RETIRED'})}});await this.audit(tx,a.actor.personId,old,{...oldEnvelope,state:'RETIRED'},'CONTRACT_TEMPLATE_REPLACED',reason);}
@@ -148,6 +155,7 @@ export class ContractLibraryService {
       if(action==='RETIRE'){if(!caps.retire)throw new ForbiddenException('سحب القالب المعتمد لمالك هيدرولاند.');next.state='RETIRED';}
       const updated=await tx.documentTemplate.update({where:{id},data:{status:next.state==='PUBLISHED'?'ACTIVE':'INACTIVE',fields:json(next)}});
       await this.audit(tx,a.actor.personId,updated,next,'CONTRACT_TEMPLATE_'+action,reason);
+      if(['LEGAL_REVIEW','HR_REVIEW','PUBLISH'].includes(action)&&a.temporaryOwnerReview&&[next.legalReview,next.hrReview].some(r=>r?.temporaryOwnerReview))assertOwnerReviewUnexpired(a.temporaryOwnerReview);
       return this.view(a,updated,next);
     });
   }
