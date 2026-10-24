@@ -4,6 +4,7 @@ on:
     paths:
       - 'apps/api/src/document-forms/**'
       - 'apps/api/scripts/form-library-pdf-validation.cjs'
+      - 'apps/api/scripts/form-library-history-validation.cjs'
       - 'apps/web/src/hydroland-form-library.js'
       - 'apps/web/e2e/form-library.spec.js'
       - '.github/workflows/form-library-validation.yml'
@@ -31,6 +32,8 @@ jobs:
         run: npm --workspace @hydroland/api run db:generate
       - name: Typecheck and build API
         run: npm --workspace @hydroland/api run build
+      - name: Validate read-only template history and organization isolation
+        run: node apps/api/scripts/form-library-history-validation.cjs
       - name: Run profile preservation and actual PDF rendering checks
         run: node apps/api/scripts/form-library-pdf-validation.cjs
       - name: Render PDF review images
