@@ -8,6 +8,7 @@ export class ContractLibraryController {
   constructor(private readonly library:ContractLibraryService){}
   @Get('workspace') workspace(@Req() r:Request){return this.library.workspace(r.auth.accountId);}
   @Get() list(@Req() r:Request,@Query('q') q?:string,@Query('category') category?:string,@Query('state') state?:string){return this.library.list(r.auth.accountId,{q,category,state});}
+  @Post('owner-responsibility') changeOwnerResponsibility(@Req() r:Request,@Body() b:unknown){return this.library.changeOwnerResponsibility(r.auth.accountId,b);}
   @Post('initialize') initialize(@Req() r:Request,@Body() b:unknown){return this.library.initialize(r.auth.accountId,b);}
   @Get(':id') get(@Req() r:Request,@Param('id') id:string){return this.library.get(r.auth.accountId,id);}
   @Get(':id/history') history(@Req() r:Request,@Param('id') id:string){return this.library.history(r.auth.accountId,id);}

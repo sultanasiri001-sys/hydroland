@@ -150,7 +150,7 @@ async function openHrContracts(page,options={}){
    const body=route.request().postDataJSON();writes.push(body);
    if(options.deny)return json(route,{message:'Permission revoked'},403);
    if(options.conflict)return json(route,{message:'تغير سجل الموظف؛ حدّث البيانات.'},409);
-   const result={id:'hr-contract',version:1,contractType:'CLIB-HR-PERMANENT',status:'DRAFT',effectiveFrom:body.effectiveFrom+'T00:00:00.000Z',librarySnapshot:{template:hrContractTemplate,values:{employeeName:'موظف اختبار',...body.values},snapshotHash:'sha256:saved'}};
+   const result={id:'hr-contract',version:1,contractType:'CLIB-HR-PERMANENT',status:'DRAFT',effectiveFrom:body.effectiveFrom+'T00:00:00.000Z',librarySnapshot:{template:workspace.templates.find(t=>t.id===body.templateId),values:{employeeName:'موظف اختبار',...body.values},snapshotHash:'sha256:saved'}};
    workspace.items=[result];workspace.expectedContractVersion=1;return json(route,result,201);
   }return json(route,workspace);
  });
@@ -176,4 +176,10 @@ test('lost employee contract authority removes private draft values',async({page
 });
 test('late employee contract workspace cannot return after logout',async({page})=>{
  const options={delay:true};const {box}=await openHrContracts(page,options);await expect.poll(()=>Boolean(options.release)).toBe(true);await page.evaluate(()=>window.HydrolandAuth.terminateSession());options.release();await expect(page.locator('[data-employment-contract-box]')).toHaveCount(0);await expect(page.locator('#hl-admin-employees')).toBeHidden();
+});
+
+
+test('administrative owner templates remain visibly drafts with independent Legal review pending',async({page})=>{
+ const template={...hrContractTemplate,approval:{basis:'OWNER_COMBINED_INTERNAL_DRAFTS',independentLegalReviewComplete:false,scope:'INTERNAL_HR_DRAFTS_ONLY'}};
+ const {box,state}=await openHrContracts(page,{templates:[template]});await expect(box.locator('[data-employment-contract-fields]')).toContainText('المراجعة القانونية المستقلة لم تكتمل');await expect(box.getByRole('option')).toContainText('اعتماد إداري للمسودات فقط');const form=await fillHrContract(box);await form.getByRole('button',{name:'حفظ مسودة عقد الموظف',exact:true}).click();await expect(box.locator('[data-employment-contract-history]')).toContainText('المراجعة القانونية المستقلة لم تكتمل');expect(state.writes).toHaveLength(0);
 });
