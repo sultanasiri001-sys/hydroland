@@ -11,7 +11,7 @@ type Definition = { cycles: readonly Cycle[]; handoffs: readonly DepartmentCode[
 export const DEPARTMENT_OPERATING_CYCLES: Record<DepartmentCode, Definition> = {
   HR: {
     cycles: [
-      { titleAr: 'التوظيف والتغيير الوظيفي', stepsAr: ['طلب احتياج أو تغيير', 'تحقق الموارد البشرية والأهلية والعقد', 'مراجعة مستقلة واعتماد صاحب الصلاحية', 'سريان التعيين أو الحركة', 'تطبيق نطاق الوصول عبر IAM', 'حفظ الأدلة والإصدارات وسجل القرار'], sourcePaths: ['docs/HR_LEVEL_3_EMPLOYEE_LIFECYCLE.md','apps/api/src/hr/hr-policy.ts','apps/api/src/hr/staffing-admin.service.ts'] },
+      { titleAr: 'التوظيف والتغيير الوظيفي', stepsAr: ['طلب احتياج أو تغيير', 'تحقق الموارد البشرية والأهلية والعقد', 'مراجعة واعتماد بحسب المسؤولية والتفويض المحفوظين', 'سريان التعيين أو الحركة', 'تطبيق نطاق الوصول عبر IAM', 'حفظ الأدلة والإصدارات وسجل القرار'], sourcePaths: ['docs/HR_LEVEL_3_EMPLOYEE_LIFECYCLE.md','apps/api/src/hr/hr-policy.ts','apps/api/src/hr/staffing-admin.service.ts','apps/api/src/hr/staff-approval-authority.ts','apps/api/src/hr/owner-department-responsibility.ts'] },
       { titleAr: 'المتابعة الوظيفية وإنهاء العلاقة', stepsAr: ['الحضور والإجازات والأداء والتطوير', 'العلاقات الوظيفية والقرار والتظلم', 'اعتماد المغادرة وتاريخ السريان', 'إخلاء العهد والالتزامات والتسوية مع المالية', 'سحب التفويضات والأدوار والجلسات عبر IAM', 'أرشفة الملف وإثبات الإقفال'], sourcePaths: ['docs/HR_LEVEL_4_GOVERNANCE.md','apps/api/src/hr/hr.service.ts'] },
     ], handoffs: ['EXECUTIVE_GOVERNANCE','LEGAL_CONTRACTS_INSURANCE','FINANCE','TECHNOLOGY_CYBERSECURITY','FACILITIES_ASSETS_MAINTENANCE'], closureEvidenceAr: ['مرجع العقد بإصداره وأدلة المراجعة والاعتماد المنفصلة', 'أثر الحركة أو التعيين وسجل تطبيق IAM', 'إخلاء العهد والتسوية وإبطال الوصول دون حذف التاريخ'] },
   TRAINING: {
