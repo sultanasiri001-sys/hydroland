@@ -11,6 +11,8 @@ Current Web implementation versus the v1.1 design target:
 `docs/ADR_WEB_IMPLEMENTATION_RECONCILIATION_2026-10-24.md`.
 Department source discovery and approval boundaries:
 `docs/DEPARTMENT_REFERENCE_LINKING_2026-10-24.md`.
+Department operating/document cycles and ISO edition/applicability boundaries:
+`docs/DEPARTMENT_OPERATING_DOCUMENT_CYCLES_2026-10-24.md`.
 Historical consolidation steps below are retained as provenance, not a direction to restart consolidation.
 
 ## Rule
