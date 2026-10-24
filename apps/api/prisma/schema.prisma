@@ -232,6 +232,8 @@ model Organization {
   legalName String?
   kind String
   registrationNumber String? @unique
+  address String?
+  trainingMembershipReference String?
   regionCode String?
   documentLogoUrl String?
   documentLogoAssetId String?
@@ -326,6 +328,9 @@ model Session {
 model ProfessionalProfile {
   id String @id @default(uuid())
   personId String @unique
+  nationalLicenseCredentialId String?
+  qualificationCredentialId String?
+  eligibilityEvidenceReference String?
   headline String?
   bio String?
   regionCode String?

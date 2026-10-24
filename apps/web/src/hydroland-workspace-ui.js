@@ -18,6 +18,8 @@
     '.hl-crew-assignments':['instructor','center','boat','admin'],
     '.hl-dive-review':['instructor','center','admin'],
     '.hl-documents':['center','boat','organization','admin'],
+    '#hl-contracts':['center','instructor','admin'],
+    '#hl-contract-library':['diver','instructor','center','boat','organization','admin'],
     '#hl-marine-documents':['center','boat','admin'],
     '#hl-marine-readiness':['boat','admin'],
     '#hl-marine-trips':['boat'],

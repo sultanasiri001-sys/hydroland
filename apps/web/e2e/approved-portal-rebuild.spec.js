@@ -40,7 +40,12 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
      expect(content.y+content.height,`${selector} must not be clipped`).toBeLessThanOrEqual(hero.y+hero.height);
     }
    }
-   await expect(board.locator(role==='diver'?'.hl-diver-action-grid>button':'.hl-command-grid>button')).toHaveCount(role==='admin'?12:['organization','boat'].includes(role)?10:6);
+   const baseActions=role==='admin'?12:['organization','boat'].includes(role)?10:6;
+   const contractAccess=['instructor','center','admin'].includes(role);
+   await expect(board.locator(role==='diver'?'.hl-diver-action-grid>button':'.hl-command-grid>button')).toHaveCount(baseActions+(contractAccess?2:0));
+   if(contractAccess)for(const [label,target] of [['العقود والتوقيع الإلكتروني','contracts'],['مكتبة العقود','contract-library']]){
+    const entry=board.locator(`[data-action-label="${label}"]`);await expect(entry).toBeEnabled();await expect(entry).toHaveAttribute('data-hl-route',target);
+   }
    await expect(page.locator('#toast')).not.toHaveClass(/visible/);
    await page.screenshot({path:testInfo.outputPath(`portal-${role}-${viewport.name}.png`),fullPage:true});
    if(role==='admin'){
