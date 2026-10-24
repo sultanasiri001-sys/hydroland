@@ -28,4 +28,12 @@ export class DocumentAssetService {
     if(digest!==asset.sha256) throw new BadRequestException('Organization logo asset integrity check failed.');
     return {asset,bytes};
   }
+  async bytesForCenterSeal(organizationId:string,assetId:string){
+    const asset=await this.db.organizationDocumentAsset.findFirst({where:{id:assetId,organizationId,kind:'CENTER_SEAL'}});
+    if(!asset)throw new BadRequestException('صورة ختم المركز غير متاحة.');
+    const bytes=Buffer.from(asset.content);
+    if(createHash('sha256').update(bytes).digest('hex')!==asset.sha256)throw new BadRequestException('بصمة صورة ختم المركز غير متطابقة.');
+    return {asset,bytes};
+  }
+
 }

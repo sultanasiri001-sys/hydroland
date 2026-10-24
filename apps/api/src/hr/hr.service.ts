@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { assertEmploymentTransition, assertHrActionForEmploymentTransition, assertHrAuthorization, HrAction, HrActor, HrRequestContext } from './hr-policy';
 import { assertHrProductionCompliance, HrComplianceControl } from './hr-compliance';
@@ -43,9 +44,9 @@ export class HrService {
     });
   }
 
-  private async assertProductionCompliance(action: HrAction) {
+  async assertProductionCompliance(action: HrAction,tx:Prisma.TransactionClient=this.db) {
     if (!['APPROVE_APPOINTMENT', 'APPROVE_COMPENSATION_CHANGE', 'APPROVE_DISCIPLINARY_DECISION', 'APPROVE_TERMINATION', 'APPLY_IAM_CHANGE'].includes(action)) return;
-    const rows = await this.db.policyControl.findMany({
+    const rows = await tx.policyControl.findMany({
       where: { category: 'HR_COMPLIANCE', state: 'ENABLED' },
       select: { ruleKey: true, metadata: true },
     });

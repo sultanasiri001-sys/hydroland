@@ -1,3 +1,5 @@
+import { TrainingSessionService } from './training-session.service';
+import { TrainingAssignmentService } from './training-assignment.service';
 import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
 import { AuthModule } from '../auth/auth.module';
@@ -9,12 +11,15 @@ import { TrainingWorkflowService } from './training-workflow.service';
 import { TrainingOperationsService } from './training-operations.service';
 import { TrainingGovernanceService } from './training-governance.service';
 import { TrainingRepositoryService } from './training-repository.service';
+import { TrainingProfessionalProfileService } from './training-professional-profile.service';
+import { TrainingCourseProgressService } from './training-course-progress.service';
+import { TrainingCertificateService } from './training-certificate.service';
 import { TrainingController } from './training.controller';
 
 @Module({
   imports: [AuditModule, AuthModule],
   controllers: [TrainingController],
-  providers: [PolicyEngineService, ApprovalEngineService, TrainingAuthorizationService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService, TrainingGovernanceService, TrainingRepositoryService],
-  exports: [PolicyEngineService, ApprovalEngineService, TrainingAuthorizationService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService, TrainingGovernanceService, TrainingRepositoryService, AuditModule],
+  providers: [TrainingCertificateService, TrainingCourseProgressService, TrainingSessionService, TrainingAssignmentService, PolicyEngineService, ApprovalEngineService, TrainingAuthorizationService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService, TrainingGovernanceService, TrainingRepositoryService, TrainingProfessionalProfileService],
+  exports: [TrainingSessionService, TrainingAssignmentService, PolicyEngineService, ApprovalEngineService, TrainingAuthorizationService, TrainingEligibilityService, TrainingWorkflowService, TrainingOperationsService, TrainingGovernanceService, TrainingRepositoryService, TrainingProfessionalProfileService, AuditModule],
 })
 export class GovernanceModule {}

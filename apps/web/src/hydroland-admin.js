@@ -1,4 +1,20 @@
 (() => {
+  for(const [tag,attribute,file] of [['link','href','hydroland-admin-accounts.css'],['script','src','hydroland-admin-accounts.js'],['link','href','hydroland-admin-employees.css'],['script','src','hydroland-admin-employees.js'],['script','src','hydroland-hr-control-review.js'],['link','href','hydroland-admin-agents.css'],['script','src','hydroland-admin-agents.js']]){
+    if(document.querySelector(`${tag}[${attribute}="./${file}"]`))continue;
+    const node=document.createElement(tag);if(tag==='link')node.rel='stylesheet';else node.defer=true;node[attribute]='./'+file;(tag==='link'?document.head:document.body).appendChild(node);
+  }
+  if (!document.querySelector('link[href="./hydroland-training-certificate-admin.css"]')) {
+    const link=document.createElement('link');link.rel='stylesheet';link.href='./hydroland-training-certificate-admin.css';document.head.appendChild(link);
+  }
+  if (!document.querySelector('script[src="./hydroland-training-certificate-admin.js"]')) {
+    const module=document.createElement('script');module.src='./hydroland-training-certificate-admin.js';module.defer=true;document.body.appendChild(module);
+  }
+  if (!document.querySelector('script[src="./hydroland-payment-readiness.js"]')) {
+    const module=document.createElement('script');module.src='./hydroland-payment-readiness.js';module.defer=true;document.body.appendChild(module);
+  }
+  if (!document.querySelector('script[src="./hydroland-center-license-admin.js"]')) {
+    const module=document.createElement('script');module.src='./hydroland-center-license-admin.js';module.defer=true;document.body.appendChild(module);
+  }
   if (!document.querySelector('script[src="./hydroland-booking-admin.js"]')) {
     const module = document.createElement('script'); module.src = './hydroland-booking-admin.js'; module.defer = true; document.body.appendChild(module);
   }

@@ -37,10 +37,12 @@ test('organization can create, revise and submit an operational document from th
   const state=await seed(page);
   await openWorkspaceSwitcher(page);
   await page.locator('#role-dialog [data-role="organization"]').click();
+  const upload=page.locator('.hl-role-dashboard [data-action-label="رفع الوثائق"]');
+  await expect(upload).toBeEnabled();await upload.click();
   const panel=page.locator('#hl-documents');await expect(panel).toBeVisible();
   await expect(panel.locator('[data-doc-org]')).toHaveValue('org-1');
   await expect(panel.locator('[data-doc-template]')).toHaveValue('template-1');
-  await expect(page.getByRole('button',{name:'رفع الوثائق'})).toBeEnabled();
+
 
   await panel.locator('[name="summary"]').fill('التقرير التشغيلي الأول');
   await panel.locator('[data-doc-save]').click();
@@ -64,6 +66,9 @@ test('document quick actions are connected instead of disabled placeholders',asy
   await seed(page);
   await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="organization"]').click();
   const dashboard=page.locator('.hl-role-dashboard[data-role="organization"]');await expect(dashboard).toBeVisible();
-  for(const name of ['رفع الوثائق','التوقيع الإلكتروني','طلب اعتماد الإدارة','متابعة الحالة'])await expect(dashboard.getByRole('button',{name})).toBeEnabled();
-  await dashboard.getByRole('button',{name:'متابعة الحالة'}).click();await expect(page.locator('#hl-documents')).toBeVisible();
+  for(const name of ['رفع الوثائق','العقود والمستندات','متابعة اعتماد المستندات']){
+    const button=dashboard.locator('.hl-command-grid').getByRole('button',{name,exact:true});
+    await expect(button).toBeEnabled();await expect(button).toHaveAttribute('data-hl-route','documents');
+  }
+  await dashboard.getByRole('button',{name:'متابعة اعتماد المستندات',exact:true}).click();await expect(page.locator('#hl-documents')).toBeVisible();
 });

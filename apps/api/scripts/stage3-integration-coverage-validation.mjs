@@ -109,6 +109,7 @@ const routeContracts=[
   ['/health/integrations/sms',readiness,["@Controller('health/integrations')","@Get('sms')"]],
   ['/health/integrations/whatsapp',readiness,["@Controller('health/integrations')","@Get('whatsapp')"]],
   ['/health/integrations/object-storage',readiness,["@Controller('health/integrations')","@Get('object-storage')"]],
+  ['/health/integrations/credential-storage',readiness,["@Controller('health/integrations')","@Get('credential-storage')"]],
   ['/health/integrations/translation',readiness,["@Controller('health/integrations')","@Get('translation')"]],
   ['/health/integrations/esign',readiness,["@Controller('health/integrations')","@Get('esign')"]],
   ['/health/integrations/distress-ais',distressReadiness,["@Controller('health/integrations')","@Get('distress-ais')"]],

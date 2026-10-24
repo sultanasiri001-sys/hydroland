@@ -5,16 +5,20 @@ const json=(route,body,status=200)=>route.fulfill({status,contentType:'applicati
 
 test('visitor gets the approved public view and no account-only modules',async({page})=>{
   await page.goto('/',{waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>Boolean(window.HydrolandWorkspaceUI&&document.querySelector('.hl-support')));
-  await page.locator('.hl-login-guest').click();
+  await page.waitForFunction(()=>Boolean(window.HydrolandWorkspaceUI&&window.HydrolandPublicUI&&document.querySelector('.hl-support')));
+  await expect(page.locator('.hl-login')).toBeHidden();
 
   await expect(page.locator('body')).toHaveAttribute('data-hl-workspace-role','visitor');
   await expect(page.locator('#home')).toBeVisible();
   await expect(page.locator('#trips')).toBeVisible();
+  await page.locator('#home .ghost-button').click();
+  await expect(page).toHaveURL(/#training$/);
   await expect(page.locator('#training')).toBeVisible();
+  await expect(page.locator('#home')).toBeHidden();
   await expect(page.locator('#role-switch')).toBeHidden();
   for(const selector of ['.hl-finance','.hl-training','.hl-members','.hl-logistics','.hl-procurement','.hl-safety-center','.hl-admin','#hl-documents','#hl-marine-documents'])
     await expect(page.locator(selector)).toBeHidden();
+  await page.locator('#navigation a[href="#community"]').click();
   await expect(page.locator('.hl-support [data-support-form]')).toBeHidden();
   await expect(page.locator('.hl-support-guest-gate')).toBeVisible();
   await expect(page.locator('#top-notifications')).toBeHidden();
@@ -23,6 +27,7 @@ test('visitor gets the approved public view and no account-only modules',async({
 });
 
 test('admin workspace opens as the first full-width view with private alerts and messages',async({page})=>{
+  await page.route('**/api/v1/**',route=>json(route,{message:'Unavailable in workspace layout fixture'},503));
   const authorized=request=>request.headers().authorization==='Bearer approved-workspace-access';
   await page.route(/\/api\/v1\/me$/,route=>authorized(route.request())
     ?json(route,{id:'approved-ui-admin',email:'admin@hydroland.test',status:'ACTIVE',roleAssignments:[{id:'admin-role',role:'ADMIN',status:'ACTIVE'}],person:{firstName:'مشرف',lastName:'اختبار',professional:null}})
@@ -33,7 +38,7 @@ test('admin workspace opens as the first full-width view with private alerts and
     :json(route,{message:'Unauthorized'},401));
 
   await page.goto('/',{waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandWorkspaceUI));
+  await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandWorkspaceUI&&window.HydrolandPaymentReadiness));
   await page.evaluate(async()=>{
     sessionStorage.setItem('hl-access-token','approved-workspace-access');
     sessionStorage.setItem('hl-refresh-token','approved-workspace-refresh');
@@ -46,14 +51,16 @@ test('admin workspace opens as the first full-width view with private alerts and
   const dashboard=page.locator('.hl-role-dashboard[data-role="admin"]');
   await expect(dashboard).toBeVisible();
   await expect(page.locator('body')).toHaveAttribute('data-hl-workspace-role','admin');
-  expect(await page.evaluate(()=>document.querySelector('#main')?.firstElementChild?.classList.contains('hl-role-dashboard'))).toBe(true);
+  await expect.poll(()=>page.evaluate(()=>document.querySelector('#main')?.firstElementChild?.classList.contains('hl-role-dashboard')===true)).toBe(true);
   await expect(page.locator('#role-console')).toBeHidden();
   await expect(page.locator('.sidebar')).toBeHidden();
   await expect(page.locator('.topbar')).toBeHidden();
   await expect(dashboard.locator('[data-portal-notifications]')).toBeVisible();
   await expect(dashboard.locator('[data-portal-messages]')).toBeVisible();
   await expect(dashboard.locator('[data-portal-switch]')).toBeVisible();
-  await expect(dashboard.locator('.hl-insight-cards article').filter({hasText:'الجهات الخارجية · مؤجل'}).getByRole('button')).toBeDisabled();
+  const readiness=dashboard.locator('.hl-insight-cards article').filter({hasText:'جاهزية الدفع والتسوية'}).getByRole('button',{name:'فحص إعدادات الدفع والتسوية'});
+  await expect(readiness).toBeEnabled();
+  await expect(readiness).toHaveAttribute('data-route','admin');
 
   await dashboard.locator('[data-portal-switch]').click();
   await expect(page.locator('#role-dialog')).toBeVisible();

@@ -40,26 +40,27 @@ const seed=async page=>{
 
 test('credential can be created, documented, privately opened and submitted from the browser',async({page})=>{
   const state=await seed(page),certificates=page.locator('.hl-certificates');
+  await page.waitForFunction(()=>Boolean(window.HydrolandWorkspaceUI));
+  await page.locator('#navigation [data-hl-action="certs"]').click();
   const add=certificates.locator('.hl-member-actions button').first();await expect(add).toBeEnabled();await add.click();
   const editor=page.locator('#hl-credential-editor');await expect(editor).toBeVisible();
   await editor.locator('[name="issuer"]').fill('HYDROLAND E2E');await editor.locator('[name="title"]').fill('Rescue Diver E2E');await editor.locator('button[type="submit"]').click();
   await expect(editor).not.toBeVisible();await expect.poll(()=>page.evaluate(()=>window.HydrolandProfileData?.credentials?.length)).toBe(1);
 
   const credentialArticle=certificates.locator(':scope > article').first();await expect(credentialArticle).toContainText('Rescue Diver E2E');
-  const fileInput=credentialArticle.locator('input[type="file"]');await expect(fileInput).toHaveCount(1);
+  const fileInput=credentialArticle.locator('input[data-credential-upload]');await expect(fileInput).toHaveCount(1);
   const png=Buffer.concat([Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]),Buffer.from('web-e2e')]);
   await fileInput.setInputFiles({name:'certificate.png',mimeType:'image/png',buffer:png});
   await expect.poll(()=>state.uploadedPayload?.originalName).toBe('certificate.png');
   expect(Buffer.from(state.uploadedPayload.base64,'base64').equals(png)).toBe(true);
   await expect(credentialArticle).toContainText('1 مستند');await expect(credentialArticle).toContainText('certificate.png');
 
-  const accessRequest=page.waitForRequest(request=>request.url().includes('/credentials/credential-1/documents/document-1/access'));
-  await credentialArticle.getByRole('button',{name:'عرض المستند'}).click();await accessRequest;await expect.poll(()=>state.accessRequests).toBe(1);
-
-  await credentialArticle.getByRole('button',{name:'إرسال للتحقق'}).click();
+  const submitCredential=credentialArticle.locator('[data-credential-submit]').first();await submitCredential.click();
   await expect.poll(()=>page.evaluate(()=>window.HydrolandProfileData?.credentials?.[0]?.verificationStatus)).toBe('PENDING');
-  await expect(credentialArticle.getByRole('button',{name:'إرسال للتحقق'})).toHaveCount(0);
-  await expect(credentialArticle.getByRole('button',{name:'عرض المستند'})).toBeVisible();
+  await expect(credentialArticle.locator('[data-credential-submit]').first()).toBeDisabled();
+  await expect(credentialArticle.getByRole('button',{name:'عرض المستند'}).first()).toBeVisible();
+  const accessRequest=page.waitForRequest(request=>request.url().includes('/credentials/credential-1/documents/document-1/access'));
+  await credentialArticle.getByRole('button',{name:'عرض المستند'}).first().click();await accessRequest;await expect.poll(()=>state.accessRequests).toBe(1);
 });
 
 test('admin records official organization evidence before approving a pending credential',async({page})=>{
@@ -85,6 +86,7 @@ test('admin records official organization evidence before approving a pending cr
   await page.goto('/',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&document.querySelector('.hl-admin')));
   await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','e2e-access');sessionStorage.setItem('hl-refresh-token','e2e-refresh');window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));await window.HydrolandProfile.load()});
   await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="admin"]').click();
+  await page.locator('.hl-role-dashboard [data-action-label="الاعتمادات"]').click();
   const admin=page.locator('.hl-admin');await expect(admin).toBeVisible();const card=admin.locator('[data-credential-review="pending-credential"]');await expect(card).toContainText('Pending Rescue Credential');
   const accessRequest=page.waitForRequest(request=>request.url().includes('/credentials/admin/pending-credential/documents/pending-document/access'));await card.getByRole('button',{name:/عرض: evidence\.pdf/}).click();await accessRequest;await expect.poll(()=>reviewAccess).toBe(1);
 

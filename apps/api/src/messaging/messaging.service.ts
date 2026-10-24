@@ -13,12 +13,18 @@ type MessageRow={id:string;conversationId:string;senderAccountId:string;senderEm
 export class MessagingService {
   constructor(private readonly db:DatabaseService,private readonly notifications:NotificationsService){}
 
+  // Match the deployed key type without casting indexed columns. Production
+  // uses UUID keys; the canonical migration uses text keys. Values stay bound.
+  private accountKey(id:string){return Prisma.sql`(jsonb_populate_record(NULL::"Account",jsonb_build_object('id',${id}::text)))."id"`;}
+  private conversationKey(id:string){return Prisma.sql`(jsonb_populate_record(NULL::"Conversation",jsonb_build_object('id',${id}::text)))."id"`;}
+  private messageKey(id:string){return Prisma.sql`(jsonb_populate_record(NULL::"Message",jsonb_build_object('id',${id}::text)))."id"`;}
+
   async listConversations(accountId:string){
     const conversations=await this.db.$queryRaw<ConversationRow[]>(Prisma.sql`
       SELECT c."id",c."title",c."createdByAccountId",c."createdAt",c."updatedAt"
       FROM "Conversation" c
       INNER JOIN "ConversationParticipant" cp ON cp."conversationId"=c."id"
-      WHERE cp."accountId"=${accountId}
+      WHERE cp."accountId"=${this.accountKey(accountId)}
       ORDER BY COALESCE((SELECT MAX(m."createdAt") FROM "Message" m WHERE m."conversationId"=c."id"),c."createdAt") DESC
       LIMIT 100
     `);
@@ -28,7 +34,7 @@ export class MessagingService {
       const latest=(await this.db.$queryRaw<MessageRow[]>(Prisma.sql`
         SELECT m."id",m."conversationId",m."senderAccountId",a."email" AS "senderEmail",p."firstName" AS "senderFirstName",p."lastName" AS "senderLastName",m."kind",m."body",m."mediaUrl",m."durationSec",m."createdAt"
         FROM "Message" m JOIN "Account" a ON a."id"=m."senderAccountId" JOIN "Person" p ON p."id"=a."personId"
-        WHERE m."conversationId"=${conversation.id} ORDER BY m."createdAt" DESC LIMIT 1
+        WHERE m."conversationId"=${this.conversationKey(conversation.id)} ORDER BY m."createdAt" DESC LIMIT 1
       `))[0]??null;
       return{...conversation,participants,latestMessage:latest};
     }));
@@ -39,16 +45,16 @@ export class MessagingService {
     const title=this.title(input.title);
     const allIds=[accountId,...participantIds];
     const valid=await this.db.$queryRaw<Array<{id:string}>>(Prisma.sql`
-      SELECT "id" FROM "Account" WHERE "id" IN (${Prisma.join(allIds)}) AND "status"='ACTIVE' AND "emailVerifiedAt" IS NOT NULL
+      SELECT "id" FROM "Account" WHERE "id" IN (${Prisma.join(allIds.map(id=>this.accountKey(id)))}) AND "status"='ACTIVE' AND "emailVerifiedAt" IS NOT NULL
     `);
     if(valid.length!==allIds.length)throw new BadRequestException('One or more participant accounts are unavailable.');
     const conversationId=await this.db.serializable(async tx=>{
       const rows=await tx.$queryRaw<Array<{id:string}>>(Prisma.sql`
-        INSERT INTO "Conversation" ("title","createdByAccountId") VALUES (${title},${accountId}) RETURNING "id"
+        INSERT INTO "Conversation" ("title","createdByAccountId") VALUES (${title},${this.accountKey(accountId)}) RETURNING "id"
       `);
       const id=rows[0]?.id;if(!id)throw new Error('Conversation creation failed.');
       for(const participantId of allIds){
-        await tx.$executeRaw(Prisma.sql`INSERT INTO "ConversationParticipant" ("conversationId","accountId") VALUES (${id},${participantId})`);
+        await tx.$executeRaw(Prisma.sql`INSERT INTO "ConversationParticipant" ("conversationId","accountId") VALUES (${this.conversationKey(id)},${this.accountKey(participantId)})`);
       }
       return id;
     });
@@ -58,7 +64,7 @@ export class MessagingService {
   async getConversation(accountId:string,conversationId:string){
     await this.requireParticipant(accountId,conversationId);
     const conversation=(await this.db.$queryRaw<ConversationRow[]>(Prisma.sql`
-      SELECT "id","title","createdByAccountId","createdAt","updatedAt" FROM "Conversation" WHERE "id"=${conversationId} LIMIT 1
+      SELECT "id","title","createdByAccountId","createdAt","updatedAt" FROM "Conversation" WHERE "id"=${this.conversationKey(conversationId)} LIMIT 1
     `))[0];
     if(!conversation)throw new NotFoundException('Conversation not found.');
     const [participants,messages]=await Promise.all([this.participants(conversationId),this.messages(conversationId)]);
@@ -70,12 +76,12 @@ export class MessagingService {
     const payload=this.messagePayload(input);
     const rows=await this.db.$queryRaw<Array<{id:string}>>(Prisma.sql`
       INSERT INTO "Message" ("conversationId","senderAccountId","kind","body","mediaUrl","durationSec")
-      VALUES (${conversationId},${accountId},${payload.kind},${payload.body},${payload.mediaUrl},${payload.durationSec}) RETURNING "id"
+      VALUES (${this.conversationKey(conversationId)},${this.accountKey(accountId)},${payload.kind},${payload.body},${payload.mediaUrl},${payload.durationSec}) RETURNING "id"
     `);
     const messageId=rows[0]?.id;if(!messageId)throw new Error('Message creation failed.');
-    await this.db.$executeRaw(Prisma.sql`UPDATE "Conversation" SET "updatedAt"=NOW() WHERE "id"=${conversationId}`);
+    await this.db.$executeRaw(Prisma.sql`UPDATE "Conversation" SET "updatedAt"=NOW() WHERE "id"=${this.conversationKey(conversationId)}`);
     const recipients=await this.db.$queryRaw<Array<{accountId:string}>>(Prisma.sql`
-      SELECT "accountId" FROM "ConversationParticipant" WHERE "conversationId"=${conversationId} AND "accountId"<>${accountId}
+      SELECT "accountId" FROM "ConversationParticipant" WHERE "conversationId"=${this.conversationKey(conversationId)} AND "accountId"<>${this.accountKey(accountId)}
     `);
     await Promise.allSettled(recipients.map(row=>this.notifications.notify(row.accountId,'MESSAGE_RECEIVED',{conversationId,messageId,kind:payload.kind})));
     return this.messageById(messageId);
@@ -84,14 +90,15 @@ export class MessagingService {
   async markRead(accountId:string,conversationId:string){
     await this.requireParticipant(accountId,conversationId);
     await this.db.$executeRaw(Prisma.sql`
-      UPDATE "ConversationParticipant" SET "lastReadAt"=NOW() WHERE "conversationId"=${conversationId} AND "accountId"=${accountId}
+      UPDATE "ConversationParticipant" SET "lastReadAt"=NOW() WHERE "conversationId"=${this.conversationKey(conversationId)} AND "accountId"=${this.accountKey(accountId)}
     `);
     return{conversationId,status:'READ'};
   }
 
   private async requireParticipant(accountId:string,conversationId:string){
+    this.requireIdentifier(conversationId);
     const rows=await this.db.$queryRaw<Array<{ok:number}>>(Prisma.sql`
-      SELECT 1 AS "ok" FROM "ConversationParticipant" WHERE "conversationId"=${conversationId} AND "accountId"=${accountId} LIMIT 1
+      SELECT 1 AS "ok" FROM "ConversationParticipant" WHERE "conversationId"=${this.conversationKey(conversationId)} AND "accountId"=${this.accountKey(accountId)} LIMIT 1
     `);
     if(!rows.length)throw new ForbiddenException('Conversation access denied.');
   }
@@ -99,24 +106,28 @@ export class MessagingService {
   private participants(conversationId:string){return this.db.$queryRaw<ParticipantRow[]>(Prisma.sql`
     SELECT cp."conversationId",cp."accountId",a."email",p."firstName",p."lastName",cp."joinedAt",cp."lastReadAt"
     FROM "ConversationParticipant" cp JOIN "Account" a ON a."id"=cp."accountId" JOIN "Person" p ON p."id"=a."personId"
-    WHERE cp."conversationId"=${conversationId} ORDER BY cp."joinedAt" ASC
+    WHERE cp."conversationId"=${this.conversationKey(conversationId)} ORDER BY cp."joinedAt" ASC
   `)}
 
   private messages(conversationId:string){return this.db.$queryRaw<MessageRow[]>(Prisma.sql`
     SELECT m."id",m."conversationId",m."senderAccountId",a."email" AS "senderEmail",p."firstName" AS "senderFirstName",p."lastName" AS "senderLastName",m."kind",m."body",m."mediaUrl",m."durationSec",m."createdAt"
     FROM "Message" m JOIN "Account" a ON a."id"=m."senderAccountId" JOIN "Person" p ON p."id"=a."personId"
-    WHERE m."conversationId"=${conversationId} ORDER BY m."createdAt" ASC LIMIT 200
+    WHERE m."conversationId"=${this.conversationKey(conversationId)} ORDER BY m."createdAt" ASC LIMIT 200
   `)}
 
   private async messageById(messageId:string){const row=(await this.db.$queryRaw<MessageRow[]>(Prisma.sql`
     SELECT m."id",m."conversationId",m."senderAccountId",a."email" AS "senderEmail",p."firstName" AS "senderFirstName",p."lastName" AS "senderLastName",m."kind",m."body",m."mediaUrl",m."durationSec",m."createdAt"
-    FROM "Message" m JOIN "Account" a ON a."id"=m."senderAccountId" JOIN "Person" p ON p."id"=a."personId" WHERE m."id"=${messageId} LIMIT 1
+    FROM "Message" m JOIN "Account" a ON a."id"=m."senderAccountId" JOIN "Person" p ON p."id"=a."personId" WHERE m."id"=${this.messageKey(messageId)} LIMIT 1
   `))[0];if(!row)throw new NotFoundException('Message not found.');return row;}
 
+  private requireIdentifier(value:string){
+    if(typeof value!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value))throw new BadRequestException('Invalid messaging identifier.');
+  }
   private participantIds(value:unknown,accountId:string){
     if(!Array.isArray(value)||!value.length||value.length>20)throw new BadRequestException('participantAccountIds must contain 1-20 accounts.');
     const ids=[...new Set(value.map(v=>typeof v==='string'?v.trim():'').filter(Boolean))].filter(id=>id!==accountId);
     if(!ids.length)throw new BadRequestException('At least one other participant is required.');
+    for(const id of ids)this.requireIdentifier(id);
     return ids;
   }
   private title(value:unknown){if(value===undefined||value===null||value==='')return null;if(typeof value!=='string')throw new BadRequestException('title must be text.');const title=value.trim();if(!title||title.length>120)throw new BadRequestException('title must be 1-120 characters.');return title;}

@@ -1,9 +1,11 @@
-import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { DatabaseService } from '../database/database.service';
 import { GoogleIdentityService } from './google-identity.service';
 import { MfaService } from './mfa.service';
+import { assertAuthEmailRecipient } from './email-trial-policy';
+import { lockActiveSessionAccount } from './account-session-lock';
 
 type Credentials={email:string;password:string};
 type Tokens={accessToken:string;refreshToken:string};
@@ -22,6 +24,7 @@ export class AuthService {
   async register(input:Credentials):Promise<RegistrationResult>{
     const email=this.email(input.email);
     this.password(input.password);
+    assertAuthEmailRecipient(email);
     if(await this.db.account.findUnique({where:{email}}))throw new ConflictException('Account exists.');
     const account=await this.db.$transaction(async(tx:Prisma.TransactionClient)=>{
       const created=await tx.account.create({data:{email,passwordHash:this.hash(input.password),person:{create:{firstName:'Pending',lastName:'Profile'}}}});
@@ -31,8 +34,23 @@ export class AuthService {
     return{email:account.email,status:'PENDING_VERIFICATION',requiresEmailVerification:true};
   }
 
+  // Administrative provisioning creates identity only. No session, verified flag,
+  // password or authentication challenge is returned to the administrator.
+  async provisionPendingAccount(tx:Prisma.TransactionClient,input:{email:string;firstName:string;lastName:string},method:'EMAIL'|'GOOGLE'='EMAIL'){
+    const email=this.email(input.email);
+    if(method==='EMAIL')assertAuthEmailRecipient(email);
+    else if(method!=='GOOGLE'||!this.google.config().enabled)throw new ServiceUnavailableException('التحقق عبر Google غير متاح.');
+    if(await tx.account.findFirst({where:{email:{equals:email,mode:'insensitive'}},select:{id:true}}))throw new ConflictException('الحساب موجود؛ اختر ربط حساب موجود.');
+    let account;
+    try{account=await tx.account.create({data:{email,passwordHash:this.hash(randomBytes(48).toString('base64url')),person:{create:{firstName:input.firstName,lastName:input.lastName}}},select:{id:true,personId:true,email:true,status:true,emailVerifiedAt:true}});}
+    catch(error){if(error&&typeof error==='object'&&'code' in error&&error.code==='P2002')throw new ConflictException('الحساب موجود؛ اختر ربط حساب موجود.');throw error;}
+    if(method==='EMAIL')await this.replaceChallenge(tx,account.id,'VERIFY_EMAIL',VERIFY_TTL_MS);
+    return account;
+  }
+
   async requestEmailVerification(emailInput:string){
     const email=this.email(emailInput);
+    assertAuthEmailRecipient(email);
     const account=await this.db.account.findUnique({where:{email},select:{id:true,status:true,emailVerifiedAt:true}});
     if(!account||account.emailVerifiedAt||this.blocked(account.status))return{accepted:true};
     await this.db.$transaction((tx:Prisma.TransactionClient)=>this.replaceChallenge(tx,account.id,'VERIFY_EMAIL',VERIFY_TTL_MS));
@@ -56,6 +74,7 @@ export class AuthService {
 
   async requestPasswordReset(emailInput:string){
     const email=this.email(emailInput);
+    assertAuthEmailRecipient(email);
     const account=await this.db.account.findUnique({where:{email},select:{id:true,status:true,emailVerifiedAt:true}});
     if(!account||!this.isActive(account.status,account.emailVerifiedAt))return{accepted:true};
     await this.db.$transaction((tx:Prisma.TransactionClient)=>this.replaceChallenge(tx,account.id,'RESET_PASSWORD',RESET_TTL_MS));
@@ -97,15 +116,25 @@ export class AuthService {
     return this.completePrimaryAuthentication(account.id);
   }
 
-  async verifyMfaChallenge(challengeToken:string,code:string):Promise<Tokens>{const accountId=await this.mfa.verifyChallenge(challengeToken,code);return this.issue(accountId)}
+  async verifyMfaChallenge(challengeToken:string,code:string):Promise<Tokens>{
+    return this.db.serializable(async tx=>{
+      const accountId=await this.mfa.verifyChallenge(challengeToken,code,tx);
+      return this.issue(accountId,tx);
+    });
+  }
 
   async refresh(refreshToken:string):Promise<Tokens>{
     const token=this.requireRefreshToken(refreshToken);
-    const session=await this.db.session.findUnique({where:{tokenHash:this.tokenHash(token)},include:{account:{select:{status:true,emailVerifiedAt:true}}}});
-    if(!session||session.revokedAt||session.expiresAt<=new Date()||session.account.status!=='ACTIVE'||!session.account.emailVerifiedAt)throw new UnauthorizedException('Invalid session.');
-    const consumed=await this.db.session.updateMany({where:{id:session.id,revokedAt:null,expiresAt:{gt:new Date()}},data:{revokedAt:new Date()}});
-    if(consumed.count!==1)throw new UnauthorizedException('Invalid session.');
-    return this.issue(session.accountId);
+    return this.db.serializable(async tx=>{
+      const reference=await tx.session.findUnique({where:{tokenHash:this.tokenHash(token)},select:{accountId:true}});
+      if(!reference)throw new UnauthorizedException('Invalid session.');
+      await lockActiveSessionAccount(tx,reference.accountId);
+      const session=await tx.session.findUnique({where:{tokenHash:this.tokenHash(token)},include:{account:{select:{status:true,emailVerifiedAt:true}}}});
+      if(!session||session.revokedAt||session.expiresAt<=new Date()||session.account.status!=='ACTIVE'||!session.account.emailVerifiedAt)throw new UnauthorizedException('Invalid session.');
+      const consumed=await tx.session.updateMany({where:{id:session.id,revokedAt:null,expiresAt:{gt:new Date()}},data:{revokedAt:new Date()}});
+      if(consumed.count!==1)throw new UnauthorizedException('Invalid session.');
+      return this.issue(session.accountId,tx);
+    });
   }
 
   async logout(refreshToken:string):Promise<void>{
@@ -161,7 +190,11 @@ export class AuthService {
   private googleMappedAccountId(value:unknown){if(!value||typeof value!=='object'||Array.isArray(value))return null;const accountId=(value as Record<string,unknown>).accountId;return typeof accountId==='string'&&accountId?accountId:null}
   private googleSubjectKey(subject:string){return`auth.google.subject.${createHash('sha256').update(subject).digest('hex')}`}
 
-  private async issue(accountId:string):Promise<Tokens>{const refreshToken=randomBytes(48).toString('base64url');const session=await this.db.session.create({data:{accountId,tokenHash:this.tokenHash(refreshToken),expiresAt:new Date(Date.now()+2592000000)}});return{accessToken:this.access(accountId,session.id),refreshToken}}
+  private async issue(accountId:string,tx:Prisma.TransactionClient=this.db):Promise<Tokens>{
+    if(tx===this.db)return this.db.serializable(inner=>this.issue(accountId,inner));
+    await lockActiveSessionAccount(tx,accountId);
+    const refreshToken=randomBytes(48).toString('base64url');const session=await tx.session.create({data:{accountId,tokenHash:this.tokenHash(refreshToken),expiresAt:new Date(Date.now()+2592000000)}});return{accessToken:this.access(accountId,session.id),refreshToken};
+  }
   private access(id:string,sessionId:string){const secret=process.env.JWT_SECRET;if(!secret||secret.length<32)throw new Error('JWT_SECRET required.');const now=Math.floor(Date.now()/1000),encode=(value:object)=>Buffer.from(JSON.stringify(value)).toString('base64url'),body=`${encode({alg:'HS256',typ:'JWT'})}.${encode({sub:id,sid:sessionId,iat:now,exp:now+900})}`;return `${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`}
   verifyAccessToken(token:string){if(typeof token!=='string'||token.length<16)throw new UnauthorizedException('Invalid access token.');const parts=token.split('.');if(parts.length!==3)throw new UnauthorizedException('Invalid access token.');const [header,payload,signature]=parts,secret=process.env.JWT_SECRET;if(!header||!payload||!signature||!secret)throw new UnauthorizedException('Invalid access token.');const expected=createHmac('sha256',secret).update(`${header}.${payload}`).digest('base64url');if(signature.length!==expected.length||!timingSafeEqual(Buffer.from(signature),Buffer.from(expected)))throw new UnauthorizedException('Invalid access token.');try{const claims=JSON.parse(Buffer.from(payload,'base64url').toString()) as{sub?:unknown;sid?:unknown;exp?:unknown};if(typeof claims.sub!=='string'||!claims.sub||typeof claims.exp!=='number'||!Number.isFinite(claims.exp)||claims.exp<=Math.floor(Date.now()/1000))throw new UnauthorizedException('Invalid access token.');if(typeof claims.sid==='string'&&claims.sid)return{accountId:claims.sub,sessionId:claims.sid};if(this.allowSessionlessE2eAccess())return{accountId:claims.sub,sessionId:null};throw new UnauthorizedException('Invalid access token.')}catch(error){if(error instanceof UnauthorizedException)throw error;throw new UnauthorizedException('Invalid access token.')}}
   private allowSessionlessE2eAccess(){return process.env.CI==='true'&&process.env.GITHUB_ACTIONS==='true'}

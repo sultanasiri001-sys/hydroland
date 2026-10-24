@@ -14,9 +14,13 @@ test('Google sign-in stays sessionless until HYDROLAND MFA succeeds', async ({pa
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandGoogleAuth));
   const googleButton=page.locator('[data-google-mock]');
+  await page.locator('#visitor-auth-cta').click();
   await expect(googleButton).toBeVisible();
   await googleButton.click();
   await expect.poll(()=>googlePayload).toEqual({credential:'google-e2e-id-token-credential-abcdefghijklmnopqrstuvwxyz-0123456789'});
+  await expect(page.locator('#hl-google-mfa-dialog')).toBeVisible();
+  // Initial pageshow can arrive after account interaction while images are still loading.
+  await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:false})));
   await expect(page.locator('#hl-google-mfa-dialog')).toBeVisible();
   expect(await page.evaluate(()=>({access:sessionStorage.getItem('hl-access-token'),refresh:sessionStorage.getItem('hl-refresh-token'),persistedChallenge:Object.keys(sessionStorage).some(key=>/google|challenge|mfa/i.test(key))}))).toEqual({access:null,refresh:null,persistedChallenge:false});
   await page.locator('#hl-google-mfa-dialog input[name="code"]').fill('123456');

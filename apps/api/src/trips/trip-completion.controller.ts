@@ -13,14 +13,7 @@ export class TripCompletionController {
     @Req() request: { auth: { accountId: string } },
     @Param('id') id: string,
     @Body()
-    body: {
-      siteName?: string;
-      regionCode?: string;
-      maxDepthM?: number;
-      durationMin?: number;
-      instructorName?: string;
-      notes?: string;
-    },
+    body: Record<string,unknown>,
   ) {
     return this.completion.complete(request.auth.accountId, id, body);
   }

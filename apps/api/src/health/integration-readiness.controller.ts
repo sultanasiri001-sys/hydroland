@@ -1,6 +1,7 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
 import { AdminGuard } from '../admin/admin.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
+import { inspectCredentialObjectStorage } from '../credentials/credential-object-storage.config';
 import { IntegrationService } from '../integrations/integration.service';
 import { IntegrationReadinessPayload } from '../integrations/integration.types';
 
@@ -64,6 +65,20 @@ export class IntegrationReadinessController {
     const checks = {lifecycleOperational:integration.status==='PRODUCTION_ENABLED'||integration.status==='SANDBOX',providerConfigured:provider==='CLOUDFLARE_R2',accountConfigured:Boolean(process.env.CLOUDFLARE_R2_ACCOUNT_ID?.trim()),bucketConfigured:Boolean(process.env.CLOUDFLARE_R2_BUCKET?.trim()),accessKeyConfigured:Boolean(process.env.CLOUDFLARE_R2_ACCESS_KEY_ID?.trim()),secretConfigured:Boolean(process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY?.trim())};
     const locallyConfigured = Object.values(checks).every(Boolean);
     return {service:'hydroland-api',integration:'OBJECT_STORAGE',status:integration.status,provider:checks.providerConfigured?'CLOUDFLARE_R2':'UNCONFIGURED',locallyConfigured,productionReady:locallyConfigured&&integration.status==='PRODUCTION_ENABLED',sandboxReady:locallyConfigured&&integration.status==='SANDBOX',checks,commit:process.env.RENDER_GIT_COMMIT||'local',timestamp:new Date().toISOString()};
+  }
+
+  @Get('credential-storage')
+  getCredentialStorageReadiness():IntegrationReadinessPayload {
+    const integration=this.integrations.status('OBJECT_STORAGE');
+    const inspected=inspectCredentialObjectStorage();
+    const checks={lifecycleOperational:integration.status==='PRODUCTION_ENABLED'||integration.status==='SANDBOX',...inspected.checks};
+    const locallyConfigured=checks.lifecycleOperational&&inspected.runtimeConfigured;
+    return {
+      service:'hydroland-api',integration:'OBJECT_STORAGE',status:integration.status,provider:'S3_COMPATIBLE',
+      locallyConfigured,productionReady:integration.status==='PRODUCTION_ENABLED'&&inspected.productionConfigured,
+      sandboxReady:integration.status==='SANDBOX'&&locallyConfigured,checks,
+      commit:process.env.RENDER_GIT_COMMIT||'local',timestamp:new Date().toISOString(),
+    };
   }
 
   @Get('translation')

@@ -1,0 +1,6 @@
+CREATE TYPE "InstructorEarningStatus" AS ENUM ('PENDING','APPROVED','SETTLED','VOIDED');
+CREATE TABLE "InstructorEarning" ("id" TEXT NOT NULL,"trainingEnrollmentId" TEXT NOT NULL,"instructorAccountId" TEXT NOT NULL,"centerOrganizationId" TEXT,"amountMinor" INTEGER NOT NULL,"currency" TEXT NOT NULL DEFAULT 'SAR',"status" "InstructorEarningStatus" NOT NULL DEFAULT 'PENDING',"financeEntryId" TEXT,"approvedByAccountId" TEXT,"approvedAt" TIMESTAMP(3),"settledAt" TIMESTAMP(3),"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,CONSTRAINT "InstructorEarning_pkey" PRIMARY KEY ("id"),CONSTRAINT "InstructorEarning_trainingEnrollmentId_fkey" FOREIGN KEY ("trainingEnrollmentId") REFERENCES "TrainingEnrollment"("id") ON DELETE RESTRICT ON UPDATE CASCADE);
+CREATE UNIQUE INDEX "InstructorEarning_trainingEnrollmentId_key" ON "InstructorEarning"("trainingEnrollmentId");
+CREATE UNIQUE INDEX "InstructorEarning_financeEntryId_key" ON "InstructorEarning"("financeEntryId");
+CREATE INDEX "InstructorEarning_instructorAccountId_status_createdAt_idx" ON "InstructorEarning"("instructorAccountId","status","createdAt");
+ALTER TABLE "InstructorEarning" ADD CONSTRAINT "InstructorEarning_amount_positive" CHECK ("amountMinor" > 0);

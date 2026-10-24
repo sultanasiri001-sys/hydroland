@@ -30,6 +30,8 @@ const prepare=async page=>{
 
 test('multi-seat free booking, participant editing and self-cancel work from the browser',async({page})=>{
   const state=await installApi(page);await prepare(page);
+  await page.waitForFunction(()=>Boolean(window.HydrolandWorkspaceUI));
+  await page.locator('#navigation a[href="#trips"]').click();
   const book=page.locator('[data-book="رحلة جزيرة سمر"]').first();
   await expect.poll(()=>book.isEnabled()).toBe(true);
   await book.click();

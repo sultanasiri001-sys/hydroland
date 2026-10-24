@@ -10,12 +10,12 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:deploy": "node scripts/production-migration-recovery.mjs && node scripts/trip-weather-migration-recovery.mjs && node scripts/late-runtime-uuid-recovery.mjs && prisma migrate deploy",
+    "db:deploy": "node scripts/production-migration-recovery.mjs && node scripts/trip-weather-migration-recovery.mjs && node scripts/late-runtime-uuid-recovery.mjs && node scripts/trip-center-scope-migration-recovery.mjs && node scripts/organization-booking-migration-recovery.mjs && prisma migrate deploy",
     "validate:hr": "node scripts/hr-validation.mjs && rm -rf .tmp-hr-validation && tsc src/hr/hr-policy.ts src/hr/hr-policy.spec.ts src/hr/hr-compliance.ts src/hr/hr-compliance.spec.ts --outDir .tmp-hr-validation --module commonjs --moduleResolution node --target es2020 --esModuleInterop --skipLibCheck && node .tmp-hr-validation/hr-policy.spec.js && node .tmp-hr-validation/hr-compliance.spec.js && rm -rf .tmp-hr-validation",
     "validate:operations": "rm -rf .tmp-operations-validation && tsc src/operations/operations-policy.ts src/operations/operations-policy.spec.ts --outDir .tmp-operations-validation --module commonjs --target es2020 --esModuleInterop --skipLibCheck && node .tmp-operations-validation/operations-policy.spec.js && rm -rf .tmp-operations-validation",
     "validate:phase10": "node scripts/phase10-validation.mjs",
     "validate:phase12": "node scripts/phase12-validation.mjs",
-    "validate:training": "node scripts/training-integration-validation.mjs",
+    "validate:training": "node scripts/training-integration-validation.mjs && tsc src/governance/training-completion-policy.ts src/governance/training-completion-policy.spec.ts --outDir .tmp-training-completion --module commonjs --target es2020 --esModuleInterop --skipLibCheck && node .tmp-training-completion/training-completion-policy.spec.js && rm -rf .tmp-training-completion",
     "validate:wallet-rewards": "node scripts/wallet-rewards-validation.mjs",
     "validate:trip-intelligence": "node scripts/trip-intelligence-validation.mjs",
     "validate:translation": "node scripts/translation-validation.mjs",
@@ -25,6 +25,8 @@
     "validate:finance": "node scripts/finance-validation.mjs",
     "validate:inventory": "rm -rf .tmp-inventory-validation && tsc src/inventory/*.ts --outDir .tmp-inventory-validation --module commonjs --moduleResolution node --target es2020 --esModuleInterop --skipLibCheck && node scripts/inventory-validation.cjs && rm -rf .tmp-inventory-validation",
     "validate:customer-service": "rm -rf .tmp-customer-service-validation && tsc src/customer-service/customer-service-foundation.service.ts src/customer-service/customer-service-workflow.service.ts src/customer-service/customer-service-operations.service.ts src/customer-service/customer-service-governance.service.ts src/customer-service/customer-service.domain.ts --outDir .tmp-customer-service-validation --module commonjs --moduleResolution node --target es2020 --esModuleInterop --skipLibCheck && node scripts/customer-service-validation.cjs && rm -rf .tmp-customer-service-validation",
+    "validate:organization-invitations": "rm -rf .tmp-organization-membership-validation && tsc src/organizations/organization-membership.service.ts --rootDir src --outDir .tmp-organization-membership-validation --module commonjs --moduleResolution node --target es2020 --experimentalDecorators --esModuleInterop --skipLibCheck && node scripts/organization-membership-invite-validation.cjs; code=$?; rm -rf .tmp-organization-membership-validation; exit $code",
+    "validate:organization-customer-cases": "rm -rf .tmp-organization-case-validation && tsc src/customer-service/customer-case.service.ts --rootDir src --outDir .tmp-organization-case-validation --module commonjs --moduleResolution node --target es2020 --experimentalDecorators --esModuleInterop --skipLibCheck && node scripts/organization-customer-case-validation.cjs; code=$?; rm -rf .tmp-organization-case-validation; exit $code",
     "validate:marketing": "rm -rf .tmp-marketing-validation && tsc src/marketing/marketing-foundation.service.ts src/marketing/marketing-workflow.service.ts src/marketing/marketing-operations.service.ts src/marketing/marketing-governance.service.ts src/marketing/marketing.domain.ts --outDir .tmp-marketing-validation --module commonjs --moduleResolution node --target es2020 --esModuleInterop --skipLibCheck && node scripts/marketing-validation.cjs && rm -rf .tmp-marketing-validation",
     "validate:safety": "rm -rf .tmp-safety-validation && tsc src/safety/safety-compliance-risk-foundation.service.ts src/safety/safety-compliance-risk-workflow.service.ts src/safety/safety-compliance-risk-operations.service.ts src/safety/safety-compliance-risk-governance.service.ts src/safety/safety-compliance-risk.domain.ts --outDir .tmp-safety-validation --module commonjs --moduleResolution node --target es2020 --esModuleInterop --skipLibCheck && node scripts/safety-validation.cjs && rm -rf .tmp-safety-validation",
     "validate:technology-security": "rm -rf .tmp-technology-security-validation && tsc src/technology-security/technology-security-foundation.service.ts src/technology-security/technology-security-workflow.service.ts src/technology-security/technology-security-operations.service.ts src/technology-security/technology-security-governance.service.ts src/technology-security/technology-security.domain.ts --outDir .tmp-technology-security-validation --module commonjs --moduleResolution node --target es2020 --esModuleInterop --skipLibCheck && node scripts/technology-security-validation.cjs && rm -rf .tmp-technology-security-validation",
@@ -50,22 +52,23 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1138.0",
     "@aws-sdk/s3-request-presigner": "^3.1138.0",
+    "@fontsource/noto-sans-arabic": "^5.2.8",
     "@nestjs/common": "^11.2.3",
     "@nestjs/core": "^11.2.3",
     "@nestjs/platform-express": "^11.2.3",
+    "@pdf-lib/fontkit": "^1.1.1",
     "@prisma/client": "^6.19.3",
+    "bidi-js": "^1.0.3",
+    "google-auth-library": "^11.1.0",
+    "pdf-lib": "^1.17.1",
+    "prisma": "^6.19.3",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "pdf-lib": "^1.17.1",
-    "@pdf-lib/fontkit": "^1.1.1",
-    "bidi-js": "^1.0.3",
-    "@fontsource/noto-sans-arabic": "^5.2.8",
-    "google-auth-library": "^11.1.0"
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",
     "@types/node": "^22.10.0",
-    "prisma": "^6.19.3",
     "typescript": "^5.7.0"
   }
 }

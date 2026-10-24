@@ -31,13 +31,13 @@ export class OrganizationsController {
   }
 
   @Post(':id/members')
-  addMember(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { accountId: string; role: 'ADMIN' | 'OPERATOR' | 'INSTRUCTOR' | 'STAFF' | 'VIEWER' }) {
+  addMember(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { accountId?: string; email?: string; role: 'ADMIN' | 'OPERATOR' | 'INSTRUCTOR' | 'STAFF' | 'VIEWER' }) {
     return this.organizations.addMember(request.auth.accountId, id, body);
   }
 
   @Post(':id/membership-response')
-  respondToInvitation(@Req() request: AuthenticatedRequest,@Param('id') id:string,@Body() body:{accept:boolean}){
-    return this.organizations.respondToInvitation(request.auth.accountId,id,body.accept);
+  respondToInvitation(@Req() request: AuthenticatedRequest,@Param('id') id:string,@Body() body:{accept:boolean;expectedUpdatedAt?:string}){
+    return this.organizations.respondToInvitation(request.auth.accountId,id,body?.accept,body?.expectedUpdatedAt);
   }
 
   @UseGuards(ReviewGuard)

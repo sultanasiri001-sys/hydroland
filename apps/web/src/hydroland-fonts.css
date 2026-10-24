@@ -1,0 +1,7 @@
+/* Self-hosted approved fonts. See the OFL license files in assets/fonts/. */
+@font-face{font-family:'Tajawal';font-style:normal;font-weight:400;font-display:swap;src:url('./assets/fonts/Tajawal-Regular.woff') format('woff')}
+@font-face{font-family:'Tajawal';font-style:normal;font-weight:500;font-display:swap;src:url('./assets/fonts/Tajawal-Medium.woff') format('woff')}
+@font-face{font-family:'Tajawal';font-style:normal;font-weight:700;font-display:swap;src:url('./assets/fonts/Tajawal-Bold.woff') format('woff')}
+@font-face{font-family:'Tajawal';font-style:normal;font-weight:800;font-display:swap;src:url('./assets/fonts/Tajawal-ExtraBold.woff') format('woff')}
+@font-face{font-family:'Tajawal';font-style:normal;font-weight:900;font-display:swap;src:url('./assets/fonts/Tajawal-Black.woff') format('woff')}
+@font-face{font-family:'Montserrat';font-style:normal;font-weight:100 900;font-display:swap;src:url('./assets/fonts/Montserrat.woff') format('woff')}

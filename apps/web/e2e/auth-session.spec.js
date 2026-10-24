@@ -1,6 +1,10 @@
 import { test, expect } from '@playwright/test';
 import { openWorkspaceSwitcher } from './portal-test-helpers.js';
 
+test.beforeEach(async({page})=>{
+  await page.route('**/api/v1/integrations/email/public-config',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({enabled:true})}));
+});
+
 const waitForApp = async page => {
   await page.waitForFunction(() => Boolean(window.HydrolandAuth && window.HydrolandPortalAccess && window.HydrolandProfile));
 };
@@ -20,10 +24,10 @@ const seedSession = async (page,profileOptions={}) => {
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await waitForApp(page);
   await page.evaluate(() => {
-    sessionStorage.setItem('hl-access-token','e2e-access');
-    sessionStorage.setItem('hl-refresh-token','e2e-refresh');
-    window.HydrolandAuth.syncAuthUi();
+    const attempt=window.HydrolandAuth.beginAuthAttempt();
+    window.HydrolandAuth.acceptSession({accessToken:'e2e-access',refreshToken:'e2e-refresh'},attempt);
   });
+  await page.waitForFunction(() => Boolean(window.HydrolandProfileData?.profile));
 };
 
 test('registration remains unauthenticated until email verification', async ({ page }) => {
@@ -37,12 +41,13 @@ test('registration remains unauthenticated until email verification', async ({ p
   });
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await waitForApp(page);
+  await page.locator('#visitor-auth-cta').click();
   await page.locator('.hl-login-secondary').click();
   const panel=page.locator('.hl-auth-panel');
   await expect(panel).toBeVisible();
   await panel.locator('input[name="email"]').fill('new-user@hydroland.test');
   await panel.locator('input[name="password"]').fill('Hydroland-Registration-2026!');
-  await panel.evaluate(form=>form.requestSubmit());
+  await panel.locator('.hl-auth-submit').click();
   await expect.poll(()=>registrationPayload).toEqual({email:'new-user@hydroland.test',password:'Hydroland-Registration-2026!'});
   await expect(page.locator('.hl-login')).not.toHaveClass(/hidden/);
   await expect(panel).toBeHidden();
@@ -62,16 +67,17 @@ test('MFA challenge keeps browser unauthenticated until second factor succeeds',
   await page.route('**/api/v1/auth/mfa/verify', route => {verifyPayload=route.request().postDataJSON();return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({accessToken:'mfa-access-token',refreshToken:'mfa-refresh-token'})})});
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await waitForApp(page);
+  await page.locator('#visitor-auth-cta').click();
   await page.locator('.hl-login-primary').click();
   const panel=page.locator('.hl-auth-panel');
   await panel.locator('input[name="email"]').fill('mfa-user@hydroland.test');
   await panel.locator('input[name="password"]').fill('Hydroland-MFA-Login-2026!');
-  await panel.evaluate(form=>form.requestSubmit());
+  await panel.locator('.hl-auth-submit').click();
   await expect(panel.locator('[data-mfa-field]')).toBeVisible();
   await expect(panel.locator('[data-auth-primary]').first()).toBeHidden();
   expect(await page.evaluate(()=>({access:sessionStorage.getItem('hl-access-token'),refresh:sessionStorage.getItem('hl-refresh-token')}))).toEqual({access:null,refresh:null});
   await panel.locator('input[name="mfaCode"]').fill('123456');
-  await panel.evaluate(form=>form.requestSubmit());
+  await panel.locator('.hl-auth-submit').click();
   await expect.poll(()=>verifyPayload).toEqual({challengeToken:'mfa-browser-challenge-token-12345678901234567890',code:'123456'});
   await expect(page.locator('.hl-login')).toHaveClass(/hidden/);
   expect(await page.evaluate(()=>({access:sessionStorage.getItem('hl-access-token'),refresh:sessionStorage.getItem('hl-refresh-token'),authenticated:window.HydrolandAuth.isAuthenticated()}))).toEqual({access:'mfa-access-token',refresh:'mfa-refresh-token',authenticated:true});

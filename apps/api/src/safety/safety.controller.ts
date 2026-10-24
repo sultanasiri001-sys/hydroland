@@ -36,8 +36,9 @@ export class SafetyController {
   decide(
     @Req() request: { auth: { accountId: string } },
     @Param('checklistId') checklistId: string,
+    @Param('tripId') tripId: string,
     @Body() body: { decision: SafetyDecision; notes?: string },
   ) {
-    return this.reviews.decide(request.auth.accountId, checklistId, body.decision, body.notes);
+    return this.reviews.decide(request.auth.accountId, checklistId, body.decision, body.notes, tripId);
   }
 }

@@ -1,8 +1,11 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
-import { TrainingEnrollmentStatus, TrainingRecordStatus, TrainingSessionStatus } from '@prisma/client';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { TrainingEnrollmentStatus, TrainingRecordStatus } from '@prisma/client';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { TrainingAuthorizationService } from './training-authorization.service';
 import { TrainingRepositoryService } from './training-repository.service';
+import { TrainingProfessionalProfileService } from './training-professional-profile.service';
+import { TrainingCourseProgressService } from './training-course-progress.service';
+import { TrainingCertificateService } from './training-certificate.service';
 
 type AuthenticatedRequest = { auth: { accountId: string } };
 
@@ -12,7 +15,64 @@ export class TrainingController {
   constructor(
     private readonly training: TrainingRepositoryService,
     private readonly authorization: TrainingAuthorizationService,
+    private readonly professionalProfile: TrainingProfessionalProfileService,
+    private readonly progress: TrainingCourseProgressService,
+    private readonly certificates: TrainingCertificateService,
   ) {}
+
+  @Get('professional/me/enrollments/:id/plan')
+  professionalPlan(@Req() request:AuthenticatedRequest,@Param('id') id:string){return this.progress.plan(request.auth.accountId,id);}
+
+  @Post('professional/me/enrollments/:id/plan')
+  addPlanSkill(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.progress.addPlanSkill(request.auth.accountId,id,body);}
+
+  @Post('professional/me/enrollments/:id/complete')
+  completeCourse(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.progress.complete(request.auth.accountId,id,body);}
+
+  @Get('professional/me/earnings')
+  professionalEarnings(@Req() request: AuthenticatedRequest) {
+    return this.professionalProfile.earnings(request.auth.accountId);
+  }
+
+  @Get('professional/me/certificates')
+  professionalCertificates(@Req() request: AuthenticatedRequest) {
+    return this.professionalProfile.listCertificateReadiness(request.auth.accountId);
+  }
+
+  @Post('professional/me/records/:id/certificate-recommendation')
+  async recommendCertificate(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+    await this.authorization.assertRecordAccess(request.auth.accountId, id);
+    return this.training.recommendCertificate(id, request.auth.accountId);
+  }
+
+  @Post('certificates/:id/decision')
+  async decideCertificate(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: Record<string,unknown>) {
+    await this.authorization.assertReviewer(request.auth.accountId);
+    return this.certificates.decide(id, request.auth.accountId, body);
+  }
+
+  @Get('certificates')
+  certificateQueue(@Req() request:AuthenticatedRequest,@Query('status') status?:string,@Query('cursor') cursor?:string){return this.certificates.list(request.auth.accountId,status,cursor);}
+
+  @Get('professional/me/skills')
+  professionalSkills(@Req() request: AuthenticatedRequest) {
+    return this.professionalProfile.listSkills(request.auth.accountId);
+  }
+
+  @Get('professional/me/schedule')
+  professionalSchedule(@Req() request: AuthenticatedRequest) {
+    return this.professionalProfile.listSchedule(request.auth.accountId);
+  }
+
+  @Get('professional/me/assignments')
+  professionalAssignments(@Req() request: AuthenticatedRequest) {
+    return this.professionalProfile.listAssignments(request.auth.accountId);
+  }
+
+  @Get('professional/me')
+  professionalMe(@Req() request: AuthenticatedRequest) {
+    return this.professionalProfile.get(request.auth.accountId);
+  }
 
   @Get('mine/enrollments')
   mine(@Req() request: AuthenticatedRequest) {
@@ -21,7 +81,8 @@ export class TrainingController {
 
   @Post('enrollments')
   enroll(@Req() request: AuthenticatedRequest, @Body() body: { courseCode: string; centerOrganizationId?: string; metadata?: any }) {
-    return this.training.createEnrollment({ studentAccountId: request.auth.accountId, ...body });
+    if(!body||Object.keys(body).some(key=>!['courseCode','centerOrganizationId','metadata'].includes(key)))throw new BadRequestException('حقول التسجيل غير صالحة. تعيين المدرب من صلاحيات المركز.');
+    return this.training.createEnrollment({ studentAccountId: request.auth.accountId, courseCode:body.courseCode,centerOrganizationId:body.centerOrganizationId,metadata:body.metadata });
   }
 
   @Get('enrollments/:id')
@@ -31,9 +92,9 @@ export class TrainingController {
   }
 
   @Patch('enrollments/:id/instructor')
-  async assignInstructor(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { instructorAccountId: string }) {
+  async assignInstructor(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: Record<string,unknown>) {
     await this.authorization.assertAdministrativeEnrollmentAccess(request.auth.accountId, id);
-    return this.training.assignInstructor(id, body.instructorAccountId);
+    return this.training.assignInstructor(id, body,request.auth.accountId);
   }
 
   @Patch('enrollments/:id/status')
@@ -60,6 +121,17 @@ export class TrainingController {
     return this.training.addStage(id, body.stageType, body.deliveryMode, body.sequence);
   }
 
+  @Patch('skills/:id/assessment')
+  async assessSkill(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: { status: 'IN_PROGRESS' | 'COMPETENT' | 'NEEDS_REVIEW' },
+  ) {
+    await this.authorization.assertSkillAccess(request.auth.accountId, id);
+    if (!['IN_PROGRESS','COMPETENT','NEEDS_REVIEW'].includes(body.status)) throw new BadRequestException('Unsupported skill assessment status.');
+    return this.training.assessSkill(id, body.status, request.auth.accountId);
+  }
+
   @Post('stages/:id/skills')
   async addSkill(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { skillCode: string; name: string }) {
     await this.authorization.assertStageAccess(request.auth.accountId, id);
@@ -67,14 +139,20 @@ export class TrainingController {
   }
 
   @Post('records/:id/sessions')
-  async createSession(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { instructorAccountId: string; startsAt: string; trainingStageId?: string; facilityOrSiteId?: string; tripId?: string; vesselId?: string }) {
+  async createSession(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: Record<string,unknown>) {
     await this.authorization.assertRecordAccess(request.auth.accountId, id);
-    return this.training.createSession({ ...body, trainingRecordId: id, startsAt: new Date(body.startsAt) });
+    return this.training.createSession(id,body,request.auth.accountId);
+  }
+
+  @Patch('professional/me/sessions/:id/attendance')
+  async professionalAttendance(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: Record<string,unknown>) {
+    await this.authorization.assertSessionAccess(request.auth.accountId, id);
+    return this.training.setSessionAttendance(id,body,request.auth.accountId);
   }
 
   @Patch('sessions/:id/status')
-  async setSessionStatus(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: { status: TrainingSessionStatus; evidence?: any }) {
+  async setSessionStatus(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: Record<string,unknown>) {
     await this.authorization.assertSessionAccess(request.auth.accountId, id);
-    return this.training.setSessionStatus(id, body.status, body.evidence);
+    return this.training.setSessionStatus(id,body,request.auth.accountId);
   }
 }

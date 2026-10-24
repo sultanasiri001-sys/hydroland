@@ -24,10 +24,13 @@ test('authenticated user reports a safety incident and admin resolves it with ev
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandSafetyIncidents));
   await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','safety-incident-access');sessionStorage.setItem('hl-refresh-token','safety-incident-refresh');window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));await window.HydrolandProfile.load()});
+  await page.waitForFunction(()=>Boolean(window.HydrolandWorkspaceUI));
+  await page.locator('#hl-diver-dashboard [data-diver-route="safety"]').click();
   const panel=page.locator('#hl-safety-incidents');await expect(panel).toBeVisible();
   const form=panel.locator('[data-safety-incident-form]');await form.locator('[name="tripId"]').selectOption('trip-incident-e2e');await form.locator('[name="severity"]').selectOption('HIGH');await form.locator('[name="title"]').fill('تسرب محدود');await form.locator('[name="locationName"]').fill('مرسى القحمة');await form.locator('[name="description"]').fill('تمت ملاحظة تسرب محدود قرب المحرك ويحتاج فحصًا فنيًا.');await form.locator('button[type="submit"]').click();
   await expect.poll(()=>state.created?.status).toBe('OPEN');await expect(panel.locator('[data-safety-incident-mine]')).toContainText('تسرب محدود');
   await page.locator('#role-switch').click();await page.locator('#role-dialog [data-role="admin"]').click();
+  await page.locator('.hl-role-dashboard [data-action-label="مركز الحوادث"]').click();
   const review=panel.locator('article[data-safety-incident-id="incident-e2e"]');await expect(review).toBeVisible();await review.locator('[data-safety-incident-decision="UNDER_REVIEW"]').click();await expect.poll(()=>state.decision?.status).toBe('UNDER_REVIEW');
   await review.locator('[data-safety-incident-notes]').fill('تم توجيه البلاغ للفحص الفني وعزل القارب مبدئيًا.');await review.locator('[data-safety-incident-decision="RESOLVED"]').click();await expect.poll(()=>state.decision?.status).toBe('RESOLVED');await expect(review).toContainText('RESOLVED');
 });

@@ -25,10 +25,13 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --workspace=@hydroland/web --include-workspace-root=true --ignore-scripts
 
       - name: Validate
-        run: npm run typecheck
+        run: npm run test --workspace=@hydroland/web
+
+      - name: Audit web/API release before publishing web artifact
+        run: node scripts/release-dependency-audit.mjs web-api audit.json
 
       - name: Build web
         run: npm run build --workspace @hydroland/web

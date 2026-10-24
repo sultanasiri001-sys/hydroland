@@ -1,9 +1,13 @@
 # HYDROLAND Canonical Architecture
 
-Status: ACTIVE CONSOLIDATION BASELINE
-Canonical branch: `consolidation/hydroland-unified`
+Status: ACTIVE BASELINE — current implementation on `main`
+Canonical branch: `main`
+Historical consolidation source: `consolidation/hydroland-unified`
 Historical integration source: `release/integrated-platform`
-Governance candidate source: `feat/training-governance-v1`
+Historical governance source: `feat/training-governance-v1`
+
+Current continuation and visual acceptance: `docs/CONTINUATION_2026_09_28.md`.
+Historical consolidation steps below are retained as provenance, not a direction to restart consolidation.
 
 ## Rule
 HYDROLAND has one canonical implementation per capability. Historical feature/release branches are evidence and recovery sources, not parallel development targets.

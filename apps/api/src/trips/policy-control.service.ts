@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 
@@ -39,8 +40,8 @@ export class PolicyControlService {
     return rows[0];
   }
 
-  async state(category:string,ruleKey:string,fallback:PolicyState='ENABLED'):Promise<PolicyState>{
-    const rows=await this.db.$queryRaw<Array<{state:string}>>`
+  async state(category:string,ruleKey:string,fallback:PolicyState='ENABLED',tx:Prisma.TransactionClient=this.db):Promise<PolicyState>{
+    const rows=await tx.$queryRaw<Array<{state:string}>>`
       SELECT "state" FROM "PolicyControl"
       WHERE "category"=${category.toUpperCase()} AND "ruleKey"=${ruleKey.toUpperCase()}
       LIMIT 1
@@ -50,6 +51,7 @@ export class PolicyControlService {
   }
 
   async setState(accountId:string,category:string,ruleKey:string,state:PolicyState,reason?:string){
+    if(category.trim().toUpperCase()==='HR_COMPLIANCE')throw new ForbiddenException('تعديل ضوابط الموارد البشرية يتطلب طلبًا ومراجعة واعتمادًا مستقلين من إدارة الموظفين.');
     if(!['ENABLED','DISABLED','REVIEW'].includes(state))throw new BadRequestException('Invalid policy state.');
     const current=await this.get(category,ruleKey);
     const rows=await this.db.$queryRaw<PolicyRule[]>`
@@ -66,6 +68,7 @@ export class PolicyControlService {
 
   async upsert(accountId:string,input:{category?:string;ruleKey?:string;labelAr?:string;labelEn?:string|null;description?:string|null;state?:PolicyState}){
     const category=input.category?.trim().toUpperCase(),ruleKey=input.ruleKey?.trim().toUpperCase(),labelAr=input.labelAr?.trim();
+    if(category==='HR_COMPLIANCE')throw new ForbiddenException('تعديل ضوابط الموارد البشرية يتطلب طلبًا ومراجعة واعتمادًا مستقلين من إدارة الموظفين.');
     if(!category||!ruleKey||!labelAr)throw new BadRequestException('category, ruleKey and labelAr are required.');
     const state=input.state??'REVIEW';
     if(!['ENABLED','DISABLED','REVIEW'].includes(state))throw new BadRequestException('Invalid policy state.');
@@ -96,8 +99,8 @@ export class PolicyControlService {
     return rows[0];
   }
 
-  async decision(category:string,ruleKey:string){
-    const state=await this.state(category,ruleKey);
+  async decision(category:string,ruleKey:string,tx:Prisma.TransactionClient=this.db){
+    const state=await this.state(category,ruleKey,'ENABLED',tx);
     return {state,enforce:state==='ENABLED',review:state==='REVIEW',bypass:state==='DISABLED'};
   }
 }

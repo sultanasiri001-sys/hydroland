@@ -20,5 +20,6 @@ Public operational routes intentionally remain public:
 - `/health/ready`
 - `/integrations/maps/public-config`
 - `/integrations/weather/public-config`
+- `/integrations/email/public-config` — only `{enabled:boolean}` for account UI feature availability; no provider, credential, sender, or detailed readiness fields.
 
 The production integration inventory authenticates as its temporary E2E admin before reading detailed readiness diagnostics. Readiness responses expose boolean configuration state only and never return credential values.

@@ -1,0 +1,252 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { createServer } from 'node:http';
+import { once } from 'node:events';
+import { createRequire } from 'node:module';
+
+// This test writes isolated fixtures and uses a loopback-only fake provider.
+// Refuse non-local databases even if an operator accidentally supplies production env.
+const databaseUrl=new URL(process.env.DATABASE_URL||'postgresql://missing');
+assert(['localhost','127.0.0.1','[::1]'].includes(databaseUrl.hostname),'Outbox E2E requires a local test database');
+const require=createRequire(import.meta.url);
+const { AuthEmailOutboxWorker }=require('../dist/auth/auth-email-outbox.worker.js');
+const { AuthService }=require('../dist/auth/auth.service.js');
+const { EmailDeliveryService }=require('../dist/integrations/email-delivery.service.js');
+const { IntegrationService }=require('../dist/integrations/integration.service.js');
+const { DatabaseService }=require('../dist/database/database.service.js');
+const db=new DatabaseService();
+const attempts=[],auditEvents=[],providerErrors=[];
+let rejectNext=false;
+const provider=createServer(async(req,res)=>{
+  try{
+    assert.equal(req.method,'POST');
+    assert.equal(req.url,'/emails');
+    assert.equal(req.headers.authorization,'Bearer outbox-e2e-key');
+    let body='';
+    for await(const chunk of req)body+=chunk;
+    const payload=JSON.parse(body);
+    assert(payload.to.every(to=>to.endsWith('@example.invalid')),'Only synthetic recipients are permitted');
+    attempts.push({key:req.headers['idempotency-key'],payload});
+    res.setHeader('content-type','application/json');
+    if(rejectNext){rejectNext=false;res.writeHead(503);res.end('{"message":"temporary failure"}');return;}
+    res.end(JSON.stringify({id:'outbox-test-message-'+attempts.length}));
+  }catch(error){providerErrors.push(error);res.writeHead(500);res.end('{}');}
+});
+provider.listen(0,'127.0.0.1');
+await once(provider,'listening');
+Object.assign(process.env,{
+  JWT_SECRET:'outbox-e2e-only-secret-at-least-32-characters',
+  HYDROLAND_INTEGRATION_EMAIL_STATUS:'SANDBOX',
+  HYDROLAND_EMAIL_PROVIDER:'RESEND',
+  RESEND_API_KEY:'outbox-e2e-key',
+  RESEND_API_BASE_URL:'http://127.0.0.1:'+provider.address().port,
+  HYDROLAND_EMAIL_FROM:'HYDROLAND <no-reply@example.invalid>',
+  HYDROLAND_PUBLIC_WEB_ORIGIN:'https://web.example.invalid',
+});
+const integrations=new IntegrationService({record:async()=>{}});
+const delivery=new EmailDeliveryService(integrations,{record:async event=>auditEvents.push(event)});
+const auth=new AuthService(db,{},{}); // MFA/Google are not used by challenge delivery or consumption.
+const worker=new AuthEmailOutboxWorker(db,auth,delivery,integrations);
+let account,trialAccount;
+const now=Date.now();
+const future=new Date(now+20*60_000).toISOString();
+const past=new Date(now-60_000).toISOString();
+const basePayload={purpose:'VERIFY_EMAIL',expiresAt:future,delivery:'EMAIL',version:1};
+const row=(id)=>db.notification.findUniqueOrThrow({where:{id}});
+const insert=(payload={},extra={})=>db.notification.create({data:{
+  accountId:account.id,type:'AUTH_EMAIL_VERIFICATION',payload:{...basePayload,...payload},...extra,
+}});
+const attemptsFor=id=>attempts.filter(attempt=>attempt.key==='hydroland-auth/'+id);
+const tokenFor=(id,param)=>{
+  const text=attemptsFor(id).at(-1).payload.text;
+  const link=new URL(text.split('\n').find(line=>line.startsWith('https://')));
+  assert.equal(link.origin,'https://web.example.invalid');
+  const token=link.searchParams.get(param);
+  assert(token,'Email must contain the expected challenge link');
+  return token;
+};
+
+try{
+  assert.deepEqual(delivery.publicConfig(),{enabled:true},'Configured sandbox must expose only feature availability');
+  for(const key of ['RESEND_API_KEY','HYDROLAND_EMAIL_FROM','HYDROLAND_EMAIL_PROVIDER','HYDROLAND_PUBLIC_WEB_ORIGIN']){
+    const saved=process.env[key];delete process.env[key];
+    assert.deepEqual(delivery.publicConfig(),{enabled:false},'Incomplete configuration must not advertise email availability');
+    process.env[key]=saved;
+  }
+  for(const origin of ['invalid','http://web.example.invalid','ftp://localhost','https://user:password@web.example.invalid']){
+    const saved=process.env.HYDROLAND_PUBLIC_WEB_ORIGIN;process.env.HYDROLAND_PUBLIC_WEB_ORIGIN=origin;
+    assert.deepEqual(delivery.publicConfig(),{enabled:false},'Unsafe link origins must not advertise email availability');
+    process.env.HYDROLAND_PUBLIC_WEB_ORIGIN=saved;
+  }
+  for(const status of ['NOT_SELECTED','CONFIGURED','VERIFIED','DEGRADED','DISABLED']){
+    process.env.HYDROLAND_INTEGRATION_EMAIL_STATUS=status;
+    assert.deepEqual(delivery.publicConfig(),{enabled:false},'Non-operational lifecycle states must disable the public feature');
+  }
+  process.env.HYDROLAND_INTEGRATION_EMAIL_STATUS='PRODUCTION_ENABLED';
+  assert.deepEqual(delivery.publicConfig(),{enabled:true});
+  process.env.HYDROLAND_INTEGRATION_EMAIL_STATUS='SANDBOX';
+  account=await db.account.create({data:{
+    email:'outbox-e2e-'+randomUUID()+'@example.invalid',passwordHash:'fixture-only',
+    person:{create:{firstName:'Outbox',lastName:'E2E'}},
+  }});
+  // More than one entire batch of EACH ineligible state must not starve later rows.
+  const blockers=await db.notification.createManyAndReturn({data:[
+    ...Array.from({length:25},(_,index)=>({
+      accountId:account.id,type:'AUTH_EMAIL_VERIFICATION',createdAt:new Date(now-120_000+index),
+      payload:{...basePayload,deliveryStatus:'SENT',deliveryAttempts:1},
+    })),
+    ...Array.from({length:25},(_,index)=>({
+      accountId:account.id,type:'AUTH_EMAIL_VERIFICATION',createdAt:new Date(now-90_000+index),
+      payload:{...basePayload,deliveryStatus:'DEFERRED',deliveryAttempts:1,nextDeliveryAttemptAt:future},
+    })),
+  ]});
+  const fresh=await insert(); // Missing JSON paths must be included.
+  const nullState=await insert({deliveryStatus:null,nextDeliveryAttemptAt:null});
+  const retry=await insert({purpose:'RESET_PASSWORD',deliveryStatus:'DEFERRED',deliveryAttempts:2,nextDeliveryAttemptAt:past},{type:'AUTH_PASSWORD_RESET'});
+  const expired=await insert({expiresAt:past});
+  const expiredSent=await insert({expiresAt:past,deliveryStatus:'SENT'});
+  const expiredDeferred=await insert({expiresAt:past,deliveryStatus:'DEFERRED',nextDeliveryAttemptAt:future});
+  const unrelated=await insert({},{type:'BOOKING_CONFIRMED'});
+  const consumed=await insert({},{status:'READ'});
+
+  await worker.run();
+  assert.equal(attempts.length,3,'Sent/deferred head rows must not block fresh, null-state, and due retry messages');
+  for(const item of [fresh,nullState,retry]){
+    const current=await row(item.id);
+    assert.equal(current.status,'PENDING','Delivery must not consume the challenge');
+    assert.equal(current.payload.deliveryStatus,'SENT');
+    assert.equal(attemptsFor(item.id).length,1);
+    assert(!Object.keys(current.payload).some(key=>key.toLowerCase().includes('token')),'Never persist bearer tokens');
+  }
+  assert.equal((await row(retry.id)).payload.deliveryAttempts,3);
+  for(const item of [expired,expiredSent,expiredDeferred])assert.equal((await row(item.id)).status,'FAILED','Expired challenges must be retired without delivery');
+  assert.equal((await row(unrelated.id)).status,'PENDING');
+  assert.equal((await row(consumed.id)).status,'READ');
+  for(const item of blockers)assert.deepEqual((await row(item.id)).payload,item.payload,'Ineligible challenges must remain unchanged');
+  await worker.run();
+  assert.equal(attempts.length,3,'Successful deliveries must not be sent again while awaiting verification');
+
+  // A failed provider request backs off, then retries with exactly the same token and idempotency key.
+  const failure=await insert();
+  rejectNext=true;
+  await worker.run();
+  const deferred=await row(failure.id);
+  assert.equal(deferred.payload.deliveryStatus,'DEFERRED');
+  assert.equal(deferred.payload.deliveryAttempts,1);
+  assert(Date.parse(deferred.payload.nextDeliveryAttemptAt)>Date.now());
+  const failedAttempt=attemptsFor(failure.id)[0];
+  await worker.run();
+  assert.equal(attemptsFor(failure.id).length,1,'Do not retry ahead of the backoff deadline');
+  await db.notification.update({where:{id:failure.id},data:{payload:{...deferred.payload,nextDeliveryAttemptAt:past}}});
+  await worker.run();
+  assert.equal((await row(failure.id)).payload.deliveryStatus,'SENT');
+  assert.equal((await row(failure.id)).payload.deliveryAttempts,2);
+  assert.deepEqual(attemptsFor(failure.id)[1],failedAttempt,'Retries must preserve the provider idempotency key and challenge link');
+
+  // The provider lifecycle gate must remain fail-closed.
+  const gated=await insert();
+  process.env.HYDROLAND_INTEGRATION_EMAIL_STATUS='CONFIGURED';
+  await worker.run();
+  assert.equal(attemptsFor(gated.id).length,0);
+  process.env.HYDROLAND_INTEGRATION_EMAIL_STATUS='SANDBOX';
+
+  // Exercise the real Prisma query after a single injected database transport failure.
+  let failPoll=true;
+  const warnings=[];
+  const recoveringWorker=new AuthEmailOutboxWorker({notification:{
+    findMany:async args=>{
+      if(failPoll){failPoll=false;throw new Error('sensitive provider/recipient fixture must not be logged');}
+      return db.notification.findMany(args);
+    },
+    updateMany:args=>db.notification.updateMany(args),
+  }},auth,delivery,integrations);
+  recoveringWorker.logger.warn=message=>warnings.push(message);
+  await assert.doesNotReject(()=>recoveringWorker.run(),'A temporary database outage must not reject a timer poll');
+  assert.equal(warnings.length,1);
+  assert(!warnings[0].includes('sensitive'));
+  await recoveringWorker.run();
+  assert.equal(attemptsFor(gated.id).length,1,'Worker must release its running guard and recover on the next poll');
+
+  // Retain the bounded batch size and allow the next tick to drain the remainder.
+  const burst=await db.notification.createManyAndReturn({data:Array.from({length:27},()=>({
+    accountId:account.id,type:'AUTH_EMAIL_VERIFICATION',payload:basePayload,
+  }))});
+  const beforeBurst=attempts.length;
+  await worker.run();
+  assert.equal(attempts.length-beforeBurst,25,'Each poll may process at most 25 eligible messages');
+  await worker.run();
+  assert.equal(attempts.length-beforeBurst,27,'The next poll must reach messages behind already-sent rows');
+  for(const item of burst)assert.equal(attemptsFor(item.id).length,1);
+
+  // Consume links from actual provider request bodies using the real AuthService and database.
+  const verifyToken=tokenFor(fresh.id,'verify_email');
+  const tokens=await auth.confirmEmailVerification(verifyToken);
+  assert(tokens.accessToken&&tokens.refreshToken);
+  assert.equal((await row(fresh.id)).status,'READ');
+  await assert.rejects(()=>auth.confirmEmailVerification(verifyToken),'Verification link must be single-use');
+  const resetToken=tokenFor(retry.id,'reset_token');
+  assert.deepEqual(await auth.resetPassword(resetToken,'Hydroland-Outbox-Renew-123!'),{passwordReset:true});
+  await assert.rejects(()=>auth.resetPassword(resetToken,'Hydroland-Outbox-Replay-123!'),'Reset link must be single-use');
+  assert.equal(await db.session.count({where:{accountId:account.id,revokedAt:null}}),0,'Password reset must revoke existing sessions');
+  assert(!JSON.stringify(auditEvents).includes(verifyToken),'Audit metadata must not contain bearer tokens');
+  assert(!JSON.stringify(auditEvents).includes(resetToken),'Audit metadata must not contain reset tokens');
+
+  // The free Resend sender must never open registration for undeliverable addresses.
+  process.env.HYDROLAND_EMAIL_FROM='HYDROLAND <onboarding@resend.dev>';
+  const trialEmail='trial-'+randomUUID()+'@example.invalid';
+  const password='Hydroland-Trial-123!';
+  for(const value of ['', 'invalid', 'owner@example.invalid,other@example.invalid', 'Owner <owner@example.invalid>']){
+    process.env.HYDROLAND_EMAIL_TEST_RECIPIENT=value;
+    assert.deepEqual(delivery.publicConfig(),{enabled:false},'Shared sender without one valid test recipient must stay unavailable');
+    await assert.rejects(()=>auth.register({email:trialEmail,password}),error=>error.getStatus()===503);
+    assert.equal(await db.account.count({where:{email:trialEmail}}),0,'Invalid trial setup must not create stranded accounts');
+  }
+  process.env.HYDROLAND_EMAIL_TEST_RECIPIENT='  '+trialEmail.toUpperCase()+'  ';
+  assert.deepEqual(delivery.publicConfig(),{enabled:true,restricted:true},'Public availability must not reveal the test recipient');
+  const rejectedEmail='rejected-'+randomUUID()+'@example.invalid';
+  const restricted=error=>error.getStatus()===403&&!error.message.includes(trialEmail);
+  const beforeRestricted=await db.notification.count();
+  await assert.rejects(()=>auth.register({email:rejectedEmail,password}),restricted);
+  for(const email of [rejectedEmail,account.email]){
+    await assert.rejects(()=>auth.requestEmailVerification(email),restricted);
+    await assert.rejects(()=>auth.requestPasswordReset(email),restricted);
+  }
+  assert.equal(await db.account.count({where:{email:rejectedEmail}}),0,'Rejected trial registration must not create an account');
+  assert.equal(await db.notification.count(),beforeRestricted,'Rejected requests must not create or replace challenges');
+  const beforeDirectSend=attempts.length;
+  await assert.rejects(()=>delivery.sendAuthChallenge({notificationId:randomUUID(),to:account.email,purpose:'RESET_PASSWORD',token:'must-not-leave-the-server',expiresAt:future}),restricted);
+  assert.equal(attempts.length,beforeDirectSend,'A queued or direct message must be checked again before provider delivery');
+  assert.equal((await auth.register({email:' '+trialEmail.toUpperCase()+' ',password})).status,'PENDING_VERIFICATION');
+  trialAccount=await db.account.findUniqueOrThrow({where:{email:trialEmail}});
+  const trialVerification=await db.notification.findFirstOrThrow({where:{accountId:trialAccount.id,type:'AUTH_EMAIL_VERIFICATION',status:'PENDING'}});
+  await worker.run();
+  assert.equal(attemptsFor(trialVerification.id).length,1);
+  assert.deepEqual(attemptsFor(trialVerification.id)[0].payload.to,[trialEmail],'Never redirect another account\'s challenge to the owner');
+  const trialTokens=await auth.confirmEmailVerification(tokenFor(trialVerification.id,'verify_email'));
+  assert(trialTokens.accessToken&&trialTokens.refreshToken);
+  await auth.requestPasswordReset(trialEmail);
+  const trialReset=await db.notification.findFirstOrThrow({where:{accountId:trialAccount.id,type:'AUTH_PASSWORD_RESET',status:'PENDING'}});
+  await worker.run();
+  assert.deepEqual(await auth.resetPassword(tokenFor(trialReset.id,'reset_token'),'Hydroland-Trial-Renew-123!'),{passwordReset:true});
+  assert.equal(await db.session.count({where:{accountId:trialAccount.id,revokedAt:null}}),0);
+  // A verified sender can leave the restricted trial explicitly, without changing code.
+  process.env.HYDROLAND_EMAIL_FROM='HYDROLAND <no-reply@example.invalid>';
+  assert.deepEqual(delivery.publicConfig(),{enabled:true,restricted:true},'Keep the restriction until the operator removes it');
+  delete process.env.HYDROLAND_EMAIL_TEST_RECIPIENT;
+  assert.deepEqual(delivery.publicConfig(),{enabled:true});
+  assert.deepEqual(providerErrors,[]);
+  console.log('Auth email outbox PostgreSQL E2E passed: no queue starvation, missing/null JSON fields, expiry, bounded batches, retry idempotency/backoff, lifecycle gate, database recovery, usable single-use verification/reset links, restricted trial registration without stranded accounts, and no delivery to other recipients.');
+} finally {
+  worker.onModuleDestroy();
+  try{
+    for(const fixture of [trialAccount,account].filter(Boolean)){
+      await db.session.deleteMany({where:{accountId:fixture.id}});
+      await db.notification.deleteMany({where:{accountId:fixture.id}});
+      await db.account.delete({where:{id:fixture.id}});
+      await db.person.delete({where:{id:fixture.personId}});
+    }
+  }finally{
+    await db.$disconnect();
+    await new Promise(resolve=>provider.close(resolve));
+  }
+}

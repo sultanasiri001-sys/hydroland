@@ -18,11 +18,8 @@ test('visitor can explore public sections and return to the sign-up entry', asyn
   const entry = page.locator('.hl-login');
   await expect(entry).toHaveAttribute('role', 'dialog');
   await expect(entry).toHaveAttribute('aria-modal', 'true');
-  await expect(entry.getByRole('heading', { name: 'بوابتك إلى البحر الأحمر' })).toBeVisible();
-  await expect(entry.locator('.hl-login-guest')).toBeVisible();
-
-  await entry.locator('.hl-login-guest').click();
-  await expect(entry).toHaveClass(/hidden/);
+  await expect(entry).toBeHidden();
+  await expect(page.locator('#home')).toBeVisible();
   expect(await page.evaluate(() => ({
     guest: window.HydrolandAuth.isGuestMode(),
     authenticated: window.HydrolandAuth.isAuthenticated(),

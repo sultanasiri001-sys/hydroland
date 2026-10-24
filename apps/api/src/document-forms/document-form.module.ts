@@ -10,5 +10,9 @@ import { DocumentPrintService } from './document-print.service';
 import { DocumentPdfService } from './document-pdf.service';
 import { DocumentBrandingService } from './document-branding.service';
 import { DocumentAssetService } from './document-asset.service';
-@Module({imports:[AuthModule],controllers:[DocumentPersistenceController],providers:[DocumentFormService,DocumentLifecycleService,DocumentAuthorizationService,DocumentListService,DocumentPersistenceService,DocumentPrintService,DocumentPdfService,DocumentBrandingService,DocumentAssetService],exports:[DocumentFormService,DocumentLifecycleService,DocumentListService,DocumentPersistenceService,DocumentPrintService,DocumentPdfService,DocumentBrandingService,DocumentAssetService]})
+import { CooperationContractController } from './cooperation-contract.controller';
+import { CooperationContractService } from './cooperation-contract.service';
+import { ContractLibraryController } from './contract-library.controller';
+import { ContractLibraryService } from './contract-library.service';
+@Module({imports:[AuthModule],controllers:[DocumentPersistenceController,CooperationContractController,ContractLibraryController],providers:[DocumentFormService,DocumentLifecycleService,DocumentAuthorizationService,DocumentListService,DocumentPersistenceService,DocumentPrintService,DocumentPdfService,DocumentBrandingService,DocumentAssetService,CooperationContractService,ContractLibraryService],exports:[DocumentFormService,DocumentLifecycleService,DocumentListService,DocumentPersistenceService,DocumentPrintService,DocumentPdfService,DocumentBrandingService,DocumentAssetService]})
 export class DocumentFormModule {}

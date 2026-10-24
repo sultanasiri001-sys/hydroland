@@ -39,7 +39,7 @@ const counts = safe.reduce((acc, item) => {
   return acc;
 }, {});
 
-const [maps, weather, payment, settlement, emailReadiness, sms, whatsapp, objectStorage, translation, esign, distressAis, nafath, regulatory] = await Promise.all([
+const [maps, weather, payment, settlement, emailReadiness, sms, whatsapp, objectStorage, credentialStorage, translation, esign, distressAis, nafath, regulatory] = await Promise.all([
   read('/integrations/maps/public-config'),
   read('/integrations/weather/public-config'),
   adminRead('/health/integrations/payment'),
@@ -48,6 +48,7 @@ const [maps, weather, payment, settlement, emailReadiness, sms, whatsapp, object
   adminRead('/health/integrations/sms'),
   adminRead('/health/integrations/whatsapp'),
   adminRead('/health/integrations/object-storage'),
+  adminRead('/health/integrations/credential-storage'),
   adminRead('/health/integrations/translation'),
   adminRead('/health/integrations/esign'),
   adminRead('/health/integrations/distress-ais'),
@@ -91,6 +92,7 @@ const safeEmail = sanitizeReadiness(emailReadiness);
 const safeSms = sanitizeReadiness(sms);
 const safeWhatsApp = sanitizeReadiness(whatsapp);
 const safeObjectStorage = sanitizeReadiness(objectStorage);
+const safeCredentialStorage = sanitizeReadiness(credentialStorage);
 const safeTranslation = sanitizeReadiness(translation);
 const safeEsign = sanitizeReadiness(esign);
 const safeDistressAis = {
@@ -122,6 +124,7 @@ if (!safeEmail.productionReady) blockers.push('EMAIL:PRODUCTION_NOT_READY');
 if (!safeSms.productionReady) blockers.push('SMS:PRODUCTION_NOT_READY');
 if (!safeWhatsApp.productionReady) blockers.push('WHATSAPP:PRODUCTION_NOT_READY');
 if (!safeObjectStorage.productionReady) blockers.push('OBJECT_STORAGE:PRODUCTION_NOT_READY');
+if (!safeCredentialStorage.productionReady) blockers.push('CREDENTIAL_STORAGE:PRODUCTION_NOT_READY');
 if (!safeTranslation.productionReady) blockers.push('TRANSLATION_ENGINE:PRODUCTION_NOT_READY');
 if (!safeEsign.productionReady) blockers.push('ESIGN:PRODUCTION_NOT_READY');
 blockers.push('CERTIFICATION:AUTOMATED_PROVIDER_REQUIRED');
@@ -138,6 +141,7 @@ console.log('STAGE3_EMAIL_READINESS=' + JSON.stringify(safeEmail));
 console.log('STAGE3_SMS_READINESS=' + JSON.stringify(safeSms));
 console.log('STAGE3_WHATSAPP_READINESS=' + JSON.stringify(safeWhatsApp));
 console.log('STAGE3_OBJECT_STORAGE_READINESS=' + JSON.stringify(safeObjectStorage));
+console.log('STAGE3_CREDENTIAL_STORAGE_READINESS=' + JSON.stringify(safeCredentialStorage));
 console.log('STAGE3_TRANSLATION_READINESS=' + JSON.stringify(safeTranslation));
 console.log('STAGE3_ESIGN_READINESS=' + JSON.stringify(safeEsign));
 console.log('STAGE3_DISTRESS_AIS_READINESS=' + JSON.stringify(safeDistressAis));
