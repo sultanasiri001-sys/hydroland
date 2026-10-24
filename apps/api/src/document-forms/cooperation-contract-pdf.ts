@@ -127,6 +127,18 @@ export async function renderCooperationContractPdf(c:DocumentPrintContract, asse
     else {page.drawLine({start:{x:left+16,y:y-105},end:{x:right-16,y:y-105},thickness:.6,color:color.line});text('لا يوجد توقيع مسجل لهذا الإصدار',right-16,y-124,9,false,color.muted);}
   }
   y-=cardH+32;
+  heading('ختم مركز الغوص');
+  if(contract.centerSeal){
+    const {asset,bytes}=await assets.bytesForCenterSeal(c.organizationId,contract.centerSeal.assetId);
+    const stamp=asset.mimeType==='image/png'?await pdf.embedPng(bytes):await pdf.embedJpg(bytes);
+    const size=stamp.scale(Math.min(120/stamp.width,65/stamp.height));
+    page.drawImage(stamp,{x:M,y:y-65,width:size.width,height:size.height});
+    text('ختم أرفقه ممثل المركز مع توقيعه',R,y-16,11,true,color.navy);
+    ltr(contract.centerSeal.at.toISOString(),R-185,y-39,8);
+    ltr(contract.centerSeal.sealId,R-185,y-60,7);y-=90;
+  }else{
+    text(contract.centerSealRequired?'بانتظار ختم المركز عند توقيع ممثله':'لا يوجد ختم مركز مثبت في سجل هذا الإصدار السابق',R,y-16,11,false,color.muted);y-=46;
+  }
   heading('اعتماد منصة هيدرولاند');
   if(contract.seal){
     const cx=M+48,cy=y-40;

@@ -10,7 +10,7 @@
   host.insertAdjacentElement('afterend',panel);
   for(const weight of ['Regular','Bold']){const font=document.createElement('link');font.rel='preload';font.as='font';font.type='font/woff';font.crossOrigin='anonymous';font.href='./assets/fonts/Amiri-Contract-'+weight+'.woff';document.head.appendChild(font);}
   const style=document.createElement('link');style.rel='stylesheet';style.href='./hydroland-contracts.css';document.head.appendChild(style);
-  let generation=0,active=null,items=[],cursor=null,busy=false,dirty=false,logoUrl=null;
+  let generation=0,active=null,items=[],cursor=null,busy=false,dirty=false,logoUrl=null,sealUrl=null;
   const auth=()=>window.HydrolandAuth;
   const session=()=>auth()?.getSessionVersion?.();
   const current=(g,s)=>g===generation&&s===session()&&auth()?.isAuthenticated?.();
@@ -24,7 +24,7 @@
     if(!response.ok){if([401,403].includes(response.status))clear();throw new Error(Array.isArray(result?.message)?result.message.join('، '):result?.message||'تعذر إكمال إجراء العقد.');}
     return result;
   };
-  const revokeLogo=()=>{if(logoUrl)URL.revokeObjectURL(logoUrl);logoUrl=null};
+  const revokeLogo=()=>{if(logoUrl)URL.revokeObjectURL(logoUrl);logoUrl=null;if(sealUrl)URL.revokeObjectURL(sealUrl);sealUrl=null};
   function clear(){generation++;active=null;items=[];cursor=null;busy=false;dirty=false;revokeLogo();panel.hidden=true;panel.querySelector('[data-contract-create]').reset();panel.querySelector('[data-contract-create]').hidden=true;panel.querySelector('[data-contract-list]').replaceChildren();panel.querySelector('[data-contract-detail]').replaceChildren();message('')}
   function list(){panel.querySelector('[data-contract-list]').innerHTML=items.length?items.map(c=>`<button class="hl-contract-list-item" type="button" data-contract-open="${esc(c.id)}"><strong>${esc(c.referenceNumber)}</strong><span>${esc(c.values.center.legalName)}</span><small>${esc(labels[c.status]||c.status)} · الإصدار ${esc(c.version)}</small></button>`).join(''):'<p>لا توجد عقود متاحة لهذا الحساب.</p>';panel.querySelector('[data-contract-more]').hidden=!cursor}
   function fieldValues(){
@@ -39,11 +39,17 @@
       ${['center','professional','terms'].map(section=>`<section><h4>${{center:'بيانات مركز الغوص',professional:'بيانات المحترف',terms:'نطاق التعاون والشروط المالية'}[section]}</h4><dl>${active.fields.filter(f=>f.section===section).map(f=>`<div><dt>${esc(f.label)}</dt><dd>${esc(values[section][f.key]||'لم يُستكمل')}</dd></div>`).join('')}</dl></section>`).join('')}
       <section><h4>بنود التعاون</h4><ol>${active.clauses.map(c=>`<li>${esc(c)}</li>`).join('')}</ol></section>
       <section><h4>التوقيع والاعتماد</h4><div class="hl-contract-signatures">${['CENTER','PROFESSIONAL'].map(role=>{const s=active.signatures.find(s=>s.role===role);return `<article><b>${role==='CENTER'?'ممثل المركز':'المحترف'}</b><p>${s?esc(s.name):'بانتظار التوقيع'}</p>${s?`<small>${esc(date(s.at))}</small>`:''}</article>`}).join('')}<article>${active.seal?`<div class="hl-contract-seal"><b>HYDROLAND</b><strong>معتمد</strong><small>اعتماد المنصة</small></div><p>${esc(date(active.seal.at))}</p><small>${esc(active.seal.decisionId)}</small>`:`<div class="hl-contract-seal-position"><b>موضع ختم هيدرولاند</b><small>${active.status==='REJECTED'?'العقد مرفوض':'بانتظار الاعتماد'}</small></div>`}</article></div></section>
-      <footer>بصمة الإصدار <bdi>${esc(active.contentHash)}</bdi><p>التوقيع باسم الحساب المتحقق منه. ختم هيدرولاند اعتماد داخلي للمنصة.</p></footer>`;
+      <section><h4>ختم مركز الغوص</h4>${active.centerSeal?`${sealUrl?`<img class="hl-contract-center-seal" src="${esc(sealUrl)}" alt="ختم مركز الغوص المثبت على هذا الإصدار">`:''}<p>ثبّته ممثل المركز عند توقيع هذا الإصدار · ${esc(date(active.centerSeal.at))}</p><small>${esc(active.centerSeal.sealId)}</small>`:`<p>${active.centerSealRequired?'بانتظار ختم المركز عند توقيع ممثله':'لا يوجد ختم مركز مثبت في سجل هذا الإصدار السابق'}</p>`}<p>ختم المركز مستقل عن اعتماد هيدرولاند. قبول العقد لدى الجهة المختصة يخضع لمتطلباتها.</p></section><footer>بصمة الإصدار <bdi>${esc(active.contentHash)}</bdi><p>التوقيع باسم الحساب المتحقق منه. ختم هيدرولاند اعتماد داخلي للمنصة.</p></footer>`;
   }
   async function loadLogo(g,s,id){
+    if(active?.centerSeal)void loadSeal(g,s,id);
     if(!active?.branding.logoAssetId)return;
     try{const response=await auth().authorizedFetch(`/contracts/cooperation/${encodeURIComponent(id)}/logo`);if(!response.ok)throw new Error('تعذر تحميل شعار المركز.');const blob=await response.blob();if(!current(g,s)||active?.id!==id)return;logoUrl=URL.createObjectURL(blob);preview()}
+    catch(error){if(current(g,s)&&active?.id===id)message(error.message)}
+  }
+  async function loadSeal(g,s,id){
+    const sealId=active?.centerSeal?.sealId;
+    try{const response=await auth().authorizedFetch(`/contracts/cooperation/${encodeURIComponent(id)}/center-seal`);if(!response.ok)throw new Error('تعذر تحميل ختم المركز.');const blob=await response.blob();if(!current(g,s)||active?.id!==id||active?.centerSeal?.sealId!==sealId)return;if(sealUrl)URL.revokeObjectURL(sealUrl);sealUrl=URL.createObjectURL(blob);preview()}
     catch(error){if(current(g,s)&&active?.id===id)message(error.message)}
   }
   function render(){
@@ -55,7 +61,7 @@
       <aside class="hl-contract-source-notice"><b>بيانات الطرفين من ملف العضوية وملف المركز</b><p>تُحفظ بياناتهما تلقائيًا في هذا الإصدار. تُصحح البيانات في ملفها الأصلي، ثم يُحدّث العقد قبل التوقيع.</p>${missing.length?`<p>يلزم استكمال: ${missing.map(f=>esc(f.label)).join('، ')}.</p>`:''}${cap.sync?'<button type="button" data-contract-sync>تحديث بيانات العضوية والمركز</button>':''}${cap.manageCenterProfile?'<button type="button" data-contract-center-profile>فتح ملف المركز</button>':''}${cap.manageMemberProfile?'<button type="button" data-contract-member-profile>فتح ملف عضويتي</button>':''}${c.sources?.changed?'<p>تغيرت بيانات المصدر؛ يلزم تحديث العقد ومراجعته.</p>':''}</aside><form data-contract-fields>${['center','professional','terms'].map(section=>`<fieldset><legend>${{center:'بيانات المركز',professional:'بيانات المحترف',terms:'نطاق التعاون والشروط'}[section]}</legend><div class="hl-contract-grid">${c.fields.filter(f=>f.section===section).map(f=>{const enabled=section==='terms'&&cap.editTerms,type=/Date$/.test(f.key)?'date':'text',value=c.values[section][f.key]||'';return `<label>${esc(f.label)}${f.max>500?`<textarea name="${f.section}.${f.key}" rows="3" maxlength="${f.max}" ${enabled?'':'disabled'}>${esc(value)}</textarea>`:`<input name="${f.section}.${f.key}" type="${type}" maxlength="${f.max}" value="${esc(value)}" ${enabled?'':'disabled'}>`}</label>`}).join('')}</div></fieldset>`).join('')}${canEdit?'<button type="submit" data-contract-save>حفظ البيانات</button>':''}</form>
       ${cap.issue?'<button type="button" data-contract-issue>إرسال العقد للطرفين للتوقيع</button>':''}
       <details open><summary>معاينة العقد</summary><article class="hl-contract-paper" data-contract-preview></article></details>
-      ${cap.sign?`<form data-contract-sign><h3>التوقيع الإلكتروني</h3><label>اسمك المسجل للتوقيع<input name="signatureName" value="${esc(c.signatureName)}" required maxlength="240" readonly></label><label class="hl-contract-check"><input type="checkbox" name="consent" required>أؤكد قبول العقد بعد مراجعة بياناته وبنوده، وأوافق على توقيع هذا الإصدار إلكترونيًا باسمي.</label><button type="submit">وقّع العقد</button></form>`:''}
+      ${cap.sign?`<form data-contract-sign><h3>التوقيع الإلكتروني</h3><label>اسمك المسجل للتوقيع<input name="signatureName" value="${esc(c.signatureName)}" required maxlength="240" readonly></label><label class="hl-contract-check"><input type="checkbox" name="consent" required>أؤكد قبول العقد بعد مراجعة بياناته وبنوده، وأوافق على توقيع هذا الإصدار إلكترونيًا باسمي.</label>${c.centerSealRequired&&cap.applyCenterSeal?`<label>صورة ختم المركز لهذا الإصدار (PNG أو JPEG حتى 2 ميجابايت)<input name="centerSeal" type="file" accept="image/png,image/jpeg" required></label><label class="hl-contract-check"><input name="centerSealConsent" type="checkbox" required>أقر بتفويضي لاستخدام ختم المركز المرفق على هذا الإصدار مع توقيعي.</label>`:''}<button type="submit">وقّع العقد</button></form>`:''}
       ${cap.review||cap.return?`<form data-contract-decision><h3>${cap.review?'قرار هيدرولاند وملاحظاتها':'طلب تعديل العقد'}</h3><label>سبب القرار أو الملاحظات<textarea name="reason" minlength="5" maxlength="1000" required></textarea></label><label class="hl-contract-check"><input name="reviewed" type="checkbox" required>راجعت العقد والإصدار الحالي. إعادة العقد تلغي توقيعات هذا الإصدار وتستلزم التوقيع من جديد.</label>${cap.approve?'<button type="submit" name="decision" value="APPROVE">اعتماد وإضافة ختم هيدرولاند</button>':''}${cap.return?'<button type="submit" name="decision" value="RETURN">إعادة للتعديل</button>':''}${cap.review?'<button type="submit" name="decision" value="REJECT">رفض العقد</button><button type="submit" name="decision" value="COMMENT">إضافة ملاحظة</button>':''}</form>`:''}
       <details><summary>سجل الإصدارات والإجراءات</summary><ul class="hl-contract-history">${c.history.map(h=>`<li>${esc(({CONTRACT_SOURCES_SYNCED:'تحديث بيانات العضوية والمركز',CONTRACT_PLATFORM_REJECTED:'رفض هيدرولاند',CONTRACT_PLATFORM_COMMENTED:'ملاحظة هيدرولاند',CONTRACT_CREATED:'إنشاء العقد',CONTRACT_FIELDS_SAVED:'حفظ البيانات',CONTRACT_ISSUED:'إرسال للتوقيع',CONTRACT_SIGN_CENTER:'توقيع ممثل المركز',CONTRACT_SIGN_PROFESSIONAL:'توقيع المحترف',CONTRACT_RETURNED:'إعادة للتعديل',CONTRACT_PLATFORM_APPROVED:'اعتماد هيدرولاند'})[h.action]||h.action)} · الإصدار ${esc(h.version)} · ${esc(date(h.at))}${h.reason?' · '+esc(h.reason):''}</li>`).join('')}</ul></details>`;
     dirty=false;preview();
@@ -72,7 +78,7 @@
   function controls(disabled){panel.querySelectorAll('button').forEach(b=>{b.disabled=disabled});if(!disabled&&dirty)panel.querySelectorAll('[data-contract-sync],[data-contract-issue],[data-contract-sign] button,[data-contract-decision] button').forEach(b=>b.disabled=true)}
   async function mutate(path,method,body){
     if(busy)return;busy=true;controls(true);const g=generation,s=session();
-    try{const value=await request(path,method,body);if(!current(g,s))return;const brandChanged=active?.branding.logoAssetId!==value.branding.logoAssetId;active=value;if(brandChanged){revokeLogo();void loadLogo(g,s,value.id)}const i=items.findIndex(c=>c.id===value.id);if(i>=0)items[i]=value;else items.unshift(value);list();render();message('تم حفظ الإجراء وتحديث العقد.')}catch(error){if(current(g,s))message(error.message)}finally{if(current(g,s)){busy=false;controls(false)}}
+    try{const value=await request(path,method,body);if(!current(g,s))return;const brandChanged=active?.branding.logoAssetId!==value.branding.logoAssetId||active?.centerSeal?.sealId!==value.centerSeal?.sealId;active=value;if(brandChanged){revokeLogo();void loadLogo(g,s,value.id)}const i=items.findIndex(c=>c.id===value.id);if(i>=0)items[i]=value;else items.unshift(value);list();render();message('تم حفظ الإجراء وتحديث العقد.')}catch(error){if(current(g,s))message(error.message)}finally{if(current(g,s)){busy=false;controls(false)}}
   }
   const expected=()=>({expectedVersion:active.version,expectedContentHash:active.contentHash});
   panel.addEventListener('input',event=>{if(!active||!event.target.closest('[data-contract-fields]'))return;dirty=true;preview();controls(busy);message('احفظ البيانات قبل إرسال العقد أو التوقيع.');});
@@ -93,7 +99,15 @@
     if(!active)return;
     const path='/contracts/cooperation/'+encodeURIComponent(active.id),data=new FormData(form);
     if(form.matches('[data-contract-fields]')){const all=fieldValues(),values={terms:all.terms};await mutate(path+'/fields','PUT',{...expected(),values});}
-    if(form.matches('[data-contract-sign]')&&!dirty)await mutate(path+'/sign','POST',{...expected(),signatureName:data.get('signatureName'),consent:data.get('consent')==='on'});
+    if(form.matches('[data-contract-sign]')&&!dirty){
+      const g=generation,s=session(),revision=expected(),id=active.id;let centerSeal;
+      const file=data.get('centerSeal');
+      try{
+        if(file?.size){if(!['image/png','image/jpeg'].includes(file.type)||file.size>2_000_000)throw new Error('اختر صورة ختم PNG أو JPEG حتى 2 ميجابايت.');const bytes=new Uint8Array(await file.arrayBuffer());let binary='';for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));centerSeal={mimeType:file.type,base64:btoa(binary)};}
+        if(!current(g,s)||active?.id!==id||active.version!==revision.expectedVersion||active.contentHash!==revision.expectedContentHash||dirty)return;
+        await mutate(path+'/sign','POST',{...revision,signatureName:data.get('signatureName'),consent:data.get('consent')==='on',...(centerSeal?{centerSeal,centerSealConsent:data.get('centerSealConsent')==='on'}:{})});
+      }catch(error){if(current(g,s)&&active?.id===id)message(error.message)}
+    }
     if(form.matches('[data-contract-decision]')&&!dirty)await mutate(path+'/decision','POST',{...expected(),action:event.submitter?.value,reason:data.get('reason'),reviewed:data.get('reviewed')==='on'});
   });
   panel.addEventListener('click',async event=>{

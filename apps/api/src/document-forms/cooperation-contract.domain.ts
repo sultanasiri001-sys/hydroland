@@ -36,6 +36,7 @@ export interface CooperationPayload extends ContractValues {
   centerAccountId: string;
   professionalAccountId: string;
   clauses: readonly string[];
+  centerSealRequired?:true;
   sourceSnapshot?:ContractSourceSnapshot;
   librarySource?: { templateId: string; version: number; contentHash: string };
 }
@@ -87,9 +88,10 @@ export function readCooperation(value: unknown): CooperationPayload {
   const x = contractRecord(value);
   if (x.workflow !== 'DIVE_COOPERATION_V1' || x.identityVersion !== CONTRACT_IDENTITY || typeof x.centerAccountId !== 'string' || typeof x.professionalAccountId !== 'string' || !Array.isArray(x.clauses) || x.clauses.some(c => typeof c !== 'string')) throw new ConflictException('سجل العقد يحتاج مراجعة.');
   if(x.sourceSnapshot!==undefined){const s=contractRecord(x.sourceSnapshot);if(s.version!==1||typeof s.capturedAt!=='string'||typeof s.fingerprint!=='string'||!/^[a-f0-9]{64}$/.test(s.fingerprint)||!Array.isArray(s.professionalCredentialIds)||s.professionalCredentialIds.some(id=>typeof id!=='string')||(s.centerLicenseId!==null&&typeof s.centerLicenseId!=='string'))throw new ConflictException('مصدر بيانات العقد يحتاج مراجعة.');}
+  if(x.centerSealRequired!==undefined&&x.centerSealRequired!==true)throw new ConflictException('متطلب ختم المركز غير صالح.');
   const l=x.librarySource===undefined?null:contractRecord(x.librarySource);
   if(l&&(typeof l.templateId!=='string'||!Number.isInteger(l.version)||Number(l.version)<1||typeof l.contentHash!=='string'||!/^sha256:[a-f0-9]{64}$/.test(l.contentHash)))throw new ConflictException('مرجع قالب العقد يحتاج مراجعة.');
-  return { ...contractValues({ center: x.center, professional: x.professional, terms: x.terms }), workflow: 'DIVE_COOPERATION_V1', identityVersion: CONTRACT_IDENTITY, centerAccountId: x.centerAccountId, professionalAccountId: x.professionalAccountId, ...(x.sourceSnapshot?{sourceSnapshot:{version:1 as const,capturedAt:(x.sourceSnapshot as ContractSourceSnapshot).capturedAt,fingerprint:(x.sourceSnapshot as ContractSourceSnapshot).fingerprint,professionalCredentialIds:(x.sourceSnapshot as ContractSourceSnapshot).professionalCredentialIds,centerLicenseId:(x.sourceSnapshot as ContractSourceSnapshot).centerLicenseId}}:{}), ...(l?{librarySource:{templateId:l.templateId as string,version:l.version as number,contentHash:l.contentHash as string}}:{}), clauses: x.clauses as string[] };
+  return { ...contractValues({ center: x.center, professional: x.professional, terms: x.terms }), ...(x.centerSealRequired?{centerSealRequired:true as const}:{}), workflow: 'DIVE_COOPERATION_V1', identityVersion: CONTRACT_IDENTITY, centerAccountId: x.centerAccountId, professionalAccountId: x.professionalAccountId, ...(x.sourceSnapshot?{sourceSnapshot:{version:1 as const,capturedAt:(x.sourceSnapshot as ContractSourceSnapshot).capturedAt,fingerprint:(x.sourceSnapshot as ContractSourceSnapshot).fingerprint,professionalCredentialIds:(x.sourceSnapshot as ContractSourceSnapshot).professionalCredentialIds,centerLicenseId:(x.sourceSnapshot as ContractSourceSnapshot).centerLicenseId}}:{}), ...(l?{librarySource:{templateId:l.templateId as string,version:l.version as number,contentHash:l.contentHash as string}}:{}), clauses: x.clauses as string[] };
 }
 export function contractHash(payload: CooperationPayload, templateId: string, brandVersion: number) {
   return 'sha256:' + createHash('sha256').update(JSON.stringify({ templateId, brandVersion, payload })).digest('hex');
