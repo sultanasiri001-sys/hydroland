@@ -143,15 +143,16 @@ test('delegated approval persists and late private data cannot return after logo
 const hrContractTemplate={id:'template-hr',code:'CLIB-HR-PERMANENT',titleAr:'عقد عمل غير محدد المدة',version:2,contentHash:'sha256:template',content:{fields:[{key:'employeeName',label:'اسم العامل',source:'EMPLOYMENT_ACCOUNT',required:true},{key:'pay',label:'الأجر',source:'CONTRACT_TERMS',required:true}],clauses:['بند موظف معتمد للاختبار']}};
 function hrContractWorkspace(templates=[hrContractTemplate]){return {employeeName:'موظف اختبار',employmentUpdatedAt:revision,sourceHash:'sha256:source',expectedContractVersion:0,sourceValues:{employeeName:'موظف اختبار'},canCreate:true,templates,items:[],execution:'DRAFT_ONLY'};}
 async function openHrContracts(page,options={}){
- const state=await setup(page,{rows:[row({canManageContractDrafts:true})]});const workspace=hrContractWorkspace(options.templates);const writes=[];
+ const state=await setup(page,{rows:[row({canManageContractDrafts:true})]});const workspace={...hrContractWorkspace(options.templates),...options.workspace};const writes=[];
  await page.route('**/hr/employments/employment-fixture/contracts',async route=>{
   if(options.delay)await new Promise(resolve=>options.release=resolve);
   if(route.request().method()==='POST'){
    const body=route.request().postDataJSON();writes.push(body);
    if(options.deny)return json(route,{message:'Permission revoked'},403);
    if(options.conflict)return json(route,{message:'تغير سجل الموظف؛ حدّث البيانات.'},409);
-   const result={id:'hr-contract',version:1,contractType:'CLIB-HR-PERMANENT',status:'DRAFT',effectiveFrom:body.effectiveFrom+'T00:00:00.000Z',librarySnapshot:{template:workspace.templates.find(t=>t.id===body.templateId),values:{employeeName:'موظف اختبار',...body.values},snapshotHash:'sha256:saved'}};
-   workspace.items=[result];workspace.expectedContractVersion=1;return json(route,result,201);
+   const parent=workspace.items.find(r=>r.id===body.revisesContract?.id),nextVersion=workspace.expectedContractVersion+1;
+   const result={id:nextVersion===1?'hr-contract':'hr-contract-'+nextVersion,version:nextVersion,contractType:workspace.templates.find(t=>t.id===body.templateId).code,status:'DRAFT',effectiveFrom:body.effectiveFrom+'T00:00:00.000Z',effectiveTo:body.effectiveTo?body.effectiveTo+'T00:00:00.000Z':null,librarySnapshot:{template:structuredClone(workspace.templates.find(t=>t.id===body.templateId)),values:{...workspace.sourceValues,...body.values},snapshotHash:'sha256:saved',...(parent?{revisionOf:{id:parent.id,version:parent.version,snapshotHash:parent.librarySnapshot.snapshotHash}}:{})}};
+   workspace.items=[result,...workspace.items];workspace.expectedContractVersion=nextVersion;return json(route,result,201);
   }return json(route,workspace);
  });
  await page.getByRole('button',{name:'عقود الموظف من المكتبة',exact:true}).click();
@@ -182,4 +183,42 @@ test('late employee contract workspace cannot return after logout',async({page})
 test('administrative owner templates remain visibly drafts with independent Legal review pending',async({page})=>{
  const template={...hrContractTemplate,approval:{basis:'OWNER_COMBINED_INTERNAL_DRAFTS',independentLegalReviewComplete:false,scope:'INTERNAL_HR_DRAFTS_ONLY'}};
  const {box,state}=await openHrContracts(page,{templates:[template]});await expect(box.locator('[data-employment-contract-fields]')).toContainText('المراجعة القانونية المستقلة لم تكتمل');await expect(box.getByRole('option')).toContainText('اعتماد إداري للمسودات فقط');const form=await fillHrContract(box);await form.getByRole('button',{name:'حفظ مسودة عقد الموظف',exact:true}).click();await expect(box.locator('[data-employment-contract-history]')).toContainText('المراجعة القانونية المستقلة لم تكتمل');expect(state.writes).toHaveLength(0);
+});
+
+const previousHrDraft=()=>({id:'previous-hr-draft',version:1,contractType:hrContractTemplate.code,status:'DRAFT',effectiveFrom:'2027-01-01T00:00:00.000Z',effectiveTo:null,librarySnapshot:{template:structuredClone(hrContractTemplate),values:{employeeName:'موظف اختبار',pay:'الأجر السابق'},snapshotHash:'sha256:previous'}});
+const revisionWorkspace=()=>({expectedContractVersion:1,items:[previousHrDraft()]});
+test('employee draft revision compares changes and preserves the earlier version without repeating approvals',async({page})=>{
+ const {box,writes,state}=await openHrContracts(page,{workspace:revisionWorkspace()});
+ await box.getByRole('button',{name:'إنشاء إصدار جديد من المسودة 1',exact:true}).click();
+ const form=box.locator('[data-employment-contract-draft]'),save=form.getByRole('button',{name:'حفظ إصدار جديد من المسودة',exact:true});
+ await expect(form.getByLabel('الأجر',{exact:true})).toHaveValue('الأجر السابق');await expect(form.getByLabel('تاريخ سريان المسودة')).toHaveValue('2027-01-01');await expect(form.getByLabel('سبب إعداد مسودة العقد')).toHaveValue('');await expect(form.getByRole('checkbox')).not.toBeChecked();await expect(save).toBeDisabled();
+ await form.getByLabel('سبب إعداد مسودة العقد').fill('تعديل مسودة دون تغيير السابقة');await expect(save).toBeDisabled();
+ await form.getByLabel('الأجر',{exact:true}).fill('الأجر المعدل');await expect(form.locator('[data-contract-comparison]')).toContainText('الأجر السابق');await expect(form.locator('[data-contract-comparison]')).toContainText('الأجر المعدل');await expect(form.locator('tbody tr')).toHaveCount(1);
+ await form.getByRole('checkbox').check();await form.getByLabel('نهاية المدة إن وجدت').fill('2027-12-31');await expect(form.getByRole('checkbox')).not.toBeChecked();await form.getByRole('checkbox').check();await save.click();
+ await expect(box.locator('[data-employment-contract-history]>article')).toHaveCount(2);await expect(box).toContainText('إصدار جديد من مسودة الإصدار 1');expect(writes).toHaveLength(1);expect(writes[0]).toMatchObject({expectedContractVersion:1,revisesContract:{id:'previous-hr-draft',expectedSnapshotHash:'sha256:previous'},effectiveTo:'2027-12-31',values:{pay:'الأجر المعدل'},reviewed:true});expect(state.writes).toHaveLength(0);
+ await expect(box.locator('[data-employment-contract-history]>article').last()).toContainText('الإصدار 1');
+});
+test('draft revision refreshes canonical values and uses the available template without copying changed field meanings',async({page})=>{
+ const current={...structuredClone(hrContractTemplate),id:'current-hr-template',version:3,contentHash:'sha256:current'};current.content.fields[1].label='الأجر بعد المراجعة';current.content.fields.push({key:'location',label:'موقع العمل',source:'CONTRACT_TERMS',required:true});current.content.clauses=['بند جديد <img src=x onerror=alert(1)>'];
+ const other={...structuredClone(hrContractTemplate),id:'other-type',code:'CLIB-HR-TEMPORARY',titleAr:'عقد عمل مؤقت'};
+ const {box}=await openHrContracts(page,{templates:[current,other],workspace:{...revisionWorkspace(),sourceValues:{employeeName:'اسم محدث من سجل الموظف'}}});await box.getByRole('button',{name:'إنشاء إصدار جديد من المسودة 1',exact:true}).click();
+ const form=box.locator('[data-employment-contract-draft]');await expect(form.getByLabel('قالب عقد الموظف')).toHaveValue(current.id);await expect(form.getByRole('option',{name:/عقد عمل مؤقت/})).toHaveJSProperty('disabled',true);await expect(form.getByLabel('الأجر بعد المراجعة')).toHaveValue('');await expect(form.getByLabel('موقع العمل')).toHaveValue('');await expect(form.locator('[data-employment-contract-fields]')).toContainText('اسم محدث من سجل الموظف');
+ const compare=form.locator('[data-contract-comparison]');await expect(compare).toContainText('الإصدار 2');await expect(compare).toContainText('الإصدار 3');await expect(compare).toContainText('الأجر السابق');await expect(compare).toContainText('بند موظف معتمد للاختبار');await expect(compare).toContainText('بند جديد <img src=x onerror=alert(1)>');await expect(compare.locator('img')).toHaveCount(0);await expect(form.getByRole('checkbox')).not.toBeChecked();
+});
+test('cancelling employee draft revision clears carried terms and source without a write',async({page})=>{
+ const {box,writes}=await openHrContracts(page,{workspace:revisionWorkspace()});await box.getByRole('button',{name:'إنشاء إصدار جديد من المسودة 1',exact:true}).click();await box.getByRole('button',{name:'إلغاء إعداد الإصدار الجديد',exact:true}).click();
+ const form=box.locator('[data-employment-contract-draft]');await expect(form.getByLabel('الأجر',{exact:true})).toHaveValue('');await expect(form.getByLabel('تاريخ سريان المسودة')).toHaveValue('');await expect(form.locator('[data-contract-comparison]')).toBeHidden();const filled=await fillHrContract(box);await filled.getByRole('button',{name:'حفظ مسودة عقد الموظف',exact:true}).click();await expect(box.locator('[data-employment-contract-history]>article')).toHaveCount(2);expect(writes).toHaveLength(1);expect(writes[0].revisesContract).toBeUndefined();
+});
+test('read-only, historical and unavailable-template contracts have no revision action',async({page})=>{
+ const {box,workspace,writes}=await openHrContracts(page,{workspace:{...revisionWorkspace(),canCreate:false}});await expect(box.locator('[data-contract-revise]')).toHaveCount(0);
+ workspace.canCreate=true;workspace.items=[{...previousHrDraft(),librarySnapshot:null}];await page.getByRole('button',{name:'عقود الموظف من المكتبة',exact:true}).click();await expect(box.locator('[data-contract-revise]')).toHaveCount(0);
+ workspace.items=[previousHrDraft()];workspace.templates=[];await page.getByRole('button',{name:'عقود الموظف من المكتبة',exact:true}).click();await expect(box.locator('[data-contract-revise]')).toHaveCount(0);await expect(box.locator('form')).toHaveCount(0);expect(writes).toHaveLength(0);
+});
+test('revision conflict preserves source and comparison and permission loss removes carried terms',async({page})=>{
+ const options={workspace:revisionWorkspace(),conflict:true};const {box,writes}=await openHrContracts(page,options);await box.getByRole('button',{name:'إنشاء إصدار جديد من المسودة 1',exact:true}).click();const form=box.locator('[data-employment-contract-draft]');await form.getByLabel('الأجر',{exact:true}).fill('أجر التعديل الخاص');await form.getByLabel('سبب إعداد مسودة العقد').fill('تعديل مسودة في اختبار التعارض');await form.getByRole('checkbox').check();await form.getByRole('button',{name:'حفظ إصدار جديد من المسودة',exact:true}).click();await expect(box).toContainText('تغير سجل الموظف');await expect(form.getByLabel('الأجر',{exact:true})).toHaveValue('أجر التعديل الخاص');await expect(form.locator('[data-contract-comparison]')).toContainText('الأجر السابق');
+ options.conflict=false;options.deny=true;await form.getByRole('button',{name:'حفظ إصدار جديد من المسودة',exact:true}).click();await expect(box).toContainText('لم تعد صلاحية عقود الموظف متاحة');await expect(box.locator('form')).toHaveCount(0);await expect(box).not.toContainText('أجر التعديل الخاص');expect(writes[0].requestId).toBe(writes[1].requestId);expect(writes[1].revisesContract).toEqual(writes[0].revisesContract);
+});
+test('mobile draft comparison keeps Arabic changes readable inside the viewport',async({page})=>{
+ const {box}=await openHrContracts(page,{workspace:revisionWorkspace()});await page.setViewportSize({width:390,height:844});await box.getByRole('button',{name:'إنشاء إصدار جديد من المسودة 1',exact:true}).click();const form=box.locator('[data-employment-contract-draft]');await form.getByLabel('الأجر',{exact:true}).fill('أجر معدل وبدلات جديدة '.repeat(8));await expect(form.locator('table')).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await form.locator('[data-contract-comparison]').screenshot({path:test.info().outputPath('employee-draft-comparison-mobile.png')});
 });
