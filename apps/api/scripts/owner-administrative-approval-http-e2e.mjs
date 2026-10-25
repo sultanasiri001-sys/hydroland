@@ -42,7 +42,7 @@ try{
  const {DOCUMENT_DEPARTMENTS}=require('../dist/document-forms/document-form.domain.js');
  const controlBefore=await db.policyControl.findMany(),rolesBefore=await db.roleAssignment.findMany(),membersBefore=await db.organizationMember.findMany();
  for(const department of DOCUMENT_DEPARTMENTS){
-  const t=await ok(owner,'documents/templates','POST',{organizationId:org.id,code:`ADMIN-${department}`,department,titleAr:'نموذج إداري اصطناعي',titleEn:'Synthetic administrative form',fields});
+  const t=await ok(owner,'documents/templates','POST',{organizationId:org.id,code:`ADMIN-${DOCUMENT_DEPARTMENTS.indexOf(department)+1}`,department,titleAr:'نموذج إداري اصطناعي',titleEn:'Synthetic administrative form',fields});
   const d=await ok(owner,'documents','POST',{organizationId:org.id,templateId:t.id,department,contentHash:'department-source',payload:{meetingNo:'x',subject:'اعتماد إداري دون تنفيذ إجراء',decisions:'تظل الأدلة المتخصصة غير مكتملة'}});
   await ok(owner,`documents/${d.id}/submit`,'POST');const ep=path(org,d),plan=await ok(owner,ep);assert.equal(plan.eligible,true);
   const unchanged=await db.managedDocument.findUniqueOrThrow({where:{id:d.id}});const receipt=await ok(owner,ep,'POST',input(plan));assert.equal(receipt.receipt.actorAccountId,owner.id);assert.equal(receipt.receipt.status,'ADMINISTRATIVELY_APPROVED');assert.deepEqual(await db.managedDocument.findUniqueOrThrow({where:{id:d.id}}),unchanged);
