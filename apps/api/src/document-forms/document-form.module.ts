@@ -7,6 +7,7 @@ import { DocumentPersistenceService } from './document-persistence.service';
 import { DocumentPersistenceController } from './document-persistence.controller';
 import { DocumentWorkflowReadinessController } from './document-workflow-readiness.controller';
 import { DocumentTemplatePreviewController } from './document-template-preview.controller';
+import { DocumentTemplateCompletionController } from './document-template-completion.controller';
 import { DocumentTemplateSetupController } from './document-template-setup.controller';
 import { DocumentTemplateHistoryController } from './document-template-history.controller';
 import { DocumentAuthorizationService } from './document-authorization.service';
@@ -19,5 +20,5 @@ import { CooperationContractController } from './cooperation-contract.controller
 import { CooperationContractService } from './cooperation-contract.service';
 import { ContractLibraryController } from './contract-library.controller';
 import { ContractLibraryService } from './contract-library.service';
-@Module({imports:[AuthModule],controllers:[OwnerAdministrativeDecisionController,DocumentPersistenceController,DocumentWorkflowReadinessController,DocumentTemplateSetupController,DocumentTemplateHistoryController,DocumentTemplatePreviewController,CooperationContractController,ContractLibraryController],providers:[DocumentFormService,DocumentLifecycleService,DocumentAuthorizationService,DocumentListService,DocumentPersistenceService,DocumentPrintService,DocumentPdfService,DocumentBrandingService,DocumentAssetService,CooperationContractService,ContractLibraryService],exports:[DocumentFormService,DocumentLifecycleService,DocumentListService,DocumentPersistenceService,DocumentPrintService,DocumentPdfService,DocumentBrandingService,DocumentAssetService]})
+@Module({imports:[AuthModule],controllers:[OwnerAdministrativeDecisionController,DocumentPersistenceController,DocumentWorkflowReadinessController,DocumentTemplateSetupController,DocumentTemplateCompletionController,DocumentTemplateHistoryController,DocumentTemplatePreviewController,CooperationContractController,ContractLibraryController],providers:[DocumentFormService,DocumentLifecycleService,DocumentAuthorizationService,DocumentListService,DocumentPersistenceService,DocumentPrintService,DocumentPdfService,DocumentBrandingService,DocumentAssetService,CooperationContractService,ContractLibraryService],exports:[DocumentFormService,DocumentLifecycleService,DocumentListService,DocumentPersistenceService,DocumentPrintService,DocumentPdfService,DocumentBrandingService,DocumentAssetService]})
 export class DocumentFormModule {}

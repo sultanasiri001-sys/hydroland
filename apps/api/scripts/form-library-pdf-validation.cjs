@@ -38,7 +38,7 @@ function printService(record=clone(base),branding=clone(brand),denied=false){
  await check('authorization denial blocks print snapshot',async()=>{await assert.rejects(printService(clone(base),clone(brand),true).service.contract('actor',base.id),/denied/);});
  await check('missing pinned branding never uses current organization identity',async()=>{await assert.rejects(printService(clone(base),null).service.contract('actor',base.id),/Pinned document branding/);});
  await check('new creation pins presentation without altering payload or content hash',async()=>{
-   const events=[],revisions=[],created=[],t={id:'t',organizationId:'o',status:'ACTIVE',code:'HR-TEST',department:'HR',version:1};
+   const events=[],revisions=[],created=[],t={id:'t',organizationId:'o',status:'ACTIVE',code:'HR-TEST',department:'HR',version:1,fields:[{key:'name',labelAr:'الاسم',labelEn:'Name',type:'TEXT',required:true},{key:'pdfProfile',labelAr:'محتوى العميل',labelEn:'Client content',type:'TEXT',required:false}]};
    const tx={documentTemplate:{findFirst:async()=>t},documentReferenceCounter:{upsert:async()=>({lastNumber:1})},organization:{findUnique:async()=>({documentBrandVersion:1,displayName:'Synthetic'})},documentBrandSnapshot:{findUnique:async()=>({brandVersion:1})},managedDocument:{create:async({data})=>{created.push(data);return {...data,id:'d',version:1};}},documentRevision:{create:async x=>revisions.push(x.data)},documentLifecycleEvent:{create:async x=>events.push(x.data)}};
    const db={...tx,serializable:fn=>fn(tx)},auth={assert:async()=>({})};
    const payload={name:'Synthetic',pdfProfile:'CLIENT_MUST_NOT_CONTROL_PROFILE'},original=clone(payload);
