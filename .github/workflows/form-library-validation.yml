@@ -7,6 +7,9 @@ on:
       - 'apps/api/scripts/form-library-history-validation.cjs'
       - 'apps/api/scripts/form-library-schema-validation.cjs'
       - 'apps/api/scripts/form-library-setup-validation.cjs'
+      - 'apps/api/scripts/document-workflow-readiness-validation.cjs'
+      - 'apps/web/src/hydroland-documents.js'
+      - 'apps/web/scripts/document-workflow-readiness-validation.cjs'
       - 'apps/web/src/hydroland-form-library.js'
       - 'apps/web/src/hydroland-form-setup.js'
       - 'apps/web/src/app.js'
@@ -17,6 +20,8 @@ on:
       - 'apps/web/e2e/portal-test-helpers.js'
       - 'apps/web/e2e/portal-switcher-race.spec.js'
       - 'apps/web/e2e/payment-readiness.spec.js'
+      - 'apps/web/src/hydroland-portal-access-freshness.js'
+      - 'apps/web/e2e/portal-freshness-race.spec.js'
       - '.github/workflows/form-library-validation.yml'
   workflow_dispatch:
 permissions:
@@ -48,6 +53,8 @@ jobs:
         run: node apps/api/scripts/form-library-schema-validation.cjs
       - name: Validate add-only internal template setup
         run: node apps/api/scripts/form-library-setup-validation.cjs
+      - name: Explain existing combined approval policy without changing it
+        run: node apps/api/scripts/document-workflow-readiness-validation.cjs
       - name: Run profile preservation and actual PDF rendering checks
         run: node apps/api/scripts/form-library-pdf-validation.cjs
       - name: Render PDF review images
@@ -75,9 +82,16 @@ jobs:
         run: |
           set -o pipefail
           node apps/web/scripts/form-library-setup-validation.cjs | tee apps/api/.artifacts/form-library/setup-browser-validation.log
+      - name: Validate private workflow diagnostics and preserved draft input
+        run: |
+          set -o pipefail
+          node apps/web/scripts/document-workflow-readiness-validation.cjs | tee apps/api/.artifacts/form-library/workflow-readiness-browser.log
       - name: Run 12 isolated library browser regressions
         working-directory: apps/web
         run: npx playwright test e2e/form-library.spec.js --workers=1 --reporter=line
+      - name: Deterministic fresh-authority and replacement-session regressions
+        working-directory: apps/web
+        run: npx playwright test e2e/portal-freshness-race.spec.js --workers=1 --reporter=line
       - name: Recheck payment readiness action and background revocation
         working-directory: apps/web
         run: npx playwright test e2e/payment-readiness.spec.js --repeat-each=3 --workers=1 --reporter=line

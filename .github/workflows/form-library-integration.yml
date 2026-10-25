@@ -5,6 +5,7 @@ on:
       - 'apps/api/**'
       - 'apps/web/src/hydroland-form-library*'
       - 'apps/web/src/hydroland-form-setup.js'
+      - 'apps/web/src/hydroland-documents.js'
       - '.github/workflows/form-library*'
   workflow_dispatch:
 permissions:
@@ -75,6 +76,10 @@ jobs:
         run: |
           set -o pipefail
           node apps/api/scripts/form-library-setup-http-e2e.mjs 2>&1 | tee /tmp/form-library-evidence/setup-http.log
+      - name: Read-only diagnosis of the combined internal approval boundary
+        run: |
+          set -o pipefail
+          node apps/api/scripts/document-workflow-readiness-http-e2e.mjs 2>&1 | tee /tmp/form-library-evidence/workflow-readiness-http.log
       - name: Reproduce the unchanged HR integration with traceable source
         if: ${{ !cancelled() && steps.form_acceptance.outcome != 'skipped' }}
         run: |
