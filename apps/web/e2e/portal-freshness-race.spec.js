@@ -1,9 +1,10 @@
-import {test,expect} from '@playwright/test';
-import {readFileSync} from 'node:fs';
+const {test,expect}=require('@playwright/test');
+const {readFileSync}=require('node:fs');
+const {join}=require('node:path');
 
 // Actual freshness module with deterministic deferred authority responses.
 // No network, production account, real role grant, or timeout-to-green retry.
-const source=readFileSync(new URL('../src/hydroland-portal-access-freshness.js',import.meta.url),'utf8');
+const source=readFileSync(join(__dirname,'../src/hydroland-portal-access-freshness.js'),'utf8');
 async function setup(page){
   await page.setContent('<button id="exit-role">Exit</button><button id="role-switch">Switch</button><dialog id="role-dialog"><button data-role="admin">Admin</button><button data-role="diver">Diver</button></dialog><div id="private-view">Private readiness fixture</div>');
   await page.evaluate(()=>{
