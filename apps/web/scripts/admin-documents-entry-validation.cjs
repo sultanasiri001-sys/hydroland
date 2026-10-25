@@ -10,7 +10,7 @@ async function wait(fn,message){for(let i=0;i<80;i++){if(await fn())return;await
 async function setup(options={}){
  const context=await browser.newContext({viewport:options.mobile?{width:390,height:844}:{width:1400,height:1000},serviceWorkers:'block'});
  const page=await context.newPage();page.setDefaultTimeout(5000);
- const state={admin:true,internal:options.internal!==false,reads:[],writes:[],errors:[],deny:false,hold:false,release:null};
+ const state={admin:true,internal:options.internal!==false,reads:[],writes:[],errors:[],deny:false,hold:false,release:null,pauseMe:false,meReleases:[]};
  page.on('pageerror',e=>state.errors.push(e.message));
  await page.route('**/*',route=>route.request().url().startsWith(base)?route.continue():route.abort());
  const json=(r,data,status=200)=>r.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
@@ -19,6 +19,7 @@ async function setup(options={}){
  await page.route(/\/api\/v1\/me$/,async r=>{
   const data={id:'synthetic-owner',status:'ACTIVE',person:{firstName:'مالك',lastName:'اختبار'},headline:'مدرب غوص',roleAssignments:state.admin?[{role:'ADMIN',status:'ACTIVE'}]:[{role:'DIVER',status:'ACTIVE'}]};
   if(state.hold){state.hold=false;await new Promise(resolve=>state.release=resolve);}
+  if(state.pauseMe)await new Promise(resolve=>state.meReleases.push(resolve));
   return json(r,data);
  });
  const template=org=>({id:'t-'+org,organizationId:org,code:'ADM-MEETING-MINUTES',department:'ADMIN_AFFAIRS_RECORDS',titleAr:'محضر اجتماع',titleEn:'Meeting minutes',version:1,status:'ACTIVE',printable:true,fields:[{key:'note',labelAr:'ملاحظة',labelEn:'Note',type:'TEXT',required:true}]});
@@ -57,6 +58,7 @@ async function switchRole(page,role){
 }
 async function open(page,position='quick'){
  await page.locator('[data-admin-documents-entry='+position+']').click();
+ await page.locator('#hl-documents').waitFor({state:'visible'});
  await page.waitForFunction(()=>document.querySelector('[data-doc-note]')?.textContent.includes('تم تحميل'));
  assert.equal(await page.locator('#hl-documents').isVisible(),true);
 }
@@ -79,9 +81,18 @@ async function check(name,fn,options={}){const x=await setup(options);try{await 
   assert.equal(await p.locator('.hl-role-dashboard').evaluate(e=>e.classList.contains('hl-portal-nav-open')),false);
  },{mobile:true});
  await check('revoked admin cannot initiate any documents read',async(p,s)=>{
-  const before=s.reads.length;s.admin=false;await p.locator('[data-admin-documents-entry=quick]').click();
+  // Hold all role responses until the real click is dispatched. A background
+  // refresh is also allowed to revoke the role, but must not detach the target
+  // before this test has actually exercised action-time authorization.
+  const before=s.reads.length;s.pauseMe=true;s.admin=false;await p.locator('[data-admin-documents-entry=quick]').click();
+  await wait(()=>s.meReleases.length,'The entry did not recheck account roles');s.pauseMe=false;for(const release of s.meReleases)release();
   await p.waitForFunction(()=>window.HydrolandPortalAccess.getCurrentRole()==='diver');
   assert.equal(s.reads.length,before);assert.equal(await p.locator('#hl-documents').isVisible(),false);
+ });
+ await check('profile refresh can revoke the admin before an entry is clicked',async(p,s)=>{
+  const before=s.reads.length;s.admin=false;await p.evaluate(()=>HydrolandProfile.load());
+  await p.waitForFunction(()=>HydrolandPortalAccess.getCurrentRole()==='diver');
+  assert.equal(await p.locator('[data-admin-documents-entry]').count(),0);assert.equal(s.reads.length,before);
  });
  await check('non-owner admin retains center scope, never receives an invented internal organization',async(p,s)=>{
   await open(p);assert.equal(await p.locator('[data-doc-org]').inputValue(),'org-center');

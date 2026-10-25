@@ -12,7 +12,7 @@ function fixture(options={}){
  const calls=[],doc={...record,template:{code:'HR-EMPLOYEE-REPORT'},...options.record};
  const before=structuredClone(doc);
  const tx={
-  operationalSetting:{findUnique:async()=>({value:{organizationId:'internal-a'}})},
+  operationalSetting:{findUnique:async q=>q.where.key==='PLATFORM_STAFFING_ORGANIZATION:v1'?({value:{organizationId:'internal-a'}}):null},
   organization:{findUnique:async()=>({ownerId:'owner-a',kind:'HYDROLAND_INTERNAL_PLATFORM',status:'ACTIVE'})},
   account:{findFirst:async q=>options.revoked?null:{id:q.where.id}},
   organizationMember:{findUnique:async q=>options.suspended?{status:'SUSPENDED',role:'OWNER'}:q.where.organizationId_accountId.accountId==='owner-a'?null:{status:'ACTIVE',role:'ADMIN'}},
@@ -25,9 +25,9 @@ function fixture(options={}){
 (async()=>{
  await check('internal owner-created draft explains both unavailable independent stages',()=>{const r=inspect();assert.deepEqual(r.blockers.map(x=>x.reason),['OWNER_IS_CREATOR','OWNER_WOULD_APPROVE_AND_SIGN']);assert.equal(r.policyDecisionRequired,true);assert.equal(r.actorActions.approve,false);assert.equal(r.observationOnly,true);});
  await check('pending owner document stays blocked, never self-approved',()=>{const r=inspect({status:'PENDING_APPROVAL'});assert.equal(r.actorActions.approve,false);assert.equal(r.assessment,'BLOCKED');});
- await check('a historical different creator does not imply a complete single-owner cycle',()=>{const r=inspect({status:'PENDING_APPROVAL',createdByAccountId:'previous-preparer'});assert.equal(r.actorActions.approve,true);assert.deepEqual(r.blockers,[{step:'SIGN',reason:'OWNER_WOULD_APPROVE_AND_SIGN'}]);});
+ await check('a historical different creator does not imply a complete single-owner cycle',()=>{const r=inspect({status:'PENDING_APPROVAL',createdByAccountId:'previous-preparer'});assert.equal(r.actorActions.approve,false);assert.ok(r.blockers.some(b=>b.reason==='USE_ASSIGNED_REVIEW_WORKFLOW'));});
  await check('existing owner approval cannot become independent signing',()=>{const r=inspect({status:'APPROVED',createdByAccountId:'another',approvedByAccountId:'owner-a'});assert.equal(r.actorActions.sign,false);assert.equal(r.blockers[0].reason,'OWNER_IS_APPROVER');});
- await check('historical independent creator and approver are not misclassified',()=>{const r=inspect({status:'APPROVED',createdByAccountId:'creator',approvedByAccountId:'reviewer'});assert.equal(r.actorActions.sign,true);assert.equal(r.policyDecisionRequired,false);assert.equal(r.assessment,'ACTOR_CHECK_ONLY');});
+ await check('historical independent creator and approver are not misclassified',()=>{const r=inspect({status:'APPROVED',createdByAccountId:'creator',approvedByAccountId:'reviewer'});assert.equal(r.actorActions.sign,false);assert.equal(r.assignmentRequired,true);assert.equal(r.assessment,'BLOCKED');});
  await check('missing approval attribution never appears ready for signing',()=>{const r=inspect({status:'APPROVED',createdByAccountId:'other'});assert.equal(r.actorActions.sign,false);assert.ok(r.blockers.some(b=>b.reason==='APPROVAL_EVIDENCE_MISSING'));});
  await check('signed and archived records retain their separate meanings',()=>{const signed=inspect({status:'SIGNED'}),archived=inspect({status:'ARCHIVED'});assert.equal(signed.assessment,'SIGNED_ARCHIVE_REMAINS');assert.equal(signed.actorActions.archive,true);assert.equal(archived.assessment,'ARCHIVED_READ_ONLY');assert.ok(Object.values(archived.actorActions).every(x=>x===false));});
  await check('center roles remain local actor checks, not internal policy claims',()=>{const r=inspect({status:'PENDING_APPROVAL',createdByAccountId:'maker'},{role:'ADMIN',internalOwnerOnly:false});assert.equal(r.actorActions.approve,true);assert.equal(r.policyDecisionRequired,false);assert.deepEqual(r.blockers,[]);assert.equal(r.assessment,'ACTOR_CHECK_ONLY');});

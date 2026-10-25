@@ -116,12 +116,13 @@ export class DocumentPersistenceService {
     const d=await this.db.managedDocument.findUnique({where:{id},include:{template:true}});
     if(!d) throw new NotFoundException('Document not found.');
     this.assertGeneric(d.template.code);
-    await this.authz.assert(accountId,d.organizationId,to==='PENDING_APPROVAL'?'SUBMIT':to==='APPROVED'?'APPROVE':to==='SIGNED'?'SIGN':'ARCHIVE');
+    const access=await this.authz.assert(accountId,d.organizationId,to==='PENDING_APPROVAL'?'SUBMIT':to==='APPROVED'?'APPROVE':to==='SIGNED'?'SIGN':'ARCHIVE');
     const allowed:Record<string,string[]>={DRAFT:['PENDING_APPROVAL'],PENDING_APPROVAL:['APPROVED'],APPROVED:['SIGNED'],SIGNED:['ARCHIVED'],ARCHIVED:[]};
     if(!allowed[d.status]?.includes(to)) throw new BadRequestException(`Invalid document transition ${d.status} -> ${to}`);
     if(to!==ManagedDocumentStatus.ARCHIVED)validateDocumentPayload(d.template.fields,d.payload);
     if(to==='APPROVED' && accountId===d.createdByAccountId) throw new BadRequestException('Creator cannot approve own document.');
     if(to==='SIGNED' && (accountId===d.createdByAccountId||accountId===d.approvedByAccountId)) throw new BadRequestException('Signer must be independent from creator and approver.');
+    if('accessBasis' in access&&access.accessBasis==='PLATFORM_OWNER'&&['APPROVED','SIGNED'].includes(to))throw new ForbiddenException('استخدم تكليف المراجعة المستقلة لهذا الإصدار؛ الاعتماد والتوقيع من حسابي المكلّفين فقط.');
     return this.db.serializable(async tx=>{
       await this.authz.assert(accountId,d.organizationId,to==='PENDING_APPROVAL'?'SUBMIT':to==='APPROVED'?'APPROVE':to==='SIGNED'?'SIGN':'ARCHIVE',tx);
       const current=await tx.managedDocument.findUnique({where:{id}});
