@@ -6,7 +6,11 @@ on:
       - 'apps/api/scripts/form-library-pdf-validation.cjs'
       - 'apps/api/scripts/form-library-history-validation.cjs'
       - 'apps/api/scripts/form-library-schema-validation.cjs'
+      - 'apps/api/scripts/form-library-setup-validation.cjs'
       - 'apps/web/src/hydroland-form-library.js'
+      - 'apps/web/src/hydroland-form-setup.js'
+      - 'apps/web/src/app.js'
+      - 'apps/web/scripts/form-library-setup-validation.cjs'
       - 'apps/web/scripts/form-library-history-validation.cjs'
       - 'apps/web/scripts/form-library-sync-validation.cjs'
       - 'apps/web/e2e/form-library.spec.js'
@@ -42,6 +46,8 @@ jobs:
         run: node apps/api/scripts/form-library-history-validation.cjs
       - name: Validate field schema and operational binding safeguards
         run: node apps/api/scripts/form-library-schema-validation.cjs
+      - name: Validate add-only internal template setup
+        run: node apps/api/scripts/form-library-setup-validation.cjs
       - name: Run profile preservation and actual PDF rendering checks
         run: node apps/api/scripts/form-library-pdf-validation.cjs
       - name: Render PDF review images
@@ -65,6 +71,10 @@ jobs:
         run: |
           set -o pipefail
           node apps/web/scripts/form-library-sync-validation.cjs | tee apps/api/.artifacts/form-library/sync-preview-browser-validation.log
+      - name: Validate setup consent, scope and input preservation
+        run: |
+          set -o pipefail
+          node apps/web/scripts/form-library-setup-validation.cjs | tee apps/api/.artifacts/form-library/setup-browser-validation.log
       - name: Run 12 isolated library browser regressions
         working-directory: apps/web
         run: npx playwright test e2e/form-library.spec.js --workers=1 --reporter=line

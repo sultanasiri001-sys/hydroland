@@ -4,6 +4,7 @@ on:
     paths:
       - 'apps/api/**'
       - 'apps/web/src/hydroland-form-library*'
+      - 'apps/web/src/hydroland-form-setup.js'
       - '.github/workflows/form-library*'
   workflow_dispatch:
 permissions:
@@ -70,6 +71,10 @@ jobs:
         run: |
           set -o pipefail
           node apps/api/scripts/form-library-http-e2e.mjs 2>&1 | tee /tmp/form-library-evidence/form-http.log
+      - name: Atomic internal template setup HTTP and PostgreSQL
+        run: |
+          set -o pipefail
+          node apps/api/scripts/form-library-setup-http-e2e.mjs 2>&1 | tee /tmp/form-library-evidence/setup-http.log
       - name: Reproduce the unchanged HR integration with traceable source
         if: ${{ !cancelled() && steps.form_acceptance.outcome != 'skipped' }}
         run: |
