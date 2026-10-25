@@ -43,6 +43,12 @@ try{
  const independent=await create();await ok(owner,`documents/${independent.id}/submit`,'POST');assert.equal((await call(owner,`documents/${independent.id}/approve`,'POST')).status,400);assert.equal((await call(other,`documents/${independent.id}/approve`,'POST')).status,403);pass('generic independent approval and owner-only access remain enforced');
  const center=await db.organization.create({data:{displayName:'Synthetic other tenant',kind:'DIVE_CENTER',status:'ACTIVE',ownerId:other.id}});orgs.push(center.id);await db.organizationMember.create({data:{organizationId:center.id,accountId:other.id,role:'OWNER',status:'ACTIVE'}});assert.equal((await call(other,path(center,doc))).status,403);assert.equal((await call(owner,path(org,{id:randomUUID()}))).status,404);pass('other-tenant owner and unknown documents do not receive private records');
  await db.organizationMember.create({data:{organizationId:org.id,accountId:owner.id,role:'OWNER',status:'SUSPENDED'}});assert.equal((await call(owner,endpoint)).status,403);assert.equal((await getPdf(owner,1)).status,403);await db.organizationMember.delete({where:{organizationId_accountId:{organizationId:org.id,accountId:owner.id}}});pass('explicit membership suspension also blocks saved receipt reads and PDF');
+ const noPrintTemplate=await ok(owner,`documents/templates/${template.id}`,'PUT',{printable:false});
+ const noPrintDoc=await ok(owner,'documents','POST',{organizationId:org.id,templateId:noPrintTemplate.id,department:template.department,contentHash:'synthetic-nonprintable',payload:{meetingNo:'NP1',subject:'متابعة دون طباعة',decisions:'توثيق فقط'}}),noPrintEndpoint=path(org,noPrintDoc);
+ const noPrintPlan=await ok(owner,noPrintEndpoint);await ok(owner,noPrintEndpoint,'POST',input(noPrintPlan));
+ const deniedPdf=await fetch(new URL(noPrintEndpoint+'/pdf?version=1',base),{headers:{authorization:`Bearer ${owner.token}`},signal:AbortSignal.timeout(30000)});assert.equal(deniedPdf.status,400);
+ assert.equal((await db.managedDocument.findUniqueOrThrow({where:{id:noPrintDoc.id}})).status,'DRAFT');
+ assert.equal((await getPdf(owner,1)).status,200);pass('receipt cannot bypass pinned non-printable source; historical printable receipt remains readable');
  console.log(`${checks} real HTTP/PostgreSQL owner-decision groups passed in an isolated loopback database.`);
 }finally{
  try{

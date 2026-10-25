@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { renderAdministrativeDocumentPdf, AdministrativePdfLayoutItem } from './administrative-document-pdf';
 import { DocumentAssetService } from './document-asset.service';
 import { DocumentPrintContract } from './document-print.service';
@@ -6,6 +7,7 @@ import { OWNER_DECISION_POLICY, verifyDecision } from './owner-administrative-de
 /** A receipt for the separate owner record, never a new rendering of the source document. */
 export async function renderOwnerDecisionPdf(receipt: any, assets: DocumentAssetService, observe?: (i: AdministrativePdfLayoutItem) => void) {
   const r = verifyDecision(receipt, receipt.organizationId, receipt.documentId, receipt.sourceVersion), s = r.source;
+  if (s.template.printable !== true) throw new BadRequestException('طباعة هذا الإثبات غير متاحة لأن قالب المصدر المثبت لا يتيح الطباعة.');
   const field = (key: string, label: string, value: unknown) => ({ key, labelAr: label, labelEn: key, type: 'TEXT', required: true, value });
   const c: DocumentPrintContract = {
     documentId: r.id, organizationId: r.organizationId, referenceNumber: r.referenceNumber, department: s.department,
