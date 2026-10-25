@@ -82,6 +82,15 @@ function printService(record=clone(base),branding=clone(brand),denied=false){
    const c=clone(snapshot);c.fields.push({key:'long',labelAr:'تفاصيل طويلة',labelEn:'Long field',type:'TEXTAREA',required:false,value:('سطر عربي لاختبار حفظ التفاصيل دون اقتطاع أو تداخل.\n').repeat(100)+'X'.repeat(900)+' END-OF-LONG-FIELD'});c.branding.footerAr=('تذييل طويل محفوظ بالكامل. ').repeat(70)+' END-OF-FOOTER';
    const r=await render(c,'administrative-long');assert.ok(r.pages>3);const text=r.trace.filter(x=>x.kind==='text').map(x=>x.text).join(' ');assert.ok(text.includes('END-OF-LONG-FIELD'));assert.ok(text.includes('END-OF-FOOTER'));assert.ok(text.includes('متابعة الحقل'));
  });
+ await check('template preview is marked on every page and cannot display approval evidence',async()=>{
+   const c=clone(snapshot);c.status='SIGNED';c.approvals.approvedByAccountId='do-not-display-approver';c.approvals.signedByAccountId='do-not-display-signer';const trace=[];
+   const result=await renderAdministrativeDocumentPdf(c,assets,item=>trace.push(item),{templatePreview:true});const pdf=await PDFDocument.load(result.bytes);
+   assert.equal(result.status,'PREVIEW');assert.equal(result.filename,'TEMPLATE-PREVIEW.pdf');assert.match(pdf.getSubject(),/TEMPLATE PREVIEW/);
+   for(let p=1;p<=pdf.getPageCount();p++)assert.ok(trace.some(x=>x.page===p&&x.text==='معاينة قالب — غير معتمدة / PREVIEW'));
+   assert.ok(!trace.some(x=>/do-not-display|اعتمد بواسطة|سجل التوقيع بواسطة|بصمة المحتوى المسجلة|أعد بواسطة/.test(x.text||'')));
+   for(const item of trace){assert.ok(item.x>=23&&item.y>=23,JSON.stringify(item));assert.ok(item.x+item.width<=572&&item.y+item.height<=819,JSON.stringify(item));}
+   await fs.writeFile(path.join(out,'administrative-template-preview.pdf'),result.bytes);await fs.writeFile(path.join(out,'administrative-template-preview.layout.json'),JSON.stringify(trace,null,2));
+ });
  await check('renderer rejects contract and unpinned snapshots',async()=>{const c=clone(snapshot);delete c.renderProfile;await assert.rejects(renderAdministrativeDocumentPdf(c,assets),/profile mismatch/);await assert.rejects(renderAdministrativeDocumentPdf({...snapshot,cooperation:{}},assets),/profile mismatch/);});
  await fs.writeFile(path.join(out,'validation-summary.json'),JSON.stringify({passed,scope:'real PDF renderer and service doubles; synthetic data; no production or database writes; no issuer approval'},null,2));
  console.log(`Administrative form PDF checks passed: ${passed}. Synthetic evidence: ${out}`);

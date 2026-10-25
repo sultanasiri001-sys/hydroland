@@ -4,6 +4,8 @@ import { DatabaseService } from '../database/database.service';
 import { DocumentAuthorizationService } from './document-authorization.service';
 import { COOPERATION_CODE } from './cooperation-contract.domain';
 import { isLibraryCode, LIBRARY_PREFIX } from './contract-library.domain';
+import { DOCUMENT_DEPARTMENTS } from './document-form.domain';
+import { templateObject, templateText, templateFields, assertCompatibleTemplateFields } from './document-template-input';
 
 type Field={key:string;labelAr:string;labelEn:string;type:string;required:boolean;options?:string[]};
 @Injectable()
@@ -11,22 +13,28 @@ export class DocumentPersistenceService {
   constructor(private readonly db: DatabaseService, private readonly authz: DocumentAuthorizationService) {}
 
   async createTemplate(accountId:string,input:{organizationId:string;code:string;titleAr:string;titleEn:string;department:string;fields:Field[];printable?:boolean}){
+    templateObject(input,['organizationId','code','titleAr','titleEn','department','fields','printable']);
+    if(typeof input.organizationId!=='string'||!input.organizationId.trim())throw new BadRequestException('Organization scope is required.');
     await this.authz.assert(accountId,input.organizationId,'TEMPLATE_CREATE');
     if(input.code===COOPERATION_CODE||isLibraryCode(String(input.code??'').trim().toUpperCase())) throw new ForbiddenException('نموذج العقد محكوم بمكتبة العقود ومسار التوقيع.');
-    if(!input.code?.trim()||!input.titleAr?.trim()||!input.titleEn?.trim()||!input.department||!input.fields?.length) throw new BadRequestException('Template identity and fields are required.');
-    return this.db.serializable(async tx=>{await this.authz.assert(accountId,input.organizationId,'TEMPLATE_CREATE',tx);return tx.documentTemplate.create({data:{organizationId:input.organizationId,code:input.code,titleAr:input.titleAr,titleEn:input.titleEn,department:input.department,fields:input.fields as never,printable:input.printable!==false}});});
+    const code=templateText(input.code,'Template code');
+    if(code===COOPERATION_CODE||isLibraryCode(code))throw new ForbiddenException('استخدم مسار العقود المتخصص.');
+    if(!/^[A-Z][A-Z0-9-]{0,99}$/.test(code)||!DOCUMENT_DEPARTMENTS.includes(input.department as never))throw new BadRequestException('Invalid template code or department.');
+    const titleAr=templateText(input.titleAr,'Arabic title'),titleEn=templateText(input.titleEn,'English title'),fields=templateFields(input.fields);
+    return this.db.serializable(async tx=>{await this.authz.assert(accountId,input.organizationId,'TEMPLATE_CREATE',tx);return tx.documentTemplate.create({data:{organizationId:input.organizationId,code,titleAr,titleEn,department:input.department,fields:fields as never,printable:input.printable!==false}});});
   }
 
   async updateTemplate(accountId:string,id:string,input:{titleAr?:string;titleEn?:string;fields?:Field[];printable?:boolean}){
+    templateObject(input,['titleAr','titleEn','fields','printable']);
     const current=await this.db.documentTemplate.findUnique({where:{id}});
     if(!current) throw new NotFoundException('Document template not found.');
     if(current.code===COOPERATION_CODE||isLibraryCode(current.code)) throw new ForbiddenException('نموذج العقد محدد الإصدار ولا يعدل من مسار المستندات.');
     await this.authz.assert(accountId,current.organizationId,'TEMPLATE_UPDATE');
     if(current.status!=='ACTIVE') throw new BadRequestException('Only ACTIVE templates can be revised.');
-    const titleAr=input.titleAr?.trim()||current.titleAr;
-    const titleEn=input.titleEn?.trim()||current.titleEn;
-    const fields=input.fields??(current.fields as unknown as Field[]);
-    if(!titleAr||!titleEn||!Array.isArray(fields)||!fields.length) throw new BadRequestException('Template identity and fields are required.');
+    const titleAr=templateText(input.titleAr??current.titleAr,'Arabic title');
+    const titleEn=templateText(input.titleEn??current.titleEn,'English title');
+    const fields=templateFields(input.fields??current.fields);
+    assertCompatibleTemplateFields(current.fields,fields);
     return this.db.serializable(async tx=>{
       await this.authz.assert(accountId,current.organizationId,'TEMPLATE_UPDATE',tx);
       const latest=await tx.documentTemplate.findUnique({where:{id}});
@@ -50,6 +58,8 @@ export class DocumentPersistenceService {
     if(!input.contentHash?.trim()) throw new BadRequestException('Content hash is required.');
     return this.db.serializable(async tx=>{
       await this.authz.assert(accountId,input.organizationId,'DOCUMENT_CREATE',tx);
+      const live=await tx.documentTemplate.findFirst({where:{id:t.id,organizationId:input.organizationId,status:'ACTIVE'}});
+      if(!live||live.version!==t.version)throw new BadRequestException('Template changed concurrently; reload before creating a document.');
       const year=new Date().getUTCFullYear();
       const counter=await tx.documentReferenceCounter.upsert({
         where:{organizationId_department_year:{organizationId:input.organizationId,department:t.department,year}},

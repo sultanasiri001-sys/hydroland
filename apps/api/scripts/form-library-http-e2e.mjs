@@ -1,3 +1,4 @@
+import { checkTemplatePreview } from './form-library-preview-http-checks.mjs';
 import assert from 'node:assert/strict';
 import { createHmac, randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
@@ -90,6 +91,7 @@ try {
   const noMembership=await call(outsider,'documents','POST',{organizationId:org.id,templateId:restored.id,department:'HR',contentHash:'outside-ci',payload:{name:'Synthetic'}});
   assert.equal(noMembership.status,403);
   assert.equal((await call(outsider,`documents/organizations/${org.id}/templates/${code}/history`)).status,403); pass('HR role without organization membership does not bypass document authorization');
+  await checkTemplatePreview({db,base,owner,staff,outsider,org,template:restored});
   await db.organizationMember.update({where:{organizationId_accountId:{organizationId:org.id,accountId:staff.id}},data:{status:'SUSPENDED'}});
   assert.equal((await call(staff,`documents/${document.id}`)).status,403);
   assert.equal((await call(staff,'documents','POST',{organizationId:org.id,templateId:restored.id,department:'HR',contentHash:'revoked-ci',payload:{name:'Synthetic'}})).status,403); pass('revoked member loses read and creation access immediately');
@@ -104,6 +106,8 @@ try {
     await db.documentTemplate.deleteMany({where:{organizationId:{in:organizations}}});
     await db.documentReferenceCounter.deleteMany({where:{organizationId:{in:organizations}}});
     await db.documentBrandSnapshot.deleteMany({where:{organizationId:{in:organizations}}});
+    await db.organization.updateMany({where:{id:{in:organizations}},data:{documentLogoAssetId:null}});
+    await db.organizationDocumentAsset.deleteMany({where:{organizationId:{in:organizations}}});
     await db.organizationMember.deleteMany({where:{organizationId:{in:organizations}}});
     await db.organization.deleteMany({where:{id:{in:organizations}}});
     await db.roleAssignment.deleteMany({where:{accountId:{in:accounts}}});

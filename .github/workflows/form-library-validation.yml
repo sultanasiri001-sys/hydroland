@@ -5,9 +5,13 @@ on:
       - 'apps/api/src/document-forms/**'
       - 'apps/api/scripts/form-library-pdf-validation.cjs'
       - 'apps/api/scripts/form-library-history-validation.cjs'
+      - 'apps/api/scripts/form-library-schema-validation.cjs'
       - 'apps/web/src/hydroland-form-library.js'
       - 'apps/web/scripts/form-library-history-validation.cjs'
+      - 'apps/web/scripts/form-library-sync-validation.cjs'
       - 'apps/web/e2e/form-library.spec.js'
+      - 'apps/web/e2e/portal-test-helpers.js'
+      - 'apps/web/e2e/portal-switcher-race.spec.js'
       - '.github/workflows/form-library-validation.yml'
   workflow_dispatch:
 permissions:
@@ -35,6 +39,8 @@ jobs:
         run: npm --workspace @hydroland/api run build
       - name: Validate read-only template history and organization isolation
         run: node apps/api/scripts/form-library-history-validation.cjs
+      - name: Validate field schema and operational binding safeguards
+        run: node apps/api/scripts/form-library-schema-validation.cjs
       - name: Run profile preservation and actual PDF rendering checks
         run: node apps/api/scripts/form-library-pdf-validation.cjs
       - name: Render PDF review images
@@ -42,7 +48,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq poppler-utils
           dir=apps/api/.artifacts/form-library
-          for name in administrative-draft administrative-signed administrative-no-center-logo administrative-long; do
+          for name in administrative-draft administrative-signed administrative-no-center-logo administrative-long administrative-template-preview; do
             pdftoppm -f 1 -l 2 -scale-to 1600 -png "$dir/$name.pdf" "$dir/$name"
           done
       - name: Build Web
@@ -54,9 +60,16 @@ jobs:
           set -o pipefail
           mkdir -p apps/api/.artifacts/form-library
           node apps/web/scripts/form-library-history-validation.cjs | tee apps/api/.artifacts/form-library/history-browser-validation.log
+      - name: Validate cross-session synchronization and private PDF preview
+        run: |
+          set -o pipefail
+          node apps/web/scripts/form-library-sync-validation.cjs | tee apps/api/.artifacts/form-library/sync-preview-browser-validation.log
       - name: Run 12 isolated library browser regressions
         working-directory: apps/web
         run: npx playwright test e2e/form-library.spec.js --workers=1 --reporter=line
+      - name: Recheck portal revocation and disappearing-control regression
+        working-directory: apps/web
+        run: npx playwright test e2e/phase5-all-portal-rbac.spec.js e2e/portal-switcher-race.spec.js --repeat-each=3 --workers=1 --reporter=line
       - name: Save synthetic PDF and layout evidence
         if: always()
         uses: actions/upload-artifact@v4

@@ -17,6 +17,7 @@ export async function renderAdministrativeDocumentPdf(
   c:DocumentPrintContract,
   assets:DocumentAssetService,
   observe?:(item:AdministrativePdfLayoutItem)=>void,
+  options:{templatePreview?:boolean}={},
 ){
   if(c.renderProfile!=='ADMINISTRATIVE_FORM_V1'||c.cooperation)throw new Error('Administrative PDF profile mismatch.');
   const pdf=await PDFDocument.create();
@@ -42,11 +43,12 @@ export async function renderAdministrativeDocumentPdf(
   }
   pdf.setTitle(preferredLocalizedText(c.template.titleAr,c.template.titleEn,'مستند إداري'));
   pdf.setAuthor('HYDROLAND');
-  pdf.setSubject('Versioned administrative document; status and evidence come from the authorized snapshot.');
+  const preview=options.templatePreview===true;
+  pdf.setSubject(preview?'TEMPLATE PREVIEW — no managed document, approval or signature exists.':'Versioned administrative document; status and evidence come from the authorized snapshot.');
   pdf.setCreationDate(new Date(c.createdAt));pdf.setModificationDate(new Date(c.updatedAt));
   const W=595.28,H=841.89,M=42,CW=W-2*M,BOTTOM=82;
   const color={navy:rgb(.035,.12,.20),cyan:rgb(.015,.65,.91),ink:rgb(.12,.16,.20),muted:rgb(.39,.44,.48),line:rgb(.71,.86,.94),pale:rgb(.96,.98,.99),white:rgb(1,1,1)};
-  const status=({DRAFT:'مسودة — غير معتمدة',PENDING_APPROVAL:'بانتظار الاعتماد',APPROVED:'معتمد — لم يوقّع بعد',SIGNED:'موقّع',ARCHIVED:'مؤرشف'} as Record<string,string>)[c.status]||c.status;
+  const status=preview?'معاينة قالب — غير معتمدة / PREVIEW':({DRAFT:'مسودة — غير معتمدة',PENDING_APPROVAL:'بانتظار الاعتماد',APPROVED:'معتمد — لم يوقّع بعد',SIGNED:'موقّع',ARCHIVED:'مؤرشف'} as Record<string,string>)[c.status]||c.status;
   let page!:PDFPage,y=0,pageNo=0;
   const visual=(raw:unknown)=>pdfVisualText(assertArabicPdfSourceText(raw));
   const width=(raw:string,size:number,font:PDFFont)=>font.widthOfTextAtSize(visual(raw),size);
@@ -99,7 +101,7 @@ export async function renderAdministrativeDocumentPdf(
       observe?.({kind:'image',page:pageNo,x:M,y:H-159,width:s.width,height:s.height});
     }
     text(status,W-M,H-133,11,true,color.muted);
-    text('الحالة من سجل المستند — الهوية لا تعني الاعتماد',W-M,H-152,8,false,color.muted);
+    text(preview?'معاينة فقط — لم يُنشأ مستند أو اعتماد أو توقيع':'الحالة من سجل المستند — الهوية لا تعني الاعتماد',W-M,H-152,8,false,color.muted);
     page.drawLine({start:{x:M,y:H-164},end:{x:W-M,y:H-164},thickness:.6,color:color.line});
     y=H-181;
   }
@@ -127,13 +129,18 @@ export async function renderAdministrativeDocumentPdf(
     }
   }
   nextPage();
-  section('تعريف المستند');
+  section(preview?'معاينة تعريف القالب':'تعريف المستند');
   field('عنوان النموذج',preferredLocalizedText(c.template.titleAr,c.template.titleEn,'مستند إداري'));
   field('الجهة',preferredLocalizedText(c.branding.brandNameAr,c.branding.brandNameEn,'HYDROLAND'));
-  field('المرجع',c.referenceNumber);
+  if(!preview)field('المرجع',c.referenceNumber);
   field('رمز النموذج وإصداره',`${c.template.code} / v${c.template.version}`);
   section('بيانات النموذج');
   for(const item of c.fields)field(preferredLocalizedText(item.labelAr,item.labelEn,item.key),item.value);
+  if(preview){
+    section('حدود المعاينة');
+    field('تعريف المعاينة',`القالب: ${c.template.version} / الهوية الحالية: ${c.branding.brandVersion}`);
+    field('الاعتماد والتوقيع','هذه معاينة غير محفوظة. لا تمثل اعتمادًا أو توقيعًا ولا تنشئ مستندًا تشغيليًا.');
+  }else{
   section('التحكم والتوثيق');
   field('الإصدارات المثبتة',`المستند: ${c.documentVersion} / القالب: ${c.template.version} / الهوية: ${c.branding.brandVersion}`);
   field('بصمة المحتوى المسجلة',c.contentHash);
@@ -141,6 +148,7 @@ export async function renderAdministrativeDocumentPdf(
   if(c.approvals.approvedByAccountId){field('اعتمد بواسطة',c.approvals.approvedByAccountId);if(c.approvals.approvedAt)field('وقت الاعتماد',c.approvals.approvedAt);}
   if(c.approvals.signedByAccountId){field('سجل التوقيع بواسطة',c.approvals.signedByAccountId);if(c.approvals.signedAt)field('وقت التوقيع',c.approvals.signedAt);}
   if(c.approvals.archivedByAccountId){field('أرشف بواسطة',c.approvals.archivedByAccountId);if(c.approvals.archivedAt)field('وقت الأرشفة',c.approvals.archivedAt);}
+  }
   const footer=preferredLocalizedText(c.branding.footerAr,c.branding.footerEn);
   // Preserve the entire pinned footer, even when it is too long for a page footer.
   if(footer){section('بيانات الجهة الإضافية');field('التذييل المحفوظ',footer);}
@@ -149,7 +157,7 @@ export async function renderAdministrativeDocumentPdf(
     page=p;pageNo=i+1;
     page.drawLine({start:{x:M,y:64},end:{x:W-M,y:64},thickness:.6,color:color.line});
     text(`صفحة ${i+1} من ${pages.length}`,W-M,44,8,false,color.muted);
-    text('HYDROLAND / ADMINISTRATIVE_FORM_V1',M+200,44,7,false,color.muted);
+    text(preview?'HYDROLAND / TEMPLATE PREVIEW':'HYDROLAND / ADMINISTRATIVE_FORM_V1',M+200,44,7,false,color.muted);
   });
-  return {bytes:Buffer.from(await pdf.save()),filename:`${c.referenceNumber}.pdf`,status:c.status};
+  return {bytes:Buffer.from(await pdf.save()),filename:preview?'TEMPLATE-PREVIEW.pdf':`${c.referenceNumber}.pdf`,status:preview?'PREVIEW':c.status};
 }
