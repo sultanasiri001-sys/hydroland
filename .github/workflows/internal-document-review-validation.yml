@@ -39,6 +39,7 @@ jobs:
       PORT: 3114
       FORM_LIBRARY_E2E_CONFIRM: ISOLATED_LOOPBACK_DATABASE
       FORM_LIBRARY_E2E_BASE_URL: http://127.0.0.1:3114/api/v1/
+      INTERNAL_REVIEW_HTTP_BROWSER: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -57,6 +58,8 @@ jobs:
         run: |
           set -o pipefail
           node apps/api/scripts/internal-document-review-validation.cjs | tee /tmp/internal-review-evidence/domain.log
+      - run: npm --workspace @hydroland/web run build
+      - run: npm --workspace @hydroland/web exec -- playwright install --with-deps chromium
       - name: Start isolated API
         run: |
           node apps/api/dist/main.js > /tmp/internal-review-evidence/api.log 2>&1 &
@@ -76,8 +79,6 @@ jobs:
         if: always()
         run: |
           if [ -f /tmp/internal-review-api.pid ]; then kill "$(cat /tmp/internal-review-api.pid)" || true; fi
-      - run: npm --workspace @hydroland/web run build
-      - run: npm --workspace @hydroland/web exec -- playwright install --with-deps chromium
       - name: Actual assignment and recipient dialogs with isolated request fixtures
         run: |
           set -o pipefail
