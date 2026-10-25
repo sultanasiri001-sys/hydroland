@@ -1,12 +1,15 @@
-name: Owner administrative approval acceptance
+name: Owner approvals and HR source acceptance
 on:
   pull_request:
     paths:
       - 'apps/api/src/document-forms/**'
       - 'apps/api/scripts/owner-administrative-approval*'
+      - 'apps/api/scripts/hr-document-source*'
       - 'apps/web/src/hydroland-documents.js'
       - 'apps/web/src/hydroland-owner-approval.js'
+      - 'apps/web/src/hydroland-hr-source.js'
       - 'apps/web/scripts/owner-administrative-approval-validation.cjs'
+      - 'apps/web/scripts/hr-document-source-validation.cjs'
       - '.github/workflows/owner-approval-validation.yml'
   workflow_dispatch:
 permissions:
@@ -39,6 +42,7 @@ jobs:
       FORM_LIBRARY_E2E_CONFIRM: ISOLATED_LOOPBACK_DATABASE
       FORM_LIBRARY_E2E_BASE_URL: http://127.0.0.1:3114/api/v1/
       OWNER_APPROVAL_HTTP_BROWSER: '1'
+      HR_SOURCE_HTTP_BROWSER: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -70,6 +74,11 @@ jobs:
         run: |
           set -o pipefail
           node apps/api/scripts/owner-administrative-approval-http-e2e.mjs 2>&1 | tee /tmp/form-library-evidence/owner-http.log
+      - name: Real canonical HR source checks and shipped document editor
+        run: |
+          set -o pipefail
+          node apps/web/scripts/hr-document-source-validation.cjs | tee /tmp/form-library-evidence/hr-source-client.log
+          node apps/api/scripts/hr-document-source-http-e2e.mjs 2>&1 | tee /tmp/form-library-evidence/hr-source-http.log
       - name: Stop isolated API
         if: always()
         run: |
