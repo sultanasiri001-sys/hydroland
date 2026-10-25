@@ -52,11 +52,12 @@
         button.addEventListener('click',async()=>{
           const auth=window.HydrolandAuth,access=window.HydrolandPortalAccess;
           const session=auth?.getSessionVersion?.(),generation=documentEntryGeneration;
-          const current=()=>dashboard.isConnected&&generation===documentEntryGeneration&&auth?.isAuthenticated?.()&&auth.getSessionVersion?.()===session&&access?.getCurrentRole?.()==='admin'&&access?.roleAllowed?.('admin');
+          const live=()=>dashboard.isConnected&&generation===documentEntryGeneration&&auth?.isAuthenticated?.()&&auth.getSessionVersion?.()===session&&access?.getCurrentRole?.()==='admin';
+          const current=()=>live()&&access?.roleAllowed?.('admin');
           if(button.disabled||!current()||typeof access?.authorizeRole!=='function')return;
           button.disabled=true;button.setAttribute('aria-busy','true');
           try{
-            if(!await access.authorizeRole('admin',{sessionVersion:session,isCurrent:current})||!current())return;
+            if(!await access.authorizeRole('admin',{sessionVersion:session,isCurrent:live})||!current())return;
             const target=document.getElementById('hl-documents'),controller=window.HydrolandDocuments;
             if(!target||typeof controller?.open!=='function')return;
             // A return to an already-open workspace must not reset a typed draft.
