@@ -1,4 +1,5 @@
 (()=>{
+  if(window.HydrolandRoleTasks)return;
   const routes={
     'إدارة الطلاب وتقييم المهارات':{section:'training'},
     'جلسات التدريب':{section:'training'},
@@ -32,7 +33,56 @@
     if(hash)history.replaceState(null,'','#'+hash);
     return true;
   };
+  // The admin dashboard has no generic documents route in its configured menu.
+  // Add explicit entry points without changing backend membership/owner checks.
+  let documentEntryGeneration=0;
+  const connectAdminDocuments=()=>{
+    const dashboard=document.querySelector('.hl-role-dashboard[data-role="admin"]');
+    if(!dashboard)return;
+    const access=window.HydrolandPortalAccess,auth=window.HydrolandAuth;
+    const available=Boolean(auth?.isAuthenticated?.()&&access?.getCurrentRole?.()==='admin'&&access?.roleAllowed?.('admin')&&typeof window.HydrolandDocuments?.open==='function'&&document.getElementById('hl-documents'));
+    for(const [position,host] of [['sidebar',dashboard.querySelector('.hl-portal-safe')],['quick',dashboard.querySelector('.hl-command-grid')]]){
+      if(!host)continue;
+      let button=host.querySelector('[data-admin-documents-entry]');
+      if(!button){
+        button=document.createElement('button');button.type='button';
+        button.dataset.adminDocumentsEntry=position;
+        if(position==='sidebar')button.className='hl-portal-switch';
+        button.textContent='المستندات والنماذج';
+        button.addEventListener('click',async()=>{
+          const auth=window.HydrolandAuth,access=window.HydrolandPortalAccess;
+          const session=auth?.getSessionVersion?.(),generation=documentEntryGeneration;
+          const live=()=>dashboard.isConnected&&generation===documentEntryGeneration&&auth?.isAuthenticated?.()&&auth.getSessionVersion?.()===session&&access?.getCurrentRole?.()==='admin';
+          const current=()=>live()&&access?.roleAllowed?.('admin');
+          if(button.disabled||!current()||typeof access?.authorizeRole!=='function')return;
+          button.disabled=true;button.setAttribute('aria-busy','true');
+          try{
+            if(!await access.authorizeRole('admin',{sessionVersion:session,isCurrent:live})||!current())return;
+            const target=document.getElementById('hl-documents'),controller=window.HydrolandDocuments;
+            if(!target||typeof controller?.open!=='function')return;
+            // A return to an already-open workspace must not reset a typed draft.
+            const form=target.querySelector('[data-doc-form]');
+            const hasInput=Boolean(form&&([...form.querySelectorAll('[data-doc-fields] input,[data-doc-fields] textarea,[data-doc-fields] select')].some(input=>input.type==='checkbox'?input.checked:Boolean(input.value))||form.querySelector('[data-doc-template]')?.disabled));
+            if(target.hidden||!hasInput)controller.open({internal:true});
+            window.HydrolandWorkspaceUI?.show?.(target);
+            dashboard.classList.remove('hl-portal-nav-open');
+            history.replaceState(null,'','#hl-documents');
+          }catch{
+            if(current())button.title='تعذر التحقق من صلاحية الدخول. أعد المحاولة.';
+          }finally{
+            button.removeAttribute('aria-busy');
+            if(current())button.disabled=false;
+          }
+        });
+        if(position==='sidebar')host.prepend(button);else host.appendChild(button);
+      }
+      if(button.getAttribute('aria-busy')!=='true')button.disabled=!available;
+      if(!available)button.title='المدخل متاح للإدارة بعد تحميل خدمة المستندات.';
+      else if(button.title==='المدخل متاح للإدارة بعد تحميل خدمة المستندات.')button.title='';
+    }
+  };
   const connect=()=>{
+    connectAdminDocuments();
     document.querySelectorAll('#role-console-tasks button').forEach(button=>{
       if(button.dataset.hlRoleTaskConnected==='1')return;
       const label=clean(button),config=routes[label];
@@ -51,7 +101,11 @@
       };
     });
   };
-  document.addEventListener('hydroland:role-changed',()=>queueMicrotask(connect));
+  for(const event of ['hydroland:role-changed','hydroland:auth-changed','hydroland:session-cleared','hydroland:portal-cleared'])document.addEventListener(event,()=>{documentEntryGeneration++;queueMicrotask(connect);});
+  document.addEventListener('hydroland:profile-data-ready',()=>queueMicrotask(connect));
+  new MutationObserver(records=>{
+    if(records.some(record=>[...record.addedNodes].some(node=>node.nodeType===1&&(node.matches('.hl-role-dashboard,#hl-documents')||node.querySelector('.hl-role-dashboard,#hl-documents')))))queueMicrotask(connect);
+  }).observe(document.getElementById('main')||document.body,{childList:true,subtree:true});
   const root=document.getElementById('role-console-tasks');
   if(root)new MutationObserver(()=>queueMicrotask(connect)).observe(root,{childList:true});
   connect();

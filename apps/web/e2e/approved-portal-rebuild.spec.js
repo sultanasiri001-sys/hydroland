@@ -42,7 +42,14 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
    }
    const baseActions=role==='admin'?12:['organization','boat'].includes(role)?10:6;
    const contractAccess=['instructor','center','admin'].includes(role);
-   await expect(board.locator(role==='diver'?'.hl-diver-action-grid>button':'.hl-command-grid>button')).toHaveCount(baseActions+(contractAccess?2:0));
+   const documentAccess=role==='admin';
+   await expect(board.locator(role==='diver'?'.hl-diver-action-grid>button':'.hl-command-grid>button')).toHaveCount(baseActions+(contractAccess?2:0)+(documentAccess?1:0));
+   await expect(board.locator('[data-admin-documents-entry]')).toHaveCount(documentAccess?2:0);
+   if(documentAccess)for(const position of ['quick','sidebar']){
+    const entry=board.locator(`[data-admin-documents-entry="${position}"]`);
+    await expect(entry).toHaveCount(1);await expect(entry).toBeEnabled();
+    await expect(entry).toHaveText('المستندات والنماذج');
+   }
    if(contractAccess)for(const [label,target] of [['العقود والتوقيع الإلكتروني','contracts'],['مكتبة العقود','contract-library']]){
     const entry=board.locator(`[data-action-label="${label}"]`);await expect(entry).toBeEnabled();await expect(entry).toHaveAttribute('data-hl-route',target);
    }
