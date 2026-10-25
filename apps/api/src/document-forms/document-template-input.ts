@@ -16,8 +16,9 @@ export function templateFields(value:unknown):AdministrativeTemplateField[] {
   let options:string[]|undefined;
   if(f.options!==undefined){
    if(!Array.isArray(f.options)||f.options.length>100)throw new BadRequestException('Invalid field options.');
-   options=f.options.map((v:unknown)=>templateText(v,'Option'));
-   if(new Set(options).size!==options.length)throw new BadRequestException('Duplicate field options.');
+   const validated:string[]=f.options.map((v:unknown)=>templateText(v,'Option'));
+   options=validated;
+   if(new Set(validated).size!==validated.length)throw new BadRequestException('Duplicate field options.');
   }
   if(f.type==='SELECT'&&!options?.length)throw new BadRequestException('SELECT fields require options.');
   return {key:f.key,labelAr:templateText(f.labelAr,'Arabic field title'),labelEn:templateText(f.labelEn,'English field title'),type:f.type,required:f.required,...(options===undefined?{}:{options})};
