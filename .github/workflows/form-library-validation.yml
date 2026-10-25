@@ -6,6 +6,7 @@ on:
       - 'apps/api/scripts/form-library-pdf-validation.cjs'
       - 'apps/api/scripts/form-library-history-validation.cjs'
       - 'apps/web/src/hydroland-form-library.js'
+      - 'apps/web/scripts/form-library-history-validation.cjs'
       - 'apps/web/e2e/form-library.spec.js'
       - '.github/workflows/form-library-validation.yml'
   workflow_dispatch:
@@ -48,6 +49,11 @@ jobs:
         run: npm --workspace @hydroland/web run build
       - name: Install browser
         run: npm --workspace @hydroland/web exec -- playwright install --with-deps chromium
+      - name: Validate isolated history viewer and restore-as-new-version flow
+        run: |
+          set -o pipefail
+          mkdir -p apps/api/.artifacts/form-library
+          node apps/web/scripts/form-library-history-validation.cjs | tee apps/api/.artifacts/form-library/history-browser-validation.log
       - name: Run 12 isolated library browser regressions
         working-directory: apps/web
         run: npx playwright test e2e/form-library.spec.js --workers=1 --reporter=line
