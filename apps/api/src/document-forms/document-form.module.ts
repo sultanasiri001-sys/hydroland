@@ -1,5 +1,6 @@
 import { OwnerAdministrativeApprovalController } from './owner-administrative-approval.controller';
 import { HrDocumentSourceController } from './hr-document-source.controller';
+import { HrAttendanceSourceController } from './hr-attendance-source.controller';
 import { InternalDocumentReviewController } from './internal-document-review.controller';
 import { InternalDocumentReviewService } from './internal-document-review.service';
 import { Module } from '@nestjs/common';
@@ -24,5 +25,5 @@ import { CooperationContractController } from './cooperation-contract.controller
 import { CooperationContractService } from './cooperation-contract.service';
 import { ContractLibraryController } from './contract-library.controller';
 import { ContractLibraryService } from './contract-library.service';
-@Module({imports:[AuthModule],controllers:[HrDocumentSourceController,OwnerAdministrativeApprovalController,InternalDocumentReviewController,OwnerAdministrativeDecisionController,DocumentPersistenceController,DocumentWorkflowReadinessController,DocumentTemplateSetupController,DocumentTemplateCompletionController,DocumentTemplateHistoryController,DocumentTemplatePreviewController,CooperationContractController,ContractLibraryController],providers:[InternalDocumentReviewService,DocumentFormService,DocumentLifecycleService,DocumentAuthorizationService,DocumentListService,DocumentPersistenceService,DocumentPrintService,DocumentPdfService,DocumentBrandingService,DocumentAssetService,CooperationContractService,ContractLibraryService],exports:[DocumentFormService,DocumentLifecycleService,DocumentListService,DocumentPersistenceService,DocumentPrintService,DocumentPdfService,DocumentBrandingService,DocumentAssetService]})
+@Module({imports:[AuthModule],controllers:[HrAttendanceSourceController,HrDocumentSourceController,OwnerAdministrativeApprovalController,InternalDocumentReviewController,OwnerAdministrativeDecisionController,DocumentPersistenceController,DocumentWorkflowReadinessController,DocumentTemplateSetupController,DocumentTemplateCompletionController,DocumentTemplateHistoryController,DocumentTemplatePreviewController,CooperationContractController,ContractLibraryController],providers:[InternalDocumentReviewService,DocumentFormService,DocumentLifecycleService,DocumentAuthorizationService,DocumentListService,DocumentPersistenceService,DocumentPrintService,DocumentPdfService,DocumentBrandingService,DocumentAssetService,CooperationContractService,ContractLibraryService],exports:[DocumentFormService,DocumentLifecycleService,DocumentListService,DocumentPersistenceService,DocumentPrintService,DocumentPdfService,DocumentBrandingService,DocumentAssetService]})
 export class DocumentFormModule {}

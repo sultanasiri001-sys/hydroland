@@ -5,11 +5,14 @@ on:
       - 'apps/api/src/document-forms/**'
       - 'apps/api/scripts/owner-administrative-approval*'
       - 'apps/api/scripts/hr-document-source*'
+      - 'apps/api/scripts/hr-attendance-source*'
       - 'apps/web/src/hydroland-documents.js'
       - 'apps/web/src/hydroland-owner-approval.js'
       - 'apps/web/src/hydroland-hr-source.js'
+      - 'apps/web/src/hydroland-hr-attendance.js'
       - 'apps/web/scripts/owner-administrative-approval-validation.cjs'
       - 'apps/web/scripts/hr-document-source-validation.cjs'
+      - 'apps/web/scripts/hr-attendance-source-validation.cjs'
       - '.github/workflows/owner-approval-validation.yml'
   workflow_dispatch:
 permissions:
@@ -79,6 +82,11 @@ jobs:
           set -o pipefail
           node apps/web/scripts/hr-document-source-validation.cjs | tee /tmp/form-library-evidence/hr-source-client.log
           node apps/api/scripts/hr-document-source-http-e2e.mjs 2>&1 | tee /tmp/form-library-evidence/hr-source-http.log
+      - name: Attendance and leave return source acceptance
+        run: |
+          set -o pipefail
+          node apps/web/scripts/hr-attendance-source-validation.cjs | tee /tmp/form-library-evidence/hr-attendance-client.log
+          node apps/api/scripts/hr-attendance-source-http-e2e.mjs 2>&1 | tee /tmp/form-library-evidence/hr-attendance-http.log
       - name: Stop isolated API
         if: always()
         run: |
