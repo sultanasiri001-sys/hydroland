@@ -54,6 +54,7 @@ jobs:
       - run: npm --workspace @hydroland/api exec -- prisma db push --skip-generate
       - run: npm --workspace @hydroland/api run build
       - run: npm --workspace @hydroland/web exec -- playwright install --with-deps chromium
+      - run: node apps/api/scripts/owner-administrative-approval-pdf-validation.cjs
       - name: Start isolated API
         run: |
           node apps/api/dist/main.js > /tmp/form-library-evidence/api.log 2>&1 &

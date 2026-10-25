@@ -13,7 +13,7 @@
     <p data-hoa-status role="status" aria-live="polite"></p><button type="button" data-hoa-reload>إعادة قراءة الحالة المحفوظة</button>
     <section data-hoa-source></section><section data-hoa-existing></section>
     <form data-hoa-form><fieldset data-hoa-controls disabled><legend>اعتماد النسخة إداريًا</legend>
-      <label>ملاحظة المالك وتوجيه المتابعة<textarea data-hoa-note rows="4" maxlength="2000" required></textarea></label>
+      <label>ملاحظة المالك وتوجيه المتابعة<textarea data-hoa-note rows="4" minlength="5" maxlength="2000" required></textarea></label>
       <label class="hoa-check"><input type="checkbox" data-hoa-admin required> راجعت النسخة المحفوظة وأعتمدها إداريًا بصفتي مالك هيدرولاند؛ تنفيذ التعيين أو الصرف أو العقد أو التصريح يبقى في مساره المختص.</label>
       <label class="hoa-check"><input type="checkbox" data-hoa-limits required> أفهم أن هذا اعتماد المالك الإداري لهذه النسخة، وأن المراجعة المستقلة والتوقيعات والأدلة المتخصصة تُسجّل منفصلة، وأن أي تعديل لاحق يحتاج اعتماد النسخة الجديدة.</label>
       <button type="submit" data-hoa-record disabled>اعتماد هذه النسخة إداريًا</button>
@@ -32,7 +32,7 @@
   const context = () => ({ generation: s.generation, org: s.org, id: s.id, session: s.session });
   const current = c => dialog.open && c.generation === s.generation && c.org === s.org && c.id === s.id && c.session === session() && auth()?.isAuthenticated?.() && document.querySelector('#hl-documents [data-doc-org]')?.value === c.org && !document.querySelector('#hl-documents')?.hidden;
   const status = text => { $('[data-hoa-status]').textContent = text; };
-  const consent = () => $('[data-hoa-admin]').checked && $('[data-hoa-limits]').checked && Boolean($('[data-hoa-note]').value.trim());
+  const consent = () => $('[data-hoa-admin]').checked && $('[data-hoa-limits]').checked && $('[data-hoa-note]').value.trim().length>=5;
   function controls() {
     $('[data-hoa-controls]').disabled = s.busy || s.uncertain || !s.plan?.eligible;
     $('[data-hoa-record]').disabled = s.busy || s.uncertain || !s.plan?.eligible || !consent();
@@ -42,7 +42,7 @@
   }
   function revokePdf() { if (s.pdf) URL.revokeObjectURL(s.pdf); s.pdf = null; $('[data-hoa-pdf-frame]').removeAttribute('src'); $('[data-hoa-pdf-link]').removeAttribute('href'); $('[data-hoa-pdf]').hidden = true; }
   function clear() { s.generation++; s.org = ''; s.id = ''; s.plan = null; s.busy = false; s.uncertain = false; revokePdf(); $('[data-hoa-form]').reset();$('[data-hoa-revision-note]').value='';$('[data-hoa-revision-confirm]').checked=false;$('[data-hoa-revision]').hidden=true; for (const q of ['source','existing','history']) $(`[data-hoa-${q}]`).replaceChildren(); status(''); controls(); if (dialog.open) dialog.close(); }
-  function draft() { return Boolean($('[data-hoa-note]').value.trim() || $('[data-hoa-admin]').checked || $('[data-hoa-limits]').checked); }
+  function draft() { return Boolean($('[data-hoa-note]').value.trim() || $('[data-hoa-admin]').checked || $('[data-hoa-limits]').checked || $('[data-hoa-revision-note]').value.trim() || $('[data-hoa-revision-confirm]').checked); }
   function abandon() { return !draft() || window.confirm('توجد ملاحظات أو تأكيدات غير مسجلة؛ هل تريد تركها؟'); }
   const path = c => `/documents/organizations/${encodeURIComponent(c.org)}/documents/${encodeURIComponent(c.id)}/owner-approval`;
   async function request(c, options = {}, suffix = '') {
