@@ -90,7 +90,7 @@ try {
   const noMembership=await call(outsider,'documents','POST',{organizationId:org.id,templateId:restored.id,department:'HR',contentHash:'outside-ci',payload:{name:'Synthetic'}});
   assert.equal(noMembership.status,403);
   assert.equal((await call(outsider,`documents/organizations/${org.id}/templates/${code}/history`)).status,403); pass('HR role without organization membership does not bypass document authorization');
-  await db.organizationMember.update({where:{organizationId_accountId:{organizationId:org.id,accountId:staff.id}},data:{status:'INACTIVE'}});
+  await db.organizationMember.update({where:{organizationId_accountId:{organizationId:org.id,accountId:staff.id}},data:{status:'SUSPENDED'}});
   assert.equal((await call(staff,`documents/${document.id}`)).status,403);
   assert.equal((await call(staff,'documents','POST',{organizationId:org.id,templateId:restored.id,department:'HR',contentHash:'revoked-ci',payload:{name:'Synthetic'}})).status,403); pass('revoked member loses read and creation access immediately');
   console.log(`${checks} HTTP/PostgreSQL form-library checks passed on isolated loopback services; no production acceptance inferred.`);
