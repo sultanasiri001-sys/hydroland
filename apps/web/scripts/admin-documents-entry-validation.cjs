@@ -58,6 +58,7 @@ async function switchRole(page,role){
 }
 async function open(page,position='quick'){
  await page.locator('[data-admin-documents-entry='+position+']').click();
+ await page.locator('#hl-documents').waitFor({state:'visible'});
  await page.waitForFunction(()=>document.querySelector('[data-doc-note]')?.textContent.includes('تم تحميل'));
  assert.equal(await page.locator('#hl-documents').isVisible(),true);
 }
