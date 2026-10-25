@@ -128,6 +128,7 @@
 
   const supportsHrAttendance=t=>t?.department==='HR'&&['HR-ATTENDANCE-SUMMARY','HR-LEAVE-RETURN'].includes(t.code);
   let attendanceLoad=null,attendanceDispose=null,attendanceGeneration=0;
+  function clearSavedHrSources(){for(const old of panel.querySelectorAll('[data-doc-hr-source-result],[data-doc-attendance-saved-result]')){old.replaceChildren();old.hidden=true;}}
   function loadHrAttendance(){
     if(window.HydrolandHrAttendance)return Promise.resolve();
     if(!attendanceLoad)attendanceLoad=new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='./hydroland-hr-attendance.js';script.onload=()=>{if(window.HydrolandHrAttendance)resolve();else{attendanceLoad=null;script.remove();reject(new Error('تعذر تحميل فحص الحضور'));}};script.onerror=()=>{attendanceLoad=null;script.remove();reject(new Error('تعذر تحميل فحص الحضور'));};document.body.appendChild(script);});return attendanceLoad;
@@ -136,7 +137,7 @@
     const ticket=++attendanceGeneration;attendanceDispose?.();attendanceDispose=null;
     const box=panel.querySelector('[data-doc-attendance-check]'),t=activeTemplate(),c=context();box.replaceChildren();box.hidden=!state.inventory?.internalPlatform||!supportsHrAttendance(t);if(box.hidden)return;
     const valid=()=>current(c)&&ticket===attendanceGeneration&&!panel.hidden&&activeTemplate()?.id===t.id;
-    loadHrAttendance().then(()=>{if(valid())attendanceDispose=window.HydrolandHrAttendance.mount({host:box,form:panel.querySelector('[data-doc-form]'),request,organizationId:c.orgId,template:t,valid,onDenied:()=>{for(const old of panel.querySelectorAll('[data-doc-attendance-saved-result]')){old.replaceChildren();old.hidden=true;}}});}).catch(e=>{if(valid())box.textContent=e.message;});
+    loadHrAttendance().then(()=>{if(valid())attendanceDispose=window.HydrolandHrAttendance.mount({host:box,form:panel.querySelector('[data-doc-form]'),request,organizationId:c.orgId,template:t,valid,onDenied:()=>{clearSourcePreview();resetSourcePicker();clearSavedHrSources();}});}).catch(e=>{if(valid())box.textContent=e.message;});
   }
   const attendanceTickets=new WeakMap();
   async function inspectHrAttendance(d,article,c){
@@ -145,7 +146,7 @@
     box.hidden=false;box.textContent='جارٍ فحص مراجع النسخة المحفوظة…';
     try{await loadHrAttendance();if(!valid())return;const r=await request(`/documents/organizations/${encodeURIComponent(c.orgId)}/documents/${encodeURIComponent(d.id)}/hr-attendance?version=${d.version}`,{cache:'no-store'});if(!valid())return;
       box.innerHTML=window.HydrolandHrAttendance.format(r,{organizationId:c.orgId,templateId:d.templateId,templateVersion:d.template.version,templateCode:d.template.code,kind:'SAVED_DOCUMENT_REFERENCE_CHECK',documentId:d.id,documentVersion:d.version,input:d.payload});
-    }catch(e){if(valid()){if([401,403].includes(e?.status)){resetAttendanceCheck();for(const old of panel.querySelectorAll('[data-doc-attendance-saved-result]')){old.replaceChildren();old.hidden=true;}}box.hidden=false;box.textContent=e instanceof Error?e.message:'تعذر فحص السجلات.';}}
+    }catch(e){if(valid()){if([401,403].includes(e?.status)){resetAttendanceCheck();resetSourcePicker();clearSourcePreview();clearSavedHrSources();}box.hidden=false;box.textContent=e instanceof Error?e.message:'تعذر فحص السجلات.';}}
   }
   const supportsHrSource=t=>t?.department==='HR'&&['HR-APPOINTMENT-RECORD','HR-COMMENCEMENT'].includes(t.code);
   function clearSourcePreview(){
@@ -165,7 +166,7 @@
     try{await loadHrSource();if(!valid())return;const suffix=append&&sourceCandidatesCursor?`?cursor=${encodeURIComponent(sourceCandidatesCursor)}`:'';const r=await request(`/documents/organizations/${encodeURIComponent(c.orgId)}/hr-source-candidates${suffix}`,{cache:'no-store'});if(!valid())return;window.HydrolandHrSource.validateCandidates(r,c.orgId);
       sourceCandidates=append?[...sourceCandidates,...r.items]:r.items;sourceCandidatesCursor=r.nextCursor;const select=panel.querySelector('[data-doc-hr-source-select]'),chosen=select.value;select.innerHTML='<option value="">اختر طلبًا محفوظًا</option>'+sourceCandidates.map(x=>`<option value="${esc(x.appointmentId)}">${esc(x.name)} · ${esc(x.positionTitle||x.departmentName)} · ${esc(window.HydrolandHrSource.stateLabel(x.appointmentStatus))}</option>`).join('');if(sourceCandidates.some(x=>x.appointmentId===chosen))select.value=chosen;
       panel.querySelector('[data-doc-hr-source-more]').hidden=!r.hasMore;box.textContent=sourceCandidates.length?`${sourceCandidates.length} طلبًا معروضًا${r.hasMore?'؛ تتوفر طلبات أقدم':''}. اختيار الطلب يملأ مرجعي الموظف والتعيين.`:'لا توجد طلبات تعيين محفوظة في هذه الجهة.';
-    }catch(e){if(valid()){resetSourcePicker();clearSourcePreview();box.textContent=e instanceof Error?e.message:'تعذرت قراءة الطلبات.';}}finally{if(valid())b.disabled=false;}
+    }catch(e){if(valid()){resetSourcePicker();clearSourcePreview();if([401,403].includes(e?.status)){resetAttendanceCheck();clearSavedHrSources();}box.textContent=e instanceof Error?e.message:'تعذرت قراءة الطلبات.';}}finally{if(valid())b.disabled=false;}
   }
   panel.querySelector('[data-doc-hr-source-load]').addEventListener('click',()=>loadSourceCandidates());panel.querySelector('[data-doc-hr-source-more]').addEventListener('click',()=>loadSourceCandidates(true));
   panel.querySelector('[data-doc-hr-source-select]').addEventListener('change',e=>{const item=sourceCandidates.find(x=>x.appointmentId===e.target.value),t=activeTemplate();if(!item||!supportsHrSource(t)||state.loading)return;panel.querySelector('[name="employeeReference"]').value=item.employmentId;panel.querySelector(`[name="${t.code==='HR-APPOINTMENT-RECORD'?'movementReference':'appointmentReference'}"]`).value=item.appointmentId;clearSourcePreview();});
@@ -178,14 +179,14 @@
     b.disabled=true;box.hidden=false;box.textContent='جارٍ قراءة سجل الموظف وطلب التعيين…';
     try{await loadHrSource();if(!valid())return;const r=await request(`/documents/organizations/${encodeURIComponent(c.orgId)}/hr-source-preview`,{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({templateId:t.id,expectedTemplateVersion:t.version,employeeReference:employee,[key]:appointment})});if(!valid())return;
       box.innerHTML=window.HydrolandHrSource.format(r,{organizationId:c.orgId,templateId:t.id,templateVersion:t.version,templateCode:t.code,kind:'UNSAVED_REFERENCE_PREVIEW',documentId:null,documentVersion:null,employeeReference:employee,appointmentReference:appointment});
-    }catch(e){if(valid()){if([401,403].includes(e?.status)){resetSourcePicker();clearSourcePreview();}box.hidden=false;box.textContent=e instanceof Error?e.message:'تعذر قراءة السجل.';}}finally{if(valid())b.disabled=false;}
+    }catch(e){if(valid()){if([401,403].includes(e?.status)){resetSourcePicker();clearSourcePreview();resetAttendanceCheck();clearSavedHrSources();}box.hidden=false;box.textContent=e instanceof Error?e.message:'تعذر قراءة السجل.';}}finally{if(valid())b.disabled=false;}
   });
   async function inspectHrSource(d,article,c){
     const box=article.querySelector('[data-doc-hr-source-result]'),valid=()=>current(c)&&!panel.hidden&&article.isConnected&&state.documents.some(x=>x.id===d.id&&x.version===d.version);
     box.hidden=false;box.textContent='جارٍ التحقق من مراجع النسخة المحفوظة…';
     try{await loadHrSource();if(!valid())return;const r=await request(`/documents/organizations/${encodeURIComponent(c.orgId)}/documents/${encodeURIComponent(d.id)}/hr-source?version=${d.version}`,{cache:'no-store'});if(!valid())return;
       const key=d.template.code==='HR-APPOINTMENT-RECORD'?'movementReference':'appointmentReference';box.innerHTML=window.HydrolandHrSource.format(r,{organizationId:c.orgId,templateId:d.templateId,templateVersion:d.template.version,templateCode:d.template.code,kind:'SAVED_DOCUMENT_REFERENCE_CHECK',documentId:d.id,documentVersion:d.version,employeeReference:String(d.payload?.employeeReference||'').trim(),appointmentReference:String(d.payload?.[key]||'').trim()});
-    }catch(e){if(valid()){if([401,403].includes(e?.status)){resetSourcePicker();clearSourcePreview();for(const old of panel.querySelectorAll('[data-doc-hr-source-result]')){old.replaceChildren();old.hidden=true;}}box.hidden=false;box.textContent=e instanceof Error?e.message:'تعذر قراءة السجل.';}}
+    }catch(e){if(valid()){if([401,403].includes(e?.status)){resetSourcePicker();clearSourcePreview();resetAttendanceCheck();clearSavedHrSources();}box.hidden=false;box.textContent=e instanceof Error?e.message:'تعذر قراءة السجل.';}}
   }
   async function loadOwnerApprovals(){
     const c=context();state.ownerApprovals={};panel.querySelector('[data-doc-owner-approval-status]').textContent='جارٍ قراءة سجل الاعتماد الإداري…';

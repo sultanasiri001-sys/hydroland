@@ -116,6 +116,7 @@ export class HrAttendanceSourceController {
       const d = await tx.managedDocument.findFirst({ where: { id, organizationId: org }, include: { template: true } });
       if (!d) throw new NotFoundException('المستند غير موجود في هذه الجهة.');
       if (d.version !== expected) throw new ConflictException('تغير إصدار المستند؛ أعد قراءة النسخة المحفوظة.');
+      if (d.department !== d.template.department) throw new ConflictException('إدارة المستند لا تطابق إدارة القالب المحفوظ.');
       this.binding(d.template, org); validateDocumentPayload(d.template.fields, d.payload);
       const revision = await tx.documentRevision.findUnique({ where: { documentId_version: { documentId: id, version: d.version } } });
       if (!revision || revision.contentHash !== d.contentHash || decisionDigest(revision.payload) !== decisionDigest(d.payload)) throw new ConflictException('أدلة نسخة المستند غير متسقة.');
