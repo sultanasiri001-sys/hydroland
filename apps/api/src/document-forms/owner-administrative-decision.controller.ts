@@ -32,7 +32,9 @@ export class OwnerAdministrativeDecisionController {
     if (!eligibility.eligible) return { d, eligibility, snapshot: null, reviewHash: null };
     const revision = await tx.documentRevision.findUnique({ where: { documentId_version: { documentId: id, version: d.version } } });
     if (!revision || revision.contentHash !== d.contentHash || decisionDigest(revision.payload) !== decisionDigest(d.payload)) throw new ConflictException('Source revision evidence is inconsistent.');
-    const branding = await tx.documentBrandSnapshot.findUnique({ where: { organizationId_brandVersion: { organizationId: org, brandVersion: d.documentBrandVersion } } });
+    const brandVersion = d.documentBrandVersion;
+    if (brandVersion === null || !Number.isSafeInteger(brandVersion) || brandVersion < 1) throw new ConflictException('Source branding version is not pinned.');
+    const branding = await tx.documentBrandSnapshot.findUnique({ where: { organizationId_brandVersion: { organizationId: org, brandVersion } } });
     if (!branding) throw new ConflictException('Pinned source branding is unavailable.');
     const snapshot = {
       documentId: d.id, organizationId: org, referenceNumber: d.referenceNumber, version: d.version, status: d.status,
