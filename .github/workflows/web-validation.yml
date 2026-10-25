@@ -49,6 +49,16 @@ jobs:
       - name: Phase 4 notification focused regression
         # Keep the full-suite test-results directory intact for the visual-review artifact steps below.
         run: npm run test:e2e -w @hydroland/web -- safety-notifications.spec.js --output=test-results-focused
+      - name: Retain browser failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-failure-diagnostics-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            apps/web/test-results/**/error-context.md
+            apps/web/test-results-*/**/error-context.md
+          if-no-files-found: ignore
+          retention-days: 3
       - name: Public interface review screenshots
         if: always()
         uses: actions/upload-artifact@v4
