@@ -1,0 +1,92 @@
+name: Form library HTTP database acceptance
+on:
+  pull_request:
+    paths:
+      - 'apps/api/**'
+      - 'apps/web/src/hydroland-form-library*'
+      - '.github/workflows/form-library*'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: form-library-integration-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: hydroland
+          POSTGRES_PASSWORD: hydroland
+          POSTGRES_DB: hydroland_form_library_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U hydroland -d hydroland_form_library_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://hydroland:hydroland@127.0.0.1:5432/hydroland_form_library_ci
+      NODE_ENV: test
+      JWT_SECRET: ci-form-library-isolated-secret-at-least-32-characters
+      PORT: 3114
+      FORM_LIBRARY_E2E_CONFIRM: ISOLATED_LOOPBACK_DATABASE
+      FORM_LIBRARY_E2E_BASE_URL: http://127.0.0.1:3114/api/v1/
+      HR_E2E_BASE_URL: http://127.0.0.1:3114/api/v1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Record the exact source tree before dependency installation
+        run: |
+          mkdir -p /tmp/form-library-evidence
+          git rev-parse HEAD > /tmp/form-library-evidence/checkout.txt
+          git log -1 --format='%H %P %s' >> /tmp/form-library-evidence/checkout.txt
+          git ls-files -s apps/api/scripts/hr-http-e2e.mjs .github/workflows/api-validation.yml >> /tmp/form-library-evidence/checkout.txt
+          wc -l apps/api/scripts/hr-http-e2e.mjs >> /tmp/form-library-evidence/checkout.txt
+          git archive --format=zip --output=/tmp/form-library-evidence/source.zip HEAD
+          cat /tmp/form-library-evidence/checkout.txt
+      - run: npm ci --workspace=@hydroland/api --workspace=@hydroland/web --include-workspace-root=true
+      - run: npm --workspace @hydroland/api run db:generate
+      - run: npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+      - run: npm --workspace @hydroland/api run build
+      - name: Start isolated API and check readiness
+        run: |
+          node apps/api/dist/main.js > /tmp/form-library-evidence/api.log 2>&1 &
+          echo "$!" > /tmp/form-library-api.pid
+          ready=0
+          for attempt in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:3114/api/v1/health > /dev/null; then ready=1; break; fi
+            if ! kill -0 "$(cat /tmp/form-library-api.pid)" 2>/dev/null; then cat /tmp/form-library-evidence/api.log; exit 1; fi
+            sleep 1
+          done
+          if [ "$ready" != 1 ]; then cat /tmp/form-library-evidence/api.log; exit 1; fi
+      - name: Real document workspace version and lifecycle acceptance
+        id: form_acceptance
+        run: |
+          set -o pipefail
+          node apps/api/scripts/form-library-http-e2e.mjs 2>&1 | tee /tmp/form-library-evidence/form-http.log
+      - name: Reproduce the unchanged HR integration with traceable source
+        if: ${{ !cancelled() && steps.form_acceptance.outcome != 'skipped' }}
+        run: |
+          set -o pipefail
+          git diff --exit-code -- apps/api/scripts/hr-http-e2e.mjs
+          git hash-object apps/api/scripts/hr-http-e2e.mjs
+          wc -l apps/api/scripts/hr-http-e2e.mjs
+          node apps/api/scripts/hr-http-e2e.mjs 2>&1 | tee /tmp/form-library-evidence/hr-http.log
+      - name: Stop isolated API
+        if: always()
+        run: |
+          if [ -f /tmp/form-library-api.pid ]; then kill "$(cat /tmp/form-library-api.pid)" || true; fi
+      - name: Retain source identity and isolated integration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: form-library-integration-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/form-library-evidence/
+          retention-days: 3
+          if-no-files-found: error
