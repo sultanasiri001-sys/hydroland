@@ -17,6 +17,7 @@ export type Participant = { accountId: string; personId: string; employmentId: s
   memberRevision: string; roleRevision: string; verifiedAt: string; accountStatusRevision: string };
 export type ReviewGrant = { policy: typeof INTERNAL_REVIEW_POLICY; id: string; revision: string; organizationId: string; documentId: string;
   ownerId: string; ownerPersonId: string; organizationRevision: string; ownerAuthorityRevision: string; ownerStatusRevision: string;
+  platformRevision: string; ownerMemberRevision: string; ownerVerifiedAt: string;
   documentVersion: number; department: string; sourceHash: string; state: 'ACTIVE'|'REVOKED'|'RETURNED'|'DECLINED';
   reviewer: Participant | null; signer: Participant; approvalAtAssignment: {accountId:string;personId:string;approvedAt:string}|null;
   issuedAt: string; expiresAt: string; reason: string; digest: string };
@@ -44,12 +45,13 @@ export function sealGrant(body: Omit<ReviewGrant,'digest'>): ReviewGrant { retur
 export function readGrant(value: unknown, org: string, id: string): ReviewGrant | null {
   if (value === undefined || value === null) return null;
   const x = record(value), { digest, ...body } = x;
-  const keys = ['policy','id','revision','organizationId','documentId','ownerId','ownerPersonId','organizationRevision','ownerAuthorityRevision','ownerStatusRevision','documentVersion','department','sourceHash','state','reviewer','signer','approvalAtAssignment','issuedAt','expiresAt','reason','digest'];
+  const keys = ['policy','id','revision','organizationId','documentId','ownerId','ownerPersonId','organizationRevision','ownerAuthorityRevision','ownerStatusRevision','platformRevision','ownerMemberRevision','ownerVerifiedAt','documentVersion','department','sourceHash','state','reviewer','signer','approvalAtAssignment','issuedAt','expiresAt','reason','digest'];
   const approval=record(x.approvalAtAssignment);
   if (Object.keys(x).length !== keys.length || Object.keys(x).some(k => !keys.includes(k)) || x.policy !== INTERNAL_REVIEW_POLICY || x.organizationId !== org || x.documentId !== id
     || !['id','revision','ownerId','ownerPersonId','ownerStatusRevision'].every(k => typeof x[k] === 'string' && (x[k] as string).length > 0)
     || !Number.isSafeInteger(x.documentVersion) || Number(x.documentVersion) < 1 || !DOCUMENT_DEPARTMENTS.includes(x.department as never)
-    || !iso(x.organizationRevision) || !iso(x.ownerAuthorityRevision) || !iso(x.issuedAt) || !iso(x.expiresAt)
+    || !iso(x.organizationRevision) || !iso(x.ownerAuthorityRevision) || !iso(x.platformRevision) || !iso(x.ownerVerifiedAt)
+    || !(x.ownerMemberRevision==='DERIVED_OWNER_NO_MEMBERSHIP'||iso(x.ownerMemberRevision)) || !iso(x.issuedAt) || !iso(x.expiresAt)
     || Date.parse(x.expiresAt) <= Date.parse(x.issuedAt) || Date.parse(x.expiresAt)-Date.parse(x.issuedAt) > 7*86400000
     || !['ACTIVE','REVOKED','RETURNED','DECLINED'].includes(String(x.state)) || typeof x.sourceHash !== 'string' || !/^[a-f0-9]{64}$/.test(x.sourceHash)
     || !participant(x.signer) || (x.reviewer !== null && !participant(x.reviewer))
@@ -63,16 +65,16 @@ export async function accountStatusRevision(tx: Prisma.TransactionClient, id: st
   return event?.id ?? 'NONE';
 }
 export async function reviewPlatform(tx: Prisma.TransactionClient) {
-  const pointer = await tx.operationalSetting.findUnique({ where: { key: PLATFORM_STAFFING_KEY }, select: { value: true } });
+  const pointer = await tx.operationalSetting.findUnique({ where: { key: PLATFORM_STAFFING_KEY }, select: { value: true, updatedAt: true } });
   const id = record(pointer?.value).organizationId;
   if (typeof id !== 'string') throw new ForbiddenException('الجهة الداخلية غير مهيأة.');
   const org = await tx.organization.findUnique({ where: { id }, select: { id: true, ownerId: true, kind: true, status: true, updatedAt: true } });
   if (!org || org.kind !== PLATFORM_STAFFING_KIND || org.status !== 'ACTIVE') throw new ForbiddenException('الجهة الداخلية غير متاحة.');
-  const owner = await tx.account.findFirst({ where: { id: org.ownerId, status: 'ACTIVE', emailVerifiedAt: {not:null}, roleAssignments: {some:{role:'ADMIN',status:'ACTIVE'}} }, select: { id:true, personId:true } });
-  const member = await tx.organizationMember.findUnique({ where: { organizationId_accountId: {organizationId:id,accountId:org.ownerId} }, select: {status:true} });
+  const owner = await tx.account.findFirst({ where: { id: org.ownerId, status: 'ACTIVE', emailVerifiedAt: {not:null}, roleAssignments: {some:{role:'ADMIN',status:'ACTIVE'}} }, select: { id:true, personId:true, emailVerifiedAt:true } });
+  const member = await tx.organizationMember.findUnique({ where: { organizationId_accountId: {organizationId:id,accountId:org.ownerId} }, select: {status:true,updatedAt:true} });
   const authority = await tx.roleAssignment.findUnique({ where: { accountId_role:{accountId:org.ownerId,role:'ADMIN'} }, select:{status:true,updatedAt:true} });
   if (!owner || !authority || authority.status !== 'ACTIVE' || member && member.status !== 'ACTIVE') throw new ForbiddenException('صلاحية مالك الجهة غير متاحة.');
-  return { ...org, ownerPersonId: owner.personId, ownerAuthorityRevision: authority.updatedAt.toISOString(), ownerStatusRevision: await accountStatusRevision(tx,owner.id) };
+  return { ...org, platformRevision:pointer!.updatedAt.toISOString(), ownerMemberRevision:member?.updatedAt.toISOString()??'DERIVED_OWNER_NO_MEMBERSHIP', ownerVerifiedAt:owner.emailVerifiedAt!.toISOString(), ownerPersonId: owner.personId, ownerAuthorityRevision: authority.updatedAt.toISOString(), ownerStatusRevision: await accountStatusRevision(tx,owner.id) };
 }
 export async function eligibleReviewParticipant(tx: Prisma.TransactionClient, org: string, department: string, accountId: string) {
   const account = await tx.account.findFirst({ where: { id: accountId, status:'ACTIVE', emailVerifiedAt:{not:null}, roleAssignments:{some:{role:'STAFF',status:'ACTIVE'}} }, select:{id:true,personId:true,emailVerifiedAt:true,email:true,person:{select:{firstName:true,lastName:true}}} });
@@ -110,7 +112,8 @@ export async function assignedReviewAccess(tx: Prisma.TransactionClient, actorId
   const role = g?.reviewer?.accountId === actorId ? 'REVIEWER' : g?.signer.accountId === actorId ? 'SIGNER' : null;
   if (!g || !role || g.state !== 'ACTIVE' || Date.parse(g.expiresAt) <= Date.now()) throw new ForbiddenException('لا يوجد تكليف مراجعة فعّال لهذا الحساب والنسخة.');
   const platform = await reviewPlatform(tx);
-  if (platform.id !== org || platform.ownerId !== g.ownerId || platform.ownerPersonId !== g.ownerPersonId || platform.updatedAt.toISOString() !== g.organizationRevision || platform.ownerAuthorityRevision !== g.ownerAuthorityRevision || platform.ownerStatusRevision !== g.ownerStatusRevision) throw new ForbiddenException('تغيرت سلطة إصدار التكليف؛ يلزم تكليف جديد.');
+  if (platform.id !== org || platform.ownerId !== g.ownerId || platform.ownerPersonId !== g.ownerPersonId || platform.updatedAt.toISOString() !== g.organizationRevision || platform.ownerAuthorityRevision !== g.ownerAuthorityRevision || platform.ownerStatusRevision !== g.ownerStatusRevision
+    || platform.platformRevision!==g.platformRevision || platform.ownerMemberRevision!==g.ownerMemberRevision || platform.ownerVerifiedAt!==g.ownerVerifiedAt) throw new ForbiddenException('تغيرت سلطة إصدار التكليف؛ يلزم تكليف جديد.');
   const actor = await eligibleReviewParticipant(tx,org,g.department,actorId), expected = role === 'REVIEWER' ? g.reviewer! : g.signer;
   if (decisionDigest(actor.binding) !== decisionDigest(expected)) throw new ForbiddenException('تغيرت صلاحية أو عضوية أو وظيفة المكلّف؛ يلزم تكليف جديد.');
   const source = await reviewSource(tx,org,id);
