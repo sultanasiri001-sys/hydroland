@@ -1,0 +1,39 @@
+name: Admin document library entry
+on:
+  pull_request:
+    paths:
+      - 'apps/web/src/hydroland-role-task-routing.js'
+      - 'apps/web/src/hydroland-documents.js'
+      - 'apps/web/src/hydroland-workspace-ui.js'
+      - 'apps/web/scripts/admin-documents-entry-validation.cjs'
+      - '.github/workflows/admin-documents-entry-validation.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: admin-documents-entry-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  navigation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --workspace=@hydroland/web --include-workspace-root=true --ignore-scripts
+      - run: npm run test -w @hydroland/web
+      - run: npm run build -w @hydroland/web
+      - run: npx playwright install --with-deps chromium
+      - name: Existing application navigation and owner scope
+        run: |
+          set -o pipefail
+          node apps/web/scripts/admin-documents-entry-validation.cjs 2>&1 | tee /tmp/admin-documents-entry.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: admin-documents-entry-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/admin-documents-entry.log
+          if-no-files-found: warn
+          retention-days: 3
