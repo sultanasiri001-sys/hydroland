@@ -5,29 +5,36 @@
   if(!access||!auth)return;
   const roleSwitch=document.getElementById('role-switch');
   const dialog=document.getElementById('role-dialog');
-  let replaySwitch=false,replayRole=false,refreshPromise=null;
+  let replaySwitch=false,replayRole=false,refreshPromise=null,refreshSession=null;
   const authenticated=()=>Boolean(auth.isAuthenticated?.());
   const clearCachedRoles=()=>{
     const data=window.HydrolandProfileData,profile=data?.profile;
     if(profile)window.HydrolandProfileData={...data,profile:{...profile,roles:[]}};
   };
   const refreshPortalAccess=async()=>{
-    if(refreshPromise)return refreshPromise;
-    refreshPromise=(async()=>{
-      if(!authenticated()){clearCachedRoles();return false}
+    const session=auth.getSessionVersion?.();
+    if(refreshPromise&&refreshSession===session)return refreshPromise;
+    if(!authenticated()){clearCachedRoles();return false}
+    const stillCurrent=()=>authenticated()&&session===auth.getSessionVersion?.();
+    const pending=(async()=>{
       try{
         const response=await auth.authorizedFetch('/me');
         const body=await response.json().catch(()=>null);
+        if(!stillCurrent())return false;
         if(!response.ok||!body)throw new Error('ROLE_REFRESH_FAILED');
         const roles=Array.isArray(body.roleAssignments)?body.roleAssignments:Array.isArray(body.roles)?body.roles:[];
         window.HydrolandProfileData={...(window.HydrolandProfileData||{}),profile:{...body,roles}};
         return true;
       }catch{
-        clearCachedRoles();
+        if(stillCurrent())clearCachedRoles();
         return false;
       }
     })();
-    try{return await refreshPromise}finally{refreshPromise=null}
+    refreshPromise=pending;refreshSession=session;
+    try{return await pending}finally{
+      // An old request must not clear a replacement session's in-flight read.
+      if(refreshPromise===pending){refreshPromise=null;refreshSession=null;}
+    }
   };
   const authorizeRole=async(role,context={})=>{
     const session=context.sessionVersion??auth.getSessionVersion?.();
@@ -36,7 +43,7 @@
     if(!stillCurrent())return false;
     // A request already in flight may have sampled roles before this action.
     // Finish it first, then authorize against a request started by this action.
-    if(refreshPromise){
+    if(refreshPromise&&refreshSession===session){
       await refreshPromise;
       if(!stillCurrent())return false;
     }
@@ -100,7 +107,12 @@
   },true);
   document.addEventListener('visibilitychange',async()=>{
     if(document.visibilityState!=='visible'||!authenticated()||(access.getCurrentRole?.()||'diver')==='diver')return;
-    await refreshPortalAccess();
+    const session=auth.getSessionVersion?.(),role=access.getCurrentRole?.();
+    const isCurrent=()=>authenticated()&&session===auth.getSessionVersion?.()&&role===access.getCurrentRole?.();
+    // Visibility is an invalidation boundary, not permission to reuse a sample
+    // started before the tab became visible. Retain the action-time guarantee.
+    await authorizeRole(role,{sessionVersion:session,isCurrent});
+    if(session!==auth.getSessionVersion?.()||!authenticated())return;
     enforceCurrentRole();
     syncRoleOptions();
   });

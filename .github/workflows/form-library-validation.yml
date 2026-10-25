@@ -20,6 +20,8 @@ on:
       - 'apps/web/e2e/portal-test-helpers.js'
       - 'apps/web/e2e/portal-switcher-race.spec.js'
       - 'apps/web/e2e/payment-readiness.spec.js'
+      - 'apps/web/src/hydroland-portal-access-freshness.js'
+      - 'apps/web/e2e/portal-freshness-race.spec.js'
       - '.github/workflows/form-library-validation.yml'
   workflow_dispatch:
 permissions:
@@ -87,6 +89,9 @@ jobs:
       - name: Run 12 isolated library browser regressions
         working-directory: apps/web
         run: npx playwright test e2e/form-library.spec.js --workers=1 --reporter=line
+      - name: Deterministic fresh-authority and replacement-session regressions
+        working-directory: apps/web
+        run: npx playwright test e2e/portal-freshness-race.spec.js --workers=1 --reporter=line
       - name: Recheck payment readiness action and background revocation
         working-directory: apps/web
         run: npx playwright test e2e/payment-readiness.spec.js --repeat-each=3 --workers=1 --reporter=line
