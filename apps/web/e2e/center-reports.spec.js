@@ -36,7 +36,16 @@ test('report exposes scoped shifts, closes and receivables without financial mut
  await page.locator('[data-portal-label="التقارير"]').click();await report.getByRole('button',{name:'الذمم والتحصيل',exact:true}).click();await expect(page.locator('#hl-center-receivables')).toBeVisible();await expect(page.locator('[data-portal-label="الذمم والتحصيل"]')).toHaveAttribute('aria-current','page');expect(reads).toBeGreaterThan(0);expect(writes).toBe(0);await expect(page.locator('.hl-admin')).toBeHidden();
 });
 test('report finance link reauthorizes before opening the protected destination',async({page})=>{
- const state=await setup(page);let reads=0;await page.route('**/api/v1/finance/**',route=>{reads++;return json(route,[])});
+ const state=await setup(page),protectedRequests=[];
+ await page.route('**/api/v1/finance/**',route=>{
+  const request=route.request(),path=new URL(request.url()).pathname;
+  // Losing the CENTER role does not log the account out. The general finance
+  // module can finish bootstrapping and read this account's personal payments.
+  // Keep every center/reviewer request and every write in the denied set.
+  if(request.method()!=='GET'||path!=='/api/v1/finance/mine/payments')protectedRequests.push({method:request.method(),path});
+  return json(route,[]);
+ });
+ await page.evaluate(()=>{const service=window.HydrolandCenterFinance;window.reportFinanceOpenCalls=0;window.HydrolandCenterFinance={...service,open:(...args)=>{window.reportFinanceOpenCalls++;return service.open(...args)}}});
  await page.locator('[data-portal-label="التقارير"]').click();await expect(page.locator('#hl-center-reports')).toContainText('125.50');state.active=false;
- await page.locator('#hl-center-reports').getByRole('button',{name:'ورديات المحاسب والإقفالات',exact:true}).click();await expect(page.locator('.hl-role-dashboard')).toHaveCount(0);await expect(page.locator('#hl-center-reports')).toHaveCount(0);expect(reads).toBe(0);
+ await page.locator('#hl-center-reports').getByRole('button',{name:'ورديات المحاسب والإقفالات',exact:true}).click();await expect(page.locator('.hl-role-dashboard')).toHaveCount(0);await expect(page.locator('#hl-center-reports')).toHaveCount(0);await expect(page.locator('#hl-center-finance')).toHaveCount(0);expect(protectedRequests).toEqual([]);expect(await page.evaluate(()=>window.reportFinanceOpenCalls)).toBe(0);
 });
