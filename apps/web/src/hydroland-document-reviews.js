@@ -119,5 +119,6 @@
   entry.addEventListener('click',()=>{document.getElementById('profile-dialog')?.close();void open('INBOX');});
   for(const name of ['hydroland:session-cleared','hydroland:portal-cleared','hydroland:auth-changed','hydroland:role-changed'])document.addEventListener(name,()=>{clear();visibility();});
   document.addEventListener('hydroland:profile-data-ready',visibility);visibility();
+  document.addEventListener('change',e=>{if(s.mode==='OWNER'&&e.target.matches?.('[data-doc-org]'))clear();});
   window.HydrolandDocumentReviews={openOwner:({organizationId,documentId})=>open('OWNER',organizationId,documentId),openInbox:()=>open('INBOX'),clear};
 })();
