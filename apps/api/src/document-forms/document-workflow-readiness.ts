@@ -2,12 +2,12 @@
  * changes actor attribution, or treats draft preparation as an approval/signature. */
 export type DocumentWorkflowStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'SIGNED' | 'ARCHIVED';
 export type WorkflowStep = 'APPROVE' | 'SIGN';
-export type WorkflowBlocker = 'OWNER_IS_CREATOR' | 'OWNER_WOULD_APPROVE_AND_SIGN' | 'OWNER_IS_APPROVER' | 'APPROVAL_EVIDENCE_MISSING';
+export type WorkflowBlocker = 'OWNER_IS_CREATOR' | 'OWNER_WOULD_APPROVE_AND_SIGN' | 'OWNER_IS_APPROVER' | 'APPROVAL_EVIDENCE_MISSING' | 'USE_ASSIGNED_REVIEW_WORKFLOW';
 export interface WorkflowRecord {
   id: string; organizationId: string; version: number; status: DocumentWorkflowStatus;
   createdByAccountId: string; approvedByAccountId: string | null;
 }
-export function documentWorkflowReadiness(record: WorkflowRecord, actor: { accountId: string; role: string; internalOwnerOnly: boolean }) {
+export function documentWorkflowReadiness(record: WorkflowRecord, actor: { accountId: string; role: string; internalOwnerOnly: boolean; internalReviewAssigned?: boolean }) {
   const manager = ['OWNER', 'ADMIN'].includes(actor.role);
   const writer = ['OWNER', 'ADMIN', 'OPERATOR', 'INSTRUCTOR', 'STAFF'].includes(actor.role);
   const creator = record.createdByAccountId === actor.accountId;
@@ -27,6 +27,10 @@ export function documentWorkflowReadiness(record: WorkflowRecord, actor: { accou
   if (record.status === 'APPROVED' && !record.approvedByAccountId) {
     blockers.push({ step: 'SIGN', reason: 'APPROVAL_EVIDENCE_MISSING' });
   }
+  if(actor.internalOwnerOnly){
+    if(['DRAFT','PENDING_APPROVAL'].includes(record.status)&&!blockers.some(b=>b.step==='APPROVE'))blockers.push({step:'APPROVE',reason:'USE_ASSIGNED_REVIEW_WORKFLOW'});
+    if(record.status==='APPROVED'&&!blockers.some(b=>b.step==='SIGN'))blockers.push({step:'SIGN',reason:'USE_ASSIGNED_REVIEW_WORKFLOW'});
+  }
   return {
     schemaVersion: 1,
     organizationId: record.organizationId, documentId: record.id, documentVersion: record.version,
@@ -35,13 +39,14 @@ export function documentWorkflowReadiness(record: WorkflowRecord, actor: { accou
     actorActions: {
       edit: writer && record.status === 'DRAFT',
       submit: writer && record.status === 'DRAFT',
-      approve: manager && record.status === 'PENDING_APPROVAL' && !creator,
-      sign: manager && record.status === 'APPROVED' && !creator && !approver && Boolean(record.approvedByAccountId),
+      approve: !actor.internalOwnerOnly && manager && record.status === 'PENDING_APPROVAL' && !creator,
+      sign: !actor.internalOwnerOnly && manager && record.status === 'APPROVED' && !creator && !approver && Boolean(record.approvedByAccountId),
       archive: manager && record.status === 'SIGNED',
     },
     blockers,
-    policyDecisionRequired: actor.internalOwnerOnly && blockers.length > 0,
-    assessment: blockers.length ? 'BLOCKED' : record.status === 'ARCHIVED' ? 'ARCHIVED_READ_ONLY'
+    policyDecisionRequired: actor.internalOwnerOnly && blockers.length > 0 && !actor.internalReviewAssigned,
+    assignmentRequired: actor.internalOwnerOnly && ['DRAFT','PENDING_APPROVAL','APPROVED'].includes(record.status) && !actor.internalReviewAssigned,
+    assessment: actor.internalOwnerOnly && actor.internalReviewAssigned && ['DRAFT','PENDING_APPROVAL','APPROVED'].includes(record.status) ? 'SCOPED_REVIEW_ASSIGNED' : blockers.length ? 'BLOCKED' : record.status === 'ARCHIVED' ? 'ARCHIVED_READ_ONLY'
       : record.status === 'SIGNED' ? 'SIGNED_ARCHIVE_REMAINS' : 'ACTOR_CHECK_ONLY',
     observationOnly: true,
   };

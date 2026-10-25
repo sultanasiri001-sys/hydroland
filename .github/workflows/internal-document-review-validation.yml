@@ -1,0 +1,92 @@
+name: Independent document review acceptance
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/document-forms/**'
+      - 'apps/api/scripts/internal-document-review*'
+      - 'apps/web/src/hydroland-documents.js'
+      - 'apps/web/src/hydroland-document-reviews.js'
+      - 'apps/web/src/app.js'
+      - 'apps/web/scripts/internal-document-review-validation.cjs'
+      - '.github/workflows/internal-document-review-validation.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: internal-review-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: hydroland
+          POSTGRES_PASSWORD: hydroland
+          POSTGRES_DB: hydroland_form_library_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U hydroland -d hydroland_form_library_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://hydroland:hydroland@127.0.0.1:5432/hydroland_form_library_ci
+      NODE_ENV: test
+      JWT_SECRET: ci-internal-review-isolated-secret-at-least-32-characters
+      PORT: 3114
+      FORM_LIBRARY_E2E_CONFIRM: ISOLATED_LOOPBACK_DATABASE
+      FORM_LIBRARY_E2E_BASE_URL: http://127.0.0.1:3114/api/v1/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Retain exact source identity
+        run: |
+          mkdir -p /tmp/internal-review-evidence
+          git log -1 --format='%H %P %s' > /tmp/internal-review-evidence/checkout.txt
+          git archive --format=zip --output=/tmp/internal-review-evidence/source.zip HEAD
+      - run: npm ci --workspace=@hydroland/api --workspace=@hydroland/web --include-workspace-root=true
+      - run: npm --workspace @hydroland/api run db:generate
+      - run: npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+      - run: npm --workspace @hydroland/api run build
+      - name: Strict grant schema and private source boundaries
+        run: |
+          set -o pipefail
+          node apps/api/scripts/internal-document-review-validation.cjs | tee /tmp/internal-review-evidence/domain.log
+      - name: Start isolated API
+        run: |
+          node apps/api/dist/main.js > /tmp/internal-review-evidence/api.log 2>&1 &
+          echo "$!" > /tmp/internal-review-api.pid
+          ready=0
+          for attempt in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:3114/api/v1/health > /dev/null; then ready=1; break; fi
+            if ! kill -0 "$(cat /tmp/internal-review-api.pid)" 2>/dev/null; then cat /tmp/internal-review-evidence/api.log; exit 1; fi
+            sleep 1
+          done
+          if [ "$ready" != 1 ]; then cat /tmp/internal-review-evidence/api.log; exit 1; fi
+      - name: Actual actors, concurrent decisions, revocation and audit rollback over HTTP and PostgreSQL
+        run: |
+          set -o pipefail
+          node apps/api/scripts/internal-document-review-http-e2e.mjs 2>&1 | tee /tmp/internal-review-evidence/http.log
+      - name: Stop isolated API
+        if: always()
+        run: |
+          if [ -f /tmp/internal-review-api.pid ]; then kill "$(cat /tmp/internal-review-api.pid)" || true; fi
+      - run: npm --workspace @hydroland/web run build
+      - run: npm --workspace @hydroland/web exec -- playwright install --with-deps chromium
+      - name: Actual assignment and recipient dialogs with isolated request fixtures
+        run: |
+          set -o pipefail
+          node apps/web/scripts/internal-document-review-validation.cjs | tee /tmp/internal-review-evidence/browser.log
+      - name: Preserve isolated evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: internal-review-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/internal-review-evidence/
+          retention-days: 3
+          if-no-files-found: error

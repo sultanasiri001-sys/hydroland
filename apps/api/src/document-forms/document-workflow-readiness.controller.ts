@@ -4,6 +4,7 @@ import { DatabaseService } from '../database/database.service';
 import { DocumentAuthorizationService } from './document-authorization.service';
 import { COOPERATION_CODE } from './cooperation-contract.domain';
 import { isLibraryCode } from './contract-library.domain';
+import { assignedReviewAccess, readGrant, reviewKey } from './internal-document-review.domain';
 import { documentWorkflowReadiness } from './document-workflow-readiness';
 
 /** Private, scoped diagnostics only. No IAM, approval, signing, or setup writes. */
@@ -31,7 +32,22 @@ export class DocumentWorkflowReadinessController {
         throw new ForbiddenException('Use the specialized contract workflow.');
       }
       const internalOwnerOnly = 'accessBasis' in access && access.accessBasis === 'PLATFORM_OWNER';
-      return { ...documentWorkflowReadiness(record, { accountId: request.auth.accountId, role: access.role, internalOwnerOnly }), observedAt: new Date().toISOString() };
+      let internalReviewAssigned=false;
+      if(internalOwnerOnly){
+        const saved=await tx.operationalSetting.findUnique({where:{key:reviewKey(organizationId,documentId)},select:{value:true}});
+        const grant=readGrant(saved?.value,organizationId,documentId);
+        if(grant?.state==='ACTIVE'&&Date.parse(grant.expiresAt)>Date.now()){
+          try{
+            await assignedReviewAccess(tx,grant.signer.accountId,organizationId,documentId);
+            if(record.status==='PENDING_APPROVAL'){
+              if(!grant.reviewer)throw new ForbiddenException();
+              await assignedReviewAccess(tx,grant.reviewer.accountId,organizationId,documentId);
+            }
+            internalReviewAssigned=true;
+          }catch(error){if(!(error instanceof ForbiddenException))throw error;}
+        }
+      }
+      return { ...documentWorkflowReadiness(record, { accountId: request.auth.accountId, role: access.role, internalOwnerOnly, internalReviewAssigned }), observedAt: new Date().toISOString() };
     });
   }
 }

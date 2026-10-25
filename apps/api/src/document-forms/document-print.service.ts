@@ -1,8 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { DocumentAuthorizationService } from './document-authorization.service';
 import { CooperationContractService } from './cooperation-contract.service';
 import { COOPERATION_CODE, CONTRACT_FIELDS } from './cooperation-contract.domain';
+import { assignedReviewAccess, documentReadHash } from './internal-document-review.domain';
 import { isLibraryCode } from './contract-library.domain';
 
 export interface DocumentPrintContract {
@@ -33,7 +34,13 @@ export class DocumentPrintService {
     if(isLibraryCode(d.template.code)) throw new BadRequestException('القالب ليس عقداً منفذاً؛ افتحه من مكتبة العقود.');
     const cooperation=d.template.code===COOPERATION_CODE?await this.cooperation.get(accountId,id):undefined;
     if(cooperation&&(cooperation.version!==d.version||cooperation.contentHash!==d.contentHash||(cooperation.status==='APPROVED')!==(d.status==='SIGNED'))) throw new BadRequestException('تغير العقد أثناء إعداد النسخة؛ أعد المحاولة.');
-    if(!cooperation) await this.authz.assert(accountId,d.organizationId,'DOCUMENT_READ');
+    if(!cooperation){
+      try{await this.authz.assert(accountId,d.organizationId,'DOCUMENT_READ');}
+      catch(error){
+        if(!(error instanceof ForbiddenException))throw error;
+        await this.db.serializable(async tx=>{const access=await assignedReviewAccess(tx,accountId,d.organizationId,d.id);if(documentReadHash(access.d)!==documentReadHash(d))throw new BadRequestException('تغيرت النسخة أثناء إعداد الطباعة.');});
+      }
+    }
     if(!d.template.printable) throw new BadRequestException('Document template is not printable.');
     // Only server-written creation evidence can select a new PDF composition.
     // Old records without a profile retain the legacy renderer, including signed
