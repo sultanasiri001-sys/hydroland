@@ -12,6 +12,11 @@ on:
       - 'apps/web/scripts/document-workflow-readiness-validation.cjs'
       - 'apps/web/src/hydroland-form-library.js'
       - 'apps/web/src/hydroland-form-setup.js'
+      - 'apps/web/src/hydroland-form-completion.js'
+      - 'apps/web/scripts/form-library-completion-validation.cjs'
+      - 'apps/api/scripts/*completion*'
+      - 'apps/api/scripts/document-payload-validation.cjs'
+      - 'apps/api/scripts/administrative-catalog-pdf-validation.cjs'
       - 'apps/web/src/app.js'
       - 'apps/web/scripts/form-library-setup-validation.cjs'
       - 'apps/web/scripts/form-library-history-validation.cjs'
@@ -53,6 +58,11 @@ jobs:
         run: node apps/api/scripts/form-library-schema-validation.cjs
       - name: Validate add-only internal template setup
         run: node apps/api/scripts/form-library-setup-validation.cjs
+      - name: Validate pinned payloads and explicit versioned catalog completion
+        run: |
+          node apps/api/scripts/document-payload-validation.cjs
+          node apps/api/scripts/form-library-completion-validation.cjs
+          node apps/api/scripts/administrative-catalog-pdf-validation.cjs
       - name: Explain existing combined approval policy without changing it
         run: node apps/api/scripts/document-workflow-readiness-validation.cjs
       - name: Run profile preservation and actual PDF rendering checks
@@ -82,6 +92,8 @@ jobs:
         run: |
           set -o pipefail
           node apps/web/scripts/form-library-setup-validation.cjs | tee apps/api/.artifacts/form-library/setup-browser-validation.log
+      - name: Validate completion preview, consent and stale-session protection
+        run: node apps/web/scripts/form-library-completion-validation.cjs
       - name: Validate private workflow diagnostics and preserved draft input
         run: |
           set -o pipefail

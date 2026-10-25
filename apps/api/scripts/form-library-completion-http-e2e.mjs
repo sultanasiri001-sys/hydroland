@@ -1,0 +1,107 @@
+import assert from 'node:assert/strict';
+import { createHmac, randomUUID } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { PrismaClient } from '@prisma/client';
+const require=createRequire(import.meta.url);
+const {buildDepartmentTemplateCatalog}=require('../dist/document-forms/document-template-catalog');
+const {buildOperationalDocumentCatalog}=require('../dist/document-forms/operational-document-catalog');
+const {buildHrDocumentCatalog}=require('../dist/document-forms/hr-document-catalog');
+const {reviewedAdministrativeTemplates}=require('../dist/document-forms/administrative-form-catalog');
+const database=new URL(process.env.DATABASE_URL||'postgresql://invalid/invalid'),base=new URL(process.env.FORM_LIBRARY_E2E_BASE_URL||'http://127.0.0.1:3114/api/v1/');
+if(process.env.FORM_LIBRARY_E2E_CONFIRM!=='ISOLATED_LOOPBACK_DATABASE'||process.env.NODE_ENV!=='test'||!['localhost','127.0.0.1','[::1]'].includes(database.hostname)||database.pathname!=='/hydroland_form_library_ci'||!['localhost','127.0.0.1','[::1]'].includes(base.hostname))throw Error('Isolated loopback form-library database required.');
+const secret=process.env.JWT_SECRET;if(!secret||secret.length<32)throw Error('Isolated test JWT secret required.');
+const db=new PrismaClient(),suffix=randomUUID(),people=[],accounts=[],organizations=[];
+const key='PLATFORM_STAFFING_ORGANIZATION:v1';let previous,changed=false,auditTrigger=false,checks=0;
+const pass=name=>{checks++;console.log(`PASS ${checks}: ${name}`);};
+async function actor(label){const p=await db.person.create({data:{firstName:'SetupFixture',lastName:label}});people.push(p.id);const a=await db.account.create({data:{personId:p.id,email:`setup-${label}-${suffix}@example.invalid`,passwordHash:'synthetic-no-login',status:'ACTIVE',emailVerifiedAt:new Date()}});accounts.push(a.id);const session=await db.session.create({data:{accountId:a.id,tokenHash:`setup-${label}-${suffix}`,expiresAt:new Date(Date.now()+900000)}});const enc=v=>Buffer.from(JSON.stringify(v)).toString('base64url'),now=Math.floor(Date.now()/1000),b=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:a.id,sid:session.id,iat:now,exp:now+900})}`;return {...a,token:`${b}.${createHmac('sha256',secret).update(b).digest('base64url')}`};}
+async function call(a,path,method='GET',body){const r=await fetch(new URL(path,base),{method,headers:{...(a?{authorization:`Bearer ${a.token}`} : {}),...(body===undefined?{}:{'Content-Type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(30000)});return {status:r.status,data:await r.json(),headers:r.headers};}
+try{
+ const owner=await actor('owner'),outsider=await actor('outsider');
+ for(const a of [owner,outsider])await db.roleAssignment.create({data:{accountId:a.id,role:'ADMIN',status:'ACTIVE'}});
+ const org=await db.organization.create({data:{displayName:'Synthetic internal setup',kind:'HYDROLAND_INTERNAL_PLATFORM',ownerId:owner.id,status:'ACTIVE'}});organizations.push(org.id);
+ const other=await db.organization.create({data:{displayName:'Synthetic independent center',kind:'DIVE_CENTER',ownerId:owner.id,status:'ACTIVE'}});organizations.push(other.id);
+ await db.organizationMember.create({data:{organizationId:other.id,accountId:owner.id,role:'OWNER',status:'ACTIVE'}});
+ previous=await db.operationalSetting.findUnique({where:{key}});await db.operationalSetting.upsert({where:{key},create:{key,value:{organizationId:org.id}},update:{value:{organizationId:org.id}}});changed=true;
+ const path=`documents/organizations/${org.id}/template-completion`,plan=async(department='ALL')=>{const r=await call(owner,`${path}?department=${department}`);assert.equal(r.status,200,JSON.stringify(r.data));assert.match(r.headers.get('cache-control'),/no-store/);return r.data;},apply=p=>call(owner,path,'POST',{department:p.department,expectedPlanHash:p.planHash,confirmed:true});
+ assert.equal((await call(null,path)).status,401);assert.equal((await call(outsider,path)).status,403);assert.equal((await call(owner,`documents/organizations/${other.id}/template-completion`)).status,403);pass('anonymous, non-owner ADMIN and external-center owner are denied');
+ const initial=await plan();assert.equal(initial.summary.source,157);assert.equal(initial.summary.create,157);assert.equal(new Set(initial.items.map(x=>x.department)).size,14);assert.equal(await db.documentTemplate.count({where:{organizationId:org.id}}),0);assert.equal(await db.auditEvent.count({where:{resourceId:org.id}}),0);pass('157 source definitions in 14 departments; preview has no writes');
+ const sources=[...buildDepartmentTemplateCatalog(org.id),...buildOperationalDocumentCatalog(org.id),...buildHrDocumentCatalog(org.id)];
+ const data=sources.map(t=>({organizationId:org.id,code:t.code,department:t.department,titleAr:t.titleAr,titleEn:t.titleEn,version:1,status:'ACTIVE',fields:t.fields,printable:t.printable}));
+ await db.documentTemplate.createMany({data});
+ for(const code of ['CLIB-HR-PERMANENT','CLIB-HR-TEMPORARY','CLIB-HR-FLEXIBLE','CLIB-DIVE-COOPERATION'])await db.documentTemplate.create({data:{organizationId:org.id,code,department:'LEGAL_CONTRACTS_INSURANCE',titleAr:'عقد اصطناعي',titleEn:'Synthetic contract',version:2,status:'ACTIVE',fields:[]}});
+ const retained=await db.documentTemplate.findMany({where:{organizationId:org.id},orderBy:{id:'asc'}}),retainedIds=retained.map(t=>t.id);
+ let template=retained.find(t=>t.code==='HR-EMPLOYEE-REPORT');
+ const record=await db.managedDocument.create({data:{organizationId:org.id,templateId:template.id,referenceNumber:`SYNTHETIC-${suffix}`,department:'HR',status:'SIGNED',contentHash:'synthetic-only',payload:{note:'Synthetic preservation fixture, not real approval'},createdByAccountId:owner.id}});
+ const p=await plan();assert.equal(p.summary.ready,2);assert.equal(p.summary.upgrade,58);assert.equal(p.summary.create,97);assert.equal((await plan('MARINE_OPERATIONS')).summary.upgrade,3);pass('60 legacy templates yield 97 new and 58 upgraded definitions; routine bindings and contracts are excluded');
+ assert.equal((await apply(initial)).status,409);for(const extra of [{confirmed:false},{fields:[]},{department:'INVALID'}])assert.equal((await call(owner,path,'POST',{department:'ALL',expectedPlanHash:p.planHash,confirmed:true,...extra})).status,400);pass('stale plan, absent consent and injected fields are refused');
+ await db.roleAssignment.update({where:{accountId_role:{accountId:owner.id,role:'ADMIN'}},data:{status:'SUSPENDED'}});assert.equal((await apply(p)).status,403);await db.roleAssignment.update({where:{accountId_role:{accountId:owner.id,role:'ADMIN'}},data:{status:'ACTIVE'}});pass('revoked authority after preview prevents setup');
+ const originalFields=structuredClone(template.fields);
+ await db.documentTemplate.update({where:{id:template.id},data:{fields:originalFields.map((f,i)=>i?f:{...f,labelAr:'Custom preserved label'})}});
+ const edited=await plan();assert.equal(edited.summary.edited,1);assert.equal((await apply(edited)).status,409);assert.equal((await apply(p)).status,409);
+ assert.equal(await db.documentTemplate.count({where:{organizationId:org.id}}),64);
+ await db.documentTemplate.update({where:{id:template.id},data:{fields:originalFields}});
+ pass('actual field edits block migration and invalidate the reviewed plan without overwriting custom content');
+ const beforeRollback=await db.documentTemplate.findMany({where:{organizationId:org.id},orderBy:{id:'asc'}});
+ await db.$executeRawUnsafe(`CREATE FUNCTION hl_completion_fixture_audit_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action = 'DOCUMENT_TEMPLATE_CATALOG_COMPLETED' THEN RAISE EXCEPTION 'synthetic audit failure'; END IF; RETURN NEW; END; $$`);
+ await db.$executeRawUnsafe(`CREATE TRIGGER hl_completion_fixture_audit_failure BEFORE INSERT ON "AuditEvent" FOR EACH ROW EXECUTE FUNCTION hl_completion_fixture_audit_failure()`);auditTrigger=true;
+ assert.equal((await apply(await plan())).status,500);
+ await db.$executeRawUnsafe(`DROP TRIGGER hl_completion_fixture_audit_failure ON "AuditEvent"`);auditTrigger=false;
+ await db.$executeRawUnsafe(`DROP FUNCTION hl_completion_fixture_audit_failure()`);
+ assert.deepEqual(await db.documentTemplate.findMany({where:{organizationId:org.id},orderBy:{id:'asc'}}),beforeRollback);
+ assert.equal(await db.auditEvent.count({where:{resourceId:org.id}}),0);
+ pass('PostgreSQL audit rejection rolls back every retirement and new template version');
+ const concurrent=await Promise.all([apply(p),apply(p)]);assert.deepEqual(concurrent.map(r=>r.status).sort(),[201,409]);const success=concurrent.find(r=>r.status===201).data;assert.equal(success.created,97);assert.equal(success.upgraded,58);assert.equal(success.createdCodes.length,97);pass('concurrent setup has one atomic success and one stale-plan conflict');
+ assert.equal(await db.documentTemplate.count({where:{organizationId:org.id}}),219);const retainedAfter=await db.documentTemplate.findMany({where:{id:{in:retainedIds}},orderBy:{id:'asc'}});for(let i=0;i<retained.length;i++){const {updatedAt:oldTime,...before}=retained[i],{updatedAt:newTime,...after}=retainedAfter[i];assert.deepEqual(after,{...before,status:sources.some(source=>source.code===before.code)&&!['ADM-MEETING-MINUTES','EXE-FOLLOWUP'].includes(before.code)?'INACTIVE':before.status});}assert.deepEqual(await db.managedDocument.findUnique({where:{id:record.id}}),record);assert.equal(await db.documentRevision.count({where:{documentId:record.id}}),0);assert.equal(await db.documentLifecycleEvent.count({where:{documentId:record.id}}),0);assert.equal(await db.documentReferenceCounter.count({where:{organizationId:org.id}}),0);pass('all existing definitions are retired only; specialized contracts and pinned signed record stay unchanged');
+ const audit=await db.auditEvent.findMany({where:{resourceId:org.id,action:'DOCUMENT_TEMPLATE_CATALOG_COMPLETED'}});assert.equal(audit.length,1);assert.equal(audit[0].actorId,owner.personId);assert.deepEqual([...audit[0].metadata.createdCodes].sort(),[...success.createdCodes].sort());pass('one real setup audit with actual actor and created code list');
+ const completed=await plan(),repeat=await apply(completed);assert.equal(completed.summary.create,0);assert.equal(completed.summary.upgrade,0);assert.equal(completed.summary.ready,157);assert.equal(repeat.status,201);assert.equal(repeat.data.created,0);assert.equal(await db.auditEvent.count({where:{resourceId:org.id}}),1);pass('repeated fresh confirmation creates no duplicates or fake change audit');
+
+ const currentTemplates=await db.documentTemplate.findMany({where:{organizationId:org.id,status:'ACTIVE',code:{not:{startsWith:'CLIB-'}}}});
+ assert.equal(currentTemplates.length,157);
+ const expectedTemplates=reviewedAdministrativeTemplates(org.id);
+ for(const t of currentTemplates)assert.deepEqual(t.fields,expectedTemplates.find(x=>x.code===t.code).fields);
+ const references=new Set();
+ for(const t of currentTemplates){
+  const payload=Object.fromEntries(t.fields.map(f=>[f.key,f.type==='DATE'?'2026-10-25':f.type==='NUMBER'?'0':'Synthetic evidence reference: '+f.key]));
+  const input={organizationId:org.id,templateId:t.id,department:t.department,contentHash:'synthetic-only',payload};
+  const before=await db.documentReferenceCounter.findMany({where:{organizationId:org.id},orderBy:{department:'asc'}});
+  const invalid={...payload};delete invalid[t.fields.find(f=>f.required).key];
+  assert.equal((await call(owner,'documents','POST',{...input,payload:invalid})).status,400,t.code);
+  assert.deepEqual(await db.documentReferenceCounter.findMany({where:{organizationId:org.id},orderBy:{department:'asc'}}),before);
+  const made=await call(owner,'documents','POST',input);assert.equal(made.status,201,t.code+JSON.stringify(made.data));
+  assert.equal(made.data.templateId,t.id);assert.ok(!references.has(made.data.referenceNumber));references.add(made.data.referenceNumber);
+  const d=made.data;
+  assert.equal((await call(owner,`documents/${d.id}/revise`,'POST',{contentHash:'synthetic-invalid',payload:invalid})).status,400);
+  assert.equal(await db.documentRevision.count({where:{documentId:d.id}}),1);
+  assert.equal((await call(owner,`documents/${d.id}/revise`,'POST',{contentHash:'synthetic-revision',payload})).status,201);
+  assert.equal((await call(owner,`documents/${d.id}/submit`,'POST')).status,201);
+  const persisted=await db.managedDocument.findUnique({where:{id:d.id},include:{revisions:true,lifecycleEvents:true}});
+  assert.equal(persisted.status,'PENDING_APPROVAL');assert.equal(persisted.version,2);assert.equal(persisted.revisions.length,2);assert.equal(persisted.templateId,t.id);
+  assert.equal(persisted.lifecycleEvents.find(e=>e.action==='CREATE').metadata.pdfProfile,'ADMINISTRATIVE_FORM_V1');
+ }
+ pass('all 157 schemas create, revise and submit with pinned versions; missing fields allocate no references or revisions');
+ assert.deepEqual(await db.managedDocument.findUnique({where:{id:record.id}}),record);
+ template=await db.documentTemplate.findFirst({where:{organizationId:org.id,code:template.code,status:'ACTIVE'}});
+ await db.documentTemplate.update({where:{id:template.id},data:{status:'INACTIVE'}});const inactive=await plan();assert.equal(inactive.summary.inactive,1);assert.equal((await apply(inactive)).data.created,0);assert.equal((await db.documentTemplate.findUnique({where:{id:template.id}})).status,'INACTIVE');pass('inactive historical definition is never reactivated');
+ await db.documentTemplate.update({where:{id:template.id},data:{department:'FINANCE'}});const conflict=await plan();assert.equal(conflict.summary.conflict,1);assert.equal((await apply(conflict)).status,409);assert.equal(await db.documentTemplate.count({where:{organizationId:org.id}}),219);pass('cross-department code conflict blocks the batch');
+ await db.organizationMember.create({data:{organizationId:org.id,accountId:owner.id,role:'OWNER',status:'SUSPENDED'}});assert.equal((await call(owner,path)).status,403);pass('explicit suspended internal membership remains authoritative');
+ console.log(`${checks} real HTTP/PostgreSQL completion groups passed; loopback CI only, no production mutation.`);
+}finally{
+ if(auditTrigger)await db.$executeRawUnsafe(`DROP TRIGGER IF EXISTS hl_completion_fixture_audit_failure ON "AuditEvent"`);
+ await db.$executeRawUnsafe(`DROP FUNCTION IF EXISTS hl_completion_fixture_audit_failure()`);
+ if(changed){if(previous)await db.operationalSetting.update({where:{key},data:{value:previous.value,updatedAt:previous.updatedAt}});else await db.operationalSetting.delete({where:{key}});}
+ await db.auditEvent.deleteMany({where:{actorId:{in:people}}});
+ const ids=(await db.managedDocument.findMany({where:{organizationId:{in:organizations}},select:{id:true}})).map(d=>d.id);
+ await db.documentLifecycleEvent.deleteMany({where:{documentId:{in:ids}}});
+ await db.documentRevision.deleteMany({where:{documentId:{in:ids}}});
+ await db.managedDocument.deleteMany({where:{organizationId:{in:organizations}}});
+ await db.documentReferenceCounter.deleteMany({where:{organizationId:{in:organizations}}});
+ await db.documentBrandSnapshot.deleteMany({where:{organizationId:{in:organizations}}});
+ await db.documentTemplate.deleteMany({where:{organizationId:{in:organizations}}});
+ await db.organizationMember.deleteMany({where:{organizationId:{in:organizations}}});
+ await db.organization.deleteMany({where:{id:{in:organizations}}});
+ await db.roleAssignment.deleteMany({where:{accountId:{in:accounts}}});
+ await db.session.deleteMany({where:{accountId:{in:accounts}}});
+ await db.account.deleteMany({where:{id:{in:accounts}}});
+ await db.person.deleteMany({where:{id:{in:people}}});
+ await db.$disconnect();
+}

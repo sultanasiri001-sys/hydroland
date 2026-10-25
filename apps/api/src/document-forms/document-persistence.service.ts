@@ -6,6 +6,7 @@ import { COOPERATION_CODE } from './cooperation-contract.domain';
 import { isLibraryCode, LIBRARY_PREFIX } from './contract-library.domain';
 import { DOCUMENT_DEPARTMENTS } from './document-form.domain';
 import { templateObject, templateText, templateFields, assertCompatibleTemplateFields } from './document-template-input';
+import { validateDocumentPayload } from './document-payload';
 
 type Field={key:string;labelAr:string;labelEn:string;type:string;required:boolean;options?:string[]};
 @Injectable()
@@ -50,16 +51,19 @@ export class DocumentPersistenceService {
   }
 
   async createDocument(accountId:string,input:{organizationId:string;templateId:string;department:string;contentHash:string;payload:Record<string,unknown>}){
+    templateObject(input,['organizationId','templateId','department','contentHash','payload']);
     await this.authz.assert(accountId,input.organizationId,'DOCUMENT_CREATE');
     const t=await this.db.documentTemplate.findFirst({where:{id:input.templateId,organizationId:input.organizationId,status:'ACTIVE'}});
     if(!t) throw new NotFoundException('Active document template not found in organization scope.');
     if(t.code===COOPERATION_CODE||isLibraryCode(t.code)) throw new ForbiddenException('أنشئ العقد من مساحة العقود لضبط الأطراف والتوقيعات.');
     if(t.department!==input.department) throw new BadRequestException('Document department does not match template.');
-    if(!input.contentHash?.trim()) throw new BadRequestException('Content hash is required.');
+    if(typeof input.contentHash!=='string'||!input.contentHash.trim()||input.contentHash.length>512) throw new BadRequestException('Content hash is required.');
+    validateDocumentPayload(t.fields,input.payload);
     return this.db.serializable(async tx=>{
       await this.authz.assert(accountId,input.organizationId,'DOCUMENT_CREATE',tx);
       const live=await tx.documentTemplate.findFirst({where:{id:t.id,organizationId:input.organizationId,status:'ACTIVE'}});
       if(!live||live.version!==t.version)throw new BadRequestException('Template changed concurrently; reload before creating a document.');
+      validateDocumentPayload(live.fields,input.payload);
       const year=new Date().getUTCFullYear();
       const counter=await tx.documentReferenceCounter.upsert({
         where:{organizationId_department_year:{organizationId:input.organizationId,department:t.department,year}},
@@ -85,12 +89,14 @@ export class DocumentPersistenceService {
   }
 
   async revise(accountId:string,id:string,input:{contentHash:string;payload:Record<string,unknown>}){
+    templateObject(input,['contentHash','payload']);
     const d=await this.db.managedDocument.findUnique({where:{id},include:{template:true}});
     if(!d) throw new NotFoundException('Document not found.');
     this.assertGeneric(d.template.code);
     await this.authz.assert(accountId,d.organizationId,'REVISE');
     if(d.status!=='DRAFT') throw new BadRequestException('Only DRAFT documents can be revised. Approved, signed and archived records are immutable.');
-    if(!input.contentHash?.trim()) throw new BadRequestException('Content hash is required.');
+    if(typeof input.contentHash!=='string'||!input.contentHash.trim()||input.contentHash.length>512) throw new BadRequestException('Content hash is required.');
+    validateDocumentPayload(d.template.fields,input.payload);
     return this.db.serializable(async tx=>{
       await this.authz.assert(accountId,d.organizationId,'REVISE',tx);
       const current=await tx.managedDocument.findUnique({where:{id}});
@@ -113,6 +119,7 @@ export class DocumentPersistenceService {
     await this.authz.assert(accountId,d.organizationId,to==='PENDING_APPROVAL'?'SUBMIT':to==='APPROVED'?'APPROVE':to==='SIGNED'?'SIGN':'ARCHIVE');
     const allowed:Record<string,string[]>={DRAFT:['PENDING_APPROVAL'],PENDING_APPROVAL:['APPROVED'],APPROVED:['SIGNED'],SIGNED:['ARCHIVED'],ARCHIVED:[]};
     if(!allowed[d.status]?.includes(to)) throw new BadRequestException(`Invalid document transition ${d.status} -> ${to}`);
+    if(to!==ManagedDocumentStatus.ARCHIVED)validateDocumentPayload(d.template.fields,d.payload);
     if(to==='APPROVED' && accountId===d.createdByAccountId) throw new BadRequestException('Creator cannot approve own document.');
     if(to==='SIGNED' && (accountId===d.createdByAccountId||accountId===d.approvedByAccountId)) throw new BadRequestException('Signer must be independent from creator and approver.');
     return this.db.serializable(async tx=>{

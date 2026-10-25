@@ -18,7 +18,7 @@ let passed=0;async function check(name,fn){await fn();passed++;console.log('PASS
  await check('template envelope cannot forge versions profile or approval metadata',()=>{for(const body of [{version:10},{pdfProfile:'OTHER'},{approvedByAccountId:'actor'},{status:'SIGNED'},{printable:'true'},null,[]])assert.throws(()=>templateObject(body,['titleAr','titleEn','fields','printable']));});
  await check('trimmed reserved cooperation code cannot bypass its specialized path',async()=>{let writes=0;const service=new DocumentPersistenceService({serializable:async()=>{writes++;}},{assert:async()=>({})});await assert.rejects(service.createTemplate('actor',{organizationId:'org',code:' LEG-DIVE-COOPERATION-V1 ',titleAr:'عنوان',titleEn:'Title',department:'HR',fields:[f]}));assert.equal(writes,0);});
  await check('template retirement between lookup and transaction blocks new document creation',async()=>{
-  let writes=0;const t={id:'t',organizationId:'org',code:'HR-CI',department:'HR',version:1,status:'ACTIVE'};
+  let writes=0;const t={id:'t',organizationId:'org',code:'HR-CI',department:'HR',version:1,status:'ACTIVE',fields:[f]};
   const tx={documentTemplate:{findFirst:async()=>null},documentReferenceCounter:{upsert:async()=>{writes++;throw Error('unexpected mutation');}}};
   const db={documentTemplate:{findFirst:async()=>t},serializable:fn=>fn(tx)};
   await assert.rejects(new DocumentPersistenceService(db,{assert:async()=>({})}).createDocument('actor',{organizationId:'org',templateId:'t',department:'HR',contentHash:'synthetic',payload:{name:'Synthetic'}}),/Template changed concurrently/);assert.equal(writes,0);
