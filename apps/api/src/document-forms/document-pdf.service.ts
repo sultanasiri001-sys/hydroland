@@ -4,6 +4,7 @@ import * as fontkitNamespace from '@pdf-lib/fontkit';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { renderCooperationContractPdf } from './cooperation-contract-pdf';
+import { renderAdministrativeDocumentPdf } from './administrative-document-pdf';
 import { DocumentPrintService } from './document-print.service';
 import { DocumentAssetService } from './document-asset.service';
 import { assertArabicPdfSourceText, containsArabic, pdfTextX, pdfVisualText, preferredLocalizedText } from './document-pdf-arabic.contract';
@@ -32,6 +33,8 @@ export class DocumentPdfService {
   async render(accountId:string,id:string){
     const c=await this.print.contract(accountId,id);
     if(c.cooperation)return renderCooperationContractPdf(c,this.assets);
+    if(c.renderProfile==='ADMINISTRATIVE_FORM_V1')return renderAdministrativeDocumentPdf(c,this.assets);
+    // Preserve the legacy composition below for all pre-profile records.
     const pdf=await PDFDocument.create();
     const latin=await pdf.embedFont(StandardFonts.Helvetica);
     const latinBold=await pdf.embedFont(StandardFonts.HelveticaBold);

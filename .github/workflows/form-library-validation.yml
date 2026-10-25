@@ -1,0 +1,84 @@
+name: Form library focused validation
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/document-forms/**'
+      - 'apps/api/scripts/form-library-pdf-validation.cjs'
+      - 'apps/api/scripts/form-library-history-validation.cjs'
+      - 'apps/api/scripts/form-library-schema-validation.cjs'
+      - 'apps/web/src/hydroland-form-library.js'
+      - 'apps/web/scripts/form-library-history-validation.cjs'
+      - 'apps/web/scripts/form-library-sync-validation.cjs'
+      - 'apps/web/e2e/form-library.spec.js'
+      - 'apps/web/e2e/portal-test-helpers.js'
+      - 'apps/web/e2e/portal-switcher-race.spec.js'
+      - 'apps/web/e2e/payment-readiness.spec.js'
+      - '.github/workflows/form-library-validation.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: form-library-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Generate the client only. No database or live service is contacted.
+      DATABASE_URL: postgresql://synthetic:synthetic@127.0.0.1:5432/not_used
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install locked API and Web dependencies
+        run: npm ci --workspace=@hydroland/api --workspace=@hydroland/web --include-workspace-root=true
+      - name: Generate Prisma client without connecting to a database
+        run: npm --workspace @hydroland/api run db:generate
+      - name: Typecheck and build API
+        run: npm --workspace @hydroland/api run build
+      - name: Validate read-only template history and organization isolation
+        run: node apps/api/scripts/form-library-history-validation.cjs
+      - name: Validate field schema and operational binding safeguards
+        run: node apps/api/scripts/form-library-schema-validation.cjs
+      - name: Run profile preservation and actual PDF rendering checks
+        run: node apps/api/scripts/form-library-pdf-validation.cjs
+      - name: Render PDF review images
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq poppler-utils
+          dir=apps/api/.artifacts/form-library
+          for name in administrative-draft administrative-signed administrative-no-center-logo administrative-long administrative-template-preview; do
+            pdftoppm -f 1 -l 2 -scale-to 1600 -png "$dir/$name.pdf" "$dir/$name"
+          done
+      - name: Build Web
+        run: npm --workspace @hydroland/web run build
+      - name: Install browser
+        run: npm --workspace @hydroland/web exec -- playwright install --with-deps chromium
+      - name: Validate isolated history viewer and restore-as-new-version flow
+        run: |
+          set -o pipefail
+          mkdir -p apps/api/.artifacts/form-library
+          node apps/web/scripts/form-library-history-validation.cjs | tee apps/api/.artifacts/form-library/history-browser-validation.log
+      - name: Validate cross-session synchronization and private PDF preview
+        run: |
+          set -o pipefail
+          node apps/web/scripts/form-library-sync-validation.cjs | tee apps/api/.artifacts/form-library/sync-preview-browser-validation.log
+      - name: Run 12 isolated library browser regressions
+        working-directory: apps/web
+        run: npx playwright test e2e/form-library.spec.js --workers=1 --reporter=line
+      - name: Recheck payment readiness action and background revocation
+        working-directory: apps/web
+        run: npx playwright test e2e/payment-readiness.spec.js --repeat-each=3 --workers=1 --reporter=line
+      - name: Recheck portal revocation and disappearing-control regression
+        working-directory: apps/web
+        run: npx playwright test e2e/phase5-all-portal-rbac.spec.js e2e/portal-switcher-race.spec.js --repeat-each=3 --workers=1 --reporter=line
+      - name: Save synthetic PDF and layout evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: form-library-evidence-${{ github.event.pull_request.head.sha || github.sha }}
+          path: apps/api/.artifacts/form-library/
+          if-no-files-found: warn
+          retention-days: 7

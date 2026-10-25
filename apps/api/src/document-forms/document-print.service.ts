@@ -19,6 +19,7 @@ export interface DocumentPrintContract {
   approvals:{createdByAccountId:string;approvedByAccountId:string|null;signedByAccountId:string|null;archivedByAccountId:string|null;approvedAt:Date|null;signedAt:Date|null;archivedAt:Date|null};
   createdAt:Date;
   updatedAt:Date;
+  renderProfile?:'ADMINISTRATIVE_FORM_V1';
   cooperation?:Awaited<ReturnType<CooperationContractService['get']>>;
 }
 
@@ -27,13 +28,28 @@ export class DocumentPrintService {
   constructor(private readonly db:DatabaseService,private readonly authz:DocumentAuthorizationService,private readonly cooperation:CooperationContractService){}
 
   async contract(accountId:string,id:string):Promise<DocumentPrintContract>{
-    const d=await this.db.managedDocument.findUnique({where:{id},include:{template:true}});
+    const d=await this.db.managedDocument.findUnique({where:{id},include:{template:true,lifecycleEvents:{where:{action:'CREATE'},orderBy:{occurredAt:'asc'},take:2}}});
     if(!d) throw new NotFoundException('Document not found.');
     if(isLibraryCode(d.template.code)) throw new BadRequestException('القالب ليس عقداً منفذاً؛ افتحه من مكتبة العقود.');
     const cooperation=d.template.code===COOPERATION_CODE?await this.cooperation.get(accountId,id):undefined;
     if(cooperation&&(cooperation.version!==d.version||cooperation.contentHash!==d.contentHash||(cooperation.status==='APPROVED')!==(d.status==='SIGNED'))) throw new BadRequestException('تغير العقد أثناء إعداد النسخة؛ أعد المحاولة.');
     if(!cooperation) await this.authz.assert(accountId,d.organizationId,'DOCUMENT_READ');
     if(!d.template.printable) throw new BadRequestException('Document template is not printable.');
+    // Only server-written creation evidence can select a new PDF composition.
+    // Old records without a profile retain the legacy renderer, including signed
+    // and archived records. Neither payload nor current organization branding can
+    // retroactively select a different renderer.
+    let renderProfile:DocumentPrintContract['renderProfile'];
+    if(!cooperation){
+      const created=d.lifecycleEvents??[];
+      if(created.length>1)throw new BadRequestException('Document has conflicting creation evidence.');
+      const metadata=created[0]?.metadata;
+      const profile=metadata&&typeof metadata==='object'&&!Array.isArray(metadata)?(metadata as Record<string,unknown>).pdfProfile:undefined;
+      if(profile!==undefined){
+        if(profile!=='ADMINISTRATIVE_FORM_V1')throw new BadRequestException('Unsupported pinned document PDF profile.');
+        renderProfile=profile;
+      }
+    }
     const brandVersion=d.documentBrandVersion;
     if(!brandVersion) throw new BadRequestException('Document branding version is not pinned.');
     const branding=await this.db.documentBrandSnapshot.findUnique({where:{organizationId_brandVersion:{organizationId:d.organizationId,brandVersion}}});
@@ -59,6 +75,7 @@ export class DocumentPrintService {
       fields,
       approvals:{createdByAccountId:d.createdByAccountId,approvedByAccountId:d.approvedByAccountId,signedByAccountId:d.signedByAccountId,archivedByAccountId:d.archivedByAccountId,approvedAt:d.approvedAt,signedAt:d.signedAt,archivedAt:d.archivedAt},
       createdAt:d.createdAt,updatedAt:d.updatedAt,
+      ...(renderProfile?{renderProfile}:{}),
       ...(cooperation?{cooperation}:{}),
     };
   }
