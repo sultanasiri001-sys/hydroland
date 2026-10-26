@@ -47,9 +47,11 @@ export class TrainingSessionService {
  }
  async assertAvailable(tx:Prisma.TransactionClient,instructorId:string,studentId:string,startsAt:Date,endsAt:Date,excludeId?:string){
   if(!(await trainingOperationalPolicy(tx)).scheduleConflict)return;
-  const conflict=await tx.trainingSession.findFirst({where:{...(excludeId?{id:{not:excludeId}}:{}),status:{in:['SCHEDULED','CHECK_IN_OPEN','IN_PROGRESS']},AND:[{OR:[{instructorAccountId:instructorId},{trainingRecord:{enrollment:{studentAccountId:studentId}}}]},{OR:[{status:'IN_PROGRESS'},{startsAt:{lt:endsAt},OR:[{endsAt:{gt:startsAt}},{endsAt:null}]}]}]},select:{id:true}});
+  // An Account remains the same participant when switching instructor/student roles.
+  const accountIds=[...new Set([instructorId,studentId])];
+  const conflict=await tx.trainingSession.findFirst({where:{...(excludeId?{id:{not:excludeId}}:{}),status:{in:['SCHEDULED','CHECK_IN_OPEN','IN_PROGRESS']},AND:[{OR:[{instructorAccountId:{in:accountIds}},{trainingRecord:{enrollment:{studentAccountId:{in:accountIds}}}}]},{OR:[{status:'IN_PROGRESS'},{startsAt:{lt:endsAt},OR:[{endsAt:{gt:startsAt}},{endsAt:null}]}]}]},select:{id:true}});
   if(conflict)throw new ConflictException('يوجد تعارض في جدول المدرب أو المتدرب، أو جلسة مفتوحة بلا وقت انتهاء. راجع المواعيد.');
-  await assertTrainingCalendarAvailable(tx,[instructorId,studentId],startsAt,endsAt);
+  await assertTrainingCalendarAvailable(tx,accountIds,startsAt,endsAt);
  }
  private async notify(tx:Prisma.TransactionClient,ids:string[],payload:Prisma.InputJsonObject){
   const accounts=await tx.account.findMany({where:{id:{in:[...new Set(ids)]}},select:{id:true}});

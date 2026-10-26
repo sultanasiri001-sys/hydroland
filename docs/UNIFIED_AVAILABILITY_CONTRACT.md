@@ -17,8 +17,9 @@ reference IDs are not interpreted as accounts. Multiple human-role resource IDs
 for one account all resolve to that account when checking training conflicts.
 The account cannot be allocated to two overlapping trips through different human
 role resource IDs. The same trip may retain multiple roles; distinct people and
-non-human assets remain distinct. Training site/vessel fields are **not** assumed
-to be CalendarResource IDs.
+non-human assets remain distinct. Training participant identity is also role-agnostic: the same Account cannot
+occupy overlapping sessions as an instructor in one and student in another.
+Training site/vessel fields are **not** assumed to be CalendarResource IDs.
 
 ## Availability and transaction contract
 
@@ -81,7 +82,11 @@ Three races per time-zone hold both actual transactions after their conflict
 reads: exactly one write survives and the loser receives 409. The separate
 `calendar-human-alias-db-e2e.mjs` repeats this for two valid human-role aliases
 assigned to different trips and verifies same-trip/multi-role and unrelated
-asset/person cases. An additional
+asset/person cases. `training-cross-role-availability-db-e2e.mjs` tests canonical
+identity across instructor/student roles, including concurrent create, reschedule,
+reschedule/reassignment and START/create, with the existing policy bypasses
+unchanged. No instructor qualification, capacity or certification rule changes.
+An additional
 real-database red/green regression proves an injected allocation-audit failure
 leaves no new event/allocation, preserves replacement/release state, and a
 post-audit serialization retry commits exactly one actor-attributed audit.

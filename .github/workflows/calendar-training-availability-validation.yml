@@ -47,6 +47,7 @@ jobs:
       - run: npm --workspace @hydroland/api run typecheck
       - run: npm --workspace @hydroland/api run build
       - run: npm --workspace @hydroland/api run validate:training
+      - run: node apps/api/scripts/training-cross-role-availability-db-e2e.mjs
       - run: node apps/api/scripts/calendar-training-availability-db-e2e.mjs
       - run: node apps/api/scripts/calendar-human-alias-db-e2e.mjs
       - name: Bootstrap isolated weather context database
