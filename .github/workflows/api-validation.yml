@@ -109,6 +109,11 @@ jobs:
       - run: npm run build --workspace=@hydroland/api
       - name: Safety coordinate input and explicit fallback boundaries
         run: node apps/api/scripts/safety-coordinate-validation.cjs
+      - name: Canonical weather context and calendar consumer boundaries
+        run: |
+          node apps/api/scripts/weather-review-context-validation.cjs
+          node apps/api/scripts/calendar-weather-readiness-validation.cjs
+          node --test apps/web/scripts/weather-review-token.test.mjs
       - name: Internal document owner boundary
         run: node apps/api/scripts/document-internal-owner-checks.mjs
       - name: Read-only model connection diagnostics without generation

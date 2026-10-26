@@ -49,4 +49,17 @@ jobs:
       - run: npm --workspace @hydroland/api run validate:training
       - run: node apps/api/scripts/calendar-training-availability-db-e2e.mjs
       - run: node apps/api/scripts/calendar-human-alias-db-e2e.mjs
+      - name: Bootstrap isolated weather context database
+        env:
+          PGPASSWORD: hydroland
+          DATABASE_URL: postgresql://hydroland:hydroland@127.0.0.1:5432/hydroland_weather_ci
+        run: |
+          psql -h 127.0.0.1 -U hydroland -d hydroland_availability_ci -v ON_ERROR_STOP=1 -c 'CREATE DATABASE hydroland_weather_ci;'
+          npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+          psql -h 127.0.0.1 -U hydroland -d hydroland_weather_ci -v ON_ERROR_STOP=1 -c "ALTER DATABASE hydroland_weather_ci SET timezone TO '$AVAILABILITY_TIMEZONE';"
+      - name: Weather context native PostgreSQL timezone matrix
+        env:
+          DATABASE_URL: postgresql://hydroland:hydroland@127.0.0.1:5432/hydroland_weather_ci
+          TZ: ${{ matrix.timezone }}
+        run: node apps/api/scripts/weather-review-context-db-e2e.mjs
       - run: node apps/api/scripts/calendar-weather-readiness-validation.cjs
