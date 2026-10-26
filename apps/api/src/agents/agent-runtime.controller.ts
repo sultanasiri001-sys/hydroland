@@ -17,4 +17,5 @@ export class AgentRuntimeController {
   @Get(':key/tasks') @Header('Cache-Control','no-store') tasks(@Req()req:{auth:{accountId:string}},@Param('key')key:string,@Query('cursor')cursor?:string){return this.runtime.tasks(req.auth.accountId,key,cursor);}
   @Post(':key/tasks') enqueue(@Req()req:{auth:{accountId:string}},@Param('key')key:string,@Body()body:unknown){return this.runtime.enqueue(req.auth.accountId,key,body);}
   @Patch('tasks/:id/decision') decide(@Req()req:{auth:{accountId:string}},@Param('id')id:string,@Body()body:unknown){return this.runtime.decideTask(req.auth.accountId,id,body);}
+  @Post('tasks/:id/governance-resume') resume(@Req()req:{auth:{accountId:string}},@Param('id')id:string,@Body()body:unknown){return this.runtime.resumeGovernance(req.auth.accountId,id,body);}
 }

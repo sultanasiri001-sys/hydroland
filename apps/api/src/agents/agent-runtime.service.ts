@@ -116,9 +116,9 @@ export class AgentRuntimeService {
   async tasks(actorId:string,key:string,cursor?:unknown){
     this.descriptor(key);if(cursor!==undefined&&!uuid(cursor))throw new BadRequestException('مؤشر صفحة المهام غير صالح.');
     return this.db.serializable(async tx=>{await requireVerifiedAdmin(tx,actorId);const items=await tx.aiAgentTask.findMany({where:{agentKey:key},select:taskView,orderBy:[{createdAt:'desc'},{id:'desc'}],take:21,...(cursor?{cursor:{id:cursor as string},skip:1}:{})});
-      const events=await tx.auditEvent.findMany({where:{resource:'AiAgentTask',resourceId:{in:items.slice(0,20).map(t=>t.id)},action:{in:['GOVERNANCE_REVIEW_STOPPED','GOVERNANCE_ROUTE_DEFERRED','GOVERNANCE_FINAL_RECOMMENDATION_READY']}},select:{resourceId:true,action:true,metadata:true},orderBy:{occurredAt:'desc'}});
+      const events=await tx.auditEvent.findMany({where:{resource:'AiAgentTask',resourceId:{in:items.slice(0,20).map(t=>t.id)},action:{in:['GOVERNANCE_REVIEW_STOPPED','GOVERNANCE_ROUTE_DEFERRED','GOVERNANCE_ROUTE_RESUMED','GOVERNANCE_FINAL_RECOMMENDATION_READY']}},select:{resourceId:true,action:true,metadata:true},orderBy:{occurredAt:'desc'}});
       return{items:items.slice(0,20).map(t=>{const event=events.find(e=>e.resourceId===t.id),metadata=event?.metadata as Record<string,unknown>|null;
-        const status=event?.action==='GOVERNANCE_FINAL_RECOMMENDATION_READY'?'OWNER_RECOMMENDATION_READY':metadata?.outcome||metadata?.reason;
+        const status=event?.action==='GOVERNANCE_FINAL_RECOMMENDATION_READY'?'OWNER_RECOMMENDATION_READY':event?.action==='GOVERNANCE_ROUTE_RESUMED'?'MANUAL_ROUTE_RESUMED':metadata?.outcome||metadata?.reason;
         return{...t,approvalRequired:approvalRequired(t),...(isGovernanceAgent(t.agentKey)?{governanceReview:t.result?parseGovernanceReview(t.result):null}:{}),...(typeof status==='string'?{governanceRouting:{status,ownerApprovalRequired:metadata?.ownerApprovalRequired===true,approved:false}}:{})};
       }),nextCursor:items.length>20?items[19].id:null};});
   }
@@ -131,6 +131,38 @@ export class AgentRuntimeService {
       if(value.action==='CANCEL'&&task.state!=='QUEUED'||value.action==='ACKNOWLEDGE'&&!['FAILED','INTERRUPTED'].includes(task.state))throw new ConflictException('هذا القرار لا يناسب حالة المهمة.');
       const updated=await tx.aiAgentTask.update({where:{id},data:{state:value.action==='CANCEL'?'CANCELLED':'REVIEWED',revision:randomUUID(),reviewedAt:await this.now(tx),reviewedByAccountId:actorId},select:taskView});
       await this.audit.record({actorId:actor.personId,action:'AI_TASK_REVIEWED',resource:'AiAgentTask',resourceId:id,metadata:{reason,agentKey:task.agentKey,from:task.state,to:updated.state,adminAccountId:actorId,noAutomaticRetry:true}},tx);return updated;
+    });
+  }
+
+  async resumeGovernance(actorId:string,id:string,body:unknown){
+    if(!uuid(id))throw new BadRequestException('معرف المهمة غير صالح.');
+    const value=inputRecord(body,['expectedRevision','reason','reviewed']),reason=decisionReason(value);
+    if(!uuid(value.expectedRevision))throw new BadRequestException('نسخة المخرج المحفوظ مطلوبة.');
+    return this.db.serializable(async tx=>{
+      await this.guard(tx);await requireVerifiedAdmin(tx,actorId);const task=await tx.aiAgentTask.findUnique({where:{id}});
+      if(!task)throw new NotFoundException('المهمة غير موجودة.');
+      const actor=await lockAdminIdentities(tx,actorId,task.requestedByAccountId);if(task.requestedByAccountId!==actorId)await requireVerifiedAdmin(tx,task.requestedByAccountId);
+      if(task.revision!==value.expectedRevision||task.state!=='COMPLETED'||!task.result)throw new ConflictException('تغيرت المهمة أو لم يكتمل مخرجها؛ حدّث البيانات وراجع الإجراء.');
+      if(!this.descriptor(task.agentKey).allowedActions.includes(task.action as AgentAction))throw new ConflictException('نوع المخرج لا يسمح بإحالة مراجعة.');
+      const context=isGovernanceAgent(task.agentKey)?await this.governanceContext(tx,task):null;
+      if(isGovernanceAgent(task.agentKey)&&(!context||task.agentKey==='GOV_FINAL_GATE'||governanceRouteDecision(parseGovernanceReview(task.result))!=='CONTINUE'))throw new ConflictException('هذه المراجعة لا تسمح باستئناف الإحالة.');
+      const source=context?.source||task,evidence=context?.source.operationsEvidence??await readOperationsEvidence(tx,task);
+      if(source.action==='READ_OPERATIONS'&&evidence?.status!=='RECORDED')throw new ConflictException('يلزم دليل المدخلات الأصلي قبل إحالة المراجعة.');
+      const nextKey=isGovernanceAgent(task.agentKey)?GOVERNANCE_REVIEW_ORDER[GOVERNANCE_REVIEW_ORDER.indexOf(task.agentKey)+1]:GOVERNANCE_REVIEW_ORDER[0];
+      const links=await tx.auditEvent.findMany({where:{resource:'AiAgentTask',action:'GOVERNANCE_REVIEW_QUEUED',metadata:{path:['sourceTaskId'],equals:id}},take:2});
+      if(links.length){
+        const link=links[0].metadata as Record<string,unknown>|null,child=links.length===1&&links[0].resourceId?await tx.aiAgentTask.findUnique({where:{id:links[0].resourceId}}):null;
+        if(!child||link?.sourceRevision!==task.revision||link.fromAgentKey!==task.agentKey||link.toAgentKey!==nextKey||child.agentKey!==nextKey||child.requestedByAccountId!==task.requestedByAccountId||child.language!==task.language||child.action!=='READ_OPERATIONS')throw new ConflictException('روابط الإحالة تحتاج تحققًا.');
+        return{id:task.id,reviewTaskId:child.id,resumed:false};
+      }
+      const deferred=await tx.auditEvent.findMany({where:{resource:'AiAgentTask',resourceId:id,action:'GOVERNANCE_ROUTE_DEFERRED'},take:2}),receipt=deferred[0]?.metadata as Record<string,unknown>|undefined;
+      if(deferred.length!==1||receipt?.fromAgentKey!==task.agentKey||receipt.toAgentKey!==nextKey||!['GOVERNANCE_QUEUE_FULL','GOVERNANCE_AGENT_UNINITIALIZED'].includes(String(receipt.reason)))throw new ConflictException('لا توجد إحالة مؤجلة قابلة للاستئناف.');
+      if(!await tx.aiAgentRuntime.findUnique({where:{key:nextKey}})||await tx.aiAgentTask.count({where:{agentKey:nextKey,state:{in:['QUEUED','RUNNING']}}})>=QUEUE_LIMIT)throw new ConflictException('ما زال طابور المراجع ممتلئًا أو غير مهيأ.');
+      await this.queueGovernanceNext(tx,task);
+      const child=await tx.aiAgentTask.findUnique({where:{requestedByAccountId_requestKey:{requestedByAccountId:task.requestedByAccountId,requestKey:stableRequestId(`governance:${task.id}:${nextKey}`)}}});
+      if(!child)throw new ConflictException('تعذر تأكيد إحالة المراجعة.');
+      await this.audit.record({actorId:actor.personId,action:'GOVERNANCE_ROUTE_RESUMED',resource:'AiAgentTask',resourceId:id,metadata:{reason,sourceRevision:task.revision,reviewTaskId:child.id,toAgentKey:nextKey,adminAccountId:actor.id,sourceRegenerated:false,approved:false}},tx);
+      return{id:task.id,reviewTaskId:child.id,resumed:true};
     });
   }
 
