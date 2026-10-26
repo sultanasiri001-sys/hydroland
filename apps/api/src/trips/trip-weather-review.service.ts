@@ -4,6 +4,7 @@ import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { StormglassWeatherService } from './stormglass-weather.service';
 import { WeatherSnapshot } from './weather-gate.service';
+import { finiteNumericInput } from '../geo/coordinate-input';
 
 export type TripWeatherReviewStatus='PENDING'|'APPROVED'|'REJECTED';
 export type TripLocation={tripId:string;locationName:string;latitude:number;longitude:number;createdAt:Date;updatedAt:Date};
@@ -16,9 +17,9 @@ export class TripWeatherReviewService{
   constructor(private readonly db:DatabaseService,private readonly stormglass:StormglassWeatherService,private readonly audit:AuditService){}
 
   private validateLocation(input:LocationInput){
-    const locationName=input.locationName?.trim(),latitude=Number(input.latitude),longitude=Number(input.longitude);
+    const locationName=input.locationName?.trim(),latitude=finiteNumericInput(input.latitude),longitude=finiteNumericInput(input.longitude);
     if(!locationName)throw new BadRequestException('Trip location name is required.');
-    if(!Number.isFinite(latitude)||latitude<-90||latitude>90||!Number.isFinite(longitude)||longitude<-180||longitude>180)throw new BadRequestException('Valid trip latitude and longitude are required.');
+    if(latitude===null||latitude<-90||latitude>90||longitude===null||longitude<-180||longitude>180)throw new BadRequestException('Valid trip latitude and longitude are required.');
     return{locationName,latitude,longitude};
   }
   private hash(snapshot:WeatherSnapshot){return createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');}

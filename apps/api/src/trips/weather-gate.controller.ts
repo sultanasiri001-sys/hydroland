@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { AdminGuard } from '../admin/admin.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { WeatherGateMode, WeatherGateService } from './weather-gate.service';
 import { StormglassWeatherService } from './stormglass-weather.service';
 import { TripWeatherReviewService, TripWeatherReviewStatus } from './trip-weather-review.service';
+import { finiteNumericInput } from '../geo/coordinate-input';
 
 @UseGuards(AccessTokenGuard, AdminGuard)
 @Controller('trips/admin/weather-gate')
@@ -17,7 +18,9 @@ export class WeatherGateController {
 
   @Get('snapshot')
   snapshot(@Req() req:{query:{latitude?:string;longitude?:string;at?:string}}) {
-    return this.stormglass.snapshot(Number(req.query.latitude),Number(req.query.longitude),req.query.at);
+    const latitude=finiteNumericInput(req.query.latitude),longitude=finiteNumericInput(req.query.longitude);
+    if(latitude===null||longitude===null)throw new BadRequestException('Valid latitude and longitude are required.');
+    return this.stormglass.snapshot(latitude,longitude,req.query.at);
   }
 
   @Get('trips/:tripId')
