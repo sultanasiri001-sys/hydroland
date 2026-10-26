@@ -1,0 +1,50 @@
+name: Calendar and training availability
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  availability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        timezone: [UTC, Asia/Riyadh, America/New_York]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: hydroland
+          POSTGRES_PASSWORD: hydroland
+          POSTGRES_DB: hydroland_availability_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U hydroland -d hydroland_availability_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      CI: 'true'
+      NODE_ENV: test
+      DATABASE_URL: postgresql://hydroland:hydroland@127.0.0.1:5432/hydroland_availability_ci
+      AVAILABILITY_TIMEZONE: ${{ matrix.timezone }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --workspace=@hydroland/api --include-workspace-root=true
+      - run: npm --workspace @hydroland/api run db:generate
+      - run: npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+      - name: Set the isolated database default time zone
+        env:
+          PGPASSWORD: hydroland
+        run: psql -h 127.0.0.1 -U hydroland -d hydroland_availability_ci -v ON_ERROR_STOP=1 -c "ALTER DATABASE hydroland_availability_ci SET timezone TO '$AVAILABILITY_TIMEZONE';"
+      - run: npm --workspace @hydroland/api run typecheck
+      - run: npm --workspace @hydroland/api run build
+      - run: npm --workspace @hydroland/api run validate:training
+      - run: node apps/api/scripts/calendar-training-availability-db-e2e.mjs

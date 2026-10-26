@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { PolicyControlService } from './policy-control.service';
+import { assertCalendarTrainingAvailable, trainingBusyAccounts } from './calendar-training-availability';
 
 type CrewResourceRow={id:string;type:string;name:string;referenceId:string};
 type AssignmentRow={id:string;tripId:string;resourceId:string;accountId:string;roleType:string;status:string;replacesAssignmentId:string|null;respondedAt:Date|null;createdAt:Date;updatedAt:Date};
@@ -35,7 +36,7 @@ export class CrewAssignmentService{
           JOIN "CalendarEvent" e ON e."id"=a."eventId"
           WHERE a."resourceId"=r."id" AND a."status"='ACTIVE'
             AND (e."referenceType"<>'TRIP' OR e."referenceId"<>${tripId})
-            AND a."startsAt"<${trip.endsAt} AND a."endsAt">${trip.startsAt}
+            AND a."startsAt"<(${trip.endsAt}::timestamptz AT TIME ZONE 'UTC') AND a."endsAt">(${trip.startsAt}::timestamptz AT TIME ZONE 'UTC')
         )
         AND NOT EXISTS(SELECT 1 FROM "CrewAssignment" ca WHERE ca."tripId"::text=${tripId} AND ca."accountId"::text=r."referenceId" AND ca."status" IN ('PENDING','ACCEPTED'))
         AND (r."type"<>'INSTRUCTOR' OR ((NOT ${ir}) OR EXISTS(SELECT 1 FROM "RoleAssignment" ra WHERE ra."accountId"=ac."id" AND ra."role"='INSTRUCTOR' AND ra."status"='ACTIVE')))
@@ -50,7 +51,8 @@ export class CrewAssignmentService{
     if(this.review(policy.master,policy.captainRole))reviews.push('CAPTAIN_ACTIVE_ROLE');
     if(this.review(policy.master,policy.captainLicense))reviews.push('CAPTAIN_VERIFIED_LICENSE');
     if(this.review(policy.master,policy.crewRole))reviews.push('CREW_ACTIVE_ROLE');
-    return{rows,policy,reviews};
+    const busy=await trainingBusyAccounts(tx,rows.map(row=>row.referenceId),trip.startsAt,trip.endsAt);
+    return{rows:rows.filter(row=>!busy.has(row.referenceId)),policy,reviews};
   }
 
   async dispatchForConfirmedBooking(tripId:string,bookingId:string,client?:Prisma.TransactionClient){
@@ -71,7 +73,7 @@ export class CrewAssignmentService{
 
   mine(accountId:string){return this.db.$queryRaw<AssignmentWithTripRow[]>`SELECT c.*,t."title" AS "tripTitle",t."type" AS "tripType",t."startsAt",t."endsAt" FROM "CrewAssignment" c JOIN "Trip" t ON t."id"=c."tripId" WHERE c."accountId"::text=${accountId} ORDER BY t."startsAt" ASC,c."createdAt" DESC LIMIT 100`;}
 
-  async escalatePending(hoursBefore=24){const responsePolicy=await this.policies.decision('CREW','RESPONSE_REQUIRED');if(responsePolicy.bypass)return{checked:0,reassigned:0,adminRequired:0,hoursBefore,policyState:responsePolicy.state};const boundedHours=Math.min(168,Math.max(1,Math.trunc(hoursBefore))),deadline=new Date(Date.now()+boundedHours*3600000);const pending=await this.db.$queryRaw<PendingAssignmentRow[]>`SELECT c.*,t."title" AS "tripTitle",t."startsAt",t."endsAt" FROM "CrewAssignment" c JOIN "Trip" t ON t."id"=c."tripId" WHERE c."status"='PENDING' AND t."status" IN ('OPEN','CLOSED') AND t."startsAt">NOW() AND t."startsAt"<=${deadline} ORDER BY t."startsAt" ASC`;let reassigned=0,adminRequired=0;for(const assignment of pending){if(responsePolicy.review){if(!(await this.hasOverdueAlert(assignment.id))){await this.notifyAdmins('CREW_RESPONSE_REVIEW_REQUIRED',{assignmentId:assignment.id,tripId:assignment.tripId,tripTitle:assignment.tripTitle,accountId:assignment.accountId,roleType:assignment.roleType,startsAt:assignment.startsAt});adminRequired+=1;}continue;}const replacement=await this.findReplacement(assignment);if(replacement){const created=await this.replaceAssignment(assignment,replacement,'REASSIGNED');if(created){await this.notify(assignment.accountId,'CREW_ASSIGNMENT_ESCALATED',{assignmentId:assignment.id,tripId:assignment.tripId,tripTitle:assignment.tripTitle,reason:'NO_RESPONSE_BEFORE_DEADLINE',startsAt:assignment.startsAt});reassigned+=1;}}else if(!(await this.hasOverdueAlert(assignment.id))){await this.notifyAdmins('CREW_RESPONSE_OVERDUE',{assignmentId:assignment.id,tripId:assignment.tripId,tripTitle:assignment.tripTitle,accountId:assignment.accountId,roleType:assignment.roleType,startsAt:assignment.startsAt,hoursBefore:boundedHours});adminRequired+=1;}}return{checked:pending.length,reassigned,adminRequired,hoursBefore:boundedHours,policyState:responsePolicy.state};}
+  async escalatePending(hoursBefore=24){const responsePolicy=await this.policies.decision('CREW','RESPONSE_REQUIRED');if(responsePolicy.bypass)return{checked:0,reassigned:0,adminRequired:0,hoursBefore,policyState:responsePolicy.state};const boundedHours=Math.min(168,Math.max(1,Math.trunc(hoursBefore))),deadline=new Date(Date.now()+boundedHours*3600000);const pending=await this.db.$queryRaw<PendingAssignmentRow[]>`SELECT c.*,t."title" AS "tripTitle",t."startsAt",t."endsAt" FROM "CrewAssignment" c JOIN "Trip" t ON t."id"=c."tripId" WHERE c."status"='PENDING' AND t."status" IN ('OPEN','CLOSED') AND t."startsAt">(NOW() AT TIME ZONE 'UTC') AND t."startsAt"<=(${deadline}::timestamptz AT TIME ZONE 'UTC') ORDER BY t."startsAt" ASC`;let reassigned=0,adminRequired=0;for(const assignment of pending){if(responsePolicy.review){if(!(await this.hasOverdueAlert(assignment.id))){await this.notifyAdmins('CREW_RESPONSE_REVIEW_REQUIRED',{assignmentId:assignment.id,tripId:assignment.tripId,tripTitle:assignment.tripTitle,accountId:assignment.accountId,roleType:assignment.roleType,startsAt:assignment.startsAt});adminRequired+=1;}continue;}const replacement=await this.findReplacement(assignment);if(replacement){const created=await this.replaceAssignment(assignment,replacement,'REASSIGNED');if(created){await this.notify(assignment.accountId,'CREW_ASSIGNMENT_ESCALATED',{assignmentId:assignment.id,tripId:assignment.tripId,tripTitle:assignment.tripTitle,reason:'NO_RESPONSE_BEFORE_DEADLINE',startsAt:assignment.startsAt});reassigned+=1;}}else if(!(await this.hasOverdueAlert(assignment.id))){await this.notifyAdmins('CREW_RESPONSE_OVERDUE',{assignmentId:assignment.id,tripId:assignment.tripId,tripTitle:assignment.tripTitle,accountId:assignment.accountId,roleType:assignment.roleType,startsAt:assignment.startsAt,hoursBefore:boundedHours});adminRequired+=1;}}return{checked:pending.length,reassigned,adminRequired,hoursBefore:boundedHours,policyState:responsePolicy.state};}
 
   async respond(accountId:string,assignmentId:string,response:'ACCEPTED'|'REJECTED'){
     const rows=await this.db.$queryRaw<AssignmentRow[]>`SELECT * FROM "CrewAssignment" WHERE "id"::text=${assignmentId} LIMIT 1`,assignment=rows[0];
@@ -92,14 +94,20 @@ export class CrewAssignmentService{
   private async findReplacement(assignment:AssignmentRow):Promise<CrewResourceRow|null>{
     const trip=await this.db.trip.findUnique({where:{id:assignment.tripId}});if(!trip)return null;
     const qualified=await this.eligibleResources(assignment.tripId,assignment.resourceId,assignment.accountId),ids=qualified.rows.filter((r:CrewResourceRow)=>r.type===assignment.roleType).map((r:CrewResourceRow)=>r.id);if(!ids.length)return null;
-    const candidates=await this.db.$queryRaw<CrewResourceRow[]>`SELECT r."id",r."type",r."name",r."referenceId" FROM "CalendarResource" r WHERE r."id"=ANY(${ids}::text[]) AND NOT EXISTS(SELECT 1 FROM "CalendarAllocation" a JOIN "CalendarEvent" e ON e."id"=a."eventId" WHERE a."resourceId"=r."id" AND a."status"='ACTIVE' AND a."startsAt"<${trip.endsAt} AND a."endsAt">${trip.startsAt} AND (e."referenceType"<>'TRIP' OR e."referenceId"<>${assignment.tripId})) AND NOT EXISTS(SELECT 1 FROM "CrewAssignment" c WHERE c."tripId"::text=${assignment.tripId} AND c."accountId"::text=r."referenceId" AND c."status" IN ('PENDING','ACCEPTED')) ORDER BY r."name" ASC LIMIT 1`;
+    const candidates=await this.db.$queryRaw<CrewResourceRow[]>`SELECT r."id",r."type",r."name",r."referenceId" FROM "CalendarResource" r WHERE r."id"=ANY(${ids}::text[]) AND NOT EXISTS(SELECT 1 FROM "CalendarAllocation" a JOIN "CalendarEvent" e ON e."id"=a."eventId" WHERE a."resourceId"=r."id" AND a."status"='ACTIVE' AND a."startsAt"<(${trip.endsAt}::timestamptz AT TIME ZONE 'UTC') AND a."endsAt">(${trip.startsAt}::timestamptz AT TIME ZONE 'UTC') AND (e."referenceType"<>'TRIP' OR e."referenceId"<>${assignment.tripId})) AND NOT EXISTS(SELECT 1 FROM "CrewAssignment" c WHERE c."tripId"::text=${assignment.tripId} AND c."accountId"::text=r."referenceId" AND c."status" IN ('PENDING','ACCEPTED')) ORDER BY r."name" ASC LIMIT 1`;
     return candidates[0]??null;
   }
 
   private async replaceAssignment(assignment:AssignmentRow,replacement:CrewResourceRow,previousStatus?:'REASSIGNED'):Promise<AssignmentRow|null>{
     const created=await this.db.serializable(async(tx:Prisma.TransactionClient)=>{
-      const trip=await tx.trip.findUnique({where:{id:assignment.tripId},select:{status:true}});
+      await tx.$executeRaw`SET LOCAL TIME ZONE 'UTC'`;
+      const trip=await tx.trip.findUnique({where:{id:assignment.tripId},select:{status:true,startsAt:true,endsAt:true}});
       if(!trip||['CANCELLED','COMPLETED'].includes(trip.status))return null;
+      const resource=await tx.calendarResource.findFirst({where:{id:replacement.id,referenceId:replacement.referenceId,type:assignment.roleType,active:true},select:{id:true}});
+      if(!resource)throw new ConflictException('Crew replacement resource changed.');
+      await assertCalendarTrainingAvailable(tx,[replacement.id],trip.startsAt,trip.endsAt);
+      const conflict=await tx.calendarAllocation.findFirst({where:{resourceId:replacement.id,status:'ACTIVE',startsAt:{lt:trip.endsAt},endsAt:{gt:trip.startsAt},NOT:{event:{referenceType:'TRIP',referenceId:assignment.tripId}}},select:{id:true}});
+      if(conflict)throw new ConflictException('Calendar resource conflict detected.');
       if(previousStatus){const changed=await tx.$executeRaw`UPDATE "CrewAssignment" SET "status"=${previousStatus},"respondedAt"=NOW(),"updatedAt"=NOW() WHERE "id"::text=${assignment.id} AND "status"='PENDING'`;if(!changed)return null;}
       await tx.$executeRaw`UPDATE "CalendarAllocation" a SET "resourceId"=${replacement.id},"updatedAt"=NOW() FROM "CalendarEvent" e WHERE e."id"=a."eventId" AND e."referenceType"='TRIP' AND e."referenceId"=${assignment.tripId} AND a."resourceId"=${assignment.resourceId} AND a."status"='ACTIVE'`;
       const rows=await tx.$queryRaw<AssignmentRow[]>`

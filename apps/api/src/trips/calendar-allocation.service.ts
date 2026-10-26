@@ -7,6 +7,7 @@ import { EquipmentInspectionService } from './equipment-inspection.service';
 import { PolicyControlService } from './policy-control.service';
 import { TripComplianceService } from './trip-compliance.service';
 import { WeatherGateService, WeatherSnapshot } from './weather-gate.service';
+import { assertCalendarTrainingAvailable } from './calendar-training-availability';
 
 type ResourceRow={id:string;type:string;name:string;active:boolean};
 type AllocationRow={id:string;eventId:string;tripId:string;resourceId:string;startsAt:Date;endsAt:Date;status:string};
@@ -30,8 +31,8 @@ export class CalendarAllocationService{
     const from=new Date(fromRaw),to=new Date(toRaw);if(Number.isNaN(from.getTime())||Number.isNaN(to.getTime())||to<=from)throw new BadRequestException('Invalid calendar date range.');
     const [gate,resourcePolicy,crewPolicy,safetyPolicy,weatherPolicy,marinePolicy]=await Promise.all([this.weatherGate.settings(),this.policies.decision('TRIP','RESOURCE_READINESS'),this.policies.decision('CREW','RESPONSE_REQUIRED'),this.policies.decision('TRIP','SAFETY_CLEARANCE'),this.policies.decision('WEATHER','WEATHER_GATE'),this.policies.decision('MARINE','ASSET_READINESS')]);
     const trips=(await this.db.trip.findMany({where:{startsAt:{lt:to},endsAt:{gt:from}},orderBy:{startsAt:'asc'},include:{bookings:{where:{status:{in:['PENDING','CONFIRMED']}},select:{seats:true}},safetyChecklists:{orderBy:{createdAt:'desc'},take:1,select:{decision:true,items:true,notes:true,decidedAt:true,createdAt:true}}}})) as CalendarTripRow[];
-    const allocations=await this.db.$queryRaw<AllocationWithResourceRow[]>`SELECT a."id",a."eventId",e."referenceId" AS "tripId",a."resourceId",a."startsAt",a."endsAt",a."status",r."type" AS "resourceType",r."name" AS "resourceName" FROM "CalendarAllocation" a JOIN "CalendarEvent" e ON e."id"=a."eventId" JOIN "CalendarResource" r ON r."id"=a."resourceId" WHERE e."referenceType"='TRIP' AND a."startsAt"<${to} AND a."endsAt">${from} AND a."status"='ACTIVE' AND e."status"='ACTIVE' AND r."active"=TRUE ORDER BY a."startsAt"`;
-    const crew=await this.db.$queryRaw<CrewReadinessRow[]>`SELECT ca."id",ca."tripId",ca."accountId",ca."resourceId",ca."roleType",ca."status",r."name" AS "resourceName",p."firstName",p."lastName" FROM "CrewAssignment" ca JOIN "Trip" t ON t."id"=ca."tripId" JOIN "CalendarResource" r ON r."id"=ca."resourceId" LEFT JOIN "Account" ac ON ac."id"=ca."accountId" LEFT JOIN "Person" p ON p."id"=ac."personId" WHERE t."startsAt"<${to} AND t."endsAt">${from} AND NOT EXISTS(SELECT 1 FROM "CrewAssignment" child WHERE child."replacesAssignmentId"=ca."id") ORDER BY ca."createdAt"`;
+    const allocations=await this.db.$queryRaw<AllocationWithResourceRow[]>`SELECT a."id",a."eventId",e."referenceId" AS "tripId",a."resourceId",a."startsAt",a."endsAt",a."status",r."type" AS "resourceType",r."name" AS "resourceName" FROM "CalendarAllocation" a JOIN "CalendarEvent" e ON e."id"=a."eventId" JOIN "CalendarResource" r ON r."id"=a."resourceId" WHERE e."referenceType"='TRIP' AND a."startsAt"<(${to}::timestamptz AT TIME ZONE 'UTC') AND a."endsAt">(${from}::timestamptz AT TIME ZONE 'UTC') AND a."status"='ACTIVE' AND e."status"='ACTIVE' AND r."active"=TRUE ORDER BY a."startsAt"`;
+    const crew=await this.db.$queryRaw<CrewReadinessRow[]>`SELECT ca."id",ca."tripId",ca."accountId",ca."resourceId",ca."roleType",ca."status",r."name" AS "resourceName",p."firstName",p."lastName" FROM "CrewAssignment" ca JOIN "Trip" t ON t."id"=ca."tripId" JOIN "CalendarResource" r ON r."id"=ca."resourceId" LEFT JOIN "Account" ac ON ac."id"=ca."accountId" LEFT JOIN "Person" p ON p."id"=ac."personId" WHERE t."startsAt"<(${to}::timestamptz AT TIME ZONE 'UTC') AND t."endsAt">(${from}::timestamptz AT TIME ZONE 'UTC') AND NOT EXISTS(SELECT 1 FROM "CrewAssignment" child WHERE child."replacesAssignmentId"=ca."id") ORDER BY ca."createdAt"`;
     return Promise.all(trips.map(async(trip:CalendarTripRow)=>{
       const bookedSeats=trip.bookings.reduce((sum:number,b:{seats:number})=>sum+b.seats,0),latestSafety=trip.safetyChecklists[0]??null,snapshot=latestSafety?this.weatherFromItems(latestSafety.items):null,weather=this.weatherGate.evaluate(snapshot,gate),tripCrew=crew.filter((m:CrewReadinessRow)=>m.tripId===trip.id),tripResources=allocations.filter((a:AllocationWithResourceRow)=>a.tripId===trip.id);
       const crewSummary={total:tripCrew.length,accepted:tripCrew.filter((m:CrewReadinessRow)=>m.status==='ACCEPTED').length,pending:tripCrew.filter((m:CrewReadinessRow)=>m.status==='PENDING').length,rejected:tripCrew.filter((m:CrewReadinessRow)=>m.status==='REJECTED').length,replacementRequired:tripCrew.filter((m:CrewReadinessRow)=>m.status==='REJECTED'||m.status==='REASSIGNED').length,ready:tripCrew.length>0&&tripCrew.every((m:CrewReadinessRow)=>m.status==='ACCEPTED')};
@@ -47,17 +48,26 @@ export class CalendarAllocationService{
     }));
   }
 
-  async assertResourcesAvailable(resourceIds:string[],startsAt:Date,endsAt:Date,excludeTripId?:string){for(const resourceId of resourceIds){const rows=await this.db.$queryRaw<Array<{id:string;tripId:string}>>`SELECT a."id",e."referenceId" AS "tripId" FROM "CalendarAllocation" a JOIN "CalendarEvent" e ON e."id"=a."eventId" JOIN "CalendarResource" r ON r."id"=a."resourceId" WHERE a."resourceId"=${resourceId} AND r."active"=TRUE AND a."status"='ACTIVE' AND a."startsAt"<${endsAt} AND a."endsAt">${startsAt} AND (${excludeTripId??null}::text IS NULL OR e."referenceType"<>'TRIP' OR e."referenceId"<>${excludeTripId??null}) LIMIT 1`;if(rows.length)throw new ConflictException('Calendar resource conflict detected.');}}
+  // Advisory read only. Reservation writers must recheck within serializable().
+  async assertResourcesAvailable(resourceIds:string[],startsAt:Date,endsAt:Date,excludeTripId?:string){
+    await assertCalendarTrainingAvailable(this.db,resourceIds,startsAt,endsAt);
+    const conflict=await this.db.calendarAllocation.findFirst({where:{resourceId:{in:resourceIds},resource:{active:true},status:'ACTIVE',startsAt:{lt:endsAt},endsAt:{gt:startsAt},...(excludeTripId?{NOT:{event:{referenceType:'TRIP',referenceId:excludeTripId}}}:{})},select:{id:true}});
+    if(conflict)throw new ConflictException('Calendar resource conflict detected.');
+  }
 
   async allocate(actorAccountId:string,tripId:string,resourceIds:string[]){
     const unique=[...new Set(resourceIds.filter((id:string)=>Boolean(id)))];
     const result=await this.db.serializable(async tx=>{
+      // Prisma DateTime columns store UTC timestamps without a time zone. Bound
+      // raw SQL Date values are timestamptz; avoid session-zone shifts on insert.
+      await tx.$executeRaw`SET LOCAL TIME ZONE 'UTC'`;
       const trip=await tx.trip.findUnique({where:{id:tripId}});if(!trip)throw new NotFoundException('Trip not found.');
       if(['CANCELLED','COMPLETED'].includes(trip.status))throw new ConflictException('Terminal trip resources cannot be allocated.');
       const events=await tx.$queryRaw<Array<{id:string}>>`INSERT INTO "CalendarEvent"("id","organizationId","type","referenceType","referenceId","title","startsAt","endsAt","status","createdAt","updatedAt") VALUES(gen_random_uuid()::text,NULL,'TRIP','TRIP',${tripId},${trip.title},${trip.startsAt},${trip.endsAt},'ACTIVE',NOW(),NOW()) ON CONFLICT("referenceType","referenceId") DO UPDATE SET "type"='TRIP',"title"=EXCLUDED."title","startsAt"=EXCLUDED."startsAt","endsAt"=EXCLUDED."endsAt","status"='ACTIVE',"updatedAt"=NOW() RETURNING "id"`;
       const eventId=events[0]?.id;if(!eventId)throw new ConflictException('Trip calendar event could not be created.');
       const previous=await tx.$queryRaw<Array<{resourceId:string}>>`SELECT "resourceId" FROM "CalendarAllocation" WHERE "eventId"=${eventId} AND "status"='ACTIVE' ORDER BY "resourceId"`;
       if(unique.length){const valid=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "CalendarResource" WHERE "active"=TRUE AND "id"=ANY(${unique}::text[])`;if(valid.length!==unique.length)throw new BadRequestException('One or more calendar resources are invalid or inactive.');}
+      await assertCalendarTrainingAvailable(tx,unique,trip.startsAt,trip.endsAt);
       for(const resourceId of unique){const conflicts=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "CalendarAllocation" WHERE "resourceId"=${resourceId} AND "status"='ACTIVE' AND "startsAt"<${trip.endsAt} AND "endsAt">${trip.startsAt} AND "eventId"<>${eventId} LIMIT 1`;if(conflicts.length)throw new ConflictException('Calendar resource conflict detected.');}
       await tx.$executeRaw`UPDATE "CalendarAllocation" SET "status"='INACTIVE',"updatedAt"=NOW() WHERE "eventId"=${eventId} AND "status"='ACTIVE'`;
       for(const resourceId of unique)await tx.$executeRaw`INSERT INTO "CalendarAllocation"("id","eventId","resourceId","startsAt","endsAt","status","createdAt","updatedAt") VALUES(gen_random_uuid()::text,${eventId},${resourceId},${trip.startsAt},${trip.endsAt},'ACTIVE',NOW(),NOW())`;
