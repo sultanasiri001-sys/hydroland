@@ -13,8 +13,11 @@ correction is included at `1aba480f864cc4649f98808951330671b33aa14d`; web tests 
 build were repeated after it. Mobile defensive acceptance was subsequently
 reproduced on the unified tree at `0d348d531bdb8d443e936dd52933d7a7507ca3ef`
 (tree `eaadf8ac3d47d6f6756ec7beec909590c01775cd`); the isolated validation
-checkout matched this complete tree exactly. No live/customer data or real payment, messaging,
-weather, model, or emergency provider was used by the runtime fixtures.
+checkout matched this complete tree exactly. The scoped research UI is included at
+`f5b4bdfac21f3dbf33e5d62be89dd92cccdfd9cb` (code tree
+`afde40e5b47fa63f5687db89d8454e2c45edb2d4`); unified API lint/typecheck/build
+and web acceptance were repeated afterward. No live/customer data or real payment,
+messaging, weather, model, or emergency provider was used by the runtime fixtures.
 
 The full historical migration chain was **not** declared clean-installable.
 The DB-baseline candidate `1cf29dec` is deliberately excluded. Canonical-schema
@@ -37,6 +40,7 @@ external PR import. The source commits remain in the local object database.
 | Training cross-role identity | `8c2149a430bd795d79fdeb7222fa399fa5385897` |
 | Safety coordinates and weather context | `9607dbad3c1a383b4ff69001cd2c14d66cac493b` → `5a59061a45db2269e066c2f2023011921947d906` |
 | Internal research runtime | `8e18bf2c51a205feb799986bb947019f5305b0f0` |
+| Scoped internal research owner/reviewer UI | `73226b6284181917b8d97b419896ca9e5dabae85` |
 | Mobile session/cache defensive boundaries | `19c57d1b306b86413db8171051646585584ea9d8` → `6fc7a7908b820e3dcbde976339dd94b1e2e7d6cd` |
 | External ready, unmerged PR #526 | Exact final five-file patch at `06daf844a4a422ea5719bfb959ffeb251dbe80dc`, imported locally as `cbe1a7719e32fd44e70df16db98b710c284741ba` |
 
@@ -56,6 +60,13 @@ and two actual-source race tests; both reproduced failures before the correction
 and passed afterward. The reviewed candidate was held outside the integration
 until corrected. This involved no API authorization repair or workaround.
 
+The research UI received independent security/runtime review and a second
+integration-owner source review. Fresh `/me` checks, scoped/versioned response
+contracts, stale-response fences, explicit preview/confirmation, and private DOM
+clearing remain intact. All nine non-package files match the accepted source
+blobs exactly; the web test command preserves both research files and the earlier
+messaging regression file.
+
 ### Integration-specific changes
 
 - `b0835bb`, `103ea95`: add API correctness/coordinate/weather/DOM checks and
@@ -63,10 +74,14 @@ until corrected. This involved no API authorization repair or workaround.
 - `6d9a390`, `f52a413`: give older store HTTP fixtures real disposable Session
   rows and signed `sid` claims, including nested training actors. Keep revoked
   session denial. No AuthGuard modification or sessionless test bypass.
-- The only merge conflict was additive Prisma schema content. The sole schema
+- The Prisma merge conflict was additive schema content. The sole schema
   author explicitly approved retaining all closure and research reverse
   relations and all four models unchanged. Each model body was compared to its
   source; both migration files were preserved byte-for-byte.
+- The later research UI conflicted only in the web test command. Its exact union
+  preserves all old tests, six messaging tests, and 38 research Node tests. No
+  dependency, lockfile, API, schema, migration, or global CI change was introduced
+  by this UI integration.
 
 ## One architecture, bounded responsibilities
 
@@ -89,7 +104,9 @@ until corrected. This involved no API authorization repair or workaround.
   stable cursors and the UI retains navigation/session fences.
 - **Agents/research:** historical agent metrics are read-only observations, not
   acceptance rates or invoices. Research is an API-first internal desk-research
-  lifecycle, not external execution, staffed adoption, or department closure.
+  lifecycle with scoped owner/reviewer UI, not external execution, staffed
+  adoption, or department closure. The UI does not create employee identities,
+  bypass independent assignment, or promote a local preview to server evidence.
 - **Mobile:** server-verified `/me` account identity and a per-login cache scope
   fence local files and async work. Raw-byte SHA-256 matches the server convention;
   sensitive, online-only, and unknown payload classifications fail closed. This
@@ -99,6 +116,11 @@ until corrected. This involved no API authorization repair or workaround.
 
 The unified Nest application registered **502 distinct method/path routes** in
 each of three real API bootstraps; no duplicate registration was found.
+The complete final API tree remains exactly
+`b0427c692d86261aaab89d5edb2832aa636712c6`, equal to the native acceptance
+snapshot. Schema, migrations and root lockfile hashes were also explicitly
+compared. All 13 research UI endpoint method/path pairs plus `/me` match this
+unchanged registry; this is compatibility verification, not a new database boot.
 
 ## Acceptance matrix
 
@@ -110,6 +132,7 @@ native disposable loopback **PostgreSQL 16.14**. All final rows below passed.
 | Canonical schema | Prisma validate/generate, API no-emit typecheck/build, clean diff |
 | Static/domain aggregate | All **47 command groups** passed, including every API `validate:*` script, correctness lint, web unit/source checks, Render contract, messaging source and dependency-audit contract |
 | Latest web-only correction | **20 unit tests** (14 existing + 6 anchor/layout contracts), all web source validators and web build repeated successfully |
+| Final research UI union | **58 Node tests** (14 existing + 6 messaging + 10 research contracts + 28 actual-runtime limited-DOM cases), six source validators and build; API correctness lint/toolchain fixture/typecheck/build repeated on Node 22.23.4 |
 | Native aggregate | All **46 database/runtime command stages** passed, including bootstraps and timezone setup; this count is not an assertion count |
 | Migration compatibility | Closure TEXT/UUID; AI runtime TEXT/UUID; unified store; organization booking identity/index matrix; center license; messaging **80/80** TEXT/UUID scenarios; research **four** Account/Organization TEXT/UUID combinations |
 | Historical migration integrity | **84** production-applied checksums verified; **zero** historical SQL edits |
@@ -132,6 +155,11 @@ fixture database; the guards/one-time SQL correctly refused these setups. The
 harness was corrected, not the protections. Research runs separately because
 its append-only fixtures must be retained, whereas older closure cleanup removes
 its own synthetic audit rows. All use the same integrated schema and API binary.
+Before the final UI verification, the execution environment had lost its `/tmp`
+runtime paths. Node 22.23.4 and npm 10.9.8 were restored under the workspace-scoped
+`hydroland-integration-tools` directory. Existing evidence was retained; the final
+eight command statuses and exact source/route hash receipt are additional files,
+not replacements for the earlier 47 static and 46 native command receipts.
 
 ## Remaining limits and handoff
 
@@ -143,13 +171,18 @@ its own synthetic audit rows. All use the same integrated schema and API binary.
   That is individual-branch evidence, not a combined-tree browser receipt. PR #528's real browser run exposed an unbounded
   message grid/scroll jump; `e204632` is included. Root published the messaging correction to approved PR #528 as
   `d9ad589d545409591f86e23d8bf5aa3bd3bc1f54`, with its tree verified equal
-  to local `e204632`; CI is rerunning. Updated remote browser
-  results must be checked separately. The original sub-2px scroll assertion is
+  to local `e204632`; all **10** workflows and **546** browser tests subsequently
+  passed, verified by the publication coordinator (run `40397202952`, job
+  `121833250392`). Render PR #529 at `548c7cb` also has **13** successful workflows.
+  These remain individual-branch evidence, not
+  combined-tree browser acceptance. The original sub-2px scroll assertion is
   retained and desktop/mobile viewport checks are stronger, not relaxed.
 - The isolated integration branch itself is **not published**, merged, or
   deployed, and has no combined remote CI receipt.
-- Research UI is a separate pending lane, not included or claimed complete here.
-  Mobile defensive session/cache fixes are included, but the **server private
+- Research UI is included with Node/source acceptance; its **30 Playwright cases
+  are authored and discovered only**, not browser-executed. Native dialog layout,
+  focus, form behavior and real-browser session flows still require authorized CI.
+- Mobile defensive session/cache fixes are included, but the **server private
   offline-delivery authorization gate remains blocked and untouched**. No repair,
   retry, rephrasing, or workaround is claimed. Native-device behavior, signing,
   store release, trusted expiry policy, and sensitive encryption remain separate
