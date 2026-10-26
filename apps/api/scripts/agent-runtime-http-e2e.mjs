@@ -10,7 +10,7 @@ const require=createRequire(import.meta.url),{DatabaseService}=require('../dist/
 const db=new PrismaClient(),runtimeDb=new DatabaseService(),audit=new AuditService(runtimeDb),admin=new AdminService(runtimeDb,audit),integrations=new IntegrationService(audit),agents=new AgentService(audit),provider=new AgentModelProviderService(integrations);
 const runtime=(writer=audit,model=provider)=>new AgentRuntimeService(runtimeDb,writer,agents,model,admin),service=runtime();
 const people=[],accounts=[],suffix=randomUUID(),password='Ai-runtime-fixture-only-2026!',salt='ai-runtime-fixture',passwordHash=`${salt}:${scryptSync(password,salt,64).toString('hex')}`;
-let initialized=false,modelCalls=0,countCalls=0,metadataCalls=0,release,modelEntered=false,hold=false,breakConnection=false,tokenCount=64,invalidOutput=false;
+let initialized=false,modelCalls=0,countCalls=0,metadataCalls=0,release,modelEntered=false,hold=false,breakConnection=false,tokenCount=64,invalidOutput=false,modelText=null;
 const payloads=[];
 const model=createServer(async(req,res)=>{
  let text='';for await(const chunk of req)text+=chunk;const data=JSON.parse(text||'{}');
@@ -18,7 +18,7 @@ const model=createServer(async(req,res)=>{
  if(req.url==='/v1/responses/input_tokens'){countCalls++;return res.writeHead(200,{'content-type':'application/json'}).end(JSON.stringify({object:'response.input_tokens',input_tokens:tokenCount}));}
  if(req.url!=='/v1/responses')return res.writeHead(404).end();modelCalls++;payloads.push(data);modelEntered=true;
  if(breakConnection){req.socket.destroy();return;}if(hold)await new Promise(resolve=>{release=resolve;});
- res.writeHead(200,{'content-type':'application/json'}).end(JSON.stringify({id:'resp_fixture_'+modelCalls,status:'completed',output:[{type:'reasoning',summary:[]},{type:'message',role:'assistant',content:[{type:'output_text',text:invalidOutput?'':`مسودة اختبار آمنة ${modelCalls} <img src=x onerror=alert(1)>`}]}],usage:{input_tokens:64,output_tokens:32}}));
+ res.writeHead(200,{'content-type':'application/json'}).end(JSON.stringify({id:'resp_fixture_'+modelCalls,status:'completed',output:[{type:'reasoning',summary:[]},{type:'message',role:'assistant',content:[{type:'output_text',text:invalidOutput?'':modelText??`مسودة اختبار آمنة ${modelCalls} <img src=x onerror=alert(1)>`}]}],usage:{input_tokens:64,output_tokens:32}}));
 });
 await new Promise(resolve=>model.listen(Number(modelUrl.port),'127.0.0.1',resolve));
 const call=async(path,token,body,method=body?'POST':'GET')=>{const response=await fetch(base+path,{method,headers:{'content-type':'application/json',...(token?{authorization:'Bearer '+token}:{})},...(body?{body:JSON.stringify(body)}:{})});return{status:response.status,body:await response.json().catch(()=>null)};};
@@ -73,6 +73,8 @@ try{
  invalidOutput=true;const badOutput=await enqueue('نتيجة غير صالحة');assert.equal((await control('ENABLED')).status,200);await service.runClaim(await service.claim());invalidOutput=false;assert.equal((await db.aiAgentTask.findUniqueOrThrow({where:{id:badOutput.body.id}})).state,'INTERRUPTED');assert.equal(modelCalls,7);
  const revoked=await enqueue('مهمة مدير سُحبت صلاحيته');assert.equal((await control('ENABLED')).status,200);await db.roleAssignment.update({where:{accountId_role:{accountId:actor.id,role:'ADMIN'}},data:{status:'SUSPENDED'}});assert.equal((await call('/admin/agents',token)).status,403);await assert.rejects(()=>service.enqueue(actor.id,'SUPPORT',{action:'DRAFT_MESSAGE',language:'ar-SA',prompt:'مرفوض',reason:'Revoked fixture',reviewed:true,requestId:randomUUID()}),e=>e.getStatus?.()===403);assert.equal(await service.claim(),null);assert.equal((await db.aiAgentTask.findUniqueOrThrow({where:{id:revoked.body.id}})).errorCode,'REQUESTER_AUTH_REVOKED');assert.equal(modelCalls,7);await db.roleAssignment.update({where:{accountId_role:{accountId:actor.id,role:'ADMIN'}},data:{status:'ACTIVE'}});
  const missing=provider.configuration;provider.configuration=()=>({...missing.call(provider),ready:false,reason:'CREDENTIALS_MISSING'});assert.equal(await service.claim(),null);assert((await service.catalog(actor.id)).items.every(x=>x.counts===null&&x.workload==='UNAVAILABLE'));provider.configuration=missing;
+ const {governanceRuntimeAcceptance}=await import('./governance-runtime-acceptance.mjs');
+ await governanceRuntimeAcceptance({db,service,runtime,audit,provider,actor,token,call,catalog,control,enqueue,setModelText:value=>{modelText=value;},payloads});
  if(process.env.AI_E2E_BROWSER==='1'){
   const {browserAcceptance}=await import('./agent-runtime-browser-fixture.mjs');
   await browserAcceptance({db,actor,session:await login(actor),getCalls:()=>modelCalls,holdGeneration:()=>{hold=true;modelEntered=false},waitGeneration:()=>until(()=>modelEntered),releaseGeneration:()=>{hold=false;release?.()}});

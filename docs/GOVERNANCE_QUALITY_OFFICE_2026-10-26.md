@@ -1,6 +1,6 @@
 # HYDROLAND Governance & Quality Office
 
-Status: IMPLEMENTATION CANDIDATE
+Status: REVIEW-ONLY FOUNDATION — controls start PAUSED
 
 ## Purpose
 The Governance & Quality Office is an independent review layer above execution departments. It reduces owner approval noise while preserving human authority for high-risk and stage-final decisions.
@@ -29,8 +29,16 @@ All six start PAUSED through the existing managed runtime. Their action boundary
 
 A failed gate returns work to the owning execution domain with findings and required evidence. It does not silently bypass the owning department.
 
+The runtime routes completed department-agent drafts in this order: quality audit → technical review → security/risk → compliance/policy → verification/testing → final recommendation. Each review is an advisory task, not a departmental approval or an operational closure gate.
+
+Every stage receives the complete original brief/output plus all prior reviews, through version-bound links in the audit ledger. Text is not silently truncated to fit the input budget; the existing token limit stops oversized input. A direct standalone final-agent task cannot stand in for the five preceding reviews.
+
+Only a valid structured `PASS` or `PASS_WITH_NOTES` with no evidence gaps and no escalation can advance. Missing evidence, a correction request, invalid output, high risk or an owner-escalation flag stops the route. Completion and the next queue entry share one transaction; retries cannot duplicate the next review. A full or uninitialized queue records deferral and retains the original result. Paused controls retain queued reviews without dispatch.
+
+The final recommendation records all five preceding reviews and explicitly requires separate owner approval; it never records an approval. The task ledger displays correction, escalation, deferral and pending-owner states separately from model-generation completion.
+
 ## Owner escalation policy
-Low- and medium-risk work should be reviewed and corrected inside the office workflow without creating individual owner approvals.
+The target workflow is to review and correct low- and medium-risk work inside the office without individual owner approvals. This review-only foundation provides automatic review routing and correction findings; it does not automatically execute corrections or grant new business mutation authority.
 
 Owner review is required for:
 - final stage acceptance;
@@ -61,6 +69,9 @@ The office is implemented as an additive extension of the existing managed AI ru
 - API typecheck/build passes.
 - Agent runtime HTTP/DB E2E passes with 14 managed agents.
 - Existing browser agent-runtime regressions remain green.
+- A full six-agent HTTP/PostgreSQL chain retains the original evidence and produces exactly one owner recommendation.
+- Correction, missing evidence, malformed output, high risk, policy escalation and invalid lineage stop routing.
+- Queue limits, audit rollback, additive initialization and paused state preserve existing work.
 - Existing security, release and dependency gates remain green.
 - Initial runtime initialization creates the six missing controls PAUSED and preserves all existing controls/tasks.
 - No governance agent receives direct mutation authority.
@@ -70,4 +81,4 @@ The office is implemented as an additive extension of the existing managed AI ru
 2. Initialize the runtime as a verified global ADMIN; this adds any missing controls as PAUSED.
 3. Enable governance agents individually only after provider/budget readiness is confirmed.
 4. Start with read/review tasks and evidence reports.
-5. Add automated routing between department outputs and governance gates in a later additive unit after acceptance of this office foundation.
+5. Automatic routing uses the existing task budget and queue; no model request occurs until the corresponding agent is enabled. Production activation, paid end-to-end generation and automated correction execution remain separate rollout steps.

@@ -41,7 +41,7 @@ export class AgentService {
     if(!['ar-SA','en'].includes(input.language))throw new BadRequestException('Only Arabic (Saudi) and English are supported.');
     if(!agent.allowedActions.includes(input.action))throw new ForbiddenException('This action is outside the agent boundary.');
     if(input.prompt.trim().length<3||input.prompt.length>2000)throw new BadRequestException('Prompt length is invalid.');
-    const approvalRequired=input.action!=='READ_OPERATIONS';
+    const approvalRequired=input.action!=='READ_OPERATIONS'||input.agent==='GOV_FINAL_GATE';
     const result=input.language==='ar-SA'
       ?`تم إعداد مسودة آمنة بواسطة ${agent.nameAr}. ${approvalRequired?'تتطلب موافقة بشرية قبل أي إرسال أو تنفيذ.':'لا يملك الوكيل صلاحية تنفيذ تغييرات.'}`
       :`A safe draft was prepared by ${agent.nameEn}. ${approvalRequired?'Human approval is required before any send or execution.':'The agent cannot execute changes.'}`;
