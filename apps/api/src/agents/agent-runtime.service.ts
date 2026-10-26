@@ -12,6 +12,7 @@ import { AgentModelProviderService, AiModelConfiguration, AiModelResult, AiProvi
 import { AGENT_DEPARTMENTS, decisionReason, inputRecord, METRICS_MAX_AGE_MS, QUEUE_LIMIT, QUEUE_OVERDUE_MS, RUNTIME_GUARD_KEY, TASK_LEASE_MS, uuid, WORKER_STATUS_KEY, workload } from './agent-runtime.domain';
 import { GOVERNANCE_REVIEW_ORDER, governanceRouteDecision, isGovernanceAgent, parseGovernanceReview } from './governance-review.domain';
 import { operationsEvidenceDigest, operationsValues, readOperationsEvidence } from './agent-operations-evidence';
+import { agentPerformance, performanceView } from './agent-performance';
 
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const taskView={id:true,agentKey:true,requestedByAccountId:true,action:true,language:true,prompt:true,state:true,revision:true,createdAt:true,startedAt:true,dispatchedAt:true,finishedAt:true,model:true,executionPolicy:true,inputTokens:true,outputTokens:true,reservedCostMicroUsd:true,estimatedCostMicroUsd:true,result:true,errorCode:true,reviewedAt:true} as const;
@@ -62,6 +63,7 @@ export class AgentRuntimeService {
     return this.db.serializable(async tx=>{
       await requireVerifiedAdmin(tx,actorId);const now=await this.now(tx),config=this.model.configuration(),worker=await this.workerState(tx,config,now),budget=await this.reserved(tx,now);
       const controls=await tx.aiAgentRuntime.findMany();
+      const historical=await agentPerformance(tx);
       const budgetAvailable=config.ready&&budget.reserved+config.reserveMicroUsd<=config.dailyBudgetMicroUsd;
       const measured=config.ready&&worker.fresh,available=measured&&budgetAvailable;
       const reason=!config.ready?config.reason:!worker.fresh?'WORKER_STALE':!budgetAvailable?'DAILY_BUDGET_EXHAUSTED':'READY';
@@ -76,7 +78,7 @@ export class AgentRuntimeService {
           queued:groups.find(g=>g.agentKey===agent.key&&g.state==='QUEUED')?._count._all||0,
           failed:groups.filter(g=>g.agentKey===agent.key&&['FAILED','INTERRUPTED'].includes(g.state)).reduce((sum,g)=>sum+g._count._all,0),
           overdue:overdue.find(g=>g.agentKey===agent.key)?._count._all||0}:null;
-          return{...agent,departmentCode:AGENT_DEPARTMENTS[agent.key],departmentName:STAFFING_DEPARTMENTS.find(d=>d.code===AGENT_DEPARTMENTS[agent.key])?.nameAr,state:control?.state||'UNINITIALIZED',revision:control?.revision||null,workload:workload(counts),counts,canEnable:Boolean(control&&available&&control.state==='PAUSED'),canPause:control?.state==='ENABLED'};
+          return{...agent,performance:performanceView(historical.find(row=>row.agentKey===agent.key)),departmentCode:AGENT_DEPARTMENTS[agent.key],departmentName:STAFFING_DEPARTMENTS.find(d=>d.code===AGENT_DEPARTMENTS[agent.key])?.nameAr,state:control?.state||'UNINITIALIZED',revision:control?.revision||null,workload:workload(counts),counts,canEnable:Boolean(control&&available&&control.state==='PAUSED'),canPause:control?.state==='ENABLED'};
         })};
     });
   }
