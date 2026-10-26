@@ -35,7 +35,8 @@ Repairs:
   erasure is claimed. A filesystem failure surfaces an error while token clearing
   still runs, and the old cache scope is invalidated synchronously.
 - TripDay invokes the canonical manifest rehash verifier, resets per trip/session,
-  discards late work and rechecks on focus, foreground resume and visible retry.
+  discards late work, rechecks scope after each await before a new protected
+  request, and rechecks on focus, foreground resume and visible retry.
   A 403 clears the affected trip cache without revoking unrelated account access.
 - Payload verification uses Expo `digest` on raw bytes and renders lowercase hex.
   No dependency upgrade or new key material is introduced. Media payloads must
@@ -70,7 +71,7 @@ These are **not native-device or visual acceptance tests**.
 ## Local checks
 
 Using Node 22.23.4 / npm 10.9.8 with an isolated clean mobile installation:
-- Mobile test: 20 behavioral groups, existing source contracts and all three
+- Mobile test: 22 behavioral groups, existing source contracts and all three
   dependency-security regression suites passed.
 - Mobile TypeScript/typecheck/build passed (`build` is TypeScript only).
 - Release dependency-audit fail-closed contract passed; `git diff --check` passed.

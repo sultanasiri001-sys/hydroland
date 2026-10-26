@@ -27,6 +27,7 @@ export default function TripDay(){
     if(tripId){
      next.verifiedLocalContent=await verifyStoredOfflinePackage(tripId,scope);if(!active||!isSessionScopeCurrent(scope))return;
      next.pkg=next.verifiedLocalContent?await loadTripPackage(tripId,scope):null;
+     if(!active||!isSessionScopeCurrent(scope))return;
      try{const remote=await getOfflinePackageStatus(tripId);if(remote.tripId!==tripId)throw new Error('Trip package mismatch.');next.serverStatus=remote}
      catch(error){
       if(!active||!isSessionScopeCurrent(scope))return;

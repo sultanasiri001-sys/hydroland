@@ -19,7 +19,7 @@ function stableJson(value:unknown):string{
 async function manifestChecksum(manifest:unknown){return digestStringAsync(CryptoDigestAlgorithm.SHA256,stableJson(manifest))}
 
 export async function downloadOfflinePackage(tripId:string):Promise<OfflineTripPackage>{
- const scope=await requireScope();
+ const scope=await requireScope();assertSessionScope(scope);
  const remote=await getOfflinePackageContent(tripId);assertSessionScope(scope);
  if(remote.tripId!==tripId||!remote.checksum||!Number.isFinite(remote.briefingVersion))throw new Error('Invalid offline package response.');
  const computedChecksum=await manifestChecksum(remote.manifest);assertSessionScope(scope);

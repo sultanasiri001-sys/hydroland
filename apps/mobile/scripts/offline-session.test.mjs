@@ -18,7 +18,7 @@ const packageFor=tripId=>{const manifest={schemaVersion:1,tripId,briefingVersion
 const text=node=>typeof node==='string'?node:Array.isArray(node)?node.map(text).join(' '):node&&typeof node==='object'?text(node.props?.children):'';
 function world(){
  const secure=new Map(),files=new Map(),dirs=new Set(),modules=new Map(),calls=[],navigations=[],appListeners=new Set();
- let handler=null,writeHook=null,digestHook=null,params={tripId:'trip-a'},component=null,tree=null,dirty=false,cursor=0;
+ let initialFocus=true,handler=null,writeHook=null,digestHook=null,params={tripId:'trip-a'},component=null,tree=null,dirty=false,cursor=0;
  const states=[],hooks=[],pending=[];
  const secureStore={getItemAsync:async key=>secure.get(key)??null,setItemAsync:async(key,value)=>{if(writeHook)await writeHook(key,value);secure.set(key,value)},deleteItemAsync:async key=>secure.delete(key)};
  class Directory{
@@ -56,7 +56,7 @@ function world(){
   'expo-secure-store':secureStore,'expo-file-system':{Directory,File,Paths:{document:'/sandbox'}},
   'expo-crypto':{randomUUID,CryptoDigestAlgorithm:{SHA256:'SHA-256'},digestStringAsync:async(_,value,options)=>{if(digestHook)await digestHook();return createHash('sha256').update(value).digest(options?.encoding??'hex')},digest:async(_,value)=>{if(digestHook)await digestHook();const bytes=createHash('sha256').update(new Uint8Array(value)).digest();return bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength)}},
   react,'react/jsx-runtime':{jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props}),Fragment:'Fragment'},
-  'expo-router':{useLocalSearchParams:()=>params,router:{replace:value=>navigations.push(value)},useFocusEffect:fn=>effect(fn,[fn])},
+  'expo-router':{useLocalSearchParams:()=>params,router:{replace:value=>navigations.push(value)},useFocusEffect:fn=>effect(()=>initialFocus?fn():undefined,[fn])},
   'react-native':{SafeAreaView:'SafeAreaView',Text:'Text',View:'View',Pressable:'Pressable',TextInput:'TextInput',StyleSheet:{create:value=>value},AppState:{addEventListener:(_,fn)=>{appListeners.add(fn);return{remove:()=>appListeners.delete(fn)}}}},
  };
  function load(rel){
@@ -71,6 +71,7 @@ function world(){
  function render(){if(!component)return null;dirty=false;cursor=0;tree=component();const work=pending.splice(0);work.forEach(fn=>fn());return tree}
  async function settle(){for(let i=0;i<20;i++){await new Promise(resolve=>setImmediate(resolve));if(dirty)render()}return tree}
  return{secure,files,dirs,calls,navigations,load,defaultHandler,setHandler:value=>handler=value,setWriteHook:value=>writeHook=value,setDigestHook:value=>digestHook=value,
+  disableInitialFocus:()=>{initialFocus=false},
   mount:(rel='app/trip-day.tsx')=>{component=load(rel).default;return render()},render,settle,tree:()=>tree,
   navigate:value=>{params=value;return render()},resume:()=>{for(const fn of appListeners)fn('active')},
   unmount:()=>{for(const hook of hooks)hook?.cleanup?.();component=null},
@@ -106,6 +107,18 @@ await check('manifest integrity is rehashed by actual TripDay and corruption is 
 });
 await check('trip route change hides prior matched state immediately and fences delayed work',async()=>{
  const w=world();await w.login();await w.download();w.mount();await w.settle();assert.ok(text(w.tree()).includes('الحزمة المحلية مطابقة'));const gate=deferred();w.setHandler((route,init,normal)=>route.includes('trip-b')?gate.promise:normal(route,init));assert.ok(!text(w.navigate({tripId:'trip-b'})).includes('الحزمة المحلية مطابقة'));await w.settle();w.navigate({tripId:'trip-c'});await w.settle();gate.resolve(response({...packageFor('trip-b'),status:'READY'}));await w.settle();assert.ok(!text(w.tree()).includes('الحزمة المحلية مطابقة'));
+});
+await check('delayed TripDay metadata cannot start an old trip request under a replacement session',async()=>{
+ const w=world();await w.login();await w.download();w.disableInitialFocus();const meta=w.load('src/offline-trip-package.ts'),original=meta.loadTripPackage,gate=deferred();let reads=0;
+ meta.loadTripPackage=async(...args)=>{const result=await original(...args);if(++reads===2)await gate.promise;return result};
+ w.mount();await w.settle();assert.equal(reads,2);await w.login('B');await w.settle();
+ const before=w.calls.filter(call=>call.route.endsWith('/offline-package')).length;gate.resolve();await w.settle();assert.equal(w.calls.filter(call=>call.route.endsWith('/offline-package')).length,before);
+});
+await check('package download checks scope again after the await that returns it, before any request',async()=>{
+ const w=world();await w.login();const session=w.load('src/session.ts'),original=session.assertSessionScope,api=w.load('src/api.ts'),authorize=api.authorizedFetch;let starts=0,scheduled=false;
+ api.authorizedFetch=(...args)=>{starts++;return authorize(...args)};
+ session.assertSessionScope=scope=>{original(scope);if(!scheduled){scheduled=true;queueMicrotask(()=>{void session.clearSession()})}};
+ await assert.rejects(()=>w.download(),/Session changed/);assert.equal(starts,0);
 });
 await check('transient offline status retains verified cache; app resume rechecks and clears old error',async()=>{
  const w=world();await w.login();await w.download();w.setHandler(async(route,init,normal)=>{if(route.includes('/trip-intelligence/'))throw new TypeError('offline');return normal(route,init)});w.mount();await w.settle();assert.ok(text(w.tree()).includes('تعذر التحقق'));assert.ok(w.files.size);w.setHandler(null);w.resume();await w.settle();assert.ok(text(w.tree()).includes('الحزمة المحلية مطابقة'));assert.ok(!text(w.tree()).includes('تعذر التحقق من حالة الحزمة'));
