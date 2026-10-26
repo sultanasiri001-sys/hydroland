@@ -14,6 +14,19 @@ import { AGENT_DEPARTMENTS, decisionReason, inputRecord, METRICS_MAX_AGE_MS, QUE
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const taskView={id:true,agentKey:true,requestedByAccountId:true,action:true,language:true,prompt:true,state:true,revision:true,createdAt:true,startedAt:true,dispatchedAt:true,finishedAt:true,model:true,executionPolicy:true,inputTokens:true,outputTokens:true,reservedCostMicroUsd:true,estimatedCostMicroUsd:true,result:true,errorCode:true,reviewedAt:true} as const;
 const configHash=(config:AiModelConfiguration)=>hash(config);
+const GOVERNANCE_REVIEW_ORDER:readonly AgentKey[]=[
+  'GOV_QUALITY_AUDIT',
+  'GOV_TECH_REVIEW',
+  'GOV_SECURITY_RISK',
+  'GOV_COMPLIANCE_POLICY',
+  'GOV_VERIFICATION',
+  'GOV_FINAL_GATE',
+];
+const GOVERNANCE_REVIEW_KEYS=new Set<AgentKey>(GOVERNANCE_REVIEW_ORDER);
+const stableRequestId=(value:string)=>{
+  const hex=createHash('sha256').update(value).digest('hex');
+  return `${hex.slice(0,8)}-${hex.slice(8,12)}-5${hex.slice(13,16)}-a${hex.slice(17,20)}-${hex.slice(20,32)}`;
+};
 
 @Injectable()
 export class AgentRuntimeService {
@@ -163,6 +176,39 @@ export class AgentRuntimeService {
     for(let attempt=0;attempt<3;attempt++)try{return await this.finish(claim.task.id,claim.task.claimId!,result,error);}catch(failure){if(attempt===2)throw failure;await new Promise(resolve=>setTimeout(resolve,25*(attempt+1)));}
   }
 
+  private async queueGovernanceNext(tx:Prisma.TransactionClient,task:{id:string;agentKey:string;requestedByAccountId:string;language:string;prompt:string},resultText:string){
+    const current=task.agentKey as AgentKey;
+    const currentIndex=GOVERNANCE_REVIEW_ORDER.indexOf(current);
+    if(current==='GOV_FINAL_GATE'){
+      await this.audit.record({action:'GOVERNANCE_FINAL_RECOMMENDATION_READY',resource:'AiAgentTask',resourceId:task.id,metadata:{agentKey:current,requesterAccountId:task.requestedByAccountId,ownerApprovalRequired:true}},tx);
+      return;
+    }
+    const nextKey=currentIndex>=0?GOVERNANCE_REVIEW_ORDER[currentIndex+1]:GOVERNANCE_REVIEW_ORDER[0];
+    if(!nextKey)return;
+    const control=await tx.aiAgentRuntime.findUnique({where:{key:nextKey}});
+    if(!control){
+      await this.audit.record({action:'GOVERNANCE_ROUTE_DEFERRED',resource:'AiAgentTask',resourceId:task.id,metadata:{fromAgentKey:task.agentKey,toAgentKey:nextKey,reason:'GOVERNANCE_AGENT_UNINITIALIZED'}},tx);
+      return;
+    }
+    const requestKey=stableRequestId(`governance:${task.id}:${nextKey}`);
+    const existing=await tx.aiAgentTask.findUnique({where:{requestedByAccountId_requestKey:{requestedByAccountId:task.requestedByAccountId,requestKey}}});
+    if(existing)return;
+    const source=resultText.length>1200?`${resultText.slice(0,1200)}…`:resultText;
+    const prompt=[
+      'HYDROLAND Governance & Quality Office review.',
+      `Source agent: ${task.agentKey}`,
+      `Source task: ${task.id}`,
+      'Review the supplied output only within your governance specialty.',
+      'Return: PASS, PASS_WITH_NOTES, or RETURN_FOR_CORRECTION; concise findings; evidence gaps; and whether owner escalation is required.',
+      'Do not execute changes or grant approval.',
+      'Source output:',
+      source,
+    ].join('\n');
+    const fingerprint=hash({key:nextKey,action:'READ_OPERATIONS',language:task.language,prompt,reason:'AUTOMATED_GOVERNANCE_ROUTE'});
+    const queued=await tx.aiAgentTask.create({data:{agentKey:nextKey,requestedByAccountId:task.requestedByAccountId,requestKey,fingerprint,action:'READ_OPERATIONS',language:task.language,prompt},select:taskView});
+    await this.audit.record({action:'GOVERNANCE_REVIEW_QUEUED',resource:'AiAgentTask',resourceId:queued.id,metadata:{sourceTaskId:task.id,fromAgentKey:task.agentKey,toAgentKey:nextKey,automatic:true,approvalRequired:false,controlState:control.state}},tx);
+  }
+
   private async finish(id:string,claimId:string,result?:AiModelResult,error?:AiProviderError){
     return this.db.serializable(async tx=>{await this.guard(tx);const task=await tx.aiAgentTask.findUnique({where:{id}});if(!task||task.claimId!==claimId||task.state==='COMPLETED'||task.result)return;
       const late=task.state!=='RUNNING';if(late&&!result)return;
@@ -170,6 +216,10 @@ export class AgentRuntimeService {
       await tx.aiAgentTask.update({where:{id},data:{state,revision:randomUUID(),finishedAt:await this.now(tx),...(result?{result:result.text,inputTokens:result.inputTokens,outputTokens:result.outputTokens,estimatedCostMicroUsd:result.estimatedCostMicroUsd}:{errorCode:error?.code||'EXECUTION_FAILED'})}});
       if(!result&&!late)await tx.aiAgentRuntime.update({where:{key:task.agentKey},data:{state:'PAUSED',revision:randomUUID()}});
       await this.audit.record({action:late?'AI_TASK_LATE_RESULT_RECORDED':result?'AI_TASK_COMPLETED':'AI_TASK_EXECUTION_FAILED',resource:'AiAgentTask',resourceId:id,metadata:{agentKey:task.agentKey,executor:'AI_RUNTIME_WORKER',initiatedByAccountId:task.requestedByAccountId,claimId,from:task.state,to:state,errorCode:error?.code,inputTokens:result?.inputTokens,outputTokens:result?.outputTokens,estimatedCostMicroUsd:result?.estimatedCostMicroUsd,noAutomaticRetry:true,agentPaused:!result&&!late}},tx);
+      if(result&&!late){
+        const key=task.agentKey as AgentKey;
+        if(this.agents.list().some(agent=>agent.key===key)&&(!GOVERNANCE_REVIEW_KEYS.has(key)||key!=='GOV_FINAL_GATE'))await this.queueGovernanceNext(tx,task,result.text);
+      }
     });
   }
 }
