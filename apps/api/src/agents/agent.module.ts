@@ -9,5 +9,6 @@ import { AgentRuntimeController } from './agent-runtime.controller';
 import { AgentRuntimeService } from './agent-runtime.service';
 import { AgentModelProviderService } from './agent-model-provider.service';
 import { AgentRuntimeWorker } from './agent-runtime.worker';
-@Module({imports:[AuthModule,AuditModule,AdminModule,IntegrationModule],controllers:[AgentController,AgentRuntimeController],providers:[AgentService,AgentRuntimeService,AgentModelProviderService,AgentRuntimeWorker]})
+import { GovernanceReviewInboxService } from './governance-review-inbox.service';
+@Module({imports:[AuthModule,AuditModule,AdminModule,IntegrationModule],controllers:[AgentController,AgentRuntimeController],providers:[AgentService,AgentRuntimeService,AgentModelProviderService,AgentRuntimeWorker,GovernanceReviewInboxService]})
 export class AgentModule {}

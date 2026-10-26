@@ -6,6 +6,7 @@ const require=createRequire(import.meta.url);
 const {AgentModelProviderService}=require('../dist/agents/agent-model-provider.service.js');
 const {AgentRuntimeService}=require('../dist/agents/agent-runtime.service.js');
 const {AgentRuntimeController}=require('../dist/agents/agent-runtime.controller.js');
+const {GovernanceReviewInboxService}=require('../dist/agents/governance-review-inbox.service.js');
 const {DatabaseService}=require('../dist/database/database.service.js');
 const {AuthService}=require('../dist/auth/auth.service.js');
 const {AccessTokenGuard}=require('../dist/auth/access-token.guard.js');
@@ -47,7 +48,8 @@ try{
   // Exercise the actual route and production guard classes without opening a
   // database or issuing a real login credential. DB-backed acceptance runs in CI.
   class FixtureModule{}
-  Module({controllers:[AgentRuntimeController],providers:[AccessTokenGuard,AdminGuard,{provide:AgentRuntimeService,useValue:runtime},{provide:DatabaseService,useValue:db},{provide:AuthService,useValue:{authenticateAccessToken:async token=>({accountId:token})}}]})(FixtureModule);
+  const unusedInbox={list(){throw new Error('Connection diagnostics must not read the inbox');},detail(){throw new Error('Connection diagnostics must not read review evidence');}};
+  Module({controllers:[AgentRuntimeController],providers:[AccessTokenGuard,AdminGuard,{provide:AgentRuntimeService,useValue:runtime},{provide:GovernanceReviewInboxService,useValue:unusedInbox},{provide:DatabaseService,useValue:db},{provide:AuthService,useValue:{authenticateAccessToken:async token=>({accountId:token})}}]})(FixtureModule);
   app=await NestFactory.create(FixtureModule,{logger:false});app.setGlobalPrefix('api/v1');await app.listen(0,'127.0.0.1');
   const endpoint=(await app.getUrl())+'/api/v1/admin/agents/provider-connection',callsBeforeHttp=calls;
   assert.equal((await fetch(endpoint)).status,401);
