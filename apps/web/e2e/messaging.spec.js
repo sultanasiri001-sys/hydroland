@@ -93,10 +93,15 @@ async function historyFixture(page){
   return{control,dialog,select};
 }
 
-test('latest 200 messages remain visible and older history retries, deduplicates clicks and preserves scroll',async({page})=>{
+for(const viewport of [{name:'desktop',width:1280,height:800},{name:'mobile',width:390,height:844}])test(`latest 200 messages remain visible and older history retries, deduplicates clicks and preserves scroll (${viewport.name})`,async({page})=>{
+  await page.setViewportSize({width:viewport.width,height:viewport.height});
   const {control,dialog,select}=await historyFixture(page);await select('history-a');
   await expect(dialog.locator('[data-message-id]')).toHaveCount(200);
-  await expect(dialog.locator('[data-message-id="history-a-401"]')).toBeVisible();
+  await expect(dialog.locator('[data-message-id="history-a-401"]')).toBeInViewport();
+  await expect(dialog.locator('[data-message-form]')).toBeInViewport();
+  const stream=dialog.locator('[data-message-stream]');
+  expect(await stream.evaluate(element=>element.scrollHeight>element.clientHeight&&element.scrollTop>0)).toBe(true);
+  expect(await dialog.evaluate(element=>element.scrollHeight<=element.clientHeight+1)).toBe(true);
   await expect(dialog.locator('[data-message-id="history-a-1"]')).toHaveCount(0);
   const older=dialog.locator('[data-load-older-messages]');
   control.historyError=true;await older.click();
@@ -113,10 +118,11 @@ test('latest 200 messages remain visible and older history retries, deduplicates
   expect(Math.abs(before-after)).toBeLessThan(2);
   expect(control.historyRequests).toEqual([{id:'history-a',cursor:'history-a-202'},{id:'history-a',cursor:'history-a-202'}]);
   await older.click();await expect(dialog.locator('[data-message-id]')).toHaveCount(401);await expect(older).toHaveCount(0);
+  expect(await dialog.evaluate(element=>element.scrollHeight<=element.clientHeight+1)).toBe(true);
   expect(await dialog.locator('[data-message-id]').evaluateAll(elements=>new Set(elements.map(element=>element.dataset.messageId)).size)).toBe(401);
   await dialog.locator('textarea[name="body"]').fill('Newest after 401');await dialog.locator('[data-message-form] button[type="submit"]').click();
   await expect(dialog.locator('[data-message-id="history-a-402"]')).toHaveText(/Newest after 401/);
-  await expect(dialog.locator('[data-message-id="history-a-402"]')).toBeVisible();await expect(dialog.locator('[data-message-id]')).toHaveCount(200);
+  await expect(dialog.locator('[data-message-id="history-a-402"]')).toBeInViewport();await expect(dialog.locator('[data-message-id]')).toHaveCount(200);
 });
 
 test('older-history and initial conversation replies cannot replace newer navigation',async({page})=>{

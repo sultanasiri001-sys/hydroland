@@ -28,14 +28,25 @@
   const renderList=()=>{const host=ensureDialog().querySelector('[data-conversation-items]');host.innerHTML='';if(!state.conversations.length){host.innerHTML='<p class="hl-message-empty">لا توجد محادثات بعد.</p>';return}state.conversations.forEach(c=>{const b=document.createElement('button');b.type='button';b.className='hl-conversation-item'+(state.current?.id===c.id?' active':'');b.dataset.conversationId=c.id;b.innerHTML=`<strong>${esc(conversationName(c))}</strong><small>${esc(latestText(c))}</small>`;b.addEventListener('click',()=>openConversation(c.id));host.appendChild(b)})};
   const resetConversation=(clearDraft=true)=>{state.navigation++;state.current=null;state.selectedId=null;state.historyLoading=false;state.sending=false;if(!state.dialog)return;state.dialog.querySelector('[data-message-title]').textContent='اختر محادثة';state.dialog.querySelector('[data-message-participants]').textContent='';state.dialog.querySelector('[data-message-stream]').innerHTML='<p class="hl-message-empty">اختر محادثة لعرض الرسائل.</p>';if(clearDraft)state.dialog.querySelector('[data-message-form]').reset();status('')};
   const active=revision=>revision===state.navigation&&state.dialog?.open&&auth()?.isAuthenticated?.();
+  // Anchor the visible message, not a guessed scroll-height delta. Rebuilding the
+  // stream may clamp scrollTop, remove the history button or change row heights.
+  const readMessageAnchor=stream=>{
+    const viewport=stream.getBoundingClientRect();
+    const element=[...stream.querySelectorAll('[data-message-id]')].find(message=>{const rect=message.getBoundingClientRect();return rect.bottom>viewport.top&&rect.top<viewport.bottom});
+    return element?{id:element.dataset.messageId,top:element.getBoundingClientRect().top}:null;
+  };
+  const restoreMessageAnchor=(stream,anchor,oldTop,oldHeight)=>{
+    const element=anchor&&[...stream.querySelectorAll('[data-message-id]')].find(message=>message.dataset.messageId===anchor.id);
+    stream.scrollTop=element?stream.scrollTop+element.getBoundingClientRect().top-anchor.top:oldTop+stream.scrollHeight-oldHeight;
+  };
   const renderConversation=(conversation,preserveScroll=false)=>{
-    const dialog=ensureDialog(),stream=dialog.querySelector('[data-message-stream]'),oldHeight=stream.scrollHeight,oldTop=stream.scrollTop;
+    const dialog=ensureDialog(),stream=dialog.querySelector('[data-message-stream]'),oldHeight=stream.scrollHeight,oldTop=stream.scrollTop,anchor=preserveScroll?readMessageAnchor(stream):null;
     dialog.querySelector('[data-message-title]').textContent=conversationName(conversation);dialog.querySelector('[data-message-participants]').textContent=(conversation.participants||[]).map(participantName).join(' · ');stream.innerHTML='';
     if(conversation.hasMore&&conversation.olderCursor){const button=document.createElement('button');button.type='button';button.dataset.loadOlderMessages='';button.textContent='تحميل الرسائل الأقدم';button.disabled=state.historyLoading;button.addEventListener('click',loadOlder);stream.appendChild(button)}
     const messages=conversation.messages||[];
     if(!messages.length){stream.innerHTML='<p class="hl-message-empty">لا توجد رسائل بعد.</p>';return}
     messages.forEach(message=>{const article=document.createElement('article');article.dataset.messageId=message.id;article.className='hl-message'+(message.senderAccountId===me()?' mine':'');const sender=participantName({firstName:message.senderFirstName,lastName:message.senderLastName,email:message.senderEmail});const time=new Date(message.createdAt).toLocaleString('ar-SA');if(message.kind==='VOICE'){article.innerHTML=`<small>${esc(sender)} · ${esc(time)}</small><audio controls preload="none" src="${esc(message.mediaUrl)}"></audio><small>${Number(message.durationSec)||0} ثانية</small>`}else{article.innerHTML=`<small>${esc(sender)} · ${esc(time)}</small><p>${esc(message.body)}</p>`}stream.appendChild(article)});
-    stream.scrollTop=preserveScroll?oldTop+stream.scrollHeight-oldHeight:stream.scrollHeight;
+    if(preserveScroll)restoreMessageAnchor(stream,anchor,oldTop,oldHeight);else stream.scrollTop=stream.scrollHeight;
   };
   async function loadOlder(){
     const conversation=state.current,revision=state.navigation;
