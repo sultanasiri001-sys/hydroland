@@ -57,7 +57,13 @@ export class DepartmentReferencesService {
       }) : [];
       const documentCounts = organization ? await tx.managedDocument.groupBy({
         by: ['department', 'status'],
-        where: { organizationId: organization.id, template: { code: { in: templateCodes } } },
+        where: {
+          organizationId: organization.id,
+          OR: specifications.map(({ code, specification }) => ({
+            department: code,
+            template: { organizationId: organization.id, department: code, code: { in: specification.canonicalTemplates.map(t => t.code) } },
+          })),
+        },
         _count: { _all: true },
       }) : [];
       const policyViews = controls.map(c => {

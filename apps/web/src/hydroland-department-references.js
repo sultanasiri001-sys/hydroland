@@ -59,9 +59,10 @@
       const evidence = node('ul', undefined, detail);
       cycle.closureEvidenceAr.forEach(value => node('li', value, evidence));
       node('h6', 'النماذج المصدرية وحالتها المحفوظة', detail);
-      node('p', 'هذه النماذج الثلاثة لكل إدارة بداية الكتالوج؛ ليست حصرًا لجميع مستندات دورة العمل.', detail);
+      node('p', `نماذج الإدارة في الكتالوج الحالي: ${cycle.templates.length}. الحالة المحفوظة تُقرأ من الجهة المحددة.`, detail);
       for (const template of cycle.templates) {
         const item = node('article', undefined, detail);
+        item.dataset.referenceTemplate = template.code;
         node('h6', template.titleAr + ' · ' + template.code, item);
         const availability = { ACTIVE_VERSION_RECORDED: 'نسخة نشطة مسجلة', MULTIPLE_ACTIVE_VERSIONS: 'تعارض: أكثر من نسخة نشطة', NO_ACTIVE_VERSION_RECORDED: 'لم تظهر نسخة نشطة في الجهة المفحوصة', ORGANIZATION_NOT_RECORDED: 'الجهة الداخلية غير مسجلة' };
         node('p', availability[template.availability] || 'تحتاج الحالة إلى مراجعة', item);
@@ -146,11 +147,13 @@
         const arrays = ['departments', 'authorities', 'legalReferences', 'marineArchives', 'hrSources', 'hrControlCandidates', 'isoReferences'];
         if (result?.referenceOnly !== true || result.canActivate !== false || result.canonicalDepartmentCount !== 14 || !arrays.every(k => Array.isArray(result[k])) || result.departments.length !== 14 || new Set(result.departments.map(d => d.code)).size !== 14 || !Number.isFinite(Date.parse(result.observedAt))) throw new Error('استجابة مراجع الإدارات غير مكتملة.');
         if (result.completeDocumentInventoryVerified !== false || !result.departments.every(d => d.operatingCycle?.departmentClosed === false && d.operatingCycle.closureAssessment === 'NOT_ASSESSED' && ['cycles', 'templates', 'closureEvidenceAr', 'closureGates', 'documentCounts'].every(k => Array.isArray(d.operatingCycle[k])) && Array.isArray(d.isoReferenceIds))) throw new Error('استجابة دورة الإدارة غير مكتملة.');
+        const templateCodes = result.departments.flatMap(d => d.operatingCycle.templates.map(t => t.code));
+        if (!Number.isSafeInteger(result.canonicalSourceTemplateCount) || result.canonicalSourceTemplateCount !== templateCodes.length || new Set(templateCodes).size !== templateCodes.length) throw new Error('استجابة نماذج الإدارات غير مكتملة.');
         data = result; select.replaceChildren();
         for (const department of data.departments) { const option = node('option', department.nameAr, select); option.value = department.code; }
         if (data.departments.some(d => d.code === chosen)) select.value = chosen;
         render();
-        status.textContent = `وقت القراءة: ${new Date(data.observedAt).toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' })} · إدارات مسجلة: ${data.recordedDepartmentCount} من 14 · الضوابط: ${data.effectivePolicyCount} · ذات مراجع مسجلة: ${data.policiesWithRecordedReferences}. بعض الضوابط مشتركة بين الإدارات. حالة المصادر تعكس تاريخ لقطة السجل.`;
+        status.textContent = `وقت القراءة: ${new Date(data.observedAt).toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' })} · إدارات مسجلة: ${data.recordedDepartmentCount} من 14 · نماذج الكتالوج: ${data.canonicalSourceTemplateCount} · الضوابط: ${data.effectivePolicyCount} · ذات مراجع مسجلة: ${data.policiesWithRecordedReferences}. بعض الضوابط مشتركة بين الإدارات. حالة المصادر تعكس تاريخ لقطة السجل.`;
       } catch (error) {
         if (current(g, session)) { data = null; detail.replaceChildren(); select.replaceChildren(); status.textContent = error.message || 'تعذر تحميل المراجع.'; }
       } finally {

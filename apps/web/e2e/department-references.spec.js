@@ -2,9 +2,10 @@ import { test, expect } from '@playwright/test';
 import { openWorkspaceSwitcher } from './portal-test-helpers.js';
 const json = (route, value, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
 const codes = ['HR','TRAINING','MARINE_OPERATIONS','INVENTORY_LOGISTICS','FINANCE','SAFETY_COMPLIANCE_RISK','CUSTOMER_EXPERIENCE','MARKETING_GROWTH','TECHNOLOGY_CYBERSECURITY','FACILITIES_ASSETS_MAINTENANCE','ADMIN_AFFAIRS_RECORDS','EXECUTIVE_GOVERNANCE','RND_MARKET_INTELLIGENCE','LEGAL_CONTRACTS_INSURANCE'];
-const operatingCycle = code => ({ departmentClosed:false, closureAssessment:'NOT_ASSESSED', sharedEngineBoundaryAr:'التنفيذ والتحقق والإقفال أعمال في المجال المختص', cycles:[{titleAr:'دورة تشغيل '+code,stepsAr:['طلب','مراجعة','اعتماد','تنفيذ','تحقق','إقفال وأرشفة']}],closureEvidenceAr:['دليل تنفيذ مرتبط بالسجل'],templates:[{code:code+'-SOURCE',titleAr:'نموذج مصدري للاختبار',availability:code==='HR'?'MULTIPLE_ACTIVE_VERSIONS':'NO_ACTIVE_VERSION_RECORDED',recordedVersions:[]}],documentCounts:[{status:'ARCHIVED',count:5}],closureGates:[{labelAr:'إثبات الإجراء والصلاحيات والنتيجة'}] });
+const counts = { HR:21, TRAINING:13, MARINE_OPERATIONS:11, INVENTORY_LOGISTICS:11, FINANCE:10, SAFETY_COMPLIANCE_RISK:9, CUSTOMER_EXPERIENCE:9, MARKETING_GROWTH:10, TECHNOLOGY_CYBERSECURITY:11, FACILITIES_ASSETS_MAINTENANCE:10, ADMIN_AFFAIRS_RECORDS:10, EXECUTIVE_GOVERNANCE:11, RND_MARKET_INTELLIGENCE:10, LEGAL_CONTRACTS_INSURANCE:11 };
+const operatingCycle = code => ({ departmentClosed:false, closureAssessment:'NOT_ASSESSED', sharedEngineBoundaryAr:'التنفيذ والتحقق والإقفال أعمال في المجال المختص', cycles:[{titleAr:'دورة تشغيل '+code,stepsAr:['طلب','مراجعة','اعتماد','تنفيذ','تحقق','إقفال وأرشفة']}],closureEvidenceAr:['دليل تنفيذ مرتبط بالسجل'],templates:Array.from({length:counts[code]},(_,i)=>({code:i===0&&code==='TRAINING'?'TRN-TRAINING-PLAN':i===0&&code==='FINANCE'?'FIN-PROVIDER-RECONCILIATION':code+'-SOURCE-'+i,titleAr:i===0&&code==='TRAINING'?'خطة التدريب':i===0&&code==='FINANCE'?'مطابقة مزود الدفع':'نموذج مصدري للاختبار '+i,availability:code==='HR'&&i===0?'MULTIPLE_ACTIVE_VERSIONS':'NO_ACTIVE_VERSION_RECORDED',recordedVersions:[]})),documentCounts:[{status:'ARCHIVED',count:5}],closureGates:[{labelAr:'إثبات الإجراء والصلاحيات والنتيجة'}] });
 const snapshot = () => ({
-  catalogVersion: 'isolated-v2', referenceOnly: true, canActivate: false, completeDocumentInventoryVerified:false, canonicalDepartmentCount: 14, recordedDepartmentCount: 14, effectivePolicyCount: 1, policiesWithRecordedReferences: 0, observedAt: new Date().toISOString(),
+  catalogVersion: 'isolated-v2', referenceOnly: true, canActivate: false, completeDocumentInventoryVerified:false, canonicalSourceTemplateCount:157, canonicalDepartmentCount: 14, recordedDepartmentCount: 14, effectivePolicyCount: 1, policiesWithRecordedReferences: 0, observedAt: new Date().toISOString(),
   departments: codes.map(code => ({ code, nameAr: code === 'HR' ? 'الموارد البشرية' : code === 'FINANCE' ? 'المالية' : code, unitRecorded: true, unitActive: true, authorityIds: ['GOV-1'], legalReferenceIds: ['LEG-1'], marineArchiveIds: code === 'HR' ? ['MAR-ARCH-1'] : [], hrSourceIds: code === 'HR' ? ['HR-1'] : [],isoReferenceIds:['ISO-9001'],operatingCycle:operatingCycle(code), policies: [{ category: 'FIXTURE', ruleKey: 'FIXTURE-CONTROL', labelAr: 'ضابط مشترك للاختبار', state: 'ENABLED', referencesRecorded: false }], canActivate: false })),
   isoReferences:[{id:'ISO-9001',designation:'ISO 9001:2026',titleAr:'إدارة الجودة',snapshotDate:'2026-10-24',scopeAr:'قرار الانتقال معلق',url:'https://www.iso.org/standard/9001'}],
   authorities: [{ id: 'GOV-1', nameAr: 'جهة اختبار معزولة', recordedStatus: 'قيد الاستكمال', snapshotDate: '2026-09-17', scope: 'نطاق مرجعي تجريبي', routingStatus: 'PROPOSED_OWNER_ROUTING', sourceLibraryFileId: 'libfile_fixtureauthority' }],
@@ -61,6 +62,33 @@ test('department source discovery is lazy, read only and separate from approval'
   await expect(page.locator('[data-reference-detail]')).toContainText('دورة تشغيل FINANCE');
   await expect(page.locator('[data-reference-detail]')).not.toContainText('دورة تشغيل HR');
   await expect(page.locator('[data-reference-detail]')).not.toContainText('مواصفة دليل تجريبية');
+});
+test('all 157 administrative forms render across the 14 departments with accurate counts', async ({ page }) => {
+  const state=await setup(page);await open(page);
+  await expect(page.locator('[data-reference-status]')).toContainText('نماذج الكتالوج: 157');
+  for(const code of codes){
+    await page.getByLabel('إدارة المراجع').selectOption(code);
+    await expect(page.locator('[data-reference-template]')).toHaveCount(counts[code]);
+    await expect(page.locator('[data-reference-detail]')).toContainText('نماذج الإدارة في الكتالوج الحالي: '+counts[code]);
+    await expect(page.locator('[data-reference-detail]')).not.toContainText('هذه النماذج الثلاثة');
+    await expect(page.locator('[data-reference-detail]')).toContainText('حالة تحقق إقفال الإدارة: لم تُقيّم');
+  }
+  await page.getByLabel('إدارة المراجع').selectOption('TRAINING');
+  await expect(page.locator('[data-reference-template="TRN-TRAINING-PLAN"]')).toContainText('خطة التدريب');
+  await page.getByLabel('إدارة المراجع').selectOption('FINANCE');
+  await expect(page.locator('[data-reference-template="FIN-PROVIDER-RECONCILIATION"]')).toContainText('مطابقة مزود الدفع');
+  expect(state.writes).toBe(0);expect(state.reads).toBe(1);
+});
+test('mismatched catalog totals and duplicate form codes clear the previous inventory', async ({page})=>{
+  const state=await setup(page);await open(page);
+  state.data.canonicalSourceTemplateCount=60;
+  await page.getByRole('button',{name:'تحديث المراجع',exact:true}).click();
+  await expect(page.locator('[data-reference-status]')).toContainText('استجابة نماذج الإدارات غير مكتملة');
+  await expect(page.locator('[data-reference-detail]')).toBeEmpty();
+  state.data.canonicalSourceTemplateCount=157;state.data.departments[1].operatingCycle.templates[0].code=state.data.departments[0].operatingCycle.templates[0].code;
+  await page.getByRole('button',{name:'تحديث المراجع',exact:true}).click();
+  await expect(page.locator('[data-reference-status]')).toContainText('استجابة نماذج الإدارات غير مكتملة');
+  await expect(page.locator('[data-reference-detail]')).toBeEmpty();expect(state.writes).toBe(0);
 });
 test('late source data cannot reappear after leaving the department workspace', async ({ page }) => {
   const state = await setup(page); await open(page); state.delay = true;
