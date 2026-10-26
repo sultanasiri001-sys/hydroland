@@ -11,6 +11,10 @@ const sessions=new Map();
 const token=id=>{const now=Math.floor(Date.now()/1000),body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:id,sid:sessions.get(id),iat:now,exp:now+900})}`;return `${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`};
 const accounts=[],persons=[],organizations=[],ids=[],orderIds=[];
 async function request(account,path,method='GET',body){
+ if(account&&!sessions.has(account.id)){
+   assert.ok(accounts.some(fixture=>fixture.id===account.id),'Only this suite\'s synthetic accounts receive fixture sessions');
+   const session=await db.session.create({data:{accountId:account.id,tokenHash:randomUUID(),expiresAt:new Date(Date.now()+900000)}});sessions.set(account.id,session.id);
+ }
  const response=await fetch(base+path,{method,headers:{'content-type':'application/json',...(account?{authorization:'Bearer '+token(account.id)}:{})},...(body?{body:JSON.stringify(body)}:{})});
  return {status:response.status,body:await response.json().catch(()=>null)};
 }
