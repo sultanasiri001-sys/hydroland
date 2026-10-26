@@ -24,7 +24,7 @@ export function assessmentInput(body: unknown, confirmed = false) {
   if (!Array.isArray(x.gates) || x.gates.length !== OPERATING_CYCLE_CLOSURE_GATES.length) throw new BadRequestException('يجب تسجيل معايير التقييم السبعة دون حذف أو تكرار.');
   const gates = x.gates.map(value => {
     const g = templateObject(value, ['id', 'verificationStatus', 'note', 'evidence']);
-    if (!OPERATING_CYCLE_CLOSURE_GATES.some(v => v.id === g.id) || !['NOT_ASSESSED', 'BLOCKED'].includes(String(g.verificationStatus))
+    if (!OPERATING_CYCLE_CLOSURE_GATES.some(v => v.id === g.id) || typeof g.verificationStatus !== 'string' || !['NOT_ASSESSED', 'BLOCKED'].includes(g.verificationStatus)
       || typeof g.note !== 'string' || g.note.length > 1000 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(g.note)
       || g.verificationStatus === 'BLOCKED' && g.note.trim().length < 5 || !Array.isArray(g.evidence) || g.evidence.length > 3) throw new BadRequestException('حالة المعيار أو الملاحظة أو مراجع الأدلة غير صالحة؛ لا يدعم هذا المسار تسجيل قبول أو إقفال.');
     const evidence = g.evidence.map(value => {

@@ -21,6 +21,9 @@ try {
       await db.$executeRawUnsafe(`INSERT INTO "Organization" VALUES ($1::${type})`, org);
       for (const sql of parts) await db.$executeRawUnsafe(sql);
       assert.equal(await db.departmentClosureAssessment.count(), 0, 'Migration creates no assessment or approval');
+      const indexes = await db.$queryRawUnsafe(`SELECT indexname FROM pg_indexes WHERE schemaname=$1 AND tablename='DepartmentClosureAssessment'`, schema);
+      assert(indexes.some(i => i.indexname === 'DepartmentClosureAssessment_organizationId_department_revis_key'));
+      assert(indexes.some(i => i.indexname === 'DepartmentClosureAssessment_organizationId_department_creat_idx'));
       const data = { organizationId: org, department: 'HR', revision: 1, policyVersion: 'fixture', specificationVersion: 'fixture', state: 'BLOCKED', gates: [], sourceDigest: 'fixture', authorityDigest: 'fixture', createdByAccountId: actor, recordDigest: 'fixture' };
       const first = await db.departmentClosureAssessment.create({ data });
       assert.equal((await db.departmentClosureAssessment.findFirstOrThrow({ where: { organizationId: org, department: 'HR', revision: 1 } })).id, first.id, 'Native Prisma codec works with both historical key types');

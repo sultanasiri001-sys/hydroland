@@ -134,7 +134,7 @@ try {
   for (const extra of [{ organizationId: outside.id }, { departmentClosed: true }, { closureDecisionReference: 'invented' }, { reviewerAccountId: other.id }, { policyVersion: 'ACCEPTED' }]) await deniedPreview({ ...input, ...extra });
   for (const value of [-1, 1.5, '0', null]) await deniedPreview({ ...input, expectedRevision: value });
   await deniedPreview({ ...input, specificationVersion: 'obsolete-specification' }, [409]);
-  for (const status of ['ACCEPTED', 'PASSED', 'CLOSED', 'OWNER_APPROVED', null]) { const bad = clone(input); bad.gates[0].verificationStatus = status; await deniedPreview(bad); }
+  for (const status of ['ACCEPTED', 'PASSED', 'CLOSED', 'OWNER_APPROVED', null, ['BLOCKED'], ['NOT_ASSESSED'], { toString: 'BLOCKED' }, true, 1]) { const bad = clone(input); bad.gates[0].verificationStatus = status; await deniedPreview(bad); }
   for (const gates of [input.gates.slice(1), [...input.gates, input.gates[0]], [...input.gates.slice(1), input.gates[1]], input.gates.map((g, i) => i ? g : { ...g, id: 'UNRECOGNIZED_GATE' })]) await deniedPreview({ ...input, gates });
   for (const note of ['', 'tiny', 'x'.repeat(1001), '\u0000injected']) { const bad = clone(input); bad.gates[0].note = note; await deniedPreview(bad); }
   const duplicate = clone(input); duplicate.gates[0].evidence.push(duplicate.gates[0].evidence[0]); await deniedPreview(duplicate);

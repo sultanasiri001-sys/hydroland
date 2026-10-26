@@ -26,7 +26,7 @@ Gate input is `{id, verificationStatus, note, evidence:[{documentId,version}]}`.
 
 The preview binds the owner and organizational security revisions, policy/specification version, prior assessment digest and exact evidence. Every read/action rechecks current authority; suspending/restoring or transferring/restoring authority does not revive an old preview. Identity/source locks, revision uniqueness and serializable transactions prevent duplicate confirmations and lost updates. Audit failure rolls back the assessment insert. No external call runs inside the transaction.
 
-When the recorded authority, policy/specification or referenced source changes, the catalog shows `STALE`, all current gate statuses become `NOT_ASSESSED`, and the historical snapshot remains available to the current owner. It is not silently re-certified.
+When the recorded authority, specification or referenced source changes, the catalog shows `STALE`, all current gate statuses become `NOT_ASSESSED`, and the historical snapshot remains available to the current owner. It is not silently re-certified. An unrecognized or inconsistent stored policy fails closed with a conflict instead of rendering a valid current record. Future policy revisions must retain an explicit version-aware historical decoder.
 
 ## Explicit non-goals and next boundary
 

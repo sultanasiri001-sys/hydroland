@@ -23,5 +23,5 @@ BEGIN
     CONSTRAINT "DepartmentClosureAssessment_createdByAccountId_fkey" FOREIGN KEY ("createdByAccountId") REFERENCES "Account"("id") ON DELETE RESTRICT ON UPDATE CASCADE
   )', organization_key_type, account_key_type);
 END $$;
-CREATE UNIQUE INDEX "DepartmentClosureAssessment_organizationId_department_revision_key" ON "DepartmentClosureAssessment"("organizationId", "department", "revision");
-CREATE INDEX "DepartmentClosureAssessment_organizationId_department_createdAt_idx" ON "DepartmentClosureAssessment"("organizationId", "department", "createdAt");
+CREATE UNIQUE INDEX "DepartmentClosureAssessment_organizationId_department_revis_key" ON "DepartmentClosureAssessment"("organizationId", "department", "revision");
+CREATE INDEX "DepartmentClosureAssessment_organizationId_department_creat_idx" ON "DepartmentClosureAssessment"("organizationId", "department", "createdAt");
