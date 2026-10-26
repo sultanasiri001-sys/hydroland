@@ -10,7 +10,10 @@ department closure, remote merge, or deployment. Base:
 API/schema acceptance ran on code snapshot
 `72a4ea9307bc9a066dd7a5a0ae59a9cb36e94136`. The later web-only messaging
 correction is included at `1aba480f864cc4649f98808951330671b33aa14d`; web tests and
-build were repeated after it. No live/customer data or real payment, messaging,
+build were repeated after it. Mobile defensive acceptance was subsequently
+reproduced on the unified tree at `0d348d531bdb8d443e936dd52933d7a7507ca3ef`
+(tree `eaadf8ac3d47d6f6756ec7beec909590c01775cd`); the isolated validation
+checkout matched this complete tree exactly. No live/customer data or real payment, messaging,
 weather, model, or emergency provider was used by the runtime fixtures.
 
 The full historical migration chain was **not** declared clean-installable.
@@ -34,6 +37,7 @@ external PR import. The source commits remain in the local object database.
 | Training cross-role identity | `8c2149a430bd795d79fdeb7222fa399fa5385897` |
 | Safety coordinates and weather context | `9607dbad3c1a383b4ff69001cd2c14d66cac493b` → `5a59061a45db2269e066c2f2023011921947d906` |
 | Internal research runtime | `8e18bf2c51a205feb799986bb947019f5305b0f0` |
+| Mobile session/cache defensive boundaries | `19c57d1b306b86413db8171051646585584ea9d8` → `6fc7a7908b820e3dcbde976339dd94b1e2e7d6cd` |
 | External ready, unmerged PR #526 | Exact final five-file patch at `06daf844a4a422ea5719bfb959ffeb251dbe80dc`, imported locally as `cbe1a7719e32fd44e70df16db98b710c284741ba` |
 
 For PR #526, a fresh read confirmed the base and head above and nine successful
@@ -45,6 +49,12 @@ The training cross-role change received an integration-owner read-only review:
 the same canonical Account is checked in either role, while excluded session,
 active states, half-open intervals, null-end/in-progress behavior, and policy
 modes remain intact. Native concurrent-write acceptance was then repeated.
+
+Mobile review found two additional stale-request windows after awaited local
+metadata/scope reads. The mobile owner added immediate pre-network scope fences
+and two actual-source race tests; both reproduced failures before the correction
+and passed afterward. The reviewed candidate was held outside the integration
+until corrected. This involved no API authorization repair or workaround.
 
 ### Integration-specific changes
 
@@ -80,6 +90,10 @@ modes remain intact. Native concurrent-write acceptance was then repeated.
 - **Agents/research:** historical agent metrics are read-only observations, not
   acceptance rates or invoices. Research is an API-first internal desk-research
   lifecycle, not external execution, staffed adoption, or department closure.
+- **Mobile:** server-verified `/me` account identity and a per-login cache scope
+  fence local files and async work. Raw-byte SHA-256 matches the server convention;
+  sensitive, online-only, and unknown payload classifications fail closed. This
+  does not establish server resource authorization or encrypted private delivery.
 - **Deployment:** reconciled Render evidence/configuration is retained without
   making a live deployment or changing production settings.
 
@@ -108,6 +122,7 @@ native disposable loopback **PostgreSQL 16.14**. All final rows below passed.
 | Agent HTTP | Full AI/governance fixture plus actual PR #526 aggregate/duration/cost assertions; model traffic loopback-only |
 | Research HTTP | **32** groups under actual research/revision/AuditEvent migration guards |
 | Shared document review | **36** existing HTTP/PostgreSQL regression groups after research's shared-domain change |
+| Mobile defensive behavior | **22** actual-source behavioral groups, retained braces/node-forge/Zod checks, TypeScript/build and audit contract; clean scoped install and offline iOS/Android Metro exports on the exact unified tree |
 | API registry | 502 routes with no duplicate method/path pairs |
 | Dependency audits | Web/API including dev dependencies: **0 total**; mobile and repository: **0 high/critical, 6 moderate**, not silently ignored |
 
@@ -123,7 +138,9 @@ its own synthetic audit rows. All use the same integrated schema and API binary.
 - **No local browser acceptance claim.** Chromium execution is blocked by the
   known runtime IPC restriction; no denial bypass was attempted.
 - PR #527's real browser run exposed private editor retention after fresh role
-  denial; `daee35b` is included. PR #528's real browser run exposed an unbounded
+  denial; `daee35b` is included. Its owner subsequently reported all **10**
+  workflows and **552/552** shipped-browser tests passing on corrected PR #527.
+  That is individual-branch evidence, not a combined-tree browser receipt. PR #528's real browser run exposed an unbounded
   message grid/scroll jump; `e204632` is included. Root published the messaging correction to approved PR #528 as
   `d9ad589d545409591f86e23d8bf5aa3bd3bc1f54`, with its tree verified equal
   to local `e204632`; CI is rerunning. Updated remote browser
@@ -131,9 +148,13 @@ its own synthetic audit rows. All use the same integrated schema and API binary.
   retained and desktop/mobile viewport checks are stronger, not relaxed.
 - The isolated integration branch itself is **not published**, merged, or
   deployed, and has no combined remote CI receipt.
-- Research UI and mobile/offline authorization hardening are separate pending
-  lanes, not included or claimed complete here. Mobile moderate advisories remain
-  separately visible.
+- Research UI is a separate pending lane, not included or claimed complete here.
+  Mobile defensive session/cache fixes are included, but the **server private
+  offline-delivery authorization gate remains blocked and untouched**. No repair,
+  retry, rephrasing, or workaround is claimed. Native-device behavior, signing,
+  store release, trusted expiry policy, and sensitive encryption remain separate
+  gates. Offline Metro export is not native compilation or installed acceptance.
+  Mobile moderate advisories remain separately visible.
 - No fresh-install baseline candidate, production repair, live migration,
   provider activation, money movement, or customer-data action was performed.
 
