@@ -1,7 +1,5 @@
 import { DepartmentCode } from '../governance/department-ownership.domain';
-import { buildDepartmentTemplateCatalog } from './document-template-catalog';
-import { buildOperationalDocumentCatalog } from './operational-document-catalog';
-import { buildHrDocumentCatalog } from './hr-document-catalog';
+import { ADMINISTRATIVE_CATALOG_REVISION, ADMINISTRATIVE_CATALOG_SOURCE, reviewedAdministrativeTemplates } from './administrative-form-catalog';
 
 type Cycle = { titleAr: string; stepsAr: readonly string[]; sourcePaths: readonly string[] };
 type Definition = { cycles: readonly Cycle[]; handoffs: readonly DepartmentCode[]; closureEvidenceAr: readonly string[] };
@@ -54,9 +52,11 @@ export const OPERATING_CYCLE_CLOSURE_GATES = [
 ] as const;
 
 export function departmentOperatingCycle(code: DepartmentCode) {
-  const templates = [...buildDepartmentTemplateCatalog('catalog-scope'), ...buildOperationalDocumentCatalog('catalog-scope'), ...buildHrDocumentCatalog('catalog-scope')].filter(t => t.department === code);
+  const templates = reviewedAdministrativeTemplates('catalog-scope').filter(t => t.department === code);
   return {
-    specificationVersion: '2026-10-24.v1',
+    specificationVersion: '2026-10-26.v2',
+    documentCatalogRevision: ADMINISTRATIVE_CATALOG_REVISION,
+    documentCatalogSource: ADMINISTRATIVE_CATALOG_SOURCE,
     scopeStatus: 'EXISTING_BASELINES_AND_CURRENT_USER_SCOPE',
     ...DEPARTMENT_OPERATING_CYCLES[code],
     sharedDocumentStates: ['DRAFT','PENDING_APPROVAL','APPROVED','SIGNED','ARCHIVED'],

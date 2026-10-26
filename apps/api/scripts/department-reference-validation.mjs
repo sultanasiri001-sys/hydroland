@@ -8,6 +8,7 @@ const { HYDROLAND_DEPARTMENTS } = require('../dist/governance/department-ownersh
 const { DEPARTMENT_REFERENCE_CATALOG: catalog } = require('../dist/legal-governance/department-reference-catalog.js');
 const { departmentOperatingCycle } = require('../dist/document-forms/department-operating-cycle.catalog.js');
 const actorId = '11111111-1111-4111-8111-111111111111';
+const expectedTemplateCounts = { HR:21, TRAINING:13, MARINE_OPERATIONS:11, INVENTORY_LOGISTICS:11, FINANCE:10, SAFETY_COMPLIANCE_RISK:9, CUSTOMER_EXPERIENCE:9, MARKETING_GROWTH:10, TECHNOLOGY_CYBERSECURITY:11, FACILITIES_ASSETS_MAINTENANCE:10, ADMIN_AFFAIRS_RECORDS:10, EXECUTIVE_GOVERNANCE:11, RND_MARKET_INTELLIGENCE:10, LEGAL_CONTRACTS_INSURANCE:11 };
 let permitted = true, privateReads = 0;
 const controls = [
   { category: 'HR_COMPLIANCE', ruleKey: 'HR-LAB-EMP-001', labelAr: 'Fixture HR control', state: 'DISABLED', metadata: { regulatoryRequirementId: 'unapproved-fixture' } },
@@ -24,7 +25,7 @@ const tx = {
   orgUnit: { findMany: async ({ where }) => { assert.deepEqual(where, { organizationId: 'fixture-platform', type: 'DEPARTMENT' }); return HYDROLAND_DEPARTMENTS.map(d => ({ code: d.code, active: true })); } },
   policyControl: { findMany: async () => { privateReads++; return structuredClone(controls); } },
   documentTemplate: { findMany: async ({where,select}) => {
-    privateReads++; assert.equal(where.organizationId,'fixture-platform'); assert.equal(new Set(where.code.in).size,60); assert.equal(select.fields,undefined);
+    privateReads++; assert.equal(where.organizationId,'fixture-platform'); assert.equal(new Set(where.code.in).size,157); assert(where.code.in.includes('TRN-TRAINING-PLAN')); assert(where.code.in.includes('FIN-PROVIDER-RECONCILIATION')); assert.equal(select.fields,undefined);
     return [
       { code:'HR-EMPLOYEE-REPORT',department:'HR',version:1,status:'INACTIVE',printable:true },
       { code:'HR-EMPLOYEE-REPORT',department:'HR',version:2,status:'ACTIVE',printable:true },
@@ -34,7 +35,8 @@ const tx = {
     ];
   } },
   managedDocument: { groupBy: async ({where,by}) => {
-    privateReads++; assert.equal(where.organizationId,'fixture-platform'); assert.equal(where.template.code.in.length,60); assert.deepEqual(by,['department','status']);
+    privateReads++; assert.equal(where.organizationId,'fixture-platform'); assert.equal(where.OR.length,14); assert.deepEqual(by,['department','status']);
+    for(const scope of where.OR){ assert.equal(scope.template.organizationId,'fixture-platform'); assert.equal(scope.template.department,scope.department); assert.equal(scope.template.code.in.length,expectedTemplateCounts[scope.department]); }
     return [{department:'HR',status:'DRAFT',_count:{_all:2}},{department:'HR',status:'ARCHIVED',_count:{_all:5}}];
   } },
 };
@@ -44,7 +46,7 @@ assert.equal(result.referenceOnly, true); assert.equal(result.canActivate, false
 assert.equal(result.canonicalDepartmentCount, 14); assert.equal(result.recordedDepartmentCount, 14);
 assert.equal(result.authorities.length, 19); assert.equal(result.legalReferences.length, 15); assert.equal(result.hrSources.length, 6); assert.equal(result.hrControlCandidates.length, 7);
 assert.equal(result.marineArchives.length, 10);
-assert.equal(result.isoReferences.length,11); assert.equal(result.canonicalSourceTemplateCount,60); assert.equal(result.completeDocumentInventoryVerified,false);
+assert.equal(result.isoReferences.length,11); assert.equal(result.canonicalSourceTemplateCount,157); assert.equal(result.completeDocumentInventoryVerified,false);
 assert.deepEqual(result.referencePrecedence,['SAUDI_APPLICABLE_REGULATION','ISO_APPLICABLE_SCOPE','WRSTC_APPLICABLE_SCOPE','TRAINING_AGENCY_PROGRAM_VERSION']);
 for (const source of result.isoReferences) {
   assert.equal(new URL(source.url).hostname,'www.iso.org'); assert.equal(source.adoptionDecisionReference,null); assert.equal(source.licensedCopyLibraryFileId,null); assert.equal(source.certificationClaim,false); assert.equal(source.clauseMappingStatus,'REVIEW_REQUIRED');
@@ -66,7 +68,7 @@ for (const department of result.departments) {
   assert(refs.length > 0, department.code); for (const id of refs) assert(ids.includes(id));
   const cycle=department.operatingCycle;
   assert.equal(cycle.departmentClosed,false); assert.equal(cycle.closureAssessment,'NOT_ASSESSED'); assert.equal(cycle.completeDocumentInventoryVerified,false); assert.equal(cycle.closureDecisionReference,null);
-  assert.equal(cycle.templates.length,department.code==='HR'?21:3); assert.equal(cycle.closureGates.length,7); assert(cycle.closureGates.every(g=>g.verificationStatus==='NOT_ASSESSED'));
+  assert.equal(cycle.templates.length,expectedTemplateCounts[department.code]); assert.equal(cycle.closureGates.length,7); assert(cycle.closureGates.every(g=>g.verificationStatus==='NOT_ASSESSED'));
   for (const flow of cycle.cycles) { assert(flow.stepsAr.length>=6); for (const path of flow.sourcePaths) assert(existsSync(fileURLToPath(new URL('../../../'+path,import.meta.url))),path); }
   assert.deepEqual(cycle.sharedDocumentStates,['DRAFT','PENDING_APPROVAL','APPROVED','SIGNED','ARCHIVED']);
   for (const id of department.isoReferenceIds) assert(result.isoReferences.some(s=>s.id===id));
@@ -75,7 +77,7 @@ const hr=result.departments.find(d=>d.code==='HR').operatingCycle;
 assert.equal(hr.templates.find(t=>t.code==='HR-EMPLOYEE-REPORT').availability,'ACTIVE_VERSION_RECORDED');
 assert.equal(hr.templates.find(t=>t.code==='HR-LEAVE-REQUEST').availability,'MULTIPLE_ACTIVE_VERSIONS');
 assert.equal(hr.templates.find(t=>t.code==='HR-PERFORMANCE-REVIEW').availability,'NO_ACTIVE_VERSION_RECORDED');
-assert.equal(result.departments.find(d=>d.code==='FINANCE').operatingCycle.templates[0].availability,'NO_ACTIVE_VERSION_RECORDED','Wrong-department row is not proof of a valid finance template');
+assert.equal(result.departments.find(d=>d.code==='FINANCE').operatingCycle.templates.find(t=>t.code==='FIN-TRANSACTION-REPORT').availability,'NO_ACTIVE_VERSION_RECORDED','Wrong-department row is not proof of a valid finance template');
 assert.deepEqual(hr.documentCounts,[{status:'DRAFT',count:2},{status:'ARCHIVED',count:5}]);
 assert.equal(hr.departmentClosed,false,'Five archived documents are not a department closure decision');
 for (const a of result.authorities) { assert.equal(a.routingStatus, 'PROPOSED_OWNER_ROUTING'); for (const code of a.departmentCodes) assert(result.departments.some(d => d.code === code)); }
@@ -97,4 +99,4 @@ const noOrg=await service.list(actorId); assert.equal(noOrg.recordedDepartmentCo
 tx.operationalSetting.findUnique=savedOrganization;
 permitted = false; const reads = privateReads;
 await assert.rejects(() => service.list(actorId), e => e.getStatus?.() === 403); assert.equal(privateReads, reads, 'No private data read before fresh authorization');
-console.log('Department reference validation passed: canonical ownership, 14 operating-cycle scopes, 60 source templates without a false completeness claim, ISO metadata without adoption/certification, missing/conflicting versions, scoped counts, source paths, fresh authorization, privacy and no writes.');
+console.log('Department reference validation passed: canonical ownership, all 157 templates across 14 operating cycles, organization/department-scoped counts, retained closure gates, missing/conflicting versions, source paths, fresh authorization, privacy and no writes.');
