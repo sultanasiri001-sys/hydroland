@@ -7,8 +7,9 @@ import { AgentService } from './agent.service';
 import { AGENT_DEPARTMENTS, uuid } from './agent-runtime.domain';
 import { AgentKey } from './agent.types';
 import { GOVERNANCE_REVIEW_ORDER, governanceRouteDecision, isGovernanceAgent, parseGovernanceReview } from './governance-review.domain';
+import { readOperationsEvidence } from './agent-operations-evidence';
 
-const taskSelect={id:true,agentKey:true,requestedByAccountId:true,revision:true,action:true,language:true,prompt:true,result:true,state:true,createdAt:true,finishedAt:true,reservedCostMicroUsd:true,estimatedCostMicroUsd:true} as const;
+const taskSelect={id:true,agentKey:true,requestedByAccountId:true,revision:true,action:true,language:true,prompt:true,result:true,state:true,createdAt:true,startedAt:true,finishedAt:true,claimId:true,reservedCostMicroUsd:true,estimatedCostMicroUsd:true} as const;
 type Task=Prisma.AiAgentTaskGetPayload<{select:typeof taskSelect}>;
 const metadata=(value:Prisma.JsonValue|null):Record<string,unknown>=>value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:{};
 type InboxStatus='NOT_STARTED'|'WAITING_FOR_REVIEW'|'REVIEW_IN_PROGRESS'|'CORRECTION_REQUIRED'|'EVIDENCE_REQUIRED'|'OWNER_ESCALATION_REQUIRED'|'REVIEW_STOPPED'|'ROUTE_DEFERRED'|'INTEGRITY_REVIEW_REQUIRED'|'READY_FOR_OWNER';
@@ -42,7 +43,7 @@ export class GovernanceReviewInboxService {
   private async readFile(tx:Prisma.TransactionClient,source:Task){
     const descriptors=this.agents.list();
     const departmentCode=AGENT_DEPARTMENTS[source.agentKey as AgentKey];
-    const sourceView={id:source.id,revision:source.revision,agentKey:source.agentKey,nameAr:descriptors.find(a=>a.key===source.agentKey)?.nameAr||source.agentKey,departmentCode,departmentName:STAFFING_DEPARTMENTS.find(d=>d.code===departmentCode)?.nameAr||departmentCode,action:source.action,language:source.language,prompt:source.prompt,result:source.result,createdAt:source.createdAt,finishedAt:source.finishedAt};
+    const sourceView={id:source.id,revision:source.revision,agentKey:source.agentKey,nameAr:descriptors.find(a=>a.key===source.agentKey)?.nameAr||source.agentKey,departmentCode,departmentName:STAFFING_DEPARTMENTS.find(d=>d.code===departmentCode)?.nameAr||departmentCode,action:source.action,language:source.language,prompt:source.prompt,result:source.result,createdAt:source.createdAt,finishedAt:source.finishedAt,operationsEvidence:await readOperationsEvidence(tx,source)};
     const reviews:GovernanceInboxStage[]=GOVERNANCE_REVIEW_ORDER.map(agentKey=>({agentKey,nameAr:descriptors.find(a=>a.key===agentKey)!.nameAr,state:'NOT_STARTED',taskId:null,revision:null,result:null,review:null,finishedAt:null}));
     const tasks:Task[]=[source];
     let parent=source,status:InboxStatus='NOT_STARTED',reason='REVIEW_NOT_QUEUED',completedReviews=0;
@@ -78,6 +79,7 @@ export class GovernanceReviewInboxService {
       }
       parent=task;
     }
+    if(sourceView.operationsEvidence&&sourceView.operationsEvidence.status!=='RECORDED'){status='EVIDENCE_REQUIRED';reason='SOURCE_EVIDENCE_UNAVAILABLE';}
     return{source:sourceView,reviews,status,reason,completedReviews,stageCount:6,cost:{currency:'USD',taskCount:tasks.length,reservedMicroUsd:tasks.reduce((n,t)=>n+t.reservedCostMicroUsd,0),estimatedMicroUsd:tasks.every(t=>t.estimatedCostMicroUsd!==null)?tasks.reduce((n,t)=>n+t.estimatedCostMicroUsd!,0):null},ownerApprovalRequired:status==='READY_FOR_OWNER'||status==='OWNER_ESCALATION_REQUIRED',approved:false,readOnly:true,scope:'ADVISORY_RUNTIME_OUTPUTS'};
   }
 }

@@ -11,6 +11,7 @@ import { AgentAction, AgentKey, SupportedLanguage } from './agent.types';
 import { AgentModelProviderService, AiModelConfiguration, AiModelResult, AiProviderError } from './agent-model-provider.service';
 import { AGENT_DEPARTMENTS, decisionReason, inputRecord, METRICS_MAX_AGE_MS, QUEUE_LIMIT, QUEUE_OVERDUE_MS, RUNTIME_GUARD_KEY, TASK_LEASE_MS, uuid, WORKER_STATUS_KEY, workload } from './agent-runtime.domain';
 import { GOVERNANCE_REVIEW_ORDER, governanceRouteDecision, isGovernanceAgent, parseGovernanceReview } from './governance-review.domain';
+import { operationsEvidenceDigest, operationsValues, readOperationsEvidence } from './agent-operations-evidence';
 
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const taskView={id:true,agentKey:true,requestedByAccountId:true,action:true,language:true,prompt:true,state:true,revision:true,createdAt:true,startedAt:true,dispatchedAt:true,finishedAt:true,model:true,executionPolicy:true,inputTokens:true,outputTokens:true,reservedCostMicroUsd:true,estimatedCostMicroUsd:true,result:true,errorCode:true,reviewedAt:true} as const;
@@ -153,7 +154,7 @@ export class AgentRuntimeService {
       let allowed=true;try{await lockAdminIdentities(tx,task.requestedByAccountId);}catch(error){if(!(error instanceof ForbiddenException))throw error;allowed=false;}
       if(!allowed){await tx.aiAgentTask.update({where:{id:task.id},data:{state:'FAILED',errorCode:'REQUESTER_AUTH_REVOKED',finishedAt:now,revision:randomUUID()}});await this.audit.record({action:'AI_TASK_DENIED',resource:'AiAgentTask',resourceId:task.id,metadata:{agentKey:task.agentKey,executor:'AI_RUNTIME_WORKER',initiatedByAccountId:task.requestedByAccountId,from:'QUEUED',to:'FAILED',reason:'REQUESTER_AUTH_REVOKED'}},tx);return null;}
       const claimId=randomUUID();const updated=await tx.aiAgentTask.update({where:{id:task.id},data:{state:'RUNNING',revision:randomUUID(),startedAt:now,leaseExpiresAt:new Date(now.getTime()+TASK_LEASE_MS),claimId,model:config.model,reservationDate:budget.day,reservedCostMicroUsd:config.reserveMicroUsd,executionPolicy:{provider:config.provider,model:config.model,maxInputTokens:config.maxInputTokens,maxOutputTokens:config.maxOutputTokens,inputRate:config.inputRate,outputRate:config.outputRate,dailyBudgetMicroUsd:config.dailyBudgetMicroUsd}}});
-      await this.audit.record({action:'AI_TASK_STARTED',resource:'AiAgentTask',resourceId:task.id,metadata:{agentKey:task.agentKey,executor:'AI_RUNTIME_WORKER',initiatedByAccountId:task.requestedByAccountId,from:'QUEUED',to:'RUNNING',claimId,model:config.model,reservedCostMicroUsd:config.reserveMicroUsd,budgetDay:budget.day.toISOString()}},tx);
+      await this.audit.record({action:'AI_TASK_STARTED',resource:'AiAgentTask',resourceId:task.id,metadata:{agentKey:task.agentKey,executor:'AI_RUNTIME_WORKER',initiatedByAccountId:task.requestedByAccountId,from:'QUEUED',to:'RUNNING',claimId,revision:updated.revision,model:config.model,reservedCostMicroUsd:config.reserveMicroUsd,budgetDay:budget.day.toISOString()}},tx);
       return{task:updated,config,agent:this.descriptor(task.agentKey)};
     });
   }
@@ -165,8 +166,19 @@ export class AgentRuntimeService {
     let result:AiModelResult|undefined,error:AiProviderError|undefined;
     try{
       const governanceReview=isGovernanceAgent(claim.task.agentKey)?await this.db.serializable(tx=>this.governanceContext(tx,claim.task)):undefined;
+      if(governanceReview?.source.action==='READ_OPERATIONS'&&governanceReview.source.operationsEvidence?.status!=='RECORDED')throw new AiProviderError('SOURCE_EVIDENCE_UNAVAILABLE');
       const operations=claim.task.action==='READ_OPERATIONS'&&!isGovernanceAgent(claim.task.agentKey)?await this.admin.overview():undefined;
       const snapshot=operations?{pendingReviews:operations.pendingReviews,openTrips:operations.openTrips,activeBookings:operations.activeBookings,pendingOrganizations:operations.pendingOrganizations}:undefined;
+      if(snapshot){
+        const values=operationsValues(snapshot);if(!values)throw new AiProviderError('OPERATIONS_EVIDENCE_INVALID');
+        await this.db.serializable(async tx=>{
+          await this.guard(tx);
+          const row=await tx.aiAgentTask.findUnique({where:{id:claim.task.id}});
+          if(!row||row.state!=='RUNNING'||row.claimId!==claim.task.claimId||row.revision!==claim.task.revision)throw new AiProviderError('OPERATIONS_EVIDENCE_CONFLICT');
+          const observedAt=(await this.now(tx)).toISOString();
+          await this.audit.record({action:'AI_TASK_OPERATIONS_CAPTURED',resource:'AiAgentTask',resourceId:row.id,metadata:{agentKey:row.agentKey,scope:'OPERATIONS_AGGREGATE_V1',claimId:row.claimId,sourceRevision:row.revision,observedAt,values,digest:operationsEvidenceDigest(row.id,row.claimId!,row.revision,observedAt,values)}},tx);
+        });
+      }
       result=await this.model.execute(claim.config,claim.agent,claim.task.action as AgentAction,claim.task.language as SupportedLanguage,claim.task.prompt,snapshot,governanceReview||undefined);
     }catch(failure){error=failure instanceof AiProviderError?failure:new AiProviderError('EXECUTION_FAILED');}
     // Retry only persistence, never the provider request. A committed receipt is
@@ -186,7 +198,7 @@ export class AgentRuntimeService {
       if(!source||source.requestedByAccountId!==task.requestedByAccountId||source.state!=='COMPLETED'||!source.result||source.revision!==metadata.sourceRevision)return null;
       if(index===0){
         if(isGovernanceAgent(source.agentKey))return null;
-        return{source:{id:source.id,agentKey:source.agentKey,revision:source.revision,prompt:source.prompt,result:source.result},reviews:reviews.reverse()};
+        return{source:{id:source.id,agentKey:source.agentKey,revision:source.revision,action:source.action,prompt:source.prompt,result:source.result,operationsEvidence:await readOperationsEvidence(tx,source)},reviews:reviews.reverse()};
       }
       if(source.agentKey!==GOVERNANCE_REVIEW_ORDER[index-1]||governanceRouteDecision(parseGovernanceReview(source.result))!=='CONTINUE')return null;
       reviews.push({id:source.id,agentKey:source.agentKey,revision:source.revision,result:source.result});cursor=source;

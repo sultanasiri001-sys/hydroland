@@ -46,6 +46,11 @@ Both endpoints require fresh verified global administrator authorization and ret
 
 This view reads the current advisory runtime ledger. It does not implement the separate proposed work-package/policy-decision ledger in draft #519, or substitute for departmental, legal, safety or financial approvals.
 
+## Captured aggregate evidence
+Before an execution-agent read is sent to the provider, the exact four aggregate values and observation time are saved in the append-only audit ledger. The receipt binds the execution claim and started revision and includes a digest. Failure to persist this evidence prevents the provider request. Every review receives the same captured input, and the inbox detail displays it without exposing execution claims or private ledger fields.
+
+A historical read without a captured input is shown as requiring evidence; the current database is never used to backfill its past input. Conflicting evidence cannot appear ready for owner review, and existing review text remains visible. Review instructions identify the agent's actual stage: the first review correctly has no prior reviews. Reviewers assess the requested bounded output and its evidence without requiring unrelated operational or legal approvals.
+
 ## Owner escalation policy
 The target workflow is to review and correct low- and medium-risk work inside the office without individual owner approvals. This review-only foundation provides automatic review routing and correction findings; it does not automatically execute corrections or grant new business mutation authority.
 
