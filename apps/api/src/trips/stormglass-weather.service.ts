@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { IntegrationService } from '../integrations/integration.service';
 import { WeatherSnapshot } from './weather-gate.service';
+import { finiteNumericInput } from '../geo/coordinate-input';
+import { forecastWindow, hasWeatherMeasurements } from './weather-review-context';
 
 type StormglassMetric = { sg?: number; noaa?: number; meteo?: number; [source:string]:number|undefined };
 type StormglassHour = Record<string, StormglassMetric | string | undefined> & { time?: string };
@@ -9,7 +11,7 @@ type StormglassResponse = { hours?: StormglassHour[] };
 const value = (hour: StormglassHour, key: string) => {
   const metric = hour[key];
   if (!metric || typeof metric === 'string') return undefined;
-  return metric.sg ?? metric.noaa ?? metric.meteo;
+  return finiteNumericInput(metric.sg ?? metric.noaa ?? metric.meteo) ?? undefined;
 };
 const validDate=(value:Date|string|undefined)=>{
   const date=value instanceof Date?value:new Date(value??Date.now());
@@ -37,8 +39,9 @@ export class StormglassWeatherService {
     url.searchParams.set('lng', String(longitude));
     url.searchParams.set('params', 'windSpeed,gust,windDirection,waveHeight,waveDirection,wavePeriod,swellHeight,swellDirection,swellPeriod,currentSpeed,currentDirection,waterTemperature');
     url.searchParams.set('source','sg');
-    url.searchParams.set('start',String(Math.floor((target.getTime()-3_600_000)/1000)));
-    url.searchParams.set('end',String(Math.ceil((target.getTime()+3_600_000)/1000)));
+    const window=forecastWindow(target.getTime());
+    url.searchParams.set('start',String(window.start/1000));
+    url.searchParams.set('end',String(window.end/1000));
     const signal = AbortSignal.timeout(8_000);
     let response: Response;
     try {
@@ -53,16 +56,17 @@ export class StormglassWeatherService {
     }
     let payload:StormglassResponse;
     try{payload = await response.json() as StormglassResponse;}catch{throw new ServiceUnavailableException('Stormglass returned an invalid response.');}
-    const hours=Array.isArray(payload.hours)?payload.hours:[];
+    const hours=payload&&Array.isArray(payload.hours)?payload.hours:[];
     const hour=hours.reduce<StormglassHour|undefined>((best,current)=>{
-      const currentTime=current.time?new Date(current.time).getTime():Number.NaN;
-      if(!Number.isFinite(currentTime))return best;
+      if(!current||typeof current!=='object'||Array.isArray(current))return best;
+      const currentTime=typeof current.time==='string'?new Date(current.time).getTime():Number.NaN;
+      if(!Number.isFinite(currentTime)||currentTime<window.start||currentTime>window.end)return best;
       if(!best)return current;
       const bestTime=best.time?new Date(best.time).getTime():Number.NaN;
       return !Number.isFinite(bestTime)||Math.abs(currentTime-target.getTime())<Math.abs(bestTime-target.getTime())?current:best;
     },undefined);
     if (!hour) throw new ServiceUnavailableException('Stormglass returned no marine forecast for the trip time.');
-    return {
+    const snapshot:WeatherSnapshot={
       provider: 'STORMGLASS',
       source:'sg',
       observedAt: typeof hour.time==='string' ? hour.time : target.toISOString(),
@@ -81,5 +85,7 @@ export class StormglassWeatherService {
       decision: 'REVIEW_REQUIRED',
       reason: 'Marine forecast supplied by Stormglass source sg for the trip window; operational approval remains human-reviewed.',
     };
+    if(!hasWeatherMeasurements(snapshot))throw new ServiceUnavailableException('Stormglass returned no valid marine measurements for the trip time.');
+    return snapshot;
   }
 }
