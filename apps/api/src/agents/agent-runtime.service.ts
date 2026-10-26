@@ -10,23 +10,16 @@ import { AgentService } from './agent.service';
 import { AgentAction, AgentKey, SupportedLanguage } from './agent.types';
 import { AgentModelProviderService, AiModelConfiguration, AiModelResult, AiProviderError } from './agent-model-provider.service';
 import { AGENT_DEPARTMENTS, decisionReason, inputRecord, METRICS_MAX_AGE_MS, QUEUE_LIMIT, QUEUE_OVERDUE_MS, RUNTIME_GUARD_KEY, TASK_LEASE_MS, uuid, WORKER_STATUS_KEY, workload } from './agent-runtime.domain';
+import { GOVERNANCE_REVIEW_ORDER, governanceRouteDecision, isGovernanceAgent, parseGovernanceReview } from './governance-review.domain';
 
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const taskView={id:true,agentKey:true,requestedByAccountId:true,action:true,language:true,prompt:true,state:true,revision:true,createdAt:true,startedAt:true,dispatchedAt:true,finishedAt:true,model:true,executionPolicy:true,inputTokens:true,outputTokens:true,reservedCostMicroUsd:true,estimatedCostMicroUsd:true,result:true,errorCode:true,reviewedAt:true} as const;
 const configHash=(config:AiModelConfiguration)=>hash(config);
-const GOVERNANCE_REVIEW_ORDER:readonly AgentKey[]=[
-  'GOV_QUALITY_AUDIT',
-  'GOV_TECH_REVIEW',
-  'GOV_SECURITY_RISK',
-  'GOV_COMPLIANCE_POLICY',
-  'GOV_VERIFICATION',
-  'GOV_FINAL_GATE',
-];
-const GOVERNANCE_REVIEW_KEYS=new Set<AgentKey>(GOVERNANCE_REVIEW_ORDER);
 const stableRequestId=(value:string)=>{
   const hex=createHash('sha256').update(value).digest('hex');
   return `${hex.slice(0,8)}-${hex.slice(8,12)}-5${hex.slice(13,16)}-a${hex.slice(17,20)}-${hex.slice(20,32)}`;
 };
+const approvalRequired=(task:{agentKey:string;action:string})=>task.action!=='READ_OPERATIONS'||task.agentKey==='GOV_FINAL_GATE';
 
 @Injectable()
 export class AgentRuntimeService {
@@ -73,7 +66,7 @@ export class AgentRuntimeService {
       const reason=!config.ready?config.reason:!worker.fresh?'WORKER_STALE':!budgetAvailable?'DAILY_BUDGET_EXHAUSTED':'READY';
       const groups=await tx.aiAgentTask.groupBy({by:['agentKey','state'],_count:{_all:true},where:{state:{in:['QUEUED','RUNNING','FAILED','INTERRUPTED']}}});
       const overdue=await tx.aiAgentTask.groupBy({by:['agentKey'],_count:{_all:true},where:{state:'QUEUED',createdAt:{lt:new Date(now.getTime()-QUEUE_OVERDUE_MS)}}});
-      return{initialized:controls.length===this.agents.list().length,observedAt:now.toISOString(),workerObservedAt:worker.observedAt,metricsMaxAgeSeconds:METRICS_MAX_AGE_MS/1000,
+      return{initialized:this.agents.list().every(agent=>controls.some(control=>control.key===agent.key)),observedAt:now.toISOString(),workerObservedAt:worker.observedAt,metricsMaxAgeSeconds:METRICS_MAX_AGE_MS/1000,
         provider:{provider:config.provider,model:config.model,ready:available,reason,maxInputTokens:config.maxInputTokens,maxOutputTokens:config.maxOutputTokens},
         budget:{currency:'USD',day:budget.day.toISOString().slice(0,10),limitMicroUsd:config.dailyBudgetMicroUsd,reservedMicroUsd:budget.reserved,taskReserveMicroUsd:config.reserveMicroUsd,kind:'CONSERVATIVE_RESERVATION'},
         calculation:{perAgentConcurrency:1,highQueueAt:3,overdueMinutes:QUEUE_OVERDUE_MS/60000,globalConcurrency:1},
@@ -110,19 +103,23 @@ export class AgentRuntimeService {
     const prompt=value.prompt.trim(),fingerprint=hash({key,action:value.action,language:value.language,prompt,reason});
     return this.db.serializable(async tx=>{await this.guard(tx);const actor=await lockAdminIdentities(tx,actorId);
       const existing=await tx.aiAgentTask.findUnique({where:{requestedByAccountId_requestKey:{requestedByAccountId:actorId,requestKey:value.requestId as string}},select:{...taskView,fingerprint:true}});
-      if(existing){if(existing.fingerprint!==fingerprint)throw new ConflictException('استُخدم مفتاح الطلب لمهمة مختلفة.');const{fingerprint:omitted,...view}=existing;return{...view,approvalRequired:view.action!=='READ_OPERATIONS'};}
+      if(existing){if(existing.fingerprint!==fingerprint)throw new ConflictException('استُخدم مفتاح الطلب لمهمة مختلفة.');const{fingerprint:omitted,...view}=existing;return{...view,approvalRequired:approvalRequired(view)};}
       if(!await tx.aiAgentRuntime.findUnique({where:{key}}))throw new ConflictException('هيّئ سجلات الوكلاء أولًا.');
       if(await tx.aiAgentTask.count({where:{agentKey:key,state:{in:['QUEUED','RUNNING']}}})>=QUEUE_LIMIT)throw new HttpException('وصل طابور الوكيل إلى حده؛ راجع المهام قبل الإضافة.',429);
       const task=await tx.aiAgentTask.create({data:{agentKey:key,requestedByAccountId:actorId,requestKey:value.requestId as string,fingerprint,action:String(value.action),language:String(value.language),prompt},select:taskView});
-      await this.audit.record({actorId:actor.personId,action:'AI_TASK_QUEUED',resource:'AiAgentTask',resourceId:task.id,metadata:{reason,agentKey:key,action:task.action,language:task.language,requesterAccountId:actorId,to:'QUEUED',approvalRequired:task.action!=='READ_OPERATIONS'}},tx);
-      return{...task,approvalRequired:task.action!=='READ_OPERATIONS'};
+      await this.audit.record({actorId:actor.personId,action:'AI_TASK_QUEUED',resource:'AiAgentTask',resourceId:task.id,metadata:{reason,agentKey:key,action:task.action,language:task.language,requesterAccountId:actorId,to:'QUEUED',approvalRequired:approvalRequired(task)}},tx);
+      return{...task,approvalRequired:approvalRequired(task)};
     });
   }
 
   async tasks(actorId:string,key:string,cursor?:unknown){
     this.descriptor(key);if(cursor!==undefined&&!uuid(cursor))throw new BadRequestException('مؤشر صفحة المهام غير صالح.');
     return this.db.serializable(async tx=>{await requireVerifiedAdmin(tx,actorId);const items=await tx.aiAgentTask.findMany({where:{agentKey:key},select:taskView,orderBy:[{createdAt:'desc'},{id:'desc'}],take:21,...(cursor?{cursor:{id:cursor as string},skip:1}:{})});
-      return{items:items.slice(0,20).map(t=>({...t,approvalRequired:t.action!=='READ_OPERATIONS'})),nextCursor:items.length>20?items[19].id:null};});
+      const events=await tx.auditEvent.findMany({where:{resource:'AiAgentTask',resourceId:{in:items.slice(0,20).map(t=>t.id)},action:{in:['GOVERNANCE_REVIEW_STOPPED','GOVERNANCE_ROUTE_DEFERRED','GOVERNANCE_FINAL_RECOMMENDATION_READY']}},select:{resourceId:true,action:true,metadata:true},orderBy:{occurredAt:'desc'}});
+      return{items:items.slice(0,20).map(t=>{const event=events.find(e=>e.resourceId===t.id),metadata=event?.metadata as Record<string,unknown>|null;
+        const status=event?.action==='GOVERNANCE_FINAL_RECOMMENDATION_READY'?'OWNER_RECOMMENDATION_READY':metadata?.outcome||metadata?.reason;
+        return{...t,approvalRequired:approvalRequired(t),...(isGovernanceAgent(t.agentKey)?{governanceReview:t.result?parseGovernanceReview(t.result):null}:{}),...(typeof status==='string'?{governanceRouting:{status,ownerApprovalRequired:metadata?.ownerApprovalRequired===true,approved:false}}:{})};
+      }),nextCursor:items.length>20?items[19].id:null};});
   }
 
   async decideTask(actorId:string,id:string,body:unknown){
@@ -167,58 +164,83 @@ export class AgentRuntimeService {
     if(!dispatched)return;
     let result:AiModelResult|undefined,error:AiProviderError|undefined;
     try{
-      const operations=claim.task.action==='READ_OPERATIONS'?await this.admin.overview():undefined;
+      const governanceReview=isGovernanceAgent(claim.task.agentKey)?await this.db.serializable(tx=>this.governanceContext(tx,claim.task)):undefined;
+      const operations=claim.task.action==='READ_OPERATIONS'&&!isGovernanceAgent(claim.task.agentKey)?await this.admin.overview():undefined;
       const snapshot=operations?{pendingReviews:operations.pendingReviews,openTrips:operations.openTrips,activeBookings:operations.activeBookings,pendingOrganizations:operations.pendingOrganizations}:undefined;
-      result=await this.model.execute(claim.config,claim.agent,claim.task.action as AgentAction,claim.task.language as SupportedLanguage,claim.task.prompt,snapshot);
+      result=await this.model.execute(claim.config,claim.agent,claim.task.action as AgentAction,claim.task.language as SupportedLanguage,claim.task.prompt,snapshot,governanceReview||undefined);
     }catch(failure){error=failure instanceof AiProviderError?failure:new AiProviderError('EXECUTION_FAILED');}
     // Retry only persistence, never the provider request. A committed receipt is
     // detected through claimId/state, making an ambiguous DB commit harmless.
     for(let attempt=0;attempt<3;attempt++)try{return await this.finish(claim.task.id,claim.task.claimId!,result,error);}catch(failure){if(attempt===2)throw failure;await new Promise(resolve=>setTimeout(resolve,25*(attempt+1)));}
   }
 
-  private async queueGovernanceNext(tx:Prisma.TransactionClient,task:{id:string;agentKey:string;requestedByAccountId:string;language:string;prompt:string},resultText:string){
-    const current=task.agentKey as AgentKey;
-    const currentIndex=GOVERNANCE_REVIEW_ORDER.indexOf(current);
-    if(current==='GOV_FINAL_GATE'){
-      await this.audit.record({action:'GOVERNANCE_FINAL_RECOMMENDATION_READY',resource:'AiAgentTask',resourceId:task.id,metadata:{agentKey:current,requesterAccountId:task.requestedByAccountId,ownerApprovalRequired:true}},tx);
-      return;
+  private async governanceContext(tx:Prisma.TransactionClient,task:{id:string;agentKey:string;requestedByAccountId:string}){
+    if(!isGovernanceAgent(task.agentKey))return null;
+    const reviews:Array<{id:string;agentKey:string;revision:string;result:string}>=[];
+    let cursor=task;
+    for(let index=GOVERNANCE_REVIEW_ORDER.indexOf(task.agentKey);index>=0;index--){
+      const event=await tx.auditEvent.findFirst({where:{resource:'AiAgentTask',resourceId:cursor.id,action:'GOVERNANCE_REVIEW_QUEUED'},orderBy:{occurredAt:'desc'}});
+      const metadata=event?.metadata as Record<string,unknown>|null;
+      if(!metadata||!uuid(metadata.sourceTaskId)||!uuid(metadata.sourceRevision))return null;
+      const source=await tx.aiAgentTask.findUnique({where:{id:metadata.sourceTaskId}});
+      if(!source||source.requestedByAccountId!==task.requestedByAccountId||source.state!=='COMPLETED'||!source.result||source.revision!==metadata.sourceRevision)return null;
+      if(index===0){
+        if(isGovernanceAgent(source.agentKey))return null;
+        return{source:{id:source.id,agentKey:source.agentKey,revision:source.revision,prompt:source.prompt,result:source.result},reviews:reviews.reverse()};
+      }
+      if(source.agentKey!==GOVERNANCE_REVIEW_ORDER[index-1]||governanceRouteDecision(parseGovernanceReview(source.result))!=='CONTINUE')return null;
+      reviews.push({id:source.id,agentKey:source.agentKey,revision:source.revision,result:source.result});cursor=source;
     }
-    const nextKey=currentIndex>=0?GOVERNANCE_REVIEW_ORDER[currentIndex+1]:GOVERNANCE_REVIEW_ORDER[0];
-    if(!nextKey)return;
-    const control=await tx.aiAgentRuntime.findUnique({where:{key:nextKey}});
-    if(!control){
-      await this.audit.record({action:'GOVERNANCE_ROUTE_DEFERRED',resource:'AiAgentTask',resourceId:task.id,metadata:{fromAgentKey:task.agentKey,toAgentKey:nextKey,reason:'GOVERNANCE_AGENT_UNINITIALIZED'}},tx);
-      return;
+    return null;
+  }
+
+  private async queueGovernanceNext(tx:Prisma.TransactionClient,task:{id:string;agentKey:string;revision:string;requestedByAccountId:string;language:string;prompt:string;result:string|null}){
+    const current=task.agentKey;
+    let nextKey:AgentKey=GOVERNANCE_REVIEW_ORDER[0];
+    if(isGovernanceAgent(current)){
+      const context=await this.governanceContext(tx,task);
+      const review=parseGovernanceReview(task.result||'');
+      const outcome=context?governanceRouteDecision(review):'UNLINKED_REVIEW';
+      if(outcome!=='CONTINUE'){
+        await this.audit.record({action:'GOVERNANCE_REVIEW_STOPPED',resource:'AiAgentTask',resourceId:task.id,metadata:{agentKey:current,outcome,sourceTaskId:context?.source.id,ownerApprovalRequired:outcome==='OWNER_ESCALATION_REQUIRED',noAutomaticCorrection:true}},tx);
+        return;
+      }
+      if(current==='GOV_FINAL_GATE'){
+        await this.audit.record({action:'GOVERNANCE_FINAL_RECOMMENDATION_READY',resource:'AiAgentTask',resourceId:task.id,metadata:{agentKey:current,sourceTaskId:context!.source.id,sourceRevision:context!.source.revision,reviewCount:context!.reviews.length,requesterAccountId:task.requestedByAccountId,ownerApprovalRequired:true,approved:false}},tx);
+        return;
+      }
+      nextKey=GOVERNANCE_REVIEW_ORDER[GOVERNANCE_REVIEW_ORDER.indexOf(current)+1];
     }
     const requestKey=stableRequestId(`governance:${task.id}:${nextKey}`);
     const existing=await tx.aiAgentTask.findUnique({where:{requestedByAccountId_requestKey:{requestedByAccountId:task.requestedByAccountId,requestKey}}});
     if(existing)return;
-    const source=resultText.length>1200?`${resultText.slice(0,1200)}…`:resultText;
+    const control=await tx.aiAgentRuntime.findUnique({where:{key:nextKey}});
+    const pending=await tx.aiAgentTask.count({where:{agentKey:nextKey,state:{in:['QUEUED','RUNNING']}}});
+    if(!control||pending>=QUEUE_LIMIT){
+      await this.audit.record({action:'GOVERNANCE_ROUTE_DEFERRED',resource:'AiAgentTask',resourceId:task.id,metadata:{fromAgentKey:current,toAgentKey:nextKey,reason:!control?'GOVERNANCE_AGENT_UNINITIALIZED':'GOVERNANCE_QUEUE_FULL'}},tx);
+      return;
+    }
     const prompt=[
       'HYDROLAND Governance & Quality Office review.',
       `Source agent: ${task.agentKey}`,
       `Source task: ${task.id}`,
-      'Review the supplied output only within your governance specialty.',
-      'Return: PASS, PASS_WITH_NOTES, or RETURN_FOR_CORRECTION; concise findings; evidence gaps; and whether owner escalation is required.',
-      'Do not execute changes or grant approval.',
-      'Source output:',
-      source,
+      'Review the complete linked source and prior reviews supplied in governanceReview.',
+      'This is an advisory review, not an execution or approval.',
     ].join('\n');
     const fingerprint=hash({key:nextKey,action:'READ_OPERATIONS',language:task.language,prompt,reason:'AUTOMATED_GOVERNANCE_ROUTE'});
     const queued=await tx.aiAgentTask.create({data:{agentKey:nextKey,requestedByAccountId:task.requestedByAccountId,requestKey,fingerprint,action:'READ_OPERATIONS',language:task.language,prompt},select:taskView});
-    await this.audit.record({action:'GOVERNANCE_REVIEW_QUEUED',resource:'AiAgentTask',resourceId:queued.id,metadata:{sourceTaskId:task.id,fromAgentKey:task.agentKey,toAgentKey:nextKey,automatic:true,approvalRequired:false,controlState:control.state}},tx);
+    await this.audit.record({action:'GOVERNANCE_REVIEW_QUEUED',resource:'AiAgentTask',resourceId:queued.id,metadata:{sourceTaskId:task.id,sourceRevision:task.revision,fromAgentKey:task.agentKey,toAgentKey:nextKey,automatic:true,ownerApprovalRequired:nextKey==='GOV_FINAL_GATE',controlState:control.state}},tx);
   }
 
   private async finish(id:string,claimId:string,result?:AiModelResult,error?:AiProviderError){
     return this.db.serializable(async tx=>{await this.guard(tx);const task=await tx.aiAgentTask.findUnique({where:{id}});if(!task||task.claimId!==claimId||task.state==='COMPLETED'||task.result)return;
       const late=task.state!=='RUNNING';if(late&&!result)return;
       const state=late?task.state:result?'COMPLETED':error?.uncertain?'INTERRUPTED':'FAILED';
-      await tx.aiAgentTask.update({where:{id},data:{state,revision:randomUUID(),finishedAt:await this.now(tx),...(result?{result:result.text,inputTokens:result.inputTokens,outputTokens:result.outputTokens,estimatedCostMicroUsd:result.estimatedCostMicroUsd}:{errorCode:error?.code||'EXECUTION_FAILED'})}});
+      const completed=await tx.aiAgentTask.update({where:{id},data:{state,revision:randomUUID(),finishedAt:await this.now(tx),...(result?{result:result.text,inputTokens:result.inputTokens,outputTokens:result.outputTokens,estimatedCostMicroUsd:result.estimatedCostMicroUsd}:{errorCode:error?.code||'EXECUTION_FAILED'})}});
       if(!result&&!late)await tx.aiAgentRuntime.update({where:{key:task.agentKey},data:{state:'PAUSED',revision:randomUUID()}});
       await this.audit.record({action:late?'AI_TASK_LATE_RESULT_RECORDED':result?'AI_TASK_COMPLETED':'AI_TASK_EXECUTION_FAILED',resource:'AiAgentTask',resourceId:id,metadata:{agentKey:task.agentKey,executor:'AI_RUNTIME_WORKER',initiatedByAccountId:task.requestedByAccountId,claimId,from:task.state,to:state,errorCode:error?.code,inputTokens:result?.inputTokens,outputTokens:result?.outputTokens,estimatedCostMicroUsd:result?.estimatedCostMicroUsd,noAutomaticRetry:true,agentPaused:!result&&!late}},tx);
       if(result&&!late){
-        const key=task.agentKey as AgentKey;
-        if(this.agents.list().some(agent=>agent.key===key)&&(!GOVERNANCE_REVIEW_KEYS.has(key)||key!=='GOV_FINAL_GATE'))await this.queueGovernanceNext(tx,task,result.text);
+        if(this.agents.list().some(agent=>agent.key===task.agentKey))await this.queueGovernanceNext(tx,completed);
       }
     });
   }

@@ -5,6 +5,7 @@ const json=(route,body,status=200)=>route.fulfill({status,contentType:'applicati
 const now='2026-10-22T19:00:00.000Z';
 const agent=(key,nameAr,state='PAUSED')=>({key,nameAr,state,revision:randomUUID(),departmentName:'التشغيل',allowedActions:['READ_OPERATIONS','DRAFT_REPORT'],counts:{running:0,queued:0,overdue:0,failed:0},workload:'AVAILABLE',canEnable:true});
 const task=(extra={})=>({id:randomUUID(),revision:randomUUID(),state:'QUEUED',action:'DRAFT_REPORT',language:'ar-SA',prompt:'موجز مهمة اختبار',createdAt:now,estimatedCostMicroUsd:null,result:null,approvalRequired:true,...extra});
+const governanceKeys=['GOV_QUALITY_AUDIT','GOV_TECH_REVIEW','GOV_SECURITY_RISK','GOV_COMPLIANCE_POLICY','GOV_VERIFICATION','GOV_FINAL_GATE'];
 async function setup(page,options={}){
  const state={admin:true,ready:true,items:[agent('INVENTORY','وكيل المخزون'),agent('SUPPORT','وكيل الدعم','ENABLED')],tasks:[],writes:[],connectionChecks:0,connectionResponse:{connected:true,reason:'MODEL_ACCESS_VERIFIED',provider:'OPENAI',model:'fixture-model',checkedAt:now,scope:'MODEL_ACCESS_ONLY',generationTested:false},delayConnection:false,releaseConnection:null,failQueue:false,failControl:false,delay:false,release:null,pages:false,...options};
  await page.route('**/api/v1/**',r=>json(r,[]));await page.route('**/auth/google/config',r=>json(r,{enabled:false}));
@@ -40,6 +41,18 @@ test('fresh role revocation prevents a provider check before any metadata reques
 });
 test('late connection check cannot restore a result after leaving the workspace',async({page})=>{
  const state=await setup(page,{delayConnection:true}),request=page.waitForRequest(r=>r.url().endsWith('/admin/agents/provider-connection'));await page.locator('[data-ai-provider-check]').click();await request;await returnToDiverWorkspace(page);state.delayConnection=false;state.releaseConnection?.();await expect(page.locator('#hl-admin-employees')).toBeHidden();await expect(page.locator('[data-ai-connection]')).toBeEmpty();expect(state.writes).toHaveLength(0);
+});
+test('governance office shows fourteen agents and separates recommendations from owner approval',async({page})=>{
+ const items=['EXECUTIVE','MARKETING','SALES','SUPPORT','INVENTORY','SOCIAL','LEGAL_RISK','CYBER_SECURITY',...governanceKeys].map(key=>agent(key,key));
+ const final=task({state:'COMPLETED',agentKey:'GOV_FINAL_GATE',action:'READ_OPERATIONS',result:'توصية للمراجعة فقط',governanceRouting:{status:'OWNER_RECOMMENDATION_READY',ownerApprovalRequired:true,approved:false}});
+ const state=await setup(page,{items,tasks:[final]});
+ await expect(page.locator('[data-ai-key]')).toHaveCount(14);await expect(page.locator('[data-ai-governance-office]')).toContainText('الاعتماد النهائي للمالك');
+ await page.locator('[data-ai-agent-select]').selectOption('GOV_FINAL_GATE');await expect(page.locator('[data-ai-feedback]')).toContainText('تم تحميل');await expect(page.locator('[data-ai-governance-status]')).toContainText('تنتظر اعتماد المالك');await expect(page.locator('[data-ai-task-list]')).toContainText('قرارًا بشريًا مستقلًا');
+ for(const [status,text] of [['CORRECTION_REQUIRED','مسار المراجعة متوقف'],['INVALID_REVIEW','نتيجة المراجعة غير مكتملة'],['OWNER_ESCALATION_REQUIRED','يتطلب قرار المالك'],['UNLINKED_REVIEW','لم تثبت سلسلة المراجعات'],['GOVERNANCE_QUEUE_FULL','المخرج الأصلي محفوظ']]){
+  state.tasks=[task({state:'COMPLETED',result:'نتيجة مراجعة',governanceRouting:{status,approved:false}})];await page.locator('[data-ai-refresh]').click();await expect(page.locator('[data-ai-governance-status]')).toContainText(text);
+ }
+ expect(state.writes).toHaveLength(0);
+ await page.evaluate(()=>window.HydrolandAuth.logout());await expect(page.locator('[data-ai-governance-office]')).toBeHidden();await expect(page.locator('[data-ai-task-list]')).toBeEmpty();
 });
 test('unavailable metrics stay unknown and human refresh cannot enable an unconfigured agent',async({page})=>{
  await setup(page,{ready:false});await expect(page.locator('[data-ai-count]').first()).toHaveText('—');await expect(page.locator('[data-ai-pressure]').first()).toHaveText('غير متاح');await expect(control(page).getByRole('button')).toBeDisabled();await page.getByRole('button',{name:'تحديث الموظفين',exact:true}).click();await expect(page.locator('[data-staff-feedback]')).toContainText('تم تحميل');await expect(control(page).getByRole('button')).toBeDisabled();await expect(control(page,'SUPPORT').getByRole('button')).toBeEnabled();
