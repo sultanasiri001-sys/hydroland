@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 
 // Called only from the loopback HTTP/PostgreSQL/model fixture; never production.
-export async function governanceRuntimeAcceptance({db,service,runtime,audit,provider,actor,ordinary,token,call,catalog,control,enqueue,setModelText,payloads}){
+export async function governanceRuntimeAcceptance({db,service,runtime,audit,provider,actor,ordinary,token,call,catalog,control,enqueue,setModelText,payloads,providerCalls}){
  const order=['GOV_QUALITY_AUDIT','GOV_TECH_REVIEW','GOV_SECURITY_RISK','GOV_COMPLIANCE_POLICY','GOV_VERIFICATION','GOV_FINAL_GATE'];
  const pass={decision:'PASS',riskLevel:'LOW',findings:[],evidenceGaps:[],ownerEscalationRequired:false};
  const business=async()=>Promise.all([db.managedDocument.count(),db.documentTemplate.count(),db.policyControl.count(),db.roleAssignment.count()]);
@@ -75,11 +75,25 @@ export async function governanceRuntimeAcceptance({db,service,runtime,audit,prov
    const next=await db.auditEvent.findMany({where:{action:'GOVERNANCE_REVIEW_QUEUED'}});assert(!next.some(x=>x.metadata?.sourceTaskId===test.review.id));
   }
   // Directly asking the final agent cannot forge the five earlier gates.
-  const standalone=await enqueue('لا تعتمد بوابات لم تراجع','GOV_FINAL_GATE',{action:'READ_OPERATIONS'});assert.equal(standalone.status,201);await run('GOV_FINAL_GATE',JSON.stringify(pass));assert.equal((await audits(standalone.body.id,'GOVERNANCE_REVIEW_STOPPED'))[0].metadata.outcome,'UNLINKED_REVIEW');assert.equal((await audits(standalone.body.id,'GOVERNANCE_FINAL_RECOMMENDATION_READY')).length,0);
+  const assertBlockedSource=async(id,key)=>{const before=providerCalls();await run(key,JSON.stringify(pass));assert.deepEqual(providerCalls(),before,'Invalid source must prevent token counting and generation');const task=await db.aiAgentTask.findUniqueOrThrow({where:{id}});assert.equal(task.state,'FAILED');assert.equal(task.errorCode,'GOVERNANCE_SOURCE_INVALID');assert.equal(task.result,null);assert.equal((await audits(id,'AI_TASK_EXECUTION_FAILED')).length,1);assert.equal((await audits(id,'GOVERNANCE_REVIEW_STOPPED')).length,0);assert.equal((await audits(id,'GOVERNANCE_FINAL_RECOMMENDATION_READY')).length,0);assert.equal((await catalog()).items.find(x=>x.key===key).state,'PAUSED');assert.equal(await db.auditEvent.count({where:{action:'GOVERNANCE_REVIEW_QUEUED',metadata:{path:['sourceTaskId'],equals:id}}}),0);};
+  const standalone=await enqueue('لا تعتمد بوابات لم تراجع','GOV_FINAL_GATE',{action:'READ_OPERATIONS'});assert.equal(standalone.status,201);await assertBlockedSource(standalone.body.id,'GOV_FINAL_GATE');
   assert.equal((await call('/admin/agents/governance-reviews/'+standalone.body.id,token)).status,404);
   // Invalid lineage is never replaced by model-supplied IDs or another actor.
-  const tampered=await start();await db.aiAgentTask.update({where:{id:tampered.root.id},data:{revision:randomUUID()}});await run('GOV_QUALITY_AUDIT',JSON.stringify(pass));assert.equal((await audits(tampered.review.id,'GOVERNANCE_REVIEW_STOPPED'))[0].metadata.outcome,'UNLINKED_REVIEW');
+  const tampered=await start();await db.aiAgentTask.update({where:{id:tampered.root.id},data:{revision:randomUUID()}});await assertBlockedSource(tampered.review.id,'GOV_QUALITY_AUDIT');
   assert.equal((await readFile(tampered.root.id)).status,'INTEGRITY_REVIEW_REQUIRED');
+  // The worker applies the same receipt and scope checks as the read-only inbox.
+  for(const kind of ['duplicate','wrong-from','wrong-to','wrong-requester','wrong-language','missing-source']){
+   const test=await start(),source=await db.aiAgentTask.findUniqueOrThrow({where:{id:test.root.id}}),link=(await audits(test.review.id,'GOVERNANCE_REVIEW_QUEUED'))[0];
+   if(kind==='duplicate')await audit.record({action:link.action,resource:'AiAgentTask',resourceId:test.review.id,metadata:link.metadata});
+   else if(kind==='wrong-from'||kind==='wrong-to'||kind==='missing-source')await db.auditEvent.update({where:{id:link.id},data:{metadata:{...link.metadata,...(kind==='wrong-from'?{fromAgentKey:'SALES'}:kind==='wrong-to'?{toAgentKey:'GOV_FINAL_GATE'}:{sourceTaskId:randomUUID()})}}});
+   else await db.aiAgentTask.update({where:{id:source.id},data:kind==='wrong-requester'?{requestedByAccountId:ordinary.id}:{language:'en'}});
+   const preserved=await db.aiAgentTask.findUniqueOrThrow({where:{id:source.id}});await assertBlockedSource(test.review.id,'GOV_QUALITY_AUDIT');assert.deepEqual(await db.aiAgentTask.findUniqueOrThrow({where:{id:source.id}}),preserved,'Blocked review must retain original source');
+  }
+  for(const kind of ['wrong-action','noncontinuing-review']){
+   const test=await start();await run('GOV_QUALITY_AUDIT',JSON.stringify(pass));const technical=await childOf(test.review.id);
+   await db.aiAgentTask.update({where:{id:test.review.id},data:kind==='wrong-action'?{action:'DRAFT_REPORT'}:{result:JSON.stringify({...pass,decision:'RETURN_FOR_CORRECTION',findings:['Late invalid prior review fixture']})}});
+   const retained=await db.aiAgentTask.findUniqueOrThrow({where:{id:test.review.id}});await assertBlockedSource(technical.id,'GOV_TECH_REVIEW');assert.deepEqual(await db.aiAgentTask.findUniqueOrThrow({where:{id:test.review.id}}),retained,'A later invalid chain keeps its prior review');
+  }
   // Queue pressure defers routing without losing the completed source result.
   const fillers=[];for(let i=0;i<100;i++)fillers.push({agentKey:order[0],requestedByAccountId:actor.id,requestKey:randomUUID(),fingerprint:'isolated-pressure',action:'READ_OPERATIONS',language:'ar-SA',prompt:'Isolated pressure fixture'});
   await db.aiAgentTask.createMany({data:fillers});const full=await enqueue('حفظ المصدر عند امتلاء الطابور');await run('SUPPORT','مخرج محفوظ رغم امتلاء الطابور');assert.equal((await db.aiAgentTask.findUniqueOrThrow({where:{id:full.body.id}})).state,'COMPLETED');assert.equal((await audits(full.body.id,'GOVERNANCE_ROUTE_DEFERRED'))[0].metadata.reason,'GOVERNANCE_QUEUE_FULL');assert.equal((await readFile(full.body.id)).status,'ROUTE_DEFERRED');assert.equal(await db.aiAgentTask.count({where:{agentKey:order[0],state:'QUEUED'}}),100);await db.aiAgentTask.deleteMany({where:{requestKey:{in:fillers.map(x=>x.requestKey)}}});
@@ -99,6 +113,7 @@ export async function governanceRuntimeAcceptance({db,service,runtime,audit,prov
   const firstPage=await call('/admin/agents/governance-reviews',token);assert.equal(firstPage.body.items.length,20);assert(firstPage.body.nextCursor);const secondPage=await call('/admin/agents/governance-reviews?cursor='+firstPage.body.nextCursor,token);assert.equal(secondPage.status,200);assert(!secondPage.body.items.some(x=>firstPage.body.items.some(y=>x.source.id===y.source.id)));assert.equal((await call('/admin/agents/governance-reviews?cursor='+current.id,token)).status,400);assert.equal((await call('/admin/agents/governance-reviews?cursor=invalid',token)).status,400);await db.aiAgentTask.deleteMany({where:{id:{in:pageRows.map(x=>x.id)}}});
   await db.roleAssignment.update({where:{accountId_role:{accountId:actor.id,role:'ADMIN'}},data:{status:'SUSPENDED'}});assert.equal((await call('/admin/agents/governance-reviews',token)).status,403);assert.equal((await call('/admin/agents/governance-reviews/'+chain.root.id,token)).status,403);await db.roleAssignment.update({where:{accountId_role:{accountId:actor.id,role:'ADMIN'}},data:{status:'ACTIVE'}});
   console.log('Operations evidence HTTP/PostgreSQL passed: exact aggregate input retained across six reviews; provenance-bound private receipt; historical and conflicting evidence blocked with reviews preserved; snapshot audit failure prevents generation; no historical backfill.');
+  console.log('Governance source guard passed: standalone and stale links, duplicate receipts, wrong agent endpoints, requester and language mismatch, and missing source refuse both token-count and generation calls; failed task and paused control retained without retries or approval.');
   console.log('Governance review inbox HTTP/PostgreSQL passed: fresh admin-only/no-store reads; empty catalogue; six-stage detail and final owner receipt; original evidence; correction/escalation/deferral; revision and duplicate-link quarantine; cross-requester payload isolation; bounded distinct pagination and invalid cursors; revoked-role refusal; no ledger writes or model dispatch.');
   assert.deepEqual(await business(),beforeBusiness);
   console.log('Governance office HTTP/PostgreSQL passed: 14 bounded agents; full six-gate route with original evidence and five reviews; exactly-once final recommendation requiring owner approval; correction, evidence-gap, invalid-output, high-risk and policy escalation stops; unlinked/revision-conflict isolation; paused controls; queue cap; atomic audit rollback; no business writes. Model traffic was loopback only.');

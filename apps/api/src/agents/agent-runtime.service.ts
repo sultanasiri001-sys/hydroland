@@ -166,6 +166,7 @@ export class AgentRuntimeService {
     let result:AiModelResult|undefined,error:AiProviderError|undefined;
     try{
       const governanceReview=isGovernanceAgent(claim.task.agentKey)?await this.db.serializable(tx=>this.governanceContext(tx,claim.task)):undefined;
+      if(isGovernanceAgent(claim.task.agentKey)&&!governanceReview)throw new AiProviderError('GOVERNANCE_SOURCE_INVALID');
       if(governanceReview?.source.action==='READ_OPERATIONS'&&governanceReview.source.operationsEvidence?.status!=='RECORDED')throw new AiProviderError('SOURCE_EVIDENCE_UNAVAILABLE');
       const operations=claim.task.action==='READ_OPERATIONS'&&!isGovernanceAgent(claim.task.agentKey)?await this.admin.overview():undefined;
       const snapshot=operations?{pendingReviews:operations.pendingReviews,openTrips:operations.openTrips,activeBookings:operations.activeBookings,pendingOrganizations:operations.pendingOrganizations}:undefined;
@@ -186,27 +187,28 @@ export class AgentRuntimeService {
     for(let attempt=0;attempt<3;attempt++)try{return await this.finish(claim.task.id,claim.task.claimId!,result,error);}catch(failure){if(attempt===2)throw failure;await new Promise(resolve=>setTimeout(resolve,25*(attempt+1)));}
   }
 
-  private async governanceContext(tx:Prisma.TransactionClient,task:{id:string;agentKey:string;requestedByAccountId:string}){
-    if(!isGovernanceAgent(task.agentKey))return null;
+  private async governanceContext(tx:Prisma.TransactionClient,task:{id:string;agentKey:string;requestedByAccountId:string;action:string;language:string}){
+    if(!isGovernanceAgent(task.agentKey)||task.action!=='READ_OPERATIONS')return null;
     const reviews:Array<{id:string;agentKey:string;revision:string;result:string}>=[];
     let cursor=task;
     for(let index=GOVERNANCE_REVIEW_ORDER.indexOf(task.agentKey);index>=0;index--){
-      const event=await tx.auditEvent.findFirst({where:{resource:'AiAgentTask',resourceId:cursor.id,action:'GOVERNANCE_REVIEW_QUEUED'},orderBy:{occurredAt:'desc'}});
-      const metadata=event?.metadata as Record<string,unknown>|null;
-      if(!metadata||!uuid(metadata.sourceTaskId)||!uuid(metadata.sourceRevision))return null;
+      const events=await tx.auditEvent.findMany({where:{resource:'AiAgentTask',resourceId:cursor.id,action:'GOVERNANCE_REVIEW_QUEUED'},take:2});
+      if(events.length!==1)return null;
+      const metadata=events[0].metadata as Record<string,unknown>|null;
+      if(!metadata||!uuid(metadata.sourceTaskId)||!uuid(metadata.sourceRevision)||metadata.toAgentKey!==cursor.agentKey)return null;
       const source=await tx.aiAgentTask.findUnique({where:{id:metadata.sourceTaskId}});
-      if(!source||source.requestedByAccountId!==task.requestedByAccountId||source.state!=='COMPLETED'||!source.result||source.revision!==metadata.sourceRevision)return null;
+      if(!source||source.requestedByAccountId!==task.requestedByAccountId||source.language!==task.language||source.state!=='COMPLETED'||!source.result||source.revision!==metadata.sourceRevision||metadata.fromAgentKey!==source.agentKey)return null;
       if(index===0){
         if(isGovernanceAgent(source.agentKey))return null;
         return{source:{id:source.id,agentKey:source.agentKey,revision:source.revision,action:source.action,prompt:source.prompt,result:source.result,operationsEvidence:await readOperationsEvidence(tx,source)},reviews:reviews.reverse()};
       }
-      if(source.agentKey!==GOVERNANCE_REVIEW_ORDER[index-1]||governanceRouteDecision(parseGovernanceReview(source.result))!=='CONTINUE')return null;
+      if(source.agentKey!==GOVERNANCE_REVIEW_ORDER[index-1]||source.action!=='READ_OPERATIONS'||governanceRouteDecision(parseGovernanceReview(source.result))!=='CONTINUE')return null;
       reviews.push({id:source.id,agentKey:source.agentKey,revision:source.revision,result:source.result});cursor=source;
     }
     return null;
   }
 
-  private async queueGovernanceNext(tx:Prisma.TransactionClient,task:{id:string;agentKey:string;revision:string;requestedByAccountId:string;language:string;prompt:string;result:string|null}){
+  private async queueGovernanceNext(tx:Prisma.TransactionClient,task:{id:string;agentKey:string;revision:string;requestedByAccountId:string;action:string;language:string;prompt:string;result:string|null}){
     const current=task.agentKey;
     let nextKey:AgentKey=GOVERNANCE_REVIEW_ORDER[0];
     if(isGovernanceAgent(current)){
