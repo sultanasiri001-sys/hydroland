@@ -165,6 +165,7 @@ model Account {
   updatedAt DateTime @updatedAt
   person Person @relation(fields:[personId], references:[id], onDelete:Restrict)
   sessions Session[]
+  departmentClosureAssessments DepartmentClosureAssessment[]
   aiControlChanges AiAgentRuntime[] @relation("AiAgentControlActor")
   aiTasksRequested AiAgentTask[] @relation("AiAgentTaskRequester")
   aiTasksReviewed AiAgentTask[] @relation("AiAgentTaskReviewer")
@@ -267,6 +268,7 @@ model Organization {
   documentAssets OrganizationDocumentAsset[]
   customerCases CustomerCase[] @relation("OrganizationCustomerCases")
   bookings Booking[]
+  departmentClosureAssessments DepartmentClosureAssessment[]
 }
 
 model OrganizationDocumentAsset {
@@ -2316,4 +2318,27 @@ model ServiceImage {
   content Bytes?
   updatedAt DateTime @default(now())
   @@id([kind,entityId])
+}
+
+
+// Append-only assessment revisions. This is not an operational closure decision.
+model DepartmentClosureAssessment {
+  id String @id @default(uuid())
+  organizationId String
+  department String
+  revision Int
+  policyVersion String
+  specificationVersion String
+  state String
+  gates Json
+  sourceDigest String
+  authorityDigest String
+  createdByAccountId String
+  createdAt DateTime @default(now())
+  recordDigest String
+  previousAssessmentId String?
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  createdBy Account @relation(fields: [createdByAccountId], references: [id], onDelete: Restrict)
+  @@unique([organizationId, department, revision])
+  @@index([organizationId, department, createdAt])
 }

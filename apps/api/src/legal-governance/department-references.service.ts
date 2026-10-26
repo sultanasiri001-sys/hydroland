@@ -5,6 +5,7 @@ import { HYDROLAND_DEPARTMENTS, DepartmentCode } from '../governance/department-
 import { STAFFING_DEPARTMENTS, platformOrganization } from '../hr/staffing-catalog';
 import { DEPARTMENT_REFERENCE_CATALOG as catalog } from './department-reference-catalog';
 import { ISO_REFERENCE_CATALOG } from './iso-reference-catalog';
+import { departmentAssessmentSummary } from './department-closure-assessment.service';
 import { departmentOperatingCycle } from '../document-forms/department-operating-cycle.catalog';
 
 // These are discovery/ownership links to existing capabilities, not permission
@@ -74,6 +75,10 @@ export class DepartmentReferencesService {
           && Array.isArray(m.evidenceIds) && m.evidenceIds.length > 0 && m.evidenceIds.every(nonempty);
         return { category: c.category, ruleKey: c.ruleKey, labelAr: c.labelAr, state: c.state, referencesRecorded };
       });
+      const assessments = new Map<string, Awaited<ReturnType<typeof departmentAssessmentSummary>>>();
+      if (organization) for (const d of HYDROLAND_DEPARTMENTS.filter(d => department === undefined || d.code === department)) {
+        assessments.set(d.code, await departmentAssessmentSummary(tx, organization.id, d.code));
+      }
       const departments = HYDROLAND_DEPARTMENTS.filter(d => department === undefined || d.code === department).map(d => ({
         code: d.code,
         nameAr: STAFFING_DEPARTMENTS.find(n => n.code === d.code)!.nameAr,
@@ -88,6 +93,8 @@ export class DepartmentReferencesService {
         isoReferenceIds: ISO_REFERENCE_CATALOG.filter(s => s.departmentCodes.includes(d.code)).map(s => s.id),
         operatingCycle: {
           ...specifications.find(s => s.code === d.code)!.specification,
+          closureRecord: null,
+          ...assessments.get(d.code),
           organizationRecorded: Boolean(organization),
           templates: specifications.find(s => s.code === d.code)!.specification.canonicalTemplates.map(t => {
             const versions = templates.filter(v => v.code === t.code && v.department === d.code);

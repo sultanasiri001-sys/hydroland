@@ -52,6 +52,8 @@ jobs:
         run: node apps/api/scripts/center-license-platform-review-migration-checks.mjs
       - name: AI runtime forward migration on TEXT and UUID account keys
         run: node apps/api/scripts/agent-runtime-migration-db-e2e.mjs
+      - name: Department assessment forward migration on TEXT and UUID identities
+        run: node apps/api/scripts/department-closure-assessment-migration-db-e2e.mjs
       - name: Unified store forward migration on TEXT and UUID organization keys
         run: node apps/api/scripts/store-offerings-migration-db-e2e.mjs
       - name: Organization booking forward migrations on TEXT and UUID keys
@@ -161,6 +163,7 @@ jobs:
           node apps/api/scripts/hr-control-review-http-e2e.mjs
           node apps/api/scripts/department-reference-validation.mjs
           node apps/api/scripts/department-reference-http-e2e.mjs
+          CLOSURE_E2E_BROWSER=1 node apps/api/scripts/department-closure-assessment-http-e2e.mjs
           node apps/api/scripts/temporary-owner-review-http-e2e.mjs
       - name: Admin account lifecycle HTTP and PostgreSQL
         env:
