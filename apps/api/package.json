@@ -6,7 +6,8 @@
     "dev": "nest start --watch",
     "build": "nest build",
     "start": "node dist/main.js",
-    "lint": "eslint \"src/**/*.ts\"",
+    "lint": "eslint \"src/**/*.ts\" --max-warnings=0",
+    "validate:lint": "node --test scripts/lint-toolchain.test.mjs",
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
@@ -70,6 +71,8 @@
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",
     "@types/node": "^22.10.0",
+    "@typescript-eslint/parser": "8.72.1",
+    "eslint": "10.13.0",
     "typescript": "^5.7.0"
   }
 }

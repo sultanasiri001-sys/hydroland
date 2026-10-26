@@ -107,7 +107,6 @@ export function shapeArabicForPdf(value: string): string {
 function bidi(): BidiApi {
   if (bidiApi) return bidiApi;
   // bidi-js is CommonJS-compatible at runtime; keeping the require local avoids ESM/CJS interop drift.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const factory = require('bidi-js') as () => BidiApi;
   bidiApi = factory();
   return bidiApi;
