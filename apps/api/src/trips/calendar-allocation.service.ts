@@ -57,7 +57,7 @@ export class CalendarAllocationService{
 
   async allocate(actorAccountId:string,tripId:string,resourceIds:string[]){
     const unique=[...new Set(resourceIds.filter((id:string)=>Boolean(id)))];
-    const result=await this.db.serializable(async tx=>{
+    await this.db.serializable(async tx=>{
       // Prisma DateTime columns store UTC timestamps without a time zone. Bound
       // raw SQL Date values are timestamptz; avoid session-zone shifts on insert.
       await tx.$executeRaw`SET LOCAL TIME ZONE 'UTC'`;
@@ -71,11 +71,11 @@ export class CalendarAllocationService{
       for(const resourceId of unique){const conflicts=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "CalendarAllocation" WHERE "resourceId"=${resourceId} AND "status"='ACTIVE' AND "startsAt"<${trip.endsAt} AND "endsAt">${trip.startsAt} AND "eventId"<>${eventId} LIMIT 1`;if(conflicts.length)throw new ConflictException('Calendar resource conflict detected.');}
       await tx.$executeRaw`UPDATE "CalendarAllocation" SET "status"='INACTIVE',"updatedAt"=NOW() WHERE "eventId"=${eventId} AND "status"='ACTIVE'`;
       for(const resourceId of unique)await tx.$executeRaw`INSERT INTO "CalendarAllocation"("id","eventId","resourceId","startsAt","endsAt","status","createdAt","updatedAt") VALUES(gen_random_uuid()::text,${eventId},${resourceId},${trip.startsAt},${trip.endsAt},'ACTIVE',NOW(),NOW())`;
-      return{previousResourceIds:previous.map((row:{resourceId:string})=>row.resourceId),newResourceIds:[...unique]};
+      const result={previousResourceIds:previous.map((row:{resourceId:string})=>row.resourceId),newResourceIds:[...unique]};
+      const previousSet=new Set(result.previousResourceIds),nextSet=new Set(result.newResourceIds);
+      const added=result.newResourceIds.filter((id:string)=>!previousSet.has(id)),removed=result.previousResourceIds.filter((id:string)=>!nextSet.has(id));
+      await this.audit.record({actorId:actorAccountId,action:'TRIP_CALENDAR_RESOURCES_CHANGED',resource:'Trip',resourceId:tripId,metadata:{actorAccountId,previousResourceIds:result.previousResourceIds,newResourceIds:result.newResourceIds,addedResourceIds:added,removedResourceIds:removed}},tx);
     });
-    const previousSet=new Set(result.previousResourceIds),nextSet=new Set(result.newResourceIds);
-    const added=result.newResourceIds.filter((id:string)=>!previousSet.has(id)),removed=result.previousResourceIds.filter((id:string)=>!nextSet.has(id));
-    await this.audit.record({action:'TRIP_CALENDAR_RESOURCES_CHANGED',resource:'Trip',resourceId:tripId,metadata:{actorAccountId,previousResourceIds:result.previousResourceIds,newResourceIds:result.newResourceIds,addedResourceIds:added,removedResourceIds:removed}});
     return this.tripAllocations(tripId);
   }
 }

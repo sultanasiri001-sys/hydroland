@@ -12,6 +12,7 @@ const {TrainingAssignmentService}=require('../dist/governance/training-assignmen
 const {CalendarAllocationService}=require('../dist/trips/calendar-allocation.service.js');
 const {CrewAssignmentService}=require('../dist/trips/crew-assignment.service.js');
 const {PolicyControlService}=require('../dist/trips/policy-control.service.js');
+const {Prisma}=require('@prisma/client');
 const db=new DatabaseService(),audit=new AuditService(db),sessions=new TrainingSessionService(db,audit,new TrainingAuthorizationService(db));
 const calendar=new CalendarAllocationService(db,audit);
 const crew=new CrewAssignmentService(db,new PolicyControlService(db,audit),audit);
@@ -160,5 +161,31 @@ try{
    const count=await db.trainingSession.count({where:{trainingRecordId:raceCourse.record.id}})+await db.calendarAllocation.count({where:{resourceId:raceResource.id,status:'ACTIVE'}});
    check(count===1,'concurrent loser leaves no second reservation');
   }
+
+  const auditInstructor=await account(),auditResource=await resource(auditInstructor.id),auditTrip=await trip(50);
+  const failedAudit=new CalendarAllocationService(db,{record:async()=>{throw new Error('Injected allocation audit failure');}});
+  await assert.rejects(()=>failedAudit.allocate(auditInstructor.id,auditTrip.id,[auditResource.id]),/Injected allocation audit failure/);
+  check(await db.calendarEvent.count({where:{referenceType:'TRIP',referenceId:auditTrip.id}})===0,'allocation audit failure rolls back a new event and reservation');
+  check(await db.auditEvent.count({where:{resourceId:auditTrip.id,action:'TRIP_CALENDAR_RESOURCES_CHANGED'}})===0,'failed allocation creates no audit claim');
+  await calendar.allocate(auditInstructor.id,auditTrip.id,[auditResource.id]);
+  let allocationAudits=await db.auditEvent.findMany({where:{resourceId:auditTrip.id,action:'TRIP_CALENDAR_RESOURCES_CHANGED'}});
+  check(allocationAudits.length===1&&allocationAudits[0].actorId===auditInstructor.personId,'successful allocation has one transaction-bound authenticated actor audit');
+  const before=await db.calendarAllocation.findMany({where:{resourceId:auditResource.id,event:{referenceId:auditTrip.id},status:'ACTIVE'}});
+  const newResource=await resource((await account()).id);
+  await assert.rejects(()=>failedAudit.allocate(auditInstructor.id,auditTrip.id,[newResource.id]),/Injected allocation audit failure/);
+  const after=await db.calendarAllocation.findMany({where:{event:{referenceId:auditTrip.id},status:'ACTIVE'}});
+  check(after.length===before.length&&after[0].id===before[0].id,'failed replacement audit preserves the original active allocation');
+  check(await db.calendarAllocation.count({where:{resourceId:newResource.id}})===0,'failed replacement audit leaves no new allocation');
+  await assert.rejects(()=>failedAudit.allocate(auditInstructor.id,auditTrip.id,[]),/Injected allocation audit failure/);
+  check(await db.calendarAllocation.count({where:{id:before[0].id,status:'ACTIVE'}})===1,'failed release audit does not release the resource');
+  check(await db.auditEvent.count({where:{resourceId:auditTrip.id,action:'TRIP_CALENDAR_RESOURCES_CHANGED'}})===1,'failed mutations leave the prior audit history unchanged');
+
+  const retryTrip=await trip(52);let retryInjected=false;
+  db.serializable=work=>originalSerializable(async tx=>{const result=await work(tx);if(!retryInjected){retryInjected=true;throw new Prisma.PrismaClientKnownRequestError('Injected post-audit serialization conflict',{code:'P2034',clientVersion:'availability-test'});}return result;});
+  try{await calendar.allocate(auditInstructor.id,retryTrip.id,[auditResource.id]);}finally{db.serializable=originalSerializable;}
+  allocationAudits=await db.auditEvent.findMany({where:{resourceId:retryTrip.id,action:'TRIP_CALENDAR_RESOURCES_CHANGED'}});
+  check(retryInjected&&allocationAudits.length===1,'post-audit serialization retry commits exactly one audit');
+  check(await db.calendarAllocation.count({where:{event:{referenceId:retryTrip.id},status:'ACTIVE'}})===1,'post-audit serialization retry commits exactly one active allocation');
+  check(allocationAudits[0].actorId===auditInstructor.personId&&allocationAudits[0].metadata.addedResourceIds[0]===auditResource.id,'retried audit retains actor and resource-change metadata');
  console.log(`Calendar/training availability: ${checks} checks passed.`);
 }finally{await db.$disconnect();}

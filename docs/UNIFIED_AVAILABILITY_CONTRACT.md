@@ -32,6 +32,9 @@ Training site/vessel fields are **not** assumed to be CalendarResource IDs.
   `TrainingSessionService.assertAvailable`. Trip allocation and automatic crew
   replacement recheck the other domain **inside the same serializable transaction
   as the write**. Candidate lists/read-only availability are advisory, not holds.
+- Allocation mutations and their actor-attributed audit record now commit or roll
+  back together. Database-only audit writes use the same transaction; no external
+  notification/provider call was moved inside it.
 - Both domains read the other's persisted reservation predicate before writing.
   PostgreSQL serializable isolation detects write-skew; the existing bounded
   `DatabaseService.serializable` retry rereads the winner and returns a conflict.
@@ -69,7 +72,10 @@ non-human resources, adjacent boundaries, offset input, winter/summer defaults,
 release/cancel/complete, null end and in-progress sessions, reschedule/reassignment,
 bulk rollback, START, replacement rejection/success and policy bypass modes.
 Three races per time-zone hold both actual transactions after their conflict
-reads: exactly one write survives and the loser receives 409.
+reads: exactly one write survives and the loser receives 409. An additional
+real-database red/green regression proves an injected allocation-audit failure
+leaves no new event/allocation, preserves replacement/release state, and a
+post-audit serialization retry commits exactly one actor-attributed audit.
 
 A dedicated CI workflow runs PostgreSQL 16 and Node 22 against UTC, Asia/Riyadh
 and America/New_York defaults. Local runs use embedded PostgreSQL 16 and Node 24;
@@ -80,16 +86,14 @@ baseline package's missing `eslint` executable/dependency, not reported as passe
 
 ## Next bounded slices (not silently activated)
 
-1. Couple allocation mutation and its audit in one transaction (existing audit is
-   post-commit); use injected audit failure and serialization retry regressions.
-2. Resolve rental hold policy before integration: does RESERVED hold inventory,
+1. Resolve rental hold policy before integration: does RESERVED hold inventory,
    when does a hold expire, what interval/turnaround applies, how do extensions,
    overdue items and partial returns release assets? Current create checks stock
    before its transaction; payment/check-out takes row locks but does not reserve
    a calendar interval. Do not invent a paid/unpaid hold policy in this patch.
-3. Agree mappings for training site/vessel IDs and shared training-on-trip events,
+2. Agree mappings for training site/vessel IDs and shared training-on-trip events,
    then route writes through the same contract. No field should be repurposed by
    assumption. Coordinate any uniqueness/index/schema work with the schema owner.
-4. Human alias conflicts between two different trip resource IDs, stale historical
+3. Human alias conflicts between two different trip resource IDs, stale historical
    allocations, and cross-domain read models remain separate closure work; this
    is a tested trip/training integration, not a claim of universal availability.
