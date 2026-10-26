@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { PolicyControlService } from './policy-control.service';
-import { assertCalendarTrainingAvailable, trainingBusyAccounts } from './calendar-training-availability';
+import { assertCalendarHumanAvailable, calendarBusyAccounts, trainingBusyAccounts } from './calendar-training-availability';
 
 type CrewResourceRow={id:string;type:string;name:string;referenceId:string};
 type AssignmentRow={id:string;tripId:string;resourceId:string;accountId:string;roleType:string;status:string;replacesAssignmentId:string|null;respondedAt:Date|null;createdAt:Date;updatedAt:Date};
@@ -52,7 +52,8 @@ export class CrewAssignmentService{
     if(this.review(policy.master,policy.captainLicense))reviews.push('CAPTAIN_VERIFIED_LICENSE');
     if(this.review(policy.master,policy.crewRole))reviews.push('CREW_ACTIVE_ROLE');
     const busy=await trainingBusyAccounts(tx,rows.map(row=>row.referenceId),trip.startsAt,trip.endsAt);
-    return{rows:rows.filter(row=>!busy.has(row.referenceId)),policy,reviews};
+    const calendarBusy=await calendarBusyAccounts(tx,rows.map(row=>row.referenceId),trip.startsAt,trip.endsAt,tripId);
+    return{rows:rows.filter(row=>!busy.has(row.referenceId)&&!calendarBusy.has(row.referenceId)),policy,reviews};
   }
 
   async dispatchForConfirmedBooking(tripId:string,bookingId:string,client?:Prisma.TransactionClient){
@@ -105,7 +106,7 @@ export class CrewAssignmentService{
       if(!trip||['CANCELLED','COMPLETED'].includes(trip.status))return null;
       const resource=await tx.calendarResource.findFirst({where:{id:replacement.id,referenceId:replacement.referenceId,type:assignment.roleType,active:true},select:{id:true}});
       if(!resource)throw new ConflictException('Crew replacement resource changed.');
-      await assertCalendarTrainingAvailable(tx,[replacement.id],trip.startsAt,trip.endsAt);
+      await assertCalendarHumanAvailable(tx,[replacement.id],trip.startsAt,trip.endsAt,assignment.tripId);
       const conflict=await tx.calendarAllocation.findFirst({where:{resourceId:replacement.id,status:'ACTIVE',startsAt:{lt:trip.endsAt},endsAt:{gt:trip.startsAt},NOT:{event:{referenceType:'TRIP',referenceId:assignment.tripId}}},select:{id:true}});
       if(conflict)throw new ConflictException('Calendar resource conflict detected.');
       if(previousStatus){const changed=await tx.$executeRaw`UPDATE "CrewAssignment" SET "status"=${previousStatus},"respondedAt"=NOW(),"updatedAt"=NOW() WHERE "id"::text=${assignment.id} AND "status"='PENDING'`;if(!changed)return null;}

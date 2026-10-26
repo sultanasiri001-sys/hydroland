@@ -152,7 +152,7 @@ try{
    db.serializable=work=>originalSerializable(tx=>work(new Proxy(tx,{get(target,key){
     const model=Reflect.get(target,key);
     if(!['calendarAllocation','trainingSession'].includes(key))return model;
-    return new Proxy(model,{get(delegate,method){const fn=Reflect.get(delegate,method);if((key==='calendarAllocation'&&method==='findFirst')||(key==='trainingSession'&&method==='findMany'))return async args=>{const rows=await fn.call(delegate,args);await barrier();return rows;};return typeof fn==='function'?fn.bind(delegate):fn;}});
+    return new Proxy(model,{get(delegate,method){const fn=Reflect.get(delegate,method);if((key==='calendarAllocation'&&method==='findFirst')||(key==='trainingSession'&&method==='findMany'))return async args=>{const rows=await fn.call(delegate,args);if(key==='trainingSession'||!args.where.NOT)await barrier();return rows;};return typeof fn==='function'?fn.bind(delegate):fn;}});
    }})));
    let outcomes;
    try{outcomes=await Promise.allSettled([schedule(raceCourse,30+round),calendar.allocate(raceInstructor.id,raceTrip.id,[raceResource.id])]);}finally{clearTimeout(timer);db.serializable=originalSerializable;}

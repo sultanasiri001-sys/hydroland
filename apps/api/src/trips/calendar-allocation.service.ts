@@ -7,7 +7,7 @@ import { EquipmentInspectionService } from './equipment-inspection.service';
 import { PolicyControlService } from './policy-control.service';
 import { TripComplianceService } from './trip-compliance.service';
 import { WeatherGateService, WeatherSnapshot } from './weather-gate.service';
-import { assertCalendarTrainingAvailable } from './calendar-training-availability';
+import { assertCalendarHumanAvailable } from './calendar-training-availability';
 
 type ResourceRow={id:string;type:string;name:string;active:boolean};
 type AllocationRow={id:string;eventId:string;tripId:string;resourceId:string;startsAt:Date;endsAt:Date;status:string};
@@ -50,7 +50,7 @@ export class CalendarAllocationService{
 
   // Advisory read only. Reservation writers must recheck within serializable().
   async assertResourcesAvailable(resourceIds:string[],startsAt:Date,endsAt:Date,excludeTripId?:string){
-    await assertCalendarTrainingAvailable(this.db,resourceIds,startsAt,endsAt);
+    await assertCalendarHumanAvailable(this.db,resourceIds,startsAt,endsAt,excludeTripId);
     const conflict=await this.db.calendarAllocation.findFirst({where:{resourceId:{in:resourceIds},resource:{active:true},status:'ACTIVE',startsAt:{lt:endsAt},endsAt:{gt:startsAt},...(excludeTripId?{NOT:{event:{referenceType:'TRIP',referenceId:excludeTripId}}}:{})},select:{id:true}});
     if(conflict)throw new ConflictException('Calendar resource conflict detected.');
   }
@@ -67,7 +67,7 @@ export class CalendarAllocationService{
       const eventId=events[0]?.id;if(!eventId)throw new ConflictException('Trip calendar event could not be created.');
       const previous=await tx.$queryRaw<Array<{resourceId:string}>>`SELECT "resourceId" FROM "CalendarAllocation" WHERE "eventId"=${eventId} AND "status"='ACTIVE' ORDER BY "resourceId"`;
       if(unique.length){const valid=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "CalendarResource" WHERE "active"=TRUE AND "id"=ANY(${unique}::text[])`;if(valid.length!==unique.length)throw new BadRequestException('One or more calendar resources are invalid or inactive.');}
-      await assertCalendarTrainingAvailable(tx,unique,trip.startsAt,trip.endsAt);
+      await assertCalendarHumanAvailable(tx,unique,trip.startsAt,trip.endsAt,tripId);
       for(const resourceId of unique){const conflicts=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "CalendarAllocation" WHERE "resourceId"=${resourceId} AND "status"='ACTIVE' AND "startsAt"<${trip.endsAt} AND "endsAt">${trip.startsAt} AND "eventId"<>${eventId} LIMIT 1`;if(conflicts.length)throw new ConflictException('Calendar resource conflict detected.');}
       await tx.$executeRaw`UPDATE "CalendarAllocation" SET "status"='INACTIVE',"updatedAt"=NOW() WHERE "eventId"=${eventId} AND "status"='ACTIVE'`;
       for(const resourceId of unique)await tx.$executeRaw`INSERT INTO "CalendarAllocation"("id","eventId","resourceId","startsAt","endsAt","status","createdAt","updatedAt") VALUES(gen_random_uuid()::text,${eventId},${resourceId},${trip.startsAt},${trip.endsAt},'ACTIVE',NOW(),NOW())`;
