@@ -29,6 +29,10 @@ jobs:
         with:
           node-version: 22
       - run: npm ci --workspace=@hydroland/api --workspace=@hydroland/web --include-workspace-root=true
+      - name: Verify API correctness lint toolchain and source
+        run: |
+          npm run validate:lint -w @hydroland/api
+          npm run lint -w @hydroland/api
       - run: npm --workspace @hydroland/api run db:generate
       - name: Production recovery refuses absent and empty migration history
         env:
@@ -103,6 +107,8 @@ jobs:
       - run: npm run validate:integrations -w @hydroland/api
       - run: npm run typecheck --workspace=@hydroland/api
       - run: npm run build --workspace=@hydroland/api
+      - name: Safety coordinate input and explicit fallback boundaries
+        run: node apps/api/scripts/safety-coordinate-validation.cjs
       - name: Internal document owner boundary
         run: node apps/api/scripts/document-internal-owner-checks.mjs
       - name: Read-only model connection diagnostics without generation
