@@ -21,4 +21,8 @@ assert.equal(route(work,reviews.map((r,i)=>i===0?{...r,verdict:'FAIL'}:r)).route
 assert.equal(route(work,reviews.map((r,i)=>i===0?{...r,verdict:'NEEDS_EVIDENCE'}:r)).route,'WAIT_FOR_EVIDENCE');
 assert.equal(route(work,reviews.map((r,i)=>i===0?{...r,evidenceRefs:[]}:r)).route,'WAIT_FOR_EVIDENCE');
 assert.equal(route({...work,submittedByAgentKey:REVIEW_AGENTS[0]}).route,'WAIT_FOR_EVIDENCE');
+assert.equal(route({...work,risk:'UNKNOWN' as GovernanceSubmission['risk']}).route,'WAIT_FOR_EVIDENCE');
+assert.equal(route({...work,stageFinal:'false' as unknown as boolean}).route,'WAIT_FOR_EVIDENCE');
+assert.equal(route(work,reviews.map((r,i)=>i===0?{...r,verdict:'UNKNOWN' as GovernanceReview['verdict']}:r)).route,'WAIT_FOR_EVIDENCE');
+assert.equal(route(work,reviews.map((r,i)=>i===0?{...r,evidenceRefs:[null as unknown as string]}:r)).route,'WAIT_FOR_EVIDENCE');
 console.log('Governance routing policy cases passed');
