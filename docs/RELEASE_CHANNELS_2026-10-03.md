@@ -1,5 +1,27 @@
 # Independently gated release channels
 
+## Runtime reconciliation — 2026-10-26
+
+The read-only production inspection on 2026-10-26 found both native Render
+services already configured with the scoped release build scripts listed below.
+The **historical** "still to apply" section no longer describes that build-command
+gap. See [dated runtime evidence](RENDER_RUNTIME_EVIDENCE_2026-10-26.md) for the
+observed commit, service identities, public checks and remaining configuration
+drift. No Render setting or deployment was changed during this reconciliation.
+
+The public production UI is `https://hydroland-web.onrender.com`, not the
+historical GitHub Pages preview. The repository's `WEB_ORIGIN` now matches
+`HYDROLAND_PUBLIC_WEB_ORIGIN` and the verified public CORS origin. `render.yaml`
+still describes a Docker API template, **not** the complete native production
+inventory; do not apply it to reconcile the running services. In particular,
+production still reports an empty health-check path and auto-deploy on commit.
+Those live settings are unresolved, not fixed by this documentation change.
+
+The channel separation and release gates below remain applicable. This update
+does not assert that mobile security is fixed or that any new commit is deployed.
+
+## Historical decision — 2026-10-03
+
 Approved continuation on 2026-10-03 after the user was asked to separate the
 web/API release from the blocked native mobile release. This supersedes the
 previous all-project dependency hold for web/API only. It does not accept,
@@ -49,7 +71,7 @@ required-check enforcement off, empty contexts/checks and no rulesets. No branch
 rules or bypass settings were changed. The approved release gates must still be
 verified explicitly; absence of branch protection does not waive them.
 
-## Native Render configuration still to apply
+## Historical native Render configuration still to apply (2026-10-03)
 
 Live read-only service inspection found both services use native Node, not the
 Docker Blueprint. Both auto-deploy main on commit. The API rootDir is apps/api
