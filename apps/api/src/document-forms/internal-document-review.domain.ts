@@ -76,10 +76,10 @@ export async function reviewPlatform(tx: Prisma.TransactionClient) {
   if (!owner || !authority || authority.status !== 'ACTIVE' || member && member.status !== 'ACTIVE') throw new ForbiddenException('صلاحية مالك الجهة غير متاحة.');
   return { ...org, platformRevision:pointer!.updatedAt.toISOString(), ownerMemberRevision:member?.updatedAt.toISOString()??'DERIVED_OWNER_NO_MEMBERSHIP', ownerVerifiedAt:owner.emailVerifiedAt!.toISOString(), ownerPersonId: owner.personId, ownerAuthorityRevision: authority.updatedAt.toISOString(), ownerStatusRevision: await accountStatusRevision(tx,owner.id) };
 }
-export async function eligibleReviewParticipant(tx: Prisma.TransactionClient, org: string, department: string, accountId: string) {
+export async function eligibleReviewParticipant(tx: Prisma.TransactionClient, org: string, department: string, accountId: string, workerClass?: 'EMPLOYEE') {
   const account = await tx.account.findFirst({ where: { id: accountId, status:'ACTIVE', emailVerifiedAt:{not:null}, roleAssignments:{some:{role:'STAFF',status:'ACTIVE'}} }, select:{id:true,personId:true,emailVerifiedAt:true,email:true,person:{select:{firstName:true,lastName:true}}} });
   if (!account) throw new ForbiddenException('المكلّف يجب أن يكون موظفًا فعليًا نشطًا بحساب متحقق.');
-  const employment = await tx.employment.findFirst({ where:{accountId,organizationId:org,status:'ACTIVE',orgUnit:{organizationId:org,code:department,type:'DEPARTMENT',active:true},position:{active:true,orgUnit:{organizationId:org,code:department,active:true}}}, include:{orgUnit:true,position:true}, orderBy:{id:'asc'} });
+  const employment = await tx.employment.findFirst({ where:{accountId,organizationId:org,status:'ACTIVE',...(workerClass?{workerClass}:{}),orgUnit:{organizationId:org,code:department,type:'DEPARTMENT',active:true},position:{active:true,orgUnit:{organizationId:org,code:department,active:true}}}, include:{orgUnit:true,position:true}, orderBy:{id:'asc'} });
   const member = await tx.organizationMember.findUnique({where:{organizationId_accountId:{organizationId:org,accountId}},select:{status:true,updatedAt:true}});
   const role = await tx.roleAssignment.findUnique({where:{accountId_role:{accountId,role:'STAFF'}},select:{status:true,updatedAt:true}});
   if (!employment?.position || !member || member.status !== 'ACTIVE' || !role || role.status !== 'ACTIVE' || employment.position.orgUnitId !== employment.orgUnitId

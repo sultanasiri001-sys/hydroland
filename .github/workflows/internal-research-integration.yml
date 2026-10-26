@@ -1,0 +1,70 @@
+name: Internal research HTTP database acceptance
+on:
+  pull_request:
+    paths:
+      - 'apps/api/**'
+      - '.github/workflows/internal-research-integration.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: internal-research-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: hydroland
+          POSTGRES_PASSWORD: hydroland
+          POSTGRES_DB: hydroland_research_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U hydroland -d hydroland_research_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://hydroland:hydroland@127.0.0.1:5432/hydroland_research_ci
+      NODE_ENV: test
+      JWT_SECRET: ci-research-isolated-secret-at-least-32-characters
+      PORT: 3115
+      HYDROLAND_AI_TEST_MANUAL_WORKER: '1'
+      RESEARCH_E2E_CONFIRM: ISOLATED_LOOPBACK_DATABASE
+      RESEARCH_E2E_BASE_URL: http://127.0.0.1:3115/api/v1/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --workspace=@hydroland/api --include-workspace-root=true
+      - run: npm --workspace @hydroland/api run db:generate
+      - run: npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+      - run: npm --workspace @hydroland/api run typecheck
+      - run: npm --workspace @hydroland/api run build
+      - name: Additive migration on all native identity key combinations
+        run: node apps/api/scripts/internal-research-migration-db-e2e.mjs
+      - name: Real HTTP PostgreSQL lifecycle and adversarial acceptance
+        run: |
+          set -euo pipefail
+          node apps/api/dist/main.js > /tmp/internal-research-api.log 2>&1 &
+          api=$!
+          trap 'kill "$api" 2>/dev/null || true' EXIT
+          ready=0
+          for attempt in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:3115/api/v1/health/ready >/dev/null; then ready=1; break; fi
+            if ! kill -0 "$api" 2>/dev/null; then cat /tmp/internal-research-api.log; exit 1; fi
+            sleep 1
+          done
+          if [ "$ready" != 1 ]; then cat /tmp/internal-research-api.log; exit 1; fi
+          node apps/api/scripts/internal-research-http-e2e.mjs 2>&1 | tee /tmp/internal-research-http.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: internal-research-acceptance-${{ github.sha }}
+          path: /tmp/internal-research-*.log
+          retention-days: 7
+          if-no-files-found: ignore

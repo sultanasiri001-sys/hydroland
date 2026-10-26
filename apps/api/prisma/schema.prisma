@@ -166,6 +166,10 @@ model Account {
   person Person @relation(fields:[personId], references:[id], onDelete:Restrict)
   sessions Session[]
   departmentClosureAssessments DepartmentClosureAssessment[]
+  internalResearchInitiatives InternalResearchInitiative[] @relation("InternalResearchCreator")
+  internalResearchRevisions InternalResearchRevision[] @relation("InternalResearchRevisionActor")
+  internalResearchReviewsIssued InternalResearchReview[] @relation("InternalResearchIssuer")
+  internalResearchReviewsAssigned InternalResearchReview[] @relation("InternalResearchReviewer")
   aiControlChanges AiAgentRuntime[] @relation("AiAgentControlActor")
   aiTasksRequested AiAgentTask[] @relation("AiAgentTaskRequester")
   aiTasksReviewed AiAgentTask[] @relation("AiAgentTaskReviewer")
@@ -269,6 +273,8 @@ model Organization {
   customerCases CustomerCase[] @relation("OrganizationCustomerCases")
   bookings Booking[]
   departmentClosureAssessments DepartmentClosureAssessment[]
+  internalResearchInitiatives InternalResearchInitiative[]
+  internalResearchReviews InternalResearchReview[]
 }
 
 model OrganizationDocumentAsset {
@@ -2341,4 +2347,73 @@ model DepartmentClosureAssessment {
   createdBy Account @relation(fields: [createdByAccountId], references: [id], onDelete: Restrict)
   @@unique([organizationId, department, revision])
   @@index([organizationId, department, createdAt])
+}
+
+// Internal desk-research records only; no external execution or department closure.
+model InternalResearchInitiative {
+  id String @id @default(uuid())
+  organizationId String
+  requestKey String
+  policyVersion String
+  revision Int @default(1)
+  status String @default("PROPOSED")
+  content Json
+  createdByAccountId String
+  createdByPersonId String
+  currentReviewId String?
+  proposalReviewId String?
+  resultReviewId String?
+  recordDigest String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)
+  createdBy Account @relation("InternalResearchCreator", fields:[createdByAccountId], references:[id], onDelete:Restrict)
+  revisions InternalResearchRevision[]
+  reviews InternalResearchReview[]
+  @@unique([organizationId,createdByAccountId,requestKey])
+  @@index([organizationId,createdAt,id])
+}
+
+model InternalResearchRevision {
+  id String @id @default(uuid())
+  initiativeId String
+  revision Int
+  snapshot Json
+  action String
+  reason String
+  actorAccountId String
+  previousDigest String?
+  recordDigest String
+  createdAt DateTime @default(now())
+  initiative InternalResearchInitiative @relation(fields:[initiativeId], references:[id], onDelete:Restrict)
+  actor Account @relation("InternalResearchRevisionActor", fields:[actorAccountId], references:[id], onDelete:Restrict)
+  @@unique([initiativeId,revision])
+}
+
+model InternalResearchReview {
+  id String @id @default(uuid())
+  organizationId String
+  initiativeId String
+  phase String
+  assignedRevision Int
+  sourceHash String
+  reviewerAccountId String
+  reviewerPersonId String
+  reviewerBinding Json
+  authorityBinding Json
+  issuedByAccountId String
+  issuedAt DateTime @default(now())
+  expiresAt DateTime
+  state String @default("ACTIVE")
+  reason String
+  decisionNote String?
+  decidedAt DateTime?
+  receiptHash String?
+  recordDigest String
+  organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)
+  initiative InternalResearchInitiative @relation(fields:[initiativeId], references:[id], onDelete:Restrict)
+  issuedBy Account @relation("InternalResearchIssuer", fields:[issuedByAccountId], references:[id], onDelete:Restrict)
+  reviewer Account @relation("InternalResearchReviewer", fields:[reviewerAccountId], references:[id], onDelete:Restrict)
+  @@index([reviewerAccountId,state,expiresAt])
+  @@index([initiativeId,issuedAt])
 }
