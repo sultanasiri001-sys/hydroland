@@ -61,13 +61,17 @@ export function routeGovernanceSubmission(submission: GovernanceSubmission, revi
     || submission.risk === 'HIGH'
     || submission.risk === 'CRITICAL';
 
-  if (!submission.workId.trim() || !submission.departmentCode.trim() || !submission.submittedByAgentKey.trim()) {
+  if (!submission || typeof submission.workId !== 'string' || typeof submission.departmentCode !== 'string' || typeof submission.submittedByAgentKey !== 'string' || !submission.workId.trim() || !submission.departmentCode.trim() || !submission.submittedByAgentKey.trim()) {
     return {route:'WAIT_FOR_EVIDENCE',reasons:['INVALID_SUBMISSION_IDENTITY'],approvalAuthority:'OWNER_001',finalAgentKey:'GOV_FINAL_GATE'};
   }
-  if (!submission.evidenceRefs.length || submission.evidenceRefs.some(ref => !ref.trim())) {
+  const riskFlags = ['stageFinal','architectureChange','securityOrPrivacyImpact','permissionChange','budgetException','contractException','destructiveProductionAction','safetyOrRegulatoryImpact','explicitlyOwnerReserved'] as const;
+  if (!['LOW','MEDIUM','HIGH','CRITICAL'].includes(submission.risk) || riskFlags.some(flag => typeof submission[flag] !== 'boolean')) {
+    return {route:'WAIT_FOR_EVIDENCE',reasons:['INVALID_RISK_SIGNALS'],approvalAuthority:'OWNER_001',finalAgentKey:'GOV_FINAL_GATE'};
+  }
+  if (!Array.isArray(submission.evidenceRefs) || !submission.evidenceRefs.length || submission.evidenceRefs.some(ref => typeof ref !== 'string' || !ref.trim())) {
     return {route:'WAIT_FOR_EVIDENCE',reasons:['SUBMISSION_EVIDENCE_MISSING'],approvalAuthority:'OWNER_001',finalAgentKey:'GOV_FINAL_GATE'};
   }
-  if (reviews.some(review => !REVIEW_AGENTS.includes(review.agentKey))) {
+  if (!Array.isArray(reviews) || reviews.some(review => !review || !REVIEW_AGENTS.includes(review.agentKey))) {
     return {route:'WAIT_FOR_EVIDENCE',reasons:['UNKNOWN_REVIEWER'],approvalAuthority:'OWNER_001',finalAgentKey:'GOV_FINAL_GATE'};
   }
   if (reviews.some(review => review.agentKey === submission.submittedByAgentKey)) {
@@ -81,6 +85,9 @@ export function routeGovernanceSubmission(submission: GovernanceSubmission, revi
     return {route:'WAIT_FOR_EVIDENCE',reasons:['FIVE_REVIEWS_REQUIRED'],approvalAuthority:'OWNER_001',finalAgentKey:'GOV_FINAL_GATE'};
   }
   for (const review of reviews) {
+    if (!['PASS','FAIL','NEEDS_EVIDENCE'].includes(review.verdict) || !Array.isArray(review.findingCodes) || !Array.isArray(review.evidenceRefs)) {
+      return {route:'WAIT_FOR_EVIDENCE',reasons:['INVALID_REVIEW_PAYLOAD'],approvalAuthority:'OWNER_001',finalAgentKey:'GOV_FINAL_GATE'};
+    }
     if (review.verdict === 'FAIL') reasons.push(...(review.findingCodes.length ? review.findingCodes : ['REVIEW_FAILED']));
     if (review.verdict === 'NEEDS_EVIDENCE' || !review.evidenceRefs.length || review.evidenceRefs.some(ref => !ref.trim())) {
       reasons.push('REVIEW_EVIDENCE_MISSING');
