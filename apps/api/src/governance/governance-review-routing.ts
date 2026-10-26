@@ -89,7 +89,7 @@ export function routeGovernanceSubmission(submission: GovernanceSubmission, revi
       return {route:'WAIT_FOR_EVIDENCE',reasons:['INVALID_REVIEW_PAYLOAD'],approvalAuthority:'OWNER_001',finalAgentKey:'GOV_FINAL_GATE'};
     }
     if (review.verdict === 'FAIL') reasons.push(...(review.findingCodes.length ? review.findingCodes : ['REVIEW_FAILED']));
-    if (review.verdict === 'NEEDS_EVIDENCE' || !review.evidenceRefs.length || review.evidenceRefs.some(ref => typeof ref !== 'string' || !ref.trim())) {
+    if (review.verdict === 'NEEDS_EVIDENCE' || !review.evidenceRefs.length || review.evidenceRefs.some((ref: unknown) => typeof ref !== 'string' || !ref.trim())) {
       reasons.push('REVIEW_EVIDENCE_MISSING');
     }
   }
