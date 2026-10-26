@@ -64,6 +64,12 @@ jobs:
         run: node apps/api/scripts/bootstrap-messaging-runtime-schema.mjs
       - run: npm run validate:hr -w @hydroland/api
       - run: npm run validate:operations -w @hydroland/api
+      - name: Governance review routing policy regression
+        run: |
+          cd apps/api
+          npx tsc src/governance/governance-review-routing.ts src/governance/governance-review-routing.spec.ts --outDir .tmp-governance-routing --module commonjs --moduleResolution node --target es2020 --esModuleInterop --skipLibCheck --strict
+          node .tmp-governance-routing/governance-review-routing.spec.js
+          rm -rf .tmp-governance-routing
       - run: npm run validate:admin-affairs -w @hydroland/api
       - run: npm run validate:finance -w @hydroland/api
       - run: npm run validate:inventory -w @hydroland/api
