@@ -7,7 +7,8 @@ import {checkCenterTripManagement} from './center-trip-management-http-checks.mj
 const db=new PrismaClient(),base=process.env.STORE_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1';
 const secret=process.env.JWT_SECRET;if(!secret)throw new Error('JWT_SECRET required');
 const enc=value=>Buffer.from(JSON.stringify(value)).toString('base64url');
-const token=id=>{const now=Math.floor(Date.now()/1000),body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:id,iat:now,exp:now+900})}`;return `${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`};
+const sessions=new Map();
+const token=id=>{const now=Math.floor(Date.now()/1000),body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:id,sid:sessions.get(id),iat:now,exp:now+900})}`;return `${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`};
 const accounts=[],persons=[],organizations=[],ids=[],orderIds=[];
 async function request(account,path,method='GET',body){
  const response=await fetch(base+path,{method,headers:{'content-type':'application/json',...(account?{authorization:'Bearer '+token(account.id)}:{})},...(body?{body:JSON.stringify(body)}:{})});
@@ -17,7 +18,8 @@ const ok=result=>{assert.ok(result.status>=200&&result.status<300,JSON.stringify
 try{
  for(const name of ['owner-a','owner-b','staff','buyer-a','buyer-b']){
    const person=await db.person.create({data:{firstName:name,lastName:'StoreOffers'}});persons.push(person);
-   accounts.push(await db.account.create({data:{personId:person.id,email:`store-offer-${name}-${randomUUID()}@example.invalid`,passwordHash:'test',status:'ACTIVE',emailVerifiedAt:new Date()}}));
+   const account=await db.account.create({data:{personId:person.id,email:`store-offer-${name}-${randomUUID()}@example.invalid`,passwordHash:'test',status:'ACTIVE',emailVerifiedAt:new Date()}});accounts.push(account);
+   const session=await db.session.create({data:{accountId:account.id,tokenHash:randomUUID(),expiresAt:new Date(Date.now()+900000)}});sessions.set(account.id,session.id);
  }
  const[a,b,staff,buyer,other]=accounts;
  for(const owner of [a,b]){
@@ -121,5 +123,6 @@ try{
  await db.storeProduct.deleteMany({where:{id:{in:ids}}});await db.storeCourseOffer.deleteMany({where:{id:{in:ids}}});
  await db.organizationMember.deleteMany({where:{organizationId:{in:organizations.map(row=>row.id)}}});await db.organization.deleteMany({where:{id:{in:organizations.map(row=>row.id)}}});
  await db.roleAssignment.deleteMany({where:{accountId:{in:accounts.map(row=>row.id)}}});
+ await db.session.deleteMany({where:{accountId:{in:accounts.map(row=>row.id)}}});
  await db.account.deleteMany({where:{id:{in:accounts.map(row=>row.id)}}});await db.person.deleteMany({where:{id:{in:persons.map(row=>row.id)}}});await db.$disconnect();
 }

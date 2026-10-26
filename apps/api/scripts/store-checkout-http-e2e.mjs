@@ -1,12 +1,13 @@
 import { PrismaClient } from '@prisma/client';
-import { createHmac } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 
 const db=new PrismaClient();
 const base=process.env.STORE_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1';
 const secret=process.env.JWT_SECRET;if(!secret)throw new Error('JWT_SECRET required');
 const suffix=Date.now().toString();
 const enc=v=>Buffer.from(JSON.stringify(v)).toString('base64url');
-const tokenFor=id=>{const now=Math.floor(Date.now()/1000),body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:id,iat:now,exp:now+900})}`;return `${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`;};
+const sessions=new Map();
+const tokenFor=id=>{const now=Math.floor(Date.now()/1000),body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:id,sid:sessions.get(id),iat:now,exp:now+900})}`;return `${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`;};
 const headers=token=>({authorization:`Bearer ${token}`,'content-type':'application/json'});
 const bodyOf=async response=>{const body=await response.json().catch(()=>null);return{response,body}};
 const expectOk=async response=>{const {body}=await bodyOf(response);if(!response.ok)throw new Error(`HTTP ${response.status}: ${JSON.stringify(body)}`);return body};
@@ -15,6 +16,7 @@ try{
   for(const name of ['buyer','other','admin']){
     const person=await db.person.create({data:{firstName:name,lastName:'StoreE2E'}});persons.push(person);
     const account=await db.account.create({data:{personId:person.id,email:`${name}-${suffix}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}});accounts.push(account);
+    const session=await db.session.create({data:{accountId:account.id,tokenHash:randomUUID(),expiresAt:new Date(Date.now()+900000)}});sessions.set(account.id,session.id);
   }
   const [buyer,other,admin]=accounts;
   adminRole=await db.roleAssignment.create({data:{accountId:admin.id,role:'ADMIN',status:'ACTIVE',activeAt:new Date(),scope:{purpose:'STORE_E2E'}}});
@@ -56,6 +58,9 @@ try{
 
   const mine=await expectOk(await fetch(base+'/store/payments/mine',{headers:headers(buyerToken)}));
   if(!Array.isArray(mine)||!mine.some(item=>item.id===payment.id&&item.orderId===order.id))throw new Error('Buyer payment list missing created store payment');
+
+  await db.session.update({where:{id:sessions.get(buyer.id)},data:{revokedAt:new Date()}});
+  if((await fetch(base+'/store/payments/mine',{headers:headers(buyerToken)})).status!==401)throw new Error('Revoked buyer session must not read store payments');
 
   console.log('Store checkout HTTP/DB E2E passed: server totals, atomic stock decrement, idempotent payment record, ownership isolation, key conflict, cancellation stock restoration, unpaid fulfillment block and truthful NOT_SELECTED provider state.');
 } finally {
