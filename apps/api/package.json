@@ -47,7 +47,8 @@
     "validate:document-center-access": "rm -rf .tmp-document-center-access && tsc src/document-forms/document-authorization.service.ts --rootDir src --outDir .tmp-document-center-access --module commonjs --moduleResolution node --target es2020 --experimentalDecorators --esModuleInterop --skipLibCheck && node scripts/document-center-access-validation.cjs; code=$?; rm -rf .tmp-document-center-access; exit $code",
     "validate:document-pdf-arabic": "rm -rf .tmp-document-pdf-arabic && tsc src/document-forms/document-pdf-arabic.contract.ts --outDir .tmp-document-pdf-arabic --module commonjs --moduleResolution node --target es2020 --esModuleInterop --skipLibCheck && node scripts/document-pdf-arabic-validation.cjs; code=$?; rm -rf .tmp-document-pdf-arabic; exit $code",
     "validate:auth-session": "node scripts/auth-session-validation.mjs",
-    "validate:protected-routes-rbac": "node scripts/protected-routes-rbac-validation.mjs"
+    "validate:protected-routes-rbac": "node scripts/protected-routes-rbac-validation.mjs",
+    "validate:store-payment-boundaries": "rm -rf .tmp-commerce-validation && tsc src/store/store.service.ts src/store/store-offerings.service.ts --rootDir src --outDir .tmp-commerce-validation --module commonjs --moduleResolution node --target es2022 --experimentalDecorators --emitDecoratorMetadata --esModuleInterop --skipLibCheck && node --test scripts/store-payment-boundary-validation.cjs; code=$?; rm -rf .tmp-commerce-validation; exit $code"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1138.0",
