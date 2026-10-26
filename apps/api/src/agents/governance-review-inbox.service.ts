@@ -79,7 +79,7 @@ export class GovernanceReviewInboxService {
       }
       parent=task;
     }
-    if(sourceView.operationsEvidence&&sourceView.operationsEvidence.status!=='RECORDED'){status='EVIDENCE_REQUIRED';reason='SOURCE_EVIDENCE_UNAVAILABLE';}
+    if(sourceView.operationsEvidence&&sourceView.operationsEvidence.status!=='RECORDED'&&status!=='OWNER_ESCALATION_REQUIRED'&&status!=='INTEGRITY_REVIEW_REQUIRED'){status='EVIDENCE_REQUIRED';reason='SOURCE_EVIDENCE_UNAVAILABLE';}
     return{source:sourceView,reviews,status,reason,completedReviews,stageCount:6,cost:{currency:'USD',taskCount:tasks.length,reservedMicroUsd:tasks.reduce((n,t)=>n+t.reservedCostMicroUsd,0),estimatedMicroUsd:tasks.every(t=>t.estimatedCostMicroUsd!==null)?tasks.reduce((n,t)=>n+t.estimatedCostMicroUsd!,0):null},ownerApprovalRequired:status==='READY_FOR_OWNER'||status==='OWNER_ESCALATION_REQUIRED',approved:false,readOnly:true,scope:'ADVISORY_RUNTIME_OUTPUTS'};
   }
 }

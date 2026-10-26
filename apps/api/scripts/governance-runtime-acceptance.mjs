@@ -69,6 +69,9 @@ export async function governanceRuntimeAcceptance({db,service,runtime,audit,prov
    const test=await start();await run('GOV_QUALITY_AUDIT',text);
    const stopped=await audits(test.review.id,'GOVERNANCE_REVIEW_STOPPED');assert.equal(stopped.length,1);assert.equal(stopped[0].metadata.outcome,outcome);
    const viewed=await readFile(test.root.id);assert.equal(viewed.status,outcome==='OWNER_ESCALATION_REQUIRED'?'OWNER_ESCALATION_REQUIRED':outcome==='INVALID_REVIEW'?'EVIDENCE_REQUIRED':'CORRECTION_REQUIRED');assert.equal(viewed.approved,false);
+   if(outcome==='OWNER_ESCALATION_REQUIRED'){
+    const source=await db.aiAgentTask.findUniqueOrThrow({where:{id:test.root.id}});await db.aiAgentTask.update({where:{id:source.id},data:{claimId:randomUUID()}});const escalated=await readFile(source.id);assert.equal(escalated.source.operationsEvidence.status,'INVALID');assert.equal(escalated.status,'OWNER_ESCALATION_REQUIRED');assert.equal(escalated.ownerApprovalRequired,true);assert.equal(escalated.reviews[0].state,'COMPLETED');await db.aiAgentTask.update({where:{id:source.id},data:{claimId:source.claimId}});
+   }
    const next=await db.auditEvent.findMany({where:{action:'GOVERNANCE_REVIEW_QUEUED'}});assert(!next.some(x=>x.metadata?.sourceTaskId===test.review.id));
   }
   // Directly asking the final agent cannot forge the five earlier gates.
