@@ -87,7 +87,7 @@ try{
   {state:'COMPLETED',startedAt:new Date('2026-01-01T00:00:00Z'),finishedAt:new Date('2026-01-01T00:00:02Z'),dispatchedAt:new Date('2026-01-01T00:00:00Z'),reservedCostMicroUsd:100,estimatedCostMicroUsd:60},
   {state:'COMPLETED',startedAt:new Date('2026-01-01T00:00:00Z'),finishedAt:new Date('2026-01-01T00:00:04Z'),dispatchedAt:new Date('2026-01-01T00:00:00Z'),reservedCostMicroUsd:100,estimatedCostMicroUsd:0},
   {state:'REVIEWED',dispatchedAt:new Date('2026-01-01T00:00:00Z'),reservedCostMicroUsd:100,estimatedCostMicroUsd:null},
-  {state:'CANCELLED',reservedCostMicroUsd:null,estimatedCostMicroUsd:null}
+  {state:'CANCELLED',reservedCostMicroUsd:0,estimatedCostMicroUsd:null}
  ].map(x=>({...x,agentKey:metricKey,requestedByAccountId:actor.id,requestKey:randomUUID(),fingerprint:'historical-performance',action:'DRAFT_REPORT',language:'ar-SA',prompt:'Isolated historical performance fixture'}))});
  const callsBeforeMetrics={modelCalls,countCalls},metricCatalog=await catalog(),metric=metricCatalog.items.find(x=>x.key===metricKey).performance;
  const sourceRows=await db.aiAgentTask.findMany({where:{agentKey:metricKey}});
