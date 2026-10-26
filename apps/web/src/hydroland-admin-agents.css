@@ -21,4 +21,10 @@
 .hl-ai-workforce [data-ai-task-list]{display:grid;gap:12px;margin:18px 0}
 .hl-ai-workforce pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.8;max-width:100%}
 .hl-ai-workforce nav{display:flex;gap:10px;flex-wrap:wrap}
+.hl-ai-workforce [data-ai-governance-inbox]{padding:16px;margin:18px 0;border:1px solid var(--line,#365467);border-radius:14px}
+.hl-ai-workforce [data-ai-governance-inbox]>summary{font-weight:700;cursor:pointer;line-height:1.8}
+.hl-ai-workforce [data-ai-inbox-list],.hl-ai-workforce .hl-ai-inbox-stages{display:grid;gap:12px;margin:16px 0}
+.hl-ai-workforce [data-ai-governance-inbox] h6{margin:0;font-size:1rem;overflow-wrap:anywhere}
+.hl-ai-workforce [data-ai-inbox-detail]{margin-top:20px;min-width:0}
+.hl-ai-workforce [data-ai-inbox-detail] details{padding:12px 0}
 @media(max-width:620px){.hl-ai-workforce .hl-ai-cards,.hl-ai-workforce .hl-ai-grid{grid-template-columns:minmax(0,1fr)}.hl-ai-workforce .hl-ai-body{padding:0 12px 12px}}
