@@ -91,7 +91,8 @@
         const close = node('button', 'إغلاق تقييم النواقص', privatePane); close.type = 'button'; close.addEventListener('click', dismiss);
         try {
           const allowed = await access()?.authorizeRole?.('admin', { sessionVersion: session, isCurrent: active });
-          if (!allowed || !active()) return;
+          if (!allowed) { if (generation === g && auth()?.getSessionVersion?.() === session) clear(); return; }
+          if (!active()) return;
           const response = await auth().authorizedFetch(endpoint);
           const result = await response.json().catch(() => null);
           if (!active()) return;
@@ -109,7 +110,7 @@
       }
       function drawAssessment(result, context) {
         privatePane.replaceChildren();
-        const { active, dismiss, session } = context;
+        const { active, dismiss, session, g } = context;
         let plan = null, inFlight = false, editVersion = 0;
         const close = node('button', 'إغلاق تقييم النواقص', privatePane); close.type = 'button'; close.addEventListener('click', dismiss);
         node('p', result.notice, privatePane);
@@ -172,7 +173,8 @@
           const version = editVersion; plan = null; previewPane.replaceChildren(); setBusy(true); feedback.textContent = 'جارٍ معاينة التقييم والتحقق من المراجع…';
           try {
             const allowed = await access()?.authorizeRole?.('admin', { sessionVersion: session, isCurrent: active });
-            if (!allowed || !active()) return;
+            if (!allowed) { if (generation === g && auth()?.getSessionVersion?.() === session) clear(); return; }
+          if (!active()) return;
             const response = await auth().authorizedFetch(endpoint + '/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(draft) });
             const next = await response.json().catch(() => null);
             if (!active() || editVersion !== version) return;
@@ -193,7 +195,8 @@
               const confirmedPlan = plan; plan = null; save.disabled = true; confirmed.disabled = true; setBusy(true); feedback.textContent = 'جارٍ حفظ التقييم…';
               try {
                 const authorized = await access()?.authorizeRole?.('admin', { sessionVersion: session, isCurrent: active });
-                if (!authorized || !active()) return;
+                if (!authorized) { if (generation === g && auth()?.getSessionVersion?.() === session) clear(); return; }
+                if (!active()) return;
                 const response = await auth().authorizedFetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...confirmedPlan.draft, expectedPlanHash: confirmedPlan.hash, confirmed: true }) });
                 const saved = await response.json().catch(() => null);
                 if (!active()) return;
