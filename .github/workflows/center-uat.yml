@@ -1,0 +1,37 @@
+name: Center UAT sandbox
+on:
+  pull_request:
+    paths:
+      - 'scripts/center-uat/**'
+      - 'render.center-uat.yaml'
+      - '.github/workflows/center-uat.yml'
+jobs:
+  synthetic-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: hydroland
+          POSTGRES_PASSWORD: ephemeral-ci-only
+          POSTGRES_DB: hydroland_center_uat
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U hydroland -d hydroland_center_uat"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://hydroland:ephemeral-ci-only@localhost:5432/hydroland_center_uat
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Reproduce the exact historical UAT schema in disposable upgrade checks.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/center-uat/build.mjs
+      - run: node --test scripts/center-uat/guard.test.mjs
+      - run: node scripts/center-uat/upgrade-checks.mjs
+      - run: node scripts/center-uat/smoke.mjs
