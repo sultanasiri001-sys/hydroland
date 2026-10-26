@@ -1,7 +1,9 @@
-import {CryptoDigestAlgorithm,digestStringAsync} from 'expo-crypto';
+import {CryptoDigestAlgorithm,digestStringAsync,digest} from 'expo-crypto';
 import {authorizedFetch,authorizedBinaryFetch} from './api';
 import {saveOfflineContent,loadOfflineContent,deleteOfflineContent,payloadFile,deletePayload,loadPayloadBytes} from './offline-content-store';
 import {saveTripPackage,deleteTripPackage,type OfflineTripPackage} from './offline-trip-package';
+import {getSessionScope,assertSessionScope,type SessionScope} from './session';
+async function requireScope(scope?:SessionScope){const current=scope??await getSessionScope();if(!current)throw new Error('Authentication required.');assertSessionScope(current);return current}
 
 export type OfflinePackageStatus={tripId:string;briefingVersion?:number;status:'NOT_READY'|'UPDATE_REQUIRED'|'READY'|string;reason?:string;checksum?:string;generatedAt?:string};
 export type OfflinePackageContent={tripId:string;briefingVersion:number;checksum:string;generatedAt:string;manifest:unknown};
@@ -17,70 +19,88 @@ function stableJson(value:unknown):string{
 async function manifestChecksum(manifest:unknown){return digestStringAsync(CryptoDigestAlgorithm.SHA256,stableJson(manifest))}
 
 export async function downloadOfflinePackage(tripId:string):Promise<OfflineTripPackage>{
- const remote=await getOfflinePackageContent(tripId);
+ const scope=await requireScope();
+ const remote=await getOfflinePackageContent(tripId);assertSessionScope(scope);
  if(remote.tripId!==tripId||!remote.checksum||!Number.isFinite(remote.briefingVersion))throw new Error('Invalid offline package response.');
- const computedChecksum=await manifestChecksum(remote.manifest);
+ const computedChecksum=await manifestChecksum(remote.manifest);assertSessionScope(scope);
  if(computedChecksum.toLowerCase()!==remote.checksum.toLowerCase()){
-  deleteOfflineContent(tripId);
-  await deleteTripPackage(tripId);
+  deleteOfflineContent(tripId,scope);
+  await deleteTripPackage(tripId,scope);
   throw new Error('Offline package checksum verification failed.');
  }
- const localContentRef=saveOfflineContent(remote);
- const persisted=loadOfflineContent(tripId);
+ const localContentRef=saveOfflineContent(remote,scope);
+ const persisted=loadOfflineContent(tripId,scope);
  if(!persisted||persisted.tripId!==remote.tripId||persisted.checksum!==remote.checksum||persisted.briefingVersion!==remote.briefingVersion){
-  deleteOfflineContent(tripId);
-  await deleteTripPackage(tripId);
+  deleteOfflineContent(tripId,scope);
+  await deleteTripPackage(tripId,scope);
   throw new Error('Offline package persistence verification failed.');
  }
- const persistedChecksum=await manifestChecksum(persisted.manifest);
+ const persistedChecksum=await manifestChecksum(persisted.manifest);assertSessionScope(scope);
  if(persistedChecksum.toLowerCase()!==remote.checksum.toLowerCase()){
-  deleteOfflineContent(tripId);
-  await deleteTripPackage(tripId);
+  deleteOfflineContent(tripId,scope);
+  await deleteTripPackage(tripId,scope);
   throw new Error('Stored offline package checksum verification failed.');
  }
  const metadata:OfflineTripPackage={tripId,manifestVersion:'1',downloadedAt:new Date().toISOString(),sourceUpdatedAt:remote.generatedAt,checksum:remote.checksum,briefingVersion:remote.briefingVersion,localContentRef};
- try{await saveTripPackage(metadata);return metadata}catch(error){deleteOfflineContent(tripId);await deleteTripPackage(tripId);throw error}
+ try{await saveTripPackage(metadata,scope);return metadata}catch(error){deleteOfflineContent(tripId,scope);await deleteTripPackage(tripId,scope);throw error}
 }
 
-export type OfflineMediaManifestEntry={key:string;checksum:string;mediaType?:string;sizeBytes?:number|null;contentType?:string|null};
+export type OfflineMediaManifestEntry={key:string;checksum:string;mediaType?:string;sizeBytes?:number|null;contentType?:string|null;classification?:string};
 
-function bytesToBase64(bytes:Uint8Array){
- let binary='';const chunk=0x8000;
- for(let i=0;i<bytes.length;i+=chunk)binary+=String.fromCharCode(...bytes.subarray(i,Math.min(i+chunk,bytes.length)));
- return globalThis.btoa(binary);
+async function approvedPayload(tripId:string,entry:OfflineMediaManifestEntry,scope:SessionScope):Promise<OfflineMediaManifestEntry>{
+ if(!await verifyStoredOfflinePackage(tripId,scope))throw new Error('Verified offline manifest is required.');
+ const manifest=loadOfflineContent(tripId,scope)?.manifest as {files?:unknown}|undefined;
+ const approved=Array.isArray(manifest?.files)?manifest.files.find((item:OfflineMediaManifestEntry)=>item?.key===entry.key):undefined;
+ // Classification is read from the verified manifest, never from caller input.
+ if(!approved||approved.checksum!==entry.checksum||!['PUBLIC_CACHE','OPERATIONAL_OFFLINE'].includes(approved.classification)){
+  deletePayload(tripId,entry.key.slice('media:'.length),scope);
+  throw new Error('Offline payload is not approved for unencrypted storage.');
+ }
+ if(approved.sizeBytes!=null&&(!Number.isSafeInteger(approved.sizeBytes)||approved.sizeBytes<0))throw new Error('Invalid offline payload size.');
+ return approved;
+}
+
+async function payloadChecksum(bytes:Uint8Array){
+ const hash=await digest(CryptoDigestAlgorithm.SHA256,bytes.slice().buffer);
+ return Array.from(new Uint8Array(hash),value=>value.toString(16).padStart(2,'0')).join('');
 }
 
 export async function downloadOfflinePayload(tripId:string,entry:OfflineMediaManifestEntry){
+ const scope=await requireScope();
  if(!entry.key.startsWith('media:')||!entry.checksum)throw new Error('Invalid offline media manifest entry.');
  const mediaKey=entry.key.slice('media:'.length);if(!mediaKey)throw new Error('Offline media key is required.');
+ entry=await approvedPayload(tripId,entry,scope);assertSessionScope(scope);
  const buffer=await authorizedBinaryFetch(`/trip-intelligence/${encodeURIComponent(tripId)}/offline-package/payloads/${encodeURIComponent(mediaKey)}`);
- const bytes=new Uint8Array(buffer);
+ assertSessionScope(scope);const bytes=new Uint8Array(buffer);
  if(entry.sizeBytes!=null&&bytes.byteLength!==entry.sizeBytes)throw new Error('Offline payload size verification failed.');
- const actual=await digestStringAsync(CryptoDigestAlgorithm.SHA256,bytesToBase64(bytes),{encoding:'base64'} as any);
- if(actual.toLowerCase()!==entry.checksum.toLowerCase()){deletePayload(tripId,mediaKey);throw new Error('Offline payload checksum verification failed.');}
- const file=payloadFile(tripId,mediaKey);
- try{file.write(bytes);return file.uri}catch(error){deletePayload(tripId,mediaKey);throw error}
+ const actual=await payloadChecksum(bytes);assertSessionScope(scope);
+ if(actual.toLowerCase()!==entry.checksum.toLowerCase()){deletePayload(tripId,mediaKey,scope);throw new Error('Offline payload checksum verification failed.');}
+ const file=payloadFile(tripId,mediaKey,scope);
+ try{file.write(bytes);return file.uri}catch(error){deletePayload(tripId,mediaKey,scope);throw error}
 }
 
-export async function verifyStoredOfflinePackage(tripId:string){
- const metadata=await (await import('./offline-trip-package')).loadTripPackage(tripId);
- const stored=loadOfflineContent(tripId);
+export async function verifyStoredOfflinePackage(tripId:string,requestedScope?:SessionScope){
+ const scope=await requireScope(requestedScope);
+ const metadata=await (await import('./offline-trip-package')).loadTripPackage(tripId,scope);
+ const stored=loadOfflineContent(tripId,scope);
  if(!metadata||!stored||stored.tripId!==tripId||!metadata.checksum||stored.checksum!==metadata.checksum||stored.briefingVersion!==metadata.briefingVersion){
-  deleteOfflineContent(tripId);await deleteTripPackage(tripId);return false;
+  deleteOfflineContent(tripId,scope);await deleteTripPackage(tripId,scope);return false;
  }
- const checksum=await manifestChecksum(stored.manifest);
+ const checksum=await manifestChecksum(stored.manifest);assertSessionScope(scope);
  if(checksum.toLowerCase()!==metadata.checksum.toLowerCase()){
-  deleteOfflineContent(tripId);await deleteTripPackage(tripId);return false;
+  deleteOfflineContent(tripId,scope);await deleteTripPackage(tripId,scope);return false;
  }
  return true;
 }
 
 export async function verifyStoredOfflinePayload(tripId:string,entry:OfflineMediaManifestEntry){
+ const scope=await requireScope();
  if(!entry.key.startsWith('media:')||!entry.checksum)return false;
  const mediaKey=entry.key.slice('media:'.length);if(!mediaKey)return false;
- const bytes=loadPayloadBytes(tripId,mediaKey);if(!bytes)return false;
- if(entry.sizeBytes!=null&&bytes.byteLength!==entry.sizeBytes){deletePayload(tripId,mediaKey);return false;}
- const actual=await digestStringAsync(CryptoDigestAlgorithm.SHA256,bytesToBase64(bytes),{encoding:'base64'} as any);
- if(actual.toLowerCase()!==entry.checksum.toLowerCase()){deletePayload(tripId,mediaKey);return false;}
+ try{entry=await approvedPayload(tripId,entry,scope)}catch{assertSessionScope(scope);return false}
+ const bytes=loadPayloadBytes(tripId,mediaKey,scope);if(!bytes)return false;
+ if(entry.sizeBytes!=null&&bytes.byteLength!==entry.sizeBytes){deletePayload(tripId,mediaKey,scope);return false;}
+ const actual=await payloadChecksum(bytes);assertSessionScope(scope);
+ if(actual.toLowerCase()!==entry.checksum.toLowerCase()){deletePayload(tripId,mediaKey,scope);return false;}
  return true;
 }
