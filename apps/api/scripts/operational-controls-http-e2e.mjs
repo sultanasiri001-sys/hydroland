@@ -3,6 +3,11 @@ import {PrismaClient} from '@prisma/client';
 import {createHmac,randomUUID} from 'node:crypto';
 const base=process.env.CONTROLS_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1';
 if(!['localhost','127.0.0.1'].includes(new URL(base).hostname))throw new Error('Only isolated local test APIs are allowed.');
+assert.equal(process.env.CI,'true','Operational control fixtures require CI');
+assert(['localhost','127.0.0.1','[::1]'].includes(new URL(process.env.DATABASE_URL).hostname),'Operational control fixtures require loopback PostgreSQL');
+// The existing HR runner leaves NODE_ENV unset. Mark only this guarded fixture
+// process as test; never override a production/development environment.
+process.env.NODE_ENV??='test';assert.equal(process.env.NODE_ENV,'test');
 const db=new PrismaClient(),secret=process.env.JWT_SECRET;if(!secret)throw new Error('JWT_SECRET required');
 const enc=x=>Buffer.from(JSON.stringify(x)).toString('base64url');
 const token=id=>{const now=Math.floor(Date.now()/1000),body=enc({alg:'HS256',typ:'JWT'})+'.'+enc({sub:id,iat:now,exp:now+900});return body+'.'+createHmac('sha256',secret).update(body).digest('base64url')};
@@ -25,6 +30,8 @@ try{
  const audit=await db.auditEvent.findFirst({where:{action:'OPERATIONAL_CONTROL_CHANGED',resourceId:'WEATHER.WEATHER_GATE',metadata:{path:['accountId'],equals:admin.id}},orderBy:{occurredAt:'desc'}});assert(audit);assert.equal(audit.metadata.state,'ENABLED');assert.equal(audit.metadata.reason,payload.reason);
  const bad=await request(admin,'/WEATHER.WEATHER_GATE',{...payload,expectedRevision:concurrent.find(r=>r.status===200).body.revision,reason:'bad'});assert.equal(bad.status,400);
  assert.equal((await change('TRAINING.CAPACITY_LIMIT','DISABLED')).status,200);
+ const {calendarExplicitBlocksAcceptance}=await import('./calendar-explicit-blocks-http.mjs');
+ await calendarExplicitBlocksAcceptance({db,base,admin,reader,token});
  const revoked=(await request(admin)).body.find(r=>r.id==='TRAINING.CAPACITY_LIMIT');await db.roleAssignment.delete({where:{id:role.id}});
  assert.equal((await request(admin,'/TRAINING.CAPACITY_LIMIT',{state:'ENABLED',reason:'Revoked role cannot update operational controls',expectedRevision:revoked.revision})).status,403);
  console.log('Operational controls HTTP/PostgreSQL E2E passed: 29 controls, 401/403 guards, concurrent revision conflict, synchronized weather writes, attributed audit, reason validation and revoked role.');
