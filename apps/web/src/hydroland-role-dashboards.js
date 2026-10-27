@@ -227,7 +227,7 @@
     const heroSubtitle={center:'نظم رحلاتك… واصنع تجربة غوص استثنائية',admin:'كل ما تحتاجه لإدارة منظومة هيدرولاند في مكان واحد',organization:'إدارة الجهات والوثائق المؤسسية من حسابك',instructor:'علّم، ألهم… واصنع جيلًا من الغواصين',boat:'أدر أسطولك وخدماتك البحرية بثقة'}[role];
     const actions=c.a.filter(([label])=>!center||label!=='المستندات والتراخيص');if(['center','instructor','admin'].includes(role))actions.push(['العقود والتوقيع الإلكتروني','contracts','◇'],['مكتبة العقود','contract-library','◇']);
     d.innerHTML=`${center?`<header class="hl-center-masthead"><a class="brand" href="#home">${brand()}</a><div class="hl-saudi-mark">${emblem}<span>المملكة العربية السعودية</span></div></header>`:''}<div class="hl-portal-shell">
-      <aside class="hl-portal-nav" aria-label="${c.t}">
+      <aside id="hl-portal-navigation" class="hl-portal-nav" aria-label="${c.t}">
         ${!center?`<a class="brand" href="#home">${brand()}</a>`:''}
         <section class="hl-portal-member ${center?'hl-center-member':''}"><span class="avatar" ${center?'data-center-avatar':'data-portal-avatar'}>H</span><div><b ${center?'data-center-name':'data-portal-name'}>حساب HYDROLAND</b><small>${c.t}</small></div></section>
         <nav>${c.nav.map((label,index)=>`<button type="button" class="hl-portal-nav-item${index===0?' active':''}" data-portal-label="${label}" ${index===0?'aria-current="page"':''}>${icon(iconFor(label))}<span>${label}</span></button>`).join('')}</nav>
@@ -253,7 +253,7 @@
     d.querySelector('[data-board-notifications]')?.addEventListener('click',()=>window.HydrolandAccountCenter?.openNotifications?.());
     d.querySelector('[data-board-messages]')?.addEventListener('click',()=>window.HydrolandMessages?.open?.());
     d.querySelector('[data-portal-profile]')?.addEventListener('click',()=>document.getElementById('profile-dialog')?.showModal());
-    d.querySelector('[data-portal-menu]').addEventListener('click',event=>{const open=d.classList.toggle('hl-portal-nav-open');event.currentTarget.setAttribute('aria-expanded',String(open))});
+    window.HydrolandUI.bindNavigationMenu(d.querySelector('[data-portal-menu]'),d.querySelector('.hl-portal-nav'),d,'hl-portal-nav-open');
     d.querySelector('[data-portal-home]').addEventListener('click',()=>window.HydrolandWorkspaceUI?.show?.(d));
     const portalSearch=d.querySelector('.hl-portal-search');
     portalSearch.querySelector('select')?.addEventListener('change',event=>{portalSearch.querySelector('input').placeholder={bookings:'رقم الحجز أو اسم العميل أو الرحلة',customers:'اسم العميل',equipment:'رمز المعدة أو الرقم التسلسلي'}[event.target.value]});
