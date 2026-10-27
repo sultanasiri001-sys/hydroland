@@ -1,4 +1,6 @@
 (()=>{
+  // Read the current preference for every action; do not cache a startup value.
+  const publicScrollBehavior=()=>window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches===false?'smooth':'instant';
   if(window.HydrolandPublicUI)return;
   const main=document.getElementById('main');if(!main)return;
   const css=document.createElement('link');css.rel='stylesheet';css.href='./hydroland-public-discovery.css';document.head.appendChild(css);
@@ -74,8 +76,8 @@
     return Object.hasOwn(pages,id);
   };
   const filterTrips=filter=>{window.HydrolandBookings?.setPublicFilter?.(filter);tripToolbar.querySelectorAll('[data-public-trip-filter]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.publicTripFilter===filter)))};
-  const navigate=id=>{const publicPage=setView(id);history.pushState(null,'','#'+id);if(publicPage)window.scrollTo({top:0,behavior:'instant'});else{const target=document.getElementById(id);window.HydrolandWorkspaceUI?.show?.(target);target?.scrollIntoView({behavior:'smooth',block:'start'})}document.querySelector('.sidebar')?.classList.remove('open')};
-  const openTraining=()=>{if(!auth()){document.getElementById('visitor-auth-cta')?.click();return}window.HydrolandTraining?.reload?.();window.HydrolandWorkspaceUI?.show?.(document.querySelector('.hl-training'));document.querySelector('.hl-training')?.scrollIntoView({behavior:'smooth',block:'start'})};
+  const navigate=id=>{const publicPage=setView(id);history.pushState(null,'','#'+id);if(publicPage)window.scrollTo({top:0,behavior:'instant'});else{const target=document.getElementById(id);window.HydrolandWorkspaceUI?.show?.(target);target?.scrollIntoView({behavior:publicScrollBehavior(),block:'start'})}document.querySelector('.sidebar')?.classList.remove('open')};
+  const openTraining=()=>{if(!auth()){document.getElementById('visitor-auth-cta')?.click();return}window.HydrolandTraining?.reload?.();window.HydrolandWorkspaceUI?.show?.(document.querySelector('.hl-training'));document.querySelector('.hl-training')?.scrollIntoView({behavior:publicScrollBehavior(),block:'start'})};
   const updateCounts=()=>{const client=window.HydrolandBookings,trips=client?.getPublicTrips?.()||[],status=client?.getPublicStatus?.();activitySection.querySelectorAll('[data-activity-count]').forEach(node=>{const count=trips.filter(trip=>client.publicCategory(trip)===node.dataset.activityCount).length;node.textContent=status==='loading'?'جارٍ تحميل الرحلات...':status==='error'?'تعذر تحميل الرحلات':count?`${count} رحلة منشورة`:'لا توجد رحلات منشورة حاليًا'});const count=tripSection?.querySelector('[data-public-trip-grid]')?.dataset.publicTripCount;tripToolbar.querySelector('[data-public-trip-count-label]').textContent=status==='ready'?`${count||0} رحلة منشورة`:''};
   const dialog=document.createElement('dialog');dialog.id='hl-public-detail';dialog.className='hl-public-detail';dialog.setAttribute('aria-labelledby','hl-public-detail-title');document.body.appendChild(dialog);
   let returnHash=null,detailTrigger=null;
