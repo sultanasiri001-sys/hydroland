@@ -23,5 +23,5 @@ export class StoreController {
  @UseGuards(AccessTokenGuard,AdminGuard) @Get('admin/payments') adminPayments(){return this.store.listAdminPayments()}
  @UseGuards(AccessTokenGuard,AdminGuard) @Get('admin/invoices') adminInvoices(){return this.store.listAdminInvoices()}
  @UseGuards(AccessTokenGuard,AdminGuard) @Get('admin/orders') adminOrders(){return this.store.listAdminOrders()}
- @UseGuards(AccessTokenGuard,AdminGuard) @Patch('admin/orders/:orderId/status') updateOrderStatus(@Param('orderId') orderId:string,@Body() body:{status:OrderStatus}){return this.store.updateOrderStatus(orderId,body.status)}
+ @UseGuards(AccessTokenGuard,AdminGuard) @Patch('admin/orders/:orderId/status') updateOrderStatus(@Req() req:any,@Param('orderId') orderId:string,@Body() body:{status:OrderStatus}){return this.store.updateOrderStatus(orderId,body.status,req.auth.accountId)}
 }

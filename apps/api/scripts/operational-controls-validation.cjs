@@ -47,7 +47,7 @@ function harness(){
  for(const enabled of [false,true])for(const mode of ['ADVISORY','ENFORCE']){
   const calendarDb={trip:{findMany:async()=>[{id:'trip',type:'SHORE_DIVE',startsAt:now,endsAt:new Date('2030-01-02'),capacity:1,bookings:[],safetyChecklists:[{decision:'DEFERRED',items:{weather:{decision:'DEFERRED'}}}]}]},$queryRaw:async()=>[]};
   const policy={decision:async(category)=>({state:category==='WEATHER'?'ENABLED':'DISABLED',enforce:category==='WEATHER',review:false,bypass:category!=='WEATHER'})};
-  const calendar=new CalendarAllocationService(calendarDb,{}, {settings:async()=>({enabled,mode}),evaluate:()=>({decision:'DEFERRED'})},policy,{}, {evaluate:async()=>({blocked:false,reviewRequired:false,states:{}})}, {get:async()=>({record:null,policyReview:{required:false,blocked:false,states:{}}})},{});
+  const calendar=new CalendarAllocationService(calendarDb,{}, {settings:async()=>({enabled,mode}),evaluateReview:()=>({decision:'DEFERRED'})},policy,{}, {evaluate:async()=>({blocked:false,reviewRequired:false,states:{}})}, {get:async()=>({record:null,policyReview:{required:false,blocked:false,states:{}}})},{},{latest:async()=>null});
   const [trip]=await calendar.calendar('2030-01-01','2030-01-03');assert.equal(trip.readiness.checks.weather,!(enabled&&mode==='ENFORCE'));assert(trip.readiness.policyReview.issues.includes('SAFETY_DEFERRED'));
  }
  assert(h.state().audits.every(a=>a.actorId==='admin'&&a.metadata.reason));

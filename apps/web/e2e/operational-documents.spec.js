@@ -168,3 +168,50 @@ test('HR library setup resumes missing types and retains the existing contract w
   expect(created).toEqual(['HR-STAFFING-NEED','HR-JOB-DESCRIPTION']);expect(state.documents).toEqual([]);
   await panel.locator('[data-doc-hr-contracts]').click();expect(await page.evaluate(()=>window.__hrContractsOpened)).toBe(1);
 });
+
+test('document editor scrolling follows live reduced-motion preference without altering the draft',async({page})=>{
+  const state=await seed(page);await openDocuments(page);
+  const panel=page.locator('#hl-documents');
+  await expect(panel.locator('[data-doc-template]')).toHaveValue('template-1');
+  await panel.locator('[name="summary"]').fill('Motion preference fixture');
+  await panel.locator('[data-doc-save]').click();
+  await expect.poll(()=>state.documents.length).toBe(1);
+  await page.evaluate(()=>{
+    window.documentMotionCalls=[];
+    const form=document.querySelector('[data-doc-form]');
+    const original=form.scrollIntoView.bind(form);
+    form.scrollIntoView=options=>{window.documentMotionCalls.push(options);original(options)};
+  });
+  for(const [reducedMotion,behavior] of [['no-preference','smooth'],['reduce','instant'],['no-preference','smooth']]){
+    await page.emulateMedia({reducedMotion});
+    await panel.locator('[data-document-id="document-1"] [data-doc-action="edit"]').click();
+    await expect.poll(()=>page.evaluate(()=>window.documentMotionCalls.at(-1)?.behavior)).toBe(behavior);
+    await expect(panel.locator('[name="summary"]')).toHaveValue('Motion preference fixture');
+    await expect(panel.locator('[data-doc-template]')).toBeDisabled();
+    await panel.locator('[data-doc-cancel]').click();
+  }
+  expect(state.revisePayload).toBeNull();expect(state.submitCount).toBe(0);
+  expect(await page.evaluate(()=>window.documentMotionCalls.map(call=>call.block))).toEqual(['center','center','center']);
+});
+
+test('document shortcut scrolling respects changing motion preference and retains refresh',async({page})=>{
+  await seed(page);await openDocuments(page);
+  await page.evaluate(()=>{
+    window.documentShortcutMotion=[];
+    const panel=document.getElementById('hl-documents');
+    const original=panel.scrollIntoView.bind(panel);
+    panel.scrollIntoView=options=>{window.documentShortcutMotion.push(options);original(options)};
+    const wrapper=document.createElement('div');wrapper.id='motion-document-shortcut';
+    // Mount the synthetic action in the visible workspace, not under its fixed navigation.
+    wrapper.innerHTML='<button type="button">رفع الوثائق</button>';panel.prepend(wrapper);
+  });
+  const button=page.locator('#motion-document-shortcut button');
+  await expect(button).toHaveAttribute('data-hl-documents-connected','1');
+  for(const [reducedMotion,behavior] of [['reduce','instant'],['no-preference','smooth'],['reduce','instant']]){
+    await page.emulateMedia({reducedMotion});await button.click();
+    await expect.poll(()=>page.evaluate(()=>window.documentShortcutMotion.at(-1)?.behavior)).toBe(behavior);
+    await expect(page.locator('#hl-documents')).toBeVisible();
+    await expect(page.locator('[data-doc-template]')).toHaveValue('template-1');
+  }
+  expect(await page.evaluate(()=>window.documentShortcutMotion.map(call=>call.block))).toEqual(['start','start','start']);
+});

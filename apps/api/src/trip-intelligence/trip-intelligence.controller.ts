@@ -1,8 +1,9 @@
-import {Body,Controller,Get,Param,Post,Req,UseGuards} from '@nestjs/common';
+import {Body,Controller,Get,Header,Param,Post,Req,UseGuards} from '@nestjs/common';
 import {AccessTokenGuard} from '../auth/access-token.guard';
 import {ReviewGuard} from '../admin/review.guard';
 import {TripIntelligenceService} from './trip-intelligence.service';
 import {TranslationMode} from '../translation/translation.domain';
+import {OfflineTripReader} from './offline-trip-authorization.service';
 
 @UseGuards(AccessTokenGuard)
 @Controller('trip-intelligence')
@@ -32,10 +33,13 @@ export class TripIntelligenceController {
   @UseGuards(ReviewGuard)
   @Post(':tripId/offline-package/generate')
   generatePackage(@Req() req:any,@Param('tripId') tripId:string){return this.service.generateOfflinePackage(req.auth.accountId,tripId);}
+  @Header('Cache-Control','private, no-store')
   @Get(':tripId/offline-package')
-  packageStatus(@Param('tripId') tripId:string){return this.service.packageStatus(tripId);}
+  packageStatus(@Req() req:{auth:OfflineTripReader},@Param('tripId') tripId:string){return this.service.packageStatus(req.auth,tripId);}
+  @Header('Cache-Control','private, no-store')
   @Get(':tripId/offline-package/content')
-  packageContent(@Param('tripId') tripId:string){return this.service.packageContent(tripId);}
+  packageContent(@Req() req:{auth:OfflineTripReader},@Param('tripId') tripId:string){return this.service.packageContent(req.auth,tripId);}
+  @Header('Cache-Control','private, no-store')
   @Get(':tripId/offline-package/payloads/:mediaKey')
-  payload(@Param('tripId') tripId:string,@Param('mediaKey') mediaKey:string){return this.service.payloadDelivery(tripId,mediaKey);}
+  payload(@Req() req:{auth:OfflineTripReader},@Param('tripId') tripId:string,@Param('mediaKey') mediaKey:string){return this.service.payloadDelivery(req.auth,tripId,mediaKey);}
 }

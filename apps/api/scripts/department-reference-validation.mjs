@@ -15,6 +15,7 @@ const controls = [
   { category: 'PAYMENT', ruleKey: 'PAYMENT_REQUIRED', labelAr: 'Fixture payment control', state: 'ENABLED', metadata: { regulatoryRequirementId: 'fixture-requirement', regulatoryVersion: 'fixture-v1', evidenceIds: ['fixture-evidence'], legalApprovalReference: 'fixture-approval', privateMarker: 'never-return-this' } },
 ];
 const tx = {
+  departmentClosureAssessment: {findFirst: async () => null},
   account: { findFirst: async ({ where }) => {
     assert.equal(where.id, actorId); assert.equal(where.status, 'ACTIVE'); assert.deepEqual(where.emailVerifiedAt, { not: null });
     assert.deepEqual(where.roleAssignments, { some: { role: 'ADMIN', status: 'ACTIVE' } });

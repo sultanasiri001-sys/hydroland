@@ -5,7 +5,7 @@ import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { CrewAssignmentService } from './crew-assignment.service';
 import { PolicyControlService } from './policy-control.service';
-import { TripWeatherReview, TripWeatherReviewService } from './trip-weather-review.service';
+import { TripWeatherReviewService } from './trip-weather-review.service';
 import { WeatherGateService } from './weather-gate.service';
 
 type Mode = 'center' | 'marine' | 'admin' | 'owner' | 'organization';
@@ -124,8 +124,7 @@ export class BookingManagementService {
     const safety = await tx.safetyChecklist.findFirst({ where: { tripId: trip.id }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { id: true, decision: true, updatedAt: true } });
     const confirmedSeats = (await tx.booking.aggregate({ where: { tripId: trip.id, status: 'CONFIRMED' }, _sum: { seats: true } }))._sum.seats ?? 0;
     const settings = await this.weather.settings(tx);
-    const weatherRows = await tx.$queryRaw<TripWeatherReview[]>`SELECT * FROM "TripWeatherReview" WHERE "tripId"::text=${trip.id} ORDER BY "fetchedAt" DESC,"createdAt" DESC LIMIT 1`;
-    const review = weatherRows[0], evaluation = this.weather.evaluateReview(review?.snapshot, review?.status, settings);
+    const review = await this.weatherReviews.latest(trip.id, tx), evaluation = this.weather.evaluateReview(review?.snapshot, review?.status, settings, review?.context, review?.fetchedAt);
     const rules = { participant: await this.policies.decision('BOOKING', 'PARTICIPANT_ELIGIBILITY', tx), safety: await this.policies.decision('BOOKING', 'SAFETY_APPROVAL', tx), capacity: await this.policies.decision('BOOKING', 'CAPACITY_LIMIT', tx), payment: await this.policies.decision('PAYMENT', 'PAYMENT_REQUIRED', tx), weather: await this.policies.decision('WEATHER', 'WEATHER_GATE', tx) };
     const blockers: string[] = [], issues: string[] = [];
     const require = (valid: boolean, key: keyof typeof rules, code: string) => { if (!valid) { if (rules[key].enforce) blockers.push(code); else if (rules[key].review) issues.push(code); } };

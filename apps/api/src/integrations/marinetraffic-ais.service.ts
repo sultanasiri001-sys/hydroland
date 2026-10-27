@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { IntegrationService } from './integration.service';
+import { finiteNumericInput } from '../geo/coordinate-input';
 
 export type MarineTrafficAisPosition={
   mmsi:string;
@@ -60,7 +61,7 @@ export class MarineTrafficAisService {
     if(!row||typeof row!=='object'||Array.isArray(row))throw new ServiceUnavailableException('AIS provider returned no valid vessel position.');
     const data=row as Record<string,unknown>;
     const string=(key:string)=>typeof data[key]==='string'?(data[key] as string).trim():data[key]===null||data[key]===undefined?'':String(data[key]).trim();
-    const number=(key:string)=>{const value=Number(string(key));return Number.isFinite(value)?value:null;};
+    const number=(key:string)=>finiteNumericInput(data[key]);
     const mmsi=string('MMSI');
     const latitude=number('LAT'),longitude=number('LON');
     if(!/^\d{9}$/.test(mmsi)||latitude===null||latitude < -90||latitude > 90||longitude===null||longitude < -180||longitude > 180)throw new ServiceUnavailableException('AIS provider returned an invalid vessel position.');

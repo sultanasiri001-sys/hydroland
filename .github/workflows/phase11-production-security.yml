@@ -18,6 +18,9 @@ on:
       - '.github/workflows/mobile-security.yml'
       - 'scripts/release-dependency-audit*'
       - 'scripts/build-*-release.mjs'
+      - 'scripts/render-release-contract.test.mjs'
+      - 'render.yaml'
+      - 'apps/api/src/health/health.controller.ts'
       - '.github/workflows/phase11-production-security.yml'
   pull_request:
     paths:
@@ -35,6 +38,9 @@ on:
       - '.github/workflows/mobile-security.yml'
       - 'scripts/release-dependency-audit*'
       - 'scripts/build-*-release.mjs'
+      - 'scripts/render-release-contract.test.mjs'
+      - 'render.yaml'
+      - 'apps/api/src/health/health.controller.ts'
       - '.github/workflows/phase11-production-security.yml'
   workflow_dispatch:
 
@@ -61,6 +67,8 @@ jobs:
           node-version: 22
       - name: Validate Phase 11 repository controls
         run: node apps/api/scripts/phase11-production-security-validation.mjs
+      - name: Verify offline Render release contracts
+        run: node --test scripts/render-release-contract.test.mjs
       - name: Build production API image
         run: docker build -t hydroland-api:phase11 .
       - name: Build Compose API image

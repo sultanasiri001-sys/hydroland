@@ -1,4 +1,6 @@
 (()=>{
+  // Read the current preference for every action; do not cache a startup value.
+  const publicScrollBehavior=()=>window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches===false?'smooth':'instant';
  const main=document.getElementById('main');if(!main)return;
  const {icon,brand}=window.HydrolandUI;
  document.querySelectorAll('.brand').forEach(node=>node.innerHTML=brand());
@@ -27,6 +29,6 @@
  const routebar=document.createElement('section');routebar.className='hl-visitor-routebar';routebar.setAttribute('aria-label','مسارات الاستكشاف للزائر');routebar.innerHTML=`<button type="button" data-visitor-target="trips"><b>${icon('boat')}</b><strong>رحلات وتجارب بحرية</strong><small>اكتشف وجهتك البحرية القادمة</small></button><button type="button" data-visitor-target="training"><b>${icon('learn')}</b><strong>التدريب ومحترفي الغوص</strong><small>طوّر مهاراتك في أعماق البحر</small></button><button type="button" data-hl-public-auth><b>${icon('shield')}</b><strong>الحجز والحفظ يتطلبان حسابًا</strong><small>انضم إلى هيدرولاند لتجربة بحرية أكثر أمانًا</small></button>`;document.getElementById('home').after(routebar);
  routebar.querySelector('[data-hl-public-auth]').addEventListener('click',()=>document.getElementById('visitor-auth-cta').click());routebar.querySelectorAll('[data-visitor-target]').forEach(button=>button.addEventListener('click',()=>{const id=button.dataset.visitorTarget;if(window.HydrolandPublicUI)window.HydrolandPublicUI.navigate(id);else location.hash=id}));
  const toolbar=document.createElement('div');toolbar.className='hl-store-toolbar';toolbar.innerHTML='<div><b>متجر هيدرولاند</b><small>معدات للغوص والرحلات البحرية</small></div><div class="hl-store-filters"></div><button class="hl-cart" type="button">السلة <span>0</span></button>';document.querySelector('#store .section-heading').after(toolbar);
- toolbar.querySelector('.hl-cart').addEventListener('click',()=>document.querySelector('.hl-store-cart')?.scrollIntoView({behavior:'smooth',block:'center'}));
+ toolbar.querySelector('.hl-cart').addEventListener('click',()=>document.querySelector('.hl-store-cart')?.scrollIntoView({behavior:publicScrollBehavior(),block:'center'}));
  const badge=toolbar.querySelector('.hl-cart span');new MutationObserver(()=>{const next=document.querySelector('.hl-store-summary')?.textContent.match(/^(\d+)/)?.[1]||'0';if(badge.textContent!==next)badge.textContent=next}).observe(document.getElementById('store'),{childList:true,characterData:true,subtree:true});
 })();

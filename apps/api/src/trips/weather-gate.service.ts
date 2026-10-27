@@ -2,12 +2,14 @@ import { Prisma } from '@prisma/client';
 import { Injectable } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
+import { validWeatherReview, WeatherReviewContext } from './weather-review-context';
 
 export type WeatherGateMode = 'ENFORCE' | 'ADVISORY';
 export type WeatherDecision = 'ALLOWED' | 'REVIEW_REQUIRED' | 'DEFERRED' | 'UNAVAILABLE';
 export type WeatherReviewStatus='PENDING'|'APPROVED'|'REJECTED';
 
 export type WeatherSnapshot = {
+  forecastContext?: WeatherReviewContext;
   provider?: string;
   source?: string;
   observedAt?: string;
@@ -82,8 +84,9 @@ export class WeatherGateService {
     return { blocking, decision, reason: snapshot.reason ?? null };
   }
 
-  evaluateReview(snapshot:WeatherSnapshot|null|undefined,status:WeatherReviewStatus|null|undefined,settings:WeatherGateSettings){
+  evaluateReview(snapshot:WeatherSnapshot|null|undefined,status:WeatherReviewStatus|null|undefined,settings:WeatherGateSettings,context?:WeatherReviewContext|null,fetchedAt?:Date|string|null){
     if(!snapshot)return this.evaluate(null,settings);
+    if(!validWeatherReview(snapshot,context,fetchedAt))return{blocking:settings.enabled&&settings.mode==='ENFORCE',decision:'REVIEW_REQUIRED' as const,reason:'Weather forecast context is missing or changed; refresh and review the current trip forecast.'};
     const decision:WeatherDecision=status==='APPROVED'?'ALLOWED':status==='REJECTED'?'DEFERRED':'REVIEW_REQUIRED';
     const blocking=settings.enabled&&settings.mode==='ENFORCE'&&decision!=='ALLOWED';
     const reason=status==='APPROVED'?'Weather forecast reviewed and approved by an authorized operator.':status==='REJECTED'?'Weather forecast was rejected by an authorized operator.':'Fresh weather forecast requires human operational review.';

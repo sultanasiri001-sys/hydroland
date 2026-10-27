@@ -50,3 +50,132 @@ test('messages control is auth-gated and authenticated member can read text/voic
   expect(messages.at(-1)?.kind).toBe('TEXT');
   expect(messages.at(-1)?.body).toBe('تم التأكيد من طرفي');
 });
+
+const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return{promise,resolve}};
+async function historyFixture(page){
+  const control={historyRequests:[],conversationRequests:[],reads:[],sends:[],historyError:false,listError:false,historyGate:null,conversationGate:null,sendGate:null};
+  const profile={id:'history-owner',email:'owner@example.invalid',status:'ACTIVE',roleAssignments:[],person:{firstName:'History',lastName:'Owner',phone:null,professional:null}};
+  const participants=[{accountId:profile.id,firstName:'History',lastName:'Owner'},{accountId:'history-peer',firstName:'History',lastName:'Peer'}];
+  const message=(n,id='history-a')=>({id:`${id}-${n}`,conversationId:id,senderAccountId:'history-peer',senderFirstName:'History',senderLastName:'Peer',kind:'TEXT',body:`History message ${n}`,createdAt:'2026-10-01T00:00:00Z'});
+  const messages=Array.from({length:401},(_,index)=>message(index+1));
+  const summary=id=>({id,title:id==='history-a'?'Long conversation':'Other conversation',participants,latestMessage:id==='history-a'?messages.at(-1):message(900,'history-b')});
+  const pageFor=(all,end=all.length)=>{const start=Math.max(0,end-200),batch=all.slice(start,end);return{messages:batch,hasMore:start>0,olderCursor:start>0?batch[0].id:null}};
+  await page.route(/\/api\/v1\/me$/,route=>json(route,profile));
+  await page.route(/\/api\/v1\/credentials$/,route=>json(route,[]));
+  await page.route(/\/api\/v1\/me\/diver-profile$/,route=>json(route,{profile:null,equipment:[]}));
+  await page.route(/\/api\/v1\/messages\/conversations(?:\/.*)?$/,async route=>{
+    const request=route.request(),url=new URL(request.url()),path=url.pathname;
+    if(path.endsWith('/conversations'))return control.listError?json(route,{message:'List unavailable'},503):json(route,[summary('history-a'),summary('history-b')]);
+    const id=path.split('/conversations/')[1].split('/')[0];
+    if(path.endsWith('/read')){control.reads.push(id);return json(route,{status:'READ'})}
+    if(path.endsWith('/messages')){
+      if(request.method()==='POST'){
+        const payload=request.postDataJSON();control.sends.push({id,body:payload});if(control.sendGate)await control.sendGate.promise;
+        const created={...message(messages.length+1,id),senderAccountId:profile.id,kind:payload.kind,body:payload.body??null,mediaUrl:payload.mediaUrl??null,durationSec:payload.durationSec??null};messages.push(created);return json(route,created,201);
+      }
+      const cursor=url.searchParams.get('before');control.historyRequests.push({id,cursor});
+      if(control.historyGate)await control.historyGate.promise;
+      if(control.historyError)return json(route,{message:'History temporarily unavailable'},503);
+      return json(route,pageFor(messages,messages.findIndex(item=>item.id===cursor)));
+    }
+    control.conversationRequests.push(id);
+    if(id==='history-a'&&control.conversationGate)await control.conversationGate.promise;
+    return json(route,{...summary(id),...pageFor(id==='history-a'?messages:[message(900,'history-b')])});
+  });
+  await page.goto('/',{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>Boolean(window.HydrolandMessages&&window.HydrolandAuth&&window.HydrolandProfile));
+  await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','history-test-access');sessionStorage.setItem('hl-refresh-token','history-test-refresh');window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));await window.HydrolandProfile.load()});
+  await page.evaluate(()=>{window.__historyPending=0;const original=window.HydrolandAuth.authorizedFetch;window.HydrolandAuth.authorizedFetch=async(...args)=>{window.__historyPending++;try{const response=await original(...args),read=response.json.bind(response);response.json=async()=>{try{return await read()}finally{window.__historyPending--}};return response}catch(error){window.__historyPending--;throw error}}});
+  await page.locator('#top-messages').click();
+  const dialog=page.locator('#hl-messages-dialog');
+  await expect(dialog.locator('[data-conversation-id="history-a"]')).toBeVisible();
+  const select=async id=>dialog.locator(`[data-conversation-id="${id}"]`).click();
+  return{control,dialog,select};
+}
+
+for(const viewport of [{name:'desktop',width:1280,height:800},{name:'mobile',width:390,height:844}])test(`latest 200 messages remain visible and older history retries, deduplicates clicks and preserves scroll (${viewport.name})`,async({page})=>{
+  await page.setViewportSize({width:viewport.width,height:viewport.height});
+  const {control,dialog,select}=await historyFixture(page);await select('history-a');
+  await expect(dialog.locator('[data-message-id]')).toHaveCount(200);
+  await expect(dialog.locator('[data-message-id="history-a-401"]')).toBeInViewport();
+  await expect(dialog.locator('[data-message-form]')).toBeInViewport();
+  const stream=dialog.locator('[data-message-stream]');
+  expect(await stream.evaluate(element=>element.scrollHeight>element.clientHeight&&element.scrollTop>0)).toBe(true);
+  expect(await dialog.evaluate(element=>element.scrollHeight<=element.clientHeight+1)).toBe(true);
+  await expect(dialog.locator('[data-message-id="history-a-1"]')).toHaveCount(0);
+  const older=dialog.locator('[data-load-older-messages]');
+  control.historyError=true;await older.click();
+  await expect(dialog.locator('[data-message-status]')).toHaveText('History temporarily unavailable');
+  await expect(older).toBeEnabled();await expect(dialog.locator('[data-message-id]')).toHaveCount(200);
+  control.historyError=false;control.historyGate=deferred();await older.click();
+  await expect.poll(()=>control.historyRequests.length).toBe(2);
+  await expect(older).toBeDisabled();await older.dispatchEvent('click');
+  const before=await dialog.locator('[data-message-id="history-a-202"]').evaluate(element=>element.getBoundingClientRect().top);
+  control.historyGate.resolve();control.historyGate=null;
+  await page.waitForFunction(()=>window.__historyPending===0);
+  await expect(dialog.locator('[data-message-id]')).toHaveCount(400);
+  const after=await dialog.locator('[data-message-id="history-a-202"]').evaluate(element=>element.getBoundingClientRect().top);
+  expect(Math.abs(before-after)).toBeLessThan(2);
+  expect(control.historyRequests).toEqual([{id:'history-a',cursor:'history-a-202'},{id:'history-a',cursor:'history-a-202'}]);
+  await older.click();await expect(dialog.locator('[data-message-id]')).toHaveCount(401);await expect(older).toHaveCount(0);
+  expect(await dialog.evaluate(element=>element.scrollHeight<=element.clientHeight+1)).toBe(true);
+  expect(await dialog.locator('[data-message-id]').evaluateAll(elements=>new Set(elements.map(element=>element.dataset.messageId)).size)).toBe(401);
+  await dialog.locator('textarea[name="body"]').fill('Newest after 401');await dialog.locator('[data-message-form] button[type="submit"]').click();
+  await expect(dialog.locator('[data-message-id="history-a-402"]')).toHaveText(/Newest after 401/);
+  await expect(dialog.locator('[data-message-id="history-a-402"]')).toBeInViewport();await expect(dialog.locator('[data-message-id]')).toHaveCount(200);
+});
+
+test('older-history and initial conversation replies cannot replace newer navigation',async({page})=>{
+  const {control,dialog,select}=await historyFixture(page);await select('history-a');
+  control.historyGate=deferred();await dialog.locator('[data-load-older-messages]').click();await expect.poll(()=>control.historyRequests.length).toBe(1);
+  await select('history-b');await expect(dialog.locator('[data-message-title]')).toHaveText('Other conversation');
+  control.historyGate.resolve();control.historyGate=null;
+  await page.waitForFunction(()=>window.__historyPending===0);
+  await expect(dialog.locator('[data-message-id]')).toHaveCount(1);await expect(dialog.locator('[data-message-id="history-a-2"]')).toHaveCount(0);
+  control.conversationGate=deferred();await select('history-a');await select('history-b');
+  await expect(dialog.locator('[data-message-title]')).toHaveText('Other conversation');control.conversationGate.resolve();control.conversationGate=null;
+  await page.waitForFunction(()=>window.__historyPending===0);
+  await expect(dialog.locator('[data-message-id]')).toHaveCount(1);await expect(dialog.locator('[data-message-title]')).toHaveText('Other conversation');
+  expect(control.reads.filter(id=>id==='history-a')).toHaveLength(1);
+});
+
+test('closing or signing out discards in-flight history and does not restore hidden messages',async({page})=>{
+  const {control,dialog,select}=await historyFixture(page);await select('history-a');
+  control.historyGate=deferred();await dialog.locator('[data-load-older-messages]').click();await expect.poll(()=>control.historyRequests.length).toBe(1);
+  await dialog.locator('[data-messages-close]').click();control.historyGate.resolve();control.historyGate=null;
+  await page.waitForFunction(()=>window.__historyPending===0);
+  await expect(dialog).not.toBeVisible();await page.locator('#top-messages').click();await expect(dialog.locator('[data-message-id]')).toHaveCount(0);
+  await select('history-a');control.historyGate=deferred();await dialog.locator('[data-load-older-messages]').click();await expect.poll(()=>control.historyRequests.length).toBe(2);
+  await page.evaluate(()=>{sessionStorage.removeItem('hl-access-token');sessionStorage.removeItem('hl-refresh-token');window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'))});
+  control.historyGate.resolve();control.historyGate=null;await page.waitForFunction(()=>window.__historyPending===0);await expect(dialog).not.toBeVisible();await expect(page.locator('#top-messages')).toBeHidden();await expect(dialog.locator('[data-message-id]')).toHaveCount(0);
+});
+
+test('an in-flight send stays bound to its conversation and does not clear the next draft',async({page})=>{
+  const {control,dialog,select}=await historyFixture(page);await select('history-a');control.sendGate=deferred();
+  await dialog.locator('textarea[name="body"]').fill('Send in A');await dialog.locator('[data-message-form] button[type="submit"]').click();await expect.poll(()=>control.sends.length).toBe(1);
+  await select('history-b');await expect(dialog.locator('[data-message-title]')).toHaveText('Other conversation');await dialog.locator('textarea[name="body"]').fill('Draft in B');
+  control.sendGate.resolve();control.sendGate=null;
+  await page.waitForFunction(()=>window.__historyPending===0);
+  await expect(dialog.locator('[data-message-title]')).toHaveText('Other conversation');await expect(dialog.locator('textarea[name="body"]')).toHaveValue('Draft in B');expect(control.sends[0].id).toBe('history-a');
+});
+
+test('same-conversation send refresh preserves newer drafts and the other compose mode',async({page})=>{
+  const {control,dialog,select}=await historyFixture(page);await select('history-a');
+  const body=dialog.locator('textarea[name="body"]'),media=dialog.locator('input[name="mediaUrl"]'),duration=dialog.locator('input[name="durationSec"]');
+  await dialog.locator('summary').click();await body.fill('Submitted text');await media.fill('https://example.invalid/prepared.ogg');await duration.fill('8');
+  control.sendGate=deferred();await dialog.locator('[data-message-form] button[type="submit"]').click();await expect.poll(()=>control.sends.length).toBe(1);await body.fill('Next text draft');
+  control.sendGate.resolve();control.sendGate=null;await page.waitForFunction(()=>window.__historyPending===0);
+  await expect(dialog.locator('[data-message-id="history-a-402"]')).toHaveText(/Submitted text/);await expect(body).toHaveValue('Next text draft');await expect(media).toHaveValue('https://example.invalid/prepared.ogg');await expect(duration).toHaveValue('8');
+  await dialog.locator('[data-send-voice]').click();await expect.poll(()=>control.sends.length).toBe(2);await page.waitForFunction(()=>window.__historyPending===0);
+  await expect(dialog.locator('audio[src="https://example.invalid/prepared.ogg"]')).toHaveCount(1);await expect(body).toHaveValue('Next text draft');await expect(media).toHaveValue('');await expect(duration).toHaveValue('');
+  control.conversationGate=deferred();const requests=control.conversationRequests.length;await select('history-a');await select('history-a');await expect.poll(()=>control.conversationRequests.length).toBe(requests+2);control.conversationGate.resolve();control.conversationGate=null;await page.waitForFunction(()=>window.__historyPending===0);await expect(body).toHaveValue('Next text draft');
+});
+
+test('account transitions clear cached sidebar previews even when the new list fails',async({page})=>{
+  const {control,dialog,select}=await historyFixture(page);await select('history-a');await expect(dialog.locator('[data-conversation-id="history-a"]')).toContainText('History message 401');
+  control.listError=true;
+  await page.evaluate(()=>{sessionStorage.setItem('hl-access-token','another-account-access');sessionStorage.setItem('hl-refresh-token','another-account-refresh');document.dispatchEvent(new CustomEvent('hydroland:auth-changed'))});
+  await expect(dialog.locator('[data-conversation-items]')).not.toContainText('Long conversation');await expect(dialog.locator('[data-conversation-items]')).not.toContainText('History message 401');await expect(dialog.locator('[data-message-id]')).toHaveCount(0);
+  await page.waitForFunction(()=>window.__historyPending===0);await dialog.locator('[data-messages-close]').click();await page.locator('#top-messages').click();
+  await expect(dialog.locator('[data-conversation-id]')).toHaveCount(0);await expect(dialog.locator('[data-message-id]')).toHaveCount(0);
+});

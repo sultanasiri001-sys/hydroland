@@ -6,10 +6,11 @@ import {Prisma} from '@prisma/client';
 import {TranslationRouterService} from '../translation/translation-router.service';
 import {TranslationMode} from '../translation/translation.domain';
 import {OfflinePayloadStorageService} from './offline-payload-storage.service';
+import {OfflineTripAuthorizationService,OfflineTripReader} from './offline-trip-authorization.service';
 
 @Injectable()
 export class TripIntelligenceService {
-  constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly translation:TranslationRouterService,private readonly payloadStorage:OfflinePayloadStorageService){}
+  constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly translation:TranslationRouterService,private readonly payloadStorage:OfflinePayloadStorageService,private readonly offlineAuthorization:OfflineTripAuthorizationService){}
 
   private async assertAuthor(accountId:string){
     const role=await this.db.roleAssignment.findFirst({where:{accountId,status:'ACTIVE',role:{in:['ADMIN','REVIEWER','INSTRUCTOR','DIVE_CENTER','STAFF']}},select:{id:true}});
@@ -150,14 +151,24 @@ export class TripIntelligenceService {
     return pkg;
   }
 
-  async packageStatus(tripId:string){
+  packageStatus(reader:OfflineTripReader,tripId:string){
+    return this.offlineAuthorization.read(reader,tripId,()=>this.readPackageStatus(tripId));
+  }
+  packageContent(reader:OfflineTripReader,tripId:string){
+    return this.offlineAuthorization.read(reader,tripId,()=>this.readPackageContent(tripId));
+  }
+  payloadDelivery(reader:OfflineTripReader,tripId:string,mediaKey:string){
+    return this.offlineAuthorization.read(reader,tripId,()=>this.readPayloadDelivery(reader,tripId,mediaKey));
+  }
+
+  private async readPackageStatus(tripId:string){
     const briefing=await this.db.tripBriefing.findFirst({where:{tripId,status:'PUBLISHED'},orderBy:{version:'desc'},include:{offlinePackages:{orderBy:{generatedAt:'desc'},take:1}}});
     if(!briefing)return{tripId,status:'NOT_READY',reason:'PUBLISHED_BRIEFING_REQUIRED'};
     const pkg=briefing.offlinePackages[0];
     if(!pkg)return{tripId,briefingVersion:briefing.version,status:'UPDATE_REQUIRED',reason:'PACKAGE_GENERATION_REQUIRED'};
     return{tripId,briefingVersion:briefing.version,status:pkg.status,checksum:pkg.checksum,generatedAt:pkg.generatedAt};
   }
-  async packageContent(tripId:string){
+  private async readPackageContent(tripId:string){
     const briefing=await this.db.tripBriefing.findFirst({where:{tripId,status:'PUBLISHED'},orderBy:{version:'desc'},include:{offlinePackages:{where:{status:'READY'},orderBy:{generatedAt:'desc'},take:1}}});
     if(!briefing)throw new NotFoundException('Published briefing package not found.');
     const pkg=briefing.offlinePackages[0];
@@ -171,7 +182,7 @@ export class TripIntelligenceService {
     if(!divePlan||!emergencyPlan||manifest?.briefingVersion!==briefing.version||manifest?.divePlanVersion!==divePlan.version||manifest?.emergencyPlanVersion!==emergencyPlan.version)throw new ConflictException('Offline package is stale and must be regenerated.');
     return{tripId,briefingVersion:briefing.version,checksum:pkg.checksum,generatedAt:pkg.generatedAt,manifest};
   }
-  async payloadDelivery(tripId:string,mediaKey:string){
+  private async readPayloadDelivery(reader:OfflineTripReader,tripId:string,mediaKey:string){
     const briefing=await this.db.tripBriefing.findFirst({where:{tripId,status:'PUBLISHED'},orderBy:{version:'desc'},include:{offlinePackages:{where:{status:'READY'},orderBy:{generatedAt:'desc'},take:1},media:{where:{mediaKey,status:'READY'},take:1}}});
     if(!briefing)throw new NotFoundException('Published briefing not found.');
     const pkg=briefing.offlinePackages[0];
@@ -186,6 +197,7 @@ export class TripIntelligenceService {
     if(!divePlan||!emergencyPlan||manifest?.briefingVersion!==briefing.version||manifest?.divePlanVersion!==divePlan.version||manifest?.emergencyPlanVersion!==emergencyPlan.version)throw new ConflictException('Offline package is stale and must be regenerated.');
     const entry=Array.isArray(manifest?.files)?manifest.files.find((item:any)=>item?.key===`media:${mediaKey}`):null;
     if(!entry||entry.checksum!==media.checksum||entry.payloadKey!==media.mediaKey||entry.classification==='ONLINE_ONLY')throw new ConflictException('Payload is not part of the approved offline manifest.');
+    await this.offlineAuthorization.assertAccess(reader,tripId);
     return this.payloadStorage.delivery({storageKey:media.storageKey,checksum:media.checksum,sizeBytes:media.sizeBytes,contentType:media.contentType});
   }
 }

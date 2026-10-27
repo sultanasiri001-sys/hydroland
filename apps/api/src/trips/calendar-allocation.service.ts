@@ -6,7 +6,9 @@ import { BoatComplianceService } from './boat-compliance.service';
 import { EquipmentInspectionService } from './equipment-inspection.service';
 import { PolicyControlService } from './policy-control.service';
 import { TripComplianceService } from './trip-compliance.service';
-import { WeatherGateService, WeatherSnapshot } from './weather-gate.service';
+import { WeatherGateService } from './weather-gate.service';
+import { TripWeatherReviewService } from './trip-weather-review.service';
+import { assertCalendarHumanAvailable } from './calendar-training-availability';
 
 type ResourceRow={id:string;type:string;name:string;active:boolean};
 type AllocationRow={id:string;eventId:string;tripId:string;resourceId:string;startsAt:Date;endsAt:Date;status:string};
@@ -18,10 +20,9 @@ export type OperationalReadiness={status:'READY'|'REVIEW_REQUIRED'|'NOT_READY';c
 
 @Injectable()
 export class CalendarAllocationService{
-  constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly weatherGate:WeatherGateService,private readonly policies:PolicyControlService,private readonly boats:BoatComplianceService,private readonly equipment:EquipmentInspectionService,private readonly compliance:TripComplianceService,private readonly marine:MarineOperationsService){}
+  constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly weatherGate:WeatherGateService,private readonly policies:PolicyControlService,private readonly boats:BoatComplianceService,private readonly equipment:EquipmentInspectionService,private readonly compliance:TripComplianceService,private readonly marine:MarineOperationsService,private readonly weatherReviews:TripWeatherReviewService){}
   resources(){return this.db.$queryRaw<ResourceRow[]>`SELECT "id","type","name","active" FROM "CalendarResource" ORDER BY "type","name"`;}
   tripAllocations(tripId:string){return this.db.$queryRaw<AllocationWithResourceRow[]>`SELECT a."id",a."eventId",e."referenceId" AS "tripId",a."resourceId",a."startsAt",a."endsAt",a."status",r."type" AS "resourceType",r."name" AS "resourceName" FROM "CalendarAllocation" a JOIN "CalendarEvent" e ON e."id"=a."eventId" JOIN "CalendarResource" r ON r."id"=a."resourceId" WHERE e."referenceType"='TRIP' AND e."referenceId"=${tripId} AND a."status"='ACTIVE' ORDER BY r."type",r."name"`;}
-  private weatherFromItems(items:JsonLike):WeatherSnapshot|null{if(!items||Array.isArray(items)||typeof items!=='object')return null;const weather=(items as Record<string,unknown>).weather;if(!weather||Array.isArray(weather)||typeof weather!=='object')return null;return weather as WeatherSnapshot;}
   private requiredResourceTypes(type:string){const normalized=type.toUpperCase();if(normalized.includes('BOAT'))return['BOAT'];if(normalized.includes('SHORE'))return['SITE'];return[];}
 
   async readinessForTrip(tripId:string):Promise<OperationalReadiness>{const trip=await this.db.trip.findUnique({where:{id:tripId},select:{startsAt:true,endsAt:true}});if(!trip)throw new NotFoundException('Trip not found.');const from=new Date(trip.startsAt.getTime()-60000),to=new Date(trip.endsAt.getTime()+60000),rows=await this.calendar(from.toISOString(),to.toISOString()),row=rows.find((item:{id:string;readiness:OperationalReadiness})=>item.id===tripId);if(!row)throw new NotFoundException('Trip readiness unavailable.');return row.readiness;}
@@ -30,10 +31,10 @@ export class CalendarAllocationService{
     const from=new Date(fromRaw),to=new Date(toRaw);if(Number.isNaN(from.getTime())||Number.isNaN(to.getTime())||to<=from)throw new BadRequestException('Invalid calendar date range.');
     const [gate,resourcePolicy,crewPolicy,safetyPolicy,weatherPolicy,marinePolicy]=await Promise.all([this.weatherGate.settings(),this.policies.decision('TRIP','RESOURCE_READINESS'),this.policies.decision('CREW','RESPONSE_REQUIRED'),this.policies.decision('TRIP','SAFETY_CLEARANCE'),this.policies.decision('WEATHER','WEATHER_GATE'),this.policies.decision('MARINE','ASSET_READINESS')]);
     const trips=(await this.db.trip.findMany({where:{startsAt:{lt:to},endsAt:{gt:from}},orderBy:{startsAt:'asc'},include:{bookings:{where:{status:{in:['PENDING','CONFIRMED']}},select:{seats:true}},safetyChecklists:{orderBy:{createdAt:'desc'},take:1,select:{decision:true,items:true,notes:true,decidedAt:true,createdAt:true}}}})) as CalendarTripRow[];
-    const allocations=await this.db.$queryRaw<AllocationWithResourceRow[]>`SELECT a."id",a."eventId",e."referenceId" AS "tripId",a."resourceId",a."startsAt",a."endsAt",a."status",r."type" AS "resourceType",r."name" AS "resourceName" FROM "CalendarAllocation" a JOIN "CalendarEvent" e ON e."id"=a."eventId" JOIN "CalendarResource" r ON r."id"=a."resourceId" WHERE e."referenceType"='TRIP' AND a."startsAt"<${to} AND a."endsAt">${from} AND a."status"='ACTIVE' AND e."status"='ACTIVE' AND r."active"=TRUE ORDER BY a."startsAt"`;
-    const crew=await this.db.$queryRaw<CrewReadinessRow[]>`SELECT ca."id",ca."tripId",ca."accountId",ca."resourceId",ca."roleType",ca."status",r."name" AS "resourceName",p."firstName",p."lastName" FROM "CrewAssignment" ca JOIN "Trip" t ON t."id"=ca."tripId" JOIN "CalendarResource" r ON r."id"=ca."resourceId" LEFT JOIN "Account" ac ON ac."id"=ca."accountId" LEFT JOIN "Person" p ON p."id"=ac."personId" WHERE t."startsAt"<${to} AND t."endsAt">${from} AND NOT EXISTS(SELECT 1 FROM "CrewAssignment" child WHERE child."replacesAssignmentId"=ca."id") ORDER BY ca."createdAt"`;
+    const allocations=await this.db.$queryRaw<AllocationWithResourceRow[]>`SELECT a."id",a."eventId",e."referenceId" AS "tripId",a."resourceId",a."startsAt",a."endsAt",a."status",r."type" AS "resourceType",r."name" AS "resourceName" FROM "CalendarAllocation" a JOIN "CalendarEvent" e ON e."id"=a."eventId" JOIN "CalendarResource" r ON r."id"=a."resourceId" WHERE e."referenceType"='TRIP' AND a."startsAt"<(${to}::timestamptz AT TIME ZONE 'UTC') AND a."endsAt">(${from}::timestamptz AT TIME ZONE 'UTC') AND a."status"='ACTIVE' AND e."status"='ACTIVE' AND r."active"=TRUE ORDER BY a."startsAt"`;
+    const crew=await this.db.$queryRaw<CrewReadinessRow[]>`SELECT ca."id",ca."tripId",ca."accountId",ca."resourceId",ca."roleType",ca."status",r."name" AS "resourceName",p."firstName",p."lastName" FROM "CrewAssignment" ca JOIN "Trip" t ON t."id"=ca."tripId" JOIN "CalendarResource" r ON r."id"=ca."resourceId" LEFT JOIN "Account" ac ON ac."id"=ca."accountId" LEFT JOIN "Person" p ON p."id"=ac."personId" WHERE t."startsAt"<(${to}::timestamptz AT TIME ZONE 'UTC') AND t."endsAt">(${from}::timestamptz AT TIME ZONE 'UTC') AND NOT EXISTS(SELECT 1 FROM "CrewAssignment" child WHERE child."replacesAssignmentId"=ca."id") ORDER BY ca."createdAt"`;
     return Promise.all(trips.map(async(trip:CalendarTripRow)=>{
-      const bookedSeats=trip.bookings.reduce((sum:number,b:{seats:number})=>sum+b.seats,0),latestSafety=trip.safetyChecklists[0]??null,snapshot=latestSafety?this.weatherFromItems(latestSafety.items):null,weather=this.weatherGate.evaluate(snapshot,gate),tripCrew=crew.filter((m:CrewReadinessRow)=>m.tripId===trip.id),tripResources=allocations.filter((a:AllocationWithResourceRow)=>a.tripId===trip.id);
+      const bookedSeats=trip.bookings.reduce((sum:number,b:{seats:number})=>sum+b.seats,0),latestSafety=trip.safetyChecklists[0]??null,review=await this.weatherReviews.latest(trip.id),snapshot=review?.snapshot??null,context=review?.context?.tripId===trip.id&&review.context.startsAt===trip.startsAt.toISOString()&&review.context.endsAt===trip.endsAt.toISOString()?review.context:null,weather=this.weatherGate.evaluateReview(snapshot,review?.status,gate,context,review?.fetchedAt),tripCrew=crew.filter((m:CrewReadinessRow)=>m.tripId===trip.id),tripResources=allocations.filter((a:AllocationWithResourceRow)=>a.tripId===trip.id);
       const crewSummary={total:tripCrew.length,accepted:tripCrew.filter((m:CrewReadinessRow)=>m.status==='ACCEPTED').length,pending:tripCrew.filter((m:CrewReadinessRow)=>m.status==='PENDING').length,rejected:tripCrew.filter((m:CrewReadinessRow)=>m.status==='REJECTED').length,replacementRequired:tripCrew.filter((m:CrewReadinessRow)=>m.status==='REJECTED'||m.status==='REASSIGNED').length,ready:tripCrew.length>0&&tripCrew.every((m:CrewReadinessRow)=>m.status==='ACCEPTED')};
       const required=this.requiredResourceTypes(trip.type),allocatedTypes=new Set(tripResources.map((r:AllocationWithResourceRow)=>r.resourceType)),missing=required.filter((type:string)=>!allocatedTypes.has(type)),boatIds=tripResources.filter((r:AllocationWithResourceRow)=>r.resourceType==='BOAT').map((r:AllocationWithResourceRow)=>r.resourceId),equipmentIds=tripResources.filter((r:AllocationWithResourceRow)=>r.resourceType==='EQUIPMENT').map((r:AllocationWithResourceRow)=>r.resourceId),boatRequired=trip.type.toUpperCase().includes('BOAT'),boatCompliance=boatRequired?await this.boats.evaluate(boatIds,bookedSeats):{ready:true,blocked:false,reviewRequired:false,issues:[] as string[],states:{}};
       const marineResults=boatRequired?await Promise.all(boatIds.map(id=>this.marine.readinessForCalendarResource(id,trip.id))):[],marineReady=marineResults.every(r=>r.status!=='NOT_READY'),marineReview=marineResults.flatMap(r=>r.status==='NEEDS_REVIEW'?r.reasonCodes:[]),equipmentReadiness=await this.equipment.evaluate(equipmentIds),tripCompliance=await this.compliance.get(trip.id),complianceReview=tripCompliance.policyReview;
@@ -47,25 +48,34 @@ export class CalendarAllocationService{
     }));
   }
 
-  async assertResourcesAvailable(resourceIds:string[],startsAt:Date,endsAt:Date,excludeTripId?:string){for(const resourceId of resourceIds){const rows=await this.db.$queryRaw<Array<{id:string;tripId:string}>>`SELECT a."id",e."referenceId" AS "tripId" FROM "CalendarAllocation" a JOIN "CalendarEvent" e ON e."id"=a."eventId" JOIN "CalendarResource" r ON r."id"=a."resourceId" WHERE a."resourceId"=${resourceId} AND r."active"=TRUE AND a."status"='ACTIVE' AND a."startsAt"<${endsAt} AND a."endsAt">${startsAt} AND (${excludeTripId??null}::text IS NULL OR e."referenceType"<>'TRIP' OR e."referenceId"<>${excludeTripId??null}) LIMIT 1`;if(rows.length)throw new ConflictException('Calendar resource conflict detected.');}}
+  // Advisory read only. Reservation writers must recheck within serializable().
+  async assertResourcesAvailable(resourceIds:string[],startsAt:Date,endsAt:Date,excludeTripId?:string){
+    await assertCalendarHumanAvailable(this.db,resourceIds,startsAt,endsAt,excludeTripId);
+    const conflict=await this.db.calendarAllocation.findFirst({where:{resourceId:{in:resourceIds},resource:{active:true},status:'ACTIVE',startsAt:{lt:endsAt},endsAt:{gt:startsAt},...(excludeTripId?{NOT:{event:{referenceType:'TRIP',referenceId:excludeTripId}}}:{})},select:{id:true}});
+    if(conflict)throw new ConflictException('Calendar resource conflict detected.');
+  }
 
   async allocate(actorAccountId:string,tripId:string,resourceIds:string[]){
     const unique=[...new Set(resourceIds.filter((id:string)=>Boolean(id)))];
-    const result=await this.db.serializable(async tx=>{
+    await this.db.serializable(async tx=>{
+      // Prisma DateTime columns store UTC timestamps without a time zone. Bound
+      // raw SQL Date values are timestamptz; avoid session-zone shifts on insert.
+      await tx.$executeRaw`SET LOCAL TIME ZONE 'UTC'`;
       const trip=await tx.trip.findUnique({where:{id:tripId}});if(!trip)throw new NotFoundException('Trip not found.');
       if(['CANCELLED','COMPLETED'].includes(trip.status))throw new ConflictException('Terminal trip resources cannot be allocated.');
       const events=await tx.$queryRaw<Array<{id:string}>>`INSERT INTO "CalendarEvent"("id","organizationId","type","referenceType","referenceId","title","startsAt","endsAt","status","createdAt","updatedAt") VALUES(gen_random_uuid()::text,NULL,'TRIP','TRIP',${tripId},${trip.title},${trip.startsAt},${trip.endsAt},'ACTIVE',NOW(),NOW()) ON CONFLICT("referenceType","referenceId") DO UPDATE SET "type"='TRIP',"title"=EXCLUDED."title","startsAt"=EXCLUDED."startsAt","endsAt"=EXCLUDED."endsAt","status"='ACTIVE',"updatedAt"=NOW() RETURNING "id"`;
       const eventId=events[0]?.id;if(!eventId)throw new ConflictException('Trip calendar event could not be created.');
       const previous=await tx.$queryRaw<Array<{resourceId:string}>>`SELECT "resourceId" FROM "CalendarAllocation" WHERE "eventId"=${eventId} AND "status"='ACTIVE' ORDER BY "resourceId"`;
       if(unique.length){const valid=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "CalendarResource" WHERE "active"=TRUE AND "id"=ANY(${unique}::text[])`;if(valid.length!==unique.length)throw new BadRequestException('One or more calendar resources are invalid or inactive.');}
+      await assertCalendarHumanAvailable(tx,unique,trip.startsAt,trip.endsAt,tripId);
       for(const resourceId of unique){const conflicts=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "CalendarAllocation" WHERE "resourceId"=${resourceId} AND "status"='ACTIVE' AND "startsAt"<${trip.endsAt} AND "endsAt">${trip.startsAt} AND "eventId"<>${eventId} LIMIT 1`;if(conflicts.length)throw new ConflictException('Calendar resource conflict detected.');}
       await tx.$executeRaw`UPDATE "CalendarAllocation" SET "status"='INACTIVE',"updatedAt"=NOW() WHERE "eventId"=${eventId} AND "status"='ACTIVE'`;
       for(const resourceId of unique)await tx.$executeRaw`INSERT INTO "CalendarAllocation"("id","eventId","resourceId","startsAt","endsAt","status","createdAt","updatedAt") VALUES(gen_random_uuid()::text,${eventId},${resourceId},${trip.startsAt},${trip.endsAt},'ACTIVE',NOW(),NOW())`;
-      return{previousResourceIds:previous.map((row:{resourceId:string})=>row.resourceId),newResourceIds:[...unique]};
+      const result={previousResourceIds:previous.map((row:{resourceId:string})=>row.resourceId),newResourceIds:[...unique]};
+      const previousSet=new Set(result.previousResourceIds),nextSet=new Set(result.newResourceIds);
+      const added=result.newResourceIds.filter((id:string)=>!previousSet.has(id)),removed=result.previousResourceIds.filter((id:string)=>!nextSet.has(id));
+      await this.audit.record({actorId:actorAccountId,action:'TRIP_CALENDAR_RESOURCES_CHANGED',resource:'Trip',resourceId:tripId,metadata:{actorAccountId,previousResourceIds:result.previousResourceIds,newResourceIds:result.newResourceIds,addedResourceIds:added,removedResourceIds:removed}},tx);
     });
-    const previousSet=new Set(result.previousResourceIds),nextSet=new Set(result.newResourceIds);
-    const added=result.newResourceIds.filter((id:string)=>!previousSet.has(id)),removed=result.previousResourceIds.filter((id:string)=>!nextSet.has(id));
-    await this.audit.record({action:'TRIP_CALENDAR_RESOURCES_CHANGED',resource:'Trip',resourceId:tripId,metadata:{actorAccountId,previousResourceIds:result.previousResourceIds,newResourceIds:result.newResourceIds,addedResourceIds:added,removedResourceIds:removed}});
     return this.tripAllocations(tripId);
   }
 }

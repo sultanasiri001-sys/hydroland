@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
 import {openWorkspaceSwitcher} from './portal-test-helpers.js';
 
+test.beforeEach(async({page})=>{await page.route('**/*',route=>{const host=new URL(route.request().url()).hostname;return ['127.0.0.1','localhost'].includes(host)?route.continue():route.abort()})});
+
 const installProfileApi=async page=>{
   const profile={id:'admin-weather-e2e',email:'admin-weather@hydroland.test',status:'ACTIVE',roleAssignments:[{id:'role-admin-weather',role:'ADMIN',status:'ACTIVE',activeAt:null,updatedAt:'2026-09-25T00:00:00.000Z'}],person:{firstName:'Admin',lastName:'Weather',phone:null,professional:null}};
   const requireAuth=request=>request.headers().authorization==='Bearer weather-e2e-access';
@@ -35,12 +37,12 @@ test('admin can create a geolocated trip, refresh Stormglass and approve the for
   });
   await page.route(/\/api\/v1\/trips\/admin\/weather-gate\/trips\/trip-weather-e2e\/refresh$/,async route=>{
     if(!api.requireAuth(route.request()))return api.json(route,{message:'Unauthorized'},401);
-    state.review={id:'weather-review-e2e',tripId:'trip-weather-e2e',provider:'STORMGLASS',forecastAt:state.trips[0].startsAt,fetchedAt:new Date().toISOString(),status:'PENDING',snapshot:{provider:'STORMGLASS',observedAt:state.trips[0].startsAt,windSpeedKph:12.6,windGustKph:18,waveHeightM:0.7,wavePeriodS:5.8,swellHeightM:0.4,waterTemperatureC:29.1,decision:'REVIEW_REQUIRED',reason:'Marine forecast supplied by Stormglass; operational approval remains human-reviewed.'}};
+    state.review={id:'weather-review-e2e',tripId:'trip-weather-e2e',provider:'STORMGLASS',forecastAt:state.trips[0].startsAt,fetchedAt:new Date().toISOString(),status:'PENDING',decisionToken:'a'.repeat(64),requiresRefresh:false,snapshot:{provider:'STORMGLASS',observedAt:state.trips[0].startsAt,windSpeedKph:12.6,windGustKph:18,waveHeightM:0.7,wavePeriodS:5.8,swellHeightM:0.4,waterTemperatureC:29.1,decision:'REVIEW_REQUIRED',reason:'Marine forecast supplied by Stormglass; operational approval remains human-reviewed.'}};
     return api.json(route,{trip:state.trips[0],location:state.trips[0].location,review:state.review});
   });
   await page.route(/\/api\/v1\/trips\/admin\/weather-gate\/trips\/trip-weather-e2e\/decision$/,async route=>{
     if(!api.requireAuth(route.request()))return api.json(route,{message:'Unauthorized'},401);
-    state.decisionBody=route.request().postDataJSON();state.review={...state.review,status:state.decisionBody.status,notes:state.decisionBody.notes||null,reviewedAt:new Date().toISOString(),reviewedByAccountId:'admin-weather-e2e'};
+    state.decisionBody=route.request().postDataJSON();state.review={...state.review,decisionToken:'b'.repeat(64),status:state.decisionBody.status,notes:state.decisionBody.notes||null,reviewedAt:new Date().toISOString(),reviewedByAccountId:'admin-weather-e2e'};
     return api.json(route,{trip:state.trips[0],location:state.trips[0].location,review:state.review});
   });
 
@@ -91,4 +93,5 @@ test('admin can create a geolocated trip, refresh Stormglass and approve the for
   await expect.poll(()=>state.decisionBody?.status).toBe('APPROVED');
   await expect(weatherPanel.locator('[data-weather-trip="trip-weather-e2e"] [data-weather-review-status]')).toHaveText('معتمد');
   expect(state.decisionBody?.notes).toBe('اعتماد تشغيلي بعد مراجعة حالة البحر');
+  expect(state.decisionBody?.expectedReview).toBe('a'.repeat(64));
 });

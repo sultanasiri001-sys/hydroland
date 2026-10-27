@@ -1,4 +1,6 @@
 (()=>{
+  // Evaluate on each action so a changed accessibility preference takes effect immediately.
+  const documentScrollBehavior=()=>window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches===false?'smooth':'instant';
   if(document.getElementById('hl-documents'))return;
   const host=document.getElementById('role-console');if(!host)return;
   const style=document.createElement('style');style.textContent=`
@@ -238,14 +240,14 @@
       if(action==='attendance-source'){await inspectHrAttendance(d,article,c);return;}if(action==='hr-source'){await inspectHrSource(d,article,c);return;}
       if(action==='readiness'){await inspectWorkflow(d,article,c);return;}
       if(!['edit','pdf','submit','approve','sign','archive'].includes(action))return;
-      if(action==='edit'){state.editing=d;const select=panel.querySelector('[data-doc-template]');select.value=d.templateId;select.disabled=true;panel.querySelector('[data-doc-form-title]').textContent='تعديل المسودة';panel.querySelector('[data-doc-cancel]').hidden=false;renderFields(d.payload||{});panel.querySelector('[data-doc-form]').scrollIntoView({behavior:'smooth',block:'center'});return;}
+      if(action==='edit'){state.editing=d;const select=panel.querySelector('[data-doc-template]');select.value=d.templateId;select.disabled=true;panel.querySelector('[data-doc-form-title]').textContent='تعديل المسودة';panel.querySelector('[data-doc-cancel]').hidden=false;renderFields(d.payload||{});panel.querySelector('[data-doc-form]').scrollIntoView({behavior:documentScrollBehavior(),block:'center'});return;}
       if(action==='pdf'){const response=await window.HydrolandAuth.authorizedFetch(`/documents/${encodeURIComponent(id)}/pdf`);if(!response.ok)throw new Error(`HTTP ${response.status}`);const blob=await response.blob();if(!current(c))return;const url=URL.createObjectURL(blob);window.open(url,'_blank','noopener');setTimeout(()=>URL.revokeObjectURL(url),60000);return;}
       await request(`/documents/${encodeURIComponent(id)}/${action}`,{method:'POST'});if(!current(c))return;await loadOrganization(c.orgId);
       if(c.orgId===state.orgId&&c.session===session())note(action==='submit'?'تم إرسال المستند للاعتماد.':action==='approve'?'تم اعتماد المستند.':action==='sign'?'تم توقيع المستند.':'تمت أرشفة المستند.');
     }catch(error){if(current(c))note(error instanceof Error?error.message:'تعذر تنفيذ الإجراء');}
     finally{button.disabled=false;}
   });
-  const connectDocumentButtons=root=>{root.querySelectorAll?.('button').forEach(button=>{const label=(button.textContent||'').trim();if(!['العقود الإلكترونية','رفع الوثائق','التوقيع الإلكتروني','طلب اعتماد الإدارة','متابعة الحالة'].includes(label)||button.dataset.hlDocumentsConnected)return;button.dataset.hlDocumentsConnected='1';button.disabled=false;button.removeAttribute('aria-disabled');button.title='';button.addEventListener('click',()=>{panel.hidden=false;refresh();panel.scrollIntoView({behavior:'smooth',block:'start'})})})};
+  const connectDocumentButtons=root=>{root.querySelectorAll?.('button').forEach(button=>{const label=(button.textContent||'').trim();if(!['العقود الإلكترونية','رفع الوثائق','التوقيع الإلكتروني','طلب اعتماد الإدارة','متابعة الحالة'].includes(label)||button.dataset.hlDocumentsConnected)return;button.dataset.hlDocumentsConnected='1';button.disabled=false;button.removeAttribute('aria-disabled');button.title='';button.addEventListener('click',()=>{panel.hidden=false;refresh();panel.scrollIntoView({behavior:documentScrollBehavior(),block:'start'})})})};
   const observer=new MutationObserver(records=>records.forEach(record=>record.addedNodes.forEach(node=>{if(node.nodeType===1)connectDocumentButtons(node)})));observer.observe(document.body,{childList:true,subtree:true});
   document.addEventListener('hydroland:role-changed',event=>{if(event.detail?.role==='organization'){panel.hidden=false;refresh()}else panel.hidden=true});
   const clear=()=>{state.generation++;state.orgId=null;state.memberships=[];state.department='';state.typeCode='';state.loading=false;clearData();panel.querySelector('[data-doc-org]').replaceChildren();note('');panel.hidden=true;};

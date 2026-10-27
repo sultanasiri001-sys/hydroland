@@ -5,11 +5,10 @@ import { DatabaseService } from '../database/database.service';
 import { BookingParticipantService } from './booking-participant.service';
 import { PolicyControlService } from './policy-control.service';
 import { TripWeatherReviewService } from './trip-weather-review.service';
-import { WeatherGateService, WeatherSnapshot } from './weather-gate.service';
+import { WeatherGateService } from './weather-gate.service';
 import { createHash } from 'node:crypto';
 
 type TripListRow={id:string;title:string;status:string;startsAt:Date;capacity:number;bookings:Array<{seats:number}>;safetyChecklists:Array<{id:string;decision:string;items:unknown;notes:string|null;decidedAt:Date|null;createdAt:Date}>;[key:string]:unknown};
-type WeatherReviewRow={status:'PENDING'|'APPROVED'|'REJECTED';snapshot:WeatherSnapshot;forecastAt:Date;fetchedAt:Date};
 type TripPrice={pricePerSeatMinor:number;currency:'SAR';configured:boolean};
 
 @Injectable()
@@ -24,7 +23,7 @@ export class TripsService {
     return{pricePerSeatMinor:amount,currency:'SAR',configured:true};
   }
 
-  async list(){const gateSettings=await this.weatherGate.settings();const [safetyPolicy,capacityPolicy,weatherPolicy]=await Promise.all([this.policies.decision('BOOKING','SAFETY_APPROVAL'),this.policies.decision('BOOKING','CAPACITY_LIMIT'),this.policies.decision('WEATHER','WEATHER_GATE')]);const trips=(await this.db.trip.findMany({where:{status:'OPEN'},orderBy:{startsAt:'asc'},include:{bookings:{where:{status:{in:['PENDING','CONFIRMED']}},select:{seats:true}},safetyChecklists:{orderBy:{createdAt:'desc'},take:1,select:{id:true,decision:true,items:true,notes:true,decidedAt:true,createdAt:true}}}})) as TripListRow[];return Promise.all(trips.map(async(trip:TripListRow)=>{const bookedSeats=trip.bookings.reduce((sum:number,booking:{seats:number})=>sum+booking.seats,0),latestSafety=trip.safetyChecklists[0]??null,[location,review,price]=await Promise.all([this.weatherReviews.location(trip.id),this.weatherReviews.latest(trip.id),this.tripPrice(trip.id)]),weather=this.weatherGate.evaluateReview(review?.snapshot,review?.status,gateSettings),{bookings,safetyChecklists,...base}=trip;return {...base,bookingPolicy:{safetyApproval:safetyPolicy.state,capacityLimit:capacityPolicy.state,weatherGate:weatherPolicy.state},bookedSeats,remainingSeats:Math.max(0,trip.capacity-bookedSeats),price,safety:latestSafety,location,weather:{snapshot:review?.snapshot??null,reviewStatus:review?.status??null,forecastAt:review?.forecastAt??null,fetchedAt:review?.fetchedAt??null,gate:gateSettings,evaluation:{...weather,blocking:weather.blocking&&weatherPolicy.enforce}}};}));}
+  async list(){const gateSettings=await this.weatherGate.settings();const [safetyPolicy,capacityPolicy,weatherPolicy]=await Promise.all([this.policies.decision('BOOKING','SAFETY_APPROVAL'),this.policies.decision('BOOKING','CAPACITY_LIMIT'),this.policies.decision('WEATHER','WEATHER_GATE')]);const trips=(await this.db.trip.findMany({where:{status:'OPEN'},orderBy:{startsAt:'asc'},include:{bookings:{where:{status:{in:['PENDING','CONFIRMED']}},select:{seats:true}},safetyChecklists:{orderBy:{createdAt:'desc'},take:1,select:{id:true,decision:true,items:true,notes:true,decidedAt:true,createdAt:true}}}})) as TripListRow[];return Promise.all(trips.map(async(trip:TripListRow)=>{const bookedSeats=trip.bookings.reduce((sum:number,booking:{seats:number})=>sum+booking.seats,0),latestSafety=trip.safetyChecklists[0]??null,[location,review,price]=await Promise.all([this.weatherReviews.location(trip.id),this.weatherReviews.latest(trip.id),this.tripPrice(trip.id)]),weather=this.weatherGate.evaluateReview(review?.snapshot,review?.status,gateSettings,review?.context,review?.fetchedAt),{bookings,safetyChecklists,...base}=trip;return {...base,bookingPolicy:{safetyApproval:safetyPolicy.state,capacityLimit:capacityPolicy.state,weatherGate:weatherPolicy.state},bookedSeats,remainingSeats:Math.max(0,trip.capacity-bookedSeats),price,safety:latestSafety,location,weather:{snapshot:review?.snapshot??null,reviewStatus:review?.status??null,forecastAt:review?.forecastAt??null,fetchedAt:review?.fetchedAt??null,gate:gateSettings,evaluation:{...weather,blocking:weather.blocking&&weatherPolicy.enforce}}};}));}
 
   async book(accountId:string,tripId:string,seats:number){
     if(!Number.isInteger(seats)||seats<1)throw new BadRequestException('Invalid seats.');
@@ -38,7 +37,7 @@ export class TripsService {
       const latestSafety=await tx.safetyChecklist.findFirst({where:{tripId},orderBy:{createdAt:'desc'},select:{decision:true}});
       if(latestSafety?.decision==='DEFERRED')throw new ConflictException('Trip is deferred by a safety decision.');
       if(!latestSafety||latestSafety.decision!=='ALLOWED'){if(safetyPolicy.enforce)throw new ConflictException('Trip requires safety approval before booking.');if(safetyPolicy.review)reviewIssues.push('SAFETY_APPROVAL');}
-      const weatherRows=await tx.$queryRaw<WeatherReviewRow[]>`SELECT "status","snapshot","forecastAt","fetchedAt" FROM "TripWeatherReview" WHERE "tripId"::text=${tripId} ORDER BY "fetchedAt" DESC,"createdAt" DESC LIMIT 1`,weatherReview=weatherRows[0]??null,weather=this.weatherGate.evaluateReview(weatherReview?.snapshot,weatherReview?.status,gateSettings);if(weather.blocking){if(weatherPolicy.enforce)throw new ConflictException(weather.reason||'Trip is unavailable because weather review is not approved.');if(weatherPolicy.review)reviewIssues.push('WEATHER_GATE');}
+      const weatherReview=await this.weatherReviews.latest(tripId,tx),weather=this.weatherGate.evaluateReview(weatherReview?.snapshot,weatherReview?.status,gateSettings,weatherReview?.context,weatherReview?.fetchedAt);if(weather.blocking){if(weatherPolicy.enforce)throw new ConflictException(weather.reason||'Trip is unavailable because weather review is not approved.');if(weatherPolicy.review)reviewIssues.push('WEATHER_GATE');}
       const used=await tx.booking.aggregate({where:{tripId,status:{in:['PENDING','CONFIRMED']}},_sum:{seats:true}});if((used._sum.seats??0)+seats>trip.capacity){if(capacityPolicy.enforce)throw new ConflictException('Trip capacity reached.');if(capacityPolicy.review)reviewIssues.push('CAPACITY_LIMIT');}
       let booking;
       if(existing){
@@ -79,7 +78,7 @@ export class TripsService {
       const latestSafety=await tx.safetyChecklist.findFirst({where:{tripId:input.tripId},orderBy:{createdAt:'desc'},select:{decision:true}});
       if(latestSafety?.decision==='DEFERRED')throw new ConflictException('تم تأجيل الرحلة بقرار سلامة.');
       if(!latestSafety||latestSafety.decision!=='ALLOWED'){if(safetyPolicy.enforce)throw new ConflictException('تتطلب الرحلة اعتماد السلامة قبل الحجز.');if(safetyPolicy.review)reviewIssues.push('SAFETY_APPROVAL');}
-      const weatherRows=await tx.$queryRaw<WeatherReviewRow[]>`SELECT "status","snapshot","forecastAt","fetchedAt" FROM "TripWeatherReview" WHERE "tripId"::text=${input.tripId} ORDER BY "fetchedAt" DESC,"createdAt" DESC LIMIT 1`,weatherReview=weatherRows[0]??null,weather=this.weatherGate.evaluateReview(weatherReview?.snapshot,weatherReview?.status,gateSettings);
+      const weatherReview=await this.weatherReviews.latest(input.tripId,tx),weather=this.weatherGate.evaluateReview(weatherReview?.snapshot,weatherReview?.status,gateSettings,weatherReview?.context,weatherReview?.fetchedAt);
       if(weather.blocking){if(weatherPolicy.enforce)throw new ConflictException(weather.reason||'الرحلة غير متاحة قبل اعتماد حالة الطقس.');if(weatherPolicy.review)reviewIssues.push('WEATHER_GATE');}
       const used=await tx.booking.aggregate({where:{tripId:input.tripId,status:{in:['PENDING','CONFIRMED']}},_sum:{seats:true}});
       if((used._sum.seats??0)+input.seats>trip.capacity){if(capacityPolicy.enforce)throw new ConflictException('اكتملت سعة الرحلة.');if(capacityPolicy.review)reviewIssues.push('CAPACITY_LIMIT');}

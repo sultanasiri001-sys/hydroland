@@ -92,29 +92,32 @@ export class StoreService {
   }
 
   async createPayment(accountId:string,orderId:string,idempotencyKey:string) {
-    const key=idempotencyKey?.trim();
+    const key=typeof idempotencyKey==='string'?idempotencyKey.trim():'';
     if(!key)throw new BadRequestException('Idempotency key is required');
-    const order=await this.prisma.storeOrder.findFirst({where:{id:orderId,accountId},include:{payment:true}});
-    if(!order)throw new NotFoundException('Order not found');
-    if(order.status==='CANCELLED'||order.status==='FULFILLED')throw new BadRequestException('Order is not eligible for payment');
-    if(order.payment){
-      if(order.payment.idempotencyKey!==key)throw new ConflictException('Order already has a payment');
-      return {...order.payment,provider:'NOT_SELECTED',financialActionExecuted:false};
-    }
-    const existing=await this.prisma.storePayment.findUnique({where:{idempotencyKey:key}});
-    if(existing){
-      if(existing.accountId!==accountId||existing.orderId!==orderId)throw new ConflictException('Idempotency key cannot be reused');
-      return {...existing,provider:'NOT_SELECTED',financialActionExecuted:false};
-    }
-    try {
-      const payment=await this.prisma.storePayment.create({data:{orderId,accountId,amountMinor:order.totalMinor,currency:order.currency,idempotencyKey:key,status:'CREATED'}});
-      await this.audit.record({action:'STORE_PAYMENT_CREATED',resource:'StorePayment',resourceId:payment.id,metadata:{accountId,orderId,amountMinor:payment.amountMinor,currency:payment.currency,status:payment.status,provider:'NOT_SELECTED',financialActionExecuted:false}});
+    const work=async(tx:Prisma.TransactionClient)=>{
+      const order=await tx.storeOrder.findFirst({where:{id:orderId,accountId},include:{payment:true}});
+      if(!order)throw new NotFoundException('Order not found');
+      if(order.status==='CANCELLED'||order.status==='FULFILLED')throw new BadRequestException('Order is not eligible for payment');
+      if(order.payment){
+        if(order.payment.idempotencyKey!==key)throw new ConflictException('Order already has a payment');
+        return {...order.payment,provider:'NOT_SELECTED',financialActionExecuted:false};
+      }
+      const existing=await tx.storePayment.findUnique({where:{idempotencyKey:key}});
+      if(existing){
+        if(existing.accountId!==accountId||existing.orderId!==orderId)throw new ConflictException('Idempotency key cannot be reused');
+        return {...existing,provider:'NOT_SELECTED',financialActionExecuted:false};
+      }
+      const payment=await tx.storePayment.create({data:{orderId,accountId,amountMinor:order.totalMinor,currency:order.currency,idempotencyKey:key,status:'CREATED'}});
+      await this.audit.record({actorId:accountId,action:'STORE_PAYMENT_CREATED',resource:'StorePayment',resourceId:payment.id,metadata:{accountId,orderId,amountMinor:payment.amountMinor,currency:payment.currency,status:payment.status,provider:'NOT_SELECTED',financialActionExecuted:false}},tx);
       return {...payment,provider:'NOT_SELECTED',financialActionExecuted:false};
+    };
+    try {
+      return await this.prisma.serializable(work);
     } catch (error) {
       if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code!=='P2002') throw error;
-      const canonical=await this.prisma.storePayment.findFirst({where:{OR:[{orderId},{idempotencyKey:key}]}});
-      if(canonical?.accountId===accountId&&canonical.orderId===orderId&&canonical.idempotencyKey===key)return {...canonical,provider:'NOT_SELECTED',financialActionExecuted:false};
-      throw new ConflictException('Order already has a payment or idempotency key is already in use');
+      // Re-read the winning request with the same ownership/terminal-state guards.
+      // The payment and its audit are committed or rolled back together.
+      return this.prisma.serializable(work);
     }
   }
 
@@ -142,7 +145,7 @@ export class StoreService {
     return this.prisma.storeOrder.findMany({ include: { account: { select: { id:true,email:true,person:{select:{firstName:true,lastName:true}} } }, items: { include: { product: true } } }, orderBy: { createdAt: 'desc' }, take: 200 });
   }
 
-  async updateOrderStatus(orderId:string,status:'CREATED'|'CONFIRMED'|'CANCELLED'|'FULFILLED') {
+  async updateOrderStatus(orderId:string,status:'CREATED'|'CONFIRMED'|'CANCELLED'|'FULFILLED',actorId:string) {
     if(!['CREATED','CONFIRMED','CANCELLED','FULFILLED'].includes(status))throw new BadRequestException('Invalid order status');
     const allowed:Record<string,string[]>={CREATED:['CONFIRMED','CANCELLED'],CONFIRMED:['FULFILLED','CANCELLED'],CANCELLED:[],FULFILLED:[]};
     return this.prisma.serializable(async tx=>{
@@ -166,7 +169,7 @@ export class StoreService {
         for(const item of order.items)await tx.storeProduct.update({where:{id:item.productId},data:{stockQuantity:{increment:item.quantity}}});
       }
       const updated=await tx.storeOrder.findUniqueOrThrow({where:{id:orderId},include:{items:true}});
-      await this.audit.record({action:'STORE_ORDER_STATUS_CHANGED',resource:'StoreOrder',resourceId:orderId,metadata:{from:order.status,to:status,stockRestored:status==='CANCELLED'}});
+      await this.audit.record({actorId,action:'STORE_ORDER_STATUS_CHANGED',resource:'StoreOrder',resourceId:orderId,metadata:{from:order.status,to:status,stockRestored:status==='CANCELLED'}},tx);
       return updated;
     });
   }

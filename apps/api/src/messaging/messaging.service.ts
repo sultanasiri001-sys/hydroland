@@ -34,7 +34,7 @@ export class MessagingService {
       const latest=(await this.db.$queryRaw<MessageRow[]>(Prisma.sql`
         SELECT m."id",m."conversationId",m."senderAccountId",a."email" AS "senderEmail",p."firstName" AS "senderFirstName",p."lastName" AS "senderLastName",m."kind",m."body",m."mediaUrl",m."durationSec",m."createdAt"
         FROM "Message" m JOIN "Account" a ON a."id"=m."senderAccountId" JOIN "Person" p ON p."id"=a."personId"
-        WHERE m."conversationId"=${this.conversationKey(conversation.id)} ORDER BY m."createdAt" DESC LIMIT 1
+        WHERE m."conversationId"=${this.conversationKey(conversation.id)} ORDER BY m."createdAt" DESC,m."id" DESC LIMIT 1
       `))[0]??null;
       return{...conversation,participants,latestMessage:latest};
     }));
@@ -67,8 +67,24 @@ export class MessagingService {
       SELECT "id","title","createdByAccountId","createdAt","updatedAt" FROM "Conversation" WHERE "id"=${this.conversationKey(conversationId)} LIMIT 1
     `))[0];
     if(!conversation)throw new NotFoundException('Conversation not found.');
-    const [participants,messages]=await Promise.all([this.participants(conversationId),this.messages(conversationId)]);
-    return{...conversation,participants,messages};
+    const [participants,page]=await Promise.all([this.participants(conversationId),this.messages(accountId,conversationId)]);
+    return{...conversation,participants,...page};
+  }
+
+  // The cursor is the oldest message ID in the previous page. Resolve its
+  // (createdAt,id) boundary in PostgreSQL, not a JS Date, to retain microseconds
+  // and support both deployed UUID keys and canonical text keys.
+  async listMessages(accountId:string,conversationId:string,before?:unknown){
+    await this.requireParticipant(accountId,conversationId);
+    if(before!==undefined){
+      if(typeof before!=='string')throw new BadRequestException('Invalid message history cursor.');
+      this.requireIdentifier(before);
+      const anchor=await this.db.$queryRaw<Array<{ok:number}>>(Prisma.sql`
+        SELECT 1 AS "ok" FROM "Message" WHERE "conversationId"=${this.conversationKey(conversationId)} AND "id"=${this.messageKey(before)} LIMIT 1
+      `);
+      if(!anchor.length)throw new BadRequestException('Invalid message history cursor.');
+    }
+    return this.messages(accountId,conversationId,before as string|undefined);
   }
 
   async sendMessage(accountId:string,conversationId:string,input:SendMessageInput){
@@ -109,11 +125,24 @@ export class MessagingService {
     WHERE cp."conversationId"=${this.conversationKey(conversationId)} ORDER BY cp."joinedAt" ASC
   `)}
 
-  private messages(conversationId:string){return this.db.$queryRaw<MessageRow[]>(Prisma.sql`
-    SELECT m."id",m."conversationId",m."senderAccountId",a."email" AS "senderEmail",p."firstName" AS "senderFirstName",p."lastName" AS "senderLastName",m."kind",m."body",m."mediaUrl",m."durationSec",m."createdAt"
-    FROM "Message" m JOIN "Account" a ON a."id"=m."senderAccountId" JOIN "Person" p ON p."id"=a."personId"
-    WHERE m."conversationId"=${this.conversationKey(conversationId)} ORDER BY m."createdAt" ASC LIMIT 200
-  `)}
+  private async messages(accountId:string,conversationId:string,before?:string){
+    const boundary=before===undefined?Prisma.empty:Prisma.sql`
+      AND (m."createdAt",m."id") < (
+        SELECT anchor."createdAt",anchor."id" FROM "Message" anchor
+        WHERE anchor."conversationId"=${this.conversationKey(conversationId)} AND anchor."id"=${this.messageKey(before)}
+      )
+    `;
+    const rows=await this.db.$queryRaw<MessageRow[]>(Prisma.sql`
+      SELECT m."id",m."conversationId",m."senderAccountId",a."email" AS "senderEmail",p."firstName" AS "senderFirstName",p."lastName" AS "senderLastName",m."kind",m."body",m."mediaUrl",m."durationSec",m."createdAt"
+      FROM "Message" m JOIN "Account" a ON a."id"=m."senderAccountId" JOIN "Person" p ON p."id"=a."personId"
+      WHERE m."conversationId"=${this.conversationKey(conversationId)}
+        AND EXISTS (SELECT 1 FROM "ConversationParticipant" cp WHERE cp."conversationId"=m."conversationId" AND cp."accountId"=${this.accountKey(accountId)})
+        ${boundary}
+      ORDER BY m."createdAt" DESC,m."id" DESC LIMIT 201
+    `);
+    const hasMore=rows.length>200,messages=rows.slice(0,200).reverse();
+    return{messages,hasMore,olderCursor:hasMore?messages[0].id:null};
+  }
 
   private async messageById(messageId:string){const row=(await this.db.$queryRaw<MessageRow[]>(Prisma.sql`
     SELECT m."id",m."conversationId",m."senderAccountId",a."email" AS "senderEmail",p."firstName" AS "senderFirstName",p."lastName" AS "senderLastName",m."kind",m."body",m."mediaUrl",m."durationSec",m."createdAt"

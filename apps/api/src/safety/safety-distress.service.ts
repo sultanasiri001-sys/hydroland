@@ -2,6 +2,7 @@ import {BadRequestException,Injectable} from '@nestjs/common';
 import {AuditService} from '../audit/audit.service';
 import {MarineTrafficAisPosition,MarineTrafficAisService} from '../integrations/marinetraffic-ais.service';
 import {SafetyIncidentsService} from './safety-incidents.service';
+import {finiteNumericInput} from '../geo/coordinate-input';
 
 type DistressInput={
   tripId?:string;
@@ -75,8 +76,8 @@ export class SafetyDistressService{
     const hasLat=latitude!==undefined&&latitude!==null,hasLon=longitude!==undefined&&longitude!==null;
     if(hasLat!==hasLon)throw new BadRequestException('Latitude and longitude must be provided together.');
     if(!hasLat)return null;
-    const lat=Number(latitude),lon=Number(longitude);
-    if(!Number.isFinite(lat)||lat< -90||lat>90||!Number.isFinite(lon)||lon< -180||lon>180)throw new BadRequestException('Invalid distress coordinates.');
+    const lat=finiteNumericInput(latitude),lon=finiteNumericInput(longitude);
+    if(lat===null||lat< -90||lat>90||lon===null||lon< -180||lon>180)throw new BadRequestException('Invalid distress coordinates.');
     return{latitude:lat,longitude:lon};
   }
 

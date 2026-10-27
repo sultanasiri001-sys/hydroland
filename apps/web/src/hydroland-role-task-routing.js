@@ -1,4 +1,6 @@
 (()=>{
+  // Read live preference per action; missing media support must not animate.
+  const residualScrollBehavior=()=>window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches===false?'smooth':'instant';
   if(window.HydrolandRoleTasks)return;
   const routes={
     'إدارة الطلاب وتقييم المهارات':{section:'training'},
@@ -28,7 +30,7 @@
     if(config.action){config.action();return true}
     const target=config.section?document.getElementById(config.section):document.querySelector(config.selector);
     if(!target)return false;
-    target.scrollIntoView({behavior:'smooth',block:'start'});
+    target.scrollIntoView({behavior: residualScrollBehavior(),block:'start'});
     const hash=config.hash||config.section;
     if(hash)history.replaceState(null,'','#'+hash);
     return true;

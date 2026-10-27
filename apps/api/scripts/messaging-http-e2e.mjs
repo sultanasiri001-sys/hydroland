@@ -3,10 +3,12 @@ import { createHmac } from 'node:crypto';
 
 const db=new PrismaClient();
 const base=process.env.MESSAGING_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1';
+for(const url of [base,process.env.DATABASE_URL])if(!url||!['localhost','127.0.0.1','[::1]','::1'].includes(new URL(url).hostname))throw new Error('Messaging HTTP/DB fixtures require loopback API and database');
 const secret=process.env.JWT_SECRET;if(!secret)throw new Error('JWT_SECRET required');
 const suffix=Date.now().toString();
+const sessions=new Map();
 const enc=v=>Buffer.from(JSON.stringify(v)).toString('base64url');
-const tokenFor=id=>{const now=Math.floor(Date.now()/1000),body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:id,iat:now,exp:now+900})}`;return `${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`;};
+const tokenFor=id=>{const now=Math.floor(Date.now()/1000),body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:id,sid:sessions.get(id),iat:now,exp:now+900})}`;return `${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`;};
 const headers=token=>({authorization:`Bearer ${token}`,'content-type':'application/json'});
 const parse=async response=>{const body=await response.json().catch(()=>null);return{response,body}};
 const ok=async response=>{const {body}=await parse(response);if(!response.ok)throw new Error(`HTTP ${response.status}: ${JSON.stringify(body)}`);return body};
@@ -15,6 +17,7 @@ try{
   for(const name of ['sender','recipient','outsider']){
     const person=await db.person.create({data:{firstName:name,lastName:'MessagingE2E'}});persons.push(person);
     const account=await db.account.create({data:{personId:person.id,email:`${name}-${suffix}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}});accounts.push(account);
+    const session=await db.session.create({data:{accountId:account.id,tokenHash:`messaging-fixture-${name}-${suffix}`,expiresAt:new Date(Date.now()+900000)}});sessions.set(account.id,session.id);
   }
   const [sender,recipient,outsider]=accounts;
   const senderToken=tokenFor(sender.id),recipientToken=tokenFor(recipient.id),outsiderToken=tokenFor(outsider.id);
@@ -36,6 +39,15 @@ try{
   body=await ok(await fetch(base+`/messages/conversations/${conversationId}/messages`,{method:'POST',headers:headers(recipientToken),body:JSON.stringify({kind:'VOICE',mediaUrl:'https://media.hydroland.test/voice/e2e.m4a',durationSec:9})}));
   if(body.kind!=='VOICE'||body.durationSec!==9)throw new Error('Voice message response mismatch');
 
+  const voiceMessageId=body.id;
+  body=await ok(await fetch(base+`/messages/conversations/${conversationId}/messages`,{headers:headers(recipientToken)}));
+  if(body.messages?.length!==2||body.hasMore!==false||body.olderCursor!==null)throw new Error('Latest message page contract mismatch');
+  body=await ok(await fetch(base+`/messages/conversations/${conversationId}/messages?before=${encodeURIComponent(voiceMessageId)}`,{headers:headers(recipientToken)}));
+  if(body.messages?.length!==1||body.messages[0].id!==textMessageId)throw new Error('Older history cursor did not exclude its boundary');
+  r=await fetch(base+`/messages/conversations/${conversationId}/messages?before=${voiceMessageId}`,{headers:headers(outsiderToken)});if(r.status!==403)throw new Error(`Outsider history expected 403, got ${r.status}`);
+  r=await fetch(base+`/messages/conversations/${conversationId}/messages?before=invalid`,{headers:headers(senderToken)});if(r.status!==400)throw new Error(`Invalid history cursor expected 400, got ${r.status}`);
+  r=await fetch(base+`/messages/conversations/${conversationId}/messages?before=${voiceMessageId}&before=${textMessageId}`,{headers:headers(senderToken)});if(r.status!==400)throw new Error(`Repeated history cursor query expected 400, got ${r.status}`);
+
   r=await fetch(base+`/messages/conversations/${conversationId}/messages`,{method:'POST',headers:headers(outsiderToken),body:JSON.stringify({kind:'TEXT',body:'forbidden'})});if(r.status!==403)throw new Error(`Outsider send expected 403, got ${r.status}`);
   r=await fetch(base+`/messages/conversations/${conversationId}/messages`,{method:'POST',headers:headers(senderToken),body:JSON.stringify({kind:'VOICE',mediaUrl:'http://insecure.test/voice.m4a',durationSec:3})});if(r.status!==400)throw new Error(`Insecure voice URL expected 400, got ${r.status}`);
   r=await fetch(base+`/messages/conversations/${conversationId}/messages`,{method:'POST',headers:headers(senderToken),body:JSON.stringify({kind:'TEXT',body:'   '})});if(r.status!==400)throw new Error(`Blank text expected 400, got ${r.status}`);
@@ -44,7 +56,7 @@ try{
   const readRows=await db.$queryRawUnsafe('SELECT "lastReadAt" FROM "ConversationParticipant" WHERE "conversationId"=$1 AND "accountId"=$2',conversationId,recipient.id);if(!readRows[0]?.lastReadAt)throw new Error('Read marker did not persist');
   const recipientNotifications=await db.notification.findMany({where:{accountId:recipient.id,type:'MESSAGE_RECEIVED'}});if(!recipientNotifications.length)throw new Error('Recipient message notification was not created');
 
-  console.log('Messaging HTTP/DB E2E passed: auth guard, conversation creation/list, participant-only read/send, text persistence, voice metadata validation, read persistence and notification delivery.');
+  console.log('Messaging HTTP/DB E2E passed: auth guard, conversation creation/list, participant-only read/send/history, bounded latest/older page contract, invalid/repeated cursor rejection, text persistence, voice metadata validation, read persistence and notification delivery.');
 } finally {
   if(conversationId)await db.$executeRawUnsafe('DELETE FROM "Conversation" WHERE "id"=$1',conversationId).catch(()=>{});
   for(const account of accounts){await db.notification.deleteMany({where:{accountId:account.id}}).catch(()=>{});await db.session.deleteMany({where:{accountId:account.id}}).catch(()=>{});await db.account.delete({where:{id:account.id}}).catch(()=>{});}

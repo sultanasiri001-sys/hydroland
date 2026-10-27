@@ -1,3 +1,5 @@
+# Legacy Docker API template, not the complete live native Render inventory.
+# Do not apply/sync to production before reviewing docs/RENDER_RUNTIME_EVIDENCE_2026-10-26.md.
 services:
   - type: web
     name: hydroland-api
@@ -132,4 +134,4 @@ services:
       - key: HYDROLAND_PUBLIC_WEB_ORIGIN
         value: https://hydroland-web.onrender.com
       - key: WEB_ORIGIN
-        value: https://sultanasiri001-sys.github.io
+        value: https://hydroland-web.onrender.com

@@ -15,6 +15,7 @@ const statements = sql => sql.split(';').map(part => part.trim()).filter(Boolean
 let scenarios = 0;
 try {
   for (const type of ['text', 'uuid']) {
+    const beforeScenarios = scenarios;
     const schema = `messaging_keys_${type}_${randomUUID().replaceAll('-', '')}`;
     const url = new URL(base); url.searchParams.set('schema', schema);
     const db = new DatabaseService({ datasourceUrl: url.toString() });
@@ -74,13 +75,65 @@ try {
       await assert.rejects(() => service.getConversation(owner, 'invalid-id'), error => error.getStatus?.() === 400); scenarios++;
       await assert.rejects(() => service.sendMessage(owner, conversation.id, { body: ' ' }), error => error.getStatus?.() === 400); scenarios++;
       assert.equal((await service.getConversation(owner, conversation.id)).messages.length, 2); scenarios++;
-      console.log(`Messaging ${type} schema: PASS (19 scenarios)`);
+      const history = await service.createConversation(owner, { participantAccountIds: [peer], title: 'Bounded history' });
+      const ids = page => page.messages.map(message => message.id);
+      const messageId = number => `00000000-0000-0000-0000-${String(number).padStart(12, '0')}`;
+      const expected = (first, last) => Array.from({ length: last - first + 1 }, (_, index) => messageId(first + index));
+      const insertHistory = async (first, last) => db.$executeRawUnsafe(`
+        INSERT INTO "Message" ("id","conversationId","senderAccountId","kind","body","createdAt")
+        SELECT ('00000000-0000-0000-0000-' || lpad(n::text,12,'0'))::${type}, '${history.id}'::${type}, '${owner}'::${type}, 'TEXT', 'History ' || n,
+          '2026-02-01T00:00:00Z'::timestamptz + (n / 5) * interval '1 microsecond'
+        FROM generate_series(${first},${last}) n
+      `);
+      assert.deepEqual(await service.listMessages(owner, history.id), { messages: [], hasMore: false, olderCursor: null }); scenarios++;
+      await insertHistory(1, 199);
+      let page = await service.getConversation(owner, history.id);
+      assert.deepEqual(ids(page), expected(1, 199)); assert.equal(page.hasMore, false); assert.equal(page.olderCursor, null); scenarios++;
+      await insertHistory(200, 200);
+      page = await service.getConversation(owner, history.id);
+      assert.deepEqual(ids(page), expected(1, 200)); assert.equal(page.hasMore, false); assert.equal(page.olderCursor, null); scenarios++;
+      await insertHistory(201, 201);
+      page = await service.getConversation(owner, history.id);
+      assert.deepEqual(ids(page), expected(2, 201)); assert.equal(page.hasMore, true); assert.equal(page.olderCursor, messageId(2)); scenarios++;
+      let older = await service.listMessages(owner, history.id, page.olderCursor);
+      assert.deepEqual(ids(older), [messageId(1)]); assert.equal(older.hasMore, false); assert.equal(older.olderCursor, null); scenarios++;
+      await insertHistory(202, 401);
+      page = await service.getConversation(owner, history.id);
+      assert.deepEqual(ids(page), expected(202, 401)); assert.equal(page.olderCursor, messageId(202)); scenarios++;
+      older = await service.listMessages(owner, history.id, page.olderCursor);
+      assert.deepEqual(ids(older), expected(2, 201)); assert.equal(older.olderCursor, messageId(2)); scenarios++;
+      // New messages cannot shift an older page; tied timestamps and sub-ms
+      // boundaries must round-trip through PostgreSQL, not JS millisecond dates.
+      await insertHistory(402, 402);
+      const repeated = await Promise.all([service.listMessages(owner, history.id, page.olderCursor), service.listMessages(owner, history.id, page.olderCursor)]);
+      for (const result of repeated) assert.deepEqual(result, older);
+      assert.deepEqual(ids(await service.getConversation(owner, history.id)), expected(203, 402)); scenarios++;
+      const oldest = await service.listMessages(owner, history.id, older.olderCursor);
+      assert.deepEqual(ids(oldest), [messageId(1)]); assert.equal(oldest.hasMore, false); assert.equal(oldest.olderCursor, null);
+      const traversed = [...ids(oldest), ...ids(older), ...ids(page)];
+      assert.deepEqual(traversed, expected(1, 401)); assert.equal(new Set(traversed).size, 401); scenarios++;
+      assert.deepEqual(await service.listMessages(owner, history.id, messageId(1)), { messages: [], hasMore: false, olderCursor: null }); scenarios++;
+      for (const cursor of ['', 'not-a-cursor', [messageId(202)], randomUUID(), text.id]) {
+        await assert.rejects(() => service.listMessages(owner, history.id, cursor), error => error.getStatus?.() === 400); scenarios++;
+      }
+      for (const cursor of [page.olderCursor, text.id, 'malformed']) {
+        await assert.rejects(() => service.listMessages(outsider, history.id, cursor), error => error.getStatus?.() === 403); scenarios++;
+      }
+      // An existing cursor never substitutes for membership, even after a
+      // previously authorized page was loaded.
+      await service.listMessages(peer, history.id);
+      await db.$executeRawUnsafe(`DELETE FROM "ConversationParticipant" WHERE "conversationId"='${history.id}' AND "accountId"='${peer}'`);
+      await assert.rejects(() => service.listMessages(peer, history.id, page.olderCursor), error => error.getStatus?.() === 403); scenarios++;
+      const historyList = await service.listConversations(owner);
+      assert.equal(historyList.find(item => item.id === history.id).latestMessage.id, messageId(402)); scenarios++;
+      assert.equal(notices.length, 2, 'History reads must never deliver notifications'); scenarios++;
+      console.log(`Messaging ${type} schema: PASS (${scenarios - beforeScenarios} scenarios)`);
     } finally {
       await db.$disconnect();
       if (created) await root.$executeRawUnsafe(`DROP SCHEMA "${schema}" CASCADE`);
     }
   }
-  console.log(`Messaging schema compatibility: ${scenarios}/38 PASS; no production data or external delivery used`);
+  console.log(`Messaging schema compatibility: ${scenarios}/${scenarios} PASS; no production data or external delivery used`);
 } finally {
   await root.$disconnect();
 }

@@ -8,6 +8,7 @@ import {IntegrationModule} from '../integrations/integration.module';
 import {TripIntelligenceController} from './trip-intelligence.controller';
 import {TripIntelligenceService} from './trip-intelligence.service';
 import {OfflinePayloadStorageService} from './offline-payload-storage.service';
+import {OfflineTripAuthorizationService} from './offline-trip-authorization.service';
 
-@Module({imports:[AuditModule,AuthModule,DatabaseModule,TranslationModule,IntegrationModule],controllers:[TripIntelligenceController],providers:[TripIntelligenceService,OfflinePayloadStorageService,ReviewGuard],exports:[TripIntelligenceService]})
+@Module({imports:[AuditModule,AuthModule,DatabaseModule,TranslationModule,IntegrationModule],controllers:[TripIntelligenceController],providers:[TripIntelligenceService,OfflinePayloadStorageService,OfflineTripAuthorizationService,ReviewGuard],exports:[TripIntelligenceService]})
 export class TripIntelligenceModule {}

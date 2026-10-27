@@ -214,7 +214,7 @@ try {
   const approvedWeather = await expectOk(await request(`/trips/admin/weather-gate/trips/${trip.id}/decision`, {
     method: 'POST',
     headers: { ...auth(adminToken), 'content-type': 'application/json' },
-    body: JSON.stringify({ status: 'APPROVED', notes: 'Production E2E operator approval' }),
+    body: JSON.stringify({ status: 'APPROVED', notes: 'Production E2E operator approval', expectedReview: weather.review.decisionToken }),
   }), 'Approve production marine weather');
   if (approvedWeather?.review?.status !== 'APPROVED') {
     throw new Error('Production weather approval was not persisted.');

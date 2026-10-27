@@ -1,0 +1,69 @@
+name: Offline trip read authorization
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/trip-intelligence/**'
+      - 'apps/api/src/auth/**'
+      - 'apps/api/src/database/**'
+      - 'apps/api/src/trips/**'
+      - 'apps/api/src/organizations/**'
+      - 'apps/api/src/marine-operations/**'
+      - 'apps/api/scripts/offline-trip-access-db-checks.cjs'
+      - 'apps/api/scripts/trip-intelligence-validation.mjs'
+      - 'apps/api/prisma/**'
+      - 'apps/api/package.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/offline-trip-authorization.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  authorization:
+    name: Private offline reads (${{ matrix.session-expiry }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        session-expiry: [timestamp, timestamptz]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: hydroland
+          POSTGRES_PASSWORD: hydroland
+          POSTGRES_DB: offline_access_test_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U hydroland -d offline_access_test_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql://hydroland:hydroland@127.0.0.1:5432/offline_access_test_ci
+      OFFLINE_ACCESS_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+      NODE_ENV: test
+      TZ: Asia/Riyadh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --workspace=@hydroland/api --include-workspace-root=true
+      - run: npm run db:generate --workspace=@hydroland/api
+      - run: npm run validate:trip-intelligence --workspace=@hydroland/api
+      - name: Bootstrap only the empty disposable CI database
+        run: npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+      - name: Require a non-UTC database timezone
+        env:
+          PGPASSWORD: hydroland
+        run: psql -h 127.0.0.1 -U hydroland -d offline_access_test_ci -v ON_ERROR_STOP=1 -c "ALTER DATABASE offline_access_test_ci SET timezone TO 'Asia/Riyadh';"
+      - name: Real HTTP and PostgreSQL authorization regressions
+        env:
+          SESSION_EXPIRY_TYPE: ${{ matrix.session-expiry }}
+        shell: bash
+        run: |
+          args=()
+          if [[ "$SESSION_EXPIRY_TYPE" == "timestamptz" ]]; then
+            args+=(--legacy-session-timestamptz)
+          fi
+          node apps/api/scripts/offline-trip-access-db-checks.cjs "${args[@]}"

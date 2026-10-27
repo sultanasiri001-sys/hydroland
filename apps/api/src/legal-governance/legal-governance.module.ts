@@ -7,6 +7,7 @@ import { AdminModule } from '../admin/admin.module';
 import { AuthModule } from '../auth/auth.module';
 import { DatabaseModule } from '../database/database.module';
 import { DepartmentReferencesController } from './department-references.controller';
+import { DepartmentClosureAssessmentService } from './department-closure-assessment.service';
 import { DepartmentReferencesService } from './department-references.service';
-@Module({ imports:[DatabaseModule, AuthModule, AdminModule], controllers:[DepartmentReferencesController], providers:[LegalGovernanceFoundationService, LegalGovernanceWorkflowService, LegalGovernanceOperationsService, LegalGovernanceIntelligenceService, DepartmentReferencesService], exports:[LegalGovernanceFoundationService, LegalGovernanceWorkflowService, LegalGovernanceOperationsService, LegalGovernanceIntelligenceService] })
+@Module({ imports:[DatabaseModule, AuthModule, AdminModule], controllers:[DepartmentReferencesController], providers:[LegalGovernanceFoundationService, LegalGovernanceWorkflowService, LegalGovernanceOperationsService, LegalGovernanceIntelligenceService, DepartmentReferencesService, DepartmentClosureAssessmentService], exports:[LegalGovernanceFoundationService, LegalGovernanceWorkflowService, LegalGovernanceOperationsService, LegalGovernanceIntelligenceService] })
 export class LegalGovernanceModule {}
