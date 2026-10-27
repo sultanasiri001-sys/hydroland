@@ -13,6 +13,7 @@ import { AGENT_DEPARTMENTS, decisionReason, inputRecord, METRICS_MAX_AGE_MS, QUE
 import { GOVERNANCE_REVIEW_ORDER, governanceRouteDecision, isGovernanceAgent, parseGovernanceReview } from './governance-review.domain';
 import { operationsEvidenceDigest, operationsValues, readOperationsEvidence } from './agent-operations-evidence';
 import { agentPerformance, performanceView } from './agent-performance';
+import { correctionFingerprint, correctionRequestId, hasDraftCorrectionPermission, DRAFT_CORRECTION_POLICY, DRAFT_CORRECTION_PREFIX, draftCorrectionAllowed, draftCorrectionRequested } from './governance-draft-correction';
 
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const taskView={id:true,agentKey:true,requestedByAccountId:true,action:true,language:true,prompt:true,state:true,revision:true,createdAt:true,startedAt:true,dispatchedAt:true,finishedAt:true,model:true,executionPolicy:true,inputTokens:true,outputTokens:true,reservedCostMicroUsd:true,estimatedCostMicroUsd:true,result:true,errorCode:true,reviewedAt:true} as const;
@@ -101,16 +102,18 @@ export class AgentRuntimeService {
   }
 
   async enqueue(actorId:string,key:string,body:unknown){
-    const agent=this.descriptor(key),value=inputRecord(body,['action','language','prompt','requestId','reason','reviewed']),reason=decisionReason(value);
+    const agent=this.descriptor(key),value=inputRecord(body,['action','language','prompt','requestId','reason','reviewed','correctionPolicy']),reason=decisionReason(value);
     if(!agent.allowedActions.includes(value.action as AgentAction)||!['ar-SA','en'].includes(String(value.language))||typeof value.prompt!=='string'||value.prompt.trim().length<3||value.prompt.length>2000||!uuid(value.requestId))throw new BadRequestException('نوع المهمة أو لغتها أو نصها أو مفتاح الطلب غير صالح.');
-    const prompt=value.prompt.trim(),fingerprint=hash({key,action:value.action,language:value.language,prompt,reason});
+    if(value.correctionPolicy!==undefined&&(value.correctionPolicy!==DRAFT_CORRECTION_POLICY||!draftCorrectionAllowed(key,String(value.action))))throw new BadRequestException('التصحيح النصي الواحد متاح لمسودات التنفيذ المحددة فقط.');
+    const policy=value.correctionPolicy===DRAFT_CORRECTION_POLICY?{correctionPolicy:DRAFT_CORRECTION_POLICY}:{};
+    const prompt=value.prompt.trim(),fingerprint=hash({key,action:value.action,language:value.language,prompt,reason,...policy});
     return this.db.serializable(async tx=>{await this.guard(tx);const actor=await lockAdminIdentities(tx,actorId);
       const existing=await tx.aiAgentTask.findUnique({where:{requestedByAccountId_requestKey:{requestedByAccountId:actorId,requestKey:value.requestId as string}},select:{...taskView,fingerprint:true}});
       if(existing){if(existing.fingerprint!==fingerprint)throw new ConflictException('استُخدم مفتاح الطلب لمهمة مختلفة.');const{fingerprint:omitted,...view}=existing;return{...view,approvalRequired:approvalRequired(view)};}
       if(!await tx.aiAgentRuntime.findUnique({where:{key}}))throw new ConflictException('هيّئ سجلات الوكلاء أولًا.');
       if(await tx.aiAgentTask.count({where:{agentKey:key,state:{in:['QUEUED','RUNNING']}}})>=QUEUE_LIMIT)throw new HttpException('وصل طابور الوكيل إلى حده؛ راجع المهام قبل الإضافة.',429);
       const task=await tx.aiAgentTask.create({data:{agentKey:key,requestedByAccountId:actorId,requestKey:value.requestId as string,fingerprint,action:String(value.action),language:String(value.language),prompt},select:taskView});
-      await this.audit.record({actorId:actor.personId,action:'AI_TASK_QUEUED',resource:'AiAgentTask',resourceId:task.id,metadata:{reason,agentKey:key,action:task.action,language:task.language,requesterAccountId:actorId,to:'QUEUED',approvalRequired:approvalRequired(task)}},tx);
+      await this.audit.record({actorId:actor.personId,action:'AI_TASK_QUEUED',resource:'AiAgentTask',resourceId:task.id,metadata:{reason,agentKey:key,action:task.action,language:task.language,requesterAccountId:actorId,to:'QUEUED',approvalRequired:approvalRequired(task),...policy}},tx);
       return{...task,approvalRequired:approvalRequired(task)};
     });
   }
@@ -118,10 +121,10 @@ export class AgentRuntimeService {
   async tasks(actorId:string,key:string,cursor?:unknown){
     this.descriptor(key);if(cursor!==undefined&&!uuid(cursor))throw new BadRequestException('مؤشر صفحة المهام غير صالح.');
     return this.db.serializable(async tx=>{await requireVerifiedAdmin(tx,actorId);const items=await tx.aiAgentTask.findMany({where:{agentKey:key},select:taskView,orderBy:[{createdAt:'desc'},{id:'desc'}],take:21,...(cursor?{cursor:{id:cursor as string},skip:1}:{})});
-      const events=await tx.auditEvent.findMany({where:{resource:'AiAgentTask',resourceId:{in:items.slice(0,20).map(t=>t.id)},action:{in:['GOVERNANCE_REVIEW_STOPPED','GOVERNANCE_ROUTE_DEFERRED','GOVERNANCE_ROUTE_RESUMED','GOVERNANCE_FINAL_RECOMMENDATION_READY']}},select:{resourceId:true,action:true,metadata:true},orderBy:{occurredAt:'desc'}});
+      const events=await tx.auditEvent.findMany({where:{resource:'AiAgentTask',resourceId:{in:items.slice(0,20).map(t=>t.id)},action:{in:['GOVERNANCE_REVIEW_STOPPED','GOVERNANCE_ROUTE_DEFERRED','GOVERNANCE_ROUTE_RESUMED','GOVERNANCE_DRAFT_CORRECTION_RESUMED','GOVERNANCE_FINAL_RECOMMENDATION_READY']}},select:{resourceId:true,action:true,metadata:true},orderBy:{occurredAt:'desc'}});
       return{items:items.slice(0,20).map(t=>{const event=events.find(e=>e.resourceId===t.id),metadata=event?.metadata as Record<string,unknown>|null;
-        const status=event?.action==='GOVERNANCE_FINAL_RECOMMENDATION_READY'?'OWNER_RECOMMENDATION_READY':event?.action==='GOVERNANCE_ROUTE_RESUMED'?'MANUAL_ROUTE_RESUMED':metadata?.outcome||metadata?.reason;
-        return{...t,approvalRequired:approvalRequired(t),...(isGovernanceAgent(t.agentKey)?{governanceReview:t.result?parseGovernanceReview(t.result):null}:{}),...(typeof status==='string'?{governanceRouting:{status,ownerApprovalRequired:metadata?.ownerApprovalRequired===true,approved:false}}:{})};
+        const status=event?.action==='GOVERNANCE_FINAL_RECOMMENDATION_READY'?'OWNER_RECOMMENDATION_READY':event?.action==='GOVERNANCE_ROUTE_RESUMED'?'MANUAL_ROUTE_RESUMED':event?.action==='GOVERNANCE_DRAFT_CORRECTION_RESUMED'?'DRAFT_CORRECTION_QUEUED':metadata?.outcome||metadata?.reason;
+        return{...t,approvalRequired:approvalRequired(t),...(isGovernanceAgent(t.agentKey)?{governanceReview:t.result?parseGovernanceReview(t.result):null}:{}),...(typeof status==='string'?{governanceRouting:{status,ownerApprovalRequired:metadata?.ownerApprovalRequired===true,approved:false,...(metadata?.draftCorrection?{draftCorrection:metadata.draftCorrection}:{})}}:{})};
       }),nextCursor:items.length>20?items[19].id:null};});
   }
 
@@ -202,6 +205,8 @@ export class AgentRuntimeService {
       const governanceReview=isGovernanceAgent(claim.task.agentKey)?await this.db.serializable(tx=>this.governanceContext(tx,claim.task)):undefined;
       if(isGovernanceAgent(claim.task.agentKey)&&!governanceReview)throw new AiProviderError('GOVERNANCE_SOURCE_INVALID');
       if(governanceReview?.source.action==='READ_OPERATIONS'&&governanceReview.source.operationsEvidence?.status!=='RECORDED')throw new AiProviderError('SOURCE_EVIDENCE_UNAVAILABLE');
+      const draftCorrection=claim.task.fingerprint.startsWith(DRAFT_CORRECTION_PREFIX)?await this.db.serializable(tx=>this.draftCorrectionContext(tx,claim.task)):undefined;
+      if(claim.task.fingerprint.startsWith(DRAFT_CORRECTION_PREFIX)&&!draftCorrection)throw new AiProviderError('DRAFT_CORRECTION_SOURCE_INVALID');
       const operations=claim.task.action==='READ_OPERATIONS'&&!isGovernanceAgent(claim.task.agentKey)?await this.admin.overview():undefined;
       const snapshot=operations?{pendingReviews:operations.pendingReviews,openTrips:operations.openTrips,activeBookings:operations.activeBookings,pendingOrganizations:operations.pendingOrganizations}:undefined;
       if(snapshot){
@@ -214,7 +219,7 @@ export class AgentRuntimeService {
           await this.audit.record({action:'AI_TASK_OPERATIONS_CAPTURED',resource:'AiAgentTask',resourceId:row.id,metadata:{agentKey:row.agentKey,scope:'OPERATIONS_AGGREGATE_V1',claimId:row.claimId,sourceRevision:row.revision,observedAt,values,digest:operationsEvidenceDigest(row.id,row.claimId!,row.revision,observedAt,values)}},tx);
         });
       }
-      result=await this.model.execute(claim.config,claim.agent,claim.task.action as AgentAction,claim.task.language as SupportedLanguage,claim.task.prompt,snapshot,governanceReview||undefined);
+      result=await this.model.execute(claim.config,claim.agent,claim.task.action as AgentAction,claim.task.language as SupportedLanguage,claim.task.prompt,snapshot,governanceReview||undefined,draftCorrection||undefined);
     }catch(failure){error=failure instanceof AiProviderError?failure:new AiProviderError('EXECUTION_FAILED');}
     // Retry only persistence, never the provider request. A committed receipt is
     // detected through claimId/state, making an ambiguous DB commit harmless.
@@ -242,6 +247,57 @@ export class AgentRuntimeService {
     return null;
   }
 
+  private async queueDraftCorrection(tx:Prisma.TransactionClient,reviewTask:{id:string;agentKey:string;revision:string;requestedByAccountId:string;action:string;language:string;result:string|null}){
+    const context=await this.governanceContext(tx,reviewTask);
+    if(!context||!draftCorrectionRequested(parseGovernanceReview(reviewTask.result||'')))return{status:'NOT_ELIGIBLE'};
+    const source=await tx.aiAgentTask.findUnique({where:{id:context.source.id}});
+    if(!source||!await hasDraftCorrectionPermission(tx,source))return{status:'NOT_AUTHORIZED'};
+    try{await lockAdminIdentities(tx,source.requestedByAccountId);}catch(error){if(error instanceof ForbiddenException)return{status:'REQUESTER_AUTH_REVOKED'};throw error;}
+    const requestKey=correctionRequestId(source.id),fingerprint=correctionFingerprint(source,reviewTask);
+    const existing=await tx.aiAgentTask.findUnique({where:{requestedByAccountId_requestKey:{requestedByAccountId:source.requestedByAccountId,requestKey}}});
+    if(existing){
+      const links=await tx.auditEvent.findMany({where:{resource:'AiAgentTask',resourceId:existing.id,action:'GOVERNANCE_DRAFT_CORRECTION_QUEUED'},take:2});
+      const link=links[0]?.metadata as Record<string,unknown>|undefined;
+      return existing.agentKey===source.agentKey&&existing.action===source.action&&existing.language===source.language&&existing.prompt===source.prompt&&existing.fingerprint===fingerprint&&existing.requestKey===correctionRequestId(source.id)&&links.length===1&&link?.policy===DRAFT_CORRECTION_POLICY&&link.maxRounds===1&&link.agentKey===source.agentKey&&link.requesterAccountId===source.requestedByAccountId&&link.sourceTaskId===source.id&&link.sourceRevision===source.revision&&link.reviewTaskId===reviewTask.id&&link.reviewRevision===reviewTask.revision?{status:'QUEUED',id:existing.id}:{status:'INTEGRITY_REVIEW_REQUIRED'};
+    }
+    const control=await tx.aiAgentRuntime.findUnique({where:{key:source.agentKey}});
+    if(!control||await tx.aiAgentTask.count({where:{agentKey:source.agentKey,state:{in:['QUEUED','RUNNING']}}})>=QUEUE_LIMIT)return{status:!control?'AGENT_UNINITIALIZED':'QUEUE_FULL'};
+    const correction=await tx.aiAgentTask.create({data:{agentKey:source.agentKey,requestedByAccountId:source.requestedByAccountId,requestKey,fingerprint,action:source.action,language:source.language,prompt:source.prompt}});
+    await this.audit.record({action:'GOVERNANCE_DRAFT_CORRECTION_QUEUED',resource:'AiAgentTask',resourceId:correction.id,metadata:{policy:DRAFT_CORRECTION_POLICY,sourceTaskId:source.id,sourceRevision:source.revision,reviewTaskId:reviewTask.id,reviewRevision:reviewTask.revision,agentKey:source.agentKey,requesterAccountId:source.requestedByAccountId,maxRounds:1,sourcePreserved:true,approved:false}},tx);
+    return{status:'QUEUED',id:correction.id};
+  }
+
+  private async draftCorrectionContext(tx:Prisma.TransactionClient,task:{id:string;agentKey:string;requestedByAccountId:string;action:string;language:string;prompt:string;fingerprint:string;requestKey:string}){
+    await requireVerifiedAdmin(tx,task.requestedByAccountId);
+    const links=await tx.auditEvent.findMany({where:{resource:'AiAgentTask',resourceId:task.id,action:'GOVERNANCE_DRAFT_CORRECTION_QUEUED'},take:2});
+    const link=links[0]?.metadata as Record<string,unknown>|undefined;
+    if(links.length!==1||link?.policy!==DRAFT_CORRECTION_POLICY||link.maxRounds!==1||!uuid(link.sourceTaskId)||!uuid(link.reviewTaskId))return null;
+    const source=await tx.aiAgentTask.findUnique({where:{id:link.sourceTaskId}}),review=await tx.aiAgentTask.findUnique({where:{id:link.reviewTaskId}});
+    if(!source||!review||source.state!=='COMPLETED'||!source.result||review.state!=='COMPLETED'||source.revision!==link.sourceRevision||review.revision!==link.reviewRevision||source.agentKey!==task.agentKey||source.action!==task.action||source.language!==task.language||source.prompt!==task.prompt||source.requestedByAccountId!==task.requestedByAccountId||review.requestedByAccountId!==task.requestedByAccountId||link.agentKey!==task.agentKey||link.requesterAccountId!==task.requestedByAccountId||task.requestKey!==correctionRequestId(source.id)||correctionFingerprint(source,review)!==task.fingerprint||!await hasDraftCorrectionPermission(tx,source)||!draftCorrectionRequested(parseGovernanceReview(review.result||'')))return null;
+    const context=await this.governanceContext(tx,review);
+    if(context?.source.id!==source.id||context.source.revision!==source.revision)return null;
+    const siblings=await tx.auditEvent.findMany({where:{resource:'AiAgentTask',action:'GOVERNANCE_DRAFT_CORRECTION_QUEUED',metadata:{path:['sourceTaskId'],equals:source.id}},select:{resourceId:true},take:2});
+    if(siblings.length!==1||siblings[0].resourceId!==task.id)return null;
+    return{source:context.source,reviews:[...context.reviews,{id:review.id,revision:review.revision,agentKey:review.agentKey,result:review.result}],round:1,maxRounds:1};
+  }
+
+  async resumeDraftCorrection(actorId:string,id:string,body:unknown){
+    if(!uuid(id))throw new BadRequestException('معرف المراجعة غير صالح.');
+    const value=inputRecord(body,['expectedRevision','reason','reviewed']),reason=decisionReason(value);
+    if(!uuid(value.expectedRevision))throw new BadRequestException('نسخة المراجعة مطلوبة.');
+    return this.db.serializable(async tx=>{
+      await this.guard(tx);await requireVerifiedAdmin(tx,actorId);const review=await tx.aiAgentTask.findUnique({where:{id}});
+      if(!review)throw new NotFoundException('المراجعة غير موجودة.');
+      const actor=await lockAdminIdentities(tx,actorId,review.requestedByAccountId);
+      if(review.state!=='COMPLETED'||review.revision!==value.expectedRevision)throw new ConflictException('تغيرت المراجعة؛ حدّث البيانات.');
+      const correction=await this.queueDraftCorrection(tx,review);
+      if(correction.status!=='QUEUED'||!correction.id)throw new ConflictException('التصحيح غير مأذون أو يتطلب أدلة/قرار المالك أو لا تتاح سعة في الطابور.');
+      const existing=await tx.auditEvent.findFirst({where:{resource:'AiAgentTask',resourceId:id,action:'GOVERNANCE_DRAFT_CORRECTION_RESUMED'}});
+      if(!existing)await this.audit.record({actorId:actor.personId,action:'GOVERNANCE_DRAFT_CORRECTION_RESUMED',resource:'AiAgentTask',resourceId:id,metadata:{reason,correctionTaskId:correction.id,reviewRevision:review.revision,adminAccountId:actor.id,approved:false}},tx);
+      return{id,correctionTaskId:correction.id};
+    });
+  }
+
   private async queueGovernanceNext(tx:Prisma.TransactionClient,task:{id:string;agentKey:string;revision:string;requestedByAccountId:string;action:string;language:string;prompt:string;result:string|null}){
     const current=task.agentKey;
     let nextKey:AgentKey=GOVERNANCE_REVIEW_ORDER[0];
@@ -250,7 +306,8 @@ export class AgentRuntimeService {
       const review=parseGovernanceReview(task.result||'');
       const outcome=context?governanceRouteDecision(review):'UNLINKED_REVIEW';
       if(outcome!=='CONTINUE'){
-        await this.audit.record({action:'GOVERNANCE_REVIEW_STOPPED',resource:'AiAgentTask',resourceId:task.id,metadata:{agentKey:current,outcome,sourceTaskId:context?.source.id,ownerApprovalRequired:outcome==='OWNER_ESCALATION_REQUIRED',noAutomaticCorrection:true}},tx);
+        const correction=outcome==='CORRECTION_REQUIRED'?await this.queueDraftCorrection(tx,task):{status:'NOT_ELIGIBLE'};
+        await this.audit.record({action:'GOVERNANCE_REVIEW_STOPPED',resource:'AiAgentTask',resourceId:task.id,metadata:{agentKey:current,outcome,sourceTaskId:context?.source.id,ownerApprovalRequired:outcome==='OWNER_ESCALATION_REQUIRED',noAutomaticCorrection:correction.status!=='QUEUED',draftCorrection:correction}},tx);
         return;
       }
       if(current==='GOV_FINAL_GATE'){

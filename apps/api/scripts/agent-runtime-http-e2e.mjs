@@ -81,6 +81,8 @@ try{
   const {browserAcceptance}=await import('./agent-runtime-browser-fixture.mjs');
   await browserAcceptance({db,actor,session:await login(actor),getCalls:()=>modelCalls,holdGeneration:()=>{hold=true;modelEntered=false},waitGeneration:()=>until(()=>modelEntered),releaseGeneration:()=>{hold=false;release?.()}});
  }
+ const {governanceCorrectionAcceptance}=await import('./governance-correction-acceptance.mjs');
+ await governanceCorrectionAcceptance({db,service,runtime,audit,provider,actor,token,call,catalog,control,enqueue,setModelText:text=>{modelText=text},payloads,providerCalls:()=>({modelCalls,countCalls})});
  // Dedicated historical fixtures do not dispatch or depend on worker readiness.
  const metricKey='MARKETING',metricBefore=await db.aiAgentTask.count({where:{agentKey:metricKey}});
  await db.aiAgentTask.createMany({data:[

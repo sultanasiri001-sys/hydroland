@@ -8,8 +8,9 @@ import { AGENT_DEPARTMENTS, uuid } from './agent-runtime.domain';
 import { AgentKey } from './agent.types';
 import { GOVERNANCE_REVIEW_ORDER, governanceRouteDecision, isGovernanceAgent, parseGovernanceReview } from './governance-review.domain';
 import { readOperationsEvidence } from './agent-operations-evidence';
+import { correctionFingerprint, correctionRequestId, hasDraftCorrectionPermission, DRAFT_CORRECTION_POLICY, draftCorrectionRequested } from './governance-draft-correction';
 
-const taskSelect={id:true,agentKey:true,requestedByAccountId:true,revision:true,action:true,language:true,prompt:true,result:true,state:true,createdAt:true,startedAt:true,finishedAt:true,claimId:true,reservedCostMicroUsd:true,estimatedCostMicroUsd:true} as const;
+const taskSelect={id:true,agentKey:true,requestedByAccountId:true,fingerprint:true,revision:true,action:true,language:true,prompt:true,result:true,state:true,createdAt:true,startedAt:true,finishedAt:true,claimId:true,reservedCostMicroUsd:true,estimatedCostMicroUsd:true} as const;
 type Task=Prisma.AiAgentTaskGetPayload<{select:typeof taskSelect}>;
 const metadata=(value:Prisma.JsonValue|null):Record<string,unknown>=>value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:{};
 type InboxStatus='NOT_STARTED'|'WAITING_FOR_REVIEW'|'REVIEW_IN_PROGRESS'|'CORRECTION_REQUIRED'|'EVIDENCE_REQUIRED'|'OWNER_ESCALATION_REQUIRED'|'REVIEW_STOPPED'|'ROUTE_DEFERRED'|'INTEGRITY_REVIEW_REQUIRED'|'READY_FOR_OWNER';
@@ -80,7 +81,13 @@ export class GovernanceReviewInboxService {
       parent=task;
     }
     if(sourceView.operationsEvidence&&sourceView.operationsEvidence.status!=='RECORDED'&&status!=='OWNER_ESCALATION_REQUIRED'&&status!=='INTEGRITY_REVIEW_REQUIRED'){status='EVIDENCE_REQUIRED';reason='SOURCE_EVIDENCE_UNAVAILABLE';}
-    return{source:sourceView,reviews,status,reason,completedReviews,stageCount:6,cost:{currency:'USD',taskCount:tasks.length,reservedMicroUsd:tasks.reduce((n,t)=>n+t.reservedCostMicroUsd,0),estimatedMicroUsd:tasks.every(t=>t.estimatedCostMicroUsd!==null)?tasks.reduce((n,t)=>n+t.estimatedCostMicroUsd!,0):null},ownerApprovalRequired:status==='READY_FOR_OWNER'||status==='OWNER_ESCALATION_REQUIRED',approved:false,readOnly:true,scope:'ADVISORY_RUNTIME_OUTPUTS'};
+    const corrections=await tx.auditEvent.findMany({where:{resource:'AiAgentTask',action:'GOVERNANCE_DRAFT_CORRECTION_QUEUED',metadata:{path:['sourceTaskId'],equals:source.id}},select:{resourceId:true,metadata:true},take:2});
+    let draftCorrection:{status:string;taskId?:string;state?:string}|null=null;
+    if(corrections.length){
+      const link=metadata(corrections[0].metadata),review=tasks.find(t=>t.id===link.reviewTaskId),child=corrections.length===1&&uuid(corrections[0].resourceId)?await tx.aiAgentTask.findUnique({where:{id:corrections[0].resourceId}}):null;
+      draftCorrection=child&&review&&source.revision===link.sourceRevision&&review.revision===link.reviewRevision&&review.state==='COMPLETED'&&draftCorrectionRequested(parseGovernanceReview(review.result||''))&&link.policy===DRAFT_CORRECTION_POLICY&&link.maxRounds===1&&await hasDraftCorrectionPermission(tx,source)&&link.agentKey===source.agentKey&&link.requesterAccountId===source.requestedByAccountId&&child.requestKey===correctionRequestId(source.id)&&child.agentKey===source.agentKey&&child.requestedByAccountId===source.requestedByAccountId&&child.action===source.action&&child.language===source.language&&child.prompt===source.prompt&&child.fingerprint===correctionFingerprint(source,review)?{status:'LINKED',taskId:child.id,state:child.state}:{status:'INTEGRITY_REVIEW_REQUIRED'};
+    }
+    return{source:sourceView,reviews,status,reason,completedReviews,stageCount:6,cost:{currency:'USD',taskCount:tasks.length,reservedMicroUsd:tasks.reduce((n,t)=>n+t.reservedCostMicroUsd,0),estimatedMicroUsd:tasks.every(t=>t.estimatedCostMicroUsd!==null)?tasks.reduce((n,t)=>n+t.estimatedCostMicroUsd!,0):null},draftCorrection,ownerApprovalRequired:status==='READY_FOR_OWNER'||status==='OWNER_ESCALATION_REQUIRED',approved:false,readOnly:true,scope:'ADVISORY_RUNTIME_OUTPUTS'};
   }
 }
 

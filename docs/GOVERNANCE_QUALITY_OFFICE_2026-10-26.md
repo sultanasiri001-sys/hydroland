@@ -52,7 +52,7 @@ Before an execution-agent read is sent to the provider, the exact four aggregate
 A historical read without a captured input is shown as requiring evidence; the current database is never used to backfill its past input. Conflicting evidence cannot appear ready for owner review, and existing review text remains visible. Review instructions identify the agent's actual stage: the first review correctly has no prior reviews. Reviewers assess the requested bounded output and its evidence without requiring unrelated operational or legal approvals.
 
 ## Owner escalation policy
-The target workflow is to review and correct low- and medium-risk work inside the office without individual owner approvals. This review-only foundation provides automatic review routing and correction findings; it does not automatically execute corrections or grant new business mutation authority.
+The target workflow is to review and correct low- and medium-risk work inside the office without individual owner approvals. Automatic review routing stops at correction findings. The optional bounded draft-correction extension is documented in `GOVERNANCE_BOUNDED_DRAFT_CORRECTION_2026-10-27.md`: newly opted-in textual drafts may receive one revision and six fresh reviews. Historical tasks and business mutation authority are unchanged.
 
 Owner review is required for:
 - final stage acceptance;
@@ -95,4 +95,4 @@ The office is implemented as an additive extension of the existing managed AI ru
 2. Initialize the runtime as a verified global ADMIN; this adds any missing controls as PAUSED.
 3. Enable governance agents individually only after provider/budget readiness is confirmed.
 4. Start with read/review tasks and evidence reports.
-5. Automatic routing uses the existing task budget and queue; no model request occurs until the corresponding agent is enabled. Production activation, paid end-to-end generation and automated correction execution remain separate rollout steps.
+5. Automatic routing uses the existing task budget and queue; no model request occurs until the corresponding agent is enabled. Production activation and paid end-to-end generation require their existing authorized configuration. The bounded draft-correction extension requires explicit per-draft opt-in and uses the same cap; it is disabled for historical tasks.
