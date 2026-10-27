@@ -1,9 +1,13 @@
 import {test,expect} from '@playwright/test';
 
-test('public search respects live motion preference and keeps focus behavior',async({page})=>{
+test('legacy search control harness respects live motion preference and keeps focus behavior',async({page})=>{
   await page.route('**/api/v1/**',route=>route.fulfill({contentType:'application/json',body:'[]'}));
   await page.goto('/');await page.waitForFunction(()=>Boolean(window.HydrolandPublicUI));
+  // The shipped layout intentionally hides this retained shortcut. Expose only this
+  // fixture control to exercise its real listener, not to claim production visibility.
+  await expect(page.locator('#top-search')).toBeHidden();
   await page.evaluate(()=>{
+    document.getElementById('top-search').style.display='grid';
     window.motionCalls=[];
     const original=Element.prototype.scrollIntoView;
     Element.prototype.scrollIntoView=function(options){window.motionCalls.push({id:this.id,behavior:options?.behavior,block:options?.block});return original.call(this,options)};

@@ -202,7 +202,8 @@ test('document shortcut scrolling respects changing motion preference and retain
     const original=panel.scrollIntoView.bind(panel);
     panel.scrollIntoView=options=>{window.documentShortcutMotion.push(options);original(options)};
     const wrapper=document.createElement('div');wrapper.id='motion-document-shortcut';
-    wrapper.innerHTML='<button type="button">رفع الوثائق</button>';document.body.appendChild(wrapper);
+    // Mount the synthetic action in the visible workspace, not under its fixed navigation.
+    wrapper.innerHTML='<button type="button">رفع الوثائق</button>';panel.prepend(wrapper);
   });
   const button=page.locator('#motion-document-shortcut button');
   await expect(button).toHaveAttribute('data-hl-documents-connected','1');

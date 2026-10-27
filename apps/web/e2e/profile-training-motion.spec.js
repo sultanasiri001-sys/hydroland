@@ -11,7 +11,9 @@ const enter=async page=>{
       const node=document.querySelector(selector);node.scrollIntoView=options=>window.shortcutMotionCalls.push({selector,...options});
     }
     const fixture=document.createElement('div');fixture.id='motion-shortcuts';
-    fixture.innerHTML='<button data-hl-action="certs">Certificate motion fixture</button><button data-training-open>Training motion fixture</button>';document.body.appendChild(fixture);
+    fixture.innerHTML='<button data-hl-action="certs">Certificate motion fixture</button><button data-training-open>Training motion fixture</button>';
+    // Stay in shell content flow, outside both the fixed sidebar and selected-service filtering.
+    document.querySelector('.topbar').after(fixture);
   });
   return writes;
 };

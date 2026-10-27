@@ -32,6 +32,8 @@ jobs:
         run: npm run build -w @hydroland/web
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
+      - name: Motion preference browser regression
+        run: npm run test:e2e -w @hydroland/web -- public-shell-motion.spec.js discovery-reduced-motion.spec.js profile-training-motion.spec.js operational-documents.spec.js --output=test-results-motion
       - name: Scoped research owner and reviewer browser regression
         run: npm run test:e2e -w @hydroland/web -- research-runtime.spec.js --output=test-results-research-runtime
       - name: Account lifecycle and fresh action authorization regression
