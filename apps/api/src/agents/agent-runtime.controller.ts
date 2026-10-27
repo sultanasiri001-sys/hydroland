@@ -18,4 +18,5 @@ export class AgentRuntimeController {
   @Post(':key/tasks') enqueue(@Req()req:{auth:{accountId:string}},@Param('key')key:string,@Body()body:unknown){return this.runtime.enqueue(req.auth.accountId,key,body);}
   @Patch('tasks/:id/decision') decide(@Req()req:{auth:{accountId:string}},@Param('id')id:string,@Body()body:unknown){return this.runtime.decideTask(req.auth.accountId,id,body);}
   @Post('tasks/:id/governance-resume') resume(@Req()req:{auth:{accountId:string}},@Param('id')id:string,@Body()body:unknown){return this.runtime.resumeGovernance(req.auth.accountId,id,body);}
+  @Post('tasks/:id/draft-correction') correction(@Req()req:{auth:{accountId:string}},@Param('id')id:string,@Body()body:unknown){return this.runtime.resumeDraftCorrection(req.auth.accountId,id,body);}
 }
