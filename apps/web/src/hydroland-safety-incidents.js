@@ -1,4 +1,6 @@
 (()=>{
+  // Read live preference per action; missing media support must not animate.
+  const residualScrollBehavior=()=>window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches===false?'smooth':'instant';
   if(document.getElementById('hl-safety-incidents'))return;
   const anchor=document.querySelector('.hl-safety-center');if(!anchor)return;
   const panel=document.createElement('section');panel.id='hl-safety-incidents';panel.hidden=true;
@@ -34,7 +36,7 @@
     if(!window.HydrolandAuth?.isAuthenticated?.()){panel.hidden=true;return}
     try{const trips=await request('/trips');state.trips=Array.isArray(trips)?trips:[];const mine=await request('/safety/incidents/mine');state.mine=Array.isArray(mine)?mine:[];if(state.role==='admin'){const queue=await request('/safety/incidents/admin');state.admin=Array.isArray(queue)?queue:[]}else state.admin=[];render()}catch(error){content.replaceChildren(note(error instanceof Error?error.message:'تعذر تحميل مركز البلاغات'))}
   }
-  function open(role,focus=false){state.role=role||'diver';panel.hidden=false;void refreshData();if(focus)panel.scrollIntoView({behavior:'smooth',block:'start'})}
+  function open(role,focus=false){state.role=role||'diver';panel.hidden=false;void refreshData();if(focus)panel.scrollIntoView({behavior: residualScrollBehavior(),block:'start'})}
   refresh.addEventListener('click',()=>void refreshData());
   content.addEventListener('submit',async event=>{const form=event.target;if(!(form instanceof HTMLFormElement)||!form.matches('[data-safety-incident-form]'))return;event.preventDefault();const data=Object.fromEntries(new FormData(form).entries());if(!data.tripId)delete data.tripId;try{setFormState('جارٍ تسجيل البلاغ الداخلي...');await request('/safety/incidents',{method:'POST',body:JSON.stringify(data)});form.reset();setFormState('تم تسجيل البلاغ داخل HYDROLAND فقط. لم يتم إشعار حرس الحدود تلقائيًا؛ للطوارئ البحرية في عسير اتصل على 994.');await refreshData()}catch(error){setFormState(error instanceof Error?error.message:'تعذر إرسال البلاغ')}});
   content.addEventListener('click',async event=>{const target=event.target instanceof Element?event.target.closest('button[data-safety-incident-decision]'):null;if(!target)return;const card=target.closest('[data-safety-incident-id]');const notes=card?.querySelector('[data-safety-incident-notes]')?.value||'';target.disabled=true;try{await request('/safety/incidents/admin/'+encodeURIComponent(target.dataset.safetyIncidentId)+'/status',{method:'PATCH',body:JSON.stringify({status:target.dataset.safetyIncidentDecision,resolutionNotes:notes})});await refreshData()}catch(error){alert(error instanceof Error?error.message:'تعذر حفظ قرار البلاغ')}finally{target.disabled=false}});

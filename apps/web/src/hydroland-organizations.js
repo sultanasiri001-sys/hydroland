@@ -1,4 +1,6 @@
 (() => {
+  // Read live preference per action; missing media support must not animate.
+  const residualScrollBehavior=()=>window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches===false?'smooth':'instant';
   if (!document.querySelector('script[data-hl-contract-library]')) {
     const library=document.createElement('script');library.src='./hydroland-contract-library.js';library.dataset.hlContractLibrary='1';document.body.appendChild(library);
   }
@@ -358,7 +360,7 @@
         panel.querySelector('[data-org-form-title]').textContent = 'تعديل بيانات الجهة';
         panel.querySelector('[data-org-submit]').textContent = 'حفظ التعديلات';
         panel.querySelector('[data-org-cancel]').hidden = false;
-        form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        form.scrollIntoView({ behavior: residualScrollBehavior(), block: 'center' });
         note('عدّل البيانات المطلوبة ثم احفظها. سيحتفظ النظام بحالة الاعتماد وفق سياسة الجهة.');
       } else {
         await loadOrganizationMembers(organizationId, membership);

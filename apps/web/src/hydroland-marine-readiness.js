@@ -1,4 +1,6 @@
 (()=>{
+  // Read live preference per action; missing media support must not animate.
+  const residualScrollBehavior=()=>window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches===false?'smooth':'instant';
   if(document.getElementById('hl-marine-readiness'))return;
   const host=document.getElementById('role-console');if(!host)return;
   const panel=document.createElement('section');panel.id='hl-marine-readiness';panel.hidden=true;
@@ -67,7 +69,7 @@
     }catch(error){if(!error.stale&&current(c)&&load===state.load){clear();content.appendChild(note(error instanceof Error?error.message:'تعذر تحميل بيانات الجاهزية البحرية'))}}
     finally{if(current(c)&&load===state.load){content.removeAttribute('aria-busy');refreshButton.disabled=false}}
   }
-  function open(role,focus=false){if(!eligible(role)){close();return}if(state.role!==role){close();state.role=role}panel.hidden=false;void refresh();if(focus)panel.scrollIntoView({behavior:'smooth',block:'start'})}
+  function open(role,focus=false){if(!eligible(role)){close();return}if(state.role!==role){close();state.role=role}panel.hidden=false;void refresh();if(focus)panel.scrollIntoView({behavior: residualScrollBehavior(),block:'start'})}
   refreshButton.addEventListener('click',()=>void refresh());
   content.addEventListener('submit',async event=>{
     const form=event.target;if(!(form instanceof HTMLFormElement)||!form.matches('[data-marine-maintenance]'))return;event.preventDefault();
