@@ -35,6 +35,10 @@ export async function governanceCorrectionAcceptance({db,service,runtime,audit,p
   for(const key of order)await run(key,JSON.stringify(pass));
   const ready=await file(correction.id);assert.equal(ready.status,'READY_FOR_OWNER');assert.equal(ready.completedReviews,6);assert.equal(ready.approved,false);assert.equal(ready.ownerApprovalRequired,true);assert.deepEqual(await db.aiAgentTask.findUniqueOrThrow({where:{id:original.id}}),original);assert.equal((await file(original.id)).status,'CORRECTION_REQUIRED');assert.equal((await file(original.id)).draftCorrection.taskId,correction.id);
 
+
+  const grant=(await events(original.id,'AI_TASK_QUEUED'))[0];await db.auditEvent.update({where:{id:grant.id},data:{metadata:{...grant.metadata,correctionPolicy:'INVALID'}}});
+  const brokenReady=await file(correction.id);assert.equal(brokenReady.status,'INTEGRITY_REVIEW_REQUIRED');assert.equal(brokenReady.reason,'DRAFT_CORRECTION_SOURCE_INVALID');assert.equal(brokenReady.ownerApprovalRequired,false);assert.equal(brokenReady.approved,false);await db.auditEvent.update({where:{id:grant.id},data:{metadata:grant.metadata}});assert.equal((await file(correction.id)).status,'READY_FOR_OWNER');
+
   // Legacy tasks, evidence gaps, escalation and a second correction are never
   // turned into another model request or a fabricated source.
   for(const [opt,review] of [[false,fix],[true,{...fix,evidenceGaps:['Missing original evidence']}],[true,{...fix,riskLevel:'HIGH'}],[true,{...fix,ownerEscalationRequired:true}],[true,{...fix,findings:[]}]]){

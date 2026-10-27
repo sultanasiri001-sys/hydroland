@@ -8,7 +8,7 @@ import { AGENT_DEPARTMENTS, uuid } from './agent-runtime.domain';
 import { AgentKey } from './agent.types';
 import { GOVERNANCE_REVIEW_ORDER, governanceRouteDecision, isGovernanceAgent, parseGovernanceReview } from './governance-review.domain';
 import { readOperationsEvidence } from './agent-operations-evidence';
-import { correctionFingerprint, correctionRequestId, hasDraftCorrectionPermission, DRAFT_CORRECTION_POLICY, draftCorrectionRequested } from './governance-draft-correction';
+import { correctionFingerprint, correctionRequestId, hasDraftCorrectionPermission, DRAFT_CORRECTION_POLICY, DRAFT_CORRECTION_PREFIX, draftCorrectionRequested } from './governance-draft-correction';
 
 const taskSelect={id:true,agentKey:true,requestedByAccountId:true,fingerprint:true,revision:true,action:true,language:true,prompt:true,result:true,state:true,createdAt:true,startedAt:true,finishedAt:true,claimId:true,reservedCostMicroUsd:true,estimatedCostMicroUsd:true} as const;
 type Task=Prisma.AiAgentTaskGetPayload<{select:typeof taskSelect}>;
@@ -42,6 +42,19 @@ export class GovernanceReviewInboxService {
   }
 
   private async readFile(tx:Prisma.TransactionClient,source:Task){
+    const file=await this.buildFile(tx,source);
+    if(source.fingerprint.startsWith(DRAFT_CORRECTION_PREFIX)){
+      const links=await tx.auditEvent.findMany({where:{resource:'AiAgentTask',resourceId:source.id,action:'GOVERNANCE_DRAFT_CORRECTION_QUEUED'},select:{metadata:true},take:2});
+      const link=metadata(links[0]?.metadata??null);
+      const original=links.length===1&&uuid(link.sourceTaskId)?await tx.aiAgentTask.findFirst({where:{...this.roots(),id:link.sourceTaskId,fingerprint:{not:{startsWith:DRAFT_CORRECTION_PREFIX}}},select:taskSelect}):null;
+      // Build only a non-correction root, so a forged cycle cannot recurse.
+      const originalFile=original?await this.buildFile(tx,original):null;
+      if(originalFile?.status!=='CORRECTION_REQUIRED'||originalFile.draftCorrection?.status!=='LINKED'||originalFile.draftCorrection.taskId!==source.id){file.status='INTEGRITY_REVIEW_REQUIRED';file.reason='DRAFT_CORRECTION_SOURCE_INVALID';file.ownerApprovalRequired=false;}
+    }
+    return file;
+  }
+
+  private async buildFile(tx:Prisma.TransactionClient,source:Task){
     const descriptors=this.agents.list();
     const departmentCode=AGENT_DEPARTMENTS[source.agentKey as AgentKey];
     const sourceView={id:source.id,revision:source.revision,agentKey:source.agentKey,nameAr:descriptors.find(a=>a.key===source.agentKey)?.nameAr||source.agentKey,departmentCode,departmentName:STAFFING_DEPARTMENTS.find(d=>d.code===departmentCode)?.nameAr||departmentCode,action:source.action,language:source.language,prompt:source.prompt,result:source.result,createdAt:source.createdAt,finishedAt:source.finishedAt,operationsEvidence:await readOperationsEvidence(tx,source)};
