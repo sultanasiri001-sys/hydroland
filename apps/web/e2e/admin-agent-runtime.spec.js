@@ -28,6 +28,14 @@ async function setup(page,options={}){
 }
 const control=(page,key='INVENTORY')=>page.locator(`[data-ai-control][data-key="${key}"]`);
 const review=async form=>{await form.locator('[name="reason"]').fill('قرار اختبار معزول بعد المراجعة');await form.getByRole('checkbox').check();return form;};
+test('historical performance separates execution, unknown cost and acceptance and clears on revocation',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ const item=agent('INVENTORY','وكيل المخزون');item.performance={period:'ALL_RECORDED_TASKS',completed:3,failed:1,interrupted:0,reviewed:1,cancelled:2,durationSamples:2,averageExecutionMs:2500,reservedMicroUsd:1000,knownEstimatedMicroUsd:600,unknownEstimates:1,acceptanceRate:null};
+ const state=await setup(page,{items:[item],ready:false});const panel=page.locator('[data-ai-performance]');
+ await expect(panel).toContainText('الأداء التاريخي');await expect(panel).toContainText('0.0006 USD');await expect(panel).toContainText('محاولات بتكلفة غير معلومة');await expect(panel).toContainText('نسبة قبول النتائج: غير متاحة');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);expect(state.writes).toHaveLength(0);expect(state.connectionChecks).toBe(0);
+ state.admin=false;await page.locator('[data-ai-refresh]').click();await expect(page.locator('[data-ai-performance]')).toHaveCount(0);
+});
 test('explicit deferred resume queues the next review while retaining the original completed output',async({page})=>{
  const source=task({state:'COMPLETED',result:'مخرج محفوظ لا يعاد توليده',governanceRouting:{status:'GOVERNANCE_QUEUE_FULL',approved:false}}),state=await setup(page,{tasks:[source]}),form=page.locator('[data-ai-task-decision][data-target="RESUME_GOVERNANCE"]');
  await expect(form.getByRole('checkbox')).not.toBeChecked();await expect(form.getByRole('checkbox')).toHaveAccessibleName('راجعت المخرج والمراجعات السابقة وأوافق على إحالتها إلى OpenAI ضمن السقف اليومي');expect(state.writes).toHaveLength(0);

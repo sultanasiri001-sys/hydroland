@@ -81,6 +81,24 @@ try{
   const {browserAcceptance}=await import('./agent-runtime-browser-fixture.mjs');
   await browserAcceptance({db,actor,session:await login(actor),getCalls:()=>modelCalls,holdGeneration:()=>{hold=true;modelEntered=false},waitGeneration:()=>until(()=>modelEntered),releaseGeneration:()=>{hold=false;release?.()}});
  }
+ // Dedicated historical fixtures do not dispatch or depend on worker readiness.
+ const metricKey='MARKETING',metricBefore=await db.aiAgentTask.count({where:{agentKey:metricKey}});
+ await db.aiAgentTask.createMany({data:[
+  {state:'COMPLETED',startedAt:new Date('2026-01-01T00:00:00Z'),finishedAt:new Date('2026-01-01T00:00:02Z'),dispatchedAt:new Date('2026-01-01T00:00:00Z'),reservedCostMicroUsd:100,estimatedCostMicroUsd:60},
+  {state:'COMPLETED',startedAt:new Date('2026-01-01T00:00:00Z'),finishedAt:new Date('2026-01-01T00:00:04Z'),dispatchedAt:new Date('2026-01-01T00:00:00Z'),reservedCostMicroUsd:100,estimatedCostMicroUsd:0},
+  {state:'REVIEWED',dispatchedAt:new Date('2026-01-01T00:00:00Z'),reservedCostMicroUsd:100,estimatedCostMicroUsd:null},
+  {state:'CANCELLED',reservedCostMicroUsd:0,estimatedCostMicroUsd:null}
+ ].map(x=>({...x,agentKey:metricKey,requestedByAccountId:actor.id,requestKey:randomUUID(),fingerprint:'historical-performance',action:'DRAFT_REPORT',language:'ar-SA',prompt:'Isolated historical performance fixture'}))});
+ const callsBeforeMetrics={modelCalls,countCalls},metricCatalog=await catalog(),metric=metricCatalog.items.find(x=>x.key===metricKey).performance;
+ const sourceRows=await db.aiAgentTask.findMany({where:{agentKey:metricKey}});
+ assert.equal(sourceRows.length,metricBefore+4);assert.equal(metric.completed,sourceRows.filter(x=>x.state==='COMPLETED').length);
+ assert.equal(metric.unknownEstimates,sourceRows.filter(x=>x.dispatchedAt&&x.estimatedCostMicroUsd===null).length);
+ assert.equal(metric.knownEstimatedMicroUsd,sourceRows.reduce((sum,x)=>sum+(x.estimatedCostMicroUsd??0),0));
+ assert.equal(metric.reservedMicroUsd,sourceRows.reduce((sum,x)=>sum+(x.reservedCostMicroUsd??0),0));
+ const samples=sourceRows.filter(x=>x.state==='COMPLETED'&&x.startedAt&&x.finishedAt&&x.finishedAt>=x.startedAt);
+ assert.equal(metric.durationSamples,samples.length);assert(Math.abs(metric.averageExecutionMs-samples.reduce((n,x)=>n+(x.finishedAt.getTime()-x.startedAt.getTime()),0)/samples.length)<0.001);
+ assert.equal(metric.acceptanceRate,null);assert.equal(metric.acceptanceStatus,'REQUIRES_LINKED_FINAL_REVIEW');assert.deepEqual({modelCalls,countCalls},callsBeforeMetrics);
+ console.log('Agent historical performance HTTP/PostgreSQL passed: actual aggregates, duration denominator, zero known cost, unknown dispatched estimate, cancellation, no model calls and no inferred acceptance.');
  console.log('AI runtime HTTP/PostgreSQL passed: private catalog; atomic setup/control/queue audit; idempotent requests; duplicate-dispatch fencing; real queued/running/high pressure; pause with in-flight completion; persisted resume; conservative budget; stale metrics; crash and late-result preservation; no uncertain replay; token/output bounds; revoked administrator and scoped actions. Model traffic was loopback only.');
 }finally{
  if(release)release();await new Promise(resolve=>model.close(resolve));model.closeAllConnections?.();
