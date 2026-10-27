@@ -195,3 +195,10 @@ try {
   console.log(JSON.stringify(report, null, 2));
   if (work) await rm(work, { recursive: true, force: true });
 }
+
+// Opt-in proposal: preserve the completed recovery receipt and every assertion above.
+// No provider/runtime provisioning occurs here. Missing prerequisites fail closed.
+if (report.status === 'PASS' && process.env.A02_SWITCH_CONFIG) {
+  const {orchestrate} = await import('./recovery-switch-orchestrator.mjs');
+  await orchestrate({configPath:process.env.A02_SWITCH_CONFIG,evidenceDir});
+}
