@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
@@ -9,12 +10,12 @@ type ComplianceRow={id:string;tripId:string;regulatoryStatus:string;permitStatus
 export class TripComplianceService{
   constructor(private readonly db:DatabaseService,private readonly policies:PolicyControlService,private readonly audit:AuditService){}
 
-  private async policy(){const [regulatory,permit]=await Promise.all([this.policies.decision('COMPLIANCE','REGULATORY_REVIEW'),this.policies.decision('COMPLIANCE','PERMIT_REQUIRED')]);return{regulatory,permit};}
+  private async policy(tx:Prisma.TransactionClient){const [regulatory,permit]=await Promise.all([this.policies.decision('COMPLIANCE','REGULATORY_REVIEW',tx),this.policies.decision('COMPLIANCE','PERMIT_REQUIRED',tx)]);return{regulatory,permit};}
 
-  async get(tripId:string){
-    const trip=await this.db.trip.findUnique({where:{id:tripId},select:{id:true}});if(!trip)throw new NotFoundException('Trip not found.');
-    const rows=await this.db.$queryRaw<ComplianceRow[]>`SELECT * FROM "TripComplianceReview" WHERE "tripId"::text=${tripId} LIMIT 1`;
-    const record=rows[0]??null,{regulatory,permit}=await this.policy();
+  async get(tripId:string,tx:Prisma.TransactionClient=this.db){
+    const trip=await tx.trip.findUnique({where:{id:tripId},select:{id:true}});if(!trip)throw new NotFoundException('Trip not found.');
+    const rows=await tx.$queryRaw<ComplianceRow[]>`SELECT * FROM "TripComplianceReview" WHERE "tripId"::text=${tripId} LIMIT 1`;
+    const record=rows[0]??null,{regulatory,permit}=await this.policy(tx);
     const regulatoryOk=record?.regulatoryStatus==='APPROVED',permitOk=record?.permitStatus==='APPROVED',issues:string[]=[];
     if(!regulatoryOk&&!regulatory.bypass)issues.push('COMPLIANCE_REGULATORY_REVIEW');
     if(!permitOk&&!permit.bypass)issues.push('COMPLIANCE_PERMIT_REQUIRED');
