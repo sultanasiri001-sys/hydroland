@@ -109,3 +109,55 @@ for (const [channel, steps] of [['api', apiSteps], ['web', webSteps]]) {
     }
   });
 }
+
+// This is a narrow guard for the checked-in workflow's literal trigger/step
+// shape, not a GitHub Actions runner or a general YAML validator.
+const contractWorkflowPath = '.github/workflows/phase11-production-security.yml';
+const contractTriggerPaths = [
+  'scripts/build-*-release.mjs',
+  'scripts/render-release-contract.test.mjs',
+  'render.yaml',
+  'apps/api/src/health/health.controller.ts',
+  contractWorkflowPath,
+];
+const contractStep = `      - name: Verify offline Render release contracts
+        run: node --test scripts/render-release-contract.test.mjs`;
+
+function assertContractWorkflow(source) {
+  for (const event of ['push', 'pull_request']) {
+    const block = source.split(`  ${event}:\n`)[1]?.split(/\n  [a-z_]+:/)[0];
+    assert.ok(block, `Missing ${event} trigger`);
+    for (const path of contractTriggerPaths) {
+      assert.ok(block.includes(`      - '${path}'`), `${event} must cover ${path}`);
+    }
+  }
+  const step = source.split('      - name: Verify offline Render release contracts\n')[1]?.split('\n      - ')[0];
+  assert.equal(step, '        run: node --test scripts/render-release-contract.test.mjs',
+    'Contract step must run unconditionally and propagate test failure');
+  assert.ok(source.indexOf(contractStep) < source.indexOf('      - name: Build production API image'),
+    'Run cheap offline guards before expensive image builds');
+}
+
+test('Phase 11 runs Render contracts and triggers on their inputs', () => {
+  assertContractWorkflow(read(contractWorkflowPath));
+});
+
+test('workflow guard rejects omitted triggers and skipped or ignored contracts', () => {
+  const source = read(contractWorkflowPath);
+  for (const event of ['push', 'pull_request']) {
+    const start = source.indexOf(`  ${event}:\n`);
+    const tail = source.slice(start);
+    for (const path of contractTriggerPaths) {
+      const alteredTail = tail.replace(`      - '${path}'\n`, '');
+      assert.throws(() => assertContractWorkflow(source.slice(0, start) + alteredTail));
+    }
+  }
+  for (const replacement of [
+    '',
+    contractStep + '\n        continue-on-error: true',
+    contractStep + '\n        if: false',
+    contractStep.replace('test.mjs', 'test.mjs || true'),
+  ]) {
+    assert.throws(() => assertContractWorkflow(source.replace(contractStep, replacement)));
+  }
+});
