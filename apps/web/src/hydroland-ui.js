@@ -6,5 +6,36 @@
   const brand=(compact=false)=>'<span class="brand-mark" aria-hidden="true"></span><span class="brand-copy"><b>HYDROLAND</b><small>هيدرولاند</small>'+(compact?'':'<em class="brand-tagline">DIVE · EXPLORE · PROTECT · BELONG</em>')+'</span>';
   const emblem='<svg viewBox="0 0 64 70" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" aria-hidden="true"><path d="M32 39V14M32 14C22 2 14 7 12 14c8-4 14-2 20 0M32 14C42 2 50 7 52 14c-8-4-14-2-20 0M32 14C20 11 15 19 16 23l16-9M32 14c12-3 17 5 16 9l-16-9M10 43c10 1 20 10 34 18M54 43c-10 1-20 10-34 18M11 42l-3 5M53 42l3 5M43 57l5 7M21 57l-5 7"/></svg>';
   const openDialog=dialog=>{dialog.showModal();window.scrollTo({left:window.scrollX,top:window.scrollY,behavior:'instant'})};
-  window.HydrolandUI={icon,esc,brand,emblem,openDialog};
+  // The class remains the visual source of truth, including closures by existing
+  // service controllers. Observe it so those paths also update assistive state.
+  const bindNavigationMenu=(button,panel,owner,className,eventRoot=owner)=>{
+    if(!button||!panel||!owner)return;
+    button.setAttribute('aria-controls',panel.id);
+    let wasOpen=false;
+    const sync=()=>{
+      const open=owner.classList.contains(className);
+      button.setAttribute('aria-expanded',String(open));
+      // Earlier navigation handlers may close the panel before our click handler,
+      // or stop propagation. Preserve destination/dialog focus already established.
+      if(wasOpen&&!open&&panel.contains(document.activeElement)&&button.getClientRects().length)button.focus({preventScroll:true});
+      wasOpen=open;
+    };
+    const close=(restoreFocus=false)=>{
+      owner.classList.remove(className);sync();
+      if(restoreFocus)button.focus({preventScroll:true});
+    };
+    button.addEventListener('click',()=>{owner.classList.toggle(className);sync()});
+    eventRoot.addEventListener('keydown',event=>{
+      if(event.key!=='Escape'||event.defaultPrevented||!owner.classList.contains(className)||document.querySelector('dialog[open]'))return;
+      event.preventDefault();close(true);
+    });
+    eventRoot.addEventListener('click',event=>{
+      if(!owner.classList.contains(className)||button.contains(event.target))return;
+      const action=event.target.closest?.('a[href],button:not(:disabled)');
+      if(!panel.contains(event.target)||action)close(panel.contains(document.activeElement));
+    });
+    new MutationObserver(sync).observe(owner,{attributes:true,attributeFilter:['class']});
+    sync();
+  };
+  window.HydrolandUI={icon,esc,brand,emblem,openDialog,bindNavigationMenu};
 })();
