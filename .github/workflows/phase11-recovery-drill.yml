@@ -6,6 +6,8 @@ on:
     paths:
       - 'apps/api/prisma/**'
       - 'apps/api/scripts/recovery-rehearsal.mjs'
+      - 'apps/api/scripts/recovery-switch-*.mjs'
+      - 'apps/api/scripts/application-version-switch-rehearsal*.mjs'
       - 'apps/api/scripts/bootstrap-*-runtime-schema.mjs'
       - '.github/workflows/phase11-recovery-drill.yml'
       - 'docs/PRODUCTION_RECOVERY_RUNBOOK.md'
@@ -14,6 +16,8 @@ on:
     paths:
       - 'apps/api/prisma/**'
       - 'apps/api/scripts/recovery-rehearsal.mjs'
+      - 'apps/api/scripts/recovery-switch-*.mjs'
+      - 'apps/api/scripts/application-version-switch-rehearsal*.mjs'
       - 'apps/api/scripts/bootstrap-*-runtime-schema.mjs'
       - '.github/workflows/phase11-recovery-drill.yml'
       - 'docs/PRODUCTION_RECOVERY_RUNBOOK.md'
@@ -26,48 +30,77 @@ permissions:
 jobs:
   restore-drill:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 60
     env:
       NODE_ENV: test
       RECOVERY_REHEARSAL_CONFIRM: DISPOSABLE_LOCAL_ONLY
       DATABASE_URL: postgresql://hydroland:hydroland@127.0.0.1:5432/hydroland_rehearsal_source?schema=public
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Start explicitly disposable PostgreSQL 18
+      - name: Check reviewed pure guards before provisioning
         run: |
-          docker run -d --name phase11-postgres \
-            --label hydroland.recovery=disposable-local \
-            -e POSTGRES_USER=hydroland \
-            -e POSTGRES_PASSWORD=hydroland \
-            -e POSTGRES_DB=hydroland_rehearsal_source \
-            -p 127.0.0.1:5432:5432 \
-            postgres:18
+          node --test apps/api/scripts/recovery-switch-db-relay.test.mjs apps/api/scripts/recovery-switch-orchestrator.test.mjs apps/api/scripts/recovery-switch-ci.test.mjs apps/api/scripts/application-version-switch-rehearsal.test.mjs
+      - name: Checkout exact prior artifact
+        uses: actions/checkout@v4
+        with:
+          ref: 4f0b6ac663baeb814523d572def8c4cb8d754fbb
+          path: .rehearsal-artifacts/4f0b6ac663baeb814523d572def8c4cb8d754fbb
+          persist-credentials: false
+      - name: Checkout exact candidate artifact
+        uses: actions/checkout@v4
+        with:
+          ref: a3d5ad1d73dad0cd81c0194031a2e1ed57e4038d
+          path: .rehearsal-artifacts/a3d5ad1d73dad0cd81c0194031a2e1ed57e4038d
+          persist-credentials: false
+      - name: Prepare locked Linux dependencies and generated clients
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          for directory in . .rehearsal-artifacts/4f0b6ac663baeb814523d572def8c4cb8d754fbb .rehearsal-artifacts/a3d5ad1d73dad0cd81c0194031a2e1ed57e4038d; do
+            (cd "$directory" && npm ci --ignore-scripts --no-audit --no-fund && npm run db:generate --workspace=@hydroland/api)
+          done
+      - name: Resolve immutable runtime images and provision synthetic isolation
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          docker pull node:22-bookworm
+          docker pull postgres:18
+          node apps/api/scripts/recovery-switch-ci.mjs prepare
           for attempt in $(seq 1 60); do
             if docker exec phase11-postgres pg_isready -h 127.0.0.1 -U hydroland -d hydroland_rehearsal_source >/dev/null 2>&1; then exit 0; fi
             sleep 2
           done
-          docker logs phase11-postgres
           exit 1
-      - name: Install locked dependencies and generate ORM
-        run: |
-          npm ci --ignore-scripts
-          npm run db:generate --workspace=@hydroland/api
-      - name: Execute current-schema backup and two isolated restores
-        run: node apps/api/scripts/recovery-rehearsal.mjs
-      - name: Retain sanitized rehearsal evidence, not database backups
+      - name: Verify owned host-loopback database path before recovery
+        timeout-minutes: 1
+        run: timeout --signal=TERM --kill-after=3s 30s node apps/api/scripts/recovery-switch-db-relay.mjs start
+      - name: Execute original recovery proof then synthetic version switch
+        timeout-minutes: 25
+        env:
+          A02_SWITCH_CONFIG: phase11-recovery-evidence/switch-config.json
+        run: timeout --signal=TERM --kill-after=10s 24m node apps/api/scripts/recovery-rehearsal.mjs
+      - name: Confirm stopped processes and remove only owned synthetic resources
         if: always()
+        timeout-minutes: 3
+        run: timeout --signal=TERM --kill-after=5s 150s node apps/api/scripts/recovery-switch-ci.mjs cleanup
+      - name: Retain sanitized receipts even on failure or cancellation
+        if: always()
+        timeout-minutes: 3
         uses: actions/upload-artifact@v4
         with:
-          name: phase11-recovery-drill-${{ github.run_id }}
-          path: phase11-recovery-evidence/*.json
+          name: phase11-recovery-drill-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            phase11-recovery-evidence/recovery-drill-report.json
+            phase11-recovery-evidence/fixture-migration-manifest.json
+            phase11-recovery-evidence/ci-ownership.json
+            phase11-recovery-evidence/ci-cleanup-report.json
+            phase11-recovery-evidence/host-database-preflight.json
+            phase11-recovery-evidence/application-switch-*/application-version-switch-report.json
+            phase11-recovery-evidence/application-switch-*/orchestration-report.json
           retention-days: 30
           if-no-files-found: error
-      - name: Remove only the labelled disposable container
-        if: always()
-        run: |
-          if [ "$(docker inspect --format '{{ index .Config.Labels "hydroland.recovery" }}' phase11-postgres 2>/dev/null)" = 'disposable-local' ]; then
-            docker rm -fv phase11-postgres
-          fi
