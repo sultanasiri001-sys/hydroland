@@ -42,3 +42,45 @@ test('relay cannot choose destination from client bytes and closes both sockets 
  const upstream=sock();createRelay({host:'172.19.0.2',port:5432},{serverFactory:handler=>{accept=handler;return {};},connectFn:options=>{connected=options;return upstream;}});
  const client=sock();accept(client);assert.deepEqual(connected,{host:'172.19.0.2',port:5432});upstream.emit('error',Error('closed'));assert(client.destroyed&&upstream.destroyed);
 });
+
+test('probe separates connect, query and disconnect failures without raw details',async()=>{
+ const {probeDatabase}=await import('./recovery-switch-db-relay.mjs');
+ for(const fail of ['CONNECT','QUERY','DISCONNECT']){
+  const error=Object.assign(Error('postgresql://secret:password@private/internal'),{code:fail==='CONNECT'?'P1001':'P2010',meta:{code:'42501',message:'secret'}});
+  const result=await probeDatabase({verify:()=>{},createClient:()=>({$connect:async()=>{if(fail==='CONNECT')throw error;},$queryRawUnsafe:async()=>{if(fail==='QUERY')throw error;return [];},$disconnect:async()=>{if(fail==='DISCONNECT')throw error;}})});
+  assert.equal(result.stage,fail);assert.equal(result.ok,false);assert(!JSON.stringify(result).includes('secret'));assert(!JSON.stringify(result).includes('password'));
+ }
+});
+test('query failure remains primary when disconnect also fails',async()=>{
+ const {probeDatabase}=await import('./recovery-switch-db-relay.mjs');
+ const result=await probeDatabase({verify:()=>{},createClient:()=>({$connect:async()=>{},$queryRawUnsafe:async()=>{throw Object.assign(Error(),{code:'P2010'});},$disconnect:async()=>{throw Object.assign(Error(),{code:'ECONNRESET'});}})});
+ assert.equal(result.stage,'QUERY');assert.equal(result.disconnectCode,'ECONNRESET');
+});
+test('all identity projections are text and success waits for disconnect',async()=>{
+ const {probeDatabase,IDENTITY_SQL}=await import('./recovery-switch-db-relay.mjs');let disconnected=false;
+ const result=await probeDatabase({verify:()=>{},createClient:()=>({$connect:async()=>{},$queryRawUnsafe:async sql=>{
+  assert.equal(sql,IDENTITY_SQL);assert(sql.includes('current_database()::text'));assert(sql.includes('current_user::text'));return [{database:'fixture'}];
+ },$disconnect:async()=>{disconnected=true;}})});
+ assert(disconnected);assert.equal(result.ok,true);
+});
+test('child timeout and malformed output fail closed with sanitized protocol diagnostics',async()=>{
+ const {runProbeChild}=await import('./recovery-switch-db-relay.mjs');
+ for(const [execute,expected] of [[()=>{throw Object.assign(Error('secret'),{code:'ETIMEDOUT',signal:'SIGKILL',stderr:'private'});},'CHILD_PROCESS'],[()=>'{secret','CHILD_PROTOCOL'],[()=>'{"ok":true}','CHILD_PROTOCOL']]){
+  assert.throws(()=>runProbeChild(execute),error=>error.diagnostic.stage===expected&&!JSON.stringify(error).includes('secret')&&!JSON.stringify(error).includes('private'));
+ }
+});
+test('receipt distinguishes identity mismatch from ownership and query errors',async()=>{
+ const {runProbeChild}=await import('./recovery-switch-db-relay.mjs');
+ for(const kind of ['IDENTITY','BOUNDARY_BEFORE','BOUNDARY_AFTER','QUERY']){
+  const receipts=[];let checks=0;
+  assert.throws(()=>hostPreflight({target:{host:'172.19.0.2'},expectedSystem:'123',persist:r=>receipts.push(structuredClone(r)),verify:()=>{
+   checks++;if((kind==='BOUNDARY_BEFORE'&&checks===1)||(kind==='BOUNDARY_AFTER'&&checks===2))throw Object.assign(Error('private'),{code:'ERR_ASSERTION'});
+  },probe:()=>kind==='QUERY'?runProbeChild(()=>JSON.stringify({ok:false,stage:'QUERY',code:'P2010',sqlState:'42501',message:'secret'})):[{database:'hydroland_rehearsal_source',username:'hydroland',address:'172.19.0.2',system_id:kind==='IDENTITY'?'wrong':'123'}]}));
+  assert.equal(receipts.at(-1).failureStage,kind);assert(!JSON.stringify(receipts).includes('secret'));assert(!JSON.stringify(receipts).includes('private'));
+ }
+});
+test('unknown error codes and forged child diagnostic text cannot reach receipts',async()=>{
+ const {sanitizedError,runProbeChild}=await import('./recovery-switch-db-relay.mjs');
+ assert.deepEqual(sanitizedError({code:'password',meta:{code:'secret'}}),{code:'UNKNOWN'});
+ assert.throws(()=>runProbeChild(()=>'{"ok":false,"stage":"secret","code":"password","sqlState":"private","disconnectCode":"token"}'),e=>JSON.stringify(e.diagnostic)==='{"stage":"CHILD_PROTOCOL","code":"UNKNOWN"}');
+});

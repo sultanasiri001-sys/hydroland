@@ -85,26 +85,80 @@ async function start(statePath){
  verifyLiveRelay(statePath);
  const expectedSystem=execFileSync('docker',['exec','phase11-postgres','psql','-U','hydroland','-d','hydroland_rehearsal_source','-At','-c','SELECT system_identifier::text FROM pg_control_system()'],{encoding:'utf8',timeout:5000,killSignal:'SIGKILL'}).trim();
  assert.match(expectedSystem,/^\d+$/);
- hostPreflight({target,expectedSystem,verify:()=>verifyLiveRelay(statePath),persist:value=>save(receiptPath,value),probe:()=>JSON.parse(execFileSync(process.execPath,[fileURLToPath(import.meta.url),'probe',statePath],{encoding:'utf8',timeout:8000,killSignal:'SIGKILL',env:{PATH:process.env.PATH},stdio:['ignore','pipe','ignore']}))});
+ hostPreflight({target,expectedSystem,verify:()=>verifyLiveRelay(statePath),persist:value=>save(receiptPath,value),probe:()=>runProbeChild(()=>execFileSync(process.execPath,[fileURLToPath(import.meta.url),'probe',statePath],{encoding:'utf8',timeout:8000,killSignal:'SIGKILL',env:{PATH:process.env.PATH},stdio:['ignore','pipe','ignore']}))});
+}
+export const IDENTITY_SQL='SELECT current_database()::text AS database, current_user::text AS username, inet_server_addr()::text AS address, system_identifier::text AS system_id FROM pg_control_system()';
+const stages=new Set(['BOUNDARY','CLIENT_INITIALIZATION','CONNECT','QUERY','DISCONNECT']);
+const codes=new Set(['P1000','P1001','P1002','P1010','P2010','P2024','ECONNREFUSED','ETIMEDOUT','ECONNRESET','ENOENT','ERR_ASSERTION','UNKNOWN']);
+const sqlStates=new Set(['42501','42601','42883','08001','08006','28P01']);
+export function sanitizedError(error){
+ const result={code:codes.has(error?.code)?error.code:'UNKNOWN'};
+ if(sqlStates.has(error?.meta?.code))result.sqlState=error.meta.code;
+ return result;
+}
+// All failures become a small allowlisted envelope. No stderr/message/stack/URL.
+export async function probeDatabase({verify,createClient}){
+ let db,stage='BOUNDARY',outcome;
+ try{
+  verify();stage='CLIENT_INITIALIZATION';db=await createClient();
+  stage='CONNECT';await db.$connect();
+  stage='QUERY';const rows=await db.$queryRawUnsafe(IDENTITY_SQL);
+  outcome={ok:true,rows};
+ }catch(error){outcome={ok:false,stage,...sanitizedError(error)};}
+ finally{
+  if(db)try{await db.$disconnect();}catch(error){
+   if(outcome?.ok)outcome={ok:false,stage:'DISCONNECT',...sanitizedError(error)};
+   else outcome.disconnectCode=sanitizedError(error).code;
+  }
+ }
+ return outcome;
+}
+export function runProbeChild(execute){
+ let text;
+ try{text=execute();}catch(error){
+  throw Object.assign(new Error('HOST_DATABASE_PROBE_PROCESS_FAILED'),{diagnostic:{stage:'CHILD_PROCESS',code:error.code==='ETIMEDOUT'?'ETIMEDOUT':'CHILD_EXIT',...(error.signal==='SIGKILL'?{signal:'SIGKILL'}:{})}});
+ }
+ let result;
+ try{result=JSON.parse(text);}catch{throw Object.assign(new Error('HOST_DATABASE_PROBE_PROTOCOL_FAILED'),{diagnostic:{stage:'CHILD_PROTOCOL',code:'INVALID_JSON'}});}
+ if(result?.ok===false){
+  const diagnostic={stage:stages.has(result.stage)?result.stage:'CHILD_PROTOCOL',code:codes.has(result.code)?result.code:'UNKNOWN'};
+  if(sqlStates.has(result.sqlState))diagnostic.sqlState=result.sqlState;
+  if(codes.has(result.disconnectCode))diagnostic.disconnectCode=result.disconnectCode;
+  throw Object.assign(new Error('HOST_DATABASE_PROBE_FAILED'),{diagnostic});
+ }
+ if(result?.ok!==true||!Array.isArray(result.rows))throw Object.assign(new Error('HOST_DATABASE_PROBE_PROTOCOL_FAILED'),{diagnostic:{stage:'CHILD_PROTOCOL',code:'INVALID_ENVELOPE'}});
+ return result.rows;
 }
 export function hostPreflight({target,expectedSystem,verify,persist,probe}){
  const receipt={scope:'SYNTHETIC_HOST_DATABASE_PREFLIGHT',status:'FAIL',productionRollbackVerified:false,providerPitrVerified:false};persist(receipt);
+ let stage='BOUNDARY_BEFORE';
  try{
-  verify();const rows=probe();
+  verify();stage='CHILD_PROBE';const rows=probe();stage='IDENTITY';
   assert.deepEqual(rows,[{database:'hydroland_rehearsal_source',username:'hydroland',address:target.host,system_id:expectedSystem}]);
-  verify();receipt.status='PASS';receipt.serverIdentityVerified=true;persist(receipt);return receipt;
- }catch{receipt.failureCode='HOST_DATABASE_PATH_UNAVAILABLE_OR_IDENTITY_MISMATCH';persist(receipt);throw new Error(receipt.failureCode);}
+  stage='BOUNDARY_AFTER';verify();receipt.status='PASS';receipt.serverIdentityVerified=true;persist(receipt);return receipt;
+ }catch(error){
+  receipt.failureCode='HOST_DATABASE_PREFLIGHT_FAILED';
+  // A child diagnostic has already passed the strict decoder; stage otherwise
+  // identifies the local check without storing actual/expected identity values.
+  const d=error.diagnostic;
+  const allowedStages=new Set([...stages,'CHILD_PROCESS','CHILD_PROTOCOL']);
+  receipt.failureStage=stage==='CHILD_PROBE'&&allowedStages.has(d?.stage)?d.stage:stage;
+  const allowedCodes=new Set([...codes,'CHILD_EXIT','INVALID_JSON','INVALID_ENVELOPE']);
+  receipt.errorCode=stage==='CHILD_PROBE'&&allowedCodes.has(d?.code)?d.code:sanitizedError(error).code;
+  if(sqlStates.has(d?.sqlState))receipt.sqlState=d.sqlState;
+  if(codes.has(d?.disconnectCode))receipt.disconnectCode=d.disconnectCode;
+  if(d?.signal==='SIGKILL')receipt.childSignal='SIGKILL';
+  persist(receipt);throw new Error(receipt.failureCode);
+ }
 }
 async function probe(statePath){
- const target=verifyLiveRelay(statePath);
- const {PrismaClient}=await import('@prisma/client');
- const db=new PrismaClient({datasourceUrl:'postgresql://hydroland:hydroland@127.0.0.1:5432/hydroland_rehearsal_source?schema=public&connect_timeout=5&pool_timeout=5'});
- let rows;
- try{rows=await db.$queryRawUnsafe('SELECT current_database() AS database, current_user AS username, inet_server_addr()::text AS address, system_identifier::text AS system_id FROM pg_control_system()');}
- finally{await db.$disconnect();}
- assert.equal(rows[0]?.address,target.host);console.log(JSON.stringify(rows));
-
+ const result=await probeDatabase({verify:()=>verifyLiveRelay(statePath),createClient:async()=>{
+  const {PrismaClient}=await import('@prisma/client');
+  return new PrismaClient({datasourceUrl:'postgresql://hydroland:hydroland@127.0.0.1:5432/hydroland_rehearsal_source?schema=public&connect_timeout=5&pool_timeout=5'});
+ }});
+ console.log(JSON.stringify(result));
 }
+
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const statePath=resolve(process.argv[3]||'phase11-recovery-evidence/ci-ownership.json');
  if(process.argv[2]==='serve')await serve(statePath);else if(process.argv[2]==='probe')await probe(statePath);else if(process.argv[2]==='start')await start(statePath);else throw Error('Expected start or serve');
