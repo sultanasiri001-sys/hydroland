@@ -87,7 +87,7 @@ async function start(statePath){
  assert.match(expectedSystem,/^\d+$/);
  hostPreflight({target,expectedSystem,verify:()=>verifyLiveRelay(statePath),persist:value=>save(receiptPath,value),probe:()=>runProbeChild(()=>execFileSync(process.execPath,[fileURLToPath(import.meta.url),'probe',statePath],{encoding:'utf8',timeout:8000,killSignal:'SIGKILL',env:{PATH:process.env.PATH},stdio:['ignore','pipe','ignore']}))});
 }
-export const IDENTITY_SQL='SELECT current_database()::text AS database, current_user::text AS username, inet_server_addr()::text AS address, system_identifier::text AS system_id FROM pg_control_system()';
+export const IDENTITY_SQL='SELECT current_database()::text AS database, current_user::text AS username, host(inet_server_addr()) AS address, system_identifier::text AS system_id FROM pg_control_system()';
 const stages=new Set(['BOUNDARY','CLIENT_INITIALIZATION','CONNECT','QUERY','DISCONNECT']);
 const codes=new Set(['P1000','P1001','P1002','P1010','P2010','P2024','ECONNREFUSED','ETIMEDOUT','ECONNRESET','ENOENT','ERR_ASSERTION','UNKNOWN']);
 const sqlStates=new Set(['42501','42601','42883','08001','08006','28P01']);

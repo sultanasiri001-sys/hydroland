@@ -59,7 +59,7 @@ test('query failure remains primary when disconnect also fails',async()=>{
 test('all identity projections are text and success waits for disconnect',async()=>{
  const {probeDatabase,IDENTITY_SQL}=await import('./recovery-switch-db-relay.mjs');let disconnected=false;
  const result=await probeDatabase({verify:()=>{},createClient:()=>({$connect:async()=>{},$queryRawUnsafe:async sql=>{
-  assert.equal(sql,IDENTITY_SQL);assert(sql.includes('current_database()::text'));assert(sql.includes('current_user::text'));return [{database:'fixture'}];
+  assert.equal(sql,IDENTITY_SQL);assert(sql.includes('current_database()::text'));assert(sql.includes('current_user::text'));assert(sql.includes('host(inet_server_addr()) AS address'));assert(!sql.includes('inet_server_addr()::text'));return [{database:'fixture'}];
  },$disconnect:async()=>{disconnected=true;}})});
  assert(disconnected);assert.equal(result.ok,true);
 });
