@@ -25,8 +25,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Install existing locked S3 runtime dependencies without hooks
+        run: npm ci --ignore-scripts --omit=dev --workspace=@hydroland/api --include-workspace-root=true --no-audit --no-fund
       - name: Check syntax and bounded read-only recovery contracts
         run: |
           node --check apps/api/scripts/a03-recovery-evidence.mjs
           node --check apps/api/scripts/a03-object-readback.mjs
-          node --test apps/api/scripts/a03-recovery-evidence.test.mjs
+          node --test apps/api/scripts/a03-recovery-evidence.test.mjs apps/api/scripts/a03-object-readback.transport.test.mjs

@@ -19,6 +19,30 @@ export function auditConfig(env){
   return{endpoint:endpoint.href,bucket:fields.BUCKET,region:fields.REGION,credentials:{accessKeyId:fields.ACCESS_KEY_ID,secretAccessKey:fields.SECRET_ACCESS_KEY}};
 }
 
+export function createStorageReader(config,sdk,client){
+  const send=(Command,input,signal)=>client.send(new Command({Bucket:config.bucket,...input}),{abortSignal:signal});
+  return{
+    versioning:signal=>send(sdk.GetBucketVersioningCommand,{},signal),
+    encryption:signal=>send(sdk.GetBucketEncryptionCommand,{},signal),
+    versions:(key,signal)=>send(sdk.ListObjectVersionsCommand,{Prefix:key,MaxKeys:25},signal),
+    acl:(key,versionId,signal)=>send(sdk.GetObjectAclCommand,{Key:key,VersionId:versionId},signal),
+    object:async(key,versionId,signal,budget)=>{
+      const response=await send(sdk.GetObjectCommand,{Key:key,VersionId:versionId},signal);
+      if(!Number.isSafeInteger(response.ContentLength)||response.ContentLength>LIMITS.objectBytes){response.Body?.destroy();throw new Error('Invalid object length');}
+      const digest=await digestBody(response.Body,{signal,maxBytes:LIMITS.objectBytes,budget});
+      assert.equal(digest.bytes,response.ContentLength);
+      return{...digest,versionId:response.VersionId,encryption:response.ServerSideEncryption};
+    },
+    anonymous:async(key,versionId,signal)=>{
+      const url=new URL(config.endpoint),enc=encodeURIComponent;
+      url.pathname=url.pathname.replace(/\/$/,'')+'/'+enc(config.bucket)+'/'+key.split('/').map(enc).join('/');
+      url.searchParams.set('versionId',versionId);
+      const response=await fetch(url,{method:'GET',redirect:'error',signal,cache:'no-store',credentials:'omit'});
+      await response.body?.cancel();return response.status;
+    },
+  };
+}
+
 export async function main(argv=process.argv.slice(2),env=process.env){
   // Confirm the existing API runtime BEFORE loading clients or reading secrets.
   assert.deepEqual(argv,['--confirmed-read-only']);
@@ -45,27 +69,7 @@ export async function main(argv=process.argv.slice(2),env=process.env){
       return[...rows,...marine].map(row=>({key:row.storageKey,sha256:row.sha256,byteSize:row.byteSize}));
     },{maxWait:5000,timeout:10000});
     client=new sdk.S3Client({endpoint:config.endpoint,region:config.region,credentials:config.credentials,forcePathStyle:true,maxAttempts:1});
-    const send=(Command,input,signal)=>client.send(new Command({Bucket:config.bucket,...input}),{abortSignal:signal});
-    const storage={
-      versioning:signal=>send(sdk.GetBucketVersioningCommand,{},signal),
-      encryption:signal=>send(sdk.GetBucketEncryptionCommand,{},signal),
-      versions:(key,signal)=>send(sdk.ListObjectVersionsCommand,{Prefix:key,MaxKeys:25},signal),
-      acl:(key,versionId,signal)=>send(sdk.GetObjectAclCommand,{Key:key,VersionId:versionId},signal),
-      object:async(key,versionId,signal,budget)=>{
-        const response=await send(sdk.GetObjectCommand,{Key:key,VersionId:versionId},signal);
-        if(!Number.isSafeInteger(response.ContentLength)||response.ContentLength>LIMITS.objectBytes){response.Body?.destroy();throw new Error('Invalid object length');}
-        const digest=await digestBody(response.Body,{signal,maxBytes:LIMITS.objectBytes,budget});
-        assert.equal(digest.bytes,response.ContentLength);
-        return{...digest,versionId:response.VersionId,encryption:response.ServerSideEncryption};
-      },
-      anonymous:async(key,versionId,signal)=>{
-        const url=new URL(config.endpoint),enc=encodeURIComponent;
-        url.pathname=url.pathname.replace(/\/$/,'')+'/'+enc(config.bucket)+'/'+key.split('/').map(enc).join('/');
-        url.searchParams.set('versionId',versionId);
-        const response=await fetch(url,{method:'GET',redirect:'error',signal,cache:'no-store',credentials:'omit'});
-        await response.body?.cancel();return response.status;
-      },
-    };
+    const storage=createStorageReader(config,sdk,client);
     stage='OBJECT_READBACK';report=await probeReferencedObjects({objects,storage});
     report.integrationFlagsChanged=false;
     report.databaseInventoryReadOnly=true;

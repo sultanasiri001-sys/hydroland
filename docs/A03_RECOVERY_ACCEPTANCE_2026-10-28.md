@@ -124,8 +124,11 @@ execution evidence. Use canonical UTC timestamps, not an estimated duration.
 | End-to-end measured RPO/RTO and agreed targets | Measurement tool prepared; actual values and owner decision pending |
 | Full A03 closure | OPEN |
 
-The new dedicated CI workflow runs offline contract/stream tests only, with
-read-only repository permissions and no provider credentials. Its success proves
-the operator guards and calculations, not PITR, live storage recovery or RTO.
+The new dedicated CI workflow runs contract/stream tests and the actual locked
+S3 SDK against a loopback HTTP fixture, with read-only repository permissions and
+no provider credentials. Actual transport checks cover signatures, XML/header
+decoding, version/byte identity, public denial, timeout and redirect refusal.
+Only the test fixture uses HTTP; the production CLI still requires HTTPS.
+CI success proves these guards and calculations, not PITR, live storage recovery or RTO.
 No paid instance, private archive export, object write, production migration,
 service deploy or cutover is created by this package. Issue #369 remains open.
