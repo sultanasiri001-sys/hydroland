@@ -1,5 +1,15 @@
 # Independently gated release channels
 
+## HTTP health reconciliation — 2026-10-28
+
+The production health-check paths are now configured: API
+`/api/v1/health/ready` and public web `/`. Independent service readback, successful
+post-change deploys and public HTTP checks are recorded in the
+[dated health evidence](RENDER_HEALTH_EVIDENCE_2026-10-28.md). The main coordinating
+chat performed the settings change; this documentation records verification.
+Auto-deploy still reports `commit` (on commit). Rollback, network and release-policy
+acceptance remain open; configuring the paths does not close the whole A02 item.
+
 ## Runtime reconciliation — 2026-10-26
 
 The read-only production inspection on 2026-10-26 found both native Render
@@ -13,9 +23,10 @@ The public production UI is `https://hydroland-web.onrender.com`, not the
 historical GitHub Pages preview. The repository's `WEB_ORIGIN` now matches
 `HYDROLAND_PUBLIC_WEB_ORIGIN` and the verified public CORS origin. `render.yaml`
 still describes a Docker API template, **not** the complete native production
-inventory; do not apply it to reconcile the running services. In particular,
-production still reports an empty health-check path and auto-deploy on commit.
-Those live settings are unresolved, not fixed by this documentation change.
+inventory; do not apply it to reconcile the running services. At that dated
+inspection, production reported empty health-check paths and auto-deploy on
+commit. The health-path gap was subsequently resolved and verified as recorded
+above; the release-trigger policy remains separate.
 
 The channel separation and release gates below remain applicable. This update
 does not assert that mobile security is fixed or that any new commit is deployed.
