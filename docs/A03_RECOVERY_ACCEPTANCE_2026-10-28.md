@@ -31,6 +31,37 @@ fixture certifies a fresh restoration of today's complete production database.
 No document contents, object keys, file names, customer identities, credentials,
 connection strings or signed URLs are included in this package.
 
+## Existing provider PITR evidence — reuse before requesting another restore
+
+The merged [PR460 execution record](https://github.com/sultanasiri001-sys/hydroland/pull/460)
+documents an actual provider PITR on 15 October, Asia/Riyadh. Its target is the
+same existing recovery resource inspected in this task. The selected point was
+00:09:43, request creation was 00:19:22.806, provider completion was
+00:19:58.873, final startup was 00:20:53.695 and database verification completed
+at 00:22:22.279. The current resource metadata independently matches its ID and
+creation timestamp. The original row/schema verifier was not rerun.
+
+That report covers 118 tables/648 rows, 104 migration records and 195 foreign
+keys. It explicitly accounts for the two live scheduler timestamp differences
+rather than excluding a table. It reports owner acceptance for the technical
+Web/API release, while leaving runtime, external objects and numerical RPO/RTO
+outside that acceptance. The cited report is the historical approval source;
+this package does not authenticate a new owner decision or reuse the old
+resource authorization for a new paid instance.
+
+Request-to-database-verification duration computes to **179.473 seconds**.
+Selected-point age at request computes to **579.806 seconds**. Neither value is
+an end-to-end service RTO or measured business-data RPO: incident declaration,
+latest recovered business commit, application and external-object completion
+were not established by that drill. The absolute times and derived component
+durations are retained separately in the machine inventory.
+
+The 24 October native-archive job's `providerPitrVerified=false` describes that
+logical-restore job; it does not erase this earlier provider execution. Reuse
+both bounded evidence records. Today's actual PITR window and complete current
+130-table/application/object acceptance remain unverified. A new paid provider
+recovery is proposed only if the reviewed fresh-drill requirements demand it.
+
 ## PITR execution packet
 
 Current [Render recovery documentation](https://render.com/docs/postgresql-backups)
@@ -118,7 +149,8 @@ execution evidence. Use canonical UTC timestamps, not an estimated duration.
 | Criterion | Disposition after this package |
 | --- | --- |
 | Proven native logical restore | Retained; not rerun |
-| Source-specific PITR window and actual provider recovery | Unverified; dashboard access and a scoped new-target decision remain necessary |
+| Historical provider PITR | PR460 execution retained and resource metadata corroborated; limited technical-release acceptance reported |
+| Current source-specific PITR window / fresh-drill requirement | Unverified; read current window and review the historical evidence first; a new target requires a separate scoped decision |
 | External version/byte recovery and anonymous denial | Operator prepared; real-provider execution not performed |
 | Application cross-account denial / target owner and ACL transfer | Separate live acceptance required |
 | End-to-end measured RPO/RTO and agreed targets | Measurement tool prepared; actual values and owner decision pending |
