@@ -40,7 +40,8 @@ async function bounded(operation, milliseconds, code) {
 export function createGitHubReader({repository, token, fetchImpl = globalThis.fetch, timeoutMs = 10000} = {}) {
   requireThat(repositoryName(repository) && typeof fetchImpl === 'function'
     && positive(timeoutMs) && timeoutMs <= 10000, 'INVALID_INPUT');
-  requireThat(typeof token === 'string' && /^[A-Za-z0-9_]{1,512}$/.test(token), 'AUTH_REQUIRED');
+  // Opaque credential: validate header safety, not GitHub's evolving token format/length.
+  requireThat(typeof token === 'string' && /^[\x21-\x7e]+$/.test(token), 'AUTH_REQUIRED');
   const base = `/repos/${repository}`;
   function endpoint(path) {
     requireThat(typeof path === 'string' && path.startsWith(base) && !/[\r\n\\#]/.test(path), 'UNSAFE_ENDPOINT');

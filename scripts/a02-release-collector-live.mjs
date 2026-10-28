@@ -22,8 +22,10 @@ try {
   assert.equal(result.collection.status, 'COMPLETE');
   assert.equal(result.evaluation.productionAuthorized, false);
   assert(['PASS', 'BLOCKED'].includes(result.evaluation.status));
-} catch {
+} catch (error) {
+  const reason = ['AUTH_REQUIRED', 'UNSAFE_ENDPOINT', 'API_HTTP_ERROR', 'API_RESPONSE_INVALID',
+    'API_ACCESS_OR_RATE_LIMIT', 'API_RESOURCE_UNAVAILABLE', 'REQUEST_TIMEOUT'].includes(error?.code) ? error.code : 'LIVE_PROBE_FAILED';
   console.log(JSON.stringify({probe: 'READ_ONLY_MAIN_TWO_WORKFLOW_SAMPLE', status: 'BLOCKED',
-    productionAuthorized: false, reasons: ['LIVE_PROBE_FAILED']}));
+    productionAuthorized: false, reasons: [reason]}));
   process.exitCode = 1;
 }

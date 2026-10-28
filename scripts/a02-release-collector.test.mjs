@@ -232,6 +232,20 @@ test('token and transport error details never leak', async () => {
   await assert.rejects(reader(() => {throw Error('TEST_TOKEN_NEVER_LOG');})(BASE), error => error.code === 'API_RESPONSE_INVALID' && !error.message.includes('TEST_TOKEN'));
   for (const token of ['', undefined, 'token\nheader']) assert.throws(() => reader(async () => response(), {token}), error => error.code === 'AUTH_REQUIRED');
 });
+test('opaque stateless installation tokens with dots and variable length reach the same-origin GET', async () => {
+  for (const token of ['ghs_123_' + 'a'.repeat(600) + '.payload.signature', 'opaque-' + 'b'.repeat(5000) + '._~+/=']) {
+    let calls = 0;
+    const read = reader(async (url, options) => {
+      calls++; assert.equal(url, `https://api.github.com${BASE}`);
+      assert.equal(options.headers.Authorization, `Bearer ${token}`); return response({ok: true});
+    }, {token});
+    assert.equal((await read(BASE)).ok, true); assert.equal(calls, 1);
+  }
+});
+test('opaque token validation still refuses whitespace, controls and header injection', () => {
+  for (const token of ['bad token', 'bad\ttoken', 'bad\rtoken', 'bad\u0000token', 'bad\u007ftoken'])
+    assert.throws(() => reader(async () => response(), {token}), error => error.code === 'AUTH_REQUIRED');
+});
 const script = fileURLToPath(new URL('./a02-release-collector.mjs', import.meta.url));
 test('CLI invalid arguments and symlink invocation return sanitized nonzero', () => {
   const dir = mkdtempSync(join(tmpdir(), 'hl-collector-'));
