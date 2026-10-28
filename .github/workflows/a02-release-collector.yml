@@ -31,7 +31,7 @@ jobs:
         run: |
           node --check scripts/a02-release-collector.mjs
           node --check scripts/a02-release-collector-live.mjs
-          node --test scripts/a02-release-evidence.test.mjs scripts/a02-release-collector.test.mjs
+          node --test scripts/a02-release-evidence.test.mjs scripts/a02-release-collector*.test.mjs
   live-main-read-only-probe:
     needs: collector-contracts
     # A PR may exercise GETs with an ephemeral read-only token; never pull_request_target.

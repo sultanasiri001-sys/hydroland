@@ -174,9 +174,25 @@ export async function collectReleaseEvidence(policyInput, expectedSha, {read, no
       requireThat(new Set(candidates.map(run => run.run_number)).size === candidates.length, 'RUN_ORDER_AMBIGUOUS');
       if (candidates.length) selected.push([...candidates].sort((a, b) => b.run_number - a.run_number)[0]);
     }
+    const attemptViews = new Map();
     const checkRun = async (run, attempt = false) => {
       const path = `${base}/actions/runs/${run.id}${attempt ? `/attempts/${run.run_attempt}` : ''}`;
-      requireThat(isDeepStrictEqual(runView(await get(path)), run), 'RUN_CHANGED');
+      const observed = runView(await get(path));
+      if (!attempt) requireThat(isDeepStrictEqual(observed, run), 'RUN_CHANGED');
+      else if (attemptViews.has(run.id)) {
+        requireThat(isDeepStrictEqual(observed, attemptViews.get(run.id)), 'RUN_CHANGED');
+      } else {
+        // Run and attempt records have independent metadata update timestamps.
+        // Pin each endpoint separately; never use an attempt timestamp to freshen a run.
+        const {updated_at: attemptUpdatedAt, ...attemptIdentity} = observed;
+        const {updated_at: runUpdatedAt, ...runIdentity} = run;
+        const updated = Date.parse(attemptUpdatedAt);
+        requireThat(isDeepStrictEqual(attemptIdentity, runIdentity)
+          && typeof attemptUpdatedAt === 'string'
+          && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(attemptUpdatedAt)
+          && Number.isFinite(updated) && updated >= Date.parse(run.created_at) && updated <= clock(), 'RUN_CHANGED');
+        attemptViews.set(run.id, observed);
+      }
     };
     const jobs = {};
     for (const run of selected) {
@@ -185,10 +201,10 @@ export async function collectReleaseEvidence(policyInput, expectedSha, {read, no
       requireThat(raw.every(job => job.run_id === run.id && job.head_sha === expectedSha
         && (job.run_attempt === undefined || job.run_attempt === run.run_attempt)), 'JOB_PROVENANCE_MISMATCH');
       jobs[run.id] = {complete: true, runId: run.id, runAttempt: run.run_attempt, total_count: raw.length, jobs: raw.map(jobView)};
-      await checkRun(run);
+      await checkRun(run); await checkRun(run, true);
     }
     requireThat(isDeepStrictEqual(await listRuns(), runs), 'RUN_SET_CHANGED');
-    for (const run of selected) await checkRun(run);
+    for (const run of selected) {await checkRun(run); await checkRun(run, true);}
     const headAfter = await head(), finished = clock();
     const snapshot = {schemaVersion: 1, complete: true, repository: policy.repository, repositoryId: policy.repositoryId,
       branch: policy.branch, headBefore, headAfter, capturedAt: new Date(finished).toISOString(),
