@@ -163,7 +163,9 @@ export function runtimeEnvironment({databaseUrl, commit, secret, port, path}) {
 }
 
 export function assertPreserved(actual, expected, label) {
-  assert.equal(digest(actual), digest(expected), label);
+  // Prisma/JSONB object key order is not persisted state. Compare all values,
+  // types and array positions without treating serialization order as a change.
+  assert.deepEqual(actual, expected, label);
 }
 
 async function outputDigest(root) {

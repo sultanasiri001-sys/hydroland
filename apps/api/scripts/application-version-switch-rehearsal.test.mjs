@@ -4,7 +4,40 @@ import {mkdtemp,mkdir,writeFile,readFile,symlink,rm,lstat} from 'node:fs/promise
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {readFileSync,renameSync} from 'node:fs';
-import {validateBoundary,runtimeEnvironment,verifyNetworkBoundary,verifyApplicationContainer,cleanOwnedBuildOutputs,finishWithReceipt,createReceiptWriter,bounded,PRIOR,CANDIDATE,SEQUENCE,LIMITS} from './application-version-switch-rehearsal.mjs';
+import {validateBoundary,runtimeEnvironment,verifyNetworkBoundary,verifyApplicationContainer,cleanOwnedBuildOutputs,finishWithReceipt,createReceiptWriter,bounded,assertPreserved,PRIOR,CANDIDATE,SEQUENCE,LIMITS} from './application-version-switch-rehearsal.mjs';
+
+function queueFixture(){
+  return [
+    {id:'historical',revision:'source-revision',state:'COMPLETED',result:'immutable draft',reservedCostMicroUsd:7,dispatchedAt:new Date('2026-01-01'),executionPolicy:null},
+    {id:'queued',revision:'queue-revision',state:'QUEUED',result:null,reservedCostMicroUsd:11,dispatchedAt:null,executionPolicy:{synthetic:true,pinnedSourceId:'historical',pinnedSourceRevision:'source-revision'}},
+  ];
+}
+
+test('unchanged queue values survive Prisma and JSONB object key reordering',()=>{
+  const expected=queueFixture();
+  const actual=structuredClone(expected).map(row=>Object.fromEntries(Object.entries(row).reverse()));
+  actual[1].executionPolicy={pinnedSourceRevision:'source-revision',pinnedSourceId:'historical',synthetic:true};
+  assert.notEqual(JSON.stringify(actual),JSON.stringify(expected),'Exercise different serialization order');
+  assertPreserved(actual,expected,'Queue changed');
+});
+
+test('queue preservation still rejects changed identity, revision, context, costs, dispatch and row order',()=>{
+  const changes=[
+    rows=>rows[1].id='replacement',rows=>rows[1].revision='replacement',
+    rows=>rows[1].executionPolicy.pinnedSourceId='replacement',
+    rows=>rows[1].executionPolicy.pinnedSourceRevision='replacement',
+    rows=>rows[1].reservedCostMicroUsd=12,rows=>rows[1].reservedCostMicroUsd='11',
+    rows=>rows[1].dispatchedAt=new Date('2026-01-01'),
+    rows=>rows[0].dispatchedAt=new Date('2026-01-02'),
+    rows=>rows[0].result='rewritten',rows=>rows[1].state='RUNNING',
+    rows=>delete rows[1].executionPolicy,rows=>rows.push({...rows[1],id:'extra'}),
+    rows=>rows.pop(),rows=>rows.reverse(),
+  ];
+  for(const change of changes){
+    const expected=queueFixture(),actual=structuredClone(expected);change(actual);
+    assert.throws(()=>assertPreserved(actual,expected,'Queue changed'),assert.AssertionError);
+  }
+});
 
 function fixture(){
   return {
