@@ -1,5 +1,11 @@
 # Render runtime evidence and repository reconciliation — 2026-10-26
 
+> Historical snapshot: the empty health paths below describe 26 October only.
+> After the main coordinating chat configured both production services, independent
+> readback and healthy post-change deploys verified API `/api/v1/health/ready` and
+> web `/`. See the [28 October health evidence](RENDER_HEALTH_EVIDENCE_2026-10-28.md).
+> The original observations are retained; broader A02 acceptance remains open.
+
 ## Scope and evidence boundary
 
 This is a sanitized, dated **read-only observation**, not a provisioning manifest
@@ -64,7 +70,7 @@ inspection returned `INVALID_ARGUMENT`; no database-level acceptance is claimed.
    route, scoped native build command sequence, repository-root resolution and
    failure propagation. They do not apply a Blueprint or call Render.
 
-## Remaining drift — not closed by this patch
+## Remaining drift at 2026-10-26 — not closed by that patch
 
 | Gap | Required next evidence/action before claiming closure |
 | --- | --- |

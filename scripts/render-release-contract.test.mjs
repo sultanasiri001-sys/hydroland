@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import {copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
@@ -61,7 +61,9 @@ const webSteps = [
 // Execute the real entrypoints in an isolated copied tree with recording child
 // executables. No install, build, network call, migration or deploy is performed.
 function recordBuild(channel, failAt = 0, unrelatedCwd = false) {
-  const fixture = mkdtempSync(join(tmpdir(), 'hydroland-render-contract-'));
+  // macOS aliases /var to /private/var; process.cwd() reports the real path.
+  // Compare the same directory identity without weakening root assertions.
+  const fixture = realpathSync(mkdtempSync(join(tmpdir(), 'hydroland-render-contract-')));
   try {
     const script = `build-${channel}-release.mjs`;
     for (const dir of ['scripts', 'apps/api', 'bin', 'unrelated']) mkdirSync(join(fixture, dir), {recursive: true});
