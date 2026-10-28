@@ -6,6 +6,7 @@ import {readFile, readdir, realpath, writeFile, rm, lstat} from 'node:fs/promise
 import {renameSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {join} from 'node:path';
+import {isDeepStrictEqual} from 'node:util';
 
 // Importing this module performs no I/O. A03 owns the eventual caller/hook.
 export const PRIOR = '4f0b6ac663baeb814523d572def8c4cb8d754fbb';
@@ -194,7 +195,7 @@ export async function applicationVersionSwitchRehearsal({artifacts,artifactWorks
   const runLabel=randomUUID();
   const report = {scope:'SYNTHETIC_APPLICATION_SWITCH', status:'RUNNING',runLabel,
     productionRollbackVerified:false, providerPitrVerified:false, workerProcessingVerified:false,
-    limitsMs:LIMITS, phases:[], artifacts:[], checks:[],
+    limitsMs:LIMITS, phases:[], artifacts:[], checks:[], shutdowns:[],
     expectedDifference:'Prior predates PR533 calendar NOT_READY correction. Calendar equivalence is NOT asserted; this is never approval to roll production back.',
     workers:{ai:'manual test mode', email:'disabled integration', crew:'active; lease writes allowed; no pending crew fixture', clearance:'active; lease writes allowed; only DRAFT trips'},
     queueScope:'Synthetic persistence sentinels; not valid governance routing/processing or model execution proof'};
@@ -255,6 +256,7 @@ export async function applicationVersionSwitchRehearsal({artifacts,artifactWorks
     try{
       docker(['stop','--time','6',name],{timeout:remaining(7000)});
       const stopped=inspect(name);
+      report.shutdowns.push({application:name.endsWith('-api')?'api':'web',running:stopped.State.Running,exitCode:stopped.State.ExitCode,oomKilled:stopped.State.OOMKilled});
       assert.equal(stopped.State.Running,false);
       assert.notEqual(stopped.State.ExitCode,137,'Forced shutdown is not graceful completion');
       assert.equal(stopped.State.OOMKilled,false);
@@ -405,16 +407,31 @@ export async function applicationVersionSwitchRehearsal({artifacts,artifactWorks
         activePhaseStep='AUTHENTICATED_ACCESS';const authorized=await http(api,'/api/v1/me',valid);assert.equal(authorized.status,200);assert.equal(authorized.body?.id,account.id);
         activePhaseStep='SESSION_REVOCATION';assert.equal((await http(api,'/api/v1/me',revoke)).status,index<2?200:401);
         activePhaseStep='QUEUE_PRESERVATION';assertPreserved(await db.aiAgentTask.findMany({orderBy:{id:'asc'}}),pinned,'Queue IDs/revisions/context/reservations/dispatch changed');
-      } finally {const stopped=await Promise.allSettled([Promise.resolve().then(()=>stop(api)),Promise.resolve().then(()=>stop(web))]);assert(stopped.every(x=>x.status==='fulfilled'),'Container cleanup failed');}
-      assertPreserved(targetSnapshot(),expected,'Unexpected persisted state or schema change');
+        check(`phase_${index}:queue_preserved`);
+      } finally {
+        const previousStep=activePhaseStep;activePhaseStep='PHASE_SHUTDOWN';
+        const stopped=await Promise.allSettled([Promise.resolve().then(()=>stop(api)),Promise.resolve().then(()=>stop(web))]);
+        assert(stopped.every(x=>x.status==='fulfilled'),'Container cleanup failed');
+        activePhaseStep=previousStep;
+      }
+      check(`phase_${index}:shutdown_verified`);
+      activePhaseStep='TARGET_PRESERVATION';
+      const after=targetSnapshot();
+      report.targetComparison={schemaPreserved:isDeepStrictEqual(after.schema,expected.schema),migrationHistoryPreserved:isDeepStrictEqual(after.history,expected.history),changedTables:expected.contents.filter(row=>!isDeepStrictEqual(after.contents.find(other=>other.table_name===row.table_name),row)).map(row=>row.table_name)};
+      assertPreserved(after,expected,'Unexpected persisted state or schema change');
+      check(`phase_${index}:target_preserved`);
+      activePhaseStep='SCHEDULER_LEASES';
       const leases=await db.operationalSetting.findMany({where:{key:{in:LEASES}},orderBy:{key:'asc'}});
       assert.equal(leases.length,2);for(const lease of leases){assert.deepEqual(lease.value,{type:'SCHEDULER_LEASE'});assert(lease.updatedAt.getTime()>=started&&lease.updatedAt.getTime()<=Date.now());}
+      check(`phase_${index}:scheduler_leases_verified`);
+      activePhaseStep='UNTOUCHED_DATABASES';
       verifyUntouched();
       const leaseState=leases.map(x=>({key:x.key,updatedAt:x.updatedAt.toISOString()}));
       report.phases.push({index,sha,durationMs:Date.now()-phaseStart,listenerState,dataDigest:digest(expected),leaseState,changedLeaseKeys:leaseState.filter(x=>!previousLeases.some(old=>old.key===x.key&&old.updatedAt===x.updatedAt)).map(x=>x.key)});
       previousLeases=leaseState;
       if(index===1){await db.session.update({where:{id:sessions[1].id},data:{revokedAt:new Date()}});expected=targetSnapshot();}
     }
+    activePhaseStep='FINAL_ARTIFACT_INTEGRITY';
     for(const [index,root] of roots.entries()){
       assert.equal(await outputDigest(join(root,'apps/api/dist')),report.artifacts[index].apiDigest,'API artifact changed during rehearsal');
       assert.equal(await outputDigest(join(root,'apps/web/dist')),report.artifacts[index].webDigest,'Web artifact changed during rehearsal');
