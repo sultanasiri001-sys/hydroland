@@ -88,6 +88,7 @@ export function verifyApplicationContainer(container,{networkName,networkId,runL
   assert.deepEqual(Object.keys(container.NetworkSettings.Networks),[networkName]);
   assert.equal(container.NetworkSettings.Networks[networkName].NetworkID,networkId);
   assert.equal(container.HostConfig.PublishAllPorts,false);
+  assert.equal(container.HostConfig.Init,true,'Application signals require a forwarding init process');
   assert.equal(Object.keys(container.HostConfig.PortBindings||{}).length,0);
   assert(Object.values(container.NetworkSettings.Ports||{}).every(x=>x===null),'No host bindings');
   assert.equal(container.HostConfig.Privileged,false);assert.equal(container.HostConfig.ReadonlyRootfs,true);
@@ -274,7 +275,7 @@ export async function applicationVersionSwitchRehearsal({artifacts,artifactWorks
     // a created container. Final cleanup checks the random label before removal.
     owned.add(name);
     const mounts=mountSets.get(root);assert(mounts?.length);
-    docker(['create','--pull','never','--name',name,'--label',`hydroland.a02.run=${runLabel}`,
+    docker(['create','--init','--pull','never','--name',name,'--label',`hydroland.a02.run=${runLabel}`,
       '--network',networkName,'--read-only','--tmpfs','/tmp:rw,noexec,nosuid,size=64m',
       '--cap-drop','ALL','--security-opt','no-new-privileges','--user','node',
       ...mounts.flatMap(x=>['--mount',`type=bind,src=${x.Source},dst=${x.Destination},readonly`]),'--workdir','/workspace',

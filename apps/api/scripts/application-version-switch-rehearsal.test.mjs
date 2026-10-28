@@ -93,9 +93,9 @@ test('network guard rejects external bridges, dual-homed DB and unknown peers',(
 
 test('application inspection rejects published ports, host mode, writable mounts and wrong ownership',()=>{
   const expected={networkName:'a02-rehearsal-test',networkId:'network-id',runLabel:'owned-run',mounts:[{Source:'/owned/artifact/apps/api/dist',Destination:'/workspace/apps/api/dist'}],imageId:'sha256:'+ 'b'.repeat(64)};
-  const c={Config:{Labels:{'hydroland.a02.run':'owned-run'},User:'node'},Image:expected.imageId,State:{Running:true},HostConfig:{NetworkMode:expected.networkName,PublishAllPorts:false,PortBindings:{},Privileged:false,ReadonlyRootfs:true},NetworkSettings:{Networks:{[expected.networkName]:{NetworkID:expected.networkId}},Ports:{'3197/tcp':null}},Mounts:[{Type:'bind',...expected.mounts[0],RW:false}]};
+  const c={Config:{Labels:{'hydroland.a02.run':'owned-run'},User:'node'},Image:expected.imageId,State:{Running:true},HostConfig:{NetworkMode:expected.networkName,PublishAllPorts:false,Init:true,PortBindings:{},Privileged:false,ReadonlyRootfs:true},NetworkSettings:{Networks:{[expected.networkName]:{NetworkID:expected.networkId}},Ports:{'3197/tcp':null}},Mounts:[{Type:'bind',...expected.mounts[0],RW:false}]};
   verifyApplicationContainer(c,expected);
-  for(const mutate of [x=>x.HostConfig.NetworkMode='host',x=>x.HostConfig.PortBindings={'3197/tcp':[{HostIp:'0.0.0.0',HostPort:'3197'}]},x=>x.NetworkSettings.Ports['3197/tcp']=[{HostIp:'127.0.0.1',HostPort:'3197'}],x=>x.HostConfig.Privileged=true,x=>x.Mounts[0].RW=true,x=>x.Config.Labels={},x=>x.NetworkSettings.Networks.bridge={}]){const changed=structuredClone(c);mutate(changed);assert.throws(()=>verifyApplicationContainer(changed,expected));}
+  for(const mutate of [x=>x.HostConfig.NetworkMode='host',x=>x.HostConfig.Init=false,x=>delete x.HostConfig.Init,x=>x.HostConfig.PortBindings={'3197/tcp':[{HostIp:'0.0.0.0',HostPort:'3197'}]},x=>x.NetworkSettings.Ports['3197/tcp']=[{HostIp:'127.0.0.1',HostPort:'3197'}],x=>x.HostConfig.Privileged=true,x=>x.Mounts[0].RW=true,x=>x.Config.Labels={},x=>x.NetworkSettings.Networks.bridge={}]){const changed=structuredClone(c);mutate(changed);assert.throws(()=>verifyApplicationContainer(changed,expected));}
 });
 
 test('build cleanup removes only owned stale outputs and never follows an output symlink',async()=>{
