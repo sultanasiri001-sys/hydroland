@@ -4,7 +4,7 @@ import {mkdtemp,mkdir,writeFile,readFile,symlink,rm,lstat} from 'node:fs/promise
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {readFileSync,renameSync} from 'node:fs';
-import {validateBoundary,runtimeEnvironment,verifyNetworkBoundary,verifyApplicationContainer,cleanOwnedBuildOutputs,finishWithReceipt,createReceiptWriter,bounded,assertPreserved,PRIOR,CANDIDATE,SEQUENCE,LIMITS} from './application-version-switch-rehearsal.mjs';
+import {normalizeTargetSnapshot,validateBoundary,runtimeEnvironment,verifyNetworkBoundary,verifyApplicationContainer,cleanOwnedBuildOutputs,finishWithReceipt,createReceiptWriter,bounded,assertPreserved,PRIOR,CANDIDATE,SEQUENCE,LIMITS} from './application-version-switch-rehearsal.mjs';
 
 function queueFixture(){
   return [
@@ -187,5 +187,71 @@ test('staging and atomic-publication errors preserve the previous failure receip
       await assert.rejects(bounded(signal=>writer({status:'PASS'},signal),1000),/injected/);
       assert.equal(JSON.parse(await readFile(file,'utf8')).status,'FAIL');
     }finally{await rm(directory,{recursive:true,force:true});}
+  }
+});
+
+function snapshotFixture(){
+  return {schema:{tables:[{relname:'Account'}]},history:[{migration_name:'synthetic-baseline'}],contents:[
+    {row_count:0,table_name:'OperationalSetting',content_digest:'a'.repeat(32)},
+    {row_count:1,table_name:'Account',content_digest:'b'.repeat(32)},
+    {row_count:2,table_name:'AiAgentTask',content_digest:'c'.repeat(32)},
+  ]};
+}
+
+test('permitted lease inserts cannot reorder the protected table snapshot',()=>{
+  const before=snapshotFixture(),filtered=before.contents[0];
+  const after=structuredClone(before);
+  after.contents=[after.contents[1],after.contents[2],{...after.contents[0],row_count:2,content_digest:'d'.repeat(32)}];
+  // Reproduce the old map-only normalization: unchanged protected rows, false FAIL.
+  const oldNormalize=full=>({...full,contents:full.contents.map(row=>row.table_name==='OperationalSetting'?filtered:row)});
+  assert.throws(()=>assertPreserved(oldNormalize(after),oldNormalize(before),'old ordering'));
+  assertPreserved(normalizeTargetSnapshot(after,filtered),normalizeTargetSnapshot(before,filtered),'stable table identity');
+});
+
+test('normalization does not mutate the original recovery snapshot or receipt',()=>{
+  const full=snapshotFixture(),filtered={...full.contents[0]},original=structuredClone(full),saved=JSON.stringify(full);
+  const normalized=normalizeTargetSnapshot(full,filtered);
+  assert.deepEqual(full,original);assert.equal(JSON.stringify(full),saved);
+  assert.deepEqual(normalized.contents.map(x=>x.table_name),['Account','AiAgentTask','OperationalSetting']);
+  assert.strictEqual(normalized.schema,full.schema);assert.strictEqual(normalized.history,full.history);
+});
+
+test('queue contents, row counts, schemas and migration-history changes still fail',()=>{
+  const before=snapshotFixture(),filtered=before.contents[0],expected=normalizeTargetSnapshot(before,filtered);
+  for(const mutate of [
+    x=>x.contents[2].content_digest='f'.repeat(32),x=>x.contents[2].row_count++,
+    x=>x.schema.tables[0].relname='Changed',x=>x.history[0].migration_name='changed-history',
+  ]){const after=structuredClone(before);mutate(after);assert.throws(()=>assertPreserved(normalizeTargetSnapshot(after,filtered),expected,'protected state changed'));}
+});
+
+test('non-lease OperationalSetting changes remain protected by the filtered digest',()=>{
+  const full=snapshotFixture(),filtered=full.contents[0],expected=normalizeTargetSnapshot(full,filtered);
+  for(const changed of [{...filtered,row_count:1},{...filtered,content_digest:'e'.repeat(32)}]){
+    assert.throws(()=>assertPreserved(normalizeTargetSnapshot(full,changed),expected,'non-lease settings changed'));
+  }
+});
+
+test('added or removed tables cannot disappear during normalization',()=>{
+  const full=snapshotFixture(),filtered=full.contents[0],expected=normalizeTargetSnapshot(full,filtered);
+  for(const contents of [full.contents.slice(0,2),[...full.contents,{table_name:'Unexpected',row_count:0,content_digest:'f'.repeat(32)}]]){
+    assert.throws(()=>assertPreserved(normalizeTargetSnapshot({...full,contents},filtered),expected,'table set changed'));
+  }
+});
+
+test('missing or duplicate identities and malformed summaries fail closed',()=>{
+  const full=snapshotFixture(),filtered=full.contents[0];
+  for(const contents of [[],full.contents.slice(1),[...full.contents,full.contents[0]],[...full.contents,full.contents[1]],
+    full.contents.map((x,i)=>i===1?{...x,table_name:''}:x),
+    full.contents.map((x,i)=>i===1?{...x,row_count:-1}:x),
+    full.contents.map((x,i)=>i===1?{...x,content_digest:'invalid'}:x)]){
+    assert.throws(()=>normalizeTargetSnapshot({...full,contents},filtered));
+  }
+  for(const changed of [{...filtered,table_name:'Account'},{...filtered,row_count:1.5},{...filtered,content_digest:'invalid'}])assert.throws(()=>normalizeTargetSnapshot(full,changed));
+});
+
+test('queue revisions, reservations, pinned context and dispatch changes are not ignored',()=>{
+  const task={id:'synthetic-task',revision:1,reservedCostMicroUsd:11,dispatchedAt:null,result:null,executionPolicy:{pinnedSourceId:'synthetic-source',pinnedSourceRevision:1}};
+  for(const mutate of [x=>x.revision++,x=>x.reservedCostMicroUsd++,x=>x.dispatchedAt='2026-01-01',x=>x.result='changed',x=>x.executionPolicy.pinnedSourceRevision++,x=>x.id='replaced']){
+    const changed=structuredClone(task);mutate(changed);assert.throws(()=>assertPreserved([changed],[task],'queue changed'));
   }
 });

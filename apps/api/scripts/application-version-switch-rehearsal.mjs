@@ -163,6 +163,26 @@ export function runtimeEnvironment({databaseUrl, commit, secret, port, path}) {
     HYDROLAND_INTEGRATION_EMAIL_STATUS:'DISABLED', TZ:'UTC'};
 }
 
+// rows() orders aggregate summaries by their complete JSON, including row_count.
+// An allowed lease write can therefore move OperationalSetting in that array.
+// Replace only that summary, then order by stable table identity. Keep snapshot()
+// and the original A03 receipt digests unchanged; do not ignore any other data.
+export function normalizeTargetSnapshot(full, filtered) {
+  assert(Array.isArray(full.contents)&&full.contents.length>0);
+  const names=full.contents.map(row=>row.table_name);
+  assert(names.every(name=>typeof name==='string'&&name.length>0));
+  assert.equal(new Set(names).size,names.length,'Duplicate table summary');
+  assert.equal(names.filter(name=>name==='OperationalSetting').length,1);
+  assert.equal(filtered.table_name,'OperationalSetting');
+  for(const row of [...full.contents,filtered]){
+    assert(Number.isSafeInteger(row.row_count)&&row.row_count>=0);
+    assert.match(row.content_digest,/^[a-f0-9]{32}$/);
+  }
+  const contents=full.contents.map(row=>row.table_name==='OperationalSetting'?filtered:row)
+    .sort((a,b)=>a.table_name<b.table_name?-1:a.table_name>b.table_name?1:0);
+  return {...full,contents};
+}
+
 export function assertPreserved(actual, expected, label) {
   // Prisma/JSONB object key order is not persisted state. Compare all values,
   // types and array positions without treating serialization order as a change.
@@ -297,7 +317,7 @@ export async function applicationVersionSwitchRehearsal({artifacts,artifactWorks
   function targetSnapshot() {
     const full=snapshot(TARGET);
     const filtered=JSON.parse(sql(TARGET,`SELECT json_build_object('table_name','OperationalSetting','row_count',COUNT(*)::int,'content_digest',md5(COALESCE(string_agg(to_jsonb(r)::text,E'\\n' ORDER BY to_jsonb(r)::text),''))) FROM "OperationalSetting" r WHERE "key" NOT IN ('LEASE:CREW_ESCALATION','LEASE:OPERATIONAL_CLEARANCE_SCAN')`));
-    return {...full,contents:full.contents.map(row=>row.table_name==='OperationalSetting'?filtered:row)};
+    return normalizeTargetSnapshot(full,filtered);
   }
   function verifyUntouched() {
     assertPreserved(snapshot(SOURCE),sourceBefore,'Source changed');
