@@ -1,0 +1,32 @@
+name: A03 recovery evidence guards
+on:
+  pull_request:
+    paths:
+      - 'apps/api/scripts/a03-*.mjs'
+      - 'docs/A03_RECOVERY_ACCEPTANCE_2026-10-28.md'
+      - 'docs/evidence/a03-readonly-inventory-2026-10-28.json'
+      - '.github/workflows/a03-recovery-evidence.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/api/scripts/a03-*.mjs'
+      - '.github/workflows/a03-recovery-evidence.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check syntax and bounded read-only recovery contracts
+        run: |
+          node --check apps/api/scripts/a03-recovery-evidence.mjs
+          node --check apps/api/scripts/a03-object-readback.mjs
+          node --test apps/api/scripts/a03-recovery-evidence.test.mjs
