@@ -418,7 +418,7 @@ export async function applicationVersionSwitchRehearsal({artifacts,artifactWorks
     }
     check('all_four_versions_verified_same_database_without_restore_or_reseed');
     report.status='PASS';
-  } catch(error) {failure=error;report.status='FAIL';report.failureCode='REHEARSAL_ASSERTION_OR_EXECUTION_FAILED';}
+  } catch(error) {failure=error;report.status='FAIL';report.failureCode='REHEARSAL_ASSERTION_OR_EXECUTION_FAILED';report.failureStage=report.phases.length===0?'BEFORE_FIRST_COMPLETED_PHASE':`AFTER_PHASE_${report.phases.length}`;report.failureType=error instanceof assert.AssertionError?'ASSERTION':'EXECUTION';}
   finally {
     cleanup=true;
     const commandStep=(fn,ms)=>()=>{cleanupCommandDeadline=Date.now()+ms;try{return fn();}finally{cleanupCommandDeadline=Infinity;}};
