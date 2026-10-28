@@ -170,6 +170,15 @@ export function assertPreserved(actual, expected, label) {
   assert.deepEqual(actual, expected, label);
 }
 
+export function normalizedTargetContents(contents, filteredSettings) {
+  assert.equal(filteredSettings.table_name,'OperationalSetting');
+  // The SQL snapshot orders by the complete row. Scheduler lease inserts can
+  // move OperationalSetting before its filtered row is substituted. Compare
+  // the normalized table set in a stable identity order, preserving every row.
+  return contents.map(row=>row.table_name==='OperationalSetting'?filteredSettings:row)
+    .sort((a,b)=>a.table_name.localeCompare(b.table_name));
+}
+
 async function outputDigest(root) {
   const entries = [];
   async function walk(path, prefix='') {
@@ -298,7 +307,7 @@ export async function applicationVersionSwitchRehearsal({artifacts,artifactWorks
   function targetSnapshot() {
     const full=snapshot(TARGET);
     const filtered=JSON.parse(sql(TARGET,`SELECT json_build_object('table_name','OperationalSetting','row_count',COUNT(*)::int,'content_digest',md5(COALESCE(string_agg(to_jsonb(r)::text,E'\\n' ORDER BY to_jsonb(r)::text),''))) FROM "OperationalSetting" r WHERE "key" NOT IN ('LEASE:CREW_ESCALATION','LEASE:OPERATIONAL_CLEARANCE_SCAN')`));
-    return {...full,contents:full.contents.map(row=>row.table_name==='OperationalSetting'?filtered:row)};
+    return {...full,contents:normalizedTargetContents(full.contents,filtered)};
   }
   function verifyUntouched() {
     assertPreserved(snapshot(SOURCE),sourceBefore,'Source changed');

@@ -4,7 +4,24 @@ import {mkdtemp,mkdir,writeFile,readFile,symlink,rm,lstat} from 'node:fs/promise
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {readFileSync,renameSync} from 'node:fs';
-import {validateBoundary,runtimeEnvironment,verifyNetworkBoundary,verifyApplicationContainer,cleanOwnedBuildOutputs,finishWithReceipt,createReceiptWriter,bounded,assertPreserved,PRIOR,CANDIDATE,SEQUENCE,LIMITS} from './application-version-switch-rehearsal.mjs';
+import {validateBoundary,runtimeEnvironment,verifyNetworkBoundary,verifyApplicationContainer,cleanOwnedBuildOutputs,finishWithReceipt,createReceiptWriter,bounded,assertPreserved,normalizedTargetContents,PRIOR,CANDIDATE,SEQUENCE,LIMITS} from './application-version-switch-rehearsal.mjs';
+
+test('scheduler lease filtering preserves table identity despite raw snapshot reordering',()=>{
+  const account={table_name:'Account',row_count:2,content_digest:'account-bytes'};
+  const settings={table_name:'OperationalSetting',row_count:1,content_digest:'non-lease-bytes'};
+  const sessions={table_name:'Session',row_count:3,content_digest:'session-bytes'};
+  const before=normalizedTargetContents([settings,account,sessions],settings);
+  const rawAfter=[sessions,account,{...settings,row_count:3,content_digest:'includes-two-new-leases'}];
+  const after=normalizedTargetContents(rawAfter,{...settings});
+  assertPreserved(after,before,'Persisted state changed');
+  assert.equal(after.length,3,'No table may be dropped');
+  assert.equal(rawAfter[2].row_count,3,'Do not mutate the unfiltered snapshot');
+  const corrupted=structuredClone(rawAfter);corrupted[1].content_digest='changed-account-bytes';
+  assert.throws(()=>assertPreserved(normalizedTargetContents(corrupted,settings),before,'Persisted state changed'),assert.AssertionError);
+  assert.throws(()=>assertPreserved(normalizedTargetContents(rawAfter,{...settings,content_digest:'changed-non-lease-bytes'}),before,'Persisted state changed'),assert.AssertionError);
+  assert.throws(()=>assertPreserved(normalizedTargetContents(rawAfter.slice(1),settings),before,'Persisted state changed'),assert.AssertionError);
+  assert.throws(()=>assertPreserved(normalizedTargetContents([...rawAfter,{table_name:'Unexpected',row_count:1,content_digest:'extra'}],settings),before,'Persisted state changed'),assert.AssertionError);
+});
 
 function queueFixture(){
   return [
