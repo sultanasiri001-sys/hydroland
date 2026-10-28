@@ -44,7 +44,7 @@ jobs:
           node-version: 22
       - name: Check reviewed pure guards before provisioning
         run: |
-          node --test apps/api/scripts/recovery-switch-orchestrator.test.mjs apps/api/scripts/recovery-switch-ci.test.mjs apps/api/scripts/application-version-switch-rehearsal.test.mjs
+          node --test apps/api/scripts/recovery-switch-db-relay.test.mjs apps/api/scripts/recovery-switch-orchestrator.test.mjs apps/api/scripts/recovery-switch-ci.test.mjs apps/api/scripts/application-version-switch-rehearsal.test.mjs
       - name: Checkout exact prior artifact
         uses: actions/checkout@v4
         with:
@@ -76,6 +76,9 @@ jobs:
             sleep 2
           done
           exit 1
+      - name: Verify owned host-loopback database path before recovery
+        timeout-minutes: 1
+        run: timeout --signal=TERM --kill-after=3s 30s node apps/api/scripts/recovery-switch-db-relay.mjs start
       - name: Execute original recovery proof then synthetic version switch
         timeout-minutes: 25
         env:
@@ -96,6 +99,7 @@ jobs:
             phase11-recovery-evidence/fixture-migration-manifest.json
             phase11-recovery-evidence/ci-ownership.json
             phase11-recovery-evidence/ci-cleanup-report.json
+            phase11-recovery-evidence/host-database-preflight.json
             phase11-recovery-evidence/application-switch-*/application-version-switch-report.json
             phase11-recovery-evidence/application-switch-*/orchestration-report.json
           retention-days: 30

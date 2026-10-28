@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {verifyLiveRelay} from './recovery-switch-db-relay.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
@@ -30,11 +31,11 @@ assert.equal(inspection.Name, '/' + CONTAINER);
 assert.equal(inspection.Config.Labels?.['hydroland.recovery'], 'disposable-local');
 assert.equal(inspection.State.Running, true);
 assert.ok(inspection.Config.Env.includes('POSTGRES_DB=' + SOURCE));
-const binding = inspection.HostConfig.PortBindings?.['5432/tcp'];
-assert.ok(binding?.length === 1 && binding[0].HostIp === '127.0.0.1' && binding[0].HostPort === '5432', 'Rehearsal must bind only to loopback');
+assert.deepEqual(inspection.HostConfig.PortBindings || {}, {}, 'No Docker database publication');
 
 const apiRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = resolve(apiRoot, '../..');
+verifyLiveRelay(join(repoRoot,'phase11-recovery-evidence/ci-ownership.json'));
 const prismaCli = join(repoRoot, 'node_modules/prisma/build/index.js');
 const evidenceDir = join(repoRoot, 'phase11-recovery-evidence');
 await mkdir(evidenceDir, { recursive: true });

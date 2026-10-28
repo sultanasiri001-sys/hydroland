@@ -49,7 +49,7 @@ export function prepare(evidenceDir,artifactWorkspace,docker=command){
  assert.match(probe.node,/^22\./);assert.match(probe.openssl,/^3\./);assert.equal(probe.arch,'x64');assert.equal(probe.prismaEngineLoaded,true);state.runtimeProbe=probe;save(statePath,state);
  state.networkId=docker(['network','create','--driver','bridge','--internal',...labels,state.networkName]).trim();save(statePath,state);
  verifyOwnership(JSON.parse(docker(['network','inspect',state.networkName]))[0],state,'network');
- state.postgresId=docker(['create','--pull','never','--name','phase11-postgres',...labels,'--network',state.networkName,'-e','POSTGRES_USER=hydroland','-e','POSTGRES_PASSWORD=hydroland','-e','POSTGRES_DB=hydroland_rehearsal_source','-p','127.0.0.1:5432:5432',postgres.Id]).trim();save(statePath,state);
+ state.postgresId=docker(['create','--pull','never','--name','phase11-postgres',...labels,'--network',state.networkName,'-e','POSTGRES_USER=hydroland','-e','POSTGRES_PASSWORD=hydroland','-e','POSTGRES_DB=hydroland_rehearsal_source',postgres.Id]).trim();save(statePath,state);
  verifyOwnership(JSON.parse(docker(['inspect','phase11-postgres']))[0],state,'postgres');
  docker(['start',state.postgresId]);
  save(join(evidenceDir,'switch-config.json'),{artifacts,artifactWorkspace:base,networkName:state.networkName,runtimeImageId:state.runtimeImageId});
@@ -72,6 +72,7 @@ export async function cleanup(evidenceDir,{docker=cleanupDocker(process.env,{bud
    try{receipt=read(join(evidenceDir,output,'application-version-switch-report.json'));}catch(error){if(error.code!=='ENOENT')throw error;}
    if(receipt){assert(records,'Helper receipt without recorded process ownership; refuse racing cleanup');cleanupOwned(receipt,state.networkName,docker);}
   }
+  if(state.relay?.process)await terminate(state.relay.process,{group:true});
   // List failures are errors; absence alone is safe. Never interpret inspect errors
   // (daemon unavailable, permission failure) as proof that a resource is absent.
   for(const kind of ['probe','postgres']){

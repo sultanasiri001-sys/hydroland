@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {verifyLiveRelay} from './recovery-switch-db-relay.mjs';
 import {createHash, createHmac, randomUUID} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {readFile, readdir, realpath, writeFile, rm, lstat} from 'node:fs/promises';
@@ -143,7 +144,7 @@ export function validateBoundary(env, report, inspection) {
   assert.equal(inspection.Config.Labels?.['hydroland.recovery'], 'disposable-local');
   assert.equal(inspection.State.Running, true);
   assert(inspection.Config.Env.includes('POSTGRES_DB=' + SOURCE));
-  assert.deepEqual(inspection.HostConfig.PortBindings?.['5432/tcp'], [{HostIp:'127.0.0.1', HostPort:'5432'}]);
+  assert.deepEqual(inspection.HostConfig.PortBindings||{},{});
   const targetUrl = new URL(url); targetUrl.pathname = '/' + TARGET;
   return targetUrl.href;
 }
@@ -300,6 +301,7 @@ export async function applicationVersionSwitchRehearsal({artifacts,artifactWorks
   try {
     assert.match(networkName,/^a02-rehearsal-[a-z0-9-]{1,64}$/);
     assert.match(runtimeImageId,/^sha256:[a-f0-9]{64}$/,'Preloaded immutable Linux image required; helper never pulls');
+    verifyLiveRelay(join(evidenceDir,'..','ci-ownership.json'));
     const postgres=inspect(CONTAINER);
     targetUrl=validateBoundary(process.env,recoveryReport,postgres);
     networkId=verifyNetworkBoundary(JSON.parse(docker(['network','inspect',networkName]))[0],postgres,networkName);
@@ -307,7 +309,7 @@ export async function applicationVersionSwitchRehearsal({artifacts,artifactWorks
     assert.equal(image.Id,runtimeImageId);assert.equal(image.Os,'linux');
     assert.equal(Object.keys(image.Config.Volumes||{}).length,0,'No implicit image volumes');
     assert((image.Config.Env||[]).every(x=>['PATH','NODE_VERSION','YARN_VERSION','NODE_ENV'].includes(x.split('=')[0])),'Runtime image must not contain provider configuration');
-    report.isolation={networkName,networkId,runtimeImageId,publishedApplicationPorts:false,hostListenerCreated:false};
+    report.isolation={networkName,networkId,runtimeImageId,publishedApplicationPorts:false,applicationHostListenerCreated:false,databaseAccess:'owned-loopback-relay'};
     assert.equal(artifacts.length,2);
     assert.deepEqual(artifacts.map(x=>x.sha),[PRIOR,CANDIDATE]);
     assert.equal(Number(process.versions.node.split('.')[0]),22);

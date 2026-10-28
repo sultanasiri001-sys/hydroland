@@ -18,7 +18,7 @@
        - 'apps/api/scripts/bootstrap-*-runtime-schema.mjs'
        - '.github/workflows/phase11-recovery-drill.yml'
        - 'docs/PRODUCTION_RECOVERY_RUNBOOK.md'
-@@ -26,48 +30,73 @@
+@@ -26,48 +30,77 @@
  jobs:
    restore-drill:
      runs-on: ubuntu-24.04
@@ -45,7 +45,7 @@
 -            -e POSTGRES_DB=hydroland_rehearsal_source \
 -            -p 127.0.0.1:5432:5432 \
 -            postgres:18
-+          node --test apps/api/scripts/recovery-switch-orchestrator.test.mjs apps/api/scripts/recovery-switch-ci.test.mjs apps/api/scripts/application-version-switch-rehearsal.test.mjs
++          node --test apps/api/scripts/recovery-switch-db-relay.test.mjs apps/api/scripts/recovery-switch-orchestrator.test.mjs apps/api/scripts/recovery-switch-ci.test.mjs apps/api/scripts/application-version-switch-rehearsal.test.mjs
 +      - name: Checkout exact prior artifact
 +        uses: actions/checkout@v4
 +        with:
@@ -85,6 +85,9 @@
 -      - name: Execute current-schema backup and two isolated restores
 -        run: node apps/api/scripts/recovery-rehearsal.mjs
 -      - name: Retain sanitized rehearsal evidence, not database backups
++      - name: Verify owned host-loopback database path before recovery
++        timeout-minutes: 1
++        run: timeout --signal=TERM --kill-after=3s 30s node apps/api/scripts/recovery-switch-db-relay.mjs start
 +      - name: Execute original recovery proof then synthetic version switch
 +        timeout-minutes: 25
 +        env:
@@ -107,6 +110,7 @@
 +            phase11-recovery-evidence/fixture-migration-manifest.json
 +            phase11-recovery-evidence/ci-ownership.json
 +            phase11-recovery-evidence/ci-cleanup-report.json
++            phase11-recovery-evidence/host-database-preflight.json
 +            phase11-recovery-evidence/application-switch-*/application-version-switch-report.json
 +            phase11-recovery-evidence/application-switch-*/orchestration-report.json
            retention-days: 30

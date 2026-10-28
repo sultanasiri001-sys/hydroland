@@ -13,7 +13,7 @@ function fixture(){
       'disposable_source_is_empty','representative_data_and_raw_extensions_seeded','negative_control_detects_corrupted_restored_data','source_unchanged_by_both_restores',
       'hydroland_rehearsal_restore_2:all_table_data_identical','hydroland_rehearsal_restore_2:entire_real_migration_history_identical',
     ].map(name=>({name,status:'PASS'}))},
-    inspection:{Name:'/phase11-postgres',Config:{Labels:{'hydroland.recovery':'disposable-local'},Env:['POSTGRES_DB=hydroland_rehearsal_source']},State:{Running:true},HostConfig:{PortBindings:{'5432/tcp':[{HostIp:'127.0.0.1',HostPort:'5432'}]}}},
+    inspection:{Name:'/phase11-postgres',Config:{Labels:{'hydroland.recovery':'disposable-local'},Env:['POSTGRES_DB=hydroland_rehearsal_source']},State:{Running:true},HostConfig:{PortBindings:{}}},
   };
 }
 const validate=f=>validateBoundary(f.env,f.report,f.inspection);
@@ -37,7 +37,7 @@ test('production, remote, wrong DB, incomplete provenance and unlabelled contain
     f=>f.report.checks.pop(),f=>f.report.checks[0].status='FAIL',
     f=>delete f.inspection.Config.Labels['hydroland.recovery'],
     f=>f.inspection.State.Running=false,
-    f=>f.inspection.HostConfig.PortBindings['5432/tcp'][0].HostIp='0.0.0.0',
+    f=>f.inspection.HostConfig.PortBindings={'5432/tcp':[{HostIp:'0.0.0.0',HostPort:'5432'}]},
   ];
   for(const change of changes){const f=fixture();change(f);assert.throws(()=>validate(f));}
 });
