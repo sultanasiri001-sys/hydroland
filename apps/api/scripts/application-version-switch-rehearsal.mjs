@@ -236,6 +236,7 @@ export async function applicationVersionSwitchRehearsal({artifacts,artifactWorks
     return{schema,contents,history:rows(database,'SELECT * FROM "_prisma_migrations"')};
   }
   const check = (name, condition=true) => {assert(condition,name); report.checks.push(name);};
+  let activePhaseStep='INITIALIZATION';
   function inspect(name){return JSON.parse(docker(['inspect',name],{timeout:remaining(2000)}))[0];}
   function verifyNetwork(){
     const network=JSON.parse(docker(['network','inspect',networkName],{timeout:remaining(2000)}))[0];
@@ -393,15 +394,15 @@ export async function applicationVersionSwitchRehearsal({artifacts,artifactWorks
           await delay(Math.min(200,remaining(200)));
         }
         check(`phase_${index}:ready_within_bound`,ready&&Date.now()-phaseStart<=LIMITS.ready);
-        verifyNetwork();for(const name of [api,web])verifyApplicationContainer(inspect(name),{networkName,networkId,runLabel,mounts:mountSets.get(root),imageId:runtimeImageId});
-        listenerState={api:listener(api,3197),web:listener(web,3198)};
-        const live=await http(api,'/api/v1/health'); assert.equal(live.body?.status,'ok');assert.equal(live.body?.database,undefined);assert.equal(live.body?.commit,sha);
-        const webResponse=await http(web,'/',null,3198);assert.equal(webResponse.status,200);assert.equal(sha256(webResponse.text),sha256(await readFile(join(root,'apps/web/dist/index.html'))));
-        const asset=await http(web,'/hydroland-auth.js',null,3198);assert.equal(asset.status,200);assert.equal(sha256(asset.text),sha256(await readFile(join(root,'apps/web/dist/hydroland-auth.js'))));
-        assert.equal((await http(api,'/api/v1/me')).status,401);
-        const authorized=await http(api,'/api/v1/me',valid);assert.equal(authorized.status,200);assert.equal(authorized.body?.id,account.id);
-        assert.equal((await http(api,'/api/v1/me',revoke)).status,index<2?200:401);
-        assertPreserved(await db.aiAgentTask.findMany({orderBy:{id:'asc'}}),pinned,'Queue IDs/revisions/context/reservations/dispatch changed');
+        activePhaseStep='NETWORK_OWNERSHIP';verifyNetwork();for(const name of [api,web])verifyApplicationContainer(inspect(name),{networkName,networkId,runLabel,mounts:mountSets.get(root),imageId:runtimeImageId});
+        activePhaseStep='LISTENER_INSPECTION';listenerState={api:listener(api,3197),web:listener(web,3198)};
+        activePhaseStep='API_LIVENESS';const live=await http(api,'/api/v1/health'); assert.equal(live.body?.status,'ok');assert.equal(live.body?.database,undefined);assert.equal(live.body?.commit,sha);
+        activePhaseStep='WEB_ROOT';const webResponse=await http(web,'/',null,3198);assert.equal(webResponse.status,200);assert.equal(sha256(webResponse.text),sha256(await readFile(join(root,'apps/web/dist/index.html'))));
+        activePhaseStep='WEB_ASSET';const asset=await http(web,'/hydroland-auth.js',null,3198);assert.equal(asset.status,200);assert.equal(sha256(asset.text),sha256(await readFile(join(root,'apps/web/dist/hydroland-auth.js'))));
+        activePhaseStep='UNAUTHENTICATED_ACCESS';assert.equal((await http(api,'/api/v1/me')).status,401);
+        activePhaseStep='AUTHENTICATED_ACCESS';const authorized=await http(api,'/api/v1/me',valid);assert.equal(authorized.status,200);assert.equal(authorized.body?.id,account.id);
+        activePhaseStep='SESSION_REVOCATION';assert.equal((await http(api,'/api/v1/me',revoke)).status,index<2?200:401);
+        activePhaseStep='QUEUE_PRESERVATION';assertPreserved(await db.aiAgentTask.findMany({orderBy:{id:'asc'}}),pinned,'Queue IDs/revisions/context/reservations/dispatch changed');
       } finally {const stopped=await Promise.allSettled([Promise.resolve().then(()=>stop(api)),Promise.resolve().then(()=>stop(web))]);assert(stopped.every(x=>x.status==='fulfilled'),'Container cleanup failed');}
       assertPreserved(targetSnapshot(),expected,'Unexpected persisted state or schema change');
       const leases=await db.operationalSetting.findMany({where:{key:{in:LEASES}},orderBy:{key:'asc'}});
@@ -418,7 +419,7 @@ export async function applicationVersionSwitchRehearsal({artifacts,artifactWorks
     }
     check('all_four_versions_verified_same_database_without_restore_or_reseed');
     report.status='PASS';
-  } catch(error) {failure=error;report.status='FAIL';report.failureCode='REHEARSAL_ASSERTION_OR_EXECUTION_FAILED';report.failureStage=report.phases.length===0?'BEFORE_FIRST_COMPLETED_PHASE':`AFTER_PHASE_${report.phases.length}`;report.failureType=error instanceof assert.AssertionError?'ASSERTION':'EXECUTION';}
+  } catch(error) {failure=error;report.status='FAIL';report.failureCode='REHEARSAL_ASSERTION_OR_EXECUTION_FAILED';report.failureStage=report.phases.length===0?'BEFORE_FIRST_COMPLETED_PHASE':`AFTER_PHASE_${report.phases.length}`;report.failureType=error instanceof assert.AssertionError?'ASSERTION':'EXECUTION';report.failureCheck=activePhaseStep;}
   finally {
     cleanup=true;
     const commandStep=(fn,ms)=>()=>{cleanupCommandDeadline=Date.now()+ms;try{return fn();}finally{cleanupCommandDeadline=Infinity;}};
