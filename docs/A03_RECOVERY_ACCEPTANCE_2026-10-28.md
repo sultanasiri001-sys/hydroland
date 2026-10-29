@@ -97,7 +97,9 @@ Using the existing locked Prisma/S3 clients, the operator:
    null/duplicate version IDs, unrelated prefix matches and excessive history.
 3. Streams version bytes into SHA-256 and compares the actual byte count and
    hash with the database reference. It does not retain payloads.
-4. Requires encryption on the recovered version and an explicit owner-only ACL.
+4. Requires encryption on the recovered version. For Backblaze B2, the ACL
+   response proves only the containing bucket's private, owner-only grant shape.
+   It cannot establish object/version-specific ACL ownership.
 5. Requires the returned canonical owner to exactly match an independently supplied
    `HYDROLAND_A03_EXPECTED_OBJECT_OWNER_ID`, in addition to the owner-only grants.
    This operator-only input must come from the reviewed provider-account record,
@@ -216,3 +218,39 @@ would read/hash at most four referenced objects within the existing API runtime
 the same version; it must export only the sanitized receipt, not document
 contents or identifiers. No new paid target or destructive restore is justified
 by this code change. Approved numerical RPO/RTO targets remain unknown/null.
+
+
+## Provider ACL semantics correction (code-only follow-on to frozen PR546)
+
+Backblaze documents that [Get Object ACL returns the containing bucket ACL](https://www.backblaze.com/docs/cloud-storage-s3-compatible-api#access-control-lists).
+The former per-version `ownerOnlyAcl` and `expectedOwnerMatched` fields could
+therefore misrepresent bucket evidence as version-specific authorization.
+The candidate records `bucketAclEvidence` with `scope=bucket` and
+`source=GetObjectAcl`; it no longer puts owner assertions on individual versions.
+Both report and object entries explicitly keep `objectVersionAclVerified=false`.
+Actual version identity, streamed SHA-256/byte count, version encryption and
+anonymous denial continue to require their own checks. A successful bounded
+readback still does not prove application authorization, owner/ACL transfer,
+independent owner approval, PITR or production acceptance.
+
+The runtime now requires the operator-only declaration
+`HYDROLAND_A03_STORAGE_PROVIDER=backblaze-b2`, plus the unchanged independently
+established expected canonical owner. Configuration must match the exact regional
+Backblaze HTTPS host `s3.<region>.backblazeb2.com`, without custom port or path.
+This host validation selects supported semantics; it does NOT authenticate the
+intended account or link a dashboard bucket to the application's configuration.
+Unknown providers, missing/unknown ACL scope and endpoint/provider mismatches
+fail closed before provider I/O. Other providers need separately reviewed
+adapters; a caller cannot select generic S3 semantics as a fallback.
+
+The three new regression contracts fail against the frozen PR546 source and pass
+against this candidate. All 35 non-network contracts pass locally. Seven locked
+SDK loopback transport cases are locally blocked by `listen EPERM` before their
+assertions; the existing credential-free repository CI is the verification route.
+No dependency, workflow, provider resource, production configuration or historical
+receipt changes are part of this correction.
+
+These changed modules are NOT covered by any approval pinned to the previous
+operator hashes. No runtime staging or provider execution is authorized by this
+code proposal. Independent canonical-owner provenance, intended production
+bucket linkage and provider-aware execution review remain required.

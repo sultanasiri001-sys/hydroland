@@ -35,7 +35,7 @@ async function withStorage(mode,operation){
     res.writeHead(200,{'content-length':bytes.length,'content-type':'application/pdf','x-amz-version-id':mode==='wrong-version'?'another-version':'known-old-version','x-amz-server-side-encryption':'AES256'});res.end(bytes);
   });
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
-  const config={endpoint:`http://127.0.0.1:${server.address().port}`,region:'us-east-1',bucket:'private-fixture',credentials:{accessKeyId:'FIXTURE_ONLY',secretAccessKey:'FIXTURE_ONLY'}};
+  const config={provider:'backblaze-b2',aclScope:'bucket',endpoint:`http://127.0.0.1:${server.address().port}`,region:'us-east-1',bucket:'private-fixture',credentials:{accessKeyId:'FIXTURE_ONLY',secretAccessKey:'FIXTURE_ONLY'}};
   const client=new sdk.S3Client({endpoint:config.endpoint,region:config.region,credentials:config.credentials,forcePathStyle:true,maxAttempts:1});
   try{return await operation(createStorageReader(config,sdk,client),calls,()=>unexpectedRoute);}
   finally{client.destroy();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
@@ -43,6 +43,8 @@ async function withStorage(mode,operation){
 
 test('real SDK transport preserves version/ACL/encryption identity and uses only signed reads plus one anonymous read',()=>withStorage('private',async(storage,calls)=>{
   const r=await probeReferencedObjects({expectedOwnerId:'fixture-owner',objects:[object],storage});assert.equal(r.status,'PASS');
+  assert.equal(r.objectVersionAclVerified,false);assert.equal(r.objects[0].objectVersionAclVerified,false);
+  assert.equal(r.bucketAclEvidence.scope,'bucket');assert.equal(Object.hasOwn(r.objects[0],'ownerOnlyAcl'),false);
   assert.equal(calls.length,6);assert(calls.every(x=>x.method==='GET'));assert.equal(calls.filter(x=>!x.signed).length,1);
   const anon=calls.at(-1);assert.equal(anon.path,'/private-fixture/'+key);assert(anon.query.includes('versionId'));
 }));
@@ -72,6 +74,6 @@ test('the anonymous fetch cannot follow a redirect to a different object',()=>wi
 
 test('actual SDK ACL parsing rejects a self-consistent but unexpected owner before anonymous probing',()=>withStorage('wrong-owner',async(storage,calls)=>{
   const r=await probeReferencedObjects({objects:[object],storage,expectedOwnerId:'fixture-owner'});
-  assert.equal(r.status,'FAIL');assert.equal(r.failureStage,'VERSION_ACL');assert(calls.every(x=>x.signed));
+  assert.equal(r.status,'FAIL');assert.equal(r.failureStage,'BUCKET_ACL');assert(calls.every(x=>x.signed));
   assert(!JSON.stringify(r).includes('other-owner'));
 }));

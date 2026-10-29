@@ -57,7 +57,7 @@ export function ownerOnlyAcl(acl,expectedOwnerId){
 // restore-instance operation is present. Mock acceptance never proves a provider.
 export async function probeReferencedObjects({objects,storage,expectedOwnerId,requestMs=LIMITS.requestMs,overallMs=LIMITS.overallMs,now=()=>performance.now()}){
   const start=now(),report={scope:'A03_REFERENCED_OBJECT_VERSION_READBACK',status:'FAIL',objects:[],requests:0,
-    productionWrites:0,objectWrites:0,ownerApprovalVerified:false,providerPitrVerified:false,ownerAclTransferVerified:false,applicationAuthorizationVerified:false,productionAccepted:false};
+    productionWrites:0,objectWrites:0,ownerApprovalVerified:false,providerPitrVerified:false,ownerAclTransferVerified:false,applicationAuthorizationVerified:false,objectVersionAclVerified:false,productionAccepted:false};
   const budget={remaining:LIMITS.totalBytes};let stage='INPUT';
   const read=async(name,fn)=>{stage=name;limit(++report.requests<=LIMITS.requests);return bounded(fn,Math.min(requestMs,overallMs-(now()-start)));};
   try{
@@ -65,6 +65,10 @@ export async function probeReferencedObjects({objects,storage,expectedOwnerId,re
     assert(Number.isFinite(overallMs)&&overallMs>0&&overallMs<=LIMITS.overallMs);
     assert(validExpectedOwner(expectedOwnerId),'An independently supplied expected object owner is required');
     validateObjects(objects);
+    stage='PROVIDER_SEMANTICS';
+    assert.equal(storage?.provider,'backblaze-b2');
+    assert.equal(storage?.aclScope,'bucket');
+    report.provider='backblaze-b2';report.aclScope='bucket';
     const versioning=await read('BUCKET_VERSIONING',signal=>storage.versioning(signal));
     assert.equal(versioning.Status,'Enabled');report.versioningEnabled=true;
     const config=await read('BUCKET_ENCRYPTION',signal=>storage.encryption(signal));
@@ -91,8 +95,12 @@ export async function probeReferencedObjects({objects,storage,expectedOwnerId,re
       }
       assert(matched,'No version matches the database byte count and SHA-256');
       item.recordedBytesRecoverable=true;item.historicalVersionReadback=matched.IsLatest===false;
-      const acl=await read('VERSION_ACL',signal=>storage.acl(object.key,matched.VersionId,signal));
-      assert(ownerOnlyAcl(acl,expectedOwnerId),'ACL must belong exclusively to the independently expected owner');item.ownerOnlyAcl=true;item.expectedOwnerMatched=true;
+      const acl=await read('BUCKET_ACL',signal=>storage.acl(object.key,matched.VersionId,signal));
+      assert(ownerOnlyAcl(acl,expectedOwnerId),'Bucket ACL must belong exclusively to the independently expected owner');
+      // Backblaze GetObjectAcl returns the containing bucket ACL, even when
+      // requested with a version. It is not evidence of a version-specific ACL.
+      report.bucketAclEvidence={scope:'bucket',source:'GetObjectAcl',ownerOnly:true,expectedOwnerMatched:true};
+      item.objectVersionAclVerified=false;
       // Probe the SAME authenticated, hash-verified version. A random 404 is
       // never used as evidence that a real stored object is private.
       const status=await read('ANONYMOUS_VERSION',signal=>storage.anonymous(object.key,matched.VersionId,signal));

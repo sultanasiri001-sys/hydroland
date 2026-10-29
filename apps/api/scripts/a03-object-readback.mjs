@@ -11,19 +11,24 @@ import {LIMITS,digestBody,probeReferencedObjects,safeCode,validExpectedOwner} fr
 export function auditConfig(env){
   const expectedOwnerId=env.HYDROLAND_A03_EXPECTED_OBJECT_OWNER_ID;
   assert(validExpectedOwner(expectedOwnerId),'An independent expected owner must be supplied; never derive it from object ACL output');
+  assert.equal(env.HYDROLAND_A03_STORAGE_PROVIDER,'backblaze-b2');
   const names=['ENDPOINT','BUCKET','REGION','ACCESS_KEY_ID','SECRET_ACCESS_KEY'];
   const fields=Object.fromEntries(names.map(key=>[key,env['HYDROLAND_OBJECT_STORAGE_'+key]?.trim()]));
   assert(names.every(key=>fields[key]));
   const endpoint=new URL(fields.ENDPOINT);
   assert(endpoint.protocol==='https:'&&!endpoint.username&&!endpoint.password&&!endpoint.search&&!endpoint.hash);
-  assert(!['localhost','127.0.0.1','[::1]'].includes(endpoint.hostname));
+  assert.equal(endpoint.hostname,`s3.${fields.REGION}.backblazeb2.com`);
+  assert(/^[a-z]+-[a-z]+-[0-9]{3}$/.test(fields.REGION));
+  assert(endpoint.pathname==='/'&&!endpoint.port);
   assert(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(fields.BUCKET));
-  return{expectedOwnerId,endpoint:endpoint.href,bucket:fields.BUCKET,region:fields.REGION,credentials:{accessKeyId:fields.ACCESS_KEY_ID,secretAccessKey:fields.SECRET_ACCESS_KEY}};
+  return{provider:'backblaze-b2',aclScope:'bucket',expectedOwnerId,endpoint:endpoint.href,bucket:fields.BUCKET,region:fields.REGION,credentials:{accessKeyId:fields.ACCESS_KEY_ID,secretAccessKey:fields.SECRET_ACCESS_KEY}};
 }
 
 export function createStorageReader(config,sdk,client){
+  assert.equal(config.provider,'backblaze-b2');assert.equal(config.aclScope,'bucket');
   const send=(Command,input,signal)=>client.send(new Command({Bucket:config.bucket,...input}),{abortSignal:signal});
   return{
+    provider:config.provider,aclScope:config.aclScope,
     versioning:signal=>send(sdk.GetBucketVersioningCommand,{},signal),
     encryption:signal=>send(sdk.GetBucketEncryptionCommand,{},signal),
     versions:(key,signal)=>send(sdk.ListObjectVersionsCommand,{Prefix:key,MaxKeys:25},signal),
@@ -51,7 +56,7 @@ export async function main(argv=process.argv.slice(2),env=process.env){
   assert.equal(env.RENDER_SERVICE_ID,'srv-dakelt142hec73aavvsg');
   const directory=await mkdtemp(join(tmpdir(),'hydroland-a03-readback-'));
   const receipt=join(directory,'receipt.json');
-  const initial={scope:'A03_REFERENCED_OBJECT_VERSION_READBACK',status:'FAIL',failureCode:'EXECUTION_INCOMPLETE',productionAccepted:false,ownerApprovalVerified:false,providerPitrVerified:false,ownerAclTransferVerified:false,productionWrites:0,objectWrites:0};
+  const initial={scope:'A03_REFERENCED_OBJECT_VERSION_READBACK',status:'FAIL',failureCode:'EXECUTION_INCOMPLETE',productionAccepted:false,ownerApprovalVerified:false,providerPitrVerified:false,ownerAclTransferVerified:false,applicationAuthorizationVerified:false,objectVersionAclVerified:false,productionWrites:0,objectWrites:0};
   await writeFile(receipt,JSON.stringify(initial,null,2),{mode:0o600,flag:'wx'});
   let db,client,report=initial,stage='CONFIGURATION';
   try{
