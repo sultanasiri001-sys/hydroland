@@ -260,3 +260,23 @@ test('CLI invalid arguments and symlink invocation return sanitized nonzero', ()
     assert.equal(child.status, 2); assert.equal(child.stderr, '');
   } finally {rmSync(dir, {recursive: true, force: true});}
 });
+
+test('collector retains only required step evidence and rejects a skipped critical step in a green job', async()=>{
+  const input=fixture();input.policy.required[0].criticalSteps={build:['Native build']};
+  input.jobs[101][0].steps=[
+    {number:1,name:'Native build',status:'completed',conclusion:'skipped',command:'SECRET_NOT_RETAINED'},
+    {number:2,name:'SECRET_NOT_RETAINED',status:'completed',conclusion:'success'},
+  ];
+  const {result}=await run(input);
+  assert.equal(result.collection.status,'COMPLETE');assert.equal(result.evaluation.status,'BLOCKED');
+  assert.deepEqual(result.snapshot.jobs[101].jobs[0].steps,[{number:1,name:'Native build',status:'completed',conclusion:'skipped'}]);
+  assert(!JSON.stringify(result).includes('SECRET_NOT_RETAINED'));
+  input.jobs[101][0].steps[0].conclusion='success';
+  assert.equal((await run(input)).result.evaluation.status,'PASS');
+});
+test('collector rejects missing critical steps and invalid critical policy before requests',async()=>{
+  const input=fixture();input.policy.required[0].criticalSteps={build:['Native build']};
+  assert.equal((await run(input)).result.evaluation.status,'BLOCKED');
+  input.policy.required[0].criticalSteps={unknown:['Native build']};
+  const {result,service}=await run(input);blocked(result,'INVALID_POLICY_OR_TARGET');assert.equal(service.calls.length,0);
+});

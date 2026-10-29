@@ -131,7 +131,21 @@
         "path": ".github/workflows/phase11-production-security.yml",
         "jobs": [
           "validate"
-        ]
+        ],
+        "criticalSteps": {
+          "validate": [
+            "Validate Phase 11 repository controls",
+            "Verify offline Render release contracts",
+            "Build production API image",
+            "Build Compose API image",
+            "Verify image runs as non-root user",
+            "Verify installed runtime boundary and offline Prisma CLI",
+            "Audit API image dependencies (additional to full repository gate)",
+            "Verify final image starts and queries disposable PostgreSQL",
+            "Verify native Render API build command and retained Prisma engine",
+            "Verify native Render web build command"
+          ]
+        }
       },
       {
         "workflowId": 368883030,
@@ -180,7 +194,24 @@
         "path": ".github/workflows/web-validation.yml",
         "jobs": [
           "validate"
-        ]
+        ],
+        "criticalSteps": {
+          "validate": [
+            "Static web validation",
+            "Production web build",
+            "Install Chromium",
+            "Motion preference browser regression",
+            "Scoped research owner and reviewer browser regression",
+            "Account lifecycle and fresh action authorization regression",
+            "Center workflow focused regression",
+            "Organization portal focused regression",
+            "Professional training completion regression",
+            "Training certificate review regression",
+            "Booking participant review regression",
+            "Browser E2E",
+            "Phase 4 notification focused regression"
+          ]
+        }
       }
     ]
   },

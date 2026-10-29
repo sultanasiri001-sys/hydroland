@@ -14,6 +14,12 @@ const timestamp = value => {
 };
 const text = value => typeof value === 'string' && value.trim() === value && value.length > 0 && value.length <= 160;
 
+function validCriticalSteps(rule) {
+  if (rule.criticalSteps === undefined) return true;
+  return object(rule.criticalSteps) && Object.keys(rule.criticalSteps).length > 0
+    && Object.entries(rule.criticalSteps).every(([job, steps]) => rule.jobs.includes(job)
+      && Array.isArray(steps) && steps.length > 0 && steps.length <= 100 && steps.every(text) && unique(steps));
+}
 function validPolicy(policy) {
   if (!object(policy) || policy.schemaVersion !== 1
       || typeof policy.repository !== 'string' || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(policy.repository)
@@ -23,7 +29,7 @@ function validPolicy(policy) {
       || !Array.isArray(policy.required) || policy.required.length === 0 || policy.required.length > 50) return false;
   return policy.required.every(rule => object(rule) && integer(rule.workflowId)
     && typeof rule.path === 'string' && /^\.github\/workflows\/[A-Za-z0-9_-]+\.ya?ml$/.test(rule.path)
-    && Array.isArray(rule.jobs) && rule.jobs.length > 0 && rule.jobs.every(text) && unique(rule.jobs))
+    && Array.isArray(rule.jobs) && rule.jobs.length > 0 && rule.jobs.every(text) && unique(rule.jobs) && validCriticalSteps(rule))
     && unique(policy.required.map(rule => rule.workflowId)) && unique(policy.required.map(rule => rule.path));
 }
 
@@ -83,6 +89,19 @@ export function evaluateReleaseEvidence(policy, evidence, expectedSha, now = Dat
       return !Number.isFinite(start) || !Number.isFinite(end) || start < created || start > end || end > updated;
     })) block('INVALID_JOB_TIMING');
     for (const name of rule.jobs) if (jobs.filter(job => job.name === name).length !== 1) block('MISSING_OR_DUPLICATE_REQUIRED_JOB');
+    for (const [jobName, names] of Object.entries(rule.criticalSteps ?? {})) {
+      const matches = jobs.filter(job => job.name === jobName);
+      if (matches.length !== 1) continue; // Missing/duplicate job already blocks above.
+      const steps = matches[0].steps;
+      if (!Array.isArray(steps) || steps.length === 0 || steps.length > 1000
+          || steps.some(step => !object(step) || !integer(step.number) || !text(step.name))
+          || !unique(steps.map(step => step.number))) {block('INVALID_CRITICAL_STEP_EVIDENCE'); continue;}
+      for (const name of names) {
+        const matching = steps.filter(step => step.name === name);
+        if (matching.length !== 1) block('MISSING_OR_DUPLICATE_CRITICAL_STEP');
+        else if (matching[0].status !== 'completed' || matching[0].conclusion !== 'success') block('CRITICAL_STEP_NOT_SUCCESS');
+      }
+    }
     if (gate.reasons.length === 0) gate.status = 'PASS';
   }
   if (result.gates.every(gate => gate.status === 'PASS')) result.status = 'PASS';

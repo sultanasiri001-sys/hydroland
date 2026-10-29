@@ -162,3 +162,31 @@ test('CLI invoked through a symlink still evaluates and blocks missing evidence'
   input.evidence.total_count = 0; input.evidence.workflow_runs = []; writeFileSync(snapshot, JSON.stringify(input.evidence));
   const output = cli([alias, policy, snapshot, SHA]); assert.equal(output.status, 1);
 }));
+
+function criticalFixture() {
+  const input=fixture(); input.policy.required[0].criticalSteps={build:['Native build','Runtime query']};
+  input.evidence.jobs[100].jobs[0].steps=[
+    {number:1,name:'Native build',status:'completed',conclusion:'success'},
+    {number:2,name:'Runtime query',status:'completed',conclusion:'success'},
+    {number:3,name:'Failure-only diagnostics',status:'completed',conclusion:'skipped'},
+  ];
+  return input;
+}
+test('critical steps pass while noncritical failure-only diagnostics may be skipped',()=>assert.equal(check(criticalFixture()).status,'PASS'));
+for (const [name, mutate] of [
+  ['missing steps', i=>{delete i.evidence.jobs[100].jobs[0].steps;}],
+  ['empty steps', i=>{i.evidence.jobs[100].jobs[0].steps=[];}],
+  ['missing critical step', i=>{i.evidence.jobs[100].jobs[0].steps.shift();}],
+  ['duplicate critical name', i=>{i.evidence.jobs[100].jobs[0].steps.push({number:4,name:'Native build',status:'completed',conclusion:'success'});}],
+  ['duplicate number', i=>{i.evidence.jobs[100].jobs[0].steps[1].number=1;}],
+  ['invalid number', i=>{i.evidence.jobs[100].jobs[0].steps[0].number=0;}],
+  ['pending step', i=>{i.evidence.jobs[100].jobs[0].steps[0].status='in_progress';}],
+  ['wrong critical job in policy', i=>{i.policy.required[0].criticalSteps={other:['Build']};}],
+  ['empty critical policy', i=>{i.policy.required[0].criticalSteps={};}],
+  ['empty critical names', i=>{i.policy.required[0].criticalSteps={build:[]};}],
+  ['duplicate policy name', i=>{i.policy.required[0].criticalSteps.build.push('Native build');}],
+  ['array critical policy', i=>{i.policy.required[0].criticalSteps=[];}],
+]) test(`critical-step contract blocks ${name}`,()=>{const i=criticalFixture();mutate(i);assert.equal(check(i).status,'BLOCKED');});
+for(const conclusion of ['skipped','neutral','failure','cancelled','timed_out',null]) test(`green job cannot hide critical-step ${conclusion}`,()=>{
+  const i=criticalFixture();i.evidence.jobs[100].jobs[0].steps[0].conclusion=conclusion;assert.equal(check(i).status,'BLOCKED');
+});

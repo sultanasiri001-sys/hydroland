@@ -58,7 +58,20 @@ export function validateReleaseInventory(inventory, workflows) {
     if (!push || !Array.isArray(push.branches) || !push.branches.includes('main') || push.branches.some(b => typeof b !== 'string' || b.startsWith('!')) || ['paths', 'paths-ignore', 'branches-ignore', 'tags', 'tags-ignore'].some(k => Object.hasOwn(push, k))) fail(rule.path, 'MAIN_PUSH_NOT_GUARANTEED');
     try {
       if (!Array.isArray(rule.jobs) || !equalSet(rule.jobs, expandedJobNames(workflow))) fail(rule.path, 'INCORRECT_JOB_INVENTORY');
-    } catch (error) {fail(rule.path, error.message);}
+    } catch (error) {fail(rule.path, error.message); continue;}
+    if (rule.criticalSteps !== undefined) {
+      if (!rule.criticalSteps || typeof rule.criticalSteps !== 'object' || Array.isArray(rule.criticalSteps) || !Object.keys(rule.criticalSteps).length) {fail(rule.path, 'INVALID_CRITICAL_STEP_POLICY'); continue;}
+      for (const [jobName, names] of Object.entries(rule.criticalSteps)) {
+        const matchingJobs = Object.entries(workflow.jobs).filter(([id, job]) => expandedJobNames({jobs: {[id]: job}}).includes(jobName));
+        if (!rule.jobs.includes(jobName) || matchingJobs.length !== 1 || !Array.isArray(names) || !names.length || names.some(n => typeof n !== 'string' || !n.trim()) || new Set(names).size !== names.length) {fail(rule.path, 'INVALID_CRITICAL_STEP_POLICY'); continue;}
+        const steps = matchingJobs[0][1].steps;
+        for (const name of names) {
+          const matching = Array.isArray(steps) ? steps.filter(step => step.name === name) : [];
+          if (matching.length !== 1) fail(rule.path, 'MISSING_OR_DUPLICATE_CRITICAL_SOURCE_STEP');
+          else if (matching[0].if !== undefined || (matching[0]['continue-on-error'] !== undefined && matching[0]['continue-on-error'] !== false)) fail(rule.path, 'OPTIONAL_CRITICAL_SOURCE_STEP');
+        }
+      }
+    }
   }
   return {status: errors.length ? 'BLOCKED' : 'PASS', productionAuthorized: false, scope: 'PROPOSED_SOURCE_CONTRACT', errors};
 }
