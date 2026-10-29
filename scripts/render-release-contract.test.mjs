@@ -125,8 +125,12 @@ const contractStep = `      - name: Verify offline Render release contracts
 
 function assertContractWorkflow(source) {
   for (const event of ['push', 'pull_request']) {
-    const block = source.split(`  ${event}:\n`)[1]?.split(/\n  [a-z_]+:/)[0];
+    const block = source.split(`  ${event}:\n`)[1]?.split(/\n(?=  [a-z_-]+:|\S)/)[0];
     assert.ok(block, `Missing ${event} trigger`);
+    if (event === 'push') {
+      assert.equal(block.trim(), 'branches: [main]', 'Push must cover every main change without filters');
+      continue;
+    }
     for (const path of contractTriggerPaths) {
       assert.ok(block.includes(`      - '${path}'`), `${event} must cover ${path}`);
     }
@@ -145,12 +149,19 @@ test('Phase 11 runs Render contracts and triggers on their inputs', () => {
 test('workflow guard rejects omitted triggers and skipped or ignored contracts', () => {
   const source = read(contractWorkflowPath);
   for (const event of ['push', 'pull_request']) {
-    const start = source.indexOf(`  ${event}:\n`);
-    const tail = source.slice(start);
-    for (const path of contractTriggerPaths) {
-      const alteredTail = tail.replace(`      - '${path}'\n`, '');
-      assert.throws(() => assertContractWorkflow(source.slice(0, start) + alteredTail));
-    }
+    assert.throws(() => assertContractWorkflow(source.replace(`  ${event}:\n`, `  disabled_${event}:\n`)));
+  }
+  // PR coverage remains path-filtered; losing any contract input must fail.
+  for (const path of contractTriggerPaths) {
+    assert.throws(() => assertContractWorkflow(source.replace(`      - '${path}'\n`, '')));
+  }
+  for (const pushBody of [
+    '    branches: [feature]',
+    '    branches: [main]\n    paths: [apps/api/**]',
+    '    branches: [main]\n    paths-ignore: [scripts/**]',
+    '    tags: [v*]',
+  ]) {
+    assert.throws(() => assertContractWorkflow(source.replace('  push:\n    branches: [main]', `  push:\n${pushBody}`)));
   }
   for (const replacement of [
     '',

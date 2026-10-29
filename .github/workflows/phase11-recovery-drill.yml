@@ -11,12 +11,6 @@ on:
       - 'docs/PRODUCTION_RECOVERY_RUNBOOK.md'
   push:
     branches: [main]
-    paths:
-      - 'apps/api/prisma/**'
-      - 'apps/api/scripts/recovery-rehearsal.mjs'
-      - 'apps/api/scripts/bootstrap-*-runtime-schema.mjs'
-      - '.github/workflows/phase11-recovery-drill.yml'
-      - 'docs/PRODUCTION_RECOVERY_RUNBOOK.md'
   schedule:
     - cron: '30 3 * * 0'
 

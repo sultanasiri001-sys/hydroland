@@ -1,5 +1,7 @@
 name: Commerce payment boundaries
 on:
+  push:
+    branches: [main]
   pull_request:
     paths:
       - 'apps/api/src/store/**'

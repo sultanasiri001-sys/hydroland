@@ -3,25 +3,6 @@ name: Phase 11 production security
 on:
   push:
     branches: [main]
-    paths:
-      - 'Dockerfile'
-      - 'apps/api/Dockerfile'
-      - 'apps/api/src/main.ts'
-      - 'apps/api/src/auth/**'
-      - 'apps/api/scripts/phase11-production-security-validation.mjs'
-      - 'apps/api/scripts/runtime-dependency-boundary.mjs'
-      - 'apps/api/package.json'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'infra/**'
-      - '.github/workflows/security-audit.yml'
-      - '.github/workflows/mobile-security.yml'
-      - 'scripts/release-dependency-audit*'
-      - 'scripts/build-*-release.mjs'
-      - 'scripts/render-release-contract.test.mjs'
-      - 'render.yaml'
-      - 'apps/api/src/health/health.controller.ts'
-      - '.github/workflows/phase11-production-security.yml'
   pull_request:
     paths:
       - 'Dockerfile'

@@ -1,5 +1,7 @@
 name: Admin document library entry
 on:
+  push:
+    branches: [main]
   pull_request:
     paths:
       - 'apps/web/src/hydroland-role-task-routing.js'
