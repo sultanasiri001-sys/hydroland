@@ -10,13 +10,6 @@ on:
       - '.github/workflows/membership-pass-validation.yml'
   push:
     branches: [main]
-    paths:
-      - 'apps/api/src/profile/**'
-      - 'apps/api/scripts/membership-*.mjs'
-      - 'apps/web/src/hydroland-members*.js'
-      - 'apps/web/e2e/membership-pass.spec.js'
-      - 'apps/web/playwright.membership.config.js'
-      - '.github/workflows/membership-pass-validation.yml'
   workflow_dispatch:
 permissions:
   contents: read

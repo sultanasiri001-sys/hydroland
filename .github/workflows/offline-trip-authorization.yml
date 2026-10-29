@@ -1,5 +1,7 @@
 name: Offline trip read authorization
 on:
+  push:
+    branches: [main]
   pull_request:
     paths:
       - 'apps/api/src/trip-intelligence/**'

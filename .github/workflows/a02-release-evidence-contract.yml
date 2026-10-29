@@ -3,13 +3,13 @@ name: A02 release evidence contract
 on:
   pull_request:
     paths:
-      - 'scripts/a02-release-evidence*.mjs'
+      - 'scripts/a02-release-*.mjs'
+      - 'scripts/a02-release-inventory.json'
+      - '.github/workflows/**'
+      - 'package-lock.json'
       - '.github/workflows/a02-release-evidence-contract.yml'
   push:
     branches: [main]
-    paths:
-      - 'scripts/a02-release-evidence*.mjs'
-      - '.github/workflows/a02-release-evidence-contract.yml'
 
 permissions:
   contents: read
@@ -17,7 +17,7 @@ permissions:
 jobs:
   contract-tests:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,8 +25,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Install locked API tooling for YAML parsing
+        run: npm ci --workspace=@hydroland/api --include-workspace-root=true --ignore-scripts
       - name: Verify exact-commit evidence evaluator and negative controls
         run: |
           node --check scripts/a02-release-evidence.mjs
           node --check scripts/a02-release-evidence.test.mjs
-          node --test scripts/a02-release-evidence.test.mjs
+          node --test scripts/a02-release-*.test.mjs

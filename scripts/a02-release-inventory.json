@@ -1,0 +1,419 @@
+{
+  "status": "PROPOSED_NOT_ADOPTED",
+  "sourceBase": "a1e82d43f8e6c4b71576beb2468e5359df53c8df",
+  "registryObservedAt": "2026-10-29",
+  "policy": {
+    "schemaVersion": 1,
+    "repository": "sultanasiri001-sys/hydroland",
+    "repositoryId": 1366555943,
+    "branch": "main",
+    "event": "push",
+    "maxSnapshotAgeMs": 300000,
+    "maxRunAgeMs": 86400000,
+    "required": [
+      {
+        "workflowId": 399600840,
+        "path": ".github/workflows/a02-release-evidence-contract.yml",
+        "jobs": [
+          "contract-tests"
+        ]
+      },
+      {
+        "workflowId": 395915408,
+        "path": ".github/workflows/admin-documents-entry-validation.yml",
+        "jobs": [
+          "navigation"
+        ]
+      },
+      {
+        "workflowId": 357149799,
+        "path": ".github/workflows/api-validation.yml",
+        "jobs": [
+          "build"
+        ]
+      },
+      {
+        "workflowId": 397563419,
+        "path": ".github/workflows/calendar-training-availability-validation.yml",
+        "jobs": [
+          "availability (UTC)",
+          "availability (Asia/Riyadh)",
+          "availability (America/New_York)"
+        ]
+      },
+      {
+        "workflowId": 397563418,
+        "path": ".github/workflows/commerce-payment-boundaries.yml",
+        "jobs": [
+          "boundaries"
+        ]
+      },
+      {
+        "workflowId": 361756274,
+        "path": ".github/workflows/dependency-lock.yml",
+        "jobs": [
+          "lock-and-audit"
+        ]
+      },
+      {
+        "workflowId": 395530399,
+        "path": ".github/workflows/form-library-integration.yml",
+        "jobs": [
+          "integration"
+        ]
+      },
+      {
+        "workflowId": 395507003,
+        "path": ".github/workflows/form-library-validation.yml",
+        "jobs": [
+          "validate"
+        ]
+      },
+      {
+        "workflowId": 396092278,
+        "path": ".github/workflows/internal-document-review-validation.yml",
+        "jobs": [
+          "acceptance"
+        ]
+      },
+      {
+        "workflowId": 397563416,
+        "path": ".github/workflows/internal-research-integration.yml",
+        "jobs": [
+          "integration"
+        ]
+      },
+      {
+        "workflowId": 370790806,
+        "path": ".github/workflows/membership-pass-validation.yml",
+        "jobs": [
+          "membership-pass"
+        ]
+      },
+      {
+        "workflowId": 370762444,
+        "path": ".github/workflows/messaging-key-schema-validation.yml",
+        "jobs": [
+          "messaging-key-schemas"
+        ]
+      },
+      {
+        "workflowId": 397916626,
+        "path": ".github/workflows/offline-trip-authorization.yml",
+        "jobs": [
+          "Private offline reads (timestamp)",
+          "Private offline reads (timestamptz)"
+        ]
+      },
+      {
+        "workflowId": 389911028,
+        "path": ".github/workflows/organization-migration-recovery.yml",
+        "jobs": [
+          "Constraint recovery on PostgreSQL 18"
+        ]
+      },
+      {
+        "workflowId": 396168984,
+        "path": ".github/workflows/owner-approval-validation.yml",
+        "jobs": [
+          "acceptance"
+        ]
+      },
+      {
+        "workflowId": 395745232,
+        "path": ".github/workflows/owner-decision-validation.yml",
+        "jobs": [
+          "acceptance"
+        ]
+      },
+      {
+        "workflowId": 368878520,
+        "path": ".github/workflows/phase11-production-security.yml",
+        "jobs": [
+          "validate"
+        ]
+      },
+      {
+        "workflowId": 368883030,
+        "path": ".github/workflows/phase11-recovery-drill.yml",
+        "jobs": [
+          "restore-drill"
+        ]
+      },
+      {
+        "workflowId": 362196381,
+        "path": ".github/workflows/production-release-gate.yml",
+        "jobs": [
+          "production-readiness"
+        ]
+      },
+      {
+        "workflowId": 362193789,
+        "path": ".github/workflows/release-candidate.yml",
+        "jobs": [
+          "rc"
+        ]
+      },
+      {
+        "workflowId": 358176563,
+        "path": ".github/workflows/security-audit.yml",
+        "jobs": [
+          "audit"
+        ]
+      },
+      {
+        "workflowId": 367751012,
+        "path": ".github/workflows/stage3-main-integrity.yml",
+        "jobs": [
+          "validate-stage3-contracts"
+        ]
+      },
+      {
+        "workflowId": 367806972,
+        "path": ".github/workflows/stage3-technical-closure.yml",
+        "jobs": [
+          "technical-closure"
+        ]
+      },
+      {
+        "workflowId": 357187353,
+        "path": ".github/workflows/web-validation.yml",
+        "jobs": [
+          "validate"
+        ]
+      }
+    ]
+  },
+  "workflows": [
+    {
+      "path": ".github/workflows/a02-release-collector.yml",
+      "disposition": "sample-observer",
+      "reason": "Offline collector contracts run in the required evidence contract; live probe samples two current-main workflows and is not full candidate evidence."
+    },
+    {
+      "path": ".github/workflows/a02-release-evidence-contract.yml",
+      "disposition": "required",
+      "reason": "Proposed unfiltered main-push Web/API gate; see required policy and release-channel rationale."
+    },
+    {
+      "path": ".github/workflows/admin-documents-entry-validation.yml",
+      "disposition": "required",
+      "reason": "Proposed unfiltered main-push Web/API gate; see required policy and release-channel rationale."
+    },
+    {
+      "path": ".github/workflows/api-validation.yml",
+      "disposition": "required",
+      "reason": "Proposed unfiltered main-push Web/API gate; see required policy and release-channel rationale."
+    },
+    {
+      "path": ".github/workflows/calendar-training-availability-validation.yml",
+      "disposition": "required",
+      "reason": "Proposed unfiltered main-push Web/API gate; see required policy and release-channel rationale."
+    },
+    {
+      "path": ".github/workflows/commerce-payment-boundaries.yml",
+      "disposition": "required",
+      "reason": "Proposed unfiltered main-push Web/API gate; see required policy and release-channel rationale."
+    },
+    {
+      "path": ".github/workflows/dependency-lock.yml",
+      "disposition": "required",
+      "reason": "Proposed unfiltered main-push Web/API gate; see required policy and release-channel rationale."
+    },
+    {
+      "path": ".github/workflows/form-library-integration.yml",
+      "disposition": "required",
+      "reason": "Proposed unfiltered main-push Web/API gate; see required policy and release-channel rationale."
+    },
+    {
+      "path": ".github/workflows/form-library-validation.yml",
+      "disposition": "required",
+      "reason": "Proposed unfiltered main-push Web/API gate; see required policy and release-channel rationale."
+    },
+    {
+      "path": ".github/workflows/internal-document-review-validation.yml",
+      "disposition": "required",
+      "reason": "Proposed unfiltered main-push Web/API gate; see required policy and release-channel rationale."
+    },
+    {
+      "path": ".github/workflows/internal-research-integration.yml",
+      "disposition": "required",
+      "reason": "Proposed unfiltered main-push Web/API gate; see required policy and release-channel rationale."
+    },
+    {
+      "path": ".github/workflows/membership-pass-validation.yml",
+      "disposition": "required",
+      "reason": "Proposed unfiltered main-push Web/API gate; see required policy and release-channel rationale."
+    },
+    {
+      "path": ".github/workflows/messaging-key-schema-validation.yml",
+      "disposition": "required",
+      "reason": "Proposed unfiltered main-push Web/API gate; see required policy and release-channel rationale."
+    },
+    {
+      "path": ".github/workflows/mobile-security.yml",
+      "disposition": "independent-mobile",
+      "reason": "Independent mobile release security channel; unchanged."
+    },
+    {
+      "path": ".github/workflows/mobile-validation.yml",
+      "disposition": "independent-mobile",
+      "reason": "Independent mobile validation channel; unchanged."
+    },
+    {
+      "path": ".github/workflows/offline-trip-authorization.yml",
+      "disposition": "required",
+      "reason": "Proposed unfiltered main-push Web/API gate; see required policy and release-channel rationale."
+    },
+    {
+      "path": ".github/workflows/organization-migration-recovery.yml",
+      "disposition": "required",
+      "reason": "Proposed unfiltered main-push Web/API gate; see required policy and release-channel rationale."
+    },
+    {
+      "path": ".github/workflows/owner-approval-validation.yml",
+      "disposition": "required",
+      "reason": "Proposed unfiltered main-push Web/API gate; see required policy and release-channel rationale."
+    },
+    {
+      "path": ".github/workflows/owner-decision-validation.yml",
+      "disposition": "required",
+      "reason": "Proposed unfiltered main-push Web/API gate; see required policy and release-channel rationale."
+    },
+    {
+      "path": ".github/workflows/pages-preview.yml",
+      "disposition": "mutating",
+      "reason": "Publishes Pages; separate explicit deployment authorization."
+    },
+    {
+      "path": ".github/workflows/phase11-production-security.yml",
+      "disposition": "required",
+      "reason": "Proposed unfiltered main-push Web/API gate; see required policy and release-channel rationale."
+    },
+    {
+      "path": ".github/workflows/phase11-recovery-drill.yml",
+      "disposition": "required",
+      "reason": "Proposed unfiltered main-push Web/API gate; see required policy and release-channel rationale."
+    },
+    {
+      "path": ".github/workflows/phase3-account-evidence.yml",
+      "disposition": "sample-observer",
+      "reason": "Mixed public observation and isolated browser evidence; explicitly not full live account acceptance. Browser regression also runs in Web validation."
+    },
+    {
+      "path": ".github/workflows/production-e2e.yml",
+      "disposition": "mutating",
+      "reason": "Live account/provider mutations; excluded from ordinary CI."
+    },
+    {
+      "path": ".github/workflows/production-prisma-recovery.yml",
+      "disposition": "mutating",
+      "reason": "Live database recovery; separate explicit authorization."
+    },
+    {
+      "path": ".github/workflows/production-release-gate.yml",
+      "disposition": "required",
+      "reason": "Proposed unfiltered main-push Web/API gate; see required policy and release-channel rationale."
+    },
+    {
+      "path": ".github/workflows/production-uptime.yml",
+      "disposition": "sample-observer",
+      "reason": "Public uptime observation and issue mutation; not exact candidate acceptance."
+    },
+    {
+      "path": ".github/workflows/release-candidate.yml",
+      "disposition": "required",
+      "reason": "Proposed unfiltered main-push Web/API gate; see required policy and release-channel rationale."
+    },
+    {
+      "path": ".github/workflows/security-audit.yml",
+      "disposition": "required",
+      "reason": "Proposed unfiltered main-push Web/API gate; see required policy and release-channel rationale."
+    },
+    {
+      "path": ".github/workflows/stage2-production-one-shot.yml",
+      "disposition": "mutating",
+      "reason": "Production operational journey and migrations; excluded from main CI."
+    },
+    {
+      "path": ".github/workflows/stage3-adapter-readiness-validation.yml",
+      "disposition": "aggregate-covered",
+      "reason": "Focused Stage3 contract remains available on its existing trigger. Main integrity and technical closure run the adapter/readiness contracts; Web/RC run applicable browser and translation checks. No claim of live provider verification."
+    },
+    {
+      "path": ".github/workflows/stage3-certification-manual-verification.yml",
+      "disposition": "aggregate-covered",
+      "reason": "Focused Stage3 contract remains available on its existing trigger. Main integrity and technical closure run the adapter/readiness contracts; Web/RC run applicable browser and translation checks. No claim of live provider verification."
+    },
+    {
+      "path": ".github/workflows/stage3-esign-validation.yml",
+      "disposition": "aggregate-covered",
+      "reason": "Focused Stage3 contract remains available on its existing trigger. Main integrity and technical closure run the adapter/readiness contracts; Web/RC run applicable browser and translation checks. No claim of live provider verification."
+    },
+    {
+      "path": ".github/workflows/stage3-google-translation-validation.yml",
+      "disposition": "aggregate-covered",
+      "reason": "Focused Stage3 contract remains available on its existing trigger. Main integrity and technical closure run the adapter/readiness contracts; Web/RC run applicable browser and translation checks. No claim of live provider verification."
+    },
+    {
+      "path": ".github/workflows/stage3-integration-coverage-validation.yml",
+      "disposition": "aggregate-covered",
+      "reason": "Focused Stage3 contract remains available on its existing trigger. Main integrity and technical closure run the adapter/readiness contracts; Web/RC run applicable browser and translation checks. No claim of live provider verification."
+    },
+    {
+      "path": ".github/workflows/stage3-internal-distress-workflow.yml",
+      "disposition": "aggregate-covered",
+      "reason": "Focused Stage3 contract remains available on its existing trigger. Main integrity and technical closure run the adapter/readiness contracts; Web/RC run applicable browser and translation checks. No claim of live provider verification."
+    },
+    {
+      "path": ".github/workflows/stage3-main-integrity.yml",
+      "disposition": "required",
+      "reason": "Proposed unfiltered main-push Web/API gate; see required policy and release-channel rationale."
+    },
+    {
+      "path": ".github/workflows/stage3-marinetraffic-ais-validation.yml",
+      "disposition": "aggregate-covered",
+      "reason": "Focused Stage3 contract remains available on its existing trigger. Main integrity and technical closure run the adapter/readiness contracts; Web/RC run applicable browser and translation checks. No claim of live provider verification."
+    },
+    {
+      "path": ".github/workflows/stage3-messaging-validation.yml",
+      "disposition": "aggregate-covered",
+      "reason": "Focused Stage3 contract remains available on its existing trigger. Main integrity and technical closure run the adapter/readiness contracts; Web/RC run applicable browser and translation checks. No claim of live provider verification."
+    },
+    {
+      "path": ".github/workflows/stage3-moyasar-settlement-validation.yml",
+      "disposition": "aggregate-covered",
+      "reason": "Focused Stage3 contract remains available on its existing trigger. Main integrity and technical closure run the adapter/readiness contracts; Web/RC run applicable browser and translation checks. No claim of live provider verification."
+    },
+    {
+      "path": ".github/workflows/stage3-official-onboarding-validation.yml",
+      "disposition": "aggregate-covered",
+      "reason": "Focused Stage3 contract remains available on its existing trigger. Main integrity and technical closure run the adapter/readiness contracts; Web/RC run applicable browser and translation checks. No claim of live provider verification."
+    },
+    {
+      "path": ".github/workflows/stage3-production-integration-inventory.yml",
+      "disposition": "mutating",
+      "reason": "Live integration/account mutations; excluded from ordinary CI."
+    },
+    {
+      "path": ".github/workflows/stage3-r2-object-storage-validation.yml",
+      "disposition": "aggregate-covered",
+      "reason": "Focused Stage3 contract remains available on its existing trigger. Main integrity and technical closure run the adapter/readiness contracts; Web/RC run applicable browser and translation checks. No claim of live provider verification."
+    },
+    {
+      "path": ".github/workflows/stage3-readiness-validation.yml",
+      "disposition": "aggregate-covered",
+      "reason": "Focused Stage3 contract remains available on its existing trigger. Main integrity and technical closure run the adapter/readiness contracts; Web/RC run applicable browser and translation checks. No claim of live provider verification."
+    },
+    {
+      "path": ".github/workflows/stage3-technical-closure.yml",
+      "disposition": "required",
+      "reason": "Proposed unfiltered main-push Web/API gate; see required policy and release-channel rationale."
+    },
+    {
+      "path": ".github/workflows/web-validation.yml",
+      "disposition": "required",
+      "reason": "Proposed unfiltered main-push Web/API gate; see required policy and release-channel rationale."
+    }
+  ]
+}

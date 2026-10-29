@@ -1,5 +1,7 @@
 name: Form library focused validation
 on:
+  push:
+    branches: [main]
   pull_request:
     paths:
       - 'apps/api/src/document-forms/**'

@@ -1,5 +1,7 @@
 name: Internal research HTTP database acceptance
 on:
+  push:
+    branches: [main]
   pull_request:
     paths:
       - 'apps/api/**'
