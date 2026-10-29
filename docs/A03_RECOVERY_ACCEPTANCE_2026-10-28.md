@@ -98,7 +98,15 @@ Using the existing locked Prisma/S3 clients, the operator:
 3. Streams version bytes into SHA-256 and compares the actual byte count and
    hash with the database reference. It does not retain payloads.
 4. Requires encryption on the recovered version and an explicit owner-only ACL.
-5. Probes the **same authenticated, hash-verified version** anonymously. A random
+5. Requires the returned canonical owner to exactly match an independently supplied
+   `HYDROLAND_A03_EXPECTED_OBJECT_OWNER_ID`, in addition to the owner-only grants.
+   This operator-only input must come from the reviewed provider-account record,
+   never from the ACL response being verified. Missing or malformed input is
+   refused before client loading/provider requests. No owner value is persisted
+   in receipts, and `ownerApprovalVerified` remains false: an input is not an
+   authenticated approval. This change does not set a production environment
+   variable or deployment configuration.
+6. Probes the **same authenticated, hash-verified version** anonymously. A random
    404 cannot stand in for denied access to an existing object.
 
 At most four references, four versions per reference, 8 MiB per object,
@@ -120,7 +128,8 @@ The read-only probe accepts no arbitrary command or connection URL from stdin.
 
 PASS is limited to the referenced version-readback scope. If only current
 versions match, it returns PARTIAL and explicitly leaves the historical-version
-exercise open. Application cross-account denial and owner/ACL transfer remain
+exercise open. The expected-owner comparison does not prove a source-to-target mapping.
+Application cross-account denial and owner/ACL transfer remain
 false, even when provider readback passes. Unsupported provider capabilities
 are failures requiring review, not permission to turn confirmation flags on.
 
@@ -164,3 +173,46 @@ Only the test fixture uses HTTP; the production CLI still requires HTTPS.
 CI success proves these guards and calculations, not PITR, live storage recovery or RTO.
 No paid instance, private archive export, object write, production migration,
 service deploy or cutover is created by this package. Issue #369 remains open.
+
+
+## 29 October follow-on: expected-owner binding
+
+Frozen Draft PR542 head `9f5b370` accepted an ACL whose `Owner.ID` and sole
+FULL_CONTROL grantee both named an unexpected owner. Its private-grant shape
+was correct but the independently intended principal was never compared. The
+new regression reproduces that baseline PASS and obtains VERSION_ACL FAIL from
+the candidate with the same synthetic bytes, version and denial response.
+
+The verifier now requires the expected owner independently, compares it exactly
+(no trimming/case folding), and reports only `expectedOwnerMatched=true` on
+success. `ownerApprovalVerified`, `ownerAclTransferVerified`,
+`applicationAuthorizationVerified` and `productionAccepted` stay false. No
+expected real owner has been guessed, read from the candidate ACL or added to
+repository configuration. Existing fixtures pass an explicit synthetic owner
+so earlier encryption/version/byte/deadline failures still reach their intended
+gates. This is a source-owner binding guard, not target owner/ACL-transfer proof.
+
+Local verification: 32 non-network contracts passed, including five new owner
+guards. Seven actual SDK transport tests (one new wrong-owner XML case) were
+blocked at local loopback listen with EPERM, before assertions; no alternate
+route or permission change was attempted. The existing dedicated CI remains
+the route to verify all 39 candidate tests. These are this suite's new counts,
+not recovered historical test receipts.
+
+Fresh connected Render resource metadata on 29 October still reports the
+existing source available, primary, PostgreSQL18, with no PITR-window fields.
+No private database rows or object keys were requested in this follow-on. The
+connector inventory contains metadata/read-only SQL but no provider PITR-window
+operation, object/version/ACL reader or authenticated service-shell execution
+operation. Therefore actual object execution and current PITR applicability
+remain unverified; no new token, grant, browser authentication route, network
+setting or local copy of private data was attempted.
+
+The prepared operator is not deployed. A separately approved existing-runtime
+execution route, the independently confirmed expected canonical owner, and
+current provider-window evidence are still needed. The bounded object action
+would read/hash at most four referenced objects within the existing API runtime
+(up to 32 MiB aggregate), inspect versions/encryption/ACL and anonymously test
+the same version; it must export only the sanitized receipt, not document
+contents or identifiers. No new paid target or destructive restore is justified
+by this code change. Approved numerical RPO/RTO targets remain unknown/null.

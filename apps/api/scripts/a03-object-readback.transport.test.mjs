@@ -26,6 +26,7 @@ async function withStorage(mode,operation){
     if(url.searchParams.has('versioning'))return xml(res,'<VersioningConfiguration><Status>Enabled</Status></VersioningConfiguration>');
     if(url.searchParams.has('encryption'))return xml(res,'<ServerSideEncryptionConfiguration><Rule><ApplyServerSideEncryptionByDefault><SSEAlgorithm>AES256</SSEAlgorithm></ApplyServerSideEncryptionByDefault></Rule></ServerSideEncryptionConfiguration>');
     if(url.searchParams.has('versions'))return xml(res,`<ListVersionsResult><IsTruncated>false</IsTruncated><Version><Key>${key}</Key><VersionId>known-old-version</VersionId><IsLatest>false</IsLatest><Size>8</Size></Version></ListVersionsResult>`);
+    if(url.searchParams.has('acl')&&mode==='wrong-owner')return xml(res,'<AccessControlPolicy><Owner><ID>other-owner</ID></Owner><AccessControlList><Grant><Grantee xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="CanonicalUser"><ID>other-owner</ID></Grantee><Permission>FULL_CONTROL</Permission></Grant></AccessControlList></AccessControlPolicy>');
     if(url.searchParams.has('acl'))return xml(res,'<AccessControlPolicy><Owner><ID>fixture-owner</ID></Owner><AccessControlList><Grant><Grantee xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="CanonicalUser"><ID>fixture-owner</ID></Grantee><Permission>FULL_CONTROL</Permission></Grant></AccessControlList></AccessControlPolicy>');
     assert.equal(url.searchParams.get('versionId'),'known-old-version');
     assert.equal(url.pathname,'/private-fixture/'+key);
@@ -41,29 +42,36 @@ async function withStorage(mode,operation){
 }
 
 test('real SDK transport preserves version/ACL/encryption identity and uses only signed reads plus one anonymous read',()=>withStorage('private',async(storage,calls)=>{
-  const r=await probeReferencedObjects({objects:[object],storage});assert.equal(r.status,'PASS');
+  const r=await probeReferencedObjects({expectedOwnerId:'fixture-owner',objects:[object],storage});assert.equal(r.status,'PASS');
   assert.equal(calls.length,6);assert(calls.every(x=>x.method==='GET'));assert.equal(calls.filter(x=>!x.signed).length,1);
   const anon=calls.at(-1);assert.equal(anon.path,'/private-fixture/'+key);assert(anon.query.includes('versionId'));
 }));
 
 test('actual streamed corrupted bytes fail before ACL and anonymous checks',()=>withStorage('corrupt',async(storage,calls)=>{
-  const r=await probeReferencedObjects({objects:[object],storage});assert.equal(r.status,'FAIL');assert.equal(r.failureStage,'VERSION_BYTES');
+  const r=await probeReferencedObjects({expectedOwnerId:'fixture-owner',objects:[object],storage});assert.equal(r.status,'FAIL');assert.equal(r.failureStage,'VERSION_BYTES');
   assert(!calls.some(x=>x.query.includes('acl')));assert(calls.every(x=>x.signed));
 }));
 
 test('an actual public response fails the anonymous-denial gate',()=>withStorage('public',async storage=>{
-  const r=await probeReferencedObjects({objects:[object],storage});assert.equal(r.status,'FAIL');assert.equal(r.failureStage,'ANONYMOUS_VERSION');
+  const r=await probeReferencedObjects({expectedOwnerId:'fixture-owner',objects:[object],storage});assert.equal(r.status,'FAIL');assert.equal(r.failureStage,'ANONYMOUS_VERSION');
 }));
 
 test('actual response version headers must match the requested historical version',()=>withStorage('wrong-version',async(storage,calls)=>{
-  const r=await probeReferencedObjects({objects:[object],storage});assert.equal(r.status,'FAIL');assert.equal(r.failureStage,'VERSION_BYTES');assert(calls.every(x=>x.signed));
+  const r=await probeReferencedObjects({expectedOwnerId:'fixture-owner',objects:[object],storage});assert.equal(r.status,'FAIL');assert.equal(r.failureStage,'VERSION_BYTES');assert(calls.every(x=>x.signed));
 }));
 
 test('a hung real SDK request is aborted within the configured bound',()=>withStorage('hang',async storage=>{
-  const started=performance.now(),r=await probeReferencedObjects({objects:[object],storage,requestMs:250});
+  const started=performance.now(),r=await probeReferencedObjects({expectedOwnerId:'fixture-owner',objects:[object],storage,requestMs:250});
   assert.equal(r.status,'FAIL');assert.equal(r.failureStage,'VERSION_BYTES');assert(performance.now()-started<3000);
 }));
 
 test('the anonymous fetch cannot follow a redirect to a different object',()=>withStorage('redirect',async(storage,_calls,unexpected)=>{
-  const r=await probeReferencedObjects({objects:[object],storage});assert.equal(r.status,'FAIL');assert.equal(r.failureStage,'ANONYMOUS_VERSION');assert.equal(unexpected(),false);
+  const r=await probeReferencedObjects({expectedOwnerId:'fixture-owner',objects:[object],storage});assert.equal(r.status,'FAIL');assert.equal(r.failureStage,'ANONYMOUS_VERSION');assert.equal(unexpected(),false);
+}));
+
+
+test('actual SDK ACL parsing rejects a self-consistent but unexpected owner before anonymous probing',()=>withStorage('wrong-owner',async(storage,calls)=>{
+  const r=await probeReferencedObjects({objects:[object],storage,expectedOwnerId:'fixture-owner'});
+  assert.equal(r.status,'FAIL');assert.equal(r.failureStage,'VERSION_ACL');assert(calls.every(x=>x.signed));
+  assert(!JSON.stringify(r).includes('other-owner'));
 }));

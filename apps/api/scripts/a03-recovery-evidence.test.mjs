@@ -25,7 +25,7 @@ function fixture(){
   };
   return{calls,storage};
 }
-const run=f=>probeReferencedObjects({objects:[object],storage:f.storage});
+const run=f=>probeReferencedObjects({expectedOwnerId:'fixture-owner',objects:[object],storage:f.storage});
 
 test('all independent object checks pass for an exact earlier version; no production acceptance is inferred',async()=>{
   const f=fixture(),r=await run(f);
@@ -43,7 +43,7 @@ test('current-version readback alone remains PARTIAL',async()=>{
 });
 
 test('empty reference inventory cannot claim storage recovery or issue provider calls',async()=>{
-  const f=fixture(),r=await probeReferencedObjects({objects:[],storage:f.storage});
+  const f=fixture(),r=await probeReferencedObjects({expectedOwnerId:'fixture-owner',objects:[],storage:f.storage});
   assert.equal(r.status,'FAIL');assert.equal(r.failureStage,'INPUT');assert.deepEqual(f.calls,[]);
 });
 
@@ -54,7 +54,7 @@ test('invalid, duplicate, oversized and unrelated database references are refuse
     [object,object],[{...object,byteSize:LIMITS.objectBytes+1}],[{...object,sha256:'invalid'}],
     Array.from({length:LIMITS.objects+1},(_,i)=>({...object,key:`credentials/a/${i}.pdf`})),
   ];
-  for(const objects of cases){const f=fixture(),r=await probeReferencedObjects({objects,storage:f.storage});assert.equal(r.status,'FAIL');assert.deepEqual(f.calls,[]);}
+  for(const objects of cases){const f=fixture(),r=await probeReferencedObjects({expectedOwnerId:'fixture-owner',objects,storage:f.storage});assert.equal(r.status,'FAIL');assert.deepEqual(f.calls,[]);}
   assert.doesNotThrow(()=>validateObjects([object]));
 });
 
@@ -106,9 +106,9 @@ test('anonymous probes target the exact authenticated version and reject public 
 });
 
 test('owner-only ACL requires an explicit owner grant; public and unknown grants remain blocked',async()=>{
-  assert(ownerOnlyAcl(acl));
+  assert(ownerOnlyAcl(acl,'fixture-owner'));
   for(const change of [x=>x.Grants=[],x=>delete x.Owner,x=>x.Grants.push({Grantee:{Type:'Group',URI:'http://acs.amazonaws.com/groups/global/AllUsers'},Permission:'READ'}),x=>x.Grants[0].Grantee.ID='different']){
-    const value=structuredClone(acl);change(value);assert.equal(ownerOnlyAcl(value),false);
+    const value=structuredClone(acl);change(value);assert.equal(ownerOnlyAcl(value,'fixture-owner'),false);
     const f=fixture();f.storage.acl=async()=>value;const r=await run(f);assert.equal(r.status,'FAIL');assert(!f.calls.includes('anonymous'));
   }
 });
@@ -116,7 +116,7 @@ test('owner-only ACL requires an explicit owner grant; public and unknown grants
 test('hung provider calls are bounded, aborted and cannot publish a late PASS',async()=>{
   const f=fixture();let release,signal;
   f.storage.versioning=s=>{signal=s;return new Promise(resolve=>{release=()=>resolve({Status:'Enabled'});});};
-  const r=await probeReferencedObjects({objects:[object],storage:f.storage,requestMs:10});
+  const r=await probeReferencedObjects({expectedOwnerId:'fixture-owner',objects:[object],storage:f.storage,requestMs:10});
   assert.equal(r.status,'FAIL');assert.equal(r.failureCode,'TimeoutError');assert(signal.aborted);
   release();await new Promise(setImmediate);assert.equal(r.status,'FAIL');assert(!f.calls.includes('encryption'));
 });
@@ -154,7 +154,7 @@ test('a response arriving after timeout is destroyed before any payload is consu
 
 test('the caller cannot expand fixed provider time limits',async()=>{
   for(const limits of [{requestMs:LIMITS.requestMs+1},{overallMs:LIMITS.overallMs+1},{requestMs:Infinity}]){
-    const f=fixture(),r=await probeReferencedObjects({objects:[object],storage:f.storage,...limits});
+    const f=fixture(),r=await probeReferencedObjects({expectedOwnerId:'fixture-owner',objects:[object],storage:f.storage,...limits});
     assert.equal(r.status,'FAIL');assert.deepEqual(f.calls,[]);
   }
 });
@@ -162,7 +162,7 @@ test('the caller cannot expand fixed provider time limits',async()=>{
 test('the aggregate deadline prevents the next provider request after budget exhaustion',async()=>{
   const f=fixture();let clock=0;
   f.storage.versioning=async()=>{clock=21;return{Status:'Enabled'};};
-  const r=await probeReferencedObjects({objects:[object],storage:f.storage,overallMs:20,now:()=>clock});
+  const r=await probeReferencedObjects({expectedOwnerId:'fixture-owner',objects:[object],storage:f.storage,overallMs:20,now:()=>clock});
   assert.equal(r.status,'FAIL');assert(!f.calls.includes('encryption'));assert.equal(r.failureStage,'OVERALL_DEADLINE');
 });
 
@@ -189,7 +189,7 @@ test('targets distinguish a breach while a supplied approval reference cannot gr
   assert.throws(()=>measureRecoveryTimes({events,policy:{rtoSeconds:500,rpoSeconds:60,approvalReference:''}}));
 });
 
-const config={HYDROLAND_OBJECT_STORAGE_ENDPOINT:'https://s3.example.invalid',HYDROLAND_OBJECT_STORAGE_BUCKET:'private-fixture',HYDROLAND_OBJECT_STORAGE_REGION:'us-east-1',HYDROLAND_OBJECT_STORAGE_ACCESS_KEY_ID:'fixture-only-access',HYDROLAND_OBJECT_STORAGE_SECRET_ACCESS_KEY:'fixture-only-secret'};
+const config={HYDROLAND_A03_EXPECTED_OBJECT_OWNER_ID:'fixture-owner',HYDROLAND_OBJECT_STORAGE_ENDPOINT:'https://s3.example.invalid',HYDROLAND_OBJECT_STORAGE_BUCKET:'private-fixture',HYDROLAND_OBJECT_STORAGE_REGION:'us-east-1',HYDROLAND_OBJECT_STORAGE_ACCESS_KEY_ID:'fixture-only-access',HYDROLAND_OBJECT_STORAGE_SECRET_ACCESS_KEY:'fixture-only-secret'};
 test('audit configuration is separate from unverified activation flags and refuses insecure endpoints',()=>{
   assert.equal(auditConfig({...config,HYDROLAND_OBJECT_STORAGE_VERSIONING_CONFIRMED:'false'}).bucket,'private-fixture');
   for(const endpoint of ['http://s3.example.invalid','https://secret@s3.example.invalid','https://s3.example.invalid/?secret=x','https://localhost'])assert.throws(()=>auditConfig({...config,HYDROLAND_OBJECT_STORAGE_ENDPOINT:endpoint}));
@@ -208,4 +208,39 @@ test('a symlinked CLI invocation fails closed rather than silently exiting succe
     const r=spawnSync(process.execPath,[link],{encoding:'utf8',env:{PATH:process.env.PATH},timeout:5000});
     assert.equal(r.status,2);assert(!r.stdout.includes('secret'));assert.match(r.stderr,/probe refused/);
   }finally{await rm(directory,{recursive:true,force:true});}
+});
+
+test('a different private owner cannot pass by granting itself full control',async()=>{
+  const f=fixture();
+  f.storage.acl=async()=>({Owner:{ID:'unexpected-private-owner'},Grants:[{Grantee:{Type:'CanonicalUser',ID:'unexpected-private-owner'},Permission:'FULL_CONTROL'}]});
+  const r=await run(f);
+  assert.equal(r.status,'FAIL');assert.equal(r.failureStage,'VERSION_ACL');
+  assert(!f.calls.includes('anonymous'));assert(!r.objects[0].expectedOwnerMatched);
+  assert(!JSON.stringify(r).includes('unexpected-private-owner'));
+});
+
+test('missing or malformed expected owners fail before any provider request',async()=>{
+  for(const expectedOwnerId of [undefined,null,'',' ',' fixture-owner','fixture-owner ','fixture-owner\n','a\nb','x'.repeat(257),{},123]){
+    const f=fixture();const r=await probeReferencedObjects({objects:[object],storage:f.storage,expectedOwnerId});
+    assert.equal(r.status,'FAIL');assert.equal(r.failureStage,'INPUT');assert.equal(r.requests,0);assert.deepEqual(f.calls,[]);
+  }
+});
+
+test('owner identity comparison is exact and grants cannot substitute for Owner.ID',async()=>{
+  for(const expectedOwnerId of ['FIXTURE-OWNER','another-owner'])assert.equal(ownerOnlyAcl(acl,expectedOwnerId),false);
+  assert.equal(ownerOnlyAcl(acl),false);
+  const f=fixture();f.storage.acl=async()=>({...structuredClone(acl),Owner:{ID:'another-owner'}});
+  assert.equal((await run(f)).status,'FAIL');
+});
+
+test('matching supplied owner proves comparison only, never approval or transfer',async()=>{
+  const r=await run(fixture());
+  assert.equal(r.status,'PASS');assert.equal(r.objects[0].expectedOwnerMatched,true);
+  assert.equal(r.ownerApprovalVerified,false);assert.equal(r.ownerAclTransferVerified,false);assert.equal(r.productionAccepted,false);
+  assert(!JSON.stringify(r).includes('fixture-owner'));
+});
+
+test('operator expected owner is independent configuration, not a storage response or activation flag',()=>{
+  assert.equal(auditConfig(config).expectedOwnerId,'fixture-owner');
+  for(const value of [undefined,'','fixture-owner ','fixture-owner\n','a\nb'])assert.throws(()=>auditConfig({...config,HYDROLAND_A03_EXPECTED_OBJECT_OWNER_ID:value,HYDROLAND_OBJECT_STORAGE_PRIVATE_CONFIRMED:'true'}));
 });

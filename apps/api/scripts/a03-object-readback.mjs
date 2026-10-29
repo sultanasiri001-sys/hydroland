@@ -6,9 +6,11 @@ import {createHash} from 'node:crypto';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {LIMITS,digestBody,probeReferencedObjects,safeCode} from './a03-recovery-evidence.mjs';
+import {LIMITS,digestBody,probeReferencedObjects,safeCode,validExpectedOwner} from './a03-recovery-evidence.mjs';
 
 export function auditConfig(env){
+  const expectedOwnerId=env.HYDROLAND_A03_EXPECTED_OBJECT_OWNER_ID;
+  assert(validExpectedOwner(expectedOwnerId),'An independent expected owner must be supplied; never derive it from object ACL output');
   const names=['ENDPOINT','BUCKET','REGION','ACCESS_KEY_ID','SECRET_ACCESS_KEY'];
   const fields=Object.fromEntries(names.map(key=>[key,env['HYDROLAND_OBJECT_STORAGE_'+key]?.trim()]));
   assert(names.every(key=>fields[key]));
@@ -16,7 +18,7 @@ export function auditConfig(env){
   assert(endpoint.protocol==='https:'&&!endpoint.username&&!endpoint.password&&!endpoint.search&&!endpoint.hash);
   assert(!['localhost','127.0.0.1','[::1]'].includes(endpoint.hostname));
   assert(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(fields.BUCKET));
-  return{endpoint:endpoint.href,bucket:fields.BUCKET,region:fields.REGION,credentials:{accessKeyId:fields.ACCESS_KEY_ID,secretAccessKey:fields.SECRET_ACCESS_KEY}};
+  return{expectedOwnerId,endpoint:endpoint.href,bucket:fields.BUCKET,region:fields.REGION,credentials:{accessKeyId:fields.ACCESS_KEY_ID,secretAccessKey:fields.SECRET_ACCESS_KEY}};
 }
 
 export function createStorageReader(config,sdk,client){
@@ -49,7 +51,7 @@ export async function main(argv=process.argv.slice(2),env=process.env){
   assert.equal(env.RENDER_SERVICE_ID,'srv-dakelt142hec73aavvsg');
   const directory=await mkdtemp(join(tmpdir(),'hydroland-a03-readback-'));
   const receipt=join(directory,'receipt.json');
-  const initial={scope:'A03_REFERENCED_OBJECT_VERSION_READBACK',status:'FAIL',failureCode:'EXECUTION_INCOMPLETE',productionAccepted:false,providerPitrVerified:false,ownerAclTransferVerified:false,productionWrites:0,objectWrites:0};
+  const initial={scope:'A03_REFERENCED_OBJECT_VERSION_READBACK',status:'FAIL',failureCode:'EXECUTION_INCOMPLETE',productionAccepted:false,ownerApprovalVerified:false,providerPitrVerified:false,ownerAclTransferVerified:false,productionWrites:0,objectWrites:0};
   await writeFile(receipt,JSON.stringify(initial,null,2),{mode:0o600,flag:'wx'});
   let db,client,report=initial,stage='CONFIGURATION';
   try{
@@ -70,7 +72,7 @@ export async function main(argv=process.argv.slice(2),env=process.env){
     },{maxWait:5000,timeout:10000});
     client=new sdk.S3Client({endpoint:config.endpoint,region:config.region,credentials:config.credentials,forcePathStyle:true,maxAttempts:1});
     const storage=createStorageReader(config,sdk,client);
-    stage='OBJECT_READBACK';report=await probeReferencedObjects({objects,storage});
+    stage='OBJECT_READBACK';report=await probeReferencedObjects({objects,storage,expectedOwnerId:config.expectedOwnerId});
     report.integrationFlagsChanged=false;
     report.databaseInventoryReadOnly=true;
     report.operatorSha256=createHash('sha256').update(await readFile(new URL(import.meta.url))).digest('hex');

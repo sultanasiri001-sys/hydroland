@@ -44,21 +44,26 @@ export function validateObjects(objects){
   limit(total<=LIMITS.totalBytes);
 }
 
-export function ownerOnlyAcl(acl){
+export function validExpectedOwner(value){
+  return typeof value==='string'&&!/\s/u.test(value)&&/^[A-Za-z0-9][A-Za-z0-9:_-]{0,255}$/.test(value);
+}
+
+export function ownerOnlyAcl(acl,expectedOwnerId){
   const owner=acl?.Owner?.ID,grants=acl?.Grants;
-  return typeof owner==='string'&&owner.length>0&&Array.isArray(grants)&&grants.length>0&&grants.every(g=>g?.Grantee?.Type==='CanonicalUser'&&g.Grantee.ID===owner&&g.Permission==='FULL_CONTROL');
+  return validExpectedOwner(expectedOwnerId)&&owner===expectedOwnerId&&Array.isArray(grants)&&grants.length>0&&grants.every(g=>g?.Grantee?.Type==='CanonicalUser'&&g.Grantee.ID===owner&&g.Permission==='FULL_CONTROL');
 }
 
 // Adapter methods are read-only; no object upload/delete, policy mutation or
 // restore-instance operation is present. Mock acceptance never proves a provider.
-export async function probeReferencedObjects({objects,storage,requestMs=LIMITS.requestMs,overallMs=LIMITS.overallMs,now=()=>performance.now()}){
+export async function probeReferencedObjects({objects,storage,expectedOwnerId,requestMs=LIMITS.requestMs,overallMs=LIMITS.overallMs,now=()=>performance.now()}){
   const start=now(),report={scope:'A03_REFERENCED_OBJECT_VERSION_READBACK',status:'FAIL',objects:[],requests:0,
-    productionWrites:0,objectWrites:0,providerPitrVerified:false,ownerAclTransferVerified:false,applicationAuthorizationVerified:false,productionAccepted:false};
+    productionWrites:0,objectWrites:0,ownerApprovalVerified:false,providerPitrVerified:false,ownerAclTransferVerified:false,applicationAuthorizationVerified:false,productionAccepted:false};
   const budget={remaining:LIMITS.totalBytes};let stage='INPUT';
   const read=async(name,fn)=>{stage=name;limit(++report.requests<=LIMITS.requests);return bounded(fn,Math.min(requestMs,overallMs-(now()-start)));};
   try{
     assert(Number.isFinite(requestMs)&&requestMs>0&&requestMs<=LIMITS.requestMs);
     assert(Number.isFinite(overallMs)&&overallMs>0&&overallMs<=LIMITS.overallMs);
+    assert(validExpectedOwner(expectedOwnerId),'An independently supplied expected object owner is required');
     validateObjects(objects);
     const versioning=await read('BUCKET_VERSIONING',signal=>storage.versioning(signal));
     assert.equal(versioning.Status,'Enabled');report.versioningEnabled=true;
@@ -87,7 +92,7 @@ export async function probeReferencedObjects({objects,storage,requestMs=LIMITS.r
       assert(matched,'No version matches the database byte count and SHA-256');
       item.recordedBytesRecoverable=true;item.historicalVersionReadback=matched.IsLatest===false;
       const acl=await read('VERSION_ACL',signal=>storage.acl(object.key,matched.VersionId,signal));
-      assert(ownerOnlyAcl(acl),'Only an explicit owner-only ACL is accepted by this probe');item.ownerOnlyAcl=true;
+      assert(ownerOnlyAcl(acl,expectedOwnerId),'ACL must belong exclusively to the independently expected owner');item.ownerOnlyAcl=true;item.expectedOwnerMatched=true;
       // Probe the SAME authenticated, hash-verified version. A random 404 is
       // never used as evidence that a real stored object is private.
       const status=await read('ANONYMOUS_VERSION',signal=>storage.anonymous(object.key,matched.VersionId,signal));
