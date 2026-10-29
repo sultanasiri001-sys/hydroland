@@ -102,9 +102,12 @@ const runView = value => ({id: value?.id, workflow_id: value?.workflow_id, path:
   run_number: value?.run_number, run_attempt: value?.run_attempt,
   repository: repoView(value?.repository), head_repository: repoView(value?.head_repository),
   status: value?.status, conclusion: value?.conclusion, created_at: value?.created_at, updated_at: value?.updated_at});
-const jobView = value => ({id: value?.id, run_id: value?.run_id, head_sha: value?.head_sha,
+const jobView = (value, criticalNames) => ({id: value?.id, run_id: value?.run_id, head_sha: value?.head_sha,
   name: value?.name, status: value?.status, conclusion: value?.conclusion,
-  started_at: value?.started_at, completed_at: value?.completed_at});
+  started_at: value?.started_at, completed_at: value?.completed_at,
+  // Retain status evidence, not logs, commands, runner metadata or arbitrary step fields.
+  ...(Array.isArray(value?.steps) && criticalNames ? {steps: value.steps.filter(step => criticalNames.includes(step?.name)).map(step => ({number: step?.number,
+    name: step?.name, status: step?.status, conclusion: step?.conclusion}))} : {})});
 const ordered = values => [...values].sort((a, b) => a.id - b.id);
 
 /**
@@ -200,7 +203,7 @@ export async function collectReleaseEvidence(policyInput, expectedSha, {read, no
       const raw = await pages(`${base}/actions/runs/${run.id}/attempts/${run.run_attempt}/jobs`, 'jobs', 1000);
       requireThat(raw.every(job => job.run_id === run.id && job.head_sha === expectedSha
         && (job.run_attempt === undefined || job.run_attempt === run.run_attempt)), 'JOB_PROVENANCE_MISMATCH');
-      jobs[run.id] = {complete: true, runId: run.id, runAttempt: run.run_attempt, total_count: raw.length, jobs: raw.map(jobView)};
+      jobs[run.id] = {complete: true, runId: run.id, runAttempt: run.run_attempt, total_count: raw.length, jobs: raw.map(job => jobView(job, policy.required.find(rule => rule.workflowId === run.workflow_id)?.criticalSteps?.[job.name]))};
       await checkRun(run); await checkRun(run, true);
     }
     requireThat(isDeepStrictEqual(await listRuns(), runs), 'RUN_SET_CHANGED');

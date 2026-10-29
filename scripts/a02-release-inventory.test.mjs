@@ -70,7 +70,7 @@ function evidence() {
   for (const [index,r] of p.required.entries()) {
     const id=index+100, repository={id:p.repositoryId,full_name:p.repository};
     e.workflow_runs.push({id,workflow_id:r.workflowId,path:r.path,head_sha:SHA,head_branch:'main',event:'push',run_number:1,run_attempt:1,repository,head_repository:repository,status:'completed',conclusion:'success',created_at:iso(NOW-120000),updated_at:iso(NOW-60000)});
-    e.jobs[id]={complete:true,runId:id,runAttempt:1,total_count:r.jobs.length,jobs:r.jobs.map((name,j)=>({id:id*100+j,run_id:id,head_sha:SHA,name,status:'completed',conclusion:'success',started_at:iso(NOW-110000),completed_at:iso(NOW-61000)}))};
+    e.jobs[id]={complete:true,runId:id,runAttempt:1,total_count:r.jobs.length,jobs:r.jobs.map((name,j)=>({id:id*100+j,run_id:id,head_sha:SHA,name,steps:(r.criticalSteps?.[name] ?? []).map((step,n)=>({name:step,number:n+1,status:'completed',conclusion:'success'})),status:'completed',conclusion:'success',started_at:iso(NOW-110000),completed_at:iso(NOW-61000)}))};
   }
   return e;
 }
@@ -91,3 +91,17 @@ test('skipped matrix leg blocks despite successful workflow',()=>{
   const e=evidence(), index=inventory.policy.required.findIndex(r=>r.path.includes('calendar-training'));
   e.jobs[index+100].jobs[1].conclusion='skipped';assert.equal(evaluate(e).status,'BLOCKED');
 });
+
+for (const rule of inventory.policy.required.filter(r => r.criticalSteps)) {
+  for (const [jobName, names] of Object.entries(rule.criticalSteps)) {
+    for (const name of names) test(`skipped critical step blocks green job: ${rule.path} / ${name}`, () => {
+      const e=evidence(), index=inventory.policy.required.indexOf(rule);
+      e.jobs[index+100].jobs.find(j=>j.name===jobName).steps.find(s=>s.name===name).conclusion='skipped';
+      assert.equal(evaluate(e).status,'BLOCKED');
+    });
+    for (const key of ['if','continue-on-error']) test(`source rejects optional critical step: ${rule.path} / ${key}`, () => {
+      const w=copy(sources); w[rule.path].jobs.validate.steps.find(s=>s.name===names[0])[key]=true;
+      assert.equal(validateReleaseInventory(inventory,w).status,'BLOCKED');
+    });
+  }
+}
