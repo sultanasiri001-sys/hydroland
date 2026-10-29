@@ -15,7 +15,7 @@ const object={key:'credentials/synthetic-account/document/fixture.pdf',sha256:sh
 const acl={Owner:{ID:'fixture-owner'},Grants:[{Grantee:{Type:'CanonicalUser',ID:'fixture-owner'},Permission:'FULL_CONTROL'}]};
 function fixture(){
   const calls=[];
-  const storage={
+  const storage={provider:'backblaze-b2',aclScope:'bucket',
     versioning:async()=>{calls.push('versioning');return{Status:'Enabled'};},
     encryption:async()=>{calls.push('encryption');return{ServerSideEncryptionConfiguration:{Rules:[{ApplyServerSideEncryptionByDefault:{SSEAlgorithm:'AES256'}}]}};},
     versions:async key=>{calls.push('versions');return{IsTruncated:false,Versions:[{Key:key,VersionId:'prior-version',IsLatest:false},{Key:key,VersionId:'current-version',IsLatest:true}]};},
@@ -189,7 +189,7 @@ test('targets distinguish a breach while a supplied approval reference cannot gr
   assert.throws(()=>measureRecoveryTimes({events,policy:{rtoSeconds:500,rpoSeconds:60,approvalReference:''}}));
 });
 
-const config={HYDROLAND_A03_EXPECTED_OBJECT_OWNER_ID:'fixture-owner',HYDROLAND_OBJECT_STORAGE_ENDPOINT:'https://s3.example.invalid',HYDROLAND_OBJECT_STORAGE_BUCKET:'private-fixture',HYDROLAND_OBJECT_STORAGE_REGION:'us-east-1',HYDROLAND_OBJECT_STORAGE_ACCESS_KEY_ID:'fixture-only-access',HYDROLAND_OBJECT_STORAGE_SECRET_ACCESS_KEY:'fixture-only-secret'};
+const config={HYDROLAND_A03_STORAGE_PROVIDER:'backblaze-b2',HYDROLAND_A03_EXPECTED_OBJECT_OWNER_ID:'fixture-owner',HYDROLAND_OBJECT_STORAGE_ENDPOINT:'https://s3.us-east-005.backblazeb2.com',HYDROLAND_OBJECT_STORAGE_BUCKET:'private-fixture',HYDROLAND_OBJECT_STORAGE_REGION:'us-east-005',HYDROLAND_OBJECT_STORAGE_ACCESS_KEY_ID:'fixture-only-access',HYDROLAND_OBJECT_STORAGE_SECRET_ACCESS_KEY:'fixture-only-secret'};
 test('audit configuration is separate from unverified activation flags and refuses insecure endpoints',()=>{
   assert.equal(auditConfig({...config,HYDROLAND_OBJECT_STORAGE_VERSIONING_CONFIRMED:'false'}).bucket,'private-fixture');
   for(const endpoint of ['http://s3.example.invalid','https://secret@s3.example.invalid','https://s3.example.invalid/?secret=x','https://localhost'])assert.throws(()=>auditConfig({...config,HYDROLAND_OBJECT_STORAGE_ENDPOINT:endpoint}));
@@ -214,8 +214,8 @@ test('a different private owner cannot pass by granting itself full control',asy
   const f=fixture();
   f.storage.acl=async()=>({Owner:{ID:'unexpected-private-owner'},Grants:[{Grantee:{Type:'CanonicalUser',ID:'unexpected-private-owner'},Permission:'FULL_CONTROL'}]});
   const r=await run(f);
-  assert.equal(r.status,'FAIL');assert.equal(r.failureStage,'VERSION_ACL');
-  assert(!f.calls.includes('anonymous'));assert(!r.objects[0].expectedOwnerMatched);
+  assert.equal(r.status,'FAIL');assert.equal(r.failureStage,'BUCKET_ACL');
+  assert(!f.calls.includes('anonymous'));assert(!r.bucketAclEvidence?.expectedOwnerMatched);
   assert(!JSON.stringify(r).includes('unexpected-private-owner'));
 });
 
@@ -235,7 +235,7 @@ test('owner identity comparison is exact and grants cannot substitute for Owner.
 
 test('matching supplied owner proves comparison only, never approval or transfer',async()=>{
   const r=await run(fixture());
-  assert.equal(r.status,'PASS');assert.equal(r.objects[0].expectedOwnerMatched,true);
+  assert.equal(r.status,'PASS');assert.equal(r.bucketAclEvidence.expectedOwnerMatched,true);
   assert.equal(r.ownerApprovalVerified,false);assert.equal(r.ownerAclTransferVerified,false);assert.equal(r.productionAccepted,false);
   assert(!JSON.stringify(r).includes('fixture-owner'));
 });
@@ -243,4 +243,29 @@ test('matching supplied owner proves comparison only, never approval or transfer
 test('operator expected owner is independent configuration, not a storage response or activation flag',()=>{
   assert.equal(auditConfig(config).expectedOwnerId,'fixture-owner');
   for(const value of [undefined,'','fixture-owner ','fixture-owner\n','a\nb'])assert.throws(()=>auditConfig({...config,HYDROLAND_A03_EXPECTED_OBJECT_OWNER_ID:value,HYDROLAND_OBJECT_STORAGE_PRIVATE_CONFIRMED:'true'}));
+});
+
+test('Backblaze bucket ACL can never become object-version ACL evidence',async()=>{
+  const r=await run(fixture());
+  assert.equal(r.status,'PASS');assert.equal(r.objects[0].historicalVersionReadback,true);
+  assert.deepEqual(r.bucketAclEvidence,{scope:'bucket',source:'GetObjectAcl',ownerOnly:true,expectedOwnerMatched:true});
+  assert.equal(r.aclScope,'bucket');assert.equal(r.objectVersionAclVerified,false);
+  assert.equal(r.objects[0].objectVersionAclVerified,false);
+  assert.equal(Object.hasOwn(r.objects[0],'ownerOnlyAcl'),false);
+  assert.equal(Object.hasOwn(r.objects[0],'expectedOwnerMatched'),false);
+  assert.equal(r.ownerAclTransferVerified,false);assert.equal(r.applicationAuthorizationVerified,false);
+});
+
+test('unknown provider or ACL scope is refused before any provider call',async()=>{
+  for(const change of [{provider:undefined},{provider:'aws-s3'},{provider:'unknown'},{aclScope:undefined},{aclScope:'version'},{aclScope:'object'}]){
+    const f=fixture();Object.assign(f.storage,change);
+    const r=await run(f);assert.equal(r.status,'FAIL');assert.equal(r.failureStage,'PROVIDER_SEMANTICS');
+    assert.deepEqual(f.calls,[]);assert.equal(r.requests,0);assert.equal(r.objectVersionAclVerified,false);
+  }
+});
+
+test('provider declaration cannot relabel an unknown or mismatched runtime endpoint',()=>{
+  for(const provider of [undefined,'aws-s3','unknown','BACKBLAZE-B2'])assert.throws(()=>auditConfig({...config,HYDROLAND_A03_STORAGE_PROVIDER:provider}));
+  for(const endpoint of ['https://s3.example.invalid','https://s3.us-east-005.backblazeb2.com.attacker.invalid','https://s3.us-west-004.backblazeb2.com','https://s3.us-east-005.backblazeb2.com/prefix','https://s3.us-east-005.backblazeb2.com:8443'])assert.throws(()=>auditConfig({...config,HYDROLAND_OBJECT_STORAGE_ENDPOINT:endpoint}));
+  const c=auditConfig(config);assert.equal(c.provider,'backblaze-b2');assert.equal(c.aclScope,'bucket');
 });
