@@ -220,7 +220,7 @@ test('a different private owner cannot pass by granting itself full control',asy
 });
 
 test('missing or malformed expected owners fail before any provider request',async()=>{
-  for(const expectedOwnerId of [undefined,null,'',' ',' fixture-owner','fixture-owner ','a\nb','x'.repeat(257),{},123]){
+  for(const expectedOwnerId of [undefined,null,'',' ',' fixture-owner','fixture-owner ','fixture-owner\n','a\nb','x'.repeat(257),{},123]){
     const f=fixture();const r=await probeReferencedObjects({objects:[object],storage:f.storage,expectedOwnerId});
     assert.equal(r.status,'FAIL');assert.equal(r.failureStage,'INPUT');assert.equal(r.requests,0);assert.deepEqual(f.calls,[]);
   }
@@ -242,5 +242,5 @@ test('matching supplied owner proves comparison only, never approval or transfer
 
 test('operator expected owner is independent configuration, not a storage response or activation flag',()=>{
   assert.equal(auditConfig(config).expectedOwnerId,'fixture-owner');
-  for(const value of [undefined,'','fixture-owner ','a\nb'])assert.throws(()=>auditConfig({...config,HYDROLAND_A03_EXPECTED_OBJECT_OWNER_ID:value,HYDROLAND_OBJECT_STORAGE_PRIVATE_CONFIRMED:'true'}));
+  for(const value of [undefined,'','fixture-owner ','fixture-owner\n','a\nb'])assert.throws(()=>auditConfig({...config,HYDROLAND_A03_EXPECTED_OBJECT_OWNER_ID:value,HYDROLAND_OBJECT_STORAGE_PRIVATE_CONFIRMED:'true'}));
 });
