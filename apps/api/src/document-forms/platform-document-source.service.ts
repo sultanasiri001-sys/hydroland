@@ -8,7 +8,7 @@ import { isLibraryCode } from './contract-library.domain';
 import { PLATFORM_SOURCE_KEY, SOURCE_KINDS, SourceKind, SourceReference, SourceRecord, SourceField, SourceValue, SourceSnapshot, sourceBinding, sourceReferences, sourceDigest, sourceSnapshot, validateSourceSnapshot } from './platform-document-source.domain';
 
 const accountSelect={id:true,email:true,status:true,updatedAt:true,person:{select:{firstName:true,lastName:true,phone:true,professional:true}}} as const;
-const labels:Record<string,string>={id:'المرجع',email:'البريد الإلكتروني',status:'الحالة',firstName:'الاسم الأول',lastName:'اسم العائلة',fullName:'الاسم',phone:'رقم التواصل',organizationId:'مرجع الجهة',accountId:'مرجع الحساب',employmentId:'مرجع الموظف',courseCode:'رمز الدورة',studentAccountId:'مرجع المتدرب',instructorAccountId:'مرجع المدرب',name:'الاسم',title:'العنوان',registrationNumber:'رقم التسجيل',type:'النوع',startsAt:'وقت البداية',endsAt:'وقت النهاية',siteName:'موقع الغوص',diveDate:'تاريخ الغوص',maxDepthM:'أقصى عمق بالمتر',durationMin:'المدة بالدقائق',passengerCapacity:'سعة الركاب',createdAt:'وقت التسجيل',updatedAt:'آخر تحديث',amountHalala:'المبلغ بالهللات',description:'الوصف',subject:'الموضوع',referenceNumber:'رقم المرجع'};
+const labels:Record<string,string>={id:'المرجع',email:'البريد الإلكتروني',status:'الحالة',firstName:'الاسم الأول',lastName:'اسم العائلة',fullName:'الاسم',phone:'رقم التواصل',organizationId:'مرجع الجهة',accountId:'مرجع الحساب',employmentId:'مرجع الموظف',courseCode:'رمز الدورة',studentAccountId:'مرجع المتدرب',instructorAccountId:'مرجع المدرب',name:'الاسم',title:'العنوان',registrationNumber:'رقم التسجيل',type:'النوع',startsAt:'وقت البداية',endsAt:'وقت النهاية',siteName:'موقع الغوص',diveDate:'تاريخ الغوص',maxDepthM:'أقصى عمق بالمتر',durationMin:'المدة بالدقائق',passengerCapacity:'سعة الركاب',createdAt:'وقت التسجيل',updatedAt:'آخر تحديث',amountHalala:'المبلغ بالهللات',amountMinor:'المبلغ بالوحدة النقدية الصغرى',currency:'العملة',description:'الوصف',subject:'الموضوع',referenceNumber:'رقم المرجع'};
 const config:Record<SourceKind,{delegate:string;scope:(org:string,actor:string)=>object;include?:object}>={
  ACCOUNT:{delegate:'account',scope:(_o,a)=>({id:a})},
  EMPLOYMENT:{delegate:'employment',scope:o=>({organizationId:o}),include:{account:{select:accountSelect},orgUnit:{select:{id:true,code:true,nameAr:true}},position:{select:{id:true,titleAr:true}}}},
@@ -29,6 +29,7 @@ function flatten(input:any,prefix='',result:SourceField[]=[]):SourceField[]{
  for(const [key,raw] of Object.entries(input??{})){
   const path=prefix?prefix+'.'+key:key;
   if(raw instanceof Date)result.push({key:path,labelAr:labels[key]??key,value:raw.toISOString()});
+  else if(typeof raw==='bigint')result.push({key:path,labelAr:labels[key]??key,value:raw.toString()});
   else if(raw===null||['string','number','boolean'].includes(typeof raw))result.push({key:path,labelAr:prefix?`${labels[prefix.split('.').pop()!]??prefix} / ${labels[key]??key}`:labels[key]??key,value:raw as SourceValue});
   else if(raw&&typeof raw==='object'&&!Array.isArray(raw))flatten(raw,path,result);
  }
@@ -58,7 +59,7 @@ export class PlatformDocumentSourceService {
   return row;
  }
  private async record(tx:Prisma.TransactionClient,actor:string,org:string,ref:SourceReference):Promise<{record:SourceRecord;aliases:Record<string,SourceValue>}>{
-  const row=await this.row(tx,actor,org,ref),fields=flatten(Object.fromEntries(Object.entries(row).filter(([,v])=>v===null||v instanceof Date||['string','number','boolean'].includes(typeof v))));
+  const row=await this.row(tx,actor,org,ref),fields=flatten(Object.fromEntries(Object.entries(row).filter(([,v])=>v===null||v instanceof Date||['string','number','boolean','bigint'].includes(typeof v))));
   let aliases:Record<string,SourceValue>={};
   if(ref.kind==='ACCOUNT')fields.push(...personFields(row,'account','اسم صاحب الحساب'));
   if(ref.kind==='EMPLOYMENT'){
@@ -102,8 +103,8 @@ export class PlatformDocumentSourceService {
  async resolve(tx:Prisma.TransactionClient,actor:string,org:string,definitions:unknown,refs:SourceReference[]):Promise<SourceSnapshot>{
   await this.owner(tx,actor,org);
   const defs=templateFields(definitions),allowed=new Set(defs.map(f=>f.key)),records:SourceRecord[]=[],bindings:Record<string,SourceValue>={};
-  const author=await tx.account.findUniqueOrThrow({where:{id:actor},select:{id:true,updatedAt:true,person:{select:{firstName:true,lastName:true}}}});
-  records.push({kind:'AUTHOR',id:actor,updatedAt:author.updatedAt.toISOString(),fields:[{key:'fullName',labelAr:'الاسم',value:[author.person.firstName,author.person.lastName].filter(Boolean).join(' ')||null},{key:'accountId',labelAr:'مرجع الحساب',value:actor}]});
+  const author=await tx.account.findUniqueOrThrow({where:{id:actor},select:{id:true,person:{select:{firstName:true,lastName:true,updatedAt:true}}}});
+  records.push({kind:'AUTHOR',id:actor,updatedAt:author.person.updatedAt.toISOString(),fields:[{key:'fullName',labelAr:'الاسم',value:[author.person.firstName,author.person.lastName].filter(Boolean).join(' ')||null},{key:'accountId',labelAr:'مرجع الحساب',value:actor}]});
   for(const ref of refs){
    const {record,aliases}=await this.record(tx,actor,org,ref);records.push(record);
    for(const [key,v] of Object.entries(aliases))if(allowed.has(key)){

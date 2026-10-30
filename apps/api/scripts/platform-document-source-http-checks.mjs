@@ -69,6 +69,40 @@ export async function checkPlatformDocumentSources({db,owner,other,worker,org,em
  assert.equal((await call(owner,'documents','POST',{...input,payload:{...input.payload,_platformSources:first.snapshot}})).status,400);
  pass('source changes require a fresh preview, old revisions retain their names, client snapshots are rejected, and bound identities cannot drift');
 
+ const extra={};
+ try{
+  extra.leave=await db.leaveRequest.create({data:{employmentId:employment.id,type:'ANNUAL',startsAt:new Date('2026-10-31T00:00:00Z'),endsAt:new Date('2026-11-01T00:00:00Z'),requestedByAccountId:owner.id}});
+  extra.training=await db.trainingEnrollment.create({data:{studentAccountId:worker.id,instructorAccountId:other.id,centerOrganizationId:org.id,courseCode:'ISOLATED-SOURCE-COURSE'}});
+  extra.trip=await db.trip.create({data:{organizationId:org.id,title:'رحلة مصدر معزولة',type:'SHORE',startsAt:new Date('2026-11-01T08:00:00Z'),endsAt:new Date('2026-11-01T10:00:00Z'),capacity:2}});
+  extra.booking=await db.booking.create({data:{organizationId:org.id,tripId:extra.trip.id,accountId:worker.id}});
+  extra.participant=await db.bookingParticipant.create({data:{bookingId:extra.booking.id,accountId:worker.id,fullName:'اسم المشارك المحفوظ في الحجز'}});
+  extra.dive=await db.diveLog.create({data:{accountId:worker.id,sourceTripId:extra.trip.id,sourceParticipantId:extra.participant.id,siteName:'موقع مصدر معزول',diveDate:new Date('2026-11-01T08:00:00Z'),maxDepthM:0,durationMin:0}});
+  extra.customer=await db.customerCase.create({data:{organizationId:org.id,customerId:worker.id,type:'COMPLAINT',subject:'حالة مصدر معزولة',description:'وصف محفوظ في سجل الحالة'}});
+  extra.asset=await db.marineAsset.create({data:{organizationId:org.id,name:'وسيلة مصدر معزولة',assetType:'BOAT',registrationNumber:'SOURCE-'+randomUUID()}});
+  extra.financeAccount=await db.financeAccount.create({data:{organizationId:org.id,name:'حساب مصدر معزول'}});
+  extra.finance=await db.financeEntry.create({data:{organizationId:org.id,financeAccountId:extra.financeAccount.id,type:'REVENUE',amountMinor:0,referenceType:'SOURCE_ACCEPTANCE',referenceId:extra.booking.id,requestedByAccountId:owner.id}});
+  extra.admin=await db.administrativeRecord.create({data:{organizationId:org.id,unitId:employment.orgUnitId,type:'INCOMING',referenceNumber:'SOURCE-'+randomUUID(),subject:'معاملة مصدر معزولة',ownerAccountId:owner.id}});
+  const ids={ACCOUNT:owner.id,EMPLOYMENT:employment.id,LEAVE_REQUEST:extra.leave.id,TRAINING_ENROLLMENT:extra.training.id,DIVE_LOG:extra.dive.id,BOOKING_PARTICIPANT:extra.participant.id,CUSTOMER_CASE:extra.customer.id,MARINE_ASSET:extra.asset.id,TRIP:extra.trip.id,BOOKING:extra.booking.id,FINANCE_ENTRY:extra.finance.id,ADMINISTRATIVE_RECORD:extra.admin.id};
+  for(const [kind,id] of Object.entries(ids)){
+   const v=await ok(owner,route+'/platform-source-preview','POST',{templateId:commencement.id,references:[{kind,id}]});
+   const record=v.snapshot.records.find(r=>r.kind===kind);assert.equal(record.id,id);
+   const list=await ok(owner,route+'/platform-sources/'+kind);assert.ok(list.items.some(r=>r.id===id));
+   if(kind==='TRAINING_ENROLLMENT'){
+    assert.equal(record.fields.find(f=>f.key==='student.fullName').value,'HrSourceFixture worker');
+    assert.equal(record.fields.find(f=>f.key==='instructor.fullName').value,'HrSourceFixture other');
+   }
+   if(kind==='MARINE_ASSET')assert.ok(!record.fields.some(f=>f.key==='owner.fullName'));
+   if(kind==='DIVE_LOG'){assert.equal(record.fields.find(f=>f.key==='maxDepthM').value,0);assert.equal(record.fields.find(f=>f.key==='durationMin').value,0);}
+   if(kind==='FINANCE_ENTRY')assert.equal(record.fields.find(f=>f.key==='amountMinor').value,0);
+  }
+  await db.trainingEnrollment.update({where:{id:extra.training.id},data:{instructorAccountId:null}});
+  const missing=await ok(owner,route+'/platform-source-preview','POST',{templateId:commencement.id,references:[{kind:'TRAINING_ENROLLMENT',id:extra.training.id}]});
+  assert.equal(missing.snapshot.records.find(r=>r.kind==='TRAINING_ENROLLMENT').fields.find(f=>f.key==='instructor.fullName').value,null);
+  pass('all 12 source providers use native rows; trainee, instructor and participant names remain distinct; missing instructors and vessel owners are not invented');
+ }finally{
+  for(const [key,delegate] of [['admin','administrativeRecord'],['finance','financeEntry'],['financeAccount','financeAccount'],['dive','diveLog'],['participant','bookingParticipant'],['booking','booking'],['trip','trip'],['asset','marineAsset'],['training','trainingEnrollment'],['leave','leaveRequest']])if(extra[key])await db[delegate].delete({where:{id:extra[key].id}});
+ }
+
  // Same source mechanism and unchanged field schema for every catalog template.
  const all=reviewedAdministrativeTemplates(org.id);assert.equal(all.length,157);
  let count=0;

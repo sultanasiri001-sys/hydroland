@@ -79,7 +79,11 @@ export class DocumentPrintService {
       required:Boolean(f.required),
       value:payload[String(f.key??'')]??null,
     }));
-    if(sources)fields.push(...sourcePrintFields(sources));
+    if(sources){
+      const sourceFields=sourcePrintFields(sources),identity=sourceFields.filter(f=>f.labelEn==='fullName'||f.labelEn.endsWith('.fullName'));
+      fields.unshift(...identity.filter(f=>!f.key.startsWith('platform-source-0-')),...identity.filter(f=>f.key.startsWith('platform-source-0-')));
+      fields.push(...sourceFields.filter(f=>!identity.includes(f)));
+    }
     return {
       documentId:d.id,organizationId:d.organizationId,referenceNumber:d.referenceNumber,department:d.department,status:d.status,
       documentVersion:d.version,contentHash:d.contentHash,

@@ -67,5 +67,8 @@ export function sourceSnapshot(payload: Record<string, unknown>, organizationId?
 export function sourcePrintFields(snapshot: SourceSnapshot) {
   validateSourceSnapshot(snapshot);
   const roles: Record<string,string> = {AUTHOR:'معدّ النموذج',ACCOUNT:'الحساب المختار',EMPLOYMENT:'الموظف',LEAVE_REQUEST:'الإجازة',TRAINING_ENROLLMENT:'التدريب',DIVE_LOG:'الغوص',BOOKING_PARTICIPANT:'المشارك',CUSTOMER_CASE:'العميل',MARINE_ASSET:'الوسيلة البحرية',TRIP:'الرحلة',BOOKING:'الحجز',FINANCE_ENTRY:'المعاملة المالية',ADMINISTRATIVE_RECORD:'المعاملة الإدارية'};
-  return snapshot.records.flatMap((r,i)=>r.fields.map(f=>({key:`platform-source-${i}-${f.key}`,labelAr:`${roles[r.kind]} — ${f.labelAr}`,labelEn:f.key,type:'TEXT',required:false,value:f.value===null?'غير مسجل في المصدر':f.value})));
+  return [
+    ...snapshot.records.flatMap((r,i)=>r.fields.map(f=>({key:`platform-source-${i}-${f.key}`,labelAr:`${roles[r.kind]} — ${f.labelAr}`,labelEn:f.key,type:'TEXT',required:false,value:f.value===null?'غير مسجل في المصدر':f.value}))),
+    {key:'platform-source-captured-at',labelAr:'تاريخ جلب بيانات المنصة',labelEn:'Source capture time',type:'TEXT',required:false,value:snapshot.capturedAt},
+  ];
 }
