@@ -41,6 +41,14 @@ export class GovernanceReviewInboxService {
     });
   }
 
+  // Report compilation uses the same verified chain inside its own transaction.
+  async reportFile(tx:Prisma.TransactionClient,actorId:string,id:string){
+    await requireVerifiedAdmin(tx,actorId);
+    const source=await tx.aiAgentTask.findFirst({where:{...this.roots(),id,requestedByAccountId:actorId},select:taskSelect});
+    if(!source)throw new NotFoundException('تقرير المدير غير مكتمل أو خارج نطاق المالك.');
+    return this.readFile(tx,source);
+  }
+
   private async readFile(tx:Prisma.TransactionClient,source:Task){
     const file=await this.buildFile(tx,source);
     if(source.fingerprint.startsWith(DRAFT_CORRECTION_PREFIX)){
