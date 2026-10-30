@@ -2,9 +2,10 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 
-// Auth challenges share the table but must never be visible or consumed as in-app alerts.
+// Email outboxes must never be visible or consumed as in-app alerts: marking a
+// pending report READ would otherwise suppress its delivery.
 const inAppNotification: Prisma.NotificationWhereInput = {
-  NOT: { type: { startsWith: 'AUTH_' } },
+  NOT: [{ type: { startsWith: 'AUTH_' } }, { type: 'EXECUTIVE_GOVERNANCE_REPORT' }],
 };
 
 @Injectable()

@@ -107,6 +107,8 @@ jobs:
       - run: npm run validate:integrations -w @hydroland/api
       - run: npm run typecheck --workspace=@hydroland/api
       - run: npm run build --workspace=@hydroland/api
+      - name: Department directors and executive report boundaries without provider traffic
+        run: node --test apps/api/scripts/department-reporting.test.cjs
       - name: Safety coordinate input and explicit fallback boundaries
         run: node apps/api/scripts/safety-coordinate-validation.cjs
       - name: Canonical weather context and calendar consumer boundaries

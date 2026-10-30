@@ -10,5 +10,8 @@ import { AgentRuntimeService } from './agent-runtime.service';
 import { AgentModelProviderService } from './agent-model-provider.service';
 import { AgentRuntimeWorker } from './agent-runtime.worker';
 import { GovernanceReviewInboxService } from './governance-review-inbox.service';
-@Module({imports:[AuthModule,AuditModule,AdminModule,IntegrationModule],controllers:[AgentController,AgentRuntimeController],providers:[AgentService,AgentRuntimeService,AgentModelProviderService,AgentRuntimeWorker,GovernanceReviewInboxService]})
+import { DepartmentReportingController } from './department-reporting.controller';
+import { DepartmentReportingService } from './department-reporting.service';
+import { DepartmentReportingWorker } from './department-reporting.worker';
+@Module({imports:[AuthModule,AuditModule,AdminModule,IntegrationModule],controllers:[AgentController,AgentRuntimeController,DepartmentReportingController],providers:[AgentService,AgentRuntimeService,AgentModelProviderService,AgentRuntimeWorker,GovernanceReviewInboxService,DepartmentReportingService,DepartmentReportingWorker]})
 export class AgentModule {}

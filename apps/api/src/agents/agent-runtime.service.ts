@@ -14,6 +14,9 @@ import { GOVERNANCE_REVIEW_ORDER, governanceRouteDecision, isGovernanceAgent, pa
 import { operationsEvidenceDigest, operationsValues, readOperationsEvidence } from './agent-operations-evidence';
 import { agentPerformance, performanceView } from './agent-performance';
 import { correctionFingerprint, correctionRequestId, hasDraftCorrectionPermission, DRAFT_CORRECTION_POLICY, DRAFT_CORRECTION_PREFIX, draftCorrectionAllowed, draftCorrectionRequested } from './governance-draft-correction';
+import { directorDepartment } from './department-directors';
+import { executiveReportContext, reportModelInput, REPORT_FINGERPRINT } from './executive-report.domain';
+import { GovernanceReviewInboxService } from './governance-review-inbox.service';
 
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const taskView={id:true,agentKey:true,requestedByAccountId:true,action:true,language:true,prompt:true,state:true,revision:true,createdAt:true,startedAt:true,dispatchedAt:true,finishedAt:true,model:true,executionPolicy:true,inputTokens:true,outputTokens:true,reservedCostMicroUsd:true,estimatedCostMicroUsd:true,result:true,errorCode:true,reviewedAt:true} as const;
@@ -26,7 +29,7 @@ const approvalRequired=(task:{agentKey:string;action:string})=>task.action!=='RE
 
 @Injectable()
 export class AgentRuntimeService {
-  constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly agents:AgentService,private readonly model:AgentModelProviderService,private readonly admin:AdminService){}
+  constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly agents:AgentService,private readonly model:AgentModelProviderService,private readonly admin:AdminService,private readonly reportInbox?:GovernanceReviewInboxService){}
 
   private descriptor(key:string){const found=this.agents.list().find(a=>a.key===key);if(!found)throw new NotFoundException('الوكيل غير موجود.');return found;}
   private async guard(tx:Prisma.TransactionClient){
@@ -79,7 +82,7 @@ export class AgentRuntimeService {
           queued:groups.find(g=>g.agentKey===agent.key&&g.state==='QUEUED')?._count._all||0,
           failed:groups.filter(g=>g.agentKey===agent.key&&['FAILED','INTERRUPTED'].includes(g.state)).reduce((sum,g)=>sum+g._count._all,0),
           overdue:overdue.find(g=>g.agentKey===agent.key)?._count._all||0}:null;
-          return{...agent,performance:performanceView(historical.find(row=>row.agentKey===agent.key)),departmentCode:AGENT_DEPARTMENTS[agent.key],departmentName:STAFFING_DEPARTMENTS.find(d=>d.code===AGENT_DEPARTMENTS[agent.key])?.nameAr,state:control?.state||'UNINITIALIZED',revision:control?.revision||null,workload:workload(counts),counts,canEnable:Boolean(control&&available&&control.state==='PAUSED'),canPause:control?.state==='ENABLED'};
+          return{...agent,reportingRole:directorDepartment(agent.key)?'DEPARTMENT_DIRECTOR':agent.key==='EXECUTIVE'?'EXECUTIVE_SECRETARY':isGovernanceAgent(agent.key)?'GOVERNANCE_REVIEWER':'SPECIALIST',performance:performanceView(historical.find(row=>row.agentKey===agent.key)),departmentCode:AGENT_DEPARTMENTS[agent.key],departmentName:STAFFING_DEPARTMENTS.find(d=>d.code===AGENT_DEPARTMENTS[agent.key])?.nameAr,state:control?.state||'UNINITIALIZED',revision:control?.revision||null,workload:workload(counts),counts,canEnable:Boolean(control&&available&&control.state==='PAUSED'),canPause:control?.state==='ENABLED'};
         })};
     });
   }
@@ -207,6 +210,11 @@ export class AgentRuntimeService {
       if(governanceReview?.source.action==='READ_OPERATIONS'&&governanceReview.source.operationsEvidence?.status!=='RECORDED')throw new AiProviderError('SOURCE_EVIDENCE_UNAVAILABLE');
       const draftCorrection=claim.task.fingerprint.startsWith(DRAFT_CORRECTION_PREFIX)?await this.db.serializable(tx=>this.draftCorrectionContext(tx,claim.task)):undefined;
       if(claim.task.fingerprint.startsWith(DRAFT_CORRECTION_PREFIX)&&!draftCorrection)throw new AiProviderError('DRAFT_CORRECTION_SOURCE_INVALID');
+      let reportBundle:object|undefined;
+      if(claim.task.fingerprint.startsWith(REPORT_FINGERPRINT)){
+        if(!this.reportInbox)throw new AiProviderError('EXECUTIVE_REPORT_CONTEXT_UNAVAILABLE');
+        reportBundle=reportModelInput((await this.db.serializable(tx=>executiveReportContext(tx,claim.task,this.reportInbox!))).bundle);
+      }
       const operations=claim.task.action==='READ_OPERATIONS'&&!isGovernanceAgent(claim.task.agentKey)?await this.admin.overview():undefined;
       const snapshot=operations?{pendingReviews:operations.pendingReviews,openTrips:operations.openTrips,activeBookings:operations.activeBookings,pendingOrganizations:operations.pendingOrganizations}:undefined;
       if(snapshot){
@@ -219,7 +227,7 @@ export class AgentRuntimeService {
           await this.audit.record({action:'AI_TASK_OPERATIONS_CAPTURED',resource:'AiAgentTask',resourceId:row.id,metadata:{agentKey:row.agentKey,scope:'OPERATIONS_AGGREGATE_V1',claimId:row.claimId,sourceRevision:row.revision,observedAt,values,digest:operationsEvidenceDigest(row.id,row.claimId!,row.revision,observedAt,values)}},tx);
         });
       }
-      result=await this.model.execute(claim.config,claim.agent,claim.task.action as AgentAction,claim.task.language as SupportedLanguage,claim.task.prompt,snapshot,governanceReview||undefined,draftCorrection||undefined);
+      result=await this.model.execute(claim.config,claim.agent,claim.task.action as AgentAction,claim.task.language as SupportedLanguage,claim.task.prompt,snapshot,governanceReview||undefined,draftCorrection||undefined,reportBundle);
     }catch(failure){error=failure instanceof AiProviderError?failure:new AiProviderError('EXECUTION_FAILED');}
     // Retry only persistence, never the provider request. A committed receipt is
     // detected through claimId/state, making an ambiguous DB commit harmless.
@@ -345,7 +353,8 @@ export class AgentRuntimeService {
       if(!result&&!late)await tx.aiAgentRuntime.update({where:{key:task.agentKey},data:{state:'PAUSED',revision:randomUUID()}});
       await this.audit.record({action:late?'AI_TASK_LATE_RESULT_RECORDED':result?'AI_TASK_COMPLETED':'AI_TASK_EXECUTION_FAILED',resource:'AiAgentTask',resourceId:id,metadata:{agentKey:task.agentKey,executor:'AI_RUNTIME_WORKER',initiatedByAccountId:task.requestedByAccountId,claimId,from:task.state,to:state,errorCode:error?.code,inputTokens:result?.inputTokens,outputTokens:result?.outputTokens,estimatedCostMicroUsd:result?.estimatedCostMicroUsd,noAutomaticRetry:true,agentPaused:!result&&!late}},tx);
       if(result&&!late){
-        if(this.agents.list().some(agent=>agent.key===task.agentKey))await this.queueGovernanceNext(tx,completed);
+        if(task.fingerprint.startsWith(REPORT_FINGERPRINT))await this.audit.record({action:'AI_EXECUTIVE_REPORT_FORMATTED',resource:'AiAgentTask',resourceId:id,metadata:{approved:false,scope:'REPORT_FORMATTING_ONLY'}},tx);
+        else if(this.agents.list().some(agent=>agent.key===task.agentKey))await this.queueGovernanceNext(tx,completed);
       }
     });
   }

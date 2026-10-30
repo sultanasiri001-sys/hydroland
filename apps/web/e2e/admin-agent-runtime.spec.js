@@ -29,6 +29,25 @@ async function setup(page,options={}){
 }
 const control=(page,key='INVENTORY')=>page.locator(`[data-ai-control][data-key="${key}"]`);
 const review=async form=>{await form.locator('[name="reason"]').fill('قرار اختبار معزول بعد المراجعة');await form.locator('[name="reviewed"]').check();return form;};
+test('owner reporting cycle preserves request identity, displays Abdullah safely and clears on logout',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ const items=Array.from({length:14},(_,i)=>({...agent('DIRECTOR_'+i,'مدير الإدارة '+i),reportingRole:'DEPARTMENT_DIRECTOR'}));
+ const state=await setup(page,{items});let cycle=null,attempts=0,firstId;
+ await page.route(/\/admin\/agents\/reporting\/cycles$/,r=>{
+  if(r.request().method()==='GET')return json(r,{items:cycle?[{id:cycle.id,state:cycle.state,createdAt:now,sendEmail:true}]:[]});
+  const body=r.request().postDataJSON();state.writes.push({kind:'report',body});attempts++;
+  if(attempts===1){firstId=body.requestId;return json(r,{message:'تعذر الحفظ مؤقتًا؛ أعد المحاولة.'},503);}
+  expect(body.requestId).toBe(firstId);expect(body.sendEmail).toBe(true);expect(body).not.toHaveProperty('to');
+  cycle={id:body.requestId,state:'REVIEWING',approved:false,sources:items.map((a,i)=>({agentKey:a.key,taskId:randomUUID(),departmentCode:'D'+i})),executiveTask:null,emailStatus:null};return json(r,cycle,201);
+ });
+ await page.route('**/admin/agents/reporting/cycles/*',r=>json(r,cycle));
+ const panel=page.locator('[data-ai-reporting]');await panel.locator('summary').click();await expect(panel.locator('[data-ai-report-status]')).toContainText('لا توجد دورات');
+ const form=panel.locator('[data-ai-report-cycle]');await form.locator('[name="brief"]').fill('تقرير إدارات هيدرولاند');await review(form);await form.getByRole('button',{name:'بدء دورة التقارير'}).click();await expect(form.locator('[data-ai-message]')).toContainText('تعذر الحفظ');
+ await form.getByRole('button',{name:'بدء دورة التقارير'}).click();await expect(panel.locator('[data-ai-report-status]')).toContainText('مراجعات المكتب جارية');
+ Object.assign(cycle,{state:'COMPLETE',emailStatus:'PROVIDER_ACCEPTED',executiveTask:{result:'<img src=x onerror=alert(1)> تقرير عبدالله'}});
+ await panel.locator('[data-ai-report-refresh]').click();await expect(panel.locator('[data-ai-report-text]')).toContainText('<img');await expect(panel.locator('img')).toHaveCount(0);await expect(panel.locator('[data-ai-report-status]')).toContainText('وصولها إلى صندوق البريد لم يُتحقق منه');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await page.evaluate(()=>window.HydrolandAuth.logout());await expect(panel).toBeHidden();await expect(panel.locator('[data-ai-report-text]')).toBeEmpty();await expect(panel.locator('[data-ai-report-select] option')).toHaveCount(0);await expect(form.locator('[name="brief"]')).toHaveValue('');
+});
 test('historical performance separates execution, unknown cost and acceptance and clears on revocation',async({page})=>{
  await page.setViewportSize({width:390,height:844});
  const item=agent('INVENTORY','وكيل المخزون');item.performance={period:'ALL_RECORDED_TASKS',completed:3,failed:1,interrupted:0,reviewed:1,cancelled:2,durationSamples:2,averageExecutionMs:2500,reservedMicroUsd:1000,knownEstimatedMicroUsd:600,unknownEstimates:1,acceptanceRate:null};

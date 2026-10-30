@@ -7,6 +7,9 @@ export type AuthEmailPurpose='VERIFY_EMAIL'|'RESET_PASSWORD';
 export type AuthEmailDelivery={provider:'RESEND';messageId:string};
 
 type ResendResponse={id?:unknown;message?:unknown;name?:unknown};
+export class ReportEmailError extends Error {
+  constructor(readonly disposition:'RETRYABLE'|'PERMANENT'|'UNCERTAIN'){super('Executive report email '+disposition);}
+}
 
 const escapeHtml=(value:string)=>value.replace(/[&<>"']/g,char=>({
   '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
@@ -63,6 +66,28 @@ export class EmailDeliveryService {
     if(!messageId)throw new ServiceUnavailableException('Email delivery provider returned an invalid response.');
     await this.audit.record({action:'integration.email.delivered',resource:'Notification',resourceId:input.notificationId,metadata:{provider:'RESEND',purpose:input.purpose,messageId}});
     return{provider:'RESEND',messageId};
+  }
+
+  async sendExecutiveReport(input:{notificationId:string;to:string;text:string}):Promise<AuthEmailDelivery>{
+    let configuration:ReturnType<EmailDeliveryService['configuration']>;
+    try{configuration=this.configuration();assertAuthEmailRecipient(input.to);}catch{throw new ReportEmailError('PERMANENT');}
+    const {apiKey,from}=configuration;
+    const html=`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>تقرير إدارات هيدرولاند</title></head><body style="font-family:Arial,sans-serif;line-height:1.8;color:#102131;background:#fff"><h1>تقرير إدارات هيدرولاند</h1><div style="white-space:pre-wrap">${escapeHtml(input.text)}</div></body></html>`;
+    if(!input.text.trim()||Buffer.byteLength(html,'utf8')>95*1024)throw new ReportEmailError('PERMANENT');
+    let endpoint:URL;
+    try{endpoint=new URL('/emails',process.env.RESEND_API_BASE_URL?.trim()||'https://api.resend.com');}catch{throw new ReportEmailError('PERMANENT');}
+    const localTest=process.env.NODE_ENV==='test'&&endpoint.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(endpoint.hostname);
+    if(endpoint.username||endpoint.password||endpoint.origin!=='https://api.resend.com'&&!localTest)throw new ReportEmailError('PERMANENT');
+    let response:Response;
+    try{response=await fetch(endpoint,{method:'POST',redirect:'error',headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json','Idempotency-Key':`hydroland-report/${input.notificationId}`,Accept:'application/json'},body:JSON.stringify({from,to:[input.to],subject:'تقرير إدارات هيدرولاند | عبدالله',text:input.text,html}),signal:AbortSignal.timeout(8_000)});}catch{throw new ReportEmailError('UNCERTAIN');}
+    if(!response.ok){await response.body?.cancel();throw new ReportEmailError(response.status===429||response.status>=500?'RETRYABLE':'PERMANENT');}
+    try{
+      const reader=response.body?.getReader();if(!reader)throw new Error();const parts:Uint8Array[]=[];let size=0;
+      while(true){const part=await reader.read();if(part.done)break;size+=part.value.length;if(size>16*1024){await reader.cancel();throw new Error();}parts.push(part.value);}
+      const data=JSON.parse(Buffer.concat(parts).toString('utf8')) as ResendResponse;
+      if(typeof data.id!=='string'||!data.id.trim()||data.id.length>200)throw new Error();
+      return{provider:'RESEND',messageId:data.id.trim()};
+    }catch{throw new ReportEmailError('UNCERTAIN');}
   }
 
   private publicOrigin(){
