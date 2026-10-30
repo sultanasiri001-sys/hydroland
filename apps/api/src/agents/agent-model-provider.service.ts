@@ -15,7 +15,7 @@ export interface AiModelConnectionCheck {
   scope:'MODEL_ACCESS_ONLY';generationTested:false;
 }
 export class AiProviderError extends Error {
-  constructor(readonly code:string,readonly uncertain=false){super(code)}
+  constructor(readonly code:string,readonly uncertain=false,readonly providerStage?:'INPUT_TOKENS'|'GENERATION'){super(code)}
 }
 const integer=(value:string|undefined,min:number,max:number,fallback=0)=>value===undefined?fallback:/^\d+$/.test(value)&&Number.isSafeInteger(Number(value))&&Number(value)>=min&&Number(value)<=max?Number(value):0;
 
@@ -79,7 +79,25 @@ export class AgentModelProviderService {
     let response:Response;
     try{response=await fetch(base+path,{method:'POST',redirect:'error',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(process.env.OPENAI_API_KEY?.trim()||'')},body:JSON.stringify(body),signal:AbortSignal.timeout(timeout)});}
     catch{throw new AiProviderError('PROVIDER_CONNECTION_UNCERTAIN',path==='/responses');}
-    if(!response.ok){await response.body?.cancel();throw new AiProviderError(response.status===429?'PROVIDER_RATE_LIMITED':response.status===401?'PROVIDER_AUTH_FAILED':'PROVIDER_REQUEST_FAILED');}
+    if(!response.ok){
+      let code=response.status===401?'PROVIDER_AUTH_FAILED':'PROVIDER_REQUEST_FAILED';
+      if(response.status===429){
+        // A 429 can mean exhausted quota or a transient rate limit. Keep only
+        // these allowlisted categories; never retain provider messages/IDs.
+        code='PROVIDER_USAGE_LIMITED';
+        const reader=response.body?.getReader();
+        if(reader)try{
+          const buffers:Uint8Array[]=[];let length=0;
+          while(true){const part=await reader.read();if(part.done)break;length+=part.value.length;if(length>16*1024)throw new Error();buffers.push(part.value);}
+          const detail=JSON.parse(Buffer.concat(buffers).toString('utf8'))?.error;
+          if(detail?.code==='insufficient_quota'||detail?.type==='insufficient_quota')code='PROVIDER_QUOTA_EXHAUSTED';
+          else if(detail?.code==='rate_limit_exceeded'||detail?.type==='rate_limit_exceeded')code='PROVIDER_RATE_LIMITED';
+        }catch{/* An unreadable or unknown rejection remains unclassified. */}
+        finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
+      }
+      await response.body?.cancel().catch(()=>{});
+      throw new AiProviderError(code,false,path==='/responses'?'GENERATION':'INPUT_TOKENS');
+    }
     try{
       const reader=response.body?.getReader();if(!reader)throw new Error();const buffers:Uint8Array[]=[];let length=0;
       while(true){const part=await reader.read();if(part.done)break;length+=part.value.length;if(length>256*1024){await reader.cancel();throw new Error();}buffers.push(part.value);}
