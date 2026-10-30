@@ -100,7 +100,7 @@ export async function checkPlatformDocumentSources({db,owner,other,worker,org,em
   assert.equal(missing.snapshot.records.find(r=>r.kind==='TRAINING_ENROLLMENT').fields.find(f=>f.key==='instructor.fullName').value,null);
   pass('all 12 source providers use native rows; trainee, instructor and participant names remain distinct; missing instructors and vessel owners are not invented');
  }finally{
-  for(const [key,delegate] of [['admin','administrativeRecord'],['finance','financeEntry'],['financeAccount','financeAccount'],['dive','diveLog'],['participant','bookingParticipant'],['booking','booking'],['trip','trip'],['asset','marineAsset'],['training','trainingEnrollment'],['leave','leaveRequest']])if(extra[key])await db[delegate].delete({where:{id:extra[key].id}});
+  for(const [key,delegate] of [['admin','administrativeRecord'],['customer','customerCase'],['finance','financeEntry'],['financeAccount','financeAccount'],['dive','diveLog'],['participant','bookingParticipant'],['booking','booking'],['trip','trip'],['asset','marineAsset'],['training','trainingEnrollment'],['leave','leaveRequest']])if(extra[key])await db[delegate].delete({where:{id:extra[key].id}});
  }
 
  // Same source mechanism and unchanged field schema for every catalog template.
