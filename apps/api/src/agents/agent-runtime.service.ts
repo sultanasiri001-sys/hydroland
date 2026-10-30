@@ -15,7 +15,7 @@ import { operationsEvidenceDigest, operationsValues, readOperationsEvidence } fr
 import { agentPerformance, performanceView } from './agent-performance';
 import { correctionFingerprint, correctionRequestId, hasDraftCorrectionPermission, DRAFT_CORRECTION_POLICY, DRAFT_CORRECTION_PREFIX, draftCorrectionAllowed, draftCorrectionRequested } from './governance-draft-correction';
 import { directorDepartment } from './department-directors';
-import { executiveReportContext, REPORT_FINGERPRINT } from './executive-report.domain';
+import { executiveReportContext, reportModelInput, REPORT_FINGERPRINT } from './executive-report.domain';
 import { GovernanceReviewInboxService } from './governance-review-inbox.service';
 
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -213,7 +213,7 @@ export class AgentRuntimeService {
       let reportBundle:object|undefined;
       if(claim.task.fingerprint.startsWith(REPORT_FINGERPRINT)){
         if(!this.reportInbox)throw new AiProviderError('EXECUTIVE_REPORT_CONTEXT_UNAVAILABLE');
-        reportBundle=(await this.db.serializable(tx=>executiveReportContext(tx,claim.task,this.reportInbox!))).bundle;
+        reportBundle=reportModelInput((await this.db.serializable(tx=>executiveReportContext(tx,claim.task,this.reportInbox!))).bundle);
       }
       const operations=claim.task.action==='READ_OPERATIONS'&&!isGovernanceAgent(claim.task.agentKey)?await this.admin.overview():undefined;
       const snapshot=operations?{pendingReviews:operations.pendingReviews,openTrips:operations.openTrips,activeBookings:operations.activeBookings,pendingOrganizations:operations.pendingOrganizations}:undefined;

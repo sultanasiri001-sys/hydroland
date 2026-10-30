@@ -66,6 +66,20 @@ export async function readReportBundle(tx:Prisma.TransactionClient,cycle:ReportC
   return{cycleId:cycle.id,createdAt:cycle.createdAt,brief:cycle.brief,entries,approved:false,scope:'DEPARTMENT_REPORTING_ONLY',finalApproval:'PLATFORM_OWNER'};
 }
 
+// Revisions and task identities are verified server-side, not repeated 84 times
+// in the formatter's paid context. Preserve every distinct finding without
+// truncating evidence or raising the configured token/budget limits.
+export function reportModelInput(bundle:NonNullable<Awaited<ReturnType<typeof readReportBundle>>>){
+  return{cycleId:bundle.cycleId,createdAt:bundle.createdAt,brief:bundle.brief,approved:false,
+    entries:bundle.entries.map(entry=>{
+      const reviews=entry.reviews.flatMap(r=>r.review?[r.review]:[]);
+      return{agentKey:entry.agentKey,departmentName:entry.departmentName,officeStatus:entry.officeStatus,result:entry.result,
+        findings:[...new Set(reviews.flatMap(r=>r.findings))],evidenceGaps:[...new Set(reviews.flatMap(r=>r.evidenceGaps))],
+        riskLevel:reviews.some(r=>r.riskLevel==='HIGH')?'HIGH':reviews.some(r=>r.riskLevel==='MEDIUM')?'MEDIUM':reviews.length?'LOW':'UNKNOWN',
+        ownerEscalationRequired:reviews.some(r=>r.ownerEscalationRequired)};
+    })};
+}
+
 export async function executiveReportContext(tx:Prisma.TransactionClient,task:{id:string;agentKey:string;action:string;requestedByAccountId:string;requestKey:string;fingerprint:string},inbox:GovernanceReviewInboxService){
   if(task.agentKey!=='EXECUTIVE'||task.action!=='DRAFT_REPORT')throw new ConflictException('مهمة الصياغة التنفيذية غير صالحة.');
   const links=await tx.auditEvent.findMany({where:{resource:'AiAgentTask',resourceId:task.id,action:'AI_EXECUTIVE_REPORT_QUEUED'},take:2});

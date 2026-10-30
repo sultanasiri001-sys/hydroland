@@ -82,9 +82,18 @@ test('runtime gives Abdullah the verified fourteen-entry bundle and does not res
  const runtime=new AgentRuntimeService(f.db,f.audit,f.agents,model,{},f.inbox);
  await runtime.runClaim({task:{...task},config:{},agent:f.agents.list().find(a=>a.key==='EXECUTIVE')});
  assert.equal(captured.entries.length,14);assert.equal(captured.approved,false);assert.equal(task.state,'COMPLETED');
+ assert(!JSON.stringify(captured).includes(f.state().sources[0].taskId));assert(!JSON.stringify(captured).includes('review-v1'));
  assert.equal(f.events.filter(e=>e.action==='GOVERNANCE_REVIEW_QUEUED').length,0);assert.equal(f.events.filter(e=>e.action==='AI_EXECUTIVE_REPORT_FORMATTED').length,1);
  await f.reporting.advance();assert.equal(f.notifications.size,1);assert.equal(f.state().state,'EMAIL_PENDING');await f.reporting.advance();assert.equal(f.notifications.size,1);
  await f.worker.deliverNext();await f.worker.deliverNext();assert.equal(f.calls(),1);assert.equal(f.state().state,'COMPLETE');assert.equal([...f.notifications.values()][0].payload.deliveryState,'PROVIDER_ACCEPTED');
+});
+
+test('formatter context retains all distinct adverse findings while dropping per-review identity overhead',async()=>{
+ const f=fixture();await f.reporting.start(f.owner,f.request);f.completeDirectors();const bundle=await domain.readReportBundle(f.tx,f.state(),f.inbox);
+ bundle.entries[0].reviews[0].review={decision:'RETURN_FOR_CORRECTION',riskLevel:'HIGH',findings:['ملاحظة سلامة مهمة','ملاحظة متكررة'],evidenceGaps:['دليل ناقص'],ownerEscalationRequired:true};
+ bundle.entries[0].reviews[1].review={decision:'PASS_WITH_NOTES',riskLevel:'LOW',findings:['ملاحظة متكررة'],evidenceGaps:[],ownerEscalationRequired:false};
+ const compact=domain.reportModelInput(bundle);assert.deepEqual(compact.entries[0].findings,['ملاحظة سلامة مهمة','ملاحظة متكررة']);assert.deepEqual(compact.entries[0].evidenceGaps,['دليل ناقص']);assert.equal(compact.entries[0].riskLevel,'HIGH');assert.equal(compact.entries[0].ownerEscalationRequired,true);
+ assert.equal(compact.entries[0].result,bundle.entries[0].result);assert(JSON.stringify(compact).length<JSON.stringify(bundle).length/2);
 });
 
 test('source mutation, forged bundle digest or a duplicate queue receipt cannot reach the model',async()=>{
