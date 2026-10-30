@@ -3,13 +3,13 @@ import {randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
 
 // Called only from the existing isolated, CI-only, loopback HTTP/PG fixture.
-export async function departmentReportingAcceptance({db,service,actor,ordinary,token,otherToken,call,setModelText,payloads}){
+export async function departmentReportingAcceptance({db,service,actor,ordinary,token,otherToken,call,setModelText,payloads,providerCalls}){
  assert.equal(process.env.CI,'true');assert.equal(process.env.NODE_ENV,'test');
  assert(['127.0.0.1','localhost','[::1]'].includes(new URL(process.env.DATABASE_URL).hostname));
  const require=createRequire(import.meta.url);
  const {DatabaseService}=require('../dist/database/database.service.js'),{AuditService}=require('../dist/audit/audit.service.js'),{AgentService}=require('../dist/agents/agent.service.js'),{GovernanceReviewInboxService}=require('../dist/agents/governance-review-inbox.service.js'),{DepartmentReportingService}=require('../dist/agents/department-reporting.service.js'),{DepartmentReportingWorker}=require('../dist/agents/department-reporting.worker.js');
  const runtimeDb=new DatabaseService(),audit=new AuditService(runtimeDb),inbox=new GovernanceReviewInboxService(runtimeDb,new AgentService(audit)),reporting=new DepartmentReportingService(runtimeDb,audit,inbox);
- const key='PLATFORM_STAFFING_ORGANIZATION:v1',prefix='AI_DEPARTMENT_REPORT:v1:',requestId=randomUUID();let organization;
+ const key='PLATFORM_STAFFING_ORGANIZATION:v1',prefix='AI_DEPARTMENT_REPORT:v1:',requestId=randomUUID();let organization,sourceCase;const capturedDirectors=new Set();
  const previous=await db.operationalSetting.findUnique({where:{key}});assert.equal(previous,null,'The reporting fixture refuses pre-existing platform ownership');
  const pass={decision:'PASS',riskLevel:'LOW',findings:[],evidenceGaps:[],ownerEscalationRequired:false};
  let emailCalls=0,emailText='';const worker=new DepartmentReportingWorker(runtimeDb,audit,reporting,inbox,{sendExecutiveReport:async input=>{emailCalls++;assert.equal(input.to,actor.email);emailText=input.text;return{provider:'RESEND',messageId:'isolated-report-provider-id'};}});
@@ -19,6 +19,8 @@ export async function departmentReportingAcceptance({db,service,actor,ordinary,t
   await db.roleAssignment.create({data:{accountId:ordinary.id,role:'ADMIN',status:'ACTIVE'}});
   await db.aiAgentTask.updateMany({where:{requestedByAccountId:actor.id,state:'QUEUED'},data:{state:'CANCELLED'}});
   await db.aiAgentRuntime.updateMany({where:{lastAdminAccountId:actor.id},data:{state:'ENABLED'}});
+  const {departmentSourceAcceptance}=await import('./department-source-acceptance.mjs');
+  sourceCase=await departmentSourceAcceptance({db,organization,actor,ordinary,token,otherToken,call,providerCalls});
   const request={requestId,brief:'تقرير الإدارات الأربع عشرة بالأدلة المتاحة',sendEmail:true,reviewed:true,reason:'اختبار دورة تقارير معزولة'};
   assert.equal((await call('/admin/agents/reporting/catalog')).status,401);
   assert.equal((await call('/admin/agents/reporting/catalog',otherToken)).status,403);
@@ -39,8 +41,14 @@ export async function departmentReportingAcceptance({db,service,actor,ordinary,t
     setModelText(JSON.stringify(source.agentKey==='HR_DIRECTOR'?{...pass,decision:'RETURN_FOR_CORRECTION',findings:['يلزم استكمال دليل أعمال الموارد البشرية']}:pass));
    }else setModelText(claim.task.agentKey==='EXECUTIVE'?'تقرير عبدالله: مراجعة الإدارات مكتملة، مع طلب استكمال دليل الموارد البشرية.':'تقرير مدير الإدارة ضمن المؤشرات المجمعة المتاحة فقط.');
    await service.runClaim(claim);
+   if(started.body.sources.some(s=>s.taskId===claim.task.id)){
+    const input=JSON.parse(payloads.at(-1).input[1].content),source=started.body.sources.find(s=>s.taskId===claim.task.id);assert.equal(input.aggregateOperations.version,2);assert.equal(input.aggregateOperations.department,source.departmentCode);assert.equal(input.aggregateOperations.coverage,'PARTIAL');assert(Number.isFinite(Date.parse(input.aggregateOperations.observedAt)));const captured=await db.auditEvent.findFirstOrThrow({where:{resourceId:claim.task.id,action:'AI_TASK_OPERATIONS_CAPTURED'}});assert.equal(input.aggregateOperations.observedAt,captured.metadata.observedAt);capturedDirectors.add(claim.task.agentKey);
+    if(claim.task.agentKey==='HR_DIRECTOR')await sourceCase.afterHrCapture(claim.task.id);
+   }
   }
   assert(finished,'The bounded reporting cycle must finish');
+  assert.equal(capturedDirectors.size,14,'Every director must use its own captured source packet');
+  const hrReviewPayload=payloads.map(p=>JSON.parse(p.input[1].content)).find(p=>p.governanceReview?.source.agentKey==='HR_DIRECTOR');assert.equal(hrReviewPayload.governanceReview.source.operationsEvidence.values.documents.documents,1);
   const executivePayload=payloads.find(p=>JSON.parse(p.input[1].content).executiveReport?.cycleId===requestId);assert(executivePayload);
   const bundle=JSON.parse(executivePayload.input[1].content).executiveReport;assert.equal(bundle.entries.length,14);assert.equal(bundle.approved,false);assert.equal(bundle.entries.find(e=>e.agentKey==='HR_DIRECTOR').officeStatus,'CORRECTION_REQUIRED');assert.equal(bundle.entries.find(e=>e.agentKey==='HR_DIRECTOR').result,null);
   assert.equal(await db.auditEvent.count({where:{action:'GOVERNANCE_REVIEW_QUEUED',metadata:{path:['sourceTaskId'],equals:executiveTaskId}}}),0,'Abdullah formatting must not restart the office loop');
@@ -55,6 +63,7 @@ export async function departmentReportingAcceptance({db,service,actor,ordinary,t
   const detail=await call('/admin/agents/reporting/cycles/'+requestId,token);assert.equal(detail.status,200);assert.equal(detail.body.state,'COMPLETE');assert.equal(detail.body.emailStatus,'PROVIDER_ACCEPTED');assert.equal(detail.body.approved,false);assert.equal(detail.cacheControl,'no-store');
   assert.equal((await call('/admin/agents/reporting/cycles/'+requestId,otherToken)).status,403);
   console.log('Department reporting HTTP/PostgreSQL PASS: 14 directors → linked office reviews including a correction → verified Abdullah context → stale outbox isolated → one concurrent-safe owner-only email; no approval or real provider delivery.');
+  console.log('Department sources HTTP/PostgreSQL PASS: 14 isolated packets, 11 operational count adapters, explicit missing connectors, owner/role/deactivation guards, foreign and inconsistent relation exclusion, scalar-only privacy, read-only preview, immutable historical source across a live change and all 14 director-to-office inputs. All model traffic was loopback.');
  }finally{
   setModelText(null);
   const notifications=await db.notification.findMany({where:{accountId:actor.id,type:'EXECUTIVE_GOVERNANCE_REPORT'},select:{id:true}});
@@ -62,6 +71,7 @@ export async function departmentReportingAcceptance({db,service,actor,ordinary,t
   await db.notification.deleteMany({where:{id:{in:notifications.map(n=>n.id)}}});
   await db.roleAssignment.deleteMany({where:{accountId:ordinary.id,role:'ADMIN'}});
   await db.operationalSetting.deleteMany({where:{key:{in:[prefix+requestId,key]}}});
+  if(sourceCase)await sourceCase.cleanup();
   if(organization)await db.organization.delete({where:{id:organization.id}});
   await runtimeDb.$disconnect();
  }
