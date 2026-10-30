@@ -27,7 +27,7 @@ Every department receives counts of its canonical administrative templates and d
 | Research | Internal initiatives and reviews | Experiment and market evidence |
 | Legal | Employment-contract versions and draft versions | Commercial contracts, insurance and claims register |
 
-An empty operational metrics object means an unavailable connector, not a measured zero. A numeric zero is a real count from the named, scoped table. Coverage remains PARTIAL and operational acceptance remains NOT_ASSESSED. Counts and approved documents do not establish legal applicability, completed work, effectiveness, financial settlement or departmental closure.
+An empty operational metrics object means an unavailable connector, not a measured zero. A numeric zero is a real count from the named, scoped table. These are all-record counts in their current states, not activity totals for a day or reporting period. The model receives the same observation time bound into the receipt. Coverage remains PARTIAL and operational acceptance remains NOT_ASSESSED. Counts and approved documents do not establish legal applicability, completed work, effectiveness, financial settlement or departmental closure.
 
 ## Durable input and compatibility
 

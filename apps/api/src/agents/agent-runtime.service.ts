@@ -297,7 +297,7 @@ export class AgentRuntimeService {
           const source=await readDepartmentSources(tx,claim.task.requestedByAccountId,[department.code]),values=source.departments[0]?.evidence;
           if(!values)throw new AiProviderError('DEPARTMENT_SOURCE_UNAVAILABLE');
           await this.audit.record({action:'AI_TASK_OPERATIONS_CAPTURED',resource:'AiAgentTask',resourceId:row.id,metadata:{agentKey:row.agentKey,scope:DEPARTMENT_SOURCE_SCOPE,claimId:row.claimId,sourceRevision:row.revision,observedAt:source.observedAt,values,digest:operationsEvidenceDigest(row.id,row.claimId!,row.revision,source.observedAt,values)}},tx);
-          snapshot=values;
+          snapshot={...values,observedAt:source.observedAt};
         });
       }else if(claim.task.action==='READ_OPERATIONS'&&!isGovernanceAgent(claim.task.agentKey)){
         const operations=await this.admin.overview();snapshot={pendingReviews:operations.pendingReviews,openTrips:operations.openTrips,activeBookings:operations.activeBookings,pendingOrganizations:operations.pendingOrganizations};

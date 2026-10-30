@@ -42,7 +42,7 @@ export async function departmentReportingAcceptance({db,service,actor,ordinary,t
    }else setModelText(claim.task.agentKey==='EXECUTIVE'?'تقرير عبدالله: مراجعة الإدارات مكتملة، مع طلب استكمال دليل الموارد البشرية.':'تقرير مدير الإدارة ضمن المؤشرات المجمعة المتاحة فقط.');
    await service.runClaim(claim);
    if(started.body.sources.some(s=>s.taskId===claim.task.id)){
-    const input=JSON.parse(payloads.at(-1).input[1].content),source=started.body.sources.find(s=>s.taskId===claim.task.id);assert.equal(input.aggregateOperations.version,2);assert.equal(input.aggregateOperations.department,source.departmentCode);assert.equal(input.aggregateOperations.coverage,'PARTIAL');capturedDirectors.add(claim.task.agentKey);
+    const input=JSON.parse(payloads.at(-1).input[1].content),source=started.body.sources.find(s=>s.taskId===claim.task.id);assert.equal(input.aggregateOperations.version,2);assert.equal(input.aggregateOperations.department,source.departmentCode);assert.equal(input.aggregateOperations.coverage,'PARTIAL');assert(Number.isFinite(Date.parse(input.aggregateOperations.observedAt)));const captured=await db.auditEvent.findFirstOrThrow({where:{resourceId:claim.task.id,action:'AI_TASK_OPERATIONS_CAPTURED'}});assert.equal(input.aggregateOperations.observedAt,captured.metadata.observedAt);capturedDirectors.add(claim.task.agentKey);
     if(claim.task.agentKey==='HR_DIRECTOR')await sourceCase.afterHrCapture(claim.task.id);
    }
   }
