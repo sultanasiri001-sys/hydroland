@@ -85,6 +85,12 @@ jobs:
         run: |
           set -o pipefail
           node apps/api/scripts/document-workflow-readiness-http-e2e.mjs 2>&1 | tee /tmp/form-library-evidence/workflow-readiness-http.log
+      - name: One synthetic employee case through all 21 HR document lifecycles
+        env:
+          HR_DOCUMENT_CASE_OUTPUT: /tmp/form-library-evidence/hr-document-case
+        run: |
+          set -o pipefail
+          node apps/api/scripts/hr-document-case-http-e2e.mjs 2>&1 | tee /tmp/form-library-evidence/hr-document-case.log
       - name: Reproduce the unchanged HR integration with traceable source
         if: ${{ !cancelled() && steps.form_acceptance.outcome != 'skipped' }}
         run: |
