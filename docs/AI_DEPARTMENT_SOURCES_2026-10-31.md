@@ -37,6 +37,8 @@ Office reviews consume that recorded packet, never a reconstruction from current
 
 The evidence reader and browser support the retained v1 four-counter receipts and the new v2 packets. Historical receipts are neither upgraded nor regenerated. Changes to the v2 metric contract require a new packet version while retaining the old reader. The ongoing reporting cycle can therefore finish using its original evidence after the persisted provider wait expires. No replacement production cycle or extra paid test is required for this change.
 
+The reader requires the captured packet version to match the task's version pin. A legacy worker's four-counter receipt cannot satisfy a new department-source task, and a legacy task cannot be relabeled with v2 evidence. Keep claims paused or behind an effective durable gate while replacing older workers. Pause AI controls before rolling back to a version that does not understand department-source tasks.
+
 ## Interface and validation
 
 The admin agent panel offers a read-only source check while generation is unavailable or rate limited. It shows all fourteen departments, measured counts, inactive units and explicit gaps. A historical office file separately shows its captured source and date. Logout, role revocation and workspace changes clear the private preview. Unknown, cross-department or malformed evidence is rejected.

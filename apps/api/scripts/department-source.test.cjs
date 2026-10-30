@@ -1,7 +1,7 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {randomUUID}=require('node:crypto');
-const {DEPARTMENT_SOURCE_SPEC,DEPARTMENT_SOURCE_SCOPE,DOCUMENT_COUNT_KEYS,departmentSourceValues}=require('../dist/agents/department-source.domain');
+const {DEPARTMENT_SOURCE_SPEC,DEPARTMENT_SOURCE_SCOPE,DIRECTOR_SOURCE_FINGERPRINT,DOCUMENT_COUNT_KEYS,departmentSourceValues}=require('../dist/agents/department-source.domain');
 const {DEPARTMENT_DIRECTORS}=require('../dist/agents/department-directors');
 const {operationsValues,operationsEvidenceDigest,readOperationsEvidence}=require('../dist/agents/agent-operations-evidence');
 const value=department=>({version:2,department,scope:'INTERNAL_PLATFORM_ORGANIZATION',coverage:'PARTIAL',catalog:{revision:'2026-10-25.1',codesDigest:'a'.repeat(64)},documents:Object.fromEntries(DOCUMENT_COUNT_KEYS.map(k=>[k,0])),metrics:Object.fromEntries(DEPARTMENT_SOURCE_SPEC[department].metrics.map(k=>[k,2])),missingSources:[DEPARTMENT_SOURCE_SPEC[department].gap]});
@@ -24,11 +24,13 @@ test('historical v1 evidence stays readable without upgrading or reconstructing 
  const id=randomUUID(),claimId=randomUUID(),revision=randomUUID(),now=new Date(),source={id,claimId,agentKey:'HR_DIRECTOR',action:'READ_OPERATIONS',startedAt:new Date(now-100),finishedAt:new Date(+now+100)},observedAt=now.toISOString();
  const events=[{action:'AI_TASK_STARTED',metadata:{claimId,revision}},{action:'AI_TASK_OPERATIONS_CAPTURED',metadata:{claimId,sourceRevision:revision,agentKey:source.agentKey,scope:'OPERATIONS_AGGREGATE_V1',observedAt,values,digest:operationsEvidenceDigest(id,claimId,revision,observedAt,values)}}];
  const tx={auditEvent:{findMany:async()=>events}};assert.deepEqual(await readOperationsEvidence(tx,source),{status:'RECORDED',observedAt,values});
+ assert.deepEqual(await readOperationsEvidence(tx,{...source,fingerprint:DIRECTOR_SOURCE_FINGERPRINT+'pinned'}),{status:'INVALID'},'An old worker receipt cannot satisfy a task pinned to the new source contract');
 });
 test('v2 receipt binds the original department, input and exact successful claim',async()=>{
- const id=randomUUID(),claimId=randomUUID(),revision=randomUUID(),now=new Date(),values=value('HR'),observedAt=now.toISOString(),source={id,claimId,agentKey:'HR_DIRECTOR',action:'READ_OPERATIONS',startedAt:new Date(now-100),finishedAt:new Date(+now+100)};
+ const id=randomUUID(),claimId=randomUUID(),revision=randomUUID(),now=new Date(),values=value('HR'),observedAt=now.toISOString(),source={id,claimId,agentKey:'HR_DIRECTOR',action:'READ_OPERATIONS',fingerprint:DIRECTOR_SOURCE_FINGERPRINT+'pinned',startedAt:new Date(now-100),finishedAt:new Date(+now+100)};
  const events=[{action:'AI_TASK_STARTED',metadata:{claimId,revision}},{action:'AI_TASK_OPERATIONS_CAPTURED',metadata:{claimId,sourceRevision:revision,agentKey:source.agentKey,scope:DEPARTMENT_SOURCE_SCOPE,observedAt,values,digest:operationsEvidenceDigest(id,claimId,revision,observedAt,values)}}];
  const tx={auditEvent:{findMany:async()=>events}};assert.deepEqual(await readOperationsEvidence(tx,source),{status:'RECORDED',scope:DEPARTMENT_SOURCE_SCOPE,observedAt,values});
+ assert.deepEqual(await readOperationsEvidence(tx,{...source,fingerprint:'legacy-task'}),{status:'INVALID'},'A historical task cannot be relabeled as new departmental evidence');
  const reorder=x=>Array.isArray(x)?x.map(reorder):x&&typeof x==='object'?Object.fromEntries(Object.entries(x).reverse().map(([k,v])=>[k,reorder(v)])):x;
  events[1].metadata.values=reorder(values);assert.deepEqual(await readOperationsEvidence(tx,source),{status:'RECORDED',scope:DEPARTMENT_SOURCE_SCOPE,observedAt,values},'JSONB key reordering cannot invalidate a valid recorded input');
  events[1].metadata.values={...values,catalog:{...values.catalog,codesDigest:'b'.repeat(64)}};assert.deepEqual(await readOperationsEvidence(tx,source),{status:'INVALID'});
