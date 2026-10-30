@@ -33,7 +33,7 @@ export class DepartmentReportingWorker implements OnModuleInit,OnModuleDestroy {
     const pending=await this.db.notification.findFirst({where:{type:REPORT_NOTIFICATION,status:'PENDING',OR:[{payload:{path:['nextAttemptAt'],equals:Prisma.AnyNull}},{payload:{path:['nextAttemptAt'],lte:now}}]},select:{id:true},orderBy:[{createdAt:'asc'},{id:'asc'}]});
     if(!pending)return;
     const claim=await this.db.serializable(async tx=>{
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`report-email:${pending.id}`})::bigint)`;
+      await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${`report-email:${pending.id}`})::bigint)`;
       const row=await tx.notification.findUnique({where:{id:pending.id}});if(!row||row.type!==REPORT_NOTIFICATION||row.status!=='PENDING')return null;
       const payload=record(row.payload);
       if(typeof payload.nextAttemptAt==='string'&&Date.parse(payload.nextAttemptAt)>Date.now())return null;

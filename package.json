@@ -25,7 +25,8 @@
     "source-map-js": "1.2.2",
     "@expo/cli": {
       "zod": "4.6.6"
-    }
+    },
+    "decode-uri-component": "0.5.1"
   },
   "engines": {
     "node": "22.x"

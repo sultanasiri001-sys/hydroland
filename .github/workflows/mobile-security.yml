@@ -20,6 +20,10 @@ jobs:
       - run: npm ci --ignore-scripts
       - name: Verify fail-closed audit contract
         run: node scripts/release-dependency-audit.test.mjs
+      - name: Verify patched URI decoder and legacy mobile query compatibility
+        run: |
+          node --test packages/decode-uri-component/test.cjs
+          node apps/mobile/scripts/decode-uri-security.mjs
       - name: Block vulnerable mobile releases including build tools
         run: node scripts/release-dependency-audit.mjs mobile mobile-audit.json
       - name: Retain full repository security coverage
