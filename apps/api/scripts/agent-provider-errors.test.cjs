@@ -38,6 +38,10 @@ test('generation rejection records its stage without replaying the request',asyn
  await rejection({stage:'GENERATION',body:JSON.stringify({error:{type:'insufficient_quota',message:privateDetail}})},'PROVIDER_QUOTA_EXHAUSTED');
  await rejection({stage:'GENERATION',body:JSON.stringify({error:{type:'rate_limit_exceeded',message:privateDetail}})},'PROVIDER_RATE_LIMITED');
 });
+test('explicit overload and ramp-rate rejections are classified without retrying in the HTTP client',async()=>{
+ await rejection({stage:'GENERATION',status:503,body:JSON.stringify({error:{code:'server_is_overloaded',message:privateDetail}})},'PROVIDER_OVERLOADED');
+ await rejection({stage:'GENERATION',body:JSON.stringify({error:{code:'slow_down',message:privateDetail}})},'PROVIDER_RATE_LIMITED');
+});
 test('unknown, malformed and oversized 429 bodies stay unclassified and private',async()=>{
  for(const body of [JSON.stringify({error:{code:'unknown',message:privateDetail}}),'{',privateDetail.repeat(1000)])await rejection({body},'PROVIDER_USAGE_LIMITED');
 });

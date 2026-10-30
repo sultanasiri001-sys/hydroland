@@ -11,7 +11,7 @@ async function setup(page,options={}){
  await page.route('**/api/v1/**',r=>json(r,[]));await page.route('**/auth/google/config',r=>json(r,{enabled:false}));
  await page.route(/\/api\/v1\/me$/,r=>json(r,{id:'agent-browser-admin',status:'ACTIVE',person:{firstName:'إدارة',lastName:'اختبار'},roleAssignments:state.admin?[{role:'ADMIN',status:'ACTIVE'}]:[]}));
  await page.route(/\/admin\/employees(?:\?.*)?$/,r=>json(r,{initialized:true,departments:[],profiles:[],items:[],nextCursor:null,email:{enabled:false},google:{enabled:false}}));
- await page.route(/\/admin\/agents$/,async r=>{if(state.delay)await new Promise(resolve=>state.release=resolve);return json(r,{initialized:true,provider:{ready:state.ready,reason:state.ready?'READY':'CREDENTIALS_MISSING',model:state.ready?'fixture-model':null},observedAt:new Date().toISOString(),workerObservedAt:state.ready?new Date().toISOString():null,metricsMaxAgeSeconds:90,budget:{limitMicroUsd:1000000,reservedMicroUsd:0,taskReserveMicroUsd:2560,day:'2026-10-22'},items:state.items.map(a=>({...a,canEnable:state.ready,counts:state.ready?a.counts:null,workload:state.ready?a.workload:'UNAVAILABLE'}))});});
+ await page.route(/\/admin\/agents$/,async r=>{if(state.delay)await new Promise(resolve=>state.release=resolve);return json(r,{initialized:true,provider:{ready:state.ready,reason:state.ready?'READY':'CREDENTIALS_MISSING',model:state.ready?'fixture-model':null,rateControl:state.rateControl||null},observedAt:new Date().toISOString(),workerObservedAt:state.ready?new Date().toISOString():null,metricsMaxAgeSeconds:90,budget:{limitMicroUsd:1000000,reservedMicroUsd:0,taskReserveMicroUsd:2560,day:'2026-10-22'},items:state.items.map(a=>({...a,canEnable:state.ready,counts:state.ready?a.counts:null,workload:state.ready?a.workload:'UNAVAILABLE'}))});});
  await page.route(/\/admin\/agents\/governance-reviews(?:\?.*)?$/,r=>{state.inboxReads++;return json(r,{scope:'ADVISORY_RUNTIME_OUTPUTS',readOnly:true,items:new URL(r.request().url()).searchParams.has('cursor')?state.inboxOlder:state.inboxFiles,nextCursor:new URL(r.request().url()).searchParams.has('cursor')?null:state.inboxNext});});
  await page.route('**/admin/agents/governance-reviews/*',async r=>{state.inboxReads++;if(state.delayInboxDetail)await new Promise(resolve=>state.releaseInboxDetail=resolve);return json(r,state.inboxDetails[new URL(r.request().url()).pathname.split('/').at(-1)]);});
  await page.route('**/admin/agents/provider-connection',async r=>{expect(r.request().method()).toBe('GET');state.connectionChecks++;if(state.delayConnection)await new Promise(resolve=>state.releaseConnection=resolve);return json(r,state.connectionResponse);});
@@ -29,6 +29,25 @@ async function setup(page,options={}){
 }
 const control=(page,key='INVENTORY')=>page.locator(`[data-ai-control][data-key="${key}"]`);
 const review=async form=>{await form.locator('[name="reason"]').fill('قرار اختبار معزول بعد المراجعة');await form.locator('[name="reviewed"]').check();return form;};
+test('provider waits are visible without offering to replay completed or uncertain work',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ await setup(page,{rateControl:{state:'WAITING',reason:'PROVIDER_RATE_LIMITED',notBefore:'2026-10-31T00:00:00Z',revision:randomUUID(),limits:{dimension:'TPM'}},tasks:[task({state:'QUEUED',errorCode:'PROVIDER_RATE_LIMITED',attemptCount:1,unknownCostAttempts:1,retryNotBefore:'2026-10-31T00:00:00Z'}),task({state:'COMPLETED',result:'مخرج محفوظ',errorCode:'PROVIDER_RATE_LIMITED'}),task({state:'INTERRUPTED',errorCode:'PROVIDER_CONNECTION_UNCERTAIN'})]});
+ await expect(page.locator('[data-ai-rate-status]')).toContainText('حده المؤقت');await expect(page.locator('[data-ai-rate-status]')).toContainText('TPM');await expect(page.locator('[data-ai-retry-wait]')).toContainText('المهمة محفوظة');await expect(page.locator('[data-ai-provider-recovery]')).toBeHidden();await expect(page.locator('[data-target="PROVIDER_RETRY"]')).toHaveCount(0);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+test('provider recovery uses the reviewed server revision and clears on logout',async({page})=>{
+ const revision=randomUUID(),state=await setup(page,{rateControl:{state:'ACTION_REQUIRED',reason:'PROVIDER_QUOTA_EXHAUSTED',revision,notBefore:null}});
+ await page.route('**/admin/agents/provider-recovery',r=>{const body=r.request().postDataJSON();state.writes.push({kind:'provider-recovery',body});state.rateControl=null;return json(r,{id:revision,resumed:true},201);});
+ const form=await review(page.locator('[data-ai-provider-recovery]'));await expect(page.locator('[data-ai-rate-status]')).toContainText('حد الإنفاق');await form.getByRole('button').click();await expect(form).toBeHidden();expect(state.writes[0]).toMatchObject({kind:'provider-recovery',body:{expectedRevision:revision,reviewed:true}});
+ await page.evaluate(()=>window.HydrolandAuth.logout());await expect(page.locator('[data-ai-rate-status]')).toBeEmpty();await expect(form).toBeHidden();
+});
+test('only a definite rejected task offers explicit recovery and retains one logical task',async({page})=>{
+ const rejected=task({state:'FAILED',errorCode:'PROVIDER_RATE_LIMITED',attemptCount:1}),state=await setup(page,{tasks:[rejected]});
+ await page.route('**/admin/agents/tasks/*/provider-retry',r=>{const body=r.request().postDataJSON();state.writes.push({kind:'provider-retry',body});Object.assign(rejected,{state:'QUEUED',errorCode:null,revision:randomUUID()});return json(r,{...rejected,resumed:true},201);});
+ const form=await review(page.locator('[data-target="PROVIDER_RETRY"]'));await form.getByRole('button').click();await expect(page.locator('[data-target="PROVIDER_RETRY"]')).toHaveCount(0);await expect(page.locator('[data-ai-task-id]')).toHaveCount(1);expect(state.tasks[0].id).toBe(rejected.id);expect(state.writes[0].kind).toBe('provider-retry');expect(state.writes[0].body.reviewed).toBe(true);
+});
+test('fresh authorization blocks a pending provider recovery after role revocation',async({page})=>{
+ const state=await setup(page,{rateControl:{state:'ACTION_REQUIRED',reason:'PROVIDER_DAILY_RESET_UNKNOWN',revision:randomUUID(),notBefore:null}}),form=await review(page.locator('[data-ai-provider-recovery]'));state.admin=false;await form.getByRole('button').click();await expect(page.locator('#hl-admin-employees')).toBeHidden();expect(state.writes).toHaveLength(0);await expect(page.locator('[data-ai-rate-status]')).toBeEmpty();
+});
 test('owner reporting cycle preserves request identity, displays Abdullah safely and clears on logout',async({page})=>{
  await page.setViewportSize({width:390,height:844});
  const items=Array.from({length:14},(_,i)=>({...agent('DIRECTOR_'+i,'مدير الإدارة '+i),reportingRole:'DEPARTMENT_DIRECTOR'}));

@@ -612,12 +612,40 @@ model AiAgentTask {
   errorCode String?
   reviewedAt DateTime?
   reviewedByAccountId String?
+  attemptCount Int @default(0)
+  unknownCostAttempts Int @default(0)
+  retryNotBefore DateTime?
+  retryStartedAt DateTime?
+  attempts AiAgentTaskAttempt[]
   agent AiAgentRuntime @relation(fields:[agentKey], references:[key], onDelete:Restrict)
   requestedBy Account @relation("AiAgentTaskRequester", fields:[requestedByAccountId], references:[id], onDelete:Restrict)
   reviewedBy Account? @relation("AiAgentTaskReviewer", fields:[reviewedByAccountId], references:[id], onDelete:Restrict)
   @@unique([requestedByAccountId,requestKey])
   @@index([agentKey,state,createdAt])
   @@index([state,leaseExpiresAt])
+  @@index([reservationDate])
+  @@index([state,retryNotBefore,createdAt])
+}
+
+model AiAgentTaskAttempt {
+  id String @id @default(uuid())
+  taskId String
+  attemptNumber Int
+  claimId String @unique
+  state String
+  startedAt DateTime
+  dispatchedAt DateTime?
+  finishedAt DateTime?
+  reservationDate DateTime @db.Date
+  reservedCostMicroUsd Int
+  estimatedCostMicroUsd Int?
+  inputTokens Int?
+  outputTokens Int?
+  errorCode String?
+  providerStage String?
+  providerLimits Json?
+  task AiAgentTask @relation(fields:[taskId],references:[id],onDelete:Cascade)
+  @@unique([taskId,attemptNumber])
   @@index([reservationDate])
 }
 

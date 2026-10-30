@@ -35,5 +35,9 @@ export async function browserAcceptance({db,actor,session,getCalls,holdGeneratio
   await change('تشغيل الوكيل');await wait(async()=>(await db.aiAgentTask.count({where:{id:{in:[first,second]},state:'COMPLETED'}}))===2);assert.equal(getCalls(),initialCalls+2);await page.locator('[data-ai-refresh]').click();await expect(page.locator('[data-ai-key="INVENTORY"] [data-ai-pressure]')).toHaveText('متاح');await expect(page.locator('[data-ai-task-list] pre')).toHaveCount(2);await expect(page.locator('[data-ai-task-list] img')).toHaveCount(0);await expect(page.locator('[data-ai-task-list] pre').first()).toContainText('<img');
   await page.evaluate(()=>window.HydrolandAuth.logout());await expect(page.locator('[data-ai-task-list]')).toBeEmpty();await expect(page.locator('[data-ai-cards]')).toBeEmpty();
   console.log('AI connected browser/PostgreSQL/automatic-worker passed: per-agent pause during generation, retained queue, actual process restart, persisted resume exactly once, aggregate read adapter, escaped model result and logout privacy.');
- }finally{releaseGeneration();await browser?.close();if(web){web.closeAllConnections?.();await new Promise(resolve=>web.close(resolve));}await stop();}
+ }finally{releaseGeneration();await browser?.close();if(web){web.closeAllConnections?.();await new Promise(resolve=>web.close(resolve));}await stop();
+  // The automatic-worker case owns this isolated cooldown. Manual-worker
+  // cases that follow advance their own clocks and must not inherit its timer.
+  await db.operationalSetting.deleteMany({where:{key:'AI_PROVIDER_GATE:v1'}});
+ }
 }

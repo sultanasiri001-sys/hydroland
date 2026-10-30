@@ -21,9 +21,12 @@ export function operationsEvidenceDigest(taskId:string,claimId:string,sourceRevi
 // Older tasks remain explicitly unrecorded; never reconstruct their past input.
 export async function readOperationsEvidence(tx:Prisma.TransactionClient,source:{id:string;agentKey:string;action:string;claimId:string|null;startedAt:Date|null;finishedAt:Date|null}):Promise<OperationsEvidence|null>{
   if(source.action!=='READ_OPERATIONS')return null;
-  const events=await tx.auditEvent.findMany({where:{resource:'AiAgentTask',resourceId:source.id,action:{in:['AI_TASK_STARTED','AI_TASK_OPERATIONS_CAPTURED']}},select:{action:true,metadata:true},take:3});
+  const events=await tx.auditEvent.findMany({where:{resource:'AiAgentTask',resourceId:source.id,action:{in:['AI_TASK_STARTED','AI_TASK_OPERATIONS_CAPTURED']},metadata:{path:['claimId'],equals:source.claimId||''}},select:{action:true,metadata:true},take:3});
   const captures=events.filter(event=>event.action==='AI_TASK_OPERATIONS_CAPTURED');
-  if(!captures.length)return{status:'NOT_RECORDED'};
+  if(!captures.length){
+    const prior=await tx.auditEvent.findFirst({where:{resource:'AiAgentTask',resourceId:source.id,action:'AI_TASK_OPERATIONS_CAPTURED'},select:{id:true}});
+    return{status:prior?'INVALID':'NOT_RECORDED'};
+  }
   const starts=events.filter(event=>event.action==='AI_TASK_STARTED');
   if(captures.length!==1||starts.length!==1||events.length!==2)return{status:'INVALID'};
   const evidence=record(captures[0].metadata),start=record(starts[0].metadata);
