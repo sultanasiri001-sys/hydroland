@@ -87,7 +87,7 @@ try{
  const {governanceCorrectionAcceptance}=await import('./governance-correction-acceptance.mjs');
  await governanceCorrectionAcceptance({db,service,runtime,audit,provider,actor,token,call,catalog,control,enqueue,setModelText:text=>{modelText=text},payloads,providerCalls:()=>({modelCalls,countCalls})});
  const {departmentReportingAcceptance}=await import('./department-reporting-acceptance.mjs');
- await departmentReportingAcceptance({db,service,actor,ordinary,token,otherToken:other,call,setModelText:text=>{modelText=text},payloads});
+  await departmentReportingAcceptance({db,service,actor,ordinary,token,otherToken:other,call,setModelText:text=>{modelText=text},payloads,providerCalls:()=>({generation:modelCalls,count:countCalls,metadata:metadataCalls})});
  const {providerRecoveryAcceptance}=await import('./agent-provider-recovery-acceptance.mjs');
  await providerRecoveryAcceptance({db,service,runtime,audit,provider,actor,token,otherToken:other,call,catalog,control,enqueue,setFailure:value=>{providerFailure=value;},setModelText:value=>{modelText=value;},calls:()=>({generation:modelCalls,count:countCalls})});
  // Dedicated historical fixtures do not dispatch or depend on worker readiness.

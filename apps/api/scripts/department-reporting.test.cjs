@@ -20,6 +20,7 @@ function fixture(){
   $queryRaw:async()=>[{now:new Date()}],$executeRaw:async()=>1,
   account:{findFirst:async({where})=>active&&[owner,other].includes(where.id)?{id:where.id,personId:where.id}:null,findUnique:async()=>({email:'owner@example.invalid'})},
   organization:{findUnique:async()=>({id:'platform',kind:'HYDROLAND_INTERNAL_PLATFORM',status:'ACTIVE',ownerId:owner})},
+  orgUnit:{findMany:async()=>Object.keys(DEPARTMENT_DIRECTORS).map(code=>({code,active:true}))},
   operationalSetting:{findUnique:async({where})=>settings.get(where.key)||null,create:async({data})=>{assert(!settings.has(data.key));settings.set(data.key,structuredClone(data));return data;},update:async({where,data})=>{const row={...settings.get(where.key),...structuredClone(data)};settings.set(where.key,row);return row;},findMany:async()=>[...settings.values()].filter(s=>s.key.startsWith(domain.REPORT_PREFIX)&&['REVIEWING','FORMATTING'].includes(s.value.state)).slice(0,1)},
   aiAgentRuntime:{findUnique:async({where})=>controls.get(where.key)||null,update:async({where,data})=>{Object.assign(controls.get(where.key),data);return controls.get(where.key);}},
   aiAgentTaskAttempt:{updateMany:async()=>({count:1})},

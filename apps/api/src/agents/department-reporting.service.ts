@@ -8,6 +8,8 @@ import { DEPARTMENT_DIRECTORS } from './department-directors';
 import { decisionReason, inputRecord, QUEUE_LIMIT, RUNTIME_GUARD_KEY, uuid } from './agent-runtime.domain';
 import { GovernanceReviewInboxService } from './governance-review-inbox.service';
 import { executiveReportContext, parseReportCycle, readReportBundle, ReportCycle, reportDigest, reportId, REPORT_FINGERPRINT, REPORT_NOTIFICATION, REPORT_PREFIX, requireReportOwner } from './executive-report.domain';
+import { DIRECTOR_SOURCE_FINGERPRINT } from './department-source.domain';
+import { requireDepartmentSourceOwner } from './department-source.reader';
 
 const json=(value:unknown):Prisma.InputJsonValue=>JSON.parse(JSON.stringify(value));
 
@@ -37,13 +39,15 @@ export class DepartmentReportingService {
       await this.guard(tx);const actor=await lockAdminIdentities(tx,actorId);await requireReportOwner(tx,actorId);
       const previous=await tx.operationalSetting.findUnique({where:{key:REPORT_PREFIX+id}});
       if(previous){const cycle=parseReportCycle(previous.value);if(cycle.ownerId!==actorId||cycle.brief!==brief||cycle.sendEmail!==sendEmail)throw new ConflictException('مرجع الدورة مستخدم لطلب مختلف.');return cycle;}
+      const organization=await requireDepartmentSourceOwner(tx,actorId),units=await tx.orgUnit.findMany({where:{organizationId:organization.id,type:'DEPARTMENT',active:true,code:{in:STAFFING_DEPARTMENTS.map(d=>d.code)}},select:{code:true}});
+      if(new Set(units.map(u=>u.code)).size!==STAFFING_DEPARTMENTS.length)throw new ConflictException('فعّل إدارات الهيكل الداخلي الأربع عشرة قبل بدء دورة جديدة.');
       const sources:ReportCycle['sources']=[];
       for(const department of STAFFING_DEPARTMENTS){
         const agentKey=DEPARTMENT_DIRECTORS[department.code];
         if(!await tx.aiAgentRuntime.findUnique({where:{key:agentKey}}))throw new ConflictException('هيئ مديري الإدارات قبل بدء الدورة.');
         if(await tx.aiAgentTask.count({where:{agentKey,state:{in:['QUEUED','RUNNING']}}})>=QUEUE_LIMIT)throw new ConflictException('طابور أحد المديرين ممتلئ.');
         const prompt=`تقرير مدير ${department.nameAr}. أعد تقريرًا ضمن مسؤولية إدارتك فقط استنادًا إلى الأدلة المقدمة. بيّن الإنجاز والملاحظات والقرارات المطلوبة والبيانات غير المتاحة دون اختلاق مؤشرات. موجز المالك: ${brief}`;
-        const task=await tx.aiAgentTask.create({data:{agentKey,requestedByAccountId:actorId,requestKey:reportId(`director:${id}:${department.code}`),fingerprint:reportDigest({cycleId:id,agentKey,prompt}),action:'READ_OPERATIONS',language:'ar-SA',prompt}});
+        const task=await tx.aiAgentTask.create({data:{agentKey,requestedByAccountId:actorId,requestKey:reportId(`director:${id}:${department.code}`),fingerprint:DIRECTOR_SOURCE_FINGERPRINT+reportDigest({cycleId:id,agentKey,prompt}),action:'READ_OPERATIONS',language:'ar-SA',prompt}});
         sources.push({departmentCode:department.code,agentKey,taskId:task.id});
         await this.audit.record({actorId:actor.personId,action:'AI_TASK_QUEUED',resource:'AiAgentTask',resourceId:task.id,metadata:{reason,agentKey,action:task.action,requesterAccountId:actorId,cycleId:id,to:'QUEUED',reportingOnly:true}},tx);
       }
