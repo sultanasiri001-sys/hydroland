@@ -17,7 +17,7 @@ import { correctionFingerprint, correctionRequestId, hasDraftCorrectionPermissio
 import { directorDepartment } from './department-directors';
 import { executiveReportContext, reportModelInput, REPORT_FINGERPRINT } from './executive-report.domain';
 import { GovernanceReviewInboxService } from './governance-review-inbox.service';
-import { MAX_PROVIDER_ATTEMPTS, PROVIDER_GATE_KEY, ProviderGate, providerGateView, readProviderGate, rejectionPlan, taskIntervalMs } from './agent-provider-policy';
+import { MAX_PROVIDER_ATTEMPTS, PROVIDER_GATE_KEY, PROVIDER_RECOVERY_WINDOW_MS, ProviderGate, providerGateView, readProviderGate, rejectionPlan, taskIntervalMs } from './agent-provider-policy';
 
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const taskView={id:true,agentKey:true,requestedByAccountId:true,action:true,language:true,prompt:true,state:true,revision:true,createdAt:true,startedAt:true,dispatchedAt:true,finishedAt:true,model:true,executionPolicy:true,inputTokens:true,outputTokens:true,reservedCostMicroUsd:true,estimatedCostMicroUsd:true,result:true,errorCode:true,reviewedAt:true,attemptCount:true,unknownCostAttempts:true,retryNotBefore:true} as const;
@@ -116,6 +116,8 @@ export class AgentRuntimeService {
       if(gate.notBefore&&Date.parse(gate.notBefore)>now.getTime())throw new ConflictException('لم ينته وقت الانتظار الذي حدده المزود.');
       const config=this.model.configuration(),worker=await this.workerState(tx,config,now),budget=await this.reserved(tx,now);
       if(!config.ready||!worker.fresh||budget.reserved+config.reserveMicroUsd>config.dailyBudgetMicroUsd)throw new ConflictException('راجع إعداد المزود والمحرك وحد التكلفة قبل الاستكمال.');
+      // Operator review can start a fresh time window, never a fresh attempt cap.
+      if(gate.taskId)await tx.aiAgentTask.updateMany({where:{id:gate.taskId,state:'QUEUED',attemptCount:{lt:MAX_PROVIDER_ATTEMPTS},result:null},data:{retryStartedAt:now,revision:randomUUID()}});
       await tx.operationalSetting.delete({where:{key:PROVIDER_GATE_KEY}});
       await this.audit.record({actorId:actor.personId,action:'AI_PROVIDER_RECOVERY_REVIEWED',resource:'AiProvider',metadata:{reason,previousReason:gate.reason,adminAccountId:actor.id,noUncertainReplay:true}},tx);
       return{id:gate.revision,resumed:true};
@@ -249,6 +251,10 @@ export class AgentRuntimeService {
       if(!allowed){await tx.aiAgentTask.update({where:{id:task.id},data:{state:'FAILED',errorCode:'REQUESTER_AUTH_REVOKED',finishedAt:now,revision:randomUUID()}});await this.audit.record({action:'AI_TASK_DENIED',resource:'AiAgentTask',resourceId:task.id,metadata:{agentKey:task.agentKey,executor:'AI_RUNTIME_WORKER',initiatedByAccountId:task.requestedByAccountId,from:'QUEUED',to:'FAILED',reason:'REQUESTER_AUTH_REVOKED'}},tx);return null;}
       task=await this.preserveLegacyAttempt(tx,task);
       if(task.attemptCount>=MAX_PROVIDER_ATTEMPTS){await tx.aiAgentTask.update({where:{id:task.id},data:{state:'FAILED',errorCode:'PROVIDER_RETRY_EXHAUSTED',finishedAt:now,revision:randomUUID()}});return null;}
+      if(task.attemptCount>0&&task.retryStartedAt&&now.getTime()-task.retryStartedAt.getTime()>PROVIDER_RECOVERY_WINDOW_MS){
+        await this.saveProviderGate(tx,{version:1,revision:randomUUID(),status:'ACTION_REQUIRED',reason:'PROVIDER_RECOVERY_EXPIRED',notBefore:null,taskId:task.id});
+        await this.audit.record({action:'AI_PROVIDER_RECOVERY_WINDOW_EXPIRED',resource:'AiAgentTask',resourceId:task.id,metadata:{attemptCount:task.attemptCount,requesterAccountId:task.requestedByAccountId,noAutomaticRetry:true}},tx);return null;
+      }
       const claimId=randomUUID(),attemptNumber=task.attemptCount+1;
       await tx.aiAgentTaskAttempt.create({data:{taskId:task.id,attemptNumber,claimId,state:'RUNNING',startedAt:now,reservationDate:budget.day,reservedCostMicroUsd:config.reserveMicroUsd}});
       const updated=await tx.aiAgentTask.update({where:{id:task.id},data:{state:'RUNNING',revision:randomUUID(),startedAt:now,finishedAt:null,dispatchedAt:null,retryNotBefore:null,retryStartedAt:task.retryStartedAt||now,attemptCount:attemptNumber,leaseExpiresAt:new Date(now.getTime()+TASK_LEASE_MS),claimId,model:config.model,reservationDate:budget.day,reservedCostMicroUsd:{increment:config.reserveMicroUsd},errorCode:null,executionPolicy:{provider:config.provider,model:config.model,maxInputTokens:config.maxInputTokens,maxOutputTokens:config.maxOutputTokens,inputRate:config.inputRate,outputRate:config.outputRate,dailyBudgetMicroUsd:config.dailyBudgetMicroUsd}}});
@@ -416,7 +422,7 @@ export class AgentRuntimeService {
       const receipt=await tx.aiAgentTaskAttempt.updateMany({where:{claimId,state:{in:['RUNNING','INTERRUPTED']}},data:{state:late?'LATE_RESULT':result?'COMPLETED':rejected?'REJECTED':state,finishedAt:now,errorCode:error?.code,providerStage:error?.providerStage,...(error?.limits?{providerLimits:JSON.parse(JSON.stringify(error.limits))}:{}),...(result?{inputTokens:result.inputTokens,outputTokens:result.outputTokens,estimatedCostMicroUsd:result.estimatedCostMicroUsd}:{})}});
       if(receipt.count!==1)throw new ConflictException('لم يثبت سجل نتيجة المحاولة.');
       const completed=await tx.aiAgentTask.update({where:{id},data:{state,revision:randomUUID(),finishedAt:deferred?null:now,retryNotBefore:plan?.notBefore?new Date(plan.notBefore):null,...(deferred?{dispatchedAt:null,leaseExpiresAt:null}:{}),...(result?{result:result.text,inputTokens:result.inputTokens,outputTokens:result.outputTokens,estimatedCostMicroUsd:(task.estimatedCostMicroUsd||0)+result.estimatedCostMicroUsd,unknownCostAttempts:Math.max(0,task.unknownCostAttempts-1)}:{errorCode:plan?.exhausted?'PROVIDER_RETRY_EXHAUSTED':error?.code||'EXECUTION_FAILED'})}});
-      if(plan)await this.saveProviderGate(tx,{version:1,revision:randomUUID(),status:plan.automatic?'WAITING':'ACTION_REQUIRED',reason:plan.reason,notBefore:plan.notBefore,...(error?.limits?{limits:error.limits}:{})});
+      if(plan)await this.saveProviderGate(tx,{version:1,revision:randomUUID(),status:plan.automatic?'WAITING':'ACTION_REQUIRED',reason:plan.reason,notBefore:plan.notBefore,taskId:id,...(error?.limits?{limits:error.limits}:{})});
       else if(result?.rateLimits){
         const gate=await this.providerGate(tx),until=Math.max(result.rateLimits.retryAt?Date.parse(result.rateLimits.retryAt):0,result.rateLimits.minimumDelayMs!==undefined?now.getTime()+result.rateLimits.minimumDelayMs:0);
         if(gate?.status!=='ACTION_REQUIRED'&&(result.rateLimits.invalidDelay||until>now.getTime()))await this.saveProviderGate(tx,{version:1,revision:randomUUID(),status:result.rateLimits.invalidDelay?'ACTION_REQUIRED':'WAITING',reason:result.rateLimits.invalidDelay?'PROVIDER_DELAY_REQUIRES_REVIEW':'PROVIDER_RATE_LIMITED',notBefore:new Date(Math.max(until,gate?.notBefore?Date.parse(gate.notBefore):0,now.getTime())).toISOString(),limits:result.rateLimits});

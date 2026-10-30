@@ -22,6 +22,7 @@ test('daily error classification retains no raw message and never uses minute re
  assert.equal(rejectionPlan('PROVIDER_RATE_LIMITED',limits,1,now,now,0).automatic,false);
  const explicit=providerLimits(new Headers({'retry-after':'86400','x-ratelimit-reset-tokens':'5s'}),now,{message});
  const p=rejectionPlan('PROVIDER_RATE_LIMITED',explicit,1,now,now,0);assert.equal(p.automatic,true);assert(Date.parse(p.notBefore)>=now+86400000);
+ const body=providerLimits(new Headers({'x-ratelimit-reset-tokens':'5s'}),now,{code:'rate_limit_exceeded',message:message+' Please try again in 2h3m4.5s. PRIVATE_ACCOUNT'});assert.equal(body.minimumDelayMs,7384500);assert.equal(body.dimension,'TPD');assert(!JSON.stringify(body).includes('PRIVATE_ACCOUNT'));
 });
 test('unknown or billing rejection cannot become an automatic paid retry',()=>{
  for(const code of ['PROVIDER_QUOTA_EXHAUSTED','PROVIDER_USAGE_LIMITED','PROVIDER_AUTH_FAILED','PROVIDER_CONNECTION_UNCERTAIN'])assert.equal(rejectionPlan(code,{retryAt:new Date(now+60000).toISOString()},1,now,now,0).automatic,false);

@@ -12,7 +12,7 @@ export interface ProviderLimits {
 }
 export interface ProviderGate {
   version:1; revision:string; status:'WAITING'|'ACTION_REQUIRED'; reason:string;
-  notBefore:string|null; limits?:ProviderLimits;
+  notBefore:string|null; limits?:ProviderLimits; taskId?:string;
 }
 const numberHeader=(headers:Headers,key:string,signed=false)=>{
   const raw=headers.get(key);if(raw===null||!(signed?/^-?\d{1,15}$/:/^\d{1,15}$/).test(raw))return undefined;
@@ -38,6 +38,12 @@ export function providerLimits(headers:Headers,now:number,detail?:unknown):Provi
   else if(/tokens per min(?:ute)?/i.test(message))value.dimension='TPM';
   else if(/requests per min(?:ute)?/i.test(message))value.dimension='RPM';
   const waits:number[]=[];const retry=headers.get('retry-after');
+  // Some daily-limit responses omit Retry-After but give a compact duration.
+  // Accept only that duration, never instructions, URLs or other message text.
+  if(['rate_limit_exceeded','slow_down','server_is_overloaded'].includes(String(data.code))||data.type==='rate_limit_exceeded'){
+    const text=message.match(/\btry again in ((?:\d+(?:\.\d+)?(?:ms|s|m|h|d)){1,5})(?:\b|[.,])/i)?.[1];
+    if(text){const delay=durationMs(text);if(delay!==null&&delay<=31*86_400_000)waits.push(delay);else value.invalidDelay=true;}
+  }
   if(retry!==null){
     const serverDate=Date.parse(headers.get('date')||'');
     const numeric=/^\d+(?:\.\d+)?$/.test(retry),httpDate=/^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(retry);
