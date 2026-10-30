@@ -12,12 +12,14 @@ const {GovernanceReviewInboxService}=require('../dist/agents/governance-review-i
 const runtime=(writer=audit,model=provider)=>new AgentRuntimeService(runtimeDb,writer,agents,model,admin,new GovernanceReviewInboxService(runtimeDb,agents)),service=runtime();
 const people=[],accounts=[],suffix=randomUUID(),password='Ai-runtime-fixture-only-2026!',salt='ai-runtime-fixture',passwordHash=`${salt}:${scryptSync(password,salt,64).toString('hex')}`;
 let initialized=false,modelCalls=0,countCalls=0,metadataCalls=0,release,modelEntered=false,hold=false,breakConnection=false,tokenCount=64,invalidOutput=false,modelText=null;
+let providerFailure=null;
 const payloads=[];
 const model=createServer(async(req,res)=>{
  let text='';for await(const chunk of req)text+=chunk;const data=JSON.parse(text||'{}');
  if(req.url==='/v1/models/fixture-model'){metadataCalls++;assert.equal(req.method,'GET');assert.equal(text,'');return res.writeHead(200,{'content-type':'application/json'}).end(JSON.stringify({object:'model',id:'fixture-model'}));}
- if(req.url==='/v1/responses/input_tokens'){countCalls++;return res.writeHead(200,{'content-type':'application/json'}).end(JSON.stringify({object:'response.input_tokens',input_tokens:tokenCount}));}
+ if(req.url==='/v1/responses/input_tokens'){countCalls++;if(providerFailure?.stage==='INPUT_TOKENS')return res.writeHead(providerFailure.status||429,{'content-type':'application/json',...providerFailure.headers}).end(JSON.stringify({error:{code:providerFailure.code,message:providerFailure.message}}));return res.writeHead(200,{'content-type':'application/json'}).end(JSON.stringify({object:'response.input_tokens',input_tokens:tokenCount}));}
  if(req.url!=='/v1/responses')return res.writeHead(404).end();modelCalls++;payloads.push(data);modelEntered=true;
+ if(providerFailure?.stage==='GENERATION')return res.writeHead(providerFailure.status||429,{'content-type':'application/json',...providerFailure.headers}).end(JSON.stringify({error:{code:providerFailure.code,message:providerFailure.message}}));
  if(breakConnection){req.socket.destroy();return;}if(hold)await new Promise(resolve=>{release=resolve;});
  res.writeHead(200,{'content-type':'application/json'}).end(JSON.stringify({id:'resp_fixture_'+modelCalls,status:'completed',output:[{type:'reasoning',summary:[]},{type:'message',role:'assistant',content:[{type:'output_text',text:invalidOutput?'':modelText??`مسودة اختبار آمنة ${modelCalls} <img src=x onerror=alert(1)>`}]}],usage:{input_tokens:64,output_tokens:32}}));
 });
@@ -86,6 +88,8 @@ try{
  await governanceCorrectionAcceptance({db,service,runtime,audit,provider,actor,token,call,catalog,control,enqueue,setModelText:text=>{modelText=text},payloads,providerCalls:()=>({modelCalls,countCalls})});
  const {departmentReportingAcceptance}=await import('./department-reporting-acceptance.mjs');
  await departmentReportingAcceptance({db,service,actor,ordinary,token,otherToken:other,call,setModelText:text=>{modelText=text},payloads});
+ const {providerRecoveryAcceptance}=await import('./agent-provider-recovery-acceptance.mjs');
+ await providerRecoveryAcceptance({db,service,runtime,audit,provider,actor,token,otherToken:other,call,catalog,control,enqueue,setFailure:value=>{providerFailure=value;},setModelText:value=>{modelText=value;},calls:()=>({generation:modelCalls,count:countCalls})});
  // Dedicated historical fixtures do not dispatch or depend on worker readiness.
  const metricKey='MARKETING',metricBefore=await db.aiAgentTask.count({where:{agentKey:metricKey}});
  await db.aiAgentTask.createMany({data:[
@@ -108,6 +112,6 @@ try{
 }finally{
  if(release)release();await new Promise(resolve=>model.close(resolve));model.closeAllConnections?.();
  const taskIds=(await db.aiAgentTask.findMany({where:{requestedByAccountId:{in:accounts}},select:{id:true}})).map(x=>x.id);
- if(initialized){await db.aiAgentTask.deleteMany({where:{id:{in:taskIds}}});await db.aiAgentRuntime.deleteMany({where:{lastAdminAccountId:{in:accounts}}});await db.operationalSetting.deleteMany({where:{key:{in:['AI_RUNTIME_HEARTBEAT:v1','AI_RUNTIME_SERIALIZATION:v1']}}});}
+ if(initialized){await db.aiAgentTask.deleteMany({where:{id:{in:taskIds}}});await db.aiAgentRuntime.deleteMany({where:{lastAdminAccountId:{in:accounts}}});await db.operationalSetting.deleteMany({where:{key:{in:['AI_RUNTIME_HEARTBEAT:v1','AI_RUNTIME_SERIALIZATION:v1','AI_PROVIDER_GATE:v1']}}});}
  await db.session.deleteMany({where:{accountId:{in:accounts}}});await db.roleAssignment.deleteMany({where:{accountId:{in:accounts}}});await db.auditEvent.deleteMany({where:{OR:[{actorId:{in:people}},{resource:'AiAgentTask',resourceId:{in:taskIds}}]}});await db.account.deleteMany({where:{id:{in:accounts}}});await db.person.deleteMany({where:{id:{in:people}}});await db.$disconnect();await runtimeDb.$disconnect();
 }

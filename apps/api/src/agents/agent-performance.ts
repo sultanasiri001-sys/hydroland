@@ -19,7 +19,7 @@ export async function agentPerformance(tx: Prisma.TransactionClient) {
       FILTER(WHERE state='COMPLETED' AND "finishedAt">="startedAt")::double precision AS "averageExecutionMs",
     COALESCE(sum("reservedCostMicroUsd"),0)::text AS "reservedMicroUsd",
     COALESCE(sum("estimatedCostMicroUsd"),0)::text AS "knownEstimatedMicroUsd",
-    count(*) FILTER(WHERE "dispatchedAt" IS NOT NULL AND "estimatedCostMicroUsd" IS NULL)::int AS "unknownEstimates"
+    sum(CASE WHEN "attemptCount">0 THEN "unknownCostAttempts" WHEN "dispatchedAt" IS NOT NULL AND "estimatedCostMicroUsd" IS NULL THEN 1 ELSE 0 END)::int AS "unknownEstimates"
     FROM "AiAgentTask" GROUP BY "agentKey"`;
 }
 

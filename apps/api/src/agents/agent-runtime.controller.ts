@@ -10,6 +10,7 @@ export class AgentRuntimeController {
   constructor(private readonly runtime:AgentRuntimeService,private readonly inbox:GovernanceReviewInboxService){}
   @Get() @Header('Cache-Control','no-store') catalog(@Req()req:{auth:{accountId:string}}){return this.runtime.catalog(req.auth.accountId);}
   @Get('provider-connection') @Header('Cache-Control','no-store') connection(@Req()req:{auth:{accountId:string}}){return this.runtime.checkProviderConnection(req.auth.accountId);}
+  @Post('provider-recovery') recover(@Req()req:{auth:{accountId:string}},@Body()body:unknown){return this.runtime.recoverProvider(req.auth.accountId,body);}
   @Get('governance-reviews') @Header('Cache-Control','no-store') reviews(@Req()req:{auth:{accountId:string}},@Query('cursor')cursor?:string){return this.inbox.list(req.auth.accountId,cursor);}
   @Get('governance-reviews/:id') @Header('Cache-Control','no-store') review(@Req()req:{auth:{accountId:string}},@Param('id')id:string){return this.inbox.detail(req.auth.accountId,id);}
   @Post('initialize') initialize(@Req()req:{auth:{accountId:string}},@Body()body:unknown){return this.runtime.initialize(req.auth.accountId,body);}
@@ -19,4 +20,5 @@ export class AgentRuntimeController {
   @Patch('tasks/:id/decision') decide(@Req()req:{auth:{accountId:string}},@Param('id')id:string,@Body()body:unknown){return this.runtime.decideTask(req.auth.accountId,id,body);}
   @Post('tasks/:id/governance-resume') resume(@Req()req:{auth:{accountId:string}},@Param('id')id:string,@Body()body:unknown){return this.runtime.resumeGovernance(req.auth.accountId,id,body);}
   @Post('tasks/:id/draft-correction') correction(@Req()req:{auth:{accountId:string}},@Param('id')id:string,@Body()body:unknown){return this.runtime.resumeDraftCorrection(req.auth.accountId,id,body);}
+  @Post('tasks/:id/provider-retry') retry(@Req()req:{auth:{accountId:string}},@Param('id')id:string,@Body()body:unknown){return this.runtime.retryRejectedTask(req.auth.accountId,id,body);}
 }

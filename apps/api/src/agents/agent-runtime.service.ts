@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, NotFoundException } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
-import { Prisma } from '@prisma/client';
+import { AiAgentTask, Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { AuditService } from '../audit/audit.service';
 import { lockAdminIdentities, requireVerifiedAdmin } from '../admin/admin-authorization';
@@ -17,9 +17,10 @@ import { correctionFingerprint, correctionRequestId, hasDraftCorrectionPermissio
 import { directorDepartment } from './department-directors';
 import { executiveReportContext, reportModelInput, REPORT_FINGERPRINT } from './executive-report.domain';
 import { GovernanceReviewInboxService } from './governance-review-inbox.service';
+import { MAX_PROVIDER_ATTEMPTS, PROVIDER_GATE_KEY, ProviderGate, providerGateView, readProviderGate, rejectionPlan, taskIntervalMs } from './agent-provider-policy';
 
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
-const taskView={id:true,agentKey:true,requestedByAccountId:true,action:true,language:true,prompt:true,state:true,revision:true,createdAt:true,startedAt:true,dispatchedAt:true,finishedAt:true,model:true,executionPolicy:true,inputTokens:true,outputTokens:true,reservedCostMicroUsd:true,estimatedCostMicroUsd:true,result:true,errorCode:true,reviewedAt:true} as const;
+const taskView={id:true,agentKey:true,requestedByAccountId:true,action:true,language:true,prompt:true,state:true,revision:true,createdAt:true,startedAt:true,dispatchedAt:true,finishedAt:true,model:true,executionPolicy:true,inputTokens:true,outputTokens:true,reservedCostMicroUsd:true,estimatedCostMicroUsd:true,result:true,errorCode:true,reviewedAt:true,attemptCount:true,unknownCostAttempts:true,retryNotBefore:true} as const;
 const configHash=(config:AiModelConfiguration)=>hash(config);
 const stableRequestId=(value:string)=>{
   const hex=createHash('sha256').update(value).digest('hex');
@@ -38,7 +39,25 @@ export class AgentRuntimeService {
     await tx.$executeRaw`INSERT INTO "OperationalSetting" ("key","value","updatedAt") VALUES (${RUNTIME_GUARD_KEY},'{}'::jsonb,clock_timestamp()) ON CONFLICT ("key") DO UPDATE SET "updatedAt"=clock_timestamp()`;
   }
   private async now(tx:Prisma.TransactionClient){return (await tx.$queryRaw<Array<{now:Date}>>`SELECT clock_timestamp() AS now`)[0].now;}
-  private async reserved(tx:Prisma.TransactionClient,now:Date){const day=new Date(now.toISOString().slice(0,10)+'T00:00:00Z');const sum=await tx.aiAgentTask.aggregate({where:{reservationDate:day},_sum:{reservedCostMicroUsd:true}});return{day,reserved:sum._sum.reservedCostMicroUsd||0};}
+  private async reserved(tx:Prisma.TransactionClient,now:Date){
+    const day=new Date(now.toISOString().slice(0,10)+'T00:00:00Z');
+    const [attempts,legacy]=await Promise.all([
+      tx.aiAgentTaskAttempt.aggregate({where:{reservationDate:day},_sum:{reservedCostMicroUsd:true}}),
+      tx.aiAgentTask.aggregate({where:{reservationDate:day,attempts:{none:{}}},_sum:{reservedCostMicroUsd:true}}),
+    ]);
+    return{day,reserved:(attempts._sum.reservedCostMicroUsd||0)+(legacy._sum.reservedCostMicroUsd||0)};
+  }
+  private async providerGate(tx:Prisma.TransactionClient){return readProviderGate((await tx.operationalSetting.findUnique({where:{key:PROVIDER_GATE_KEY}}))?.value);}
+  private async preserveLegacyAttempt(tx:Prisma.TransactionClient,task:AiAgentTask){
+    if(task.attemptCount||!task.startedAt&&!task.dispatchedAt&&!task.reservedCostMicroUsd)return task;
+    const start=task.startedAt||task.createdAt;
+    await tx.aiAgentTaskAttempt.create({data:{id:'legacy:'+task.id,taskId:task.id,attemptNumber:1,claimId:task.claimId||'legacy:'+task.id,state:task.state==='RUNNING'?'RUNNING':task.state==='COMPLETED'?'COMPLETED':task.state==='FAILED'?'FAILED':'INTERRUPTED',startedAt:start,dispatchedAt:task.dispatchedAt,finishedAt:task.finishedAt,reservationDate:task.reservationDate||new Date(start.toISOString().slice(0,10)+'T00:00:00Z'),reservedCostMicroUsd:task.reservedCostMicroUsd,estimatedCostMicroUsd:task.estimatedCostMicroUsd,inputTokens:task.inputTokens,outputTokens:task.outputTokens,errorCode:task.errorCode}});
+    return tx.aiAgentTask.update({where:{id:task.id},data:{attemptCount:1,unknownCostAttempts:task.dispatchedAt&&task.estimatedCostMicroUsd===null?1:0,retryStartedAt:start}});
+  }
+  private async saveProviderGate(tx:Prisma.TransactionClient,gate:ProviderGate){
+    const value=JSON.parse(JSON.stringify(gate)) as Prisma.InputJsonValue;
+    await tx.operationalSetting.upsert({where:{key:PROVIDER_GATE_KEY},create:{key:PROVIDER_GATE_KEY,value},update:{value}});
+  }
   private async workerState(tx:Prisma.TransactionClient,config:AiModelConfiguration,now:Date){
     const stored=(await tx.operationalSetting.findUnique({where:{key:WORKER_STATUS_KEY}}))?.value;
     const heartbeat=stored&&typeof stored==='object'&&!Array.isArray(stored)?stored as Record<string,unknown>:{};
@@ -68,13 +87,14 @@ export class AgentRuntimeService {
       await requireVerifiedAdmin(tx,actorId);const now=await this.now(tx),config=this.model.configuration(),worker=await this.workerState(tx,config,now),budget=await this.reserved(tx,now);
       const controls=await tx.aiAgentRuntime.findMany();
       const historical=await agentPerformance(tx);
+      const gate=providerGateView(await this.providerGate(tx),now.getTime());
       const budgetAvailable=config.ready&&budget.reserved+config.reserveMicroUsd<=config.dailyBudgetMicroUsd;
-      const measured=config.ready&&worker.fresh,available=measured&&budgetAvailable;
-      const reason=!config.ready?config.reason:!worker.fresh?'WORKER_STALE':!budgetAvailable?'DAILY_BUDGET_EXHAUSTED':'READY';
+      const measured=config.ready&&worker.fresh,available=measured&&budgetAvailable&&gate.state!=='ACTION_REQUIRED';
+      const reason=!config.ready?config.reason:!worker.fresh?'WORKER_STALE':!budgetAvailable?'DAILY_BUDGET_EXHAUSTED':gate.state==='ACTION_REQUIRED'?'PROVIDER_ACTION_REQUIRED':gate.blocked?'PROVIDER_WAITING':'READY';
       const groups=await tx.aiAgentTask.groupBy({by:['agentKey','state'],_count:{_all:true},where:{state:{in:['QUEUED','RUNNING','FAILED','INTERRUPTED']}}});
       const overdue=await tx.aiAgentTask.groupBy({by:['agentKey'],_count:{_all:true},where:{state:'QUEUED',createdAt:{lt:new Date(now.getTime()-QUEUE_OVERDUE_MS)}}});
       return{initialized:this.agents.list().every(agent=>controls.some(control=>control.key===agent.key)),observedAt:now.toISOString(),workerObservedAt:worker.observedAt,metricsMaxAgeSeconds:METRICS_MAX_AGE_MS/1000,
-        provider:{provider:config.provider,model:config.model,ready:available,reason,maxInputTokens:config.maxInputTokens,maxOutputTokens:config.maxOutputTokens},
+        provider:{provider:config.provider,model:config.model,ready:available,reason,maxInputTokens:config.maxInputTokens,maxOutputTokens:config.maxOutputTokens,rateControl:gate},
         budget:{currency:'USD',day:budget.day.toISOString().slice(0,10),limitMicroUsd:config.dailyBudgetMicroUsd,reservedMicroUsd:budget.reserved,taskReserveMicroUsd:config.reserveMicroUsd,kind:'CONSERVATIVE_RESERVATION'},
         calculation:{perAgentConcurrency:1,highQueueAt:3,overdueMinutes:QUEUE_OVERDUE_MS/60000,globalConcurrency:1},
         items:this.agents.list().map(agent=>{const control=controls.find(c=>c.key===agent.key),counts=measured?{
@@ -84,6 +104,39 @@ export class AgentRuntimeService {
           overdue:overdue.find(g=>g.agentKey===agent.key)?._count._all||0}:null;
           return{...agent,reportingRole:directorDepartment(agent.key)?'DEPARTMENT_DIRECTOR':agent.key==='EXECUTIVE'?'EXECUTIVE_SECRETARY':isGovernanceAgent(agent.key)?'GOVERNANCE_REVIEWER':'SPECIALIST',performance:performanceView(historical.find(row=>row.agentKey===agent.key)),departmentCode:AGENT_DEPARTMENTS[agent.key],departmentName:STAFFING_DEPARTMENTS.find(d=>d.code===AGENT_DEPARTMENTS[agent.key])?.nameAr,state:control?.state||'UNINITIALIZED',revision:control?.revision||null,workload:workload(counts),counts,canEnable:Boolean(control&&available&&control.state==='PAUSED'),canPause:control?.state==='ENABLED'};
         })};
+    });
+  }
+
+  async recoverProvider(actorId:string,body:unknown){
+    const value=inputRecord(body,['expectedRevision','reason','reviewed']),reason=decisionReason(value);
+    if(!uuid(value.expectedRevision))throw new BadRequestException('نسخة حالة المزود مطلوبة.');
+    return this.db.serializable(async tx=>{
+      await this.guard(tx);const actor=await lockAdminIdentities(tx,actorId),gate=await this.providerGate(tx),now=await this.now(tx);
+      if(!gate||gate.revision!==value.expectedRevision||gate.status!=='ACTION_REQUIRED')throw new ConflictException('تغيرت حالة المزود؛ حدّثها قبل الاستكمال.');
+      if(gate.notBefore&&Date.parse(gate.notBefore)>now.getTime())throw new ConflictException('لم ينته وقت الانتظار الذي حدده المزود.');
+      const config=this.model.configuration(),worker=await this.workerState(tx,config,now),budget=await this.reserved(tx,now);
+      if(!config.ready||!worker.fresh||budget.reserved+config.reserveMicroUsd>config.dailyBudgetMicroUsd)throw new ConflictException('راجع إعداد المزود والمحرك وحد التكلفة قبل الاستكمال.');
+      await tx.operationalSetting.delete({where:{key:PROVIDER_GATE_KEY}});
+      await this.audit.record({actorId:actor.personId,action:'AI_PROVIDER_RECOVERY_REVIEWED',resource:'AiProvider',metadata:{reason,previousReason:gate.reason,adminAccountId:actor.id,noUncertainReplay:true}},tx);
+      return{id:gate.revision,resumed:true};
+    });
+  }
+
+  async retryRejectedTask(actorId:string,id:string,body:unknown){
+    if(!uuid(id))throw new BadRequestException('معرف المهمة غير صالح.');
+    const value=inputRecord(body,['expectedRevision','reason','reviewed']),reason=decisionReason(value);
+    if(!uuid(value.expectedRevision))throw new BadRequestException('نسخة المهمة مطلوبة.');
+    return this.db.serializable(async tx=>{
+      await this.guard(tx);const actor=await lockAdminIdentities(tx,actorId);let task=await tx.aiAgentTask.findUnique({where:{id}});
+      if(!task||task.revision!==value.expectedRevision)throw new ConflictException('تغيرت المهمة؛ حدّثها قبل الاستكمال.');
+      if(task.state!=='FAILED'||task.result||!uuid(task.claimId)||!['PROVIDER_RATE_LIMITED','PROVIDER_OVERLOADED'].includes(task.errorCode||'')||task.attemptCount>=MAX_PROVIDER_ATTEMPTS)throw new ConflictException('الاستكمال متاح لرفض المزود المؤكد فقط، ضمن حد المحاولات.');
+      const receipt=await tx.auditEvent.findFirst({where:{resource:'AiAgentTask',resourceId:id,action:'AI_TASK_EXECUTION_FAILED',metadata:{path:['claimId'],equals:task.claimId}}});
+      const error=receipt?.metadata as Record<string,unknown>|undefined;
+      if(!error||error.errorCode!==task.errorCode)throw new ConflictException('لم يثبت سجل رفض المزود.');
+      task=await this.preserveLegacyAttempt(tx,task);
+      const now=await this.now(tx),updated=await tx.aiAgentTask.update({where:{id},data:{state:'QUEUED',revision:randomUUID(),retryStartedAt:now,retryNotBefore:null,startedAt:null,finishedAt:null,dispatchedAt:null,leaseExpiresAt:null,errorCode:null},select:taskView});
+      await this.audit.record({actorId:actor.personId,action:'AI_PROVIDER_REJECTION_RESUMED',resource:'AiAgentTask',resourceId:id,metadata:{reason,priorClaimId:task.claimId,attemptCount:task.attemptCount,adminAccountId:actor.id,knownRejectionOnly:true}},tx);
+      return{...updated,resumed:true};
     });
   }
 
@@ -180,6 +233,7 @@ export class AgentRuntimeService {
       for(const task of expired){
         await tx.aiAgentTask.update({where:{id:task.id},data:{state:'INTERRUPTED',errorCode:'EXECUTION_LEASE_EXPIRED',finishedAt:now,revision:randomUUID()}});
         await tx.aiAgentRuntime.update({where:{key:task.agentKey},data:{state:'PAUSED',revision:randomUUID()}});
+        if(task.claimId)await tx.aiAgentTaskAttempt.updateMany({where:{claimId:task.claimId,state:'RUNNING'},data:{state:'INTERRUPTED',errorCode:'EXECUTION_LEASE_EXPIRED',finishedAt:now}});
         await this.audit.record({action:'AI_TASK_INTERRUPTED',resource:'AiAgentTask',resourceId:task.id,metadata:{agentKey:task.agentKey,executor:'AI_RUNTIME_WORKER',initiatedByAccountId:task.requestedByAccountId,from:'RUNNING',to:'INTERRUPTED',reason:'EXECUTION_LEASE_EXPIRED',noAutomaticRetry:true}},tx);
       }
       await tx.operationalSetting.upsert({where:{key:WORKER_STATUS_KEY},create:{key:WORKER_STATUS_KEY,value:{observedAt:now.toISOString(),configuration:configHash(config)}},update:{value:{observedAt:now.toISOString(),configuration:configHash(config)},updatedAt:now}});
@@ -189,11 +243,16 @@ export class AgentRuntimeService {
   async claim(){
     const config=this.model.configuration();if(!config.ready)return null;
     return this.db.serializable(async tx=>{await this.guard(tx);const now=await this.now(tx),budget=await this.reserved(tx,now);
-      if(budget.reserved+config.reserveMicroUsd>config.dailyBudgetMicroUsd||await tx.aiAgentTask.count({where:{state:'RUNNING'}})>0)return null;
-      const task=await tx.aiAgentTask.findFirst({where:{state:'QUEUED',agent:{state:'ENABLED'}},orderBy:[{createdAt:'asc'},{id:'asc'}]});if(!task)return null;
+      if(budget.reserved+config.reserveMicroUsd>config.dailyBudgetMicroUsd||await tx.aiAgentTask.count({where:{state:'RUNNING'}})>0||providerGateView(await this.providerGate(tx),now.getTime()).blocked)return null;
+      let task=await tx.aiAgentTask.findFirst({where:{state:'QUEUED',result:null,agent:{state:'ENABLED'},OR:[{retryNotBefore:null},{retryNotBefore:{lte:now}}]},orderBy:[{createdAt:'asc'},{id:'asc'}]});if(!task)return null;
       let allowed=true;try{await lockAdminIdentities(tx,task.requestedByAccountId);}catch(error){if(!(error instanceof ForbiddenException))throw error;allowed=false;}
       if(!allowed){await tx.aiAgentTask.update({where:{id:task.id},data:{state:'FAILED',errorCode:'REQUESTER_AUTH_REVOKED',finishedAt:now,revision:randomUUID()}});await this.audit.record({action:'AI_TASK_DENIED',resource:'AiAgentTask',resourceId:task.id,metadata:{agentKey:task.agentKey,executor:'AI_RUNTIME_WORKER',initiatedByAccountId:task.requestedByAccountId,from:'QUEUED',to:'FAILED',reason:'REQUESTER_AUTH_REVOKED'}},tx);return null;}
-      const claimId=randomUUID();const updated=await tx.aiAgentTask.update({where:{id:task.id},data:{state:'RUNNING',revision:randomUUID(),startedAt:now,leaseExpiresAt:new Date(now.getTime()+TASK_LEASE_MS),claimId,model:config.model,reservationDate:budget.day,reservedCostMicroUsd:config.reserveMicroUsd,executionPolicy:{provider:config.provider,model:config.model,maxInputTokens:config.maxInputTokens,maxOutputTokens:config.maxOutputTokens,inputRate:config.inputRate,outputRate:config.outputRate,dailyBudgetMicroUsd:config.dailyBudgetMicroUsd}}});
+      task=await this.preserveLegacyAttempt(tx,task);
+      if(task.attemptCount>=MAX_PROVIDER_ATTEMPTS){await tx.aiAgentTask.update({where:{id:task.id},data:{state:'FAILED',errorCode:'PROVIDER_RETRY_EXHAUSTED',finishedAt:now,revision:randomUUID()}});return null;}
+      const claimId=randomUUID(),attemptNumber=task.attemptCount+1;
+      await tx.aiAgentTaskAttempt.create({data:{taskId:task.id,attemptNumber,claimId,state:'RUNNING',startedAt:now,reservationDate:budget.day,reservedCostMicroUsd:config.reserveMicroUsd}});
+      const updated=await tx.aiAgentTask.update({where:{id:task.id},data:{state:'RUNNING',revision:randomUUID(),startedAt:now,finishedAt:null,dispatchedAt:null,retryNotBefore:null,retryStartedAt:task.retryStartedAt||now,attemptCount:attemptNumber,leaseExpiresAt:new Date(now.getTime()+TASK_LEASE_MS),claimId,model:config.model,reservationDate:budget.day,reservedCostMicroUsd:{increment:config.reserveMicroUsd},errorCode:null,executionPolicy:{provider:config.provider,model:config.model,maxInputTokens:config.maxInputTokens,maxOutputTokens:config.maxOutputTokens,inputRate:config.inputRate,outputRate:config.outputRate,dailyBudgetMicroUsd:config.dailyBudgetMicroUsd}}});
+      await this.saveProviderGate(tx,{version:1,revision:randomUUID(),status:'WAITING',reason:'PROVIDER_PACING',notBefore:new Date(now.getTime()+taskIntervalMs()).toISOString()});
       await this.audit.record({action:'AI_TASK_STARTED',resource:'AiAgentTask',resourceId:task.id,metadata:{agentKey:task.agentKey,executor:'AI_RUNTIME_WORKER',initiatedByAccountId:task.requestedByAccountId,from:'QUEUED',to:'RUNNING',claimId,revision:updated.revision,model:config.model,reservedCostMicroUsd:config.reserveMicroUsd,budgetDay:budget.day.toISOString()}},tx);
       return{task:updated,config,agent:this.descriptor(task.agentKey)};
     });
@@ -201,7 +260,8 @@ export class AgentRuntimeService {
 
   async runClaim(claim:NonNullable<Awaited<ReturnType<AgentRuntimeService['claim']>>>){
     const dispatched=await this.db.serializable(async tx=>{await this.guard(tx);const row=await tx.aiAgentTask.findUnique({where:{id:claim.task.id}}),now=await this.now(tx);if(!row||row.claimId!==claim.task.claimId||row.state!=='RUNNING'||row.dispatchedAt||!row.leaseExpiresAt||row.leaseExpiresAt<=now)return false;
-      await tx.aiAgentTask.update({where:{id:row.id},data:{dispatchedAt:now}});await this.audit.record({action:'AI_TASK_DISPATCHED',resource:'AiAgentTask',resourceId:row.id,metadata:{agentKey:row.agentKey,executor:'AI_RUNTIME_WORKER',initiatedByAccountId:row.requestedByAccountId,claimId:row.claimId}},tx);return true;});
+      const receipt=await tx.aiAgentTaskAttempt.updateMany({where:{claimId:row.claimId!,state:'RUNNING',dispatchedAt:null},data:{dispatchedAt:now}});if(receipt.count!==1)throw new ConflictException('لم يثبت حجز المحاولة.');
+      await tx.aiAgentTask.update({where:{id:row.id},data:{dispatchedAt:now,unknownCostAttempts:{increment:1}}});await this.audit.record({action:'AI_TASK_DISPATCHED',resource:'AiAgentTask',resourceId:row.id,metadata:{agentKey:row.agentKey,executor:'AI_RUNTIME_WORKER',initiatedByAccountId:row.requestedByAccountId,claimId:row.claimId,attemptNumber:row.attemptCount}},tx);return true;});
     if(!dispatched)return;
     let result:AiModelResult|undefined,error:AiProviderError|undefined;
     try{
@@ -348,10 +408,21 @@ export class AgentRuntimeService {
   private async finish(id:string,claimId:string,result?:AiModelResult,error?:AiProviderError){
     return this.db.serializable(async tx=>{await this.guard(tx);const task=await tx.aiAgentTask.findUnique({where:{id}});if(!task||task.claimId!==claimId||task.state==='COMPLETED'||task.result)return;
       const late=task.state!=='RUNNING';if(late&&!result)return;
-      const state=late?task.state:result?'COMPLETED':error?.uncertain?'INTERRUPTED':'FAILED';
-      const completed=await tx.aiAgentTask.update({where:{id},data:{state,revision:randomUUID(),finishedAt:await this.now(tx),...(result?{result:result.text,inputTokens:result.inputTokens,outputTokens:result.outputTokens,estimatedCostMicroUsd:result.estimatedCostMicroUsd}:{errorCode:error?.code||'EXECUTION_FAILED'})}});
-      if(!result&&!late)await tx.aiAgentRuntime.update({where:{key:task.agentKey},data:{state:'PAUSED',revision:randomUUID()}});
-      await this.audit.record({action:late?'AI_TASK_LATE_RESULT_RECORDED':result?'AI_TASK_COMPLETED':'AI_TASK_EXECUTION_FAILED',resource:'AiAgentTask',resourceId:id,metadata:{agentKey:task.agentKey,executor:'AI_RUNTIME_WORKER',initiatedByAccountId:task.requestedByAccountId,claimId,from:task.state,to:state,errorCode:error?.code,providerStage:error?.providerStage,inputTokens:result?.inputTokens,outputTokens:result?.outputTokens,estimatedCostMicroUsd:result?.estimatedCostMicroUsd,noAutomaticRetry:true,agentPaused:!result&&!late}},tx);
+      const now=await this.now(tx);
+      const rejected=!late&&error?.definiteRejection===true&&['PROVIDER_RATE_LIMITED','PROVIDER_OVERLOADED','PROVIDER_WAIT_REQUIRED','PROVIDER_QUOTA_EXHAUSTED','PROVIDER_USAGE_LIMITED'].includes(error.code);
+      const plan=rejected?rejectionPlan(error!.code,error!.limits,task.attemptCount,(task.retryStartedAt||now).getTime(),now.getTime()):null;
+      const deferred=Boolean(plan&&!plan.exhausted);
+      const state=late?(task.state==='QUEUED'?'INTERRUPTED':task.state):result?'COMPLETED':deferred?'QUEUED':error?.uncertain?'INTERRUPTED':'FAILED';
+      const receipt=await tx.aiAgentTaskAttempt.updateMany({where:{claimId,state:{in:['RUNNING','INTERRUPTED']}},data:{state:late?'LATE_RESULT':result?'COMPLETED':rejected?'REJECTED':state,finishedAt:now,errorCode:error?.code,providerStage:error?.providerStage,...(error?.limits?{providerLimits:JSON.parse(JSON.stringify(error.limits))}:{}),...(result?{inputTokens:result.inputTokens,outputTokens:result.outputTokens,estimatedCostMicroUsd:result.estimatedCostMicroUsd}:{})}});
+      if(receipt.count!==1)throw new ConflictException('لم يثبت سجل نتيجة المحاولة.');
+      const completed=await tx.aiAgentTask.update({where:{id},data:{state,revision:randomUUID(),finishedAt:deferred?null:now,retryNotBefore:plan?.notBefore?new Date(plan.notBefore):null,...(deferred?{dispatchedAt:null,leaseExpiresAt:null}:{}),...(result?{result:result.text,inputTokens:result.inputTokens,outputTokens:result.outputTokens,estimatedCostMicroUsd:(task.estimatedCostMicroUsd||0)+result.estimatedCostMicroUsd,unknownCostAttempts:Math.max(0,task.unknownCostAttempts-1)}:{errorCode:plan?.exhausted?'PROVIDER_RETRY_EXHAUSTED':error?.code||'EXECUTION_FAILED'})}});
+      if(plan)await this.saveProviderGate(tx,{version:1,revision:randomUUID(),status:plan.automatic?'WAITING':'ACTION_REQUIRED',reason:plan.reason,notBefore:plan.notBefore,...(error?.limits?{limits:error.limits}:{})});
+      else if(result?.rateLimits){
+        const gate=await this.providerGate(tx),until=Math.max(result.rateLimits.retryAt?Date.parse(result.rateLimits.retryAt):0,result.rateLimits.minimumDelayMs!==undefined?now.getTime()+result.rateLimits.minimumDelayMs:0);
+        if(gate?.status!=='ACTION_REQUIRED'&&(result.rateLimits.invalidDelay||until>now.getTime()))await this.saveProviderGate(tx,{version:1,revision:randomUUID(),status:result.rateLimits.invalidDelay?'ACTION_REQUIRED':'WAITING',reason:result.rateLimits.invalidDelay?'PROVIDER_DELAY_REQUIRES_REVIEW':'PROVIDER_RATE_LIMITED',notBefore:new Date(Math.max(until,gate?.notBefore?Date.parse(gate.notBefore):0,now.getTime())).toISOString(),limits:result.rateLimits});
+      }
+      if((!result&&!late&&!deferred)||(late&&task.state==='QUEUED'))await tx.aiAgentRuntime.update({where:{key:task.agentKey},data:{state:'PAUSED',revision:randomUUID()}});
+      await this.audit.record({action:late?'AI_TASK_LATE_RESULT_RECORDED':result?'AI_TASK_COMPLETED':deferred?'AI_TASK_PROVIDER_DEFERRED':'AI_TASK_EXECUTION_FAILED',resource:'AiAgentTask',resourceId:id,metadata:{agentKey:task.agentKey,executor:'AI_RUNTIME_WORKER',initiatedByAccountId:task.requestedByAccountId,claimId,attemptNumber:task.attemptCount,from:task.state,to:state,errorCode:error?.code,providerStage:error?.providerStage,providerLimits:error?.limits,inputTokens:result?.inputTokens,outputTokens:result?.outputTokens,estimatedCostMicroUsd:result?.estimatedCostMicroUsd,noAutomaticRetry:!plan?.automatic,definiteRejection:error?.definiteRejection===true,retryNotBefore:plan?.notBefore,agentPaused:!result&&!late&&!deferred}},tx);
       if(result&&!late){
         if(task.fingerprint.startsWith(REPORT_FINGERPRINT))await this.audit.record({action:'AI_EXECUTIVE_REPORT_FORMATTED',resource:'AiAgentTask',resourceId:id,metadata:{approved:false,scope:'REPORT_FORMATTING_ONLY'}},tx);
         else if(this.agents.list().some(agent=>agent.key===task.agentKey))await this.queueGovernanceNext(tx,completed);

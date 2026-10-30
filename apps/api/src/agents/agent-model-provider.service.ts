@@ -4,18 +4,19 @@ import { IntegrationService } from '../integrations/integration.service';
 import { estimateMicroUsd } from './agent-runtime.domain';
 import { GOVERNANCE_REVIEW_ORDER, GOVERNANCE_SPECIALTIES, isGovernanceAgent } from './governance-review.domain';
 import { directorDepartment } from './department-directors';
+import { localProviderFixture, providerLimits, ProviderLimits, ProviderStage } from './agent-provider-policy';
 
 export interface AiModelConfiguration {
   ready:boolean;reason:string;provider:'OPENAI';model:string|null;
   maxInputTokens:number;maxOutputTokens:number;inputRate:number;outputRate:number;dailyBudgetMicroUsd:number;reserveMicroUsd:number;
 }
-export interface AiModelResult {text:string;inputTokens:number;outputTokens:number;estimatedCostMicroUsd:number}
+export interface AiModelResult {text:string;inputTokens:number;outputTokens:number;estimatedCostMicroUsd:number;rateLimits?:ProviderLimits}
 export interface AiModelConnectionCheck {
   connected:boolean;reason:string;provider:'OPENAI';model:string|null;checkedAt:string;
   scope:'MODEL_ACCESS_ONLY';generationTested:false;
 }
 export class AiProviderError extends Error {
-  constructor(readonly code:string,readonly uncertain=false,readonly providerStage?:'INPUT_TOKENS'|'GENERATION'){super(code)}
+  constructor(readonly code:string,readonly uncertain=false,readonly providerStage?:ProviderStage,readonly limits?:ProviderLimits,readonly definiteRejection=false){super(code)}
 }
 const integer=(value:string|undefined,min:number,max:number,fallback=0)=>value===undefined?fallback:/^\d+$/.test(value)&&Number.isSafeInteger(Number(value))&&Number(value)>=min&&Number(value)<=max?Number(value):0;
 
@@ -78,30 +79,34 @@ export class AgentModelProviderService {
     const base=this.baseUrl();if(!base)throw new AiProviderError('PROVIDER_CONFIGURATION_INVALID');
     let response:Response;
     try{response=await fetch(base+path,{method:'POST',redirect:'error',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(process.env.OPENAI_API_KEY?.trim()||'')},body:JSON.stringify(body),signal:AbortSignal.timeout(timeout)});}
-    catch{throw new AiProviderError('PROVIDER_CONNECTION_UNCERTAIN',path==='/responses');}
+    catch{throw new AiProviderError('PROVIDER_CONNECTION_UNCERTAIN',path==='/responses',path==='/responses'?'GENERATION':'INPUT_TOKENS');}
     if(!response.ok){
       let code=response.status===401?'PROVIDER_AUTH_FAILED':'PROVIDER_REQUEST_FAILED';
-      if(response.status===429){
+      let limits=providerLimits(response.headers,Date.now());
+      if(response.status===429||response.status===503){
         // A 429 can mean exhausted quota or a transient rate limit. Keep only
         // these allowlisted categories; never retain provider messages/IDs.
-        code='PROVIDER_USAGE_LIMITED';
+        code=response.status===429?'PROVIDER_USAGE_LIMITED':'PROVIDER_REQUEST_FAILED';
         const reader=response.body?.getReader();
         if(reader)try{
           const buffers:Uint8Array[]=[];let length=0;
           while(true){const part=await reader.read();if(part.done)break;length+=part.value.length;if(length>16*1024)throw new Error();buffers.push(part.value);}
           const detail=JSON.parse(Buffer.concat(buffers).toString('utf8'))?.error;
-          if(detail?.code==='insufficient_quota'||detail?.type==='insufficient_quota')code='PROVIDER_QUOTA_EXHAUSTED';
-          else if(detail?.code==='rate_limit_exceeded'||detail?.type==='rate_limit_exceeded')code='PROVIDER_RATE_LIMITED';
+          limits=providerLimits(response.headers,Date.now(),detail);
+          if(response.status===429){
+            if(detail?.code==='insufficient_quota'||detail?.type==='insufficient_quota')code='PROVIDER_QUOTA_EXHAUSTED';
+            else if(['rate_limit_exceeded','slow_down'].includes(detail?.code)||detail?.type==='rate_limit_exceeded')code='PROVIDER_RATE_LIMITED';
+          }else if(detail?.code==='server_is_overloaded')code='PROVIDER_OVERLOADED';
         }catch{/* An unreadable or unknown rejection remains unclassified. */}
         finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
       }
       await response.body?.cancel().catch(()=>{});
-      throw new AiProviderError(code,false,path==='/responses'?'GENERATION':'INPUT_TOKENS');
+      throw new AiProviderError(code,false,path==='/responses'?'GENERATION':'INPUT_TOKENS',limits,true);
     }
     try{
       const reader=response.body?.getReader();if(!reader)throw new Error();const buffers:Uint8Array[]=[];let length=0;
       while(true){const part=await reader.read();if(part.done)break;length+=part.value.length;if(length>256*1024){await reader.cancel();throw new Error();}buffers.push(part.value);}
-      return JSON.parse(Buffer.concat(buffers).toString('utf8')) as Record<string,unknown>;
+      return{payload:JSON.parse(Buffer.concat(buffers).toString('utf8')) as Record<string,unknown>,limits:providerLimits(response.headers,Date.now())};
     }catch{throw new AiProviderError('PROVIDER_RESPONSE_INVALID',path==='/responses');}
   }
 
@@ -116,15 +121,19 @@ export class AgentModelProviderService {
     const input=[{role:'developer',content:instructions+governanceInstructions+correctionInstructions+directorInstructions+executiveInstructions},{role:'user',content:JSON.stringify({brief:prompt,...(operations?{aggregateOperations:operations}:{}),...(governanceReview?{governanceReview}:{}),...(draftCorrection?{draftCorrection}:{}),...(executiveReport?{executiveReport}:{})})}];
     // Count exactly the same messages sent to Responses; do not estimate Arabic
     // token usage from characters. No external tools or private account data.
-    const counted=await this.request('/responses/input_tokens',{model:config.model,input},10_000);
+    const countResponse=await this.request('/responses/input_tokens',{model:config.model,input},10_000),counted=countResponse.payload;
     if(!Number.isSafeInteger(counted.input_tokens)||Number(counted.input_tokens)<0||Number(counted.input_tokens)>config.maxInputTokens)throw new AiProviderError('INPUT_TOKEN_LIMIT');
-    const result=await this.request('/responses',{model:config.model,input,max_output_tokens:config.maxOutputTokens,store:false,tools:[],tool_choice:'none'},30_000);
+    if(countResponse.limits.invalidDelay||countResponse.limits.retryAt&&Date.parse(countResponse.limits.retryAt)>Date.now())throw new AiProviderError('PROVIDER_WAIT_REQUIRED',false,'INPUT_TOKENS',countResponse.limits,true);
+    // Short office JSON reviews do not need the formatter's full output reserve.
+    const outputLimit=isGovernanceAgent(agent.key)?Math.min(config.maxOutputTokens,1024):config.maxOutputTokens;
+    if(!localProviderFixture())await new Promise(resolve=>setTimeout(resolve,1000));
+    const response=await this.request('/responses',{model:config.model,input,max_output_tokens:outputLimit,store:false,tools:[],tool_choice:'none'},30_000),result=response.payload;
     const usage=result.usage as Record<string,unknown>|undefined;
-    if(result.status!=='completed'||result.error||!usage||!Number.isSafeInteger(usage.input_tokens)||!Number.isSafeInteger(usage.output_tokens)||Number(usage.input_tokens)<0||Number(usage.output_tokens)<0||Number(usage.input_tokens)>config.maxInputTokens||Number(usage.output_tokens)>config.maxOutputTokens)throw new AiProviderError('PROVIDER_RESULT_INCOMPLETE',true);
+    if(result.status!=='completed'||result.error||!usage||!Number.isSafeInteger(usage.input_tokens)||!Number.isSafeInteger(usage.output_tokens)||Number(usage.input_tokens)<0||Number(usage.output_tokens)<0||Number(usage.input_tokens)>config.maxInputTokens||Number(usage.output_tokens)>outputLimit)throw new AiProviderError('PROVIDER_RESULT_INCOMPLETE',true,'GENERATION');
     const output=Array.isArray(result.output)?result.output:[];
     if(output.some(item=>!item||typeof item!=='object'||!['message','reasoning'].includes(String(item.type))))throw new AiProviderError('PROVIDER_OUTPUT_BOUNDARY',true);
     const text=output.filter(item=>item.type==='message'&&item.role==='assistant').flatMap(item=>Array.isArray(item.content)?item.content:[]).filter(item=>item?.type==='output_text'&&typeof item.text==='string').map(item=>item.text).join('\n').trim();
     if(!text||text.length>16000)throw new AiProviderError('PROVIDER_OUTPUT_INVALID',true);
-    return{text,inputTokens:Number(usage.input_tokens),outputTokens:Number(usage.output_tokens),estimatedCostMicroUsd:estimateMicroUsd(Number(usage.input_tokens),Number(usage.output_tokens),config.inputRate,config.outputRate)};
+    return{text,inputTokens:Number(usage.input_tokens),outputTokens:Number(usage.output_tokens),estimatedCostMicroUsd:estimateMicroUsd(Number(usage.input_tokens),Number(usage.output_tokens),config.inputRate,config.outputRate),rateLimits:response.limits};
   }
 }

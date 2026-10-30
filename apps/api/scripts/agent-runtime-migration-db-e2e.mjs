@@ -24,10 +24,18 @@ try{for(const type of ['text','uuid']){
   assert.equal((await db.$queryRawUnsafe('SELECT "state" FROM "AiAgentTask" WHERE "id"=$1',task))[0].state,'QUEUED');
   // Exercise generated-client writes and filters too, including production UUID
   // actor columns; raw SQL migration success alone does not prove this codec.
+  const claimId=randomUUID();
+  await db.$executeRawUnsafe('UPDATE "AiAgentTask" SET "state"=\'FAILED\',"claimId"=$1,"startedAt"=NOW(),"dispatchedAt"=NOW(),"finishedAt"=NOW(),"reservationDate"=CURRENT_DATE,"reservedCostMicroUsd"=23 WHERE "id"=$2',claimId,task);
+  const recovery=await readFile(new URL('../prisma/migrations/20261030203000_ai_provider_recovery/migration.sql',import.meta.url),'utf8');
+  await db.$transaction(async tx=>{for(const sql of recovery.replace(/^BEGIN;|^COMMIT;/gm,'').split(';').map(s=>s.trim()).filter(Boolean))await tx.$executeRawUnsafe(sql);});
+  const migrated=await db.aiAgentTask.findUniqueOrThrow({where:{id:task}}),attempts=await db.aiAgentTaskAttempt.findMany({where:{taskId:task}});
+  assert.equal(migrated.attemptCount,1);assert.equal(migrated.unknownCostAttempts,1);assert.equal(migrated.reservedCostMicroUsd,23);assert.equal(attempts.length,1);assert.equal(attempts[0].claimId,claimId);assert.equal(attempts[0].reservedCostMicroUsd,23);
+  await assert.rejects(()=>db.$executeRawUnsafe('UPDATE "AiAgentTask" SET "unknownCostAttempts"=-1 WHERE "id"=$1',task));
+  await assert.rejects(()=>db.$executeRawUnsafe('UPDATE "AiAgentTaskAttempt" SET "reservedCostMicroUsd"=-1 WHERE "taskId"=$1',task));
   await db.aiAgentRuntime.create({data:{key:'INVENTORY',lastAdminAccountId:actor}});
   const native=await db.aiAgentTask.create({data:{agentKey:'INVENTORY',requestedByAccountId:actor,requestKey:randomUUID(),fingerprint:'native-client',action:'READ_OPERATIONS',language:'ar-SA',prompt:'native identity fixture'}});
   assert.equal((await db.aiAgentTask.findUniqueOrThrow({where:{requestedByAccountId_requestKey:{requestedByAccountId:actor,requestKey:native.requestKey}}})).id,native.id);
   assert.equal((await db.aiAgentTask.update({where:{id:native.id},data:{state:'REVIEWED',reviewedByAccountId:actor,reviewedAt:new Date()}})).reviewedByAccountId,actor);
   assert.equal((await db.aiAgentRuntime.update({where:{key:'INVENTORY'},data:{lastAdminAccountId:actor,state:'ENABLED'}})).lastAdminAccountId,actor);
  }finally{await db.$disconnect();await root.$executeRawUnsafe(`DROP SCHEMA "${schema}" CASCADE`);}
-}console.log('AI runtime forward migration passed: TEXT/UUID canonical accounts, preserved identities, FKs, idempotency constraint, state/cost bounds and transaction rollback.');}finally{await root.$disconnect();}
+}console.log('AI runtime forward migrations passed: TEXT/UUID canonical accounts, preserved identities, attempt/reservation backfill, FKs, idempotency constraints, state/cost bounds and transaction rollback.');}finally{await root.$disconnect();}
