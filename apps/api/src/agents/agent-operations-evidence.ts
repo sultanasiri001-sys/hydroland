@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { uuid } from './agent-runtime.domain';
-import { DEPARTMENT_SOURCE_SCOPE, DIRECTOR_SOURCE_FINGERPRINT, DepartmentSourceValues, departmentSourceValues } from './department-source.domain';
+import { DepartmentSourceScope, DepartmentSourceValues, departmentSourceScope, departmentSourceValues, departmentSourceVersion, isDepartmentSourceScope } from './department-source.domain';
 
 const keys=['pendingReviews','openTrips','activeBookings','pendingOrganizations'] as const;
 export type OperationsValues=Record<typeof keys[number],number>;
-export type OperationsEvidence={status:'RECORDED';observedAt:string;values:OperationsValues}|{status:'RECORDED';scope:typeof DEPARTMENT_SOURCE_SCOPE;observedAt:string;values:DepartmentSourceValues}|{status:'NOT_RECORDED'|'INVALID'};
+export type OperationsEvidence={status:'RECORDED';observedAt:string;values:OperationsValues}|{status:'RECORDED';scope:DepartmentSourceScope;observedAt:string;values:DepartmentSourceValues}|{status:'NOT_RECORDED'|'INVALID'};
 const record=(value:unknown):Record<string,unknown>|null=>value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:null;
 
 export function operationsValues(value:unknown):OperationsValues|null {
@@ -31,12 +31,16 @@ export async function readOperationsEvidence(tx:Prisma.TransactionClient,source:
   const starts=events.filter(event=>event.action==='AI_TASK_STARTED');
   if(captures.length!==1||starts.length!==1||events.length!==2)return{status:'INVALID'};
   const evidence=record(captures[0].metadata),start=record(starts[0].metadata);
-  if(!evidence||!start||!uuid(source.claimId)||evidence.claimId!==source.claimId||start.claimId!==source.claimId||!uuid(evidence.sourceRevision)||start.revision!==evidence.sourceRevision||evidence.agentKey!==source.agentKey||!['OPERATIONS_AGGREGATE_V1',DEPARTMENT_SOURCE_SCOPE].includes(String(evidence.scope)))return{status:'INVALID'};
+  if(!evidence||!start||!uuid(source.claimId)||evidence.claimId!==source.claimId||start.claimId!==source.claimId||!uuid(evidence.sourceRevision)||start.revision!==evidence.sourceRevision||evidence.agentKey!==source.agentKey||(evidence.scope!=='OPERATIONS_AGGREGATE_V1'&&!isDepartmentSourceScope(evidence.scope)))return{status:'INVALID'};
   // A legacy worker cannot fulfill a task pinned to department data by
   // returning the old general counters. Old tasks cannot be silently upgraded.
-  if(Boolean(source.fingerprint?.startsWith(DIRECTOR_SOURCE_FINGERPRINT))!==(evidence.scope===DEPARTMENT_SOURCE_SCOPE))return{status:'INVALID'};
-  const values=evidence.scope===DEPARTMENT_SOURCE_SCOPE?departmentSourceValues(evidence.values,source.agentKey):operationsValues(evidence.values),observedAt=evidence.observedAt;
+  const version=departmentSourceVersion(source.fingerprint);
+  if(source.fingerprint?.startsWith('department-source:')&&!version)return{status:'INVALID'};
+  if(evidence.scope!==(version?departmentSourceScope(version):'OPERATIONS_AGGREGATE_V1'))return{status:'INVALID'};
+  const departmental=version?departmentSourceValues(evidence.values,source.agentKey):null;
+  if(version&&departmental?.version!==version)return{status:'INVALID'};
+  const values=version?departmental:operationsValues(evidence.values),observedAt=evidence.observedAt;
   if(!values||typeof observedAt!=='string'||!Number.isFinite(Date.parse(observedAt))||!source.startedAt||!source.finishedAt||Date.parse(observedAt)<source.startedAt.getTime()||Date.parse(observedAt)>source.finishedAt.getTime())return{status:'INVALID'};
   if(evidence.digest!==operationsEvidenceDigest(source.id,source.claimId,evidence.sourceRevision,observedAt,values))return{status:'INVALID'};
-  return evidence.scope===DEPARTMENT_SOURCE_SCOPE?{status:'RECORDED',scope:DEPARTMENT_SOURCE_SCOPE,observedAt,values:values as DepartmentSourceValues}:{status:'RECORDED',observedAt,values:values as OperationsValues};
+  return version?{status:'RECORDED',scope:departmentSourceScope(version),observedAt,values:values as DepartmentSourceValues}:{status:'RECORDED',observedAt,values:values as OperationsValues};
 }
