@@ -158,6 +158,7 @@ try {
       assert.equal(await db.managedDocument.count({ where: { organizationId: org.id } }), 0);
     }
     let d = await ok(owner, 'documents', 'POST', input);
+    if (index === 0) assert.equal((await call(null, `documents/${d.id}`)).status, 401);
     assert.equal((await call(outsider, `documents/${d.id}`)).status, 403);
     await ok(owner, `documents/${d.id}/submit`, 'POST');
     assert.equal((await call(owner, `documents/${d.id}/approve`, 'POST')).status, 400);
@@ -205,13 +206,17 @@ try {
       await db.documentTemplate.deleteMany({ where: { organizationId: org.id } }); await db.documentReferenceCounter.deleteMany({ where: { organizationId: org.id } }); await db.documentBrandSnapshot.deleteMany({ where: { organizationId: org.id } });
       const employmentIds = (await db.employment.findMany({ where: { organizationId: org.id }, select: { id: true } })).map(e => e.id);
       for (const model of ['employmentContract', 'employmentMovement', 'leaveRequest', 'attendanceEntry', 'shiftAssignment', 'compensationTerm', 'performanceCycle', 'employeeRelationsCase', 'offboardingCase']) await db[model].deleteMany({ where: { employmentId: { in: employmentIds } } });
+      await db.hrCandidate.deleteMany({ where: { organizationId: org.id } });
       await db.employment.deleteMany({ where: { organizationId: org.id } }); await db.position.deleteMany({ where: { orgUnit: { organizationId: org.id } } }); await db.orgUnit.deleteMany({ where: { organizationId: org.id } });
       await db.organizationMember.deleteMany({ where: { organizationId: org.id } }); await db.organization.deleteMany({ where: { id: org.id } });
     }
     if (controlId) await db.policyControl.deleteMany({ where: { id: controlId } });
     await db.notification.deleteMany({ where: { accountId: { in: accounts } } }); await db.auditEvent.deleteMany({ where: { actorId: { in: people } } });
     await db.roleAssignment.deleteMany({ where: { accountId: { in: accounts } } }); await db.session.deleteMany({ where: { accountId: { in: accounts } } }); await db.account.deleteMany({ where: { id: { in: accounts } } }); await db.person.deleteMany({ where: { id: { in: people } } });
+    assert.equal(await db.account.count({ where: { id: { in: accounts } } }), 0);
+    assert.equal(await db.person.count({ where: { id: { in: people } } }), 0);
+    if (org) assert.equal(await db.organization.count({ where: { id: org.id } }), 0);
     report.cleanup = 'PASSED';
-  } catch (error) { report.cleanup = 'FAILED'; report.cleanupError = String(error); process.exitCode = 1; }
+  } catch (error) { report.status = 'FAILED'; report.cleanup = 'FAILED'; report.cleanupError = String(error); process.exitCode = 1; }
   await db.$disconnect(); await mkdir(output, { recursive: true }); await writeFile(`${output}/receipt.json`, JSON.stringify(report, null, 2) + '\n');
 }
