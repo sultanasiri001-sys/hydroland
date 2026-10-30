@@ -106,8 +106,28 @@ test('source mutation, forged bundle digest or a duplicate queue receipt cannot 
 async function pendingEmail(f){await f.reporting.start(f.owner,f.request);f.completeDirectors();await f.reporting.advance();const task=f.tasks.get(f.state().executiveTaskId);Object.assign(task,{state:'COMPLETED',result:'تقرير عبدالله الموحد'});await f.reporting.advance();}
 
 test('revoked owner and mutated executive output prevent email',async()=>{
- const f=fixture();await pendingEmail(f);f.revoke();await assert.rejects(()=>f.worker.deliverNext());assert.equal(f.calls(),0);
- const g=fixture();await pendingEmail(g);g.tasks.get(g.state().executiveTaskId).revision=randomUUID();await assert.rejects(()=>g.worker.deliverNext());assert.equal(g.calls(),0);
+ const f=fixture();await pendingEmail(f);f.revoke();await f.worker.deliverNext();assert.equal(f.calls(),0);assert.equal(f.state().state,'ATTENTION_REQUIRED');assert.equal([...f.notifications.values()][0].status,'FAILED');
+ const g=fixture();await pendingEmail(g);g.tasks.get(g.state().executiveTaskId).revision=randomUUID();await g.worker.deliverNext();assert.equal(g.calls(),0);assert.equal(g.state().state,'ATTENTION_REQUIRED');
+});
+
+test('an invalid old report cannot starve the next valid owner email',async()=>{
+ const f=fixture();await pendingEmail(f);const oldCycle=f.state(),oldNotification=[...f.notifications.values()][0];f.tasks.get(oldCycle.executiveTaskId).revision=randomUUID();
+ f.request.requestId=randomUUID();await pendingEmail(f);
+ await f.worker.deliverNext();assert.equal(f.calls(),0);assert.equal(oldNotification.status,'FAILED');assert.equal(f.settings.get(domain.REPORT_PREFIX+oldCycle.id).value.state,'ATTENTION_REQUIRED');
+ await f.worker.deliverNext();assert.equal(f.calls(),1);assert.equal(f.state().state,'COMPLETE');assert.equal(f.notifications.size,2);
+});
+
+test('expired delivery records leave an explicit terminal cycle outcome and do not block later reports',async()=>{
+ const f=fixture();await pendingEmail(f);const oldId=f.state().id,oldNotification=[...f.notifications.values()][0];oldNotification.createdAt=new Date(Date.now()-61*60_000);
+ f.request.requestId=randomUUID();await pendingEmail(f);await f.worker.deliverNext();
+ assert.equal(oldNotification.status,'FAILED');assert.equal(oldNotification.payload.deliveryState,'EXPIRED');assert.equal(f.settings.get(domain.REPORT_PREFIX+oldId).value.state,'ATTENTION_REQUIRED');assert.equal(f.calls(),0);
+ await f.worker.deliverNext();assert.equal(f.calls(),1);assert.equal(f.state().state,'COMPLETE');
+});
+
+test('stale validation cleanup cannot overwrite another worker active delivery claim',async()=>{
+ const f=fixture();await pendingEmail(f);const n=[...f.notifications.values()][0];
+ f.tx.account.findFirst=async()=>{n.payload.deliveryState='ATTEMPTING';n.payload.attemptId=randomUUID();return null;};
+ await f.worker.deliverNext();assert.equal(f.calls(),0);assert.equal(n.status,'PENDING');assert.equal(n.payload.deliveryState,'ATTEMPTING');assert.equal(f.state().state,'EMAIL_PENDING');
 });
 
 test('uncertain email and expired in-flight attempt are never resent automatically',async()=>{

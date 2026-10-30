@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
@@ -8,7 +8,8 @@ import { lockAdminIdentities } from '../admin/admin-authorization';
 import { record } from '../hr/staffing-catalog';
 import { DepartmentReportingService } from './department-reporting.service';
 import { GovernanceReviewInboxService } from './governance-review-inbox.service';
-import { executiveReportContext, parseReportCycle, REPORT_NOTIFICATION, REPORT_OFFICE_LABELS, REPORT_PREFIX, requireReportOwner } from './executive-report.domain';
+import { executiveReportContext, parseReportCycle, ReportCycle, REPORT_NOTIFICATION, REPORT_OFFICE_LABELS, REPORT_PREFIX, requireReportOwner } from './executive-report.domain';
+import { uuid } from './agent-runtime.domain';
 
 const json=(value:unknown):Prisma.InputJsonValue=>JSON.parse(JSON.stringify(value));
 
@@ -28,6 +29,19 @@ export class DepartmentReportingWorker implements OnModuleInit,OnModuleDestroy {
     try{await this.deliverNext();}catch{this.logger.warn('Department report delivery needs attention; uncertain attempts are never replayed automatically.');}
   }
 
+  private async stopDelivery(tx:Prisma.TransactionClient,row:{id:string;accountId:string;payload:Prisma.JsonValue},deliveryState:string){
+    const payload=record(row.payload);
+    await tx.notification.update({where:{id:row.id},data:{status:'FAILED',payload:json({...payload,deliveryState,nextAttemptAt:null,manualReconciliationRequired:true})}});
+    const setting=uuid(payload.cycleId)?await tx.operationalSetting.findUnique({where:{key:REPORT_PREFIX+payload.cycleId}}):null;
+    let cycle:ReportCycle|undefined;
+    if(setting)try{cycle=parseReportCycle(setting.value);}catch(error){if(!(error instanceof ConflictException))throw error;}
+    if(cycle&&cycle.ownerId===row.accountId&&cycle.notificationId===row.id&&cycle.state==='EMAIL_PENDING'){
+      cycle.state='ATTENTION_REQUIRED';cycle.reason='EMAIL_'+deliveryState;
+      await tx.operationalSetting.update({where:{key:setting!.key},data:{value:json(cycle),updatedAt:new Date()}});
+    }
+    await this.audit.record({action:'EXECUTIVE_REPORT_EMAIL_NOT_ACCEPTED',resource:'Notification',resourceId:row.id,metadata:{deliveryState,approved:false,inboxDeliveryVerified:false}},tx);
+  }
+
   async deliverNext(){
     const now=new Date().toISOString();
     const pending=await this.db.notification.findFirst({where:{type:REPORT_NOTIFICATION,status:'PENDING',OR:[{payload:{path:['nextAttemptAt'],equals:Prisma.AnyNull}},{payload:{path:['nextAttemptAt'],lte:now}}]},select:{id:true},orderBy:[{createdAt:'asc'},{id:'asc'}]});
@@ -38,26 +52,34 @@ export class DepartmentReportingWorker implements OnModuleInit,OnModuleDestroy {
       const payload=record(row.payload);
       if(typeof payload.nextAttemptAt==='string'&&Date.parse(payload.nextAttemptAt)>Date.now())return null;
       if(payload.deliveryState==='ATTEMPTING'){
-        await tx.notification.update({where:{id:row.id},data:{status:'FAILED',payload:json({...payload,deliveryState:'UNCERTAIN',manualReconciliationRequired:true})}});
-        const setting=typeof payload.cycleId==='string'?await tx.operationalSetting.findUnique({where:{key:REPORT_PREFIX+payload.cycleId}}):null;
-        if(setting){const cycle=parseReportCycle(setting.value);if(cycle.notificationId===row.id&&cycle.state==='EMAIL_PENDING'){cycle.state='ATTENTION_REQUIRED';cycle.reason='EMAIL_UNCERTAIN';await tx.operationalSetting.update({where:{key:setting.key},data:{value:json(cycle),updatedAt:new Date()}});}}
+        await this.stopDelivery(tx,row,'UNCERTAIN');
         return null;
       }
-      if(!['PENDING','DEFERRED'].includes(String(payload.deliveryState)))return null;
+      if(!['PENDING','DEFERRED'].includes(String(payload.deliveryState))){await this.stopDelivery(tx,row,'REPORT_STATE_INVALID');return null;}
       await lockAdminIdentities(tx,row.accountId);await requireReportOwner(tx,row.accountId);
       const task=typeof payload.executiveTaskId==='string'?await tx.aiAgentTask.findUnique({where:{id:payload.executiveTaskId}}):null;
-      if(!task||task.state!=='COMPLETED'||!task.result||task.revision!==payload.executiveRevision)throw new Error('Report output changed.');
+      if(!task||task.state!=='COMPLETED'||!task.result||task.revision!==payload.executiveRevision)throw new ConflictException('Report output changed.');
       const {cycle,bundle}=await executiveReportContext(tx,task,this.inbox);
-      if(!cycle.sendEmail||cycle.ownerId!==row.accountId||cycle.state!=='EMAIL_PENDING'||cycle.notificationId!==row.id||cycle.id!==payload.cycleId||cycle.bundleDigest!==payload.bundleDigest)throw new Error('Report email binding changed.');
-      const owner=await tx.account.findUnique({where:{id:cycle.ownerId},select:{email:true}});if(!owner)throw new Error('Owner unavailable.');
+      if(!cycle.sendEmail||cycle.ownerId!==row.accountId||cycle.state!=='EMAIL_PENDING'||cycle.notificationId!==row.id||cycle.id!==payload.cycleId||cycle.bundleDigest!==payload.bundleDigest)throw new ConflictException('Report email binding changed.');
+      const owner=await tx.account.findUnique({where:{id:cycle.ownerId},select:{email:true}});if(!owner)throw new ConflictException('Owner unavailable.');
       const attemptId=randomUUID(),attempts=Number(payload.attempts)||0;
       // All retries finish within one hour, well inside the provider's idempotency window.
-      if(attempts>=5||Date.now()-row.createdAt.getTime()>60*60_000){await tx.notification.update({where:{id:row.id},data:{status:'FAILED',payload:json({...payload,deliveryState:'EXPIRED',manualReconciliationRequired:true})}});return null;}
+      if(attempts>=5||Date.now()-row.createdAt.getTime()>60*60_000){await this.stopDelivery(tx,row,'EXPIRED');return null;}
       const updated={...payload,deliveryState:'ATTEMPTING',attemptId,attempts:attempts+1,nextAttemptAt:new Date(Date.now()+120_000).toISOString()};
       await tx.notification.update({where:{id:row.id},data:{payload:json(updated)}});
       await this.audit.record({action:'EXECUTIVE_REPORT_EMAIL_DISPATCHED',resource:'Notification',resourceId:row.id,metadata:{cycleId:cycle.id,attemptId,approved:false}},tx);
       const manifest=bundle.entries.map(e=>`${e.departmentName}: ${REPORT_OFFICE_LABELS[e.officeStatus]||'تحتاج مراجعة'}`).join('\n');
       return{id:row.id,cycleId:cycle.id,attemptId,attempts:attempts+1,to:owner.email,text:`تقرير عبدالله عن إدارات هيدرولاند\n\n${task.result}\n\nحالات مكتب الحوكمة والامتثال والجودة كما سُجلت:\n${manifest}\n\nالتقرير للمتابعة واتخاذ القرار. الاعتماد النهائي لسلطان؛ لم ينفذ هذا التقرير أي إجراء.`,payload:updated};
+    }).catch(async error=>{
+      if(!(error instanceof ForbiddenException||error instanceof ConflictException))throw error;
+      // A revoked owner or stale report must not pin the oldest pending row.
+      // Reacquire the dispatch lock and never interfere with an active attempt.
+      await this.db.serializable(async tx=>{
+        await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${`report-email:${pending.id}`})::bigint)`;
+        const row=await tx.notification.findUnique({where:{id:pending.id}});
+        if(row?.type===REPORT_NOTIFICATION&&row.status==='PENDING'&&record(row.payload).deliveryState!=='ATTEMPTING')await this.stopDelivery(tx,row,'REPORT_AUTHORITY_OR_EVIDENCE_CHANGED');
+      });
+      return null;
     });
     if(!claim)return;
     let delivery:{provider:string;messageId:string}|undefined,disposition:'RETRYABLE'|'PERMANENT'|'UNCERTAIN'='UNCERTAIN';

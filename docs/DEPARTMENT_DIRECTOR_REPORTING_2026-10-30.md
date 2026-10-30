@@ -39,6 +39,8 @@ When email was selected for the cycle, one durable notification is created after
 
 Resend uses the existing configured sender and trial-recipient restrictions. The report has escaped RTL HTML and plain text. A stable notification-based idempotency key, serializable dispatch claim and a two-minute attempt fence protect concurrent workers. Definite transient rejections receive at most five attempts within one hour; ambiguous responses and expired in-flight attempts require reconciliation rather than automatic resending. A successful response is **provider acceptance**, not proof of inbox delivery. Email outbox records are excluded from generic in-app read actions.
 
+Revoked ownership, changed report evidence and expired delivery windows produce an explicit attention outcome. Their outbox rows are isolated so an old invalid report cannot block later valid reports. Cleanup reacquires the dispatch lock and cannot overwrite another worker's active delivery attempt.
+
 No schedule is created by this change. Initialization leaves new directors paused. Nothing invokes a model or sends a report merely because the code is installed; a reporting cycle must be requested by the authenticated owner, and execution follows existing controls and budget limits.
 
 ## Validation and release

@@ -48,11 +48,13 @@ export async function departmentReportingAcceptance({db,service,actor,ordinary,t
   const alerts=await call('/notifications',token);assert.equal(alerts.status,200);assert(!alerts.body.some(n=>n.id===outbox[0].id));
   assert.equal((await call('/notifications/'+outbox[0].id+'/read',token,{})).status,404,'In-app reads cannot consume a pending email');
   assert.equal((await db.notification.findUniqueOrThrow({where:{id:outbox[0].id}})).status,'PENDING');
+  const stale=await db.notification.create({data:{accountId:actor.id,type:'EXECUTIVE_GOVERNANCE_REPORT',createdAt:new Date(0),payload:{deliveryState:'PENDING',executiveTaskId:randomUUID()}}});
+  await worker.deliverNext();assert.equal(emailCalls,0);assert.equal((await db.notification.findUniqueOrThrow({where:{id:stale.id}})).status,'FAILED','A stale oldest report is isolated before the valid report can send');
   await Promise.all([worker.deliverNext(),worker.deliverNext()]);assert.equal(emailCalls,1,'Concurrent workers cannot duplicate the report');
   await worker.deliverNext();assert.equal(emailCalls,1);assert(emailText.includes('استكمال دليل'));assert(emailText.includes('الاعتماد النهائي لسلطان'));
   const detail=await call('/admin/agents/reporting/cycles/'+requestId,token);assert.equal(detail.status,200);assert.equal(detail.body.state,'COMPLETE');assert.equal(detail.body.emailStatus,'PROVIDER_ACCEPTED');assert.equal(detail.body.approved,false);assert.equal(detail.cacheControl,'no-store');
   assert.equal((await call('/admin/agents/reporting/cycles/'+requestId,otherToken)).status,403);
-  console.log('Department reporting HTTP/PostgreSQL PASS: 14 directors → linked office reviews including a correction → verified Abdullah context → one concurrent-safe owner-only email; no approval or real provider delivery.');
+  console.log('Department reporting HTTP/PostgreSQL PASS: 14 directors → linked office reviews including a correction → verified Abdullah context → stale outbox isolated → one concurrent-safe owner-only email; no approval or real provider delivery.');
  }finally{
   setModelText(null);
   const notifications=await db.notification.findMany({where:{accountId:actor.id,type:'EXECUTIVE_GOVERNANCE_REPORT'},select:{id:true}});
