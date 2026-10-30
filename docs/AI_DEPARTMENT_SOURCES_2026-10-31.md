@@ -46,3 +46,7 @@ The admin agent panel offers a read-only source check while generation is unavai
 Validation covers strict packet boundaries, privacy, legacy receipt compatibility and exact-claim integrity. Native loopback HTTP/PostgreSQL acceptance seeds unrelated organizations, mismatched document and finance links, private-payload sentinels and representative domain records. It checks fresh authority, inactive-unit preflight, read-only behavior, every director's actual model input and an immutable historical source after the live document count changes. Browser cases cover mobile display, missing connectors, logout, role revocation and invalid historical evidence.
 
 No migration, model, credential, price, budget or provider retry policy is changed. Existing provider waits, attempt caps, completed-output protection, owner decisions and idempotent report delivery continue to apply.
+
+## Source preview refresh
+
+Periodic agent metrics refresh preserves the captured source preview and expanded departments while rechecking administrator authority. It does not refetch sources or invoke the model. Manual refresh, a failed status read, session or workspace changes and revoked administrator authority clear the preview. The displayed source time remains the time of the captured read.
