@@ -18,7 +18,7 @@ export async function governanceRuntimeAcceptance({db,service,runtime,audit,prov
  assert.equal((await catalog()).initialized,false);
  assert.equal((await call('/admin/agents/initialize',token,{reason:'Additive setup preserves controls and tasks',reviewed:true})).status,201);
  assert.equal((await catalog()).items.find(x=>x.key==='SUPPORT').revision,existing.revision);
- assert.equal(await db.aiAgentTask.count(),retainedTasks);assert.equal(await db.aiAgentRuntime.count(),15);assert.equal((await catalog()).initialized,true);
+ assert.equal(await db.aiAgentTask.count(),retainedTasks);assert.equal(await db.aiAgentRuntime.count(),(await catalog()).items.length+1);assert.equal((await catalog()).initialized,true);
  await db.aiAgentRuntime.delete({where:{key:'LEGACY_UNKNOWN_FIXTURE'}});
  for(const item of (await catalog()).items.filter(x=>order.includes(x.key))){assert.equal(item.state,'PAUSED');assert.deepEqual(item.allowedActions,['READ_OPERATIONS','DRAFT_REPORT','REQUEST_HUMAN_APPROVAL']);}
  const audits=async(id,action)=>db.auditEvent.findMany({where:{resource:'AiAgentTask',resourceId:id,action}});
@@ -138,7 +138,7 @@ export async function governanceRuntimeAcceptance({db,service,runtime,audit,prov
   console.log('Governance deferred resume passed: fresh admin and version checks, explicit acknowledgement, atomic audit rollback, two concurrent requests create exactly one review, source and provider call counts unchanged, paused reviewer queue retained, failed tasks not replayed.');
   console.log('Governance review inbox HTTP/PostgreSQL passed: fresh admin-only/no-store reads; empty catalogue; six-stage detail and final owner receipt; original evidence; correction/escalation/deferral; revision and duplicate-link quarantine; cross-requester payload isolation; bounded distinct pagination and invalid cursors; revoked-role refusal; no ledger writes or model dispatch.');
   assert.deepEqual(await business(),beforeBusiness);
-  console.log('Governance office HTTP/PostgreSQL passed: 14 bounded agents; full six-gate route with original evidence and five reviews; exactly-once final recommendation requiring owner approval; correction, evidence-gap, invalid-output, high-risk and policy escalation stops; unlinked/revision-conflict isolation; paused controls; queue cap; atomic audit rollback; no business writes. Model traffic was loopback only.');
+  console.log('Governance office HTTP/PostgreSQL passed: additive bounded agent catalog; full six-gate route with original evidence and five reviews; exactly-once final recommendation requiring owner approval; correction, evidence-gap, invalid-output, high-risk and policy escalation stops; unlinked/revision-conflict isolation; paused controls; queue cap; atomic audit rollback; no business writes. Model traffic was loopback only.');
  }finally{
   setModelText(null);for(const key of order)assert.equal((await control('PAUSED',key)).status,200);
  }

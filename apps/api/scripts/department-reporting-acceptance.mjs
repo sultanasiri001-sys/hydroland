@@ -16,6 +16,7 @@ export async function departmentReportingAcceptance({db,service,actor,ordinary,t
  try{
   organization=await db.organization.create({data:{displayName:'Isolated report owner',kind:'HYDROLAND_INTERNAL_PLATFORM',status:'ACTIVE',ownerId:actor.id}});
   await db.operationalSetting.create({data:{key,value:{organizationId:organization.id}}});
+  await db.roleAssignment.create({data:{accountId:ordinary.id,role:'ADMIN',status:'ACTIVE'}});
   await db.aiAgentTask.updateMany({where:{requestedByAccountId:actor.id,state:'QUEUED'},data:{state:'CANCELLED'}});
   await db.aiAgentRuntime.updateMany({where:{lastAdminAccountId:actor.id},data:{state:'ENABLED'}});
   const request={requestId,brief:'تقرير الإدارات الأربع عشرة بالأدلة المتاحة',sendEmail:true,reviewed:true,reason:'اختبار دورة تقارير معزولة'};
@@ -44,6 +45,9 @@ export async function departmentReportingAcceptance({db,service,actor,ordinary,t
   const bundle=JSON.parse(executivePayload.input[1].content).executiveReport;assert.equal(bundle.entries.length,14);assert.equal(bundle.approved,false);assert.equal(bundle.entries.find(e=>e.agentKey==='HR_DIRECTOR').officeStatus,'CORRECTION_REQUIRED');assert.equal(bundle.entries.find(e=>e.agentKey==='HR_DIRECTOR').result,null);
   assert.equal(await db.auditEvent.count({where:{action:'GOVERNANCE_REVIEW_QUEUED',metadata:{path:['sourceTaskId'],equals:executiveTaskId}}}),0,'Abdullah formatting must not restart the office loop');
   const outbox=await db.notification.findMany({where:{type:'EXECUTIVE_GOVERNANCE_REPORT',accountId:actor.id}});assert.equal(outbox.length,1);
+  const alerts=await call('/notifications',token);assert.equal(alerts.status,200);assert(!alerts.body.some(n=>n.id===outbox[0].id));
+  assert.equal((await call('/notifications/'+outbox[0].id+'/read',token,{})).status,404,'In-app reads cannot consume a pending email');
+  assert.equal((await db.notification.findUniqueOrThrow({where:{id:outbox[0].id}})).status,'PENDING');
   await Promise.all([worker.deliverNext(),worker.deliverNext()]);assert.equal(emailCalls,1,'Concurrent workers cannot duplicate the report');
   await worker.deliverNext();assert.equal(emailCalls,1);assert(emailText.includes('استكمال دليل'));assert(emailText.includes('الاعتماد النهائي لسلطان'));
   const detail=await call('/admin/agents/reporting/cycles/'+requestId,token);assert.equal(detail.status,200);assert.equal(detail.body.state,'COMPLETE');assert.equal(detail.body.emailStatus,'PROVIDER_ACCEPTED');assert.equal(detail.body.approved,false);assert.equal(detail.cacheControl,'no-store');
@@ -54,6 +58,7 @@ export async function departmentReportingAcceptance({db,service,actor,ordinary,t
   const notifications=await db.notification.findMany({where:{accountId:actor.id,type:'EXECUTIVE_GOVERNANCE_REPORT'},select:{id:true}});
   await db.auditEvent.deleteMany({where:{OR:[{resource:'DepartmentReport',resourceId:requestId},{resource:'Notification',resourceId:{in:notifications.map(n=>n.id)}}]}});
   await db.notification.deleteMany({where:{id:{in:notifications.map(n=>n.id)}}});
+  await db.roleAssignment.deleteMany({where:{accountId:ordinary.id,role:'ADMIN'}});
   await db.operationalSetting.deleteMany({where:{key:{in:[prefix+requestId,key]}}});
   if(organization)await db.organization.delete({where:{id:organization.id}});
   await runtimeDb.$disconnect();
