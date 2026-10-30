@@ -12,7 +12,9 @@ upgrade or security-gate exception is introduced.
 
 Upstream 0.5.1 fixes GHSA-qr28-fpjm-wq7f (quadratic whole-string replacement)
 and incorporates the earlier linear decoder fix for GHSA-vcc3-ghjq-m6fr.
-The root override pins this workspace to 0.5.1. The release audit still checks
+The root file dependency and query-string override pin this workspace to 0.5.1.
+The parent-scoped override preserves npm's direct-workspace identity rules.
+The release audit still checks
 all mobile and repository dependencies and rejects high/critical findings.
 
 Run `node --test packages/decode-uri-component/test.cjs` for bounded malformed
