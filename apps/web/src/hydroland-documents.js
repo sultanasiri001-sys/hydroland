@@ -16,6 +16,11 @@
   const extraStyle=document.createElement('style');extraStyle.textContent='.hl-doc-departments{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.5rem;margin:.7rem 0}.hl-doc-departments button{text-align:right}.hl-doc-departments small{display:block;color:#b3c9d6}.hl-doc-inventory-table{overflow:auto;margin:.8rem 0}.hl-doc-inventory-table table{width:100%;border-collapse:collapse;min-width:620px}.hl-doc-inventory-table th,.hl-doc-inventory-table td{text-align:right;border-bottom:1px solid #25485b;padding:.6rem}.hl-doc-inventory-table caption{text-align:right;font-weight:700;padding:.5rem}.hl-documents [aria-pressed="true"]{outline:2px solid #e5b45f}.hl-documents [data-doc-hr-source-preview-result],.hl-documents [data-doc-hr-source-result]{overflow-wrap:anywhere}.hl-documents [data-doc-hr-source-preview-result] dd,.hl-documents [data-doc-hr-source-result] dd{margin:.25rem 0 .7rem}';document.head.appendChild(extraStyle);
   let sourceCheckGeneration=0,sourceCandidatesGeneration=0,sourceCandidates=[],sourceCandidatesCursor=null;
   const state={memberships:[],orgId:null,member:null,templates:[],documents:[],inventory:null,department:'',typeCode:'',editing:null,generation:0,loading:false,preferInternal:false};
+  const platformSourcePanel=document.createElement('section');platformSourcePanel.hidden=true;
+  platformSourcePanel.innerHTML='<h4>بيانات من سجلات المنصة</h4><label>مصدر البيانات<select data-platform-source-kind></select></label><button type="button" data-platform-source-load>تحميل السجلات</button><label>السجل المحفوظ<select data-platform-source-record><option value="">اختر سجلًا</option></select></label><button type="button" data-platform-source-more hidden>سجلات أخرى</button><button type="button" data-platform-source-add>إضافة السجل</button><div data-platform-source-selection></div><div class="hl-doc-actions"><button type="button" data-platform-source-preview>جلب البيانات من المنصة</button><button type="button" data-platform-source-clear>إزالة الربط</button></div><p data-platform-source-status class="hl-doc-note" role="status"></p><div data-platform-source-values style="overflow-wrap:anywhere"></div>';
+  panel.querySelector('[data-doc-fields]').before(platformSourcePanel);
+  const platformKinds={ACCOUNT:'حسابي',EMPLOYMENT:'سجل موظف',LEAVE_REQUEST:'طلب إجازة',TRAINING_ENROLLMENT:'تسجيل متدرب ومدرب',DIVE_LOG:'سجل غوص',BOOKING_PARTICIPANT:'مشارك في حجز',CUSTOMER_CASE:'حالة عميل',MARINE_ASSET:'وسيلة بحرية',TRIP:'رحلة',BOOKING:'حجز',FINANCE_ENTRY:'معاملة مالية',ADMINISTRATIVE_RECORD:'معاملة إدارية'};
+  let platformSourceGeneration=0,platformReferences=[],platformPreview=null,platformRemove=false,platformCandidates=[],platformCursor=null;
   const session=()=>window.HydrolandAuth?.getSessionVersion?.();
   const context=()=>({generation:state.generation,orgId:state.orgId,session:session()});
   const current=c=>c.generation===state.generation&&c.orgId===state.orgId&&c.session===session()&&Boolean(window.HydrolandAuth?.isAuthenticated?.());
@@ -29,7 +34,63 @@
   const hash=async payload=>{const bytes=new TextEncoder().encode(JSON.stringify(payload));const digest=await crypto.subtle.digest('SHA-256',bytes);return 'sha256:'+Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('')};
   const fieldInput=(field,value='')=>{const key=esc(field.key),label=esc(field.labelAr||field.labelEn||field.key),required=field.required?' required':'';if(Array.isArray(field.options)&&field.options.length)return `<label>${label}<select name="${key}"${required}>${field.options.map(o=>`<option value="${esc(o)}"${String(o)===String(value)?' selected':''}>${esc(o)}</option>`).join('')}</select></label>`;const type=String(field.type||'TEXT').toUpperCase();if(type==='TEXTAREA'||type==='LONG_TEXT')return `<label>${label}<textarea name="${key}" rows="4"${required}>${esc(value)}</textarea></label>`;const htmlType=type==='DATE'?'date':type==='NUMBER'?'number':'text';return `<label>${label}<input type="${htmlType}" name="${key}" value="${esc(value)}"${required}></label>`};
   const activeTemplate=()=>state.editing?.template||state.templates.find(t=>t.id===panel.querySelector('[data-doc-template]')?.value);
-  function renderFields(payload={}){const template=activeTemplate(),box=panel.querySelector('[data-doc-fields]');if(!box)return;box.innerHTML=template?(Array.isArray(template.fields)?template.fields:[]).map(f=>fieldInput(f,payload?.[f.key]??'')).join(''):'<p>لا توجد نماذج نشطة لهذه الجهة.</p>';panel.querySelector('[data-doc-save]').disabled=!template||!canWrite();clearSourcePreview();resetSourcePicker();resetAttendanceCheck();}
+  function renderFields(payload={}){const template=activeTemplate(),box=panel.querySelector('[data-doc-fields]');if(!box)return;box.innerHTML=template?(Array.isArray(template.fields)?template.fields:[]).map(f=>fieldInput(f,payload?.[f.key]??'')).join(''):'<p>لا توجد نماذج نشطة لهذه الجهة.</p>';panel.querySelector('[data-doc-save]').disabled=!template||!canWrite();clearSourcePreview();resetSourcePicker();resetAttendanceCheck();resetPlatformSource(payload);}
+  function platformMessage(message){platformSourcePanel.querySelector('[data-platform-source-status]').textContent=message;}
+  function platformValues(snapshot){
+    const box=platformSourcePanel.querySelector('[data-platform-source-values]');box.replaceChildren();
+    if(!snapshot||snapshot.schemaVersion!==1||snapshot.organizationId!==state.orgId||!Array.isArray(snapshot.records))return;
+    for(const record of snapshot.records){
+      const h=document.createElement('h5');h.textContent=record.kind==='AUTHOR'?'معدّ النموذج':platformKinds[record.kind]||record.kind;box.append(h);
+      const dl=document.createElement('dl');
+      for(const f of record.fields||[]){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=f.labelAr;dd.textContent=f.value===null?'غير مسجل في المصدر':String(f.value);dl.append(dt,dd);}box.append(dl);
+    }
+    for(const [key,value] of Object.entries(snapshot.bindings||{})){
+      const input=[...panel.querySelectorAll('[data-doc-fields] [name]')].find(x=>x.name===key);if(!input)continue;input.value=value===null?'':String(value);if('readOnly' in input)input.readOnly=true;input.dataset.platformBound='1';
+    }
+  }
+  function invalidatePlatformPreview(){platformSourceGeneration++;platformPreview=null;platformSourcePanel.querySelector('[data-platform-source-values]').replaceChildren();for(const el of panel.querySelectorAll('[data-platform-bound]')){el.readOnly=false;delete el.dataset.platformBound;}}
+  function renderPlatformSelection(){platformSourcePanel.querySelector('[data-platform-source-selection]').textContent=platformReferences.map(r=>`${platformKinds[r.kind]}: ${r.label||r.id}`).join(' | ');}
+  function resetPlatformSource(payload={}){
+    invalidatePlatformPreview();platformReferences=[];platformRemove=false;platformCandidates=[];platformCursor=null;
+    platformSourcePanel.hidden=!(state.inventory?.internalPlatform&&canManage()&&activeTemplate());
+    platformSourcePanel.querySelector('[data-platform-source-kind]').innerHTML=Object.entries(platformKinds).map(([k,v])=>`<option value="${k}">${esc(v)}</option>`).join('');
+    platformSourcePanel.querySelector('[data-platform-source-record]').innerHTML='<option value="">اختر سجلًا</option>';
+    platformSourcePanel.querySelector('[data-platform-source-more]').hidden=true;renderPlatformSelection();platformMessage('');
+    if(!platformSourcePanel.hidden&&payload?._platformSources){platformValues(payload._platformSources);platformMessage('تُعرض بيانات المصدر المثبتة مع هذا الإصدار. لا تتغير بتحديث الحساب تلقائيًا.');}
+  }
+  async function loadPlatformCandidates(append=false){
+    if(platformSourcePanel.hidden||state.loading)return;
+    const c=context(),kind=platformSourcePanel.querySelector('[data-platform-source-kind]').value,ticket=++platformSourceGeneration;
+    const valid=()=>current(c)&&!panel.hidden&&!platformSourcePanel.hidden&&ticket===platformSourceGeneration&&kind===platformSourcePanel.querySelector('[data-platform-source-kind]').value;
+    platformMessage('جارٍ قراءة السجلات المحفوظة...');
+    try{
+      const result=await request(`/documents/organizations/${encodeURIComponent(c.orgId)}/platform-sources/${kind}${append&&platformCursor?'?cursor='+encodeURIComponent(platformCursor):''}`,{cache:'no-store'});if(!valid())return;
+      if(result?.organizationId!==c.orgId||result.kind!==kind||!Array.isArray(result.items))throw new Error('تعذر التحقق من مصدر السجلات.');
+      platformCandidates=append?[...platformCandidates,...result.items]:result.items;platformCursor=result.nextCursor;
+      platformSourcePanel.querySelector('[data-platform-source-record]').innerHTML='<option value="">اختر سجلًا</option>'+platformCandidates.map(r=>`<option value="${esc(r.id)}">${esc(r.label)} · ${esc(r.id)}</option>`).join('');
+      platformSourcePanel.querySelector('[data-platform-source-more]').hidden=!result.hasMore;platformMessage(platformCandidates.length?`عُرض ${platformCandidates.length} سجلًا محفوظًا.`:'لا توجد سجلات متاحة من هذا المصدر في الجهة الحالية.');
+    }catch(e){if(valid()){invalidatePlatformPreview();platformReferences=[];platformRemove=false;renderPlatformSelection();platformCandidates=[];platformCursor=null;platformSourcePanel.querySelector('[data-platform-source-record]').replaceChildren();platformSourcePanel.querySelector('[data-platform-source-more]').hidden=true;platformMessage(e.message||'تعذر قراءة السجلات.');}}
+  }
+  platformSourcePanel.querySelector('[data-platform-source-load]').addEventListener('click',()=>loadPlatformCandidates());
+  platformSourcePanel.querySelector('[data-platform-source-more]').addEventListener('click',()=>loadPlatformCandidates(true));
+  platformSourcePanel.querySelector('[data-platform-source-kind]').addEventListener('change',()=>{invalidatePlatformPreview();platformCandidates=[];platformCursor=null;platformSourcePanel.querySelector('[data-platform-source-record]').innerHTML='<option value="">اختر سجلًا</option>';platformSourcePanel.querySelector('[data-platform-source-more]').hidden=true;platformMessage('حمّل سجلات المصدر المختار.');});
+  platformSourcePanel.querySelector('[data-platform-source-add]').addEventListener('click',()=>{
+    if(platformSourcePanel.hidden||state.loading)return;const kind=platformSourcePanel.querySelector('[data-platform-source-kind]').value,id=platformSourcePanel.querySelector('[data-platform-source-record]').value,item=platformCandidates.find(r=>r.id===id);
+    if(!item){platformMessage('اختر سجلًا محفوظًا.');return;}if(platformReferences.length>=4){platformMessage('يمكن ربط أربعة سجلات في المستند الواحد.');return;}
+    if(platformReferences.some(r=>r.kind===kind&&r.id===id)){platformMessage('السجل مضاف بالفعل.');return;}invalidatePlatformPreview();platformReferences.push({kind,id,label:item.label});platformRemove=false;renderPlatformSelection();platformMessage('اجلب البيانات قبل الحفظ.');
+  });
+  platformSourcePanel.querySelector('[data-platform-source-clear]').addEventListener('click',()=>{if(platformSourcePanel.hidden||state.loading)return;invalidatePlatformPreview();platformReferences=[];platformRemove=true;renderPlatformSelection();platformMessage('ستزال بيانات الربط من الإصدار الجديد عند حفظ التعديل.');});
+  platformSourcePanel.querySelector('[data-platform-source-preview]').addEventListener('click',async()=>{
+    if(platformSourcePanel.hidden||state.loading||!platformReferences.length){platformMessage('أضف سجلًا محفوظًا أولًا.');return;}
+    const c=context(),t=activeTemplate(),ticket=++platformSourceGeneration,refs=platformReferences.map(({kind,id})=>({kind,id}));
+    const valid=()=>current(c)&&!panel.hidden&&!platformSourcePanel.hidden&&ticket===platformSourceGeneration&&activeTemplate()?.id===t.id;
+    platformPreview=null;platformMessage('جارٍ جلب البيانات من مصادرها...');
+    try{
+      const result=await request(`/documents/organizations/${encodeURIComponent(c.orgId)}/platform-source-preview`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({templateId:t.id,references:refs}),cache:'no-store'});if(!valid())return;
+      if(result?.organizationId!==c.orgId||result.templateId!==t.id||result.templateVersion!==t.version||result.snapshot?.organizationId!==c.orgId||!/^[a-f0-9]{64}$/.test(result.snapshot?.fingerprint||''))throw new Error('تعذر التحقق من بيانات المصدر.');
+      platformPreview={references:refs,expectedFingerprint:result.snapshot.fingerprint};platformValues(result.snapshot);platformMessage('جُلبت البيانات من السجلات الأصلية. تُثبّت مع نسخة المستند عند الحفظ.');
+    }catch(e){if(valid()){invalidatePlatformPreview();platformReferences=[];platformRemove=false;renderPlatformSelection();platformMessage(e.message||'تعذر جلب البيانات.');}}
+  });
   function resetEditor(){state.editing=null;panel.querySelector('[data-doc-form-title]').textContent='إنشاء مستند';panel.querySelector('[data-doc-template]').disabled=false;panel.querySelector('[data-doc-cancel]').hidden=true;renderFields({})}
   function renderDocuments(){const list=panel.querySelector('[data-doc-list]');if(!list)return;const docs=state.documents.filter(d=>(!state.department||d.department===state.department)&&(!state.typeCode||d.template?.code===state.typeCode));if(!docs.length){list.innerHTML='<p>لا توجد مستندات محفوظة ضمن الاختيار الحالي.</p>';return}const me=myAccountId();list.innerHTML=docs.map(d=>{const admin=canManage(),canApprove=admin&&!state.inventory?.internalPlatform&&d.status==='PENDING_APPROVAL'&&d.createdByAccountId!==me,canSign=admin&&!state.inventory?.internalPlatform&&d.status==='APPROVED'&&d.createdByAccountId!==me&&d.approvedByAccountId!==me;return `<article class="hl-doc-item" data-document-id="${esc(d.id)}"><header><div><strong>${esc(d.template?.titleAr||d.template?.titleEn||d.referenceNumber)}</strong><div class="hl-doc-meta">${esc(d.referenceNumber)} · الإصدار ${esc(d.version)}</div></div><span class="hl-doc-status">${esc(statusLabel(d.status))}</span>${state.ownerApprovals?.[d.id]?.sourceVersion===d.version?'<span class="hl-doc-status" data-doc-owner-approved>معتمد إداريًا من المالك</span>':''}</header><div class="hl-doc-actions">${d.status==='DRAFT'&&canWrite()?'<button type="button" data-doc-action="edit">تعديل</button><button type="button" data-doc-action="submit">إرسال للاعتماد</button>':''}${canApprove?'<button type="button" data-doc-action="approve">اعتماد</button>':''}${canSign?'<button type="button" data-doc-action="sign">توقيع</button>':''}${admin&&d.status==='SIGNED'?'<button type="button" data-doc-action="archive">أرشفة</button>':''}${admin&&state.inventory?.internalPlatform&&d.status!=='DRAFT'?'<button type="button" data-doc-action="review-assignment">إدارة تكليف المراجعة المستقلة</button>':''}${state.inventory?.internalPlatform&&supportsHrAttendance(d.template)?'<button type="button" data-doc-action="attendance-source">فحص سجلات الحضور والإجازة</button>':''}${state.inventory?.internalPlatform&&supportsHrSource(d.template)?'<button type="button" data-doc-action="hr-source">فحص السجل الوظيفي المرتبط</button>':''}${admin&&state.inventory?.internalPlatform?'<button type="button" data-doc-action="owner-approval">اعتماد المالك الإداري وسجله</button>':''}${state.inventory?.internalPlatform&&((d.template?.code==='ADM-MEETING-MINUTES'&&d.department==='ADMIN_AFFAIRS_RECORDS')||(d.template?.code==='EXE-FOLLOWUP'&&d.department==='EXECUTIVE_GOVERNANCE'))?'<button type="button" data-doc-action="owner-decision">قرارات المالك الروتينية</button>':''}<button type="button" data-doc-action="readiness">فحص مسار الاعتماد</button><button type="button" data-doc-action="pdf">عرض PDF</button></div><div class="hl-doc-note" data-doc-readiness role="status" aria-live="polite" hidden></div><div class="hl-doc-note" data-doc-hr-source-result role="status" aria-live="polite" hidden></div><div class="hl-doc-note" data-doc-attendance-saved-result role="status" aria-live="polite" style="overflow-wrap:anywhere" hidden></div></article>`}).join('')}
   const templateStatus=s=>({READY:'نموذج مهيأ',NOT_CONFIGURED:'النموذج غير مهيأ',INACTIVE:'النموذج غير نشط',ACTIVE_VERSION_CONFLICT:'تعارض الإصدارات النشطة',DEPARTMENT_CONFLICT:'تعارض الإدارة'}[s]||s);
@@ -119,9 +180,11 @@
     event.preventDefault();const template=activeTemplate();if(!template||!state.orgId||!canWrite()||state.loading)return;
     const c=context(),editingId=state.editing?.id,payload=Object.fromEntries(new FormData(event.currentTarget).entries()),save=panel.querySelector('[data-doc-save]');save.disabled=true;
     try{
+      if(platformReferences.length&&!platformPreview)throw new Error('اجلب بيانات السجلات المختارة قبل حفظ المستند.');
+      const sourceBinding=platformPreview||(platformRemove?{references:[],expectedFingerprint:''}:undefined);
       const contentHash=await hash(payload);if(!current(c))return;
-      if(editingId)await request(`/documents/${encodeURIComponent(editingId)}/revise`,{method:'POST',body:JSON.stringify({contentHash,payload})});
-      else await request('/documents',{method:'POST',body:JSON.stringify({organizationId:c.orgId,templateId:template.id,department:template.department,contentHash,payload})});
+      if(editingId)await request(`/documents/${encodeURIComponent(editingId)}/revise`,{method:'POST',body:JSON.stringify({contentHash,payload,...(sourceBinding?{sourceBinding,expectedDocumentVersion:state.editing.version}:{})})});
+      else await request('/documents',{method:'POST',body:JSON.stringify({organizationId:c.orgId,templateId:template.id,department:template.department,contentHash,payload,...(sourceBinding?{sourceBinding}:{})})});
       if(!current(c))return;await loadOrganization(c.orgId);
       if(c.orgId===state.orgId&&c.session===session())note(editingId?'تم حفظ التعديل والإصدار الجديد.':'تم حفظ المستند كمسودة.');
     }catch(error){if(current(c))note(error instanceof Error?error.message:'تعذر حفظ المستند');}
@@ -250,8 +313,10 @@
   const connectDocumentButtons=root=>{root.querySelectorAll?.('button').forEach(button=>{const label=(button.textContent||'').trim();if(!['العقود الإلكترونية','رفع الوثائق','التوقيع الإلكتروني','طلب اعتماد الإدارة','متابعة الحالة'].includes(label)||button.dataset.hlDocumentsConnected)return;button.dataset.hlDocumentsConnected='1';button.disabled=false;button.removeAttribute('aria-disabled');button.title='';button.addEventListener('click',()=>{panel.hidden=false;refresh();panel.scrollIntoView({behavior:documentScrollBehavior(),block:'start'})})})};
   const observer=new MutationObserver(records=>records.forEach(record=>record.addedNodes.forEach(node=>{if(node.nodeType===1)connectDocumentButtons(node)})));observer.observe(document.body,{childList:true,subtree:true});
   document.addEventListener('hydroland:role-changed',event=>{if(event.detail?.role==='organization'){panel.hidden=false;refresh()}else panel.hidden=true});
+  document.addEventListener('hydroland:role-changed',()=>{if(panel.hidden)resetPlatformSource();});
   const clear=()=>{state.generation++;state.orgId=null;state.memberships=[];state.department='';state.typeCode='';state.loading=false;clearData();panel.querySelector('[data-doc-org]').replaceChildren();note('');panel.hidden=true;};
   document.addEventListener('hydroland:auth-changed',()=>{if(!window.HydrolandAuth?.isAuthenticated?.())clear();else if(!panel.hidden)refresh();});
   for(const event of ['hydroland:session-cleared','hydroland:portal-cleared'])document.addEventListener(event,clear);
   window.HydrolandDocuments={open:(options={})=>{if(!window.HydrolandAuth?.isAuthenticated?.())return;state.department=options.department||'';state.typeCode='';state.preferInternal=options.internal===true||window.HydrolandPortalAccess?.getCurrentRole?.()==='admin';panel.hidden=false;refresh();},refresh};
 })();
+

@@ -5,6 +5,8 @@ import { CooperationContractService } from './cooperation-contract.service';
 import { COOPERATION_CODE, CONTRACT_FIELDS } from './cooperation-contract.domain';
 import { assignedReviewAccess, documentReadHash } from './internal-document-review.domain';
 import { isLibraryCode } from './contract-library.domain';
+import { PLATFORM_SOURCE_KEY, sourceSnapshot, sourcePrintFields } from './platform-document-source.domain';
+import { validateDocumentPayload } from './document-payload';
 
 export interface DocumentPrintContract {
   documentId:string;
@@ -63,6 +65,9 @@ export class DocumentPrintService {
     if(!branding) throw new BadRequestException('Pinned document branding snapshot was not found.');
     const definitions=Array.isArray(d.template.fields)?d.template.fields as Array<Record<string,unknown>>:[];
     const payload=d.payload&&typeof d.payload==='object'&&!Array.isArray(d.payload)?d.payload as Record<string,unknown>:{};
+    if(!cooperation&&Object.hasOwn(payload,PLATFORM_SOURCE_KEY))validateDocumentPayload(d.template.fields,payload);
+    let sources;
+    try{sources=cooperation?null:sourceSnapshot(payload,d.organizationId);}catch{throw new BadRequestException('أدلة مصدر المستند غير متسقة.');}
     const fields=cooperation?[
       ...CONTRACT_FIELDS.map(([section,key,labelAr])=>({key:section+'.'+key,labelAr,labelEn:key,type:'TEXT',required:true,value:cooperation.values[section][key]})),
       ...cooperation.clauses.map((value,i)=>({key:'clause-'+i,labelAr:`البند ${i+1}`,labelEn:`Clause ${i+1}`,type:'TEXT',required:true,value})),
@@ -74,6 +79,7 @@ export class DocumentPrintService {
       required:Boolean(f.required),
       value:payload[String(f.key??'')]??null,
     }));
+    if(sources)fields.push(...sourcePrintFields(sources));
     return {
       documentId:d.id,organizationId:d.organizationId,referenceNumber:d.referenceNumber,department:d.department,status:d.status,
       documentVersion:d.version,contentHash:d.contentHash,
@@ -87,3 +93,4 @@ export class DocumentPrintService {
     };
   }
 }
+

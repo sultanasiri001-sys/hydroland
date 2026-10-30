@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { templateFields } from './document-template-input';
+import { PLATFORM_SOURCE_KEY, sourceSnapshot } from './platform-document-source.domain';
 
 const unsafeKeys = new Set(['__proto__', 'prototype', 'constructor']);
 const controlCharacters = /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/u;
@@ -26,7 +27,15 @@ export function validateDocumentPayload(definition: unknown, value: unknown): as
   catch { throw new BadRequestException('Document data is not valid JSON.'); }
   if (bytes > 128_000) throw new BadRequestException('Document data exceeds 128000 bytes.');
   const allowed = new Set(fields.map(field => field.key));
+  if (Object.hasOwn(value,PLATFORM_SOURCE_KEY)) {
+    let snapshot;
+    try { snapshot=sourceSnapshot(value); } catch { throw new BadRequestException('Invalid server-owned document source evidence.'); }
+    for (const [key,bound] of Object.entries(snapshot!.bindings)) {
+      if (!allowed.has(key) || value[key]!==bound) throw new BadRequestException('Document data does not match its pinned source evidence.');
+    }
+  }
   for (const key of Object.keys(value)) {
+    if (key===PLATFORM_SOURCE_KEY) continue;
     if (unsafeKeys.has(key) || !allowed.has(key)) throw new BadRequestException(`Unknown document field: ${key}`);
   }
   for (const field of fields) {
@@ -71,3 +80,4 @@ export function validateDocumentPayload(definition: unknown, value: unknown): as
     }
   }
 }
+

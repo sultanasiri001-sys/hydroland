@@ -7,11 +7,17 @@ import { isLibraryCode, LIBRARY_PREFIX } from './contract-library.domain';
 import { DOCUMENT_DEPARTMENTS } from './document-form.domain';
 import { templateObject, templateText, templateFields, assertCompatibleTemplateFields } from './document-template-input';
 import { validateDocumentPayload } from './document-payload';
+import { PlatformDocumentSourceService } from './platform-document-source.service';
+import { PLATFORM_SOURCE_KEY, sourceDigest } from './platform-document-source.domain';
 
 type Field={key:string;labelAr:string;labelEn:string;type:string;required:boolean;options?:string[]};
 @Injectable()
 export class DocumentPersistenceService {
-  constructor(private readonly db: DatabaseService, private readonly authz: DocumentAuthorizationService) {}
+  constructor(private readonly db: DatabaseService, private readonly authz: DocumentAuthorizationService, private readonly sources: PlatformDocumentSourceService) {}
+
+  private clientPayload(payload:unknown) {
+    if(!payload||typeof payload!=='object'||Array.isArray(payload)||![Object.prototype,null].includes(Object.getPrototypeOf(payload))||Object.hasOwn(payload,PLATFORM_SOURCE_KEY))throw new BadRequestException('تختار مراجع المصدر فقط؛ بياناته تُقرأ من المنصة ولا يقبل إدخال نسخة منها.');
+  }
 
   async createTemplate(accountId:string,input:{organizationId:string;code:string;titleAr:string;titleEn:string;department:string;fields:Field[];printable?:boolean}){
     templateObject(input,['organizationId','code','titleAr','titleEn','department','fields','printable']);
@@ -50,20 +56,24 @@ export class DocumentPersistenceService {
     return this.db.documentTemplate.findMany({where:{organizationId,status:'ACTIVE',NOT:[{code:COOPERATION_CODE},{code:{startsWith:LIBRARY_PREFIX}}],...(department?{department}:{})},orderBy:[{department:'asc'},{code:'asc'}]});
   }
 
-  async createDocument(accountId:string,input:{organizationId:string;templateId:string;department:string;contentHash:string;payload:Record<string,unknown>}){
-    templateObject(input,['organizationId','templateId','department','contentHash','payload']);
+  async createDocument(accountId:string,input:{organizationId:string;templateId:string;department:string;contentHash:string;payload:Record<string,unknown>;sourceBinding?:unknown}){
+    templateObject(input,['organizationId','templateId','department','contentHash','payload','sourceBinding']);
     await this.authz.assert(accountId,input.organizationId,'DOCUMENT_CREATE');
     const t=await this.db.documentTemplate.findFirst({where:{id:input.templateId,organizationId:input.organizationId,status:'ACTIVE'}});
     if(!t) throw new NotFoundException('Active document template not found in organization scope.');
     if(t.code===COOPERATION_CODE||isLibraryCode(t.code)) throw new ForbiddenException('أنشئ العقد من مساحة العقود لضبط الأطراف والتوقيعات.');
     if(t.department!==input.department) throw new BadRequestException('Document department does not match template.');
     if(typeof input.contentHash!=='string'||!input.contentHash.trim()||input.contentHash.length>512) throw new BadRequestException('Content hash is required.');
-    validateDocumentPayload(t.fields,input.payload);
+    this.clientPayload(input.payload);
+    if(input.sourceBinding===undefined)validateDocumentPayload(t.fields,input.payload);
     return this.db.serializable(async tx=>{
       await this.authz.assert(accountId,input.organizationId,'DOCUMENT_CREATE',tx);
       const live=await tx.documentTemplate.findFirst({where:{id:t.id,organizationId:input.organizationId,status:'ACTIVE'}});
       if(!live||live.version!==t.version)throw new BadRequestException('Template changed concurrently; reload before creating a document.');
-      validateDocumentPayload(live.fields,input.payload);
+      const source=input.sourceBinding===undefined?null:await this.sources.capture(tx,accountId,input.organizationId,live.fields,input.sourceBinding);
+      const payload=input.sourceBinding===undefined?input.payload:this.sources.withSnapshot(input.payload,source);
+      validateDocumentPayload(live.fields,payload);
+      const contentHash=input.sourceBinding===undefined?input.contentHash:'sha256:'+sourceDigest(payload);
       const year=new Date().getUTCFullYear();
       const counter=await tx.documentReferenceCounter.upsert({
         where:{organizationId_department_year:{organizationId:input.organizationId,department:t.department,year}},
@@ -79,7 +89,7 @@ export class DocumentPersistenceService {
         if(org.documentBrandVersion!==1) throw new BadRequestException('Organization branding snapshot invariant is broken.');
         await tx.documentBrandSnapshot.create({data:{organizationId:input.organizationId,brandVersion:1,logoAssetId:org.documentLogoAssetId,brandNameAr:org.documentBrandNameAr??org.displayName,brandNameEn:org.documentBrandNameEn??org.displayName,footerAr:org.documentFooterAr,footerEn:org.documentFooterEn}});
       }
-      const d=await tx.managedDocument.create({data:{organizationId:input.organizationId,templateId:t.id,referenceNumber,department:t.department,contentHash:input.contentHash,documentBrandVersion:org.documentBrandVersion,payload:input.payload as Prisma.InputJsonValue,createdByAccountId:accountId}});
+      const d=await tx.managedDocument.create({data:{organizationId:input.organizationId,templateId:t.id,referenceNumber,department:t.department,contentHash,documentBrandVersion:org.documentBrandVersion,payload:payload as Prisma.InputJsonValue,createdByAccountId:accountId}});
       await tx.documentRevision.create({data:{documentId:d.id,version:d.version,contentHash:d.contentHash,payload:d.payload as Prisma.InputJsonValue,createdByAccountId:accountId}});
       // Server-owned presentation evidence is pinned only for newly created
       // administrative documents. Do not backfill or revise existing records.
@@ -88,22 +98,33 @@ export class DocumentPersistenceService {
     });
   }
 
-  async revise(accountId:string,id:string,input:{contentHash:string;payload:Record<string,unknown>}){
-    templateObject(input,['contentHash','payload']);
+  async revise(accountId:string,id:string,input:{contentHash:string;payload:Record<string,unknown>;sourceBinding?:unknown;expectedDocumentVersion?:number}){
+    templateObject(input,['contentHash','payload','sourceBinding','expectedDocumentVersion']);
     const d=await this.db.managedDocument.findUnique({where:{id},include:{template:true}});
     if(!d) throw new NotFoundException('Document not found.');
     this.assertGeneric(d.template.code);
     await this.authz.assert(accountId,d.organizationId,'REVISE');
     if(d.status!=='DRAFT') throw new BadRequestException('Only DRAFT documents can be revised. Approved, signed and archived records are immutable.');
     if(typeof input.contentHash!=='string'||!input.contentHash.trim()||input.contentHash.length>512) throw new BadRequestException('Content hash is required.');
-    validateDocumentPayload(d.template.fields,input.payload);
+    this.clientPayload(input.payload);
+    if(input.sourceBinding!==undefined&&input.expectedDocumentVersion!==d.version)throw new BadRequestException('تغير إصدار المستند؛ أعد قراءته قبل تغيير المصدر.');
+    if(input.sourceBinding===undefined&&!Object.hasOwn((d.payload??{}) as object,PLATFORM_SOURCE_KEY))validateDocumentPayload(d.template.fields,input.payload);
     return this.db.serializable(async tx=>{
       await this.authz.assert(accountId,d.organizationId,'REVISE',tx);
       const current=await tx.managedDocument.findUnique({where:{id}});
       if(!current) throw new NotFoundException('Document not found.');
       if(current.status!=='DRAFT'||current.version!==d.version) throw new BadRequestException('Document changed concurrently; reload before revising.');
+      let payload=input.payload;
+      if(input.sourceBinding!==undefined){
+        const source=await this.sources.capture(tx,accountId,d.organizationId,d.template.fields,input.sourceBinding);
+        payload=this.sources.withSnapshot(input.payload,source);
+      }else if(Object.hasOwn((current.payload??{}) as object,PLATFORM_SOURCE_KEY)){
+        payload=this.sources.retained(input.payload,current.payload as Record<string,unknown>,d.organizationId);
+      }
+      validateDocumentPayload(d.template.fields,payload);
+      const contentHash=input.sourceBinding!==undefined||Object.hasOwn(payload,PLATFORM_SOURCE_KEY)?'sha256:'+sourceDigest(payload):input.contentHash;
       const nextVersion=current.version+1;
-      const claimed=await tx.managedDocument.updateMany({where:{id,status:'DRAFT',version:current.version},data:{contentHash:input.contentHash,payload:input.payload as Prisma.InputJsonValue,version:{increment:1}}});
+      const claimed=await tx.managedDocument.updateMany({where:{id,status:'DRAFT',version:current.version},data:{contentHash,payload:payload as Prisma.InputJsonValue,version:{increment:1}}});
       if(claimed.count!==1) throw new BadRequestException('Document changed concurrently; reload before revising.');
       const updated=await tx.managedDocument.findUniqueOrThrow({where:{id}});
       await tx.documentRevision.create({data:{documentId:id,version:nextVersion,contentHash:updated.contentHash,payload:updated.payload as Prisma.InputJsonValue,createdByAccountId:accountId}});
@@ -171,3 +192,4 @@ export class DocumentPersistenceService {
     if(code===COOPERATION_CODE||isLibraryCode(code)) throw new ForbiddenException('استخدم مكتبة العقود أو مساحة أطراف العقد.');
   }
 }
+
