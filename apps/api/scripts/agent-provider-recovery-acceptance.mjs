@@ -31,7 +31,7 @@ export async function providerRecoveryAcceptance(ctx){
   assert.equal((await catalog()).provider.reason,'PROVIDER_WAITING');assert.equal((await catalog()).items.find(x=>x.key==='SUPPORT').state,'ENABLED');
   assert.equal(await service.claim(),null);assert.equal(await runtime().claim(),null,'A new runtime instance honors the durable cooldown');
   const blocked=(await enqueue('Other agent must share the same cooldown','INVENTORY',{action:'READ_OPERATIONS'})).body;assert.equal((await control('ENABLED','INVENTORY')).status,200);assert.equal(await runtime().claim(),null);
-  assert.equal((await control('PAUSED')).status,200);await due(first.id);assert.equal(await runtime().claim(),null,'An owner pause survives the cooldown');assert.equal((await control('ENABLED')).status,200);
+  assert.equal((await control('PAUSED','INVENTORY')).status,200);assert.equal((await control('PAUSED')).status,200);await due(first.id);assert.equal(await runtime().claim(),null,'Owner pauses survive the cooldown');assert.equal((await control('ENABLED')).status,200);
   setFailure(null);const claims=await Promise.all([service.claim(),runtime().claim()]);assert.equal(claims.filter(Boolean).length,1);const claimed=claims.find(Boolean);assert.equal(claimed.task.id,first.id);
   await Promise.all([service.runClaim(claimed),runtime().runClaim(claimed)]);
   const completed=await row(first.id),attempts=await db.aiAgentTaskAttempt.findMany({where:{taskId:first.id},orderBy:{attemptNumber:'asc'}});
