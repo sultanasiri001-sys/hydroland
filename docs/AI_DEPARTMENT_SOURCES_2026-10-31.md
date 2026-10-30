@@ -1,5 +1,6 @@
 # Department reporting source snapshots
 
+Current collector: version 3, documented in `AI_DEPARTMENT_SOURCE_V3_2026-10-31.md`. The version 2 contract below remains supported for queued tasks and captured historical evidence.
 New owner-started reporting cycles use one department-specific numeric source packet for each of the fourteen directors. These replace the four general counters for those new director reports. Existing cycles, completed reports, manual legacy tasks and their recorded inputs are preserved.
 
 ## Scope and provenance

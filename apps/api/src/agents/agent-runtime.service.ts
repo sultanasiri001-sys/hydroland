@@ -19,7 +19,7 @@ import { executiveReportContext, reportModelInput, REPORT_FINGERPRINT } from './
 import { GovernanceReviewInboxService } from './governance-review-inbox.service';
 import { MAX_PROVIDER_ATTEMPTS, PROVIDER_GATE_KEY, PROVIDER_RECOVERY_WINDOW_MS, ProviderGate, providerGateView, readProviderGate, rejectionPlan, taskIntervalMs } from './agent-provider-policy';
 import { readDepartmentSources, requireDepartmentSourceOwner } from './department-source.reader';
-import { DEPARTMENT_SOURCE_SCOPE, DIRECTOR_SOURCE_FINGERPRINT } from './department-source.domain';
+import { departmentSourceScope, departmentSourceVersion, isDepartmentSourceScope } from './department-source.domain';
 
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const taskView={id:true,agentKey:true,requestedByAccountId:true,action:true,language:true,prompt:true,state:true,revision:true,createdAt:true,startedAt:true,dispatchedAt:true,finishedAt:true,model:true,executionPolicy:true,inputTokens:true,outputTokens:true,reservedCostMicroUsd:true,estimatedCostMicroUsd:true,result:true,errorCode:true,reviewedAt:true,attemptCount:true,unknownCostAttempts:true,retryNotBefore:true} as const;
@@ -278,7 +278,7 @@ export class AgentRuntimeService {
       const governanceReview=isGovernanceAgent(claim.task.agentKey)?await this.db.serializable(tx=>this.governanceContext(tx,claim.task)):undefined;
       if(isGovernanceAgent(claim.task.agentKey)&&!governanceReview)throw new AiProviderError('GOVERNANCE_SOURCE_INVALID');
       if(governanceReview?.source.action==='READ_OPERATIONS'&&governanceReview.source.operationsEvidence?.status!=='RECORDED')throw new AiProviderError('SOURCE_EVIDENCE_UNAVAILABLE');
-      if(governanceReview?.source.operationsEvidence?.status==='RECORDED'&&'scope' in governanceReview.source.operationsEvidence&&governanceReview.source.operationsEvidence.scope===DEPARTMENT_SOURCE_SCOPE)await this.db.serializable(tx=>requireDepartmentSourceOwner(tx,claim.task.requestedByAccountId));
+      if(governanceReview?.source.operationsEvidence?.status==='RECORDED'&&'scope' in governanceReview.source.operationsEvidence&&isDepartmentSourceScope(governanceReview.source.operationsEvidence.scope))await this.db.serializable(tx=>requireDepartmentSourceOwner(tx,claim.task.requestedByAccountId));
       const draftCorrection=claim.task.fingerprint.startsWith(DRAFT_CORRECTION_PREFIX)?await this.db.serializable(tx=>this.draftCorrectionContext(tx,claim.task)):undefined;
       if(claim.task.fingerprint.startsWith(DRAFT_CORRECTION_PREFIX)&&!draftCorrection)throw new AiProviderError('DRAFT_CORRECTION_SOURCE_INVALID');
       let reportBundle:object|undefined;
@@ -287,16 +287,17 @@ export class AgentRuntimeService {
         reportBundle=reportModelInput((await this.db.serializable(tx=>executiveReportContext(tx,claim.task,this.reportInbox!))).bundle);
       }
       let snapshot:object|undefined;
-      const department=directorDepartment(claim.task.agentKey);
-      if(claim.task.fingerprint.startsWith(DIRECTOR_SOURCE_FINGERPRINT)){
+      const department=directorDepartment(claim.task.agentKey),sourceVersion=departmentSourceVersion(claim.task.fingerprint);
+      if(claim.task.fingerprint.startsWith('department-source:')&&!sourceVersion)throw new AiProviderError('DEPARTMENT_SOURCE_INVALID');
+      if(sourceVersion){
         if(claim.task.action!=='READ_OPERATIONS'||!department)throw new AiProviderError('DEPARTMENT_SOURCE_INVALID');
         await this.db.serializable(async tx=>{
           await this.guard(tx);
           const row=await tx.aiAgentTask.findUnique({where:{id:claim.task.id}});
           if(!row||row.state!=='RUNNING'||row.claimId!==claim.task.claimId||row.revision!==claim.task.revision)throw new AiProviderError('OPERATIONS_EVIDENCE_CONFLICT');
-          const source=await readDepartmentSources(tx,claim.task.requestedByAccountId,[department.code]),values=source.departments[0]?.evidence;
+          const source=await readDepartmentSources(tx,claim.task.requestedByAccountId,[department.code],sourceVersion),values=source.departments[0]?.evidence;
           if(!values)throw new AiProviderError('DEPARTMENT_SOURCE_UNAVAILABLE');
-          await this.audit.record({action:'AI_TASK_OPERATIONS_CAPTURED',resource:'AiAgentTask',resourceId:row.id,metadata:{agentKey:row.agentKey,scope:DEPARTMENT_SOURCE_SCOPE,claimId:row.claimId,sourceRevision:row.revision,observedAt:source.observedAt,values,digest:operationsEvidenceDigest(row.id,row.claimId!,row.revision,source.observedAt,values)}},tx);
+          await this.audit.record({action:'AI_TASK_OPERATIONS_CAPTURED',resource:'AiAgentTask',resourceId:row.id,metadata:{agentKey:row.agentKey,scope:departmentSourceScope(sourceVersion),claimId:row.claimId,sourceRevision:row.revision,observedAt:source.observedAt,values,digest:operationsEvidenceDigest(row.id,row.claimId!,row.revision,source.observedAt,values)}},tx);
           snapshot={...values,observedAt:source.observedAt};
         });
       }else if(claim.task.action==='READ_OPERATIONS'&&!isGovernanceAgent(claim.task.agentKey)){
