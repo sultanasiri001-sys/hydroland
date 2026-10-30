@@ -120,6 +120,8 @@ jobs:
         run: node apps/api/scripts/document-internal-owner-checks.mjs
       - name: Read-only model connection diagnostics without generation
         run: node apps/api/scripts/agent-provider-connection-check.mjs
+      - name: Bounded provider quota and rate-limit rejection categories
+        run: node --test apps/api/scripts/agent-provider-errors.test.cjs
       - name: Build connected browser fixture
         run: npm run build -w @hydroland/web
       - name: Install connected browser Chromium
