@@ -40,6 +40,6 @@ export function renderVerifiedExecutiveReport(bundle:VerifiedExecutiveReport):st
     lines.push('الأدلة الناقصة:',...(entry.evidenceGaps.length?entry.evidenceGaps.map(x=>'- '+literal(x)):['- لا توجد فجوات مسجلة؛ لا يعد ذلك إثباتًا لاكتمال البيانات.']));
     lines.push('مستوى المخاطر المسجل: '+literal(entry.riskLevel),'يتطلب تصعيدًا للمالك: '+(entry.ownerEscalationRequired?'نعم':'لا'));
   }
-  lines.push('قرار المالك مطلوب بصورة مستقلة. لم يُنفذ إجراء أو إرسال خارجي بهذه الصياغة.');
+  lines.push('قرار المالك مطلوب بصورة مستقلة. هذا التقرير لا يمنح إذنًا لتنفيذ أعمال أو إرسال خارجي.');
   return lines.join('\n\n');
 }
