@@ -84,6 +84,8 @@ test('runtime gives Abdullah the verified fourteen-entry bundle and does not res
  const runtime=new AgentRuntimeService(f.db,f.audit,f.agents,model,{},f.inbox);
  await runtime.runClaim({task:{...task},config:{},agent:f.agents.list().find(a=>a.key==='EXECUTIVE')});
  assert.equal(captured.entries.length,14);assert.equal(captured.approved,false);assert.equal(task.state,'COMPLETED');
+ assert.match(task.result,/READY_FOR_OWNER: 14/);assert.match(task.result,/إجمالي الإدارات: 14/);
+ assert(!task.result.includes('تقرير عبدالله الموحد'));assert(task.result.includes('تقرير المدير بالأدلة المتاحة'));
  assert(!JSON.stringify(captured).includes(f.state().sources[0].taskId));assert(!JSON.stringify(captured).includes('review-v1'));
  assert.equal(f.events.filter(e=>e.action==='GOVERNANCE_REVIEW_QUEUED').length,0);assert.equal(f.events.filter(e=>e.action==='AI_EXECUTIVE_REPORT_FORMATTED').length,1);
  await f.reporting.advance();assert.equal(f.notifications.size,1);assert.equal(f.state().state,'EMAIL_PENDING');await f.reporting.advance();assert.equal(f.notifications.size,1);
@@ -154,4 +156,18 @@ test('email renderer escapes model HTML, pins recipient and idempotency, classif
   global.fetch=async()=>new Response('{}',{status:200});await assert.rejects(()=>service.sendExecutiveReport(input),e=>e.disposition==='UNCERTAIN');
   process.env.RESEND_API_BASE_URL='https://unexpected.example.invalid';await assert.rejects(()=>service.sendExecutiveReport(input),e=>e.disposition==='PERMANENT');
  }finally{global.fetch=before;for(const k of Object.keys(process.env))if(!(k in env))delete process.env[k];Object.assign(process.env,env);}
+});
+
+test('historical report detail derives exact counts without rewriting the original provider draft',async()=>{
+ const f=fixture();await f.reporting.start(f.owner,{...f.request,sendEmail:false});f.completeDirectors();
+ for(const source of f.state().sources.slice(9))f.officeStatuses.set(source.taskId,'CORRECTION_REQUIRED');
+ await f.reporting.advance();const task=f.tasks.get(f.state().executiveTaskId);
+ Object.assign(task,{state:'COMPLETED',result:'ملخص مولد خاطئ: ست إدارات جاهزة وست تحتاج تصحيحاً'});
+ await f.reporting.advance();const revision=task.revision,original=task.result;
+ const detail=await f.reporting.detail(f.owner,f.state().id);
+ assert.match(detail.executiveTask.result,/READY_FOR_OWNER: 9/);
+ assert.match(detail.executiveTask.result,/CORRECTION_REQUIRED: 5/);
+ assert.equal(task.result,original);assert.equal(task.revision,revision);assert.equal(f.notifications.size,0);
+ const source=f.tasks.get(f.state().sources[0].taskId);source.revision=randomUUID();
+ await assert.rejects(()=>f.reporting.detail(f.owner,f.state().id),e=>e.getStatus()===409);
 });
