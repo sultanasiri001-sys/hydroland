@@ -21,13 +21,15 @@ export async function departmentReportingAcceptance({db,service,actor,ordinary,t
   await db.aiAgentRuntime.updateMany({where:{lastAdminAccountId:actor.id},data:{state:'ENABLED'}});
   const {departmentSourceAcceptance}=await import('./department-source-acceptance.mjs');
   sourceCase=await departmentSourceAcceptance({db,organization,actor,ordinary,token,otherToken,call,providerCalls});
-  // A queued v2 director remains on its original source profile after upgrade.
-  const legacy=await db.aiAgentTask.create({data:{agentKey:'INVENTORY',requestedByAccountId:actor.id,requestKey:randomUUID(),fingerprint:'department-source:v2:'+randomUUID(),action:'READ_OPERATIONS',language:'ar-SA',prompt:'Isolated legacy v2 inventory source'}});
-  setModelText('Legacy source summary');let legacyClaim=await service.claim();assert.equal(legacyClaim?.task.id,legacy.id);await service.runClaim(legacyClaim);
-  const oldInput=JSON.parse(payloads.at(-1).input[1].content).aggregateOperations;assert.equal(oldInput.version,2);assert.deepEqual(oldInput.metrics,{});
+  // Queued v2 inventory and v3 marketing keep their original empty profiles.
+  const legacyCases=[];for(const [legacyVersion,legacyAgent] of [[2,'INVENTORY'],[3,'MARKETING']]){
+  const legacy=await db.aiAgentTask.create({data:{agentKey:legacyAgent,requestedByAccountId:actor.id,requestKey:randomUUID(),fingerprint:`department-source:v${legacyVersion}:`+randomUUID(),action:'READ_OPERATIONS',language:'ar-SA',prompt:'Isolated legacy v2 inventory source'}});
+  legacyCases.push({id:legacy.id,version:legacyVersion});setModelText('Legacy source summary');let legacyClaim=await service.claim();assert.equal(legacyClaim?.task.id,legacy.id);await service.runClaim(legacyClaim);
+  const oldInput=JSON.parse(payloads.at(-1).input[1].content).aggregateOperations;assert.equal(oldInput.version,legacyVersion);assert.deepEqual(oldInput.metrics,{});
   setModelText(JSON.stringify(pass));legacyClaim=await service.claim();assert.equal(legacyClaim?.task.agentKey,'GOV_QUALITY_AUDIT');await service.runClaim(legacyClaim);
-  const oldReview=JSON.parse(payloads.at(-1).input[1].content).governanceReview;assert.equal(oldReview.source.operationsEvidence.scope,'DEPARTMENT_AGGREGATE_V2');assert.deepEqual(oldReview.source.operationsEvidence.values.metrics,{});
+  const oldReview=JSON.parse(payloads.at(-1).input[1].content).governanceReview;assert.equal(oldReview.source.operationsEvidence.scope,`DEPARTMENT_AGGREGATE_V${legacyVersion}`);assert.deepEqual(oldReview.source.operationsEvidence.values.metrics,{});
   await db.aiAgentTask.updateMany({where:{requestedByAccountId:actor.id,state:'QUEUED'},data:{state:'CANCELLED'}});
+  }
   const request={requestId,brief:'تقرير الإدارات الأربع عشرة بالأدلة المتاحة',sendEmail:true,reviewed:true,reason:'اختبار دورة تقارير معزولة'};
   assert.equal((await call('/admin/agents/reporting/catalog')).status,401);
   assert.equal((await call('/admin/agents/reporting/catalog',otherToken)).status,403);
@@ -49,16 +51,18 @@ export async function departmentReportingAcceptance({db,service,actor,ordinary,t
    }else setModelText(claim.task.agentKey==='EXECUTIVE'?'تقرير عبدالله: مراجعة الإدارات مكتملة، مع طلب استكمال دليل الموارد البشرية.':'تقرير مدير الإدارة ضمن المؤشرات المجمعة المتاحة فقط.');
    await service.runClaim(claim);
    if(started.body.sources.some(s=>s.taskId===claim.task.id)){
-    const input=JSON.parse(payloads.at(-1).input[1].content),source=started.body.sources.find(s=>s.taskId===claim.task.id);assert.equal(input.aggregateOperations.version,3);assert.equal(input.aggregateOperations.department,source.departmentCode);assert.equal(input.aggregateOperations.coverage,'PARTIAL');assert(Number.isFinite(Date.parse(input.aggregateOperations.observedAt)));const captured=await db.auditEvent.findFirstOrThrow({where:{resourceId:claim.task.id,action:'AI_TASK_OPERATIONS_CAPTURED'}});assert.equal(input.aggregateOperations.observedAt,captured.metadata.observedAt);capturedDirectors.add(claim.task.agentKey);
+    const input=JSON.parse(payloads.at(-1).input[1].content),source=started.body.sources.find(s=>s.taskId===claim.task.id);assert.equal(input.aggregateOperations.version,4);assert.equal(input.aggregateOperations.department,source.departmentCode);assert.equal(input.aggregateOperations.coverage,'PARTIAL');assert(Number.isFinite(Date.parse(input.aggregateOperations.observedAt)));const captured=await db.auditEvent.findFirstOrThrow({where:{resourceId:claim.task.id,action:'AI_TASK_OPERATIONS_CAPTURED'}});assert.equal(input.aggregateOperations.observedAt,captured.metadata.observedAt);capturedDirectors.add(claim.task.agentKey);
     if(claim.task.agentKey==='HR_DIRECTOR')await sourceCase.afterHrCapture(claim.task.id);
+    if(claim.task.agentKey==='MARKETING')await sourceCase.afterMarketingCapture(claim.task.id);
     if(claim.task.agentKey==='INVENTORY')await sourceCase.afterInventoryCapture(claim.task.id);
    }
   }
   assert(finished,'The bounded reporting cycle must finish');
   assert.equal(capturedDirectors.size,14,'Every director must use its own captured source packet');
   const hrReviewPayload=payloads.map(p=>JSON.parse(p.input[1].content)).find(p=>p.governanceReview?.source.agentKey==='HR_DIRECTOR');assert.equal(hrReviewPayload.governanceReview.source.operationsEvidence.values.documents.documents,1);
-  const currentInventory=payloads.map(p=>JSON.parse(p.input[1].content)).find(p=>p.governanceReview?.source.agentKey==='INVENTORY'&&p.governanceReview.source.operationsEvidence?.values?.version===3);assert.equal(currentInventory.governanceReview.source.operationsEvidence.values.metrics.storeGoodsProducts,4);
-  const legacyAfter=await call('/admin/agents/governance-reviews/'+legacy.id,token);assert.equal(legacyAfter.body.source.operationsEvidence.scope,'DEPARTMENT_AGGREGATE_V2');assert.deepEqual(legacyAfter.body.source.operationsEvidence.values.metrics,{});
+  const currentInventory=payloads.map(p=>JSON.parse(p.input[1].content)).find(p=>p.governanceReview?.source.agentKey==='INVENTORY'&&p.governanceReview.source.operationsEvidence?.values?.version===4);assert.equal(currentInventory.governanceReview.source.operationsEvidence.values.metrics.storeGoodsProducts,4);
+  for(const legacy of legacyCases){const legacyAfter=await call('/admin/agents/governance-reviews/'+legacy.id,token);assert.equal(legacyAfter.body.source.operationsEvidence.scope,`DEPARTMENT_AGGREGATE_V${legacy.version}`);assert.deepEqual(legacyAfter.body.source.operationsEvidence.values.metrics,{});}
+  const currentMarketing=payloads.map(p=>JSON.parse(p.input[1].content)).find(p=>p.governanceReview?.source.agentKey==='MARKETING'&&p.governanceReview.source.operationsEvidence?.values?.version===4);assert.equal(currentMarketing.governanceReview.source.operationsEvidence.values.metrics.marketingCampaignDrafts,3);
   const executivePayload=payloads.find(p=>JSON.parse(p.input[1].content).executiveReport?.cycleId===requestId);assert(executivePayload);
   const bundle=JSON.parse(executivePayload.input[1].content).executiveReport;assert.equal(bundle.entries.length,14);assert.equal(bundle.approved,false);assert.equal(bundle.entries.find(e=>e.agentKey==='HR_DIRECTOR').officeStatus,'CORRECTION_REQUIRED');assert.equal(bundle.entries.find(e=>e.agentKey==='HR_DIRECTOR').result,null);
   assert.equal(await db.auditEvent.count({where:{action:'GOVERNANCE_REVIEW_QUEUED',metadata:{path:['sourceTaskId'],equals:executiveTaskId}}}),0,'Abdullah formatting must not restart the office loop');
@@ -73,7 +77,7 @@ export async function departmentReportingAcceptance({db,service,actor,ordinary,t
   const detail=await call('/admin/agents/reporting/cycles/'+requestId,token);assert.equal(detail.status,200);assert.equal(detail.body.state,'COMPLETE');assert.equal(detail.body.emailStatus,'PROVIDER_ACCEPTED');assert.equal(detail.body.approved,false);assert.equal(detail.cacheControl,'no-store');
   assert.equal((await call('/admin/agents/reporting/cycles/'+requestId,otherToken)).status,403);
   console.log('Department reporting HTTP/PostgreSQL PASS: 14 directors → linked office reviews including a correction → verified Abdullah context → stale outbox isolated → one concurrent-safe owner-only email; no approval or real provider delivery.');
-  console.log('Department sources HTTP/PostgreSQL PASS: 14 isolated v3 packets, 13 operational count adapters, store-goods and marine-only subsets, explicit remaining registry gaps, queued and historical v2 compatibility, owner/role/deactivation guards, foreign and inconsistent relation exclusion, scalar-only privacy, read-only preview, immutable historical source across a live change and all 14 director-to-office inputs. All model traffic was loopback.');
+  console.log('Department sources HTTP/PostgreSQL PASS: 14 isolated v4 packets, 14 operational count adapters, campaign-draft, store-goods and marine-only subsets, explicit remaining registry gaps, queued and historical v2/v3 compatibility, owner/role/deactivation guards, foreign and inconsistent relation exclusion, scalar-only privacy, read-only preview, immutable historical source across a live change and all 14 director-to-office inputs. All model traffic was loopback.');
  }finally{
   setModelText(null);
   const notifications=await db.notification.findMany({where:{accountId:actor.id,type:'EXECUTIVE_GOVERNANCE_REPORT'},select:{id:true}});

@@ -12,6 +12,10 @@
 .hl-ai-workforce dl>div{padding:8px;border:1px solid var(--line,#365467);border-radius:10px}
 .hl-ai-workforce dt{font-size:.85rem}.hl-ai-workforce dd{margin:4px 0 0;font-weight:700;font-size:1.2rem}
 .hl-ai-workforce label{display:block;line-height:1.8;margin:10px 0}
+[data-marketing-drafts] input:not([type=checkbox]){display:block;width:100%;max-width:100%;box-sizing:border-box;font:inherit;padding:10px;border-radius:10px;border:1px solid var(--line,#365467)}
+[data-marketing-drafts] form{margin:14px 0;padding:12px;border:1px solid var(--line,#365467);border-radius:12px}
+[data-marketing-list]{display:grid;gap:8px;margin:12px 0}
+[data-marketing-list] button,[data-marketing-history] p{overflow-wrap:anywhere;white-space:pre-wrap;max-width:100%}
 .hl-ai-workforce fieldset{border:0;padding:0;margin:0;min-width:0}
 .hl-ai-workforce select,.hl-ai-workforce textarea{display:block;width:100%;max-width:100%;padding:11px;border:1px solid var(--line,#365467);border-radius:10px;color:inherit;background:#132f43;font:inherit}
 .hl-ai-workforce input[type=checkbox]{width:auto;margin-inline-end:8px}

@@ -167,6 +167,8 @@ model Account {
   sessions Session[]
   departmentClosureAssessments DepartmentClosureAssessment[]
   internalResearchInitiatives InternalResearchInitiative[] @relation("InternalResearchCreator")
+  marketingCampaignDrafts MarketingCampaignDraft[] @relation("MarketingDraftCreator")
+  marketingCampaignDraftRevisions MarketingCampaignDraftRevision[] @relation("MarketingDraftRevisionActor")
   internalResearchRevisions InternalResearchRevision[] @relation("InternalResearchRevisionActor")
   internalResearchReviewsIssued InternalResearchReview[] @relation("InternalResearchIssuer")
   internalResearchReviewsAssigned InternalResearchReview[] @relation("InternalResearchReviewer")
@@ -274,6 +276,7 @@ model Organization {
   bookings Booking[]
   departmentClosureAssessments DepartmentClosureAssessment[]
   internalResearchInitiatives InternalResearchInitiative[]
+  marketingCampaignDrafts MarketingCampaignDraft[]
   internalResearchReviews InternalResearchReview[]
 }
 
@@ -2444,4 +2447,41 @@ model InternalResearchReview {
   reviewer Account @relation("InternalResearchReviewer", fields:[reviewerAccountId], references:[id], onDelete:Restrict)
   @@index([reviewerAccountId,state,expiresAt])
   @@index([initiativeId,issuedAt])
+}
+
+// Internal campaign planning only. No publication, delivery or approval authority.
+model MarketingCampaignDraft {
+  id String @id @default(uuid())
+  organizationId String
+  requestKey String
+  requestDigest String
+  revision Int @default(1)
+  status String @default("DRAFT")
+  title String
+  objective String
+  channels Json
+  createdByAccountId String
+  recordDigest String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  createdBy Account @relation("MarketingDraftCreator",fields:[createdByAccountId],references:[id],onDelete:Restrict)
+  revisions MarketingCampaignDraftRevision[]
+  @@unique([organizationId,createdByAccountId,requestKey],map:"MarketingCampaignDraft_organizationId_createdByAccountId_req_key")
+  @@index([organizationId,createdAt,id])
+}
+model MarketingCampaignDraftRevision {
+  id String @id @default(uuid())
+  campaignDraftId String
+  revision Int
+  snapshot Json
+  action String
+  reason String
+  actorAccountId String
+  previousDigest String?
+  recordDigest String
+  createdAt DateTime @default(now())
+  campaignDraft MarketingCampaignDraft @relation(fields:[campaignDraftId],references:[id],onDelete:Restrict)
+  actor Account @relation("MarketingDraftRevisionActor",fields:[actorAccountId],references:[id],onDelete:Restrict)
+  @@unique([campaignDraftId,revision])
 }

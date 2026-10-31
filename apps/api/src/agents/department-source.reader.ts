@@ -15,13 +15,13 @@ async function operationalCounts(tx:Prisma.TransactionClient,code:DepartmentCode
     case 'HR':values=await Promise.all([tx.hrCandidate.count({where:{organizationId:id}}),tx.employment.count({where:{organizationId:id}}),tx.employment.count({where:{organizationId:id,status:'ACTIVE'}}),tx.leaveRequest.count({where:{employment:{organizationId:id},status:{in:['SUBMITTED','HR_REVIEW','APPROVAL_REQUIRED']}}})]);break;
     case 'TRAINING':values=await Promise.all([tx.storeCourseOffer.count({where:{organizationId:id}}),tx.trainingEnrollment.count({where:{centerOrganizationId:id,status:'ACTIVE'}}),tx.trainingRecord.count({where:{enrollment:{centerOrganizationId:id},status:'COMPLETED'}}),tx.trainingCertificate.count({where:{trainingRecord:{enrollment:{centerOrganizationId:id}},status:'RECOMMENDED'}})]);break;
     case 'MARINE_OPERATIONS':values=await Promise.all([tx.trip.count({where:{organizationId:id}}),tx.trip.count({where:{organizationId:id,status:'OPEN'}}),tx.booking.count({where:{trip:{organizationId:id}}}),tx.crewAssignment.count({where:{trip:{organizationId:id}}})]);break;
-    case 'INVENTORY_LOGISTICS':if(version===3){
+    case 'INVENTORY_LOGISTICS':if(version>=3){
       // Existing deployments have both UUID and TEXT organization keys. Read
       // only aggregate counts and normalize the scope comparison, not ownership.
       const [row]=await tx.$queryRaw<Array<Record<string,bigint>>>`SELECT COUNT(*) AS "storeGoodsProducts",COUNT(*) FILTER (WHERE "status"::text='ACTIVE') AS "activeStoreGoodsProducts",COUNT(*) FILTER (WHERE "status"::text='DRAFT') AS "draftStoreGoodsProducts",COUNT(*) FILTER (WHERE "status"::text='ACTIVE' AND "stockQuantity"<=0) AS "unavailableActiveStoreGoodsProducts",COUNT(*) FILTER (WHERE "stockQuantity"<0) AS "negativeStockStoreGoodsProducts" FROM "StoreProduct" WHERE "organizationId"::text=${id} AND "kind"::text='GOODS'`;
       values=spec.metrics.map(key=>Number(row[key]));
     }break;
-    case 'FACILITIES_ASSETS_MAINTENANCE':if(version===3){
+    case 'FACILITIES_ASSETS_MAINTENANCE':if(version>=3){
       const [row]=await tx.$queryRaw<Array<Record<string,bigint>>>`SELECT COUNT(DISTINCT a."id") AS "marineAssets",COUNT(DISTINCT a."id") FILTER (WHERE a."status"::text='ACTIVE') AS "activeMarineAssets",COUNT(m."id") AS "marineMaintenanceRecords",COUNT(m."id") FILTER (WHERE m."status"::text='OPEN') AS "openMarineMaintenanceRecords",COUNT(m."id") FILTER (WHERE m."status"::text='COMPLETED' AND m."completedAt" IS NOT NULL) AS "recordedCompletedMarineMaintenanceRecords" FROM "MarineAsset" a LEFT JOIN "MarineMaintenanceRecord" m ON m."marineAssetId"::text=a."id"::text WHERE a."organizationId"::text=${id}`;
       values=spec.metrics.map(key=>Number(row[key]));
     }break;
@@ -33,7 +33,11 @@ async function operationalCounts(tx:Prisma.TransactionClient,code:DepartmentCode
     case 'EXECUTIVE_GOVERNANCE':values=await Promise.all([tx.orgUnit.count({where:{organizationId:id,type:'DEPARTMENT',active:true,code:{in:STAFFING_DEPARTMENTS.map(d=>d.code)}}}),tx.departmentClosureAssessment.count({where:{organizationId:id}}),tx.aiAgentTask.count({where:{requestedByAccountId:ownerId,agentKey:{in:[...GOVERNANCE_REVIEW_ORDER]},state:{in:['QUEUED','RUNNING']}}})]);break;
     case 'RND_MARKET_INTELLIGENCE':values=await Promise.all([tx.internalResearchInitiative.count({where:{organizationId:id}}),tx.internalResearchReview.count({where:{organizationId:id,initiative:{organizationId:id}}})]);break;
     case 'LEGAL_CONTRACTS_INSURANCE':values=await Promise.all([tx.employmentContract.count({where:{employment:{organizationId:id}}}),tx.employmentContract.count({where:{employment:{organizationId:id},status:'DRAFT'}})]);break;
-    // Missing campaign analytics remain unavailable, rather than measured 0.
+    case 'MARKETING_GROWTH':if(version===4){
+      const [row]=await tx.$queryRaw<Array<Record<string,bigint>>>`SELECT COUNT(*) AS "marketingCampaignDrafts",COUNT(*) FILTER (WHERE "status"='DRAFT') AS "openMarketingCampaignDrafts",COUNT(*) FILTER (WHERE "status"='ARCHIVED') AS "archivedMarketingCampaignDrafts" FROM "MarketingCampaignDraft" WHERE "organizationId"::text=${id}`;
+      values=spec.metrics.map(key=>Number(row[key]));
+    }break;
+    // Draft planning is not campaign publication or measured analytics.
     // Legacy v2 keeps its original empty inventory and facilities adapters.
     default:break;
   }
@@ -49,7 +53,7 @@ export async function requireDepartmentSourceOwner(tx:Prisma.TransactionClient,a
   return organization;
 }
 
-export async function readDepartmentSources(tx:Prisma.TransactionClient,actorId:string,selected:readonly DepartmentCode[]=STAFFING_DEPARTMENTS.map(d=>d.code),version:DepartmentSourceVersion=3){
+export async function readDepartmentSources(tx:Prisma.TransactionClient,actorId:string,selected:readonly DepartmentCode[]=STAFFING_DEPARTMENTS.map(d=>d.code),version:DepartmentSourceVersion=4){
   const organization=await requireDepartmentSourceOwner(tx,actorId);
   const definitions=STAFFING_DEPARTMENTS.filter(d=>selected.includes(d.code)),sourceTemplates=reviewedAdministrativeTemplates('source-catalog').filter(t=>selected.includes(t.department));
   const [units,templates,groups]=await Promise.all([
