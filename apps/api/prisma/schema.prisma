@@ -169,6 +169,8 @@ model Account {
   internalResearchInitiatives InternalResearchInitiative[] @relation("InternalResearchCreator")
   marketingCampaignDrafts MarketingCampaignDraft[] @relation("MarketingDraftCreator")
   marketingCampaignDraftRevisions MarketingCampaignDraftRevision[] @relation("MarketingDraftRevisionActor")
+  warehouseLocations WarehouseLocation[] @relation("WarehouseLocationCreator")
+  warehouseLocationRevisions WarehouseLocationRevision[] @relation("WarehouseLocationRevisionActor")
   internalResearchRevisions InternalResearchRevision[] @relation("InternalResearchRevisionActor")
   internalResearchReviewsIssued InternalResearchReview[] @relation("InternalResearchIssuer")
   internalResearchReviewsAssigned InternalResearchReview[] @relation("InternalResearchReviewer")
@@ -277,6 +279,7 @@ model Organization {
   departmentClosureAssessments DepartmentClosureAssessment[]
   internalResearchInitiatives InternalResearchInitiative[]
   marketingCampaignDrafts MarketingCampaignDraft[]
+  warehouseLocations WarehouseLocation[]
   internalResearchReviews InternalResearchReview[]
 }
 
@@ -2484,4 +2487,42 @@ model MarketingCampaignDraftRevision {
   campaignDraft MarketingCampaignDraft @relation(fields:[campaignDraftId],references:[id],onDelete:Restrict)
   actor Account @relation("MarketingDraftRevisionActor",fields:[actorAccountId],references:[id],onDelete:Restrict)
   @@unique([campaignDraftId,revision])
+}
+
+// Recorded warehouse locations only. No stock, custody or operating authority.
+model WarehouseLocation {
+  id String @id @default(uuid())
+  organizationId String
+  requestKey String
+  requestDigest String
+  revision Int @default(1)
+  status String @default("RECORDED")
+  title String
+  code String
+  locationDescription String
+  createdByAccountId String
+  recordDigest String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  createdBy Account @relation("WarehouseLocationCreator",fields:[createdByAccountId],references:[id],onDelete:Restrict)
+  revisions WarehouseLocationRevision[]
+  @@unique([organizationId,createdByAccountId,requestKey],map:"WarehouseLocation_org_creator_request_key")
+  @@unique([organizationId,code],map:"WarehouseLocation_org_code_key")
+  @@index([organizationId,createdAt,id])
+}
+model WarehouseLocationRevision {
+  id String @id @default(uuid())
+  warehouseLocationId String
+  revision Int
+  snapshot Json
+  action String
+  reason String
+  actorAccountId String
+  previousDigest String?
+  recordDigest String
+  createdAt DateTime @default(now())
+  location WarehouseLocation @relation(fields:[warehouseLocationId],references:[id],onDelete:Restrict)
+  actor Account @relation("WarehouseLocationRevisionActor",fields:[actorAccountId],references:[id],onDelete:Restrict)
+  @@unique([warehouseLocationId,revision])
 }

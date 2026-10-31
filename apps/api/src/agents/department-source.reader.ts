@@ -19,6 +19,10 @@ async function operationalCounts(tx:Prisma.TransactionClient,code:DepartmentCode
       // Existing deployments have both UUID and TEXT organization keys. Read
       // only aggregate counts and normalize the scope comparison, not ownership.
       const [row]=await tx.$queryRaw<Array<Record<string,bigint>>>`SELECT COUNT(*) AS "storeGoodsProducts",COUNT(*) FILTER (WHERE "status"::text='ACTIVE') AS "activeStoreGoodsProducts",COUNT(*) FILTER (WHERE "status"::text='DRAFT') AS "draftStoreGoodsProducts",COUNT(*) FILTER (WHERE "status"::text='ACTIVE' AND "stockQuantity"<=0) AS "unavailableActiveStoreGoodsProducts",COUNT(*) FILTER (WHERE "stockQuantity"<0) AS "negativeStockStoreGoodsProducts" FROM "StoreProduct" WHERE "organizationId"::text=${id} AND "kind"::text='GOODS'`;
+      if(version>=5){
+        const [locations]=await tx.$queryRaw<Array<Record<string,bigint>>>`SELECT COUNT(*) AS "warehouseLocations",COUNT(*) FILTER (WHERE "status"='RECORDED') AS "recordedWarehouseLocations",COUNT(*) FILTER (WHERE "status"='ARCHIVED') AS "archivedWarehouseLocations" FROM "WarehouseLocation" WHERE "organizationId"::text=${id}`;
+        Object.assign(row,locations);
+      }
       values=spec.metrics.map(key=>Number(row[key]));
     }break;
     case 'FACILITIES_ASSETS_MAINTENANCE':if(version>=3){
@@ -33,7 +37,7 @@ async function operationalCounts(tx:Prisma.TransactionClient,code:DepartmentCode
     case 'EXECUTIVE_GOVERNANCE':values=await Promise.all([tx.orgUnit.count({where:{organizationId:id,type:'DEPARTMENT',active:true,code:{in:STAFFING_DEPARTMENTS.map(d=>d.code)}}}),tx.departmentClosureAssessment.count({where:{organizationId:id}}),tx.aiAgentTask.count({where:{requestedByAccountId:ownerId,agentKey:{in:[...GOVERNANCE_REVIEW_ORDER]},state:{in:['QUEUED','RUNNING']}}})]);break;
     case 'RND_MARKET_INTELLIGENCE':values=await Promise.all([tx.internalResearchInitiative.count({where:{organizationId:id}}),tx.internalResearchReview.count({where:{organizationId:id,initiative:{organizationId:id}}})]);break;
     case 'LEGAL_CONTRACTS_INSURANCE':values=await Promise.all([tx.employmentContract.count({where:{employment:{organizationId:id}}}),tx.employmentContract.count({where:{employment:{organizationId:id},status:'DRAFT'}})]);break;
-    case 'MARKETING_GROWTH':if(version===4){
+    case 'MARKETING_GROWTH':if(version>=4){
       const [row]=await tx.$queryRaw<Array<Record<string,bigint>>>`SELECT COUNT(*) AS "marketingCampaignDrafts",COUNT(*) FILTER (WHERE "status"='DRAFT') AS "openMarketingCampaignDrafts",COUNT(*) FILTER (WHERE "status"='ARCHIVED') AS "archivedMarketingCampaignDrafts" FROM "MarketingCampaignDraft" WHERE "organizationId"::text=${id}`;
       values=spec.metrics.map(key=>Number(row[key]));
     }break;
@@ -53,7 +57,7 @@ export async function requireDepartmentSourceOwner(tx:Prisma.TransactionClient,a
   return organization;
 }
 
-export async function readDepartmentSources(tx:Prisma.TransactionClient,actorId:string,selected:readonly DepartmentCode[]=STAFFING_DEPARTMENTS.map(d=>d.code),version:DepartmentSourceVersion=4){
+export async function readDepartmentSources(tx:Prisma.TransactionClient,actorId:string,selected:readonly DepartmentCode[]=STAFFING_DEPARTMENTS.map(d=>d.code),version:DepartmentSourceVersion=5){
   const organization=await requireDepartmentSourceOwner(tx,actorId);
   const definitions=STAFFING_DEPARTMENTS.filter(d=>selected.includes(d.code)),sourceTemplates=reviewedAdministrativeTemplates('source-catalog').filter(t=>selected.includes(t.department));
   const [units,templates,groups]=await Promise.all([
