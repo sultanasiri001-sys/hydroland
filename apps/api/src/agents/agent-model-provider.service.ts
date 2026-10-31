@@ -127,7 +127,10 @@ export class AgentModelProviderService {
     // Short office JSON reviews do not need the formatter's full output reserve.
     const outputLimit=isGovernanceAgent(agent.key)?Math.min(config.maxOutputTokens,1024):config.maxOutputTokens;
     if(!localProviderFixture())await new Promise(resolve=>setTimeout(resolve,1000));
-    const response=await this.request('/responses',{model:config.model,input,max_output_tokens:outputLimit,store:false,tools:[],tool_choice:'none'},30_000),result=response.payload;
+    // Formatting verified outcomes needs output space, not another reasoning review.
+    // Keep reasoning behavior unchanged for reviewers, ordinary tasks and other models.
+    const formatting=executiveReport&&config.model==='gpt-6-luna'?{reasoning:{effort:'none'}}:{};
+    const response=await this.request('/responses',{model:config.model,input,max_output_tokens:outputLimit,store:false,tools:[],tool_choice:'none',...formatting},30_000),result=response.payload;
     const usage=result.usage as Record<string,unknown>|undefined;
     if(result.status!=='completed'||result.error||!usage||!Number.isSafeInteger(usage.input_tokens)||!Number.isSafeInteger(usage.output_tokens)||Number(usage.input_tokens)<0||Number(usage.output_tokens)<0||Number(usage.input_tokens)>config.maxInputTokens||Number(usage.output_tokens)>outputLimit)throw new AiProviderError('PROVIDER_RESULT_INCOMPLETE',true,'GENERATION');
     const output=Array.isArray(result.output)?result.output:[];
