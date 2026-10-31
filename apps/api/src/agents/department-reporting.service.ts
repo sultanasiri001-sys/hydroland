@@ -68,16 +68,17 @@ export class DepartmentReportingService {
       if(!row)throw new NotFoundException('دورة التقرير غير موجودة.');
       const cycle=parseReportCycle(row.value);if(cycle.ownerId!==actorId)throw new NotFoundException('دورة التقرير غير موجودة.');
       const task=cycle.executiveTaskId?await tx.aiAgentTask.findUnique({where:{id:cycle.executiveTaskId},select:{id:true,state:true,result:true,errorCode:true}}):null;
+      let renderedTask=task;
       // Re-render completed historical drafts from their unchanged verified bundle.
       // Keep the original provider text and usage in its task record.
       if(task?.state==='COMPLETED'&&task.result){
         const storedTask=await tx.aiAgentTask.findUnique({where:{id:task.id}});
         if(!storedTask)throw new ConflictException('مهمة التقرير غير موجودة.');
         const context=await executiveReportContext(tx,storedTask,this.inbox);
-        task.result=renderVerifiedExecutiveReport(reportModelInput(context.bundle));
+        renderedTask={...task,result:renderVerifiedExecutiveReport(reportModelInput(context.bundle))};
       }
       const notification=cycle.notificationId?await tx.notification.findUnique({where:{id:cycle.notificationId},select:{status:true,payload:true}}):null;
-      return{...cycle,executiveTask:task,emailStatus:notification?record(notification.payload).deliveryState:null,approved:false};
+      return{...cycle,executiveTask:renderedTask,emailStatus:notification?record(notification.payload).deliveryState:null,approved:false};
     });
   }
 
