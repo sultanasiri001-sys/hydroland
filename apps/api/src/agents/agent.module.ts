@@ -13,5 +13,8 @@ import { GovernanceReviewInboxService } from './governance-review-inbox.service'
 import { DepartmentReportingController } from './department-reporting.controller';
 import { DepartmentReportingService } from './department-reporting.service';
 import { DepartmentReportingWorker } from './department-reporting.worker';
-@Module({imports:[AuthModule,AuditModule,AdminModule,IntegrationModule],controllers:[AgentController,AgentRuntimeController,DepartmentReportingController],providers:[AgentService,AgentRuntimeService,AgentModelProviderService,AgentRuntimeWorker,GovernanceReviewInboxService,DepartmentReportingService,DepartmentReportingWorker]})
+import { OperationalEvidenceController } from './operational-evidence.controller';
+import { OperationalEvidenceService } from './operational-evidence.service';
+@Module({imports:[AuthModule,AuditModule,AdminModule,IntegrationModule],controllers:[AgentController,AgentRuntimeController,DepartmentReportingController,OperationalEvidenceController],providers:[AgentService,AgentRuntimeService,AgentModelProviderService,AgentRuntimeWorker,GovernanceReviewInboxService,DepartmentReportingService,DepartmentReportingWorker,OperationalEvidenceService]})
 export class AgentModule {}
+

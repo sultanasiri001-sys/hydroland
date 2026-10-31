@@ -60,8 +60,25 @@ try{
   assert.equal(responseWordCount(alreadyShort.text),86);
   assert(alreadyShort.text.startsWith('عينة اختبار، لا تمثل واقع المنصة.'));
   assert.equal(reportScopeNotice('تقرير تشغيلي فعلي'),null);
+  for(const [key,department] of [['FINANCE_DIRECTOR','FINANCE'],['INVENTORY','INVENTORY_LOGISTICS'],['ADMIN_DIRECTOR','ADMIN_AFFAIRS_RECORDS'],['MARKETING','MARKETING_GROWTH']]){
+    scenario={firstWords:40};requests=[];
+    const snapshot={version:6,department,scope:'INTERNAL_PLATFORM_ORGANIZATION',coverage:'PARTIAL',metrics:{recordedPublicationEvidence:0},missingSources:['fixture-gap']};
+    await provider.execute(config,{key,nameEn:key},'READ_OPERATIONS','ar-SA','لخص أعداد السجلات وحدود الأدلة دون اعتماد.',snapshot);
+    assert.equal(requests.length,2,'scope classification adds no provider request');
+    const request=requests.find(r=>r.path.endsWith('/responses')).body,instructions=request.input[0].content,contract=JSON.parse(instructions.match(/Aggregate source contract: (\{[^}]+\})\./)[1]);
+    assert.deepEqual(contract,{sourceVersion:6,scope:'INTERNAL_PLATFORM_ORGANIZATION',counterUnit:'RECORD_COUNT',operationalAcceptance:'NOT_ASSESSED'});
+    assert.deepEqual(JSON.parse(request.input[1].content).aggregateOperations,snapshot);
+    assert(instructions.includes('recordedPublicationEvidence')&&instructions.includes('owner-recorded evidence entries')&&instructions.includes('not physical stock'));
+    assert.equal(request.max_output_tokens,2048);assert.deepEqual(request.tools,[]);assert.equal(request.store,false);
+  }
+  for(const snapshot of [{version:7,department:'FINANCE'},{version:6,department:'MARKETING_GROWTH'}]){
+    scenario={firstWords:40};requests=[];await provider.execute(config,{key:'FINANCE_DIRECTOR',nameEn:'Finance'},'READ_OPERATIONS','ar-SA','لخص الأدلة فقط.',snapshot);
+    const policy=requests.find(r=>r.path.endsWith('/responses')).body.input[0].content,contract=JSON.parse(policy.match(/Aggregate source contract: (\{[^}]+\})\./)[1]);assert.equal(contract.scope,'UNAVAILABLE','unknown or mismatched departmental data cannot become platform-wide facts');
+  }
+  console.log('V6 model contract checks passed: four department scopes, record-count units, evidence limits, unchanged token reservations and unavailable unknown/mismatched versions.');
   console.log('Word-bound checks passed: one completed-draft format pass, exact counting, combined input/output reservation, original evidence, strict final word bound and no uncertain/whole-task replay.');
 }finally{
   server.closeAllConnections();await new Promise(resolve=>server.close(resolve));
   for(const key of Object.keys(process.env))if(!(key in saved))delete process.env[key];Object.assign(process.env,saved);
 }
+

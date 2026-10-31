@@ -1,0 +1,35 @@
+import { BadRequestException, ConflictException } from '@nestjs/common';
+import { createHash } from 'node:crypto';
+import { templateObject } from '../document-forms/document-template-input';
+
+export const EVIDENCE_POLICY='INTERNAL_OPERATIONAL_EVIDENCE_V1';
+export const EVIDENCE_NOTICE='توثيق واقعة يقدمه المالك ويرتبط بإصدار مستند. لا ينفذ قبضًا أو صرفًا أو حركة مخزون أو نشرًا أو إتلافًا، ولا يمنح اعتماد تشغيل. المؤشرات تعد السجلات الموثقة ولا تثبت استقلال التحقق من الوقائع.';
+export const EVIDENCE_KINDS={WAREHOUSE_BALANCE:'INVENTORY_LOGISTICS',WAREHOUSE_MOVEMENT:'INVENTORY_LOGISTICS',PROCUREMENT:'INVENTORY_LOGISTICS',RECORD_DELIVERY:'ADMIN_AFFAIRS_RECORDS',RECORD_RETENTION:'ADMIN_AFFAIRS_RECORDS',RECORD_DISPOSAL:'ADMIN_AFFAIRS_RECORDS',CAMPAIGN_PUBLICATION:'MARKETING_GROWTH',CAMPAIGN_ANALYTICS:'MARKETING_GROWTH'} as const;
+export type EvidenceKind=keyof typeof EVIDENCE_KINDS;
+export const evidenceDigest=(v:unknown):string=>{
+  const canonical=(x:unknown):unknown=>x instanceof Date?x.toISOString():Array.isArray(x)?x.map(canonical):x&&typeof x==='object'?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b)).map(([k,value])=>[k,canonical(value)])):x;
+  return createHash('sha256').update(JSON.stringify(canonical(v))).digest('hex');
+};
+export function evidenceId(v:unknown):string {if(typeof v!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(v))throw new BadRequestException('معرف المرجع غير صالح.');return v.toLowerCase();}
+function text(v:unknown,max=200):string {if(typeof v!=='string'||!v.trim()||v.length>max||/[\u0000-\u001f\u007f]/.test(v))throw new BadRequestException('مرجع الواقعة غير صالح.');return v.trim();}
+function count(v:unknown):number {if(!Number.isSafeInteger(v)||Number(v)<0||Number(v)>1000000000)throw new BadRequestException('العدد غير صالح.');return Number(v);}
+export function evidenceTime(v:unknown):string {if(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(v)||!Number.isFinite(Date.parse(v)))throw new BadRequestException('أدخل وقتًا صالحًا بتوقيت UTC.');const d=new Date(v).toISOString();if(d.replace('.000Z','Z')!==v.replace('.000Z','Z'))throw new BadRequestException('التاريخ غير صالح.');return d;}
+const keys=(v:unknown,k:string[])=>templateObject(v,k);
+export function evidenceDetails(kind:EvidenceKind,v:unknown):Record<string,unknown>{
+  switch(kind){
+    case 'WAREHOUSE_BALANCE':{const x=keys(v,['productId','locationId','quantity']);return{productId:evidenceId(x.productId),locationId:evidenceId(x.locationId),quantity:count(x.quantity)};}
+    case 'WAREHOUSE_MOVEMENT':{const x=keys(v,['productId','locationId','direction','quantity']);if(!['RECEIPT','ISSUE'].includes(String(x.direction))||count(x.quantity)<1)throw new BadRequestException('اختر استلامًا أو صرفًا وكمية موجبة.');return{productId:evidenceId(x.productId),locationId:evidenceId(x.locationId),direction:x.direction,quantity:count(x.quantity)};}
+    case 'PROCUREMENT':{const x=keys(v,['productId','quantity','procurementReference']);if(count(x.quantity)<1)throw new BadRequestException('كمية المشتريات يجب أن تكون موجبة.');return{productId:evidenceId(x.productId),quantity:count(x.quantity),procurementReference:text(x.procurementReference)};}
+    case 'RECORD_DELIVERY':{const x=keys(v,['recordId','recipientReference']);return{recordId:evidenceId(x.recordId),recipientReference:text(x.recipientReference)};}
+    case 'RECORD_RETENTION':{const x=keys(v,['recordId','retainUntil','hold','policyReference']);if(typeof x.hold!=='boolean')throw new BadRequestException('حدد حالة مانع الإتلاف.');return{recordId:evidenceId(x.recordId),retainUntil:evidenceTime(x.retainUntil),hold:x.hold,policyReference:text(x.policyReference)};}
+    case 'RECORD_DISPOSAL':{const x=keys(v,['recordId','retentionEvidenceId','authorizationDocumentId']);return{recordId:evidenceId(x.recordId),retentionEvidenceId:evidenceId(x.retentionEvidenceId),authorizationDocumentId:evidenceId(x.authorizationDocumentId)};}
+    case 'CAMPAIGN_PUBLICATION':{const x=keys(v,['campaignDraftId','channel','publicationReference']);if(!['APP','WEB','EMAIL','SMS','WHATSAPP','SOCIAL','PAID_ADS'].includes(String(x.channel)))throw new BadRequestException('قناة النشر غير صالحة.');return{campaignDraftId:evidenceId(x.campaignDraftId),channel:x.channel,publicationReference:text(x.publicationReference,500)};}
+    case 'CAMPAIGN_ANALYTICS':{const x=keys(v,['campaignDraftId','publicationEvidenceId','windowStart','windowEnd','impressions','clicks','conversions']);const start=evidenceTime(x.windowStart),end=evidenceTime(x.windowEnd);if(start>end)throw new BadRequestException('فترة التحليلات غير صالحة.');return{campaignDraftId:evidenceId(x.campaignDraftId),publicationEvidenceId:evidenceId(x.publicationEvidenceId),windowStart:start,windowEnd:end,impressions:count(x.impressions),clicks:count(x.clicks),conversions:count(x.conversions)};}
+  }
+}
+export function evidenceCreate(v:unknown){const x=keys(v,['requestKey','kind','reference','occurredAt','proofDocumentId','details']);if(typeof x.kind!=='string'||!Object.hasOwn(EVIDENCE_KINDS,x.kind))throw new BadRequestException('نوع الدليل غير متاح.');const kind=x.kind as EvidenceKind;return{requestKey:evidenceId(x.requestKey),kind,department:EVIDENCE_KINDS[kind],reference:text(x.reference),occurredAt:evidenceTime(x.occurredAt),proofDocumentId:evidenceId(x.proofDocumentId),details:evidenceDetails(kind,x.details)};}
+export function evidenceTransition(v:unknown){const x=keys(v,['expectedRevision','reason','confirmed']);if(x.confirmed!==true||!Number.isSafeInteger(x.expectedRevision)||Number(x.expectedRevision)<1||Number(x.expectedRevision)>=1000000)throw new BadRequestException('راجع الإجراء وإصدار السجل وأكده.');return{expectedRevision:Number(x.expectedRevision),reason:text(x.reason,500)};}
+export function evidenceRecordDigest(row:Record<string,any>){const {recordDigest:_,...value}=row;return evidenceDigest(value);}
+export function validateEvidenceRecord(row:Record<string,any>){
+  try{const bindings=row.referenceBindings;if(!bindings||typeof bindings!=='object'||Array.isArray(bindings))throw Error('bindings');if(row.kind==='RECORD_DISPOSAL'){const a=bindings.authorization;if(Object.keys(bindings).length!==1||!a||Object.keys(a).length!==3||a.id!==row.details.authorizationDocumentId||!Number.isSafeInteger(a.version)||a.version<1||!/^[a-f0-9]{64}$/.test(a.contentHash))throw Error('authorization');}else if(Object.keys(bindings).length)throw Error('bindings');const x=evidenceCreate({requestKey:row.requestKey,kind:row.kind,reference:row.reference,occurredAt:new Date(row.occurredAt).toISOString(),proofDocumentId:row.proofDocumentId,details:row.details});if(x.department!==row.department||!['DRAFT','RECORDED','ARCHIVED'].includes(row.status)||!Number.isSafeInteger(row.revision)||row.revision<1||!Number.isSafeInteger(row.proofVersion)||row.proofVersion<1||!/^[a-f0-9]{64}$/.test(row.proofContentHash)||!row.recordedAt&&row.status==='RECORDED'||evidenceRecordDigest(row)!==row.recordDigest)throw Error('invalid');}catch{throw new ConflictException('حقول الدليل أو بصمته غير متسقة.');}return row;
+}

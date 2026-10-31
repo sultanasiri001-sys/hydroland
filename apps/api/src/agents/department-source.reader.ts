@@ -1,3 +1,4 @@
+import { operationalEvidenceCounts, financialCloseCounts } from './operational-evidence.reader';
 import { ForbiddenException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
@@ -7,10 +8,10 @@ import { platformOrganization, STAFFING_DEPARTMENTS } from '../hr/staffing-catal
 import { ADMINISTRATIVE_CATALOG_REVISION, reviewedAdministrativeTemplates } from '../document-forms/administrative-form-catalog';
 import { DEPARTMENT_DIRECTORS } from './department-directors';
 import { GOVERNANCE_REVIEW_ORDER } from './governance-review.domain';
-import { DepartmentSourceValues, DepartmentSourceVersion, DOCUMENT_COUNT_KEYS, departmentSourceSpec, departmentSourceValues } from './department-source.domain';
+import { DepartmentSourceValues, DepartmentSourceVersion, DOCUMENT_COUNT_KEYS, EVIDENCE_COUNT_KEYS, departmentSourceSpec, departmentSourceValues } from './department-source.domain';
 
 async function operationalCounts(tx:Prisma.TransactionClient,code:DepartmentCode,id:string,ownerId:string,version:DepartmentSourceVersion){
-  const spec=departmentSourceSpec(version)[code];let values:number[]=[];
+  let values:number[]=[];
   switch(code){
     case 'HR':values=await Promise.all([tx.hrCandidate.count({where:{organizationId:id}}),tx.employment.count({where:{organizationId:id}}),tx.employment.count({where:{organizationId:id,status:'ACTIVE'}}),tx.leaveRequest.count({where:{employment:{organizationId:id},status:{in:['SUBMITTED','HR_REVIEW','APPROVAL_REQUIRED']}}})]);break;
     case 'TRAINING':values=await Promise.all([tx.storeCourseOffer.count({where:{organizationId:id}}),tx.trainingEnrollment.count({where:{centerOrganizationId:id,status:'ACTIVE'}}),tx.trainingRecord.count({where:{enrollment:{centerOrganizationId:id},status:'COMPLETED'}}),tx.trainingCertificate.count({where:{trainingRecord:{enrollment:{centerOrganizationId:id}},status:'RECOMMENDED'}})]);break;
@@ -23,11 +24,11 @@ async function operationalCounts(tx:Prisma.TransactionClient,code:DepartmentCode
         const [locations]=await tx.$queryRaw<Array<Record<string,bigint>>>`SELECT COUNT(*) AS "warehouseLocations",COUNT(*) FILTER (WHERE "status"='RECORDED') AS "recordedWarehouseLocations",COUNT(*) FILTER (WHERE "status"='ARCHIVED') AS "archivedWarehouseLocations" FROM "WarehouseLocation" WHERE "organizationId"::text=${id}`;
         Object.assign(row,locations);
       }
-      values=spec.metrics.map(key=>Number(row[key]));
+      values=departmentSourceSpec(version>=6?5:version)[code].metrics.map(key=>Number(row[key]));
     }break;
     case 'FACILITIES_ASSETS_MAINTENANCE':if(version>=3){
       const [row]=await tx.$queryRaw<Array<Record<string,bigint>>>`SELECT COUNT(DISTINCT a."id") AS "marineAssets",COUNT(DISTINCT a."id") FILTER (WHERE a."status"::text='ACTIVE') AS "activeMarineAssets",COUNT(m."id") AS "marineMaintenanceRecords",COUNT(m."id") FILTER (WHERE m."status"::text='OPEN') AS "openMarineMaintenanceRecords",COUNT(m."id") FILTER (WHERE m."status"::text='COMPLETED' AND m."completedAt" IS NOT NULL) AS "recordedCompletedMarineMaintenanceRecords" FROM "MarineAsset" a LEFT JOIN "MarineMaintenanceRecord" m ON m."marineAssetId"::text=a."id"::text WHERE a."organizationId"::text=${id}`;
-      values=spec.metrics.map(key=>Number(row[key]));
+      values=departmentSourceSpec(version>=6?5:version)[code].metrics.map(key=>Number(row[key]));
     }break;
     case 'FINANCE':values=await Promise.all([tx.financeAccount.count({where:{organizationId:id,active:true}}),tx.financeEntry.count({where:{organizationId:id,financeAccount:{organizationId:id},status:'PENDING_APPROVAL'}}),tx.financeEntry.count({where:{organizationId:id,financeAccount:{organizationId:id},status:'POSTED'}})]);break;
     case 'SAFETY_COMPLIANCE_RISK':values=await Promise.all([tx.safetyChecklist.count({where:{trip:{organizationId:id}}}),tx.safetyChecklist.count({where:{trip:{organizationId:id},decision:'REVIEW_REQUIRED'}}),tx.safetyIncident.count({where:{trip:{organizationId:id},status:{in:['OPEN','UNDER_REVIEW']}}})]);break;
@@ -39,13 +40,22 @@ async function operationalCounts(tx:Prisma.TransactionClient,code:DepartmentCode
     case 'LEGAL_CONTRACTS_INSURANCE':values=await Promise.all([tx.employmentContract.count({where:{employment:{organizationId:id}}}),tx.employmentContract.count({where:{employment:{organizationId:id},status:'DRAFT'}})]);break;
     case 'MARKETING_GROWTH':if(version>=4){
       const [row]=await tx.$queryRaw<Array<Record<string,bigint>>>`SELECT COUNT(*) AS "marketingCampaignDrafts",COUNT(*) FILTER (WHERE "status"='DRAFT') AS "openMarketingCampaignDrafts",COUNT(*) FILTER (WHERE "status"='ARCHIVED') AS "archivedMarketingCampaignDrafts" FROM "MarketingCampaignDraft" WHERE "organizationId"::text=${id}`;
-      values=spec.metrics.map(key=>Number(row[key]));
+      values=departmentSourceSpec(version>=6?5:version)[code].metrics.map(key=>Number(row[key]));
     }break;
     // Draft planning is not campaign publication or measured analytics.
     // Legacy v2 keeps its original empty inventory and facilities adapters.
     default:break;
   }
-  return Object.fromEntries(spec.metrics.map((key,index)=>[key,values[index]]));
+  const legacy=departmentSourceSpec(version>=6?5:version)[code].metrics;
+  const result=Object.fromEntries(legacy.map((key,index)=>[key,values[index]]));
+  if(version>=6){
+    if(code==='FINANCE')Object.assign(result,await financialCloseCounts(tx,id));
+    if(code==='INVENTORY_LOGISTICS'||code==='ADMIN_AFFAIRS_RECORDS'||code==='MARKETING_GROWTH'){
+      const evidence=await operationalEvidenceCounts(tx,id,code);
+      for(const [metric,kind] of Object.entries(EVIDENCE_COUNT_KEYS[code]))result[metric]=evidence[kind]||0;
+    }
+  }
+  return result;
 }
 
 // A fresh verified platform owner is required. All relational counts constrain
@@ -57,7 +67,7 @@ export async function requireDepartmentSourceOwner(tx:Prisma.TransactionClient,a
   return organization;
 }
 
-export async function readDepartmentSources(tx:Prisma.TransactionClient,actorId:string,selected:readonly DepartmentCode[]=STAFFING_DEPARTMENTS.map(d=>d.code),version:DepartmentSourceVersion=5){
+export async function readDepartmentSources(tx:Prisma.TransactionClient,actorId:string,selected:readonly DepartmentCode[]=STAFFING_DEPARTMENTS.map(d=>d.code),version:DepartmentSourceVersion=6){
   const organization=await requireDepartmentSourceOwner(tx,actorId);
   const definitions=STAFFING_DEPARTMENTS.filter(d=>selected.includes(d.code)),sourceTemplates=reviewedAdministrativeTemplates('source-catalog').filter(t=>selected.includes(t.department));
   const [units,templates,groups]=await Promise.all([
@@ -88,3 +98,4 @@ export async function readDepartmentSources(tx:Prisma.TransactionClient,actorId:
   const observedAt=(await tx.$queryRaw<Array<{now:Date}>>`SELECT clock_timestamp() AS now`)[0].now.toISOString();
   return{scope:'DEPARTMENT_SOURCE_PREVIEW',sourceVersion:version,readOnly:true,generationTested:false,observedAt,coverage:'PARTIAL',operationalAcceptance:'NOT_ASSESSED',departments};
 }
+

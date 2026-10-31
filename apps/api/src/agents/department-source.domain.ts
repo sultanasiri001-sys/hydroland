@@ -4,13 +4,15 @@ import { directorDepartment } from './department-directors';
 export const DEPARTMENT_SOURCE_SCOPE_V2='DEPARTMENT_AGGREGATE_V2';
 export const DEPARTMENT_SOURCE_SCOPE_V3='DEPARTMENT_AGGREGATE_V3';
 export const DEPARTMENT_SOURCE_SCOPE_V4='DEPARTMENT_AGGREGATE_V4';
-export const DEPARTMENT_SOURCE_SCOPE='DEPARTMENT_AGGREGATE_V5';
+export const DEPARTMENT_SOURCE_SCOPE_V5='DEPARTMENT_AGGREGATE_V5';
+export const DEPARTMENT_SOURCE_SCOPE='DEPARTMENT_AGGREGATE_V6';
 export const DIRECTOR_SOURCE_FINGERPRINT_V2='department-source:v2:';
 export const DIRECTOR_SOURCE_FINGERPRINT_V3='department-source:v3:';
 export const DIRECTOR_SOURCE_FINGERPRINT_V4='department-source:v4:';
-export const DIRECTOR_SOURCE_FINGERPRINT='department-source:v5:';
-export type DepartmentSourceVersion=2|3|4|5;
-export type DepartmentSourceScope=typeof DEPARTMENT_SOURCE_SCOPE|typeof DEPARTMENT_SOURCE_SCOPE_V2|typeof DEPARTMENT_SOURCE_SCOPE_V3|typeof DEPARTMENT_SOURCE_SCOPE_V4;
+export const DIRECTOR_SOURCE_FINGERPRINT_V5='department-source:v5:';
+export const DIRECTOR_SOURCE_FINGERPRINT='department-source:v6:';
+export type DepartmentSourceVersion=2|3|4|5|6;
+export type DepartmentSourceScope=typeof DEPARTMENT_SOURCE_SCOPE|typeof DEPARTMENT_SOURCE_SCOPE_V5|typeof DEPARTMENT_SOURCE_SCOPE_V2|typeof DEPARTMENT_SOURCE_SCOPE_V3|typeof DEPARTMENT_SOURCE_SCOPE_V4;
 export const DOCUMENT_COUNT_KEYS=['templateTypes','activeTemplateTypes','templateConflicts','documents','drafts','pendingApproval','approved','signed','archived','inconsistentLinks'] as const;
 export const DEPARTMENT_SOURCE_SPEC_V2:Record<DepartmentCode,{metrics:readonly string[];tables:readonly string[];gap:string}>={
   HR:{metrics:['candidates','employments','activeEmployments','pendingLeaves'],tables:['HrCandidate','Employment','LeaveRequest'],gap:'OFFICIAL_WORKFORCE_VALIDATION'},
@@ -37,15 +39,23 @@ export const DEPARTMENT_SOURCE_SPEC_V3:typeof DEPARTMENT_SOURCE_SPEC_V2={...DEPA
 export const DEPARTMENT_SOURCE_SPEC_V4:typeof DEPARTMENT_SOURCE_SPEC_V2={...DEPARTMENT_SOURCE_SPEC_V3,
   MARKETING_GROWTH:{metrics:['marketingCampaignDrafts','openMarketingCampaignDrafts','archivedMarketingCampaignDrafts'],tables:['MarketingCampaignDraft'],gap:'CAMPAIGN_PUBLICATION_ANALYTICS'},
 };
-export const DEPARTMENT_SOURCE_SPEC:typeof DEPARTMENT_SOURCE_SPEC_V2={...DEPARTMENT_SOURCE_SPEC_V4,
+export const DEPARTMENT_SOURCE_SPEC_V5:typeof DEPARTMENT_SOURCE_SPEC_V2={...DEPARTMENT_SOURCE_SPEC_V4,
   INVENTORY_LOGISTICS:{metrics:[...DEPARTMENT_SOURCE_SPEC_V3.INVENTORY_LOGISTICS.metrics,'warehouseLocations','recordedWarehouseLocations','archivedWarehouseLocations'],tables:['StoreProduct','WarehouseLocation'],gap:'WAREHOUSE_BALANCES_MOVEMENTS_PROCUREMENT_REGISTRY'},
 };
-export const departmentSourceSpec=(version:DepartmentSourceVersion)=>version===2?DEPARTMENT_SOURCE_SPEC_V2:version===3?DEPARTMENT_SOURCE_SPEC_V3:version===4?DEPARTMENT_SOURCE_SPEC_V4:DEPARTMENT_SOURCE_SPEC;
-export const departmentSourceScope=(version:DepartmentSourceVersion):DepartmentSourceScope=>version===2?DEPARTMENT_SOURCE_SCOPE_V2:version===3?DEPARTMENT_SOURCE_SCOPE_V3:version===4?DEPARTMENT_SOURCE_SCOPE_V4:DEPARTMENT_SOURCE_SCOPE;
+export const EVIDENCE_COUNT_KEYS={INVENTORY_LOGISTICS:{recordedWarehouseBalanceEvidence:'WAREHOUSE_BALANCE',recordedWarehouseMovementEvidence:'WAREHOUSE_MOVEMENT',recordedProcurementEvidence:'PROCUREMENT'},ADMIN_AFFAIRS_RECORDS:{recordedDeliveryEvidence:'RECORD_DELIVERY',recordedRetentionEvidence:'RECORD_RETENTION',recordedDisposalEvidence:'RECORD_DISPOSAL'},MARKETING_GROWTH:{recordedPublicationEvidence:'CAMPAIGN_PUBLICATION',recordedAnalyticsEvidence:'CAMPAIGN_ANALYTICS'}} as const;
+export const FINANCIAL_CLOSE_COUNT_KEYS=['settlementImports','approvedSettlementImports','settlementImportsWithMismatches','periodCloseSubmissions','recordedClosedPeriodSubmissions','shiftCloseSubmissions','approvedShiftCloseSubmissions'] as const;
+export const DEPARTMENT_SOURCE_SPEC:typeof DEPARTMENT_SOURCE_SPEC_V2={...DEPARTMENT_SOURCE_SPEC_V5,
+  FINANCE:{...DEPARTMENT_SOURCE_SPEC_V5.FINANCE,metrics:[...DEPARTMENT_SOURCE_SPEC_V5.FINANCE.metrics,...FINANCIAL_CLOSE_COUNT_KEYS],tables:[...DEPARTMENT_SOURCE_SPEC_V5.FINANCE.tables,'OrgUnit','FinanceSettlementImport','FinancePeriodCloseSubmission','FinanceShiftCloseSubmission','FinanceAccountantShift']},
+  INVENTORY_LOGISTICS:{...DEPARTMENT_SOURCE_SPEC_V5.INVENTORY_LOGISTICS,metrics:[...DEPARTMENT_SOURCE_SPEC_V5.INVENTORY_LOGISTICS.metrics,...Object.keys(EVIDENCE_COUNT_KEYS.INVENTORY_LOGISTICS)],tables:[...DEPARTMENT_SOURCE_SPEC_V5.INVENTORY_LOGISTICS.tables,'OperationalEvidence','ManagedDocument','DocumentRevision'],gap:'WAREHOUSE_OPERATIONAL_EVIDENCE_VERIFICATION'},
+  ADMIN_AFFAIRS_RECORDS:{...DEPARTMENT_SOURCE_SPEC_V5.ADMIN_AFFAIRS_RECORDS,metrics:[...DEPARTMENT_SOURCE_SPEC_V5.ADMIN_AFFAIRS_RECORDS.metrics,...Object.keys(EVIDENCE_COUNT_KEYS.ADMIN_AFFAIRS_RECORDS)],tables:[...DEPARTMENT_SOURCE_SPEC_V5.ADMIN_AFFAIRS_RECORDS.tables,'OperationalEvidence','ManagedDocument','DocumentRevision']},
+  MARKETING_GROWTH:{...DEPARTMENT_SOURCE_SPEC_V5.MARKETING_GROWTH,metrics:[...DEPARTMENT_SOURCE_SPEC_V5.MARKETING_GROWTH.metrics,...Object.keys(EVIDENCE_COUNT_KEYS.MARKETING_GROWTH)],tables:[...DEPARTMENT_SOURCE_SPEC_V5.MARKETING_GROWTH.tables,'OperationalEvidence','ManagedDocument','DocumentRevision']},
+};
+export const departmentSourceSpec=(version:DepartmentSourceVersion)=>version===2?DEPARTMENT_SOURCE_SPEC_V2:version===3?DEPARTMENT_SOURCE_SPEC_V3:version===4?DEPARTMENT_SOURCE_SPEC_V4:version===5?DEPARTMENT_SOURCE_SPEC_V5:DEPARTMENT_SOURCE_SPEC;
+export const departmentSourceScope=(version:DepartmentSourceVersion):DepartmentSourceScope=>version===2?DEPARTMENT_SOURCE_SCOPE_V2:version===3?DEPARTMENT_SOURCE_SCOPE_V3:version===4?DEPARTMENT_SOURCE_SCOPE_V4:version===5?DEPARTMENT_SOURCE_SCOPE_V5:DEPARTMENT_SOURCE_SCOPE;
 export function departmentSourceVersion(fingerprint?:string):DepartmentSourceVersion|null{
-  return fingerprint?.startsWith(DIRECTOR_SOURCE_FINGERPRINT)?5:fingerprint?.startsWith(DIRECTOR_SOURCE_FINGERPRINT_V4)?4:fingerprint?.startsWith(DIRECTOR_SOURCE_FINGERPRINT_V3)?3:fingerprint?.startsWith(DIRECTOR_SOURCE_FINGERPRINT_V2)?2:null;
+  return fingerprint?.startsWith(DIRECTOR_SOURCE_FINGERPRINT)?6:fingerprint?.startsWith(DIRECTOR_SOURCE_FINGERPRINT_V5)?5:fingerprint?.startsWith(DIRECTOR_SOURCE_FINGERPRINT_V4)?4:fingerprint?.startsWith(DIRECTOR_SOURCE_FINGERPRINT_V3)?3:fingerprint?.startsWith(DIRECTOR_SOURCE_FINGERPRINT_V2)?2:null;
 }
-export const isDepartmentSourceScope=(scope:unknown):scope is DepartmentSourceScope=>scope===DEPARTMENT_SOURCE_SCOPE||scope===DEPARTMENT_SOURCE_SCOPE_V2||scope===DEPARTMENT_SOURCE_SCOPE_V3||scope===DEPARTMENT_SOURCE_SCOPE_V4;
+export const isDepartmentSourceScope=(scope:unknown):scope is DepartmentSourceScope=>scope===DEPARTMENT_SOURCE_SCOPE||scope===DEPARTMENT_SOURCE_SCOPE_V5||scope===DEPARTMENT_SOURCE_SCOPE_V2||scope===DEPARTMENT_SOURCE_SCOPE_V3||scope===DEPARTMENT_SOURCE_SCOPE_V4;
 export type DepartmentSourceValues={version:DepartmentSourceVersion;department:DepartmentCode;scope:'INTERNAL_PLATFORM_ORGANIZATION';coverage:'PARTIAL';catalog:{revision:string;codesDigest:string};documents:Record<typeof DOCUMENT_COUNT_KEYS[number],number>;metrics:Record<string,number>;missingSources:string[]};
 const record=(v:unknown):Record<string,unknown>|null=>v&&typeof v==='object'&&!Array.isArray(v)?v as Record<string,unknown>:null;
 const counts=(v:unknown,keys:readonly string[])=>{const x=record(v);return x&&Object.keys(x).length===keys.length&&keys.every(k=>Number.isSafeInteger(x[k])&&Number(x[k])>=0);};
@@ -53,7 +63,7 @@ const counts=(v:unknown,keys:readonly string[])=>{const x=record(v);return x&&Ob
 // Only allowlisted scalar counts leave the adapter. No raw rows, identities,
 // amounts, document payloads, free text or client-selected metric names.
 export function departmentSourceValues(value:unknown,agentKey?:string):DepartmentSourceValues|null{
-  const x=record(value);if(!x||Object.keys(x).length!==8||(x.version!==2&&x.version!==3&&x.version!==4&&x.version!==5)||x.scope!=='INTERNAL_PLATFORM_ORGANIZATION'||x.coverage!=='PARTIAL'||!HYDROLAND_DEPARTMENTS.some(d=>d.code===x.department))return null;
+  const x=record(value);if(!x||Object.keys(x).length!==8||(x.version!==2&&x.version!==3&&x.version!==4&&x.version!==5&&x.version!==6)||x.scope!=='INTERNAL_PLATFORM_ORGANIZATION'||x.coverage!=='PARTIAL'||!HYDROLAND_DEPARTMENTS.some(d=>d.code===x.department))return null;
   const catalog=record(x.catalog);if(!catalog||Object.keys(catalog).length!==2||typeof catalog.revision!=='string'||!/^\d{4}-\d{2}-\d{2}\.\d{1,3}$/.test(catalog.revision)||typeof catalog.codesDigest!=='string'||! /^[a-f0-9]{64}$/.test(catalog.codesDigest))return null;
   const code=x.department as DepartmentCode,version=x.version as DepartmentSourceVersion,spec=departmentSourceSpec(version)[code];
   if(agentKey&&directorDepartment(agentKey)?.code!==code)return null;
@@ -63,3 +73,4 @@ export function departmentSourceValues(value:unknown,agentKey?:string):Departmen
   const documents=x.documents as Record<string,number>,metrics=x.metrics as Record<string,number>;
   return{version,department:code,scope:'INTERNAL_PLATFORM_ORGANIZATION',coverage:'PARTIAL',catalog:{revision:catalog.revision,codesDigest:catalog.codesDigest},documents:Object.fromEntries(DOCUMENT_COUNT_KEYS.map(k=>[k,documents[k]])) as DepartmentSourceValues['documents'],metrics:Object.fromEntries(spec.metrics.map(k=>[k,metrics[k]])),missingSources:[spec.gap]};
 }
+
