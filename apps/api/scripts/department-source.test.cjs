@@ -53,3 +53,9 @@ test('v4 marketing drafts cannot relabel a historical v3 source or imply publica
 
 test('v5 warehouse location counts cannot relabel a v4 inventory receipt or imply stock balances',()=>{const old=value('INVENTORY_LOGISTICS',4),current=value('INVENTORY_LOGISTICS',5);assert.equal(departmentSourceValues({...old,version:5}),null);assert.equal(departmentSourceValues({...current,version:4}),null);assert.equal(departmentSourceValues({...current,metrics:{...current.metrics,availableWarehouseStock:2}}),null);assert.deepEqual(current.missingSources,['WAREHOUSE_BALANCES_MOVEMENTS_PROCUREMENT_REGISTRY']);assert(!Object.hasOwn(old.metrics,'warehouseLocations'));});
 
+
+test('v6 source supplements preserve V5 receipts and count evidence records rather than reconstructed outcomes',()=>{
+ for(const code of ['FINANCE','INVENTORY_LOGISTICS','ADMIN_AFFAIRS_RECORDS','MARKETING_GROWTH']){const before=value(code,5),current=value(code,6);assert.deepEqual(departmentSourceValues(current),current);assert.equal(departmentSourceValues({...before,version:6}),null);assert.equal(departmentSourceValues({...current,version:5}),null);assert.equal(current.coverage,'PARTIAL');assert.equal(current.missingSources.length,1);}
+ assert.equal(departmentSourceVersion('department-source:v5:pinned'),5);assert.equal(departmentSourceVersion('department-source:v6:pinned'),6);assert.equal(departmentSourceVersion('department-source:v7:future'),null);
+ const v=value('MARKETING_GROWTH',6);assert.equal(departmentSourceValues({...v,metrics:{...v.metrics,impressions:917273}}),null);assert(!Object.hasOwn(value('INVENTORY_LOGISTICS',6).metrics,'availableStock'));
+});
