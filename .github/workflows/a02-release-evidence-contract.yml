@@ -1,0 +1,32 @@
+name: A02 release evidence contract
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/a02-release-evidence*.mjs'
+      - '.github/workflows/a02-release-evidence-contract.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/a02-release-evidence*.mjs'
+      - '.github/workflows/a02-release-evidence-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contract-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify exact-commit evidence evaluator and negative controls
+        run: |
+          node --check scripts/a02-release-evidence.mjs
+          node --check scripts/a02-release-evidence.test.mjs
+          node --test scripts/a02-release-evidence.test.mjs
