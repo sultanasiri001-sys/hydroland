@@ -16,6 +16,7 @@ import { agentPerformance, performanceView } from './agent-performance';
 import { correctionFingerprint, correctionRequestId, hasDraftCorrectionPermission, DRAFT_CORRECTION_POLICY, DRAFT_CORRECTION_PREFIX, draftCorrectionAllowed, draftCorrectionRequested } from './governance-draft-correction';
 import { directorDepartment } from './department-directors';
 import { executiveReportContext, reportModelInput, REPORT_FINGERPRINT } from './executive-report.domain';
+import { renderVerifiedExecutiveReport } from './executive-report-renderer';
 import { GovernanceReviewInboxService } from './governance-review-inbox.service';
 import { MAX_PROVIDER_ATTEMPTS, PROVIDER_GATE_KEY, PROVIDER_RECOVERY_WINDOW_MS, ProviderGate, providerGateView, readProviderGate, rejectionPlan, taskIntervalMs } from './agent-provider-policy';
 import { readDepartmentSources, requireDepartmentSourceOwner } from './department-source.reader';
@@ -281,7 +282,7 @@ export class AgentRuntimeService {
       if(governanceReview?.source.operationsEvidence?.status==='RECORDED'&&'scope' in governanceReview.source.operationsEvidence&&isDepartmentSourceScope(governanceReview.source.operationsEvidence.scope))await this.db.serializable(tx=>requireDepartmentSourceOwner(tx,claim.task.requestedByAccountId));
       const draftCorrection=claim.task.fingerprint.startsWith(DRAFT_CORRECTION_PREFIX)?await this.db.serializable(tx=>this.draftCorrectionContext(tx,claim.task)):undefined;
       if(claim.task.fingerprint.startsWith(DRAFT_CORRECTION_PREFIX)&&!draftCorrection)throw new AiProviderError('DRAFT_CORRECTION_SOURCE_INVALID');
-      let reportBundle:object|undefined;
+      let reportBundle:ReturnType<typeof reportModelInput>|undefined;
       if(claim.task.fingerprint.startsWith(REPORT_FINGERPRINT)){
         if(!this.reportInbox)throw new AiProviderError('EXECUTIVE_REPORT_CONTEXT_UNAVAILABLE');
         reportBundle=reportModelInput((await this.db.serializable(tx=>executiveReportContext(tx,claim.task,this.reportInbox!))).bundle);
@@ -312,6 +313,8 @@ export class AgentRuntimeService {
         });
       }
       result=await this.model.execute(claim.config,claim.agent,claim.task.action as AgentAction,claim.task.language as SupportedLanguage,claim.task.prompt,snapshot,governanceReview||undefined,draftCorrection||undefined,reportBundle);
+      // Provider completion and usage remain validated; persist exact source facts.
+      if(reportBundle)result={...result,text:renderVerifiedExecutiveReport(reportBundle)};
     }catch(failure){error=failure instanceof AiProviderError?failure:new AiProviderError('EXECUTION_FAILED');}
     // Retry only persistence, never the provider request. A committed receipt is
     // detected through claimId/state, making an ambiguous DB commit harmless.
