@@ -39,6 +39,8 @@ jobs:
       - run: npm run typecheck -w @hydroland/api
       - run: npm run build -w @hydroland/api
       - run: node --test apps/api/scripts/operational-evidence.test.cjs apps/api/scripts/department-source.test.cjs
+      - name: V6 provider source scope and original word/token bounds
+        run: node apps/api/scripts/agent-word-limit-check.mjs
       - name: Evidence lifecycle, migrations and private source counts on native HTTP/PostgreSQL
         run: |
           node apps/api/dist/main.js > /tmp/operational-evidence-api.log 2>&1 &
