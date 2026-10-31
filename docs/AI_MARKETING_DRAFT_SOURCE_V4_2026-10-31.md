@@ -1,5 +1,7 @@
 # Internal marketing campaign planning and source version 4
 
+Historical V4 contracts remain unchanged. New cycles use V5 warehouse location counts as documented in [AI_WAREHOUSE_LOCATION_SOURCE_V5_2026-10-31.md](AI_WAREHOUSE_LOCATION_SOURCE_V5_2026-10-31.md).
+
 The owner can create, read, revise, archive and restore campaign planning drafts
 under **Administration → Employees → Marketing campaign drafts**. This is an
 internal planning registry. It does not activate or approve campaigns, publish

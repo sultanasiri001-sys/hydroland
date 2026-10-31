@@ -1,4 +1,5 @@
 (() => {
+  if(!document.querySelector('script[src="./hydroland-warehouse-locations.js"]')){const node=document.createElement('script');node.src='./hydroland-warehouse-locations.js';node.defer=true;document.body.appendChild(node);}
   if(!document.querySelector('script[src="./hydroland-marketing-drafts.js"]')){const node=document.createElement('script');node.src='./hydroland-marketing-drafts.js';node.defer=true;document.body.appendChild(node);}
   for(const [tag,attribute,file] of [['link','href','hydroland-admin-accounts.css'],['script','src','hydroland-admin-accounts.js'],['link','href','hydroland-admin-employees.css'],['script','src','hydroland-admin-employees.js'],['script','src','hydroland-hr-control-review.js'],['script','src','hydroland-department-references.js'],['link','href','hydroland-admin-agents.css'],['script','src','hydroland-admin-agents.js']]){
     if(document.querySelector(`${tag}[${attribute}="./${file}"]`))continue;

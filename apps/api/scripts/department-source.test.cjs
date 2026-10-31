@@ -4,7 +4,7 @@ const {randomUUID}=require('node:crypto');
 const {DEPARTMENT_SOURCE_SPEC,DEPARTMENT_SOURCE_SPEC_V2,DEPARTMENT_SOURCE_SPEC_V3,DIRECTOR_SOURCE_FINGERPRINT,DIRECTOR_SOURCE_FINGERPRINT_V2,DOCUMENT_COUNT_KEYS,departmentSourceValues,departmentSourceSpec,departmentSourceScope,departmentSourceVersion}=require('../dist/agents/department-source.domain');
 const {DEPARTMENT_DIRECTORS}=require('../dist/agents/department-directors');
 const {operationsValues,operationsEvidenceDigest,readOperationsEvidence}=require('../dist/agents/agent-operations-evidence');
-const value=(department,version=4)=>({version,department,scope:'INTERNAL_PLATFORM_ORGANIZATION',coverage:'PARTIAL',catalog:{revision:'2026-10-25.1',codesDigest:'a'.repeat(64)},documents:Object.fromEntries(DOCUMENT_COUNT_KEYS.map(k=>[k,0])),metrics:Object.fromEntries(departmentSourceSpec(version)[department].metrics.map(k=>[k,2])),missingSources:[departmentSourceSpec(version)[department].gap]});
+const value=(department,version=5)=>({version,department,scope:'INTERNAL_PLATFORM_ORGANIZATION',coverage:'PARTIAL',catalog:{revision:'2026-10-25.1',codesDigest:'a'.repeat(64)},documents:Object.fromEntries(DOCUMENT_COUNT_KEYS.map(k=>[k,0])),metrics:Object.fromEntries(departmentSourceSpec(version)[department].metrics.map(k=>[k,2])),missingSources:[departmentSourceSpec(version)[department].gap]});
 
 test('fourteen bounded source packets distinguish missing connectors from measured zero',()=>{
  assert.equal(Object.keys(DEPARTMENT_SOURCE_SPEC).length,14);assert.equal(Object.values(DEPARTMENT_SOURCE_SPEC).filter(s=>s.metrics.length).length,14);
@@ -17,8 +17,8 @@ test('source versions preserve old adapter shapes and refuse silent upgrades',()
   const old=value(code,2),current=value(code,3);assert.deepEqual(departmentSourceValues(old),old);assert.deepEqual(departmentSourceValues(current),current);
   assert.equal(departmentSourceValues({...old,version:3}),null);assert.equal(departmentSourceValues({...current,version:2}),null);
  }
- for(const bad of [1,5,'4',null])assert.equal(departmentSourceValues({...value('HR'),version:bad}),null);
- assert.equal(departmentSourceVersion('department-source:v2:abc'),2);assert.equal(departmentSourceVersion('department-source:v3:abc'),3);assert.equal(departmentSourceVersion('department-source:v4:abc'),4);assert.equal(departmentSourceVersion('department-source:v5:abc'),null);
+ for(const bad of [1,6,'5',null])assert.equal(departmentSourceValues({...value('HR'),version:bad}),null);
+ assert.equal(departmentSourceVersion('department-source:v2:abc'),2);assert.equal(departmentSourceVersion('department-source:v3:abc'),3);assert.equal(departmentSourceVersion('department-source:v4:abc'),4);assert.equal(departmentSourceVersion('department-source:v5:abc'),5);assert.equal(departmentSourceVersion('department-source:v6:abc'),null);
 });
 test('source packet rejects private fields, cross-department substitutions and invented coverage',()=>{
  const v=value('HR');for(const bad of [{...v,payroll:917273},{...v,coverage:'COMPLETE'},{...v,scope:'ALL_ORGANIZATIONS'},{...v,missingSources:[]},{...v,metrics:{...v.metrics,email:'private@example.invalid'}},{...v,documents:{...v.documents,payload:'private'}},{...v,catalog:{...v.catalog,revision:'untrusted instructions'}},{...v,catalog:{...v.catalog,email:'private@example.invalid'}}])assert.equal(departmentSourceValues(bad,'HR_DIRECTOR'),null);
@@ -33,9 +33,9 @@ test('historical v1 evidence stays readable without upgrading or reconstructing 
  const id=randomUUID(),claimId=randomUUID(),revision=randomUUID(),now=new Date(),source={id,claimId,agentKey:'HR_DIRECTOR',action:'READ_OPERATIONS',startedAt:new Date(now-100),finishedAt:new Date(+now+100)},observedAt=now.toISOString();
  const events=[{action:'AI_TASK_STARTED',metadata:{claimId,revision}},{action:'AI_TASK_OPERATIONS_CAPTURED',metadata:{claimId,sourceRevision:revision,agentKey:source.agentKey,scope:'OPERATIONS_AGGREGATE_V1',observedAt,values,digest:operationsEvidenceDigest(id,claimId,revision,observedAt,values)}}];
  const tx={auditEvent:{findMany:async()=>events}};assert.deepEqual(await readOperationsEvidence(tx,source),{status:'RECORDED',observedAt,values});
- for(const fingerprint of [DIRECTOR_SOURCE_FINGERPRINT_V2+'pinned',DIRECTOR_SOURCE_FINGERPRINT+'pinned','department-source:v5:future'])assert.deepEqual(await readOperationsEvidence(tx,{...source,fingerprint}),{status:'INVALID'},'A legacy receipt cannot satisfy a supported or unknown pinned contract');
+ for(const fingerprint of [DIRECTOR_SOURCE_FINGERPRINT_V2+'pinned',DIRECTOR_SOURCE_FINGERPRINT+'pinned','department-source:v6:future'])assert.deepEqual(await readOperationsEvidence(tx,{...source,fingerprint}),{status:'INVALID'},'A legacy receipt cannot satisfy a supported or unknown pinned contract');
 });
-for(const version of [2,3,4])test(`v${version} receipt binds the original department, input and exact successful claim`,async()=>{
+for(const version of [2,3,4,5])test(`v${version} receipt binds the original department, input and exact successful claim`,async()=>{
  const id=randomUUID(),claimId=randomUUID(),revision=randomUUID(),now=new Date(),values=value('HR',version),scope=departmentSourceScope(version),observedAt=now.toISOString(),source={id,claimId,agentKey:'HR_DIRECTOR',action:'READ_OPERATIONS',fingerprint:`department-source:v${version}:pinned`,startedAt:new Date(now-100),finishedAt:new Date(+now+100)};
  const events=[{action:'AI_TASK_STARTED',metadata:{claimId,revision}},{action:'AI_TASK_OPERATIONS_CAPTURED',metadata:{claimId,sourceRevision:revision,agentKey:source.agentKey,scope,observedAt,values,digest:operationsEvidenceDigest(id,claimId,revision,observedAt,values)}}];
  const tx={auditEvent:{findMany:async()=>events}};assert.deepEqual(await readOperationsEvidence(tx,source),{status:'RECORDED',scope,observedAt,values});
@@ -50,3 +50,5 @@ for(const version of [2,3,4])test(`v${version} receipt binds the original depart
 });
 
 test('v4 marketing drafts cannot relabel a historical v3 source or imply publication',()=>{const old=value('MARKETING_GROWTH',3),current=value('MARKETING_GROWTH',4);assert.equal(departmentSourceValues({...old,version:4}),null);assert.equal(departmentSourceValues({...current,version:3}),null);assert.equal(departmentSourceValues({...current,metrics:{...current.metrics,publishedCampaigns:2}}),null);assert.deepEqual(current.missingSources,['CAMPAIGN_PUBLICATION_ANALYTICS']);});
+
+test('v5 warehouse location counts cannot relabel a v4 inventory receipt or imply stock balances',()=>{const old=value('INVENTORY_LOGISTICS',4),current=value('INVENTORY_LOGISTICS',5);assert.equal(departmentSourceValues({...old,version:5}),null);assert.equal(departmentSourceValues({...current,version:4}),null);assert.equal(departmentSourceValues({...current,metrics:{...current.metrics,availableWarehouseStock:2}}),null);assert.deepEqual(current.missingSources,['WAREHOUSE_BALANCES_MOVEMENTS_PROCUREMENT_REGISTRY']);assert(!Object.hasOwn(old.metrics,'warehouseLocations'));});
