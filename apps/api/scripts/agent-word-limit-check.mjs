@@ -3,7 +3,7 @@ import {createServer} from 'node:http';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
 const {AgentModelProviderService}=require('../dist/agents/agent-model-provider.service.js');
-const {requestedWordLimit,responseWordCount}=require('../dist/agents/agent-word-policy.js');
+const {requestedWordLimit,responseWordCount,reportScopeNotice}=require('../dist/agents/agent-word-policy.js');
 assert.equal(requestedWordLimit('لا تتجاوز ٩٠ كلمة'),90);
 assert.equal(requestedWordLimit('at most 90 words'),90);
 assert.equal(requestedWordLimit('unbounded report'),null);
@@ -25,7 +25,7 @@ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 Object.assign(process.env,{NODE_ENV:'test',HYDROLAND_AI_PROVIDER:'OPENAI',OPENAI_API_KEY:'fixture-only-not-real',HYDROLAND_AI_MODEL:'gpt-6-luna',HYDROLAND_AI_INPUT_MICRO_USD_PER_MILLION:'100000',HYDROLAND_AI_OUTPUT_MICRO_USD_PER_MILLION:'500000',HYDROLAND_AI_DAILY_BUDGET_MICRO_USD:'300000',HYDROLAND_AI_MAX_INPUT_TOKENS:'8192',HYDROLAND_AI_MAX_OUTPUT_TOKENS:'2048',HYDROLAND_AI_TEST_BASE_URL:'http://127.0.0.1:'+server.address().port+'/v1'});
 const provider=new AgentModelProviderService({status:()=>({status:'SANDBOX'})});
 const config=provider.configuration(),agent={key:'INVENTORY',nameEn:'Inventory'};
-async function execute(options={},descriptor=agent){scenario=options;requests=[];return provider.execute(config,descriptor,'DRAFT_REPORT','ar-SA','لا تتجاوز 90 كلمة. احفظ حقائق العينة.',{metrics:{warehouseLocations:2},missingSources:['fixture-gap']});}
+async function execute(options={},descriptor=agent,brief='لا تتجاوز 90 كلمة. احفظ حقائق العينة.'){scenario=options;requests=[];return provider.execute(config,descriptor,'DRAFT_REPORT','ar-SA',brief,{metrics:{warehouseLocations:2},missingSources:['fixture-gap']});}
 try{
   const result=await execute();
   assert.equal(requests.length,4);
@@ -49,6 +49,17 @@ try{
   await assert.rejects(()=>execute({incompleteRepair:true}),e=>e.code==='PROVIDER_RESULT_INCOMPLETE'&&e.uncertain);assert.equal(requests.length,4,'one format pass only');
   await assert.rejects(()=>execute({secondWords:100}),e=>e.code==='OUTPUT_WORD_LIMIT');assert.equal(requests.length,4,'never publish an over-limit second draft');
   await assert.rejects(()=>execute({rejectRepair:true}),e=>e.definiteRejection===false);assert.equal(requests.length,4,'a rejected format pass cannot restart the completed first generation');
+  const syntheticBrief='اختبار داخلي على عينة بيانات اختبار. لا تتجاوز 90 كلمة.';
+  const labeled=await execute({firstWords:88},agent,syntheticBrief);
+  assert.equal(requests.length,4,'reserve words for the protected scope notice');
+  assert(labeled.text.startsWith(reportScopeNotice(syntheticBrief)));
+  assert.equal(responseWordCount(labeled.text),66,'notice is included in the final count');
+  assert.equal(labeled.inputTokens,30);assert.equal(labeled.outputTokens,900);
+  const alreadyShort=await execute({firstWords:80},agent,syntheticBrief);
+  assert.equal(requests.length,2);
+  assert.equal(responseWordCount(alreadyShort.text),86);
+  assert(alreadyShort.text.startsWith('عينة اختبار، لا تمثل واقع المنصة.'));
+  assert.equal(reportScopeNotice('تقرير تشغيلي فعلي'),null);
   console.log('Word-bound checks passed: one completed-draft format pass, exact counting, combined input/output reservation, original evidence, strict final word bound and no uncertain/whole-task replay.');
 }finally{
   server.closeAllConnections();await new Promise(resolve=>server.close(resolve));
