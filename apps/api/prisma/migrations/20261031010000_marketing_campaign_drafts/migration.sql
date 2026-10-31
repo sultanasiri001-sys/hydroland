@@ -34,7 +34,7 @@ CREATE TABLE "MarketingCampaignDraftRevision" (
   CONSTRAINT "MarketingCampaignDraftRevision_action_valid" CHECK ("action" IN ('MARKETING_CAMPAIGN_DRAFT_CREATED','MARKETING_CAMPAIGN_DRAFT_EDITED','MARKETING_CAMPAIGN_DRAFT_ARCHIVED','MARKETING_CAMPAIGN_DRAFT_RESTORED')),
   CONSTRAINT "MarketingCampaignDraftRevision_digests_valid" CHECK ("recordDigest" ~ '^[a-f0-9]{64}$' AND ("previousDigest" IS NULL OR "previousDigest" ~ '^[a-f0-9]{64}$'))
 );
-CREATE UNIQUE INDEX "MarketingCampaignDraft_organizationId_createdByAccountId_req_key" ON "MarketingCampaignDraft"("organizationId","createdByAccountId","requestKey");
+CREATE UNIQUE INDEX "MarketingDraft_org_creator_request_key" ON "MarketingCampaignDraft"("organizationId","createdByAccountId","requestKey");
 CREATE INDEX "MarketingCampaignDraft_organizationId_createdAt_id_idx" ON "MarketingCampaignDraft"("organizationId","createdAt","id");
 CREATE UNIQUE INDEX "MarketingCampaignDraftRevision_campaignDraftId_revision_key" ON "MarketingCampaignDraftRevision"("campaignDraftId","revision");
 DO $migration$

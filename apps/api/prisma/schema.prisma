@@ -2467,7 +2467,7 @@ model MarketingCampaignDraft {
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
   createdBy Account @relation("MarketingDraftCreator",fields:[createdByAccountId],references:[id],onDelete:Restrict)
   revisions MarketingCampaignDraftRevision[]
-  @@unique([organizationId,createdByAccountId,requestKey],map:"MarketingCampaignDraft_organizationId_createdByAccountId_req_key")
+  @@unique([organizationId,createdByAccountId,requestKey],map:"MarketingDraft_org_creator_request_key")
   @@index([organizationId,createdAt,id])
 }
 model MarketingCampaignDraftRevision {
