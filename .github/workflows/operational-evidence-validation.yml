@@ -1,0 +1,51 @@
+name: Operational evidence sources
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: hydroland
+          POSTGRES_PASSWORD: hydroland
+          POSTGRES_DB: hydroland_evidence_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U hydroland -d hydroland_evidence_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://hydroland:hydroland@localhost:5432/hydroland_evidence_ci
+      NODE_ENV: test
+      JWT_SECRET: ci-operational-evidence-secret-at-least-32-characters
+      PORT: 3118
+      HYDROLAND_AI_TEST_MANUAL_WORKER: '1'
+      OPERATIONAL_EVIDENCE_CONFIRM: ISOLATED_LOOPBACK_DATABASE
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --workspace=@hydroland/api --include-workspace-root=true
+      - run: npm run db:generate -w @hydroland/api
+      - run: npm exec -w @hydroland/api -- prisma db push --skip-generate
+      - run: npm run lint -w @hydroland/api
+      - run: npm run typecheck -w @hydroland/api
+      - run: npm run build -w @hydroland/api
+      - run: node --test apps/api/scripts/operational-evidence.test.cjs apps/api/scripts/department-source.test.cjs
+      - name: Evidence lifecycle, migrations and private source counts on native HTTP/PostgreSQL
+        run: |
+          node apps/api/dist/main.js > /tmp/operational-evidence-api.log 2>&1 &
+          EVIDENCE_API_PID=$!
+          trap 'EVIDENCE_EXIT=$?; kill $EVIDENCE_API_PID || true; if [ "$EVIDENCE_EXIT" -ne 0 ]; then cat /tmp/operational-evidence-api.log; fi' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3118/api/v1/health/ready > /dev/null; then break; fi
+            sleep 1
+          done
+          node apps/api/scripts/operational-evidence-http-e2e.mjs

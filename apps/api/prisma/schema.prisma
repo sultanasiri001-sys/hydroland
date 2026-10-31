@@ -154,6 +154,8 @@ model Person {
 }
 
 model Account {
+  operationalEvidenceCreated OperationalEvidence[] @relation("OperationalEvidenceCreator")
+  operationalEvidenceRevisions OperationalEvidenceRevision[] @relation("OperationalEvidenceRevisionActor")
   id String @id @default(uuid())
   personId String @unique
   email String @unique
@@ -236,6 +238,7 @@ model Account {
 }
 
 model Organization {
+  operationalEvidence OperationalEvidence[]
   id String @id @default(uuid())
   displayName String
   legalName String?
@@ -2275,6 +2278,7 @@ model DocumentTemplate {
 }
 
 model ManagedDocument {
+  operationalEvidence OperationalEvidence[]
   id String @id @default(uuid())
   organizationId String
   templateId String
@@ -2489,6 +2493,53 @@ model MarketingCampaignDraftRevision {
   @@unique([campaignDraftId,revision])
 }
 
+// Owner-recorded evidence of past events; no operational execution authority.
+model OperationalEvidence {
+  id String @id @default(uuid())
+  organizationId String
+  requestKey String
+  requestDigest String
+  revision Int @default(1)
+  status String @default("DRAFT")
+  kind String
+  department String
+  reference String
+  occurredAt DateTime
+  proofDocumentId String
+  proofVersion Int
+  proofContentHash String
+  details Json
+  referenceBindings Json
+  createdByAccountId String
+  recordedAt DateTime?
+  recordDigest String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  proofDocument ManagedDocument @relation(fields:[proofDocumentId],references:[id],onDelete:Restrict)
+  createdBy Account @relation("OperationalEvidenceCreator",fields:[createdByAccountId],references:[id],onDelete:Restrict)
+  revisions OperationalEvidenceRevision[]
+  @@unique([organizationId,createdByAccountId,requestKey],map:"OperationalEvidence_org_creator_request_key")
+  @@unique([organizationId,kind,reference],map:"OperationalEvidence_org_kind_reference_key")
+  @@index([organizationId,department,status,kind])
+  @@index([organizationId,createdAt,id])
+}
+model OperationalEvidenceRevision {
+  id String @id @default(uuid())
+  evidenceId String
+  revision Int
+  snapshot Json
+  action String
+  reason String
+  actorAccountId String
+  previousDigest String?
+  recordDigest String
+  createdAt DateTime @default(now())
+  evidence OperationalEvidence @relation(fields:[evidenceId],references:[id],onDelete:Restrict)
+  actor Account @relation("OperationalEvidenceRevisionActor",fields:[actorAccountId],references:[id],onDelete:Restrict)
+  @@unique([evidenceId,revision])
+}
+
 // Recorded warehouse locations only. No stock, custody or operating authority.
 model WarehouseLocation {
   id String @id @default(uuid())
@@ -2526,3 +2577,4 @@ model WarehouseLocationRevision {
   actor Account @relation("WarehouseLocationRevisionActor",fields:[actorAccountId],references:[id],onDelete:Restrict)
   @@unique([warehouseLocationId,revision])
 }
+
