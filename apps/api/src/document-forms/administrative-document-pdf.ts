@@ -29,7 +29,21 @@ export async function renderAdministrativeDocumentPdf(
   // visual ordering, so fontkit must not apply a second RTL ordering pass.
   pdf.registerFontkit({create:(bytes:Uint8Array)=>{
     const face=kit.create(bytes),layout=face.layout.bind(face);
-    face.layout=(text:string,features:unknown,script:unknown,language:unknown)=>layout(text,features,script,language,'ltr');
+    face.layout=(text:string,features:unknown,script:unknown,language:unknown)=>{
+      // Tajawal maps isolated Arabic letters through their canonical Unicode
+      // code points, while its joined forms have presentation-form mappings.
+      // Preserve the resolved visual order and replace only missing isolated
+      // forms with the exact canonical glyph; do not normalize joined forms.
+      const compatible=approvedIdentity?Array.from(text,char=>{
+        const code=char.codePointAt(0)!;
+        if(code>=0xFB50&&code<=0xFEFF&&!face.hasGlyphForCodePoint(code)){
+          const canonical=char.normalize('NFKC');
+          if(Array.from(canonical).length===1&&face.hasGlyphForCodePoint(canonical.codePointAt(0)))return canonical;
+        }
+        return char;
+      }).join(''):text;
+      return layout(compatible,features,script,language,'ltr');
+    };
     return face;
   }});
   const root=resolve(__dirname,'../../src/document-forms');

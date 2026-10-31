@@ -4,6 +4,22 @@ import {readFile,mkdir,writeFile} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 const require=createRequire(import.meta.url);
 
+function assertIdentityPdfGlyphs(parsed,label){
+ const {PDFArray,PDFRawStream,decodePDFRawStream}=require('pdf-lib');let runs=0;
+ for(const page of parsed.getPages()){
+  const contents=page.node.Contents(),streams=contents instanceof PDFArray?contents.asArray().map(ref=>parsed.context.lookup(ref)):[contents];
+  for(const stream of streams){
+   assert.ok(stream instanceof PDFRawStream,`${label}: readable content stream`);
+   const decoded=Buffer.from(decodePDFRawStream(stream).decode()).toString('latin1');
+   for(const match of decoded.matchAll(/<([0-9a-f]+)>\s*Tj/gi)){
+    runs++;assert.equal(match[1].length%4,0,`${label}: complete CID glyph codes`);
+    for(let i=0;i<match[1].length;i+=4)assert.notEqual(match[1].slice(i,i+4),'0000',`${label}: missing glyph must not print as a box`);
+   }
+  }
+ }
+ assert.ok(runs>0,`${label}: actual text drawing operations`);
+}
+
 // Called only by the existing guarded, isolated HTTP/PostgreSQL acceptance test.
 export async function checkPlatformDocumentSources({db,owner,other,worker,org,employment,foreignEmployment,commencement,call,ok,base,pass}){
  const route=`documents/organizations/${org.id}`;
@@ -79,6 +95,7 @@ export async function checkPlatformDocumentSources({db,owner,other,worker,org,em
   assert.match(parsed.getSubject(),/HYDROLAND_INCIDENT_IDENTITY_V2/);
   const fonts=parsed.getPages().flatMap(p=>{const f=p.node.Resources().lookup(PDFName.of('Font'));return f?[...f.entries()].map(([,ref])=>parsed.context.lookup(ref).get(PDFName.of('BaseFont')).toString()):[];});
   assert.ok(fonts.some(x=>/Tajawal-Regular/.test(x)));assert.ok(fonts.some(x=>/Tajawal-Bold/.test(x)));
+  assertIdentityPdfGlyphs(parsed,'native source identity');
   await writeFile('/tmp/form-library-evidence/platform-identity-native.pdf',bytes);
   assert.equal((await call(null,`documents/${doc.id}/identity-pdf`)).status,401);assert.equal((await call(other,`documents/${doc.id}/identity-pdf`)).status,403);
   assert.equal((await db.managedDocument.findUniqueOrThrow({where:{id:doc.id}})).contentHash,currentDoc.contentHash);
@@ -132,7 +149,8 @@ export async function checkPlatformDocumentSources({db,owner,other,worker,org,em
   assert.equal(sourceSnapshot(created.payload,org.id).records.find(r=>r.kind==='EMPLOYMENT').id,employment.id);
   assert.ok(sourcePrintFields(sourceSnapshot(created.payload)).some(f=>f.value==='HrSourceFixture worker'));
   const identity=await fetch(new URL(`documents/${created.id}/identity-pdf`,base),{headers:{authorization:`Bearer ${owner.token}`}});
-  assert.equal(identity.status,200,`approved identity ${t.code}`);assert.equal(Buffer.from(await identity.arrayBuffer()).subarray(0,5).toString(),'%PDF-');
+  assert.equal(identity.status,200,`approved identity ${t.code}`);const identityBytes=Buffer.from(await identity.arrayBuffer());assert.equal(identityBytes.subarray(0,5).toString(),'%PDF-');
+  assertIdentityPdfGlyphs(await require('pdf-lib').PDFDocument.load(identityBytes),t.code);
   count++;
  }
  assert.equal(count,157);assert.equal(new Set(all.map(t=>t.department)).size,14);
