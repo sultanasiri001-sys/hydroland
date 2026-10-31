@@ -312,9 +312,10 @@ export class AgentRuntimeService {
           await this.audit.record({action:'AI_TASK_OPERATIONS_CAPTURED',resource:'AiAgentTask',resourceId:row.id,metadata:{agentKey:row.agentKey,scope:'OPERATIONS_AGGREGATE_V1',claimId:row.claimId,sourceRevision:row.revision,observedAt,values,digest:operationsEvidenceDigest(row.id,row.claimId!,row.revision,observedAt,values)}},tx);
         });
       }
+      const verifiedReportText=reportBundle?renderVerifiedExecutiveReport(reportBundle):undefined;
       result=await this.model.execute(claim.config,claim.agent,claim.task.action as AgentAction,claim.task.language as SupportedLanguage,claim.task.prompt,snapshot,governanceReview||undefined,draftCorrection||undefined,reportBundle);
       // Provider completion and usage remain validated; persist exact source facts.
-      if(reportBundle)result={...result,text:renderVerifiedExecutiveReport(reportBundle)};
+      if(verifiedReportText!==undefined)result={...result,text:verifiedReportText};
     }catch(failure){error=failure instanceof AiProviderError?failure:new AiProviderError('EXECUTION_FAILED');}
     // Retry only persistence, never the provider request. A committed receipt is
     // detected through claimId/state, making an ambiguous DB commit harmless.
