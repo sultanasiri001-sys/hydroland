@@ -124,6 +124,8 @@ jobs:
         run: node apps/api/scripts/agent-provider-connection-check.mjs
       - name: Executive formatter output and unchanged review reasoning
         run: node apps/api/scripts/agent-formatter-output-check.mjs
+      - name: Bounded word-limit correction within the original reservation
+        run: node apps/api/scripts/agent-word-limit-check.mjs
       - name: Verified executive report counts and complete source facts
         run: node apps/api/scripts/executive-report-renderer-check.mjs
       - name: Bounded provider quota and rate-limit rejection categories
