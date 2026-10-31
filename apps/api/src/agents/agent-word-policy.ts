@@ -9,3 +9,9 @@ export function responseWordCount(text:string):number {
   const body=text.replace(/^[ \t]*(?:[0-9٠-٩]+[.)]|[-•])\s*/gm,'').trim();
   return body?body.split(/\s+/).length:0;
 }
+
+export function reportScopeNotice(prompt:string):string|null {
+  const scope=prompt.slice(0,300);
+  return /عينة\s+(?:بيانات\s+)?اختبار(?:ية)?|بيانات\s+اختبار(?:ية)?|synthetic (?:data|fixture)/i.test(scope)
+    ?'عينة اختبار، لا تمثل واقع المنصة.':null;
+}
