@@ -124,8 +124,9 @@ export class AgentModelProviderService {
     const countResponse=await this.request('/responses/input_tokens',{model:config.model,input},10_000),counted=countResponse.payload;
     if(!Number.isSafeInteger(counted.input_tokens)||Number(counted.input_tokens)<0||Number(counted.input_tokens)>config.maxInputTokens)throw new AiProviderError('INPUT_TOKEN_LIMIT');
     if(countResponse.limits.invalidDelay||countResponse.limits.retryAt&&Date.parse(countResponse.limits.retryAt)>Date.now())throw new AiProviderError('PROVIDER_WAIT_REQUIRED',false,'INPUT_TOKENS',countResponse.limits,true);
-    // Short office JSON reviews do not need the formatter's full output reserve.
-    const outputLimit=isGovernanceAgent(agent.key)?Math.min(config.maxOutputTokens,1024):config.maxOutputTokens;
+    // Reasoning and JSON share the output allowance. Use the already reserved
+    // configured bound; a smaller hidden cap can interrupt otherwise valid reviews.
+    const outputLimit=config.maxOutputTokens;
     if(!localProviderFixture())await new Promise(resolve=>setTimeout(resolve,1000));
     // Formatting verified outcomes needs output space, not another reasoning review.
     // Keep reasoning behavior unchanged for reviewers, ordinary tasks and other models.
