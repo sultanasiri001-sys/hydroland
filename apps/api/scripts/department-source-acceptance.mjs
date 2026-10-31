@@ -5,12 +5,12 @@ import {createRequire} from 'node:module';
 // Disposable native HTTP/PG fixture only. No external model or real HR data.
 export async function departmentSourceAcceptance({db,organization,actor,ordinary,token,otherToken,call,providerCalls}){
  assert.equal(process.env.CI,'true');assert.equal(process.env.NODE_ENV,'test');assert(['localhost','127.0.0.1','[::1]'].includes(new URL(process.env.DATABASE_URL).hostname));
- const require=createRequire(import.meta.url),{STAFFING_DEPARTMENTS}=require('../dist/hr/staffing-catalog.js'),{reviewedAdministrativeTemplates}=require('../dist/document-forms/administrative-form-catalog.js'),{readDepartmentSources}=require('../dist/agents/department-source.reader.js');
+ const require=createRequire(import.meta.url),{STAFFING_DEPARTMENTS}=require('../dist/hr/staffing-catalog.js'),{reviewedAdministrativeTemplates}=require('../dist/document-forms/administrative-form-catalog.js'),{readDepartmentSources}=require('../dist/agents/department-source.reader.js'),{marketingDraftRecordDigest}=require('../dist/marketing/marketing-draft.domain.js');
  const sentinel='SOURCE_PRIVATE_PAYLOAD_MUST_NOT_LEAVE_DATABASE',templates=reviewedAdministrativeTemplates('isolated-source'),hr=templates.find(t=>t.department==='HR'),finance=templates.find(t=>t.department==='FINANCE');let foreign,ownHrTemplate;const productIds=[],assetIds=[];
  const ids=()=>[organization.id,...(foreign?[foreign.id]:[])];
  const cleanup=async()=>{
   const scope={in:ids()},trip={organizationId:scope},enrollment={centerOrganizationId:scope};
-  await db.storeProduct.deleteMany({where:{id:{in:productIds}}});await db.marineMaintenanceRecord.deleteMany({where:{marineAssetId:{in:assetIds}}});await db.marineAsset.deleteMany({where:{id:{in:assetIds}}});
+  await db.marketingCampaignDraft.deleteMany({where:{organizationId:scope}});await db.storeProduct.deleteMany({where:{id:{in:productIds}}});await db.marineMaintenanceRecord.deleteMany({where:{marineAssetId:{in:assetIds}}});await db.marineAsset.deleteMany({where:{id:{in:assetIds}}});
   await db.trainingCertificate.deleteMany({where:{trainingRecord:{enrollment}}});await db.trainingRecord.deleteMany({where:{enrollment}});await db.trainingEnrollment.deleteMany({where:enrollment});await db.storeCourseOffer.deleteMany({where:{organizationId:scope}});
   await db.safetyIncident.deleteMany({where:{trip}});await db.safetyChecklist.deleteMany({where:{trip}});await db.booking.deleteMany({where:{trip}});await db.trip.deleteMany({where:trip});
   await db.administrativeRouting.deleteMany({where:{organizationId:scope}});await db.administrativeMeeting.deleteMany({where:{organizationId:scope}});await db.administrativeRecord.deleteMany({where:{organizationId:scope}});
@@ -22,6 +22,7 @@ export async function departmentSourceAcceptance({db,organization,actor,ordinary
  };
  const doc=async(organizationId,templateId,department,status='APPROVED')=>db.managedDocument.create({data:{organizationId,templateId,department,status,referenceNumber:randomUUID(),contentHash:'a'.repeat(64),createdByAccountId:actor.id,payload:{private:sentinel,privateSalaryMinor:917273,email:actor.email}}});
  const product=async(organizationId,kind,status,stockQuantity)=>{const row=await db.storeProduct.create({data:{organizationId,kind,status,stockQuantity,sku:'SOURCE-'+randomUUID(),nameAr:sentinel,description:sentinel,priceMinor:917273}});productIds.push(row.id);return row;};
+ const campaign=async(organizationId,status='DRAFT')=>{const now=new Date(),value={id:randomUUID(),organizationId,requestKey:randomUUID(),requestDigest:'a'.repeat(64),revision:1,status,title:sentinel,objective:sentinel,channels:['WEB'],createdByAccountId:actor.id,createdAt:now,updatedAt:now};return db.marketingCampaignDraft.create({data:{...value,recordDigest:marketingDraftRecordDigest(value)}});};
  const preview=async()=>{const r=await call('/admin/agents/department-sources',token);assert.equal(r.status,200,JSON.stringify(r.body));assert.equal(r.cacheControl,'no-store');return r.body;};
  try{
   await db.orgUnit.createMany({data:STAFFING_DEPARTMENTS.map(d=>({organizationId:organization.id,type:'DEPARTMENT',code:d.code,nameAr:d.nameAr,active:true}))});
@@ -59,8 +60,9 @@ export async function departmentSourceAcceptance({db,organization,actor,ordinary
    await db.administrativeMeeting.create({data:{organizationId:org.id,unitId:u.id,title:sentinel,scheduledAt:new Date(),organizerAccountId:actor.id,participantAccountIds:[ordinary.id]}});
   }
   assert.equal((await call('/admin/agents/department-sources')).status,401);assert.equal((await call('/admin/agents/department-sources',otherToken)).status,403,'An unrelated verified ADMIN cannot preview internal department sources');
+  for(const org of [organization,foreign])for(const status of ['DRAFT','DRAFT','ARCHIVED'])await campaign(org.id,status);
   const beforeCalls=providerCalls(),beforeTasks=await db.aiAgentTask.count(),beforeDocuments=await db.managedDocument.findMany({where:{organizationId:organization.id}}),response=await preview();
-  assert.equal(response.sourceVersion,3);assert.equal(response.readOnly,true);assert.equal(response.generationTested,false);assert.equal(response.operationalAcceptance,'NOT_ASSESSED');assert.equal(response.departments.length,14);assert.equal(response.departments.filter(d=>d.operationalCountsConnected).length,13);
+  assert.equal(response.sourceVersion,4);assert.equal(response.readOnly,true);assert.equal(response.generationTested,false);assert.equal(response.operationalAcceptance,'NOT_ASSESSED');assert.equal(response.departments.length,14);assert.equal(response.departments.filter(d=>d.operationalCountsConnected).length,14);
   const source=code=>response.departments.find(d=>d.department===code).evidence;
   assert.equal(source('HR').documents.documents,1);assert.equal(source('HR').documents.inconsistentLinks,1);assert.equal(source('HR').documents.templateConflicts,1);assert.equal(source('HR').metrics.candidates,1);assert.equal(source('HR').metrics.activeEmployments,1);assert.equal(source('HR').metrics.pendingLeaves,1);
   assert.equal(source('FINANCE').metrics.activeFinanceAccounts,1);assert.equal(source('FINANCE').metrics.pendingFinanceEntries,1);assert.equal(source('FINANCE').metrics.postedFinanceEntries,0,'Cross-organization finance links never become measured own entries');
@@ -70,23 +72,26 @@ export async function departmentSourceAcceptance({db,organization,actor,ordinary
   assert.deepEqual(source('INVENTORY_LOGISTICS').metrics,{storeGoodsProducts:4,activeStoreGoodsProducts:2,draftStoreGoodsProducts:1,unavailableActiveStoreGoodsProducts:1,negativeStockStoreGoodsProducts:1},'Foreign goods, unowned goods and service listings are excluded');
   assert.deepEqual(source('FACILITIES_ASSETS_MAINTENANCE').metrics,{marineAssets:3,activeMarineAssets:1,marineMaintenanceRecords:4,openMarineMaintenanceRecords:1,recordedCompletedMarineMaintenanceRecords:1},'Only related own assets and timestamped recorded completions count');
   for(const code of ['MARKETING_GROWTH','INVENTORY_LOGISTICS','FACILITIES_ASSETS_MAINTENANCE'])assert.equal(source(code).missingSources.length,1);
-  assert.deepEqual(source('MARKETING_GROWTH').metrics,{});
+  assert.deepEqual(source('MARKETING_GROWTH').metrics,{marketingCampaignDrafts:3,openMarketingCampaignDrafts:2,archivedMarketingCampaignDrafts:1});
   const serialized=JSON.stringify(response);for(const forbidden of [sentinel,'917273',actor.email,actor.id,ordinary.id,organization.id,foreign.id,...productIds,...assetIds])assert(!serialized.includes(forbidden),'Only scalar, allowlisted source counts may leave the database');
   assert.deepEqual(providerCalls(),beforeCalls);assert.equal(await db.aiAgentTask.count(),beforeTasks);assert.deepEqual(await db.managedDocument.findMany({where:{organizationId:organization.id}}),beforeDocuments);
   // Isolated native-type probes exercise the exact compiled aggregate reader.
-  // Temp tables shadow only the three count sources on this transaction's
+  // Temp tables shadow only the four count sources on this transaction's
   // connection; public fixtures and concurrent HTTP requests are unaffected.
   for(const identity of ['TEXT','UUID'])await db.$transaction(async tx=>{
    await tx.$executeRawUnsafe(`CREATE TEMP TABLE "StoreProduct" ("id" ${identity} PRIMARY KEY,"organizationId" ${identity},"kind" TEXT,"status" TEXT,"stockQuantity" INTEGER) ON COMMIT DROP`);
    await tx.$executeRawUnsafe(`CREATE TEMP TABLE "MarineAsset" ("id" ${identity} PRIMARY KEY,"organizationId" ${identity},"status" TEXT) ON COMMIT DROP`);
    await tx.$executeRawUnsafe(`CREATE TEMP TABLE "MarineMaintenanceRecord" ("id" ${identity} PRIMARY KEY,"marineAssetId" ${identity},"status" TEXT,"completedAt" TIMESTAMP) ON COMMIT DROP`);
+   await tx.$executeRawUnsafe(`CREATE TEMP TABLE "MarketingCampaignDraft" ("id" ${identity} PRIMARY KEY,"organizationId" ${identity},"status" TEXT) ON COMMIT DROP`);
    await tx.$executeRawUnsafe('SET LOCAL search_path=pg_temp,public');
+   for(const [org,status] of [[organization.id,'DRAFT'],[organization.id,'ARCHIVED'],[foreign.id,'DRAFT']])await tx.$executeRawUnsafe(`INSERT INTO "MarketingCampaignDraft" VALUES ($1::${identity},$2::${identity},$3)`,randomUUID(),org,status);
    for(const [org,kind] of [[organization.id,'GOODS'],[foreign.id,'GOODS'],[null,'GOODS'],[organization.id,'SERVICE']])await tx.$executeRawUnsafe(`INSERT INTO "StoreProduct" VALUES ($1::${identity},$2::${identity},$3,'ACTIVE',0)`,randomUUID(),org,kind);
    const ownAsset=randomUUID(),otherAsset=randomUUID();for(const [id,org] of [[ownAsset,organization.id],[otherAsset,foreign.id]]){
     await tx.$executeRawUnsafe(`INSERT INTO "MarineAsset" VALUES ($1::${identity},$2::${identity},'ACTIVE')`,id,org);
     await tx.$executeRawUnsafe(`INSERT INTO "MarineMaintenanceRecord" VALUES ($1::${identity},$2::${identity},'OPEN',NULL)`,randomUUID(),id);
    }
-   const probe=await readDepartmentSources(tx,actor.id,['INVENTORY_LOGISTICS','FACILITIES_ASSETS_MAINTENANCE'],3),packet=code=>probe.departments.find(d=>d.department===code).evidence;
+   const probe=await readDepartmentSources(tx,actor.id,['INVENTORY_LOGISTICS','FACILITIES_ASSETS_MAINTENANCE','MARKETING_GROWTH'],4),packet=code=>probe.departments.find(d=>d.department===code).evidence;
+   assert.deepEqual(packet('MARKETING_GROWTH').metrics,{marketingCampaignDrafts:2,openMarketingCampaignDrafts:1,archivedMarketingCampaignDrafts:1},identity+' draft planning scope');
    assert.deepEqual(packet('INVENTORY_LOGISTICS').metrics,{storeGoodsProducts:1,activeStoreGoodsProducts:1,draftStoreGoodsProducts:0,unavailableActiveStoreGoodsProducts:1,negativeStockStoreGoodsProducts:0},identity+' goods scope');
    assert.deepEqual(packet('FACILITIES_ASSETS_MAINTENANCE').metrics,{marineAssets:1,activeMarineAssets:1,marineMaintenanceRecords:1,openMarineMaintenanceRecords:1,recordedCompletedMarineMaintenanceRecords:0},identity+' linked marine scope');
   },{isolationLevel:'Serializable'});
@@ -94,12 +99,12 @@ export async function departmentSourceAcceptance({db,organization,actor,ordinary
   await db.organization.update({where:{id:organization.id},data:{ownerId:ordinary.id}});try{assert.equal((await call('/admin/agents/department-sources',token)).status,403);}finally{await db.organization.update({where:{id:organization.id},data:{ownerId:actor.id}});}
   await db.orgUnit.update({where:{id:unit.id},data:{active:false}});try{const inactive=await preview();assert.equal(inactive.departments.find(d=>d.department==='HR').evidence,null);assert.equal((await call('/admin/agents/reporting/cycles',token,{requestId:randomUUID(),brief:'Inactive department fixture',sendEmail:false,reviewed:true,reason:'Isolated source preflight'})).status,409);assert.equal(await db.aiAgentTask.count(),beforeTasks);}finally{await db.orgUnit.update({where:{id:unit.id},data:{active:true}});}
   assert.deepEqual(providerCalls(),beforeCalls);
-  return{cleanup,afterInventoryCapture:async taskId=>{
+  return{cleanup,afterMarketingCapture:async taskId=>{await campaign(organization.id);const live=await preview();assert.equal(live.departments.find(d=>d.department==='MARKETING_GROWTH').evidence.metrics.marketingCampaignDrafts,4);const historical=await call('/admin/agents/governance-reviews/'+taskId,token);assert.equal(historical.status,200);assert.equal(historical.body.source.operationsEvidence.scope,'DEPARTMENT_AGGREGATE_V4');assert.equal(historical.body.source.operationsEvidence.values.metrics.marketingCampaignDrafts,3);},afterInventoryCapture:async taskId=>{
    await product(organization.id,'GOODS','ACTIVE',4);const live=await preview();assert.equal(live.departments.find(d=>d.department==='INVENTORY_LOGISTICS').evidence.metrics.storeGoodsProducts,5);
-   const historical=await call('/admin/agents/governance-reviews/'+taskId,token);assert.equal(historical.status,200);assert.equal(historical.body.source.operationsEvidence.scope,'DEPARTMENT_AGGREGATE_V3');assert.equal(historical.body.source.operationsEvidence.values.metrics.storeGoodsProducts,4,'A changed goods catalog cannot rewrite the captured inventory input');
+   const historical=await call('/admin/agents/governance-reviews/'+taskId,token);assert.equal(historical.status,200);assert.equal(historical.body.source.operationsEvidence.scope,'DEPARTMENT_AGGREGATE_V4');assert.equal(historical.body.source.operationsEvidence.values.metrics.storeGoodsProducts,4,'A changed goods catalog cannot rewrite the captured inventory input');
   },afterHrCapture:async taskId=>{
    await doc(organization.id,ownHrTemplate.id,'HR','DRAFT');const live=await preview();assert.equal(live.departments.find(d=>d.department==='HR').evidence.documents.documents,2);
-   const historical=await call('/admin/agents/governance-reviews/'+taskId,token);assert.equal(historical.status,200);assert.equal(historical.body.source.operationsEvidence.scope,'DEPARTMENT_AGGREGATE_V3');assert.equal(historical.body.source.operationsEvidence.values.documents.documents,1,'A new live source read cannot overwrite the captured report input');
+   const historical=await call('/admin/agents/governance-reviews/'+taskId,token);assert.equal(historical.status,200);assert.equal(historical.body.source.operationsEvidence.scope,'DEPARTMENT_AGGREGATE_V4');assert.equal(historical.body.source.operationsEvidence.values.documents.documents,1,'A new live source read cannot overwrite the captured report input');
   }};
  }catch(error){await cleanup();throw error;}
 }

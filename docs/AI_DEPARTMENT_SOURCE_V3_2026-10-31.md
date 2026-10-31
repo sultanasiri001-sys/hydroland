@@ -1,5 +1,8 @@
 # Department source contract version 3
 
+Historical v3 profiles remain unchanged. New cycles use the v4 planning-draft
+addition documented in [AI_MARKETING_DRAFT_SOURCE_V4_2026-10-31.md](AI_MARKETING_DRAFT_SOURCE_V4_2026-10-31.md).
+
 New reporting cycles pin `department-source:v3:`. The read-only owner preview
 returns `sourceVersion: 3`. Fourteen departments still have canonical document
 counts; thirteen now also have operational count adapters. Every department's
