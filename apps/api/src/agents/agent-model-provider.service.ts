@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { requestedWordLimit, responseWordCount } from './agent-word-policy';
+import { requestedWordLimit, responseWordCount, reportScopeNotice } from './agent-word-policy';
 import { AgentDescriptor, AgentAction, SupportedLanguage } from './agent.types';
 import { IntegrationService } from '../integrations/integration.service';
 import { estimateMicroUsd } from './agent-runtime.domain';
@@ -144,13 +144,16 @@ export class AgentModelProviderService {
     };
     let result=decode(response.payload,config.maxInputTokens,outputLimit),rateLimits=response.limits;
     const maximumWords=isGovernanceAgent(agent.key)?null:requestedWordLimit(prompt);
-    if(maximumWords&&responseWordCount(result.text)>maximumWords){
+    const scopeNotice=isGovernanceAgent(agent.key)?null:reportScopeNotice(prompt);
+    const scopedText=(text:string)=>scopeNotice?scopeNotice+'\n\n'+text:text;
+    if(maximumWords&&responseWordCount(scopedText(result.text))>maximumWords){
       // One format pass on a known completed draft, never an uncertain retry.
       // Both calls share the original token reservation and configured budget.
       const remainingInput=config.maxInputTokens-result.inputTokens,remainingOutput=outputLimit-result.outputTokens;
       if(remainingInput<1||remainingOutput<16)throw new AiProviderError('OUTPUT_FORMAT_BUDGET');
+      const bodyWordLimit=maximumWords-responseWordCount(scopeNotice||'');
       const repairInput=[...input,{role:'assistant',content:result.text},{role:'user',content:
-        'اختصر المسودة السابقة إلى '+maximumWords+' كلمة كحد أقصى؛ استهدف '+Math.floor(maximumWords*0.7)+' كلمة. احفظ الأرقام ودلالات المؤشرات وحدود الأدلة والملاحظات السلبية دون إضافة حقائق أو ادعاء تنفيذ أو اعتماد. أخرج التقرير فقط.'}];
+        'اختصر المسودة السابقة إلى '+bodyWordLimit+' كلمة كحد أقصى؛ استهدف '+Math.floor(bodyWordLimit*0.7)+' كلمة. احفظ الأرقام ودلالات المؤشرات وحدود الأدلة والملاحظات السلبية دون إضافة حقائق أو ادعاء تنفيذ أو اعتماد. أخرج التقرير فقط.'}];
       try{
         const checked=await this.request('/responses/input_tokens',{model:config.model,input:repairInput},5000);
         const tokens=checked.payload.input_tokens;
@@ -160,7 +163,7 @@ export class AgentModelProviderService {
         const repairFormatting=config.model==='gpt-6-luna'?{reasoning:{effort:'none'}}:{};
         const repaired=await this.request('/responses',{model:config.model,input:repairInput,max_output_tokens:remainingOutput,store:false,tools:[],tool_choice:'none',...repairFormatting},15_000);
         const formatted=decode(repaired.payload,remainingInput,remainingOutput);
-        if(responseWordCount(formatted.text)>maximumWords)throw new AiProviderError('OUTPUT_WORD_LIMIT');
+        if(responseWordCount(scopedText(formatted.text))>maximumWords)throw new AiProviderError('OUTPUT_WORD_LIMIT');
         result={text:formatted.text,inputTokens:result.inputTokens+formatted.inputTokens,outputTokens:result.outputTokens+formatted.outputTokens};
         rateLimits=repaired.limits;
       }catch(error){
@@ -169,6 +172,6 @@ export class AgentModelProviderService {
         throw error;
       }
     }
-    return{...result,estimatedCostMicroUsd:estimateMicroUsd(result.inputTokens,result.outputTokens,config.inputRate,config.outputRate),rateLimits};
+    return{...result,text:scopedText(result.text),estimatedCostMicroUsd:estimateMicroUsd(result.inputTokens,result.outputTokens,config.inputRate,config.outputRate),rateLimits};
   }
 }
