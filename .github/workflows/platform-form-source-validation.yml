@@ -1,0 +1,82 @@
+name: Platform form source acceptance
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/document-forms/**'
+      - 'apps/api/scripts/platform-document-source*'
+      - 'apps/api/scripts/hr-document-source-http-e2e.mjs'
+      - 'apps/web/src/hydroland-documents.js'
+      - '.github/workflows/platform-form-source-validation.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: platform-form-sources-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  native-sources:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: hydroland
+          POSTGRES_PASSWORD: hydroland
+          POSTGRES_DB: hydroland_form_library_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U hydroland -d hydroland_form_library_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://hydroland:hydroland@127.0.0.1:5432/hydroland_form_library_ci
+      NODE_ENV: test
+      JWT_SECRET: ci-platform-source-isolated-secret-at-least-32-characters
+      PORT: 3114
+      FORM_LIBRARY_E2E_CONFIRM: ISOLATED_LOOPBACK_DATABASE
+      FORM_LIBRARY_E2E_BASE_URL: http://127.0.0.1:3114/api/v1/
+      HR_SOURCE_HTTP_BROWSER: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --workspace=@hydroland/api --workspace=@hydroland/web --include-workspace-root=true
+      - run: npm --workspace @hydroland/api run db:generate
+      - run: npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+      - run: npm --workspace @hydroland/api run build
+      - run: npm --workspace @hydroland/web exec -- playwright install --with-deps chromium
+      - name: Start isolated API
+        run: |
+          mkdir -p /tmp/form-library-evidence
+          node apps/api/dist/main.js > /tmp/form-library-evidence/source-api.log 2>&1 &
+          echo "$!" > /tmp/platform-source-api.pid
+          for attempt in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:3114/api/v1/health > /dev/null; then exit 0; fi
+            if ! kill -0 "$(cat /tmp/platform-source-api.pid)" 2>/dev/null; then cat /tmp/form-library-evidence/source-api.log; exit 1; fi
+            sleep 1
+          done
+          cat /tmp/form-library-evidence/source-api.log
+          exit 1
+      - name: Validate all 157 definitions, native source snapshots, immutable revisions and browser freshness
+        run: |
+          set -o pipefail
+          node apps/api/scripts/hr-document-source-http-e2e.mjs 2>&1 | tee /tmp/form-library-evidence/platform-source-checks.log
+      - name: Render source PDF evidence
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq poppler-utils
+          pdftoppm -f 1 -l 2 -scale-to 1600 -png /tmp/form-library-evidence/platform-source-native.pdf /tmp/form-library-evidence/platform-source-native
+          pdftoppm -scale-to 1600 -png /tmp/form-library-evidence/platform-identity-native.pdf /tmp/form-library-evidence/platform-identity-native
+      - name: Stop isolated API
+        if: always()
+        run: |
+          if [ -f /tmp/platform-source-api.pid ]; then kill "$(cat /tmp/platform-source-api.pid)" || true; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: platform-source-evidence-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/form-library-evidence/
+          retention-days: 7

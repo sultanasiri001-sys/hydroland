@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {checkPlatformDocumentSources} from './platform-document-source-http-checks.mjs';
 import { createRequire } from 'node:module';
 const require=createRequire(import.meta.url);
 import { createHmac, randomUUID } from 'node:crypto';
@@ -70,6 +71,7 @@ try{
    await page.locator('[data-doc-hr-source-load]').click();await page.locator(`[data-doc-hr-source-select] option[value="${movement.id}"]`).waitFor({state:'attached'});await db.roleAssignment.update({where:{accountId_role:{accountId:owner.id,role:'ADMIN'}},data:{status:'SUSPENDED'}});await page.locator('[data-doc-hr-source-load]').click();await page.waitForFunction(()=>document.querySelector('[data-doc-hr-source-select]').options.length===1);assert.equal(await page.locator('[data-doc-hr-source-preview-result]').innerText(),'');await db.roleAssignment.update({where:{accountId_role:{accountId:owner.id,role:'ADMIN'}},data:{status:'ACTIVE'}});pass('actual owner-role revocation erases previously loaded private picker and source output');
   }finally{await context.close();await browser.close();}
  }
+ await checkPlatformDocumentSources({db,owner,other,worker,org,employment,foreignEmployment,commencement,call,ok,base,pass});
  console.log(`${checks} real HTTP/PostgreSQL HR source verification groups passed.`);
 }finally{
  try{
@@ -80,3 +82,4 @@ try{
   await db.employmentMovement.deleteMany({where:{employment:{organizationId:{in:orgs}}}});await db.employment.deleteMany({where:{organizationId:{in:orgs}}});await db.position.deleteMany({where:{orgUnit:{organizationId:{in:orgs}}}});await db.orgUnit.deleteMany({where:{organizationId:{in:orgs}}});await db.organizationMember.deleteMany({where:{organizationId:{in:orgs}}});await db.organization.deleteMany({where:{id:{in:orgs}}});await db.roleAssignment.deleteMany({where:{accountId:{in:accounts}}});await db.session.deleteMany({where:{accountId:{in:accounts}}});await db.account.deleteMany({where:{id:{in:accounts}}});await db.person.deleteMany({where:{id:{in:people}}});
  }finally{await db.$disconnect();}
 }
+
