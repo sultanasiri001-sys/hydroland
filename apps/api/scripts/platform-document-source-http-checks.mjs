@@ -69,6 +69,24 @@ export async function checkPlatformDocumentSources({db,owner,other,worker,org,em
  assert.equal((await call(owner,'documents','POST',{...input,payload:{...input.payload,_platformSources:first.snapshot}})).status,400);
  pass('source changes require a fresh preview, old revisions retain their names, client snapshots are rejected, and bound identities cannot drift');
 
+ const approvalPath=route+`/documents/${doc.id}/owner-approval`;
+ const currentDoc=await ok(owner,`documents/${doc.id}`),approvalReview=await ok(owner,approvalPath);
+ const approvalResult=await ok(owner,approvalPath,'POST',{expectedVersion:currentDoc.version,reviewHash:approvalReview.reviewHash,note:'اعتماد إداري لنسخة اختبار المصدر في قاعدة معزولة فقط',administrativeOnly:true,notIndependentApproval:true});
+ try{
+  const response=await fetch(new URL(`documents/${doc.id}/identity-pdf`,base),{headers:{authorization:`Bearer ${owner.token}`}});
+  assert.equal(response.status,200);assert.match(response.headers.get('cache-control'),/no-store/);
+  const bytes=Buffer.from(await response.arrayBuffer()),{PDFDocument,PDFName}=require('pdf-lib'),parsed=await PDFDocument.load(bytes);
+  assert.match(parsed.getSubject(),/HYDROLAND_INCIDENT_IDENTITY_V2/);
+  const fonts=parsed.getPages().flatMap(p=>{const f=p.node.Resources().lookup(PDFName.of('Font'));return f?[...f.entries()].map(([,ref])=>parsed.context.lookup(ref).get(PDFName.of('BaseFont')).toString()):[];});
+  assert.ok(fonts.some(x=>/Tajawal-Regular/.test(x)));assert.ok(fonts.some(x=>/Tajawal-Bold/.test(x)));
+  await writeFile('/tmp/form-library-evidence/platform-identity-native.pdf',bytes);
+  assert.equal((await call(null,`documents/${doc.id}/identity-pdf`)).status,401);assert.equal((await call(other,`documents/${doc.id}/identity-pdf`)).status,403);
+  assert.equal((await db.managedDocument.findUniqueOrThrow({where:{id:doc.id}})).contentHash,currentDoc.contentHash);
+  assert.equal((await ok(owner,`documents/${doc.id}/print-contract`)).renderProfile,'ADMINISTRATIVE_FORM_V1');
+  assert.equal((await ok(owner,approvalPath)).existing.receiptHash,approvalResult.receipt.receiptHash);
+ }finally{await db.operationalSetting.deleteMany({where:{key:`OWNER_ADMIN_APPROVAL:v1:${org.id}:${doc.id}:${currentDoc.version}`}});}
+ pass('approved identity export uses the exact Tajawal fonts, protects access, reads a matching administrative approval and preserves the original document and PDF profile');
+
  const extra={};
  try{
   extra.leave=await db.leaveRequest.create({data:{employmentId:employment.id,type:'ANNUAL',startsAt:new Date('2026-10-31T00:00:00Z'),endsAt:new Date('2026-11-01T00:00:00Z'),requestedByAccountId:owner.id}});
@@ -113,6 +131,8 @@ export async function checkPlatformDocumentSources({db,owner,other,worker,org,em
   validateDocumentPayload(t.fields,created.payload);
   assert.equal(sourceSnapshot(created.payload,org.id).records.find(r=>r.kind==='EMPLOYMENT').id,employment.id);
   assert.ok(sourcePrintFields(sourceSnapshot(created.payload)).some(f=>f.value==='HrSourceFixture worker'));
+  const identity=await fetch(new URL(`documents/${created.id}/identity-pdf`,base),{headers:{authorization:`Bearer ${owner.token}`}});
+  assert.equal(identity.status,200,`approved identity ${t.code}`);assert.equal(Buffer.from(await identity.arrayBuffer()).subarray(0,5).toString(),'%PDF-');
   count++;
  }
  assert.equal(count,157);assert.equal(new Set(all.map(t=>t.department)).size,14);
@@ -126,7 +146,7 @@ export async function checkPlatformDocumentSources({db,owner,other,worker,org,em
   try{
    const page=await context.newPage();page.setDefaultTimeout(20000);await page.setContent('<div id="role-console"></div>');
    await page.exposeFunction('platformHttp',async(path,init={})=>{const r=await fetch(new URL(path.replace(/^\//,''),base),{...init,headers:{...init.headers,authorization:`Bearer ${owner.token}`}});return {status:r.status,headers:Object.fromEntries(r.headers),body:Buffer.from(await r.arrayBuffer()).toString('base64')};});
-   await page.evaluate(owner=>{window.sourceUi={session:1,hold:false,release:null};window.HydrolandProfileData={profile:{id:owner}};window.HydrolandPortalAccess={getCurrentRole:()=> 'admin'};window.HydrolandAuth={isAuthenticated:()=>true,getSessionVersion:()=>sourceUi.session,authorizedFetch:async(path,init)=>{const r=await platformHttp(path,init);if(sourceUi.hold&&path.endsWith('/platform-source-preview'))await new Promise(resolve=>sourceUi.release=resolve);return new Response(Uint8Array.from(atob(r.body),c=>c.charCodeAt(0)),{status:r.status,headers:r.headers});}};},owner.id);
+   await page.evaluate(owner=>{window.sourceUi={session:1,hold:false,release:null,paths:[],pdfOpened:false};window.open=()=>{sourceUi.pdfOpened=true;return null;};window.HydrolandProfileData={profile:{id:owner}};window.HydrolandPortalAccess={getCurrentRole:()=> 'admin'};window.HydrolandAuth={isAuthenticated:()=>true,getSessionVersion:()=>sourceUi.session,authorizedFetch:async(path,init)=>{sourceUi.paths.push(path);const r=await platformHttp(path,init);if(sourceUi.hold&&path.endsWith('/platform-source-preview'))await new Promise(resolve=>sourceUi.release=resolve);return new Response(Uint8Array.from(atob(r.body),c=>c.charCodeAt(0)),{status:r.status,headers:r.headers});}};},owner.id);
    await page.addScriptTag({content:await readFile(new URL('../../web/src/hydroland-documents.js',import.meta.url),'utf8')});
    await page.evaluate(()=>HydrolandDocuments.open({internal:true,department:'HR'}));
    await page.locator(`[data-doc-template] option[value="${commencement.id}"]`).waitFor({state:'attached'});await page.locator('[data-doc-template]').selectOption(commencement.id);
@@ -134,6 +154,7 @@ export async function checkPlatformDocumentSources({db,owner,other,worker,org,em
    await page.locator(`[data-platform-source-record] option[value="${employment.id}"]`).waitFor({state:'attached'});await page.locator('[data-platform-source-record]').selectOption(employment.id);await page.locator('[data-platform-source-add]').click();await page.locator('[data-platform-source-preview]').click();
    await page.waitForFunction(()=>document.querySelector('[data-platform-source-values]').textContent.includes('HrSourceFixture worker'));
    assert.equal(await page.locator('[name="employeeReference"]').inputValue(),employment.id);assert.equal(await page.locator('[name="employeeReference"]').getAttribute('readonly'),'');
+   await page.locator(`[data-document-id="${doc.id}"] [data-doc-action="pdf"]`).click();await page.waitForFunction(()=>sourceUi.pdfOpened);assert.ok(await page.evaluate(id=>sourceUi.paths.includes(`/documents/${id}/identity-pdf`),doc.id));
    await page.evaluate(()=>sourceUi.hold=true);await page.locator('[data-platform-source-preview]').click();await page.waitForFunction(()=>!!sourceUi.release);
    await page.locator('[data-doc-template]').selectOption(commencement.id);await page.evaluate(()=>{sourceUi.hold=false;sourceUi.release();});await page.waitForTimeout(40);
    assert.equal(await page.locator('[data-platform-source-values]').innerText(),'');

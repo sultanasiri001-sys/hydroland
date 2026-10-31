@@ -1,5 +1,6 @@
 import { OwnerAdministrativeApprovalController } from './owner-administrative-approval.controller';
 import { PlatformDocumentSourceController } from './platform-document-source.controller';
+import { ApprovedDocumentIdentityController } from './approved-document-identity.controller';
 import { PlatformDocumentSourceService } from './platform-document-source.service';
 import { HrDocumentSourceController } from './hr-document-source.controller';
 import { HrAttendanceSourceController } from './hr-attendance-source.controller';
@@ -27,6 +28,6 @@ import { CooperationContractController } from './cooperation-contract.controller
 import { CooperationContractService } from './cooperation-contract.service';
 import { ContractLibraryController } from './contract-library.controller';
 import { ContractLibraryService } from './contract-library.service';
-@Module({imports:[AuthModule],controllers:[PlatformDocumentSourceController,HrAttendanceSourceController,HrDocumentSourceController,OwnerAdministrativeApprovalController,InternalDocumentReviewController,OwnerAdministrativeDecisionController,DocumentPersistenceController,DocumentWorkflowReadinessController,DocumentTemplateSetupController,DocumentTemplateCompletionController,DocumentTemplateHistoryController,DocumentTemplatePreviewController,CooperationContractController,ContractLibraryController],providers:[PlatformDocumentSourceService,InternalDocumentReviewService,DocumentFormService,DocumentLifecycleService,DocumentAuthorizationService,DocumentListService,DocumentPersistenceService,DocumentPrintService,DocumentPdfService,DocumentBrandingService,DocumentAssetService,CooperationContractService,ContractLibraryService],exports:[DocumentFormService,DocumentLifecycleService,DocumentListService,DocumentPersistenceService,DocumentPrintService,DocumentPdfService,DocumentBrandingService,DocumentAssetService]})
+@Module({imports:[AuthModule],controllers:[ApprovedDocumentIdentityController,PlatformDocumentSourceController,HrAttendanceSourceController,HrDocumentSourceController,OwnerAdministrativeApprovalController,InternalDocumentReviewController,OwnerAdministrativeDecisionController,DocumentPersistenceController,DocumentWorkflowReadinessController,DocumentTemplateSetupController,DocumentTemplateCompletionController,DocumentTemplateHistoryController,DocumentTemplatePreviewController,CooperationContractController,ContractLibraryController],providers:[PlatformDocumentSourceService,InternalDocumentReviewService,DocumentFormService,DocumentLifecycleService,DocumentAuthorizationService,DocumentListService,DocumentPersistenceService,DocumentPrintService,DocumentPdfService,DocumentBrandingService,DocumentAssetService,CooperationContractService,ContractLibraryService],exports:[DocumentFormService,DocumentLifecycleService,DocumentListService,DocumentPersistenceService,DocumentPrintService,DocumentPdfService,DocumentBrandingService,DocumentAssetService]})
 export class DocumentFormModule {}
 

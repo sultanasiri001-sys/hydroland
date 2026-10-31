@@ -17,9 +17,12 @@ export async function renderAdministrativeDocumentPdf(
   c:DocumentPrintContract,
   assets:DocumentAssetService,
   observe?:(item:AdministrativePdfLayoutItem)=>void,
-  options:{templatePreview?:boolean}={},
+  options:{templatePreview?:boolean;approvedIdentity?:boolean;administrativeApproval?:{referenceNumber:string;recordedAt:string;actorAccountId:string}}={},
 ){
-  if(c.renderProfile!=='ADMINISTRATIVE_FORM_V1'||c.cooperation)throw new Error('Administrative PDF profile mismatch.');
+  // The approved identity is an explicit export variant. It does not rewrite
+  // the composition, content or signatures pinned to the original document.
+  const approvedIdentity=options.approvedIdentity===true;
+  if((!approvedIdentity&&c.renderProfile!=='ADMINISTRATIVE_FORM_V1')||c.cooperation)throw new Error('Administrative PDF profile mismatch.');
   const pdf=await PDFDocument.create();
   const kit=(fontkitNamespace as any).default??fontkitNamespace;
   // Match the existing contract renderer: pdfVisualText has already resolved
@@ -31,9 +34,9 @@ export async function renderAdministrativeDocumentPdf(
   }});
   const root=resolve(__dirname,'../../src/document-forms');
   const [regular,bold]=await Promise.all(['Regular','Bold'].map(async weight=>
-    pdf.embedFont(await readFile(resolve(root,'fonts',`Amiri-Contract-${weight}.ttf`)),{subset:false})
+    pdf.embedFont(await readFile(resolve(root,'fonts',approvedIdentity?`Tajawal-Approved-${weight}.ttf`:`Amiri-Contract-${weight}.ttf`)),{subset:false})
   ));
-  const primary=await pdf.embedPng(await readFile(resolve(root,'identity/hydroland-mark-v1.png')));
+  const primary=await pdf.embedPng(await readFile(resolve(root,approvedIdentity?'identity/hydroland-mark-approved-v2.png':'identity/hydroland-mark-v1.png')));
   let secondary:Awaited<ReturnType<PDFDocument['embedPng']>>|undefined;
   if(c.branding.logoAssetId){
     // Resolve only the authorized, pinned organization asset. Never fetch logoUrl.
@@ -44,11 +47,11 @@ export async function renderAdministrativeDocumentPdf(
   pdf.setTitle(preferredLocalizedText(c.template.titleAr,c.template.titleEn,'مستند إداري'));
   pdf.setAuthor('HYDROLAND');
   const preview=options.templatePreview===true;
-  pdf.setSubject(preview?'TEMPLATE PREVIEW — no managed document, approval or signature exists.':'Versioned administrative document; status and evidence come from the authorized snapshot.');
+  pdf.setSubject(approvedIdentity?'HYDROLAND_INCIDENT_IDENTITY_V2; approved visual export of the saved document; original workflow and signatures remain unchanged.':preview?'TEMPLATE PREVIEW — no managed document, approval or signature exists.':'Versioned administrative document; status and evidence come from the authorized snapshot.');
   pdf.setCreationDate(new Date(c.createdAt));pdf.setModificationDate(new Date(c.updatedAt));
   const W=595.28,H=841.89,M=42,CW=W-2*M,BOTTOM=82;
-  const color={navy:rgb(.035,.12,.20),cyan:rgb(.015,.65,.91),ink:rgb(.12,.16,.20),muted:rgb(.39,.44,.48),line:rgb(.71,.86,.94),pale:rgb(.96,.98,.99),white:rgb(1,1,1)};
-  const status=preview?'معاينة قالب — غير معتمدة / PREVIEW':({DRAFT:'مسودة — غير معتمدة',PENDING_APPROVAL:'بانتظار الاعتماد',APPROVED:'معتمد — لم يوقّع بعد',SIGNED:'موقّع',ARCHIVED:'مؤرشف'} as Record<string,string>)[c.status]||c.status;
+  const color={navy:approvedIdentity?rgb(0,57/255,85/255):rgb(.035,.12,.20),cyan:approvedIdentity?rgb(0,165/255,223/255):rgb(.015,.65,.91),ink:rgb(.12,.16,.20),muted:rgb(.39,.44,.48),line:rgb(.71,.86,.94),pale:approvedIdentity?rgb(234/255,243/255,248/255):rgb(.96,.98,.99),white:rgb(1,1,1)};
+  const status=approvedIdentity?'حالة مسار المستند: '+(({DRAFT:'مسودة',PENDING_APPROVAL:'بانتظار اعتماد المسار',APPROVED:'معتمد',SIGNED:'موقّع',ARCHIVED:'مؤرشف'} as Record<string,string>)[c.status]||c.status):preview?'معاينة قالب — غير معتمدة / PREVIEW':({DRAFT:'مسودة — غير معتمدة',PENDING_APPROVAL:'بانتظار الاعتماد',APPROVED:'معتمد — لم يوقّع بعد',SIGNED:'موقّع',ARCHIVED:'مؤرشف'} as Record<string,string>)[c.status]||c.status;
   let page!:PDFPage,y=0,pageNo=0;
   const visual=(raw:unknown)=>pdfVisualText(assertArabicPdfSourceText(raw));
   const width=(raw:string,size:number,font:PDFFont)=>font.widthOfTextAtSize(visual(raw),size);
@@ -93,15 +96,20 @@ export async function renderAdministrativeDocumentPdf(
     observe?.({kind:'image',page:pageNo,x:W-236,y:H-89,width:p.width,height:p.height});
     text('HYDROLAND',W-40,H-55,22,true,color.white);
     text('هيدرولاند',W-40,H-80,16,true,color.cyan);
-    text('النماذج الإدارية',M+190,H-61,18,true,color.white);
-    text('ADMINISTRATIVE FORMS',M+190,H-82,8,false,color.white);
+    if(approvedIdentity){
+      const title=wrap(preferredLocalizedText(c.template.titleAr,c.template.titleEn,'مستند إداري'),15,true,275);
+      title.slice(0,3).forEach((line,i)=>text(line,W-270,H-48-i*19,15,true,color.white));
+    }else{
+      text('النماذج الإدارية',M+190,H-61,18,true,color.white);
+      text('ADMINISTRATIVE FORMS',M+190,H-82,8,false,color.white);
+    }
     if(secondary){
       const s=secondary.scale(Math.min(56/secondary.width,42/secondary.height));
       page.drawImage(secondary,{x:M,y:H-159,width:s.width,height:s.height});
       observe?.({kind:'image',page:pageNo,x:M,y:H-159,width:s.width,height:s.height});
     }
     text(status,W-M,H-133,11,true,color.muted);
-    text(preview?'معاينة فقط — لم يُنشأ مستند أو اعتماد أو توقيع':'الحالة من سجل المستند — الهوية لا تعني الاعتماد',W-M,H-152,8,false,color.muted);
+    text(approvedIdentity?(options.administrativeApproval?'معتمد إداريًا من مدير المنصة — مرجع الاعتماد موثق أدناه':'الاعتماد الإداري غير مسجل لهذه النسخة'):preview?'معاينة فقط — لم يُنشأ مستند أو اعتماد أو توقيع':'الحالة من سجل المستند — الهوية لا تعني الاعتماد',W-M,H-152,8,false,color.muted);
     page.drawLine({start:{x:M,y:H-164},end:{x:W-M,y:H-164},thickness:.6,color:color.line});
     y=H-181;
   }
@@ -141,6 +149,12 @@ export async function renderAdministrativeDocumentPdf(
     field('تعريف المعاينة',`القالب: ${c.template.version} / الهوية الحالية: ${c.branding.brandVersion}`);
     field('الاعتماد والتوقيع','هذه معاينة غير محفوظة. لا تمثل اعتمادًا أو توقيعًا ولا تنشئ مستندًا تشغيليًا.');
   }else{
+  if(approvedIdentity&&options.administrativeApproval){
+    section('اعتماد الإدارة العليا المسجل');
+    field('مرجع الاعتماد الإداري',options.administrativeApproval.referenceNumber);
+    field('وقت تسجيل الاعتماد',options.administrativeApproval.recordedAt);
+    field('حساب صاحب الاعتماد',options.administrativeApproval.actorAccountId);
+  }
   section('التحكم والتوثيق');
   field('الإصدارات المثبتة',`المستند: ${c.documentVersion} / القالب: ${c.template.version} / الهوية: ${c.branding.brandVersion}`);
   field('بصمة المحتوى المسجلة',c.contentHash);
@@ -157,7 +171,8 @@ export async function renderAdministrativeDocumentPdf(
     page=p;pageNo=i+1;
     page.drawLine({start:{x:M,y:64},end:{x:W-M,y:64},thickness:.6,color:color.line});
     text(`صفحة ${i+1} من ${pages.length}`,W-M,44,8,false,color.muted);
-    text(preview?'HYDROLAND / TEMPLATE PREVIEW':'HYDROLAND / ADMINISTRATIVE_FORM_V1',M+200,44,7,false,color.muted);
+    text(approvedIdentity?'HYDROLAND / APPROVED IDENTITY V2':preview?'HYDROLAND / TEMPLATE PREVIEW':'HYDROLAND / ADMINISTRATIVE_FORM_V1',M+200,44,7,false,color.muted);
   });
   return {bytes:Buffer.from(await pdf.save()),filename:preview?'TEMPLATE-PREVIEW.pdf':`${c.referenceNumber}.pdf`,status:preview?'PREVIEW':c.status};
 }
+
