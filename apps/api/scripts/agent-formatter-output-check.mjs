@@ -8,32 +8,35 @@ const names=['NODE_ENV','HYDROLAND_INTEGRATION_AI_MODEL_STATUS','HYDROLAND_AI_PR
 const previous=new Map(names.map(name=>[name,process.env[name]]));
 const requests=[];
 let forceIncomplete=false;
+let simulatedOutputTokens=20;
 const server=createServer(async(req,res)=>{
   let raw='';for await(const part of req)raw+=part;
   const body=JSON.parse(raw);requests.push({path:req.url,body});
   res.writeHead(200,{'content-type':'application/json'});
   if(req.url==='/v1/responses/input_tokens')return res.end(JSON.stringify({input_tokens:10}));
   const report=JSON.parse(body.input[1].content).executiveReport;
-  const incomplete=forceIncomplete||report&&body.model==='gpt-6-luna'&&body.reasoning?.effort!=='none';
-  res.end(JSON.stringify(incomplete?{status:'incomplete',incomplete_details:{reason:'max_output_tokens'},output:[],usage:{input_tokens:10,output_tokens:2048}}:{status:'completed',output:[{type:'message',role:'assistant',content:[{type:'output_text',text:'bounded fixture report'}]}],usage:{input_tokens:10,output_tokens:20}}));
+  const incomplete=forceIncomplete||simulatedOutputTokens>body.max_output_tokens||report&&body.model==='gpt-6-luna'&&body.reasoning?.effort!=='none';
+  res.end(JSON.stringify(incomplete?{status:'incomplete',incomplete_details:{reason:'max_output_tokens'},output:[],usage:{input_tokens:10,output_tokens:2048}}:{status:'completed',output:[{type:'message',role:'assistant',content:[{type:'output_text',text:'bounded fixture report'}]}],usage:{input_tokens:10,output_tokens:simulatedOutputTokens}}));
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 Object.assign(process.env,{NODE_ENV:'test',HYDROLAND_INTEGRATION_AI_MODEL_STATUS:'SANDBOX',HYDROLAND_AI_PROVIDER:'OPENAI',OPENAI_API_KEY:'fixture-not-a-real-key',HYDROLAND_AI_MODEL:'gpt-6-luna',HYDROLAND_AI_INPUT_MICRO_USD_PER_MILLION:'100000',HYDROLAND_AI_OUTPUT_MICRO_USD_PER_MILLION:'500000',HYDROLAND_AI_DAILY_BUDGET_MICRO_USD:'300000',HYDROLAND_AI_MAX_INPUT_TOKENS:'8192',HYDROLAND_AI_MAX_OUTPUT_TOKENS:'2048',HYDROLAND_AI_TEST_MANUAL_WORKER:'1',HYDROLAND_AI_TEST_BASE_URL:'http://127.0.0.1:'+server.address().port+'/v1'});
 const provider=new AgentModelProviderService({status:()=>({status:'SANDBOX'})});
 const report={entries:[{departmentName:'Fixture department',officeStatus:'EVIDENCE_REQUIRED',findings:['Unresolved concern'],evidenceGaps:['Missing evidence']}]};
-async function run(key,model,executiveReport){
+async function run(key,model,executiveReport,governanceReview){
   process.env.HYDROLAND_AI_MODEL=model;
   const config=provider.configuration(),start=requests.length;
   assert.equal(config.ready,true);
-  const result=await provider.execute(config,{key,nameEn:'Fixture agent'},'DRAFT_REPORT','ar-SA','Keep all supplied concerns.',undefined,undefined,undefined,executiveReport);
+  const result=await provider.execute(config,{key,nameEn:'Fixture agent'},'DRAFT_REPORT','ar-SA','Keep all supplied concerns.',undefined,governanceReview,undefined,executiveReport);
   const sent=requests.slice(start);
   assert.equal(sent.length,2);
   assert.deepEqual(sent[0].body.input,sent[1].body.input,'count exactly the generation input');
   const body=sent[1].body;
   assert.equal(body.store,false);assert.deepEqual(body.tools,[]);assert.equal(body.tool_choice,'none');
-  assert.equal(body.max_output_tokens,key.startsWith('GOV_')?1024:2048);
+  assert.equal(body.max_output_tokens,config.maxOutputTokens);
+  assert.ok(result.estimatedCostMicroUsd<=config.reserveMicroUsd);
   assert.equal(result.text,'bounded fixture report');
   if(executiveReport)assert.deepEqual(JSON.parse(body.input[1].content).executiveReport,report,'do not truncate source findings');
+  if(governanceReview)assert.deepEqual(JSON.parse(body.input[1].content).governanceReview,governanceReview,'preserve the original source action and brief');
   return body;
 }
 try{
@@ -42,6 +45,17 @@ try{
   assert.equal((await run('SUPPORT','gpt-6-luna')).reasoning,undefined);
   assert.equal((await run('GOV_QUALITY_AUDIT','gpt-6-luna')).reasoning,undefined);
   assert.equal((await run('EXECUTIVE','fixture-other-model',report)).reasoning,undefined);
+  const draftSource={source:{action:'DRAFT_MESSAGE',prompt:'Draft a known reply without sending or inventing a price.',result:'مسودة تحتاج موافقة'},reviews:[]};
+  const review=await run('GOV_TECH_REVIEW','gpt-6-luna',undefined,draftSource);
+  assert.equal(JSON.parse(review.input[1].content).governanceReview.source.action,'DRAFT_MESSAGE');
+  // A bounded reasoning review can legitimately consume more than 1024 tokens.
+  simulatedOutputTokens=1536;
+  assert.equal((await run('GOV_QUALITY_AUDIT','gpt-6-luna')).max_output_tokens,2048);
+  process.env.HYDROLAND_AI_MAX_OUTPUT_TOKENS='1024';
+  let cappedBefore=requests.length;
+  await assert.rejects(()=>provider.execute(provider.configuration(),{key:'GOV_QUALITY_AUDIT',nameEn:'Fixture reviewer'},'DRAFT_REPORT','ar-SA','Bounded review.'),e=>e.code==='PROVIDER_RESULT_INCOMPLETE'&&e.uncertain===true);
+  assert.equal(requests.length,cappedBefore+2,'respect a smaller configured limit and never retry an uncertain review');
+  process.env.HYDROLAND_AI_MAX_OUTPUT_TOKENS='2048';simulatedOutputTokens=20;
   process.env.HYDROLAND_AI_MODEL='gpt-6-luna';forceIncomplete=true;
   const before=requests.length;
   await assert.rejects(()=>provider.execute(provider.configuration(),{key:'EXECUTIVE',nameEn:'Fixture executive'},'DRAFT_REPORT','ar-SA','Keep concerns.',undefined,undefined,undefined,report),e=>e.code==='PROVIDER_RESULT_INCOMPLETE'&&e.uncertain===true);
