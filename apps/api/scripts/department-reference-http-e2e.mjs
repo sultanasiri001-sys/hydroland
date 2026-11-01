@@ -6,7 +6,7 @@ for (const url of [base, process.env.DATABASE_URL || 'postgresql://missing']) as
 assert(process.env.CI === 'true' || process.env.NODE_ENV === 'test', 'Reference fixtures are test-only');
 const db = new PrismaClient(), suffix = randomUUID(), accounts = [], people = [];
 const organizations = [], platformKey = 'PLATFORM_STAFFING_ORGANIZATION:v1';
-const expectedTemplateCounts = { HR:21, TRAINING:13, MARINE_OPERATIONS:11, INVENTORY_LOGISTICS:11, FINANCE:10, SAFETY_COMPLIANCE_RISK:9, CUSTOMER_EXPERIENCE:9, MARKETING_GROWTH:10, TECHNOLOGY_CYBERSECURITY:11, FACILITIES_ASSETS_MAINTENANCE:10, ADMIN_AFFAIRS_RECORDS:10, EXECUTIVE_GOVERNANCE:11, RND_MARKET_INTELLIGENCE:10, LEGAL_CONTRACTS_INSURANCE:11 };
+const expectedTemplateCounts = { HR:25, TRAINING:16, MARINE_OPERATIONS:15, INVENTORY_LOGISTICS:15, FINANCE:14, SAFETY_COMPLIANCE_RISK:13, CUSTOMER_EXPERIENCE:10, MARKETING_GROWTH:12, TECHNOLOGY_CYBERSECURITY:15, FACILITIES_ASSETS_MAINTENANCE:11, ADMIN_AFFAIRS_RECORDS:11, EXECUTIVE_GOVERNANCE:12, RND_MARKET_INTELLIGENCE:10, LEGAL_CONTRACTS_INSURANCE:13 };
 let previousPlatformSetting, platformSettingChanged = false;
 const password = 'Isolated-reference-fixture-2026!', salt = 'reference-fixture', passwordHash = `${salt}:${scryptSync(password,salt,64).toString('hex')}`;
 const call = async (path, token, body) => {
@@ -44,7 +44,7 @@ try {
   const data = response.body; assert.equal(data.referenceOnly,true); assert.equal(data.canActivate,false); assert.equal(data.canonicalDepartmentCount,14); assert.equal(data.departments.length,14);
   assert.equal(data.authorities.length,19); assert.equal(data.legalReferences.length,15); assert.equal(data.hrSources.length,6); assert.equal(data.hrControlCandidates.length,7);
   assert.equal(data.marineArchives.length,10); for (const source of data.marineArchives) { assert.equal(source.officialSourceByteIdentityVerified,false); assert.equal(source.regulatoryVersion,null); assert.equal(source.legalApprovalReference,null); }
-  assert.equal(data.isoReferences.length,11); assert.equal(data.canonicalSourceTemplateCount,157); assert.equal(data.completeDocumentInventoryVerified,false);
+  assert.equal(data.isoReferences.length,11); assert.equal(data.canonicalSourceTemplateCount,192); assert.equal(data.completeDocumentInventoryVerified,false);
   for (const source of data.isoReferences) { assert.equal(source.adoptionDecisionReference,null); assert.equal(source.certificationClaim,false); }
   for (const candidate of data.hrControlCandidates) { assert.equal(candidate.enabled,false); assert.equal(candidate.legalApprovalReference,null); assert.deepEqual(candidate.evidenceIds,[]); }
   for (const department of data.departments) {
@@ -75,7 +75,7 @@ try {
   assert.equal((await call(endpoint,token)).status,200, 'Reverified account retains its unchanged valid session and role');
   await db.roleAssignment.update({where:{accountId_role:{accountId:admin.id,role:'ADMIN'}},data:{status:'SUSPENDED'}}); assert.equal((await call(endpoint,token)).status,403);
   assert.deepEqual(await effects(),before,'Discovery cannot alter policies, employees, memberships, documents, templates or AI tasks');
-  console.log('Department reference HTTP/PostgreSQL passed: all 157 administrative templates, handbook-extension version and document counts, foreign-template and department mismatch isolation, real fresh guards, no payload disclosure or false closure, uncached filtering and no business-state changes.');
+  console.log('Department reference HTTP/PostgreSQL passed: all 192 administrative templates, handbook-extension version and document counts, foreign-template and department mismatch isolation, real fresh guards, no payload disclosure or false closure, uncached filtering and no business-state changes.');
 } finally {
   if(platformSettingChanged){
     const current=await db.operationalSetting.findUnique({where:{key:platformKey}});

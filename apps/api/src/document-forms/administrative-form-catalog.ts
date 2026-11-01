@@ -2,8 +2,9 @@ import { DocumentDepartment, DocumentFieldDefinition, DocumentFieldType, Documen
 import { buildDepartmentTemplateCatalog } from './document-template-catalog';
 import { buildOperationalDocumentCatalog } from './operational-document-catalog';
 import { buildHrDocumentCatalog } from './hr-document-catalog';
+import { completeSectionDutyTemplates, sectionFormGuidance } from './section-duty-form-catalog';
 
-export const ADMINISTRATIVE_CATALOG_REVISION = '2026-10-25.1';
+export const ADMINISTRATIVE_CATALOG_REVISION = '2026-11-02.1';
 export const ADMINISTRATIVE_HANDBOOK_SOURCE_COMMIT = 'd101ce1530f4424b63434cb6e8d33f61e302f5b0';
 export const ADMINISTRATIVE_CATALOG_SOURCE = 'HYDROLAND_14_Department_Handbooks_v1';
 // These families come from the retained department handbooks (v1, pp. 4-5),
@@ -142,20 +143,30 @@ export function administrativeHandbookExtensions(organizationId:string):Document
  if(!organizationId?.trim())throw new Error('Organization scope is required.');
  return additions.map(([department,code,titleAr,titleEn,,fields])=>({id:`handbook-${code.toLowerCase()}`,organizationId,code,titleAr,titleEn,department,version:1,active:true,printable:true,fields:[...fields.map(field),...common()]}));
 }
-export function reviewedAdministrativeTemplates(organizationId:string):DocumentTemplate[] {
+export function previousReviewedAdministrativeTemplates(organizationId:string):DocumentTemplate[] {
  const upgraded=legacyAdministrativeTemplates(organizationId).map(t=>['ADM-MEETING-MINUTES','EXE-FOLLOWUP'].includes(t.code)?t:({...t,fields:[...t.fields,
   field(['recordDetails','تفاصيل الحالة ومسوغات الإجراء ونتيجته','Case details, action basis and outcome','TEXTAREA']),...common()]}));
  return [...upgraded,...administrativeHandbookExtensions(organizationId)].sort((a,b)=>a.code.localeCompare(b.code));
 }
+export function reviewedAdministrativeTemplates(organizationId:string):DocumentTemplate[] {
+ return completeSectionDutyTemplates(organizationId,previousReviewedAdministrativeTemplates(organizationId));
+}
+// Only exact recognized predecessors may be retired automatically; customized
+// titles, labels, requiredness, types and options remain conflicts for review.
+export function recognizedAdministrativePredecessors(organizationId:string):DocumentTemplate[]{
+ return [...legacyAdministrativeTemplates(organizationId),...previousReviewedAdministrativeTemplates(organizationId)];
+}
 export function administrativeFormGuidance(code:string) {
  const extra=additions.find(t=>t[1]===code);
  const legacy=legacyAdministrativeTemplates('catalog-scope').find(t=>t.code===code);
- const department=extra?.[0]??legacy?.department;if(!department)return null;
+ const section=sectionFormGuidance(code);
+ const department=extra?.[0]??legacy?.department??section?.department;if(!department)return null;
  return {catalogRevision:ADMINISTRATIVE_CATALOG_REVISION,sourcePack:ADMINISTRATIVE_CATALOG_SOURCE,department,
   family:extra?ADMINISTRATIVE_FORM_FAMILIES[department][extra[4]]:null,
   sourceCommit:ADMINISTRATIVE_HANDBOOK_SOURCE_COMMIT,sourceStatus:'PREPARED_FOR_REVIEW',
   preparationAr:['ADM-MEETING-MINUTES','EXE-FOLLOWUP'].includes(code)?'أدخل رقم المحضر أو القرار والموضوع أو المكلف وتفاصيل المتابعة الروتينية ضمن نطاق هذا النوع.':'أدخل مراجع السجلات الفعلية وتاريخ المحضر ومسؤول المتابعة. أرفق مراجع الأدلة المحفوظة المصرح بها، ثم راجع البيانات قبل الحفظ.',
   executionBoundaryAr:'هذا نموذج توثيق وإحالة. تنفيذ الدفع والتعيين والصلاحيات وتصاريح التشغيل والتوقيعات يتم في مساره المختص، ويثبت بمرجع تنفيذه.',
   reviewAr:department==='LEGAL_CONTRACTS_INSURANCE'?'المراجعة والقرارات القانونية والتعاقدية تتطلب المختص المخول وأدلته. لا ينشئ هذا النموذج عقدًا أو توقيعًا.':'الاعتماد والتوقيع وفق الصلاحية وفصل المهام الفعليين. حفظ القالب لا ينشئ قرارًا أو اعتمادًا.',
+  ...section,
  };
 }

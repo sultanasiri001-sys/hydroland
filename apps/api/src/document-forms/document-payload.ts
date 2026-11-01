@@ -68,6 +68,10 @@ export function validateDocumentPayload(definition: unknown, value: unknown): as
         if (!Array.isArray(item) || item.length > 100 || field.required && item.length === 0) invalid();
         for (const row of item as unknown[]) {
           if (!plain(row) || Object.keys(row).length > 30) invalid();
+          if(field.options?.length){
+            if(Object.keys(row as Record<string,unknown>).some(key=>!field.options!.includes(key))
+              || !Object.values(row as Record<string,unknown>).some(cell=>cell!==null&&cell!==undefined&&(typeof cell!=='string'||Boolean(cell.trim()))))invalid();
+          }
           for (const [key, cell] of Object.entries(row as Record<string, unknown>)) {
             if (unsafeKeys.has(key) || key.length > 128 || !(cell === null || typeof cell === 'boolean'
               || typeof cell === 'number' && Number.isFinite(cell)

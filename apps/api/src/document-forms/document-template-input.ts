@@ -21,6 +21,7 @@ export function templateFields(value:unknown):AdministrativeTemplateField[] {
    if(new Set(validated).size!==validated.length)throw new BadRequestException('Duplicate field options.');
   }
   if(f.type==='SELECT'&&!options?.length)throw new BadRequestException('SELECT fields require options.');
+  if(f.type==='TABLE'&&options&&(options.length<1||options.length>30||options.some(k=>k.length>128||prohibited.has(k))))throw new BadRequestException('TABLE columns require 1 to 30 safe unique headings.');
   return {key:f.key,labelAr:templateText(f.labelAr,'Arabic field title'),labelEn:templateText(f.labelEn,'English field title'),type:f.type,required:f.required,...(options===undefined?{}:{options})};
  });
 }

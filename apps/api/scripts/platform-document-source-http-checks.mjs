@@ -28,7 +28,7 @@ export async function checkPlatformDocumentSources({db,owner,other,worker,org,em
  const {reviewedAdministrativeTemplates}=require('../dist/document-forms/administrative-form-catalog.js');
  const {validateDocumentPayload}=require('../dist/document-forms/document-payload.js');
  const {sourceSnapshot,sourcePrintFields}=require('../dist/document-forms/platform-document-source.domain.js');
- const makePayload=t=>Object.fromEntries(t.fields.map(f=>[f.key,f.type==='DATE'?'2026-10-31':f.type==='NUMBER'?0:f.type==='BOOLEAN'?true:f.type==='SELECT'?f.options[0]:f.type==='TABLE'?[{fixture:'isolated compatibility test'}]:'بيانات اختبار في قاعدة معزولة']));
+ const makePayload=t=>Object.fromEntries(t.fields.map(f=>[f.key,f.type==='DATE'?'2026-10-31':f.type==='NUMBER'?0:f.type==='BOOLEAN'?true:f.type==='SELECT'?f.options[0]:f.type==='TABLE'?[Object.fromEntries((f.options||['fixture']).map(key=>[key,'isolated compatibility test']))]:'بيانات اختبار في قاعدة معزولة']));
  const first=await preview(commencement),nameField=first.snapshot.records.find(r=>r.kind==='EMPLOYMENT').fields.find(f=>f.key==='employee.fullName');
  assert.equal(nameField.value,'HrSourceFixture worker');
  assert.notEqual(nameField.value,first.snapshot.records.find(r=>r.kind==='AUTHOR').fields.find(f=>f.key==='fullName').value);
@@ -139,7 +139,7 @@ export async function checkPlatformDocumentSources({db,owner,other,worker,org,em
  }
 
  // Same source mechanism and unchanged field schema for every catalog template.
- const all=reviewedAdministrativeTemplates(org.id);assert.equal(all.length,157);
+ const all=reviewedAdministrativeTemplates(org.id);assert.equal(all.length,192);
  let count=0;
  for(const t of all){
   const saved=await ok(owner,'documents/templates','POST',{organizationId:org.id,code:'E2E-SRC-'+t.code,department:t.department,titleAr:t.titleAr,titleEn:t.titleEn,fields:t.fields,printable:true});
@@ -153,10 +153,10 @@ export async function checkPlatformDocumentSources({db,owner,other,worker,org,em
   assertIdentityPdfGlyphs(await require('pdf-lib').PDFDocument.load(identityBytes),t.code);
   count++;
  }
- assert.equal(count,157);assert.equal(new Set(all.map(t=>t.department)).size,14);
+ assert.equal(count,192);assert.equal(new Set(all.map(t=>t.department)).size,14);
  const audit=await ok(owner,route+'/platform-source-audit');assert.ok(audit.linked>=158);assert.ok(audit.items.some(r=>r.documentId===doc.id&&r.sourceStatus==='LINKED'));assert.ok(audit.sourceNotSelected>0);
  assert.equal((await call(other,route+'/platform-source-audit')).status,403);
- pass('all 157 actual catalog definitions across 14 departments save and read source evidence without invented fields');
+ pass('all 192 actual catalog definitions across 14 departments save and read source evidence without invented fields');
 
  if(process.env.HR_SOURCE_HTTP_BROWSER==='1'){
   const {chromium}=require('@playwright/test');const browser=await chromium.launch({headless:true,args:['--no-sandbox']});

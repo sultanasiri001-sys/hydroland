@@ -18,7 +18,7 @@ export interface DocumentPrintContract {
   contentHash:string;
   branding:{brandVersion:number;logoUrl:string|null;logoAssetId:string|null;brandNameAr:string|null;brandNameEn:string|null;footerAr:string|null;footerEn:string|null};
   template:{id:string;code:string;titleAr:string;titleEn:string;version:number;printable:boolean};
-  fields:Array<{key:string;labelAr:string;labelEn:string;type:string;required:boolean;value:unknown}>;
+  fields:Array<{key:string;labelAr:string;labelEn:string;type:string;required:boolean;options?:string[];value:unknown}>;
   approvals:{createdByAccountId:string;approvedByAccountId:string|null;signedByAccountId:string|null;archivedByAccountId:string|null;approvedAt:Date|null;signedAt:Date|null;archivedAt:Date|null};
   createdAt:Date;
   updatedAt:Date;
@@ -68,7 +68,7 @@ export class DocumentPrintService {
     if(!cooperation&&Object.hasOwn(payload,PLATFORM_SOURCE_KEY))validateDocumentPayload(d.template.fields,payload);
     let sources;
     try{sources=cooperation?null:sourceSnapshot(payload,d.organizationId);}catch{throw new BadRequestException('أدلة مصدر المستند غير متسقة.');}
-    const fields=cooperation?[
+    const fields:DocumentPrintContract['fields']=cooperation?[
       ...CONTRACT_FIELDS.map(([section,key,labelAr])=>({key:section+'.'+key,labelAr,labelEn:key,type:'TEXT',required:true,value:cooperation.values[section][key]})),
       ...cooperation.clauses.map((value,i)=>({key:'clause-'+i,labelAr:`البند ${i+1}`,labelEn:`Clause ${i+1}`,type:'TEXT',required:true,value})),
     ]:definitions.map(f=>({
@@ -77,6 +77,7 @@ export class DocumentPrintService {
       labelEn:String(f.labelEn??''),
       type:String(f.type??'TEXT'),
       required:Boolean(f.required),
+      ...(Array.isArray(f.options)?{options:f.options.map(String)}:{}),
       value:payload[String(f.key??'')]??null,
     }));
     if(sources){
