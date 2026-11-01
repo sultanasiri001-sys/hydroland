@@ -2,7 +2,8 @@
 databases:
   - name: hydroland-center-uat-db
     databaseName: hydroland_center_uat
-    plan: free
+    plan: 0.1c-256mb
+    diskSizeGB: 1
     region: oregon
     postgresMajorVersion: '18'
     ipAllowList: []
