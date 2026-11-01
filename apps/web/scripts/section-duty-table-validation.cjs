@@ -6,8 +6,8 @@ const source=fs.readFileSync(path.join(__dirname,'../src/hydroland-documents.js'
  const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
  try{
   const context=await browser.newContext({viewport:{width:390,height:844}}),page=await context.newPage();
-  await page.route('http://tables.test/**',route=>route.fulfill({contentType:'text/html',body:'<html dir="rtl"><body style="margin:0"><section id="role-console"></section></body></html>'}));
-  await page.goto('http://tables.test/');
+  await page.route('https://tables.test/**',route=>route.fulfill({contentType:'text/html',body:'<html dir="rtl"><body style="margin:0"><section id="role-console"></section></body></html>'}));
+  await page.goto('https://tables.test/');
   await page.evaluate(()=>{
    const template={id:'t',organizationId:'org',code:'INV-QUOTE-COMPARISON',titleAr:'مقارنة العروض',department:'INVENTORY_LOGISTICS',fields:[{key:'title',labelAr:'الموضوع',type:'TEXT',required:true},{key:'rows',labelAr:'المقارنة',type:'TABLE',required:true,options:['المورد','النتيجة']},{key:'legacy',labelAr:'جدول سابق',type:'TABLE',required:false},{key:'choice',labelAr:'الخيار',type:'SELECT',required:true,options:['أ','ب']}],version:1};
    window.fixture={template,writes:[],documents:[],session:1,authenticated:true};
