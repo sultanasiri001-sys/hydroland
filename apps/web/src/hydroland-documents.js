@@ -13,7 +13,7 @@
     <p class="hl-doc-note" data-doc-workflow-policy hidden>حساب المالك هو صاحب الاعتماد الإداري في جميع الإدارات الأربع عشرة. لكل نسخة اعتماد محفوظ مستقل؛ أي تعديل لاحق يحتاج اعتماد النسخة الجديدة. المراجعة القانونية والفنية والتوقيعات وتنفيذ الإجراءات تبقى في مساراتها المختصة، ويمكن تكليف المراجعين لكل نسخة عند تفعيلهم.</p><p class="hl-doc-note" data-doc-owner-approval-status role="status" aria-live="polite"></p>
     <div class="hl-doc-layout"><form class="hl-doc-card" data-doc-form><h4 data-doc-form-title>إنشاء مستند</h4><label>النموذج<select data-doc-template required></select></label><div class="hl-doc-fields" data-doc-fields></div><section data-doc-hr-source-picker hidden><button type="button" data-doc-hr-source-load>تحميل طلبات التعيين المحفوظة</button><label>اختيار طلب التعيين<select data-doc-hr-source-select><option value="">اختر طلبًا محفوظًا</option></select></label><button type="button" data-doc-hr-source-more hidden>طلبات تعيين أقدم</button><p class="hl-doc-note" data-doc-hr-source-picker-status role="status"></p></section><button type="button" data-doc-hr-source-preview hidden>فحص مرجع الموظف وطلب التعيين</button><div class="hl-doc-note" data-doc-hr-source-preview-result role="status" aria-live="polite" hidden></div><section data-doc-attendance-check hidden style="overflow-wrap:anywhere"></section><div class="hl-doc-actions"><button class="primary" type="submit" data-doc-save>حفظ المسودة</button><button type="button" data-doc-cancel hidden>إلغاء التعديل</button></div></form><section class="hl-doc-card"><h4>مستندات الجهة</h4><div class="hl-doc-list" data-doc-list><p>لم يتم تحميل المستندات بعد.</p></div></section></div>`;
   host.insertAdjacentElement('afterend',panel);
-  const extraStyle=document.createElement('style');extraStyle.textContent='.hl-doc-departments{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.5rem;margin:.7rem 0}.hl-doc-departments button{text-align:right}.hl-doc-departments small{display:block;color:#b3c9d6}.hl-doc-inventory-table{overflow:auto;margin:.8rem 0}.hl-doc-inventory-table table{width:100%;border-collapse:collapse;min-width:620px}.hl-doc-inventory-table th,.hl-doc-inventory-table td{text-align:right;border-bottom:1px solid #25485b;padding:.6rem}.hl-doc-inventory-table caption{text-align:right;font-weight:700;padding:.5rem}.hl-documents [aria-pressed="true"]{outline:2px solid #e5b45f}.hl-documents [data-doc-hr-source-preview-result],.hl-documents [data-doc-hr-source-result]{overflow-wrap:anywhere}.hl-documents [data-doc-hr-source-preview-result] dd,.hl-documents [data-doc-hr-source-result] dd{margin:.25rem 0 .7rem}';document.head.appendChild(extraStyle);
+  const extraStyle=document.createElement('style');extraStyle.textContent='.hl-doc-departments{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.5rem;margin:.7rem 0}.hl-doc-departments button{text-align:right}.hl-doc-departments small{display:block;color:#b3c9d6}.hl-doc-inventory-table{overflow:auto;margin:.8rem 0}.hl-doc-inventory-table table{width:100%;border-collapse:collapse;min-width:620px}.hl-doc-inventory-table th,.hl-doc-inventory-table td{text-align:right;border-bottom:1px solid #25485b;padding:.6rem}.hl-doc-inventory-table caption{text-align:right;font-weight:700;padding:.5rem}.hl-documents [data-doc-tablefield]{min-width:0;border:1px solid rgba(120,191,224,.22);border-radius:11px;padding:.7rem}.hl-documents [data-doc-tablefield] table{border-collapse:collapse;min-width:520px;width:100%}.hl-documents [data-doc-tablefield] td,.hl-documents [data-doc-tablefield] th{padding:.35rem;text-align:right;min-width:150px}.hl-documents [data-doc-tablefield] legend{font-weight:700}.hl-documents [aria-pressed="true"]{outline:2px solid #e5b45f}.hl-documents [data-doc-hr-source-preview-result],.hl-documents [data-doc-hr-source-result]{overflow-wrap:anywhere}.hl-documents [data-doc-hr-source-preview-result] dd,.hl-documents [data-doc-hr-source-result] dd{margin:.25rem 0 .7rem}';document.head.appendChild(extraStyle);
   let sourceCheckGeneration=0,sourceCandidatesGeneration=0,sourceCandidates=[],sourceCandidatesCursor=null;
   const state={memberships:[],orgId:null,member:null,templates:[],documents:[],inventory:null,department:'',typeCode:'',editing:null,generation:0,loading:false,preferInternal:false};
   const platformSourcePanel=document.createElement('section');platformSourcePanel.hidden=true;
@@ -33,7 +33,38 @@
   const canWrite=()=>['OWNER','ADMIN','OPERATOR','INSTRUCTOR','STAFF'].includes(state.member?.role);
   const myAccountId=()=>window.HydrolandProfileData?.profile?.id||null;
   const hash=async payload=>{const bytes=new TextEncoder().encode(JSON.stringify(payload));const digest=await crypto.subtle.digest('SHA-256',bytes);return 'sha256:'+Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('')};
-  const fieldInput=(field,value='')=>{const key=esc(field.key),label=esc(field.labelAr||field.labelEn||field.key),required=field.required?' required':'';if(Array.isArray(field.options)&&field.options.length)return `<label>${label}<select name="${key}"${required}>${field.options.map(o=>`<option value="${esc(o)}"${String(o)===String(value)?' selected':''}>${esc(o)}</option>`).join('')}</select></label>`;const type=String(field.type||'TEXT').toUpperCase();if(type==='TEXTAREA'||type==='LONG_TEXT')return `<label>${label}<textarea name="${key}" rows="4"${required}>${esc(value)}</textarea></label>`;const htmlType=type==='DATE'?'date':type==='NUMBER'?'number':'text';return `<label>${label}<input type="${htmlType}" name="${key}" value="${esc(value)}"${required}></label>`};
+  const tableRow=(field,row={})=>`<tr data-doc-table-row>${field.options.map(column=>`<td><input data-doc-table-cell="${esc(column)}" aria-label="${esc((field.labelAr||field.key)+' - '+column)}" value="${esc(row?.[column]??'')}" maxlength="8000"></td>`).join('')}<td><button type="button" data-doc-table-remove aria-label="حذف صف من ${esc(field.labelAr||field.key)}">حذف الصف</button></td></tr>`;
+  function fieldInput(field,value=''){
+    const key=esc(field.key),label=esc(field.labelAr||field.labelEn||field.key),required=field.required?' required':'';
+    const type=String(field.type||'TEXT').toUpperCase();
+    if(type==='TABLE'){
+      if(!field.options?.length)return `<label>${label}<textarea name="${key}" data-doc-table-json rows="4"${required}>${esc(Array.isArray(value)?JSON.stringify(value,null,2):value)}</textarea></label>`;
+      const rows=Array.isArray(value)&&value.length?value:[{}];
+      return `<fieldset data-doc-tablefield="${key}"><legend>${label}${field.required?' (إلزامي)':''}</legend><div style="overflow:auto"><table><thead><tr>${field.options.map(column=>`<th scope="col">${esc(column)}</th>`).join('')}<th scope="col">الإجراء</th></tr></thead><tbody>${rows.map(row=>tableRow(field,row)).join('')}</tbody></table></div><button type="button" data-doc-table-add="${key}">إضافة صف</button></fieldset>`;
+    }
+    if(Array.isArray(field.options)&&field.options.length)return `<label>${label}<select name="${key}"${required}>${field.options.map(o=>`<option value="${esc(o)}"${String(o)===String(value)?' selected':''}>${esc(o)}</option>`).join('')}</select></label>`;
+    if(type==='TEXTAREA'||type==='LONG_TEXT')return `<label>${label}<textarea name="${key}" rows="4"${required}>${esc(value)}</textarea></label>`;
+    const htmlType=type==='DATE'?'date':type==='NUMBER'?'number':'text';
+    return `<label>${label}<input type="${htmlType}"${type==='NUMBER'?' step="any"':''} name="${key}" value="${esc(value)}"${required}></label>`;
+  }
+  function collectTableValues(form,template,payload){
+    for(const field of template.fields.filter(f=>f.type==='TABLE')){
+      if(!field.options?.length){try{payload[field.key]=JSON.parse(String(payload[field.key]||'[]'));}catch{throw new Error('تحقق من بيانات جدول '+field.labelAr);}continue;}
+      const holder=[...form.querySelectorAll('[data-doc-tablefield]')].find(e=>e.dataset.docTablefield===field.key);
+      const rows=[...(holder?.querySelectorAll('[data-doc-table-row]')||[])].map(row=>Object.fromEntries([...row.querySelectorAll('[data-doc-table-cell]')].map(input=>[input.dataset.docTableCell,input.value]))).filter(row=>Object.values(row).some(v=>String(v).trim()));
+      if(field.required&&!rows.length)throw new Error('أكمل الجدول الإلزامي: '+field.labelAr);
+      payload[field.key]=rows;
+    }
+  }
+  panel.addEventListener('click',event=>{
+    const add=event.target.closest('[data-doc-table-add]'),remove=event.target.closest('[data-doc-table-remove]');
+    if((!add&&!remove)||!canWrite()||state.loading)return;
+    if(remove){remove.closest('[data-doc-table-row]')?.remove();return;}
+    const field=activeTemplate()?.fields.find(f=>f.key===add.dataset.docTableAdd&&f.type==='TABLE');
+    const body=add.closest('[data-doc-tablefield]')?.querySelector('tbody');
+    if(!field||!body)return;if(body.rows.length>=100){note('الحد الأقصى للجدول مئة صف.');return;}
+    body.insertAdjacentHTML('beforeend',tableRow(field));
+  });
   const activeTemplate=()=>state.editing?.template||state.templates.find(t=>t.id===panel.querySelector('[data-doc-template]')?.value);
   function renderFields(payload={}){const template=activeTemplate(),box=panel.querySelector('[data-doc-fields]');if(!box)return;box.innerHTML=template?(Array.isArray(template.fields)?template.fields:[]).map(f=>fieldInput(f,payload?.[f.key]??'')).join(''):'<p>لا توجد نماذج نشطة لهذه الجهة.</p>';panel.querySelector('[data-doc-save]').disabled=!template||!canWrite();clearSourcePreview();resetSourcePicker();resetAttendanceCheck();resetPlatformSource(payload);}
   function platformMessage(message){platformSourcePanel.querySelector('[data-platform-source-status]').textContent=message;}
@@ -181,6 +212,7 @@
     event.preventDefault();const template=activeTemplate();if(!template||!state.orgId||!canWrite()||state.loading)return;
     const c=context(),editingId=state.editing?.id,payload=Object.fromEntries(new FormData(event.currentTarget).entries()),save=panel.querySelector('[data-doc-save]');save.disabled=true;
     try{
+      collectTableValues(event.currentTarget,template,payload);
       if(platformReferences.length&&!platformPreview)throw new Error('اجلب بيانات السجلات المختارة قبل حفظ المستند.');
       const sourceBinding=platformPreview||(platformRemove?{references:[],expectedFingerprint:''}:undefined);
       const contentHash=await hash(payload);if(!current(c))return;

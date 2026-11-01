@@ -6,7 +6,7 @@ import { DatabaseService } from '../database/database.service';
 import { PLATFORM_STAFFING_KEY, PLATFORM_STAFFING_KIND, record } from '../hr/staffing-catalog';
 import { DocumentAuthorizationService } from './document-authorization.service';
 import { DOCUMENT_DEPARTMENTS } from './document-form.domain';
-import { ADMINISTRATIVE_CATALOG_REVISION, ADMINISTRATIVE_CATALOG_SOURCE, administrativeFormGuidance, legacyAdministrativeTemplates, reviewedAdministrativeTemplates } from './administrative-form-catalog';
+import { ADMINISTRATIVE_CATALOG_REVISION, ADMINISTRATIVE_CATALOG_SOURCE, administrativeFormGuidance, recognizedAdministrativePredecessors, reviewedAdministrativeTemplates } from './administrative-form-catalog';
 import { templateFields, templateObject } from './document-template-input';
 
 type Request = { auth: { accountId: string } };
@@ -37,7 +37,7 @@ export class DocumentTemplateCompletionController {
       throw new ForbiddenException('استكمال الكتالوج متاح لمالك جهة هيدرولاند الداخلية المتحقق فقط.');
     }
     const sources = reviewedAdministrativeTemplates(organizationId).filter(t => department === 'ALL' || t.department === department);
-    const legacy = legacyAdministrativeTemplates(organizationId);
+    const legacy = recognizedAdministrativePredecessors(organizationId);
     if (new Set(sources.map(t => t.code)).size !== sources.length) throw new ConflictException('Duplicate completion catalog codes.');
     const rows = await tx.documentTemplate.findMany({ where: { organizationId, code: { in: sources.map(t => t.code) } },
       select: { id: true, code: true, department: true, version: true, status: true, titleAr: true, titleEn: true, printable: true, fields: true },
@@ -45,12 +45,12 @@ export class DocumentTemplateCompletionController {
     const items = sources.map(target => {
       const versions = rows.filter(r => r.code === target.code), active = versions.filter(r => r.status === 'ACTIVE');
       let status: 'CREATE' | 'UPGRADE' | 'READY' | 'INACTIVE' | 'CONFLICT' | 'EDITED';
-      const previous = legacy.find(t => t.code === target.code);
+      const previous = legacy.filter(t => t.code === target.code);
       if (versions.some(r => r.department !== target.department) || active.length > 1) status = 'CONFLICT';
       else if (!active.length) status = versions.length ? 'INACTIVE' : 'CREATE';
       else {
         try { status = definition(active[0]) === definition(target) ? 'READY'
-          : previous && definition(active[0]) === definition(previous) ? 'UPGRADE' : 'EDITED'; }
+          : previous.some(t=>definition(active[0]) === definition(t)) ? 'UPGRADE' : 'EDITED'; }
         catch { status = 'EDITED'; }
       }
       return { code: target.code, titleAr: target.titleAr, department: target.department, status,

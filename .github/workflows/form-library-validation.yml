@@ -64,6 +64,7 @@ jobs:
         run: |
           node apps/api/scripts/document-payload-validation.cjs
           node apps/api/scripts/form-library-completion-validation.cjs
+          node apps/api/scripts/section-duty-form-validation.cjs
           node apps/api/scripts/administrative-catalog-pdf-validation.cjs
       - name: Explain existing combined approval policy without changing it
         run: node apps/api/scripts/document-workflow-readiness-validation.cjs
@@ -96,6 +97,8 @@ jobs:
           node apps/web/scripts/form-library-setup-validation.cjs | tee apps/api/.artifacts/form-library/setup-browser-validation.log
       - name: Validate completion preview, consent and stale-session protection
         run: node apps/web/scripts/form-library-completion-validation.cjs
+      - name: Validate structured table entry, saved revisions and legacy table compatibility
+        run: node apps/web/scripts/section-duty-table-validation.cjs
       - name: Validate private workflow diagnostics and preserved draft input
         run: |
           set -o pipefail
@@ -117,6 +120,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: form-library-evidence-${{ github.event.pull_request.head.sha || github.sha }}
-          path: apps/api/.artifacts/form-library/
+          path: |
+            apps/api/.artifacts/form-library/
+            apps/api/.artifacts/section-duty-forms/
           if-no-files-found: warn
           retention-days: 7

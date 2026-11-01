@@ -12,7 +12,7 @@
   host.setAttribute('aria-label', 'استكمال محتوى النماذج الإدارية');
   const choices = dialog.querySelector('[data-hfl-department]');
   host.innerHTML = `<h3>استكمال محتوى النماذج الإدارية</h3>
-    <p>حقول إضافية للقوالب العامة وعائلات مستندات مستخلصة من أدلة الإدارات v1 المعدّة للمراجعة. تُحفظ التغييرات بإصدارات جديدة؛ المستندات السابقة تبقى مرتبطة بإصداراتها. التعارضات والتعديلات المخصصة تتطلب مراجعة منفصلة. إكمال الكتالوج لا يعتمد إجراءً أو يغلق إدارة.</p>
+    <p>توسعة النماذج الحالية واستحداث النواقص وفق مهام الإدارات الأربع عشرة والأقسام الثلاثة والثمانين، بالهيكلة والهوية البصرية المعتمدة نفسها. تُحفظ التغييرات بإصدارات جديدة؛ المستندات السابقة تبقى مرتبطة بإصداراتها. التعارضات والتعديلات المخصصة تتطلب مراجعة منفصلة. إكمال الكتالوج لا يعتمد إجراءً أو يغلق إدارة.</p>
     <label>نطاق الاستكمال<select data-completion-scope>${choices?.innerHTML || '<option value="">كل الإدارات</option>'}</select></label>
     <button type="button" data-completion-preview>معاينة المحتوى والإصدارات المقترحة</button>
     <p data-completion-status role="status" aria-live="polite"></p>
@@ -82,7 +82,7 @@
   function renderPlan() {
     const p=state.plan,s=p.summary;
     $('[data-completion-summary]').textContent=`النطاق: ${$('[data-completion-scope]').selectedOptions[0].textContent} · ${s.source} نوعًا في الكتالوج · ${s.ready} مطابقًا · ${s.create} جديدًا · ${s.upgrade} ترقية إصدار · ${s.inactive} غير نشط · ${s.conflict+s.edited} يحتاج مراجعة. الإصدار: ${p.revision}؛ مصدر معدّ للمراجعة.`;
-    $('[data-completion-items]').innerHTML=p.items.map(t=>`<li><b>${esc(t.titleAr)}</b> — ${esc(statusLabels[t.status])} <small dir="ltr">${esc(t.code)}</small><details><summary>مراجعة الحقول (${t.fields.length})</summary><p>${esc(t.guidance?.family||t.guidance?.preparationAr||'')}</p><ul>${t.fields.map(f=>`<li>${esc(f.labelAr)} — ${esc(f.type)} ${f.required?'إلزامي':'اختياري'} <small dir="ltr">${esc(f.key)}</small></li>`).join('')}</ul><p>${esc(t.guidance?.executionBoundaryAr||'')}</p></details></li>`).join('');
+    $('[data-completion-items]').innerHTML=p.items.map(t=>`<li><b>${esc(t.titleAr)}</b> — ${esc(statusLabels[t.status])} <small dir="ltr">${esc(t.code)}</small><details><summary>مراجعة الحقول (${t.fields.length})</summary><p>${esc(t.guidance?.family||t.guidance?.preparationAr||'')}</p>${t.guidance?.ownerSectionTitleAr?`<p>القسم المسؤول: ${esc(t.guidance.ownerSectionTitleAr)} · ${esc(t.guidance.ownerSectionCode)}</p>`:''}<ul>${t.fields.map(f=>`<li>${esc(f.labelAr)} — ${esc(f.type)} ${f.required?'إلزامي':'اختياري'}${f.type==='TABLE'&&f.options?.length?' — الأعمدة: '+esc(f.options.join('، ')):''} <small dir="ltr">${esc(f.key)}</small></li>`).join('')}</ul><p>${esc(t.guidance?.executionBoundaryAr||'')}</p></details></li>`).join('');
     $('[data-completion-plan]').hidden=false;controls();
   }
   $('[data-completion-scope]').addEventListener('change',()=>{state.generation++;state.controller?.abort();state.controller=null;state.busy=false;invalidatePlan();note('أعد المعاينة لاعتماد النطاق الجديد.');});

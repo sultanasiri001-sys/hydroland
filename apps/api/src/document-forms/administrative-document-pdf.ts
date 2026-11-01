@@ -94,10 +94,11 @@ export async function renderAdministrativeDocumentPdf(
     }
     return result.length?result:['—'];
   };
-  const valueText=(value:unknown):string=>{
+  const valueText=(value:unknown,columns?:string[]):string=>{
     if(value===null||value===undefined||value==='')return '—';
     if(value instanceof Date)return value.toISOString();
     if(typeof value==='boolean')return value?'نعم':'لا';
+    if(Array.isArray(value)&&columns?.length)return value.map((row,index)=>'البند '+(index+1)+'\n'+columns.map(key=>key+': '+(row?.[key]??'غير مسجل')).join('\n')).join('\n\n');
     if(typeof value==='object')return JSON.stringify(value,null,2);
     return String(value);
   };
@@ -133,8 +134,8 @@ export async function renderAdministrativeDocumentPdf(
     page.drawRectangle({x:M,y:y-23,width:CW,height:23,color:color.navy});
     text(label,W-M-11,y-16,11,true,color.white);y-=34;
   }
-  function field(label:string,value:unknown){
-    const rows=[...wrap(label,10,true,CW-26).map(t=>({t,bold:true,size:10})),...wrap(valueText(value),11,false,CW-26).map(t=>({t,bold:false,size:11}))];
+  function field(label:string,value:unknown,columns?:string[]){
+    const rows=[...wrap(label,10,true,CW-26).map(t=>({t,bold:true,size:10})),...wrap(valueText(value,columns),11,false,CW-26).map(t=>({t,bold:false,size:11}))];
     let offset=0;
     while(offset<rows.length){
       ensure(62);
@@ -157,7 +158,7 @@ export async function renderAdministrativeDocumentPdf(
   if(!preview)field('المرجع',c.referenceNumber);
   field('رمز النموذج وإصداره',`${c.template.code} / v${c.template.version}`);
   section('بيانات النموذج');
-  for(const item of c.fields)field(preferredLocalizedText(item.labelAr,item.labelEn,item.key),item.value);
+  for(const item of c.fields)field(preferredLocalizedText(item.labelAr,item.labelEn,item.key),item.value,item.type==='TABLE'?item.options:undefined);
   if(preview){
     section('حدود المعاينة');
     field('تعريف المعاينة',`القالب: ${c.template.version} / الهوية الحالية: ${c.branding.brandVersion}`);

@@ -8,7 +8,7 @@ const { HYDROLAND_DEPARTMENTS } = require('../dist/governance/department-ownersh
 const { DEPARTMENT_REFERENCE_CATALOG: catalog } = require('../dist/legal-governance/department-reference-catalog.js');
 const { departmentOperatingCycle } = require('../dist/document-forms/department-operating-cycle.catalog.js');
 const actorId = '11111111-1111-4111-8111-111111111111';
-const expectedTemplateCounts = { HR:21, TRAINING:13, MARINE_OPERATIONS:11, INVENTORY_LOGISTICS:11, FINANCE:10, SAFETY_COMPLIANCE_RISK:9, CUSTOMER_EXPERIENCE:9, MARKETING_GROWTH:10, TECHNOLOGY_CYBERSECURITY:11, FACILITIES_ASSETS_MAINTENANCE:10, ADMIN_AFFAIRS_RECORDS:10, EXECUTIVE_GOVERNANCE:11, RND_MARKET_INTELLIGENCE:10, LEGAL_CONTRACTS_INSURANCE:11 };
+const expectedTemplateCounts = { HR:25, TRAINING:16, MARINE_OPERATIONS:15, INVENTORY_LOGISTICS:15, FINANCE:14, SAFETY_COMPLIANCE_RISK:13, CUSTOMER_EXPERIENCE:10, MARKETING_GROWTH:12, TECHNOLOGY_CYBERSECURITY:15, FACILITIES_ASSETS_MAINTENANCE:11, ADMIN_AFFAIRS_RECORDS:11, EXECUTIVE_GOVERNANCE:12, RND_MARKET_INTELLIGENCE:10, LEGAL_CONTRACTS_INSURANCE:13 };
 let permitted = true, privateReads = 0;
 const controls = [
   { category: 'HR_COMPLIANCE', ruleKey: 'HR-LAB-EMP-001', labelAr: 'Fixture HR control', state: 'DISABLED', metadata: { regulatoryRequirementId: 'unapproved-fixture' } },
@@ -26,7 +26,7 @@ const tx = {
   orgUnit: { findMany: async ({ where }) => { assert.deepEqual(where, { organizationId: 'fixture-platform', type: 'DEPARTMENT' }); return HYDROLAND_DEPARTMENTS.map(d => ({ code: d.code, active: true })); } },
   policyControl: { findMany: async () => { privateReads++; return structuredClone(controls); } },
   documentTemplate: { findMany: async ({where,select}) => {
-    privateReads++; assert.equal(where.organizationId,'fixture-platform'); assert.equal(new Set(where.code.in).size,157); assert(where.code.in.includes('TRN-TRAINING-PLAN')); assert(where.code.in.includes('FIN-PROVIDER-RECONCILIATION')); assert.equal(select.fields,undefined);
+    privateReads++; assert.equal(where.organizationId,'fixture-platform'); assert.equal(new Set(where.code.in).size,192); assert(where.code.in.includes('TRN-TRAINING-PLAN')); assert(where.code.in.includes('FIN-PROVIDER-RECONCILIATION')); assert.equal(select.fields,undefined);
     return [
       { code:'HR-EMPLOYEE-REPORT',department:'HR',version:1,status:'INACTIVE',printable:true },
       { code:'HR-EMPLOYEE-REPORT',department:'HR',version:2,status:'ACTIVE',printable:true },
@@ -47,7 +47,7 @@ assert.equal(result.referenceOnly, true); assert.equal(result.canActivate, false
 assert.equal(result.canonicalDepartmentCount, 14); assert.equal(result.recordedDepartmentCount, 14);
 assert.equal(result.authorities.length, 19); assert.equal(result.legalReferences.length, 15); assert.equal(result.hrSources.length, 6); assert.equal(result.hrControlCandidates.length, 7);
 assert.equal(result.marineArchives.length, 10);
-assert.equal(result.isoReferences.length,11); assert.equal(result.canonicalSourceTemplateCount,157); assert.equal(result.completeDocumentInventoryVerified,false);
+assert.equal(result.isoReferences.length,11); assert.equal(result.canonicalSourceTemplateCount,192); assert.equal(result.completeDocumentInventoryVerified,false);
 assert.deepEqual(result.referencePrecedence,['SAUDI_APPLICABLE_REGULATION','ISO_APPLICABLE_SCOPE','WRSTC_APPLICABLE_SCOPE','TRAINING_AGENCY_PROGRAM_VERSION']);
 for (const source of result.isoReferences) {
   assert.equal(new URL(source.url).hostname,'www.iso.org'); assert.equal(source.adoptionDecisionReference,null); assert.equal(source.licensedCopyLibraryFileId,null); assert.equal(source.certificationClaim,false); assert.equal(source.clauseMappingStatus,'REVIEW_REQUIRED');
@@ -100,4 +100,4 @@ const noOrg=await service.list(actorId); assert.equal(noOrg.recordedDepartmentCo
 tx.operationalSetting.findUnique=savedOrganization;
 permitted = false; const reads = privateReads;
 await assert.rejects(() => service.list(actorId), e => e.getStatus?.() === 403); assert.equal(privateReads, reads, 'No private data read before fresh authorization');
-console.log('Department reference validation passed: canonical ownership, all 157 templates across 14 operating cycles, organization/department-scoped counts, retained closure gates, missing/conflicting versions, source paths, fresh authorization, privacy and no writes.');
+console.log('Department reference validation passed: canonical ownership, all 192 templates across 14 operating cycles, organization/department-scoped counts, retained closure gates, missing/conflicting versions, source paths, fresh authorization, privacy and no writes.');

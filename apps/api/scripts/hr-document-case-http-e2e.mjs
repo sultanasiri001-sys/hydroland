@@ -25,7 +25,7 @@ const report = {
   caseId, kind: 'SYNTHETIC_HR_DOCUMENT_ACCEPTANCE_V1', startedAt: new Date().toISOString(),
   sourceCommit: process.env.GITHUB_SHA || execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
   nodeVersion: process.version, productionClosure: false, professionalApproval: false,
-  scope: 'One isolated employee case, all 21 HR administrative forms, persisted HTTP document decisions and selected HR runtime actions.',
+  scope: 'One isolated employee case, all 25 HR administrative forms, persisted HTTP document decisions and selected HR runtime actions.',
   excluded: ['Real identity verification', 'Independent legal approval', 'Official employment-contract registration', 'Bank payment', 'Professional operational acceptance'],
   fixtures: [], checks: [], documents: [], status: 'RUNNING', cleanup: 'NOT_RUN',
 };
@@ -124,13 +124,13 @@ try {
   pass('Actual termination and IAM offboarding revoke a live session and all active subject roles.');
 
   const root = `documents/organizations/${org.id}/template-completion`, plan = await ok(owner, `${root}?department=HR`);
-  assert.equal(plan.summary.source, 21);
+  assert.equal(plan.summary.source, 25);
   await ok(owner, root, 'POST', { department: 'HR', expectedPlanHash: plan.planHash, confirmed: true });
   const templates = await db.documentTemplate.findMany({ where: { organizationId: org.id, department: 'HR', status: 'ACTIVE' }, orderBy: { code: 'asc' } });
   const expected = reviewedAdministrativeTemplates(org.id).filter(t => t.department === 'HR');
-  assert.equal(templates.length, 21); assert.deepEqual(templates.map(t => t.code).sort(), expected.map(t => t.code).sort());
+  assert.equal(templates.length, 25); assert.deepEqual(templates.map(t => t.code).sort(), expected.map(t => t.code).sort());
   for (const t of templates) assert.deepEqual(t.fields, expected.find(e => e.code === t.code).fields);
-  pass('All 21 actual HR definitions are initialized atomically and match their current source fields.');
+  pass('All 25 actual HR definitions are initialized atomically and match their current source fields.');
 
   const refs = { employeeNo: employment.id, employeeReference: employment.id, movementReference: movement.id, appointmentReference: movement.id, positionReference: employment.positionId, contractReference: contract.id, compensationReference: compensation.id, leaveReference: leave.id, attendanceReference: attendance.id, caseReference: relations.id, offboardingReference: offboarding.id, iamReference: iamAudit.id, auditReference: iamAudit.id, period: '2026-10', departmentCode: 'HR', positionTitle: 'موظف اختبار غير نافذ', headcount: 1, effectiveDate: '2026-10-01', commencementDate: '2026-10-01', returnDate: '2026-10-22', startDate: '2026-10-20', endDate: '2026-10-21', leaveType: 'اختبار إجازة', rating: 'اختبار فقط' };
   report.employee = { id: employment.id, appointmentId: movement.id, terminationId: termination.id, offboardingId: offboarding.id, iamAuditId: iamAudit.id, contractId: contract.id, finalStatus: 'OFFBOARDED', legalApproval: false, officialRegistration: false };
@@ -145,7 +145,7 @@ try {
     return ok(a, reviewRoot(d) + '/decisions', 'POST', { action, expectedVersion: view.source.version, reviewHash: view.reviewHash, note: `${caseId}: قرار اختبار غير نافذ`, confirmed: true });
   }
   for (const [index, t] of templates.entries()) {
-    const payload = Object.fromEntries(t.fields.map(f => [f.key, refs[f.key] ?? (f.type === 'DATE' ? '2026-10-30' : f.type === 'NUMBER' ? 1 : `${caseId}: مرجع اصطناعي غير نافذ — ${f.labelAr}`)]));
+    const payload = Object.fromEntries(t.fields.map(f => [f.key, refs[f.key] ?? (f.type === 'DATE' ? '2026-10-30' : f.type === 'NUMBER' ? 1 : f.type === 'TABLE' ? [Object.fromEntries(f.options.map(k=>[k,caseId+': isolated value']))] : `${caseId}: مرجع اصطناعي غير نافذ — ${f.labelAr}`)]));
     if (t.code === 'HR-COMMENCEMENT') payload.evidenceReference = commencement.id;
     if (t.code === 'HR-GRIEVANCE-RECORD') { payload.caseReference = grievance.id; payload.decisionReference = relations.id; }
     if (t.code === 'HR-EMPLOYEE-REPORT') payload.status = 'OFFBOARDED';
@@ -182,17 +182,17 @@ try {
     report.documents.push({ code: t.code, titleAr: t.titleAr, id: d.id, referenceNumber: d.referenceNumber, employeeId: employment.id, templateId: t.id, templateVersion: t.version, version: archived.version, state: archived.status, payloadHash: hash(archived.payload), pdfSha256: hash(pdf.data), pdfBytes: pdf.data.length, revisionCount: archived.revisions.length, events: archived.lifecycleEvents.map(e => ({ action: e.action, version: e.version, actorAccountId: e.actorAccountId })), approvalReceipt: approval.receipt, signatureReceipt: signature.receipt, interpretation: 'Synthetic document lifecycle acceptance only; source references do not prove external execution.' });
     pass(`${t.code}: created, independently reviewed, test-signed, printed and archived with pinned payload.`);
   }
-  assert.equal(report.documents.length, 21);
+  assert.equal(report.documents.length, 25);
   const original = report.documents.find(d => d.code === 'HR-EMPLOYEE-REPORT');
   const pinned = await rows(original), template = templates.find(t => t.code === original.code);
   await ok(owner, `documents/templates/${template.id}`, 'PUT', { titleAr: 'تقرير بيانات موظف — إصدار اختبار تالٍ' });
   assert.deepEqual(await rows(original), pinned);
   pass('Publishing a later template version preserves the previously archived employee document and decisions.');
 
-  assert.equal(await db.managedDocument.count({ where: { organizationId: org.id, status: 'ARCHIVED' } }), 21);
-  pass('All 21 archived documents retain the same canonical employee and actual isolated runtime references.');
+  assert.equal(await db.managedDocument.count({ where: { organizationId: org.id, status: 'ARCHIVED' } }), 25);
+  pass('All 25 archived documents retain the same canonical employee and actual isolated runtime references.');
   report.status = 'PASSED';
-  console.log(`${report.checks.length} checks passed; 21 synthetic documents. No production or professional closure is asserted.`);
+  console.log(`${report.checks.length} checks passed; 25 synthetic documents. No production or professional closure is asserted.`);
 } catch (error) {
   report.status = 'FAILED'; report.error = error instanceof Error ? error.message : String(error); throw error;
 } finally {
