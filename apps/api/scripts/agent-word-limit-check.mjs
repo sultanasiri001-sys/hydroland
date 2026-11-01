@@ -83,6 +83,7 @@ try{
     await provider.execute(config,{key,nameEn:key},'READ_OPERATIONS','ar-SA','راجع دقة الملخص.',undefined,{source:{operationsEvidence:{status:'RECORDED',values:{version:6,metrics:{recordedDeliveryEvidence:0},missingSources:['DELIVERY_RETENTION_DISPOSAL_EVIDENCE']}}}});
     const policy=requests.find(r=>r.path.endsWith('/responses')).body.input[0].content;
     assert(policy.includes('do not negate those counters')&&policy.includes('Return for correction if a summary calls a supplied counter connector missing'));
+    assert(policy.includes('evidenceGaps is reserved for missing or invalid evidence needed to assess the summary itself')&&policy.includes('This does not approve operations'));
     assert.equal(requests.length,2);
   }
   console.log('V6 model contract checks passed: four department scopes, zero/nonzero connected counters, allowlisted keys, legacy gap semantics, six review stages, evidence limits, unchanged token reservations and unavailable unknown/mismatched versions.');
