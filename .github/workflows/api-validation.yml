@@ -114,7 +114,7 @@ jobs:
       - name: Actual SIGTERM drains AI receipts before database shutdown
         run: node apps/api/scripts/agent-shutdown-check.mjs
       - name: Department directors and executive report boundaries without provider traffic
-        run: node --test apps/api/scripts/department-reporting.test.cjs apps/api/scripts/department-source.test.cjs apps/api/scripts/warehouse-location.test.cjs
+        run: node --test apps/api/scripts/department-reporting.test.cjs apps/api/scripts/department-source.test.cjs apps/api/scripts/warehouse-location.test.cjs apps/api/scripts/section-heads.test.cjs
       - name: Safety coordinate input and explicit fallback boundaries
         run: node apps/api/scripts/safety-coordinate-validation.cjs
       - name: Canonical weather context and calendar consumer boundaries

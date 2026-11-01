@@ -1,4 +1,7 @@
+import type { SectionHeadAgentKey } from './department-sections';
+
 export type AgentKey=
+  | SectionHeadAgentKey
   | 'HR_DIRECTOR'
   | 'TRAINING_DIRECTOR'
   | 'MARINE_DIRECTOR'

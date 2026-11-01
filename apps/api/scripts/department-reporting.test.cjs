@@ -48,7 +48,7 @@ function fixture(){
 }
 
 test('fourteen distinct directors preserve existing identities and separate Abdullah and office',()=>{
- const agents=new AgentService({}).list();assert.equal(agents.length,23);
+ const agents=new AgentService({}).list();assert.equal(agents.length,103);
  assert.equal(new Set(Object.values(DEPARTMENT_DIRECTORS)).size,14);
  for(const key of Object.values(DEPARTMENT_DIRECTORS)){assert(agents.some(a=>a.key===key));assert(directorDepartment(key));assert(agents.find(a=>a.key===key).allowedActions.includes('READ_OPERATIONS'));}
  assert(!directorDepartment('EXECUTIVE'));for(const key of GOVERNANCE_REVIEW_ORDER)assert(!directorDepartment(key));

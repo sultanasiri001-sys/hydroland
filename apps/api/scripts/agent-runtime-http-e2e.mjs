@@ -42,11 +42,11 @@ try{
  assert.equal((await call('/admin/agents/provider-connection')).status,401);assert.equal((await call('/admin/agents/provider-connection',other)).status,403);assert.equal(metadataCalls,0);
  const connection=await call('/admin/agents/provider-connection',token);assert.equal(connection.status,200);assert.equal(connection.body.connected,true);assert.equal(connection.body.scope,'MODEL_ACCESS_ONLY');assert.equal(connection.body.generationTested,false);safe(connection.body);assert.equal(metadataCalls,1);assert.equal(modelCalls,0);assert.equal(countCalls,0);assert.equal(await db.aiAgentRuntime.count(),0);assert.equal(await db.aiAgentTask.count(),0,'A connection check creates no agent controls or tasks');
  assert.equal((await call('/admin/agents/initialize',other,{reason:'Denied fixture',reviewed:true})).status,403);
- const before=await catalog();assert.equal(before.initialized,false);assert.equal(before.items.length,23);assert.equal(before.items.filter(x=>x.reportingRole==='DEPARTMENT_DIRECTOR').length,14);assert.equal(new Set(before.items.filter(x=>x.reportingRole==='DEPARTMENT_DIRECTOR').map(x=>x.departmentCode)).size,14);assert(before.items.every(x=>x.counts===null&&x.workload==='UNAVAILABLE'&&x.state==='UNINITIALIZED'));
+ const before=await catalog();assert.equal(before.initialized,false);assert.equal(before.items.length,103);assert.equal(before.items.filter(x=>x.reportingRole==='DEPARTMENT_DIRECTOR').length,14);assert.equal(new Set(before.items.filter(x=>x.reportingRole==='DEPARTMENT_DIRECTOR').map(x=>x.departmentCode)).size,14);assert(before.items.every(x=>x.counts===null&&x.workload==='UNAVAILABLE'&&x.state==='UNINITIALIZED'));
  const broken=runtime({record:async()=>{throw new Error('Injected runtime audit failure');}});
  await assert.rejects(()=>broken.initialize(actor.id,{reason:'Rollback fixture',reviewed:true}),/Injected/);assert.equal(await db.aiAgentRuntime.count(),0);
  assert.equal((await call('/admin/agents/initialize',token,{reason:'Isolated runtime setup',reviewed:true})).status,201);initialized=true;
- assert.equal((await call('/admin/agents/initialize',token,{reason:'Isolated repeated setup',reviewed:true})).status,201);assert.equal(await db.aiAgentRuntime.count(),23);assert.equal(await db.auditEvent.count({where:{action:'AI_RUNTIME_INITIALIZED'}}),1);
+ assert.equal((await call('/admin/agents/initialize',token,{reason:'Isolated repeated setup',reviewed:true})).status,201);assert.equal(await db.aiAgentRuntime.count(),103);assert.equal(await db.auditEvent.count({where:{action:'AI_RUNTIME_INITIALIZED'}}),1);
  assert.equal((await control('ENABLED')).status,409);await service.heartbeat();assert.equal((await catalog()).provider.ready,true);
  assert.equal((await enqueue('بريد اختبار','SUPPORT',{action:'CHANGE_ROLE'})).status,400);assert.equal((await enqueue('بريد اختبار','SUPPORT',{reviewed:false})).status,400);
  const requestId=randomUUID();const repeated=await Promise.all([enqueue('مهمة واحدة','SUPPORT',{requestId}),enqueue('مهمة واحدة','SUPPORT',{requestId})]);assert(repeated.every(x=>x.status===201));assert.equal(repeated[0].body.id,repeated[1].body.id);assert.equal((await enqueue('مهمة مختلفة','SUPPORT',{requestId})).status,409);
@@ -87,7 +87,7 @@ try{
  const {governanceCorrectionAcceptance}=await import('./governance-correction-acceptance.mjs');
  await governanceCorrectionAcceptance({db,service,runtime,audit,provider,actor,token,call,catalog,control,enqueue,setModelText:text=>{modelText=text},payloads,providerCalls:()=>({modelCalls,countCalls})});
  const {departmentReportingAcceptance}=await import('./department-reporting-acceptance.mjs');
-  await departmentReportingAcceptance({db,service,actor,ordinary,token,otherToken:other,call,setModelText:text=>{modelText=text},payloads,providerCalls:()=>({generation:modelCalls,count:countCalls,metadata:metadataCalls})});
+  await departmentReportingAcceptance({db,service,runtime,actor,ordinary,token,otherToken:other,call,setModelText:text=>{modelText=text},payloads,providerCalls:()=>({generation:modelCalls,count:countCalls,metadata:metadataCalls})});
  const {providerRecoveryAcceptance}=await import('./agent-provider-recovery-acceptance.mjs');
  await providerRecoveryAcceptance({db,service,runtime,audit,provider,actor,token,otherToken:other,call,catalog,control,enqueue,setFailure:value=>{providerFailure=value;},setModelText:value=>{modelText=value;},calls:()=>({generation:modelCalls,count:countCalls})});
  // Dedicated historical fixtures do not dispatch or depend on worker readiness.

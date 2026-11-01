@@ -4,7 +4,7 @@ Sultan's approved reporting line is: each of the fourteen AI department director
 
 ## Director identities
 
-Five existing identities now own their respective departments; nine director identities are added. Existing tasks and identities are preserved. The catalog consequently contains 23 agents: fourteen directors, Abdullah, the existing sales/social specialists and the six office reviewers. Abdullah is separate from the executive department's director.
+Five existing identities now own their respective departments; nine director identities are added. Existing tasks and identities are preserved. This director rollout originally contained 23 agents: fourteen directors, Abdullah, the existing sales/social specialists and the six office reviewers. Abdullah is separate from the executive department's director. The [section-head extension](AI_SECTION_HEAD_APPOINTMENTS_2026-11-01.md) reuses Abdullah and sales/social for three section responsibilities and adds eighty identities, bringing the current catalog to 103 without changing this fourteen-director report cycle.
 
 | Department | Director key |
 | --- | --- |
