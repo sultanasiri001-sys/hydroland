@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
@@ -22,10 +23,10 @@ export class BoatComplianceService{
       "registrationNumber"=EXCLUDED."registrationNumber","registrationStatus"=EXCLUDED."registrationStatus","navigationLicenseNumber"=EXCLUDED."navigationLicenseNumber","navigationLicenseExpiresAt"=EXCLUDED."navigationLicenseExpiresAt","safetyCertificateExpiresAt"=EXCLUDED."safetyCertificateExpiresAt","passengerLimit"=EXCLUDED."passengerLimit","notes"=EXCLUDED."notes","updatedAt"=NOW()
     RETURNING *`;const result=rows[0];await this.audit.record({action:'BOAT_COMPLIANCE_UPDATED',resource:'BoatResourceCompliance',resourceId,metadata:{accountId,previousStatus:before?.registrationStatus??null,registrationStatus:result.registrationStatus,passengerLimit:result.passengerLimit,navigationLicenseExpiresAt:result.navigationLicenseExpiresAt?.toISOString()??null,safetyCertificateExpiresAt:result.safetyCertificateExpiresAt?.toISOString()??null}});return result;}
 
-  async evaluate(resourceIds:string[],bookedSeats:number){
-    const [registration,license,safety,passengers]=await Promise.all([this.policies.decision('BOAT','REGISTRATION'),this.policies.decision('BOAT','NAVIGATION_LICENSE'),this.policies.decision('BOAT','SAFETY_CERTIFICATES'),this.policies.decision('BOAT','PASSENGER_LIMIT')]);
+  async evaluate(resourceIds:string[],bookedSeats:number,tx:Prisma.TransactionClient=this.db){
+    const [registration,license,safety,passengers]=await Promise.all([this.policies.decision('BOAT','REGISTRATION',tx),this.policies.decision('BOAT','NAVIGATION_LICENSE',tx),this.policies.decision('BOAT','SAFETY_CERTIFICATES',tx),this.policies.decision('BOAT','PASSENGER_LIMIT',tx)]);
     if(!resourceIds.length)return{ready:false,blocked:true,reviewRequired:false,issues:['BOAT_RESOURCE_MISSING'],states:{registration:registration.state,license:license.state,safety:safety.state,passengers:passengers.state}};
-    const rows=await this.db.$queryRaw<BoatComplianceRow[]>`SELECT * FROM "BoatResourceCompliance" WHERE "resourceId"=ANY(${resourceIds}::text[])`;
+    const rows=await tx.$queryRaw<BoatComplianceRow[]>`SELECT * FROM "BoatResourceCompliance" WHERE "resourceId"=ANY(${resourceIds}::text[])`;
     const now=new Date(),issues:string[]=[],hard:string[]=[],review:string[]=[];
     for(const resourceId of resourceIds){const row=rows.find((item:BoatComplianceRow)=>item.resourceId===resourceId);const checks={registration:Boolean(row?.registrationNumber&&row.registrationStatus==='VERIFIED'),license:Boolean(row?.navigationLicenseNumber&&row.navigationLicenseExpiresAt&&row.navigationLicenseExpiresAt>now),safety:Boolean(row?.safetyCertificateExpiresAt&&row.safetyCertificateExpiresAt>now),passengers:Boolean(row?.passengerLimit&&bookedSeats<=row.passengerLimit)};const rules=[['BOAT_REGISTRATION',checks.registration,registration],['BOAT_NAVIGATION_LICENSE',checks.license,license],['BOAT_SAFETY_CERTIFICATES',checks.safety,safety],['BOAT_PASSENGER_LIMIT',checks.passengers,passengers]] as const;for(const [name,ok,policy] of rules){if(ok||policy.bypass)continue;issues.push(name);if(policy.enforce)hard.push(name);else if(policy.review)review.push(name);}}
     return{ready:hard.length===0&&review.length===0,blocked:hard.length>0,reviewRequired:hard.length===0&&review.length>0,issues:[...new Set(issues)],states:{registration:registration.state,license:license.state,safety:safety.state,passengers:passengers.state}};

@@ -10,11 +10,6 @@ on:
       - '.github/workflows/web-validation.yml'
   push:
     branches: [main]
-    paths:
-      - 'apps/web/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/web-validation.yml'
 
 jobs:
   validate:

@@ -8,10 +8,6 @@ on:
       - '.github/workflows/messaging-key-schema-validation.yml'
   push:
     branches: [main]
-    paths:
-      - 'apps/api/**'
-      - 'package*.json'
-      - '.github/workflows/messaging-key-schema-validation.yml'
   workflow_dispatch:
 
 permissions:
