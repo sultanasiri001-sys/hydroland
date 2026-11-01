@@ -1,0 +1,54 @@
+name: A02 read-only release collector
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/a02-release-collector*.mjs'
+      - 'scripts/a02-release-evidence*.mjs'
+      - '.github/workflows/a02-release-collector.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/a02-release-collector*.mjs'
+      - 'scripts/a02-release-evidence*.mjs'
+      - '.github/workflows/a02-release-collector.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  collector-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify collector and unchanged evaluator contracts
+        run: |
+          node --check scripts/a02-release-collector.mjs
+          node --check scripts/a02-release-collector-live.mjs
+          node --test scripts/a02-release-evidence.test.mjs scripts/a02-release-collector*.test.mjs
+  live-main-read-only-probe:
+    needs: collector-contracts
+    # A PR may exercise GETs with an ephemeral read-only token; never pull_request_target.
+    # Sample scope only: this job is NOT a production-approval or deployment gate.
+    permissions:
+      contents: read
+      actions: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Collect current main through authenticated, attempt-pinned GET requests
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/a02-release-collector-live.mjs

@@ -1,5 +1,7 @@
 name: Owner approvals and HR source acceptance
 on:
+  push:
+    branches: [main]
   pull_request:
     paths:
       - 'apps/api/src/document-forms/**'

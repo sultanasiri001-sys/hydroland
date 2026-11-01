@@ -12,14 +12,6 @@ on:
       - '.github/workflows/organization-migration-recovery.yml'
   push:
     branches: [main]
-    paths:
-      - 'apps/api/scripts/organization-booking-migration-recovery.mjs'
-      - 'apps/api/scripts/organization-booking-migration-db-checks.mjs'
-      - 'apps/api/prisma/migrations/20261005090000_customer_case_organization_relation/**'
-      - 'apps/api/prisma/migrations/20261005130000_organization_booking_safety/**'
-      - 'apps/api/package.json'
-      - 'package-lock.json'
-      - '.github/workflows/organization-migration-recovery.yml'
 
 permissions:
   contents: read

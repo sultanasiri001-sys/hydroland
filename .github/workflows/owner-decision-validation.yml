@@ -1,5 +1,7 @@
 name: Limited owner decision acceptance
 on:
+  push:
+    branches: [main]
   pull_request:
     paths:
       - 'apps/api/src/document-forms/**'

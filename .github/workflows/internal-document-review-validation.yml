@@ -1,5 +1,7 @@
 name: Independent document review acceptance
 on:
+  push:
+    branches: [main]
   pull_request:
     paths:
       - 'apps/api/src/document-forms/**'
