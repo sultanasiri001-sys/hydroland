@@ -16,7 +16,7 @@ const codes = new Set(['INVALID_INPUT', 'INVALID_POLICY_OR_TARGET', 'UNSAFE_ENDP
   'API_RESOURCE_UNAVAILABLE', 'API_RESPONSE_INVALID', 'API_RESPONSE_TOO_LARGE', 'REPOSITORY_MISMATCH',
   'HEAD_CHANGED', 'PAGE_INVALID', 'PAGE_COUNT_CHANGED', 'PAGE_TRUNCATED', 'PAGE_DUPLICATE',
   'PAGE_LIMIT', 'RUN_PROVENANCE_MISMATCH', 'RUN_ORDER_AMBIGUOUS', 'RUN_CHANGED', 'RUN_SET_CHANGED',
-  'JOB_PROVENANCE_MISMATCH', 'CLOCK_INVALID', 'COLLECTION_FAILED']);
+  'JOB_PROVENANCE_MISMATCH', 'CLOCK_INVALID', 'COLLECTION_FAILED', 'RUN_SETTLEMENT_TIMEOUT']);
 class CollectionError extends Error {
   constructor(code) {super(code); this.code = code;}
 }
@@ -109,6 +109,93 @@ const jobView = (value, criticalNames) => ({id: value?.id, run_id: value?.run_id
   ...(Array.isArray(value?.steps) && criticalNames ? {steps: value.steps.filter(step => criticalNames.includes(step?.name)).map(step => ({number: step?.number,
     name: step?.name, status: step?.status, conclusion: step?.conclusion}))} : {})});
 const ordered = values => [...values].sort((a, b) => a.id - b.id);
+
+/**
+ * Scheduling preflight only. Do not collect an evidence snapshot while push runs
+ * are changing order across API pages. A failed collection is never retried here.
+ * Completed failures remain visible to the unchanged evidence evaluator.
+ */
+export async function waitForPushRunsToSettle(policyInput, expectedSha, {read,
+  observerRunId, now = Date.now, wait = ms => new Promise(resolve => setTimeout(resolve, ms)),
+  pollIntervalMs = 30000, maxWaitMs = 35 * 60000} = {}) {
+  let requests = 0;
+  try {
+    requireThat(typeof now === 'function' && typeof wait === 'function'
+      && typeof read === 'function' && positive(pollIntervalMs) && pollIntervalMs <= 30000
+      && positive(maxWaitMs) && maxWaitMs <= 35 * 60000
+      && (observerRunId === undefined || positive(observerRunId)), 'INVALID_INPUT');
+    const policy = structuredClone(policyInput), started = now();
+    requireThat(Number.isSafeInteger(started), 'CLOCK_INVALID');
+    requireThat(!evaluateReleaseEvidence(policy, null, expectedSha, started).reasons.includes('INVALID_POLICY_OR_TARGET')
+      && repositoryName(policy.repository) && branchName(policy.branch), 'INVALID_POLICY_OR_TARGET');
+    const base = `/repos/${policy.repository}`;
+    let lastTime = started, previousSettled = null;
+    const clock = () => {
+      const time = now();
+      requireThat(Number.isSafeInteger(time) && time >= lastTime, 'CLOCK_INVALID');
+      lastTime = time;
+      requireThat(time - started < maxWaitMs, 'RUN_SETTLEMENT_TIMEOUT');
+      return time;
+    };
+    const get = async path => {
+      const time = clock();
+      requireThat(++requests <= 400, 'REQUEST_LIMIT');
+      return bounded(signal => read(path, {signal}), maxWaitMs - (time - started), 'RUN_SETTLEMENT_TIMEOUT');
+    };
+    const repo = await get(base);
+    requireThat(repo?.id === policy.repositoryId && repo?.full_name === policy.repository, 'REPOSITORY_MISMATCH');
+    const head = async () => {
+      const value = await get(`${base}/git/ref/heads/${policy.branch.split('/').map(encodeURIComponent).join('/')}`);
+      requireThat(value?.ref === `refs/heads/${policy.branch}` && value?.object?.type === 'commit'
+        && value.object.sha === expectedSha, 'HEAD_CHANGED');
+    };
+    const query = new URLSearchParams({head_sha: expectedSha, branch: policy.branch, event: 'push'});
+    while (true) {
+      await head();
+      const runs = [], seen = new Set();
+      let total;
+      for (let page = 1; page <= 11; page++) {
+        const body = await get(`${base}/actions/runs?${query}&per_page=100&page=${page}`);
+        requireThat(record(body) && Number.isSafeInteger(body.total_count) && body.total_count >= 0
+          && Array.isArray(body.workflow_runs), 'PAGE_INVALID');
+        if (total === undefined) {total = body.total_count; requireThat(total < 1000, 'PAGE_LIMIT');}
+        requireThat(body.total_count === total, 'PAGE_COUNT_CHANGED');
+        const expected = Math.min(100, Math.max(0, total - runs.length));
+        requireThat(body.workflow_runs.length === expected, 'PAGE_TRUNCATED');
+        for (const raw of body.workflow_runs) {
+          const run = runView(raw);
+          requireThat(positive(run.id), 'PAGE_INVALID');
+          requireThat(!seen.has(run.id), 'PAGE_DUPLICATE');
+          seen.add(run.id);
+          requireThat(run.head_sha === expectedSha && run.head_branch === policy.branch && run.event === 'push'
+            && isDeepStrictEqual(run.repository, repoView(repo))
+            && isDeepStrictEqual(run.head_repository, repoView(repo))
+            && positive(run.workflow_id) && positive(run.run_attempt) && positive(run.run_number), 'RUN_PROVENANCE_MISMATCH');
+          runs.push(run);
+        }
+        if (expected === 0) break;
+      }
+      await head();
+      const observer = runs.find(run => run.id === observerRunId);
+      if (observer) requireThat(observer.workflow_id === 399738953
+        && observer.path === '.github/workflows/a02-release-collector.yml', 'RUN_PROVENANCE_MISMATCH');
+      const requiredPresent = policy.required.every(rule => runs.some(run =>
+        run.workflow_id === rule.workflowId && run.path === rule.path));
+      const complete = runs.length > 0 && requiredPresent && runs.every(run => run.id === observerRunId
+        || (run.status === 'completed' && typeof run.conclusion === 'string' && run.conclusion.length > 0));
+      const current = ordered(runs);
+      if (complete && previousSettled && isDeepStrictEqual(current, previousSettled)) {
+        return {status: 'SETTLED', requests, durationMs: clock() - started, observedRunCount: runs.length};
+      }
+      previousSettled = complete ? current : null;
+      const time = clock();
+      await wait(Math.min(pollIntervalMs, maxWaitMs - (time - started)));
+    }
+  } catch (error) {
+    const reason = error instanceof CollectionError && codes.has(error.code) ? error.code : 'COLLECTION_FAILED';
+    return {status: 'BLOCKED', requests, reasons: [reason]};
+  }
+}
 
 /**
  * Trusted callers own policy/target selection. No retries, writes or deploys.

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {createGitHubReader, collectReleaseEvidence, summarizeCollection} from './a02-release-collector.mjs';
+import {createGitHubReader, collectReleaseEvidence, summarizeCollection, waitForPushRunsToSettle} from './a02-release-collector.mjs';
 
 // Read-only integration PROBE, not a complete/approved production release policy.
 // No target override, deployment, database access, account data or provider call.
@@ -13,6 +13,10 @@ const policy = {schemaVersion: 1, repository, repositoryId: 1366555943, branch: 
 try {
   const read = createGitHubReader({repository, token: process.env.GITHUB_TOKEN});
   const ref = await read(`/repos/${repository}/git/ref/heads/main`);
+  const preflight = await waitForPushRunsToSettle(policy, ref?.object?.sha, {read,
+    observerRunId: process.env.GITHUB_RUN_ID ? Number(process.env.GITHUB_RUN_ID) : undefined});
+  console.log(JSON.stringify({probe: 'READ_ONLY_MAIN_TWO_WORKFLOW_SAMPLE', preflight}));
+  assert.equal(preflight.status, 'SETTLED');
   const result = await collectReleaseEvidence(policy, ref?.object?.sha, {read, pageSize: 2});
   // Stale/missing/failed evidence MUST stay BLOCKED; that isn't a collector fault.
   // A collection failure or race, however, must fail this probe without retries.
