@@ -15,6 +15,9 @@ import { operationsEvidenceDigest, operationsValues, readOperationsEvidence } fr
 import { agentPerformance, performanceView } from './agent-performance';
 import { correctionFingerprint, correctionRequestId, hasDraftCorrectionPermission, DRAFT_CORRECTION_POLICY, DRAFT_CORRECTION_PREFIX, draftCorrectionAllowed, draftCorrectionRequested } from './governance-draft-correction';
 import { directorDepartment } from './department-directors';
+import { agentHierarchy } from './agent-hierarchy';
+import { appointmentRequest, appointSectionHeads } from './section-head-appointments';
+import { DEPARTMENT_SECTIONS, SECTION_HEAD_APPOINTMENT_KEY, SECTION_HEAD_CATALOG_VERSION } from './department-sections';
 import { executiveReportContext, reportModelInput, REPORT_FINGERPRINT } from './executive-report.domain';
 import { renderVerifiedExecutiveReport } from './executive-report-renderer';
 import { GovernanceReviewInboxService } from './governance-review-inbox.service';
@@ -85,12 +88,24 @@ export class AgentRuntimeService {
     return result;
   }
 
+  async appointSectionHeads(actorId:string,body:unknown){
+    const request=appointmentRequest(body);
+    return this.db.serializable(async tx=>{
+      await this.guard(tx);
+      return appointSectionHeads(tx,this.audit,actorId,request,async()=>{
+        const config=this.model.configuration(),now=await this.now(tx),worker=await this.workerState(tx,config,now),budget=await this.reserved(tx,now);
+        if(!config.ready||!worker.fresh||budget.reserved+config.reserveMicroUsd>config.dailyBudgetMicroUsd)throw new ConflictException('راجع جاهزية المزود والعامل والميزانية قبل تفعيل الرؤساء الجدد.');
+      });
+    });
+  }
+
   departmentSources(actorId:string){return this.db.serializable(tx=>readDepartmentSources(tx,actorId));}
 
   async catalog(actorId:string){
     return this.db.serializable(async tx=>{
       await requireVerifiedAdmin(tx,actorId);const now=await this.now(tx),config=this.model.configuration(),worker=await this.workerState(tx,config,now),budget=await this.reserved(tx,now);
       const controls=await tx.aiAgentRuntime.findMany();
+      const sectionReceipt=await tx.operationalSetting.findUnique({where:{key:SECTION_HEAD_APPOINTMENT_KEY}});
       const historical=await agentPerformance(tx);
       const gate=providerGateView(await this.providerGate(tx),now.getTime());
       const budgetAvailable=config.ready&&budget.reserved+config.reserveMicroUsd<=config.dailyBudgetMicroUsd;
@@ -102,12 +117,13 @@ export class AgentRuntimeService {
         provider:{provider:config.provider,model:config.model,ready:available,reason,maxInputTokens:config.maxInputTokens,maxOutputTokens:config.maxOutputTokens,rateControl:gate},
         budget:{currency:'USD',day:budget.day.toISOString().slice(0,10),limitMicroUsd:config.dailyBudgetMicroUsd,reservedMicroUsd:budget.reserved,taskReserveMicroUsd:config.reserveMicroUsd,kind:'CONSERVATIVE_RESERVATION'},
         calculation:{perAgentConcurrency:1,highQueueAt:3,overdueMinutes:QUEUE_OVERDUE_MS/60000,globalConcurrency:1},
+        sectionHeads:{catalogVersion:SECTION_HEAD_CATALOG_VERSION,total:DEPARTMENT_SECTIONS.length,appointed:(sectionReceipt?.value as Record<string,unknown>|undefined)?.catalogVersion===SECTION_HEAD_CATALOG_VERSION,initialized:DEPARTMENT_SECTIONS.filter(section=>controls.some(control=>control.key===section.agentKey)).length,newIdentities:80,reusedIdentities:3},
         items:this.agents.list().map(agent=>{const control=controls.find(c=>c.key===agent.key),counts=measured?{
           running:groups.find(g=>g.agentKey===agent.key&&g.state==='RUNNING')?._count._all||0,
           queued:groups.find(g=>g.agentKey===agent.key&&g.state==='QUEUED')?._count._all||0,
           failed:groups.filter(g=>g.agentKey===agent.key&&['FAILED','INTERRUPTED'].includes(g.state)).reduce((sum,g)=>sum+g._count._all,0),
           overdue:overdue.find(g=>g.agentKey===agent.key)?._count._all||0}:null;
-          return{...agent,reportingRole:directorDepartment(agent.key)?'DEPARTMENT_DIRECTOR':agent.key==='EXECUTIVE'?'EXECUTIVE_SECRETARY':isGovernanceAgent(agent.key)?'GOVERNANCE_REVIEWER':'SPECIALIST',performance:performanceView(historical.find(row=>row.agentKey===agent.key)),departmentCode:AGENT_DEPARTMENTS[agent.key],departmentName:STAFFING_DEPARTMENTS.find(d=>d.code===AGENT_DEPARTMENTS[agent.key])?.nameAr,state:control?.state||'UNINITIALIZED',revision:control?.revision||null,workload:workload(counts),counts,canEnable:Boolean(control&&available&&control.state==='PAUSED'),canPause:control?.state==='ENABLED'};
+          return{...agent,...agentHierarchy(agent.key),performance:performanceView(historical.find(row=>row.agentKey===agent.key)),departmentCode:AGENT_DEPARTMENTS[agent.key],departmentName:STAFFING_DEPARTMENTS.find(d=>d.code===AGENT_DEPARTMENTS[agent.key])?.nameAr,state:control?.state||'UNINITIALIZED',revision:control?.revision||null,workload:workload(counts),counts,canEnable:Boolean(control&&available&&control.state==='PAUSED'),canPause:control?.state==='ENABLED'};
         })};
     });
   }

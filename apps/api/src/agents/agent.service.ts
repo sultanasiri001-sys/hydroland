@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { AgentAction, AgentDescriptor, AgentKey, AgentPlan, SupportedLanguage } from './agent.types';
+import { DEPARTMENT_SECTIONS, isReusedSectionHead, sectionHeadFor } from './department-sections';
 
 const prohibited=[
   'OVERRIDE_SAFETY_DECISION',
@@ -14,7 +15,7 @@ const prohibited=[
 
 const reviewActions:readonly AgentAction[]=['READ_OPERATIONS','DRAFT_REPORT','REQUEST_HUMAN_APPROVAL'];
 
-const agents:readonly AgentDescriptor[]=[
+const existingAgents:readonly AgentDescriptor[]=[
   {key:'HR_DIRECTOR',nameAr:'مدير الموارد البشرية',nameEn:'Human Resources director',allowedActions:reviewActions,forbiddenActions:prohibited},
   {key:'TRAINING_DIRECTOR',nameAr:'مدير التدريب',nameEn:'Training director',allowedActions:reviewActions,forbiddenActions:prohibited},
   {key:'MARINE_DIRECTOR',nameAr:'مدير الرحلات والعمليات البحرية',nameEn:'Marine Operations director',allowedActions:reviewActions,forbiddenActions:prohibited},
@@ -39,6 +40,17 @@ const agents:readonly AgentDescriptor[]=[
   {key:'GOV_COMPLIANCE_POLICY',nameAr:'وكيل الامتثال والسياسات',nameEn:'Governance compliance and policy agent',allowedActions:reviewActions,forbiddenActions:prohibited},
   {key:'GOV_VERIFICATION',nameAr:'وكيل التحقق والاختبارات',nameEn:'Governance verification and testing agent',allowedActions:reviewActions,forbiddenActions:prohibited},
   {key:'GOV_FINAL_GATE',nameAr:'وكيل بوابة الاعتماد النهائي',nameEn:'Governance final approval gate agent',allowedActions:reviewActions,forbiddenActions:prohibited},
+];
+
+const agents:readonly AgentDescriptor[]=[
+  ...existingAgents.map(agent=>{
+    const section=sectionHeadFor(agent.key);
+    return section?{...agent,nameAr:agent.key==='EXECUTIVE'?'عبدالله — رئيس قسم '+section.nameAr:'رئيس قسم '+section.nameAr,allowedActions:[...new Set([...agent.allowedActions,...reviewActions])]}:agent;
+  }),
+  ...DEPARTMENT_SECTIONS.filter(section=>!isReusedSectionHead(section.agentKey)).map(section=>({
+    key:section.agentKey,nameAr:'رئيس قسم '+section.nameAr,nameEn:'Section head: '+section.code,
+    allowedActions:reviewActions,forbiddenActions:prohibited,
+  })),
 ];
 
 @Injectable()

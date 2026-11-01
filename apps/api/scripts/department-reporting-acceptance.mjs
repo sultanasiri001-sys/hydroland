@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
 
 // Called only from the existing isolated, CI-only, loopback HTTP/PG fixture.
-export async function departmentReportingAcceptance({db,service,actor,ordinary,token,otherToken,call,setModelText,payloads,providerCalls}){
+export async function departmentReportingAcceptance({db,service,runtime,actor,ordinary,token,otherToken,call,setModelText,payloads,providerCalls}){
  assert.equal(process.env.CI,'true');assert.equal(process.env.NODE_ENV,'test');
  assert(['127.0.0.1','localhost','[::1]'].includes(new URL(process.env.DATABASE_URL).hostname));
  const require=createRequire(import.meta.url);
@@ -21,6 +21,8 @@ export async function departmentReportingAcceptance({db,service,actor,ordinary,t
   await db.aiAgentRuntime.updateMany({where:{lastAdminAccountId:actor.id},data:{state:'ENABLED'}});
   const {departmentSourceAcceptance}=await import('./department-source-acceptance.mjs');
   sourceCase=await departmentSourceAcceptance({db,organization,actor,ordinary,token,otherToken,call,providerCalls});
+  const {sectionHeadAppointmentAcceptance}=await import('./section-head-appointment-acceptance.mjs');
+  await sectionHeadAppointmentAcceptance({db,service,runtime,actor,token,otherToken,call,providerCalls});
   // Queued V2/V3 empty profiles and V4 store-only inventory keep their original meanings.
   const legacyCases=[];for(const [legacyVersion,legacyAgent] of [[2,'INVENTORY'],[3,'MARKETING'],[4,'INVENTORY']]){
   const legacy=await db.aiAgentTask.create({data:{agentKey:legacyAgent,requestedByAccountId:actor.id,requestKey:randomUUID(),fingerprint:`department-source:v${legacyVersion}:`+randomUUID(),action:'READ_OPERATIONS',language:'ar-SA',prompt:'Isolated legacy v2 inventory source'}});
@@ -79,6 +81,8 @@ export async function departmentReportingAcceptance({db,service,actor,ordinary,t
   console.log('Department reporting HTTP/PostgreSQL PASS: 14 directors → linked office reviews including a correction → verified Abdullah context → stale outbox isolated → one concurrent-safe owner-only email; no approval or real provider delivery.');
   console.log('Department sources HTTP/PostgreSQL PASS: 14 isolated v6 packets, 14 operational count adapters, warehouse-location, campaign-draft, store-goods and marine-only subsets, explicit remaining registry gaps, queued and historical v2/v3/v4 compatibility, owner/role/deactivation guards, foreign and inconsistent relation exclusion, scalar-only privacy, read-only preview, immutable historical source across a live change and all 14 director-to-office inputs. All model traffic was loopback.');
  }finally{
+  await db.operationalSetting.deleteMany({where:{key:'AI_SECTION_HEAD_APPOINTMENTS:v1'}});
+  await db.auditEvent.deleteMany({where:{action:'AI_SECTION_HEADS_APPOINTED',resourceId:'AI_SECTION_HEAD_APPOINTMENTS:v1'}});
   setModelText(null);
   const notifications=await db.notification.findMany({where:{accountId:actor.id,type:'EXECUTIVE_GOVERNANCE_REPORT'},select:{id:true}});
   await db.auditEvent.deleteMany({where:{OR:[{resource:'DepartmentReport',resourceId:requestId},{resource:'Notification',resourceId:{in:notifications.map(n=>n.id)}}]}});
