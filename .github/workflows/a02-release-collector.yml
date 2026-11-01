@@ -40,7 +40,9 @@ jobs:
       contents: read
       actions: read
     runs-on: ubuntu-24.04
-    timeout-minutes: 4
+    # Wait for a quiet main-push run set before the single strict collection.
+    # Web validation can take 35 minutes. No failed collection is retried.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
         with:
