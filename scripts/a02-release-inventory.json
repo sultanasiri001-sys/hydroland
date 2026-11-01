@@ -30,7 +30,12 @@
         "path": ".github/workflows/api-validation.yml",
         "jobs": [
           "build"
-        ]
+        ],
+        "criticalSteps": {
+          "build": [
+            "A03 bounded recovery evidence contracts"
+          ]
+        }
       },
       {
         "workflowId": 397563419,
@@ -253,6 +258,11 @@
       "path": ".github/workflows/a02-release-evidence-contract.yml",
       "disposition": "required",
       "reason": "Proposed unfiltered main-push Web/API gate; see required policy and release-channel rationale."
+    },
+    {
+      "path": ".github/workflows/a03-recovery-evidence.yml",
+      "disposition": "aggregate-covered",
+      "reason": "Credential-free bounded recovery operator contracts also run unconditionally in required API validation. The focused workflow is retained; neither job executes a provider restore or proves live object/PITR/owner acceptance."
     },
     {
       "path": ".github/workflows/admin-documents-entry-validation.yml",

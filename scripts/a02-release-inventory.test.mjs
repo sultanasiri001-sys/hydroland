@@ -100,8 +100,21 @@ for (const rule of inventory.policy.required.filter(r => r.criticalSteps)) {
       assert.equal(evaluate(e).status,'BLOCKED');
     });
     for (const key of ['if','continue-on-error']) test(`source rejects optional critical step: ${rule.path} / ${key}`, () => {
-      const w=copy(sources); w[rule.path].jobs.validate.steps.find(s=>s.name===names[0])[key]=true;
+      const w=copy(sources); const job=Object.entries(w[rule.path].jobs).find(([id,value])=>expandedJobNames({jobs:{[id]:value}}).includes(jobName))?.[1]; job.steps.find(s=>s.name===names[0])[key]=true;
       assert.equal(validateReleaseInventory(inventory,w).status,'BLOCKED');
     });
   }
 }
+
+test('A03 focused guards are covered by the mandatory API critical step',()=>{
+  const focus=inventory.workflows.find(w=>w.path==='.github/workflows/a03-recovery-evidence.yml');
+  assert.equal(focus?.disposition,'aggregate-covered');
+  const path='.github/workflows/api-validation.yml';
+  const rule=inventory.policy.required.find(r=>r.path===path);
+  assert(rule.criticalSteps.build.includes('A03 bounded recovery evidence contracts'));
+  const step=sources[path].jobs.build.steps.find(s=>s.name==='A03 bounded recovery evidence contracts');
+  assert.equal(step.run,'node --test apps/api/scripts/a03-recovery-evidence.test.mjs apps/api/scripts/a03-object-readback.transport.test.mjs');
+  const changed=copy(sources);
+  changed[path].jobs.build.steps=changed[path].jobs.build.steps.filter(s=>s.name!==step.name);
+  assert(validateReleaseInventory(inventory,changed).errors.some(e=>e.path===path&&e.code==='MISSING_OR_DUPLICATE_CRITICAL_SOURCE_STEP'));
+});
