@@ -52,10 +52,14 @@ test('orchestration preserves recovery receipt, cleans after failure, and record
   try{
    const original=join(dir,'recovery-drill-report.json');writeFileSync(original,'{"status":"PASS","sentinel":"untouched"}');
    const before=readFileSync(original,'utf8'),configPath=join(dir,'config.json');
-   writeFileSync(configPath,JSON.stringify({networkName:'a02-rehearsal-test',runtimeImageId:'sha256:'+'a'.repeat(64)}));
+   const artifacts=[{sha:'b'.repeat(40),root:'/synthetic/prior'},{sha:'c'.repeat(40),root:'/synthetic/candidate'}];
+   writeFileSync(configPath,JSON.stringify({networkName:'a02-rehearsal-test',runtimeImageId:'sha256:'+'a'.repeat(64),artifacts}));
    let cleaned=0;
    const execution=orchestrate({configPath,evidenceDir:dir},{runChild:async(args,env)=>{
     assert(!('HOME' in env));assert(!('NODE_OPTIONS' in env));
+    const input=JSON.parse(readFileSync(args[1]));
+    assert.deepEqual(input.artifactShas,artifacts.map(artifact=>artifact.sha));
+    assert.deepEqual(input.artifacts,artifacts);
     writeFileSync(join(dirname(args[1]),'application-version-switch-report.json'),JSON.stringify(receipt));
     if(fail)throw Object.assign(Error('watchdog'),{unsafeToCleanup:fail==='unsafe'});
    },docker:args=>{assert.equal(args[0],'ps');cleaned++;return '';}});

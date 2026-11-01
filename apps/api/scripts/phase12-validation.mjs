@@ -8,7 +8,3 @@ execFileSync(process.execPath, ['--test', fileURLToPath(new URL('./health-releas
   stdio: 'inherit',
   timeout: 60_000,
 });
-execFileSync(process.execPath, [fileURLToPath(new URL('./compliance-transaction-validation.cjs', import.meta.url))], {
-  stdio: 'inherit',
-  timeout: 60_000,
-});

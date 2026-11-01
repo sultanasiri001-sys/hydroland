@@ -27,8 +27,9 @@ reviewed synthetic isolation/owned-cleanup safeguards.
 - Marketing, native form-source and warehouse acceptance now also run on every
   `main` push. The evidence validator rejects an omitted workflow or skipped
   critical step.
-- The existing compliance transaction harness is invoked by Phase 12 API
-  validation. It cannot remain an unexecuted file beside the product code.
+- The existing compliance transaction harness runs immediately after API build
+  in API validation and the release candidate gate. It cannot run before its
+  compiled service inputs exist or remain an unexecuted file beside the code.
 - Navigation unit checks run in the standard web test command. The browser
   regression runs at both 1280×900 and 390×844.
 - Recovery CI explicitly selects the deployed safety-compatible prior source
@@ -65,6 +66,16 @@ connected repository app. Required branch protection is therefore still an
 explicit unresolved control; the Render change does not prove it exists.
 
 ## Closure requirements retained
+
+The first combined CI attempt passed 25 of 29 workflows. API/RC exposed the
+compiled compliance harness being invoked before build; the invocation is now
+after build. The live collector exposed a one-second difference between run and
+attempt creation timestamps. Each endpoint retains its independent, stable and
+bounded timestamps; immutable identity comparisons and race rejection remain.
+The version switch exposed historical SHA guards inside the helper after the
+coordinator selected the new pair. The explicit immutable pair now propagates
+through the orchestrator, cleanup and runtime guards. Its old default pair is
+preserved for characterization. These fixes require fresh exact-head CI.
 
 Full register closure still needs the candidate's own CI, bounded deployment and
 health evidence, source applicability and independent approvals where required,

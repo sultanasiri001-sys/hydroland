@@ -12,6 +12,12 @@ import {isDeepStrictEqual} from 'node:util';
 export const PRIOR = '4f0b6ac663baeb814523d572def8c4cb8d754fbb';
 export const CANDIDATE = 'a3d5ad1d73dad0cd81c0194031a2e1ed57e4038d';
 export const SEQUENCE = Object.freeze([PRIOR, CANDIDATE, PRIOR, CANDIDATE]);
+export function validateArtifactPair(shas=[PRIOR,CANDIDATE]) {
+  assert(Array.isArray(shas)&&shas.length===2,'Select exactly two immutable artifacts');
+  assert(shas.every(sha=>typeof sha==='string'&&/^[a-f0-9]{40}$/.test(sha)),'Artifact SHA required');
+  assert.notEqual(shas[0],shas[1],'Version switch requires distinct artifacts');
+  return [...shas];
+}
 export const LIMITS = Object.freeze({ready:60_000, http:5_000, shutdown:10_000, overall:600_000});
 const SOURCE = 'hydroland_rehearsal_source';
 const TARGET = 'hydroland_rehearsal_restore_2';
@@ -101,8 +107,8 @@ export function verifyApplicationContainer(container,{networkName,networkId,runL
 
 // Only disposable checkouts directly inside the explicitly supplied workspace.
 // Never sweep all ignored files or follow a symlinked parent during deletion.
-export async function cleanOwnedBuildOutputs(root,workspace,sha) {
-  assert([PRIOR,CANDIDATE].includes(sha));
+export async function cleanOwnedBuildOutputs(root,workspace,sha,artifactShas) {
+  assert(validateArtifactPair(artifactShas).includes(sha));
   const base=await realpath(workspace),actual=await realpath(root);
   assert.equal(actual,join(base,sha),'Require a dedicated SHA-named artifact checkout');
   for(const parent of ['apps','apps/api','apps/web'])assert.equal(await realpath(join(actual,parent)),join(actual,parent));
@@ -152,8 +158,8 @@ export function validateBoundary(env, report, inspection) {
 }
 
 // Never inherit provider credentials, NODE_OPTIONS, npm hooks or sessionless access.
-export function runtimeEnvironment({databaseUrl, commit, secret, port, path}) {
-  assert(SEQUENCE.includes(commit));
+export function runtimeEnvironment({databaseUrl, commit, secret, port, path, artifactShas}) {
+  assert(validateArtifactPair(artifactShas).includes(commit));
   assert.equal(new URL(databaseUrl).pathname, '/' + TARGET);
   assert.equal(new URL(databaseUrl).hostname, CONTAINER);
   assert.equal(new URL(databaseUrl).protocol, 'postgresql:');
@@ -199,14 +205,14 @@ async function outputDigest(root) {
  * recoveryReport: completed A03 report (never mutated by this helper).
  * Artifacts are built here from their verified sources, not trusted from labels.
  */
-export async function applicationVersionSwitchRehearsal({artifacts,artifactWorkspace,recoveryReport,evidenceDir,networkName,runtimeImageId}) {
+export async function applicationVersionSwitchRehearsal({artifacts,artifactShas,artifactWorkspace,recoveryReport,evidenceDir,networkName,runtimeImageId}) {
   const started = Date.now(), deadline = started + LIMITS.overall;
   const owned = new Set(),mountSets=new Map(); let db, sourceBefore, untouchedBefore, failure, targetUrl,networkId;
   const runLabel=randomUUID();
   const report = {scope:'SYNTHETIC_APPLICATION_SWITCH', status:'RUNNING',runLabel,
     productionRollbackVerified:false, providerPitrVerified:false, workerProcessingVerified:false,
     limitsMs:LIMITS, phases:[], artifacts:[], checks:[], shutdowns:[],
-    expectedDifference:'Prior predates PR533 calendar NOT_READY correction. Calendar equivalence is NOT asserted; this is never approval to roll production back.',
+    expectedDifference:'Exact selected prior/candidate pair; calendar equivalence is NOT asserted. This synthetic result never approves production rollback.',
     workers:{ai:'manual test mode', email:'disabled integration', crew:'active; lease writes allowed; no pending crew fixture', clearance:'active; lease writes allowed; only DRAFT trips'},
     queueScope:'Synthetic persistence sentinels; not valid governance routing/processing or model execution proof'};
   const writer=createReceiptWriter(join(evidenceDir,'application-version-switch-report.json'));
@@ -325,8 +331,10 @@ export async function applicationVersionSwitchRehearsal({artifacts,artifactWorks
     assert.equal(Object.keys(image.Config.Volumes||{}).length,0,'No implicit image volumes');
     assert((image.Config.Env||[]).every(x=>['PATH','NODE_VERSION','YARN_VERSION','NODE_ENV'].includes(x.split('=')[0])),'Runtime image must not contain provider configuration');
     report.isolation={networkName,networkId,runtimeImageId,publishedApplicationPorts:false,applicationHostListenerCreated:false,databaseAccess:'owned-loopback-relay'};
+    const selectedPair=validateArtifactPair(artifactShas);
+    report.artifactShas=selectedPair;
     assert.equal(artifacts.length,2);
-    assert.deepEqual(artifacts.map(x=>x.sha),[PRIOR,CANDIDATE]);
+    assert.deepEqual(artifacts.map(x=>x.sha),selectedPair);
     assert.equal(Number(process.versions.node.split('.')[0]),22);
     sourceBefore=snapshot(SOURCE); untouchedBefore=snapshot(UNTOUCHED);
     const originalTarget=snapshot(TARGET), receipt=recoveryReport.targets.find(x=>x.name===TARGET);
@@ -350,7 +358,7 @@ export async function applicationVersionSwitchRehearsal({artifacts,artifactWorks
       assert(worker.includes("process.env.NODE_ENV==='test'&&process.env.HYDROLAND_AI_TEST_MANUAL_WORKER==='1'"),'Required AI pause guard missing');
       const require=createRequire(join(root,'apps/api/package.json'));
       const buildEnv={PATH:process.env.PATH,HOME:process.env.HOME,CI:'true',DATABASE_URL:targetUrl};
-      const removedOutputs=await bounded(()=>cleanOwnedBuildOutputs(root,artifactWorkspace,artifact.sha),remaining(5000),'owned build cleanup');
+      const removedOutputs=await bounded(()=>cleanOwnedBuildOutputs(root,artifactWorkspace,artifact.sha,selectedPair),remaining(5000),'owned build cleanup');
       command(process.execPath,[require.resolve('@nestjs/cli/bin/nest.js'),'build'],{cwd:join(root,'apps/api'),env:buildEnv});
       command(process.execPath,[join(root,'apps/web/scripts/build.mjs')],{cwd:root,env:buildEnv});
       // Never expose .git/config checkout credentials, .env files or arbitrary
@@ -391,10 +399,10 @@ export async function applicationVersionSwitchRehearsal({artifacts,artifactWorks
     let expected=targetSnapshot(),previousLeases=[]; const secret=randomUUID()+randomUUID();
     const token=session=>{const now=Math.floor(Date.now()/1000),enc=x=>Buffer.from(JSON.stringify(x)).toString('base64url'),body=enc({alg:'HS256',typ:'JWT'})+'.'+enc({sub:account.id,sid:session.id,iat:now,exp:now+900});return body+'.'+createHmac('sha256',secret).update(body).digest('base64url');};
     const valid=token(sessions[0]),revoke=token(sessions[1]);
-    for (const [index,sha] of SEQUENCE.entries()) {
+    for (const [index,sha] of [...selectedPair,...selectedPair].entries()) {
       const artifact=artifacts.find(x=>x.sha===sha),root=await realpath(artifact.root),phaseStart=Date.now();
       const containerUrl=new URL(targetUrl);containerUrl.hostname=CONTAINER;
-      const env=runtimeEnvironment({databaseUrl:containerUrl.href,commit:sha,secret,port:3197,path:'/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'});
+      const env=runtimeEnvironment({databaseUrl:containerUrl.href,commit:sha,secret,port:3197,path:'/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',artifactShas:selectedPair});
       const api=launch(root,['apps/api/dist/main.js'],env,'api',index);
       // Run the real static server CLI too; its all-interface listener is scoped
       // to its isolated namespace, with no host port publication.

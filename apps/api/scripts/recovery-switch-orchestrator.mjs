@@ -82,7 +82,7 @@ export async function orchestrate({configPath,evidenceDir},deps={}) {
   const result={status:'FAIL',scope:'SYNTHETIC_SWITCH_ORCHESTRATION',originalReceiptSha256:before,productionRollbackVerified:false,providerPitrVerified:false};
   save(receiptPath,result);
   const input=join(output,'input.json');
-  save(input,{artifacts:config.artifacts,artifactWorkspace:config.artifactWorkspace,networkName:config.networkName,runtimeImageId:config.runtimeImageId,recoveryReport,evidenceDir:output});
+  save(input,{artifacts:config.artifacts,artifactShas:config.artifacts.map(artifact=>artifact.sha),artifactWorkspace:config.artifactWorkspace,networkName:config.networkName,runtimeImageId:config.runtimeImageId,recoveryReport,evidenceDir:output});
   const env={PATH:process.env.PATH,CI:'true',NODE_ENV:'test',RECOVERY_REHEARSAL_CONFIRM:'DISPOSABLE_LOCAL_ONLY',DATABASE_URL:'postgresql://hydroland:hydroland@127.0.0.1:5432/hydroland_rehearsal_source?schema=public'};
   let failed=false,unsafeToCleanup=false;
   try{

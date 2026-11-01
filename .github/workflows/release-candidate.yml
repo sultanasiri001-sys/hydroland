@@ -35,3 +35,5 @@ jobs:
         run: npm run typecheck --workspace=@hydroland/api --workspace=@hydroland/web --if-present
       - name: Build web/API release
         run: npm run build --workspace=@hydroland/api --workspace=@hydroland/web --if-present
+      - name: Transaction-bound boat and trip compliance contracts
+        run: node apps/api/scripts/compliance-transaction-validation.cjs

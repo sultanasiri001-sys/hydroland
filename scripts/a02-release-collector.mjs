@@ -187,13 +187,15 @@ export async function collectReleaseEvidence(policyInput, expectedSha, {read, no
       } else {
         // Run and attempt records have independent metadata update timestamps.
         // Pin each endpoint separately; never use an attempt timestamp to freshen a run.
-        const {updated_at: attemptUpdatedAt, ...attemptIdentity} = observed;
-        const {updated_at: runUpdatedAt, ...runIdentity} = run;
-        const updated = Date.parse(attemptUpdatedAt);
+        const {created_at: attemptCreatedAt, updated_at: attemptUpdatedAt, ...attemptIdentity} = observed;
+        const {created_at: runCreatedAt, updated_at: runUpdatedAt, ...runIdentity} = run;
+        const created = Date.parse(attemptCreatedAt), updated = Date.parse(attemptUpdatedAt);
+        const timestamp = value => typeof value === 'string'
+          && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value);
         requireThat(isDeepStrictEqual(attemptIdentity, runIdentity)
-          && typeof attemptUpdatedAt === 'string'
-          && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(attemptUpdatedAt)
-          && Number.isFinite(updated) && updated >= Date.parse(run.created_at) && updated <= clock(), 'RUN_CHANGED');
+          && timestamp(attemptCreatedAt) && timestamp(attemptUpdatedAt)
+          && Number.isFinite(created) && Number.isFinite(updated)
+          && created >= Date.parse(runCreatedAt) && updated >= created && updated <= clock(), 'RUN_CHANGED');
         attemptViews.set(run.id, observed);
       }
     };

@@ -22,7 +22,7 @@ async function exercise(change = () => {}) {
     if (url.pathname.endsWith('/jobs')) return {total_count: 1, jobs: page === 1 ? [{id: 4, run_id: 3, head_sha: SHA,
       name: 'build', status: 'completed', conclusion: 'success', started_at: '2026-10-28T17:01:00Z', completed_at: '2026-10-28T17:09:00Z'}] : []};
     const body = structuredClone(run), attempt = path.endsWith('/attempts/1');
-    if (attempt) {attempts++; body.updated_at = '2026-10-28T17:10:01Z';} else current++;
+    if (attempt) {attempts++; body.created_at = '2026-10-28T17:00:01Z'; body.updated_at = '2026-10-28T17:10:01Z';} else current++;
     change({body, attempt, attempts, current}); return body;
   }});
   return {result, attempts};
@@ -31,6 +31,7 @@ test('independent stable run/attempt timestamps pass with three attempt reads', 
   const {result, attempts} = await exercise();
   assert.equal(result.collection.status, 'COMPLETE'); assert.equal(result.evaluation.status, 'PASS');
   assert.equal(attempts, 3); assert.equal(result.snapshot.workflow_runs[0].updated_at, '2026-10-28T17:10:00Z');
+  assert.equal(result.snapshot.workflow_runs[0].created_at, '2026-10-28T17:00:00Z');
 });
 for (const [label, change] of [
   ['attempt update during jobs', ({body, attempt, attempts}) => {if (attempt && attempts === 2) body.updated_at = '2026-10-28T17:10:02Z';}],
@@ -38,6 +39,11 @@ for (const [label, change] of [
   ['current run update is not relaxed', ({body, attempt, current}) => {if (!attempt && current === 2) body.updated_at = '2026-10-28T17:10:01Z';}],
   ['future attempt clock', ({body, attempt}) => {if (attempt) body.updated_at = '2026-10-29T17:10:00Z';}],
   ['malformed attempt timestamp', ({body, attempt}) => {if (attempt) body.updated_at = 'SECRET_NOT_A_DATE';}],
+  ['attempt creation changes during jobs', ({body, attempt, attempts}) => {if (attempt && attempts === 2) body.created_at = '2026-10-28T17:00:02Z';}],
+  ['attempt creation precedes original run', ({body, attempt}) => {if (attempt) body.created_at = '2026-10-28T16:59:59Z';}],
+  ['attempt update precedes its creation', ({body, attempt}) => {if (attempt) body.created_at = '2026-10-28T17:11:00Z';}],
+  ['invalid attempt creation', ({body, attempt}) => {if (attempt) body.created_at = 'SECRET_NOT_A_DATE';}],
+  ['changed attempt identity', ({body, attempt}) => {if (attempt) body.head_sha = 'b'.repeat(40);}],
 ]) test(`independent endpoint pinning blocks ${label}`, async () => {
   const {result} = await exercise(change);
   assert.equal(result.collection.status, 'BLOCKED'); assert.equal(result.snapshot, null);

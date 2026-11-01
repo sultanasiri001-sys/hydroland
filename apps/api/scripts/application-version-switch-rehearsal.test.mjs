@@ -4,7 +4,7 @@ import {mkdtemp,mkdir,writeFile,readFile,symlink,rm,lstat} from 'node:fs/promise
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {readFileSync,renameSync} from 'node:fs';
-import {validateBoundary,runtimeEnvironment,verifyNetworkBoundary,verifyApplicationContainer,cleanOwnedBuildOutputs,finishWithReceipt,createReceiptWriter,bounded,assertPreserved,normalizedTargetContents,PRIOR,CANDIDATE,SEQUENCE,LIMITS} from './application-version-switch-rehearsal.mjs';
+import {validateBoundary,validateArtifactPair,runtimeEnvironment,verifyNetworkBoundary,verifyApplicationContainer,cleanOwnedBuildOutputs,finishWithReceipt,createReceiptWriter,bounded,assertPreserved,normalizedTargetContents,PRIOR,CANDIDATE,SEQUENCE,LIMITS} from './application-version-switch-rehearsal.mjs';
 
 test('scheduler lease filtering preserves table identity despite raw snapshot reordering',()=>{
   const account={table_name:'Account',row_count:2,content_digest:'account-bytes'};
@@ -98,6 +98,16 @@ test('child environment is a strict allowlist; AI flag does not claim scheduler 
   assert.deepEqual(Object.keys(env).sort(),['CI','DATABASE_URL','HYDROLAND_AI_TEST_MANUAL_WORKER','HYDROLAND_INTEGRATION_EMAIL_STATUS','JWT_SECRET','NODE_ENV','PATH','PORT','RENDER_GIT_COMMIT','TZ','WEB_ORIGIN'].sort());
   assert.equal(env.HYDROLAND_AI_TEST_MANUAL_WORKER,'1');assert.equal(env.HYDROLAND_INTEGRATION_EMAIL_STATUS,'DISABLED');
   for(const database of [databaseUrl.replace('restore_2','restore_1'),databaseUrl.replace('phase11-postgres','remote.invalid')])assert.throws(()=>runtimeEnvironment({databaseUrl:database,commit:CANDIDATE}));
+});
+
+test('selected current pair reaches runtime without admitting a third artifact or mutable ref',()=>{
+  const artifactShas=['b'.repeat(40),'c'.repeat(40)];
+  assert.deepEqual(validateArtifactPair(artifactShas),artifactShas);
+  const databaseUrl=validate(fixture()).replace('127.0.0.1','phase11-postgres');
+  const input={databaseUrl,commit:artifactShas[1],artifactShas,secret:'synthetic',port:3197,path:'/synthetic/bin'};
+  assert.equal(runtimeEnvironment(input).RENDER_GIT_COMMIT,artifactShas[1]);
+  assert.throws(()=>runtimeEnvironment({...input,commit:PRIOR}));
+  for(const pair of [[],[PRIOR],[PRIOR,PRIOR],[PRIOR,'main'],[PRIOR,CANDIDATE,'d'.repeat(40)]])assert.throws(()=>validateArtifactPair(pair));
 });
 
 test('network guard rejects external bridges, dual-homed DB and unknown peers',()=>{
