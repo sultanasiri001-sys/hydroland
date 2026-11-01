@@ -1,0 +1,101 @@
+{
+  "scope": "A03_READ_ONLY_INVENTORY",
+  "status": "PARTIAL",
+  "observedAtUtc": "2026-10-28T17:23:14.250Z",
+  "observationWindowUtc": {
+    "from": "2026-10-28T17:19:18.495Z",
+    "through": "2026-10-28T17:23:14.251Z"
+  },
+  "access": "Connected Render read-only SQL and resource metadata; workspace selected by the user",
+  "production": {
+    "resourceId": "dpg-dakd8g5g1s2s73bu70bg-a",
+    "database": "hydroland",
+    "serverVersion": "18.6 (Debian 18.6-1.pgdg12+2)",
+    "readOnlyTransaction": true,
+    "publicTables": 130,
+    "publicColumns": 1376,
+    "migrationHistoryRecords": 118,
+    "successfulHistoryRecords": 92,
+    "unfinishedNonRolledBackRecords": 0
+  },
+  "existingRecovery": {
+    "resourceId": "dpg-db7v3mks728c739pb05g-a",
+    "database": "hydroland_32rz",
+    "serverVersion": "18.6 (Debian 18.6-1.pgdg12+2)",
+    "readOnlyTransaction": true,
+    "publicTablesInOriginalDatabase": 118,
+    "previousVerifiedLogicalTargetsPresent": 2,
+    "previousLogicalTargetsRevalidated": false
+  },
+  "externalReferences": {
+    "credentialDocuments": {
+      "records": 2,
+      "expectedNamespaceRecords": 2,
+      "validSha256Records": 2,
+      "totalBytes": 6069866,
+      "latestRecordCreatedAtUtc": "2026-10-22T14:46:04.065Z"
+    },
+    "marineAssetDocuments": {
+      "records": 1,
+      "attachedExternalReferences": 0
+    },
+    "briefingMedia": {
+      "records": 0,
+      "attachedExternalReferences": 0
+    },
+    "organizationDocumentAssets": {
+      "storageModel": "Database bytea; not an external bucket reference",
+      "currentBytesRead": false
+    }
+  },
+  "historicalEvidence": {
+    "path": "docs/evidence/native-production-archive-restore-2026-10-24.json",
+    "archiveSha256": "4514bac1e5dc6779b81edfb07ab68a49eb5d2b27b8fc07b015154db7afb1c787",
+    "logicalRestorePreviouslyVerified": true,
+    "tablesPerHistoricalTarget": 126,
+    "successfulMigrationsPerHistoricalTarget": 90,
+    "historicalOperatorSeconds": 118.704,
+    "reexecuted": false
+  },
+  "historicalProviderPitr": {
+    "source": "https://github.com/sultanasiri001-sys/hydroland/pull/460",
+    "evidenceType": "Historical execution report, corroborated against the existing resource ID and creation timestamp; original verifier not rerun",
+    "sourceResourceId": "dpg-dakd8g5g1s2s73bu70bg-a",
+    "recoveryResourceId": "dpg-db7v3mks728c739pb05g-a",
+    "selectedPointUtc": "2026-10-14T21:09:43.000Z",
+    "requestCreatedAtUtc": "2026-10-14T21:19:22.806Z",
+    "providerRecoveryCompletedAtUtc": "2026-10-14T21:19:58.873Z",
+    "providerFinalStartupAtUtc": "2026-10-14T21:20:53.695Z",
+    "databaseVerificationCompletedAtUtc": "2026-10-14T21:22:22.279Z",
+    "requestToDatabaseVerifiedSeconds": 179.473,
+    "selectedPointAgeAtRequestSeconds": 579.806,
+    "historicalTablesVerified": 118,
+    "historicalRowsVerified": 648,
+    "historicalMigrationRecordsVerified": 104,
+    "historicalForeignKeysChecked": 195,
+    "ownerReleaseAcceptanceReported": true,
+    "reportedAcceptanceScope": "15 October technical Web/API release only; not numerical RPO/RTO, external-object recovery or overall production recovery",
+    "currentRecoveryWindowObserved": false,
+    "newRestoreExecutedThisTask": false,
+    "fullCurrentProductionAcceptance": false
+  },
+  "providerPitrWindowObserved": false,
+  "providerPitrExecutedThisTask": false,
+  "providerObjectBytesRead": false,
+  "objectVersionRecoveryVerified": false,
+  "ownerAclTransferVerified": false,
+  "rtoObservedSeconds": null,
+  "rpoObservedSeconds": null,
+  "rtoTargetSeconds": null,
+  "rpoTargetSeconds": null,
+  "productionAccepted": false,
+  "productionWrites": 0,
+  "newPaidResources": 0,
+  "unresolved": [
+    "Review the corroborated 15 October PITR execution against current recovery requirements and read the actual current window; request a new scoped restore only if a fresh drill is required and authorized",
+    "Execute version/byte/encryption/private-access verification for the two actual external document references",
+    "Verify application cross-account denial separately from provider anonymous denial",
+    "Review owner and ACL mapping on the recovered target",
+    "Record end-to-end recovery timestamps and separately approved RPO/RTO targets"
+  ]
+}

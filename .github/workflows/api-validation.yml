@@ -40,6 +40,8 @@ jobs:
         run: node apps/api/scripts/production-recovery-history-checks.mjs
       - name: Native archive operator refuses unsafe configuration
         run: python3 -B -m unittest discover -s apps/api/scripts -p 'native_archive_restore_test.py'
+      - name: A03 bounded recovery evidence contracts
+        run: node --test apps/api/scripts/a03-recovery-evidence.test.mjs apps/api/scripts/a03-object-readback.transport.test.mjs
       # Legacy migration history contains pre-production migrations whose original SQL
       # cannot bootstrap a clean database (for example TEXT -> UUID FK drift).
       # Historical files are immutable and production already has repaired/applied state.
