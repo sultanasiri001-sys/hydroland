@@ -16,15 +16,22 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1138.0",
-    "@aws-sdk/s3-request-presigner": "^3.1138.0"
+    "@aws-sdk/s3-request-presigner": "^3.1138.0",
+    "decode-uri-component": "file:packages/decode-uri-component"
   },
   "overrides": {
     "deepmerge-ts": "^8.0.1",
-    "multer": "^2.5.0",
+    "multer": "2.5.0",
     "shell-quote": "1.11.0",
     "source-map-js": "1.2.2",
     "body-parser": "^2.4.0",
-    "fast-uri": "^3.1.9"
+    "fast-uri": "^3.1.9",
+    "@expo/cli": {
+      "zod": "4.6.6"
+    },
+    "query-string": {
+      "decode-uri-component": "file:packages/decode-uri-component"
+    }
   },
   "engines": {
     "node": "22.x"
