@@ -86,6 +86,8 @@ try{
  }
  const {governanceCorrectionAcceptance}=await import('./governance-correction-acceptance.mjs');
  await governanceCorrectionAcceptance({db,service,runtime,audit,provider,actor,token,call,catalog,control,enqueue,setModelText:text=>{modelText=text},payloads,providerCalls:()=>({modelCalls,countCalls})});
+ const {governanceInboxBatchAcceptance}=await import('./governance-inbox-batch-acceptance.mjs');
+ await governanceInboxBatchAcceptance({db,runtimeDb,agents,actor,ordinary,token,call,providerCalls:()=>({modelCalls,countCalls})});
  const {departmentReportingAcceptance}=await import('./department-reporting-acceptance.mjs');
   await departmentReportingAcceptance({db,service,runtime,actor,ordinary,token,otherToken:other,call,setModelText:text=>{modelText=text},payloads,providerCalls:()=>({generation:modelCalls,count:countCalls,metadata:metadataCalls})});
  const {providerRecoveryAcceptance}=await import('./agent-provider-recovery-acceptance.mjs');
