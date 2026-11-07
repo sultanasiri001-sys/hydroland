@@ -290,6 +290,7 @@
         pane.replaceChildren();const close=node('button','إغلاق ربط المصفوفة',pane);close.type='button';close.addEventListener('click',dismiss);
         node('p',view.notice,pane);
         node('p','الضوابط المرتبطة للمراجعة: '+view.controls.filter(c=>c.sourceReviewStatus==='LINKED_FOR_REVIEW').length+' · الروابط المتقادمة: '+view.controls.filter(c=>c.sourceReviewStatus==='STALE').length,pane);
+        if(view.controls.every(c=>typeof c.policyRecordExists==='boolean'))node('p','مفاتيح الكتالوج دون سجل ضبط مستقل: '+view.controls.filter(c=>!c.policyRecordExists).length+'. يحفظ الربط للمراجعة دون إنشاء هذه السجلات أو تغيير التشغيل.',pane);
         const form=node('form',undefined,pane);form.dataset.sourceLinksForm='';
         const sourceLabel=node('label','نسخة مصفوفة التشغيل',form),source=node('select',undefined,sourceLabel);source.setAttribute('aria-label','نسخة مصفوفة التشغيل');source.style.maxWidth='100%';source.style.width='100%';source.style.boxSizing='border-box';
         const empty=node('option','اختر نسخة محفوظة',source);empty.value='';
@@ -405,6 +406,7 @@
           if (!b || b.schemaVersion !== 1 || !Number.isSafeInteger(result.effectivePolicyCount) || !keys.every(k => Number.isSafeInteger(b[k]) && b[k] >= 0 && b[k] <= result.effectivePolicyCount) || b.currentBindings !== b.mandatoryBindings + b.notApplicableBindings || b.currentBindings + b.reviewRequiredBindings + b.unrecordedBindings !== result.effectivePolicyCount || !result.departments.every(d => Array.isArray(d.policies) && d.policies.every(p => ['MANDATORY','NOT_APPLICABLE','REVIEW_REQUIRED','NOT_RECORDED'].includes(p.bindingStatus) && typeof p.legacyReferencesRecorded === 'boolean'))) throw new Error('استجابة حالات ربط المراجع غير مكتملة.');
         }
         if(result.sourceReviewSummary!==undefined){const s=result.sourceReviewSummary;if(!s||s.schemaVersion!==1||!['linkedForReview','staleLinks','unlinked'].every(k=>Number.isSafeInteger(s[k])&&s[k]>=0)||s.linkedForReview+s.staleLinks+s.unlinked!==result.effectivePolicyCount||!result.departments.every(d=>d.policies.every(p=>['UNLINKED','LINKED_FOR_REVIEW','STALE'].includes(p.sourceReviewStatus))))throw new Error('استجابة روابط المصفوفات غير مكتملة.');}
+        if(result.sourceReviewCatalogSummary!==undefined){const s=result.sourceReviewCatalogSummary;if(!s||s.schemaVersion!==1||s.total!==29||!['linkedForReview','staleLinks','unlinked','withoutPolicyRecord'].every(k=>Number.isSafeInteger(s[k])&&s[k]>=0&&s[k]<=29)||s.linkedForReview+s.staleLinks+s.unlinked!==29)throw new Error('استجابة ربط كتالوج التشغيل غير مكتملة.');}
         const templateCodes = result.departments.flatMap(d => d.operatingCycle.templates.map(t => t.code));
         if (!Number.isSafeInteger(result.canonicalSourceTemplateCount) || result.canonicalSourceTemplateCount !== templateCodes.length || new Set(templateCodes).size !== templateCodes.length) throw new Error('استجابة نماذج الإدارات غير مكتملة.');
         data = result; select.replaceChildren();
@@ -413,7 +415,8 @@
         render();
         status.textContent = `وقت القراءة: ${new Date(data.observedAt).toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' })} · إدارات مسجلة: ${data.recordedDepartmentCount} من 14 · نماذج الكتالوج: ${data.canonicalSourceTemplateCount} · الضوابط: ${data.effectivePolicyCount} · ذات مراجع مسجلة: ${data.policiesWithRecordedReferences}. بعض الضوابط مشتركة بين الإدارات. حالة المصادر تعكس تاريخ لقطة السجل.`;
         status.textContent += data.bindingSummary ? ` مراجع بالصيغة السابقة: ${data.bindingSummary.legacyReferences} · سجلات إلزام صالحة: ${data.bindingSummary.mandatoryBindings} · سجلات عدم انطباق صالحة: ${data.bindingSummary.notApplicableBindings} · روابط تحتاج مراجعة: ${data.bindingSummary.reviewRequiredBindings} · بلا ربط بصيغة الإلزام الحالية: ${data.bindingSummary.unrecordedBindings}. صلاحية الربط هي نتيجة فحص السجل عند القراءة، وليست تحققًا من الوثيقة الرسمية.` : ' لم تقس حالة ربط الإلزام في هذه القراءة؛ العداد السابق وحده لا يحددها.';
-        if(data.sourceReviewSummary)status.textContent+=` روابط مصفوفة محفوظة للمراجعة: ${data.sourceReviewSummary.linkedForReview} · روابط متقادمة: ${data.sourceReviewSummary.staleLinks} · بلا ربط مصفوفة: ${data.sourceReviewSummary.unlinked}.`;
+        if(data.sourceReviewSummary)status.textContent+=` سجلات ضبط مخزنة مرتبطة بالمراجعة: ${data.sourceReviewSummary.linkedForReview} · روابط متقادمة: ${data.sourceReviewSummary.staleLinks} · بلا ربط مصفوفة: ${data.sourceReviewSummary.unlinked}.`;
+        if(data.sourceReviewCatalogSummary){const s=data.sourceReviewCatalogSummary;status.textContent+=` كتالوج التشغيل: ${s.linkedForReview} من ${s.total} مرتبط للمراجعة · متقادم: ${s.staleLinks} · بلا ربط: ${s.unlinked} · مفاتيح دون سجل ضبط مستقل: ${s.withoutPolicyRecord}. الربط لا ينشئ سجلات ضبط ولا يغيّر التشغيل.`;}
       } catch (error) {
         if (current(g, session)) { data = null; detail.replaceChildren(); select.replaceChildren(); status.textContent = error.message || 'تعذر تحميل المراجع.'; }
       } finally {

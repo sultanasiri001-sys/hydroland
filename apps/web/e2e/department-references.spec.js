@@ -109,6 +109,14 @@ test('source link in-flight save is single-submit and owner UI fits mobile then 
  await page.evaluate(()=>window.HydrolandAuth.acceptSession({accessToken:'new-admin',refreshToken:'new-admin-refresh'},window.HydrolandAuth.beginAuthAttempt()));state.linkRelease();await expect(page.locator('[data-reference-detail]')).toBeEmpty();expect(state.linkWrites).toBe(1);
 });
 
+test('catalog review links distinguish absent policy rows from stored policy and mandatory counts',async({page})=>{
+ const state=await setup(page);state.data.sourceReviewSummary={schemaVersion:1,linkedForReview:0,staleLinks:0,unlinked:1};
+ for(const d of state.data.departments)for(const p of d.policies)p.sourceReviewStatus='UNLINKED';
+ state.data.sourceReviewCatalogSummary={schemaVersion:1,total:29,linkedForReview:29,staleLinks:0,unlinked:0,withoutPolicyRecord:5};
+ await open(page);await expect(page.locator('[data-reference-status]')).toContainText('كتالوج التشغيل: 29 من 29');await expect(page.locator('[data-reference-status]')).toContainText('دون سجل ضبط مستقل: 5');await expect(page.locator('[data-reference-status]')).toContainText('لا ينشئ سجلات ضبط');
+ state.data.sourceReviewCatalogSummary.linkedForReview=30;await page.locator('[data-reference-refresh]').click();await expect(page.locator('[data-reference-detail]')).toBeEmpty();await expect(page.locator('[data-reference-status]')).not.toContainText('29 من 29');expect(state.writes).toBe(0);
+});
+
 test('department source discovery is lazy, read only and separate from approval', async ({ page }) => {
   const state = await setup(page); await open(page);
   await expect(page.getByLabel('إدارة المراجع').locator('option')).toHaveCount(14);
