@@ -96,7 +96,7 @@ test('source link editing invalidates preview and malformed server plans cannot 
  state.linkTransform=r=>({...r,canActivate:true});await page.locator('[data-source-links-preview]').click();await expect(page.locator('[data-source-links-status]')).toContainText('غير متسقة');await expect(page.locator('[data-source-links-save]')).toBeDisabled();expect(state.linkWrites).toBe(0);
 });
 test('unrelated ADMIN is denied private source links and late owner responses stay hidden after department change',async({page})=>{
- const state=await sourceLinks(page);state.owner=false;await page.locator('[data-source-links-open]').click();await expect(page.locator('[data-source-links-status]')).toContainText('لمالك');await expect(page.locator('[data-source-links-private]')).toBeEmpty();
+ const state=await sourceLinks(page);state.owner=false;await page.locator('[data-source-links-open]').click();await expect(page.locator('[data-source-links-status]')).toHaveText('تفاصيل الربط وحفظه متاحة لمالك الجهة الداخلية المتحقق فقط.');await expect(page.locator('[data-source-links-open]')).toBeEnabled();await expect(page.locator('[data-source-links-private]')).toBeEmpty();
  state.owner=true;state.linkDelay=true;await page.locator('[data-source-links-open]').click();await expect.poll(()=>Boolean(state.linkRelease)).toBe(true);await page.getByLabel('إدارة المراجع').selectOption('FINANCE');state.linkRelease();await expect(page.locator('[data-source-links-private]')).toHaveCount(0);await expect(page.locator('[data-reference-detail]')).not.toContainText('HYD-SYNTHETIC');expect(state.linkWrites).toBe(0);
 });
 for(const failure of ['network','conflict'])test(`source link ${failure} save requires fresh read without replaying old confirmation`,async({page})=>{
