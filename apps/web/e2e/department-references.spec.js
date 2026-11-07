@@ -62,6 +62,53 @@ async function setup(page) {
 const box = page => page.locator('[data-department-references]');
 async function open(page) { await box(page).locator('summary').click(); await expect(page.locator('[data-reference-status]')).toContainText('وقت القراءة'); }
 
+async function sourceLinks(page){
+ const state=await setup(page),linkPolicy='OPERATIONAL_SOURCE_REVIEW_LINK_V1';
+ Object.assign(state,{linkReads:0,linkPreviews:0,linkWrites:0,linkBodies:[],linkDelay:false,linkRelease:null,linkAbort:false,linkStatus:200,linkTransform:null});
+ const source={documentId,version:1,referenceNumber:'HYD-SYNTHETIC-MATRIX-1',status:'DRAFT'};
+ const rows=[{controlId:'BOAT.REGISTRATION',requirement:'<img src=x onerror=alert(1)> synthetic private source',applicability:'draft only',responsibility:'owner',inspection:'check',acceptance:'unaccepted evidence'}];
+ await page.route(/\/admin\/operational-source-links(?:\/preview)?$/,async r=>{
+  const req=r.request();if(req.method()==='GET'){
+   state.linkReads++;if(state.linkDelay)await new Promise(resolve=>{state.linkRelease=resolve;});
+   return json(r,state.owner?{schemaVersion:1,policy:linkPolicy,organizationId,canRecord:true,canActivate:false,notice:'Review trace only',documents:[{id:documentId,...source}],controls:[{controlId:rows[0].controlId,labelAr:'test',sourceReviewStatus:'UNLINKED'}]}:{message:'owner only'},state.owner?200:403);
+  }
+  const body=req.postDataJSON();state.linkBodies.push(body);
+  if(req.url().endsWith('/preview')){state.linkPreviews++;let result={schemaVersion:1,policy:linkPolicy,organizationId,canActivate:false,notice:'Review trace only',source,rows,expectedPlanHash:'b'.repeat(64)};if(state.linkTransform)result=state.linkTransform(result);return json(r,result);}
+  state.linkWrites++;if(state.linkDelay)await new Promise(resolve=>{state.linkRelease=resolve;});if(state.linkAbort)return r.abort('failed');
+  return json(r,state.linkStatus===200?{schemaVersion:1,policy:linkPolicy,reference:'SRL-synthetic',recordedAt:new Date().toISOString(),linkedControlCount:1,source,canActivate:false}:{message:'source changed'},state.linkStatus);
+ });
+ await open(page);await page.getByLabel('إدارة المراجع').selectOption('SAFETY_COMPLIANCE_RISK');return state;
+}
+async function sourceDraft(page){await page.locator('[data-source-links-open]').click();await expect(page.locator('[data-source-links-form]')).toBeVisible();await page.getByLabel('نسخة مصفوفة التشغيل',{exact:true}).selectOption(documentId);await page.getByLabel('سبب ربط المصفوفة',{exact:true}).fill('Synthetic private review reason');}
+async function sourcePreview(page){await page.locator('[data-source-links-preview]').click();await expect(page.locator('[data-source-links-plan]')).toContainText('معاينة فقط');}
+
+test('source link owner lazily previews canonical text and explicitly confirms a non-activating review link',async({page})=>{
+ const state=await sourceLinks(page);expect(state.linkReads).toBe(0);await sourceDraft(page);expect(state.linkReads).toBe(1);expect(state.linkWrites).toBe(0);
+ await expect(page.locator('[data-source-links-save]')).toBeDisabled();await sourcePreview(page);
+ await expect(page.locator('[data-source-links-plan] img')).toHaveCount(0);await expect(page.locator('[data-source-links-plan]')).toContainText('<img src=x');await expect(page.locator('[data-source-links-save]')).toBeDisabled();
+ await page.getByLabel('راجعت ربط هذه النسخة بالضوابط دون اعتماد محتواها أو تفعيل الإلزام',{exact:true}).check();await page.locator('[data-source-links-save]').click();
+ await expect(page.locator('[data-source-links-status]')).toContainText('تم حفظ روابط مراجعة 1');await expect(page.locator('[data-source-links-status]')).toContainText('الإلزام ما زالا');
+ expect(state.linkWrites).toBe(1);expect(state.linkBodies[1]).toEqual({documentId,expectedDocumentVersion:1,reason:'Synthetic private review reason',expectedPlanHash:'b'.repeat(64),confirmed:true});await expect(page.locator('[data-source-links-private]')).toBeEmpty();
+});
+test('source link editing invalidates preview and malformed server plans cannot be confirmed',async({page})=>{
+ const state=await sourceLinks(page);await sourceDraft(page);await sourcePreview(page);await page.getByLabel('راجعت ربط هذه النسخة بالضوابط دون اعتماد محتواها أو تفعيل الإلزام',{exact:true}).check();
+ await page.getByLabel('سبب ربط المصفوفة',{exact:true}).fill('Changed reason after preview');await expect(page.locator('[data-source-links-plan]')).toBeEmpty();await expect(page.locator('[data-source-links-save]')).toBeDisabled();
+ state.linkTransform=r=>({...r,canActivate:true});await page.locator('[data-source-links-preview]').click();await expect(page.locator('[data-source-links-status]')).toContainText('غير متسقة');await expect(page.locator('[data-source-links-save]')).toBeDisabled();expect(state.linkWrites).toBe(0);
+});
+test('unrelated ADMIN is denied private source links and late owner responses stay hidden after department change',async({page})=>{
+ const state=await sourceLinks(page);state.owner=false;await page.locator('[data-source-links-open]').click();await expect(page.locator('[data-source-links-status]')).toContainText('لمالك');await expect(page.locator('[data-source-links-private]')).toBeEmpty();
+ state.owner=true;state.linkDelay=true;await page.locator('[data-source-links-open]').click();await expect.poll(()=>Boolean(state.linkRelease)).toBe(true);await page.getByLabel('إدارة المراجع').selectOption('FINANCE');state.linkRelease();await expect(page.locator('[data-source-links-private]')).toHaveCount(0);await expect(page.locator('[data-reference-detail]')).not.toContainText('HYD-SYNTHETIC');expect(state.linkWrites).toBe(0);
+});
+for(const failure of ['network','conflict'])test(`source link ${failure} save requires fresh read without replaying old confirmation`,async({page})=>{
+ const state=await sourceLinks(page);await sourceDraft(page);await sourcePreview(page);await page.getByLabel('راجعت ربط هذه النسخة بالضوابط دون اعتماد محتواها أو تفعيل الإلزام',{exact:true}).check();
+ state.linkAbort=failure==='network';state.linkStatus=failure==='conflict'?409:200;await page.locator('[data-source-links-save]').click();await expect(page.locator('[data-source-links-status]')).toContainText('أعد القراءة');await expect(page.locator('[data-source-links-private]')).toBeEmpty();expect(state.linkWrites).toBe(1);
+});
+test('source link in-flight save is single-submit and owner UI fits mobile then clears with a new session',async({page})=>{
+ const state=await sourceLinks(page);await page.setViewportSize({width:390,height:844});await sourceDraft(page);await sourcePreview(page);expect(await box(page).evaluate(el=>el.scrollWidth<=el.clientWidth+2)).toBe(true);
+ await page.getByLabel('راجعت ربط هذه النسخة بالضوابط دون اعتماد محتواها أو تفعيل الإلزام',{exact:true}).check();state.linkDelay=true;await page.locator('[data-source-links-save]').click();await expect.poll(()=>state.linkWrites).toBe(1);await expect(page.locator('[data-source-links-save]')).toBeDisabled();
+ await page.evaluate(()=>window.HydrolandAuth.acceptSession({accessToken:'new-admin',refreshToken:'new-admin-refresh'},window.HydrolandAuth.beginAuthAttempt()));state.linkRelease();await expect(page.locator('[data-reference-detail]')).toBeEmpty();expect(state.linkWrites).toBe(1);
+});
+
 test('department source discovery is lazy, read only and separate from approval', async ({ page }) => {
   const state = await setup(page); await open(page);
   await expect(page.getByLabel('إدارة المراجع').locator('option')).toHaveCount(14);
