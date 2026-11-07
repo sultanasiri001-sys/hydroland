@@ -34,7 +34,7 @@ export class EquipmentInspectionService{
 
   async evaluate(resourceIds:string[],tx:Prisma.TransactionClient=this.db):Promise<EquipmentReadiness>{
     const unique=[...new Set(resourceIds.filter(Boolean))];
-    const [inspectionPolicy,expiryPolicy]=await Promise.all([this.policies.decision('EQUIPMENT','INSPECTION_STATUS'),this.policies.decision('EQUIPMENT','SERVICE_EXPIRY')]);
+    const [inspectionPolicy,expiryPolicy]=await Promise.all([this.policies.decision('EQUIPMENT','INSPECTION_STATUS',tx),this.policies.decision('EQUIPMENT','SERVICE_EXPIRY',tx)]);
     if(!unique.length)return{ready:true,blocked:false,reviewRequired:false,issues:[],states:{inspection:inspectionPolicy.state,serviceExpiry:expiryPolicy.state},latest:[]};
     const latest=await tx.$queryRaw<EquipmentInspectionRow[]>`SELECT DISTINCT ON ("resourceId") * FROM "EquipmentInspection" WHERE "resourceId"=ANY(${unique}::text[]) ORDER BY "resourceId","inspectedAt" DESC,"createdAt" DESC`;
     const byResource=new Map<string,EquipmentInspectionRow>(latest.map((row:EquipmentInspectionRow)=>[row.resourceId,row]));const issues:string[]=[];let blocked=false,reviewRequired=false;const now=new Date();

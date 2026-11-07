@@ -32,6 +32,8 @@ try{
  assert.equal((await change('TRAINING.CAPACITY_LIMIT','DISABLED')).status,200);
  const {calendarExplicitBlocksAcceptance}=await import('./calendar-explicit-blocks-http.mjs');
  await calendarExplicitBlocksAcceptance({db,base,admin,reader,token});
+ const {clearanceSnapshotAcceptance}=await import('./clearance-snapshot-acceptance.mjs');
+ await clearanceSnapshotAcceptance({db,base,admin,reader,token});
  const revoked=(await request(admin)).body.find(r=>r.id==='TRAINING.CAPACITY_LIMIT');await db.roleAssignment.delete({where:{id:role.id}});
  assert.equal((await request(admin,'/TRAINING.CAPACITY_LIMIT',{state:'ENABLED',reason:'Revoked role cannot update operational controls',expectedRevision:revoked.revision})).status,403);
  console.log('Operational controls HTTP/PostgreSQL E2E passed: 29 controls, 401/403 guards, concurrent revision conflict, synchronized weather writes, attributed audit, reason validation and revoked role.');

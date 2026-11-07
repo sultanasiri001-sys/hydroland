@@ -166,13 +166,13 @@ export class MarineOperationsService{
    return tx.marineAsset.update({where:{id:marineAssetId},data:{calendarResourceId:resourceId}});
   });
  }
- async readinessForCalendarResource(resourceId:string,tripId?:string,checkedByAccountId?:string){
-  const asset=await this.db.marineAsset.findUnique({where:{calendarResourceId:resourceId},select:{id:true}});
+ async readinessForCalendarResource(resourceId:string,tripId?:string,checkedByAccountId?:string,tx:Prisma.TransactionClient=this.db){
+  const asset=await tx.marineAsset.findUnique({where:{calendarResourceId:resourceId},select:{id:true}});
   if(!asset)return{status:'NOT_READY' as const,reasonCodes:['MARINE_ASSET_NOT_LINKED']};
-  return this.evaluateReadiness(asset.id,tripId,checkedByAccountId);
+  return this.evaluateReadiness(asset.id,tripId,checkedByAccountId,tx);
  }
- async evaluateReadiness(marineAssetId:string,tripId?:string,checkedByAccountId?:string):Promise<MarineReadinessResult>{
-  const asset=await this.db.marineAsset.findUnique({where:{id:marineAssetId},include:{documents:true,maintenance:true}});
+ async evaluateReadiness(marineAssetId:string,tripId?:string,checkedByAccountId?:string,tx:Prisma.TransactionClient=this.db):Promise<MarineReadinessResult>{
+  const asset=await tx.marineAsset.findUnique({where:{id:marineAssetId},include:{documents:true,maintenance:true}});
   if(!asset)throw new NotFoundException('Marine asset not found.');
   const now=new Date(),reasons:string[]=[];
   if(asset.status!=='ACTIVE')reasons.push('ASSET_NOT_ACTIVE');
@@ -184,7 +184,7 @@ export class MarineOperationsService{
   if(asset.maintenance.some(m=>m.status!=='COMPLETED'&&(!m.dueAt||m.dueAt<=now)))reasons.push('MAINTENANCE_BLOCKING');
   const hard=reasons.filter(r=>r!=='CALENDAR_RESOURCE_NOT_LINKED');
   const status:MarineReadinessResult['status']=hard.length?'NOT_READY':reasons.length?'NEEDS_REVIEW':'READY';
-  await this.db.marineReadinessSnapshot.create({data:{marineAssetId,tripId:tripId??null,status,reasonCodes:reasons,checkedByAccountId:checkedByAccountId??null}});
+  await tx.marineReadinessSnapshot.create({data:{marineAssetId,tripId:tripId??null,status,reasonCodes:reasons,checkedByAccountId:checkedByAccountId??null}});
   return{status,reasonCodes:reasons};
  }
 }
