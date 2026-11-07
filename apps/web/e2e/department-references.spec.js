@@ -69,7 +69,7 @@ test('department source discovery is lazy, read only and separate from approval'
   await expect(page.locator('[data-reference-detail]')).toContainText('ربط المصدر بالإدارة مقترح');
   await expect(page.locator('[data-reference-detail]')).toContainText('ملف غوص محفوظ للاختبار');
   await expect(page.locator('[data-reference-detail] a[href*="libfile_fixturemarine"]')).toHaveCount(1);
-  await expect(page.locator('[data-reference-detail]')).toContainText('مفعّل تشغيليًا');
+  await expect(page.locator('[data-reference-detail]')).toContainText('حالة الإعداد المسجلة: مفعّل');
   await expect(page.locator('[data-reference-detail]')).toContainText('ربط المتطلب ونسخته وأدلته ومرجع اعتماده غير مكتمل');
   await expect(page.locator('[data-reference-detail]')).toContainText('دورة تشغيل HR');
   await expect(page.locator('[data-reference-detail]')).toContainText('إقفال وأرشفة');
@@ -103,6 +103,40 @@ test('all 192 administrative forms render across the 14 departments with accurat
   await page.getByLabel('إدارة المراجع').selectOption('FINANCE');
   await expect(page.locator('[data-reference-template="FIN-PROVIDER-RECONCILIATION"]')).toContainText('مطابقة مزود الدفع');
   expect(state.writes).toBe(0);expect(state.reads).toBe(1);
+});
+test('current mandatory bindings are distinguished from legacy references and configured switches',async({page})=>{
+  const state=await setup(page);
+  state.data.effectivePolicyCount=4;state.data.policiesWithRecordedReferences=3;
+  state.data.bindingSummary={schemaVersion:1,legacyReferences:1,currentBindings:2,mandatoryBindings:1,notApplicableBindings:1,reviewRequiredBindings:1,unrecordedBindings:1};
+  for(const department of state.data.departments) department.policies=['MANDATORY','NOT_APPLICABLE','REVIEW_REQUIRED','NOT_RECORDED'].map((bindingStatus,i)=>({category:'FIXTURE',ruleKey:'FIXTURE-'+i,labelAr:'حالة ربط '+i,state:'DISABLED',bindingStatus,legacyReferencesRecorded:i===2,referencesRecorded:i<3}));
+  await open(page);
+  await expect(page.locator('[data-reference-status]')).toContainText('سجلات إلزام صالحة: 1');
+  await expect(page.locator('[data-reference-status]')).toContainText('سجلات عدم انطباق صالحة: 1');
+  await expect(page.locator('[data-reference-status]')).toContainText('روابط تحتاج مراجعة: 1');
+  await expect(page.locator('[data-reference-status]')).toContainText('بلا ربط بصيغة الإلزام الحالية: 1');
+  const policies=page.locator('[data-reference-detail] article').filter({hasText:'حالة ربط'});
+  await expect(policies.nth(0)).toContainText('حالة الإعداد المسجلة: غير مفعّل');
+  await expect(policies.nth(0)).toContainText('تفرضه الحماية بصرف النظر عن إعداد التعطيل');
+  await expect(policies.nth(1)).toContainText('لا يثبت إعفاءً من المتطلبات الأخرى');
+  await expect(policies.nth(2)).toContainText('القرار التشغيلي محجوب');
+  await expect(policies.nth(2)).toContainText('مراجع بالصيغة السابقة مسجلة');
+  await expect(policies.nth(3)).toContainText('لم يسجل ربط بصيغة الإلزام الحالية');
+  expect(state.writes).toBe(0);expect(state.assessmentWrites).toBe(0);
+});
+test('an older response leaves current binding status unknown and malformed counts clear claims',async({page})=>{
+  const state=await setup(page);await open(page);
+  await expect(page.locator('[data-reference-status]')).toContainText('لم تقس حالة ربط الإلزام');
+  await expect(page.locator('[data-reference-status]')).not.toContainText('سجلات إلزام صالحة: 0');
+  await expect(page.locator('[data-reference-detail]')).toContainText('لم ترد حالة ربط الإلزام');
+  state.data.bindingSummary={schemaVersion:1,legacyReferences:0,currentBindings:1,mandatoryBindings:1,notApplicableBindings:0,reviewRequiredBindings:1,unrecordedBindings:0};
+  await page.locator('[data-reference-refresh]').click();
+  await expect(page.locator('[data-reference-status]')).toContainText('استجابة حالات ربط المراجع غير مكتملة');
+  await expect(page.locator('[data-reference-detail]')).toBeEmpty();
+  state.data.bindingSummary={schemaVersion:1,legacyReferences:0,currentBindings:0,mandatoryBindings:0,notApplicableBindings:0,reviewRequiredBindings:0,unrecordedBindings:1};
+  state.data.departments[0].policies[0].bindingStatus='APPROVED';state.data.departments[0].policies[0].legacyReferencesRecorded=false;
+  await page.locator('[data-reference-refresh]').click();
+  await expect(page.locator('[data-reference-status]')).toContainText('استجابة حالات ربط المراجع غير مكتملة');
+  await expect(page.locator('[data-reference-detail]')).toBeEmpty();expect(state.writes).toBe(0);
 });
 test('mismatched catalog totals and duplicate form codes clear the previous inventory', async ({page})=>{
   const state=await setup(page);await open(page);

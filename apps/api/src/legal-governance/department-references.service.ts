@@ -7,6 +7,7 @@ import { DEPARTMENT_REFERENCE_CATALOG as catalog } from './department-reference-
 import { ISO_REFERENCE_CATALOG } from './iso-reference-catalog';
 import { departmentAssessmentSummary } from './department-closure-assessment.service';
 import { departmentOperatingCycle } from '../document-forms/department-operating-cycle.catalog';
+import { policyReferenceView } from './policy-reference-view.domain';
 
 // These are discovery/ownership links to existing capabilities, not permission
 // grants, new enforcement rules or a legal determination of applicability.
@@ -26,8 +27,6 @@ const boundaries: Record<DepartmentCode, { path: string; categories: readonly st
   RND_MARKET_INTELLIGENCE: { path: 'apps/api/src/research-market', categories: [] },
   LEGAL_CONTRACTS_INSURANCE: { path: 'apps/api/src/legal-governance', categories: ['COMPLIANCE'] },
 };
-const object = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
-const nonempty = (value: unknown): value is string => typeof value === 'string' && Boolean(value.trim());
 
 @Injectable()
 export class DepartmentReferencesService {
@@ -67,14 +66,11 @@ export class DepartmentReferencesService {
         },
         _count: { _all: true },
       }) : [];
-      const policyViews = controls.map(c => {
-        const m = object(c.metadata);
-        // Recorded references are evidence of stored metadata only. They do not
-        // certify the legal approval, currency or applicability of a source.
-        const referencesRecorded = [m.regulatoryRequirementId, m.regulatoryVersion, m.legalApprovalReference].every(nonempty)
-          && Array.isArray(m.evidenceIds) && m.evidenceIds.length > 0 && m.evidenceIds.every(nonempty);
-        return { category: c.category, ruleKey: c.ruleKey, labelAr: c.labelAr, state: c.state, referencesRecorded };
-      });
+      const observedAt = new Date();
+      const policyViews = controls.map(c => ({
+        category: c.category, ruleKey: c.ruleKey, labelAr: c.labelAr, state: c.state,
+        ...policyReferenceView(c.category, c.ruleKey, c.metadata, observedAt),
+      }));
       const assessments = new Map<string, Awaited<ReturnType<typeof departmentAssessmentSummary>>>();
       if (organization) for (const d of HYDROLAND_DEPARTMENTS.filter(d => department === undefined || d.code === department)) {
         assessments.set(d.code, await departmentAssessmentSummary(tx, organization.id, d.code));
@@ -119,11 +115,20 @@ export class DepartmentReferencesService {
         referencePrecedence: ['SAUDI_APPLICABLE_REGULATION', 'ISO_APPLICABLE_SCOPE', 'WRSTC_APPLICABLE_SCOPE', 'TRAINING_AGENCY_PROGRAM_VERSION'],
         canonicalSourceTemplateCount: templateCodes.length,
         completeDocumentInventoryVerified: false,
-        observedAt: new Date().toISOString(),
+        observedAt: observedAt.toISOString(),
         canonicalDepartmentCount: HYDROLAND_DEPARTMENTS.length,
         recordedDepartmentCount: new Set(units.filter(u => HYDROLAND_DEPARTMENTS.some(d => d.code === u.code)).map(u => u.code)).size,
         effectivePolicyCount: controls.length,
         policiesWithRecordedReferences: policyViews.filter(p => p.referencesRecorded).length,
+        bindingSummary: {
+          schemaVersion: 1,
+          legacyReferences: policyViews.filter(p => p.legacyReferencesRecorded).length,
+          currentBindings: policyViews.filter(p => ['MANDATORY', 'NOT_APPLICABLE'].includes(p.bindingStatus)).length,
+          mandatoryBindings: policyViews.filter(p => p.bindingStatus === 'MANDATORY').length,
+          notApplicableBindings: policyViews.filter(p => p.bindingStatus === 'NOT_APPLICABLE').length,
+          reviewRequiredBindings: policyViews.filter(p => p.bindingStatus === 'REVIEW_REQUIRED').length,
+          unrecordedBindings: policyViews.filter(p => p.bindingStatus === 'NOT_RECORDED').length,
+        },
         canActivate: false,
         departments,
       }));

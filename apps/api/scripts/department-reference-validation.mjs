@@ -91,6 +91,33 @@ assert.equal(result.departments.find(d => d.code === 'HR').policies[0].reference
 assert.equal(result.departments.find(d => d.code === 'FINANCE').policies[0].referencesRecorded, true);
 assert(!JSON.stringify(result).includes('never-return-this')); assert(!JSON.stringify(result).includes(actorId));
 assert.equal(JSON.stringify(controls), before);
+assert.deepEqual(result.bindingSummary, { schemaVersion:1, legacyReferences:1, currentBindings:0, mandatoryBindings:0, notApplicableBindings:0, reviewRequiredBindings:0, unrecordedBindings:2 });
+const binding = (category, ruleKey, applicability='APPLICABLE') => ({ mandatoryRequirement: {
+  schemaVersion:1,category,ruleKey,scope:'ALL_OPERATIONS_USING_CONTROL',requirementId:'private-requirement',applicability,applicabilityReason:'isolated fixture only',
+  source:{authority:'fixture authority',officialUrl:'https://swsdf.sa/fixture-only',version:'fixture-v1',clause:'fixture-clause',effectiveAt:'2020-01-01T00:00:00Z',reviewDueAt:'2099-01-01T00:00:00Z'},
+  adoption:{reference:'private-adoption',approvedByAccountId:actorId,approvedAt:'2021-01-01T00:00:00Z'},evidenceIds:['private-evidence'],
+} });
+const add = (category,ruleKey,metadata) => controls.push({category,ruleKey,labelAr:'isolated binding fixture',state:'DISABLED',metadata});
+add('BOAT','REGISTRATION',binding('BOAT','REGISTRATION'));
+add('BOAT','NAVIGATION_LICENSE',binding('BOAT','NAVIGATION_LICENSE','NOT_APPLICABLE'));
+const expired=binding('EQUIPMENT','SERVICE_EXPIRY');expired.mandatoryRequirement.source.reviewDueAt='2022-01-01T00:00:00Z';
+add('EQUIPMENT','SERVICE_EXPIRY',expired);
+add('COMPLIANCE','PERMIT_REQUIRED',{mandatoryRequirement:null});
+add('CAPTAIN','VERIFIED_LICENSE',binding('BOAT','WRONG_CONTROL'));
+const bindingBefore=JSON.stringify(controls),bound=await service.list(actorId);
+assert.equal(bound.effectivePolicyCount,7);assert.equal(bound.policiesWithRecordedReferences,3);
+assert.deepEqual(bound.bindingSummary,{schemaVersion:1,legacyReferences:1,currentBindings:2,mandatoryBindings:1,notApplicableBindings:1,reviewRequiredBindings:3,unrecordedBindings:2});
+const marine=bound.departments.find(d=>d.code==='MARINE_OPERATIONS').policies;
+assert.equal(marine.find(p=>p.ruleKey==='REGISTRATION').bindingStatus,'MANDATORY');
+assert.equal(marine.find(p=>p.ruleKey==='REGISTRATION').referencesRecorded,true,'Current envelope is counted without legacy fields');
+assert.equal(marine.find(p=>p.ruleKey==='REGISTRATION').state,'DISABLED','Configured state is retained separately from enforcement status');
+assert.equal(marine.find(p=>p.ruleKey==='NAVIGATION_LICENSE').bindingStatus,'NOT_APPLICABLE');
+assert.equal(marine.find(p=>p.ruleKey==='VERIFIED_LICENSE').bindingStatus,'REVIEW_REQUIRED');
+assert.equal(bound.departments.find(d=>d.code==='INVENTORY_LOGISTICS').policies[0].bindingStatus,'REVIEW_REQUIRED');
+assert.equal(bound.departments.find(d=>d.code==='SAFETY_COMPLIANCE_RISK').policies[0].bindingStatus,'REVIEW_REQUIRED');
+for(const secret of [actorId,'private-requirement','private-evidence','private-adoption','fixture-clause']) assert(!JSON.stringify(bound).includes(secret),'Reference projection must not expose private binding details');
+assert.equal(JSON.stringify(controls),bindingBefore,'Reference read must not adopt or edit a binding');
+controls.splice(2);
 const filtered = await service.list(actorId, 'HR'); assert.equal(filtered.departments.length, 1); assert.equal(filtered.departments[0].code, 'HR'); assert.equal(filtered.canonicalDepartmentCount, 14);
 for (const bad of ['UNKNOWN', '', ['HR'], { code: 'HR' }]) await assert.rejects(() => service.list(actorId, bad), e => e.getStatus?.() === 400);
 result.legalReferences[0].titleAr = 'mutated response'; assert.equal((await service.list(actorId)).legalReferences[0].titleAr, catalog.legalReferences[0].titleAr);
