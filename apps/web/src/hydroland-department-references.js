@@ -289,8 +289,16 @@
       for (const policy of department.policies) {
         const item = node('article', undefined, detail);
         node('h6', policy.labelAr, item);
-        node('p', policy.ruleKey + ' · ' + (policy.state === 'ENABLED' ? 'مفعّل تشغيليًا' : policy.state === 'REVIEW' ? 'قيد المراجعة' : 'غير مفعّل'), item);
-        node('p', policy.referencesRecorded ? 'مراجع وأدلة واعتماد مسجلة؛ يلزم التحقق من صحتها وانطباقها.' : 'ربط المتطلب ونسخته وأدلته ومرجع اعتماده غير مكتمل في السجل المفحوص.', item);
+        node('p', policy.category + '.' + policy.ruleKey + ' · حالة الإعداد المسجلة: ' + (policy.state === 'ENABLED' ? 'مفعّل' : policy.state === 'REVIEW' ? 'قيد المراجعة' : 'غير مفعّل'), item);
+        const bindingLabels = {
+          MANDATORY: 'سجل إلزام صالح عند القراءة؛ تفرضه الحماية بصرف النظر عن إعداد التعطيل.',
+          NOT_APPLICABLE: 'سجل عدم انطباق صالح عند القراءة؛ لا يثبت إعفاءً من المتطلبات الأخرى.',
+          REVIEW_REQUIRED: 'سجل الربط يتطلب مراجعة؛ القرار التشغيلي محجوب حتى معالجة المصدر والانطباق والاعتماد.',
+          NOT_RECORDED: 'لم يسجل ربط بصيغة الإلزام الحالية لهذا الضابط.',
+        };
+        node('p', bindingLabels[policy.bindingStatus] || 'لم ترد حالة ربط الإلزام في هذه القراءة؛ حدّث المراجع بعد اكتمال التحديث.', item);
+        if (policy.legacyReferencesRecorded) node('p', 'مراجع بالصيغة السابقة مسجلة؛ لا تثبت وحدها إلزامًا نافذًا.', item);
+        node('p', policy.referencesRecorded ? 'مراجع محفوظة؛ صلاحية سجل الربط لا تثبت صحة الوثائق أو جاهزية رحلة بعينها.' : 'ربط المتطلب ونسخته وأدلته ومرجع اعتماده غير مكتمل في السجل المفحوص.', item);
       }
       if (department.code === 'HR') {
         node('h5', 'مصفوفة ضوابط الموارد البشرية للمراجعة', detail);
@@ -323,6 +331,10 @@
         const arrays = ['departments', 'authorities', 'legalReferences', 'marineArchives', 'hrSources', 'hrControlCandidates', 'isoReferences'];
         if (result?.referenceOnly !== true || result.canActivate !== false || result.canonicalDepartmentCount !== 14 || !arrays.every(k => Array.isArray(result[k])) || result.departments.length !== 14 || new Set(result.departments.map(d => d.code)).size !== 14 || !Number.isFinite(Date.parse(result.observedAt))) throw new Error('استجابة مراجع الإدارات غير مكتملة.');
         if (result.completeDocumentInventoryVerified !== false || !result.departments.every(d => validSummary(d.operatingCycle) && ['cycles', 'templates', 'closureEvidenceAr', 'closureGates', 'documentCounts'].every(k => Array.isArray(d.operatingCycle[k])) && Array.isArray(d.isoReferenceIds))) throw new Error('استجابة دورة الإدارة غير مكتملة.');
+        if (result.bindingSummary !== undefined) {
+          const b = result.bindingSummary, keys = ['legacyReferences','currentBindings','mandatoryBindings','notApplicableBindings','reviewRequiredBindings','unrecordedBindings'];
+          if (!b || b.schemaVersion !== 1 || !Number.isSafeInteger(result.effectivePolicyCount) || !keys.every(k => Number.isSafeInteger(b[k]) && b[k] >= 0 && b[k] <= result.effectivePolicyCount) || b.currentBindings !== b.mandatoryBindings + b.notApplicableBindings || b.currentBindings + b.reviewRequiredBindings + b.unrecordedBindings !== result.effectivePolicyCount || !result.departments.every(d => Array.isArray(d.policies) && d.policies.every(p => ['MANDATORY','NOT_APPLICABLE','REVIEW_REQUIRED','NOT_RECORDED'].includes(p.bindingStatus) && typeof p.legacyReferencesRecorded === 'boolean'))) throw new Error('استجابة حالات ربط المراجع غير مكتملة.');
+        }
         const templateCodes = result.departments.flatMap(d => d.operatingCycle.templates.map(t => t.code));
         if (!Number.isSafeInteger(result.canonicalSourceTemplateCount) || result.canonicalSourceTemplateCount !== templateCodes.length || new Set(templateCodes).size !== templateCodes.length) throw new Error('استجابة نماذج الإدارات غير مكتملة.');
         data = result; select.replaceChildren();
@@ -330,6 +342,7 @@
         if (data.departments.some(d => d.code === chosen)) select.value = chosen;
         render();
         status.textContent = `وقت القراءة: ${new Date(data.observedAt).toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' })} · إدارات مسجلة: ${data.recordedDepartmentCount} من 14 · نماذج الكتالوج: ${data.canonicalSourceTemplateCount} · الضوابط: ${data.effectivePolicyCount} · ذات مراجع مسجلة: ${data.policiesWithRecordedReferences}. بعض الضوابط مشتركة بين الإدارات. حالة المصادر تعكس تاريخ لقطة السجل.`;
+        status.textContent += data.bindingSummary ? ` مراجع بالصيغة السابقة: ${data.bindingSummary.legacyReferences} · سجلات إلزام صالحة: ${data.bindingSummary.mandatoryBindings} · سجلات عدم انطباق صالحة: ${data.bindingSummary.notApplicableBindings} · روابط تحتاج مراجعة: ${data.bindingSummary.reviewRequiredBindings} · بلا ربط بصيغة الإلزام الحالية: ${data.bindingSummary.unrecordedBindings}. صلاحية الربط هي نتيجة فحص السجل عند القراءة، وليست تحققًا من الوثيقة الرسمية.` : ' لم تقس حالة ربط الإلزام في هذه القراءة؛ العداد السابق وحده لا يحددها.';
       } catch (error) {
         if (current(g, session)) { data = null; detail.replaceChildren(); select.replaceChildren(); status.textContent = error.message || 'تعذر تحميل المراجع.'; }
       } finally {
