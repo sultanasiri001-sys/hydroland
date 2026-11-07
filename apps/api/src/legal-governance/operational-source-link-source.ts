@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { reviewPlatform, reviewSource } from '../document-forms/internal-document-review.domain';
 import { validateDocumentPayload } from '../document-forms/document-payload';
 import { decisionDigest } from '../document-forms/owner-administrative-decision.domain';
-import { plain, readSourceLinkBatch, sourceLinkKey, sourceLinkPointer, sourceLinkRows, SOURCE_LINK_DEPARTMENT, SOURCE_LINK_FIELD, SOURCE_LINK_TEMPLATE } from './operational-source-link.domain';
+import { plain, readSourceLinkBatch, sourceLinkKey, sourceLinkControlKey, sourceLinkPointer, sourceLinkRows, SOURCE_LINK_DEPARTMENT, SOURCE_LINK_FIELD, SOURCE_LINK_TEMPLATE } from './operational-source-link.domain';
 
 export async function operationalMatrixSource(tx: Prisma.TransactionClient, org: string, id: string) {
   const source=await reviewSource(tx,org,id), d=source.d;
@@ -17,6 +17,8 @@ type Control={id:string;category:string;ruleKey:string;metadata:unknown};
 // reasons, source rows or approval actors. Missing/corrupt sources stay stale.
 export async function operationalSourceReviewStatuses(tx: Prisma.TransactionClient, org: string, controls: Control[]) {
   const statuses=new Map<string,SourceReviewStatus>(), batches=new Map<string,Awaited<ReturnType<typeof resolve>>|null>();
+  const records=await tx.operationalSetting.findMany({where:{key:{in:controls.map(c=>sourceLinkControlKey(org,c.category+'.'+c.ruleKey))}},select:{key:true,value:true}});
+  const indices=new Map(records.map(r=>[r.key,r.value]));
   let authority: string|undefined;
   async function resolve(id:string){
     const record=await tx.operationalSetting.findUnique({where:{key:sourceLinkKey(org,id)},select:{value:true}});
@@ -29,14 +31,15 @@ export async function operationalSourceReviewStatuses(tx: Prisma.TransactionClie
   }
   for(const control of controls){
     const key=control.category+'.'+control.ruleKey;
-    if(!Object.hasOwn(plain(control.metadata),SOURCE_LINK_FIELD)){statuses.set(key,'UNLINKED');continue;}
+    const indexKey=sourceLinkControlKey(org,key),metadata=indices.has(indexKey)?{[SOURCE_LINK_FIELD]:indices.get(indexKey)}:control.metadata;
+    if(!Object.hasOwn(plain(metadata),SOURCE_LINK_FIELD)){statuses.set(key,'UNLINKED');continue;}
     try{
-      const pointer=sourceLinkPointer(control.metadata)!;
+      const pointer=sourceLinkPointer(metadata)!;
       if(!batches.has(pointer.id))batches.set(pointer.id,await resolve(pointer.id));
       const batch=batches.get(pointer.id);
       if(!batch || batch.digest!==pointer.digest || !batch.controls.some(c=>c.id===control.id&&c.controlId===key))throw new ConflictException('لا يطابق الربط هذا الضابط.');
       statuses.set(key,'LINKED_FOR_REVIEW');
-    }catch(e){if(e instanceof BadRequestException||e instanceof ConflictException||e instanceof ForbiddenException){try{const pointer=sourceLinkPointer(control.metadata);if(pointer&&!batches.has(pointer.id))batches.set(pointer.id,null);}catch{}statuses.set(key,'STALE');continue;}throw e;}
+    }catch(e){if(e instanceof BadRequestException||e instanceof ConflictException||e instanceof ForbiddenException){try{const pointer=sourceLinkPointer(metadata);if(pointer&&!batches.has(pointer.id))batches.set(pointer.id,null);}catch{}statuses.set(key,'STALE');continue;}throw e;}
   }
   return statuses;
 }

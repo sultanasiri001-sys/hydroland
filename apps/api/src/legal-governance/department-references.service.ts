@@ -9,6 +9,8 @@ import { departmentAssessmentSummary } from './department-closure-assessment.ser
 import { departmentOperatingCycle } from '../document-forms/department-operating-cycle.catalog';
 import { policyReferenceView } from './policy-reference-view.domain';
 import { operationalSourceReviewStatuses } from './operational-source-link-source';
+import { OPERATIONAL_CONTROLS } from '../trips/operational-controls.catalog';
+import { sourceLinkCatalogId } from './operational-source-link.domain';
 
 // These are discovery/ownership links to existing capabilities, not permission
 // grants, new enforcement rules or a legal determination of applicability.
@@ -68,7 +70,9 @@ export class DepartmentReferencesService {
         _count: { _all: true },
       }) : [];
       const observedAt = new Date();
-      const reviewStatuses=organization?await operationalSourceReviewStatuses(tx,organization.id,controls):new Map();
+      const missingCatalog=OPERATIONAL_CONTROLS.filter(c=>!controls.some(r=>r.category===c.category&&r.ruleKey===c.ruleKey)).map(c=>({id:sourceLinkCatalogId(c.id),category:c.category,ruleKey:c.ruleKey,metadata:null}));
+      const reviewStatuses=organization?await operationalSourceReviewStatuses(tx,organization.id,[...controls,...missingCatalog]):new Map();
+      const catalogStatuses=OPERATIONAL_CONTROLS.map(c=>reviewStatuses.get(c.id)??'UNLINKED');
       const policyViews = controls.map(c => ({
         category: c.category, ruleKey: c.ruleKey, labelAr: c.labelAr, state: c.state,
         ...policyReferenceView(c.category, c.ruleKey, c.metadata, observedAt),
@@ -133,6 +137,7 @@ export class DepartmentReferencesService {
           unrecordedBindings: policyViews.filter(p => p.bindingStatus === 'NOT_RECORDED').length,
         },
         sourceReviewSummary:{schemaVersion:1,linkedForReview:policyViews.filter(p=>p.sourceReviewStatus==='LINKED_FOR_REVIEW').length,staleLinks:policyViews.filter(p=>p.sourceReviewStatus==='STALE').length,unlinked:policyViews.filter(p=>p.sourceReviewStatus==='UNLINKED').length},
+        sourceReviewCatalogSummary:{schemaVersion:1,total:catalogStatuses.length,linkedForReview:catalogStatuses.filter(s=>s==='LINKED_FOR_REVIEW').length,staleLinks:catalogStatuses.filter(s=>s==='STALE').length,unlinked:catalogStatuses.filter(s=>s==='UNLINKED').length,withoutPolicyRecord:missingCatalog.length},
         canActivate: false,
         departments,
       }));

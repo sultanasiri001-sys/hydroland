@@ -51,10 +51,12 @@ async function ok(actor, path = endpoint, method = 'GET', body) {
   return result.data;
 }
 const { OPERATIONAL_CONTROLS: catalog } = require('../dist/trips/operational-controls.catalog.js');
-const { sourceLinkInput, sourceLinkRows, sourceLinkKey, SOURCE_LINK_POLICY: policy } = require('../dist/legal-governance/operational-source-link.domain.js');
+const { sourceLinkInput, sourceLinkRows, sourceLinkKey, sourceLinkControlKey, SOURCE_LINK_POLICY: policy } = require('../dist/legal-governance/operational-source-link.domain.js');
+const missingKeys=['MARINE.ASSET_READINESS','TRAINING.CAPACITY_LIMIT','TRAINING.SCHEDULE_CONFLICT','TRAINING.SESSION_TIME_WINDOW','TRAINING.ATTENDANCE_REQUIRED'];
 const operationalWhere = { OR: catalog.map(c => ({ category:c.category, ruleKey:c.ruleKey })) };
 const controls = () => db.policyControl.findMany({ where:operationalWhere, orderBy:{id:'asc'} });
 const batches = () => db.operationalSetting.findMany({ where:{key:{startsWith:`OPERATIONAL_SOURCE_REVIEW:v1:${org.id}:`}}, orderBy:{key:'asc'} });
+const indices = () => db.operationalSetting.findMany({where:{key:{startsWith:`OPERATIONAL_SOURCE_REVIEW_CONTROL:v1:${org.id}:`}}});
 const audits = () => db.auditEvent.findMany({where:{actorId:owner.personId,action:'OPERATIONAL_SOURCE_REVIEW_LINKED'}});
 const enforcement = rows => rows.map(c => ({id:c.id,state:c.state,metadata:Object.fromEntries(Object.entries(c.metadata || {}).filter(([k])=>k!=='operationalSourceReview'))}));
 const matrixRows = () => catalog.map(c=>({'المتطلب وإصداره':'Synthetic private review source — no legal adoption','الانطباق':'Draft scope only','الضابط':c.id,'المسؤول':'Synthetic accountable owner','بند الفحص':'Synthetic check','دليل القبول':'No actual evidence accepted'}));
@@ -73,13 +75,15 @@ try {
  await db.operationalSetting.upsert({where:{key:platformKey},create:{key:platformKey,value:{organizationId:org.id}},update:{value:{organizationId:org.id},updatedAt:new Date()}});changedPlatform=true;
  await db.organizationMember.create({data:{organizationId:org.id,accountId:owner.id,role:'OWNER',status:'ACTIVE'}});
  oldControls=await controls();
- for(const c of catalog)await db.policyControl.upsert({where:{category_ruleKey:{category:c.category,ruleKey:c.ruleKey}},create:{category:c.category,ruleKey:c.ruleKey,labelAr:c.labelAr,state:'DISABLED',metadata:{syntheticPrivate:'preserved',mandatoryRequirement:{schemaVersion:999}}},update:{metadata:{syntheticPrivate:'preserved',mandatoryRequirement:{schemaVersion:999}}}});
+ assert(!oldControls.some(c=>missingKeys.includes(c.category+'.'+c.ruleKey)),'Isolated fixture starts with five catalog keys absent');
+ for(const c of catalog.filter(c=>!missingKeys.includes(c.id)))await db.policyControl.upsert({where:{category_ruleKey:{category:c.category,ruleKey:c.ruleKey}},create:{category:c.category,ruleKey:c.ruleKey,labelAr:c.labelAr,state:'DISABLED',metadata:{syntheticPrivate:'preserved',mandatoryRequirement:{schemaVersion:999}}},update:{metadata:{syntheticPrivate:'preserved',mandatoryRequirement:{schemaVersion:999}}}});
  const fields=[{key:'operatingControlMatrix',labelAr:'مصفوفة اصطناعية',labelEn:'Synthetic matrix',type:'TABLE',required:true,options:['المتطلب وإصداره','الانطباق','الضابط','المسؤول','بند الفحص','دليل القبول']}];
  const t=await ok(owner,'documents/templates','POST',{organizationId:org.id,code:'SAF-OPERATING-CONTROL-MATRIX',titleAr:'مصفوفة اختبار اصطناعية',titleEn:'Synthetic source review matrix',department:'SAFETY_COMPLIANCE_RISK',printable:true,fields});
  evidenceDoc=await createDocument(t,{operatingControlMatrix:matrixRows()});
  assert.equal((await call(null)).status,401);assert.equal((await call(staff)).status,403);assert.equal((await call(other)).status,403);
  const view=await call(owner);assert.equal(view.status,200);assert.match(view.headers.get('cache-control'),/private.*no-store/);assert.equal(view.data.canActivate,false);assert.equal(view.data.documents.length,1);assert.equal(view.data.controls.length,29);
- pass('fresh verified owner alone lists scoped matrix versions; anonymous, STAFF and unrelated ADMIN are denied');
+ assert.equal(view.data.controls.filter(c=>!c.policyRecordExists).length,5);assert.equal((await controls()).length,24);
+ pass('fresh verified owner alone lists 29 scoped catalog controls including five without policy records; unrelated accounts denied and no missing record created');
  const input=inputFor(evidenceDoc);
  for(const extra of [{organizationId:outside.id},{canActivate:true},{mandatoryRequirement:{}},{state:'ENABLED'}])await rejected({...input,...extra});
  for(const v of [0,1.5,'1',null])await rejected({...input,expectedDocumentVersion:v});
@@ -109,18 +113,24 @@ try {
  fresh=await preview(input);const failureBefore=await controls();
  await db.$executeRawUnsafe(`CREATE FUNCTION "${triggerName}"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action='OPERATIONAL_SOURCE_REVIEW_LINKED' AND NEW."actorId"::text='${owner.personId}' THEN RAISE EXCEPTION 'synthetic link audit failure'; END IF; RETURN NEW; END; $$`);
  await db.$executeRawUnsafe(`CREATE TRIGGER "${triggerName}" BEFORE INSERT ON "AuditEvent" FOR EACH ROW EXECUTE FUNCTION "${triggerName}"()`);triggerInstalled=true;
- assert.equal((await call(owner,endpoint,'POST',confirm(input,fresh))).status,500);assert.deepEqual(await controls(),failureBefore);assert.equal((await batches()).length,0);assert.equal((await audits()).length,0);
+ assert.equal((await call(owner,endpoint,'POST',confirm(input,fresh))).status,500);assert.deepEqual(await controls(),failureBefore);assert.equal((await batches()).length,0);assert.equal((await indices()).length,0);assert.equal((await audits()).length,0);
  await db.$executeRawUnsafe(`DROP TRIGGER "${triggerName}" ON "AuditEvent"`);triggerInstalled=false;await db.$executeRawUnsafe(`DROP FUNCTION "${triggerName}"()`);
  pass('audit failure rolls back the immutable snapshot and every one of the 29 control pointers atomically');
  fresh=await preview(input);const responses=await Promise.all([call(owner,endpoint,'POST',confirm(input,fresh)),call(owner,endpoint,'POST',confirm(input,fresh))]);
  assert.deepEqual(responses.map(r=>r.status).sort(),[201,409]);const receipt=responses.find(r=>r.status===201).data;
- assert.equal(receipt.linkedControlCount,29);assert.equal(receipt.canActivate,false);assert.equal((await batches()).length,1);assert.equal((await audits()).length,1);assert.deepEqual(enforcement(await controls()),enforcement(before));assert.deepEqual(await db.managedDocument.findMany({where:{organizationId:org.id}}),docsBefore);
+ assert.equal(receipt.linkedControlCount,29);assert.equal(receipt.canActivate,false);assert.equal((await batches()).length,1);assert.equal((await indices()).length,29);assert.equal((await audits()).length,1);assert.deepEqual(await controls(),failureBefore);assert.deepEqual(enforcement(await controls()),enforcement(before));assert.deepEqual(await db.managedDocument.findMany({where:{organizationId:org.id}}),docsBefore);
  assert((await ok(owner)).controls.every(c=>c.sourceReviewStatus==='LINKED_FOR_REVIEW'));
  await rejected(confirm(input,fresh),[409],endpoint);
- pass('concurrent confirmations persist exactly one batch/audit and 29 pointers; document, mandatory declarations and operating states stay unchanged');
- const general=await ok(other,'admin/department-references');assert.equal(general.sourceReviewSummary.linkedForReview,29);assert.equal(general.bindingSummary.mandatoryBindings,0);
+ pass('concurrent confirmations persist one batch/audit and 29 registry pointers; all 24 policy rows remain byte-for-byte unchanged and five absent rows stay absent');
+ const general=await ok(other,'admin/department-references');assert.equal(general.sourceReviewSummary.linkedForReview,24);assert.equal(general.bindingSummary.mandatoryBindings,0);assert.deepEqual(general.sourceReviewCatalogSummary,{schemaVersion:1,total:29,linkedForReview:29,staleLinks:0,unlinked:0,withoutPolicyRecord:5});
  const serialized=JSON.stringify(general);for(const privateValue of [evidenceDoc.id,evidenceDoc.referenceNumber,input.reason,'Synthetic private review source'])assert(!serialized.includes(privateValue));
  pass('general ADMIN sees review-link counts separately from mandatory adoption without owner document IDs, references, notes or source payload');
+ const added=catalog.find(c=>c.id===missingKeys[0]);
+ await db.policyControl.create({data:{category:added.category,ruleKey:added.ruleKey,labelAr:added.labelAr,state:'ENABLED'}});
+ assert.equal((await ok(owner)).controls.filter(c=>c.sourceReviewStatus==='STALE').length,1);
+ const newlyRecorded=await controls();await ok(owner,endpoint,'POST',confirm(input,await preview(input)));
+ assert.deepEqual(await controls(),newlyRecorded);assert((await ok(owner)).controls.every(c=>c.sourceReviewStatus==='LINKED_FOR_REVIEW'));
+ pass('a later independent policy-record creation makes its catalog link stale; explicit re-review refreshes the pointer without touching that policy row');
  const branding=await db.documentBrandSnapshot.findFirstOrThrow({where:{organizationId:org.id}});
  await db.documentBrandSnapshot.update({where:{id:branding.id},data:{footerAr:'Changed source branding'}});
  assert((await ok(owner)).controls.every(c=>c.sourceReviewStatus==='STALE'));
@@ -129,11 +139,11 @@ try {
  const revisedPayload={operatingControlMatrix:matrixRows().map((r,i)=>i?r:{...r,'بند الفحص':'Changed source check'})};
  evidenceDoc=await ok(owner,`documents/${evidenceDoc.id}/revise`,'POST',{payload:revisedPayload,contentHash:decisionDigest(revisedPayload)});
  assert((await ok(owner)).controls.every(c=>c.sourceReviewStatus==='STALE'));
- const next=inputFor(evidenceDoc);await ok(owner,endpoint,'POST',confirm(next,await preview(next)));assert.equal((await batches()).length,2);assert((await ok(owner)).controls.every(c=>c.sourceReviewStatus==='LINKED_FOR_REVIEW'));
+ const next=inputFor(evidenceDoc);await ok(owner,endpoint,'POST',confirm(next,await preview(next)));assert.equal((await batches()).length,3);assert((await ok(owner)).controls.every(c=>c.sourceReviewStatus==='LINKED_FOR_REVIEW'));
  pass('branding/revision changes mark links stale; explicit preview/confirmation relinks the new version and retains the prior immutable history');
  const saved=(await batches())[0];await db.operationalSetting.update({where:{key:saved.key},data:{value:{...saved.value,reason:'tampered'}}});
  // At least one immutable history row may no longer be current; tamper the current pointer's batch explicitly.
- const currentControl=(await controls())[0],pointer=currentControl.metadata.operationalSourceReview,key=sourceLinkKey(org.id,pointer.id),currentBatch=await db.operationalSetting.findUniqueOrThrow({where:{key}});
+ const pointer=(await db.operationalSetting.findUniqueOrThrow({where:{key:sourceLinkControlKey(org.id,catalog[0].id)}})).value,key=sourceLinkKey(org.id,pointer.id),currentBatch=await db.operationalSetting.findUniqueOrThrow({where:{key}});
  await db.operationalSetting.update({where:{key},data:{value:{...currentBatch.value,reason:'tampered'}}});
  assert((await ok(owner)).controls.every(c=>c.sourceReviewStatus==='STALE'));await rejected(inputFor(evidenceDoc),[409]);
  pass('tampered immutable snapshots fail closed as stale and cannot be silently overwritten');
@@ -141,7 +151,7 @@ try {
 } finally {
  if(triggerInstalled)await db.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${triggerName}" ON "AuditEvent"`);
  await db.$executeRawUnsafe(`DROP FUNCTION IF EXISTS "${triggerName}"()`);
- if(org){await db.operationalSetting.deleteMany({where:{key:{startsWith:`OPERATIONAL_SOURCE_REVIEW:v1:${org.id}:`}}});
+ if(org){await db.operationalSetting.deleteMany({where:{OR:[{key:{startsWith:`OPERATIONAL_SOURCE_REVIEW:v1:${org.id}:`}},{key:{startsWith:`OPERATIONAL_SOURCE_REVIEW_CONTROL:v1:${org.id}:`}}]}});
   for(const row of await controls()){const old=oldControls.find(c=>c.id===row.id);if(old)await db.policyControl.update({where:{id:old.id},data:{metadata:old.metadata??Prisma.DbNull,state:old.state,updatedByAccountId:old.updatedByAccountId,updatedAt:old.updatedAt}});else await db.policyControl.delete({where:{id:row.id}});}
  }
  if(changedPlatform){if(previousPlatform)await db.operationalSetting.update({where:{key:platformKey},data:{value:previousPlatform.value,updatedAt:previousPlatform.updatedAt}});else await db.operationalSetting.delete({where:{key:platformKey}});}

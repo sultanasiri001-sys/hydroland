@@ -96,7 +96,7 @@ test('source link editing invalidates preview and malformed server plans cannot 
  state.linkTransform=r=>({...r,canActivate:true});await page.locator('[data-source-links-preview]').click();await expect(page.locator('[data-source-links-status]')).toContainText('غير متسقة');await expect(page.locator('[data-source-links-save]')).toBeDisabled();expect(state.linkWrites).toBe(0);
 });
 test('unrelated ADMIN is denied private source links and late owner responses stay hidden after department change',async({page})=>{
- const state=await sourceLinks(page);state.owner=false;await page.locator('[data-source-links-open]').click();await expect(page.locator('[data-source-links-status]')).toContainText('لمالك');await expect(page.locator('[data-source-links-private]')).toBeEmpty();
+ const state=await sourceLinks(page);state.owner=false;await page.locator('[data-source-links-open]').click();await expect(page.locator('[data-source-links-status]')).toHaveText('تفاصيل الربط وحفظه متاحة لمالك الجهة الداخلية المتحقق فقط.');await expect(page.locator('[data-source-links-open]')).toBeEnabled();await expect(page.locator('[data-source-links-private]')).toBeEmpty();
  state.owner=true;state.linkDelay=true;await page.locator('[data-source-links-open]').click();await expect.poll(()=>Boolean(state.linkRelease)).toBe(true);await page.getByLabel('إدارة المراجع').selectOption('FINANCE');state.linkRelease();await expect(page.locator('[data-source-links-private]')).toHaveCount(0);await expect(page.locator('[data-reference-detail]')).not.toContainText('HYD-SYNTHETIC');expect(state.linkWrites).toBe(0);
 });
 for(const failure of ['network','conflict'])test(`source link ${failure} save requires fresh read without replaying old confirmation`,async({page})=>{
@@ -107,6 +107,14 @@ test('source link in-flight save is single-submit and owner UI fits mobile then 
  const state=await sourceLinks(page);await page.setViewportSize({width:390,height:844});await sourceDraft(page);await sourcePreview(page);expect(await box(page).evaluate(el=>el.scrollWidth<=el.clientWidth+2)).toBe(true);
  await page.getByLabel('راجعت ربط هذه النسخة بالضوابط دون اعتماد محتواها أو تفعيل الإلزام',{exact:true}).check();state.linkDelay=true;await page.locator('[data-source-links-save]').click();await expect.poll(()=>state.linkWrites).toBe(1);await expect(page.locator('[data-source-links-save]')).toBeDisabled();
  await page.evaluate(()=>window.HydrolandAuth.acceptSession({accessToken:'new-admin',refreshToken:'new-admin-refresh'},window.HydrolandAuth.beginAuthAttempt()));state.linkRelease();await expect(page.locator('[data-reference-detail]')).toBeEmpty();expect(state.linkWrites).toBe(1);
+});
+
+test('catalog review links distinguish absent policy rows from stored policy and mandatory counts',async({page})=>{
+ const state=await setup(page);state.data.sourceReviewSummary={schemaVersion:1,linkedForReview:0,staleLinks:0,unlinked:1};
+ for(const d of state.data.departments)for(const p of d.policies)p.sourceReviewStatus='UNLINKED';
+ state.data.sourceReviewCatalogSummary={schemaVersion:1,total:29,linkedForReview:29,staleLinks:0,unlinked:0,withoutPolicyRecord:5};
+ await open(page);await expect(page.locator('[data-reference-status]')).toContainText('كتالوج التشغيل: 29 من 29');await expect(page.locator('[data-reference-status]')).toContainText('دون سجل ضبط مستقل: 5');await expect(page.locator('[data-reference-status]')).toContainText('لا ينشئ سجلات ضبط');
+ state.data.sourceReviewCatalogSummary.linkedForReview=30;await page.locator('[data-reference-refresh]').click();await expect(page.locator('[data-reference-detail]')).toBeEmpty();await expect(page.locator('[data-reference-status]')).not.toContainText('29 من 29');expect(state.writes).toBe(0);
 });
 
 test('department source discovery is lazy, read only and separate from approval', async ({ page }) => {

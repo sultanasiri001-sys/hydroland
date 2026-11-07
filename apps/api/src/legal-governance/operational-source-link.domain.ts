@@ -7,8 +7,13 @@ export const SOURCE_LINK_POLICY = 'OPERATIONAL_SOURCE_REVIEW_LINK_V1';
 export const SOURCE_LINK_FIELD = 'operationalSourceReview';
 export const SOURCE_LINK_TEMPLATE = 'SAF-OPERATING-CONTROL-MATRIX';
 export const SOURCE_LINK_DEPARTMENT = 'SAFETY_COMPLIANCE_RISK';
-export const SOURCE_LINK_NOTICE = 'ربط نسخة المصفوفة بالضوابط للمراجعة والتتبع فقط. لا يعتمد مصدرًا أو انطباقًا أو دليلًا، ولا يفعّل إلزامًا أو يغيّر الأعلام أو الرخص. نطاق المراجعة هو نطاق المستند ولا يمتد تلقائيًا إلى بقية المراكز والعمليات.';
+export const SOURCE_LINK_NOTICE = 'ربط نسخة المصفوفة بالضوابط للمراجعة والتتبع فقط. لا يعتمد مصدرًا أو انطباقًا أو دليلًا، ولا يفعّل إلزامًا أو يغيّر الأعلام أو الرخص. يشمل مفاتيح الكتالوج غير المحفوظة دون إنشاء سجلات ضبط لها. نطاق المراجعة هو نطاق المستند ولا يمتد تلقائيًا إلى بقية المراكز والعمليات.';
 export const sourceLinkKey = (org: string, id: string) => `OPERATIONAL_SOURCE_REVIEW:v1:${org}:${id}`;
+export const sourceLinkControlKey = (org:string,controlId:string) => `OPERATIONAL_SOURCE_REVIEW_CONTROL:v1:${org}:${controlId}`;
+export const sourceLinkCatalogId = (controlId:string) => 'UNRECORDED_CATALOG:'+controlId;
+export function sourceLinkCatalogControls<T extends {id:string;category:string;ruleKey:string;labelAr:string;state:string;metadata:unknown;updatedAt:Date}>(rows:T[]) {
+  return OPERATIONAL_CONTROLS.map(c=>rows.find(r=>r.category===c.category&&r.ruleKey===c.ruleKey)??{id:sourceLinkCatalogId(c.id),category:c.category,ruleKey:c.ruleKey,labelAr:c.labelAr,state:null,metadata:null,updatedAt:null});
+}
 export const plain = (v: unknown): Record<string, unknown> => v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {};
 const text = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0;
 const hash = (v: unknown): v is string => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);

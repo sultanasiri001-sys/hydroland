@@ -21,7 +21,7 @@ const tx = {
     assert.deepEqual(where.roleAssignments, { some: { role: 'ADMIN', status: 'ACTIVE' } });
     return permitted ? { id: actorId, personId: 'fixture-person' } : null;
   } },
-  operationalSetting: { findUnique: async () => { privateReads++; return { value: { organizationId: 'fixture-platform' } }; } },
+  operationalSetting: { findMany:async()=>[],findUnique: async () => { privateReads++; return { value: { organizationId: 'fixture-platform' } }; } },
   organization: { findUnique: async () => ({ id: 'fixture-platform', ownerId: actorId, kind: 'HYDROLAND_INTERNAL_PLATFORM', status: 'ACTIVE' }) },
   orgUnit: { findMany: async ({ where }) => { assert.deepEqual(where, { organizationId: 'fixture-platform', type: 'DEPARTMENT' }); return HYDROLAND_DEPARTMENTS.map(d => ({ code: d.code, active: true })); } },
   policyControl: { findMany: async () => { privateReads++; return structuredClone(controls); } },
@@ -58,6 +58,8 @@ for (const number of ['9001','45001','31000']) assert.equal(new URL(result.isoRe
 for (const source of result.marineArchives) { assert.equal(source.officialSourceByteIdentityVerified, false); assert.equal(source.regulatoryVersion, null); assert.equal(source.legalApprovalReference, null); assert(source.sourceLibraryFileId.startsWith('libfile_')); assert(source.sourceFileId.startsWith('file_')); }
 assert.deepEqual(result.departments.map(d => d.code), HYDROLAND_DEPARTMENTS.map(d => d.code));
 assert.equal(result.effectivePolicyCount, 2); assert.equal(result.policiesWithRecordedReferences, 1);
+assert.deepEqual(result.sourceReviewSummary,{schemaVersion:1,linkedForReview:0,staleLinks:0,unlinked:2});
+assert.deepEqual(result.sourceReviewCatalogSummary,{schemaVersion:1,total:29,linkedForReview:0,staleLinks:0,unlinked:29,withoutPolicyRecord:28});
 const ids = [...result.authorities, ...result.legalReferences, ...result.marineArchives, ...result.hrSources].map(s => s.id);
 assert.equal(new Set(ids).size, ids.length);
 for (const department of result.departments) {
