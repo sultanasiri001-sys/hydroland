@@ -9,7 +9,8 @@ type CrewResourceRow={id:string;type:string;name:string;referenceId:string};
 type AssignmentRow={id:string;tripId:string;resourceId:string;accountId:string;roleType:string;status:string;replacesAssignmentId:string|null;respondedAt:Date|null;createdAt:Date;updatedAt:Date};
 type AssignmentWithTripRow=AssignmentRow&{tripTitle:string;tripType:string;startsAt:Date;endsAt:Date};
 type PendingAssignmentRow=AssignmentRow&{tripTitle:string;startsAt:Date;endsAt:Date};
-type QualificationPolicy={master:string;instructorRole:string;instructorCredential:string;captainRole:string;captainLicense:string;crewRole:string};
+type QualificationDecision=Awaited<ReturnType<PolicyControlService['decision']>>;
+type QualificationPolicy={master:QualificationDecision;instructorRole:QualificationDecision;instructorCredential:QualificationDecision;captainRole:QualificationDecision;captainLicense:QualificationDecision;crewRole:QualificationDecision};
 
 @Injectable()
 export class CrewAssignmentService{
@@ -17,9 +18,9 @@ export class CrewAssignmentService{
   private notify(accountId:string,type:string,payload:Record<string,unknown>,tx:Prisma.TransactionClient=this.db){return tx.notification.create({data:{accountId,type,payload:payload as Prisma.InputJsonValue,status:'PENDING'}});}
   private async notifyAdmins(type:string,payload:Record<string,unknown>){const admins=await this.db.roleAssignment.findMany({where:{role:'ADMIN',status:'ACTIVE'},select:{accountId:true}});await Promise.all(admins.map((admin:{accountId:string})=>this.notify(admin.accountId,type,payload)));}
   private async hasOverdueAlert(assignmentId:string){const rows=await this.db.$queryRaw<Array<{exists:boolean}>>`SELECT EXISTS(SELECT 1 FROM "Notification" WHERE "type"='CREW_RESPONSE_OVERDUE' AND "payload"->>'assignmentId'=${assignmentId}) AS "exists"`;return rows[0]?.exists===true;}
-  private async qualificationPolicy(tx:Prisma.TransactionClient=this.db):Promise<QualificationPolicy>{const [master,instructorRole,instructorCredential,captainRole,captainLicense,crewRole]=await Promise.all([this.policies.state('CREW','QUALIFICATION','ENABLED',tx),this.policies.state('INSTRUCTOR','ACTIVE_ROLE','ENABLED',tx),this.policies.state('INSTRUCTOR','VERIFIED_CREDENTIAL','ENABLED',tx),this.policies.state('CAPTAIN','ACTIVE_ROLE','ENABLED',tx),this.policies.state('CAPTAIN','VERIFIED_LICENSE','ENABLED',tx),this.policies.state('CREW','ACTIVE_ROLE','ENABLED',tx)]);return{master,instructorRole,instructorCredential,captainRole,captainLicense,crewRole};}
-  private enforce(master:string,state:string){return master==='ENABLED'&&state==='ENABLED';}
-  private review(master:string,state:string){return master==='REVIEW'||(master==='ENABLED'&&state==='REVIEW');}
+  private async qualificationPolicy(tx:Prisma.TransactionClient=this.db):Promise<QualificationPolicy>{const [master,instructorRole,instructorCredential,captainRole,captainLicense,crewRole]=await Promise.all([this.policies.decision('CREW','QUALIFICATION',tx),this.policies.decision('INSTRUCTOR','ACTIVE_ROLE',tx),this.policies.decision('INSTRUCTOR','VERIFIED_CREDENTIAL',tx),this.policies.decision('CAPTAIN','ACTIVE_ROLE',tx),this.policies.decision('CAPTAIN','VERIFIED_LICENSE',tx),this.policies.decision('CREW','ACTIVE_ROLE',tx)]);return{master,instructorRole,instructorCredential,captainRole,captainLicense,crewRole};}
+  private enforce(master:QualificationDecision,state:QualificationDecision){return state.mandatory||master.enforce&&state.enforce;}
+  private review(master:QualificationDecision,state:QualificationDecision){return !state.mandatory&&(master.review||master.enforce&&state.review);}
 
   private async eligibleResources(tripId:string,excludeResourceId?:string,excludeAccountId?:string,tx:Prisma.TransactionClient=this.db){
     const trip=await tx.trip.findUnique({where:{id:tripId},select:{startsAt:true,endsAt:true}});if(!trip)throw new NotFoundException('Trip not found.');
@@ -67,7 +68,7 @@ export class CrewAssignmentService{
         const assignment=existing??await tx.crewAssignment.create({data:{tripId,resourceId:resource.id,accountId:resource.referenceId,roleType:resource.type,status:'PENDING'}});
         await this.notify(assignment.accountId,existing?'TRIP_BOOKING_CONFIRMED':'TRIP_CREW_ASSIGNMENT',{assignmentId:assignment.id,tripId,bookingId,tripTitle:trip.title,startsAt:trip.startsAt.toISOString(),endsAt:trip.endsAt.toISOString(),roleType:assignment.roleType,resourceName:resource.name,actionRequired:assignment.status==='PENDING',policyReview:qualified.reviews},tx);
       }
-      return{tripId,bookingId,notifiedCrew:allocated.length,policyReview:{required:qualified.reviews.length>0,issues:qualified.reviews,states:qualified.policy}};
+      return{tripId,bookingId,notifiedCrew:allocated.length,policyReview:{required:qualified.reviews.length>0,issues:qualified.reviews,states:Object.fromEntries(Object.entries(qualified.policy).map(([key,value])=>[key,value.state]))}};
     };
     return client?work(client):this.db.serializable(work);
   }

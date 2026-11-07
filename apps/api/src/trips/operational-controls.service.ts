@@ -4,21 +4,23 @@ import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { AuditService } from '../audit/audit.service';
 import { OPERATIONAL_CONTROLS } from './operational-controls.catalog';
+import { mandatoryBindingStatus } from './mandatory-policy.domain';
 
-type Row={category:string;ruleKey:string;state:string;updatedAt:Date};
+type Row={category:string;ruleKey:string;state:string;metadata?:unknown;updatedAt:Date};
 @Injectable()
 export class OperationalControlsService {
  constructor(private readonly db:DatabaseService,private readonly audit:AuditService){}
  private async snapshot(tx:Prisma.TransactionClient){
-  const rows=await tx.$queryRaw<Row[]>`SELECT "category","ruleKey","state","updatedAt" FROM "PolicyControl"`;
+  const rows=await tx.$queryRaw<Row[]>`SELECT "category","ruleKey","state","metadata","updatedAt" FROM "PolicyControl"`;
   const settings=await tx.$queryRaw<Array<{value:Prisma.JsonObject;updatedAt:Date}>>`SELECT "value","updatedAt" FROM "OperationalSetting" WHERE "key"='WEATHER_GATE'`;
   return OPERATIONAL_CONTROLS.map(control=>{
    const row=rows.find(row=>row.category===control.category&&row.ruleKey===control.ruleKey);
    const policyState=row?.state||'ENABLED';
    const weather=control.category==='WEATHER'?settings[0]:undefined;
-   const state=control.category==='WEATHER'?(policyState==='ENABLED'&&weather?.value?.enabled===true&&weather.value.mode==='ENFORCE'?'ENABLED':'DISABLED'):policyState;
+   const bindingStatus=mandatoryBindingStatus(control.category,control.ruleKey,row?.metadata);
+   const state=bindingStatus==='MANDATORY'?'ENABLED':bindingStatus==='REVIEW_REQUIRED'?'REVIEW':control.category==='WEATHER'?(policyState==='ENABLED'&&weather?.value?.enabled===true&&weather.value.mode==='ENFORCE'?'ENABLED':'DISABLED'):policyState;
    const revision=createHash('sha256').update(JSON.stringify([row||null,control.category==='WEATHER'?weather||null:null])).digest('hex');
-   return {...control,state,policyState,revision,updatedAt:row?.updatedAt||null};
+   return {...control,state,policyState,revision,mandatoryBindingStatus:bindingStatus,canDisable:bindingStatus==='OPTIONAL',updatedAt:row?.updatedAt||null};
   });
  }
  list(){return this.db.serializable(tx=>this.snapshot(tx));}
@@ -34,6 +36,7 @@ export class OperationalControlsService {
    if(!admin)throw new ForbiddenException('يتطلب التغيير حساب مسؤول نشط.');
    const previous=(await this.snapshot(tx)).find(row=>row.id===id)!;
    if(previous.revision!==input.expectedRevision)throw new ConflictException('تغير الإعداد بواسطة مسؤول آخر. حدّث الحالة قبل الحفظ.');
+   if(state==='DISABLED'&&!previous.canDisable)throw new ForbiddenException('لا يمكن تعطيل متطلب إلزامي أو مصدر معلق بالمراجعة عبر إعداد عام.');
    if(previous.state===state)return previous;
    await tx.$executeRaw`
     INSERT INTO "PolicyControl" ("id","category","ruleKey","labelAr","state","description","updatedByAccountId","createdAt","updatedAt")
