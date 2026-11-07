@@ -47,19 +47,18 @@ export class OperationalClearanceService {
   }
 
   async grant(reviewerAccountId:string,tripId:string,reason?:string){
-    const observedChange=await this.latestOperationalChange(tripId);
-    const readiness=await this.calendar.readinessForTrip(tripId);this.assertHardBlocks(readiness);
-    if(readiness.status==='NOT_READY')throw new ConflictException(`Trip is NOT_READY: ${readiness.blockers.join(', ')}`);
-    if(readiness.status==='REVIEW_REQUIRED'&&(!reason||reason.trim().length<10))throw new ConflictException('A documented review reason of at least 10 characters is required.');
-    const action=readiness.status==='READY'?'OPERATIONAL_CLEARANCE_GRANTED':'OPERATIONAL_REVIEW_APPROVED';
-    const event=await this.db.serializable(async tx=>{
+    return this.db.serializable(async tx=>{
       const trip=await tx.trip.findUnique({where:{id:tripId},select:{status:true}});
       if(!trip||['CANCELLED','COMPLETED'].includes(trip.status))throw new ConflictException('Terminal trips cannot receive operational clearance.');
-      const current=await this.latestOperationalChange(tripId,tx);
-      if(current?.getTime()!==observedChange?.getTime())throw new ConflictException('Operational state changed during review. Repeat the readiness review.');
-      return this.audit.record({actorId:reviewerAccountId,action,resource:'Trip',resourceId:tripId,metadata:{reviewerAccountId,readiness,reason:reason?.trim()||null}},tx);
+      // Evaluate the product readers and persist the decision in one snapshot.
+      // A failed check/audit rolls back marine snapshots as well as the grant.
+      const readiness=await this.calendar.readinessForTrip(tripId,tx);this.assertHardBlocks(readiness);
+      if(readiness.status==='NOT_READY')throw new ConflictException(`Trip is NOT_READY: ${readiness.blockers.join(', ')}`);
+      if(readiness.status==='REVIEW_REQUIRED'&&(!reason||reason.trim().length<10))throw new ConflictException('A documented review reason of at least 10 characters is required.');
+      const action=readiness.status==='READY'?'OPERATIONAL_CLEARANCE_GRANTED':'OPERATIONAL_REVIEW_APPROVED';
+      const event=await this.audit.record({actorId:reviewerAccountId,action,resource:'Trip',resourceId:tripId,metadata:{reviewerAccountId,readiness,reason:reason?.trim()||null}},tx);
+      return {tripId,clearance:'GRANTED',readiness,auditEventId:event.id};
     });
-    return {tripId,clearance:'GRANTED',readiness,auditEventId:event.id};
   }
 
   async currentStatus(tripId:string,tx:Prisma.TransactionClient=this.db){
@@ -73,6 +72,10 @@ export class OperationalClearanceService {
   async assertCurrent(tripId:string,eventId:string,tx:Prisma.TransactionClient){
     const current=await this.currentStatus(tripId,tx);
     if(current.status!=='ACTIVE'||current.eventId!==eventId)throw new ConflictException('تغيرت الجاهزية التشغيلية. يلزم إعادة مراجعة واعتماد التشغيل.');
+    const readiness=await this.calendar.readinessForTrip(tripId,tx);this.assertHardBlocks(readiness);
+    if(readiness.status==='NOT_READY')throw new ConflictException(`Trip is NOT_READY: ${readiness.blockers.join(', ')}`);
+    const latest=await this.latestEvent(tripId,tx);
+    if(readiness.status==='REVIEW_REQUIRED'&&latest?.action!=='OPERATIONAL_REVIEW_APPROVED')throw new ConflictException('Current readiness requires documented administrative review approval.');
   }
 
   async revokeIfStale(tripId:string){const latest=await this.latestEvent(tripId);if(!latest||latest.action==='OPERATIONAL_CLEARANCE_REVOKED')return {revoked:false,reason:'NO_ACTIVE_CLEARANCE'};const changedAt=await this.latestOperationalChange(tripId);if(!changedAt||changedAt<=latest.occurredAt)return {revoked:false,reason:'CURRENT'};const event=await this.audit.record({action:'OPERATIONAL_CLEARANCE_REVOKED',resource:'Trip',resourceId:tripId,metadata:{previousClearanceEventId:latest.id,reason:'OPERATIONAL_STATE_CHANGED',changedAt}});return {revoked:true,auditEventId:event.id,previousClearanceEventId:latest.id,changedAt};}
@@ -88,6 +91,8 @@ export class OperationalClearanceService {
   async assertReadinessUnchanged(tripId:string,changedAt:Date|null,tx:Prisma.TransactionClient){
     const current=await this.latestOperationalChange(tripId,tx);
     if(current?.getTime()!==changedAt?.getTime())throw new ConflictException('تغيرت جاهزية الرحلة. أعد المحاولة بعد تحديث التفاصيل.');
+    const readiness=await this.calendar.readinessForTrip(tripId,tx);this.assertHardBlocks(readiness);
+    if(readiness.status==='NOT_READY')throw new ConflictException(`Trip is NOT_READY: ${readiness.blockers.join(', ')}`);
   }
 
   async assertValid(tripId:string){await this.revokeIfStale(tripId);const latest=await this.latestEvent(tripId);if(!latest||latest.action==='OPERATIONAL_CLEARANCE_REVOKED')throw new ConflictException('A current operational clearance is required.');const readiness=await this.calendar.readinessForTrip(tripId);this.assertHardBlocks(readiness);if(readiness.status==='NOT_READY')throw new ConflictException(`Trip is NOT_READY: ${readiness.blockers.join(', ')}`);if(readiness.status==='REVIEW_REQUIRED'&&latest.action!=='OPERATIONAL_REVIEW_APPROVED')throw new ConflictException('Current readiness requires documented administrative review approval.');return {clearance:latest,readiness};}
