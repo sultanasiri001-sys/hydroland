@@ -259,6 +259,72 @@
         link(item, 'بيانات الإصدار لدى ISO', source.url);
       }
     }
+    function renderSourceLinkEditor(department) {
+      if (department.code !== 'SAFETY_COMPLIANCE_RISK') return;
+      const section=node('section',undefined,detail);section.dataset.sourceLinks='';section.style.minWidth='0';section.style.overflowWrap='anywhere';
+      node('h5','ربط مصفوفة المتطلبات بالضوابط',section);
+      node('p','يحفظ المالك ارتباط نسخة المصفوفة بضوابطها للمراجعة. الربط لا يعتمد المصادر أو الأدلة ولا يفعّل الإلزام أو يغيّر إعدادات التشغيل.',section);
+      const open=node('button','فتح ربط مصفوفة الضوابط (للمالك)',section);open.type='button';open.dataset.sourceLinksOpen='';
+      const feedback=node('p','',section);feedback.setAttribute('role','status');feedback.dataset.sourceLinksStatus='';
+      const pane=node('div',undefined,section);pane.dataset.sourceLinksPrivate='';
+      const endpoint='/admin/operational-source-links',policy='OPERATIONAL_SOURCE_REVIEW_LINK_V1';
+      const states=['UNLINKED','LINKED_FOR_REVIEW','STALE'],id=v=>typeof v==='string'&&/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(v);
+      let busy=false,local=0;
+      const validView=r=>r&&r.schemaVersion===1&&r.policy===policy&&r.canRecord===true&&r.canActivate===false&&id(r.organizationId)&&text(r.notice)&&Array.isArray(r.documents)&&r.documents.length<=50&&new Set(r.documents.map(d=>d.id)).size===r.documents.length&&r.documents.every(d=>id(d.id)&&revision(d.version)&&text(d.referenceNumber)&&['DRAFT','PENDING_APPROVAL','APPROVED','SIGNED'].includes(d.status))&&Array.isArray(r.controls)&&r.controls.length<=29&&new Set(r.controls.map(c=>c.controlId)).size===r.controls.length&&r.controls.every(c=>text(c.controlId)&&states.includes(c.sourceReviewStatus));
+      const dismiss=()=>{local++;busy=false;pane.replaceChildren();feedback.textContent='';open.disabled=false;};
+      async function loadLinks(){
+        if(!eligible()||busy)return;
+        const g=generation,session=auth()?.getSessionVersion?.(),l=++local;
+        const active=()=>current(g,session)&&local===l&&select.value===department.code&&section.isConnected;
+        busy=true;open.disabled=true;pane.replaceChildren();feedback.textContent='جارٍ قراءة مصفوفات المالك وروابطها…';
+        try{
+          const allowed=await access()?.authorizeRole?.('admin',{sessionVersion:session,isCurrent:active});if(!active())return;if(!allowed){clear();return;}
+          const response=await auth().authorizedFetch(endpoint),result=await response.json().catch(()=>null);if(!active())return;
+          if(response.status===401){clear();return;}if(response.status===403)throw new Error('تفاصيل الربط وحفظه متاحة لمالك الجهة الداخلية المتحقق فقط.');
+          if(!response.ok||!validView(result))throw new Error('تعذر قراءة بيانات الربط كاملة؛ أعد القراءة.');
+          drawLinks(result,{active,session});feedback.textContent='تمت قراءة النسخ. اختر المصفوفة وراجع معاينة الربط قبل حفظه.';
+        }catch(error){if(active()){pane.replaceChildren();feedback.textContent=error.message||'تعذر قراءة الربط.';}}
+        finally{if(active()){busy=false;open.disabled=false;}}
+      }
+      function drawLinks(view,{active,session}){
+        pane.replaceChildren();const close=node('button','إغلاق ربط المصفوفة',pane);close.type='button';close.addEventListener('click',dismiss);
+        node('p',view.notice,pane);
+        node('p','الضوابط المرتبطة للمراجعة: '+view.controls.filter(c=>c.sourceReviewStatus==='LINKED_FOR_REVIEW').length+' · الروابط المتقادمة: '+view.controls.filter(c=>c.sourceReviewStatus==='STALE').length,pane);
+        const form=node('form',undefined,pane);form.dataset.sourceLinksForm='';
+        const sourceLabel=node('label','نسخة مصفوفة التشغيل',form),source=node('select',undefined,sourceLabel);source.setAttribute('aria-label','نسخة مصفوفة التشغيل');source.style.maxWidth='100%';source.style.width='100%';source.style.boxSizing='border-box';
+        const empty=node('option','اختر نسخة محفوظة',source);empty.value='';
+        for(const doc of view.documents){const option=node('option',doc.referenceNumber+' · الإصدار '+doc.version+' · '+doc.status,source);option.value=doc.id;}
+        if(view.hasMoreDocuments)node('p','تعرض أحدث 50 نسخة غير مؤرشفة.',form);
+        const reasonLabel=node('label','سبب ربط المصفوفة',form),reason=node('input',undefined,reasonLabel);reason.type='text';reason.maxLength=2000;reason.setAttribute('aria-label','سبب ربط المصفوفة');reason.style.maxWidth='100%';
+        const preview=node('button','معاينة ربط المصفوفة',form);preview.type='button';preview.dataset.sourceLinksPreview='';
+        const planPane=node('div',undefined,form);planPane.dataset.sourceLinksPlan='';
+        const confirmationLabel=node('label',undefined,form),confirmation=node('input',undefined,confirmationLabel);confirmation.type='checkbox';confirmation.setAttribute('aria-label','راجعت ربط هذه النسخة بالضوابط دون اعتماد محتواها أو تفعيل الإلزام');confirmationLabel.appendChild(document.createTextNode('راجعت ربط هذه النسخة بالضوابط دون اعتماد محتواها أو تفعيل الإلزام'));
+        const save=node('button','حفظ روابط المراجعة',form);save.type='button';save.dataset.sourceLinksSave='';save.disabled=true;
+        let plan=null,inFlight=false,edit=0;
+        const invalidate=()=>{edit++;plan=null;confirmation.checked=false;save.disabled=true;planPane.replaceChildren();};
+        source.addEventListener('change',invalidate);reason.addEventListener('input',invalidate);
+        confirmation.addEventListener('change',()=>{save.disabled=!plan||!confirmation.checked||inFlight;});
+        form.addEventListener('submit',e=>e.preventDefault());
+        const input=()=>{const d=view.documents.find(d=>d.id===source.value);if(!d||reason.value.trim().length<5)throw new Error('اختر نسخة وأدخل سببًا واضحًا من خمسة أحرف على الأقل.');return {documentId:d.id,expectedDocumentVersion:d.version,reason:reason.value.trim()};};
+        const validPlan=(r,body)=>r&&r.schemaVersion===1&&r.policy===policy&&r.organizationId===view.organizationId&&r.canActivate===false&&text(r.notice)&&r.source?.documentId===body.documentId&&r.source.version===body.expectedDocumentVersion&&text(r.source.referenceNumber)&&Array.isArray(r.rows)&&r.rows.length>0&&r.rows.length<=29&&new Set(r.rows.map(row=>row.controlId)).size===r.rows.length&&r.rows.every(row=>view.controls.some(c=>c.controlId===row.controlId)&&['requirement','applicability','responsibility','inspection','acceptance'].every(k=>text(row[k])))&&typeof r.expectedPlanHash==='string'&&/^[a-f0-9]{64}$/.test(r.expectedPlanHash);
+        async function request(path,body){const allowed=await access()?.authorizeRole?.('admin',{sessionVersion:session,isCurrent:active});if(!active())return null;if(!allowed){clear();return null;}const response=await auth().authorizedFetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}),data=await response.json().catch(()=>null);if(!active())return null;if(response.status===401){clear();return null;}if(!response.ok)throw new Error(typeof data?.message==='string'?data.message:'تعذر حفظ الربط؛ أعد القراءة والمعاينة.');return data;}
+        preview.addEventListener('click',async()=>{
+          if(!active()||inFlight)return;let body;try{body=input();}catch(error){feedback.textContent=error.message;return;}
+          invalidate();const e=edit;inFlight=true;preview.disabled=true;feedback.textContent='جارٍ معاينة نسخة المصفوفة والضوابط الحالية…';
+          try{const result=await request(endpoint+'/preview',body);if(!active()||!result||edit!==e)return;if(!validPlan(result,body))throw new Error('معاينة الربط غير متسقة؛ أعد القراءة.');plan={body,...result};node('p','معاينة فقط · '+result.source.referenceNumber+' · الإصدار '+result.source.version+' · عدد الضوابط '+result.rows.length,planPane);const list=node('ul',undefined,planPane);for(const row of result.rows)node('li',row.controlId+' — '+row.requirement+' — '+row.applicability+' — '+row.acceptance,list);node('p',result.notice,planPane);feedback.textContent='راجع النسخة والضوابط ثم أكد حفظ روابط المراجعة.';
+          }catch(error){if(active()){invalidate();feedback.textContent=error.message||'تعذرت المعاينة.';}}
+          finally{if(active()){inFlight=false;preview.disabled=false;}}
+        });
+        save.addEventListener('click',async()=>{
+          if(!active()||inFlight||!plan||!confirmation.checked)return;
+          const selected=plan;inFlight=true;save.disabled=true;preview.disabled=true;source.disabled=true;reason.disabled=true;confirmation.disabled=true;feedback.textContent='جارٍ حفظ روابط المراجعة دون اعتماد البنود…';
+          try{const result=await request(endpoint,{...selected.body,expectedPlanHash:selected.expectedPlanHash,confirmed:true});if(!active()||!result)return;if(result.schemaVersion!==1||result.policy!==policy||result.canActivate!==false||result.linkedControlCount!==selected.rows.length||result.source?.documentId!==selected.source.documentId||result.source.version!==selected.source.version||!text(result.reference)||!time(result.recordedAt))throw new Error('نتيجة الحفظ غير مكتملة؛ أعد القراءة قبل أي محاولة أخرى.');pane.replaceChildren();feedback.textContent='تم حفظ روابط مراجعة '+result.linkedControlCount+' ضابطًا · '+result.reference+' · '+result.source.referenceNumber+' · الإصدار '+result.source.version+'. الاعتماد والإلزام ما زالا في مسارهما المستقل.';
+          }catch(error){if(active()){pane.replaceChildren();feedback.textContent=(error.message||'لم تتأكد نتيجة الحفظ.')+' أعد القراءة؛ لا تكرر تأكيد المعاينة القديمة.';}}
+          finally{if(active()){plan=null;inFlight=false;open.disabled=false;}}
+        });
+      }
+      open.addEventListener('click',()=>void loadLinks());
+    }
     function render() {
       assessmentGeneration++;
       detail.replaceChildren();
@@ -276,6 +342,7 @@
       node('p', 'تُراجع الصلاحية بحسب الدور والإجراء والمورد والإدارة والمركز والشروط وفترة التفويض. تبقى المراجعة القانونية لدى القانونية، وملكية الإجراء لدى الإدارة المختصة.', detail);
       node('p', 'لاستكمال الربط: المصدر وإصداره، المادة أو المتطلب المعتمد، قابلية الانطباق، الإجراء والصلاحية، الدليل المتحقق منه، ومرجع الاعتماد.', detail);
       renderCycle(department);
+      renderSourceLinkEditor(department);
       const authorities = data.authorities.filter(a => department.authorityIds.includes(a.id));
       node('h5', 'الجهات والخدمات المرجعية', detail);
       if (!authorities.length) node('p', 'مراجع هذه الإدارة واردة في السجل القانوني أدناه.', detail);
@@ -297,6 +364,8 @@
           NOT_RECORDED: 'لم يسجل ربط بصيغة الإلزام الحالية لهذا الضابط.',
         };
         node('p', bindingLabels[policy.bindingStatus] || 'لم ترد حالة ربط الإلزام في هذه القراءة؛ حدّث المراجع بعد اكتمال التحديث.', item);
+        const reviewLabels={LINKED_FOR_REVIEW:'نسخة مصفوفة مرتبطة للمراجعة؛ الربط لا يعتمد المصدر أو يفعّل الإلزام.',STALE:'ربط المصفوفة متقادم أو غير متسق؛ يلزم إعادة التحقق.',UNLINKED:'لم تربط نسخة مصفوفة بهذا الضابط للمراجعة.'};
+        node('p',reviewLabels[policy.sourceReviewStatus]||'لم ترد حالة ربط المصفوفة في هذه القراءة.',item);
         if (policy.legacyReferencesRecorded) node('p', 'مراجع بالصيغة السابقة مسجلة؛ لا تثبت وحدها إلزامًا نافذًا.', item);
         node('p', policy.referencesRecorded ? 'مراجع محفوظة؛ صلاحية سجل الربط لا تثبت صحة الوثائق أو جاهزية رحلة بعينها.' : 'ربط المتطلب ونسخته وأدلته ومرجع اعتماده غير مكتمل في السجل المفحوص.', item);
       }
@@ -335,6 +404,7 @@
           const b = result.bindingSummary, keys = ['legacyReferences','currentBindings','mandatoryBindings','notApplicableBindings','reviewRequiredBindings','unrecordedBindings'];
           if (!b || b.schemaVersion !== 1 || !Number.isSafeInteger(result.effectivePolicyCount) || !keys.every(k => Number.isSafeInteger(b[k]) && b[k] >= 0 && b[k] <= result.effectivePolicyCount) || b.currentBindings !== b.mandatoryBindings + b.notApplicableBindings || b.currentBindings + b.reviewRequiredBindings + b.unrecordedBindings !== result.effectivePolicyCount || !result.departments.every(d => Array.isArray(d.policies) && d.policies.every(p => ['MANDATORY','NOT_APPLICABLE','REVIEW_REQUIRED','NOT_RECORDED'].includes(p.bindingStatus) && typeof p.legacyReferencesRecorded === 'boolean'))) throw new Error('استجابة حالات ربط المراجع غير مكتملة.');
         }
+        if(result.sourceReviewSummary!==undefined){const s=result.sourceReviewSummary;if(!s||s.schemaVersion!==1||!['linkedForReview','staleLinks','unlinked'].every(k=>Number.isSafeInteger(s[k])&&s[k]>=0)||s.linkedForReview+s.staleLinks+s.unlinked!==result.effectivePolicyCount||!result.departments.every(d=>d.policies.every(p=>['UNLINKED','LINKED_FOR_REVIEW','STALE'].includes(p.sourceReviewStatus))))throw new Error('استجابة روابط المصفوفات غير مكتملة.');}
         const templateCodes = result.departments.flatMap(d => d.operatingCycle.templates.map(t => t.code));
         if (!Number.isSafeInteger(result.canonicalSourceTemplateCount) || result.canonicalSourceTemplateCount !== templateCodes.length || new Set(templateCodes).size !== templateCodes.length) throw new Error('استجابة نماذج الإدارات غير مكتملة.');
         data = result; select.replaceChildren();
@@ -343,6 +413,7 @@
         render();
         status.textContent = `وقت القراءة: ${new Date(data.observedAt).toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' })} · إدارات مسجلة: ${data.recordedDepartmentCount} من 14 · نماذج الكتالوج: ${data.canonicalSourceTemplateCount} · الضوابط: ${data.effectivePolicyCount} · ذات مراجع مسجلة: ${data.policiesWithRecordedReferences}. بعض الضوابط مشتركة بين الإدارات. حالة المصادر تعكس تاريخ لقطة السجل.`;
         status.textContent += data.bindingSummary ? ` مراجع بالصيغة السابقة: ${data.bindingSummary.legacyReferences} · سجلات إلزام صالحة: ${data.bindingSummary.mandatoryBindings} · سجلات عدم انطباق صالحة: ${data.bindingSummary.notApplicableBindings} · روابط تحتاج مراجعة: ${data.bindingSummary.reviewRequiredBindings} · بلا ربط بصيغة الإلزام الحالية: ${data.bindingSummary.unrecordedBindings}. صلاحية الربط هي نتيجة فحص السجل عند القراءة، وليست تحققًا من الوثيقة الرسمية.` : ' لم تقس حالة ربط الإلزام في هذه القراءة؛ العداد السابق وحده لا يحددها.';
+        if(data.sourceReviewSummary)status.textContent+=` روابط مصفوفة محفوظة للمراجعة: ${data.sourceReviewSummary.linkedForReview} · روابط متقادمة: ${data.sourceReviewSummary.staleLinks} · بلا ربط مصفوفة: ${data.sourceReviewSummary.unlinked}.`;
       } catch (error) {
         if (current(g, session)) { data = null; detail.replaceChildren(); select.replaceChildren(); status.textContent = error.message || 'تعذر تحميل المراجع.'; }
       } finally {

@@ -8,6 +8,7 @@ import { ISO_REFERENCE_CATALOG } from './iso-reference-catalog';
 import { departmentAssessmentSummary } from './department-closure-assessment.service';
 import { departmentOperatingCycle } from '../document-forms/department-operating-cycle.catalog';
 import { policyReferenceView } from './policy-reference-view.domain';
+import { operationalSourceReviewStatuses } from './operational-source-link-source';
 
 // These are discovery/ownership links to existing capabilities, not permission
 // grants, new enforcement rules or a legal determination of applicability.
@@ -45,7 +46,7 @@ export class DepartmentReferencesService {
         where: { organizationId: organization.id, type: 'DEPARTMENT' }, select: { code: true, active: true },
       }) : [];
       const controls = await tx.policyControl.findMany({
-        select: { category: true, ruleKey: true, labelAr: true, state: true, metadata: true },
+        select: { id:true, category: true, ruleKey: true, labelAr: true, state: true, metadata: true },
         orderBy: [{ category: 'asc' }, { ruleKey: 'asc' }],
       });
       const specifications = HYDROLAND_DEPARTMENTS.map(d => ({ code: d.code, specification: departmentOperatingCycle(d.code) }));
@@ -67,9 +68,11 @@ export class DepartmentReferencesService {
         _count: { _all: true },
       }) : [];
       const observedAt = new Date();
+      const reviewStatuses=organization?await operationalSourceReviewStatuses(tx,organization.id,controls):new Map();
       const policyViews = controls.map(c => ({
         category: c.category, ruleKey: c.ruleKey, labelAr: c.labelAr, state: c.state,
         ...policyReferenceView(c.category, c.ruleKey, c.metadata, observedAt),
+        sourceReviewStatus:reviewStatuses.get(c.category+'.'+c.ruleKey)??'UNLINKED',
       }));
       const assessments = new Map<string, Awaited<ReturnType<typeof departmentAssessmentSummary>>>();
       if (organization) for (const d of HYDROLAND_DEPARTMENTS.filter(d => department === undefined || d.code === department)) {
@@ -129,6 +132,7 @@ export class DepartmentReferencesService {
           reviewRequiredBindings: policyViews.filter(p => p.bindingStatus === 'REVIEW_REQUIRED').length,
           unrecordedBindings: policyViews.filter(p => p.bindingStatus === 'NOT_RECORDED').length,
         },
+        sourceReviewSummary:{schemaVersion:1,linkedForReview:policyViews.filter(p=>p.sourceReviewStatus==='LINKED_FOR_REVIEW').length,staleLinks:policyViews.filter(p=>p.sourceReviewStatus==='STALE').length,unlinked:policyViews.filter(p=>p.sourceReviewStatus==='UNLINKED').length},
         canActivate: false,
         departments,
       }));
