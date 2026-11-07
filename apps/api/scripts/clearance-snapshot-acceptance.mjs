@@ -14,6 +14,7 @@ const {WeatherGateService}=require('../dist/trips/weather-gate.service');
 const {TripWeatherReviewService}=require('../dist/trips/trip-weather-review.service');
 const {MarineOperationsService}=require('../dist/marine-operations/marine-operations.service');
 const {REQUIRED_MARINE_DOCUMENTS}=require('../dist/marine-operations/marine-operations.domain');
+const {binding}=require('./mandatory-policy-fixture.cjs');
 
 export async function clearanceSnapshotAcceptance({db,base,admin,reader,token}){
  for(const value of [base,process.env.DATABASE_URL])assert(['localhost','127.0.0.1','[::1]'].includes(new URL(value).hostname),'Disposable loopback fixtures only');
@@ -82,6 +83,36 @@ export async function clearanceSnapshotAcceptance({db,base,admin,reader,token}){
    await assert.rejects(()=>serializable(tx=>clearance[method](trip.id,method==='assertCurrent'?current.id:new Date('2090-01-01'),tx)),e=>e.getStatus()===409);
    assert.deepEqual({grants:await grants(),snapshots:await snapshots()},expiryBefore);checks++;
   }
+  await db.boatResourceCompliance.update({where:{resourceId:boat.id},data:{navigationLicenseExpiresAt:endsAt}});
+  // A source-bound requirement remains mandatory under every generic state.
+  // These are disposable synthetic adoption records, never real legal proof.
+  const setBinding=async(category,ruleKey,value)=>db.$executeRaw`UPDATE "PolicyControl" SET "metadata"=${JSON.stringify(value)}::jsonb,"updatedAt"=clock_timestamp() WHERE "category"=${category} AND "ruleKey"=${ruleKey}`;
+  const call=async(path,method,body)=>{const r=await fetch(base+path,{method,headers:{'content-type':'application/json',authorization:'Bearer '+token(admin.id)},body:JSON.stringify(body)});return{status:r.status,body:await r.json()};};
+  await setBinding('COMPLIANCE','PERMIT_REQUIRED',binding('COMPLIANCE','PERMIT_REQUIRED'));
+  for(const state of ['ENABLED','REVIEW','DISABLED']){
+   await setPolicy('COMPLIANCE','PERMIT_REQUIRED',state);
+   await db.tripComplianceReview.update({where:{tripId:trip.id},data:{permitStatus:'PENDING'}});
+   const count={grants:await grants(),snapshots:await snapshots()};
+   assert.equal((await request(admin)).status,409);assert.deepEqual({grants:await grants(),snapshots:await snapshots()},count);checks++;
+   await db.tripComplianceReview.update({where:{tripId:trip.id},data:{permitStatus:'APPROVED'}});
+   assert.equal((await request(admin)).status,201);assert.equal(await grants(),count.grants+1);checks++;
+  }
+  for(const [path,method,body] of [
+   ['/admin/policies/COMPLIANCE/PERMIT_REQUIRED/state','PATCH',{state:'DISABLED'}],
+   ['/admin/policies','POST',{category:'COMPLIANCE',ruleKey:'PERMIT_REQUIRED',labelAr:'Disposable only',state:'DISABLED'}],
+  ]){assert.equal((await call(path,method,body)).status,403);checks++;}
+  const expired=binding('COMPLIANCE','PERMIT_REQUIRED');expired.mandatoryRequirement.source.reviewDueAt='2000-01-01T00:00:00.000Z';
+  await setBinding('COMPLIANCE','PERMIT_REQUIRED',expired);
+  const staleCount={grants:await grants(),snapshots:await snapshots()};
+  const pending=await request(admin);assert.equal(pending.status,409);assert.equal(pending.body.code,'MANDATORY_SOURCE_REVIEW_REQUIRED');assert.deepEqual({grants:await grants(),snapshots:await snapshots()},staleCount);checks++;
+  await setBinding('COMPLIANCE','PERMIT_REQUIRED',null);
+  await setBinding('WEATHER','WEATHER_GATE',binding('WEATHER','WEATHER_GATE'));
+  await setPolicy('WEATHER','WEATHER_GATE','DISABLED');
+  assert.equal((await request(admin)).status,409);assert.deepEqual({grants:await grants(),snapshots:await snapshots()},staleCount);checks++;
+  assert.equal((await call('/trips/admin/weather-gate','PATCH',{enabled:false,mode:'ADVISORY'})).status,403);checks++;
+  const response=await fetch(base+'/admin/operational-controls',{headers:{authorization:'Bearer '+token(admin.id)}}),controls=await response.json(),control=controls.find(r=>r.id==='WEATHER.WEATHER_GATE');
+  assert.equal(control.state,'ENABLED');assert.equal(control.canDisable,false);
+  assert.equal((await call('/admin/operational-controls/WEATHER.WEATHER_GATE','PATCH',{state:'DISABLED',reason:'Synthetic mandatory disable must fail',expectedRevision:control.revision})).status,403);checks++;
   console.log(`Clearance snapshot HTTP/PostgreSQL: ${checks} groups PASS; real grant, authority denial, committed adverse-decision interleaving, disabled/review/enabled blocks, expired-proof recheck, audit/snapshot rollback; no providers.`);
  }finally{
   runtime.serializable=serializable;audit.record=record;
@@ -90,7 +121,7 @@ export async function clearanceSnapshotAcceptance({db,base,admin,reader,token}){
   if(trip){await db.auditEvent.deleteMany({where:{resource:'Trip',resourceId:trip.id}});await db.calendarAllocation.deleteMany({where:{event:{referenceType:'TRIP',referenceId:trip.id}}});await db.calendarEvent.deleteMany({where:{referenceType:'TRIP',referenceId:trip.id}});await db.crewAssignment.deleteMany({where:{tripId:trip.id}});await db.safetyChecklist.deleteMany({where:{tripId:trip.id}});await db.tripComplianceReview.deleteMany({where:{tripId:trip.id}});await db.trip.delete({where:{id:trip.id}});}
   if(boat){await db.boatResourceCompliance.deleteMany({where:{resourceId:boat.id}});await db.calendarResource.delete({where:{id:boat.id}});}
   if(crew)await db.calendarResource.delete({where:{id:crew.id}});
-  for(const [category,ruleKey] of rules){const old=originals.find(r=>r.category===category&&r.ruleKey===ruleKey);if(old)await db.policyControl.update({where:{category_ruleKey:{category,ruleKey}},data:{state:old.state,updatedAt:old.updatedAt}});else await db.policyControl.deleteMany({where:{category,ruleKey}});}
+  for(const [category,ruleKey] of rules){const old=originals.find(r=>r.category===category&&r.ruleKey===ruleKey);if(old){await db.$executeRaw`UPDATE "PolicyControl" SET "metadata"=${JSON.stringify(old.metadata)}::jsonb WHERE "category"=${category} AND "ruleKey"=${ruleKey}`;await db.policyControl.update({where:{category_ruleKey:{category,ruleKey}},data:{state:old.state,updatedAt:old.updatedAt}});}else await db.policyControl.deleteMany({where:{category,ruleKey}});}
   if(weather)await db.operationalSetting.update({where:{key:'WEATHER_GATE'},data:{value:weather.value,updatedAt:weather.updatedAt}});else await db.operationalSetting.deleteMany({where:{key:'WEATHER_GATE'}});
  }
 }

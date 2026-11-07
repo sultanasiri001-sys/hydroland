@@ -10,7 +10,7 @@ const {CalendarAllocationService}=require('../dist/trips/calendar-allocation.ser
 const {CrewAssignmentService}=require('../dist/trips/crew-assignment.service.js');
 const db=new DatabaseService(),audit=new AuditService(db),calendar=new CalendarAllocationService(db,audit);
 // Qualification is orthogonal to conflict detection; fixture permits all active roles.
-const crew=new CrewAssignmentService(db,{state:async()=> 'DISABLED'},audit);
+const crew=new CrewAssignmentService(db,{decision:async()=>({state:'DISABLED',enforce:false,review:false,bypass:true,mandatory:false})},audit);
 let checks=0;
 const check=(ok,label)=>{assert.ok(ok,label);checks++;console.log('PASS',label);};
 const conflict=async(work,label)=>{await assert.rejects(work,error=>error?.getStatus?.()===409,label);checks++;console.log('PASS',label);};

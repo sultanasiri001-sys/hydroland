@@ -7,6 +7,7 @@ import { PolicyControlService } from './policy-control.service';
 import { TripWeatherReviewService } from './trip-weather-review.service';
 import { WeatherGateService } from './weather-gate.service';
 import { createHash } from 'node:crypto';
+import { Prisma } from '@prisma/client';
 
 type TripListRow={id:string;title:string;status:string;startsAt:Date;capacity:number;bookings:Array<{seats:number}>;safetyChecklists:Array<{id:string;decision:string;items:unknown;notes:string|null;decidedAt:Date|null;createdAt:Date}>;[key:string]:unknown};
 type TripPrice={pricePerSeatMinor:number;currency:'SAR';configured:boolean};
@@ -14,6 +15,11 @@ type TripPrice={pricePerSeatMinor:number;currency:'SAR';configured:boolean};
 @Injectable()
 export class TripsService {
   constructor(private readonly bookingManagement:BookingManagementService,private readonly db:DatabaseService,private readonly weatherGate:WeatherGateService,private readonly weatherReviews:TripWeatherReviewService,private readonly participants:BookingParticipantService,private readonly policies:PolicyControlService,private readonly audit:AuditService) {}
+
+  private async bookingControls(tx:Prisma.TransactionClient){
+    const [gateSettings,safetyPolicy,weatherPolicy,capacityPolicy]=await Promise.all([this.weatherGate.settings(tx),this.policies.decision('BOOKING','SAFETY_APPROVAL',tx),this.policies.decision('WEATHER','WEATHER_GATE',tx),this.policies.decision('BOOKING','CAPACITY_LIMIT',tx)]);
+    return{gateSettings,safetyPolicy,weatherPolicy,capacityPolicy};
+  }
 
   private async tripPrice(tripId:string):Promise<TripPrice>{
     const row=await this.db.operationalSetting.findUnique({where:{key:`trip-price:${tripId}`},select:{value:true}});
@@ -27,10 +33,9 @@ export class TripsService {
 
   async book(accountId:string,tripId:string,seats:number){
     if(!Number.isInteger(seats)||seats<1)throw new BadRequestException('Invalid seats.');
-    const gateSettings=await this.weatherGate.settings();
-    const [safetyPolicy,weatherPolicy,capacityPolicy]=await Promise.all([this.policies.decision('BOOKING','SAFETY_APPROVAL'),this.policies.decision('WEATHER','WEATHER_GATE'),this.policies.decision('BOOKING','CAPACITY_LIMIT')]);
     const reviewIssues:string[]=[];
     const result=await this.db.serializable(async tx=>{
+      const controls=await this.bookingControls(tx),{gateSettings,safetyPolicy,weatherPolicy,capacityPolicy}=controls;
       const trip=await tx.trip.findUnique({where:{id:tripId}});if(!trip||trip.status!=='OPEN')throw new NotFoundException('Trip unavailable.');if(trip.startsAt<=new Date())throw new ConflictException('Trip already started.');
       const existing=await tx.booking.findFirst({where:{tripId,accountId,organizationId:null},orderBy:{updatedAt:'desc'}});
       if(existing&&existing.status!=='CANCELLED')throw new ConflictException('An active booking already exists for this trip.');
@@ -47,8 +52,9 @@ export class TripsService {
         booking=await tx.booking.create({data:{tripId,accountId,seats,status:'PENDING'}});
       }
       const participantRows=await this.participants.ensureForBooking(booking.id,accountId,seats,tx);
-      return{booking,participantRows,rebooked:Boolean(existing),weatherReview};
+      return{booking,participantRows,rebooked:Boolean(existing),weatherReview,controls};
     });
+    const {gateSettings,safetyPolicy,weatherPolicy,capacityPolicy}=result.controls;
     const price=await this.tripPrice(tripId);
     return {...result.booking,price,participants:result.participantRows,rebooked:result.rebooked,policyReview:{required:reviewIssues.length>0,issues:[...new Set(reviewIssues)],states:{safety:safetyPolicy.state,weather:weatherPolicy.state,capacity:capacityPolicy.state},weatherGate:{enabled:gateSettings.enabled,mode:gateSettings.mode,provider:gateSettings.provider,reviewStatus:result.weatherReview?.status??null,forecastAt:result.weatherReview?.forecastAt??null}}};
   }
@@ -61,14 +67,13 @@ export class TripsService {
     if(!Array.isArray(suppliedNames)||suppliedNames.length!==0&&suppliedNames.length!==input.seats)throw new BadRequestException('عدد أسماء المشاركين يجب أن يطابق عدد المقاعد.');
     const names=suppliedNames.length?suppliedNames.map((value,index)=>{const name=typeof value==='string'?value.trim():'';if(name.length<3||name.length>160)throw new BadRequestException('اسم المشارك رقم '+(index+1)+' غير صالح.');return name;}):Array.from({length:input.seats},(_,index)=>'مشارك '+(index+1)+' - البيانات غير مكتملة');
     const fingerprint=createHash('sha256').update(JSON.stringify([organizationId,input.tripId,input.seats,names])).digest('hex');
-    const gateSettings=await this.weatherGate.settings();
-    const [safetyPolicy,weatherPolicy,capacityPolicy]=await Promise.all([this.policies.decision('BOOKING','SAFETY_APPROVAL'),this.policies.decision('WEATHER','WEATHER_GATE'),this.policies.decision('BOOKING','CAPACITY_LIMIT')]);
     const reviewIssues:string[]=[];
     const result=await this.db.serializable(async tx=>{
+      const controls=await this.bookingControls(tx),{gateSettings,safetyPolicy,weatherPolicy,capacityPolicy}=controls;
       const membership=await tx.organizationMember.findFirst({where:{organizationId,accountId,status:'ACTIVE',role:{in:['OWNER','ADMIN','OPERATOR']},organization:{status:'ACTIVE'},account:{status:'ACTIVE'}},select:{id:true}});
       if(!membership)throw new ForbiddenException('تتطلب العملية عضوية تشغيل نشطة في الجهة.');
       const replay=await tx.booking.findUnique({where:{bookingRequestKey:requestKey},include:{participants:{select:{id:true,fullName:true,certificationTitle:true,eligibilityStatus:true}}}});
-      if(replay){if(replay.organizationId!==organizationId||replay.accountId!==accountId||replay.tripId!==input.tripId||replay.bookingRequestFingerprint!==fingerprint)throw new ConflictException('استُخدم مفتاح الطلب ببيانات مختلفة.');return{booking:replay,participantRows:replay.participants,alreadyApplied:true,rebooked:false,weatherReview:null};}
+      if(replay){if(replay.organizationId!==organizationId||replay.accountId!==accountId||replay.tripId!==input.tripId||replay.bookingRequestFingerprint!==fingerprint)throw new ConflictException('استُخدم مفتاح الطلب ببيانات مختلفة.');return{booking:replay,participantRows:replay.participants,alreadyApplied:true,rebooked:false,weatherReview:null,controls};}
       const previousCancelled=await tx.booking.findFirst({where:{organizationId,tripId:input.tripId,accountId,status:'CANCELLED'},select:{id:true}});
       const active=await tx.booking.findFirst({where:{organizationId,tripId:input.tripId,status:{in:['PENDING','CONFIRMED']}},select:{id:true}});
       if(active)throw new ConflictException('للجهة حجز قائم لهذه الرحلة. افتح الحجز الحالي لتعديله أو تابع طلبه.');
@@ -86,8 +91,9 @@ export class TripsService {
       await tx.bookingParticipant.createMany({data:names.map(fullName=>({bookingId:booking.id,accountId:null,fullName,eligibilityStatus:'PENDING'}))});
       const participantRows=await tx.bookingParticipant.findMany({where:{bookingId:booking.id},select:{id:true,fullName:true,certificationTitle:true,eligibilityStatus:true},orderBy:{createdAt:'asc'}});
       await this.audit.record({actorId:accountId,action:'organization.booking.requested',resource:'Booking',resourceId:booking.id,metadata:{organizationId,tripId:input.tripId,seats:input.seats,participantCount:participantRows.length,requestKey,rebooked:Boolean(previousCancelled)}},tx);
-      return{booking,participantRows,alreadyApplied:false,rebooked:Boolean(previousCancelled),weatherReview};
+      return{booking,participantRows,alreadyApplied:false,rebooked:Boolean(previousCancelled),weatherReview,controls};
     });
+    const {gateSettings,safetyPolicy,weatherPolicy,capacityPolicy}=result.controls;
     const price=await this.tripPrice(input.tripId);
     return{...result.booking,price,participants:result.participantRows,rebooked:result.rebooked,alreadyApplied:result.alreadyApplied,policyReview:{required:reviewIssues.length>0,issues:[...new Set(reviewIssues)],states:{safety:safetyPolicy.state,weather:weatherPolicy.state,capacity:capacityPolicy.state},weatherGate:{enabled:gateSettings.enabled,mode:gateSettings.mode,provider:gateSettings.provider,reviewStatus:result.weatherReview?.status??null,forecastAt:result.weatherReview?.forecastAt??null}}};
   }

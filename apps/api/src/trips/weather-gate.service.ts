@@ -1,8 +1,9 @@
 import { Prisma } from '@prisma/client';
-import { Injectable } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { validWeatherReview, WeatherReviewContext } from './weather-review-context';
+import { mandatoryBindingStatus } from './mandatory-policy.domain';
 
 export type WeatherGateMode = 'ENFORCE' | 'ADVISORY';
 export type WeatherDecision = 'ALLOWED' | 'REVIEW_REQUIRED' | 'DEFERRED' | 'UNAVAILABLE';
@@ -46,15 +47,15 @@ export class WeatherGateService {
   }
 
   async settings(tx: Prisma.TransactionClient = this.db): Promise<WeatherGateSettings> {
+    const binding=await this.binding(tx);
     const rows = await tx.$queryRaw<SettingRow[]>`
       SELECT "value" FROM "OperationalSetting" WHERE "key" = 'WEATHER_GATE' LIMIT 1
     `;
     const value = rows[0]?.value;
-    if (!value || Array.isArray(value) || typeof value !== 'object') return this.defaults();
-    const record = value as Record<string, unknown>;
+    const record = value && !Array.isArray(value) && typeof value === 'object' ? value as Record<string, unknown> : this.defaults();
     return {
-      enabled: record.enabled === true,
-      mode: record.mode === 'ENFORCE' ? 'ENFORCE' : 'ADVISORY',
+      enabled: binding==='MANDATORY'||record.enabled === true,
+      mode: binding==='MANDATORY'||record.mode === 'ENFORCE' ? 'ENFORCE' : 'ADVISORY',
       provider: typeof record.provider === 'string' && record.provider.trim() ? record.provider : 'STORMGLASS',
     };
   }
@@ -63,12 +64,20 @@ export class WeatherGateService {
     return this.db.serializable(async tx=>{
       const current=await this.settings(tx);
       const next:WeatherGateSettings={...current,provider:'STORMGLASS',enabled:typeof input.enabled==='boolean'?input.enabled:current.enabled,mode:input.mode==='ENFORCE'||input.mode==='ADVISORY'?input.mode:current.mode};
+      if(await this.binding(tx)==='MANDATORY'&&(!next.enabled||next.mode!=='ENFORCE'))throw new ForbiddenException('لا يمكن تعطيل متطلب الطقس الإلزامي عبر إعداد عام.');
       await tx.$executeRaw`INSERT INTO "OperationalSetting" ("key","value","updatedAt") VALUES ('WEATHER_GATE',${JSON.stringify(next)}::jsonb,NOW()) ON CONFLICT ("key") DO UPDATE SET "value"=EXCLUDED."value","updatedAt"=clock_timestamp()`;
       const state=next.enabled&&next.mode==='ENFORCE'?'ENABLED':'DISABLED';
       await tx.$executeRaw`INSERT INTO "PolicyControl" ("id","category","ruleKey","labelAr","state","updatedByAccountId","createdAt","updatedAt") VALUES (gen_random_uuid()::text,'WEATHER','WEATHER_GATE','اشتراط مراجعة الطقس',${state},${accountId}::uuid,NOW(),NOW()) ON CONFLICT ("category","ruleKey") DO UPDATE SET "state"=EXCLUDED."state","updatedByAccountId"=EXCLUDED."updatedByAccountId","updatedAt"=clock_timestamp()`;
       await this.audit.record({actorId:accountId,action:'WEATHER_GATE_CONFIGURED',resource:'OperationalSetting',resourceId:'WEATHER_GATE',metadata:{accountId,previous:current,current:next,policyState:state}},tx);
       return next;
     });
+  }
+
+  private async binding(tx:Prisma.TransactionClient){
+    const rows=await tx.$queryRaw<Array<{metadata:unknown}>>`SELECT "metadata" FROM "PolicyControl" WHERE "category"=${'WEATHER'} AND "ruleKey"=${'WEATHER_GATE'} LIMIT 1`;
+    const status=mandatoryBindingStatus('WEATHER','WEATHER_GATE',rows[0]?.metadata);
+    if(status==='REVIEW_REQUIRED')throw new ConflictException({code:'MANDATORY_SOURCE_REVIEW_REQUIRED',message:'يتطلب مصدر ضابط الطقس وانطباقه مراجعة موثقة.'});
+    return status;
   }
 
   evaluate(snapshot: WeatherSnapshot | null | undefined, settings: WeatherGateSettings) {

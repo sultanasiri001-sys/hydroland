@@ -1,7 +1,8 @@
 import { Prisma } from '@prisma/client';
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
+import { mandatoryBindingStatus } from './mandatory-policy.domain';
 
 export type PolicyState = 'ENABLED' | 'DISABLED' | 'REVIEW';
 export type PolicyRule = {
@@ -41,19 +42,27 @@ export class PolicyControlService {
   }
 
   async state(category:string,ruleKey:string,fallback:PolicyState='ENABLED',tx:Prisma.TransactionClient=this.db):Promise<PolicyState>{
-    const rows=await tx.$queryRaw<Array<{state:string}>>`
-      SELECT "state" FROM "PolicyControl"
+    return(await this.resolve(category,ruleKey,fallback,tx)).state;
+  }
+
+  private async resolve(category:string,ruleKey:string,fallback:PolicyState,tx:Prisma.TransactionClient){
+    const rows=await tx.$queryRaw<Array<{state:string;metadata?:unknown}>>`
+      SELECT "state","metadata" FROM "PolicyControl"
       WHERE "category"=${category.toUpperCase()} AND "ruleKey"=${ruleKey.toUpperCase()}
       LIMIT 1
     `;
+    const binding=mandatoryBindingStatus(category,ruleKey,rows[0]?.metadata);
+    if(binding==='REVIEW_REQUIRED')throw new ConflictException({code:'MANDATORY_SOURCE_REVIEW_REQUIRED',category,ruleKey,message:'يتطلب مصدر الضابط وانطباقه مراجعة موثقة قبل اتخاذ القرار التشغيلي.'});
+    if(binding==='MANDATORY')return {state:'ENABLED' as PolicyState,mandatory:true};
     const value=rows[0]?.state;
-    return value==='DISABLED'||value==='REVIEW'||value==='ENABLED'?value:fallback;
+    return {state:value==='DISABLED'||value==='REVIEW'||value==='ENABLED'?value:fallback,mandatory:false};
   }
 
   async setState(accountId:string,category:string,ruleKey:string,state:PolicyState,reason?:string){
     if(category.trim().toUpperCase()==='HR_COMPLIANCE')throw new ForbiddenException('تعديل ضوابط الموارد البشرية يتطلب طلبًا ومراجعة واعتمادًا مستقلين من إدارة الموظفين.');
     if(!['ENABLED','DISABLED','REVIEW'].includes(state))throw new BadRequestException('Invalid policy state.');
     const current=await this.get(category,ruleKey);
+    this.assertOptionalChange(current,state);
     const rows=await this.db.$queryRaw<PolicyRule[]>`
       UPDATE "PolicyControl"
       SET "state"=${state},
@@ -72,6 +81,8 @@ export class PolicyControlService {
     if(!category||!ruleKey||!labelAr)throw new BadRequestException('category, ruleKey and labelAr are required.');
     const state=input.state??'REVIEW';
     if(!['ENABLED','DISABLED','REVIEW'].includes(state))throw new BadRequestException('Invalid policy state.');
+    const existing=await this.db.$queryRaw<PolicyRule[]>`SELECT * FROM "PolicyControl" WHERE "category"=${category} AND "ruleKey"=${ruleKey} LIMIT 1`;
+    if(existing[0])this.assertOptionalChange(existing[0],state);
     const rows=await this.db.$queryRaw<PolicyRule[]>`
       INSERT INTO "PolicyControl"("id","category","ruleKey","labelAr","labelEn","state","description","updatedByAccountId","createdAt","updatedAt")
       VALUES(
@@ -100,7 +111,13 @@ export class PolicyControlService {
   }
 
   async decision(category:string,ruleKey:string,tx:Prisma.TransactionClient=this.db){
-    const state=await this.state(category,ruleKey,'ENABLED',tx);
-    return {state,enforce:state==='ENABLED',review:state==='REVIEW',bypass:state==='DISABLED'};
+    const {state,mandatory}=await this.resolve(category,ruleKey,'ENABLED',tx);
+    return {state,enforce:state==='ENABLED',review:state==='REVIEW',bypass:state==='DISABLED',mandatory};
+  }
+
+  private assertOptionalChange(rule:PolicyRule,state:PolicyState){
+    if(state!=='ENABLED'&&mandatoryBindingStatus(rule.category,rule.ruleKey,rule.metadata)!=='OPTIONAL'){
+      throw new ForbiddenException('لا يمكن تخفيف متطلب إلزامي أو مصدر معلق بالمراجعة عبر إعداد عام.');
+    }
   }
 }
