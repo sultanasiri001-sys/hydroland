@@ -55,3 +55,11 @@ Open-water proof uses template `TRAINING_DIVE_LOG`, signed by the instructor, wi
 - `17b3097150d7670e0a0eefa416aa2cc6e570bf87`: API run 42458747749 passed the new isolated Node 22 step and source lint; A02 release-evidence contract run 42458747734 passed. Full API, browser and other checks were still running at this observation. Do not transfer a completed step from the earlier commit into a full-pass claim for this commit.
 
 PR: https://github.com/sultanasiri001-sys/hydroland/pull/582 (draft, not merged). Any documentation-only later head still needs its own exact-head CI reconciliation before adoption.
+
+## Follow-up: separate ready foundation from unfinished activation
+
+Owner requested merging the ready subset and completing the remainder. PR #583 extracts only the side-effect-free engine, 32 core tests, and source crosswalk, without any runtime import/call sites or operational changes. Its merge must not be described as activation or A14 closure.
+
+On the full #582 candidate, calendar and grouped form-library integration correctly rejected unbound legacy/synthetic courses with `STANDARD_SELECTION_REQUIRED`. The existing tests now explicitly set up **synthetic** programme prerequisites using `training-standard-isolated-fixture.mjs`, guarded by `CI=true` and loopback database/API hosts. No production source record is approved, no real agency limit is seeded, and no original assertion is relaxed. The store path adds an explicit negative check that an unbound course is rejected before fixture adoption. This helper is not an operational adoption mechanism; real legacy courses still need one.
+
+Prior instructors' signed skills now carry source-hash, signer and timestamp audit metadata. Completion can retain an earlier signature only with exact matching audit proof for the pinned source. Two additional local contracts cover preservation and refusal without proof: **70/70** isolated tests passed on Node 24.22.1. Real database/concurrency checks for these changes remain separate, pending exact-head CI.

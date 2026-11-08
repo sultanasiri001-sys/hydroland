@@ -189,7 +189,12 @@ export async function assertTrainingStandardCompletion(tx: Prisma.TransactionCli
     }
   }
   const record = enrollment.record;
-  const gaps = trainingCompletionGaps(profile, { completedSessions: record?.sessions.filter(session => session.status === 'COMPLETED').length || 0, completedSkillCodes: record?.stages.flatMap(stage => stage.skills.filter(skill => skill.status === 'COMPETENT' && skill.signedOffAt && skill.signedOffByInstructorId === enrollment.instructorAccountId).map(skill => skill.skillCode)) || [], verifiedFormCodes, verifiedOpenWaterDives: dives.size, verifiedOpenWaterMinutes: [...dives.values()].reduce((sum, value) => sum + value, 0) });
+  const signedSkills=record?.stages.flatMap(stage=>stage.skills.filter(skill=>skill.status==='COMPETENT'&&skill.signedOffAt&&skill.signedOffByInstructorId))||[];
+  const earlier=signedSkills.filter(skill=>skill.signedOffByInstructorId!==enrollment.instructorAccountId);
+  const history=earlier.length?await tx.auditEvent.findMany({where:{action:'training.skill_assessed',resourceId:{in:earlier.map(skill=>skill.id)},metadata:{path:['trainingStandardHash'],equals:binding.profileHash}},orderBy:{occurredAt:'desc'},take:2001,select:{resourceId:true,metadata:true}}):[];
+  if(history.length>2000)throw new ConflictException('يلزم جرد كامل لتوقيعات المدربين السابقين قبل الإتمام.');
+  const completedSkillCodes=signedSkills.filter(skill=>skill.signedOffByInstructorId===enrollment.instructorAccountId||history.some(event=>{const metadata=json(event.metadata);return event.resourceId===skill.id&&metadata.assessedByAccountId===skill.signedOffByInstructorId&&metadata.signedOffAt===skill.signedOffAt?.toISOString()&&metadata.status==='COMPETENT';})).map(skill=>skill.skillCode);
+  const gaps = trainingCompletionGaps(profile, { completedSessions: record?.sessions.filter(session => session.status === 'COMPLETED').length || 0, completedSkillCodes, verifiedFormCodes, verifiedOpenWaterDives: dives.size, verifiedOpenWaterMinutes: [...dives.values()].reduce((sum, value) => sum + value, 0) });
   if (gaps.length) throw new ConflictException({ code: 'TRAINING_STANDARD_EVIDENCE_REQUIRED', gaps, message: 'لم تكتمل أدلة برنامج المنظمة: المهارات والجلسات والنماذج والغوصات الموثقة.' });
   return binding;
 }

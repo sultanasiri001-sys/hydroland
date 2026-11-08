@@ -67,12 +67,12 @@ export class TrainingCourseProgressService {
    const record=current.trainingStage.trainingRecord;
    await this.authorization.assertProfessionalEnrollmentAccess(actorId,record.enrollmentId,tx);
    if(!this.editable(record))throw new ConflictException('السجل مغلق أو موقوف ولا يقبل تقييم المهارات.');
-   await standardRequest(()=>assertTrainingStandardReady(tx,record.enrollment,actorId));
+   const standard=await standardRequest(()=>assertTrainingStandardReady(tx,record.enrollment,actorId));
    const skill=await tx.trainingSkill.update({where:{id},data:{status,signedOffByInstructorId:status==='COMPETENT'?actorId:null,signedOffAt:status==='COMPETENT'?new Date():null}});
    const updated=await tx.trainingRecord.findUniqueOrThrow({where:{id:record.id},include:graph}),completion=trainingCompletion(updated);
    await tx.trainingRecord.update({where:{id:record.id},data:{progressPercent:completion.progressPercent,updatedAt:sessionRevision(record.updatedAt)}});
    for(const stage of updated.stages){const ready=trainingCompletion({stages:[stage],sessions:[]});await tx.trainingStage.update({where:{id:stage.id},data:{progressPercent:ready.progressPercent,status:ready.skillCount&&ready.signedSkillCount===ready.skillCount?'COMPLETED':ready.signedSkillCount?'IN_PROGRESS':'NOT_STARTED'}});}
-   await this.audit.record({actorId,action:'training.skill_assessed',resource:'trainingSkill',resourceId:id,metadata:{enrollmentId:record.enrollmentId,status,progressPercent:completion.progressPercent}},tx);
+   await this.audit.record({actorId,action:'training.skill_assessed',resource:'trainingSkill',resourceId:id,metadata:{enrollmentId:record.enrollmentId,status,progressPercent:completion.progressPercent,trainingStandardHash:standard.binding.profileHash,assessedByAccountId:actorId,signedOffAt:skill.signedOffAt?.toISOString()||null}},tx);
    return skill;
   });
  }
