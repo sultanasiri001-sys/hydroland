@@ -6,6 +6,7 @@ import { AuditService } from '../audit/audit.service';
 import { TrainingAuthorizationService } from './training-authorization.service';
 import { trainingCompletion, trainingRecordEditable } from './training-completion-policy';
 import { sessionRevision } from './training-session-policy';
+import { assertTrainingStandardCompletion, assertTrainingStandardReady, standardRequest } from './training-standard-store';
 
 const graph={enrollment:true,certificate:{select:{id:true}},stages:{include:{skills:true},orderBy:{sequence:'asc' as const}},sessions:{select:{status:true}}} satisfies Prisma.TrainingRecordInclude;
 type TrainingGraph=Prisma.TrainingRecordGetPayload<{include:typeof graph}>;
@@ -66,6 +67,7 @@ export class TrainingCourseProgressService {
    const record=current.trainingStage.trainingRecord;
    await this.authorization.assertProfessionalEnrollmentAccess(actorId,record.enrollmentId,tx);
    if(!this.editable(record))throw new ConflictException('السجل مغلق أو موقوف ولا يقبل تقييم المهارات.');
+   await standardRequest(()=>assertTrainingStandardReady(tx,record.enrollment,actorId));
    const skill=await tx.trainingSkill.update({where:{id},data:{status,signedOffByInstructorId:status==='COMPETENT'?actorId:null,signedOffAt:status==='COMPETENT'?new Date():null}});
    const updated=await tx.trainingRecord.findUniqueOrThrow({where:{id:record.id},include:graph}),completion=trainingCompletion(updated);
    await tx.trainingRecord.update({where:{id:record.id},data:{progressPercent:completion.progressPercent,updatedAt:sessionRevision(record.updatedAt)}});
@@ -81,6 +83,7 @@ export class TrainingCourseProgressService {
    await this.authorization.assertProfessionalEnrollmentAccess(actorId,enrollmentId,tx);
    const record=await tx.trainingRecord.findUnique({where:{enrollmentId},include:graph});
    if(!record)throw new ConflictException('سجل التدريب غير موجود.');
+   await standardRequest(()=>assertTrainingStandardCompletion(tx,enrollmentId));
    const completion=trainingCompletion(record);
    if(record.status==='COMPLETED'&&record.enrollment.status==='COMPLETED'&&completion.ready)return {enrollmentId,status:'COMPLETED',replayed:true};
    if(record.updatedAt.getTime()!==revision.getTime())throw new ConflictException('تغير سجل التدريب. حدّث الخطة قبل الإتمام.');
@@ -92,3 +95,4 @@ export class TrainingCourseProgressService {
   });
  }
 }
+

@@ -59,6 +59,7 @@ export class PolicyControlService {
   }
 
   async setState(accountId:string,category:string,ruleKey:string,state:PolicyState,reason?:string){
+    if(category.trim().toUpperCase()==='TRAINING_STANDARD_PROFILE')throw new ForbiddenException('إصدارات التدريب لا تُعتمد ولا تُعدل عبر الأعلام العامة.');
     if(category.trim().toUpperCase()==='HR_COMPLIANCE')throw new ForbiddenException('تعديل ضوابط الموارد البشرية يتطلب طلبًا ومراجعة واعتمادًا مستقلين من إدارة الموظفين.');
     if(!['ENABLED','DISABLED','REVIEW'].includes(state))throw new BadRequestException('Invalid policy state.');
     const current=await this.get(category,ruleKey);
@@ -77,6 +78,7 @@ export class PolicyControlService {
 
   async upsert(accountId:string,input:{category?:string;ruleKey?:string;labelAr?:string;labelEn?:string|null;description?:string|null;state?:PolicyState}){
     const category=input.category?.trim().toUpperCase(),ruleKey=input.ruleKey?.trim().toUpperCase(),labelAr=input.labelAr?.trim();
+    if(category==='TRAINING_STANDARD_PROFILE')throw new ForbiddenException('إصدارات التدريب تتطلب مسار مراجعة مصدر مستقلًا.');
     if(category==='HR_COMPLIANCE')throw new ForbiddenException('تعديل ضوابط الموارد البشرية يتطلب طلبًا ومراجعة واعتمادًا مستقلين من إدارة الموظفين.');
     if(!category||!ruleKey||!labelAr)throw new BadRequestException('category, ruleKey and labelAr are required.');
     const state=input.state??'REVIEW';
@@ -121,3 +123,4 @@ export class PolicyControlService {
     }
   }
 }
+

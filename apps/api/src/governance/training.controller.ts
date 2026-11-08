@@ -20,6 +20,21 @@ export class TrainingController {
     private readonly certificates: TrainingCertificateService,
   ) {}
 
+  @Get('standards')
+  standards(@Req() request:AuthenticatedRequest){return this.training.standardCatalog(request.auth.accountId);}
+
+  @Post('standards')
+  draftStandard(@Req() request:AuthenticatedRequest,@Body() body:Record<string,unknown>){return this.training.draftStandard(request.auth.accountId,body);}
+
+  @Post('standards/:id/decision')
+  decideStandard(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.training.decideStandard(request.auth.accountId,id,body);}
+
+  @Get('professional/me/enrollments/:id/standard-options')
+  standardOptions(@Req() request:AuthenticatedRequest,@Param('id') id:string){return this.training.standardOptions(request.auth.accountId,id);}
+
+  @Post('professional/me/enrollments/:id/standard')
+  bindStandard(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.training.bindStandard(request.auth.accountId,id,body);}
+
   @Get('professional/me/enrollments/:id/plan')
   professionalPlan(@Req() request:AuthenticatedRequest,@Param('id') id:string){return this.progress.plan(request.auth.accountId,id);}
 
@@ -156,3 +171,4 @@ export class TrainingController {
     return this.training.setSessionStatus(id,body,request.auth.accountId);
   }
 }
+

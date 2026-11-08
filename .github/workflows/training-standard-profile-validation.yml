@@ -1,0 +1,27 @@
+name: Training standard profile validation
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/governance/training*'
+      - 'apps/api/scripts/training-standard-profile.test.mjs'
+      - 'apps/api/src/trips/policy-control.service.ts'
+      - '.github/workflows/training-standard-profile-validation.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/api/src/governance/training*'
+      - 'apps/api/scripts/training-standard-profile.test.mjs'
+      - '.github/workflows/training-standard-profile-validation.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Isolated profile and persistence-adapter contracts (synthetic only)
+        run: node --experimental-strip-types --test apps/api/scripts/training-standard-profile.test.mjs
