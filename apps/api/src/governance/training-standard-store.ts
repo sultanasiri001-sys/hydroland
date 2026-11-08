@@ -68,13 +68,15 @@ export async function decideTrainingStandard(tx: Prisma.TransactionClient, actor
   await audit(tx, actorId, 'training.standard_decided', id, { state, contentHash, reference });
   return { id, state, contentHash };
 }
-async function approvedProfile(tx: Prisma.TransactionClient, id: string, now = new Date()) {
-  const row = await tx.policyControl.findFirst({ where: { id, category: CATEGORY } });
+function readApprovedProfile(row: { id: string; state: string; metadata: unknown } | null, now = new Date()) {
   const metadata = json(row?.metadata), approval = json(metadata.approval);
   if (!row || row.state !== 'APPROVED' || !approval.reviewedByAccountId || !approval.approvalReference || !Number.isFinite(Date.parse(String(approval.reviewedAt))) || Date.parse(String(approval.reviewedAt)) > now.getTime() || !(Date.parse(String(approval.validUntil)) > now.getTime())) throw new ConflictException({ code: 'TRAINING_STANDARD_NOT_APPROVED', message: 'لا يوجد إصدار نافذ معتمد لبرنامج المنظمة؛ يبقى التدريب موقوفًا.' });
   const profile = parseTrainingStandard(metadata.profile), hash = trainingStandardHash(profile);
   if (hash !== metadata.contentHash || hash !== approval.profileHash || metadata.createdByAccountId === approval.reviewedByAccountId) throw new ConflictException('مصدر المعيار أو مراجعته لا يطابقان الإصدار المعتمد.');
   return { id: row.id, profile, contentHash: hash };
+}
+async function approvedProfile(tx: Prisma.TransactionClient, id: string, now = new Date()) {
+  return readApprovedProfile(await tx.policyControl.findFirst({ where: { id, category: CATEGORY } }), now);
 }
 export async function trainingStandardCatalog(tx: Prisma.TransactionClient, actorId: string) {
   const select = { role: true, account: { select: { person: { select: { credentials: true } } } } } as const;
@@ -86,7 +88,7 @@ export async function trainingStandardCatalog(tx: Prisma.TransactionClient, acto
   for (const row of rows) {
     if (role.role !== 'INSTRUCTOR') { const metadata=json(row.metadata); profiles.push({ id: row.id, state: row.state, updatedAt: row.updatedAt, profile: parseTrainingStandard(metadata.profile), contentHash: String(metadata.contentHash), approval: metadata.approval }); }
     else if (row.state === 'APPROVED') {
-      try { const approved = await approvedProfile(tx, row.id); if (hasTrainingCredential(role.account.person.credentials, approved.profile.agencyCode, approved.profile.requirements.instructorCredentialTitles, new Date())) profiles.push({ ...approved, state: 'APPROVED', updatedAt: row.updatedAt }); }
+      try { const approved = readApprovedProfile(row); if (hasTrainingCredential(role.account.person.credentials, approved.profile.agencyCode, approved.profile.requirements.instructorCredentialTitles, new Date())) profiles.push({ ...approved, state: 'APPROVED', updatedAt: row.updatedAt }); }
       catch (error) { if (!(error instanceof ConflictException) && !(error instanceof TrainingStandardError)) throw error; }
     }
   }
