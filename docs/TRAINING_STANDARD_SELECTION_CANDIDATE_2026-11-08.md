@@ -31,6 +31,7 @@ Open-water proof uses template `TRAINING_DIVE_LOG`, signed by the instructor, wi
 ## Available references; extraction is not source acceptance
 
 - Owner-uploaded Arabic **PADI Instructor Manual, Version 2026**: https://chatgpt.com/library?file_id=libfile_b3a16485715c8191870d22e0fa9e3a35&account_id=personal . Printed guide pp. 1–2 distinguishes general standards from individual programme exceptions; PDF page 1 identifies Version 2026. Full programme/age/environment/assistant/progression exceptions and later training bulletins still require extraction and review. Do not ask for the same manual again.
+- Initial Open Water source extraction is in `docs/PADI_2026_OPEN_WATER_SOURCE_CROSSWALK.md`: physical PDF pp. 53–57. It records four qualifying open-water dives, the source-specific 12 m/18 m progression, knowledge/confined-water requirements, forms and ratio exceptions. These are not a complete operational profile and were not seeded or approved.
 - ISO 24801-2:2014 scope: https://www.iso.org/standard/60461.html . Shared competencies do not prove every agency's detailed ratios, sequence, or certification procedure.
 - SSI publishes programme-specific requirements: https://training.divessi.com/us/course/scuba-training-standards-and-procedures/entry-level-programs-1/open-water-diver-iso-24801-2 . The fetched view was labelled **ARCHIVE**; do not adopt it as the current edition without verification.
 - NAUI programme: https://www.naui.org/learn/entry-level/open-water-scuba-diver-autonomousiso-level-2/ and policies discussion https://www.naui.org/faqs/ . Public summaries are not a substitute for the applicable complete standards edition.
@@ -46,3 +47,11 @@ Open-water proof uses template `TRAINING_DIVE_LOG`, signed by the instructor, wi
 ## Local verification at preparation
 
 `node --experimental-strip-types --test apps/api/scripts/training-standard-profile.test.mjs`: **68/68** isolated contracts on Node **24.22.1**. JavaScript syntax checks and `git diff --check` passed. Added five real-browser UI fixtures but did not execute them locally: Playwright launch failed because no Chromium executable is installed. Node 22, full TypeScript/Nest/PostgreSQL checks, remote CI and live acceptance are separate evidence and must not be claimed from the local result.
+
+## Subsequent remote evidence (bounded by exact commit)
+
+- `7eddc55e86d90ec45e4ac64812b2707254d9f47d`: isolated contracts passed on Node 22; API job 128662685500 in run 42458559858 recorded successful lint, training validation, typecheck and build steps. This is not a claim that the entire API workflow or deployment passed.
+- The initial separate workflow was correctly blocked by the A02 inventory contract as unclassified. It was removed and the same isolated suite was added as an unconditional step in the existing API workflow, without changing the approved workflow inventory or weakening a gate.
+- `17b3097150d7670e0a0eefa416aa2cc6e570bf87`: API run 42458747749 passed the new isolated Node 22 step and source lint; A02 release-evidence contract run 42458747734 passed. Full API, browser and other checks were still running at this observation. Do not transfer a completed step from the earlier commit into a full-pass claim for this commit.
+
+PR: https://github.com/sultanasiri001-sys/hydroland/pull/582 (draft, not merged). Any documentation-only later head still needs its own exact-head CI reconciliation before adoption.
