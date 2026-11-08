@@ -40,7 +40,7 @@ try{
  await db.marineAssetDocument.update({where:{id:pending.id},data:{referenceNumber:'Changed after read'}});
  assert.equal((await call(owner,path(a.id),'POST',data(view.data,'STALE-'+suffix))).status,409);assert.equal((await audit(a.id)).length,0);pass('changed document rejects the old asset read before any mutation');
  const oldReview=(await ok(other,'marine-operations/admin/documents/pending')).find(d=>d.id===pending.id);assert.match(oldReview.reviewRevision,/^[a-f0-9]{64}$/);
- const fresh=await ok(owner,path(a.id)),newNumber='NEW-'+suffix;
+ const fresh=await ok(owner,path(a.id)),newNumber=('NEW-'+suffix).toUpperCase();
  const competing=await Promise.all([call(owner,path(a.id),'POST',data(fresh,newNumber)),call(owner,path(a.id),'POST',data(fresh,newNumber))]);assert.deepEqual(competing.map(r=>r.status).sort(),[201,409]);
  const receipt=competing.find(r=>r.status===201).data,after=await state(a.id);assert.match(receipt.reference,/^MRC-/);assert.equal(receipt.activated,false);assert.equal(after.registrationNumber,newNumber);assert.equal(after.status,'DRAFT');assert.equal((await audit(a.id)).length,1);assert.equal(after.readiness.length,1);assert.equal(after.readiness[0].status,'NOT_READY');
  const reopened=after.documents.find(d=>d.id===verified.id);assert.equal(reopened.status,'PENDING');assert.equal(reopened.verifiedAt,null);
