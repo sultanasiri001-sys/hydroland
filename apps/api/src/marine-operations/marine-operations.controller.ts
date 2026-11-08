@@ -1,14 +1,15 @@
-import {BadRequestException,Body,Controller,Get,Param,Patch,Post,Query,Req,UseGuards} from '@nestjs/common';
+import {BadRequestException,Body,Controller,Get,Header,Param,Patch,Post,Query,Req,UseGuards} from '@nestjs/common';
 import {AdminGuard} from '../admin/admin.guard';
 import {AccessTokenGuard} from '../auth/access-token.guard';
 import {MarineAssetType} from './marine-operations.domain';
 import {MarineOperationsService} from './marine-operations.service';
 import {MarineTripManagementService} from './marine-trip-management.service';
+import {MarineRegistrationService} from './marine-registration.service';
 
 @UseGuards(AccessTokenGuard)
 @Controller('marine-operations')
 export class MarineOperationsController{
- constructor(private readonly marine:MarineOperationsService,private readonly trips:MarineTripManagementService){}
+ constructor(private readonly marine:MarineOperationsService,private readonly trips:MarineTripManagementService,private readonly registration:MarineRegistrationService){}
  @Get('overview/mine') overview(@Req()req:{auth:{accountId:string}},@Query()query:Record<string,unknown>){if(Object.keys(query).length)throw new BadRequestException('Marine overview only returns your active organizations.');return this.marine.overviewMine(req.auth.accountId)}
  @Get('trips/mine') tripsMine(@Req()req:{auth:{accountId:string}}){return this.trips.list(req.auth.accountId)}
  @Post('trips') createTrip(@Req()req:{auth:{accountId:string}},@Body()body:Record<string,unknown>){return this.trips.save(req.auth.accountId,body)}
@@ -27,7 +28,13 @@ export class MarineOperationsController{
  @UseGuards(AdminGuard)
  @Get('admin/documents/pending') pending(){return this.marine.pendingDocuments()}
  @UseGuards(AdminGuard)
- @Post('admin/documents/:documentId/decision') decide(@Param('documentId')documentId:string,@Body()body:{outcome:'VERIFIED'|'REJECTED'}){return this.marine.decideDocument(documentId,body.outcome)}
+ @Post('admin/documents/:documentId/decision') decide(@Req()req:{auth:{accountId:string}},@Param('documentId')documentId:string,@Body()body:unknown){return this.marine.decideDocument(req.auth.accountId,documentId,body)}
+ @UseGuards(AdminGuard)
+ @Header('Cache-Control','private, no-store')
+ @Get('admin/assets/:assetId/registration') registrationView(@Req()req:{auth:{accountId:string}},@Param('assetId')assetId:string){return this.registration.read(req.auth.accountId,assetId)}
+ @UseGuards(AdminGuard)
+ @Header('Cache-Control','private, no-store')
+ @Post('admin/assets/:assetId/registration') correctRegistration(@Req()req:{auth:{accountId:string}},@Param('assetId')assetId:string,@Body()body:unknown){return this.registration.correct(req.auth.accountId,assetId,body)}
  @UseGuards(AdminGuard)
  @Get('admin/assets/review') reviewAssets(){return this.marine.reviewAssets()}
  @UseGuards(AdminGuard)

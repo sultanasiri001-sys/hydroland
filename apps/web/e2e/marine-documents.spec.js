@@ -21,7 +21,7 @@ test('boat operator registers marine asset and license metadata, admin verifies 
   });
   await page.route(/\/api\/v1\/marine-operations\/assets\/asset-marine-e2e\/documents$/,route=>{
     if(!requireAuth(route.request()))return json(route,{message:'Unauthorized'},401);
-    const body=route.request().postDataJSON();state.uploadedPayload=body;const doc={id:'marine-doc-e2e',marineAssetId:'asset-marine-e2e',documentType:body.documentType,referenceNumber:body.referenceNumber||null,expiresAt:body.expiresAt?new Date(body.expiresAt).toISOString():null,originalName:body.originalName,hasFile:Boolean(body.base64),status:'PENDING',verifiedAt:null,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};state.assets[0].documents=[doc];state.pending=[doc];return json(route,{...doc,marineAsset:assetSummary()},201);
+    const body=route.request().postDataJSON();state.uploadedPayload=body;const doc={id:'marine-doc-e2e',marineAssetId:'asset-marine-e2e',documentType:body.documentType,referenceNumber:body.referenceNumber||null,expiresAt:body.expiresAt?new Date(body.expiresAt).toISOString():null,originalName:body.originalName,hasFile:Boolean(body.base64),status:'PENDING',reviewRevision:'a'.repeat(64),verifiedAt:null,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};state.assets[0].documents=[doc];state.pending=[doc];return json(route,{...doc,marineAsset:assetSummary()},201);
   });
   await page.route(/\/api\/v1\/marine-operations\/admin\/documents\/pending$/,route=>requireAuth(route.request())?json(route,state.pending.map(doc=>({...doc,marineAsset:assetSummary()}))):json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/marine-operations\/assets\/asset-marine-e2e\/documents\/marine-doc-e2e\/access$/,route=>{state.ownerAccess++;return json(route,{url:'about:blank#marine-owner-document'})});
@@ -54,5 +54,5 @@ test('boat operator registers marine asset and license metadata, admin verifies 
   await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="admin"]').click();
   await page.locator('.hl-role-dashboard .hl-portal-nav-item[data-portal-label="الوساطة البحرية"]').click();
   await expect(panel).toBeVisible();const review=panel.locator('[data-marine-doc="marine-doc-e2e"]');await expect(review).toContainText('REG-7788');await review.getByRole('button',{name:'عرض الملف'}).click();await expect.poll(()=>state.adminAccess).toBe(1);await review.locator('[data-marine-decision="VERIFIED"]').click();
-  await expect.poll(()=>state.decision?.outcome).toBe('VERIFIED');await expect(panel).toContainText('لا توجد وثائق بحرية بانتظار المراجعة');
+  await expect.poll(()=>state.decision?.outcome).toBe('VERIFIED');expect(state.decision.expectedRevision).toBe('a'.repeat(64));await expect(panel).toContainText('لا توجد وثائق بحرية بانتظار المراجعة');
 });

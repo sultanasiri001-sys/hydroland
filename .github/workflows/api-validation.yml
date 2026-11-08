@@ -111,6 +111,8 @@ jobs:
       - run: npm run build --workspace=@hydroland/api
       - name: Transaction-bound boat and trip compliance contracts
         run: node apps/api/scripts/compliance-transaction-validation.cjs
+      - name: Marine registration input and review revision boundaries
+        run: node --test apps/api/scripts/marine-registration.test.cjs
       - name: Actual SIGTERM drains AI receipts before database shutdown
         run: node apps/api/scripts/agent-shutdown-check.mjs
       - name: Department directors and executive report boundaries without provider traffic
@@ -191,6 +193,7 @@ jobs:
           node apps/api/scripts/department-reference-validation.mjs
           node apps/api/scripts/department-reference-http-e2e.mjs
           node apps/api/scripts/operational-source-link-http-e2e.mjs
+          node apps/api/scripts/marine-registration-http-e2e.mjs
           CLOSURE_E2E_BROWSER=1 node apps/api/scripts/department-closure-assessment-http-e2e.mjs
           node apps/api/scripts/temporary-owner-review-http-e2e.mjs
       - name: Admin account lifecycle HTTP and PostgreSQL

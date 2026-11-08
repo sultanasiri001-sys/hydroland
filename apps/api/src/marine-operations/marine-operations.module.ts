@@ -7,5 +7,6 @@ import {CredentialObjectStorageService} from '../credentials/credential-object-s
 import {MarineOperationsController} from './marine-operations.controller';
 import {MarineOperationsService} from './marine-operations.service';
 import {MarineTripManagementService} from './marine-trip-management.service';
-@Module({imports:[AuthModule,AdminModule,IntegrationModule,AuditModule],controllers:[MarineOperationsController],providers:[MarineOperationsService,MarineTripManagementService,CredentialObjectStorageService],exports:[MarineOperationsService,MarineTripManagementService]})
+import {MarineRegistrationService} from './marine-registration.service';
+@Module({imports:[AuthModule,AdminModule,IntegrationModule,AuditModule],controllers:[MarineOperationsController],providers:[MarineOperationsService,MarineTripManagementService,MarineRegistrationService,CredentialObjectStorageService],exports:[MarineOperationsService,MarineTripManagementService]})
 export class MarineOperationsModule{}

@@ -1,10 +1,12 @@
-import {BadRequestException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
+import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {createHash} from 'node:crypto';
 import {Prisma} from '@prisma/client';
 import {AuditService} from '../audit/audit.service';
 import {DatabaseService} from '../database/database.service';
 import {CredentialObjectStorageService} from '../credentials/credential-object-storage.service';
 import {MARINE_ASSET_TYPES,REQUIRED_MARINE_DOCUMENTS,MarineAssetType,MarineReadinessResult} from './marine-operations.domain';
+import {lockAdminIdentities} from '../admin/admin-authorization';
+import {marineDocumentReviewRevision} from './marine-registration.domain';
 
 type MarineAssetDecision='ACTIVE'|'SUSPENDED'|'OUT_OF_SERVICE';
 
@@ -108,12 +110,23 @@ export class MarineOperationsService{
   if(doc.status==='VERIFIED')throw new BadRequestException('Verified marine documents cannot be edited.');
   const updated=await this.db.marineAssetDocument.update({where:{id:documentId},data:{...(input.referenceNumber!==undefined?{referenceNumber:input.referenceNumber.trim()||null}:{}),...(input.expiresAt!==undefined?{expiresAt:this.parseExpiry(input.expiresAt)}:{}),status:'PENDING',verifiedAt:null}});return this.publicDocument(updated);
  }
- async pendingDocuments(){const rows=await this.db.marineAssetDocument.findMany({where:{status:'PENDING'},include:{marineAsset:true},orderBy:{createdAt:'asc'},take:200});return rows.map(row=>({...this.publicDocument(row),marineAsset:row.marineAsset}));}
- async decideDocument(documentId:string,outcome:'VERIFIED'|'REJECTED'){
-  if(!['VERIFIED','REJECTED'].includes(outcome))throw new BadRequestException('Invalid marine document decision.');
-  const doc=await this.db.marineAssetDocument.findUnique({where:{id:documentId}});if(!doc)throw new NotFoundException('Marine document not found.');
-  if(doc.status!=='PENDING')throw new BadRequestException('Marine document is not awaiting review.');
-  const updated=await this.db.marineAssetDocument.update({where:{id:documentId},data:{status:outcome,verifiedAt:outcome==='VERIFIED'?new Date():null}});return this.publicDocument(updated);
+ async pendingDocuments(){const rows=await this.db.marineAssetDocument.findMany({where:{status:'PENDING'},include:{marineAsset:true},orderBy:{createdAt:'asc'},take:200});return rows.map(row=>{const {marineAsset,...document}=row;return {...this.publicDocument(document),marineAsset,reviewRevision:marineDocumentReviewRevision(document,marineAsset)};});}
+ async decideDocument(actorId:string,documentId:string,body:unknown){
+  if(!body||typeof body!=='object'||Array.isArray(body))throw new BadRequestException('Invalid marine document decision.');
+  const input=body as Record<string,unknown>;
+  if(Object.keys(input).some(k=>!['outcome','expectedRevision'].includes(k))||!['VERIFIED','REJECTED'].includes(String(input.outcome))||typeof input.expectedRevision!=='string'||!/^[a-f0-9]{64}$/.test(input.expectedRevision))throw new BadRequestException('أعد قراءة الوثيقة ورقم تسجيل القارب قبل اتخاذ القرار.');
+  return this.db.serializable(async tx=>{
+   const actor=await lockAdminIdentities(tx,actorId);
+   const initial=await tx.marineAssetDocument.findUnique({where:{id:documentId},select:{marineAssetId:true}});if(!initial)throw new NotFoundException('Marine document not found.');
+   await tx.$queryRaw`SELECT "id" FROM "MarineAsset" WHERE "id"::text=${initial.marineAssetId} FOR UPDATE`;
+   await tx.$queryRaw`SELECT "id" FROM "MarineAssetDocument" WHERE "id"::text=${documentId} FOR UPDATE`;
+   const row=await tx.marineAssetDocument.findUnique({where:{id:documentId},include:{marineAsset:true}});if(!row)throw new NotFoundException('Marine document not found.');
+   const {marineAsset,...doc}=row;
+   if(doc.status!=='PENDING'||marineDocumentReviewRevision(doc,marineAsset)!==input.expectedRevision)throw new ConflictException('تغيرت الوثيقة أو هوية القارب؛ أعد القراءة والمراجعة.');
+   const outcome=String(input.outcome),updated=await tx.marineAssetDocument.update({where:{id:documentId},data:{status:outcome,verifiedAt:outcome==='VERIFIED'?new Date():null}});
+   await tx.auditEvent.create({data:{actorId:actor.personId,action:'MARINE_DOCUMENT_REVIEWED',resource:'MarineAssetDocument',resourceId:documentId,metadata:{accountId:actorId,outcome,expectedRevision:input.expectedRevision,marineAssetId:marineAsset.id,registrationNumber:marineAsset.registrationNumber}}});
+   return this.publicDocument(updated);
+  });
  }
  async addMaintenance(marineAssetId:string,input:{maintenanceType:string;dueAt?:string;notes?:string}){
   const asset=await this.db.marineAsset.findUnique({where:{id:marineAssetId},select:{id:true}});
