@@ -28,6 +28,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Agency training standard core contracts (synthetic only)
+        run: node --experimental-strip-types --test apps/api/scripts/training-standard-core.test.mjs
       - name: Agency training standard profiles and persistence-adapter contracts (synthetic only)
         run: node --experimental-strip-types --test apps/api/scripts/training-standard-profile.test.mjs
       - run: npm ci --workspace=@hydroland/api --workspace=@hydroland/web --include-workspace-root=true
