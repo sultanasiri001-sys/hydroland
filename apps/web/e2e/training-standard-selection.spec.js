@@ -28,22 +28,22 @@ async function setup(page,{empty=false,conflict=false}={}){
   await expect(page.locator('[data-training-plan-view]')).toContainText('TEST_PROGRAM');
 }
 async function choose(page,agency='TEST_PADI'){
-  const form=page.locator('[data-standard-select]');await form.getByLabel('المنظمة',{exact:true}).selectOption(agency);
-  await form.getByLabel('البرنامج والمستوى والإصدار',{exact:true}).selectOption('profile-'+agency);return form;
+  const form=page.locator('[data-standard-select]');await form.getByRole("combobox",{name:'المنظمة',exact:true}).selectOption(agency);
+  await form.getByRole("combobox",{name:'البرنامج والمستوى والإصدار',exact:true}).selectOption('profile-'+agency);return form;
 }
 test('agency selection filters programmes and updates their requirements without writing',async({page})=>{
   await setup(page);const form=await choose(page);await expect(form.locator('[data-standard-requirements]')).toContainText('الحد الأدنى للعمر: 10');
-  await form.getByLabel('المنظمة',{exact:true}).selectOption('TEST_NAUI');await expect(form.getByLabel('البرنامج والمستوى والإصدار',{exact:true})).toHaveValue('');
-  await expect(form.getByLabel('البرنامج والمستوى والإصدار',{exact:true}).locator('option')).toHaveCount(2);
-  await form.getByLabel('البرنامج والمستوى والإصدار',{exact:true}).selectOption('profile-TEST_NAUI');await expect(form.locator('[data-standard-requirements]')).toContainText('الحد الأدنى للعمر: 15');
+  await form.getByRole("combobox",{name:'المنظمة',exact:true}).selectOption('TEST_NAUI');await expect(form.getByRole("combobox",{name:'البرنامج والمستوى والإصدار',exact:true})).toHaveValue('');
+  await expect(form.getByRole("combobox",{name:'البرنامج والمستوى والإصدار',exact:true}).locator('option')).toHaveCount(2);
+  await form.getByRole("combobox",{name:'البرنامج والمستوى والإصدار',exact:true}).selectOption('profile-TEST_NAUI');await expect(form.locator('[data-standard-requirements]')).toContainText('الحد الأدنى للعمر: 15');
   expect(await page.evaluate(()=>window.testState.posts.length)).toBe(0);
 });
 test('explicit selection sends only the chosen profile identity and context',async({page})=>{
-  await setup(page);const form=await choose(page,'TEST_SSI');await form.getByLabel('بيئة التدريب',{exact:true}).selectOption('OPEN_WATER');await form.getByLabel('أقصى عمق مخطط بالمتر',{exact:true}).fill('8');await form.getByLabel('سبب اختيار الإصدار',{exact:true}).fill('اختيار اصطناعي لا يعتمد معايير فعلية');await form.getByRole('checkbox').check();await form.getByRole('button',{name:'ربط معايير المنظمة بالدورة',exact:true}).click();
+  await setup(page);const form=await choose(page,'TEST_SSI');await form.getByRole("combobox",{name:'بيئة التدريب',exact:true}).selectOption('OPEN_WATER');await form.getByLabel('أقصى عمق مخطط بالمتر',{exact:true}).fill('8');await form.getByLabel('سبب اختيار الإصدار',{exact:true}).fill('اختيار اصطناعي لا يعتمد معايير فعلية');await form.getByRole('checkbox').check();await form.getByRole('button',{name:'ربط معايير المنظمة بالدورة',exact:true}).click();
   await expect(page.locator('[data-standard-select]')).toHaveCount(0);await expect(page.locator('.hl-training')).toContainText('TEST_SSI');const posts=await page.evaluate(()=>window.testState.posts);expect(posts).toHaveLength(1);expect(posts[0].profileId).toBe('profile-TEST_SSI');expect(posts[0]).not.toHaveProperty('requirements');expect(posts[0]).not.toHaveProperty('approval');
 });
 test('unavailable standards never invent an agency fallback',async({page})=>{await setup(page,{empty:true});await expect(page.locator('[data-standard-select]')).toHaveCount(0);await expect(page.locator('.hl-training')).toContainText('لا يبدأ التدريب قبل وجود إصدار معتمد');});
 test('server conflict preserves the uncommitted selection',async({page})=>{
-  await setup(page,{conflict:true});const form=await choose(page);await form.getByLabel('بيئة التدريب',{exact:true}).selectOption('OPEN_WATER');await form.getByLabel('أقصى عمق مخطط بالمتر',{exact:true}).fill('8');await form.getByLabel('سبب اختيار الإصدار',{exact:true}).fill('اختيار اصطناعي لا يعتمد معايير فعلية');await form.getByRole('checkbox').check();await form.getByRole('button',{name:'ربط معايير المنظمة بالدورة',exact:true}).click();await expect(form.locator('[data-plan-message]')).toContainText('تغير الإصدار');await expect(form.getByLabel('البرنامج والمستوى والإصدار',{exact:true})).toHaveValue('profile-TEST_PADI');
+  await setup(page,{conflict:true});const form=await choose(page);await form.getByRole("combobox",{name:'بيئة التدريب',exact:true}).selectOption('OPEN_WATER');await form.getByLabel('أقصى عمق مخطط بالمتر',{exact:true}).fill('8');await form.getByLabel('سبب اختيار الإصدار',{exact:true}).fill('اختيار اصطناعي لا يعتمد معايير فعلية');await form.getByRole('checkbox').check();await form.getByRole('button',{name:'ربط معايير المنظمة بالدورة',exact:true}).click();await expect(form.locator('[data-plan-message]')).toContainText('تغير الإصدار');await expect(form.getByRole("combobox",{name:'البرنامج والمستوى والإصدار',exact:true})).toHaveValue('profile-TEST_PADI');
 });
 test('losing the instructor role clears the selection without a write',async({page})=>{await setup(page);await choose(page);await page.evaluate(()=>{window.testState.role='student';document.dispatchEvent(new CustomEvent('hydroland:role-changed'))});await expect(page.locator('[data-standard-select]')).toHaveCount(0);expect(await page.evaluate(()=>window.testState.posts.length)).toBe(0);});
