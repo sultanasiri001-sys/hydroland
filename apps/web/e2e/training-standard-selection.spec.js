@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test';
-import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 
 // A browser fixture exercising the real training UI, not an agency certification or live API.
-const source=fileURLToPath(new URL('../src/hydroland-training.js',import.meta.url));
+const source=path.resolve(__dirname,'../src/hydroland-training.js');
 async function setup(page,{empty=false,conflict=false}={}){
   await page.route('**/isolated-training-standards',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"></head><body><section class="training"></section><div class="hl-role-dashboard" data-role="instructor"></div></body></html>'}));
   await page.goto('/isolated-training-standards');
