@@ -195,3 +195,241 @@ test('UTC timestamp with exact seconds is accepted', () => {
   const h = history(); h[0].startsAt = h[0].startsAt.replace('.000Z', 'Z');
   assert.equal(evaluate(policy(), h).complete, true);
 });
+
+// V2 fixtures are SYNTHETIC modelling contracts, not PADI or other agency rules.
+const policyV2 = () => {
+  const p = policy();
+  return { ...p, schemaVersion: 2,
+    qualification: { minimumDepthMetres: 3, minimumPercentAtDepth: 60, depthFractionComparison: 'MORE_THAN',
+      alternatives: [{ metric: 'SUBMERGED_SECONDS', minimum: 960 }, { metric: 'BREATHED_GAS_LITRES', minimum: 1250 }] },
+    qualifyingDives: p.qualifyingDives.map(({ minimumBottomMinutes, ...rule }) => rule),
+    experienceLimits: p.experienceLimits.map(({ minimumBottomMinutes, ...rule }) => rule),
+    dayLimits: { ...p.dayLimits, afterConfinedWaterMaximumDives: 2 }
+  };
+};
+const v2Dive = value => {
+  const { bottomMinutes, ...common } = value;
+  return { ...common, qualificationEvidence: { submergedSeconds: 1200, depthThresholdMetres: 3, secondsAtOrDeeperThanThreshold: 900, breathedGasLitres: null } };
+};
+const historyV2 = () => history().map(v2Dive);
+const confinedActivity = (id = 'confined', startsAt = '2036-01-01T04:00:00.000Z', endsAt = '2036-01-01T05:00:00.000Z', environment = 'POOL') => ({ id, profileHash: HASH, environment, startsAt, endsAt });
+const evaluateV2 = (p = policyV2(), dives = historyV2(), confined = [], evidence = skills(), at = AS_OF) => evaluateDiveProgression(p, dives, evidence, at, confined);
+const rejectsV2 = (modify, input = 'policy') => {
+  const p = policyV2(), dives = historyV2(), confined = [];
+  modify(input === 'policy' ? p : input === 'dives' ? dives : confined);
+  assert.throws(() => evaluateV2(p, dives, confined), DiveProgressionError);
+};
+
+test('v2 round trips without v1 artificial minimum minutes or production authority', () => {
+  assert.deepEqual(parseDiveProgressionPolicy(policyV2()), policyV2());
+  assert.deepEqual(evaluateV2(), evaluate());
+});
+test('v2 immutable inputs remain unchanged after evaluation', () => {
+  const values = [policyV2(), historyV2().reverse(), [confinedActivity()], skills()];
+  const before = structuredClone(values); evaluateV2(...values); assert.deepEqual(values, before);
+});
+test('v2 gas alternative passes below the time threshold without a one-minute floor', () => {
+  const h = historyV2(); h[0].qualificationEvidence = { submergedSeconds: 30, depthThresholdMetres: 3, secondsAtOrDeeperThanThreshold: 20, breathedGasLitres: 1250 };
+  assert.equal(evaluateV2(policyV2(), h).complete, true);
+});
+test('v2 time alternative passes with gas evidence absent', () => {
+  const h = historyV2(); h[0].qualificationEvidence.submergedSeconds = 960;
+  h[0].qualificationEvidence.secondsAtOrDeeperThanThreshold = 700;
+  assert.equal(evaluateV2(policyV2(), h).complete, true);
+});
+test('v2 neither time nor gas threshold cannot be replaced by total elapsed window', () => {
+  const h = historyV2(); Object.assign(h[0].qualificationEvidence, { submergedSeconds: 900, secondsAtOrDeeperThanThreshold: 700, breathedGasLitres: 1249 });
+  has(evaluateV2(policyV2(), h), 'DIVE_QUALIFICATION_ALTERNATIVE_REQUIRED');
+});
+test('v2 alternatives are OR and do not require both measurements', () => {
+  const p = policyV2(); p.qualification.alternatives = [{ metric: 'BREATHED_GAS_LITRES', minimum: 1250 }];
+  const h = historyV2(); h.forEach(d => { d.qualificationEvidence.breathedGasLitres = 1250; });
+  assert.equal(evaluateV2(p, h).complete, true);
+  h[0].qualificationEvidence.breathedGasLitres = null;
+  has(evaluateV2(p, h), 'DIVE_QUALIFICATION_ALTERNATIVE_REQUIRED');
+});
+test('v2 strict depth-time fraction rejects equality and accepts one second above', () => {
+  const h = historyV2(); h[0].qualificationEvidence.secondsAtOrDeeperThanThreshold = 720;
+  has(evaluateV2(policyV2(), h), 'DIVE_DEPTH_TIME_REQUIRED');
+  h[0].qualificationEvidence.secondsAtOrDeeperThanThreshold = 721;
+  assert.equal(evaluateV2(policyV2(), h).complete, true);
+});
+test('v2 inclusive depth-time fraction accepts equality', () => {
+  const p = policyV2(); p.qualification.depthFractionComparison = 'AT_LEAST';
+  const h = historyV2(); h[0].qualificationEvidence.secondsAtOrDeeperThanThreshold = 720;
+  assert.equal(evaluateV2(p, h).complete, true);
+});
+test('v2 a brief maximum-depth visit cannot satisfy depth-time evidence', () => {
+  const h = historyV2(); h[0].qualificationEvidence.secondsAtOrDeeperThanThreshold = 1;
+  has(evaluateV2(policyV2(), h), 'DIVE_DEPTH_TIME_REQUIRED');
+});
+test('v2 minimum depth is independent of maximum progression depth', () => {
+  const h = historyV2(); h[0].maximumDepthMetres = 2; h[0].qualificationEvidence.secondsAtOrDeeperThanThreshold = 0;
+  has(evaluateV2(policyV2(), h), 'DIVE_MINIMUM_DEPTH');
+});
+test('v2 invalid qualification cannot advance the stage', () => {
+  const h = historyV2(); h[0].qualificationEvidence.secondsAtOrDeeperThanThreshold = 0;
+  const r = evaluateV2(policyV2(), h); assert.equal(r.completedQualifyingDives, 0); has(r, 'DIVE_SEQUENCE_REQUIRED');
+});
+test('v2 experience dives also need qualification and count toward daily limits', () => {
+  const h = historyV2(); const e = v2Dive(experience('extra', '2036-01-01T07:00:00.000Z'));
+  e.qualificationEvidence.secondsAtOrDeeperThanThreshold = 0; h.splice(1, 0, e);
+  const r = evaluateV2(policyV2(), h); has(r, 'DIVE_DEPTH_TIME_REQUIRED'); has(r, 'DAILY_DIVE_DEPTH');
+});
+test('v2 requires explicit confined history; v1 refuses ignored confined history', () => {
+  assert.throws(() => evaluateDiveProgression(policyV2(), historyV2(), skills(), AS_OF), DiveProgressionError);
+  assert.throws(() => evaluateDiveProgression(policy(), history(), skills(), AS_OF, []), DiveProgressionError);
+});
+test('v2 three OW dives pass without preceding confined activity but not after it', () => {
+  const h = historyV2(); h[2] = v2Dive(dive(3, '2036-01-01T10:00:00.000Z', 9));
+  assert.equal(evaluateV2(policyV2(), h).complete, true);
+  const r = evaluateV2(policyV2(), h, [confinedActivity()]); has(r, 'AFTER_CONFINED_DAILY_DIVE_LIMIT'); assert.equal(r.completedQualifyingDives, 2);
+});
+test('v2 prior-day confined activity does not trigger the conditional quota', () => {
+  const h = historyV2(); h[2] = v2Dive(dive(3, '2036-01-01T10:00:00.000Z', 9));
+  assert.equal(evaluateV2(policyV2(), h, [confinedActivity('prior', '2035-12-31T04:00:00.000Z', '2035-12-31T05:00:00.000Z')]).complete, true);
+});
+test('v2 later confined activity does not retroactively trigger earlier OW quota', () => {
+  const h = historyV2(); h[2] = v2Dive(dive(3, '2036-01-01T10:00:00.000Z', 9));
+  assert.equal(evaluateV2(policyV2(), h, [confinedActivity('later', '2036-01-01T12:00:00.000Z', '2036-01-01T13:00:00.000Z')]).complete, true);
+});
+test('v2 conditional quota counts all preceding OW including before confined activity', () => {
+  const h = historyV2(); h[2] = v2Dive(dive(3, '2036-01-01T10:00:00.000Z', 9));
+  has(evaluateV2(policyV2(), h, [confinedActivity('middle', '2036-01-01T07:00:00.000Z', '2036-01-01T07:30:00.000Z')]), 'AFTER_CONFINED_DAILY_DIVE_LIMIT');
+});
+test('v2 natural confined water and pool both trigger source-configured conditional quota', () => {
+  const p = policyV2(); p.dayLimits.afterConfinedWaterMaximumDives = 1;
+  for (const env of ['POOL', 'CONFINED_WATER']) has(evaluateV2(p, historyV2(), [confinedActivity('c', undefined, undefined, env)]), 'AFTER_CONFINED_DAILY_DIVE_LIMIT');
+});
+test('v2 experience dives also count toward conditional quota', () => {
+  const p = policyV2(); p.dayLimits.depthLimits = [];
+  const h = historyV2(); h.splice(1, 0, v2Dive(experience('extra', '2036-01-01T07:00:00.000Z')));
+  has(evaluateV2(p, h, [confinedActivity()]), 'AFTER_CONFINED_DAILY_DIVE_LIMIT');
+});
+test('v2 day condition uses explicit timezone rather than UTC calendar', () => {
+  const p = policyV2(); p.dayLimits.afterConfinedWaterMaximumDives = 1; p.dayLimits.depthLimits = [];
+  const h = [v2Dive(dive(1, '2036-01-01T21:00:00.000Z', 7)), v2Dive(dive(2, '2036-01-02T00:00:00.000Z', 11)), v2Dive(dive(3, '2036-01-03T00:00:00.000Z', 15))];
+  const c = [confinedActivity('c', '2036-01-01T22:00:00.000Z', '2036-01-01T22:30:00.000Z')];
+  has(evaluateV2(p, h, c), 'AFTER_CONFINED_DAILY_DIVE_LIMIT');
+  p.timeZone = 'UTC'; assert.equal(evaluateV2(p, h, c).complete, true);
+});
+test('v2 overlap with confined activity blocks a qualifying dive', () => {
+  has(evaluateV2(policyV2(), historyV2(), [confinedActivity('overlap', '2036-01-01T06:10:00.000Z', '2036-01-01T07:00:00.000Z')]), 'DIVE_OVERLAPS_CONFINED_ACTIVITY');
+});
+test('v2 exact adjacent confined/OW windows do not overlap', () => {
+  assert.equal(evaluateV2(policyV2(), historyV2(), [confinedActivity('adjacent', '2036-01-01T05:00:00.000Z', '2036-01-01T06:00:00.000Z')]).complete, true);
+});
+for (const [name, change] of [
+  ['unknown qualification key', p => { p.qualification.approved = true; }],
+  ['missing alternative list', p => { delete p.qualification.alternatives; }],
+  ['empty alternative list', p => { p.qualification.alternatives = []; }],
+  ['duplicate alternative metric', p => { p.qualification.alternatives[1] = p.qualification.alternatives[0]; }],
+  ['sparse alternatives', p => { delete p.qualification.alternatives[0]; }],
+  ['unknown metric', p => { p.qualification.alternatives[0].metric = 'SESSION_MINUTES'; }],
+  ['coerced metric', p => { p.qualification.alternatives[0].metric = { toString: () => 'SUBMERGED_SECONDS' }; }],
+  ['zero metric threshold', p => { p.qualification.alternatives[0].minimum = 0; }],
+  ['infinite gas threshold', p => { p.qualification.alternatives[1].minimum = Infinity; }],
+  ['strict impossible percentage', p => { p.qualification.minimumPercentAtDepth = 100; }],
+  ['fractional percentage', p => { p.qualification.minimumPercentAtDepth = 60.5; }],
+  ['zero percentage', p => { p.qualification.minimumPercentAtDepth = 0; }],
+  ['coerced comparison', p => { p.qualification.depthFractionComparison = { toString: () => 'MORE_THAN' }; }],
+  ['shallower stage cap than minimum depth', p => { p.qualifyingDives[0].maximumDepthMetres = 2; }],
+  ['shallower experience cap than minimum depth', p => { p.experienceLimits[0].maximumDepthMetres = 2; }],
+  ['shallower daily cap than minimum depth', p => { p.dayLimits.depthLimits[0].maximumDepthMetres = 2; }],
+  ['missing conditional cap', p => { delete p.dayLimits.afterConfinedWaterMaximumDives; }],
+  ['conditional cap above general cap', p => { p.dayLimits.afterConfinedWaterMaximumDives = 4; }],
+  ['v1 minute rule in v2', p => { p.qualifyingDives[0].minimumBottomMinutes = 20; }],
+  ['unknown schema', p => { p.schemaVersion = 3; }]
+]) test(`v2 rejects ${name}`, () => rejectsV2(change));
+for (const [name, change] of [
+  ['missing measurements', h => { delete h[0].qualificationEvidence; }],
+  ['extra old bottom minutes', h => { h[0].bottomMinutes = 20; }],
+  ['unknown measurement field', h => { h[0].qualificationEvidence.approved = true; }],
+  ['missing gas evidence field', h => { delete h[0].qualificationEvidence.breathedGasLitres; }],
+  ['wrong threshold depth', h => { h[0].qualificationEvidence.depthThresholdMetres = 2; }],
+  ['submerged time exceeding window', h => { h[0].qualificationEvidence.submergedSeconds = 1801; }],
+  ['negative submerged time', h => { h[0].qualificationEvidence.submergedSeconds = -1; }],
+  ['fractional seconds', h => { h[0].qualificationEvidence.submergedSeconds = 1000.5; }],
+  ['time at depth exceeding submerged time', h => { h[0].qualificationEvidence.secondsAtOrDeeperThanThreshold = 1201; }],
+  ['positive time beyond actual maximum depth', h => { h[0].maximumDepthMetres = 2; }],
+  ['negative gas volume', h => { h[0].qualificationEvidence.breathedGasLitres = -1; }],
+  ['NaN gas volume', h => { h[0].qualificationEvidence.breathedGasLitres = NaN; }],
+  ['string gas volume', h => { h[0].qualificationEvidence.breathedGasLitres = '1250'; }]
+]) test(`v2 rejects ${name}`, () => rejectsV2(change, 'dives'));
+for (const [name, change] of [
+  ['wrong source hash', c => { c.push({ ...confinedActivity(), profileHash: OTHER }); }],
+  ['future activity', c => { c.push(confinedActivity('future', '2036-01-05T04:00:00.000Z', '2036-01-05T05:00:00.000Z')); }],
+  ['unknown environment', c => { c.push({ ...confinedActivity(), environment: 'OPEN_WATER' }); }],
+  ['coerced environment', c => { c.push({ ...confinedActivity(), environment: { toString: () => 'POOL' } }); }],
+  ['negative duration', c => { c.push(confinedActivity('bad', '2036-01-01T05:00:00.000Z', '2036-01-01T04:00:00.000Z')); }],
+  ['cross-local-day activity', c => { c.push(confinedActivity('cross', '2036-01-01T20:30:00.000Z', '2036-01-01T21:30:00.000Z')); }],
+  ['duplicate activity id', c => { c.push(confinedActivity(), confinedActivity()); }],
+  ['id shared with OW dive', c => { c.push(confinedActivity('dive-1')); }],
+  ['overlapping confined activities', c => { c.push(confinedActivity('a'), confinedActivity('b')); }],
+  ['sparse confined array', c => { c.length = 1; }],
+  ['unknown activity property', c => { c.push({ ...confinedActivity(), approved: true }); }]
+]) test(`v2 rejects confined history with ${name}`, () => rejectsV2(change, 'confined'));
+
+test('data-only boundary rejects changing comparison getter before invoking it', () => {
+  const p = policyV2(); let calls = 0;
+  Object.defineProperty(p.qualification, 'depthFractionComparison', { enumerable: true, get: () => ++calls <= 3 ? 'MORE_THAN' : 'UNSUPPORTED' });
+  assert.throws(() => evaluateV2(p), DiveProgressionError); assert.equal(calls, 0);
+});
+test('schema-version accessor is rejected without executing it', () => {
+  const p = policyV2(); let calls = 0;
+  Object.defineProperty(p, 'schemaVersion', { enumerable: true, get: () => { calls++; return 2; } });
+  assert.throws(() => evaluateV2(p), DiveProgressionError); assert.equal(calls, 0);
+});
+for (const field of ['metric', 'minimum']) test(`alternative ${field} accessor is rejected without execution`, () => {
+  const p = policyV2(); let calls = 0;
+  Object.defineProperty(p.qualification.alternatives[0], field, { enumerable: true, get: () => { calls++; return field === 'metric' ? 'SUBMERGED_SECONDS' : 960; } });
+  assert.throws(() => evaluateV2(p), DiveProgressionError); assert.equal(calls, 0);
+});
+test('dense array getter is rejected without execution in both versions', () => {
+  for (const p of [policy(), policyV2()]) {
+    let calls = 0; const original = p.qualifyingDives[0];
+    Object.defineProperty(p.qualifyingDives, 0, { enumerable: true, get: () => { calls++; return original; } });
+    assert.throws(() => parseDiveProgressionPolicy(p), DiveProgressionError); assert.equal(calls, 0);
+  }
+});
+test('confined evidence accessors cannot change validated timestamps or status', () => {
+  const c = confinedActivity(); let calls = 0;
+  Object.defineProperty(c, 'endsAt', { enumerable: true, get: () => { calls++; return '2036-01-01T05:00:00.000Z'; } });
+  assert.throws(() => evaluateV2(policyV2(), historyV2(), [c]), DiveProgressionError); assert.equal(calls, 0);
+});
+test('dive enum getter and skill timestamp getter are rejected without invocation', () => {
+  const h = historyV2(); let calls = 0;
+  Object.defineProperty(h[0], 'kind', { enumerable: true, get: () => { calls++; return 'QUALIFYING'; } });
+  assert.throws(() => evaluateV2(policyV2(), h), DiveProgressionError); assert.equal(calls, 0);
+  const s = skills(); Object.defineProperty(s[0], 'completedAt', { enumerable: true, get: () => { calls++; return '2035-12-31T00:00:00.000Z'; } });
+  assert.throws(() => evaluateV2(policyV2(), historyV2(), [], s), DiveProgressionError); assert.equal(calls, 0);
+});
+test('plain null-prototype data records remain supported', () => {
+  const p = Object.assign(Object.create(null), policyV2()); assert.equal(evaluateV2(p).complete, true);
+});
+test('class instances, hidden extra keys and symbol keys cannot masquerade as records', () => {
+  const p = policyV2(); Object.setPrototypeOf(p.qualification, { arbitrary: true }); assert.throws(() => evaluateV2(p), DiveProgressionError);
+  const hidden = policyV2(); Object.defineProperty(hidden, 'approved', { value: true, enumerable: false }); assert.throws(() => evaluateV2(hidden), DiveProgressionError);
+  const symbol = policyV2(); symbol[Symbol('approved')] = true; assert.throws(() => evaluateV2(symbol), DiveProgressionError);
+});
+test('non-data array additions do not override array methods', () => {
+  const p = policyV2(); Object.defineProperty(p.qualifyingDives, 'map', { value: () => [], enumerable: false });
+  assert.throws(() => evaluateV2(p), DiveProgressionError);
+});
+test('v2 inclusive 100-percent threshold accepts all time at minimum depth', () => {
+  const p = policyV2(); p.qualification.minimumPercentAtDepth = 100; p.qualification.depthFractionComparison = 'AT_LEAST';
+  const h = historyV2(); h.forEach(d => { d.qualificationEvidence.secondsAtOrDeeperThanThreshold = d.qualificationEvidence.submergedSeconds; });
+  assert.equal(evaluateV2(p, h).complete, true);
+});
+test('v2 configured depth threshold and exact minimum-depth equality are used', () => {
+  const p = policyV2(); p.qualification.minimumDepthMetres = 4;
+  const h = historyV2(); h.forEach(d => { d.qualificationEvidence.depthThresholdMetres = 4; }); h[0].maximumDepthMetres = 4;
+  assert.equal(evaluateV2(p, h).complete, true);
+});
+test('v2 bounded confined history refuses truncation or oversized data', () => {
+  assert.throws(() => evaluateV2(policyV2(), historyV2(), Array.from({ length: 201 }, () => confinedActivity())), DiveProgressionError);
+});
+test('v2 rejected attempt cannot disappear when a later valid ordinal retry is supplied', () => {
+  const h = historyV2(); const bad = structuredClone(h[0]); bad.id = 'rejected-attempt'; bad.startsAt = '2035-12-31T06:00:00.000Z'; bad.endsAt = '2035-12-31T06:30:00.000Z'; bad.qualificationEvidence.secondsAtOrDeeperThanThreshold = 0;
+  const r = evaluateV2(policyV2(), [bad, ...h]); assert.equal(r.completedQualifyingDives, 3); assert.equal(r.complete, false); has(r, 'DIVE_DEPTH_TIME_REQUIRED');
+});
