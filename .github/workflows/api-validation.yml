@@ -30,6 +30,8 @@ jobs:
           node-version: 22
       - name: Agency training standard core contracts (synthetic only)
         run: node --experimental-strip-types --test apps/api/scripts/training-standard-core.test.mjs
+      - name: Agency dive progression contracts (synthetic only)
+        run: node --experimental-strip-types --test apps/api/scripts/training-dive-progression.test.mjs
       - name: Agency training standard profiles and persistence-adapter contracts (synthetic only)
         run: node --experimental-strip-types --test apps/api/scripts/training-standard-profile.test.mjs
       - run: npm ci --workspace=@hydroland/api --workspace=@hydroland/web --include-workspace-root=true
@@ -113,6 +115,10 @@ jobs:
       - run: npm run validate:integrations -w @hydroland/api
       - run: npm run typecheck --workspace=@hydroland/api
       - run: npm run build --workspace=@hydroland/api
+      - name: Source-bound dive completion and session producer PostgreSQL contracts
+        env:
+          CI: "true"
+        run: node apps/api/scripts/training-progression-evidence-db-checks.mjs
       - name: Transaction-bound boat and trip compliance contracts
         run: node apps/api/scripts/compliance-transaction-validation.cjs
       - name: Marine registration input and review revision boundaries
@@ -348,5 +354,3 @@ jobs:
 
       - name: Phase 4 append-only audit database boundary
         run: node apps/api/scripts/audit-append-only-validation.mjs
-
-

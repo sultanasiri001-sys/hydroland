@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import type { Prisma, TrainingEnrollment } from '@prisma/client';
-import { ageOn, assertTrainingStandardBinding, hasTrainingCredential, parseTrainingStandard, trainingCompletionGaps, trainingStandardBinding, trainingStandardHash, trainingSupervisionLimits, TrainingStandardError } from './training-standard-profile';
+import { ageOn, assertTrainingStandardBinding, hasTrainingCredential, parseTrainingStandard, trainingCompletionGaps, trainingStandardBinding, trainingStandardHash, trainingSupervisionLimits, trainingStandardProgressionPolicy, TrainingStandardError } from './training-standard-profile';
 import type { TrainingStandardBinding, TrainingStandardProfile } from './training-standard-profile';
 import { hasInstructorCenterAccess } from './training-center-scope';
+import { readTrainingProgressionEvidence } from './training-progression-evidence';
+import { evaluateDiveProgression, DiveProgressionError } from './training-dive-progression';
 
 const CATEGORY = 'TRAINING_STANDARD_PROFILE';
 const json = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -168,24 +170,16 @@ export async function assertTrainingStandardCompletion(tx: Prisma.TransactionCli
   if (documents.length > 200) throw new ConflictException('يلزم جرد كامل لأدلة التدريب قبل الإتمام.');
   const accepted = documents.filter(document => { const payload = json(document.payload); return payload.trainingStandardHash === binding.profileHash && payload.studentAccountId === enrollment.studentAccountId && payload.instructorAccountId === enrollment.instructorAccountId && document.contentHash && document.approvedByAccountId && ![enrollment.studentAccountId, enrollment.instructorAccountId].includes(document.approvedByAccountId) && document.signedByAccountId; });
   const verifiedFormCodes = accepted.map(document => document.template.code);
-  const dives = new Map<string, number>(), diveWindows: Array<{ startsAt: number; endsAt: number }> = [];
-  const student = await tx.account.findUniqueOrThrow({ where: { id: enrollment.studentAccountId }, select: { diverProfile: { select: { dateOfBirth: true } } } });
-  for (const document of accepted.filter(item => item.template.code === 'TRAINING_DIVE_LOG' && item.signedByAccountId === enrollment.instructorAccountId)) {
-    const entries = json(document.payload).openWaterDives;
-    if (!Array.isArray(entries) || entries.length > 200) continue;
-    for (const entry of entries) {
-      const dive = json(entry), happenedAt = new Date(String(dive.startedAt)), age = ageOn(student.diverProfile?.dateOfBirth, happenedAt);
-      const session = enrollment.record?.sessions.find(item => item.id === dive.sessionId && item.status === 'COMPLETED' && item.instructorAccountId === enrollment.instructorAccountId);
-      const context = json(json(session?.evidence).trainingStandardContext);
-      const actualStart=Date.parse(String(json(session?.evidence).startedAt)),actualEnd=Date.parse(String(json(session?.evidence).completedAt));
-      if (!session || typeof dive.id !== 'string' || !dive.id || dive.id.length > 100 || !Number.isFinite(happenedAt.getTime()) || happenedAt > new Date() || happenedAt < enrollment.enrolledAt || age === null || happenedAt < session.startsAt || !session.endsAt || happenedAt >= session.endsAt || dive.environment !== 'OPEN_WATER' || context.environment !== 'OPEN_WATER' || !Number.isSafeInteger(dive.bottomMinutes) || (dive.bottomMinutes as number) <= 0 || (dive.bottomMinutes as number) > 1440 || happenedAt.getTime() + (dive.bottomMinutes as number) * 60000 > session.endsAt.getTime() || !Number.isFinite(actualStart) || !Number.isFinite(actualEnd) || happenedAt.getTime()<actualStart || happenedAt.getTime()+(dive.bottomMinutes as number)*60000>actualEnd || typeof context.plannedMaximumDepthMetres !== 'number' || typeof dive.maximumDepthMetres !== 'number' || !Number.isFinite(dive.maximumDepthMetres) || dive.maximumDepthMetres <= 0) continue;
-      const limits = trainingSupervisionLimits(profile, age, 'OPEN_WATER');
-      if (dive.maximumDepthMetres > limits.maximumDepthMetres || dive.maximumDepthMetres > Number(context.plannedMaximumDepthMetres)) continue;
-      if (dives.has(dive.id)) throw new ConflictException('دليل الغوص مكرر بين النماذج؛ يلزم حل التعارض قبل الإتمام.');
-      const start=happenedAt.getTime(),end=start+(dive.bottomMinutes as number)*60000;
-      if(diveWindows.some(window=>start<window.endsAt&&end>window.startsAt))throw new ConflictException('أوقات أدلة الغوص متداخلة للمتدرب نفسه؛ لا تحتسب مرتين.');
-      diveWindows.push({startsAt:start,endsAt:end});
-      dives.set(dive.id, dive.bottomMinutes as number);
+  const progressionPolicy = trainingStandardProgressionPolicy(profile);
+  const now = new Date();
+  const progressionEvidence = progressionPolicy ? readTrainingProgressionEvidence(enrollment, enrollment.record?.sessions || [], documents, binding.profileHash, now) : undefined;
+  if (!progressionPolicy && ((enrollment.record?.sessions || []).some(session => session.status === 'COMPLETED' && json(json(session.evidence).trainingStandardContext).environment === 'OPEN_WATER') || documents.some(document => ['TRAINING-DIVE-LOG', 'TRAINING_DIVE_LOG'].includes(document.template.code)))) throw new ConflictException({ code: 'DIVE_PROGRESSION_POLICY_REQUIRED', message: 'لا تعتمد أدلة مياه مفتوحة دون سياسة تدرج مرتبطة بالمصدر.' });
+  if (progressionEvidence) {
+    // Current approval is checked above; source/credential/age/depth coverage must
+    // also span each actual past activity, not just its scheduled start.
+    for (const activity of progressionEvidence.activities) {
+      await assertTrainingStandardReady(tx, enrollment, enrollment.instructorAccountId, activity.startsAt, activity.context);
+      await assertTrainingStandardReady(tx, enrollment, enrollment.instructorAccountId, activity.endsAt, activity.context);
     }
   }
   const record = enrollment.record;
@@ -193,8 +187,20 @@ export async function assertTrainingStandardCompletion(tx: Prisma.TransactionCli
   const earlier=signedSkills.filter(skill=>skill.signedOffByInstructorId!==enrollment.instructorAccountId);
   const history=earlier.length?await tx.auditEvent.findMany({where:{action:'training.skill_assessed',resourceId:{in:earlier.map(skill=>skill.id)},metadata:{path:['trainingStandardHash'],equals:binding.profileHash}},orderBy:{occurredAt:'desc'},take:2001,select:{resourceId:true,metadata:true}}):[];
   if(history.length>2000)throw new ConflictException('يلزم جرد كامل لتوقيعات المدربين السابقين قبل الإتمام.');
-  const completedSkillCodes=signedSkills.filter(skill=>skill.signedOffByInstructorId===enrollment.instructorAccountId||history.some(event=>{const metadata=json(event.metadata);return event.resourceId===skill.id&&metadata.assessedByAccountId===skill.signedOffByInstructorId&&metadata.signedOffAt===skill.signedOffAt?.toISOString()&&metadata.status==='COMPETENT';})).map(skill=>skill.skillCode);
-  const gaps = trainingCompletionGaps(profile, { completedSessions: record?.sessions.filter(session => session.status === 'COMPLETED').length || 0, completedSkillCodes, verifiedFormCodes, verifiedOpenWaterDives: dives.size, verifiedOpenWaterMinutes: [...dives.values()].reduce((sum, value) => sum + value, 0) });
+  const acceptedSkills=signedSkills.filter(skill=>skill.signedOffByInstructorId===enrollment.instructorAccountId||history.some(event=>{const metadata=json(event.metadata);return event.resourceId===skill.id&&metadata.assessedByAccountId===skill.signedOffByInstructorId&&metadata.signedOffAt===skill.signedOffAt?.toISOString()&&metadata.status==='COMPETENT';}));
+  const completedSkillCodes=acceptedSkills.map(skill=>skill.skillCode);
+  let qualifyingDives = 0;
+  if (progressionPolicy && progressionEvidence) {
+    try {
+      const result = evaluateDiveProgression(progressionPolicy, progressionEvidence.dives, acceptedSkills.map(skill => ({ code: skill.skillCode, profileHash: binding.profileHash, completedAt: skill.signedOffAt!.toISOString() })), now.toISOString(), progressionEvidence.confined);
+      qualifyingDives = result.completedQualifyingDives;
+      if (result.violations.length) throw new ConflictException({ code: 'TRAINING_DIVE_PROGRESSION_REQUIRED', violations: result.violations, message: 'أدلة الغوص لا تستوفي تسلسل البرنامج أو حدوده المرتبطة بالمصدر.' });
+    } catch (error) {
+      if (error instanceof DiveProgressionError) throw new ConflictException({ code: 'DIVE_EVIDENCE_INVALID', message: 'صيغة أدلة الغوص أو تاريخ المياه المحصورة لا تستوفي سياسة المصدر.' });
+      throw error;
+    }
+  }
+  const gaps = trainingCompletionGaps(profile, { completedSessions: record?.sessions.filter(session => session.status === 'COMPLETED').length || 0, completedSkillCodes, verifiedFormCodes, verifiedOpenWaterDives: qualifyingDives, verifiedOpenWaterMinutes: 0 });
   if (gaps.length) throw new ConflictException({ code: 'TRAINING_STANDARD_EVIDENCE_REQUIRED', gaps, message: 'لم تكتمل أدلة برنامج المنظمة: المهارات والجلسات والنماذج والغوصات الموثقة.' });
   return binding;
 }

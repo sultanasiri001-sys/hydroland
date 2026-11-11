@@ -24,6 +24,8 @@ The integration is intentionally fail-closed. **Do not merge/deploy without the 
 
 ## Evidence contract for completion
 
+**Superseded in this integration branch on 11 November 2026:** the v2 source-bound contract and its restricted one-dive-per-completed-individual-session support are specified in `docs/A14_PROGRESSION_EVIDENCE_BINDING_2026-11-11.md`. The paragraphs below describe the earlier candidate's aggregate contract, not the new adapter. Real sources and existing courses have not been adopted automatically.
+
 Read existing managed documents only: `SIGNED`, non-null approval/signature timestamps, same centre, and payload `trainingEnrollmentId`, `studentAccountId`, `instructorAccountId`, `trainingStandardHash` matching the course. The approving account must differ from instructor and student. Form codes come from `DocumentTemplate.code`.
 
 Open-water proof uses template `TRAINING_DIVE_LOG`, signed by the instructor, with `payload.openWaterDives[]`: `id`, `sessionId`, `environment: OPEN_WATER`, `startedAt`, `bottomMinutes`, and `maximumDepthMetres`. It must refer to a completed session of this course/instructor and lie inside both its scheduled and actual attendance window (`evidence.startedAt`, `evidence.completedAt`), with the session's verified planning context. Duplicate IDs, overlapping dive windows, excessive depths, unsigned/different-source documents, and generic elapsed session time do not count. Existing documents that do not meet this contract are not silently relabelled or accepted.
