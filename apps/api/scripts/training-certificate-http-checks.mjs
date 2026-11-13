@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
+import {trainingStandardFixture} from './training-standard-isolated-fixture.mjs';
 
 export async function checkTrainingCertificates(db,{base,instructor,student,owner,foreignOwner,organizationId,offerId,recordId,accounts,persons,ids,request,ok}){
  const loopback=value=>['localhost','127.0.0.1','[::1]'].includes(new URL(value).hostname);
  assert.equal(process.env.CI,'true');assert.ok(loopback(base)&&loopback(process.env.DATABASE_URL),'Certificate tests require isolated loopback API and database');
+ const standards=trainingStandardFixture(db,base);
  const reviewers=[];
  for(const role of ['ADMIN','REVIEWER']){
   const person=await db.person.create({data:{firstName:'Certificate '+role,lastName:'Isolated QA'}});persons.push(person);
@@ -20,7 +22,7 @@ export async function checkTrainingCertificates(db,{base,instructor,student,owne
     }}
    },include:{record:true}
   });
-  ids.push(row.id,row.record.id);return row.record;
+  ids.push(row.id,row.record.id);await standards.bind(row.id,'QA-CERT-PROCEDURE');return row.record;
  };
  try{
   assert.equal((await request(null,'/training/certificates')).status,401);
@@ -95,7 +97,9 @@ export async function checkTrainingCertificates(db,{base,instructor,student,owne
   for(const query of ['status=BAD','cursor=bad','status=RECOMMENDED&status=APPROVED','cursor=x&cursor=y'])assert.equal((await request(admin,'/training/certificates?'+query)).status,400);
   console.log('Training certificate HTTP/DB path passed: active assigned instructor -> one audited recommendation -> independent reviewer approval/rejection -> persisted history, with concurrent/replay/stale/role-loss/privacy/pagination guards. All issuance is isolated CI only.');
  }finally{
+  await standards.cleanup();
   await db.organizationMember.updateMany({where:{accountId:instructor.id,organizationId},data:{status:'ACTIVE',role:'INSTRUCTOR'}});
   await db.roleAssignment.deleteMany({where:{OR:[{accountId:instructor.id,role:{in:['ADMIN','DIVE_CENTER']}},{accountId:student.id,role:'ADMIN'}]}});
  }
 }
+

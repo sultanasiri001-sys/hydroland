@@ -1,14 +1,16 @@
 import {randomUUID} from 'node:crypto';
+import {trainingStandardFixture} from './training-standard-isolated-fixture.mjs';
 export async function checkCenterTrainingSessions(db,{base,a,b,ownerA,ta,tb,ts,personAccount,tokenFor},check){
  if(process.env.CI!=='true'||!['localhost','127.0.0.1','[::1]'].includes(new URL(process.env.DATABASE_URL).hostname)||!['localhost','127.0.0.1','[::1]'].includes(new URL(base).hostname))throw new Error('CI loopback API and database required');
+ const standards=trainingStandardFixture(db,base);
  const request=async(token,path,body,method=body?'PATCH':'GET')=>{const r=await fetch(base+path,{method,headers:{...(token?{authorization:'Bearer '+token}:{}),...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,body:await r.json()}};
  const students=await Promise.all([personAccount('session-student-'+randomUUID()),personAccount('session-student2-'+randomUUID())]),pros=[],ids=[];
- for(let i=0;i<3;i++){const account=await personAccount('session-pro-'+i+'-'+randomUUID());await db.roleAssignment.create({data:{accountId:account.id,role:'INSTRUCTOR',status:'ACTIVE'}});const member=await db.organizationMember.create({data:{organizationId:i===2?b.org.id:a.org.id,accountId:account.id,role:'INSTRUCTOR',status:'ACTIVE'}});pros.push({...account,member})}
+ for(let i=0;i<3;i++){const account=await personAccount('session-pro-'+i+'-'+randomUUID());await db.roleAssignment.create({data:{accountId:account.id,role:'INSTRUCTOR',status:'ACTIVE'}});const member=await db.organizationMember.create({data:{organizationId:i===2?b.org.id:a.org.id,accountId:account.id,role:'INSTRUCTOR',status:'ACTIVE'}});pros.push({...account,member});await standards.participant(account.id,true)}
  const [tp,tp2,studentToken]=await Promise.all([tokenFor(pros[0].id),tokenFor(pros[1].id),tokenFor(students[0].id)]);
- const course=async(code,student=students[0].id,center=a.org.id)=>{const row=await db.trainingEnrollment.create({data:{studentAccountId:student,centerOrganizationId:center,instructorAccountId:pros[0].id,courseCode:code}});ids.push(row.id);return row};
+ const course=async(code,student=students[0].id,center=a.org.id)=>{const row=await db.trainingEnrollment.create({data:{studentAccountId:student,centerOrganizationId:center,instructorAccountId:pros[0].id,courseCode:code}});ids.push(row.id);return standards.bind(row.id)};
  const enrollment=id=>db.trainingEnrollment.findUniqueOrThrow({where:{id}}),session=id=>db.trainingSession.findUniqueOrThrow({where:{id}});
  const interval=(hour=0)=>({startsAt:new Date(Date.parse('2036-01-01T06:00:00Z')+hour*3600000).toISOString(),endsAt:new Date(Date.parse('2036-01-01T07:00:00Z')+hour*3600000).toISOString()});
- const payload=(row,extra={})=>({instructorAccountId:pros[0].id,...interval(),requestId:randomUUID(),expectedUpdatedAt:row.updatedAt.toISOString(),reason:'جدولة تدريب المركز',...extra});
+ const payload=(row,extra={})=>({instructorAccountId:pros[0].id,...interval(),...standards.context,requestId:randomUUID(),expectedUpdatedAt:row.updatedAt.toISOString(),reason:'جدولة تدريب المركز',...extra});
  const create=(row,input=payload(row),token=ta)=>request(token,`/center/me/training/enrollments/${row.id}/sessions`,input,'POST');
  const schedule=(row,extra={},token=ta)=>request(token,`/center/me/training/sessions/${row.id}/schedule`,{...interval(4),reason:'تعديل الموعد',expectedUpdatedAt:row.updatedAt.toISOString(),...extra});
  const act=(row,action,extra={},token=ta)=>request(token,`/center/me/training/sessions/${row.id}/actions`,{action,reason:'توثيق إجراء الجلسة',expectedUpdatedAt:row.updatedAt.toISOString(),...extra});
@@ -103,7 +105,7 @@ export async function checkCenterTrainingSessions(db,{base,a,b,ownerA,ta,tb,ts,p
   check((await act(await session(adjacent.id),'CANCEL')).status===409,'cancel cannot duplicate audit or notice');
 
   const concurrentCourse=await course('SESSION-ATTENDANCE-RACE',students[1].id),concurrentRecord=await db.trainingRecord.create({data:{enrollmentId:concurrentCourse.id,status:'SCHEDULED'}});
-  const concurrent=await db.trainingSession.create({data:{trainingRecordId:concurrentRecord.id,instructorAccountId:pros[1].id,status:'CHECK_IN_OPEN',startsAt:new Date(Date.now()-60000),endsAt:new Date(Date.now()+3600000),evidence:{checkInOpenedAt:new Date().toISOString()}}});
+  const concurrent=await db.trainingSession.create({data:{trainingRecordId:concurrentRecord.id,instructorAccountId:pros[1].id,status:'CHECK_IN_OPEN',startsAt:new Date(Date.now()-60000),endsAt:new Date(Date.now()+3600000),evidence:{checkInOpenedAt:new Date().toISOString(),trainingStandardContext:standards.context}}});
   const attendanceRace=await Promise.all([act(concurrent,'INSTRUCTOR_CHECK_IN'),act(concurrent,'STUDENT_CHECK_IN')]);
   check(attendanceRace.filter(x=>x.status===200).length===1&&attendanceRace.filter(x=>x.status===409).length===1,'simultaneous attendance edits do not lose evidence');
   let latest=await session(concurrent.id);await act(latest,latest.evidence.instructorCheckInAt?'STUDENT_CHECK_IN':'INSTRUCTOR_CHECK_IN');latest=await session(concurrent.id);
@@ -121,7 +123,9 @@ export async function checkCenterTrainingSessions(db,{base,a,b,ownerA,ta,tb,ts,p
    check((await create(closed,payload(closed,interval(20)))).status===409,'closed or suspended enrollment cannot schedule '+status);
   }
  }finally{
+  await standards.cleanup();
   await db.trainingCertificate.deleteMany({where:{trainingRecord:{enrollmentId:{in:ids}}}});
   await db.trainingRecord.deleteMany({where:{enrollmentId:{in:ids}}});await db.trainingEnrollment.deleteMany({where:{id:{in:ids}}});
  }
 }
+

@@ -14,7 +14,7 @@ async function open(page,{empty=false}={}){
  await page.evaluate(async()=>{window.HydrolandAuth.acceptSession({accessToken:'sessions-access',refreshToken:'sessions-refresh'},window.HydrolandAuth.beginAuthAttempt());await window.HydrolandProfile.load()});
  await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="center"]').click();await page.locator('[data-portal-label="محترفي الغوص"]').click();const panel=page.locator('#hl-center-team');await panel.getByRole('button',{name:'التكليفات التدريبية',exact:true}).click();await expect(panel).toContainText('متدرب الجلسة');return {state,panel};
 }
-async function createForm(panel){await panel.getByText('إضافة جلسة',{exact:true}).click();const form=panel.locator('[data-training-session-form="create"]');await form.getByLabel('بداية الجلسة بتوقيت الرياض').fill('2035-02-01T09:00');await form.getByLabel('نهاية الجلسة بتوقيت الرياض').fill('2035-02-01T10:00');await form.getByLabel('سبب إجراء الجلسة').fill('تدريب أول');return form}
+async function createForm(panel){await panel.getByText('إضافة جلسة',{exact:true}).click();const form=panel.locator('[data-training-session-form="create"]');await form.getByLabel('بداية الجلسة بتوقيت الرياض').fill('2035-02-01T09:00');await form.getByLabel('نهاية الجلسة بتوقيت الرياض').fill('2035-02-01T10:00');await form.getByLabel('بيئة الجلسة حسب برنامج المنظمة').selectOption('OPEN_WATER');await form.getByLabel('أقصى عمق مخطط بالمتر').fill('8');await form.getByLabel('سبب إجراء الجلسة').fill('تدريب أول');return form}
 async function sessionCard(panel){await panel.getByText('الجلسات المسجلة (2)',{exact:true}).click();return panel.locator('[data-training-session="s1"]')}
 
 test('center creates a session with Riyadh time and a stable request id across network retry',async({page})=>{
@@ -24,7 +24,7 @@ test('center creates a session with Riyadh time and a stable request id across n
   state.data.enrollments[0].record.sessions=[{...planned(),id:payload.requestId,startsAt:payload.startsAt,endsAt:payload.endsAt}];return json(route,{id:payload.requestId,status:'SCHEDULED'},201);
  });
  const form=await createForm(panel);await form.getByRole('button',{name:'حفظ الجلسة',exact:true}).click();await expect(form).toContainText('تعذر الحفظ مؤقتًا');await expect(form.getByLabel('سبب إجراء الجلسة')).toHaveValue('تدريب أول');await form.getByRole('button',{name:'حفظ الجلسة',exact:true}).click();await expect(panel.locator('[data-team-feedback]')).toContainText('تم حفظ الجلسة');
- expect(writes[0]).toEqual(writes[1]);expect(writes[0].requestId).toMatch(/^[0-9a-f-]{36}$/);expect(writes[0]).toMatchObject({instructorAccountId:'p1',startsAt:'2035-02-01T09:00:00+03:00',endsAt:'2035-02-01T10:00:00+03:00',expectedUpdatedAt:revision,reason:'تدريب أول'});expect(writes[0].organizationId).toBeUndefined();
+ expect(writes[0]).toEqual(writes[1]);expect(writes[0].requestId).toMatch(/^[0-9a-f-]{36}$/);expect(writes[0]).toMatchObject({instructorAccountId:'p1',startsAt:'2035-02-01T09:00:00+03:00',endsAt:'2035-02-01T10:00:00+03:00',expectedUpdatedAt:revision,reason:'تدريب أول',environment:'OPEN_WATER',plannedMaximumDepthMetres:8});expect(writes[0].organizationId).toBeUndefined();
  await panel.getByRole('button',{name:'الطاقم',exact:true}).click();await panel.getByRole('button',{name:'التكليفات التدريبية',exact:true}).click();await panel.getByText('الجلسات المسجلة (1)',{exact:true}).click();await expect(panel.locator('[data-training-session]')).toHaveCount(1);await expect(panel).toContainText('٢٠٣٥');
 });
 test('center reschedules with explicit conflict refresh and completed sessions stay read only',async({page})=>{
@@ -57,3 +57,4 @@ test('session create rechecks center authority before writing',async({page})=>{
 test('late session create response cannot restore private data after logout',async({page})=>{
  const {panel}=await open(page,{empty:true});let pending;await page.route('**/api/v1/center/me/training/enrollments/c1/sessions',route=>{pending=route});const form=await createForm(panel);await form.getByRole('button',{name:'حفظ الجلسة',exact:true}).click();await expect.poll(()=>Boolean(pending)).toBe(true);const payload=pending.request().postDataJSON();await page.evaluate(()=>window.HydrolandAuth.terminateSession());await json(pending,{id:payload.requestId,status:'SCHEDULED'},201);await expect(panel).toHaveCount(0);await expect(page.getByText('متدرب الجلسة',{exact:true})).toHaveCount(0);
 });
+

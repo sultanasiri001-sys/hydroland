@@ -5,6 +5,7 @@ import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { TrainingAuthorizationService } from './training-authorization.service';
 import { trainingCompletion } from './training-completion-policy';
+import { assertTrainingStandardCompletion, standardRequest } from './training-standard-store';
 
 const graph = {
   enrollment: true,
@@ -42,6 +43,7 @@ export class TrainingCertificateService {
       const record = await tx.trainingRecord.findUnique({ where: { id: trainingRecordId }, include: { ...graph, certificate: true } });
       if (!record) throw new NotFoundException('سجل التدريب غير موجود.');
       await this.authorization.assertProfessionalEnrollmentAccess(actorId, record.enrollmentId, tx);
+      await standardRequest(()=>assertTrainingStandardCompletion(tx,record.enrollmentId));
       const reasons = this.reasons(record);
       if (reasons.length) throw new ConflictException(reasons.join(' '));
       if (record.certificate) return { ...this.certificate(record.certificate), replayed: true };
@@ -101,6 +103,7 @@ export class TrainingCertificateService {
       if (certificate.updatedAt.getTime() !== revision.getTime()) throw new ConflictException('تغير طلب الشهادة. حدّث القائمة قبل القرار.');
       const reasons = this.reviewReasons(certificate);
       if (outcome === 'APPROVED' && reasons.length) throw new ConflictException(reasons.join(' '));
+      if (outcome === 'APPROVED') await standardRequest(()=>assertTrainingStandardCompletion(tx,certificate.trainingRecord.enrollmentId));
       const now = new Date();
       const raw = outcome === 'APPROVED' ? randomBytes(24).toString('base64url') : null;
       const issuance = raw ? { certificateNumber: 'HYD-TRN-' + now.getUTCFullYear() + '-' + randomBytes(8).toString('hex').toUpperCase(), verificationTokenHash: createHash('sha256').update(raw).digest('hex'), issuedAt: now } : {};
@@ -110,3 +113,4 @@ export class TrainingCertificateService {
     });
   }
 }
+

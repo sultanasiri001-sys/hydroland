@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 
 // Center suspension revokes operational access without deleting training history.
 // A qualified owner or center administrator can also teach.
@@ -15,3 +15,4 @@ export async function hasInstructorCenterAccess(db:Prisma.TransactionClient,acco
  if(centerOrganizationId===null)return true;
  return Boolean(await db.organizationMember.findFirst({where:{accountId,organizationId:centerOrganizationId,role:{in:['OWNER','ADMIN','INSTRUCTOR']},status:'ACTIVE',organization:{kind:'DIVE_CENTER',status:'ACTIVE'}},select:{id:true}}));
 }
+

@@ -30,6 +30,8 @@ jobs:
           node-version: 22
       - name: Agency training standard core contracts (synthetic only)
         run: node --experimental-strip-types --test apps/api/scripts/training-standard-core.test.mjs
+      - name: Agency training standard profiles and persistence-adapter contracts (synthetic only)
+        run: node --experimental-strip-types --test apps/api/scripts/training-standard-profile.test.mjs
       - run: npm ci --workspace=@hydroland/api --workspace=@hydroland/web --include-workspace-root=true
       - name: Verify API correctness lint toolchain and source
         run: |
@@ -346,4 +348,5 @@ jobs:
 
       - name: Phase 4 append-only audit database boundary
         run: node apps/api/scripts/audit-append-only-validation.mjs
+
 
