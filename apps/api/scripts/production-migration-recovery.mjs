@@ -383,8 +383,6 @@ async function recoverA09Correspondence() {
 
   const required = [
     ['AdministrativeRecord', 'id'],
-    ['AdministrativeRecord', 'managedDocumentVersion'],
-    ['AdministrativeRecord', 'managedDocumentContentHash'],
     ['AdministrativeRouting', 'id'],
     ['ManagedDocument', 'id'],
     ['Account', 'id'],
@@ -423,18 +421,18 @@ async function recoverA09Correspondence() {
     }
   }
 
-  if (await columnType('AdministrativeRecord', 'managedDocumentVersion') !== 'integer') {
-    throw new Error('Refusing A09 recovery: unexpected managedDocumentVersion type');
-  }
-  if (await columnType('AdministrativeRecord', 'managedDocumentContentHash') !== 'text') {
-    throw new Error('Refusing A09 recovery: unexpected managedDocumentContentHash type');
-  }
-
   execFileSync(
     'npx',
     ['prisma', 'db', 'execute', '--schema', 'prisma/schema.prisma', '--file', 'scripts/a09-correspondence-recovery.sql'],
     { stdio: 'inherit' },
   );
+
+  if (await columnType('AdministrativeRecord', 'managedDocumentVersion') !== 'integer') {
+    throw new Error('A09 recovery verification failed: unexpected managedDocumentVersion type');
+  }
+  if (await columnType('AdministrativeRecord', 'managedDocumentContentHash') !== 'text') {
+    throw new Error('A09 recovery verification failed: unexpected managedDocumentContentHash type');
+  }
 
   for (const [sourceTable, sourceColumn, targetTable, targetColumn] of references) {
     if (await columnType(sourceTable, sourceColumn) !== await columnType(targetTable, targetColumn)) {
