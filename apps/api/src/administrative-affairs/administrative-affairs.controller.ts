@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { AdministrativeAffairsPersistenceService } from './administrative-affairs-persistence.service';
 import { AdministrativeAffairsOwnershipGuard } from './administrative-affairs-ownership.guard';
@@ -10,6 +10,22 @@ export class AdministrativeAffairsController {
     private readonly service: AdministrativeAffairsPersistenceService,
     private readonly ownership: AdministrativeAffairsOwnershipGuard,
   ) {}
+
+  @Post('records')
+  createRecord(@Req() req:{auth:{accountId:string}},@Body() body:{organizationId?:string;unitId?:string;managedDocumentId?:string}){
+    this.ownership.assertOwnMutation('ADMIN_RECORD');
+    return this.service.createRecordFromDocument(req.auth.accountId,{organizationId:body?.organizationId??'',unitId:body?.unitId??'',managedDocumentId:body?.managedDocumentId??''});
+  }
+
+  @Get('records')
+  listRecords(@Req() req:{auth:{accountId:string}},@Query('organizationId') organizationId?:string,@Query('q') q?:string,@Query('status') status?:string){
+    return this.service.listRecords(req.auth.accountId,organizationId??'',{q,status});
+  }
+
+  @Get('records/:recordId')
+  getRecord(@Req() req:{auth:{accountId:string}},@Param('recordId') recordId:string){
+    return this.service.getRecord(req.auth.accountId,recordId);
+  }
 
   @Patch('records/:recordId/register')
   register(@Req() req:{auth:{accountId:string}}, @Param('recordId') recordId:string) {
@@ -44,6 +60,18 @@ export class AdministrativeAffairsController {
     this.ownership.assertOwnMutation('ADMIN_ROUTING');
     if(!body?.assigneeAccountId) throw new BadRequestException('ADMIN_ASSIGNEE_REQUIRED');
     return this.service.assign(routingId,body.assigneeAccountId,req.auth.accountId);
+  }
+
+  @Post('routings/:routingId/reply')
+  reply(@Req() req:{auth:{accountId:string}},@Param('routingId') routingId:string,@Body() body:{replyText?:string}){
+    this.ownership.assertOwnMutation('ADMIN_ROUTING');
+    return this.service.reply(routingId,body?.replyText??'',req.auth.accountId);
+  }
+
+  @Patch('routings/:routingId/deliver')
+  deliver(@Req() req:{auth:{accountId:string}},@Param('routingId') routingId:string){
+    this.ownership.assertOwnMutation('ADMIN_ROUTING');
+    return this.service.deliver(routingId,req.auth.accountId);
   }
 
   @Patch('routings/:routingId/decision')

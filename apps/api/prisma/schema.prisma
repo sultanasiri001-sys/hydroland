@@ -225,6 +225,8 @@ model Account {
   administrativeRoutingsRequested AdministrativeRouting[] @relation("AdministrativeRoutingRequester")
   administrativeRoutingsAssigned AdministrativeRouting[] @relation("AdministrativeRoutingAssignee")
   administrativeRoutingsDecided AdministrativeRouting[] @relation("AdministrativeRoutingDecider")
+  administrativeRoutingsReplied AdministrativeRouting[] @relation("AdministrativeRoutingResponder")
+  administrativeRoutingsDelivered AdministrativeRouting[] @relation("AdministrativeRoutingDeliverer")
   administrativeMeetingsOrganized AdministrativeMeeting[] @relation("AdministrativeMeetingOrganizer")
   customerCases CustomerCase[] @relation("CustomerCases")
   customerInteractions CustomerInteraction[] @relation("CustomerInteractionActor")
@@ -497,6 +499,9 @@ model AdministrativeRecord {
   type String
   referenceNumber String
   subject String
+  managedDocumentId String? @unique
+  managedDocumentVersion Int?
+  managedDocumentContentHash String?
   status AdministrativeRecordDbStatus @default(DRAFT)
   licenseAssetId String?
   licenseIssuedAt DateTime?
@@ -516,10 +521,12 @@ model AdministrativeRecord {
   organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)
   unit OrgUnit @relation(fields:[unitId], references:[id], onDelete:Restrict)
   owner Account @relation("AdministrativeRecordOwner", fields:[ownerAccountId], references:[id], onDelete:Restrict)
+  managedDocument ManagedDocument? @relation(fields:[managedDocumentId], references:[id], onDelete:Restrict)
   routings AdministrativeRouting[]
   @@index([licenseReviewStatus,licenseReviewSubmittedAt], map:"CenterLicense_platform_review_queue_idx")
   @@unique([organizationId,referenceNumber])
   @@index([organizationId,unitId,status])
+  @@index([organizationId,status,updatedAt])
 }
 
 model AdministrativeRouting {
@@ -532,6 +539,11 @@ model AdministrativeRouting {
   assignedToAccountId String?
   decision String?
   decidedByAccountId String?
+  replyText String?
+  repliedByAccountId String?
+  repliedAt DateTime?
+  deliveredByAccountId String?
+  deliveredAt DateTime?
   createdAt DateTime @default(now())
   decidedAt DateTime?
   organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)
@@ -541,8 +553,11 @@ model AdministrativeRouting {
   requestedBy Account @relation("AdministrativeRoutingRequester", fields:[requestedByAccountId], references:[id], onDelete:Restrict)
   assignedTo Account? @relation("AdministrativeRoutingAssignee", fields:[assignedToAccountId], references:[id], onDelete:Restrict)
   decidedBy Account? @relation("AdministrativeRoutingDecider", fields:[decidedByAccountId], references:[id], onDelete:Restrict)
+  repliedBy Account? @relation("AdministrativeRoutingResponder", fields:[repliedByAccountId], references:[id], onDelete:Restrict)
+  deliveredBy Account? @relation("AdministrativeRoutingDeliverer", fields:[deliveredByAccountId], references:[id], onDelete:Restrict)
   @@index([organizationId,recordId])
   @@index([assignedToAccountId,decision])
+  @@index([organizationId,recordId,deliveredAt])
 }
 
 model AdministrativeMeeting {
@@ -2306,6 +2321,7 @@ model ManagedDocument {
   archivedBy Account? @relation("ManagedDocumentArchiver", fields:[archivedByAccountId], references:[id], onDelete:Restrict)
   lifecycleEvents DocumentLifecycleEvent[]
   revisions DocumentRevision[]
+  administrativeRecord AdministrativeRecord?
   @@unique([organizationId,referenceNumber])
   @@index([organizationId,department,status])
   @@index([templateId,status])
