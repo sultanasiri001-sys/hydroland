@@ -274,6 +274,14 @@ check('calendar cannot bypass reserved source-bound dive with generic scheduling
  await assert.rejects(()=>assertCalendarHumanAvailable(tx,[resource.id],p.start,p.end),error=>error?.getStatus?.()===409);
  assert.deepEqual(await snapshot(tx,f),before);
 });
+check('non-diving scheduling cannot bypass an existing dive reservation when generic flag is off',async(tx,f)=>{
+ const p=await pendingSecond(tx,f);
+ await tx.policyControl.upsert({where:{category_ruleKey:{category:'TRAINING',ruleKey:'SCHEDULE_CONFLICT'}},create:{category:'TRAINING',ruleKey:'SCHEDULE_CONFLICT',labelAr:'Synthetic disabled scheduling',state:'DISABLED'},update:{state:'DISABLED',metadata:{}}});
+ const scopedDb={serializable:work=>work(tx)},service=new TrainingSessionService(scopedDb,new AuditService(scopedDb),new TrainingAuthorizationService(scopedDb));
+ const before=await snapshot(tx,f);
+ await assert.rejects(()=>service.assertAvailable(tx,f.author.id,f.student.id,p.start,p.end),planDenied('STANDARD_PARTICIPANT_CONFLICT'));
+ assert.deepEqual(await snapshot(tx,f),before);
+});
 
 try {
   // These also ensure the immutable policy is actually parsed into the source hash.

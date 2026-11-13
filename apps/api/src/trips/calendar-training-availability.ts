@@ -1,5 +1,5 @@
 import { ConflictException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { trainingOperationalPolicy } from '../governance/training-operational-policy';
 
 const HUMAN_RESOURCE_TYPES = ['INSTRUCTOR', 'CREW', 'CAPTAIN'];
@@ -40,12 +40,13 @@ export async function assertTrainingCalendarAvailable(
 }
 
 export async function trainingBusyAccounts(
-  tx: Prisma.TransactionClient, accountIds: string[], startsAt: Date, endsAt: Date,
+  tx: Prisma.TransactionClient, accountIds: string[], startsAt: Date, endsAt: Date, excludeSessionId?: string,
 ): Promise<Set<string>> {
   if (!accountIds.length) return new Set();
   const genericEnforced = (await trainingOperationalPolicy(tx)).scheduleConflict;
   const sessions = await tx.trainingSession.findMany({
     where: {
+      ...(excludeSessionId ? { id: { not: excludeSessionId } } : {}),
       status: { in: ['SCHEDULED', 'CHECK_IN_OPEN', 'IN_PROGRESS'] },
       AND: [
         { OR: [{ instructorAccountId: { in: accountIds } }, { trainingRecord: { enrollment: { studentAccountId: { in: accountIds } } } }] },

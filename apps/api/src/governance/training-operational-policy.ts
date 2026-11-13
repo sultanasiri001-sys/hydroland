@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { ConflictException } from '@nestjs/common';
 import { mandatoryBindingStatus } from '../trips/mandatory-policy.domain';
 export type TrainingOperationalPolicy={capacityLimit:boolean;scheduleConflict:boolean;sessionTimeWindow:boolean;attendanceRequired:boolean};
