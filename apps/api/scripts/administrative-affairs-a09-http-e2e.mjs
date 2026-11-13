@@ -8,14 +8,15 @@ const call=(path,method,id,body)=>fetch(base+path,{method,headers:{authorization
 const expect=async(r,status,label)=>{if(r.status!==status)throw new Error(label+' expected '+status+', got '+r.status+' '+await r.text())};
 const mk=async(last)=>{const p=await db.person.create({data:{firstName:'A09',lastName:last}});return db.account.create({data:{personId:p.id,email:'a09-'+last.toLowerCase()+'-'+suffix+'@example.invalid',passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}})};
 try{
- const manager=await mk('Manager'),reviewer=await mk('Reviewer'),outsider=await mk('Outsider'),creator=await mk('Creator'),signer=await mk('Signer');
+ const manager=await mk('Manager'),reviewer=await mk('Reviewer'),centerManager=await mk('CenterManager'),outsider=await mk('Outsider'),creator=await mk('Creator'),signer=await mk('Signer');
  const org=await db.organization.create({data:{displayName:'A09 E2E '+suffix,kind:'DIVE_CENTER',ownerId:manager.id}});
  const other=await db.organization.create({data:{displayName:'A09 Other '+suffix,kind:'DIVE_CENTER',ownerId:outsider.id}});
- for(const [a,o,role] of [[manager,org,'ADMIN'],[reviewer,org,'STAFF'],[creator,org,'STAFF'],[signer,org,'ADMIN'],[outsider,other,'ADMIN']])await db.organizationMember.create({data:{organizationId:o.id,accountId:a.id,role,status:'ACTIVE'}});
+ for(const [a,o,role] of [[manager,org,'ADMIN'],[reviewer,org,'STAFF'],[centerManager,org,'STAFF'],[creator,org,'STAFF'],[signer,org,'ADMIN'],[outsider,other,'ADMIN']])await db.organizationMember.create({data:{organizationId:o.id,accountId:a.id,role,status:'ACTIVE'}});
  const sourceUnit=await db.orgUnit.create({data:{organizationId:org.id,type:'DEPARTMENT',code:'A09-SRC-'+suffix,nameAr:'الوارد والصادر'}});
  const targetUnit=await db.orgUnit.create({data:{organizationId:org.id,type:'DEPARTMENT',code:'A09-TGT-'+suffix,nameAr:'الإدارة المستلمة'}});
  const otherUnit=await db.orgUnit.create({data:{organizationId:other.id,type:'DEPARTMENT',code:'A09-OUT-'+suffix,nameAr:'إدارة خارجية'}});
  await db.roleAssignment.create({data:{accountId:reviewer.id,role:'REVIEWER',status:'ACTIVE',scope:{organizationIds:[org.id],unitIds:[targetUnit.id]}}});
+ await db.roleAssignment.create({data:{accountId:centerManager.id,role:'CENTER_MANAGER',status:'ACTIVE',scope:{organizationIds:[org.id],unitIds:[targetUnit.id]}}});
  const template=await db.documentTemplate.create({data:{organizationId:org.id,code:'ADM-A09-'+suffix,titleAr:'معاملة واردة',titleEn:'Incoming correspondence',department:'ADMIN_AFFAIRS_RECORDS',fields:[{key:'subject',labelAr:'الموضوع',labelEn:'Subject',type:'TEXT',required:true}]}});
  const source=await db.managedDocument.create({data:{organizationId:org.id,templateId:template.id,referenceNumber:'HYD-ADMIN-A09-'+suffix,department:'ADMIN_AFFAIRS_RECORDS',status:'SIGNED',version:1,contentHash:'sha256:a09-'+suffix,payload:{subject:'معاملة واردة للاختبار',attachmentRefs:['attachment-ref-'+suffix]},createdByAccountId:creator.id,approvedByAccountId:manager.id,approvedAt:new Date(),signedByAccountId:signer.id,signedAt:new Date()}});
  await db.documentRevision.create({data:{documentId:source.id,version:1,contentHash:source.contentHash,payload:source.payload,createdByAccountId:creator.id}});
@@ -25,6 +26,9 @@ try{
  if(record.managedDocumentId!==source.id||record.managedDocumentVersion!==1||record.managedDocumentContentHash!==source.contentHash||record.referenceNumber!==source.referenceNumber||record.subject!=='معاملة واردة للاختبار'||Object.hasOwn(record,'payload'))throw new Error('Registry must pin canonical document version without copying payload');
  r=await call('/administrative-affairs/records?organizationId='+encodeURIComponent(org.id)+'&q='+encodeURIComponent(suffix),'GET',manager.id);await expect(r,200,'Search registry');
  const rows=await r.json();if(rows.length!==1||rows[0].id!==record.id||rows[0].managedDocument?.revisions?.length!==1)throw new Error('Search omitted pinned document version');
+ r=await call('/administrative-affairs/records?organizationId='+encodeURIComponent(org.id)+'&q='+encodeURIComponent(suffix),'GET',centerManager.id);await expect(r,200,'Unit-scoped search');
+ if((await r.json()).length!==0)throw new Error('Center manager read escaped its assigned unit scope');
+ r=await call('/administrative-affairs/records/'+record.id,'GET',centerManager.id);await expect(r,403,'Unit-scoped detail');
  r=await call('/administrative-affairs/records?organizationId='+encodeURIComponent(org.id)+'&q='+encodeURIComponent(suffix),'GET',outsider.id);await expect(r,403,'Cross-organization search');
  r=await call('/administrative-affairs/records/'+record.id,'GET',manager.id);await expect(r,200,'Read record detail');
  const detail=await r.json();if(detail.managedDocument?.id!==source.id||detail.managedDocument?.revisions?.[0]?.contentHash!==source.contentHash)throw new Error('Record detail lost source revision');
