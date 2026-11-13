@@ -431,8 +431,13 @@ async function recoverA09Correspondence() {
     throw new Error('Refusing A09 recovery: unexpected managedDocumentContentHash type');
   }
 
-  markRolledBack(A09);
-  console.log('[migration-recovery] A09 failed migration marked rolled back for UUID-compatible replay');
+  execFileSync(
+    'npx',
+    ['prisma', 'db', 'execute', '--file', 'scripts/a09-correspondence-recovery.sql'],
+    { stdio: 'inherit' },
+  );
+  markApplied(A09);
+  console.log('[migration-recovery] A09 correspondence schema repaired and failed migration marked applied');
 }
 
 async function main() {
