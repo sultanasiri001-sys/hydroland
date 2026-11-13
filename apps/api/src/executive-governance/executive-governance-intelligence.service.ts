@@ -1,3 +1,4 @@
+import { authorityCurrent } from './executive-authority.policy';
 import { Injectable } from '@nestjs/common';
 import { ExecutiveDecision, ExecutiveDecisionStatus, ExecutiveMandate, GovernanceBody } from './executive-governance.domain';
 
@@ -17,12 +18,12 @@ export interface ExecutiveGovernanceSnapshot {
 export class ExecutiveGovernanceIntelligenceService {
   snapshot(bodies: GovernanceBody[], mandates: ExecutiveMandate[], decisions: ExecutiveDecision[], now = new Date()): ExecutiveGovernanceSnapshot {
     const activeGovernanceBodies = bodies.filter((item) => item.active).length;
-    const activeMandates = mandates.filter((item) => item.active).length;
+    const activeMandates = mandates.filter((item) => item.active && authorityCurrent(item, now)).length;
     const draftDecisions = decisions.filter((item) => item.status === ExecutiveDecisionStatus.DRAFT).length;
     const issuedDecisions = decisions.filter((item) => item.status === ExecutiveDecisionStatus.ISSUED).length;
     const closedDecisions = decisions.filter((item) => item.status === ExecutiveDecisionStatus.CLOSED).length;
     const supersededDecisions = decisions.filter((item) => item.status === ExecutiveDecisionStatus.SUPERSEDED).length;
-    const activeMandateOwners = new Set(mandates.filter((item) => item.active).map((item) => item.ownerAccountId));
+    const activeMandateOwners = new Set(mandates.filter((item) => item.active && authorityCurrent(item, now)).map((item) => item.ownerAccountId));
     const issuedDecisionsWithoutActiveMandateCoverage = decisions.filter((item) =>
       item.status === ExecutiveDecisionStatus.ISSUED && !activeMandateOwners.has(item.issuedByAccountId)
     ).length;
