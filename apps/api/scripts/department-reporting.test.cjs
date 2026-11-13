@@ -154,7 +154,7 @@ test('email renderer escapes model HTML, pins recipient and idempotency, classif
   global.fetch=async()=>new Response('',{status:429});await assert.rejects(()=>service.sendExecutiveReport(input),e=>e.disposition==='RETRYABLE');
   global.fetch=async()=>{throw new Error('network ambiguity');};await assert.rejects(()=>service.sendExecutiveReport(input),e=>e.disposition==='UNCERTAIN');
   global.fetch=async()=>new Response('{}',{status:200});await assert.rejects(()=>service.sendExecutiveReport(input),e=>e.disposition==='UNCERTAIN');
-  process.env.RESEND_API_BASE_URL='https://unexpected.example.invalid';await assert.rejects(()=>service.sendExecutiveReport(input),e=>e.disposition==='PERMANENT');
+  process.env.RESEND_API_BASE_URL='https://unexpected.example.invalid';await assert.rejects(()=>service.sendExecutiveReport(input),e=>e.disposition==='PERMANENT');assert.deepEqual(providerSignals.map(([,status])=>status),['SUCCESS','PROVIDER_FAILURE','PROVIDER_FAILURE','PROVIDER_FAILURE']);
  }finally{global.fetch=before;for(const k of Object.keys(process.env))if(!(k in env))delete process.env[k];Object.assign(process.env,env);}
 });
 
