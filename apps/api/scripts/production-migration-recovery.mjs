@@ -415,20 +415,8 @@ async function recoverA09Correspondence() {
 
     if (sourceType === 'text' && targetType === 'uuid') {
       const invalidValues = await prisma.$queryRawUnsafe(
-        'SELECT 1 FROM "' + sourceTable + '" WHERE "' + sourceColumn + '" IS NOT NULL AND "' + sourceColumn + '" !~* ' +
-        '''' + '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
-  await requireExistingMigrationHistory(prisma);
-  await recoverHr();
-  await recoverAdministrativeAffairs();
-  await recoverUnifiedCalendar();
-  await recoverFinance();
-  await recoverDocumentPersistence();
-  await recoverA09Correspondence();
-}
-
-main().finally(() => prisma.$disconnect());
- + '''' +
-        ' LIMIT 1',
+        'SELECT 1 FROM "' + sourceTable + '" WHERE "' + sourceColumn + '" IS NOT NULL AND "' + sourceColumn + '" !~* $1 LIMIT 1',
+        '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
       );
       if (invalidValues.length) {
         throw new Error('Refusing A09 recovery: non-UUID values exist in ' + sourceTable + '.' + sourceColumn);
@@ -454,6 +442,7 @@ async function main() {
   await recoverUnifiedCalendar();
   await recoverFinance();
   await recoverDocumentPersistence();
+  await recoverA09Correspondence();
 }
 
 main().finally(() => prisma.$disconnect());
