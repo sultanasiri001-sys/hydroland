@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {gateContext, runFullGate, REPOSITORY, INVENTORY_DIGEST} from './a02-full-release-gate.mjs';
@@ -35,3 +36,8 @@ test('unsettled runs block without retrying collection',async()=>{const d=deps()
 for(const change of ['collection','evaluation','commit','count','gate']) test(`incomplete or failed ${change} never becomes green`,async()=>{const d=deps();d.collect=async()=>{const e=evidence();if(change==='collection')e.collection.status='BLOCKED';if(change==='evaluation')e.evaluation.status='BLOCKED';if(change==='commit')e.evaluation.commit='c'.repeat(40);if(change==='count')e.evaluation.gates.pop();if(change==='gate')e.evaluation.gates[0].status='BLOCKED';return e};assert.equal((await runFullGate(env,d)).status,'BLOCKED')});
 test('main moving after collection blocks',async()=>{const d=deps();d.finalHead=async()=>'c'.repeat(40);assert.equal((await runFullGate(env,d)).reasons[0],'HEAD_CHANGED_AFTER_COLLECTION')});
 test('collector is invoked once with complete pinned policy and exact push',async()=>{const d=deps();let calls=0;d.collect=async(policy,commit)=>{calls++;assert.equal(policy.required.length,28);assert.equal(commit,COMMIT);return evidence()};const r=await runFullGate(env,d);assert.equal(calls,1);assert.equal(r.productionAuthorized,false)});
+
+test('release gate pins the current complete classified inventory bytes',()=>{
+ const bytes=readFileSync(new URL('./a02-release-inventory.json',import.meta.url));
+ assert.equal(INVENTORY_DIGEST,createHash('sha256').update(bytes).digest('hex'));
+});

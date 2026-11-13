@@ -1,3 +1,4 @@
+import { validAuthorityPeriod } from './executive-authority.policy';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ExecutiveDecision, ExecutiveMandate, GovernanceBody } from './executive-governance.domain';
 
@@ -10,11 +11,13 @@ export class ExecutiveGovernanceFoundationService {
 
   validateMandate(mandate: ExecutiveMandate): void {
     if (!mandate.id || !mandate.organizationId || !mandate.title?.trim() || !mandate.ownerAccountId) throw new BadRequestException('Executive mandate identity, organization, title and owner are required.');
-    if (!mandate.authorityScope.length) throw new BadRequestException('Executive mandate requires an authority scope.');
+    if (!mandate.sourceReference?.trim() || !validAuthorityPeriod(mandate)) throw new BadRequestException('Executive mandate source and valid period are required.');
+    if (!Array.isArray(mandate.authorityScope) || !mandate.authorityScope.length) throw new BadRequestException('Executive mandate requires an authority scope.');
   }
 
   validateDecision(decision: ExecutiveDecision, body: GovernanceBody): void {
     this.validateBody(body);
+    if (!decision.sourceReference?.trim() || !validAuthorityPeriod(decision) || !Array.isArray(decision.authorityScope) || !decision.authorityScope.length) throw new BadRequestException('Executive decision source, authority scope and valid period are required.');
     if (!decision.id || !decision.referenceNumber?.trim() || !decision.title?.trim() || !decision.issuedByAccountId) throw new BadRequestException('Executive decision identity, reference, title and issuer are required.');
     if (decision.organizationId !== body.organizationId || decision.governanceBodyId !== body.id) throw new BadRequestException('Executive decision governance scope mismatch.');
   }

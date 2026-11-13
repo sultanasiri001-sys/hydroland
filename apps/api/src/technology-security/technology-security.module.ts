@@ -11,9 +11,10 @@ import { TechnologyRequestController } from './technology-request.controller';
 import { AdminModule } from '../admin/admin.module';
 import { TechnologyAgentAccessService } from './technology-agent-access.service';
 import { TechnologyAgentAccessController } from './technology-agent-access.controller';
+import { AgentModule } from '../agents/agent.module';
 
 @Module({
-  imports: [AuditModule,AuthModule,AdminModule],
+  imports: [AuditModule,AuthModule,AdminModule,AgentModule],
   controllers: [TechnologyRequestController,TechnologyAgentAccessController],
   providers: [TechnologySecurityFoundationService, TechnologySecurityWorkflowService, TechnologySecurityOperationsService, TechnologySecurityGovernanceService,StaffingIamService,TechnologyRequestService,TechnologyAgentAccessService],
   exports: [TechnologySecurityFoundationService, TechnologySecurityWorkflowService, TechnologySecurityOperationsService, TechnologySecurityGovernanceService,StaffingIamService],

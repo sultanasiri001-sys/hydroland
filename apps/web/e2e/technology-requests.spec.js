@@ -3,6 +3,9 @@ import {randomUUID} from 'node:crypto';
 const policy='TECHNOLOGY_REQUEST_V1';
 const source={id:randomUUID(),label:'TEC-REQUEST-001 · APPROVED',version:1,contentHash:'a'.repeat(64),scopeReference:'CI-SYSTEM'};
 const employee={id:randomUUID(),label:'منفذ تقني مستقل'};
+const changeSource={id:randomUUID(),label:'TEC-CHANGE-001 · APPROVED'};
+const incidentSource={id:randomUUID(),label:'TEC-INCIDENT-001 · HIGH'};
+const riskSource={id:randomUUID(),label:'TEC-RISK-001 · HIGH'};
 const proof={id:randomUUID(),label:'TEC-PROOF-001 · APPROVED',version:1,contentHash:'b'.repeat(64)};
 const record=extra=>({id:randomUUID(),revision:1,kind:'CHANGE',title:'طلب تقني خاص',state:'DRAFT',scopeReference:'CI-SYSTEM',executionPlan:'خطة التنفيذ',testPlan:'خطة الاختبار',rollbackPlan:'خطة الرجوع',expiresAt:new Date(Date.now()+3600000).toISOString(),requestProof:{reference:'TEC-REQUEST-001'},...extra});
 const json=(r,data,status=200)=>r.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
@@ -52,21 +55,21 @@ test('fresh server revocation clears stored private data before any stale action
  const state=await setup(page);await page.locator('[data-case-id]').click();state.deny=true;await act(page,'SUBMIT');await expect(page.locator('#hl-technology-requests')).not.toBeVisible();await expect(page.locator('[data-tr-body]')).toBeEmpty();expect(state.writes).toHaveLength(1);
 });
 
-async function agentSetup(page,{stale=false}={}){
+async function agentSetup(page,{stale=false,change=false,incident=false,risk=false}={}){
  const writes=[],rows=[];await page.route('**/api/v1/**',r=>json(r,[]));
  await page.route('**/auth/google/config',r=>json(r,{enabled:false}));
  await page.route(/\/api\/v1\/me$/,r=>json(r,{id:'owner',status:'ACTIVE',person:{firstName:'مالك',lastName:'اختبار'},roleAssignments:[{role:'ADMIN',status:'ACTIVE'}]}));
  await page.route(/\/technology\/agent-access(?:[/?].*)?$/,r=>{
   const path=new URL(r.request().url()).pathname.split('/technology/agent-access')[1];
-  if(path==='/references')return json(r,{documents:[{id:source.id,label:'TEC-AGENT-001'}],tasks:[{id:employee.id,label:'توصية الأمن المكتملة'}],proofs:[]});
+  if(path==='/references')return json(r,{documents:[{id:source.id,label:'TEC-AGENT-001'}],changes:[changeSource],incidents:[incidentSource],risks:[riskSource],tasks:[{id:employee.id,label:'توصية الأمن المكتملة'}],proofs:[],changeProofs:[],incidentProofs:[]});
   if(r.request().method()==='GET')return json(r,{items:rows});
   const body=r.request().postDataJSON();writes.push({path,body});
-  if(path){if(stale)return json(r,{message:'تغير إصدار الطلب.'},409);rows[0].state='EXECUTED';rows[0].revision++;return json(r,rows[0],201);}
-  const row={id:body.requestId,source:{reference:'TEC-AGENT-001'},targetLabel:'target@example.invalid',status:'SUSPENDED',state:'PROPOSED',revision:1,expiresAt:body.expiresAt,recommendation:'<img src=x onerror=alert(1)> توصية فقط'};rows.unshift(row);return json(r,row,201);
+  if(path){if(stale)return json(r,{message:'تغير إصدار الطلب.'},409);rows[0].state=rows[0].targetKind==='SECURITY_RISK'?'RISK_ACCEPTED':'EXECUTED';rows[0].revision++;return json(r,rows[0],201);}
+  const incidentAction=body.operation==='CONTAIN_CYBER_INCIDENT',runtimeAction=body.operation==='PAUSE_CYBER_SECURITY'||incidentAction,riskAction=body.operation==='ACCEPT_SECURITY_RISK';const row={id:body.requestId,source:{reference:incidentAction?'TEC-INCIDENT-001':riskAction?'TEC-RISK-001':body.operation==='PAUSE_CYBER_SECURITY'?'TEC-CHANGE-001':'TEC-AGENT-001'},operation:body.operation,targetKind:runtimeAction?'AGENT_RUNTIME':riskAction?'SECURITY_RISK':'ACCOUNT',targetId:riskAction?'RISK-001':undefined,targetLabel:runtimeAction?'وكيل الأمن السيبراني':riskAction?'HIGH':'target@example.invalid',status:runtimeAction?'PAUSED':riskAction?'ACCEPTED':'SUSPENDED',state:'PROPOSED',revision:1,expiresAt:body.expiresAt,riskReviewAt:body.riskReviewAt,recommendation:'<img src=x onerror=alert(1)> توصية فقط'};rows.unshift(row);return json(r,row,201);
  });
  await page.goto('/',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>Boolean(window.HydrolandAgentAccess&&window.HydrolandAuth&&window.HydrolandProfile));
  await page.evaluate(async()=>{window.HydrolandAuth.acceptSession({accessToken:'agent-fixture',refreshToken:'agent-refresh'},window.HydrolandAuth.beginAuthAttempt());await window.HydrolandProfile.load();await window.HydrolandAgentAccess.open();});
- const dialog=page.locator('#hl-agent-access'),form=dialog.locator('form').first();await form.locator('[name=document]').selectOption(source.id);await form.locator('[name=task]').selectOption(employee.id);await form.locator('[name=reason]').fill('مراجعة توصية الحساب المحدد');await form.getByRole('button',{name:'مراجعة التوصية',exact:true}).click();await expect(dialog.locator('[data-agent-case]')).toHaveCount(1);return{writes,dialog};
+ const dialog=page.locator('#hl-agent-access'),form=dialog.locator('form').first();if(change){await form.locator('[name=operation]').selectOption('PAUSE_CYBER_SECURITY');await form.locator('[name=document]').selectOption(changeSource.id);}else if(incident){await form.locator('[name=operation]').selectOption('CONTAIN_CYBER_INCIDENT');await form.locator('[name=document]').selectOption(incidentSource.id);}else if(risk){await form.locator('[name=operation]').selectOption('ACCEPT_SECURITY_RISK');await form.locator('[name=document]').selectOption(riskSource.id);}else await form.locator('[name=document]').selectOption(source.id);await form.locator('[name=task]').selectOption(employee.id);await form.locator('[name=reason]').fill(change?'مراجعة تغيير إيقاف وكيل الأمن':incident?'مراجعة احتواء حادث أمني':risk?'مراجعة قبول خطر محدد':'مراجعة توصية الحساب المحدد');await form.getByRole('button',{name:'مراجعة التوصية',exact:true}).click();await expect(dialog.locator('[data-agent-case]')).toHaveCount(1);return{writes,dialog};
 }
 test('agent access exposes the exact account and advice, executes after explicit owner confirmation without employee selection',async({page})=>{
  await page.setViewportSize({width:390,height:844});const{writes,dialog}=await agentSetup(page);await expect(dialog.locator('[name=assignee]')).toHaveCount(0);await expect(dialog.locator('img')).toHaveCount(0);await expect(dialog).toContainText('target@example.invalid');expect(writes).toHaveLength(1);
@@ -74,4 +77,15 @@ test('agent access exposes the exact account and advice, executes after explicit
 });
 test('agent access never retries stale approvals and clears private advice on logout',async({page})=>{
  const{writes,dialog}=await agentSetup(page,{stale:true}),f=dialog.locator('[data-agent-case] form');await f.locator('[name=action]').selectOption('APPROVE_EXECUTE');await f.locator('[name=reason]').fill('موافقة محددة النطاق');await f.locator('[name=confirmed]').check();await f.getByRole('button',{name:'تأكيد الإجراء',exact:true}).click();await expect(dialog.locator('[role=status]')).toContainText('تغير إصدار الطلب');expect(writes).toHaveLength(2);await page.evaluate(()=>window.HydrolandAuth.logout());await expect(dialog).not.toBeVisible();await expect(dialog.locator('[data-agent-case]')).toHaveCount(0);
+});
+test('bounded cybersecurity change shows the exact agent pause and never starts without owner approval',async({page})=>{
+ await page.setViewportSize({width:390,height:844});const{writes,dialog}=await agentSetup(page,{change:true});await expect(dialog).toContainText('إيقاف الوكيل مع حفظ المهام الموجودة في الطابور');expect(writes[0].body.operation).toBe('PAUSE_CYBER_SECURITY');expect(writes).toHaveLength(1);
+ const f=dialog.locator('[data-agent-case] form');await f.locator('[name=action]').selectOption('APPROVE_EXECUTE');await f.locator('[name=reason]').fill('أوافق على إيقاف وكيل الأمن المحدد');await f.locator('[name=confirmed]').check();await f.getByRole('button',{name:'تأكيد الإجراء',exact:true}).click();await expect(dialog).toContainText('نُفذ آليًا');expect(writes).toHaveLength(2);expect(writes[1].body.expectedRevision).toBe(1);expect(await dialog.evaluate(e=>e.scrollWidth<=e.clientWidth)).toBe(true);
+});
+test('cybersecurity incident containment requires a high-scope incident and explicit owner action',async({page})=>{
+ const{writes,dialog}=await agentSetup(page,{incident:true});await expect(dialog).toContainText('احتواء الحادث بإيقاف الوكيل');expect(writes[0].body.operation).toBe('CONTAIN_CYBER_INCIDENT');expect(writes).toHaveLength(1);const f=dialog.locator('[data-agent-case] form');await f.locator('[name=action]').selectOption('APPROVE_EXECUTE');await f.locator('[name=reason]').fill('أوافق على احتواء الحادث المحدد');await f.locator('[name=confirmed]').check();await f.getByRole('button',{name:'تأكيد الإجراء',exact:true}).click();await expect(dialog).toContainText('نُفذ آليًا');expect(writes).toHaveLength(2);
+});
+test('risk acceptance is a recorded owner decision with a mandatory future review date',async({page})=>{
+ const{writes,dialog}=await agentSetup(page,{risk:true}),requestForm=dialog.locator('form').first();expect(await requestForm.locator('[name=riskReviewAt]').inputValue()).not.toBe('');expect(writes[0].body.operation).toBe('ACCEPT_SECURITY_RISK');expect(Date.parse(writes[0].body.riskReviewAt)).toBeGreaterThan(Date.now());expect(writes).toHaveLength(1);
+ const f=dialog.locator('[data-agent-case] form');await f.locator('[name=action]').selectOption('APPROVE_EXECUTE');await f.locator('[name=reason]').fill('أقبل الخطر مع مراجعة مستقبلية');await f.locator('[name=confirmed]').check();await f.getByRole('button',{name:'تأكيد الإجراء',exact:true}).click();await expect(dialog).toContainText('خطر مقبول');await expect(dialog).toContainText('موعد مراجعة الخطر');expect(writes).toHaveLength(2);expect(await dialog.locator('[data-agent-case] form').count()).toBe(0);
 });

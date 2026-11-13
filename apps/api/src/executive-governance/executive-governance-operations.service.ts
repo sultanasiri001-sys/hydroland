@@ -1,3 +1,4 @@
+import { authorityCurrent } from './executive-authority.policy';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ExecutiveDecision, ExecutiveDecisionStatus, ExecutiveMandate } from './executive-governance.domain';
 
@@ -23,16 +24,20 @@ export interface ExecutiveOperationalReadiness {
 
 @Injectable()
 export class ExecutiveGovernanceOperationsService {
-  readiness(context: ExecutiveOperationalContext): ExecutiveOperationalReadiness {
+  readiness(context: ExecutiveOperationalContext, now = new Date()): ExecutiveOperationalReadiness {
     if (!context.organizationId || !context.operationId || !context.actorAccountId) throw new BadRequestException('Executive operational scope and actor are required.');
     if (context.decision.organizationId !== context.organizationId) throw new BadRequestException('Executive decision organization mismatch.');
 
     const blockers: string[] = [];
     if (context.decision.status !== ExecutiveDecisionStatus.ISSUED) blockers.push('EXECUTIVE_DECISION_NOT_ISSUED');
+    if (!authorityCurrent(context.decision, now)) blockers.push('EXECUTIVE_DECISION_OUTSIDE_VALIDITY');
+    if (!context.decision.sourceReference?.trim() || context.decision.sourceType !== 'HUMAN_DECISION') blockers.push('EXECUTIVE_HUMAN_SOURCE_REQUIRED');
+    if (!context.decision.authorityScope?.includes(context.operationType)) blockers.push('EXECUTIVE_DECISION_SCOPE_MISSING');
     if (!context.requiredEvidenceComplete) blockers.push('EXECUTIVE_EVIDENCE_INCOMPLETE');
 
     if (context.mandate) {
       if (context.mandate.organizationId !== context.organizationId) throw new BadRequestException('Executive mandate organization mismatch.');
+      if (!context.mandate.sourceReference?.trim() || !authorityCurrent(context.mandate, now)) blockers.push('EXECUTIVE_MANDATE_OUTSIDE_VALIDITY');
       if (!context.mandate.active) blockers.push('EXECUTIVE_MANDATE_INACTIVE');
       if (context.mandate.ownerAccountId !== context.actorAccountId) blockers.push('EXECUTIVE_MANDATE_ACTOR_MISMATCH');
       if (!context.mandate.authorityScope.includes(context.operationType)) blockers.push('EXECUTIVE_MANDATE_SCOPE_MISSING');
