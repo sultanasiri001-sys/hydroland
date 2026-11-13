@@ -9,7 +9,7 @@ const { createRequire } = require('node:module');
 // environment, provider, credentials, DNS or network request is used.
 function fixture() {
   const file = path.resolve(__dirname, '../dist/credentials/credential-object-storage.service.js');
-  const realRequire = createRequire(file), mod = { exports: {} }, calls = [], timeouts = [];
+  const realRequire = createRequire(file), mod = { exports: {} }, calls = [], timeouts = [], providerSignals = [];
   let mode = 'success', status = 200, operational = true;
   const cfg = { url: new URL('https://storage.example.invalid'), bucket: 'fixture', region: 'us-east-1', accessKeyId: 'fixture-access', secretAccessKey: 'fixture-secret' };
   const context = {
@@ -33,8 +33,8 @@ function fixture() {
     },
   };
   vm.runInNewContext(fs.readFileSync(file, 'utf8'), context, { filename: file });
-  const service = new mod.exports.CredentialObjectStorageService({ requireOperational: () => { if (!operational) throw new Error('Fixture integration disabled'); } });
-  return { service, calls, timeouts, set: (nextMode, nextStatus = 200) => { mode = nextMode; status = nextStatus; }, disable: () => operational = false };
+  const service = new mod.exports.CredentialObjectStorageService({ requireOperational: () => { if (!operational) throw new Error('Fixture integration disabled'); }, recordProviderSignal: async (...signal) => providerSignals.push(signal) });
+  return { service, calls, timeouts, providerSignals, set: (nextMode, nextStatus = 200) => { mode = nextMode; status = nextStatus; }, disable: () => operational = false };
 }
 
 for (const action of ['put', 'exists', 'delete']) {
@@ -51,6 +51,7 @@ for (const action of ['put', 'exists', 'delete']) {
     const result = await run();
     if (action === 'exists') assert.equal(result, true);
     assert.equal(f.calls.length, 2, 'A later caller can recover without replaying the failed attempt');
+    assert.deepEqual(f.providerSignals.map(([, state]) => state), ['PROVIDER_FAILURE', 'SUCCESS']);
   });
 }
 
@@ -63,6 +64,7 @@ test('storage outage and denied access are not reported as missing bytes', async
   f.set('network'); await assert.rejects(() => f.service.exists('credentials/test/evidence.pdf'), TypeError);
   f.set('success', 404); assert.equal(await f.service.exists('credentials/test/evidence.pdf'), false);
   f.set('success'); assert.equal(await f.service.exists('credentials/test/evidence.pdf'), true);
+  assert.deepEqual(f.providerSignals.map(([, state]) => state), ['PROVIDER_FAILURE','PROVIDER_FAILURE','PROVIDER_FAILURE','PROVIDER_FAILURE','PROVIDER_FAILURE','PROVIDER_FAILURE','PROVIDER_FAILURE','SUCCESS','SUCCESS']);
 });
 
 test('failed upload never acknowledges success and recovery preserves caller control', async () => {
@@ -74,4 +76,5 @@ test('failed upload never acknowledges success and recovery preserves caller con
   f.disable();
   await assert.rejects(() => f.service.exists('credentials/test/evidence.pdf'), /integration disabled/);
   assert.equal(f.calls.length, 2, 'Recovery must not bypass a disabled integration');
+  assert.deepEqual(f.providerSignals.map(([, state]) => state), ['PROVIDER_FAILURE', 'SUCCESS']);
 });
