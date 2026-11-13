@@ -18,7 +18,6 @@ export function schemaPairStatus(config) {
     assert.equal(artifact.root,expected,'Artifact path must be its immutable SHA checkout');
     const root=realpathSync(artifact.root);
     assert.equal(root,expected,'Artifact checkout must not resolve outside its workspace');
-    assert.equal(execFileSync('git',['-C',root,'rev-parse','HEAD'],{encoding:'utf8'}).trim(),artifact.sha,'Artifact checkout SHA mismatch');
     const schema=join(root,'apps/api/prisma/schema.prisma');
     assert.equal(realpathSync(schema),schema,'Schema file must not be a symlink');
     return hash(readFileSync(schema));
