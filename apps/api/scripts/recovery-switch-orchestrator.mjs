@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {spawn, execFileSync} from 'node:child_process';
-import {readFileSync, writeFileSync, renameSync, mkdirSync} from 'node:fs';
+import {readFileSync, writeFileSync, renameSync, mkdirSync, realpathSync} from 'node:fs';
 import {randomUUID, createHash} from 'node:crypto';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -9,6 +9,21 @@ import {identity} from './recovery-switch-processes.mjs';
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const json = path => JSON.parse(readFileSync(path, 'utf8'));
 const save = (path, value) => { const tmp=path+'.tmp'; writeFileSync(tmp,JSON.stringify(value,null,2)); renameSync(tmp,path); };
+export function schemaPairStatus(config) {
+  assert(Array.isArray(config.artifacts)&&config.artifacts.length===2,'Require the exact two recovery artifacts');
+  const workspace=realpathSync(config.artifactWorkspace);
+  const schemaHashes=config.artifacts.map(artifact=>{
+    assert.match(artifact.sha,/^[a-f0-9]{40}$/);
+    const expected=join(workspace,artifact.sha);
+    assert.equal(artifact.root,expected,'Artifact path must be its immutable SHA checkout');
+    const root=realpathSync(artifact.root);
+    assert.equal(root,expected,'Artifact checkout must not resolve outside its workspace');
+    const schema=join(root,'apps/api/prisma/schema.prisma');
+    assert.equal(realpathSync(schema),schema,'Schema file must not be a symlink');
+    return hash(readFileSync(schema));
+  });
+  return {compatible:schemaHashes[0]===schemaHashes[1],priorSchemaSha256:schemaHashes[0],candidateSchemaSha256:schemaHashes[1]};
+}
 
 // POSIX CI only. Kill the entire child process group, including build descendants.
 export function runChild(args, env, {timeoutMs=600000, terminationMs=5000, pollMs=25, onSpawn=()=>{}, spawnFn=spawn, kill=process.kill.bind(process)}={}) {
@@ -76,6 +91,13 @@ export async function orchestrate({configPath,evidenceDir},deps={}) {
   const config=json(configPath);
   assert.match(config.networkName,/^a02-rehearsal-[a-z0-9-]{1,64}$/);
   assert.match(config.runtimeImageId,/^sha256:[a-f0-9]{64}$/);
+  const schemaPair=schemaPairStatus(config);
+  if(!schemaPair.compatible){
+    const skipped={status:'NOT_APPLICABLE',scope:'SYNTHETIC_SWITCH_ORCHESTRATION',reason:'SCHEMA_CHANGE_REQUIRES_MIGRATION_AWARE_SWITCH',...schemaPair,artifactShas:config.artifacts.map(artifact=>artifact.sha),recoveryDrillStatus:'PASS',applicationVersionSwitchTested:false,productionRollbackVerified:false,providerPitrVerified:false};
+    save(join(evidenceDir,'application-switch-skipped.json'),skipped);
+    assert.equal(hash(readFileSync(original)),before,'Recovery receipt must remain unchanged');
+    return skipped;
+  }
   // A fresh directory prevents stale receipts from authorizing cleanup.
   const output=join(evidenceDir,'application-switch-'+randomUUID());mkdirSync(output);
   const receiptPath=join(output,'orchestration-report.json');

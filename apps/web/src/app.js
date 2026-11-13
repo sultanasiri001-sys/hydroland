@@ -58,6 +58,8 @@ await loadScript('hydroland-auth.js');
 await loadScript('hydroland-workspace-ui.js');
 await loadScript('hydroland-google-auth.js');
 await loadScript('hydroland-form-library.js');
+await loadScript('hydroland-documents.js');
+await loadScript('hydroland-administrative-affairs.js');
 await loadScript('hydroland-form-setup.js');
 await loadScript('hydroland-form-completion.js');
 await loadScript('hydroland-document-reviews.js');
