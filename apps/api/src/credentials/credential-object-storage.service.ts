@@ -28,20 +28,20 @@ export class CredentialObjectStorageService {
     const payloadHash=createHash('sha256').update(bytes).digest('hex');
     const request=this.signedRequest('PUT',storageKey,payloadHash,{'content-type':mimeType});
     const body=Uint8Array.from(bytes).buffer;
-    const response=await fetch(request.url,{method:'PUT',headers:request.headers,body});
+    const response=await fetch(request.url,{method:'PUT',headers:request.headers,body,signal:AbortSignal.timeout(8_000),redirect:'error'});
     if(!response.ok)throw new BadGatewayException(`Object storage upload failed (${response.status}).`);
   }
 
   async exists(storageKey:string){
     const request=this.signedRequest('HEAD',storageKey,EMPTY_SHA256,{});
-    const response=await fetch(request.url,{method:'HEAD',headers:request.headers});
+    const response=await fetch(request.url,{method:'HEAD',headers:request.headers,signal:AbortSignal.timeout(8_000),redirect:'error'});
     if(response.status===404)return false;
     if(!response.ok)throw new BadGatewayException(`Object storage check failed (${response.status}).`);
     return true;
   }
 
   async delete(storageKey:string){
-    try{const request=this.signedRequest('DELETE',storageKey,EMPTY_SHA256,{});await fetch(request.url,{method:'DELETE',headers:request.headers});}catch{return;}
+    try{const request=this.signedRequest('DELETE',storageKey,EMPTY_SHA256,{});await fetch(request.url,{method:'DELETE',headers:request.headers,signal:AbortSignal.timeout(8_000),redirect:'error'});}catch{return;}
   }
 
   signedGet(storageKey:string,expiresSeconds=300){
