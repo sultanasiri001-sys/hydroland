@@ -45,7 +45,11 @@ export class CredentialObjectStorageService {
   }
 
   async delete(storageKey:string){
-    try{const request=this.signedRequest('DELETE',storageKey,EMPTY_SHA256,{});const response=await fetch(request.url,{method:'DELETE',headers:request.headers,signal:AbortSignal.timeout(8_000),redirect:'error'});if(response.ok||response.status===404)await this.integrations.recordProviderSignal('OBJECT_STORAGE','SUCCESS');else if(response.status===401||response.status===403||response.status===408||response.status===429||response.status>=500)await this.integrations.recordProviderSignal('OBJECT_STORAGE','PROVIDER_FAILURE');}catch{await this.integrations.recordProviderSignal('OBJECT_STORAGE','PROVIDER_FAILURE');}
+    const request=this.signedRequest('DELETE',storageKey,EMPTY_SHA256,{});
+    let response:Response;
+    try{response=await fetch(request.url,{method:'DELETE',headers:request.headers,signal:AbortSignal.timeout(8_000),redirect:'error'});}catch{await this.integrations.recordProviderSignal('OBJECT_STORAGE','PROVIDER_FAILURE');return;}
+    if(response.ok||response.status===404)await this.integrations.recordProviderSignal('OBJECT_STORAGE','SUCCESS');
+    else if(response.status===401||response.status===403||response.status===408||response.status===429||response.status>=500)await this.integrations.recordProviderSignal('OBJECT_STORAGE','PROVIDER_FAILURE');
   }
 
   signedGet(storageKey:string,expiresSeconds=300){
