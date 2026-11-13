@@ -128,3 +128,41 @@ test('session, legacy completion and certificate paths all retain the new gate',
   assert.match(read('training-certificate.service.ts'),/outcome === 'APPROVED'.*assertTrainingStandardCompletion/);
   assert.match(read('training.controller.ts'),/@UseGuards\(AccessTokenGuard\)/);
 });
+
+// SYNTHETIC per-dive limits: these numbers do not define any real agency programme.
+function progression(state) {
+  const p=state.profile.metadata.profile;
+  p.requirements.openWaterDiveRequirements=[{sequence:1,minimumBottomMinutes:10,maximumDepthMetres:8},{sequence:2,minimumBottomMinutes:10,maximumDepthMetres:12}];
+  const hash=core.trainingStandardHash(p);
+  state.profile.metadata.contentHash=hash;state.profile.metadata.approval.profileHash=hash;
+  state.enrollment.metadata.trainingStandard=core.trainingStandardBinding('profile',p);
+  for(const doc of state.documents)doc.payload.trainingStandardHash=hash;
+  state.documents[1].payload.openWaterDives.forEach((dive,index)=>{dive.sequence=index+1;});
+}
+test('completion enforces pinned per-dive rules from independently signed evidence',async()=>{
+  const {tx,state}=evidenceDatabase();progression(state);assert.equal((await store.assertTrainingStandardCompletion(tx,'enrollment')).agencyCode,'TEST_AGENCY');
+});
+for(const [name,mutate] of [
+  ['missing sequence',s=>delete s.documents[1].payload.openWaterDives[0].sequence],
+  ['duplicate sequence',s=>s.documents[1].payload.openWaterDives[1].sequence=1],
+  ['reversed sequence',s=>s.documents[1].payload.openWaterDives.reverse().forEach((d,index)=>d.sequence=index+1)],
+  ['short first dive despite sufficient total minutes',s=>{s.documents[1].payload.openWaterDives[0].bottomMinutes=5;s.documents[1].payload.openWaterDives[1].bottomMinutes=15;}],
+  ['first-dive depth below general programme limit',s=>{s.documents[1].payload.openWaterDives[0].maximumDepthMetres=9;s.enrollment.record.sessions[0].evidence.trainingStandardContext.plannedMaximumDepthMetres=12;}],
+  ['invalid extra proof cannot be silently discarded',s=>s.documents[1].payload.openWaterDives.push({id:'invalid',sessionId:'OTHER',sequence:3})],
+  ['rule edit after approval',s=>s.profile.metadata.profile.requirements.openWaterDiveRequirements[0].maximumDepthMetres=16]
+])test(`progression completion refuses ${name}`,async()=>{const {tx,state}=evidenceDatabase();progression(state);mutate(state);await assert.rejects(store.assertTrainingStandardCompletion(tx,'enrollment'));assert.equal(state.writeCount,0);});
+test('source duration and depth changes alter pinned profile identity',()=>{
+  const p=fixture();p.requirements.openWaterDiveRequirements=[{sequence:1,minimumBottomMinutes:10,maximumDepthMetres:8},{sequence:2,minimumBottomMinutes:10,maximumDepthMetres:12}];
+  const binding=core.trainingStandardBinding('profile',p);
+  for(const key of ['minimumBottomMinutes','maximumDepthMetres']){const q=clone(p);q.requirements.openWaterDiveRequirements[0][key]++;assert.throws(()=>core.assertTrainingStandardBinding(binding,'profile',q,p.programCode));}
+});
+for(const [name,rules] of [
+  ['partial', [{sequence:1,minimumBottomMinutes:10,maximumDepthMetres:8}]],
+  ['duplicate', [{sequence:1,minimumBottomMinutes:10,maximumDepthMetres:8},{sequence:1,minimumBottomMinutes:10,maximumDepthMetres:12}]],
+  ['missing minutes', [{sequence:1,maximumDepthMetres:8},{sequence:2,minimumBottomMinutes:10,maximumDepthMetres:12}]],
+  ['zero depth', [{sequence:1,minimumBottomMinutes:10,maximumDepthMetres:0},{sequence:2,minimumBottomMinutes:10,maximumDepthMetres:12}]],
+  ['unknown condition', [{sequence:1,minimumBottomMinutes:10,maximumDepthMetres:8,bypass:true},{sequence:2,minimumBottomMinutes:10,maximumDepthMetres:12}]],
+])test(`profile rejects ${name} per-dive rules`,()=>{const p=fixture();p.requirements.openWaterDiveRequirements=rules;assert.throws(()=>core.parseTrainingStandard(p));});
+test('legacy profile hash and requirements remain unchanged when no progression is supplied',()=>{
+  const p=fixture(),parsed=core.parseTrainingStandard(p);assert.equal(Object.hasOwn(parsed.requirements,'openWaterDiveRequirements'),false);assert.deepEqual(parsed,p);
+});

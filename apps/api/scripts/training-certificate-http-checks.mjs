@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
+import {createRequire} from 'node:module';
 import {trainingStandardFixture} from './training-standard-isolated-fixture.mjs';
 
 export async function checkTrainingCertificates(db,{base,instructor,student,owner,foreignOwner,organizationId,offerId,recordId,accounts,persons,ids,request,ok}){
@@ -90,6 +91,52 @@ export async function checkTrainingCertificates(db,{base,instructor,student,owne
   const raceBody={...body,expectedUpdatedAt:race.updatedAt},results=await Promise.all([request(admin,decision(race.id),'POST',raceBody),request(reviewer,decision(race.id),'POST',{...raceBody,outcome:'REJECTED'})]);
   assert.equal(results.filter(result=>result.status===201).length,1);assert.equal(results.filter(result=>result.status===409).length,1);
   assert.equal(await db.auditEvent.count({where:{resourceId:race.id,action:'training.certificate_decided'}}),1);
+  // Exercise the new progression gate through the actual Nest HTTP/PostgreSQL path.
+  // All profile limits, source approvals, forms and certificates here are synthetic CI data.
+  const progressionRecord=await fixture('QA-CERT-PROGRESSION');
+  const progressionEnrollment=await db.trainingEnrollment.findUniqueOrThrow({where:{id:progressionRecord.enrollmentId}});
+  const profileRow=await db.policyControl.findUniqueOrThrow({where:{id:progressionEnrollment.metadata.trainingStandard.profileId}});
+  const profile=structuredClone(profileRow.metadata.profile);
+  Object.assign(profile.requirements,{minimumCompletedSessions:2,minimumOpenWaterDives:2,minimumOpenWaterMinutes:20,
+   openWaterDiveRequirements:[{sequence:1,minimumBottomMinutes:10,maximumDepthMetres:8},{sequence:2,minimumBottomMinutes:10,maximumDepthMetres:12}],
+   supervision:[...profile.requirements.supervision,{environment:'OPEN_WATER',minimumAge:0,maximumAge:120,studentsPerInstructor:1,maximumDepthMetres:16}]});
+  const {trainingStandardHash,trainingStandardBinding}=createRequire(import.meta.url)('../dist/governance/training-standard-profile.js');
+  const hash=trainingStandardHash(profile);
+  await db.policyControl.update({where:{id:profileRow.id},data:{metadata:{...profileRow.metadata,profile,contentHash:hash,approval:{...profileRow.metadata.approval,profileHash:hash}}}});
+  const start=new Date(Date.now()-7200000),end=new Date(start.getTime()+3600000);
+  await db.trainingEnrollment.update({where:{id:progressionEnrollment.id},data:{enrolledAt:new Date(start.getTime()-86400000),metadata:{...progressionEnrollment.metadata,trainingStandard:trainingStandardBinding(profileRow.id,profile)}}});
+  const sessionData={instructorAccountId:instructor.id,status:'COMPLETED',startsAt:start,endsAt:end,evidence:{startedAt:start.toISOString(),completedAt:end.toISOString(),trainingStandardContext:{environment:'OPEN_WATER',plannedMaximumDepthMetres:12}}};
+  const firstSession=await db.trainingSession.findFirstOrThrow({where:{trainingRecordId:progressionRecord.id}});
+  await db.trainingSession.update({where:{id:firstSession.id},data:sessionData});
+  const secondSession=await db.trainingSession.create({data:{...sessionData,trainingRecordId:progressionRecord.id}});ids.push(secondSession.id);
+  let createdTemplate=null,proof=null;
+  try{
+   const template=await db.documentTemplate.findFirst({where:{organizationId,code:'TRAINING_DIVE_LOG'}})||await db.documentTemplate.create({data:{organizationId,code:'TRAINING_DIVE_LOG',titleAr:'اختبار سجل غوص معزول',titleEn:'SYNTHETIC CI dive log',department:'TRAINING',fields:[]}}).then(row=>{createdTemplate=row.id;return row;});
+   const payload={trainingEnrollmentId:progressionEnrollment.id,trainingStandardHash:hash,studentAccountId:student.id,instructorAccountId:instructor.id,openWaterDives:[
+    {id:randomUUID(),sequence:1,sessionId:firstSession.id,environment:'OPEN_WATER',startedAt:new Date(start.getTime()+60000).toISOString(),bottomMinutes:10,maximumDepthMetres:9},
+    {id:randomUUID(),sequence:2,sessionId:secondSession.id,environment:'OPEN_WATER',startedAt:new Date(start.getTime()+1800000).toISOString(),bottomMinutes:10,maximumDepthMetres:12}]};
+   const documentHash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+   proof=await db.managedDocument.create({data:{organizationId,templateId:template.id,referenceNumber:'QA-PROGRESSION-'+randomUUID(),department:'TRAINING',status:'SIGNED',contentHash:documentHash(payload),payload,createdByAccountId:instructor.id,approvedByAccountId:admin.id,signedByAccountId:instructor.id,approvedAt:new Date(),signedAt:new Date()}});
+   const blocked=await request(instructor,recommend(progressionRecord.id),'POST');
+   assert.equal(blocked.status,409);assert.ok(blocked.body.gaps.includes('STANDARD_DIVE_DEPTH_EXCEEDED'));
+   assert.equal(await db.trainingCertificate.count({where:{trainingRecordId:progressionRecord.id}}),0,'invalid first dive creates no recommendation');
+   payload.openWaterDives[0].maximumDepthMetres=8;
+   await db.managedDocument.update({where:{id:proof.id},data:{payload,contentHash:documentHash(payload)}});
+   const recommended=ok(await request(instructor,recommend(progressionRecord.id),'POST'));ids.push(recommended.id);
+   payload.openWaterDives[0].bottomMinutes=15;payload.openWaterDives[1].bottomMinutes=5;
+   await db.managedDocument.update({where:{id:proof.id},data:{payload,contentHash:documentHash(payload)}});
+   const approvalBody={...body,expectedUpdatedAt:recommended.updatedAt};
+   const denied=await request(admin,decision(recommended.id),'POST',approvalBody);
+   assert.equal(denied.status,409);assert.ok(denied.body.gaps.includes('STANDARD_DIVE_DURATION_REQUIRED'));
+   assert.equal((await db.trainingCertificate.findUniqueOrThrow({where:{id:recommended.id}})).status,'RECOMMENDED','failed source check does not issue certificate');
+   payload.openWaterDives[0].bottomMinutes=10;payload.openWaterDives[1].bottomMinutes=10;
+   await db.managedDocument.update({where:{id:proof.id},data:{payload,contentHash:documentHash(payload)}});
+   assert.equal(ok(await request(admin,decision(recommended.id),'POST',approvalBody)).status,'APPROVED');
+   console.log('SYNTHETIC progression HTTP/PostgreSQL: individual depth prevents recommendation, individual duration prevents issuance despite sufficient total minutes, corrected signed proof permits independent approval.');
+  }finally{
+   if(proof)await db.managedDocument.delete({where:{id:proof.id}});
+   if(createdTemplate)await db.documentTemplate.delete({where:{id:createdTemplate}});
+  }
   for(let i=0;i<21;i++){const padding=await fixture('QA-CERT-PAGE-'+i);const row=await db.trainingCertificate.create({data:{trainingRecordId:padding.id,studentAccountId:student.id,courseCode:'QA-CERT-PAGE-'+i,recommendedByInstructorId:instructor.id}});ids.push(row.id)}
   const first=ok(await request(admin,'/training/certificates')),second=ok(await request(admin,'/training/certificates?cursor='+first.nextCursor));
   assert.equal(first.items.length,20);assert.ok(first.nextCursor);assert.ok(second.items.length);assert.ok(second.items.every(row=>!first.items.some(prior=>prior.id===row.id)));
