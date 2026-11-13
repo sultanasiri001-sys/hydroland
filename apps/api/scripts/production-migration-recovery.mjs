@@ -433,7 +433,7 @@ async function recoverA09Correspondence() {
 
   execFileSync(
     'npx',
-    ['prisma', 'db', 'execute', '--file', 'scripts/a09-correspondence-recovery.sql'],
+    ['prisma', 'db', 'execute', '--schema', 'prisma/schema.prisma', '--file', 'scripts/a09-correspondence-recovery.sql'],
     { stdio: 'inherit' },
   );
 
