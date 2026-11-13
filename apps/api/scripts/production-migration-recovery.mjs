@@ -443,6 +443,18 @@ async function recoverA09Correspondence() {
     }
   }
 
+  for (const [table, column] of [
+    ['AdministrativeRecord', 'managedDocumentVersion'],
+    ['AdministrativeRecord', 'managedDocumentContentHash'],
+    ['AdministrativeRouting', 'replyText'],
+    ['AdministrativeRouting', 'repliedAt'],
+    ['AdministrativeRouting', 'deliveredAt'],
+  ]) {
+    if (!(await columnType(table, column))) {
+      throw new Error('A09 recovery verification failed: missing ' + table + '.' + column);
+    }
+  }
+
   const constraintCount = await prisma.$queryRawUnsafe(
     "SELECT COUNT(*)::int AS count FROM pg_constraint WHERE conname IN ('AdministrativeRecord_managedDocumentId_fkey','AdministrativeRouting_repliedByAccountId_fkey','AdministrativeRouting_deliveredByAccountId_fkey','AdministrativeRecord_managed_document_snapshot_check','AdministrativeRouting_reply_snapshot_check','AdministrativeRouting_delivery_snapshot_check')",
   );
