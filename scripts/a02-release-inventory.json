@@ -265,6 +265,11 @@
       "reason": "Credential-free bounded recovery operator contracts also run unconditionally in required API validation. The focused workflow is retained; neither job executes a provider restore or proves live object/PITR/owner acceptance."
     },
     {
+      "path": ".github/workflows/a06-alert-drill.yml",
+      "disposition": "mutating",
+      "reason": "Explicitly confirmed manual synthetic issue delivery/recovery drill; issue writes never run for PR/push. Fixture contract checks are separate from live alert delivery and do not substitute for complete provider operational acceptance."
+    },
+    {
       "path": ".github/workflows/admin-documents-entry-validation.yml",
       "disposition": "required",
       "reason": "Proposed unfiltered main-push Web/API gate; see required policy and release-channel rationale."
