@@ -86,7 +86,7 @@ export class ExecutiveDecisionService {
       validExpiry(String(x.expiresAt));
       if(s.d.version!==x.expectedVersion||s.sourceHash!==x.sourceHash||this.ownerBinding(currentOwner)!==x.ownerBinding)throw new ConflictException('تغير المصدر أو الصلاحية؛ أعد القراءة.');
       if(await this.stored(tx,org,id))throw new ConflictException('لهذا المستند قرار محفوظ؛ لا يعاد إصداره أو استبدال سجله.');
-      await tx.operationalSetting.create({data:{key:NUMBER+org+':'+decisionDigest(s.payload.decisionNo),value:{documentId:id,sourceVersion:s.d.version,decisionNumber:s.payload.decisionNo}}});
+      await tx.operationalSetting.create({data:{key:NUMBER+org+':'+decisionDigest(s.payload.decisionNo.trim().normalize('NFKC')),value:{documentId:id,sourceVersion:s.d.version,decisionNumber:s.payload.decisionNo}}});
       const now=new Date().toISOString(),v=seal({policy:POLICY,organizationId:org,documentId:id,sourceVersion:s.d.version,sourceHash:s.sourceHash,decisionNumber:String(s.payload.decisionNo),source:{referenceNumber:s.d.referenceNumber,payload:s.payload},revision:randomUUID(),previousRevision:null,previousDigest:null,state:'ISSUED',issuedAt:now,expiresAt:String(x.expiresAt),ownerId:actor,ownerPersonId:currentOwner.ownerPersonId,ownerBinding:this.ownerBinding(currentOwner),worker:worker.binding,department:String(x.department),result:null,note,updatedAt:now,actorAccountId:actor});
       await this.save(tx,v,currentOwner.ownerPersonId,'ISSUED');return this.view(v);
     }));
