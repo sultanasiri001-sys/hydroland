@@ -164,9 +164,16 @@ export class AgentRuntimeService {
   }
 
   async control(actorId:string,key:string,body:unknown){
+    this.descriptor(key);const value=inputRecord(body,['state','expectedRevision','reason','reviewed']);
+    return this.db.serializable(tx=>this.controlInTransaction(tx,actorId,key,value));
+  }
+
+  async lockForControlInTransaction(tx:Prisma.TransactionClient){await this.guard(tx);}
+
+  async controlInTransaction(tx:Prisma.TransactionClient,actorId:string,key:string,body:unknown){
     this.descriptor(key);const value=inputRecord(body,['state','expectedRevision','reason','reviewed']),reason=decisionReason(value);
     if(!['PAUSED','ENABLED'].includes(String(value.state))||!uuid(value.expectedRevision))throw new BadRequestException('حالة الوكيل ونسخته الحالية مطلوبتان.');
-    return this.db.serializable(async tx=>{await this.guard(tx);const actor=await lockAdminIdentities(tx,actorId),row=await tx.aiAgentRuntime.findUnique({where:{key}});
+    await this.guard(tx);const actor=await lockAdminIdentities(tx,actorId),row=await tx.aiAgentRuntime.findUnique({where:{key}});
       if(!row)throw new ConflictException('هيّئ سجلات الوكلاء أولًا.');if(row.revision!==value.expectedRevision)throw new ConflictException('تغير الوكيل؛ حدّث البيانات وراجع الإجراء.');
       if(value.state==='ENABLED'){
         const config=this.model.configuration(),now=await this.now(tx),worker=await this.workerState(tx,config,now),budget=await this.reserved(tx,now);
@@ -175,9 +182,8 @@ export class AgentRuntimeService {
       if(row.state===value.state)return{key:row.key,state:row.state,revision:row.revision};
       const updated=await tx.aiAgentRuntime.update({where:{key},data:{state:String(value.state),revision:randomUUID(),lastAdminAccountId:actor.id}});
       const [running,queued]=await Promise.all([tx.aiAgentTask.count({where:{agentKey:key,state:'RUNNING'}}),tx.aiAgentTask.count({where:{agentKey:key,state:'QUEUED'}})]);
-      await this.audit.record({actorId:actor.personId,action:'AI_AGENT_CONTROL_CHANGED',resource:'AiAgentRuntime',resourceId:key,metadata:{reason,from:row.state,to:updated.state,running,queued,policy:'RUNNING_FINISHES_QUEUED_RETAINED',adminAccountId:actor.id}},tx);
-      return{key:updated.key,state:updated.state,revision:updated.revision,running,queued};
-    });
+      const event=await this.audit.record({actorId:actor.personId,action:'AI_AGENT_CONTROL_CHANGED',resource:'AiAgentRuntime',resourceId:key,metadata:{reason,from:row.state,to:updated.state,running,queued,policy:'RUNNING_FINISHES_QUEUED_RETAINED',adminAccountId:actor.id}},tx);
+      return{key:updated.key,state:updated.state,revision:updated.revision,running,queued,nativeAuditId:event.id};
   }
 
   async enqueue(actorId:string,key:string,body:unknown){
