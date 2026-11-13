@@ -1,4 +1,5 @@
 (()=>{
+  if(!document.querySelector('script[src="./hydroland-agent-access.js"]')){const script=document.createElement('script');script.src='./hydroland-agent-access.js';script.defer=true;document.body.appendChild(script);}
   if(!document.querySelector('script[src="./hydroland-technology-requests.js"]')){const script=document.createElement('script');script.src='./hydroland-technology-requests.js';script.defer=true;document.body.appendChild(script);}
   const auth=()=>window.HydrolandAuth;
   const toast=message=>{const t=document.getElementById('toast');if(!t)return;t.textContent=message;t.classList.add('visible');setTimeout(()=>t.classList.remove('visible'),2400)};

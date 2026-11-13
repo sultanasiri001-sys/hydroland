@@ -51,3 +51,27 @@ test('logout while a private detail is loading clears the dialog and ignores the
 test('fresh server revocation clears stored private data before any stale action remains visible',async({page})=>{
  const state=await setup(page);await page.locator('[data-case-id]').click();state.deny=true;await act(page,'SUBMIT');await expect(page.locator('#hl-technology-requests')).not.toBeVisible();await expect(page.locator('[data-tr-body]')).toBeEmpty();expect(state.writes).toHaveLength(1);
 });
+
+async function agentSetup(page,{stale=false}={}){
+ const writes=[],rows=[];await page.route('**/api/v1/**',r=>json(r,[]));
+ await page.route('**/auth/google/config',r=>json(r,{enabled:false}));
+ await page.route(/\/api\/v1\/me$/,r=>json(r,{id:'owner',status:'ACTIVE',person:{firstName:'مالك',lastName:'اختبار'},roleAssignments:[{role:'ADMIN',status:'ACTIVE'}]}));
+ await page.route(/\/technology\/agent-access(?:[/?].*)?$/,r=>{
+  const path=new URL(r.request().url()).pathname.split('/technology/agent-access')[1];
+  if(path==='/references')return json(r,{documents:[{id:source.id,label:'TEC-AGENT-001'}],tasks:[{id:employee.id,label:'توصية الأمن المكتملة'}],proofs:[]});
+  if(r.request().method()==='GET')return json(r,{items:rows});
+  const body=r.request().postDataJSON();writes.push({path,body});
+  if(path){if(stale)return json(r,{message:'تغير إصدار الطلب.'},409);rows[0].state='EXECUTED';rows[0].revision++;return json(r,rows[0],201);}
+  const row={id:body.requestId,source:{reference:'TEC-AGENT-001'},targetLabel:'target@example.invalid',status:'SUSPENDED',state:'PROPOSED',revision:1,expiresAt:body.expiresAt,recommendation:'<img src=x onerror=alert(1)> توصية فقط'};rows.unshift(row);return json(r,row,201);
+ });
+ await page.goto('/',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>Boolean(window.HydrolandAgentAccess&&window.HydrolandAuth&&window.HydrolandProfile));
+ await page.evaluate(async()=>{window.HydrolandAuth.acceptSession({accessToken:'agent-fixture',refreshToken:'agent-refresh'},window.HydrolandAuth.beginAuthAttempt());await window.HydrolandProfile.load();await window.HydrolandAgentAccess.open();});
+ const dialog=page.locator('#hl-agent-access'),form=dialog.locator('form').first();await form.locator('[name=document]').selectOption(source.id);await form.locator('[name=task]').selectOption(employee.id);await form.locator('[name=reason]').fill('مراجعة توصية الحساب المحدد');await form.getByRole('button',{name:'مراجعة التوصية',exact:true}).click();await expect(dialog.locator('[data-agent-case]')).toHaveCount(1);return{writes,dialog};
+}
+test('agent access exposes the exact account and advice, executes after explicit owner confirmation without employee selection',async({page})=>{
+ await page.setViewportSize({width:390,height:844});const{writes,dialog}=await agentSetup(page);await expect(dialog.locator('[name=assignee]')).toHaveCount(0);await expect(dialog.locator('img')).toHaveCount(0);await expect(dialog).toContainText('target@example.invalid');expect(writes).toHaveLength(1);
+ const f=dialog.locator('[data-agent-case] form');await f.locator('[name=action]').selectOption('APPROVE_EXECUTE');await f.locator('[name=reason]').fill('أوافق على تعليق هذا الحساب');await f.locator('[name=confirmed]').check();await f.getByRole('button',{name:'تأكيد الإجراء',exact:true}).click();await expect(dialog).toContainText('نُفذ آليًا');expect(writes).toHaveLength(2);expect(writes[1].body.expectedRevision).toBe(1);expect(writes[0].body.assigneeAccountId).toBeUndefined();expect(await dialog.evaluate(e=>e.scrollWidth<=e.clientWidth)).toBe(true);
+});
+test('agent access never retries stale approvals and clears private advice on logout',async({page})=>{
+ const{writes,dialog}=await agentSetup(page,{stale:true}),f=dialog.locator('[data-agent-case] form');await f.locator('[name=action]').selectOption('APPROVE_EXECUTE');await f.locator('[name=reason]').fill('موافقة محددة النطاق');await f.locator('[name=confirmed]').check();await f.getByRole('button',{name:'تأكيد الإجراء',exact:true}).click();await expect(dialog.locator('[role=status]')).toContainText('تغير إصدار الطلب');expect(writes).toHaveLength(2);await page.evaluate(()=>window.HydrolandAuth.logout());await expect(dialog).not.toBeVisible();await expect(dialog.locator('[data-agent-case]')).toHaveCount(0);
+});
