@@ -5,7 +5,7 @@ import {bindReleaseSource} from './a02-release-source-binding.mjs';
 import {createGitHubReader, waitForPushRunsToSettle, collectReleaseEvidence, summarizeCollection} from './a02-release-collector.mjs';
 
 export const REPOSITORY = 'sultanasiri001-sys/hydroland';
-export const INVENTORY_DIGEST = 'bfd4953e12d3b19988f2251728f1d1f59bb50e68048478392eb061526652f502';
+export const INVENTORY_DIGEST = 'ceef05b5e790958e9ea1d2c22b336e0fd27be053410de904aac80ed263d2d527';
 const WORKFLOW = '.github/workflows/a02-release-collector.yml';
 const sha = value => typeof value === 'string' && /^[a-f0-9]{40}$/.test(value);
 const blocked = reason => ({status:'BLOCKED', productionAuthorized:false, reasons:[reason]});
