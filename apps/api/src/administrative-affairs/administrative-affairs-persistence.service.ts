@@ -1,9 +1,17 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
+import type { Prisma } from '@prisma/client';
 
 @Injectable()
 export class AdministrativeAffairsPersistenceService {
   constructor(private readonly db: DatabaseService) {}
+
+  private async lockRegisteredRecord(tx:Prisma.TransactionClient,recordId:string) {
+    await tx.$queryRaw`SELECT "id" FROM "AdministrativeRecord" WHERE "id"::text=${recordId} FOR UPDATE`;
+    const record=await tx.administrativeRecord.findUniqueOrThrow({where:{id:recordId},select:{status:true}});
+    if(record.status==='ARCHIVED')throw new ConflictException('ADMIN_RECORD_ARCHIVED');
+    if(record.status!=='REGISTERED')throw new ConflictException('ADMIN_RECORD_NOT_REGISTERED');
+  }
 
   private async assertPermission(accountId:string, organizationId:string, action:'REGISTER'|'ROUTE'|'ASSIGN'|'DECIDE'|'ARCHIVE'|'SCHEDULE_MEETING', unitIds:string[] = []) {
     const member=await this.db.organizationMember.findFirst({where:{accountId,organizationId,status:'ACTIVE'},select:{role:true}});
@@ -110,6 +118,7 @@ export class AdministrativeAffairsPersistenceService {
     const target=await this.db.orgUnit.findUniqueOrThrow({where:{id:toUnitId},select:{organizationId:true,active:true}});
     if(target.organizationId!==record.organizationId||!target.active) throw new ForbiddenException('ADMIN_ROUTING_SCOPE_DENIED');
     return this.db.$transaction(async tx=>{
+      await this.lockRegisteredRecord(tx,record.id);
       const routing=await tx.administrativeRouting.create({data:{organizationId:record.organizationId,recordId:record.id,fromUnitId:record.unitId,toUnitId,requestedByAccountId:actorAccountId}});
       const actor=await tx.account.findUniqueOrThrow({where:{id:actorAccountId},select:{personId:true}});
       await tx.auditEvent.create({data:{actorId:actor.personId,action:'ADMIN_ROUTING_CREATED',resource:'AdministrativeRouting',resourceId:routing.id,metadata:{organizationId:record.organizationId}}});
@@ -118,10 +127,11 @@ export class AdministrativeAffairsPersistenceService {
   }
 
   async assign(routingId:string,assigneeAccountId:string,actorAccountId:string) {
-    const routing=await this.db.administrativeRouting.findUniqueOrThrow({where:{id:routingId},select:{id:true,organizationId:true,toUnitId:true,decision:true,assignedToAccountId:true}});
+    const routing=await this.db.administrativeRouting.findUniqueOrThrow({where:{id:routingId},select:{id:true,recordId:true,organizationId:true,toUnitId:true,decision:true,assignedToAccountId:true}});
     await this.assertPermission(actorAccountId,routing.organizationId,'ASSIGN',[routing.toUnitId]); await this.assertAssigneeEligible(assigneeAccountId,routing.organizationId,routing.toUnitId);
     if(routing.decision) throw new ConflictException('ADMIN_ROUTING_ALREADY_DECIDED');
     return this.db.$transaction(async tx=>{
+      await this.lockRegisteredRecord(tx,routing.recordId);
       const updated=await tx.administrativeRouting.updateMany({where:{id:routing.id,decision:null,assignedToAccountId:routing.assignedToAccountId},data:{assignedToAccountId:assigneeAccountId}});
       if(updated.count!==1) throw new ConflictException('ADMIN_ROUTING_CONCURRENT_MODIFICATION');
       const actor=await tx.account.findUniqueOrThrow({where:{id:actorAccountId},select:{personId:true}});
@@ -131,13 +141,14 @@ export class AdministrativeAffairsPersistenceService {
   }
 
   async decide(routingId:string,decision:'APPROVE'|'REJECT',actorAccountId:string) {
-    const routing=await this.db.administrativeRouting.findUniqueOrThrow({where:{id:routingId},select:{id:true,organizationId:true,toUnitId:true,requestedByAccountId:true,assignedToAccountId:true,decision:true}});
+    const routing=await this.db.administrativeRouting.findUniqueOrThrow({where:{id:routingId},select:{id:true,recordId:true,organizationId:true,toUnitId:true,requestedByAccountId:true,assignedToAccountId:true,decision:true}});
     await this.assertPermission(actorAccountId,routing.organizationId,'DECIDE',[routing.toUnitId]);
     if(!routing.assignedToAccountId) throw new ConflictException('ADMIN_ROUTING_UNASSIGNED');
     if(routing.assignedToAccountId!==actorAccountId) throw new ForbiddenException('ADMIN_APPROVER_NOT_ASSIGNED');
     if(routing.requestedByAccountId===actorAccountId) throw new ForbiddenException('ADMIN_SELF_APPROVAL_DENIED');
     if(routing.decision) throw new ConflictException('ADMIN_ROUTING_ALREADY_DECIDED');
     return this.db.$transaction(async tx=>{
+      await this.lockRegisteredRecord(tx,routing.recordId);
       const updated=await tx.administrativeRouting.updateMany({where:{id:routing.id,decision:null,assignedToAccountId:actorAccountId},data:{decision,decidedByAccountId:actorAccountId,decidedAt:new Date()}});
       if(updated.count!==1) throw new ConflictException('ADMIN_ROUTING_CONCURRENT_MODIFICATION');
       const actor=await tx.account.findUniqueOrThrow({where:{id:actorAccountId},select:{personId:true}});
