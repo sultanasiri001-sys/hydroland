@@ -19,6 +19,14 @@
    host.querySelector('[data-center-team-invite]').addEventListener('submit',invite);
    host.addEventListener('submit',event=>{if(event.target.matches('[data-team-manage]'))void manageMember(event);if(event.target.matches('[data-training-assign]'))void assignTraining(event);if(event.target.matches('[data-training-session-form]'))void saveSession(event)});
    host.addEventListener('change',event=>{
+     const sessionForm=event.target.closest('[data-training-session-form="create"]');
+     if(sessionForm&&['environment','diveKind'].includes(event.target.name)){
+       const group=sessionForm.querySelector('[data-dive-plan]'),open=sessionForm.elements.environment.value==='OPEN_WATER';
+       group.hidden=!open;sessionForm.elements.diveKind.disabled=!open;sessionForm.elements.diveKind.required=open;
+       const numbered=open&&sessionForm.elements.diveKind.value==='QUALIFYING';sessionForm.elements.qualifyingNumber.disabled=!numbered;sessionForm.elements.qualifyingNumber.required=numbered;
+       if(!numbered)sessionForm.elements.qualifyingNumber.value='';
+       return;
+     }
      const form=event.target.closest('[data-team-manage]');if(!form||event.target.name!=='action')return;
      const label=form.querySelector('[data-team-role-field]'),select=label.querySelector('select');
      label.hidden=select.disabled=event.target.value!=='CHANGE_ROLE';
@@ -93,13 +101,14 @@
    const actions=(row.actions||[]).filter(action=>sessionActionLabels[action]);if(kind==='action'&&!actions.length)return '';
    const title=kind==='create'?'إضافة جلسة':kind==='schedule'?'تعديل موعد الجلسة':'الحضور وحالة الجلسة';
    const fields=kind==='action'?`<label>إجراء الجلسة<select name="action" aria-label="إجراء الجلسة" required><option value="">اختر الإجراء</option>${actions.map(action=>`<option value="${action}">${sessionActionLabels[action]}</option>`).join('')}</select></label><p>توثيق الحضور هنا يُسجل باسم إدارة المركز. يفتح الحضور قبل الموعد بـ30 دقيقة، ويبدأ التدريب عند حلول الموعد وبعد تسجيل حضور المدرب والمتدرب.</p>`:(kind==='create'?`<label>مدرب الجلسة<select name="instructorAccountId" required><option value="">اختر المدرب</option>${instructors.map(person=>`<option value="${esc(person.accountId)}"${person.accountId===row.instructor?.accountId?' selected':''}>${esc(person.displayName)}</option>`).join('')}</select></label>`:'')+sessionDates(kind==='schedule'?row:null);
-   return `<details><summary>${title}</summary><form data-training-session-form="${kind}" data-id="${esc(row.id)}" data-revision="${esc(row.updatedAt)}"><fieldset>${fields}<label>سبب إجراء الجلسة<textarea name="reason" required maxlength="1000" rows="2"></textarea></label><button type="submit">${kind==='create'?'حفظ الجلسة':kind==='schedule'?'حفظ الموعد':'حفظ إجراء الجلسة'}</button></fieldset><p data-session-message role="status"></p><button type="button" data-center-team-retry hidden>تحديث التكليفات</button></form></details>`;
+   const standardFields=kind==='create'?'<label>بيئة الجلسة حسب برنامج المنظمة<select name="environment" required><option value="">اختر البيئة</option><option value="POOL">مسبح</option><option value="CONFINED_WATER">مياه محصورة</option><option value="OPEN_WATER">مياه مفتوحة</option></select></label><label>أقصى عمق مخطط بالمتر<input name="plannedMaximumDepthMetres" type="number" min="0" max="200" step="0.1" required></label><div data-dive-plan hidden><label>نوع غوصة المياه المفتوحة<select name="diveKind" disabled><option value="">اختر النوع</option><option value="QUALIFYING">غوصة تأهيلية</option><option value="EXPERIENCE">غوصة خبرة</option></select></label><label>رقم الغوصة التأهيلية<input name="qualifyingNumber" type="number" min="1" max="200" step="1" disabled></label><p>تُراجع الخطة حسب إصدار المنظمة. يعاد التحقق من الغوصات السابقة والمهارات الفعلية عند بدء الجلسة.</p></div><p>يتحقق الخادم من الإصدار المرتبط بالدورة وتأهيل المدرب وحدود العمر والبيئة قبل الجدولة.</p>':'';
+   return `<details><summary>${title}</summary><form data-training-session-form="${kind}" data-id="${esc(row.id)}" data-revision="${esc(row.updatedAt)}"><fieldset>${fields}${standardFields}<label>سبب إجراء الجلسة<textarea name="reason" required maxlength="1000" rows="2"></textarea></label><button type="submit">${kind==='create'?'حفظ الجلسة':kind==='schedule'?'حفظ الموعد':'حفظ إجراء الجلسة'}</button></fieldset><p data-session-message role="status"></p><button type="button" data-center-team-retry hidden>تحديث التكليفات</button></form></details>`;
  }
  async function saveSession(event){
    event.preventDefault();const form=event.target,host=form.closest('#hl-center-team');if(!host||!eligible()||form.dataset.busy)return;
    const kind=form.dataset.trainingSessionForm,fields=new FormData(form),payload={reason:fields.get('reason'),expectedUpdatedAt:form.dataset.revision};
    if(kind==='action')payload.action=fields.get('action');else{payload.startsAt=fields.get('startsAt')+':00+03:00';payload.endsAt=fields.get('endsAt')+':00+03:00'}
-   if(kind==='create'){form.dataset.requestId ||= crypto.randomUUID();payload.requestId=form.dataset.requestId;payload.instructorAccountId=fields.get('instructorAccountId')}
+   if(kind==='create'){form.dataset.requestId ||= crypto.randomUUID();payload.requestId=form.dataset.requestId;payload.instructorAccountId=fields.get('instructorAccountId');payload.environment=fields.get('environment');payload.plannedMaximumDepthMetres=Number(fields.get('plannedMaximumDepthMetres'));if(payload.environment==='OPEN_WATER'){payload.diveKind=fields.get('diveKind');payload.qualifyingNumber=payload.diveKind==='QUALIFYING'?Number(fields.get('qualifyingNumber')):null}}
    const version=viewVersion,session=auth()?.getSessionVersion?.(),cursor=lastTrainingCursor,message=form.querySelector('[data-session-message]'),live=()=>current(host,version,session)&&form.isConnected;
    form.dataset.busy='true';form.querySelector('fieldset').disabled=true;form.querySelector('[data-center-team-retry]').hidden=true;message.textContent='جارٍ الحفظ...';
    try{
@@ -152,3 +161,4 @@
  for(const name of ['hydroland:auth-changed','hydroland:role-changed','hydroland:profile-data-ready'])document.addEventListener(name,()=>{if(!eligible())clear()});
  window.HydrolandCenterTeam=Object.freeze({open});
 })();
+

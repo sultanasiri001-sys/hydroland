@@ -37,9 +37,18 @@ function harness(){
  assert(!sessionControls(course,{...session,endsAt:new Date('2029-01-01')},now,relaxed).actions.includes('OPEN'));
  const completed=sessionControls(course,{...session,status:'IN_PROGRESS',evidence:{startedAt:now.toISOString()}},now,relaxed);assert(completed.actions.includes('COMPLETE'));assert.equal(completed.attendance.studentCheckedIn,false);assert.equal(completed.attendance.instructorCheckedIn,false);
  assert.deepEqual(sessionControls({...course,status:'COMPLETED',record:{status:'COMPLETED',certificate:{id:'cert'}}},session,now,relaxed).actions,[]);
- let conflictState='ENABLED',conflictReads=0;
- const conflictDb={$queryRaw:async()=>[{ruleKey:'SCHEDULE_CONFLICT',state:conflictState}],trainingSession:{findFirst:async()=>{conflictReads++;return{id:'conflict'}}}};
+ let conflictState='ENABLED',conflictReads=0,sourceBound=false,sourcePresent=true;
+ const conflictDb={$queryRaw:async()=>[{ruleKey:'SCHEDULE_CONFLICT',state:conflictState}],trainingSession:{
+  findFirst:async()=>{conflictReads++;return{id:'conflict'}},
+  findMany:async()=>[{instructorAccountId:'i',trainingRecord:{enrollment:{studentAccountId:'s',metadata:sourceBound?{trainingStandard:{profileId:'synthetic-source'}}:{}}}}]
+ },policyControl:{findMany:async()=>sourcePresent?[{id:'synthetic-source',metadata:{profile:{diveProgression:{synthetic:true}}}}]:[]}};
  const sessions=new TrainingSessionService({}, {}, {});await assert.rejects(()=>sessions.assertAvailable(conflictDb,'i','s',now,new Date('2030-01-02')),/تعارض/);conflictState='DISABLED';await sessions.assertAvailable(conflictDb,'i','s',now,new Date('2030-01-02'));assert.equal(conflictReads,1);
+ // Optional generic conflicts may be relaxed; an existing source-bound dive
+ // reservation must still be inspected and protected. Real sources are tested
+ // separately on isolated PostgreSQL; these are explicit unit substitutes.
+ sourceBound=true;
+ for(const state of ['DISABLED','REVIEW']){conflictState=state;await assert.rejects(()=>sessions.assertAvailable(conflictDb,'i','s',now,new Date('2030-01-02')),error=>error.getResponse()?.code==='STANDARD_PARTICIPANT_CONFLICT');}
+ sourcePresent=false;await assert.rejects(()=>sessions.assertAvailable(conflictDb,'i','s',now,new Date('2030-01-02')),error=>error.getResponse()?.code==='STANDARD_PARTICIPANT_CONFLICT');
  assert.deepEqual(await trainingOperationalPolicy({$queryRaw:async()=>[]}),DEFAULT_TRAINING_POLICY);
  let capacityState='ENABLED',enrollments=0;
  const db={$queryRaw:async()=>[{ruleKey:'CAPACITY_LIMIT',state:capacityState}],account:{findFirst:async()=>({id:'student'})},storeCourseOffer:{findFirst:async()=>({id:'course',capacity:1,courseCode:'TEST',startsAt:now,endsAt:now})},trainingEnrollment:{findFirst:async()=>null,count:async()=>1,create:async({data})=>{enrollments++;return{id:'enrollment',...data}}},auditEvent:{create:async()=>({})}};db.serializable=fn=>fn(db);

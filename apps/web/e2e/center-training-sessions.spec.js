@@ -14,7 +14,7 @@ async function open(page,{empty=false}={}){
  await page.evaluate(async()=>{window.HydrolandAuth.acceptSession({accessToken:'sessions-access',refreshToken:'sessions-refresh'},window.HydrolandAuth.beginAuthAttempt());await window.HydrolandProfile.load()});
  await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="center"]').click();await page.locator('[data-portal-label="محترفي الغوص"]').click();const panel=page.locator('#hl-center-team');await panel.getByRole('button',{name:'التكليفات التدريبية',exact:true}).click();await expect(panel).toContainText('متدرب الجلسة');return {state,panel};
 }
-async function createForm(panel){await panel.getByText('إضافة جلسة',{exact:true}).click();const form=panel.locator('[data-training-session-form="create"]');await form.getByLabel('بداية الجلسة بتوقيت الرياض').fill('2035-02-01T09:00');await form.getByLabel('نهاية الجلسة بتوقيت الرياض').fill('2035-02-01T10:00');await form.getByLabel('سبب إجراء الجلسة').fill('تدريب أول');return form}
+async function createForm(panel){await panel.getByText('إضافة جلسة',{exact:true}).click();const form=panel.locator('[data-training-session-form="create"]');await form.getByLabel('بداية الجلسة بتوقيت الرياض').fill('2035-02-01T09:00');await form.getByLabel('نهاية الجلسة بتوقيت الرياض').fill('2035-02-01T10:00');await form.getByLabel('بيئة الجلسة حسب برنامج المنظمة').selectOption('OPEN_WATER');await form.getByLabel('أقصى عمق مخطط بالمتر').fill('8');await form.getByLabel('نوع غوصة المياه المفتوحة').selectOption('QUALIFYING');await form.getByLabel('رقم الغوصة التأهيلية').fill('1');await form.getByLabel('سبب إجراء الجلسة').fill('تدريب أول');return form}
 async function sessionCard(panel){await panel.getByText('الجلسات المسجلة (2)',{exact:true}).click();return panel.locator('[data-training-session="s1"]')}
 
 test('center creates a session with Riyadh time and a stable request id across network retry',async({page})=>{
@@ -24,7 +24,7 @@ test('center creates a session with Riyadh time and a stable request id across n
   state.data.enrollments[0].record.sessions=[{...planned(),id:payload.requestId,startsAt:payload.startsAt,endsAt:payload.endsAt}];return json(route,{id:payload.requestId,status:'SCHEDULED'},201);
  });
  const form=await createForm(panel);await form.getByRole('button',{name:'حفظ الجلسة',exact:true}).click();await expect(form).toContainText('تعذر الحفظ مؤقتًا');await expect(form.getByLabel('سبب إجراء الجلسة')).toHaveValue('تدريب أول');await form.getByRole('button',{name:'حفظ الجلسة',exact:true}).click();await expect(panel.locator('[data-team-feedback]')).toContainText('تم حفظ الجلسة');
- expect(writes[0]).toEqual(writes[1]);expect(writes[0].requestId).toMatch(/^[0-9a-f-]{36}$/);expect(writes[0]).toMatchObject({instructorAccountId:'p1',startsAt:'2035-02-01T09:00:00+03:00',endsAt:'2035-02-01T10:00:00+03:00',expectedUpdatedAt:revision,reason:'تدريب أول'});expect(writes[0].organizationId).toBeUndefined();
+ expect(writes[0]).toEqual(writes[1]);expect(writes[0].requestId).toMatch(/^[0-9a-f-]{36}$/);expect(writes[0]).toMatchObject({instructorAccountId:'p1',startsAt:'2035-02-01T09:00:00+03:00',endsAt:'2035-02-01T10:00:00+03:00',expectedUpdatedAt:revision,reason:'تدريب أول',environment:'OPEN_WATER',plannedMaximumDepthMetres:8,diveKind:'QUALIFYING',qualifyingNumber:1});expect(writes[0].organizationId).toBeUndefined();
  await panel.getByRole('button',{name:'الطاقم',exact:true}).click();await panel.getByRole('button',{name:'التكليفات التدريبية',exact:true}).click();await panel.getByText('الجلسات المسجلة (1)',{exact:true}).click();await expect(panel.locator('[data-training-session]')).toHaveCount(1);await expect(panel).toContainText('٢٠٣٥');
 });
 test('center reschedules with explicit conflict refresh and completed sessions stay read only',async({page})=>{
@@ -33,6 +33,26 @@ test('center reschedules with explicit conflict refresh and completed sessions s
  await page.route('**/api/v1/center/me/training/sessions/s1/schedule',route=>{const payload=route.request().postDataJSON();writes++;if(writes===1){state.data.enrollments[0].record.sessions[0].updatedAt='2026-10-04T08:02:00.000Z';return json(route,{message:'تغيرت الجلسة. حدّث القائمة.'},409)}expect(payload.expectedUpdatedAt).toBe('2026-10-04T08:02:00.000Z');state.data.enrollments[0].record.sessions[0].startsAt=payload.startsAt;return json(route,{id:'s1',status:'SCHEDULED'})});
  await form.getByLabel('بداية الجلسة بتوقيت الرياض').fill('2035-01-01T09:30');await form.getByLabel('سبب إجراء الجلسة').fill('تعديل التوقيت');await form.getByRole('button',{name:'حفظ الموعد'}).click();await expect(form).toContainText('تغيرت الجلسة');await expect(form.getByLabel('بداية الجلسة بتوقيت الرياض')).toHaveValue('2035-01-01T09:30');await expect(form.getByLabel('سبب إجراء الجلسة')).toHaveValue('تعديل التوقيت');
  await form.getByRole('button',{name:'تحديث التكليفات'}).click();await sessionCard(panel);await card.getByText('تعديل موعد الجلسة',{exact:true}).click();form=card.locator('[data-training-session-form="schedule"]');await form.getByLabel('بداية الجلسة بتوقيت الرياض').fill('2035-01-01T09:30');await form.getByLabel('سبب إجراء الجلسة').fill('تعديل التوقيت');await form.getByRole('button',{name:'حفظ الموعد'}).click();await expect(panel.locator('[data-team-feedback]')).toContainText('تم حفظ الموعد الجديد');expect(writes).toBe(2);
+});
+test('experience plans clear the qualifying number and preserve the source rejection',async({page})=>{
+ const {panel}=await open(page,{empty:true}),writes=[];
+ await page.route('**/api/v1/center/me/training/enrollments/c1/sessions',route=>{writes.push(route.request().postDataJSON());return json(route,{code:'TRAINING_DIVE_PLAN_REQUIRED',message:'خطة الغوص لا تستوفي حدود البرنامج.'},409)});
+ const form=await createForm(panel);await form.getByLabel('نوع غوصة المياه المفتوحة').selectOption('EXPERIENCE');
+ await expect(form.getByLabel('رقم الغوصة التأهيلية')).toBeDisabled();
+ await form.getByRole('button',{name:'حفظ الجلسة',exact:true}).click();
+ await expect(form).toContainText('خطة الغوص لا تستوفي حدود البرنامج');
+ expect(writes).toHaveLength(1);expect(writes[0]).toMatchObject({diveKind:'EXPERIENCE',qualifyingNumber:null});
+ await expect(form.getByLabel('نوع غوصة المياه المفتوحة')).toHaveValue('EXPERIENCE');
+ await expect(form.getByLabel('أقصى عمق مخطط بالمتر')).toHaveValue('8');
+ await expect(panel.locator('[data-training-session]')).toHaveCount(0);
+});
+test('pool activity sends no OW classification after changing the environment',async({page})=>{
+ const {panel}=await open(page,{empty:true}),writes=[];
+ await page.route('**/api/v1/center/me/training/enrollments/c1/sessions',route=>{writes.push(route.request().postDataJSON());return json(route,{message:'فحص الطلب دون حفظ'},409)});
+ const form=await createForm(panel);await form.getByLabel('بيئة الجلسة حسب برنامج المنظمة').selectOption('POOL');
+ await expect(form.getByLabel('نوع غوصة المياه المفتوحة')).toBeHidden();
+ await form.getByRole('button',{name:'حفظ الجلسة',exact:true}).click();await expect(form).toContainText('فحص الطلب دون حفظ');
+ expect(writes).toHaveLength(1);expect(writes[0].environment).toBe('POOL');expect(writes[0]).not.toHaveProperty('diveKind');expect(writes[0]).not.toHaveProperty('qualifyingNumber');
 });
 test('center follows attendance and session lifecycle using only server-authorized actions',async({page})=>{
  const {state,panel}=await open(page),writes=[];
@@ -57,3 +77,4 @@ test('session create rechecks center authority before writing',async({page})=>{
 test('late session create response cannot restore private data after logout',async({page})=>{
  const {panel}=await open(page,{empty:true});let pending;await page.route('**/api/v1/center/me/training/enrollments/c1/sessions',route=>{pending=route});const form=await createForm(panel);await form.getByRole('button',{name:'حفظ الجلسة',exact:true}).click();await expect.poll(()=>Boolean(pending)).toBe(true);const payload=pending.request().postDataJSON();await page.evaluate(()=>window.HydrolandAuth.terminateSession());await json(pending,{id:payload.requestId,status:'SCHEDULED'},201);await expect(panel).toHaveCount(0);await expect(page.getByText('متدرب الجلسة',{exact:true})).toHaveCount(0);
 });
+
