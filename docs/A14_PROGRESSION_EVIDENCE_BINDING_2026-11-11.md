@@ -83,3 +83,10 @@ The existing API workflow runs all isolated suites and the new PostgreSQL suite 
 Complete current agency editions, updates, source applicability and official credential/form/measurement mapping; independent authorised source acceptance; complete planning/start enforcement; group/assistant rosters and role/risk/equipment/junior exceptions; deliberate legacy/referral/multi-dive-session/attempt handling; real endpoint/concurrency/browser acceptance and authorised live release checks. Marine/weather/site and broader A14 organisational obligations remain open.
 
 Do not merge, deploy or close A14 from these test results alone.
+
+
+## 13 November: certificate endpoint acceptance extension
+
+The existing evaluator and completion adapter are reused unchanged. `training-progression-certificate-http-checks.mjs` is called from the existing certificate HTTP suite in the isolated API/HR integration path. It creates synthetic database evidence, then sends authenticated HTTP requests to the actual certificate recommendation and reviewer-decision endpoints: a source-specific first-dive depth violation must create no recommendation; failed individual qualification must issue no certificate; the explicit v2 gas alternative may qualify below the time threshold and permit independent approval. The existing 305 isolated contracts remain unchanged and passed locally.
+
+This extension tests the certificate endpoint wiring, not a full learner browser journey, concurrent progression edits, document lifecycle HTTP, physical measurement provenance, source approval or operational acceptance. Signed-proof modifications are direct-database fault injection on disposable CI fixtures; production document signing/immutability permissions are not changed. Actual HTTP/PostgreSQL execution on this new head must pass before claiming that new coverage.
