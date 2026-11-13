@@ -53,6 +53,27 @@ try{
   assert.equal(await db.credential.count({where:{personId:owner.personId}}),0,'Failed audit rolls back credential creation');
   assert.equal(await db.auditEvent.count({where:{actorId:owner.personId}}),0);
 
+  // A06: provider outage must not create upload metadata/audit or advance the
+  // verification state. The same logical operation can be requested after recovery.
+  const outageCredential=await create(),outagePayload=payload();
+  const unavailable=new CredentialsService(db,policies,audit,notifications,{...storage,put:async()=>{throw new Error('Fixture storage unavailable')}});
+  await assert.rejects(()=>unavailable.attachDocument(owner.id,outageCredential,outagePayload),/Fixture storage unavailable/);
+  assert.equal((await row(outageCredential)).documents.length,0);
+  assert.equal((await events(outageCredential,'CREDENTIAL_DOCUMENT_ATTACHED')).length,0);
+  assert.equal(objects.size,0);
+  await service.attachDocument(owner.id,outageCredential,outagePayload);
+  assert.equal((await row(outageCredential)).documents.length,1);
+  assert.equal((await events(outageCredential,'CREDENTIAL_DOCUMENT_ATTACHED')).length,1);
+  const missingCheck=new CredentialsService(db,policies,audit,notifications,{...storage,exists:async()=>{throw new Error('Fixture storage check unavailable')}});
+  await assert.rejects(()=>missingCheck.submit(owner.id,outageCredential),/Fixture storage check unavailable/);
+  assert.equal((await row(outageCredential)).verificationStatus,'UNVERIFIED');
+  assert.equal((await events(outageCredential,'CREDENTIAL_SUBMITTED')).length,0);
+  await service.submit(owner.id,outageCredential);
+  assert.equal((await row(outageCredential)).verificationStatus,'PENDING');
+  assert.equal((await events(outageCredential,'CREDENTIAL_SUBMITTED')).length,1);
+  // Leave the later suite's global object-count assertions isolated.
+  for(const document of (await row(outageCredential)).documents)objects.delete(document.storageKey);
+
   const rollback=await create(),retryPayload=payload();
   await assert.rejects(()=>failing.attachDocument(owner.id,rollback,retryPayload),/Injected audit failure/);
   assert.equal((await row(rollback)).documents.length,0,'Failed audit must not leave document metadata without bytes');

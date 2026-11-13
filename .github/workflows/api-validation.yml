@@ -232,7 +232,9 @@ jobs:
       - name: Credential upload payload and legacy schema regression
         run: node apps/api/scripts/credential-upload-regression.mjs
       - name: Credential storage configuration and readiness
-        run: node apps/api/scripts/credential-storage-readiness-validation.mjs
+        run: |
+          node apps/api/scripts/credential-storage-readiness-validation.mjs
+          node --test apps/api/scripts/credential-storage-recovery.test.cjs
       - name: Auth email outbox PostgreSQL E2E
         run: node apps/api/scripts/auth-email-outbox-db-e2e.mjs
       - name: MFA lifecycle PostgreSQL E2E
