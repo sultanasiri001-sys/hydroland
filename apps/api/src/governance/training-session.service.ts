@@ -1,5 +1,5 @@
 import { trainingOperationalPolicy } from './training-operational-policy';
-import { assertStandardSupervisionAvailable, assertTrainingStandardReady, standardRequest } from './training-standard-store';
+import { assertStandardSupervisionAvailable, assertTrainingStandardReady, assertTrainingDivePlan, standardRequest } from './training-standard-store';
 import { createHash } from 'node:crypto';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, TrainingSessionStatus } from '@prisma/client';
@@ -65,14 +65,15 @@ export class TrainingSessionService {
  }
 
  async create(actorId:string,id:string,body:Record<string,unknown>,centerPortal=true){
-  this.fields(body,['instructorAccountId','startsAt','endsAt','trainingStageId','reason','requestId','expectedUpdatedAt','environment','plannedMaximumDepthMetres']);
+  this.fields(body,['instructorAccountId','startsAt','endsAt','trainingStageId','reason','requestId','expectedUpdatedAt','environment','plannedMaximumDepthMetres','diveKind','qualifyingNumber']);
   if(!uuid(body.instructorAccountId)||!uuid(body.requestId)||(body.trainingStageId!==undefined&&!uuid(body.trainingStageId)))throw new BadRequestException('معرّف المدرب أو الجلسة أو المرحلة غير صالح.');
   const instructorId=body.instructorAccountId,requestId=body.requestId,stageId=body.trainingStageId as string|undefined;
   const reason=this.reason(body.reason),revision=this.revision(body.expectedUpdatedAt);
   // Check committed requests before future-time validation so an exact retry
   // remains recoverable after its original scheduled start.
-  const context={environment:body.environment,plannedMaximumDepthMetres:body.plannedMaximumDepthMetres};
-  const fingerprint=createHash('sha256').update(JSON.stringify({actorId,id,centerPortal,instructorId,stageId:stageId||null,startsAt:body.startsAt,endsAt:body.endsAt,reason,revision:revision.toISOString(),...(body.environment!==undefined||body.plannedMaximumDepthMetres!==undefined?{context}:{})})).digest('hex');
+  if(body.environment!=='OPEN_WATER'&&(body.diveKind!==undefined||body.qualifyingNumber!==undefined))throw new BadRequestException('تصنيف الغوصة ورقمها خاصان بالمياه المفتوحة.');
+  const context={environment:body.environment,plannedMaximumDepthMetres:body.plannedMaximumDepthMetres,...(body.diveKind!==undefined||body.qualifyingNumber!==undefined?{diveKind:body.diveKind,qualifyingNumber:body.qualifyingNumber}:{})};
+  const fingerprint=createHash('sha256').update(JSON.stringify({actorId,id,centerPortal,instructorId,stageId:stageId||null,startsAt:body.startsAt,endsAt:body.endsAt,reason,revision:revision.toISOString(),...(body.environment!==undefined||body.plannedMaximumDepthMetres!==undefined||body.diveKind!==undefined||body.qualifyingNumber!==undefined?{context}:{})})).digest('hex');
   const work=async(tx:Prisma.TransactionClient)=>{
    const centerId=centerPortal?await this.center(tx,actorId):null;
    if(!centerPortal)await this.authorization.assertRecordAccess(actorId,id,tx);
@@ -88,6 +89,7 @@ export class TrainingSessionService {
    await this.eligible(tx,instructorId,enrollment.centerOrganizationId);
    const dates=this.dates(body);
    await standardRequest(()=>assertTrainingStandardReady(tx,enrollment,instructorId,dates.startsAt,context));
+   await standardRequest(()=>assertTrainingDivePlan(tx,enrollment.id,instructorId,dates.startsAt,dates.endsAt,context));
    await assertStandardSupervisionAvailable(tx,instructorId,dates.startsAt,dates.endsAt);
    if(stageId&&!await tx.trainingStage.findFirst({where:{id:stageId,trainingRecord:{enrollmentId:enrollment.id}},select:{id:true}}))throw new BadRequestException('المرحلة ليست ضمن سجل هذه الدورة.');
    await this.assertAvailable(tx,instructorId,enrollment.studentAccountId,dates.startsAt,dates.endsAt);
@@ -119,6 +121,7 @@ export class TrainingSessionService {
    if(!sessionControls(course,row).canReschedule)throw new ConflictException('يمكن تعديل موعد الجلسة المجدولة قبل فتح الحضور فقط.');
    await this.eligible(tx,row.instructorAccountId,centerId);
    await standardRequest(()=>assertTrainingStandardReady(tx,course,row.instructorAccountId,dates.startsAt,sessionEvidence(row.evidence).trainingStandardContext ?? null));
+   await standardRequest(()=>assertTrainingDivePlan(tx,course.id,row.instructorAccountId,dates.startsAt,dates.endsAt,sessionEvidence(row.evidence).trainingStandardContext ?? null,id));
    await assertStandardSupervisionAvailable(tx,row.instructorAccountId,dates.startsAt,dates.endsAt,id);
    await this.assertAvailable(tx,row.instructorAccountId,course.studentAccountId,dates.startsAt,dates.endsAt,id);
    if(row.startsAt.getTime()===dates.startsAt.getTime()&&row.endsAt?.getTime()===dates.endsAt.getTime())return {id,updatedAt:row.updatedAt,status:row.status};
@@ -154,6 +157,7 @@ export class TrainingSessionService {
    if(action!=='CANCEL')await this.eligible(tx,row.instructorAccountId,course.centerOrganizationId);
    if(action!=='CANCEL')await standardRequest(()=>assertTrainingStandardReady(tx,course,row.instructorAccountId,row.startsAt,sessionEvidence(row.evidence).trainingStandardContext ?? null));
    if(action!=='CANCEL')await assertStandardSupervisionAvailable(tx,row.instructorAccountId,row.startsAt,row.endsAt,id);
+   if(action==='START')await standardRequest(()=>assertTrainingDivePlan(tx,course.id,row.instructorAccountId,now,row.endsAt,sessionEvidence(row.evidence).trainingStandardContext ?? null,id,true,now));
    if(action==='START')await this.assertAvailable(tx,row.instructorAccountId,course.studentAccountId,row.startsAt,row.endsAt!,id);
    const evidence:Prisma.JsonObject={...sessionEvidence(row.evidence)},at=now.toISOString(),updatedAt=sessionRevision(row.updatedAt);
    let status:TrainingSessionStatus=row.status;

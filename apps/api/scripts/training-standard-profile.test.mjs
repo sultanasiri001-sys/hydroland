@@ -212,6 +212,13 @@ test('overlong complete activity history is refused rather than truncated',async
 });
 
 // Producer/consumer seam: TrainingSessionService COMPLETE writes endedAt.
+test('classified session and signed dive must retain the same kind and sequence',async()=>{
+  const {tx,state}=evidenceDatabase(),context=state.enrollment.record.sessions[0].evidence.trainingStandardContext;
+  Object.assign(context,{diveKind:'QUALIFYING',qualifyingNumber:1});await store.assertTrainingStandardCompletion(tx,'enrollment');
+  context.qualifyingNumber=2;await assert.rejects(store.assertTrainingStandardCompletion(tx,'enrollment'),e=>e.code==='DIVE_EVIDENCE_INVALID');
+  Object.assign(context,{diveKind:'EXPERIENCE',qualifyingNumber:null});await assert.rejects(store.assertTrainingStandardCompletion(tx,'enrollment'),e=>e.code==='DIVE_EVIDENCE_INVALID');
+  assert.equal(state.writeCount,0);
+});
 test('producer endedAt attendance is consumed without inventing completedAt',async()=>{
   const {tx,state}=evidenceDatabase();assert.equal(Object.hasOwn(state.enrollment.record.sessions[0].evidence,'completedAt'),false);
   await store.assertTrainingStandardCompletion(tx,'enrollment');

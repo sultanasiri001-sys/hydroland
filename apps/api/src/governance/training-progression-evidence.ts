@@ -68,6 +68,10 @@ export function readTrainingProgressionEvidence(course: Course, sessions: Sessio
       if (Object.keys(entry).length !== allowed.length || allowed.some(key => !Object.hasOwn(entry, key)) || Object.keys(entry).some(key => !allowed.includes(key))) invalid();
       const sessionId = id(entry.sessionId), window = completed.get(sessionId), start = utc(entry.startedAt), end = utc(entry.endedAt);
       if (!window || window.context.environment !== 'OPEN_WATER' || entry.environment !== 'OPEN_WATER' || coveredSessions.has(sessionId) || end <= start || start < window.start || end > window.end || end > signedAt || end > approvedAt || typeof entry.maximumDepthMetres !== 'number' || !Number.isFinite(entry.maximumDepthMetres) || entry.maximumDepthMetres <= 0 || entry.maximumDepthMetres > Number(window.context.plannedMaximumDepthMetres)) invalid();
+      // A new classified reservation cannot be relabelled after its START gate.
+      // Historical completed sessions still require their explicit signed log;
+      // unclassified future reservations are refused by the planning gate.
+      if (window.context.diveKind !== undefined && (window.context.diveKind !== entry.kind || window.context.qualifyingNumber !== entry.qualifyingNumber)) invalid();
       coveredSessions.add(sessionId);
       // The pure evaluator validates every exact enum, measurement, timestamp,
       // duplicate physical ID, overlap, qualifying sequence and source rule.

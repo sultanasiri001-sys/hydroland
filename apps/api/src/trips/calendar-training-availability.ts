@@ -42,7 +42,8 @@ export async function assertTrainingCalendarAvailable(
 export async function trainingBusyAccounts(
   tx: Prisma.TransactionClient, accountIds: string[], startsAt: Date, endsAt: Date,
 ): Promise<Set<string>> {
-  if (!accountIds.length || !(await trainingOperationalPolicy(tx)).scheduleConflict) return new Set();
+  if (!accountIds.length) return new Set();
+  const genericEnforced = (await trainingOperationalPolicy(tx)).scheduleConflict;
   const sessions = await tx.trainingSession.findMany({
     where: {
       status: { in: ['SCHEDULED', 'CHECK_IN_OPEN', 'IN_PROGRESS'] },
@@ -52,9 +53,18 @@ export async function trainingBusyAccounts(
         { OR: [{ status: 'IN_PROGRESS' }, { startsAt: { lt: endsAt }, OR: [{ endsAt: { gt: startsAt } }, { endsAt: null }] }] },
       ],
     },
-    select: { instructorAccountId: true, trainingRecord: { select: { enrollment: { select: { studentAccountId: true } } } } },
+    select: { instructorAccountId: true, trainingRecord: { select: { enrollment: { select: { studentAccountId: true, metadata: true } } } } },
   });
-  return new Set(sessions.flatMap(row => [row.instructorAccountId, row.trainingRecord.enrollment.studentAccountId]));
+  if (genericEnforced) return new Set(sessions.flatMap(row => [row.instructorAccountId, row.trainingRecord.enrollment.studentAccountId]));
+  const object = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const profileId = (metadata: unknown) => object(object(metadata).trainingStandard).profileId;
+  const profileIds = [...new Set(sessions.map(row=>profileId(row.trainingRecord.enrollment.metadata)).filter((id): id is string=>typeof id==='string'))];
+  const profiles = profileIds.length ? await tx.policyControl.findMany({ where: { category: 'TRAINING_STANDARD_PROFILE', id: { in: profileIds } }, select: { id: true, metadata: true } }) : [];
+  // Source-bound dive supervision remains mandatory in the calendar -> training
+  // direction too. Missing source records fail closed; generic non-diving policy
+  // semantics stay unchanged. Reads participate in the caller's Serializable tx.
+  const mandatory = new Set(profileIds.filter(id=>{const row=profiles.find(profile=>profile.id===id);return !row || Object.hasOwn(object(object(row.metadata).profile),'diveProgression');}));
+  return new Set(sessions.filter(row=>mandatory.has(String(profileId(row.trainingRecord.enrollment.metadata)))).flatMap(row=>[row.instructorAccountId,row.trainingRecord.enrollment.studentAccountId]));
 }
 
 export async function assertCalendarHumanAvailable(

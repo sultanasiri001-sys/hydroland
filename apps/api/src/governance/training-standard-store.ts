@@ -5,7 +5,8 @@ import { ageOn, assertTrainingStandardBinding, hasTrainingCredential, parseTrain
 import type { TrainingStandardBinding, TrainingStandardProfile } from './training-standard-profile';
 import { hasInstructorCenterAccess } from './training-center-scope';
 import { readTrainingProgressionEvidence } from './training-progression-evidence';
-import { evaluateDiveProgression, DiveProgressionError } from './training-dive-progression';
+import { assertTrainingCalendarAvailable } from '../trips/calendar-training-availability';
+import { evaluateDiveProgression, evaluateDivePlanning, DiveProgressionError } from './training-dive-progression';
 
 const CATEGORY = 'TRAINING_STANDARD_PROFILE';
 const json = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -162,7 +163,7 @@ export async function assertStandardSupervisionAvailable(tx: Prisma.TransactionC
   // Until group rosters are implemented, toggling calendar conflict checks cannot create a group.
   if (conflict) throw new ConflictException({ code: 'STANDARD_SUPERVISION_CONFLICT', message: 'يوجد تكليف متداخل للمدرب. نسب المنظمة لا تسمح بإنشاء مجموعة من جلسات فردية متعارضة.' });
 }
-export async function assertTrainingStandardCompletion(tx: Prisma.TransactionClient, enrollmentId: string) {
+async function boundTrainingEvidence(tx: Prisma.TransactionClient, enrollmentId: string) {
   const enrollment = await tx.trainingEnrollment.findUniqueOrThrow({ where: { id: enrollmentId }, include: { record: { include: { stages: { include: { skills: true } }, sessions: true } } } });
   const { profile, binding } = await assertTrainingStandardReady(tx, enrollment, enrollment.instructorAccountId);
   // Only already approved AND signed forms, scoped to this centre, student, and exact profile.
@@ -200,7 +201,53 @@ export async function assertTrainingStandardCompletion(tx: Prisma.TransactionCli
       throw error;
     }
   }
+  return { enrollment, profile, binding, documents, verifiedFormCodes, acceptedSkills, completedSkillCodes, progressionPolicy, progressionEvidence, qualifyingDives };
+}
+export async function assertTrainingStandardCompletion(tx: Prisma.TransactionClient, enrollmentId: string) {
+  const { enrollment, profile, binding, verifiedFormCodes, completedSkillCodes, qualifyingDives } = await boundTrainingEvidence(tx, enrollmentId);
+  const record = enrollment.record;
   const gaps = trainingCompletionGaps(profile, { completedSessions: record?.sessions.filter(session => session.status === 'COMPLETED').length || 0, completedSkillCodes, verifiedFormCodes, verifiedOpenWaterDives: qualifyingDives, verifiedOpenWaterMinutes: 0 });
   if (gaps.length) throw new ConflictException({ code: 'TRAINING_STANDARD_EVIDENCE_REQUIRED', gaps, message: 'لم تكتمل أدلة برنامج المنظمة: المهارات والجلسات والنماذج والغوصات الموثقة.' });
   return binding;
+}
+
+/** Same source/evidence reader as completion; no planned event is counted as proof. */
+export async function assertTrainingDivePlan(tx: Prisma.TransactionClient, enrollmentId: string, instructorId: string, startsAt: Date, endsAt: Date | null, contextInput: unknown, sessionId?: string, starting = false, asOf = new Date()) {
+  const row = await tx.trainingEnrollment.findUniqueOrThrow({ where: { id: enrollmentId } });
+  const { profile } = await assertTrainingStandardReady(tx, row, instructorId, startsAt, contextInput);
+  if (!endsAt || endsAt <= startsAt) throw new ConflictException('يلزم وقت نهاية صالح لخطة التدريب.');
+  await assertTrainingStandardReady(tx, row, instructorId, endsAt, contextInput);
+  const progression = trainingStandardProgressionPolicy(profile);
+  const context = json(contextInput);
+  if (!progression) {
+    if (context.environment === 'OPEN_WATER') throw new ConflictException({ code: 'DIVE_PROGRESSION_POLICY_REQUIRED', message: 'يلزم إصدار معتمد لتدرج الغوص قبل الجدولة.' });
+    return;
+  }
+  if (instructorId !== row.instructorAccountId) throw new ConflictException({ code: 'DIVE_INSTRUCTOR_ADOPTION_REQUIRED', message: 'تغيير مدرب الغوص يحتاج مسار تبنٍ موثق للأدلة.' });
+  // An individual source-bound in-water activity cannot double-book a person,
+  // even when optional generic calendar warnings are switched off.
+  const accountIds = [...new Set([instructorId, row.studentAccountId])];
+  const conflict = await tx.trainingSession.findFirst({ where: { ...(sessionId ? { id: { not: sessionId } } : {}), status: { in: ['SCHEDULED','CHECK_IN_OPEN','IN_PROGRESS'] }, AND: [
+    { OR: [{ instructorAccountId: { in: accountIds } }, { trainingRecord: { enrollment: { studentAccountId: { in: accountIds } } } }] },
+    { OR: [{ status: 'IN_PROGRESS' }, { startsAt: { lt: endsAt }, OR: [{ endsAt: { gt: startsAt } }, { endsAt: null }] }] }
+  ] }, select: { id: true } });
+  if (conflict) throw new ConflictException({ code: 'STANDARD_PARTICIPANT_CONFLICT', message: 'يوجد تكليف متداخل لأحد المشاركين في التدريب الفردي.' });
+  await assertTrainingCalendarAvailable(tx, accountIds, startsAt, endsAt);
+  const state = await boundTrainingEvidence(tx, enrollmentId);
+  if (!state.progressionEvidence || (state.enrollment.record?.sessions.length || 0) + (sessionId ? 0 : 1) > 200) throw new ConflictException('يلزم جرد كامل لتاريخ التدريب.');
+  const proposedId = 'plan:' + (sessionId || 'new');
+  const makePlan = (id: string, start: Date, end: Date | null, data: unknown) => {
+    const value = json(data), open = value.environment === 'OPEN_WATER';
+    if (!end) throw new ConflictException('يلزم وقت نهاية لكل جلسة في الخطة.');
+    return { id, profileHash: state.binding.profileHash, environment: value.environment, startsAt: start.toISOString(), endsAt: end.toISOString(), kind: open ? value.diveKind : null, qualifyingNumber: open ? value.qualifyingNumber : null, maximumDepthMetres: value.plannedMaximumDepthMetres };
+  };
+  const plans = (state.enrollment.record?.sessions || []).filter(item=>item.id!==sessionId&&['SCHEDULED','CHECK_IN_OPEN'].includes(item.status)).map(item=>makePlan('plan:'+item.id,item.startsAt,item.endsAt,json(item.evidence).trainingStandardContext));
+  plans.push(makePlan(proposedId, startsAt, endsAt, context));
+  try {
+    const result = evaluateDivePlanning(progression, state.progressionEvidence.dives, state.acceptedSkills.map(skill=>({code:skill.skillCode,profileHash:state.binding.profileHash,completedAt:skill.signedOffAt!.toISOString()})),asOf.toISOString(),state.progressionEvidence.confined,plans,starting?proposedId:undefined);
+    if(result.violations.length) throw new ConflictException({code:'TRAINING_DIVE_PLAN_REQUIRED',violations:result.violations,message:'خطة الغوص أو بدء الجلسة لا يستوفيان تدرج البرنامج وحدوده.'});
+  } catch(error) {
+    if(error instanceof DiveProgressionError) throw new ConflictException({code:'DIVE_PLAN_INVALID',message:'حدد نوع غوصة المياه المفتوحة ورقمها وسياقها الكامل.'});
+    throw error;
+  }
 }

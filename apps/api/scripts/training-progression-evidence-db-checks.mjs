@@ -13,7 +13,7 @@ assert.ok(['localhost', '127.0.0.1', '[::1]'].includes(url.hostname), 'Only isol
 assert.ok([...url.searchParams.keys()].every(key => ['schema', 'connection_limit', 'pool_timeout', 'connect_timeout', 'sslmode'].includes(key)), 'Unsupported database URL override');
 const require = createRequire(import.meta.url);
 const { PrismaClient } = require('@prisma/client');
-const { assertTrainingStandardCompletion, createTrainingStandardDraft, decideTrainingStandard } = require('../dist/governance/training-standard-store.js');
+const { assertTrainingStandardCompletion, assertTrainingDivePlan, createTrainingStandardDraft, decideTrainingStandard } = require('../dist/governance/training-standard-store.js');
 const { trainingStandardBinding, trainingStandardHash, parseTrainingStandard } = require('../dist/governance/training-standard-profile.js');
 const db = new PrismaClient({ datasources: { db: { url: url.toString() } } });
 const { TrainingSessionService } = require('../dist/governance/training-session.service.js');
@@ -21,6 +21,7 @@ const { TrainingAuthorizationService } = require('../dist/governance/training-au
 const { AuditService } = require('../dist/audit/audit.service.js');
 const { DocumentPersistenceService } = require('../dist/document-forms/document-persistence.service.js');
 const { DocumentAuthorizationService } = require('../dist/document-forms/document-authorization.service.js');
+const { assertCalendarHumanAvailable } = require('../dist/trips/calendar-training-availability.js');
 const rollback = new Error('SYNTHETIC_FIXTURE_ROLLBACK');
 const clone = value => structuredClone(value);
 const beforeDive = '2020-01-01T00:00:00.000Z';
@@ -210,6 +211,69 @@ check('non-approved source', async (tx, f) => { await tx.policyControl.update({ 
 check('source revocation is checked at completion', async (tx, f) => { const source = await tx.policyControl.findUniqueOrThrow({ where: { id: f.source.id } }); await decideTrainingStandard(tx, f.reviewer.id, f.source.id, { outcome: 'REVOKE', reviewed: true, expectedUpdatedAt: source.updatedAt.toISOString(), approvalReference: 'Synthetic CI source withdrawal' }); });
 check('immutable policy hash detects tampering', async (tx, f) => { const source = await tx.policyControl.findUniqueOrThrow({ where: { id: f.source.id } }); const metadata = clone(source.metadata); metadata.profile.diveProgression.dayLimits.maximumDives = 4; await tx.policyControl.update({ where: { id: source.id }, data: { metadata } }); });
 check('enrollment hash remains bound even if source hashes are replaced', async (tx, f) => { const source = await tx.policyControl.findUniqueOrThrow({ where: { id: f.source.id } }); const metadata = clone(source.metadata); metadata.profile.diveProgression.dayLimits.maximumDives = 4; metadata.contentHash = trainingStandardHash(metadata.profile); metadata.approval.profileHash = metadata.contentHash; await tx.policyControl.update({ where: { id: source.id }, data: { metadata } }); });
+
+// Partial-history planning fixtures deliberately remain INCOMPLETE at course
+// completion. The planning assertions run explicitly before that existing check.
+async function pendingSecond(tx, f) {
+  const today=new Date(),start=new Date(Date.UTC(today.getUTCFullYear(),today.getUTCMonth(),today.getUTCDate()+1,3)),end=new Date(start.getTime()+1800000);
+  f.payload.openWaterDives.pop();await f.savePayload();
+  const context={environment:'OPEN_WATER',plannedMaximumDepthMetres:11,diveKind:'QUALIFYING',qualifyingNumber:2};
+  await tx.trainingSession.update({where:{id:f.sessions[1].id},data:{status:'SCHEDULED',startsAt:start,endsAt:end,evidence:{trainingStandardContext:context}}});
+  return {start,end,context};
+}
+const planDenied=(code)=>error=>error?.getStatus?.()===409&&(error.getResponse()?.code===code||error.getResponse()?.violations?.some(row=>row.code===code));
+check('reserve next dive with partial verified history, never count it as completion',async(tx,f)=>{
+ const p=await pendingSecond(tx,f),before=await snapshot(tx,f);
+ await assertTrainingDivePlan(tx,f.enrollment.id,f.instructor.id,p.start,p.end,p.context,f.sessions[1].id);
+ assert.deepEqual(await snapshot(tx,f),before);
+});
+check('planning refuses per-dive depth without writes',async(tx,f)=>{
+ const p=await pendingSecond(tx,f),before=await snapshot(tx,f);
+ await assert.rejects(()=>assertTrainingDivePlan(tx,f.enrollment.id,f.instructor.id,p.start,p.end,{...p.context,plannedMaximumDepthMetres:12},f.sessions[1].id),planDenied('PROGRESSION_DEPTH'));
+ assert.deepEqual(await snapshot(tx,f),before);
+});
+check('planning refuses unlabelled legacy OW reservation',async(tx,f)=>{
+ const p=await pendingSecond(tx,f),context={...p.context};delete context.diveKind;
+ await assert.rejects(()=>assertTrainingDivePlan(tx,f.enrollment.id,f.instructor.id,p.start,p.end,context,f.sessions[1].id),planDenied('DIVE_PLAN_INVALID'));
+});
+check('completion cannot relabel a classified reservation after START',async(tx,f)=>{
+ await tx.trainingSession.update({where:{id:f.sessions[0].id},data:{evidence:{...f.sessions[0].evidence,trainingStandardContext:{environment:'OPEN_WATER',plannedMaximumDepthMetres:11,diveKind:'EXPERIENCE',qualifyingNumber:null}}}});
+});
+check('actual START rechecks progression through the compiled session service',async(tx,f)=>{
+ const p=await pendingSecond(tx,f),now=new Date();
+ let row=await tx.trainingSession.update({where:{id:f.sessions[1].id},data:{startsAt:new Date(now.getTime()-1000),endsAt:new Date(now.getTime()+1800000)}});
+ const scopedDb={serializable:work=>work(tx)};
+ const service=new TrainingSessionService(scopedDb,new AuditService(scopedDb),new TrainingAuthorizationService(scopedDb));
+ for(const action of ['OPEN','INSTRUCTOR_CHECK_IN','STUDENT_CHECK_IN','START']){
+  await service.act(f.author.id,row.id,{action,expectedUpdatedAt:row.updatedAt.toISOString(),reason:'Synthetic source progression START'},'legacy');
+  row=await tx.trainingSession.findUniqueOrThrow({where:{id:row.id}});
+ }
+ assert.equal(row.status,'IN_PROGRESS');assert.equal(row.evidence.trainingStandardContext.qualifyingNumber,2);
+ assert.equal(await tx.auditEvent.count({where:{resourceId:row.id,action:'training.session_action'}}),4);
+});
+check('START refuses treating a prior reservation as completed evidence',async(tx,f)=>{
+ const p=await pendingSecond(tx,f),now=new Date(),end=new Date(now.getTime()+1800000);
+ await tx.managedDocument.update({where:{id:f.document.id},data:{status:'DRAFT'}});
+ await tx.trainingSession.update({where:{id:f.sessions[0].id},data:{status:'SCHEDULED',startsAt:new Date(now.getTime()+3600000),endsAt:new Date(now.getTime()+5400000),evidence:{trainingStandardContext:{environment:'OPEN_WATER',plannedMaximumDepthMetres:7,diveKind:'QUALIFYING',qualifyingNumber:1}}}});
+ await assert.rejects(()=>assertTrainingDivePlan(tx,f.enrollment.id,f.instructor.id,now,end,p.context,f.sessions[1].id,true,now),planDenied('ACTUAL_PREDECESSOR_REQUIRED'));
+});
+check('source-bound participant conflict survives disabled generic scheduling control',async(tx,f)=>{
+ const p=await pendingSecond(tx,f);
+ await tx.policyControl.upsert({where:{category_ruleKey:{category:'TRAINING',ruleKey:'SCHEDULE_CONFLICT'}},create:{category:'TRAINING',ruleKey:'SCHEDULE_CONFLICT',labelAr:'Synthetic disabled generic scheduling',state:'DISABLED'},update:{state:'DISABLED',metadata:{}}});
+ const other=await tx.trainingEnrollment.create({data:{studentAccountId:f.student.id,instructorAccountId:f.author.id,courseCode:'SYNTHETIC_OVERLAP',record:{create:{}}},include:{record:true}});
+ await tx.trainingSession.create({data:{trainingRecordId:other.record.id,instructorAccountId:f.author.id,status:'SCHEDULED',startsAt:p.start,endsAt:p.end}});
+ const before=await snapshot(tx,f);
+ await assert.rejects(()=>assertTrainingDivePlan(tx,f.enrollment.id,f.instructor.id,p.start,p.end,p.context,f.sessions[1].id),planDenied('STANDARD_PARTICIPANT_CONFLICT'));
+ assert.deepEqual(await snapshot(tx,f),before);
+});
+check('calendar cannot bypass reserved source-bound dive with generic scheduling disabled',async(tx,f)=>{
+ const p=await pendingSecond(tx,f);
+ await tx.policyControl.upsert({where:{category_ruleKey:{category:'TRAINING',ruleKey:'SCHEDULE_CONFLICT'}},create:{category:'TRAINING',ruleKey:'SCHEDULE_CONFLICT',labelAr:'Synthetic disabled scheduling',state:'DISABLED'},update:{state:'DISABLED',metadata:{}}});
+ const resource=await tx.calendarResource.create({data:{type:'CREW',name:'Synthetic student human alias',referenceId:f.student.id}});
+ const before=await snapshot(tx,f);
+ await assert.rejects(()=>assertCalendarHumanAvailable(tx,[resource.id],p.start,p.end),error=>error?.getStatus?.()===409);
+ assert.deepEqual(await snapshot(tx,f),before);
+});
 
 try {
   // These also ensure the immutable policy is actually parsed into the source hash.

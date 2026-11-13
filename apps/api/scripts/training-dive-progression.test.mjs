@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDiveProgressionPolicy, evaluateDiveProgression, DiveProgressionError } from '../src/governance/training-dive-progression.ts';
+import { parseDiveProgressionPolicy, evaluateDiveProgression, evaluateDivePlanning, DiveProgressionError } from '../src/governance/training-dive-progression.ts';
 
 // All limits and identifiers are SYNTHETIC. These are not agency standards.
 const HASH = 'a'.repeat(64), OTHER = 'b'.repeat(64), AS_OF = '2036-01-05T00:00:00.000Z';
@@ -432,4 +432,56 @@ test('v2 bounded confined history refuses truncation or oversized data', () => {
 test('v2 rejected attempt cannot disappear when a later valid ordinal retry is supplied', () => {
   const h = historyV2(); const bad = structuredClone(h[0]); bad.id = 'rejected-attempt'; bad.startsAt = '2035-12-31T06:00:00.000Z'; bad.endsAt = '2035-12-31T06:30:00.000Z'; bad.qualificationEvidence.secondsAtOrDeeperThanThreshold = 0;
   const r = evaluateV2(policyV2(), [bad, ...h]); assert.equal(r.completedQualifyingDives, 3); assert.equal(r.complete, false); has(r, 'DIVE_DEPTH_TIME_REQUIRED');
+});
+
+// Planning inputs are reservations, not evidence. All policy limits are synthetic.
+const plan = (number, startsAt='2036-01-06T06:00:00.000Z', maximumDepthMetres=7) => ({id:'plan-'+number,profileHash:HASH,environment:'OPEN_WATER',startsAt,endsAt:new Date(Date.parse(startsAt)+1800000).toISOString(),kind:'QUALIFYING',qualifyingNumber:number,maximumDepthMetres});
+const planning = (plans, p=policyV2(), history=[], evidence=[], confined=[], at=AS_OF, startId=undefined)=>evaluateDivePlanning(p,history,evidence,at,confined,plans,startId);
+test('planning can reserve an entire source sequence without claiming completion',()=>{
+ const rows=[plan(1),plan(2,'2036-01-06T08:00:00.000Z',11),plan(3,'2036-01-07T06:00:00.000Z',15)];const before=structuredClone(rows);
+ assert.deepEqual(planning(rows),{violations:[],completedQualifyingDives:0,productionAuthorized:false});assert.deepEqual(rows,before);
+});
+for(const [name,rows,code] of [
+ ['missing predecessor',[plan(2)],'DIVE_SEQUENCE_REQUIRED'],
+ ['first dive above its own depth ceiling',[plan(1,undefined,8)],'PROGRESSION_DEPTH'],
+ ['below qualifying depth',[plan(1,undefined,2)],'DIVE_MINIMUM_DEPTH'],
+ ['overlapping reserved activities',[plan(1),plan(2,'2036-01-06T06:15:00.000Z',11)],'PLAN_ACTIVITY_OVERLAP'],
+ ['cross source',[{...plan(1),profileHash:OTHER}],'PLAN_PROFILE_MISMATCH'],
+ ['past reservation',[plan(1,'2036-01-04T06:00:00.000Z')],'PLAN_IN_PAST'],
+ ['local midnight crossing',[{...plan(1,'2036-01-06T20:45:00.000Z'),endsAt:'2036-01-06T21:15:00.000Z'}],'PLAN_CROSSES_LOCAL_DAY'],
+ ['day-specific depth',[plan(1),plan(2,'2036-01-06T08:00:00.000Z',11),plan(3,'2036-01-06T10:00:00.000Z',15)],'DAILY_DIVE_DEPTH'],
+ ['uncovered experience',[{...plan(1),kind:'EXPERIENCE',qualifyingNumber:null,maximumDepthMetres:5}],'PROGRESSION_DEPTH']
+])test(`planning refuses ${name}`,()=>has(planning(rows),code));
+test('reserved pool activity affects later daily open-water limits',()=>{
+ const pool={...plan(9,'2036-01-06T04:00:00.000Z',2),id:'pool',environment:'POOL',kind:null,qualifyingNumber:null};
+ const p=policyV2();p.dayLimits.afterConfinedWaterMaximumDives=1;
+ has(planning([pool,plan(1),plan(2,'2036-01-06T08:00:00.000Z',11)],p),'AFTER_CONFINED_DAILY_DIVE_LIMIT');
+});
+test('completed physical dives and a reservation both consume daily quota',()=>{
+ const p=policyV2();p.dayLimits={maximumDives:1,depthLimits:[],afterConfinedWaterMaximumDives:1};
+ const at='2036-01-01T07:00:00.000Z',past=[v2Dive(dive(1,'2036-01-01T06:00:00.000Z',7))];
+ has(planning([plan(2,'2036-01-01T08:00:00.000Z',11)],p,past,skills(),[],at),'DAILY_DIVE_LIMIT');
+});
+test('START cannot treat an earlier reservation as actual qualifying evidence',()=>{
+ const rows=[plan(1),plan(2,'2036-01-06T08:00:00.000Z',11)];has(planning(rows,policyV2(),[],skills(),[],AS_OF,'plan-2'),'ACTUAL_PREDECESSOR_REQUIRED');
+});
+test('START requires source-bound prerequisite skill evidence, planning remains conditional',()=>{
+ const p=policyV2();p.qualifyingDives[0].requiredSkillCodesBeforeDive=['SYNTH_CONFINED'];
+ assert.deepEqual(planning([plan(1)],p).violations,[]);
+ has(planning([plan(1)],p,[],[],[],AS_OF,'plan-1'),'PRE_DIVE_SKILLS_REQUIRED');
+ assert.deepEqual(planning([plan(1)],p,[],skills(),[],AS_OF,'plan-1').violations,[]);
+});
+test('future or wrong-source prerequisite evidence cannot permit START',()=>{
+ const p=policyV2();p.qualifyingDives[0].requiredSkillCodesBeforeDive=['SYNTH_CONFINED'];
+ for(const change of [row=>row.profileHash=OTHER,row=>row.completedAt='2036-01-08T00:00:00.000Z']){const skill=skills();change(skill[0]);has(planning([plan(1)],p,[],skill,[],AS_OF,'plan-1'),'PRE_DIVE_SKILLS_REQUIRED');}
+});
+test('START uses verified preceding dives from the existing evaluator',()=>{
+ const past=[v2Dive(dive(1,'2036-01-01T06:00:00.000Z',7))];assert.deepEqual(planning([plan(2,undefined,11)],policyV2(),past,skills(),[],AS_OF,'plan-2').violations,[]);
+});
+for(const [name,mutate] of [
+ ['missing kind',row=>delete row.kind],['string number',row=>row.qualifyingNumber='1'],['unknown field',row=>row.override=true],['empty duration',row=>row.endsAt=row.startsAt],['nonfinite depth',row=>row.maximumDepthMetres=NaN]
+])test(`planning input rejects ${name}`,()=>{const row=plan(1);mutate(row);assert.throws(()=>planning([row]),DiveProgressionError);});
+test('planning rejects duplicate identities rather than silently dropping a reservation',()=>assert.throws(()=>planning([plan(1),plan(1)]),DiveProgressionError));
+test('planning never hides a violation in actual historical evidence',()=>{
+ const past=historyV2();past[0].maximumDepthMetres=8;has(planning([plan(3)],policyV2(),past,skills()),'PROGRESSION_DEPTH');
 });

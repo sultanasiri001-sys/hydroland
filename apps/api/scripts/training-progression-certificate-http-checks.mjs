@@ -43,6 +43,51 @@ export async function checkProgressionCertificateHttp(db,{base,fixture,instructo
   // Persisted-proof fault injection only. Signed documents remain immutable through
   // the production document endpoints; that boundary is covered by the existing suite.
   const save=()=>db.managedDocument.update({where:{id:document.id},data:{payload,contentHash:documentHash()}});
+  // Real scheduling/START endpoints share the completion evidence reader. These
+  // persisted fixture mutations remove proof; they do not forge a production API.
+  const originals=await db.trainingSession.findMany({where:{trainingRecordId:record.id},orderBy:{startsAt:'asc'}});
+  const savedDives=structuredClone(dives);
+  await db.trainingEnrollment.update({where:{id:enrollment.id},data:{status:'ACTIVE',completedAt:null}});
+  await db.trainingRecord.update({where:{id:record.id},data:{status:'IN_PROGRESS',completedAt:null,progressPercent:50}});
+  dives.pop();await save();
+  await db.trainingSession.update({where:{id:originals[1].id},data:{status:'CANCELLED',evidence:{}}});
+  const tomorrow=new Date();tomorrow.setUTCDate(tomorrow.getUTCDate()+1);tomorrow.setUTCHours(3,0,0,0);
+  const planInput=async(depth=11)=>({requestId:randomUUID(),instructorAccountId:instructor.id,
+   startsAt:tomorrow.toISOString(),endsAt:new Date(tomorrow.getTime()+1800000).toISOString(),
+   environment:'OPEN_WATER',plannedMaximumDepthMetres:depth,diveKind:'QUALIFYING',qualifyingNumber:2,
+   expectedUpdatedAt:(await db.trainingEnrollment.findUniqueOrThrow({where:{id:enrollment.id}})).updatedAt.toISOString(),reason:'Synthetic source-bound planning endpoint'});
+  const createPlan='/center/me/training/enrollments/'+enrollment.id+'/sessions';
+  const rejectedInput=await planInput(12),beforeCount=await db.trainingSession.count({where:{trainingRecordId:record.id}});
+  const planDenied=await request(owner,createPlan,'POST',rejectedInput);
+  assert.equal(planDenied.status,409);assert.equal(planDenied.body.code,'TRAINING_DIVE_PLAN_REQUIRED');
+  assert.ok(planDenied.body.violations.some(row=>row.code==='PROGRESSION_DEPTH'));
+  assert.equal(await db.trainingSession.count({where:{trainingRecordId:record.id}}),beforeCount);
+  assert.equal(await db.auditEvent.count({where:{resourceId:rejectedInput.requestId}}),0);
+  const raceBodies=[await planInput(),await planInput()],race=await Promise.all(raceBodies.map(body=>request(owner,createPlan,'POST',body)));
+  assert.equal(race.filter(row=>row.status===201).length,1);assert.equal(race.filter(row=>row.status===409).length,1);
+  const winner=race.findIndex(row=>row.status===201),planBody=raceBodies[winner],planned=ok(race[winner]);ids.push(planned.id);
+  assert.equal(planned.id,planBody.requestId);
+  assert.equal(ok(await request(owner,createPlan,'POST',planBody)).replayed,true);
+  assert.equal(await db.trainingSession.count({where:{id:planned.id}}),1);
+  assert.equal(await db.trainingCertificate.count({where:{trainingRecordId:record.id}}),0);
+  // Remove actual predecessor proof and retain a future first-dive reservation.
+  await db.managedDocument.update({where:{id:document.id},data:{status:'DRAFT'}});
+  const now=new Date(),end=new Date(now.getTime()+600000);
+  await db.trainingSession.update({where:{id:originals[0].id},data:{status:'SCHEDULED',startsAt:tomorrow,endsAt:new Date(tomorrow.getTime()+1200000),evidence:{trainingStandardContext:{environment:'OPEN_WATER',plannedMaximumDepthMetres:7,diveKind:'QUALIFYING',qualifyingNumber:1}}}});
+  await db.trainingSession.update({where:{id:planned.id},data:{startsAt:new Date(now.getTime()-1000),endsAt:end}});
+  const action=async name=>{const row=await db.trainingSession.findUniqueOrThrow({where:{id:planned.id}});return request(owner,'/center/me/training/sessions/'+row.id+'/actions','PATCH',{action:name,expectedUpdatedAt:row.updatedAt.toISOString(),reason:'Synthetic actual START endpoint'})};
+  for(const name of ['OPEN','INSTRUCTOR_CHECK_IN','STUDENT_CHECK_IN'])ok(await action(name));
+  const ready=await db.trainingSession.findUniqueOrThrow({where:{id:planned.id}}),auditCount=await db.auditEvent.count({where:{resourceId:planned.id}});
+  const startDenied=await action('START');assert.equal(startDenied.status,409);assert.equal(startDenied.body.code,'TRAINING_DIVE_PLAN_REQUIRED');
+  assert.ok(startDenied.body.violations.some(row=>row.code==='ACTUAL_PREDECESSOR_REQUIRED'));
+  assert.deepEqual(await db.trainingSession.findUniqueOrThrow({where:{id:planned.id}}),ready);
+  assert.equal(await db.auditEvent.count({where:{resourceId:planned.id}}),auditCount);
+  ok(await action('CANCEL'));
+  for(const row of originals)await db.trainingSession.update({where:{id:row.id},data:{status:row.status,startsAt:row.startsAt,endsAt:row.endsAt,evidence:row.evidence}});
+  dives.splice(0,dives.length,...savedDives);await save();await db.managedDocument.update({where:{id:document.id},data:{status:'SIGNED'}});
+  await db.trainingEnrollment.update({where:{id:enrollment.id},data:{status:'COMPLETED',completedAt:new Date()}});
+  await db.trainingRecord.update({where:{id:record.id},data:{status:'COMPLETED',completedAt:new Date(),progressPercent:100}});
+  console.log('A14 planning/START HTTP/PostgreSQL: depth rejection has no writes; valid partial-history reservation and idempotent replay; actual START refuses planned-only predecessor with no writes. Synthetic isolated endpoints only.');
   const recommend='/training/professional/me/records/'+record.id+'/certificate-recommendation';
   dives[0].maximumDepthMetres=8;await save();
   const depthDenied=await request(instructor,recommend,'POST');

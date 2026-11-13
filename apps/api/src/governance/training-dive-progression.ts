@@ -285,3 +285,66 @@ export function evaluateDiveProgression(policyInput: unknown, diveInput: unknown
   const missingQualifyingNumbers = policy.qualifyingDives.filter(row => row.number > completedQualifyingDives).map(row => row.number);
   return { complete: violations.length === 0 && missingQualifyingNumbers.length === 0, completedQualifyingDives, missingQualifyingNumbers, violations, productionAuthorized: false as const };
 }
+
+export type PlannedTrainingActivity = {
+  id: string; profileHash: string; environment: 'POOL' | 'CONFINED_WATER' | 'OPEN_WATER';
+  startsAt: string; endsAt: string; kind: 'QUALIFYING' | 'EXPERIENCE' | null;
+  qualifyingNumber: number | null; maximumDepthMetres: number;
+};
+/** Plans are intentions, never qualifying dive evidence. Evaluate the existing
+ * verified history with the SAME evaluator, then validate the complete reserved
+ * horizon. START additionally requires actual qualifying predecessors and skills. */
+export function evaluateDivePlanning(policyInput: unknown, diveInput: unknown, skillInput: unknown, asOf: string, confinedInput: unknown, planInput: unknown, startId?: string) {
+  const policy = parseDiveProgressionPolicy(policyInput), now = timestamp(asOf);
+  if (policy.schemaVersion !== 2) invalid();
+  const history = evaluateDiveProgression(policy, diveInput, skillInput, asOf, confinedInput);
+  const dives = list(diveInput).map(value => parseDive(value, policy));
+  const skills = list(skillInput, 2000).map(parseSkill);
+  const confined = list(confinedInput).map(value => parseConfinedActivity(value, policy, now));
+  const plans = list(planInput).map(value => {
+    const row = object(value, ['id', 'profileHash', 'environment', 'startsAt', 'endsAt', 'kind', 'qualifyingNumber', 'maximumDepthMetres']);
+    const startsAt = string(row.startsAt), endsAt = string(row.endsAt);
+    if (timestamp(endsAt) <= timestamp(startsAt) || !['POOL', 'CONFINED_WATER', 'OPEN_WATER'].includes(String(row.environment))) invalid();
+    const open = row.environment === 'OPEN_WATER';
+    if (open ? !['QUALIFYING', 'EXPERIENCE'].includes(String(row.kind)) : row.kind !== null) invalid();
+    const qualifyingNumber = row.kind === 'QUALIFYING' ? integer(row.qualifyingNumber, 1, 200) : null;
+    if (row.kind !== 'QUALIFYING' && row.qualifyingNumber !== null) invalid();
+    if (typeof row.maximumDepthMetres !== 'number' || !Number.isFinite(row.maximumDepthMetres) || row.maximumDepthMetres < 0 || row.maximumDepthMetres > 200) invalid();
+    return { id: string(row.id), profileHash: hash(row.profileHash), environment: row.environment as PlannedTrainingActivity['environment'], startsAt, endsAt, kind: row.kind as PlannedTrainingActivity['kind'], qualifyingNumber, maximumDepthMetres: row.maximumDepthMetres };
+  }).sort((a,b)=>timestamp(a.startsAt)-timestamp(b.startsAt)||a.id.localeCompare(b.id));
+  unique(plans.map(plan=>plan.id));
+  if (startId !== undefined && !plans.some(plan=>plan.id===startId)) invalid();
+  const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: policy.timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
+  const day = (value: string) => formatter.format(new Date(value));
+  const violations = [...history.violations];
+  const counts = new Map<string,number>();
+  for (const dive of dives) counts.set(day(dive.startsAt),(counts.get(day(dive.startsAt))||0)+1);
+  let projectedQualifiers = history.completedQualifyingDives;
+  for (const [index, plan] of plans.entries()) {
+    const reject = (code: string) => violations.push({ code, diveId: plan.id });
+    const start = timestamp(plan.startsAt), end = timestamp(plan.endsAt), localDay = day(plan.startsAt);
+    if (plan.profileHash !== policy.profileHash) reject('PLAN_PROFILE_MISMATCH');
+    if (start < now) reject('PLAN_IN_PAST');
+    if (day(plan.endsAt) !== localDay) reject('PLAN_CROSSES_LOCAL_DAY');
+    if ((index > 0 && start < timestamp(plans[index-1].endsAt)) || dives.some(row=>start<timestamp(row.endsAt)&&end>timestamp(row.startsAt)) || confined.some(row=>start<timestamp(row.endsAt)&&end>timestamp(row.startsAt))) reject('PLAN_ACTIVITY_OVERLAP');
+    if (plan.environment !== 'OPEN_WATER') continue;
+    const count = (counts.get(localDay)||0)+1; counts.set(localDay,count);
+    if (count > policy.dayLimits.maximumDives) reject('DAILY_DIVE_LIMIT');
+    const priorConfined = confined.some(row=>day(row.endsAt)===localDay&&timestamp(row.endsAt)<=start) || plans.some(row=>row.environment!=='OPEN_WATER'&&day(row.endsAt)===localDay&&timestamp(row.endsAt)<=start);
+    if (priorConfined && count > policy.dayLimits.afterConfinedWaterMaximumDives) reject('AFTER_CONFINED_DAILY_DIVE_LIMIT');
+    const dailyDepth = policy.dayLimits.depthLimits.find(row=>row.diveOfDay===count)?.maximumDepthMetres;
+    if (dailyDepth !== undefined && plan.maximumDepthMetres>dailyDepth) reject('DAILY_DIVE_DEPTH');
+    if (plan.maximumDepthMetres<policy.qualification.minimumDepthMetres) reject('DIVE_MINIMUM_DEPTH');
+    const rule = plan.kind==='QUALIFYING' ? policy.qualifyingDives.find(row=>row.number===plan.qualifyingNumber) : policy.experienceLimits.find(row=>row.afterQualifyingDive===projectedQualifiers);
+    if (!rule) reject(plan.kind==='QUALIFYING'?'QUALIFYING_DIVE_NOT_COVERED':'EXPERIENCE_DIVE_NOT_COVERED');
+    if (plan.kind==='QUALIFYING' && plan.qualifyingNumber!==projectedQualifiers+1) reject('DIVE_SEQUENCE_REQUIRED');
+    if (rule && plan.maximumDepthMetres>rule.maximumDepthMetres) reject('PROGRESSION_DEPTH');
+    if (plan.id===startId) {
+      if (plan.kind==='QUALIFYING' && plan.qualifyingNumber!==history.completedQualifyingDives+1) reject('ACTUAL_PREDECESSOR_REQUIRED');
+      if (plan.kind==='EXPERIENCE' && !policy.experienceLimits.some(row=>row.afterQualifyingDive===history.completedQualifyingDives&&plan.maximumDepthMetres<=row.maximumDepthMetres)) reject('ACTUAL_PREDECESSOR_REQUIRED');
+      if (rule && 'requiredSkillCodesBeforeDive' in rule && rule.requiredSkillCodesBeforeDive.some(code=>!skills.some(skill=>skill.code===code&&skill.profileHash===policy.profileHash&&timestamp(skill.completedAt)<=start))) reject('PRE_DIVE_SKILLS_REQUIRED');
+    }
+    if (plan.kind==='QUALIFYING') projectedQualifiers++;
+  }
+  return { violations, completedQualifyingDives: history.completedQualifyingDives, productionAuthorized: false as const };
+}
