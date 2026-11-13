@@ -20,7 +20,7 @@ BEGIN
     SELECT format_type(a.atttypid, a.atttypmod)
       INTO target_type
       FROM pg_attribute a
-     WHERE a.attrelid = format('%I.%I', 'public', link.target_table)::regclass
+     WHERE a.attrelid = format('%I.%I', current_schema(), link.target_table)::regclass
        AND a.attname = link.target_column
        AND NOT a.attisdropped;
     IF target_type IS NULL OR target_type NOT IN ('text', 'uuid') THEN
@@ -31,14 +31,14 @@ BEGIN
     SELECT format_type(a.atttypid, a.atttypmod)
       INTO source_type
       FROM pg_attribute a
-     WHERE a.attrelid = format('%I.%I', 'public', link.source_table)::regclass
+     WHERE a.attrelid = format('%I.%I', current_schema(), link.source_table)::regclass
        AND a.attname = link.source_column
        AND NOT a.attisdropped;
 
     IF source_type IS NULL THEN
       EXECUTE format(
         'ALTER TABLE %I.%I ADD COLUMN %I %s',
-        'public', link.source_table, link.source_column, target_type
+        current_schema(), link.source_table, link.source_column, target_type
       );
     ELSIF source_type <> target_type THEN
       IF source_type NOT IN ('text', 'uuid') THEN
@@ -49,7 +49,7 @@ BEGIN
       IF source_type = 'text' AND target_type = 'uuid' THEN
         EXECUTE format(
           'SELECT count(*) FROM %I.%I WHERE %I IS NOT NULL AND %I !~* %L',
-          'public', link.source_table, link.source_column, link.source_column,
+          current_schema(), link.source_table, link.source_column, link.source_column,
           '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
         ) INTO invalid_count;
         IF invalid_count > 0 THEN
@@ -58,12 +58,12 @@ BEGIN
         END IF;
         EXECUTE format(
           'ALTER TABLE %I.%I ALTER COLUMN %I TYPE uuid USING %I::uuid',
-          'public', link.source_table, link.source_column, link.source_column
+          current_schema(), link.source_table, link.source_column, link.source_column
         );
       ELSIF source_type = 'uuid' AND target_type = 'text' THEN
         EXECUTE format(
           'ALTER TABLE %I.%I ALTER COLUMN %I TYPE text USING %I::text',
-          'public', link.source_table, link.source_column, link.source_column
+          current_schema(), link.source_table, link.source_column, link.source_column
         );
       END IF;
     END IF;
