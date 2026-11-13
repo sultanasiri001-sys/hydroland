@@ -11,6 +11,11 @@ export class AdministrativeAffairsController {
     private readonly ownership: AdministrativeAffairsOwnershipGuard,
   ) {}
 
+  @Get('units')
+  listUnits(@Req() req:{auth:{accountId:string}},@Query('organizationId') organizationId?:string){
+    return this.service.listUnits(req.auth.accountId,organizationId??'');
+  }
+
   @Post('records')
   createRecord(@Req() req:{auth:{accountId:string}},@Body() body:{organizationId?:string;unitId?:string;managedDocumentId?:string}){
     this.ownership.assertOwnMutation('ADMIN_RECORD');

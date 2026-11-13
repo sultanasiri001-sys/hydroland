@@ -85,6 +85,14 @@ export class AdministrativeAffairsPersistenceService {
     });
   }
 
+  async listUnits(accountId:string,organizationId:string){
+    if(!organizationId?.trim())throw new BadRequestException('ADMIN_ORGANIZATION_REQUIRED');
+    const scope=await this.readUnitScope(accountId,organizationId);
+    await this.assertPermission(accountId,organizationId,'READ',scope??[]);
+    const where:any={organizationId,active:true,...(scope?{id:{in:scope}}:{})};
+    return this.db.orgUnit.findMany({where,orderBy:[{type:'asc'},{code:'asc'}],select:{id:true,type:true,code:true,nameAr:true,nameEn:true}});
+  }
+
   async listRecords(accountId:string,organizationId:string,filters:{q?:string;status?:string}={}){
     if(!organizationId?.trim())throw new BadRequestException('ADMIN_ORGANIZATION_REQUIRED');
     const q=String(filters.q??'').trim();
@@ -108,10 +116,16 @@ export class AdministrativeAffairsPersistenceService {
     const scope=await this.readUnitScope(accountId,record.organizationId);
     await this.assertPermission(accountId,record.organizationId,'READ',[record.unitId],this.db);
     if(scope&&!scope.includes(record.unitId))throw new ForbiddenException('ADMIN_UNIT_SCOPE_DENIED');
-    return this.db.administrativeRecord.findUniqueOrThrow({where:{id:record.id},include:{
+    const detail=await this.db.administrativeRecord.findUniqueOrThrow({where:{id:record.id},include:{
       managedDocument:{include:{template:true,revisions:{orderBy:{version:'asc'}}}},
       routings:{orderBy:{createdAt:'desc'}},
     }});
+    const auditEvents=await this.db.auditEvent.findMany({
+      where:{resourceId:{in:[detail.id,...detail.routings.map(item=>item.id)]},resource:{in:['AdministrativeRecord','AdministrativeRouting']}},
+      orderBy:{occurredAt:'asc'},
+      select:{action:true,resource:true,resourceId:true,occurredAt:true},
+    });
+    return {...detail,auditEvents};
   }
 
   async assertMember(accountId:string, organizationId:string) {

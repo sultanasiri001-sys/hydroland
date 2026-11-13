@@ -17,6 +17,11 @@ try{
  const otherUnit=await db.orgUnit.create({data:{organizationId:other.id,type:'DEPARTMENT',code:'A09-OUT-'+suffix,nameAr:'إدارة خارجية'}});
  await db.roleAssignment.create({data:{accountId:reviewer.id,role:'REVIEWER',status:'ACTIVE',scope:{organizationIds:[org.id],unitIds:[targetUnit.id]}}});
  await db.roleAssignment.create({data:{accountId:centerManager.id,role:'CENTER_MANAGER',status:'ACTIVE',scope:{organizationIds:[org.id],unitIds:[targetUnit.id]}}});
+ const orgUnitsResponse=await call('/administrative-affairs/units?organizationId='+encodeURIComponent(org.id),'GET',manager.id);await expect(orgUnitsResponse,200,'Organization unit picker');
+ const orgUnits=await orgUnitsResponse.json();if(!orgUnits.some(unit=>unit.id===sourceUnit.id)||!orgUnits.some(unit=>unit.id===targetUnit.id)||orgUnits.some(unit=>unit.id===otherUnit.id))throw new Error('Organization unit picker escaped its organization scope');
+ const scopedUnitsResponse=await call('/administrative-affairs/units?organizationId='+encodeURIComponent(org.id),'GET',centerManager.id);await expect(scopedUnitsResponse,200,'Scoped unit picker');
+ const scopedUnits=await scopedUnitsResponse.json();if(scopedUnits.length!==1||scopedUnits[0].id!==targetUnit.id)throw new Error('Unit picker escaped the center manager assignment scope');
+ const outsiderUnitsResponse=await call('/administrative-affairs/units?organizationId='+encodeURIComponent(org.id),'GET',outsider.id);await expect(outsiderUnitsResponse,403,'Cross-organization unit picker');
  const template=await db.documentTemplate.create({data:{organizationId:org.id,code:'ADM-A09-'+suffix,titleAr:'معاملة واردة',titleEn:'Incoming correspondence',department:'ADMIN_AFFAIRS_RECORDS',fields:[{key:'subject',labelAr:'الموضوع',labelEn:'Subject',type:'TEXT',required:true}]}});
  const source=await db.managedDocument.create({data:{organizationId:org.id,templateId:template.id,referenceNumber:'HYD-ADMIN-A09-'+suffix,department:'ADMIN_AFFAIRS_RECORDS',status:'SIGNED',version:1,contentHash:'sha256:a09-'+suffix,payload:{subject:'معاملة واردة للاختبار',attachmentRefs:['attachment-ref-'+suffix]},createdByAccountId:creator.id,approvedByAccountId:manager.id,approvedAt:new Date(),signedByAccountId:signer.id,signedAt:new Date()}});
  await db.documentRevision.create({data:{documentId:source.id,version:1,contentHash:source.contentHash,payload:source.payload,createdByAccountId:creator.id}});
@@ -32,6 +37,7 @@ try{
  r=await call('/administrative-affairs/records?organizationId='+encodeURIComponent(org.id)+'&q='+encodeURIComponent(suffix),'GET',outsider.id);await expect(r,403,'Cross-organization search');
  r=await call('/administrative-affairs/records/'+record.id,'GET',manager.id);await expect(r,200,'Read record detail');
  const detail=await r.json();if(detail.managedDocument?.id!==source.id||detail.managedDocument?.revisions?.[0]?.contentHash!==source.contentHash)throw new Error('Record detail lost source revision');
+ if(!detail.auditEvents?.some(event=>event.action==='ADMIN_RECORD_CREATED_FROM_DOCUMENT'&&event.resourceId===record.id))throw new Error('Linked record detail omitted creation audit history');
  r=await call('/documents/'+source.id+'/archive','POST',manager.id);await expect(r,409,'Block parallel document archive');
  r=await call('/administrative-affairs/records/'+record.id+'/register','PATCH','invalid');await expect(r,401,'Invalid token');
  r=await call('/administrative-affairs/records/'+record.id+'/register','PATCH',outsider.id);await expect(r,403,'Cross-org register');
@@ -74,6 +80,11 @@ try{
  if(!revision||revision.contentHash!==source.contentHash||revision.payload?.subject!=='معاملة واردة للاختبار')throw new Error('Archived version was not retained');
  r=await call('/administrative-affairs/records?organizationId='+encodeURIComponent(org.id)+'&q='+encodeURIComponent(suffix)+'&status=ARCHIVED','GET',manager.id);await expect(r,200,'Search archived record');
  const archivedRows=await r.json();if(archivedRows.length!==1||archivedRows[0].id!==record.id||archivedRows[0].managedDocument?.status!=='ARCHIVED')throw new Error('Archived search failed');
+ r=await call('/administrative-affairs/records/'+record.id,'GET',manager.id);await expect(r,200,'Read archived audit timeline');
+ const archivedDetail=await r.json();
+ const requiredAuditActions=['ADMIN_RECORD_CREATED_FROM_DOCUMENT','ADMIN_RECORD_REGISTERED','ADMIN_ROUTING_CREATED','ADMIN_ROUTING_ASSIGNED','ADMIN_ROUTING_REPLIED','ADMIN_ROUTING_APPROVE','ADMIN_ROUTING_DELIVERED','ADMIN_RECORD_ARCHIVED'];
+ const actualAuditActions=new Set((archivedDetail.auditEvents||[]).map(event=>event.action));
+ if(requiredAuditActions.some(action=>!actualAuditActions.has(action)))throw new Error('Archived detail omitted full correspondence audit lifecycle');
  const before=await db.auditEvent.count({where:{resourceId:{in:[record.id,route.id,second.id]}}});
  for(const item of [
   ['/administrative-affairs/records/'+record.id+'/routings','POST',manager.id,{toUnitId:targetUnit.id}],
