@@ -76,13 +76,14 @@ export class ExecutiveDecisionService {
     return {policy:POLICY,organizationId:org,documentId:id,sourceVersion:s.d.version,sourceHash:s.sourceHash,source:{referenceNumber:s.d.referenceNumber,payload:s.payload},current:current?this.view(current):null,ownerBinding:this.ownerBinding(p)};
   });}
   async issue(actor:string,org:string,id:string,body:unknown){
-    scopeId(org);scopeId(id);const x=templateObject(body,['expectedVersion','sourceHash','ownerBinding','assigneeAccountId','department','expiresAt','note','confirmed']);
+    scopeId(org);scopeId(id);const x=templateObject(body,['expectedVersion','sourceHash','ownerBinding','workerBinding','assigneeAccountId','department','expiresAt','note','confirmed']);
     scopeId(x.assigneeAccountId);validExpiry(String(x.expiresAt));const note=boundedNote(x.note);
     if(x.confirmed!==true||!DOCUMENT_DEPARTMENTS.includes(x.department as never)||!Number.isSafeInteger(x.expectedVersion))throw new BadRequestException('راجع المصدر والمكلّف والنطاق والمدة وأكّد الإصدار.');
     return this.conflict(()=>this.db.serializable(async tx=>{
       await this.owner(tx,actor,org);await this.lock(tx,org,id,[actor,String(x.assigneeAccountId)]);
       const currentOwner=await this.owner(tx,actor,org),s=await this.source(tx,org,id),worker=await eligibleReviewParticipant(tx,org,String(x.department),String(x.assigneeAccountId));
       if(worker.binding.personId===currentOwner.ownerPersonId)throw new ForbiddenException('يلزم منفذ مستقل عن مصدر التكليف.');
+      if(typeof x.workerBinding!=='string'||decisionDigest(worker.binding)!==x.workerBinding)throw new ConflictException('تغيرت هوية المكلّف أو وظيفته أو صلاحياته بعد المعاينة؛ أعد الاختيار والتأكيد.');
       validExpiry(String(x.expiresAt));
       if(s.d.version!==x.expectedVersion||s.sourceHash!==x.sourceHash||this.ownerBinding(currentOwner)!==x.ownerBinding)throw new ConflictException('تغير المصدر أو الصلاحية؛ أعد القراءة.');
       if(await this.stored(tx,org,id))throw new ConflictException('لهذا المستند قرار محفوظ؛ لا يعاد إصداره أو استبدال سجله.');
@@ -107,7 +108,7 @@ export class ExecutiveDecisionService {
   });}
   async candidates(actor:string,org:string,department:string){scopeId(org);if(!DOCUMENT_DEPARTMENTS.includes(department as never))throw new BadRequestException();return this.db.serializable(async tx=>{
     await this.owner(tx,actor,org);const rows=await tx.employment.findMany({where:{organizationId:org,status:'ACTIVE',orgUnit:{code:department,active:true,type:'DEPARTMENT'}},select:{accountId:true},orderBy:{id:'asc'},take:51});const items=[];const seen=new Set<string>();
-    for(const row of rows.slice(0,50)){if(seen.has(row.accountId)||row.accountId===actor)continue;seen.add(row.accountId);try{const p=await eligibleReviewParticipant(tx,org,department,row.accountId);items.push({accountId:p.binding.accountId,name:p.name,jobTitle:p.jobTitle});}catch(e){if(!(e instanceof ForbiddenException))throw e;}}
+    for(const row of rows.slice(0,50)){if(seen.has(row.accountId)||row.accountId===actor)continue;seen.add(row.accountId);try{const p=await eligibleReviewParticipant(tx,org,department,row.accountId);items.push({accountId:p.binding.accountId,name:p.name,jobTitle:p.jobTitle,bindingHash:decisionDigest(p.binding)});}catch(e){if(!(e instanceof ForbiddenException))throw e;}}
     return {policy:POLICY,organizationId:org,department,items,hasMore:rows.length>50};
   });}
   async inbox(actor:string,cursor?:string){if(cursor!==undefined&&(typeof cursor!=='string'||cursor.length>400||!cursor.startsWith(PREFIX)))throw new BadRequestException();return this.db.serializable(async tx=>{
