@@ -12,9 +12,6 @@ export type TrainingStandardProfile = {
     minimumCompletedSessions: number;
     minimumOpenWaterDives: number;
     minimumOpenWaterMinutes: number;
-    // Source-reviewed individual dive requirements. Absence preserves legacy hashes,
-    // and is not a declaration that a source needs no progression rules.
-    openWaterDiveRequirements?: Array<{ sequence: number; minimumBottomMinutes: number; maximumDepthMetres: number }>;
     instructorCredentialTitles: string[];
     prerequisites: Array<{ issuer: string; title: string }>;
     requiredSkillCodes: string[];
@@ -68,7 +65,7 @@ export function parseTrainingStandard(value: unknown): TrainingStandardProfile {
   });
   if (!sources.some(source => source.authority === 'AGENCY')) fail('AGENCY_SOURCE_REQUIRED', 'مرجع ISO وحده لا يثبت تفاصيل برنامج المنظمة.');
   const requirements = object(input.requirements);
-  keys(requirements, ['minimumAge', 'minimumCompletedSessions', 'minimumOpenWaterDives', 'minimumOpenWaterMinutes', 'instructorCredentialTitles', 'prerequisites', 'requiredSkillCodes', 'requiredFormCodes', 'supervision', 'openWaterDiveRequirements']);
+  keys(requirements, ['minimumAge', 'minimumCompletedSessions', 'minimumOpenWaterDives', 'minimumOpenWaterMinutes', 'instructorCredentialTitles', 'prerequisites', 'requiredSkillCodes', 'requiredFormCodes', 'supervision']);
   if (!Array.isArray(requirements.prerequisites) || requirements.prerequisites.length > 50) fail('INVALID_STANDARD', 'متطلبات الالتحاق ناقصة.');
   const prerequisites = (requirements.prerequisites as unknown[]).map(item => {
     const prerequisite = object(item); keys(prerequisite, ['issuer', 'title']);
@@ -83,19 +80,8 @@ export function parseTrainingStandard(value: unknown): TrainingStandardProfile {
     if (typeof band.maximumDepthMetres !== 'number' || !Number.isFinite(band.maximumDepthMetres) || band.maximumDepthMetres < 0 || band.maximumDepthMetres > 200) fail('INVALID_STANDARD', 'حد العمق غير صالح.');
     return { environment: band.environment as 'POOL' | 'CONFINED_WATER' | 'OPEN_WATER', minimumAge, maximumAge, studentsPerInstructor: integer(band.studentsPerInstructor, 100, 1), maximumDepthMetres: band.maximumDepthMetres as number };
   });
-  let openWaterDiveRequirements: TrainingStandardProfile['requirements']['openWaterDiveRequirements'];
-  if (requirements.openWaterDiveRequirements !== undefined) {
-    const rows = requirements.openWaterDiveRequirements;
-    if (!Array.isArray(rows) || !rows.length || rows.length > 200 || rows.length !== requirements.minimumOpenWaterDives) fail('INVALID_STANDARD', 'متطلبات الغوصات الفردية يجب أن تغطي جميع غوصات البرنامج.');
-    openWaterDiveRequirements = rows.map((item, index) => {
-      const row = object(item); keys(row, ['sequence', 'minimumBottomMinutes', 'maximumDepthMetres']);
-      if (row.sequence !== index + 1) fail('INVALID_STANDARD', 'ترتيب متطلبات الغوصات يجب أن يكون متصلاً وفريدًا.');
-      if (typeof row.maximumDepthMetres !== 'number' || !Number.isFinite(row.maximumDepthMetres) || row.maximumDepthMetres <= 0 || row.maximumDepthMetres > 200) fail('INVALID_STANDARD', 'حد عمق الغوصة الفردية غير صالح.');
-      return { sequence: index + 1, minimumBottomMinutes: integer(row.minimumBottomMinutes, 1440, 1), maximumDepthMetres: row.maximumDepthMetres };
-    });
-  }
   return { agencyCode, programCode, level: text(input.level, 80), edition: text(input.edition, 80), sources,
-    requirements: { ...(openWaterDiveRequirements ? { openWaterDiveRequirements } : {}), minimumAge: integer(requirements.minimumAge, 120), minimumCompletedSessions: integer(requirements.minimumCompletedSessions, 10000), minimumOpenWaterDives: integer(requirements.minimumOpenWaterDives, 10000), minimumOpenWaterMinutes: integer(requirements.minimumOpenWaterMinutes, 100000), instructorCredentialTitles: strings(requirements.instructorCredentialTitles, true), prerequisites, requiredSkillCodes: strings(requirements.requiredSkillCodes, true), requiredFormCodes: strings(requirements.requiredFormCodes), supervision } };
+    requirements: { minimumAge: integer(requirements.minimumAge, 120), minimumCompletedSessions: integer(requirements.minimumCompletedSessions, 10000), minimumOpenWaterDives: integer(requirements.minimumOpenWaterDives, 10000), minimumOpenWaterMinutes: integer(requirements.minimumOpenWaterMinutes, 100000), instructorCredentialTitles: strings(requirements.instructorCredentialTitles, true), prerequisites, requiredSkillCodes: strings(requirements.requiredSkillCodes, true), requiredFormCodes: strings(requirements.requiredFormCodes), supervision } };
 }
 
 function canonical(value: unknown): string {
@@ -140,22 +126,4 @@ export function trainingCompletionGaps(profile: TrainingStandardProfile, evidenc
   if (profile.requirements.requiredSkillCodes.some(code => !evidence.completedSkillCodes.includes(code))) gaps.push('STANDARD_SKILLS_REQUIRED');
   if (profile.requirements.requiredFormCodes.some(code => !evidence.verifiedFormCodes.includes(code))) gaps.push('STANDARD_FORMS_REQUIRED');
   return gaps;
-}
-
-export type VerifiedOpenWaterDive = { id: string; sequence: unknown; startedAt: number; bottomMinutes: number; maximumDepthMetres: number };
-/** Validate every supplied proof, never drop a deep/short early dive and renumber the rest. */
-export function trainingDiveProgressionGaps(profile: TrainingStandardProfile, evidence: VerifiedOpenWaterDive[]) {
-  const rules = profile.requirements.openWaterDiveRequirements;
-  if (!rules) return [];
-  const gaps = new Set<string>();
-  const chronological = [...evidence].sort((a, b) => a.startedAt - b.startedAt);
-  if (chronological.length !== rules.length) gaps.add('STANDARD_DIVE_PROGRESSION_REQUIRED');
-  chronological.forEach((dive, index) => {
-    const rule = rules[index];
-    if (!rule || dive.sequence !== rule.sequence || !Number.isFinite(dive.startedAt) || (index > 0 && dive.startedAt < chronological[index - 1].startedAt + chronological[index - 1].bottomMinutes * 60000)) gaps.add('STANDARD_DIVE_PROGRESSION_REQUIRED');
-    if (!rule) return;
-    if (!Number.isSafeInteger(dive.bottomMinutes) || dive.bottomMinutes < rule.minimumBottomMinutes) gaps.add('STANDARD_DIVE_DURATION_REQUIRED');
-    if (!Number.isFinite(dive.maximumDepthMetres) || dive.maximumDepthMetres <= 0 || dive.maximumDepthMetres > rule.maximumDepthMetres) gaps.add('STANDARD_DIVE_DEPTH_EXCEEDED');
-  });
-  return [...gaps];
 }

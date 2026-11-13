@@ -20,7 +20,7 @@ Official [EMS Open Water Diver page](https://training.divessi.com/en-au/course/s
 
 ## PADI uploaded 2026 manual
 
-Use the existing owner-uploaded Arabic manual and crosswalk; no replacement upload is requested. Additional general-source reading on physical pages 26–28 identifies a minimum open-water depth, a duration **or gas-volume** criterion, a daily training-dive limit, daylight rules and performance/logbook requirements. The numerical completion extension does not yet express all these alternatives and conditions. Review programme exceptions and later bulletins before acceptance. Never silently turn an alternative into an unconditional requirement.
+Use the existing owner-uploaded Arabic manual and crosswalk; no replacement upload is requested. Additional general-source reading on physical pages 26–28 identifies a minimum open-water depth, a duration **or gas-volume** criterion, a daily training-dive limit, daylight rules and performance/logbook requirements. The existing #585 evaluator and #586 evidence adapter cover source-configurable time-or-gas, depth-fraction and daily/confined-history rules. Reuse those candidates rather than introducing a parallel progression schema. Planning/START and other programme conditions remain open. Review programme exceptions and later bulletins before acceptance. Never silently turn an alternative into an unconditional requirement.
 
 ## Shared acceptance boundary
 

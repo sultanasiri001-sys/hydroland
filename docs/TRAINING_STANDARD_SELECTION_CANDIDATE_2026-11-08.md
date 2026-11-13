@@ -65,14 +65,3 @@ PR #583 passed all **16/16 exact-head checks** and was merged as `bb25994d6fd569
 On the full #582 candidate, calendar and grouped form-library integration correctly rejected unbound legacy/synthetic courses with `STANDARD_SELECTION_REQUIRED`. The existing tests now explicitly set up **synthetic** programme prerequisites using `training-standard-isolated-fixture.mjs`, guarded by `CI=true` and loopback database/API hosts. No production source record is approved, no real agency limit is seeded, and no original assertion is relaxed. The store path adds an explicit negative check that an unbound course is rejected before fixture adoption. This helper is not an operational adoption mechanism; real legacy courses still need one.
 
 Prior instructors' signed skills now carry source-hash, signer and timestamp audit metadata. Completion can retain an earlier signature only with exact matching audit proof for the pinned source. Two additional local contracts cover preservation and refusal without proof: **70/70** isolated tests passed on Node 24.22.1. Real database/concurrency checks for these changes remain separate, pending exact-head CI.
-
-
-## 13 November follow-up: individual-dive completion checks
-
-The candidate now accepts optional, source-reviewed `requirements.openWaterDiveRequirements` rows (`sequence`, `minimumBottomMinutes`, `maximumDepthMetres`). Rows must cover the complete declared minimum dive sequence. They participate in the canonical hash and independent approval; changing a row invalidates the binding. Profiles that omit them retain their existing hashes. Omission is compatibility, not evidence that a source has no progression requirements.
-
-Completion/certificate checks require a matching `sequence` on every accepted signed dive proof, chronological order, each dive's own depth and duration, plus existing age, session and attendance limits. Invalid extra proofs are refused rather than silently removed and renumbered. A short early dive cannot be compensated by extra minutes later. Additional dives beyond the explicit sequence fail for review; they are not automatically reclassified.
-
-This is a bounded completion check, not operational acceptance of an agency profile. Planning/start-time sequence prerequisites, daily conditional limits, extra-experience dives, gas-volume alternatives, group/assistant rosters, official template mapping and existing-course adoption still need implementation/review. No real agency profile was seeded or approved. An optional numeric minimum must not be used to silently replace a source's alternative gas-volume criterion.
-
-A newly located official NAUI 2026 manual is recorded in `docs/TRAINING_AGENCY_SOURCE_REVIEW_2026-11-13.md`. SSI's public EMS page remains marked ARCHIVE. Source acquisition is distinct from applicability and independent acceptance.
