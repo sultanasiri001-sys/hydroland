@@ -184,7 +184,7 @@ function harness() {
   const adapterModule = { exports: {} }; let payload, requests = 0;
   const sandbox = { module: adapterModule, exports: adapterModule.exports, require: createRequire(filename), process: { env: { STORMGLASS_API_KEY: 'offline-fixture', STORMGLASS_API_BASE_URL: 'https://provider.invalid' } }, URL, AbortSignal, Date, fetch: async () => { requests++; return { ok: true, json: async () => payload }; } };
   vm.runInNewContext(fs.readFileSync(filename, 'utf8'), sandbox, { filename });
-  const adapter = new adapterModule.exports.StormglassWeatherService({ requireOperational: () => {} });
+  const adapter = new adapterModule.exports.StormglassWeatherService({ requireOperational: () => {}, recordProviderSignal: async () => {} });
   const target = new Date(Date.now() + 2 * 86400000), window = forecastWindow(target.getTime());
   for (const bad of [null, {}, { hours: [null, {}, { time: 'bad' }] }, { hours: [{ time: target.toISOString() }] }, { hours: [{ time: target.toISOString(), windSpeed: { sg: null } }] }, { hours: [{ time: new Date(window.start - 1).toISOString(), waveHeight: { sg: 1 } }] }, { hours: [{ time: new Date(window.end + 1).toISOString(), waveHeight: { sg: 1 } }] }]) {
     payload = bad; await rejects(() => adapter.snapshot(18.2, 42.5, target), 503);
