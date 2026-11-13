@@ -7,6 +7,17 @@ import {join,dirname} from 'node:path';
 import {runChild,cleanupOwned,cleanupDocker,orchestrate} from './recovery-switch-orchestrator.mjs';
 const label='12345678-1234-4123-8123-123456789abc';
 const receipt={scope:'SYNTHETIC_APPLICATION_SWITCH',runLabel:label,status:'PASS'};
+function artifactFixture(dir,{differentSchema=false}={}) {
+ const artifactWorkspace=join(dir,'artifacts');
+ const artifacts=[{sha:'b'.repeat(40)},{sha:'c'.repeat(40)}].map(item=>({...item,root:join(artifactWorkspace,item.sha)}));
+ for(let i=0;i<artifacts.length;i++){
+  const schema=join(artifacts[i].root,'apps/api/prisma/schema.prisma');
+  mkdirSync(join(artifacts[i].root,'apps/api/prisma'),{recursive:true});
+  writeFileSync(schema,differentSchema&&i===1?'candidate schema with migration':'shared schema');
+ }
+ return {artifactWorkspace,artifacts};
+}
+
 test('watchdog waits for delayed exit AND group disappearance',async()=>{
  const child=new EventEmitter();child.pid=321;let gone=false,settled=false,killed=false;
  const promise=runChild([],{}, {timeoutMs:5,terminationMs:200,pollMs:2,spawnFn:()=>child,kill:(pid,signal)=>{
@@ -52,8 +63,8 @@ test('orchestration preserves recovery receipt, cleans after failure, and record
   try{
    const original=join(dir,'recovery-drill-report.json');writeFileSync(original,'{"status":"PASS","sentinel":"untouched"}');
    const before=readFileSync(original,'utf8'),configPath=join(dir,'config.json');
-   const artifacts=[{sha:'b'.repeat(40),root:'/synthetic/prior'},{sha:'c'.repeat(40),root:'/synthetic/candidate'}];
-   writeFileSync(configPath,JSON.stringify({networkName:'a02-rehearsal-test',runtimeImageId:'sha256:'+'a'.repeat(64),artifacts}));
+   const {artifacts,artifactWorkspace}=artifactFixture(dir);
+   writeFileSync(configPath,JSON.stringify({networkName:'a02-rehearsal-test',runtimeImageId:'sha256:'+'a'.repeat(64),artifacts,artifactWorkspace}));
    let cleaned=0;
    const execution=orchestrate({configPath,evidenceDir:dir},{runChild:async(args,env)=>{
     assert(!('HOME' in env));assert(!('NODE_OPTIONS' in env));
@@ -71,6 +82,23 @@ test('orchestration preserves recovery receipt, cleans after failure, and record
   }finally{rmSync(dir,{recursive:true,force:true});}
  }
 });
+test('schema-changing pair records an explicit skip and never launches the code-only switch',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'a03-schema-change-'));
+ try{
+  const original=join(dir,'recovery-drill-report.json');writeFileSync(original,'{"status":"PASS","sentinel":"untouched"}');
+  const before=readFileSync(original,'utf8'),configPath=join(dir,'config.json');
+  const {artifacts,artifactWorkspace}=artifactFixture(dir,{differentSchema:true});
+  writeFileSync(configPath,JSON.stringify({networkName:'a02-rehearsal-test',runtimeImageId:'sha256:'+'a'.repeat(64),artifacts,artifactWorkspace}));
+  const result=await orchestrate({configPath,evidenceDir:dir},{runChild:()=>assert.fail('schema-changing artifacts cannot enter the code-only switch'),docker:()=>assert.fail('no switch containers were created')});
+  assert.equal(result.status,'NOT_APPLICABLE');
+  assert.equal(result.reason,'SCHEMA_CHANGE_REQUIRES_MIGRATION_AWARE_SWITCH');
+  assert.equal(result.applicationVersionSwitchTested,false);
+  assert.notEqual(result.priorSchemaSha256,result.candidateSchemaSha256);
+  assert.equal(readFileSync(original,'utf8'),before);
+  assert.equal(readFileSync(join(dir,'application-switch-skipped.json'),'utf8'),JSON.stringify(result,null,2));
+ }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
 test('failed original receipt never launches child',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'a03-failed-'));
  try{writeFileSync(join(dir,'recovery-drill-report.json'),'{"status":"FAIL"}');
