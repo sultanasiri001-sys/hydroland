@@ -155,9 +155,9 @@ export class AdministrativeAffairsPersistenceService {
     if(record.licenseReviewStatus==='PENDING')throw new ConflictException('License is awaiting platform review.');
     return this.db.serializable(async tx=>{
       await this.lockRegisteredRecord(tx,record.id);
-      const incomplete=await tx.administrativeRouting.findFirst({where:{recordId:record.id,OR:[{decision:null},{decision:{not:null},deliveredAt:null}]},select:{id:true}});
-      if(incomplete)throw new ConflictException('ADMIN_ARCHIVE_ROUTING_INCOMPLETE');
       if(record.managedDocumentId){
+        const incomplete=await tx.administrativeRouting.findFirst({where:{recordId:record.id,OR:[{decision:null},{decision:{not:null},deliveredAt:null}]},select:{id:true}});
+        if(incomplete)throw new ConflictException('ADMIN_ARCHIVE_ROUTING_INCOMPLETE');
         if(!record.managedDocumentVersion||!record.managedDocumentContentHash)throw new ConflictException('ADMIN_DOCUMENT_SNAPSHOT_MISSING');
         await this.documents.archiveInTransaction(tx,actorAccountId,record.managedDocumentId,record.managedDocumentVersion,record.managedDocumentContentHash);
       }
@@ -266,7 +266,8 @@ export class AdministrativeAffairsPersistenceService {
     if(!routing.assignedToAccountId) throw new ConflictException('ADMIN_ROUTING_UNASSIGNED');
     if(routing.assignedToAccountId!==actorAccountId) throw new ForbiddenException('ADMIN_APPROVER_NOT_ASSIGNED');
     if(routing.requestedByAccountId===actorAccountId) throw new ForbiddenException('ADMIN_SELF_APPROVAL_DENIED');
-    if(!routing.replyText||routing.repliedByAccountId!==actorAccountId)throw new ConflictException('ADMIN_ROUTING_REPLY_REQUIRED');
+    const parent=await this.db.administrativeRecord.findUnique({where:{id:routing.recordId},select:{managedDocumentId:true}});
+    if(parent?.managedDocumentId&&(!routing.replyText||routing.repliedByAccountId!==actorAccountId))throw new ConflictException('ADMIN_ROUTING_REPLY_REQUIRED');
     if(routing.decision) throw new ConflictException('ADMIN_ROUTING_ALREADY_DECIDED');
     return this.db.serializable(async tx=>{
       await this.lockRegisteredRecord(tx,routing.recordId);
