@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ManagedDocumentStatus, Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { DocumentAuthorizationService } from './document-authorization.service';
@@ -131,6 +131,20 @@ export class DocumentPersistenceService {
       await tx.documentLifecycleEvent.create({data:{documentId:id,actorAccountId:accountId,action:'REVISE',fromStatus:ManagedDocumentStatus.DRAFT,toStatus:ManagedDocumentStatus.DRAFT,version:nextVersion,metadata:{previousVersion:current.version} as Prisma.InputJsonValue}});
       return updated;
     });
+  }
+
+  async archiveInTransaction(tx:Prisma.TransactionClient,accountId:string,id:string,expectedVersion:number,expectedContentHash:string){
+    const d=await tx.managedDocument.findUnique({where:{id},include:{template:true}});
+    if(!d) throw new NotFoundException('Document not found.');
+    this.assertGeneric(d.template.code);
+    await this.authz.assert(accountId,d.organizationId,'ARCHIVE',tx);
+    if(d.status!==ManagedDocumentStatus.SIGNED||d.version!==expectedVersion||d.contentHash!==expectedContentHash) throw new ConflictException('ADMIN_DOCUMENT_SNAPSHOT_NOT_ARCHIVABLE');
+    const archivedAt=new Date();
+    const claimed=await tx.managedDocument.updateMany({where:{id,status:ManagedDocumentStatus.SIGNED,version:expectedVersion,contentHash:expectedContentHash},data:{status:ManagedDocumentStatus.ARCHIVED,archivedByAccountId:accountId,archivedAt}});
+    if(claimed.count!==1) throw new ConflictException('ADMIN_DOCUMENT_SNAPSHOT_CHANGED');
+    const updated=await tx.managedDocument.findUniqueOrThrow({where:{id}});
+    await tx.documentLifecycleEvent.create({data:{documentId:id,actorAccountId:accountId,action:'ARCHIVED',fromStatus:ManagedDocumentStatus.SIGNED,toStatus:ManagedDocumentStatus.ARCHIVED,version:updated.version,metadata:{administrativeArchive:true}}});
+    return updated;
   }
 
   async transition(accountId:string,id:string,to:ManagedDocumentStatus){
