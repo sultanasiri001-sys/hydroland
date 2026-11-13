@@ -36,6 +36,7 @@ function fixture({ status = 'REGISTERED', archiveOnTransaction = false, lockFail
       try { return await work(tx); } catch (error) { ({ writes, audits } = before); throw error; }
     },
   };
+  db.serializable = work => db.$transaction(work);
   const service = new AdministrativeAffairsPersistenceService(db);
   return {
     run: action => action === 'route' ? service.route('record', 'target', 'requester') : action === 'assign' ? service.assign('routing', 'reviewer', 'manager') : service.decide('routing', 'APPROVE', 'reviewer'),
