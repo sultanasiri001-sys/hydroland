@@ -117,6 +117,12 @@ jobs:
       - run: npm run validate:integrations -w @hydroland/api
       - run: npm run typecheck --workspace=@hydroland/api
       - run: npm run build --workspace=@hydroland/api
+      - name: Technology request authority, evidence, rollback and concurrency contracts
+        run: node --test apps/api/scripts/technology-request.test.cjs
+      - name: Technology requests with actual HTTP sessions and isolated PostgreSQL
+        env:
+          A07_HTTP_CONFIRM: CREATE_NEW_LOOPBACK_DATABASE_ONLY
+        run: node apps/api/scripts/technology-request-http-e2e.mjs
       - name: Transaction-bound boat and trip compliance contracts
         run: node apps/api/scripts/compliance-transaction-validation.cjs
       - name: Marine registration input and review revision boundaries

@@ -34,11 +34,14 @@ export class AdminService {
   }
 
   async setAccountStatus(adminAccountId:string,accountId:string,status:AccountStatusValue,reason:unknown,expectedUpdatedAt:unknown,reviewed:unknown){
+    return this.db.serializable(tx=>this.setAccountStatusInTransaction(tx,adminAccountId,accountId,status,reason,expectedUpdatedAt,reviewed));
+  }
+
+  async setAccountStatusInTransaction(tx:Prisma.TransactionClient,adminAccountId:string,accountId:string,status:AccountStatusValue,reason:unknown,expectedUpdatedAt:unknown,reviewed:unknown){
     if(!['ACTIVE','SUSPENDED'].includes(status))throw new BadRequestException('Only suspension and reactivation are supported here.');
     if(typeof reason!=='string'||reason.trim().length<5||reason.trim().length>1000||reviewed!==true)throw new BadRequestException('Confirm the decision and provide a reason of 5–1000 characters.');
     if(typeof expectedUpdatedAt!=='string'||expectedUpdatedAt.length>40||!Number.isFinite(Date.parse(expectedUpdatedAt)))throw new BadRequestException('Current account revision required.');
     if(adminAccountId===accountId&&status==='SUSPENDED')throw new BadRequestException('Administrators cannot suspend their own account.');
-    return this.db.serializable(async tx=>{
       // Serialize status decisions and lock identities/roles before rechecking authority.
       // Cast identifiers for both legacy TEXT and native UUID production schemas.
       await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext('hydroland.admin.account-status')::bigint)`;
@@ -47,7 +50,7 @@ export class AdminService {
       if(!account)throw new NotFoundException('Account not found.');
       if(account.updatedAt.getTime()!==Date.parse(expectedUpdatedAt))throw new ConflictException('تغير الحساب؛ حدّث البيانات وراجع القرار مجددًا.');
       if(!['ACTIVE','SUSPENDED'].includes(account.status)||!account.emailVerifiedAt)throw new ConflictException('لا يمكن تجاوز التحقق من البريد أو إعادة حساب مؤرشف من هذه الشاشة.');
-      if(account.status===status)return {...account,isCurrentAccount:accountId===adminAccountId,sessionsRevoked:false,revokedSessionCount:0};
+      if(account.status===status)return {...account,isCurrentAccount:accountId===adminAccountId,sessionsRevoked:false,revokedSessionCount:0,nativeAuditId:null};
       if(status==='SUSPENDED'&&account.roleAssignments.some(role=>role.role==='ADMIN'&&role.status==='ACTIVE')){
         const activeAdmins=await tx.account.count({where:{status:'ACTIVE',emailVerifiedAt:{not:null},roleAssignments:{some:{role:'ADMIN',status:'ACTIVE'}}}});
         if(activeAdmins<=1)throw new ConflictException('لا يمكن تعليق آخر حساب إدارة نشط.');
@@ -55,8 +58,7 @@ export class AdminService {
       const updated=await tx.account.update({where:{id:accountId},data:{status},select:accountView});
       const revoked=await tx.session.updateMany({where:{accountId,revokedAt:null},data:{revokedAt:new Date()}});
       // Reactivation also invalidates any residual sessions; it requires a new login.
-      await this.audit.record({actorId:actor.personId,action:'ACCOUNT_STATUS_CHANGED',resource:'Account',resourceId:accountId,metadata:{adminAccountId,previousStatus:account.status,status,reason:reason.trim(),sessionsRevoked:true,revokedSessionCount:revoked.count}},tx);
-      return {...updated,isCurrentAccount:accountId===adminAccountId,sessionsRevoked:true,revokedSessionCount:revoked.count};
-    });
+      const event=await this.audit.record({actorId:actor.personId,action:'ACCOUNT_STATUS_CHANGED',resource:'Account',resourceId:accountId,metadata:{adminAccountId,previousStatus:account.status,status,reason:reason.trim(),sessionsRevoked:true,revokedSessionCount:revoked.count}},tx);
+      return {...updated,isCurrentAccount:accountId===adminAccountId,sessionsRevoked:true,revokedSessionCount:revoked.count,nativeAuditId:event.id};
   }
 }
