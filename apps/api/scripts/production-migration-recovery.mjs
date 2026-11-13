@@ -372,6 +372,81 @@ async function recoverUnifiedCalendar() {
   console.log('[migration-recovery] unified calendar recovered with explicit UUID-to-text conversion');
 }
 
+const A09 = '20261113150000_a09_linked_correspondence_workflow';
+
+async function recoverA09Correspondence() {
+  const failed = await migrationFailure(A09);
+  if (!failed) {
+    console.log('[migration-recovery] no open A09 correspondence failure; no-op');
+    return;
+  }
+
+  const required = [
+    ['AdministrativeRecord', 'id'],
+    ['AdministrativeRecord', 'managedDocumentId'],
+    ['AdministrativeRecord', 'managedDocumentVersion'],
+    ['AdministrativeRecord', 'managedDocumentContentHash'],
+    ['AdministrativeRouting', 'id'],
+    ['ManagedDocument', 'id'],
+    ['Account', 'id'],
+  ];
+  for (const [table, column] of required) {
+    if (!(await columnType(table, column))) {
+      throw new Error('Refusing A09 recovery: expected partial migration state is missing ' + table + '.' + column);
+    }
+  }
+
+  const references = [
+    ['AdministrativeRecord', 'managedDocumentId', 'ManagedDocument', 'id'],
+    ['AdministrativeRouting', 'repliedByAccountId', 'Account', 'id'],
+    ['AdministrativeRouting', 'deliveredByAccountId', 'Account', 'id'],
+  ];
+  for (const [sourceTable, sourceColumn, targetTable, targetColumn] of references) {
+    const targetType = await columnType(targetTable, targetColumn);
+    if (targetType !== 'text' && targetType !== 'uuid') {
+      throw new Error('Refusing A09 recovery: unsupported target type for ' + targetTable + '.' + targetColumn);
+    }
+
+    const sourceType = await columnType(sourceTable, sourceColumn);
+    if (!sourceType) continue;
+    if (sourceType !== 'text' && sourceType !== 'uuid') {
+      throw new Error('Refusing A09 recovery: unsupported source type for ' + sourceTable + '.' + sourceColumn);
+    }
+
+    if (sourceType === 'text' && targetType === 'uuid') {
+      const invalidValues = await prisma.$queryRawUnsafe(
+        'SELECT 1 FROM "' + sourceTable + '" WHERE "' + sourceColumn + '" IS NOT NULL AND "' + sourceColumn + '" !~* ' +
+        '''' + '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
+  await requireExistingMigrationHistory(prisma);
+  await recoverHr();
+  await recoverAdministrativeAffairs();
+  await recoverUnifiedCalendar();
+  await recoverFinance();
+  await recoverDocumentPersistence();
+  await recoverA09Correspondence();
+}
+
+main().finally(() => prisma.$disconnect());
+ + '''' +
+        ' LIMIT 1',
+      );
+      if (invalidValues.length) {
+        throw new Error('Refusing A09 recovery: non-UUID values exist in ' + sourceTable + '.' + sourceColumn);
+      }
+    }
+  }
+
+  if (await columnType('AdministrativeRecord', 'managedDocumentVersion') !== 'integer') {
+    throw new Error('Refusing A09 recovery: unexpected managedDocumentVersion type');
+  }
+  if (await columnType('AdministrativeRecord', 'managedDocumentContentHash') !== 'text') {
+    throw new Error('Refusing A09 recovery: unexpected managedDocumentContentHash type');
+  }
+
+  markRolledBack(A09);
+  console.log('[migration-recovery] A09 failed migration marked rolled back for UUID-compatible replay');
+}
+
 async function main() {
   await requireExistingMigrationHistory(prisma);
   await recoverHr();
