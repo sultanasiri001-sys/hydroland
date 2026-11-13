@@ -15,6 +15,6 @@ import { DepartmentReportingService } from './department-reporting.service';
 import { DepartmentReportingWorker } from './department-reporting.worker';
 import { OperationalEvidenceController } from './operational-evidence.controller';
 import { OperationalEvidenceService } from './operational-evidence.service';
-@Module({imports:[AuthModule,AuditModule,AdminModule,IntegrationModule],controllers:[AgentController,AgentRuntimeController,DepartmentReportingController,OperationalEvidenceController],providers:[AgentService,AgentRuntimeService,AgentModelProviderService,AgentRuntimeWorker,GovernanceReviewInboxService,DepartmentReportingService,DepartmentReportingWorker,OperationalEvidenceService]})
+@Module({imports:[AuthModule,AuditModule,AdminModule,IntegrationModule],controllers:[AgentController,AgentRuntimeController,DepartmentReportingController,OperationalEvidenceController],providers:[AgentService,AgentRuntimeService,AgentModelProviderService,AgentRuntimeWorker,GovernanceReviewInboxService,DepartmentReportingService,DepartmentReportingWorker,OperationalEvidenceService],exports:[AgentRuntimeService]})
 export class AgentModule {}
 
