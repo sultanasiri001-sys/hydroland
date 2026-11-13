@@ -1,6 +1,6 @@
 # A07 technology requests candidate
 
-This candidate adds a durable request workflow for access, changes, incidents and risks. It is a **staff-assisted candidate**, not adoption of the unresolved AI-first authority decision D02, and not full operational acceptance of A07.
+This candidate adds a durable request workflow for access, changes, incidents and risks. On 13 November 2026, the platform owner adopted D02: the cybersecurity agent prepares the recommendation, account 001 approves the exact bounded action, and a deterministic reviewed handler executes it. This policy decision does not itself implement the execution adapter or constitute operational acceptance of A07.
 
 The existing source of identity, employment, organization membership, document review and IAM remains authoritative. Cases and immutable revision snapshots use namespaced `OperationalSetting` records; all case changes and their `AuditEvent` commit in the same serializable transaction. No schema migration is required.
 
@@ -36,10 +36,10 @@ The account menu exposes **طلبات التقنية والأمن** to active AD
 - Eight domain tests cover invalid authority, bounded inputs, state transitions, independent execution, rollback, risk ownership, confirmation and integrity.
 - The actual HTTP/PostgreSQL suite creates a new, empty loopback database, uses saved password hashes and real sessions, and tests every case type, native IAM receipts, stale access, rollback, concurrency, audit failure and authority revocation. It refuses an existing acceptance database.
 - Browser tests cover mobile layout, safe rendering, source selection, revisions, evidence, idempotency, logout and revoked access. Local Chromium cannot start under the current Unix-socket restriction, so actual browser acceptance must come from CI.
-- Full A07 remains open until the AI-first recommendation/execution/approval matrix is explicitly adopted, the corresponding execution adapter is reviewed and implemented, the accepted source is deployed, and live scoped acceptance is recorded. A green PR for this staff-assisted candidate does not satisfy those remaining gates.
+- Full A07 remains open until the adopted AI-first matrix is implemented by a bounded execution adapter, the accepted source is merged and deployed, and live scoped acceptance is recorded.
 
-### Concrete D02 decision to resolve
+### Adopted D02 decision
 
-The proposed AI-first direction is: the cybersecurity agent prepares the case and recommendation; owner 001 or an explicitly scoped delegate approves the exact action; deterministic specialist handlers execute only the approved bounded action; any independent specialist approval required by the governing source remains a real, separately evidenced gate. AI text, fictional staff identities and generated signatures cannot replace such a gate.
+The adopted direction is: the cybersecurity agent prepares the case and recommendation; current verified owner account 001 approves the exact action and scope; deterministic specialist handlers execute only that approved, bounded action; any independent specialist approval required by the governing source remains a real, separately evidenced gate. AI text, fictional staff identities and generated signatures cannot replace such a gate. A delegate requires a separate explicit scope and authority record; none is currently adopted.
 
-The current candidate's human-worker branch must not be silently adopted as the user's zero-staff operating model. No new employee, role, delegate, provider credential or production permission was created by this work.
+The current API still requires a real human technology assignee and does not yet implement the adopted agent-to-handler execution path. Refactor that branch before claiming A07 closure. No new employee, role, delegate, provider credential or production permission was created by this work.
