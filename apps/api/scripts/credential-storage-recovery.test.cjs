@@ -75,6 +75,7 @@ test('failed upload never acknowledges success and recovery preserves caller con
   assert.equal(f.calls.length, 2);
   f.disable();
   await assert.rejects(() => f.service.exists('credentials/test/evidence.pdf'), /integration disabled/);
+  await assert.rejects(() => f.service.delete('credentials/test/evidence.pdf'), /integration disabled/);
   assert.equal(f.calls.length, 2, 'Recovery must not bypass a disabled integration');
   assert.deepEqual(f.providerSignals.map(([, state]) => state), ['PROVIDER_FAILURE', 'SUCCESS']);
 });
