@@ -10,7 +10,7 @@ ALTER TABLE "AdministrativeRecord"
 
 CREATE UNIQUE INDEX "AdministrativeRecord_managedDocumentId_key"
   ON "AdministrativeRecord"("managedDocumentId");
-CREATE INDEX "AdministrativeRecord_organizationId_status_updatedAt_idx"
+CREATE INDEX IF NOT EXISTS "AdministrativeRecord_organizationId_status_updatedAt_idx"
   ON "AdministrativeRecord"("organizationId", "status", "updatedAt");
 
 ALTER TABLE "AdministrativeRecord"
@@ -37,7 +37,7 @@ ALTER TABLE "AdministrativeRouting"
   FOREIGN KEY ("deliveredByAccountId") REFERENCES "Account"("id")
   ON DELETE RESTRICT ON UPDATE CASCADE;
 
-CREATE INDEX "AdministrativeRouting_organizationId_recordId_deliveredAt_idx"
+CREATE INDEX IF NOT EXISTS "AdministrativeRouting_organizationId_recordId_deliveredAt_idx"
   ON "AdministrativeRouting"("organizationId", "recordId", "deliveredAt");
 
 ALTER TABLE "AdministrativeRouting"
