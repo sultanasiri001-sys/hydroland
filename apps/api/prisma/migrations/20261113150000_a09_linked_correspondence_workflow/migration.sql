@@ -18,7 +18,7 @@ ALTER TABLE "AdministrativeRecord"
   CHECK (
     ("managedDocumentId" IS NULL AND "managedDocumentVersion" IS NULL AND "managedDocumentContentHash" IS NULL)
     OR
-    ("managedDocumentId" IS NOT NULL AND "managedDocumentVersion" > 0 AND "managedDocumentContentHash" IS NOT NULL)
+    ("managedDocumentId" IS NOT NULL AND "managedDocumentVersion" IS NOT NULL AND "managedDocumentVersion" > 0 AND "managedDocumentContentHash" IS NOT NULL)
   );
 
 ALTER TABLE "AdministrativeRouting"
