@@ -5,10 +5,14 @@ import { TechnologySecurityOperationsService } from './technology-security-opera
 import { TechnologySecurityGovernanceService } from './technology-security-governance.service';
 import { AuditModule } from '../audit/audit.module';
 import { StaffingIamService } from './staffing-iam.service';
+import { AuthModule } from '../auth/auth.module';
+import { TechnologyRequestService } from './technology-request.service';
+import { TechnologyRequestController } from './technology-request.controller';
 
 @Module({
-  imports: [AuditModule],
-  providers: [TechnologySecurityFoundationService, TechnologySecurityWorkflowService, TechnologySecurityOperationsService, TechnologySecurityGovernanceService,StaffingIamService],
+  imports: [AuditModule,AuthModule],
+  controllers: [TechnologyRequestController],
+  providers: [TechnologySecurityFoundationService, TechnologySecurityWorkflowService, TechnologySecurityOperationsService, TechnologySecurityGovernanceService,StaffingIamService,TechnologyRequestService],
   exports: [TechnologySecurityFoundationService, TechnologySecurityWorkflowService, TechnologySecurityOperationsService, TechnologySecurityGovernanceService,StaffingIamService],
 })
 export class TechnologySecurityModule {}

@@ -1,4 +1,5 @@
 (()=>{
+  if(!document.querySelector('script[src="./hydroland-technology-requests.js"]')){const script=document.createElement('script');script.src='./hydroland-technology-requests.js';script.defer=true;document.body.appendChild(script);}
   const auth=()=>window.HydrolandAuth;
   const toast=message=>{const t=document.getElementById('toast');if(!t)return;t.textContent=message;t.classList.add('visible');setTimeout(()=>t.classList.remove('visible'),2400)};
   const request=async(path,options={})=>{const client=auth()?.authorizedFetch;if(!client)throw new Error('AUTH_REQUIRED');const response=await client(path,options);const body=await response.json().catch(()=>null);if(!response.ok){if(response.status===401)throw new Error('انتهت الجلسة، سجّل الدخول من جديد');throw new Error(body?.message||`تعذر تنفيذ الطلب (${response.status})`)}return body;};
