@@ -54,6 +54,8 @@ jobs:
       # Forward migration immutability is enforced separately by Production Release Gate.
       - name: Bootstrap canonical schema on clean PostgreSQL
         run: npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+      - name: A09 correspondence recovery on TEXT and UUID keys
+        run: node apps/api/scripts/a09-correspondence-recovery-db-e2e.mjs
       - name: Employment contract library snapshot additive migration
         run: node apps/api/scripts/employment-contract-library-migration-checks.mjs
       - name: Center license forward migration on TEXT and UUID asset keys

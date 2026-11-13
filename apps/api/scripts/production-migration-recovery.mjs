@@ -372,6 +372,107 @@ async function recoverUnifiedCalendar() {
   console.log('[migration-recovery] unified calendar recovered with explicit UUID-to-text conversion');
 }
 
+const A09 = '20261113150000_a09_linked_correspondence_workflow';
+
+async function recoverA09Correspondence() {
+  const failed = await migrationFailure(A09);
+  if (!failed) {
+    console.log('[migration-recovery] no open A09 correspondence failure; no-op');
+    return;
+  }
+
+  const required = [
+    ['AdministrativeRecord', 'id'],
+    ['AdministrativeRecord', 'managedDocumentId'],
+    ['AdministrativeRecord', 'managedDocumentVersion'],
+    ['AdministrativeRecord', 'managedDocumentContentHash'],
+    ['AdministrativeRouting', 'id'],
+    ['ManagedDocument', 'id'],
+    ['Account', 'id'],
+  ];
+  for (const [table, column] of required) {
+    if (!(await columnType(table, column))) {
+      throw new Error('Refusing A09 recovery: expected partial migration state is missing ' + table + '.' + column);
+    }
+  }
+
+  const references = [
+    ['AdministrativeRecord', 'managedDocumentId', 'ManagedDocument', 'id'],
+    ['AdministrativeRouting', 'repliedByAccountId', 'Account', 'id'],
+    ['AdministrativeRouting', 'deliveredByAccountId', 'Account', 'id'],
+  ];
+  for (const [sourceTable, sourceColumn, targetTable, targetColumn] of references) {
+    const targetType = await columnType(targetTable, targetColumn);
+    if (targetType !== 'text' && targetType !== 'uuid') {
+      throw new Error('Refusing A09 recovery: unsupported target type for ' + targetTable + '.' + targetColumn);
+    }
+
+    const sourceType = await columnType(sourceTable, sourceColumn);
+    if (!sourceType) continue;
+    if (sourceType !== 'text' && sourceType !== 'uuid') {
+      throw new Error('Refusing A09 recovery: unsupported source type for ' + sourceTable + '.' + sourceColumn);
+    }
+
+    if (sourceType === 'text' && targetType === 'uuid') {
+      const invalidValues = await prisma.$queryRawUnsafe(
+        'SELECT 1 FROM "' + sourceTable + '" WHERE "' + sourceColumn + '" IS NOT NULL AND "' + sourceColumn + '" !~* $1 LIMIT 1',
+        '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+      );
+      if (invalidValues.length) {
+        throw new Error('Refusing A09 recovery: non-UUID values exist in ' + sourceTable + '.' + sourceColumn);
+      }
+    }
+  }
+
+  if (await columnType('AdministrativeRecord', 'managedDocumentVersion') !== 'integer') {
+    throw new Error('Refusing A09 recovery: unexpected managedDocumentVersion type');
+  }
+  if (await columnType('AdministrativeRecord', 'managedDocumentContentHash') !== 'text') {
+    throw new Error('Refusing A09 recovery: unexpected managedDocumentContentHash type');
+  }
+
+  execFileSync(
+    'npx',
+    ['prisma', 'db', 'execute', '--schema', 'prisma/schema.prisma', '--file', 'scripts/a09-correspondence-recovery.sql'],
+    { stdio: 'inherit' },
+  );
+
+  for (const [sourceTable, sourceColumn, targetTable, targetColumn] of references) {
+    if (await columnType(sourceTable, sourceColumn) !== await columnType(targetTable, targetColumn)) {
+      throw new Error('A09 recovery did not align ' + sourceTable + '.' + sourceColumn + ' with ' + targetTable + '.' + targetColumn);
+    }
+  }
+
+  for (const [table, column] of [
+    ['AdministrativeRecord', 'managedDocumentVersion'],
+    ['AdministrativeRecord', 'managedDocumentContentHash'],
+    ['AdministrativeRouting', 'replyText'],
+    ['AdministrativeRouting', 'repliedAt'],
+    ['AdministrativeRouting', 'deliveredAt'],
+  ]) {
+    if (!(await columnType(table, column))) {
+      throw new Error('A09 recovery verification failed: missing ' + table + '.' + column);
+    }
+  }
+
+  const constraintCount = await prisma.$queryRawUnsafe(
+    "SELECT COUNT(*)::int AS count FROM pg_constraint WHERE conname IN ('AdministrativeRecord_managedDocumentId_fkey','AdministrativeRouting_repliedByAccountId_fkey','AdministrativeRouting_deliveredByAccountId_fkey','AdministrativeRecord_managed_document_snapshot_check','AdministrativeRouting_reply_snapshot_check','AdministrativeRouting_delivery_snapshot_check')",
+  );
+  if (constraintCount[0]?.count !== 6) {
+    throw new Error('A09 recovery verification failed: required constraints are incomplete');
+  }
+
+  const indexCount = await prisma.$queryRawUnsafe(
+    "SELECT COUNT(*)::int AS count FROM pg_indexes WHERE schemaname='public' AND indexname IN ('AdministrativeRecord_managedDocumentId_key','AdministrativeRecord_organizationId_status_updatedAt_idx','AdministrativeRouting_organizationId_recordId_deliveredAt_idx')",
+  );
+  if (indexCount[0]?.count !== 3) {
+    throw new Error('A09 recovery verification failed: required indexes are incomplete');
+  }
+
+  markApplied(A09);
+  console.log('[migration-recovery] A09 correspondence schema repaired and failed migration marked applied');
+}
+
 async function main() {
   await requireExistingMigrationHistory(prisma);
   await recoverHr();
@@ -379,6 +480,7 @@ async function main() {
   await recoverUnifiedCalendar();
   await recoverFinance();
   await recoverDocumentPersistence();
+  await recoverA09Correspondence();
 }
 
 main().finally(() => prisma.$disconnect());
