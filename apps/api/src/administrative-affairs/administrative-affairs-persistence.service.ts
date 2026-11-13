@@ -271,7 +271,7 @@ export class AdministrativeAffairsPersistenceService {
     if(routing.decision) throw new ConflictException('ADMIN_ROUTING_ALREADY_DECIDED');
     return this.db.serializable(async tx=>{
       await this.lockRegisteredRecord(tx,routing.recordId);
-      const updated=await tx.administrativeRouting.updateMany({where:{id:routing.id,decision:null,replyText:{not:null},repliedByAccountId:actorAccountId,assignedToAccountId:actorAccountId},data:{decision,decidedByAccountId:actorAccountId,decidedAt:new Date()}});
+      const updated=await tx.administrativeRouting.updateMany({where:{id:routing.id,decision:null,assignedToAccountId:actorAccountId,...(parent?.managedDocumentId?{replyText:{not:null},repliedByAccountId:actorAccountId}:{})},data:{decision,decidedByAccountId:actorAccountId,decidedAt:new Date()}});
       if(updated.count!==1) throw new ConflictException('ADMIN_ROUTING_CONCURRENT_MODIFICATION');
       const actor=await tx.account.findUniqueOrThrow({where:{id:actorAccountId},select:{personId:true}});
       await tx.auditEvent.create({data:{actorId:actor.personId,action:`ADMIN_ROUTING_${decision}`,resource:'AdministrativeRouting',resourceId:routing.id,metadata:{organizationId:routing.organizationId}}});
