@@ -103,6 +103,10 @@ jobs:
       - run: npm run validate:document-pdf-arabic -w @hydroland/api
       - run: npm run validate:auth-session -w @hydroland/api
       - run: npm run validate:protected-routes-rbac -w @hydroland/api
+      - name: Literal controller route signature uniqueness
+        run: |
+          node --test apps/api/scripts/route-uniqueness.test.mjs
+          node apps/api/scripts/route-uniqueness.mjs
       - name: Validate messaging runtime boundaries
         run: node apps/api/scripts/messaging-validation.mjs
       - run: npm run validate:phase10 -w @hydroland/api
@@ -115,6 +119,8 @@ jobs:
       - run: npm run validate:integrations -w @hydroland/api
       - run: npm run typecheck --workspace=@hydroland/api
       - run: npm run build --workspace=@hydroland/api
+      - name: Read-only training standard adoption preflight
+        run: node --test apps/api/scripts/training-standard-readiness.test.cjs
       - name: Source-bound dive completion and session producer PostgreSQL contracts
         env:
           CI: "true"
@@ -240,7 +246,9 @@ jobs:
       - name: Credential upload payload and legacy schema regression
         run: node apps/api/scripts/credential-upload-regression.mjs
       - name: Credential storage configuration and readiness
-        run: node apps/api/scripts/credential-storage-readiness-validation.mjs
+        run: |
+          node apps/api/scripts/credential-storage-readiness-validation.mjs
+          node --test apps/api/scripts/credential-storage-recovery.test.cjs
       - name: Auth email outbox PostgreSQL E2E
         run: node apps/api/scripts/auth-email-outbox-db-e2e.mjs
       - name: MFA lifecycle PostgreSQL E2E
@@ -291,6 +299,7 @@ jobs:
             exit 1
           fi
           HR_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/hr-http-e2e.mjs
+          node --test apps/api/scripts/administrative-record-archive.test.cjs
           ADMIN_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/administrative-affairs-http-e2e.mjs
           RBAC_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/runtime-rbac-ownership-http-e2e.mjs
           FINANCE_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/finance-http-e2e.mjs

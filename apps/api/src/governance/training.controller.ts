@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Header, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { TrainingEnrollmentStatus, TrainingRecordStatus } from '@prisma/client';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { TrainingAuthorizationService } from './training-authorization.service';
@@ -6,6 +6,7 @@ import { TrainingRepositoryService } from './training-repository.service';
 import { TrainingProfessionalProfileService } from './training-professional-profile.service';
 import { TrainingCourseProgressService } from './training-course-progress.service';
 import { TrainingCertificateService } from './training-certificate.service';
+import { TrainingStandardReadinessService } from './training-standard-readiness.service';
 
 type AuthenticatedRequest = { auth: { accountId: string } };
 
@@ -18,6 +19,7 @@ export class TrainingController {
     private readonly professionalProfile: TrainingProfessionalProfileService,
     private readonly progress: TrainingCourseProgressService,
     private readonly certificates: TrainingCertificateService,
+    private readonly standardReadiness: TrainingStandardReadinessService,
   ) {}
 
   @Get('standards')
@@ -104,6 +106,12 @@ export class TrainingController {
   async getEnrollment(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
     await this.authorization.assertEnrollmentAccess(request.auth.accountId, id, true);
     return this.training.getEnrollment(id);
+  }
+
+  @Get('enrollments/:id/standard-readiness')
+  @Header('Cache-Control', 'private, no-store')
+  standardReadinessPreview(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+    return this.standardReadiness.read(request.auth.accountId, id);
   }
 
   @Patch('enrollments/:id/instructor')

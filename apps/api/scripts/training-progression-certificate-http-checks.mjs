@@ -5,7 +5,7 @@ import {createRequire} from 'node:module';
 // Certificate endpoint integration for the EXISTING PR585/586 evaluator/adapter.
 // Synthetic, committed fixtures on an isolated CI database; this does not test
 // document lifecycle permissions or represent any real source/signature approval.
-export async function checkProgressionCertificateHttp(db,{base,fixture,instructor,student,owner,reviewer,organizationId,ids,request,ok}){
+export async function checkProgressionCertificateHttp(db,{base,fixture,instructor,student,owner,reviewer,previewDeniedActor,foreignOwner,organizationId,ids,request,ok}){
  const loopback=value=>['localhost','127.0.0.1','[::1]'].includes(new URL(value).hostname);
  assert.equal(process.env.CI,'true');assert.ok(loopback(base)&&loopback(process.env.DATABASE_URL),'Progression HTTP checks require isolated loopback services');
  const {trainingStandardHash,trainingStandardBinding}=createRequire(import.meta.url)('../dist/governance/training-standard-profile.js');
@@ -13,6 +13,37 @@ export async function checkProgressionCertificateHttp(db,{base,fixture,instructo
  const enrollment=await db.trainingEnrollment.findUniqueOrThrow({where:{id:record.enrollmentId}});
  const source=await db.policyControl.findUniqueOrThrow({where:{id:enrollment.metadata.trainingStandard.profileId}});
  const profile=structuredClone(source.metadata.profile);
+ // Adoption preflight uses the actual HTTP boundary and the current source gates.
+ // All mutations below are isolated CI fault injection, never operational migration.
+ const preflight='/training/enrollments/'+enrollment.id+'/standard-readiness';
+ const snapshot=async id=>JSON.stringify({
+  enrollment:await db.trainingEnrollment.findUniqueOrThrow({where:{id},include:{record:{include:{sessions:true,stages:{include:{skills:true}}}}}}),
+  audits:await db.auditEvent.count({where:{resourceId:{in:[id,record.id]}}}),
+ });
+ const readOnlyPreview=async(path,id=enrollment.id)=>{const before=await snapshot(id);const result=ok(await request(owner,path));assert.equal(await snapshot(id),before);return result;};
+ assert.equal((await request(null,preflight)).status,401);
+ for(const actor of [foreignOwner,previewDeniedActor])assert.equal((await request(actor,preflight)).status,403);
+ let preview=await readOnlyPreview(preflight);
+ assert.equal(preview.state,'STANDARD_PREREQUISITES_VALID');assert.equal(preview.standardPrerequisitesSatisfied,true);
+ assert.equal(preview.operationalAuthorization,false);assert.equal(preview.automaticHistoryAdoptionAllowed,false);
+ assert.ok(!JSON.stringify(preview).match(/DO_NOT_RETURN|studentAccountId|instructorAccountId|medical|credentials/));
+ const originalMetadata=structuredClone(enrollment.metadata),unbound={...originalMetadata};delete unbound.trainingStandard;
+ await db.trainingEnrollment.update({where:{id:enrollment.id},data:{metadata:unbound}});
+ preview=await readOnlyPreview(preflight);assert.equal(preview.state,'EXISTING_COURSE_REVIEW_REQUIRED');assert.equal(preview.reasonCode,'STANDARD_SELECTION_REQUIRED');
+ assert.equal(preview.existingEvidence.sessions,1);assert.equal(preview.existingEvidence.signedSkills,1);
+ await db.trainingEnrollment.update({where:{id:enrollment.id},data:{metadata:originalMetadata}});
+ await db.policyControl.update({where:{id:source.id},data:{state:'REVOKED'}});
+ preview=await readOnlyPreview(preflight);assert.equal(preview.state,'STANDARD_PREREQUISITES_BLOCKED');assert.equal(preview.reasonCode,'TRAINING_STANDARD_NOT_APPROVED');
+ await db.policyControl.update({where:{id:source.id},data:{state:source.state}});
+ const fresh=await db.trainingEnrollment.create({data:{studentAccountId:student.id,instructorAccountId:instructor.id,centerOrganizationId:organizationId,courseCode:'QA-ADOPTION-ONLY',status:'ACTIVE',metadata:{private:'DO_NOT_RETURN'}}});ids.push(fresh.id);
+ preview=await readOnlyPreview('/training/enrollments/'+fresh.id+'/standard-readiness',fresh.id);
+ assert.equal(preview.state,'SOURCE_SELECTION_REQUIRED');assert.deepEqual(preview.existingEvidence,{sessions:0,signedSkills:0});
+ assert.equal((await db.trainingEnrollment.findUniqueOrThrow({where:{id:fresh.id},include:{record:true}})).record,null);
+ const member=await db.organizationMember.findUniqueOrThrow({where:{organizationId_accountId:{organizationId,accountId:owner.id}}});
+ await db.organizationMember.update({where:{id:member.id},data:{status:'SUSPENDED'}});
+ assert.equal((await request(owner,preflight)).status,403);
+ await db.organizationMember.update({where:{id:member.id},data:{status:member.status}});
+ console.log('A14 adoption preflight HTTP/PostgreSQL: current prerequisites, unbound historical and fresh courses, revoked source/member, cross-center denial, privacy and unchanged history/audit passed. Preview never authorizes an operation.');
  Object.assign(profile.requirements,{minimumCompletedSessions:2,minimumOpenWaterDives:2,minimumOpenWaterMinutes:0,requiredFormCodes:['TRAINING-DIVE-LOG'],
   supervision:[...profile.requirements.supervision,{environment:'OPEN_WATER',minimumAge:0,maximumAge:120,studentsPerInstructor:1,maximumDepthMetres:20}]});
  profile.diveProgression={schemaVersion:2,timeZone:'Asia/Riyadh',

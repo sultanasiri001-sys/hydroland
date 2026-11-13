@@ -31,12 +31,23 @@ try{
  r=await call(`/administrative-affairs/routings/${routing.id}/decision`,'PATCH',token(approver.id),{decision:'APPROVE'}); if(!r.ok)throw new Error('Decision failed '+r.status+' '+await r.text());
  const done=await db.administrativeRouting.findUniqueOrThrow({where:{id:routing.id}}); if(done.decision!=='APPROVE'||done.decidedByAccountId!==approver.id)throw new Error('Decision provenance invalid');
  if(!await db.auditEvent.findFirst({where:{resource:'AdministrativeRouting',resourceId:routing.id,action:'ADMIN_ROUTING_APPROVE'}}))throw new Error('Decision audit missing');
+ r=await call(`/administrative-affairs/records/${record.id}/routings`,'POST',token(manager.id),{toUnitId:u2.id}); if(!r.ok)throw new Error('Pending archive fixture routing failed'); const pendingRouting=await r.json();
+ r=await call(`/administrative-affairs/routings/${pendingRouting.id}/assign`,'PATCH',token(manager.id),{assigneeAccountId:approver.id}); if(!r.ok)throw new Error('Pending archive fixture assignment failed');
  r=await call(`/administrative-affairs/records/${record.id}/archive`,'PATCH',token(outsider.id)); if(r.status!==403)throw new Error('Expected cross-org archive 403, got '+r.status);
  if((await db.administrativeRecord.findUniqueOrThrow({where:{id:record.id}})).status!=='REGISTERED')throw new Error('Denied archive mutated state');
  r=await call(`/administrative-affairs/records/${record.id}/archive`,'PATCH',token(manager.id)); if(!r.ok)throw new Error('Archive failed '+r.status+' '+await r.text());
  if((await db.administrativeRecord.findUniqueOrThrow({where:{id:record.id}})).status!=='ARCHIVED')throw new Error('Archive state invalid');
  if(!await db.auditEvent.findFirst({where:{resource:'AdministrativeRecord',resourceId:record.id,action:'ADMIN_RECORD_ARCHIVED'}}))throw new Error('Archive audit missing');
  r=await call(`/administrative-affairs/records/${record.id}/archive`,'PATCH',token(manager.id)); if(r.status!==409)throw new Error('Repeat archive expected 409, got '+r.status);
+ const archivedState=await db.administrativeRouting.findUniqueOrThrow({where:{id:pendingRouting.id}}),archivedAuditCount=await db.auditEvent.count({where:{resourceId:pendingRouting.id}}),archivedRoutingCount=await db.administrativeRouting.count({where:{recordId:record.id}});
+ for(const [url,method,actor,body] of [
+  [`/administrative-affairs/records/${record.id}/routings`,'POST',manager.id,{toUnitId:u2.id}],
+  [`/administrative-affairs/routings/${pendingRouting.id}/assign`,'PATCH',manager.id,{assigneeAccountId:approver.id}],
+  [`/administrative-affairs/routings/${pendingRouting.id}/decision`,'PATCH',approver.id,{decision:'APPROVE'}],
+ ]){r=await call(url,method,token(actor),body);if(r.status!==409)throw new Error('Archived parent mutation expected 409, got '+r.status);}
+ if(JSON.stringify(await db.administrativeRouting.findUniqueOrThrow({where:{id:pendingRouting.id}}))!==JSON.stringify(archivedState))throw new Error('Archived routing changed');
+ if(await db.auditEvent.count({where:{resourceId:pendingRouting.id}})!==archivedAuditCount)throw new Error('Denied archived mutation wrote an audit');
+ if(await db.administrativeRouting.count({where:{recordId:record.id}})!==archivedRoutingCount)throw new Error('Archived record gained a routing');
  const resource=await db.calendarResource.create({data:{type:'MEETING_ROOM',name:'Admin E2E Room '+suffix,referenceId:'admin-room-'+suffix}});
  const startsAt=new Date(Date.now()+3600000),endsAt=new Date(startsAt.getTime()+3600000);
  const meetingBody={organizationId:org.id,unitId:u1.id,title:'Admin E2E Meeting',startsAt:startsAt.toISOString(),endsAt:endsAt.toISOString(),participantAccountIds:[approver.id],resourceIds:[resource.id]};

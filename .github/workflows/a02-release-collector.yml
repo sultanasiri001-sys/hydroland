@@ -1,25 +1,21 @@
-name: A02 read-only release collector
+name: A02 full release policy gate
 
 on:
   pull_request:
-    paths:
-      - 'scripts/a02-release-collector*.mjs'
-      - 'scripts/a02-release-evidence*.mjs'
-      - '.github/workflows/a02-release-collector.yml'
   push:
     branches: [main]
-    paths:
-      - 'scripts/a02-release-collector*.mjs'
-      - 'scripts/a02-release-evidence*.mjs'
-      - '.github/workflows/a02-release-collector.yml'
 
 permissions:
   contents: read
 
+concurrency:
+  group: a02-full-policy-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   collector-contracts:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,30 +23,32 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Verify collector and unchanged evaluator contracts
+      - run: npm ci --workspace=@hydroland/api --include-workspace-root=true --ignore-scripts
+      - name: Verify strict collector, full gate and source binding contracts
         run: |
-          node --check scripts/a02-release-collector.mjs
-          node --check scripts/a02-release-collector-live.mjs
-          node --test scripts/a02-release-evidence.test.mjs scripts/a02-release-collector*.test.mjs
-  live-main-read-only-probe:
+          node --check scripts/a02-full-release-gate.mjs
+          node --test scripts/a02-release-*.test.mjs scripts/a02-full-release-gate.test.mjs
+  a02-full-release:
     needs: collector-contracts
-    # A PR may exercise GETs with an ephemeral read-only token; never pull_request_target.
-    # Sample scope only: this job is NOT a production-approval or deployment gate.
+    if: always()
     permissions:
       contents: read
       actions: read
     runs-on: ubuntu-24.04
-    # Wait for a quiet main-push run set before the single strict collection.
-    # Web validation can take 35 minutes. No failed collection is retried.
-    timeout-minutes: 40
+    timeout-minutes: 45
     steps:
+      - name: Refuse failed or skipped prerequisite
+        if: needs.collector-contracts.result != 'success'
+        run: exit 1
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Collect current main through authenticated, attempt-pinned GET requests
+      - run: npm ci --workspace=@hydroland/api --include-workspace-root=true --ignore-scripts
+      - name: Verify pinned source and full exact-main-push evidence
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: node scripts/a02-release-collector-live.mjs
+        run: node scripts/a02-full-release-gate.mjs

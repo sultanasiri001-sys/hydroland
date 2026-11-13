@@ -26,7 +26,7 @@ jobs:
     env:
       NODE_ENV: test
       RECOVERY_REHEARSAL_CONFIRM: DISPOSABLE_LOCAL_ONLY
-      A02_PRIOR_ARTIFACT: b7a4b876cd0173f0343e3f91cb7c1fc8b2e5884e
+      A02_PRIOR_ARTIFACT: 0c2bb13eeba416ef90c9b5068bb5a14aff194f9c
       A02_CANDIDATE_ARTIFACT: ${{ github.event.pull_request.head.sha || github.sha }}
       DATABASE_URL: postgresql://hydroland:hydroland@127.0.0.1:5432/hydroland_rehearsal_source?schema=public
     steps:

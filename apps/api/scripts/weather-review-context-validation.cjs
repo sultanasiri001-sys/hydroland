@@ -130,6 +130,27 @@ function harness() {
   await rejects(() => h.service.refresh('offline-admin', h.state.trip.id), 503);
   check(() => assert.equal(h.state.reviews.length, 0));
 
+  // A06: a provider returning after an outage cannot revive approval for the
+  // previous location or silently approve the newly available forecast.
+  h = harness(); current = (await h.service.refresh('offline-admin', h.state.trip.id)).review;
+  approved = (await h.approve(current)).review;
+  await h.service.setLocation('offline-admin', h.state.trip.id, { locationName: 'Outage destination', latitude: 22, longitude: 41 });
+  const beforeOutage = copy(h.state);
+  h.weather.snapshot = async () => { throw new Error('Offline provider outage'); };
+  await assert.rejects(() => h.service.refresh('offline-admin', h.state.trip.id), /Offline provider outage/);
+  check(() => assert.deepEqual(h.state, beforeOutage));
+  stale = await h.service.latest(h.state.trip.id);
+  check(() => assert.equal(evaluate(stale).blocking, true));
+  await rejects(() => h.approve(approved));
+  h.weather.snapshot = async () => ({ provider: 'STORMGLASS', observedAt: h.state.trip.startsAt.toISOString(), windSpeedKph: 8 });
+  current = (await h.service.refresh('offline-admin', h.state.trip.id)).review;
+  check(() => assert.equal(current.status, 'PENDING'));
+  check(() => assert.equal(evaluate(current).blocking, true));
+  await rejects(() => h.approve(approved));
+  approved = (await h.approve(current)).review;
+  check(() => assert.equal(approved.context.locationName, 'Outage destination'));
+  check(() => assert.equal(evaluate(approved).blocking, false));
+
   h = harness(); current = (await h.service.refresh('offline-admin', h.state.trip.id)).review;
   h.revoke(); await rejects(() => h.approve(current), 403);
   check(() => assert.equal(h.state.reviews[0].status, 'PENDING'));

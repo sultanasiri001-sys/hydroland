@@ -91,7 +91,7 @@ export async function checkTrainingCertificates(db,{base,instructor,student,owne
   const raceBody={...body,expectedUpdatedAt:race.updatedAt},results=await Promise.all([request(admin,decision(race.id),'POST',raceBody),request(reviewer,decision(race.id),'POST',{...raceBody,outcome:'REJECTED'})]);
   assert.equal(results.filter(result=>result.status===201).length,1);assert.equal(results.filter(result=>result.status===409).length,1);
   assert.equal(await db.auditEvent.count({where:{resourceId:race.id,action:'training.certificate_decided'}}),1);
-  await checkProgressionCertificateHttp(db,{base,fixture,instructor,student,owner,reviewer:admin,organizationId,ids,request,ok});
+  await checkProgressionCertificateHttp(db,{base,fixture,instructor,student,owner,reviewer:admin,previewDeniedActor:reviewer,foreignOwner,organizationId,ids,request,ok});
   for(let i=0;i<21;i++){const padding=await fixture('QA-CERT-PAGE-'+i);const row=await db.trainingCertificate.create({data:{trainingRecordId:padding.id,studentAccountId:student.id,courseCode:'QA-CERT-PAGE-'+i,recommendedByInstructorId:instructor.id}});ids.push(row.id)}
   const first=ok(await request(admin,'/training/certificates')),second=ok(await request(admin,'/training/certificates?cursor='+first.nextCursor));
   assert.equal(first.items.length,20);assert.ok(first.nextCursor);assert.ok(second.items.length);assert.ok(second.items.every(row=>!first.items.some(prior=>prior.id===row.id)));
