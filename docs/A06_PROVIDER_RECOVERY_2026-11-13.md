@@ -30,7 +30,7 @@ it usable. No operational weather threshold, setting or approval is introduced.
 
 | Critical dependency | Existing executable evidence | Current remaining boundary |
 | --- | --- | --- |
-| Private document storage | `credential-storage-recovery.test.cjs`, `credential-storage-readiness-validation.mjs`, `credential-integrity-db-e2e.mjs` | Provider-specific private bytes/version/ACL recovery and approved RPO/RTO are A03 acceptance, not these fixtures. |
+| Private document storage | `credential-storage-recovery.test.cjs`, `credential-storage-readiness-validation.mjs`, `credential-integrity-db-e2e.mjs` | A03 is closed within its owner-approved composite evidence scope: historical provider PITR plus current restore on the existing recovery instance. These fixtures do not replace that evidence. |
 | Marine weather | `weather-review-context-validation.cjs`, `weather-review-context-db-e2e.mjs` | Actual site/activity limits and operator acceptance remain A14 inputs. |
 | Transactional email | `auth-email-outbox-db-e2e.mjs` | Existing bounded retries, stable delivery identity, expiry and database-poll recovery; no new recipient or real email is authorized by this patch. |
 | Payments | `payment-moyasar-http-e2e.mjs`, `moyasar-webhook-validation.cjs` | Provider amount/identity verification and idempotency; real financial transactions are not performed for this patch. |
@@ -62,8 +62,9 @@ the existing duplicate-event and independent booking-confirmation assertions
 still apply. The fixture refuses remote database, API and provider targets
 before the first write and cleans only the webhook IDs it generated.
 
-This added scenario requires successful API CI on its new commit before it
-is accepted. Node syntax checking alone does not execute the database scenario.
+API CI run [43416274940](https://github.com/sultanasiri001-sys/hydroland/actions/runs/43416274940),
+job 131854866297, executed this scenario successfully at 2026-11-13 11:25:12 UTC.
+All 14 discovered PR #590 workflows passed before merge 53bfb8652e760b5b8ac1660d0ddc64d3e9bd62ca.
 
 ## Provider incident runbook
 
@@ -92,18 +93,51 @@ storage/payment request deadlines are 8 seconds, the email worker polls every
 15 seconds and stores retry deadlines, and the AI recovery suite verifies a
 four-attempt cap. Detection latency also includes scheduler and retry delays.
 
-The project tracker names the platform/security agent role for A06. A named
-operational owner, backup contact, acknowledged escalation destination and
-approved service objectives are still required for final acceptance. Owner
-001 approves reopening/cutover where the existing runbook requires it; this
-document does not appoint a professional operator or record their acceptance.
+The owner selected the platform/security agent for technical monitoring and
+escalation to platform director 001 through GitHub in the current conversation.
+The repository owner account is sultanasiri001-sys. This records the technical
+assignment; it does not appoint a professional marine operator. Approved
+provider-specific service objectives, response deadlines and applicable
+operational acceptance remain open. Owner 001 approves reopening/cutover
+where the existing runbook requires it.
+
+## Executed synthetic alert-route receipt
+
+PR #593 passed all 10 discovered workflows on head
+17f092c7fe5fa30a5f1a80f743b86569dfffe430 and merged as
+6c59e5933a6609d3609b1b6ea826e20c5df9710c. Its inventory entry and
+pinned digest were updated while preserving the existing 28 required release
+workflow rules.
+
+Manual run [43419947841](https://github.com/sultanasiri001-sys/hydroland/actions/runs/43419947841),
+job 131868719989, passed at 2026-11-13 11:54:22 UTC. It created
+[issue #594](https://github.com/sultanasiri001-sys/hydroland/issues/594), assigned
+it to sultanasiri001-sys, read back six SIMULATED_UNAVAILABLE markers, read
+back six SIMULATED_RECOVERED markers, and verified the same issue closed.
+The six markers cover storage, weather, email, payments, AI and database.
+The ten contract cases include refusal outside explicit manual context,
+wrong issue identity, failed delivery, recovery readback and reuse on rerun.
+The receipt is retained in Actions artifact 14034600279.
+
+This is a real GitHub write/readback/closure exercise with simulated provider
+states. It is not automatic production provider detection, a real provider
+outage, or human acknowledgement. Existing uptime monitoring does not yet
+connect failures from every provider adapter to this route. No production
+credential, permission, configuration, paid resource or real transaction was
+changed by this exercise.
+
+A03 and A04 are closed within their accepted scopes in tracker version 67.
+A03 accepts RPO <= 15 minutes and RTO <= 60 minutes with historical provider
+PITR plus current restoration on the existing recovery instance. A fresh
+provider PITR or production cutover was not performed or accepted by A06.
+A14 and D04 operational/safety applicability remains open where required.
 
 ## Final closure record
 
 A06 remains OPEN until the record identifies every applicable critical provider,
 its accepted SLO, working alert route and responsible operator, and attaches a
 dated outage/recovery receipt plus review. Record whether each receipt is an
-isolated fixture, provider sandbox or production exercise. Link A03/A04/A14/D04
+isolated fixture, provider sandbox or production exercise. Retain the accepted A03/A04 evidence and link the remaining A14/D04
 acceptances where applicable. Keep unselected external integrations blocked.
 A passed software test, a deployment or an application heartbeat cannot fill
 an unperformed operational acceptance.
