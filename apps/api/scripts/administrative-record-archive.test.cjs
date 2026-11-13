@@ -11,7 +11,7 @@ function fixture({ status = 'REGISTERED', archiveOnTransaction = false, lockFail
     organizationMember: { findFirst: async () => ({ role: 'ADMIN' }) },
     roleAssignment: { findMany: async () => [] },
     orgUnit: { findUniqueOrThrow: async () => ({ organizationId: 'org', active: true }) },
-    administrativeRecord: { findUniqueOrThrow: async () => ({ ...record }) },
+    administrativeRecord: { findUniqueOrThrow: async () => ({ ...record }), findUnique: async () => ({ managedDocumentId: null }) },
     administrativeRouting: { findUniqueOrThrow: async () => ({ ...routing }) },
     $transaction: async work => {
       if (archiveOnTransaction) currentStatus = 'ARCHIVED';
