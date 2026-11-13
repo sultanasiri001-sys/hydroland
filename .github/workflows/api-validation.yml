@@ -99,6 +99,10 @@ jobs:
       - run: npm run validate:document-pdf-arabic -w @hydroland/api
       - run: npm run validate:auth-session -w @hydroland/api
       - run: npm run validate:protected-routes-rbac -w @hydroland/api
+      - name: Literal controller route signature uniqueness
+        run: |
+          node --test apps/api/scripts/route-uniqueness.test.mjs
+          node apps/api/scripts/route-uniqueness.mjs
       - name: Validate messaging runtime boundaries
         run: node apps/api/scripts/messaging-validation.mjs
       - run: npm run validate:phase10 -w @hydroland/api
