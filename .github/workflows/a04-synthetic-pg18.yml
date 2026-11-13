@@ -1,0 +1,42 @@
+name: A04 synthetic PG18 archive acceptance
+on:
+  pull_request:
+    paths:
+      - 'scripts/a04-synthetic-pg18/**'
+      - '.github/workflows/a04-synthetic-pg18.yml'
+permissions:
+  contents: read
+concurrency:
+  group: a04-synthetic-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  synthetic-archive:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Mocked unit tests (not real restoration)
+        working-directory: scripts/a04-synthetic-pg18
+        run: python3 -m unittest -v test_acceptance.py
+      - name: Build disposable official PG18 test image
+        run: |
+          docker pull postgres:18-bookworm
+          docker image inspect postgres:18-bookworm --format '{{json .RepoDigests}}'
+          docker build --pull=false -t a04-synthetic-pg18 scripts/a04-synthetic-pg18
+      - name: Actual isolated synthetic archive round trip
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="a04-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          trap 'docker rm -fv "$name" >/dev/null 2>&1 || true' EXIT
+          docker run --name "$name" --network none --user postgres \
+            --cap-drop ALL --security-opt no-new-privileges --pids-limit 128 \
+            --memory 512m --cpus 2 --read-only --tmpfs /tmp:rw,nosuid,nodev,size=256m \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/scripts/a04-synthetic-pg18,target=/tests,readonly" \
+            a04-synthetic-pg18 /tests/acceptance.py --execute-approved-synthetic
+      - name: Ensure ephemeral container removed
+        if: always()
+        run: docker rm -fv "a04-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >/dev/null 2>&1 || true
