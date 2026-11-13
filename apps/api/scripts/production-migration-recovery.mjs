@@ -436,6 +436,27 @@ async function recoverA09Correspondence() {
     ['prisma', 'db', 'execute', '--file', 'scripts/a09-correspondence-recovery.sql'],
     { stdio: 'inherit' },
   );
+
+  for (const [sourceTable, sourceColumn, targetTable, targetColumn] of references) {
+    if (await columnType(sourceTable, sourceColumn) !== await columnType(targetTable, targetColumn)) {
+      throw new Error('A09 recovery did not align ' + sourceTable + '.' + sourceColumn + ' with ' + targetTable + '.' + targetColumn);
+    }
+  }
+
+  const constraintCount = await prisma.$queryRawUnsafe(
+    "SELECT COUNT(*)::int AS count FROM pg_constraint WHERE conname IN ('AdministrativeRecord_managedDocumentId_fkey','AdministrativeRouting_repliedByAccountId_fkey','AdministrativeRouting_deliveredByAccountId_fkey','AdministrativeRecord_managed_document_snapshot_check','AdministrativeRouting_reply_snapshot_check','AdministrativeRouting_delivery_snapshot_check')",
+  );
+  if (constraintCount[0]?.count !== 6) {
+    throw new Error('A09 recovery verification failed: required constraints are incomplete');
+  }
+
+  const indexCount = await prisma.$queryRawUnsafe(
+    "SELECT COUNT(*)::int AS count FROM pg_indexes WHERE schemaname='public' AND indexname IN ('AdministrativeRecord_managedDocumentId_key','AdministrativeRecord_organizationId_status_updatedAt_idx','AdministrativeRouting_organizationId_recordId_deliveredAt_idx')",
+  );
+  if (indexCount[0]?.count !== 3) {
+    throw new Error('A09 recovery verification failed: required indexes are incomplete');
+  }
+
   markApplied(A09);
   console.log('[migration-recovery] A09 correspondence schema repaired and failed migration marked applied');
 }
