@@ -46,7 +46,7 @@ try {
       const scopedEnv = { ...process.env, DATABASE_URL: scopedUrl.toString() };
       execFileSync(
         'npx',
-        ['prisma', 'db', 'execute', '--file', scriptPath],
+        ['prisma', 'db', 'execute', '--schema', 'prisma/schema.prisma', '--file', scriptPath],
         { cwd: apiDirectory, env: scopedEnv, stdio: 'inherit' },
       );
 
