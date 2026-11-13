@@ -30,6 +30,8 @@ jobs:
           node-version: 22
       - name: Agency training standard core contracts (synthetic only)
         run: node --experimental-strip-types --test apps/api/scripts/training-standard-core.test.mjs
+      - name: A06 provider monitoring and OIDC contracts
+        run: node --experimental-strip-types --test apps/api/scripts/a06-github-actions-oidc.test.mjs scripts/a06-provider-watch.test.mjs
       - run: npm ci --workspace=@hydroland/api --workspace=@hydroland/web --include-workspace-root=true
       - name: Verify API correctness lint toolchain and source
         run: |

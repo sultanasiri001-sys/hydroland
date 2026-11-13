@@ -47,15 +47,17 @@ export class StormglassWeatherService {
     try {
       response = await fetch(url, { headers: { Authorization: apiKey, Accept:'application/json' }, signal });
     } catch {
+      await this.integrations.recordProviderSignal('WEATHER_MARINE','PROVIDER_FAILURE');
       throw new ServiceUnavailableException('Stormglass weather request failed.');
     }
     if (!response.ok) {
+      await this.integrations.recordProviderSignal('WEATHER_MARINE','PROVIDER_FAILURE');
       if(response.status===429)throw new ServiceUnavailableException('Stormglass request quota is temporarily exhausted.');
       if(response.status===401||response.status===403)throw new ServiceUnavailableException('Stormglass authentication failed.');
       throw new ServiceUnavailableException(`Stormglass weather request failed (${response.status}).`);
     }
     let payload:StormglassResponse;
-    try{payload = await response.json() as StormglassResponse;}catch{throw new ServiceUnavailableException('Stormglass returned an invalid response.');}
+    try{payload = await response.json() as StormglassResponse;}catch{await this.integrations.recordProviderSignal('WEATHER_MARINE','PROVIDER_FAILURE');throw new ServiceUnavailableException('Stormglass returned an invalid response.');}
     const hours=payload&&Array.isArray(payload.hours)?payload.hours:[];
     const hour=hours.reduce<StormglassHour|undefined>((best,current)=>{
       if(!current||typeof current!=='object'||Array.isArray(current))return best;
@@ -65,7 +67,7 @@ export class StormglassWeatherService {
       const bestTime=best.time?new Date(best.time).getTime():Number.NaN;
       return !Number.isFinite(bestTime)||Math.abs(currentTime-target.getTime())<Math.abs(bestTime-target.getTime())?current:best;
     },undefined);
-    if (!hour) throw new ServiceUnavailableException('Stormglass returned no marine forecast for the trip time.');
+    if (!hour){await this.integrations.recordProviderSignal('WEATHER_MARINE','PROVIDER_FAILURE');throw new ServiceUnavailableException('Stormglass returned no marine forecast for the trip time.');}
     const snapshot:WeatherSnapshot={
       provider: 'STORMGLASS',
       source:'sg',
@@ -85,7 +87,8 @@ export class StormglassWeatherService {
       decision: 'REVIEW_REQUIRED',
       reason: 'Marine forecast supplied by Stormglass source sg for the trip window; operational approval remains human-reviewed.',
     };
-    if(!hasWeatherMeasurements(snapshot))throw new ServiceUnavailableException('Stormglass returned no valid marine measurements for the trip time.');
+    if(!hasWeatherMeasurements(snapshot)){await this.integrations.recordProviderSignal('WEATHER_MARINE','PROVIDER_FAILURE');throw new ServiceUnavailableException('Stormglass returned no valid marine measurements for the trip time.');}
+    await this.integrations.recordProviderSignal('WEATHER_MARINE','SUCCESS');
     return snapshot;
   }
 }
