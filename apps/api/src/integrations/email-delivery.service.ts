@@ -53,17 +53,20 @@ export class EmailDeliveryService {
     try{
       response=await fetch(endpoint,{method:'POST',headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json','Idempotency-Key':`hydroland-auth/${input.notificationId}`,Accept:'application/json'},body:JSON.stringify({from,to:[input.to],subject,text,html}),signal:AbortSignal.timeout(8_000)});
     }catch{
+      await this.integrations.recordProviderSignal('EMAIL','PROVIDER_FAILURE');
       await this.audit.record({action:'integration.email.delivery_failed',resource:'Notification',resourceId:input.notificationId,metadata:{provider:'RESEND',purpose:input.purpose,reason:'NETWORK'}});
       throw new ServiceUnavailableException('Email delivery request failed.');
     }
     let payload:ResendResponse={};
     try{payload=await response.json() as ResendResponse;}catch{payload={};}
     if(!response.ok){
+      if(response.status===401||response.status===403||response.status===408||response.status===429||response.status>=500)await this.integrations.recordProviderSignal('EMAIL','PROVIDER_FAILURE');
       await this.audit.record({action:'integration.email.delivery_failed',resource:'Notification',resourceId:input.notificationId,metadata:{provider:'RESEND',purpose:input.purpose,status:response.status}});
       throw new ServiceUnavailableException(`Email delivery provider rejected the request (${response.status}).`);
     }
     const messageId=typeof payload.id==='string'&&payload.id.trim()?payload.id.trim():'';
-    if(!messageId)throw new ServiceUnavailableException('Email delivery provider returned an invalid response.');
+    if(!messageId){await this.integrations.recordProviderSignal('EMAIL','PROVIDER_FAILURE');throw new ServiceUnavailableException('Email delivery provider returned an invalid response.');}
+    await this.integrations.recordProviderSignal('EMAIL','SUCCESS');
     await this.audit.record({action:'integration.email.delivered',resource:'Notification',resourceId:input.notificationId,metadata:{provider:'RESEND',purpose:input.purpose,messageId}});
     return{provider:'RESEND',messageId};
   }
@@ -79,15 +82,16 @@ export class EmailDeliveryService {
     const localTest=process.env.NODE_ENV==='test'&&endpoint.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(endpoint.hostname);
     if(endpoint.username||endpoint.password||endpoint.origin!=='https://api.resend.com'&&!localTest)throw new ReportEmailError('PERMANENT');
     let response:Response;
-    try{response=await fetch(endpoint,{method:'POST',redirect:'error',headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json','Idempotency-Key':`hydroland-report/${input.notificationId}`,Accept:'application/json'},body:JSON.stringify({from,to:[input.to],subject:'تقرير إدارات هيدرولاند | عبدالله',text:input.text,html}),signal:AbortSignal.timeout(8_000)});}catch{throw new ReportEmailError('UNCERTAIN');}
-    if(!response.ok){await response.body?.cancel();throw new ReportEmailError(response.status===429||response.status>=500?'RETRYABLE':'PERMANENT');}
+    try{response=await fetch(endpoint,{method:'POST',redirect:'error',headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json','Idempotency-Key':`hydroland-report/${input.notificationId}`,Accept:'application/json'},body:JSON.stringify({from,to:[input.to],subject:'تقرير إدارات هيدرولاند | عبدالله',text:input.text,html}),signal:AbortSignal.timeout(8_000)});}catch{await this.integrations.recordProviderSignal('EMAIL','PROVIDER_FAILURE');throw new ReportEmailError('UNCERTAIN');}
+    if(!response.ok){if(response.status===401||response.status===403||response.status===408||response.status===429||response.status>=500)await this.integrations.recordProviderSignal('EMAIL','PROVIDER_FAILURE');await response.body?.cancel();throw new ReportEmailError(response.status===429||response.status>=500?'RETRYABLE':'PERMANENT');}
     try{
       const reader=response.body?.getReader();if(!reader)throw new Error();const parts:Uint8Array[]=[];let size=0;
       while(true){const part=await reader.read();if(part.done)break;size+=part.value.length;if(size>16*1024){await reader.cancel();throw new Error();}parts.push(part.value);}
       const data=JSON.parse(Buffer.concat(parts).toString('utf8')) as ResendResponse;
       if(typeof data.id!=='string'||!data.id.trim()||data.id.length>200)throw new Error();
+      await this.integrations.recordProviderSignal('EMAIL','SUCCESS');
       return{provider:'RESEND',messageId:data.id.trim()};
-    }catch{throw new ReportEmailError('UNCERTAIN');}
+    }catch{await this.integrations.recordProviderSignal('EMAIL','PROVIDER_FAILURE');throw new ReportEmailError('UNCERTAIN');}
   }
 
   private publicOrigin(){
