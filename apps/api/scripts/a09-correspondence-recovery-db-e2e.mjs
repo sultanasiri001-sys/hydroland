@@ -35,7 +35,7 @@ try {
       await db.$executeRawUnsafe(
         'CREATE TABLE "AdministrativeRecord" (' +
           '"id" TEXT PRIMARY KEY, "organizationId" TEXT NOT NULL, "status" TEXT NOT NULL, ' +
-          '"updatedAt" TIMESTAMP(3) NOT NULL, "managedDocumentId" TEXT, ' +
+          '"updatedAt" TIMESTAMP(3) NOT NULL, ' +
           '"managedDocumentVersion" INTEGER, "managedDocumentContentHash" TEXT)',
       );
       await db.$executeRawUnsafe(

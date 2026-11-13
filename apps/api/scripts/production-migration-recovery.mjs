@@ -383,7 +383,6 @@ async function recoverA09Correspondence() {
 
   const required = [
     ['AdministrativeRecord', 'id'],
-    ['AdministrativeRecord', 'managedDocumentId'],
     ['AdministrativeRecord', 'managedDocumentVersion'],
     ['AdministrativeRecord', 'managedDocumentContentHash'],
     ['AdministrativeRouting', 'id'],
