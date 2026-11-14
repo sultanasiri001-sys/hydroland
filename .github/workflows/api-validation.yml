@@ -362,6 +362,12 @@ jobs:
             exit 1
           fi
 
+          if ! A10_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 A10_API_PID=$API_PID node apps/api/scripts/a10-ci-load-e2e.mjs; then
+            echo "A10 bounded CI load check failed; API log follows"
+            cat /tmp/hydroland-api.log
+            exit 1
+          fi
+
       - name: Phase 4 append-only audit database boundary
         run: node apps/api/scripts/audit-append-only-validation.mjs
 

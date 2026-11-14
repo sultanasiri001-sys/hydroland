@@ -16,7 +16,7 @@ const tokenFor=async id=>{
   return `${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`;
 };
 const auth=t=>({authorization:`Bearer ${t}`});
-let trip,userA,userB,admin,people=[];
+let trip,routeTrip,userA,userB,admin,people=[];
 try{
   const mk=async(label)=>{const p=await db.person.create({data:{firstName:'RBAC',lastName:label}});people.push(p);return db.account.create({data:{personId:p.id,email:`rbac-${label.toLowerCase()}-${suffix}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}})};
   userA=await mk('UserA'); userB=await mk('UserB'); admin=await mk('Admin');
@@ -30,6 +30,21 @@ try{
   r=await fetch(base+'/admin/overview',{headers:auth(tadmin)}); if(r.status!==403)throw new Error('Same-session revoked ADMIN expected 403, got '+r.status);
   await db.roleAssignment.update({where:{accountId_role:{accountId:admin.id,role:'ADMIN'}},data:{status:'ACTIVE'}});
   r=await fetch(base+'/admin/overview',{headers:auth(tadmin)}); if(!r.ok)throw new Error('Reactivated ADMIN route failed: '+r.status+' '+await r.text());
+  r=await fetch(base+'/trips/equipment-rentals/mine',{headers:auth(ta)}); const mine=await r.json();
+  if(!r.ok||!Array.isArray(mine))throw new Error('Static equipment-rentals/mine route was not selected before the guarded :id route: '+r.status+' '+JSON.stringify(mine));
+  r=await fetch(base+'/trips/admin/equipment/bookings',{headers:auth(tadmin)}); let routeBody=await r.json();
+  if(r.status!==404||routeBody.message!=='Equipment resource not found.')throw new Error('Equipment resource route precedence mismatch: '+r.status+' '+JSON.stringify(routeBody));
+  r=await fetch(base+'/trips/admin/inventory-stocktakes/bookings',{headers:auth(tadmin)}); routeBody=await r.json();
+  if(r.status!==404||routeBody.message!=='Stocktake session not found.')throw new Error('Stocktake route precedence mismatch: '+r.status+' '+JSON.stringify(routeBody));
+  routeTrip=await db.trip.create({data:{id:'bookings',title:'A10 route precedence '+suffix,type:'BOAT_DIVE',startsAt:new Date(Date.now()+86400000),endsAt:new Date(Date.now()+90000000),capacity:2,status:'OPEN'}});
+  r=await fetch(base+'/trips/admin/compliance/bookings',{headers:auth(tadmin)}); routeBody=await r.json();
+  if(!r.ok||Array.isArray(routeBody)||!('record' in routeBody)||!('policyReview' in routeBody))throw new Error('Trip compliance route precedence mismatch: '+r.status+' '+JSON.stringify(routeBody));
+  for(const suffixPath of ['template-setup','template-completion']){
+    r=await fetch(base+'/documents/organizations/revisions/'+suffixPath,{headers:auth(tadmin)}); routeBody=await r.json();
+    if(r.status!==403||routeBody.message!=='Active organization membership is required.')throw new Error('Document '+suffixPath+' route precedence mismatch: '+r.status+' '+JSON.stringify(routeBody));
+  }
+  r=await fetch(base+'/trip-intelligence/translations/plans/approve',{method:'POST',headers:auth(tadmin)}); routeBody=await r.json();
+  if(r.status!==404||routeBody.message!=='Translation not found.')throw new Error('Trip translation approval route precedence mismatch: '+r.status+' '+JSON.stringify(routeBody));
 
   trip=await db.trip.create({data:{title:'RBAC ownership E2E '+suffix,type:'BOAT_DIVE',startsAt:new Date(Date.now()+86400000),endsAt:new Date(Date.now()+90000000),capacity:4,status:'OPEN'}});
   const booking=await db.booking.create({data:{tripId:trip.id,accountId:userA.id,seats:1,status:'PENDING'}});
@@ -47,6 +62,7 @@ try{
   const cancelled=await db.booking.findUniqueOrThrow({where:{id:booking.id}}); if(cancelled.status!=='CANCELLED')throw new Error('Owner cancellation not persisted');
   console.log('Runtime RBAC/ownership E2E passed: admin isolation, same-session role revocation/reactivation, cross-user read/update/cancel denial, owner success.');
 } finally {
+  if(routeTrip)await db.trip.delete({where:{id:routeTrip.id}}).catch(()=>{});
   if(trip){await db.auditEvent.deleteMany({where:{resourceId:{in:(await db.bookingParticipant.findMany({where:{booking:{tripId:trip.id}},select:{id:true}})).map(x=>x.id)}}});await db.bookingParticipant.deleteMany({where:{booking:{tripId:trip.id}}});await db.auditEvent.deleteMany({where:{resource:'Booking',metadata:{path:['tripId'],equals:trip.id}}}).catch(()=>{});await db.booking.deleteMany({where:{tripId:trip.id}});await db.trip.delete({where:{id:trip.id}}).catch(()=>{});}
   for(const a of [admin,userB,userA].filter(Boolean)){await db.roleAssignment.deleteMany({where:{accountId:a.id}});await db.session.deleteMany({where:{accountId:a.id}});await db.account.delete({where:{id:a.id}}).catch(()=>{});}
   for(const p of people.reverse())await db.person.delete({where:{id:p.id}}).catch(()=>{});
