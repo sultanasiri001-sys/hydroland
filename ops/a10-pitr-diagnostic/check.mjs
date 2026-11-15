@@ -8,13 +8,13 @@ if (!process.env.DATABASE_URL || !expectedDatabase || !expectedMigration) {
 
 const client = new PrismaClient();
 const requiredColumns = [
-  ['AdministrativeRecord', 'managedDocumentId', 'text'],
+  ['AdministrativeRecord', 'managedDocumentId', 'uuid'],
   ['AdministrativeRecord', 'managedDocumentVersion', 'integer'],
   ['AdministrativeRecord', 'managedDocumentContentHash', 'text'],
   ['AdministrativeRouting', 'replyText', 'text'],
-  ['AdministrativeRouting', 'repliedByAccountId', 'text'],
+  ['AdministrativeRouting', 'repliedByAccountId', 'uuid'],
   ['AdministrativeRouting', 'repliedAt', 'timestamp without time zone'],
-  ['AdministrativeRouting', 'deliveredByAccountId', 'text'],
+  ['AdministrativeRouting', 'deliveredByAccountId', 'uuid'],
   ['AdministrativeRouting', 'deliveredAt', 'timestamp without time zone'],
 ];
 const requiredConstraints = [
