@@ -101,9 +101,9 @@ try {
       ? null
       : !migrationLog.trim()
         ? 'empty'
-        : /column[\\s\\S]{0,160}already exists/i.test(migrationLog)
+        : /column[\s\S]{0,160}already exists/i.test(migrationLog)
           ? 'duplicate_column'
-          : /foreign key[\\s\\S]{0,160}(type|incompatible)|incompatible[\\s\\S]{0,160}type/i.test(migrationLog)
+          : /foreign key[\s\S]{0,160}(type|incompatible)|incompatible[\s\S]{0,160}type/i.test(migrationLog)
             ? 'foreign_key_type_mismatch'
             : /permission denied/i.test(migrationLog)
               ? 'permission_denied'
