@@ -52,6 +52,12 @@ try {
         "(table_name = 'AdministrativeRouting' AND column_name IN " +
         "('replyText','repliedByAccountId','repliedAt','deliveredByAccountId','deliveredAt')))",
     );
+    const referencedColumns = await tx.$queryRawUnsafe(
+      "SELECT table_name, column_name, data_type FROM information_schema.columns " +
+        "WHERE table_schema = 'public' AND " +
+        "((table_name = 'ManagedDocument' AND column_name = 'id') OR " +
+        "(table_name = 'Account' AND column_name = 'id'))",
+    );
     const constraints = await tx.$queryRawUnsafe(
       "SELECT conname, convalidated FROM pg_constraint " +
         "WHERE conrelid IN ('public.\"AdministrativeRecord\"'::regclass, " +
@@ -137,6 +143,10 @@ try {
             failure_category: migrationFailureCategory }
         : { row_found: false },
       column_mismatches: columnMismatches,
+      referenced_column_types: referencedColumns.map((row) => ({
+        column: row.table_name + '.' + row.column_name,
+        actual: row.data_type,
+      })),
       observed_counts: {
         a09_columns: columns.length,
         a09_constraints: constraints.length,
