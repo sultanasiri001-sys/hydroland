@@ -4,7 +4,7 @@ services:
     runtime: node
     region: oregon
     plan: 0.5c-512mb
-    schedule: "0 0 1 1 *"
+    schedule: "* * * * *"
     repo: https://github.com/sultanasiri001-sys/hydroland
     branch: codex/a10-pitr-readonly-20261115
     buildCommand: npm ci && npx prisma generate --schema apps/api/prisma/schema.prisma
