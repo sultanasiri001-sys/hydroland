@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import fs from 'node:fs';
 import { PrismaClient } from '@prisma/client';
 
 const expectedDatabase = process.env.EXPECTED_DATABASE;
@@ -38,10 +40,10 @@ try {
     const [database] = await tx.$queryRawUnsafe(
       "SELECT current_database() AS database_name, current_setting('transaction_read_only') AS read_only",
     );
-    const [migration] = await tx.$queryRawUnsafe(
-      'SELECT (finished_at IS NOT NULL) AS finished, ' +
+    const migrations = await tx.$queryRawUnsafe(
+      'SELECT checksum, (finished_at IS NOT NULL) AS finished, ' +
         '(rolled_back_at IS NOT NULL) AS rolled_back, applied_steps_count, logs ' +
-        'FROM "_prisma_migrations" WHERE migration_name = $1 LIMIT 1',
+        'FROM "_prisma_migrations" WHERE migration_name = $1 ORDER BY started_at ASC',
       expectedMigration,
     );
     const columns = await tx.$queryRawUnsafe(
@@ -102,8 +104,8 @@ try {
         expected,
         actual: columnMap.get(table + '.' + column) ?? null,
       }));
-    const migrationLog = typeof migration?.logs === 'string' ? migration.logs : '';
-    const migrationFailureCategory = !migration
+    const migrationLog = migrations.find((row) => typeof row.logs === 'string' && row.logs.trim())?.logs ?? '';
+    const migrationFailureCategory = migrations.length === 0
       ? null
       : !migrationLog.trim()
         ? 'empty'
@@ -114,7 +116,14 @@ try {
             : /permission denied/i.test(migrationLog)
               ? 'permission_denied'
               : 'other';
-    const migrationApplied = migration?.finished === true && migration?.rolled_back === false;
+    const expectedChecksum = createHash('sha256')
+      .update(fs.readFileSync('apps/api/prisma/migrations/' + expectedMigration + '/migration.sql'))
+      .digest('hex');
+    const completedMigrations = migrations.filter((row) => row.finished === true && row.rolled_back === false);
+    const unresolvedMigrations = migrations.filter((row) => row.finished === false && row.rolled_back === false);
+    const migrationChecksumMatches = completedMigrations.length > 0 &&
+      completedMigrations.every((row) => row.checksum === expectedChecksum);
+    const migrationApplied = migrationChecksumMatches && unresolvedMigrations.length === 0;
     const constraintsValid = constraints.length === requiredConstraints.length &&
       constraints.every((row) => row.convalidated);
     const indexesComplete = indexes.length === requiredIndexes.length &&
@@ -127,6 +136,7 @@ try {
       connected_to_expected_pitr_database: database.database_name === expectedDatabase,
       transaction_read_only_enforced: database.read_only === 'on',
       a09_migration_applied: migrationApplied,
+      a09_migration_checksum_matches: migrationChecksumMatches,
       a09_columns_complete_and_typed: columnMismatches.length === 0,
       a09_constraints_present_and_validated: constraintsValid,
       a09_indexes_present: indexesComplete,
@@ -137,10 +147,16 @@ try {
       database_name: database.database_name,
       inspected_at_utc: new Date().toISOString(),
       checks,
-      migration_ledger: migration
-        ? { row_found: true, finished: migration.finished, rolled_back: migration.rolled_back,
-            applied_steps_count: migration.applied_steps_count,
-            failure_category: migrationFailureCategory }
+      migration_ledger: migrations.length > 0
+        ? {
+            row_count: migrations.length,
+            applied_rows: completedMigrations.length,
+            rolled_back_rows: migrations.filter((row) => row.rolled_back === true).length,
+            unresolved_rows: unresolvedMigrations.length,
+            expected_checksum_matches: migrationChecksumMatches,
+            applied_steps_counts: migrations.map((row) => Number(row.applied_steps_count)),
+            failure_category: migrationFailureCategory,
+          }
         : { row_found: false },
       column_mismatches: columnMismatches,
       referenced_column_types: referencedColumns.map((row) => ({
