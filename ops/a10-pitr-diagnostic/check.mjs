@@ -154,6 +154,8 @@ try {
             rolled_back_rows: migrations.filter((row) => row.rolled_back === true).length,
             unresolved_rows: unresolvedMigrations.length,
             expected_checksum_matches: migrationChecksumMatches,
+            expected_checksum_prefix: expectedChecksum.slice(0, 12),
+            recorded_checksum_prefixes: migrations.map((row) => String(row.checksum).slice(0, 12)),
             applied_steps_counts: migrations.map((row) => Number(row.applied_steps_count)),
             failure_category: migrationFailureCategory,
           }
