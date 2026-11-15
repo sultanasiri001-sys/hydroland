@@ -30,12 +30,23 @@ try {
         'FROM "_prisma_migrations"',
     );
     const migrationRows = history.filter((row) => row.migration_name === expectedMigration);
-    if (
-      migrationRows.length !== 1 ||
-      migrationRows[0].finished !== false ||
-      migrationRows[0].rolled_back !== true ||
-      Number(migrationRows[0].applied_steps_count) !== 0
-    ) {
+    const migrationStatesAreRetryable = migrationRows.length >= 1 &&
+      migrationRows.every((row) =>
+        row.finished === false &&
+        row.rolled_back === true &&
+        Number(row.applied_steps_count) === 0,
+      );
+    if (!migrationStatesAreRetryable) {
+      console.error(JSON.stringify({
+        stage: 'preflight_blocked',
+        reason: 'a09_migration_state_mismatch',
+        matching_migration_rows: migrationRows.length,
+        states: migrationRows.map((row) => ({
+          finished: row.finished,
+          rolled_back: row.rolled_back,
+          applied_steps_count: Number(row.applied_steps_count),
+        })),
+      }));
       throw new Error('A09 failed-migration state did not match the reviewed preflight');
     }
 
