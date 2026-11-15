@@ -39,7 +39,8 @@ try {
       "SELECT current_database() AS database_name, current_setting('transaction_read_only') AS read_only",
     );
     const [migration] = await tx.$queryRawUnsafe(
-      'SELECT (finished_at IS NOT NULL AND rolled_back_at IS NULL) AS applied ' +
+      'SELECT (finished_at IS NOT NULL) AS finished, ' +
+        '(rolled_back_at IS NOT NULL) AS rolled_back, applied_steps_count ' +
         'FROM "_prisma_migrations" WHERE migration_name = $1 LIMIT 1',
       expectedMigration,
     );
@@ -88,9 +89,14 @@ try {
       row.table_name + '.' + row.column_name,
       row.data_type,
     ]));
-    const columnsComplete = requiredColumns.every(
-      ([table, column, type]) => columnMap.get(table + '.' + column) === type,
-    );
+    const columnMismatches = requiredColumns
+      .filter(([table, column, type]) => columnMap.get(table + '.' + column) !== type)
+      .map(([table, column, expected]) => ({
+        column: table + '.' + column,
+        expected,
+        actual: columnMap.get(table + '.' + column) ?? null,
+      }));
+    const migrationApplied = migration?.finished === true && migration?.rolled_back === false;
     const constraintsValid = constraints.length === requiredConstraints.length &&
       constraints.every((row) => row.convalidated);
     const indexesComplete = indexes.length === requiredIndexes.length &&
@@ -102,8 +108,8 @@ try {
     const checks = {
       connected_to_expected_pitr_database: database.database_name === expectedDatabase,
       transaction_read_only_enforced: database.read_only === 'on',
-      a09_migration_applied: migration?.applied === true,
-      a09_columns_complete_and_typed: columnsComplete,
+      a09_migration_applied: migrationApplied,
+      a09_columns_complete_and_typed: columnMismatches.length === 0,
       a09_constraints_present_and_validated: constraintsValid,
       a09_indexes_present: indexesComplete,
       a09_snapshot_data_integrity: snapshotsValid,
@@ -113,6 +119,11 @@ try {
       database_name: database.database_name,
       inspected_at_utc: new Date().toISOString(),
       checks,
+      migration_ledger: migration
+        ? { row_found: true, finished: migration.finished, rolled_back: migration.rolled_back,
+            applied_steps_count: migration.applied_steps_count }
+        : { row_found: false },
+      column_mismatches: columnMismatches,
       observed_counts: {
         a09_columns: columns.length,
         a09_constraints: constraints.length,
