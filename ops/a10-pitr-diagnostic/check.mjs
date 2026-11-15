@@ -40,7 +40,7 @@ try {
     );
     const [migration] = await tx.$queryRawUnsafe(
       'SELECT (finished_at IS NOT NULL) AS finished, ' +
-        '(rolled_back_at IS NOT NULL) AS rolled_back, applied_steps_count ' +
+        '(rolled_back_at IS NOT NULL) AS rolled_back, applied_steps_count, logs ' +
         'FROM "_prisma_migrations" WHERE migration_name = $1 LIMIT 1',
       expectedMigration,
     );
@@ -96,6 +96,18 @@ try {
         expected,
         actual: columnMap.get(table + '.' + column) ?? null,
       }));
+    const migrationLog = typeof migration?.logs === 'string' ? migration.logs : '';
+    const migrationFailureCategory = !migration
+      ? null
+      : !migrationLog.trim()
+        ? 'empty'
+        : /column[\\s\\S]{0,160}already exists/i.test(migrationLog)
+          ? 'duplicate_column'
+          : /foreign key[\\s\\S]{0,160}(type|incompatible)|incompatible[\\s\\S]{0,160}type/i.test(migrationLog)
+            ? 'foreign_key_type_mismatch'
+            : /permission denied/i.test(migrationLog)
+              ? 'permission_denied'
+              : 'other';
     const migrationApplied = migration?.finished === true && migration?.rolled_back === false;
     const constraintsValid = constraints.length === requiredConstraints.length &&
       constraints.every((row) => row.convalidated);
@@ -121,7 +133,8 @@ try {
       checks,
       migration_ledger: migration
         ? { row_found: true, finished: migration.finished, rolled_back: migration.rolled_back,
-            applied_steps_count: migration.applied_steps_count }
+            applied_steps_count: migration.applied_steps_count,
+            failure_category: migrationFailureCategory }
         : { row_found: false },
       column_mismatches: columnMismatches,
       observed_counts: {
