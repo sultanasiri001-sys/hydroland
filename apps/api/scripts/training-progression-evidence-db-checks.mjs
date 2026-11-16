@@ -33,21 +33,21 @@ const attendance = (instructor, student, at) => ({
   startedByAccountId: instructor.id, completedByAccountId: instructor.id
 });
 
-function profile(cap = 2) {
+function profile(cap = 2, timeZone = 'Asia/Riyadh') {
   return {
     agencyCode: 'TEST_AGENCY', programCode: 'SYNTHETIC_A14_ONLY', level: 'NO_OPERATIONAL_AUTHORITY', edition: 'SYNTHETIC_V2',
     sources: [{ authority: 'AGENCY', reference: 'SYNTHETIC_NOT_AN_AGENCY_STANDARD', edition: 'TEST_ONLY', locator: 'isolated-ci-fixture' }],
     requirements: { minimumAge: 0, minimumCompletedSessions: 2, minimumOpenWaterDives: 2, minimumOpenWaterMinutes: 0,
       instructorCredentialTitles: ['SYNTHETIC_INSTRUCTOR'], prerequisites: [], requiredSkillCodes: ['SYNTHETIC_SKILL'], requiredFormCodes: ['TRAINING-DIVE-LOG'],
       supervision: ['POOL', 'CONFINED_WATER', 'OPEN_WATER'].map(environment => ({ environment, minimumAge: 0, maximumAge: 120, studentsPerInstructor: 1, maximumDepthMetres: 20 })) },
-    diveProgression: { schemaVersion: 2, timeZone: 'Asia/Riyadh',
+    diveProgression: { schemaVersion: 2, timeZone,
       qualification: { minimumDepthMetres: 3, minimumPercentAtDepth: 60, depthFractionComparison: 'MORE_THAN', alternatives: [{ metric: 'SUBMERGED_SECONDS', minimum: 960 }, { metric: 'BREATHED_GAS_LITRES', minimum: 1250 }] },
       qualifyingDives: [7, 11].map((maximumDepthMetres, i) => ({ number: i + 1, maximumDepthMetres, requiredSkillCodesBeforeDive: [] })),
       experienceLimits: [], dayLimits: { maximumDives: 3, depthLimits: [], afterConfinedWaterMaximumDives: cap } }
   };
 }
 
-async function fixture(tx, ids, cap = 2, gas = false) {
+async function fixture(tx, ids, cap = 2, gas = false, timeZone = 'Asia/Riyadh') {
   const accounts = [];
   for (const role of ['ADMIN', 'REVIEWER', 'INSTRUCTOR', 'DIVER']) {
     const account = await tx.account.create({ data: { id: randomUUID(), email: `a14-${randomUUID()}@example.invalid`, passwordHash: 'SYNTHETIC_NOT_A_LOGIN', status: 'ACTIVE',
@@ -60,7 +60,7 @@ async function fixture(tx, ids, cap = 2, gas = false) {
   await tx.organizationMember.createMany({ data: [[author, 'OWNER'], [reviewer, 'ADMIN'], [instructor, 'ADMIN']].map(([account, role]) => ({ organizationId: center.id, accountId: account.id, role, status: 'ACTIVE' })) });
   await tx.diverProfile.create({ data: { accountId: student.id, dateOfBirth: new Date('1990-01-01') } });
   await tx.credential.create({ data: { personId: instructor.personId, issuer: 'TEST_AGENCY', title: 'SYNTHETIC_INSTRUCTOR', verificationStatus: 'VERIFIED', issuedAt: new Date('2000-01-01'), expiresAt: new Date('2099-01-01') } });
-  const sourceProfile = profile(cap);
+  const sourceProfile = profile(cap, timeZone);
   const source = await createTrainingStandardDraft(tx, author.id, { profile: sourceProfile, reason: 'Synthetic isolated CI evidence, no operational approval' });
   ids.source = source.id;
   let row = await tx.policyControl.findUniqueOrThrow({ where: { id: source.id } });
@@ -127,7 +127,10 @@ async function snapshot(tx, f) {
   };
 }
 const cases = [];
-const check = (name, mutate, accepted = false, cap = 2) => cases.push({ name, mutate, accepted, cap });
+const utcHour = new Date().getUTCHours() + new Date().getUTCMinutes() / 60;
+const safeOffset = Math.max(-12, Math.min(12, Math.round(12 - utcHour)));
+const safeSyntheticTimeZone = safeOffset === 0 ? 'Etc/GMT' : `Etc/GMT${safeOffset > 0 ? '-' : '+'}${Math.abs(safeOffset)}`;
+const check = (name, mutate, accepted = false, cap = 2, timeZone = 'Asia/Riyadh') => cases.push({ name, mutate, accepted, cap, timeZone });
 check('complete v2 time-depth proof', async () => {}, true);
 check('gas alternative below time threshold', async () => {}, true);
 cases.at(-1).gas = true;
@@ -165,11 +168,11 @@ check('actual compiled session producer OPEN/check-ins/START/COMPLETE', async (t
   // Prisma transaction; no nested/independently committed fixture is needed.
   const scopedDb = { serializable: work => work(tx) };
   const service = new TrainingSessionService(scopedDb, new AuditService(scopedDb), new TrainingAuthorizationService(scopedDb));
-  let clock = Date.UTC(2036, 0, 1, 6, 0, 0);
-  service.now = () => { const value = new Date(clock); clock += 1000; return value; };
+  let clock = Date.now();
+  service.now = () => { const value = new Date(clock); clock += 1; return value; };
   let session = await tx.trainingSession.create({ data: {
     trainingRecordId: f.enrollment.record.id, instructorAccountId: f.instructor.id, status: 'SCHEDULED',
-    startsAt: new Date(Date.UTC(2036, 0, 1, 5, 59, 59)), endsAt: new Date(Date.UTC(2036, 0, 1, 7, 0, 0)),
+    startsAt: new Date(clock - 5000), endsAt: new Date(clock + 3600000),
     evidence: { trainingStandardContext: { environment: 'POOL', plannedMaximumDepthMetres: 2 } }
   } });
   for (const action of ['OPEN', 'INSTRUCTOR_CHECK_IN', 'STUDENT_CHECK_IN', 'START', 'COMPLETE']) {
@@ -184,7 +187,7 @@ check('actual compiled session producer OPEN/check-ins/START/COMPLETE', async (t
   assert.equal(session.evidence.instructorCheckInSource, 'AUTHORIZED_OPERATOR');
   assert.equal(session.evidence.studentCheckInSource, 'AUTHORIZED_OPERATOR');
   assert.equal(await tx.auditEvent.count({ where: { resourceId: session.id, action: 'training.session_action' } }), 5);
-}, true);
+}, true, 2, safeSyntheticTimeZone);
 check('plain organization instructor cannot SIGN', async (tx, f) => {
   const other = await f.documents.createDocument(f.author.id, { organizationId: f.center.id, templateId: f.template.id, department: 'TRAINING', contentHash: 'synthetic-denied-sign', payload: f.payload });
   await f.documents.transition(f.author.id, other.id, 'PENDING_APPROVAL');
@@ -297,7 +300,7 @@ try {
     const ids = { accounts: [], persons: [] };
     try {
       await db.$transaction(async tx => {
-        const f = await fixture(tx, ids, entry.cap, entry.gas);
+        const f = await fixture(tx, ids, entry.cap, entry.gas, entry.timeZone);
         // Every negative begins with a proven-valid fixture, so an unrelated gate
         // cannot make a broken mutation look like regression coverage.
         assert.deepEqual(await assertTrainingStandardCompletion(tx, f.enrollment.id), f.binding);
