@@ -2,13 +2,22 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import { PrismaClient } from '@prisma/client';
 
+const pitrDatabase = 'hydroland_u2vz';
+const a09Migration = '20261113150000_a09_linked_correspondence_workflow';
+const reconciliationMigration = '20261116180000_a09_uuid_reference_reconciliation';
+const expectedA09Checksum = '55277b7f971d4c5dc98131a1a2d8d8aadab76381866437ec0f2fa7f36eefe29f';
+const expectedReconciliationChecksum = '8500df9be272a08b4e8ca33df3e2e8932ad914da6c14e69d79771078bdcd6e8c';
 const expectedDatabase = process.env.EXPECTED_DATABASE;
-const expectedMigration = process.env.EXPECTED_MIGRATION;
-if (!process.env.DATABASE_URL || !expectedDatabase || !expectedMigration) {
-  throw new Error('Required diagnostic configuration is missing');
+
+if (!process.env.DATABASE_URL || expectedDatabase !== pitrDatabase) {
+  throw new Error('Required PITR diagnostic configuration did not match');
 }
 
-const client = new PrismaClient();
+const sha256 = (path) => createHash('sha256').update(fs.readFileSync(path)).digest('hex');
+const localA09Checksum = sha256('apps/api/prisma/migrations/' + a09Migration + '/migration.sql');
+const localReconciliationChecksum = sha256(
+  'apps/api/prisma/migrations/' + reconciliationMigration + '/migration.sql',
+);
 const requiredColumns = [
   ['AdministrativeRecord', 'managedDocumentId', 'uuid'],
   ['AdministrativeRecord', 'managedDocumentVersion', 'integer'],
@@ -33,6 +42,7 @@ const requiredIndexes = [
   'AdministrativeRouting_organizationId_recordId_deliveredAt_idx',
 ];
 
+const client = new PrismaClient();
 try {
   const report = await client.$transaction(async (tx) => {
     await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
@@ -41,10 +51,11 @@ try {
       "SELECT current_database() AS database_name, current_setting('transaction_read_only') AS read_only",
     );
     const migrations = await tx.$queryRawUnsafe(
-      'SELECT checksum, (finished_at IS NOT NULL) AS finished, ' +
-        '(rolled_back_at IS NOT NULL) AS rolled_back, applied_steps_count, logs ' +
-        'FROM "_prisma_migrations" WHERE migration_name = $1 ORDER BY started_at ASC',
-      expectedMigration,
+      'SELECT migration_name, checksum, (finished_at IS NOT NULL) AS finished, ' +
+        '(rolled_back_at IS NOT NULL) AS rolled_back, applied_steps_count ' +
+        'FROM "_prisma_migrations" WHERE migration_name IN ($1, $2) ORDER BY migration_name, started_at',
+      a09Migration,
+      reconciliationMigration,
     );
     const columns = await tx.$queryRawUnsafe(
       "SELECT table_name, column_name, data_type FROM information_schema.columns " +
@@ -104,26 +115,34 @@ try {
         expected,
         actual: columnMap.get(table + '.' + column) ?? null,
       }));
-    const migrationLog = migrations.find((row) => typeof row.logs === 'string' && row.logs.trim())?.logs ?? '';
-    const migrationFailureCategory = migrations.length === 0
-      ? null
-      : !migrationLog.trim()
-        ? 'empty'
-        : /column[\s\S]{0,160}already exists/i.test(migrationLog)
-          ? 'duplicate_column'
-          : /foreign key[\s\S]{0,160}(type|incompatible)|incompatible[\s\S]{0,160}type/i.test(migrationLog)
-            ? 'foreign_key_type_mismatch'
-            : /permission denied/i.test(migrationLog)
-              ? 'permission_denied'
-              : 'other';
-    const expectedChecksum = createHash('sha256')
-      .update(fs.readFileSync('apps/api/prisma/migrations/' + expectedMigration + '/migration.sql'))
-      .digest('hex');
-    const completedMigrations = migrations.filter((row) => row.finished === true && row.rolled_back === false);
-    const unresolvedMigrations = migrations.filter((row) => row.finished === false && row.rolled_back === false);
-    const migrationChecksumMatches = completedMigrations.length > 0 &&
-      completedMigrations.every((row) => row.checksum === expectedChecksum);
-    const migrationApplied = migrationChecksumMatches && unresolvedMigrations.length === 0;
+    const referenceTypeMap = new Map(referencedColumns.map((row) => [row.table_name, row.data_type]));
+    const referenceTypeMismatches = ['Account', 'ManagedDocument']
+      .filter((table) => referenceTypeMap.get(table) !== 'uuid')
+      .map((table) => ({
+        column: table + '.id',
+        expected: 'uuid',
+        actual: referenceTypeMap.get(table) ?? null,
+      }));
+    const a09Rows = migrations.filter((row) => row.migration_name === a09Migration);
+    const reconciliationRows = migrations.filter((row) => row.migration_name === reconciliationMigration);
+    const a09Applied = a09Rows.filter((row) => row.finished === true && row.rolled_back === false);
+    const a09RolledBack = a09Rows.filter((row) => row.finished === false && row.rolled_back === true);
+    const a09Unresolved = a09Rows.filter((row) => row.finished === false && row.rolled_back === false);
+    const reconciliationApplied = reconciliationRows.filter(
+      (row) => row.finished === true && row.rolled_back === false,
+    );
+    const reconciliationUnresolved = reconciliationRows.filter(
+      (row) => row.finished === false && row.rolled_back === false,
+    );
+    const a09LedgerValid = a09Rows.length === 2 &&
+      a09Applied.length === 1 &&
+      a09RolledBack.length === 1 &&
+      a09Unresolved.length === 0 &&
+      a09Rows.every((row) => row.checksum === expectedA09Checksum);
+    const reconciliationLedgerValid = reconciliationRows.length === 1 &&
+      reconciliationApplied.length === 1 &&
+      reconciliationUnresolved.length === 0 &&
+      reconciliationRows[0].checksum === expectedReconciliationChecksum;
     const constraintsValid = constraints.length === requiredConstraints.length &&
       constraints.every((row) => row.convalidated);
     const indexesComplete = indexes.length === requiredIndexes.length &&
@@ -135,40 +154,44 @@ try {
     const checks = {
       connected_to_expected_pitr_database: database.database_name === expectedDatabase,
       transaction_read_only_enforced: database.read_only === 'on',
-      a09_migration_applied: migrationApplied,
-      a09_migration_checksum_matches: migrationChecksumMatches,
-      a09_columns_complete_and_typed: columnMismatches.length === 0,
-      a09_constraints_present_and_validated: constraintsValid,
-      a09_indexes_present: indexesComplete,
-      a09_snapshot_data_integrity: snapshotsValid,
+      a09_file_matches_original_checksum: localA09Checksum === expectedA09Checksum,
+      a09_ledger_keeps_original_history: a09LedgerValid,
+      reconciliation_file_matches_reviewed_checksum:
+        localReconciliationChecksum === expectedReconciliationChecksum,
+      reconciliation_migration_applied: reconciliationLedgerValid,
+      required_columns_complete_and_typed: columnMismatches.length === 0,
+      parent_keys_are_uuid: referenceTypeMismatches.length === 0,
+      constraints_present_and_validated: constraintsValid,
+      indexes_present: indexesComplete,
+      snapshot_data_integrity: snapshotsValid,
     };
     return {
       target: 'hydroland-pitr-a09-20261114',
       database_name: database.database_name,
       inspected_at_utc: new Date().toISOString(),
       checks,
-      migration_ledger: migrations.length > 0
-        ? {
-            row_count: migrations.length,
-            applied_rows: completedMigrations.length,
-            rolled_back_rows: migrations.filter((row) => row.rolled_back === true).length,
-            unresolved_rows: unresolvedMigrations.length,
-            expected_checksum_matches: migrationChecksumMatches,
-            expected_checksum_prefix: expectedChecksum.slice(0, 12),
-            recorded_checksum_prefixes: migrations.map((row) => String(row.checksum).slice(0, 12)),
-            applied_steps_counts: migrations.map((row) => Number(row.applied_steps_count)),
-            failure_category: migrationFailureCategory,
-          }
-        : { row_found: false },
+      migration_ledger: {
+        a09: {
+          row_count: a09Rows.length,
+          applied_rows: a09Applied.length,
+          rolled_back_rows: a09RolledBack.length,
+          unresolved_rows: a09Unresolved.length,
+          recorded_checksum_prefixes: a09Rows.map((row) => String(row.checksum).slice(0, 12)),
+        },
+        reconciliation: {
+          row_count: reconciliationRows.length,
+          applied_rows: reconciliationApplied.length,
+          unresolved_rows: reconciliationUnresolved.length,
+          expected_checksum_prefix: expectedReconciliationChecksum.slice(0, 12),
+          recorded_checksum_prefixes: reconciliationRows.map((row) => String(row.checksum).slice(0, 12)),
+        },
+      },
       column_mismatches: columnMismatches,
-      referenced_column_types: referencedColumns.map((row) => ({
-        column: row.table_name + '.' + row.column_name,
-        actual: row.data_type,
-      })),
+      reference_type_mismatches: referenceTypeMismatches,
       observed_counts: {
-        a09_columns: columns.length,
-        a09_constraints: constraints.length,
-        a09_indexes: indexes.length,
+        reconciliation_columns: columns.length,
+        constraints: constraints.length,
+        indexes: indexes.length,
         snapshot_violations: {
           administrative_record: Number(integrity.record_snapshot_violations),
           routing_reply: Number(integrity.reply_snapshot_violations),
@@ -192,3 +215,4 @@ try {
 } finally {
   await client.$disconnect();
 }
+
