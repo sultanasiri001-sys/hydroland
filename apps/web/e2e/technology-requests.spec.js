@@ -52,7 +52,7 @@ test('logout while a private detail is loading clears the dialog and ignores the
  const state=await setup(page,{holdDetail:true});await page.locator('[data-case-id]').click();await expect.poll(()=>Boolean(state.release)).toBe(true);await page.evaluate(()=>window.HydrolandAuth.logout());state.release();await expect(page.locator('#hl-technology-requests')).not.toBeVisible();await expect(page.locator('[data-tr-body]')).toBeEmpty();
 });
 test('fresh server revocation clears stored private data before any stale action remains visible',async({page})=>{
- const state=await setup(page);await page.locator('[data-case-id]').click();state.deny=true;await act(page,'SUBMIT');await expect(page.locator('#hl-technology-requests')).not.toBeVisible();await expect(page.locator('[data-tr-body]')).toBeEmpty();expect(state.writes).toHaveLength(1);
+ const state=await setup(page);await page.locator('[data-case-id]').click();await expect(page.locator('[data-tr-action] [name=action] option[value="SUBMIT"]')).toHaveCount(1);state.deny=true;await act(page,'SUBMIT');await expect(page.locator('#hl-technology-requests')).not.toBeVisible();await expect(page.locator('[data-tr-body]')).toBeEmpty();expect(state.writes).toHaveLength(1);
 });
 
 async function agentSetup(page,{stale=false,change=false,incident=false,risk=false}={}){
