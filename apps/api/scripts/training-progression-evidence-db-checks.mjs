@@ -255,13 +255,13 @@ check('actual START rechecks progression through the compiled session service',a
  }
  assert.equal(row.status,'IN_PROGRESS');assert.equal(row.evidence.trainingStandardContext.qualifyingNumber,2);
  assert.equal(await tx.auditEvent.count({where:{resourceId:row.id,action:'training.session_action'}}),4);
-});
+},false,2,safeSyntheticTimeZone);
 check('START refuses treating a prior reservation as completed evidence',async(tx,f)=>{
  const p=await pendingSecond(tx,f),now=new Date(),end=new Date(now.getTime()+1800000);
  await tx.managedDocument.update({where:{id:f.document.id},data:{status:'DRAFT'}});
  await tx.trainingSession.update({where:{id:f.sessions[0].id},data:{status:'SCHEDULED',startsAt:new Date(now.getTime()+3600000),endsAt:new Date(now.getTime()+5400000),evidence:{trainingStandardContext:{environment:'OPEN_WATER',plannedMaximumDepthMetres:7,diveKind:'QUALIFYING',qualifyingNumber:1}}}});
  await assert.rejects(()=>assertTrainingDivePlan(tx,f.enrollment.id,f.instructor.id,now,end,p.context,f.sessions[1].id,true,now),planDenied('ACTUAL_PREDECESSOR_REQUIRED'));
-});
+},false,2,safeSyntheticTimeZone);
 check('source-bound participant conflict survives disabled generic scheduling control',async(tx,f)=>{
  const p=await pendingSecond(tx,f);
  await tx.policyControl.upsert({where:{category_ruleKey:{category:'TRAINING',ruleKey:'SCHEDULE_CONFLICT'}},create:{category:'TRAINING',ruleKey:'SCHEDULE_CONFLICT',labelAr:'Synthetic disabled generic scheduling',state:'DISABLED'},update:{state:'DISABLED',metadata:{}}});
