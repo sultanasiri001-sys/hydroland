@@ -28,20 +28,28 @@ export class CredentialObjectStorageService {
     const payloadHash=createHash('sha256').update(bytes).digest('hex');
     const request=this.signedRequest('PUT',storageKey,payloadHash,{'content-type':mimeType});
     const body=Uint8Array.from(bytes).buffer;
-    const response=await fetch(request.url,{method:'PUT',headers:request.headers,body,signal:AbortSignal.timeout(8_000),redirect:'error'});
-    if(!response.ok)throw new BadGatewayException(`Object storage upload failed (${response.status}).`);
+    let response:Response;
+    try{response=await fetch(request.url,{method:'PUT',headers:request.headers,body,signal:AbortSignal.timeout(8_000),redirect:'error'});}catch(error){await this.integrations.recordProviderSignal('OBJECT_STORAGE','PROVIDER_FAILURE');throw error;}
+    if(!response.ok){await this.integrations.recordProviderSignal('OBJECT_STORAGE','PROVIDER_FAILURE');throw new BadGatewayException(`Object storage upload failed (${response.status}).`);}
+    await this.integrations.recordProviderSignal('OBJECT_STORAGE','SUCCESS');
   }
 
   async exists(storageKey:string){
     const request=this.signedRequest('HEAD',storageKey,EMPTY_SHA256,{});
-    const response=await fetch(request.url,{method:'HEAD',headers:request.headers,signal:AbortSignal.timeout(8_000),redirect:'error'});
-    if(response.status===404)return false;
-    if(!response.ok)throw new BadGatewayException(`Object storage check failed (${response.status}).`);
+    let response:Response;
+    try{response=await fetch(request.url,{method:'HEAD',headers:request.headers,signal:AbortSignal.timeout(8_000),redirect:'error'});}catch(error){await this.integrations.recordProviderSignal('OBJECT_STORAGE','PROVIDER_FAILURE');throw error;}
+    if(response.status===404){await this.integrations.recordProviderSignal('OBJECT_STORAGE','SUCCESS');return false;}
+    if(!response.ok){await this.integrations.recordProviderSignal('OBJECT_STORAGE','PROVIDER_FAILURE');throw new BadGatewayException(`Object storage check failed (${response.status}).`);}
+    await this.integrations.recordProviderSignal('OBJECT_STORAGE','SUCCESS');
     return true;
   }
 
   async delete(storageKey:string){
-    try{const request=this.signedRequest('DELETE',storageKey,EMPTY_SHA256,{});await fetch(request.url,{method:'DELETE',headers:request.headers,signal:AbortSignal.timeout(8_000),redirect:'error'});}catch{return;}
+    const request=this.signedRequest('DELETE',storageKey,EMPTY_SHA256,{});
+    let response:Response;
+    try{response=await fetch(request.url,{method:'DELETE',headers:request.headers,signal:AbortSignal.timeout(8_000),redirect:'error'});}catch{await this.integrations.recordProviderSignal('OBJECT_STORAGE','PROVIDER_FAILURE');return;}
+    if(response.ok||response.status===404)await this.integrations.recordProviderSignal('OBJECT_STORAGE','SUCCESS');
+    else if(response.status===401||response.status===403||response.status===408||response.status===429||response.status>=500)await this.integrations.recordProviderSignal('OBJECT_STORAGE','PROVIDER_FAILURE');
   }
 
   signedGet(storageKey:string,expiresSeconds=300){

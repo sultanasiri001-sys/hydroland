@@ -27,7 +27,7 @@ const server=createServer(async(req,res)=>{
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 Object.assign(process.env,{NODE_ENV:'test',HYDROLAND_INTEGRATION_AI_MODEL_STATUS:'SANDBOX',HYDROLAND_AI_PROVIDER:'OPENAI',OPENAI_API_KEY:'not-a-real-provider-fixture-key',HYDROLAND_AI_MODEL:'fixture-model',HYDROLAND_AI_INPUT_MICRO_USD_PER_MILLION:'100000',HYDROLAND_AI_OUTPUT_MICRO_USD_PER_MILLION:'500000',HYDROLAND_AI_DAILY_BUDGET_MICRO_USD:'10000',HYDROLAND_AI_MAX_INPUT_TOKENS:'2048',HYDROLAND_AI_MAX_OUTPUT_TOKENS:'512',HYDROLAND_AI_TEST_BASE_URL:`http://127.0.0.1:${server.address().port}/v1`});
-const provider=new AgentModelProviderService({status:()=>({status:process.env.HYDROLAND_INTEGRATION_AI_MODEL_STATUS})});
+const provider=new AgentModelProviderService({status:()=>({status:process.env.HYDROLAND_INTEGRATION_AI_MODEL_STATUS}),recordProviderSignal:async()=>{}});
 const inspect=async()=>{const result=await provider.checkConnection();assert.equal(result.scope,'MODEL_ACCESS_ONLY');assert.equal(result.generationTested,false);assert(!JSON.stringify(result).includes('LOCAL_PRIVATE_PROVIDER_DETAIL'));assert(!JSON.stringify(result).includes(process.env.OPENAI_API_KEY));return result;};
 try{
   assert.equal((await inspect()).connected,true);assert.equal(calls,1);

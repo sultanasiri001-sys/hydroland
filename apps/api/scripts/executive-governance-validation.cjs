@@ -5,9 +5,11 @@ const {ExecutiveGovernanceOperationsService}=require('../.tmp-executive-governan
 const {ExecutiveGovernanceIntelligenceService}=require('../.tmp-executive-governance-validation/executive-governance-intelligence.service.js');
 const {ExecutiveDecisionStatus,GovernanceBodyType}=require('../.tmp-executive-governance-validation/executive-governance.domain.js');
 const f=new ExecutiveGovernanceFoundationService(),w=new ExecutiveGovernanceWorkflowService(),o=new ExecutiveGovernanceOperationsService(),i=new ExecutiveGovernanceIntelligenceService();
-const body={id:'body-1',organizationId:'org-1',name:'Executive Committee',type:GovernanceBodyType.EXECUTIVE_MANAGEMENT,chairAccountId:'chair-1',memberAccountIds:['chair-1','member-1'],active:true};
-const mandate={id:'mandate-1',organizationId:'org-1',title:'Finance authority',ownerAccountId:'delegate-1',authorityScope:['FINANCE'],active:true};
-const draft={id:'decision-1',organizationId:'org-1',governanceBodyId:'body-1',referenceNumber:'EX-001',title:'Approve finance control',status:ExecutiveDecisionStatus.DRAFT,issuedByAccountId:'chair-1'};
+const body={id:'body-1',organizationId:'org-1',name:'Executive Committee',type:GovernanceBodyType.EXECUTIVE_MANAGEMENT,chairAccountId:'chair-1',memberAccountIds:['chair-1','member-1','approver-1'],active:true};
+const validity={sourceReference:'approved-source-1',validFrom:new Date('2000-01-01T00:00:00Z'),expiresAt:new Date('2100-01-01T00:00:00Z')};
+const result={summary:'Execution completed',evidenceReference:'completion-evidence-1'};
+const mandate={...validity,id:'mandate-1',organizationId:'org-1',title:'Finance authority',ownerAccountId:'delegate-1',authorityScope:['FINANCE'],active:true};
+const draft={...validity,sourceType:'HUMAN_DECISION',authorityScope:['FINANCE'],id:'decision-1',organizationId:'org-1',governanceBodyId:'body-1',referenceNumber:'EX-001',title:'Approve finance control',status:ExecutiveDecisionStatus.DRAFT,issuedByAccountId:'chair-1'};
 f.validateBody(body); f.validateMandate(mandate); f.validateDecision(draft,body);
 assert.throws(()=>f.validateBody({...body,memberAccountIds:[]}));
 assert.throws(()=>f.validateDecision({...draft,organizationId:'org-2'},body));
@@ -15,7 +17,7 @@ let approval=w.requestApproval(draft,'requester-1'); assert.throws(()=>w.decide(
 const issued=w.issue(draft,approval,body,'chair-1'); assert.equal(issued.status,ExecutiveDecisionStatus.ISSUED);
 assert.throws(()=>w.issue(draft,approval,body,'member-1')); assert.throws(()=>w.issue({...draft,organizationId:'org-2'},approval,body,'chair-1'));
 w.validateMandatedAction(mandate,'delegate-1','FINANCE'); assert.throws(()=>w.validateMandatedAction(mandate,'delegate-1','HR')); assert.throws(()=>w.validateMandatedAction(mandate,'other','FINANCE'));
-assert.equal(w.close(issued,'chair-1').status,ExecutiveDecisionStatus.CLOSED); assert.throws(()=>w.close(draft,'chair-1'));
+assert.equal(w.close(issued,'chair-1',result).status,ExecutiveDecisionStatus.CLOSED); assert.throws(()=>w.close(draft,'chair-1',result));
 const base={organizationId:'org-1',operationType:'FINANCE',operationId:'op-1',decision:issued,mandate,actorAccountId:'delegate-1',requiredEvidenceComplete:true};
 assert.equal(o.readiness(base).allowed,true);
 assert.ok(o.readiness({...base,requiredEvidenceComplete:false}).blockers.includes('EXECUTIVE_EVIDENCE_INCOMPLETE'));
@@ -26,4 +28,25 @@ const snap=i.snapshot([body],[mandate],[draft,issued]); assert.equal(snap.active
 assert.ok(snap.alerts.includes('EXECUTIVE_DRAFT_DECISION_REVIEW')); assert.ok(snap.alerts.includes('EXECUTIVE_AUTHORITY_COVERAGE_REVIEW'));
 const sig=i.automationSignals(snap); assert.ok(sig.includes('REVIEW_PENDING_EXECUTIVE_DECISIONS')); assert.ok(sig.includes('REVIEW_EXECUTIVE_AUTHORITY_COVERAGE')); assert.ok(sig.includes('MONITOR_ISSUED_EXECUTIVE_DECISIONS'));
 const continuity=i.snapshot([],[],[]); assert.ok(continuity.alerts.includes('GOVERNANCE_BODY_CONTINUITY_REVIEW')); assert.ok(i.automationSignals(continuity).includes('ESCALATE_EXECUTIVE_MANDATE_CONTINUITY'));
+// Security regressions: no authority from future/expired/invalid windows, AI advice, inactive bodies or unrelated closers.
+const at=new Date('2026-11-13T12:00:00Z');
+for(const period of [{validFrom:new Date('2026-11-14'),expiresAt:new Date('2026-11-15')},{validFrom:new Date('2026-11-12'),expiresAt:at},{validFrom:new Date('invalid'),expiresAt:new Date('2100-01-01')}]){
+ assert.throws(()=>w.validateMandatedAction({...mandate,...period},'delegate-1','FINANCE',at));
+ assert.throws(()=>w.issue({...draft,...period},approval,body,'chair-1',at));
+ assert.equal(o.readiness({...base,decision:{...issued,...period}},at).allowed,false);
+ assert.equal(o.readiness({...base,mandate:{...mandate,...period}},at).allowed,false);
+}
+assert.throws(()=>w.issue(draft,approval,{...body,active:false},'chair-1'));
+assert.throws(()=>w.issue(draft,{...approval,approverAccountId:'unrelated'},body,'chair-1'));
+assert.throws(()=>w.issue(draft,{...approval,approverAccountId:approval.requestedByAccountId},body,'chair-1'));
+assert.throws(()=>w.issue({...draft,sourceType:'AI_RECOMMENDATION'},approval,body,'chair-1'));
+assert.throws(()=>w.issue({...draft,sourceReference:''},approval,body,'chair-1'));
+assert.throws(()=>w.close(issued,'unrelated',result));
+assert.throws(()=>w.close(issued,'chair-1',{summary:'',evidenceReference:'fixture'}));
+assert.throws(()=>w.decide(w.requestApproval(draft,'requester-1'),'approver-1','UNKNOWN'));
+assert.equal(o.readiness({...base,operationType:'HR',mandate:undefined,actorAccountId:'chair-1'}).allowed,false);
+assert.equal(o.readiness({...base,decision:{...issued,sourceType:'AI_RECOMMENDATION'}}).allowed,false);
+const closed=w.close(issued,'chair-1',result,at);assert.deepEqual(closed.result,result);assert.equal(closed.closedAt,at);
+const ended=i.snapshot([body],[{...mandate,expiresAt:at}],[],at);assert.equal(ended.activeMandates,0);
+assert.equal(o.readiness(base,at).allowed,true);
 console.log('Executive Governance validation passed.');

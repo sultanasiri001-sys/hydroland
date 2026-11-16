@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ManagedDocumentStatus, Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { DocumentAuthorizationService } from './document-authorization.service';
@@ -133,10 +133,28 @@ export class DocumentPersistenceService {
     });
   }
 
+  async archiveInTransaction(tx:Prisma.TransactionClient,accountId:string,id:string,expectedVersion:number,expectedContentHash:string){
+    const d=await tx.managedDocument.findUnique({where:{id},include:{template:true}});
+    if(!d) throw new NotFoundException('Document not found.');
+    this.assertGeneric(d.template.code);
+    await this.authz.assert(accountId,d.organizationId,'ARCHIVE',tx);
+    if(d.status!==ManagedDocumentStatus.SIGNED||d.version!==expectedVersion||d.contentHash!==expectedContentHash) throw new ConflictException('ADMIN_DOCUMENT_SNAPSHOT_NOT_ARCHIVABLE');
+    const archivedAt=new Date();
+    const claimed=await tx.managedDocument.updateMany({where:{id,status:ManagedDocumentStatus.SIGNED,version:expectedVersion,contentHash:expectedContentHash},data:{status:ManagedDocumentStatus.ARCHIVED,archivedByAccountId:accountId,archivedAt}});
+    if(claimed.count!==1) throw new ConflictException('ADMIN_DOCUMENT_SNAPSHOT_CHANGED');
+    const updated=await tx.managedDocument.findUniqueOrThrow({where:{id}});
+    await tx.documentLifecycleEvent.create({data:{documentId:id,actorAccountId:accountId,action:'ARCHIVED',fromStatus:ManagedDocumentStatus.SIGNED,toStatus:ManagedDocumentStatus.ARCHIVED,version:updated.version,metadata:{administrativeArchive:true}}});
+    return updated;
+  }
+
   async transition(accountId:string,id:string,to:ManagedDocumentStatus){
     const d=await this.db.managedDocument.findUnique({where:{id},include:{template:true}});
     if(!d) throw new NotFoundException('Document not found.');
     this.assertGeneric(d.template.code);
+    if(to===ManagedDocumentStatus.ARCHIVED){
+      const administrativeRecord=await this.db.administrativeRecord.findUnique({where:{managedDocumentId:id},select:{status:true}});
+      if(administrativeRecord&&administrativeRecord.status!=='ARCHIVED')throw new ConflictException('ADMIN_RECORD_MUST_ARCHIVE_FIRST');
+    }
     const access=await this.authz.assert(accountId,d.organizationId,to==='PENDING_APPROVAL'?'SUBMIT':to==='APPROVED'?'APPROVE':to==='SIGNED'?'SIGN':'ARCHIVE');
     const allowed:Record<string,string[]>={DRAFT:['PENDING_APPROVAL'],PENDING_APPROVAL:['APPROVED'],APPROVED:['SIGNED'],SIGNED:['ARCHIVED'],ARCHIVED:[]};
     if(!allowed[d.status]?.includes(to)) throw new BadRequestException(`Invalid document transition ${d.status} -> ${to}`);
@@ -146,8 +164,13 @@ export class DocumentPersistenceService {
     if('accessBasis' in access&&access.accessBasis==='PLATFORM_OWNER'&&['APPROVED','SIGNED'].includes(to))throw new ForbiddenException('استخدم تكليف المراجعة المستقلة لهذا الإصدار؛ الاعتماد والتوقيع من حسابي المكلّفين فقط.');
     return this.db.serializable(async tx=>{
       await this.authz.assert(accountId,d.organizationId,to==='PENDING_APPROVAL'?'SUBMIT':to==='APPROVED'?'APPROVE':to==='SIGNED'?'SIGN':'ARCHIVE',tx);
+      await tx.$queryRaw`SELECT "id" FROM "ManagedDocument" WHERE "id"::text=${id} FOR UPDATE`;
       const current=await tx.managedDocument.findUnique({where:{id}});
       if(!current) throw new NotFoundException('Document not found.');
+      if(to===ManagedDocumentStatus.ARCHIVED){
+        const administrativeRecord=await tx.administrativeRecord.findUnique({where:{managedDocumentId:id},select:{status:true}});
+        if(administrativeRecord&&administrativeRecord.status!=='ARCHIVED')throw new ConflictException('ADMIN_RECORD_MUST_ARCHIVE_FIRST');
+      }
       if(current.status!==d.status||current.version!==d.version) throw new BadRequestException('Document status or version changed concurrently; reload before transition.');
       const data:any={status:to};
       if(to==='APPROVED'){data.approvedByAccountId=accountId;data.approvedAt=new Date();}

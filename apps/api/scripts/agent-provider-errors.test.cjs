@@ -18,7 +18,7 @@ async function rejection({stage='INPUT_TOKENS',body,status=429},expected){
  const previous=names.map(name=>[name,process.env[name]]);
  Object.assign(process.env,{NODE_ENV:'test',HYDROLAND_AI_TEST_BASE_URL:`http://127.0.0.1:${server.address().port}/v1`,OPENAI_API_KEY:'fixture-only-not-a-real-key'});
  try{
-  const provider=new AgentModelProviderService({});
+  const provider=new AgentModelProviderService({recordProviderSignal:async()=>{}});
   await assert.rejects(()=>provider.execute(config,{key:'SUPPORT',nameEn:'Support'},'READ_OPERATIONS','ar-SA','fixture brief'),error=>{
    assert(error instanceof AiProviderError);assert.equal(error.code,expected);assert.equal(error.providerStage,stage);assert.equal(error.uncertain,false);
    assert(!JSON.stringify(error).includes(privateDetail));assert(!error.message.includes(privateDetail));assert(!JSON.stringify(error).includes(process.env.OPENAI_API_KEY));return true;

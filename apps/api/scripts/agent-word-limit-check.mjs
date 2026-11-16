@@ -23,7 +23,7 @@ const server=createServer(async(req,res)=>{
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 Object.assign(process.env,{NODE_ENV:'test',HYDROLAND_AI_PROVIDER:'OPENAI',OPENAI_API_KEY:'fixture-only-not-real',HYDROLAND_AI_MODEL:'gpt-6-luna',HYDROLAND_AI_INPUT_MICRO_USD_PER_MILLION:'100000',HYDROLAND_AI_OUTPUT_MICRO_USD_PER_MILLION:'500000',HYDROLAND_AI_DAILY_BUDGET_MICRO_USD:'300000',HYDROLAND_AI_MAX_INPUT_TOKENS:'8192',HYDROLAND_AI_MAX_OUTPUT_TOKENS:'2048',HYDROLAND_AI_TEST_BASE_URL:'http://127.0.0.1:'+server.address().port+'/v1'});
-const provider=new AgentModelProviderService({status:()=>({status:'SANDBOX'})});
+const provider=new AgentModelProviderService({status:()=>({status:'SANDBOX'}),recordProviderSignal:async()=>{}});
 const config=provider.configuration(),agent={key:'INVENTORY',nameEn:'Inventory'};
 async function execute(options={},descriptor=agent,brief='لا تتجاوز 90 كلمة. احفظ حقائق العينة.'){scenario=options;requests=[];return provider.execute(config,descriptor,'DRAFT_REPORT','ar-SA',brief,{metrics:{warehouseLocations:2},missingSources:['fixture-gap']});}
 try{

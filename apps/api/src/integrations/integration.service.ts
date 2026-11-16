@@ -26,6 +26,10 @@ const statuses=new Set(['NOT_SELECTED','SANDBOX','CONFIGURED','VERIFIED','PRODUC
   const status=process.env[`HYDROLAND_INTEGRATION_${key}_STATUS`]?.trim().toUpperCase();
   return status&&statuses.has(status)?status as IntegrationDescriptor['status']:undefined;
  }
+ async recordProviderSignal(provider:'OBJECT_STORAGE'|'WEATHER_MARINE'|'EMAIL'|'PAYMENT_PSP'|'AI_MODEL',category:'SUCCESS'|'PROVIDER_FAILURE'){
+  try{await this.audit.recordProviderState(provider,category);}catch{/* Monitoring must never change a user-facing provider operation. */}
+ }
+ async providerObservations(){return this.audit.providerHealth()}
  list(){return catalog.map(item=>({...item,status:this.configuredStatus(item.key)??item.status}))}
  status(key:IntegrationKey){const integration=this.list().find(item=>item.key===key);if(!integration)throw new ServiceUnavailableException('Unknown integration.');return integration}
  publicMapConfig():MapsPublicConfigPayload{

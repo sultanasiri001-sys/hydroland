@@ -16,6 +16,9 @@ export class TripIntelligenceController {
   @UseGuards(ReviewGuard)
   @Post('briefings/:briefingId/publish')
   publish(@Req() req:any,@Param('briefingId') briefingId:string){return this.service.publish(req.auth.accountId,briefingId);}
+  @UseGuards(ReviewGuard)
+  @Post('translations/:translationId/approve')
+  approveTranslation(@Req() req:any,@Param('translationId') translationId:string){return this.service.approveControlledTranslation(req.auth.accountId,translationId);}
   @Post(':tripId/dive-plans')
   divePlan(@Req() req:any,@Param('tripId') tripId:string,@Body() plan:Record<string,unknown>){return this.service.saveDivePlan(req.auth.accountId,tripId,plan);}
   @Post(':tripId/emergency-plans')
@@ -27,9 +30,6 @@ export class TripIntelligenceController {
   translation(@Req() req:any,@Param('briefingId') briefingId:string,@Body() input:{languageCode:string;content:Record<string,unknown>;level:string}){return this.service.upsertTranslation(req.auth.accountId,briefingId,input);}
   @Post('briefings/:briefingId/translate')
   translateBriefing(@Param('briefingId') briefingId:string,@Body() input:{sourceLanguage:string;targetLanguage:string;text:string;mode:TranslationMode}){return this.service.translateBriefingText(briefingId,input);}
-  @UseGuards(ReviewGuard)
-  @Post('translations/:translationId/approve')
-  approveTranslation(@Req() req:any,@Param('translationId') translationId:string){return this.service.approveControlledTranslation(req.auth.accountId,translationId);}
   @UseGuards(ReviewGuard)
   @Post(':tripId/offline-package/generate')
   generatePackage(@Req() req:any,@Param('tripId') tripId:string){return this.service.generateOfflinePackage(req.auth.accountId,tripId);}

@@ -28,6 +28,9 @@ export interface ExecutiveMandate {
   title: string;
   ownerAccountId: string;
   authorityScope: string[];
+  sourceReference: string;
+  validFrom: Date;
+  expiresAt: Date;
   active: boolean;
 }
 
@@ -40,4 +43,11 @@ export interface ExecutiveDecision {
   status: ExecutiveDecisionStatus;
   issuedByAccountId: string;
   issuedAt?: Date;
+  sourceReference: string;
+  sourceType: 'HUMAN_DECISION' | 'AI_RECOMMENDATION';
+  authorityScope: string[];
+  validFrom: Date;
+  expiresAt: Date;
+  closedAt?: Date;
+  result?: { summary: string; evidenceReference: string };
 }

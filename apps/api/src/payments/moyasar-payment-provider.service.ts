@@ -59,9 +59,12 @@ export class MoyasarPaymentProviderService {
     const rawBase=process.env.MOYASAR_API_BASE_URL?.trim()||'https://api.moyasar.com/v1/';
     let url:URL;try{url=new URL(path.replace(/^\//,''),rawBase.endsWith('/')?rawBase:`${rawBase}/`);}catch{throw new ServiceUnavailableException('Payment provider endpoint is invalid.');}
     let response:Response;
-    try{response=await fetch(url,{...init,headers:{Authorization:`Basic ${Buffer.from(`${secret}:`).toString('base64')}`,'Content-Type':'application/json',Accept:'application/json',...(init.headers||{})},signal:AbortSignal.timeout(8_000)});}catch{throw new ServiceUnavailableException('Payment provider request failed.');}
-    const body=await response.json().catch(()=>({})) as unknown;
-    if(!response.ok)throw new ServiceUnavailableException(`Payment provider request failed (${response.status}).`);
+    try{response=await fetch(url,{...init,headers:{Authorization:`Basic ${Buffer.from(`${secret}:`).toString('base64')}`,'Content-Type':'application/json',Accept:'application/json',...(init.headers||{})},signal:AbortSignal.timeout(8_000)});}catch{await this.integrations.recordProviderSignal('PAYMENT_PSP','PROVIDER_FAILURE');throw new ServiceUnavailableException('Payment provider request failed.');}
+    if(!response.ok){if(response.status===401||response.status===403||response.status===408||response.status===429||response.status>=500)await this.integrations.recordProviderSignal('PAYMENT_PSP','PROVIDER_FAILURE');throw new ServiceUnavailableException(`Payment provider request failed (${response.status}).`);}
+    let body:unknown;
+    try{body=await response.json() as unknown;}catch{await this.integrations.recordProviderSignal('PAYMENT_PSP','PROVIDER_FAILURE');throw new ServiceUnavailableException('Payment provider returned an invalid response.');}
+    if(!body||typeof body!=='object'||Array.isArray(body)){await this.integrations.recordProviderSignal('PAYMENT_PSP','PROVIDER_FAILURE');throw new ServiceUnavailableException('Payment provider returned an invalid response.');}
+    await this.integrations.recordProviderSignal('PAYMENT_PSP','SUCCESS');
     return body;
   }
 

@@ -20,7 +20,7 @@ const server=createServer(async(req,res)=>{
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 Object.assign(process.env,{NODE_ENV:'test',HYDROLAND_INTEGRATION_AI_MODEL_STATUS:'SANDBOX',HYDROLAND_AI_PROVIDER:'OPENAI',OPENAI_API_KEY:'fixture-not-a-real-key',HYDROLAND_AI_MODEL:'gpt-6-luna',HYDROLAND_AI_INPUT_MICRO_USD_PER_MILLION:'100000',HYDROLAND_AI_OUTPUT_MICRO_USD_PER_MILLION:'500000',HYDROLAND_AI_DAILY_BUDGET_MICRO_USD:'300000',HYDROLAND_AI_MAX_INPUT_TOKENS:'8192',HYDROLAND_AI_MAX_OUTPUT_TOKENS:'2048',HYDROLAND_AI_TEST_MANUAL_WORKER:'1',HYDROLAND_AI_TEST_BASE_URL:'http://127.0.0.1:'+server.address().port+'/v1'});
-const provider=new AgentModelProviderService({status:()=>({status:'SANDBOX'})});
+const provider=new AgentModelProviderService({status:()=>({status:'SANDBOX'}),recordProviderSignal:async()=>{}});
 const report={entries:[{departmentName:'Fixture department',officeStatus:'EVIDENCE_REQUIRED',findings:['Unresolved concern'],evidenceGaps:['Missing evidence']}]};
 async function run(key,model,executiveReport,governanceReview){
   process.env.HYDROLAND_AI_MODEL=model;

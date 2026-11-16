@@ -1,13 +1,23 @@
+import assert from 'node:assert/strict';
 import { PrismaClient } from '@prisma/client';
 import { createHmac } from 'node:crypto';
 import { createServer } from 'node:http';
 
-const db=new PrismaClient();
 const base=process.env.PAYMENT_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1';
 const secret=process.env.JWT_SECRET;
 const providerSecret=process.env.MOYASAR_SECRET_KEY;
 const webhookSecret=process.env.MOYASAR_WEBHOOK_SECRET;
 if(!secret||!providerSecret||!webhookSecret)throw new Error('JWT_SECRET, MOYASAR_SECRET_KEY and MOYASAR_WEBHOOK_SECRET are required');
+// Refuse remote targets before the first fixture write or provider request.
+for(const [name,raw] of [['DATABASE_URL',process.env.DATABASE_URL],['PAYMENT_E2E_BASE_URL',base],['MOYASAR_API_BASE_URL',process.env.MOYASAR_API_BASE_URL]]){
+  assert(raw, name+' is required for isolated payment acceptance');
+  const url=new URL(raw);
+  assert(['localhost','127.0.0.1','[::1]'].includes(url.hostname),name+' must be loopback-only');
+  if(name!=='DATABASE_URL')assert.equal(url.protocol,'http:',name+' must use the local HTTP fixture');
+}
+assert.equal(new URL(process.env.MOYASAR_API_BASE_URL).port,'3197','Provider must use this test server');
+const db=new PrismaClient();
+const webhookIds=new Set();
 const suffix=Date.now().toString();
 const enc=value=>Buffer.from(JSON.stringify(value)).toString('base64url');
 const tokenFor=id=>{const now=Math.floor(Date.now()/1000),body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:id,iat:now,exp:now+1800})}`;return `${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`};
@@ -18,6 +28,7 @@ const expectOk=async response=>{const{body}=await parseJson(response);if(!respon
 let person=null,account=null,trip=null,booking=null,payment=null,providerServer=null;
 const invoiceId='11111111-1111-4111-8111-111111111111';
 let invoiceStatus='initiated';
+let invoiceFetchFailure=null;
 let providerMetadata=null;
 let createCalls=0,fetchCalls=0,cancelCalls=0;
 const providerRequests=[];
@@ -36,7 +47,10 @@ try{
       response.writeHead(201,{'content-type':'application/json'});response.end(JSON.stringify({id:invoiceId,status:invoiceStatus,amount:input.amount,currency:input.currency,url:`https://pay.moyasar.test/invoices/${invoiceId}`,metadata:input.metadata}));return;
     }
     if(request.method==='GET'&&url.pathname===`/v1/invoices/${invoiceId}`){
-      fetchCalls+=1;response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({id:invoiceId,status:invoiceStatus,amount:24690,currency:'SAR',url:`https://pay.moyasar.test/invoices/${invoiceId}`,metadata:providerMetadata}));return;
+      fetchCalls+=1;
+      if(invoiceFetchFailure==='disconnect'){request.socket.destroy();return;}
+      if(invoiceFetchFailure){response.writeHead(invoiceFetchFailure,{'content-type':'application/json'});response.end('{"message":"fixture provider unavailable"}');return;}
+      response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({id:invoiceId,status:invoiceStatus,amount:24690,currency:'SAR',url:`https://pay.moyasar.test/invoices/${invoiceId}`,metadata:providerMetadata}));return;
     }
     if(request.method==='PUT'&&url.pathname===`/v1/invoices/${invoiceId}/cancel`){cancelCalls+=1;response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({id:invoiceId,status:'canceled'}));return;}
     response.writeHead(404,{'content-type':'application/json'});response.end(JSON.stringify({message:'not found'}));
@@ -66,7 +80,7 @@ try{
   response=await fetch(`${base}/payments`,{method:'POST',headers:auth(token),body:JSON.stringify({bookingId:booking.id,idempotencyKey:`payment-e2e:${suffix}`,amountMinor:999999})});
   const replay=await expectOk(response);if(replay.id!==created.id||replay.providerReference!==invoiceId||createCalls!==1)throw new Error('Payment idempotency created a duplicate provider invoice');
 
-  const validWebhook=(id,type)=>({id,type,secret_token:webhookSecret,live:false,data:{invoice_id:invoiceId,amount:1,currency:'USD'}});
+  const validWebhook=(id,type)=>{webhookIds.add(id);return{id,type,secret_token:webhookSecret,live:false,data:{invoice_id:invoiceId,amount:1,currency:'USD'}};};
   response=await fetch(`${base}/payments/provider/moyasar/webhook`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(validWebhook('evt-payment-pending','payment_paid'))});
   const pendingWebhook=await expectOk(response);if(pendingWebhook.status!=='PENDING')throw new Error('Webhook event type overrode provider invoice state');
   const afterForgedEvent=await db.payment.findUniqueOrThrow({where:{id:created.id}});if(afterForgedEvent.status!=='PENDING')throw new Error('Forged webhook event mutated local payment state');
@@ -98,9 +112,29 @@ try{
   response=await fetch(`${base}/payments/${created.id}/refresh`,{method:'POST',headers:auth(token)});if(response.status!==409)throw new Error(`Provider metadata mismatch expected 409, got ${response.status}`);
   providerMetadata={hydroland_payment_id:created.id,hydroland_booking_id:booking.id};
 
+  // A06: a paid event cannot be trusted while provider verification is unavailable.
+  // Exercise HTTP throttling, unavailability and a real loopback connection reset.
   invoiceStatus='paid';
+  const beforeOutage=await db.payment.findUniqueOrThrow({where:{id:created.id}});
+  const beforeOutageAudits=await db.auditEvent.count({where:{resource:'Payment',resourceId:created.id}});
+  for(const failure of [429,503,'disconnect']){
+    invoiceFetchFailure=failure;
+    const beforeFetch=fetchCalls;
+    response=await fetch(`${base}/payments/${created.id}/refresh`,{method:'POST',headers:auth(token)});
+    assert.equal(response.status,503,'Provider outage must reject reconciliation');
+    response=await fetch(`${base}/payments/provider/moyasar/webhook`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(validWebhook('evt-payment-paid','payment_paid'))});
+    assert.equal(response.status,503,'A paid webhook still requires provider verification');
+    assert.equal(fetchCalls-beforeFetch,2,'One provider read per caller; no hidden replay');
+    assert.deepEqual(await db.payment.findUniqueOrThrow({where:{id:created.id}}),beforeOutage,'Outage must preserve the complete payment record');
+    assert.equal(await db.auditEvent.count({where:{resource:'Payment',resourceId:created.id}}),beforeOutageAudits,'Outage must not record successful reconciliation');
+    assert.equal(await db.auditEvent.count({where:{resource:'PaymentProviderWebhook',resourceId:'evt-payment-paid'}}),0,'Failed verification must leave the event retryable');
+    assert.equal(createCalls,1,'Recovery must not recreate the invoice');
+    await expectBookingAwaitingConfirmation('Provider outage');
+  }
+  invoiceFetchFailure=null;
   response=await fetch(`${base}/payments/provider/moyasar/webhook`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(validWebhook('evt-payment-paid','payment_paid'))});
   const paidWebhook=await expectOk(response);if(paidWebhook.status!=='CAPTURED')throw new Error(`Verified paid provider invoice expected CAPTURED, got ${paidWebhook.status}`);
+  assert.equal(await db.auditEvent.count({where:{resource:'PaymentProviderWebhook',resourceId:'evt-payment-paid',action:'PAYMENT_PROVIDER_WEBHOOK_PROCESSED'}}),1,'Recovered event must be processed exactly once');
   const captured=await db.payment.findUniqueOrThrow({where:{id:created.id}});if(captured.status!=='CAPTURED')throw new Error('Verified provider paid state was not persisted');
   await expectBookingAwaitingConfirmation('Verified paid webhook');
 
@@ -114,9 +148,9 @@ try{
   if(cancelCalls!==0)throw new Error('Normal idempotent payment flow unexpectedly cancelled an invoice');
   if(providerRequests.some(row=>row.authorization!==`Basic ${Buffer.from(`${providerSecret}:`).toString('base64')}`))throw new Error('Provider call used incorrect Basic authorization');
 
-  console.log('Moyasar payment HTTP/DB E2E passed: server-owned pricing, provider metadata binding, idempotency, webhook UTF-8 secret and boolean mode enforcement, rejected-event non-mutation, provider re-verification, tamper rejection, captured reconciliation and independent operator booking confirmation.');
+  console.log('Moyasar payment HTTP/DB E2E passed: server-owned pricing, provider metadata binding, idempotency, webhook UTF-8 secret and boolean mode enforcement, rejected-event non-mutation, provider re-verification, tamper rejection, captured reconciliation, provider 429/503/connection-reset outage non-mutation, same-event recovery without duplicate invoices, and independent operator booking confirmation.');
 } finally {
-  if(payment?.id)await db.auditEvent.deleteMany({where:{OR:[{resourceId:payment.id},{resource:'PaymentProviderWebhook'}]}}).catch(()=>{});
+  if(payment?.id)await db.auditEvent.deleteMany({where:{OR:[{resourceId:payment.id},{resource:'PaymentProviderWebhook',resourceId:{in:[...webhookIds]}}]}}).catch(()=>{});
   if(payment?.id)await db.invoice.deleteMany({where:{paymentId:payment.id}}).catch(()=>{});
   if(booking?.id)await db.payment.deleteMany({where:{bookingId:booking.id}}).catch(()=>{});
   if(booking?.id)await db.bookingParticipant.deleteMany({where:{bookingId:booking.id}}).catch(()=>{});

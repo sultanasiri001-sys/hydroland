@@ -34,6 +34,8 @@ jobs:
         run: node --experimental-strip-types --test apps/api/scripts/training-dive-progression.test.mjs
       - name: Agency training standard profiles and persistence-adapter contracts (synthetic only)
         run: node --experimental-strip-types --test apps/api/scripts/training-standard-profile.test.mjs
+      - name: A06 provider monitoring and OIDC contracts
+        run: node --experimental-strip-types --test apps/api/scripts/a06-github-actions-oidc.test.mjs scripts/a06-provider-watch.test.mjs
       - run: npm ci --workspace=@hydroland/api --workspace=@hydroland/web --include-workspace-root=true
       - name: Verify API correctness lint toolchain and source
         run: |
@@ -56,6 +58,8 @@ jobs:
       # Forward migration immutability is enforced separately by Production Release Gate.
       - name: Bootstrap canonical schema on clean PostgreSQL
         run: npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+      - name: A09 correspondence recovery on TEXT and UUID keys
+        run: node apps/api/scripts/a09-correspondence-recovery-db-e2e.mjs
       - name: Employment contract library snapshot additive migration
         run: node apps/api/scripts/employment-contract-library-migration-checks.mjs
       - name: Center license forward migration on TEXT and UUID asset keys
@@ -125,6 +129,12 @@ jobs:
         env:
           CI: "true"
         run: node apps/api/scripts/training-progression-evidence-db-checks.mjs
+      - name: Technology request authority, evidence, rollback and concurrency contracts
+        run: node --test apps/api/scripts/technology-request.test.cjs
+      - name: Technology requests with actual HTTP sessions and isolated PostgreSQL
+        env:
+          A07_HTTP_CONFIRM: CREATE_NEW_LOOPBACK_DATABASE_ONLY
+        run: node apps/api/scripts/technology-request-http-e2e.mjs
       - name: Transaction-bound boat and trip compliance contracts
         run: node apps/api/scripts/compliance-transaction-validation.cjs
       - name: Marine registration input and review revision boundaries
@@ -301,6 +311,7 @@ jobs:
           HR_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/hr-http-e2e.mjs
           node --test apps/api/scripts/administrative-record-archive.test.cjs
           ADMIN_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/administrative-affairs-http-e2e.mjs
+          ADMIN_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/administrative-affairs-a09-http-e2e.mjs
           RBAC_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/runtime-rbac-ownership-http-e2e.mjs
           FINANCE_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/finance-http-e2e.mjs
           MAPS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/maps-runtime-http-e2e.mjs
@@ -357,6 +368,12 @@ jobs:
           fi
           if ! CONTRACT_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/cooperation-contract-http-e2e.mjs; then
             echo "Cooperation contract HTTP/PostgreSQL failed; API log follows"
+            cat /tmp/hydroland-api.log
+            exit 1
+          fi
+
+          if ! A10_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 A10_API_PID=$API_PID node apps/api/scripts/a10-ci-load-e2e.mjs; then
+            echo "A10 bounded CI load check failed; API log follows"
             cat /tmp/hydroland-api.log
             exit 1
           fi

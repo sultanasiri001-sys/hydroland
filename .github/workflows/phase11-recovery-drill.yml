@@ -96,5 +96,6 @@ jobs:
             phase11-recovery-evidence/host-database-preflight.json
             phase11-recovery-evidence/application-switch-*/application-version-switch-report.json
             phase11-recovery-evidence/application-switch-*/orchestration-report.json
+            phase11-recovery-evidence/application-switch-skipped.json
           retention-days: 30
           if-no-files-found: error

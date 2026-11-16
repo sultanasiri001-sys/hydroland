@@ -6,8 +6,10 @@ on:
     paths:
       - 'apps/api/src/document-forms/**'
       - 'apps/api/scripts/internal-document-review*'
+      - 'apps/api/scripts/executive-decision*'
       - 'apps/web/src/hydroland-documents.js'
       - 'apps/web/src/hydroland-document-reviews.js'
+      - 'apps/web/src/hydroland-executive-decisions.js'
       - 'apps/web/src/app.js'
       - 'apps/web/scripts/internal-document-review-validation.cjs'
       - '.github/workflows/internal-document-review-validation.yml'
@@ -77,6 +79,10 @@ jobs:
         run: |
           set -o pipefail
           node apps/api/scripts/internal-document-review-http-e2e.mjs 2>&1 | tee /tmp/internal-review-evidence/http.log
+      - name: Executive source, delegation, result, escalation, retraction and closure through HTTP PostgreSQL and browser
+        run: |
+          set -o pipefail
+          node apps/api/scripts/executive-decision-http-e2e.mjs 2>&1 | tee /tmp/internal-review-evidence/executive.log
       - name: Stop isolated API
         if: always()
         run: |
@@ -93,3 +99,4 @@ jobs:
           path: /tmp/internal-review-evidence/
           retention-days: 3
           if-no-files-found: error
+

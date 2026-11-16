@@ -147,14 +147,14 @@ test('definite transient rejection gets a bounded retry with one stable notifica
 test('email renderer escapes model HTML, pins recipient and idempotency, classifies failures without network',async()=>{
  const before=global.fetch,env={...process.env};const requests=[];
  Object.assign(process.env,{NODE_ENV:'test',HYDROLAND_EMAIL_PROVIDER:'RESEND',RESEND_API_KEY:'fixture-only',HYDROLAND_EMAIL_FROM:'test@example.invalid',HYDROLAND_PUBLIC_WEB_ORIGIN:'https://example.invalid',RESEND_API_BASE_URL:'http://127.0.0.1:3399'});delete process.env.HYDROLAND_EMAIL_TEST_RECIPIENT;
- const service=new EmailDeliveryService({requireOperational:()=>{}},{});const input={notificationId:randomUUID(),to:'owner@example.invalid',text:'<img src=x onerror=alert(1)> تقرير'};
+ const providerSignals=[];const service=new EmailDeliveryService({requireOperational:()=>{},recordProviderSignal:async(...args)=>{providerSignals.push(args);}},{});const input={notificationId:randomUUID(),to:'owner@example.invalid',text:'<img src=x onerror=alert(1)> تقرير'};
  try{
   global.fetch=async(url,options)=>{requests.push({url,options});return new Response(JSON.stringify({id:'provider-id'}),{status:200});};
   await service.sendExecutiveReport(input);const request=requests[0],body=JSON.parse(request.options.body);assert.deepEqual(body.to,[input.to]);assert(body.html.includes('&lt;img'));assert(!body.html.includes('<img'));assert(body.html.includes('dir="rtl"'));assert.equal(body.text,input.text);assert.equal(request.options.headers['Idempotency-Key'],'hydroland-report/'+input.notificationId);assert.equal(request.options.redirect,'error');
   global.fetch=async()=>new Response('',{status:429});await assert.rejects(()=>service.sendExecutiveReport(input),e=>e.disposition==='RETRYABLE');
   global.fetch=async()=>{throw new Error('network ambiguity');};await assert.rejects(()=>service.sendExecutiveReport(input),e=>e.disposition==='UNCERTAIN');
   global.fetch=async()=>new Response('{}',{status:200});await assert.rejects(()=>service.sendExecutiveReport(input),e=>e.disposition==='UNCERTAIN');
-  process.env.RESEND_API_BASE_URL='https://unexpected.example.invalid';await assert.rejects(()=>service.sendExecutiveReport(input),e=>e.disposition==='PERMANENT');
+  process.env.RESEND_API_BASE_URL='https://unexpected.example.invalid';await assert.rejects(()=>service.sendExecutiveReport(input),e=>e.disposition==='PERMANENT');assert.deepEqual(providerSignals.map(([,status])=>status),['SUCCESS','PROVIDER_FAILURE','PROVIDER_FAILURE','PROVIDER_FAILURE']);
  }finally{global.fetch=before;for(const k of Object.keys(process.env))if(!(k in env))delete process.env[k];Object.assign(process.env,env);}
 });
 

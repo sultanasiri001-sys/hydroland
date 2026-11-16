@@ -1,0 +1,45 @@
+name: A06 provider health monitor
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate monitor behavior with synthetic fixtures
+        run: node --test scripts/a06-provider-watch.test.mjs
+  watch:
+    if: github.repository == 'sultanasiri001-sys/hydroland' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    needs: contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    concurrency:
+      group: a06-provider-watch-main
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Observe provider failures and manage incident issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/a06-provider-watch.mjs

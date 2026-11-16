@@ -65,8 +65,9 @@ export class AgentModelProviderService {
     const base=this.baseUrl();if(!base)return result(false,'PROVIDER_CONFIGURATION_INVALID');
     let response:Response;
     try{response=await fetch(base+'/models/'+encodeURIComponent(config.model),{method:'GET',redirect:'error',cache:'no-store',headers:{Authorization:'Bearer '+(process.env.OPENAI_API_KEY?.trim()||'')},signal:AbortSignal.timeout(5000)});}
-    catch{return result(false,'PROVIDER_CONNECTION_FAILED');}
+    catch{await this.integrations.recordProviderSignal('AI_MODEL','PROVIDER_FAILURE');return result(false,'PROVIDER_CONNECTION_FAILED');}
     if(!response.ok){
+      if(response.status===401||response.status===403||response.status===408||response.status===429||response.status>=500)await this.integrations.recordProviderSignal('AI_MODEL','PROVIDER_FAILURE');
       await response.body?.cancel().catch(()=>{});
       return result(false,response.status===401?'PROVIDER_AUTH_FAILED':response.status===403?'PROVIDER_ACCESS_DENIED':response.status===429?'PROVIDER_RATE_LIMITED':'PROVIDER_REQUEST_FAILED');
     }
@@ -75,16 +76,18 @@ export class AgentModelProviderService {
       while(true){const part=await reader.read();if(part.done)break;length+=part.value.length;if(length>16*1024){await reader.cancel();throw new Error();}buffers.push(part.value);}
       const metadata=JSON.parse(Buffer.concat(buffers).toString('utf8'));
       if(metadata?.object!=='model'||metadata.id!==config.model)throw new Error();
+      await this.integrations.recordProviderSignal('AI_MODEL','SUCCESS');
       return result(true,'MODEL_ACCESS_VERIFIED');
-    }catch{return result(false,'PROVIDER_RESPONSE_INVALID');}
+    }catch{await this.integrations.recordProviderSignal('AI_MODEL','PROVIDER_FAILURE');return result(false,'PROVIDER_RESPONSE_INVALID');}
   }
 
   private async request(path:string,body:object,timeout:number){
     const base=this.baseUrl();if(!base)throw new AiProviderError('PROVIDER_CONFIGURATION_INVALID');
     let response:Response;
     try{response=await fetch(base+path,{method:'POST',redirect:'error',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(process.env.OPENAI_API_KEY?.trim()||'')},body:JSON.stringify(body),signal:AbortSignal.timeout(timeout)});}
-    catch{throw new AiProviderError('PROVIDER_CONNECTION_UNCERTAIN',path==='/responses',path==='/responses'?'GENERATION':'INPUT_TOKENS');}
+    catch{await this.integrations.recordProviderSignal('AI_MODEL','PROVIDER_FAILURE');throw new AiProviderError('PROVIDER_CONNECTION_UNCERTAIN',path==='/responses',path==='/responses'?'GENERATION':'INPUT_TOKENS');}
     if(!response.ok){
+      if(response.status===401||response.status===403||response.status===408||response.status===429||response.status>=500)await this.integrations.recordProviderSignal('AI_MODEL','PROVIDER_FAILURE');
       let code=response.status===401?'PROVIDER_AUTH_FAILED':'PROVIDER_REQUEST_FAILED';
       let limits=providerLimits(response.headers,Date.now());
       if(response.status===429||response.status===503){
@@ -110,8 +113,11 @@ export class AgentModelProviderService {
     try{
       const reader=response.body?.getReader();if(!reader)throw new Error();const buffers:Uint8Array[]=[];let length=0;
       while(true){const part=await reader.read();if(part.done)break;length+=part.value.length;if(length>256*1024){await reader.cancel();throw new Error();}buffers.push(part.value);}
-      return{payload:JSON.parse(Buffer.concat(buffers).toString('utf8')) as Record<string,unknown>,limits:providerLimits(response.headers,Date.now())};
-    }catch{throw new AiProviderError('PROVIDER_RESPONSE_INVALID',path==='/responses');}
+      const payload=JSON.parse(Buffer.concat(buffers).toString('utf8')) as Record<string,unknown>;
+      if(!payload||typeof payload!=='object'||Array.isArray(payload))throw new Error();
+      await this.integrations.recordProviderSignal('AI_MODEL','SUCCESS');
+      return{payload,limits:providerLimits(response.headers,Date.now())};
+    }catch{await this.integrations.recordProviderSignal('AI_MODEL','PROVIDER_FAILURE');throw new AiProviderError('PROVIDER_RESPONSE_INVALID',path==='/responses');}
   }
 
   async execute(config:AiModelConfiguration,agent:AgentDescriptor,action:AgentAction,language:SupportedLanguage,prompt:string,operations?:object,governanceReview?:object,draftCorrection?:object,executiveReport?:object):Promise<AiModelResult>{
