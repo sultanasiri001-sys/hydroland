@@ -11,6 +11,7 @@ if (!secret) throw new Error('JWT_SECRET required');
 const db = new PrismaClient();
 const base = process.env.A10_E2E_BASE_URL || 'http://127.0.0.1:3101/api/v1';
 const profile = { concurrent: 8, requestsPerWorker: 25, requestTimeoutMs: 10000, maxErrors: 0 };
+const acceptance = { p95MsMax: 500 };
 const suffix = `${Date.now()}-${randomBytes(4).toString('hex')}`;
 let person;
 let account;
@@ -115,6 +116,7 @@ try {
     status: 'MEASURED',
     scope: 'synthetic PostgreSQL, localhost, authenticated read-only GET /admin/overview',
     profile,
+    acceptance: { ...acceptance, maxErrors: profile.maxErrors },
     requests: samples.length,
     statuses,
     errors,
@@ -142,6 +144,9 @@ try {
     throw new Error('A10 load sample count differs from the fixed profile');
   }
   if (errors > profile.maxErrors) throw new Error(`A10 load had ${errors} failed requests`);
+  if (result.p95Ms > acceptance.p95MsMax) {
+    throw new Error(`A10 p95 ${result.p95Ms}ms exceeded the approved ${acceptance.p95MsMax}ms target`);
+  }
 } finally {
   if (session) await db.session.deleteMany({ where: { id: session.id } }).catch(() => {});
   if (roleAssignment) await db.roleAssignment.deleteMany({ where: { accountId: account.id } }).catch(() => {});
