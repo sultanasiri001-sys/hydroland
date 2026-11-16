@@ -16,6 +16,7 @@ const recordInclude={certificate:{select:{id:true}},enrollment:true} satisfies P
 @Injectable()
 export class TrainingSessionService {
  constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly authorization:TrainingAuthorizationService){}
+ private now(){return new Date();}
  private fields(body:Record<string,unknown>,allowed:string[]){
   if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(key=>!allowed.includes(key)))throw new BadRequestException('حقول الجلسة غير صالحة.');
  }
@@ -35,7 +36,7 @@ export class TrainingSessionService {
    return new Date(value);
   };
   const startsAt=parse(body.startsAt),endsAt=parse(body.endsAt);
-  if(startsAt<=new Date()||endsAt<=startsAt)throw new BadRequestException('اختر موعد بداية قادمًا ونهاية بعد البداية.');
+  if(startsAt<=this.now()||endsAt<=startsAt)throw new BadRequestException('اختر موعد بداية قادمًا ونهاية بعد البداية.');
   return {startsAt,endsAt};
  }
  private async center(tx:Prisma.TransactionClient,actorId:string){
@@ -59,7 +60,7 @@ export class TrainingSessionService {
  }
  private async notify(tx:Prisma.TransactionClient,ids:string[],payload:Prisma.InputJsonObject){
   const accounts=await tx.account.findMany({where:{id:{in:[...new Set(ids)]}},select:{id:true}});
-  await tx.notification.createMany({data:accounts.map(row=>({accountId:row.id,type:'TRAINING_SESSION_CHANGED',status:'SENT',sentAt:new Date(),payload}))});
+  await tx.notification.createMany({data:accounts.map(row=>({accountId:row.id,type:'TRAINING_SESSION_CHANGED',status:'SENT',sentAt:this.now(),payload}))});
  }
  private async touch(tx:Prisma.TransactionClient,enrollment:{id:string;updatedAt:Date},activate=false){
   const updatedAt=sessionRevision(enrollment.updatedAt);
@@ -155,7 +156,7 @@ export class TrainingSessionService {
    }
    if(row.updatedAt.getTime()!==revision.getTime())throw new ConflictException('تغيرت الجلسة. حدّث القائمة قبل الحفظ.');
    const policy=await trainingOperationalPolicy(tx);
-   const now=new Date(),controls=sessionControls(course,row,now,policy);
+   const now=this.now(),controls=sessionControls(course,row,now,policy);
    if(!controls.actions.includes(action))throw new ConflictException('الإجراء غير متاح في حالة الجلسة الحالية. يفتح الحضور قبل الموعد بـ30 دقيقة، ويبدأ التدريب بعد تسجيل الحضورين وحلول الموعد.');
    if(action!=='CANCEL')await this.eligible(tx,row.instructorAccountId,course.centerOrganizationId);
    if(action!=='CANCEL')await standardRequest(()=>assertTrainingStandardReady(tx,course,row.instructorAccountId,row.startsAt,sessionEvidence(row.evidence).trainingStandardContext ?? null));

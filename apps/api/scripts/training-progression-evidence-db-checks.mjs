@@ -165,9 +165,11 @@ check('actual compiled session producer OPEN/check-ins/START/COMPLETE', async (t
   // Prisma transaction; no nested/independently committed fixture is needed.
   const scopedDb = { serializable: work => work(tx) };
   const service = new TrainingSessionService(scopedDb, new AuditService(scopedDb), new TrainingAuthorizationService(scopedDb));
+  let clock = Date.UTC(2036, 0, 1, 6, 0, 0);
+  service.now = () => { const value = new Date(clock); clock += 1000; return value; };
   let session = await tx.trainingSession.create({ data: {
     trainingRecordId: f.enrollment.record.id, instructorAccountId: f.instructor.id, status: 'SCHEDULED',
-    startsAt: new Date(Date.now() - 1000), endsAt: new Date(Date.now() + 3600000),
+    startsAt: new Date(Date.UTC(2036, 0, 1, 5, 59, 59)), endsAt: new Date(Date.UTC(2036, 0, 1, 7, 0, 0)),
     evidence: { trainingStandardContext: { environment: 'POOL', plannedMaximumDepthMetres: 2 } }
   } });
   for (const action of ['OPEN', 'INSTRUCTOR_CHECK_IN', 'STUDENT_CHECK_IN', 'START', 'COMPLETE']) {
