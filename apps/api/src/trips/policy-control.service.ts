@@ -62,9 +62,16 @@ export class PolicyControlService {
     if(category.trim().toUpperCase()==='TRAINING_STANDARD_PROFILE')throw new ForbiddenException('إصدارات التدريب لا تُعتمد ولا تُعدل عبر الأعلام العامة.');
     if(category.trim().toUpperCase()==='HR_COMPLIANCE')throw new ForbiddenException('تعديل ضوابط الموارد البشرية يتطلب طلبًا ومراجعة واعتمادًا مستقلين من إدارة الموظفين.');
     if(!['ENABLED','DISABLED','REVIEW'].includes(state))throw new BadRequestException('Invalid policy state.');
-    const current=await this.get(category,ruleKey);
+    return this.db.serializable(async tx=>{
+    const currentRows=await tx.$queryRaw<PolicyRule[]>`
+      SELECT * FROM "PolicyControl"
+      WHERE "category"=${category.toUpperCase()} AND "ruleKey"=${ruleKey.toUpperCase()}
+      FOR UPDATE
+    `;
+    const current=currentRows[0];
+    if(!current)throw new NotFoundException('Policy rule not found.');
     this.assertOptionalChange(current,state);
-    const rows=await this.db.$queryRaw<PolicyRule[]>`
+    const rows=await tx.$queryRaw<PolicyRule[]>`
       UPDATE "PolicyControl"
       SET "state"=${state},
           "updatedByAccountId"=(SELECT a."id" FROM "Account" a WHERE a."id"::text=${accountId} LIMIT 1),
@@ -72,8 +79,9 @@ export class PolicyControlService {
       WHERE "id"::text=${current.id}
       RETURNING *
     `;
-    await this.audit.record({action:'POLICY_STATE_CHANGED',resource:'PolicyControl',resourceId:current.id,metadata:{accountId,category:current.category,ruleKey:current.ruleKey,previousState:current.state,state,reason:reason?.trim()||null}});
+    await this.audit.record({actorId:accountId,action:'POLICY_STATE_CHANGED',resource:'PolicyControl',resourceId:current.id,metadata:{accountId,category:current.category,ruleKey:current.ruleKey,previousState:current.state,state,reason:reason?.trim()||null}},tx);
     return rows[0];
+    });
   }
 
   async upsert(accountId:string,input:{category?:string;ruleKey?:string;labelAr?:string;labelEn?:string|null;description?:string|null;state?:PolicyState}){
@@ -83,9 +91,10 @@ export class PolicyControlService {
     if(!category||!ruleKey||!labelAr)throw new BadRequestException('category, ruleKey and labelAr are required.');
     const state=input.state??'REVIEW';
     if(!['ENABLED','DISABLED','REVIEW'].includes(state))throw new BadRequestException('Invalid policy state.');
-    const existing=await this.db.$queryRaw<PolicyRule[]>`SELECT * FROM "PolicyControl" WHERE "category"=${category} AND "ruleKey"=${ruleKey} LIMIT 1`;
+    return this.db.serializable(async tx=>{
+    const existing=await tx.$queryRaw<PolicyRule[]>`SELECT * FROM "PolicyControl" WHERE "category"=${category} AND "ruleKey"=${ruleKey} FOR UPDATE`;
     if(existing[0])this.assertOptionalChange(existing[0],state);
-    const rows=await this.db.$queryRaw<PolicyRule[]>`
+    const rows=await tx.$queryRaw<PolicyRule[]>`
       INSERT INTO "PolicyControl"("id","category","ruleKey","labelAr","labelEn","state","description","updatedByAccountId","createdAt","updatedAt")
       VALUES(
         gen_random_uuid()::text,
@@ -108,8 +117,9 @@ export class PolicyControlService {
         "updatedAt"=NOW()
       RETURNING *
     `;
-    await this.audit.record({action:'POLICY_RULE_UPSERTED',resource:'PolicyControl',resourceId:rows[0].id,metadata:{accountId,category,ruleKey,state}});
+    await this.audit.record({actorId:accountId,action:'POLICY_RULE_UPSERTED',resource:'PolicyControl',resourceId:rows[0].id,metadata:{accountId,category,ruleKey,state}},tx);
     return rows[0];
+    });
   }
 
   async decision(category:string,ruleKey:string,tx:Prisma.TransactionClient=this.db){
