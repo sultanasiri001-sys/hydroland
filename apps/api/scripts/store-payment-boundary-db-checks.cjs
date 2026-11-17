@@ -31,6 +31,33 @@ const status = n => e => e.getStatus?.() === n;
     const [buyer, other, admin] = accounts;
     const product = await db.storeProduct.create({ data: { sku: randomUUID(), nameAr: 'اختبار محلي فقط', priceMinor: 12500, stockQuantity: 50, status: 'ACTIVE' } });
     const makeOrder = () => store.createOrder(buyer.id, [{ productId: product.id, quantity: 1 }]);
+    await check('PostgreSQL store order persists one explicit non-SAR currency', async () => {
+      const usdProduct = await db.storeProduct.create({ data: { sku: randomUUID(), nameAr: 'اختبار عملة USD محلي', priceMinor: 250, currency: 'USD', stockQuantity: 4, status: 'ACTIVE' } });
+      const order = await store.createOrder(buyer.id, [{ productId: usdProduct.id, quantity: 2 }]);
+      const saved = await db.storeOrder.findUniqueOrThrow({ where: { id: order.id } });
+      assert.equal(saved.currency, 'USD'); assert.equal(saved.totalMinor, 500);
+      assert.equal((await db.storeProduct.findUniqueOrThrow({ where: { id: usdProduct.id } })).stockQuantity, 2);
+    });
+    await check('PostgreSQL mixed-currency order rejection preserves stock and creates no order', async () => {
+      const sarProduct = await db.storeProduct.create({ data: { sku: randomUUID(), nameAr: 'اختبار عملة SAR محلي', priceMinor: 100, currency: 'SAR', stockQuantity: 3, status: 'ACTIVE' } });
+      const usdProduct = await db.storeProduct.create({ data: { sku: randomUUID(), nameAr: 'اختبار عملة USD محلي', priceMinor: 200, currency: 'USD', stockQuantity: 4, status: 'ACTIVE' } });
+      const beforeSar = await db.storeProduct.findUniqueOrThrow({ where: { id: sarProduct.id } });
+      const beforeUsd = await db.storeProduct.findUniqueOrThrow({ where: { id: usdProduct.id } });
+      const beforeOrders = await db.storeOrder.count();
+      await assert.rejects(() => store.createOrder(buyer.id, [
+        { productId: sarProduct.id, quantity: 1 }, { productId: usdProduct.id, quantity: 1 },
+      ]), status(400));
+      assert.equal((await db.storeProduct.findUniqueOrThrow({ where: { id: sarProduct.id } })).stockQuantity, beforeSar.stockQuantity);
+      assert.equal((await db.storeProduct.findUniqueOrThrow({ where: { id: usdProduct.id } })).stockQuantity, beforeUsd.stockQuantity);
+      assert.equal(await db.storeOrder.count(), beforeOrders);
+    });
+    await check('PostgreSQL malformed stored product currency is rejected without stock or order changes', async () => {
+      const invalidProduct = await db.storeProduct.create({ data: { sku: randomUUID(), nameAr: 'اختبار عملة غير صالحة محلي', priceMinor: 100, currency: 'usd', stockQuantity: 3, status: 'ACTIVE' } });
+      const beforeOrders = await db.storeOrder.count();
+      await assert.rejects(() => store.createOrder(buyer.id, [{ productId: invalidProduct.id, quantity: 1 }]), status(400));
+      assert.equal((await db.storeProduct.findUniqueOrThrow({ where: { id: invalidProduct.id } })).stockQuantity, 3);
+      assert.equal(await db.storeOrder.count(), beforeOrders);
+    });
     const events = (resource, id) => db.auditEvent.findMany({ where: { resource, resourceId: id } });
     const first = await makeOrder(), key = randomUUID();
     const failStore = new StoreService(db, { record: async () => { throw new Error('Injected audit failure'); } });
