@@ -41,6 +41,7 @@ async function readObservations(env,fetcher){
   for(const row of data.providers){
     if(!row||!PROVIDERS.includes(row.provider)||entries.has(row.provider)||!['UNKNOWN','AVAILABLE','DEGRADED'].includes(row.state))throw new Error('A06_MONITOR_RESPONSE_INVALID');
     const observedAt=safeObservedAt(row.observedAt);
+    if(row.state==='UNKNOWN'&&(row.observedAt!==null||row.category!==null))throw new Error('A06_MONITOR_RESPONSE_INVALID');
     if(row.state!=='UNKNOWN'&&!observedAt)throw new Error('A06_MONITOR_RESPONSE_INVALID');
     if(row.state!=='UNKNOWN'&&!['SUCCESS','PROVIDER_FAILURE'].includes(row.category))throw new Error('A06_MONITOR_RESPONSE_INVALID');
     if(row.state==='AVAILABLE'&&row.category!=='SUCCESS'||row.state==='DEGRADED'&&row.category!=='PROVIDER_FAILURE')throw new Error('A06_MONITOR_RESPONSE_INVALID');
@@ -55,6 +56,23 @@ function findOpenProviderIssue(issues,provider){
   const found=issues.filter(issue=>issue.state==='OPEN'&&issue.title.startsWith(issuePrefix(provider)));
   if(found.length>1)throw new Error('A06_MONITOR_DUPLICATE_RECORDS');
   return found[0]??null;
+}
+function validateObservationOrder(issues,observations,now){
+  for(const provider of PROVIDERS){
+    const row=observations.get(provider);
+    if(row.state==='UNKNOWN')continue;
+    const observedAt=Date.parse(row.observedAt);
+    // Allow a bounded clock difference and observations made while this run
+    // requests its identity token. Larger future timestamps are not evidence.
+    if(observedAt>now+60_000)throw new Error('A06_MONITOR_FUTURE_OBSERVATION');
+    const issue=findOpenProviderIssue(issues,provider);
+    if(!issue)continue;
+    const prefix=issuePrefix(provider)+' ';
+    const incidentAt=issue.title.startsWith(prefix)?safeObservedAt(issue.title.slice(prefix.length)):null;
+    if(!incidentAt)throw new Error('A06_MONITOR_INCIDENT_TIME_INVALID');
+    const failureAt=Date.parse(incidentAt);
+    if(observedAt<failureAt||(row.state==='AVAILABLE'&&observedAt===failureAt))throw new Error('A06_MONITOR_STALE_OBSERVATION');
+  }
 }
 function incidentBody(provider,row,env,now){
   const age=Math.max(0,Math.floor((now-Date.parse(row.observedAt))/1000));
@@ -74,7 +92,7 @@ function incidentBody(provider,row,env,now){
 }
 function controlBody(env,now){
   return [
-    'The scheduled A06 monitor could not authenticate to or read the protected provider-observation endpoint.',
+    'The scheduled A06 monitor could not authenticate to, read, or validate the current protected provider observations.',
     'This is a monitor/control-path failure, not a claim that a provider is down.',
     '',
     'Detected at (UTC): '+new Date(now).toISOString(),
@@ -201,14 +219,17 @@ export async function runProviderWatch({env=process.env,fetcher=fetch,gh=default
   assertContext(env);
   const checkedAt=new Date(now).toISOString();
   ensureLabels(gh);
-  let observations;
-  try{observations=await readObservations(env,fetcher);}
+  let observations,records;
+  try{
+    observations=await readObservations(env,fetcher);
+    records=parseIssueList(gh,WATCH_LABEL);
+    validateObservationOrder(records,observations,now);
+  }
   catch{
     const controlRecords=parseIssueList(gh,'a06-monitor-control');
     const issue=openControlIssue(gh,env,now,controlRecords);
     return{scope:'A06_PROVIDER_MONITOR',status:'MONITOR_ROUTE_UNAVAILABLE',issue,checkedAt};
   }
-  const records=parseIssueList(gh,WATCH_LABEL);
   const controlRecords=parseIssueList(gh,'a06-monitor-control');
   const closedMonitorIssue=closeControlIssue(gh,controlRecords);
   const outcomes=[];
