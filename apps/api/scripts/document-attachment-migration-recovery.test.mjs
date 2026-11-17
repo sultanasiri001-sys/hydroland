@@ -1,107 +1,98 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ATTACHMENT_MIGRATION, recoverFailedAttachmentMigration } from './document-attachment-migration-recovery.mjs';
+import {
+  ATTACHMENT_MIGRATION,
+  ATTACHMENT_MIGRATION_CHECKSUM,
+  buildAttachmentSchemaStatements,
+  recoverFailedAttachmentMigration,
+} from './document-attachment-migration-recovery.mjs';
 
-const columns = [
-  ['id', 'text'],
-  ['documentId', 'text'],
-  ['organizationId', 'text'],
-  ['uploadedByAccountId', 'text'],
-  ['filename', 'text'],
-  ['mimeType', 'text'],
-  ['byteSize', 'integer'],
-  ['sha256', 'text'],
-  ['content', 'bytea'],
-  ['createdAt', 'timestamp without time zone'],
-].map(([column_name, data_type]) => ({ column_name, data_type }));
-
-function makeDatabase({ migrationRows = [], tableColumns = [], rowCount = 0 } = {}) {
-  const state = { migrationRows, tableColumns, rowCount, calls: [] };
+function makeDatabase({ schema = 'public', ledgerPresent = true, migrationRows = [], parents = {} } = {}) {
+  const state = { calls: [], resolved: [] };
   const tx = {
-    async $queryRawUnsafe(sql) {
-      state.calls.push({ kind: 'query', sql });
+    async $queryRawUnsafe(sql, ...parameters) {
+      state.calls.push({ kind: 'query', sql, parameters });
       if (sql.includes('pg_advisory_xact_lock')) return [];
-      if (sql.includes('information_schema.columns')) return state.tableColumns;
-      if (sql.includes('COUNT(*)::int')) return [{ count: state.rowCount }];
-      if (sql.includes('SELECT migration_name')) {
-        return state.migrationRows.filter((row) =>
-          sql.includes('finished_at IS NULL')
-            ? !row.finished_at && !row.rolled_back_at
-            : true,
-        );
+      if (sql.includes('current_schema()')) return [{ schema }];
+      if (sql.includes('to_regclass')) {
+        const name = String(parameters[0]).replaceAll('"', '').split('.').at(-1);
+        return [{ present: name === '_prisma_migrations' ? ledgerPresent : Boolean(parents[name]) }];
       }
+      if (sql.includes('WHERE migration_name=$1')) return migrationRows;
+      if (sql.includes('format_type')) return parents[parameters[1]] ? [{ id_type: parents[parameters[1]] }] : [];
       throw new Error('Unexpected recovery query: ' + sql);
     },
     async $executeRawUnsafe(sql) {
       state.calls.push({ kind: 'execute', sql });
-      if (sql.includes('DROP TABLE')) state.tableColumns = [];
-      if (sql.includes('UPDATE public."_prisma_migrations"')) {
-        state.migrationRows = state.migrationRows.map((row) =>
-          !row.finished_at && !row.rolled_back_at
-            ? { ...row, rolled_back_at: new Date() }
-            : row,
-        );
-        return 1;
-      }
       return 0;
     },
   };
   return { state, db: { $transaction: (work) => work(tx) } };
 }
 
-const failedAttempt = () => ({ migration_name: ATTACHMENT_MIGRATION, finished_at: null, rolled_back_at: null });
-
-test('does nothing when the attachment migration has no failed record', async () => {
-  const { db, state } = makeDatabase();
-  const result = await recoverFailedAttachmentMigration({ db });
-  assert.equal(result.status, 'no-failed-migration');
-  assert.equal(state.calls.some((call) => call.sql.includes('DROP TABLE')), false);
-  assert.equal(state.calls.some((call) => call.sql.includes('UPDATE public."_prisma_migrations"')), false);
+test('builds TEXT-compatible tables for legacy identities', () => {
+  const statements = buildAttachmentSchemaStatements({
+    schema: 'public', documentIdType: 'text', organizationIdType: 'text', accountIdType: 'text',
+  });
+  assert.equal(statements.length, 6);
+  assert.match(statements[0], /"id" text NOT NULL/);
+  assert.match(statements[0], /"organizationId" text NOT NULL/);
+  assert.equal(statements.filter((sql) => sql.includes('FOREIGN KEY')).length, 3);
 });
 
-test('marks a failed migration rolled back when no partial table exists', async () => {
-  const { db, state } = makeDatabase({ migrationRows: [failedAttempt()] });
-  const result = await recoverFailedAttachmentMigration({ db });
-  assert.equal(result.status, 'rolled-back-without-table');
-  assert.equal(state.calls.some((call) => call.sql.includes('DROP TABLE')), false);
-  assert.equal(state.migrationRows[0].rolled_back_at instanceof Date, true);
+test('derives each attachment key type independently', () => {
+  const [create] = buildAttachmentSchemaStatements({
+    schema: 'tenant_a', documentIdType: 'uuid', organizationIdType: 'text', accountIdType: 'uuid',
+  });
+  assert.match(create, /"id" uuid NOT NULL/);
+  assert.match(create, /"documentId" uuid NOT NULL/);
+  assert.match(create, /"organizationId" text NOT NULL/);
+  assert.match(create, /"uploadedByAccountId" uuid NOT NULL/);
 });
 
-test('drops only the known empty partial table before marking failure rolled back', async () => {
-  const { db, state } = makeDatabase({ migrationRows: [failedAttempt()], tableColumns: columns });
-  const result = await recoverFailedAttachmentMigration({ db });
-  assert.equal(result.status, 'rolled-back-empty-partial-table');
-  const drop = state.calls.findIndex((call) => call.sql.includes('DROP TABLE'));
-  const mark = state.calls.findIndex((call) => call.sql.includes('UPDATE public."_prisma_migrations"'));
-  assert(drop >= 0 && mark > drop);
-  assert.equal(state.tableColumns.length, 0);
-  assert.equal(state.migrationRows[0].rolled_back_at instanceof Date, true);
+test('rejects unsupported database identity types', () => {
+  assert.throws(() => buildAttachmentSchemaStatements({
+    schema: 'public', documentIdType: 'bigint', organizationIdType: 'uuid', accountIdType: 'uuid',
+  }), /unsupported identity type/);
 });
 
-test('refuses to drop a partial attachment table containing files', async () => {
-  const { db, state } = makeDatabase({ migrationRows: [failedAttempt()], tableColumns: columns, rowCount: 1 });
-  await assert.rejects(recoverFailedAttachmentMigration({ db }), /contains data/);
-  assert.equal(state.calls.some((call) => call.sql.includes('DROP TABLE')), false);
-  assert.equal(state.migrationRows[0].rolled_back_at, null);
+test('does nothing before parent tables exist', async () => {
+  const { db, state } = makeDatabase({ parents: { _prisma_migrations: true } });
+  const result = await recoverFailedAttachmentMigration({ db, resolveMigration: async () => state.resolved.push('called') });
+  assert.equal(result.status, 'parents-not-ready');
+  assert.deepEqual(state.resolved, []);
+  assert.equal(state.calls.some((call) => call.kind === 'execute'), false);
 });
 
-test('refuses to drop a table whose columns differ from the failed migration', async () => {
-  const unexpected = columns.map((column) => ({ ...column }));
-  unexpected[1] = { ...unexpected[1], data_type: 'uuid' };
-  const { db, state } = makeDatabase({ migrationRows: [failedAttempt()], tableColumns: unexpected });
-  await assert.rejects(recoverFailedAttachmentMigration({ db }), /unexpected column definition/);
-  assert.equal(state.calls.some((call) => call.sql.includes('DROP TABLE')), false);
-  assert.equal(state.migrationRows[0].rolled_back_at, null);
-});
-
-test('does not roll back a successful migration', async () => {
+test('does not change a successful migration', async () => {
   const { db, state } = makeDatabase({ migrationRows: [{
-    migration_name: ATTACHMENT_MIGRATION,
-    finished_at: new Date(),
-    rolled_back_at: null,
+    id: 'done', checksum: 'any', finished_at: new Date(), rolled_back_at: null,
   }] });
-  const result = await recoverFailedAttachmentMigration({ db });
+  const result = await recoverFailedAttachmentMigration({ db, resolveMigration: async () => state.resolved.push('called') });
   assert.equal(result.status, 'already-applied');
-  assert.equal(state.calls.some((call) => call.sql.includes('DROP TABLE')), false);
-  assert.equal(state.calls.some((call) => call.sql.includes('UPDATE public."_prisma_migrations"')), false);
+  assert.deepEqual(state.resolved, []);
 });
+
+test('refuses to repair a failed migration with an unrelated checksum', async () => {
+  const { db, state } = makeDatabase({ migrationRows: [{
+    id: 'failed', checksum: 'wrong', finished_at: null, rolled_back_at: null, logs: 'SQLSTATE 42804',
+  }] });
+  await assert.rejects(
+    recoverFailedAttachmentMigration({ db, resolveMigration: async () => state.resolved.push('called') }),
+    /checksum differs/,
+  );
+  assert.deepEqual(state.resolved, []);
+});
+
+test('refuses to mark a failed migration applied for a different database error', async () => {
+  const { db, state } = makeDatabase({ migrationRows: [{
+    id: 'failed', checksum: ATTACHMENT_MIGRATION_CHECKSUM, finished_at: null, rolled_back_at: null, logs: 'permission denied',
+  }] });
+  await assert.rejects(
+    recoverFailedAttachmentMigration({ db, resolveMigration: async () => state.resolved.push('called') }),
+    /not the verified foreign-key identity-type mismatch/,
+  );
+  assert.deepEqual(state.resolved, []);
+});
+
+assert.equal(ATTACHMENT_MIGRATION, '20261117120000_managed_document_pdf_attachments');
