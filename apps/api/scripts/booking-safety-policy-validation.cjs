@@ -25,7 +25,8 @@ function setup(state,safety=null,{weatherBlocked=false,used=0}={}){
     const test=setup('DISABLED',null,options);await assert.rejects(()=>test.service.book('account','trip-test',1),error=>error.getStatus?.()===409&&error.message===(options.weatherBlocked?'Weather blocked':'Trip capacity reached.'));assert.equal(test.writes(),0);checks++;
   }
   const audits=[],rule={id:'policy',category:'BOOKING',ruleKey:'SAFETY_APPROVAL',state:'ENABLED'};
-  const service=new PolicyControlService({$queryRaw:async(strings,...values)=>strings.join('').includes('UPDATE')?[{...rule,state:values[0]}]:[rule]},{record:async data=>audits.push(data)});
+  const policyTx={$queryRaw:async(strings,...values)=>/^\s*UPDATE\b/.test(strings.join(''))?[{...rule,state:values[0]}]:[rule]};
+  const service=new PolicyControlService({serializable:fn=>fn(policyTx)},{record:async(data,tx)=>{assert.equal(tx,policyTx);audits.push(data);}});
   await service.setState('admin-test','BOOKING','SAFETY_APPROVAL','DISABLED','Temporary controlled booking review');
   assert.equal(audits[0].action,'POLICY_STATE_CHANGED');assert.equal(audits[0].metadata.previousState,'ENABLED');assert.equal(audits[0].metadata.state,'DISABLED');assert.equal(audits[0].metadata.reason,'Temporary controlled booking review');checks++;
   console.log(`Booking safety policy: ${checks} checks passed; enforcement, deferral, weather, capacity, public state and audit verified.`);

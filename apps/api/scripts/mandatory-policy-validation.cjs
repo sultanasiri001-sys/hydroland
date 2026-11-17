@@ -44,7 +44,8 @@ global.fetch=()=>{throw Error('Network is forbidden');};
  // Both legacy writes reject a weaker state, with no mutation or audit.
  for(const method of ['setState','upsert']){
   let writes=0,audits=0;const row={id:'synthetic-policy',category:'BOAT',ruleKey:'REGISTRATION',state:'ENABLED',metadata:binding('BOAT','REGISTRATION')};
-  const svc=new PolicyControlService({$queryRaw:async s=>{if(/UPDATE|INSERT/.test(s.join('')))writes++;return[row];}},{record:async()=>{audits++;}});
+  const tx={$queryRaw:async s=>{if(/^\s*(UPDATE|INSERT)\b/.test(s.join('')))writes++;return[row];}};
+  const svc=new PolicyControlService({serializable:fn=>fn(tx)},{record:async()=>{audits++;}});
   await assert.rejects(()=>method==='setState'?svc.setState('actor','BOAT','REGISTRATION','DISABLED'):svc.upsert('actor',{category:'BOAT',ruleKey:'REGISTRATION',labelAr:'Synthetic',state:'REVIEW'}),e=>e.getStatus()===403);
   assert.equal(writes,0);assert.equal(audits,0);checks++;
  }

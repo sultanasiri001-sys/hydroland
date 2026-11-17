@@ -18,6 +18,8 @@ const request=async(account,path='',body)=>{const r=await fetch(base+'/admin/ope
 try{
  for(const name of ['admin','reader']){const person=await db.person.create({data:{firstName:name,lastName:'OperationalControlsTest'}});people.push(person);accounts.push(await db.account.create({data:{personId:person.id,email:'control-'+randomUUID()+'@example.invalid',passwordHash:'test',status:'ACTIVE',emailVerifiedAt:new Date()}}));}
  const [admin,reader]=accounts;const role=await db.roleAssignment.create({data:{accountId:admin.id,role:'ADMIN',status:'ACTIVE'}});
+ const {policyControlAtomicityAcceptance}=await import('./policy-control-atomicity-http.mjs');
+ await policyControlAtomicityAcceptance({db,base,admin,reader,token});
  assert.equal((await request(null)).status,401);assert.equal((await request(reader)).status,403);
  const initial=await request(admin);assert.equal(initial.status,200);assert.equal(initial.body.length,29);
  const change=async(id,state)=>{const list=await request(admin),rule=list.body.find(r=>r.id===id);return request(admin,'/'+id,{state,reason:'Isolated runtime verification of operational control',expectedRevision:rule.revision})};
