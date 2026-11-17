@@ -218,11 +218,11 @@ function resolveWithInstalledPrisma(name) {
   }
 }
 
-export async function recoverFailedAttachmentMigration({ db, resolveMigration = resolveWithInstalledPrisma }) {
+export async function recoverFailedAttachmentMigration({ db, schema: schemaOverride, resolveMigration = resolveWithInstalledPrisma }) {
   const actualChecksum = ATTACHMENT_MIGRATION_CHECKSUM;
   const prepared = await db.$transaction(async (tx) => {
     await acquireRecoveryLock(tx);
-    const schema = await currentSchema(tx);
+    const schema = schemaOverride || await currentSchema(tx);
     const records = await migrationRows(tx, schema);
     const applied = records.some((row) => row.finished_at && !row.rolled_back_at);
     const failed = records.filter((row) => !row.finished_at && !row.rolled_back_at);
