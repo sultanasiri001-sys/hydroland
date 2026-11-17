@@ -31,6 +31,9 @@ try {
       const identity = scenario.identity;
       for (const name of ['ManagedDocument', 'Organization', 'Account']) {
         await root.$executeRawUnsafe(`CREATE TABLE ${table(name)} ("id" ${identity} PRIMARY KEY)`);
+        const [column] = await root.$queryRawUnsafe(`SELECT data_type FROM information_schema.columns
+          WHERE table_schema=$1 AND table_name=$2 AND column_name='id'`, schema, name);
+        assert.equal(column?.data_type, identity.toLowerCase(), `${name}.id fixture must be ${identity}`);
       }
       await root.$executeRawUnsafe(`CREATE TABLE ${table('_prisma_migrations')} (
         "id" TEXT PRIMARY KEY,

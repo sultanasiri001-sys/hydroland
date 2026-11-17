@@ -83,11 +83,8 @@ async function tablePresent(db, schema, table) {
 }
 
 async function readIdentityType(db, schema, table) {
-  const rows = await db.$queryRawUnsafe(`SELECT format_type(a.atttypid,a.atttypmod) AS id_type
-    FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-    JOIN pg_attribute a ON a.attrelid=c.oid
-    WHERE n.nspname=$1 AND c.relname=$2 AND c.relkind='r' AND a.attname='id'
-      AND a.attnum>0 AND NOT a.attisdropped`, schema, table);
+  const rows = await db.$queryRawUnsafe(`SELECT data_type AS id_type FROM information_schema.columns
+    WHERE table_schema=$1 AND table_name=$2 AND column_name='id'`, schema, table);
   return rows[0]?.id_type ?? null;
 }
 
