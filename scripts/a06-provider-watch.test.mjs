@@ -149,3 +149,44 @@ test('rejects inconsistent observations without writing provider outage issues',
   assert.equal(issues.length,1);
   assert.equal(issues[0].title,'[A06 MONITOR ROUTE] Provider status monitor unavailable');
 });
+
+for(const minutes of [-1,0])test('does not close an incident with '+(minutes===0?'an equal-time':'an older')+' successful observation',async()=>{
+  const observedAt=new Date(now-5*60_000).toISOString();
+  const incident={number:80,title:'[A06 PROVIDER HEALTH] EMAIL '+observedAt,state:'OPEN',body:'Original failure evidence',labels:[{name:'a06-provider-watch'}]};
+  const {gh,issues}=mockGh([incident]);
+  const result=await runProviderWatch({env:baseEnv,fetcher:apiFetch(dataset({EMAIL:{state:'AVAILABLE',category:'SUCCESS',observedAt:new Date(Date.parse(observedAt)+minutes*60_000).toISOString()}})),gh,now});
+  assert.equal(result.status,'MONITOR_ROUTE_UNAVAILABLE');
+  assert.equal(issues.find(i=>i.number===80).state,'OPEN');
+  assert.equal(issues.find(i=>i.number===80).body,'Original failure evidence');
+});
+test('a stale failure cannot supersede or close a newer incident',async()=>{
+  const incident={number:80,title:'[A06 PROVIDER HEALTH] EMAIL '+new Date(now-5*60_000).toISOString(),state:'OPEN',body:'Newer failure evidence',labels:[{name:'a06-provider-watch'}]};
+  const {gh,issues}=mockGh([incident]);
+  const result=await runProviderWatch({env:baseEnv,fetcher:apiFetch(dataset({EMAIL:{state:'DEGRADED',category:'PROVIDER_FAILURE',observedAt:new Date(now-10*60_000).toISOString()}})),gh,now});
+  assert.equal(result.status,'MONITOR_ROUTE_UNAVAILABLE');
+  assert.equal(issues.find(i=>i.number===80).state,'OPEN');assert.equal(issues.find(i=>i.number===80).body,'Newer failure evidence');
+  assert.equal(issues.filter(i=>i.title.startsWith('[A06 PROVIDER HEALTH]')).length,1);
+});
+test('future observations and inconsistent UNKNOWN tuples are rejected before provider mutations',async()=>{
+  for(const row of [
+    {state:'AVAILABLE',category:'SUCCESS',observedAt:new Date(now+61_000).toISOString()},
+    {state:'DEGRADED',category:'PROVIDER_FAILURE',observedAt:new Date(now+61_000).toISOString()},
+    {state:'UNKNOWN',category:'SUCCESS',observedAt:null},
+    {state:'UNKNOWN',category:null,observedAt:new Date(now).toISOString()},
+  ]){
+    const {gh,issues}=mockGh();const result=await runProviderWatch({env:baseEnv,fetcher:apiFetch(dataset({EMAIL:row})),gh,now});
+    assert.equal(result.status,'MONITOR_ROUTE_UNAVAILABLE');assert.equal(issues.length,1);assert.match(issues[0].title,/MONITOR ROUTE/);
+  }
+});
+test('validation of all providers precedes any recovery or control-path closure',async()=>{
+  const old=new Date(now-20*60_000).toISOString();
+  const seed=[
+    {number:80,title:'[A06 PROVIDER HEALTH] OBJECT_STORAGE '+old,state:'OPEN',body:'Storage failure',labels:[{name:'a06-provider-watch'}]},
+    {number:81,title:'[A06 PROVIDER HEALTH] AI_MODEL '+old,state:'OPEN',body:'Model failure',labels:[{name:'a06-provider-watch'}]},
+    {number:82,title:'[A06 MONITOR ROUTE] Provider status monitor unavailable',state:'OPEN',body:'Control failure',labels:[{name:'a06-monitor-control'}]},
+  ];
+  const data=dataset({OBJECT_STORAGE:{state:'AVAILABLE',category:'SUCCESS',observedAt:new Date(now-5*60_000).toISOString()},AI_MODEL:{state:'AVAILABLE',category:'SUCCESS',observedAt:old}});
+  const {gh,issues,calls}=mockGh(seed);const result=await runProviderWatch({env:baseEnv,fetcher:apiFetch(data),gh,now});
+  assert.equal(result.status,'MONITOR_ROUTE_UNAVAILABLE');assert(issues.every(i=>i.state==='OPEN'));assert.equal(issues.find(i=>i.number===80).body,'Storage failure');
+  assert.equal(calls.some(c=>c.args[0]==='issue'&&c.args[1]==='close'),false);
+});
