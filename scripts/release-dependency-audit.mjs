@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import {spawnSync} from 'node:child_process';
-import {pathToFileURL} from 'node:url';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 
 export function validateAuditReport(report,status){
   const counts=report?.metadata?.vulnerabilities;
@@ -39,6 +39,10 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
   const scope=process.argv[2],output=process.argv[3];
   try{
     if(!Object.hasOwn(auditScopes,scope)||!output)throw new Error('Expected an explicit web-api, mobile or repository scope and report path.');
+    // npm does not assess vendored file source. Verify the maintained backport and
+    // its installed resolution before accepting the registry's audit result.
+    const backport=spawnSync(process.execPath,['--test',fileURLToPath(new URL('./picomatch-security.test.cjs',import.meta.url))],{stdio:'inherit',timeout:20000});
+    if(backport.error||backport.status!==0)throw new Error('Maintained glob security backport verification failed.');
     // Include development dependencies: build tooling belongs to its release.
     const result=spawnSync('npm',['audit',...auditScopes[scope],'--include=dev','--json'],{encoding:'utf8',maxBuffer:16*1024*1024});
     fs.writeFileSync(output,result.stdout||'');

@@ -17,7 +17,8 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1138.0",
     "@aws-sdk/s3-request-presigner": "^3.1138.0",
-    "decode-uri-component": "file:packages/decode-uri-component"
+    "decode-uri-component": "file:packages/decode-uri-component",
+    "picomatch": "file:vendor/picomatch"
   },
   "overrides": {
     "deepmerge-ts": "^8.0.1",
@@ -31,7 +32,8 @@
     },
     "query-string": {
       "decode-uri-component": "file:packages/decode-uri-component"
-    }
+    },
+    "picomatch": "file:vendor/picomatch"
   },
   "engines": {
     "node": "22.x"

@@ -3,6 +3,13 @@ on:
   pull_request:
     paths:
       - 'scripts/center-uat/**'
+      - 'vendor/picomatch/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/picomatch-security.test.cjs'
+      - 'scripts/release-dependency-audit.mjs'
+      - 'Dockerfile'
+      - 'apps/api/Dockerfile'
       - 'render.center-uat.yaml'
       - '.github/workflows/center-uat.yml'
 jobs:
