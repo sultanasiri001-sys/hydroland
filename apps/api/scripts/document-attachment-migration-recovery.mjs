@@ -65,6 +65,18 @@ async function currentSchema(db) {
   return row.schema;
 }
 
+async function acquireRecoveryLock(tx) {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const [row] = await tx.$queryRawUnsafe(
+      'SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0)) AS locked',
+      RECOVERY_LOCK,
+    );
+    if (row?.locked) return;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  fail('another attachment migration recovery still holds the lock');
+}
+
 async function tablePresent(db, schema, table) {
   const [row] = await db.$queryRawUnsafe('SELECT to_regclass($1) IS NOT NULL AS present', qualified(schema, table));
   return row?.present === true;
@@ -209,7 +221,7 @@ function resolveWithInstalledPrisma(name) {
 export async function recoverFailedAttachmentMigration({ db, resolveMigration = resolveWithInstalledPrisma }) {
   const actualChecksum = ATTACHMENT_MIGRATION_CHECKSUM;
   const prepared = await db.$transaction(async (tx) => {
-    await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', RECOVERY_LOCK);
+    await acquireRecoveryLock(tx);
     const schema = await currentSchema(tx);
     const records = await migrationRows(tx, schema);
     const applied = records.some((row) => row.finished_at && !row.rolled_back_at);

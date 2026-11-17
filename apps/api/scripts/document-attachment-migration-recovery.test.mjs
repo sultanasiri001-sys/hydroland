@@ -12,7 +12,7 @@ function makeDatabase({ schema = 'public', ledgerPresent = true, migrationRows =
   const tx = {
     async $queryRawUnsafe(sql, ...parameters) {
       state.calls.push({ kind: 'query', sql, parameters });
-      if (sql.includes('pg_advisory_xact_lock')) return [];
+      if (sql.includes('pg_try_advisory_xact_lock')) return [{ locked: true }];
       if (sql.includes('current_schema()')) return [{ schema }];
       if (sql.includes('to_regclass')) {
         const name = String(parameters[0]).replaceAll('"', '').split('.').at(-1);
