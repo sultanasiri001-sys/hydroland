@@ -7,6 +7,7 @@ import { TrainingSessionService } from './training-session.service';
 import { TrainingCourseProgressService } from './training-course-progress.service';
 import { trainingCompletion, trainingRecordEditable } from './training-completion-policy';
 import { TrainingCertificateService } from './training-certificate.service';
+import { assertTrainingStandardCompletion, assertTrainingStandardReady, bindTrainingStandard, createTrainingStandardDraft, decideTrainingStandard, rejectReservedTrainingMetadata, standardRequest, trainingStandardCatalog, trainingStandardOptions } from './training-standard-store';
 
 export interface CreateTrainingEnrollmentInput {
   studentAccountId: string;
@@ -21,6 +22,7 @@ export class TrainingRepositoryService {
   constructor(private readonly db: DatabaseService,private readonly sessions:TrainingSessionService,private readonly assignments:TrainingAssignmentService,private readonly progress:TrainingCourseProgressService,private readonly certificates:TrainingCertificateService) {}
 
   createEnrollment(input: CreateTrainingEnrollmentInput) {
+    rejectReservedTrainingMetadata(input.metadata);
     return this.db.trainingEnrollment.create({
       data: {
         studentAccountId: input.studentAccountId,
@@ -50,10 +52,18 @@ export class TrainingRepositoryService {
 
   assignInstructor(enrollmentId:string,input:Record<string,unknown>,actorId:string){return this.assignments.assignEnrollment(actorId,enrollmentId,input);}
 
+  standardCatalog(actorId:string){return this.db.serializable(tx=>standardRequest(()=>trainingStandardCatalog(tx,actorId)));}
+  draftStandard(actorId:string,body:Record<string,unknown>){return this.db.serializable(tx=>standardRequest(()=>createTrainingStandardDraft(tx,actorId,body)));}
+  decideStandard(actorId:string,id:string,body:Record<string,unknown>){return this.db.serializable(tx=>standardRequest(()=>decideTrainingStandard(tx,actorId,id,body)));}
+  standardOptions(actorId:string,id:string){return this.db.serializable(tx=>standardRequest(()=>trainingStandardOptions(tx,actorId,id)));}
+  bindStandard(actorId:string,id:string,body:Record<string,unknown>){return this.db.serializable(tx=>standardRequest(()=>bindTrainingStandard(tx,actorId,id,body)));}
+
   setEnrollmentStatus(enrollmentId: string, status: TrainingEnrollmentStatus) {
     if(!Object.values(TrainingEnrollmentStatus).includes(status))throw new BadRequestException('حالة التسجيل غير صالحة.');
     return this.db.serializable(async tx=>{
       const current=await tx.trainingEnrollment.findUniqueOrThrow({where:{id:enrollmentId},include:{record:{include:{stages:{include:{skills:true}},sessions:true,certificate:true}}}});
+      if(status==='ACTIVE')await standardRequest(()=>assertTrainingStandardReady(tx,current,current.instructorAccountId));
+      if(status==='COMPLETED')await standardRequest(()=>assertTrainingStandardCompletion(tx,enrollmentId));
       if(status==='COMPLETED'&&(!current.record||current.record.status!=='COMPLETED'||!trainingCompletion(current.record).ready))throw new ConflictException('أكمل سجل التدريب والمهارات والجلسات قبل إتمام التسجيل.');
       if(current.record?.certificate&&current.status!==status)throw new ConflictException('لا يمكن تغيير تسجيل مرتبط بشهادة.');
       if(current.record?.status==='COMPLETED'&&status!=='COMPLETED')throw new ConflictException('سجل التدريب مكتمل ولا يمكن إعادة فتح التسجيل بهذا الإجراء.');
@@ -80,6 +90,8 @@ export class TrainingRepositoryService {
     const progress = Math.max(0, Math.min(100, Math.round(progressPercent)));
     return this.db.serializable(async tx=>{
     const current=await tx.trainingRecord.findUniqueOrThrow({where:{id},include:{enrollment:true,stages:{include:{skills:true}},sessions:true,certificate:true}});
+    if(progress>0||status==='IN_PROGRESS')await standardRequest(()=>assertTrainingStandardReady(tx,current.enrollment,current.enrollment.instructorAccountId));
+    if(progress===100||status==='COMPLETED')await standardRequest(()=>assertTrainingStandardCompletion(tx,current.enrollmentId));
     if(!trainingRecordEditable(current))throw new ConflictException('السجل مغلق ولا يقبل تعديل التقدم.');
     if((progress===100||status==='COMPLETED')&&(!trainingCompletion(current).ready||progress!==100))throw new ConflictException('إتمام السجل يتطلب جميع المهارات الموقعة والجلسات المغلقة.');
     const updated=await tx.trainingRecord.update({
@@ -130,4 +142,5 @@ export class TrainingRepositoryService {
 
   setSessionStatus(id:string,input:Record<string,unknown>,actorId:string){return this.sessions.legacyStatus(actorId,id,input);}
 }
+
 

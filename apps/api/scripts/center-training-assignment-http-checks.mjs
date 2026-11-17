@@ -1,20 +1,23 @@
 import {randomUUID} from 'node:crypto';
+import {trainingStandardFixture} from './training-standard-isolated-fixture.mjs';
 export async function checkCenterTrainingAssignments(db,{base,a,b,ownerA,ta,tb,ts,personAccount,tokenFor},check){
  if(process.env.CI!=='true'||!['localhost','127.0.0.1','[::1]'].includes(new URL(process.env.DATABASE_URL).hostname)||!['localhost','127.0.0.1','[::1]'].includes(new URL(base).hostname))throw new Error('CI loopback API and database required');
+ const standards=trainingStandardFixture(db,base);
  const request=async(token,path,body,method=body?'PATCH':'GET')=>{const response=await fetch(base+path,{method,headers:{...(token?{authorization:'Bearer '+token}:{}),...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});return {status:response.status,body:await response.json()}};
  const student=await personAccount('assignment-student-'+randomUUID()),pros=[];
  for(let i=0;i<4;i++){
   const account=await personAccount('assignment-pro-'+i+'-'+randomUUID());
   await db.roleAssignment.create({data:{accountId:account.id,role:'INSTRUCTOR',status:'ACTIVE'}});
   const member=await db.organizationMember.create({data:{organizationId:i===3?b.org.id:a.org.id,accountId:account.id,role:'INSTRUCTOR',status:'ACTIVE'}});pros.push({...account,member});
+  await standards.participant(account.id,true);
  }
  const [oldToken,newToken]=await Promise.all([tokenFor(pros[0].id),tokenFor(pros[1].id)]),ids=[];
  const course=async(label,center=a.org.id)=>{
   const row=await db.trainingEnrollment.create({data:{studentAccountId:student.id,centerOrganizationId:center,instructorAccountId:pros[0].id,status:'ACTIVE',courseCode:label,metadata:{privateMarker:'DO_NOT_RETURN'}}});ids.push(row.id);
-  const record=await db.trainingRecord.create({data:{enrollmentId:row.id}});return {...row,record};
+  const record=await db.trainingRecord.create({data:{enrollmentId:row.id}});return {...await standards.bind(row.id,'SKILL-ONE'),record};
  };
  let sessionSequence=0;
- const session=(row,status='SCHEDULED',instructorAccountId=pros[0].id,startsAt,evidence)=>{startsAt ||= new Date(Date.parse('2035-01-01T06:00:00Z')+(sessionSequence++)*7200000);return db.trainingSession.create({data:{trainingRecordId:row.record.id,instructorAccountId,status,startsAt,endsAt:new Date(startsAt.getTime()+3600000),evidence}})};
+ const session=(row,status='SCHEDULED',instructorAccountId=pros[0].id,startsAt,evidence)=>{startsAt ||= new Date(Date.parse('2035-01-01T06:00:00Z')+(sessionSequence++)*7200000);return db.trainingSession.create({data:{trainingRecordId:row.record.id,instructorAccountId,status,startsAt,endsAt:new Date(startsAt.getTime()+3600000),evidence:{...evidence,trainingStandardContext:standards.context}}})};
  const current=id=>db.trainingEnrollment.findUniqueOrThrow({where:{id}});
  const payload=(row,target=pros[1].id,extra={})=>({instructorAccountId:target,reason:'إعادة توزيع التكليف',expectedUpdatedAt:new Date(row.updatedAt).toISOString(),transferUpcomingSessions:true,...extra});
  const assign=(row,target=pros[1].id,extra={},token=ta)=>request(token,`/center/me/training/enrollments/${row.id}/instructor`,payload(row,target,extra));
@@ -122,9 +125,11 @@ export async function checkCenterTrainingAssignments(db,{base,a,b,ownerA,ta,tb,t
   check(!second.body.enrollments.some(row=>first.body.enrollments.some(item=>item.id===row.id)),'pages do not repeat enrollments');
   check((await request(tb,'/center/me/training?cursor='+first.body.nextCursor)).status===404,'pagination cursor cannot expose another center');
  }finally{
+  await standards.cleanup();
   await db.trainingCertificate.deleteMany({where:{trainingRecord:{enrollmentId:{in:ids}}}});
   await db.instructorEarning.deleteMany({where:{trainingEnrollmentId:{in:ids}}});
   await db.trainingRecord.deleteMany({where:{enrollmentId:{in:ids}}});
   await db.trainingEnrollment.deleteMany({where:{id:{in:ids}}});
  }
 }
+

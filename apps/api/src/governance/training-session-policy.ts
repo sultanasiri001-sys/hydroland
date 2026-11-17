@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 type CourseState={status:string;record:{status:string;certificate:unknown}|null};
 export type SessionState={status:string;startsAt:Date;endsAt:Date|null;evidence:Prisma.JsonValue|null};
 export const sessionEvidence=(value:Prisma.JsonValue|null):Prisma.JsonObject=>value&&typeof value==='object'&&!Array.isArray(value)?value:{};
-export const sessionHasEvidence=(value:Prisma.JsonValue|null)=>value!==null&&(typeof value!=='object'||Object.keys(value).length>0);
+export const sessionHasEvidence=(value:Prisma.JsonValue|null)=>value!==null&&(typeof value!=='object'||Object.keys(value).some(key=>key!=='trainingStandardContext'));
 export const sessionRevision=(previous:Date)=>new Date(Math.max(Date.now(),previous.getTime()+1));
 export const courseSchedulable=(course:CourseState)=>['PENDING','ACTIVE'].includes(course.status)&&!['COMPLETED','SUSPENDED'].includes(course.record?.status||'')&&!course.record?.certificate;
 export function sessionControls(course:CourseState,session:SessionState,now=new Date(),policy:TrainingOperationalPolicy=DEFAULT_TRAINING_POLICY){
@@ -23,3 +23,4 @@ export function sessionControls(course:CourseState,session:SessionState,now=new 
  if(!['COMPLETED','CANCELLED'].includes(course.status)&&course.record?.status!=='COMPLETED'&&!course.record?.certificate&&!['COMPLETED','CANCELLED'].includes(session.status))actions.push('CANCEL');
  return {canReschedule:active&&session.status==='SCHEDULED'&&!sessionHasEvidence(session.evidence),actions,attendance:{instructorCheckedIn:Boolean(evidence.instructorCheckInAt),studentCheckedIn:Boolean(evidence.studentCheckInAt),instructorRecordedByCenter:evidence.instructorCheckInSource==='CENTER',studentRecordedByCenter:evidence.studentCheckInSource==='CENTER'}};
 }
+

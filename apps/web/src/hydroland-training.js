@@ -15,6 +15,38 @@
   const certificateAuthorized=async(version,session)=>{const authorize=window.HydrolandPortalAccess?.authorizeRole;return typeof authorize==='function'&&await authorize('instructor',{sessionVersion:session,isCurrent:()=>certificateCurrent(version,session)})&&certificateCurrent(version,session)};
   const planCurrent=(version,session)=>version===planVersion&&session===auth?.getSessionVersion?.()&&auth?.isAuthenticated()&&section.dataset.trainingMode==='professional-plan'&&window.HydrolandPortalAccess?.getCurrentRole?.()==='instructor';
   const planAuthorized=async(version,session)=>{const authorize=window.HydrolandPortalAccess?.authorizeRole;return typeof authorize==='function'&&await authorize('instructor',{sessionVersion:session,isCurrent:()=>planCurrent(version,session)})&&planCurrent(version,session)};
+  const standardsByForm=new WeakMap();
+  function standardEditor(list,data){
+    const binding=data.binding;
+    if(binding){list.insertAdjacentHTML('beforeend',`<article class="hl-course"><h4>معايير المنظمة المرتبطة بالدورة</h4><p>${esc(binding.agencyCode)} · ${esc(binding.programCode)} · ${esc(binding.level)} · إصدار ${esc(binding.edition)}</p><p>الإصدار ثابت لهذه الدورة. يتحقق الخادم من نفاذ اعتماده وتأهيل المدرب عند بدء التدريب وإتمامه، ولا تتجاوز هذه المعايير المتطلبات السعودية.</p></article>`);return;}
+    const profiles=Array.isArray(data.profiles)?data.profiles:[];
+    if(!data.canSelect||!profiles.length){list.insertAdjacentHTML('beforeend','<p role="status">لم يرتبط برنامج المنظمة بهذه الدورة. لا يبدأ التدريب قبل وجود إصدار معتمد وتأهيل مدرب مطابق. إذا بدأت أدلة التدريب بالفعل فتحتاج الدورة مسار مراجعة، ولا يعاد ربطها تلقائيًا.</p>');return;}
+    const agencies=[...new Set(profiles.map(row=>row.profile.agencyCode))];
+    list.insertAdjacentHTML('beforeend',`<form data-standard-select data-revision="${esc(data.updatedAt)}"><fieldset><h4>اختيار المنظمة ومعايير الدورة</h4><label>المنظمة<select name="agencyCode" required><option value="">اختر المنظمة</option>${agencies.map(code=>`<option value="${esc(code)}">${esc(code)}</option>`).join('')}</select></label><label>البرنامج والمستوى والإصدار<select name="profileId" required disabled><option value="">اختر المنظمة أولًا</option></select></label><label>بيئة التدريب<select name="environment" required disabled><option value="">اختر البرنامج أولًا</option></select></label><label>أقصى عمق مخطط بالمتر<input name="plannedMaximumDepthMetres" type="number" min="0" max="200" step="0.1" required></label><div data-standard-requirements aria-live="polite"></div><label>سبب اختيار الإصدار<textarea name="reason" minlength="5" maxlength="1000" required></textarea></label><label><input type="checkbox" name="reviewed" required>راجعت البرنامج والإصدار وحدود الإشراف؛ لن يتغير الإصدار تلقائيًا بعد الربط.</label><button type="submit">ربط معايير المنظمة بالدورة</button></fieldset><p data-plan-message role="status"></p></form>`);
+    standardsByForm.set(list.querySelector('[data-standard-select]'),profiles);
+  }
+  section.addEventListener('change',event=>{
+    const form=event.target.closest?.('[data-standard-select]');if(!form)return;
+    const profiles=standardsByForm.get(form)||[],program=form.elements.profileId,environment=form.elements.environment,details=form.querySelector('[data-standard-requirements]');
+    if(event.target.name==='agencyCode'){
+      const rows=profiles.filter(row=>row.profile.agencyCode===form.elements.agencyCode.value);
+      program.innerHTML='<option value="">اختر البرنامج والمستوى والإصدار</option>'+rows.map(row=>`<option value="${esc(row.id)}">${esc(row.profile.programCode)} · ${esc(row.profile.level)} · ${esc(row.profile.edition)}</option>`).join('');program.disabled=!rows.length;
+      environment.innerHTML='<option value="">اختر البرنامج أولًا</option>';environment.disabled=true;details.textContent='';form.elements.plannedMaximumDepthMetres.value='';
+    }else if(event.target.name==='profileId'){
+      const selected=profiles.find(row=>row.id===program.value&&row.profile.agencyCode===form.elements.agencyCode.value),requirements=selected?.profile?.requirements;
+      environment.innerHTML='<option value="">اختر بيئة التدريب</option>'+(requirements?[...new Set(requirements.supervision.map(row=>row.environment))].map(code=>`<option value="${esc(code)}">${esc({POOL:'مسبح',CONFINED_WATER:'مياه محصورة',OPEN_WATER:'مياه مفتوحة'}[code]||code)}</option>`).join(''):'');environment.disabled=!requirements;form.elements.plannedMaximumDepthMetres.value='';
+      details.innerHTML=requirements?`<p>الحد الأدنى للعمر: ${esc(requirements.minimumAge)} · الجلسات: ${esc(requirements.minimumCompletedSessions)} · غوصات المياه المفتوحة: ${esc(requirements.minimumOpenWaterDives)} · دقائق المياه المفتوحة: ${esc(requirements.minimumOpenWaterMinutes)}</p><p>المهارات المطلوبة: ${requirements.requiredSkillCodes.map(esc).join('، ')}<br>النماذج المطلوبة: ${requirements.requiredFormCodes.map(esc).join('، ')||'لا توجد في هذا الإصدار'}</p><p>تتحدد حدود الإشراف والعمق حسب عمر المتدرب وبيئة التدريب عند التحقق في الخادم. لا يضيف اختيار المنظمة تأهيلًا غير مثبت للمدرب.</p>`:'';
+    }
+  });
+  section.addEventListener('submit',async event=>{
+    const form=event.target;if(!form.matches('[data-standard-select]'))return;event.preventDefault();if(form.dataset.busy||!planEnrollment||!form.elements.reviewed.checked)return;
+    const enrollmentId=planEnrollment,version=planVersion,session=auth?.getSessionVersion?.(),values=new FormData(form),message=form.querySelector('[data-plan-message]'),live=()=>planCurrent(version,session)&&form.isConnected;
+    const payload={profileId:values.get('profileId'),environment:values.get('environment'),plannedMaximumDepthMetres:Number(values.get('plannedMaximumDepthMetres')),expectedUpdatedAt:form.dataset.revision,reason:values.get('reason')};
+    form.dataset.busy='true';form.querySelector('fieldset').disabled=true;message.textContent='جارٍ التحقق من الإصدار والتأهيل وحفظ الربط...';
+    try{if(!await planAuthorized(version,session)||!live())return;const response=await auth.authorizedFetch('/training/professional/me/enrollments/'+encodeURIComponent(enrollmentId)+'/standard',{method:'POST',body:JSON.stringify(payload)}),data=await response.json().catch(()=>null);if(!live())return;if(!response.ok||data?.enrollmentId!==enrollmentId)throw new Error(data?.message||'تعذر ربط إصدار معايير المنظمة.');await openPlan(enrollmentId);}
+    catch(error){if(live())message.textContent=error.message||'تعذر الحفظ.';}
+    finally{delete form.dataset.busy;form.querySelector('fieldset').disabled=false;}
+  });
   async function openPlan(enrollmentId){
     scheduleVersion++;certificateVersion++;planEnrollment=enrollmentId;const version=++planVersion,session=auth?.getSessionVersion?.(),list=section.querySelector('[data-training-list]');
     section.dataset.trainingMode='professional-plan';section.querySelector('.hl-training-grid').hidden=true;section.querySelector('.hl-training-head h3').textContent='خطة التدريب وإتمام الدورة';section.querySelector('.hl-training-head span').textContent='التقدم من المهارات الموقعة، وإتمام الدورة بعد إغلاق الجلسات';
@@ -23,10 +55,13 @@
       if(!(await planAuthorized(version,session)))return;
       const response=await auth.authorizedFetch('/training/professional/me/enrollments/'+encodeURIComponent(enrollmentId)+'/plan'),data=await response.json().catch(()=>null);
       if(!planCurrent(version,session))return;if(!response.ok||data?.enrollmentId!==enrollmentId||!Array.isArray(data.stages)||!Array.isArray(data.completionReasons))throw new Error(data?.message||'تعذر تحميل خطة التدريب.');
+      const standardResponse=await auth.authorizedFetch('/training/professional/me/enrollments/'+encodeURIComponent(enrollmentId)+'/standard-options'),standardData=await standardResponse.json().catch(()=>null);
+      if(!planCurrent(version,session))return;if(!standardResponse.ok||standardData?.enrollmentId!==enrollmentId)throw new Error(standardData?.message||'تعذر التحقق من معايير المنظمة.');
       const revision=data.record?.updatedAt||data.updatedAt,stageTypes={THEORY:'نظري',PRACTICAL:'عملي',ONLINE:'إلكتروني',BLENDED:'مدمج'},skillStatuses={NOT_STARTED:'لم يبدأ',IN_PROGRESS:'قيد التقييم',NEEDS_REVIEW:'يحتاج مراجعة',COMPETENT:'متقن'};
       list.innerHTML=`<button type="button" data-plan-back>العودة إلى الدورات</button><article class="hl-course" data-training-plan-view><h4>${esc(data.courseCode)}</h4><p>حالة الدورة: ${esc(label(data.enrollmentStatus))} · تقدم المهارات: ${Number(data.record?.progressPercent||0)}%</p>${data.stages.length?data.stages.map(stage=>`<section class="hl-course"><h4>${esc(stage.stageType)}</h4><p>${esc(stageTypes[stage.deliveryMode]||stage.deliveryMode)}</p>${stage.skills.map(skill=>`<p>${esc(skill.name)} · ${esc(skillStatuses[skill.status]||skill.status)}${skill.signedOffAt?' · توقيع المدرب موثق':''}</p>`).join('')||'<p>لا توجد مهارات في هذه المرحلة.</p>'}</section>`).join(''):'<p>لا توجد خطة مهارات لهذه الدورة. أضف المرحلة والمهارات قبل تقييمها.</p>'}${data.completionReasons.length?'<ul>'+data.completionReasons.map(reason=>'<li>'+esc(reason)+'</li>').join('')+'</ul>':''}</article>`;
       if(data.canEdit)list.insertAdjacentHTML('beforeend',`<details><summary>إضافة مهارة إلى الخطة</summary><form data-plan-skill data-revision="${esc(revision)}"><fieldset><label>المرحلة<select name="stageId"><option value="">مرحلة جديدة</option>${data.stages.map(stage=>`<option value="${esc(stage.id)}">${esc(stage.stageType)}</option>`).join('')}</select></label><fieldset data-plan-new-stage><label>اسم المرحلة<input name="stageType" maxlength="80" required></label><label>طريقة التدريب<select name="deliveryMode">${Object.entries(stageTypes).map(([value,text])=>`<option value="${value}">${text}</option>`).join('')}</select></label></fieldset><label>رمز المهارة<input name="skillCode" maxlength="80" required></label><label>اسم المهارة<input name="name" maxlength="200" required></label><label>ملاحظة الخطة<textarea name="reason" maxlength="1000" required></textarea></label><button type="submit">حفظ المهارة في الخطة</button></fieldset><p data-plan-message role="status"></p></form></details><p>تقييم المهارات متاح من صفحة «التقييمات». تتغير نسبة التقدم بعد حفظ التقييم.</p>`);
       if(data.canComplete)list.insertAdjacentHTML('beforeend',`<form data-plan-complete data-revision="${esc(revision)}"><fieldset><label>ملاحظات الإتمام<textarea name="reason" maxlength="1000" required></textarea></label><label><input type="checkbox" name="reviewed" required>راجعت المهارات الموثقة والجلسات المكتملة</label><p>إتمام السجل لا يصدر شهادة. تبقى توصية الشهادة ومراجعتها المستقلة خطوتين منفصلتين.</p><button type="submit">إتمام سجل الدورة</button></fieldset><p data-plan-message role="status"></p></form>`);
+      standardEditor(list,standardData);
     }catch(error){if(planCurrent(version,session))list.innerHTML=`<p role="alert">${esc(error instanceof Error?error.message:'تعذر تحميل الخطة.')}</p><button type="button" data-plan-refresh>تحديث الخطة</button><button type="button" data-plan-back>العودة إلى الدورات</button>`;}
   }
   section.addEventListener('change',event=>{const select=event.target.closest?.('[data-plan-skill] [name="stageId"]');if(!select)return;const fields=select.form.querySelector('[data-plan-new-stage]');fields.hidden=Boolean(select.value);fields.disabled=Boolean(select.value)});
@@ -192,8 +227,9 @@
     finally{button.disabled=false}
   });
   document.addEventListener('hydroland:session-cleared',()=>{scheduleVersion++;planVersion++;certificateVersion++;planEnrollment=null;if(['professional-schedule','professional-plan','professional-certificates'].includes(section.dataset.trainingMode))section.querySelector('[data-training-list]').textContent='سجل الدخول لعرض بيانات التدريب.'});
-  document.addEventListener('hydroland:role-changed',()=>{if(section.dataset.trainingMode==='professional-certificates'&&window.HydrolandPortalAccess?.getCurrentRole?.()!=='instructor'){certificateVersion++;section.querySelector('[data-training-list]').textContent=''}});
+  document.addEventListener('hydroland:role-changed',()=>{if(window.HydrolandPortalAccess?.getCurrentRole?.()!=='instructor'){if(section.dataset.trainingMode==='professional-certificates'){certificateVersion++;section.querySelector('[data-training-list]').textContent=''}if(section.dataset.trainingMode==='professional-plan'){planVersion++;planEnrollment=null;section.querySelector('[data-training-list]').textContent=''}}});
   document.addEventListener('hydroland:auth-changed',()=>load(requestedMode));
   window.HydrolandTraining={reload:mode=>load(mode)};
   setTimeout(load,0);
 })();
+

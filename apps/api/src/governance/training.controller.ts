@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Header, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { TrainingEnrollmentStatus, TrainingRecordStatus } from '@prisma/client';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { TrainingAuthorizationService } from './training-authorization.service';
@@ -6,6 +6,7 @@ import { TrainingRepositoryService } from './training-repository.service';
 import { TrainingProfessionalProfileService } from './training-professional-profile.service';
 import { TrainingCourseProgressService } from './training-course-progress.service';
 import { TrainingCertificateService } from './training-certificate.service';
+import { TrainingStandardReadinessService } from './training-standard-readiness.service';
 
 type AuthenticatedRequest = { auth: { accountId: string } };
 
@@ -18,7 +19,23 @@ export class TrainingController {
     private readonly professionalProfile: TrainingProfessionalProfileService,
     private readonly progress: TrainingCourseProgressService,
     private readonly certificates: TrainingCertificateService,
+    private readonly standardReadiness: TrainingStandardReadinessService,
   ) {}
+
+  @Get('standards')
+  standards(@Req() request:AuthenticatedRequest){return this.training.standardCatalog(request.auth.accountId);}
+
+  @Post('standards')
+  draftStandard(@Req() request:AuthenticatedRequest,@Body() body:Record<string,unknown>){return this.training.draftStandard(request.auth.accountId,body);}
+
+  @Post('standards/:id/decision')
+  decideStandard(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.training.decideStandard(request.auth.accountId,id,body);}
+
+  @Get('professional/me/enrollments/:id/standard-options')
+  standardOptions(@Req() request:AuthenticatedRequest,@Param('id') id:string){return this.training.standardOptions(request.auth.accountId,id);}
+
+  @Post('professional/me/enrollments/:id/standard')
+  bindStandard(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.training.bindStandard(request.auth.accountId,id,body);}
 
   @Get('professional/me/enrollments/:id/plan')
   professionalPlan(@Req() request:AuthenticatedRequest,@Param('id') id:string){return this.progress.plan(request.auth.accountId,id);}
@@ -91,6 +108,12 @@ export class TrainingController {
     return this.training.getEnrollment(id);
   }
 
+  @Get('enrollments/:id/standard-readiness')
+  @Header('Cache-Control', 'private, no-store')
+  standardReadinessPreview(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+    return this.standardReadiness.read(request.auth.accountId, id);
+  }
+
   @Patch('enrollments/:id/instructor')
   async assignInstructor(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: Record<string,unknown>) {
     await this.authorization.assertAdministrativeEnrollmentAccess(request.auth.accountId, id);
@@ -156,3 +179,4 @@ export class TrainingController {
     return this.training.setSessionStatus(id,body,request.auth.accountId);
   }
 }
+

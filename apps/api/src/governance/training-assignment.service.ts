@@ -1,16 +1,17 @@
 import { trainingOperationalPolicy } from './training-operational-policy';
 import { TrainingSessionService } from './training-session.service';
-import { courseSchedulable, sessionControls } from './training-session-policy';
+import { courseSchedulable, sessionControls, sessionEvidence } from './training-session-policy';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { AuditService } from '../audit/audit.service';
 import { TrainingAuthorizationService } from './training-authorization.service';
 import { hasInstructorCenterAccess } from './training-center-scope';
+import { assertStandardSupervisionAvailable, assertTrainingStandardReady, standardRequest } from './training-standard-store';
 
 const recordSelection={id:true,status:true,certificate:{select:{id:true}},sessions:{orderBy:{startsAt:'asc' as const},select:{id:true,instructorAccountId:true,status:true,startsAt:true,endsAt:true,updatedAt:true,evidence:true}}} satisfies Prisma.TrainingRecordSelect;
 type SessionState={status:string;startsAt:Date;evidence:Prisma.JsonValue|null};
-const hasEvidence=(value:Prisma.JsonValue|null)=>value!==null&&(typeof value!=='object'||Object.keys(value).length>0);
+const hasEvidence=(value:Prisma.JsonValue|null)=>value!==null&&(typeof value!=='object'||Object.keys(value).some(key=>key!=='trainingStandardContext'));
 const movableSession=(row:SessionState,now:Date)=>row.status==='SCHEDULED'&&row.startsAt>now&&!hasEvidence(row.evidence);
 const openSession=(row:SessionState,now:Date)=>!['COMPLETED','CANCELLED'].includes(row.status)&&!movableSession(row,now);
 const mutableEnrollment=(row:{status:string;record:{status:string;certificate:unknown}|null})=>['PENDING','ACTIVE','SUSPENDED'].includes(row.status)&&row.record?.status!=='COMPLETED'&&!row.record?.certificate;
@@ -71,6 +72,7 @@ export class TrainingAssignmentService {
    if(!row)throw new NotFoundException('الدورة غير موجودة في المركز.');
    if(row.updatedAt.getTime()!==input.revision.getTime())throw new ConflictException('تغير التكليف. حدّث القائمة قبل الحفظ.');
    await this.eligible(tx,input.instructorAccountId,row.centerOrganizationId);
+   if(row.metadata&&typeof row.metadata==='object'&&!Array.isArray(row.metadata)&&row.metadata.trainingStandard)await standardRequest(()=>assertTrainingStandardReady(tx,row,input.instructorAccountId));
    const now=new Date();
    if(!mutableEnrollment(row))throw new ConflictException('لا يمكن تغيير تكليف دورة منتهية أو لها سجل شهادة.');
    if(row.record?.sessions.some(item=>openSession(item,now)))throw new ConflictException('أغلق الجلسة الجارية أو التي تجاوزت موعدها قبل تغيير مدرب الدورة.');
@@ -81,6 +83,8 @@ export class TrainingAssignmentService {
    const sessions=input.transfer?(row.record?.sessions.filter(item=>item.instructorAccountId===row.instructorAccountId&&movableSession(item,now))??[]):[];
    for(const session of sessions){
     if(!session.endsAt||session.endsAt<=session.startsAt)throw new ConflictException('حدد وقت نهاية الجلسة قبل نقل تكليفها.');
+    await standardRequest(()=>assertTrainingStandardReady(tx,row,input.instructorAccountId,session.startsAt,sessionEvidence(session.evidence).trainingStandardContext ?? null));
+    await assertStandardSupervisionAvailable(tx,input.instructorAccountId,session.startsAt,session.endsAt,session.id);
     await this.sessions.assertAvailable(tx,input.instructorAccountId,row.studentAccountId,session.startsAt,session.endsAt,session.id);
     const moved=await tx.trainingSession.updateMany({where:{id:session.id,updatedAt:session.updatedAt,status:'SCHEDULED'},data:{instructorAccountId:input.instructorAccountId,updatedAt:nextRevision(session.updatedAt)}});
     if(moved.count!==1)throw new ConflictException('تغيرت إحدى الجلسات. حدّث القائمة قبل إعادة المحاولة.');
@@ -103,6 +107,8 @@ export class TrainingAssignmentService {
    await this.eligible(tx,input.instructorAccountId,center.id);
    if(row.instructorAccountId===input.instructorAccountId)return {id,instructorAccountId:row.instructorAccountId,updatedAt:row.updatedAt};
    if(!row.endsAt||row.endsAt<=row.startsAt)throw new ConflictException('حدد وقت نهاية الجلسة قبل نقل تكليفها.');
+   await standardRequest(()=>assertTrainingStandardReady(tx,enrollment,input.instructorAccountId,row.startsAt,sessionEvidence(row.evidence).trainingStandardContext ?? null));
+   await assertStandardSupervisionAvailable(tx,input.instructorAccountId,row.startsAt,row.endsAt,id);
    await this.sessions.assertAvailable(tx,input.instructorAccountId,enrollment.studentAccountId,row.startsAt,row.endsAt,id);
    const updatedAt=nextRevision(row.updatedAt);
    const changed=await tx.trainingSession.updateMany({where:{id,updatedAt:input.revision,status:'SCHEDULED'},data:{instructorAccountId:input.instructorAccountId,updatedAt}});
@@ -115,3 +121,4 @@ export class TrainingAssignmentService {
   });
  }
 }
+

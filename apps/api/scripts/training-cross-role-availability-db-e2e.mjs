@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
+import {trainingStandardFixture} from './training-standard-isolated-fixture.mjs';
 const url=new URL(process.env.DATABASE_URL||'postgresql://invalid/invalid');
 if(process.env.CI!=='true'||process.env.NODE_ENV!=='test'||!['localhost','127.0.0.1','[::1]'].includes(url.hostname)||!url.pathname.endsWith('_availability_ci'))throw new Error('CI, NODE_ENV=test and isolated loopback *_availability_ci database required');
 const require=createRequire(import.meta.url);
@@ -10,15 +11,16 @@ const {TrainingAuthorizationService}=require('../dist/governance/training-author
 const {TrainingSessionService}=require('../dist/governance/training-session.service.js');
 const {TrainingAssignmentService}=require('../dist/governance/training-assignment.service.js');
 const db=new DatabaseService(),audit=new AuditService(db),authorization=new TrainingAuthorizationService(db),sessions=new TrainingSessionService(db,audit,authorization),assignments=new TrainingAssignmentService(db,audit,authorization,sessions);
+const standards=trainingStandardFixture(db);
 let checks=0,center;
 const check=(ok,label)=>{assert.ok(ok,label);checks++;console.log('PASS',label);};
 const conflict=async(work,label)=>{await assert.rejects(work,error=>error?.getStatus?.()===409,label);checks++;console.log('PASS',label);};
 const interval=(hour=0)=>({startsAt:new Date(Date.UTC(2038,0,1,6+hour)),endsAt:new Date(Date.UTC(2038,0,1,7+hour))});
 const inputTimes=hour=>Object.fromEntries(Object.entries(interval(hour)).map(([k,v])=>[k,v.toISOString()]));
-const account=async()=>{const row=await db.account.create({data:{email:`training-role-${randomUUID()}@example.invalid`,passwordHash:'not-a-login',status:'ACTIVE',person:{create:{firstName:'Training',lastName:'Role fixture'}},roleAssignments:{create:{role:'INSTRUCTOR',status:'ACTIVE'}}}});if(center)await db.organizationMember.create({data:{organizationId:center.id,accountId:row.id,role:'INSTRUCTOR',status:'ACTIVE'}});return row;};
-const course=(instructorAccountId,studentAccountId)=>db.trainingEnrollment.create({data:{instructorAccountId,studentAccountId,centerOrganizationId:center.id,courseCode:'CROSS-ROLE-FIXTURE',record:{create:{}}},include:{record:true}});
+const account=async()=>{const row=await db.account.create({data:{email:`training-role-${randomUUID()}@example.invalid`,passwordHash:'not-a-login',status:'ACTIVE',person:{create:{firstName:'Training',lastName:'Role fixture'}},roleAssignments:{create:{role:'INSTRUCTOR',status:'ACTIVE'}}}});if(center)await db.organizationMember.create({data:{organizationId:center.id,accountId:row.id,role:'INSTRUCTOR',status:'ACTIVE'}});await standards.participant(row.id,true);return row;};
+const course=async(instructorAccountId,studentAccountId)=>{const row=await db.trainingEnrollment.create({data:{instructorAccountId,studentAccountId,centerOrganizationId:center.id,courseCode:'CROSS-ROLE-FIXTURE',record:{create:{}}},include:{record:true}});return standards.bind(row.id);};
 let owner;
-const schedule=(row,hour=0,extra={})=>sessions.create(owner.id,row.id,{instructorAccountId:row.instructorAccountId,requestId:randomUUID(),expectedUpdatedAt:row.updatedAt.toISOString(),reason:'Local cross-role fixture',...inputTimes(hour),...extra},true);
+const schedule=(row,hour=0,extra={})=>sessions.create(owner.id,row.id,{instructorAccountId:row.instructorAccountId,requestId:randomUUID(),expectedUpdatedAt:row.updatedAt.toISOString(),reason:'Local cross-role fixture',...standards.context,...inputTimes(hour),...extra},true);
 const session=id=>db.trainingSession.findUniqueOrThrow({where:{id}});
 const reschedule=(row,hour)=>sessions.reschedule(owner.id,row.id,{...inputTimes(hour),reason:'Local cross-role fixture',expectedUpdatedAt:row.updatedAt.toISOString()});
 const originalSerializable=db.serializable.bind(db);
@@ -61,7 +63,7 @@ try{
 
  const [startInstructor,startStudent,nextStudent]=await Promise.all([account(),account(),account()]),liveCourse=await course(startInstructor.id,startStudent.id),nextCourse=await course(startStudent.id,nextStudent.id);
  const liveTimes={startsAt:new Date(Date.now()-300000),endsAt:new Date(Date.now()+3600000)};
- const live=await db.trainingSession.create({data:{trainingRecordId:liveCourse.record.id,instructorAccountId:startInstructor.id,status:'CHECK_IN_OPEN',...liveTimes,evidence:{instructorCheckInAt:new Date().toISOString(),studentCheckInAt:new Date().toISOString()}}});
+ const live=await db.trainingSession.create({data:{trainingRecordId:liveCourse.record.id,instructorAccountId:startInstructor.id,status:'CHECK_IN_OPEN',...liveTimes,evidence:{trainingStandardContext:standards.context,instructorCheckInAt:new Date().toISOString(),studentCheckInAt:new Date().toISOString()}}});
  await race([()=>sessions.act(owner.id,live.id,{action:'START',reason:'Concurrent start fixture',expectedUpdatedAt:live.updatedAt.toISOString()}),()=>schedule(nextCourse,0,{startsAt:new Date(Date.now()+600000).toISOString(),endsAt:new Date(Date.now()+1800000).toISOString()})],'concurrent START/cross-role create');
  check((await session(live.id)).status==='IN_PROGRESS'&&await db.trainingSession.count({where:{trainingRecordId:nextCourse.record.id}})===0,'START preserves its session and overlapping cross-role create is rejected');
  await conflict(()=>schedule(nextCourse,50),'in-progress session conservatively blocks later cross-role scheduling');
@@ -71,7 +73,7 @@ try{
  await conflict(()=>schedule(openTarget,52),'legacy null-end session remains open-ended across participant roles');
 
  const [legacyInstructor,legacyStudent,legacyOther]=await Promise.all([account(),account(),account()]),legacyCourse=await course(legacyInstructor.id,legacyStudent.id),legacyConflict=await course(legacyStudent.id,legacyOther.id);
- const legacy=await db.trainingSession.create({data:{trainingRecordId:legacyCourse.record.id,instructorAccountId:legacyInstructor.id,status:'CHECK_IN_OPEN',...liveTimes,evidence:{instructorCheckInAt:new Date().toISOString(),studentCheckInAt:new Date().toISOString()}}});
+ const legacy=await db.trainingSession.create({data:{trainingRecordId:legacyCourse.record.id,instructorAccountId:legacyInstructor.id,status:'CHECK_IN_OPEN',...liveTimes,evidence:{trainingStandardContext:standards.context,instructorCheckInAt:new Date().toISOString(),studentCheckInAt:new Date().toISOString()}}});
  await db.trainingSession.create({data:{trainingRecordId:legacyConflict.record.id,instructorAccountId:legacyStudent.id,status:'SCHEDULED',...liveTimes}});
  await conflict(()=>sessions.act(owner.id,legacy.id,{action:'START',reason:'Legacy cross-role fixture',expectedUpdatedAt:legacy.updatedAt.toISOString()}),'START rechecks legacy overlapping participant roles');
  check((await session(legacy.id)).status==='CHECK_IN_OPEN','rejected START does not advance status');
@@ -84,4 +86,5 @@ try{
  }
  if(originalPolicy)await db.policyControl.update({where:{id:originalPolicy.id},data:{state:originalPolicy.state}});else await db.policyControl.delete({where:{category_ruleKey:{category:'TRAINING',ruleKey:'SCHEDULE_CONFLICT'}}});
  console.log(`Training cross-role availability: ${checks} checks passed.`);
-}finally{await db.$disconnect();}
+}finally{await standards.cleanup();await db.$disconnect();}
+

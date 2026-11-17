@@ -1,14 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import * as core from '../src/governance/training-standard-profile.ts';
+import { registerHooks } from 'node:module';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+registerHooks({resolve(specifier,context,nextResolve){
+  if(specifier.startsWith('.')&&context.parentURL&&!/\.[cm]?[jt]s$/.test(specifier)){
+    const candidate=new URL(specifier+'.ts',context.parentURL);
+    if(existsSync(fileURLToPath(candidate)))return nextResolve(candidate.href,context);
+  }
+  return nextResolve(specifier,context);
+}});
+const core=await import('../src/governance/training-standard-profile.ts');
 
 const clone = value => structuredClone(value);
 
 // Every limit and source in this fixture is SYNTHETIC: not PADI, SSI, NAUI, ISO, or Saudi policy.
 function fixture(agencyCode = 'TEST_AGENCY') {
   return { agencyCode, programCode: 'SYNTHETIC_OW', level: 'TEST_LEVEL', edition: 'TEST_EDITION_1',
+    diveProgression: { schemaVersion:2,timeZone:'Asia/Riyadh',qualification:{minimumDepthMetres:3,minimumPercentAtDepth:40,depthFractionComparison:'MORE_THAN',alternatives:[{metric:'SUBMERGED_SECONDS',minimum:600},{metric:'BREATHED_GAS_LITRES',minimum:900}]},qualifyingDives:[{number:1,maximumDepthMetres:8,requiredSkillCodesBeforeDive:[]},{number:2,maximumDepthMetres:12,requiredSkillCodesBeforeDive:[]}],experienceLimits:[0,1,2].map(afterQualifyingDive=>({afterQualifyingDive,maximumDepthMetres:7})),dayLimits:{maximumDives:3,depthLimits:[],afterConfinedWaterMaximumDives:2}},
     sources: [{ authority:'AGENCY', reference:'SYNTHETIC_SOURCE_DO_NOT_PUBLISH', edition:'TEST_EDITION_1', locator:'fixture-only' }],
-    requirements: { minimumAge:10, minimumCompletedSessions:2, minimumOpenWaterDives:2, minimumOpenWaterMinutes:20,
+    requirements: { minimumAge:10, minimumCompletedSessions:2, minimumOpenWaterDives:2, minimumOpenWaterMinutes:0,
       instructorCredentialTitles:['SYNTHETIC_INSTRUCTOR'], prerequisites:[], requiredSkillCodes:['TEST_MASK','TEST_ASCENT'], requiredFormCodes:['TEST_WAIVER'],
       supervision:[{environment:'OPEN_WATER',minimumAge:10,maximumAge:14,studentsPerInstructor:2,maximumDepthMetres:8},{environment:'OPEN_WATER',minimumAge:15,maximumAge:120,studentsPerInstructor:6,maximumDepthMetres:16}] } };
 }
@@ -52,6 +63,5 @@ test('age-specific supervision changes without changing the course agency',()=>{
 });
 test('unknown environment or under-age participant fails closed',()=>{assert.throws(()=>core.trainingSupervisionLimits(fixture(),9,'OPEN_WATER'));assert.throws(()=>core.trainingSupervisionLimits(fixture(),20,'POOL'));});
 test('overlapping age limits intersect conservatively',()=>{const p=fixture();p.requirements.supervision.push({environment:'OPEN_WATER',minimumAge:10,maximumAge:120,studentsPerInstructor:1,maximumDepthMetres:5});assert.deepEqual(core.trainingSupervisionLimits(p,12,'OPEN_WATER'),{studentsPerInstructor:1,maximumDepthMetres:5});});
-test('completion requires all programme-specific evidence',()=>{assert.deepEqual(core.trainingCompletionGaps(fixture(),complete()),[]);const gaps=core.trainingCompletionGaps(fixture(),{completedSessions:0,completedSkillCodes:[],verifiedFormCodes:[],verifiedOpenWaterDives:0,verifiedOpenWaterMinutes:0});assert.equal(gaps.length,5);});
-test('session duration is not accepted as bottom time',()=>{const e=complete();e.verifiedOpenWaterMinutes=0;assert.deepEqual(core.trainingCompletionGaps(fixture(),e),['STANDARD_WATER_MINUTES_REQUIRED']);});
-
+test('completion requires all programme-specific evidence',()=>{assert.deepEqual(core.trainingCompletionGaps(fixture(),complete()),[]);const gaps=core.trainingCompletionGaps(fixture(),{completedSessions:0,completedSkillCodes:[],verifiedFormCodes:[],verifiedOpenWaterDives:0,verifiedOpenWaterMinutes:0});assert.deepEqual(gaps,['STANDARD_SESSIONS_REQUIRED','STANDARD_DIVES_REQUIRED','STANDARD_SKILLS_REQUIRED','STANDARD_FORMS_REQUIRED']);});
+test('aggregate session minutes cannot replace the v2 qualification contract',()=>{const p=fixture();p.requirements.minimumOpenWaterMinutes=20;assert.throws(()=>core.parseTrainingStandard(p),{code:'INVALID_STANDARD'});});

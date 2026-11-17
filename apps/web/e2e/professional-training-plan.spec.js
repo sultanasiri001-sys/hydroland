@@ -10,6 +10,7 @@ async function setup(page){
  await page.route('**/api/v1/me',r=>json(r,profile()));await page.route('**/api/v1/credentials',r=>json(r,[]));await page.route('**/api/v1/me/diver-profile',r=>json(r,{profile:null,equipment:[]}));
  await page.route('**/api/v1/training/professional/me',r=>json(r,{profile:{displayName:'أنس اختبار'},credentials:[],metrics:{activeStudents:1,sessionsToday:0,completedSessions:1,verifiedCredentials:0},privacy:{excludesMedicalData:true,excludesIdentityData:true,excludesEmergencyContacts:true}}));
  await page.route('**/api/v1/training/professional/me/assignments',r=>json(r,[{enrollmentId:'enrollment-1',courseCode:'QA-TRAINING-PLAN',status:state.completed?'COMPLETED':'ACTIVE',student:{displayName:'متدرب اختبار'},record:{progressPercent:percentage(),sessions:[{id:'session-1',status:'COMPLETED',startsAt:'2026-10-22T09:00:00Z'}]}}]));
+ await page.route('**/api/v1/training/professional/me/enrollments/enrollment-1/standard-options',r=>json(r,{enrollmentId:'enrollment-1',updatedAt:revision(),binding:null,context:null,profiles:[],canSelect:false}));
  await page.route('**/api/v1/training/professional/me/enrollments/enrollment-1/plan',r=>{
   if(!state.active)return json(r,{message:'Active instructor role required.'},403);
   if(r.request().method()==='GET')return json(r,data());
@@ -57,3 +58,4 @@ test('a delayed plan response cannot replace a newer training view',async({page}
  const received=page.waitForResponse('**/api/v1/training/professional/me/enrollments/enrollment-1/plan');release();await (await received).finished();await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
  await expect(page.locator('.hl-training')).toHaveAttribute('data-training-mode','professional-schedule');await expect(page.locator('.hl-training')).not.toContainText('استجابة متأخرة');await expect(page.locator('[data-training-plan-view]')).toHaveCount(0);
 });
+

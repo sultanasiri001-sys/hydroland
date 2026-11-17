@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {checkTrainingCertificates} from './training-certificate-http-checks.mjs';
+import {trainingStandardFixture} from './training-standard-isolated-fixture.mjs';
 export async function checkStoreCourseTraining(db,{base,owner,foreignOwner,student,organizationId,request,ok,accounts,persons,ids}){
  const loopback=url=>['localhost','127.0.0.1','[::1]'].includes(new URL(url).hostname);
  assert.equal(process.env.CI,'true');assert.ok(loopback(base)&&loopback(process.env.DATABASE_URL),'Isolated CI API and database required');
+ const standards=trainingStandardFixture(db,base);
+ try{
  const person=await db.person.create({data:{firstName:'Store course instructor',lastName:'Isolated test'}});persons.push(person);
  const instructor=await db.account.create({data:{personId:person.id,email:'store-training-'+randomUUID()+'@example.invalid',passwordHash:'test',status:'ACTIVE',emailVerifiedAt:new Date()}});accounts.push(instructor);
  await db.roleAssignment.create({data:{accountId:instructor.id,role:'INSTRUCTOR',status:'ACTIVE'}});
@@ -18,9 +21,12 @@ export async function checkStoreCourseTraining(db,{base,owner,foreignOwner,stude
  const assignment={instructorAccountId:instructor.id,expectedUpdatedAt:enrollment.updatedAt,reason:'اختبار تكليف دورة المتجر',transferUpcomingSessions:true};
  assert.equal((await request(foreignOwner,'/center/me/training/enrollments/'+enrollment.id+'/instructor','PATCH',assignment)).status,404);
  ok(await request(owner,'/center/me/training/enrollments/'+enrollment.id+'/instructor','PATCH',assignment));
- const assigned=await db.trainingEnrollment.findUniqueOrThrow({where:{id:enrollment.id}});assert.equal(assigned.instructorAccountId,instructor.id);assert.equal(assigned.storeCourseOfferId,offerId);
+ let assigned=await db.trainingEnrollment.findUniqueOrThrow({where:{id:enrollment.id}});assert.equal(assigned.instructorAccountId,instructor.id);assert.equal(assigned.storeCourseOfferId,offerId);
  const sessionId=randomUUID();
- ok(await request(owner,'/center/me/training/enrollments/'+enrollment.id+'/sessions','POST',{requestId:sessionId,instructorAccountId:instructor.id,expectedUpdatedAt:assigned.updatedAt.toISOString(),startsAt,endsAt,reason:'جدولة جلسة اختبار لدورة المتجر'}));
+ const unbound=await request(owner,'/center/me/training/enrollments/'+enrollment.id+'/sessions','POST',{requestId:sessionId,instructorAccountId:instructor.id,expectedUpdatedAt:assigned.updatedAt.toISOString(),...standards.context,startsAt,endsAt,reason:'جدولة جلسة اختبار لدورة المتجر'});
+ assert.equal(unbound.status,409);assert.equal(unbound.body.code,'STANDARD_SELECTION_REQUIRED','missing source adoption must not be bypassed by a fixture');
+ assigned=await standards.bind(enrollment.id,'QA-PROCEDURE');
+ ok(await request(owner,'/center/me/training/enrollments/'+enrollment.id+'/sessions','POST',{requestId:sessionId,instructorAccountId:instructor.id,expectedUpdatedAt:assigned.updatedAt.toISOString(),...standards.context,startsAt,endsAt,reason:'جدولة جلسة اختبار لدورة المتجر'}));
  const session=()=>db.trainingSession.findUniqueOrThrow({where:{id:sessionId}});
  const action=async(account,name,professional=false)=>{const row=await session();return request(account,professional?'/training/professional/me/sessions/'+sessionId+'/attendance':'/center/me/training/sessions/'+sessionId+'/actions','PATCH',{action:name,expectedUpdatedAt:row.updatedAt.toISOString(),...(!professional?{reason:'توثيق اختبار الحضور في بيئة معزولة'}:{})})};
  assert.equal((await action(foreignOwner,'OPEN')).status,404);ok(await action(owner,'OPEN'));
@@ -74,4 +80,6 @@ export async function checkStoreCourseTraining(db,{base,owner,foreignOwner,stude
  await db.roleAssignment.update({where:{accountId_role:{accountId:instructor.id,role:'INSTRUCTOR'}},data:{status:'SUSPENDED'}});
  assert.equal((await request(instructor,planPath)).status,403);assert.equal((await request(instructor,completePath,'POST',complete())).status,403);
  console.log('Store course training HTTP/DB path passed: offer -> enrollment -> scoped instructor -> session attendance -> signed skills and derived progress -> guarded atomic course completion, with stale/replay/role-loss checks. Course completion created zero certificates before separate isolated certificate review tests.');
+ }finally{await standards.cleanup();}
 }
+

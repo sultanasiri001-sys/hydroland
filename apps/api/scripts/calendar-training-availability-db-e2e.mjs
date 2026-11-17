@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
+import {trainingStandardFixture} from './training-standard-isolated-fixture.mjs';
 const url=new URL(process.env.DATABASE_URL||'postgresql://invalid/invalid');
 if(process.env.CI!=='true'||process.env.NODE_ENV!=='test'||!['localhost','127.0.0.1','[::1]'].includes(url.hostname)||!url.pathname.endsWith('_availability_ci'))throw new Error('CI, NODE_ENV=test and isolated loopback *_availability_ci database required');
 const require=createRequire(import.meta.url);
@@ -14,6 +15,7 @@ const {CrewAssignmentService}=require('../dist/trips/crew-assignment.service.js'
 const {PolicyControlService}=require('../dist/trips/policy-control.service.js');
 const {Prisma}=require('@prisma/client');
 const db=new DatabaseService(),audit=new AuditService(db),sessions=new TrainingSessionService(db,audit,new TrainingAuthorizationService(db));
+const standards=trainingStandardFixture(db);
 const calendar=new CalendarAllocationService(db,audit);
 const crew=new CrewAssignmentService(db,new PolicyControlService(db,audit),audit);
 const assignments=new TrainingAssignmentService(db,audit,new TrainingAuthorizationService(db),sessions);
@@ -21,14 +23,17 @@ let checks=0;
 const check=(ok,label)=>{assert.ok(ok,label);checks++;console.log('PASS',label);};
 const conflict=async(work,label)=>{await assert.rejects(work,error=>error?.getStatus?.()===409,label);checks++;console.log('PASS',label);};
 const time=(hour=0)=>({startsAt:new Date(Date.UTC(2036,0,1,6+hour)),endsAt:new Date(Date.UTC(2036,0,1,7+hour))});
-const account=()=>db.account.create({data:{email:`availability-${randomUUID()}@example.invalid`,passwordHash:'not-a-login',status:'ACTIVE',person:{create:{firstName:'Availability',lastName:'Fixture'}},roleAssignments:{create:{role:'INSTRUCTOR',status:'ACTIVE'}}}});
+const account=async()=>{const row=await db.account.create({data:{email:`availability-${randomUUID()}@example.invalid`,passwordHash:'not-a-login',status:'ACTIVE',person:{create:{firstName:'Availability',lastName:'Fixture'}},roleAssignments:{create:{role:'INSTRUCTOR',status:'ACTIVE'}}}});await standards.participant(row.id,true);return row;};
 const resource=accountId=>db.calendarResource.create({data:{type:'INSTRUCTOR',name:'Availability fixture',referenceId:accountId}});
-const enrollment=async(instructorId,studentId)=>db.trainingEnrollment.create({data:{studentAccountId:studentId,instructorAccountId:instructorId,courseCode:'AVAILABILITY-FIXTURE',record:{create:{}}},include:{record:true}});
+const enrollment=async(instructorId,studentId,bindStandard=true)=>{const row=await db.trainingEnrollment.create({data:{studentAccountId:studentId,instructorAccountId:instructorId,courseCode:'AVAILABILITY-FIXTURE',record:{create:{}}},include:{record:true}});return bindStandard?standards.bind(row.id):row;};
 const trip=(hour=0)=>db.trip.create({data:{title:'Availability fixture',type:'TEST',capacity:1,status:'DRAFT',...time(hour)}});
-const schedule=(row,hour=0,extra={})=>sessions.create(row.instructorAccountId,row.record.id,{instructorAccountId:row.instructorAccountId,requestId:randomUUID(),expectedUpdatedAt:row.updatedAt.toISOString(),reason:'Local availability test',startsAt:time(hour).startsAt.toISOString(),endsAt:time(hour).endsAt.toISOString(),...extra},false);
+const schedule=(row,hour=0,extra={})=>sessions.create(row.instructorAccountId,row.record.id,{instructorAccountId:row.instructorAccountId,requestId:randomUUID(),expectedUpdatedAt:row.updatedAt.toISOString(),reason:'Local availability test',...standards.context,startsAt:time(hour).startsAt.toISOString(),endsAt:time(hour).endsAt.toISOString(),...extra},false);
 try{
  console.log('Database time zone:',await db.$queryRaw`SHOW timezone`);
  const [instructor,student]=await Promise.all([account(),account()]),r=await resource(instructor.id);
+ const unboundCourse=await enrollment(instructor.id,student.id,false);
+ await assert.rejects(()=>schedule(unboundCourse,60),error=>error?.getStatus?.()===409&&error?.getResponse?.()?.code==='STANDARD_SELECTION_REQUIRED');
+ check(await db.trainingSession.count({where:{trainingRecordId:unboundCourse.record.id}})===0,'unbound course fails with STANDARD_SELECTION_REQUIRED and leaves no session before synthetic standards are supplied');
  const firstTrip=await trip(),firstCourse=await enrollment(instructor.id,student.id);
  await calendar.allocate(instructor.id,firstTrip.id,[r.id]);
   const persisted=await db.calendarAllocation.findFirstOrThrow({where:{resourceId:r.id}});
@@ -115,7 +120,7 @@ try{
   check((await db.trainingEnrollment.findUniqueOrThrow({where:{id:centerCourse.id}})).instructorAccountId===centerInstructor.id,'rejected bulk transfer rolls back lead instructor');
 
   const liveTimes={startsAt:new Date(Date.now()-300000),endsAt:new Date(Date.now()+3600000)};
-  const live=await db.trainingSession.create({data:{trainingRecordId:centerCourse.record.id,instructorAccountId:centerInstructor.id,status:'CHECK_IN_OPEN',...liveTimes,evidence:{instructorCheckInAt:new Date().toISOString(),studentCheckInAt:new Date().toISOString()}}});
+  const live=await db.trainingSession.create({data:{trainingRecordId:centerCourse.record.id,instructorAccountId:centerInstructor.id,status:'CHECK_IN_OPEN',...liveTimes,evidence:{trainingStandardContext:standards.context,instructorCheckInAt:new Date().toISOString(),studentCheckInAt:new Date().toISOString()}}});
   const historicalTrip=await db.trip.create({data:{title:'Legacy overlap fixture',type:'TEST',capacity:1,...liveTimes}});
   await db.calendarEvent.create({data:{type:'TRIP',referenceType:'TRIP',referenceId:historicalTrip.id,title:'Legacy overlap fixture',...liveTimes,allocations:{create:{resourceId:centerResource.id,...liveTimes}}}});
   await conflict(()=>sessions.act(owner.id,live.id,{action:'START',reason:'Conflict fixture',expectedUpdatedAt:live.updatedAt.toISOString()}),'starting a legacy conflicting session rechecks the calendar');
@@ -188,4 +193,4 @@ try{
   check(await db.calendarAllocation.count({where:{event:{referenceId:retryTrip.id},status:'ACTIVE'}})===1,'post-audit serialization retry commits exactly one active allocation');
   check(allocationAudits[0].actorId===auditInstructor.personId&&allocationAudits[0].metadata.addedResourceIds[0]===auditResource.id,'retried audit retains actor and resource-change metadata');
  console.log(`Calendar/training availability: ${checks} checks passed.`);
-}finally{await db.$disconnect();}
+}finally{try{await standards.cleanup();}finally{await db.$disconnect();}}

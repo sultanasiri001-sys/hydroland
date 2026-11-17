@@ -1,4 +1,8 @@
 import { createHash } from 'node:crypto';
+import { parseDiveProgressionPolicy, DiveProgressionError } from './training-dive-progression';
+import type { DiveProgressionPolicyV2 } from './training-dive-progression';
+
+export type BoundDiveProgression = Omit<DiveProgressionPolicyV2, 'profileHash'>;
 
 /** An agency's reviewed programme, not a universal ISO-to-agency substitution. */
 export type TrainingStandardProfile = {
@@ -6,6 +10,7 @@ export type TrainingStandardProfile = {
   programCode: string;
   level: string;
   edition: string;
+  diveProgression?: BoundDiveProgression;
   sources: Array<{ authority: 'AGENCY' | 'ISO' | 'SAUDI'; reference: string; edition: string; locator: string }>;
   requirements: {
     minimumAge: number;
@@ -54,7 +59,7 @@ function strings(value: unknown, required = false): string[] {
 }
 export function parseTrainingStandard(value: unknown): TrainingStandardProfile {
   const input = object(value);
-  keys(input, ['agencyCode', 'programCode', 'level', 'edition', 'sources', 'requirements']);
+  keys(input, ['agencyCode', 'programCode', 'level', 'edition', 'sources', 'requirements', 'diveProgression']);
   const agencyCode = text(input.agencyCode, 32).toUpperCase(), programCode = text(input.programCode, 80);
   if (!/^[A-Z0-9][A-Z0-9_-]{1,31}$/.test(agencyCode)) fail('INVALID_STANDARD', 'رمز المنظمة غير صالح.');
   if (!Array.isArray(input.sources) || !input.sources.length || input.sources.length > 30) fail('SOURCE_REQUIRED', 'أرفق مراجع المنظمة والانطباق قبل الاعتماد.');
@@ -80,8 +85,28 @@ export function parseTrainingStandard(value: unknown): TrainingStandardProfile {
     if (typeof band.maximumDepthMetres !== 'number' || !Number.isFinite(band.maximumDepthMetres) || band.maximumDepthMetres < 0 || band.maximumDepthMetres > 200) fail('INVALID_STANDARD', 'حد العمق غير صالح.');
     return { environment: band.environment as 'POOL' | 'CONFINED_WATER' | 'OPEN_WATER', minimumAge, maximumAge, studentsPerInstructor: integer(band.studentsPerInstructor, 100, 1), maximumDepthMetres: band.maximumDepthMetres as number };
   });
-  return { agencyCode, programCode, level: text(input.level, 80), edition: text(input.edition, 80), sources,
-    requirements: { minimumAge: integer(requirements.minimumAge, 120), minimumCompletedSessions: integer(requirements.minimumCompletedSessions, 10000), minimumOpenWaterDives: integer(requirements.minimumOpenWaterDives, 10000), minimumOpenWaterMinutes: integer(requirements.minimumOpenWaterMinutes, 100000), instructorCredentialTitles: strings(requirements.instructorCredentialTitles, true), prerequisites, requiredSkillCodes: strings(requirements.requiredSkillCodes, true), requiredFormCodes: strings(requirements.requiredFormCodes), supervision } };
+  const minimumOpenWaterDives = integer(requirements.minimumOpenWaterDives, 10000), minimumOpenWaterMinutes = integer(requirements.minimumOpenWaterMinutes, 100000);
+  const requiredSkillCodes = strings(requirements.requiredSkillCodes, true);
+  let diveProgression: BoundDiveProgression | undefined;
+  if (input.diveProgression !== undefined) {
+    const value = object(input.diveProgression);
+    if (Object.hasOwn(value, 'profileHash')) fail('INVALID_STANDARD', 'بصمة التدرج مشتقة من المعيار الكامل، ولا تقبل بصمة منفصلة.');
+    try {
+      // Validate all policy fields before hashing the complete source profile.
+      // The placeholder never leaves validation and creates no circular hash.
+      const parsed = parseDiveProgressionPolicy({ ...value, profileHash: '0'.repeat(64) });
+      if (parsed.schemaVersion !== 2) fail('INVALID_STANDARD', 'ربط أدلة الغوص يتطلب الإصدار الثاني الصريح.');
+      const { profileHash: _validationHash, ...definition } = parsed;
+      diveProgression = definition;
+    } catch (error) {
+      if (error instanceof DiveProgressionError) fail('INVALID_STANDARD', 'سياسة تدرج الغوص أو أدلتها غير مكتملة.');
+      throw error;
+    }
+    if (diveProgression.qualifyingDives.some(rule => rule.requiredSkillCodesBeforeDive.some(code => !requiredSkillCodes.includes(code)))) fail('INVALID_STANDARD', 'متطلبات ما قبل الغوص يجب أن تكون ضمن مهارات البرنامج الموثقة.');
+    if (minimumOpenWaterDives !== diveProgression.qualifyingDives.length || minimumOpenWaterMinutes !== 0) fail('INVALID_STANDARD', 'عدد الغوصات يطابق التسلسل؛ لا يضاف إجمالي دقائق بديل إلى سياسة الأدلة.');
+  } else if (minimumOpenWaterDives > 0 || minimumOpenWaterMinutes > 0) fail('DIVE_PROGRESSION_POLICY_REQUIRED', 'برنامج الغوص يتطلب سياسة تدرج موثقة ضمن بصمة المصدر.');
+  return { agencyCode, programCode, level: text(input.level, 80), edition: text(input.edition, 80), sources, ...(diveProgression ? { diveProgression } : {}),
+    requirements: { minimumAge: integer(requirements.minimumAge, 120), minimumCompletedSessions: integer(requirements.minimumCompletedSessions, 10000), minimumOpenWaterDives, minimumOpenWaterMinutes, instructorCredentialTitles: strings(requirements.instructorCredentialTitles, true), prerequisites, requiredSkillCodes, requiredFormCodes: strings(requirements.requiredFormCodes), supervision } };
 }
 
 function canonical(value: unknown): string {
@@ -90,6 +115,10 @@ function canonical(value: unknown): string {
   return JSON.stringify(value);
 }
 export const trainingStandardHash = (profile: TrainingStandardProfile) => createHash('sha256').update(canonical(parseTrainingStandard(profile))).digest('hex');
+export function trainingStandardProgressionPolicy(profile: TrainingStandardProfile): DiveProgressionPolicyV2 | undefined {
+  const parsed = parseTrainingStandard(profile);
+  return parsed.diveProgression ? { ...parsed.diveProgression, profileHash: trainingStandardHash(parsed) } : undefined;
+}
 export type TrainingStandardBinding = { profileId: string; profileHash: string; agencyCode: string; programCode: string; level: string; edition: string };
 export function trainingStandardBinding(profileId: string, profile: TrainingStandardProfile): TrainingStandardBinding {
   return { profileId, profileHash: trainingStandardHash(profile), agencyCode: profile.agencyCode, programCode: profile.programCode, level: profile.level, edition: profile.edition };
