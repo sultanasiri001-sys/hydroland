@@ -337,7 +337,7 @@
       box.textContent=`${workflowAssessments[r.assessment]}. ${explanation} ${r.policyDecisionRequired?'يلزم تكليف مراجع وموقّع مستقلين لهذه النسخة من إدارة تكليف المراجعة؛ هذا الفحص لا يمنح صلاحية.':''} هذا فحص للقراءة فقط وليس اعتمادًا أو توقيعًا.`;
     }catch(error){if(valid())box.textContent=error instanceof Error?error.message:'تعذر فحص المسار؛ لم يُغيّر المستند.';}
   }
-  panel.querySelector('[data-doc-list]')?.addEventListener('change',async event=>{
+  panel.querySelector('[data-doc-list]').onchange=async event=>{
     const input=event.target.closest('input[data-doc-attachment-upload]');if(!input)return;
     const file=input.files?.[0],article=input.closest('[data-document-id]'),id=article?.dataset.documentId,d=state.documents.find(x=>x.id===id),status=article?.querySelector('[data-doc-attachment-status]');
     if(!file||!d)return;
@@ -351,7 +351,7 @@
       if(!current(c))return;await loadOrganization(c.orgId);if(current(c)&&status)note('تم إرفاق ملف PDF بالمستند.');
     }catch(error){if(current(c)&&status)status.textContent=error instanceof Error?error.message:'تعذر رفع ملف PDF.';}
     finally{input.disabled=false;input.value='';}
-  });
+  };
   panel.querySelector('[data-doc-list]')?.addEventListener('click',async event=>{
     const attachmentButton=event.target.closest('button[data-doc-attachment-download]');
     if(attachmentButton){
