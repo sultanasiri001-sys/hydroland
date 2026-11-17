@@ -2,13 +2,17 @@ import {spawnSync} from 'node:child_process';
 import {readFile, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {root, prepareSchema} from './schema.mjs';
+import {CURRENT_SCHEMA_HASH} from './upgrade.mjs';
 process.chdir(root);
 const run = args => { const result = spawnSync('npm', args, {stdio:'inherit'}); if (result.status !== 0) throw new Error('UAT_BUILD_FAILED'); };
 run(['ci','--workspace=@hydroland/api','--workspace=@hydroland/web','--include-workspace-root=true','--include=dev','--ignore-scripts']);
 run(['run','db:generate','-w','@hydroland/api']);
 run(['run','build','-w','@hydroland/api']);
 run(['run','build','-w','@hydroland/web']);
-await prepareSchema();
+const {schemaHash} = await prepareSchema();
+// Reject unsupported schemas while the current instance is still serving.
+// Runtime repeats this check before any connection or schema write.
+if (schemaHash !== CURRENT_SCHEMA_HASH) throw new Error('UAT_UNREVIEWED_TARGET_SCHEMA');
 const index = path.join(root,'apps/web/dist/index.html');
 let html = await readFile(index,'utf8');
 html = html.replace('<head>', '<head><meta name="robots" content="noindex,nofollow"><script>window.HYDROLAND_API_BASE=window.location.origin+"/api/v1";</script>');
