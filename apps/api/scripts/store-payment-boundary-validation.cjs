@@ -44,6 +44,36 @@ function fixture({ orders = [order()], payments = [], products = [], auditFails 
   return { db, audit, service: new StoreService(db, audit) };
 }
 const rejectsStatus = (work, status) => assert.rejects(work, e => e.getStatus?.() === status);
+test('order preserves one explicit product currency instead of defaulting to SAR', async () => {
+  const product = { id: 'product-usd', sku: 'USD-1', nameAr: 'منتج تجريبي', priceMinor: 250, currency: 'USD', stockQuantity: 4, status: 'ACTIVE' };
+  const { db, service } = fixture({ products: [product] });
+  const created = await service.createOrder('buyer', [{ productId: product.id, quantity: 2 }]);
+  assert.equal(created.currency, 'USD');
+  assert.equal(created.totalMinor, 500);
+  assert.equal(db.state.products[0].stockQuantity, 2);
+});
+
+test('mixed-currency order is rejected before any stock is decremented', async () => {
+  const products = [
+    { id: 'product-sar', sku: 'SAR-1', nameAr: 'منتج سعودي', priceMinor: 100, currency: 'SAR', stockQuantity: 3, status: 'ACTIVE' },
+    { id: 'product-usd', sku: 'USD-2', nameAr: 'منتج دولي', priceMinor: 200, currency: 'USD', stockQuantity: 4, status: 'ACTIVE' },
+  ];
+  const { db, service } = fixture({ products });
+  await rejectsStatus(() => service.createOrder('buyer', [
+    { productId: 'product-sar', quantity: 1 },
+    { productId: 'product-usd', quantity: 1 },
+  ]), 400);
+  assert.deepEqual(db.state.products.map(p => p.stockQuantity), [3, 4]);
+  assert.equal(db.state.orders.length, 1, 'no order should be persisted for mixed currencies');
+});
+
+test('malformed existing product currency is rejected before stock changes', async () => {
+  const product = { id: 'product-invalid', sku: 'BAD-1', nameAr: 'منتج بعملة غير صالحة', priceMinor: 100, currency: 'usd', stockQuantity: 3, status: 'ACTIVE' };
+  const { db, service } = fixture({ products: [product] });
+  await rejectsStatus(() => service.createOrder('buyer', [{ productId: product.id, quantity: 1 }]), 400);
+  assert.equal(db.state.products[0].stockQuantity, 3);
+  assert.equal(db.state.orders.length, 1);
+});
 
 test('local payment is server-priced, explicitly not collected, and atomically attributed', async () => {
   const { db, service } = fixture();
