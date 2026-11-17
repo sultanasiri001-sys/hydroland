@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { createHmac } from 'node:crypto';
 import assert from 'node:assert/strict';
+import {profilePrivacyAcceptance} from './profile-privacy-http-acceptance.mjs';
 
 const db=new PrismaClient();
 const base=process.env.PROFILE_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1';
@@ -81,6 +82,7 @@ try{
   r=await fetch(base+'/credentials'); if(r.status!==401)throw new Error('Anonymous GET /credentials expected 401, got '+r.status);
   r=await fetch(base+'/credentials',{headers:auth(token)}); body=await json(r); if(!Array.isArray(body))throw new Error('Credentials list expected array');
 
+  await profilePrivacyAcceptance({db,base});
   console.log('Profile/Account HTTP/DB E2E passed: auth guard, profile persistence, partial diver PATCH preserves omitted fields, explicit clearing, atomic contact validation, concurrent updates, accurate audit, protected fields, equipment create/update, credentials guard.');
 } finally {
   if(account){
