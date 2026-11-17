@@ -45,7 +45,6 @@ test('logout clears the account editor and discards an in-flight export',async({
   await page.locator('[data-profile-export]').click();
   await expect(page.locator('[data-profile-export]')).toBeDisabled();
   await page.evaluate(()=>{window.HydrolandAuth.terminateSession();window.resolvePrivacyExport()});
-  await expect(page.locator('#hl-profile-editor')).not.toBeVisible();
-  await expect(page.locator('#hl-profile-editor input[name="firstName"]')).toHaveValue('');
+  await expect(page.locator('#hl-profile-editor')).toHaveCount(0);
   expect(downloads).toBe(0);
 });
