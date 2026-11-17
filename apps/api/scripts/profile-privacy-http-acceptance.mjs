@@ -16,7 +16,7 @@ export async function profilePrivacyAcceptance({db,base}){
   try{
     for(const label of ['A','B']){
       const password=randomBytes(24).toString('base64url'),salt=randomBytes(16).toString('hex');
-      const account=await db.account.create({data:{email:`privacy-${fixture}-${label}@example.invalid`,passwordHash:salt+':'+scryptSync(password,salt,64).toString('hex'),status:'ACTIVE',emailVerifiedAt:new Date(),person:{create:{firstName:'Private-'+label,lastName:fixture,professional:{create:{headline:'Headline-'+label,bio:'BIO-'+label+'-'+fixture}}}},roleAssignments:{create:{role:'DIVER',status:'ACTIVE',scope:{privateScopeSentinel:fixture}}}}});
+      const account=await db.account.create({data:{email:`privacy-${fixture}-${label.toLowerCase()}@example.invalid`,passwordHash:salt+':'+scryptSync(password,salt,64).toString('hex'),status:'ACTIVE',emailVerifiedAt:new Date(),person:{create:{firstName:'Private-'+label,lastName:fixture,professional:{create:{headline:'Headline-'+label,bio:'BIO-'+label+'-'+fixture}}}},roleAssignments:{create:{role:'DIVER',status:'ACTIVE',scope:{privateScopeSentinel:fixture}}}}});
       accounts.push(account);
       const login=await call(null,'/auth/login','POST',{email:account.email,password});
       assert.equal(login.response.status,201);assert(login.body.accessToken);account.token=login.body.accessToken;
