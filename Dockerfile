@@ -6,6 +6,7 @@ WORKDIR /app
 
 FROM base AS manifests
 COPY package.json package-lock.json ./
+COPY vendor vendor
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY apps/mobile/package.json apps/mobile/package.json
@@ -24,6 +25,7 @@ FROM base AS runtime
 ENV NODE_ENV=production
 COPY --from=runtime-dependencies --chown=node:node /app/package.json /app/package-lock.json ./
 COPY --from=runtime-dependencies --chown=node:node /app/node_modules ./node_modules
+COPY --from=runtime-dependencies --chown=node:node /app/vendor ./vendor
 COPY --from=runtime-dependencies --chown=node:node /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=build --chown=node:node /app/node_modules/@prisma/engines ./node_modules/@prisma/engines
 COPY --from=build --chown=node:node /app/node_modules/.prisma ./node_modules/.prisma
