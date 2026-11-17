@@ -60,11 +60,18 @@ export class StoreService {
       const productMap = new Map(products.map((product) => [product.id, product]));
 
       let totalMinor = 0;
+      let orderCurrency: string | undefined;
       for (const item of normalizedItems) {
         const product = productMap.get(item.productId);
         if (!product) throw new NotFoundException('Product unavailable');
+        if (!/^[A-Z]{3}$/.test(product.currency)) throw new BadRequestException('Product currency is invalid');
+        if (orderCurrency !== undefined && orderCurrency !== product.currency) {
+          throw new BadRequestException('Order items must use a single currency');
+        }
+        orderCurrency = product.currency;
         totalMinor += product.priceMinor * item.quantity;
       }
+      if (!orderCurrency) throw new BadRequestException('Order currency is required');
 
       for (const item of normalizedItems) {
         const updated = await tx.storeProduct.updateMany({
@@ -78,6 +85,7 @@ export class StoreService {
         data: {
           accountId,
           totalMinor,
+          currency: orderCurrency,
           items: {
             create: normalizedItems.map((item) => ({
               productId: item.productId,
