@@ -59,9 +59,13 @@ test('all installed picomatch entries use the private backport',()=>{
   for(const [key,value] of Object.entries(lock.packages)){
     if(/(?:^|\/)node_modules\/picomatch$/.test(key)){
       assert.equal(value.link,true,key);assert.equal(value.resolved,'vendor/picomatch',key);
+      // Production pruning may remove build-only modules entirely. A retained
+      // link must still resolve; a dangling link must never count as absent.
+      if(fs.lstatSync(path.join(root,key),{throwIfNoEntry:false})){
+        assert.equal(fs.realpathSync(path.join(root,key,'index.js')),fs.realpathSync(path.join(fork,'index.js')),key);
+      }
     }
   }
-  assert.equal(require('picomatch'),pm);
   const owners=[];
   for(const name of ['@angular-devkit/core','tinyglobby','fdir']){
     try{owners.push(require.resolve(name,{paths:[root]}))}catch(error){if(error.code!=='MODULE_NOT_FOUND')throw error;}
