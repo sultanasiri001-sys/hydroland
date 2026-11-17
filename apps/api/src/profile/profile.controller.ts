@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { ProfileService } from './profile.service';
 
@@ -6,6 +6,8 @@ import { ProfileService } from './profile.service';
 @Controller('me')
 export class ProfileController {
   constructor(private readonly profiles: ProfileService) {}
-  @Get() get(@Req() req: { auth: { accountId: string } }) { return this.profiles.get(req.auth.accountId); }
-  @Patch() update(@Req() req: { auth: { accountId: string } }, @Body() body: { firstName?: string; lastName?: string; phone?: string; headline?: string; bio?: string; regionCode?: string; nationalLicenseCredentialId?: string | null; qualificationCredentialId?: string | null; eligibilityEvidenceReference?: string | null }) { return this.profiles.update(req.auth.accountId, body); }
+  @Get() @Header('Cache-Control','private, no-store') get(@Req() req: { auth: { accountId: string } }) { return this.profiles.get(req.auth.accountId); }
+  @Post('data-export') @Header('Cache-Control','private, no-store') @Header('Content-Disposition','attachment; filename="hydroland-account-profile.json"')
+  exportAccount(@Req() req:{auth:{accountId:string}},@Body()body:unknown){return this.profiles.exportAccount(req.auth.accountId,body);}
+  @Patch() @Header('Cache-Control','private, no-store') update(@Req() req: { auth: { accountId: string } }, @Body() body: unknown) { return this.profiles.update(req.auth.accountId, body); }
 }

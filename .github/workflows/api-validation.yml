@@ -125,6 +125,8 @@ jobs:
       - run: npm run build --workspace=@hydroland/api
       - name: Read-only training standard adoption preflight
         run: node --test apps/api/scripts/training-standard-readiness.test.cjs
+      - name: Account profile correction and scoped export boundaries
+        run: node --test apps/api/scripts/profile-privacy.test.cjs
       - name: Source-bound dive completion and session producer PostgreSQL contracts
         env:
           CI: "true"

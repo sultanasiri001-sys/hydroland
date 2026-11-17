@@ -1,9 +1,29 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { createHash } from 'node:crypto';
+import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
+
+export type ProfileUpdate = { firstName?: string; lastName?: string; phone?: string; headline?: string; bio?: string; regionCode?: string; nationalLicenseCredentialId?: string | null; qualificationCredentialId?: string | null; eligibilityEvidenceReference?: string | null };
+const profileFields = {firstName:80,lastName:80,phone:40,headline:120,bio:5000,regionCode:80,nationalLicenseCredentialId:80,qualificationCredentialId:80,eligibilityEvidenceReference:500} as const;
+const nullableFields = new Set(['nationalLicenseCredentialId','qualificationCredentialId','eligibilityEvidenceReference']);
+
+function profileUpdate(input: unknown): ProfileUpdate {
+  if(!input || typeof input!=='object' || Array.isArray(input))throw new BadRequestException('بيانات الحساب غير صالحة.');
+  const patch:Record<string,string|null>={};
+  for(const [key,value] of Object.entries(input)){
+    if(!Object.hasOwn(profileFields,key))throw new BadRequestException('حقل غير مسموح في تعديل الحساب.');
+    if(value===undefined)continue;
+    if(value===null&&nullableFields.has(key)){patch[key]=null;continue;}
+    if(typeof value!=='string'||value.length>profileFields[key as keyof typeof profileFields]||/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u202a-\u202e\u2066-\u2069]/u.test(value))throw new BadRequestException('قيمة غير صالحة في بيانات الحساب.');
+    patch[key]=nullableFields.has(key)?value.trim()||null:value.trim();
+  }
+  if(!Object.keys(patch).length || patch.firstName==='')throw new BadRequestException('أدخل تعديلًا صحيحًا على بيانات الحساب.');
+  return patch as ProfileUpdate;
+}
 
 @Injectable()
 export class ProfileService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(private readonly db: DatabaseService, private readonly audit: AuditService) {}
   async get(accountId: string) {
     return this.db.account.findUniqueOrThrow({
       where: { id: accountId },
@@ -19,16 +39,34 @@ export class ProfileService {
       },
     });
   }
-  async update(accountId: string, input: { firstName?: string; lastName?: string; phone?: string; headline?: string; bio?: string; regionCode?: string; nationalLicenseCredentialId?: string | null; qualificationCredentialId?: string | null; eligibilityEvidenceReference?: string | null }) {
+  async exportAccount(accountId:string,input:unknown){
+    if(input!==undefined&&(input===null||typeof input!=='object'||Array.isArray(input)||Object.keys(input).length))throw new BadRequestException('تنزيل بيانات الحساب لا يقبل تحديد حساب آخر أو نطاق إضافي.');
+    return this.db.serializable(async tx=>{
+      const account=await tx.account.findUnique({where:{id:accountId},select:{
+        id:true,email:true,status:true,emailVerifiedAt:true,createdAt:true,updatedAt:true,
+        person:{select:{firstName:true,lastName:true,phone:true,professional:{select:{headline:true,bio:true,regionCode:true,nationalLicenseCredentialId:true,qualificationCredentialId:true,eligibilityEvidenceReference:true,createdAt:true,updatedAt:true}}}},
+        roleAssignments:{select:{role:true,status:true,activeAt:true,endedAt:true,createdAt:true,updatedAt:true},orderBy:{role:'asc'}},
+      }});
+      if(!account||account.status!=='ACTIVE')throw new UnauthorizedException('الحساب غير متاح.');
+      const snapshot={schemaVersion:'ACCOUNT_PROFILE_EXPORT_V1',exportedAt:new Date().toISOString(),scope:['ACCOUNT','PERSON','PROFESSIONAL_PROFILE','ROLE_ASSIGNMENTS'],completePlatformExport:false,excludedDomains:['BOOKINGS','PAYMENTS','MESSAGES','CREDENTIAL_FILES','DIVER_MEDICAL_AND_EMERGENCY_CONTACTS','ORGANIZATION_RECORDS'],data:account};
+      const sha256=createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
+      const receipt=await this.audit.record({actorId:accountId,action:'ACCOUNT_PROFILE_EXPORTED',resource:'Account',resourceId:accountId,metadata:{schemaVersion:snapshot.schemaVersion,scope:snapshot.scope,sha256}},tx);
+      return {...snapshot,receipt:{auditEventId:receipt.id,sha256}};
+    });
+  }
+  async update(accountId: string, rawInput: unknown) {
+    const input=profileUpdate(rawInput);
     const sourceKeys=['nationalLicenseCredentialId','qualificationCredentialId','eligibilityEvidenceReference'] as const;
     for(const key of sourceKeys){const value=input[key];if(value!==undefined&&value!==null&&(typeof value!=='string'||value.length>(key==='eligibilityEvidenceReference'?500:80)||/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/u.test(value)))throw new BadRequestException('بيانات مراجع العضوية غير صالحة.');}
-    const account=await this.db.account.findUniqueOrThrow({where:{id:accountId},select:{personId:true}});
+    return this.db.serializable(async tx=>{
+    const account=await tx.account.findUnique({where:{id:accountId},select:{personId:true,status:true}});
+    if(!account||account.status!=='ACTIVE')throw new UnauthorizedException('الحساب غير متاح.');
     for(const key of ['nationalLicenseCredentialId','qualificationCredentialId'] as const){
-      const value=input[key]?.trim();if(value&&!await this.db.credential.findFirst({where:{id:value,personId:account.personId},select:{id:true}}))throw new BadRequestException('اختر شهادة مسجلة في حسابك.');
+      const value=input[key]?.trim();if(value&&!await tx.credential.findFirst({where:{id:value,personId:account.personId},select:{id:true}}))throw new BadRequestException('اختر شهادة مسجلة في حسابك.');
     }
     const sourcePatch=Object.fromEntries(sourceKeys.filter(k=>input[k]!==undefined).map(k=>[k,input[k]?.trim()||null]));
     if (input.firstName !== undefined && !input.firstName.trim()) throw new BadRequestException('First name cannot be empty.');
-    return this.db.account.update({
+    const updated=await tx.account.update({
       where: { id: accountId },
       data: {
         person: {
@@ -46,6 +84,9 @@ export class ProfileService {
         }
       },
       select: { id: true, person: { include: { professional: true } } }
+    });
+    await this.audit.record({actorId:accountId,action:'ACCOUNT_PROFILE_CORRECTED',resource:'Account',resourceId:accountId,metadata:{changedFields:Object.keys(input).sort(),source:'SELF_SERVICE'}},tx);
+    return updated;
     });
   }
 }
