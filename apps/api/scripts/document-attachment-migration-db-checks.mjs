@@ -23,7 +23,7 @@ const cases = [
 
 try {
   for (const scenario of cases) {
-    const schema = 'managed_document_attachment_' + scenario.identity.toLowerCase() + '_' + randomUUID().replaceAll('-', '');
+    const schema = 'att_' + scenario.identity.toLowerCase() + '_' + randomUUID().replaceAll('-', '');
     const qSchema = quote(schema);
     const table = (name) => `${qSchema}.${quote(name)}`;
     await root.$executeRawUnsafe(`CREATE SCHEMA ${qSchema}`);
