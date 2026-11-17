@@ -348,7 +348,7 @@
       if(file.size<1||file.size>10_000_000)throw new Error('حجم ملف PDF يجب ألا يتجاوز 10 ميغابايت.');
       const bytes=new Uint8Array(await file.arrayBuffer());let binary='';for(let offset=0;offset<bytes.length;offset+=0x8000)binary+=String.fromCharCode(...bytes.subarray(offset,Math.min(offset+0x8000,bytes.length)));
       await request('/documents/'+encodeURIComponent(id)+'/attachments',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:file.name,mimeType:'application/pdf',base64:btoa(binary)})});
-      if(!current(c))return;await loadOrganization(c.orgId);if(current(c)&&status)note('تم إرفاق ملف PDF بالمستند.');
+      if(!current(c))return;await loadOrganization(c.orgId);const latest=context();if(current(latest))note('تم إرفاق ملف PDF بالمستند.');
     }catch(error){if(current(c)&&status)status.textContent=error instanceof Error?error.message:'تعذر رفع ملف PDF.';}
     finally{input.disabled=false;input.value='';}
   };
