@@ -70,15 +70,29 @@ export class CustomerCaseService {
   }
 
   async create(accountId: string, input: { type: CustomerCaseType; subject: string; description: string; priority?: CustomerCasePriority; referenceType?: string; referenceId?: string }) {
-    const subject = input.subject?.trim(); const description = input.description?.trim();
-    if (!subject || !description) throw new BadRequestException('Subject and description are required.');
-    return this.db.customerCase.create({ data: { customerId: accountId, type: input.type, priority: input.priority ?? CustomerCasePriority.NORMAL, subject, description, referenceType: input.referenceType?.trim() || null, referenceId: input.referenceId?.trim() || null, interactions: { create: { actorType: 'CUSTOMER', actorId: accountId, channel: CustomerInteractionChannel.WEB, message: description } } }, include: { interactions: true } });
+    if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !['type', 'subject', 'description', 'priority', 'referenceType', 'referenceId'].includes(key)) || typeof input.subject !== 'string' || typeof input.description !== 'string') throw new BadRequestException('Invalid request fields.');
+    const subject = input.subject.trim(); const description = input.description.trim();
+    if (!subject || !description || subject.length > 180 || description.length > 10000) throw new BadRequestException('Subject and description are required and must be within the allowed length.');
+    if (!Object.values(CustomerCaseType).includes(input.type) || (input.priority !== undefined && !Object.values(CustomerCasePriority).includes(input.priority))) throw new BadRequestException('Invalid request type or priority.');
+    for (const key of ['referenceType', 'referenceId'] as const) {
+      if (input[key] !== undefined && (typeof input[key] !== 'string' || input[key].length > 200)) throw new BadRequestException('Invalid reference.');
+    }
+    return this.db.serializable(async tx => {
+      const record = await tx.customerCase.create({ data: { customerId: accountId, type: input.type, priority: input.priority ?? CustomerCasePriority.NORMAL, subject, description, referenceType: input.referenceType?.trim() || null, referenceId: input.referenceId?.trim() || null, interactions: { create: { actorType: 'CUSTOMER', actorId: accountId, channel: CustomerInteractionChannel.WEB, message: description } } }, include: { interactions: true } });
+      await this.audit.record({ actorId: accountId, action: 'customer_case.created', resource: 'CustomerCase', resourceId: record.id, metadata: { type: input.type } }, tx);
+      return record;
+    });
   }
 
   async reply(accountId: string, caseId: string, message: string) {
-    const clean = message?.trim(); if (!clean) throw new BadRequestException('Message is required.');
-    const found = await this.db.customerCase.findFirst({ where: { id: caseId, customerId: accountId, organizationId: null } });
-    if (!found) throw new NotFoundException('Customer case not found.');
-    return this.db.customerInteraction.create({ data: { caseId, actorType: 'CUSTOMER', actorId: accountId, channel: CustomerInteractionChannel.WEB, message: clean } });
+    if (typeof message !== 'string') throw new BadRequestException('Invalid message.');
+    const clean = message.trim(); if (!clean || clean.length > 10000) throw new BadRequestException('Message is required and must be within the allowed length.');
+    return this.db.serializable(async tx => {
+      const found = await tx.customerCase.findFirst({ where: { id: caseId, customerId: accountId, organizationId: null }, select: { id: true } });
+      if (!found) throw new NotFoundException('Customer case not found.');
+      const interaction = await tx.customerInteraction.create({ data: { caseId, actorType: 'CUSTOMER', actorId: accountId, channel: CustomerInteractionChannel.WEB, message: clean } });
+      await this.audit.record({ actorId: accountId, action: 'customer_case.replied', resource: 'CustomerCase', resourceId: caseId, metadata: { interactionId: interaction.id } }, tx);
+      return interaction;
+    });
   }
 }

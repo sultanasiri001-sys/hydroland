@@ -109,6 +109,36 @@ try {
   const requestsPath = `/organizations/${organization.id}/requests`;
   const orgCase = await ok(await call(contact, requestsPath, 'POST', { type: 'QUESTION', subject: 'طلب خاص بالجهة', description: 'بيانات اختبار معزولة للجهة' })); caseIds.push(orgCase.id);
   const personalCase = await ok(await call(contact, '/customer-service/cases', 'POST', { type: 'QUESTION', subject: 'طلب شخصي', description: 'طلب حساب فردي للاختبار' })); caseIds.push(personalCase.id);
+  // Personal input boundaries and both audit writes use the real loopback API/database.
+  const validCase = { type: 'QUESTION', subject: 'Personal integrity check', description: 'Private synthetic description' };
+  const personalCount = await db.customerCase.count({ where: { customerId: contact.id, organizationId: null } });
+  for (const invalid of [[], { ...validCase, subject: 123 }, { ...validCase, description: false }, { ...validCase, subject: 'x'.repeat(181) }, { ...validCase, description: 'x'.repeat(10001) }, { ...validCase, type: 'UNKNOWN' }, { ...validCase, priority: 'UNKNOWN' }, { ...validCase, referenceType: 123 }, { ...validCase, referenceId: null }, { ...validCase, referenceId: 'x'.repeat(201) }, { ...validCase, organizationId: organization.id }, { ...validCase, customerId: foreign.id }]) {
+    assert.equal((await call(contact, '/customer-service/cases', 'POST', invalid)).status, 400);
+  }
+  assert.equal(await db.customerCase.count({ where: { customerId: contact.id, organizationId: null } }), personalCount);
+  for (const message of [123, false, null, '', 'x'.repeat(10001)]) assert.equal((await call(contact, `/customer-service/cases/${personalCase.id}/replies`, 'POST', { message })).status, 400);
+  assert.equal((await call(foreign, `/customer-service/cases/${personalCase.id}/replies`, 'POST', { message: 'Foreign bypass' })).status, 404);
+  assert.equal((await call(contact, `/customer-service/cases/${personalCase.id}/replies`, 'POST', {})).status, 400);
+  const reply = await ok(await call(contact, `/customer-service/cases/${personalCase.id}/replies`, 'POST', { message: '  Private synthetic reply  ' }));
+  assert.equal(reply.message, 'Private synthetic reply');
+  const createdAudit = await db.auditEvent.findFirstOrThrow({ where: { action: 'customer_case.created', resourceId: personalCase.id } });
+  const repliedAudit = await db.auditEvent.findFirstOrThrow({ where: { action: 'customer_case.replied', resourceId: personalCase.id } });
+  assert.equal(createdAudit.actorId, contact.personId); assert.deepEqual(createdAudit.metadata, { type: 'QUESTION' });
+  assert.equal(repliedAudit.actorId, contact.personId); assert.deepEqual(repliedAudit.metadata, { interactionId: reply.id });
+  const beforeFailure = { cases: personalCount, interactions: await db.customerInteraction.count({ where: { caseId: personalCase.id } }), audits: await db.auditEvent.count({ where: { actorId: contact.personId } }) };
+  const trigger = 'c04_audit_' + randomUUID().replaceAll('-', '');
+  await db.$executeRawUnsafe(`CREATE FUNCTION "${trigger}"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW."actorId"='${contact.personId}' AND NEW.action IN ('customer_case.created','customer_case.replied') THEN RAISE EXCEPTION 'synthetic customer case audit failure'; END IF; RETURN NEW; END $$`);
+  try {
+    await db.$executeRawUnsafe(`CREATE TRIGGER "${trigger}" BEFORE INSERT ON "AuditEvent" FOR EACH ROW EXECUTE FUNCTION "${trigger}"()`);
+    assert.equal((await call(contact, '/customer-service/cases', 'POST', validCase)).status, 500);
+    assert.equal((await call(contact, `/customer-service/cases/${personalCase.id}/replies`, 'POST', { message: 'Must roll back with failed audit' })).status, 500);
+    assert.equal(await db.customerCase.count({ where: { customerId: contact.id, organizationId: null } }), beforeFailure.cases);
+    assert.equal(await db.customerInteraction.count({ where: { caseId: personalCase.id } }), beforeFailure.interactions);
+    assert.equal(await db.auditEvent.count({ where: { actorId: contact.personId } }), beforeFailure.audits);
+  } finally {
+    await db.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${trigger}" ON "AuditEvent"`);
+    await db.$executeRawUnsafe(`DROP FUNCTION "${trigger}"()`);
+  }
   assert.equal((await call(contact, requestsPath, 'POST', { type: 'QUESTION', subject: 123, description: 'invalid' })).status, 400);
   assert.equal((await call(foreign, `/organizations/${otherOrganization.id}/requests/${orgCase.id}`)).status, 404);
   for (const membershipStatus of ['ACTIVE', 'SUSPENDED']) {
@@ -123,7 +153,7 @@ try {
     } else assert.equal((await ok(await call(contact, `${requestsPath}/${orgCase.id}`))).id, orgCase.id);
   }
   assert.equal(await db.customerInteraction.count({ where: { caseId: orgCase.id } }), 1);
-  console.log('Organization HTTP/DB checks passed: scoped roster/cancellation, tenant and personal-route isolation for bookings/cases, revoked-member denial, optional approval gate ON/OFF with explicit deferral preserved, idempotent creation, single audit/notification and no financial action.');
+  console.log('Organization HTTP/DB checks passed: scoped roster/cancellation, tenant and personal-route isolation for bookings/cases, revoked-member denial, optional approval gate ON/OFF with explicit deferral preserved, idempotent creation, single audit/notification, personal-case input boundaries, attributed audit and real rollback on audit failure, and no financial action.');
 } finally {
   // Only synthetic actors in the guarded ephemeral CI database are removed.
   for (const { where, row } of policySnapshots) {
