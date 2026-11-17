@@ -201,6 +201,7 @@ model Account {
   organizationsOwned Organization[] @relation("OrganizationOwner")
   policyUpdates PolicyControl[] @relation("PolicyUpdatedBy")
   managedDocumentsCreated ManagedDocument[] @relation("ManagedDocumentCreator")
+  managedDocumentAttachmentsUploaded ManagedDocumentAttachment[] @relation("ManagedDocumentAttachmentCreator")
   managedDocumentsApproved ManagedDocument[] @relation("ManagedDocumentApprover")
   managedDocumentsSigned ManagedDocument[] @relation("ManagedDocumentSigner")
   managedDocumentsArchived ManagedDocument[] @relation("ManagedDocumentArchiver")
@@ -276,6 +277,7 @@ model Organization {
   administrativeMeetings AdministrativeMeeting[]
   documentTemplates DocumentTemplate[]
   managedDocuments ManagedDocument[]
+  managedDocumentAttachments ManagedDocumentAttachment[]
   documentReferenceCounters DocumentReferenceCounter[]
   documentBrandSnapshots DocumentBrandSnapshot[]
   documentAssets OrganizationDocumentAsset[]
@@ -2322,9 +2324,28 @@ model ManagedDocument {
   lifecycleEvents DocumentLifecycleEvent[]
   revisions DocumentRevision[]
   administrativeRecord AdministrativeRecord?
+  attachments ManagedDocumentAttachment[]
   @@unique([organizationId,referenceNumber])
   @@index([organizationId,department,status])
   @@index([templateId,status])
+}
+
+model ManagedDocumentAttachment {
+  id String @id @default(uuid())
+  documentId String
+  organizationId String
+  uploadedByAccountId String
+  filename String
+  mimeType String @default("application/pdf")
+  byteSize Int
+  sha256 String
+  content Bytes
+  createdAt DateTime @default(now())
+  document ManagedDocument @relation(fields:[documentId], references:[id], onDelete:Restrict)
+  organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)
+  uploadedBy Account @relation("ManagedDocumentAttachmentCreator", fields:[uploadedByAccountId], references:[id], onDelete:Restrict)
+  @@unique([documentId,sha256])
+  @@index([organizationId,documentId,createdAt])
 }
 
 model DocumentRevision {

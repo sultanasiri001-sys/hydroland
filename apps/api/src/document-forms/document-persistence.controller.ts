@@ -31,6 +31,15 @@ export class DocumentPersistenceController {
   brandingCurrent(@Req() r:ReqAuth,@Param('organizationId') org:string){return this.branding.current(r.auth.accountId,org);}
   @Put('organizations/:organizationId/branding') brandingUpdate(@Req() r:ReqAuth,@Param('organizationId') org:string,@Body() b:any){return this.branding.update(r.auth.accountId,org,b);}
   @Post() create(@Req() r:ReqAuth,@Body() b:any){return this.documents.createDocument(r.auth.accountId,b);}
+  @Post(':id/attachments') addAttachment(@Req() r:ReqAuth,@Param('id') id:string,@Body() b:{filename?:unknown;mimeType?:unknown;base64?:unknown}){return this.documents.addAttachment(r.auth.accountId,id,b);}
+  @Get(':id/attachments') @Header('Cache-Control','private, no-store') attachments(@Req() r:ReqAuth,@Param('id') id:string){return this.documents.listAttachments(r.auth.accountId,id);}
+  @Get(':id/attachments/:attachmentId') @Header('Cache-Control','private, no-store') async attachmentFile(@Req() r:ReqAuth,@Param('id') id:string,@Param('attachmentId') attachmentId:string,@Res() res:any){
+    const {attachment,bytes}=await this.documents.attachmentBytes(r.auth.accountId,id,attachmentId);
+    res.setHeader('Content-Type','application/pdf');
+    res.setHeader('Content-Disposition',`attachment; filename="${attachment.filename.replace(/[^A-Za-z0-9._-]/g,'_')}"`);
+    res.setHeader('Cache-Control','private, no-store');
+    return res.send(bytes);
+  }
   @Get(':id') get(@Req() r:ReqAuth,@Param('id') id:string){return this.documents.get(r.auth.accountId,id);}
   @Get(':id/pdf') async pdfFile(@Req() r:ReqAuth,@Param('id') id:string,@Res() res:any){
     const rendered=await this.pdf.render(r.auth.accountId,id);

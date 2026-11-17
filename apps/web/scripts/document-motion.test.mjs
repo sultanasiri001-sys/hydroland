@@ -21,7 +21,7 @@ function fixture() {
   const context = vm.createContext({ window, panel, state, context: () => ({ generation: 1, session: 1, orgId: 'org-1' }), current: () => true, renderFields: payload => result.fields.push(payload), refresh: () => result.refreshes++, note: message => result.notes.push(message) });
   vm.runInContext([helper, listHandler, connect, 'this.connect=connectDocumentButtons;'].join('\n'), context);
   const button = { dataset: { docAction: 'edit' }, disabled: false, closest: () => ({ dataset: { documentId: 'doc-1' } }) };
-  const event = { target: { closest: () => button } };
+  const event = { target: { closest: selector => selector === 'button[data-doc-attachment-download]' ? null : button } };
   const legacyButton = { textContent: 'رفع الوثائق', dataset: {}, disabled: true, title: 'old', removeAttribute(name) { result.removed = name; }, addEventListener(name, callback) { assert.equal(name, 'click'); result.bound = (result.bound || 0) + 1; result.open = callback; } };
   return { result, state, document, panel, select, title, cancel, window, button, event, legacyButton, connect: () => context.connect({ querySelectorAll: () => [legacyButton] }) };
 }

@@ -17,7 +17,7 @@ export class DocumentListService {
     await this.authz.assert(accountId,organizationId,'DOCUMENT_LIST');
     return this.db.managedDocument.findMany({
       where:{organizationId,template:{NOT:[{code:COOPERATION_CODE},{code:{startsWith:LIBRARY_PREFIX}}]}},
-      include:{template:true},
+      include:{template:true,attachments:{select:{id:true,filename:true,mimeType:true,byteSize:true,sha256:true,createdAt:true},orderBy:{createdAt:'asc'}}},
       orderBy:[{updatedAt:'desc'},{createdAt:'desc'}],
     });
   }

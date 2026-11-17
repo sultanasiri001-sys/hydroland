@@ -2,6 +2,7 @@ import {checkDocumentTransitionRace} from './document-transition-race-db-checks.
 import {checkDocumentPdfProfiles} from './document-pdf-profile-http-checks.mjs';
 import { PrismaClient } from '@prisma/client';
 import { createHmac } from 'node:crypto';
+import { PDFDocument } from 'pdf-lib';
 const db=new PrismaClient(),base=process.env.DOCUMENT_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1',secret=process.env.JWT_SECRET;
 if(!secret)throw new Error('JWT_SECRET required');
 const suffix=Date.now().toString(),enc=v=>Buffer.from(JSON.stringify(v)).toString('base64url'),now=Math.floor(Date.now()/1000);
@@ -23,6 +24,16 @@ try{
  r=await call('/documents','POST',token(suspended.id),body);if(r.status!==403)throw new Error('Suspended member expected 403');
  r=await call('/documents','POST',token(creator.id),body);if(!r.ok)throw new Error('STAFF document create failed '+r.status+' '+await r.text());const doc=await r.json();
  if(!new RegExp('^HYD-SAFETY_COMPLIANCE_RISK-\\d{4}-\\d{6}$').test(doc.referenceNumber))throw new Error('Reference format invalid '+doc.referenceNumber);
+ const pdfBytes=Buffer.from(await (await PDFDocument.create()).save()),pdfAttachment={filename:'evidence.pdf',mimeType:'application/pdf',base64:pdfBytes.toString('base64')};
+ r=await call(`/documents/${doc.id}/attachments`,'POST',token(creator.id),{...pdfAttachment,filename:'evidence.txt'});if(r.status!==400)throw new Error('Non-PDF attachment filename expected 400');
+ r=await call(`/documents/${doc.id}/attachments`,'POST',token(viewer.id),pdfAttachment);if(r.status!==403)throw new Error('VIEWER attachment upload expected 403');
+ r=await call(`/documents/${doc.id}/attachments`,'POST',token(outsider.id),pdfAttachment);if(r.status!==403)throw new Error('Cross-org attachment upload expected 403');
+ r=await call(`/documents/${doc.id}/attachments`,'POST',token(creator.id),{...pdfAttachment,base64:Buffer.from('not a PDF').toString('base64')});if(r.status!==400)throw new Error('Invalid PDF bytes expected 400');
+ r=await call(`/documents/${doc.id}/attachments`,'POST',token(creator.id),pdfAttachment);if(!r.ok)throw new Error('PDF attachment upload failed '+r.status+' '+await r.text());const attachment=await r.json();
+ r=await call(`/documents/${doc.id}/attachments`,'GET',token(viewer.id));if(!r.ok)throw new Error('PDF attachment listing failed');const attachments=await r.json();if(attachments.length!==1||attachments[0].id!==attachment.id||attachments[0].filename!=='evidence.pdf')throw new Error('PDF attachment metadata mismatch');
+ r=await call(`/documents/${doc.id}/attachments/${attachment.id}`,'GET',token(viewer.id));const downloaded=Buffer.from(await r.arrayBuffer());if(!r.ok||!downloaded.equals(pdfBytes))throw new Error('PDF attachment download differs from uploaded bytes');
+ r=await call(`/documents/${doc.id}/attachments/${attachment.id}`,'GET',token(outsider.id));if(r.status!==403)throw new Error('Cross-org attachment download expected 403');
+ r=await call(`/documents/${doc.id}/attachments`,'POST',token(creator.id),pdfAttachment);if(!r.ok||(await r.json()).id!==attachment.id)throw new Error('Duplicate PDF attachment was not idempotent');
  r=await call(`/documents/${doc.id}/print-contract`,'GET',token(viewer.id));if(!r.ok)throw new Error('VIEWER print contract read failed '+r.status+' '+await r.text());const printContract=await r.json();
  if(printContract.documentId!==doc.id||printContract.organizationId!==org.id||printContract.referenceNumber!==doc.referenceNumber||printContract.documentVersion!==1||printContract.contentHash!==body.contentHash)throw new Error('Print contract document identity invalid');
  if(printContract.branding?.brandVersion!==1||printContract.branding?.brandNameAr!=='مركز اختبار الغوص'||printContract.branding?.brandNameEn!=='E2E Dive Center')throw new Error('Pinned print branding invalid');
@@ -63,6 +74,7 @@ try{
  r=await call(`/documents/${doc.id}`,'GET',token(outsider.id));if(r.status!==403)throw new Error('Cross-org read expected 403');
  r=await call(`/documents/${doc.id}/approve`,'POST',token(approver.id));if(r.status!==400)throw new Error('Approve before submit expected 400');
  r=await call(`/documents/${doc.id}/submit`,'POST',token(creator.id));if(!r.ok)throw new Error('Submit failed');
+ r=await call(`/documents/${doc.id}/attachments`,'POST',token(creator.id),{...pdfAttachment,filename:'late.pdf'});if(r.status!==409)throw new Error('Attachment after submit expected 409');
  const beforeDeniedRevise=await db.managedDocument.findUniqueOrThrow({where:{id:doc.id}});
  r=await call(`/documents/${doc.id}/revise`,'POST',token(creator.id),{contentHash:'sha256:after-submit',payload:{summary:'must not mutate'}});if(r.status!==400)throw new Error('Revise after submit expected 400');
  const afterDeniedRevise=await db.managedDocument.findUniqueOrThrow({where:{id:doc.id}});
