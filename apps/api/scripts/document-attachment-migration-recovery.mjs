@@ -190,7 +190,7 @@ async function verifyCreatedSchema(db, schema, identityTypes) {
   const expectedIndexes = new Map([
     ['ManagedDocumentAttachment_pkey', { unique: true, primary: true, columns: ['id'] }],
     ['ManagedDocumentAttachment_documentId_sha256_key', { unique: true, primary: false, columns: ['documentId', 'sha256'] }],
-    ['ManagedDocumentAttachment_organizationId_documentId_createdAt_idx', { unique: false, primary: false, columns: ['organizationId', 'documentId', 'createdAt'] }],
+    ['ManagedDocumentAttachment_organizationId_documentId_createdAt_idx'.slice(0, 63), { unique: false, primary: false, columns: ['organizationId', 'documentId', 'createdAt'] }],
   ]);
   if (indexes.length !== expectedIndexes.size) fail('repaired attachment table has unexpected indexes');
   for (const index of indexes) {
