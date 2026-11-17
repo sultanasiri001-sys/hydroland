@@ -1,5 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ManagedDocumentStatus, Prisma } from '@prisma/client';
+import { createHash } from 'node:crypto';
+import { PDFDocument } from 'pdf-lib';
 import { DatabaseService } from '../database/database.service';
 import { DocumentAuthorizationService } from './document-authorization.service';
 import { COOPERATION_CODE } from './cooperation-contract.domain';
@@ -17,6 +19,51 @@ export class DocumentPersistenceService {
 
   private clientPayload(payload:unknown) {
     if(!payload||typeof payload!=='object'||Array.isArray(payload)||![Object.prototype,null].includes(Object.getPrototypeOf(payload))||Object.hasOwn(payload,PLATFORM_SOURCE_KEY))throw new BadRequestException('تختار مراجع المصدر فقط؛ بياناته تُقرأ من المنصة ولا يقبل إدخال نسخة منها.');
+  }
+
+  async addAttachment(accountId:string,id:string,input:{filename?:unknown;mimeType?:unknown;base64?:unknown}){
+    const document=await this.db.managedDocument.findUnique({where:{id},select:{id:true,organizationId:true,status:true}});
+    if(!document)throw new NotFoundException('Document not found.');
+    await this.authz.assert(accountId,document.organizationId,'REVISE');
+    if(document.status!=='DRAFT')throw new ConflictException('أرفق ملفات PDF بالمسودة قبل إرسالها للاعتماد؛ السجلات المعتمدة غير قابلة للتعديل.');
+    if(input?.mimeType!=='application/pdf'||typeof input?.base64!=='string'||input.base64.length>14_000_000)throw new BadRequestException('ارفع ملف PDF لا يتجاوز 10 ميغابايت.');
+    const bytes=Buffer.from(input.base64,'base64');
+    if(!bytes.length||bytes.length>10_000_000||bytes.subarray(0,5).toString('ascii')!=='%PDF-')throw new BadRequestException('محتوى الملف لا يطابق ملف PDF صالحًا أو يتجاوز الحد المسموح.');
+    try{await PDFDocument.load(bytes,{updateMetadata:false});}catch{throw new BadRequestException('تعذر قراءة ملف PDF؛ تحقق من سلامة الملف.');}
+    const rawName=typeof input.filename==='string'?input.filename.trim():'';
+    const filename=(rawName||'attachment.pdf').replace(/[\\/\u0000-\u001f\u007f]/g,'_').slice(0,180);
+    if(!filename.toLowerCase().endsWith('.pdf'))throw new BadRequestException('يجب أن يكون امتداد الملف PDF.');
+    const sha256=createHash('sha256').update(bytes).digest('hex');
+    return this.db.serializable(async tx=>{
+      await this.authz.assert(accountId,document.organizationId,'REVISE',tx);
+      const current=await tx.managedDocument.findUnique({where:{id},select:{organizationId:true,status:true}});
+      if(!current||current.organizationId!==document.organizationId)throw new NotFoundException('Document not found.');
+      if(current.status!=='DRAFT')throw new ConflictException('أرفق ملفات PDF بالمسودة قبل إرسالها للاعتماد؛ السجلات المعتمدة غير قابلة للتعديل.');
+      return tx.managedDocumentAttachment.upsert({
+        where:{documentId_sha256:{documentId:id,sha256}},
+        create:{documentId:id,organizationId:document.organizationId,uploadedByAccountId:accountId,filename,mimeType:'application/pdf',byteSize:bytes.length,sha256,content:new Uint8Array(bytes)},
+        update:{},
+        select:{id:true,documentId:true,filename:true,mimeType:true,byteSize:true,sha256:true,createdAt:true},
+      });
+    });
+  }
+
+  async listAttachments(accountId:string,id:string){
+    const document=await this.db.managedDocument.findUnique({where:{id},select:{organizationId:true}});
+    if(!document)throw new NotFoundException('Document not found.');
+    await this.authz.assert(accountId,document.organizationId,'DOCUMENT_READ');
+    return this.db.managedDocumentAttachment.findMany({where:{documentId:id,organizationId:document.organizationId},select:{id:true,documentId:true,filename:true,mimeType:true,byteSize:true,sha256:true,createdAt:true},orderBy:{createdAt:'asc'}});
+  }
+
+  async attachmentBytes(accountId:string,id:string,attachmentId:string){
+    const document=await this.db.managedDocument.findUnique({where:{id},select:{organizationId:true}});
+    if(!document)throw new NotFoundException('Document not found.');
+    await this.authz.assert(accountId,document.organizationId,'DOCUMENT_READ');
+    const attachment=await this.db.managedDocumentAttachment.findFirst({where:{id:attachmentId,documentId:id,organizationId:document.organizationId}});
+    if(!attachment)throw new NotFoundException('PDF attachment not found.');
+    const bytes=Buffer.from(attachment.content);
+    if(createHash('sha256').update(bytes).digest('hex')!==attachment.sha256)throw new BadRequestException('بصمة ملف PDF غير متطابقة.');
+    return {attachment,bytes};
   }
 
   async createTemplate(accountId:string,input:{organizationId:string;code:string;titleAr:string;titleEn:string;department:string;fields:Field[];printable?:boolean}){

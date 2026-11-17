@@ -7,4 +7,8 @@ if(!authorization.includes('organizationMember.findUnique')) throw new Error('Mi
 for(const token of ['managedDocument.create','documentLifecycleEvent.create','serializable','Creator cannot approve own document','Signer must be independent']) if(!service.includes(token)) throw new Error('Missing API control: '+token);
 const controller=fs.readFileSync(files[1],'utf8');
 for(const route of ["@Post(':id/submit')","@Post(':id/approve')","@Post(':id/sign')","@Post(':id/archive')"]) if(!controller.includes(route)) throw new Error('Missing lifecycle route: '+route);
+for(const token of ['addAttachment','PDFDocument.load','sha256','byteSize','status!==\'DRAFT\'','attachmentBytes']) if(!service.includes(token)) throw new Error('Missing PDF attachment validation: '+token);
+for(const route of ["@Post(':id/attachments')","@Get(':id/attachments')","@Get(':id/attachments/:attachmentId')"]) if(!controller.includes(route)) throw new Error('Missing PDF attachment route: '+route);
+const schema=fs.readFileSync('prisma/schema.prisma','utf8');if(!schema.includes('model ManagedDocumentAttachment')||!schema.includes('attachments ManagedDocumentAttachment[]'))throw new Error('Missing managed document attachment persistence model.');
+const e2e=fs.readFileSync('scripts/document-http-db-e2e.mjs','utf8');for(const token of ['PDF attachment upload failed','Cross-org attachment download expected 403','Attachment after submit expected 409'])if(!e2e.includes(token))throw new Error('Missing PDF attachment E2E assertion: '+token);
 console.log('Persistent Document API validation passed.');
