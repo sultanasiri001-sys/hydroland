@@ -37,6 +37,16 @@
         <div class="hl-org-form-actions"><button type="submit" data-org-submit>إرسال للمراجعة</button><button type="button" data-org-cancel hidden>إلغاء التعديل</button></div>
       </form>
     </div>
+    <section class="hl-org-requests" data-org-financial hidden>
+      <header><h4 data-org-financial-title>بيانات المنشأة المالية</h4><button type="button" data-org-financial-close>إغلاق</button></header>
+      <form class="hl-org-form" data-org-financial-form hidden>
+        <label>عملة المنشأة<input name="currency" value="الريال السعودي (SAR)" readonly></label>
+        <label>الحالة الضريبية بحسب إقرار المنشأة<select name="taxStatus"><option value="UNDECLARED">لم تُحدد</option><option value="EXEMPT">معفاة من الضرائب بحسب الإقرار</option><option value="TAXABLE">خاضعة للضريبة بحسب الإقرار</option></select></label>
+        <label>حالة تسجيل المنشأة<select name="registrationStatus"><option value="UNDECLARED">لم تُحدد</option><option value="REGISTERED">مسجّلة</option><option value="IN_PROGRESS">التسجيل قيد الإجراء</option><option value="NOT_REGISTERED">غير مسجّلة</option><option value="EXPIRED">التسجيل منتهٍ</option></select></label>
+        <div class="hl-org-form-actions"><button type="submit">حفظ بيانات المنشأة</button><button type="button" data-org-financial-docs>مستندات المنشأة وإرفاق PDF</button></div>
+      </form>
+      <p data-org-financial-note role="status"></p>
+    </section>
     <section class="hl-org-requests" data-org-requests hidden aria-live="polite">
       <header><div><small>ORGANIZATION CUSTOMER SERVICE</small><h4 data-org-requests-title>طلبات الجهة</h4></div><button type="button" data-org-requests-close>إغلاق</button></header>
       <div data-org-request-list><p>جارٍ تحميل الطلبات…</p></div><button type="button" data-org-request-more hidden>تحميل طلبات أقدم</button>
@@ -107,7 +117,72 @@
   let selectedSafetyOrganization = null;
   let safetyLoadVersion = 0;
   let directoryLoadVersion = 0;
+  const profileSection = panel.querySelector('[data-org-financial]');
+  const profileForm = profileSection.querySelector('form');
+  const profileNote = profileSection.querySelector('[role="status"]');
+  let profileContext = null;
+  function closeFinancialProfile() {
+    profileContext = null;
+    profileForm.reset();
+    profileForm.hidden = true;
+    profileSection.hidden = true;
+    profileNote.textContent = '';
+    profileSection.querySelector('h4').textContent = 'بيانات المنشأة المالية';
+  }
+  function activeProfile(context) {
+    return profileContext === context && window.HydrolandAuth?.isAuthenticated?.()
+      && window.HydrolandAuth.getSessionVersion?.() === context.session;
+  }
+  async function openFinancialProfile(organization) {
+    closeFinancialProfile();
+    const context = { organizationId: organization.id, session: window.HydrolandAuth?.getSessionVersion?.(), revision: null };
+    profileContext = context;
+    profileSection.hidden = false;
+    profileSection.querySelector('h4').textContent = 'بيانات المنشأة المالية · ' + organization.displayName;
+    profileNote.textContent = 'جارٍ قراءة بيانات المنشأة…';
+    profileSection.scrollIntoView({ behavior: residualScrollBehavior(), block: 'start' });
+    try {
+      const data = await request('/organizations/' + encodeURIComponent(organization.id) + '/financial-profile');
+      if (!activeProfile(context)) return;
+      if (data?.currency !== 'SAR' || !Number.isSafeInteger(data.revision)) throw new Error('تعذرت قراءة بيانات المنشأة.');
+      profileForm.elements.taxStatus.value = data.taxStatus;
+      profileForm.elements.registrationStatus.value = data.registrationStatus;
+      context.revision = data.revision;
+      profileForm.hidden = false;
+      profileForm.querySelector('[type="submit"]').disabled = false;
+      profileNote.textContent = '';
+    } catch (error) { if (activeProfile(context)) profileNote.textContent = error.message; }
+  }
+  profileSection.querySelector('[data-org-financial-close]').addEventListener('click', closeFinancialProfile);
+  profileForm.querySelector('[data-org-financial-docs]').addEventListener('click', () => {
+    if (!profileContext || !activeProfile(profileContext)) return;
+    if (!window.HydrolandDocuments?.open) { profileNote.textContent = 'تعذر فتح مستندات المنشأة. حدّث الصفحة وحاول مجددًا.'; return; }
+    window.HydrolandDocuments.open({ organizationId: profileContext.organizationId, department: 'FINANCE' });
+  });
+  profileForm.addEventListener('submit', async event => {
+    event.preventDefault();
+    const context = profileContext;
+    if (!context || !activeProfile(context) || context.revision === null) return;
+    const submit = profileForm.querySelector('[type="submit"]');
+    if (submit.disabled) return;
+    submit.disabled = true;
+    const body = { currency: 'SAR', taxStatus: profileForm.elements.taxStatus.value, registrationStatus: profileForm.elements.registrationStatus.value, expectedRevision: context.revision };
+    try {
+      const saved = await request('/organizations/' + encodeURIComponent(context.organizationId) + '/financial-profile', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      if (!activeProfile(context)) return;
+      context.revision = saved.revision;
+      profileNote.textContent = 'حُفظت بيانات المنشأة.';
+    } catch (error) {
+      if (activeProfile(context)) {
+        if (error.status === 409) context.revision = null;
+        profileNote.textContent = error.message;
+      }
+    } finally { if (activeProfile(context)) submit.disabled = context.revision === null; }
+  });
   const clearPrivateViews = () => {
+    closeFinancialProfile();
     pendingBookingRequest = null;
     bookingTripQuotes.clear();
     panel.querySelector('[data-org-trip-summary]').textContent = 'اختر الرحلة لعرض سعر المقاعد.';
@@ -134,7 +209,7 @@
       const canViewRequests = status === 'ACTIVE' && organization.status === 'ACTIVE';
       const canOperate = status === 'ACTIVE' && organization.status === 'ACTIVE' && ['OWNER', 'ADMIN', 'OPERATOR'].includes(role);
       const canReportSafety = status === 'ACTIVE' && organization.status === 'ACTIVE' && ['OWNER', 'ADMIN', 'OPERATOR', 'STAFF'].includes(role);
-      return '<article class="hl-org-item" data-org-id="' + esc(organization.id) + '"><div><strong>' + esc(organization.displayName) + '</strong><small>' + esc(organization.kind) + ' · دورك: ' + esc(roleLabel(role)) + '</small></div><span class="hl-org-status ' + esc(organization.status.toLowerCase()) + '">' + esc(statusLabel(organization.status)) + '</span><small>العضوية: ' + esc(status) + '</small>' + ((manager || canViewRequests || canOperate || canReportSafety) ? '<div class="hl-org-item-actions">' + (manager ? '<button type="button" data-org-edit>تعديل بيانات الجهة</button><button type="button" data-org-view-members>عرض العضويات</button>' : '') + (canViewRequests ? '<button type="button" data-org-requests-open>طلبات الخدمات</button>' : '') + (canViewRequests ? '<button type="button" data-org-bookings-open>الحجوزات</button>' : '') + (canReportSafety ? '<button type="button" data-org-safety-open>السلامة والبلاغات</button>' : '') + '</div>' : '') + '</article>';
+      return '<article class="hl-org-item" data-org-id="' + esc(organization.id) + '"><div><strong>' + esc(organization.displayName) + '</strong><small>' + esc(organization.kind) + ' · دورك: ' + esc(roleLabel(role)) + '</small></div><span class="hl-org-status ' + esc(organization.status.toLowerCase()) + '">' + esc(statusLabel(organization.status)) + '</span><small>العضوية: ' + esc(status) + '</small>' + ((manager || canViewRequests || canOperate || canReportSafety) ? '<div class="hl-org-item-actions">' + (manager ? '<button type="button" data-org-edit>تعديل بيانات الجهة</button><button type="button" data-org-financial-open>بيانات المنشأة المالية</button><button type="button" data-org-view-members>عرض العضويات</button>' : '') + (canViewRequests ? '<button type="button" data-org-requests-open>طلبات الخدمات</button>' : '') + (canViewRequests ? '<button type="button" data-org-bookings-open>الحجوزات</button>' : '') + (canReportSafety ? '<button type="button" data-org-safety-open>السلامة والبلاغات</button>' : '') + '</div>' : '') + '</article>';
     }).join('');
   }
 
@@ -318,7 +393,7 @@
   panel.querySelector('[data-org-refresh]')?.addEventListener('click', refresh);
   panel.querySelector('[data-org-cancel]')?.addEventListener('click', () => { resetForm(); note('أُلغي تعديل بيانات الجهة.'); });
   panel.querySelector('[data-org-list]')?.addEventListener('click', async (event) => {
-    const button = event.target.closest('button[data-org-edit],button[data-org-view-members],button[data-org-requests-open],button[data-org-bookings-open],button[data-org-safety-open]');
+    const button = event.target.closest('button[data-org-edit],button[data-org-view-members],button[data-org-requests-open],button[data-org-bookings-open],button[data-org-safety-open],button[data-org-financial-open]');
     if (!button) return;
     const card = button.closest('[data-org-id]');
     const organizationId = card?.dataset.orgId;
@@ -337,6 +412,10 @@
       await loadOrganizationIncidents(organizationId, membership); return;
     }
     const canManage = ['OWNER', 'ADMIN'].includes(membership.role);
+    if (button.matches('[data-org-financial-open]')) {
+      if (canManage) await openFinancialProfile(membership.organization);
+      return;
+    }
     if (button.matches('[data-org-requests-open]')) {
       if (membership.organization.status !== 'ACTIVE') return;
       selectedRequestsOrganization = organizationId;

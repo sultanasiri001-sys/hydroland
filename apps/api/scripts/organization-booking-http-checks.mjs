@@ -26,6 +26,10 @@ try {
     await db.organizationMember.create({ data: { organizationId: organization.id, accountId: account.id, role: 'OPERATOR', status: 'ACTIVE' } });
   }
   const [contact, foreign] = accounts, [organization, otherOrganization] = organizations;
+  const profilePath = `/organizations/${organization.id}/financial-profile`;
+  const declaration = {currency:'SAR', taxStatus:'EXEMPT', registrationStatus:'UNDECLARED', expectedRevision:0};
+  assert.equal((await call(contact, profilePath, 'PATCH', declaration)).status, 403);
+  assert.equal((await call(foreign, profilePath)).status, 403);
   trip = await db.trip.create({ data: { title: 'Organization booking boundary ' + suffix, type: 'SHORE_DIVE', status: 'OPEN', capacity: 8, startsAt: new Date(Date.now() + 7 * 86400000), endsAt: new Date(Date.now() + 7 * 86400000 + 3600000) } });
   const booking = await db.booking.create({ data: { tripId: trip.id, accountId: contact.id, organizationId: organization.id, seats: 1, status: 'PENDING' } }); bookingIds.push(booking.id);
   const personal = await db.booking.create({ data: { tripId: trip.id, accountId: contact.id, seats: 1, status: 'PENDING' } }); bookingIds.push(personal.id);
@@ -56,6 +60,18 @@ try {
   assert.equal(await db.payment.count({ where: { bookingId: booking.id } }), 0);
   assert.equal(await db.auditEvent.count({ where: { action: 'organization.booking.participant.updated', resourceId: participant.id } }), 1);
   await db.organizationMember.updateMany({ where: { organizationId: organization.id, accountId: contact.id }, data: { role: 'OWNER', status: 'ACTIVE' } });
+  assert.deepEqual(await ok(await call(contact, profilePath)), {currency:'SAR', taxStatus:'UNDECLARED', registrationStatus:'UNDECLARED', revision:0});
+  for (const invalid of [{currency:'USD'}, {taxStatus:'VERIFIED'}, {registrationStatus:true}, {expectedRevision:-1}, {organizationId:otherOrganization.id}]) {
+    assert.equal((await call(contact, profilePath, 'PATCH', {...declaration, ...invalid})).status, 400);
+  }
+  const savedProfile = await ok(await call(contact, profilePath, 'PATCH', declaration));
+  assert.deepEqual(savedProfile, {currency:'SAR', taxStatus:'EXEMPT', registrationStatus:'UNDECLARED', revision:1});
+  assert.deepEqual(await ok(await call(contact, profilePath)), savedProfile);
+  assert.deepEqual(await ok(await call(contact, profilePath, 'PATCH', declaration)), savedProfile);
+  assert.equal((await call(contact, profilePath, 'PATCH', {...declaration, registrationStatus:'REGISTERED'})).status, 409);
+  assert.equal((await ok(await call(contact, profilePath, 'PATCH', {...declaration, expectedRevision:1, registrationStatus:'IN_PROGRESS'}))).revision, 2);
+  assert.equal(await db.auditEvent.count({where:{action:'organization.financial-profile.declared',resourceId:organization.id,actorId:contact.personId}}), 2);
+  assert.equal(await db.operationalSetting.count({where:{key:'organization-financial-profile:'+otherOrganization.id}}), 0);
   const preview = await ok(await call(contact, `${scoped}/${booking.id}`));
   const cancellation = { requestId: randomUUID(), expectedState: preview.stateToken, reason: 'إلغاء بطلب الجهة قبل موعد الرحلة' };
   // A competing roster edit invalidates the reviewed cancellation snapshot.
@@ -162,6 +178,7 @@ try {
   }
   await db.auditEvent.deleteMany({ where: { actorId: { in: people.map(person => person.id) } } });
   await db.notification.deleteMany({ where: { accountId: { in: accounts.map(account => account.id) } } });
+  await db.operationalSetting.deleteMany({where:{key:{in:organizations.map(organization=>'organization-financial-profile:'+organization.id)}}});
   if (caseIds.length) await db.customerCase.deleteMany({ where: { id: { in: caseIds } } });
   if (bookingIds.length) { await db.bookingParticipant.deleteMany({ where: { bookingId: { in: bookingIds } } }); await db.booking.deleteMany({ where: { id: { in: bookingIds } } }); }
   if (trip) { await db.safetyChecklist.deleteMany({ where: { tripId: trip.id } }); await db.trip.delete({ where: { id: trip.id } }); }

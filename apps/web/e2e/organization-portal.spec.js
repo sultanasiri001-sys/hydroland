@@ -45,6 +45,38 @@ test('organization owner edits its profile and the saved values reload from the 
  expect(state.writes).toEqual([{displayName:'شركة HYDROLAND',kind:'COMPANY',legalName:'شركة هيدرولاند البحرية',registrationNumber:'CR-123',regionCode:'ASIR'}]);
 });
 
+test('owner records a tax declaration and can leave commercial registration unknown',async({page})=>{
+ await install(page);
+ let stored={currency:'SAR',taxStatus:'UNDECLARED',registrationStatus:'UNDECLARED',revision:0};
+ await page.route(/\/api\/v1\/organizations\/org-1\/financial-profile$/,route=>{
+   if(route.request().method()==='PATCH') {
+     expect(route.request().postDataJSON()).toEqual({currency:'SAR',taxStatus:'EXEMPT',registrationStatus:'UNDECLARED',expectedRevision:0});
+     stored={...stored,taxStatus:'EXEMPT',revision:1};
+   }
+   return json(route,stored);
+ });
+ const open=page.locator('[data-org-financial-open]');
+ const form=page.locator('[data-org-financial-form]');
+ await open.click();
+ await expect(form.locator('[name="registrationStatus"]')).toHaveValue('UNDECLARED');
+ await form.locator('[name="taxStatus"]').selectOption('EXEMPT');
+ await form.locator('[type="submit"]').click();
+ await expect(page.locator('[data-org-financial-note]')).toHaveText('حُفظت بيانات المنشأة.');
+ await page.locator('[data-org-financial-close]').click();
+ await open.click();
+ await expect(form.locator('[name="taxStatus"]')).toHaveValue('EXEMPT');
+ await expect(form.locator('[name="currency"]')).toHaveValue('الريال السعودي (SAR)');
+ const workspace=page.locator('#hl-documents');
+ const entries=['org-2','org-1'].map(id=>({status:'ACTIVE',role:'OWNER',organization:{id,displayName:id,kind:'COMPANY'}}));
+ await page.route(/\/api\/v1\/documents\/workspace$/,route=>json(route,entries));
+ await form.locator('[data-org-financial-docs]').click();
+ await expect(workspace.locator('[data-doc-org]')).toHaveValue('org-1');
+ await page.route(/\/api\/v1\/documents\/workspace$/,route=>json(route,entries.slice(0,1)));
+ await form.locator('[data-org-financial-docs]').click();
+ await expect(workspace).toContainText('مستندات هذه المنشأة غير متاحة لصلاحيتك الحالية.');
+ await expect(workspace.locator('[data-doc-org]')).toHaveValue('');
+});
+
 test('organization managers see scoped memberships while ordinary members do not',async({page})=>{
  const state=await install(page);const card=page.locator('[data-org-id="org-1"]');await card.locator('[data-org-view-members]').click();
  const directory=page.locator('[data-org-members]');await expect(directory).toContainText('سلطان المالك');await expect(directory).toContainText('مالك الجهة');await expect(directory).toContainText('owner@example.invalid');
@@ -60,6 +92,7 @@ test('organization owner sends an email invitation with a scoped role',async({pa
 
 test('view-only organization member cannot edit or enumerate organization memberships',async({page})=>{
  const state=await install(page,{role:'VIEWER'});const card=page.locator('[data-org-id="org-1"]');
+ await expect(card.locator('[data-org-financial-open]')).toHaveCount(0);
  await expect(card.locator('[data-org-edit]')).toHaveCount(0);await expect(card.locator('[data-org-view-members]')).toHaveCount(0);
  expect(state.writes).toHaveLength(0);
 });
