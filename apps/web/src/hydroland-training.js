@@ -87,9 +87,29 @@
     section.querySelector('.hl-training-head h3').textContent='الإيرادات';section.querySelector('.hl-training-head span').textContent='استحقاقاتك التدريبية فقط — لا تعرض حسابات العملاء أو المنصة';
     list.innerHTML='<p>جارٍ تحميل الاستحقاقات...</p>';
     try{const response=await auth.authorizedFetch('/training/professional/me/earnings'),data=await response.json().catch(()=>null);if(!response.ok)throw new Error(data?.message||'تعذر تحميل الاستحقاقات');
-      const sar=minor=>(Number(minor||0)/100).toLocaleString('ar-SA',{style:'currency',currency:'SAR'});
       const entries=Array.isArray(data?.entries)?data.entries:[];
-      list.innerHTML=`<div class="hl-role-tiles"><article><small>قيد الاعتماد</small><b>${sar(data?.totals?.pendingMinor)}</b></article><article><small>معتمد</small><b>${sar(data?.totals?.approvedMinor)}</b></article><article><small>تمت التسوية</small><b>${sar(data?.totals?.settledMinor)}</b></article></div>`+(entries.length?entries.map(item=>`<article class="hl-course"><div class="hl-course-top"><div><b>${esc(item.courseCode)}</b><small>${new Date(item.createdAt).toLocaleDateString('ar-SA')}</small></div><span>${sar(item.amountMinor)} · ${esc(item.status)}</span></div></article>`).join(''):'<p>لا توجد استحقاقات تدريبية مسجلة حتى الآن.</p>');
+      const hasOtherCurrencies=entries.some(item=>item.currency!=='SAR');
+      const knownCurrencies=new Set(Intl.supportedValuesOf?.('currency')||['SAR']);
+      const money=(minor,currency)=>{
+        if(!Number.isSafeInteger(minor)||typeof currency!=='string'||!/^[A-Z]{3}$/.test(currency))return 'تعذر عرض المبلغ';
+        if(!knownCurrencies.has(currency))return minor.toLocaleString('ar-SA')+' وحدة صغرى ('+currency+')';
+        const format=new Intl.NumberFormat('ar-SA',{style:'currency',currency,currencyDisplay:currency==='SAR'?'symbol':'code'});
+        const digits=format.resolvedOptions().maximumFractionDigits;
+        return format.format(minor/(10**digits));
+      };
+      let totals=data?.totals;
+      if(hasOtherCurrencies&&data?.totalsScope!=='SAR_ONLY'){
+        // An older server may have combined all currencies in the headline.
+        totals={pendingMinor:0,approvedMinor:0,settledMinor:0};
+        const fields={PENDING:'pendingMinor',APPROVED:'approvedMinor',SETTLED:'settledMinor'};
+        for(const item of entries){
+          const field=fields[item.status];
+          if(item.currency==='SAR'&&Object.hasOwn(fields,item.status)&&Number.isSafeInteger(item.amountMinor))totals[field]+=item.amountMinor;
+        }
+      }
+      const summary=(hasOtherCurrencies?'<p>المجاميع بالريال السعودي. تظهر الاستحقاقات الأخرى بعملتها الأصلية.</p>':'')+
+        `<div class="hl-role-tiles"><article><small>قيد الاعتماد</small><b>${money(totals?.pendingMinor,'SAR')}</b></article><article><small>معتمد</small><b>${money(totals?.approvedMinor,'SAR')}</b></article><article><small>تمت التسوية</small><b>${money(totals?.settledMinor,'SAR')}</b></article></div>`;
+      list.innerHTML=summary+(entries.length?entries.map(item=>`<article class="hl-course"><div class="hl-course-top"><div><b>${esc(item.courseCode)}</b><small>${new Date(item.createdAt).toLocaleDateString('ar-SA')}</small></div><span>${money(item.amountMinor,item.currency)} · ${esc(item.status)}</span></div></article>`).join(''):'<p>لا توجد استحقاقات تدريبية مسجلة حتى الآن.</p>');
     }catch(error){list.innerHTML=`<p>${esc(error instanceof Error?error.message:'تعذر تحميل الاستحقاقات')}</p>`;}
   }
   async function loadProfessionalCertificates(){

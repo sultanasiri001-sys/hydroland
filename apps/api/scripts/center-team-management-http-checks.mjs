@@ -47,6 +47,7 @@ export async function checkCenterTeamManagement(db,{base,a,b,ownerA,ta,tb,ts,per
   check((await assign(ownerEnrollment.id,ownerA.id)).status===409,'center ownership alone cannot grant instructor qualification');
   await db.roleAssignment.update({where:{accountId_role:{accountId:ownerA.id,role:'INSTRUCTOR'}},data:{status:'ACTIVE'}});
   const earning=await db.instructorEarning.create({data:{trainingEnrollmentId:own.row.id,instructorAccountId:pro.id,centerOrganizationId:a.org.id,amountMinor:5000}});
+  const foreignEarning=await db.instructorEarning.create({data:{trainingEnrollmentId:other.row.id,instructorAccountId:pro.id,centerOrganizationId:b.org.id,amountMinor:700,currency:'USD'}});
   check((await request(actorToken,`/training/enrollments/${own.row.id}`)).status===200,'active operator has center training scope');
   result=await manage(member);check(result.status===200&&result.body.status==='SUSPENDED','manager suspends ordinary membership');member=result.body;
   check((await request(actorToken,`/training/enrollments/${own.row.id}`)).status===403,'operator suspension revokes center training access in same session');
@@ -79,7 +80,10 @@ export async function checkCenterTeamManagement(db,{base,a,b,ownerA,ta,tb,ts,per
    check(r.status===200&&!JSON.stringify(r.body).includes('TEAM-A')&&JSON.stringify(r.body).includes('TEAM-B')&&JSON.stringify(r.body).includes('TEAM-INDEPENDENT'),'professional '+path+' excludes suspended center but preserves other work');
   }
   check(!(await request(ta,'/center/me/professionals')).body.some(row=>row.accountId===pro.id),'suspended member disappears from active professionals');
-  check((await request(tp,'/training/professional/me/earnings')).body.entries.some(row=>row.id===earning.id),'own financial history remains visible');
+  const earnings=(await request(tp,'/training/professional/me/earnings')).body;
+  check(earnings.entries.some(row=>row.id===earning.id),'own financial history remains visible');
+  check(earnings.currency==='SAR'&&earnings.totals.pendingMinor===5000&&earnings.totalsScope==='SAR_ONLY','historic foreign units are excluded from SAR earnings totals');
+  check(earnings.entries.some(row=>row.id===foreignEarning.id&&row.currency==='USD'&&row.amountMinor===700),'foreign earnings retain their original amount and currency');
   check((await request(tp,`/training/enrollments/${other.row.id}`)).status===200&&(await request(tp,`/training/enrollments/${independent.row.id}`)).status===200,'other center and independent training remain authorized');
   check((await request(studentToken,`/training/enrollments/${own.row.id}`)).status===200,'student retains access to own training');
   check((await assign(own.row.id,pro.id)).status===409,'legacy assignment cannot select suspended center member');
