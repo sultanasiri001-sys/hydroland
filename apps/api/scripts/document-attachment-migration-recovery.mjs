@@ -146,6 +146,8 @@ async function verifyCreatedSchema(db, schema, identityTypes) {
     fail('repaired attachment timestamp default is missing');
   }
 
+  // PostgreSQL 18 also catalogs each column's NOT NULL constraint here.
+  // Nullability for every column was already verified above on all versions.
   const constraints = await db.$queryRawUnsafe(`SELECT c.conname AS name, c.contype::text AS type,
     c.convalidated AS valid, c.confdeltype::text AS delete_action, c.confupdtype::text AS update_action,
     rt.relname AS referenced_table,
@@ -156,7 +158,7 @@ async function verifyCreatedSchema(db, schema, identityTypes) {
     FROM pg_constraint c JOIN pg_class ct ON ct.oid=c.conrelid
     JOIN pg_namespace n ON n.oid=ct.relnamespace
     LEFT JOIN pg_class rt ON rt.oid=c.confrelid
-    WHERE n.nspname=$1 AND ct.relname='ManagedDocumentAttachment'`, schema);
+    WHERE n.nspname=$1 AND ct.relname='ManagedDocumentAttachment' AND c.contype <> 'n'`, schema);
   const expectedConstraints = new Map([
     ['ManagedDocumentAttachment_pkey', { type: 'p', columns: ['id'] }],
     ['ManagedDocumentAttachment_documentId_fkey', { type: 'f', columns: ['documentId'], referenced_table: 'ManagedDocument' }],

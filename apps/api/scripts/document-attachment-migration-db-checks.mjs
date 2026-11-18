@@ -19,6 +19,7 @@ const cases = [
   { identity: 'TEXT', failed: false, partial: true },
   { identity: 'UUID', failed: true, partial: true },
   { identity: 'UUID', failed: false, partial: false },
+  { identity: 'TEXT', organizationIdentity: 'UUID', accountIdentity: 'UUID', failed: true, partial: true },
 ];
 
 try {
@@ -29,11 +30,16 @@ try {
     await root.$executeRawUnsafe(`CREATE SCHEMA ${qSchema}`);
     try {
       const identity = scenario.identity;
+      const types = {
+        ManagedDocument: identity,
+        Organization: scenario.organizationIdentity ?? identity,
+        Account: scenario.accountIdentity ?? identity,
+      };
       for (const name of ['ManagedDocument', 'Organization', 'Account']) {
-        await root.$executeRawUnsafe(`CREATE TABLE ${table(name)} ("id" ${identity} PRIMARY KEY)`);
+        await root.$executeRawUnsafe(`CREATE TABLE ${table(name)} ("id" ${types[name]} PRIMARY KEY)`);
         const [column] = await root.$queryRawUnsafe(`SELECT data_type FROM information_schema.columns
           WHERE table_schema=$1 AND table_name=$2 AND column_name='id'`, schema, name);
-        assert.equal(column?.data_type, identity.toLowerCase(), `${name}.id fixture must be ${identity}`);
+        assert.equal(column?.data_type, types[name].toLowerCase());
       }
       await root.$executeRawUnsafe(`CREATE TABLE ${table('_prisma_migrations')} (
         "id" TEXT PRIMARY KEY,
@@ -89,8 +95,8 @@ try {
         WHERE table_schema=$1 AND table_name='ManagedDocumentAttachment' ORDER BY ordinal_position`, schema);
       assert.equal(columns.length, 10, 'Expected all attachment columns');
       const byName = Object.fromEntries(columns.map((column) => [column.column_name, column.data_type]));
-      for (const name of ['id', 'documentId', 'organizationId', 'uploadedByAccountId']) {
-        assert.equal(byName[name], identity.toLowerCase(), `${name} must match its parent identity type`);
+      for (const [name, parent] of Object.entries({id:'ManagedDocument', documentId:'ManagedDocument', organizationId:'Organization', uploadedByAccountId:'Account'})) {
+        assert.equal(byName[name], types[parent].toLowerCase(), `${name} must match its parent identity type`);
       }
       const foreignKeys = await root.$queryRawUnsafe(`SELECT conname FROM pg_constraint WHERE contype='f'
         AND conrelid=(SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
@@ -98,6 +104,31 @@ try {
       assert.equal(foreignKeys.length, 3, 'Expected document, organization, and uploader foreign keys');
       const [row] = await root.$queryRawUnsafe(`SELECT COUNT(*)::int AS count FROM ${table('ManagedDocumentAttachment')}`);
       assert.equal(Number(row.count), 0, 'Recovery must retain the empty attachment table');
+      const ids = {};
+      for (const [parent, type] of Object.entries(types)) {
+        ids[parent] = randomUUID();
+        await root.$executeRawUnsafe(`INSERT INTO ${table(parent)} ("id") VALUES ($1::${type})`, ids[parent]);
+      }
+      const scopedUrl = new URL(database);
+      scopedUrl.searchParams.set('schema', schema);
+      const scoped = new PrismaClient({ datasourceUrl: scopedUrl.toString() });
+      try {
+        const bytes = Buffer.from('attachment persistence check');
+        const data = {
+          documentId: ids.ManagedDocument, organizationId: ids.Organization, uploadedByAccountId: ids.Account,
+          filename: 'fixture.pdf', byteSize: bytes.length, sha256: 'fixture', content: bytes,
+        };
+        const where = {documentId_sha256:{documentId:data.documentId, sha256:data.sha256}};
+        const first = await scoped.managedDocumentAttachment.upsert({where, create:data, update:{}});
+        const replay = await scoped.managedDocumentAttachment.upsert({where, create:data, update:{}});
+        assert.equal(replay.id, first.id);
+        const saved = await scoped.managedDocumentAttachment.findFirstOrThrow({
+          where:{id:first.id, documentId:data.documentId, organizationId:data.organizationId},
+        });
+        assert.deepEqual(Buffer.from(saved.content), bytes);
+      } finally {
+        await scoped.$disconnect();
+      }
       console.log(`PASS ${identity} identities (${scenario.failed ? 'failed attempt' : scenario.partial ? 'empty partial table' : 'clean UUID baseline'})`);
     } finally {
       await root.$executeRawUnsafe(`DROP SCHEMA ${qSchema} CASCADE`);
