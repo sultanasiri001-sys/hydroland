@@ -71,8 +71,15 @@ test('owner records a tax declaration and can leave commercial registration unkn
  await page.route(/\/api\/v1\/documents\/workspace$/,route=>json(route,entries));
  await form.locator('[data-org-financial-docs]').click();
  await expect(workspace.locator('[data-doc-org]')).toHaveValue('org-1');
- await page.route(/\/api\/v1\/documents\/workspace$/,route=>json(route,entries.slice(0,1)));
- await form.locator('[data-org-financial-docs]').click();
+});
+
+test('financial evidence cannot fall back to another organization after document access changes',async({page})=>{
+ await install(page);
+ await page.route(/\/api\/v1\/organizations\/org-1\/financial-profile$/,route=>json(route,{currency:'SAR',taxStatus:'UNDECLARED',registrationStatus:'UNDECLARED',revision:0}));
+ await page.route(/\/api\/v1\/documents\/workspace$/,route=>json(route,[{status:'ACTIVE',role:'OWNER',organization:{id:'org-2',displayName:'جهة أخرى',kind:'COMPANY'}}]));
+ await page.locator('[data-org-financial-open]').click();
+ await page.locator('[data-org-financial-docs]').click();
+ const workspace=page.locator('#hl-documents');
  await expect(workspace).toContainText('مستندات هذه المنشأة غير متاحة لصلاحيتك الحالية.');
  await expect(workspace.locator('[data-doc-org]')).toHaveValue('');
 });
