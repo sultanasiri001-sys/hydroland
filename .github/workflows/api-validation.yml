@@ -404,3 +404,35 @@ jobs:
 
       - name: Phase 4 append-only audit database boundary
         run: node apps/api/scripts/audit-append-only-validation.mjs
+
+      - name: Equipment rental deadlines on UTC and Riyadh database connections
+        env:
+          NODE_ENV: test
+          PORT: 3111
+          JWT_SECRET: disposable-test-secret-for-rental-deadlines
+          EQUIPMENT_E2E_BASE_URL: http://127.0.0.1:3111/api/v1
+        run: |
+          for zone in UTC Asia/Riyadh; do
+            (
+              export TZ="$zone"
+              DATABASE_URL=$(node -e "const u = new URL(process.env.DATABASE_URL); u.searchParams.set('options', '-c TimeZone=' + process.env.TZ); process.stdout.write(u.href)")
+              export DATABASE_URL
+              node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { PrismaClient } from '@prisma/client';
+          const db = new PrismaClient();
+          try {
+            const [row] = await db.$queryRaw`SELECT current_setting('TimeZone') AS zone`;
+            assert.equal(row.zone, process.env.TZ);
+          } finally {
+            await db.$disconnect();
+          }
+          JS
+              node apps/api/dist/main.js > "$RUNNER_TEMP/rental-deadline-api.log" 2>&1 &
+              api_pid=$!
+              trap 'kill "$api_pid" 2>/dev/null || true; wait "$api_pid" 2>/dev/null || true' EXIT
+              curl --fail --silent --retry 30 --retry-connrefused --retry-delay 1 "$EQUIPMENT_E2E_BASE_URL/health/ready" > /dev/null
+              node apps/api/scripts/equipment-runtime-http-e2e.mjs
+              echo "Equipment deadlines verified in $zone"
+            )
+          done
