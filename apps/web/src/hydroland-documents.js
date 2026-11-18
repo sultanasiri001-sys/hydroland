@@ -176,16 +176,19 @@
     }catch(error){if(current(c)){clearData();note(error instanceof Error?error.message:'تعذر تحميل المستندات');}}
     finally{if(current(c)){state.loading=false;panel.querySelector('[data-doc-hr-source-preview]').disabled=false;}}
   }
-  async function refresh(){
+  async function refresh(requestedOrganizationId){
     state.generation++;const c=context();state.loading=true;clearData();
     if(!window.HydrolandAuth?.isAuthenticated?.()){state.memberships=[];panel.hidden=true;return;}
     try{
       const memberships=await request('/documents/workspace');if(!current(c))return;
       state.memberships=(Array.isArray(memberships)?memberships:[]).filter(x=>x.status==='ACTIVE');
       const orgSelect=panel.querySelector('[data-doc-org]');orgSelect.innerHTML=state.memberships.map(x=>`<option value="${esc(x.organization.id)}">${esc(x.organization.displayName)} · ${esc(x.role)}</option>`).join('');
+      if(typeof requestedOrganizationId==='string'&&!state.memberships.some(x=>x.organization.id===requestedOrganizationId)){
+        state.orgId=null;state.loading=false;orgSelect.selectedIndex=-1;note('مستندات هذه المنشأة غير متاحة لصلاحيتك الحالية.');return;
+      }
       if(!state.memberships.length){state.orgId=null;state.loading=false;note('لا توجد جهة مستندات متاحة لصلاحيتك الحالية.');return;}
       const internal=state.memberships.find(x=>x.organization.kind==='HYDROLAND_INTERNAL_PLATFORM');
-      const wanted=state.preferInternal&&internal?internal.organization.id:state.memberships.some(x=>x.organization.id===state.orgId)?state.orgId:state.memberships[0].organization.id;
+      const wanted=typeof requestedOrganizationId==='string'?requestedOrganizationId:state.preferInternal&&internal?internal.organization.id:state.memberships.some(x=>x.organization.id===state.orgId)?state.orgId:state.memberships[0].organization.id;
       state.preferInternal=false;orgSelect.value=wanted;await loadOrganization(wanted);
     }catch(error){if(current(c)){state.loading=false;note(error instanceof Error?error.message:'تعذر تحميل الجهات');}}
   }
@@ -387,7 +390,12 @@
   const clear=()=>{state.generation++;state.orgId=null;state.memberships=[];state.department='';state.typeCode='';state.loading=false;clearData();panel.querySelector('[data-doc-org]').replaceChildren();note('');panel.hidden=true;};
   document.addEventListener('hydroland:auth-changed',()=>{if(!window.HydrolandAuth?.isAuthenticated?.())clear();else if(!panel.hidden)refresh();});
   for(const event of ['hydroland:session-cleared','hydroland:portal-cleared'])document.addEventListener(event,clear);
-  window.HydrolandDocuments={open:(options={})=>{if(!window.HydrolandAuth?.isAuthenticated?.())return;state.department=options.department||'';state.typeCode='';state.preferInternal=options.internal===true||window.HydrolandPortalAccess?.getCurrentRole?.()==='admin';panel.hidden=false;refresh();},refresh};
+  window.HydrolandDocuments={open:(options={})=>{
+    if(!window.HydrolandAuth?.isAuthenticated?.())return;
+    state.department=options.department||'';state.typeCode='';state.preferInternal=options.internal===true||window.HydrolandPortalAccess?.getCurrentRole?.()==='admin';
+    panel.hidden=false;refresh(options.organizationId);
+    if(options.organizationId)panel.querySelector('[data-doc-org]').focus();
+  },refresh};
 })();
 
 

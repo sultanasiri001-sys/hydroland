@@ -2,13 +2,24 @@ import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nest
 import { ReviewGuard } from '../admin/review.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { OrganizationsService } from './organizations.service';
+import { OrganizationFinancialProfileService } from './organization-financial-profile.service';
 
 type AuthenticatedRequest = { auth: { accountId: string } };
 
 @UseGuards(AccessTokenGuard)
 @Controller('organizations')
 export class OrganizationsController {
-  constructor(private readonly organizations: OrganizationsService) {}
+  constructor(private readonly organizations: OrganizationsService, private readonly financialProfile: OrganizationFinancialProfileService) {}
+
+  @Get(':id/financial-profile')
+  getFinancialProfile(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+    return this.financialProfile.read(request.auth.accountId, id);
+  }
+
+  @Patch(':id/financial-profile')
+  saveFinancialProfile(@Req() request: AuthenticatedRequest, @Param('id') id: string, @Body() body: unknown) {
+    return this.financialProfile.save(request.auth.accountId, id, body);
+  }
 
   @Post()
   create(@Req() request: AuthenticatedRequest, @Body() body: { displayName: string; legalName?: string; kind: string; registrationNumber?: string; regionCode?: string }) {
