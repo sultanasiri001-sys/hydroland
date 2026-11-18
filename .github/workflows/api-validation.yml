@@ -39,6 +39,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Maintenance forecast evaluation on synthetic records
+        run: node --test scripts/f07-maintenance-evaluation.test.mjs
       - name: Agency training standard core contracts (synthetic only)
         run: node --experimental-strip-types --test apps/api/scripts/training-standard-core.test.mjs
       - name: Agency dive progression contracts (synthetic only)
