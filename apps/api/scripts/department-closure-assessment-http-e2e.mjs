@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHmac, randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { PrismaClient } from '@prisma/client';
+import { PDFDocument } from 'pdf-lib';
 
 // This suite creates only synthetic, disposable records. It never interprets a
 // recorded blocker, a document status or a passing test as operational closure.
@@ -129,6 +130,23 @@ try {
   assert.equal(initial.expectedRevision, 0); assert.equal(initial.current, null); assert.deepEqual(initial.history, []); assert.equal(initial.canRecord, true); notClosed(initial);
   assert.equal((await call(owner, 'admin/department-references/UNKNOWN/assessment')).status, 400);
   pass('anonymous, STAFF and non-owner ADMIN denied; current owner reads uncached empty scoped assessment without creating one');
+
+  const candidates = endpoint + '/documents';
+  const options = await ok(owner, candidates);
+  assert.equal(options.organizationId, org.id);
+  assert.equal(options.department, 'HR');
+  assert(options.documents.some(d => d.id === evidenceDoc.id));
+  assert(options.documents.every(d => ![foreignDoc.id, financeDoc.id].includes(d.id)));
+  const scoped = await call(owner, candidates + '?query=' + encodeURIComponent(evidenceDoc.referenceNumber));
+  assert.equal(scoped.status, 200);
+  assert.match(scoped.headers.get('cache-control') || '', /private.*no-store/);
+  assert.deepEqual(scoped.data.documents, [{
+    id: evidenceDoc.id, referenceNumber: evidenceDoc.referenceNumber, version: evidenceDoc.version,
+    titleAr: hrTemplate.titleAr, pdfAttachmentCount: 0,
+  }]);
+  assert.equal((await call(other, candidates)).status, 403);
+  assert.equal((await call(staff, candidates)).status, 403);
+  pass('the owner searches department document versions by reference with a minimal response scoped to the current department and organization');
 
   let input = inputFor(initial);
   for (const extra of [{ organizationId: outside.id }, { departmentClosed: true }, { closureDecisionReference: 'invented' }, { reviewerAccountId: other.id }, { policyVersion: 'ACCEPTED' }]) await deniedPreview({ ...input, ...extra });
@@ -296,7 +314,12 @@ try {
       await ownerPage.locator('[data-closure-form]').waitFor();
       await ownerPage.getByLabel('حالة REFERENCE_APPLICABILITY', { exact: true }).selectOption('BLOCKED');
       await ownerPage.getByLabel('ملاحظة REFERENCE_APPLICABILITY', { exact: true }).fill('Synthetic connected browser blocker; no independent review or acceptance');
-      await ownerPage.getByLabel('أدلة REFERENCE_APPLICABILITY', { exact: true }).fill(evidenceDoc.id + ' ' + evidenceDoc.version);
+      await ownerPage.getByText('اختيار مستند من سجل الإدارة', { exact: true }).click();
+      await ownerPage.getByRole('searchbox').fill(evidenceDoc.referenceNumber);
+      await ownerPage.getByRole('button', { name: 'بحث في مستندات الإدارة' }).click();
+      await ownerPage.getByLabel('المستند المحفوظ').selectOption(evidenceDoc.id);
+      await ownerPage.getByRole('button', { name: 'إضافة المرجع إلى البوابة' }).click();
+      assert.equal(await ownerPage.getByLabel('أدلة REFERENCE_APPLICABILITY', { exact: true }).inputValue(), evidenceDoc.id + ' ' + evidenceDoc.version);
       await ownerPage.locator('[data-closure-preview]').click();
       await ownerPage.locator('[data-closure-confirmed]').waitFor();
       assert.deepEqual(await rows(), beforeBrowser, 'Actual browser preview must not create a revision');
@@ -337,6 +360,56 @@ try {
     }
   }
 
+  const pdfDoc = await document(hrTemplate, 'Synthetic PDF assessment source');
+  const assessmentView = await ok(owner);
+  const pdfInput = inputFor(assessmentView, pdfDoc);
+  const originalPlan = await preview(pdfInput);
+  const attachments = 'documents/' + pdfDoc.id + '/attachments';
+  async function samplePdf(title) {
+    const pdf = await PDFDocument.create();
+    pdf.setTitle(title);
+    pdf.addPage();
+    return { filename: title + '.pdf', mimeType: 'application/pdf', base64: Buffer.from(await pdf.save()).toString('base64') };
+  }
+  const firstPdf = await samplePdf('first');
+  const attachment = await ok(owner, attachments, 'POST', firstPdf);
+  const beforeChangedSource = await rows();
+  assert.equal((await call(owner, endpoint, 'POST', confirm(pdfInput, originalPlan))).status, 409);
+  assert.deepEqual(await rows(), beforeChangedSource);
+  const reviewedPlan = await preview(pdfInput);
+  assert.equal(reviewedPlan.gates[0].evidence[0].pdfAttachmentCount, 1);
+  assert.notEqual(originalPlan.expectedPlanHash, reviewedPlan.expectedPlanHash);
+  const repeatedAttachment = await ok(owner, attachments, 'POST', firstPdf);
+  assert.equal(repeatedAttachment.id, attachment.id);
+  assert.equal((await preview(pdfInput)).expectedPlanHash, reviewedPlan.expectedPlanHash);
+  const currentPdfAssessment = await ok(owner, endpoint, 'POST', confirm(pdfInput, reviewedPlan));
+  assert.equal(currentPdfAssessment.current.assessmentCurrent, true);
+  await ok(owner, attachments, 'POST', await samplePdf('second'));
+  const stalePdfAssessment = await ok(owner);
+  assert.equal(stalePdfAssessment.current.id, currentPdfAssessment.current.id);
+  assert.equal(stalePdfAssessment.current.assessmentCurrent, false);
+  assert.equal(stalePdfAssessment.current.gates[0].evidence[0].pdfAttachmentCount, 1);
+  assert.equal((await catalogCycle()).closureAssessment, 'STALE');
+  const revisedOptions = await ok(owner, candidates + '?query=' + encodeURIComponent(pdfDoc.referenceNumber));
+  assert.equal(revisedOptions.documents[0].version, pdfDoc.version);
+  assert.equal(revisedOptions.documents[0].pdfAttachmentCount, 2);
+  pass('a new PDF invalidates a preview and marks a saved assessment stale, while repeating the same upload preserves the reviewed evidence and history');
+
+  const prefix = 'PAGED-EVIDENCE-' + suffix;
+  await db.managedDocument.createMany({ data: Array.from({ length: 26 }, (_, i) => ({
+    organizationId: org.id, department: 'HR', templateId: hrTemplate.id, createdByAccountId: owner.id,
+    referenceNumber: prefix + '-' + i, payload: { note: 'Synthetic pagination' }, contentHash: decisionDigest({ note: 'Synthetic pagination' }),
+  })) });
+  const paged = candidates + '?query=' + encodeURIComponent(prefix);
+  const pageOne = await ok(owner, paged);
+  assert.equal(pageOne.documents.length, 25);
+  assert.equal(pageOne.nextCursor, pageOne.documents.at(-1).id);
+  const pageTwo = await ok(owner, paged + '&after=' + encodeURIComponent(pageOne.nextCursor));
+  assert.equal(pageTwo.documents.length, 1);
+  assert.equal(pageTwo.nextCursor, null);
+  assert.equal(new Set([...pageOne.documents, ...pageTwo.documents].map(d => d.id)).size, 26);
+  pass('document search keeps its filter and returns every matching reference exactly once across pages');
+
   console.log(`${checks} real HTTP/PostgreSQL closure-assessment groups passed. This verifies persisted blockers only, not departmental operational acceptance or closure.`);
 } finally {
   if (triggerInstalled) await db.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${triggerName}" ON "AuditEvent"`);
@@ -349,6 +422,7 @@ try {
   }
   await db.departmentClosureAssessment.deleteMany({ where: { organizationId: { in: organizations } } });
   const ids = (await db.managedDocument.findMany({ where: { organizationId: { in: organizations } }, select: { id: true } })).map(d => d.id);
+  await db.managedDocumentAttachment.deleteMany({ where: { documentId: { in: ids } } });
   await db.documentLifecycleEvent.deleteMany({ where: { documentId: { in: ids } } });
   await db.documentRevision.deleteMany({ where: { documentId: { in: ids } } });
   await db.managedDocument.deleteMany({ where: { id: { in: ids } } });

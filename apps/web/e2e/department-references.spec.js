@@ -254,6 +254,68 @@ async function previewAssessment(page) {
   await expect(page.locator('[data-closure-plan]')).toContainText('معاينة فقط');
 }
 
+for (const inputVersion of ['٢', '۱۲']) {
+  test('manual assessment evidence accepts a localized revision ' + inputVersion, async ({ page }) => {
+    const state = await setup(page);
+    await open(page);
+    await openAssessment(page);
+    await page.getByLabel('أدلة ' + gateIds[0], { exact: true }).fill(documentId + ' ' + inputVersion);
+    await previewAssessment(page);
+    expect(state.requests[0].gates[0].evidence).toEqual([{ documentId, version: inputVersion === '٢' ? 2 : 12 }]);
+    expect(state.assessmentWrites).toBe(0);
+  });
+}
+
+test('select a document in the current department and attach its version to the chosen gate', async ({ page }) => {
+  const state = await setup(page);
+  const candidate = { id: documentId, referenceNumber: 'HYD-HR-22', titleAr: 'محضر مراجعة', version: 2, pdfAttachmentCount: 1 };
+  await page.route('**/HR/assessment/documents?**', route => {
+    expect(new URL(route.request().url()).searchParams.get('query')).toBe('محضر');
+    return json(route, { organizationId, department: 'HR', documents: [candidate], nextCursor: null });
+  });
+  await open(page);
+  await openAssessment(page);
+  await page.getByText('اختيار مستند من سجل الإدارة', { exact: true }).click();
+  const picker = page.locator('[data-closure-form] details');
+  await picker.getByRole('searchbox').fill('محضر');
+  await picker.getByRole('searchbox').press('Enter');
+  await expect(picker.getByRole('option', { name: /HYD-HR-22.*مرفقات PDF 1/ })).toBeAttached();
+  await picker.getByLabel('المستند المحفوظ').selectOption(documentId);
+  await picker.getByLabel('بوابة إرفاق الدليل').selectOption(gateIds[1]);
+  const add = picker.getByRole('button', { name: 'إضافة المرجع إلى البوابة' });
+  await add.click();
+  await add.click();
+  await expect(picker.getByRole('status')).toHaveText('هذا المستند مضاف إلى البوابة.');
+  await expect(page.getByLabel('أدلة ' + gateIds[1], { exact: true })).toHaveValue(documentId + ' 2');
+  await expect(page.getByLabel('أدلة ' + gateIds[0], { exact: true })).toBeEmpty();
+  await previewAssessment(page);
+  expect(state.requests[0].gates[1].evidence).toEqual([{ documentId, version: 2 }]);
+  expect(state.assessmentWrites).toBe(0);
+});
+
+test('changing the search or department discards old document options', async ({ page }) => {
+  await setup(page);
+  let finish;
+  await page.route('**/HR/assessment/documents?**', async route => {
+    await new Promise(resolve => { finish = resolve; });
+    return json(route, { organizationId, department: 'HR', documents: [{ id: documentId, referenceNumber: 'OLD-CANDIDATE', titleAr: 'قديم', version: 3, pdfAttachmentCount: 0 }], nextCursor: null });
+  });
+  await open(page);
+  await openAssessment(page);
+  await page.getByText('اختيار مستند من سجل الإدارة', { exact: true }).click();
+  const picker = page.locator('[data-closure-form] details');
+  await picker.getByRole('button', { name: 'بحث في مستندات الإدارة' }).click();
+  await expect.poll(() => typeof finish).toBe('function');
+  await picker.getByRole('searchbox').fill('مرجع آخر');
+  const returned = page.waitForResponse(response => response.url().includes('/HR/assessment/documents?'));
+  finish();
+  await returned;
+  await expect(picker.getByLabel('المستند المحفوظ')).toBeDisabled();
+  await expect(picker.getByText('OLD-CANDIDATE', { exact: false })).toHaveCount(0);
+  await page.getByLabel('إدارة المراجع').selectOption('FINANCE');
+  await expect(page.locator('[data-closure-form]')).toHaveCount(0);
+});
+
 test('stored blocker and stale summaries are not interpreted as departmental closure',async({page})=>{
   const state=await setup(page),cycle=state.data.departments[0].operatingCycle;
   cycle.closureAssessment='BLOCKED';cycle.closureGates[0].verificationStatus='BLOCKED';

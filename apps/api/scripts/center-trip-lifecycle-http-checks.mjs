@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import { checkDiveLogReview } from './dive-log-review-http-checks.mjs';
 export async function checkCenterTripLifecycle(db,{base,a,b,ownerA,ta,tb,ts,personAccount,tokenFor},check){
  const trips=[],resources=[],events=[],bookings=[];
  const call=async(token,path,method='GET',body)=>{const response=await fetch(base+path,{method,headers:{...(token?{authorization:'Bearer '+token}:{}),'content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:response.status,body:await response.json().catch(()=>null)}};
@@ -63,6 +64,7 @@ export async function checkCenterTripLifecycle(db,{base,a,b,ownerA,ta,tb,ts,pers
   check((await apply(trip.id,c)).body.alreadyApplied===true,'Completion retry works after resources and clearance change');
   const logs=await db.diveLog.findMany({where:{sourceTripId:trip.id}});check(logs.length===1&&logs[0].sourceParticipantId===attendee.id&&logs[0].status==='DRAFT'&&!logs[0].verifiedAt,'Only attendee gets an unverified dive log');
   check(!logs.some(log=>log.sourceParticipantId===absent.id),'Absentee gets no dive record');
+  await checkDiveLogReview(db, { call, log: logs[0], admin, adminToken, ownerToken: ta, personAccount, tokenFor }, check);
   check((await db.booking.findUnique({where:{id:pb.id}})).status==='CANCELLED'&&(await db.booking.findUnique({where:{id:cb.id}})).status==='CONFIRMED','Pending bookings closed, confirmed booking history retained');
   check(await db.auditEvent.count({where:{resourceId:trip.id,action:'TRIP_COMPLETED'}})===1,'Completion audit and attendance recorded once');
   const audit=await db.auditEvent.findFirst({where:{resourceId:trip.id,action:'TRIP_COMPLETED'}});check(audit.actorId&&audit.metadata.attendedParticipantIds[0]===attendee.id&&audit.metadata.absentParticipantIds[0]===absent.id&&audit.metadata.financialActionExecuted===false,'Completion evidence records actor, attendance and financial nonexecution');
