@@ -130,13 +130,14 @@ try {
   const times = scopeEvents.map(row => row.occurredAt.getTime());
   const scope = { organization: organization.id, from: new Date(Math.min(...times)), until: new Date(Math.max(...times) + 1) };
   const report = await summarizeAudit([...scopeEvents, ...scopeEvents], scope);
-  for (const key of ['booking', 'eligibility', 'case']) {
-    assert.equal(report.categories[key].events, 1);
-    assert.equal(report.categories[key].distinctSubjects, 1);
+  // Both successful edits above belong to the same participant. Retrying delivery adds no new event.
+  for (const [key, expectedEvents] of Object.entries({ booking: 1, eligibility: 2, case: 1 })) {
+    assert.equal(report.categories[key].events, expectedEvents, key + ' source events');
+    assert.equal(report.categories[key].distinctSubjects, 1, key + ' distinct subjects');
   }
   assert.equal(report.sourceDigest, (await summarizeAudit(scopeEvents.toReversed(), scope)).sourceDigest);
   assert(!JSON.stringify(report).includes(personalCase.id));
-  console.log('PASS D12: persisted booking, participant update and organization case have one source each; personal cases and duplicate export delivery do not enter the counts');
+  console.log('PASS D12: one booking, two updates to one participant, and one organization case; duplicate export delivery and personal cases add no counts');
   // Personal input boundaries and both audit writes use the real loopback API/database.
   const validCase = { type: 'QUESTION', subject: 'Personal integrity check', description: 'Private synthetic description' };
   const personalCount = await db.customerCase.count({ where: { customerId: contact.id, organizationId: null } });
