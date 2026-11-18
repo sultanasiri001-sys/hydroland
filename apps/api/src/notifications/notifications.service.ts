@@ -16,8 +16,8 @@ export class NotificationsService {
     return this.db.notification.findMany({where:{accountId,...inAppNotification},orderBy:{createdAt:'desc'},take:100});
   }
 
-  notify(accountId:string,type:string,payload:Record<string,unknown>){
-    return this.db.notification.create({data:{accountId,type,payload:payload as never,status:'SENT',sentAt:new Date()}});
+  notify(accountId:string,type:string,payload:Record<string,unknown>,tx:Prisma.TransactionClient=this.db){
+    return tx.notification.create({data:{accountId,type,payload:payload as never,status:'SENT',sentAt:new Date()}});
   }
 
   createSafetyTest(accountId: string) {

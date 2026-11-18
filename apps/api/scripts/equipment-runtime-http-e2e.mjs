@@ -1,22 +1,30 @@
 import { PrismaClient } from '@prisma/client';
-import { createHmac } from 'node:crypto';
+import { randomBytes, scryptSync } from 'node:crypto';
 
 const db=new PrismaClient();
 const base=process.env.EQUIPMENT_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1';
-const secret=process.env.JWT_SECRET;
-if(!secret)throw new Error('JWT_SECRET required');
-const suffix=Date.now().toString();
-const enc=value=>Buffer.from(JSON.stringify(value)).toString('base64url');
-const tokenFor=id=>{const now=Math.floor(Date.now()/1000),body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:id,iat:now,exp:now+1800})}`;return `${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`};
+for (const endpoint of [base, process.env.DATABASE_URL]) {
+  if (!['localhost','127.0.0.1','[::1]'].includes(new URL(endpoint).hostname)) throw new Error('Equipment fixtures require loopback services.');
+}
+const suffix=randomBytes(8).toString('hex');
+const password=randomBytes(24).toString('hex');
+const salt=randomBytes(16).toString('hex');
+const passwordHash=salt+':'+scryptSync(password,salt,64).toString('hex');
+async function login(account) {
+  const response=await fetch(base+'/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:account.email,password})});
+  const session=await json(response);
+  if (!session.accessToken) throw new Error('Equipment test login returned no access token');
+  return session.accessToken;
+}
 const auth=token=>({authorization:`Bearer ${token}`});
 const json=async response=>{const body=await response.json().catch(()=>null);if(!response.ok)throw new Error(`HTTP ${response.status}: ${JSON.stringify(body)}`);return body};
-const people=[],accounts=[];let equipmentId=null,rentalId=null;
-const makeAccount=async label=>{const person=await db.person.create({data:{firstName:'Equipment',lastName:label}});people.push(person);const account=await db.account.create({data:{personId:person.id,email:`equipment-${label.toLowerCase()}-${suffix}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}});accounts.push(account);return account};
+const people=[],accounts=[];let equipmentId=null,rentalId=null,competingId=null;
+const makeAccount=async label=>{const person=await db.person.create({data:{firstName:'Equipment',lastName:label}});people.push(person);const account=await db.account.create({data:{personId:person.id,email:`equipment-${label.toLowerCase()}-${suffix}@example.invalid`,passwordHash,status:'ACTIVE',emailVerifiedAt:new Date()}});accounts.push(account);return account};
 
 try{
   const admin=await makeAccount('Admin'),renter=await makeAccount('Renter'),other=await makeAccount('Other');
   await db.roleAssignment.create({data:{accountId:admin.id,role:'ADMIN',status:'ACTIVE',scope:{}}});
-  const adminToken=tokenFor(admin.id),renterToken=tokenFor(renter.id),otherToken=tokenFor(other.id);
+  const [adminToken,renterToken,otherToken]=await Promise.all([admin,renter,other].map(login));
 
   let response=await fetch(`${base}/trips/admin/equipment`);
   if(response.status!==401)throw new Error(`Anonymous inventory list expected 401, got ${response.status}`);
@@ -34,6 +42,11 @@ try{
   if(response.status!==409)throw new Error(`Duplicate serial expected 409, got ${response.status}`);
 
   const dueAt=new Date(Date.now()+2*86400000).toISOString();
+  const repeatedItem={resourceId:equipmentId,equipmentType:'BCD',unitPriceSar:50};
+  response=await fetch(base+'/trips/equipment-rentals',{method:'POST',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({renterAccountId:renter.id,dueAt,items:[repeatedItem,{...repeatedItem,resourceId:' '+equipmentId+' '}]})});
+  if(response.status!==400)throw new Error('Duplicate serialized equipment must be rejected before creating a rental');
+  const reservations=await db.$queryRaw`SELECT COUNT(*)::int AS count FROM "EquipmentRental" WHERE "renterAccountId"=${renter.id}`;
+  if(reservations[0].count!==0)throw new Error('Duplicate equipment left a partial reservation');
   response=await fetch(`${base}/trips/equipment-rentals`,{method:'POST',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({renterAccountId:renter.id,dueAt,items:[{resourceId:equipmentId,equipmentType:'BCD',size:'M',unitPriceSar:50}]})});
   let rental=await json(response);rentalId=rental.id;
   if (new Date(rental.dueAt).getTime() !== Date.parse(dueAt)) throw new Error('Initial due date must preserve the requested instant.');
@@ -55,9 +68,20 @@ try{
   response=await fetch(`${base}/trips/admin/equipment/${encodeURIComponent(equipmentId)}/inspections`,{method:'POST',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({status:'PASS',serviceExpiresAt,notes:'Equipment runtime E2E safety clearance'})});
   const inspection=await json(response);if(inspection.status!=='PASS')throw new Error('PASS inspection was not recorded');
 
-  response=await fetch(`${base}/trips/admin/equipment-rentals/${encodeURIComponent(rentalId)}/payment-confirmation`,{method:'POST',headers:auth(adminToken)});
-  const paid=await json(response);
+  const additional=await json(await fetch(base+'/trips/equipment-rentals',{method:'POST',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({renterAccountId:renter.id,dueAt,items:[repeatedItem]})}));
+  competingId=additional.id;
+  const confirm=id=>fetch(base+'/trips/admin/equipment-rentals/'+encodeURIComponent(id)+'/payment-confirmation',{method:'POST',headers:auth(adminToken)});
+  const attempts=await Promise.all([confirm(rentalId),confirm(competingId)]);
+  if(attempts.filter(r=>r.ok).length!==1||attempts.filter(r=>r.status===409).length!==1)throw new Error('Only one overlapping invoice may be confirmed');
+  if(!attempts[0].ok)[rentalId,competingId]=[competingId,rentalId];
+  const paid=await json(attempts.find(r=>r.ok));
   if(paid.paymentStatus!=='PAID'||paid.status!=='RESERVED')throw new Error('Payment confirmation must keep rental RESERVED until handover');
+  await json(await confirm(rentalId));
+  const notices=await db.notification.count({where:{accountId:renter.id,type:'EQUIPMENT_RENTAL_INVOICE',payload:{path:['rentalId'],equals:rentalId}}});
+  const audits=await db.auditEvent.count({where:{resourceId:rentalId,action:'EQUIPMENT_RENTAL_PAYMENT_CONFIRMED'}});
+  if(notices!==1||audits!==1)throw new Error('Replaying payment confirmation must keep one notification and audit');
+  const unpaidOther=await db.$queryRaw`SELECT "paymentStatus" FROM "EquipmentRental" WHERE "id"=${competingId}`;
+  if(unpaidOther[0]?.paymentStatus!=='PENDING')throw new Error('Losing invoice must remain pending');
   const afterPayment=await db.$queryRawUnsafe(`SELECT "stockStatus" FROM "EquipmentBarcode" WHERE "resourceId"=$1 LIMIT 1`,equipmentId);
   if(afterPayment[0]?.stockStatus!=='AVAILABLE')throw new Error('Payment confirmation checked equipment out before handover');
 
@@ -86,14 +110,16 @@ try{
   const persistedRental=await db.$queryRawUnsafe(`SELECT "status","paymentStatus","extensionStatus","returnIntentAt","returnedAt" FROM "EquipmentRental" WHERE "id"=$1 LIMIT 1`,rentalId);
   if(persistedRental[0]?.status!=='RETURNED'||persistedRental[0]?.paymentStatus!=='PAID'||persistedRental[0]?.extensionStatus!=='APPROVED'||!persistedRental[0]?.returnIntentAt||!persistedRental[0]?.returnedAt)throw new Error('Final rental lifecycle persistence mismatch');
 
+  const afterReturn=await json(await confirm(competingId));
+  if(afterReturn.paymentStatus!=='PAID')throw new Error('Return must release the asset for a subsequent rental');
   console.log('Equipment HTTP/DB E2E passed: admin isolation, registration, duplicate protection, safety gate, reservation ownership, staged payment/handover, extension, return intent, return scan and persistence.');
 } finally {
   const personIds=people.map(row=>row.id),accountIds=accounts.map(row=>row.id);
   if(personIds.length)await db.auditEvent.deleteMany({where:{actorId:{in:personIds}}}).catch(()=>{});
-  if(rentalId)await db.auditEvent.deleteMany({where:{resourceId:rentalId}}).catch(()=>{});
+  for(const id of [rentalId,competingId].filter(Boolean))await db.auditEvent.deleteMany({where:{resourceId:id}}).catch(()=>{});
   if(equipmentId)await db.auditEvent.deleteMany({where:{resourceId:equipmentId}}).catch(()=>{});
   if(accountIds.length)await db.notification.deleteMany({where:{accountId:{in:accountIds}}}).catch(()=>{});
-  if(rentalId){await db.$executeRawUnsafe(`DELETE FROM "EquipmentRentalItem" WHERE "rentalId"=$1`,rentalId).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "EquipmentRental" WHERE "id"=$1`,rentalId).catch(()=>{})}
+  for(const id of [rentalId,competingId].filter(Boolean)){await db.$executeRawUnsafe(`DELETE FROM "EquipmentRentalItem" WHERE "rentalId"=$1`,id).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "EquipmentRental" WHERE "id"=$1`,id).catch(()=>{})}
   if(equipmentId){await db.$executeRawUnsafe(`DELETE FROM "EquipmentInspection" WHERE "resourceId"=$1`,equipmentId).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "EquipmentMovement" WHERE "resourceId"=$1`,equipmentId).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "EquipmentBarcode" WHERE "resourceId"=$1`,equipmentId).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "CalendarResource" WHERE "id"=$1`,equipmentId).catch(()=>{})}
   for(const account of accounts.reverse()){await db.roleAssignment.deleteMany({where:{accountId:account.id}}).catch(()=>{});await db.session.deleteMany({where:{accountId:account.id}}).catch(()=>{});await db.account.delete({where:{id:account.id}}).catch(()=>{})}
   for(const person of people.reverse())await db.person.delete({where:{id:person.id}}).catch(()=>{});
