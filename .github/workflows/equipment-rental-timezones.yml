@@ -1,0 +1,53 @@
+name: Equipment rental deadlines
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/trips/equipment-rental.service.ts'
+      - 'apps/api/scripts/equipment-runtime-http-e2e.mjs'
+      - '.github/workflows/equipment-rental-timezones.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  deadlines:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        timezone: [UTC, Asia/Riyadh]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: hydroland
+          POSTGRES_PASSWORD: hydroland
+          POSTGRES_DB: hydroland
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 8
+    env:
+      DATABASE_URL: postgresql://hydroland:hydroland@127.0.0.1:5432/hydroland
+      NODE_ENV: test
+      JWT_SECRET: disposable-test-secret-for-rental-deadlines
+      TZ: ${{ matrix.timezone }}
+      PORT: 3101
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --include=dev
+      - name: Prepare isolated database and API
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "ALTER DATABASE hydroland SET timezone TO '$TZ'"
+          test "$(psql "$DATABASE_URL" -Atc 'SHOW timezone')" = "$TZ"
+          npm run db:generate -w @hydroland/api
+          ./node_modules/.bin/prisma db push --skip-generate --schema apps/api/prisma/schema.prisma
+          node apps/api/scripts/bootstrap-equipment-runtime-schema.mjs
+          npm run build -w @hydroland/api
+      - name: Verify reservation, requested extension and approved deadline
+        run: |
+          node apps/api/dist/main.js > "$RUNNER_TEMP/equipment-api.log" 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" 2>/dev/null || true' EXIT
+          curl --fail --silent --retry 30 --retry-connrefused --retry-delay 1 http://127.0.0.1:3101/api/v1/health/ready
+          node apps/api/scripts/equipment-runtime-http-e2e.mjs
