@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -11,7 +12,7 @@ type RentalItemRow={id:string;rentalId:string;resourceId:string;equipmentType:st
 export class EquipmentRentalService{
   constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly notifications:NotificationsService){}
   private toHalala(value?:number){if(value===undefined||!Number.isFinite(value)||value<0)throw new BadRequestException('Rental price must be zero or greater.');return BigInt(Math.round(value*100));}
-  private invoiceNumber(){return `HYD-RNT-${Date.now().toString(36).toUpperCase()}`;}
+  private invoiceNumber(){return `HYD-RNT-${Date.now().toString(36).toUpperCase()}-${randomBytes(8).toString('hex').toUpperCase()}`;}
   private parseDate(value?:string|null,label='Date'){if(!value)return null;const date=new Date(value);if(Number.isNaN(date.getTime()))throw new BadRequestException(`${label} is invalid.`);return date;}
   private serialize(rental:RentalRow,items:RentalItemRow[]){const returnedCount=items.filter(item=>item.returnedAt).length,now=Date.now(),overdue=Boolean(rental.status==='ACTIVE'&&rental.dueAt&&rental.dueAt.getTime()<now);return{...rental,totalHalala:Number(rental.totalHalala),returnedCount,pendingReturnCount:items.length-returnedCount,overdue,items:items.map(item=>({...item,unitPriceHalala:Number(item.unitPriceHalala)}))};}
 
