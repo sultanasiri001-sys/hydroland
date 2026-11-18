@@ -9,6 +9,7 @@ const sources = [
   ['eligibility', 'organization.booking.participant.updated', 'BookingParticipant', 'trips/booking-participant.service.ts'],
   ['trip', 'CENTER_TRIP_PUBLISHED', 'Trip', 'organizations/center-trip-management.service.ts'],
   ['trip', 'MARINE_TRIP_PUBLISHED', 'Trip', 'marine-operations/marine-trip-management.service.ts'],
+  ['crewReplacement', 'CREW_ASSIGNMENT_REASSIGNED', 'CrewAssignment', 'trips/crew-assignment.service.ts'],
   ['assignment', 'ADMIN_ROUTING_ASSIGNED', 'AdministrativeRouting', 'administrative-affairs/administrative-affairs-persistence.service.ts'],
   ['case', 'organization.customer_case.created', 'CustomerCase', 'customer-service/customer-case.service.ts'],
   ['case', 'organization.customer_case.replied', 'CustomerCase', 'customer-service/customer-case.service.ts'],
