@@ -101,7 +101,11 @@ test('instructor catalog hides draft or unauthorised agency profiles',async()=>{
 test('generic sessions or unsigned forms cannot satisfy dive evidence',async()=>{const {tx,state}=database();state.enrollment.record.sessions=[{status:'COMPLETED'},{status:'COMPLETED'}];state.enrollment.record.stages=[{skills:['TEST_MASK','TEST_ASCENT'].map(skillCode=>({skillCode,status:'COMPETENT',signedOffAt:now(),signedOffByInstructorId:'instructor'}))}];await assert.rejects(store.assertTrainingStandardCompletion(tx,'enrollment'),error=>error.code==='DIVE_EVIDENCE_INVALID'||error.response?.gaps?.includes('STANDARD_DIVES_REQUIRED'));});
 
 function evidenceDatabase(){
-  const {tx,state}=database(),start=new Date(Date.now()-7200000),end=new Date(start.getTime()+38*60000);
+  const {tx,state}=database();
+  // Keep the two completed dives on one historical Riyadh activity day.
+  const start=new Date('2026-01-12T09:00:00Z');
+  const end=new Date(start.getTime()+38*60000);
+  state.enrollment.enrolledAt=new Date('2026-01-11T09:00:00Z');
   state.enrollment.record.sessions=['session-1','session-2'].map((id,index)=>{const a=new Date(start.getTime()+index*20*60000),b=new Date(a.getTime()+18*60000);return {id,status:'COMPLETED',instructorAccountId:'instructor',startsAt:a,endsAt:b,evidence:{startedAt:a.toISOString(),endedAt:b.toISOString(),startedByAccountId:'instructor',completedByAccountId:'instructor',instructorCheckInAt:a.toISOString(),studentCheckInAt:a.toISOString(),instructorCheckInByAccountId:'instructor',studentCheckInByAccountId:'instructor',instructorCheckInSource:'AUTHORIZED_OPERATOR',studentCheckInSource:'AUTHORIZED_OPERATOR',trainingStandardContext:{environment:'OPEN_WATER',plannedMaximumDepthMetres:8}}};});
   state.enrollment.record.stages=[{skills:['TEST_MASK','TEST_ASCENT'].map(skillCode=>({skillCode,status:'COMPETENT',signedOffAt:end,signedOffByInstructorId:'instructor'}))}];
   const payload={trainingEnrollmentId:'enrollment',trainingStandardHash:state.enrollment.metadata.trainingStandard.profileHash,studentAccountId:'student',instructorAccountId:'instructor'};
