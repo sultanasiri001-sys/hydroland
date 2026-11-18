@@ -254,6 +254,18 @@ async function previewAssessment(page) {
   await expect(page.locator('[data-closure-plan]')).toContainText('معاينة فقط');
 }
 
+for (const inputVersion of ['٢', '۱۲']) {
+  test('manual assessment evidence accepts a localized revision ' + inputVersion, async ({ page }) => {
+    const state = await setup(page);
+    await open(page);
+    await openAssessment(page);
+    await page.getByLabel('أدلة ' + gateIds[0], { exact: true }).fill(documentId + ' ' + inputVersion);
+    await previewAssessment(page);
+    expect(state.requests[0].gates[0].evidence).toEqual([{ documentId, version: inputVersion === '٢' ? 2 : 12 }]);
+    expect(state.assessmentWrites).toBe(0);
+  });
+}
+
 test('stored blocker and stale summaries are not interpreted as departmental closure',async({page})=>{
   const state=await setup(page),cycle=state.data.departments[0].operatingCycle;
   cycle.closureAssessment='BLOCKED';cycle.closureGates[0].verificationStatus='BLOCKED';
