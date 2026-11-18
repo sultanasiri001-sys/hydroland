@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { PrismaClient } from '@prisma/client';
 import { createHmac, randomUUID } from 'node:crypto';
+import { summarizeAudit } from '../../../scripts/d12-audit-summary.mjs';
 
 const db = new PrismaClient();
 const base = process.env.ORGANIZATION_BOOKING_E2E_BASE_URL || 'http://127.0.0.1:3101/api/v1';
@@ -125,6 +126,17 @@ try {
   const requestsPath = `/organizations/${organization.id}/requests`;
   const orgCase = await ok(await call(contact, requestsPath, 'POST', { type: 'QUESTION', subject: 'طلب خاص بالجهة', description: 'بيانات اختبار معزولة للجهة' })); caseIds.push(orgCase.id);
   const personalCase = await ok(await call(contact, '/customer-service/cases', 'POST', { type: 'QUESTION', subject: 'طلب شخصي', description: 'طلب حساب فردي للاختبار' })); caseIds.push(personalCase.id);
+  const scopeEvents = await db.auditEvent.findMany({ where: { resourceId: { in: [created.id, participant.id, orgCase.id, personalCase.id] } } });
+  const times = scopeEvents.map(row => row.occurredAt.getTime());
+  const scope = { organization: organization.id, from: new Date(Math.min(...times)), until: new Date(Math.max(...times) + 1) };
+  const report = await summarizeAudit([...scopeEvents, ...scopeEvents], scope);
+  for (const key of ['booking', 'eligibility', 'case']) {
+    assert.equal(report.categories[key].events, 1);
+    assert.equal(report.categories[key].distinctSubjects, 1);
+  }
+  assert.equal(report.sourceDigest, (await summarizeAudit(scopeEvents.toReversed(), scope)).sourceDigest);
+  assert(!JSON.stringify(report).includes(personalCase.id));
+  console.log('PASS D12: persisted booking, participant update and organization case have one source each; personal cases and duplicate export delivery do not enter the counts');
   // Personal input boundaries and both audit writes use the real loopback API/database.
   const validCase = { type: 'QUESTION', subject: 'Personal integrity check', description: 'Private synthetic description' };
   const personalCount = await db.customerCase.count({ where: { customerId: contact.id, organizationId: null } });
