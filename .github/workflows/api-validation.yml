@@ -251,6 +251,7 @@ jobs:
           NODE_ENV: test
           JWT_SECRET: ci-account-lifecycle-secret-at-least-32-characters
           PORT: 3102
+          HYDROLAND_PROVIDER_REHEARSAL: "1"
         run: |
           node apps/api/dist/main.js > /tmp/hydroland-accounts-api.log 2>&1 &
           ACCOUNTS_API_PID=$!
@@ -263,6 +264,7 @@ jobs:
           done
           if [ "$ACCOUNTS_READY" -ne 1 ]; then cat /tmp/hydroland-accounts-api.log; exit 1; fi
           ACCOUNTS_E2E_BASE_URL=http://127.0.0.1:3102/api/v1 node apps/api/scripts/admin-account-lifecycle-http-e2e.mjs
+          PROVIDER_QUALITY_BASE_URL=http://127.0.0.1:3102/api/v1 node apps/api/scripts/provider-quality-appeals-http-e2e.mjs
       - name: Booking safety policy enforcement and audit
         run: node apps/api/scripts/booking-safety-policy-validation.cjs && node --test apps/api/scripts/policy-control-atomicity.test.cjs && node apps/api/scripts/operational-controls-validation.cjs && node apps/api/scripts/clearance-snapshot-validation.cjs && node apps/api/scripts/mandatory-policy-validation.cjs
       - name: Service images TEXT/UUID persistence and access regression
