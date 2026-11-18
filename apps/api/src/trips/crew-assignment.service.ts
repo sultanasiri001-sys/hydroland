@@ -103,7 +103,7 @@ export class CrewAssignmentService{
   private async replaceAssignment(assignment:AssignmentRow,replacement:CrewResourceRow,previousStatus?:'REASSIGNED'):Promise<AssignmentRow|null>{
     const created=await this.db.serializable(async(tx:Prisma.TransactionClient)=>{
       await tx.$executeRaw`SET LOCAL TIME ZONE 'UTC'`;
-      const trip=await tx.trip.findUnique({where:{id:assignment.tripId},select:{status:true,startsAt:true,endsAt:true}});
+      const trip=await tx.trip.findUnique({where:{id:assignment.tripId},select:{status:true,startsAt:true,endsAt:true,organizationId:true}});
       if(!trip||['CANCELLED','COMPLETED'].includes(trip.status))return null;
       const resource=await tx.calendarResource.findFirst({where:{id:replacement.id,referenceId:replacement.referenceId,type:assignment.roleType,active:true},select:{id:true}});
       if(!resource)throw new ConflictException('Crew replacement resource changed.');
@@ -120,10 +120,26 @@ export class CrewAssignmentService{
         JOIN "CrewAssignment" old ON old."id"::text=${assignment.id}
         WHERE t."id"::text=${assignment.tripId}
         RETURNING *`;
-      return rows[0]??null;
+      const created = rows[0];
+      if (!created) throw new ConflictException('Crew replacement source changed.');
+      await this.audit.record({
+        action: 'CREW_ASSIGNMENT_REASSIGNED',
+        resource: 'CrewAssignment',
+        resourceId: created.id,
+        metadata: {
+          ...(trip.organizationId && {organizationId: trip.organizationId}),
+          tripId: assignment.tripId,
+          previousAssignmentId: assignment.id,
+          previousAccountId: assignment.accountId,
+          replacementAccountId: replacement.referenceId,
+          previousResourceId: assignment.resourceId,
+          replacementResourceId: replacement.id,
+          roleType: assignment.roleType,
+        },
+      }, tx);
+      return created;
     });
     if(!created)return null;
-    await this.audit.record({action:'CREW_ASSIGNMENT_REASSIGNED',resource:'CrewAssignment',resourceId:created.id,metadata:{tripId:assignment.tripId,previousAssignmentId:assignment.id,previousAccountId:assignment.accountId,replacementAccountId:replacement.referenceId,previousResourceId:assignment.resourceId,replacementResourceId:replacement.id,roleType:assignment.roleType}});
     const trip=await this.db.trip.findUnique({where:{id:assignment.tripId}});
     await this.notify(replacement.referenceId,'TRIP_CREW_ASSIGNMENT',{assignmentId:created.id,tripId:assignment.tripId,tripTitle:trip?.title??'HYDROLAND Trip',startsAt:trip?.startsAt??null,endsAt:trip?.endsAt??null,roleType:assignment.roleType,resourceName:replacement.name,replacementForAssignmentId:assignment.id,actionRequired:true});
     await this.notifyAdmins('CREW_REASSIGNED',{tripId:assignment.tripId,rejectedAssignmentId:assignment.id,replacementAssignmentId:created.id,replacementAccountId:replacement.referenceId,roleType:assignment.roleType});

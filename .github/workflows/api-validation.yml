@@ -253,6 +253,7 @@ jobs:
           NODE_ENV: test
           JWT_SECRET: ci-account-lifecycle-secret-at-least-32-characters
           PORT: 3102
+          HYDROLAND_PROVIDER_REHEARSAL: "1"
         run: |
           node apps/api/dist/main.js > /tmp/hydroland-accounts-api.log 2>&1 &
           ACCOUNTS_API_PID=$!
@@ -265,6 +266,7 @@ jobs:
           done
           if [ "$ACCOUNTS_READY" -ne 1 ]; then cat /tmp/hydroland-accounts-api.log; exit 1; fi
           ACCOUNTS_E2E_BASE_URL=http://127.0.0.1:3102/api/v1 node apps/api/scripts/admin-account-lifecycle-http-e2e.mjs
+          PROVIDER_QUALITY_BASE_URL=http://127.0.0.1:3102/api/v1 node apps/api/scripts/provider-quality-appeals-http-e2e.mjs
       - name: Booking safety policy enforcement and audit
         run: node apps/api/scripts/booking-safety-policy-validation.cjs && node --test apps/api/scripts/policy-control-atomicity.test.cjs && node apps/api/scripts/operational-controls-validation.cjs && node apps/api/scripts/clearance-snapshot-validation.cjs && node apps/api/scripts/mandatory-policy-validation.cjs
       - name: Service images TEXT/UUID persistence and access regression
@@ -406,3 +408,35 @@ jobs:
 
       - name: Phase 4 append-only audit database boundary
         run: node apps/api/scripts/audit-append-only-validation.mjs
+
+      - name: Equipment rental deadlines on UTC and Riyadh database connections
+        env:
+          NODE_ENV: test
+          PORT: 3111
+          JWT_SECRET: disposable-test-secret-for-rental-deadlines
+          EQUIPMENT_E2E_BASE_URL: http://127.0.0.1:3111/api/v1
+        run: |
+          for zone in UTC Asia/Riyadh; do
+            (
+              export TZ="$zone"
+              DATABASE_URL=$(node -e "const u = new URL(process.env.DATABASE_URL); u.searchParams.set('options', '-c TimeZone=' + process.env.TZ); process.stdout.write(u.href)")
+              export DATABASE_URL
+              node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { PrismaClient } from '@prisma/client';
+          const db = new PrismaClient();
+          try {
+            const [row] = await db.$queryRaw`SELECT current_setting('TimeZone') AS zone`;
+            assert.equal(row.zone, process.env.TZ);
+          } finally {
+            await db.$disconnect();
+          }
+          JS
+              node apps/api/dist/main.js > "$RUNNER_TEMP/rental-deadline-api.log" 2>&1 &
+              api_pid=$!
+              trap 'kill "$api_pid" 2>/dev/null || true; wait "$api_pid" 2>/dev/null || true' EXIT
+              curl --fail --silent --retry 30 --retry-connrefused --retry-delay 1 "$EQUIPMENT_E2E_BASE_URL/health/ready" > /dev/null
+              node apps/api/scripts/equipment-runtime-http-e2e.mjs
+              echo "Equipment deadlines verified in $zone"
+            )
+          done

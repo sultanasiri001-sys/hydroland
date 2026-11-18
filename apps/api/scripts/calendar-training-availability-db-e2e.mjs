@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {summarizeAudit} from '../../../scripts/d12-audit-summary.mjs';
 import {randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {trainingStandardFixture} from './training-standard-isolated-fixture.mjs';
@@ -99,8 +100,45 @@ try{
   const eligible=await crew.eligibleResources(replacementTrip.id);
   check(eligible.rows.some(row=>row.id===otherResource.id),'candidate fixture permits a free otherwise-qualified instructor');
   check(!eligible.rows.some(row=>row.referenceId===openInstructor.id),'candidate selection excludes busy training accounts');
-  const replacement=await crew.replaceAssignment(assignment,{id:otherResource.id,type:'INSTRUCTOR',referenceId:other.id,name:otherResource.name},'REASSIGNED');
+  const reportingCenter = await db.organization.create({data: {
+    displayName: 'Crew analytics fixture', kind: 'DIVE_CENTER', status: 'ACTIVE', ownerId: other.id,
+    members: {create: {accountId: other.id, role: 'OWNER', status: 'ACTIVE'}},
+  }});
+  await db.trip.update({where: {id: replacementTrip.id}, data: {organizationId: reportingCenter.id}});
+  const replacementInput = {id: otherResource.id, type: 'INSTRUCTOR', referenceId: other.id, name: otherResource.name};
+  const failedCrew = new CrewAssignmentService(db, new PolicyControlService(db, audit), {
+    record: async () => { throw new Error('Injected crew audit failure'); },
+  });
+  await assert.rejects(() => failedCrew.replaceAssignment(assignment, replacementInput, 'REASSIGNED'), /Injected crew audit failure/);
+  check(await db.crewAssignment.count({where: {replacesAssignmentId: assignment.id}}) === 0 &&
+    (await db.crewAssignment.findUniqueOrThrow({where: {id: assignment.id}})).status === 'PENDING',
+    'audit failure rolls back the crew replacement and keeps the original assignment pending');
+  check(await db.calendarAllocation.count({where: {resourceId: oldResource.id, event: {referenceId: replacementTrip.id}, status: 'ACTIVE'}}) === 1,
+    'audit failure preserves the original calendar allocation');
+  const replacement=await crew.replaceAssignment(assignment,replacementInput,'REASSIGNED');
   check(Boolean(replacement?.id)&&(await db.calendarAllocation.count({where:{resourceId:otherResource.id,event:{referenceId:replacementTrip.id},status:'ACTIVE'}}))===1,'free automatic replacement retains the existing successful flow');
+
+  const {SafetyIncidentsService} = require('../dist/safety/safety-incidents.service.js');
+  const booking = await db.booking.create({data: {tripId: replacementTrip.id, accountId: other.id, organizationId: reportingCenter.id}});
+  const incident = await new SafetyIncidentsService(db, audit).createForOrganization(other.id, reportingCenter.id, {
+    bookingId: booking.id, severity: 'LOW', title: 'Synthetic report', description: 'Crew integration rehearsal',
+  });
+  const auditRows = await db.auditEvent.findMany({where: {OR: [
+    {action: 'CREW_ASSIGNMENT_REASSIGNED', resourceId: replacement.id},
+    {action: 'organization.safety_incident.reported', resourceId: incident.id},
+  ]}});
+  check(auditRows.length === 2, 'one replacement and one incident are durably recorded for the same trip');
+  const scope = {organization: reportingCenter.id, from: '2000-01-01T00:00:00Z', until: '2100-01-01T00:00:00Z'};
+  const summary = await summarizeAudit([...auditRows, ...auditRows], scope);
+  check(summary.categories.crewReplacement.events === 1 && summary.categories.crewReplacement.distinctSubjects === 1 &&
+    summary.categories.incident.events === 1 && summary.categories.incident.distinctSubjects === 1,
+    'organization analytics counts the replacement and incident once across duplicate exports');
+  const outside = await summarizeAudit(auditRows, {...scope, organization: randomUUID()});
+  check(outside.categories.crewReplacement.events === 0 && outside.categories.incident.events === 0,
+    'the same trip events contribute no metrics to a different organization');
+  const historical = auditRows.map(event => ({...event, metadata: {tripId: replacementTrip.id}}));
+  const unscoped = await summarizeAudit(historical, scope);
+  check(unscoped.categories.crewReplacement.events === 0, 'legacy unscoped crew events are not attributed to a center');
 
   const owner=await account(),centerInstructor=await account(),targetInstructor=await account(),centerStudent=await account();
   await db.roleAssignment.create({data:{accountId:owner.id,role:'DIVE_CENTER',status:'ACTIVE'}});
