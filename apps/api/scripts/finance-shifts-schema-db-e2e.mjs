@@ -4,7 +4,7 @@ import {FinanceReceivablesWorkspaceService} from '../dist/finance/finance-receiv
 import {FinanceWorkspaceService} from '../dist/finance/finance-workspace.service.js';
 import {checkFinanceWorkspaceHttp} from './finance-workspace-http-checks.mjs';
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {PrismaClient} from '@prisma/client';
 import {DatabaseService} from '../dist/database/database.service.js';
@@ -118,6 +118,33 @@ try {
    const settlementSecondApproval=await settlementService.review(b,imported.id,'APPROVED');assert.equal(settlementSecondApproval.status,'APPROVED');assert.equal(settlementSecondApproval.approvalCount,2);scenarios++;
    settlementLines=[settlementLines[0],{...settlementLines[0],type:'refund',payment_amount:39}];const mismatched=await settlementService.import(a,unitA,randomUUID());assert.equal(mismatched.matchedLineCount,2);assert.equal(mismatched.mismatchedLineCount,1);await rejects(settlementService.review(outsider,mismatched.id,'APPROVED'),'FINANCE_SETTLEMENT_RECONCILIATION_BLOCKED');settlementLines=[{...settlementLines[0],type:'fee',payment_amount:39}];const feeMismatch=await settlementService.import(a,unitA,randomUUID());assert.equal(feeMismatch.matchedLineCount,1);assert.equal(feeMismatch.mismatchedLineCount,1);await rejects(settlementService.review(outsider,feeMismatch.id,'APPROVED'),'FINANCE_SETTLEMENT_RECONCILIATION_BLOCKED');scenarios++;
    const centerImports=await settlementService.list(a,unitA);assert.equal(centerImports.length,3);assert.deepEqual(centerImports.map(row=>row.lines.length).sort(),[1,1,2]);assert.ok(centerImports.every(row=>row.lines.every(line=>line.localPaymentId===payments[0])));scenarios++;
+   // The provider fixture is synthetic; snapshots and approvals use real PostgreSQL.
+   const sameLine = {...settlementLines[0], type:'payment', payment_amount:40};
+   const withCurrencies = (header, line) => new FinanceSettlementService(db, access, {
+     fetchSettlement:async id=>({id,...header}),
+     listSettlementLines:async()=>({lines:[line],meta:{next_page:null}}),
+   }, paymentProvider);
+   const countImports = async () => (await db.$queryRaw`SELECT COUNT(*)::int AS count FROM "FinanceSettlementImport"`)[0].count;
+   const countBefore = await countImports();
+   for (const [header,line] of [
+     [{},sameLine], [{currency:null},sameLine], [{currency:' '},sameLine], [{currency:'SARX'},sameLine],
+     [{currency:'SAR'}, {...sameLine,currency:'USD'}], [{currency:'SAR'}, {...sameLine,currency:null}],
+     [{currency:'SAR',source_currency:'USD'},sameLine], [{currency:'SAR'},{...sameLine,source_currency:'USD'}],
+   ]) {
+     await assert.rejects(withCurrencies(header,line).import(a,unitA,randomUUID()),/currency/i);
+     assert.equal(await countImports(),countBefore);
+     scenarios++;
+   }
+   // Model a pending legacy snapshot whose original provider response omitted the header.
+   const legacyRef = randomUUID();
+   const legacy = await withCurrencies({currency:'SAR'},sameLine).import(a,unitA,legacyRef);
+   const oldHash = createHash('sha256').update(JSON.stringify({settlementId:legacyRef,lines:legacy.lines})).digest('hex');
+   await db.$executeRaw`UPDATE "FinanceSettlementImport" SET "contentHash"=${oldHash} WHERE id::text=${legacy.id}`;
+   await rejects(settlementService.review(outsider,legacy.id,'APPROVED'),'FINANCE_SETTLEMENT_RECONCILIATION_BLOCKED');
+   const declined = await settlementService.review(outsider,legacy.id,'REJECTED','Original settlement currency is missing.');
+   assert.equal(declined.status,'REJECTED');
+   scenarios+=2;
+
    await service.recordEntry(a,from.id,{type:'REVENUE',amountMinor:40,paymentId:payments[0]});scenarios++;
    await assert.rejects(service.recordEntry(a,from.id,{type:'REVENUE',amountMinor:40,paymentId:payments[0]}));scenarios++;
    await rejects(service.requestHandover(a,from.id,outsider,120),'FINANCE_BRANCH_ACCOUNTANT_ACCESS_DENIED');

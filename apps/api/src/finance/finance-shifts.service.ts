@@ -23,12 +23,11 @@ export class FinanceShiftsService {
       if(!centers.length)throw new Error('FINANCE_ACTIVE_CENTER_REQUIRED');
       const active=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "FinanceAccountantShift" WHERE "centerOrgUnitId"=${financeKey('FinanceAccountantShift','centerOrgUnitId',scope.organizationId)} AND "accountantAccountId"=${financeKey('FinanceAccountantShift','accountantAccountId',accountantAccountId)} AND "status" IN ('OPEN','HANDOVER_PENDING') FOR UPDATE`;
       if(active.length)throw new Error('FINANCE_ACTIVE_SHIFT_EXISTS');
-      const rows=await tx.$queryRaw<Array<Record<string,unknown>>>`INSERT INTO "FinanceAccountantShift" ("id","centerOrgUnitId","accountantAccountId","openingBalanceMinor","updatedAt") VALUES (${financeKey('FinanceAccountantShift','id',randomUUID())},${financeKey('FinanceAccountantShift','centerOrgUnitId',scope.organizationId)},${financeKey('FinanceAccountantShift','accountantAccountId',accountantAccountId)},${openingBalanceMinor},NOW()) RETURNING *`;
+      const rows=await tx.$queryRaw<Array<Record<string,unknown>>>`INSERT INTO "FinanceAccountantShift" ("id","centerOrgUnitId","accountantAccountId","openingBalanceMinor","updatedAt") VALUES (${financeKey('FinanceAccountantShift','id',randomUUID())},${financeKey('FinanceAccountantShift','centerOrgUnitId',scope.organizationId)},${financeKey('FinanceAccountantShift','accountantAccountId',accountantAccountId)},${openingBalanceMinor},NOW())
+        ON CONFLICT ("accountantAccountId","centerOrgUnitId") WHERE "status" IN ('OPEN','HANDOVER_PENDING')
+        DO NOTHING RETURNING *`;
+      if (!rows.length) throw new Error('FINANCE_ACTIVE_SHIFT_EXISTS');
       return rows[0];
-    }).catch(error=>{
-      const sqlState=String(error?.meta?.code??'');
-      if(sqlState==='23505'&&String(error?.message).includes('FinanceAccountantShift_active_accountant_center_key'))throw new Error('FINANCE_ACTIVE_SHIFT_EXISTS');
-      throw error;
     });
   }
 
