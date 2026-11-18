@@ -36,6 +36,7 @@ try{
   const dueAt=new Date(Date.now()+2*86400000).toISOString();
   response=await fetch(`${base}/trips/equipment-rentals`,{method:'POST',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({renterAccountId:renter.id,dueAt,items:[{resourceId:equipmentId,equipmentType:'BCD',size:'M',unitPriceSar:50}]})});
   let rental=await json(response);rentalId=rental.id;
+  if (new Date(rental.dueAt).getTime() !== Date.parse(dueAt)) throw new Error('Initial due date must preserve the requested instant.');
   if(rental.status!=='RESERVED'||rental.paymentStatus!=='PENDING'||rental.items?.length!==1)throw new Error('Rental reservation state mismatch');
 
   response=await fetch(`${base}/trips/equipment-rentals/mine`,{headers:auth(renterToken)});const mine=await json(response);
@@ -71,6 +72,7 @@ try{
   if(response.status!==404)throw new Error(`Cross-user extension request expected 404, got ${response.status}`);
   response=await fetch(`${base}/trips/equipment-rentals/${encodeURIComponent(rentalId)}/extension-request`,{method:'POST',headers:{...auth(renterToken),'content-type':'application/json'},body:JSON.stringify({requestedUntil})});
   rental=await json(response);if(rental.extensionStatus!=='PENDING')throw new Error('Extension request not persisted as PENDING');
+  if (new Date(rental.extensionRequestedUntil).getTime() !== Date.parse(requestedUntil)) throw new Error('Pending extension must preserve the requested instant.');
   response=await fetch(`${base}/trips/equipment-rentals/${encodeURIComponent(rentalId)}/extension-review`,{method:'POST',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({decision:'APPROVED'})});
   rental=await json(response);if(rental.extensionStatus!=='APPROVED'||new Date(rental.dueAt).getTime()!==new Date(requestedUntil).getTime())throw new Error('Extension approval did not persist new due date');
 
