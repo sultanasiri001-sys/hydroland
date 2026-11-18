@@ -66,8 +66,62 @@ export class EquipmentRentalService{
 
   async returnIntent(accountId:string,id:string){const rental=await this.getMine(accountId,id);if(rental.status!=='ACTIVE')throw new ConflictException('Only active rentals can be returned.');await this.db.$executeRaw`UPDATE "EquipmentRental" SET "returnIntentAt"=NOW(),"updatedAt"=NOW() WHERE "id"=${id}`;await this.notifications.notify(rental.createdByAccountId,'EQUIPMENT_RENTAL_RETURN_INTENT',{title:'الغواص سيعيد معدات التأجير',invoiceNumber:rental.invoiceNumber,rentalId:id,renterAccountId:accountId,pendingReturnCount:rental.pendingReturnCount,message:'الغواص اختار إعادة المعدات. أكمل الاستلام في المستودع بمسح الباركود.'});await this.audit.record({actorId:accountId,action:'EQUIPMENT_RENTAL_RETURN_INTENT',resource:'EquipmentRental',resourceId:id,metadata:{invoiceNumber:rental.invoiceNumber,pendingReturnCount:rental.pendingReturnCount}});return{status:'RETURN_INTENT_RECORDED',rentalId:id};}
 
-  async returnScan(actorAccountId:string,id:string,input:{code?:string;condition?:'OK'|'DAMAGED'|'REVIEW';notes?:string|null;toLocation?:string|null}){
-    const code=input.code?.trim();if(!code)throw new BadRequestException('Barcode or QR code is required for return.');const condition=input.condition||'OK';if(!['OK','DAMAGED','REVIEW'].includes(condition))throw new BadRequestException('Invalid return condition.');const rentals=await this.db.$queryRaw<RentalRow[]>`SELECT * FROM "EquipmentRental" WHERE "id"=${id} LIMIT 1`;const rental=rentals[0];if(!rental)throw new NotFoundException('Rental not found.');if(rental.status!=='ACTIVE')throw new ConflictException('Only active rentals can receive equipment returns.');const equipment=await this.db.$queryRaw<Array<{resourceId:string;assetCode:string;stockStatus:string;location:string|null}>>`SELECT "resourceId","assetCode","stockStatus","location" FROM "EquipmentBarcode" WHERE "barcodeValue"=${code} OR "qrValue"=${code} OR "assetCode"=${code} OR "serialNumber"=${code} LIMIT 1`;const asset=equipment[0];if(!asset)throw new NotFoundException('Equipment code not found.');const items=await this.db.$queryRaw<RentalItemRow[]>`SELECT * FROM "EquipmentRentalItem" WHERE "rentalId"=${id} AND "resourceId"=${asset.resourceId} LIMIT 1`;const item=items[0];if(!item)throw new ConflictException('Scanned equipment does not belong to this rental.');if(item.returnedAt)return this.get(id);const notes=input.notes?.trim()||null,toLocation=input.toLocation?.trim()||asset.location||null,nextStatus=condition==='OK'?'AVAILABLE':'QUARANTINED';await this.db.serializable(async tx=>{const locked=await tx.$queryRaw<Array<{stockStatus:string;location:string|null}>>`SELECT "stockStatus","location" FROM "EquipmentBarcode" WHERE "resourceId"=${asset.resourceId} FOR UPDATE`;if(locked[0]?.stockStatus!=='CHECKED_OUT')throw new ConflictException('Equipment is not currently checked out.');await tx.$executeRaw`UPDATE "EquipmentRentalItem" SET "returnedAt"=NOW(),"returnCondition"=${condition},"returnNotes"=${notes} WHERE "id"=${item.id} AND "returnedAt" IS NULL`;await tx.$executeRaw`INSERT INTO "EquipmentMovement"("id","resourceId","movementType","fromLocation","toLocation","tripId","assignedAccountId","notes","actorAccountId","occurredAt") VALUES(gen_random_uuid()::text,${asset.resourceId},${condition==='OK'?'CHECK_IN':'QUARANTINE'},${locked[0].location},${toLocation},NULL,${rental.renterAccountId},${notes||`Rental return ${rental.invoiceNumber}`},${actorAccountId},NOW())`;await tx.$executeRaw`UPDATE "EquipmentBarcode" SET "stockStatus"=${nextStatus},"location"=COALESCE(${toLocation},"location"),"updatedAt"=NOW() WHERE "resourceId"=${asset.resourceId}`;const pending=await tx.$queryRaw<Array<{count:bigint}>>`SELECT COUNT(*)::bigint AS "count" FROM "EquipmentRentalItem" WHERE "rentalId"=${id} AND "returnedAt" IS NULL`;if(Number(pending[0]?.count||0)===0)await tx.$executeRaw`UPDATE "EquipmentRental" SET "status"='RETURNED',"returnedAt"=NOW(),"updatedAt"=NOW() WHERE "id"=${id}`;});const updated=await this.get(id);await this.audit.record({actorId:actorAccountId,action:'EQUIPMENT_RENTAL_ITEM_RETURNED',resource:'EquipmentRental',resourceId:id,metadata:{invoiceNumber:rental.invoiceNumber,resourceId:asset.resourceId,assetCode:asset.assetCode,condition,stockStatus:nextStatus,notes}});if(updated.status==='RETURNED'){await this.notifications.notify(rental.renterAccountId,'EQUIPMENT_RENTAL_RETURNED',{title:'تم استلام معدات التأجير',invoiceNumber:rental.invoiceNumber,rentalId:id,message:'تم استلام جميع معدات التأجير وإغلاق عملية الإيجار.'});await this.audit.record({actorId:actorAccountId,action:'EQUIPMENT_RENTAL_RETURNED',resource:'EquipmentRental',resourceId:id,metadata:{invoiceNumber:rental.invoiceNumber,renterAccountId:rental.renterAccountId}});}return updated;
+  async returnScan(actorAccountId: string, id: string, input: {code?: string; condition?: 'OK' | 'DAMAGED' | 'REVIEW'; notes?: string | null; toLocation?: string | null}) {
+    const code = input.code?.trim();
+    if (!code) throw new BadRequestException('Barcode or QR code is required for return.');
+    const condition = input.condition || 'OK';
+    if (!['OK', 'DAMAGED', 'REVIEW'].includes(condition)) throw new BadRequestException('Invalid return condition.');
+    const notes = input.notes?.trim() || null;
+    const nextStatus = condition === 'OK' ? 'AVAILABLE' : 'QUARANTINED';
+
+    await this.db.serializable(async tx => {
+      const [rental] = await tx.$queryRaw<Array<Pick<RentalRow, 'id' | 'status' | 'invoiceNumber' | 'renterAccountId'>>>`
+        SELECT "id", "status", "invoiceNumber", "renterAccountId"
+        FROM "EquipmentRental" WHERE "id"=${id} FOR UPDATE`;
+      if (!rental) throw new NotFoundException('Rental not found.');
+      if (rental.status !== 'ACTIVE' && rental.status !== 'RETURNED') {
+        throw new ConflictException('Only active rentals can receive equipment returns.');
+      }
+
+      const [asset] = await tx.$queryRaw<Array<{resourceId: string; assetCode: string; stockStatus: string; location: string | null}>>`
+        SELECT "resourceId", "assetCode", "stockStatus", "location" FROM "EquipmentBarcode"
+        WHERE "barcodeValue"=${code} OR "qrValue"=${code} OR "assetCode"=${code} OR "serialNumber"=${code}
+        LIMIT 1 FOR UPDATE`;
+      if (!asset) throw new NotFoundException('Equipment code not found.');
+      const items = await tx.$queryRaw<Array<Pick<RentalItemRow, 'id' | 'returnedAt' | 'returnCondition'>>>`
+        SELECT "id", "returnedAt", "returnCondition" FROM "EquipmentRentalItem"
+        WHERE "rentalId"=${id} AND "resourceId"=${asset.resourceId} LIMIT 2 FOR UPDATE`;
+      if (items.length > 1) throw new ConflictException('Rental contains multiple lines for this serialized item.');
+      const [item] = items;
+      if (!item) throw new ConflictException('Scanned equipment does not belong to this rental.');
+      if (item.returnedAt) {
+        if (item.returnCondition && item.returnCondition !== condition) throw new ConflictException('Item already returned with a different condition.');
+        return;
+      }
+      if (rental.status !== 'ACTIVE' || asset.stockStatus !== 'CHECKED_OUT') {
+        throw new ConflictException('Equipment is not currently checked out on an active rental.');
+      }
+
+      const toLocation = input.toLocation?.trim() || asset.location;
+      await tx.$executeRaw`UPDATE "EquipmentRentalItem" SET "returnedAt"=NOW(), "returnCondition"=${condition}, "returnNotes"=${notes} WHERE "id"=${item.id}`;
+      await tx.$executeRaw`
+        INSERT INTO "EquipmentMovement" ("id","resourceId","movementType","fromLocation","toLocation","tripId","assignedAccountId","notes","actorAccountId","occurredAt")
+        VALUES (gen_random_uuid()::text,${asset.resourceId},${condition === 'OK' ? 'CHECK_IN' : 'QUARANTINE'},${asset.location},${toLocation},NULL,${rental.renterAccountId},${notes || `Rental return ${rental.invoiceNumber}`},${actorAccountId},NOW())`;
+      await tx.$executeRaw`UPDATE "EquipmentBarcode" SET "stockStatus"=${nextStatus}, "location"=${toLocation}, "updatedAt"=NOW() WHERE "resourceId"=${asset.resourceId}`;
+      await this.audit.record({actorId:actorAccountId, action:'EQUIPMENT_RENTAL_ITEM_RETURNED', resource:'EquipmentRental', resourceId:id,
+        metadata:{invoiceNumber:rental.invoiceNumber, resourceId:asset.resourceId, assetCode:asset.assetCode, condition, stockStatus:nextStatus, notes}}, tx);
+
+      const [remaining] = await tx.$queryRaw<Array<{pending: boolean}>>`
+        SELECT EXISTS (SELECT 1 FROM "EquipmentRentalItem" WHERE "rentalId"=${id} AND "returnedAt" IS NULL) AS "pending"`;
+      if (remaining.pending) return;
+      await tx.$executeRaw`UPDATE "EquipmentRental" SET "status"='RETURNED', "returnedAt"=NOW(), "updatedAt"=NOW() WHERE "id"=${id}`;
+      await this.notifications.notify(rental.renterAccountId, 'EQUIPMENT_RENTAL_RETURNED', {
+        title:'تم استلام معدات التأجير', invoiceNumber:rental.invoiceNumber, rentalId:id, message:'تم استلام جميع معدات التأجير وإغلاق عملية الإيجار.'
+      }, tx);
+      await this.audit.record({actorId:actorAccountId, action:'EQUIPMENT_RENTAL_RETURNED', resource:'EquipmentRental', resourceId:id,
+        metadata:{invoiceNumber:rental.invoiceNumber, renterAccountId:rental.renterAccountId}}, tx);
+    });
+    return this.get(id);
   }
 
   async shareInvoice(actorAccountId:string,id:string,input:{accountId?:string;channel?:'IN_APP'|'WHATSAPP'}){const rental=await this.get(id);const accountId=input.accountId?.trim()||rental.renterAccountId,channel=input.channel||'IN_APP';if(channel==='WHATSAPP'){await this.audit.record({actorId:actorAccountId,action:'EQUIPMENT_RENTAL_WHATSAPP_PREPARED',resource:'EquipmentRental',resourceId:id,metadata:{invoiceNumber:rental.invoiceNumber,recipientPhone:rental.whatsappPhone}});return{channel:'WHATSAPP',status:'PROVIDER_NOT_CONNECTED',phone:rental.whatsappPhone,invoice:rental};}await this.notifications.notify(accountId,'EQUIPMENT_RENTAL_INVOICE_SHARED',{title:'فاتورة تأجير معدات',invoiceNumber:rental.invoiceNumber,rentalId:id,totalHalala:rental.totalHalala,items:rental.items});await this.audit.record({actorId:actorAccountId,action:'EQUIPMENT_RENTAL_INVOICE_SHARED',resource:'EquipmentRental',resourceId:id,metadata:{accountId,channel:'IN_APP'}});return{channel:'IN_APP',status:'SENT',accountId};}

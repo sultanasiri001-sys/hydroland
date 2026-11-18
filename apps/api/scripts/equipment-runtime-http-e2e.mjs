@@ -1,7 +1,10 @@
-import { PrismaClient } from '@prisma/client';
+import assert from 'node:assert/strict';
+import { DatabaseService } from '../dist/database/database.service.js';
+import { AuditService } from '../dist/audit/audit.service.js';
+import { EquipmentRentalService } from '../dist/trips/equipment-rental.service.js';
 import { randomBytes, scryptSync } from 'node:crypto';
 
-const db=new PrismaClient();
+const db=new DatabaseService();
 const base=process.env.EQUIPMENT_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1';
 for (const endpoint of [base, process.env.DATABASE_URL]) {
   if (!['localhost','127.0.0.1','[::1]'].includes(new URL(endpoint).hostname)) throw new Error('Equipment fixtures require loopback services.');
@@ -18,7 +21,7 @@ async function login(account) {
 }
 const auth=token=>({authorization:`Bearer ${token}`});
 const json=async response=>{const body=await response.json().catch(()=>null);if(!response.ok)throw new Error(`HTTP ${response.status}: ${JSON.stringify(body)}`);return body};
-const people=[],accounts=[];let equipmentId=null,rentalId=null,competingId=null;
+const people=[],accounts=[],extraAssets=[];let equipmentId=null,rentalId=null,competingId=null,multiId=null;
 const makeAccount=async label=>{const person=await db.person.create({data:{firstName:'Equipment',lastName:label}});people.push(person);const account=await db.account.create({data:{personId:person.id,email:`equipment-${label.toLowerCase()}-${suffix}@example.invalid`,passwordHash,status:'ACTIVE',emailVerifiedAt:new Date()}});accounts.push(account);return account};
 
 try{
@@ -102,8 +105,30 @@ try{
 
   response=await fetch(`${base}/trips/equipment-rentals/${encodeURIComponent(rentalId)}/return-intent`,{method:'POST',headers:auth(renterToken)});const intent=await json(response);
   if(intent.status!=='RETURN_INTENT_RECORDED')throw new Error('Return intent was not recorded');
-  response=await fetch(`${base}/trips/equipment-rentals/${encodeURIComponent(rentalId)}/return-scan`,{method:'POST',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({code:assetCode,condition:'OK',toLocation:'WAREHOUSE-A'})});
-  rental=await json(response);
+  const returnInput={code:assetCode,condition:'OK',toLocation:'WAREHOUSE-A'};
+  // Fail the final notification in process while all inventory and audit writes use the real test database.
+  const failing=new EquipmentRentalService(db,new AuditService(db),{notify(){throw new Error('Synthetic return notification failure');}});
+  await assert.rejects(failing.returnScan(admin.id,rentalId,returnInput),/Synthetic return notification failure/);
+  const afterFailure=await db.$queryRaw`
+    SELECT r."status", i."returnedAt", b."stockStatus"
+    FROM "EquipmentRental" r JOIN "EquipmentRentalItem" i ON i."rentalId"=r."id"
+    JOIN "EquipmentBarcode" b ON b."resourceId"=i."resourceId" WHERE r."id"=${rentalId}`;
+  assert.deepEqual(afterFailure,[{status:'ACTIVE',returnedAt:null,stockStatus:'CHECKED_OUT'}]);
+  assert.equal(await db.auditEvent.count({where:{resourceId:rentalId,action:'EQUIPMENT_RENTAL_ITEM_RETURNED'}}),0);
+  const scan=input=>fetch(`${base}/trips/equipment-rentals/${encodeURIComponent(rentalId)}/return-scan`,{
+    method:'POST',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify(input)
+  });
+  const scans=await Promise.all([scan(returnInput),scan(returnInput)]);
+  const results=await Promise.all(scans.map(json));
+  rental=results[0];
+  assert.equal(results[1].status,'RETURNED');
+  assert.equal((await scan({...returnInput,condition:'DAMAGED'})).status,409);
+  const movements=await db.$queryRaw`SELECT COUNT(*)::int AS count FROM "EquipmentMovement" WHERE "resourceId"=${equipmentId} AND "movementType"='CHECK_IN' AND "assignedAccountId"=${renter.id}`;
+  assert.equal(movements[0].count,1);
+  for(const action of ['EQUIPMENT_RENTAL_ITEM_RETURNED','EQUIPMENT_RENTAL_RETURNED']){
+    assert.equal(await db.auditEvent.count({where:{resourceId:rentalId,action}}),1);
+  }
+  assert.equal(await db.notification.count({where:{accountId:renter.id,type:'EQUIPMENT_RENTAL_RETURNED',payload:{path:['rentalId'],equals:rentalId}}}),1);
   if(rental.status!=='RETURNED'||rental.pendingReturnCount!==0)throw new Error('Rental did not close after final return scan');
   const returned=await db.$queryRawUnsafe(`SELECT "stockStatus","location" FROM "EquipmentBarcode" WHERE "resourceId"=$1 LIMIT 1`,equipmentId);
   if(returned[0]?.stockStatus!=='AVAILABLE'||returned[0]?.location!=='WAREHOUSE-A')throw new Error('Returned equipment did not persist AVAILABLE warehouse state');
@@ -112,15 +137,46 @@ try{
 
   const afterReturn=await json(await confirm(competingId));
   if(afterReturn.paymentStatus!=='PAID')throw new Error('Return must release the asset for a subsequent rental');
-  console.log('Equipment HTTP/DB E2E passed: admin isolation, registration, duplicate protection, safety gate, reservation ownership, staged payment/handover, extension, return intent, return scan and persistence.');
+  const post = (path, body) => fetch(base+path, {
+    method:'POST', headers:{...auth(adminToken),'content-type':'application/json'}, body:JSON.stringify(body)
+  }).then(json);
+  const passports = [];
+  for (const tag of ['primary','spare']) {
+    const registered = await post('/trips/admin/equipment', {
+      name:'Multi-item return '+tag, serialNumber:'MULTI-'+tag+'-'+suffix, location:'WAREHOUSE-A'
+    });
+    extraAssets.push(registered.id);
+    passports.push(registered.passport);
+    await post('/trips/admin/equipment/'+registered.id+'/inspections', {
+      status:'PASS', serviceExpiresAt, notes:'Isolated multi-item return fixture'
+    });
+  }
+  const multi = await post('/trips/equipment-rentals', {
+    renterAccountId:renter.id, dueAt, items:extraAssets.map(resourceId=>({resourceId,unitPriceSar:20}))
+  });
+  multiId=multi.id;
+  await json(await confirm(multiId));
+  for(const passport of passports) await post('/trips/admin/equipment-rentals/'+multiId+'/handover-scan',{code:passport.assetCode});
+  const returnPath='/trips/equipment-rentals/'+multiId+'/return-scan';
+  const damaged=await post(returnPath,{code:passports[0].assetCode,condition:'DAMAGED',toLocation:'INSPECTION'});
+  assert.equal(damaged.status,'ACTIVE');
+  assert.equal(damaged.pendingReturnCount,1);
+  const held=await db.$queryRaw`SELECT "stockStatus","location" FROM "EquipmentBarcode" WHERE "resourceId"=${extraAssets[0]}`;
+  assert.deepEqual(held,[{stockStatus:'QUARANTINED',location:'INSPECTION'}]);
+  assert.equal(await db.notification.count({where:{accountId:renter.id,type:'EQUIPMENT_RENTAL_RETURNED',payload:{path:['rentalId'],equals:multiId}}}),0);
+  assert.equal((await post(returnPath,{code:passports[0].assetCode,condition:'DAMAGED'})).pendingReturnCount,1);
+  assert.equal((await post(returnPath,{code:passports[1].assetCode,condition:'OK'})).status,'RETURNED');
+  assert.equal(await db.auditEvent.count({where:{resourceId:multiId,action:'EQUIPMENT_RENTAL_ITEM_RETURNED'}}),2);
+  assert.equal(await db.auditEvent.count({where:{resourceId:multiId,action:'EQUIPMENT_RENTAL_RETURNED'}}),1);
+  console.log('Equipment HTTP/DB E2E passed: admin isolation, registration, duplicate protection, safety gate, reservation ownership, staged payment/handover, extension, return intent, atomic return rollback, concurrent replay, partial returns, quarantine and persistence.');
 } finally {
   const personIds=people.map(row=>row.id),accountIds=accounts.map(row=>row.id);
   if(personIds.length)await db.auditEvent.deleteMany({where:{actorId:{in:personIds}}}).catch(()=>{});
-  for(const id of [rentalId,competingId].filter(Boolean))await db.auditEvent.deleteMany({where:{resourceId:id}}).catch(()=>{});
-  if(equipmentId)await db.auditEvent.deleteMany({where:{resourceId:equipmentId}}).catch(()=>{});
+  for(const id of [rentalId,competingId,multiId].filter(Boolean))await db.auditEvent.deleteMany({where:{resourceId:id}}).catch(()=>{});
+  for (const id of [equipmentId,...extraAssets].filter(Boolean)) await db.auditEvent.deleteMany({where:{resourceId:id}}).catch(()=>{});
   if(accountIds.length)await db.notification.deleteMany({where:{accountId:{in:accountIds}}}).catch(()=>{});
-  for(const id of [rentalId,competingId].filter(Boolean)){await db.$executeRawUnsafe(`DELETE FROM "EquipmentRentalItem" WHERE "rentalId"=$1`,id).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "EquipmentRental" WHERE "id"=$1`,id).catch(()=>{})}
-  if(equipmentId){await db.$executeRawUnsafe(`DELETE FROM "EquipmentInspection" WHERE "resourceId"=$1`,equipmentId).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "EquipmentMovement" WHERE "resourceId"=$1`,equipmentId).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "EquipmentBarcode" WHERE "resourceId"=$1`,equipmentId).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "CalendarResource" WHERE "id"=$1`,equipmentId).catch(()=>{})}
+  for(const id of [rentalId,competingId,multiId].filter(Boolean)){await db.$executeRawUnsafe(`DELETE FROM "EquipmentRentalItem" WHERE "rentalId"=$1`,id).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "EquipmentRental" WHERE "id"=$1`,id).catch(()=>{})}
+  for (const id of [equipmentId,...extraAssets].filter(Boolean)){await db.$executeRawUnsafe(`DELETE FROM "EquipmentInspection" WHERE "resourceId"=$1`,id).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "EquipmentMovement" WHERE "resourceId"=$1`,id).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "EquipmentBarcode" WHERE "resourceId"=$1`,id).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "CalendarResource" WHERE "id"=$1`,id).catch(()=>{})}
   for(const account of accounts.reverse()){await db.roleAssignment.deleteMany({where:{accountId:account.id}}).catch(()=>{});await db.session.deleteMany({where:{accountId:account.id}}).catch(()=>{});await db.account.delete({where:{id:account.id}}).catch(()=>{})}
   for(const person of people.reverse())await db.person.delete({where:{id:person.id}}).catch(()=>{});
   await db.$disconnect();
