@@ -164,7 +164,7 @@ export class FinanceSettlementService {
       if(row.importedByAccountId===accountId)throw new Error('FINANCE_SETTLEMENT_REVIEW_SOD_VIOLATION');
       if(row.status!=='SUBMITTED')throw new Error('FINANCE_SETTLEMENT_ALREADY_REVIEWED');
       if (decision === 'APPROVED') {
-        if (row.mismatchedLineCount > 0 || row.matchedLineCount === 0 ||
+        if (row.mismatchedLineCount>0 || row.matchedLineCount === 0 ||
             !validCurrency(row.currency) || !Array.isArray(row.lines) || row.lines.length !== row.matchedLineCount ||
             !row.lines.every(line => line && sameCurrency(line.currency, row.currency)) ||
             row.contentHash !== settlementHash(row.providerSettlementId, row.currency, row.lines)) {
