@@ -4,33 +4,6 @@ on:
   push:
     branches: [main, feat/database-foundation, consolidation/hydroland-unified, feat/operations-l1-l4]
 jobs:
-  document-attachments-postgres18:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    services:
-      postgres:
-        image: postgres:18-alpine
-        env:
-          POSTGRES_USER: hydroland
-          POSTGRES_PASSWORD: hydroland
-          POSTGRES_DB: hydroland
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U hydroland -d hydroland"
-          --health-interval 5s --health-timeout 5s --health-retries 10
-    env:
-      DATABASE_URL: postgresql://hydroland:hydroland@localhost:5432/hydroland
-      DOCUMENT_ATTACHMENT_MIGRATION_CHECK_CONFIRM: ISOLATED_LOOPBACK_DATABASE
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: npm ci --workspace=@hydroland/api --include-workspace-root=true
-      - run: npm --workspace @hydroland/api run db:generate
-      - run: node apps/api/scripts/document-attachment-migration-db-checks.mjs
-
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -48,6 +21,17 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      postgres18:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: hydroland
+          POSTGRES_PASSWORD: hydroland
+          POSTGRES_DB: hydroland
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U hydroland -d hydroland"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       DATABASE_URL: postgresql://hydroland:hydroland@localhost:5432/hydroland
     steps:
@@ -87,6 +71,11 @@ jobs:
         run: npm --workspace @hydroland/api exec -- prisma db push --skip-generate
       - name: Managed document attachment migration on TEXT and UUID identities
         env:
+          DOCUMENT_ATTACHMENT_MIGRATION_CHECK_CONFIRM: ISOLATED_LOOPBACK_DATABASE
+        run: node apps/api/scripts/document-attachment-migration-db-checks.mjs
+      - name: Managed document attachment migration and storage on PostgreSQL 18
+        env:
+          DATABASE_URL: postgresql://hydroland:hydroland@localhost:5433/hydroland
           DOCUMENT_ATTACHMENT_MIGRATION_CHECK_CONFIRM: ISOLATED_LOOPBACK_DATABASE
         run: node apps/api/scripts/document-attachment-migration-db-checks.mjs
       - name: Failed attachment migration recovery guards
