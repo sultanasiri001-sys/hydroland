@@ -1,10 +1,12 @@
-import { ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import { DepartmentClosureAssessment, Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { DatabaseService } from '../database/database.service';
 import { lockAccountIdentities } from '../admin/admin-authorization';
 import { documentReadHash, reviewPlatform } from '../document-forms/internal-document-review.domain';
-import { decisionDigest } from '../document-forms/owner-administrative-decision.domain';
+import { decisionDigest, scopeId } from '../document-forms/owner-administrative-decision.domain';
+import { COOPERATION_CODE } from '../document-forms/cooperation-contract.domain';
+import { LIBRARY_PREFIX } from '../document-forms/contract-library.domain';
 import { DepartmentCode } from '../governance/department-ownership.domain';
 import { OPERATING_CYCLE_CLOSURE_GATES } from '../document-forms/department-operating-cycle.catalog';
 import { assessmentDepartment, assessmentDigest, assessmentInput, assessmentReference, assessmentSpecification, assessmentState, CLOSURE_ASSESSMENT_NOTICE, CLOSURE_ASSESSMENT_POLICY, GateInput, publicAssessmentGates, readAssessment, SavedEvidence, SavedGate } from './department-closure-assessment.domain';
@@ -20,13 +22,26 @@ async function resolveEvidence(tx: Tx, organizationId: string, department: Depar
   for (const e of gates.flatMap(g => g.evidence)) {
     const key = `${e.documentId}:${e.version}`;
     if (sources.has(key)) continue;
-    const d = await tx.managedDocument.findFirst({ where: { id: e.documentId, organizationId, department }, include: { template: true } });
+    const d = await tx.managedDocument.findFirst({
+      where: { id: e.documentId, organizationId, department },
+      include: {
+        template: true,
+        attachments: {
+          where: { organizationId, mimeType: 'application/pdf' },
+          orderBy: { id: 'asc' },
+          select: { id: true, sha256: true, byteSize: true },
+        },
+      },
+    });
     if (!d || d.template.organizationId !== organizationId || d.template.department !== department) throw new ForbiddenException('مرجع المستند غير متاح في نطاق هذا التقييم.');
     if (d.version !== e.version) throw new ConflictException('تغير إصدار المستند المرجعي؛ أعد قراءة الإصدار الحالي.');
     const revision = await tx.documentRevision.findUnique({ where: { documentId_version: { documentId: d.id, version: d.version } } });
     if (!revision || revision.contentHash !== d.contentHash || decisionDigest(revision.payload) !== decisionDigest(d.payload)) throw new ConflictException('أدلة إصدار المستند المرجعي غير متسقة.');
-    const sourceHash = decisionDigest({ document: documentReadHash(d), revisionId: revision.id, status: d.status, approvedByAccountId: d.approvedByAccountId, approvedAt: d.approvedAt?.toISOString() ?? null, signedByAccountId: d.signedByAccountId, signedAt: d.signedAt?.toISOString() ?? null, archivedByAccountId: d.archivedByAccountId, archivedAt: d.archivedAt?.toISOString() ?? null });
-    sources.set(key, { documentId: d.id, version: d.version, contentHash: d.contentHash, referenceNumber: d.referenceNumber, sourceHash });
+    // Preserve the original digest of records without PDFs, including historical assessments.
+    const pdfs = d.attachments.length ? { pdfAttachments: d.attachments } : {};
+    const sourceHash = decisionDigest({ document: documentReadHash(d), revisionId: revision.id, status: d.status, approvedByAccountId: d.approvedByAccountId, approvedAt: d.approvedAt?.toISOString() ?? null, signedByAccountId: d.signedByAccountId, signedAt: d.signedAt?.toISOString() ?? null, archivedByAccountId: d.archivedByAccountId, archivedAt: d.archivedAt?.toISOString() ?? null, ...pdfs });
+    sources.set(key, { documentId: d.id, version: d.version, contentHash: d.contentHash, referenceNumber: d.referenceNumber, sourceHash,
+      ...(d.attachments.length ? { pdfAttachmentCount: d.attachments.length } : {}) });
   }
   return gates.map(g => ({ ...g, evidence: g.evidence.map(e => sources.get(`${e.documentId}:${e.version}`)!) }));
 }
@@ -84,6 +99,32 @@ export class DepartmentClosureAssessmentService {
   async inspect(actorId: string, code: unknown) {
     const department = assessmentDepartment(code);
     return this.db.serializable(async tx => this.detail(tx, await this.owner(tx, actorId), department));
+  }
+  async documents(actorId: string, code: unknown, query: unknown = '', after?: unknown) {
+    const department = assessmentDepartment(code);
+    if (typeof query !== 'string' || query.length > 100) throw new BadRequestException('أدخل رقم المرجع أو اسم النموذج في حدود ١٠٠ حرف.');
+    if (after !== undefined) scopeId(after);
+    const term = query.trim();
+    return this.db.serializable(async tx => {
+      const { id: organizationId } = await this.owner(tx, actorId);
+      const rows = await tx.managedDocument.findMany({
+        where: {
+          organizationId, department,
+          template: { organizationId, department, NOT: [{ code: COOPERATION_CODE }, { code: { startsWith: LIBRARY_PREFIX } }] },
+          ...(after ? { id: { gt: after as string } } : {}),
+          ...(term ? { OR: [{ referenceNumber: { contains: term, mode: 'insensitive' } }, { template: { titleAr: { contains: term, mode: 'insensitive' } } }] } : {}),
+        },
+        orderBy: { id: 'asc' }, take: 26,
+        select: {
+          id: true, referenceNumber: true, version: true, template: { select: { titleAr: true } },
+          _count: { select: { attachments: { where: { organizationId, mimeType: 'application/pdf' } } } },
+        },
+      });
+      const documents = rows.slice(0, 25).map(d => ({
+        id: d.id, referenceNumber: d.referenceNumber, version: d.version, titleAr: d.template.titleAr, pdfAttachmentCount: d._count.attachments,
+      }));
+      return { organizationId, department, documents, nextCursor: rows.length > 25 ? documents[documents.length - 1].id : null };
+    });
   }
   private async prepare(tx: Tx, actorId: string, department: DepartmentCode, input: ReturnType<typeof assessmentInput>) {
     // Authorization precedes assessment/source reads even during repeated preview.

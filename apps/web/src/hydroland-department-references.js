@@ -23,9 +23,16 @@
     const assessmentLabels = { NOT_ASSESSED: 'لم تُقيّم', BLOCKED: 'موانع محفوظة؛ الإدارة غير مقفلة', STALE: 'التقييم المحفوظ قديم؛ يلزم إعادة التحقق' };
     const gateLabels = { NOT_ASSESSED: 'لم يُقيّم', BLOCKED: 'مانع مسجل' };
     const uuid = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+    const evidenceId = value => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value);
+    const evidenceKey = value => uuid(value) ? value.toLowerCase() : value;
     const text = value => typeof value === 'string' && value.trim().length > 0;
     const time = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
     const revision = value => Number.isSafeInteger(value) && value > 0;
+    function evidenceRevision(value) {
+      const digits = (value || '').replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x660))
+        .replace(/[۰-۹]/g, d => String(d.charCodeAt(0) - 0x6f0));
+      return /^[1-9][0-9]*$/.test(digits) && revision(Number(digits)) ? Number(digits) : null;
+    }
     const validGates = gates => Array.isArray(gates) && gates.length === gateIds.length && new Set(gates.map(g => g?.id)).size === gateIds.length && gates.every(g => gateIds.includes(g?.id) && Object.hasOwn(gateLabels, g.verificationStatus));
     const consistentGates = (state, gates) => state === 'BLOCKED' ? gates.some(g => g.verificationStatus === 'BLOCKED') : gates.every(g => g.verificationStatus === 'NOT_ASSESSED');
     function validSummary(cycle) {
@@ -35,7 +42,7 @@
       return Boolean(record && uuid(record.id) && revision(record.revision) && time(record.recordedAt) && record.policyVersion === assessmentPolicy && text(record.specificationVersion) && text(record.assessmentReference) && typeof record.assessmentCurrent === 'boolean' && (cycle.closureAssessment === 'STALE') === !record.assessmentCurrent);
     }
     function validEvidence(evidence) {
-      return Array.isArray(evidence) && evidence.length <= 3 && evidence.every(e => uuid(e?.documentId) && revision(e.version) && text(e.contentHash) && text(e.referenceNumber)) && new Set(evidence.map(e => e.documentId.toLowerCase())).size === evidence.length;
+      return Array.isArray(evidence) && evidence.length <= 3 && evidence.every(e => evidenceId(e?.documentId) && revision(e.version) && text(e.contentHash) && text(e.referenceNumber) && (e.pdfAttachmentCount === undefined || revision(e.pdfAttachmentCount))) && new Set(evidence.map(e => evidenceKey(e.documentId))).size === evidence.length;
     }
     function validPrivateGates(gates) {
       return validGates(gates) && gates.every(g => typeof g.note === 'string' && g.note.length <= 1000 && (g.verificationStatus !== 'BLOCKED' || g.note.trim().length >= 5) && validEvidence(g.evidence));
@@ -135,14 +142,87 @@
           for (const [value, title] of Object.entries(gateLabels)) { const option = node('option', title, state); option.value = value; }
           state.value = saved?.verificationStatus || 'NOT_ASSESSED';
           const noteLabel = node('label', 'الملاحظة أو سبب المانع (حتى 1000 حرف)', row), note = node('textarea', undefined, noteLabel); note.setAttribute('aria-label', 'ملاحظة ' + id); note.maxLength = 1000; note.rows = 3; note.value = saved?.note || '';
-          const evidenceLabel = node('label', 'مراجع مستندات معروفة، اختياري: معرّف المستند ثم رقم الإصدار في كل سطر (حتى 3)', row), evidence = node('textarea', undefined, evidenceLabel); evidence.setAttribute('aria-label', 'أدلة ' + id); evidence.rows = 2; evidence.dir = 'ltr'; evidence.maxLength = 200; evidence.placeholder = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx 1'; evidence.value = (saved?.evidence || []).map(e => e.documentId + ' ' + e.version).join('\n');
+          const evidenceLabel = node('label', 'مراجع مستندات معروفة، اختياري: معرّف المستند ثم رقم الإصدار في كل سطر (حتى 3)', row), evidence = node('textarea', undefined, evidenceLabel); evidence.setAttribute('aria-label', 'أدلة ' + id); evidence.rows = 2; evidence.dir = 'ltr'; evidence.maxLength = 440; evidence.placeholder = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx ١'; evidence.value = (saved?.evidence || []).map(e => e.documentId + ' ' + e.version).join('\n');
           for (const control of [state, note, evidence]) { control.style.maxWidth = '100%'; control.style.width = '100%'; control.style.boxSizing = 'border-box'; }
-          return { id, state, note, evidence };
+          return { id, label, state, note, evidence };
         });
         const previewButton = node('button', 'معاينة تقييم النواقص', form); previewButton.type = 'submit'; previewButton.dataset.closurePreview = '';
         const previewPane = node('div', undefined, privatePane); previewPane.dataset.closurePlan = '';
         const invalidate = () => { editVersion++; plan = null; previewPane.replaceChildren(); if (!inFlight) feedback.textContent = 'تغيّر التقييم؛ يلزم معاينة جديدة قبل التأكيد.'; };
-        form.addEventListener('input', invalidate); form.addEventListener('change', invalidate);
+        for (const event of ['input', 'change']) {
+          form.addEventListener(event, e => { if (e.target.closest('[data-closure-gate]')) invalidate(); });
+        }
+        addDocumentPicker();
+        function addDocumentPicker() {
+          const picker = node('details');
+          fields.insertBefore(picker, fields.querySelector('[data-closure-gate]'));
+          node('summary', 'اختيار مستند من سجل الإدارة', picker);
+          const search = node('input', undefined, node('label', 'رقم المرجع أو اسم النموذج', picker));
+          search.type = 'search'; search.maxLength = 100;
+          const searchButton = node('button', 'بحث في مستندات الإدارة', picker); searchButton.type = 'button';
+          const documents = node('select', undefined, node('label', 'المستند المحفوظ', picker));
+          const more = node('button', 'عرض مزيد من المستندات', picker); more.type = 'button'; more.hidden = true;
+          const gate = node('select', undefined, node('label', 'بوابة إرفاق الدليل', picker));
+          for (const row of rows) node('option', row.label, gate).value = row.id;
+          const add = node('button', 'إضافة المرجع إلى البوابة', picker); add.type = 'button';
+          const message = node('p', '', picker); message.setAttribute('role', 'status');
+          let requestId = 0, after = null;
+          const choices = new Map();
+          function reset() {
+            requestId++; after = null; choices.clear(); documents.replaceChildren();
+            node('option', 'اختر المستند', documents).value = '';
+            documents.disabled = true; add.disabled = true; more.hidden = true; searchButton.disabled = false; message.textContent = '';
+          }
+          async function lookup(append) {
+            if (!active() || inFlight) return;
+            if (!append) reset();
+            const ticket = ++requestId;
+            const params = new URLSearchParams({ query: search.value.trim() });
+            if (append && after) params.set('after', after);
+            searchButton.disabled = true; more.disabled = true;
+            message.textContent = 'جارٍ البحث…';
+            try {
+              const response = await auth().authorizedFetch(endpoint + '/documents?' + params);
+              if (!active() || ticket !== requestId) return;
+              if (response.status === 401 || response.status === 403) { fail('انتهت صلاحية قراءة أدلة الإدارة. أعد فتح التقييم.'); return; }
+              const page = await response.json();
+              if (!active() || ticket !== requestId) return;
+              if (!response.ok || page?.organizationId !== result.organizationId || page.department !== department.code ||
+                  !Array.isArray(page.documents) || page.documents.length > 25 ||
+                  !page.documents.every(d => evidenceId(d?.id) && revision(d.version) && text(d.referenceNumber) && text(d.titleAr) && Number.isSafeInteger(d.pdfAttachmentCount) && d.pdfAttachmentCount >= 0) ||
+                  !(page.nextCursor === null || (page.documents.length === 25 && page.nextCursor === page.documents.at(-1).id && page.nextCursor !== after))) {
+                throw new Error();
+              }
+              for (const doc of page.documents) {
+                if (choices.has(doc.id)) continue;
+                choices.set(doc.id, doc);
+                node('option', doc.referenceNumber + ' · ' + doc.titleAr + ' · الإصدار ' + doc.version + ' · مرفقات PDF ' + doc.pdfAttachmentCount, documents).value = doc.id;
+              }
+              after = page.nextCursor; more.hidden = after === null; documents.disabled = choices.size === 0;
+              message.textContent = choices.size ? 'عدد المستندات المعروضة ' + choices.size : 'لا توجد مستندات مطابقة في هذه الإدارة.';
+            } catch {
+              if (active() && ticket === requestId) message.textContent = 'تعذر تحميل المستندات. أعد البحث أو أدخل المرجع يدويًا.';
+            } finally {
+              if (active() && ticket === requestId) { searchButton.disabled = false; more.disabled = false; }
+            }
+          }
+          search.addEventListener('input', reset);
+          search.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); void lookup(false); } });
+          searchButton.addEventListener('click', () => void lookup(false));
+          more.addEventListener('click', () => void lookup(true));
+          documents.addEventListener('change', () => { add.disabled = !choices.has(documents.value); });
+          add.addEventListener('click', () => {
+            const doc = choices.get(documents.value), row = rows.find(candidate => candidate.id === gate.value);
+            if (!active() || inFlight || !doc || !row) return;
+            const lines = row.evidence.value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+            if (lines.some(line => evidenceKey(line.split(/\s+/)[0]) === evidenceKey(doc.id))) { message.textContent = 'هذا المستند مضاف إلى البوابة.'; return; }
+            if (lines.length >= 3) { message.textContent = 'يمكن إضافة ثلاثة مراجع لكل بوابة.'; return; }
+            row.evidence.value = [...lines, doc.id + ' ' + doc.version].join('\n');
+            row.evidence.dispatchEvent(new Event('input', { bubbles: true }));
+            message.textContent = 'أضيف المرجع إلى ' + row.label + '.';
+          });
+          reset();
+        }
         const setBusy = value => { inFlight = value; working = value; fields.disabled = value; previewButton.disabled = value; openButton.disabled = value; };
         function input() {
           return { expectedRevision: result.expectedRevision, specificationVersion: result.specificationVersion, gates: rows.map(row => {
@@ -151,17 +231,17 @@
             const lines = row.evidence.value.trim() ? row.evidence.value.trim().split(/\r?\n/).map(line => line.trim()).filter(Boolean) : [];
             if (lines.length > 3) throw new Error('استخدم ثلاثة مراجع مستندات كحد أقصى لكل بوابة.');
             const evidence = lines.map(line => {
-              const parts = line.split(/\s+/), version = Number(parts[1]);
-              if (parts.length !== 2 || !uuid(parts[0]) || !/^[1-9][0-9]*$/.test(parts[1]) || !revision(version)) throw new Error('مرجع الدليل: معرّف مستند صالح ثم رقم إصدار صحيح في كل سطر.');
-              return { documentId: parts[0], version };
+              const parts = line.split(/\s+/), version = evidenceRevision(parts[1]);
+              if (parts.length !== 2 || !evidenceId(parts[0]) || version === null) throw new Error('مرجع الدليل: معرّف مستند صالح ثم رقم إصدار صحيح في كل سطر.');
+              return { documentId: evidenceKey(parts[0]), version };
             });
-            if (new Set(evidence.map(e => e.documentId.toLowerCase())).size !== evidence.length) throw new Error('لا تكرر مرجع المستند داخل البوابة.');
+            if (new Set(evidence.map(e => evidenceKey(e.documentId))).size !== evidence.length) throw new Error('لا تكرر مرجع المستند داخل البوابة.');
             return { id: row.id, verificationStatus, note, evidence };
           }) };
         }
         const sameDraft = (a, b) => a.every(g => {
           const other = b.find(v => v.id === g.id);
-          return other && g.verificationStatus === other.verificationStatus && g.note === other.note && g.evidence.length === other.evidence.length && g.evidence.every(e => other.evidence.some(v => v.documentId.toLowerCase() === e.documentId.toLowerCase() && v.version === e.version));
+          return other && g.verificationStatus === other.verificationStatus && g.note === other.note && g.evidence.length === other.evidence.length && g.evidence.every(e => other.evidence.some(v => evidenceKey(v.documentId) === evidenceKey(e.documentId) && v.version === e.version));
         });
         function fail(message) {
           if (!active()) return;
@@ -184,7 +264,7 @@
             node('h6', 'معاينة فقط — لم يُحفظ التقييم', previewPane); node('p', next.notice, previewPane);
             for (const gate of next.gates) {
               node('p', gate.id + ' · ' + gateLabels[gate.verificationStatus] + (gate.note ? ' · ' + gate.note : ''), previewPane);
-              gate.evidence.forEach(e => node('p', e.referenceNumber + ' · الإصدار ' + e.version + ' · ' + e.contentHash, previewPane));
+              gate.evidence.forEach(e => node('p', e.referenceNumber + ' · الإصدار ' + e.version + ' · ' + e.contentHash + (e.pdfAttachmentCount ? ' · مرفقات PDF ' + e.pdfAttachmentCount : ''), previewPane));
             }
             const confirmLabel = node('label', undefined, previewPane), confirmed = node('input', undefined, confirmLabel); confirmLabel.className = 'hl-staff-ack'; confirmed.type = 'checkbox'; confirmed.dataset.closureConfirmed = '';
             confirmLabel.appendChild(document.createTextNode(' راجعت النواقص والمراجع؛ هذا الحفظ ليس قبولًا أو اعتمادًا أو إقفالًا.'));

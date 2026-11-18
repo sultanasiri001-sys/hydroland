@@ -11,7 +11,7 @@ export type GateId = typeof OPERATING_CYCLE_CLOSURE_GATES[number]['id'];
 export type GateStatus = 'NOT_ASSESSED' | 'BLOCKED';
 export type EvidenceInput = { documentId: string; version: number };
 export type GateInput = { id: GateId; verificationStatus: GateStatus; note: string; evidence: EvidenceInput[] };
-export type SavedEvidence = EvidenceInput & { contentHash: string; referenceNumber: string; sourceHash: string };
+export type SavedEvidence = EvidenceInput & { contentHash: string; referenceNumber: string; sourceHash: string; pdfAttachmentCount?: number };
 export type SavedGate = Omit<GateInput, 'evidence'> & { evidence: SavedEvidence[] };
 
 export function assessmentDepartment(value: unknown): DepartmentCode {

@@ -20,6 +20,12 @@ export class DepartmentReferencesController {
     return this.assessments.inspect(request.auth.accountId, department);
   }
 
+  @Get(':department/assessment/documents')
+  @Header('Cache-Control', 'private, no-store')
+  documents(@Req() request: { auth: { accountId: string } }, @Param('department') department: string, @Query('query') query?: string, @Query('after') after?: string) {
+    return this.assessments.documents(request.auth.accountId, department, query, after);
+  }
+
   @Post(':department/assessment/preview')
   @Header('Cache-Control', 'private, no-store')
   preview(@Req() request: { auth: { accountId: string } }, @Param('department') department: string, @Body() body: unknown) {
