@@ -7,10 +7,31 @@ import { MoyasarPaymentProviderService } from '../payments/moyasar-payment-provi
 import { FinanceAccessService } from './finance-access.service';
 import { financeKey } from './finance-native-key';
 
-type ProviderLine={payment_id?:unknown;type?:unknown;currency?:unknown;payment_amount?:unknown;amount?:unknown;settlement_amount?:unknown;fee?:unknown;tax?:unknown;transacted_at?:unknown};
+type ProviderLine={source_currency?:unknown;payment_id?:unknown;type?:unknown;currency?:unknown;payment_amount?:unknown;amount?:unknown;settlement_amount?:unknown;fee?:unknown;tax?:unknown;transacted_at?:unknown};
 type SafeLine={providerPaymentId:string;localPaymentId:string;type:string;currency:string;paymentAmountMinor:number|null;netAmountMinor:number|null;settlementAmountMinor:number|null;feeMinor:number|null;taxMinor:number|null;transactedAt:string|null;amountMatches:boolean};
 const isRecord=(value:unknown):value is Record<string,unknown>=>Boolean(value&&typeof value==='object'&&!Array.isArray(value));
 const intOrNull=(value:unknown)=>Number.isSafeInteger(value)?value as number:null;
+
+function validCurrency(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Z]{3}$/i.test(value);
+}
+
+function sameCurrency(value: unknown, expected: string): value is string {
+  return validCurrency(value) && value.toUpperCase() === expected.toUpperCase();
+}
+
+// PostgreSQL JSONB reorders object keys. Rebuild the historical hash in its
+// original field order so pending imports can prove which header they used.
+function settlementHash(settlementId: string, currency: string, lines: SafeLine[]) {
+  const ordered = lines.map(line => ({
+    providerPaymentId: line.providerPaymentId, localPaymentId: line.localPaymentId,
+    type: line.type, currency: line.currency, paymentAmountMinor: line.paymentAmountMinor,
+    netAmountMinor: line.netAmountMinor, settlementAmountMinor: line.settlementAmountMinor,
+    feeMinor: line.feeMinor, taxMinor: line.taxMinor, transactedAt: line.transactedAt,
+    amountMatches: line.amountMatches,
+  }));
+  return createHash('sha256').update(JSON.stringify({settlementId, currency, lines: ordered})).digest('hex');
+}
 
 @Injectable()
 export class FinanceSettlementService {
@@ -76,6 +97,11 @@ export class FinanceSettlementService {
     });
     const settlement=await this.provider.fetchSettlement(settlementRef);
     if(typeof settlement.id!=='string'||settlement.id.toLowerCase()!==settlementRef)throw new ConflictException('Provider settlement reference mismatch.');
+    const currency = settlement.currency;
+    if (!validCurrency(currency)) throw new ConflictException('Provider settlement currency is missing or invalid.');
+    if (settlement.source_currency != null && !sameCurrency(settlement.source_currency, currency)) {
+      throw new ConflictException('Settlement requires currency conversion and reconciliation.');
+    }
     const rawLines=await this.allLines(settlementRef);
     const providerIds=[...new Set(rawLines.flatMap(row=>typeof row.payment_id==='string'&&/^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.test(row.payment_id)?[row.payment_id]:[]))];
     const persist=()=>this.db.serializable(async tx=>{
@@ -91,13 +117,16 @@ export class FinanceSettlementService {
         const payment=byProviderId.get(line.payment_id);
         if(!payment)continue;
         const type=typeof line.type==='string'?line.type.toLowerCase():'other';
-        const currency=typeof line.currency==='string'?line.currency.toUpperCase():'';
+        if (!sameCurrency(line.currency, currency) || (line.source_currency != null && !sameCurrency(line.source_currency, currency))) {
+          throw new ConflictException('Settlement line requires currency reconciliation.');
+        }
+        const lineCurrency = line.currency.toUpperCase();
         const paymentAmountMinor=intOrNull(line.payment_amount);
-        const amountMatches=payment.currency===currency&&paymentAmountMinor===payment.amountMinor;
-        lines.push({providerPaymentId:line.payment_id,localPaymentId:payment.id,type,currency,paymentAmountMinor,netAmountMinor:intOrNull(line.amount),settlementAmountMinor:intOrNull(line.settlement_amount),feeMinor:intOrNull(line.fee),taxMinor:intOrNull(line.tax),transactedAt:typeof line.transacted_at==='string'&&Number.isFinite(Date.parse(line.transacted_at))?new Date(line.transacted_at).toISOString():null,amountMatches});
+        const amountMatches=payment.currency===lineCurrency&&paymentAmountMinor===payment.amountMinor;
+        lines.push({providerPaymentId:line.payment_id,localPaymentId:payment.id,type,currency:lineCurrency,paymentAmountMinor,netAmountMinor:intOrNull(line.amount),settlementAmountMinor:intOrNull(line.settlement_amount),feeMinor:intOrNull(line.fee),taxMinor:intOrNull(line.tax),transactedAt:typeof line.transacted_at==='string'&&Number.isFinite(Date.parse(line.transacted_at))?new Date(line.transacted_at).toISOString():null,amountMatches});
       }
       const stableLines=lines.sort((a,b)=>a.providerPaymentId.localeCompare(b.providerPaymentId)||a.type.localeCompare(b.type)||String(a.transactedAt).localeCompare(String(b.transactedAt)));
-      const contentHash=createHash('sha256').update(JSON.stringify({settlementId:settlementRef,currency:settlement.currency,lines:stableLines})).digest('hex');
+      const contentHash=settlementHash(settlementRef, currency, stableLines);
       const matchedGross=stableLines.reduce((sum,line)=>sum+(line.type==='payment'?line.paymentAmountMinor??0:0),0);
       const feeMinor=stableLines.reduce((sum,line)=>sum+(line.feeMinor??0)-(line.taxMinor??0),0);
       const taxMinor=stableLines.reduce((sum,line)=>sum+(line.taxMinor??0),0);
@@ -105,7 +134,7 @@ export class FinanceSettlementService {
       const existingRows=await tx.$queryRaw<Array<Record<string,unknown>>>`SELECT "id"::text AS "id","providerSettlementId","status"::text AS "status","matchedLineCount","mismatchedLineCount" FROM "FinanceSettlementImport" WHERE "centerOrgUnitId"=${financeKey('FinanceSettlementImport','centerOrgUnitId',centerId)} AND "providerSettlementId"=${settlementRef} AND "contentHash"=${contentHash} LIMIT 1`;
       const existing=existingRows[0];
       if(existing)return existing;
-      const id=randomUUID(),currency=typeof settlement.currency==='string'?settlement.currency:'SAR',mismatchedLineCount=stableLines.filter(line=>!line.amountMatches).length;
+      const id=randomUUID(),mismatchedLineCount=stableLines.filter(line=>!line.amountMatches).length;
       await tx.$executeRaw`INSERT INTO "FinanceSettlementImport" ("id","centerOrgUnitId","providerSettlementId","contentHash","currency","grossAmountMinor","feeMinor","taxMinor","matchedLineCount","mismatchedLineCount","lines","status","importedByAccountId") VALUES (${financeKey('FinanceSettlementImport','id',id)},${financeKey('FinanceSettlementImport','centerOrgUnitId',centerId)},${settlementRef},${contentHash},${currency},${matchedGross},${feeMinor},${taxMinor},${stableLines.length},${mismatchedLineCount},${JSON.stringify(stableLines)}::jsonb,'SUBMITTED'::"FinanceSettlementImportStatus",${financeKey('FinanceSettlementImport','importedByAccountId',accountId)})`;
       await tx.auditEvent.create({data:{action:'FINANCE_SETTLEMENT_IMPORTED',resource:'FinanceSettlementImport',resourceId:id,metadata:{centerOrgUnitId:centerId,provider:'MOYASAR',providerSettlementId:settlementRef,matchedLineCount:stableLines.length,mismatchedLineCount,contentHash}}});
       return{id,providerSettlementId:settlementRef,currency,grossAmountMinor:matchedGross,feeMinor,taxMinor,matchedLineCount:stableLines.length,mismatchedLineCount,lines:stableLines,status:'SUBMITTED',submittedAt:new Date(),reviewedAt:null,importedByAccountId:accountId};
@@ -127,14 +156,21 @@ export class FinanceSettlementService {
     if(note!=null&&(typeof note!=='string'||note.trim().length>1000))throw new Error('FINANCE_SETTLEMENT_NOTE_INVALID');
     if(decision==='REJECTED'&&(note?.trim().length??0)<10)throw new Error('FINANCE_SETTLEMENT_REJECTION_REASON_REQUIRED');
     return this.db.serializable(async tx=>{
-      const rows=await tx.$queryRaw<Array<{id:string;centerOrgUnitId:string;importedByAccountId:string;status:string;mismatchedLineCount:number;matchedLineCount:number}>>`SELECT "id"::text AS "id","centerOrgUnitId"::text AS "centerOrgUnitId","importedByAccountId"::text AS "importedByAccountId","status"::text AS "status","mismatchedLineCount","matchedLineCount" FROM "FinanceSettlementImport" WHERE "id"=${financeKey('FinanceSettlementImport','id',importId)} FOR UPDATE`;
+      const rows=await tx.$queryRaw<Array<{id:string;centerOrgUnitId:string;importedByAccountId:string;status:string;mismatchedLineCount:number;matchedLineCount:number;currency:string;contentHash:string;providerSettlementId:string;lines:SafeLine[]}>>`SELECT "id"::text AS "id","centerOrgUnitId"::text AS "centerOrgUnitId","importedByAccountId"::text AS "importedByAccountId","status"::text AS "status","mismatchedLineCount","matchedLineCount","currency","contentHash","providerSettlementId","lines" FROM "FinanceSettlementImport" WHERE "id"=${financeKey('FinanceSettlementImport','id',importId)} FOR UPDATE`;
       const row=rows[0];if(!row)throw new Error('FINANCE_SETTLEMENT_IMPORT_NOT_FOUND');
       const centerRows=await tx.$queryRaw<Array<{organizationId:string}>>`SELECT "organizationId"::text AS "organizationId" FROM "OrgUnit" WHERE "id"=${financeKey('OrgUnit','id',row.centerOrgUnitId)} AND "type"='CENTER' AND "active"=TRUE`;
       const organizationId=centerRows[0]?.organizationId;if(!organizationId)throw new Error('FINANCE_SETTLEMENT_REVIEW_DENIED');
       if(!(await this.isReviewer(accountId,row.centerOrgUnitId,tx)))throw new Error('FINANCE_SETTLEMENT_REVIEW_DENIED');
       if(row.importedByAccountId===accountId)throw new Error('FINANCE_SETTLEMENT_REVIEW_SOD_VIOLATION');
       if(row.status!=='SUBMITTED')throw new Error('FINANCE_SETTLEMENT_ALREADY_REVIEWED');
-      if(decision==='APPROVED'&&(row.mismatchedLineCount>0||row.matchedLineCount===0))throw new Error('FINANCE_SETTLEMENT_RECONCILIATION_BLOCKED');
+      if (decision === 'APPROVED') {
+        if (row.mismatchedLineCount>0 || row.matchedLineCount === 0 ||
+            !validCurrency(row.currency) || !Array.isArray(row.lines) || row.lines.length !== row.matchedLineCount ||
+            !row.lines.every(line => line && sameCurrency(line.currency, row.currency)) ||
+            row.contentHash !== settlementHash(row.providerSettlementId, row.currency, row.lines)) {
+          throw new Error('FINANCE_SETTLEMENT_RECONCILIATION_BLOCKED');
+        }
+      }
       const prior=await tx.$queryRaw<Array<{reviewerAccountId:string;decision:string}>>`SELECT "reviewerAccountId"::text AS "reviewerAccountId","decision"::text AS "decision" FROM "FinanceSettlementReview" WHERE "importId"=${financeKey('FinanceSettlementReview','importId',importId)}`;
       const reviewerAccountIds=prior.filter(x=>x.decision==='APPROVED').map(x=>x.reviewerAccountId);
       if(reviewerAccountIds.includes(accountId))throw new Error('FINANCE_SETTLEMENT_REVIEW_SOD_VIOLATION');

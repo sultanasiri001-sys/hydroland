@@ -53,7 +53,10 @@ export async function checkProgressionCertificateHttp(db,{base,fixture,instructo
  const hash=trainingStandardHash(profile);
  // Deliberate synthetic fixture adoption only. Never an operational profile migration.
  await db.policyControl.update({where:{id:source.id},data:{metadata:{...source.metadata,profile,contentHash:hash,approval:{...source.metadata.approval,profileHash:hash}}}});
- const start=new Date(Date.now()-7200000);
+ // Both completed sessions must fall on a single past day in the fixture's Riyadh time zone.
+ const start=new Date();
+ start.setUTCDate(start.getUTCDate()-1);
+ start.setUTCHours(9,0,0,0);
  await db.trainingEnrollment.update({where:{id:enrollment.id},data:{enrolledAt:new Date(start.getTime()-86400000),metadata:{...enrollment.metadata,trainingStandard:trainingStandardBinding(source.id,profile)}}});
  const existing=await db.trainingSession.findFirstOrThrow({where:{trainingRecordId:record.id}}),dives=[];
  for(let i=0;i<2;i++){
