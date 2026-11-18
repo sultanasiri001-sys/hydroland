@@ -10,9 +10,14 @@ import { CustomerServiceWorkflowService } from './customer-service-workflow.serv
 import { CustomerServiceOperationsService } from './customer-service-operations.service';
 import { CustomerServiceGovernanceService } from './customer-service-governance.service';
 
+import { ProviderAppealRehearsalController } from './provider-appeal-rehearsal.controller';
+
+const rehearsalControllers = process.env.NODE_ENV === 'test' && process.env.HYDROLAND_PROVIDER_REHEARSAL === '1'
+  ? [ProviderAppealRehearsalController] : [];
+
 @Module({
   imports: [AuthModule, AuditModule, DatabaseModule],
-  controllers: [CustomerCaseController, OrganizationCustomerCaseController],
+  controllers: [CustomerCaseController, OrganizationCustomerCaseController, ...rehearsalControllers],
   providers: [CustomerCaseService, CustomerServiceFoundationService, CustomerServiceWorkflowService, CustomerServiceOperationsService, CustomerServiceGovernanceService],
   exports: [CustomerCaseService, CustomerServiceFoundationService, CustomerServiceWorkflowService, CustomerServiceOperationsService, CustomerServiceGovernanceService],
 })
