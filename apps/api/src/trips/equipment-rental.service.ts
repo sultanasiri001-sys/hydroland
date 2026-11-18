@@ -20,6 +20,10 @@ export class EquipmentRentalService{
     const dueAt=this.parseDate(input.dueAt,'Rental due date');if(!dueAt||dueAt.getTime()<=Date.now())throw new BadRequestException('Rental due date must be in the future.');
     const renter=await this.db.account.findUnique({where:{id:renterAccountId},select:{id:true,status:true}});if(!renter||renter.status!=='ACTIVE')throw new BadRequestException('Renter account is missing or inactive.');
     const items=input.items||[];if(!items.length)throw new BadRequestException('At least one rental equipment item is required.');
+    const resourceIds = items.map(item => item.resourceId?.trim());
+    if (new Set(resourceIds).size !== resourceIds.length) {
+      throw new BadRequestException('A serialized equipment item can appear only once per rental.');
+    }
     const prepared=[] as Array<{resourceId:string;equipmentType:string|null;size:string|null;unitPriceHalala:bigint;assetCode:string;name:string;serialNumber:string|null}>;
     for(const item of items){const resourceId=item.resourceId?.trim();if(!resourceId)throw new BadRequestException('Equipment resource is required.');const rows=await this.db.$queryRaw<Array<{resourceId:string;assetCode:string;serialNumber:string|null;stockStatus:string;resourceName:string}>>`SELECT b."resourceId",b."assetCode",b."serialNumber",b."stockStatus",r."name" AS "resourceName" FROM "EquipmentBarcode" b JOIN "CalendarResource" r ON r."id"=b."resourceId" WHERE b."resourceId"=${resourceId} LIMIT 1`;const equipment=rows[0];if(!equipment)throw new NotFoundException('Rental equipment not found.');if(equipment.stockStatus!=='AVAILABLE')throw new ConflictException(`${equipment.assetCode} is not available for rental.`);prepared.push({resourceId,equipmentType:item.equipmentType?.trim()||null,size:item.size?.trim()||null,unitPriceHalala:this.toHalala(item.unitPriceSar),assetCode:equipment.assetCode,name:equipment.resourceName,serialNumber:equipment.serialNumber});}
     const totalHalala=prepared.reduce((sum:number,item)=>sum+Number(item.unitPriceHalala),0),invoiceNumber=this.invoiceNumber(),whatsappPhone=input.whatsappPhone?.trim()||null;

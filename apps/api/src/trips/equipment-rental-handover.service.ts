@@ -11,16 +11,46 @@ type Item={id:string;resourceId:string;assetCodeSnapshot:string;equipmentNameSna
 export class EquipmentRentalHandoverService{
   constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly notifications:NotificationsService,private readonly inspections:EquipmentInspectionService){}
 
-  async confirmPayment(actorAccountId:string,id:string){
-    const rentals=await this.db.$queryRaw<Rental[]>`SELECT "id","renterAccountId","status","paymentStatus","invoiceNumber","paidAt","totalHalala","dueAt" FROM "EquipmentRental" WHERE "id"=${id} LIMIT 1`;const rental=rentals[0];
-    if(!rental)throw new NotFoundException('Rental not found.');if(rental.status==='CANCELLED')throw new ConflictException('Cancelled rental cannot be paid.');if(rental.paymentStatus==='PAID')return this.summary(id,'ALREADY_PAID');
-    const items=await this.db.$queryRaw<Item[]>`SELECT "id","resourceId","assetCodeSnapshot","equipmentNameSnapshot","handedOverAt","returnedAt" FROM "EquipmentRentalItem" WHERE "rentalId"=${id} ORDER BY "createdAt"`;
-    for(const item of items){const rows=await this.db.$queryRaw<Array<{stockStatus:string}>>`SELECT "stockStatus" FROM "EquipmentBarcode" WHERE "resourceId"=${item.resourceId} LIMIT 1`;if(rows[0]?.stockStatus!=='AVAILABLE')throw new ConflictException(`${item.assetCodeSnapshot} is no longer available.`);}
-    const readiness=await this.inspections.evaluate(items.map(item=>item.resourceId));if(readiness.blocked)throw new ConflictException('Equipment inspection or service policy blocks rental payment confirmation.');
-    await this.db.$executeRaw`UPDATE "EquipmentRental" SET "paymentStatus"='PAID',"paidAt"=NOW(),"updatedAt"=NOW() WHERE "id"=${id} AND "paymentStatus"='PENDING'`;
-    await this.notifications.notify(rental.renterAccountId,'EQUIPMENT_RENTAL_INVOICE',{title:'تم تأكيد دفع تأجير المعدات',invoiceNumber:rental.invoiceNumber,rentalId:id,totalHalala:Number(rental.totalHalala||0),dueAt:rental.dueAt?.toISOString()||null,message:'تم تأكيد الدفع. المعدات محجوزة وجاهزة للتسليم من المستودع بعد مسح كل قطعة.'});
-    await this.audit.record({actorId:actorAccountId,action:'EQUIPMENT_RENTAL_PAYMENT_CONFIRMED',resource:'EquipmentRental',resourceId:id,metadata:{invoiceNumber:rental.invoiceNumber,renterAccountId:rental.renterAccountId,totalHalala:Number(rental.totalHalala||0),handoverRequired:true,inspectionStates:readiness.states}});
-    return this.summary(id,'PAYMENT_CONFIRMED');
+  async confirmPayment(actorAccountId: string, id: string) {
+    const result = await this.db.serializable(async tx => {
+      const [rental] = await tx.$queryRaw<Rental[]>`
+        SELECT "id", "renterAccountId", "status", "paymentStatus", "invoiceNumber", "paidAt", "totalHalala", "dueAt"
+        FROM "EquipmentRental" WHERE "id"=${id} FOR UPDATE`;
+      if (!rental) throw new NotFoundException('Rental not found.');
+      if (rental.status === 'CANCELLED') throw new ConflictException('Cancelled rental cannot be paid.');
+      if (rental.paymentStatus === 'PAID') return 'ALREADY_PAID';
+      if (rental.status !== 'RESERVED' || rental.paymentStatus !== 'PENDING') {
+        throw new ConflictException('Rental is not awaiting payment confirmation.');
+      }
+
+      const items = await tx.$queryRaw<Item[]>`
+        SELECT "id","resourceId","assetCodeSnapshot" FROM "EquipmentRentalItem"
+        WHERE "rentalId"=${id} ORDER BY "resourceId"`;
+      const resourceIds = items.map(item => item.resourceId);
+      if (!items.length || new Set(resourceIds).size !== items.length) {
+        throw new ConflictException('Rental must contain distinct serialized equipment.');
+      }
+      const assets = await tx.$queryRaw<Array<{resourceId:string;stockStatus:string}>>`
+        SELECT "resourceId","stockStatus" FROM "EquipmentBarcode"
+        WHERE "resourceId"=ANY(${resourceIds}::text[]) ORDER BY "resourceId" FOR UPDATE`;
+      if (assets.length !== items.length || assets.some(asset => asset.stockStatus !== 'AVAILABLE')) {
+        throw new ConflictException('Rental equipment is no longer available.');
+      }
+      // A paid reservation holds its items until return, including the period before handover.
+      const claims = await tx.$queryRaw<Array<{resourceId:string}>>`
+        SELECT i."resourceId" FROM "EquipmentRentalItem" i JOIN "EquipmentRental" r ON r."id"=i."rentalId"
+        WHERE i."resourceId"=ANY(${resourceIds}::text[]) AND r."id"<>${id} AND i."returnedAt" IS NULL
+          AND r."paymentStatus"='PAID' AND r."status" IN ('RESERVED','ACTIVE') LIMIT 1`;
+      if (claims.length) throw new ConflictException('Equipment is reserved on another paid rental.');
+      const readiness = await this.inspections.evaluate(resourceIds, tx);
+      if (readiness.blocked) throw new ConflictException('Equipment inspection or service policy blocks rental payment confirmation.');
+
+      await tx.$executeRaw`UPDATE "EquipmentRental" SET "paymentStatus"='PAID',"paidAt"=NOW(),"updatedAt"=NOW() WHERE "id"=${id}`;
+      await this.notifications.notify(rental.renterAccountId,'EQUIPMENT_RENTAL_INVOICE',{title:'تم تأكيد دفع تأجير المعدات',invoiceNumber:rental.invoiceNumber,rentalId:id,totalHalala:Number(rental.totalHalala||0),dueAt:rental.dueAt?.toISOString()||null,message:'تم تأكيد الدفع. المعدات محجوزة وجاهزة للتسليم من المستودع بعد مسح كل قطعة.'},tx);
+      await this.audit.record({actorId:actorAccountId,action:'EQUIPMENT_RENTAL_PAYMENT_CONFIRMED',resource:'EquipmentRental',resourceId:id,metadata:{invoiceNumber:rental.invoiceNumber,renterAccountId:rental.renterAccountId,totalHalala:Number(rental.totalHalala||0),handoverRequired:true,inspectionStates:readiness.states}},tx);
+      return 'PAYMENT_CONFIRMED';
+    });
+    return this.summary(id,result);
   }
 
   async scan(actorAccountId:string,id:string,input:{code?:string}){
