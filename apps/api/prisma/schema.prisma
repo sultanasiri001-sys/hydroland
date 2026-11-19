@@ -1419,6 +1419,7 @@ model CustomerCase {
   referenceType String?
   referenceId String?
   assignedAccountId String?
+  dueAt DateTime? @db.Timestamptz(3)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   customer Account @relation("CustomerCases", fields:[customerId], references:[id], onDelete:Restrict)
@@ -1427,6 +1428,7 @@ model CustomerCase {
   @@index([customerId,status,createdAt])
   @@index([organizationId,status,createdAt])
   @@index([assignedAccountId,status])
+  @@index([status,dueAt])
 }
 
 model CustomerInteraction {

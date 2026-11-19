@@ -4,7 +4,7 @@ export type CustomerCasePriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
 
 export interface CustomerCase {
   id: string;
-  organizationId: string;
+  organizationId: string | null;
   customerId: string;
   type: CustomerCaseType;
   status: CustomerCaseStatus;

@@ -2,11 +2,12 @@ import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, Req, UseGuards
 import { CustomerCaseType } from '@prisma/client';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { CustomerCaseService } from './customer-case.service';
+import { CustomerCaseManagementService, ResolutionResponse } from './customer-case-management.service';
 
 @UseGuards(AccessTokenGuard)
 @Controller('organizations/:organizationId/requests')
 export class OrganizationCustomerCaseController {
-  constructor(private readonly cases: CustomerCaseService) {}
+  constructor(private readonly cases: CustomerCaseService, private readonly management: CustomerCaseManagementService) {}
 
   @Get()
   list(
@@ -34,6 +35,11 @@ export class OrganizationCustomerCaseController {
 
   @Post(':caseId/replies')
   reply(@Req() req: { auth: { accountId: string } }, @Param('organizationId') organizationId: string, @Param('caseId') caseId: string, @Body() body: { message: string }) {
-    return this.cases.replyForOrganization(req.auth.accountId, organizationId, caseId, body.message);
+    return this.cases.replyForOrganization(req.auth.accountId, organizationId, caseId, body?.message);
+  }
+
+  @Post(':caseId/resolution-response')
+  respond(@Req() req: { auth: { accountId: string } }, @Param('organizationId') organizationId: string, @Param('caseId') caseId: string, @Body() body: ResolutionResponse) {
+    return this.management.respondToResolution(req.auth.accountId, caseId, body, organizationId);
   }
 }

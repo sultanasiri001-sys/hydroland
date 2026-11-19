@@ -482,7 +482,7 @@
       if (!rows.length && !append) { list.innerHTML = '<p>لا توجد طلبات خدمة لهذه الجهة.</p>'; requestPage = 1; return; }
       const membership = stateMemberships.find(row => row.organization?.id === organizationId);
       const canWrite = ['OWNER', 'ADMIN', 'OPERATOR', 'STAFF'].includes(membership?.role) && membership?.status === 'ACTIVE';
-      const markup = rows.map(item => '<article class="hl-org-request" data-org-case-id="' + esc(item.id) + '"><div><strong>' + esc(item.subject) + '</strong><span>' + esc(caseStatusLabel(item.status)) + '</span></div><small>' + esc(item.type) + ' · ' + esc(new Date(item.createdAt).toLocaleDateString('ar-SA')) + '</small><p>' + esc(item.description) + '</p><div class="hl-org-request-thread">' + (item.interactions || []).map(reply => '<p><b>' + esc(reply.actorType === 'CUSTOMER' ? 'الجهة' : reply.actorType) + ':</b> ' + esc(reply.message) + '</p>').join('') + '</div>' + (canWrite ? '<form data-org-case-reply><label>إضافة رد<input name="message" required maxlength="10000" placeholder="اكتب ردًا على الطلب"></label><button type="submit">إرسال الرد</button></form>' : '') + '</article>').join('');
+      const markup = rows.map(item => '<article class="hl-org-request" data-org-case-id="' + esc(item.id) + '"><div><strong>' + esc(item.subject) + '</strong><span>' + esc(caseStatusLabel(item.status)) + '</span></div><small>' + esc(item.type) + ' · ' + esc(new Date(item.createdAt).toLocaleDateString('ar-SA')) + '</small><p>' + esc(item.description) + '</p><div class="hl-org-request-thread">' + (item.interactions || []).map(reply => '<p><b>' + esc(reply.actorType === 'CUSTOMER' ? 'الجهة' : reply.actorType) + ':</b> ' + esc(reply.message) + '</p>').join('') + '</div>' + (item.dueAt ? '<p>مهلة الحالة: ' + esc(new Date(item.dueAt).toLocaleString('ar-SA')) + '</p>' : '') + (canWrite && item.referenceType !== 'PROVIDER_QUALITY_TRIP_REHEARSAL_V1' && item.status !== 'CLOSED' ? item.canRespondToResolution === true ? '<form data-org-case-response><label>رد صاحب الطلب على الحل<textarea name="message" required maxlength="10000" rows="2"></textarea></label><button type="submit" name="decision" value="ACCEPT">أقبل الحل وأغلق الطلب</button><button type="submit" name="decision" value="OBJECT">أعترض وأطلب متابعة المعالجة</button></form>' : '<form data-org-case-reply><label>إضافة رد<input name="message" required maxlength="10000" placeholder="اكتب ردًا على الطلب"></label><button type="submit">إرسال الرد</button></form>' : '') + '</article>').join('');
       if (append) list.insertAdjacentHTML('beforeend', markup); else list.innerHTML = markup;
       requestPage = page; more.hidden = !(page < Number(result?.totalPages || 1));
     } catch (error) { if (current()) list.innerHTML = '<p class="hl-org-error">' + esc(error instanceof Error ? error.message : 'تعذر تحميل الطلبات.') + '</p>'; }
@@ -506,18 +506,20 @@
     finally { button.disabled = false; }
   });
   panel.querySelector('[data-org-request-list]')?.addEventListener('submit', async event => {
-    const form = event.target.closest('form[data-org-case-reply]'); if (!form) return;
+    const form = event.target.closest('form[data-org-case-reply],form[data-org-case-response]'); if (!form) return;
     event.preventDefault();
     const organizationId = selectedRequestsOrganization, caseId = form.closest('[data-org-case-id]')?.dataset.orgCaseId;
     if (!organizationId || !caseId) return;
     const auth = window.HydrolandAuth, session = auth?.getSessionVersion?.(), current = () => Boolean(auth?.isAuthenticated?.() && session === auth?.getSessionVersion?.() && selectedRequestsOrganization === organizationId);
-    const submit = form.querySelector('button[type="submit"]'); submit.disabled = true;
+    const submits = [...form.querySelectorAll('button[type="submit"]')]; submits.forEach(button => button.disabled = true);
     try {
-      const message = new FormData(form).get('message');
-      await request('/organizations/' + encodeURIComponent(organizationId) + '/requests/' + encodeURIComponent(caseId) + '/replies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message }) });
+      const message = new FormData(form).get('message'), response = form.hasAttribute('data-org-case-response');
+      const decision = response ? event.submitter?.value : undefined;
+      if (response && !['ACCEPT', 'OBJECT'].includes(decision)) return;
+      await request('/organizations/' + encodeURIComponent(organizationId) + '/requests/' + encodeURIComponent(caseId) + (response ? '/resolution-response' : '/replies'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message, ...(response ? { decision } : {}) }) });
       if (current()) await loadOrganizationRequests(organizationId);
-    } catch (error) { if (current()) panel.querySelector('[data-org-requests-note]').textContent = error instanceof Error ? error.message : 'تعذر إرسال الرد.'; }
-    finally { submit.disabled = false; }
+    } catch (error) { if (current()) { if ([403, 404].includes(error?.status)) { requestLoadVersion++; panel.querySelector('[data-org-request-list]').replaceChildren(); } panel.querySelector('[data-org-requests-note]').textContent = [400, 409].includes(error?.status) ? 'تغيرت حالة الطلب. أعد فتح طلبات الجهة قبل المتابعة.' : [403, 404].includes(error?.status) ? 'لم يعد هذا الطلب أو الإجراء متاحًا لحسابك. أعد فتح طلبات الجهة.' : 'تعذر تأكيد الحفظ. أعد فتح الطلب للتحقق من الحالة.'; } }
+    finally { if (current()) submits.forEach(button => button.disabled = false); }
   });
   panel.querySelector('[data-org-form]')?.addEventListener('submit', async (event) => {
     event.preventDefault();
