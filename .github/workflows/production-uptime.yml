@@ -7,6 +7,7 @@ on:
       - main
     paths:
       - '.github/workflows/production-uptime.yml'
+      - 'scripts/a06-monitor-liveness*'
       - 'apps/api/src/health/**'
   push:
     branches:
@@ -19,6 +20,53 @@ permissions:
   issues: write
 
 jobs:
+  monitor-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify scheduled-monitor liveness with isolated evidence
+        run: node --test scripts/a06-monitor-liveness.test.mjs
+  monitor-liveness:
+    if: github.repository == 'sultanasiri001-sys/hydroland' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    needs: monitor-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: a06-monitor-liveness-main
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check scheduled provider-observation execution
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node scripts/a06-monitor-liveness.mjs | tee a06-monitor-liveness.json
+      - name: Retain dated schedule coverage and control outcome
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a06-monitor-liveness-${{ github.run_id }}-${{ github.run_attempt }}
+          path: a06-monitor-liveness.json
+          if-no-files-found: ignore
+          retention-days: 14
   uptime:
     name: Verify public services
     runs-on: ubuntu-latest

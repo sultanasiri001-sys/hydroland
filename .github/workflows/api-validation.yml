@@ -48,7 +48,7 @@ jobs:
       - name: Agency training standard profiles and persistence-adapter contracts (synthetic only)
         run: node --experimental-strip-types --test apps/api/scripts/training-standard-profile.test.mjs
       - name: A06 provider monitoring and OIDC contracts
-        run: node --experimental-strip-types --test apps/api/scripts/a06-github-actions-oidc.test.mjs scripts/a06-provider-watch.test.mjs
+        run: node --experimental-strip-types --test apps/api/scripts/a06-github-actions-oidc.test.mjs scripts/a06-provider-watch.test.mjs scripts/a06-monitor-liveness.test.mjs
       - run: npm ci --workspace=@hydroland/api --workspace=@hydroland/web --include-workspace-root=true
       - name: Verify API correctness lint toolchain and source
         run: |
