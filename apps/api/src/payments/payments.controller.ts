@@ -14,7 +14,13 @@ export class PaymentsController {
   refresh(@Req()r:{auth:{accountId:string}},@Param('id')id:string){return this.s.refresh(r.auth.accountId,id)}
 
   @Post(':id/refund-request')
-  requestRefund(@Req()r:{auth:{accountId:string}},@Param('id')id:string,@Body()b:{reason:string}){return this.s.requestRefund(r.auth.accountId,id,b.reason)}
+  requestRefund(
+    @Req() request: { auth: { accountId: string } },
+    @Param('id') id: string,
+    @Body() body: { reason?: string; amountMinor?: number; currency?: string },
+  ) {
+    return this.s.requestRefund(request.auth.accountId, id, body?.reason, body);
+  }
 
   @Get('mine')
   mine(@Req()r:{auth:{accountId:string}}){return this.s.mine(r.auth.accountId)}
