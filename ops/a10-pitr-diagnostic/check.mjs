@@ -50,6 +50,37 @@ try {
     const [database] = await tx.$queryRawUnsafe(
       "SELECT current_database() AS database_name, current_setting('transaction_read_only') AS read_only",
     );
+    if (database.database_name !== pitrDatabase || database.read_only !== 'on') {
+      throw new Error('Isolated read-only database required');
+    }
+    // The independently captured inventory predates this PITR target. Compare
+    // only its existing cohort, keeping all identifiers and storage keys in SQL.
+    const baseline = JSON.parse(fs.readFileSync('docs/evidence/a03-readonly-inventory-2026-10-28.json', 'utf8'));
+    const expected = baseline.externalReferences.credentialDocuments;
+    const [documents] = await tx.$queryRaw`
+      SELECT count(*)::int AS records,
+        count(*) FILTER (WHERE "storageKey" LIKE 'credentials/%')::int AS namespaced,
+        count(*) FILTER (WHERE sha256 ~ '^[a-f0-9]{64}$')::int AS valid_hashes,
+        coalesce(sum("byteSize"), 0)::double precision AS bytes,
+        max("createdAt") AS latest
+      FROM "Document" WHERE "createdAt" <= ${new Date(baseline.observationWindowUtc.from)}`;
+    const historicalDocumentInventoryMatched = documents.records === expected.records &&
+      documents.namespaced === expected.expectedNamespaceRecords &&
+      documents.valid_hashes === expected.validSha256Records &&
+      documents.bytes === expected.totalBytes &&
+      documents.latest?.toISOString() === expected.latestRecordCreatedAtUtc;
+    const [bookings] = await tx.$queryRaw`
+      SELECT count(*)::int AS records,
+        count(*) FILTER (WHERE a.id IS NULL OR t.id IS NULL)::int AS unresolved_references
+      FROM "Booking" b LEFT JOIN "Account" a ON a.id = b."accountId"
+      LEFT JOIN "Trip" t ON t.id = b."tripId"
+      WHERE b."createdAt" <= TIMESTAMP '2026-11-14 21:34:39'`;
+    const [assets] = await tx.$queryRaw`
+      SELECT count(*)::int AS records,
+        count(*) FILTER (WHERE "byteSize" IS DISTINCT FROM octet_length(content)
+          OR sha256 IS DISTINCT FROM encode(sha256(content), 'hex'))::int AS mismatches
+      FROM "OrganizationDocumentAsset"
+      WHERE "createdAt" <= TIMESTAMP '2026-11-14 21:34:39'`;
     const migrations = await tx.$queryRawUnsafe(
       'SELECT migration_name, checksum, (finished_at IS NOT NULL) AS finished, ' +
         '(rolled_back_at IS NOT NULL) AS rolled_back, applied_steps_count ' +
@@ -152,6 +183,9 @@ try {
       Number(integrity.delivery_snapshot_violations) === 0;
 
     const checks = {
+      historical_document_inventory_matched: historicalDocumentInventoryMatched,
+      booking_references_resolved: bookings.unresolved_references === 0,
+      embedded_file_lengths_and_hashes_consistent: assets.mismatches === 0,
       connected_to_expected_pitr_database: database.database_name === expectedDatabase,
       transaction_read_only_enforced: database.read_only === 'on',
       a09_file_matches_original_checksum: localA09Checksum === expectedA09Checksum,
@@ -189,6 +223,9 @@ try {
       column_mismatches: columnMismatches,
       reference_type_mismatches: referenceTypeMismatches,
       observed_counts: {
+        historical_document_inventory: { records: documents.records, bytes: documents.bytes },
+        restored_bookings: bookings,
+        embedded_files: assets,
         reconciliation_columns: columns.length,
         constraints: constraints.length,
         indexes: indexes.length,
