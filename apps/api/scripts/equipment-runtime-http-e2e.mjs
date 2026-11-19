@@ -61,8 +61,22 @@ try{
   if(response.status!==400)throw new Error('Duplicate serialized equipment must be rejected before creating a rental');
   const reservations=await db.$queryRaw`SELECT COUNT(*)::int AS count FROM "EquipmentRental" WHERE "renterAccountId"=${renter.id}`;
   if(reservations[0].count!==0)throw new Error('Duplicate equipment left a partial reservation');
+  const failingReservation = new EquipmentRentalService(db, {
+    record() { throw new Error('Synthetic reservation receipt failure'); }
+  }, new NotificationsService(db));
+  await assert.rejects(failingReservation.create(admin.id, {
+    renterAccountId: renter.id, dueAt, items: [repeatedItem]
+  }), /Synthetic reservation receipt failure/);
+  const afterReceiptFailure = await db.$queryRaw`
+    SELECT
+      (SELECT COUNT(*)::int FROM "EquipmentRental" WHERE "renterAccountId"=${renter.id}) AS rentals,
+      (SELECT COUNT(*)::int FROM "EquipmentRentalItem" WHERE "resourceId"=${equipmentId}) AS items`;
+  assert.deepEqual(afterReceiptFailure, [{rentals: 0, items: 0}]);
   response=await fetch(`${base}/trips/equipment-rentals`,{method:'POST',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({renterAccountId:renter.id,dueAt,items:[{resourceId:equipmentId,equipmentType:'BCD',size:'M',unitPriceSar:50}]})});
   let rental=await json(response);rentalId=rental.id;
+  assert.equal(await db.auditEvent.count({
+    where: { resourceId: rentalId, action: 'EQUIPMENT_RENTAL_RESERVED' }
+  }), 1);
   if (new Date(rental.dueAt).getTime() !== Date.parse(dueAt)) throw new Error('Initial due date must preserve the requested instant.');
   if(rental.status!=='RESERVED'||rental.paymentStatus!=='PENDING'||rental.items?.length!==1)throw new Error('Rental reservation state mismatch');
 

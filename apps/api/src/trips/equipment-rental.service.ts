@@ -28,8 +28,30 @@ export class EquipmentRentalService{
     const prepared=[] as Array<{resourceId:string;equipmentType:string|null;size:string|null;unitPriceHalala:bigint;assetCode:string;name:string;serialNumber:string|null}>;
     for(const item of items){const resourceId=item.resourceId?.trim();if(!resourceId)throw new BadRequestException('Equipment resource is required.');const rows=await this.db.$queryRaw<Array<{resourceId:string;assetCode:string;serialNumber:string|null;stockStatus:string;resourceName:string}>>`SELECT b."resourceId",b."assetCode",b."serialNumber",b."stockStatus",r."name" AS "resourceName" FROM "EquipmentBarcode" b JOIN "CalendarResource" r ON r."id"=b."resourceId" WHERE b."resourceId"=${resourceId} LIMIT 1`;const equipment=rows[0];if(!equipment)throw new NotFoundException('Rental equipment not found.');if(equipment.stockStatus!=='AVAILABLE')throw new ConflictException(`${equipment.assetCode} is not available for rental.`);prepared.push({resourceId,equipmentType:item.equipmentType?.trim()||null,size:item.size?.trim()||null,unitPriceHalala:this.toHalala(item.unitPriceSar),assetCode:equipment.assetCode,name:equipment.resourceName,serialNumber:equipment.serialNumber});}
     const totalHalala=prepared.reduce((sum:number,item)=>sum+Number(item.unitPriceHalala),0),invoiceNumber=this.invoiceNumber(),whatsappPhone=input.whatsappPhone?.trim()||null;
-    const result=await this.db.serializable(async tx=>{const rentals=await tx.$queryRaw<RentalRow[]>`INSERT INTO "EquipmentRental"("id","renterAccountId","status","paymentStatus","totalHalala","invoiceNumber","whatsappPhone","reservedAt","dueAt","createdByAccountId","createdAt","updatedAt") VALUES(gen_random_uuid()::text,${renterAccountId},'RESERVED','PENDING',${BigInt(totalHalala)},${invoiceNumber},${whatsappPhone},NOW(),(${dueAt}::timestamptz AT TIME ZONE 'UTC'),${actorAccountId},NOW(),NOW()) RETURNING *`;const rental=rentals[0],created:RentalItemRow[]=[];for(const item of prepared){const rows=await tx.$queryRaw<RentalItemRow[]>`INSERT INTO "EquipmentRentalItem"("id","rentalId","resourceId","equipmentType","size","unitPriceHalala","assetCodeSnapshot","equipmentNameSnapshot","serialNumberSnapshot","createdAt") VALUES(gen_random_uuid()::text,${rental.id},${item.resourceId},${item.equipmentType},${item.size},${item.unitPriceHalala},${item.assetCode},${item.name},${item.serialNumber},NOW()) RETURNING *`;created.push(rows[0]);}return{rental,items:created};});
-    await this.audit.record({actorId:actorAccountId,action:'EQUIPMENT_RENTAL_RESERVED',resource:'EquipmentRental',resourceId:result.rental.id,metadata:{renterAccountId,invoiceNumber,totalHalala,itemCount:prepared.length,dueAt:dueAt.toISOString()}});return this.serialize(result.rental,result.items);
+    const result = await this.db.serializable(async tx => {
+      const [rental] = await tx.$queryRaw<RentalRow[]>`
+        INSERT INTO "EquipmentRental" ("id","renterAccountId","status","paymentStatus","totalHalala","invoiceNumber",
+          "whatsappPhone","reservedAt","dueAt","createdByAccountId","createdAt","updatedAt")
+        VALUES (gen_random_uuid()::text,${renterAccountId},'RESERVED','PENDING',${BigInt(totalHalala)},${invoiceNumber},
+          ${whatsappPhone},NOW(),(${dueAt}::timestamptz AT TIME ZONE 'UTC'),${actorAccountId},NOW(),NOW())
+        RETURNING *`;
+      const created: RentalItemRow[] = [];
+      for (const item of prepared) {
+        const [row] = await tx.$queryRaw<RentalItemRow[]>`
+          INSERT INTO "EquipmentRentalItem" ("id","rentalId","resourceId","equipmentType","size","unitPriceHalala",
+            "assetCodeSnapshot","equipmentNameSnapshot","serialNumberSnapshot","createdAt")
+          VALUES (gen_random_uuid()::text,${rental.id},${item.resourceId},${item.equipmentType},${item.size},
+            ${item.unitPriceHalala},${item.assetCode},${item.name},${item.serialNumber},NOW())
+          RETURNING *`;
+        created.push(row);
+      }
+      await this.audit.record({
+        actorId: actorAccountId, action: 'EQUIPMENT_RENTAL_RESERVED', resource: 'EquipmentRental',
+        resourceId: rental.id, metadata: {renterAccountId, invoiceNumber, totalHalala, itemCount: created.length, dueAt: dueAt.toISOString()}
+      }, tx);
+      return {rental, items: created};
+    });
+    return this.serialize(result.rental, result.items);
   }
 
   async markPaid(actorAccountId:string,id:string){
