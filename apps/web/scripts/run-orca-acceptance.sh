@@ -92,7 +92,11 @@ finally:
     client.close()
 family = {'name': voice_name, 'lang': voice_language, 'dialect': dialect}
 source = '\n'.join([
-    'from orca import settings',
+    'from orca import debug, settings',
+    # Orca opens --debug-file separately from stdout. Publish each authentic
+    # diagnostic when written so a quiet focus event is observable before exit.
+    'if debug.debugFile is not None:',
+    '    debug.debugFile.reconfigure(line_buffering=True)',
     'from orca.acss import ACSS',
     "settings.speechServerFactory = 'speechdispatcherfactory'",
     "settings.speechServerInfo = ['eSpeak NG', 'espeak-ng']",
