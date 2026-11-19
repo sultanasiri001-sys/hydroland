@@ -21,6 +21,19 @@ function profileUpdate(input: unknown): ProfileUpdate {
   return patch as ProfileUpdate;
 }
 
+type RecordDomain = 'BOOKINGS' | 'PAYMENTS' | 'SENT_MESSAGES';
+type BookingRecord = { id: string; tripId: string; seats: number; status: string; createdAt: Date; updatedAt: Date };
+type PaymentRecord = { id: string; bookingId: string; amountMinor: number; currency: string; status: string; createdAt: Date; updatedAt: Date };
+type SentMessageRecord = { id: string; conversationId: string; kind: string; body: string | null; durationSec: number | null; createdAt: Date };
+
+function exportCursor(value: unknown): string {
+  if (value === undefined) return '';
+  if (typeof value !== 'string' || value.length > 200 || /[\u0000-\u001f\u007f]/u.test(value)) {
+    throw new BadRequestException('مؤشر الصفحة غير صالح.');
+  }
+  return value;
+}
+
 @Injectable()
 export class ProfileService {
   constructor(private readonly db: DatabaseService, private readonly audit: AuditService) {}
@@ -58,38 +71,58 @@ export class ProfileService {
     if (!input || typeof input !== 'object' || Array.isArray(input)) {
       throw new BadRequestException('حدد نوع السجلات المطلوبة.');
     }
-    const { domain, after = '' } = input as Record<string, unknown>;
+    const { domain, after } = input as Record<string, unknown>;
     if ((domain !== 'BOOKINGS' && domain !== 'PAYMENTS') ||
-        Object.keys(input).some(key => key !== 'domain' && key !== 'after') ||
-        typeof after !== 'string' || after.length > 200 || /[\u0000-\u001f\u007f]/u.test(after)) {
-      throw new BadRequestException('نوع السجلات أو مؤشر الصفحة غير صالح.');
+        Object.keys(input).some(key => key !== 'domain' && key !== 'after')) {
+      throw new BadRequestException('نوع السجلات غير صالح.');
     }
+    return this.exportPersonalRecords(accountId, domain, exportCursor(after));
+  }
+
+  async exportSentMessages(accountId: string, input: unknown) {
+    if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => key !== 'after')) {
+      throw new BadRequestException('طلب تصدير الرسائل غير صالح.');
+    }
+    return this.exportPersonalRecords(accountId, 'SENT_MESSAGES', exportCursor((input as { after?: unknown }).after));
+  }
+
+  private async exportPersonalRecords(accountId: string, domain: RecordDomain, after: string) {
     return this.db.serializable(async tx => {
       const account = await tx.account.findUnique({ where: { id: accountId }, select: { status: true } });
       if (account?.status !== 'ACTIVE') throw new UnauthorizedException('الحساب غير متاح.');
       const pageSize = 100;
-      type BookingRecord = { id: string; tripId: string; seats: number; status: string; createdAt: Date; updatedAt: Date };
-      type PaymentRecord = { id: string; bookingId: string; amountMinor: number; currency: string; status: string; createdAt: Date; updatedAt: Date };
-      const rows = domain === 'BOOKINGS'
-        ? await tx.$queryRaw<BookingRecord[]>`
+      let rows: Array<BookingRecord | PaymentRecord | SentMessageRecord>;
+      if (domain === 'BOOKINGS') {
+        rows = await tx.$queryRaw<BookingRecord[]>`
             SELECT b."id", b."tripId", b."seats", b."status", b."createdAt", b."updatedAt"
             FROM "Booking" b
             WHERE b."accountId"::text = ${accountId} AND b."organizationId" IS NULL
               AND b."id"::text COLLATE "C" > ${after}
-            ORDER BY b."id"::text COLLATE "C" LIMIT ${pageSize + 1}`
-        : await tx.$queryRaw<PaymentRecord[]>`
+            ORDER BY b."id"::text COLLATE "C" LIMIT ${pageSize + 1}`;
+      } else if (domain === 'PAYMENTS') {
+        rows = await tx.$queryRaw<PaymentRecord[]>`
             SELECT p."id", p."bookingId", p."amountMinor", p."currency", p."status", p."createdAt", p."updatedAt"
             FROM "Payment" p JOIN "Booking" b ON b."id" = p."bookingId"
             WHERE p."accountId"::text = ${accountId} AND b."accountId"::text = ${accountId}
               AND b."organizationId" IS NULL AND p."id"::text COLLATE "C" > ${after}
             ORDER BY p."id"::text COLLATE "C" LIMIT ${pageSize + 1}`;
+      } else {
+        rows = await tx.$queryRaw<SentMessageRecord[]>`
+          SELECT m."id", m."conversationId", m."kind", m."body", m."durationSec", m."createdAt"
+          FROM "Message" m JOIN "ConversationParticipant" cp
+            ON cp."conversationId" = m."conversationId" AND cp."accountId" = m."senderAccountId"
+          WHERE m."senderAccountId" = (jsonb_populate_record(NULL::"Account", jsonb_build_object('id', ${accountId}::text)))."id"
+            AND m."id"::text COLLATE "C" > ${after}
+          ORDER BY m."id"::text COLLATE "C" LIMIT ${pageSize + 1}`;
+      }
       const records = rows.slice(0, pageSize);
       const snapshot = {
-        schemaVersion: 'PERSONAL_TRIP_RECORDS_V1', accountId, domain, exportedAt: new Date().toISOString(),
+        schemaVersion: domain === 'SENT_MESSAGES' ? 'PERSONAL_SENT_MESSAGES_V1' : 'PERSONAL_TRIP_RECORDS_V1',
+        accountId, domain, exportedAt: new Date().toISOString(),
         completePlatformExport: false, records, nextCursor: rows.length > pageSize ? records[pageSize - 1].id : null,
       };
       const sha256 = createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
-      const receipt = await this.audit.record({ actorId: accountId, action: 'PERSONAL_TRIP_RECORDS_EXPORTED',
+      const receipt = await this.audit.record({ actorId: accountId, action: domain === 'SENT_MESSAGES' ? 'PERSONAL_SENT_MESSAGES_EXPORTED' : 'PERSONAL_TRIP_RECORDS_EXPORTED',
         resource: 'Account', resourceId: accountId, metadata: { domain, count: records.length, sha256 } }, tx);
       return { ...snapshot, receipt: { auditEventId: receipt.id, sha256 } };
     });

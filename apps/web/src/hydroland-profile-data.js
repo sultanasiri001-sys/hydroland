@@ -2,6 +2,10 @@
   // Authored interface messages only. Account, provider and document values remain opaque.
   const uiLocale=window.HydrolandI18n?.createScope("profile-data", {
   "يمكن تنزيل سجلات الرحلات الشخصية في صفحات تضم حتى ١٠٠ سجل.": "Download personal trip records in pages of up to 100 records.",
+  "تنزيل رسائلي المرسلة": "Download my sent messages",
+  "تنزيل الصفحة التالية من الرسائل": "Download the next page of sent messages",
+  "يتضمن التنزيل نصوصك ومدد رسائلك الصوتية في المحادثات التي تشارك فيها حاليًا.": "Includes your texts and voice message durations in conversations you currently belong to.",
+  "تعذر تنزيل السجلات. حاول مرة أخرى.": "Could not download records. Try again.",
   "تنزيل حجوزاتي الشخصية": "Download my personal bookings",
   "تنزيل مدفوعات رحلاتي": "Download my trip payments",
   "جارٍ إعداد صفحة السجلات…": "Preparing this page of records\u2026",
@@ -179,7 +183,7 @@
   const credentialLabel=status=>({VERIFIED:'موثقة',DOCUMENT_VERIFIED:'وثائق موثقة',PENDING:'قيد التحقق',UNVERIFIED:'غير موثقة',REJECTED:'مرفوضة',EXPIRED:'منتهية'})[status]||status||'غير محدد';
   const roleLabel=role=>({DIVER:'هواة الغوص',INSTRUCTOR:'محترفي الغوص',DIVE_CENTER:'مركز غوص',BOAT_OWNER:'الوساطة البحرية',STAFF:'موظف',ORGANIZATION:'جهة',ADMIN:'إدارة',REVIEWER:'مراجع'})[role]||role;
   const normalizeProfile=profile=>({...profile,roles:Array.isArray(profile?.roleAssignments)?profile.roleAssignments:Array.isArray(profile?.roles)?profile.roles:[]});
-  const ensureProfileEditor=()=>{let dialog=document.getElementById('hl-profile-editor');if(dialog)return dialog;dialog=document.createElement('dialog');dialog.id='hl-profile-editor';dialog.className='hl-profile-editor';uiLocale.setHTML(dialog, uiLocale.html`<form method="dialog"><header><div><small>ACCOUNT SETTINGS · إعدادات الحساب</small><h2>تعديل الملف الشخصي</h2></div><button type="button" data-profile-close aria-label="إغلاق">×</button></header><div class="hl-profile-editor-grid"><label>الاسم الأول<input name="firstName" autocomplete="given-name" maxlength="80" required></label><label>اسم العائلة<input name="lastName" autocomplete="family-name" maxlength="80"></label><label>الصفة أو المستوى<input name="headline" maxlength="120"></label><label>المنطقة<input name="regionCode" maxlength="80"></label></div><fieldset><legend>بيانات العضوية المستخدمة في العقود</legend><p>اختر الشهادات المسجلة في حسابك. تستخدم العقود بياناتها بعد التحقق وصلاحية المدة؛ لا تنقل الملفات أو التفاصيل الطبية.</p><div class="hl-profile-editor-grid"><label>شهادة الترخيص الوطني<select name="nationalLicenseCredentialId"></select></label><label>شهادة التأهيل / الرتبة الأساسية<select name="qualificationCredentialId"></select></label><label>مرجع أدلة أهلية العمل واللياقة<textarea name="eligibilityEvidenceReference" maxlength="500" placeholder="مرجع الملف أو المستند فقط، دون أرقام هوية أو تفاصيل طبية"></textarea></label></div></fieldset><p>تنزيل بيانات الحساب يتضمن الملف الشخصي والملف المهني والأدوار. سجلات الحجوزات والمدفوعات والرسائل غير مشمولة.</p><button type="button" data-profile-export>تنزيل بيانات الحساب</button><p>يمكن تنزيل سجلات الرحلات الشخصية في صفحات تضم حتى ١٠٠ سجل.</p><button type="button" data-trip-export="BOOKINGS">تنزيل حجوزاتي الشخصية</button><button type="button" data-trip-export="PAYMENTS">تنزيل مدفوعات رحلاتي</button><p class="hl-profile-editor-status" role="status" aria-live="polite"></p><footer><button type="button" data-profile-cancel>إلغاء</button><button type="submit" class="primary-button">حفظ التغييرات</button></footer></form>`);const form=dialog.querySelector('form'),close=()=>dialog.close();dialog.querySelector('[data-profile-close]').addEventListener('click',close);dialog.querySelector('[data-profile-cancel]').addEventListener('click',close);dialog.querySelector('[data-profile-export]').addEventListener('click',()=>void downloadAccount(dialog));for(const button of dialog.querySelectorAll('[data-trip-export]'))button.addEventListener('click',()=>void downloadTripPage(dialog,button));dialog.addEventListener('click',event=>{if(event.target===dialog)close()});form.addEventListener('submit',async event=>{event.preventDefault();const data=new FormData(form),firstName=String(data.get('firstName')||'').trim(),submit=form.querySelector('[type="submit"]'),status=form.querySelector('.hl-profile-editor-status');if(!firstName){uiLocale.setText(status, ...['الاسم الأول مطلوب']);form.elements.firstName.focus({preventScroll:true});return}submit.disabled=true;uiLocale.setText(status, ...['جارٍ حفظ البيانات...']);try{await saveProfile({firstName,lastName:String(data.get('lastName')||'').trim(),headline:String(data.get('headline')||'').trim(),regionCode:String(data.get('regionCode')||'').trim(),nationalLicenseCredentialId:String(data.get('nationalLicenseCredentialId')||'')||null,qualificationCredentialId:String(data.get('qualificationCredentialId')||'')||null,eligibilityEvidenceReference:String(data.get('eligibilityEvidenceReference')||'').trim()||null});uiLocale.setText(status, ...['تم الحفظ']);close()}catch{uiLocale.setText(status, ...['تعذر حفظ البيانات. تحقق من الاتصال وحاول مرة أخرى.'])}finally{submit.disabled=false}});document.body.appendChild(dialog);return dialog};
+  const ensureProfileEditor=()=>{let dialog=document.getElementById('hl-profile-editor');if(dialog)return dialog;dialog=document.createElement('dialog');dialog.id='hl-profile-editor';dialog.className='hl-profile-editor';uiLocale.setHTML(dialog, uiLocale.html`<form method="dialog"><header><div><small>ACCOUNT SETTINGS · إعدادات الحساب</small><h2>تعديل الملف الشخصي</h2></div><button type="button" data-profile-close aria-label="إغلاق">×</button></header><div class="hl-profile-editor-grid"><label>الاسم الأول<input name="firstName" autocomplete="given-name" maxlength="80" required></label><label>اسم العائلة<input name="lastName" autocomplete="family-name" maxlength="80"></label><label>الصفة أو المستوى<input name="headline" maxlength="120"></label><label>المنطقة<input name="regionCode" maxlength="80"></label></div><fieldset><legend>بيانات العضوية المستخدمة في العقود</legend><p>اختر الشهادات المسجلة في حسابك. تستخدم العقود بياناتها بعد التحقق وصلاحية المدة؛ لا تنقل الملفات أو التفاصيل الطبية.</p><div class="hl-profile-editor-grid"><label>شهادة الترخيص الوطني<select name="nationalLicenseCredentialId"></select></label><label>شهادة التأهيل / الرتبة الأساسية<select name="qualificationCredentialId"></select></label><label>مرجع أدلة أهلية العمل واللياقة<textarea name="eligibilityEvidenceReference" maxlength="500" placeholder="مرجع الملف أو المستند فقط، دون أرقام هوية أو تفاصيل طبية"></textarea></label></div></fieldset><p>تنزيل بيانات الحساب يتضمن الملف الشخصي والملف المهني والأدوار. سجلات الحجوزات والمدفوعات والرسائل غير مشمولة.</p><button type="button" data-profile-export>تنزيل بيانات الحساب</button><p>يمكن تنزيل سجلات الرحلات الشخصية في صفحات تضم حتى ١٠٠ سجل.</p><button type="button" data-trip-export="BOOKINGS">تنزيل حجوزاتي الشخصية</button><button type="button" data-trip-export="PAYMENTS">تنزيل مدفوعات رحلاتي</button><p>يتضمن التنزيل نصوصك ومدد رسائلك الصوتية في المحادثات التي تشارك فيها حاليًا.</p><button type="button" data-trip-export="SENT_MESSAGES">تنزيل رسائلي المرسلة</button><p class="hl-profile-editor-status" role="status" aria-live="polite"></p><footer><button type="button" data-profile-cancel>إلغاء</button><button type="submit" class="primary-button">حفظ التغييرات</button></footer></form>`);const form=dialog.querySelector('form'),close=()=>dialog.close();dialog.querySelector('[data-profile-close]').addEventListener('click',close);dialog.querySelector('[data-profile-cancel]').addEventListener('click',close);dialog.querySelector('[data-profile-export]').addEventListener('click',()=>void downloadAccount(dialog));for(const button of dialog.querySelectorAll('[data-trip-export]'))button.addEventListener('click',()=>void downloadRecordPage(dialog,button));dialog.addEventListener('click',event=>{if(event.target===dialog)close()});form.addEventListener('submit',async event=>{event.preventDefault();const data=new FormData(form),firstName=String(data.get('firstName')||'').trim(),submit=form.querySelector('[type="submit"]'),status=form.querySelector('.hl-profile-editor-status');if(!firstName){uiLocale.setText(status, ...['الاسم الأول مطلوب']);form.elements.firstName.focus({preventScroll:true});return}submit.disabled=true;uiLocale.setText(status, ...['جارٍ حفظ البيانات...']);try{await saveProfile({firstName,lastName:String(data.get('lastName')||'').trim(),headline:String(data.get('headline')||'').trim(),regionCode:String(data.get('regionCode')||'').trim(),nationalLicenseCredentialId:String(data.get('nationalLicenseCredentialId')||'')||null,qualificationCredentialId:String(data.get('qualificationCredentialId')||'')||null,eligibilityEvidenceReference:String(data.get('eligibilityEvidenceReference')||'').trim()||null});uiLocale.setText(status, ...['تم الحفظ']);close()}catch{uiLocale.setText(status, ...['تعذر حفظ البيانات. تحقق من الاتصال وحاول مرة أخرى.'])}finally{submit.disabled=false}});document.body.appendChild(dialog);return dialog};
   let diverEditorVersion=0;
   const populateDiverEditor=async dialog=>{
     const form=dialog.querySelector('form'),grid=form.querySelector('.hl-profile-editor-grid'),status=form.querySelector('.hl-profile-editor-status'),submit=form.querySelector('[type="submit"]'),retry=form.querySelector('[data-diver-retry]');
@@ -242,24 +246,33 @@
     const link=document.createElement('a');link.href=url;link.download=filename;link.hidden=true;
     document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }
-  async function downloadTripPage(dialog,button) {
+  const exportLabels = {
+    BOOKINGS: ['تنزيل حجوزاتي الشخصية','تنزيل الصفحة التالية من الحجوزات'],
+    PAYMENTS: ['تنزيل مدفوعات رحلاتي','تنزيل الصفحة التالية من المدفوعات'],
+    SENT_MESSAGES: ['تنزيل رسائلي المرسلة','تنزيل الصفحة التالية من الرسائل'],
+  };
+  async function downloadRecordPage(dialog,button) {
     const status=dialog.querySelector('.hl-profile-editor-status'), session=auth()?.getSessionVersion(), view=dialog.dataset.exportView;
     const current=()=>auth()?.isAuthenticated?.()&&auth().getSessionVersion()===session&&dialog.isConnected&&dialog.open&&dialog.dataset.exportView===view;
     if(!current()){uiLocale.setText(status, 'سجل الدخول أولًا');return}
     const domain=button.dataset.tripExport, after=button.dataset.after||'', page=Number(button.dataset.page||1);
     button.disabled=true;uiLocale.setText(status, 'جارٍ إعداد صفحة السجلات…');
     try {
-      const data=await request('/me/data-export/trip-records',{method:'POST',body:JSON.stringify({domain,after})});
+      const sentMessages=domain==='SENT_MESSAGES';
+      const path=sentMessages?'/me/data-export/sent-messages':'/me/data-export/trip-records';
+      const schema=sentMessages?'PERSONAL_SENT_MESSAGES_V1':'PERSONAL_TRIP_RECORDS_V1';
+      const data=await request(path,{method:'POST',body:JSON.stringify(sentMessages?{after}:{domain,after})});
       if(!current())return;
-      if(data?.schemaVersion!=='PERSONAL_TRIP_RECORDS_V1'||data.completePlatformExport!==false||data.accountId!==window.HydrolandProfileData?.profile?.id||data.domain!==domain||!Array.isArray(data.records)||
+      if(data?.schemaVersion!==schema||data.completePlatformExport!==false||data.accountId!==window.HydrolandProfileData?.profile?.id||data.domain!==domain||!Array.isArray(data.records)||
         !(data.nextCursor===null||(typeof data.nextCursor==='string'&&data.nextCursor.length>0&&data.nextCursor!==after)))throw Error('INVALID_EXPORT');
-      saveExport(data,'hydroland-trip-'+domain.toLowerCase()+'-'+page+'.json');
+      const prefix=sentMessages?'hydroland-sent-messages':'hydroland-trip-'+domain.toLowerCase();
+      saveExport(data,prefix+'-'+page+'.json');
       if(data.nextCursor){
         button.dataset.after=data.nextCursor;button.dataset.page=String(page+1);
-        uiLocale.setText(button, domain==='BOOKINGS'?'تنزيل الصفحة التالية من الحجوزات':'تنزيل الصفحة التالية من المدفوعات');
+        uiLocale.setText(button, exportLabels[domain][1]);
       }else{button.dataset.done='true'}
       uiLocale.setText(status, data.nextCursor?'تم تنزيل الصفحة. تتوفر صفحة أخرى.':'اكتمل تنزيل السجلات المطلوبة.');
-    }catch{if(current())uiLocale.setText(status, 'تعذر تنزيل سجلات الرحلات. حاول مرة أخرى.')}
+    }catch{if(current())uiLocale.setText(status, 'تعذر تنزيل السجلات. حاول مرة أخرى.')}
     finally{if(current())button.disabled=button.dataset.done==='true'}
   }
   const downloadAccount=async dialog=>{
@@ -281,7 +294,7 @@
   dialog.dataset.exportView=String(Number(dialog.dataset.exportView||0)+1);
     for(const button of dialog.querySelectorAll('[data-trip-export]')){
       delete button.dataset.after;delete button.dataset.page;delete button.dataset.done;button.disabled=false;
-      uiLocale.setText(button, button.dataset.tripExport==='BOOKINGS'?'تنزيل حجوزاتي الشخصية':'تنزيل مدفوعات رحلاتي');
+      uiLocale.setText(button, exportLabels[button.dataset.tripExport][0]);
     }
     window.HydrolandUI.openDialog(dialog);form.elements.firstName.focus({preventScroll:true})};
 
