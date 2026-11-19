@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, ForbiddenException, Get, Header, Logger, NotFoundException, OnApplicationBootstrap, Param, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, ForbiddenException, Get, Header, Logger, NotFoundException, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { DatabaseService } from '../database/database.service';
@@ -31,7 +31,7 @@ async function requireDashboardOwner(tx: Prisma.TransactionClient, id: string) {
 
 @Controller('admin/d12')
 @UseGuards(AccessTokenGuard, AdminGuard)
-export class D12DashboardController implements OnApplicationBootstrap {
+export class D12DashboardController {
   constructor(private readonly db: DatabaseService) {}
 
   // Operators can verify the production binding without reading customer data or signing in as the owner.
