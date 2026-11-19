@@ -152,7 +152,7 @@ test('Orca announces controls across all seven portals with the selected languag
   });
   await expect(page.locator('#hl-diver-dashboard')).toBeVisible();
   await selectLanguage();
-  await announce('diver',locale==='ar'?'الرئيسية':'Home',page.locator('#navigation a[href="#home"]'));
+  await announce('diver',locale==='ar'?'لوحة هواة الغوص':'Diver dashboard',page.locator('#navigation a[href="#hl-diver-dashboard"]'));
 
   for(const role of ['instructor','center','boat','organization','admin']){
     await openWorkspaceSwitcher(page);
