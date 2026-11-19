@@ -1,0 +1,107 @@
+/* D11: mirror interface layout only. Stored contract/document paper, codes,
+   coordinates and explicitly LTR brand blocks retain their own direction. */
+html[dir="ltr"]{direction:ltr}
+html[dir="ltr"] .skip-link{right:auto;left:20px}
+html[dir="ltr"] .sidebar{right:auto;left:0;border-left:0;border-right:1px solid var(--hl-line-soft)}
+html[dir="ltr"] .shell{margin-right:0;margin-left:218px}
+html[dir="ltr"] .hl-managed-workspace .shell{margin:0}
+html[dir="ltr"] .hl-portal-nav{right:auto;left:0;border-left:0;border-right:1px solid var(--hl-line-soft)}
+html[dir="ltr"] .hl-portal-main{margin-right:0;margin-left:var(--hl-portal-width)}
+html[dir="ltr"] .hl-managed-workspace #main>.hl-workspace-selected,
+html[dir="ltr"] .hl-managed-workspace[data-hl-workspace-service="hl-training-service"] #main>.hl-managed-service-root{margin:16px 24px 24px 256px}
+html[dir="ltr"] .nav-item,
+html[dir="ltr"] .hl-portal-nav-item,
+html[dir="ltr"] .hl-auth-panel label,
+html[dir="ltr"] .hl-profile-editor label,
+html[dir="ltr"] .hl-mfa-dialog label,
+html[dir="ltr"] .hl-google-mfa-dialog label,
+html[dir="ltr"] .profile-list button,
+html[dir="ltr"] .hl-equipment-list button,
+html[dir="ltr"] .hl-conversation-item,
+html[dir="ltr"] .theme-list button,
+html[dir="ltr"] .hl-contract-list-item,
+html[dir="ltr"] .hl-log td,
+html[dir="ltr"] .hl-log th,
+html[dir="ltr"] .hl-diver-metric,
+html[dir="ltr"] .hl-diver-action-grid b,
+html[dir="ltr"] .hl-diver-account.avatar,
+html[dir="ltr"] .hl-public-course p{text-align:left}
+html[dir="ltr"] .hl-approval-stages{padding-right:0;padding-left:22px}
+html[dir="ltr"] .theme-list small{margin-right:0;margin-left:auto}
+html[dir="ltr"] .hl-diver-utility{right:auto;left:12px}
+html[dir="ltr"] .hl-diver-metric{padding:12px 40px 12px 16px}
+html[dir="ltr"] .hl-diver-action-grid b{padding:0 30px 0 6px}
+html[dir="ltr"] .hl-action-link{left:auto;right:7px}
+html[dir="ltr"] .hl-metric-arrow{left:auto;right:10px}
+html[dir="ltr"] .hl-action-link svg,
+html[dir="ltr"] .hl-metric-arrow svg,
+html[dir="ltr"] .profile-list button>b,
+html[dir="ltr"] .hl-public-link-arrow{transform:scaleX(-1)}
+html[dir="ltr"] .toast{left:auto;right:24px}
+html[dir="ltr"] .trip-image span{right:auto;left:12px}
+html[dir="ltr"] .hl-map-controls{left:auto;right:14px}
+html[dir="ltr"] .hl-map-callout text{direction:ltr;unicode-bidi:plaintext}
+html[dir="ltr"] .hl-library-integration{border-right:0;border-left:4px solid #00b8f5}
+html[dir="ltr"] .hl-contract-library [data-library-events] p{border-right:0;border-left:2px solid #11aee9}
+html[dir="ltr"] .hl-contracts [data-contract-note]:not(:empty){border-right:0;border-left:3px solid #009cdb}
+html[dir="ltr"] #hl-research-runtime [data-research-notice]{border-right:0;border-left:4px solid #ba8a29}
+html[dir="ltr"] #hl-research-runtime [data-research-preview]{border-right:0;border-left:4px solid #168eaf}
+html[dir="ltr"] .hl-visitor-routebar>button{text-align:left;padding:13px 28% 13px 14px}
+html[dir="ltr"] .hl-visitor-routebar>button:after{left:auto;right:12px;transform:scaleX(-1)}
+html[dir="ltr"] .hl-visitor-mode .sidebar [data-hl-theme-button]{right:auto;left:14px}
+html[dir="ltr"] .hl-public-home-teasers>article{padding:14px 35% 14px 14px}
+html[dir="ltr"] .hl-public-home-teasers>article>svg{left:auto;right:12px}
+html[dir="ltr"] .hl-public-assistant-art{left:auto;right:0}
+html[dir="ltr"] .hl-public-link-arrow{left:auto;right:18px}
+@media(min-width:1201px){
+ html[dir="ltr"] .hl-role-dashboard[data-role="center"] .hl-portal-topbar{left:210px;right:310px}
+}
+@media(min-width:1121px){
+ html[dir="ltr"] .hl-public-home-teasers>.hl-public-teaser-assistant{padding:14px 14px 14px 34%}
+ html[dir="ltr"] .hl-public-home-teasers .hl-public-assistant-art{right:auto;left:0}
+ html[dir="ltr"] [data-public-page="home"] #trips .hl-public-card-actions,
+ html[dir="ltr"] [data-public-page="home"] #trips [data-hl-map-open]{left:auto;right:8px}
+ html[dir="ltr"] [data-public-page="home"] #trips .hl-map-info h3{padding-left:0;padding-right:55px}
+ html[dir="ltr"] [data-public-page="home"] #trips .hl-map-provider,
+ html[dir="ltr"] [data-public-page="home"] #trips .hl-map-card__count{right:auto;left:10px}
+}
+@media(max-width:1200px){
+ html[dir="ltr"] .hl-managed-workspace #main>.hl-workspace-selected,
+ html[dir="ltr"] .hl-managed-workspace[data-hl-workspace-service="hl-training-service"] #main>.hl-managed-service-root{margin-left:228px;margin-right:24px}
+}
+@media(max-width:1120px){
+ html[dir="ltr"] .hl-public-home-teasers .hl-public-assistant-art{left:auto;right:20px}
+}
+@media(max-width:1100px){
+ html[dir="ltr"] .shell{margin-left:190px}
+}
+@media(max-width:760px){
+ html[dir="ltr"] .shell,html[dir="ltr"] .hl-portal-main{margin-left:0}
+ html[dir="ltr"] .sidebar,html[dir="ltr"] .hl-portal-nav{transform:translateX(-105%)}
+ html[dir="ltr"] .sidebar.open,html[dir="ltr"] .hl-portal-nav-open .hl-portal-nav{transform:translateX(0)}
+ html[dir="ltr"] .hl-managed-workspace #main>.hl-workspace-selected,
+ html[dir="ltr"] .hl-managed-workspace[data-hl-workspace-service="hl-training-service"] #main>.hl-managed-service-root{margin:12px}
+ html[dir="ltr"] .hl-role-dashboard[data-role="organization"] .hl-role-head,
+ html[dir="ltr"] .hl-diver-head>div:first-child{text-align:left}
+ html[dir="ltr"] .hl-diver-utility{right:0;left:auto}
+ html[dir="ltr"] .hl-visitor-routebar>button{padding-left:14px;padding-right:27%}
+ html[dir="ltr"] .hl-public-home-teasers>article{padding-left:14px;padding-right:33%}
+ html[dir="ltr"] .hl-public-home-teasers .hl-public-assistant-art{left:auto;right:0}
+}
+
+/* One reachable control for the current shell, portal, sign-in or modal. */
+.hl-locale-switch{display:inline-flex;align-items:center;justify-content:center;flex:none;gap:4px;min-width:40px;min-height:34px;margin:0;padding:6px 8px;font:inherit;font-size:.78rem;white-space:nowrap;border:1px solid var(--hl-line-soft);border-radius:8px;background:var(--hl-surface,#08283e);color:var(--hl-text,#e8f6ff);cursor:pointer}
+.hl-locale-switch:focus-visible{outline:2px solid var(--hl-theme-accent,#00d4ff);outline-offset:3px}
+.hl-login-panel>.hl-locale-switch{align-self:flex-end;position:absolute;inset-block-start:12px;inset-inline-end:12px}
+.hl-login-panel{position:relative}
+.hl-entry-open .top-actions [data-hl-locale-switch],
+body[data-hl-locale-dialog-open] .top-actions [data-hl-locale-switch],
+body[data-hl-locale-dialog-open] .hl-portal-utility [data-hl-locale-switch],
+body[data-hl-locale-dialog-open] .hl-login [data-hl-locale-switch],
+dialog:not([data-hl-locale-active-dialog]) [data-hl-locale-switch]{display:none}
+.hl-locale-dialog-tools{display:flex;justify-content:flex-end;gap:8px;padding:8px}
+.hl-locale-announcement{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+@media(max-width:760px){
+ .top-actions>.hl-locale-switch,.hl-portal-utility>.hl-locale-switch{min-width:34px;padding:5px 6px;font-size:.7rem}
+ .hl-portal-topbar .hl-portal-utility{gap:5px}
+}

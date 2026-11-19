@@ -226,7 +226,8 @@
         "workflowId": 357187353,
         "path": ".github/workflows/web-validation.yml",
         "jobs": [
-          "validate"
+          "validate",
+          "screen-reader"
         ],
         "criticalSteps": {
           "validate": [
@@ -243,6 +244,10 @@
             "Booking participant review regression",
             "Browser E2E",
             "Phase 4 notification focused regression"
+          ],
+          "screen-reader": [
+            "Install native accessibility runtime",
+            "Actual Orca Arabic and English seven-portal acceptance"
           ]
         }
       }

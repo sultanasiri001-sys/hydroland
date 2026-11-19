@@ -94,3 +94,42 @@ jobs:
           path: apps/web/test-results/**/account-*.png
           if-no-files-found: ignore
           retention-days: 7
+      - name: Bilingual operational review screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bilingual-operational-review
+          path: apps/web/test-results/**/locale-*.png
+          if-no-files-found: ignore
+          retention-days: 14
+  screen-reader:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --workspace=@hydroland/web --include-workspace-root=true --ignore-scripts
+      - name: Install native accessibility runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends orca speech-dispatcher speech-dispatcher-espeak-ng espeak-ng pulseaudio pulseaudio-utils python3-pyatspi dbus-x11 xvfb xauth xdotool openbox
+          npx playwright install --with-deps chromium
+      - name: Actual Orca Arabic and English seven-portal acceptance
+        working-directory: apps/web
+        env:
+          HL_ORCA_EVIDENCE_DIR: ${{ github.workspace }}/artifacts/orca
+        run: dbus-run-session -- xvfb-run -a -s '-screen 0 1536x864x24' bash scripts/run-orca-acceptance.sh
+      - name: Retain native screen-reader evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-screen-reader-evidence-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            artifacts/orca/**
+            apps/web/test-results-orca/**
+          if-no-files-found: error
+          retention-days: 14

@@ -15,7 +15,7 @@ function fixture(kind) {
   const authObject={isAuthenticated:()=>state.authenticated};
   const document={addEventListener(event,callback){assert.equal(event,'click');state.callback=callback;},querySelector:()=>state.hasHost?host:null,getElementById:()=>({close(){state.events.push(['close']);}})};
   const window={matchMedia:()=>({matches:state.reduced}),HydrolandWorkspaceUI:{show(node){assert.equal(node,host);state.events.push(['show']);}}};
-  const context=vm.createContext({document,window,section:host,auth:kind==='certificates'?()=>authObject:authObject,toast:message=>state.events.push(['toast',message]),load:mode=>state.events.push(['load',mode])});
+  const context=vm.createContext({uiLocale:{t:value=>value,message:(source,values=[])=>source.replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token),setMessage:(node,value)=>(node.textContent=value??''),setText:(node,source,values=[])=>(node.textContent=source.replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token)),html:(parts,...values)=>parts.map((part,i)=>part+(i<values.length?String(values[i]??''):'')).join(''),setHTML:(node,value)=>(node.innerHTML=value),format:(source,values=[])=>source.replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token)},document,window,section:host,auth:kind==='certificates'?()=>authObject:authObject,toast:message=>state.events.push(['toast',message]),load:mode=>state.events.push(['load',mode])});
   vm.runInContext(helper+'\n'+handler,context);
   state.click=()=>state.callback({preventDefault(){state.events.push(['preventDefault']);},target:{closest:()=>state.matched?{closest:()=>state.instructor?{}:null}:null}});
   return {state,window};
