@@ -16,6 +16,11 @@ must also have an Orca speech-output record using the selected language voice.
 Because those diagnostics can be written before synthesis fails, the test also
 captures the dedicated native PulseAudio sink monitor. It waits for a quiet
 window before each focus and requires new non-silent PCM samples afterward.
+An ordinary native Control keystroke interrupts earlier page-load/live-region
+reading before that quiet window; speech remains enabled and the measured
+announcement must come from the subsequent actual control focus. The first CI
+candidate produced native audio but timed out draining automatic page reading,
+so that failed run is not an accepted control-announcement receipt.
 Per-control WAV excerpts, signal measurements and SHA-256 hashes are retained.
 Neither a DOM snapshot nor an authored expected string can produce this receipt:
 the suite does not call Orca's speech API or replace its event/speech backend.

@@ -156,7 +156,8 @@ test('support locale roundtrip retains the customer draft, source labels and sel
   await expect(page.locator('[data-support-admin-detail] h4')).toHaveText('بحث');
   await expect(page.locator('#opaque-description')).toHaveCount(0);
   await expect(form.locator('[type="submit"]')).toHaveText('Save action');
-  await expect(page.locator('#language')).toBeDisabled();
+  await expect(page.locator('[data-hl-locale-switch]:visible')).toHaveCount(1);
+  await expect(page.locator('[data-hl-locale-switch]:visible')).toBeEnabled();
   expect(await form.evaluate(node => node === window.supportLocaleForm)).toBe(true); expect(state.writes).toEqual([]);
   await page.evaluate(() => window.HydrolandI18n.setLocale('ar'));
   await expect(message).toBeFocused(); await expect(message).toHaveValue('بحث <مسودة العميل>');

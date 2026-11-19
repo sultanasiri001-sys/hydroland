@@ -30,7 +30,8 @@ async function setup(page, language, role, respond) {
   await openWorkspaceSwitcher(page);
   await page.locator('#role-dialog [data-role="' + role + '"]').click();
   await expect.poll(() => page.evaluate(() => window.HydrolandPortalAccess.getCurrentRole())).toBe(role);
-  await expect(page.locator('#language')).toBeDisabled();
+  await expect(page.locator('[data-hl-locale-switch]:visible')).toHaveCount(1);
+  await expect(page.locator('[data-hl-locale-switch]:visible')).toBeEnabled();
   return state;
 }
 

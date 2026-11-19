@@ -74,6 +74,10 @@ test('Orca announces controls across all seven portals with the selected languag
 
   async function announce(surface,name,locator){
     await expect(locator).toBeVisible();
+    // Interrupt the previous page-load/live-region reading with an ordinary
+    // desktop keystroke. This does not mute speech or inject an utterance; the
+    // measured focus starts only after the real monitor becomes quiet.
+    await run('xdotool',['key','--clearmodifiers','Control_L']);
     // Drain earlier announcements. Diagnostics alone can precede a failed
     // synthesis call, so each new focus also requires genuine native PCM output.
     await expect.poll(async()=>{
