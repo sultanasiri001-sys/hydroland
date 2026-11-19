@@ -5,6 +5,7 @@ import path from 'node:path';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {openWorkspaceSwitcher} from '../e2e/portal-test-helpers.js';
+import {createNativeStartupBarrier,nativeControlInterruption} from './orca-native-observation.mjs';
 
 const run=promisify(execFile);
 const locale=process.env.HL_ORCA_LOCALE;
@@ -68,19 +69,32 @@ test('Orca announces controls across all seven portals with the selected languag
     if(pathname.endsWith('/admin/employees'))return json(route,{initialized:false,departments:[],profiles:[],items:[],nextCursor:null,email:{enabled:false},google:{enabled:false}});
     return json(route,[]);
   });
+  const navigationLogOffset=(await readLog()).length;
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.HydrolandI18n&&window.HydrolandDiverDashboard&&window.HydrolandPortalFreshness&&window.HydrolandWorkspaceUI));
+  await page.waitForLoadState('load');
   await page.bringToFront();
+  const observeStartup=createNativeStartupBarrier({title:await page.title(),uri:page.url()});
+  let nativeStartup;
+  await expect.poll(async()=>{
+    nativeStartup=observeStartup((await readLog()).slice(navigationLogOffset),Date.now());
+    return Boolean(nativeStartup);
+  },{timeout:15_000,message:'Orca must process the loaded page before its startup reading is interrupted'}).toBe(true);
+  await writeFile(path.join(evidenceDir,'startup-'+locale+'.json'),JSON.stringify({sourceSha,sourceTree,locale,navigationLogOffset,...nativeStartup},null,2)+'\n');
 
   async function announce(surface,name,locator){
     await expect(locator).toBeVisible();
     // Interrupt the previous page-load/live-region reading with an ordinary
     // desktop keystroke. This does not mute speech or inject an utterance; the
     // measured focus starts only after the real monitor becomes quiet.
+    const interruptionOffset=(await readLog()).length;
     await run('xdotool',['key','--clearmodifiers','Control_L']);
     // Drain earlier announcements. Diagnostics alone can precede a failed
     // synthesis call, so each new focus also requires genuine native PCM output.
+    let interruption;
     await expect.poll(async()=>{
+      interruption=nativeControlInterruption((await readLog()).slice(interruptionOffset));
+      if(!interruption)return false;
       const end=await audioSize();if(end<19_200)return false;
       const metrics=audioMetrics(await readAudio(end-19_200,end));
       return metrics.rms<40&&metrics.peak<150;
@@ -113,7 +127,7 @@ test('Orca announces controls across all seven portals with the selected languag
     const clip=wav(pcm),clipName='speech-'+locale+'-'+surface+'.wav';
     await mkdir(evidenceDir,{recursive:true});
     await writeFile(path.join(evidenceDir,clipName),clip);
-    rows.push({surface,locale,name,utterance,audio:{file:clipName,sha256:createHash('sha256').update(clip).digest('hex'),format:'PCM16LE mono 16000Hz',startByte:audioStart,...signal},observedAt:new Date().toISOString()});
+    rows.push({surface,locale,name,utterance,interruption:{logOffset:interruptionOffset,...interruption},audio:{file:clipName,sha256:createHash('sha256').update(clip).digest('hex'),format:'PCM16LE mono 16000Hz',startByte:audioStart,...signal},observedAt:new Date().toISOString()});
   }
 
   async function selectLanguage(){
@@ -164,7 +178,7 @@ test('Orca announces controls across all seven portals with the selected languag
   expect(new Set(rows.filter(row=>!row.surface.endsWith('-search')).map(row=>row.surface)).size).toBe(7);
   expect(rows).toHaveLength(13);
   await mkdir(evidenceDir,{recursive:true});
-  const receipt={schemaVersion:1,scope:'Orca + Chromium Linux synthetic UI smoke; no device or human usability claim',locale,voice,sourceSha,sourceTree,browserVersion:page.context().browser().version(),rows,blockedExternal};
+  const receipt={schemaVersion:1,scope:'Orca + Chromium Linux synthetic UI smoke; no device or human usability claim',locale,voice,sourceSha,sourceTree,nativeStartup:{navigationLogOffset,...nativeStartup},browserVersion:page.context().browser().version(),rows,blockedExternal};
   const receiptPath=path.join(evidenceDir,'receipt-'+locale+'.json');
   await writeFile(receiptPath,JSON.stringify(receipt,null,2)+'\n');
   await testInfo.attach('orca-'+locale,{path:receiptPath,contentType:'application/json'});

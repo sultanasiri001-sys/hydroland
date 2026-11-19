@@ -8,7 +8,7 @@ function fixture(){
  const context={window:{},document,CustomEvent:class{}};vm.runInNewContext(source,context);
  const i18n=context.window.HydrolandI18n;
  const scope=i18n.createScope('boundary-test',{'عنوان':'Title','الاسم':'Name','إغلاق':'Close','جاهز':'Ready','تم حفظ {0}':'Saved {0}','أ & ب':'A & B'});
- return {i18n,scope};
+ return {i18n,scope,document};
 }
 test('authored HTML localizes literals while preserving opaque slots and exact attribute structure',()=>{
  const {i18n,scope}=fixture();i18n.setLocale('en');
@@ -58,4 +58,26 @@ test('mixed inline messages translate only branded source and nested source desc
  assert.equal(scope.messageHTML('عنوان <provider>'),'عنوان &lt;provider&gt;');
  assert.match(scope.messageHTML(scope.message('عنوان')),/>Title<!--\/hl-i18n-->/);
  const markup=scope.label('تم حفظ {0}',[scope.message('جاهز')]);assert.match(markup,/>Saved Ready<!--\/hl-i18n-->/);assert.match(decodeURIComponent(markup),/"scope":"boundary-test","source":"جاهز"/);
+});
+
+test('whitespace-bearing authored keys interpolate and rebind their values without losing the exact catalog key',()=>{
+ const {i18n,document}=fixture();
+ const scope=i18n.createScope('inline-spacing',{' · يرفع إلى {0}':' · Reports to {0}',' · التكليفات التدريبية: {0}':' · Training assignments: {0}','جاهز':'Ready'});
+ const markup=scope.messageHTML(scope.message(' · يرفع إلى {0}',['جاهز']));
+ assert.match(markup,/> · يرفع إلى جاهز<!--\/hl-i18n-->$/);
+ assert.match(scope.label(' · التكليفات التدريبية: {0}',[4]),/> · التكليفات التدريبية: 4<!--\/hl-i18n-->$/);
+ const marker=markup.match(/^<!--(.*?)-->/)[1],text={nodeType:3,nodeValue:' · يرفع إلى جاهز',isConnected:true,nextSibling:{nodeType:8,nodeValue:'/hl-i18n'}};
+ let next={nodeType:8,nodeValue:marker,nextSibling:text};document.createTreeWalker=()=>({nextNode(){const node=next;next=null;return node}});
+ scope.bind({querySelectorAll:()=>[]});i18n.setLocale('en');assert.equal(text.nodeValue,' · Reports to جاهز');
+ assert.match(scope.label(' · التكليفات التدريبية: {0}',[4]),/> · Training assignments: 4<!--\/hl-i18n-->$/);
+ i18n.setLocale('ar');assert.equal(text.nodeValue,' · يرفع إلى جاهز');
+});
+
+test('exact authored whitespace keys take precedence while surrounding layout whitespace remains intact',()=>{
+ const {i18n}=fixture();const scope=i18n.createScope('spacing-precedence',{'عنوان':'Title',' عنوان ':' Exact title '});i18n.setLocale('en');
+ assert.match(scope.html`<button title=" عنوان "> عنوان </button>`,/title=" Exact title "/);
+ assert.match(scope.label(' عنوان '),/> Exact title <!--\/hl-i18n-->$/);
+ assert.match(scope.label('\nعنوان\n'),/>\nTitle\n<!--\/hl-i18n-->$/);
+ assert.match(scope.attribute('aria-label',' عنوان '),/^aria-label=" Exact title " data-hl-i18n-aria-label=/);
+ assert.match(scope.attribute('aria-label','\nعنوان\n'),/^aria-label="\nTitle\n" data-hl-i18n-aria-label=/);
 });

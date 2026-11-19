@@ -7,6 +7,7 @@ on:
       - 'apps/web/**'
       - 'package.json'
       - 'package-lock.json'
+      - 'scripts/web-browser-evidence*.mjs'
       - '.github/workflows/web-validation.yml'
   push:
     branches: [main]
@@ -20,7 +21,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Record browser validation source
+        env:
+          HL_REQUESTED_PR_HEAD: ${{ github.event.pull_request.head.sha || '' }}
+        run: node scripts/web-browser-evidence.mjs source artifacts/browser-validation/source-receipt.json
       - run: npm ci --workspace=@hydroland/web --include-workspace-root=true --ignore-scripts
+      - name: Browser execution evidence contracts
+        run: node --test scripts/web-browser-evidence.test.mjs
       - name: Static web validation
         run: npm run test -w @hydroland/web
       - name: Production web build
@@ -45,6 +52,12 @@ jobs:
         run: npm run test:e2e -w @hydroland/web -- admin-account-lifecycle.spec.js admin-employee-onboarding.spec.js admin-agent-runtime.spec.js marketing-campaign-drafts.spec.js warehouse-locations.spec.js hr-control-review.spec.js approved-portal-rebuild.spec.js booking-safety-control.spec.js center-team-review.spec.js portal-action-authorization.spec.js --output=test-results-admin-accounts
       - name: Center workflow focused regression
         run: npm run test:e2e -w @hydroland/web -- center-navigation.spec.js store-offerings.spec.js center-reports.spec.js center-training-entry.spec.js portal-selection-reload.spec.js --output=test-results-center-navigation
+      - name: Center scoped search browser acceptance
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ github.workspace }}/artifacts/browser-validation/center-scoped-search.json
+        run: npm run test:e2e -w @hydroland/web -- center-scoped-search.spec.js --reporter=dot,json --output=test-results-center-scoped-search
+      - name: Verify center scoped search execution evidence
+        run: node scripts/web-browser-evidence.mjs verify artifacts/browser-validation/center-scoped-search.json artifacts/browser-validation/source-receipt.json center-scoped-search.spec.js 4
       - name: Organization portal focused regression
         run: npm run test:e2e -w @hydroland/web -- organization-portal.spec.js --output=test-results-organization
       - name: Professional training completion regression
@@ -54,10 +67,29 @@ jobs:
       - name: Booking participant review regression
         run: npm run test:e2e -w @hydroland/web -- booking-participant-review.spec.js --output=test-results-booking-review
       - name: Browser E2E
-        run: npm run test:e2e -w @hydroland/web
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ github.workspace }}/artifacts/browser-validation/browser-e2e.json
+        run: npm run test:e2e -w @hydroland/web -- --reporter=dot,json
+      - name: Verify full browser execution evidence
+        run: node scripts/web-browser-evidence.mjs verify artifacts/browser-validation/browser-e2e.json artifacts/browser-validation/source-receipt.json
       - name: Phase 4 notification focused regression
         # Keep the full-suite test-results directory intact for the visual-review artifact steps below.
         run: npm run test:e2e -w @hydroland/web -- safety-notifications.spec.js --output=test-results-focused
+      - name: Retain browser execution evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-browser-evidence-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/browser-validation/*.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Retain incomplete browser execution evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-browser-incomplete-evidence-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/browser-validation/*.json
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Retain browser failure diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
@@ -104,7 +136,7 @@ jobs:
           retention-days: 14
   screen-reader:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 40
     permissions:
       contents: read
     steps:
@@ -112,6 +144,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Record native screen-reader source
+        env:
+          HL_REQUESTED_PR_HEAD: ${{ github.event.pull_request.head.sha || '' }}
+        run: node scripts/web-browser-evidence.mjs source artifacts/orca/source-receipt.json
       - run: npm ci --workspace=@hydroland/web --include-workspace-root=true --ignore-scripts
       - name: Install native accessibility runtime
         run: |

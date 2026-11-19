@@ -199,6 +199,13 @@
   const authoredMessages=new WeakMap();
   const own=(object,key)=>Object.prototype.hasOwnProperty.call(object,key);
   const translate=(source,scope='navigation')=>{const catalog=catalogs.get(scope);return locale==='en'&&catalog&&own(catalog,source)?catalog[source]:source};
+  function catalogMessage(raw,scope){
+    const catalog=catalogs.get(scope);if(!catalog)return null;
+    // Inline authored messages may deliberately include their separator space.
+    // Preserve that exact key before considering whitespace around a literal.
+    if(own(catalog,raw))return {scope,source:raw,leading:'',trailing:''};
+    const source=raw.trim();return own(catalog,source)?{scope,source,leading:raw.match(/^\s*/)[0],trailing:raw.match(/\s*$/)[0]}:null;
+  }
   // Parameters are opaque display values. A value that matches another source
   // key is still data and must never be looked up in a catalog.
   const format=(source,values=[],scope='navigation')=>String(translate(source,scope)).replace(/\{(\d+)\}/g,(token,index)=>Number(index)<values.length?String(values[Number(index)]??''):token);
@@ -233,10 +240,8 @@
     if(typeof raw!=='string')return;
     const slots=byNode.get(node),existing=slots?.get(attribute||'text');
     if(existing&&existing.scope===scope&&bindings.has(existing)&&raw===existing.last){renderBinding(existing);return}
-    const source=raw.trim();
-    const catalog=catalogs.get(scope);if(!catalog||!own(catalog,source))return;
-    const leading=raw.match(/^\s*/)[0],trailing=raw.match(/\s*$/)[0];
-    const binding={node,attribute,scope,source,leading,trailing,last:raw};
+    const message=catalogMessage(raw,scope);if(!message)return;
+    const binding={node,attribute,...message,last:raw};
     const next=slots||new Map();next.set(attribute||'text',binding);byNode.set(node,next);
     if(existing)bindings.delete(existing);bindings.add(binding);renderBinding(binding,false);
   }
@@ -330,7 +335,7 @@
     const split=value.indexOf('|');if(split<1)return null;
     const scope=value.slice(0,split),parts=value.slice(split+1).split('|');let raw,values=[];
     try{raw=decodeURIComponent(parts[0]);if(parts.length>1){values=JSON.parse(decodeURIComponent(parts[1]));if(!Array.isArray(values)||parts.length!==2)return null;values=values.map(value=>readParameter(value))}}catch{return null}
-    const source=raw.trim();return catalogs.has(scope)&&own(catalogs.get(scope),source)?{scope,source,values,leading:raw.match(/^\s*/)[0],trailing:raw.match(/\s*$/)[0]}:null;
+    const message=catalogMessage(raw,scope);return message?{...message,values}:null;
   }
   function bindAuthoredValue(node,attribute,message,values=message.values||[]){
     const raw=attribute?node.getAttribute(attribute):node.nodeValue;
@@ -361,10 +366,8 @@
     }
   }
   function authoredText(raw,scope,values=[]){
-    const decoded=decodeText(raw),source=decoded.trim(),catalog=catalogs.get(scope);
-    if(!catalog||!own(catalog,source))return raw;
-    const leading=decoded.match(/^\s*/)[0],trailing=decoded.match(/\s*$/)[0];
-    return '<!--'+markupPrefix+markerValue(scope,decoded,values)+'-->'+escapeText(leading+format(source,values,scope)+trailing)+'<!--/hl-i18n-->';
+    const decoded=decodeText(raw),message=catalogMessage(decoded,scope);if(!message)return raw;
+    return '<!--'+markupPrefix+markerValue(scope,decoded,values)+'-->'+escapeText(message.leading+format(message.source,values,scope)+message.trailing)+'<!--/hl-i18n-->';
   }
   function authoredTag(tag,scope,slotPattern){
     if(/^<\//.test(tag)||/^<!|^<\?/.test(tag))return tag;
@@ -383,10 +386,10 @@
       const valueStart=++cursor;while(cursor<tag.length&&tag[cursor]!==quote)cursor++;
       const raw=tag.slice(valueStart,cursor);cursor++;
       if(!allowedAttributes.includes(name)||slotPattern.test(raw))continue;
-      const decoded=decodeText(raw),source=decoded.trim();
-      if(!own(catalogs.get(scope),source))continue;
+      const decoded=decodeText(raw),message=catalogMessage(decoded,scope);
+      if(!message)continue;
       markers.push(' data-hl-i18n-'+name+'="'+escapeAttribute(markerValue(scope,decoded))+'"');
-      edits.push({start:valueStart,end:cursor-1,value:escapeAttribute(decoded.match(/^\s*/)[0]+translate(source,scope)+decoded.match(/\s*$/)[0])});
+      edits.push({start:valueStart,end:cursor-1,value:escapeAttribute(message.leading+translate(message.source,scope)+message.trailing)});
     }
     let next=tag;for(const edit of edits.reverse())next=next.slice(0,edit.start)+edit.value+next.slice(edit.end);
     return markers.length?next.replace(/\/?\s*>$/,ending=>markers.join('')+ending):next;
@@ -435,8 +438,8 @@
       label:(source,values=[])=>authoredText(escapeText(source??''),scope,values),
       attribute:(name,source,values=[])=>{
         if(!allowedAttributes.includes(name))throw new TypeError('Unsupported localized attribute');
-        const raw=String(source??''),value=escapeAttribute(format(raw,values,scope));
-        return name+'="'+value+'"'+(own(catalogs.get(scope),raw.trim())?' data-hl-i18n-'+name+'="'+escapeAttribute(markerValue(scope,raw,values))+'"':'');
+        const raw=String(source??''),message=catalogMessage(raw,scope),value=escapeAttribute(message?message.leading+format(message.source,values,scope)+message.trailing:format(raw,values,scope));
+        return name+'="'+value+'"'+(message?' data-hl-i18n-'+name+'="'+escapeAttribute(markerValue(scope,raw,values))+'"':'');
       },
       format:(source,values=[])=>format(source,values,scope),
       message,
