@@ -15,6 +15,7 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
    if(path.endsWith('/maps/public-config'))return json(route,{enabled:false,status:'NOT_SELECTED'});
    if(path.endsWith('/weather/public-config'))return json(route,{configured:false,status:'NOT_SELECTED'});
    if(path.endsWith('/admin/employees'))return json(route,{initialized:false,departments:[],profiles:[],items:[],nextCursor:null,email:{enabled:false},google:{enabled:false}});
+   if(path.endsWith('/customer-service/admin/cases'))return json(route,{items:[],total:0,page:1,pageSize:20});
    return json(route,[]);
   });
   await page.goto('/',{waitUntil:'domcontentloaded'});
@@ -40,11 +41,14 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
      expect(content.y+content.height,`${selector} must not be clipped`).toBeLessThanOrEqual(hero.y+hero.height);
     }
    }
-   const baseActions=role==='admin'?12:['organization','boat'].includes(role)?10:6;
+   const baseActions=role==='admin'?13:['organization','boat'].includes(role)?10:6;
    const contractAccess=['instructor','center','admin'].includes(role);
    const documentAccess=role==='admin';
    await expect(board.locator(role==='diver'?'.hl-diver-action-grid>button':'.hl-command-grid>button')).toHaveCount(baseActions+(contractAccess?2:0)+(documentAccess?1:0));
    await expect(board.locator('[data-admin-documents-entry]')).toHaveCount(documentAccess?2:0);
+   const supportEntry=board.locator('[data-action-label="خدمة العملاء"]');
+   await expect(supportEntry).toHaveCount(role==='admin'?1:0);
+   if(role==='admin'){await expect(supportEntry).toBeEnabled();await expect(supportEntry).toHaveAttribute('data-hl-route','support');}
    if(documentAccess)for(const position of ['quick','sidebar']){
     const entry=board.locator(`[data-admin-documents-entry="${position}"]`);
     await expect(entry).toHaveCount(1);await expect(entry).toBeEnabled();
@@ -56,6 +60,10 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
    await expect(page.locator('#toast')).not.toHaveClass(/visible/);
    await page.screenshot({path:testInfo.outputPath(`portal-${role}-${viewport.name}.png`),fullPage:true});
    if(role==='admin'){
+    await supportEntry.click();
+    await expect(page.locator('.hl-support [data-support-admin]')).toBeVisible();
+    await expect(page.locator('[data-support-admin-list]')).toHaveText('لا توجد تذاكر في صندوق خدمة العملاء.');
+    await board.locator('[data-portal-home]').click();await expect(board.locator('.hl-portal-content')).toBeVisible();await expect(page.locator('.hl-support')).toBeHidden();
     const employees=board.locator('[data-action-label="إدارة الموظفين"]');await expect(employees).toBeEnabled();await expect(employees).toHaveAttribute('data-hl-route','admin-employees');await employees.click();
     await expect(page.locator('#hl-admin-employees')).toBeVisible();await expect(page.getByRole('heading',{name:'تهيئة الهيكل الداخلي',exact:true})).toBeVisible();
     await board.locator('[data-portal-home]').click();await expect(board.locator('.hl-portal-content')).toBeVisible();await expect(page.locator('#hl-admin-employees')).toBeHidden();
