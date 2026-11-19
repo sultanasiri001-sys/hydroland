@@ -53,17 +53,51 @@ export class EquipmentRentalHandoverService{
     return this.summary(id,result);
   }
 
-  async scan(actorAccountId:string,id:string,input:{code?:string}){
-    const code=input.code?.trim();if(!code)throw new BadRequestException('Barcode or QR code is required for handover.');
-    const rentals=await this.db.$queryRaw<Rental[]>`SELECT "id","renterAccountId","status","paymentStatus","invoiceNumber","paidAt" FROM "EquipmentRental" WHERE "id"=${id} LIMIT 1`;
-    const rental=rentals[0];if(!rental)throw new NotFoundException('Rental not found.');if(rental.paymentStatus!=='PAID')throw new ConflictException('Rental must be paid before equipment handover.');if(!['RESERVED','ACTIVE'].includes(rental.status))throw new ConflictException('Rental is not open for equipment handover.');
-    const equipment=await this.db.$queryRaw<Array<{resourceId:string;assetCode:string;stockStatus:string;location:string|null}>>`SELECT "resourceId","assetCode","stockStatus","location" FROM "EquipmentBarcode" WHERE "barcodeValue"=${code} OR "qrValue"=${code} OR "assetCode"=${code} OR "serialNumber"=${code} LIMIT 1`;
-    const asset=equipment[0];if(!asset)throw new NotFoundException('Equipment code not found.');
-    const items=await this.db.$queryRaw<Item[]>`SELECT "id","resourceId","assetCodeSnapshot","equipmentNameSnapshot","handedOverAt","returnedAt" FROM "EquipmentRentalItem" WHERE "rentalId"=${id} ORDER BY "createdAt"`;
-    const item=items.find((row:Item)=>row.resourceId===asset.resourceId);if(!item)throw new ConflictException('Scanned equipment does not belong to this rental.');if(item.handedOverAt)return this.summary(id,'ALREADY_HANDED_OVER',item.resourceId);
-    const readiness=await this.inspections.evaluate([item.resourceId]);if(readiness.blocked)throw new ConflictException('Equipment inspection or service policy blocks rental handover.');
-    await this.db.serializable(async tx=>{const locked=await tx.$queryRaw<Array<{stockStatus:string;location:string|null}>>`SELECT "stockStatus","location" FROM "EquipmentBarcode" WHERE "resourceId"=${item.resourceId} FOR UPDATE`;if(locked[0]?.stockStatus!=='AVAILABLE')throw new ConflictException(`${item.assetCodeSnapshot} is not available for handover.`);await tx.$executeRaw`UPDATE "EquipmentRentalItem" SET "handedOverAt"=NOW() WHERE "id"=${item.id} AND "handedOverAt" IS NULL`;await tx.$executeRaw`INSERT INTO "EquipmentMovement"("id","resourceId","movementType","fromLocation","toLocation","tripId","assignedAccountId","notes","actorAccountId","occurredAt") VALUES(gen_random_uuid()::text,${item.resourceId},'CHECK_OUT',${locked[0].location},NULL,NULL,${rental.renterAccountId},${`Rental handover ${rental.invoiceNumber}`},${actorAccountId},NOW())`;await tx.$executeRaw`UPDATE "EquipmentBarcode" SET "stockStatus"='CHECKED_OUT',"updatedAt"=NOW() WHERE "resourceId"=${item.resourceId}`;const pending=await tx.$queryRaw<Array<{count:bigint}>>`SELECT COUNT(*)::bigint AS "count" FROM "EquipmentRentalItem" WHERE "rentalId"=${id} AND "handedOverAt" IS NULL`;if(Number(pending[0]?.count||0)===0)await tx.$executeRaw`UPDATE "EquipmentRental" SET "status"='ACTIVE',"updatedAt"=NOW() WHERE "id"=${id}`;});
-    const result=await this.summary(id,'HANDED_OVER',item.resourceId);await this.audit.record({actorId:actorAccountId,action:'EQUIPMENT_RENTAL_ITEM_HANDED_OVER',resource:'EquipmentRental',resourceId:id,metadata:{invoiceNumber:rental.invoiceNumber,resourceId:item.resourceId,assetCode:item.assetCodeSnapshot,handedOverCount:result.handedOverCount,pendingHandoverCount:result.pendingHandoverCount,inspectionStates:readiness.states}});if(result.pendingHandoverCount===0)await this.notifications.notify(rental.renterAccountId,'EQUIPMENT_RENTAL_HANDED_OVER',{title:'تم استلام معدات التأجير',invoiceNumber:rental.invoiceNumber,rentalId:id,message:'تم تسليم جميع معدات التأجير لك وتفعيل الإيجار.'});return result;
+  async scan(actorAccountId: string, id: string, input: {code?: string}) {
+    const code = input.code?.trim();
+    if (!code) throw new BadRequestException('Barcode or QR code is required for handover.');
+    const outcome = await this.db.serializable(async tx => {
+      // Serialize all scans for a rental, including replay and its final completion notice.
+      const [rental] = await tx.$queryRaw<Rental[]>`
+        SELECT "id","renterAccountId","status","paymentStatus","invoiceNumber","paidAt"
+        FROM "EquipmentRental" WHERE "id"=${id} FOR UPDATE`;
+      if (!rental) throw new NotFoundException('Rental not found.');
+      if (rental.paymentStatus !== 'PAID') throw new ConflictException('Rental must be paid before equipment handover.');
+      if (!['RESERVED','ACTIVE'].includes(rental.status)) throw new ConflictException('Rental is not open for equipment handover.');
+
+      const [asset] = await tx.$queryRaw<Array<{resourceId:string;stockStatus:string;location:string|null}>>`
+        SELECT "resourceId","stockStatus","location" FROM "EquipmentBarcode"
+        WHERE "barcodeValue"=${code} OR "qrValue"=${code} OR "assetCode"=${code} OR "serialNumber"=${code}
+        LIMIT 1 FOR UPDATE`;
+      if (!asset) throw new NotFoundException('Equipment code not found.');
+      const [item] = await tx.$queryRaw<Item[]>`
+        SELECT "id","resourceId","assetCodeSnapshot","equipmentNameSnapshot","handedOverAt","returnedAt"
+        FROM "EquipmentRentalItem" WHERE "rentalId"=${id} AND "resourceId"=${asset.resourceId} FOR UPDATE`;
+      if (!item) throw new ConflictException('Scanned equipment does not belong to this rental.');
+      if (item.handedOverAt) return {result:'ALREADY_HANDED_OVER',resourceId:item.resourceId};
+      if (asset.stockStatus !== 'AVAILABLE') throw new ConflictException(`${item.assetCodeSnapshot} is not available for handover.`);
+      const readiness = await this.inspections.evaluate([item.resourceId], tx);
+      if (readiness.blocked) throw new ConflictException('Equipment inspection or service policy blocks rental handover.');
+
+      await tx.$executeRaw`UPDATE "EquipmentRentalItem" SET "handedOverAt"=NOW() WHERE "id"=${item.id}`;
+      await tx.$executeRaw`
+        INSERT INTO "EquipmentMovement"("id","resourceId","movementType","fromLocation","toLocation","tripId","assignedAccountId","notes","actorAccountId","occurredAt")
+        VALUES(gen_random_uuid()::text,${item.resourceId},'CHECK_OUT',${asset.location},NULL,NULL,${rental.renterAccountId},${`Rental handover ${rental.invoiceNumber}`},${actorAccountId},NOW())`;
+      await tx.$executeRaw`UPDATE "EquipmentBarcode" SET "stockStatus"='CHECKED_OUT',"updatedAt"=NOW() WHERE "resourceId"=${item.resourceId}`;
+      const [counts] = await tx.$queryRaw<Array<{itemCount:number;handedOverCount:number}>>`
+        SELECT COUNT(*)::int AS "itemCount",COUNT("handedOverAt")::int AS "handedOverCount"
+        FROM "EquipmentRentalItem" WHERE "rentalId"=${id}`;
+      const pendingHandoverCount = counts.itemCount - counts.handedOverCount;
+      if (pendingHandoverCount === 0) {
+        await tx.$executeRaw`UPDATE "EquipmentRental" SET "status"='ACTIVE',"updatedAt"=NOW() WHERE "id"=${id}`;
+      }
+      await this.audit.record({actorId:actorAccountId,action:'EQUIPMENT_RENTAL_ITEM_HANDED_OVER',resource:'EquipmentRental',resourceId:id,metadata:{invoiceNumber:rental.invoiceNumber,resourceId:item.resourceId,assetCode:item.assetCodeSnapshot,handedOverCount:counts.handedOverCount,pendingHandoverCount,inspectionStates:readiness.states}},tx);
+      if (pendingHandoverCount === 0) {
+        await this.notifications.notify(rental.renterAccountId,'EQUIPMENT_RENTAL_HANDED_OVER',{title:'تم استلام معدات التأجير',invoiceNumber:rental.invoiceNumber,rentalId:id,message:'تم تسليم جميع معدات التأجير لك وتفعيل الإيجار.'},tx);
+      }
+      return {result:'HANDED_OVER',resourceId:item.resourceId};
+    });
+    return this.summary(id,outcome.result,outcome.resourceId);
   }
 
   async summary(id:string,result='SUMMARY',resourceId?:string){const rentals=await this.db.$queryRaw<Rental[]>`SELECT "id","renterAccountId","status","paymentStatus","invoiceNumber","paidAt" FROM "EquipmentRental" WHERE "id"=${id} LIMIT 1`;if(!rentals[0])throw new NotFoundException('Rental not found.');const items=await this.db.$queryRaw<Item[]>`SELECT "id","resourceId","assetCodeSnapshot","equipmentNameSnapshot","handedOverAt","returnedAt" FROM "EquipmentRentalItem" WHERE "rentalId"=${id} ORDER BY "createdAt"`;const handedOverCount=items.filter((item:Item)=>item.handedOverAt).length;return{result,resourceId:resourceId||null,rentalId:id,invoiceNumber:rentals[0].invoiceNumber,status:rentals[0].status,paymentStatus:rentals[0].paymentStatus,itemCount:items.length,handedOverCount,pendingHandoverCount:items.length-handedOverCount,items};}
