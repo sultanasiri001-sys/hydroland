@@ -18,7 +18,7 @@ export interface DocumentPrintContract {
   contentHash:string;
   branding:{brandVersion:number;logoUrl:string|null;logoAssetId:string|null;brandNameAr:string|null;brandNameEn:string|null;footerAr:string|null;footerEn:string|null};
   template:{id:string;code:string;titleAr:string;titleEn:string;version:number;printable:boolean};
-  fields:Array<{key:string;labelAr:string;labelEn:string;type:string;required:boolean;options?:string[];value:unknown}>;
+  fields:Array<{key:string;labelAr:string;labelEn:string;type:string;required:boolean;options?:string[];contentAr?:string;contentEn?:string;value:unknown}>;
   approvals:{createdByAccountId:string;approvedByAccountId:string|null;signedByAccountId:string|null;archivedByAccountId:string|null;approvedAt:Date|null;signedAt:Date|null;archivedAt:Date|null};
   createdAt:Date;
   updatedAt:Date;
@@ -78,7 +78,8 @@ export class DocumentPrintService {
       type:String(f.type??'TEXT'),
       required:Boolean(f.required),
       ...(Array.isArray(f.options)?{options:f.options.map(String)}:{}),
-      value:payload[String(f.key??'')]??null,
+      ...(f.type==='STATEMENT'?{contentAr:String(f.contentAr??''),contentEn:String(f.contentEn??'')}:{}),
+      value:f.type==='STATEMENT'?String(f.contentAr??f.contentEn??''):payload[String(f.key??'')]??null,
     }));
     if(sources){
       const sourceFields=sourcePrintFields(sources),identity=sourceFields.filter(f=>f.labelEn==='fullName'||f.labelEn.endsWith('.fullName'));

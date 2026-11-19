@@ -26,7 +26,7 @@ export function validateDocumentPayload(definition: unknown, value: unknown): as
   try { bytes = Buffer.byteLength(JSON.stringify(value)); }
   catch { throw new BadRequestException('Document data is not valid JSON.'); }
   if (bytes > 128_000) throw new BadRequestException('Document data exceeds 128000 bytes.');
-  const allowed = new Set(fields.map(field => field.key));
+  const allowed = new Set(fields.filter(field=>!['SECTION','STATEMENT'].includes(field.type)).map(field => field.key));
   if (Object.hasOwn(value,PLATFORM_SOURCE_KEY)) {
     let snapshot;
     try { snapshot=sourceSnapshot(value); } catch { throw new BadRequestException('Invalid server-owned document source evidence.'); }
@@ -39,6 +39,7 @@ export function validateDocumentPayload(definition: unknown, value: unknown): as
     if (unsafeKeys.has(key) || !allowed.has(key)) throw new BadRequestException(`Unknown document field: ${key}`);
   }
   for (const field of fields) {
+    if(['SECTION','STATEMENT'].includes(field.type))continue;
     const item = value[field.key];
     const empty = item === undefined || item === null || typeof item === 'string' && !item.trim();
     if (empty) {

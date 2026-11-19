@@ -1,21 +1,35 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { ManagedDocumentStatus, Prisma } from '@prisma/client';
-import { createHash } from 'node:crypto';
+import { DocumentTemplate, ManagedDocumentStatus, Prisma } from '@prisma/client';
+import { createHash, randomUUID } from 'node:crypto';
 import { PDFDocument } from 'pdf-lib';
 import { DatabaseService } from '../database/database.service';
 import { DocumentAuthorizationService } from './document-authorization.service';
 import { COOPERATION_CODE } from './cooperation-contract.domain';
 import { isLibraryCode, LIBRARY_PREFIX } from './contract-library.domain';
 import { DOCUMENT_DEPARTMENTS } from './document-form.domain';
-import { templateObject, templateText, templateFields, assertCompatibleTemplateFields } from './document-template-input';
+import { templateObject, templateText, templateFields, assertCompatibleTemplateFields, CUSTOM_TEMPLATE_PREFIX, isCustomTemplateCode } from './document-template-input';
 import { validateDocumentPayload } from './document-payload';
 import { PlatformDocumentSourceService } from './platform-document-source.service';
 import { PLATFORM_SOURCE_KEY, sourceDigest } from './platform-document-source.domain';
 
-type Field={key:string;labelAr:string;labelEn:string;type:string;required:boolean;options?:string[]};
+type Field={key:string;labelAr:string;labelEn:string;type:string;required:boolean;options?:string[];contentAr?:string;contentEn?:string};
 @Injectable()
 export class DocumentPersistenceService {
   constructor(private readonly db: DatabaseService, private readonly authz: DocumentAuthorizationService, private readonly sources: PlatformDocumentSourceService) {}
+
+  private customContentHash(template:DocumentTemplate,payload:Record<string,unknown>){
+    // Fixed acknowledgment/waiver text is part of the signed content, even
+    // though it is not an answer field in the document payload.
+    return 'sha256:'+sourceDigest({templateId:template.id,templateVersion:template.version,
+      definition:{department:template.department,titleAr:template.titleAr,titleEn:template.titleEn,printable:template.printable,fields:template.fields},payload});
+  }
+
+  private async auditCustomTemplate(tx:Prisma.TransactionClient,accountId:string,template:DocumentTemplate,previous?:DocumentTemplate){
+    const actor=await tx.account.findUniqueOrThrow({where:{id:accountId},select:{personId:true}});
+    const schemaHash='sha256:'+sourceDigest({department:template.department,titleAr:template.titleAr,titleEn:template.titleEn,printable:template.printable,fields:template.fields});
+    await tx.auditEvent.create({data:{actorId:actor.personId,action:previous?'DOCUMENT_CUSTOM_TEMPLATE_PUBLISHED':'DOCUMENT_CUSTOM_TEMPLATE_CREATED',resource:'DocumentTemplate',resourceId:template.id,
+      metadata:{schemaVersion:1,actorAccountId:accountId,organizationId:template.organizationId,templateId:template.id,code:template.code,templateVersion:template.version,schemaHash,previousTemplateId:previous?.id??null,previousVersion:previous?.version??null}}});
+  }
 
   private clientPayload(payload:unknown) {
     if(!payload||typeof payload!=='object'||Array.isArray(payload)||![Object.prototype,null].includes(Object.getPrototypeOf(payload))||Object.hasOwn(payload,PLATFORM_SOURCE_KEY))throw new BadRequestException('تختار مراجع المصدر فقط؛ بياناته تُقرأ من المنصة ولا يقبل إدخال نسخة منها.');
@@ -66,16 +80,27 @@ export class DocumentPersistenceService {
     return {attachment,bytes};
   }
 
-  async createTemplate(accountId:string,input:{organizationId:string;code:string;titleAr:string;titleEn:string;department:string;fields:Field[];printable?:boolean}){
+  async createCustomTemplate(accountId:string,input:{organizationId:string;titleAr:string;titleEn:string;department:string;fields:Field[];printable?:boolean}){
+    templateObject(input,['organizationId','titleAr','titleEn','department','fields','printable']);
+    return this.createTemplate(accountId,{...input,code:CUSTOM_TEMPLATE_PREFIX+randomUUID().replaceAll('-','').toUpperCase()},true);
+  }
+
+  async createTemplate(accountId:string,input:{organizationId:string;code:string;titleAr:string;titleEn:string;department:string;fields:Field[];printable?:boolean},custom=false){
     templateObject(input,['organizationId','code','titleAr','titleEn','department','fields','printable']);
     if(typeof input.organizationId!=='string'||!input.organizationId.trim())throw new BadRequestException('Organization scope is required.');
     await this.authz.assert(accountId,input.organizationId,'TEMPLATE_CREATE');
     if(input.code===COOPERATION_CODE||isLibraryCode(String(input.code??'').trim().toUpperCase())) throw new ForbiddenException('نموذج العقد محكوم بمكتبة العقود ومسار التوقيع.');
     const code=templateText(input.code,'Template code');
+    if(code.startsWith(CUSTOM_TEMPLATE_PREFIX)&&(!custom||!isCustomTemplateCode(code)))throw new ForbiddenException('Custom template codes are allocated by the custom-template endpoint.');
     if(code===COOPERATION_CODE||isLibraryCode(code))throw new ForbiddenException('استخدم مسار العقود المتخصص.');
     if(!/^[A-Z][A-Z0-9-]{0,99}$/.test(code)||!DOCUMENT_DEPARTMENTS.includes(input.department as never))throw new BadRequestException('Invalid template code or department.');
     const titleAr=templateText(input.titleAr,'Arabic title'),titleEn=templateText(input.titleEn,'English title'),fields=templateFields(input.fields);
-    return this.db.serializable(async tx=>{await this.authz.assert(accountId,input.organizationId,'TEMPLATE_CREATE',tx);return tx.documentTemplate.create({data:{organizationId:input.organizationId,code,titleAr,titleEn,department:input.department,fields:fields as never,printable:input.printable!==false}});});
+    return this.db.serializable(async tx=>{
+      await this.authz.assert(accountId,input.organizationId,'TEMPLATE_CREATE',tx);
+      const template=await tx.documentTemplate.create({data:{organizationId:input.organizationId,code,titleAr,titleEn,department:input.department,fields:fields as never,printable:input.printable!==false}});
+      if(custom)await this.auditCustomTemplate(tx,accountId,template);
+      return template;
+    });
   }
 
   async updateTemplate(accountId:string,id:string,input:{titleAr?:string;titleEn?:string;fields?:Field[];printable?:boolean}){
@@ -88,13 +113,17 @@ export class DocumentPersistenceService {
     const titleAr=templateText(input.titleAr??current.titleAr,'Arabic title');
     const titleEn=templateText(input.titleEn??current.titleEn,'English title');
     const fields=templateFields(input.fields??current.fields);
-    assertCompatibleTemplateFields(current.fields,fields);
+    // Only server-allocated custom forms have no catalog binding to migrate.
+    // Prior documents keep their immutable template row, including its schema.
+    if(!isCustomTemplateCode(current.code))assertCompatibleTemplateFields(current.fields,fields);
     return this.db.serializable(async tx=>{
       await this.authz.assert(accountId,current.organizationId,'TEMPLATE_UPDATE',tx);
       const latest=await tx.documentTemplate.findUnique({where:{id}});
       if(!latest||latest.status!=='ACTIVE'||latest.version!==current.version) throw new BadRequestException('Template changed concurrently; reload before revising.');
       await tx.documentTemplate.update({where:{id},data:{status:'INACTIVE'}});
-      return tx.documentTemplate.create({data:{organizationId:current.organizationId,code:current.code,titleAr,titleEn,department:current.department,version:current.version+1,status:'ACTIVE',printable:input.printable??current.printable,fields:fields as never}});
+      const template=await tx.documentTemplate.create({data:{organizationId:current.organizationId,code:current.code,titleAr,titleEn,department:current.department,version:current.version+1,status:'ACTIVE',printable:input.printable??current.printable,fields:fields as never}});
+      if(isCustomTemplateCode(template.code))await this.auditCustomTemplate(tx,accountId,template,current);
+      return template;
     });
   }
 
@@ -120,7 +149,7 @@ export class DocumentPersistenceService {
       const source=input.sourceBinding===undefined?null:await this.sources.capture(tx,accountId,input.organizationId,live.fields,input.sourceBinding);
       const payload=input.sourceBinding===undefined?input.payload:this.sources.withSnapshot(input.payload,source);
       validateDocumentPayload(live.fields,payload);
-      const contentHash=input.sourceBinding===undefined?input.contentHash:'sha256:'+sourceDigest(payload);
+      const contentHash=isCustomTemplateCode(live.code)?this.customContentHash(live,payload):input.sourceBinding===undefined?input.contentHash:'sha256:'+sourceDigest(payload);
       const year=new Date().getUTCFullYear();
       const counter=await tx.documentReferenceCounter.upsert({
         where:{organizationId_department_year:{organizationId:input.organizationId,department:t.department,year}},
@@ -169,7 +198,7 @@ export class DocumentPersistenceService {
         payload=this.sources.retained(input.payload,current.payload as Record<string,unknown>,d.organizationId);
       }
       validateDocumentPayload(d.template.fields,payload);
-      const contentHash=input.sourceBinding!==undefined||Object.hasOwn(payload,PLATFORM_SOURCE_KEY)?'sha256:'+sourceDigest(payload):input.contentHash;
+      const contentHash=isCustomTemplateCode(d.template.code)?this.customContentHash(d.template,payload):input.sourceBinding!==undefined||Object.hasOwn(payload,PLATFORM_SOURCE_KEY)?'sha256:'+sourceDigest(payload):input.contentHash;
       const nextVersion=current.version+1;
       const claimed=await tx.managedDocument.updateMany({where:{id,status:'DRAFT',version:current.version},data:{contentHash,payload:payload as Prisma.InputJsonValue,version:{increment:1}}});
       if(claimed.count!==1) throw new BadRequestException('Document changed concurrently; reload before revising.');

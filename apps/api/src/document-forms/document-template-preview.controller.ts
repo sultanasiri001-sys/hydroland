@@ -6,7 +6,7 @@ import { DocumentAssetService } from './document-asset.service';
 import { COOPERATION_CODE } from './cooperation-contract.domain';
 import { isLibraryCode } from './contract-library.domain';
 import { renderAdministrativeDocumentPdf } from './administrative-document-pdf';
-import { assertCompatibleTemplateFields, templateFields, templateText } from './document-template-input';
+import { assertCompatibleTemplateFields, isCustomTemplateCode, templateFields, templateText } from './document-template-input';
 import type { DocumentPrintContract } from './document-print.service';
 
 type Actor={auth:{accountId:string}};
@@ -36,7 +36,7 @@ export class DocumentTemplatePreviewController {
    if(Object.keys(b).length)await this.authz.assert(r.auth.accountId,org,'TEMPLATE_UPDATE',tx);
    const t=await tx.documentTemplate.findFirst({where:{id,organizationId:org,status:'ACTIVE'}});
    if(!t||t.code===COOPERATION_CODE||isLibraryCode(t.code))throw new NotFoundException('Active administrative template not found.');
-   const fields=templateFields(b.fields??t.fields);assertCompatibleTemplateFields(t.fields,fields);
+   const fields=templateFields(b.fields??t.fields);if(!isCustomTemplateCode(t.code))assertCompatibleTemplateFields(t.fields,fields);
    const identity=await tx.organization.findUnique({where:{id:org}});
    if(!identity)throw new NotFoundException('Organization not found.');
    return {t,fields,identity};
@@ -50,7 +50,7 @@ export class DocumentTemplatePreviewController {
    renderProfile:'ADMINISTRATIVE_FORM_V1',createdAt:now,updatedAt:now,
    template:{id:t.id,code:t.code,titleAr:templateText(b.titleAr??t.titleAr,'Arabic title'),titleEn:templateText(b.titleEn??t.titleEn,'English title'),version:t.version,printable:t.printable},
    branding:{brandVersion:identity.documentBrandVersion,logoUrl:null,logoAssetId:identity.documentLogoAssetId,brandNameAr:identity.documentBrandNameAr??identity.displayName,brandNameEn:identity.documentBrandNameEn??identity.displayName,footerAr:identity.documentFooterAr,footerEn:identity.documentFooterEn},
-   fields:fields.map(f=>({...f,value:f.options?.join(' / ')||'................................................'})),
+   fields:fields.map(f=>({...f,value:f.type==='STATEMENT'?f.contentAr:f.options?.join(' / ')||'................................................'})),
    approvals:{createdByAccountId:'معاينة فقط — لم يُنشأ مستند',approvedByAccountId:null,signedByAccountId:null,archivedByAccountId:null,approvedAt:null,signedAt:null,archivedAt:null}
   };
   const rendered=await renderAdministrativeDocumentPdf(c,this.assets,undefined,{templatePreview:true});

@@ -37,6 +37,9 @@
   function fieldInput(field,value=''){
     const key=esc(field.key),label=esc(field.labelAr||field.labelEn||field.key),required=field.required?' required':'';
     const type=String(field.type||'TEXT').toUpperCase();
+    if(type==='SECTION')return `<h4 data-doc-section="${key}">${label}</h4>`;
+    if(type==='STATEMENT')return `<section data-doc-statement="${key}"><h4>${label}</h4><p style="white-space:pre-wrap">${esc(field.contentAr||field.contentEn||'')}</p></section>`;
+    if(type==='BOOLEAN')return `<label>${label}<select name="${key}"${required}><option value="">اختر إجابة</option><option value="true"${value===true||value==='true'?' selected':''}>نعم</option><option value="false"${value===false||value==='false'?' selected':''}>لا</option></select></label>`;
     if(type==='TABLE'){
       if(!field.options?.length)return `<label>${label}<textarea name="${key}" data-doc-table-json rows="4"${required}>${esc(Array.isArray(value)?JSON.stringify(value,null,2):value)}</textarea></label>`;
       const rows=Array.isArray(value)&&value.length?value:[{}];
