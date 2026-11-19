@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import { DatabaseService } from '../dist/database/database.service.js';
 import { AuditService } from '../dist/audit/audit.service.js';
 import { EquipmentRentalService } from '../dist/trips/equipment-rental.service.js';
+import { EquipmentRentalHandoverService } from '../dist/trips/equipment-rental-handover.service.js';
+import { EquipmentInspectionService } from '../dist/trips/equipment-inspection.service.js';
+import { PolicyControlService } from '../dist/trips/policy-control.service.js';
+import { NotificationsService } from '../dist/notifications/notifications.service.js';
 import { randomBytes, scryptSync } from 'node:crypto';
 
 const db=new DatabaseService();
@@ -95,11 +99,50 @@ try{
   const afterPayment=await db.$queryRawUnsafe(`SELECT "stockStatus" FROM "EquipmentBarcode" WHERE "resourceId"=$1 LIMIT 1`,equipmentId);
   if(afterPayment[0]?.stockStatus!=='AVAILABLE')throw new Error('Payment confirmation checked equipment out before handover');
 
-  response=await fetch(`${base}/trips/admin/equipment-rentals/${encodeURIComponent(rentalId)}/handover-scan`,{method:'POST',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({code:assetCode})});
-  const handed=await json(response);
+  const handover=(token=adminToken)=>fetch(`${base}/trips/admin/equipment-rentals/${encodeURIComponent(rentalId)}/handover-scan`,{
+    method:'POST',headers:{...auth(token),'content-type':'application/json'},body:JSON.stringify({code:assetCode})
+  });
+  assert.equal((await handover(renterToken)).status,403);
+  const audit=new AuditService(db);
+  const inspections=new EquipmentInspectionService(db,audit,new PolicyControlService(db,audit));
+  const assertHandoverUnchanged=async()=>{
+    const state=await db.$queryRaw`
+      SELECT r."status", i."handedOverAt", b."stockStatus"
+      FROM "EquipmentRental" r JOIN "EquipmentRentalItem" i ON i."rentalId"=r."id"
+      JOIN "EquipmentBarcode" b ON b."resourceId"=i."resourceId" WHERE r."id"=${rentalId}`;
+    assert.deepEqual(state,[{status:'RESERVED',handedOverAt:null,stockStatus:'AVAILABLE'}]);
+    const movements=await db.$queryRaw`SELECT COUNT(*)::int AS count FROM "EquipmentMovement" WHERE "resourceId"=${equipmentId} AND "movementType"='CHECK_OUT' AND "assignedAccountId"=${renter.id}`;
+    assert.equal(movements[0].count,0);
+    assert.equal(await db.auditEvent.count({where:{resourceId:rentalId,action:'EQUIPMENT_RENTAL_ITEM_HANDED_OVER'}}),0);
+    assert.equal(await db.notification.count({where:{accountId:renter.id,type:'EQUIPMENT_RENTAL_HANDED_OVER',payload:{path:['rentalId'],equals:rentalId}}}),0);
+  };
+  // A safety failure recorded after payment must still prevent checkout.
+  await inspections.record(admin.id,equipmentId,{status:'FAIL',serviceExpiresAt,notes:'Isolated handover safety regression'});
+  assert.equal((await handover()).status,409);
+  await assertHandoverUnchanged();
+  await inspections.record(admin.id,equipmentId,{status:'PASS',serviceExpiresAt,notes:'Restore isolated fixture clearance'});
+  // Each failure occurs after inventory writes, using the real PostgreSQL transaction.
+  const failedNotification=new EquipmentRentalHandoverService(db,audit,{
+    notify(){throw new Error('Synthetic handover notification failure');}
+  },inspections);
+  await assert.rejects(failedNotification.scan(admin.id,rentalId,{code:assetCode}),/Synthetic handover notification failure/);
+  await assertHandoverUnchanged();
+  const failedAudit=new EquipmentRentalHandoverService(db,{
+    record(){throw new Error('Synthetic handover audit failure');}
+  },new NotificationsService(db),inspections);
+  await assert.rejects(failedAudit.scan(admin.id,rentalId,{code:assetCode}),/Synthetic handover audit failure/);
+  await assertHandoverUnchanged();
+
+  const handovers=await Promise.all((await Promise.all([handover(),handover()])).map(json));
+  assert.deepEqual(handovers.map(result=>result.result).sort(),['ALREADY_HANDED_OVER','HANDED_OVER']);
+  const handed=handovers[0];
   if(handed.status!=='ACTIVE'||handed.pendingHandoverCount!==0)throw new Error('Handover scan did not activate rental');
   const afterHandover=await db.$queryRawUnsafe(`SELECT "stockStatus" FROM "EquipmentBarcode" WHERE "resourceId"=$1 LIMIT 1`,equipmentId);
   if(afterHandover[0]?.stockStatus!=='CHECKED_OUT')throw new Error('Handover did not persist CHECKED_OUT inventory status');
+  const checkoutMovements=await db.$queryRaw`SELECT COUNT(*)::int AS count FROM "EquipmentMovement" WHERE "resourceId"=${equipmentId} AND "movementType"='CHECK_OUT' AND "assignedAccountId"=${renter.id}`;
+  assert.equal(checkoutMovements[0].count,1);
+  assert.equal(await db.auditEvent.count({where:{resourceId:rentalId,action:'EQUIPMENT_RENTAL_ITEM_HANDED_OVER'}}),1);
+  assert.equal(await db.notification.count({where:{accountId:renter.id,type:'EQUIPMENT_RENTAL_HANDED_OVER',payload:{path:['rentalId'],equals:rentalId}}}),1);
 
   const requestedUntil=new Date(Date.now()+4*86400000).toISOString();
   response=await fetch(`${base}/trips/equipment-rentals/${encodeURIComponent(rentalId)}/extension-request`,{method:'POST',headers:{...auth(otherToken),'content-type':'application/json'},body:JSON.stringify({requestedUntil})});
@@ -163,7 +206,9 @@ try{
   });
   multiId=multi.id;
   await json(await confirm(multiId));
-  for(const passport of passports) await post('/trips/admin/equipment-rentals/'+multiId+'/handover-scan',{code:passport.assetCode});
+  await Promise.all(passports.map(passport=>post('/trips/admin/equipment-rentals/'+multiId+'/handover-scan',{code:passport.assetCode})));
+  assert.equal(await db.auditEvent.count({where:{resourceId:multiId,action:'EQUIPMENT_RENTAL_ITEM_HANDED_OVER'}}),2);
+  assert.equal(await db.notification.count({where:{accountId:renter.id,type:'EQUIPMENT_RENTAL_HANDED_OVER',payload:{path:['rentalId'],equals:multiId}}}),1);
   const returnPath='/trips/equipment-rentals/'+multiId+'/return-scan';
   const damaged=await post(returnPath,{code:passports[0].assetCode,condition:'DAMAGED',toLocation:'INSPECTION'});
   assert.equal(damaged.status,'ACTIVE');
@@ -175,7 +220,7 @@ try{
   assert.equal((await post(returnPath,{code:passports[1].assetCode,condition:'OK'})).status,'RETURNED');
   assert.equal(await db.auditEvent.count({where:{resourceId:multiId,action:'EQUIPMENT_RENTAL_ITEM_RETURNED'}}),2);
   assert.equal(await db.auditEvent.count({where:{resourceId:multiId,action:'EQUIPMENT_RENTAL_RETURNED'}}),1);
-  console.log('Equipment HTTP/DB E2E passed: admin isolation, registration, duplicate protection, safety gate, reservation ownership, staged payment/handover, extension, return intent, atomic return rollback, concurrent replay, partial returns, quarantine and persistence.');
+  console.log('Equipment HTTP/DB E2E passed: admin isolation, registration, duplicate protection, safety gate, reservation ownership, staged payment/handover, handover audit/notification rollback, concurrent handover and return replay, extension, return intent, atomic return rollback, partial returns, quarantine and persistence.');
 } finally {
   const personIds=people.map(row=>row.id),accountIds=accounts.map(row=>row.id);
   if(personIds.length)await db.auditEvent.deleteMany({where:{actorId:{in:personIds}}}).catch(()=>{});
