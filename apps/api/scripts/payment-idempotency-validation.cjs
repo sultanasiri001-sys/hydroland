@@ -28,6 +28,10 @@ function fixture({ participants = 1, incumbent = null } = {}) {
     operationalSetting: { findUnique: async () => ({ value: { pricePerSeatMinor: 12345, currency: 'SAR' } }) },
     payment: {
       findUnique: async ({ where }) => {
+        if (where.id) {
+          assert.equal(where.id, state.payment.id);
+          return { ...state.payment };
+        }
         assert.equal(where.idempotencyKey, key);
         // Snapshot both preflight reads before either request can claim the key.
         const snapshot = state.payment ? { ...state.payment } : null;
@@ -62,6 +66,7 @@ function fixture({ participants = 1, incumbent = null } = {}) {
       },
     },
   };
+  db.serializable = async work => work(db);
   const policies = { decision: async () => ({ bypass: false, review: false, state: 'ENABLED' }) };
   const audit = { record: async input => { state.audits.push(input); return { id: `audit-${state.audits.length}` }; } };
   const integrations = { requireOperational: () => ({ status: 'SANDBOX' }) };

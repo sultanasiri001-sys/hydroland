@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { PaymentStatus, Prisma } from '@prisma/client';
+import { Payment, PaymentStatus, Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { PolicyControlService } from '../trips/policy-control.service';
@@ -62,8 +62,7 @@ export class PaymentsService {
     if(payment.providerReference){
       providerInvoice=await this.moyasar.fetchInvoice(payment.providerReference);
       this.assertProviderInvoice(payment,providerInvoice);
-      const status=this.statusFromInvoice(providerInvoice.status);
-      if(status!==payment.status)payment=await this.db.payment.update({where:{id:payment.id},data:{status}});
+      payment=await this.reconcileProviderInvoice(payment,providerInvoice);
     }else{
       providerInvoice=await this.moyasar.createInvoice({paymentId:payment.id,bookingId:payment.bookingId,amountMinor:payment.amountMinor,currency:payment.currency});
       this.assertProviderInvoice(payment,providerInvoice);
@@ -71,15 +70,16 @@ export class PaymentsService {
       if(claimed.count===1){
         payment=await this.db.payment.findUniqueOrThrow({where:{id:payment.id}});
         await this.audit.record({action:'PAYMENT_CHECKOUT_CREATED',resource:'Payment',resourceId:payment.id,metadata:{accountId,bookingId:payment.bookingId,provider:'MOYASAR',providerReference:providerInvoice.id,status:payment.status}});
+        await this.syncMoyasarPaymentId(payment.id,providerInvoice);
       }else{
         await this.moyasar.cancelInvoice(providerInvoice.id);
         payment=await this.db.payment.findUniqueOrThrow({where:{id:payment.id}});
         if(!payment.providerReference)throw new ConflictException('Payment checkout is being prepared. Retry the request.');
         providerInvoice=await this.moyasar.fetchInvoice(payment.providerReference);
         this.assertProviderInvoice(payment,providerInvoice);
+        payment=await this.reconcileProviderInvoice(payment,providerInvoice);
       }
     }
-    await this.syncMoyasarPaymentId(payment.id,providerInvoice);
     return{...payment,provider:'MOYASAR',checkoutUrl:providerInvoice.url,providerStatus:providerInvoice.status,policyReview:{required:paymentPolicy.review,issues:paymentPolicy.review?['PAYMENT_REQUIRED']:[],states:{payment:paymentPolicy.state}}};
   }
 
@@ -89,10 +89,7 @@ export class PaymentsService {
     if(!payment.providerReference)return{...payment,provider:'MOYASAR',checkoutReady:false};
     const invoice=await this.moyasar.fetchInvoice(payment.providerReference);
     this.assertProviderInvoice(payment,invoice);
-    await this.syncMoyasarPaymentId(payment.id,invoice);
-    const status=this.statusFromInvoice(invoice.status);
-    const updated=status===payment.status?payment:await this.db.payment.update({where:{id:payment.id},data:{status}});
-    if(status!==payment.status)await this.audit.record({action:'PAYMENT_PROVIDER_RECONCILED',resource:'Payment',resourceId:payment.id,metadata:{accountId,provider:'MOYASAR',providerReference:payment.providerReference,from:payment.status,to:status,providerStatus:invoice.status}});
+    const updated=await this.reconcileProviderInvoice(payment,invoice);
     return{...updated,provider:'MOYASAR',checkoutReady:true,checkoutUrl:invoice.url,providerStatus:invoice.status};
   }
 
@@ -104,18 +101,23 @@ export class PaymentsService {
     if(duplicate)return{accepted:true,duplicate:true};
     const payment=await this.db.payment.findUnique({where:{providerReference:invoiceId}});
     if(!payment){
-      await this.db.auditEvent.create({data:{action:'PAYMENT_PROVIDER_WEBHOOK_UNMATCHED',resource:'PaymentProviderWebhook',resourceId:event.id,metadata:{provider:'MOYASAR',type:event.type,invoiceId,live:event.live}}});
-      return{accepted:true,matched:false};
+      return this.db.serializable(async tx=>{
+        const repeated=await tx.auditEvent.findFirst({where:{resource:'PaymentProviderWebhook',resourceId:event.id},select:{id:true}});
+        if(repeated)return{accepted:true,duplicate:true};
+        const matched=await tx.payment.findUnique({where:{providerReference:invoiceId}});
+        if(matched)throw new ConflictException('Payment checkout changed during reconciliation. Retry the webhook.');
+        await tx.auditEvent.create({data:{action:'PAYMENT_PROVIDER_WEBHOOK_UNMATCHED',resource:'PaymentProviderWebhook',resourceId:event.id,metadata:{provider:'MOYASAR',type:event.type,invoiceId,live:event.live}}});
+        return{accepted:true,matched:false};
+      });
     }
     const providerInvoice=await this.moyasar.fetchInvoice(invoiceId);
     this.assertProviderInvoice(payment,providerInvoice);
-    await this.syncMoyasarPaymentId(payment.id,providerInvoice);
     const next=this.statusFromInvoice(providerInvoice.status);
-    return this.db.$transaction(async(tx:Prisma.TransactionClient)=>{
+    return this.db.serializable(async tx=>{
       const repeated=await tx.auditEvent.findFirst({where:{resource:'PaymentProviderWebhook',resourceId:event.id},select:{id:true}});
       if(repeated)return{accepted:true,duplicate:true};
-      const current=await tx.payment.findUnique({where:{id:payment.id}});
-      if(!current||current.providerReference!==invoiceId)throw new ConflictException('Payment provider reference changed during reconciliation.');
+      const current=await this.requireReconciliationSnapshot(payment,providerInvoice,tx);
+      await this.syncMoyasarPaymentId(current.id,providerInvoice,tx);
       if(next!==current.status)await tx.payment.update({where:{id:current.id},data:{status:next}});
       await tx.auditEvent.create({data:{action:'PAYMENT_PROVIDER_WEBHOOK_PROCESSED',resource:'PaymentProviderWebhook',resourceId:event.id,metadata:{provider:'MOYASAR',type:event.type,paymentId:current.id,invoiceId,from:current.status,to:next,providerStatus:providerInvoice.status,live:event.live,providerVerified:true}}});
       return{accepted:true,matched:true,paymentId:current.id,status:next};
@@ -155,15 +157,40 @@ export class PaymentsService {
     if(invoice.amount!==payment.amountMinor||invoice.currency!==payment.currency)throw new ConflictException('Provider invoice does not match local payment.');
     if(invoice.metadata.hydroland_payment_id!==payment.id||invoice.metadata.hydroland_booking_id!==payment.bookingId)throw new ConflictException('Provider invoice metadata does not match local payment.');
   }
-  private async syncMoyasarPaymentId(paymentId:string,invoice:MoyasarInvoice){
+  private async requireReconciliationSnapshot(snapshot:Payment,invoice:MoyasarInvoice,tx:Prisma.TransactionClient){
+    const current=await tx.payment.findUnique({where:{id:snapshot.id}});
+    if(!current||current.providerReference!==snapshot.providerReference||invoice.id!==current.providerReference)throw new ConflictException('Payment provider reference changed during reconciliation.');
+    // The provider GET runs before this transaction. Never apply its response
+    // over a payment changed while that request was in flight, including retries.
+    if(current.status!==snapshot.status||current.updatedAt.getTime()!==snapshot.updatedAt.getTime()
+      ||current.accountId!==snapshot.accountId||current.bookingId!==snapshot.bookingId
+      ||current.amountMinor!==snapshot.amountMinor||current.currency!==snapshot.currency){
+      throw new ConflictException({code:'PAYMENT_RECONCILIATION_STALE',message:'Payment changed during provider reconciliation. Retry the request.'});
+    }
+    this.assertProviderInvoice(current,invoice);
+    return current;
+  }
+
+  private reconcileProviderInvoice(snapshot:Payment,invoice:MoyasarInvoice){
+    return this.db.serializable(async tx=>{
+      const current=await this.requireReconciliationSnapshot(snapshot,invoice,tx);
+      await this.syncMoyasarPaymentId(current.id,invoice,tx);
+      const status=this.statusFromInvoice(invoice.status);
+      const updated=status===current.status?current:await tx.payment.update({where:{id:current.id},data:{status}});
+      if(status!==current.status)await this.audit.record({action:'PAYMENT_PROVIDER_RECONCILED',resource:'Payment',resourceId:current.id,metadata:{accountId:current.accountId,provider:'MOYASAR',providerReference:current.providerReference,from:current.status,to:status,providerStatus:invoice.status}},tx);
+      return updated;
+    });
+  }
+
+  private async syncMoyasarPaymentId(paymentId:string,invoice:MoyasarInvoice,tx:Prisma.TransactionClient=this.db){
     const paid=invoice.payments.filter(item=>['paid','captured'].includes(item.status)&&item.amount>0&&item.currency===invoice.currency);
     if(paid.length!==1)return;
     const providerPaymentId=paid[0].id.trim();
     if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(providerPaymentId))return;
     try{
-      const updated=await this.db.$executeRaw`UPDATE "Payment" SET "moyasarPaymentId"=${providerPaymentId} WHERE "id"::text=${paymentId} AND ("moyasarPaymentId" IS NULL OR "moyasarPaymentId"=${providerPaymentId})`;
+      const updated=await tx.$executeRaw`UPDATE "Payment" SET "moyasarPaymentId"=${providerPaymentId} WHERE "id"::text=${paymentId} AND ("moyasarPaymentId" IS NULL OR "moyasarPaymentId"=${providerPaymentId})`;
       if(updated===0){
-        const current=await this.db.$queryRaw<Array<{moyasarPaymentId:string|null}>>`SELECT "moyasarPaymentId" FROM "Payment" WHERE "id"::text=${paymentId}`;
+        const current=await tx.$queryRaw<Array<{moyasarPaymentId:string|null}>>`SELECT "moyasarPaymentId" FROM "Payment" WHERE "id"::text=${paymentId}`;
         if(current[0]?.moyasarPaymentId&&current[0].moyasarPaymentId!==providerPaymentId)throw new ConflictException('Provider payment reference changed during reconciliation.');
       }
     }catch(error){
