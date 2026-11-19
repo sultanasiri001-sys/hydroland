@@ -34,6 +34,6 @@ export async function checkCenterLicensePlatformReview(db,{base,a,b,ownerA,ta,tb
   check((await request(tr,'/admin/center-licenses/'+expired+'/decision',{outcome:'APPROVED',expectedUpdatedAt:old.updatedAt})).status===409,'Expired license cannot be approved');
   check((await request(tr,'/admin/center-licenses/'+expired+'/decision',{outcome:'REJECTED',reason:'الرخصة منتهية الصلاحية',expectedUpdatedAt:old.updatedAt})).status===201,'Expired license can be rejected with reason');
  }finally{
-  await db.auditEvent.deleteMany({where:{resourceId:{in:ids}}});await db.administrativeRecord.deleteMany({where:{id:{in:ids}}});
+  await db.administrativeRecord.deleteMany({where:{id:{in:ids}}});
  }
 }

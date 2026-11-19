@@ -57,6 +57,5 @@ export async function checkCenterLicenses(db,{base,a,b,ownerA,staff,ta,tb,ts},ch
     await db.organizationMember.update({where:{organizationId_accountId:{organizationId:a.org.id,accountId:staff.id}},data:{role:'STAFF'}});
     await db.administrativeRouting.deleteMany({where:{recordId:record.id}});
     if(reviewUnit)await db.orgUnit.delete({where:{id:reviewUnit.id}});
-    await db.auditEvent.deleteMany({where:{actorId:{in:[ownerA.personId,staff.personId]},action:{in:['CENTER_LICENSE_ATTACHED','ADMIN_RECORD_REGISTERED','ADMIN_ROUTING_CREATED','ADMIN_ROUTING_ASSIGNED','ADMIN_ROUTING_APPROVE']}}});
   }
 }
