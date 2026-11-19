@@ -19,11 +19,14 @@ export class OperationalClearanceService {
     const hard=(readiness.policyReview?.issues??[]).filter((issue:string)=>['SAFETY_DEFERRED','COMPLIANCE_DEFERRED','REGULATORY_BLOCK'].includes(issue));
     if(hard.length)throw new ConflictException(`Operational clearance blocked: ${hard.join(', ')}`);
   }
+  // Prisma @updatedAt participant revisions are UTC-naive; audit occurredAt defaults to PostgreSQL
+  // now(), whose naive wall-clock value follows the session TimeZone. Normalize these
+  // revisions to the database session clock before deciding whether a grant is stale.
   private async latestOperationalChange(tripId:string,tx:Prisma.TransactionClient=this.db){
     const rows=await tx.$queryRaw<ChangeRow[]>`
       SELECT GREATEST(
         t."updatedAt",
-        COALESCE((SELECT MAX(bp."updatedAt") FROM "BookingParticipant" bp JOIN "Booking" b ON b."id"=bp."bookingId" WHERE b."tripId"=t."id"),TIMESTAMP '1970-01-01'),
+        COALESCE((SELECT MAX((bp."updatedAt" AT TIME ZONE 'UTC') AT TIME ZONE current_setting('TimeZone')) FROM "BookingParticipant" bp JOIN "Booking" b ON b."id"=bp."bookingId" WHERE b."tripId"=t."id"),TIMESTAMP '1970-01-01'),
         COALESCE((SELECT MAX(e."updatedAt") FROM "CalendarEvent" e WHERE e."referenceType"='TRIP' AND e."referenceId"=t."id"::text),TIMESTAMP '1970-01-01'),
         COALESCE((SELECT MAX(cr."updatedAt") FROM "CalendarAllocation" a JOIN "CalendarEvent" e ON e."id"=a."eventId" JOIN "CalendarResource" cr ON cr."id"=a."resourceId" WHERE e."referenceType"='TRIP' AND e."referenceId"=t."id"::text AND a."status"='ACTIVE'),TIMESTAMP '1970-01-01'),
         COALESCE((SELECT MAX(i."createdAt") FROM "CalendarAllocation" a JOIN "CalendarEvent" e ON e."id"=a."eventId" JOIN "EquipmentInspection" i ON i."resourceId"=a."resourceId" WHERE e."referenceType"='TRIP' AND e."referenceId"=t."id"::text AND a."status"='ACTIVE'),TIMESTAMP '1970-01-01'),

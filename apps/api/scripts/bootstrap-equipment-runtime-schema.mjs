@@ -16,6 +16,7 @@ const migrations=[
   '20260915053500_equipment_rental_due_extensions',
   '20260915054500_equipment_tag_profiles',
   '20260915060000_equipment_rental_handover',
+  '20261119170500_equipment_rental_hold',
 ];
 const expectedTables=['EquipmentBarcode','EquipmentMovement','EquipmentInspection','InventoryStocktake','InventoryStocktakeScan','EquipmentRental','EquipmentRentalItem'];
 const expectedConstraints=['EquipmentBarcode_resourceId_fkey','EquipmentInspection_status_check','EquipmentBarcode_acquisitionCostHalala_check','EquipmentRental_status_check','EquipmentRental_payment_check','EquipmentRentalItem_return_condition_check','EquipmentRental_extension_status_check','EquipmentBarcode_tag_method_check'];
@@ -37,6 +38,8 @@ const verify=async()=>{
   const indexSet=new Set(indexes.map(row=>row.indexname));
   const missingIndexes=expectedIndexes.filter(name=>!indexSet.has(name));
   if(missingIndexes.length)throw new Error(`Equipment runtime bootstrap missing indexes: ${missingIndexes.join(', ')}`);
+  const holds=await db.$queryRaw`SELECT data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='EquipmentRental' AND column_name='holdExpiresAt'`;
+  if(holds[0]?.data_type!=='timestamp with time zone')throw new Error('Equipment rental hold migration must be applied.');
   const columns=await db.$queryRawUnsafe(`SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='EquipmentRentalItem' AND column_name IN ('returnedAt','returnCondition','returnNotes','handedOverAt')`);
   const columnSet=new Set(columns.map(row=>row.column_name));
   for(const name of ['returnedAt','returnCondition','returnNotes','handedOverAt'])if(!columnSet.has(name))throw new Error(`Equipment runtime bootstrap missing EquipmentRentalItem.${name}`);
