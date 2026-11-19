@@ -9,5 +9,10 @@ export class ProfileController {
   @Get() @Header('Cache-Control','private, no-store') get(@Req() req: { auth: { accountId: string } }) { return this.profiles.get(req.auth.accountId); }
   @Post('data-export') @Header('Cache-Control','private, no-store') @Header('Content-Disposition','attachment; filename="hydroland-account-profile.json"')
   exportAccount(@Req() req:{auth:{accountId:string}},@Body()body:unknown){return this.profiles.exportAccount(req.auth.accountId,body);}
+  @Post('data-export/trip-records') @Header('Cache-Control','private, no-store')
+  @Header('Content-Disposition','attachment; filename="hydroland-personal-trip-records.json"')
+  exportTripRecords(@Req() req: { auth: { accountId: string } }, @Body() body: unknown) {
+    return this.profiles.exportTripRecords(req.auth.accountId, body);
+  }
   @Patch() @Header('Cache-Control','private, no-store') update(@Req() req: { auth: { accountId: string } }, @Body() body: unknown) { return this.profiles.update(req.auth.accountId, body); }
 }

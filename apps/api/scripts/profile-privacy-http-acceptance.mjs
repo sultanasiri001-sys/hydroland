@@ -22,6 +22,7 @@ export async function profilePrivacyAcceptance({db,base}){
       assert.equal(login.response.status,200);assert(login.body.accessToken);account.token=login.body.accessToken;
     }
     const [a,b]=accounts;
+    await verifyTripRecords(db,call,a,b);
     const secondBefore=await db.account.findUniqueOrThrow({where:{id:b.id},include:{person:{include:{professional:true}}}});
     const foreignCredential=await db.credential.create({data:{personId:b.personId,issuer:'Synthetic',title:'Foreign profile reference'}});
     assert.equal((await call(null,'/me/data-export','POST',{})).response.status,401);
@@ -49,12 +50,13 @@ export async function profilePrivacyAcceptance({db,base}){
     for(const body of [{firstName:null},{firstName:[]},{firstName:' '},{firstName:'x'.repeat(81)},{status:'ACTIVE'},{accountId:b.id},{firstName:'X\u0000Y'},[]])assert.equal((await call(a,'/me','PATCH',body)).response.status,400);
     assert.equal((await call(a,'/me','PATCH',{qualificationCredentialId:foreignCredential.id})).response.status,400);
     assert.deepEqual(await snapshot(),beforeInvalid);
-    await db.$executeRawUnsafe(`CREATE FUNCTION "${trigger}"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.resource='Account' AND NEW."resourceId"='${a.id}' AND NEW.action IN ('ACCOUNT_PROFILE_CORRECTED','ACCOUNT_PROFILE_EXPORTED') THEN RAISE EXCEPTION 'synthetic profile audit failure'; END IF; RETURN NEW; END $$`);
+    await db.$executeRawUnsafe(`CREATE FUNCTION "${trigger}"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.resource='Account' AND NEW."resourceId"='${a.id}' AND NEW.action IN ('ACCOUNT_PROFILE_CORRECTED','ACCOUNT_PROFILE_EXPORTED','PERSONAL_TRIP_RECORDS_EXPORTED') THEN RAISE EXCEPTION 'synthetic profile audit failure'; END IF; RETURN NEW; END $$`);
     await db.$executeRawUnsafe(`CREATE TRIGGER "${trigger}" BEFORE INSERT ON "AuditEvent" FOR EACH ROW EXECUTE FUNCTION "${trigger}"()`);installed=true;
     const auditCount=await db.auditEvent.count({where:{resourceId:a.id}});
     assert.equal((await call(a,'/me','PATCH',{firstName:'Must roll back',bio:'Must roll back'})).response.status,500);
     assert.deepEqual(await snapshot(),beforeInvalid);
     assert.equal((await call(a,'/me/data-export','POST',{})).response.status,500);
+    assert.equal((await call(a,'/me/data-export/trip-records','POST',{domain:'PAYMENTS'})).response.status,500);
     assert.equal(await db.auditEvent.count({where:{resourceId:a.id}}),auditCount);
     await db.$executeRawUnsafe(`DROP TRIGGER "${trigger}" ON "AuditEvent"`);installed=false;
     const racing=await Promise.all([call(a,'/me','PATCH',{firstName:'Concurrent name'}),call(a,'/me','PATCH',{headline:'Concurrent headline'})]);
@@ -75,5 +77,40 @@ export async function profilePrivacyAcceptance({db,base}){
       await db.professionalProfile.deleteMany({where:{personId:account.personId}});
       await db.account.delete({where:{id:account.id}});await db.person.delete({where:{id:account.personId}});
     }
+  }
+}
+
+async function verifyTripRecords(db, call, owner, other) {
+  const trip = await db.trip.create({data:{title:'Privacy fixture',type:'SHORE',capacity:200,startsAt:new Date(),endsAt:new Date(Date.now()+3600000)}});
+  const org = await db.organization.create({data:{displayName:'Privacy fixture',kind:'OTHER',ownerId:owner.id}});
+  const exportPage = (actor, body) => call(actor, '/me/data-export/trip-records', 'POST', body);
+  try {
+    const ids = Array.from({length:101}, () => randomUUID()).sort();
+    await db.booking.createMany({data:ids.map(id=>({id,tripId:trip.id,accountId:owner.id}))});
+    const foreign = await db.booking.create({data:{tripId:trip.id,accountId:other.id}});
+    const group = await db.booking.create({data:{tripId:trip.id,accountId:owner.id,organizationId:org.id}});
+    const payment = (bookingId,accountId) => db.payment.create({data:{bookingId,accountId,amountMinor:1280,currency:'SAR',idempotencyKey:randomUUID(),providerReference:randomUUID()}});
+    const owned = await payment(ids[0],owner.id);
+    await payment(foreign.id,other.id);await payment(group.id,owner.id);await payment(ids[0],other.id);
+    const first = await exportPage(owner,{domain:'BOOKINGS'});
+    assert.equal(first.response.status,201);assert.equal(first.response.headers.get('cache-control'),'private, no-store');
+    assert.deepEqual(first.body.records.map(row=>row.id),ids.slice(0,100));
+    const second = await exportPage(owner,{domain:'BOOKINGS',after:first.body.nextCursor});
+    assert.deepEqual(second.body.records.map(row=>row.id),ids.slice(100));assert.equal(second.body.nextCursor,null);
+    const {body}=await exportPage(owner,{domain:'PAYMENTS'});
+    assert.equal(body.completePlatformExport,false);assert.equal(body.accountId,owner.id);
+    assert.deepEqual(body.records.map(row=>row.id),[owned.id]);assert.equal(body.records[0].amountMinor,1280);
+    assert.deepEqual(Object.keys(body.records[0]).sort(),['id','bookingId','amountMinor','currency','status','createdAt','updatedAt'].sort());
+    const {receipt,...snapshot}=body;
+    assert.equal(receipt.sha256,createHash('sha256').update(JSON.stringify(snapshot)).digest('hex'));
+    const audit=await db.auditEvent.findUniqueOrThrow({where:{id:receipt.auditEventId}});
+    assert.equal(audit.action,'PERSONAL_TRIP_RECORDS_EXPORTED');assert.equal(audit.actorId,owner.personId);
+    assert.deepEqual(audit.metadata,{domain:'PAYMENTS',count:1,sha256:receipt.sha256});
+    assert.equal((await exportPage(owner,{domain:'UNKNOWN'})).response.status,400);
+    assert.equal((await exportPage(null,{domain:'BOOKINGS'})).response.status,401);
+  } finally {
+    await db.payment.deleteMany({where:{booking:{tripId:trip.id}}});
+    await db.booking.deleteMany({where:{tripId:trip.id}});
+    await db.trip.delete({where:{id:trip.id}});await db.organization.delete({where:{id:org.id}});
   }
 }

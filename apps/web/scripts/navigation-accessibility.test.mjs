@@ -53,7 +53,8 @@ test('desktop closure does not focus its hidden mobile trigger',()=>{
   const f=fixture();f.click(f.button);f.link.focus();f.button.getClientRects=()=>[];f.root.classList.remove('open');f.flush();assert.equal(f.document.activeElement,f.link);
 });
 test('shell names, native dialog association and bootstrap order are retained',async()=>{
-  const html=await readFile(new URL('../src/index.html',import.meta.url),'utf8');
+  // Authored localization comments do not alter the native accessible name.
+  const html=(await readFile(new URL('../src/index.html',import.meta.url),'utf8')).replace(/<!--(?:hl-i18n:[^>]*|\/hl-i18n)-->/g,'');
   assert.match(html,/<button id="menu"[^>]*aria-label="فتح القائمة"[^>]*aria-controls="sidebar"[^>]*aria-expanded="false"/);
   assert.match(html,/<dialog id="role-dialog" aria-labelledby="role-dialog-title">/);
   assert.match(html,/<h2 id="role-dialog-title">اختر نوع الحساب<\/h2>/);

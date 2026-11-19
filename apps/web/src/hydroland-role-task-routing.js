@@ -1,4 +1,28 @@
 (()=>{
+  // Authored interface messages only. Account, provider and document values remain opaque.
+  const uiLocale=window.HydrolandI18n?.createScope("role-task-routing", {
+  "إدارة الطلاب وتقييم المهارات": "Manage students and skill assessments",
+  "جلسات التدريب": "Training sessions",
+  "إصدار الشهادات بعد الاعتماد": "Issue certificates after approval",
+  "متابعة الحجوزات والرحلات": "Track bookings and trips",
+  "الطاقم والمعدات والقوارب": "Crew, equipment and boats",
+  "الامتثال والمالية والتقارير": "Compliance, finance and reports",
+  "إدارة الرحلات والتقويم": "Manage trips and the calendar",
+  "فحص القارب والوثائق والتراخيص": "Check the boat, documents and licenses",
+  "جاهزية الطاقم والسلامة": "Crew readiness and safety",
+  "طلبات الخدمات البحرية": "Marine service requests",
+  "العقود والتوقيع الإلكتروني": "Contracts and electronic signatures",
+  "تقارير السلامة والالتزام": "Safety and compliance reports",
+  "طابور الاعتمادات والمستخدمين": "Approvals and users queue",
+  "مركز السلامة والحوادث": "Safety and incidents center",
+  "المالية والتكاملات وتدقيق النظام": "Finance, integrations and system audit",
+  "المستندات والنماذج": "Documents and forms",
+  "تعذر التحقق من صلاحية الدخول. أعد المحاولة.": "Could not verify access. Try again.",
+  "المدخل متاح للإدارة بعد تحميل خدمة المستندات.": "This entry is available to administration after the document service loads.",
+  "فتح ←": "Open →",
+  "غير متاح": "Unavailable"
+}) || {messageHTML:value=>String(value??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])),attribute:(name,text,values=[])=>name+'=\"'+String(text).replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token).replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]))+'\"',message:(text,values=[])=>String(text).replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token),setMessage:(node,value)=>(node.textContent=value??''),t:value=>value,label:(text,values=[])=>String(text??'').replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])),format:(text,values=[])=>text.replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token),html:(parts,...values)=>parts.map((part,i)=>part+(i<values.length?String(values[i]??''):'')).join(''),bind:()=>{},setHTML:(node,value)=>(node.innerHTML=value),insertHTML:(node,position,value)=>node.insertAdjacentHTML(position,value),setText(node,text,values=[]){return node.textContent=this.format(text,values)},setAttribute(node,name,text,values=[]){node.setAttribute(name,this.format(text,values))}};
+
   // Read live preference per action; missing media support must not animate.
   const residualScrollBehavior=()=>window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches===false?'smooth':'instant';
   if(window.HydrolandRoleTasks)return;
@@ -50,7 +74,7 @@
         button=document.createElement('button');button.type='button';
         button.dataset.adminDocumentsEntry=position;
         if(position==='sidebar')button.className='hl-portal-switch';
-        button.textContent='المستندات والنماذج';
+        uiLocale.setText(button, ...['المستندات والنماذج']);
         button.addEventListener('click',async()=>{
           const auth=window.HydrolandAuth,access=window.HydrolandPortalAccess;
           const session=auth?.getSessionVersion?.(),generation=documentEntryGeneration;
@@ -70,7 +94,7 @@
             dashboard.classList.remove('hl-portal-nav-open');
             history.replaceState(null,'','#hl-documents');
           }catch{
-            if(current())button.title='تعذر التحقق من صلاحية الدخول. أعد المحاولة.';
+            if(current())uiLocale.setAttribute(button, "title", ...['تعذر التحقق من صلاحية الدخول. أعد المحاولة.']);
           }finally{
             button.removeAttribute('aria-busy');
             if(current())button.disabled=false;
@@ -79,27 +103,27 @@
         if(position==='sidebar')host.prepend(button);else host.appendChild(button);
       }
       if(button.getAttribute('aria-busy')!=='true')button.disabled=!available;
-      if(!available)button.title='المدخل متاح للإدارة بعد تحميل خدمة المستندات.';
-      else if(button.title==='المدخل متاح للإدارة بعد تحميل خدمة المستندات.')button.title='';
+      if(!available)uiLocale.setAttribute(button, "title", ...['المدخل متاح للإدارة بعد تحميل خدمة المستندات.']);
+      else if(button.title===uiLocale.t('المدخل متاح للإدارة بعد تحميل خدمة المستندات.'))button.title='';
     }
   };
   const connect=()=>{
     connectAdminDocuments();
     document.querySelectorAll('#role-console-tasks button').forEach(button=>{
       if(button.dataset.hlRoleTaskConnected==='1')return;
-      const label=clean(button),config=routes[label];
+      const label=button.dataset.hlRoleTaskKey||clean(button),config=routes[label];
       if(!config)return;
       button.disabled=false;
       button.removeAttribute('aria-disabled');
       button.dataset.hlRoleTaskConnected='1';
       const state=button.querySelector('b');
-      if(state)state.textContent='فتح ←';
+      if(state)uiLocale.setText(state, ...['فتح ←']);
       button.onclick=async()=>{
         if(!(await authorizeCurrentRole()))return;
         if(navigate(config))return;
         button.disabled=true;
         button.dataset.hlRoleTaskConnected='0';
-        if(state)state.textContent='غير متاح';
+        if(state)uiLocale.setText(state, ...['غير متاح']);
       };
     });
   };

@@ -154,3 +154,39 @@ test('backgrounding removes a prepared reference instead of retaining a suspende
   await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, value: true }); document.dispatchEvent(new Event('visibilitychange')); });
   await expect(dialog(page)).toHaveCount(0);
 });
+
+test('the real locale switch redraws the existing account card and localizes a user-invoked share without issuing a new reference', async ({ page }, testInfo) => {
+  await page.addInitScript(() => {
+    window.__membershipCanvasText=[];window.__membershipCanvasImages=[];
+    const fillText=CanvasRenderingContext2D.prototype.fillText,drawImage=CanvasRenderingContext2D.prototype.drawImage;
+    CanvasRenderingContext2D.prototype.fillText=function(text,x,y,...rest){if(this.canvas.width===1080&&this.canvas.height===680)window.__membershipCanvasText.push({text:String(text),x,y,align:this.textAlign,direction:this.direction});return fillText.call(this,text,x,y,...rest)};
+    CanvasRenderingContext2D.prototype.drawImage=function(image,x,y,...rest){if(this.canvas.width===1080&&this.canvas.height===680)window.__membershipCanvasImages.push({x,y});return drawImage.call(this,image,x,y,...rest)};
+    Object.defineProperty(navigator,'share',{configurable:true,value:async data=>{window.__membershipShared=data}});
+  });
+  await install(page);let issued=0;const displayName='A&B <عضو اختبار>';
+  await page.route('**/api/v1/me/membership-pass',route=>{issued++;return json(route,{...card(),displayName})});
+  await open(page);await dialog(page).locator('[data-pass-consent]').check();
+  const switcher=()=>page.locator('[data-hl-locale-switch]:visible');let sharedUrl;
+  for(const locale of ['ar','en','ar']){
+    await expect(switcher()).toHaveCount(1);
+    if(await page.locator('html').getAttribute('lang')!==locale){await switcher().focus();await switcher().press(locale==='en'?'Enter':'Space');await expect(switcher()).toBeFocused()}
+    await expect(page.locator('html')).toHaveAttribute('dir',locale==='en'?'ltr':'rtl');
+    await expect(dialog(page).locator('[data-pass-name]')).toHaveText(displayName);
+    await expect(dialog(page).locator('[data-pass-consent]')).toBeChecked();
+    const texts=await page.evaluate(()=>window.__membershipCanvasText),latest=texts.slice(-8);
+    expect(latest.some(item=>item.text===displayName)).toBe(true);
+    expect(latest.some(item=>item.text===(locale==='en'?'Internal account card':'بطاقة حساب داخلية'))).toBe(true);
+    expect(latest.every(item=>item.x===(locale==='en'?80:1000)&&item.align===(locale==='en'?'left':'right')&&item.direction===(locale==='en'?'ltr':'rtl'))).toBe(true);
+    expect((await page.evaluate(()=>window.__membershipCanvasImages)).at(-1)).toEqual({x:locale==='en'?735:55,y:200});
+    await dialog(page).locator('[data-pass-share]').click();const shared=await page.evaluate(()=>window.__membershipShared);
+    expect(shared.title).toBe(locale==='en'?'HYDROLAND account card':'بطاقة حساب HYDROLAND');
+    expect(shared.text).toBe(locale==='en'?'Temporary reference; sign-in and permission required. Not a diving license.':'مرجع مؤقت؛ يتطلب تسجيل الدخول والصلاحية. ليس رخصة غوص.');
+    if(sharedUrl)expect(shared.url).toBe(sharedUrl);sharedUrl=shared.url;expect(shared.url).toContain('/#membership-pass=hlm1.');expect(JSON.stringify(shared)).not.toContain(displayName);expect(issued).toBe(1);
+    if(locale==='en'){
+      const pending=page.waitForEvent('download');await dialog(page).locator('[data-pass-download]').click();const bytes=await readFile(await (await pending).path());
+      expect(bytes.subarray(0,8).toString('hex')).toBe('89504e470d0a1a0a');expect(bytes.readUInt32BE(16)).toBe(1080);expect(bytes.readUInt32BE(20)).toBe(680);
+      await testInfo.attach('locale-membership-card-en',{body:bytes,contentType:'image/png'});
+    }
+  }
+  await dialog(page).locator('[data-pass-close]').click();await expect(dialog(page)).toHaveCount(0);
+});

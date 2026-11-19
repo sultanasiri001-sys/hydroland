@@ -226,10 +226,13 @@
         "workflowId": 357187353,
         "path": ".github/workflows/web-validation.yml",
         "jobs": [
-          "validate"
+          "validate",
+          "screen-reader"
         ],
         "criticalSteps": {
           "validate": [
+            "Record browser validation source",
+            "Browser execution evidence contracts",
             "Static web validation",
             "Production web build",
             "Install Chromium",
@@ -237,12 +240,21 @@
             "Scoped research owner and reviewer browser regression",
             "Account lifecycle and fresh action authorization regression",
             "Center workflow focused regression",
+            "Center scoped search browser acceptance",
+            "Verify center scoped search execution evidence",
             "Organization portal focused regression",
             "Professional training completion regression",
             "Training certificate review regression",
             "Booking participant review regression",
             "Browser E2E",
-            "Phase 4 notification focused regression"
+            "Verify full browser execution evidence",
+            "Phase 4 notification focused regression",
+            "Retain browser execution evidence"
+          ],
+          "screen-reader": [
+            "Record native screen-reader source",
+            "Install native accessibility runtime",
+            "Actual Orca Arabic and English seven-portal acceptance"
           ]
         }
       }

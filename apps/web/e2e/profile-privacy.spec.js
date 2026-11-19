@@ -48,3 +48,26 @@ test('logout clears the account editor and discards an in-flight export',async({
   await expect(page.locator('#hl-profile-editor')).toHaveCount(0);
   expect(downloads).toBe(0);
 });
+
+test('personal trip exports download independently and advance only the selected domain', async({page})=>{
+  await install(page);
+  const calls=[];
+  await page.route('**/api/v1/me/data-export/trip-records', async route=>{
+    const {domain,after}=route.request().postDataJSON();calls.push([domain,after]);
+    await json(route,{schemaVersion:'PERSONAL_TRIP_RECORDS_V1',accountId:account.id,domain,completePlatformExport:false,records:[],nextCursor:domain==='BOOKINGS'&&!after?'next-booking':null},201);
+  });
+  const editor = page.locator('#hl-profile-editor');
+  const bookingButton = editor.locator('[data-trip-export="BOOKINGS"]');
+  await expect(bookingButton).toHaveAccessibleName('تنزيل حجوزاتي الشخصية');
+  await editor.locator('[data-hl-locale-switch]').click();
+  await expect(bookingButton).toHaveAccessibleName('Download my personal bookings');
+  await expect(editor.locator('[data-trip-export="PAYMENTS"]')).toHaveAccessibleName('Download my trip payments');
+  for(const [domain,filename] of [['BOOKINGS','bookings-1'],['PAYMENTS','payments-1'],['BOOKINGS','bookings-2']]){
+    const waiting=page.waitForEvent('download');await page.locator('[data-trip-export="'+domain+'"]').click();
+    expect((await waiting).suggestedFilename()).toBe('hydroland-trip-'+filename+'.json');
+    if (filename === 'bookings-1') await expect(bookingButton).toHaveAccessibleName('Download the next page of bookings');
+  }
+  await expect(editor.getByRole('status')).toHaveText('Finished downloading the requested records.');
+  expect(calls).toEqual([['BOOKINGS',''],['PAYMENTS',''],['BOOKINGS','next-booking']]);
+  await expect(page.locator('[data-trip-export="BOOKINGS"]')).toBeDisabled();
+});
