@@ -1,4 +1,23 @@
 (()=>{
+  // Authored interface messages only. Account, provider and document values remain opaque.
+  const uiLocale=window.HydrolandI18n?.createScope("workspace-ui", {
+  "لوحة هواة الغوص": "Diver dashboard",
+  "الرئيسية": "Home",
+  "الرحلات والحجوزات": "Trips and bookings",
+  "سجل الغوص": "Dive log",
+  "المعدات": "Equipment",
+  "الشهادات": "Certificates",
+  "المتجر والتأجير": "Store and rentals",
+  "المجتمع": "Community",
+  "المواقع": "Locations",
+  "التدريب": "Training",
+  "الرسائل": "Messages",
+  "مركز المساعدة": "Help center",
+  "الإعدادات": "Settings",
+  "مساحة التدريب": "Training workspace",
+  "مساحة الخدمة": "Service workspace"
+}) || {messageHTML:value=>String(value??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])),attribute:(name,text,values=[])=>name+'=\"'+String(text).replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token).replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]))+'\"',message:(text,values=[])=>String(text).replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token),setMessage:(node,value)=>(node.textContent=value??''),t:value=>value,label:(text,values=[])=>String(text??'').replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])),format:(text,values=[])=>text.replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token),html:(parts,...values)=>parts.map((part,i)=>part+(i<values.length?String(values[i]??''):'')).join(''),bind:()=>{},setHTML:(node,value)=>(node.innerHTML=value),insertHTML:(node,position,value)=>node.insertAdjacentHTML(position,value),setText(node,text,values=[]){return node.textContent=this.format(text,values)},setAttribute(node,name,text,values=[]){node.setAttribute(name,this.format(text,values))}};
+
   if(window.HydrolandWorkspaceUI)return;
 
   const roleModules={
@@ -59,20 +78,20 @@
       const label=home.querySelector('span:last-child');
       const target=isAuthed&&role==='diver'?'#hl-diver-dashboard':'#home';
       home.setAttribute('href',target);
-      if(label)label.textContent=isAuthed&&role==='diver'?'لوحة هواة الغوص':'الرئيسية';
+      if(label){uiLocale.setText(label, ...[isAuthed&&role==='diver'?'لوحة هواة الغوص':'الرئيسية']);window.HydrolandI18n?.bindNavigation()}
       home.classList.toggle('active',location.hash===target||!location.hash||(role==='diver'&&location.hash==='#home'));
     }
   };
   const nav=document.getElementById('navigation'),switcher=document.getElementById('role-switch');
   const publicItems=[...nav.children].filter(node=>node!==switcher);let navRole='visitor';
   const publicIcons={home:'home',explore:'compass',trips:'boat',training:'learn',store:'bag',community:'people',safety:'shield'};
-  publicItems.forEach(node=>{const art=publicIcons[node.hash?.slice(1)],holder=node.querySelector('.nav-icon');if(art&&holder)holder.innerHTML=window.HydrolandUI.icon(art)});
+  publicItems.forEach(node=>{const art=publicIcons[node.hash?.slice(1)],holder=node.querySelector('.nav-icon');if(art&&holder)uiLocale.setHTML(holder, window.HydrolandUI.icon(art))});
   const syncNavigation=role=>{
     const next=role==='diver'?'diver':'visitor';if(navRole===next)return;navRole=next;
     if(next==='visitor'){nav.replaceChildren(...publicItems,switcher);return}
     const {icon}=window.HydrolandUI;
     const fragment=document.createElement('div');
-    fragment.innerHTML=[['home','الرئيسية','#hl-diver-dashboard'],['boat','الرحلات والحجوزات','#trips'],['water','سجل الغوص','logbook'],['tanks','المعدات','diver-equipment-list'],['certificate','الشهادات','certs'],['bag','المتجر والتأجير','#store'],['people','المجتمع','#community'],['pin','المواقع','#marine-intelligence'],['learn','التدريب','#training'],['mail','الرسائل','messages'],['help','مركز المساعدة','#hl-support'],['settings','الإعدادات','settings']].map(([art,label,target])=>target.startsWith('#')?`<a class="nav-item" href="${target}"><span class="nav-icon">${icon(art)}</span><span>${label}</span></a>`:`<button type="button" class="nav-item" data-hl-action="${target}"><span class="nav-icon">${icon(art)}</span><span>${label}</span></button>`).join('');nav.replaceChildren(...fragment.children,switcher);
+    uiLocale.setHTML(fragment, [['home','الرئيسية','#hl-diver-dashboard'],['boat','الرحلات والحجوزات','#trips'],['water','سجل الغوص','logbook'],['tanks','المعدات','diver-equipment-list'],['certificate','الشهادات','certs'],['bag','المتجر والتأجير','#store'],['people','المجتمع','#community'],['pin','المواقع','#marine-intelligence'],['learn','التدريب','#training'],['mail','الرسائل','messages'],['help','مركز المساعدة','#hl-support'],['settings','الإعدادات','settings']].map(([art,label,target])=>target.startsWith('#')?uiLocale.html`<a class="nav-item" href="${target}"><span class="nav-icon">${icon(art)}</span><span>${uiLocale.label(label)}</span></a>`:uiLocale.html`<button type="button" class="nav-item" data-hl-action="${target}"><span class="nav-icon">${icon(art)}</span><span>${uiLocale.label(label)}</span></button>`).join(''));nav.replaceChildren(...fragment.children,switcher);
   };
   const main=document.getElementById('main');
   const serviceGroups={'hl-marine-documents':['#hl-marine-documents','#hl-marine-readiness'],'hl-training-service':['.hl-training'],training:['#training','.hl-training'],community:['#community','.hl-community','.hl-support','.hl-members'],safety:['#safety','.hl-safety-center','.hl-safety-review','#hl-safety-incidents','#hl-marine-readiness']};
@@ -117,5 +136,6 @@
       const open=service.open;service.open=(...args)=>{const result=open(...args);show(document.querySelector(selector));return result};wrappedServices.add(service);
     }
   }
+  document.addEventListener('hydroland:locale-changed',()=>{if(!auth()||!selected?.isConnected)return;const heading=document.querySelector('.hl-service-heading');if(!heading||heading.hidden)return;const target=selected.matches('.hl-training')?selected:selected.querySelector('.hl-training')||selected;const source=target.querySelector('h1,h2,h3');if(source)heading.querySelector('[data-service-title]').textContent=source.textContent});
   window.HydrolandWorkspaceUI={refresh:setWorkspace,getRole:currentRole,show};connectServices();setWorkspace();
 })();

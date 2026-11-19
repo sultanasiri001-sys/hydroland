@@ -66,7 +66,7 @@ for(const marker of [
   "Stormglass · متصل",
   "Stormglass · تجريبي",
   "بانتظار إعداد المزود",
-  "setMarineWeatherState('غير مفعّل')",
+  "setMarineWeatherState(uiLocale.message('غير مفعّل'))",
 ])if(!webMap.includes(marker))throw new Error(`Marine weather status UI invariant missing: ${marker}`);
 for(const marker of ["script.dataset.hlWeatherAdmin='1'","script.src='./hydroland-weather-admin.js'","if(role==='admin')ensureWeatherAdmin()"]){if(!webRoleDashboards.includes(marker))throw new Error(`Weather admin runtime loader missing: ${marker}`)}
 const bookingManagement=read('src/trips/booking-management.service.ts');

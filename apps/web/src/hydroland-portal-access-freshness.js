@@ -1,4 +1,9 @@
 (()=>{
+  // Authored interface messages only. Account, provider and document values remain opaque.
+  const uiLocale=window.HydrolandI18n?.createScope("portal-access-freshness", {
+  "هذا الدور غير نشط على حسابك": "This role is not active on your account"
+}) || {messageHTML:value=>String(value??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])),attribute:(name,text,values=[])=>name+'=\"'+String(text).replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token).replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]))+'\"',message:(text,values=[])=>String(text).replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token),setMessage:(node,value)=>(node.textContent=value??''),t:value=>value,label:(text,values=[])=>String(text??'').replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])),format:(text,values=[])=>text.replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token),html:(parts,...values)=>parts.map((part,i)=>part+(i<values.length?String(values[i]??''):'')).join(''),bind:()=>{},setHTML:(node,value)=>(node.innerHTML=value),insertHTML:(node,position,value)=>node.insertAdjacentHTML(position,value),setText(node,text,values=[]){return node.textContent=this.format(text,values)},setAttribute(node,name,text,values=[]){node.setAttribute(name,this.format(text,values))}};
+
   if(window.HydrolandPortalFreshness)return;
   const access=window.HydrolandPortalAccess;
   const auth=window.HydrolandAuth;
@@ -62,7 +67,7 @@
       button.dataset.hlRoleAllowed=allowed?'1':'0';
       button.setAttribute('aria-disabled',allowed?'false':'true');
       button.disabled=!allowed;
-      button.title=allowed?'':'هذا الدور غير نشط على حسابك';
+      if(allowed)button.title='';else uiLocale.setAttribute(button,'title','هذا الدور غير نشط على حسابك');
     });
   };
   const enforceCurrentRole=()=>{

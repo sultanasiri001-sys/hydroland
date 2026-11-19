@@ -1,0 +1,541 @@
+{
+  "batch": "documents-and-governance",
+  "date": "2026-11-19",
+  "applicationBase": "cb91d7ba76278129b4e448fb7a71a254d6876e50",
+  "englishEnabled": false,
+  "fullD11Accepted": false,
+  "checks": {
+    "nodeTests": {
+      "passed": 130,
+      "failed": 0
+    },
+    "staticValidators": "passed",
+    "productionBuild": "passed",
+    "browser": {
+      "discovered": 11,
+      "executedLocally": false,
+      "file": "apps/web/e2e/locale-documents-governance.spec.js"
+    },
+    "actualDom": {
+      "executedJsModules": 32,
+      "modulesCreatingDom": 27,
+      "errors": 0,
+      "writes": 0
+    },
+    "focusedDomGroups": 9,
+    "licenseReaderInvalidFileRoundtrip": "passed",
+    "caughtErrorProvenance": {
+      "localMessageRoundtrip": "passed",
+      "identicalProviderMessageOpaque": "passed",
+      "crossModuleErrorContract": "passed",
+      "inMemorySyntheticSubmissions": 1
+    },
+    "strictDirectivePrologues": {
+      "originalStrictIifes": 10,
+      "retained": 10
+    },
+    "literalSourceCharacters": "passed"
+  },
+  "modules": [
+    {
+      "file": "apps/web/src/hydroland-admin-accounts.js",
+      "scope": "admin-accounts",
+      "changed": true,
+      "catalogEntries": 45,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 17,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-admin-agents.js",
+      "scope": "admin-agents",
+      "changed": true,
+      "catalogEntries": 504,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 143,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-admin-employees.js",
+      "scope": "admin-employees",
+      "changed": true,
+      "catalogEntries": 188,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 81,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-admin.js",
+      "scope": "admin",
+      "changed": true,
+      "catalogEntries": 66,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 56,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-administrative-affairs.js",
+      "scope": "administrative-affairs",
+      "changed": true,
+      "catalogEntries": 107,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 33,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-agent-access.js",
+      "scope": "agent-access",
+      "changed": true,
+      "catalogEntries": 56,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 1,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-center-documents.js",
+      "scope": "center-documents",
+      "changed": true,
+      "catalogEntries": 113,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 0,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-center-license-admin.js",
+      "scope": "center-license-admin",
+      "changed": true,
+      "catalogEntries": 23,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 6,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-contract-library.js",
+      "scope": "contract-library",
+      "changed": true,
+      "catalogEntries": 135,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 62,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-contracts.js",
+      "scope": "contracts",
+      "changed": true,
+      "catalogEntries": 100,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 34,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-department-references.js",
+      "scope": "department-references",
+      "changed": true,
+      "catalogEntries": 224,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 11,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-document-reviews.js",
+      "scope": "document-reviews",
+      "changed": true,
+      "catalogEntries": 103,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 12,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-documents.js",
+      "scope": "documents",
+      "changed": true,
+      "catalogEntries": 228,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 72,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-executive-decisions.js",
+      "scope": "executive-decisions",
+      "changed": true,
+      "catalogEntries": 80,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 9,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-form-completion.js",
+      "scope": "form-completion",
+      "changed": true,
+      "catalogEntries": 56,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 29,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-form-library.js",
+      "scope": "form-library",
+      "changed": true,
+      "catalogEntries": 160,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 82,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-form-setup.js",
+      "scope": "form-setup",
+      "changed": true,
+      "catalogEntries": 44,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 29,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-greeting-cards.js",
+      "scope": "greeting-cards",
+      "changed": true,
+      "catalogEntries": 32,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 26,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-hr-attendance.js",
+      "scope": "hr-attendance",
+      "changed": true,
+      "catalogEntries": 67,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 0,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-hr-control-review.js",
+      "scope": "hr-control-review",
+      "changed": true,
+      "catalogEntries": 78,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 54,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-hr-source.js",
+      "scope": "hr-source",
+      "changed": true,
+      "catalogEntries": 40,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 0,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-license-fields.mjs",
+      "scope": null,
+      "changed": false,
+      "catalogEntries": 0,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": null,
+      "boundary": "Source parser unchanged"
+    },
+    {
+      "file": "apps/web/src/hydroland-license-reader.mjs",
+      "scope": "license-reader",
+      "changed": true,
+      "catalogEntries": 8,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": null,
+      "boundary": "Errors/progress only; OCR/source extraction unchanged"
+    },
+    {
+      "file": "apps/web/src/hydroland-marketing-drafts.js",
+      "scope": "marketing-drafts",
+      "changed": true,
+      "catalogEntries": 54,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 53,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-owner-approval.js",
+      "scope": "owner-approval",
+      "changed": true,
+      "catalogEntries": 50,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 34,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-owner-decision.js",
+      "scope": "owner-decision",
+      "changed": true,
+      "catalogEntries": 43,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 26,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-policy-admin.js",
+      "scope": "policy-admin",
+      "changed": true,
+      "catalogEntries": 24,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 11,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-research-contract.js",
+      "scope": "research-contract",
+      "changed": true,
+      "catalogEntries": 3,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 0,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-research-runtime.js",
+      "scope": "research-runtime",
+      "changed": true,
+      "catalogEntries": 123,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 12,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-staff-approvals.js",
+      "scope": "staff-approvals",
+      "changed": true,
+      "catalogEntries": 38,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 26,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-technology-requests.js",
+      "scope": "technology-requests",
+      "changed": true,
+      "catalogEntries": 83,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 1,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-theme-admin.js",
+      "scope": "theme-admin",
+      "changed": true,
+      "catalogEntries": 24,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 33,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-theme-manager.js",
+      "scope": "theme-manager",
+      "changed": true,
+      "catalogEntries": 5,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 8,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    },
+    {
+      "file": "apps/web/src/hydroland-themes.js",
+      "scope": "themes",
+      "changed": true,
+      "catalogEntries": 15,
+      "unreviewedPatterns": 0,
+      "untranslatedPatterns": 0,
+      "initialization": {
+        "executed": true,
+        "createdElements": 0,
+        "errors": 0,
+        "remainingAuthoredArabic": 0
+      },
+      "boundary": "Authored interface only; ordinary business/source data opaque"
+    }
+  ]
+}

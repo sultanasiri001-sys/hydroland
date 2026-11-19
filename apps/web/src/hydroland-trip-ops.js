@@ -1,4 +1,23 @@
 (()=>{
+  // Authored interface messages only. Account, provider and document values remain opaque.
+  const uiLocale=window.HydrolandI18n?.createScope("trip-ops", {
+  "التشغيل الفعلي للرحلات": "Live trip operations",
+  "بانتظار البيانات": "Awaiting data",
+  "تحديث الرحلات": "Refresh trips",
+  "لا توجد رحلات مفتوحة حاليًا": "No open trips at present",
+  "ستظهر الرحلات هنا مباشرة من قاعدة البيانات عند توفرها.": "Trips will appear here directly from the database when available.",
+  "لا توجد رحلات مفتوحة": "No open trips",
+  "النوع": "Type",
+  "الموعد": "Time",
+  "السعة": "Capacity",
+  "المقاعد المتبقية": "Remaining seats",
+  "قرار السلامة": "Safety decision",
+  "جارٍ تحميل الرحلات": "Loading trips",
+  "تعذر الاتصال بخادم الرحلات": "Could not connect to the trip server",
+  "لا تُعرض أي بيانات تجريبية عند فشل الاتصال.": "No sample data is shown when the connection fails.",
+  "تعذر الاتصال": "Could not connect"
+}) || {messageHTML:value=>String(value??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])),attribute:(name,text,values=[])=>name+'=\"'+String(text).replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token).replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]))+'\"',message:(text,values=[])=>String(text).replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token),setMessage:(node,value)=>(node.textContent=value??''),t:value=>value,label:(text,values=[])=>String(text??'').replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])),format:(text,values=[])=>text.replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token),html:(parts,...values)=>parts.map((part,i)=>part+(i<values.length?String(values[i]??''):'')).join(''),bind:()=>{},setHTML:(node,value)=>(node.innerHTML=value),insertHTML:(node,position,value)=>node.insertAdjacentHTML(position,value),setText(node,text,values=[]){return node.textContent=this.format(text,values)},setAttribute(node,name,text,values=[]){node.setAttribute(name,this.format(text,values))}};
+
   const css=document.createElement('link');
   css.rel='stylesheet';
   css.href='./hydroland-trip-ops.css';
@@ -12,7 +31,7 @@
   const state={trips:[]};
   const panel=document.createElement('section');
   panel.className='hl-trip-ops';
-  panel.innerHTML=`<header class="hl-trip-head"><div><small>TRIP OPERATIONS · HYDROLAND</small><h3>التشغيل الفعلي للرحلات</h3></div><span class="hl-trip-state" data-trip-state>بانتظار البيانات</span></header><div class="hl-trip-grid" data-trip-grid></div><div class="hl-trip-actions"><button data-trip-refresh>تحديث الرحلات</button></div>`;
+  uiLocale.setHTML(panel, uiLocale.html`<header class="hl-trip-head"><div><small>TRIP OPERATIONS · HYDROLAND</small><h3>التشغيل الفعلي للرحلات</h3></div><span class="hl-trip-state" data-trip-state>بانتظار البيانات</span></header><div class="hl-trip-grid" data-trip-grid></div><div class="hl-trip-actions"><button data-trip-refresh>تحديث الرحلات</button></div>`);
   host.appendChild(panel);
 
   const grid=panel.querySelector('[data-trip-grid]');
@@ -23,13 +42,13 @@
 
   function render(){
     if(!state.trips.length){
-      grid.innerHTML='<section class="hl-trip-panel"><h4>لا توجد رحلات مفتوحة حاليًا</h4><small>ستظهر الرحلات هنا مباشرة من قاعدة البيانات عند توفرها.</small></section>';
-      stateLabel.textContent='لا توجد رحلات مفتوحة';
+      uiLocale.setHTML(grid, uiLocale.html`<section class="hl-trip-panel"><h4>لا توجد رحلات مفتوحة حاليًا</h4><small>ستظهر الرحلات هنا مباشرة من قاعدة البيانات عند توفرها.</small></section>`);
+      uiLocale.setText(stateLabel, ...['لا توجد رحلات مفتوحة']);
       stateLabel.dataset.state='EMPTY';
       return;
     }
 
-    grid.innerHTML=state.trips.map(trip=>`<section class="hl-trip-panel" data-trip-id="${trip.id}"><h4>${trip.title}</h4><div class="hl-trip-row"><span>النوع</span><b>${trip.type}</b></div><div class="hl-trip-row"><span>الموعد</span><b>${formatDate(trip.startsAt)}</b></div><div class="hl-trip-row"><span>السعة</span><b>${trip.bookedSeats||0} / ${trip.capacity}</b></div><div class="hl-trip-row"><span>المقاعد المتبقية</span><b>${trip.remainingSeats??trip.capacity}</b></div><div class="hl-trip-row"><span>قرار السلامة</span><b class="${safetyClass(trip.safety?.decision)}">${safetyLabel(trip.safety?.decision)}</b></div></section>`).join('');
+    uiLocale.setHTML(grid, state.trips.map(trip=>uiLocale.html`<section class="hl-trip-panel" data-trip-id="${trip.id}"><h4>${trip.title}</h4><div class="hl-trip-row"><span>النوع</span><b>${trip.type}</b></div><div class="hl-trip-row"><span>الموعد</span><b>${formatDate(trip.startsAt)}</b></div><div class="hl-trip-row"><span>السعة</span><b>${trip.bookedSeats||0} / ${trip.capacity}</b></div><div class="hl-trip-row"><span>المقاعد المتبقية</span><b>${trip.remainingSeats??trip.capacity}</b></div><div class="hl-trip-row"><span>قرار السلامة</span><b class="${safetyClass(trip.safety?.decision)}">${safetyLabel(trip.safety?.decision)}</b></div></section>`).join(''));
     const first=state.trips[0];
     const operational=safetyLabel(first.safety?.decision);
     stateLabel.textContent=`${operational} · ${first.title}`;
@@ -37,7 +56,7 @@
   }
 
   async function load(){
-    stateLabel.textContent='جارٍ تحميل الرحلات';
+    uiLocale.setText(stateLabel, ...['جارٍ تحميل الرحلات']);
     try{
       const response=await fetch(`${api().replace(/\/$/,'')}/trips`);
       if(!response.ok)throw new Error();
@@ -46,8 +65,8 @@
       render();
     }catch{
       state.trips=[];
-      grid.innerHTML='<section class="hl-trip-panel"><h4>تعذر الاتصال بخادم الرحلات</h4><small>لا تُعرض أي بيانات تجريبية عند فشل الاتصال.</small></section>';
-      stateLabel.textContent='تعذر الاتصال';
+      uiLocale.setHTML(grid, uiLocale.html`<section class="hl-trip-panel"><h4>تعذر الاتصال بخادم الرحلات</h4><small>لا تُعرض أي بيانات تجريبية عند فشل الاتصال.</small></section>`);
+      uiLocale.setText(stateLabel, ...['تعذر الاتصال']);
       stateLabel.dataset.state='OFFLINE';
     }
   }

@@ -1,0 +1,67 @@
+vvvvv PROCESS ATSPI_KEY_PRESSED_EVENT: 'Control_L' (37) vvvvv
+08:38:59.155777 - HOST_APP: [application: 'Google Chrome for Testing']
+08:38:59.155808 - WINDOW: [frame: 'HYDROLAND | هيدرولاند - Google Chrome for Testing']
+08:38:59.155827 - LOCATION: [entry: 'Address and search bar']
+08:38:59.155843 - CONSUME: False Non-Orca modifier not in Learn Mode
+08:38:59.155861 - DEFAULT: Interrupting presentation
+08:38:59.156249 - WEB: Flushing live region messages
+08:38:59.156299 - FOCUS MANAGER: Locus of focus is [entry: 'Address and search bar']
+08:38:59.156322 - DEFAULT: Presenting keyboard event
+08:38:59.156349 - SPEECH GENERATOR: None voice requested with language='None', dialect=''
+08:38:59.156364 - SPEECH: Last spoke 0.1588 seconds ago
+08:38:59.156385 - SPEECH OUTPUT: 'left control' {'family': {'name': 'Arabic', 'lang': 'ar', 'dialect': 'none'}}
+08:38:59.156524 - SPEECH DISPATCHER: Speaking 'left control' as string
+08:38:59.156547 - SPEECH DISPATCHER: Speaking 'left control' as string
+08:38:59.156575 - SCRIPT MANAGER: Active script is: Google Chrome for Testing (module=orca.scripts.toolkits.Chromium.script) speechdispatcherfactory.speak > speechdispatcherfactory._speak > ssml.markupText > script_manager.getActiveScript
+08:38:59.158993 - FOCUS MANAGER: Locus of focus is [entry: 'Address and search bar']
+08:38:59.160801 - SPEECH DISPATCHER: Speaking '<speak><mark name="0:4"/>left <mark name="5:12"/>control</speak>' 
+                  ORCA rate 5.0, pitch 5.0, volume 5.0, language ar, punctuation: MOST
+                  SD rate 2, pitch 10, volume 100, language ar-none
+08:38:59.161083 - CONSUMED: False Should not consume
+08:38:59.161108 - SCRIPT MANAGER: Active script is: Google Chrome for Testing (module=orca.scripts.toolkits.Chromium.script) orca.start > event_manager._processKeyboardEvent > input_event.process > script_manager.getActiveScript
+08:38:59.162251 - INPUT EVENT: _inFocusMode: False
+08:38:59.162264 - INPUT EVENT: _focusModeIsSticky: False
+08:38:59.162270 - INPUT EVENT: _browseModeIsSticky: False
+08:38:59.162277 - TOTAL PROCESSING TIME: 0.0065
+^^^^^ PROCESS ATSPI_KEY_PRESSED_EVENT: 'Control_L' (37) ^^^^^
+
+vvvvv PROCESS OBJECT EVENT document:load-complete (queue size: 0) vvvvv
+08:38:59.839600 - EVENT MANAGER: document:load-complete for [document web: 'HYDROLAND | هيدرولاند'] in [application: 'Google Chrome for Testing'] (0, 0, HYDROLAND | هيدرولاند) is not obsoleted
+08:38:59.839641 - OBJECT EVENT: document:load-complete for [document web: 'HYDROLAND | هيدرولاند'] in [application: 'Google Chrome for Testing'] (0, 0, HYDROLAND | هيدرولاند)
+                                app='Google Chrome for Testing (Chromium 1.0)' name='HYDROLAND | هيدرولاند' role='document web'
+                                description=''
+                                states='enabled, focusable, focused, sensitive, showing, visible'
+                                relations='embedded-by: [document web: 'HYDROLAND | هيدرولاند']'
+                                actions='do-default; show-context-menu; scroll-backward; scroll-down; scroll-forward; scroll-left; scroll-right; scroll-up'
+                                interfaces='Action, Collection, Component, Document, Hyperlink, Hypertext, Text'
+                                attributes='explicit-name:true, text-align:left, tag:#document, name-from:related-element'
+                                path=[-1, 0, 0, 0, 5, 2, 1, 3]
+
+08:38:59.842494 - EVENT MANAGER: Getting script for event for [application: 'Google Chrome for Testing'] check: True
+08:38:59.842525 - SCRIPT MANAGER: Getting script for [application: 'Google Chrome for Testing'] [document web: 'HYDROLAND | هيدرولاند'] sanity check: True
+08:38:59.843044 - SCRIPT MANAGER: Script is app script Google Chrome for Testing (module=orca.scripts.toolkits.Chromium.script)
+08:38:59.843063 - EVENT MANAGER: Script for event is Google Chrome for Testing (module=orca.scripts.toolkits.Chromium.script)
+08:38:59.843078 - SCRIPT MANAGER: Active script is: Google Chrome for Testing (module=orca.scripts.toolkits.Chromium.script) event_manager._dequeue_object_event > event_manager._processObjectEvent > event_manager._isActivatableEvent > script_manager.getActiveScript
+08:38:59.843659 - EVENT MANAGER: Change active script: False (The script for this event is already active.)
+08:38:59.843677 - SCRIPT MANAGER: Active script is: Google Chrome for Testing (module=orca.scripts.toolkits.Chromium.script) orca.start > event_manager._dequeue_object_event > event_manager._processObjectEvent > script_manager.getActiveScript
+08:38:59.844165 - EVENT MANAGER: Processing document:load-complete: script for event is active
+08:38:59.844324 - AXDocument: Attributes of [document web: 'HYDROLAND | هيدرولاند'] are: {'Title': 'HYDROLAND | هيدرولاند', 'MimeType': 'text/html', 'DocType': 'html', 'URI': 'http://127.0.0.1:4173/'}
+08:38:59.844616 - WEB: Updating loading state and resetting live regions
+08:38:59.844649 - FOCUS MANAGER: Active window is [frame: 'HYDROLAND | هيدرولاند - Google Chrome for Testing'] bookmarks.getURIKey > script_utilities.documentFrame > script_utilities.sanityCheckActiveWindow > focus_manager.get_active_window
+08:38:59.845293 - FOCUS MANAGER: Active window is [frame: 'HYDROLAND | هيدرولاند - Google Chrome for Testing'] bookmarks.getURIKey > script_utilities.documentFrame > script_utilities.activeDocument > focus_manager.get_active_window
+08:38:59.846164 - AXDocument: Attributes of [document web: 'HYDROLAND | هيدرولاند'] are: {'Title': 'HYDROLAND | هيدرولاند', 'MimeType': 'text/html', 'DocType': 'html', 'URI': 'http://127.0.0.1:4173/'}
+08:38:59.846210 - EVENT MANAGER: _inFocusMode: False
+08:38:59.846215 - EVENT MANAGER: _focusModeIsSticky: False
+08:38:59.846219 - EVENT MANAGER: _browseModeIsSticky: False
+TOTAL PROCESSING TIME: 0.0067
+^^^^^ PROCESS OBJECT EVENT document:load-complete ^^^^^
+
+08:38:59.920870 - WEB SAY ALL: <Atspi.Accessible object at 0x7ff6ac757180 (AtspiAccessible at 0x1c8a8ad0)> 'انتقل إلى المحتوى' (0-17, current: 0)
+08:38:59.921136 - AXText: [link: 'انتقل إلى المحتوى'] reports 17 characters.
+08:38:59.921328 - AXText: Scrolled [link: 'انتقل إلى المحتوى'] substring (0-17) to anywhere: True
+08:38:59.921475 - AXEventSynthesizer: Before scroll: (1360, 7) After scroll: (1360, 7)
+08:38:59.921517 - SCRIPT MANAGER: Active script is: Google Chrome for Testing (module=orca.scripts.toolkits.Chromium.script) speechdispatcherfactory._say_all > speechdispatcherfactory._speak > ssml.markupText > script_manager.getActiveScript
+08:38:59.922131 - FOCUS MANAGER: Locus of focus is [document web: 'HYDROLAND | هيدرولاند']
+08:38:59.922774 - SPEECH DISPATCHER: Speaking '<speak><mark name="0:5"/>انتقل <mark name="6:9"/>إلى <mark name="10:17"/>المحتوى</speak>' 
+                  ORCA rate 5.0, pitch 5.0, volume 5.0, language ar, punctuation: MOST
+                  SD rate 2, pitch 10, volume 100, language ar-none

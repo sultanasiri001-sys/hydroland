@@ -54,7 +54,7 @@ test('multi-seat free booking, participant editing and self-cancel work from the
   await companion.locator('[data-save-participant]').click();
   await expect(companion.locator('[name="fullName"]')).toHaveValue('Companion Diver');
   expect(state.participants.find(row=>row.id==='participant-2')?.certificationNumber).toBe('AOW-22');
-  await participantsDialog.locator('.hl-account-head button').click();
+  await participantsDialog.getByRole('button', { name: 'إغلاق', exact: true }).click();
   page.once('dialog',dialog=>dialog.accept());
   await bookingsDialog.locator('[data-cancel-booking]').click();
   await expect.poll(()=>state.cancelMethod).toBe('PATCH');

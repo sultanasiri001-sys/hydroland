@@ -17,5 +17,5 @@ if(!html.includes('href="./hydroland-design-system.css"')) throw new Error('Appr
 for(const retired of ['hydroland-premium.css','hydroland-v2.css','hydroland-mobile-reset.css','hydroland-reference-portals.css']) if(html.includes(retired)) throw new Error('Retired presentation layer is still loaded: '+retired);
 for(const id of ['ocean-horizon','winter-current','spring-reef','summer-coast','autumn-depth','founding-day','national-day','eid-al-fitr','eid-al-adha','marine-event']) if(!themes.includes(id)) throw new Error('Missing theme center entry: '+id);
 if(!themes.includes("fetch(apiBase+'/themes/active'")) throw new Error('Theme center must sync the active server theme');
-if(!themeManager.includes("aria-label','فتح الثيمات'")) throw new Error('Theme center must remain accessible from the UI');
+if(!themeManager.includes("aria-label','فتح الثيمات'")&&!themeManager.includes('uiLocale.setAttribute(b, "aria-label", \'فتح الثيمات\')')) throw new Error('Theme center must remain accessible from the UI');
 console.log('HYDROLAND approved design system and theme center validation passed.');

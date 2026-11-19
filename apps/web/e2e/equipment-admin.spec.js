@@ -95,7 +95,15 @@ test('renter can release an unpaid hold and see expired holds in their history',
   await expect(card).toContainText('آخر موعد لتأكيد الدفع');
   await expect(oldCard).toContainText('انتهت مهلة الدفع');
   await expect(oldCard.getByRole('button',{name:'إلغاء الحجز غير المدفوع'})).toHaveCount(0);
-  await card.getByRole('button',{name:'إلغاء الحجز غير المدفوع'}).click();
+  const language = page.locator('#hl-rentals-dialog [data-hl-locale-switch]');
+  await language.click();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  await expect(card).toContainText('Confirm payment by:');
+  await expect(oldCard).toContainText('Payment deadline expired');
+  await expect(oldCard.getByRole('button', {name: 'Cancel unpaid reservation'})).toHaveCount(0);
+  await card.getByRole('button', {name: 'Cancel unpaid reservation'}).click();
+  await expect(card).toContainText('Cancelled');
+  await language.click();
   await expect(card).toContainText('ملغى');
   await expect(card.getByRole('button',{name:'إلغاء الحجز غير المدفوع'})).toHaveCount(0);
   expect(cancellations).toBe(1);

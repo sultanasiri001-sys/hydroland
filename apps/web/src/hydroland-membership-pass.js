@@ -1,3 +1,44 @@
+
+  // Authored interface messages only. Account, provider and document values remain opaque.
+  const uiLocale=window.HydrolandI18n?.createScope("membership-pass", {
+  "عرض QR": "Show QR",
+  "تحميل البطاقة": "Download card",
+  "مشاركة البطاقة": "Share card",
+  "سجّل الدخول أولًا": "Sign in first",
+  "بطاقة حساب داخلية": "Internal account card",
+  "حالة الحساب وقت الإصدار: نشط": "Account status when issued: active",
+  "حساب عضو": "Member account",
+  "QR مؤقت: يلزم تسجيل الدخول وصلاحية التحقق.": "Temporary QR: sign-in and verification permission are required.",
+  "تنتهي صلاحية المرجع: ": "Reference expires: ",
+  "ليست رخصة غوص أو إثبات لياقة أو اعتمادًا مهنيًا.": "This is not a diving license, proof of fitness or professional accreditation.",
+  "بطاقة حساب HYDROLAND": "HYDROLAND account card",
+  "إغلاق البطاقة": "Close card",
+  "جارٍ التحقق من الحساب...": "Verifying account...",
+  "رمز تحقق مؤقت ومحمي لبطاقة الحساب": "Temporary protected account card verification code",
+  "هذه بطاقة حساب داخلية، وليست رخصة غوص أو إثبات لياقة أو اعتمادًا مهنيًا. التحقق متاح لصاحب الحساب أو إدارة المنصة المصرح لها فقط.": "This is an internal account card, not a diving license, proof of fitness or professional accreditation. Verification is available only to the account holder or authorized platform administrators.",
+  "ينتهي رابط التحقق خلال خمس دقائق أو عند انتهاء جلسة الإصدار. النسخة المحفوظة على الجهاز لا تُسحب عند تسجيل الخروج.": "The verification link expires after five minutes or when the issuing session ends. A copy saved on the device is not withdrawn on sign-out.",
+  "أوافق على حفظ نسخة تتضمن الاسم وحالة الحساب، أو مشاركة رابط تحقق مؤقت مع جهة مصرح لها.": "I agree to save a copy containing the name and account status, or to share a temporary verification link with an authorized party.",
+  "رابط تحقق مؤقت": "Temporary verification link",
+  "إعادة المحاولة": "Retry",
+  "حفظ البطاقة PNG": "Save card as PNG",
+  "مشاركة رابط التحقق": "Share verification link",
+  "انتهت صلاحية المرجع. أعد المحاولة لإصدار بطاقة جديدة.": "The reference has expired. Try again to issue a new card.",
+  "سجّل الدخول ثم أعد فتح رابط البطاقة للتحقق منها.": "Sign in, then reopen the card link to verify it.",
+  "صلاحية المرجع حتى: ": "Reference valid until: ",
+  "تم التحقق من بيانات الحساب. البطاقة ليست اعتمادًا رسميًا.": "Account details verified. The card is not an official accreditation.",
+  "المرجع منتهي أو ليست لديك صلاحية التحقق من هذا الحساب.": "The reference has expired, or you are not authorized to verify this account.",
+  "تعذر تجهيز البطاقة. أعد المحاولة دون مشاركة أي بيانات.": "Could not prepare the card. Try again without sharing any data.",
+  "تم طلب حفظ البطاقة على جهازك. صلاحية التحقق تبقى مؤقتة.": "Saving the card to your device was requested. Verification remains temporary.",
+  "مرجع مؤقت؛ يتطلب تسجيل الدخول والصلاحية. ليس رخصة غوص.": "Temporary reference; sign-in and permission required. Not a diving license.",
+  "تم تسليم الرابط إلى أداة المشاركة.": "The link was handed to the sharing tool.",
+  "تم نسخ رابط التحقق المؤقت.": "Temporary verification link copied.",
+  "انسخ الرابط المحدد يدويًا؛ لم تتم مشاركة أي بيانات تلقائيًا.": "Copy the selected link manually. No data was shared automatically.",
+  "تم إلغاء المشاركة.": "Sharing cancelled.",
+  "تعذرت المشاركة. لم تُرسل البيانات تلقائيًا.": "Could not share. No data was sent automatically.",
+  "صلاحية المرجع حتى: {0}": "Reference valid until: {0}",
+  "تنتهي صلاحية المرجع:": "Reference expires:",
+  "صلاحية المرجع حتى:": "Reference valid until:"
+}) || {messageHTML:value=>String(value??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])),attribute:(name,text,values=[])=>name+'=\"'+String(text).replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token).replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]))+'\"',message:(text,values=[])=>String(text).replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token),setMessage:(node,value)=>(node.textContent=value??''),t:value=>value,label:(text,values=[])=>String(text??'').replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])),format:(text,values=[])=>text.replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token),html:(parts,...values)=>parts.map((part,i)=>part+(i<values.length?String(values[i]??''):'')).join(''),bind:()=>{},setHTML:(node,value)=>(node.innerHTML=value),insertHTML:(node,position,value)=>node.insertAdjacentHTML(position,value),setText(node,text,values=[]){return node.textContent=this.format(text,values)},setAttribute(node,name,text,values=[]){node.setAttribute(name,this.format(text,values))}};
 (async () => {
 const [{ membershipQr }, { membershipDeadline }] = await Promise.all([
   import('./hydroland-membership-qr.js'), import('./hydroland-membership-time.js'),
@@ -11,11 +52,11 @@ let generation = 0, state = null, timer = null;
 const urls = new Set();
 const style = document.createElement('style');
 style.textContent = `
-.hl-membership-dialog{box-sizing:border-box;width:min(96vw,620px);max-height:92dvh;overflow:auto;padding:20px;border:1px solid #39637b;border-radius:18px;background:#092236;color:#edf9ff;font:inherit;direction:rtl}
+.hl-membership-dialog{box-sizing:border-box;width:min(96vw,620px);max-height:92dvh;overflow:auto;padding:20px;border:1px solid #39637b;border-radius:18px;background:#092236;color:#edf9ff;font:inherit;direction:inherit}
 .hl-membership-dialog::backdrop{background:#020e1cd9}.hl-membership-dialog header,.hl-membership-dialog footer{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.hl-membership-dialog h2{margin:0;font-size:1.2rem}.hl-membership-dialog p{line-height:1.7;overflow-wrap:anywhere}.hl-membership-dialog button{font:inherit;color:inherit;background:#123950;border:1px solid #52758b;border-radius:10px;padding:9px 14px;cursor:pointer}.hl-membership-dialog button:disabled{opacity:.5;cursor:not-allowed}.hl-membership-dialog canvas{display:block;max-width:100%;height:auto;margin:12px auto;background:white}.hl-membership-dialog input[type=text]{box-sizing:border-box;width:100%;font:inherit;direction:ltr;background:#fff;color:#102535}.hl-membership-dialog [data-pass-notice]{color:#c9dbe5}.hl-membership-dialog label{display:flex;align-items:flex-start;gap:8px;margin:14px 0;line-height:1.7}.hl-membership-dialog [hidden]{display:none!important}
 `;
 document.head.appendChild(style);
-function enableActions() { actions.forEach((button, i) => { button.textContent = labels[i]; button.type = 'button'; button.dataset.membershipAction = ['qr', 'card', 'share'][i]; button.disabled = !auth()?.isAuthenticated?.(); button.title = button.disabled ? 'سجّل الدخول أولًا' : ''; }); }
+function enableActions() { actions.forEach((button, i) => { uiLocale.setText(button, ...[labels[i]]); button.type = 'button'; button.dataset.membershipAction = ['qr', 'card', 'share'][i]; button.disabled = !auth()?.isAuthenticated?.(); if(button.disabled)uiLocale.setAttribute(button,'title','سجّل الدخول أولًا');else button.title=''; }); }
 function clear() {
   generation++; clearInterval(timer); timer = null;
   if (state) { state.card.width = 0; state.qr.width = 0; state.dialog.close(); state.dialog.remove(); state = null; }
@@ -35,18 +76,21 @@ function renderCard(s) {
   const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('CANVAS_UNAVAILABLE');
   ctx.fillStyle = '#092236'; ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.strokeStyle = '#5bc6d8'; ctx.lineWidth = 4; ctx.strokeRect(16, 16, 1048, 648);
-  ctx.textAlign = 'right'; ctx.direction = 'rtl'; ctx.fillStyle = '#edf9ff'; ctx.font = 'bold 46px sans-serif';
-  ctx.fillText('HYDROLAND', 1000, 100); ctx.font = 'bold 34px "Noto Sans Arabic", sans-serif';
-  ctx.fillText('بطاقة حساب داخلية', 1000, 165); ctx.font = '30px "Noto Sans Arabic", sans-serif';
-  ctx.fillText(s.data.displayName.slice(0, 48), 1000, 245, 610);
-  ctx.fillText('حالة الحساب وقت الإصدار: نشط', 1000, 305, 610);
-  ctx.font = '24px "Noto Sans Arabic", sans-serif'; ctx.fillText(s.data.roles.join(' · ').slice(0, 90) || 'حساب عضو', 1000, 365, 610);
-  ctx.drawImage(s.qr, 55, 200, 292, 292);
+  const english=window.HydrolandI18n?.getLocale()==='en',textX=english?80:1000;
+  ctx.textAlign = english?'left':'right'; ctx.direction = english?'ltr':'rtl'; ctx.fillStyle = '#edf9ff'; ctx.font = 'bold 46px sans-serif';
+  ctx.fillText('HYDROLAND', textX, 100); ctx.font = 'bold 34px "Noto Sans Arabic", sans-serif';
+  ctx.fillText(uiLocale.t('بطاقة حساب داخلية'), textX, 165); ctx.font = '30px "Noto Sans Arabic", sans-serif';
+  ctx.fillText(s.data.displayName.slice(0, 48), textX, 245, 610);
+  ctx.fillText(uiLocale.t('حالة الحساب وقت الإصدار: نشط'), textX, 305, 610);
+  ctx.font = '24px "Noto Sans Arabic", sans-serif'; ctx.fillText(s.data.roles.join(' · ').slice(0, 90) || uiLocale.t('حساب عضو'), textX, 365, 610);
+  ctx.drawImage(s.qr, english?735:55, 200, 292, 292);
   ctx.fillStyle = '#c9dbe5'; ctx.font = '22px "Noto Sans Arabic", sans-serif';
-  ctx.fillText('QR مؤقت: يلزم تسجيل الدخول وصلاحية التحقق.', 1000, 515, 950);
-  ctx.fillText('تنتهي صلاحية المرجع: ' + new Date(s.data.expiresAt).toLocaleString('ar-SA'), 1000, 565, 950);
-  ctx.fillText('ليست رخصة غوص أو إثبات لياقة أو اعتمادًا مهنيًا.', 1000, 620, 950);
+  ctx.fillText(uiLocale.t('QR مؤقت: يلزم تسجيل الدخول وصلاحية التحقق.'), textX, 515, 950);
+  ctx.fillText(uiLocale.t('تنتهي صلاحية المرجع: ') + new Date(s.data.expiresAt).toLocaleString(english?'en-GB':'ar-SA'), textX, 565, 950);
+  ctx.fillText(uiLocale.t('ليست رخصة غوص أو إثبات لياقة أو اعتمادًا مهنيًا.'), textX, 620, 950);
 }
+function renderExpiry(s){uiLocale.setText(s.dialog.querySelector('[data-pass-expiry]'),'صلاحية المرجع حتى: {0}',[new Date(s.data.expiresAt).toLocaleString(window.HydrolandI18n?.getLocale()==='en'?'en-GB':'ar-SA')])}
+document.addEventListener('hydroland:locale-changed',()=>{if(state&&valid(state)){renderExpiry(state);if(state.link)renderCard(state)}});
 function normalized(data, requestStartedAt) {
   if (!data || data.cardType !== 'INTERNAL_ACCOUNT_REFERENCE' || data.officialLicence !== false || data.accountStatus !== 'ACTIVE' || typeof data.displayName !== 'string' || !Array.isArray(data.roles) || !data.roles.every(v => typeof v === 'string')) throw new Error('INVALID_PASS');
   return { displayName: data.displayName.slice(0, 161), roles: data.roles.slice(0, 5).map(v => v.slice(0, 80)), expiresAt: data.expiresAt, deadline: membershipDeadline(data, requestStartedAt) };
@@ -60,7 +104,7 @@ async function request(path, body) {
 function makeDialog() {
   clear(); const dialog = document.createElement('dialog'); dialog.className = 'hl-membership-dialog'; dialog.id = 'hl-membership-pass';
   dialog.setAttribute('aria-labelledby', 'hl-pass-title');
-  dialog.innerHTML = `<header><h2 id="hl-pass-title">بطاقة حساب HYDROLAND</h2><button type="button" data-pass-close aria-label="إغلاق البطاقة">×</button></header><p data-pass-status role="status" aria-live="polite">جارٍ التحقق من الحساب...</p><div data-pass-content hidden><h3 data-pass-name></h3><p data-pass-roles></p><canvas data-pass-qr role="img" aria-label="رمز تحقق مؤقت ومحمي لبطاقة الحساب"></canvas><p data-pass-expiry></p></div><p data-pass-notice>هذه بطاقة حساب داخلية، وليست رخصة غوص أو إثبات لياقة أو اعتمادًا مهنيًا. التحقق متاح لصاحب الحساب أو إدارة المنصة المصرح لها فقط.</p><p>ينتهي رابط التحقق خلال خمس دقائق أو عند انتهاء جلسة الإصدار. النسخة المحفوظة على الجهاز لا تُسحب عند تسجيل الخروج.</p><label data-pass-consent-row hidden><input type="checkbox" data-pass-consent>أوافق على حفظ نسخة تتضمن الاسم وحالة الحساب، أو مشاركة رابط تحقق مؤقت مع جهة مصرح لها.</label><input type="text" data-pass-link readonly hidden aria-label="رابط تحقق مؤقت"><footer><button type="button" data-pass-retry>إعادة المحاولة</button><button type="button" data-pass-download hidden disabled>حفظ البطاقة PNG</button><button type="button" data-pass-share hidden disabled>مشاركة رابط التحقق</button></footer>`;
+  uiLocale.setHTML(dialog, uiLocale.html`<header><h2 id="hl-pass-title">بطاقة حساب HYDROLAND</h2><button type="button" data-pass-close aria-label="إغلاق البطاقة">×</button></header><p data-pass-status role="status" aria-live="polite">جارٍ التحقق من الحساب...</p><div data-pass-content hidden><h3 data-pass-name></h3><p data-pass-roles></p><canvas data-pass-qr role="img" aria-label="رمز تحقق مؤقت ومحمي لبطاقة الحساب"></canvas><p data-pass-expiry></p></div><p data-pass-notice>هذه بطاقة حساب داخلية، وليست رخصة غوص أو إثبات لياقة أو اعتمادًا مهنيًا. التحقق متاح لصاحب الحساب أو إدارة المنصة المصرح لها فقط.</p><p>ينتهي رابط التحقق خلال خمس دقائق أو عند انتهاء جلسة الإصدار. النسخة المحفوظة على الجهاز لا تُسحب عند تسجيل الخروج.</p><label data-pass-consent-row hidden><input type="checkbox" data-pass-consent>أوافق على حفظ نسخة تتضمن الاسم وحالة الحساب، أو مشاركة رابط تحقق مؤقت مع جهة مصرح لها.</label><input type="text" data-pass-link readonly hidden aria-label="رابط تحقق مؤقت"><footer><button type="button" data-pass-retry>إعادة المحاولة</button><button type="button" data-pass-download hidden disabled>حفظ البطاقة PNG</button><button type="button" data-pass-share hidden disabled>مشاركة رابط التحقق</button></footer>`);
   document.body.appendChild(dialog);
   const s = { dialog, generation, session: auth()?.getSessionVersion?.(), data: null, link: '', qr: dialog.querySelector('[data-pass-qr]'), card: document.createElement('canvas') };
   state = s;
@@ -70,7 +114,7 @@ function makeDialog() {
   if (window.HydrolandUI?.openDialog) window.HydrolandUI.openDialog(dialog); else dialog.showModal();
   return s;
 }
-function message(s, text) { if (state === s) s.dialog.querySelector('[data-pass-status]').textContent = text; }
+function message(s, text) { if (state === s) uiLocale.setMessage(s.dialog.querySelector('[data-pass-status]'), text); }
 function expire(s) {
   if (!current(s)) { if (state === s) clear(); return; }
   if (s.data && performance.now() >= s.data.deadline) {
@@ -78,20 +122,20 @@ function expire(s) {
     s.dialog.querySelector('[data-pass-content]').hidden = true;
     s.dialog.querySelector('[data-pass-link]').value = '';
     for (const button of s.dialog.querySelectorAll('[data-pass-download],[data-pass-share]')) button.disabled = true;
-    message(s, 'انتهت صلاحية المرجع. أعد المحاولة لإصدار بطاقة جديدة.');
+    message(s, uiLocale.message('انتهت صلاحية المرجع. أعد المحاولة لإصدار بطاقة جديدة.'));
   }
 }
 async function prepare(s, reference) {
   const retry = s.dialog.querySelector('[data-pass-retry]'); retry.disabled = true;
   try {
-    if (!auth()?.isAuthenticated?.()) { message(s, 'سجّل الدخول ثم أعد فتح رابط البطاقة للتحقق منها.'); return; }
+    if (!auth()?.isAuthenticated?.()) { message(s, uiLocale.message('سجّل الدخول ثم أعد فتح رابط البطاقة للتحقق منها.')); return; }
     const requestStartedAt = performance.now();
     const raw = await request(reference ? '/me/membership-pass/verify' : '/me/membership-pass', reference ? { reference } : {});
     if (!current(s)) return;
     s.data = normalized(raw, requestStartedAt);
     s.dialog.querySelector('[data-pass-name]').textContent = s.data.displayName;
-    s.dialog.querySelector('[data-pass-roles]').textContent = s.data.roles.join(' · ') || 'حساب عضو';
-    s.dialog.querySelector('[data-pass-expiry]').textContent = 'صلاحية المرجع حتى: ' + new Date(s.data.expiresAt).toLocaleString('ar-SA');
+    uiLocale.setMessage(s.dialog.querySelector('[data-pass-roles]'),s.data.roles.join(' · ') || uiLocale.message('حساب عضو'));
+    renderExpiry(s);
     if (!reference) {
       if (typeof raw.reference !== 'string' || !/^hlm1\.[A-Za-z0-9_-]{1,395}$/.test(raw.reference)) throw new Error('INVALID_PASS');
       // Fragment values are not sent in HTTP requests or referrers. No identity,
@@ -105,13 +149,13 @@ async function prepare(s, reference) {
       for (const button of s.dialog.querySelectorAll('[data-pass-download],[data-pass-share]')) button.hidden = false;
     } else s.qr.hidden = true;
     s.dialog.querySelector('[data-pass-content]').hidden = false;
-    message(s, 'تم التحقق من بيانات الحساب. البطاقة ليست اعتمادًا رسميًا.');
+    message(s, uiLocale.message('تم التحقق من بيانات الحساب. البطاقة ليست اعتمادًا رسميًا.'));
     timer = setInterval(() => expire(s), 500);
   } catch (error) {
     if (current(s)) {
       s.data = null; s.link = ''; s.card.width = s.qr.width = 0;
       s.dialog.querySelector('[data-pass-content]').hidden = true;
-      message(s, error?.message === 'PASS_EXPIRED' ? 'انتهت صلاحية المرجع. أعد المحاولة لإصدار بطاقة جديدة.' : error?.message === 'FORBIDDEN' ? 'المرجع منتهي أو ليست لديك صلاحية التحقق من هذا الحساب.' : 'تعذر تجهيز البطاقة. أعد المحاولة دون مشاركة أي بيانات.');
+      message(s, error?.message === 'PASS_EXPIRED'?uiLocale.message('انتهت صلاحية المرجع. أعد المحاولة لإصدار بطاقة جديدة.'):error?.message === 'FORBIDDEN'?uiLocale.message('المرجع منتهي أو ليست لديك صلاحية التحقق من هذا الحساب.'):uiLocale.message('تعذر تجهيز البطاقة. أعد المحاولة دون مشاركة أي بيانات.'));
     }
   } finally { if (state === s) retry.disabled = false; }
 }
@@ -126,7 +170,7 @@ function open(reference = '') {
       const url = URL.createObjectURL(blob); urls.add(url); const link = document.createElement('a');
       link.href = url; link.download = 'HYDROLAND-account-card.png'; document.body.appendChild(link); link.click(); link.remove();
       setTimeout(() => { URL.revokeObjectURL(url); urls.delete(url); }, 1000);
-      message(s, 'تم طلب حفظ البطاقة على جهازك. صلاحية التحقق تبقى مؤقتة.');
+      message(s, uiLocale.message('تم طلب حفظ البطاقة على جهازك. صلاحية التحقق تبقى مؤقتة.'));
     }, 'image/png');
   });
   s.dialog.querySelector('[data-pass-share]').addEventListener('click', async () => {
@@ -136,16 +180,16 @@ function open(reference = '') {
       // Called directly from the user click, after preparation, retaining the
       // transient activation required by the native share sheet.
       if (typeof navigator.share === 'function') {
-        await navigator.share({ title: 'بطاقة حساب HYDROLAND', text: 'مرجع مؤقت؛ يتطلب تسجيل الدخول والصلاحية. ليس رخصة غوص.', url: link });
-        if (valid(s)) message(s, 'تم تسليم الرابط إلى أداة المشاركة.');
+        await navigator.share({ title: uiLocale.t('بطاقة حساب HYDROLAND'), text: uiLocale.t('مرجع مؤقت؛ يتطلب تسجيل الدخول والصلاحية. ليس رخصة غوص.'), url: link });
+        if (valid(s)) message(s, uiLocale.message('تم تسليم الرابط إلى أداة المشاركة.'));
       } else if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(link); if (valid(s)) message(s, 'تم نسخ رابط التحقق المؤقت.');
+        await navigator.clipboard.writeText(link); if (valid(s)) message(s, uiLocale.message('تم نسخ رابط التحقق المؤقت.'));
       } else {
         const field = s.dialog.querySelector('[data-pass-link]'); field.value = link; field.hidden = false; field.select();
-        message(s, 'انسخ الرابط المحدد يدويًا؛ لم تتم مشاركة أي بيانات تلقائيًا.');
+        message(s, uiLocale.message('انسخ الرابط المحدد يدويًا؛ لم تتم مشاركة أي بيانات تلقائيًا.'));
       }
     } catch (error) {
-      if (valid(s)) message(s, error?.name === 'AbortError' ? 'تم إلغاء المشاركة.' : 'تعذرت المشاركة. لم تُرسل البيانات تلقائيًا.');
+      if (valid(s)) message(s, error?.name === 'AbortError'?uiLocale.message('تم إلغاء المشاركة.'):uiLocale.message('تعذرت المشاركة. لم تُرسل البيانات تلقائيًا.'));
     }
   });
   void prepare(s, reference);

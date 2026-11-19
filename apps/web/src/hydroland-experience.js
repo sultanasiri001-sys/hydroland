@@ -1,13 +1,36 @@
 (()=>{
+  // Authored interface messages only. Account, provider and document values remain opaque.
+  const uiLocale=window.HydrolandI18n?.createScope("experience", {
+  "إنشاء حساب": "Create an account",
+  "عالمك البحري": "Your marine world",
+  "في مكان واحد": "In one place",
+  "رحلاتك، شهاداتك ومجتمعك. ابدأ تجربة جديدة مع هيدرولاند.": "Your trips, certificates and community. Start a new experience with HYDROLAND.",
+  "مرحبًا بك في هيدرولاند": "Welcome to HYDROLAND",
+  "سجّل الدخول للوصول إلى حسابك": "Sign in to access your account",
+  "تسجيل الدخول": "Sign in",
+  "العودة للاستكشاف": "Back to exploring",
+  "المملكة العربية السعودية · بحر واحد يجمعنا": "Kingdom of Saudi Arabia · One sea connects us",
+  "مسارات الاستكشاف للزائر": "Visitor discovery paths",
+  "رحلات وتجارب بحرية": "Marine trips and experiences",
+  "اكتشف وجهتك البحرية القادمة": "Discover your next marine destination",
+  "التدريب ومحترفي الغوص": "Training and dive professionals",
+  "طوّر مهاراتك في أعماق البحر": "Develop your underwater skills",
+  "الحجز والحفظ يتطلبان حسابًا": "An account is required to book or save",
+  "انضم إلى هيدرولاند لتجربة بحرية أكثر أمانًا": "Join HYDROLAND for a safer marine experience",
+  "متجر هيدرولاند": "HYDROLAND store",
+  "معدات للغوص والرحلات البحرية": "Equipment for diving and marine trips",
+  "السلة": "Cart"
+}) || {messageHTML:value=>String(value??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])),attribute:(name,text,values=[])=>name+'=\"'+String(text).replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token).replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]))+'\"',message:(text,values=[])=>String(text).replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token),setMessage:(node,value)=>(node.textContent=value??''),t:value=>value,label:(text,values=[])=>String(text??'').replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])),format:(text,values=[])=>text.replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token),html:(parts,...values)=>parts.map((part,i)=>part+(i<values.length?String(values[i]??''):'')).join(''),bind:()=>{},setHTML:(node,value)=>(node.innerHTML=value),insertHTML:(node,position,value)=>node.insertAdjacentHTML(position,value),setText(node,text,values=[]){return node.textContent=this.format(text,values)},setAttribute(node,name,text,values=[]){node.setAttribute(name,this.format(text,values))}};
+
   // Read the current preference for every action; do not cache a startup value.
   const publicScrollBehavior=()=>window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches===false?'smooth':'instant';
  const main=document.getElementById('main');if(!main)return;
  const {icon,brand}=window.HydrolandUI;
- document.querySelectorAll('.brand').forEach(node=>node.innerHTML=brand());
- for(const [id,name] of [['menu','menu'],['top-search','search'],['top-notifications','bell']]){const node=document.getElementById(id);if(node)node.innerHTML=icon(name)}
- document.querySelector('#role-switch .nav-icon').innerHTML=icon('people');
+ document.querySelectorAll('.brand').forEach(node=>uiLocale.setHTML(node, brand()));
+ for(const [id,name] of [['menu','menu'],['top-search','search'],['top-notifications','bell']]){const node=document.getElementById(id);if(node)uiLocale.setHTML(node, icon(name))}
+ uiLocale.setHTML(document.querySelector('#role-switch .nav-icon'), icon('people'));
  const topActions=document.querySelector('.top-actions');
- const registerCta=document.createElement('button');registerCta.type='button';registerCta.id='visitor-register-cta';registerCta.textContent='إنشاء حساب';registerCta.hidden=true;topActions?.appendChild(registerCta);
+ const registerCta=document.createElement('button');registerCta.type='button';registerCta.id='visitor-register-cta';uiLocale.setText(registerCta, ...['إنشاء حساب']);registerCta.hidden=true;topActions?.appendChild(registerCta);
  registerCta.addEventListener('click',()=>{document.getElementById('visitor-auth-cta')?.click();document.querySelector('.hl-login-secondary')?.click()});
  // Public discovery is the entry screen. Recovery links retain their account flow.
  const params=new URLSearchParams(location.search);
@@ -15,7 +38,7 @@
  const syncVisitorMode=()=>{const authenticated=Boolean(window.HydrolandAuth?.isAuthenticated?.());document.body.classList.toggle('hl-visitor-mode',!authenticated);document.body.classList.toggle('hl-guest-mode',sessionStorage.getItem('hl-guest-mode')==='1');document.getElementById('visitor-auth-cta').hidden=authenticated;registerCta.hidden=authenticated};
  document.addEventListener('click',event=>{if(event.target.closest('#profile-open,#profile-open-mobile')&&!window.HydrolandAuth?.isAuthenticated?.()){event.preventDefault();event.stopImmediatePropagation();document.getElementById('visitor-auth-cta').click()}},true);
  document.body.classList.add('hl-visitor-mode');document.addEventListener('hydroland:auth-changed',syncVisitorMode);document.addEventListener('hydroland:guest-mode',syncVisitorMode);
- const login=document.createElement('section');login.className='hl-login hidden';login.setAttribute('role','dialog');login.setAttribute('aria-modal','true');login.setAttribute('aria-labelledby','hl-auth-title');login.setAttribute('aria-describedby','hl-visitor-description');login.innerHTML=`<div class="hl-login-frame"><div class="hl-login-scene"><a class="brand" href="#home">${brand()}</a><div class="hl-login-copy"><small>DIVE · EXPLORE · PROTECT · BELONG</small><h2 id="hl-visitor-title">عالمك البحري<br>في مكان واحد</h2><p id="hl-visitor-description">رحلاتك، شهاداتك ومجتمعك. ابدأ تجربة جديدة مع هيدرولاند.</p></div></div><div class="hl-login-panel"><small>WELCOME TO HYDROLAND</small><h3 id="hl-auth-title">مرحبًا بك في هيدرولاند</h3><p>سجّل الدخول للوصول إلى حسابك</p><div class="hl-login-actions"><button type="button" class="hl-login-primary">تسجيل الدخول</button><button type="button" class="hl-login-secondary">إنشاء حساب</button><button type="button" class="hl-login-guest">العودة للاستكشاف</button></div><footer>المملكة العربية السعودية · بحر واحد يجمعنا</footer></div></div>`;document.body.appendChild(login);
+ const login=document.createElement('section');login.className='hl-login hidden';login.setAttribute('role','dialog');login.setAttribute('aria-modal','true');login.setAttribute('aria-labelledby','hl-auth-title');login.setAttribute('aria-describedby','hl-visitor-description');uiLocale.setHTML(login, uiLocale.html`<div class="hl-login-frame"><div class="hl-login-scene"><a class="brand" href="#home">${brand()}</a><div class="hl-login-copy"><small>DIVE · EXPLORE · PROTECT · BELONG</small><h2 id="hl-visitor-title">عالمك البحري<br>في مكان واحد</h2><p id="hl-visitor-description">رحلاتك، شهاداتك ومجتمعك. ابدأ تجربة جديدة مع هيدرولاند.</p></div></div><div class="hl-login-panel"><button type="button" class="hl-locale-switch" data-hl-locale-switch="entry"><span data-hl-locale-name lang="en">EN</span></button><small>WELCOME TO HYDROLAND</small><h3 id="hl-auth-title">مرحبًا بك في هيدرولاند</h3><p>سجّل الدخول للوصول إلى حسابك</p><div class="hl-login-actions"><button type="button" class="hl-login-primary">تسجيل الدخول</button><button type="button" class="hl-login-secondary">إنشاء حساب</button><button type="button" class="hl-login-guest">العودة للاستكشاف</button></div><footer>المملكة العربية السعودية · بحر واحد يجمعنا</footer></div></div>`);document.body.appendChild(login);
  let entryTrigger=null;
  const syncEntryAccess=()=>{const visible=!login.classList.contains('hidden');login.setAttribute('aria-hidden',String(!visible));document.body.classList.toggle('hl-entry-open',visible);document.querySelectorAll('.sidebar,.shell').forEach(region=>{region.inert=visible;if(visible)region.setAttribute('aria-hidden','true');else region.removeAttribute('aria-hidden')})};
  new MutationObserver(()=>{syncEntryAccess();syncVisitorMode()}).observe(login,{attributes:true,attributeFilter:['class']});
@@ -26,9 +49,10 @@
  login.addEventListener('keydown',event=>{if(event.key!=='Tab'||login.classList.contains('hidden'))return;const nodes=[...login.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],[tabindex]:not([tabindex="-1"])')].filter(el=>!el.closest('[hidden]')&&el.getClientRects().length);const first=nodes[0],last=nodes.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus()}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus()}});
  document.getElementById('visitor-auth-cta').addEventListener('click',()=>{if(window.HydrolandAuth?.isAuthenticated?.())return;entryTrigger=document.activeElement;sessionStorage.removeItem('hl-guest-mode');const actions=login.querySelector('.hl-login-actions'),panel=login.querySelector('.hl-auth-panel');actions.hidden=false;if(panel)panel.hidden=true;login.classList.remove('hidden');syncEntryAccess();login.querySelector('.hl-login-primary').focus({preventScroll:true})});
  if(sessionStorage.getItem('hl-guest-mode')!=='1'&&!sessionStorage.getItem('hl-refresh-token'))login.classList.remove('hidden');syncEntryAccess();syncVisitorMode();
- const routebar=document.createElement('section');routebar.className='hl-visitor-routebar';routebar.setAttribute('aria-label','مسارات الاستكشاف للزائر');routebar.innerHTML=`<button type="button" data-visitor-target="trips"><b>${icon('boat')}</b><strong>رحلات وتجارب بحرية</strong><small>اكتشف وجهتك البحرية القادمة</small></button><button type="button" data-visitor-target="training"><b>${icon('learn')}</b><strong>التدريب ومحترفي الغوص</strong><small>طوّر مهاراتك في أعماق البحر</small></button><button type="button" data-hl-public-auth><b>${icon('shield')}</b><strong>الحجز والحفظ يتطلبان حسابًا</strong><small>انضم إلى هيدرولاند لتجربة بحرية أكثر أمانًا</small></button>`;document.getElementById('home').after(routebar);
+ const routebar=document.createElement('section');routebar.className='hl-visitor-routebar';uiLocale.setAttribute(routebar, "aria-label", ...['مسارات الاستكشاف للزائر']);uiLocale.setHTML(routebar, uiLocale.html`<button type="button" data-visitor-target="trips"><b>${icon('boat')}</b><strong>رحلات وتجارب بحرية</strong><small>اكتشف وجهتك البحرية القادمة</small></button><button type="button" data-visitor-target="training"><b>${icon('learn')}</b><strong>التدريب ومحترفي الغوص</strong><small>طوّر مهاراتك في أعماق البحر</small></button><button type="button" data-hl-public-auth><b>${icon('shield')}</b><strong>الحجز والحفظ يتطلبان حسابًا</strong><small>انضم إلى هيدرولاند لتجربة بحرية أكثر أمانًا</small></button>`);document.getElementById('home').after(routebar);
  routebar.querySelector('[data-hl-public-auth]').addEventListener('click',()=>document.getElementById('visitor-auth-cta').click());routebar.querySelectorAll('[data-visitor-target]').forEach(button=>button.addEventListener('click',()=>{const id=button.dataset.visitorTarget;if(window.HydrolandPublicUI)window.HydrolandPublicUI.navigate(id);else location.hash=id}));
- const toolbar=document.createElement('div');toolbar.className='hl-store-toolbar';toolbar.innerHTML='<div><b>متجر هيدرولاند</b><small>معدات للغوص والرحلات البحرية</small></div><div class="hl-store-filters"></div><button class="hl-cart" type="button">السلة <span>0</span></button>';document.querySelector('#store .section-heading').after(toolbar);
+ const toolbar=document.createElement('div');toolbar.className='hl-store-toolbar';uiLocale.setHTML(toolbar, uiLocale.html`<div><b>متجر هيدرولاند</b><small>معدات للغوص والرحلات البحرية</small></div><div class="hl-store-filters"></div><button class="hl-cart" type="button">السلة <span>0</span></button>`);document.querySelector('#store .section-heading').after(toolbar);
  toolbar.querySelector('.hl-cart').addEventListener('click',()=>document.querySelector('.hl-store-cart')?.scrollIntoView({behavior:publicScrollBehavior(),block:'center'}));
  const badge=toolbar.querySelector('.hl-cart span');new MutationObserver(()=>{const next=document.querySelector('.hl-store-summary')?.textContent.match(/^(\d+)/)?.[1]||'0';if(badge.textContent!==next)badge.textContent=next}).observe(document.getElementById('store'),{childList:true,characterData:true,subtree:true});
+ window.HydrolandI18n?.bindNavigation();
 })();

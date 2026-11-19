@@ -1,1 +1,35 @@
-(()=>{const css=document.createElement('link');css.rel='stylesheet';css.href='./hydroland-safety-ops.css';document.head.appendChild(css);const anchor=document.getElementById('safety');if(!anchor)return;const center=document.createElement('section');center.className='hl-safety-center';center.innerHTML=`<header class="hl-safety-head"><div><small>HYDROLAND SAFETY OPS</small><h3>مركز السلامة والتشغيل</h3></div><div class="hl-safety-state"><span class="go">GO جاهز</span><span class="review">REVIEW مراجعة</span><span class="nogo">NO GO إيقاف</span></div></header><div class="hl-safety-grid"><section class="hl-checklist"><h4>قائمة الفحص الرقمية قبل الرحلة</h4>${['صلاحية شهادات الغواصين','فحص معدات الغوص','توفر الأكسجين والإسعافات','فحص القارب والوقود','مراجعة الطقس والبحر','تأكيد خطة الطوارئ'].map((x,i)=>`<div class="hl-check-row"><label><input type="checkbox" disabled>${x}</label><b>بانتظار التحقق</b></div>`).join('')}</section><section class="hl-weather"><h4>حالة التشغيل الحالية</h4><dl><div><dt>الرياح</dt><dd>—</dd></div><div><dt>الأمواج</dt><dd>—</dd></div><div><dt>الرؤية</dt><dd>—</dd></div><div><dt>القرار</dt><dd>بانتظار التقييم</dd></div></dl><section class="hl-incident"><h4>بلاغ حادث / ملاحظة</h4><textarea placeholder="سجّل تفاصيل الحادث أو الملاحظة التشغيلية..."></textarea><button data-hl-incident disabled>حفظ البلاغ · غير مربوط</button></section></section></div><section class="hl-log"><h4>سجل العمليات والحوادث</h4><table><thead><tr><th>الوقت</th><th>النوع</th><th>الموقع</th><th>الحالة</th></tr></thead><tbody><tr><td colspan="4">لا توجد سجلات تشغيلية فعلية محملة.</td></tr></tbody></table><button data-hl-log disabled>إضافة سجل · غير مربوط</button></section><aside class="hl-emergency"><div><strong>الطوارئ البحرية</strong><small>يتم إظهار جهة الاتصال بعد ربط مرجع رسمي معتمد.</small></div><b>—</b></aside>`;anchor.insertAdjacentElement('afterend',center);})();
+(()=>{
+  // Authored interface messages only. Account, provider and document values remain opaque.
+  const uiLocale=window.HydrolandI18n?.createScope("safety-ops", {
+  "مركز السلامة والتشغيل": "Safety and operations center",
+  "GO جاهز": "GO Ready",
+  "REVIEW مراجعة": "REVIEW",
+  "NO GO إيقاف": "NO GO Stop",
+  "قائمة الفحص الرقمية قبل الرحلة": "Digital pre-trip checklist",
+  "حالة التشغيل الحالية": "Current operating status",
+  "الرياح": "Wind",
+  "الأمواج": "Waves",
+  "الرؤية": "Visibility",
+  "القرار": "Decision",
+  "بانتظار التقييم": "Awaiting assessment",
+  "بلاغ حادث / ملاحظة": "Incident / observation report",
+  "سجّل تفاصيل الحادث أو الملاحظة التشغيلية...": "Record the incident or operational observation...",
+  "حفظ البلاغ · غير مربوط": "Save report · Not connected",
+  "سجل العمليات والحوادث": "Operations and incident log",
+  "الوقت": "Time",
+  "النوع": "Type",
+  "الموقع": "Location",
+  "الحالة": "Status",
+  "لا توجد سجلات تشغيلية فعلية محملة.": "No actual operations records are loaded.",
+  "إضافة سجل · غير مربوط": "Add record · Not connected",
+  "الطوارئ البحرية": "Marine emergencies",
+  "يتم إظهار جهة الاتصال بعد ربط مرجع رسمي معتمد.": "Contact details will appear after an approved official reference is connected.",
+  "صلاحية شهادات الغواصين": "Diver certificate validity",
+  "فحص معدات الغوص": "Diving equipment check",
+  "توفر الأكسجين والإسعافات": "Oxygen and first aid availability",
+  "فحص القارب والوقود": "Boat and fuel check",
+  "مراجعة الطقس والبحر": "Weather and sea review",
+  "تأكيد خطة الطوارئ": "Emergency plan confirmation",
+  "بانتظار التحقق": "Awaiting verification"
+}) || {messageHTML:value=>String(value??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])),attribute:(name,text,values=[])=>name+'=\"'+String(text).replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token).replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]))+'\"',message:(text,values=[])=>String(text).replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token),setMessage:(node,value)=>(node.textContent=value??''),t:value=>value,label:(text,values=[])=>String(text??'').replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])),format:(text,values=[])=>text.replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token),html:(parts,...values)=>parts.map((part,i)=>part+(i<values.length?String(values[i]??''):'')).join(''),bind:()=>{},setHTML:(node,value)=>(node.innerHTML=value),insertHTML:(node,position,value)=>node.insertAdjacentHTML(position,value),setText(node,text,values=[]){return node.textContent=this.format(text,values)},setAttribute(node,name,text,values=[]){node.setAttribute(name,this.format(text,values))}};
+const css=document.createElement('link');css.rel='stylesheet';css.href='./hydroland-safety-ops.css';document.head.appendChild(css);const anchor=document.getElementById('safety');if(!anchor)return;const center=document.createElement('section');center.className='hl-safety-center';uiLocale.setHTML(center, uiLocale.html`<header class="hl-safety-head"><div><small>HYDROLAND SAFETY OPS</small><h3>مركز السلامة والتشغيل</h3></div><div class="hl-safety-state"><span class="go">GO جاهز</span><span class="review">REVIEW مراجعة</span><span class="nogo">NO GO إيقاف</span></div></header><div class="hl-safety-grid"><section class="hl-checklist"><h4>قائمة الفحص الرقمية قبل الرحلة</h4>${['صلاحية شهادات الغواصين','فحص معدات الغوص','توفر الأكسجين والإسعافات','فحص القارب والوقود','مراجعة الطقس والبحر','تأكيد خطة الطوارئ'].map((x,i)=>uiLocale.html`<div class="hl-check-row"><label><input type="checkbox" disabled>${uiLocale.label(x)}</label><b>بانتظار التحقق</b></div>`).join('')}</section><section class="hl-weather"><h4>حالة التشغيل الحالية</h4><dl><div><dt>الرياح</dt><dd>—</dd></div><div><dt>الأمواج</dt><dd>—</dd></div><div><dt>الرؤية</dt><dd>—</dd></div><div><dt>القرار</dt><dd>بانتظار التقييم</dd></div></dl><section class="hl-incident"><h4>بلاغ حادث / ملاحظة</h4><textarea placeholder="سجّل تفاصيل الحادث أو الملاحظة التشغيلية..."></textarea><button data-hl-incident disabled>حفظ البلاغ · غير مربوط</button></section></section></div><section class="hl-log"><h4>سجل العمليات والحوادث</h4><table><thead><tr><th>الوقت</th><th>النوع</th><th>الموقع</th><th>الحالة</th></tr></thead><tbody><tr><td colspan="4">لا توجد سجلات تشغيلية فعلية محملة.</td></tr></tbody></table><button data-hl-log disabled>إضافة سجل · غير مربوط</button></section><aside class="hl-emergency"><div><strong>الطوارئ البحرية</strong><small>يتم إظهار جهة الاتصال بعد ربط مرجع رسمي معتمد.</small></div><b>—</b></aside>`);anchor.insertAdjacentElement('afterend',center);})();

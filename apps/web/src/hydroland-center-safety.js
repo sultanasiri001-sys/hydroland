@@ -1,4 +1,116 @@
 (()=>{
+  // Authored interface messages only. Account, provider and document values remain opaque.
+  const uiLocale=window.HydrolandI18n?.createScope("center-safety", {
+  "معتمد": "Approved",
+  "بانتظار المراجعة": "Awaiting review",
+  "مؤجل": "Postponed",
+  "مفتوح": "Open",
+  "قيد المراجعة": "Under review",
+  "تمت المعالجة": "Addressed",
+  "مغلق": "Closed",
+  "منخفضة": "Low",
+  "متوسطة": "Medium",
+  "عالية": "High",
+  "حرجة": "Critical",
+  "غير منشورة": "Unpublished",
+  "مكتملة": "Completed",
+  "ملغاة": "Cancelled",
+  "تحتاج مراجعة": "Review needed",
+  "لا تملك صلاحية سلامة هذا المركز.": "You do not have safety permissions for this center.",
+  "تعذر تحميل بيانات السلامة.": "Could not load safety data.",
+  "إعادة المحاولة": "Retry",
+  "الكل": "All",
+  "DIVE CENTER · مركز الغوص": "DIVE CENTER",
+  "السلامة": "Safety",
+  "فحوص رحلات المركز وبلاغاتها ومتابعة نتائج المراجعة. الاعتماد وإغلاق البلاغات لدى الجهة المخولة.": "Center trip checks, incident reports and review outcomes. Approval and report closure belong to the authorized party.",
+  "تسجيل فحص رحلة": "Record a trip check",
+  "تسجيل بلاغ سلامة": "Record a safety report",
+  "تحديث السجلات": "Refresh records",
+  "الرحلة أو عنوان البلاغ": "Trip or report title",
+  "بحث": "Search",
+  "مسح البحث": "Clear search",
+  "قرار الفحص": "Check decision",
+  "حالة البلاغ": "Report status",
+  "خطورة البلاغ": "Report severity",
+  "السابق": "Previous",
+  "صفحة": "Page",
+  "من": "of",
+  "التالي": "Next",
+  "صفحات الفحوص": "Check pages",
+  "صفحات البلاغات": "Report pages",
+  "جارٍ تحميل سجلات السلامة…": "Loading safety records…",
+  "استجابة سجلات السلامة غير مكتملة. أعد المحاولة.": "Safety records response is incomplete. Try again.",
+  "استجابة صفحات السلامة غير مكتملة.": "Safety pagination response is incomplete.",
+  "قوائم الفحص": "Checklists",
+  "الفحوص المطابقة: ": "Matching checks: ",
+  "الفحوص المطابقة: {0}": "Matching checks: {0}",
+  "الفحوص المعروضة: ": "Checks shown: ",
+  "الفحوص المعروضة: {0}": "Checks shown: {0}",
+  "آخر تحديث:": "Last updated:",
+  "— توقيت الرياض": "— Riyadh time",
+  "تفاصيل الفحص": "Check details",
+  "رحلة المركز": "Center trip",
+  "لا توجد قوائم فحص مطابقة.": "No matching checklists.",
+  "البلاغات": "Reports",
+  "البلاغات المطابقة: ": "Matching reports: ",
+  "البلاغات المطابقة: {0}": "Matching reports: {0}",
+  "البلاغات المعروضة: ": "Reports shown: ",
+  "البلاغات المعروضة: {0}": "Reports shown: {0}",
+  "تفاصيل البلاغ": "Report details",
+  "لا توجد بلاغات مطابقة.": "No matching reports.",
+  "جارٍ تحميل التفاصيل…": "Loading details…",
+  "تفاصيل السلامة غير مكتملة.": "Safety details are incomplete.",
+  "مستوفى": "Met",
+  "غير مستوفى": "Not met",
+  "غير موثق": "Not documented",
+  "إغلاق التفاصيل": "Close details",
+  "رقم السجل:": "Record number:",
+  "تاريخ القرار:": "Decision date:",
+  "لا توجد ملاحظات.": "No notes.",
+  "الخطورة:": "Severity:",
+  "تاريخ المعالجة:": "Resolution date:",
+  "التفاصيل الخاصة متاحة للمبلّغ والجهة المخولة بالمراجعة.": "Private details are available to the reporter and the authorized reviewer.",
+  "إعادة تحميل التفاصيل": "Reload details",
+  "إلغاء": "Cancel",
+  "ابحث عن رحلة المركز": "Search for a center trip",
+  "بحث الرحلات": "Search trips",
+  "جارٍ تحميل الرحلات…": "Loading trips…",
+  "قائمة الرحلات غير مكتملة.": "The trip list is incomplete.",
+  "اختيار الرحلة": "Select trip",
+  "لا توجد رحلات مطابقة.": "No matching trips.",
+  "صفحات رحلات السلامة": "Safety trip pages",
+  "إعادة تحميل الرحلات": "Reload trips",
+  "جارٍ تحديث بيانات الرحلة…": "Refreshing trip details…",
+  "بيانات الرحلة غير مكتملة.": "Trip details are incomplete.",
+  "الرحلة بدأت أو أُغلقت، ولا يمكن تسجيل فحص قبل الرحلة.": "The trip has started or closed. A pre-trip check cannot be recorded.",
+  "تُحفظ جميع البنود للمراجعة. البنود غير المستوفاة تؤجل قرار التشغيل، ولا تمنح هذه الخطوة موافقة تشغيل.": "All items are saved for review. Unmet items postpone the operating decision; this step does not grant operating approval.",
+  "يُسجَّل البلاغ داخل المنصة للمراجعة. في الطوارئ تواصل مباشرة مع الجهة المختصة؛ هذا النموذج لا يرسل نداء استغاثة خارجيًا.": "The report is recorded inside the platform for review. In an emergency, contact the relevant authority directly; this form does not send an external distress call.",
+  "بنود الفحص": "Checklist items",
+  "ملاحظات الفحص": "Check notes",
+  "عنوان البلاغ": "Report title",
+  "خطورة البلاغ الجديد": "New report severity",
+  "وصف البلاغ": "Report description",
+  "الموقع": "Location",
+  "حفظ الفحص وإرساله للمراجعة": "Save check and submit for review",
+  "حفظ البلاغ": "Save report",
+  "إعادة اختيار الرحلة": "Choose another trip",
+  "جارٍ الحفظ…": "Saving…",
+  "لم يصل تأكيد الحفظ. أعد المحاولة بالطلب نفسه.": "Save confirmation was not received. Retry the same request.",
+  "تم حفظ الفحص بحالة مؤجل لوجود بنود غير مستوفاة.": "Check saved as postponed because some items were not met.",
+  "تم حفظ الفحص وإرساله للمراجعة.": "Check saved and submitted for review.",
+  "تم حفظ البلاغ داخل المنصة للمراجعة.": "Report saved inside the platform for review.",
+  "تحديث بيانات الرحلة": "Refresh trip details",
+  "الفحوص المطابقة:": "Matching checks:",
+  "الفحوص المعروضة:": "Checks shown:",
+  "البلاغات المطابقة:": "Matching reports:",
+  "البلاغات المعروضة:": "Reports shown:"
+}) || {messageHTML:value=>String(value??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])),attribute:(name,text,values=[])=>name+'=\"'+String(text).replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token).replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]))+'\"',message:(text,values=[])=>String(text).replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token),setMessage:(node,value)=>(node.textContent=value??''),t:value=>value,label:(text,values=[])=>String(text??'').replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])),format:(text,values=[])=>text.replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token),html:(parts,...values)=>parts.map((part,i)=>part+(i<values.length?String(values[i]??''):'')).join(''),bind:()=>{},setHTML:(node,value)=>(node.innerHTML=value),insertHTML:(node,position,value)=>node.insertAdjacentHTML(position,value),setText(node,text,values=[]){return node.textContent=this.format(text,values)},setAttribute(node,name,text,values=[]){node.setAttribute(name,this.format(text,values))}};
+
+  // Only this module's authored Error instances retain translatable messages.
+  const authoredErrors=new WeakMap();
+  const localError=message=>{const error=new Error(String(message));authoredErrors.set(error,message);return error;};
+  const localErrorMessage=error=>authoredErrors.get(error) ?? error?.message;
+
  const auth=()=>window.HydrolandAuth,access=()=>window.HydrolandPortalAccess;
  let section=null,listVersion=0,detailVersion=0,composeVersion=0,draft=null,tripPage=1,tripQuery='';
  let filters={q:'',decision:'ALL',status:'ALL',severity:'ALL',checklistPage:1,incidentPage:1};
@@ -18,20 +130,20 @@
  }
  async function request(path,options){
    const response=await auth().authorizedFetch('/center/me/safety'+path,options),data=await response.json().catch(()=>null);
-   if(!response.ok){const error=new Error(response.status===403?'لا تملك صلاحية سلامة هذا المركز.':data?.message||'تعذر تحميل بيانات السلامة.');error.status=response.status;throw error}return data;
+   if(!response.ok){const error=localError(response.status===403?uiLocale.message('لا تملك صلاحية سلامة هذا المركز.'):data?.message||uiLocale.message('تعذر تحميل بيانات السلامة.'));error.status=response.status;throw error}return data;
  }
  function denied(error){
    if(error.status!==403||!section)return false;
    listVersion++;detailVersion++;composeVersion++;draft=null;
    section.querySelector('[data-safety-compose]').replaceChildren();section.querySelector('section[data-safety-detail]').replaceChildren();
    section.querySelector('[data-center-safety]').removeAttribute('aria-busy');
-   section.querySelector('[data-center-safety]').innerHTML=`<p role="alert">${esc(error.message)}</p><button type="button" data-center-safety-retry>إعادة المحاولة</button>`;return true;
+   uiLocale.setHTML(section.querySelector('[data-center-safety]'), uiLocale.html`<p role="alert">${uiLocale.messageHTML(localErrorMessage(error))}</p><button type="button" data-center-safety-retry>إعادة المحاولة</button>`);return true;
  }
- const select=(name,title,values)=>`<label><span id="hl-center-safety-${name}-label">${title}</span><select name="${name}" aria-labelledby="hl-center-safety-${name}-label"><option value="ALL">الكل</option>${values.map(v=>`<option value="${v}">${label(v)}</option>`).join('')}</select></label>`;
+ const select=(name,title,values)=>uiLocale.html`<label><span id="hl-center-safety-${name}-label">${uiLocale.label(title)}</span><select name="${name}" aria-labelledby="hl-center-safety-${name}-label"><option value="ALL">الكل</option>${values.map(v=>uiLocale.html`<option value="${v}">${uiLocale.label(label(v))}</option>`).join('')}</select></label>`;
  function ensure(){
    if(section?.isConnected)return section;
    const host=document.createElement('section');host.className='hl-center-safety';host.id='hl-center-safety';host.hidden=true;
-   host.innerHTML=`<header><small>DIVE CENTER · مركز الغوص</small><h2>السلامة</h2><p>فحوص رحلات المركز وبلاغاتها ومتابعة نتائج المراجعة. الاعتماد وإغلاق البلاغات لدى الجهة المخولة.</p></header><div class="hl-safety-actions"><button type="button" data-safety-new="checklist">تسجيل فحص رحلة</button><button type="button" data-safety-new="incident">تسجيل بلاغ سلامة</button><button type="button" data-safety-refresh>تحديث السجلات</button></div><form data-safety-search><label>الرحلة أو عنوان البلاغ<input type="search" name="q" maxlength="120"></label>${select('decision','قرار الفحص',['REVIEW_REQUIRED','DEFERRED','ALLOWED'])}${select('status','حالة البلاغ',['OPEN','UNDER_REVIEW','RESOLVED','CLOSED'])}${select('severity','خطورة البلاغ',['LOW','MEDIUM','HIGH','CRITICAL'])}<button type="submit">بحث</button><button type="button" data-safety-reset>مسح البحث</button></form><section data-safety-compose aria-live="polite"></section><div data-center-safety aria-live="polite"></div><section data-safety-detail aria-live="polite"></section>`;
+   uiLocale.setHTML(host, uiLocale.html`<header><small>DIVE CENTER · مركز الغوص</small><h2>السلامة</h2><p>فحوص رحلات المركز وبلاغاتها ومتابعة نتائج المراجعة. الاعتماد وإغلاق البلاغات لدى الجهة المخولة.</p></header><div class="hl-safety-actions"><button type="button" data-safety-new="checklist">تسجيل فحص رحلة</button><button type="button" data-safety-new="incident">تسجيل بلاغ سلامة</button><button type="button" data-safety-refresh>تحديث السجلات</button></div><form data-safety-search><label>الرحلة أو عنوان البلاغ<input type="search" name="q" maxlength="120"></label>${select('decision','قرار الفحص',['REVIEW_REQUIRED','DEFERRED','ALLOWED'])}${select('status','حالة البلاغ',['OPEN','UNDER_REVIEW','RESOLVED','CLOSED'])}${select('severity','خطورة البلاغ',['LOW','MEDIUM','HIGH','CRITICAL'])}<button type="submit">بحث</button><button type="button" data-safety-reset>مسح البحث</button></form><section data-safety-compose aria-live="polite"></section><div data-center-safety aria-live="polite"></div><section data-safety-detail aria-live="polite"></section>`);
    host.addEventListener('submit',event=>{const form=event.target;if(form.matches('[data-safety-search]')){event.preventDefault();const data=new FormData(form);filters={...defaults(),q:String(data.get('q')||'').trim(),decision:data.get('decision'),status:data.get('status'),severity:data.get('severity')};void loadList()}else if(form.matches('[data-safety-trip-search]')){event.preventDefault();tripQuery=String(new FormData(form).get('q')||'').trim();tripPage=1;void loadTrips()}else if(form.matches('[data-safety-submit]')){event.preventDefault();void save(form)}});
    host.addEventListener('click',event=>{
      const b=event.target.closest?.('button');if(!b||b.disabled)return;
@@ -49,58 +161,58 @@
    });
    section=host;document.getElementById('main')?.append(host);return host;
  }
- const pager=(data,key)=>data?.totalPages>1?`<nav class="hl-safety-pager" aria-label="${key==='checklistPage'?'صفحات الفحوص':'صفحات البلاغات'}"><button type="button" data-safety-page="${key}" data-page="${data.page-1}" ${data.page===1?'disabled':''}>السابق</button><span>صفحة ${data.page} من ${data.totalPages}</span><button type="button" data-safety-page="${key}" data-page="${data.page+1}" ${data.page===data.totalPages?'disabled':''}>التالي</button></nav>`:'';
+ const pager=(data,key)=>data?.totalPages>1?uiLocale.html`<nav class="hl-safety-pager" ${uiLocale.attribute('aria-label',key==='checklistPage'?'صفحات الفحوص':'صفحات البلاغات')}><button type="button" data-safety-page="${key}" data-page="${data.page-1}" ${data.page===1?'disabled':''}>السابق</button><span>صفحة ${data.page} من ${data.totalPages}</span><button type="button" data-safety-page="${key}" data-page="${data.page+1}" ${data.page===data.totalPages?'disabled':''}>التالي</button></nav>`:'';
  async function open(){if(!eligible()){clear();return}const host=ensure();host.hidden=false;window.HydrolandWorkspaceUI?.show?.(host);await loadList()}
  async function loadList(){
    if(!eligible()){clear();return}const host=ensure(),session=auth().getSessionVersion?.(),v=++listVersion,list=host.querySelector('[data-center-safety]'),active=()=>current(host,session,()=>v===listVersion);
-   detailVersion++;host.querySelector('section[data-safety-detail]').replaceChildren();list.setAttribute('aria-busy','true');list.innerHTML='<p>جارٍ تحميل سجلات السلامة…</p>';
+   detailVersion++;host.querySelector('section[data-safety-detail]').replaceChildren();list.setAttribute('aria-busy','true');uiLocale.setHTML(list, uiLocale.html`<p>جارٍ تحميل سجلات السلامة…</p>`);
    try{
      if(!await authorize(host,session,()=>v===listVersion))return;
      const params=new URLSearchParams();for(const [key,value] of Object.entries(filters))if(value!==defaults()[key])params.set(key,String(value));
      const data=await request(params.size?'?'+params:'');if(!active())return;
-     if(!Array.isArray(data?.checklists)||!Array.isArray(data?.incidents))throw new Error('استجابة سجلات السلامة غير مكتملة. أعد المحاولة.');
-     for(const name of ['checklistPagination','incidentPagination'])if(data[name]&&(!Number.isSafeInteger(data[name].total)||data[name].total<0||!Number.isSafeInteger(data[name].page)||data[name].page<1||!Number.isSafeInteger(data[name].totalPages)||data[name].totalPages<data[name].page))throw new Error('استجابة صفحات السلامة غير مكتملة.');
+     if(!Array.isArray(data?.checklists)||!Array.isArray(data?.incidents))throw localError(uiLocale.message('استجابة سجلات السلامة غير مكتملة. أعد المحاولة.'));
+     for(const name of ['checklistPagination','incidentPagination'])if(data[name]&&(!Number.isSafeInteger(data[name].total)||data[name].total<0||!Number.isSafeInteger(data[name].page)||data[name].page<1||!Number.isSafeInteger(data[name].totalPages)||data[name].totalPages<data[name].page))throw localError(uiLocale.message('استجابة صفحات السلامة غير مكتملة.'));
      if(data.checklistPagination)filters.checklistPage=data.checklistPagination.page;if(data.incidentPagination)filters.incidentPage=data.incidentPagination.page;
-     list.innerHTML=`<h3>قوائم الفحص</h3><p>${data.checklistPagination?'الفحوص المطابقة: '+data.checklistPagination.total:'الفحوص المعروضة: '+data.checklists.length}</p>`+
-       (data.checklists.length?data.checklists.map(row=>`<article class="hl-course" data-center-checklist="${esc(row.id)}"><div class="hl-course-top"><b>${esc(row.trip?.title||'رحلة المركز')}</b><span>${label(row.decision)}</span></div><small>آخر تحديث: ${esc(date(row.decidedAt||row.updatedAt))} — توقيت الرياض</small>${row.notes?`<p>${esc(row.notes)}</p>`:''}<button type="button" data-safety-detail data-kind="checklist" data-id="${esc(row.id)}">تفاصيل الفحص</button></article>`).join(''):'<p>لا توجد قوائم فحص مطابقة.</p>')+pager(data.checklistPagination,'checklistPage')+
-       `<h3>البلاغات</h3><p>${data.incidentPagination?'البلاغات المطابقة: '+data.incidentPagination.total:'البلاغات المعروضة: '+data.incidents.length}</p>`+
-       (data.incidents.length?data.incidents.map(row=>`<article class="hl-course" data-center-incident="${esc(row.id)}"><div class="hl-course-top"><b>${esc(row.title)}</b><span>${label(row.severity)} · ${label(row.status)}</span></div><small>${esc(row.trip?.title||'رحلة المركز')} · ${esc(row.locationName||'')} · ${esc(date(row.createdAt))}</small><button type="button" data-safety-detail data-kind="incident" data-id="${esc(row.id)}">تفاصيل البلاغ</button></article>`).join(''):'<p>لا توجد بلاغات مطابقة.</p>')+pager(data.incidentPagination,'incidentPage');
-   }catch(error){if(active()&&!denied(error))list.innerHTML=`<p role="alert">${esc(error.message)}</p><button type="button" data-center-safety-retry>إعادة المحاولة</button>`}
+     uiLocale.setHTML(list, uiLocale.html`<h3>قوائم الفحص</h3><p>${uiLocale.label(data.checklistPagination?'الفحوص المطابقة: {0}':'الفحوص المعروضة: {0}',[data.checklistPagination?data.checklistPagination.total:data.checklists.length])}</p>`+
+       (data.checklists.length?data.checklists.map(row=>uiLocale.html`<article class="hl-course" data-center-checklist="${esc(row.id)}"><div class="hl-course-top"><b>${esc(row.trip?.title||uiLocale.t('رحلة المركز'))}</b><span>${uiLocale.label(label(row.decision))}</span></div><small>آخر تحديث: ${esc(date(row.decidedAt||row.updatedAt))} — توقيت الرياض</small>${row.notes?uiLocale.html`<p>${esc(row.notes)}</p>`:''}<button type="button" data-safety-detail data-kind="checklist" data-id="${esc(row.id)}">تفاصيل الفحص</button></article>`).join(''):uiLocale.html`<p>لا توجد قوائم فحص مطابقة.</p>`)+pager(data.checklistPagination,'checklistPage')+
+       uiLocale.html`<h3>البلاغات</h3><p>${uiLocale.label(data.incidentPagination?'البلاغات المطابقة: {0}':'البلاغات المعروضة: {0}',[data.incidentPagination?data.incidentPagination.total:data.incidents.length])}</p>`+
+       (data.incidents.length?data.incidents.map(row=>uiLocale.html`<article class="hl-course" data-center-incident="${esc(row.id)}"><div class="hl-course-top"><b>${esc(row.title)}</b><span>${uiLocale.label(label(row.severity))} · ${uiLocale.label(label(row.status))}</span></div><small>${esc(row.trip?.title||uiLocale.t('رحلة المركز'))} · ${esc(row.locationName||'')} · ${esc(date(row.createdAt))}</small><button type="button" data-safety-detail data-kind="incident" data-id="${esc(row.id)}">تفاصيل البلاغ</button></article>`).join(''):uiLocale.html`<p>لا توجد بلاغات مطابقة.</p>`)+pager(data.incidentPagination,'incidentPage'));
+   }catch(error){if(active()&&!denied(error))uiLocale.setHTML(list, uiLocale.html`<p role="alert">${uiLocale.messageHTML(localErrorMessage(error))}</p><button type="button" data-center-safety-retry>إعادة المحاولة</button>`)}
    finally{if(active())list.removeAttribute('aria-busy')}
  }
  async function detail(kind,id){
    const host=section,session=auth()?.getSessionVersion?.(),v=++detailVersion,box=host?.querySelector('section[data-safety-detail]'),active=()=>current(host,session,()=>v===detailVersion);if(!box)return;
-   box.innerHTML='<p>جارٍ تحميل التفاصيل…</p>';
+   uiLocale.setHTML(box, uiLocale.html`<p>جارٍ تحميل التفاصيل…</p>`);
    try{
      if(!await authorize(host,session,()=>v===detailVersion))return;
-     const data=await request('/'+(kind==='checklist'?'checklists':'incidents')+'/'+encodeURIComponent(id));if(!active())return;if(data?.id!==id)throw new Error('تفاصيل السلامة غير مكتملة.');
-     const rows=kind==='checklist'?(Array.isArray(data.checklistItems)?data.checklistItems:[]).map(item=>`<li>${esc(item.label)}: ${data.items?.[item.key]===true?'مستوفى':data.items?.[item.key]===false?'غير مستوفى':'غير موثق'}</li>`).join(''):'';
-     box.innerHTML=`<header><h3>${kind==='checklist'?'تفاصيل الفحص':'تفاصيل البلاغ'}</h3><button type="button" data-safety-detail-close>إغلاق التفاصيل</button></header><p>${esc(data.trip?.title)} · ${label(kind==='checklist'?data.decision:data.status)}</p><p>رقم السجل: ${esc(data.id)} · ${esc(date(data.createdAt))}</p>`+(kind==='checklist'?`<ul>${rows}</ul><p>${esc(data.notes||'لا توجد ملاحظات.')}</p><p>تاريخ القرار: ${esc(date(data.decidedAt))}</p>`:`<h4>${esc(data.title)}</h4><p>الخطورة: ${label(data.severity)} · ${esc(data.locationName||'')}</p><p>${data.descriptionVisible?esc(data.description):'التفاصيل الخاصة متاحة للمبلّغ والجهة المخولة بالمراجعة.'}</p><p>تاريخ المعالجة: ${esc(date(data.resolvedAt))}</p>`);box.scrollIntoView({block:'nearest'});
-   }catch(error){if(active()&&!denied(error))box.innerHTML=`<p role="alert">${esc(error.message)}</p><button type="button" data-safety-detail data-kind="${kind}" data-id="${esc(id)}">إعادة تحميل التفاصيل</button>`}
+     const data=await request('/'+(kind==='checklist'?'checklists':'incidents')+'/'+encodeURIComponent(id));if(!active())return;if(data?.id!==id)throw localError(uiLocale.message('تفاصيل السلامة غير مكتملة.'));
+     const rows=kind==='checklist'?(Array.isArray(data.checklistItems)?data.checklistItems:[]).map(item=>uiLocale.html`<li>${esc(item.label)}: ${uiLocale.label(data.items?.[item.key]===true?'مستوفى':data.items?.[item.key]===false?'غير مستوفى':'غير موثق')}</li>`).join(''):'';
+     uiLocale.setHTML(box, uiLocale.html`<header><h3>${uiLocale.label(kind==='checklist'?'تفاصيل الفحص':'تفاصيل البلاغ')}</h3><button type="button" data-safety-detail-close>إغلاق التفاصيل</button></header><p>${esc(data.trip?.title)} · ${uiLocale.label(label(kind==='checklist'?data.decision:data.status))}</p><p>رقم السجل: ${esc(data.id)} · ${esc(date(data.createdAt))}</p>`+(kind==='checklist'?uiLocale.html`<ul>${rows}</ul><p>${data.notes?esc(data.notes):uiLocale.label('لا توجد ملاحظات.')}</p><p>تاريخ القرار: ${esc(date(data.decidedAt))}</p>`:uiLocale.html`<h4>${esc(data.title)}</h4><p>الخطورة: ${uiLocale.label(label(data.severity))} · ${esc(data.locationName||'')}</p><p>${data.descriptionVisible?esc(data.description):uiLocale.label('التفاصيل الخاصة متاحة للمبلّغ والجهة المخولة بالمراجعة.')}</p><p>تاريخ المعالجة: ${esc(date(data.resolvedAt))}</p>`));box.scrollIntoView({block:'nearest'});
+   }catch(error){if(active()&&!denied(error))uiLocale.setHTML(box, uiLocale.html`<p role="alert">${uiLocale.messageHTML(localErrorMessage(error))}</p><button type="button" data-safety-detail data-kind="${kind}" data-id="${esc(id)}">إعادة تحميل التفاصيل</button>`)}
  }
  async function loadTrips(){
    if(!draft)return;const host=section,session=auth().getSessionVersion?.(),v=++composeVersion,box=host.querySelector('[data-safety-compose]'),kind=draft.kind,active=()=>current(host,session,()=>v===composeVersion);
-   box.innerHTML=`<header><h3>${kind==='checklist'?'تسجيل فحص رحلة':'تسجيل بلاغ سلامة'}</h3><button type="button" data-safety-cancel>إلغاء</button></header><form data-safety-trip-search><label>ابحث عن رحلة المركز<input type="search" name="q" maxlength="120" value="${esc(tripQuery)}"></label><button type="submit">بحث الرحلات</button></form><div data-safety-trip-list>جارٍ تحميل الرحلات…</div>`;
+   uiLocale.setHTML(box, uiLocale.html`<header><h3>${uiLocale.label(kind==='checklist'?'تسجيل فحص رحلة':'تسجيل بلاغ سلامة')}</h3><button type="button" data-safety-cancel>إلغاء</button></header><form data-safety-trip-search><label>ابحث عن رحلة المركز<input type="search" name="q" maxlength="120" value="${esc(tripQuery)}"></label><button type="submit">بحث الرحلات</button></form><div data-safety-trip-list>جارٍ تحميل الرحلات…</div>`);
    try{
      if(!await authorize(host,session,()=>v===composeVersion))return;
      const data=await request('/trips?'+new URLSearchParams({q:tripQuery,page:String(tripPage)}));if(!active())return;
-     if(!Array.isArray(data?.items)||!Number.isSafeInteger(data.page)||data.page<1||!Number.isSafeInteger(data.totalPages)||data.totalPages<data.page)throw new Error('قائمة الرحلات غير مكتملة.');
-     tripPage=data.page;box.querySelector('[data-safety-trip-list]').innerHTML=(data.items.length?data.items.map(t=>`<article class="hl-course"><b>${esc(t.title)}</b><p>${esc(date(t.startsAt))} · ${label(t.status)}</p><button type="button" data-safety-trip-select="${esc(t.id)}">اختيار الرحلة</button></article>`).join(''):'<p>لا توجد رحلات مطابقة.</p>')+(data.totalPages>1?`<nav class="hl-safety-pager" aria-label="صفحات رحلات السلامة"><button type="button" data-safety-trip-page="${data.page-1}" ${data.page===1?'disabled':''}>السابق</button><span>صفحة ${data.page} من ${data.totalPages}</span><button type="button" data-safety-trip-page="${data.page+1}" ${data.page===data.totalPages?'disabled':''}>التالي</button></nav>`:'');
-   }catch(error){if(active()&&!denied(error))box.querySelector('[data-safety-trip-list]').innerHTML=`<p role="alert">${esc(error.message)}</p><button type="button" data-safety-trips-retry>إعادة تحميل الرحلات</button>`}
+     if(!Array.isArray(data?.items)||!Number.isSafeInteger(data.page)||data.page<1||!Number.isSafeInteger(data.totalPages)||data.totalPages<data.page)throw localError(uiLocale.message('قائمة الرحلات غير مكتملة.'));
+     tripPage=data.page;uiLocale.setHTML(box.querySelector('[data-safety-trip-list]'), (data.items.length?data.items.map(t=>uiLocale.html`<article class="hl-course"><b>${esc(t.title)}</b><p>${esc(date(t.startsAt))} · ${uiLocale.label(label(t.status))}</p><button type="button" data-safety-trip-select="${esc(t.id)}">اختيار الرحلة</button></article>`).join(''):uiLocale.html`<p>لا توجد رحلات مطابقة.</p>`)+(data.totalPages>1?uiLocale.html`<nav class="hl-safety-pager" aria-label="صفحات رحلات السلامة"><button type="button" data-safety-trip-page="${data.page-1}" ${data.page===1?'disabled':''}>السابق</button><span>صفحة ${data.page} من ${data.totalPages}</span><button type="button" data-safety-trip-page="${data.page+1}" ${data.page===data.totalPages?'disabled':''}>التالي</button></nav>`:''));
+   }catch(error){if(active()&&!denied(error))uiLocale.setHTML(box.querySelector('[data-safety-trip-list]'), uiLocale.html`<p role="alert">${uiLocale.messageHTML(localErrorMessage(error))}</p><button type="button" data-safety-trips-retry>إعادة تحميل الرحلات</button>`)}
  }
  async function selectTrip(id,preserve=false){
    if(!draft||!id)return;const host=section,session=auth().getSessionVersion?.(),v=++composeVersion,kind=draft.kind,box=host.querySelector('[data-safety-compose]'),oldForm=box.querySelector('[data-safety-submit]'),values=preserve&&oldForm?new FormData(oldForm):null,active=()=>current(host,session,()=>v===composeVersion);
-   const feedback=box.querySelector('[data-safety-feedback]');if(feedback)feedback.textContent='جارٍ تحديث بيانات الرحلة…';
+   const feedback=box.querySelector('[data-safety-feedback]');if(feedback)uiLocale.setText(feedback, ...['جارٍ تحديث بيانات الرحلة…']);
    try{
      if(!await authorize(host,session,()=>v===composeVersion))return;
      const data=await request('/trips/'+encodeURIComponent(id));if(!active())return;
-     if(data?.trip?.id!==id||typeof data.stateToken!=='string'||typeof data.incidentStateToken!=='string'||!Array.isArray(data.checklistItems))throw new Error('بيانات الرحلة غير مكتملة.');
+     if(data?.trip?.id!==id||typeof data.stateToken!=='string'||typeof data.incidentStateToken!=='string'||!Array.isArray(data.checklistItems))throw localError(uiLocale.message('بيانات الرحلة غير مكتملة.'));
      draft={kind,trip:data.trip,stateToken:kind==='checklist'?data.stateToken:data.incidentStateToken,requestId:crypto.randomUUID()};
-     box.innerHTML=`<header><h3>${kind==='checklist'?'تسجيل فحص رحلة':'تسجيل بلاغ سلامة'} · ${esc(data.trip.title)}</h3><button type="button" data-safety-cancel>إلغاء</button></header>`;
-     if(kind==='checklist'&&!data.canAssess){box.innerHTML+='<p role="alert">الرحلة بدأت أو أُغلقت، ولا يمكن تسجيل فحص قبل الرحلة.</p>';return}
-     box.innerHTML+=`<form data-safety-submit><p>${kind==='checklist'?'تُحفظ جميع البنود للمراجعة. البنود غير المستوفاة تؤجل قرار التشغيل، ولا تمنح هذه الخطوة موافقة تشغيل.':'يُسجَّل البلاغ داخل المنصة للمراجعة. في الطوارئ تواصل مباشرة مع الجهة المختصة؛ هذا النموذج لا يرسل نداء استغاثة خارجيًا.'}</p>`+(kind==='checklist'?`<fieldset><legend>بنود الفحص</legend>${data.checklistItems.map(item=>`<label class="hl-safety-check"><input type="checkbox" name="${esc(item.key)}" ${values?.has(item.key)?'checked':''}>${esc(item.label)}</label>`).join('')}</fieldset><label>ملاحظات الفحص<textarea name="notes" maxlength="2000">${esc(values?.get('notes')||'')}</textarea></label>`:`<label>عنوان البلاغ<input name="title" minlength="3" maxlength="160" required value="${esc(values?.get('title')||'')}"></label><label><span id="hl-center-incident-severity-label">خطورة البلاغ الجديد</span><select name="severity" aria-labelledby="hl-center-incident-severity-label">${['LOW','MEDIUM','HIGH','CRITICAL'].map(value=>`<option value="${value}" ${values?.get('severity')===value?'selected':''}>${label(value)}</option>`).join('')}</select></label><label>وصف البلاغ<textarea name="description" minlength="3" maxlength="5000" required>${esc(values?.get('description')||'')}</textarea></label><label>الموقع<input name="locationName" maxlength="160" value="${esc(values?.get('locationName')||'')}"></label>`)+`<button type="submit">${kind==='checklist'?'حفظ الفحص وإرساله للمراجعة':'حفظ البلاغ'}</button><p data-safety-feedback role="status"></p></form>`;
+     uiLocale.setHTML(box, uiLocale.html`<header><h3>${uiLocale.label(kind==='checklist'?'تسجيل فحص رحلة':'تسجيل بلاغ سلامة')} · ${esc(data.trip.title)}</h3><button type="button" data-safety-cancel>إلغاء</button></header>`);
+     if(kind==='checklist'&&!data.canAssess){uiLocale.insertHTML(box, 'beforeend', uiLocale.html`<p role="alert">الرحلة بدأت أو أُغلقت، ولا يمكن تسجيل فحص قبل الرحلة.</p>`);return}
+     uiLocale.insertHTML(box, 'beforeend', uiLocale.html`<form data-safety-submit><p>${uiLocale.label(kind==='checklist'?'تُحفظ جميع البنود للمراجعة. البنود غير المستوفاة تؤجل قرار التشغيل، ولا تمنح هذه الخطوة موافقة تشغيل.':'يُسجَّل البلاغ داخل المنصة للمراجعة. في الطوارئ تواصل مباشرة مع الجهة المختصة؛ هذا النموذج لا يرسل نداء استغاثة خارجيًا.')}</p>`+(kind==='checklist'?uiLocale.html`<fieldset><legend>بنود الفحص</legend>${data.checklistItems.map(item=>uiLocale.html`<label class="hl-safety-check"><input type="checkbox" name="${esc(item.key)}" ${values?.has(item.key)?'checked':''}>${esc(item.label)}</label>`).join('')}</fieldset><label>ملاحظات الفحص<textarea name="notes" maxlength="2000">${esc(values?.get('notes')||'')}</textarea></label>`:uiLocale.html`<label>عنوان البلاغ<input name="title" minlength="3" maxlength="160" required value="${esc(values?.get('title')||'')}"></label><label><span id="hl-center-incident-severity-label">خطورة البلاغ الجديد</span><select name="severity" aria-labelledby="hl-center-incident-severity-label">${['LOW','MEDIUM','HIGH','CRITICAL'].map(value=>uiLocale.html`<option value="${value}" ${values?.get('severity')===value?'selected':''}>${uiLocale.label(label(value))}</option>`).join('')}</select></label><label>وصف البلاغ<textarea name="description" minlength="3" maxlength="5000" required>${esc(values?.get('description')||'')}</textarea></label><label>الموقع<input name="locationName" maxlength="160" value="${esc(values?.get('locationName')||'')}"></label>`)+uiLocale.html`<button type="submit">${uiLocale.label(kind==='checklist'?'حفظ الفحص وإرساله للمراجعة':'حفظ البلاغ')}</button><p data-safety-feedback role="status"></p></form>`);
      box.scrollIntoView({block:'nearest'});
-   }catch(error){if(active()&&!denied(error)){if(feedback)feedback.textContent=error.message;else box.innerHTML=`<p role="alert">${esc(error.message)}</p><button type="button" data-safety-trips-retry>إعادة اختيار الرحلة</button><button type="button" data-safety-cancel>إلغاء</button>`}}
+   }catch(error){if(active()&&!denied(error)){if(feedback)uiLocale.setMessage(feedback, localErrorMessage(error));else uiLocale.setHTML(box, uiLocale.html`<p role="alert">${uiLocale.messageHTML(localErrorMessage(error))}</p><button type="button" data-safety-trips-retry>إعادة اختيار الرحلة</button><button type="button" data-safety-cancel>إلغاء</button>`)}}
  }
  async function save(form){
    if(!draft||form.dataset.busy)return;
@@ -108,14 +220,14 @@
    const values=new FormData(form),body={requestId:selected.requestId,expectedState:selected.stateToken};
    if(selected.kind==='checklist'){body.items={};form.querySelectorAll('input[type=checkbox]').forEach(input=>body.items[input.name]=values.has(input.name));body.notes=String(values.get('notes')||'').trim()}
    else for(const key of ['title','severity','description','locationName'])body[key]=String(values.get(key)||'').trim();
-   form.dataset.busy='true';box.querySelectorAll('button,input,select,textarea').forEach(node=>node.disabled=true);feedback.textContent='جارٍ الحفظ…';
+   form.dataset.busy='true';box.querySelectorAll('button,input,select,textarea').forEach(node=>node.disabled=true);uiLocale.setText(feedback, ...['جارٍ الحفظ…']);
    try{
      if(!await authorize(host,session,()=>v===composeVersion))return;
      const data=await request('/trips/'+encodeURIComponent(selected.trip.id)+'/'+(selected.kind==='checklist'?'checklists':'incidents'),{method:'POST',body:JSON.stringify(body)});if(!active())return;
-     if(typeof data?.id!=='string'||data.tripId!==selected.trip.id||(selected.kind==='checklist'?!['REVIEW_REQUIRED','DEFERRED'].includes(data.decision):data.status!=='OPEN'))throw new Error('لم يصل تأكيد الحفظ. أعد المحاولة بالطلب نفسه.');
+     if(typeof data?.id!=='string'||data.tripId!==selected.trip.id||(selected.kind==='checklist'?!['REVIEW_REQUIRED','DEFERRED'].includes(data.decision):data.status!=='OPEN'))throw localError(uiLocale.message('لم يصل تأكيد الحفظ. أعد المحاولة بالطلب نفسه.'));
      const message=selected.kind==='checklist'?(data.decision==='DEFERRED'?'تم حفظ الفحص بحالة مؤجل لوجود بنود غير مستوفاة.':'تم حفظ الفحص وإرساله للمراجعة.'):'تم حفظ البلاغ داخل المنصة للمراجعة.';
-     draft=null;composeVersion++;box.innerHTML=`<p role="status">${message}</p>`;await loadList();if(current(host,session))await detail(selected.kind,data.id);
-   }catch(error){if(active()&&!denied(error)){feedback.textContent=error.message;if(error.status===409){form.dataset.stale='true';feedback.innerHTML+=` <button type="button" data-safety-trip-refresh>تحديث بيانات الرحلة</button>`}}}
+     draft=null;composeVersion++;uiLocale.setHTML(box, uiLocale.html`<p role="status">${uiLocale.label(message)}</p>`);await loadList();if(current(host,session))await detail(selected.kind,data.id);
+   }catch(error){if(active()&&!denied(error)){uiLocale.setMessage(feedback, localErrorMessage(error));if(error.status===409){form.dataset.stale='true';uiLocale.insertHTML(feedback, 'beforeend', uiLocale.html` <button type="button" data-safety-trip-refresh>تحديث بيانات الرحلة</button>`)}}}
    finally{delete form.dataset.busy;if(active()){box.querySelectorAll('button,input,select,textarea').forEach(node=>node.disabled=false);if(form.dataset.stale)form.querySelector('[type=submit]').disabled=true}}
  }
  for(const name of ['hydroland:session-cleared','hydroland:portal-cleared'])document.addEventListener(name,clear);
