@@ -13,7 +13,7 @@ test('Dive Professionals portal closure: all protected workspaces are instructor
  await page.route(/\/api\/v1\/training\/skills\/k1\/assessment$/,r=>{state.skill=r.request().postDataJSON().status;return json(r,{id:'k1',status:state.skill})});
  await page.route(/\/api\/v1\/training\/professional\/me\/certificates$/,r=>json(r,[{trainingRecordId:'tr1',courseCode:'RESCUE-201',student:{displayName:'طالب مخصص'},readyForRecommendation:true,certificate:state.recommended?{id:'c1',status:'RECOMMENDED'}:null}]));
  await page.route(/\/api\/v1\/training\/professional\/me\/records\/tr1\/certificate-recommendation$/,r=>{state.recommended=true;return json(r,{id:'c1',trainingRecordId:'tr1',status:'RECOMMENDED'})});
- await page.route(/\/api\/v1\/training\/professional\/me\/earnings$/,r=>json(r,{currency:'SAR',totals:{pendingMinor:12500,approvedMinor:25000,settledMinor:50000},entries:[{id:'x1',courseCode:'RESCUE-201',amountMinor:25000,currency:'SAR',status:'APPROVED',createdAt:'2026-09-30T12:00:00Z'}]}));
+ await page.route(/\/api\/v1\/training\/professional\/me\/earnings$/,r=>json(r,{currency:'SAR',totals:{pendingMinor:12500,approvedMinor:25700,settledMinor:50000},entries:[{id:'x1',courseCode:'RESCUE-201',amountMinor:25000,currency:'SAR',status:'APPROVED',createdAt:'2026-09-30T12:00:00Z'},{id:'x2',courseCode:'HISTORIC-JPY',amountMinor:700,currency:'JPY',status:'APPROVED',createdAt:'2026-09-30T12:00:00Z'}]}));
  await page.goto('/',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandTraining));
  await page.evaluate(async()=>{window.HydrolandAuth.acceptSession({accessToken:'close-access',refreshToken:'close-refresh'},window.HydrolandAuth.beginAuthAttempt());await window.HydrolandProfile.load()});
  await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="instructor"]').click();
@@ -25,6 +25,11 @@ test('Dive Professionals portal closure: all protected workspaces are instructor
  t=await open('إصدار الشهادات','professional-certificates');await t.getByText('توصية المدرب بالشهادة',{exact:true}).click();
  const recommendation=t.locator('[data-certificate-recommend-form]');await recommendation.locator('[data-certificate-recommend]').click();expect(state.recommended).toBe(false);
  await recommendation.getByRole('checkbox').check();await recommendation.locator('[data-certificate-recommend]').click();await expect(t).toContainText('بانتظار مراجعة الإدارة');expect(state.recommended).toBe(true);
- t=await open('الإيرادات','professional-earnings');await expect(t).toContainText('RESCUE-201');await expect(t).not.toContainText('hidden@example.invalid');
+ t=await open('الإيرادات','professional-earnings');await expect(t).toContainText('RESCUE-201');
+ const jpy=new Intl.NumberFormat('ar-SA',{style:'currency',currency:'JPY',currencyDisplay:'code'}).format(700);
+ const approved=new Intl.NumberFormat('ar-SA',{style:'currency',currency:'SAR'}).format(250);
+ await expect(t.locator('.hl-course').filter({hasText:'HISTORIC-JPY'})).toContainText(jpy);
+ await expect(t.locator('.hl-role-tiles article').nth(1)).toContainText(approved);
+ await expect(t).not.toContainText('hidden@example.invalid');
  state.active=false;await openWorkspaceSwitcher(page);await expect(page.locator('#role-dialog [data-role="instructor"]')).toBeDisabled();await expect(page.locator('.hl-role-dashboard[data-role="instructor"]')).toHaveCount(0);
 });

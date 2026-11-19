@@ -25,8 +25,11 @@ export class TrainingProfessionalProfileService {
       select:{id:true,amountMinor:true,currency:true,status:true,approvedAt:true,settledAt:true,createdAt:true,trainingEnrollment:{select:{courseCode:true}}},
       orderBy:{createdAt:'desc'},take:200,
     });
-    const totals=rows.reduce((acc,row)=>{acc[row.status]=(acc[row.status]||0)+row.amountMinor;return acc;},{} as Record<string,number>);
-    return {currency:'SAR',totals:{pendingMinor:totals.PENDING||0,approvedMinor:totals.APPROVED||0,settledMinor:totals.SETTLED||0},entries:rows.map(row=>({id:row.id,courseCode:row.trainingEnrollment.courseCode,amountMinor:row.amountMinor,currency:row.currency,status:row.status,approvedAt:row.approvedAt,settledAt:row.settledAt,createdAt:row.createdAt}))};
+    const totals: Record<string, number> = {};
+    for (const row of rows) {
+      if (row.currency === 'SAR') totals[row.status] = (totals[row.status] ?? 0) + row.amountMinor;
+    }
+    return {currency:'SAR',totalsScope:'SAR_ONLY',totals:{pendingMinor:totals.PENDING||0,approvedMinor:totals.APPROVED||0,settledMinor:totals.SETTLED||0},entries:rows.map(row=>({id:row.id,courseCode:row.trainingEnrollment.courseCode,amountMinor:row.amountMinor,currency:row.currency,status:row.status,approvedAt:row.approvedAt,settledAt:row.settledAt,createdAt:row.createdAt}))};
   }
 
   async listCertificateReadiness(accountId: string) {
