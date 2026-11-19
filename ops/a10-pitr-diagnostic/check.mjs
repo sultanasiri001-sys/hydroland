@@ -77,6 +77,7 @@ async function probeRestoredApplicationReadiness() {
   }
 
   const { Module } = require('@nestjs/common');
+  require('reflect-metadata');
   const { NestFactory } = require('@nestjs/core');
   const { HealthController } = require(path.join(temporaryRoot, 'health/health.controller.js'));
   const { DatabaseService } = require(path.join(temporaryRoot, 'database/database.service.js'));
