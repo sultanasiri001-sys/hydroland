@@ -23,6 +23,7 @@ export async function profilePrivacyAcceptance({db,base}){
     }
     const [a,b]=accounts;
     await verifyTripRecords(db,call,a,b);
+    await verifySentMessages(db,call,a,b);
     const secondBefore=await db.account.findUniqueOrThrow({where:{id:b.id},include:{person:{include:{professional:true}}}});
     const foreignCredential=await db.credential.create({data:{personId:b.personId,issuer:'Synthetic',title:'Foreign profile reference'}});
     assert.equal((await call(null,'/me/data-export','POST',{})).response.status,401);
@@ -50,13 +51,14 @@ export async function profilePrivacyAcceptance({db,base}){
     for(const body of [{firstName:null},{firstName:[]},{firstName:' '},{firstName:'x'.repeat(81)},{status:'ACTIVE'},{accountId:b.id},{firstName:'X\u0000Y'},[]])assert.equal((await call(a,'/me','PATCH',body)).response.status,400);
     assert.equal((await call(a,'/me','PATCH',{qualificationCredentialId:foreignCredential.id})).response.status,400);
     assert.deepEqual(await snapshot(),beforeInvalid);
-    await db.$executeRawUnsafe(`CREATE FUNCTION "${trigger}"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.resource='Account' AND NEW."resourceId"='${a.id}' AND NEW.action IN ('ACCOUNT_PROFILE_CORRECTED','ACCOUNT_PROFILE_EXPORTED','PERSONAL_TRIP_RECORDS_EXPORTED') THEN RAISE EXCEPTION 'synthetic profile audit failure'; END IF; RETURN NEW; END $$`);
+    await db.$executeRawUnsafe(`CREATE FUNCTION "${trigger}"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.resource='Account' AND NEW."resourceId"='${a.id}' AND NEW.action IN ('ACCOUNT_PROFILE_CORRECTED','ACCOUNT_PROFILE_EXPORTED','PERSONAL_TRIP_RECORDS_EXPORTED','PERSONAL_SENT_MESSAGES_EXPORTED') THEN RAISE EXCEPTION 'synthetic profile audit failure'; END IF; RETURN NEW; END $$`);
     await db.$executeRawUnsafe(`CREATE TRIGGER "${trigger}" BEFORE INSERT ON "AuditEvent" FOR EACH ROW EXECUTE FUNCTION "${trigger}"()`);installed=true;
     const auditCount=await db.auditEvent.count({where:{resourceId:a.id}});
     assert.equal((await call(a,'/me','PATCH',{firstName:'Must roll back',bio:'Must roll back'})).response.status,500);
     assert.deepEqual(await snapshot(),beforeInvalid);
     assert.equal((await call(a,'/me/data-export','POST',{})).response.status,500);
     assert.equal((await call(a,'/me/data-export/trip-records','POST',{domain:'PAYMENTS'})).response.status,500);
+    assert.equal((await call(a,'/me/data-export/sent-messages','POST',{})).response.status,500);
     assert.equal(await db.auditEvent.count({where:{resourceId:a.id}}),auditCount);
     await db.$executeRawUnsafe(`DROP TRIGGER "${trigger}" ON "AuditEvent"`);installed=false;
     const racing=await Promise.all([call(a,'/me','PATCH',{firstName:'Concurrent name'}),call(a,'/me','PATCH',{headline:'Concurrent headline'})]);
@@ -71,6 +73,7 @@ export async function profilePrivacyAcceptance({db,base}){
     await db.$executeRawUnsafe(`DROP FUNCTION IF EXISTS "${trigger}"()`);
     for(const account of accounts){
       await db.auditEvent.deleteMany({where:{OR:[{actorId:account.personId},{resourceId:account.id}]}});
+      await db.notification.deleteMany({where:{accountId:account.id}});
       await db.session.deleteMany({where:{accountId:account.id}});
       await db.roleAssignment.deleteMany({where:{accountId:account.id}});
       await db.credential.deleteMany({where:{personId:account.personId}});
@@ -112,5 +115,55 @@ async function verifyTripRecords(db, call, owner, other) {
     await db.payment.deleteMany({where:{booking:{tripId:trip.id}}});
     await db.booking.deleteMany({where:{tripId:trip.id}});
     await db.trip.delete({where:{id:trip.id}});await db.organization.delete({where:{id:org.id}});
+  }
+}
+
+async function verifySentMessages(db, call, owner, other) {
+  const page = (actor, body = {}) => call(actor, '/me/data-export/sent-messages', 'POST', body);
+  const conversation = await call(owner, '/messages/conversations', 'POST', {participantAccountIds:[other.id]});
+  assert.equal(conversation.response.status, 201);
+  const id = conversation.body.id;
+  const ids = Array.from({length:101}, () => randomUUID()).sort();
+  try {
+    // Use the deployed message contract for voice and received text; batch the paging fixture.
+    const sent = await call(owner, '/messages/conversations/'+id+'/messages', 'POST',
+      {kind:'VOICE',mediaUrl:'https://example.invalid/private-audio?signature=fixture',durationSec:12});
+    assert.equal(sent.response.status, 201);
+    const received = await call(other, '/messages/conversations/'+id+'/messages', 'POST', {body:'Private reply from peer'});
+    assert.equal(received.response.status, 201);
+    await db.$executeRaw`
+      INSERT INTO "Message" ("id","conversationId","senderAccountId","kind","body")
+      SELECT (jsonb_populate_record(NULL::"Message",jsonb_build_object('id',source)))."id", c."id", c."createdByAccountId", 'TEXT', 'Owned text'
+      FROM unnest(${ids}::text[]) AS source CROSS JOIN "Conversation" c WHERE c."id"::text = ${id}`;
+    assert.equal((await page(null)).response.status,401);
+    for (const input of [{accountId:other.id},{domain:'ALL'},{after:31},{after:'x'.repeat(201)}]) {
+      assert.equal((await page(owner,input)).response.status,400);
+    }
+    const first = await page(owner);
+    assert.equal(first.response.status,201);
+    assert.equal(first.response.headers.get('cache-control'),'private, no-store');
+    assert.equal(first.body.records.length,100);
+    assert.equal(first.body.nextCursor,first.body.records.at(-1).id);
+    const last = await page(owner,{after:first.body.nextCursor});
+    assert.equal(last.body.nextCursor,null);
+    const records = [...first.body.records,...last.body.records];
+    assert.deepEqual(records.map(row=>row.id), [...ids,sent.body.id].sort());
+    const voice = records.find(row=>row.kind==='VOICE');
+    assert.equal(voice.durationSec,12); assert.equal(voice.body,null);
+    for (const row of records) {
+      assert.deepEqual(Object.keys(row).sort(),['id','conversationId','kind','body','durationSec','createdAt'].sort());
+      if (row.kind==='TEXT') assert.equal(row.body,'Owned text');
+    }
+    assert.deepEqual((await page(other)).body.records.map(row=>row.id),[received.body.id]);
+    const {receipt,...snapshot}=first.body;
+    assert.equal(snapshot.accountId,owner.id);assert.equal(snapshot.schemaVersion,'PERSONAL_SENT_MESSAGES_V1');
+    assert.equal(receipt.sha256,createHash('sha256').update(JSON.stringify(snapshot)).digest('hex'));
+    const audit=await db.auditEvent.findUniqueOrThrow({where:{id:receipt.auditEventId}});
+    assert.equal(audit.action,'PERSONAL_SENT_MESSAGES_EXPORTED');
+    assert.deepEqual(audit.metadata,{domain:'SENT_MESSAGES',count:100,sha256:receipt.sha256});
+    await db.$executeRaw`DELETE FROM "ConversationParticipant" WHERE "conversationId"::text=${id} AND "accountId"::text=${owner.id}`;
+    assert.deepEqual((await page(owner)).body.records,[]);
+  } finally {
+    await db.$executeRaw`DELETE FROM "Conversation" WHERE "id"::text=${id}`;
   }
 }

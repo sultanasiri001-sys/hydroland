@@ -14,5 +14,10 @@ export class ProfileController {
   exportTripRecords(@Req() req: { auth: { accountId: string } }, @Body() body: unknown) {
     return this.profiles.exportTripRecords(req.auth.accountId, body);
   }
+  @Post('data-export/sent-messages') @Header('Cache-Control','private, no-store')
+  @Header('Content-Disposition','attachment; filename="hydroland-sent-messages.json"')
+  exportSentMessages(@Req() req: { auth: { accountId: string } }, @Body() body: unknown) {
+    return this.profiles.exportSentMessages(req.auth.accountId, body);
+  }
   @Patch() @Header('Cache-Control','private, no-store') update(@Req() req: { auth: { accountId: string } }, @Body() body: unknown) { return this.profiles.update(req.auth.accountId, body); }
 }
