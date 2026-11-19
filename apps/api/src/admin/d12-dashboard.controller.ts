@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, ForbiddenException, Get, Header, NotFoundException, Param, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, ForbiddenException, Get, Header, Logger, NotFoundException, OnApplicationBootstrap, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { DatabaseService } from '../database/database.service';
@@ -13,21 +13,39 @@ const mapping = sources.map(([category, action, resource]) => ({ category, actio
 type Request = { auth: { accountId: string } };
 type CurrencySum = { currency: string; minor: string };
 
-async function requireDashboardOwner(tx: Prisma.TransactionClient, id: string) {
+async function dashboardOwnerId(tx: Prisma.TransactionClient) {
   const email = process.env.D12_OWNER_EMAIL?.trim().toLowerCase();
-  const deny = () => new ForbiddenException('هذه اللوحة مخصصة لمدير المنصة.');
-  if (!email) throw deny();
+  if (!email) return null;
+  const platform = await platformOrganization(tx);
+  if (!platform) return null;
   const account = await tx.account.findFirst({
-    where: { id, email, status: 'ACTIVE', emailVerifiedAt: { not: null }, roleAssignments: { some: { role: 'ADMIN', status: 'ACTIVE' } } },
+    where: { id: platform.ownerId, email, status: 'ACTIVE', emailVerifiedAt: { not: null }, roleAssignments: { some: { role: 'ADMIN', status: 'ACTIVE' } } },
     select: { id: true },
   });
-  if (!account || (await platformOrganization(tx))?.ownerId !== id) throw deny();
+  return account?.id ?? null;
+}
+
+async function requireDashboardOwner(tx: Prisma.TransactionClient, id: string) {
+  if (await dashboardOwnerId(tx) !== id) throw new ForbiddenException('هذه اللوحة مخصصة لمدير المنصة.');
 }
 
 @Controller('admin/d12')
 @UseGuards(AccessTokenGuard, AdminGuard)
-export class D12DashboardController {
+export class D12DashboardController implements OnApplicationBootstrap {
   constructor(private readonly db: DatabaseService) {}
+
+  // Operators can verify the production binding without reading customer data or signing in as the owner.
+  async onApplicationBootstrap() {
+    if (process.env.NODE_ENV !== 'production' || !process.env.D12_OWNER_EMAIL) return;
+    const logger = new Logger('D12');
+    try {
+      const id = await this.db.serializable(dashboardOwnerId);
+      if (id) logger.log('D12 owner binding verified');
+      else logger.warn('D12 owner binding unavailable');
+    } catch {
+      logger.warn('D12 owner binding check unavailable');
+    }
+  }
 
   @Get('organizations')
   @Header('Cache-Control', 'private, no-store')
