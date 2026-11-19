@@ -1,0 +1,55 @@
+name: D12 owner dashboard acceptance
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/admin/**'
+      - 'apps/api/d12-audit-sources.json'
+      - 'apps/api/scripts/d12-dashboard-uat.mjs'
+      - 'apps/web/src/hydroland-d12-dashboard.js'
+      - 'apps/web/scripts/d12-dashboard-browser.mjs'
+      - 'scripts/d12-audit-summary*'
+      - '.github/workflows/d12-dashboard.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: d12
+          POSTGRES_PASSWORD: isolated
+          POSTGRES_DB: hydroland_d12_uat
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U d12 -d hydroland_d12_uat" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://d12:isolated@127.0.0.1:5432/hydroland_d12_uat
+      NODE_ENV: test
+      D12_OWNER_EMAIL: owner-d12@example.invalid
+      PORT: 3197
+      WEB_ORIGIN: http://127.0.0.1:4197
+      D12_UAT_API: http://127.0.0.1:3197/api/v1/
+      D12_UAT_BROWSER: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --workspace=@hydroland/api --workspace=@hydroland/web --include-workspace-root=true
+      - run: npm run db:generate -w @hydroland/api && npm exec -w @hydroland/api -- prisma db push --skip-generate
+      - run: npm run build -w @hydroland/api && npm run build -w @hydroland/web
+      - run: npm exec -w @hydroland/web -- playwright install --with-deps chromium
+      - name: Verify organization report and owner access on disposable data
+        run: |
+          set -eu
+          node --test scripts/d12-audit-summary.test.mjs
+          JWT_SECRET="$(openssl rand -hex 40)" node apps/api/dist/main.js > /tmp/d12-api.log 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" || true' EXIT
+          curl --retry 30 --retry-delay 1 --retry-connrefused --fail --silent http://127.0.0.1:3197/api/v1/health/ready >/dev/null
+          node apps/api/scripts/d12-dashboard-uat.mjs
