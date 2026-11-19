@@ -75,7 +75,6 @@ export async function checkCenterLicenseCreation(db,{base,a,b,ownerA,ta,tb,ts},c
     check(await db.administrativeRecord.count({where:{organizationId:a.org.id,referenceNumber:concurrent.referenceNumber}})===1,'Exactly one concurrent record persists');
   }finally{
     await db.orgUnit.update({where:{id:unit.id},data:{active:true}});
-    await db.auditEvent.deleteMany({where:{resourceId:{in:created},action:{in:['CENTER_LICENSE_CREATED','CENTER_LICENSE_RENEWAL_CREATED','CENTER_LICENSE_SAVED']}}});
     await db.administrativeRecord.deleteMany({where:{id:{in:created}}});
   }
 }

@@ -21,6 +21,6 @@ export async function checkCenterBusinessProfile(db,{base,a,b,ownerA,ta,tb,ts},c
   row=await db.organization.update({where:{id:a.org.id},data:{status:'SUSPENDED'}});check((await patch(ta,{...body,expectedUpdatedAt:row.updatedAt})).status===409,'Suspended center cannot change profile');
   row=await db.organization.update({where:{id:a.org.id},data:{status:'REJECTED'}});result=await patch(ta,{displayName:'Corrected center',expectedUpdatedAt:row.updatedAt});check(result.status===200&&result.body.status==='PENDING_REVIEW','Rejected profile correction returns to review, never self-activates');
  }finally{
-  const {id,createdAt,updatedAt,...data}=before;await db.organization.update({where:{id},data});await db.organization.update({where:{id:b.org.id},data:{registrationNumber:null}});await db.roleAssignment.update({where:{accountId_role:{accountId:ownerA.id,role:'DIVE_CENTER'}},data:{status:'ACTIVE'}});await db.auditEvent.deleteMany({where:{resourceId:id,action:'CENTER_BUSINESS_PROFILE_UPDATED'}});
+  const {id,createdAt,updatedAt,...data}=before;await db.organization.update({where:{id},data});await db.organization.update({where:{id:b.org.id},data:{registrationNumber:null}});await db.roleAssignment.update({where:{accountId_role:{accountId:ownerA.id,role:'DIVE_CENTER'}},data:{status:'ACTIVE'}});
  }
 }

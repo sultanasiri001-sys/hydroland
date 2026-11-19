@@ -118,7 +118,6 @@ try{
 }finally{
  const enrollments=await db.trainingEnrollment.findMany({where:{storeCourseOfferId:{in:ids}},select:{id:true}});
  const records=await db.trainingRecord.findMany({where:{enrollmentId:{in:enrollments.map(row=>row.id)}},select:{id:true,sessions:{select:{id:true}}}});
- await db.auditEvent.deleteMany({where:{resourceId:{in:[...ids,...enrollments.map(row=>row.id),...records.map(row=>row.id),...records.flatMap(row=>row.sessions.map(session=>session.id))]}}});
  await db.notification.deleteMany({where:{accountId:{in:accounts.map(row=>row.id)}}});
  await db.trainingCertificate.deleteMany({where:{trainingRecordId:{in:records.map(row=>row.id)}}});
  await db.trainingRecord.deleteMany({where:{id:{in:records.map(row=>row.id)}}});
@@ -128,5 +127,8 @@ try{
  await db.organizationMember.deleteMany({where:{organizationId:{in:organizations.map(row=>row.id)}}});await db.organization.deleteMany({where:{id:{in:organizations.map(row=>row.id)}}});
  await db.roleAssignment.deleteMany({where:{accountId:{in:accounts.map(row=>row.id)}}});
  await db.session.deleteMany({where:{accountId:{in:accounts.map(row=>row.id)}}});
- await db.account.deleteMany({where:{id:{in:accounts.map(row=>row.id)}}});await db.person.deleteMany({where:{id:{in:persons.map(row=>row.id)}}});await db.$disconnect();
+ await db.account.deleteMany({where:{id:{in:accounts.map(row=>row.id)}}});
+ // Retain the synthetic actors referenced by immutable audit receipts.
+ await db.person.deleteMany({where:{id:{in:persons.map(row=>row.id)},auditEvents:{none:{}}}});
+ await db.$disconnect();
 }

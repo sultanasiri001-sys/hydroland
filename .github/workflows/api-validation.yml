@@ -417,12 +417,13 @@ jobs:
       - name: Phase 4 append-only audit database boundary
         run: node apps/api/scripts/audit-append-only-validation.mjs
 
-      - name: Equipment rental deadlines on UTC and Riyadh database connections
+      - name: Rental and trip operational-clearance checks on UTC and Riyadh database connections
         env:
           NODE_ENV: test
           PORT: 3111
           JWT_SECRET: disposable-test-secret-for-rental-deadlines
           EQUIPMENT_E2E_BASE_URL: http://127.0.0.1:3111/api/v1
+          CENTER_SAFETY_E2E_BASE_URL: http://127.0.0.1:3111/api/v1
         run: |
           for zone in UTC Asia/Riyadh; do
             (
@@ -445,6 +446,7 @@ jobs:
               trap 'kill "$api_pid" 2>/dev/null || true; wait "$api_pid" 2>/dev/null || true' EXIT
               curl --fail --silent --retry 30 --retry-connrefused --retry-delay 1 "$EQUIPMENT_E2E_BASE_URL/health/ready" > /dev/null
               node apps/api/scripts/equipment-runtime-http-e2e.mjs
-              echo "Equipment deadlines verified in $zone"
+              node apps/api/scripts/center-safety-http-e2e.mjs
+              echo "Equipment deadlines and operational-clearance lifecycle verified in $zone"
             )
           done
