@@ -1,3 +1,4 @@
+import { assertRentalFitsCalendar } from './equipment-rental-calendar';
 import { assertNoRentalClaim, rentalStatus } from './equipment-rental-hold';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
@@ -38,6 +39,7 @@ export class EquipmentRentalHandoverService{
         throw new ConflictException('Rental equipment is no longer available.');
       }
       await assertNoRentalClaim(tx, resourceIds, id);
+      await assertRentalFitsCalendar(tx, resourceIds, rental.dueAt ?? null);
       const readiness = await this.inspections.evaluate(resourceIds, tx);
       if (readiness.blocked) throw new ConflictException('Equipment inspection or service policy blocks rental payment confirmation.');
 

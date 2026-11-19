@@ -25,7 +25,7 @@ async function login(account) {
 }
 const auth=token=>({authorization:`Bearer ${token}`});
 const json=async response=>{const body=await response.json().catch(()=>null);if(!response.ok)throw new Error(`HTTP ${response.status}: ${JSON.stringify(body)}`);return body};
-const people=[],accounts=[],extraAssets=[],holdFixtures=[];let equipmentId=null,rentalId=null,competingId=null,multiId=null;
+const people=[],accounts=[],extraAssets=[],holdFixtures=[],calendarTrips=[],calendarCenters=[];let equipmentId=null,rentalId=null,competingId=null,multiId=null;
 const makeAccount=async label=>{const person=await db.person.create({data:{firstName:'Equipment',lastName:label}});people.push(person);const account=await db.account.create({data:{personId:person.id,email:`equipment-${label.toLowerCase()}-${suffix}@example.invalid`,passwordHash,status:'ACTIVE',emailVerifiedAt:new Date()}});accounts.push(account);return account};
 
 try{
@@ -56,6 +56,33 @@ try{
   if(response.status!==409)throw new Error(`Duplicate serial expected 409, got ${response.status}`);
 
   const dueAt=new Date(Date.now()+2*86400000).toISOString();
+  async function makeCalendarTrip(ownerId, name, start) {
+    const center = await db.organization.create({data:{displayName:'Calendar fixture '+name, kind:'DIVE_CENTER', ownerId}});
+    calendarCenters.push(center.id);
+    const trip = await db.trip.create({data:{
+      title:'Equipment calendar '+name, type:'TEST', capacity:1, organizationId:center.id,
+      startsAt:new Date(start), endsAt:new Date(start+3600_000),
+    }});
+    calendarTrips.push(trip.id);
+    return trip;
+  }
+  const during = await makeCalendarTrip(admin.id, 'A', Date.now()+3600_000);
+  const adjacent = await makeCalendarTrip(other.id, 'B', Date.parse(dueAt));
+  const allocate = (trip, resourceIds) => fetch(base+'/trips/admin/calendar/'+trip.id+'/allocations', {
+    method:'POST', headers:{...auth(adminToken),'content-type':'application/json'}, body:JSON.stringify({resourceIds}),
+  });
+  const calendarBook = () => fetch(base+'/trips/equipment-rentals', {
+    method:'POST', headers:{...auth(adminToken),'content-type':'application/json'},
+    body:JSON.stringify({renterAccountId:renter.id, dueAt, items:[{resourceId:equipmentId,unitPriceSar:50}]}),
+  });
+  await json(await allocate(during,[equipmentId]));
+  assert.equal((await calendarBook()).status,409,'Trip allocation blocks an overlapping rental');
+  await json(await allocate(during,[]));
+  await json(await allocate(adjacent,[equipmentId]));
+  for (const trip of [during,adjacent]) {
+    const event=await db.calendarEvent.findUniqueOrThrow({where:{referenceType_referenceId:{referenceType:'TRIP',referenceId:trip.id}}});
+    assert.equal(event.organizationId,trip.organizationId);
+  }
   const repeatedItem={resourceId:equipmentId,equipmentType:'BCD',unitPriceSar:50};
   response=await fetch(base+'/trips/equipment-rentals',{method:'POST',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({renterAccountId:renter.id,dueAt,items:[repeatedItem,{...repeatedItem,resourceId:' '+equipmentId+' '}]})});
   if(response.status!==400)throw new Error('Duplicate serialized equipment must be rejected before creating a rental');
@@ -105,11 +132,24 @@ try{
   const cancel=(id,token)=>fetch(base+'/trips/equipment-rentals/'+id+'/mine/cancel',{method:'POST',headers:auth(token)});
   assert.equal(Date.parse(rental.holdExpiresAt)-Date.parse(rental.reservedAt), 15*60_000);
   assert.equal((await book()).status, 409, 'An unpaid hold keeps the serialized asset exclusive');
+  assert.equal((await allocate(during,[equipmentId])).status,409,'Unexpired rental hold blocks a trip');
+  assert.equal(await db.calendarAllocation.count({where:{resourceId:equipmentId,status:'ACTIVE',event:{referenceId:during.id}}}),0);
   holdFixtures.push(rentalId);
   await db.$executeRaw`UPDATE "EquipmentRental" SET "holdExpiresAt"=clock_timestamp() WHERE "id"=${rentalId}`;
   assert.equal((await mineById(rentalId)).status, 'EXPIRED');
   assert.equal((await confirm(rentalId)).status, 409, 'A late payment cannot revive the expired hold');
   assert.equal(await db.auditEvent.count({where:{resourceId:rentalId,action:'EQUIPMENT_RENTAL_PAYMENT_CONFIRMED'}}),0);
+  await json(await allocate(during,[equipmentId]));
+  await json(await allocate(during,[]));
+  const [calendarRace, rentalRace] = await Promise.all([allocate(during,[equipmentId]),calendarBook()]);
+  assert.deepEqual([calendarRace.status,rentalRace.status].sort(),[201,409]);
+  if (rentalRace.ok) {
+    const raceId=(await json(rentalRace)).id;
+    holdFixtures.push(raceId);
+    await json(await cancel(raceId,renterToken));
+  } else {
+    await json(await allocate(during,[]));
+  }
   const competingBookings=await Promise.all([book(), book()]);
   assert.deepEqual(competingBookings.map(response=>response.status).sort(), [201,409]);
   const heldId=(await json(competingBookings.find(response=>response.ok))).id;
@@ -123,11 +163,18 @@ try{
   // An unpaid older quote has no exclusive hold of its own.
   competingId=(await json(await book())).id;
   await db.$executeRaw`UPDATE "EquipmentRental" SET "holdExpiresAt"=NULL WHERE "id"=${competingId}`;
+  await json(await allocate(during,[equipmentId]));
+  assert.equal((await confirm(competingId)).status,409,'A legacy quote cannot be paid over a trip allocation');
+  assert.equal((await mineById(competingId)).paymentStatus,'PENDING');
+  assert.equal(await db.auditEvent.count({where:{resourceId:competingId,action:'EQUIPMENT_RENTAL_PAYMENT_CONFIRMED'}}),0);
+  await json(await allocate(during,[]));
   rentalId=(await json(await book())).id;
+  assert.equal((await allocate(during,[equipmentId])).status,409);
   const attempts=await Promise.all([confirm(rentalId),confirm(competingId)]);
   assert.equal(attempts[0].ok,true);
   assert.equal(attempts[1].status,409);
   const paid=await json(attempts[0]);
+  assert.equal((await allocate(during,[equipmentId])).status,409,'Paid equipment remains reserved until return');
   await db.$executeRaw`UPDATE "EquipmentRental" SET "holdExpiresAt"=clock_timestamp() WHERE "id"=${rentalId}`;
   assert.equal((await mineById(rentalId)).status,'RESERVED');
   assert.equal((await book()).status,409,'A paid hold still protects the asset before handover');
@@ -193,6 +240,13 @@ try{
   response=await fetch(`${base}/trips/equipment-rentals/${encodeURIComponent(rentalId)}/extension-request`,{method:'POST',headers:{...auth(renterToken),'content-type':'application/json'},body:JSON.stringify({requestedUntil})});
   rental=await json(response);if(rental.extensionStatus!=='PENDING')throw new Error('Extension request not persisted as PENDING');
   if (new Date(rental.extensionRequestedUntil).getTime() !== Date.parse(requestedUntil)) throw new Error('Pending extension must preserve the requested instant.');
+  const reviewExtension = () => fetch(base+'/trips/equipment-rentals/'+rentalId+'/extension-review',{
+    method:'POST', headers:{...auth(adminToken),'content-type':'application/json'}, body:JSON.stringify({decision:'APPROVED'}),
+  });
+  assert.equal((await reviewExtension()).status,409,'Extension cannot reserve the other center’s adjacent trip window');
+  assert.equal((await mineById(rentalId)).extensionStatus,'PENDING');
+  assert.equal(await db.auditEvent.count({where:{resourceId:rentalId,action:'EQUIPMENT_RENTAL_EXTENSION_APPROVED'}}),0);
+  await json(await allocate(adjacent,[]));
   response=await fetch(`${base}/trips/equipment-rentals/${encodeURIComponent(rentalId)}/extension-review`,{method:'POST',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({decision:'APPROVED'})});
   rental=await json(response);if(rental.extensionStatus!=='APPROVED'||new Date(rental.dueAt).getTime()!==new Date(requestedUntil).getTime())throw new Error('Extension approval did not persist new due date');
 
@@ -263,10 +317,17 @@ try{
   assert.equal((await post(returnPath,{code:passports[1].assetCode,condition:'OK'})).status,'RETURNED');
   assert.equal(await db.auditEvent.count({where:{resourceId:multiId,action:'EQUIPMENT_RENTAL_ITEM_RETURNED'}}),2);
   assert.equal(await db.auditEvent.count({where:{resourceId:multiId,action:'EQUIPMENT_RENTAL_RETURNED'}}),1);
+  console.log('Calendar/rental acceptance passed across two center-owned trips: overlap, adjacency, concurrent claims, paid and expired holds, legacy confirmation, and extension rollback.');
   console.log('Equipment HTTP/DB E2E passed: admin isolation, registration, duplicate protection, safety gate, reservation ownership, staged payment/handover, handover audit/notification rollback, concurrent handover and return replay, extension, return intent, atomic return rollback, partial returns, quarantine and persistence.');
 } finally {
   const personIds=people.map(row=>row.id),accountIds=accounts.map(row=>row.id);
   if(personIds.length)await db.auditEvent.deleteMany({where:{actorId:{in:personIds}}}).catch(()=>{});
+  if (calendarTrips.length) {
+    await db.calendarAllocation.deleteMany({where:{event:{referenceType:'TRIP',referenceId:{in:calendarTrips}}}});
+    await db.calendarEvent.deleteMany({where:{referenceType:'TRIP',referenceId:{in:calendarTrips}}});
+    await db.trip.deleteMany({where:{id:{in:calendarTrips}}});
+  }
+  await db.organization.deleteMany({where:{id:{in:calendarCenters}}});
   for(const id of [rentalId,competingId,multiId,...holdFixtures].filter(Boolean))await db.auditEvent.deleteMany({where:{resourceId:id}}).catch(()=>{});
   for (const id of [equipmentId,...extraAssets].filter(Boolean)) await db.auditEvent.deleteMany({where:{resourceId:id}}).catch(()=>{});
   if(accountIds.length)await db.notification.deleteMany({where:{accountId:{in:accountIds}}}).catch(()=>{});
