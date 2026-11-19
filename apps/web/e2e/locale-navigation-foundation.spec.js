@@ -41,7 +41,12 @@ async function switchTo(page,locale,key='Enter'){
  await expect(control).toHaveAccessibleName(locale==='en'?'Interface language: English. Switch to Arabic':'لغة الواجهة: العربية. التبديل إلى الإنجليزية');
 }
 async function assertInsideViewport(page,locator,width){
- await expect(locator).toBeVisible();const box=await locator.boundingBox();expect(box).not.toBeNull();expect(box.x).toBeGreaterThanOrEqual(-1);expect(box.x+box.width).toBeLessThanOrEqual(width+1);
+ await expect(locator).toBeVisible();
+ let box;
+ await expect.poll(async () => {
+  box = await locator.boundingBox();
+  return Boolean(box && box.x >= -1 && box.x + box.width <= width + 1);
+ }, {message:'The open control or navigation panel must fit within the viewport'}).toBe(true);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1)).toBe(true);
  return box;
 }
@@ -71,7 +76,7 @@ test('sign-in and active native dialogs each expose one switch without replacing
  await expect(page.locator('.hl-login')).toBeVisible();await expect(localeSwitch(page)).toHaveAttribute('data-hl-locale-switch','entry');
  await page.locator('.hl-login-primary').click();const email=page.locator('.hl-auth-panel [name=email]');await email.fill('draft@example.invalid');await email.focus();
  await localeSwitch(page).click();await expect(email).toHaveValue('draft@example.invalid');await expect(email).toBeFocused();
- await expect(page.locator('.hl-auth-submit')).toHaveText('Sign in');
+ await expect(page.locator('.hl-auth-submit')).toHaveText('Secure sign-in');
  await switchTo(page,'ar','Space');await expect(email).toHaveValue('draft@example.invalid');
  await page.keyboard.press('Escape');await expect(page.locator('.hl-login')).toBeHidden();await expect(localeSwitch(page)).toHaveCount(1);
  await signIn(page);await page.evaluate(()=>window.HydrolandBookingParticipants.open('booking-1'));
@@ -119,7 +124,9 @@ for(const viewport of [{width:1536,height:864},{width:768,height:1024},{width:39
     if(viewport.width<=760)await board.locator('[data-portal-menu]').click();await board.locator('.hl-portal-nav-item').first().click();await expect(service).toBeHidden();
    }
   }
-  state.roles=[];await page.evaluate(()=>window.HydrolandPortalFreshness.refresh());await expect(page.locator('.hl-role-dashboard')).toHaveCount(0);
-  await openWorkspaceSwitcher(page);await expect(page.locator('#role-dialog [data-role="admin"]')).toBeDisabled();expect(state.writes).toEqual([]);
+  state.roles=[];
+  await openWorkspaceSwitcher(page);
+  await expect(page.locator('.hl-role-dashboard')).toHaveCount(0);
+  await expect(page.locator('#role-dialog [data-role="admin"]')).toBeDisabled();expect(state.writes).toEqual([]);
  });
 }

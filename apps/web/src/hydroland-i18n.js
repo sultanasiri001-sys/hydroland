@@ -297,7 +297,7 @@
       let button=active.querySelector('button[data-hl-locale-switch]');
       if(!button){
         button=document.createElement('button');button.type='button';button.className='hl-locale-switch';button.dataset.hlLocaleSwitch='dialog';
-        let header=active.querySelector(':scope > header,:scope > .dialog-head,:scope > .hl-account-head,:scope > .hl-public-detail-head,:scope > section > header,:scope > form > header,:scope > div > header');
+        let header=active.querySelector(':scope > header,:scope > .dialog-head,:scope > .hl-account-head,:scope > .hl-public-detail-head,:scope > section > header,:scope > form > header,:scope > div > header,:scope > .hl-messages-shell > .hl-conversation-list > header,:scope > .hfl-heading');
         if(!header){header=document.createElement('div');header.className='hl-locale-dialog-tools';active.prepend(header)}
         const last=header.lastElementChild;header.insertBefore(button,last?.matches('button')?last:null);
       }

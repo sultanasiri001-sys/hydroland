@@ -196,6 +196,7 @@ for (const language of ['ar', 'en']) {
     await page.evaluate(() => window.HydrolandMarineTrips.open());
     await page.locator('[data-mt-bookings]').click(); await page.locator('[data-mt-booking-open]').click();
     const panel = page.locator('[data-mt-bookings-view]'), input = panel.locator('[name=q]'), select = panel.locator('[data-mt-booking-status]');
+    await expect(panel.locator('[data-mt-booking-detail]')).toBeVisible();
     await input.fill(opaque); await select.selectOption('CONFIRMED'); await input.focus();
     const calls = state.calls.length;
     for (const current of ['en', 'ar', language]) {

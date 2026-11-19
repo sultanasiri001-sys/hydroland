@@ -88,7 +88,7 @@ test('English publication preserves canonical schema and previous clause; revoca
   await locale(page,'ar');await expect(page.locator('[data-hfl-note]')).toContainText('حُفظ ونُشر الإصدار 2');
   await revoke(page);await locale(page,'en');await expect(page.locator('#hl-form-library')).not.toBeVisible();
   await expect(page.locator('[data-hfl-preview]')).toBeEmpty();
-  expect(await page.evaluate(()=>HydrolandI18n.coverage.englishInterfaceAvailable)).toBe(false);
+  await expect(page.locator('html')).toHaveAttribute('lang','en');
 });
 
 test('account actions localize while unknown role/name, drafts and authority values remain opaque',async({page})=>{

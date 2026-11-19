@@ -105,7 +105,7 @@ source = '\n'.join([
 (preferences / 'orca-customizations.py').write_text(source, encoding='utf8')
 (preferences.parent / ('voice-' + language + '.json')).write_text(json.dumps(family, ensure_ascii=False, indent=2) + '\n', encoding='utf8')
 PY
-  orca --replace --user-prefs "$hl_preferences" --enable speech --disable braille --debug-file "$HL_ORCA_DEBUG_LOG" > "$HL_ORCA_EVIDENCE_DIR/orca-$hl_locale-console.log" 2>&1 &
+  PYTHONUNBUFFERED=1 orca --replace --user-prefs "$hl_preferences" --enable speech --disable braille --debug-file "$HL_ORCA_DEBUG_LOG" > "$HL_ORCA_EVIDENCE_DIR/orca-$hl_locale-console.log" 2>&1 &
   hl_orca_pid=$!
   npx playwright test --config=playwright.orca.config.js
   stop_owned "$hl_orca_pid"
