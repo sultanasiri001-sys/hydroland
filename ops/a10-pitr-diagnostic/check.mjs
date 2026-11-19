@@ -1,5 +1,8 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { createRequire } from 'node:module';
 import { PrismaClient } from '@prisma/client';
 
 const pitrDatabase = 'hydroland_u2vz';
@@ -8,6 +11,7 @@ const reconciliationMigration = '20261116180000_a09_uuid_reference_reconciliatio
 const expectedA09Checksum = '55277b7f971d4c5dc98131a1a2d8d8aadab76381866437ec0f2fa7f36eefe29f';
 const expectedReconciliationChecksum = '8500df9be272a08b4e8ca33df3e2e8932ad914da6c14e69d79771078bdcd6e8c';
 const expectedDatabase = process.env.EXPECTED_DATABASE;
+const require = createRequire(import.meta.url);
 
 if (!process.env.DATABASE_URL || expectedDatabase !== pitrDatabase) {
   throw new Error('Required PITR diagnostic configuration did not match');
@@ -43,6 +47,66 @@ const requiredIndexes = [
 ];
 
 const client = new PrismaClient();
+
+async function probeRestoredApplicationReadiness() {
+  const startedAt = performance.now();
+  const sourceRoot = path.resolve('apps/api/src');
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'hydroland-a10-ready-'));
+  const typescript = require('typescript');
+  const compilerOptions = {
+    module: typescript.ModuleKind.CommonJS,
+    target: typescript.ScriptTarget.ES2022,
+    experimentalDecorators: true,
+    emitDecoratorMetadata: true,
+    esModuleInterop: true,
+  };
+
+  for (const [source, destination] of [
+    ['health/health.controller.ts', 'health/health.controller.js'],
+    ['database/database.service.ts', 'database/database.service.js'],
+  ]) {
+    const output = typescript.transpileModule(
+      fs.readFileSync(path.join(sourceRoot, source), 'utf8'),
+      { compilerOptions, reportDiagnostics: true },
+    );
+    const errors = output.diagnostics.filter((diagnostic) => diagnostic.category === typescript.DiagnosticCategory.Error);
+    if (errors.length) throw new Error('Health probe module compilation failed');
+    const destinationPath = path.join(temporaryRoot, destination);
+    fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+    fs.writeFileSync(destinationPath, output.outputText, { mode: 0o600 });
+  }
+
+  const { Module } = require('@nestjs/common');
+  const { NestFactory } = require('@nestjs/core');
+  const { HealthController } = require(path.join(temporaryRoot, 'health/health.controller.js'));
+  const { DatabaseService } = require(path.join(temporaryRoot, 'database/database.service.js'));
+  class ReadinessProbeModule {}
+  Module({ controllers: [HealthController], providers: [DatabaseService] })(ReadinessProbeModule);
+
+  let app;
+  try {
+    app = await NestFactory.create(ReadinessProbeModule, { logger: false });
+    app.setGlobalPrefix('api/v1');
+    await app.listen(0, '127.0.0.1');
+    const address = app.getHttpServer().address();
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/v1/health/ready`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    const body = await response.json();
+    return {
+      status: response.status === 200 && body.status === 'ready' && body.database === 'ok' ? 'PASS' : 'FAIL',
+      http_status: response.status,
+      application_status: body.status,
+      database_status: body.database,
+      latency_ms: Math.round((performance.now() - startedAt) * 100) / 100,
+      scope: 'actual health controller and database provider over HTTP; background workers excluded',
+    };
+  } finally {
+    if (app) await app.close();
+    fs.rmSync(temporaryRoot, { recursive: true, force: true });
+  }
+}
+
 try {
   const report = await client.$transaction(async (tx) => {
     await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
@@ -238,6 +302,10 @@ try {
       overall: Object.values(checks).every(Boolean) ? 'PASS' : 'FAIL',
     };
   });
+
+  report.application_readiness = await probeRestoredApplicationReadiness();
+  report.checks.application_ready_on_restored_pitr = report.application_readiness.status === 'PASS';
+  report.overall = Object.values(report.checks).every(Boolean) ? 'PASS' : 'FAIL';
 
   console.log(JSON.stringify(report));
   if (report.overall !== 'PASS') process.exitCode = 2;
