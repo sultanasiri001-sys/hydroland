@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { PrismaClient } from '@prisma/client';
@@ -51,7 +50,7 @@ const client = new PrismaClient();
 async function probeRestoredApplicationReadiness() {
   const startedAt = performance.now();
   const sourceRoot = path.resolve('apps/api/src');
-  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'hydroland-a10-ready-'));
+  const temporaryRoot = fs.mkdtempSync(path.join(path.resolve('apps/api'), '.a10-readiness-'));
   const typescript = require('typescript');
   const compilerOptions = {
     module: typescript.ModuleKind.CommonJS,
@@ -77,7 +76,6 @@ async function probeRestoredApplicationReadiness() {
   }
 
   const { Module } = require('@nestjs/common');
-  require('reflect-metadata');
   const { NestFactory } = require('@nestjs/core');
   const { HealthController } = require(path.join(temporaryRoot, 'health/health.controller.js'));
   const { DatabaseService } = require(path.join(temporaryRoot, 'database/database.service.js'));
