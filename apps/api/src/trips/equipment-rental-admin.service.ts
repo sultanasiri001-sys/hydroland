@@ -11,7 +11,7 @@ export class EquipmentRentalAdminService{
   constructor(private readonly db:DatabaseService,private readonly rentals:EquipmentRentalService,private readonly audit:AuditService){}
 
   async list(){
-    const rows=await this.db.$queryRaw<RentalIndexRow[]>`SELECT "id","status","paymentStatus","invoiceNumber","renterAccountId","dueAt","returnIntentAt","extensionStatus","extensionRequestedUntil","reservedAt","totalHalala" FROM "EquipmentRental" WHERE "status" IN ('RESERVED','ACTIVE') OR "extensionStatus"='PENDING' ORDER BY CASE WHEN "extensionStatus"='PENDING' THEN 0 WHEN "returnIntentAt" IS NOT NULL THEN 1 WHEN "dueAt"<NOW() THEN 2 ELSE 3 END,"dueAt" ASC NULLS LAST,"reservedAt" DESC LIMIT 200`;
+    const rows=await this.db.$queryRaw<RentalIndexRow[]>`SELECT "id","status","paymentStatus","invoiceNumber","renterAccountId","dueAt","returnIntentAt","extensionStatus","extensionRequestedUntil","reservedAt","totalHalala" FROM "EquipmentRental" WHERE ("status" IN ('RESERVED','ACTIVE') AND ("paymentStatus"<>'PENDING' OR "holdExpiresAt" IS NULL OR "holdExpiresAt">clock_timestamp())) OR "extensionStatus"='PENDING' ORDER BY CASE WHEN "extensionStatus"='PENDING' THEN 0 WHEN "returnIntentAt" IS NOT NULL THEN 1 WHEN "dueAt"<NOW() THEN 2 ELSE 3 END,"dueAt" ASC NULLS LAST,"reservedAt" DESC LIMIT 200`;
     const result=[];
     for(const row of rows){const rental=await this.rentals.get(row.id);result.push(rental);}
     return result;
