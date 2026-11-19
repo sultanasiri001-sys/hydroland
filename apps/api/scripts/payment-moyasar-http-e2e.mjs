@@ -33,6 +33,7 @@ let providerMetadata=null;
 let invoicePayments=[];
 let createCalls=0,fetchCalls=0,cancelCalls=0;
 const providerRequests=[];
+const refundFixtureIds=[];
 const fetchGates=[],allFetchGates=[],pendingRequests=[];
 const holdInvoiceFetch=()=>{
   let started,release;
@@ -155,6 +156,45 @@ try{
   const captured=await db.payment.findUniqueOrThrow({where:{id:created.id}});if(captured.status!=='CAPTURED')throw new Error('Verified provider paid state was not persisted');
   await expectBookingAwaitingConfirmation('Verified paid webhook');
 
+  const requestReview = (id, fields) => fetch(base + '/payments/' + id + '/refund-request', {
+    method: 'POST', headers: auth(token),
+    body: JSON.stringify({ reason: 'Review the requested refund amount', ...fields }),
+  });
+  const providerCountBeforeReview = providerRequests.length;
+  const requestedAmountMinor = 3500;
+  const partial = await expectOk(await requestReview(created.id, { amountMinor: requestedAmountMinor, currency: 'SAR' }));
+  const partialEvent = await db.auditEvent.findUniqueOrThrow({ where: { id: partial.auditEventId } });
+  assert.equal(partialEvent.metadata.amountMinor, captured.amountMinor, 'Preserve the original payment amount');
+  assert.equal(partialEvent.metadata.requestedAmountMinor, requestedAmountMinor, 'Persist the amount submitted for review');
+  assert.equal(partial.requestedAmountMinor, requestedAmountMinor);
+  assert.equal(partial.currency, captured.currency);
+  assert.equal(partial.financialActionExecuted, false);
+  for (const [label, fields] of [['legacy', {}], ['full', { amountMinor: captured.amountMinor, currency: 'SAR' }]]) {
+    const fixture = await db.payment.create({ data: {
+      accountId: account.id, bookingId: booking.id, status: 'CAPTURED', currency: captured.currency,
+      amountMinor: captured.amountMinor, idempotencyKey: 'refund-review-' + label + '-' + suffix,
+    } });
+    refundFixtureIds.push(fixture.id);
+    const where = { resource: 'Payment', resourceId: fixture.id, action: 'PAYMENT_REFUND_REQUESTED' };
+    for (const invalid of [{ amountMinor: 0 }, { amountMinor: -1 }, { amountMinor: 0.5 },
+      { amountMinor: captured.amountMinor + 1 }, { amountMinor: '3500' }, { amountMinor: null }, { currency: 'USD' }]) {
+      assert.equal((await requestReview(fixture.id, invalid)).status, 400);
+    }
+    assert.equal(await db.auditEvent.count({ where }), 0);
+    const replies = await Promise.all([requestReview(fixture.id, fields), requestReview(fixture.id, fields)]);
+    assert.deepEqual(replies.map(result => result.status).sort(), [201, 409]);
+    const result = await expectOk(replies.find(reply => reply.ok));
+    const [receipt] = await db.auditEvent.findMany({ where });
+    assert.equal(await db.auditEvent.count({ where }), 1);
+    assert.equal(receipt.metadata.requestedAmountMinor, captured.amountMinor);
+    assert.equal(result.requestedAmountMinor, captured.amountMinor);
+    assert.equal(result.financialActionExecuted, false);
+    assert.deepEqual(await db.payment.findUniqueOrThrow({ where: { id: fixture.id } }), fixture);
+  }
+  assert.equal(providerRequests.length, providerCountBeforeReview);
+  assert.deepEqual(await db.payment.findUniqueOrThrow({ where: { id: created.id } }), captured);
+  console.log('Refund review HTTP/DB passed: partial, explicit full and default full amounts; invalid amount/currency rejection; concurrent duplicate review; zero provider calls.');
+
   response=await fetch(`${base}/payments/provider/moyasar/webhook`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(validWebhook('evt-payment-paid','payment_paid'))});
   const duplicatePaid=await expectOk(response);if(duplicatePaid.duplicate!==true)throw new Error('Repeated paid webhook was not recognized as a duplicate');
   await expectBookingAwaitingConfirmation('Repeated paid webhook');
@@ -213,6 +253,7 @@ try{
 } finally {
   for(const gate of allFetchGates)gate.release();
   await Promise.allSettled(pendingRequests);
+  if(refundFixtureIds.length)await db.auditEvent.deleteMany({where:{resource:'Payment',resourceId:{in:refundFixtureIds}}});
   if(payment?.id)await db.auditEvent.deleteMany({where:{OR:[{resourceId:payment.id},{resource:'PaymentProviderWebhook',resourceId:{in:[...webhookIds]}}]}}).catch(()=>{});
   if(payment?.id)await db.invoice.deleteMany({where:{paymentId:payment.id}}).catch(()=>{});
   if(booking?.id)await db.payment.deleteMany({where:{bookingId:booking.id}}).catch(()=>{});
