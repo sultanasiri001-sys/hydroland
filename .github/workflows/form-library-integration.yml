@@ -40,6 +40,7 @@ jobs:
       PORT: 3114
       FORM_LIBRARY_E2E_CONFIRM: ISOLATED_LOOPBACK_DATABASE
       FORM_LIBRARY_E2E_BASE_URL: http://127.0.0.1:3114/api/v1/
+      FORM_LIBRARY_E2E_ARTIFACT_DIR: /tmp/form-library-evidence/custom-templates
       HR_E2E_BASE_URL: http://127.0.0.1:3114/api/v1
     steps:
       - uses: actions/checkout@v4

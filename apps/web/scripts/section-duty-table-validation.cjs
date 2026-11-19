@@ -9,7 +9,7 @@ const source=fs.readFileSync(path.join(__dirname,'../src/hydroland-documents.js'
   await page.route('https://tables.test/**',route=>route.fulfill({contentType:'text/html',body:'<html dir="rtl"><body style="margin:0"><section id="role-console"></section></body></html>'}));
   await page.goto('https://tables.test/');
   await page.evaluate(()=>{
-   const template={id:'t',organizationId:'org',code:'INV-QUOTE-COMPARISON',titleAr:'مقارنة العروض',department:'INVENTORY_LOGISTICS',fields:[{key:'title',labelAr:'الموضوع',type:'TEXT',required:true},{key:'rows',labelAr:'المقارنة',type:'TABLE',required:true,options:['المورد','النتيجة']},{key:'legacy',labelAr:'جدول سابق',type:'TABLE',required:false},{key:'choice',labelAr:'الخيار',type:'SELECT',required:true,options:['أ','ب']}],version:1};
+   const template={id:'t',organizationId:'org',code:'INV-QUOTE-COMPARISON',titleAr:'مقارنة العروض',department:'INVENTORY_LOGISTICS',fields:[{key:'section',labelAr:'قسم المقارنة',type:'SECTION',required:false},{key:'confirmed',labelAr:'تم التحقق',type:'BOOLEAN',required:true},{key:'title',labelAr:'الموضوع',type:'TEXT',required:true},{key:'rows',labelAr:'المقارنة',type:'TABLE',required:true,options:['المورد','النتيجة']},{key:'legacy',labelAr:'جدول سابق',type:'TABLE',required:false},{key:'choice',labelAr:'الخيار',type:'SELECT',required:true,options:['أ','ب']}],version:1};
    window.fixture={template,writes:[],documents:[],session:1,authenticated:true};
    const response=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json'}});
    window.HydrolandAuth={isAuthenticated:()=>fixture.authenticated,getSessionVersion:()=>fixture.session,authorizedFetch:async(url,init={})=>{
@@ -21,10 +21,17 @@ const source=fs.readFileSync(path.join(__dirname,'../src/hydroland-documents.js'
     return response({},404);
    }};
   });
+  await page.evaluate(()=>fixture.template.fields.splice(1,0,{key:'wording',type:'STATEMENT',labelAr:'نص الإقرار',labelEn:'Acknowledgment wording',required:false,contentAr:'نص محفوظ <img src=x onerror="window.injected=true">',contentEn:'Pinned acknowledgment wording'}));
   await page.addScriptTag({content:source});await page.evaluate(()=>HydrolandDocuments.open());
   await page.waitForFunction(()=>document.querySelector('[data-doc-note]').textContent.includes('تم تحميل'));
   assert.equal(await page.locator('[data-doc-tablefield="rows"] select').count(),0);
   assert.equal(await page.locator('[data-doc-table-cell]').count(),2);
+  assert.equal(await page.locator('[data-doc-section="section"]').innerText(),'قسم المقارنة');
+  assert.equal(await page.locator('[name="section"]').count(),0);
+  assert.equal(await page.locator('[name="wording"]').count(),0);
+  assert.match(await page.locator('[data-doc-statement="wording"]').innerText(),/نص محفوظ <img/);
+  assert.equal(await page.locator('[data-doc-statement="wording"] img').count(),0);
+  await page.locator('[name="confirmed"]').selectOption('false');
   await page.locator('[name="title"]').fill('مقارنة معزولة');await page.locator('[data-doc-save]').click();
   assert.match(await page.locator('[data-doc-note]').innerText(),/أكمل الجدول الإلزامي/);
   assert.equal(await page.evaluate(()=>fixture.writes.length),0);
@@ -35,11 +42,12 @@ const source=fs.readFileSync(path.join(__dirname,'../src/hydroland-documents.js'
   await page.locator('[name="legacy"]').fill('[{"سابق":"محفوظ"}]');await page.locator('[data-doc-save]').click();
   await page.waitForFunction(()=>fixture.writes.length===1&&document.querySelector('[data-doc-note]').textContent.includes('تم حفظ'));
   const payload=await page.evaluate(()=>fixture.writes[0].body.payload);
+  assert.equal(payload.confirmed,'false');assert.equal(Object.hasOwn(payload,'section'),false);assert.equal(Object.hasOwn(payload,'wording'),false);
   assert.deepEqual(payload.rows,[{'المورد':literal,'النتيجة':'9.5'}]);assert.deepEqual(payload.legacy,[{'سابق':'محفوظ'}]);assert.equal(payload.choice,'أ');
   await page.locator('[data-doc-action="edit"]').click();assert.equal(await page.locator('[data-doc-table-cell="المورد"]').inputValue(),literal);assert.equal(await page.evaluate(()=>window.injected||false),false);
   await page.locator('[data-doc-table-cell="النتيجة"]').fill('10');await page.locator('[data-doc-save]').click();
   await page.waitForFunction(()=>fixture.writes.length===2);assert.equal(await page.evaluate(()=>fixture.writes[1].url),'/documents/doc/revise');assert.equal(await page.evaluate(()=>fixture.writes[1].body.payload.rows[0]['النتيجة']),'10');
   await page.evaluate(()=>{fixture.authenticated=false;fixture.session++;document.dispatchEvent(new Event('hydroland:session-cleared'));});assert.equal(await page.locator('#hl-documents').isVisible(),false);assert.equal(await page.locator('[data-doc-table-cell]').count(),0);
-  await context.close();console.log('PASS structured TABLE entry, required rows, add/remove, typed create/revise, legacy JSON compatibility, literal escaping and session clearing.');
+  await context.close();console.log('PASS structured TABLE entry, section headings without answer data, BOOLEAN false, required rows, add/remove, typed create/revise, legacy JSON compatibility, literal escaping and session clearing.');
  }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

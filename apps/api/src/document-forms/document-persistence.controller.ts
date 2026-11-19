@@ -14,6 +14,7 @@ export class DocumentPersistenceController {
   constructor(private readonly documents:DocumentPersistenceService,private readonly list:DocumentListService,private readonly print:DocumentPrintService,private readonly pdf:DocumentPdfService,private readonly assets:DocumentAssetService,private readonly branding:DocumentBrandingService){}
   @Get('workspace') @Header('Cache-Control','no-store') workspace(@Req() r:ReqAuth){return this.list.workspaces(r.auth.accountId);}
   @Post('templates') createTemplate(@Req() r:ReqAuth,@Body() b:any){return this.documents.createTemplate(r.auth.accountId,b);}
+  @Post('templates/custom') createCustomTemplate(@Req() r:ReqAuth,@Body() b:any){return this.documents.createCustomTemplate(r.auth.accountId,b);}
   @Put('templates/:id') updateTemplate(@Req() r:ReqAuth,@Param('id') id:string,@Body() b:any){return this.documents.updateTemplate(r.auth.accountId,id,b);}
   @Get('organizations/:organizationId/templates')
   @Header('Cache-Control','private, no-store')
