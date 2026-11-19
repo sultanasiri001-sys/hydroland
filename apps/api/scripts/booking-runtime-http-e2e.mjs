@@ -1,18 +1,24 @@
 import { PrismaClient } from '@prisma/client';
-import { createHmac, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID, scryptSync } from 'node:crypto';
 import { createServer } from 'node:http';
 
 const db=new PrismaClient();
 const base=process.env.BOOKING_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1';
-const secret=process.env.JWT_SECRET;
-if(!secret)throw new Error('JWT_SECRET required');
 const suffix=Date.now().toString();
-const enc=value=>Buffer.from(JSON.stringify(value)).toString('base64url');
-const tokenFor=id=>{const now=Math.floor(Date.now()/1000),body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:id,iat:now,exp:now+1800})}`;return `${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`};
 const auth=token=>({authorization:`Bearer ${token}`});
 const json=async response=>{const body=await response.json().catch(()=>null);if(!response.ok)throw new Error(`HTTP ${response.status}: ${JSON.stringify(body)}`);return body};
 const people=[],accounts=[];let trip=null,bookingId=null,calendarResourceId=null,calendarEventId=null;let previousWeather=null,weatherServer=null;
-const makeAccount=async label=>{const person=await db.person.create({data:{firstName:'Booking',lastName:label}});people.push(person);const account=await db.account.create({data:{personId:person.id,email:`booking-${label.toLowerCase()}-${suffix}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}});accounts.push(account);return{person,account}};
+async function makeAccount(label) {
+  const person=await db.person.create({data:{firstName:'Booking',lastName:label}});
+  people.push(person);
+  const password=randomBytes(24).toString('base64url'),salt=randomBytes(16).toString('hex');
+  const account=await db.account.create({data:{personId:person.id,email:`booking-${label.toLowerCase()}-${suffix}@example.invalid`,
+    passwordHash:salt+':'+scryptSync(password,salt,64).toString('hex'),status:'ACTIVE',emailVerifiedAt:new Date()}});
+  accounts.push(account);
+  const session=await json(await fetch(base+'/auth/login',{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({email:account.email,password})}));
+  return {person,account,token:session.accessToken};
+}
 const forecastTime=new Date(Date.now()+2*86400000),forecastEnd=new Date(forecastTime.getTime()+3*3600000),weatherRequests=[];let weatherVersion=1;
 
 try{
@@ -23,8 +29,11 @@ try{
   const admin=adminPair.account,renter=renterPair.account,other=otherPair.account;
   await db.roleAssignment.create({data:{accountId:admin.id,role:'ADMIN',status:'ACTIVE',scope:{}}});
   await db.credential.create({data:{personId:renterPair.person.id,issuer:'HYDROLAND E2E',title:'Open Water Diver',credentialNumber:`OW-${suffix}`,issuedAt:new Date(),verificationStatus:'VERIFIED'}});
-  await db.diverProfile.create({data:{accountId:renter.id,medicalFitnessStatus:'FIT',medicalClearanceExpiresAt:new Date(Date.now()+30*86400000)}});
-  const adminToken=tokenFor(admin.id),renterToken=tokenFor(renter.id),otherToken=tokenFor(other.id);
+  const adminToken=adminPair.token,renterToken=renterPair.token,otherToken=otherPair.token;
+
+  const selfReport=await fetch(base+'/me/diver-profile',{method:'PATCH',headers:{...auth(renterToken),'content-type':'application/json'},
+    body:JSON.stringify({medicalFitnessStatus:'FIT',medicalClearanceExpiresAt:new Date(Date.now()+30*86400000).toISOString().slice(0,10)})});
+  await json(selfReport);
 
   previousWeather=await db.operationalSetting.findUnique({where:{key:'WEATHER_GATE'}});
   await db.operationalSetting.upsert({where:{key:'WEATHER_GATE'},create:{key:'WEATHER_GATE',value:{enabled:true,mode:'ENFORCE',provider:'STORMGLASS'}},update:{value:{enabled:true,mode:'ENFORCE',provider:'STORMGLASS'}}});
@@ -54,7 +63,8 @@ try{
   response=await fetch(`${base}/trips/admin/weather-gate/trips/${trip.id}/decision`,{method:'POST',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({status:'APPROVED',notes:'E2E operator approval',expectedReview:firstWeather.review.decisionToken})});const approvedWeather=await json(response);if(approvedWeather.review?.status!=='APPROVED'||!approvedWeather.review?.reviewedAt)throw new Error('Human weather approval was not persisted');
 
   response=await fetch(`${base}/trips/${trip.id}/bookings`,{method:'POST',headers:{...auth(renterToken),'content-type':'application/json'},body:JSON.stringify({seats:2})});const booking=await json(response);bookingId=booking.id;if(booking.status!=='PENDING'||booking.seats!==2||booking.participants?.length!==2)throw new Error('Two-seat booking did not create pending booking and two participants');if(booking.policyReview?.weatherGate?.reviewStatus!=='APPROVED')throw new Error('Booking did not carry approved weather review evidence');
-  const primary=booking.participants.find(row=>row.accountId===renter.id),companion=booking.participants.find(row=>row.accountId===null);if(primary?.eligibilityStatus!=='ELIGIBLE'||companion?.eligibilityStatus!=='PENDING')throw new Error('Participant eligibility initialization mismatch');
+  const primary=booking.participants.find(row=>row.accountId===renter.id),companion=booking.participants.find(row=>row.accountId===null);if(primary?.eligibilityStatus!=='PENDING'||companion?.eligibilityStatus!=='PENDING')throw new Error('A self-reported fit status cannot grant participant eligibility');
+  if(primary.certificationTitle!=='Open Water Diver'||primary.certificationNumber!==`OW-${suffix}`)throw new Error('Verified credential details should still prefill the roster');
   response=await fetch(`${base}/trips/${trip.id}/bookings`,{method:'POST',headers:{...auth(otherToken),'content-type':'application/json'},body:JSON.stringify({seats:1})});if(response.status!==409)throw new Error(`Capacity overflow expected 409, got ${response.status}`);
   response=await fetch(`${base}/trips/bookings/mine`,{headers:auth(renterToken)});const mine=await json(response);if(!mine.some(row=>row.id===bookingId&&row.seats===2))throw new Error('Owner cannot read own two-seat booking');
   response=await fetch(`${base}/trips/bookings/${bookingId}/cancel`,{method:'PATCH',headers:auth(otherToken)});if(response.status!==404)throw new Error(`Cross-user action cancellation expected 404, got ${response.status}`);
@@ -69,6 +79,15 @@ try{
   response=await fetch(eligibilityUrl,{method:'PATCH',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify(reviewBody)});const reviewedParticipants=await json(response);if(reviewedParticipants.find(row=>row.id===companion.id)?.eligibilityStatus!=='ELIGIBLE')throw new Error('Eligibility decision did not persist');
   response=await fetch(eligibilityUrl,{method:'PATCH',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify(reviewBody)});if(response.status!==409)throw new Error('Repeated stale review was not denied');
   const audits=await db.auditEvent.findMany({where:{action:'BOOKING_PARTICIPANT_ELIGIBILITY_CHANGED',resourceId:companion.id}});if(audits.length!==priorReviews+1||!audits.some(row=>row.metadata?.reason===reviewBody.reason&&row.metadata?.reviewerAccountId===admin.id))throw new Error('Eligibility review audit mismatch');
+
+  response=await fetch(`${base}/trips/admin/${trip.id}/bookings/${bookingId}/confirm`,{method:'PATCH',headers:auth(adminToken)});
+  if(response.status!==409||(await db.booking.findUniqueOrThrow({where:{id:bookingId}})).status!=='PENDING')throw new Error('Primary participant must receive a review before enforced confirmation');
+  const primaryUrl=`${base}/trips/admin/${trip.id}/bookings/${bookingId}/participants/${primary.id}/eligibility`;
+  const primaryReview={...reviewBody,expectedUpdatedAt:primary.updatedAt,reason:'Synthetic primary participant review'};
+  const reviewedPrimary=await json(await fetch(primaryUrl,{method:'PATCH',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify(primaryReview)}));
+  if(reviewedPrimary.find(row=>row.id===primary.id)?.eligibilityStatus!=='ELIGIBLE')throw new Error('Authorized review did not clear primary participant');
+  const primaryAudit=await db.auditEvent.findFirstOrThrow({where:{action:'BOOKING_PARTICIPANT_ELIGIBILITY_CHANGED',resourceId:primary.id}});
+  if(primaryAudit.metadata?.previousStatus!=='PENDING'||primaryAudit.metadata?.reviewerAccountId!==admin.id)throw new Error('Missing primary review provenance');
 
   weatherVersion=2;
   response=await fetch(`${base}/trips/admin/${trip.id}/bookings/${bookingId}/confirm`,{method:'PATCH',headers:auth(adminToken)});if(response.status!==409)throw new Error(`Changed forecast expected fresh human review before confirmation, got ${response.status}`);if((await db.booking.findUniqueOrThrow({where:{id:bookingId}})).status!=='PENDING')throw new Error('Weather-blocked confirmation mutated booking');
