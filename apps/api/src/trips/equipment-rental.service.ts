@@ -1,3 +1,4 @@
+import { assertRentalFitsCalendar } from './equipment-rental-calendar';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { assertNoRentalClaim, rentalStatus, RENTAL_HOLD_MINUTES } from './equipment-rental-hold';
 import { randomBytes } from 'node:crypto';
@@ -41,6 +42,7 @@ export class EquipmentRentalService{
       if (assets.length !== requested.length) throw new NotFoundException('Rental equipment not found.');
       if (assets.some(asset => asset.stockStatus !== 'AVAILABLE')) throw new ConflictException('المعدّة غير متاحة للتأجير.');
       await assertNoRentalClaim(tx, resourceIds);
+      await assertRentalFitsCalendar(tx, resourceIds, dueAt);
       const assetsById = new Map(assets.map(asset => [asset.resourceId, asset]));
       const [rental] = await tx.$queryRaw<RentalRow[]>`
         INSERT INTO "EquipmentRental" ("id","renterAccountId","status","paymentStatus","totalHalala","invoiceNumber",
@@ -105,10 +107,34 @@ export class EquipmentRentalService{
     await this.notifications.notify(rental.createdByAccountId,'EQUIPMENT_RENTAL_EXTENSION_REQUEST',{title:'طلب تمديد إيجار معدات',invoiceNumber:rental.invoiceNumber,rentalId:id,renterAccountId:accountId,currentDueAt:rental.dueAt,requestedUntil:requestedUntil.toISOString(),message:'الغواص طلب تمديد مدة إيجار المعدات.'});await this.audit.record({actorId:accountId,action:'EQUIPMENT_RENTAL_EXTENSION_REQUESTED',resource:'EquipmentRental',resourceId:id,metadata:{invoiceNumber:rental.invoiceNumber,currentDueAt:rental.dueAt,requestedUntil:requestedUntil.toISOString()}});return this.getMine(accountId,id);
   }
 
-  async reviewExtension(actorAccountId:string,id:string,input:{decision?:'APPROVED'|'REJECTED'}){
-    const decision=input.decision;if(!decision||!['APPROVED','REJECTED'].includes(decision))throw new BadRequestException('Extension decision is required.');const rental=await this.get(id);if(rental.extensionStatus!=='PENDING'||!rental.extensionRequestedUntil)throw new ConflictException('No pending extension request exists.');
-    if(decision==='APPROVED')await this.db.$executeRaw`UPDATE "EquipmentRental" SET "dueAt"="extensionRequestedUntil","extensionStatus"='APPROVED',"extensionReviewedAt"=NOW(),"extensionReviewedByAccountId"=${actorAccountId},"overdueNotifiedAt"=NULL,"updatedAt"=NOW() WHERE "id"=${id}`;else await this.db.$executeRaw`UPDATE "EquipmentRental" SET "extensionStatus"='REJECTED',"extensionReviewedAt"=NOW(),"extensionReviewedByAccountId"=${actorAccountId},"updatedAt"=NOW() WHERE "id"=${id}`;
-    const updated=await this.get(id);await this.notifications.notify(rental.renterAccountId,'EQUIPMENT_RENTAL_EXTENSION_REVIEWED',{title:decision==='APPROVED'?'تمت الموافقة على تمديد الإيجار':'تم رفض طلب تمديد الإيجار',invoiceNumber:rental.invoiceNumber,rentalId:id,decision,dueAt:updated.dueAt,message:decision==='APPROVED'?'تم تحديث موعد إرجاع المعدات.':'يرجى إعادة المعدات حسب موعد الاستحقاق الحالي.'});await this.audit.record({actorId:actorAccountId,action:`EQUIPMENT_RENTAL_EXTENSION_${decision}`,resource:'EquipmentRental',resourceId:id,metadata:{invoiceNumber:rental.invoiceNumber,renterAccountId:rental.renterAccountId,dueAt:updated.dueAt}});return updated;
+  async reviewExtension(actorAccountId: string, id: string, input: {decision?: 'APPROVED' | 'REJECTED'}) {
+    const decision = input.decision;
+    if (!decision || !['APPROVED', 'REJECTED'].includes(decision)) throw new BadRequestException('Extension decision is required.');
+    await this.db.serializable(async tx => {
+      const [rental] = await tx.$queryRaw<RentalRow[]>`SELECT * FROM "EquipmentRental" WHERE "id"=${id} FOR UPDATE`;
+      if (!rental) throw new NotFoundException('Rental not found.');
+      if (rental.status !== 'ACTIVE' || rental.extensionStatus !== 'PENDING' || !rental.extensionRequestedUntil) {
+        throw new ConflictException('No pending extension request exists on an active rental.');
+      }
+      if (decision === 'APPROVED') {
+        const remaining = await tx.$queryRaw<Array<{resourceId: string}>>`
+          SELECT "resourceId" FROM "EquipmentRentalItem" WHERE "rentalId"=${id} AND "returnedAt" IS NULL`;
+        await assertRentalFitsCalendar(tx, remaining.map(item => item.resourceId), rental.extensionRequestedUntil);
+      }
+      await tx.$executeRaw`UPDATE "EquipmentRental" SET "extensionStatus"=${decision},
+        "dueAt"=CASE WHEN ${decision}='APPROVED' THEN "extensionRequestedUntil" ELSE "dueAt" END,
+        "overdueNotifiedAt"=CASE WHEN ${decision}='APPROVED' THEN NULL ELSE "overdueNotifiedAt" END,
+        "extensionReviewedAt"=NOW(),"extensionReviewedByAccountId"=${actorAccountId},"updatedAt"=NOW() WHERE "id"=${id}`;
+      const dueAt = decision === 'APPROVED' ? rental.extensionRequestedUntil : rental.dueAt;
+      await this.notifications.notify(rental.renterAccountId, 'EQUIPMENT_RENTAL_EXTENSION_REVIEWED', {
+        title: decision === 'APPROVED' ? 'تمت الموافقة على تمديد الإيجار' : 'تم رفض طلب تمديد الإيجار',
+        invoiceNumber: rental.invoiceNumber, rentalId: id, decision, dueAt,
+        message: decision === 'APPROVED' ? 'تم تحديث موعد إرجاع المعدات.' : 'يرجى إعادة المعدات حسب موعد الاستحقاق الحالي.',
+      }, tx);
+      await this.audit.record({ actorId: actorAccountId, action: `EQUIPMENT_RENTAL_EXTENSION_${decision}`,
+        resource: 'EquipmentRental', resourceId: id, metadata: {invoiceNumber: rental.invoiceNumber, renterAccountId: rental.renterAccountId, dueAt} }, tx);
+    });
+    return this.get(id);
   }
 
   async returnIntent(accountId:string,id:string){const rental=await this.getMine(accountId,id);if(rental.status!=='ACTIVE')throw new ConflictException('Only active rentals can be returned.');await this.db.$executeRaw`UPDATE "EquipmentRental" SET "returnIntentAt"=NOW(),"updatedAt"=NOW() WHERE "id"=${id}`;await this.notifications.notify(rental.createdByAccountId,'EQUIPMENT_RENTAL_RETURN_INTENT',{title:'الغواص سيعيد معدات التأجير',invoiceNumber:rental.invoiceNumber,rentalId:id,renterAccountId:accountId,pendingReturnCount:rental.pendingReturnCount,message:'الغواص اختار إعادة المعدات. أكمل الاستلام في المستودع بمسح الباركود.'});await this.audit.record({actorId:accountId,action:'EQUIPMENT_RENTAL_RETURN_INTENT',resource:'EquipmentRental',resourceId:id,metadata:{invoiceNumber:rental.invoiceNumber,pendingReturnCount:rental.pendingReturnCount}});return{status:'RETURN_INTENT_RECORDED',rentalId:id};}

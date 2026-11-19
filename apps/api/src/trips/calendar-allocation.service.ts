@@ -1,3 +1,4 @@
+import { assertTripFitsEquipmentRentals } from './equipment-rental-calendar';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
@@ -54,6 +55,7 @@ export class CalendarAllocationService{
 
   // Advisory read only. Reservation writers must recheck within serializable().
   async assertResourcesAvailable(resourceIds:string[],startsAt:Date,endsAt:Date,excludeTripId?:string){
+    await assertTripFitsEquipmentRentals(this.db,resourceIds,startsAt,endsAt);
     await assertCalendarHumanAvailable(this.db,resourceIds,startsAt,endsAt,excludeTripId);
     const conflict=await this.db.calendarAllocation.findFirst({where:{resourceId:{in:resourceIds},resource:{active:true},status:'ACTIVE',startsAt:{lt:endsAt},endsAt:{gt:startsAt},...(excludeTripId?{NOT:{event:{referenceType:'TRIP',referenceId:excludeTripId}}}:{})},select:{id:true}});
     if(conflict)throw new ConflictException('Calendar resource conflict detected.');
@@ -67,10 +69,11 @@ export class CalendarAllocationService{
       await tx.$executeRaw`SET LOCAL TIME ZONE 'UTC'`;
       const trip=await tx.trip.findUnique({where:{id:tripId}});if(!trip)throw new NotFoundException('Trip not found.');
       if(['CANCELLED','COMPLETED'].includes(trip.status))throw new ConflictException('Terminal trip resources cannot be allocated.');
-      const events=await tx.$queryRaw<Array<{id:string}>>`INSERT INTO "CalendarEvent"("id","organizationId","type","referenceType","referenceId","title","startsAt","endsAt","status","createdAt","updatedAt") VALUES(gen_random_uuid()::text,NULL,'TRIP','TRIP',${tripId},${trip.title},${trip.startsAt},${trip.endsAt},'ACTIVE',NOW(),NOW()) ON CONFLICT("referenceType","referenceId") DO UPDATE SET "type"='TRIP',"title"=EXCLUDED."title","startsAt"=EXCLUDED."startsAt","endsAt"=EXCLUDED."endsAt","status"='ACTIVE',"updatedAt"=NOW() RETURNING "id"`;
+      const events=await tx.$queryRaw<Array<{id:string}>>`INSERT INTO "CalendarEvent"("id","organizationId","type","referenceType","referenceId","title","startsAt","endsAt","status","createdAt","updatedAt") VALUES(gen_random_uuid()::text,${trip.organizationId},'TRIP','TRIP',${tripId},${trip.title},${trip.startsAt},${trip.endsAt},'ACTIVE',NOW(),NOW()) ON CONFLICT("referenceType","referenceId") DO UPDATE SET "organizationId"=EXCLUDED."organizationId","type"='TRIP',"title"=EXCLUDED."title","startsAt"=EXCLUDED."startsAt","endsAt"=EXCLUDED."endsAt","status"='ACTIVE',"updatedAt"=NOW() RETURNING "id"`;
       const eventId=events[0]?.id;if(!eventId)throw new ConflictException('Trip calendar event could not be created.');
       const previous=await tx.$queryRaw<Array<{resourceId:string}>>`SELECT "resourceId" FROM "CalendarAllocation" WHERE "eventId"=${eventId} AND "status"='ACTIVE' ORDER BY "resourceId"`;
       if(unique.length){const valid=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "CalendarResource" WHERE "active"=TRUE AND "id"=ANY(${unique}::text[])`;if(valid.length!==unique.length)throw new BadRequestException('One or more calendar resources are invalid or inactive.');}
+      await assertTripFitsEquipmentRentals(tx,unique,trip.startsAt,trip.endsAt);
       await assertCalendarHumanAvailable(tx,unique,trip.startsAt,trip.endsAt,tripId);
       for(const resourceId of unique){const conflicts=await tx.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "CalendarAllocation" WHERE "resourceId"=${resourceId} AND "status"='ACTIVE' AND "startsAt"<${trip.endsAt} AND "endsAt">${trip.startsAt} AND "eventId"<>${eventId} LIMIT 1`;if(conflicts.length)throw new ConflictException('Calendar resource conflict detected.');}
       await tx.$executeRaw`UPDATE "CalendarAllocation" SET "status"='INACTIVE',"updatedAt"=NOW() WHERE "eventId"=${eventId} AND "status"='ACTIVE'`;
