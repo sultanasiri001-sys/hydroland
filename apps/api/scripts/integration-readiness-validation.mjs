@@ -126,7 +126,14 @@ for(const marker of [
   "const pricing=await this.tripPrice(booking.tripId)",
   "const amountMinor=pricing.pricePerSeatMinor*booking.seats",
 ])if(!payments.includes(marker))throw new Error(`Payment lifecycle invariant missing: ${marker}`);
-if(paymentController.includes('amountMinor'))throw new Error('Payment controller must not accept a client-supplied amount.');
+// Checkout pricing is server-owned. Only the refund-review route accepts an
+// amount as part of the customer's application for review.
+const paymentRoutes=paymentController.split(/(?=^[ \t]*@(?:Get|Post|Put|Patch|Delete)\()/m);
+for(const route of paymentRoutes){
+  const isRefundReview=route.trimStart().startsWith("@Post(':id/refund-request')")&&route.includes('this.s.requestRefund(');
+  const checkedSource=isRefundReview?route.replace(/(@Body\(\)\s+body:\s*)\{[^{}]*\}/,'$1{}'):route;
+  if(checkedSource.includes('amountMinor'))throw new Error('Payment checkout must not accept a client-supplied amount.');
+}
 for(const marker of ["@Patch(':id/price')","pricePerSeatMinor:number"])if(!tripAdminController.includes(marker))throw new Error(`Trip pricing admin boundary missing: ${marker}`);
 for(const marker of ["TRIP_PRICE_CHANGED","paymentCount>0","Trip price cannot be changed after a payment has been created","trip-price:${tripId}"])if(!tripAdmin.includes(marker))throw new Error(`Governed trip pricing invariant missing: ${marker}`);
 if(!trips.includes('price,safety:latestSafety')||!trips.includes('this.tripPrice(trip.id)'))throw new Error('Public trip pricing is not exposed from the authoritative server store.');

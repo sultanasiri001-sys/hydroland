@@ -15,6 +15,11 @@ export class EquipmentRentalController{
   @Get(':id/mine')
   getMine(@Req()req:{auth:{accountId:string}},@Param('id')id:string){return this.rentals.getMine(req.auth.accountId,id);}
 
+  @Post(':id/mine/cancel')
+  cancelMine(@Req() req: {auth: {accountId: string}}, @Param('id') id: string) {
+    return this.rentals.cancelUnpaid(req.auth.accountId, id);
+  }
+
   @Post(':id/extension-request')
   requestExtension(@Req()req:{auth:{accountId:string}},@Param('id')id:string,@Body()body:{requestedUntil?:string}){return this.rentals.requestExtension(req.auth.accountId,id,body);}
 

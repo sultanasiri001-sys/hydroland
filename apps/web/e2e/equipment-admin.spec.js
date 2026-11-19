@@ -74,3 +74,37 @@ test('admin portal lazy-loads inventory, registers equipment and creates a renta
 
   await returnToDiverWorkspace(page);await expect(inventory).toBeHidden();
 });
+
+test('renter can release an unpaid hold and see expired holds in their history', async ({page}) => {
+  const {json, requireAuth} = await seed(page, {admin: false});
+  const pending = {id:'reserve-a', invoiceNumber:'TEST-A', status:'RESERVED', paymentStatus:'PENDING',
+    holdExpiresAt:'2035-01-01T12:15:00Z', reservedAt:'2035-01-01T12:00:00Z', items:[]};
+  const expired = {...pending, id:'expired-b', invoiceNumber:'TEST-B', status:'EXPIRED'};
+  let cancellations = 0;
+  await page.route('**/equipment-rentals/mine', route => json(route,[pending, expired]));
+  await page.route('**/equipment-rentals/reserve-a/mine/cancel', route => {
+    expect(requireAuth(route.request())).toBe(true);
+    expect(route.request().method()).toBe('POST');
+    cancellations++;
+    pending.status='CANCELLED';
+    return json(route,pending);
+  });
+  await page.evaluate(() => window.HydrolandAccountCenter.openRentals());
+  const card = page.locator('[data-rental-id="reserve-a"]');
+  const oldCard = page.locator('[data-rental-id="expired-b"]');
+  await expect(card).toContainText('آخر موعد لتأكيد الدفع');
+  await expect(oldCard).toContainText('انتهت مهلة الدفع');
+  await expect(oldCard.getByRole('button',{name:'إلغاء الحجز غير المدفوع'})).toHaveCount(0);
+  const language = page.locator('#hl-rentals-dialog [data-hl-locale-switch]');
+  await language.click();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  await expect(card).toContainText('Confirm payment by:');
+  await expect(oldCard).toContainText('Payment deadline expired');
+  await expect(oldCard.getByRole('button', {name: 'Cancel unpaid reservation'})).toHaveCount(0);
+  await card.getByRole('button', {name: 'Cancel unpaid reservation'}).click();
+  await expect(card).toContainText('Cancelled');
+  await language.click();
+  await expect(card).toContainText('ملغى');
+  await expect(card.getByRole('button',{name:'إلغاء الحجز غير المدفوع'})).toHaveCount(0);
+  expect(cancellations).toBe(1);
+});

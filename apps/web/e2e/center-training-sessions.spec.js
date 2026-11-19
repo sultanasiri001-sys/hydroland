@@ -67,7 +67,17 @@ test('center follows attendance and session lifecycle using only server-authoriz
  });
  for(const action of ['OPEN','STUDENT_CHECK_IN','INSTRUCTOR_CHECK_IN','START','COMPLETE']){
   const card=await sessionCard(panel);await card.getByText('الحضور وحالة الجلسة',{exact:true}).click();const form=card.locator('[data-training-session-form="action"]');if(action==='OPEN')await expect(form.locator('option[value="COMPLETE"]')).toHaveCount(0);
-  await form.getByLabel('إجراء الجلسة',{exact:true}).selectOption(action);await form.getByLabel('سبب إجراء الجلسة').fill('توثيق الجلسة');await form.getByRole('button',{name:'حفظ إجراء الجلسة'}).click();await expect(panel.locator('[data-team-feedback]')).toContainText('تم حفظ إجراء الجلسة');
+  await form.getByLabel('إجراء الجلسة',{exact:true}).selectOption(action);
+  await form.getByLabel('سبب إجراء الجلسة').fill('توثيق الجلسة');
+  await form.getByRole('button',{name:'حفظ إجراء الجلسة'}).click();
+  await expect.poll(() => writes.at(-1)).toBe(action);
+  // The success notice is reused. Wait for this session revision to render.
+  if (action === 'COMPLETE') {
+   await expect(card).toContainText('مكتملة');
+  } else {
+   await expect(form).toHaveAttribute('data-revision', state.data.enrollments[0].record.sessions[0].updatedAt);
+  }
+  await expect(panel.locator('[data-team-feedback]')).toContainText('تم حفظ إجراء الجلسة');
  }
  const card=await sessionCard(panel);await expect(card).toContainText('مكتملة');await expect(card).toContainText('وثقه المركز');await expect(card.locator('[data-training-session-form]')).toHaveCount(0);expect(writes).toEqual(['OPEN','STUDENT_CHECK_IN','INSTRUCTOR_CHECK_IN','START','COMPLETE']);
 });

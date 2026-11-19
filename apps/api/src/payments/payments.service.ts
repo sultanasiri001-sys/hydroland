@@ -124,17 +124,46 @@ export class PaymentsService {
     });
   }
 
-  async requestRefund(accountId:string,paymentId:string,reason:string){
-    const normalizedReason=reason?.trim();
-    if(!normalizedReason||normalizedReason.length<10)throw new BadRequestException('Refund reason must be at least 10 characters.');
-    const payment=await this.db.payment.findFirst({where:{id:paymentId,accountId}});
-    if(!payment)throw new NotFoundException('Payment not found.');
-    if(['REFUNDED','CANCELLED','FAILED'].includes(payment.status))throw new ConflictException('Payment is not eligible for a refund request.');
-    const refundPolicy=await this.policies.decision('PAYMENT','REFUND_REVIEW');
-    const recent=await this.db.auditEvent.findFirst({where:{resource:'Payment',resourceId:paymentId,action:'PAYMENT_REFUND_REQUESTED'},orderBy:{occurredAt:'desc'},select:{id:true,occurredAt:true}});
-    if(recent&&Date.now()-recent.occurredAt.getTime()<300000)throw new ConflictException('A refund request was already submitted recently.');
-    const event=await this.audit.record({action:'PAYMENT_REFUND_REQUESTED',resource:'Payment',resourceId:paymentId,metadata:{accountId,bookingId:payment.bookingId,amountMinor:payment.amountMinor,currency:payment.currency,paymentStatus:payment.status,reason:normalizedReason,provider:'MOYASAR',policyState:refundPolicy.state,financialActionExecuted:false}});
-    return{paymentId,status:'REFUND_REQUESTED',financialActionExecuted:false,provider:'MOYASAR',auditEventId:event.id,policyReview:{required:!refundPolicy.bypass,reviewRequired:refundPolicy.review,enforced:refundPolicy.enforce,states:{refund:refundPolicy.state}}};
+  async requestRefund(
+    accountId: string,
+    paymentId: string,
+    reason: unknown,
+    request: { amountMinor?: number; currency?: string } = {},
+  ) {
+    if (typeof reason !== 'string' || reason.trim().length < 10) {
+      throw new BadRequestException('Refund reason must be at least 10 characters.');
+    }
+    return this.db.serializable(async tx => {
+      const payment = await tx.payment.findFirst({ where: { id: paymentId, accountId } });
+      if (!payment) throw new NotFoundException('Payment not found.');
+      if (['REFUNDED', 'CANCELLED', 'FAILED'].includes(payment.status)) {
+        throw new ConflictException('Payment is not eligible for a refund request.');
+      }
+      if (request.currency !== undefined && request.currency !== payment.currency) {
+        throw new BadRequestException('Requested currency must match the payment currency.');
+      }
+      const requestedAmountMinor = request.amountMinor === undefined ? payment.amountMinor : request.amountMinor;
+      if (!Number.isSafeInteger(requestedAmountMinor) || requestedAmountMinor <= 0 || requestedAmountMinor > payment.amountMinor) {
+        throw new BadRequestException('Requested amount must be a positive integer within the original payment.');
+      }
+      const receipt = { action: 'PAYMENT_REFUND_REQUESTED', resource: 'Payment', resourceId: paymentId };
+      const recent = await tx.auditEvent.findFirst({
+        where: { ...receipt, occurredAt: { gt: new Date(Date.now() - 300000) } },
+        select: { id: true },
+      });
+      if (recent) throw new ConflictException('A refund request was already submitted recently.');
+      const policy = await this.policies.decision('PAYMENT', 'REFUND_REVIEW', tx);
+      const event = await this.audit.record({ ...receipt, metadata: {
+        accountId, bookingId: payment.bookingId, amountMinor: payment.amountMinor, requestedAmountMinor,
+        currency: payment.currency, paymentStatus: payment.status, reason: reason.trim(),
+        provider: 'MOYASAR', policyState: policy.state, financialActionExecuted: false,
+      } }, tx);
+      return {
+        paymentId, status: 'REFUND_REQUESTED', requestedAmountMinor, currency: payment.currency,
+        financialActionExecuted: false, provider: 'MOYASAR', auditEventId: event.id,
+        policyReview: { required: !policy.bypass, reviewRequired: policy.review, enforced: policy.enforce, states: { refund: policy.state } },
+      };
+    });
   }
 
   async mine(accountId:string){
