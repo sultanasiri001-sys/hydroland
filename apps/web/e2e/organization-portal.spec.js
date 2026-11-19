@@ -231,3 +231,19 @@ test('a delayed booking response cannot reopen data or show success after logout
  await expect(panel.locator('[data-org-booking-note]')).toHaveText('');await expect(panel.locator('[data-org-booking-list]')).toHaveText('');
  expect(state.bookingWrites).toHaveLength(0);
 });
+
+for (const decision of ['ACCEPT', 'OBJECT']) test(`organization requester records ${decision} through the scoped resolution control`, async ({ page }) => {
+ const state=await install(page);state.requestCases[0].status='RESOLVED';state.requestCases[0].canRespondToResolution=true;const responses=[];
+ await page.route(/\/api\/v1\/organizations\/org-1\/requests\/case-1\/resolution-response$/,route=>{const body=route.request().postDataJSON();responses.push(body);state.requestCases[0].status=body.decision==='ACCEPT'?'CLOSED':'ASSIGNED';state.requestCases[0].canRespondToResolution=false;return json(route,{id:'case-1',status:state.requestCases[0].status},201)});
+ await page.locator('[data-org-id="org-1"] [data-org-requests-open]').click();const form=page.locator('[data-org-case-response]');
+ await form.locator('[name="message"]').fill('رد صاحب الطلب على الحل');await form.locator(`[value="${decision}"]`).click();
+ await expect.poll(()=>responses.length).toBe(1);expect(responses[0]).toEqual({message:'رد صاحب الطلب على الحل',decision});
+ await expect(page.locator('[data-org-case-id="case-1"]')).toContainText(decision==='ACCEPT'?'مغلق':'قيد المعالجة');
+ await expect(page.locator('[data-org-case-response]')).toHaveCount(0);if(decision==='ACCEPT')await expect(page.locator('[data-org-case-reply]')).toHaveCount(0);
+});
+
+test('organization writers who did not request the case cannot see acceptance or objection controls',async({page})=>{
+ const state=await install(page,{role:'OPERATOR'});state.requestCases[0].status='RESOLVED';state.requestCases[0].canRespondToResolution=false;
+ await page.locator('[data-org-id="org-1"] [data-org-requests-open]').click();await expect(page.locator('[data-org-case-id="case-1"]')).toBeVisible();
+ await expect(page.locator('[data-org-case-response]')).toHaveCount(0);await expect(page.locator('[data-org-case-reply]')).toHaveCount(1);
+});

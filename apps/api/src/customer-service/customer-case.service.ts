@@ -2,6 +2,8 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { CustomerCasePriority, CustomerCaseType, CustomerInteractionChannel, Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { AuditService } from '../audit/audit.service';
+import { assertCaseAcceptsInteraction } from './customer-service-workflow.service';
+import { assertOrdinaryCustomerCase, providerAppealReferenceType } from './customer-case-management.service';
 
 @Injectable()
 export class CustomerCaseService {
@@ -9,8 +11,9 @@ export class CustomerCaseService {
 
   private async assertOrganizationMember(tx: Prisma.TransactionClient, accountId: string, organizationId: string, write: boolean) {
     const organization = await tx.organization.findFirst({ where: { id: organizationId, status: 'ACTIVE' }, select: { id: true } });
-    const member = await tx.organizationMember.findFirst({ where: { organizationId, accountId, status: 'ACTIVE', account: { status: 'ACTIVE' }, ...(write ? { role: { in: ['OWNER', 'ADMIN', 'OPERATOR', 'STAFF'] } } : {}) }, select: { id: true } });
+    const member = await tx.organizationMember.findFirst({ where: { organizationId, accountId, status: 'ACTIVE', account: { status: 'ACTIVE' }, ...(write ? { role: { in: ['OWNER', 'ADMIN', 'OPERATOR', 'STAFF'] } } : {}) }, select: { id: true, role: true } });
     if (!organization || !member) throw new ForbiddenException('Active organization membership is required.');
+    return member;
   }
 
   async listForOrganization(accountId: string, organizationId: string, requestedPage = 1, pageSize = 20) {
@@ -19,20 +22,21 @@ export class CustomerCaseService {
     const size = Number.isInteger(pageSize) && pageSize > 0 ? Math.min(pageSize, 50) : 20;
     if (!Number.isInteger(pageSize) || pageSize < 1) throw new BadRequestException('Invalid page size.');
     return this.db.serializable(async tx => {
-      await this.assertOrganizationMember(tx, accountId, organizationId, false);
+      const member = await this.assertOrganizationMember(tx, accountId, organizationId, false);
       const where = { organizationId };
       const [items, total] = await Promise.all([
-        tx.customerCase.findMany({ where, select: { id: true, type: true, status: true, priority: true, subject: true, description: true, referenceType: true, referenceId: true, createdAt: true, updatedAt: true, interactions: { select: { id: true, actorType: true, channel: true, message: true, createdAt: true }, orderBy: { createdAt: 'asc' } } }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: size, skip: (page - 1) * size }),
+        tx.customerCase.findMany({ where, select: { id: true, customerId: true, type: true, status: true, priority: true, subject: true, description: true, referenceType: true, referenceId: true, dueAt: true, createdAt: true, updatedAt: true, interactions: { select: { id: true, actorType: true, channel: true, message: true, createdAt: true }, orderBy: { createdAt: 'asc' } } }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: size, skip: (page - 1) * size }),
         tx.customerCase.count({ where }),
       ]);
-      return { items, total, page, pageSize: size, totalPages: Math.max(1, Math.ceil(total / size)) };
+      return { items: items.map(({ customerId, ...item }) => ({ ...item, canRespondToResolution: customerId === accountId && item.status === 'RESOLVED'
+        && item.referenceType !== providerAppealReferenceType && ['OWNER', 'ADMIN', 'OPERATOR', 'STAFF'].includes(member.role) })), total, page, pageSize: size, totalPages: Math.max(1, Math.ceil(total / size)) };
     });
   }
 
   async getForOrganization(accountId: string, organizationId: string, caseId: string) {
     return this.db.serializable(async tx => {
       await this.assertOrganizationMember(tx, accountId, organizationId, false);
-      const record = await tx.customerCase.findFirst({ where: { id: caseId, organizationId }, select: { id: true, type: true, status: true, priority: true, subject: true, description: true, referenceType: true, referenceId: true, createdAt: true, updatedAt: true, interactions: { select: { id: true, actorType: true, channel: true, message: true, createdAt: true }, orderBy: { createdAt: 'asc' } } } });
+      const record = await tx.customerCase.findFirst({ where: { id: caseId, organizationId }, select: { id: true, type: true, status: true, priority: true, subject: true, description: true, referenceType: true, referenceId: true, dueAt: true, createdAt: true, updatedAt: true, interactions: { select: { id: true, actorType: true, channel: true, message: true, createdAt: true }, orderBy: { createdAt: 'asc' } } } });
       if (!record) throw new NotFoundException('Customer case not found.');
       return record;
     });
@@ -57,8 +61,10 @@ export class CustomerCaseService {
     const clean = message?.trim(); if (!clean || clean.length > 10000) throw new BadRequestException('Message is required and must be within the allowed length.');
     return this.db.serializable(async tx => {
       await this.assertOrganizationMember(tx, accountId, organizationId, true);
-      const found = await tx.customerCase.findFirst({ where: { id: caseId, organizationId }, select: { id: true } });
+      const found = await tx.customerCase.findFirst({ where: { id: caseId, organizationId }, select: { id: true, status: true, referenceType: true } });
       if (!found) throw new NotFoundException('Customer case not found.');
+      assertOrdinaryCustomerCase(found);
+      assertCaseAcceptsInteraction(found.status);
       const interaction = await tx.customerInteraction.create({ data: { caseId, actorType: 'CUSTOMER', actorId: accountId, channel: CustomerInteractionChannel.WEB, message: clean }, select: { id: true, actorType: true, channel: true, message: true, createdAt: true } });
       await this.audit.record({ actorId: accountId, action: 'organization.customer_case.replied', resource: 'CustomerCase', resourceId: caseId, metadata: { organizationId, interactionId: interaction.id } }, tx);
       return interaction;
@@ -77,6 +83,7 @@ export class CustomerCaseService {
     for (const key of ['referenceType', 'referenceId'] as const) {
       if (input[key] !== undefined && (typeof input[key] !== 'string' || input[key].length > 200)) throw new BadRequestException('Invalid reference.');
     }
+    if (input.referenceType?.trim() === providerAppealReferenceType) throw new BadRequestException('Provider observations require the dedicated provider-appeal workflow.');
     return this.db.serializable(async tx => {
       const record = await tx.customerCase.create({ data: { customerId: accountId, type: input.type, priority: input.priority ?? CustomerCasePriority.NORMAL, subject, description, referenceType: input.referenceType?.trim() || null, referenceId: input.referenceId?.trim() || null, interactions: { create: { actorType: 'CUSTOMER', actorId: accountId, channel: CustomerInteractionChannel.WEB, message: description } } }, include: { interactions: true } });
       await this.audit.record({ actorId: accountId, action: 'customer_case.created', resource: 'CustomerCase', resourceId: record.id, metadata: { type: input.type } }, tx);
@@ -88,8 +95,10 @@ export class CustomerCaseService {
     if (typeof message !== 'string') throw new BadRequestException('Invalid message.');
     const clean = message.trim(); if (!clean || clean.length > 10000) throw new BadRequestException('Message is required and must be within the allowed length.');
     return this.db.serializable(async tx => {
-      const found = await tx.customerCase.findFirst({ where: { id: caseId, customerId: accountId, organizationId: null }, select: { id: true } });
+      const found = await tx.customerCase.findFirst({ where: { id: caseId, customerId: accountId, organizationId: null }, select: { id: true, status: true, referenceType: true } });
       if (!found) throw new NotFoundException('Customer case not found.');
+      assertOrdinaryCustomerCase(found);
+      assertCaseAcceptsInteraction(found.status);
       const interaction = await tx.customerInteraction.create({ data: { caseId, actorType: 'CUSTOMER', actorId: accountId, channel: CustomerInteractionChannel.WEB, message: clean } });
       await this.audit.record({ actorId: accountId, action: 'customer_case.replied', resource: 'CustomerCase', resourceId: caseId, metadata: { interactionId: interaction.id } }, tx);
       return interaction;

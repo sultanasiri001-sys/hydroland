@@ -1,6 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { CustomerCase, CustomerInteraction } from './customer-service.domain';
+import { CustomerCase, CustomerCaseStatus, CustomerInteraction } from './customer-service.domain';
 import { CustomerServiceFoundationService } from './customer-service-foundation.service';
+
+export function assertCaseAcceptsInteraction(status: CustomerCaseStatus) {
+  if (status === 'CLOSED') throw new BadRequestException('Closed cases cannot receive interactions.');
+}
 
 @Injectable()
 export class CustomerServiceWorkflowService {
@@ -14,7 +18,7 @@ export class CustomerServiceWorkflowService {
   }
 
   addInteraction(record: CustomerCase, interaction: CustomerInteraction): CustomerInteraction {
-    if (record.status === 'CLOSED') throw new BadRequestException('Closed cases cannot receive interactions.');
+    assertCaseAcceptsInteraction(record.status);
     return this.foundation.validateInteraction(interaction, record);
   }
 
@@ -32,5 +36,11 @@ export class CustomerServiceWorkflowService {
   close(record: CustomerCase): CustomerCase {
     if (record.status !== 'RESOLVED') throw new BadRequestException('Only resolved cases can be closed.');
     return { ...record, status: 'CLOSED' };
+  }
+
+  objectToResolution(record: CustomerCase, customerId: string): CustomerCase {
+    if (record.customerId !== customerId) throw new BadRequestException('The requesting customer must respond to the resolution.');
+    if (record.status !== 'RESOLVED' || !record.assignedAccountId) throw new BadRequestException('Only an assigned resolved case can be reopened by the customer.');
+    return { ...record, status: 'ASSIGNED' };
   }
 }
