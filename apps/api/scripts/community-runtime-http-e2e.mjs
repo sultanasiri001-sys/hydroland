@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {PrismaClient} from '@prisma/client';
 import { randomBytes, scryptSync } from 'node:crypto';
+import { runCommunityIntegrityChecks } from './community-integrity-http-checks.mjs';
 
 const db=new PrismaClient();
 const base=process.env.COMMUNITY_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1';
@@ -107,6 +108,7 @@ try{
   const myRequests=await expectOk(await fetch(base+'/community/engagement-requests/mine',{headers:headers(memberToken)}));
   if(!myRequests.some(item=>item.id===engagementId&&item.status==='SCHEDULED'))throw new Error('Member engagement list is missing scheduled request');
 
+  await runCommunityIntegrityChecks({ db, base, accounts, tokens: [memberToken, otherToken, adminToken] });
   console.log('Community HTTP/DB E2E passed: publication review, private ownership, capacity-safe volunteering, reconciled volunteer hours (120 to 90), and scheduled consultation lifecycle.');
 }finally{
   if(engagementId)await db.communityEngagementRequest.deleteMany({where:{id:engagementId}}).catch(()=>{});
