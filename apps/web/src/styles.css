@@ -9,3 +9,10 @@
 /* Branded account entry dialog, opened from public discovery. */
 .hl-entry-open{overflow:hidden}.hl-login{position:fixed;inset:0;z-index:200;display:grid;place-items:center;padding:24px;background:rgba(0,8,20,.8);backdrop-filter:blur(12px);overflow:auto}.hl-login-frame{display:grid;grid-template-columns:1fr 1fr;width:min(940px,100%);max-height:calc(100dvh - 48px);overflow:auto;border:1px solid var(--hl-line);border-radius:20px;box-shadow:var(--hl-glow),var(--hl-shadow);background:#051b32}.hl-login-scene{display:flex;flex-direction:column;justify-content:space-between;gap:60px;padding:32px;min-height:520px;background:linear-gradient(0deg,#03182e,transparent 90%),url('./assets/hydroland-ocean-reference.webp') 64% center/cover}.hl-login-scene .brand{justify-content:flex-start;direction:ltr}.hl-login-scene .brand-mark{width:80px;height:80px}.hl-login-copy h2{font-size:2.6rem;margin:16px 0}.hl-login-copy small{font-size:.62rem;letter-spacing:.09em;color:var(--hl-theme-gold)}.hl-login-copy p{color:#cde9f5;font-size:1rem}.hl-login-panel{padding:38px 32px;display:flex;flex-direction:column;justify-content:center;min-width:0}.hl-login-panel>small{color:var(--hl-theme-gold);letter-spacing:.12em;font-size:.6rem;margin-bottom:14px}.hl-login-panel>h3{font-size:1.65rem;margin-bottom:10px}.hl-login-panel>p{color:var(--hl-muted)}.hl-login-actions{display:grid;gap:12px}.hl-login-actions button{width:100%;min-height:48px}.hl-login-guest{background:transparent;border:0;color:var(--hl-theme-accent)}.hl-login-panel>footer{font-size:.7rem;color:var(--hl-muted);margin-top:24px;text-align:center}
 @media(max-width:760px){.hl-login{padding:12px}.hl-login-frame{grid-template-columns:1fr;max-height:calc(100dvh - 24px);width:min(440px,100%)}.hl-login-scene{min-height:165px;padding:20px;gap:0;background-position:50% 55%}.hl-login-scene .brand-mark{width:52px;height:55px}.hl-login-copy{display:none}.hl-login-panel{padding:24px}.hl-login-panel>h3{font-size:1.4rem}}
+
+@media (max-width: 760px) {
+  .topbar .top-actions {
+    max-inline-size: 100%;
+    flex-wrap: wrap;
+  }
+}
