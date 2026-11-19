@@ -48,3 +48,18 @@ test('logout clears the account editor and discards an in-flight export',async({
   await expect(page.locator('#hl-profile-editor')).toHaveCount(0);
   expect(downloads).toBe(0);
 });
+
+test('personal trip exports download independently and advance only the selected domain', async({page})=>{
+  await install(page);
+  const calls=[];
+  await page.route('**/api/v1/me/data-export/trip-records', async route=>{
+    const {domain,after}=route.request().postDataJSON();calls.push([domain,after]);
+    await json(route,{schemaVersion:'PERSONAL_TRIP_RECORDS_V1',accountId:account.id,domain,completePlatformExport:false,records:[],nextCursor:domain==='BOOKINGS'&&!after?'next-booking':null},201);
+  });
+  for(const [domain,filename] of [['BOOKINGS','bookings-1'],['PAYMENTS','payments-1'],['BOOKINGS','bookings-2']]){
+    const waiting=page.waitForEvent('download');await page.locator('[data-trip-export="'+domain+'"]').click();
+    expect((await waiting).suggestedFilename()).toBe('hydroland-trip-'+filename+'.json');
+  }
+  expect(calls).toEqual([['BOOKINGS',''],['PAYMENTS',''],['BOOKINGS','next-booking']]);
+  await expect(page.locator('[data-trip-export="BOOKINGS"]')).toBeDisabled();
+});
