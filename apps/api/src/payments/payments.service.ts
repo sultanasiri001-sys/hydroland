@@ -52,6 +52,10 @@ export class PaymentsService {
     if(existing&&(existing.bookingId!==input.bookingId||existing.amountMinor!==amountMinor||existing.currency!==pricing.currency))throw new ConflictException('Idempotency key cannot be reused with different payment details.');
     this.integrations.requireOperational('PAYMENT_PSP',{allowSandbox:true});
     let payment=await this.db.payment.upsert({where:{idempotencyKey},create:{bookingId:input.bookingId,amountMinor,currency:pricing.currency,idempotencyKey,accountId,status:'CREATED'},update:{}});
+    // Another request can claim the key after the lookup. Validate the persisted
+    // winner before attributing an audit or creating/fetching its provider invoice.
+    if(payment.accountId!==accountId)throw new ConflictException('Idempotency key already belongs to another payment.');
+    if(payment.bookingId!==input.bookingId||payment.amountMinor!==amountMinor||payment.currency!==pricing.currency)throw new ConflictException('Idempotency key cannot be reused with different payment details.');
     if(!existing)await this.audit.record({action:'PAYMENT_CREATED',resource:'Payment',resourceId:payment.id,metadata:{accountId,bookingId:payment.bookingId,seats:booking.seats,pricePerSeatMinor:pricing.pricePerSeatMinor,amountMinor:payment.amountMinor,currency:payment.currency,status:payment.status,provider:'MOYASAR',policyState:paymentPolicy.state,financialActionExecuted:false}});
 
     let providerInvoice:MoyasarInvoice;
