@@ -1,28 +1,32 @@
 import assert from 'node:assert/strict';
 import { PrismaClient } from '@prisma/client';
-import { createHmac, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID, scryptSync } from 'node:crypto';
 import { summarizeAudit } from '../../../scripts/d12-audit-summary.mjs';
 
 const db = new PrismaClient();
 const base = process.env.ORGANIZATION_BOOKING_E2E_BASE_URL || 'http://127.0.0.1:3101/api/v1';
 const databaseUrl = new URL(process.env.DATABASE_URL);
 if (process.env.CI !== 'true' || !['localhost', '127.0.0.1', '[::1]'].includes(databaseUrl.hostname) || !['localhost', '127.0.0.1', '[::1]'].includes(new URL(base).hostname)) throw new Error('Organization booking checks require CI loopback API and PostgreSQL');
-const secret = process.env.JWT_SECRET;
-if (!secret) throw new Error('JWT_SECRET required');
+const password = randomBytes(24).toString('hex');
+const salt = randomBytes(16).toString('hex');
+const passwordHash = salt + ':' + scryptSync(password, salt, 64).toString('hex');
 const suffix = randomUUID(), people = [], accounts = [], organizations = [], bookingIds = [];
 const policySnapshots = [], caseIds = [];
 let trip;
-const tokenFor = id => {
-  const now = Math.floor(Date.now() / 1000), encode = value => Buffer.from(JSON.stringify(value)).toString('base64url');
-  const payload = encode({ alg: 'HS256', typ: 'JWT' }) + '.' + encode({ sub: id, iat: now, exp: now + 900 });
-  return payload + '.' + createHmac('sha256', secret).update(payload).digest('base64url');
-};
-const call = (account, path, method = 'GET', body) => fetch(base + path, { method, headers: { authorization: 'Bearer ' + tokenFor(account.id), 'content-type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
+const call = (account, path, method = 'GET', body) => fetch(base + path, { method, headers: { authorization: 'Bearer ' + account.accessToken, 'content-type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
 const ok = async response => { const body = await response.json(); assert.ok(response.ok, JSON.stringify(body)); return body; };
 try {
   for (const label of ['contact', 'foreign']) {
     const person = await db.person.create({ data: { firstName: label, lastName: 'OrganizationBookingE2E' } }); people.push(person);
-    const account = await db.account.create({ data: { personId: person.id, email: `${label}-${suffix}@example.invalid`, passwordHash: 'e2e', status: 'ACTIVE', emailVerifiedAt: new Date() } }); accounts.push(account);
+    const account = await db.account.create({ data: { personId: person.id, email: `${label}-${suffix}@example.invalid`, passwordHash, status: 'ACTIVE', emailVerifiedAt: new Date() } });
+    accounts.push(account);
+    const login = await fetch(base + '/auth/login', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: account.email, password }),
+    });
+    assert.equal(login.status, 200, 'Synthetic organization contact must be able to sign in');
+    account.accessToken = (await login.json()).accessToken;
+    assert.ok(account.accessToken, 'Login must issue a session access token');
     const organization = await db.organization.create({ data: { displayName: `Booking boundary ${label} ${suffix}`, kind: 'COMPANY', status: 'ACTIVE', ownerId: account.id } }); organizations.push(organization);
     await db.organizationMember.create({ data: { organizationId: organization.id, accountId: account.id, role: 'OPERATOR', status: 'ACTIVE' } });
   }
