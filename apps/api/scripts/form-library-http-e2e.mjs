@@ -1,4 +1,6 @@
 import { checkTemplatePreview } from './form-library-preview-http-checks.mjs';
+import { checkCustomTemplates } from './custom-template-http-checks.mjs';
+import { checkCustomWaiverSources } from './custom-waiver-source-http-checks.mjs';
 import assert from 'node:assert/strict';
 import { createHmac, randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
@@ -16,25 +18,27 @@ const suffix = randomUUID();
 const people = [], accounts = [], organizations = [];
 let checks = 0;
 const pass = name => { checks++; console.log(`PASS ${checks}: ${name}`); };
-const token = id => {
+const token = (id,sessionId) => {
   const enc = value => Buffer.from(JSON.stringify(value)).toString('base64url');
   const now = Math.floor(Date.now() / 1000);
-  const body = `${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:id,iat:now,exp:now+1200})}`;
+  const body = `${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:id,sid:sessionId,iat:now,exp:now+1200})}`;
   return `${body}.${createHmac('sha256', secret).update(body).digest('base64url')}`;
 };
 async function actor(label) {
   const p = await db.person.create({data:{firstName:'FormLibrary',lastName:label}}); people.push(p.id);
   const a = await db.account.create({data:{personId:p.id,email:`fl-${label}-${suffix}@example.invalid`,passwordHash:'not-a-login-password',status:'ACTIVE',emailVerifiedAt:new Date()}}); accounts.push(a.id);
-  return {id:a.id,token:token(a.id)};
+  const session=await db.session.create({data:{accountId:a.id,tokenHash:`fl-${label}-${suffix}`,expiresAt:new Date(Date.now()+1200000)}});
+  return {id:a.id,token:token(a.id,session.id)};
 }
 async function call(who, path, method='GET', body) {
   const response = await fetch(new URL(path.replace(/^\//,''), base.href.endsWith('/') ? base : `${base.href}/`), {
     method, headers:{authorization:`Bearer ${who.token}`,...(body===undefined?{}:{'Content-Type':'application/json'})},
     ...(body===undefined?{}:{body:JSON.stringify(body)}), signal:AbortSignal.timeout(20000)
   });
-  const text = await response.text();
+  const bytes = Buffer.from(await response.arrayBuffer());
+  const text = bytes.toString('utf8');
   let data; try { data=JSON.parse(text); } catch { data=text; }
-  return {status:response.status,ok:response.ok,data,headers:response.headers};
+  return {status:response.status,ok:response.ok,data,bytes,headers:response.headers};
 }
 async function ok(who,path,method,body) {
   const r=await call(who,path,method,body);
@@ -92,6 +96,8 @@ try {
   assert.equal(noMembership.status,403);
   assert.equal((await call(outsider,`documents/organizations/${org.id}/templates/${code}/history`)).status,403); pass('HR role without organization membership does not bypass document authorization');
   await checkTemplatePreview({db,base,owner,staff,outsider,org,template:restored});
+  await checkCustomTemplates({db,call,ok,pass,owner,staff,approver,signer,outsider,org,boundTemplate:restored});
+  await checkCustomWaiverSources({db,call,ok,pass,owner,staff});
   await db.organizationMember.update({where:{organizationId_accountId:{organizationId:org.id,accountId:staff.id}},data:{status:'SUSPENDED'}});
   assert.equal((await call(staff,`documents/${document.id}`)).status,403);
   assert.equal((await call(staff,'documents','POST',{organizationId:org.id,templateId:restored.id,department:'HR',contentHash:'revoked-ci',payload:{name:'Synthetic'}})).status,403); pass('revoked member loses read and creation access immediately');
@@ -111,6 +117,8 @@ try {
     await db.organizationMember.deleteMany({where:{organizationId:{in:organizations}}});
     await db.organization.deleteMany({where:{id:{in:organizations}}});
     await db.roleAssignment.deleteMany({where:{accountId:{in:accounts}}});
+    await db.session.deleteMany({where:{accountId:{in:accounts}}});
+    await db.auditEvent.deleteMany({where:{actorId:{in:people}}});
     await db.account.deleteMany({where:{id:{in:accounts}}});
     await db.person.deleteMany({where:{id:{in:people}}});
   } finally { await db.$disconnect(); }

@@ -103,7 +103,7 @@ jobs:
         run: |
           set -o pipefail
           node apps/web/scripts/document-workflow-readiness-validation.cjs | tee apps/api/.artifacts/form-library/workflow-readiness-browser.log
-      - name: Run 12 isolated library browser regressions
+      - name: Run isolated library editor and custom schema browser regressions
         working-directory: apps/web
         run: npx playwright test e2e/form-library.spec.js --workers=1 --reporter=line
       - name: Deterministic fresh-authority and replacement-session regressions

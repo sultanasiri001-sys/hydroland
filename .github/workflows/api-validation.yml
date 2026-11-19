@@ -71,6 +71,8 @@ jobs:
       # Forward migration immutability is enforced separately by Production Release Gate.
       - name: Bootstrap canonical schema on clean PostgreSQL
         run: npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+      - name: Customer case explicit-deadline forward migration
+        run: node apps/api/scripts/customer-case-deadline-migration-db-checks.mjs
       - name: Managed document attachment migration on TEXT and UUID identities
         env:
           DOCUMENT_ATTACHMENT_MIGRATION_CHECK_CONFIRM: ISOLATED_LOOPBACK_DATABASE
@@ -344,6 +346,7 @@ jobs:
           ADMIN_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/administrative-affairs-http-e2e.mjs
           ADMIN_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/administrative-affairs-a09-http-e2e.mjs
           RBAC_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/runtime-rbac-ownership-http-e2e.mjs
+          CUSTOMER_CASE_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/customer-case-lifecycle-http-e2e.mjs
           FINANCE_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/finance-http-e2e.mjs
           MAPS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/maps-runtime-http-e2e.mjs
           MESSAGING_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/messaging-http-e2e.mjs

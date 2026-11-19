@@ -15,6 +15,8 @@
   };
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const clone = value => JSON.parse(JSON.stringify(value));
+  const isCustom = template => /^CUSTOM-FORM-[A-F0-9]{32}$/.test(template?.code||'');
+  const fieldTypes = {TEXT:'نص قصير',TEXTAREA:'نص طويل',NUMBER:'رقم',DATE:'تاريخ',BOOLEAN:'نعم أو لا',SELECT:'اختيار',SIGNATURE:'اسم الموقّع في الحقل',TABLE:'جدول',SECTION:'عنوان قسم',STATEMENT:'نص إقرار محفوظ'};
   const auth = () => window.HydrolandAuth;
   const session = () => auth()?.getSessionVersion?.();
   const selectedOrg = () => document.querySelector('#hl-documents [data-doc-org]')?.value || '';
@@ -24,6 +26,7 @@
   dialog.innerHTML = `<header class="hfl-heading"><div><h2 id="hl-form-library-title">مكتبة النماذج الإدارية</h2><p>مصدر واحد للقالب، وإصدار محفوظ لكل تعديل منشور.</p></div><button type="button" data-hfl-close aria-label="إغلاق مكتبة النماذج">إغلاق</button></header>
     <p data-hfl-note role="status" aria-live="polite"></p>
     <div class="hfl-toolbar"><label>الإدارة<select data-hfl-department><option value="">كل الإدارات</option>${Object.entries(departments).map(([code,name])=>`<option value="${code}">${name}</option>`).join('')}</select></label><label>النموذج<select data-hfl-template></select></label><button type="button" data-hfl-reload>إعادة التحميل</button></div>
+    <button type="button" data-hfl-new disabled>إنشاء نموذج مخصص</button>
     <section class="hfl-history" aria-label="سجل إصدارات القالب">
       <h3>سجل الإصدارات والاستعادة</h3><p>معاينة النسخ السابقة أو تحميل نسخة متوافقة للمراجعة والنشر كإصدار جديد؛ لا تتغير المستندات السابقة.</p>
       <button type="button" data-hfl-history-load disabled>عرض سجل الإصدارات</button><p data-hfl-history-status role="status" aria-live="polite"></p>
@@ -31,8 +34,10 @@
     </section>
     <div class="hfl-layout"><form data-hfl-editor><fieldset data-hfl-controls disabled><legend>تحرير القالب المركزي</legend>
       <p data-hfl-meta></p><label>عنوان النموذج بالعربية<input name="titleAr" required maxlength="200"></label><label>عنوان النموذج بالإنجليزية<input name="titleEn" required maxlength="200" dir="ltr"></label>
+      <label data-hfl-new-department hidden>إدارة النموذج الجديد<select data-hfl-create-department>${Object.entries(departments).map(([code,name])=>`<option value="${code}">${name}</option>`).join('')}</select></label>
       <label class="hfl-check"><input name="printable" type="checkbox"> إتاحة الطباعة وفق صلاحيات المستند</label>
-      <h3>الحقول وترتيبها</h3><p>مفاتيح الحقول وأنواعها ثابتة هنا لحماية الربط التشغيلي. يمكن تعديل العناوين والإلزامية والترتيب؛ إضافة حقل أو تغيير نوعه يحتاج مراجعة الربط.</p><div data-hfl-fields></div>
+      <h3>الحقول وترتيبها</h3><p data-hfl-structure-note></p><div data-hfl-fields></div>
+      <div data-hfl-structure-actions hidden><button type="button" data-hfl-add-field>إضافة حقل</button> <button type="button" data-hfl-add-section>إضافة قسم</button></div>
       <label class="hfl-check"><input data-hfl-confirm type="checkbox" required> أوافق على نشر إصدار جديد للنماذج الجديدة فقط، وتحديث شاشة المستندات. المستندات السابقة تبقى على إصدارها.</label>
       <button type="submit" data-hfl-publish>حفظ ونشر إصدار جديد</button>
     </fieldset></form><section aria-label="معاينة الهوية الرسمية"><p class="hfl-preview-note">معاينة بصرية للقالب فقط — ليست مستندًا معتمدًا أو موقّعًا، وليست محاكاة نهائية لملف PDF.</p><article data-hfl-preview class="hfl-paper"></article><button type="button" data-hfl-pdf-preview disabled>معاينة PDF بالهوية الرسمية</button><p data-hfl-pdf-status role="status" aria-live="polite"></p><div data-hfl-pdf-result hidden><a data-hfl-pdf-open target="_blank" rel="noopener noreferrer">فتح المعاينة في نافذة مستقلة</a><iframe data-hfl-pdf-frame title="معاينة PDF غير معتمدة" referrerpolicy="no-referrer" style="width:100%;height:650px;border:1px solid #b8cbd5"></iframe></div></section></div>`;
@@ -40,9 +45,10 @@
   const style = document.createElement('style');
   style.textContent = `#hl-form-library{width:min(1200px,94vw);max-height:92vh;box-sizing:border-box;border:1px solid #28647f;border-radius:14px;padding:22px;background:#f3f6f8;color:#152c3d;font:15px/1.7 Arial,sans-serif}#hl-form-library::backdrop{background:#071e30bb}#hl-form-library *{box-sizing:border-box}#hl-form-library button{padding:9px 15px;border:1px solid #b8cbd5;border-radius:6px;background:white;color:#132c42;cursor:pointer}#hl-form-library button:disabled{opacity:.5;cursor:not-allowed}#hl-form-library [data-hfl-publish]{background:#12354d;color:white;width:100%;margin-top:12px}#hl-form-library label{display:grid;gap:5px;margin:10px 0}#hl-form-library input:not([type=checkbox]),#hl-form-library select{width:100%;min-width:0;padding:9px;background:white;color:#132c42;border:1px solid #b8cbd5;border-radius:5px}#hl-form-library .hfl-check{display:flex;align-items:flex-start;gap:9px}#hl-form-library [type=checkbox]{width:18px;height:18px;flex-shrink:0;margin-top:5px}#hl-form-library fieldset{border:1px solid #b8cbd5;padding:14px;min-width:0}#hl-form-library .hfl-heading{display:flex;justify-content:space-between;gap:20px;align-items:center;border-bottom:2px solid #2298bd}#hl-form-library h2,#hl-form-library h3{margin:6px 0}#hl-form-library .hfl-toolbar{display:grid;grid-template-columns:1fr 1.5fr auto;gap:12px;align-items:end;margin-bottom:18px}#hl-form-library .hfl-toolbar button{margin-bottom:10px}#hl-form-library .hfl-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:22px}#hl-form-library [data-hfl-note]{min-height:1.7em;color:#154c67}#hl-form-library .hfl-field{border:1px solid #d7e2e8;border-radius:7px;background:white;padding:12px;margin-bottom:12px}#hl-form-library .hfl-field small{direction:ltr;display:block;color:#536779;overflow-wrap:anywhere}#hl-form-library .hfl-field-actions{display:flex;gap:8px}#hl-form-library .hfl-paper{background:white;min-height:700px;box-shadow:0 5px 20px #152c3d15;padding:28px;border:1px solid #2298bd;overflow-wrap:anywhere;color:#152c3d}#hl-form-library .hfl-letterhead{display:flex;align-items:center;gap:14px;background:#092033;color:white;padding:16px;border-bottom:3px solid #00a7e8}#hl-form-library .hfl-letterhead img{width:55px;height:55px;object-fit:contain}#hl-form-library .hfl-letterhead b{letter-spacing:1px}#hl-form-library .hfl-letterhead span{display:block}#hl-form-library .hfl-paper h3{text-align:center;font-size:21px;margin:24px 0 5px}#hl-form-library .hfl-paper h4{text-align:center;margin:0 0 20px;color:#536779;font-size:13px}#hl-form-library .hfl-identity{background:#edf6fa;border-right:3px solid #2298bd;padding:10px;margin:15px 0;font-size:13px}#hl-form-library .hfl-paper dl{margin:0}#hl-form-library .hfl-paper dt{background:#f4f7f9;padding:8px;font-weight:700}#hl-form-library .hfl-paper dd{border:1px solid #e1e8ed;padding:9px;margin:0 0 12px;min-height:39px;color:#778693}#hl-form-library .hfl-paper footer{border-top:1px solid #b8cbd5;margin-top:26px;padding-top:12px;font-size:11px;color:#536779;text-align:center}#hl-form-library .hfl-preview-note{font-size:12px;color:#536779}#hl-form-library .hfl-paper [dir=ltr]{unicode-bidi:isolate}@media(max-width:850px){#hl-form-library .hfl-layout{grid-template-columns:1fr}#hl-form-library .hfl-toolbar{grid-template-columns:1fr}#hl-form-library{padding:14px}#hl-form-library .hfl-paper{padding:16px;min-height:500px}}`;
   style.textContent += `#hl-form-library .hfl-history{border:1px solid #b8cbd5;border-radius:8px;padding:16px;margin-bottom:20px;overflow-wrap:anywhere}#hl-form-library [data-hfl-history-list]{list-style:none;padding:0;margin:12px 0;max-height:310px;overflow:auto}#hl-form-library [data-hfl-history-list] li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px;border-bottom:1px solid #d7e2e8}#hl-form-library [data-hfl-history-list] li span{min-width:0}#hl-form-library [data-hfl-history-list] button{flex-shrink:0}#hl-form-library [data-hfl-history-detail]{background:white;border:1px solid #d7e2e8;padding:16px;margin-top:14px}#hl-form-library [data-hfl-history-detail] dd{margin:0 0 10px;padding:6px}#hl-form-library [data-hfl-history-detail] dt{font-weight:bold}`;
+  style.textContent += `#hl-form-library [hidden]{display:none!important}#hl-form-library textarea{width:100%;max-width:100%;padding:9px;border:1px solid #b8cbd5;border-radius:5px;font:inherit}#hl-form-library .hfl-paper .hfl-section{background:#12354d;color:white;margin:16px 0 8px}#hl-form-library [data-hfl-new]{margin-bottom:14px}`;
   document.head.appendChild(style);
   const $ = selector => dialog.querySelector(selector);
-  const state = { generation:0, orgId:'', member:null, brand:null, templates:[], active:null, fields:[], busy:false, dirty:false };
+  const state = { generation:0, orgId:'', member:null, brand:null, templates:[], active:null, fields:[], busy:false, dirty:false, creating:false };
   let previewGeneration=0,previewObjectUrl=null,logoObjectUrl=null,previewController=null,pdfBusy=false;
   const synchronization = { pending:null, fingerprint:'' };
   const templateFingerprint = rows => JSON.stringify(rows.map(t=>[t.id,t.code,t.version]).sort((a,b)=>a[0].localeCompare(b[0])));
@@ -50,12 +56,14 @@
   const context = () => ({ generation:state.generation, orgId:state.orgId, session:session() });
   const current = c => dialog.open && c.generation===state.generation && c.orgId===state.orgId && c.orgId===selectedOrg() && c.session===session() && Boolean(auth()?.isAuthenticated?.());
   const canEdit = () => ['OWNER','ADMIN'].includes(state.member?.role);
+  const canDesign = () => state.creating||isCustom(state.active);
   function busy(value) {
     state.busy=value;
     for(const key of ['template','department','reload']) $(`[data-hfl-${key}]`).disabled=value;
     $('[data-hfl-controls]').disabled=value||!state.active||!canEdit();
+    $('[data-hfl-new]').disabled=value||!canEdit();
     historyControls();
-    $('[data-hfl-pdf-preview]').disabled=value||!state.active||pdfBusy;
+    $('[data-hfl-pdf-preview]').disabled=value||!state.active||state.creating||pdfBusy;
   }
   function hasDocumentInput() {
     const form=document.querySelector('#hl-documents [data-doc-form]');
@@ -77,7 +85,7 @@
     invalidatePdf();if(logoObjectUrl)URL.revokeObjectURL(logoObjectUrl);logoObjectUrl=null;
     synchronization.pending?.abort();synchronization.pending=null;synchronization.fingerprint='';
     state.generation++; state.orgId=''; state.member=null; state.brand=null; state.templates=[];
-    state.active=null; state.fields=[]; state.dirty=false; resetHistory();busy(false);
+    state.active=null; state.fields=[]; state.dirty=false;state.creating=false; resetHistory();busy(false);
     $('[data-hfl-editor]').reset(); $('[data-hfl-controls]').disabled=true;
     for (const key of ['template','fields','preview']) $(`[data-hfl-${key}]`).replaceChildren();
     $('[data-hfl-meta]').textContent=''; note(''); if(dialog.open)dialog.close();
@@ -92,16 +100,22 @@
       <div class="hfl-identity">${logoObjectUrl?`<img src="${esc(logoObjectUrl)}" alt="شعار الجهة" style="max-width:100px;max-height:65px;object-fit:contain;float:left">`:""}الجهة: ${esc(brand.brandNameAr||org.displayName||'—')}<br>الإدارة: ${esc(departments[t.department]||t.department)}</div>
       <h3>${esc(titleAr)}</h3><h4 dir="ltr">${esc(titleEn)}</h4>
       <p dir="ltr">${esc(t.code)} · v${esc(t.version)} · PREVIEW</p>
-      <dl>${state.fields.map(f=>`<dt>${esc(f.labelAr)}${f.required?' *':''}</dt><dd>${Array.isArray(f.options)&&f.options.length?f.options.map(esc).join(' / '):'................................................'}</dd>`).join('')}</dl>
+      <dl>${state.fields.map(f=>f.type==='SECTION'?`<dt class="hfl-section">${esc(f.labelAr)}</dt>`:`<dt>${esc(f.labelAr)}${f.required?' *':''}</dt><dd style="white-space:pre-wrap">${f.type==='STATEMENT'?esc(f.contentAr||f.contentEn||''):Array.isArray(f.options)&&f.options.length?f.options.map(esc).join(' / '):'................................................'}</dd>`).join('')}</dl>
       <footer>${esc(brand.footerAr||'HYDROLAND · هيدرولاند')}<br>معاينة قالب — بيانات الاعتماد والتوقيع تُنشأ فقط في مسار المستند الفعلي.<br>الحقول ذات العلامة * إلزامية.</footer>`;
   }
   function fields() {
-    $('[data-hfl-fields]').innerHTML=state.fields.map((f,i)=>`<section class="hfl-field" data-hfl-row="${i}"><small>${esc(f.key)} · ${esc(f.type)}</small><label>عنوان الحقل بالعربية<input data-hfl-label="labelAr" value="${esc(f.labelAr)}" maxlength="200" required></label><label>عنوان الحقل بالإنجليزية<input data-hfl-label="labelEn" value="${esc(f.labelEn)}" maxlength="200" required dir="ltr"></label><label class="hfl-check"><input data-hfl-required type="checkbox"${f.required?' checked':''}> حقل إلزامي</label><div class="hfl-field-actions"><button type="button" data-hfl-move="-1"${i===0?' disabled':''} aria-label="نقل الحقل ${i+1} لأعلى">أعلى</button><button type="button" data-hfl-move="1"${i===state.fields.length-1?' disabled':''} aria-label="نقل الحقل ${i+1} لأسفل">أسفل</button></div></section>`).join('');
+    const design=canDesign(),answerCount=state.fields.filter(f=>!['SECTION','STATEMENT'].includes(f.type)).length;
+    $('[data-hfl-structure-note]').textContent=design?'يمكن إضافة الحقول والأقسام وحذفها وتغيير نوعها وخياراتها. ينشر التعديل إصدارًا جديدًا؛ المستندات السابقة تحتفظ بتعريفها. حقل التوقيع يسجل بيانات فقط؛ توقيع المستند يتبع مساره المستقل.':'مفاتيح الحقول وأنواعها ثابتة لحماية الربط التشغيلي. يمكن تعديل العناوين والإلزامية والترتيب؛ تغيير البنية يحتاج مراجعة الربط.';
+    $('[data-hfl-structure-actions]').hidden=!design;
+    $('[data-hfl-new-department]').hidden=!state.creating;
+    $('[data-hfl-add-field]').disabled=state.fields.length>=100;
+    $('[data-hfl-add-section]').disabled=state.fields.length>=100;
+    $('[data-hfl-fields]').innerHTML=state.fields.map((f,i)=>`<section class="hfl-field" data-hfl-row="${i}">${design?`<label>مفتاح الحقل<input data-hfl-key value="${esc(f.key)}" pattern="[A-Za-z](?:[A-Za-z0-9_.]|-){0,127}" maxlength="128" required dir="ltr"></label><label>نوع الحقل<select data-hfl-type>${Object.entries({...fieldTypes,...(f.type==='LONG_TEXT'?{LONG_TEXT:'نص طويل'}:{})}).map(([type,label])=>`<option value="${type}"${f.type===type?' selected':''}>${label}</option>`).join('')}</select></label>`:`<small>${esc(f.key)} · ${esc(f.type)}</small>`}<label>عنوان الحقل بالعربية<input data-hfl-label="labelAr" value="${esc(f.labelAr)}" maxlength="200" required></label><label>عنوان الحقل بالإنجليزية<input data-hfl-label="labelEn" value="${esc(f.labelEn)}" maxlength="200" required dir="ltr"></label>${['SECTION','STATEMENT'].includes(f.type)?'':`<label class="hfl-check"><input data-hfl-required type="checkbox"${f.required?' checked':''}> حقل إلزامي</label>`}${design&&['SELECT','TABLE'].includes(f.type)?`<label>${f.type==='TABLE'?'عناوين أعمدة الجدول، عنوان في كل سطر':'الخيارات، خيار في كل سطر'}<textarea data-hfl-options rows="4" maxlength="20100"${f.type==='SELECT'?' required':''}>${esc((f.options||[]).join('\n'))}</textarea></label>`:''}${design&&f.type==='STATEMENT'?`<label>نص الإقرار بالعربية<textarea data-hfl-content="contentAr" rows="5" maxlength="8000" required>${esc(f.contentAr||'')}</textarea></label><label>نص الإقرار بالإنجليزية<textarea data-hfl-content="contentEn" rows="5" maxlength="8000" required dir="ltr">${esc(f.contentEn||'')}</textarea></label><p>يُحفظ النص ضمن إصدار القالب ويظهر كما هو في المستند؛ إجابات المشارك تُضاف في حقول منفصلة.</p>`:''}<div class="hfl-field-actions"><button type="button" data-hfl-move="-1"${i===0?' disabled':''} aria-label="نقل الحقل ${i+1} لأعلى">أعلى</button><button type="button" data-hfl-move="1"${i===state.fields.length-1?' disabled':''} aria-label="نقل الحقل ${i+1} لأسفل">أسفل</button>${design?`<button type="button" data-hfl-remove${!['SECTION','STATEMENT'].includes(f.type)&&answerCount===1?' disabled':''}>حذف</button>`:''}</div></section>`).join('');
   }
   function selectTemplate() {
     invalidatePdf();resetHistory();
     const t=state.templates.find(x=>x.id===$('[data-hfl-template]').value)||null;
-    state.active=t; state.fields=t?clone(t.fields):[]; state.dirty=false;
+    state.active=t; state.fields=t?clone(t.fields):[]; state.dirty=false;state.creating=false;
     const form=$('[data-hfl-editor]');form.reset();form.elements.titleAr.value=t?.titleAr||'';form.elements.titleEn.value=t?.titleEn||'';form.elements.printable.checked=t?.printable!==false;
     $('[data-hfl-controls]').disabled=!t||!canEdit()||state.busy;
     $('[data-hfl-meta]').textContent=t?`${t.code} · الإصدار النشط ${t.version} · ${state.fields.length} حقل`:'';
@@ -117,7 +131,7 @@
     invalidatePdf();if(logoObjectUrl)URL.revokeObjectURL(logoObjectUrl);logoObjectUrl=null;
     resetHistory();
     state.generation++;state.orgId=selectedOrg();busy(true);state.dirty=false;
-    state.active=null;state.templates=[];state.fields=[];state.member=null;state.brand=null;
+    state.active=null;state.templates=[];state.fields=[];state.member=null;state.brand=null;state.creating=false;
     $('[data-hfl-controls]').disabled=true;$('[data-hfl-template]').replaceChildren();$('[data-hfl-fields]').replaceChildren();preview();
     const c=context();note('جارٍ قراءة القوالب المحفوظة والصلاحيات...');
     try {
@@ -146,15 +160,47 @@
   }
   function discardAllowed(){return !state.dirty||window.confirm('توجد تعديلات غير منشورة. هل تريد تركها؟');}
   function changed(){invalidatePdf();state.dirty=true;$('[data-hfl-confirm]').checked=false;preview();}
+  function addField(section=false){
+    if(state.busy||!canEdit()||!canDesign()||state.fields.length>=100)return;
+    const prefix=section?'section':'field';let n=1;while(state.fields.some(f=>f.key===prefix+n))n++;
+    state.fields.push({key:prefix+n,labelAr:section?'قسم جديد':'حقل جديد',labelEn:section?'New section':'New field',type:section?'SECTION':'TEXT',required:false});
+    fields();changed();$(`[data-hfl-row="${state.fields.length-1}"] [data-hfl-label]`)?.focus();
+  }
+  $('[data-hfl-add-field]').addEventListener('click',()=>addField());
+  $('[data-hfl-add-section]').addEventListener('click',()=>addField(true));
+  $('[data-hfl-new]').addEventListener('click',()=>{
+    if(state.busy||!canEdit()||!discardAllowed())return;
+    invalidatePdf();resetHistory();state.creating=true;
+    const department=$('[data-hfl-department]').value||'HR';
+    state.active={id:null,organizationId:state.orgId,code:'رمز جديد عند النشر',department,version:0,fields:[]};state.fields=[];
+    const form=$('[data-hfl-editor]');form.reset();form.elements.printable.checked=true;$('[data-hfl-create-department]').value=department;
+    $('[data-hfl-meta]').textContent='نموذج مخصص جديد؛ لم يُحفظ بعد.';
+    addField();busy(false);note('أكمل عنوان النموذج وحقوله، ثم أكّد نشر الإصدار الأول.');form.elements.titleAr.focus();
+  });
+  $('[data-hfl-create-department]').addEventListener('change',event=>{if(state.creating){state.active.department=event.target.value;changed();}});
   $('[data-hfl-editor]').addEventListener('input',event=>{
     const row=event.target.closest('[data-hfl-row]'),i=Number(row?.dataset.hflRow);
     if(row&&state.fields[i]){
       if(event.target.dataset.hflLabel)state.fields[i][event.target.dataset.hflLabel]=event.target.value;
       if(event.target.matches('[data-hfl-required]'))state.fields[i].required=event.target.checked;
+      if(canDesign()&&event.target.matches('[data-hfl-key]'))state.fields[i].key=event.target.value;
+      if(canDesign()&&event.target.matches('[data-hfl-options]'))state.fields[i].options=event.target.value.split('\n').map(v=>v.trim()).filter(Boolean);
+      if(canDesign()&&event.target.dataset.hflContent)state.fields[i][event.target.dataset.hflContent]=event.target.value;
+      if(canDesign()&&event.target.matches('[data-hfl-type]')){
+        state.fields[i].type=event.target.value;delete state.fields[i].options;delete state.fields[i].contentAr;delete state.fields[i].contentEn;
+        if(['SECTION','STATEMENT'].includes(event.target.value))state.fields[i].required=false;
+        fields();
+      }
     }
     if(!event.target.matches('[data-hfl-confirm]'))changed();
   });
   $('[data-hfl-fields]').addEventListener('click',event=>{
+    const remove=event.target.closest('[data-hfl-remove]');
+    if(remove&&!state.busy&&canEdit()&&canDesign()){
+      const i=Number(remove.closest('[data-hfl-row]').dataset.hflRow);
+      if(!['SECTION','STATEMENT'].includes(state.fields[i]?.type)&&state.fields.filter(f=>!['SECTION','STATEMENT'].includes(f.type)).length===1)return;
+      state.fields.splice(i,1);fields();changed();return;
+    }
     const button=event.target.closest('[data-hfl-move]');if(!button||state.busy||!canEdit())return;
     const i=Number(button.closest('[data-hfl-row]').dataset.hflRow),j=i+Number(button.dataset.hflMove);
     if(j<0||j>=state.fields.length)return;
@@ -168,24 +214,26 @@
   dialog.addEventListener('cancel',event=>{event.preventDefault();if(discardAllowed())clear();});
   $('[data-hfl-editor]').addEventListener('submit',async event=>{
     event.preventDefault();if(state.busy||!state.active||!canEdit()||!$('[data-hfl-confirm]').checked)return;
-    const c=context(),t=state.active,form=event.currentTarget;
+    const c=context(),t=state.active,form=event.currentTarget,creating=state.creating;
     const payload={titleAr:form.elements.titleAr.value.trim(),titleEn:form.elements.titleEn.value.trim(),printable:form.elements.printable.checked,fields:clone(state.fields)};
     if(!payload.titleAr||!payload.titleEn||payload.fields.some(f=>!f.labelAr?.trim()||!f.labelEn?.trim())){note('أكمل عناوين النموذج والحقول باللغتين.');return;}
     busy(true);note('جارٍ التحقق من الإصدار ثم حفظ التعديل...');
     let published=false;
     try {
-      const latest=await request(`/documents/organizations/${encodeURIComponent(c.orgId)}/templates`);if(!current(c))return;
-      if(!Array.isArray(latest)||!latest.some(x=>x.id===t.id&&x.version===t.version&&x.organizationId===c.orgId&&x.status==='ACTIVE'))throw new Error('نُشر إصدار أحدث. تعديلاتك باقية هنا؛ راجعها ثم أعد تحميل القالب قبل النشر.');
-      const saved=await request(`/documents/templates/${encodeURIComponent(t.id)}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      if(!creating){
+        const latest=await request(`/documents/organizations/${encodeURIComponent(c.orgId)}/templates`);if(!current(c))return;
+        if(!Array.isArray(latest)||!latest.some(x=>x.id===t.id&&x.version===t.version&&x.organizationId===c.orgId&&x.status==='ACTIVE'))throw new Error('نُشر إصدار أحدث. تعديلاتك باقية هنا؛ راجعها ثم أعد تحميل القالب قبل النشر.');
+      }
+      const saved=await request(creating?'/documents/templates/custom':`/documents/templates/${encodeURIComponent(t.id)}`,{method:creating?'POST':'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(creating?{...payload,organizationId:c.orgId,department:t.department}:payload)});
       if(!current(c))return;
-      if(!saved?.id||saved.organizationId!==c.orgId||saved.code!==t.code||saved.version!==t.version+1)throw new Error('استجاب الخادم للحفظ دون تأكيد الإصدار المتوقع. أعد قراءة المكتبة قبل المحاولة مجددًا.');
+      if(!saved?.id||saved.organizationId!==c.orgId||(creating?!isCustom(saved)||saved.department!==t.department:saved.code!==t.code)||saved.version!==t.version+1)throw new Error('استجاب الخادم للحفظ دون تأكيد الإصدار المتوقع. أعد قراءة المكتبة قبل المحاولة مجددًا.');
       published=true;state.dirty=false;
       // The existing workspace reload resolves the new active template by code.
       // No revise/approve/sign request is issued for any existing document.
       const keptInput=hasDocumentInput();
       if(!keptInput)await window.HydrolandDocuments?.refresh?.();
       if(!current(c))return;
-      document.dispatchEvent(new CustomEvent('hydroland:form-template-published',{detail:{organizationId:c.orgId,code:t.code,version:saved.version}}));
+      document.dispatchEvent(new CustomEvent('hydroland:form-template-published',{detail:{organizationId:c.orgId,code:saved.code,version:saved.version}}));
       await load(saved.id);
       if(c.session===session()&&c.orgId===selectedOrg()&&dialog.open)note(`حُفظ ونُشر الإصدار ${saved.version}. ${keptInput?'حُفظت مدخلات شاشة المستندات دون مسحها؛ حدّث الشاشة بعد إكمالها لتحميل القالب الجديد.':'تم تحديث شاشة المستندات.'} المستندات السابقة لم تتغير.`);
     } catch(error) { if(current(c))note((published?'تم الحفظ، لكن تحديث العرض لم يكتمل: ':'')+(error.message||'تعذر حفظ التعديل.')); }
@@ -197,7 +245,7 @@
   const historyContext = () => ({...context(), historyGeneration:history.generation, templateId:state.active?.id});
   const historyCurrent = c => current(c)&&c.historyGeneration===history.generation&&c.templateId===state.active?.id;
   function historyControls() {
-    const blocked=state.busy||history.busy||!state.active;
+    const blocked=state.busy||history.busy||!state.active||state.creating;
     $('[data-hfl-history-load]').disabled=blocked;
     $('[data-hfl-history-more]').disabled=blocked;
     $('[data-hfl-history-more]').hidden=history.cursor===null;
@@ -212,6 +260,7 @@
   }
   function compatible(row) {
     const active=state.active;
+    if(isCustom(active)&&row?.code===active.code)return true;
     if(!active||!row||row.fields.length!==active.fields.length)return false;
     const map=new Map(active.fields.map(f=>[f.key,f]));
     return map.size===active.fields.length&&new Set(row.fields.map(f=>f.key)).size===row.fields.length&&row.fields.every(f=>{
@@ -240,7 +289,7 @@
     const target=$('[data-hfl-history-detail]');target.hidden=false;
     const allowed=canRestore(row);
     const reason=!canEdit()?'صلاحيتك للعرض فقط.':history.rows.some(r=>r.version>state.active.version)?'يوجد إصدار أحدث؛ أعد تحميل القالب قبل الاستعادة.':row.version>=state.active.version?'هذا ليس إصدارًا أقدم من القالب النشط.':!compatible(row)?'تختلف مفاتيح الحقول أو أنواعها أو خياراتها؛ يلزم فحص الربط قبل الاستعادة.':'الاستعادة تحمل المحتوى للمراجعة فقط. النشر يتطلب تأكيدًا مستقلًا وينشئ إصدارًا جديدًا.';
-    target.innerHTML=`<h3 tabindex="-1" data-hfl-history-heading>معاينة الإصدار ${esc(row.version)}</h3><p>${esc(row.titleAr)}<br><span dir="ltr">${esc(row.titleEn)}</span></p><p>الطباعة: ${row.printable?'متاحة وفق الصلاحيات':'غير متاحة'}</p><dl>${row.fields.map(f=>`<dt>${esc(f.labelAr)}${f.required?' *':''}</dt><dd><span dir="ltr">${esc(f.key)} · ${esc(f.type)} · ${esc(f.labelEn)}</span>${f.options?.length?`<br>${f.options.map(esc).join(' / ')}`:''}</dd>`).join('')}</dl><p data-hfl-history-reason>${reason}</p><button type="button" data-hfl-history-restore${allowed?'':' disabled'}>تحميل هذا الإصدار للمراجعة</button><p>عرض تعريف القالب فقط؛ لا يتضمن مستندًا أو توقيعًا أو اعتمادًا.</p>`;
+    target.innerHTML=`<h3 tabindex="-1" data-hfl-history-heading>معاينة الإصدار ${esc(row.version)}</h3><p>${esc(row.titleAr)}<br><span dir="ltr">${esc(row.titleEn)}</span></p><p>الطباعة: ${row.printable?'متاحة وفق الصلاحيات':'غير متاحة'}</p><dl>${row.fields.map(f=>`<dt>${esc(f.labelAr)}${f.required?' *':''}</dt><dd><span dir="ltr">${esc(f.key)} · ${esc(f.type)} · ${esc(f.labelEn)}</span>${f.options?.length?`<br>${f.options.map(esc).join(' / ')}`:''}${f.type==='STATEMENT'?`<p style="white-space:pre-wrap">${esc(f.contentAr)}</p><p dir="ltr" style="white-space:pre-wrap">${esc(f.contentEn)}</p>`:''}</dd>`).join('')}</dl><p data-hfl-history-reason>${reason}</p><button type="button" data-hfl-history-restore${allowed?'':' disabled'}>تحميل هذا الإصدار للمراجعة</button><p>عرض تعريف القالب فقط؛ لا يتضمن مستندًا أو توقيعًا أو اعتمادًا.</p>`;
     historyControls();
   }
   function renderHistory() {
@@ -248,7 +297,7 @@
     historyControls();
   }
   async function loadHistory(more=false) {
-    if(state.busy||history.busy||!state.active||(more&&history.cursor===null))return;
+    if(state.busy||history.busy||!state.active||state.creating||(more&&history.cursor===null))return;
     if(!more)resetHistory();
     const c=historyContext(),t=state.active,before=more?history.cursor:null;
     history.busy=true;historyControls();historyNote('جارٍ قراءة سجل الإصدارات…');
@@ -278,7 +327,7 @@
     const form=$('[data-hfl-editor]'),map=new Map(state.active.fields.map(f=>[f.key,f]));
     // Keep the current template ID/version. Only the permitted editable values
     // are copied; the existing authorized PUT creates the next immutable version.
-    state.fields=row.fields.map(f=>({...clone(map.get(f.key)),labelAr:f.labelAr,labelEn:f.labelEn,required:f.required}));
+    state.fields=isCustom(state.active)?clone(row.fields):row.fields.map(f=>({...clone(map.get(f.key)),labelAr:f.labelAr,labelEn:f.labelEn,required:f.required}));
     form.elements.titleAr.value=row.titleAr;form.elements.titleEn.value=row.titleEn;form.elements.printable.checked=row.printable;
     fields();changed();
     $('[data-hfl-meta]').textContent=`${state.active.code} · الإصدار النشط ${state.active.version} · محتوى الإصدار ${row.version} للمراجعة`;
@@ -298,7 +347,7 @@
     if(previewObjectUrl)URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=null;
     $('[data-hfl-pdf-frame]').removeAttribute('src');$('[data-hfl-pdf-open]').removeAttribute('href');
     $('[data-hfl-pdf-result]').hidden=true;$('[data-hfl-pdf-status]').textContent='';
-    $('[data-hfl-pdf-preview]').disabled=state.busy||!state.active;
+    $('[data-hfl-pdf-preview]').disabled=state.busy||!state.active||state.creating;
   }
   async function loadLogo(c){
     const id=state.brand?.logoAssetId;if(!id)return;
@@ -313,7 +362,7 @@
     }catch(error){if(current(c))note(error.message||'تعذر عرض شعار الجهة؛ لم تُغيّر الهوية المحفوظة.');}
   }
   $('[data-hfl-pdf-preview]').addEventListener('click',async()=>{
-    if(state.busy||pdfBusy||!state.active||!dialog.open)return;
+    if(state.busy||pdfBusy||!state.active||state.creating||!dialog.open)return;
     invalidatePdf();pdfBusy=true;const generation=previewGeneration,c=context(),controller=new AbortController();previewController=controller;
     const form=$('[data-hfl-editor]'),t=state.active;
     const payload=canEdit()?{titleAr:form.elements.titleAr.value.trim(),titleEn:form.elements.titleEn.value.trim(),fields:clone(state.fields)}:{};
@@ -329,7 +378,7 @@
       previewObjectUrl=URL.createObjectURL(blob);$('[data-hfl-pdf-frame]').src=previewObjectUrl;$('[data-hfl-pdf-open]').href=previewObjectUrl;
       $('[data-hfl-pdf-result]').hidden=false;$('[data-hfl-pdf-status]').textContent='معاينة فقط باستخدام مولّد PDF الفعلي؛ لم يُنشأ مستند أو اعتماد أو توقيع. أي تعديل لاحق يلغي هذه المعاينة.';
     }catch(error){if(current(c)&&generation===previewGeneration)$('[data-hfl-pdf-status]').textContent=error.name==='AbortError'?'انتهت مهلة توليد المعاينة.':error.message||'تعذر توليد المعاينة.';}
-    finally{clearTimeout(timeout);if(generation===previewGeneration){pdfBusy=false;previewController=null;$('[data-hfl-pdf-preview]').disabled=state.busy||!state.active;}}
+    finally{clearTimeout(timeout);if(generation===previewGeneration){pdfBusy=false;previewController=null;$('[data-hfl-pdf-preview]').disabled=state.busy||!state.active||state.creating;}}
   });
   // Other tabs send only an invalidation hint, never identity or form content.
   // Other devices are detected by private polling while this editor is visible.

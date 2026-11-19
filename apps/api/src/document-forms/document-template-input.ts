@@ -1,7 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
 
-export interface AdministrativeTemplateField {key:string;labelAr:string;labelEn:string;type:string;required:boolean;options?:string[]}
-const types=new Set(['TEXT','TEXTAREA','LONG_TEXT','NUMBER','DATE','BOOLEAN','SELECT','SIGNATURE','TABLE']);
+export interface AdministrativeTemplateField {key:string;labelAr:string;labelEn:string;type:string;required:boolean;options?:string[];contentAr?:string;contentEn?:string}
+export const CUSTOM_TEMPLATE_PREFIX='CUSTOM-FORM-';
+// This namespace is allocated by the server, never by catalog/setup clients.
+export const isCustomTemplateCode=(code:unknown):boolean=>typeof code==='string'&&/^CUSTOM-FORM-[A-F0-9]{32}$/.test(code);
+const types=new Set(['TEXT','TEXTAREA','LONG_TEXT','NUMBER','DATE','BOOLEAN','SELECT','SIGNATURE','TABLE','SECTION','STATEMENT']);
 const prohibited=new Set(['__proto__','prototype','constructor']);
 export function templateText(value:unknown,label:string):string {
  if(typeof value!=='string'||!value.trim()||value.length>200||/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/u.test(value))throw new BadRequestException(`${label}: nonempty text up to 200 characters is required.`);
@@ -10,7 +13,7 @@ export function templateText(value:unknown,label:string):string {
 export function templateFields(value:unknown):AdministrativeTemplateField[] {
  if(!Array.isArray(value)||value.length<1||value.length>100)throw new BadRequestException('Between 1 and 100 template fields are required.');
  const keys=new Set<string>();
- return value.map(f=>{
+ const fields=value.map(f=>{
   if(!f||typeof f!=='object'||Array.isArray(f)||typeof f.key!=='string'||!/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/.test(f.key)||prohibited.has(f.key)||keys.has(f.key)||!types.has(f.type)||typeof f.required!=='boolean')throw new BadRequestException('Invalid or duplicate template field.');
   keys.add(f.key);
   let options:string[]|undefined;
@@ -21,9 +24,21 @@ export function templateFields(value:unknown):AdministrativeTemplateField[] {
    if(new Set(validated).size!==validated.length)throw new BadRequestException('Duplicate field options.');
   }
   if(f.type==='SELECT'&&!options?.length)throw new BadRequestException('SELECT fields require options.');
+  if(f.type==='SECTION'&&(f.required||options!==undefined))throw new BadRequestException('Section headings cannot be required or contain answer options.');
+  let content:Pick<AdministrativeTemplateField,'contentAr'|'contentEn'>={};
+  if(f.type==='STATEMENT'){
+   if(f.required||options!==undefined)throw new BadRequestException('Template statements cannot be required or contain answer options.');
+   for(const key of ['contentAr','contentEn'] as const){
+    const text=f[key];
+    if(typeof text!=='string'||!text.trim()||text.length>8000||/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/u.test(text))throw new BadRequestException('Statements require nonempty bilingual content up to 8000 characters.');
+    content[key]=text.trim();
+   }
+  }else if(f.contentAr!==undefined||f.contentEn!==undefined)throw new BadRequestException('Only template statements contain fixed content.');
   if(f.type==='TABLE'&&options&&(options.length<1||options.length>30||options.some(k=>k.length>128||prohibited.has(k))))throw new BadRequestException('TABLE columns require 1 to 30 safe unique headings.');
-  return {key:f.key,labelAr:templateText(f.labelAr,'Arabic field title'),labelEn:templateText(f.labelEn,'English field title'),type:f.type,required:f.required,...(options===undefined?{}:{options})};
+  return {key:f.key,labelAr:templateText(f.labelAr,'Arabic field title'),labelEn:templateText(f.labelEn,'English field title'),type:f.type,required:f.required,...(options===undefined?{}:{options}),...content};
  });
+ if(!fields.some(f=>!['SECTION','STATEMENT'].includes(f.type)))throw new BadRequestException('A template requires at least one answer field.');
+ return fields;
 }
 // Operational bindings are not implicitly migrated by a template edit.
 export function assertCompatibleTemplateFields(before:unknown,after:AdministrativeTemplateField[]):void {

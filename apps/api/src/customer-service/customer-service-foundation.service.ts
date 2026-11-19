@@ -4,7 +4,7 @@ import { CustomerCase, CustomerInteraction } from './customer-service.domain';
 @Injectable()
 export class CustomerServiceFoundationService {
   validateCase(record: CustomerCase): CustomerCase {
-    if (!record.id || !record.organizationId || !record.customerId) throw new BadRequestException('Customer case identity and scope are required.');
+    if (!record.id || !record.customerId || record.organizationId === undefined || (record.organizationId !== null && !record.organizationId)) throw new BadRequestException('Customer case identity and scope are required.');
     if (!record.subject?.trim() || !record.description?.trim()) throw new BadRequestException('Customer case subject and description are required.');
     if ((record.referenceType && !record.referenceId) || (!record.referenceType && record.referenceId)) throw new BadRequestException('Customer case reference must include both type and id.');
     return record;
