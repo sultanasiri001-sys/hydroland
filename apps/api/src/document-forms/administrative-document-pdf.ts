@@ -158,7 +158,11 @@ export async function renderAdministrativeDocumentPdf(
   if(!preview)field('المرجع',c.referenceNumber);
   field('رمز النموذج وإصداره',`${c.template.code} / v${c.template.version}`);
   section('بيانات النموذج');
-  for(const item of c.fields)field(preferredLocalizedText(item.labelAr,item.labelEn,item.key),item.value,item.type==='TABLE'?item.options:undefined);
+  for(const item of c.fields){
+    const label=preferredLocalizedText(item.labelAr,item.labelEn,item.key);
+    if(item.type==='SECTION')section(label);
+    else field(label,item.value,item.type==='TABLE'?item.options:undefined);
+  }
   if(preview){
     section('حدود المعاينة');
     field('تعريف المعاينة',`القالب: ${c.template.version} / الهوية الحالية: ${c.branding.brandVersion}`);

@@ -16,6 +16,15 @@ async function setup(page, {role='OWNER', pending=false, templates=[template]}={
       const m=window.model;m.calls.push({url,method:options.method||'GET',cache:options.cache,body:options.body});
       if(url==='/documents/workspace')return result([{role:m.role,status:'ACTIVE',organization:{id:'org-a',displayName:'هيدرولاند',kind:'DIVE_CENTER'}}]);
       if(url.endsWith('/branding'))return result({organizationId:'org-a',brandNameAr:'هيدرولاند',footerAr:'وثيقة إدارية داخلية',brandVersion:1});
+      if(url==='/documents/templates/custom'&&options.method==='POST'){
+        if(m.failure)return result({message:'تعذر حفظ التعديل'},m.failure);
+        const saved={...JSON.parse(options.body),id:'custom-v1',code:'CUSTOM-FORM-'+'A'.repeat(32),version:1,status:'ACTIVE'};
+        m.templates.push(saved);return result(saved,201);
+      }
+      if(url.endsWith('/history')){
+        const code=decodeURIComponent(url.split('/').at(-2)),items=m.templates.filter(t=>t.code===code).sort((a,b)=>b.version-a.version);
+        return result({organizationId:'org-a',code,department:items[0]?.department,items,nextBeforeVersion:null});
+      }
       if(url.endsWith('/templates')){
         if(m.failure)return result({message:'تعذر حفظ التعديل'},m.failure);
         const data=m.templates.filter(t=>t.status==='ACTIVE');
@@ -57,6 +66,7 @@ test('labels and ordering publish a new revision without mutating old records',a
 test('staff sees preview but cannot edit or publish templates',async({page})=>{
   await setup(page,{role:'STAFF'});await open(page);await expect(page.locator('#hl-form-library input[name=titleAr]')).toBeDisabled();
   await expect(page.locator('[data-hfl-publish]')).toBeDisabled();await expect(page.locator('[data-hfl-note]')).toContainText('للعرض فقط');
+  await expect(page.locator('[data-hfl-new]')).toBeDisabled();
 });
 test('stale revision preserves changes and sends no write',async({page})=>{
   await setup(page);await open(page);await page.locator('#hl-form-library input[name=titleAr]').fill('تعديل محفوظ في المحرر');
@@ -104,4 +114,61 @@ test('mobile dialog has no horizontal overflow',async({page})=>{
   await page.setViewportSize({width:390,height:844});await setup(page);await open(page);
   expect(await page.locator('#hl-form-library').evaluate(e=>e.scrollWidth<=e.clientWidth+1)).toBe(true);
   expect((await page.locator('#hl-form-library').boundingBox()).width).toBeLessThanOrEqual(390);
+});
+
+test('empty library can create a custom typed form and section without selecting a catalog code',async({page})=>{
+  await setup(page,{templates:[]});await page.locator('[data-hfl-open]').click();
+  await expect(page.locator('[data-hfl-new]')).toBeEnabled();await page.locator('[data-hfl-new]').click();
+  await expect(page.locator('[data-hfl-history-load]')).toBeDisabled();await expect(page.locator('[data-hfl-pdf-preview]')).toBeDisabled();
+  await page.locator('#hl-form-library input[name=titleAr]').fill('تقرير مخصص');
+  await page.locator('#hl-form-library input[name=titleEn]').fill('Custom report');
+  await page.locator('[data-hfl-key]').fill('quantity');await page.locator('[data-hfl-type]').selectOption('NUMBER');
+  await page.locator('[data-hfl-required]').check();
+  await page.locator('[data-hfl-add-section]').click();
+  await page.locator('[data-hfl-row="1"] [data-hfl-label=labelAr]').fill('بيانات التقرير');
+  await page.locator('[data-hfl-row="1"] [data-hfl-move="-1"]').click();
+  await page.locator('[data-hfl-add-field]').click();
+  await page.locator('[data-hfl-row="2"] [data-hfl-type]').selectOption('SELECT');
+  await page.locator('[data-hfl-options]').fill('أول\nثان');
+  await page.locator('[data-hfl-add-field]').click();await page.locator('[data-hfl-row="3"] [data-hfl-type]').selectOption('STATEMENT');
+  await page.locator('[data-hfl-content=contentAr]').fill('نص إقرار محفوظ <img src=x onerror="window.injected=true">');
+  await page.locator('[data-hfl-content=contentEn]').fill('Pinned acknowledgment wording');
+  await expect(page.locator('[data-hfl-row="3"] [data-hfl-required]')).toHaveCount(0);
+  await expect(page.locator('[data-hfl-preview] img')).toHaveCount(1);
+  await publish(page);
+  await expect(page.locator('[data-hfl-note]')).toContainText('حُفظ ونُشر الإصدار 1');
+  const m=await page.evaluate(()=>window.model),request=m.calls.find(c=>c.method==='POST');
+  expect(request.url).toBe('/documents/templates/custom');expect(JSON.parse(request.body)).not.toHaveProperty('code');
+  expect(m.templates[0].fields.map(f=>f.type)).toEqual(['SECTION','NUMBER','SELECT','STATEMENT']);
+  expect(m.templates[0].fields[2].options).toEqual(['أول','ثان']);expect(m.templates[0].fields[0].required).toBe(false);
+  expect(m.templates[0].fields[3].contentEn).toBe('Pinned acknowledgment wording');
+  expect(await page.evaluate(()=>window.injected)).toBeUndefined();
+  await expect(page.locator('[data-hfl-history-load]')).toBeEnabled();await expect(page.locator('[data-hfl-pdf-preview]')).toBeEnabled();
+});
+
+test('custom structural changes and history restore publish immutable versions while catalog fields stay locked',async({page})=>{
+  await setup(page);await open(page);await expect(page.locator('[data-hfl-type]')).toHaveCount(0);
+  await expect(page.locator('[data-hfl-structure-actions]')).toBeHidden();
+  await page.evaluate(()=>{window.model.templates[0].code='CUSTOM-FORM-'+'B'.repeat(32);});
+  await page.locator('[data-hfl-reload]').click();await expect(page.locator('[data-hfl-type]')).toHaveCount(2);
+  await page.locator('[data-hfl-type]').first().selectOption('NUMBER');
+  await page.locator('[data-hfl-row="1"] [data-hfl-remove]').click();await page.locator('[data-hfl-add-section]').click();await publish(page);
+  await expect(page.locator('[data-hfl-note]')).toContainText('حُفظ ونُشر الإصدار 2');
+  await page.locator('[data-hfl-history-load]').click();await page.locator('[data-hfl-history-view="t1"]').click();
+  await page.locator('[data-hfl-history-restore]').click();
+  await expect(page.locator('[data-hfl-confirm]')).not.toBeChecked();
+  expect(await page.evaluate(()=>window.model.templates.length)).toBe(2);
+  await publish(page);await expect(page.locator('[data-hfl-note]')).toContainText('حُفظ ونُشر الإصدار 3');
+  const m=await page.evaluate(()=>window.model);
+  expect(m.templates[0].fields).toEqual(template.fields);expect(m.templates[1].fields.map(f=>f.type)).toEqual(['NUMBER','SECTION']);
+  expect(m.templates[2].fields).toEqual(template.fields);expect(m.templates[0].status).toBe('INACTIVE');
+  expect(m.calls.some(c=>/\/(revise|approve|sign)$/.test(c.url))).toBe(false);
+});
+
+test('permission revocation during custom creation clears the unpublished form without saving',async({page})=>{
+  await setup(page);await open(page);await page.locator('[data-hfl-new]').click();
+  await page.locator('#hl-form-library input[name=titleAr]').fill('عنوان خاص');await page.locator('#hl-form-library input[name=titleEn]').fill('Private title');
+  await page.evaluate(()=>window.model.failure=403);await publish(page);
+  await expect(page.locator('#hl-form-library')).not.toBeVisible();await expect(page.locator('[data-hfl-fields]')).toBeEmpty();
+  expect(await page.evaluate(()=>window.model.templates.length)).toBe(1);
 });
