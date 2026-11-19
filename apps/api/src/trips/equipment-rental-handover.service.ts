@@ -1,10 +1,11 @@
+import { assertNoRentalClaim, rentalStatus } from './equipment-rental-hold';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EquipmentInspectionService } from './equipment-inspection.service';
 
-type Rental={id:string;renterAccountId:string;status:string;paymentStatus:string;invoiceNumber:string;paidAt:Date|null;totalHalala?:bigint;dueAt?:Date|null};
+type Rental={id:string;holdExpiresAt:Date|null;renterAccountId:string;status:string;paymentStatus:string;invoiceNumber:string;paidAt:Date|null;totalHalala?:bigint;dueAt?:Date|null};
 type Item={id:string;resourceId:string;assetCodeSnapshot:string;equipmentNameSnapshot:string;handedOverAt:Date|null;returnedAt:Date|null};
 
 @Injectable()
@@ -14,7 +15,7 @@ export class EquipmentRentalHandoverService{
   async confirmPayment(actorAccountId: string, id: string) {
     const result = await this.db.serializable(async tx => {
       const [rental] = await tx.$queryRaw<Rental[]>`
-        SELECT "id", "renterAccountId", "status", "paymentStatus", "invoiceNumber", "paidAt", "totalHalala", "dueAt"
+        SELECT "id", "renterAccountId", "status", "paymentStatus", "invoiceNumber", "paidAt", "holdExpiresAt", "totalHalala", "dueAt"
         FROM "EquipmentRental" WHERE "id"=${id} FOR UPDATE`;
       if (!rental) throw new NotFoundException('Rental not found.');
       if (rental.status === 'CANCELLED') throw new ConflictException('Cancelled rental cannot be paid.');
@@ -36,16 +37,14 @@ export class EquipmentRentalHandoverService{
       if (assets.length !== items.length || assets.some(asset => asset.stockStatus !== 'AVAILABLE')) {
         throw new ConflictException('Rental equipment is no longer available.');
       }
-      // A paid reservation holds its items until return, including the period before handover.
-      const claims = await tx.$queryRaw<Array<{resourceId:string}>>`
-        SELECT i."resourceId" FROM "EquipmentRentalItem" i JOIN "EquipmentRental" r ON r."id"=i."rentalId"
-        WHERE i."resourceId"=ANY(${resourceIds}::text[]) AND r."id"<>${id} AND i."returnedAt" IS NULL
-          AND r."paymentStatus"='PAID' AND r."status" IN ('RESERVED','ACTIVE') LIMIT 1`;
-      if (claims.length) throw new ConflictException('Equipment is reserved on another paid rental.');
+      await assertNoRentalClaim(tx, resourceIds, id);
       const readiness = await this.inspections.evaluate(resourceIds, tx);
       if (readiness.blocked) throw new ConflictException('Equipment inspection or service policy blocks rental payment confirmation.');
 
-      await tx.$executeRaw`UPDATE "EquipmentRental" SET "paymentStatus"='PAID',"paidAt"=NOW(),"updatedAt"=NOW() WHERE "id"=${id}`;
+      const updated = await tx.$executeRaw`UPDATE "EquipmentRental"
+        SET "paymentStatus"='PAID',"paidAt"=NOW(),"updatedAt"=NOW() WHERE "id"=${id}
+        AND ("holdExpiresAt" IS NULL OR "holdExpiresAt" > clock_timestamp())`;
+      if (!updated) throw new ConflictException('انتهت مهلة الدفع. أنشئ حجزًا جديدًا.');
       await this.notifications.notify(rental.renterAccountId,'EQUIPMENT_RENTAL_INVOICE',{title:'تم تأكيد دفع تأجير المعدات',invoiceNumber:rental.invoiceNumber,rentalId:id,totalHalala:Number(rental.totalHalala||0),dueAt:rental.dueAt?.toISOString()||null,message:'تم تأكيد الدفع. المعدات محجوزة وجاهزة للتسليم من المستودع بعد مسح كل قطعة.'},tx);
       await this.audit.record({actorId:actorAccountId,action:'EQUIPMENT_RENTAL_PAYMENT_CONFIRMED',resource:'EquipmentRental',resourceId:id,metadata:{invoiceNumber:rental.invoiceNumber,renterAccountId:rental.renterAccountId,totalHalala:Number(rental.totalHalala||0),handoverRequired:true,inspectionStates:readiness.states}},tx);
       return 'PAYMENT_CONFIRMED';
@@ -100,5 +99,5 @@ export class EquipmentRentalHandoverService{
     return this.summary(id,outcome.result,outcome.resourceId);
   }
 
-  async summary(id:string,result='SUMMARY',resourceId?:string){const rentals=await this.db.$queryRaw<Rental[]>`SELECT "id","renterAccountId","status","paymentStatus","invoiceNumber","paidAt" FROM "EquipmentRental" WHERE "id"=${id} LIMIT 1`;if(!rentals[0])throw new NotFoundException('Rental not found.');const items=await this.db.$queryRaw<Item[]>`SELECT "id","resourceId","assetCodeSnapshot","equipmentNameSnapshot","handedOverAt","returnedAt" FROM "EquipmentRentalItem" WHERE "rentalId"=${id} ORDER BY "createdAt"`;const handedOverCount=items.filter((item:Item)=>item.handedOverAt).length;return{result,resourceId:resourceId||null,rentalId:id,invoiceNumber:rentals[0].invoiceNumber,status:rentals[0].status,paymentStatus:rentals[0].paymentStatus,itemCount:items.length,handedOverCount,pendingHandoverCount:items.length-handedOverCount,items};}
+  async summary(id:string,result='SUMMARY',resourceId?:string){const rentals=await this.db.$queryRaw<Rental[]>`SELECT "id","renterAccountId","status","paymentStatus","invoiceNumber","paidAt","holdExpiresAt" FROM "EquipmentRental" WHERE "id"=${id} LIMIT 1`;if(!rentals[0])throw new NotFoundException('Rental not found.');const items=await this.db.$queryRaw<Item[]>`SELECT "id","resourceId","assetCodeSnapshot","equipmentNameSnapshot","handedOverAt","returnedAt" FROM "EquipmentRentalItem" WHERE "rentalId"=${id} ORDER BY "createdAt"`;const handedOverCount=items.filter((item:Item)=>item.handedOverAt).length;return{result,resourceId:resourceId||null,rentalId:id,invoiceNumber:rentals[0].invoiceNumber,status:rentalStatus(rentals[0]),holdExpiresAt:rentals[0].holdExpiresAt,paymentStatus:rentals[0].paymentStatus,itemCount:items.length,handedOverCount,pendingHandoverCount:items.length-handedOverCount,items};}
 }
