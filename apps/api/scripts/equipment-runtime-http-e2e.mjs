@@ -25,7 +25,7 @@ async function login(account) {
 }
 const auth=token=>({authorization:`Bearer ${token}`});
 const json=async response=>{const body=await response.json().catch(()=>null);if(!response.ok)throw new Error(`HTTP ${response.status}: ${JSON.stringify(body)}`);return body};
-const people=[],accounts=[],extraAssets=[];let equipmentId=null,rentalId=null,competingId=null,multiId=null;
+const people=[],accounts=[],extraAssets=[],holdFixtures=[];let equipmentId=null,rentalId=null,competingId=null,multiId=null;
 const makeAccount=async label=>{const person=await db.person.create({data:{firstName:'Equipment',lastName:label}});people.push(person);const account=await db.account.create({data:{personId:person.id,email:`equipment-${label.toLowerCase()}-${suffix}@example.invalid`,passwordHash,status:'ACTIVE',emailVerifiedAt:new Date()}});accounts.push(account);return account};
 
 try{
@@ -61,8 +61,22 @@ try{
   if(response.status!==400)throw new Error('Duplicate serialized equipment must be rejected before creating a rental');
   const reservations=await db.$queryRaw`SELECT COUNT(*)::int AS count FROM "EquipmentRental" WHERE "renterAccountId"=${renter.id}`;
   if(reservations[0].count!==0)throw new Error('Duplicate equipment left a partial reservation');
+  const failingReservation = new EquipmentRentalService(db, {
+    record() { throw new Error('Synthetic reservation receipt failure'); }
+  }, new NotificationsService(db));
+  await assert.rejects(failingReservation.create(admin.id, {
+    renterAccountId: renter.id, dueAt, items: [repeatedItem]
+  }), /Synthetic reservation receipt failure/);
+  const afterReceiptFailure = await db.$queryRaw`
+    SELECT
+      (SELECT COUNT(*)::int FROM "EquipmentRental" WHERE "renterAccountId"=${renter.id}) AS rentals,
+      (SELECT COUNT(*)::int FROM "EquipmentRentalItem" WHERE "resourceId"=${equipmentId}) AS items`;
+  assert.deepEqual(afterReceiptFailure, [{rentals: 0, items: 0}]);
   response=await fetch(`${base}/trips/equipment-rentals`,{method:'POST',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({renterAccountId:renter.id,dueAt,items:[{resourceId:equipmentId,equipmentType:'BCD',size:'M',unitPriceSar:50}]})});
   let rental=await json(response);rentalId=rental.id;
+  assert.equal(await db.auditEvent.count({
+    where: { resourceId: rentalId, action: 'EQUIPMENT_RENTAL_RESERVED' }
+  }), 1);
   if (new Date(rental.dueAt).getTime() !== Date.parse(dueAt)) throw new Error('Initial due date must preserve the requested instant.');
   if(rental.status!=='RESERVED'||rental.paymentStatus!=='PENDING'||rental.items?.length!==1)throw new Error('Rental reservation state mismatch');
 
@@ -82,13 +96,42 @@ try{
   response=await fetch(`${base}/trips/admin/equipment/${encodeURIComponent(equipmentId)}/inspections`,{method:'POST',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({status:'PASS',serviceExpiresAt,notes:'Equipment runtime E2E safety clearance'})});
   const inspection=await json(response);if(inspection.status!=='PASS')throw new Error('PASS inspection was not recorded');
 
-  const additional=await json(await fetch(base+'/trips/equipment-rentals',{method:'POST',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({renterAccountId:renter.id,dueAt,items:[repeatedItem]})}));
-  competingId=additional.id;
+  const book = () => fetch(base+'/trips/equipment-rentals', {
+    method:'POST', headers:{...auth(adminToken),'content-type':'application/json'},
+    body: JSON.stringify({renterAccountId:renter.id, dueAt, items:[repeatedItem]})
+  });
   const confirm=id=>fetch(base+'/trips/admin/equipment-rentals/'+encodeURIComponent(id)+'/payment-confirmation',{method:'POST',headers:auth(adminToken)});
+  const mineById=id=>fetch(base+'/trips/equipment-rentals/'+id+'/mine',{headers:auth(renterToken)}).then(json);
+  const cancel=(id,token)=>fetch(base+'/trips/equipment-rentals/'+id+'/mine/cancel',{method:'POST',headers:auth(token)});
+  assert.equal(Date.parse(rental.holdExpiresAt)-Date.parse(rental.reservedAt), 15*60_000);
+  assert.equal((await book()).status, 409, 'An unpaid hold keeps the serialized asset exclusive');
+  holdFixtures.push(rentalId);
+  await db.$executeRaw`UPDATE "EquipmentRental" SET "holdExpiresAt"=clock_timestamp() WHERE "id"=${rentalId}`;
+  assert.equal((await mineById(rentalId)).status, 'EXPIRED');
+  assert.equal((await confirm(rentalId)).status, 409, 'A late payment cannot revive the expired hold');
+  assert.equal(await db.auditEvent.count({where:{resourceId:rentalId,action:'EQUIPMENT_RENTAL_PAYMENT_CONFIRMED'}}),0);
+  const competingBookings=await Promise.all([book(), book()]);
+  assert.deepEqual(competingBookings.map(response=>response.status).sort(), [201,409]);
+  const heldId=(await json(competingBookings.find(response=>response.ok))).id;
+  holdFixtures.push(heldId);
+  assert.equal((await cancel(heldId,otherToken)).status,404);
+  assert.equal((await json(await cancel(heldId,renterToken))).status,'CANCELLED');
+  assert.equal((await json(await cancel(heldId,renterToken))).status,'CANCELLED');
+  assert.equal(await db.auditEvent.count({where:{resourceId:heldId,action:'EQUIPMENT_RENTAL_CANCELLED'}}),1);
+  assert.equal((await confirm(heldId)).status,409);
+
+  // An unpaid older quote has no exclusive hold of its own.
+  competingId=(await json(await book())).id;
+  await db.$executeRaw`UPDATE "EquipmentRental" SET "holdExpiresAt"=NULL WHERE "id"=${competingId}`;
+  rentalId=(await json(await book())).id;
   const attempts=await Promise.all([confirm(rentalId),confirm(competingId)]);
-  if(attempts.filter(r=>r.ok).length!==1||attempts.filter(r=>r.status===409).length!==1)throw new Error('Only one overlapping invoice may be confirmed');
-  if(!attempts[0].ok)[rentalId,competingId]=[competingId,rentalId];
-  const paid=await json(attempts.find(r=>r.ok));
+  assert.equal(attempts[0].ok,true);
+  assert.equal(attempts[1].status,409);
+  const paid=await json(attempts[0]);
+  await db.$executeRaw`UPDATE "EquipmentRental" SET "holdExpiresAt"=clock_timestamp() WHERE "id"=${rentalId}`;
+  assert.equal((await mineById(rentalId)).status,'RESERVED');
+  assert.equal((await book()).status,409,'A paid hold still protects the asset before handover');
+  assert.equal((await cancel(rentalId,renterToken)).status,409);
   if(paid.paymentStatus!=='PAID'||paid.status!=='RESERVED')throw new Error('Payment confirmation must keep rental RESERVED until handover');
   await json(await confirm(rentalId));
   const notices=await db.notification.count({where:{accountId:renter.id,type:'EQUIPMENT_RENTAL_INVOICE',payload:{path:['rentalId'],equals:rentalId}}});
@@ -224,10 +267,10 @@ try{
 } finally {
   const personIds=people.map(row=>row.id),accountIds=accounts.map(row=>row.id);
   if(personIds.length)await db.auditEvent.deleteMany({where:{actorId:{in:personIds}}}).catch(()=>{});
-  for(const id of [rentalId,competingId,multiId].filter(Boolean))await db.auditEvent.deleteMany({where:{resourceId:id}}).catch(()=>{});
+  for(const id of [rentalId,competingId,multiId,...holdFixtures].filter(Boolean))await db.auditEvent.deleteMany({where:{resourceId:id}}).catch(()=>{});
   for (const id of [equipmentId,...extraAssets].filter(Boolean)) await db.auditEvent.deleteMany({where:{resourceId:id}}).catch(()=>{});
   if(accountIds.length)await db.notification.deleteMany({where:{accountId:{in:accountIds}}}).catch(()=>{});
-  for(const id of [rentalId,competingId,multiId].filter(Boolean)){await db.$executeRawUnsafe(`DELETE FROM "EquipmentRentalItem" WHERE "rentalId"=$1`,id).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "EquipmentRental" WHERE "id"=$1`,id).catch(()=>{})}
+  for(const id of [rentalId,competingId,multiId,...holdFixtures].filter(Boolean)){await db.$executeRawUnsafe(`DELETE FROM "EquipmentRentalItem" WHERE "rentalId"=$1`,id).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "EquipmentRental" WHERE "id"=$1`,id).catch(()=>{})}
   for (const id of [equipmentId,...extraAssets].filter(Boolean)){await db.$executeRawUnsafe(`DELETE FROM "EquipmentInspection" WHERE "resourceId"=$1`,id).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "EquipmentMovement" WHERE "resourceId"=$1`,id).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "EquipmentBarcode" WHERE "resourceId"=$1`,id).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "CalendarResource" WHERE "id"=$1`,id).catch(()=>{})}
   for(const account of accounts.reverse()){await db.roleAssignment.deleteMany({where:{accountId:account.id}}).catch(()=>{});await db.session.deleteMany({where:{accountId:account.id}}).catch(()=>{});await db.account.delete({where:{id:account.id}}).catch(()=>{})}
   for(const person of people.reverse())await db.person.delete({where:{id:person.id}}).catch(()=>{});
