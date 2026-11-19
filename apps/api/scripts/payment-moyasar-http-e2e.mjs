@@ -20,7 +20,7 @@ const db=new PrismaClient();
 const webhookIds=new Set();
 const suffix=Date.now().toString();
 const enc=value=>Buffer.from(JSON.stringify(value)).toString('base64url');
-const tokenFor=id=>{const now=Math.floor(Date.now()/1000),body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:id,iat:now,exp:now+1800})}`;return `${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`};
+const tokenFor=(id,sid)=>{const now=Math.floor(Date.now()/1000),body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:id,sid,iat:now,exp:now+1800})}`;return `${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`};
 const auth=token=>({authorization:`Bearer ${token}`,'content-type':'application/json'});
 const parseJson=async response=>{const body=await response.json().catch(()=>null);return{response,body}};
 const expectOk=async response=>{const{body}=await parseJson(response);if(!response.ok)throw new Error(`HTTP ${response.status}: ${JSON.stringify(body)}`);return body};
@@ -30,8 +30,22 @@ const invoiceId='11111111-1111-4111-8111-111111111111';
 let invoiceStatus='initiated';
 let invoiceFetchFailure=null;
 let providerMetadata=null;
+let invoicePayments=[];
 let createCalls=0,fetchCalls=0,cancelCalls=0;
 const providerRequests=[];
+const fetchGates=[],allFetchGates=[],pendingRequests=[];
+const holdInvoiceFetch=()=>{
+  let started,release;
+  const seen=new Promise(resolve=>{started=resolve});
+  const released=new Promise(resolve=>{release=resolve});
+  const gate={seen,started,released,release};fetchGates.push(gate);allFetchGates.push(gate);return gate;
+};
+const waitForHeldFetch=async(gate,request)=>{
+  let timer;
+  try{
+    await Promise.race([gate.seen,request.then(response=>{throw new Error(`Reconciliation returned HTTP ${response.status} before reaching the held provider read`)}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Provider read did not reach its fixture gate')),10000)})]);
+  }finally{clearTimeout(timer)}
+};
 
 try{
   providerServer=createServer(async(request,response)=>{
@@ -50,7 +64,9 @@ try{
       fetchCalls+=1;
       if(invoiceFetchFailure==='disconnect'){request.socket.destroy();return;}
       if(invoiceFetchFailure){response.writeHead(invoiceFetchFailure,{'content-type':'application/json'});response.end('{"message":"fixture provider unavailable"}');return;}
-      response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({id:invoiceId,status:invoiceStatus,amount:24690,currency:'SAR',url:`https://pay.moyasar.test/invoices/${invoiceId}`,metadata:providerMetadata}));return;
+      const snapshot=structuredClone({id:invoiceId,status:invoiceStatus,amount:24690,currency:'SAR',url:`https://pay.moyasar.test/invoices/${invoiceId}`,metadata:providerMetadata,payments:invoicePayments});
+      const gate=fetchGates.shift();if(gate){gate.started();await gate.released;}
+      response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify(snapshot));return;
     }
     if(request.method==='PUT'&&url.pathname===`/v1/invoices/${invoiceId}/cancel`){cancelCalls+=1;response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({id:invoiceId,status:'canceled'}));return;}
     response.writeHead(404,{'content-type':'application/json'});response.end(JSON.stringify({message:'not found'}));
@@ -68,7 +84,8 @@ try{
     if(await db.auditEvent.count({where:{resource:'Booking',resourceId:booking.id,action:'BOOKING_CONFIRMED'}}))throw new Error(`${stage} created an implicit booking confirmation audit`);
     if(await db.notification.count({where:{type:'BOOKING_CONFIRMED',payload:{path:['bookingId'],equals:booking.id}}}))throw new Error(`${stage} sent an implicit booking confirmation notice`);
   };
-  const token=tokenFor(account.id);
+  const session=await db.session.create({data:{accountId:account.id,tokenHash:`isolated-payment-session:${suffix}`,expiresAt:new Date(Date.now()+1800000)}});
+  const token=tokenFor(account.id,session.id);
 
   let response=await fetch(`${base}/payments`,{method:'POST',headers:auth(token),body:JSON.stringify({bookingId:booking.id,idempotencyKey:`payment-e2e:${suffix}`,amountMinor:1})});
   const created=await expectOk(response);payment=created;
@@ -148,8 +165,54 @@ try{
   if(cancelCalls!==0)throw new Error('Normal idempotent payment flow unexpectedly cancelled an invoice');
   if(providerRequests.some(row=>row.authorization!==`Basic ${Buffer.from(`${providerSecret}:`).toString('base64')}`))throw new Error('Provider call used incorrect Basic authorization');
 
-  console.log('Moyasar payment HTTP/DB E2E passed: server-owned pricing, provider metadata binding, idempotency, webhook UTF-8 secret and boolean mode enforcement, rejected-event non-mutation, provider re-verification, tamper rejection, captured reconciliation, provider 429/503/connection-reset outage non-mutation, same-event recovery without duplicate invoices, and independent operator booking confirmation.');
+  const refresh=()=>fetch(`${base}/payments/${created.id}/refresh`,{method:'POST',headers:auth(token)});
+  const webhook=payload=>fetch(`${base}/payments/provider/moyasar/webhook`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+  const paidReference='33333333-3333-4333-8333-333333333333';
+  for(const path of ['create','refresh','webhook']){
+    // Reset only this synthetic payment to establish each independent interleaving.
+    await db.payment.update({where:{id:created.id},data:{status:'PENDING',moyasarPaymentId:null}});
+    invoiceStatus='paid';invoicePayments=[{id:paidReference,status:'paid',amount:24690,currency:'SAR'}];
+    const gate=holdInvoiceFetch(),eventId=`evt-stale-${path}-${suffix}`;
+    const delayed=path==='create'?fetch(`${base}/payments`,{method:'POST',headers:auth(token),body:JSON.stringify({bookingId:booking.id,idempotencyKey:`payment-e2e:${suffix}`})}):path==='refresh'?refresh():webhook(validWebhook(eventId,'payment_paid'));
+    pendingRequests.push(delayed);await waitForHeldFetch(gate,delayed);
+    invoiceStatus='refunded';invoicePayments=[];
+    assert.equal((await expectOk(await refresh())).status,'REFUNDED');
+    gate.release();const rejected=await parseJson(await delayed);
+    assert.equal(rejected.response.status,409,`${path}: a held provider response must not overwrite a newer payment state`);
+    assert.equal(rejected.body.code,'PAYMENT_RECONCILIATION_STALE');
+    const current=await db.payment.findUniqueOrThrow({where:{id:created.id}});
+    assert.equal(current.status,'REFUNDED');assert.equal(current.moyasarPaymentId,null);
+    if(path==='webhook'){
+      assert.equal(await db.auditEvent.count({where:{resource:'PaymentProviderWebhook',resourceId:eventId}}),0,'Stale event must remain retryable');
+      assert.equal((await expectOk(await webhook(validWebhook(eventId,'payment_paid')))).matched,true);
+      assert.equal((await expectOk(await webhook(validWebhook(eventId,'payment_paid')))).duplicate,true);
+      assert.equal(await db.auditEvent.count({where:{resource:'PaymentProviderWebhook',resourceId:eventId}}),1);
+    }
+    await expectBookingAwaitingConfirmation(`Delayed ${path} reconciliation`);
+  }
+  // Both requests pass their initial duplicate lookup and provider GET before
+  // either transaction can commit. PostgreSQL must retain one receipt even
+  // though the payment status itself does not change.
+  const repeatedEvent=validWebhook(`evt-concurrent-repeat-${suffix}`,'payment_paid');
+  const gates=[holdInvoiceFetch(),holdInvoiceFetch()];
+  const repeated=[webhook(repeatedEvent),webhook(repeatedEvent)];pendingRequests.push(...repeated);
+  await Promise.all(gates.map((gate,index)=>waitForHeldFetch(gate,repeated[index])));
+  for(const gate of gates)gate.release();
+  const repeatedResults=await Promise.all((await Promise.all(repeated)).map(expectOk));
+  assert.equal(repeatedResults.filter(result=>result.duplicate).length,1);
+  assert.equal(await db.auditEvent.count({where:{resource:'PaymentProviderWebhook',resourceId:repeatedEvent.id}}),1);
+  assert.equal((await db.payment.findUniqueOrThrow({where:{id:created.id}})).status,'REFUNDED');
+  const unmatchedEvent={...validWebhook(`evt-unmatched-repeat-${suffix}`,'payment_paid'),data:{invoice_id:`unmatched-${suffix}`}};
+  const beforeUnmatchedFetch=fetchCalls;
+  const unmatched=await Promise.all((await Promise.all([webhook(unmatchedEvent),webhook(unmatchedEvent)])).map(expectOk));
+  assert.equal(unmatched.filter(result=>result.duplicate).length,1);
+  assert.equal(await db.auditEvent.count({where:{resource:'PaymentProviderWebhook',resourceId:unmatchedEvent.id}}),1);
+  assert.equal(fetchCalls,beforeUnmatchedFetch,'Unmatched receipts must not contact the provider');
+
+  console.log('Moyasar payment HTTP/DB E2E passed: server-owned pricing, provider metadata binding, idempotency, webhook UTF-8 secret and boolean mode enforcement, rejected-event non-mutation, provider re-verification, tamper rejection, captured reconciliation, provider outages and recovery, delayed create/refresh/webhook conflict without state/reference regression, concurrent matched/unmatched receipt deduplication, and independent operator booking confirmation.');
 } finally {
+  for(const gate of allFetchGates)gate.release();
+  await Promise.allSettled(pendingRequests);
   if(payment?.id)await db.auditEvent.deleteMany({where:{OR:[{resourceId:payment.id},{resource:'PaymentProviderWebhook',resourceId:{in:[...webhookIds]}}]}}).catch(()=>{});
   if(payment?.id)await db.invoice.deleteMany({where:{paymentId:payment.id}}).catch(()=>{});
   if(booking?.id)await db.payment.deleteMany({where:{bookingId:booking.id}}).catch(()=>{});
