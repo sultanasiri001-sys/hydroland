@@ -71,3 +71,29 @@ test('personal trip exports download independently and advance only the selected
   expect(calls).toEqual([['BOOKINGS',''],['PAYMENTS',''],['BOOKINGS','next-booking']]);
   await expect(page.locator('[data-trip-export="BOOKINGS"]')).toBeDisabled();
 });
+
+test('sent message download uses its own scope and checks the returned account',async({page})=>{
+  await install(page);
+  const editor=page.locator('#hl-profile-editor');
+  const button=editor.getByRole('button',{name:'تنزيل رسائلي المرسلة'});
+  await expect(button).toBeVisible();
+  await editor.locator('[data-hl-locale-switch]').click();
+  const translated=editor.getByRole('button',{name:'Download my sent messages'});
+  const fixture={accountId:account.id,schemaVersion:'PERSONAL_SENT_MESSAGES_V1',domain:'SENT_MESSAGES',
+    completePlatformExport:false,records:[{id:'msg',kind:'TEXT',body:'My message'}],nextCursor:null};
+  let owner='wrong-account';
+  const files=[];page.on('download',download=>files.push(download.suggestedFilename()));
+  await page.route('**/api/v1/me/data-export/sent-messages',async route=>{
+    expect(route.request().postDataJSON()).toEqual({after:''});
+    await json(route,{...fixture,accountId:owner},201);
+  });
+  await translated.click();
+  await expect(editor.getByRole('status')).toHaveText('Could not download records. Try again.');
+  expect(files).toEqual([]);
+  owner=account.id;
+  const waiting=page.waitForEvent('download');await translated.click();
+  const download=await waiting;
+  expect(download.suggestedFilename()).toBe('hydroland-sent-messages-1.json');
+  expect(JSON.parse(await readFile(await download.path(),'utf8'))).toEqual(fixture);
+  await expect(translated).toBeDisabled();
+});
