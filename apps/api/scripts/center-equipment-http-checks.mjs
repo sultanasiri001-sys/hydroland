@@ -127,7 +127,6 @@ export async function checkCenterEquipment(db,{base,a,b,ownerA,ta,tb,ts},check){
       r=await request(tb,'/lookup/'+other.code);check(r.status===200&&r.body.stockStatus==='AVAILABLE'&&r.body.location==='STORE',`${keyType}: other center equipment unchanged`);
     }
   }finally{
-    await db.auditEvent.deleteMany({where:{resourceId:{in:resources},action:{in:['EQUIPMENT_INVENTORY_MOVED','CENTER_EQUIPMENT_CREATED','CENTER_EQUIPMENT_INSPECTION_RECORDED']}}});
     await db.operationalSetting.deleteMany({where:{key:{in:resources.map(id=>'center-equipment-create:'+id)}}});
     await db.operationalSetting.deleteMany({where:{key:{in:movementRequests.map(id=>'center-equipment-move:'+id)}}});
     await db.operationalSetting.deleteMany({where:{key:{in:inspectionRequests.map(id=>'center-equipment-inspection:'+id)}}});

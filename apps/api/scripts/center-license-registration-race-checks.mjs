@@ -57,7 +57,6 @@ export async function checkCenterLicenseRegistrationRace({base,a,ownerA,ta},chec
     }
   }finally{
     db.$transaction=originalTransaction;
-    await db.auditEvent.deleteMany({where:{resourceId:{in:ids}}});
     await db.administrativeRecord.deleteMany({where:{id:{in:ids}}});
     await db.$disconnect();
   }

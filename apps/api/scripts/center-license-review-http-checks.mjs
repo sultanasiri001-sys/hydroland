@@ -64,7 +64,6 @@ export async function checkCenterLicenseReview(db,{base,a,b,ownerA,staff,ta,tb,t
   }finally{
     await db.roleAssignment.update({where:{accountId_role:{accountId:staff.id,role:'DIVE_CENTER'}},data:{status:'ACTIVE'}});
     await db.organizationMember.update({where:{organizationId_accountId:{organizationId:a.org.id,accountId:staff.id}},data:{role:'STAFF'}});
-    await db.auditEvent.deleteMany({where:{resourceId:{in:ids}}});
     if(recordId){await db.administrativeRouting.deleteMany({where:{recordId}});await db.administrativeRecord.delete({where:{id:recordId}});}
     if(unit)await db.orgUnit.delete({where:{id:unit.id}});
   }
