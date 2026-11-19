@@ -25,6 +25,13 @@ const people=[],accounts=[],extraAssets=[];let equipmentId=null,rentalId=null,co
 const makeAccount=async label=>{const person=await db.person.create({data:{firstName:'Equipment',lastName:label}});people.push(person);const account=await db.account.create({data:{personId:person.id,email:`equipment-${label.toLowerCase()}-${suffix}@example.invalid`,passwordHash,status:'ACTIVE',emailVerifiedAt:new Date()}});accounts.push(account);return account};
 
 try{
+  const collisionProbe=new EquipmentRentalService(db,new AuditService(db),{notify(){}});
+  const originalNow=Date.now;
+  try{
+    // Reproduce the prior millisecond-only invoice collision without changing server time.
+    Date.now=()=>1730000000000;
+    assert.notEqual(collisionProbe.invoiceNumber(),collisionProbe.invoiceNumber(),'Distinct rentals require unique invoice references even in one millisecond');
+  }finally{Date.now=originalNow;}
   const admin=await makeAccount('Admin'),renter=await makeAccount('Renter'),other=await makeAccount('Other');
   await db.roleAssignment.create({data:{accountId:admin.id,role:'ADMIN',status:'ACTIVE',scope:{}}});
   const [adminToken,renterToken,otherToken]=await Promise.all([admin,renter,other].map(login));
