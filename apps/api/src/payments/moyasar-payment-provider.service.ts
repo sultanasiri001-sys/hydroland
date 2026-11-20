@@ -18,18 +18,24 @@ export class MoyasarPaymentProviderService {
     const metadata={hydroland_payment_id:input.paymentId,hydroland_booking_id:input.bookingId};
     const payload={amount:input.amountMinor,currency:input.currency,description:`HYDROLAND booking ${input.bookingId}`,success_url:successUrl.toString(),back_url:backUrl.toString(),expired_at:new Date(Date.now()+30*60_000).toISOString(),metadata};
     const response=await this.request('/invoices',{method:'POST',body:JSON.stringify(payload)});
-    return this.invoice(response,input.amountMinor,input.currency,metadata);
+    return this.observeInvoice(response, {amount: input.amountMinor, currency: input.currency, metadata});
   }
 
   async fetchInvoice(invoiceId:string){
     this.assertProvider();
     if(!/^[0-9a-f-]{30,40}$/i.test(invoiceId))throw new BadRequestException('Invalid provider reference.');
-    return this.invoice(await this.request(`/invoices/${encodeURIComponent(invoiceId)}`),undefined,undefined,undefined);
+    const response = await this.request(`/invoices/${encodeURIComponent(invoiceId)}`);
+    return this.observeInvoice(response, {id: invoiceId});
   }
 
   async cancelInvoice(invoiceId:string){
     this.assertProvider();
-    try{await this.request(`/invoices/${encodeURIComponent(invoiceId)}/cancel`,{method:'PUT'});}catch{return false}return true;
+    try {
+      const response = await this.request(`/invoices/${encodeURIComponent(invoiceId)}/cancel`, {method:'PUT'}) as Record<string, unknown>;
+      const confirmed = response.id === invoiceId && response.status === 'canceled';
+      await this.integrations.recordProviderSignal('PAYMENT_PSP', confirmed ? 'SUCCESS' : 'PROVIDER_FAILURE');
+      return confirmed;
+    } catch { return false; }
   }
 
   verifyWebhook(payload:unknown):MoyasarWebhook{
@@ -64,8 +70,20 @@ export class MoyasarPaymentProviderService {
     let body:unknown;
     try{body=await response.json() as unknown;}catch{await this.integrations.recordProviderSignal('PAYMENT_PSP','PROVIDER_FAILURE');throw new ServiceUnavailableException('Payment provider returned an invalid response.');}
     if(!body||typeof body!=='object'||Array.isArray(body)){await this.integrations.recordProviderSignal('PAYMENT_PSP','PROVIDER_FAILURE');throw new ServiceUnavailableException('Payment provider returned an invalid response.');}
-    await this.integrations.recordProviderSignal('PAYMENT_PSP','SUCCESS');
     return body;
+  }
+
+  private async observeInvoice(payload: unknown, expected: {id?: string; amount?: number; currency?: string; metadata?: Record<string, string>}) {
+    let invoice: MoyasarInvoice;
+    try {
+      invoice = this.invoice(payload, expected.amount, expected.currency, expected.metadata);
+      if (expected.id && invoice.id !== expected.id) throw new ServiceUnavailableException('Payment provider reference mismatch.');
+    } catch (error) {
+      await this.integrations.recordProviderSignal('PAYMENT_PSP', 'PROVIDER_FAILURE');
+      throw error;
+    }
+    await this.integrations.recordProviderSignal('PAYMENT_PSP', 'SUCCESS');
+    return invoice;
   }
 
   private invoice(payload:unknown,expectedAmount?:number,expectedCurrency?:string,expectedMetadata?:Record<string,string>):MoyasarInvoice{

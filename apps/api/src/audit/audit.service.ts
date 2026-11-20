@@ -44,7 +44,7 @@ export class AuditService {
     const resourceId=`a06.provider.${provider}`;
     const state=category==='SUCCESS'?'AVAILABLE':'DEGRADED';
     return this.db.$transaction(async tx=>{
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${resourceId})::bigint)`;
+      await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${resourceId})::bigint)`;
       const latest=await tx.auditEvent.findFirst({
         where:{resource:'integration.provider.health',resourceId},
         orderBy:{occurredAt:'desc'},
