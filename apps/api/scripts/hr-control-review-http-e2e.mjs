@@ -45,6 +45,56 @@ try{
  let next=(await call(endpoint,mt,update)).body,stale=(await call(endpoint,mt,rival)).body;next=(await decision(rt,next,'REVIEW')).body;stale=(await decision(rt,stale,'REVIEW')).body;assert.equal((await policy()).metadata.regulatoryVersion,'isolated-v1','Effective controls stay unchanged while a revision is pending');
  assert.equal((await decision(at,next,'APPROVE')).status,201);assert.equal((await decision(at,stale,'APPROVE')).status,409);assert.equal((await policy()).metadata.regulatoryVersion,'isolated-v2');
  const history=await db.auditEvent.findMany({where:{action:'HR_CONTROL_APPLIED',resourceId:key},orderBy:{occurredAt:'desc'}});assert.equal(history[0].metadata.previousControl.metadata.regulatoryVersion,'isolated-v1');assert.deepEqual(history[0].metadata.control.evidenceIds,input.control.evidenceIds);
+
+ // Restore the prior approved content through a new, independently approved request.
+ // Read both policy views after each transition so a stale consumer cannot pass.
+ async function effectiveControl() {
+   const hrView = await call(endpoint, at);
+   const policyView = await call('/admin/policies?category=HR_COMPLIANCE', at);
+   assert.equal(hrView.status, 200);
+   assert.equal(policyView.status, 200);
+   const hrRow = hrView.body.controls.find(row => row.ruleKey === key);
+   const policyRow = policyView.body.find(row => row.ruleKey === key);
+   assert.equal(hrRow.regulatoryVersion, policyRow.metadata.regulatoryVersion);
+   assert.equal(hrRow.revision, policyRow.updatedAt);
+   assert.equal(policyRow.state, 'ENABLED');
+   return policyRow;
+ }
+ const activeVersion = await effectiveControl();
+ const previous = history[0].metadata.previousControl;
+ const rollback = draft({
+   ruleKey: previous.ruleKey, labelAr: previous.labelAr,
+   regulatoryRequirementId: previous.metadata.regulatoryRequirementId,
+   regulatoryVersion: previous.metadata.regulatoryVersion,
+   legalApprovalReference: previous.metadata.legalApprovalReference,
+   evidenceIds: previous.metadata.evidenceIds,
+ }, activeVersion.updatedAt);
+ rollback.reason = 'Restore prior approved content in the disposable HR control fixture';
+ const proposedRollback = await call(endpoint, mt, rollback);
+ assert.equal(proposedRollback.status, 201);
+ const reviewedRollback = await decision(rt, proposedRollback.body, 'REVIEW');
+ assert.equal(reviewedRollback.status, 201);
+ assert.equal((await effectiveControl()).updatedAt, activeVersion.updatedAt);
+ const approvedRollback = await decision(at, reviewedRollback.body, 'APPROVE');
+ assert.equal(approvedRollback.status, 201);
+ const restored = await effectiveControl();
+ assert.deepEqual(restored.metadata.evidenceIds, previous.metadata.evidenceIds);
+ assert.equal(restored.metadata.regulatoryVersion, previous.metadata.regulatoryVersion);
+ assert.equal(restored.metadata.regulatoryRequirementId, previous.metadata.regulatoryRequirementId);
+ assert.equal(restored.metadata.legalApprovalReference, previous.metadata.legalApprovalReference);
+ assert.equal(restored.metadata.approval.requestId, rollback.requestId);
+ assert(Date.parse(restored.updatedAt) > Date.parse(activeVersion.updatedAt));
+ await hr.assertProductionCompliance('APPROVE_APPOINTMENT');
+ const rollbackEvent = await db.auditEvent.findFirstOrThrow({
+   where: {action:'HR_CONTROL_APPLIED', resourceId:key, metadata:{path:['requestId'],equals:rollback.requestId}},
+ });
+ assert.equal(rollbackEvent.actorId, approver.personId);
+ assert.equal(rollbackEvent.metadata.previousControl.revision, activeVersion.updatedAt);
+ assert.equal(rollbackEvent.metadata.previousControl.metadata.regulatoryVersion, 'isolated-v2');
+ console.log(JSON.stringify({suite:'A16_HR_CONTROL_ROLLBACK', scope:'disposable HTTP/PostgreSQL',
+   before:first.updatedAt.toISOString(), effective:activeVersion.updatedAt, restored:restored.updatedAt,
+   revisions:['isolated-v1','isolated-v2',restored.metadata.regulatoryVersion],
+   independentApproval:true, consumers:['employee compliance controls','policy catalog'], rollbackAuditId:rollbackEvent.id}));
  const rejected=draft({ruleKey:otherKey});let denied=(await call(endpoint,mt,rejected)).body;assert.equal((await decision(rt,denied,'REJECT')).body.status,'REJECTED');assert.equal((await decision(at,denied,'REVIEW')).status,409);assert.equal(await db.policyControl.count({where:{category:'HR_COMPLIANCE',ruleKey:otherKey}}),0);
  const concurrent=draft({ruleKey:otherKey});const receipts=await Promise.all([call(endpoint,mt,concurrent),call(endpoint,mt,concurrent)]);assert.deepEqual(receipts.map(r=>r.status),[201,201]);assert.equal(receipts[0].body.id,receipts[1].body.id);assert.equal(await db.auditEvent.count({where:{action:'HR_CONTROL_PROPOSED',resourceId:otherKey}}),2);
  await db.roleAssignment.update({where:{accountId_role:{accountId:approver.id,role:'ADMIN'}},data:{status:'SUSPENDED'}});assert.equal((await call(endpoint,at)).status,403);await assert.rejects(()=>service.list(approver.id),e=>e.getStatus?.()===403);
