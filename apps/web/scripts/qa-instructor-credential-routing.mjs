@@ -49,8 +49,8 @@ async function portal(account,role){
   const page=await context.newPage();page.setDefaultTimeout(15000);
   page.on('dialog',async dialog=>{console.log(role+' UI dialog');await dialog.accept();});
   await page.goto(web,{waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandMarineDocuments));
-  await page.evaluate(async()=>{window.HydrolandAuth.syncAuthUi();await window.HydrolandProfile.load();});
+  await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandMarineDocuments && window.HydrolandWorkspaceUI && document.querySelector('.hl-members')));
+  await page.evaluate(async()=>{window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));await window.HydrolandProfile.load();});
   return page;
 }
 
@@ -65,7 +65,12 @@ try {
   const page = await portal(trainer,'trainer');
   const certs = page.locator('.hl-certificates');
   await page.locator('#navigation [data-hl-action="certs"]').click();
-  await certs.locator('.hl-member-actions button').first().click();
+  const add = certs.locator('[data-member-action="credential-add"]');
+  if (!(await add.isVisible())) {
+    await page.locator('#navigation [data-hl-action="certs"]').click();
+  }
+  await expect(add).toBeVisible();
+  await add.click();
   const editor = page.locator('#hl-credential-editor');
   const title = 'QA instructor qualification ' + run;
   await editor.locator('[name="issuer"]').fill('SYNTHETIC QA');
