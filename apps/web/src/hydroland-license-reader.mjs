@@ -16,7 +16,7 @@
   const localError=message=>{const error=new Error(String(message));authoredErrors.set(error,message);return error;};
   const localErrorMessage=error=>authoredErrors.get(error) ?? error?.message;
 
-import {extractFields} from './hydroland-license-fields.mjs';
+import {extractFields, uncertainOcrLines} from './hydroland-license-fields.mjs';
 export async function readLicense(file,{signal,onProgress=()=>{}}={}){
   const controller=new AbortController();let rejectCancellation;
   const cancellation=new Promise((_,reject)=>{rejectCancellation=reject});
@@ -29,6 +29,7 @@ export async function readLicense(file,{signal,onProgress=()=>{}}={}){
 async function read(file,{signal,onProgress}){
   if(!file?.size||file.size>2000000||!['application/pdf','image/png','image/jpeg'].includes(file.type))throw localError(uiLocale.message('اختر صورة PNG أو JPEG أو ملف PDF حتى 2 ميجابايت.'));
   let worker,loadingTask,pdf;
+  const uncertainLines=[];
   const aborted=()=>{if(signal?.aborted)throw new DOMException('Cancelled','AbortError')};
   const cancel=()=>{void worker?.terminate();void loadingTask?.destroy()};
   signal?.addEventListener('abort',cancel,{once:true});
@@ -40,7 +41,10 @@ async function read(file,{signal,onProgress}){
       worker=await Tesseract.createWorker('ara+eng',1,{workerPath:'/vendor/license-reader/worker.min.js',corePath:'/vendor/license-reader/core',langPath:'/vendor/license-reader/lang',workerBlobURL:false,logger:message=>{if(!signal?.aborted&&message.status==='recognizing text')onProgress(uiLocale.message("جارٍ قراءة النص… {0}٪", [Math.round(message.progress*100)]))}});
       if(signal.aborted){await worker.terminate();aborted()}
     }
-    const {data}=await worker.recognize(canvas);aborted();return data.text;
+    const {data}=await worker.recognize(canvas, {}, {blocks:true});
+    aborted();
+    uncertainLines.push(...uncertainOcrLines(data));
+    return data.text;
   };
   try{
     let text='';aborted();
@@ -65,7 +69,7 @@ async function read(file,{signal,onProgress}){
       const bitmap=await createImageBitmap(file);aborted();
       try{const scale=Math.min(1,Math.sqrt(4000000/(bitmap.width*bitmap.height))),canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);text=await recognize(canvas);canvas.width=canvas.height=0}finally{bitmap.close()}
     }
-    aborted();return extractFields(text);
+    aborted();return extractFields(text, uncertainLines);
   }finally{signal?.removeEventListener('abort',cancel);await worker?.terminate();await loadingTask?.destroy()}
 }
 
