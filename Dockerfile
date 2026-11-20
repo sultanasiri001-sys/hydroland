@@ -30,6 +30,7 @@ COPY --from=runtime-dependencies --chown=node:node /app/apps/api/node_modules ./
 COPY --from=build --chown=node:node /app/node_modules/@prisma/engines ./node_modules/@prisma/engines
 COPY --from=build --chown=node:node /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build --chown=node:node /app/apps/api/package.json ./apps/api/package.json
+COPY --from=build --chown=node:node /app/apps/api/d12-audit-sources.json ./apps/api/d12-audit-sources.json
 COPY --from=build --chown=node:node /app/apps/api/dist ./apps/api/dist
 COPY --from=build --chown=node:node /app/apps/api/prisma ./apps/api/prisma
 COPY --from=build --chown=node:node /app/apps/api/scripts ./apps/api/scripts
