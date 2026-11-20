@@ -32,6 +32,10 @@ export async function profilePrivacyAcceptance({db,base}){
       const {response,body}=await call(account,'/me/data-export','POST',{});
       assert.equal(response.status,201);assert.equal(response.headers.get('cache-control'),'private, no-store');
       assert.match(response.headers.get('content-disposition'),/attachment; filename="hydroland-account-profile.json"/);
+      assert.equal(body.retentionPolicy.version,'0.1');
+      assert.equal(body.retentionPolicy.effectiveFrom,null);
+      assert.equal(body.retentionPolicy.automaticDeletionAuthorized,false);
+      assert.equal(body.retentionPolicy.rules[0].basis,'DURATION_OF_ACCOUNT_SERVICE');
       assert.equal(body.data.id,account.id);assert.equal(body.data.email,account.email);
       assert.equal(body.completePlatformExport,false);assert(body.excludedDomains.includes('PAYMENTS'));
       const other=account===a?b:a,text=JSON.stringify(body);
@@ -97,11 +101,15 @@ async function verifyTripRecords(db, call, owner, other) {
     await payment(foreign.id,other.id);await payment(group.id,owner.id);await payment(ids[0],other.id);
     const first = await exportPage(owner,{domain:'BOOKINGS'});
     assert.equal(first.response.status,201);assert.equal(first.response.headers.get('cache-control'),'private, no-store');
+    assert.equal(first.body.retentionPolicy.rules[0].months,12);
+    assert.equal(first.body.retentionPolicy.rules[0].startEvent,'LATEST_OF_COMPLETION_CANCELLATION_SETTLEMENT');
     assert.deepEqual(first.body.records.map(row=>row.id),ids.slice(0,100));
     const second = await exportPage(owner,{domain:'BOOKINGS',after:first.body.nextCursor});
     assert.deepEqual(second.body.records.map(row=>row.id),ids.slice(100));assert.equal(second.body.nextCursor,null);
     const {body}=await exportPage(owner,{domain:'PAYMENTS'});
     assert.equal(body.completePlatformExport,false);assert.equal(body.accountId,owner.id);
+    assert.deepEqual(body.retentionPolicy.rules.map(rule=>[rule.basis,rule.years]),[['CONDITIONAL_MINIMUM',10],['CONDITIONAL_MINIMUM',6]]);
+    assert.equal(body.retentionPolicy.recordLevelDispositionAssessed,false);
     assert.deepEqual(body.records.map(row=>row.id),[owned.id]);assert.equal(body.records[0].amountMinor,1280);
     assert.deepEqual(Object.keys(body.records[0]).sort(),['id','bookingId','amountMinor','currency','status','createdAt','updatedAt'].sort());
     const {receipt,...snapshot}=body;
@@ -156,6 +164,9 @@ async function verifySentMessages(db, call, owner, other) {
     }
     assert.deepEqual((await page(other)).body.records.map(row=>row.id),[received.body.id]);
     const {receipt,...snapshot}=first.body;
+    const [tripRule, privateRule] = snapshot.retentionPolicy.rules;
+    assert.equal(tripRule.days,90);assert.equal(tripRule.appliesWhen,'TRIP_COORDINATION_CONVERSATION');
+    assert.equal(privateRule.basis,'REQUIRES_SEPARATE_PRODUCT_DECISION');assert.equal(privateRule.days,undefined);
     assert.equal(snapshot.accountId,owner.id);assert.equal(snapshot.schemaVersion,'PERSONAL_SENT_MESSAGES_V1');
     assert.equal(receipt.sha256,createHash('sha256').update(JSON.stringify(snapshot)).digest('hex'));
     const audit=await db.auditEvent.findUniqueOrThrow({where:{id:receipt.auditEventId}});

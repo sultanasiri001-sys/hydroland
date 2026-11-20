@@ -42,7 +42,7 @@ export class MarineRegistrationService {
       if(duplicates.length)throw new ConflictException('رقم التسجيل مستخدم؛ راجع السجل الموجود بدل إنشاء تعارض.');
       const reviewed=s.asset.documents.filter(d=>d.status==='VERIFIED').map(d=>d.id);
       await tx.marineAsset.update({where:{id},data:{registrationNumber:input.registrationNumber}});
-      await tx.marineAssetDocument.updateMany({where:{marineAssetId:id,status:'VERIFIED'},data:{status:'PENDING',verifiedAt:null}});
+      await tx.marineAssetDocument.updateMany({where:{marineAssetId:id,status:{in:['VERIFIED','PLATFORM_PENDING','ON_HOLD']}},data:{status:'PENDING',verifiedAt:null,centerApprovedBy:null,reviewNote:null}});
       await tx.marineReadinessSnapshot.create({data:{marineAssetId:id,status:'NOT_READY',checkedByAccountId:actorId,reasonCodes:['REGISTRATION_IDENTITY_CHANGED','DOCUMENT_REVIEW_REQUIRED']}});
       const audit=await tx.auditEvent.create({data:{actorId:s.authority.ownerPersonId,action:'MARINE_REGISTRATION_CORRECTED',resource:'MarineAsset',resourceId:id,metadata:{accountId:actorId,previousRegistrationNumber:s.asset.registrationNumber,registrationNumber:input.registrationNumber,reason:input.reason,expectedRevision:s.revision,documentsReturnedForReview:reviewed,activated:false}}});
       return {reference:'MRC-'+audit.id,marineAssetId:id,registrationNumber:input.registrationNumber,documentsReturnedForReview:reviewed.length,activated:false,notice:REGISTRATION_CORRECTION_NOTICE};

@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
+import { exportRetentionPolicy } from './export-retention-policy';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 
@@ -61,7 +62,7 @@ export class ProfileService {
         roleAssignments:{select:{role:true,status:true,activeAt:true,endedAt:true,createdAt:true,updatedAt:true},orderBy:{role:'asc'}},
       }});
       if(!account||account.status!=='ACTIVE')throw new UnauthorizedException('الحساب غير متاح.');
-      const snapshot={schemaVersion:'ACCOUNT_PROFILE_EXPORT_V1',exportedAt:new Date().toISOString(),scope:['ACCOUNT','PERSON','PROFESSIONAL_PROFILE','ROLE_ASSIGNMENTS'],completePlatformExport:false,excludedDomains:['BOOKINGS','PAYMENTS','MESSAGES','CREDENTIAL_FILES','DIVER_MEDICAL_AND_EMERGENCY_CONTACTS','ORGANIZATION_RECORDS'],data:account};
+      const snapshot={schemaVersion:'ACCOUNT_PROFILE_EXPORT_V1',exportedAt:new Date().toISOString(),scope:['ACCOUNT','PERSON','PROFESSIONAL_PROFILE','ROLE_ASSIGNMENTS'],completePlatformExport:false,retentionPolicy:exportRetentionPolicy('ACCOUNT'),excludedDomains:['BOOKINGS','PAYMENTS','MESSAGES','CREDENTIAL_FILES','DIVER_MEDICAL_AND_EMERGENCY_CONTACTS','ORGANIZATION_RECORDS'],data:account};
       const sha256=createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
       const receipt=await this.audit.record({actorId:accountId,action:'ACCOUNT_PROFILE_EXPORTED',resource:'Account',resourceId:accountId,metadata:{schemaVersion:snapshot.schemaVersion,scope:snapshot.scope,sha256}},tx);
       return {...snapshot,receipt:{auditEventId:receipt.id,sha256}};
@@ -119,6 +120,7 @@ export class ProfileService {
       const snapshot = {
         schemaVersion: domain === 'SENT_MESSAGES' ? 'PERSONAL_SENT_MESSAGES_V1' : 'PERSONAL_TRIP_RECORDS_V1',
         accountId, domain, exportedAt: new Date().toISOString(),
+        retentionPolicy: exportRetentionPolicy(domain),
         completePlatformExport: false, records, nextCursor: rows.length > pageSize ? records[pageSize - 1].id : null,
       };
       const sha256 = createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
