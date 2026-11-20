@@ -153,6 +153,23 @@ jobs:
         env:
           A06_DB_TEST: DISPOSABLE_LOOPBACK
         run: node apps/api/scripts/render-provider-observer-db.cjs
+      - name: Exercise A15 center escalation, executive report and outcome delivery
+        env:
+          PRIVACY_GRIEVANCE_E2E_BASE_URL: http://127.0.0.1:3175/api/v1
+          PORT: 3175
+          NODE_ENV: test
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE grievance_test'
+          export DATABASE_URL=postgresql://hydroland:hydroland@localhost:5432/grievance_test
+          npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'DROP TABLE "PrivacyGrievance"' -f apps/api/prisma/migrations/20261120214500_privacy_grievance/migration.sql
+          node apps/api/scripts/bootstrap-messaging-runtime-schema.mjs
+          export JWT_SECRET="$(openssl rand -hex 36)"
+          node apps/api/dist/main.js > "$RUNNER_TEMP/grievance-api.log" 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" 2>/dev/null || true' EXIT
+          curl --fail --silent --retry 35 --retry-connrefused --retry-delay 1 "$PRIVACY_GRIEVANCE_E2E_BASE_URL/health"
+          node apps/api/scripts/privacy-grievance-http-checks.mjs
       - name: Read-only training standard adoption preflight
         run: node --test apps/api/scripts/training-standard-readiness.test.cjs
       - name: Account profile correction and scoped export boundaries

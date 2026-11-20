@@ -54,3 +54,57 @@ test('rejects tampered claims and unavailable signing keys',async()=>{
   await assert.rejects(verifyA06GitHubActionsToken(tampered,fetchJwks(),now),/A06_OIDC_TOKEN_INVALID/);
   await assert.rejects(verifyA06GitHubActionsToken(valid,async()=>new Response('{}',{status:503}),now),/A06_OIDC_TOKEN_INVALID/);
 });
+
+// The secondary observer on Render reads public workflow evidence without an OIDC token.
+const { scheduleSignal, notificationDecision, escalationMs, isProductionProviderMonitor } = await import('../src/health/a06-schedule-evidence.ts');
+const scheduled = {
+  id: 2101, run_attempt: 1, path: '.github/workflows/a06-provider-watch.yml',
+  repository: { full_name: 'sultanasiri001-sys/hydroland' },
+  head_branch: 'main', event: 'schedule', status: 'completed', conclusion: 'success',
+  created_at: new Date(now - 120_000).toISOString(), run_started_at: new Date(now - 119_000).toISOString(),
+};
+function runList(runs, total = runs.length, original) {
+  return async url => {
+    const u = new URL(url);
+    assert.equal(u.origin, 'https://api.github.com');
+    if (u.pathname.endsWith('/attempts/1')) return Response.json(original);
+    assert.equal(u.searchParams.get('event'), 'schedule');
+    assert.equal(u.searchParams.get('branch'), 'main');
+    return Response.json({ total_count: total, workflow_runs: runs });
+  };
+}
+test('independent clock separates recent success, missing schedule and unavailable evidence', async () => {
+  assert.equal(await scheduleSignal(now, runList([scheduled])), 'CURRENT');
+  assert.equal(await scheduleSignal(now, runList([])), 'SCHEDULE_GAP');
+  assert.equal(await scheduleSignal(now, runList([{ ...scheduled, status: 'queued', conclusion: null }])), 'SCHEDULE_GAP');
+  assert.equal(await scheduleSignal(now, runList([], 2)), 'EVIDENCE_UNAVAILABLE');
+  assert.equal(await scheduleSignal(now, async () => new Response(null, { status: 429 })), 'EVIDENCE_UNAVAILABLE');
+  assert.equal(await scheduleSignal(now, runList([{ ...scheduled, event: 'workflow_dispatch' }])), 'EVIDENCE_UNAVAILABLE');
+});
+test('a successful rerun cannot refresh a failed or stale original schedule', async () => {
+  const retry = { ...scheduled, run_attempt: 2 };
+  assert.equal(await scheduleSignal(now, runList([retry], 1, { ...scheduled, conclusion: 'failure' })), 'SCHEDULE_GAP');
+  const stale = new Date(now - 31 * 60_000).toISOString();
+  assert.equal(await scheduleSignal(now, runList([retry], 1, { ...scheduled, created_at: stale, run_started_at: stale })), 'SCHEDULE_GAP');
+  assert.equal(await scheduleSignal(now, runList([retry], 1, scheduled)), 'CURRENT');
+});
+test('a sustained unreadable source or a verified gap sends one alert until original scheduling recovers', () => {
+  const start = notificationDecision(undefined, 'EVIDENCE_UNAVAILABLE', now);
+  assert.equal(start.send, false);
+  assert.equal(notificationDecision(start.state, 'EVIDENCE_UNAVAILABLE', now + escalationMs - 1).send, false);
+  const escalated = notificationDecision(start.state, 'EVIDENCE_UNAVAILABLE', now + escalationMs);
+  assert.equal(escalated.send, true);
+  assert.equal(notificationDecision(escalated.state, 'SCHEDULE_GAP', now + escalationMs).send, false);
+  const recovered = notificationDecision(escalated.state, 'CURRENT', now + escalationMs);
+  assert.deepEqual(recovered.state, { unavailableSince: null, notified: false });
+  assert.equal(notificationDecision(recovered.state, 'SCHEDULE_GAP', now + 2 * escalationMs).send, true);
+});
+
+test('only the canonical production API starts either Render observer', () => {
+  const production = { NODE_ENV: 'production', RENDER_SERVICE_ID: 'srv-dakelt142hec73aavvsg' };
+  assert.equal(isProductionProviderMonitor(production), true);
+  for (const env of [{ RENDER: 'true', NODE_ENV: 'production' }, { ...production, RENDER_SERVICE_ID: 'srv-uat' },
+    { ...production, RENDER_SERVICE_ID: 'crn-recovery' }, { ...production, NODE_ENV: 'test' }]) {
+    assert.equal(isProductionProviderMonitor(env), false);
+  }
+});

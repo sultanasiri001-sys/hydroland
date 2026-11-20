@@ -1,7 +1,7 @@
 name: A06 provider health monitor
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '3,18,33,48 * * * *'
   workflow_dispatch:
 
 permissions:

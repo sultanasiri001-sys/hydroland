@@ -3,6 +3,8 @@ import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 
+import { isProductionProviderMonitor } from './a06-schedule-evidence';
+
 const cadenceMs = 15 * 60_000;
 const monitor = 'integration.provider.monitor.render';
 const resourceId = 'quarter-hour';
@@ -16,7 +18,7 @@ export class RenderProviderObserver implements OnApplicationBootstrap, OnModuleD
   constructor(private readonly db: DatabaseService, private readonly audit: AuditService) {}
 
   onApplicationBootstrap() {
-    if (process.env.RENDER !== 'true' || process.env.NODE_ENV !== 'production') return;
+    if (!isProductionProviderMonitor()) return;
     this.poll();
     this.timer = setInterval(() => this.poll(), 60_000);
     this.timer.unref();
