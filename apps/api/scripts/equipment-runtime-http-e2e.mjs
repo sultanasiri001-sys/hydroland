@@ -235,10 +235,32 @@ try{
   assert.equal(await db.notification.count({where:{accountId:renter.id,type:'EQUIPMENT_RENTAL_HANDED_OVER',payload:{path:['rentalId'],equals:rentalId}}}),1);
 
   const requestedUntil=new Date(Date.now()+4*86400000).toISOString();
+  const extensionState = () => db.$queryRaw`
+    SELECT "extensionRequestedUntil", "extensionStatus", "extensionRequestedAt", "extensionReviewedAt", "extensionReviewedByAccountId", "dueAt"
+    FROM "EquipmentRental" WHERE "id"=${rentalId}`;
+  const initialExtensionState = await extensionState();
+  const failedExtensionNotification = new EquipmentRentalService(db, audit, {
+    notify() { throw new Error('Synthetic extension request notification failure'); }
+  });
+  await assert.rejects(failedExtensionNotification.requestExtension(renter.id, rentalId, {requestedUntil}), /Synthetic extension request notification failure/);
+  assert.deepEqual(await extensionState(), initialExtensionState, 'Failed extension notice must roll back the request');
+  assert.equal(await db.auditEvent.count({where:{resourceId:rentalId,action:'EQUIPMENT_RENTAL_EXTENSION_REQUESTED'}}), 0);
+  const failedExtensionAudit = new EquipmentRentalService(db, {
+    record() { throw new Error('Synthetic extension request audit failure'); }
+  }, new NotificationsService(db));
+  await assert.rejects(failedExtensionAudit.requestExtension(renter.id, rentalId, {requestedUntil}), /Synthetic extension request audit failure/);
+  assert.deepEqual(await extensionState(), initialExtensionState, 'Failed extension receipt must roll back the request');
+  assert.equal(await db.notification.count({where:{accountId:admin.id,type:'EQUIPMENT_RENTAL_EXTENSION_REQUEST',payload:{path:['rentalId'],equals:rentalId}}}), 0);
   response=await fetch(`${base}/trips/equipment-rentals/${encodeURIComponent(rentalId)}/extension-request`,{method:'POST',headers:{...auth(otherToken),'content-type':'application/json'},body:JSON.stringify({requestedUntil})});
   if(response.status!==404)throw new Error(`Cross-user extension request expected 404, got ${response.status}`);
-  response=await fetch(`${base}/trips/equipment-rentals/${encodeURIComponent(rentalId)}/extension-request`,{method:'POST',headers:{...auth(renterToken),'content-type':'application/json'},body:JSON.stringify({requestedUntil})});
-  rental=await json(response);if(rental.extensionStatus!=='PENDING')throw new Error('Extension request not persisted as PENDING');
+  const requestExtension = () => fetch(`${base}/trips/equipment-rentals/${encodeURIComponent(rentalId)}/extension-request`,{method:'POST',headers:{...auth(renterToken),'content-type':'application/json'},body:JSON.stringify({requestedUntil})});
+  const extensionRequests = await Promise.all((await Promise.all([requestExtension(),requestExtension()])).map(json));
+  rental=extensionRequests[0];if(extensionRequests.some(row=>row.extensionStatus!=='PENDING'))throw new Error('Extension request not persisted as PENDING');
+  assert.equal(await db.auditEvent.count({where:{resourceId:rentalId,action:'EQUIPMENT_RENTAL_EXTENSION_REQUESTED'}}), 1);
+  assert.equal(await db.notification.count({where:{accountId:admin.id,type:'EQUIPMENT_RENTAL_EXTENSION_REQUEST',payload:{path:['rentalId'],equals:rentalId}}}), 1);
+  const pendingExtensionState = await extensionState();
+  await json(await requestExtension());
+  assert.deepEqual(await extensionState(), pendingExtensionState, 'Exact extension replay must preserve its original request timestamps');
   if (new Date(rental.extensionRequestedUntil).getTime() !== Date.parse(requestedUntil)) throw new Error('Pending extension must preserve the requested instant.');
   const reviewExtension = () => fetch(base+'/trips/equipment-rentals/'+rentalId+'/extension-review',{
     method:'POST', headers:{...auth(adminToken),'content-type':'application/json'}, body:JSON.stringify({decision:'APPROVED'}),
@@ -250,8 +272,28 @@ try{
   response=await fetch(`${base}/trips/equipment-rentals/${encodeURIComponent(rentalId)}/extension-review`,{method:'POST',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({decision:'APPROVED'})});
   rental=await json(response);if(rental.extensionStatus!=='APPROVED'||new Date(rental.dueAt).getTime()!==new Date(requestedUntil).getTime())throw new Error('Extension approval did not persist new due date');
 
-  response=await fetch(`${base}/trips/equipment-rentals/${encodeURIComponent(rentalId)}/return-intent`,{method:'POST',headers:auth(renterToken)});const intent=await json(response);
-  if(intent.status!=='RETURN_INTENT_RECORDED')throw new Error('Return intent was not recorded');
+  const returnIntentState = () => db.$queryRaw`SELECT "returnIntentAt" FROM "EquipmentRental" WHERE "id"=${rentalId}`;
+  const initialReturnIntentState = await returnIntentState();
+  const failedReturnIntentNotification = new EquipmentRentalService(db, audit, {
+    notify() { throw new Error('Synthetic return intent notification failure'); }
+  });
+  await assert.rejects(failedReturnIntentNotification.returnIntent(renter.id,rentalId), /Synthetic return intent notification failure/);
+  assert.deepEqual(await returnIntentState(), initialReturnIntentState, 'Failed return notice must roll back the intent');
+  const failedReturnIntentAudit = new EquipmentRentalService(db, {
+    record() { throw new Error('Synthetic return intent audit failure'); }
+  }, new NotificationsService(db));
+  await assert.rejects(failedReturnIntentAudit.returnIntent(renter.id,rentalId), /Synthetic return intent audit failure/);
+  assert.deepEqual(await returnIntentState(), initialReturnIntentState, 'Failed return receipt must roll back the intent');
+  assert.equal(await db.notification.count({where:{accountId:admin.id,type:'EQUIPMENT_RENTAL_RETURN_INTENT',payload:{path:['rentalId'],equals:rentalId}}}), 0);
+  const recordReturnIntent = (token=renterToken) => fetch(`${base}/trips/equipment-rentals/${encodeURIComponent(rentalId)}/return-intent`,{method:'POST',headers:auth(token)});
+  assert.equal((await recordReturnIntent(otherToken)).status, 404);
+  const intents = await Promise.all((await Promise.all([recordReturnIntent(),recordReturnIntent()])).map(json));
+  if(intents.some(intent=>intent.status!=='RETURN_INTENT_RECORDED'))throw new Error('Return intent was not recorded');
+  assert.equal(await db.auditEvent.count({where:{resourceId:rentalId,action:'EQUIPMENT_RENTAL_RETURN_INTENT'}}), 1);
+  assert.equal(await db.notification.count({where:{accountId:admin.id,type:'EQUIPMENT_RENTAL_RETURN_INTENT',payload:{path:['rentalId'],equals:rentalId}}}), 1);
+  const recordedReturnIntentState = await returnIntentState();
+  await json(await recordReturnIntent());
+  assert.deepEqual(await returnIntentState(), recordedReturnIntentState, 'Return intent replay must preserve its first timestamp');
   const returnInput={code:assetCode,condition:'OK',toLocation:'WAREHOUSE-A'};
   // Fail the final notification in process while all inventory and audit writes use the real test database.
   const failing=new EquipmentRentalService(db,new AuditService(db),{notify(){throw new Error('Synthetic return notification failure');}});
@@ -281,6 +323,11 @@ try{
   if(returned[0]?.stockStatus!=='AVAILABLE'||returned[0]?.location!=='WAREHOUSE-A')throw new Error('Returned equipment did not persist AVAILABLE warehouse state');
   const persistedRental=await db.$queryRawUnsafe(`SELECT "status","paymentStatus","extensionStatus","returnIntentAt","returnedAt" FROM "EquipmentRental" WHERE "id"=$1 LIMIT 1`,rentalId);
   if(persistedRental[0]?.status!=='RETURNED'||persistedRental[0]?.paymentStatus!=='PAID'||persistedRental[0]?.extensionStatus!=='APPROVED'||!persistedRental[0]?.returnIntentAt||!persistedRental[0]?.returnedAt)throw new Error('Final rental lifecycle persistence mismatch');
+  const closedExtensionState = await extensionState();
+  assert.equal((await requestExtension()).status, 409, 'Returned rental cannot accept an extension request');
+  assert.equal((await recordReturnIntent()).status, 409, 'Returned rental cannot accept a new return intent');
+  assert.deepEqual(await extensionState(), closedExtensionState);
+  assert.deepEqual(await returnIntentState(), recordedReturnIntentState);
 
   const afterReturn=await json(await confirm(competingId));
   if(afterReturn.paymentStatus!=='PAID')throw new Error('Return must release the asset for a subsequent rental');

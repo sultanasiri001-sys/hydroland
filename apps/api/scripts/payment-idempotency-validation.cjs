@@ -6,6 +6,24 @@ const { PaymentsService } = require('../dist/payments/payments.service');
 
 global.fetch = () => { throw new Error('Network is forbidden in payment idempotency regressions'); };
 
+test('invalid checkout identifiers return 400 before any dependency or provider access', async () => {
+  const accesses = [];
+  const forbidden = new Proxy({}, {
+    get(_target, property) {
+      accesses.push(String(property));
+      throw new Error('Invalid checkout input must not access dependencies');
+    },
+  });
+  const service = new PaymentsService(forbidden, forbidden, forbidden, forbidden, forbidden);
+  for (const field of ['bookingId', 'idempotencyKey']) {
+    for (const value of [undefined, null, '', ' ', 42, true, {}, [], ['identifier']]) {
+      const input = { bookingId: 'booking-1', idempotencyKey: 'request-1', [field]: value };
+      await assert.rejects(() => service.create('buyer-1', input), error => error.getStatus?.() === 400);
+    }
+  }
+  assert.deepEqual(accesses, [], 'invalid input must not read or mutate any financial dependency');
+});
+
 const key = 'shared-checkout-request';
 const now = new Date('2026-01-01T00:00:00Z');
 const payment = (patch = {}) => ({

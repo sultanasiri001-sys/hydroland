@@ -102,9 +102,26 @@ export class EquipmentRentalService{
   }
 
   async requestExtension(accountId:string,id:string,input:{requestedUntil?:string}){
-    const rental=await this.getMine(accountId,id);if(rental.status!=='ACTIVE')throw new ConflictException('Only active rentals can be extended.');const requestedUntil=this.parseDate(input.requestedUntil,'Requested extension date');if(!requestedUntil||requestedUntil.getTime()<=Date.now()||rental.dueAt&&requestedUntil.getTime()<=new Date(rental.dueAt).getTime())throw new BadRequestException('Extension date must be later than the current due date.');
-    await this.db.$executeRaw`UPDATE "EquipmentRental" SET "extensionRequestedUntil"=(${requestedUntil}::timestamptz AT TIME ZONE 'UTC'),"extensionStatus"='PENDING',"extensionRequestedAt"=NOW(),"extensionReviewedAt"=NULL,"extensionReviewedByAccountId"=NULL,"updatedAt"=NOW() WHERE "id"=${id}`;
-    await this.notifications.notify(rental.createdByAccountId,'EQUIPMENT_RENTAL_EXTENSION_REQUEST',{title:'طلب تمديد إيجار معدات',invoiceNumber:rental.invoiceNumber,rentalId:id,renterAccountId:accountId,currentDueAt:rental.dueAt,requestedUntil:requestedUntil.toISOString(),message:'الغواص طلب تمديد مدة إيجار المعدات.'});await this.audit.record({actorId:accountId,action:'EQUIPMENT_RENTAL_EXTENSION_REQUESTED',resource:'EquipmentRental',resourceId:id,metadata:{invoiceNumber:rental.invoiceNumber,currentDueAt:rental.dueAt,requestedUntil:requestedUntil.toISOString()}});return this.getMine(accountId,id);
+    await this.db.serializable(async tx => {
+      const [rental] = await tx.$queryRaw<RentalRow[]>`
+        SELECT * FROM "EquipmentRental" WHERE "id"=${id} AND "renterAccountId"=${accountId} FOR UPDATE`;
+      if (!rental) throw new NotFoundException('Rental not found.');
+      if (rental.status !== 'ACTIVE') throw new ConflictException('Only active rentals can be extended.');
+      const requestedUntil = this.parseDate(input.requestedUntil, 'Requested extension date');
+      if (!requestedUntil || requestedUntil.getTime() <= Date.now() ||
+          rental.dueAt && requestedUntil.getTime() <= rental.dueAt.getTime()) {
+        throw new BadRequestException('Extension date must be later than the current due date.');
+      }
+      if (rental.extensionStatus === 'PENDING' && rental.extensionRequestedUntil?.getTime() === requestedUntil.getTime()) return;
+      await tx.$executeRaw`UPDATE "EquipmentRental" SET "extensionRequestedUntil"=(${requestedUntil}::timestamptz AT TIME ZONE 'UTC'),"extensionStatus"='PENDING',"extensionRequestedAt"=NOW(),"extensionReviewedAt"=NULL,"extensionReviewedByAccountId"=NULL,"updatedAt"=NOW() WHERE "id"=${id}`;
+      await this.notifications.notify(rental.createdByAccountId,'EQUIPMENT_RENTAL_EXTENSION_REQUEST',{
+        title:'طلب تمديد إيجار معدات',invoiceNumber:rental.invoiceNumber,rentalId:id,renterAccountId:accountId,
+        currentDueAt:rental.dueAt,requestedUntil:requestedUntil.toISOString(),message:'الغواص طلب تمديد مدة إيجار المعدات.'
+      },tx);
+      await this.audit.record({actorId:accountId,action:'EQUIPMENT_RENTAL_EXTENSION_REQUESTED',resource:'EquipmentRental',
+        resourceId:id,metadata:{invoiceNumber:rental.invoiceNumber,currentDueAt:rental.dueAt,requestedUntil:requestedUntil.toISOString()}},tx);
+    });
+    return this.getMine(accountId,id);
   }
 
   async reviewExtension(actorAccountId: string, id: string, input: {decision?: 'APPROVED' | 'REJECTED'}) {
@@ -137,7 +154,26 @@ export class EquipmentRentalService{
     return this.get(id);
   }
 
-  async returnIntent(accountId:string,id:string){const rental=await this.getMine(accountId,id);if(rental.status!=='ACTIVE')throw new ConflictException('Only active rentals can be returned.');await this.db.$executeRaw`UPDATE "EquipmentRental" SET "returnIntentAt"=NOW(),"updatedAt"=NOW() WHERE "id"=${id}`;await this.notifications.notify(rental.createdByAccountId,'EQUIPMENT_RENTAL_RETURN_INTENT',{title:'الغواص سيعيد معدات التأجير',invoiceNumber:rental.invoiceNumber,rentalId:id,renterAccountId:accountId,pendingReturnCount:rental.pendingReturnCount,message:'الغواص اختار إعادة المعدات. أكمل الاستلام في المستودع بمسح الباركود.'});await this.audit.record({actorId:accountId,action:'EQUIPMENT_RENTAL_RETURN_INTENT',resource:'EquipmentRental',resourceId:id,metadata:{invoiceNumber:rental.invoiceNumber,pendingReturnCount:rental.pendingReturnCount}});return{status:'RETURN_INTENT_RECORDED',rentalId:id};}
+  async returnIntent(accountId:string,id:string){
+    await this.db.serializable(async tx => {
+      const [rental] = await tx.$queryRaw<RentalRow[]>`
+        SELECT * FROM "EquipmentRental" WHERE "id"=${id} AND "renterAccountId"=${accountId} FOR UPDATE`;
+      if (!rental) throw new NotFoundException('Rental not found.');
+      if (rental.status !== 'ACTIVE') throw new ConflictException('Only active rentals can be returned.');
+      if (rental.returnIntentAt) return;
+      const [remaining] = await tx.$queryRaw<Array<{pendingReturnCount:number}>>`
+        SELECT COUNT(*)::int AS "pendingReturnCount" FROM "EquipmentRentalItem"
+        WHERE "rentalId"=${id} AND "returnedAt" IS NULL`;
+      await tx.$executeRaw`UPDATE "EquipmentRental" SET "returnIntentAt"=NOW(),"updatedAt"=NOW() WHERE "id"=${id}`;
+      await this.notifications.notify(rental.createdByAccountId,'EQUIPMENT_RENTAL_RETURN_INTENT',{
+        title:'الغواص سيعيد معدات التأجير',invoiceNumber:rental.invoiceNumber,rentalId:id,renterAccountId:accountId,
+        pendingReturnCount:remaining.pendingReturnCount,message:'الغواص اختار إعادة المعدات. أكمل الاستلام في المستودع بمسح الباركود.'
+      },tx);
+      await this.audit.record({actorId:accountId,action:'EQUIPMENT_RENTAL_RETURN_INTENT',resource:'EquipmentRental',
+        resourceId:id,metadata:{invoiceNumber:rental.invoiceNumber,pendingReturnCount:remaining.pendingReturnCount}},tx);
+    });
+    return{status:'RETURN_INTENT_RECORDED',rentalId:id};
+  }
 
   async returnScan(actorAccountId: string, id: string, input: {code?: string; condition?: 'OK' | 'DAMAGED' | 'REVIEW'; notes?: string | null; toLocation?: string | null}) {
     const code = input.code?.trim();
