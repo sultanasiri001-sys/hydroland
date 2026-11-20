@@ -154,6 +154,7 @@ model Person {
 }
 
 model Account {
+  privacyGrievances PrivacyGrievance[]
   operationalEvidenceCreated OperationalEvidence[] @relation("OperationalEvidenceCreator")
   operationalEvidenceRevisions OperationalEvidenceRevision[] @relation("OperationalEvidenceRevisionActor")
   id String @id @default(uuid())
@@ -249,6 +250,7 @@ model Account {
 }
 
 model Organization {
+  privacyGrievances PrivacyGrievance[]
   operationalEvidence OperationalEvidence[]
   id String @id @default(uuid())
   displayName String
@@ -2737,3 +2739,25 @@ model WarehouseLocationRevision {
   @@unique([warehouseLocationId,revision])
 }
 
+
+model PrivacyGrievance {
+  id String @id @default(uuid())
+  customerId String
+  requestKey String
+  organizationId String
+  departmentCode String
+  description String
+  state String @default("CENTER_PENDING")
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  dueAt DateTime @db.Timestamptz(3)
+  centerAction String?
+  escalatedAt DateTime? @db.Timestamptz(3)
+  resolvedAt DateTime? @db.Timestamptz(3)
+  outcome String?
+  customer Account @relation(fields:[customerId], references:[id], onDelete:Restrict)
+  organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)
+  @@unique([customerId,requestKey])
+  @@index([state,dueAt])
+  @@index([organizationId,state])
+  @@index([departmentCode,state])
+}
