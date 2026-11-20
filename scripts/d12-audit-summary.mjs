@@ -1,21 +1,11 @@
+import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 
 // Each row is one existing organization-scoped producer, with the exact action and resource it writes.
-const sources = [
-  ['booking', 'organization.booking.requested', 'Booking', 'trips/trips.service.ts'],
-  ['eligibility', 'organization.booking.participant.updated', 'BookingParticipant', 'trips/booking-participant.service.ts'],
-  ['trip', 'CENTER_TRIP_PUBLISHED', 'Trip', 'organizations/center-trip-management.service.ts'],
-  ['trip', 'MARINE_TRIP_PUBLISHED', 'Trip', 'marine-operations/marine-trip-management.service.ts'],
-  ['crewReplacement', 'CREW_ASSIGNMENT_REASSIGNED', 'CrewAssignment', 'trips/crew-assignment.service.ts'],
-  ['assignment', 'ADMIN_ROUTING_ASSIGNED', 'AdministrativeRouting', 'administrative-affairs/administrative-affairs-persistence.service.ts'],
-  ['case', 'organization.customer_case.created', 'CustomerCase', 'customer-service/customer-case.service.ts'],
-  ['case', 'organization.customer_case.replied', 'CustomerCase', 'customer-service/customer-case.service.ts'],
-  ['incident', 'organization.safety_incident.reported', 'SafetyIncident', 'safety/safety-incidents.service.ts'],
-  ['approval', 'OWNER_ADMINISTRATIVE_APPROVAL_RECORDED', 'OwnerAdministrativeApproval', 'document-forms/owner-administrative-approval.controller.ts'],
-];
+const sources = createRequire(import.meta.url)('../apps/api/d12-audit-sources.json');
 const byAction = new Map(sources.map(([category, action, resource]) => [action, { category, resource }]));
 const unmeasured = ['search', 'offer', 'payment', 'payout'];
 const validId = value => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value);
