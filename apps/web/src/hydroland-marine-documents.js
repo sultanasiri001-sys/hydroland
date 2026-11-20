@@ -23,6 +23,14 @@
   "الملف البديل": "Replacement file",
   "سبب القرار مطلوب": "Enter a reason for this decision",
   "تعذر حفظ مركز القارب": "Could not save the reviewing center",
+  "مكتمل": "Complete",
+  "تحت الإجراء": "In progress",
+  "منتهي": "Expired",
+  "لم يُرفع": "Not uploaded",
+  "المرفق ناقص": "Attachment missing",
+  "تحتاج مراجعة": "Needs review",
+  "رفع الوثيقة": "Upload document",
+  "رفع نسخة جديدة": "Upload a new version",
   "تحديث": "Refresh",
   "تسجيل القارب": "Boat registration",
   "رخصة الملاحة": "Navigation license",
@@ -71,14 +79,24 @@
   if(document.getElementById('hl-marine-documents'))return;
   const host=document.getElementById('role-console');if(!host)return;
   const panel=document.createElement('section');panel.id='hl-marine-documents';panel.hidden=true;uiLocale.setHTML(panel, uiLocale.html`<style>
-  #hl-marine-documents{margin:1rem 0;padding:1rem;border:1px solid rgba(120,191,224,.18);border-radius:20px;background:rgba(3,25,39,.92);color:#eaf5fa}#hl-marine-documents[hidden]{display:none}.hl-marine-head,.hl-marine-row,.hl-marine-actions{display:flex;gap:.65rem;align-items:center;justify-content:space-between;flex-wrap:wrap}.hl-marine-grid{display:grid;grid-template-columns:minmax(260px,.75fr) minmax(320px,1.25fr);gap:1rem}.hl-marine-card,.hl-marine-asset{border:1px solid rgba(120,191,224,.14);border-radius:16px;padding:.85rem;background:rgba(255,255,255,.025)}.hl-marine-form{display:grid;gap:.55rem}.hl-marine-form label{display:grid;gap:.25rem;font-weight:700}.hl-marine-form input,.hl-marine-form select{width:100%;box-sizing:border-box;border:1px solid rgba(120,191,224,.2);border-radius:10px;background:#0b293c;color:#fff;padding:.6rem}.hl-marine-actions{justify-content:flex-start;margin-top:.6rem}#hl-marine-documents button{border:1px solid rgba(120,191,224,.22);border-radius:10px;background:#12364b;color:#fff;padding:.55rem .75rem;font-weight:800;cursor:pointer}#hl-marine-documents button.primary{border:0;background:linear-gradient(135deg,#f4d18c,#e5b45f);color:#102131}.hl-marine-doc{display:flex;gap:.5rem;justify-content:space-between;align-items:center;padding:.45rem 0;border-bottom:1px solid rgba(120,191,224,.1)}.hl-marine-note{color:#9cb7c7}.hl-marine-state{font-size:.78rem;padding:.2rem .45rem;border-radius:999px;background:rgba(229,180,95,.14);color:#f3d496}@media(max-width:760px){.hl-marine-grid{grid-template-columns:1fr}}</style>
+  #hl-marine-documents{margin:1rem 0;padding:1rem;border:1px solid rgba(120,191,224,.18);border-radius:20px;background:rgba(3,25,39,.92);color:#eaf5fa}#hl-marine-documents[hidden]{display:none}.hl-marine-head,.hl-marine-row,.hl-marine-actions{display:flex;gap:.65rem;align-items:center;justify-content:space-between;flex-wrap:wrap}.hl-marine-grid{display:grid;grid-template-columns:minmax(260px,.75fr) minmax(320px,1.25fr);gap:1rem}.hl-marine-card,.hl-marine-asset{border:1px solid rgba(120,191,224,.14);border-radius:16px;padding:.85rem;background:rgba(255,255,255,.025)}.hl-marine-form{display:grid;gap:.55rem}.hl-marine-form label{display:grid;gap:.25rem;font-weight:700}.hl-marine-form input,.hl-marine-form select{width:100%;box-sizing:border-box;border:1px solid rgba(120,191,224,.2);border-radius:10px;background:#0b293c;color:#fff;padding:.6rem}.hl-marine-actions{justify-content:flex-start;margin-top:.6rem}#hl-marine-documents button{border:1px solid rgba(120,191,224,.22);border-radius:10px;background:#12364b;color:#fff;padding:.55rem .75rem;font-weight:800;cursor:pointer}#hl-marine-documents button.primary{border:0;background:linear-gradient(135deg,#f4d18c,#e5b45f);color:#102131}.hl-marine-doc{display:flex;gap:.5rem;justify-content:space-between;align-items:center;padding:.45rem 0;border-bottom:1px solid rgba(120,191,224,.1)}.hl-marine-note{color:#9cb7c7}.hl-marine-state{font-size:.78rem;padding:.2rem .45rem;border-radius:999px;background:rgba(229,180,95,.14);color:#f3d496}@media(max-width:760px){.hl-marine-grid{grid-template-columns:1fr}}
+  .hl-marine-slots{display:grid;gap:.8rem;margin-top:1rem}.hl-marine-slot{min-width:0;padding:.8rem;border:1px solid #365665;border-radius:12px}.hl-marine-slot h5{margin:0;font-size:1rem}.hl-marine-badge{border-radius:999px;padding:.18rem .68rem;font-weight:700;font-size:.85rem;background:#314452;color:#e8eff3}.hl-marine-badge[data-document-state="complete"]{background:#124835;color:#b7f6d0}.hl-marine-badge:is([data-document-state="pending"],[data-document-state="hold"],[data-document-state="incomplete"],[data-document-state="returned"]){background:#503b14;color:#ffdf99}.hl-marine-badge:is([data-document-state="expired"],[data-document-state="rejected"]){background:#562a31;color:#ffd6db}.hl-marine-record{margin:.6rem 0;padding:.5rem 0;border-top:1px solid #365665;overflow-wrap:anywhere}.hl-marine-record p{margin:.2rem 0}.hl-marine-slot summary{cursor:pointer;text-decoration:underline;text-underline-offset:.2em;padding:.45rem 0}.hl-marine-slot form{margin-block:.45rem}.hl-marine-slot input[type="file"]{min-width:0;max-width:100%}
+  </style>
   <header class="hl-marine-head"><div><small>MARINE BROKERAGE DOCUMENTS · الوساطة البحرية</small><h3>الوثائق والتراخيص البحرية</h3><p class="hl-marine-note">إدارة وثائق التسجيل ورخصة الملاحة والسلامة والصيانة. ترفع الملفات إلى تخزين خاص وتُتاح للمصرح لهم فقط.</p></div><button type="button" data-marine-refresh>تحديث</button></header><div data-marine-content></div>`);
   host.insertAdjacentElement('afterend',panel);
   const content=panel.querySelector('[data-marine-content]');
   const state={role:'diver',memberships:[],assets:[],pending:[],centers:[]};
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const request=async(path,options={})=>{const response=await window.HydrolandAuth.authorizedFetch(path,options);const body=await response.json().catch(()=>null);if(!response.ok)throw new Error(body?.message||`HTTP ${response.status}`);return body};
-  const docName=t=>({REGISTRATION:'تسجيل القارب',NAVIGATION_LICENSE:'رخصة الملاحة',OPERATING_LICENSE:'رخصة تشغيل القارب',SAFETY_CERTIFICATE:'شهادة السلامة',PERIODIC_INSPECTION:'الفحص والصيانة الدورية',COMMUNICATIONS_LICENSE:'رخصة الاتصالات البحرية'}[t]||t);
+  const documentNames={
+    REGISTRATION:'تسجيل القارب',
+    NAVIGATION_LICENSE:'رخصة الملاحة',
+    OPERATING_LICENSE:'رخصة تشغيل القارب',
+    SAFETY_CERTIFICATE:'شهادة السلامة',
+    PERIODIC_INSPECTION:'الفحص والصيانة الدورية',
+    COMMUNICATIONS_LICENSE:'رخصة الاتصالات البحرية'
+  };
+  const docName=type=>documentNames[type]||type;
   const fmtDate=v=>v?new Date(v).toLocaleDateString('ar-SA'):uiLocale.t('بدون انتهاء');
   const statusNames={PENDING:'بانتظار تدقيق المركز',PLATFORM_PENDING:'بانتظار الإدارة العليا',ON_HOLD:'معلق',RETURNED:'مُعاد للتعديل',VERIFIED:'معتمد',REJECTED:'مرفوض'};
   function centerPicker(asset){
@@ -86,8 +104,11 @@
     if(asset.reviewCenterId||membership?.organization.kind!=='MARINE_OPERATOR'||membership.role!=='OWNER')return '';
     return uiLocale.html`<form class="hl-marine-form" data-center-binding><label>المركز الذي يتبع له القارب<select required name="centerId"><option value="">اختر المركز</option>${state.centers.map(center=>uiLocale.html`<option value="${esc(center.id)}">${esc(center.displayName)}</option>`).join('')}</select></label><button>تحديد مركز التدقيق</button></form>`;
   }
+  function canCorrect(doc) {
+    return doc.status === 'RETURNED' || (doc.status === 'PENDING' && !doc.hasFile);
+  }
   function correctionForm(d){
-    if(d.status!=='RETURNED'&&(d.status!=='PENDING'||d.hasFile))return '';
+    if(!canCorrect(d))return '';
     return uiLocale.html`<details><summary>${uiLocale.label(d.status==='RETURNED'?'تعديل المستند وإعادة إرساله للمركز':'استكمال المرفق')}</summary>
       <form class="hl-marine-form" data-correct-doc="${esc(d.id)}" data-revision="${esc(d.reviewRevision)}">
       <label>الرقم المرجعي<input name="referenceNumber" maxlength="120" value="${esc(d.referenceNumber)}"></label>
@@ -95,7 +116,65 @@
       <label>الملف البديل<input type="file" name="file" accept="application/pdf,image/jpeg,image/png" ${d.hasFile?'':'required'}></label>
       <button type="submit">رفع وإرسال للمراجعة</button></form></details>`;
   }
-  function renderBoat(){const orgOptions=state.memberships.map(m=>uiLocale.html`<option value="${esc(m.organization.id)}">${esc(m.organization.displayName)}</option>`).join('');uiLocale.setHTML(content, uiLocale.html`<div class="hl-marine-grid"><form class="hl-marine-card hl-marine-form" data-marine-asset-form><h4>إضافة قارب / أصل بحري</h4><label>الجهة<select name="organizationId" required>${orgOptions}</select></label><label>الاسم<input name="name" required maxlength="120"></label><label>النوع<select name="assetType"><option>DIVE_BOAT</option><option>YACHT</option><option>RIB</option><option>SUPPORT_VESSEL</option><option>OTHER</option></select></label><label>رقم التسجيل<input name="registrationNumber" maxlength="80"></label><label>سعة الركاب<input name="passengerCapacity" type="number" min="1"></label><button class="primary" type="submit" ${orgOptions?'':'disabled'}>حفظ الأصل البحري</button></form><section class="hl-marine-card"><h4>الأصول والوثائق</h4><div data-marine-assets>${state.assets.length?state.assets.map(asset=>uiLocale.html`<article class="hl-marine-asset" data-marine-asset="${esc(asset.id)}"><div class="hl-marine-row"><div><strong>${esc(asset.name)}</strong><small> · ${esc(asset.assetType)} · ${esc(asset.registrationNumber||uiLocale.t('بدون رقم'))}</small></div><span class="hl-marine-state">${esc(asset.status)}</span></div><div>${(asset.documents||[]).length?(asset.documents||[]).map(d=>uiLocale.html`<div class="hl-marine-doc"><span>${uiLocale.label(docName(d.documentType))} · ${esc(d.referenceNumber||uiLocale.t('بدون مرجع'))} · ${esc(fmtDate(d.expiresAt))}${d.originalName?' · '+esc(d.originalName):''}</span><span><b class="hl-marine-state">${uiLocale.label(statusNames[d.status]||d.status)}</b>${d.reviewNote?uiLocale.html`<p>${esc(d.reviewNote)}</p>`: ''} ${d.hasFile?uiLocale.html`<button type="button" data-marine-doc-access="${esc(d.id)}" data-marine-asset-id="${esc(asset.id)}">عرض الملف</button>`:''}</span></div>${correctionForm(d)}`).join(''):uiLocale.html`<p class="hl-marine-note">لا توجد وثائق مسجلة.</p>`}</div>${centerPicker(asset)}<form class="hl-marine-form" data-marine-doc-form style="margin-top:.7rem"><label>نوع الوثيقة<select name="documentType"><option value="REGISTRATION">تسجيل القارب</option><option value="NAVIGATION_LICENSE">رخصة الملاحة</option><option value="OPERATING_LICENSE">رخصة تشغيل القارب</option><option value="SAFETY_CERTIFICATE">شهادة السلامة</option><option value="PERIODIC_INSPECTION">الفحص والصيانة الدورية</option><option value="COMMUNICATIONS_LICENSE">رخصة الاتصالات البحرية</option></select></label><label>الرقم المرجعي<input name="referenceNumber" maxlength="120"></label><label>تاريخ الانتهاء<input name="expiresAt" type="date"></label><label>ملف الوثيقة (PDF/JPG/PNG حتى 10 ميجابايت)<input name="file" type="file" accept="application/pdf,image/jpeg,image/png" required></label><button type="submit">رفع وإرسال للمراجعة</button></form></article>`).join(''):uiLocale.html`<p class="hl-marine-note">لا توجد أصول بحرية مرتبطة بعضويتك بعد.</p>`}</div></section></div>`)}
+  const slotLabels = {complete:'مكتمل',pending:'تحت الإجراء',expired:'منتهي',missing:'لم يُرفع',incomplete:'المرفق ناقص',returned:'مُعاد للتعديل',rejected:'مرفوض',hold:'معلق',unknown:'تحتاج مراجعة'};
+  function documentState(doc, now) {
+    if (!doc) return 'missing';
+    if (doc.expiresAt && Date.parse(doc.expiresAt) <= now) return 'expired';
+    if (doc.status === 'RETURNED') return 'returned';
+    if (doc.status === 'REJECTED') return 'rejected';
+    if (!doc.hasFile) return 'incomplete';
+    if (doc.status === 'ON_HOLD') return 'hold';
+    if (doc.status === 'VERIFIED' && (!doc.expiresAt || Number.isFinite(Date.parse(doc.expiresAt)))) return 'complete';
+    if (['PENDING', 'PLATFORM_PENDING'].includes(doc.status)) return 'pending';
+    return 'unknown';
+  }
+
+  function documentRecord(doc, assetId, now) {
+    const status = documentState(doc, now);
+    return uiLocale.html`<div class="hl-marine-record">
+      <p>${esc(doc.referenceNumber || uiLocale.t('بدون مرجع'))} · ${esc(fmtDate(doc.expiresAt))}${doc.originalName ? ' · '+esc(doc.originalName) : ''}</p>
+      <p>${uiLocale.label(statusNames[doc.status] || doc.status)}${status === 'expired' || status === 'incomplete' ? ' · '+uiLocale.label(slotLabels[status]) : ''}</p>
+      ${doc.reviewNote ? uiLocale.html`<p>${esc(doc.reviewNote)}</p>` : ''}
+      ${doc.hasFile ? uiLocale.html`<button type="button" data-marine-doc-access="${esc(doc.id)}" data-marine-asset-id="${esc(assetId)}">عرض الملف</button>` : ''}
+      ${correctionForm(doc)}
+    </div>`;
+  }
+
+  function uploadForm(type, hasRecords) {
+    return uiLocale.html`<details class="hl-marine-upload"><summary>${uiLocale.label(hasRecords ? 'رفع نسخة جديدة' : 'رفع الوثيقة')}</summary>
+      <form class="hl-marine-form" data-marine-doc-form>
+        <input type="hidden" name="documentType" value="${esc(type)}">
+        <label>الرقم المرجعي<input name="referenceNumber" maxlength="120"></label>
+        <label>تاريخ الانتهاء<input name="expiresAt" type="date"></label>
+        <label>ملف الوثيقة (PDF/JPG/PNG حتى 10 ميجابايت)<input name="file" type="file" accept="application/pdf,image/jpeg,image/png" required></label>
+        <button type="submit">رفع وإرسال للمراجعة</button>
+      </form></details>`;
+  }
+
+  function documentSlot(type, asset, now) {
+    const records = (asset.documents || []).filter(doc => doc.documentType === type);
+    // The API returns newest updates first. A valid approval still covers the slot while a renewal is reviewed.
+    const valid = records.find(doc => documentState(doc, now) === 'complete');
+    const status = documentState(valid || records[0], now);
+    return uiLocale.html`<section class="hl-marine-slot" data-document-slot="${esc(type)}">
+      <div class="hl-marine-row"><h5>${uiLocale.label(docName(type))}</h5>
+        <span class="hl-marine-badge" data-document-state="${status}">${uiLocale.label(slotLabels[status])}</span></div>
+      ${records.map(doc => documentRecord(doc, asset.id, now)).join('')}
+      ${records.some(canCorrect) ? '' : uploadForm(type, records.length > 0)}
+    </section>`;
+  }
+
+  function renderAsset(asset) {
+    const now = Date.now();
+    return uiLocale.html`<article class="hl-marine-asset" data-marine-asset="${esc(asset.id)}">
+      <div class="hl-marine-row"><div><strong>${esc(asset.name)}</strong><small> · ${esc(asset.assetType)} · ${esc(asset.registrationNumber || uiLocale.t('بدون رقم'))}</small></div>
+        <span class="hl-marine-state">${esc(asset.status)}</span></div>
+      ${centerPicker(asset)}
+      <div class="hl-marine-slots">${Object.keys(documentNames).map(type => documentSlot(type, asset, now)).join('')}</div>
+    </article>`;
+  }
+
+  function renderBoat(){const orgOptions=state.memberships.map(m=>uiLocale.html`<option value="${esc(m.organization.id)}">${esc(m.organization.displayName)}</option>`).join('');uiLocale.setHTML(content, uiLocale.html`<div class="hl-marine-grid"><form class="hl-marine-card hl-marine-form" data-marine-asset-form><h4>إضافة قارب / أصل بحري</h4><label>الجهة<select name="organizationId" required>${orgOptions}</select></label><label>الاسم<input name="name" required maxlength="120"></label><label>النوع<select name="assetType"><option>DIVE_BOAT</option><option>YACHT</option><option>RIB</option><option>SUPPORT_VESSEL</option><option>OTHER</option></select></label><label>رقم التسجيل<input name="registrationNumber" maxlength="80"></label><label>سعة الركاب<input name="passengerCapacity" type="number" min="1"></label><button class="primary" type="submit" ${orgOptions?'':'disabled'}>حفظ الأصل البحري</button></form><section class="hl-marine-card"><h4>الأصول والوثائق</h4><div data-marine-assets>${state.assets.length?state.assets.map(renderAsset).join(''):uiLocale.html`<p class="hl-marine-note">لا توجد أصول بحرية مرتبطة بعضويتك بعد.</p>`}</div></section></div>`)}
   let generation=0;
   function reviewPanel(center){
     const choices=center?[['FORWARD','الموافقة والإرسال للإدارة العليا'],['RETURNED','إعادة للتعديل']]:[['VERIFIED','اعتماد'],['RETURNED','إعادة للتعديل'],['ON_HOLD','تعليق'],['REJECTED','رفض']];
