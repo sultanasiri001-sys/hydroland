@@ -34,6 +34,7 @@
     }).join(' · ');
   }
   const names = {
+    search:['طلبات البحث العام المسجلة','Recorded public search submissions'],
     booking:['طلبات الحجز','Booking requests'], eligibility:['مراجعات أهلية المشاركين','Participant eligibility updates'],
     trip:['نشر الرحلات','Trip publications'], crewReplacement:['استبدالات الطاقم','Crew replacements'],
     assignment:['التكليفات','Assignments'], case:['قضايا خدمة العملاء','Customer cases'],
@@ -50,7 +51,17 @@
     row(text('سجلات دفع حجوزات رحلات الجهة المنشأة','New payment records for the organization’s trips'), report.payments);
     row(text('قيود الإيراد المرحّلة خلال الفترة','Revenue posted during the period'), money(report.revenue));
     row(text('رصيد الذمم المفتوحة وقت القراءة','Open receivables at time of reading'), money(report.receivables));
-    row(text('البحث العام وتحويلات الصرف المؤكدة','Public searches and confirmed payouts'), text('غير مقاس','Unmeasured'));
+    if (!report.publicSearch.applicable) row(text('طلبات البحث العام المسجلة','Recorded public search submissions'),
+      text('غير منطبق — البحث العام على نطاق المنصة','Not applicable — public search is platform-wide'));
+    const settlements = report.settlements;
+    row(text('سجلات مطابقة التسويات المسجلة','Settlement reconciliation records submitted'), settlements.records.recorded);
+    row(text('التسويات المميزة ضمن السجلات المسجلة','Distinct settlements in submitted records'), settlements.records.distinctSettlements);
+    row(text('سجلات تسويات مكتملة القبول','Settlement records with completed approval'), settlements.records.approved);
+    row(text('سجلات تسويات مرفوضة','Rejected settlement records'), settlements.records.rejected);
+    row(text('قرارات مراجعة التسويات المقبولة','Approved settlement review decisions'), settlements.reviews.approved);
+    row(text('قرارات مراجعة التسويات المرفوضة','Rejected settlement review decisions'), settlements.reviews.rejected);
+    row(text('سجلات التسويات التي روجعت','Settlement records reviewed'), settlements.reviews.recordsReviewed);
+    row(text('التحويلات البنكية المؤكدة','Confirmed bank transfers'), text('غير مقاس','Unmeasured'));
     const sources = node('details'), list = node('ul');
     sources.append(node('summary',text('مصادر المؤشرات','Metric sources')),list);
     for (const entry of report.audit) {
@@ -60,6 +71,13 @@
       node('li',text('مدفوعات الرحلات','Trip payments')+' · Payment → Booking → Trip.organizationId'),
       node('li',text('الإيراد المرحّل','Posted revenue')+' · FinanceEntry (REVENUE, POSTED)'),
       node('li',text('رصيد الذمم','Open receivables')+' · Receivable.outstandingMinor'));
+    for (const source of settlements.sources) list.append(node('li',source));
+    list.append(node('li',text('تاريخ التسجيل submittedAt؛ القبول أو الرفض النهائي reviewedAt؛ قرار المراجعة createdAt. تُعد نسخ الاستيراد المختلفة سجلات مستقلة؛ وتُميّز التسوية بمرجع المزود داخل الفرع.',
+      'Submitted records use submittedAt; final approval or rejection uses reviewedAt; review decisions use createdAt. Import versions count separately; distinct settlements use the provider reference within each center.')),
+      node('li',text('قرارات المراجعين منفصلة عن اكتمال قبول التسوية. هذه الأعداد تصف المطابقة المسجلة ولا تثبت التحويل البنكي.',
+        'Reviewer decisions are separate from completed settlement approval. These counts describe recorded reconciliation and do not establish bank transfer.')));
+    if (report.publicSearch.applicable) list.append(node('li',text('طلبات زوار مسجلة على نطاق المنصة دون نص البحث أو هوية الزائر؛ بحد 60 حدثًا جديدًا في الدقيقة. لا تمثل زوارًا فريدين ولا تشمل الطلبات التي لم تُسجّل.',
+      'Recorded visitor submissions for the platform, without query text or visitor identity, limited to 60 new events per minute. They do not represent unique visitors or include submissions that were not recorded.')));
     output.replaceChildren(node('h4', report.organization.displayName),
       node('p', report.from+' – '+report.to+' · '+report.timeZone),
       node('p', text('وقت قراءة الأرصدة ', 'Balances read at ')+new Date(report.readAt).toLocaleString()), result, sources);
