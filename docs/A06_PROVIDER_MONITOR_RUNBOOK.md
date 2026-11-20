@@ -42,3 +42,9 @@ Each report contains exactly 96 completed UTC quarter-hour slots, with multiple 
 This is an independent workflow, **not an independent monitoring service**: both it and the provider monitor still depend on GitHub Actions. If the entire control plane stops scheduling, detection waits for a later observer run. Full independent liveness and the actual adopted provider/on-call acceptances remain open. No new availability percentage or acknowledgement deadline is inferred.
 
 Read-only evidence captured at 2026-11-19 06:51:34 UTC found four successful scheduled observation slots in the preceding 96 completed slots, with the latest observation starting at 06:16:36 UTC (run 44470901238). The collector classified the latest observation as late and eligible for the existing 30-minute escalation. This audit did not create or modify an incident. Synthetic liveness tests cover stale/missing/failed evidence, source and attempt binding, manual-run exclusion, pagination truncation, duplicate slots, future timestamps, separate alert routing, persistence readback and recovery.
+
+## Render quarter-hour observations
+
+On a production Render API instance the application samples the five provider transition streams once per UTC quarter, independently of the GitHub Actions scheduler. A database lock coordinates overlapping instances. An audit event and a sanitized Render log contain the sample time, the last observed transition per provider and the number of complete quarters missed since the preceding sample. The first sample has no coverage baseline. Missing slots stay missing. A provider with no recorded traffic remains UNKNOWN.
+
+Filter Render API logs by `RenderProviderObserver` and the audit stream by resource `integration.provider.monitor.render`. Compare the two schedules independently. Render downtime can interrupt these observations. The existing GitHub incident assignment remains the director's escalation route.
