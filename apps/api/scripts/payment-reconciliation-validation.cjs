@@ -14,8 +14,9 @@ const originalPayment = () => ({ id: paymentId, bookingId: 'booking-1', accountI
 const event = id => ({ id, type: 'payment_updated', live: false, data: { invoice_id: invoiceId } });
 const stale = error => error.getStatus?.() === 409 && error.getResponse?.().code === 'PAYMENT_RECONCILIATION_STALE';
 
-function fixture({ missing = false, auditFails = false, webhookAuditFails = false } = {}) {
-  let state = { payment: missing ? null : originalPayment(), events: [] };
+function fixture({ missing = false, auditFails = false, webhookAuditFails = false, organizationId = null } = {}) {
+  let state = { payment: missing ? null : originalPayment(), events: [],
+    booking: { id: 'booking-1', accountId: 'buyer-1', tripId: 'trip-1', seats: 2, status: 'PENDING', organizationId } };
   const pending = [], controls = { auditFails, webhookAuditFails };
   let inTransaction = false, tail = Promise.resolve(), providerCalls = 0;
   const facade = getState => ({
@@ -24,7 +25,14 @@ function fixture({ missing = false, auditFails = false, webhookAuditFails = fals
         const row = getState().payment;
         return row && Object.entries(where).every(([key, value]) => row[key] === value) ? structuredClone(row) : null;
       },
-      findFirst: async args => facade(getState).payment.findUnique(args),
+      findFirst: async ({ where }) => {
+        const { booking, ...paymentWhere } = where;
+        const row = await facade(getState).payment.findUnique({ where: paymentWhere });
+        const subject = getState().booking;
+        if (!row || (booking && (subject.id !== row.bookingId
+          || !Object.entries(booking).every(([key, value]) => subject[key] === value)))) return null;
+        return row;
+      },
       upsert: async () => structuredClone(getState().payment),
       update: async ({ where, data }) => {
         const row = getState().payment; assert.equal(where.id, row.id);
@@ -48,7 +56,8 @@ function fixture({ missing = false, auditFails = false, webhookAuditFails = fals
     $queryRaw: async () => [{ moyasarPaymentId: getState().payment?.moyasarPaymentId ?? null }],
   });
   const db = facade(() => state);
-  db.booking = { findFirst: async ({ where }) => ({ id: where.id, accountId: where.accountId, tripId: 'trip-1', seats: 2, status: 'PENDING' }) };
+  db.booking = { findFirst: async ({ where }) => Object.entries(where).every(([key, value]) => state.booking[key] === value)
+    ? structuredClone(state.booking) : null };
   db.operationalSetting = { findUnique: async () => ({ value: { pricePerSeatMinor: 12345, currency: 'SAR' } }) };
   const transaction = work => {
     const result = tail.then(async () => {
@@ -93,6 +102,14 @@ function fixture({ missing = false, auditFails = false, webhookAuditFails = fals
       : service.refresh('buyer-1', paymentId);
   return { get state() { return state; }, get providerCalls() { return providerCalls; }, controls, service, call, queue };
 }
+
+test('personal refresh excludes an organization booking before provider or audit access', async () => {
+  const f = fixture({ organizationId: 'organization-1' });
+  const before = structuredClone(f.state);
+  await assert.rejects(() => f.call('refresh'), error => error.getStatus?.() === 404);
+  assert.equal(f.providerCalls, 0);
+  assert.deepEqual(f.state, before);
+});
 
 for (const path of ['create', 'refresh', 'webhook']) test(`${path}: delayed paid response cannot overwrite a newer refund or bind its reference`, async () => {
   const f = fixture(), held = f.queue('paid', { hold: true, paidReference: true });
