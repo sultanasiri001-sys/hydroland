@@ -113,6 +113,7 @@ try{
   console.log('Credential storage readiness HTTP E2E passed: guest/user/reviewer denial, admin access, runtime parity, sanitized checks and revoked-admin denial.');
   console.log('Credential Documents HTTP/DB E2E passed: auth, spoof rejection, real private upload, server metadata, storageKey redaction, owner/reviewer signed access, cross-account denial, evidence-gated approval, audit-backed evidence restoration and review.');
 } finally {
+  await reviewFixture?.close();
   if(marineAssetId){await db.marineAssetDocument.deleteMany({where:{marineAssetId}}).catch(()=>{});await db.marineMaintenanceRecord.deleteMany({where:{marineAssetId}}).catch(()=>{});await db.marineAsset.deleteMany({where:{id:marineAssetId}}).catch(()=>{});}
   if(marineOrganization){await db.organizationMember.deleteMany({where:{organizationId:marineOrganization.id}}).catch(()=>{});await db.organization.delete({where:{id:marineOrganization.id}}).catch(()=>{});}
   if(credentialId){await db.document.deleteMany({where:{credentialId}}).catch(()=>{});await db.credential.deleteMany({where:{id:credentialId}}).catch(()=>{});}
