@@ -37,7 +37,7 @@ test('conflicting source rows and invalid reporting inputs are rejected', async 
 
 test('every classification links to its existing producer; unmeasured categories return no invented financial metrics', async () => {
   const result = await summarizeAudit([], scope);
-  assert.deepEqual(result.unmeasured, ['search', 'offer', 'payment', 'payout']);
+  assert.deepEqual(result.unmeasured, ['offer', 'payment', 'payout']);
   for (const category of result.unmeasured) assert.equal(result.categories[category], undefined);
   for (const { sources, events } of Object.values(result.categories)) {
     assert.equal(events, 0);
@@ -47,6 +47,24 @@ test('every classification links to its existing producer; unmeasured categories
       assert(code.includes("'" + resource + "'"), resource);
     }
   }
+});
+
+test('public search measures only its versioned platform source without visitor identity', async () => {
+  const search = {id:'search-event-1',action:'PUBLIC_SEARCH_SUBMITTED',resource:'PublicSearch',resourceId:'search-event-1',
+    occurredAt:scope.from,actorId:null,ipAddress:null,metadata:{organizationId:scope.organization,schemaVersion:'D12.search.v1',scope:'PLATFORM'}};
+  const rows = [search,search,
+    {...search,id:'other-org',metadata:{...search.metadata,organizationId:'org-2'}},
+    {...search,id:'wrong-version',metadata:{...search.metadata,schemaVersion:'D12.search.v0'}},
+    {...search,id:'wrong-scope',metadata:{...search.metadata,scope:'CENTER'}},
+    {...search,id:'private-actor',actorId:'private actor'},
+    {...search,id:'private-address',ipAddress:'private address'},
+    {...search,id:'outside',occurredAt:scope.until}];
+  const result = await summarizeAudit(rows,scope);
+  assert.equal(result.schemaVersion,'D12.v2');
+  assert.equal(result.categories.search.events,1);
+  assert.equal(result.categories.search.distinctSubjects,1);
+  assert.equal(result.sourceDigest,(await summarizeAudit([search],scope)).sourceDigest);
+  for (const value of ['private actor','private address','search-event-1']) assert(!JSON.stringify(result).includes(value));
 });
 
 test('the command reads an NDJSON stream and emits only a complete result', () => {

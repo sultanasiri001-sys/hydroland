@@ -231,7 +231,21 @@ document.addEventListener('hydroland:auth-changed',()=>{clearProtectedPortal();i
 // Missing media-query support falls back to a non-animated scroll.
 const publicScrollBehavior=()=>window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches===false?'smooth':'instant';
 const normalize=value=>String(value||'').trim().toLocaleLowerCase('ar');
-const searchPage=query=>{const q=normalize(query);if(!q){notify(uiLocale.message('اكتب كلمة للبحث'));return}const candidates=[...document.querySelectorAll('.trip-card,.hl-public-course,.training-section,.product-grid article,.hl-public-activity,.membership,.quick-grid button')];const match=candidates.find(node=>normalize(node.textContent).includes(q));if(!match){notify(uiLocale.message('لم يتم العثور على نتيجة مطابقة'));return}const surface=match.closest('[data-public-surface]');if(surface?.id)navigateTo(surface.id);match.scrollIntoView({behavior:publicScrollBehavior(),block:'center'});match.classList.add('hl-search-hit');setTimeout(()=>match.classList.remove('hl-search-hit'),1800);notify(uiLocale.message('تم العثور على نتيجة'))};
+const recordPublicSearch=()=>{
+  const auth=window.HydrolandAuth;
+  if(!auth?.isGuestMode?.()||auth.isAuthenticated?.())return;
+  try{
+    const eventId=window.crypto?.randomUUID?.();
+    if(!eventId||!auth.apiBase)return;
+    // Count this submission only. No query text, identity, result or tenant is sent.
+    void fetch(auth.apiBase.replace(/\/$/,'')+'/discovery/search-events',{
+      method:'POST',credentials:'omit',referrerPolicy:'no-referrer',cache:'no-store',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({eventId,schemaVersion:'D12.search.v1'}),
+      signal:AbortSignal.timeout(3000),
+    }).catch(()=>{});
+  }catch{}
+};
+const searchPage=query=>{const q=normalize(query);if(!q){notify(uiLocale.message('اكتب كلمة للبحث'));return}recordPublicSearch();const candidates=[...document.querySelectorAll('.trip-card,.hl-public-course,.training-section,.product-grid article,.hl-public-activity,.membership,.quick-grid button')];const match=candidates.find(node=>normalize(node.textContent).includes(q));if(!match){notify(uiLocale.message('لم يتم العثور على نتيجة مطابقة'));return}const surface=match.closest('[data-public-surface]');if(surface?.id)navigateTo(surface.id);match.scrollIntoView({behavior:publicScrollBehavior(),block:'center'});match.classList.add('hl-search-hit');setTimeout(()=>match.classList.remove('hl-search-hit'),1800);notify(uiLocale.message('تم العثور على نتيجة'))};
 if(!document.getElementById('hl-search-style')){const style=document.createElement('style');style.id='hl-search-style';style.textContent='.hl-search-hit{outline:2px solid rgba(229,180,95,.85);outline-offset:5px;transition:outline-color .25s ease}';document.head.appendChild(style)}
 document.querySelectorAll('.nav-item[href]').forEach(link=>link.addEventListener('click',event=>{if(event.defaultPrevented)return;document.querySelectorAll('.nav-item').forEach(item=>item.classList.remove('active'));link.classList.add('active');document.querySelector('.sidebar')?.classList.remove('open')}));const sectionRoutes=new Map([['تم فتح الرحلات المتاحة','trips'],['رحلات الغوص','trips'],['التدريب','training'],['تم فتح مسارات التدريب','training'],['المعدات','store'],['المجتمع','community'],['تم فتح مركز السلامة','safety'],['تم فتح دليل المنصة','marine-intelligence']]);
 const navigateTo=id=>{const publicPage=window.HydrolandPublicUI?.setView?.(id);const target=$(id);if(!target)return false;if(publicPage)window.scrollTo({top:0,behavior:'instant'});else{window.HydrolandWorkspaceUI?.show?.(target);target.scrollIntoView({behavior:publicScrollBehavior(),block:'start'})}history.replaceState(null,'','#'+id);document.querySelectorAll('.nav-item[href]').forEach(item=>item.classList.toggle('active',item.getAttribute('href')==='#'+id));document.querySelector('.sidebar')?.classList.remove('open');return true};

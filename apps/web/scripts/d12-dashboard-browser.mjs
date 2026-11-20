@@ -2,16 +2,42 @@ import assert from 'node:assert/strict';
 import { chromium } from '@playwright/test';
 import { createStaticServer } from './serve.mjs';
 
-export async function verifyDashboard({base,email,password,centerName}) {
+export async function verifyDashboard({base,email,password,centerName,platformName}) {
   const server = createStaticServer();
   await new Promise((resolve,reject) => server.once('error',reject).listen(4197,'127.0.0.1',resolve));
   let browser;
   try {
     browser = await chromium.launch(process.env.D12_BROWSER_PATH ? {executablePath:process.env.D12_BROWSER_PATH} : {});
     const page = await browser.newPage({viewport:{width:1280,height:850}});
+    const searchRequests = [];
+    page.on('request',request=>{if(request.method()==='POST'&&new URL(request.url()).pathname==='/api/v1/discovery/search-events')searchRequests.push(request);});
+    await page.context().addCookies([{name:'d12-private-fixture',value:'not-sent',url:new URL(base).origin}]);
     await page.addInitScript(url => { window.HYDROLAND_API_BASE = url.replace(/\/$/, ''); },base);
     await page.goto('http://127.0.0.1:4197/');
     await page.waitForFunction(() => window.HydrolandAuth && document.querySelector('[data-d12-panel]'));
+    assert.equal(searchRequests.length,0,'page load must not emit a search event');
+    assert.equal(await page.evaluate(()=>window.HydrolandAuth.isGuestMode()),true);
+    const search = page.locator('#search-form input');
+    await search.fill('   '); await search.press('Enter');
+    assert.equal(searchRequests.length,0,'empty search must not emit an event');
+    const searchResponse = page.waitForResponse(response=>new URL(response.url()).pathname==='/api/v1/discovery/search-events'&&response.request().method()==='POST');
+    await search.fill('search-private-fixture@example.invalid'); await search.press('Enter');
+    assert.equal((await searchResponse).status(),204);
+    assert.equal(searchRequests.length,1);
+    const submitted = searchRequests[0], payload = submitted.postDataJSON();
+    assert.deepEqual(Object.keys(payload).sort(),['eventId','schemaVersion']);
+    assert.equal(payload.schemaVersion,'D12.search.v1');
+    assert.match(payload.eventId,/^[0-9a-f-]{36}$/);
+    assert.equal(new URL(submitted.url()).search,'');
+    const submittedHeaders = await submitted.allHeaders();
+    for (const header of ['authorization','cookie','referer']) assert.equal(submittedHeaders[header],undefined);
+    assert(!submitted.postData().includes('search-private-fixture'));
+    await page.route('**/discovery/search-events',route=>route.abort('failed'));
+    const failedSearch = page.waitForEvent('requestfailed',{predicate:request=>new URL(request.url()).pathname==='/api/v1/discovery/search-events'});
+    await search.fill('no-matching-public-content-d12'); await search.press('Enter');
+    await failedSearch;
+    assert((await page.locator('#toast').textContent()).includes('لم يتم العثور'));
+    await page.unroute('**/discovery/search-events');
     await page.evaluate(async ({email,password,base}) => {
       const auth = window.HydrolandAuth;
       const attempt = auth.beginAuthAttempt();
@@ -19,6 +45,9 @@ export async function verifyDashboard({base,email,password,centerName}) {
       if (!response.ok) throw Error('Fixture login failed');
       auth.acceptSession(await response.json(),attempt);
     },{email,password,base});
+    const beforeAuthenticatedSearch = searchRequests.length;
+    await search.fill('authenticated search fixture'); await search.press('Enter');
+    assert.equal(searchRequests.length,beforeAuthenticatedSearch,'authenticated search is not a public event');
     await page.evaluate(() => window.HydrolandPortalFreshness.openRoleSwitcher());
     await page.locator('#role-dialog [data-role="admin"]').click();
     const settings = page.locator('.hl-role-dashboard [data-action-label="إعدادات المنصة"]');
@@ -33,10 +62,25 @@ export async function verifyDashboard({base,email,password,centerName}) {
     await panel.locator('dl').waitFor();
     const content = await panel.locator('dl').textContent();
     for (const value of ['125.01 SAR','3.10 USD','34.50 SAR']) assert(content.includes(value),value);
+    assert(content.includes('غير منطبق — البحث العام على نطاق المنصة'));
+    const rows = await panel.locator('dl').evaluate(dl=>Object.fromEntries([...dl.querySelectorAll('dt')].map(dt=>[dt.textContent,dt.nextElementSibling.textContent])));
+    assert.equal(rows['سجلات مطابقة التسويات المسجلة'],'2');
+    assert.equal(rows['التسويات المميزة ضمن السجلات المسجلة'],'1');
+    assert.equal(rows['سجلات تسويات مكتملة القبول'],'1');
+    assert.equal(rows['سجلات تسويات مرفوضة'],'1');
+    assert.equal(rows['قرارات مراجعة التسويات المقبولة'],'3');
+    assert.equal(rows['قرارات مراجعة التسويات المرفوضة'],'1');
+    assert.equal(rows['التحويلات البنكية المؤكدة'],'غير مقاس');
+    await panel.locator('select').selectOption({label:platformName});
+    await panel.locator('button[type=submit]').click(); await panel.locator('dl').waitFor();
+    const platformRows = await panel.locator('dl').evaluate(dl=>Object.fromEntries([...dl.querySelectorAll('dt')].map(dt=>[dt.textContent,dt.nextElementSibling.textContent])));
+    assert.equal(platformRows['طلبات البحث العام المسجلة'],'2 حدث، 2 سجل');
+    assert((await panel.locator('details').textContent()).includes('60 حدثًا جديدًا'));
     await page.evaluate(() => window.HydrolandAuth.logout());
     assert.equal(await panel.locator('dl').count(),0);
     assert.equal(await panel.isVisible(),false);
-    console.log('PASS browser: real owner session, admin navigation, organization and dates, reconciled amounts, logout clears panel');
+    console.log('PASS browser: real public submission without query/cookies/auth, no load/empty/authenticated events, failure preserves search, real owner session, platform-only coverage, settlement counts, logout clears panel');
+    return {publicSearchEventId:payload.eventId};
   } finally {
     await browser?.close();
     await new Promise(resolve => server.close(resolve));

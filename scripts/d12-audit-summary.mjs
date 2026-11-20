@@ -7,7 +7,7 @@ import { parseArgs } from 'node:util';
 // Each row is one existing organization-scoped producer, with the exact action and resource it writes.
 const sources = createRequire(import.meta.url)('../apps/api/d12-audit-sources.json');
 const byAction = new Map(sources.map(([category, action, resource]) => [action, { category, resource }]));
-const unmeasured = ['search', 'offer', 'payment', 'payout'];
+const unmeasured = ['offer', 'payment', 'payout'];
 const validId = value => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value);
 
 function utc(value) {
@@ -30,6 +30,8 @@ export async function summarizeAudit(events, { organization, from, until }) {
     if (event?.metadata?.organizationId !== organization) continue;
     const source = byAction.get(event.action);
     if (!source || event.resource !== source.resource) continue;
+    if (source.category === 'search' && (event.metadata.schemaVersion !== 'D12.search.v1'
+        || event.metadata.scope !== 'PLATFORM' || event.actorId != null || event.ipAddress != null)) continue;
     const at = utc(event.occurredAt);
     if (at < start || at >= end) continue;
     if (!validId(event.id) || !validId(event.resourceId)) throw new Error('A mapped event lacks a valid source identity.');
@@ -44,10 +46,10 @@ export async function summarizeAudit(events, { organization, from, until }) {
     category.subjects.add(JSON.stringify([event.resource, event.resourceId]));
   }
   const digest = createHash('sha256');
-  digest.update(JSON.stringify(['D12.v1', organization, start, end]) + '\n');
+  digest.update(JSON.stringify(['D12.v2', organization, start, end]) + '\n');
   for (const id of [...seen.keys()].sort()) digest.update(JSON.stringify([id, seen.get(id)]) + '\n');
   return {
-    schemaVersion: 'D12.v1', source: 'AuditEvent', from: start, until: end, sourceDigest: digest.digest('hex'),
+    schemaVersion: 'D12.v2', source: 'AuditEvent', from: start, until: end, sourceDigest: digest.digest('hex'),
     categories: Object.fromEntries([...counts].map(([category, value]) => [category, {
       events: value.events, distinctSubjects: value.subjects.size,
       sources: sources.filter(([key]) => key === category).map(([, action, resource, file]) => ({ action, resource, file: 'apps/api/src/' + file })),
