@@ -1,3 +1,7 @@
+import { PrivacyGrievanceController } from './privacy-grievance.controller';
+import { PrivacyGrievanceService } from './privacy-grievance.service';
+import { PrivacyGrievanceScheduler } from './privacy-grievance.scheduler';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { AdminModule } from '../admin/admin.module';
@@ -19,9 +23,9 @@ const rehearsalControllers = process.env.NODE_ENV === 'test' && process.env.HYDR
   ? [ProviderAppealRehearsalController] : [];
 
 @Module({
-  imports: [AuthModule, AdminModule, AuditModule, DatabaseModule],
-  controllers: [CustomerCaseController, CustomerCaseManagementController, OrganizationCustomerCaseController, ...rehearsalControllers],
-  providers: [CustomerCaseService, CustomerCaseManagementService, CustomerServiceFoundationService, CustomerServiceWorkflowService, CustomerServiceOperationsService, CustomerServiceGovernanceService],
+  imports: [NotificationsModule, AuthModule, AdminModule, AuditModule, DatabaseModule],
+  controllers: [PrivacyGrievanceController, CustomerCaseController, CustomerCaseManagementController, OrganizationCustomerCaseController, ...rehearsalControllers],
+  providers: [PrivacyGrievanceService, PrivacyGrievanceScheduler, CustomerCaseService, CustomerCaseManagementService, CustomerServiceFoundationService, CustomerServiceWorkflowService, CustomerServiceOperationsService, CustomerServiceGovernanceService],
   exports: [CustomerCaseService, CustomerCaseManagementService, CustomerServiceFoundationService, CustomerServiceWorkflowService, CustomerServiceOperationsService, CustomerServiceGovernanceService],
 })
 export class CustomerServiceModule {}

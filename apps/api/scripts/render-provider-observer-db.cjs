@@ -46,6 +46,8 @@ async function verify() {
     const persisted = await db.auditEvent.findFirstOrThrow({where: monitor, orderBy: {occurredAt: 'desc'}});
     assert.deepEqual(persisted.metadata, later);
     assert(!JSON.stringify(later).includes('must-never-leave-source'));
+    await db.auditEvent.deleteMany({where: {resource: 'integration.provider.health'}});
+    await require('./provider-adapter-drill.cjs').runProviderDrill(db);
     console.log('PASS Render monitoring: independent sample, five unknowns, concurrent deduplication, missed slots, invalid-input rollback, sanitized latest transition and durable readback');
   } finally {
     await db.$disconnect();
