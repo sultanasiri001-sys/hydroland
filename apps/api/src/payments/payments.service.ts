@@ -33,7 +33,7 @@ export class PaymentsService {
   ){}
 
   async create(accountId:string,input:{bookingId:string;idempotencyKey:string}){
-    if(!input.bookingId?.trim()||!input.idempotencyKey?.trim())throw new BadRequestException('Invalid payment.');
+    if(typeof input?.bookingId!=='string'||!input.bookingId.trim()||typeof input.idempotencyKey!=='string'||!input.idempotencyKey.trim())throw new BadRequestException('Invalid payment.');
     const paymentPolicy=await this.policies.decision('PAYMENT','PAYMENT_REQUIRED');
     const booking=await this.db.booking.findFirst({where:{id:input.bookingId,accountId,organizationId:null},include:{trip:true}});
     if(!booking)throw new NotFoundException('Booking not found.');
@@ -84,7 +84,7 @@ export class PaymentsService {
   }
 
   async refresh(accountId:string,paymentId:string){
-    const payment=await this.db.payment.findFirst({where:{id:paymentId,accountId}});
+    const payment=await this.db.payment.findFirst({where:{id:paymentId,accountId,booking:{organizationId:null}}});
     if(!payment)throw new NotFoundException('Payment not found.');
     if(!payment.providerReference)return{...payment,provider:'MOYASAR',checkoutReady:false};
     const invoice=await this.moyasar.fetchInvoice(payment.providerReference);
@@ -134,7 +134,7 @@ export class PaymentsService {
       throw new BadRequestException('Refund reason must be at least 10 characters.');
     }
     return this.db.serializable(async tx => {
-      const payment = await tx.payment.findFirst({ where: { id: paymentId, accountId } });
+      const payment = await tx.payment.findFirst({ where: { id: paymentId, accountId, booking: { organizationId: null } } });
       if (!payment) throw new NotFoundException('Payment not found.');
       if (['REFUNDED', 'CANCELLED', 'FAILED'].includes(payment.status)) {
         throw new ConflictException('Payment is not eligible for a refund request.');
@@ -168,7 +168,7 @@ export class PaymentsService {
 
   async mine(accountId:string){
     const refundPolicy=await this.policies.decision('PAYMENT','REFUND_REVIEW');
-    const payments=await this.db.payment.findMany({where:{accountId},include:{invoice:true},orderBy:{createdAt:'desc'}}) as PaymentWithInvoice[];
+    const payments=await this.db.payment.findMany({where:{accountId,booking:{organizationId:null}},include:{invoice:true},orderBy:{createdAt:'desc'}}) as PaymentWithInvoice[];
     return payments.map((payment:PaymentWithInvoice)=>({...payment,provider:payment.providerReference?'MOYASAR':'PENDING_PROVIDER',refundPolicy:{state:refundPolicy.state,reviewRequired:refundPolicy.review,enforced:refundPolicy.enforce}}));
   }
 

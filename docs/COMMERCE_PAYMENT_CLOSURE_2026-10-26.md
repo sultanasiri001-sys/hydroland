@@ -1,5 +1,31 @@
 # Store/course payment closure — 26 October 2026
 
+## Current review — 21 November 2026 (Asia/Riyadh)
+
+The sections below preserve the 26 October inspection and its local test
+receipts. Their baseline-specific gaps and publication status are historical.
+The orange-group review uses main
+[`c17dfc39c07bd56f6a6e0b062cad8e7498dc41e1`](https://github.com/sultanasiri001-sys/hydroland/commit/c17dfc39c07bd56f6a6e0b062cad8e7498dc41e1)
+and covers B01, B02, B03, B04, B08, B12 and F08.
+
+The store currency defect described below was fixed in
+[#606](https://github.com/sultanasiri001-sys/hydroland/pull/606).
+[`StoreService.createOrder`](https://github.com/sultanasiri001-sys/hydroland/blob/c17dfc39c07bd56f6a6e0b062cad8e7498dc41e1/apps/api/src/store/store.service.ts)
+now preserves one explicit product currency and rejects a mixed-currency order
+before stock changes. Organization SAR, declared tax status, registration-status
+fields and PDF attachments are also implemented; the financial profile needs
+the actual issuer's supplied details and an approved invoice/policy binding.
+
+Commercial closure remains partial. Store payments are local records with
+`financialActionExecuted: false`; course enrollment does not collect payment;
+an equipment return does not execute a refund. The refund-eligibility 0.1 text
+in [B02](https://linear.app/hydroland/issue/HYD-24) remains a draft awaiting
+approval. The organization billing proposal remains inactive, and the
+compensation/wallet/reward rules and organization procurement acceptance remain
+unresolved. Preserving the correct currency does not supply those decisions.
+
+## Historical inspection and receipts
+
 Status: **local bookkeeping integrity fixed; commercial payment activation blocked**.
 Inspection baseline: canonical `main` commit `908f389`. This is not a declaration
 of store collection, course payment, tax invoicing, production deployment, or

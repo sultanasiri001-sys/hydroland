@@ -1,12 +1,16 @@
 import assert from 'node:assert/strict';
 import { PrismaClient } from '@prisma/client';
 import { randomBytes, randomUUID, scryptSync } from 'node:crypto';
+import { createServer } from 'node:http';
 import { summarizeAudit } from '../../../scripts/d12-audit-summary.mjs';
 
 const db = new PrismaClient();
 const base = process.env.ORGANIZATION_BOOKING_E2E_BASE_URL || 'http://127.0.0.1:3101/api/v1';
 const databaseUrl = new URL(process.env.DATABASE_URL);
 if (process.env.CI !== 'true' || !['localhost', '127.0.0.1', '[::1]'].includes(databaseUrl.hostname) || !['localhost', '127.0.0.1', '[::1]'].includes(new URL(base).hostname)) throw new Error('Organization booking checks require CI loopback API and PostgreSQL');
+if (!process.env.MOYASAR_API_BASE_URL) throw new Error('MOYASAR_API_BASE_URL must identify this test run\'s loopback provider fixture');
+const providerUrl = new URL(process.env.MOYASAR_API_BASE_URL);
+if (providerUrl.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(providerUrl.hostname) || !providerUrl.port) throw new Error('Organization payment isolation checks require a loopback provider fixture');
 const password = randomBytes(24).toString('hex');
 const salt = randomBytes(16).toString('hex');
 const passwordHash = salt + ':' + scryptSync(password, salt, 64).toString('hex');
@@ -125,6 +129,72 @@ try {
   assert.equal((await call(contact, scoped, 'POST', { ...request, seats: 1, participantNames: [request.participantNames[0]] })).status, 409);
   assert.equal(await db.auditEvent.count({ where: { action: 'organization.booking.requested', resourceId: created.id } }), 1);
   assert.equal(await db.payment.count({ where: { bookingId: created.id } }), 0);
+
+  // A historical initiating account is not the customer for an organization
+  // payment. Personal routes must reject even existing records, before any
+  // provider request or refund-review audit, regardless of current membership.
+  const fixturePaymentIds = [], fixtureInvoiceIds = [];
+  let observedProviderCalls = 0;
+  const providerTrap = createServer((_request, response) => {
+    observedProviderCalls++;
+    response.writeHead(503, { 'content-type': 'application/json' });
+    response.end('{"message":"Unexpected organization payment provider request"}');
+  });
+  try {
+    await new Promise((resolve, reject) => {
+      providerTrap.once('error', reject);
+      providerTrap.listen(Number(providerUrl.port), providerUrl.hostname === '[::1]' ? '::1' : '127.0.0.1', resolve);
+    });
+    const organizationPayments = [];
+    for (const withProvider of [true, false]) {
+      const fixture = await db.payment.create({ data: {
+        bookingId: created.id, accountId: contact.id, amountMinor: 13500, currency: 'SAR',
+        status: 'CAPTURED', idempotencyKey: 'organization-boundary-' + randomUUID(),
+        ...(withProvider ? { providerReference: randomUUID() } : {}),
+      } });
+      fixturePaymentIds.push(fixture.id); organizationPayments.push(fixture);
+      const invoice = await db.invoice.create({ data: { paymentId: fixture.id, number: 'ORG-BOUNDARY-' + randomUUID(), status: 'DRAFT' } });
+      fixtureInvoiceIds.push(invoice.id);
+    }
+    const personalPayment = await db.payment.create({ data: {
+      bookingId: personal.id, accountId: contact.id, amountMinor: 7800, currency: 'SAR',
+      status: 'CAPTURED', idempotencyKey: 'personal-boundary-' + randomUUID(),
+    } });
+    fixturePaymentIds.push(personalPayment.id);
+    const review = { reason: 'Synthetic review must respect the actual payment customer', amountMinor: 3500, currency: 'SAR' };
+    for (const [role, status] of [['OWNER', 'ACTIVE'], ['VIEWER', 'ACTIVE'], ['OWNER', 'SUSPENDED']]) {
+      await db.organizationMember.updateMany({ where: { organizationId: organization.id, accountId: contact.id }, data: { role, status } });
+      const listedPayments = await ok(await call(contact, '/payments/mine'));
+      assert.ok(listedPayments.some(row => row.id === personalPayment.id), 'Personal payment must remain visible after organization membership changes');
+      for (const fixture of organizationPayments) {
+        const beforeProvider = observedProviderCalls;
+        const refresh = await call(contact, `/payments/${fixture.id}/refresh`, 'POST');
+        const refund = await call(contact, `/payments/${fixture.id}/refund-request`, 'POST', review);
+        assert.deepEqual({ visible: listedPayments.some(row => row.id === fixture.id), refresh: refresh.status,
+          refundReview: refund.status, providerCalls: observedProviderCalls - beforeProvider },
+        { visible: false, refresh: 404, refundReview: 404, providerCalls: 0 },
+        'Personal routes must reject organization payment access before provider calls or refund review');
+        assert.deepEqual(await db.payment.findUniqueOrThrow({ where: { id: fixture.id } }), fixture, 'Rejected access must preserve the complete organization payment');
+        assert.equal(await db.auditEvent.count({ where: { resource: 'Payment', resourceId: fixture.id } }), 0, 'Rejected access must not create payment or refund-review evidence');
+      }
+    }
+    const personalRefresh = await ok(await call(contact, `/payments/${personalPayment.id}/refresh`, 'POST'));
+    assert.equal(personalRefresh.id, personalPayment.id); assert.equal(personalRefresh.checkoutReady, false);
+    const personalReview = await ok(await call(contact, `/payments/${personalPayment.id}/refund-request`, 'POST', review));
+    assert.equal(personalReview.paymentId, personalPayment.id); assert.equal(personalReview.financialActionExecuted, false);
+    assert.equal(await db.auditEvent.count({ where: { resource: 'Payment', resourceId: personalPayment.id, action: 'PAYMENT_REFUND_REQUESTED' } }), 1);
+    assert.equal((await call(foreign, `/payments/${personalPayment.id}/refresh`, 'POST')).status, 404);
+    assert.equal((await call(foreign, `/payments/${personalPayment.id}/refund-request`, 'POST', review)).status, 404);
+    assert.equal(observedProviderCalls, 0, 'No organization or unbound personal payment check may call the provider');
+    assert.deepEqual(await db.payment.findUniqueOrThrow({ where: { id: personalPayment.id } }), personalPayment);
+    console.log('PASS B12: personal payment history, refresh and refund review exclude organization records for active owners, viewers and revoked members; personal access preserved; zero provider calls and rejected mutations.');
+  } finally {
+    await new Promise(resolve => providerTrap.close(() => resolve()));
+    if (fixturePaymentIds.length) await db.auditEvent.deleteMany({ where: { resource: 'Payment', resourceId: { in: fixturePaymentIds } } });
+    if (fixtureInvoiceIds.length) await db.invoice.deleteMany({ where: { id: { in: fixtureInvoiceIds } } });
+    if (fixturePaymentIds.length) await db.payment.deleteMany({ where: { id: { in: fixturePaymentIds } } });
+    await db.organizationMember.updateMany({ where: { organizationId: organization.id, accountId: contact.id }, data: { role: 'OWNER', status: 'ACTIVE' } });
+  }
 
   // Organization cases must never leak through the submitting contact's personal routes.
   const requestsPath = `/organizations/${organization.id}/requests`;
