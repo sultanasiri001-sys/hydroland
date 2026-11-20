@@ -1,0 +1,53 @@
+name: Six boat documents browser acceptance
+on:
+  push:
+    branches: [qa/boat-six-document-acceptance-20261121]
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: qa
+          POSTGRES_PASSWORD: qa
+          POSTGRES_DB: boat_qa
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 3s --health-timeout 4s --health-retries 12
+    env:
+      DATABASE_URL: postgresql://qa:qa@127.0.0.1:5432/boat_qa
+      BOAT_ACCEPTANCE_DB: DISPOSABLE_RUNNER
+      PORT: 3101
+      WEB_ORIGIN: http://127.0.0.1:4173
+      HYDROLAND_PUBLIC_WEB_ORIGIN: http://127.0.0.1:4173
+      HYDROLAND_INTEGRATION_OBJECT_STORAGE_STATUS: SANDBOX
+      HYDROLAND_OBJECT_STORAGE_ENDPOINT: http://127.0.0.1:3199
+      HYDROLAND_OBJECT_STORAGE_REGION: us-east-1
+      HYDROLAND_OBJECT_STORAGE_BUCKET: six-docs-local
+      HYDROLAND_OBJECT_STORAGE_ACCESS_KEY_ID: local-qa
+      HYDROLAND_OBJECT_STORAGE_SECRET_ACCESS_KEY: local-qa-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --workspace=@hydroland/api --workspace=@hydroland/web --include-workspace-root=true
+      - run: npm run db:generate -w @hydroland/api && npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+      - run: npm run build -w @hydroland/api && npm run build -w @hydroland/web
+      - run: npm exec --workspace @hydroland/web -- playwright install --with-deps chromium
+      - name: Upload, return, correct, forward and verify all six files in the browser
+        run: |
+          export JWT_SECRET="$(openssl rand -hex 40)"
+          node apps/api/dist/main.js > "$RUNNER_TEMP/six-docs-api.log" 2>&1 &
+          api_pid=$!
+          PORT=4173 node apps/web/scripts/serve.mjs > "$RUNNER_TEMP/six-docs-web.log" 2>&1 &
+          web_pid=$!
+          trap 'kill "$api_pid" "$web_pid" 2>/dev/null || true' EXIT
+          for i in {1..40}; do
+            if curl -fsS http://127.0.0.1:3101/api/v1/health >/dev/null && curl -fsS http://127.0.0.1:4173/ >/dev/null; then break; fi
+            sleep 1
+          done
+          node apps/web/scripts/qa-six-boat-document-browser.mjs
