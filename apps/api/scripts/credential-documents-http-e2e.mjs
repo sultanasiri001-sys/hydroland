@@ -1,5 +1,5 @@
+import { marineReviewFixture, marineTestToken } from './marine-review-fixture.mjs';
 import { PrismaClient } from '@prisma/client';
-import { createHmac } from 'node:crypto';
 import http from 'node:http';
 import assert from 'node:assert/strict';
 
@@ -9,13 +9,12 @@ for(const url of [process.env.DATABASE_URL||'postgresql://missing',base])assert(
 const secret=process.env.JWT_SECRET;
 if(!secret)throw new Error('JWT_SECRET required');
 const suffix=Date.now().toString(),objects=new Map();let sawSigV4=false,afterPut=null,afterHead=null;
-const enc=v=>Buffer.from(JSON.stringify(v)).toString('base64url');
-const tokenFor=id=>{const now=Math.floor(Date.now()/1000),body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:id,iat:now,exp:now+900})}`;return `${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`;};
 const auth=t=>({authorization:`Bearer ${t}`});
 const json=async r=>{const b=await r.json().catch(()=>null);if(!r.ok)throw new Error(`HTTP ${r.status}: ${JSON.stringify(b)}`);return b};
 const storage=http.createServer(async(req,res)=>{const key=req.url?.split('?')[0]||'/';if(req.method==='PUT'){sawSigV4=String(req.headers.authorization||'').startsWith('AWS4-HMAC-SHA256 ');const chunks=[];req.on('data',c=>chunks.push(c));req.on('end',async()=>{objects.set(key,Buffer.concat(chunks));if(afterPut){const hook=afterPut;afterPut=null;await hook()}res.statusCode=200;res.end()});return}if(req.method==='HEAD'){if(afterHead){const hook=afterHead;afterHead=null;await hook()}res.statusCode=objects.has(key)?200:404;res.end();return}if(req.method==='GET'){const bytes=objects.get(key);if(!bytes){res.statusCode=404;res.end();return}res.statusCode=200;res.setHeader('content-type','application/octet-stream');res.end(bytes);return}if(req.method==='DELETE'){objects.delete(key);res.statusCode=204;res.end();return}res.statusCode=405;res.end()});
 await new Promise((resolve,reject)=>{storage.once('error',reject);storage.listen(3199,'127.0.0.1',resolve)});
 let ownerPerson,ownerAccount,reviewerPerson,reviewerAccount,outsiderPerson,outsiderAccount,credentialId,documentId,marineOrganization,marineMember,marineAssetId,marineDocumentId;
+let reviewFixture;
 try{
   ownerPerson=await db.person.create({data:{firstName:'Credential',lastName:'Owner'}});
   ownerAccount=await db.account.create({data:{personId:ownerPerson.id,email:`credential-owner-${suffix}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}});
@@ -24,7 +23,7 @@ try{
   outsiderPerson=await db.person.create({data:{firstName:'Credential',lastName:'Outsider'}});
   outsiderAccount=await db.account.create({data:{personId:outsiderPerson.id,email:`credential-outsider-${suffix}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}});
   await db.roleAssignment.create({data:{accountId:reviewerAccount.id,role:'REVIEWER',status:'ACTIVE',activeAt:new Date()}});
-  const ownerToken=tokenFor(ownerAccount.id),reviewerToken=tokenFor(reviewerAccount.id),outsiderToken=tokenFor(outsiderAccount.id);
+  const ownerToken=await marineTestToken(db,ownerAccount.id,secret),reviewerToken=await marineTestToken(db,reviewerAccount.id,secret),outsiderToken=await marineTestToken(db,outsiderAccount.id,secret);
   marineOrganization=await db.organization.create({data:{displayName:'Marine private docs E2E',kind:'MARINE_OPERATOR',status:'ACTIVE',ownerId:ownerAccount.id}});
   marineMember=await db.organizationMember.create({data:{organizationId:marineOrganization.id,accountId:ownerAccount.id,role:'OWNER',status:'ACTIVE'}});
 
@@ -88,6 +87,10 @@ try{
   r=await fetch(readinessPath,{headers:auth(ownerToken)});assert.equal(r.status,403,'Storage diagnostics require admin scope');
   r=await fetch(readinessPath,{headers:auth(reviewerToken)});assert.equal(r.status,403,'Review permission does not grant storage diagnostics');
   await db.roleAssignment.create({data:{accountId:reviewerAccount.id,role:'ADMIN',status:'ACTIVE',activeAt:new Date()}});
+  reviewFixture=await marineReviewFixture(db,base,outsiderAccount.id,reviewerAccount.id);
+  await reviewFixture.bind(ownerToken,marineAssetId);
+  assert.equal(await reviewFixture.pending(reviewerToken,'admin',marineDocumentId),undefined);
+  await reviewFixture.decide(outsiderToken,'center',await reviewFixture.pending(outsiderToken,'center',marineDocumentId),'FORWARD');
   r=await fetch(`${base}/marine-operations/admin/documents/${marineDocumentId}/access`,{headers:auth(reviewerToken)});body=await json(r);if(!body.url?.includes('X-Amz-Signature='))throw new Error('Marine reviewer signed access missing');
   const adminMarineAssets=await json(await fetch(base+'/marine-operations/admin/assets/review',{headers:auth(reviewerToken)}));const reviewedAsset=adminMarineAssets.find(asset=>asset.id===marineAssetId),reviewedMarineDoc=reviewedAsset?.documents?.find(doc=>doc.id===marineDocumentId);if(!reviewedMarineDoc?.hasFile||'storageKey'in reviewedMarineDoc)throw new Error('Marine admin asset review leaked private storage key');
   r=await fetch(`${base}/marine-operations/admin/documents/${marineDocumentId}/access`,{headers:auth(outsiderToken)});if(r.status!==403)throw new Error('Non-admin marine review access expected 403, got '+r.status);
@@ -110,6 +113,7 @@ try{
   console.log('Credential storage readiness HTTP E2E passed: guest/user/reviewer denial, admin access, runtime parity, sanitized checks and revoked-admin denial.');
   console.log('Credential Documents HTTP/DB E2E passed: auth, spoof rejection, real private upload, server metadata, storageKey redaction, owner/reviewer signed access, cross-account denial, evidence-gated approval, audit-backed evidence restoration and review.');
 } finally {
+  await reviewFixture?.close();
   if(marineAssetId){await db.marineAssetDocument.deleteMany({where:{marineAssetId}}).catch(()=>{});await db.marineMaintenanceRecord.deleteMany({where:{marineAssetId}}).catch(()=>{});await db.marineAsset.deleteMany({where:{id:marineAssetId}}).catch(()=>{});}
   if(marineOrganization){await db.organizationMember.deleteMany({where:{organizationId:marineOrganization.id}}).catch(()=>{});await db.organization.delete({where:{id:marineOrganization.id}}).catch(()=>{});}
   if(credentialId){await db.document.deleteMany({where:{credentialId}}).catch(()=>{});await db.credential.deleteMany({where:{id:credentialId}}).catch(()=>{});}

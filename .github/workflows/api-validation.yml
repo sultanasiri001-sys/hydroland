@@ -149,6 +149,10 @@ jobs:
       - run: npm run validate:integrations -w @hydroland/api
       - run: npm run typecheck --workspace=@hydroland/api
       - run: npm run build --workspace=@hydroland/api
+      - name: Verify independent Render provider observations in isolated PostgreSQL
+        env:
+          A06_DB_TEST: DISPOSABLE_LOOPBACK
+        run: node apps/api/scripts/render-provider-observer-db.cjs
       - name: Read-only training standard adoption preflight
         run: node --test apps/api/scripts/training-standard-readiness.test.cjs
       - name: Account profile correction and scoped export boundaries

@@ -23,10 +23,15 @@ export class MarineOperationsController{
  @Post('assets/:assetId/maintenance') addMaintenance(@Req()req:{auth:{accountId:string}},@Param('assetId')assetId:string,@Body()body:{maintenanceType:string;dueAt?:string;notes?:string}){return this.marine.addOwnedMaintenance(req.auth.accountId,assetId,body)}
  @Post('assets/:assetId/maintenance/:recordId/complete') completeMaintenance(@Req()req:{auth:{accountId:string}},@Param('assetId')assetId:string,@Param('recordId')recordId:string){return this.marine.completeOwnedMaintenance(req.auth.accountId,assetId,recordId)}
  @Post('assets/:assetId/readiness') readiness(@Req()req:{auth:{accountId:string}},@Param('assetId')assetId:string){return this.marine.evaluateOwnedReadiness(req.auth.accountId,assetId)}
+ @Get('review-centers') centers(){return this.marine.reviewCenters()}
+ @Post('assets/:assetId/review-center') bindCenter(@Req() req:{auth:{accountId:string}},@Param('assetId') id:string,@Body() body:{centerId?:string}){return this.marine.bindCenter(req.auth.accountId,id,body?.centerId)}
+ @Get('center/documents/pending') centerPending(@Req() req:{auth:{accountId:string}}){return this.marine.pendingDocuments(req.auth.accountId,'CENTER')}
+ @Get('center/documents/:documentId/access') centerFile(@Req() req:{auth:{accountId:string}},@Param('documentId') id:string){return this.marine.reviewerDocumentAccess(req.auth.accountId,id,'CENTER')}
+ @Post('center/documents/:documentId/decision') centerDecision(@Req() req:{auth:{accountId:string}},@Param('documentId') id:string,@Body() body:unknown){return this.marine.decideDocument(req.auth.accountId,id,body,'CENTER')}
  @UseGuards(AdminGuard)
  @Get('admin/documents/:documentId/access') reviewerDocumentAccess(@Req()req:{auth:{accountId:string}},@Param('documentId')documentId:string){return this.marine.reviewerDocumentAccess(req.auth.accountId,documentId)}
  @UseGuards(AdminGuard)
- @Get('admin/documents/pending') pending(){return this.marine.pendingDocuments()}
+ @Get('admin/documents/pending') pending(@Req() req:{auth:{accountId:string}}){return this.marine.pendingDocuments(req.auth.accountId,'PLATFORM')}
  @UseGuards(AdminGuard)
  @Post('admin/documents/:documentId/decision') decide(@Req()req:{auth:{accountId:string}},@Param('documentId')documentId:string,@Body()body:unknown){return this.marine.decideDocument(req.auth.accountId,documentId,body)}
  @UseGuards(AdminGuard)
