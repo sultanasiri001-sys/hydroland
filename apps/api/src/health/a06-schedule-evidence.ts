@@ -3,6 +3,11 @@ const workflow = '.github/workflows/a06-provider-watch.yml';
 export const escalationMs = 30 * 60_000;
 export type ScheduleSignal = 'CURRENT' | 'SCHEDULE_GAP' | 'EVIDENCE_UNAVAILABLE';
 
+// The UAT, restore and cron services share the same Render workspace.
+export function isProductionProviderMonitor(env: NodeJS.ProcessEnv = process.env) {
+  return env.NODE_ENV === 'production' && env.RENDER_SERVICE_ID === 'srv-dakelt142hec73aavvsg';
+}
+
 export type ObserverState = { unavailableSince: number | null; notified: boolean };
 
 export function notificationDecision(previous: ObserverState | undefined, signal: ScheduleSignal, now: number) {

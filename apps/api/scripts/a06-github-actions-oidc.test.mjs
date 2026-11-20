@@ -56,7 +56,7 @@ test('rejects tampered claims and unavailable signing keys',async()=>{
 });
 
 // The secondary observer on Render reads public workflow evidence without an OIDC token.
-const { scheduleSignal, notificationDecision, escalationMs } = await import('../src/health/a06-schedule-evidence.ts');
+const { scheduleSignal, notificationDecision, escalationMs, isProductionProviderMonitor } = await import('../src/health/a06-schedule-evidence.ts');
 const scheduled = {
   id: 2101, run_attempt: 1, path: '.github/workflows/a06-provider-watch.yml',
   repository: { full_name: 'sultanasiri001-sys/hydroland' },
@@ -98,4 +98,13 @@ test('a sustained unreadable source or a verified gap sends one alert until orig
   const recovered = notificationDecision(escalated.state, 'CURRENT', now + escalationMs);
   assert.deepEqual(recovered.state, { unavailableSince: null, notified: false });
   assert.equal(notificationDecision(recovered.state, 'SCHEDULE_GAP', now + 2 * escalationMs).send, true);
+});
+
+test('only the canonical production API starts either Render observer', () => {
+  const production = { NODE_ENV: 'production', RENDER_SERVICE_ID: 'srv-dakelt142hec73aavvsg' };
+  assert.equal(isProductionProviderMonitor(production), true);
+  for (const env of [{ RENDER: 'true', NODE_ENV: 'production' }, { ...production, RENDER_SERVICE_ID: 'srv-uat' },
+    { ...production, RENDER_SERVICE_ID: 'crn-recovery' }, { ...production, NODE_ENV: 'test' }]) {
+    assert.equal(isProductionProviderMonitor(env), false);
+  }
 });

@@ -1,10 +1,9 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { platformOrganization } from '../hr/staffing-catalog';
-import { notificationDecision, ObserverState, scheduleSignal } from './a06-schedule-evidence';
+import { isProductionProviderMonitor, notificationDecision, ObserverState, scheduleSignal } from './a06-schedule-evidence';
 
 const stateKey = 'A06_INDEPENDENT_SCHEDULE_OBSERVER:v1';
-const productionApi = 'srv-dakelt142hec73aavvsg';
 
 @Injectable()
 export class A06IndependentObserver implements OnModuleInit, OnModuleDestroy {
@@ -15,7 +14,7 @@ export class A06IndependentObserver implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly db: DatabaseService) {}
 
   onModuleInit() {
-    if (process.env.NODE_ENV !== 'production' || process.env.RENDER_SERVICE_ID !== productionApi) return;
+    if (!isProductionProviderMonitor()) return;
     void this.observe();
     this.timer = setInterval(() => void this.observe(), 60_000);
     this.timer.unref();
