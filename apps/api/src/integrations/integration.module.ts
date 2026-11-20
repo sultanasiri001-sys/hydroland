@@ -7,6 +7,7 @@ import { IntegrationController } from './integration.controller';
 import { DistressAisReadinessController } from './distress-ais-readiness.controller';
 import { OfficialOnboardingReadinessController } from './official-onboarding-readiness.controller';
 import { IntegrationService } from './integration.service';
+import { A06IndependentObserver } from '../health/a06-independent-observer';
 import { A06ProviderObservationController } from '../health/a06-provider-observation.controller';
 import { A06GitHubActionsOidcGuard } from '../health/a06-github-actions-oidc.guard';
 import { EmailDeliveryService } from './email-delivery.service';
@@ -16,7 +17,7 @@ import { MarineTrafficAisService } from './marinetraffic-ais.service';
 @Module({
   imports:[AdminModule,AuditModule,AuthModule],
   controllers:[IntegrationController,DistressAisReadinessController,OfficialOnboardingReadinessController,A06ProviderObservationController],
-  providers:[IntegrationService,EmailDeliveryService,UnifonicMessagingService,SignitEsignService,MarineTrafficAisService,AuthEmailOutboxWorker,A06GitHubActionsOidcGuard],
+  providers:[IntegrationService,EmailDeliveryService,UnifonicMessagingService,SignitEsignService,MarineTrafficAisService,AuthEmailOutboxWorker,A06GitHubActionsOidcGuard,A06IndependentObserver],
   exports:[IntegrationService,EmailDeliveryService,UnifonicMessagingService,SignitEsignService,MarineTrafficAisService],
 })
 export class IntegrationModule {}
