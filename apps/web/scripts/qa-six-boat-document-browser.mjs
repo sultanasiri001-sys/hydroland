@@ -127,6 +127,7 @@ try{
   console.log('PASS: 6/6 uploaded by owner in browser, opened by center, forwarded, opened by platform, approved, and displayed as complete to owner; corrected attachment round-trip verified.');
 }finally{
   await browser?.close();
+  if(fixture) await db.organizationMember.deleteMany({where:{organizationId:fixture.center.id}});
   await fixture?.close();
   await db.$disconnect();
 }
