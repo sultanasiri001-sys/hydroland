@@ -63,23 +63,26 @@ export class AuditService {
     });
   }
 
-  async providerHealth(){
-    const providers=['OBJECT_STORAGE','WEATHER_MARINE','EMAIL','PAYMENT_PSP','AI_MODEL'] as const;
-    const resourceIds=providers.map(provider=>`a06.provider.${provider}`);
-    const events=await this.db.auditEvent.findMany({
-      where:{resource:'integration.provider.health',resourceId:{in:resourceIds}},
-      orderBy:{occurredAt:'desc'},
-      select:{resourceId:true,metadata:true,occurredAt:true},
-    });
-    const latest=new Map<string,typeof events[number]>();
-    for(const event of events)if(event.resourceId&&!latest.has(event.resourceId))latest.set(event.resourceId,event);
-    return providers.map(provider=>{
-      const event=latest.get(`a06.provider.${provider}`);
-      const metadata=event?.metadata;
-      const values=metadata&&typeof metadata==='object'&&!Array.isArray(metadata)?metadata as Record<string,unknown>:{};
-      const state=values.state==='AVAILABLE'||values.state==='DEGRADED'?values.state:'UNKNOWN';
-      const category=values.category==='SUCCESS'||values.category==='PROVIDER_FAILURE'?values.category:null;
-      return{provider,state,category,observedAt:event?.occurredAt.toISOString()??null};
+  async providerHealth(tx: Prisma.TransactionClient = this.db) {
+    const providers = ['OBJECT_STORAGE', 'WEATHER_MARINE', 'EMAIL', 'PAYMENT_PSP', 'AI_MODEL'] as const;
+    // Each lookup uses the resource / resourceId / occurredAt index. One SQL
+    // snapshot keeps the five readings consistent as transitions are recorded.
+    const events = await tx.$queryRaw<Array<{
+      provider: string; metadata: Prisma.JsonValue; occurredAt: Date | null;
+    }>>`
+      SELECT p.provider, latest.metadata, latest."occurredAt"
+      FROM unnest(ARRAY[${Prisma.join([...providers])}]::text[]) WITH ORDINALITY AS p(provider, ord)
+      LEFT JOIN LATERAL (
+        SELECT metadata, "occurredAt" FROM "AuditEvent"
+        WHERE resource = 'integration.provider.health' AND "resourceId" = 'a06.provider.' || p.provider
+        ORDER BY "occurredAt" DESC, id DESC LIMIT 1
+      ) latest ON true
+      ORDER BY p.ord`;
+    return events.map(({provider, metadata, occurredAt}) => {
+      const values = metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {};
+      const state = values.state === 'AVAILABLE' || values.state === 'DEGRADED' ? values.state : 'UNKNOWN';
+      const category = values.category === 'SUCCESS' || values.category === 'PROVIDER_FAILURE' ? values.category : null;
+      return {provider, state, category, observedAt: occurredAt?.toISOString() ?? null};
     });
   }
 

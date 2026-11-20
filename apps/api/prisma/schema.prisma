@@ -2321,6 +2321,7 @@ enum MarineReadinessStatus {
 }
 
 model MarineAsset {
+  reviewCenterId String?
   id String @id @default(uuid())
   organizationId String
   calendarResourceId String? @unique
@@ -2338,6 +2339,8 @@ model MarineAsset {
 }
 
 model MarineAssetDocument {
+  centerApprovedBy String?
+  reviewNote String?
   id String @id @default(uuid())
   marineAssetId String
   documentType String

@@ -29,7 +29,9 @@ try{
  const org=await db.organization.create({data:{displayName:'Synthetic registration operator '+suffix,kind:'MARINE_OPERATOR',status:'ACTIVE',ownerId:other.id}});organizations.push(org.id);
  previousPlatform=await db.operationalSetting.findUnique({where:{key:platformKey}});await db.operationalSetting.upsert({where:{key:platformKey},create:{key:platformKey,value:{organizationId:platform.id}},update:{value:{organizationId:platform.id},updatedAt:new Date()}});platformChanged=true;
  await db.organizationMember.create({data:{organizationId:platform.id,accountId:owner.id,role:'OWNER',status:'ACTIVE'}});
+ const center=await db.organization.create({data:{displayName:'Registration review center',kind:'DIVE_CENTER',status:'ACTIVE',ownerId:other.id}});organizations.push(center.id);
  const a=await asset(org,'OLD');
+ await db.marineAsset.update({where:{id:a.id},data:{reviewCenterId:center.id}});
  const verified=await db.marineAssetDocument.create({data:{marineAssetId:a.id,documentType:'NAVIGATION_LICENSE',status:'VERIFIED',verifiedAt:new Date(),referenceNumber:'Synthetic reference',storageKey:'synthetic-registration/'+suffix,sha256:suffix.replaceAll('-','').repeat(2),expiresAt:new Date('2030-01-01')}});
  const pending=await db.marineAssetDocument.create({data:{marineAssetId:a.id,documentType:'REGISTRATION',status:'PENDING'}});
  const before=await state(a.id),view=await call(owner,path(a.id));assert.equal(view.status,200);assert.match(view.headers.get('cache-control'),/private.*no-store/);assert.equal(view.data.verifiedDocumentCount,1);assert.deepEqual(await state(a.id),before);
@@ -39,7 +41,7 @@ try{
  assert.deepEqual(await state(a.id),before);pass('strict input rejects injected activation, ownership, documents, absent confirmation and invalid version or reason');
  await db.marineAssetDocument.update({where:{id:pending.id},data:{referenceNumber:'Changed after read'}});
  assert.equal((await call(owner,path(a.id),'POST',data(view.data,'STALE-'+suffix))).status,409);assert.equal((await audit(a.id)).length,0);pass('changed document rejects the old asset read before any mutation');
- const oldReview=(await ok(other,'marine-operations/admin/documents/pending')).find(d=>d.id===pending.id);assert.match(oldReview.reviewRevision,/^[a-f0-9]{64}$/);
+ const oldReview=(await ok(other,'marine-operations/center/documents/pending')).find(d=>d.id===pending.id);assert.match(oldReview.reviewRevision,/^[a-f0-9]{64}$/);
  const fresh=await ok(owner,path(a.id)),newNumber=('NEW-'+suffix).toUpperCase();
  const competing=await Promise.all([call(owner,path(a.id),'POST',data(fresh,newNumber)),call(owner,path(a.id),'POST',data(fresh,newNumber))]);assert.deepEqual(competing.map(r=>r.status).sort(),[201,409]);
  const receipt=competing.find(r=>r.status===201).data,after=await state(a.id);assert.match(receipt.reference,/^MRC-/);assert.equal(receipt.activated,false);assert.equal(after.registrationNumber,newNumber);assert.equal(after.status,'DRAFT');assert.equal((await audit(a.id)).length,1);assert.equal(after.readiness.length,1);assert.equal(after.readiness[0].status,'NOT_READY');
@@ -47,10 +49,10 @@ try{
  for(const key of ['storageKey','sha256','referenceNumber','expiresAt','createdAt'])assert.deepEqual(reopened[key],verified[key]);
  const reread=await ok(owner,path(a.id));assert.equal(reread.registrationNumber,newNumber);assert.equal(reread.latestCorrectionReference,receipt.reference);assert.equal(reread.verifiedDocumentCount,0);
  pass('concurrent correction commits once, preserves asset identity and file evidence, returns verification to review and persists receipt after reread');
- assert.equal((await call(other,'marine-operations/admin/documents/'+pending.id+'/decision','POST',{outcome:'VERIFIED',expectedRevision:oldReview.reviewRevision})).status,409);
+ assert.equal((await call(other,'marine-operations/center/documents/'+pending.id+'/decision','POST',{outcome:'RETURNED',note:'Updated scan required',expectedRevision:oldReview.reviewRevision})).status,409);
  assert.equal((await db.marineAssetDocument.findUnique({where:{id:pending.id}})).status,'PENDING');
- const newReview=(await ok(other,'marine-operations/admin/documents/pending')).find(d=>d.id===pending.id);assert.notEqual(newReview.reviewRevision,oldReview.reviewRevision);assert.equal(newReview.marineAsset.registrationNumber,newNumber);
- await ok(other,'marine-operations/admin/documents/'+pending.id+'/decision','POST',{outcome:'REJECTED',expectedRevision:newReview.reviewRevision});pass('stale document decision cannot approve across a boat identity correction; a fresh separate decision remains available');
+ const newReview=(await ok(other,'marine-operations/center/documents/pending')).find(d=>d.id===pending.id);assert.notEqual(newReview.reviewRevision,oldReview.reviewRevision);assert.equal(newReview.marineAsset.registrationNumber,newNumber);
+ await ok(other,'marine-operations/center/documents/'+pending.id+'/decision','POST',{outcome:'RETURNED',note:'Updated scan required',expectedRevision:newReview.reviewRevision});pass('stale document decision cannot approve across a boat identity correction; a fresh separate decision remains available');
  const rev=await ok(owner,path(a.id));assert.equal((await call(owner,path(a.id),'POST',data(rev,newNumber))).status,409);
  assert.equal((await call(owner,path(a.id),'POST',data(view.data,'REPLAY-'+suffix))).status,409);assert.equal((await audit(a.id)).length,1);pass('same number and old saved confirmation cannot create duplicate corrections');
  const one=await asset(org,'RACE-A'),two=await asset(org,'RACE-B'),number='SAME-'+suffix;
