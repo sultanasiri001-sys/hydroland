@@ -1,4 +1,5 @@
 [
+  ["search", "PUBLIC_SEARCH_SUBMITTED", "PublicSearch", "audit/public-search-events.controller.ts"],
   ["booking", "organization.booking.requested", "Booking", "trips/trips.service.ts"],
   ["eligibility", "organization.booking.participant.updated", "BookingParticipant", "trips/booking-participant.service.ts"],
   ["trip", "CENTER_TRIP_PUBLISHED", "Trip", "organizations/center-trip-management.service.ts"],

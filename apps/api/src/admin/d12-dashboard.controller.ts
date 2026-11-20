@@ -68,6 +68,8 @@ export class D12DashboardController {
       if (!/^[a-z0-9][a-z0-9_-]{0,127}$/i.test(id)) throw new BadRequestException();
       const org = await tx.organization.findFirst({ where: { id, status: 'ACTIVE' }, select: { id: true, displayName: true } });
       if (!org) throw new NotFoundException();
+      const platform = await platformOrganization(tx);
+      const publicSearchApplicable = platform?.id === id;
       const range = centerReportRange(from, to);
       // Production and clean databases use both timestamp types. Prisma stores naive
       // timestamps as UTC. A transaction-local timezone keeps both comparisons identical.
@@ -81,6 +83,8 @@ export class D12DashboardController {
         FROM sources m LEFT JOIN "AuditEvent" e ON e.action=m.action AND e.resource=m.resource
           AND e.metadata->>'organizationId'=${id} AND e."resourceId" IS NOT NULL
           AND e."occurredAt">=${range.start} AND e."occurredAt"<${range.end}
+          AND (m.category<>'search' OR (${publicSearchApplicable} AND e.metadata->>'schemaVersion'='D12.search.v1'
+            AND e.metadata->>'scope'='PLATFORM' AND e."actorId" IS NULL AND e."ipAddress" IS NULL))
         GROUP BY m.category ORDER BY m.category`;
       const offers = await tx.storeCourseOffer.count({ where: { organizationId: id, createdAt } });
       const payments = await tx.payment.count({ where: { booking: { trip: { organizationId: id } }, createdAt } });
@@ -95,15 +99,41 @@ export class D12DashboardController {
         JOIN "OrgUnit" u ON u.id::text=r."centerOrgUnitId"::text
         WHERE u."organizationId"=${financeKey('Organization', 'id', id)} AND u.type='CENTER'
           AND r.status IN ('OPEN','PARTIALLY_PAID','OVERDUE') GROUP BY r.currency ORDER BY r.currency`;
+      // Count existing reconciliation records without reading their lines,
+      // notes, amounts, counterparties or provider references into the response.
+      const [settlementRecords] = await tx.$queryRaw<Array<{ recorded: number; distinctSettlements: number; approved: number; rejected: number }>>`
+        SELECT
+          count(DISTINCT s.id) FILTER (WHERE s."submittedAt">=${range.start} AND s."submittedAt"<${range.end})::integer AS recorded,
+          count(DISTINCT (s."centerOrgUnitId",s."providerSettlementId"))
+            FILTER (WHERE s."submittedAt">=${range.start} AND s."submittedAt"<${range.end})::integer AS "distinctSettlements",
+          count(DISTINCT s.id) FILTER (WHERE s.status='APPROVED' AND s."reviewedAt">=${range.start} AND s."reviewedAt"<${range.end})::integer AS approved,
+          count(DISTINCT s.id) FILTER (WHERE s.status='REJECTED' AND s."reviewedAt">=${range.start} AND s."reviewedAt"<${range.end})::integer AS rejected
+        FROM "FinanceSettlementImport" s JOIN "OrgUnit" u ON u.id::text=s."centerOrgUnitId"::text
+        WHERE u."organizationId"=${financeKey('Organization', 'id', id)} AND u.type='CENTER'`;
+      const [settlementReviews] = await tx.$queryRaw<Array<{ approved: number; rejected: number; recordsReviewed: number }>>`
+        SELECT count(DISTINCT r.id) FILTER (WHERE r.decision='APPROVED')::integer AS approved,
+          count(DISTINCT r.id) FILTER (WHERE r.decision='REJECTED')::integer AS rejected,
+          count(DISTINCT s.id)::integer AS "recordsReviewed"
+        FROM "FinanceSettlementReview" r JOIN "FinanceSettlementImport" s ON s.id::text=r."importId"::text
+        JOIN "OrgUnit" u ON u.id::text=s."centerOrgUnitId"::text
+        WHERE u."organizationId"=${financeKey('Organization', 'id', id)} AND u.type='CENTER'
+          AND r."createdAt">=${range.start} AND r."createdAt"<${range.end}`;
       return {
-        version: 'D12.dashboard.v1', organization: org, from: range.from, to: range.to,
+        version: 'D12.dashboard.v2', organization: org, from: range.from, to: range.to,
         timeZone: range.timeZone, readAt: new Date().toISOString(),
-        audit: audit.map(row => ({
+        audit: audit.filter(row => row.category !== 'search' || publicSearchApplicable).map(row => ({
           ...row,
           sources: mapping.filter(m => m.category === row.category).map(m => m.resource + ' / ' + m.action),
         })),
         offers, payments, revenue, receivables,
-        unmeasured: ['publicSearch', 'confirmedPayout'],
+        settlements: {
+          schemaVersion: 'D12.settlement-records.v1', scope: 'ORGANIZATION_CENTERS',
+          records: settlementRecords, reviews: settlementReviews,
+          sources: ['FinanceSettlementImport → OrgUnit.organizationId', 'FinanceSettlementReview → FinanceSettlementImport → OrgUnit.organizationId'],
+          dateFields: { recorded: 'submittedAt', finalDecision: 'reviewedAt', reviewDecision: 'createdAt' },
+        },
+        publicSearch: { applicable: publicSearchApplicable, scope: 'PLATFORM_ONLY', schemaVersion: 'D12.search.v1', newEventsPerMinuteLimit: 60 },
+        unmeasured: ['confirmedPayout'],
       };
     });
   }
