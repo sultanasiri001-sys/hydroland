@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { CustomerCase as StoredCase, Prisma } from '@prisma/client';
+import { platformOrganization } from '../hr/staffing-catalog';
 import { requireVerifiedAdmin } from '../admin/admin-authorization';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
@@ -89,6 +90,10 @@ export class CustomerCaseManagementService {
       const current = await tx.customerCase.findUnique({ where: { id: caseId } });
       if (!current) throw new NotFoundException('Customer case not found.');
       assertOrdinaryCustomerCase(current);
+      if (assignment && current.referenceType==='PRIVATE_MESSAGE_ABUSE') {
+        const platform = await platformOrganization(tx);
+        if (platform?.ownerId !== actorId) throw new ForbiddenException('Only the platform owner may delegate evidence review.');
+      }
       const record = asWorkflowCase(current);
       const dueAt = suppliedDueAt ?? current.dueAt;
       let next: CustomerCase;

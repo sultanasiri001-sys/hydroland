@@ -40,4 +40,6 @@ try{
     await verify();
     console.log('Messaging runtime schema bootstrap verified against production migration definitions.');
   }
+  const review = await readFile(resolve(prismaRoot,'migrations','20261121210000_private_message_review','migration.sql'),'utf8');
+  for (const statement of splitStatements(review)) await db.$executeRawUnsafe(statement);
 } finally { await db.$disconnect(); }

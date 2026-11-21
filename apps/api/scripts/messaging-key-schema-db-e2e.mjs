@@ -32,6 +32,8 @@ try {
         .replace(/"(id|[A-Za-z]+Id)" TEXT/g, '"$1" UUID')
         .replaceAll('gen_random_uuid()::text', 'gen_random_uuid()');
       for (const statement of statements(sql)) await db.$executeRawUnsafe(statement);
+      const review = await readFile(new URL('../prisma/migrations/20261121210000_private_message_review/migration.sql',import.meta.url),'utf8');
+      for (const statement of statements(review)) await db.$executeRawUnsafe(statement);
       const keyTypes = await db.$queryRaw`SELECT data_type FROM information_schema.columns WHERE table_schema=${schema} AND table_name='ConversationParticipant' AND column_name='accountId'`;
       assert.equal(keyTypes[0].data_type, type);
       const [owner, peer, outsider, unavailable] = Array.from({ length: 4 }, () => randomUUID());

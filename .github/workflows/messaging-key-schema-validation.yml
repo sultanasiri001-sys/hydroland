@@ -46,6 +46,22 @@ jobs:
         run: |
           set -o pipefail
           node apps/api/scripts/messaging-key-schema-db-e2e.mjs | tee messaging-key-schema-report.txt
+      - name: Verify 30-day private-message retention and case-scoped abuse review
+        env:
+          MESSAGING_E2E_BASE_URL: http://127.0.0.1:3194/api/v1
+          PORT: 3194
+        run: |
+          set -euo pipefail
+          psql "${DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE a15test' || exit 1
+          export DATABASE_URL="postgresql://hydroland:hydroland@127.0.0.1:5432/a15test"
+          export JWT_SECRET="$(openssl rand -hex 32)"
+          npm exec --workspace @hydroland/api -- prisma db push --skip-generate
+          node apps/api/scripts/bootstrap-messaging-runtime-schema.mjs
+          node apps/api/dist/main.js >"$RUNNER_TEMP/private-message-api.log" 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" 2>/dev/null || true' EXIT
+          curl -fsS --retry 30 --retry-connrefused --retry-delay 1 "$MESSAGING_E2E_BASE_URL/health/ready" >/dev/null
+          node apps/api/scripts/private-message-review-http.mjs
       - name: Upload schema compatibility evidence
         if: always()
         uses: actions/upload-artifact@v4

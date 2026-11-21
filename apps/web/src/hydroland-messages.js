@@ -1,6 +1,7 @@
 (()=>{
   // Authored interface messages only. Account, provider and document values remain opaque.
   const uiLocale=window.HydrolandI18n?.createScope("messages", {
+  "حذف رسالتي للطرفين":"Delete my message for everyone","إبلاغ خدمة العملاء عن إساءة":"Report abuse to customer service","رسالة محذوفة":"Deleted message","تأكيد حذف الرسالة للطرفين؟ تحتفظ المنصة بنسخة مقيّدة ٣٠ يومًا لبلاغات الإساءة.":"Delete for everyone? A restricted copy is retained for 30 days for abuse reports.","تأكيد فتح بلاغ عن هذه الرسالة لدى خدمة العملاء؟":"Open a customer service report for this message?","رقم بلاغ خدمة العملاء: {0}":"Customer service case: {0}","تعذر تنفيذ الإجراء. حدّث المحادثة وحاول مجددًا.":"Could not complete the action. Refresh the conversation and try again.",
   "فتح الرسائل": "Open messages",
   "{0}، {1} محادثات غير مقروءة": "{0}, {1} unread conversations",
   "عضو HYDROLAND": "HYDROLAND member",
@@ -60,7 +61,7 @@
   const countUnreadConversations=conversations=>{const accountId=me();if(!accountId||!Array.isArray(conversations))return 0;return conversations.filter(conversation=>{const mine=(conversation.participants||[]).find(participant=>participant.accountId===accountId),latest=conversation.latestMessage;if(!mine||!latest||latest.senderAccountId===accountId)return false;const latestAt=Date.parse(latest.createdAt),lastReadAt=mine.lastReadAt?Date.parse(mine.lastReadAt):Number.NEGATIVE_INFINITY;return Number.isFinite(latestAt)&&latestAt>lastReadAt}).length};
   const participantName=p=>`${p?.firstName||''} ${p?.lastName||''}`.trim()||p?.email||uiLocale.t('عضو HYDROLAND');
   const conversationName=c=>c.title||c.participants?.filter(p=>p.accountId!==me()).map(participantName).join('، ')||uiLocale.message('محادثة HYDROLAND');
-  const latestText=c=>c.latestMessage?.kind==='VOICE'?uiLocale.message('رسالة صوتية'):c.latestMessage?.body||uiLocale.message('لا توجد رسائل بعد');
+  const latestText=c=>c.latestMessage?.withdrawnAt?uiLocale.message('رسالة محذوفة'):c.latestMessage?.kind==='VOICE'?uiLocale.message('رسالة صوتية'):c.latestMessage?.body||uiLocale.message('لا توجد رسائل بعد');
   const forceLogin=()=>{sessionStorage.removeItem('hl-guest-mode');auth()?.syncAuthUi?.();toast(uiLocale.message('سجّل الدخول لفتح الرسائل'))};
   const ensureDialog=()=>{
     if(state.dialog)return state.dialog;
@@ -95,9 +96,32 @@
     if(conversation.hasMore&&conversation.olderCursor){const button=document.createElement('button');button.type='button';button.dataset.loadOlderMessages='';uiLocale.setText(button, ...['تحميل الرسائل الأقدم']);button.disabled=state.historyLoading;button.addEventListener('click',loadOlder);stream.appendChild(button)}
     const messages=conversation.messages||[];
     if(!messages.length){uiLocale.setHTML(stream, uiLocale.html`<p class="hl-message-empty">لا توجد رسائل بعد.</p>`);return}
-    messages.forEach(message=>{const article=document.createElement('article');article.dataset.messageId=message.id;article.className='hl-message'+(message.senderAccountId===me()?' mine':'');const sender=participantName({firstName:message.senderFirstName,lastName:message.senderLastName,email:message.senderEmail});const time=new Date(message.createdAt).toLocaleString('ar-SA');if(message.kind==='VOICE'){uiLocale.setHTML(article, uiLocale.html`<small>${esc(sender)} · ${esc(time)}</small><audio controls preload="none" src="${esc(message.mediaUrl)}"></audio><small>${Number(message.durationSec)||0} ثانية</small>`)}else{uiLocale.setHTML(article, uiLocale.html`<small>${esc(sender)} · ${esc(time)}</small><p>${esc(message.body)}</p>`)}stream.appendChild(article)});
+    messages.forEach(message=>{const article=document.createElement('article');article.dataset.messageId=message.id;article.className='hl-message'+(message.senderAccountId===me()?' mine':'');const sender=participantName({firstName:message.senderFirstName,lastName:message.senderLastName,email:message.senderEmail});const time=new Date(message.createdAt).toLocaleString('ar-SA');if(message.withdrawnAt){uiLocale.setMessage(article,uiLocale.message('رسالة محذوفة'))}else if(message.kind==='VOICE'){uiLocale.setHTML(article, uiLocale.html`<small>${esc(sender)} · ${esc(time)}</small><audio controls preload="none" src="${esc(message.mediaUrl)}"></audio><small>${Number(message.durationSec)||0} ثانية</small>`)}else{uiLocale.setHTML(article, uiLocale.html`<small>${esc(sender)} · ${esc(time)}</small><p>${esc(message.body)}</p>`)}if(conversation.participants?.length===2)addMessageActions(article,conversation.id,message);
+      stream.appendChild(article)});
     if(preserveScroll)restoreMessageAnchor(stream,anchor,oldTop,oldHeight);else stream.scrollTop=stream.scrollHeight;
   };
+  function addMessageActions(article,conversationId,message) {
+    const revision=state.navigation;
+    for(const action of ['withdraw','report']){
+      const withdraw=action==='withdraw';
+      if(withdraw&&(message.withdrawnAt||message.senderAccountId!==me()))continue;
+      const button=document.createElement('button');
+      button.type='button';
+      uiLocale.setMessage(button,uiLocale.message(withdraw?'حذف رسالتي للطرفين':'إبلاغ خدمة العملاء عن إساءة'));
+      button.addEventListener('click',async()=>{
+        if(!active(revision)||!window.confirm(uiLocale.message(withdraw?'تأكيد حذف الرسالة للطرفين؟ تحتفظ المنصة بنسخة مقيّدة ٣٠ يومًا لبلاغات الإساءة.':'تأكيد فتح بلاغ عن هذه الرسالة لدى خدمة العملاء؟')))return;
+        button.disabled=true;
+        try{
+          const result=await request('/messages/conversations/'+encodeURIComponent(conversationId)+'/messages/'+encodeURIComponent(message.id)+'/'+action,{method:'POST',body:'{}'});
+          if(!active(revision))return;
+          if(withdraw)await openConversation(conversationId);
+          else status(uiLocale.message('رقم بلاغ خدمة العملاء: {0}',[result.caseId]));
+        }catch{if(active(revision))status(uiLocale.message('تعذر تنفيذ الإجراء. حدّث المحادثة وحاول مجددًا.'))}
+        finally{button.disabled=false}
+      });
+      article.appendChild(button);
+    }
+  }
   async function loadOlder(){
     const conversation=state.current,revision=state.navigation;
     if(!conversation?.hasMore||!conversation.olderCursor||state.historyLoading||!active(revision))return;
@@ -113,7 +137,14 @@
     finally{if(active(revision)){state.historyLoading=false;const current=state.dialog.querySelector('[data-load-older-messages]');if(current)current.disabled=false}}
   }
   const load=async()=>{if(!auth()?.isAuthenticated?.()){state.conversations=[];state.current=null;updateMessageIndicators(0);return[]}try{state.conversations=await request('/messages/conversations');updateMessageIndicators(countUnreadConversations(state.conversations));renderList();return state.conversations}catch(error){if(error.message!=='AUTH_CHANGED')status((error.message || uiLocale.message('تعذر تحميل الرسائل')));return[]}};
-  const refreshMessageIndicators=async()=>{if(!auth()?.isAuthenticated?.()){state.conversations=[];state.current=null;updateMessageIndicators(0);return[]}try{state.conversations=await request('/messages/conversations');updateMessageIndicators(countUnreadConversations(state.conversations));if(state.dialog?.open)renderList();return state.conversations}catch{return state.conversations}};
+  const refreshMessageIndicators=async()=>{if(!auth()?.isAuthenticated?.()){state.conversations=[];state.current=null;updateMessageIndicators(0);return[]}try{state.conversations=await request('/messages/conversations');updateMessageIndicators(countUnreadConversations(state.conversations));if(state.dialog?.open){
+      renderList();
+      const conversation=state.current,revision=state.navigation;
+      if(conversation&&!state.historyLoading){
+        const fresh=await request('/messages/conversations/'+encodeURIComponent(conversation.id));
+        if(active(revision)&&state.current===conversation){state.current=fresh;renderConversation(fresh,true)}
+      }
+    }return state.conversations}catch{return state.conversations}};
   const open=async()=>{if(!auth()?.isAuthenticated?.()){forceLogin();return}const dialog=ensureDialog();dialog.showModal();const revision=state.navigation;status(uiLocale.message('جارٍ تحميل المحادثات...'));await load();if(active(revision))status('')};
   const openConversation=async id=>{
     const sameConversation=state.selectedId===id;resetConversation(!sameConversation);state.selectedId=id;const revision=state.navigation;

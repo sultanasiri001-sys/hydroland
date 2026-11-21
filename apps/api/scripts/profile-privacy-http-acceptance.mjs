@@ -214,7 +214,7 @@ async function verifySentMessages(db, call, owner, other) {
     const {receipt,...snapshot}=first.body;
     const [tripRule, privateRule] = snapshot.retentionPolicy.rules;
     assert.equal(tripRule.days,90);assert.equal(tripRule.appliesWhen,'TRIP_COORDINATION_CONVERSATION');
-    assert.equal(privateRule.basis,'REQUIRES_SEPARATE_PRODUCT_DECISION');assert.equal(privateRule.days,undefined);
+    assert.equal(privateRule.basis,'RESTRICTED_AFTER_SENDER_WITHDRAWAL');assert.equal(privateRule.days,30);
     assert.equal(snapshot.accountId,owner.id);assert.equal(snapshot.schemaVersion,'PERSONAL_SENT_MESSAGES_V1');
     assert.equal(receipt.sha256,createHash('sha256').update(JSON.stringify(snapshot)).digest('hex'));
     const audit=await db.auditEvent.findUniqueOrThrow({where:{id:receipt.auditEventId}});

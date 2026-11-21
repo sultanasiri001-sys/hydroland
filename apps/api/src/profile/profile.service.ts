@@ -113,7 +113,7 @@ export class ProfileService {
           FROM "Message" m JOIN "ConversationParticipant" cp
             ON cp."conversationId" = m."conversationId" AND cp."accountId" = m."senderAccountId"
           WHERE m."senderAccountId" = (jsonb_populate_record(NULL::"Account", jsonb_build_object('id', ${accountId}::text)))."id"
-            AND m."id"::text COLLATE "C" > ${after}
+            AND m."withdrawnAt" IS NULL AND m."id"::text COLLATE "C" > ${after}
           ORDER BY m."id"::text COLLATE "C" LIMIT ${pageSize + 1}`;
       }
       const records = rows.slice(0, pageSize);

@@ -7,7 +7,7 @@ type CreateConversationInput={participantAccountIds?:unknown;title?:unknown};
 type SendMessageInput={kind?:unknown;body?:unknown;mediaUrl?:unknown;durationSec?:unknown};
 type ConversationRow={id:string;title:string|null;createdByAccountId:string;createdAt:Date;updatedAt:Date};
 type ParticipantRow={conversationId:string;accountId:string;email:string;firstName:string;lastName:string;joinedAt:Date;lastReadAt:Date|null};
-type MessageRow={id:string;conversationId:string;senderAccountId:string;senderEmail:string;senderFirstName:string;senderLastName:string;kind:'TEXT'|'VOICE';body:string|null;mediaUrl:string|null;durationSec:number|null;createdAt:Date};
+type MessageRow={id:string;conversationId:string;senderAccountId:string;withdrawnAt:Date|null;senderEmail:string;senderFirstName:string;senderLastName:string;kind:'TEXT'|'VOICE';body:string|null;mediaUrl:string|null;durationSec:number|null;createdAt:Date};
 
 @Injectable()
 export class MessagingService {
@@ -32,7 +32,7 @@ export class MessagingService {
     return Promise.all(conversations.map(async conversation=>{
       const participants=await this.participants(conversation.id);
       const latest=(await this.db.$queryRaw<MessageRow[]>(Prisma.sql`
-        SELECT m."id",m."conversationId",m."senderAccountId",a."email" AS "senderEmail",p."firstName" AS "senderFirstName",p."lastName" AS "senderLastName",m."kind",m."body",m."mediaUrl",m."durationSec",m."createdAt"
+        SELECT m."id",m."conversationId",m."senderAccountId",a."email" AS "senderEmail",p."firstName" AS "senderFirstName",p."lastName" AS "senderLastName",m."withdrawnAt",m."kind",CASE WHEN m."withdrawnAt" IS NULL THEN m."body" ELSE NULL END AS "body",m."mediaUrl",m."durationSec",m."createdAt"
         FROM "Message" m JOIN "Account" a ON a."id"=m."senderAccountId" JOIN "Person" p ON p."id"=a."personId"
         WHERE m."conversationId"=${this.conversationKey(conversation.id)} ORDER BY m."createdAt" DESC,m."id" DESC LIMIT 1
       `))[0]??null;
@@ -133,7 +133,7 @@ export class MessagingService {
       )
     `;
     const rows=await this.db.$queryRaw<MessageRow[]>(Prisma.sql`
-      SELECT m."id",m."conversationId",m."senderAccountId",a."email" AS "senderEmail",p."firstName" AS "senderFirstName",p."lastName" AS "senderLastName",m."kind",m."body",m."mediaUrl",m."durationSec",m."createdAt"
+      SELECT m."id",m."conversationId",m."senderAccountId",a."email" AS "senderEmail",p."firstName" AS "senderFirstName",p."lastName" AS "senderLastName",m."withdrawnAt",m."kind",CASE WHEN m."withdrawnAt" IS NULL THEN m."body" ELSE NULL END AS "body",m."mediaUrl",m."durationSec",m."createdAt"
       FROM "Message" m JOIN "Account" a ON a."id"=m."senderAccountId" JOIN "Person" p ON p."id"=a."personId"
       WHERE m."conversationId"=${this.conversationKey(conversationId)}
         AND EXISTS (SELECT 1 FROM "ConversationParticipant" cp WHERE cp."conversationId"=m."conversationId" AND cp."accountId"=${this.accountKey(accountId)})
@@ -145,7 +145,7 @@ export class MessagingService {
   }
 
   private async messageById(messageId:string){const row=(await this.db.$queryRaw<MessageRow[]>(Prisma.sql`
-    SELECT m."id",m."conversationId",m."senderAccountId",a."email" AS "senderEmail",p."firstName" AS "senderFirstName",p."lastName" AS "senderLastName",m."kind",m."body",m."mediaUrl",m."durationSec",m."createdAt"
+    SELECT m."id",m."conversationId",m."senderAccountId",a."email" AS "senderEmail",p."firstName" AS "senderFirstName",p."lastName" AS "senderLastName",m."withdrawnAt",m."kind",CASE WHEN m."withdrawnAt" IS NULL THEN m."body" ELSE NULL END AS "body",m."mediaUrl",m."durationSec",m."createdAt"
     FROM "Message" m JOIN "Account" a ON a."id"=m."senderAccountId" JOIN "Person" p ON p."id"=a."personId" WHERE m."id"=${this.messageKey(messageId)} LIMIT 1
   `))[0];if(!row)throw new NotFoundException('Message not found.');return row;}
 

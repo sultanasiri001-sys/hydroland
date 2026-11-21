@@ -83,6 +83,7 @@ export class CustomerCaseService {
     for (const key of ['referenceType', 'referenceId'] as const) {
       if (input[key] !== undefined && (typeof input[key] !== 'string' || input[key].length > 200)) throw new BadRequestException('Invalid reference.');
     }
+    if (input.referenceType?.trim() === 'PRIVATE_MESSAGE_ABUSE') throw new BadRequestException('Use the report action on the private message.');
     if (input.referenceType?.trim() === providerAppealReferenceType) throw new BadRequestException('Provider observations require the dedicated provider-appeal workflow.');
     return this.db.serializable(async tx => {
       const record = await tx.customerCase.create({ data: { customerId: accountId, type: input.type, priority: input.priority ?? CustomerCasePriority.NORMAL, subject, description, referenceType: input.referenceType?.trim() || null, referenceId: input.referenceId?.trim() || null, interactions: { create: { actorType: 'CUSTOMER', actorId: accountId, channel: CustomerInteractionChannel.WEB, message: description } } }, include: { interactions: true } });
