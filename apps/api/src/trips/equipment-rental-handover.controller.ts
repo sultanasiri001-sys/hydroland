@@ -15,5 +15,5 @@ export class EquipmentRentalHandoverController{
   summary(@Param('id')id:string){return this.handover.summary(id);}
 
   @Post(':id/handover-scan')
-  scan(@Req()req:{auth:{accountId:string}},@Param('id')id:string,@Body()body:{code?:string}){return this.handover.scan(req.auth.accountId,id,body);}
+  scan(@Req()req:{auth:{accountId:string}},@Param('id')id:string,@Body()body:{code?:string;handoverCondition?:string}){return this.handover.scan(req.auth.accountId,id,body);}
 }

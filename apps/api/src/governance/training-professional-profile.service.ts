@@ -34,7 +34,7 @@ export class TrainingProfessionalProfileService {
     const centers=new Map(memberships.map(row=>[row.organization.id,row.organization.displayName]));
     const current=await this.db.instructorCompensationAgreement.findMany({
       where:{instructorAccountId:accountId,organizationId:{in:[...centers.keys()]}},orderBy:[{organizationId:'asc'},{revision:'desc'}],
-      distinct:['organizationId'],select:{organizationId:true,revision:true,mode:true,fixedMinor:true,rateBps:true,currency:true}});
+      distinct:['organizationId'],select:{organizationId:true,revision:true,mode:true,fixedMinor:true,rateBps:true,currency:true,earningTiming:true,reversalTerms:true}});
     const agreements=current.map(({organizationId,...terms})=>({...terms,centerName:centers.get(organizationId)}));
     return {agreements,currency:'SAR',totalsScope:'SAR_ONLY',totals:{pendingMinor:totals.PENDING||0,approvedMinor:totals.APPROVED||0,settledMinor:totals.SETTLED||0},entries:rows.map(row=>({id:row.id,courseCode:row.trainingEnrollment.courseCode,amountMinor:row.amountMinor,currency:row.currency,status:row.status,approvedAt:row.approvedAt,settledAt:row.settledAt,createdAt:row.createdAt}))};
   }

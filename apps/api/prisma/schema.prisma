@@ -1942,6 +1942,8 @@ model InstructorCompensationAgreement {
   currency String @default("SAR")
   recordedByAccountId String
   recordedAt DateTime @default(now())
+  earningTiming String? @db.VarChar(1000)
+  reversalTerms String? @db.VarChar(1000)
   @@unique([organizationId,instructorAccountId,revision], map:"InstructorCompAgreement_center_trainer_rev")
   @@index([instructorAccountId])
 }
