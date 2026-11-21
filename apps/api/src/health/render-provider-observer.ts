@@ -5,6 +5,8 @@ import { DatabaseService } from '../database/database.service';
 
 import { isProductionProviderMonitor } from './a06-schedule-evidence';
 
+import { deliverProviderEscalations } from './render-provider-escalation';
+
 const cadenceMs = 15 * 60_000;
 const monitor = 'integration.provider.monitor.render';
 const resourceId = 'quarter-hour';
@@ -39,6 +41,8 @@ export class RenderProviderObserver implements OnApplicationBootstrap, OnModuleD
         else this.logger.log(log);
       })
       .catch(() => this.logger.error('Render provider observation failed. The current quarter will be retried.'))
+      .then(() => this.db.$transaction(tx => deliverProviderEscalations(tx, this.audit)))
+      .catch(() => this.logger.error('Provider escalation delivery failed. The next poll will retry.'))
       .finally(() => { this.inflight = undefined; });
   }
 

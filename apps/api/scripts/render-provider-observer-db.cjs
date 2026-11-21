@@ -19,6 +19,49 @@ const capture = () => db.$transaction(tx => observer.capture(tx));
 const canonicalSchema = source.searchParams.get('schema') || 'public';
 assert(/^[a-z_][a-z0-9_]*$/.test(canonicalSchema));
 
+
+async function verifyProviderEscalation() {
+  const {deliverProviderEscalations} = require('../dist/health/render-provider-escalation');
+  const audit = new AuditService(db);
+  const deliver = () => db.$transaction(tx => deliverProviderEscalations(tx, audit));
+  // All fixtures, receipts and identity bindings live in this run's disposable schema.
+  for (const name of ['AccountStatus', 'ProfessionalRole', 'RoleAssignmentStatus', 'OrganizationStatus', 'NotificationStatus']) {
+    await admin.$executeRawUnsafe('CREATE DOMAIN "' + schema + '"."' + name + '" AS "' + canonicalSchema + '"."' + name + '"');
+  }
+  for (const table of ['OperationalSetting','Organization','Account','RoleAssignment','Notification']) {
+    await admin.$executeRawUnsafe('CREATE TABLE "' + schema + '"."' + table + '" (LIKE "' + canonicalSchema + '"."' + table + '" INCLUDING ALL)');
+  }
+  const owner = randomUUID(), org = randomUUID();
+  await db.$executeRaw`INSERT INTO "Account" ("id","personId","email","passwordHash","status","emailVerifiedAt","updatedAt")
+    VALUES (${owner},${randomUUID()},${owner+'@example.invalid'},'test','ACTIVE',NOW(),NOW())`;
+  await db.$executeRaw`INSERT INTO "RoleAssignment" ("id","accountId","role","status","updatedAt")
+    VALUES (${randomUUID()},${owner},'ADMIN','ACTIVE',NOW())`;
+  await db.$executeRaw`INSERT INTO "Organization" ("id","ownerId","kind","displayName","status","updatedAt")
+    VALUES (${org},${owner},'HYDROLAND_INTERNAL_PLATFORM','A06 fixture','ACTIVE',NOW())`;
+  await db.auditEvent.deleteMany({where:{resource:'integration.provider.health'}});
+  const signalAt = (ago, state, category) => db.auditEvent.create({data:{
+    ...signal, occurredAt:new Date(Date.now()-ago), metadata:{state,category}}});
+  await deliver(); // unknown providers
+  await signalAt(10*60_000,'DEGRADED','PROVIDER_FAILURE');
+  await deliver();
+  assert.equal(await db.notification.count(),0);
+  await db.auditEvent.deleteMany({where:signal});
+  await signalAt(32*60_000,'DEGRADED','PROVIDER_FAILURE');
+  await deliver(); // owner binding missing: retry later
+  assert.equal(await db.notification.count(),0);
+  await db.operationalSetting.create({data:{key:'PLATFORM_STAFFING_ORGANIZATION:v1',value:{organizationId:org}}});
+  await Promise.all([deliver(),deliver()]);
+  await deliver();
+  const [alert] = await db.notification.findMany({where:{accountId:owner,type:'A06_PROVIDER_STATUS'}});
+  assert.equal(await db.notification.count(),1);
+  assert.equal(alert.payload.state,'DEGRADED');
+  await signalAt(60_000,'AVAILABLE','SUCCESS');
+  await deliver(); await deliver();
+  assert.equal(await db.notification.count(),2);
+  const recovery = await db.auditEvent.findFirstOrThrow({where:{resource:'integration.provider.escalation.render',action:'provider.recovered'}});
+  assert.equal((await db.notification.findUniqueOrThrow({where:{id:recovery.metadata.notificationId}})).payload.state,'AVAILABLE');
+}
+
 async function verify() {
   await admin.$executeRawUnsafe('CREATE SCHEMA "' + schema + '"');
   try {
@@ -48,6 +91,7 @@ async function verify() {
     assert(!JSON.stringify(later).includes('must-never-leave-source'));
     await db.auditEvent.deleteMany({where: {resource: 'integration.provider.health'}});
     await require('./provider-adapter-drill.cjs').runProviderDrill(db);
+    await verifyProviderEscalation();
     console.log('PASS Render monitoring: independent sample, five unknowns, concurrent deduplication, missed slots, invalid-input rollback, sanitized latest transition and durable readback');
   } finally {
     await db.$disconnect();
