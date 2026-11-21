@@ -87,6 +87,7 @@ async function verifyControl(initial, account, headers) {
   const applied = await change(initial, initial.state === 'ENABLED' ? 'DISABLED' : 'ENABLED', headers, 'A16 isolated catalog change');
   const restored = await change(applied, initial.state, headers, 'A16 isolated catalog rollback');
   assert.notEqual(initial.revision, restored.revision);
+  assert(Date.parse(restored.updatedAt) >= Date.parse(applied.updatedAt), id);
   const events = await db.auditEvent.findMany({where:{
     actorId:account.personId, action:'OPERATIONAL_CONTROL_CHANGED', resource:'PolicyControl', resourceId:id,
   }});
@@ -99,6 +100,7 @@ async function verifyControl(initial, account, headers) {
     assert.equal(event.metadata.previousState, before.state);
     assert.equal(event.metadata.previousRevision, before.revision);
     assert.equal(event.metadata.state, after.state);
+    assert.equal(event.metadata.reason, after === applied ? 'A16 isolated catalog change' : 'A16 isolated catalog rollback');
     evidence.push({auditId:event.id, previousVersion:before.revision, version:after.revision,
       state:after.state, effectiveUtc:after.updatedAt, auditedUtc:event.occurredAt.toISOString()});
   }

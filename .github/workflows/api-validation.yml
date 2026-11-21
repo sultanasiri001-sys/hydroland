@@ -201,6 +201,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://hydroland:hydroland@localhost:5433/a16_catalog_acceptance
           A16_API_BASE_URL: http://127.0.0.1:3168/api/v1
+          A16_EVIDENCE_PATH: ${{ runner.temp }}/a16-catalog-receipts.json
           PORT: 3168
           NODE_ENV: test
         run: |
@@ -213,6 +214,12 @@ jobs:
           trap 'kill "$a16_pid" 2>/dev/null || true; wait "$a16_pid" 2>/dev/null || true' EXIT
           curl --fail --silent --retry 30 --retry-connrefused --retry-delay 1 "$A16_API_BASE_URL/health/ready" > /dev/null
           node apps/api/scripts/operational-catalog-rollback-e2e.mjs
+      - name: Retain the A16 catalog rollback receipts
+        uses: actions/upload-artifact@v4
+        with:
+          name: a16-catalog-rollback
+          path: ${{ runner.temp }}/a16-catalog-receipts.json
+          if-no-files-found: error
       - name: Verify independent Render provider observations in isolated PostgreSQL
         env:
           A06_DB_TEST: DISPOSABLE_LOOPBACK
