@@ -27,7 +27,9 @@ export async function requirePostedCourseCollection(tx: Prisma.TransactionClient
  */
 export async function requireCourseCollection(tx: Prisma.TransactionClient, enrollment: CourseEnrollment) {
   if (!enrollment.storeCourseOfferId) return null;
-  const contract = requireCourseContract(enrollment);
+  const contract = requireCourseContract(enrollment, true);
+  // An explicitly free original enrollment never creates a payment obligation.
+  if (contract.amountMinor === 0) return null;
   const key = {sourceType: COURSE_CHECKOUT_SOURCE, sourceId: enrollment.id};
   const evidence = await tx.commerceCollectionEvidence.findUnique({where: {sourceType_sourceId: key}});
   const checkout = await tx.commerceCheckout.findUnique({where: {sourceType_sourceId: key}});

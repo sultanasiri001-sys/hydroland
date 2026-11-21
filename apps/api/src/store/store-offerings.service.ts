@@ -12,7 +12,7 @@ const courseFields = ['courseCode','title','description','locationName','startsA
 export class StoreOfferingsService {
   constructor(private readonly db: DatabaseService) {}
 
-  private async scope(tx: Prisma.TransactionClient, accountId: string) {
+  async providerScope(tx: Prisma.TransactionClient, accountId: string) {
     const role = await tx.roleAssignment.findFirst({where:{accountId,role:'DIVE_CENTER',status:'ACTIVE',account:{status:'ACTIVE'}}});
     const member = role && await tx.organizationMember.findFirst({where:{accountId,status:'ACTIVE',role:{in:['OWNER','ADMIN']},organization:{kind:'DIVE_CENTER',status:'ACTIVE'}},orderBy:{createdAt:'asc'},select:{organization:{select:{id:true,displayName:true}}}});
     if (!member) throw new ForbiddenException('تتطلب إدارة العروض صلاحية مالك أو مدير مركز نشط.');
@@ -63,7 +63,7 @@ export class StoreOfferingsService {
 
   catalog(accountId: string) {
     return this.db.serializable(async tx=>{
-      const organization=await this.scope(tx,accountId);
+      const organization=await this.providerScope(tx,accountId);
       const products=await tx.storeProduct.findMany({where:{organizationId:organization.id},orderBy:{createdAt:'desc'},include:{_count:{select:{items:true}}}});
       const courses=await tx.storeCourseOffer.findMany({where:{organizationId:organization.id},orderBy:{startsAt:'desc'},include:{_count:{select:{enrollments:true}}}});
       return {organization,products,courses};
@@ -77,7 +77,7 @@ export class StoreOfferingsService {
     const data={sku:this.text(input,'sku',80),nameAr:this.text(input,'nameAr',240),description:this.text(input,'description',4000,true),priceMinor:this.integer(input,'priceMinor'),stockQuantity:this.integer(input,'stockQuantity'),kind:kind as StoreProductKind,status:this.status(input),currency:'SAR'};
     const productId=id||this.requestId(input.requestId);
     return this.retryUnique(()=>this.db.serializable(async tx=>{
-      const organization=await this.scope(tx,accountId),before=await tx.storeProduct.findUnique({where:{id:productId}});
+      const organization=await this.providerScope(tx,accountId),before=await tx.storeProduct.findUnique({where:{id:productId}});
       if (id && (!before || before.organizationId!==organization.id)) throw new NotFoundException('العرض غير موجود في المركز.');
       if (before) {
         if (before.organizationId!==organization.id) throw new ConflictException('تعذر إعادة استخدام طلب الحفظ.');
@@ -100,7 +100,7 @@ export class StoreOfferingsService {
     if (data.endsAt<=data.startsAt || data.startsAt<=new Date()) throw new BadRequestException('يجب أن تبدأ الدورة مستقبلًا وتنتهي بعد بدايتها.');
     const courseId=id||this.requestId(input.requestId);
     return this.retryUnique(()=>this.db.serializable(async tx=>{
-      const organization=await this.scope(tx,accountId),before=await tx.storeCourseOffer.findUnique({where:{id:courseId}});
+      const organization=await this.providerScope(tx,accountId),before=await tx.storeCourseOffer.findUnique({where:{id:courseId}});
       if(id&&(!before||before.organizationId!==organization.id))throw new NotFoundException('الدورة غير موجودة في المركز.');
       if(before){
         if(before.organizationId!==organization.id)throw new ConflictException('تعذر إعادة استخدام طلب الحفظ.');
@@ -120,7 +120,7 @@ export class StoreOfferingsService {
     this.object(input,remove?['expectedUpdatedAt']:['expectedUpdatedAt','status']);
     const status=remove?undefined:this.status(input);
     return this.db.serializable(async tx=>{
-      const organization=await this.scope(tx,accountId);
+      const organization=await this.providerScope(tx,accountId);
       const before=type==='products'?await tx.storeProduct.findFirst({where:{id,organizationId:organization.id}}):await tx.storeCourseOffer.findFirst({where:{id,organizationId:organization.id}});
       if(!before)throw new NotFoundException('العرض غير موجود في المركز.');
       this.checkRevision(before,input.expectedUpdatedAt);

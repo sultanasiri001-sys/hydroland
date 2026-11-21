@@ -24,6 +24,9 @@ const {MfaService} = load('auth/mfa.service.js');
 const {GoogleIdentityService} = load('auth/google-identity.service.js');
 const {AccessTokenGuard} = load('auth/access-token.guard.js');
 const {AdminGuard} = load('admin/admin.guard.js');
+const {StoreGoodsController} = load('store/store-goods.controller.js');
+const {StoreGoodsService} = load('store/store-goods.service.js');
+const {StoreOfferingsService} = load('store/store-offerings.service.js');
 const {StoreService} = load('store/store.service.js');
 const {StoreController} = load('store/store.controller.js');
 const {StoreCheckoutService} = load('store/store-checkout.service.js');
@@ -142,7 +145,7 @@ const cancel = row => call(owner, '/store/admin/orders/' + row.id + '/status', '
     await new Promise(resolve => providerServer.listen(0, '127.0.0.1', resolve));
     process.env.MOYASAR_API_BASE_URL = `http://127.0.0.1:${providerServer.address().port}/v1/`;
     class FixtureModule {}
-    Module({controllers: [AuthController, StoreController, StoreCheckoutController], providers: [DatabaseService, AuditService, AuthService, MfaService,
+    Module({controllers: [AuthController, StoreGoodsController, StoreController, StoreCheckoutController], providers: [StoreGoodsService, StoreOfferingsService, DatabaseService, AuditService, AuthService, MfaService,
       GoogleIdentityService, AccessTokenGuard, AdminGuard, IntegrationService, MoyasarPaymentProviderService, StoreService, StoreCheckoutService]})(FixtureModule);
     app = await NestFactory.create(FixtureModule, {logger: false});
     await app.listen(0, '127.0.0.1'); base = await app.getUrl();
@@ -286,6 +289,38 @@ const cancel = row => call(owner, '/store/admin/orders/' + row.id + '/status', '
       assert.equal(new Set(results.map(value => value.collectionEvidenceId)).size, 1);
       assert.equal(await db.auditEvent.count({where: {action: 'STORE_COLLECTION_VERIFIED', resourceId: paidOrder.id}}), 1);
       await ok(await fulfill(paidOrder)); assert.equal((await db.storeOrder.findUniqueOrThrow({where: {id: paidOrder.id}})).status, 'FULFILLED');
+    });
+    await check('partial goods delivery, return intake and independent seller receipt are scoped and replay-safe', async () => {
+      const itemId = paidOrder.items[0].id, path = route(paidOrder, 'items/'+itemId+'/deliveries');
+      const input = {quantity:1, receivedAt:new Date().toISOString(), requestId:randomUUID()};
+      await reject(await call(foreign,path,'POST',input),404);
+      const [first,repeat] = await Promise.all([1,2].map(()=>call(customer,path,'POST',input).then(ok)));
+      assert.equal(first.id,repeat.id);
+      assert.equal((await db.storeOrderItem.findUniqueOrThrow({where:{id:itemId}})).actualReceivedAt,null);
+      await reject(await call(customer,path,'POST',{...input,quantity:2}),409);
+      const next = await ok(await call(customer,path,'POST',{...input,requestId:randomUUID()}));
+      assert.notEqual(next.id,first.id);
+      await reject(await call(customer,path,'POST',{...input,requestId:randomUUID()}),409);
+      const requestPath = '/store/deliveries/'+first.id+'/returns';
+      const claim = {requestId:randomUUID(),quantity:1,reason:'DEFECT'};
+      await reject(await call(foreign, requestPath, 'POST',claim),404);
+      const requested = await ok(await call(customer,requestPath,'POST',claim));
+      assert.equal(requested.sellerReceivedAt,null);
+      assert.equal((await ok(await call(customer,requestPath,'POST',claim))).id,requested.id);
+      await reject(await call(customer,requestPath,'POST',{...claim,requestId:randomUUID()}),409);
+      for (const [manager,organization] of [[owner,center],[foreign,otherCenter]]) {
+        await db.roleAssignment.create({data:{accountId:manager.id,role:'DIVE_CENTER',status:'ACTIVE'}});
+        await db.organizationMember.create({data:{accountId:manager.id,organizationId:organization.id,role:'OWNER',status:'ACTIVE'}});
+      }
+      const receiptPath='/store/provider/returns/'+requested.id+'/receipt', receipt={receivedAt:new Date().toISOString()};
+      assert.equal((await ok(await call(foreign,'/store/provider/returns'))).length,0);
+      await reject(await call(foreign,receiptPath,'POST',receipt),404);
+      await reject(await call(customer,receiptPath,'POST',receipt),403);
+      assert.equal((await ok(await call(owner,'/store/provider/returns')))[0].id,requested.id);
+      await Promise.all([1,2].map(()=>call(owner,receiptPath,'POST',receipt).then(ok)));
+      assert.equal(await db.auditEvent.count({where:{action:'STORE_GOODS_SELLER_RECEIVED_RETURN',resourceId:requested.id}}),1);
+      assert.equal((await ok(await call(owner,'/store/provider/returns'))).length,0);
+      assert.equal((await ok(await call(customer,'/store/orders/mine'))).find(o=>o.id===paidOrder.id).items[0].deliveries.find(d=>d.id===first.id).returns[0].sellerReceivedAt,receipt.receivedAt);
     });
     await check('refund observation blocks fulfillment and stale later capture cannot restore it', async () => {
       const row = await order(); await start(row); const observed = await capture(row); await ok(await call(customer, route(row, 'refresh'), 'POST'));

@@ -8,6 +8,9 @@
  */
 export const COMMERCE_REFUND_POLICY_VERSION = '2026-11-21.1' as const;
 
+export const COURSE_REFUND_POLICY_VERSION = '2026-11-21.2' as const;
+type PolicyVersion = typeof COMMERCE_REFUND_POLICY_VERSION | typeof COURSE_REFUND_POLICY_VERSION;
+
 export type CommerceLineKind = 'TRIP' | 'COURSE' | 'RENTAL' | 'PHYSICAL_GOOD';
 export type CommerceRefundCause =
   | 'CUSTOMER_CANCELLATION'
@@ -48,7 +51,7 @@ export interface CommerceRefundSnapshotInput {
 }
 
 export interface CommerceRefundPolicySnapshot {
-  readonly version: typeof COMMERCE_REFUND_POLICY_VERSION;
+  readonly version: PolicyVersion;
   readonly lineId: string;
   readonly kind: CommerceLineKind;
   readonly currency: 'SAR';
@@ -97,7 +100,7 @@ export interface CommerceRefundDecision {
   reasonCode: string;
   basis: 'COMMERCIAL' | 'STATUTORY' | 'VERIFIED_RIGHT' | 'PROVIDER_FAILURE' | 'REVIEW';
   lineId: string;
-  policyVersion: typeof COMMERCE_REFUND_POLICY_VERSION;
+  policyVersion: PolicyVersion;
   currency: 'SAR';
   requestedAt: string;
   /** null means no amount has been decided and must never be coerced to zero. */
@@ -183,8 +186,9 @@ export function riyadhSevenDayRefundDeadline(anchor: string): string {
   return new Date((localDay + 8) * DAY_MS - RIYADH_OFFSET_MS - 1).toISOString();
 }
 
-export function createRefundPolicySnapshot(input: CommerceRefundSnapshotInput): CommerceRefundPolicySnapshot {
+export function createRefundPolicySnapshot(input: CommerceRefundSnapshotInput, version: PolicyVersion = input?.kind === 'COURSE' ? COURSE_REFUND_POLICY_VERSION : COMMERCE_REFUND_POLICY_VERSION): CommerceRefundPolicySnapshot {
   if (!input || typeof input !== 'object') invalid('snapshot input is required');
+  if (version !== COMMERCE_REFUND_POLICY_VERSION && !(version === COURSE_REFUND_POLICY_VERSION && input.kind === 'COURSE')) invalid('unsupported policy snapshot version');
   const lineId = text(input.lineId, 'lineId');
   if (!(KINDS as readonly unknown[]).includes(input.kind)) invalid('unknown line kind');
   if (input.currency !== 'SAR') invalid('only SAR is supported; currency conversion is not permitted');
@@ -194,7 +198,7 @@ export function createRefundPolicySnapshot(input: CommerceRefundSnapshotInput): 
   if (input.kind !== 'PHYSICAL_GOOD' && scheduledAt === null) invalid('service lines require their original contracted schedule');
   if (scheduledAt !== null && scheduledAt < contractedAt) invalid('contracted schedule cannot precede contract formation');
   return Object.freeze({
-    version: COMMERCE_REFUND_POLICY_VERSION,
+    version,
     lineId, kind: input.kind, currency: 'SAR', grossAmountMinor,
     contractedAt: new Date(contractedAt).toISOString(),
     contractedScheduledAt: scheduledAt === null ? null : new Date(scheduledAt).toISOString(),
@@ -204,8 +208,9 @@ export function createRefundPolicySnapshot(input: CommerceRefundSnapshotInput): 
 
 export function evaluateCommerceRefund(input: EvaluateCommerceRefundInput): CommerceRefundDecision {
   if (!input || typeof input !== 'object' || !input.snapshot || !input.evidence) invalid('snapshot and trusted evidence are required');
-  if (input.snapshot.version !== COMMERCE_REFUND_POLICY_VERSION || input.snapshot.calendarTimeZone !== 'Asia/Riyadh') invalid('unsupported policy snapshot version or time zone');
-  const snapshot = createRefundPolicySnapshot(input.snapshot);
+  if (input.snapshot.calendarTimeZone !== 'Asia/Riyadh') invalid('unsupported policy snapshot version or time zone');
+  if (!input.snapshot.version) invalid('unsupported policy snapshot version');
+  const snapshot = createRefundPolicySnapshot(input.snapshot, input.snapshot.version);
   const requestedAt = instant(input.requestedAt, 'requestedAt');
   const evidenceAsOf = instant(input.evidenceAsOf, 'evidenceAsOf');
   const contractedAt = instant(snapshot.contractedAt, 'contractedAt');
@@ -237,7 +242,7 @@ export function evaluateCommerceRefund(input: EvaluateCommerceRefundInput): Comm
   const statutoryAnchor = snapshot.kind === 'PHYSICAL_GOOD' ? receiptAt : contractedAt;
   const statutoryDeadline = statutoryAnchor === null ? null : riyadhSevenDayRefundDeadline(new Date(statutoryAnchor).toISOString());
   const base = {
-    lineId: snapshot.lineId, policyVersion: COMMERCE_REFUND_POLICY_VERSION, currency: 'SAR' as const,
+    lineId: snapshot.lineId, policyVersion: snapshot.version, currency: 'SAR' as const,
     requestedAt: new Date(requestedAt).toISOString(), remainingCollectedMinor: remaining,
     statutoryDeadline, financialActionExecuted: false as const, serviceCompletionImplied: false as const,
   };
@@ -335,6 +340,11 @@ export function evaluateCommerceRefund(input: EvaluateCommerceRefundInput): Comm
   }
   if (snapshot.kind === 'COURSE') {
     if (startedAt !== null && startedAt <= requestedAt) return commercial('COURSE_VOLUNTARY_WITHDRAWAL_AFTER_START', 0);
+    if (snapshot.version === COURSE_REFUND_POLICY_VERSION && evidence.serviceStartedAt === null && requestedAt < scheduledAt!) {
+      return scheduledAt! - requestedAt >= 48 * HOUR_MS
+        ? commercial('COURSE_AT_LEAST_48_HOURS', 7_500)
+        : commercial('COURSE_WITHIN_48_HOURS', 0);
+    }
     return review(statutoryUnresolved ? 'STATUTORY_ENTITLEMENT_REVIEW' : 'COURSE_PRESTART_CHARGE_NOT_ADOPTED');
   }
   if (handoverAt !== null && handoverAt <= requestedAt) return commercial('RENTAL_VOLUNTARY_RETURN_AFTER_HANDOVER', 0);

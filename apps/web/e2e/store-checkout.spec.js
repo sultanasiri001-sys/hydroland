@@ -68,11 +68,11 @@ for(const transition of ['logout','account-switch','dismiss'])test('late goods q
 test('course payment uses its enrollment and preserves pending training rather than claiming activation',async({page})=>{
   const {state}=await fixture(page);const enrollment={id:'enrollment-original',storeCourseOfferId:'course-original',courseCode:'OW',status:'PENDING',metadata:{source:'UNIFIED_STORE',title:'دورة المياه المفتوحة الأصلية'}};
   await page.route('**/api/v1/training/mine/enrollments',route=>json(route,[enrollment]));
-  const courseQuote={...quote,snapshot:{...terms,kind:'COURSE',title:enrollment.metadata.title,quantity:1,lines:undefined,originalSchedule:{startsAt:'2031-02-03T06:00:00.000Z'}}};
+  const courseQuote={...quote,policyVersion:'2026-11-21.2',snapshot:{...terms,kind:'COURSE',title:enrollment.metadata.title,quantity:1,lines:undefined,originalSchedule:{startsAt:'2031-02-03T06:00:00.000Z'}}};
   await page.route('**/api/v1/payments/courses/enrollment-original/quote',route=>json(route,courseQuote));
   const writes=[];await page.route('**/api/v1/payments/courses/enrollment-original/checkout',route=>{writes.push(route.request().postDataJSON());return json(route,{status:'CAPTURED',collectionVerified:false,trainingStatus:'PENDING'})});
   await page.locator('.hl-store-course-payments').click();await page.locator('[data-course-checkout]').click();
-  const dialog=page.locator('#hl-store-payment-dialog');await expect(dialog).toContainText('إلغاء العميل قبل البداية يحتاج مراجعة');
+  const dialog=page.locator('#hl-store-payment-dialog');await expect(dialog).toContainText('يُخصم ٢٥٪');await expect(dialog).toContainText('خلال آخر ٤٨ ساعة لا يُردّ المبلغ');
   await dialog.locator('[data-commerce-accepted]').check();await dialog.locator('[data-commerce-pay]').click();
   await expect(dialog.getByRole('status')).toContainText('بانتظار المطابقة المالية');expect(writes).toHaveLength(1);expect(writes[0].idempotencyKey).toBe('course:enrollment-original');expect(state.creates).toBe(0);
   await expect(dialog).toContainText('تأكيد الدفع لا يعني قبول التدريب أو إتمامه.');

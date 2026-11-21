@@ -36,12 +36,14 @@ console.log('Wallet fail-closed mutation policy validation passed.');
 
 const storeService=fs.readFileSync(new URL('../src/store/store.service.ts',import.meta.url),'utf8');
 assert.ok(storeService.includes("status==='FULFILLED'"),'Missing store fulfillment payment boundary');
-assert.ok(storeService.includes("payment.status!=='CAPTURED'"),'FULFILLED must require CAPTURED payment');
+const storeContract=fs.readFileSync(new URL('../src/store/store-checkout-contract.ts',import.meta.url),'utf8');
+assert.match(storeService,/if\s*\(status==='FULFILLED'\)\s*\{\s*await requireVerifiedStoreCollection\(tx,order\)/);
+assert.ok(storeContract.includes("order.payment?.status !== 'CAPTURED'") && storeContract.includes("checkout.status !== 'CAPTURED'"),'Fulfillment requires both provider and local capture');
 assert.ok(storeService.includes("provider:'NOT_SELECTED'"),'Payment provider must remain explicitly unselected until configured');
 assert.ok(storeService.includes("financialActionExecuted:false"),'Payment preparation must remain non-financial until provider integration');
 console.log('Store payment boundary validation passed.');
 
 assert.ok(storeService.includes("payment?.status==='CAPTURED'"),'Captured payments must block cancellation until refund flow exists');
-assert.ok(storeService.includes("Captured payment requires an approved refund flow before cancellation."),'Missing captured-payment cancellation guard');
+assert.ok(storeService.includes("Collected payment requires an approved refund flow before cancellation."),'Missing captured-payment cancellation guard');
 assert.ok(storeService.includes("throw new ConflictException('Idempotency key cannot be reused')"),'Payment idempotency reuse must be a conflict');
 console.log('Store cancellation/refund boundary validation passed.');

@@ -218,7 +218,7 @@ export class StoreService {
   listMine(accountId: string) {
     return this.prisma.storeOrder.findMany({
       where: { accountId },
-      include: { items: { include: { product: true } } },
+      include: { items: { include: { product: true, deliveries: {include: {returns: {select: {id: true, quantity: true, reason: true, requestedAt: true, sellerReceivedAt: true}}}} } } },
       orderBy: { createdAt: 'desc' },
     });
   }

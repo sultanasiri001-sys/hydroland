@@ -23,6 +23,21 @@
   "إنشاء الطلب يحفظ السلة. راجع الشروط ووافق عليها قبل الانتقال إلى الدفع.": "Creating an order saves your cart. Review and accept the terms before continuing to payment.",
   "عرض الشروط والدفع": "Review terms and pay",
   "تحديث حالة الدفع": "Refresh payment status",
+  "إذا ألغيت الدورة المؤكدة قبل بدايتها بـ٤٨ ساعة أو أكثر، يُخصم ٢٥٪ ويُردّ لك ٧٥٪. عند الإلغاء الاختياري خلال آخر ٤٨ ساعة لا يُردّ المبلغ. لا استرداد عادي لعدم الحضور أو الانسحاب بعد البدء. إذا ألغى المركز قبل البداية تسترد المبلغ كاملًا.": "Cancel a confirmed course at least 48 hours before its start for a 75% refund. The deduction is 25%. Voluntary cancellation inside the final 48 hours has no ordinary refund. No ordinary refund applies to a no-show or voluntary withdrawal after starting. A center cancellation before the start gives a full refund.",
+  "تأكيد استلام سلعة": "Confirm receipt of goods",
+  "وقت الاستلام الفعلي": "Actual receipt time",
+  "الكمية": "Quantity",
+  "تسجيل الاستلام": "Record delivery",
+  "طلب إرجاع سلعة": "Request a goods return",
+  "تقديم طلب الإرجاع": "Submit return request",
+  "سبب الإرجاع": "Reason for return",
+  "تغيير الرأي": "Change of mind",
+  "عيب": "Defect",
+  "عدم المطابقة": "Not as described",
+  "ضمان": "Warranty",
+  "تعذر حفظ الطلب.": "Could not save the request.",
+  "أُرسل طلب الإرجاع إلى المركز.": "Return requested from the center.",
+  "استلم المركز المرتجع.": "The center received the returned goods.",
   "تفاصيل الدفع": "Payment details",
   "إغلاق": "Close",
   "جارٍ تحميل شروط الطلب...": "Loading the original order terms...",
@@ -161,7 +176,7 @@
       const quote=await parse(await auth().authorizedFetch(base+'/quote'));if(!current())return;
       if(!quote.snapshot||typeof quote.quoteHash!=='string'||typeof quote.policyVersion!=='string')throw localError('تعذر تحميل شروط الدفع');
       const snapshot=quote.snapshot,lines=Array.isArray(snapshot.lines)?snapshot.lines:[snapshot],issuer=snapshot.issuer||lines[0]?.issuer;
-      uiLocale.setHTML(body,uiLocale.html`<p>المورد: ${esc(issuer?.legalName||issuer?.displayName||'—')}</p><p>السجل التجاري: ${esc(issuer?.registrationNumber||'—')}</p><ul>${lines.map(line=>uiLocale.html`<li>${esc(line.title||line.name||'—')} · ${esc(line.quantity||1)} · ${esc(money(line.amountMinor||0,line.currency||snapshot.currency||'SAR'))}</li>`).join('')}</ul><p>الإجمالي: ${esc(money(snapshot.amountMinor,snapshot.currency))}</p>${kind==='COURSE'?uiLocale.html`<p>موعد البداية: ${esc(new Date(snapshot.originalSchedule?.startsAt).toLocaleString('ar-SA',{timeZone:'Asia/Riyadh'}))}</p><p>لا توجد مهلة إلغاء مجانية بعد تأكيد الدورة. إلغاء العميل قبل البداية يحتاج مراجعة لأن رسمه لم يُحدد. لا استرداد عادي لعدم الحضور أو الانسحاب بعد البدء. إلغاء المركز قبل البدء يستوجب ردًا كاملًا.</p><p>تأكيد الدفع لا يعني قبول التدريب أو إتمامه.</p>`:uiLocale.html`<p>إرجاع السلع المؤهلة خلال ٧ أيام من الاستلام الفعلي. تُراجع حالات العيب وعدم المطابقة والضمان بصورة مستقلة.</p>`}<p>إصدار الشروط: ${esc(quote.policyVersion)}</p><small>هذه بيانات الطلب وشروطه، وليست فاتورة ضريبية نهائية.</small><label><input type="checkbox" data-commerce-accepted> اطلعت على بيانات الطلب وشروطه وأوافق عليها</label><div data-commerce-controls><button type="button" data-commerce-pay>المتابعة إلى الدفع</button><button type="button" data-commerce-refresh>تحديث حالة الدفع</button></div><p role="status" data-commerce-feedback></p>`);
+      uiLocale.setHTML(body,uiLocale.html`<p>المورد: ${esc(issuer?.legalName||issuer?.displayName||'—')}</p><p>السجل التجاري: ${esc(issuer?.registrationNumber||'—')}</p><ul>${lines.map(line=>uiLocale.html`<li>${esc(line.title||line.name||'—')} · ${esc(line.quantity||1)} · ${esc(money(line.amountMinor||0,line.currency||snapshot.currency||'SAR'))}</li>`).join('')}</ul><p>الإجمالي: ${esc(money(snapshot.amountMinor,snapshot.currency))}</p>${kind==='COURSE'?uiLocale.html`<p>موعد البداية: ${esc(new Date(snapshot.originalSchedule?.startsAt).toLocaleString('ar-SA',{timeZone:'Asia/Riyadh'}))}</p><p>${uiLocale.messageHTML(uiLocale.message(quote.policyVersion==='2026-11-21.2'?'إذا ألغيت الدورة المؤكدة قبل بدايتها بـ٤٨ ساعة أو أكثر، يُخصم ٢٥٪ ويُردّ لك ٧٥٪. عند الإلغاء الاختياري خلال آخر ٤٨ ساعة لا يُردّ المبلغ. لا استرداد عادي لعدم الحضور أو الانسحاب بعد البدء. إذا ألغى المركز قبل البداية تسترد المبلغ كاملًا.':'لا توجد مهلة إلغاء مجانية بعد تأكيد الدورة. إلغاء العميل قبل البداية يحتاج مراجعة لأن رسمه لم يُحدد. لا استرداد عادي لعدم الحضور أو الانسحاب بعد البدء. إلغاء المركز قبل البدء يستوجب ردًا كاملًا.'))}</p><p>تأكيد الدفع لا يعني قبول التدريب أو إتمامه.</p>`:uiLocale.html`<p>إرجاع السلع المؤهلة خلال ٧ أيام من الاستلام الفعلي. تُراجع حالات العيب وعدم المطابقة والضمان بصورة مستقلة.</p>`}<p>إصدار الشروط: ${esc(quote.policyVersion)}</p><small>هذه بيانات الطلب وشروطه، وليست فاتورة ضريبية نهائية.</small><label><input type="checkbox" data-commerce-accepted> اطلعت على بيانات الطلب وشروطه وأوافق عليها</label><div data-commerce-controls><button type="button" data-commerce-pay>المتابعة إلى الدفع</button><button type="button" data-commerce-refresh>تحديث حالة الدفع</button></div><p role="status" data-commerce-feedback></p>`);
       const button=body.querySelector('[data-commerce-pay]'),feedback=body.querySelector('[data-commerce-feedback]');
       body.querySelector('[data-commerce-refresh]').addEventListener('click',()=>{if(current())void openPayment(kind,id,{refresh:true})});
       button.addEventListener('click',async()=>{
@@ -229,6 +244,23 @@
     catalog.status=catalog.errors.length===sources.length?'error':'ready';
     renderProducts();document.dispatchEvent(new CustomEvent('hydroland:public-products-updated'));
   };
+  const goodsControls = order => (order.items || []).map(item => {
+    const original = item.contractSnapshot;
+    if (original?.kind !== 'PHYSICAL_GOOD') return '';
+    const deliveries = item.deliveries || [];
+    const pending = item.quantity - deliveries.reduce((sum, row) => sum + row.quantity, 0);
+    const quantityInput = max => uiLocale.html`<label>الكمية <input name="quantity" type="number" min="1" max="${esc(max)}" value="${esc(max)}" required></label>`;
+    const deliveryForm = pending > 0 && !item.actualReceivedAt && ['CONFIRMED','FULFILLED'].includes(order.status)
+      ? uiLocale.html`<details><summary>تأكيد استلام سلعة</summary><form data-goods-delivery="${esc(item.id)}">${quantityInput(pending)}<label>وقت الاستلام الفعلي <input name="receivedAt" type="datetime-local" required></label><button>تسجيل الاستلام</button></form></details>` : '';
+    const returns = deliveries.map(delivery => {
+      const requested = delivery.returns || [];
+      const available = delivery.quantity - requested.reduce((sum,row) => sum + row.quantity, 0);
+      const receipt = new Date(delivery.receivedAt).toLocaleString(undefined, {timeZoneName:'short'});
+      const status = requested.map(row => uiLocale.html`<p>${esc(row.quantity)} · ${uiLocale.messageHTML(uiLocale.message(row.sellerReceivedAt?'استلم المركز المرتجع.':'أُرسل طلب الإرجاع إلى المركز.'))}</p>`).join('');
+      return uiLocale.html`<p>${esc(receipt)} · ${esc(delivery.quantity)}</p>${status}${available > 0 ? uiLocale.html`<details><summary>طلب إرجاع سلعة</summary><form data-goods-return="${esc(delivery.id)}">${quantityInput(available)}<label>سبب الإرجاع <select name="reason"><option value="CHANGE_OF_MIND">تغيير الرأي</option><option value="DEFECT">عيب</option><option value="NON_CONFORMITY">عدم المطابقة</option><option value="WARRANTY">ضمان</option></select></label><button>تقديم طلب الإرجاع</button></form></details>` : ''}`;
+    }).join('');
+    return deliveryForm || returns ? uiLocale.html`<section><b>${esc(original.title)}</b>${deliveryForm}${returns}</section>` : '';
+  }).join('');
   const loadOrders=async()=>{
     if(!auth()?.isAuthenticated?.()){toast(uiLocale.message('سجّل الدخول لعرض طلباتك'));return}
     const active=sameSession(),version=++ordersVersion;
@@ -236,7 +268,27 @@
     try{
       const [orderResponse,payments]=await Promise.all([auth().authorizedFetch('/store/orders/mine'),loadPayments()]);
       const data=await parse(orderResponse);if(!active()||version!==ordersVersion)return;if(!Array.isArray(data))throw localError('تعذر تحميل الطلبات');
-      uiLocale.setHTML(orders, data.length?data.map(o=>{const payment=paymentForOrder(payments,o.id),eligible=['CREATED','CONFIRMED'].includes(o.status)&&!['CAPTURED','REFUNDED'].includes(payment?.status);return uiLocale.html`<article data-store-order="${esc(o.id)}"><b>${esc(o.status)}</b><span>${money(o.totalMinor,o.currency)}</span><small>${new Date(o.createdAt).toLocaleString('ar-SA')}</small><small data-store-payment-state>${esc(paymentStatusText(payment))}</small>${eligible?uiLocale.html`<button type="button" data-store-payment-retry>عرض الشروط والدفع</button>`:''}${payment?uiLocale.html`<button type="button" data-store-payment-refresh>تحديث حالة الدفع</button>`:''}</article>`}).join(''):uiLocale.t('لا توجد طلبات حتى الآن.'));
+      uiLocale.setHTML(orders, data.length?data.map(o=>{const payment=paymentForOrder(payments,o.id),eligible=['CREATED','CONFIRMED'].includes(o.status)&&!['CAPTURED','REFUNDED'].includes(payment?.status);return uiLocale.html`<article data-store-order="${esc(o.id)}"><b>${esc(o.status)}</b><span>${money(o.totalMinor,o.currency)}</span><small>${new Date(o.createdAt).toLocaleString('ar-SA')}</small><small data-store-payment-state>${esc(paymentStatusText(payment))}</small>${eligible?uiLocale.html`<button type="button" data-store-payment-retry>عرض الشروط والدفع</button>`:''}${payment?uiLocale.html`<button type="button" data-store-payment-refresh>تحديث حالة الدفع</button>`:''}${goodsControls(o)}</article>`}).join(''):uiLocale.t('لا توجد طلبات حتى الآن.'));
+      orders.querySelectorAll('form[data-goods-delivery],form[data-goods-return]').forEach(form => form.addEventListener('submit',async event => {
+        event.preventDefault();
+        if (!active() || version !== ordersVersion || form.dataset.busy) return;
+        const values = new FormData(form), quantity = Number(values.get('quantity'));
+        const orderId = form.closest('[data-store-order]').dataset.storeOrder;
+        const delivery = form.hasAttribute('data-goods-delivery');
+        const path = delivery ? '/store/orders/'+encodeURIComponent(orderId)+'/items/'+encodeURIComponent(form.dataset.goodsDelivery)+'/deliveries'
+          : '/store/deliveries/'+encodeURIComponent(form.dataset.goodsReturn)+'/returns';
+        const data = delivery ? {quantity,receivedAt:new Date(values.get('receivedAt')).toISOString()} : {quantity,reason:values.get('reason')};
+        if (form.dataset.payload !== JSON.stringify(data)) {
+          form.dataset.requestId = crypto.randomUUID();
+          form.dataset.payload = JSON.stringify(data);
+        }
+        form.dataset.busy='true'; form.querySelector('button').disabled=true;
+        try {
+          await parse(await auth().authorizedFetch(path,{method:'POST',body:JSON.stringify({...data,requestId:form.dataset.requestId})}));
+          if (active() && version===ordersVersion) await loadOrders();
+        } catch (error) { if (active() && version===ordersVersion) toast(localErrorMessage(error,'تعذر حفظ الطلب.')); }
+        finally { delete form.dataset.busy; form.querySelector('button').disabled=false; }
+      }));
       orders.querySelectorAll('[data-store-payment-retry],[data-store-payment-refresh]').forEach(button=>button.addEventListener('click',()=>{if(active()&&version===ordersVersion)void openPayment('STORE',button.closest('[data-store-order]').dataset.storeOrder,{refresh:button.hasAttribute('data-store-payment-refresh')})}));
     }catch{if(active()&&version===ordersVersion)uiLocale.setMessage(orders, uiLocale.message('تعذر تحميل الطلبات.'))}
   };

@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { CommerceCheckout, Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
-import { COURSE_CHECKOUT_SOURCE, COURSE_CONTRACT_VERSION, CourseEnrollment, courseCanonicalJson, courseCheckoutExpiresAt,
+import { COURSE_CHECKOUT_SOURCE, CourseEnrollment, courseCanonicalJson, courseCheckoutExpiresAt,
   courseContractHash, courseObject, requireAcceptedCourseContract, requireCourseContract } from '../commerce/course-contract';
 import { requireCourseCollection, requirePostedCourseCollection } from '../commerce/course-collection';
 import { DatabaseService } from '../database/database.service';
@@ -70,7 +70,7 @@ export class TrainingCheckoutService {
       const {enrollment, contract} = await this.enrollment(tx, enrollmentId, accountId);
       this.requireOpen(enrollment, contract);
       await this.activeCenter(tx, enrollment.centerOrganizationId!);
-      return {enrollmentId, snapshot: contract, quoteHash: courseContractHash(contract), policyVersion: COURSE_CONTRACT_VERSION,
+      return {enrollmentId, snapshot: contract, quoteHash: courseContractHash(contract), policyVersion: contract.refundPolicy.snapshot.version,
         expiresAt: courseCheckoutExpiresAt(contract, new Date()), financialActionExecuted: false};
     });
   }
@@ -81,7 +81,7 @@ export class TrainingCheckoutService {
     const reserve = (recoverOnly = false) => this.db.serializable(async tx => {
       await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${`course-checkout:${key}`},0))`;
       const {enrollment, contract} = await this.enrollment(tx, enrollmentId, accountId);
-      if (input.acceptedPolicyVersion !== COURSE_CONTRACT_VERSION || input.quoteHash !== courseContractHash(contract)) {
+      if (input.acceptedPolicyVersion !== contract.refundPolicy.snapshot.version || input.quoteHash !== courseContractHash(contract)) {
         throw new ConflictException({code: 'COURSE_TERMS_CHANGED', message: 'Review and accept the original course quote before payment.'});
       }
       const fingerprint = courseContractHash({sourceType, enrollmentId, accountId, quoteHash: input.quoteHash, version: input.acceptedPolicyVersion});
@@ -107,7 +107,7 @@ export class TrainingCheckoutService {
         contractSnapshot: asJson({...contract, termsAcceptanceStatus: 'ACCEPTED', termsAcceptedAt: now.toISOString(), acceptedQuoteHash: input.quoteHash})}});
       await this.audit.record({actorId: accountId, action: 'COURSE_CHECKOUT_DISPATCHED', resource: 'CommerceCheckout', resourceId: checkout.id,
         metadata: {enrollmentId, organizationId: checkout.organizationId, amountMinor: checkout.amountMinor, currency: 'SAR',
-          quoteHash: input.quoteHash, policyVersion: COURSE_CONTRACT_VERSION, expiresAt: this.providerInput(checkout).expiresAt}}, tx);
+          quoteHash: input.quoteHash, policyVersion: contract.refundPolicy.snapshot.version, expiresAt: this.providerInput(checkout).expiresAt}}, tx);
       return {checkout, enrollment, dispatch: true};
     });
     let reserved: Awaited<ReturnType<typeof reserve>>;

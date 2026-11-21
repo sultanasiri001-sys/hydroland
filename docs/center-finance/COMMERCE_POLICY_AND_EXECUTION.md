@@ -9,7 +9,7 @@ bank transfer, tax invoice, or complete mixed-store financial lifecycle.
 | Line kind | Ordinary customer cancellation | Separate cases |
 | --- | --- | --- |
 | Trip | Full refund at least 48 hours before the original departure; 50% refund inside 48 hours. The exact 48-hour boundary is included in the full-refund window. | Verified no-show/late arrival after closure has no ordinary refund. Mandatory rights and provider failures remain separate. |
-| Course | No free cancellation window after confirmation; no ordinary refund for no-show or voluntary withdrawal after starting. | The exact charge for voluntary cancellation after confirmation and before starting is unresolved. Provider cancellation before starting gives a full refund. |
+| Course | No free cancellation window after confirmation; no ordinary refund for no-show or voluntary withdrawal after starting. | New course refund terms (2026-11-21.2) deduct 25% and refund 75% when a confirmed course is cancelled at least 48 hours before its original start. Voluntary cancellations inside the final 48 hours have no ordinary refund. Existing contracts retain their recorded terms. Provider cancellation before starting gives a full refund. |
 | Equipment rental | Full refund at least 24 hours before the original scheduled handover; 75% refund inside 24 hours before handover. | Provider failure to hand over gives a full refund. Voluntary early return after handover does not generate an ordinary refund. Defects and nonconformity are separate. |
 | Sold goods | Eligible unused goods have a seven-day return window measured from actual receipt. | The service cancellation percentages do not apply. Defects, nonconformity and warranty rights follow their own remedies. |
 

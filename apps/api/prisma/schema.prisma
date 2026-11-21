@@ -2092,8 +2092,36 @@ model StoreOrderItem {
  actualReceivedAt DateTime?
  order StoreOrder @relation(fields:[orderId], references:[id], onDelete:Cascade)
  product StoreProduct @relation(fields:[productId], references:[id], onDelete:Restrict)
+ deliveries StoreGoodsDelivery[]
  @@index([orderId])
  @@index([productId])
+}
+
+model StoreGoodsDelivery {
+ id String @id
+ itemId String
+ organizationId String
+ customerAccountId String
+ quantity Int
+ receivedAt DateTime
+ recordedAt DateTime @default(now())
+ policyVersion String
+ item StoreOrderItem @relation(fields:[itemId], references:[id], onDelete:Restrict)
+ returns StoreGoodsReturn[]
+ @@index([itemId])
+}
+
+model StoreGoodsReturn {
+ id String @id
+ deliveryId String
+ quantity Int
+ reason String
+ requestedAt DateTime @default(now())
+ sellerReceivedAt DateTime?
+ sellerRecordedAt DateTime?
+ sellerAccountId String?
+ delivery StoreGoodsDelivery @relation(fields:[deliveryId], references:[id], onDelete:Restrict)
+ @@index([deliveryId])
 }
 
 // A refund operation coordinates the existing Payment and FinanceEntry ledgers.
