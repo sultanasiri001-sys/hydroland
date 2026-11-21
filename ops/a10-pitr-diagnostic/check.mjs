@@ -47,6 +47,42 @@ const requiredIndexes = [
 
 const client = new PrismaClient();
 
+async function checkRestoredCatalogs(moduleRoot) {
+  const { StoreService } = require(path.join(moduleRoot, 'store/store.service.js'));
+  const { StoreOfferingsService } = require(path.join(moduleRoot, 'store/store-offerings.service.js'));
+  return client.$transaction(async tx => {
+    await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
+    const [identity] = await tx.$queryRaw`SELECT current_database() AS name, current_setting('transaction_read_only') AS protection`;
+    if (identity.name !== pitrDatabase || identity.protection !== 'on') throw new Error('Isolated read-only database required');
+
+    const start = new Date();
+    const products = await new StoreService(tx).listProducts();
+    const courses = await new StoreOfferingsService(tx).publicCourses();
+    const end = new Date();
+    const expectedProducts = await tx.$queryRaw`
+      SELECT p.id FROM "StoreProduct" p LEFT JOIN "Organization" o ON o.id=p."organizationId"
+      WHERE p.status='ACTIVE' AND (p."organizationId" IS NULL OR o.status='ACTIVE')`;
+    const expectedCourses = await tx.$queryRaw`
+      SELECT c.id, c."startsAt" FROM "StoreCourseOffer" c JOIN "Organization" o ON o.id=c."organizationId"
+      WHERE c.status='ACTIVE' AND o.status='ACTIVE' AND c."startsAt" > ${start}`;
+    const sameIds = (actual, expected) => {
+      const ids = new Set(actual.map(row => row.id));
+      return ids.size === actual.length && ids.size === expected.length && expected.every(row => ids.has(row.id));
+    };
+    const courseIds = new Set(courses.map(row => row.id));
+    const possible = new Set(expectedCourses.map(row => row.id));
+    const courseMatch = courseIds.size === courses.length &&
+      courses.every(row => possible.has(row.id) && Number.isSafeInteger(row.remainingSeats) && row.remainingSeats >= 0) &&
+      expectedCourses.every(row => row.startsAt <= end || courseIds.has(row.id));
+    return {
+      scope: 'native public catalog service reads on the restored database, with independent SQL reconciliation',
+      products: { matched: sameIds(products, expectedProducts), rows: products.length },
+      courses: { matched: courseMatch, rows: courses.length },
+      elapsed_ms: end.getTime() - start.getTime(),
+    };
+  }, { isolationLevel: 'RepeatableRead', timeout: 15000 });
+}
+
 async function probeRestoredApplicationReadiness() {
   const startedAt = performance.now();
   const sourceRoot = path.resolve('apps/api/src');
@@ -63,6 +99,11 @@ async function probeRestoredApplicationReadiness() {
   for (const [source, destination] of [
     ['health/health.controller.ts', 'health/health.controller.js'],
     ['database/database.service.ts', 'database/database.service.js'],
+    ['audit/audit.service.ts', 'audit/audit.service.js'],
+    ['store/store.service.ts', 'store/store.service.js'],
+    ['store/store-offerings.service.ts', 'store/store-offerings.service.js'],
+    ['governance/training-operational-policy.ts', 'governance/training-operational-policy.js'],
+    ['trips/mandatory-policy.domain.ts', 'trips/mandatory-policy.domain.js'],
   ]) {
     const output = typescript.transpileModule(
       fs.readFileSync(path.join(sourceRoot, source), 'utf8'),
@@ -92,12 +133,15 @@ async function probeRestoredApplicationReadiness() {
       signal: AbortSignal.timeout(5000),
     });
     const body = await response.json();
+    const latencyMs = Math.round((performance.now() - startedAt) * 100) / 100;
+    const catalogs = await checkRestoredCatalogs(temporaryRoot);
     return {
       status: response.status === 200 && body.status === 'ready' && body.database === 'ok' ? 'PASS' : 'FAIL',
       http_status: response.status,
       application_status: body.status,
       database_status: body.database,
-      latency_ms: Math.round((performance.now() - startedAt) * 100) / 100,
+      latency_ms: latencyMs,
+      catalogs,
       scope: 'actual health controller and database provider over HTTP; background workers excluded',
     };
   } finally {
@@ -247,8 +291,8 @@ try {
 
     const checks = {
       historical_document_inventory_matched: historicalDocumentInventoryMatched,
-      booking_references_resolved: bookings.unresolved_references === 0,
-      embedded_file_lengths_and_hashes_consistent: assets.mismatches === 0,
+      booking_references_resolved: bookings.records > 0 && bookings.unresolved_references === 0,
+      embedded_file_lengths_and_hashes_consistent: assets.records > 0 && assets.mismatches === 0,
       connected_to_expected_pitr_database: database.database_name === expectedDatabase,
       transaction_read_only_enforced: database.read_only === 'on',
       a09_file_matches_original_checksum: localA09Checksum === expectedA09Checksum,
@@ -304,6 +348,8 @@ try {
 
   report.application_readiness = await probeRestoredApplicationReadiness();
   report.checks.application_ready_on_restored_pitr = report.application_readiness.status === 'PASS';
+  report.checks.restored_public_products_match = report.application_readiness.catalogs.products.matched;
+  report.checks.restored_public_courses_match = report.application_readiness.catalogs.courses.matched;
   report.overall = Object.values(report.checks).every(Boolean) ? 'PASS' : 'FAIL';
 
   console.log(JSON.stringify(report));
