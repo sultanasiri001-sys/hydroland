@@ -10,5 +10,8 @@ import { CredentialObjectStorageService } from './credential-object-storage.serv
 import { CredentialsController } from './credentials.controller';
 import { CredentialsService } from './credentials.service';
 
-@Module({imports:[AuthModule,AdminModule,TripsModule,AuditModule,NotificationsModule,IntegrationModule],controllers:[CredentialsController],providers:[CredentialsService,CredentialObjectStorageService,CertificationVerificationEvidenceService]})
+import { InstructorDocumentsController } from './instructor-documents.controller';
+import { InstructorDocumentsService } from './instructor-documents.service';
+
+@Module({imports:[AuthModule,AdminModule,TripsModule,AuditModule,NotificationsModule,IntegrationModule],controllers:[CredentialsController,InstructorDocumentsController],providers:[InstructorDocumentsService,CredentialsService,CredentialObjectStorageService,CertificationVerificationEvidenceService]})
 export class CredentialsModule {}

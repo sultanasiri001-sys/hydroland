@@ -19,7 +19,7 @@ export class CredentialObjectStorageService {
   }
 
   key(accountId:string,resourceId:string,mimeType:string,namespace='credentials'){
-    if(!['credentials','marine-assets'].includes(namespace))throw new Error('Invalid private object namespace.');
+    if(!['credentials','marine-assets','instructor-documents'].includes(namespace))throw new Error('Invalid private object namespace.');
     const ext=mimeType==='application/pdf'?'pdf':mimeType==='image/png'?'png':'jpg';
     return`${namespace}/${accountId}/${resourceId}/${randomUUID()}.${ext}`;
   }
