@@ -46,7 +46,7 @@ test('admin portal lazy-loads inventory, registers equipment and creates a renta
   await page.route(/\/api\/v1\/trips\/admin\/equipment\/equipment-1$/,route=>api.requireAuth(route.request())?api.json(route,detail(equipment[0])):api.json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/trips\/admin\/equipment-rentals$/,route=>api.requireAuth(route.request())?api.json(route,[]):api.json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/trips\/equipment-rentals$/,async route=>{
-    if(!api.requireAuth(route.request()))return api.json(route,{message:'Unauthorized'},401);const body=route.request().postDataJSON();createdRental={id:'rental-1',invoiceNumber:'HYD-RNT-E2E',renterAccountId:body.renterAccountId,status:'RESERVED',paymentStatus:'PENDING',totalHalala:5000,dueAt:body.dueAt,items:[{id:'item-1',resourceId:'equipment-1',equipmentNameSnapshot:'BCD E2E',assetCodeSnapshot:'HYD-EQUIPMENT1',equipmentType:body.items[0].equipmentType,size:body.items[0].size,serialNumberSnapshot:'SER-E2E',unitPriceHalala:5000}]};return api.json(route,createdRental,201);
+    if(!api.requireAuth(route.request()))return api.json(route,{message:'Unauthorized'},401);const body=route.request().postDataJSON();createdRental={id:'rental-1',invoiceNumber:'HYD-RNT-E2E',renterAccountId:body.renterAccountId,status:'RESERVED',paymentStatus:'PENDING',totalHalala:5000,scheduledHandoverAt:body.scheduledHandoverAt,dueAt:body.dueAt,items:[{id:'item-1',resourceId:'equipment-1',equipmentNameSnapshot:'BCD E2E',assetCodeSnapshot:'HYD-EQUIPMENT1',equipmentType:body.items[0].equipmentType,size:body.items[0].size,serialNumberSnapshot:'SER-E2E',unitPriceHalala:5000}]};return api.json(route,createdRental,201);
   });
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandEquipmentAdmin));
@@ -67,10 +67,15 @@ test('admin portal lazy-loads inventory, registers equipment and creates a renta
   await inventory.locator('#hl-rental-new').click();
   const rentalDialog=page.locator('.hl-barcode-dialog').filter({hasText:'فاتورة تأجير معدات'});await expect(rentalDialog).toBeVisible();
   await rentalDialog.locator('#hl-renter-account').fill('diver-account-1');
-  const due=new Date(Date.now()+86400000).toISOString().slice(0,16);await rentalDialog.locator('#hl-rental-due').fill(due);
+  const handover=new Date(Date.now()+86400000).toISOString().slice(0,16),due=new Date(Date.now()+2*86400000).toISOString().slice(0,16);
+  await rentalDialog.locator('#hl-rental-handover').fill(handover);await rentalDialog.locator('#hl-rental-due').fill(due);
+  const expectedHandover=await rentalDialog.locator('#hl-rental-handover').evaluate(input=>new Date(input.value).toISOString());
   await rentalDialog.locator('#hl-rental-codes').fill('HYD-EQUIPMENT1');await rentalDialog.locator('#hl-rental-types').fill('BCD');await rentalDialog.locator('#hl-rental-sizes').fill('M');await rentalDialog.locator('#hl-rental-prices').fill('50');await rentalDialog.locator('#hl-rental-create').click();
   await expect(inventory.locator('.hl-rental-invoice')).toContainText('HYD-RNT-E2E');
   expect(createdRental?.renterAccountId).toBe('diver-account-1');
+  expect(createdRental?.scheduledHandoverAt).toBe(expectedHandover);
+  expect(Date.parse(createdRental.scheduledHandoverAt)).toBeGreaterThan(Date.now());
+  expect(Date.parse(createdRental.scheduledHandoverAt)).toBeLessThan(Date.parse(createdRental.dueAt));
 
   await returnToDiverWorkspace(page);await expect(inventory).toBeHidden();
 });

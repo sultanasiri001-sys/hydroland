@@ -769,6 +769,7 @@ model Booking {
   organizationId String?
   bookingRequestKey String? @unique
   bookingRequestFingerprint String?
+  contractSnapshot Json?
   status BookingStatus @default(PENDING)
   seats Int @default(1)
   createdAt DateTime @default(now())
@@ -1097,11 +1098,14 @@ model Payment {
   idempotencyKey String @unique
   providerReference String? @unique
   moyasarPaymentId String? @unique
+  contractSnapshot Json?
+  refundedAmountMinor Int @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   booking Booking @relation(fields:[bookingId], references:[id], onDelete:Restrict)
   account Account @relation(fields:[accountId], references:[id], onDelete:Restrict)
   invoice Invoice?
+  refundOperations CommerceRefundOperation[]
   @@index([accountId,status])
 }
 model Invoice {
@@ -1110,6 +1114,7 @@ model Invoice {
   number String @unique
   status InvoiceStatus @default(DRAFT)
   issuedAt DateTime?
+  contractSnapshot Json?
   createdAt DateTime @default(now())
   payment Payment @relation(fields:[paymentId], references:[id], onDelete:Restrict)
 }
@@ -1519,6 +1524,8 @@ model FinanceEntry {
   updatedAt DateTime @updatedAt
   financeAccount FinanceAccount @relation(fields:[financeAccountId], references:[id], onDelete:Restrict)
   approvals FinanceApproval[]
+  commerceRefund CommerceRefundOperation?
+  collectionEvidence CommerceCollectionEvidence?
   @@index([organizationId,status,createdAt])
   @@index([referenceType,referenceId])
   @@index([financeAccountId,status])
@@ -2080,10 +2087,111 @@ model StoreOrderItem {
  productId String
  quantity Int
  unitPriceMinor Int
+ contractSnapshot Json?
+ actualReceivedAt DateTime?
  order StoreOrder @relation(fields:[orderId], references:[id], onDelete:Cascade)
  product StoreProduct @relation(fields:[productId], references:[id], onDelete:Restrict)
  @@index([orderId])
  @@index([productId])
+}
+
+// A refund operation coordinates the existing Payment and FinanceEntry ledgers.
+// It is not an additional balance ledger. Unknown provider outcomes stay reserved.
+model CommerceRefundOperation {
+ id String @id @default(uuid())
+ paymentId String
+ financeEntryId String @unique
+ requestAuditEventId String
+ idempotencyKey String @unique
+ requestFingerprint String
+ organizationId String
+ requestedByAccountId String
+ approvedByAccountId String
+ executedByAccountId String
+ amountMinor Int
+ currency String
+ baselineRefundedMinor Int
+ resultingRefundedMinor Int?
+ status String @default("RESERVED")
+ providerPaymentId String
+ providerInvoiceId String
+ policyDecision Json
+ providerResult Json?
+ dispatchedAt DateTime?
+ confirmedAt DateTime?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ payment Payment @relation(fields:[paymentId], references:[id], onDelete:Restrict)
+ financeEntry FinanceEntry @relation(fields:[financeEntryId], references:[id], onDelete:Restrict)
+ @@index([paymentId,status])
+ @@index([organizationId,status,createdAt])
+}
+
+// An explicit approved mandate, separate from generic ADMIN/HR permissions.
+// No production grants are seeded by this migration.
+model FinanceOperationGrant {
+ id String @id @default(uuid())
+ organizationId String
+ accountId String
+ operation String
+ currency String
+ limitMinor Int
+ validFrom DateTime
+ validUntil DateTime
+ revokedAt DateTime?
+ approvedByAccountId String
+ approvalEvidenceReference String
+ createdAt DateTime @default(now())
+ @@index([organizationId,accountId,operation,validUntil])
+}
+
+// Verified collection-to-source binding; accounting remains in FinanceEntry.
+// This table has no customer-editable create endpoint and no seeded evidence.
+model CommerceCollectionEvidence {
+ id String @id @default(uuid())
+ sourceType String
+ sourceId String
+ organizationId String
+ customerAccountId String
+ amountMinor Int
+ currency String
+ provider String
+ providerPaymentId String @unique
+ providerInvoiceId String
+ providerCapturedMinor Int
+ providerRefundedMinor Int @default(0)
+ providerVerifiedAt DateTime
+ providerSnapshot Json
+ financeEntryId String @unique
+ contractSnapshot Json
+ createdAt DateTime @default(now())
+ financeEntry FinanceEntry @relation(fields:[financeEntryId], references:[id], onDelete:Restrict)
+ @@unique([sourceType,sourceId])
+ @@index([organizationId,sourceType,createdAt])
+}
+
+// Hosted checkout request journal; the financial ledger remains FinanceEntry.
+model CommerceCheckout {
+ id String @id @default(uuid())
+ sourceType String
+ sourceId String
+ organizationId String
+ customerAccountId String
+ amountMinor Int
+ currency String
+ provider String @default("MOYASAR")
+ idempotencyKey String @unique
+ requestFingerprint String
+ providerInvoiceId String? @unique
+ providerPaymentId String? @unique
+ status String @default("RESERVED")
+ contractSnapshot Json
+ providerResult Json?
+ dispatchedAt DateTime?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ @@unique([sourceType,sourceId])
+ @@index([organizationId,status,createdAt])
 }
 
 

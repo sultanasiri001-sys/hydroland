@@ -2,6 +2,8 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { AuditService } from '../audit/audit.service';
+import { randomUUID } from 'node:crypto';
+import { createCommerceContractSnapshot } from '../commerce/commerce-contract-snapshot';
 
 @Injectable()
 export class StoreService {
@@ -51,11 +53,14 @@ export class StoreService {
       }
       quantities.set(item.productId, (quantities.get(item.productId) ?? 0) + item.quantity);
     }
-    const normalizedItems = [...quantities].map(([productId, quantity]) => ({ productId, quantity }));
+    const normalizedItems = [...quantities].map(([productId, quantity]) => ({ id: randomUUID(), productId, quantity }));
+    const orderId = randomUUID();
+    const recordedAt = new Date().toISOString();
 
     return this.prisma.serializable(async (tx) => {
       const products = await tx.storeProduct.findMany({
         where: { id: { in: normalizedItems.map((item) => item.productId) }, status: 'ACTIVE', OR:[{organizationId:null},{organization:{status:'ACTIVE'}}] },
+        include: { organization: { select: { id: true, displayName: true, legalName: true, registrationNumber: true, address: true } } },
       });
       const productMap = new Map(products.map((product) => [product.id, product]));
 
@@ -72,6 +77,29 @@ export class StoreService {
         totalMinor += product.priceMinor * item.quantity;
       }
       if (!orderCurrency) throw new BadRequestException('Order currency is required');
+      if (!Number.isSafeInteger(totalMinor) || totalMinor < 0 || totalMinor > 2147483647) throw new BadRequestException('Order total is invalid');
+
+      // Build each immutable line from the transaction's server-side catalog
+      // and seller. A generic SERVICE is never guessed to be a trip or course.
+      const orderItems = normalizedItems.map(item => {
+        const product = productMap.get(item.productId)!;
+        try {
+          return {
+            id: item.id,
+            productId: item.productId,
+            quantity: item.quantity,
+            unitPriceMinor: product.priceMinor,
+            contractSnapshot: createCommerceContractSnapshot({
+              sourceKind: 'STORE_ORDER_ITEM', sourceId: item.id, parentId: orderId, offeringId: product.id,
+              customerAccountId: accountId, organizationId: product.organizationId ?? null, organization: product.organization ?? null,
+              kind: product.kind === 'GOODS' ? 'PHYSICAL_GOOD' : 'UNCLASSIFIED_SERVICE', title: product.nameAr,
+              quantity: item.quantity, unitPriceMinor: product.priceMinor, currency: product.currency, recordedAt,
+            }),
+          };
+        } catch {
+          throw new BadRequestException('Product contract information is invalid.');
+        }
+      });
 
       for (const item of normalizedItems) {
         const updated = await tx.storeProduct.updateMany({
@@ -83,15 +111,12 @@ export class StoreService {
 
       return tx.storeOrder.create({
         data: {
+          id: orderId,
           accountId,
           totalMinor,
           currency: orderCurrency,
           items: {
-            create: normalizedItems.map((item) => ({
-              productId: item.productId,
-              quantity: item.quantity,
-              unitPriceMinor: productMap.get(item.productId)!.priceMinor,
-            })),
+            create: orderItems,
           },
         },
         include: { items: true },

@@ -32,7 +32,7 @@ try {
       await run(`CREATE TABLE "OrganizationMember" (id ${keyType} PRIMARY KEY,"organizationId" ${keyType},"accountId" ${keyType},role "OrganizationMemberRole",status "OrganizationMembershipStatus","createdAt" timestamp DEFAULT NOW())`);
       await run(`CREATE TABLE "RoleAssignment" (id ${keyType} PRIMARY KEY,"accountId" ${keyType},role "ProfessionalRole",status "RoleAssignmentStatus",scope jsonb,"activeAt" timestamp,"endedAt" timestamp,"createdAt" timestamp DEFAULT NOW(),"updatedAt" timestamp DEFAULT NOW())`);
       await run(`CREATE TABLE "Trip" (id ${keyType} PRIMARY KEY,"organizationId" ${keyType},title text,type text,status "TripStatus",capacity int,"startsAt" timestamp DEFAULT NOW(),"endsAt" timestamp DEFAULT NOW(),"createdAt" timestamp DEFAULT NOW(),"updatedAt" timestamp DEFAULT NOW())`);
-      await run(`CREATE TABLE "Booking" (id ${keyType} PRIMARY KEY,"tripId" ${keyType},"accountId" ${keyType},"organizationId" ${keyType},"bookingRequestKey" text,"bookingRequestFingerprint" text,status "BookingStatus",seats int,"createdAt" timestamp DEFAULT NOW(),"updatedAt" timestamp DEFAULT NOW())`);
+      await run(`CREATE TABLE "Booking" (id ${keyType} PRIMARY KEY,"tripId" ${keyType},"accountId" ${keyType},"organizationId" ${keyType},"bookingRequestKey" text,"bookingRequestFingerprint" text,"contractSnapshot" jsonb,status "BookingStatus",seats int,"createdAt" timestamp DEFAULT NOW(),"updatedAt" timestamp DEFAULT NOW())`);
       const manager=id(), customer=id(), org=id(), foreignOrg=id(), trip=id(), foreignTrip=id();
       const first=id(), second=id(), foreign=id(), marine=id(), marineOrg=id(), marineTrip=id(), marineBooking=id();
       for (const account of [manager,customer,marine]) {

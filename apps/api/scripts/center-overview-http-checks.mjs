@@ -1,14 +1,20 @@
 import {randomUUID} from 'node:crypto';
+import {readCenterEquipmentScope} from './center-equipment-http-checks.mjs';
 
 // Parent harness restricts this fixture to CI and loopback PostgreSQL/API.
 export async function checkCenterOverview(db,{base,b,ownerB,ts,personAccount,tokenFor},check){
  const owner=await personAccount('home-owner'),other=await personAccount('home-inactive');
  const org=await db.organization.create({data:{kind:'DIVE_CENTER',status:'ACTIVE',displayName:'Home '+randomUUID(),ownerId:owner.id}});
  const member=await db.organizationMember.create({data:{organizationId:org.id,accountId:owner.id,role:'OWNER',status:'ACTIVE'}});
- const token=await tokenFor(owner.id),trips=[],resources=[],incidents=[];let scopeAdded=false;
+ const token=await tokenFor(owner.id),trips=[],resources=[],incidents=[];let scopeAdded=false,scopePreserved=false;
+ const originalScope=await readCenterEquipmentScope(db);
+ check(originalScope.columns.length===1&&originalScope.columns[0].column_name==='organizationId','Overview fixture starts with the restored bootstrap ownership scope');
  const read=async(auth=token,query='')=>{const response=await fetch(base+'/center/me/overview'+query,{headers:auth?{authorization:'Bearer '+auth}:{}});return{status:response.status,body:await response.json()}};
  const trip=async(startsAt,status='OPEN',organizationId=org.id)=>{const row=await db.trip.create({data:{organizationId,title:'Home trip '+trips.length,type:'BOAT',capacity:8,status,startsAt,endsAt:new Date(startsAt.getTime()+3600000)}});trips.push(row.id);return row};
  try{
+  // Exercise the unavailable-schema contract explicitly; do not depend on a
+  // preceding fixture deleting production ownership metadata or existing data.
+  await db.$executeRaw`ALTER TABLE "EquipmentBarcode" RENAME COLUMN "organizationId" TO "__centerEquipmentOriginalOrganizationId"`;scopePreserved=true;
   let r=await read();check(r.status===200&&r.body.center.id===org.id,'Home binds exact managed center');
   check(Object.values(r.body.metrics).every(n=>n===0||n===1)&&r.body.metrics.activeMembers===1&&r.body.metrics.totalTrips===0,'Empty center has real zero counters and its owner');
   check(r.body.schedule.trips.total===0&&r.body.schedule.training.total===0&&r.body.licenses.total===0&&r.body.safety.openIncidents===0,'Empty center returns empty summaries');
@@ -50,10 +56,18 @@ export async function checkCenterOverview(db,{base,b,ownerB,ts,personAccount,tok
   await db.roleAssignment.update({where:{accountId_role:{accountId:owner.id,role:'DIVE_CENTER'}},data:{status:'SUSPENDED'}});check((await read()).status===403,'Home rechecks exact active role');await db.roleAssignment.update({where:{accountId_role:{accountId:owner.id,role:'DIVE_CENTER'}},data:{status:'ACTIVE'}});
   check((await read()).status===200,'Restored home authority recovers without widening scope');
  }finally{
+  try{
   await db.safetyIncident.deleteMany({where:{id:{in:incidents}}});await db.booking.deleteMany({where:{tripId:{in:trips}}});await db.trip.deleteMany({where:{id:{in:trips}}});
   await db.trainingRecord.deleteMany({where:{enrollment:{centerOrganizationId:org.id}}});await db.trainingEnrollment.deleteMany({where:{centerOrganizationId:org.id}});
   if(resources.length){await db.$executeRaw`DELETE FROM "EquipmentBarcode" WHERE "resourceId"=ANY(${resources}::text[])`;await db.calendarResource.deleteMany({where:{id:{in:resources}}})}
-  if(scopeAdded)await db.$executeRaw`ALTER TABLE "EquipmentBarcode" DROP COLUMN "organizationId"`;
   await db.administrativeRecord.deleteMany({where:{organizationId:org.id}});await db.organizationDocumentAsset.deleteMany({where:{organizationId:org.id}});await db.orgUnit.deleteMany({where:{organizationId:org.id}});await db.organizationMember.deleteMany({where:{organizationId:org.id}});await db.organization.delete({where:{id:org.id}});
+  }finally{
+   await db.$transaction(async tx=>{
+    if(scopeAdded)await tx.$executeRaw`ALTER TABLE "EquipmentBarcode" DROP COLUMN "organizationId"`;
+    if(scopePreserved)await tx.$executeRaw`ALTER TABLE "EquipmentBarcode" RENAME COLUMN "__centerEquipmentOriginalOrganizationId" TO "organizationId"`;
+   });
+   const restoredScope=await readCenterEquipmentScope(db);
+   check(JSON.stringify(restoredScope)===JSON.stringify(originalScope),'Overview compatibility fixtures restore the original ownership shape, data, FK and indexes');
+  }
  }
 }

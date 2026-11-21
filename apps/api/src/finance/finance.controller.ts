@@ -12,13 +12,42 @@ import { FinanceReceivablesService } from './finance-receivables.service';
 import { FinanceShiftCloseService } from './finance-shift-close.service';
 import { FinancePeriodCloseService } from './finance-period-close.service';
 import { FinanceSettlementService } from './finance-settlement.service';
+import { CenterServiceEntitlementService } from '../commerce/center-service-entitlement.service';
 
 type AuthenticatedRequest = { auth: { accountId: string } };
 
 @UseGuards(AccessTokenGuard)
 @Controller('finance')
 export class FinanceController {
-  constructor(private readonly arWorkspace: FinanceReceivablesWorkspaceService, private readonly workspace: FinanceWorkspaceService, private readonly payments: PaymentsService, private readonly finance: FinancePersistenceService, private readonly shifts: FinanceShiftsService, private readonly receivables: FinanceReceivablesService, private readonly shiftClose: FinanceShiftCloseService, private readonly periodClose: FinancePeriodCloseService, private readonly settlements: FinanceSettlementService) {}
+  constructor(private readonly arWorkspace: FinanceReceivablesWorkspaceService, private readonly workspace: FinanceWorkspaceService, private readonly payments: PaymentsService, private readonly finance: FinancePersistenceService, private readonly shifts: FinanceShiftsService, private readonly receivables: FinanceReceivablesService, private readonly shiftClose: FinanceShiftCloseService, private readonly periodClose: FinancePeriodCloseService, private readonly settlements: FinanceSettlementService, private readonly entitlements: CenterServiceEntitlementService) {}
+
+  @Get('centers/:centerOrgUnitId/service-entitlements/trips/:bookingId')
+  tripEntitlement(@Req() request: AuthenticatedRequest, @Param('centerOrgUnitId') centerId: string, @Param('bookingId') bookingId: string) {
+    return financeHttp(()=>this.entitlements.readTrip(request.auth.accountId,centerId,bookingId));
+  }
+
+  @Post('centers/:centerOrgUnitId/service-entitlements/trips/:bookingId/prepare')
+  prepareTripEntitlement(@Req() request: AuthenticatedRequest, @Param('centerOrgUnitId') centerId: string, @Param('bookingId') bookingId: string,
+    @Body() body: {financeAccountId: string; allocationApprovalEventId: string}) {
+    return financeHttp(()=>this.entitlements.prepareTrip(request.auth.accountId,centerId,bookingId,body));
+  }
+
+  @Get('owner/organizations/:organizationId/service-entitlements/trips/:bookingId')
+  ownerTripEntitlement(@Req() request: AuthenticatedRequest, @Param('organizationId') organizationId: string, @Param('bookingId') bookingId: string) {
+    return financeHttp(()=>this.entitlements.readTripForOwner(request.auth.accountId,organizationId,bookingId));
+  }
+
+  @Post('owner/organizations/:organizationId/service-entitlements/trips/:bookingId/allocation')
+  approveTripAllocation(@Req() request: AuthenticatedRequest, @Param('organizationId') organizationId: string, @Param('bookingId') bookingId: string,
+    @Body() body: {financeAccountId: string; commissionAmountMinor: number; otherDeductionsMinor: number; expectedEvidenceHash: string}) {
+    return financeHttp(()=>this.entitlements.approveTripAllocation(request.auth.accountId,organizationId,bookingId,body));
+  }
+
+  @Post('owner/organizations/:organizationId/service-entitlements/trips/:bookingId/allocation/revoke')
+  revokeTripAllocation(@Req() request: AuthenticatedRequest, @Param('organizationId') organizationId: string, @Param('bookingId') bookingId: string,
+    @Body() body: {allocationApprovalEventId: string; reason: string}) {
+    return financeHttp(()=>this.entitlements.revokeTripAllocation(request.auth.accountId,organizationId,bookingId,body));
+  }
 
   @Get('centers/:centerOrgUnitId/settlement-imports')
   settlementImports(@Req() request:AuthenticatedRequest,@Param('centerOrgUnitId') centerId:string) {

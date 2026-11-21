@@ -38,7 +38,11 @@ async function audit(tx: Prisma.TransactionClient, actorId: string, action: stri
   await tx.auditEvent.create({ data: { action, resource: 'TrainingStandard', resourceId: id, metadata: inputJson({ ...metadata, actorAccountId: actorId }) } });
 }
 export function rejectReservedTrainingMetadata(value: unknown) {
-  if (Object.keys(json(value)).some(key => key.startsWith('trainingStandard'))) throw new BadRequestException('اختيار معايير التدريب من صلاحية المدرب، وليس من بيانات تسجيل المتدرب.');
+  const keys = Object.keys(json(value));
+  if (keys.some(key => key.startsWith('trainingStandard'))) throw new BadRequestException('اختيار معايير التدريب من صلاحية المدرب، وليس من بيانات تسجيل المتدرب.');
+  // The generic enrollment DTO accepts user notes, but commercial conditions
+  // and evidence of a financial action must come from trusted server flows.
+  if (keys.some(key => key === 'contractSnapshot' || key === 'financialActionExecuted')) throw new BadRequestException('شروط التعاقد وحالة التنفيذ المالي تُسجل من مسار الخدمة المعتمد، وليس من بيانات تسجيل المتدرب.');
 }
 export async function createTrainingStandardDraft(tx: Prisma.TransactionClient, actorId: string, body: Record<string, unknown>) {
   fields(body, ['profile', 'reason']);

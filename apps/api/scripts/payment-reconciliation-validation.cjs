@@ -197,3 +197,26 @@ test('simultaneous unmatched webhook receipts are deduplicated without contactin
   assert.equal(f.state.events.length, 1); assert.equal(f.state.events[0].action, 'PAYMENT_PROVIDER_WEBHOOK_UNMATCHED');
   assert.equal(f.providerCalls, 0);
 });
+
+for (const path of ['refresh', 'webhook']) test(`${path}: a fully reconciled refund cannot be erased by invoice paid status`, async () => {
+  const f=fixture();f.state.payment.status='REFUNDED';f.state.payment.refundedAmountMinor=24690;
+  f.queue('paid');await f.call(path);
+  assert.equal(f.state.payment.status,'REFUNDED');assert.equal(f.state.payment.refundedAmountMinor,24690);
+});
+for (const path of ['create', 'refresh', 'webhook']) test(`${path}: provider-observed refund remains terminal before its amount is attributed`, async () => {
+  const f = fixture();
+  f.state.payment.refundedAmountMinor = 0;
+  f.queue('refunded'); await f.call('refresh');
+  assert.equal(f.state.payment.status, 'REFUNDED');
+  assert.equal(f.state.payment.refundedAmountMinor, 0, 'An invoice status alone must not manufacture an attributed refund amount');
+  f.queue('paid', { paidReference: true });
+  await f.call(path, 'later-stale-paid-event');
+  assert.equal(f.state.payment.status, 'REFUNDED', 'A later stale paid observation must not restore bookable funds');
+  assert.equal(f.state.payment.refundedAmountMinor, 0);
+  assert.equal(f.state.events.some(row => row.metadata?.to === 'CAPTURED'), false);
+});
+for (const path of ['refresh', 'webhook']) test(`${path}: a known partial refund is not mislabelled as full by invoice status`, async () => {
+  const f=fixture();f.state.payment.status='CAPTURED';f.state.payment.refundedAmountMinor=12345;
+  f.queue('refunded');await f.call(path);
+  assert.equal(f.state.payment.status,'CAPTURED');assert.equal(f.state.payment.refundedAmountMinor,12345);
+});

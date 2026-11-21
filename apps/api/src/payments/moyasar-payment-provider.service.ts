@@ -1,9 +1,29 @@
-import { BadRequestException, Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { timingSafeEqual } from 'node:crypto';
 import { IntegrationService } from '../integrations/integration.service';
 
 export type MoyasarInvoice={id:string;status:string;amount:number;currency:string;url:string;metadata:Record<string,string>;payments:Array<{id:string;status:string;amount:number;currency:string}>};
+export type MoyasarCommerceInvoice = MoyasarInvoice & {expiresAt: string};
+export type MoyasarCommerceInvoiceInput = {
+  checkoutId: string; sourceType: 'EQUIPMENT_RENTAL'; sourceId: string; organizationId: string;
+  customerAccountId: string; amountMinor: number; currency: 'SAR'; expiresAt: string;
+};
 export type MoyasarWebhook={id:string;type:string;secret_token:string;live:boolean;data:Record<string,unknown>};
+
+export type MoyasarPaymentBinding={invoiceId:string;amountMinor:number;currency:string};
+// A payment response is intentionally reduced to the financial evidence required
+// by reconciliation. Card tokens, cardholder data and arbitrary metadata never
+// leave this adapter.
+export type MoyasarPayment={
+  id:string;invoiceId:string;status:string;amountMinor:number;currency:string;
+  capturedMinor:number;refundedMinor:number;updatedAt:string;refundedAt:string|null;
+};
+export type MoyasarRefundInput=MoyasarPaymentBinding&{
+  providerPaymentId:string;refundAmountMinor:number;expectedRefundedMinor:number;
+};
+const providerUuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const providerPaymentStatuses=new Set(['initiated','paid','authorized','failed','refunded','captured','voided','verified','expired']);
+const maxProviderMinor=2_147_483_647;
 
 @Injectable()
 export class MoyasarPaymentProviderService {
@@ -26,6 +46,118 @@ export class MoyasarPaymentProviderService {
     if(!/^[0-9a-f-]{30,40}$/i.test(invoiceId))throw new BadRequestException('Invalid provider reference.');
     const response = await this.request(`/invoices/${encodeURIComponent(invoiceId)}`);
     return this.observeInvoice(response, {id: invoiceId});
+  }
+
+  commerceInvoiceMetadata(input: MoyasarCommerceInvoiceInput) {
+    return {hydroland_checkout_id:input.checkoutId,hydroland_source_type:input.sourceType,
+      hydroland_source_id:input.sourceId,hydroland_organization_id:input.organizationId,
+      hydroland_customer_account_id:input.customerAccountId};
+  }
+
+  // Invoice creation has no documented given_id support. The caller must claim
+  // one durable operation first; a lost response can never trigger POST replay.
+  async createCommerceInvoice(input: MoyasarCommerceInvoiceInput): Promise<MoyasarCommerceInvoice> {
+    this.assertCommerceInvoiceInput(input);
+    if(Date.parse(input.expiresAt)<=Date.now())throw new ConflictException('The original rental payment hold has expired.');
+    this.assertProvider();
+    const origin=this.publicWebOrigin();
+    const successUrl=new URL(origin);successUrl.searchParams.set('rental_payment','returned');successUrl.searchParams.set('rental_id',input.sourceId);
+    const backUrl=new URL(origin);backUrl.searchParams.set('rental_payment','back');backUrl.searchParams.set('rental_id',input.sourceId);
+    const metadata=this.commerceInvoiceMetadata(input);
+    try{
+      const response=await this.request('/invoices',{method:'POST',redirect:'error',body:JSON.stringify({
+        amount:input.amountMinor,currency:input.currency,description:`HYDROLAND equipment rental ${input.sourceId}`,
+        success_url:successUrl.toString(),back_url:backUrl.toString(),expired_at:input.expiresAt,metadata,
+      })});
+      return await this.observeCommerceInvoice(response,input);
+    }catch{
+      throw new ServiceUnavailableException({code:'RENTAL_CHECKOUT_RECONCILIATION_REQUIRED',message:'The checkout result requires reconciliation before any further payment request.'});
+    }
+  }
+
+  async fetchCommerceInvoice(invoiceId: string,input: MoyasarCommerceInvoiceInput): Promise<MoyasarCommerceInvoice> {
+    this.assertCommerceInvoiceInput(input);
+    if(!providerUuid.test(invoiceId))throw new BadRequestException('Invalid provider invoice reference.');
+    this.assertProvider();
+    const response=await this.request(`/invoices/${encodeURIComponent(invoiceId)}`,{redirect:'error'});
+    return this.observeCommerceInvoice(response,input,invoiceId);
+  }
+
+  private assertCommerceInvoiceInput(input:MoyasarCommerceInvoiceInput){
+    if(!input||input.sourceType!=='EQUIPMENT_RENTAL'||!['checkoutId','sourceId','organizationId','customerAccountId'].every(key=>{
+      const value=input[key as keyof MoyasarCommerceInvoiceInput];return typeof value==='string'&&value.trim()===value&&value.length>0&&value.length<=128;
+    })||input.currency!=='SAR'||!Number.isSafeInteger(input.amountMinor)||input.amountMinor<100||input.amountMinor>maxProviderMinor
+      ||typeof input.expiresAt!=='string'||!Number.isFinite(Date.parse(input.expiresAt))||new Date(input.expiresAt).toISOString()!==input.expiresAt){
+      throw new BadRequestException('A valid original rental checkout binding is required.');
+    }
+  }
+
+  private async observeCommerceInvoice(payload:unknown,input:MoyasarCommerceInvoiceInput,id?:string):Promise<MoyasarCommerceInvoice>{
+    const invoice=await this.observeInvoice(payload,{id,amount:input.amountMinor,currency:input.currency,metadata:this.commerceInvoiceMetadata(input)});
+    const raw=payload as Record<string,unknown>;
+    if(!providerUuid.test(invoice.id)||!['initiated','paid','failed','refunded','canceled','on_hold','expired','voided'].includes(invoice.status)
+      ||typeof raw.expired_at!=='string'||!Number.isFinite(Date.parse(raw.expired_at))
+      ||Date.parse(raw.expired_at)!==Date.parse(input.expiresAt)){
+      await this.integrations.recordProviderSignal('PAYMENT_PSP','PROVIDER_FAILURE');
+      throw new ServiceUnavailableException('Provider invoice does not preserve the original checkout expiry.');
+    }
+    return {...invoice,metadata:this.commerceInvoiceMetadata(input),expiresAt:input.expiresAt};
+  }
+
+  async fetchPayment(providerPaymentId:string,binding:MoyasarPaymentBinding):Promise<MoyasarPayment>{
+    this.assertPaymentBinding(providerPaymentId,binding);
+    this.assertProvider();
+    const response=await this.request(`/payments/${encodeURIComponent(providerPaymentId)}`,{redirect:'error'});
+    return this.observePayment(response,providerPaymentId,binding);
+  }
+
+  /**
+   * The caller must durably reserve one refund operation before calling this
+   * method. Moyasar documents given_id for creation, not refund idempotency.
+   * Exactly one POST is sent; any uncertain outcome requires GET reconciliation
+   * and must never be retried automatically with a new operation.
+   */
+  async refundPayment(input:MoyasarRefundInput):Promise<MoyasarPayment>{
+    this.assertPaymentBinding(input?.providerPaymentId,input);
+    if(!Number.isSafeInteger(input.refundAmountMinor)||input.refundAmountMinor<=0
+      ||input.refundAmountMinor>maxProviderMinor||!Number.isSafeInteger(input.expectedRefundedMinor)
+      ||input.expectedRefundedMinor<0||input.expectedRefundedMinor>input.amountMinor
+      ||input.refundAmountMinor>input.amountMinor-input.expectedRefundedMinor){
+      throw new BadRequestException('Refund amount must fit within the remaining original payment.');
+    }
+    const before=await this.fetchPayment(input.providerPaymentId,input);
+    if(before.refundedMinor!==input.expectedRefundedMinor){
+      throw new ConflictException({code:'PAYMENT_REFUND_BALANCE_CHANGED',message:'Provider refund balance changed. Reconcile before sending a refund.'});
+    }
+    // The published operation guide permits refund POST only from paid/captured.
+    // A partial balance in a refunded response is readable but is not permission
+    // to assume that another refund POST is supported by this provider.
+    if(!['paid','captured'].includes(before.status)){
+      throw new ConflictException({code:'PAYMENT_REFUND_PROVIDER_REVIEW_REQUIRED',message:'Provider payment is not in a documented refundable state.'});
+    }
+    if(input.refundAmountMinor>before.capturedMinor-before.refundedMinor){
+      throw new ConflictException({code:'PAYMENT_REFUND_CAPTURE_LIMIT',message:'Refund amount exceeds the remaining captured payment.'});
+    }
+    try{
+      const response=await this.request(`/payments/${encodeURIComponent(input.providerPaymentId)}/refund`,{
+        method:'POST',redirect:'error',body:JSON.stringify({amount:input.refundAmountMinor}),
+      });
+      const after=this.payment(response,input.providerPaymentId,input);
+      if(!['paid','captured','refunded'].includes(after.status)
+        ||after.capturedMinor!==before.capturedMinor
+        ||after.refundedMinor!==before.refundedMinor+input.refundAmountMinor
+        ||!after.refundedAt||Date.parse(after.updatedAt)<Date.parse(before.updatedAt)){
+        throw new ServiceUnavailableException('Payment provider refund outcome is not verified.');
+      }
+      await this.integrations.recordProviderSignal('PAYMENT_PSP','SUCCESS');
+      return after;
+    }catch{
+      await this.integrations.recordProviderSignal('PAYMENT_PSP','PROVIDER_FAILURE');
+      throw new ServiceUnavailableException({
+        code:'PAYMENT_REFUND_RECONCILIATION_REQUIRED',
+        message:'Refund outcome is uncertain. Reconcile the original provider payment before any further action.',
+      });
+    }
   }
 
   async cancelInvoice(invoiceId:string){
@@ -86,6 +218,51 @@ export class MoyasarPaymentProviderService {
     return invoice;
   }
 
+  private assertPaymentBinding(providerPaymentId:unknown,binding:MoyasarPaymentBinding){
+    if(typeof providerPaymentId!=='string'||!providerUuid.test(providerPaymentId)
+      ||!binding||typeof binding.invoiceId!=='string'||!providerUuid.test(binding.invoiceId)
+      ||!Number.isSafeInteger(binding.amountMinor)||binding.amountMinor<=0||binding.amountMinor>maxProviderMinor
+      ||typeof binding.currency!=='string'||!/^[A-Z]{3}$/.test(binding.currency)){
+      throw new BadRequestException('A valid provider payment and invoice binding is required.');
+    }
+  }
+
+  private async observePayment(payload:unknown,providerPaymentId:string,binding:MoyasarPaymentBinding){
+    let payment:MoyasarPayment;
+    try{payment=this.payment(payload,providerPaymentId,binding);}
+    catch(error){await this.integrations.recordProviderSignal('PAYMENT_PSP','PROVIDER_FAILURE');throw error;}
+    await this.integrations.recordProviderSignal('PAYMENT_PSP','SUCCESS');
+    return payment;
+  }
+
+  private payment(payload:unknown,providerPaymentId:string,binding:MoyasarPaymentBinding):MoyasarPayment{
+    if(!payload||typeof payload!=='object'||Array.isArray(payload))throw new ServiceUnavailableException('Payment provider returned an invalid payment.');
+    const row=payload as Record<string,unknown>;
+    const amount=typeof row.amount==='number'?row.amount:Number.NaN;
+    const captured=typeof row.captured==='number'?row.captured:Number.NaN;
+    const refunded=typeof row.refunded==='number'?row.refunded:Number.NaN;
+    const status=typeof row.status==='string'?row.status:'';
+    const timestamp=(value:unknown)=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value)&&Number.isFinite(Date.parse(value));
+    if(row.id!==providerPaymentId||row.invoice_id!==binding.invoiceId||row.currency!==binding.currency||amount!==binding.amountMinor
+      ||!providerPaymentStatuses.has(status)||!Number.isSafeInteger(amount)||amount<=0||amount>maxProviderMinor
+      ||!Number.isSafeInteger(captured)||captured<0||captured>amount
+      ||!Number.isSafeInteger(refunded)||refunded<0||refunded>amount
+      ||!timestamp(row.updated_at)||!(row.refunded_at==null||timestamp(row.refunded_at))){
+      throw new ServiceUnavailableException('Payment provider payment binding or amount is invalid.');
+    }
+    // Purchase flow charges the full amount directly (status paid). The captured
+    // field records manual capture; keep a partial manual capture as the ceiling
+    // after its status changes to refunded.
+    const capturedMinor=captured>0?captured:(['paid','refunded'].includes(status)?amount:0);
+    if(refunded>capturedMinor||(status==='captured'&&capturedMinor===0)
+      ||(!['paid','captured','refunded'].includes(status)&&refunded>0)){
+      throw new ServiceUnavailableException('Payment provider captured/refunded balance is invalid.');
+    }
+    return{id:providerPaymentId,invoiceId:binding.invoiceId,status,amountMinor:amount,currency:binding.currency,
+      capturedMinor,refundedMinor:refunded,updatedAt:new Date(row.updated_at as string).toISOString(),
+      refundedAt:row.refunded_at==null?null:new Date(row.refunded_at as string).toISOString()};
+  }
+
   private invoice(payload:unknown,expectedAmount?:number,expectedCurrency?:string,expectedMetadata?:Record<string,string>):MoyasarInvoice{
     if(!payload||typeof payload!=='object'||Array.isArray(payload))throw new ServiceUnavailableException('Payment provider returned an invalid response.');
     const row=payload as Record<string,unknown>,id=typeof row.id==='string'?row.id:'',status=typeof row.status==='string'?row.status:'',currency=typeof row.currency==='string'?row.currency:'',url=typeof row.url==='string'?row.url:'',amount=typeof row.amount==='number'?row.amount:Number.NaN;
@@ -96,7 +273,7 @@ export class MoyasarPaymentProviderService {
     if(row.metadata&&typeof row.metadata==='object'&&!Array.isArray(row.metadata))for(const[key,value]of Object.entries(row.metadata as Record<string,unknown>))if(typeof value==='string')metadata[key]=value;
     if(expectedMetadata)for(const[key,value]of Object.entries(expectedMetadata))if(metadata[key]!==value)throw new ServiceUnavailableException('Payment provider metadata mismatch.');
     let checkout:URL;try{checkout=new URL(url);}catch{throw new ServiceUnavailableException('Payment provider returned an invalid checkout URL.');}
-    if(checkout.protocol!=='https:'&&!['localhost','127.0.0.1'].includes(checkout.hostname))throw new ServiceUnavailableException('Payment checkout URL must use HTTPS.');
+    if(checkout.protocol!=='https:'&&!(checkout.protocol==='http:'&&['localhost','127.0.0.1'].includes(checkout.hostname)))throw new ServiceUnavailableException('Payment checkout URL must use HTTPS.');
     const payments=Array.isArray(row.payments)?row.payments.flatMap(value=>{
       if(!value||typeof value!=='object'||Array.isArray(value))return[];
       const payment=value as Record<string,unknown>;
@@ -109,7 +286,7 @@ export class MoyasarPaymentProviderService {
   private publicWebOrigin(){
     const raw=process.env.HYDROLAND_PUBLIC_WEB_ORIGIN?.trim();if(!raw)throw new ServiceUnavailableException('Public web origin is not configured.');
     let url:URL;try{url=new URL(raw);}catch{throw new ServiceUnavailableException('Public web origin is invalid.');}
-    if(url.protocol!=='https:'&&!['localhost','127.0.0.1'].includes(url.hostname))throw new ServiceUnavailableException('Public web origin must use HTTPS.');
+    if(url.protocol!=='https:'&&!(url.protocol==='http:'&&['localhost','127.0.0.1'].includes(url.hostname)))throw new ServiceUnavailableException('Public web origin must use HTTPS.');
     url.pathname='/';url.search='';url.hash='';return url;
   }
 }

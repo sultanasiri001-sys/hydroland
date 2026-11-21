@@ -6,8 +6,9 @@ import { BookingParticipantService } from './booking-participant.service';
 import { PolicyControlService } from './policy-control.service';
 import { TripWeatherReviewService } from './trip-weather-review.service';
 import { WeatherGateService } from './weather-gate.service';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
+import { captureTripBookingContract, capturedTripPrice } from '../commerce/trip-booking-contract';
 
 type TripListRow={id:string;title:string;status:string;startsAt:Date;capacity:number;bookings:Array<{seats:number}>;safetyChecklists:Array<{id:string;decision:string;items:unknown;notes:string|null;decidedAt:Date|null;createdAt:Date}>;[key:string]:unknown};
 type TripPrice={pricePerSeatMinor:number;currency:'SAR';configured:boolean};
@@ -21,8 +22,8 @@ export class TripsService {
     return{gateSettings,safetyPolicy,weatherPolicy,capacityPolicy};
   }
 
-  private async tripPrice(tripId:string):Promise<TripPrice>{
-    const row=await this.db.operationalSetting.findUnique({where:{key:`trip-price:${tripId}`},select:{value:true}});
+  private async tripPrice(tripId:string,client:Pick<Prisma.TransactionClient,'operationalSetting'>=this.db):Promise<TripPrice>{
+    const row=await client.operationalSetting.findUnique({where:{key:`trip-price:${tripId}`},select:{value:true}});
     if(!row?.value||typeof row.value!=='object'||Array.isArray(row.value))return{pricePerSeatMinor:0,currency:'SAR',configured:false};
     const value=row.value as Record<string,unknown>,amount=typeof value.pricePerSeatMinor==='number'?value.pricePerSeatMinor:Number.NaN,currency=typeof value.currency==='string'?value.currency.toUpperCase():'';
     if(!Number.isSafeInteger(amount)||amount<0||currency!=='SAR')return{pricePerSeatMinor:0,currency:'SAR',configured:false};
@@ -36,26 +37,24 @@ export class TripsService {
     const reviewIssues:string[]=[];
     const result=await this.db.serializable(async tx=>{
       const controls=await this.bookingControls(tx),{gateSettings,safetyPolicy,weatherPolicy,capacityPolicy}=controls;
-      const trip=await tx.trip.findUnique({where:{id:tripId}});if(!trip||trip.status!=='OPEN')throw new NotFoundException('Trip unavailable.');if(trip.startsAt<=new Date())throw new ConflictException('Trip already started.');
-      const existing=await tx.booking.findFirst({where:{tripId,accountId,organizationId:null},orderBy:{updatedAt:'desc'}});
-      if(existing&&existing.status!=='CANCELLED')throw new ConflictException('An active booking already exists for this trip.');
+      const trip=await tx.trip.findUnique({where:{id:tripId},include:{organization:true}});if(!trip||trip.status!=='OPEN')throw new NotFoundException('Trip unavailable.');if(trip.startsAt<=new Date())throw new ConflictException('Trip already started.');
+      const existing=await tx.booking.findFirst({where:{tripId,accountId,organizationId:null,status:{in:['PENDING','CONFIRMED']}},select:{id:true}});
+      if(existing)throw new ConflictException('An active booking already exists for this trip.');
+      const previousCancelled=await tx.booking.findFirst({where:{tripId,accountId,organizationId:null,status:'CANCELLED'},select:{id:true}});
       const latestSafety=await tx.safetyChecklist.findFirst({where:{tripId},orderBy:{createdAt:'desc'},select:{decision:true}});
       if(latestSafety?.decision==='DEFERRED')throw new ConflictException('Trip is deferred by a safety decision.');
       if(!latestSafety||latestSafety.decision!=='ALLOWED'){if(safetyPolicy.enforce)throw new ConflictException('Trip requires safety approval before booking.');if(safetyPolicy.review)reviewIssues.push('SAFETY_APPROVAL');}
       const weatherReview=await this.weatherReviews.latest(tripId,tx),weather=this.weatherGate.evaluateReview(weatherReview?.snapshot,weatherReview?.status,gateSettings,weatherReview?.context,weatherReview?.fetchedAt);if(weather.blocking){if(weatherPolicy.enforce)throw new ConflictException(weather.reason||'Trip is unavailable because weather review is not approved.');if(weatherPolicy.review)reviewIssues.push('WEATHER_GATE');}
       const used=await tx.booking.aggregate({where:{tripId,status:{in:['PENDING','CONFIRMED']}},_sum:{seats:true}});if((used._sum.seats??0)+seats>trip.capacity){if(capacityPolicy.enforce)throw new ConflictException('Trip capacity reached.');if(capacityPolicy.review)reviewIssues.push('CAPACITY_LIMIT');}
-      let booking;
-      if(existing){
-        await tx.bookingParticipant.deleteMany({where:{bookingId:existing.id}});
-        booking=await tx.booking.update({where:{id:existing.id},data:{seats,status:'PENDING'}});
-      }else{
-        booking=await tx.booking.create({data:{tripId,accountId,seats,status:'PENDING'}});
-      }
+      const id=randomUUID(),createdAt=new Date(),quotedPrice=await this.tripPrice(tripId,tx);
+      const contractSnapshot=captureTripBookingContract({bookingId:id,accountId,buyerOrganizationId:null,seats,createdAt,price:quotedPrice,trip});
+      // A fresh booking keeps cancelled contracts, participants and payments intact.
+      const booking=await tx.booking.create({data:{id,tripId,accountId,seats,status:'PENDING',createdAt,contractSnapshot:contractSnapshot as Prisma.InputJsonValue}});
       const participantRows=await this.participants.ensureForBooking(booking.id,accountId,seats,tx);
-      return{booking,participantRows,rebooked:Boolean(existing),weatherReview,controls};
+      return{booking,participantRows,rebooked:Boolean(previousCancelled),weatherReview,controls,price:capturedTripPrice(contractSnapshot)};
     });
     const {gateSettings,safetyPolicy,weatherPolicy,capacityPolicy}=result.controls;
-    const price=await this.tripPrice(tripId);
+    const price=result.price;
     return {...result.booking,price,participants:result.participantRows,rebooked:result.rebooked,policyReview:{required:reviewIssues.length>0,issues:[...new Set(reviewIssues)],states:{safety:safetyPolicy.state,weather:weatherPolicy.state,capacity:capacityPolicy.state},weatherGate:{enabled:gateSettings.enabled,mode:gateSettings.mode,provider:gateSettings.provider,reviewStatus:result.weatherReview?.status??null,forecastAt:result.weatherReview?.forecastAt??null}}};
   }
 
@@ -73,11 +72,11 @@ export class TripsService {
       const membership=await tx.organizationMember.findFirst({where:{organizationId,accountId,status:'ACTIVE',role:{in:['OWNER','ADMIN','OPERATOR']},organization:{status:'ACTIVE'},account:{status:'ACTIVE'}},select:{id:true}});
       if(!membership)throw new ForbiddenException('تتطلب العملية عضوية تشغيل نشطة في الجهة.');
       const replay=await tx.booking.findUnique({where:{bookingRequestKey:requestKey},include:{participants:{select:{id:true,fullName:true,certificationTitle:true,eligibilityStatus:true}}}});
-      if(replay){if(replay.organizationId!==organizationId||replay.accountId!==accountId||replay.tripId!==input.tripId||replay.bookingRequestFingerprint!==fingerprint)throw new ConflictException('استُخدم مفتاح الطلب ببيانات مختلفة.');return{booking:replay,participantRows:replay.participants,alreadyApplied:true,rebooked:false,weatherReview:null,controls};}
+      if(replay){if(replay.organizationId!==organizationId||replay.accountId!==accountId||replay.tripId!==input.tripId||replay.bookingRequestFingerprint!==fingerprint)throw new ConflictException('استُخدم مفتاح الطلب ببيانات مختلفة.');return{booking:replay,participantRows:replay.participants,alreadyApplied:true,rebooked:false,weatherReview:null,controls,price:capturedTripPrice(replay.contractSnapshot)};}
       const previousCancelled=await tx.booking.findFirst({where:{organizationId,tripId:input.tripId,accountId,status:'CANCELLED'},select:{id:true}});
       const active=await tx.booking.findFirst({where:{organizationId,tripId:input.tripId,status:{in:['PENDING','CONFIRMED']}},select:{id:true}});
       if(active)throw new ConflictException('للجهة حجز قائم لهذه الرحلة. افتح الحجز الحالي لتعديله أو تابع طلبه.');
-      const trip=await tx.trip.findUnique({where:{id:input.tripId}});
+      const trip=await tx.trip.findUnique({where:{id:input.tripId},include:{organization:true}});
       if(!trip||trip.status!=='OPEN')throw new NotFoundException('الرحلة غير متاحة.');
       if(trip.startsAt<=new Date())throw new ConflictException('بدأت الرحلة بالفعل.');
       const latestSafety=await tx.safetyChecklist.findFirst({where:{tripId:input.tripId},orderBy:{createdAt:'desc'},select:{decision:true}});
@@ -87,14 +86,16 @@ export class TripsService {
       if(weather.blocking){if(weatherPolicy.enforce)throw new ConflictException(weather.reason||'الرحلة غير متاحة قبل اعتماد حالة الطقس.');if(weatherPolicy.review)reviewIssues.push('WEATHER_GATE');}
       const used=await tx.booking.aggregate({where:{tripId:input.tripId,status:{in:['PENDING','CONFIRMED']}},_sum:{seats:true}});
       if((used._sum.seats??0)+input.seats>trip.capacity){if(capacityPolicy.enforce)throw new ConflictException('اكتملت سعة الرحلة.');if(capacityPolicy.review)reviewIssues.push('CAPACITY_LIMIT');}
-      const booking=await tx.booking.create({data:{tripId:input.tripId,accountId,organizationId,bookingRequestKey:requestKey,bookingRequestFingerprint:fingerprint,seats:input.seats,status:'PENDING'}});
+      const id=randomUUID(),createdAt=new Date(),quotedPrice=await this.tripPrice(input.tripId,tx);
+      const contractSnapshot=captureTripBookingContract({bookingId:id,accountId,buyerOrganizationId:organizationId,seats:input.seats,createdAt,price:quotedPrice,trip});
+      const booking=await tx.booking.create({data:{id,tripId:input.tripId,accountId,organizationId,bookingRequestKey:requestKey,bookingRequestFingerprint:fingerprint,seats:input.seats,status:'PENDING',createdAt,contractSnapshot:contractSnapshot as Prisma.InputJsonValue}});
       await tx.bookingParticipant.createMany({data:names.map(fullName=>({bookingId:booking.id,accountId:null,fullName,eligibilityStatus:'PENDING'}))});
       const participantRows=await tx.bookingParticipant.findMany({where:{bookingId:booking.id},select:{id:true,fullName:true,certificationTitle:true,eligibilityStatus:true},orderBy:{createdAt:'asc'}});
       await this.audit.record({actorId:accountId,action:'organization.booking.requested',resource:'Booking',resourceId:booking.id,metadata:{organizationId,tripId:input.tripId,seats:input.seats,participantCount:participantRows.length,requestKey,rebooked:Boolean(previousCancelled)}},tx);
-      return{booking,participantRows,alreadyApplied:false,rebooked:Boolean(previousCancelled),weatherReview,controls};
+      return{booking,participantRows,alreadyApplied:false,rebooked:Boolean(previousCancelled),weatherReview,controls,price:capturedTripPrice(contractSnapshot)};
     });
     const {gateSettings,safetyPolicy,weatherPolicy,capacityPolicy}=result.controls;
-    const price=await this.tripPrice(input.tripId);
+    const price=result.price;
     return{...result.booking,price,participants:result.participantRows,rebooked:result.rebooked,alreadyApplied:result.alreadyApplied,policyReview:{required:reviewIssues.length>0,issues:[...new Set(reviewIssues)],states:{safety:safetyPolicy.state,weather:weatherPolicy.state,capacity:capacityPolicy.state},weatherGate:{enabled:gateSettings.enabled,mode:gateSettings.mode,provider:gateSettings.provider,reviewStatus:result.weatherReview?.status??null,forecastAt:result.weatherReview?.forecastAt??null}}};
   }
 

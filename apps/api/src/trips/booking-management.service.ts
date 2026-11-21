@@ -7,6 +7,7 @@ import { CrewAssignmentService } from './crew-assignment.service';
 import { PolicyControlService } from './policy-control.service';
 import { TripWeatherReviewService } from './trip-weather-review.service';
 import { WeatherGateService } from './weather-gate.service';
+import { satisfiesTripBookingPayment, tripBookingPaymentRequirement } from '../commerce/trip-booking-contract';
 
 type Mode = 'center' | 'marine' | 'admin' | 'owner' | 'organization';
 type Action = 'CONFIRM' | 'CANCEL';
@@ -114,13 +115,15 @@ export class BookingManagementService {
     if (conflicts.length) calendarIssues.push('CALENDAR_RESOURCE_CONFLICT');
     const calendarReservation = { status: calendarIssues.length ? 'NEEDS_ATTENTION' : 'RESERVED', issues: calendarIssues, activeAllocationCount: allocations.length, confirmationGateEnforced: false };
     const participants = await tx.bookingParticipant.findMany({ where: { bookingId: booking.id }, orderBy: { id: 'asc' }, select: { id: true, fullName: true, eligibilityStatus: true, certificationTitle: true, updatedAt: true } });
-    const payments = await tx.payment.findMany({ where: { bookingId: booking.id }, orderBy: { id: 'asc' }, select: { id: true, status: true, currency: true, amountMinor: true, updatedAt: true } });
-    const price = await tx.operationalSetting.findUnique({ where: { key: 'trip-price:' + trip.id }, select: { value: true, updatedAt: true } });
-    const value = price?.value as Record<string, unknown> | null;
-    const priceValid = Boolean(value && Number.isSafeInteger(value.pricePerSeatMinor) && Number(value.pricePerSeatMinor) >= 0 && String(value.currency).trim().toUpperCase() === 'SAR');
-    const requiredAmountMinor = priceValid ? Number(value!.pricePerSeatMinor) * booking.seats : null;
-    const amountValid = requiredAmountMinor !== null && Number.isSafeInteger(requiredAmountMinor) && requiredAmountMinor >= 0;
-    const captured = amountValid && (requiredAmountMinor === 0 || payments.some(p => p.status === 'CAPTURED' && p.currency === 'SAR' && p.amountMinor === requiredAmountMinor));
+    const payments = await tx.payment.findMany({ where: { bookingId: booking.id }, orderBy: { id: 'asc' }, select: { id: true, bookingId: true, accountId: true, status: true, currency: true, amountMinor: true, refundedAmountMinor: true, providerReference: true, moyasarPaymentId: true, updatedAt: true,
+      refundOperations: { where: { status: { in: ['RESERVED', 'DISPATCHED', 'RECONCILIATION_REQUIRED'] } }, orderBy: { id: 'asc' }, select: { id: true, status: true, amountMinor: true, updatedAt: true } } } });
+    const price = booking.contractSnapshot === null || booking.contractSnapshot === undefined
+      ? await tx.operationalSetting.findUnique({ where: { key: 'trip-price:' + trip.id }, select: { value: true, updatedAt: true } }) : null;
+    const requirement = tripBookingPaymentRequirement(booking, price?.value);
+    const requiredAmountMinor = requirement.requiredAmountMinor;
+    const amountValid = requiredAmountMinor !== null;
+    const captured = amountValid && (requiredAmountMinor === 0 || payments.some(payment => satisfiesTripBookingPayment(payment, requirement)));
+    const paymentContractReview = { source: requirement.source, required: requirement.source !== 'SNAPSHOT', reasonCode: requirement.reasonCode };
     const safety = await tx.safetyChecklist.findFirst({ where: { tripId: trip.id }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { id: true, decision: true, updatedAt: true } });
     const confirmedSeats = (await tx.booking.aggregate({ where: { tripId: trip.id, status: 'CONFIRMED' }, _sum: { seats: true } }))._sum.seats ?? 0;
     const settings = await this.weather.settings(tx);
@@ -139,10 +142,10 @@ export class BookingManagementService {
     require(!evaluation.blocking, 'weather', 'WEATHER_GATE');
     const mutable = !['CANCELLED', 'COMPLETED'].includes(trip.status) && trip.startsAt > new Date() && booking.status !== 'CANCELLED';
     if (!mutable || !['OPEN', 'CLOSED'].includes(trip.status) || booking.status !== 'PENDING') blockers.push('BOOKING_NOT_PENDING_OR_TRIP_CLOSED');
-    const financial: Record<string, { currency: string; status: string; count: number; amountMinor: number }> = {};
-    for (const p of payments) { const key = p.currency + ':' + p.status; financial[key] ??= { currency: p.currency, status: p.status, count: 0, amountMinor: 0 }; financial[key].count++; financial[key].amountMinor += p.amountMinor; }
+    const financial: Record<string, { currency: string; status: string; count: number; amountMinor: number; refundedAmountMinor: number; netCollectedAmountMinor: number }> = {};
+    for (const p of payments) { const key = p.currency + ':' + p.status; financial[key] ??= { currency: p.currency, status: p.status, count: 0, amountMinor: 0, refundedAmountMinor: 0, netCollectedAmountMinor: 0 }; financial[key].count++; financial[key].amountMinor += p.amountMinor; financial[key].refundedAmountMinor += p.refundedAmountMinor ?? 0; if (p.status === 'CAPTURED' || p.status === 'REFUNDED') financial[key].netCollectedAmountMinor += Math.max(0, p.amountMinor - (p.refundedAmountMinor ?? 0)); }
     const policyReview = { required: issues.length > 0, issues, states: Object.fromEntries(Object.entries(rules).map(([k, v]) => [k, v.state])), weatherGate: { ...settings, decision: evaluation.decision, reviewStatus: review?.status ?? null, forecastAt: review?.forecastAt ?? null } };
-    return { stateToken: hash([booking.id, booking.status, booking.seats, booking.updatedAt, trip, participants, payments, price, safety, confirmedSeats, settings, rules, calendarEvent, conflicts, review ? [review.id, review.snapshotHash, review.status, review.reviewedAt] : null]), calendarReservation, participants, financial: Object.values(financial), requiredAmountMinor: amountValid ? requiredAmountMinor : null, paymentSatisfied: Boolean(captured), confirmedSeats, remainingSeats: Math.max(0, trip.capacity - confirmedSeats), safetyDecision: safety?.decision ?? null, blockers, policyReview, actions: [...(!blockers.length ? ['CONFIRM'] : []), ...(mutable ? ['CANCEL'] : [])], settings };
+    return { stateToken: hash([booking.id, booking.status, booking.seats, booking.updatedAt, booking.contractSnapshot, trip, participants, payments, price, safety, confirmedSeats, settings, rules, calendarEvent, conflicts, review ? [review.id, review.snapshotHash, review.status, review.reviewedAt] : null]), calendarReservation, participants, financial: Object.values(financial), requiredAmountMinor: amountValid ? requiredAmountMinor : null, paymentSatisfied: Boolean(captured), paymentContractReview, confirmedSeats, remainingSeats: Math.max(0, trip.capacity - confirmedSeats), safetyDecision: safety?.decision ?? null, blockers, policyReview, actions: [...(!blockers.length ? ['CONFIRM'] : []), ...(mutable ? ['CANCEL'] : [])], settings };
   }
 
   async detail(accountId: string, id: string, mode: Mode = 'center', tripId?: string, organizationId?: string) {

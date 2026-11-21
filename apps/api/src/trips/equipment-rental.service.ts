@@ -1,30 +1,33 @@
 import { assertRentalFitsCalendar } from './equipment-rental-calendar';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { assertNoRentalClaim, rentalStatus, RENTAL_HOLD_MINUTES } from './equipment-rental-hold';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { AuditService } from '../audit/audit.service';
+import { createRentalContract } from '../commerce/rental-contract';
 import { DatabaseService } from '../database/database.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
 type RentalItemInput={resourceId?:string;equipmentType?:string|null;size?:string|null;unitPriceSar?:number};
-type RentalRow={id:string;holdExpiresAt:Date|null;renterAccountId:string;status:string;paymentStatus:string;totalHalala:bigint;invoiceNumber:string;whatsappPhone:string|null;reservedAt:Date;paidAt:Date|null;returnedAt:Date|null;dueAt:Date|null;overdueNotifiedAt:Date|null;extensionRequestedUntil:Date|null;extensionStatus:'PENDING'|'APPROVED'|'REJECTED'|null;extensionRequestedAt:Date|null;extensionReviewedAt:Date|null;extensionReviewedByAccountId:string|null;returnIntentAt:Date|null;createdByAccountId:string;createdAt:Date;updatedAt:Date};
+type RentalRow={id:string;holdExpiresAt:Date|null;renterAccountId:string;status:string;paymentStatus:string;totalHalala:bigint;invoiceNumber:string;whatsappPhone:string|null;reservedAt:Date;scheduledHandoverAt:Date|null;contractSnapshot:unknown;paidAt:Date|null;returnedAt:Date|null;dueAt:Date|null;overdueNotifiedAt:Date|null;extensionRequestedUntil:Date|null;extensionStatus:'PENDING'|'APPROVED'|'REJECTED'|null;extensionRequestedAt:Date|null;extensionReviewedAt:Date|null;extensionReviewedByAccountId:string|null;returnIntentAt:Date|null;createdByAccountId:string;createdAt:Date;updatedAt:Date};
 type RentalItemRow={id:string;rentalId:string;resourceId:string;equipmentType:string|null;size:string|null;unitPriceHalala:bigint;assetCodeSnapshot:string;equipmentNameSnapshot:string;serialNumberSnapshot:string|null;returnedAt:Date|null;returnCondition:'OK'|'DAMAGED'|'REVIEW'|null;returnNotes:string|null};
 
 @Injectable()
 export class EquipmentRentalService{
   constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly notifications:NotificationsService){}
-  private toHalala(value?:number){if(value===undefined||!Number.isFinite(value)||value<0)throw new BadRequestException('Rental price must be zero or greater.');return BigInt(Math.round(value*100));}
+  private toHalala(value?:number){if(value===undefined||typeof value!=='number'||!Number.isFinite(value)||value<0||value>21_474_836.47||Math.abs(value*100-Math.round(value*100))>1e-6)throw new BadRequestException('Rental price must be a nonnegative amount with at most two decimal places.');return BigInt(Math.round(value*100));}
   private invoiceNumber(){return `HYD-RNT-${Date.now().toString(36).toUpperCase()}-${randomBytes(8).toString('hex').toUpperCase()}`;}
   private parseDate(value?:string|null,label='Date'){if(!value)return null;const date=new Date(value);if(Number.isNaN(date.getTime()))throw new BadRequestException(`${label} is invalid.`);return date;}
   private serialize(rental:RentalRow,items:RentalItemRow[]){const returnedCount=items.filter(item=>item.returnedAt).length,now=Date.now(),overdue=Boolean(rental.status==='ACTIVE'&&rental.dueAt&&rental.dueAt.getTime()<now);return{...rental,status:rentalStatus(rental),totalHalala:Number(rental.totalHalala),returnedCount,pendingReturnCount:items.length-returnedCount,overdue,items:items.map(item=>({...item,unitPriceHalala:Number(item.unitPriceHalala)}))};}
 
-  async create(actorAccountId:string,input:{renterAccountId?:string;whatsappPhone?:string|null;dueAt?:string|null;items?:RentalItemInput[]}){
+  async create(actorAccountId:string,input:{renterAccountId?:string;whatsappPhone?:string|null;scheduledHandoverAt?:string|null;dueAt?:string|null;items?:RentalItemInput[]}){
     const renterAccountId=input.renterAccountId?.trim();if(!renterAccountId)throw new BadRequestException('Renter account is required.');
     const dueAt=this.parseDate(input.dueAt,'Rental due date');if(!dueAt||dueAt.getTime()<=Date.now())throw new BadRequestException('Rental due date must be in the future.');
+    const scheduledHandoverAt=this.parseDate(input.scheduledHandoverAt,'Scheduled equipment handover');
+    if(!scheduledHandoverAt||scheduledHandoverAt.getTime()<=Date.now()||scheduledHandoverAt.getTime()>=dueAt.getTime())throw new BadRequestException('Choose a future equipment handover time before the return deadline.');
     const renter=await this.db.account.findUnique({where:{id:renterAccountId},select:{id:true,status:true}});if(!renter||renter.status!=='ACTIVE')throw new BadRequestException('Renter account is missing or inactive.');
     const items=input.items||[];if(!items.length)throw new BadRequestException('At least one rental equipment item is required.');
     const requested = items.map(item => ({
-      resourceId: item.resourceId?.trim() || '', equipmentType: item.equipmentType?.trim() || null,
+      id: randomUUID(), resourceId: item.resourceId?.trim() || '', equipmentType: item.equipmentType?.trim() || null,
       size: item.size?.trim() || null, unitPriceHalala: this.toHalala(item.unitPriceSar)
     }));
     const resourceIds = requested.map(item => item.resourceId);
@@ -33,23 +36,33 @@ export class EquipmentRentalService{
       throw new BadRequestException('A serialized equipment item can appear only once per rental.');
     }
     const totalHalala = requested.reduce((sum, item) => sum + Number(item.unitPriceHalala), 0);
+    if(!Number.isSafeInteger(totalHalala)||totalHalala<100||totalHalala>2_147_483_647)throw new BadRequestException('The rental total must be between 1 SAR and the supported payment limit.');
     const invoiceNumber = this.invoiceNumber(), whatsappPhone = input.whatsappPhone?.trim() || null;
     const result = await this.db.serializable(async tx => {
-      const assets = await tx.$queryRaw<Array<{resourceId:string; assetCode:string; name:string; serialNumber:string|null; stockStatus:string}>>`
-        SELECT b."resourceId", b."assetCode", b."serialNumber", b."stockStatus", r."name"
+      const assets = await tx.$queryRaw<Array<{resourceId:string; assetCode:string; name:string; serialNumber:string|null; stockStatus:string;organizationId:string|null}>>`
+        SELECT b."resourceId", b."assetCode", b."serialNumber", b."stockStatus", b."organizationId"::text AS "organizationId", r."name"
         FROM "EquipmentBarcode" b JOIN "CalendarResource" r ON r."id" = b."resourceId"
         WHERE b."resourceId" = ANY(${resourceIds}::text[]) ORDER BY b."resourceId" FOR UPDATE OF b`;
       if (assets.length !== requested.length) throw new NotFoundException('Rental equipment not found.');
       if (assets.some(asset => asset.stockStatus !== 'AVAILABLE')) throw new ConflictException('المعدّة غير متاحة للتأجير.');
+      const organizationId=assets[0]?.organizationId;
+      if(!organizationId||assets.some(asset=>asset.organizationId!==organizationId))throw new ConflictException('Each rental must contain equipment from one identified center.');
+      const issuer=await tx.organization.findUnique({where:{id:organizationId},select:{id:true,kind:true,status:true,legalName:true,registrationNumber:true,address:true}});
+      if(!issuer||issuer.kind!=='DIVE_CENTER'||issuer.status!=='ACTIVE')throw new ConflictException('The rental issuer must be an active dive center.');
       await assertNoRentalClaim(tx, resourceIds);
       await assertRentalFitsCalendar(tx, resourceIds, dueAt);
       const assetsById = new Map(assets.map(asset => [asset.resourceId, asset]));
+      const [{reservedAt}]=await tx.$queryRaw<Array<{reservedAt:Date}>>`SELECT statement_timestamp() AT TIME ZONE 'UTC' AS "reservedAt"`;
+      const rentalId=randomUUID();
+      const contractSnapshot=createRentalContract({rental:{id:rentalId,renterAccountId,invoiceNumber,totalHalala:BigInt(totalHalala),reservedAt,dueAt,scheduledHandoverAt},issuer,
+        lines:requested.map(item=>({...item,organizationId,assetCodeSnapshot:assetsById.get(item.resourceId)!.assetCode,equipmentNameSnapshot:assetsById.get(item.resourceId)!.name}))});
       const [rental] = await tx.$queryRaw<RentalRow[]>`
         INSERT INTO "EquipmentRental" ("id","renterAccountId","status","paymentStatus","totalHalala","invoiceNumber",
-          "whatsappPhone","reservedAt","holdExpiresAt","dueAt","createdByAccountId","createdAt","updatedAt")
-        VALUES (gen_random_uuid()::text,${renterAccountId},'RESERVED','PENDING',${BigInt(totalHalala)},${invoiceNumber},
-          ${whatsappPhone},statement_timestamp() AT TIME ZONE 'UTC',
-          statement_timestamp() + ${RENTAL_HOLD_MINUTES}::int * INTERVAL '1 minute',(${dueAt}::timestamptz AT TIME ZONE 'UTC'),${actorAccountId},NOW(),NOW())
+          "whatsappPhone","reservedAt","holdExpiresAt","dueAt","scheduledHandoverAt","contractSnapshot","createdByAccountId","createdAt","updatedAt")
+        VALUES (${rentalId},${renterAccountId},'RESERVED','PENDING',${BigInt(totalHalala)},${invoiceNumber},
+          ${whatsappPhone},(${reservedAt}::timestamptz AT TIME ZONE 'UTC'),
+          ${reservedAt}::timestamptz + ${RENTAL_HOLD_MINUTES}::int * INTERVAL '1 minute',(${dueAt}::timestamptz AT TIME ZONE 'UTC'),
+          (${scheduledHandoverAt}::timestamptz AT TIME ZONE 'UTC'),${JSON.stringify(contractSnapshot)}::jsonb,${actorAccountId},NOW(),NOW())
         RETURNING *`;
       const created: RentalItemRow[] = [];
       for (const item of requested) {
@@ -57,14 +70,14 @@ export class EquipmentRentalService{
         const [row] = await tx.$queryRaw<RentalItemRow[]>`
           INSERT INTO "EquipmentRentalItem" ("id","rentalId","resourceId","equipmentType","size","unitPriceHalala",
             "assetCodeSnapshot","equipmentNameSnapshot","serialNumberSnapshot","createdAt")
-          VALUES (gen_random_uuid()::text,${rental.id},${item.resourceId},${item.equipmentType},${item.size},
+          VALUES (${item.id},${rental.id},${item.resourceId},${item.equipmentType},${item.size},
             ${item.unitPriceHalala},${asset.assetCode},${asset.name},${asset.serialNumber},NOW())
           RETURNING *`;
         created.push(row);
       }
       await this.audit.record({
         actorId: actorAccountId, action: 'EQUIPMENT_RENTAL_RESERVED', resource: 'EquipmentRental',
-        resourceId: rental.id, metadata: {renterAccountId, invoiceNumber, totalHalala, itemCount: created.length, dueAt: dueAt.toISOString(), holdExpiresAt: rental.holdExpiresAt?.toISOString()}
+        resourceId: rental.id, metadata: {renterAccountId, organizationId, invoiceNumber, totalHalala, itemCount: created.length, scheduledHandoverAt:scheduledHandoverAt.toISOString(), dueAt: dueAt.toISOString(), holdExpiresAt: rental.holdExpiresAt?.toISOString(),contractVersion:contractSnapshot.version}
       }, tx);
       return {rental, items: created};
     });
