@@ -8,6 +8,10 @@ export class TrainingCheckoutController {
   constructor(private readonly training: TrainingCheckoutService) {}
   @Get(':id/quote')
   quote(@Req() req: {auth: {accountId: string}}, @Param('id') id: string) { return this.training.quote(req.auth.accountId, id); }
+  @Post(':id/cancellation')
+  cancel(@Req() req: {auth: {accountId: string}}, @Param('id') id: string) {
+    return this.training.cancelConfirmedCourse(req.auth.accountId, id);
+  }
   @Post(':id/checkout')
   checkout(@Req() req: {auth: {accountId: string}}, @Param('id') id: string,
     @Body() input: {quoteHash?: string; acceptedPolicyVersion?: string; idempotencyKey?: string}) { return this.training.checkout(req.auth.accountId, id, input); }

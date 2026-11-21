@@ -4,6 +4,7 @@ import { AuditService } from '../audit/audit.service';
 import { COURSE_CHECKOUT_SOURCE, CourseEnrollment, courseCanonicalJson, courseCheckoutExpiresAt,
   courseContractHash, courseObject, requireAcceptedCourseContract, requireCourseContract } from '../commerce/course-contract';
 import { requireCourseCollection, requirePostedCourseCollection } from '../commerce/course-collection';
+import { CommerceRefundDecision, CommerceRefundEvidence, evaluateCommerceRefund } from '../commerce/commerce-refund-policy';
 import { DatabaseService } from '../database/database.service';
 import { FinanceAccessService } from '../finance/finance-access.service';
 import { MoyasarCommerceInvoiceInput, MoyasarPayment, MoyasarPaymentProviderService, MoyasarWebhook } from './moyasar-payment-provider.service';
@@ -72,6 +73,50 @@ export class TrainingCheckoutService {
       await this.activeCenter(tx, enrollment.centerOrganizationId!);
       return {enrollmentId, snapshot: contract, quoteHash: courseContractHash(contract), policyVersion: contract.refundPolicy.snapshot.version,
         expiresAt: courseCheckoutExpiresAt(contract, new Date()), financialActionExecuted: false};
+    });
+  }
+
+  async cancelConfirmedCourse(accountId: string, enrollmentId: string) {
+    return this.db.serializable(async tx => {
+      const {enrollment, contract} = await this.enrollment(tx, enrollmentId, accountId);
+      const prior = await tx.auditEvent.findFirst({where: {resource: 'TrainingEnrollment', resourceId: enrollmentId,
+        action: 'COURSE_CUSTOMER_CANCELLATION_RECORDED'}, orderBy: {occurredAt: 'asc'}});
+      if (prior) {
+        const saved = courseObject(prior.metadata);
+        if (saved.customerAccountId !== accountId || saved.contractHash !== courseContractHash(contract)) {
+          throw new ConflictException('The original cancellation requires review.');
+        }
+        return {requestId: prior.id, decision: saved.decision as CommerceRefundDecision, financialActionExecuted: false};
+      }
+      if (!['PENDING','ACTIVE'].includes(enrollment.status)) throw new ConflictException('The original enrollment cannot be cancelled through this action.');
+      const collection = await requireCourseCollection(tx, enrollment);
+      if (!collection) throw new ConflictException('This course has no verified payment to cancel.');
+      const now = new Date(), record = await tx.trainingRecord.findUnique({where: {enrollmentId}, include: {certificate: true, sessions: true}});
+      if (record?.certificate || record?.completedAt || record?.status === 'COMPLETED') throw new ConflictException('Completed training requires individual review.');
+      // Preserve the actual start. A scheduled session alone is not evidence that training began.
+      const startTimes = [record?.startedAt?.toISOString(), ...(record?.sessions || []).map(row => courseObject(row.evidence).startedAt)]
+        .filter((value): value is string => typeof value === 'string' && Number.isFinite(Date.parse(value))).sort((a,b) => Date.parse(a)-Date.parse(b));
+      const startedAt = startTimes[0] ?? null;
+      const uncertainProgress = !startedAt && (!!record?.progressPercent || record?.status === 'IN_PROGRESS'
+        || !!record?.sessions.some(row=>['COMPLETED','IN_PROGRESS'].includes(row.status)));
+      const facts: CommerceRefundEvidence = {lineId: enrollmentId, serviceStartedAt: uncertainProgress ? undefined : startedAt,
+        consumption: uncertainProgress ? 'UNKNOWN' : startedAt && Date.parse(startedAt) <= now.getTime() ? 'CONSUMED' : 'NONE',
+        statutoryClassification: 'UNKNOWN'};
+      const reviewed = courseObject((await tx.operationalSetting.findUnique({where:{key:'commerce-legal-classification:COURSE:'+enrollmentId}}))?.value);
+      if (reviewed.sourceType === 'COURSE' && reviewed.sourceId === enrollmentId && typeof reviewed.evidenceReference === 'string'
+        && reviewed.evidenceReference.trim() && ['ELIGIBLE','EXEMPT'].includes(reviewed.classification)) {
+        facts.statutoryClassification = reviewed.classification;
+        facts.legalEvidenceReference = reviewed.evidenceReference;
+        if (reviewed.exception) facts.statutoryException = reviewed.exception;
+      }
+      const decision = evaluateCommerceRefund({snapshot:contract.refundPolicy.snapshot, requestedAt:now.toISOString(), evidenceAsOf:now.toISOString(),
+        cause:'CUSTOMER_CANCELLATION',collectedAmountMinor:collection.providerCapturedMinor,refundedAmountMinor:collection.providerRefundedMinor,evidence:facts});
+      const audit = await this.audit.record({actorId:accountId,action:'COURSE_CUSTOMER_CANCELLATION_RECORDED',resource:'TrainingEnrollment',resourceId:enrollmentId,
+        metadata:{customerAccountId:accountId, organizationId:collection.organizationId, collectionEvidenceId:collection.id,
+          providerPaymentId:collection.providerPaymentId, financeEntryId:collection.financeEntryId, contractHash:courseContractHash(contract), decision}},tx);
+      await tx.trainingEnrollment.update({where:{id:enrollmentId},data:{status:'CANCELLED'}});
+      await tx.trainingSession.updateMany({where:{trainingRecord:{enrollmentId},status:{in:['SCHEDULED','CHECK_IN_OPEN']}},data:{status:'CANCELLED'}});
+      return {requestId:audit.id, decision, financialActionExecuted:false};
     });
   }
 

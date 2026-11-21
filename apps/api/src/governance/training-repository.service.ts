@@ -69,6 +69,8 @@ export class TrainingRepositoryService {
       if(current.record?.certificate&&current.status!==status)throw new ConflictException('لا يمكن تغيير تسجيل مرتبط بشهادة.');
       if(current.record?.status==='COMPLETED'&&status!=='COMPLETED')throw new ConflictException('سجل التدريب مكتمل ولا يمكن إعادة فتح التسجيل بهذا الإجراء.');
       if(current.storeCourseOfferId&&current.status==='CANCELLED'&&status!=='CANCELLED'){
+        const cancellation = await tx.auditEvent.findFirst({where:{resource:'TrainingEnrollment',resourceId:enrollmentId,action:'COURSE_CUSTOMER_CANCELLATION_RECORDED'},select:{id:true}});
+        if(cancellation)throw new ConflictException('يتطلب الحجز بعد الإلغاء المالي تسجيلًا جديدًا بشروطه الخاصة.');
         const offer=await tx.storeCourseOffer.findFirst({where:{id:current.storeCourseOfferId,status:'ACTIVE',startsAt:{gt:new Date()},organization:{status:'ACTIVE'}}});
         if(!offer)throw new ConflictException('الدورة غير متاحة لإعادة التسجيل.');
         const duplicate=await tx.trainingEnrollment.findFirst({where:{storeCourseOfferId:offer.id,studentAccountId:current.studentAccountId,status:{not:'CANCELLED'}}});

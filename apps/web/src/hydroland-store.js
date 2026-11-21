@@ -38,6 +38,11 @@
   "تعذر حفظ الطلب.": "Could not save the request.",
   "أُرسل طلب الإرجاع إلى المركز.": "Return requested from the center.",
   "استلم المركز المرتجع.": "The center received the returned goods.",
+  "إلغاء الدورة المؤكدة": "Cancel confirmed course",
+  "تأكيد إلغاء التسجيل وفق شروط الدورة الأصلية؟": "Cancel this enrollment under its original terms?",
+  "سُجّل الإلغاء. تُراجع الأهلية المالية لدى المركز.": "Cancellation recorded. The center will review refund eligibility.",
+  "سُجّل الإلغاء دون استرداد عادي.": "Cancellation recorded with no ordinary refund.",
+  "سُجّل الإلغاء. المبلغ المؤهل للرد {0}.": "Cancellation recorded. The eligible refund is {0}.",
   "تفاصيل الدفع": "Payment details",
   "إغلاق": "Close",
   "جارٍ تحميل شروط الطلب...": "Loading the original order terms...",
@@ -298,7 +303,22 @@
     try{
       const rows=await parse(await auth().authorizedFetch('/training/mine/enrollments'));if(!active()||version!==courseListVersion)return;
       if(!Array.isArray(rows))throw localError('تعذر تحميل الطلبات');const enrolled=rows.filter(row=>row.storeCourseOfferId||row.metadata?.source==='UNIFIED_STORE');
-      uiLocale.setHTML(list,enrolled.length?enrolled.map(row=>uiLocale.html`<article data-course-enrollment="${esc(row.id)}"><b>${esc(row.metadata?.title||row.courseCode)}</b><span>${esc(row.status)}</span>${row.status==='PENDING'?uiLocale.html`<button type="button" data-course-checkout>عرض الشروط والدفع</button>`:''}<button type="button" data-course-payment-refresh>تحديث حالة الدفع</button><small>تأكيد الدفع لا يعني قبول التدريب أو إتمامه.</small></article>`).join(''):uiLocale.t('لا توجد دورات مشتراة حتى الآن.'));
+      uiLocale.setHTML(list,enrolled.length?enrolled.map(row=>uiLocale.html`<article data-course-enrollment="${esc(row.id)}"><b>${esc(row.metadata?.title||row.courseCode)}</b><span>${esc(row.status)}</span>${row.status==='PENDING'?uiLocale.html`<button type="button" data-course-checkout>عرض الشروط والدفع</button>`:''}<button type="button" data-course-payment-refresh>تحديث حالة الدفع</button>${row.metadata?.financialConfirmation?.status==='VERIFIED'&&['ACTIVE','PENDING'].includes(row.status)?uiLocale.html`<button type="button" data-course-cancel>إلغاء الدورة المؤكدة</button>`: ''}<small>تأكيد الدفع لا يعني قبول التدريب أو إتمامه.</small></article>`).join(''):uiLocale.t('لا توجد دورات مشتراة حتى الآن.'));
+      list.querySelectorAll('[data-course-cancel]').forEach(button=>button.addEventListener('click',async()=>{
+        if (!active() || version!==courseListVersion || button.disabled || !window.confirm(uiLocale.t('تأكيد إلغاء التسجيل وفق شروط الدورة الأصلية؟'))) return;
+        button.disabled=true;
+        try {
+          const id=button.closest('[data-course-enrollment]').dataset.courseEnrollment;
+          const result=await parse(await auth().authorizedFetch(paymentPath('COURSE',id)+'/cancellation',{method:'POST'}));
+          if (!active() || version!==courseListVersion) return;
+          const decision=result.decision;
+          const message=decision.status==='REVIEW_REQUIRED'?uiLocale.message('سُجّل الإلغاء. تُراجع الأهلية المالية لدى المركز.')
+            :decision.refundAmountMinor>0?uiLocale.message('سُجّل الإلغاء. المبلغ المؤهل للرد {0}.',[money(decision.refundAmountMinor,decision.currency)])
+            :uiLocale.message('سُجّل الإلغاء دون استرداد عادي.');
+          toast(message); await loadCoursePayments();
+        } catch(error){if(active()&&version===courseListVersion)toast(localErrorMessage(error,'تعذر حفظ الطلب.'));}
+        finally{button.disabled=false;}
+      }));
       list.querySelectorAll('[data-course-checkout],[data-course-payment-refresh]').forEach(button=>button.addEventListener('click',()=>{if(active()&&version===courseListVersion)void openPayment('COURSE',button.closest('[data-course-enrollment]').dataset.courseEnrollment,{refresh:button.hasAttribute('data-course-payment-refresh')})}));
     }catch(error){if(active()&&version===courseListVersion)uiLocale.setMessage(list,localErrorMessage(error,'تعذر تحميل الطلبات'));}
   };

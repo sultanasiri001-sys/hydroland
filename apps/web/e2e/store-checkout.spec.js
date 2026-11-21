@@ -77,3 +77,23 @@ test('course payment uses its enrollment and preserves pending training rather t
   await expect(dialog.getByRole('status')).toContainText('بانتظار المطابقة المالية');expect(writes).toHaveLength(1);expect(writes[0].idempotencyKey).toBe('course:enrollment-original');expect(state.creates).toBe(0);
   await expect(dialog).toContainText('تأكيد الدفع لا يعني قبول التدريب أو إتمامه.');
 });
+
+test('confirmed course cancellation shows the recorded decision and retains a cancelled enrollment on refresh',async({page})=>{
+  await fixture(page);
+  const enrollment={id:'confirmed-course',storeCourseOfferId:'offer',courseCode:'OW',status:'PENDING',
+    metadata:{source:'UNIFIED_STORE',title:'دورة مؤكدة',financialConfirmation:{status:'VERIFIED'}}};
+  await page.route('**/api/v1/training/mine/enrollments',route=>json(route,[enrollment]));
+  let requests=0;
+  await page.route('**/api/v1/payments/courses/confirmed-course/cancellation',route=>{
+    expect(route.request().method()).toBe('POST');
+    requests++; enrollment.status='CANCELLED';
+    return json(route,{requestId:'receipt',financialActionExecuted:false,decision:{status:'NO_REFUND',refundAmountMinor:0,currency:'SAR'}},201);
+  });
+  await page.locator('.hl-store-course-payments').click();
+  page.once('dialog',dialog=>dialog.dismiss());
+  await page.locator('[data-course-cancel]').click();expect(requests).toBe(0);
+  page.once('dialog',dialog=>dialog.accept());
+  await page.locator('[data-course-cancel]').click();
+  await expect(page.locator('[data-course-enrollment]')).toContainText('CANCELLED');
+  await expect(page.locator('[data-course-cancel]')).toHaveCount(0);expect(requests).toBe(1);
+});

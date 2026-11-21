@@ -376,6 +376,28 @@ try {
     const row = await db.trainingEnrollment.findUniqueOrThrow({where: {id: f.enrollment.id}});
     assert.equal(row.status, 'PENDING'); assert.equal(row.completedAt, null);
   });
+  await check('course cancellation uses server receipt time, verified original money and evidence, and replays once', async () => {
+    for(const [hours,expected] of [[49,3750],[47,0]]) {
+      const f=await enrollment({startsAt:new Date(Date.now()+hours*3600000)}), source=f.enrollment.id;
+      await start(f);
+      assert.equal((await call(buyer,source,'cancellation')).status,409);
+      await capture(source); const entry=await revenue(source);
+      assert.equal((await call(accountant,source,'collection','POST',{financeEntryId:entry.id})).status,201);
+      await db.operationalSetting.create({data:{key:'commerce-legal-classification:COURSE:'+source,value:{
+        sourceId:source,sourceType:'COURSE',classification:'EXEMPT',exception:'EVENT_ORGANIZATION',evidenceReference:'synthetic-reviewed-case'}}});
+      const requestsBefore=requests.length;
+      assert.equal((await call(other,source,'cancellation')).status,404);
+      const answers=await Promise.all(Array.from({length:3},()=>call(buyer,source,'cancellation','POST',{requestedAt:'2099-01-01',refundAmountMinor:4999})));
+      assert.ok(answers.every(r=>r.status===201),JSON.stringify(answers));
+      assert.equal(new Set(answers.map(r=>r.body.requestId)).size,1);
+      assert.equal(answers[0].body.decision.refundAmountMinor,expected);
+      assert.equal(answers[0].body.financialActionExecuted,false);
+      assert.equal((await db.trainingEnrollment.findUniqueOrThrow({where:{id:source}})).status,'CANCELLED');
+      assert.equal(await db.auditEvent.count({where:{resourceId:source,action:'COURSE_CUSTOMER_CANCELLATION_RECORDED'}}),1);
+      await assert.rejects(repository.setEnrollmentStatus(source,'PENDING'),status(409));
+      assert.equal(requests.length,requestsBefore);
+    }
+  });
   assert.equal(await db.financeEntry.count({where: {id: {in: allFinanceIds}}}), allFinanceIds.length);
   assert.ok(requests.filter(row => row.method === 'POST').every(row => row.url === '/v1/invoices'));
   console.log(JSON.stringify({result: 'PASS', suite: 'training-checkout-postgresql-http', passed: cases.length, failed: 0, cases,
