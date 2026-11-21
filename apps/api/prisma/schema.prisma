@@ -154,6 +154,7 @@ model Person {
 }
 
 model Account {
+  instructorDocuments InstructorDocument[]
   privacyGrievances PrivacyGrievance[]
   operationalEvidenceCreated OperationalEvidence[] @relation("OperationalEvidenceCreator")
   operationalEvidenceRevisions OperationalEvidenceRevision[] @relation("OperationalEvidenceRevisionActor")
@@ -250,6 +251,7 @@ model Account {
 }
 
 model Organization {
+  instructorDocuments InstructorDocument[]
   privacyGrievances PrivacyGrievance[]
   operationalEvidence OperationalEvidence[]
   id String @id @default(uuid())
@@ -442,6 +444,27 @@ model Credential {
   person Person @relation(fields:[personId], references:[id], onDelete:Restrict)
   documents Document[]
   @@index([personId,verificationStatus])
+}
+
+model InstructorDocument {
+  id String @id @default(uuid())
+  accountId String
+  centerId String
+  kind String
+  revision Int
+  status String @default("CENTER_PENDING")
+  storageKey String @unique
+  sha256 String
+  originalName String
+  centerReviewerId String?
+  reason String?
+  account Account @relation(fields:[accountId], references:[id], onDelete:Restrict)
+  center Organization @relation(fields:[centerId], references:[id], onDelete:Restrict)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([accountId,kind,revision])
+  @@index([centerId,status])
+  @@index([status,updatedAt])
 }
 
 model Document {
