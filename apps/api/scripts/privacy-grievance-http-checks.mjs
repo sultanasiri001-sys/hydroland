@@ -31,7 +31,7 @@ async function check() {
   const unit=await db.orgUnit.create({data:{organizationId:platform.id,type:'DEPARTMENT',code:'FINANCE',nameAr:'المالية'}});
   await db.employment.create({data:{accountId:staff.id,organizationId:platform.id,orgUnitId:unit.id,status:'ACTIVE',workerClass:'EMPLOYEE'}});
   const trip=await db.trip.create({data:{organizationId:center.id,title:'Synthetic trip',type:'DIVE',startsAt:new Date(),endsAt:new Date(Date.now()+3600000),capacity:4}});
-  await db.booking.create({data:{tripId:trip.id,accountId:member.id,status:'CONFIRMED'}});
+  const booking=await db.booking.create({data:{tripId:trip.id,accountId:member.id,status:'CONFIRMED'}});
   const inbox=actor=>call(actor,route).then(x=>{assert.equal(x.status,200);return x.data;});
   const request={centerId:center.id,topic:'payments',description:'Synthetic payment data correction',requestKey:randomUUID()};
   const submit=body=>call(member,route,'POST',body);
@@ -105,6 +105,45 @@ async function check() {
   assert.equal((await call(member,rights)).data.items.find(i=>i.id===receipt.data.id).status,'APPEAL_DECIDED');
   assert.equal((await inbox(member)).items.find(i=>i.id===linked.id).firstOutcome,'First decision');
   assert.equal((await notices(executive,linked.id)).filter(n=>n.payload.message==='Private appeal report').length,1);
+  const decisionReview = async (caseId, action) => {
+    const event = await db.auditEvent.findFirstOrThrow({where:{resource:'PrivacyGrievance',resourceId:caseId,action:'privacy_grievance.'+action}});
+    return event.metadata.retentionReview;
+  };
+  assert.equal((await decisionReview(linked.id,'center_resolve')).status,'INDIVIDUAL_REFERENCE_REQUIRED');
+
+  const payment=await db.payment.create({data:{accountId:member.id,bookingId:booking.id,amountMinor:1200,idempotencyKey:randomUUID()}});
+  await db.invoice.create({data:{paymentId:payment.id,number:randomUUID(),status:'ISSUED',issuedAt:new Date()}});
+  const incident=await db.safetyIncident.create({data:{bookingId:booking.id,reportedByAccountId:member.id,severity:'LOW',title:'Synthetic case',description:'Private fixture details'}});
+  const submitScoped=async (domain,recordRef,centerId=center.id)=>{
+    const response=await call(member,rights,'POST',{...input,domain,recordRef,centerId,requestKey:randomUUID()});
+    assert.equal(response.status,201);
+    return db.privacyGrievance.findUniqueOrThrow({where:{personalDataRequestId:response.data.id}});
+  };
+  const protectedPayment=await submitScoped('PAYMENTS',payment.id);
+  assert.equal((await act(owner,protectedPayment.id,'CENTER_RESOLVE','No matching erasure evidence',null,'APPLIED')).status,409);
+  assert.equal((await act(owner,protectedPayment.id,'CENTER_RESOLVE','Review pending',null,'DEFERRED')).status,201);
+  const firstReview=await decisionReview(protectedPayment.id,'center_resolve');
+  assert.deepEqual(firstReview,{domain:'PAYMENTS',policyVersion:'0.1',recordClasses:['COMMERCIAL_BOOK_SUPPORT','VAT_RECORDS'],status:'OPEN_SAFETY_CASE_REQUIRES_REVIEW',issuedInvoiceOnFile:true,erasureAuthorized:false});
+  const protectedBooking=await submitScoped('BOOKINGS',booking.id);
+  assert.equal((await act(owner,protectedBooking.id,'CENTER_RESOLVE','Review pending',null,'DEFERRED')).status,201);
+  assert.equal((await decisionReview(protectedBooking.id,'center_resolve')).status,'OPEN_SAFETY_CASE_REQUIRES_REVIEW');
+
+  await db.safetyIncident.update({where:{id:incident.id},data:{status:'CLOSED'}});
+  assert.equal((await call(member,route+'/'+protectedPayment.id+'/appeal','POST',{reason:'Review current facts'})).status,201);
+  assert.equal((await act(staff,protectedPayment.id,'DEPARTMENT_RESOLVE','Financial classification pending','Private report','DEFERRED')).status,201);
+  assert.equal((await decisionReview(protectedPayment.id,'department_resolve')).status,'FINANCIAL_CLASSIFICATION_REQUIRED');
+  assert.equal((await decisionReview(protectedPayment.id,'center_resolve')).status,'OPEN_SAFETY_CASE_REQUIRES_REVIEW');
+  assert.deepEqual(await db.payment.findUniqueOrThrow({where:{id:payment.id}}),payment);
+
+  // Affiliation with two centers permits routing, but the second center must
+  // not learn any native payment, invoice or incident facts from the first.
+  await db.organizationMember.create({data:{organizationId:foreign.id,accountId:member.id,role:'VIEWER',status:'ACTIVE'}});
+  const otherCenterCase=await submitScoped('PAYMENTS',payment.id,foreign.id);
+  assert.equal((await act(outside,otherCenterCase.id,'CENTER_RESOLVE','Source outside center',null,'DEFERRED')).status,201);
+  const unconfirmedReview=await decisionReview(otherCenterCase.id,'center_resolve');
+  assert.equal(unconfirmedReview.status,'SOURCE_SCOPE_UNCONFIRMED');
+  assert.equal(unconfirmedReview.issuedInvoiceOnFile,undefined);
+  console.log('PASS native booking and payment retention review, open safety linkage, issued invoice, separate appeal snapshot and center isolation');
   const accountReq=await call(member,rights,'POST',{...input,kind:'CORRECTION',domain:'ACCOUNT',details:'Correct headline',requestKey:randomUUID()});
   assert.equal(accountReq.status,201);
   const own=accountReq.data.id, apply=(actor,body)=>call(actor,rights+'/'+own+'/profile-correction','POST',body);

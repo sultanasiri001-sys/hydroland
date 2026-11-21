@@ -6,6 +6,8 @@ import { HYDROLAND_DEPARTMENTS } from '../governance/department-ownership.domain
 import { platformOrganization } from '../hr/staffing-catalog';
 import { NotificationsService } from '../notifications/notifications.service';
 
+import { reviewTripRecordRetention } from './trip-record-retention-review';
+
 type Tx = Prisma.TransactionClient;
 const week = 7 * 24 * 60 * 60 * 1000;
 const topics = [
@@ -173,7 +175,7 @@ export class PrivacyGrievanceService {
     return this.db.serializable(async tx => {
       const departments = await this.roles(tx,actor);
       const scoped: Prisma.PrivacyGrievanceWhereInput = department ? { departmentCode:{in:departments},escalatedAt:{not:null} } : { organization:managedCenters(actor) };
-      const row = await tx.privacyGrievance.findFirst({ where:{ id,...scoped }, include:{ organization:{ select:{ ownerId:true } }, customer:{select:{personId:true}}, personalDataRequest:{select:{executionAuditId:true,kind:true,domain:true}} } });
+      const row = await tx.privacyGrievance.findFirst({ where:{ id,...scoped }, include:{ organization:{ select:{ ownerId:true } }, customer:{select:{personId:true}}, personalDataRequest:{select:{executionAuditId:true,kind:true,domain:true,recordRef:true}} } });
       if (!row) throw new NotFoundException();
       const identity=await tx.account.findUniqueOrThrow({where:{id:actor},select:{personId:true}});
       if(row.customer.personId===identity.personId || (department && row.appealedAt && row.decisionPersonId===identity.personId))
@@ -182,11 +184,16 @@ export class PrivacyGrievanceService {
       if (department ? row.state!=='DEPARTMENT_PENDING' : !(row.state==='CENTER_HANDLING' || row.state==='CENTER_PENDING' && now<row.dueAt)) throw new ConflictException('تغيرت مرحلة الطلب. حدّث القائمة.');
       const linkedDecision = row.personalDataRequestId && action!=='CENTER_HANDLE';
       const disposition = body.disposition;
+      const retentionReview = linkedDecision && row.personalDataRequest
+        ? await reviewTripRecordRetention(tx, row.personalDataRequest, { accountId: row.customerId, centerId: row.organizationId })
+        : undefined;
       if (linkedDecision) {
         if (disposition!=='APPLIED' && disposition!=='DEFERRED' && disposition!=='REFUSED')
           throw new BadRequestException('حدد ما نُفذ أو أُجّل أو رُفض مع بيان السبب.');
         if (disposition==='APPLIED') {
-          const proofId=row.personalDataRequest?.executionAuditId;
+          if (row.personalDataRequest?.kind !== 'CORRECTION' || row.personalDataRequest.domain !== 'ACCOUNT')
+            throw new ConflictException('يلزم إثبات تنفيذ مطابق لنوع الطلب وسجله.');
+          const proofId=row.personalDataRequest.executionAuditId;
           const verified=proofId && await tx.auditEvent.findFirst({where:{id:proofId,action:'ACCOUNT_PROFILE_CORRECTED',
             resource:'Account',resourceId:row.customerId,actorId:row.customer.personId,metadata:{path:['privacyRequestId'],equals:row.personalDataRequestId!}},select:{id:true}});
           if (!verified) throw new ConflictException('يلزم إثبات تنفيذ مرتبط بهذا الطلب والسجل.');
@@ -206,7 +213,13 @@ export class PrivacyGrievanceService {
         for (const [accountId,type] of [[row.customerId,'PRIVACY_GRIEVANCE_MEMBER_RESULT'],[row.organization.ownerId,'PRIVACY_GRIEVANCE_CENTER_RESULT']])
           await this.alerts.notify(accountId,type,{caseId:id,title:'نتيجة معالجة التظلّم',message},tx);
       }
-      await this.audit.record({actorId:actor,resource:'PrivacyGrievance',resourceId:id,action:'privacy_grievance.'+action.toLowerCase(),...(linkedDecision?{metadata:{disposition:String(disposition),requestId:row.personalDataRequestId!}}:{})},tx);
+      const decisionEvidence = linkedDecision ? {
+        disposition: String(disposition),
+        requestId: row.personalDataRequestId!,
+        ...(retentionReview ? { retentionReview } : {}),
+      } : undefined;
+      await this.audit.record({ actorId: actor, resource: 'PrivacyGrievance', resourceId: id,
+        action: 'privacy_grievance.' + action.toLowerCase(), metadata: decisionEvidence }, tx);
       return {id,state:action==='CENTER_HANDLE'?'CENTER_HANDLING':'RESOLVED'};
     });
   }
