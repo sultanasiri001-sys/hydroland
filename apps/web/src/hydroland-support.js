@@ -41,6 +41,7 @@
   "تسجيل الدخول": "Sign in",
   "مسندة": "Assigned",
   "بانتظار رد العميل": "Awaiting customer response",
+  "رفع تجميد دليل البلاغ":"Release case evidence hold","مراجعة الرسالة المبلّغ عنها":"Review reported message","سبب زوال الحاجة لحفظ الدليل":"Reason the evidence hold can end","رُفع التجميد.":"Hold released.","سُجّل الطلب بانتظار تأكيد مفوّض ثانٍ.":"A second authorized reviewer must confirm release.","تعذرت مراجعة الدليل أو تغيّرت الصلاحية.":"Evidence is unavailable or your permissions changed.",
   "بانتظار قبول الحل": "Awaiting resolution acceptance",
   "مغلقة": "Closed",
   "فريق الدعم": "Support team",
@@ -186,7 +187,30 @@
     if(['OPEN','ASSIGNED','WAITING_CUSTOMER'].includes(item.status)){options.push('ASSIGN','ESCALATE');if(item.status==='ASSIGNED')options.push('WAIT');if(['ASSIGNED','WAITING_CUSTOMER'].includes(item.status)&&item.assignedAccountId===actorId)options.push('RESOLVE');}
     const owner=assignees.find(row=>row.id===item.assignedAccountId);
     uiLocale.setHTML(adminDetail, uiLocale.html`<h4>${esc(item.subject)}</h4><p>${uiLocale.messageHTML(((value=>value?uiLocale.message(value):value)(labels[item.status]) || uiLocale.message('قيد المراجعة')))}</p><p>المسؤول: ${(value=>value?esc(value):uiLocale.messageHTML((item.assignedAccountId?uiLocale.message('يلزم مراجعة تكليف المسؤول'):uiLocale.message('لم يُكلّف مسؤول بعد'))))(owner?.displayName||owner?.email)}</p>${deadline(item)}<p>${esc(item.description)}</p>${thread(item)}${(options.length?uiLocale.html`<form data-support-action><label>الإجراء<select name="action">${options.map(value=>uiLocale.html`<option value="${value}">${uiLocale.messageHTML((value=>value?uiLocale.message(value):value)(actions[value]))}</option>`).join('')}</select></label><div data-case-owner-fields><label>المسؤول<select name="assignedAccountId" required><option value="">اختر المسؤول</option>${assignees.map(row=>uiLocale.html`<option value="${esc(row.id)}" ${row.id===item.assignedAccountId?'selected':''}>${esc(row.displayName)} · ${esc(row.email)}</option>`).join('')}</select></label><label>مهلة هذه الحالة<input type="datetime-local" name="dueAt" value="${esc(localDate(item.dueAt))}"></label><small>تُعرض المهلة بتوقيت جهازك. أدخل موعدًا صريحًا عند التكليف الأول.</small></div><label data-case-message-field>الرسالة أو سبب الإجراء<textarea name="message" maxlength="10000" rows="3"></textarea></label><button type="submit">حفظ الإجراء</button></form>`:(item.status==='RESOLVED'?uiLocale.html`<p>يبقى الحل بانتظار قبول العميل أو اعتراضه. يُقفل الطلب عند قبوله.</p>`:uiLocale.html`<p>هذه الحالة مغلقة.</p>`))}<p data-support-action-feedback role="status"></p><details><summary>تاريخ الحالة</summary>${(item.history||[]).map(row=>uiLocale.html`<p>${uiLocale.messageHTML(((value=>value?uiLocale.message(value):value)(historyLabels[row.action]) || uiLocale.message('تحديث الحالة')))} · ${esc(date(row.occurredAt))}</p>`).join('')}</details>`);
-    const entryForm=adminDetail.querySelector('[data-support-action]');if(entryForm)syncActionFields(entryForm);
+    if(item.referenceType==='PRIVATE_MESSAGE_ABUSE'){
+      const panel=document.createElement('div'),result=document.createElement('p');
+      const detail=detailVersion,session=Auth.getSessionVersion();
+      const current=()=>selected?.id===item.id&&detailVersion===detail&&Auth.getSessionVersion()===session&&view==='admin';
+      for(const action of ['message-evidence','release-message-hold']){
+        const release=action==='release-message-hold';
+        if(release&&item.status!=='CLOSED')continue;
+        const button=document.createElement('button');button.type='button';
+        uiLocale.setMessage(button,uiLocale.message(release?'رفع تجميد دليل البلاغ':'مراجعة الرسالة المبلّغ عنها'));
+        button.addEventListener('click',async()=>{
+          const reason=release?window.prompt(uiLocale.message('سبب زوال الحاجة لحفظ الدليل')):null;
+          if(!current()||(release&&!reason))return;
+          button.disabled=true;
+          try{
+            const data=await request('/customer-service/admin/cases/'+encodeURIComponent(item.id)+'/'+action,release?{method:'POST',body:JSON.stringify({reason})}:undefined);
+            if(current())result.textContent=release?uiLocale.message(data.released?'رُفع التجميد.':'سُجّل الطلب بانتظار تأكيد مفوّض ثانٍ.'):data.body||data.mediaUrl||'';
+          }catch{if(current())uiLocale.setMessage(result,uiLocale.message('تعذرت مراجعة الدليل أو تغيّرت الصلاحية.'))}
+          finally{button.disabled=false}
+        });
+        panel.appendChild(button);
+      }
+      panel.appendChild(result);adminDetail.appendChild(panel);
+    }
+      const entryForm=adminDetail.querySelector('[data-support-action]');if(entryForm)syncActionFields(entryForm);
   }
   async function openDetail(id){
     const version=adminVersion,detail=++detailVersion,session=Auth.getSessionVersion(),current=()=>adminCurrent(version,session)&&detail===detailVersion;selected=null;uiLocale.setMessage(adminDetail, uiLocale.message('جارٍ تحميل التذكرة…'));

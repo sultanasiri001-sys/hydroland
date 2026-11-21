@@ -14,7 +14,7 @@ const exportRules = {
   ],
   SENT_MESSAGES: [
     { recordClass: 'TRIP_COORDINATION', basis: 'CONDITIONAL_MAXIMUM', days: 90, startEvent: 'TRIP_END_OR_CANCELLATION', appliesWhen: 'TRIP_COORDINATION_CONVERSATION', labelAr: 'لمحادثات تنسيق الرحلة حتى ٩٠ يومًا من انتهائها أو إلغائها. تفصل الرسالة المرتبطة بواقعة عن بقية المحادثة.' },
-    { recordClass: 'PRIVATE_MEMBER_CONVERSATION', basis: 'REQUIRES_SEPARATE_PRODUCT_DECISION', labelAr: 'للمحادثات الخاصة بين الأعضاء قرار مستقل يراعي الطرف الآخر.' },
+    { recordClass: 'PRIVATE_MEMBER_CONVERSATION', basis: 'RESTRICTED_AFTER_SENDER_WITHDRAWAL', days: 30, startEvent: 'SENDER_WITHDRAWAL', appliesWhen: 'TWO_MEMBER_PRIVATE_CONVERSATION', labelAr: 'تختفي رسالة المرسل لدى الطرفين. تحتفظ المنصة بنسخة مقيّدة لمدة ٣٠ يومًا من الحذف لاستقبال بلاغ إساءة، ويقتصر التجميد على أدلة البلاغ حتى زوال سببه.' },
   ],
 } as const;
 
