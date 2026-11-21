@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import {verifyAccountInvoices} from './account-invoice-register-cases.mjs';
 import assert from 'node:assert/strict';
 import refundGrants from './checkout-refund-grants.cjs';
 import {createServer} from 'node:http';
@@ -25,6 +26,8 @@ const {TrainingCheckoutService} = await load('payments/training-checkout.service
 const {CheckoutRefundController}=await load('payments/checkout-refund.controller.js');
 const {CheckoutRefundService}=await load('payments/checkout-refund.service.js');
 const {FinanceOperationGrantService}=await load('finance/finance-operation-grant.service.js');
+const {AccountInvoicesController}=await load('payments/account-invoices.controller.js');
+const {AccountInvoicesService}=await load('payments/account-invoices.service.js');
 const {TrainingCheckoutController} = await load('payments/training-checkout.controller.js');
 const {StoreOfferingsService} = await load('store/store-offerings.service.js');
 const {FinancePersistenceService} = await load('finance/finance-persistence.service.js');
@@ -78,7 +81,7 @@ const provider = new MoyasarPaymentProviderService({requireOperational() { retur
 const checkout = new TrainingCheckoutService(db, audit, provider), repository = new TrainingRepositoryService(db, {}, {}, {}, {});
 const trainingSessions = new TrainingSessionService(db, audit, new TrainingAuthorizationService(db));
 class CourseAcceptanceModule {}
-Module({controllers: [TrainingCheckoutController,CheckoutRefundController], providers: [AccessTokenGuard,{provide:CheckoutRefundService,useValue:new CheckoutRefundService(db,provider)},
+Module({controllers: [AccountInvoicesController,TrainingCheckoutController,CheckoutRefundController], providers: [AccessTokenGuard,{provide:AccountInvoicesService,useValue:new AccountInvoicesService(db)},{provide:CheckoutRefundService,useValue:new CheckoutRefundService(db,provider)},
   {provide: TrainingCheckoutService, useValue: checkout}, {provide: AuthService, useValue: auth}]})(CourseAcceptanceModule);
 const app = await NestFactory.create(CourseAcceptanceModule, {logger: false});
 app.setGlobalPrefix('api/v1');
@@ -429,6 +432,9 @@ try {
   });
   assert.equal(await db.financeEntry.count({where: {id: {in: allFinanceIds}}}), allFinanceIds.length);
   assert.ok(requests.filter(row => row.method === 'POST').every(row => row.url === '/v1/invoices' || /^\/v1\/payments\/[a-f0-9-]+\/refund$/.test(row.url)));
+  await check('original invoices link purchases, independent instructor services, center, boat and shop sales to their parties', async()=>{
+    await verifyAccountInvoices({db,base:origin,owner,buyer,accountant,account,center:centerA,id});
+  });
   console.log(JSON.stringify({result: 'PASS', suite: 'training-checkout-postgresql-http', passed: cases.length, failed: 0, cases,
     actualPostgresql: true, actualControllerAndSessionGuard: true, providerTransport: 'loopback HTTP only', providerInvoicePosts: posts(),
     externalProviderCalls: 0, actualMoneyTransfers: 0, productionWrites: 0, trainingActivatedOrCompleted: false}));

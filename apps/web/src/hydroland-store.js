@@ -1,6 +1,7 @@
 (()=>{
   // Only authored interface text is localized. Account and business values stay opaque.
   const uiLocale = window.HydrolandI18n?.createScope("store", {
+  "فواتيري": "My invoices", "فاتورة العملية": "Transaction invoice",
     "مساعدة بشأن هذا الطلب":"Get help with this order",
   "تأجير المعدات": "Equipment rentals",
   "متاحة لدى المركز": "Available from the center",
@@ -152,7 +153,7 @@
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const auth=()=>window.HydrolandAuth;
   const idempotencyKey=()=>`store-${Date.now()}-${globalThis.crypto?.randomUUID?.()||Math.random().toString(36).slice(2)}`;
-  const panel=document.createElement('div');panel.className='hl-store-cart';uiLocale.setHTML(panel, uiLocale.html`<strong>السلة</strong><span class="hl-store-summary">السلة فارغة</span><button type="button" class="hl-store-checkout" disabled>إنشاء الطلب</button><small class="hl-store-payment-note">إنشاء الطلب يحفظ السلة. راجع الشروط ووافق عليها قبل الانتقال إلى الدفع.</small><button type="button" class="hl-store-orders">طلباتي</button><button type="button" class="hl-store-course-payments">مدفوعات دوراتي</button><div class="hl-store-orders-list" hidden></div><div class="hl-store-course-list" hidden></div>`);section.appendChild(panel);
+  const panel=document.createElement('div');panel.className='hl-store-cart';uiLocale.setHTML(panel, uiLocale.html`<strong>السلة</strong><span class="hl-store-summary">السلة فارغة</span><button type="button" class="hl-store-checkout" disabled>إنشاء الطلب</button><small class="hl-store-payment-note">إنشاء الطلب يحفظ السلة. راجع الشروط ووافق عليها قبل الانتقال إلى الدفع.</small><button type="button" class="hl-store-orders">طلباتي</button><button type="button" data-account-invoices>فواتيري</button><button type="button" class="hl-store-course-payments">مدفوعات دوراتي</button><div class="hl-store-orders-list" hidden></div><div class="hl-store-course-list" hidden></div>`);section.appendChild(panel);
   const summary=panel.querySelector('.hl-store-summary'),checkout=panel.querySelector('.hl-store-checkout'),orders=panel.querySelector('.hl-store-orders-list');
   const renderCart=()=>{let n=0,total=0;for(const x of cart.values()){n+=x.quantity;total+=x.priceMinor*x.quantity}summary.textContent=n?(n+uiLocale.t(' منتج · ')+money(total)):uiLocale.t('السلة فارغة');checkout.disabled=!n;const clear=panel.querySelector('[data-clear-catalog-cart]');if(clear)clear.hidden=!n};
   const parse=async r=>{const body=await r.json().catch(()=>({}));if(!r.ok)throw (Array.isArray(body.message)?new Error(body.message.join('، ')):new Error(body.message||`HTTP ${r.status}`));return body};
@@ -181,7 +182,14 @@
     uiLocale.setText(body,'جارٍ تحميل شروط الطلب...');if(!dialog.open)dialog.showModal();
     const base=paymentPath(kind,id);
     try{
-      if(refresh){const state=await parse(await auth().authorizedFetch(base+'/refresh',{method:'POST'}));if(current())uiLocale.setText(body,paymentMessage(state));return;}
+      if(refresh){const state=await parse(await auth().authorizedFetch(base+'/refresh',{method:'POST'}));if(current()){
+          const status=document.createElement('p');uiLocale.setText(status,paymentMessage(state));body.replaceChildren(status);
+          if(state.collectionVerified){
+            const link=document.createElement('button');link.type='button';link.dataset.accountInvoices='';
+            link.dataset.invoiceType=kind==='COURSE'?'TRAINING_ENROLLMENT':'STORE_ORDER';link.dataset.invoiceSource=id;
+            uiLocale.setText(link,'فاتورة العملية');body.append(link);
+          }
+        }return;}
       const quote=await parse(await auth().authorizedFetch(base+'/quote'));if(!current())return;
       if(!quote.snapshot||typeof quote.quoteHash!=='string'||typeof quote.policyVersion!=='string')throw localError('تعذر تحميل شروط الدفع');
       const snapshot=quote.snapshot,lines=Array.isArray(snapshot.lines)?snapshot.lines:[snapshot],issuer=snapshot.issuer||lines[0]?.issuer;
@@ -313,7 +321,7 @@
     try{
       const [orderResponse,payments]=await Promise.all([auth().authorizedFetch('/store/orders/mine'),loadPayments()]);
       const data=await parse(orderResponse);if(!active()||version!==ordersVersion)return;if(!Array.isArray(data))throw localError('تعذر تحميل الطلبات');
-      uiLocale.setHTML(orders, data.length?data.map(o=>{const payment=paymentForOrder(payments,o.id),eligible=['CREATED','CONFIRMED'].includes(o.status)&&!['CAPTURED','REFUNDED'].includes(payment?.status);return uiLocale.html`<article data-store-order="${esc(o.id)}"><b>${esc(o.status)}</b><span>${money(o.totalMinor,o.currency)}</span><small>${new Date(o.createdAt).toLocaleString('ar-SA')}</small><small data-store-payment-state>${esc(paymentStatusText(payment))}</small>${eligible?uiLocale.html`<button type="button" data-store-payment-retry>عرض الشروط والدفع</button>`:''}${payment?uiLocale.html`<button type="button" data-store-payment-refresh>تحديث حالة الدفع</button>`:''}${goodsControls(o)}</article>`}).join(''):uiLocale.t('لا توجد طلبات حتى الآن.'));
+      uiLocale.setHTML(orders, data.length?data.map(o=>{const payment=paymentForOrder(payments,o.id),eligible=['CREATED','CONFIRMED'].includes(o.status)&&!['CAPTURED','REFUNDED'].includes(payment?.status);return uiLocale.html`<article data-store-order="${esc(o.id)}"><b>${esc(o.status)}</b><span>${money(o.totalMinor,o.currency)}</span><small>${new Date(o.createdAt).toLocaleString('ar-SA')}</small><small data-store-payment-state>${esc(paymentStatusText(payment))}</small>${eligible?uiLocale.html`<button type="button" data-store-payment-retry>عرض الشروط والدفع</button>`:''}${payment?uiLocale.html`<button type="button" data-store-payment-refresh>تحديث حالة الدفع</button>`:''}${payment?uiLocale.html`<button type="button" data-account-invoices data-invoice-type="STORE_ORDER" data-invoice-source="${esc(o.id)}">فاتورة العملية</button>`:''}${goodsControls(o)}</article>`}).join(''):uiLocale.t('لا توجد طلبات حتى الآن.'));
       orders.querySelectorAll('[data-store-order]').forEach(card=>{const row=data.find(order=>order.id===card.dataset.storeOrder);if(row?.items?.some(item=>item.contractSnapshot?.kind==='PHYSICAL_GOOD'))window.HydrolandStoreFulfillment?.shopper(card,row)});
       if(window.HydrolandSupport?.orderHelp)for(const card of orders.querySelectorAll('[data-store-order]')){
         const help=document.createElement('button');help.type='button';help.textContent=uiLocale.t('مساعدة بشأن هذا الطلب');
@@ -348,7 +356,7 @@
     try{
       const rows=await parse(await auth().authorizedFetch('/training/mine/enrollments'));if(!active()||version!==courseListVersion)return;
       if(!Array.isArray(rows))throw localError('تعذر تحميل الطلبات');const enrolled=rows.filter(row=>row.storeCourseOfferId||row.metadata?.source==='UNIFIED_STORE');
-      uiLocale.setHTML(list,enrolled.length?enrolled.map(row=>uiLocale.html`<article data-course-enrollment="${esc(row.id)}"><b>${esc(row.metadata?.title||row.courseCode)}</b><span>${esc(row.status)}</span>${row.status==='PENDING'?uiLocale.html`<button type="button" data-course-checkout>عرض الشروط والدفع</button>`:''}<button type="button" data-course-payment-refresh>تحديث حالة الدفع</button>${row.metadata?.financialConfirmation?.status==='VERIFIED'&&['ACTIVE','PENDING'].includes(row.status)?uiLocale.html`<button type="button" data-course-cancel>إلغاء الدورة المؤكدة</button>`: ''}<small>تأكيد الدفع لا يعني قبول التدريب أو إتمامه.</small></article>`).join(''):uiLocale.t('لا توجد دورات مشتراة حتى الآن.'));
+      uiLocale.setHTML(list,enrolled.length?enrolled.map(row=>uiLocale.html`<article data-course-enrollment="${esc(row.id)}"><b>${esc(row.metadata?.title||row.courseCode)}</b><span>${esc(row.status)}</span>${row.status==='PENDING'?uiLocale.html`<button type="button" data-course-checkout>عرض الشروط والدفع</button>`:''}<button type="button" data-account-invoices data-invoice-type="TRAINING_ENROLLMENT" data-invoice-source="${esc(row.id)}">فاتورة العملية</button><button type="button" data-course-payment-refresh>تحديث حالة الدفع</button>${row.metadata?.financialConfirmation?.status==='VERIFIED'&&['ACTIVE','PENDING'].includes(row.status)?uiLocale.html`<button type="button" data-course-cancel>إلغاء الدورة المؤكدة</button>`: ''}<small>تأكيد الدفع لا يعني قبول التدريب أو إتمامه.</small></article>`).join(''):uiLocale.t('لا توجد دورات مشتراة حتى الآن.'));
       list.querySelectorAll('[data-course-cancel]').forEach(button=>button.addEventListener('click',async()=>{
         if (!active() || version!==courseListVersion || button.disabled || !window.confirm(uiLocale.t('تأكيد إلغاء التسجيل وفق شروط الدورة الأصلية؟'))) return;
         button.disabled=true;
