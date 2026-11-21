@@ -1,3 +1,4 @@
+import {bindFixtureOwner} from './catalog-owner-fixture.mjs';
 import assert from 'node:assert/strict';
 import {PrismaClient} from '@prisma/client';
 import {trainingOperationalPolicy} from '../dist/governance/training-operational-policy.js';
@@ -12,6 +13,7 @@ process.env.NODE_ENV??='test';assert.equal(process.env.NODE_ENV,'test');
 const db=new PrismaClient(),secret=process.env.JWT_SECRET;if(!secret)throw new Error('JWT_SECRET required');
 const enc=x=>Buffer.from(JSON.stringify(x)).toString('base64url');
 const token=id=>{const now=Math.floor(Date.now()/1000),body=enc({alg:'HS256',typ:'JWT'})+'.'+enc({sub:id,iat:now,exp:now+900});return body+'.'+createHmac('sha256',secret).update(body).digest('base64url')};
+let restoreOwner;
 const people=[],accounts=[];
 const originals=await db.$queryRaw`SELECT * FROM "PolicyControl" WHERE ("category"='WEATHER' AND "ruleKey"='WEATHER_GATE') OR ("category"='TRAINING' AND "ruleKey" IN ('CAPACITY_LIMIT','SESSION_TIME_WINDOW'))`;
 const weatherOriginal=await db.operationalSetting.findUnique({where:{key:'WEATHER_GATE'}});
@@ -19,6 +21,7 @@ const request=async(account,path='',body)=>{const r=await fetch(base+'/admin/ope
 try{
  for(const name of ['admin','reader']){const person=await db.person.create({data:{firstName:name,lastName:'OperationalControlsTest'}});people.push(person);accounts.push(await db.account.create({data:{personId:person.id,email:'control-'+randomUUID()+'@example.invalid',passwordHash:'test',status:'ACTIVE',emailVerifiedAt:new Date()}}));}
  const [admin,reader]=accounts;const role=await db.roleAssignment.create({data:{accountId:admin.id,role:'ADMIN',status:'ACTIVE'}});
+ restoreOwner=await bindFixtureOwner(db,admin.id);
  const {policyControlAtomicityAcceptance}=await import('./policy-control-atomicity-http.mjs');
  await policyControlAtomicityAcceptance({db,base,admin,reader,token});
  assert.equal((await request(null)).status,401);assert.equal((await request(reader)).status,403);
@@ -49,6 +52,7 @@ try{
  }
  if(weatherOriginal)await db.operationalSetting.update({where:{key:'WEATHER_GATE'},data:{value:weatherOriginal.value,updatedAt:weatherOriginal.updatedAt}});else await db.operationalSetting.deleteMany({where:{key:'WEATHER_GATE'}});
  for(const account of accounts)await db.auditEvent.deleteMany({where:{action:'OPERATIONAL_CONTROL_CHANGED',metadata:{path:['accountId'],equals:account.id}}});
+ if(restoreOwner)await restoreOwner();
  await db.roleAssignment.deleteMany({where:{accountId:{in:accounts.map(a=>a.id)}}});await db.account.deleteMany({where:{id:{in:accounts.map(a=>a.id)}}});await db.person.deleteMany({where:{id:{in:people.map(p=>p.id)}}});await db.$disconnect();
 }
 

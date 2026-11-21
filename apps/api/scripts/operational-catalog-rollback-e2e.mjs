@@ -1,3 +1,4 @@
+import {bindFixtureOwner} from './catalog-owner-fixture.mjs';
 import assert from 'node:assert/strict';
 import { randomBytes, scryptSync } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
@@ -23,11 +24,11 @@ const trainingKeys = {
   ATTENDANCE_REQUIRED: 'attendanceRequired',
 };
 
-async function login() {
+async function login(email = 'catalog-check@example.invalid') {
   const password = randomBytes(32).toString('hex');
   const salt = randomBytes(16).toString('hex');
   const account = await db.account.create({data: {
-    email: 'catalog-check@example.invalid',
+    email,
     passwordHash: salt + ':' + scryptSync(password, salt, 64).toString('hex'),
     status: 'ACTIVE', emailVerifiedAt: new Date(),
     person: {create: {firstName: 'Catalog', lastName: 'Fixture'}},
@@ -117,17 +118,35 @@ async function verifyControl(initial, account, headers) {
   return {id, initialState:initial.state, finalRevision:restored.revision, evidence};
 }
 
+let restoreOwner;
 try {
   const [database] = await db.$queryRaw`SELECT current_database() AS name, current_setting('TimeZone') AS timezone`;
   assert.equal(database.name, 'a16_catalog_acceptance');
   if (process.env.A16_EXPECT_DB_TIMEZONE) assert.equal(database.timezone, process.env.A16_EXPECT_DB_TIMEZONE);
   assert.equal(await db.account.count(), 0, 'Start from a fresh disposable database');
   const {account, headers} = await login();
+  restoreOwner = await bindFixtureOwner(db, account.id);
+  const outsider = await login('other-admin@example.invalid');
   const catalog = await readCatalog(headers);
   assert(catalog.size >= 29, 'Operational catalog unexpectedly shrank');
   const receipts = [];
   for (const control of catalog.values()) {
+    if (control.id !== 'TRAINING.SESSION_TIME_WINDOW') {
+      const blocked = await fetch(api.href + '/admin/operational-controls/' + encodeURIComponent(control.id), {
+        method:'PATCH',headers:outsider.headers,body:JSON.stringify({state:control.state==='ENABLED'?'DISABLED':'ENABLED',
+          expectedRevision:control.revision,reason:'Isolated non-owner administrator check'}),
+      });
+      assert.equal(blocked.status,403,control.id);
+    }
     receipts.push(await verifyControl(control, account, headers));
+  }
+  for (const [method,path,body] of [
+    ['PATCH','/admin/policies/WEATHER/WEATHER_GATE/state',{state:'DISABLED',reason:'Isolated owner check'}],
+    ['POST','/admin/policies',{category:'WEATHER',ruleKey:'WEATHER_GATE',labelAr:'اختبار',state:'DISABLED'}],
+    ['PATCH','/trips/admin/weather-gate',{enabled:false,mode:'ADVISORY'}],
+  ]) {
+    const response=await fetch(api.href+path,{method,headers:outsider.headers,body:JSON.stringify(body)});
+    assert.equal(response.status,403,path);
   }
   const final = await readCatalog(headers);
   assert.equal(final.size, catalog.size);
@@ -145,5 +164,6 @@ try {
   if (process.env.A16_EVIDENCE_PATH) await writeFile(process.env.A16_EVIDENCE_PATH, JSON.stringify(result, null, 2) + '\n');
   console.log('A16 catalog rollback PASS: %d controls, %d categories, %d attributed audit records.', result.controls, result.categories, result.auditRecords);
 } finally {
+  if(restoreOwner)await restoreOwner();
   await db.$disconnect();
 }

@@ -1,3 +1,4 @@
+import { requireCatalogOwner } from './operational-control-owner';
 import { Prisma } from '@prisma/client';
 import { ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
@@ -62,6 +63,7 @@ export class WeatherGateService {
 
   async configure(accountId:string,input: { enabled?: boolean; mode?: WeatherGateMode }) {
     return this.db.serializable(async tx=>{
+      await requireCatalogOwner(tx,accountId,'WEATHER','WEATHER_GATE');
       const current=await this.settings(tx);
       const next:WeatherGateSettings={...current,provider:'STORMGLASS',enabled:typeof input.enabled==='boolean'?input.enabled:current.enabled,mode:input.mode==='ENFORCE'||input.mode==='ADVISORY'?input.mode:current.mode};
       if(await this.binding(tx)==='MANDATORY'&&(!next.enabled||next.mode!=='ENFORCE'))throw new ForbiddenException('لا يمكن تعطيل متطلب الطقس الإلزامي عبر إعداد عام.');

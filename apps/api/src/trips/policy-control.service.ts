@@ -1,3 +1,4 @@
+import { requireCatalogOwner } from './operational-control-owner';
 import { Prisma } from '@prisma/client';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
@@ -70,6 +71,7 @@ export class PolicyControlService {
     `;
     const current=currentRows[0];
     if(!current)throw new NotFoundException('Policy rule not found.');
+    await requireCatalogOwner(tx,accountId,current.category,current.ruleKey);
     this.assertOptionalChange(current,state);
     const rows=await tx.$queryRaw<PolicyRule[]>`
       UPDATE "PolicyControl"
@@ -92,6 +94,7 @@ export class PolicyControlService {
     const state=input.state??'REVIEW';
     if(!['ENABLED','DISABLED','REVIEW'].includes(state))throw new BadRequestException('Invalid policy state.');
     return this.db.serializable(async tx=>{
+    await requireCatalogOwner(tx,accountId,category,ruleKey);
     const existing=await tx.$queryRaw<PolicyRule[]>`SELECT * FROM "PolicyControl" WHERE "category"=${category} AND "ruleKey"=${ruleKey} FOR UPDATE`;
     if(existing[0])this.assertOptionalChange(existing[0],state);
     const rows=await tx.$queryRaw<PolicyRule[]>`

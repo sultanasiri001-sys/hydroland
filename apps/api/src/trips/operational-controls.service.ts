@@ -1,3 +1,4 @@
+import { requireCatalogOwner } from './operational-control-owner';
 import { createHash } from 'node:crypto';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -34,6 +35,7 @@ export class OperationalControlsService {
   return this.db.serializable(async tx=>{
    const admin=await tx.roleAssignment.findFirst({where:{accountId,role:'ADMIN',status:'ACTIVE',account:{status:'ACTIVE'}},select:{id:true}});
    if(!admin)throw new ForbiddenException('يتطلب التغيير حساب مسؤول نشط.');
+   await requireCatalogOwner(tx,accountId,control.category,control.ruleKey);
    const previous=(await this.snapshot(tx)).find(row=>row.id===id)!;
    if(previous.revision!==input.expectedRevision)throw new ConflictException('تغير الإعداد بواسطة مسؤول آخر. حدّث الحالة قبل الحفظ.');
    if(state==='DISABLED'&&!previous.canDisable)throw new ForbiddenException('لا يمكن تعطيل متطلب إلزامي أو مصدر معلق بالمراجعة عبر إعداد عام.');
