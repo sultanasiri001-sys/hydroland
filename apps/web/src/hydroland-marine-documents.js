@@ -71,6 +71,16 @@
   "تعذر رفع الوثيقة": "Could not upload the document",
   "تعذر فتح الملف": "Could not open the file",
   "تعذر تنفيذ القرار": "Could not carry out the decision",
+  "بانتظار توصية العمليات البحرية": "Awaiting Marine Operations recommendation",
+  "الموافقة والإرسال للعمليات البحرية": "Approve and send to Marine Operations",
+  "توصية بالقبول والإرسال للإدارة العليا": "Recommend approval and send to executive management",
+  "توصيات العمليات البحرية": "Marine Operations recommendations",
+  "تفويض مراجعة مستندات القوارب": "Delegate boat document review",
+  "بريد موظف العمليات البحرية": "Marine Operations employee email",
+  "منح التفويض": "Grant delegation",
+  "سحب التفويض": "Revoke delegation",
+  "تم منح تفويض التوصية": "Recommendation authority granted",
+  "تم سحب تفويض التوصية": "Recommendation authority revoked",
   "الوثائق والتراخيص": "Documents and licenses"
 }) || {messageHTML:value=>String(value??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])),attribute:(name,text,values=[])=>name+'=\"'+String(text).replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token).replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]))+'\"',message:(text,values=[])=>String(text).replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token),setMessage:(node,value)=>(node.textContent=value??''),t:value=>value,label:(text,values=[])=>String(text??'').replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])),format:(text,values=[])=>text.replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token),html:(parts,...values)=>parts.map((part,i)=>part+(i<values.length?String(values[i]??''):'')).join(''),bind:()=>{},setHTML:(node,value)=>(node.innerHTML=value),insertHTML:(node,position,value)=>node.insertAdjacentHTML(position,value),setText(node,text,values=[]){return node.textContent=this.format(text,values)},setAttribute(node,name,text,values=[]){node.setAttribute(name,this.format(text,values))}};
 
@@ -98,7 +108,7 @@
   };
   const docName=type=>documentNames[type]||type;
   const fmtDate=v=>v?new Date(v).toLocaleDateString('ar-SA'):uiLocale.t('بدون انتهاء');
-  const statusNames={PENDING:'بانتظار تدقيق المركز',PLATFORM_PENDING:'بانتظار الإدارة العليا',ON_HOLD:'معلق',RETURNED:'مُعاد للتعديل',VERIFIED:'معتمد',REJECTED:'مرفوض'};
+  const statusNames={PENDING:'بانتظار تدقيق المركز',OPERATIONS_PENDING:'بانتظار توصية العمليات البحرية',PLATFORM_PENDING:'بانتظار الإدارة العليا',ON_HOLD:'معلق',RETURNED:'مُعاد للتعديل',VERIFIED:'معتمد',REJECTED:'مرفوض'};
   function centerPicker(asset){
     const membership=state.memberships.find(m=>m.organization.id===asset.organizationId);
     if(asset.reviewCenterId||membership?.organization.kind!=='MARINE_OPERATOR'||membership.role!=='OWNER')return '';
@@ -125,7 +135,7 @@
     if (!doc.hasFile) return 'incomplete';
     if (doc.status === 'ON_HOLD') return 'hold';
     if (doc.status === 'VERIFIED' && (!doc.expiresAt || Number.isFinite(Date.parse(doc.expiresAt)))) return 'complete';
-    if (['PENDING', 'PLATFORM_PENDING'].includes(doc.status)) return 'pending';
+    if (['PENDING', 'OPERATIONS_PENDING', 'PLATFORM_PENDING'].includes(doc.status)) return 'pending';
     return 'unknown';
   }
 
@@ -176,16 +186,21 @@
 
   function renderBoat(){const orgOptions=state.memberships.map(m=>uiLocale.html`<option value="${esc(m.organization.id)}">${esc(m.organization.displayName)}</option>`).join('');uiLocale.setHTML(content, uiLocale.html`<div class="hl-marine-grid"><form class="hl-marine-card hl-marine-form" data-marine-asset-form><h4>إضافة قارب / أصل بحري</h4><label>الجهة<select name="organizationId" required>${orgOptions}</select></label><label>الاسم<input name="name" required maxlength="120"></label><label>النوع<select name="assetType"><option>DIVE_BOAT</option><option>YACHT</option><option>RIB</option><option>SUPPORT_VESSEL</option><option>OTHER</option></select></label><label>رقم التسجيل<input name="registrationNumber" maxlength="80"></label><label>سعة الركاب<input name="passengerCapacity" type="number" min="1"></label><button class="primary" type="submit" ${orgOptions?'':'disabled'}>حفظ الأصل البحري</button></form><section class="hl-marine-card"><h4>الأصول والوثائق</h4><div data-marine-assets>${state.assets.length?state.assets.map(renderAsset).join(''):uiLocale.html`<p class="hl-marine-note">لا توجد أصول بحرية مرتبطة بعضويتك بعد.</p>`}</div></section></div>`)}
   let generation=0;
-  function reviewPanel(center){
-    const choices=center?[['FORWARD','الموافقة والإرسال للإدارة العليا'],['RETURNED','إعادة للتعديل']]:[['VERIFIED','اعتماد'],['RETURNED','إعادة للتعديل'],['ON_HOLD','تعليق'],['REJECTED','رفض']];
-    return uiLocale.html`<section class="hl-marine-card"><h4>${uiLocale.label(center?'تدقيق مستندات القوارب التابعة للمركز':'مراجعة وثائق الأصول البحرية')}</h4>
+  function reviewPanel(role){
+    const choices={
+      center:[['FORWARD','الموافقة والإرسال للعمليات البحرية'],['RETURNED','إعادة للتعديل']],
+      operations:[['RECOMMEND','توصية بالقبول والإرسال للإدارة العليا'],['RETURNED','إعادة للتعديل']],
+      admin:[['VERIFIED','اعتماد'],['RETURNED','إعادة للتعديل'],['ON_HOLD','تعليق'],['REJECTED','رفض']]
+    }[role];
+    const headings={center:'تدقيق مستندات القوارب التابعة للمركز',operations:'توصيات العمليات البحرية',admin:'مراجعة وثائق الأصول البحرية'};
+    return uiLocale.html`<section class="hl-marine-card"><h4>${uiLocale.label(headings[role])}</h4>
       ${state.pending.length?state.pending.map(d=>uiLocale.html`<article class="hl-marine-asset" data-marine-doc="${esc(d.id)}">
         <strong>${esc(d.marineAsset.name)} · ${esc(d.marineAsset.registrationNumber)}</strong>
         <p>${uiLocale.label(docName(d.documentType))} · ${esc(d.referenceNumber)} · ${esc(fmtDate(d.expiresAt))}</p>
         <p>${uiLocale.label(statusNames[d.status]||d.status)} ${esc(d.reviewNote)}</p>
         ${d.hasFile?uiLocale.html`<button type="button" data-marine-review-access="${esc(d.id)}">عرض الملف</button>`:''}
         <label>سبب القرار أو التعديل المطلوب<textarea data-review-note maxlength="1000"></textarea></label>
-        <div class="hl-marine-actions">${choices.filter(([choice])=>choice!=='ON_HOLD'||d.status!=='ON_HOLD').map(([choice,label])=>uiLocale.html`<button type="button" data-marine-decision="${choice}" ${(!d.hasFile&&['VERIFIED','FORWARD'].includes(choice))||!/^[a-f0-9]{64}$/.test(d.reviewRevision||'')?'disabled':''}>${uiLocale.label(label)}</button>`).join('')}</div></article>`).join(''):uiLocale.html`<p>لا توجد وثائق بحرية بانتظار المراجعة.</p>`}</section>`;
+        <div class="hl-marine-actions">${choices.filter(([choice])=>choice!=='ON_HOLD'||d.status!=='ON_HOLD').map(([choice,label])=>uiLocale.html`<button type="button" data-marine-decision="${choice}" ${(!d.hasFile&&['VERIFIED','FORWARD','RECOMMEND'].includes(choice))||!/^[a-f0-9]{64}$/.test(d.reviewRevision||'')?'disabled':''}>${uiLocale.label(label)}</button>`).join('')}</div></article>`).join(''):uiLocale.html`<p>لا توجد وثائق بحرية بانتظار المراجعة.</p>`}</section>`;
   }
   async function refresh(){
     const view=++generation,role=state.role;
@@ -198,14 +213,22 @@
         if(!current())return;
         state.memberships=(Array.isArray(memberships)?memberships:[]).filter(x=>x.status==='ACTIVE'&&['DIVE_CENTER','MARINE_OPERATOR'].includes(x.organization?.kind));
         state.assets=assets;state.centers=centers;state.pending=pending;renderBoat();
-        if(role==='center')uiLocale.insertHTML(content,'afterbegin',reviewPanel(true));
-      }else if(role==='admin'){
-        const pending=await request('/marine-operations/admin/documents/pending');
-        if(!current())return;state.pending=pending;uiLocale.setHTML(content,reviewPanel(false));
+        if(role==='center')uiLocale.insertHTML(content,'afterbegin',reviewPanel('center'));
+      }else if(role==='admin'||role==='operations'){
+        const pending=await request('/marine-operations/'+role+'/documents/pending');
+        if(!current())return;
+        state.pending=pending;
+        uiLocale.setHTML(content,reviewPanel(role));
+        if(role==='admin') uiLocale.insertHTML(content,'beforeend',uiLocale.html`<form class="hl-marine-card hl-marine-form" data-marine-delegate>
+          <h4>${uiLocale.label('تفويض مراجعة مستندات القوارب')}</h4>
+          <label>${uiLocale.label('بريد موظف العمليات البحرية')}<input type="email" name="email" required maxlength="254"></label>
+          <div><button type="submit" value="grant">${uiLocale.label('منح التفويض')}</button>
+          <button type="submit" value="revoke">${uiLocale.label('سحب التفويض')}</button></div><p role="status"></p></form>`);
+
       }
     }catch(error){if(current())uiLocale.setText(content,error.message)}
   }
-  function open(role){clearView();state.role=role;panel.hidden=false;refresh();panel.scrollIntoView({behavior:residualScrollBehavior(),block:'start'})}
+  function open(role){clearView();state.role=role;panel.toggleAttribute('data-operations-review',role==='operations');panel.hidden=false;refresh();panel.scrollIntoView({behavior:residualScrollBehavior(),block:'start'})}
   panel.querySelector('[data-marine-refresh]').addEventListener('click',refresh);
   async function attachment(file){
     if(!(file instanceof File)||!file.size||file.size>10_000_000)throw new Error(uiLocale.t('اختر ملفًا صالحًا لا يتجاوز 10 ميجابايت'));
@@ -214,10 +237,16 @@
     return {originalName:file.name,mimeType:file.type,base64};
   }
   content.addEventListener('submit',async event=>{
-    event.preventDefault();const form=event.target,view=generation,button=form.querySelector('button'),fields=new FormData(form);
+    event.preventDefault();const form=event.target,view=generation,button=event.submitter||form.querySelector('button'),fields=new FormData(form);
     const asset=form.closest('[data-marine-asset]'),root=asset&&'/marine-operations/assets/'+encodeURIComponent(asset.dataset.marineAsset);
     button.disabled=true;
     try{
+      if(form.matches('[data-marine-delegate]')){
+        const enabled=button.value==='grant';
+        await request('/marine-operations/admin/recommendation-delegates',{method:'POST',body:JSON.stringify({email:fields.get('email'),enabled})});
+        if(view===generation)uiLocale.setText(form.querySelector('[role="status"]'),enabled?'تم منح تفويض التوصية':'تم سحب تفويض التوصية');
+        return;
+      }
       if(form.matches('[data-marine-asset-form]')){
         const data=Object.fromEntries(fields);if(data.passengerCapacity)data.passengerCapacity=Number(data.passengerCapacity);else delete data.passengerCapacity;
         await request('/marine-operations/assets',{method:'POST',body:JSON.stringify(data)});
@@ -237,12 +266,12 @@
   });
   content.addEventListener('click',async event=>{
     const button=event.target.closest('[data-marine-doc-access],[data-marine-review-access],[data-marine-decision]');if(!button)return;
-    const view=generation,queue='/marine-operations/'+(state.role==='center'?'center':'admin')+'/documents/';
+    const view=generation,queue='/marine-operations/'+state.role+'/documents/';
     const card=button.closest('[data-marine-doc]');button.disabled=true;
     try{
       if(button.dataset.marineDecision){
         const outcome=button.dataset.marineDecision,note=card.querySelector('[data-review-note]').value.trim();
-        if(['REJECTED','ON_HOLD','RETURNED'].includes(outcome)&&!note)throw new Error(uiLocale.t('سبب القرار مطلوب'));
+        if(['RECOMMEND','REJECTED','ON_HOLD','RETURNED'].includes(outcome)&&!note)throw new Error(uiLocale.t('سبب القرار مطلوب'));
         const doc=state.pending.find(d=>d.id===card.dataset.marineDoc);
         await request(queue+encodeURIComponent(doc.id)+'/decision',{method:'POST',body:JSON.stringify({outcome,expectedRevision:doc.reviewRevision,...(note?{note}:{})})});
         if(view===generation)await refresh();
@@ -255,10 +284,34 @@
   });
   const connect=root=>root.querySelectorAll?.('button').forEach(button=>{if((button.dataset.actionLabel||button.dataset.portalLabel||button.textContent||'').trim()!=='الوثائق والتراخيص'||button.dataset.hlMarineConnected)return;button.dataset.hlMarineConnected='1';button.disabled=false;button.removeAttribute('aria-disabled');button.title='';button.addEventListener('click',()=>open('boat'))});
   const observer=new MutationObserver(records=>records.forEach(record=>record.addedNodes.forEach(node=>{if(node.nodeType===1)connect(node)})));observer.observe(document.body,{childList:true,subtree:true});
-  function clearView(){generation++;panel.hidden=true;state.assets=[];state.memberships=[];state.centers=[];state.pending=[];content.replaceChildren()}
+  function clearView(){generation++;panel.removeAttribute('data-operations-review');panel.hidden=true;state.assets=[];state.memberships=[];state.centers=[];state.pending=[];content.replaceChildren()}
   document.addEventListener('hydroland:role-changed',event=>{state.role=event.detail?.role;clearView()});
   document.addEventListener('hydroland:session-cleared',clearView);
   document.addEventListener('hydroland:auth-changed',()=>{if(!window.HydrolandAuth?.isAuthenticated?.())clearView()});
+  let capabilityVersion=0;
+  const removeReviewerEntry=()=>{++capabilityVersion;document.querySelector('[data-open-marine-recommendations]')?.remove()};
+  async function refreshReviewerEntry(){
+    const version=++capabilityVersion, auth=window.HydrolandAuth;
+    if(!auth?.isAuthenticated?.()){removeReviewerEntry();return}
+    const session=auth.getSessionVersion?.();
+    let allowed=false;
+    try{allowed=(await request('/marine-operations/operations/capability')).canRecommend===true}catch{}
+    if(version!==capabilityVersion||session!==auth.getSessionVersion?.())return;
+    const existing=document.querySelector('[data-open-marine-recommendations]');
+    if(!allowed){existing?.remove();return}
+    const host=document.querySelector('#profile-dialog .profile-list');
+    if(existing||!host)return;
+    const entry=document.createElement('button');entry.type='button';entry.dataset.openMarineRecommendations='';
+    uiLocale.setText(entry,'توصيات العمليات البحرية');host.append(entry);
+    entry.addEventListener('click',()=>{
+      document.getElementById('profile-dialog')?.close();open('operations');
+      window.HydrolandWorkspaceUI?.show?.(panel);
+    });
+  }
+  document.addEventListener('hydroland:session-cleared',removeReviewerEntry);
+  document.addEventListener('hydroland:auth-changed',()=>{removeReviewerEntry();void refreshReviewerEntry()});
+  document.addEventListener('hydroland:profile-data-ready',refreshReviewerEntry);
+  if(window.HydrolandAuth?.isAuthenticated?.())void refreshReviewerEntry();
   const initial=window.HydrolandPortalAccess?.getCurrentRole?.();if(initial==='boat'||initial==='admin')open(initial);
   window.HydrolandMarineDocuments={open,refresh};
 })();

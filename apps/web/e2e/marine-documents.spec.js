@@ -3,7 +3,7 @@ import {openWorkspaceSwitcher} from './portal-test-helpers.js';
 
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 
-test('boat operator registers marine asset and license attachment, center forwards it and platform verifies it',async({page})=>{
+test('boat operator registers marine asset and license attachment, center forwards it, Marine Operations recommends it and platform verifies it',async({page})=>{
   const profile={id:'marine-e2e',email:'marine@hydroland.test',status:'ACTIVE',roleAssignments:[{id:'boat-role',role:'BOAT_OWNER',status:'ACTIVE'},{id:'center-role',role:'DIVE_CENTER',status:'ACTIVE'},{id:'admin-role',role:'ADMIN',status:'ACTIVE'}],person:{firstName:'Marine',lastName:'E2E',phone:null,professional:null}};
   const membership={id:'membership-e2e',organizationId:'org-marine-e2e',accountId:profile.id,role:'OWNER',status:'ACTIVE',organization:{id:'org-marine-e2e',displayName:'مشغل بحري تجريبي',kind:'MARINE_OPERATOR',status:'ACTIVE'}};
   const state={assets:[],pending:[],decision:null,overviewCalls:0,uploadedPayload:null,ownerAccess:0,adminAccess:0};
@@ -31,7 +31,13 @@ test('boat operator registers marine asset and license attachment, center forwar
   await page.route(/\/api\/v1\/marine-operations\/center\/documents\/pending$/,route=>json(route,state.pending.filter(d=>d.status==='PENDING').map(d=>({...d,marineAsset:assetSummary()}))));
   await page.route(/\/api\/v1\/marine-operations\/center\/documents\/marine-doc-e2e\/decision$/,route=>{
     const doc=state.pending[0];expect(route.request().postDataJSON().outcome).toBe('FORWARD');
-    doc.status='PLATFORM_PENDING';doc.reviewRevision='b'.repeat(64);return json(route,doc);
+    doc.status='OPERATIONS_PENDING';doc.reviewRevision='a'.repeat(64);return json(route,doc);
+  });
+  await page.route(/\/api\/v1\/marine-operations\/operations\/capability$/,route=>json(route,{canRecommend:true}));
+  await page.route(/\/api\/v1\/marine-operations\/operations\/documents\/pending$/,route=>json(route,state.pending.filter(d=>d.status==='OPERATIONS_PENDING').map(d=>({...d,marineAsset:assetSummary()}))));
+  await page.route(/\/api\/v1\/marine-operations\/operations\/documents\/marine-doc-e2e\/decision$/,route=>{
+    expect(route.request().postDataJSON()).toMatchObject({outcome:'RECOMMEND',note:'Reviewed current file'});
+    state.pending[0].status='PLATFORM_PENDING';state.pending[0].reviewRevision='b'.repeat(64);return json(route,state.pending[0]);
   });
   await page.route(/\/api\/v1\/marine-operations\/admin\/documents\/pending$/,route=>requireAuth(route.request())?json(route,state.pending.filter(doc=>doc.status==='PLATFORM_PENDING').map(doc=>({...doc,marineAsset:assetSummary()}))):json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/marine-operations\/assets\/asset-marine-e2e\/documents\/marine-doc-e2e\/access$/,route=>{state.ownerAccess++;return json(route,{url:'about:blank#marine-owner-document'})});
@@ -70,7 +76,13 @@ test('boat operator registers marine asset and license attachment, center forwar
   await expect.poll(()=>state.pending.length).toBe(1);await expect(registration.locator('[data-document-state="pending"]')).toHaveText('تحت الإجراء');await expect(panel.locator('[data-marine-asset="asset-marine-e2e"]')).toContainText('بانتظار تدقيق المركز');await panel.getByRole('button',{name:'عرض الملف'}).click();await expect.poll(()=>state.ownerAccess).toBe(1);
 
   await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="center"]').click();const center=page.locator('.hl-role-dashboard[data-role="center"]');await center.getByRole('button',{name:'وثائق الأصول البحرية'}).click();await expect(panel).toBeVisible();await expect(panel.locator('[data-marine-asset="asset-marine-e2e"]')).toContainText('قارب القحمة');
-  await panel.locator('[data-marine-decision="FORWARD"]').click();await expect.poll(()=>state.pending[0]?.status).toBe('PLATFORM_PENDING');
+  await panel.locator('[data-marine-decision="FORWARD"]').click();await expect.poll(()=>state.pending[0]?.status).toBe('OPERATIONS_PENDING');
+  await page.locator('#profile-open').click();await page.locator('[data-open-marine-recommendations]').click();
+  const ops=panel.locator('[data-marine-doc="marine-doc-e2e"]');
+  await expect(ops).toContainText('بانتظار توصية العمليات البحرية');
+  await ops.locator('[data-review-note]').fill('Reviewed current file');
+  await ops.locator('[data-marine-decision="RECOMMEND"]').click();
+  await expect.poll(()=>state.pending[0]?.status).toBe('PLATFORM_PENDING');
   await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="admin"]').click();
   await page.locator('.hl-role-dashboard .hl-portal-nav-item[data-portal-label="الوساطة البحرية"]').click();
   await expect(panel).toBeVisible();const review=panel.locator('[data-marine-doc="marine-doc-e2e"]');await expect(review).toContainText('REG-7788');await review.getByRole('button',{name:'عرض الملف'}).click();await expect.poll(()=>state.adminAccess).toBe(1);await review.locator('[data-marine-decision="VERIFIED"]').click();
