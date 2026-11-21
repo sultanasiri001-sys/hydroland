@@ -77,7 +77,8 @@ test('boat operator registers marine asset and license attachment, center forwar
 
   await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="center"]').click();const center=page.locator('.hl-role-dashboard[data-role="center"]');await center.getByRole('button',{name:'وثائق الأصول البحرية'}).click();await expect(panel).toBeVisible();await expect(panel.locator('[data-marine-asset="asset-marine-e2e"]')).toContainText('قارب القحمة');
   await panel.locator('[data-marine-decision="FORWARD"]').click();await expect.poll(()=>state.pending[0]?.status).toBe('OPERATIONS_PENDING');
-  await page.locator('#profile-open').click();await page.locator('[data-open-marine-recommendations]').click();
+  await page.locator('[data-portal-profile]:visible, #profile-open:visible').first().click();
+  await page.locator('[data-open-marine-recommendations]').click();
   const ops=panel.locator('[data-marine-doc="marine-doc-e2e"]');
   await expect(ops).toContainText('بانتظار توصية العمليات البحرية');
   await ops.locator('[data-review-note]').fill('Reviewed current file');

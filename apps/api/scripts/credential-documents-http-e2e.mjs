@@ -97,6 +97,12 @@ try{
   await grant(outsiderAccount);
   assert.equal((await reviewFixture.ok(outsiderToken,'operations/capability')).canRecommend,true);
   assert.equal(await reviewFixture.pending(outsiderToken,'operations',marineDocumentId),undefined,'A center cannot recommend its own preliminary approval using an ordinary delegation');
+  const currentAsset=(await reviewFixture.ok(ownerToken,'assets/mine')).find(asset=>asset.id===marineAssetId);
+  const revision=currentAsset.documents.find(document=>document.id===marineDocumentId).reviewRevision;
+  const sameActorDecision=await reviewFixture.call(outsiderToken,'operations/documents/'+marineDocumentId+'/decision','POST',
+    {outcome:'RECOMMEND',note:'Synthetic same-account trial',expectedRevision:revision});
+  assert.equal(sameActorDecision.status,409,'The server must reject the center actor recommending its own document');
+  console.log('Isolated same-account marine trial passed: enrolled center delegate, hidden own item and HTTP 409 for its own recommendation.');
   operationsPerson=await db.person.create({data:{firstName:'Marine',lastName:'Operations test'}});
   operationsAccount=await db.account.create({data:{personId:operationsPerson.id,email:`credential-operations-${suffix}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}});
   const operationsToken=await marineTestToken(db,operationsAccount.id,secret);
