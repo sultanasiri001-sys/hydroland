@@ -244,11 +244,11 @@
     return [...groups.entries()].map(([key,rows])=>({rows,active:rows.find(row=>row.id===selectedOptions.get(key)) || rows.find(row=>row.stockQuantity>0) || rows[0]}));
   }
   const renderProducts=()=>{
-    const products=catalog.products.filter(product=>(catalog.typeFilter==='all'||(catalog.typeFilter==='products'&&product.kind!=='SERVICE')||(catalog.typeFilter==='services'&&product.kind==='SERVICE'))&&available(product.stockQuantity)
+    const products=catalog.products.filter(product=>(catalog.typeFilter==='all'||(catalog.typeFilter==='products'&&product.kind!=='SERVICE')||(catalog.typeFilter==='services'&&product.kind==='SERVICE'))&&available(product.stockQuantity) && (window.HydrolandProductPreferences?.allows(product.id) ?? true)
       && matchesSearch(product.nameAr,product.nameEn,product.description,product.sku,product.catalogDetails?.barcode,product.catalogDetails?.category,product.catalogDetails?.brand,product.catalogDetails?.size)
       && (!category.value||product.catalogDetails?.category===category.value) && (!brand.value||product.catalogDetails?.brand===brand.value) && (!onSale.checked||product.discountActive));
     if(sort.value)products.sort((a,b)=>String(a.currency).localeCompare(String(b.currency)) || (a.priceMinor-b.priceMinor)*(sort.value==='desc'?-1:1));
-    const productsOnly=Boolean(category.value||brand.value||onSale.checked);
+    const productsOnly=Boolean(category.value||brand.value||onSale.checked||window.HydrolandProductPreferences?.only());
     const trips=['all','trips'].includes(catalog.typeFilter)?catalog.trips.filter(trip=>!productsOnly&&matchesSearch(trip.title,trip.location?.locationName)&&available(capacityAvailable(trip)?1:0)):[];
     const courses=['all','courses'].includes(catalog.typeFilter)?catalog.courses.filter(course=>!productsOnly&&matchesSearch(course.title,course.courseCode,course.locationName)&&available(capacityAvailable(course)?1:0)):[];
     const warning=catalog.errors.length?uiLocale.html`<article class="hl-public-empty" role="status"><span>تعذر تحميل ${esc(catalog.errors.map(key=>({products:'السلع والخدمات',trips:'الرحلات',courses:'الدورات'}[key])).join('، '))}. المعروض أدناه هو ما أمكن تحميله.</span><button type="button" class="hl-store-retry">إعادة المحاولة</button></article>`:'';
@@ -256,6 +256,7 @@
     const tripCards=trips.map(trip=>uiLocale.html`<article data-store-trip="${esc(trip.id)}" data-public-service="trip"><div class="product-art"><span class="hl-product-image-state">رحلة غوص</span></div><small>رحلة · ${uiLocale.messageHTML((String(trip.type||'').toUpperCase().includes('SHORE')?uiLocale.message('غوص من الشاطئ'):uiLocale.message('رحلة بحرية')))}</small><h3>${esc(trip.title)}</h3><small>${(value=>value?esc(value):uiLocale.messageHTML(uiLocale.message('الموقع يحدده المركز')))(trip.location?.locationName||trip.siteName||trip.meetingPoint)}</small><small>${esc(tripDate(trip))}</small><small>المتاح ${Number(trip.remainingSeats??trip.capacity??0)} من ${Number(trip.capacity||0)} مقعد</small><strong>${(value=>value?esc(value):uiLocale.messageHTML(uiLocale.message('السعر حسب بيانات الرحلة')))(window.HydrolandBookings?.formatPrice?.(trip.price))}</strong><div class="hl-public-card-actions"><a data-public-detail="trip" href="#trip/${encodeURIComponent(trip.id)}">تفاصيل الرحلة</a><button type="button" data-book="${esc(trip.title)}" data-trip-id="${esc(trip.id)}">احجز الرحلة</button></div></article>`).join('');
     const courseCards=courses.map(course=>uiLocale.html`<article data-store-course="${esc(course.id)}"><div class="product-art"><span class="hl-product-image-state">دورة غوص</span></div><small>دورة · ${(value=>value?esc(value):uiLocale.messageHTML(uiLocale.message('مركز غوص')))(course.organization?.displayName)}</small><h3>${esc(course.title)}</h3><small>${esc(course.locationName)}</small><small>${esc(courseDate(course.startsAt))}</small><small>المتاح ${Number(course.remainingSeats)} من ${Number(course.capacity)} مقعد</small><strong>${money(course.priceMinor,course.currency)}</strong><details><summary>تفاصيل الدورة</summary><p>${(value=>value?esc(value):uiLocale.messageHTML(uiLocale.message('تواصل مع المركز لمعرفة تفاصيل البرنامج.')))(course.description)}</p><p>البرنامج: ${esc(course.courseCode)}</p><p>النهاية: ${esc(courseDate(course.endsAt))}</p><p>التسجيل بانتظار مراجعة المركز، ولا ينفّذ دفعًا إلكترونيًا.</p></details><button type="button" data-store-enroll="${esc(course.id)}" ${!capacityAvailable(course)?'disabled':''}>${uiLocale.messageHTML((!capacityAvailable(course)?uiLocale.message('اكتملت المقاعد'):uiLocale.message('طلب التسجيل')))}</button></article>`).join('');
     uiLocale.setHTML(grid, warning+productCards+tripCards+courseCards+(!products.length&&!trips.length&&!courses.length?uiLocale.html`<article class="hl-public-empty"><span>لا توجد عروض متاحة مطابقة لهذا الاختيار.</span></article>`:''));
+    grid.querySelectorAll('[data-public-product]').forEach(card=>{const product=catalog.products.find(row=>row.id===card.dataset.publicProduct);if(product)window.HydrolandProductPreferences?.renderControls(card,product)});
     grid.querySelectorAll('[data-catalog-variant]').forEach(select=>select.onchange=()=>{
       const row=catalog.products.find(item=>item.id===select.value);
       if(row){selectedOptions.set(catalogUI().group(row),row.id);renderProducts();
@@ -267,6 +268,7 @@
     grid.querySelectorAll('[data-store-enroll]').forEach(button=>button.addEventListener('click',()=>enrollCourse(button)));
     window.HydrolandBookingAvailability?.refresh?.();
   };
+  window.HydrolandProductPreferences?.mount(catalogControls,()=>{if(catalog.status!=='loading')renderProducts()});
   let catalogVersion=0;
   const loadProducts=async()=>{
     const version=++catalogVersion;catalog.status='loading';uiLocale.setHTML(grid, uiLocale.html`<article class="hl-public-empty"><span>جارٍ تحميل عروض المتجر...</span></article>`);

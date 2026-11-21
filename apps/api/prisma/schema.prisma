@@ -154,6 +154,7 @@ model Person {
 }
 
 model Account {
+  storeProductPreferences StoreProductPreference[]
   personalDataRequests PersonalDataRequest[]
   instructorDocuments InstructorDocument[]
   privacyGrievances PrivacyGrievance[]
@@ -2019,6 +2020,7 @@ enum StoreOrderStatus {
  FULFILLED
 }
 model StoreProduct {
+ customerPreferences StoreProductPreference[]
  catalogDetails Json?
  id String @id @default(uuid())
  organizationId String?
@@ -2038,6 +2040,17 @@ model StoreProduct {
  @@index([status,nameAr])
  @@index([organizationId,status])
 }
+model StoreProductPreference {
+ accountId String
+ productId String
+ favorite Boolean @default(false)
+ stockAlert Boolean @default(false)
+ account Account @relation(fields:[accountId], references:[id], onDelete:Cascade)
+ product StoreProduct @relation(fields:[productId], references:[id], onDelete:Cascade)
+ @@id([accountId,productId])
+ @@index([productId,stockAlert])
+}
+
 enum StoreProductKind {
  GOODS
  SERVICE
