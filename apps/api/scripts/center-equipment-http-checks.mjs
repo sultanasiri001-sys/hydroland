@@ -1,13 +1,28 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 
-// Called only by the CI + loopback guarded center HTTP suite. The temporary
-// column starts with a real TEXT FK; UUID mode tests query compatibility, not
-// a production schema migration or its foreign-key recovery.
+export const readCenterEquipmentScope=async db=>({
+  columns:await db.$queryRaw`SELECT column_name,udt_name,is_nullable,column_default,ordinal_position FROM information_schema.columns
+    WHERE table_schema=current_schema() AND table_name='EquipmentBarcode' AND column_name IN ('organizationId','__centerEquipmentOriginalOrganizationId') ORDER BY ordinal_position`,
+  rows:await db.$queryRaw`SELECT "resourceId","organizationId"::text AS "organizationId" FROM "EquipmentBarcode" ORDER BY "resourceId"`,
+  constraints:await db.$queryRaw`SELECT conname,pg_get_constraintdef(oid) AS definition FROM pg_constraint
+    WHERE conrelid='"EquipmentBarcode"'::regclass ORDER BY conname`,
+  indexes:await db.$queryRaw`SELECT indexname,indexdef FROM pg_indexes WHERE schemaname=current_schema() AND tablename='EquipmentBarcode' ORDER BY indexname`,
+});
+
+// Called only by the CI + loopback guarded center HTTP suite. Preserve the
+// bootstrap's real ownership column/FK/index while a temporary replacement
+// exercises TEXT and UUID queries. UUID mode is compatibility coverage, not a
+// production schema migration or its foreign-key recovery.
 export async function checkCenterEquipment(db,{base,a,b,ownerA,ta,tb,ts},check){
   if(process.env.CI!=='true'||!['localhost','127.0.0.1','[::1]'].includes(new URL(process.env.DATABASE_URL).hostname))throw new Error('CI loopback database required');
-  const columns=await db.$queryRaw`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='EquipmentBarcode' AND column_name='organizationId'`;
-  assert.equal(columns.length,0,'Expected isolated bootstrap schema without center scope');
+  const originalScope=await readCenterEquipmentScope(db);
+  assert.equal(originalScope.columns.length,1,'Expected the verified bootstrap ownership column and no leftover fixture column');
+  assert.equal(originalScope.columns[0].column_name,'organizationId');
+  assert.equal(originalScope.columns[0].udt_name,'text','TEXT/UUID query fixture requires the canonical TEXT identity schema');
+  assert.ok(originalScope.constraints.some(row=>row.conname==='EquipmentBarcode_organizationId_fkey'),'Bootstrap center ownership FK must exist');
+  assert.ok(originalScope.indexes.some(row=>row.indexname==='EquipmentBarcode_organizationId_stockStatus_idx'),'Bootstrap center ownership index must exist');
+  let fixtureScopeInstalled=false;
   const resources=[],inspectionRequests=[],movementRequests=[];
   const policies=await db.$queryRaw`SELECT "id","state" FROM "PolicyControl" WHERE "category"='EQUIPMENT' AND "ruleKey" IN ('INSPECTION_STATUS','SERVICE_EXPIRY')`;
   const request=async(token,path,body,method)=>{
@@ -15,11 +30,15 @@ export async function checkCenterEquipment(db,{base,a,b,ownerA,ta,tb,ts},check){
     return {status:response.status,body:await response.json()};
   };
   try{
-    await db.$executeRaw`ALTER TABLE "EquipmentBarcode" ADD COLUMN "organizationId" TEXT REFERENCES "Organization"("id")`;
+    await db.$transaction(async tx=>{
+      await tx.$executeRaw`ALTER TABLE "EquipmentBarcode" RENAME COLUMN "organizationId" TO "__centerEquipmentOriginalOrganizationId"`;
+      await tx.$executeRaw`ALTER TABLE "EquipmentBarcode" ADD COLUMN "organizationId" TEXT CONSTRAINT "EquipmentBarcode_ci_center_scope_fkey" REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE`;
+    });
+    fixtureScopeInstalled=true;
     await db.$executeRaw`UPDATE "PolicyControl" SET "state"='ENABLED' WHERE "category"='EQUIPMENT' AND "ruleKey" IN ('INSPECTION_STATUS','SERVICE_EXPIRY')`;
     for(const keyType of ['TEXT','UUID']){
       if(keyType==='UUID'){
-        await db.$executeRaw`ALTER TABLE "EquipmentBarcode" DROP CONSTRAINT "EquipmentBarcode_organizationId_fkey"`;
+        await db.$executeRaw`ALTER TABLE "EquipmentBarcode" DROP CONSTRAINT "EquipmentBarcode_ci_center_scope_fkey"`;
         await db.$executeRaw`ALTER TABLE "EquipmentBarcode" ALTER COLUMN "organizationId" TYPE UUID USING "organizationId"::uuid`;
       }
       const fixtures=[];
@@ -127,6 +146,7 @@ export async function checkCenterEquipment(db,{base,a,b,ownerA,ta,tb,ts},check){
       r=await request(tb,'/lookup/'+other.code);check(r.status===200&&r.body.stockStatus==='AVAILABLE'&&r.body.location==='STORE',`${keyType}: other center equipment unchanged`);
     }
   }finally{
+    try{
     await db.operationalSetting.deleteMany({where:{key:{in:resources.map(id=>'center-equipment-create:'+id)}}});
     await db.operationalSetting.deleteMany({where:{key:{in:movementRequests.map(id=>'center-equipment-move:'+id)}}});
     await db.operationalSetting.deleteMany({where:{key:{in:inspectionRequests.map(id=>'center-equipment-inspection:'+id)}}});
@@ -135,6 +155,15 @@ export async function checkCenterEquipment(db,{base,a,b,ownerA,ta,tb,ts},check){
     await db.$executeRaw`DELETE FROM "EquipmentBarcode" WHERE "resourceId"=ANY(${resources}::text[])`;
     await db.calendarResource.deleteMany({where:{id:{in:resources}}});
     for(const policy of policies)await db.$executeRaw`UPDATE "PolicyControl" SET "state"=${policy.state} WHERE "id"::text=${policy.id}`;
-    await db.$executeRaw`ALTER TABLE "EquipmentBarcode" DROP COLUMN IF EXISTS "organizationId"`;
+    }finally{
+      if(fixtureScopeInstalled)await db.$transaction(async tx=>{
+        await tx.$executeRaw`ALTER TABLE "EquipmentBarcode" DROP COLUMN "organizationId"`;
+        await tx.$executeRaw`ALTER TABLE "EquipmentBarcode" RENAME COLUMN "__centerEquipmentOriginalOrganizationId" TO "organizationId"`;
+      });
+      const restoredScope=await readCenterEquipmentScope(db);
+      check(JSON.stringify(restoredScope.columns)===JSON.stringify(originalScope.columns),'Equipment ownership column shape is restored after compatibility fixtures');
+      check(JSON.stringify(restoredScope.rows)===JSON.stringify(originalScope.rows),'Existing equipment ownership rows are unchanged after compatibility fixtures');
+      check(JSON.stringify(restoredScope.constraints)===JSON.stringify(originalScope.constraints)&&JSON.stringify(restoredScope.indexes)===JSON.stringify(originalScope.indexes),'Equipment ownership FK, indexes and other constraints are preserved');
+    }
   }
 }
