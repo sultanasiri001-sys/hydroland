@@ -246,6 +246,18 @@
     dialog.querySelector('[data-detail-close]').addEventListener('click',closeDetails);dialog.querySelector('[data-detail-back]').addEventListener('click',closeDetails);
     const action=dialog.querySelector('[data-detail-action]'),art=dialog.querySelector('.hl-public-detail-art');
     if(detail){uiLocale.setMessage(dialog.querySelector('[data-detail-label]'),detail.label);uiLocale.setMessage(dialog.querySelector('h2'),detail.title);uiLocale.setMessage(dialog.querySelector('[data-detail-description]'),detail.description);uiLocale.setMessage(dialog.querySelector('[data-detail-note]'),detail.note);art.classList.add('hl-public-detail-art-'+detail.art);if(detail.imageCategory){art.dataset.publicArt=detail.imageCategory;const note=document.createElement('small');note.className='hl-trip-art-note';uiLocale.setText(note, ...['صورة توضيحية للنشاط']);art.appendChild(note)}if(detail.art!=='sea')uiLocale.setHTML(art, icon(detail.art==='product'?'bag':'learn'));for(const [label,value] of detail.facts){const row=document.createElement('div'),dt=document.createElement('dt'),dd=document.createElement('dd');uiLocale.setMessage(dt,label);uiLocale.setMessage(dd,value);row.append(dt,dd);dialog.querySelector('dl').appendChild(row)}uiLocale.setMessage(action,detail.action);action.disabled=Boolean(detail.disabled);action.addEventListener('click',()=>{leaveDetailsForAction(kind);detail.run()})}
+    if (detail && kind==='product' && window.HydrolandProductCatalog) {
+      const ui=window.HydrolandProductCatalog,rows=window.HydrolandStore.getProducts(),product=rows.find(row=>row.id===id);
+      if(product){
+        const facts=dialog.querySelector('dl');
+        const add=(label,value)=>{if(!value)return;const row=document.createElement('div'),key=document.createElement('dt'),val=document.createElement('dd');key.textContent=ui.t(label);val.textContent=value;row.append(key,val);facts.append(row)};
+        if(product.discountActive)add('السعر قبل الخصم',new Intl.NumberFormat('ar-SA',{style:'currency',currency:product.currency}).format(product.listPriceMinor/100));
+        for(const [key,label] of [['size','المقاس'],['color','اللون'],['category','التصنيف'],['brand','العلامة التجارية'],['barcode','الباركود']])add(label,product.catalogDetails?.[key]);
+        const options=rows.filter(row=>ui.group(row)===ui.group(product));
+        if(options.length>1){const nav=document.createElement('nav');nav.className='hl-catalog-options';nav.setAttribute('aria-label',ui.t('اختر المقاس أو اللون'));
+          for(const row of options){const link=document.createElement('a');link.href='#product/'+encodeURIComponent(row.id);link.textContent=ui.option(row);link.setAttribute('aria-current',String(row.id===id));nav.append(link)}facts.after(nav)}
+      }
+    }
     if(detail&&['trip','product'].includes(kind))window.HydrolandServiceImages?.showPublic(art,kind,id,detail.title);
     if(!detail){art.hidden=true;uiLocale.setText(dialog.querySelector('h2'), ...[status==='loading'?'جارٍ تحميل التفاصيل...':status==='error'?'تعذر تحميل التفاصيل':'هذا المحتوى غير متاح']);uiLocale.setText(dialog.querySelector('[data-detail-description]'), ...[status==='error'?'أعد المحاولة للاتصال بالخدمة.':status==='loading'?'نحمّل أحدث البيانات المنشورة.':'قد يكون الرابط غير صحيح أو لم يعد المحتوى منشورًا.']);action.hidden=status!=='error';uiLocale.setText(action, ...['إعادة المحاولة']);action.addEventListener('click',()=>void retry?.())}
     if(!dialog.open){

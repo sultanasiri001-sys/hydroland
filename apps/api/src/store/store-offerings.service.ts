@@ -5,7 +5,9 @@ import { DatabaseService } from '../database/database.service';
 import { randomUUID } from 'node:crypto';
 import { createCommerceContractSnapshot } from '../commerce/commerce-contract-snapshot';
 
-const productFields = ['sku','nameAr','description','priceMinor','stockQuantity','kind','status'];
+import { catalogDetails } from './product-catalog';
+
+const productFields = ['catalogDetails','sku','nameAr','description','priceMinor','stockQuantity','kind','status'];
 const courseFields = ['courseCode','title','description','locationName','startsAt','endsAt','capacity','priceMinor','status'];
 
 @Injectable()
@@ -48,7 +50,7 @@ export class StoreOfferingsService {
     if (before.updatedAt.getTime()!==this.revision(value).getTime()) throw new ConflictException('تغير العرض. أعد تحميله قبل الحفظ.');
   }
   private same(before: Record<string,unknown>, data: Record<string,unknown>) {
-    return Object.entries(data).every(([key,value])=>value instanceof Date ? (before[key] instanceof Date && (before[key] as Date).getTime()===value.getTime()) : before[key]===value);
+    return Object.entries(data).every(([key,value])=>value instanceof Date ? (before[key] instanceof Date && (before[key] as Date).getTime()===value.getTime()) : key === 'catalogDetails' ? JSON.stringify(catalogDetails(before[key] ?? {},Number(data.priceMinor))) === JSON.stringify(value) : before[key]===value);
   }
   private async audited(tx: Prisma.TransactionClient, actorId: string, organizationId: string, resource: string, resourceId: string, action: string) {
     await tx.auditEvent.create({data:{action,resource,resourceId,metadata:{actorId,organizationId}}});
@@ -74,7 +76,8 @@ export class StoreOfferingsService {
     this.object(input,[...productFields,id?'expectedUpdatedAt':'requestId']);
     const kind=input.kind;
     if (kind!=='GOODS' && kind!=='SERVICE') throw new BadRequestException('اختر سلعة أو خدمة.');
-    const data={sku:this.text(input,'sku',80),nameAr:this.text(input,'nameAr',240),description:this.text(input,'description',4000,true),priceMinor:this.integer(input,'priceMinor'),stockQuantity:this.integer(input,'stockQuantity'),kind:kind as StoreProductKind,status:this.status(input),currency:'SAR'};
+    const price = this.integer(input,'priceMinor');
+    const data={...(input.catalogDetails === undefined ? {} : {catalogDetails:catalogDetails(input.catalogDetails,price)}),sku:this.text(input,'sku',80),nameAr:this.text(input,'nameAr',240),description:this.text(input,'description',4000,true),priceMinor:this.integer(input,'priceMinor'),stockQuantity:this.integer(input,'stockQuantity'),kind:kind as StoreProductKind,status:this.status(input),currency:'SAR'};
     const productId=id||this.requestId(input.requestId);
     return this.retryUnique(()=>this.db.serializable(async tx=>{
       const organization=await this.providerScope(tx,accountId),before=await tx.storeProduct.findUnique({where:{id:productId}});
@@ -83,6 +86,7 @@ export class StoreOfferingsService {
         if (before.organizationId!==organization.id) throw new ConflictException('تعذر إعادة استخدام طلب الحفظ.');
         if (!id) { if(this.same(before,data)) return before; throw new ConflictException('سبق حفظ هذا الطلب ببيانات مختلفة.'); }
         this.checkRevision(before,input.expectedUpdatedAt);
+        if (input.catalogDetails === undefined && before.catalogDetails != null) catalogDetails(before.catalogDetails,price);
         if (before.kind!==kind && await tx.storeOrderItem.count({where:{productId}})) throw new ConflictException('لا يمكن تغيير نوع عرض مرتبط بطلبات.');
       }
       const duplicate=await tx.storeProduct.findUnique({where:{sku:data.sku}});

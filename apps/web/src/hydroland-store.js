@@ -150,7 +150,7 @@
   const idempotencyKey=()=>`store-${Date.now()}-${globalThis.crypto?.randomUUID?.()||Math.random().toString(36).slice(2)}`;
   const panel=document.createElement('div');panel.className='hl-store-cart';uiLocale.setHTML(panel, uiLocale.html`<strong>السلة</strong><span class="hl-store-summary">السلة فارغة</span><button type="button" class="hl-store-checkout" disabled>إنشاء الطلب</button><small class="hl-store-payment-note">إنشاء الطلب يحفظ السلة. راجع الشروط ووافق عليها قبل الانتقال إلى الدفع.</small><button type="button" class="hl-store-orders">طلباتي</button><button type="button" class="hl-store-course-payments">مدفوعات دوراتي</button><div class="hl-store-orders-list" hidden></div><div class="hl-store-course-list" hidden></div>`);section.appendChild(panel);
   const summary=panel.querySelector('.hl-store-summary'),checkout=panel.querySelector('.hl-store-checkout'),orders=panel.querySelector('.hl-store-orders-list');
-  const renderCart=()=>{let n=0,total=0;for(const x of cart.values()){n+=x.quantity;total+=x.priceMinor*x.quantity}summary.textContent=n?(n+uiLocale.t(' منتج · ')+money(total)):uiLocale.t('السلة فارغة');checkout.disabled=!n};
+  const renderCart=()=>{let n=0,total=0;for(const x of cart.values()){n+=x.quantity;total+=x.priceMinor*x.quantity}summary.textContent=n?(n+uiLocale.t(' منتج · ')+money(total)):uiLocale.t('السلة فارغة');checkout.disabled=!n;const clear=panel.querySelector('[data-clear-catalog-cart]');if(clear)clear.hidden=!n};
   const parse=async r=>{const body=await r.json().catch(()=>({}));if(!r.ok)throw (Array.isArray(body.message)?new Error(body.message.join('، ')):new Error(body.message||`HTTP ${r.status}`));return body};
   const loadPayments=async()=>{const r=await auth().authorizedFetch('/store/payments/mine');const data=await parse(r);return Array.isArray(data)?data:[]};
   const paymentForOrder=(payments,orderId)=>payments.find(payment=>payment.orderId===orderId)||null;
@@ -222,15 +222,31 @@
     }catch(error){if(session===auth()?.getSessionVersion?.())toast(localErrorMessage(error, 'تعذر التسجيل في الدورة'))}
     finally{button.disabled=false}
   }
+  const selectedOptions = new Map();
+  const catalogUI = () => window.HydrolandProductCatalog;
+  function variantGroups(products) {
+    const groups=new Map();
+    for(const product of products){
+      const key=catalogUI()?.group(product) ?? product.id;
+      if(!groups.has(key)) groups.set(key,[]);
+      groups.get(key).push(product);
+    }
+    return [...groups.entries()].map(([key,rows])=>({rows,active:rows.find(row=>row.id===selectedOptions.get(key)) || rows.find(row=>row.stockQuantity>0) || rows[0]}));
+  }
   const renderProducts=()=>{
     const products=catalog.products.filter(product=>(catalog.typeFilter==='all'||(catalog.typeFilter==='products'&&product.kind!=='SERVICE')||(catalog.typeFilter==='services'&&product.kind==='SERVICE'))&&available(product.stockQuantity));
     const trips=['all','trips'].includes(catalog.typeFilter)?catalog.trips.filter(trip=>available(capacityAvailable(trip)?1:0)):[];
     const courses=['all','courses'].includes(catalog.typeFilter)?catalog.courses.filter(course=>available(capacityAvailable(course)?1:0)):[];
     const warning=catalog.errors.length?uiLocale.html`<article class="hl-public-empty" role="status"><span>تعذر تحميل ${esc(catalog.errors.map(key=>({products:'السلع والخدمات',trips:'الرحلات',courses:'الدورات'}[key])).join('، '))}. المعروض أدناه هو ما أمكن تحميله.</span><button type="button" class="hl-store-retry">إعادة المحاولة</button></article>`:'';
-    const productCards=products.map(p=>uiLocale.html`<article data-public-product="${esc(p.id)}"><div class="product-art"><svg aria-hidden="true" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 22h28l4 32H14l4-32Z"/><path d="M24 26V18a8 8 0 0 1 16 0v8M25 37h14M25 44h9"/></svg><span class="hl-product-image-state">صورة العرض غير متاحة</span></div><small>${uiLocale.messageHTML((p.kind==='SERVICE'?uiLocale.message('خدمة'):uiLocale.message('سلعة')))} · ${esc(p.organization?.displayName||p.sku)}</small><h3>${esc(p.nameAr)}</h3><strong>${money(p.priceMinor,p.currency)}</strong><small>المتوفر: ${Number(p.stockQuantity)}${uiLocale.messageHTML((p.kind==='SERVICE'?uiLocale.message(' وحدة خدمة'):''))}</small>${(p.kind==='SERVICE'?uiLocale.html`<p>تُنسّق تفاصيل تنفيذ الخدمة مع المركز بعد الطلب.</p>`:'')}<div class="hl-public-card-actions"><a data-public-detail="product" href="#product/${encodeURIComponent(p.id)}">تفاصيل المنتج</a><button type="button" data-store-add="${esc(p.id)}" ${p.stockQuantity<1?'disabled':''}>${uiLocale.messageHTML((p.stockQuantity<1?uiLocale.message('نفد المخزون'):uiLocale.message('أضف للسلة')))}</button></div></article>`).join('');
+    const productCards=variantGroups(products).map(({active:p,rows})=>uiLocale.html`<article data-public-product="${esc(p.id)}"><div class="product-art"><svg aria-hidden="true" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 22h28l4 32H14l4-32Z"/><path d="M24 26V18a8 8 0 0 1 16 0v8M25 37h14M25 44h9"/></svg><span class="hl-product-image-state">صورة العرض غير متاحة</span></div><small>${uiLocale.messageHTML((p.kind==='SERVICE'?uiLocale.message('خدمة'):uiLocale.message('سلعة')))} · ${esc(p.organization?.displayName||p.sku)}</small><h3>${esc(p.nameAr)}</h3>${p.description?'<p>'+esc(p.description)+'</p>':''}<small>${esc(p.sku)} ${esc([p.catalogDetails?.size,p.catalogDetails?.color].filter(Boolean).join(' / '))}</small>${p.discountActive?'<del>'+esc(money(p.listPriceMinor,p.currency))+'</del>':''}<strong>${money(p.priceMinor,p.currency)}</strong>${rows.length>1?'<label>'+esc(catalogUI().t('اختر المقاس أو اللون'))+'<select data-catalog-variant>'+rows.map(row=>'<option value="'+esc(row.id)+'" '+(row.id===p.id?'selected':'')+'>'+esc(catalogUI().option(row))+'</option>').join('')+'</select></label>':''}<small>المتوفر: ${Number(p.stockQuantity)}${uiLocale.messageHTML((p.kind==='SERVICE'?uiLocale.message(' وحدة خدمة'):''))}</small>${(p.kind==='SERVICE'?uiLocale.html`<p>تُنسّق تفاصيل تنفيذ الخدمة مع المركز بعد الطلب.</p>`:'')}<div class="hl-public-card-actions"><a data-public-detail="product" href="#product/${encodeURIComponent(p.id)}">تفاصيل المنتج</a><button type="button" data-store-add="${esc(p.id)}" ${p.stockQuantity<1?'disabled':''}>${uiLocale.messageHTML((p.stockQuantity<1?uiLocale.message('نفد المخزون'):uiLocale.message('أضف للسلة')))}</button></div></article>`).join('');
     const tripCards=trips.map(trip=>uiLocale.html`<article data-store-trip="${esc(trip.id)}" data-public-service="trip"><div class="product-art"><span class="hl-product-image-state">رحلة غوص</span></div><small>رحلة · ${uiLocale.messageHTML((String(trip.type||'').toUpperCase().includes('SHORE')?uiLocale.message('غوص من الشاطئ'):uiLocale.message('رحلة بحرية')))}</small><h3>${esc(trip.title)}</h3><small>${(value=>value?esc(value):uiLocale.messageHTML(uiLocale.message('الموقع يحدده المركز')))(trip.location?.locationName||trip.siteName||trip.meetingPoint)}</small><small>${esc(tripDate(trip))}</small><small>المتاح ${Number(trip.remainingSeats??trip.capacity??0)} من ${Number(trip.capacity||0)} مقعد</small><strong>${(value=>value?esc(value):uiLocale.messageHTML(uiLocale.message('السعر حسب بيانات الرحلة')))(window.HydrolandBookings?.formatPrice?.(trip.price))}</strong><div class="hl-public-card-actions"><a data-public-detail="trip" href="#trip/${encodeURIComponent(trip.id)}">تفاصيل الرحلة</a><button type="button" data-book="${esc(trip.title)}" data-trip-id="${esc(trip.id)}">احجز الرحلة</button></div></article>`).join('');
     const courseCards=courses.map(course=>uiLocale.html`<article data-store-course="${esc(course.id)}"><div class="product-art"><span class="hl-product-image-state">دورة غوص</span></div><small>دورة · ${(value=>value?esc(value):uiLocale.messageHTML(uiLocale.message('مركز غوص')))(course.organization?.displayName)}</small><h3>${esc(course.title)}</h3><small>${esc(course.locationName)}</small><small>${esc(courseDate(course.startsAt))}</small><small>المتاح ${Number(course.remainingSeats)} من ${Number(course.capacity)} مقعد</small><strong>${money(course.priceMinor,course.currency)}</strong><details><summary>تفاصيل الدورة</summary><p>${(value=>value?esc(value):uiLocale.messageHTML(uiLocale.message('تواصل مع المركز لمعرفة تفاصيل البرنامج.')))(course.description)}</p><p>البرنامج: ${esc(course.courseCode)}</p><p>النهاية: ${esc(courseDate(course.endsAt))}</p><p>التسجيل بانتظار مراجعة المركز، ولا ينفّذ دفعًا إلكترونيًا.</p></details><button type="button" data-store-enroll="${esc(course.id)}" ${!capacityAvailable(course)?'disabled':''}>${uiLocale.messageHTML((!capacityAvailable(course)?uiLocale.message('اكتملت المقاعد'):uiLocale.message('طلب التسجيل')))}</button></article>`).join('');
     uiLocale.setHTML(grid, warning+productCards+tripCards+courseCards+(!products.length&&!trips.length&&!courses.length?uiLocale.html`<article class="hl-public-empty"><span>لا توجد عروض متاحة مطابقة لهذا الاختيار.</span></article>`:''));
+    grid.querySelectorAll('[data-catalog-variant]').forEach(select=>select.onchange=()=>{
+      const row=catalog.products.find(item=>item.id===select.value);
+      if(row){selectedOptions.set(catalogUI().group(row),row.id);renderProducts();
+        [...grid.querySelectorAll('[data-catalog-variant]')].find(control=>control.value===row.id)?.focus()}
+    });
     grid.querySelector('.hl-store-retry')?.addEventListener('click',loadProducts);
     grid.querySelectorAll('[data-store-add]').forEach(button=>button.addEventListener('click',()=>addToCart(button.dataset.storeAdd)));
     grid.querySelectorAll('[data-book]').forEach(button=>button.addEventListener('click',()=>window.HydrolandBookings?.openBooking?.(button.dataset.tripId)));
@@ -328,7 +344,7 @@
     const active=sameSession();
     let order=null;
     try{
-      const r=await auth().authorizedFetch('/store/orders',{method:'POST',body:JSON.stringify({items:[...cart.values()].map(x=>({productId:x.id,quantity:x.quantity}))})});
+      const r=await auth().authorizedFetch('/store/orders',{method:'POST',body:JSON.stringify({items:[...cart.values()].map(x=>({productId:x.id,quantity:x.quantity,...(x.catalogDetails ? {expectedUnitPriceMinor:x.priceMinor} : {})}))})});
       order=await parse(r);
       if(!active())return;
       cart.clear();renderCart();await loadProducts();
@@ -339,6 +355,8 @@
     }catch(error){if(active())toast(localErrorMessage(error, 'تعذر إنشاء الطلب'))}
     finally{if(active())renderCart()}
   });
+  const clearCart=document.createElement('button');clearCart.type='button';clearCart.dataset.clearCatalogCart='';clearCart.hidden=true;clearCart.textContent=catalogUI()?.t('إفراغ السلة') || 'إفراغ السلة';checkout.after(clearCart);
+  clearCart.addEventListener('click',()=>{cart.clear();renderCart();void loadProducts()});
   panel.querySelector('.hl-store-orders').addEventListener('click',loadOrders);
   panel.querySelector('.hl-store-course-payments').addEventListener('click',loadCoursePayments);
   const clearCommerceSession=()=>{paymentViewVersion++;ordersVersion++;courseListVersion++;cart.clear();renderCart();orders.replaceChildren();orders.hidden=true;const list=panel.querySelector('.hl-store-course-list');list.replaceChildren();list.hidden=true;document.getElementById('hl-store-payment-dialog')?.close();};

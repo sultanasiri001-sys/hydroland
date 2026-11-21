@@ -4,15 +4,15 @@ import { AccessTokenGuard } from '../auth/access-token.guard';
 import { StoreService } from './store.service';
 
 type ProductStatus='DRAFT'|'ACTIVE'|'INACTIVE';
-type ProductInput={sku:string;nameAr:string;nameEn?:string;description?:string;priceMinor:number;currency?:string;stockQuantity:number;status?:ProductStatus};
-type ProductPatch=Partial<ProductInput>;
+type ProductInput={variantOf?:string;catalogDetails?:unknown;sku:string;nameAr:string;nameEn?:string;description?:string;priceMinor:number;currency?:string;stockQuantity:number;status?:ProductStatus};
+type ProductPatch=Partial<ProductInput> & {expectedUpdatedAt?:string};
 type OrderStatus='CREATED'|'CONFIRMED'|'CANCELLED'|'FULFILLED';
 
 @Controller('store')
 export class StoreController {
  constructor(private readonly store:StoreService){}
  @Get('products') products(){return this.store.listProducts()}
- @UseGuards(AccessTokenGuard) @Post('orders') order(@Req() req:any,@Body() body:{items:{productId:string;quantity:number}[]}){return this.store.createOrder(req.auth.accountId,body.items)}
+ @UseGuards(AccessTokenGuard) @Post('orders') order(@Req() req:any,@Body() body:{items:{productId:string;quantity:number;expectedUnitPriceMinor?:number}[]}){return this.store.createOrder(req.auth.accountId,body.items)}
  @UseGuards(AccessTokenGuard) @Get('orders/mine') mine(@Req() req:any){return this.store.listMine(req.auth.accountId)}
  @UseGuards(AccessTokenGuard) @Post('orders/:orderId/payment') createPayment(@Req() req:any,@Param('orderId') orderId:string,@Body() body:{idempotencyKey:string}){return this.store.createPayment(req.auth.accountId,orderId,body.idempotencyKey)}
  @UseGuards(AccessTokenGuard) @Get('payments/mine') myPayments(@Req() req:any){return this.store.listMyPayments(req.auth.accountId)}

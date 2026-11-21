@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { AuditService } from '../audit/audit.service';
+import { catalogDetails, catalogPrice } from './product-catalog';
 import { randomUUID } from 'node:crypto';
 import { createCommerceContractSnapshot } from '../commerce/commerce-contract-snapshot';
 import { requireVerifiedStoreCollection, STORE_CHECKOUT_SOURCE } from './store-checkout-contract';
@@ -10,8 +11,10 @@ import { requireVerifiedStoreCollection, STORE_CHECKOUT_SOURCE } from './store-c
 export class StoreService {
   constructor(private readonly prisma: DatabaseService, private readonly audit: AuditService) {}
 
-  listProducts() {
-    return this.prisma.storeProduct.findMany({ where: { status: 'ACTIVE', OR:[{organizationId:null},{organization:{status:'ACTIVE'}}] }, include:{organization:{select:{displayName:true}}}, orderBy: { nameAr: 'asc' } });
+  async listProducts() {
+    const rows = await this.prisma.storeProduct.findMany({ where: { status: 'ACTIVE', OR:[{organizationId:null},{organization:{status:'ACTIVE'}}] }, include:{organization:{select:{displayName:true}}}, orderBy: { nameAr: 'asc' } });
+    const now = new Date();
+    return rows.map(product => catalogPrice(product, now));
   }
 
 
@@ -27,30 +30,44 @@ export class StoreService {
     return this.prisma.storeProduct.findMany({ orderBy: { createdAt: 'desc' } });
   }
 
-  async createProduct(input: { sku:string; nameAr:string; nameEn?:string; description?:string; priceMinor:number; currency?:string; stockQuantity:number; status?:'DRAFT'|'ACTIVE'|'INACTIVE' }) {
+  async createProduct(input: { variantOf?:string; catalogDetails?:unknown; sku:string; nameAr:string; nameEn?:string; description?:string; priceMinor:number; currency?:string; stockQuantity:number; status?:'DRAFT'|'ACTIVE'|'INACTIVE' }) {
     this.validateProductInput(input, true);
     const existing=await this.prisma.storeProduct.findUnique({where:{sku:input.sku.trim()}});
     if(existing)throw new BadRequestException('SKU already exists');
-    return this.prisma.storeProduct.create({data:{sku:input.sku.trim(),nameAr:input.nameAr.trim(),nameEn:input.nameEn?.trim()||null,description:input.description?.trim()||null,priceMinor:input.priceMinor,currency:input.currency||'SAR',stockQuantity:input.stockQuantity,status:input.status||'DRAFT'}});
+    const parent = input.variantOf ? await this.prisma.storeProduct.findUnique({where:{id:input.variantOf}}) : null;
+    if(input.variantOf && !parent) throw new NotFoundException('Product not found');
+    if(parent && input.currency && input.currency !== parent.currency) throw new BadRequestException('Variant currency mismatch');
+    const details = input.catalogDetails === undefined ? undefined : catalogDetails(input.catalogDetails,input.priceMinor);
+    if(parent && (!details || details.family !== (catalogPrice(parent,new Date()).catalogDetails?.family || parent.sku))) throw new BadRequestException('Variant group does not match product');
+    return this.prisma.storeProduct.create({data:{...(parent ? {organizationId:parent.organizationId,kind:parent.kind} : {}),...(details === undefined ? {} : {catalogDetails:details}),sku:input.sku.trim(),nameAr:input.nameAr.trim(),nameEn:input.nameEn?.trim()||null,description:input.description?.trim()||null,priceMinor:input.priceMinor,currency:parent?.currency||input.currency||'SAR',stockQuantity:input.stockQuantity,status:input.status||'DRAFT'}});
   }
 
-  async updateProduct(productId:string,input:{sku?:string;nameAr?:string;nameEn?:string;description?:string;priceMinor?:number;currency?:string;stockQuantity?:number;status?:'DRAFT'|'ACTIVE'|'INACTIVE'}) {
+  async updateProduct(productId:string,input:{expectedUpdatedAt?:string;catalogDetails?:unknown;sku?:string;nameAr?:string;nameEn?:string;description?:string;priceMinor?:number;currency?:string;stockQuantity?:number;status?:'DRAFT'|'ACTIVE'|'INACTIVE'}) {
     this.validateProductInput(input);
     const current=await this.prisma.storeProduct.findUnique({where:{id:productId}});
     if(!current)throw new NotFoundException('Product not found');
+    if(input.expectedUpdatedAt !== undefined && new Date(input.expectedUpdatedAt).getTime() !== current.updatedAt.getTime()) throw new ConflictException('تغير المنتج. حدّث البيانات قبل الحفظ.');
+    const details = input.catalogDetails ?? current.catalogDetails;
+    if(details != null) catalogDetails(details,input.priceMinor ?? current.priceMinor);
     if(input.sku!==undefined&&!input.sku.trim())throw new BadRequestException('SKU cannot be empty');
     if(input.nameAr!==undefined&&!input.nameAr.trim())throw new BadRequestException('Arabic name cannot be empty');
     if(input.sku&&input.sku.trim()!==current.sku){const duplicate=await this.prisma.storeProduct.findUnique({where:{sku:input.sku.trim()}});if(duplicate)throw new BadRequestException('SKU already exists')}
-    return this.prisma.storeProduct.update({where:{id:productId},data:{...(input.sku!==undefined?{sku:input.sku.trim()}:{}),...(input.nameAr!==undefined?{nameAr:input.nameAr.trim()}:{}),...(input.nameEn!==undefined?{nameEn:input.nameEn.trim()||null}:{}),...(input.description!==undefined?{description:input.description.trim()||null}:{}),...(input.priceMinor!==undefined?{priceMinor:input.priceMinor}:{}),...(input.currency!==undefined?{currency:input.currency}:{}),...(input.stockQuantity!==undefined?{stockQuantity:input.stockQuantity}:{}),...(input.status!==undefined?{status:input.status}:{})}});
+    return this.prisma.storeProduct.update({where:{id:productId,updatedAt:current.updatedAt},data:{...(input.catalogDetails === undefined ? {} : {catalogDetails: catalogDetails(input.catalogDetails,input.priceMinor ?? current.priceMinor)}),...(input.sku!==undefined?{sku:input.sku.trim()}:{}),...(input.nameAr!==undefined?{nameAr:input.nameAr.trim()}:{}),...(input.nameEn!==undefined?{nameEn:input.nameEn.trim()||null}:{}),...(input.description!==undefined?{description:input.description.trim()||null}:{}),...(input.priceMinor!==undefined?{priceMinor:input.priceMinor}:{}),...(input.currency!==undefined?{currency:input.currency}:{}),...(input.stockQuantity!==undefined?{stockQuantity:input.stockQuantity}:{}),...(input.status!==undefined?{status:input.status}:{})}});
   }
 
-  async createOrder(accountId: string, items: { productId: string; quantity: number }[]) {
+  async createOrder(accountId: string, items: { productId: string; quantity: number; expectedUnitPriceMinor?:number }[]) {
     if (!items?.length) throw new BadRequestException('Order requires items');
 
     const quantities = new Map<string, number>();
+    const quoted = new Map<string,number>();
     for (const item of items) {
       if (!item?.productId || !Number.isInteger(item.quantity) || item.quantity < 1) {
         throw new BadRequestException('Invalid order item');
+      }
+      if (item.expectedUnitPriceMinor !== undefined) {
+        const price = item.expectedUnitPriceMinor;
+        if (!Number.isSafeInteger(price) || price < 0 || (quoted.has(item.productId) && quoted.get(item.productId) !== price)) throw new BadRequestException('Invalid catalog price');
+        quoted.set(item.productId,price);
       }
       quantities.set(item.productId, (quantities.get(item.productId) ?? 0) + item.quantity);
     }
@@ -63,13 +80,14 @@ export class StoreService {
         where: { id: { in: normalizedItems.map((item) => item.productId) }, status: 'ACTIVE', OR:[{organizationId:null},{organization:{status:'ACTIVE'}}] },
         include: { organization: { select: { id: true, displayName: true, legalName: true, registrationNumber: true, address: true } } },
       });
-      const productMap = new Map(products.map((product) => [product.id, product]));
+      const productMap = new Map(products.map(product => [product.id, catalogPrice(product,new Date(recordedAt))]));
 
       let totalMinor = 0;
       let orderCurrency: string | undefined;
       for (const item of normalizedItems) {
         const product = productMap.get(item.productId);
         if (!product) throw new NotFoundException('Product unavailable');
+        if (quoted.has(product.id) && quoted.get(product.id) !== product.priceMinor) throw new ConflictException('تغير سعر المنتج. حدّث المتجر وراجع السعر قبل تأكيد الطلب.');
         if (!/^[A-Z]{3}$/.test(product.currency)) throw new BadRequestException('Product currency is invalid');
         if (orderCurrency !== undefined && orderCurrency !== product.currency) {
           throw new BadRequestException('Order items must use a single currency');
@@ -90,12 +108,12 @@ export class StoreService {
             productId: item.productId,
             quantity: item.quantity,
             unitPriceMinor: product.priceMinor,
-            contractSnapshot: createCommerceContractSnapshot({
+            contractSnapshot: { ...createCommerceContractSnapshot({
               sourceKind: 'STORE_ORDER_ITEM', sourceId: item.id, parentId: orderId, offeringId: product.id,
               customerAccountId: accountId, organizationId: product.organizationId ?? null, organization: product.organization ?? null,
-              kind: product.kind === 'GOODS' ? 'PHYSICAL_GOOD' : 'UNCLASSIFIED_SERVICE', title: product.nameAr,
+              kind: product.kind === 'GOODS' ? 'PHYSICAL_GOOD' : 'UNCLASSIFIED_SERVICE', title: [product.nameAr,product.catalogDetails?.size,product.catalogDetails?.color].filter(Boolean).join(' · '),
               quantity: item.quantity, unitPriceMinor: product.priceMinor, currency: product.currency, recordedAt,
-            }),
+            }), ...(product.catalogDetails ? {catalogSelection:{sku:product.sku, size:product.catalogDetails.size, color:product.catalogDetails.color, listPriceMinor:product.listPriceMinor}} : {}) },
           };
         } catch {
           throw new BadRequestException('Product contract information is invalid.');

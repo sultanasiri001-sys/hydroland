@@ -63,9 +63,9 @@ test('center directly creates, edits, stops, republishes and deletes an unused o
  const state=await setup(page,true);
  await page.route('**/api/v1/store/provider/products',route=>{const body=route.request().postDataJSON();state.writes.push(body);state.products=[{...service,...body,id:body.requestId}];return json(route,state.products[0],201)});
  await expect(page.locator('.hl-store-provider')).toBeVisible();const form=page.locator('[data-offer-form][data-type="products"][data-id=""]');await form.locator('..').locator('summary').click();
- for(const[key,value]of Object.entries({nameAr:'خدمة جديدة',sku:'NEW-SERVICE',price:'125.50',stockQuantity:'2'}))await form.locator(`[name=${key}]`).fill(value);
+ for(const[key,value]of Object.entries({nameAr:'خدمة جديدة',sku:'NEW-SERVICE',price:'125.50',stockQuantity:'2',catalog_size:'L',catalogSale:'100.00'}))await form.locator(`[name=${key}]`).fill(value);
  await form.locator('[name=kind]').selectOption('SERVICE');await form.locator('[name=status]').selectOption('ACTIVE');await form.locator('[type=submit]').click();
- await expect(page.locator('.hl-store-provider')).toContainText('تم حفظ العرض');expect(state.writes[0]).toMatchObject({kind:'SERVICE',priceMinor:12550,stockQuantity:2});expect(state.writes[0]).not.toHaveProperty('organizationId');
+ await expect(page.locator('.hl-store-provider')).toContainText('تم حفظ العرض');expect(state.writes[0]).toMatchObject({kind:'SERVICE',priceMinor:12550,stockQuantity:2,catalogDetails:{size:'L',salePriceMinor:10000}});expect(state.writes[0]).not.toHaveProperty('organizationId');
  const id=state.products[0].id;let revisionCount=0;
  await page.route('**/api/v1/store/provider/products/'+id,route=>{
    state.writes.push(route.request().postDataJSON());if(route.request().method()==='DELETE'){state.products=[];return json(route,{deleted:true})}
