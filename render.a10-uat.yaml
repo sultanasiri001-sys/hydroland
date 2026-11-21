@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: hydroland-a10-uat-drill-20261121
+    runtime: node
+    region: oregon
+    plan: free
+    branch: codex/a10-managed-uat-20261121
+    autoDeployTrigger: off
+    buildCommand: npm ci --workspace=@hydroland/api --include-workspace-root=true --no-audit --no-fund && npx --no-install prisma generate --schema apps/api/prisma/schema.prisma
+    startCommand: node ops/a10-uat/seed.mjs
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: hydroland-center-uat-db
+          property: connectionString
