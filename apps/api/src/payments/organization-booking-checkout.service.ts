@@ -1,3 +1,4 @@
+import { tripCalendarReservation } from '../trips/trip-calendar-reservation';
 import { FinanceAccessService } from '../finance/finance-access.service';
 import { requirePostedCommerceCollection } from '../commerce/rental-collection-ledger';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
@@ -75,6 +76,8 @@ export class OrganizationBookingCheckoutService {
         }
         return { payment: old, dispatch: false };
       }
+      const { calendarReservation } = await tripCalendarReservation(tx, booking.trip, true);
+      if (calendarReservation.issues.length) throw new ConflictException({ code: 'ORGANIZATION_BOOKING_CALENDAR_REVIEW', issues: calendarReservation.issues });
       this.integrations.requireOperational('PAYMENT_PSP', { allowSandbox: true });
       const payment = await tx.payment.create({ data: { accountId, bookingId, idempotencyKey: key, amountMinor: amount, currency: 'SAR',
         contractSnapshot: asJson({ ...accepted, organizationPaymentAuthorization: { source, buyerOrganizationId: organizationId,
@@ -143,7 +146,7 @@ export class OrganizationBookingCheckoutService {
         || observed.verified.capturedMinor !== amount || Date.now() - observed.verifiedAt.getTime() > 60000) throw pending();
       if (payment.status !== 'CAPTURED' || !payment.moyasarPaymentId || !payment.providerReference || payment.refundedAmountMinor !== 0) throw pending();
       if (await tx.commerceRefundOperation.findFirst({where:{paymentId:payment.id,status:{in:['RESERVED','DISPATCHED','RECONCILIATION_REQUIRED']}},select:{id:true}})) throw pending();
-      await requirePostedCommerceCollection(tx, { financeEntryId, sourceId: bookingId, referenceType: 'ORGANIZATION_BOOKING_COLLECTION', organizationId: seller, amountMinor: amount });
+      await requirePostedCommerceCollection(tx, { financeEntryId, sourceId: payment.id, referenceType: 'TRIP_PAYMENT_COLLECTION', organizationId: seller, amountMinor: amount });
       const existing = await tx.commerceCollectionEvidence.findUnique({ where: { sourceType_sourceId: { sourceType: source, sourceId: bookingId } } });
       if (existing) {
         if (existing.organizationId !== seller || existing.financeEntryId !== financeEntryId || existing.providerPaymentId !== payment.moyasarPaymentId
@@ -207,7 +210,8 @@ export class OrganizationBookingCheckoutService {
       if (changed) await tx.auditEvent.create({ data: { action: 'ORGANIZATION_PREPAYMENT_OBSERVED', resource: 'Payment', resourceId: updated.id,
         metadata: { organizationId: org, bookingId: booking.id, status, providerInvoiceId: invoice.id, providerPaymentId: verified?.id ?? null,
           capturedMinor: verified?.capturedMinor ?? 0, refundedMinor: updated.refundedAmountMinor } } });
-      const open = booking.status === 'PENDING' && booking.trip.startsAt > new Date();
+      const open = showLink && status === 'PENDING' && booking.status === 'PENDING' && booking.trip.startsAt > new Date()
+        && !(await tripCalendarReservation(tx, booking.trip, true)).calendarReservation.issues.length;
       return { paymentId: updated.id, bookingId: booking.id, status, amountMinor: amount, currency: 'SAR',
         refundedAmountMinor: updated.refundedAmountMinor, checkoutUrl: showLink && open && status === 'PENDING' ? invoice.url : null };
     });

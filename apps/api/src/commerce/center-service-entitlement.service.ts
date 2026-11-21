@@ -97,7 +97,7 @@ export class CenterServiceEntitlementService {
     const booking = await tx.booking.findFirst({ where: { id: bookingId, trip: { organizationId: scope.organizationId } },
       include: { trip: true, participants: { select: { id: true } } } });
     if (!booking) throw new NotFoundException('Booking not found in the supplying center.');
-    const payments = await tx.payment.findMany({ where: { bookingId, accountId: booking.accountId, status: { in: ['CAPTURED', 'REFUNDED'] } },
+    const payments = await tx.payment.findMany({ where: { bookingId, ...(booking.organizationId ? {} : { accountId: booking.accountId }), status: { in: ['CAPTURED', 'REFUNDED'] } },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 2 });
     const payment = payments.length === 1 ? payments[0] : null;
     const pendingRefund = payment ? await tx.commerceRefundOperation.findFirst({ where: { paymentId: payment.id, status: { in: PENDING_REFUNDS } }, select: { id: true } }) : null;

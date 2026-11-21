@@ -15,6 +15,9 @@ module.exports = async function checkPrepayment(tx, db, org, platform, creator, 
     const now = new Date(), id = randomUUID();
     const trip = await tx.trip.create({data:{title:'Original organization trip',type:'SHORE_DIVE',status:'OPEN',capacity:4,
       startsAt:new Date(now.getTime()+86400000*10),endsAt:new Date(now.getTime()+86400000*11),organizationId:seller.id}});
+    const resource=await tx.calendarResource.create({data:{type:'SITE',name:'Synthetic site '+id}});
+    await tx.calendarEvent.create({data:{organizationId:seller.id,referenceType:'TRIP',referenceId:trip.id,type:'TRIP',title:trip.title,
+      startsAt:trip.startsAt,endsAt:trip.endsAt,allocations:{create:{resourceId:resource.id,startsAt:trip.startsAt,endsAt:trip.endsAt}}}});
     const snapshot = captureTripBookingContract({bookingId:id,accountId:creator.id,buyerOrganizationId:org.id,seats:2,
       createdAt:now,price:{pricePerSeatMinor:5000,currency:'SAR',configured:true},trip:{...trip,organization:seller}});
     return tx.booking.create({data:{id,tripId:trip.id,accountId:creator.id,organizationId:org.id,status:'PENDING',seats:2,contractSnapshot:snapshot}});
@@ -44,6 +47,11 @@ module.exports = async function checkPrepayment(tx, db, org, platform, creator, 
   await assert.rejects(()=>checkout(input,creator.id),errorCode(403));
   await assert.rejects(()=>checkout({...input,quoteHash:'incorrect'}),errorCode(409));
   assert.equal(creates,0);
+  const event = await tx.calendarEvent.findUniqueOrThrow({where:{referenceType_referenceId:{referenceType:'TRIP',referenceId:booking.tripId}}});
+  await tx.calendarEvent.update({where:{id:event.id},data:{status:'CANCELLED'}});
+  await assert.rejects(()=>checkout(input),errorCode(409));
+  assert.equal(creates,0);
+  await tx.calendarEvent.update({where:{id:event.id},data:{status:'ACTIVE'}});
   const first=await checkout(input);
   assert.equal(first.status,'PENDING');assert(first.checkoutUrl);
   assert.equal((await checkout({...input,requestId:randomUUID()})).paymentId,first.paymentId);
@@ -62,11 +70,20 @@ module.exports = async function checkPrepayment(tx, db, org, platform, creator, 
   const entryAccount=await tx.financeAccount.create({data:{organizationId:seller.id,name:'Synthetic SAR ledger',currency:'SAR'}});
   const when=new Date();
   const entry=await tx.financeEntry.create({data:{organizationId:seller.id,financeAccountId:entryAccount.id,type:'REVENUE',status:'POSTED',amountMinor:10000,currency:'SAR',
-    referenceType:'ORGANIZATION_BOOKING_COLLECTION',referenceId:booking.id,requestedByAccountId:creator.id,approvedByAccountId:independent.id,postedByAccountId:accountant.id,
-    approvedAt:when,postedAt:when,approvals:{create:{requestedByAccountId:creator.id,decidedByAccountId:independent.id,status:'APPROVED',decidedAt:when}}}});
+    referenceType:'TRIP_PAYMENT_COLLECTION',referenceId:paid.id,requestedByAccountId:creator.id,approvedByAccountId:independent.id,postedByAccountId:accountant.id,
+    createdAt:new Date(when.getTime()-1000),approvedAt:when,postedAt:when,approvals:{create:{createdAt:new Date(when.getTime()-500),requestedByAccountId:creator.id,decidedByAccountId:independent.id,status:'APPROVED',decidedAt:when}}}});
   await assert.rejects(()=>service.matchLedger(delegate.id,org.id,booking.id,entry.id),errorCode(403));
   const matched=await service.matchLedger(accountant.id,org.id,booking.id,entry.id);
   assert(!matched.alreadyApplied);assert((await service.matchLedger(accountant.id,org.id,booking.id,entry.id)).alreadyApplied);
+  const { CenterServiceEntitlementService } = require('../dist/commerce/center-service-entitlement.service');
+  const { FinanceAccessService } = require('../dist/finance/finance-access.service');
+  const entitlement = new CenterServiceEntitlementService(db,new FinanceAccessService(db));
+  const readiness = await entitlement.readTrip(accountant.id,center.id,booking.id);
+  assert.equal(readiness.collectionFinanceEntryId,entry.id);
+  assert(readiness.blockers.includes('TRIP_NOT_COMPLETED'));
+  for (const code of ['VERIFIED_COLLECTION_REQUIRED','POSTED_COLLECTION_LEDGER_REQUIRED','PAYMENT_ORIGINAL_CONTRACT_BINDING_REQUIRED']) {
+    assert(!readiness.blockers.includes(code),code);
+  }
   const second=await book();
   const nextInput=makeInput(await service.quote(delegate.id,org.id,second.id));lose=true;
   await assert.rejects(()=>checkout(nextInput,delegate.id,second.id),errorCode(409));

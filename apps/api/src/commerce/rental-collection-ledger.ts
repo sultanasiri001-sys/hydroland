@@ -11,7 +11,7 @@ export async function requirePostedRentalCollection(tx: Prisma.TransactionClient
 
 export async function requirePostedCommerceCollection(tx: Prisma.TransactionClient, input: {
   financeEntryId: string; sourceId: string; organizationId: string; amountMinor: number;
-  referenceType: 'EQUIPMENT_RENTAL_COLLECTION' | 'ORGANIZATION_BOOKING_COLLECTION';
+  referenceType: 'EQUIPMENT_RENTAL_COLLECTION' | 'TRIP_PAYMENT_COLLECTION';
 }) {
   await tx.$queryRaw`SELECT "id" FROM "FinanceEntry" WHERE "id"::text=${input.financeEntryId} FOR SHARE`;
   const entry = await tx.financeEntry.findUnique({where: {id: input.financeEntryId}, include: {financeAccount: true, approvals: true}});

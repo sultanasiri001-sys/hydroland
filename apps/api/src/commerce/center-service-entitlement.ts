@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { tripBookingPaymentRequirement } from './trip-booking-contract';
+import { satisfiesTripBookingPayment, tripBookingPaymentRequirement } from './trip-booking-contract';
 
 type JsonRecord = Record<string, unknown>;
 const object = (value: unknown): JsonRecord | null => value && typeof value === 'object' && !Array.isArray(value) ? value as JsonRecord : null;
@@ -13,7 +13,7 @@ const sameIdentifiers = (left: unknown, right: string[]): boolean => identifiers
 // Customer acceptance adds evidence without changing the original commercial terms.
 const originalTerms = (value: unknown) => {
   const record = object(value);
-  return record ? Object.fromEntries(Object.entries(record).filter(([key]) => !['termsAcceptanceStatus', 'termsAcceptedAt', 'acceptedQuoteHash'].includes(key))) : null;
+  return record ? Object.fromEntries(Object.entries(record).filter(([key]) => !['termsAcceptanceStatus', 'termsAcceptedAt', 'acceptedQuoteHash', 'organizationPaymentAuthorization'].includes(key))) : null;
 };
 
 export interface CenterTripEntitlementInput {
@@ -90,7 +90,7 @@ export function evaluateCenterTripEntitlement(input: CenterTripEntitlementInput)
   if (input.tripStatus !== 'COMPLETED') blockers.push('TRIP_NOT_COMPLETED');
   if (!identifiers(input.participantIds) || input.participantIds.length !== booking.seats) blockers.push('BOOKING_ROSTER_REVIEW_REQUIRED');
   if (input.ambiguousPayment) blockers.push('MULTIPLE_COLLECTED_PAYMENTS_REVIEW_REQUIRED');
-  if (!payment || payment.bookingId !== booking.id || payment.accountId !== booking.accountId
+  if (!payment || payment.bookingId !== booking.id || (booking.organizationId ? !satisfiesTripBookingPayment(payment, requirement) : payment.accountId !== booking.accountId)
     || payment.status !== 'CAPTURED' || payment.currency !== 'SAR' || !minor(payment.amountMinor)
     || payment.amountMinor !== requirement.requiredAmountMinor || !identifier(payment.providerReference) || !identifier(payment.moyasarPaymentId)) blockers.push('VERIFIED_COLLECTION_REQUIRED');
   if (payment && (tripBookingPaymentRequirement({ ...booking, contractSnapshot: payment.contractSnapshot }).source !== 'SNAPSHOT'
