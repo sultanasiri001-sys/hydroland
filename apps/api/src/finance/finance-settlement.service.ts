@@ -206,15 +206,20 @@ export class FinanceSettlementService {
             throw new Error('FINANCE_SETTLEMENT_RECONCILIATION_BLOCKED');
           }
         }
-        const refundIds = productLines.flatMap(line => line.refundOperationId ? [line.refundOperationId] : []);
-        if (refundIds.length) {
-          // Serialize concurrent approvals for the same provider refunds, across separate imports.
+        if (productLines.length) {
+          const refunds = productLines.flatMap(line => line.refundOperationId ? [line.refundOperationId] : []);
+          const payments = productLines.filter(line => line.type === 'payment').map(line => line.providerPaymentId);
+          // A provider transaction can appear in only one approved statement. Recheck in the same
+          // serializable transaction that records the review, including concurrent imports.
           await tx.$queryRaw`SELECT id FROM "CommerceCheckout" WHERE id=ANY(${productLines.map(line=>line.localPaymentId)}::text[]) ORDER BY id FOR UPDATE`;
-          const [previous] = await tx.$queryRaw<Array<{ exists: boolean }>>`SELECT EXISTS(
+          const [priorStatement] = await tx.$queryRaw<Array<{ used: boolean }>>`SELECT EXISTS(
             SELECT 1 FROM "FinanceSettlementImport" i CROSS JOIN LATERAL jsonb_array_elements(i.lines) l
-            WHERE i.status='APPROVED' AND l->>'refundOperationId'=ANY(${refundIds}::text[])
-          ) AS exists`;
-          if (previous.exists || new Set(refundIds).size !== refundIds.length) throw new Error('FINANCE_SETTLEMENT_RECONCILIATION_BLOCKED');
+            WHERE i.status='APPROVED' AND (l->>'refundOperationId'=ANY(${refunds}::text[])
+              OR (l->>'type'='payment' AND l->>'providerPaymentId'=ANY(${payments}::text[])))
+          ) AS used`;
+          if (priorStatement.used || new Set(refunds).size !== refunds.length || new Set(payments).size !== payments.length) {
+            throw new Error('FINANCE_SETTLEMENT_RECONCILIATION_BLOCKED');
+          }
         }
       }
       const prior=await tx.$queryRaw<Array<{reviewerAccountId:string;decision:string}>>`SELECT "reviewerAccountId"::text AS "reviewerAccountId","decision"::text AS "decision" FROM "FinanceSettlementReview" WHERE "importId"=${financeKey('FinanceSettlementReview','importId',importId)}`;

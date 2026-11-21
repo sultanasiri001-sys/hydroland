@@ -28,7 +28,10 @@ export async function verifyProductSettlement({db,access,settlements,provider,ac
     await db.commerceCollectionEvidence.update({where:{id:evidence.id},data:{providerCapturedMinor:amountMinor}});
     await service.review(secondReviewer,imported.id,'APPROVED');
     assert.equal((await db.financeSettlementImport.findUniqueOrThrow({where:{id:imported.id}})).status,'APPROVED');
+    const reissued = await capture();
+    await assert.rejects(service.review(reviewer, reissued.id, 'APPROVED'), /FINANCE_SETTLEMENT_RECONCILIATION_BLOCKED/);
     lines=[line,{...line}];assert.equal((await capture()).mismatchedLineCount,2);
+    lines=[{...line,settlement_amount:line.amount+1}];assert.equal((await capture()).mismatchedLineCount,1);
     lines=[{...line,type:'refund'}];assert.equal((await capture()).mismatchedLineCount,1);
     console.log('PASS: product settlement from a verified rental receipt, independent dual review, evidence recheck, duplicate payment and unverified refund rejection');
   }finally{
