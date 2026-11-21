@@ -174,3 +174,20 @@ test('customer can save a product and opt in to its stock notification independe
  await page.locator('[data-product-preference="favorite"]').click();await expect(page.locator('[data-public-product]')).toHaveCount(0);
  expect(prefs.get('service-1').stockAlert).toBe(true);
 });
+
+test('center previews a CSV and saves selected products with their own SKU and price',async({page})=>{
+ const state=await setup(page,true);
+ await page.route('**/api/v1/store/provider/catalog/import',route=>{
+   const body=route.request().postDataJSON();state.writes.push(body);
+   return json(route,{count:body.rows.length,requestId:body.requestId},201);
+ });
+ const section=page.locator('.hl-store-provider [data-catalog-import]');
+ await section.locator('summary').click();
+ await section.locator('input[type=file]').setInputFiles({name:'inventory.csv',mimeType:'text/csv',
+   buffer:Buffer.from('sku,nameAr,price,stock,kind,status,sale,size,description\r\nFIN-M,زعانف,150.25,4,GOODS,ACTIVE,125.50,M,"وصف, مع فاصلة"')});
+ await expect(section.locator('li')).toContainText('FIN-M');
+ expect(state.writes).toHaveLength(0);
+ await section.getByRole('button',{name:'حفظ المنتجات'}).click();
+ await expect(section.getByRole('status')).toContainText('تم حفظ المنتجات');
+ expect(state.writes[0].rows[0]).toMatchObject({sku:'FIN-M',kind:'GOODS',status:'DRAFT',description:'وصف, مع فاصلة',priceMinor:15025,stockQuantity:4,catalogDetails:{salePriceMinor:12550,size:'M'}});
+});

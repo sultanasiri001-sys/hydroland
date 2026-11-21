@@ -1,5 +1,6 @@
 (() => {
   const labels = {
+    'نوع العرض':'Offer type',
     'تقارير المتجر':'Store reports','تصدير المنتجات':'Export products','تحديث تقرير الطلبات':'Refresh order report','تصدير الطلبات المعروضة':'Export displayed orders','من تاريخ':'From date','إلى تاريخ':'To date','العملة':'Currency','الحالة':'Status','بداية الخصم':'Sale start','نهاية الخصم':'Sale end','يعرض أحدث ٢٠٠ طلب. المبالغ هي قيمة الطلبات حسب حالتها.':'Includes the most recent 200 orders. Amounts are order values by status.','لا توجد طلبات للفترة المحددة.':'No orders in this date range.','تعذر تحميل التقرير.':'Could not load the report.','طلبات':'Orders','رقم الطلب':'Order number','تاريخ الطلب':'Order date','قيمة الطلب':'Order value','البحث في المنتجات والخدمات':'Search products and services','كل التصنيفات':'All categories','كل العلامات التجارية':'All brands','السعر من الأقل':'Price ascending','السعر من الأعلى':'Price descending','ترتيب المتجر':'Store order','المنتجات المخفضة فقط':'Discounted products only',
     'رمز مجموعة المقاسات':'Variant group code','المقاس':'Size','اللون':'Color','الباركود':'Barcode','التصنيف':'Category','العلامة التجارية':'Brand',
     'سعر البيع بعد الخصم':'Sale price','بداية الخصم بتوقيت الرياض':'Sale starts, Riyadh time','نهاية الخصم بتوقيت الرياض':'Sale ends, Riyadh time',
@@ -67,9 +68,9 @@
   }
   const sheetPrice=n=>Number.isSafeInteger(n)?(n/100).toFixed(2):'';
   function productExport(rows) {
-    downloadCsv('hydroland-products.csv',[[t('رقم المنتج'),t('اسم المنتج'),t('الوصف'),t('التصنيف'),t('العلامة التجارية'),t('رمز مجموعة المقاسات'),t('المقاس'),t('اللون'),t('الباركود'),t('السعر الأساسي'),t('سعر البيع بعد الخصم'),t('العملة'),t('المخزون'),t('الحالة'),t('بداية الخصم'),t('نهاية الخصم')],...rows.map(row=>{
+    downloadCsv('hydroland-products.csv',[[t('رقم المنتج'),t('اسم المنتج'),t('الوصف'),t('التصنيف'),t('العلامة التجارية'),t('رمز مجموعة المقاسات'),t('المقاس'),t('اللون'),t('الباركود'),t('السعر الأساسي'),t('سعر البيع بعد الخصم'),t('العملة'),t('المخزون'),t('الحالة'),t('بداية الخصم'),t('نهاية الخصم'),t('نوع العرض')],...rows.map(row=>{
       const d=row.catalogDetails||{};
-      return [row.sku,row.nameAr,row.description,d.category,d.brand,d.family,d.size,d.color,d.barcode,sheetPrice(row.priceMinor),sheetPrice(d.salePriceMinor),row.currency,row.stockQuantity,row.status,d.startsAt,d.endsAt];
+      return [row.sku,row.nameAr,row.description,d.category,d.brand,d.family,d.size,d.color,d.barcode,sheetPrice(row.priceMinor),sheetPrice(d.salePriceMinor),row.currency,row.stockQuantity,row.status,d.startsAt,d.endsAt,row.kind||'GOODS'];
     })]);
   }
   function addReports(section,getProducts,api,active) {
@@ -124,6 +125,7 @@
     const results=section.querySelector('[data-catalog-results]'),area=section.querySelector('[data-catalog-edit]');
     const search=section.querySelector('input'),filter=section.querySelector('select');
     let products=[];
+    const resetImport=window.HydrolandCatalogImport?.mount(section,'admin',reload);
     const resetReports=addReports(section,()=>products,api,()=>!box.hidden);
     function render() {
       const term=search.value.trim().toLocaleLowerCase();
@@ -159,10 +161,10 @@
         finally{submit.disabled=false}
       };
     });
-    return {update(rows){products=rows;render()},clear(){products=[];resetReports();area.replaceChildren();results.replaceChildren();search.value='';filter.selectedIndex=0}};
+    return {update(rows){products=rows;render()},clear(){products=[];resetReports();resetImport?.();area.replaceChildren();results.replaceChildren();search.value='';filter.selectedIndex=0}};
   }
   const styles=document.createElement('style');
   styles.textContent='.hl-catalog-dashboard{margin:1.5rem 0;padding:1rem;border:1px solid #4b8394;border-radius:.8rem}.hl-catalog-dashboard article{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;padding:.65rem 0;border-bottom:1px solid #486571}.hl-catalog-dashboard form,.hl-catalog-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr));gap:.8rem}.hl-catalog-fields{grid-column:1/-1;border:1px solid #507385;border-radius:.5rem;padding:.8rem;min-width:0}.hl-catalog-fields small{grid-column:1/-1}.hl-catalog-dashboard label,.hl-catalog-fields label{display:grid;gap:.3rem}.hl-catalog-dashboard input,.hl-catalog-dashboard textarea,.hl-catalog-fields input{width:100%;min-width:0;box-sizing:border-box}.hl-catalog-dashboard form{margin-top:1rem}.hl-catalog-dashboard button,.hl-catalog-dashboard select{min-height:2.5rem}.hl-catalog-options{display:flex;flex-wrap:wrap;gap:.4rem;margin:.5rem 0}.hl-catalog-options a{padding:.3rem .6rem;border:1px solid currentColor;border-radius:.4rem}.hl-catalog-options [aria-current=true]{font-weight:800;text-decoration:underline}';
   document.head.append(styles);
-  window.HydrolandProductCatalog={mount,t,esc,editor,discountFields,read,status,group,option,input};
+  window.HydrolandProductCatalog={mount,t,esc,editor,discountFields,read,status,group,option,input,productExport};
 })();

@@ -2,7 +2,7 @@ import { trainingOperationalPolicy } from '../governance/training-operational-po
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, StoreProductKind, StoreProductStatus } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createCommerceContractSnapshot } from '../commerce/commerce-contract-snapshot';
 
 import { normalizeSale, priceActivity } from './activity-promotions';
@@ -73,12 +73,16 @@ export class StoreOfferingsService {
     });
   }
 
-  saveProduct(accountId: string, input: Record<string,unknown>, id?: string) {
-    this.object(input,[...productFields,id?'expectedUpdatedAt':'requestId']);
+  private productData(input: Record<string,unknown>) {
     const kind=input.kind;
     if (kind!=='GOODS' && kind!=='SERVICE') throw new BadRequestException('اختر سلعة أو خدمة.');
     const price = this.integer(input,'priceMinor');
-    const data={...(input.catalogDetails === undefined ? {} : {catalogDetails:catalogDetails(input.catalogDetails,price)}),sku:this.text(input,'sku',80),nameAr:this.text(input,'nameAr',240),description:this.text(input,'description',4000,true),priceMinor:this.integer(input,'priceMinor'),stockQuantity:this.integer(input,'stockQuantity'),kind:kind as StoreProductKind,status:this.status(input),currency:'SAR'};
+    return {...(input.catalogDetails === undefined ? {} : {catalogDetails:catalogDetails(input.catalogDetails,price)}),sku:this.text(input,'sku',80),nameAr:this.text(input,'nameAr',240),description:this.text(input,'description',4000,true),priceMinor:this.integer(input,'priceMinor'),stockQuantity:this.integer(input,'stockQuantity'),kind:kind as StoreProductKind,status:this.status(input),currency:'SAR'};
+  }
+
+  saveProduct(accountId: string, input: Record<string,unknown>, id?: string) {
+    this.object(input,[...productFields,id?'expectedUpdatedAt':'requestId']);
+    const data=this.productData(input),kind=data.kind,price=data.priceMinor;
     const productId=id||this.requestId(input.requestId);
     return this.retryUnique(()=>this.db.serializable(async tx=>{
       const organization=await this.providerScope(tx,accountId),before=await tx.storeProduct.findUnique({where:{id:productId}});
@@ -96,6 +100,54 @@ export class StoreOfferingsService {
       await this.audited(tx,accountId,organization.id,'StoreProduct',productId,id?'STORE_OFFER_UPDATED':'STORE_OFFER_CREATED');
       return saved;
     }));
+  }
+
+  async importProducts(accountId:string, input:Record<string,unknown>, platform=false) {
+    this.object(input,['requestId','rows']);
+    const requestId=this.requestId(input.requestId);
+    if (!Array.isArray(input.rows) || input.rows.length<1 || input.rows.length>200) {
+      throw new BadRequestException('اختر ملفًا يحتوي على منتج واحد إلى ٢٠٠ منتج.');
+    }
+    const rows=input.rows.map((row:Record<string,unknown>, index:number) => {
+      try {
+        this.object(row,[...productFields,'currency']);
+        const product=this.productData(row);
+        const currency=row.currency ?? 'SAR';
+        if (typeof currency!=='string' || !/^[A-Z]{3}$/.test(currency) || (!platform && currency!=='SAR')) {
+          throw new BadRequestException('تحقق من عملة المنتج.');
+        }
+        return {...product,currency};
+      } catch (error) {
+        if (error instanceof BadRequestException) throw new BadRequestException('السطر '+(index+2)+' — '+error.message);
+        throw error;
+      }
+    });
+    const skus=rows.map(row=>row.sku);
+    if (new Set(skus).size!==skus.length) throw new BadRequestException('يتكرر رقم منتج داخل الملف.');
+    const digest=createHash('sha256').update(JSON.stringify(rows)).digest('hex');
+    try {
+      return await this.retryUnique(()=>this.db.serializable(async tx=>{
+        const organizationId=platform ? null : (await this.providerScope(tx,accountId)).id;
+        const key='store-product-import:'+accountId+':'+(organizationId??'platform')+':'+requestId;
+        await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
+        const previous=await tx.operationalSetting.findUnique({where:{key}});
+        if (previous) {
+          const receipt=previous.value as {digest:string;count:number};
+          if (receipt.digest!==digest) throw new ConflictException('استُخدم طلب الاستيراد لملف مختلف.');
+          return {requestId,count:receipt.count};
+        }
+        if (await tx.storeProduct.count({where:{sku:{in:skus}}})) {
+          throw new ConflictException('أحد أرقام المنتجات مستخدم بالفعل. لم يُستورد أي صف.');
+        }
+        const {count}=await tx.storeProduct.createMany({data:rows.map(row=>({...row,organizationId}))});
+        await tx.operationalSetting.create({data:{key,value:{digest,count}}});
+        await tx.auditEvent.create({data:{resource:'StoreCatalogImport',resourceId:requestId,action:'STORE_PRODUCTS_IMPORTED',metadata:{accountId,organizationId,count}}});
+        return {requestId,count};
+      }));
+    } catch(error) {
+      if(error instanceof Prisma.PrismaClientKnownRequestError && error.code==='P2002') throw new ConflictException('تغيّر كتالوج المنتجات أثناء الاستيراد. راجع أرقام المنتجات.');
+      throw error;
+    }
   }
 
   saveCourse(accountId: string, input: Record<string,unknown>, id?: string) {
