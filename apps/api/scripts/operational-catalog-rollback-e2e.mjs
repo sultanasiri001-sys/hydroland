@@ -66,6 +66,7 @@ async function readCatalog(headers) {
 }
 
 async function change(control, state, headers, reason) {
+  const [started] = await db.$queryRaw`SELECT clock_timestamp() AS instant`;
   const response = await fetch(api.href + '/admin/operational-controls/' + encodeURIComponent(control.id), {
     method:'PATCH', headers, body: JSON.stringify({state, expectedRevision:control.revision, reason}),
   });
@@ -74,7 +75,16 @@ async function change(control, state, headers, reason) {
   assert.equal(updated.id, control.id);
   assert.equal(updated.state, state);
   assert.notEqual(updated.revision, control.revision);
-  assert(Number.isFinite(Date.parse(updated.updatedAt)));
+  const [finished] = await db.$queryRaw`SELECT clock_timestamp() AS instant`;
+  const effectiveAt = Date.parse(updated.updatedAt);
+  // PostgreSQL rounds TIMESTAMP(3) to the nearest millisecond.
+  assert(effectiveAt >= started.instant.getTime() - 1 && effectiveAt <= finished.instant.getTime() + 1,
+    control.id + ' effective timestamp must fall inside the actual database request window');
+  if (control.category === 'WEATHER') {
+    const setting = await db.operationalSetting.findUniqueOrThrow({where:{key:'WEATHER_GATE'}});
+    assert(setting.updatedAt.getTime() >= started.instant.getTime() - 1 && setting.updatedAt.getTime() <= finished.instant.getTime() + 1,
+      'Weather setting must use the same UTC time basis');
+  }
   assert.equal(await effective(updated), state === 'ENABLED', control.id);
   return updated;
 }
@@ -108,8 +118,9 @@ async function verifyControl(initial, account, headers) {
 }
 
 try {
-  const [database] = await db.$queryRaw`SELECT current_database() AS name`;
+  const [database] = await db.$queryRaw`SELECT current_database() AS name, current_setting('TimeZone') AS timezone`;
   assert.equal(database.name, 'a16_catalog_acceptance');
+  if (process.env.A16_EXPECT_DB_TIMEZONE) assert.equal(database.timezone, process.env.A16_EXPECT_DB_TIMEZONE);
   assert.equal(await db.account.count(), 0, 'Start from a fresh disposable database');
   const {account, headers} = await login();
   const catalog = await readCatalog(headers);
@@ -126,7 +137,7 @@ try {
     assert.equal(row.revision, receipt.finalRevision);
     assert.equal(await effective(row), row.state === 'ENABLED');
   }
-  const result = {status:'PASS', verifiedUtc:new Date().toISOString(),
+  const result = {status:'PASS', databaseTimezone:database.timezone, verifiedUtc:new Date().toISOString(),
     controls:receipts.length, categories:new Set([...catalog.values()].map(row => row.category)).size,
     auditRecords:receipts.reduce((count, row) => count + row.evidence.length, 0),
     scope:'HTTP changes and rollbacks on optional synthetic controls, checked through training, weather and shared operating-policy readers. Risk-based authorization is a separate acceptance condition.',
