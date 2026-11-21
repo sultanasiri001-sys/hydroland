@@ -154,6 +154,8 @@ model Person {
 }
 
 model Account {
+  retailStockCounts StoreStockCount[]
+  storeStockTransfers StoreStockTransfer[]
   storeFeedback StoreProductFeedback[]
   storeProductPreferences StoreProductPreference[]
   personalDataRequests PersonalDataRequest[]
@@ -254,6 +256,9 @@ model Account {
 }
 
 model Organization {
+  retailStockCounts StoreStockCount[]
+  stockLocations StoreStockLocation[]
+  storeStockTransfers StoreStockTransfer[]
   instructorDocuments InstructorDocument[]
   privacyGrievances PrivacyGrievance[]
   operationalEvidence OperationalEvidence[]
@@ -1165,6 +1170,7 @@ model TripComplianceReview {
 }
 
 model OrgUnit {
+  merchantStockLocations StoreStockLocation[]
  id String @id @default(uuid())
  organizationId String
  parentId String?
@@ -2021,6 +2027,9 @@ enum StoreOrderStatus {
  FULFILLED
 }
 model StoreProduct {
+  stockCounts StoreStockCount[]
+  locationStock StoreStockBalance[]
+  stockTransfers StoreStockTransfer[]
  customerFeedback StoreProductFeedback[]
  customerPreferences StoreProductPreference[]
  catalogDetails Json?
@@ -2057,6 +2066,59 @@ model StoreProductFeedback {
  product StoreProduct @relation(fields:[productId], references:[id], onDelete:Cascade)
  account Account @relation(fields:[accountId], references:[id], onDelete:Cascade)
  @@index([productId,published,createdAt])
+}
+
+model StoreStockLocation {
+  id String @id
+  organizationId String
+  orgUnitId String?
+  code String
+  title String
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  orgUnit OrgUnit? @relation(fields:[orgUnitId],references:[id],onDelete:Restrict)
+  balances StoreStockBalance[]
+  @@unique([organizationId,code],map:"StoreStockLocation_org_code_key")
+}
+
+model StoreStockBalance {
+  productId String
+  locationId String
+  quantity Int
+  product StoreProduct @relation(fields:[productId],references:[id],onDelete:Restrict)
+  location StoreStockLocation @relation(fields:[locationId],references:[id],onDelete:Restrict)
+  @@id([productId,locationId])
+}
+
+model StoreStockCount {
+  id String @id
+  organizationId String
+  actorId String
+  productId String
+  locationKey String
+  expectedQuantity Int
+  countedQuantity Int
+  reason String
+  countedAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  actor Account @relation(fields:[actorId],references:[id],onDelete:Restrict)
+  product StoreProduct @relation(fields:[productId],references:[id],onDelete:Restrict)
+  @@index([organizationId,countedAt,id],map:"StoreStockCount_org_time_idx")
+}
+
+model StoreStockTransfer {
+  id String @id
+  organizationId String
+  actorId String
+  productId String
+  sourceKey String
+  destinationKey String
+  quantity Int
+  movedAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  actor Account @relation(fields:[actorId],references:[id],onDelete:Restrict)
+  product StoreProduct @relation(fields:[productId],references:[id],onDelete:Restrict)
+  @@index([organizationId,movedAt,id],map:"StoreStockTransfer_org_time_idx")
 }
 
 model StoreProductPreference {
