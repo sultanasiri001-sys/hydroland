@@ -1,3 +1,4 @@
+const {catalogOwnerDelegates}=require('./catalog-owner-unit-fixture.cjs');
 const assert=require('node:assert/strict');
 const {TripsService}=require('../dist/trips/trips.service');
 const {PolicyControlService}=require('../dist/trips/policy-control.service');
@@ -25,7 +26,7 @@ function setup(state,safety=null,{weatherBlocked=false,used=0}={}){
     const test=setup('DISABLED',null,options);await assert.rejects(()=>test.service.book('account','trip-test',1),error=>error.getStatus?.()===409&&error.message===(options.weatherBlocked?'Weather blocked':'Trip capacity reached.'));assert.equal(test.writes(),0);checks++;
   }
   const audits=[],rule={id:'policy',category:'BOOKING',ruleKey:'SAFETY_APPROVAL',state:'ENABLED'};
-  const policyTx={$queryRaw:async(strings,...values)=>/^\s*UPDATE\b/.test(strings.join(''))?[{...rule,state:values[0]}]:[rule]};
+  const policyTx={...catalogOwnerDelegates('admin-test'),$queryRaw:async(strings,...values)=>/^\s*UPDATE\b/.test(strings.join(''))?[{...rule,state:values[0]}]:[rule]};
   const service=new PolicyControlService({serializable:fn=>fn(policyTx)},{record:async(data,tx)=>{assert.equal(tx,policyTx);audits.push(data);}});
   await service.setState('admin-test','BOOKING','SAFETY_APPROVAL','DISABLED','Temporary controlled booking review');
   assert.equal(audits[0].action,'POLICY_STATE_CHANGED');assert.equal(audits[0].metadata.previousState,'ENABLED');assert.equal(audits[0].metadata.state,'DISABLED');assert.equal(audits[0].metadata.reason,'Temporary controlled booking review');checks++;

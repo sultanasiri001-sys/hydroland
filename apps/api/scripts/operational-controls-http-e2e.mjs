@@ -45,7 +45,7 @@ try{
  assert.equal((await request(admin,'/TRAINING.CAPACITY_LIMIT',{state:'ENABLED',reason:'Revoked role cannot update operational controls',expectedRevision:revoked.revision})).status,403);
  console.log('Operational controls HTTP/PostgreSQL E2E passed: 29 controls, 401/403 guards, concurrent revision conflict, synchronized weather writes, attributed audit, reason validation and revoked role.');
 }finally{
- for(const [category,ruleKey] of [['WEATHER','WEATHER_GATE'],['TRAINING','CAPACITY_LIMIT'],['TRAINING','SESSION_TIME_WINDOW']]){
+ for(const [category,ruleKey] of [['WEATHER','WEATHER_GATE'],['TRAINING','CAPACITY_LIMIT'],['TRAINING','SESSION_TIME_WINDOW'],['TRAINING','SCHEDULE_CONFLICT']]){
   const original=originals.find(row=>row.category===category&&row.ruleKey===ruleKey);
   if(original)await db.$executeRaw`UPDATE "PolicyControl" SET "state"=${original.state},"updatedByAccountId"=${original.updatedByAccountId}::uuid,"updatedAt"=${original.updatedAt} WHERE "category"=${category} AND "ruleKey"=${ruleKey}`;
   else await db.$executeRaw`DELETE FROM "PolicyControl" WHERE "category"=${category} AND "ruleKey"=${ruleKey}`;
@@ -56,14 +56,14 @@ try{
  await db.roleAssignment.deleteMany({where:{accountId:{in:accounts.map(a=>a.id)}}});await db.account.deleteMany({where:{id:{in:accounts.map(a=>a.id)}}});await db.person.deleteMany({where:{id:{in:people.map(p=>p.id)}}});await db.$disconnect();
 }
 
-async function verifyTrainingWindowRollback(admin) {
-  const id = 'TRAINING.SESSION_TIME_WINDOW';
+async function verifyTrainingConflictRollback(admin) {
+  const id = 'TRAINING.SCHEDULE_CONFLICT';
   const read = async () => {
     const res = await request(admin);
     assert.equal(res.status, 200);
     return res.body.find(row => row.id === id);
   };
-  const effective = async () => (await db.$transaction(tx => trainingOperationalPolicy(tx))).sessionTimeWindow;
+  const effective = async () => (await db.$transaction(tx => trainingOperationalPolicy(tx))).scheduleConflict;
   const change = (revision, state, reason) => request(admin, '/'+id, {expectedRevision:revision, state, reason});
   const before = await read();
   assert.equal(before.mandatoryBindingStatus, 'OPTIONAL');
@@ -71,13 +71,13 @@ async function verifyTrainingWindowRollback(admin) {
   assert.equal(await effective(), before.state === 'ENABLED');
 
   const nextState = before.state === 'ENABLED' ? 'DISABLED' : 'ENABLED';
-  const changed = await change(before.revision, nextState, 'Verify optional training opening time in isolated environment');
+  const changed = await change(before.revision, nextState, 'Verify optional training schedule conflict policy in isolated environment');
   assert.equal(changed.status, 200);
   assert.equal((await read()).revision, changed.body.revision);
   assert.equal(await effective(), nextState === 'ENABLED');
   const stale = await change(before.revision, before.state, 'Attempt rollback from a stale training revision');
   assert.equal(stale.status, 409);
-  const restored = await change(changed.body.revision, before.state, 'Restore the original training opening time');
+  const restored = await change(changed.body.revision, before.state, 'Restore the original training schedule conflict policy');
   assert.equal(restored.status, 200);
   const after = await read();
   assert.equal(after.revision, restored.body.revision);
@@ -97,5 +97,5 @@ async function verifyTrainingWindowRollback(admin) {
     assert.equal(event.metadata.state, current.state);
     assert(Number.isFinite(Date.parse(current.updatedAt)));
   }
-  console.log('A16 optional training opening time: effective change and rollback, stale revision refusal and two linked audit records passed.');
+  console.log('A16 optional training schedule conflict policy: effective change and rollback, stale revision refusal and two linked audit records passed.');
 }
