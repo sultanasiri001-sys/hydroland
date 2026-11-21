@@ -8,10 +8,12 @@ import { ProfileController } from './profile.controller';
 import { ProfileService } from './profile.service';
 import { MembershipPassController } from './membership-pass.controller';
 import { MembershipPassService } from './membership-pass.service';
+import { PersonalDataRequestsController } from './personal-data-requests.controller';
+import { PersonalDataRequestsService } from './personal-data-requests.service';
 
 @Module({
   imports: [AuthModule, TripsModule, AuditModule],
-  controllers: [ProfileController, DiverMasterProfileController, MembershipPassController],
-  providers: [ProfileService, DiverMasterProfileService, MembershipPassService],
+  controllers: [ProfileController, DiverMasterProfileController, MembershipPassController, PersonalDataRequestsController],
+  providers: [ProfileService, DiverMasterProfileService, MembershipPassService, PersonalDataRequestsService],
 })
 export class ProfileModule {}
