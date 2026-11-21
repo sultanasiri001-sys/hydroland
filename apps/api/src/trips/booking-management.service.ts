@@ -1,3 +1,4 @@
+import { tripCalendarReservation } from './trip-calendar-reservation';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { BookingStatus, Prisma } from '@prisma/client';
 import { createHash, randomUUID } from 'node:crypto';
@@ -14,7 +15,7 @@ type Action = 'CONFIRM' | 'CANCEL';
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const stale = () => new ConflictException('تغيرت بيانات الحجز أو شروط التأكيد. حدّث التفاصيل قبل المحاولة.');
 const names = { select: { person: { select: { firstName: true, lastName: true } } } } as const;
-const tripFields = { id: true, title: true, status: true, type: true, startsAt: true, endsAt: true, capacity: true, updatedAt: true } as const;
+const tripFields = { id: true, organizationId: true, title: true, status: true, type: true, startsAt: true, endsAt: true, capacity: true, updatedAt: true } as const;
 
 @Injectable()
 export class BookingManagementService {
@@ -99,23 +100,9 @@ export class BookingManagementService {
 
   private async state(tx: Prisma.TransactionClient, booking: Awaited<ReturnType<BookingManagementService['booking']>>) {
     const { trip } = booking;
-    // Read the canonical reservation in the same transaction as the booking preview.
-    // This exposes reservation health and invalidates stale commands without activating
-    // the proposed confirmation policy or disclosing other trips/resource identities.
-    const calendarEvent = await tx.calendarEvent.findUnique({ where: { referenceType_referenceId: { referenceType: 'TRIP', referenceId: trip.id } }, include: { allocations: { where: { status: 'ACTIVE' }, orderBy: { id: 'asc' }, include: { resource: true } } } });
-    const allocations = calendarEvent?.allocations ?? [];
-    const conflicts = allocations.length ? await tx.calendarAllocation.findMany({ where: { resourceId: { in: allocations.map(a => a.resourceId) }, status: 'ACTIVE', eventId: { not: calendarEvent!.id }, startsAt: { lt: trip.endsAt }, endsAt: { gt: trip.startsAt }, event: { status: 'ACTIVE' } }, orderBy: { id: 'asc' }, select: { id: true, eventId: true, resourceId: true, startsAt: true, endsAt: true, updatedAt: true } }) : [];
-    const requiredTypes = trip.type.toUpperCase().includes('BOAT') ? ['BOAT'] : trip.type.toUpperCase().includes('SHORE') ? ['SITE'] : [];
-    const calendarIssues: string[] = [];
-    if (!calendarEvent || calendarEvent.status !== 'ACTIVE') calendarIssues.push('CALENDAR_EVENT_MISSING_OR_INACTIVE');
-    if (calendarEvent && (calendarEvent.startsAt.getTime() !== trip.startsAt.getTime() || calendarEvent.endsAt.getTime() !== trip.endsAt.getTime())) calendarIssues.push('CALENDAR_TIME_MISMATCH');
-    if (allocations.some(a => !a.resource.active)) calendarIssues.push('CALENDAR_RESOURCE_INACTIVE');
-    if (allocations.some(a => a.startsAt.getTime() !== trip.startsAt.getTime() || a.endsAt.getTime() !== trip.endsAt.getTime())) calendarIssues.push('CALENDAR_ALLOCATION_TIME_MISMATCH');
-    if (requiredTypes.some(type => !allocations.some(a => a.resource.type === type && a.resource.active))) calendarIssues.push('CALENDAR_REQUIRED_RESOURCE_MISSING');
-    if (conflicts.length) calendarIssues.push('CALENDAR_RESOURCE_CONFLICT');
-    const calendarReservation = { status: calendarIssues.length ? 'NEEDS_ATTENTION' : 'RESERVED', issues: calendarIssues, activeAllocationCount: allocations.length, confirmationGateEnforced: false };
+    const { calendarEvent, conflicts, calendarReservation } = await tripCalendarReservation(tx, trip, Boolean(booking.organizationId));
     const participants = await tx.bookingParticipant.findMany({ where: { bookingId: booking.id }, orderBy: { id: 'asc' }, select: { id: true, fullName: true, eligibilityStatus: true, certificationTitle: true, updatedAt: true } });
-    const payments = await tx.payment.findMany({ where: { bookingId: booking.id }, orderBy: { id: 'asc' }, select: { id: true, bookingId: true, accountId: true, status: true, currency: true, amountMinor: true, refundedAmountMinor: true, providerReference: true, moyasarPaymentId: true, updatedAt: true,
+    const payments = await tx.payment.findMany({ where: { bookingId: booking.id }, orderBy: { id: 'asc' }, select: { id: true, bookingId: true, accountId: true, contractSnapshot: true, status: true, currency: true, amountMinor: true, refundedAmountMinor: true, providerReference: true, moyasarPaymentId: true, updatedAt: true,
       refundOperations: { where: { status: { in: ['RESERVED', 'DISPATCHED', 'RECONCILIATION_REQUIRED'] } }, orderBy: { id: 'asc' }, select: { id: true, status: true, amountMinor: true, updatedAt: true } } } });
     const price = !booking.organizationId && (booking.contractSnapshot === null || booking.contractSnapshot === undefined)
       ? await tx.operationalSetting.findUnique({ where: { key: 'trip-price:' + trip.id }, select: { value: true, updatedAt: true } }) : null;
@@ -129,7 +116,7 @@ export class BookingManagementService {
     const settings = await this.weather.settings(tx);
     const review = await this.weatherReviews.latest(trip.id, tx), evaluation = this.weather.evaluateReview(review?.snapshot, review?.status, settings, review?.context, review?.fetchedAt);
     const rules = { participant: await this.policies.decision('BOOKING', 'PARTICIPANT_ELIGIBILITY', tx), safety: await this.policies.decision('BOOKING', 'SAFETY_APPROVAL', tx), capacity: await this.policies.decision('BOOKING', 'CAPACITY_LIMIT', tx), payment: await this.policies.decision('PAYMENT', 'PAYMENT_REQUIRED', tx), weather: await this.policies.decision('WEATHER', 'WEATHER_GATE', tx) };
-    const blockers: string[] = [], issues: string[] = [];
+    const blockers: string[] = calendarReservation.confirmationGateEnforced ? [...calendarReservation.issues] : [], issues: string[] = [];
     const require = (valid: boolean, key: keyof typeof rules, code: string) => { if (!valid) { if (rules[key].enforce) blockers.push(code); else if (rules[key].review) issues.push(code); } };
     require(participants.length === booking.seats, 'participant', 'PARTICIPANT_COUNT_MISMATCH');
     require(participants.every(p => p.eligibilityStatus === 'ELIGIBLE'), 'participant', 'PARTICIPANT_ELIGIBILITY_PENDING');

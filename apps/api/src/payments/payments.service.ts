@@ -1,3 +1,4 @@
+import { OrganizationBookingCheckoutService, organizationPayer } from './organization-booking-checkout.service';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Payment, PaymentStatus, Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
@@ -38,10 +39,12 @@ export class PaymentsService {
     private readonly rentalCheckouts?:RentalCheckoutService,
     private readonly storeCheckouts?:StoreCheckoutService,
     private readonly trainingCheckouts?:TrainingCheckoutService,
+    private readonly organizationCheckouts?:OrganizationBookingCheckoutService,
   ){}
 
   async create(accountId:string,input:{bookingId:string;idempotencyKey:string;policyAcceptance?:{version?:string;quoteHash?:string}}){
     if(typeof input?.bookingId!=='string'||!input.bookingId.trim()||typeof input.idempotencyKey!=='string'||!input.idempotencyKey.trim())throw new BadRequestException('Invalid payment.');
+    if(input.idempotencyKey.trim().startsWith('org-prepay:'))throw new BadRequestException('Invalid personal payment request key.');
     const paymentPolicy=await this.policies.decision('PAYMENT','PAYMENT_REQUIRED');
     const booking=await this.db.booking.findFirst({where:{id:input.bookingId,accountId,organizationId:null},include:{trip:true}});
     if(!booking)throw new NotFoundException('Booking not found.');
@@ -118,6 +121,21 @@ export class PaymentsService {
     const duplicate=await this.db.auditEvent.findFirst({where:{resource:'PaymentProviderWebhook',resourceId:event.id},select:{id:true}});
     if(duplicate)return{accepted:true,duplicate:true};
     const payment=await this.db.payment.findUnique({where:{providerReference:invoiceId}});
+    if (this.organizationCheckouts) {
+      const metadata = event.data.metadata;
+      const id = metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? (metadata as Record<string,unknown>).hydroland_payment_id : null;
+      const candidate = payment ?? (typeof id === 'string' && /^[a-f0-9-]{36}$/i.test(id) ? await this.db.payment.findUnique({where:{id}}) : null);
+      if (candidate && organizationPayer(candidate.contractSnapshot).source === 'ORGANIZATION_BOOKING_PREPAYMENT') {
+        const result = await this.organizationCheckouts.providerEvent(candidate, invoiceId);
+        await this.db.serializable(async tx => {
+          await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtextextended(${'commerce-webhook:'+event.id},0))`;
+          const prior = await tx.auditEvent.findFirst({where:{resource:'PaymentProviderWebhook',resourceId:event.id}});
+          if (!prior) await tx.auditEvent.create({data:{action:'PAYMENT_PROVIDER_WEBHOOK_PROCESSED',resource:'PaymentProviderWebhook',resourceId:event.id,
+            metadata:{provider:'MOYASAR',sourceType:'ORGANIZATION_BOOKING_PREPAYMENT',paymentId:result.paymentId,bookingId:result.bookingId,status:result.status}}});
+        });
+        return {accepted:true,matched:true,paymentId:result.paymentId,status:result.status};
+      }
+    }
     if(!payment){
       // All commerce routes share the verified webhook boundary. Each handler
       // resolves its own persisted source binding and reads the provider afresh;

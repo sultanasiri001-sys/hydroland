@@ -3,9 +3,9 @@ import {openWorkspaceSwitcher} from './portal-test-helpers.js';
 
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 
-async function install(page,{role='OWNER',displayName='شركة الاختبار'}={}){
+async function install(page,{role='OWNER',displayName='شركة الاختبار',admin=false}={}){
  const state={membership:{id:'org-member-1',organizationId:'org-1',role,status:'ACTIVE',organization:{id:'org-1',displayName,kind:'COMPANY',legalName:null,registrationNumber:null,regionCode:'ASIR',status:'ACTIVE'}},members:[{id:'org-member-1',role:'OWNER',status:'ACTIVE',account:{email:'owner@example.invalid',person:{firstName:'سلطان',lastName:'المالك'}}}],writes:[],memberInvites:[],pendingMembers:null,membersRoute:null,requestCases:[{id:'case-1',type:'QUESTION',status:'OPEN',priority:'NORMAL',subject:'متابعة حجز الشركة',description:'نحتاج تحديث حالة الطلب',createdAt:'2026-10-05T08:00:00.000Z',updatedAt:'2026-10-05T08:00:00.000Z',interactions:[{id:'reply-1',actorType:'CUSTOMER',channel:'WEB',message:'تم إرسال الطلب',createdAt:'2026-10-05T08:00:00.000Z'}]}],requestWrites:[],replyWrites:[],pendingRequests:null,requestsRoute:null,bookings:[],bookingWrites:[],participantWrites:[],cancellations:[],incidents:[],incidentWrites:[]};
- const profile={id:'organization-user-1',email:'owner@example.invalid',status:'ACTIVE',roleAssignments:[{id:'organization-role-1',role:'ORGANIZATION',status:'ACTIVE'}],person:{firstName:'سلطان',lastName:'المالك'}};
+ const profile={id:'organization-user-1',email:'owner@example.invalid',status:'ACTIVE',roleAssignments:[{id:'fixture-role',role:admin?'ADMIN':'ORGANIZATION',status:'ACTIVE'}],person:{firstName:'سلطان',lastName:'المالك'}};
  await page.route('**/api/v1/**',route=>json(route,[]));
  await page.route('**/api/v1/auth/google/config',route=>json(route,{enabled:false}));
  await page.route(/\/api\/v1\/me$/,route=>json(route,profile));
@@ -28,7 +28,14 @@ async function install(page,{role='OWNER',displayName='شركة الاختبار
  await page.goto('/',{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>Boolean(window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandOrganizations));
  await page.evaluate(async()=>{window.HydrolandAuth.acceptSession({accessToken:'organization-access',refreshToken:'organization-refresh'},window.HydrolandAuth.beginAuthAttempt());await window.HydrolandProfile.load()});
- await openWorkspaceSwitcher(page);await page.locator('#role-dialog [data-role="organization"]').click();
+ await openWorkspaceSwitcher(page);
+ if(admin){
+   await page.locator('#role-dialog [data-role="admin"]').click();
+   await page.locator('.hl-role-dashboard[data-role="admin"] [data-action-label="إعدادات المنصة"]').click();
+   await expect(page.locator('.hl-admin')).toBeVisible();
+   return state;
+ }
+ await page.locator('#role-dialog [data-role="organization"]').click();
  await expect(page.locator('.hl-role-dashboard[data-role="organization"]')).toBeVisible();
  await page.locator('.hl-role-dashboard[data-role="organization"] [data-action-label="بيانات الجهات"]').click();
  await expect(page.locator('.hl-organizations [data-org-list] [data-org-id="org-1"]')).toBeVisible();
@@ -268,4 +275,81 @@ test('organization writers who did not request the case cannot see acceptance or
  const state=await install(page,{role:'OPERATOR'});state.requestCases[0].status='RESOLVED';state.requestCases[0].canRespondToResolution=false;
  await page.locator('[data-org-id="org-1"] [data-org-requests-open]').click();await expect(page.locator('[data-org-case-id="case-1"]')).toBeVisible();
  await expect(page.locator('[data-org-case-response]')).toHaveCount(0);await expect(page.locator('[data-org-case-reply]')).toHaveCount(1);
+});
+
+for (const authorized of [false, true]) test(`organization prepayment ${authorized ? 'requires explicit acceptance before opening checkout' : 'does not offer payment after the mandate lookup is denied'}`, async ({page}) => {
+  const state = await install(page, {role:'VIEWER'});
+  state.bookings.push({id:'booking-1',seats:2,status:'PENDING',updatedAt:'2026-11-21T00:00:00Z',trip:{title:'Test trip',startsAt:'2030-01-01T00:00:00Z'},participants:[]});
+  const base = '**/api/v1/organizations/org-1/bookings/booking-1/prepayment', posted = [];
+  await page.route(base+'/quote', route => authorized ? json(route,{policyVersion:'2026-11-21.1',quoteHash:'a'.repeat(64),snapshot:{
+    kind:'TRIP',source:{id:'booking-1'},buyerOrganizationId:'org-1',amountMinor:10000,currency:'SAR',issuer:{legalName:'Test supplier'},
+    refundPolicy:{snapshot:{version:'2026-11-21.1'}}}}) : json(route,{message:'تفويض مالي مطلوب'},403));
+  await page.route(base, route => {posted.push(route.request().postDataJSON());return json(route,{status:'PENDING',checkoutUrl:'https://example.invalid/checkout'});});
+  await page.locator('[data-org-id="org-1"] [data-org-bookings-open]').click();
+  await page.locator('[data-org-quote]').click();
+  if (!authorized) {
+    await expect(page.locator('[data-org-quote]')).toBeEnabled();
+    await expect(page.locator('[data-org-pay]')).toHaveCount(0);
+    expect(posted).toHaveLength(0);
+    return;
+  }
+  await expect(page.locator('[data-org-prepay]')).toContainText('Test supplier');
+  expect(posted).toHaveLength(0);
+  await page.locator('[data-org-pay]').click();
+  await expect(page.locator('[data-org-prepay] a')).toHaveAttribute('href','https://example.invalid/checkout');
+  expect(posted).toHaveLength(1);
+  expect(posted[0]).toMatchObject({quoteHash:'a'.repeat(64),policyVersion:'2026-11-21.1'});
+  expect(posted[0].requestId).toMatch(/^[a-f0-9-]{36}$/i);
+});
+
+for (const existing of [false,true]) test('organization opens the correct mandate form from its finance profile, existing=' + existing, async ({page}) => {
+  const organization = await install(page);
+  let template = existing ? {id:'mandate-template',version:1,status:'ACTIVE',department:'FINANCE',organizationId:'org-1',code:'ORG-BOOKING-FINANCIAL-MANDATE',titleAr:'تفويض',
+    fields:[{key:'decision',type:'SELECT',labelAr:'القرار',options:['APPOINT','REVOKE']},{key:'limitMinor',type:'NUMBER',labelAr:'الحد'}]} : null;
+  let creates = 0;
+  await page.route('**/organizations/org-1/financial-profile', route => json(route, {currency:'SAR',taxStatus:'UNDECLARED',registrationStatus:'UNDECLARED',revision:1}));
+  await page.route('**/documents/workspace', route => json(route, [organization.membership]));
+  await page.route(/\/documents\/organizations\/org-1\/templates(?:\?.*)?$/, route => json(route, template ? [template] : []));
+  await page.route('**/documents/templates', route => {
+    creates++;
+    template = {...route.request().postDataJSON(),id:'mandate-template',version:1,status:'ACTIVE'};
+    return json(route, template, 201);
+  });
+  await page.route('**/documents/organizations/org-1/inventory', route => json(route, {organizationId:'org-1',observedAt:new Date().toISOString(),
+    departments:[{code:'FINANCE',nameAr:'المالية',summary:{types:1,noRecord:1,pendingApproval:0},items:[{activeTemplateId:'mandate-template',
+      code:'ORG-BOOKING-FINANCIAL-MANDATE',titleAr:'تفويض',templateStatus:'READY',recordStatus:'NO_RECORD',counts:{DRAFT:0,PENDING_APPROVAL:0,APPROVED:0,SIGNED:0,ARCHIVED:0}}]}]}));
+  await page.locator('[data-org-financial-open]').click();
+  const button = page.locator('[data-org-mandate-template]');
+  await expect(button).toBeVisible();
+  await button.click();
+  await expect(page.locator('[data-doc-template]')).toBeVisible();
+  await expect(page.locator('[data-doc-template]')).toHaveValue('mandate-template');
+  await expect(page.locator('[data-doc-fields] [name="decision"] option')).toHaveCount(2);
+  await expect(page.locator('[data-doc-fields] [name="limitMinor"]')).toHaveAttribute('type','number');
+  expect(creates).toBe(existing ? 0 : 1);
+});
+
+test('platform management reviews the signed version before applying a mandate decision', async ({page}) => {
+  await install(page,{admin:true});
+  const path = '**/organizations/org-1/booking-payment-mandates/signed-1';
+  const posts = [];
+  await page.route(path, route => json(route, {organizationId:'org-1',documentId:'signed-1',referenceNumber:'DOC-001',version:4,
+    contentHash:'signed-hash',signedByAccountId:'org-signer',signedAt:'2026-11-01T12:00:00Z',
+    terms:{decision:'REVOKE',accountId:'delegate',grantId:'original-grant'}}));
+  await page.route(path+'/approve', route => {posts.push(route.request().postDataJSON()); return json(route,{grantId:'original-grant'});});
+  const panel = page.locator('[data-admin-mandate]');
+  await panel.locator('summary').click();
+  await panel.locator('[name="issuer"]').fill('org-1');
+  await panel.locator('[name="documentId"]').fill('signed-1');
+  const approve = panel.locator('[data-mandate-approve]');
+  await expect(approve).toBeDisabled();
+  await panel.locator('[type="submit"]').click();
+  await expect(panel.locator('[data-mandate-terms]')).toContainText('original-grant');
+  await panel.locator('[name="documentId"]').fill('another');
+  await expect(approve).toBeDisabled();
+  await panel.locator('[name="documentId"]').fill('signed-1');
+  await panel.locator('[type="submit"]').click();
+  await approve.click();
+  await expect(panel.locator('[data-mandate-status]')).toContainText('original-grant');
+  expect(posts).toEqual([{expectedVersion:4,expectedContentHash:'signed-hash'}]);
 });

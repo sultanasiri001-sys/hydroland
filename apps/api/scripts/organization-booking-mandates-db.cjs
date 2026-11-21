@@ -39,7 +39,7 @@ async function run(tx) {
   const template = await tx.documentTemplate.create({ data: { organizationId: org.id, code: 'FIN-MANDATE', titleAr: 'تفويض مالي',
     titleEn: 'Booking mandate', department: 'FINANCE', fields: [] } });
   const terms = { purpose: 'ORGANIZATION_BOOKING_PREPAYMENT', decision: 'APPOINT', delegateAccountId: delegate.id,
-    currency: 'SAR', limitMinor: 65000, validFrom: new Date(Date.now()-60000).toISOString(), validUntil: new Date(Date.now()+3600000).toISOString() };
+    currency: 'SAR', limitMinor: '65000', validFrom: new Date(Date.now()-60000).toISOString(), validUntil: new Date(Date.now()+3600000).toISOString() };
   async function document(payload, signed = true) {
     const contentHash = randomUUID();
     return tx.managedDocument.create({ data: { organizationId: org.id, templateId: template.id, department: 'FINANCE', referenceNumber: randomUUID(),
@@ -55,6 +55,8 @@ async function run(tx) {
   await assert.rejects(() => approve(issued, issuer.id), status(403));
   await assert.rejects(() => approve(issued, platform.id, platformOrg.id), status(404));
   await assert.rejects(() => approve(issued, platform.id, org.id, 'stale'), status(409));
+  const fractional = await document({ ...terms, limitMinor: '65000.5' });
+  await assert.rejects(() => approve(fractional), status(409));
   const incomplete = await document(terms, false);
   await assert.rejects(() => approve(incomplete), status(404));
   const unrelated = await document({ purpose: 'PROCUREMENT_CONTACT', delegateAccountId: delegate.id });
@@ -69,6 +71,7 @@ async function run(tx) {
   await tx.organizationMember.update({ where: membership, data: { status: 'SUSPENDED' } });
   await assert.rejects(check, status(403));
   await tx.organizationMember.update({ where: membership, data: { status: 'ACTIVE' } });
+  await require('./organization-booking-prepayment-db.cjs')(tx, db, org, platform, issuer, signer, delegate, approver);
   const overlapping = await document(terms);
   await assert.rejects(() => approve(overlapping), status(409));
   await assert.rejects(() => refundGrants.revoke(platform.id, saved.grantId), status(404));

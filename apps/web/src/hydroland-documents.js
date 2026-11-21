@@ -1,6 +1,8 @@
 (()=>{
   // Only authored interface text is localized. Account and business values stay opaque.
   const uiLocale = (typeof window==='undefined'?globalThis:window).HydrolandI18n?.createScope("documents", {
+  "معرّفات مراجعة تفويض الدفع": "Payment mandate review identifiers",
+  "الجهة {0} · المستند {1}": "Organization {0} · Document {1}",
   "إدارة المستندات": "Document department",
   "DOCUMENT CONTROL · إدارة المستندات": "DOCUMENT CONTROL · Document management",
   "المستندات والنماذج التشغيلية": "Operational documents and forms",
@@ -377,7 +379,7 @@
       const attachments=Array.isArray(d.attachments)?d.attachments:[];
       const attachmentControls=d.status==='DRAFT'&&canWrite()?uiLocale.html`<label>إرفاق مستند PDF (حتى 10 ميغابايت)<input type="file" accept="application/pdf,.pdf" data-doc-attachment-upload aria-label="إرفاق ملف PDF للمستند"></label>`:'';
       const attachmentList=attachments.length?attachments.map(a=>uiLocale.html`<button type="button" data-doc-attachment-download="${esc(a.id)}">${esc(a.filename)} · PDF · ${Math.ceil(a.byteSize/1024)} ك.ب</button>`).join(' '):uiLocale.html`<span class="hl-doc-note">لا توجد مرفقات PDF.</span>`;
-      return uiLocale.html`<article class="hl-doc-item" data-document-id="${esc(d.id)}"><header><div><strong>${esc(d.template?.titleAr||d.template?.titleEn||d.referenceNumber)}</strong><div class="hl-doc-meta">${esc(d.referenceNumber)} · الإصدار ${esc(d.version)}</div></div><span class="hl-doc-status">${uiLocale.messageHTML(authoredStatusLabel(d.status))}</span>${state.ownerApprovals?.[d.id]?.sourceVersion===d.version?uiLocale.html`<span class="hl-doc-status" data-doc-owner-approved>معتمد إداريًا من المالك</span>`:''}</header><div class="hl-doc-actions">${d.status==='DRAFT'&&canWrite()?uiLocale.html`<button type="button" data-doc-action="edit">تعديل</button><button type="button" data-doc-action="submit">إرسال للاعتماد</button>`:''}${canApprove?uiLocale.html`<button type="button" data-doc-action="approve">اعتماد</button>`:''}${canSign?uiLocale.html`<button type="button" data-doc-action="sign">توقيع</button>`:''}${admin&&d.status==='SIGNED'?uiLocale.html`<button type="button" data-doc-action="archive">أرشفة</button>`:''}${admin&&state.inventory?.internalPlatform&&d.status!=='DRAFT'?uiLocale.html`<button type="button" data-doc-action="review-assignment">إدارة تكليف المراجعة المستقلة</button>`:''}${state.inventory?.internalPlatform&&supportsHrAttendance(d.template)?uiLocale.html`<button type="button" data-doc-action="attendance-source">فحص سجلات الحضور والإجازة</button>`:''}${state.inventory?.internalPlatform&&supportsHrSource(d.template)?uiLocale.html`<button type="button" data-doc-action="hr-source">فحص السجل الوظيفي المرتبط</button>`:''}${admin&&state.inventory?.internalPlatform?uiLocale.html`<button type="button" data-doc-action="owner-approval">اعتماد المالك الإداري وسجله</button>`:''}${state.inventory?.internalPlatform&&((d.template?.code==='ADM-MEETING-MINUTES'&&d.department==='ADMIN_AFFAIRS_RECORDS')||(d.template?.code==='EXE-FOLLOWUP'&&d.department==='EXECUTIVE_GOVERNANCE'))?uiLocale.html`<button type="button" data-doc-action="owner-decision">قرارات المالك الروتينية</button>`:''}${admin&&state.inventory?.internalPlatform&&d.template?.code==='EXE-DECISION'&&d.department==='EXECUTIVE_GOVERNANCE'&&d.status==='SIGNED'?uiLocale.html`<button type="button" data-doc-action="executive-decision">إصدار ومتابعة القرار التنفيذي</button>`:''}<button type="button" data-doc-action="readiness">فحص مسار الاعتماد</button><button type="button" data-doc-action="pdf">عرض PDF</button></div><section class="hl-doc-attachments" aria-label="ملفات PDF المرفقة"><div class="hl-doc-actions">${attachmentControls}${attachmentList}</div><p class="hl-doc-note" data-doc-attachment-status role="status" aria-live="polite"></p></section><div class="hl-doc-note" data-doc-readiness role="status" aria-live="polite" hidden></div><div class="hl-doc-note" data-doc-hr-source-result role="status" aria-live="polite" hidden></div><div class="hl-doc-note" data-doc-attendance-saved-result role="status" aria-live="polite" style="overflow-wrap:anywhere" hidden></div></article>`;
+      return uiLocale.html`<article class="hl-doc-item" data-document-id="${esc(d.id)}"><header><div><strong>${esc(d.template?.titleAr||d.template?.titleEn||d.referenceNumber)}</strong><div class="hl-doc-meta">${esc(d.referenceNumber)} · الإصدار ${esc(d.version)}</div></div><span class="hl-doc-status">${uiLocale.messageHTML(authoredStatusLabel(d.status))}</span>${state.ownerApprovals?.[d.id]?.sourceVersion===d.version?uiLocale.html`<span class="hl-doc-status" data-doc-owner-approved>معتمد إداريًا من المالك</span>`:''}</header>${d.template?.code==='ORG-BOOKING-FINANCIAL-MANDATE'&&['SIGNED','ARCHIVED'].includes(d.status)?uiLocale.html`<details data-mandate-reference><summary>معرّفات مراجعة تفويض الدفع</summary><p dir="auto">${uiLocale.messageHTML(uiLocale.message('الجهة {0} · المستند {1}', [state.orgId,d.id]))}</p></details>`:''}<div class="hl-doc-actions">${d.status==='DRAFT'&&canWrite()?uiLocale.html`<button type="button" data-doc-action="edit">تعديل</button><button type="button" data-doc-action="submit">إرسال للاعتماد</button>`:''}${canApprove?uiLocale.html`<button type="button" data-doc-action="approve">اعتماد</button>`:''}${canSign?uiLocale.html`<button type="button" data-doc-action="sign">توقيع</button>`:''}${admin&&d.status==='SIGNED'?uiLocale.html`<button type="button" data-doc-action="archive">أرشفة</button>`:''}${admin&&state.inventory?.internalPlatform&&d.status!=='DRAFT'?uiLocale.html`<button type="button" data-doc-action="review-assignment">إدارة تكليف المراجعة المستقلة</button>`:''}${state.inventory?.internalPlatform&&supportsHrAttendance(d.template)?uiLocale.html`<button type="button" data-doc-action="attendance-source">فحص سجلات الحضور والإجازة</button>`:''}${state.inventory?.internalPlatform&&supportsHrSource(d.template)?uiLocale.html`<button type="button" data-doc-action="hr-source">فحص السجل الوظيفي المرتبط</button>`:''}${admin&&state.inventory?.internalPlatform?uiLocale.html`<button type="button" data-doc-action="owner-approval">اعتماد المالك الإداري وسجله</button>`:''}${state.inventory?.internalPlatform&&((d.template?.code==='ADM-MEETING-MINUTES'&&d.department==='ADMIN_AFFAIRS_RECORDS')||(d.template?.code==='EXE-FOLLOWUP'&&d.department==='EXECUTIVE_GOVERNANCE'))?uiLocale.html`<button type="button" data-doc-action="owner-decision">قرارات المالك الروتينية</button>`:''}${admin&&state.inventory?.internalPlatform&&d.template?.code==='EXE-DECISION'&&d.department==='EXECUTIVE_GOVERNANCE'&&d.status==='SIGNED'?uiLocale.html`<button type="button" data-doc-action="executive-decision">إصدار ومتابعة القرار التنفيذي</button>`:''}<button type="button" data-doc-action="readiness">فحص مسار الاعتماد</button><button type="button" data-doc-action="pdf">عرض PDF</button></div><section class="hl-doc-attachments" aria-label="ملفات PDF المرفقة"><div class="hl-doc-actions">${attachmentControls}${attachmentList}</div><p class="hl-doc-note" data-doc-attachment-status role="status" aria-live="polite"></p></section><div class="hl-doc-note" data-doc-readiness role="status" aria-live="polite" hidden></div><div class="hl-doc-note" data-doc-hr-source-result role="status" aria-live="polite" hidden></div><div class="hl-doc-note" data-doc-attendance-saved-result role="status" aria-live="polite" style="overflow-wrap:anywhere" hidden></div></article>`;
     }).join(''));
   }
   const templateStatus=s=>({READY:'نموذج مهيأ',NOT_CONFIGURED:'النموذج غير مهيأ',INACTIVE:'النموذج غير نشط',ACTIVE_VERSION_CONFLICT:'تعارض الإصدارات النشطة',DEPARTMENT_CONFLICT:'تعارض الإدارة'}[s]||s);
@@ -402,7 +404,7 @@
     resetEditor();renderDocuments();renderInventory();
   }
   function clearData(){uiLocale.setMessage(panel.querySelector('[data-doc-owner-approval-status]'), '');state.ownerApprovals={};state.templates=[];state.documents=[];state.inventory=null;state.member=null;state.editing=null;panel.querySelector('[data-doc-template]').replaceChildren();uiLocale.setHTML(panel.querySelector('[data-doc-department]'), uiLocale.html`<option value="">كل الإدارات</option>`);renderSelection();}
-  async function loadOrganization(orgId){
+  async function loadOrganization(orgId, requestedTemplateId){
     if(state.orgId!==orgId)state.typeCode='';
     state.generation++;state.loading=true;state.orgId=orgId;const c=context();clearData();
     state.member=state.memberships.find(x=>x.organization?.id===orgId)||null;
@@ -415,11 +417,16 @@
       state.templates=Array.isArray(templates)?templates:[];state.documents=Array.isArray(documents)?documents:[];state.inventory=inventory;
       if(!inventory.departments.some(d=>d.code===state.department))state.department='';
       const select=panel.querySelector('[data-doc-department]');uiLocale.setHTML(select, uiLocale.html`<option value="">كل الإدارات</option>${inventory.departments.map(d=>uiLocale.html`<option value="${esc(d.code)}">${esc(d.nameAr)}</option>`).join('')}`);select.value=state.department;
-      renderSelection();if(state.inventory?.internalPlatform)void loadOwnerApprovals();note(uiLocale.message("تم تحميل {0} مستند · صلاحيتك: {1}", [state.documents.length, (state.member?.accessBasis==='PLATFORM_OWNER' ? uiLocale.message('مالك هيدرولاند الداخلي') : (state.member?.role || '—'))]));
+      renderSelection();
+      const formTemplate=panel.querySelector('[data-doc-template]');
+      if(requestedTemplateId && Array.from(formTemplate.options).some(option=>option.value===requestedTemplateId)){
+        formTemplate.value=requestedTemplateId;renderFields({});
+      }
+      if(state.inventory?.internalPlatform)void loadOwnerApprovals();note(uiLocale.message("تم تحميل {0} مستند · صلاحيتك: {1}", [state.documents.length, (state.member?.accessBasis==='PLATFORM_OWNER' ? uiLocale.message('مالك هيدرولاند الداخلي') : (state.member?.role || '—'))]));
     }catch(error){if(current(c)){clearData();note((error instanceof Error ? localErrorMessage(error) : uiLocale.message('تعذر تحميل المستندات')));}}
     finally{if(current(c)){state.loading=false;panel.querySelector('[data-doc-hr-source-preview]').disabled=false;}}
   }
-  async function refresh(requestedOrganizationId){
+  async function refresh(requestedOrganizationId, requestedTemplateId){
     state.generation++;const c=context();state.loading=true;clearData();
     if(!window.HydrolandAuth?.isAuthenticated?.()){state.memberships=[];panel.hidden=true;return;}
     try{
@@ -432,7 +439,7 @@
       if(!state.memberships.length){state.orgId=null;state.loading=false;note(uiLocale.message('لا توجد جهة مستندات متاحة لصلاحيتك الحالية.'));return;}
       const internal=state.memberships.find(x=>x.organization.kind==='HYDROLAND_INTERNAL_PLATFORM');
       const wanted=typeof requestedOrganizationId==='string'?requestedOrganizationId:state.preferInternal&&internal?internal.organization.id:state.memberships.some(x=>x.organization.id===state.orgId)?state.orgId:state.memberships[0].organization.id;
-      state.preferInternal=false;orgSelect.value=wanted;await loadOrganization(wanted);
+      state.preferInternal=false;orgSelect.value=wanted;await loadOrganization(wanted,requestedTemplateId);
     }catch(error){if(current(c)){state.loading=false;note((error instanceof Error ? localErrorMessage(error) : uiLocale.message('تعذر تحميل الجهات')));}}
   }
   panel.querySelector('[data-doc-hr-contracts]').addEventListener('click',()=>{if(!canManage()||state.department!=='HR'||!state.inventory?.internalPlatform)return;if(window.HydrolandContractLibrary?.open)window.HydrolandContractLibrary.open();else note(uiLocale.message('افتح مكتبة عقود هيدرولاند من الملف الشخصي.'));});
@@ -636,7 +643,7 @@
   window.HydrolandDocuments={open:(options={})=>{
     if(!window.HydrolandAuth?.isAuthenticated?.())return;
     state.department=options.department||'';state.typeCode='';state.preferInternal=options.internal===true||window.HydrolandPortalAccess?.getCurrentRole?.()==='admin';
-    panel.hidden=false;refresh(options.organizationId);
+    panel.hidden=false;refresh(options.organizationId, options.organizationId ? options.templateId : undefined);
     if(options.organizationId)panel.querySelector('[data-doc-org]').focus();
   },refresh};
 })();

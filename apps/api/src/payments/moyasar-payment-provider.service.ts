@@ -29,15 +29,16 @@ const maxProviderMinor=2_147_483_647;
 export class MoyasarPaymentProviderService {
   constructor(private readonly integrations:IntegrationService){}
 
-  async createInvoice(input:{paymentId:string;bookingId:string;amountMinor:number;currency:string}){
+  async createInvoice(input:{paymentId:string;bookingId:string;amountMinor:number;currency:string;organizationPayment?:{buyerOrganizationId:string;delegateAccountId:string}}){
     this.assertProvider();
     if(!Number.isInteger(input.amountMinor)||input.amountMinor<100)throw new BadRequestException('Moyasar invoice amount must be at least 100 minor units.');
     const origin=this.publicWebOrigin();
     const successUrl=new URL(origin.toString());successUrl.searchParams.set('payment','success');successUrl.searchParams.set('payment_id',input.paymentId);
     const backUrl=new URL(origin.toString());backUrl.searchParams.set('payment','cancelled');backUrl.searchParams.set('payment_id',input.paymentId);
-    const metadata={hydroland_payment_id:input.paymentId,hydroland_booking_id:input.bookingId};
+    const metadata={hydroland_payment_id:input.paymentId,hydroland_booking_id:input.bookingId,
+      ...(input.organizationPayment?{hydroland_buyer_organization_id:input.organizationPayment.buyerOrganizationId,hydroland_delegate_account_id:input.organizationPayment.delegateAccountId}:{})} as Record<string,string>;
     const payload={amount:input.amountMinor,currency:input.currency,description:`HYDROLAND booking ${input.bookingId}`,success_url:successUrl.toString(),back_url:backUrl.toString(),expired_at:new Date(Date.now()+30*60_000).toISOString(),metadata};
-    const response=await this.request('/invoices',{method:'POST',body:JSON.stringify(payload)});
+    const response=await this.request('/invoices',{method:'POST',...(input.organizationPayment?{redirect:'error' as const}:{}),body:JSON.stringify(payload)});
     return this.observeInvoice(response, {amount: input.amountMinor, currency: input.currency, metadata});
   }
 

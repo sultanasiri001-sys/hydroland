@@ -1,6 +1,17 @@
 (() => {
   // Only authored interface text is localized. Account and business values stay opaque.
   const uiLocale = window.HydrolandI18n?.createScope("organizations", {
+  "فتح نموذج تفويض دفع الحجوزات": "Open the booking payment mandate form",
+  "تعذر تجهيز نموذج التفويض.": "Unable to prepare the mandate form.",
+  "عرض شروط الدفع باسم الجهة": "Review organization payment terms",
+  "إجمالي الحجز": "Booking total",
+  "المركز المورّد": "Supplying center",
+  "الإلغاء قبل الرحلة بـ٤٨ ساعة أو أكثر يسترد كامل الأجرة. خلال الساعات الـ٤٨ السابقة للمغادرة يسترد نصفها. بعد الإغلاق أو الغياب المثبت لا يسترد المبلغ، وتُراعى الحقوق النظامية المنطبقة.": "Cancellation at least 48 hours before departure returns the full fare. Within the last 48 hours before departure it returns half. After closure or verified no-show there is no commercial refund. Applicable statutory rights are preserved.",
+  "أوافق على شروط الحجز وأبدأ الدفع بصفتي المفوّض المالي": "Accept the booking terms and start payment as the financial delegate",
+  "فتح صفحة الدفع": "Open checkout",
+  "تحديث حالة الدفع": "Refresh payment status",
+  "حالة دفع الجهة": "Organization payment status",
+  "تعذرت متابعة دفع الجهة.": "Unable to continue the organization payment.",
   "إعدادات المشتريات": "Procurement settings",
   "اختر من القائمة أو اكتب خيارًا خاصًا بالجهة.": "Choose a suggestion or enter a custom option.",
   "طريقة الشراء": "Purchasing method",
@@ -282,7 +293,7 @@
           <label>طريقة القبول<input name="acceptanceMethod" data-procurement-field maxlength="200" list="org-proc-acceptanceMethod"></label>
           <datalist id="org-proc-acceptanceMethod"><option>ميداني</option><option>عن بُعد</option><option>يُحدّد لاحقًا</option></datalist>
         </details>
-        <div class="hl-org-form-actions"><button type="submit">حفظ بيانات المنشأة</button><button type="button" data-org-financial-docs>مستندات المنشأة وإرفاق PDF</button></div>
+        <div class="hl-org-form-actions"><button type="submit">حفظ بيانات المنشأة</button><button type="button" data-org-financial-docs>مستندات المنشأة وإرفاق PDF</button><button type="button" data-org-mandate-template>فتح نموذج تفويض دفع الحجوزات</button></div>
       </form>
       <p data-org-financial-note role="status"></p>
     </section>
@@ -400,6 +411,40 @@
     if (!profileContext || !activeProfile(profileContext)) return;
     if (!window.HydrolandDocuments?.open) { uiLocale.setMessage(profileNote, uiLocale.message('تعذر فتح مستندات المنشأة. حدّث الصفحة وحاول مجددًا.')); return; }
     window.HydrolandDocuments.open({ organizationId: profileContext.organizationId, department: 'FINANCE' });
+  });
+  const mandateTemplateButton = profileForm.querySelector('[data-org-mandate-template]');
+  mandateTemplateButton.addEventListener('click', async () => {
+    const context = profileContext;
+    if (!context || !activeProfile(context) || !window.HydrolandDocuments?.open) return;
+    const org = context.organizationId, code = 'ORG-BOOKING-FINANCIAL-MANDATE';
+    const find = async () => {
+      const rows = await request('/documents/organizations/' + encodeURIComponent(org) + '/templates?department=FINANCE');
+      return Array.isArray(rows) && rows.find(t => t.code === code && t.organizationId === org && t.department === 'FINANCE');
+    };
+    mandateTemplateButton.disabled = true;
+    try {
+      let template = await find();
+      if (!activeProfile(context)) return;
+      if (!template) {
+        const field = (key, labelAr, labelEn, type, required, options) => ({ key, labelAr, labelEn, type, required, ...(options ? { options } : {}) });
+        const fields = [
+          field('purpose','الغرض','Purpose','SELECT',true,['ORGANIZATION_BOOKING_PREPAYMENT']),
+          field('decision','تعيين APPOINT أو إلغاء REVOKE','Appoint or revoke','SELECT',true,['APPOINT','REVOKE']),
+          field('delegateAccountId','معرّف حساب المفوّض المالي','Named financial delegate account ID','TEXT',true),
+          field('currency','عملة التعيين','Appointment currency','SELECT',false,['SAR']),
+          field('limitMinor','حد العملية بالهللات عند التعيين','Per-payment limit in halalas for appointment','NUMBER',false),
+          field('validFrom','بداية التفويض مع المنطقة الزمنية مثل 2026-12-01T09:00:00+03:00','Start with time zone, e.g. 2026-12-01T09:00:00+03:00','TEXT',false),
+          field('validUntil','نهاية التفويض مع المنطقة الزمنية','Exclusive end with time zone','TEXT',false),
+          field('grantId','معرّف تفويض التعيين المراد إلغاؤه','Original appointment ID for revocation','TEXT',false),
+        ];
+        try {
+          template = await request('/documents/templates', { method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({organizationId:org,code,titleAr:'تفويض دفع حجوزات الجهة',titleEn:'Organization booking payment mandate',department:'FINANCE',fields}) });
+        } catch (error) { template = await find(); if (!template) throw error; }
+      }
+      if (activeProfile(context)) window.HydrolandDocuments.open({organizationId:org, department:'FINANCE', templateId:template.id});
+    } catch (error) { if (activeProfile(context)) setLocalErrorText(profileNote,error,'تعذر تجهيز نموذج التفويض.'); }
+    finally { mandateTemplateButton.disabled = false; }
   });
   profileForm.addEventListener('submit', async event => {
     event.preventDefault();
@@ -534,7 +579,7 @@
       const mayCancel = ['OWNER', 'ADMIN'].includes(membership.role);
       uiLocale.setHTML(box, rows.length ? rows.map(booking => {
         const canEdit = mayEdit && booking.status === 'PENDING' && new Date(booking.trip?.startsAt) > new Date();
-        return uiLocale.html`<article class="hl-org-request" data-org-booking-id="${esc(booking.id)}" data-org-booking-version="${esc(booking.updatedAt)}"><div><strong>${(value=>value?esc(value):uiLocale.messageHTML(uiLocale.message('رحلة')))(booking.trip?.title)}</strong><span>${uiLocale.messageHTML(authoredBookingStatus(booking.status))}</span></div><small>${esc(new Date(booking.trip?.startsAt).toLocaleString('ar-SA'))} · ${esc(booking.seats)} مقعدًا</small><div class="hl-org-participants">${(booking.participants || []).map(person => uiLocale.html`<form data-org-participant data-participant-id="${esc(person.id)}"><label>اسم المشارك<input name="fullName" value="${esc(person.fullName)}" maxlength="160" required ${canEdit ? '' : 'disabled'}></label><label>المؤهل<input name="certificationTitle" value="${esc(person.certificationTitle || '')}" maxlength="160" ${canEdit ? '' : 'disabled'}></label>${(canEdit?uiLocale.html`<button type="submit">حفظ بيانات المشارك</button>`:uiLocale.html`<small>${esc(person.eligibilityStatus)}</small>`)}</form>`).join('')}</div>${(mayCancel && booking.status === 'PENDING'?uiLocale.html`<button type="button" data-org-booking-cancel>إلغاء الحجز (لا ينفذ استردادًا)</button>`:'')}</article>`;
+        return uiLocale.html`<article class="hl-org-request" data-org-booking-id="${esc(booking.id)}" data-org-booking-version="${esc(booking.updatedAt)}"><div><strong>${(value=>value?esc(value):uiLocale.messageHTML(uiLocale.message('رحلة')))(booking.trip?.title)}</strong><span>${uiLocale.messageHTML(authoredBookingStatus(booking.status))}</span></div><small>${esc(new Date(booking.trip?.startsAt).toLocaleString('ar-SA'))} · ${esc(booking.seats)} مقعدًا</small><div class="hl-org-participants">${(booking.participants || []).map(person => uiLocale.html`<form data-org-participant data-participant-id="${esc(person.id)}"><label>اسم المشارك<input name="fullName" value="${esc(person.fullName)}" maxlength="160" required ${canEdit ? '' : 'disabled'}></label><label>المؤهل<input name="certificationTitle" value="${esc(person.certificationTitle || '')}" maxlength="160" ${canEdit ? '' : 'disabled'}></label>${(canEdit?uiLocale.html`<button type="submit">حفظ بيانات المشارك</button>`:uiLocale.html`<small>${esc(person.eligibilityStatus)}</small>`)}</form>`).join('')}</div>${(booking.status === 'PENDING'?uiLocale.html`<div data-org-prepay><button type="button" data-org-quote>عرض شروط الدفع باسم الجهة</button></div>`:'')}${(mayCancel && booking.status === 'PENDING'?uiLocale.html`<button type="button" data-org-booking-cancel>إلغاء الحجز (لا ينفذ استردادًا)</button>`:'')}</article>`;
       }).join('') : uiLocale.html`<p>لا توجد حجوزات مسجلة لهذه الجهة.</p>`);
       const tripsSelect = panel.querySelector('[data-org-trip]');
       const availableTrips = (Array.isArray(trips) ? trips : []).filter(trip => trip.status === 'OPEN' && new Date(trip.startsAt) > new Date());
@@ -602,6 +647,50 @@
       if (current()) await loadOrganizationBookings(organizationId, stateMemberships.find(row => row.organization?.id === organizationId));
     } catch (error) { if (current()) note(localErrorMessage((error instanceof Error?error:undefined), 'تعذر حفظ بيانات المشارك.')); }
     finally { if (button) button.disabled = false; }
+  });
+  const prepaymentQuotes = new WeakMap();
+  panel.querySelector('[data-org-booking-list]')?.addEventListener('click', async event => {
+    const button = event.target.closest('[data-org-quote],[data-org-pay],[data-org-pay-refresh]');
+    if (!button) return;
+    const box = button.closest('[data-org-prepay]'), org = selectedBookingsOrganization;
+    const id = box?.closest('[data-org-booking-id]')?.dataset.orgBookingId;
+    if (!org || !id || !box) return;
+    const auth = window.HydrolandAuth, session = auth?.getSessionVersion?.(), version = bookingLoadVersion;
+    const current = () => box.isConnected && auth?.isAuthenticated?.() && auth.getSessionVersion?.() === session
+      && selectedBookingsOrganization === org && bookingLoadVersion === version;
+    const path = '/organizations/' + encodeURIComponent(org) + '/bookings/' + encodeURIComponent(id) + '/prepayment';
+    button.disabled = true;
+    try {
+      if (button.matches('[data-org-quote]')) {
+        const quote = await request(path + '/quote');
+        if (!current()) return;
+        const contract = quote?.snapshot;
+        if (contract?.kind !== 'TRIP' || contract.source?.id !== id || contract.buyerOrganizationId !== org
+          || contract.currency !== 'SAR' || !Number.isSafeInteger(contract.amountMinor) || contract.amountMinor < 100
+          || contract.refundPolicy?.snapshot?.version !== '2026-11-21.1') throw localError('تعذرت متابعة دفع الجهة.');
+        prepaymentQuotes.set(box, { requestId: crypto.randomUUID(), quoteHash: quote.quoteHash, policyVersion: quote.policyVersion });
+        const currency = new Intl.NumberFormat(document.documentElement.lang || 'ar-SA', { style: 'currency', currency: 'SAR' });
+        uiLocale.setHTML(box, uiLocale.html`<p><strong>المركز المورّد</strong> ${esc(contract.issuer?.legalName || contract.issuer?.displayName)}</p>
+          <p><strong>إجمالي الحجز</strong> ${esc(currency.format(contract.amountMinor / 100))}</p>
+          <p>الإلغاء قبل الرحلة بـ٤٨ ساعة أو أكثر يسترد كامل الأجرة. خلال الساعات الـ٤٨ السابقة للمغادرة يسترد نصفها. بعد الإغلاق أو الغياب المثبت لا يسترد المبلغ، وتُراعى الحقوق النظامية المنطبقة.</p>
+          <button type="button" data-org-pay>أوافق على شروط الحجز وأبدأ الدفع بصفتي المفوّض المالي</button>`);
+        return;
+      }
+      const accept = button.matches('[data-org-pay]'), quote = prepaymentQuotes.get(box);
+      if (accept && !quote) throw localError('تعذرت متابعة دفع الجهة.');
+      const payment = await request(accept ? path : path + '/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        ...(accept ? { body: JSON.stringify(quote) } : {}) });
+      if (!current()) return;
+      let href = '';
+      if (typeof payment.checkoutUrl === 'string') {
+        const url = new URL(payment.checkoutUrl);
+        if (url.protocol === 'https:' || url.protocol === 'http:' && ['127.0.0.1','localhost'].includes(url.hostname)) href = url.href;
+      }
+      uiLocale.setHTML(box, uiLocale.html`<p><strong>حالة دفع الجهة</strong> ${esc(payment.status)}</p>
+        ${href ? uiLocale.html`<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">فتح صفحة الدفع</a>` : ''}
+        <button type="button" data-org-pay-refresh>تحديث حالة الدفع</button>`);
+    } catch (error) { if (current()) note(localErrorMessage(error instanceof Error ? error : undefined, 'تعذرت متابعة دفع الجهة.')); }
+    finally { if (current()) button.disabled = false; }
   });
   panel.querySelector('[data-org-booking-list]')?.addEventListener('click', async event => {
     const button = event.target.closest('[data-org-booking-cancel]'); if (!button) return;

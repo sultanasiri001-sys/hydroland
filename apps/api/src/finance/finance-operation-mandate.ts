@@ -4,6 +4,12 @@ import { platformOrganization } from '../hr/staffing-catalog';
 
 const object = (value: unknown): Record<string, any> | null => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : null;
 
+// Document forms submit NUMBER fields as text. Accept integer halalas only.
+export function mandateAmountMinor(value: unknown): number | null {
+  const amount = typeof value === 'string' && /^\d{1,10}$/.test(value) ? Number(value) : value;
+  return typeof amount === 'number' && Number.isSafeInteger(amount) && amount > 0 && amount <= 2147483647 ? amount : null;
+}
+
 export const BOOKING_PREPAYMENT_OPERATION = 'INITIATE_ORGANIZATION_BOOKING_PREPAYMENT';
 
 /** Rechecked under row locks at both reservation and financial dispatch. */
@@ -40,7 +46,7 @@ async function currentMandate(tx: Prisma.TransactionClient, accountId: string, o
       });
       const terms = object(document && document.payload);
       if (!member || !document || terms?.purpose !== 'ORGANIZATION_BOOKING_PREPAYMENT' || terms.decision !== 'APPOINT'
-        || terms.delegateAccountId !== accountId || terms.currency !== currency || terms.limitMinor !== fresh.limitMinor
+        || terms.delegateAccountId !== accountId || terms.currency !== currency || mandateAmountMinor(terms.limitMinor) !== fresh.limitMinor
         || Date.parse(terms.validFrom) !== fresh.validFrom.getTime() || Date.parse(terms.validUntil) !== fresh.validUntil.getTime()) {
         throw new ForbiddenException('Organization membership or signed appointment no longer matches the financial mandate.');
       }

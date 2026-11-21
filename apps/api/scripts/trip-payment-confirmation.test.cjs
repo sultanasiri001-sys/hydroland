@@ -26,6 +26,12 @@ function fixture({ legacy = false, organizationId = null, paymentMode = 'ENABLED
       providerReference: 'PRIVATE_INVOICE_ID', moyasarPaymentId: 'PRIVATE_PROVIDER_PAYMENT_ID', updatedAt: now, refundOperations: [] },
     price: { pricePerSeatMinor: 5_750, currency: 'SAR' }, priceReads: 0, paymentReads: [], writes: 0,
   };
+  if (organizationId && !legacy) {
+    state.payment.accountId = 'authorized-financial-delegate';
+    state.payment.contractSnapshot = { ...structuredClone(snapshot), termsAcceptanceStatus: 'ACCEPTED',
+      organizationPaymentAuthorization: { source: 'ORGANIZATION_BOOKING_PREPAYMENT', buyerOrganizationId: organizationId,
+        bookingId: state.booking.id, delegateAccountId: state.payment.accountId, grantId: 'signed-mandate', approvalEvidenceReference: 'platform-review' } };
+  }
   const clone = value => structuredClone(value);
   const tx = {
     account: { findFirst: async () => ({ id: 'buyer-1', status: 'ACTIVE' }) },
@@ -45,7 +51,11 @@ function fixture({ legacy = false, organizationId = null, paymentMode = 'ENABLED
       { id: 'p1', fullName: 'One', eligibilityStatus: 'ELIGIBLE', certificationTitle: 'Fixture', updatedAt: now },
       { id: 'p2', fullName: 'Two', eligibilityStatus: 'ELIGIBLE', certificationTitle: 'Fixture', updatedAt: now },
     ] },
-    calendarEvent: { findUnique: async () => null },
+    calendarEvent: { findUnique: async () => organizationId && !state.noCalendar ? {
+      id: 'calendar-trip', organizationId: trip.organizationId, status:'ACTIVE', startsAt: start, endsAt: end,
+      allocations: [{id:'allocation',resourceId:'site',startsAt:start,endsAt:end,resource:{active:true,type:'SITE'}}],
+    } : null },
+    calendarAllocation: { findMany: async () => [] },
     safetyChecklist: { findFirst: async () => ({ id: 'safety', decision: 'ALLOWED', updatedAt: now }) },
     auditEvent: { findFirst: async () => null },
   };
@@ -212,4 +222,31 @@ test('individual policy settings still apply to personal bookings', async () => 
     assert.equal(await guard.canActivate(context), true);
     assert((await management.detail('admin', 'booking-1', 'admin')).actions.includes('CONFIRM'));
   }
+});
+
+test('organization payment evidence binds its named payer to the accepted contract and organization', async () => {
+  const { state, guard, context, management } = fixture({ organizationId: 'buyer-org' });
+  const receipt = state.payment.contractSnapshot.organizationPaymentAuthorization;
+  for (const patch of [{ delegateAccountId: 'unrelated' }, { buyerOrganizationId: 'other-org' }, { bookingId: 'other-booking' }, { approvalEvidenceReference: '' }]) {
+    state.payment.contractSnapshot.organizationPaymentAuthorization = { ...receipt, ...patch };
+    await assert.rejects(() => guard.canActivate(context), e => e.getStatus?.() === 409);
+    assert(!(await management.detail('admin', 'booking-1', 'admin')).actions.includes('CONFIRM'));
+  }
+  state.payment.contractSnapshot = null;
+  state.payment.accountId = state.booking.accountId;
+  await assert.rejects(() => guard.canActivate(context), e => e.getStatus?.() === 409);
+});
+
+test('a paid organization booking also needs its current calendar allocation before confirmation', async () => {
+  const { state, management } = fixture({organizationId:'buyer-org',paymentMode:'DISABLED'});
+  const ready=await management.detail('admin','booking-1','admin');
+  assert(ready.actions.includes('CONFIRM'));
+  state.noCalendar=true;
+  const changed=await management.detail('admin','booking-1','admin');
+  assert(changed.paymentSatisfied);
+  assert(changed.calendarReservation.confirmationGateEnforced);
+  assert(changed.blockers.includes('CALENDAR_EVENT_MISSING_OR_INACTIVE'));
+  assert(!changed.actions.includes('CONFIRM'));
+  await assert.rejects(()=>management.apply('admin','booking-1',{action:'CONFIRM',requestId:randomUUID(),expectedState:ready.stateToken},'admin'),e=>e.getStatus?.()===409);
+  assert.equal(state.writes,0);
 });

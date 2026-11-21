@@ -5,7 +5,7 @@ import { DatabaseService } from '../database/database.service';
 import { record } from '../hr/staffing-catalog';
 import { requirePlatformFinanceApprover } from './finance-operation-grant.service';
 
-import { BOOKING_PREPAYMENT_OPERATION } from './finance-operation-mandate';
+import { BOOKING_PREPAYMENT_OPERATION, mandateAmountMinor } from './finance-operation-mandate';
 const purpose = 'ORGANIZATION_BOOKING_PREPAYMENT';
 const reviewed = 'ORGANIZATION_BOOKING_MANDATE_REVIEWED';
 
@@ -27,13 +27,13 @@ function mandateTerms(payload: unknown) {
   if (terms.decision === 'REVOKE' && typeof terms.grantId === 'string' && terms.grantId.trim()) {
     return { decision: 'REVOKE' as const, accountId, grantId: terms.grantId };
   }
-  if (terms.decision !== 'APPOINT' || terms.currency !== 'SAR' || typeof terms.limitMinor !== 'number'
-    || !Number.isSafeInteger(terms.limitMinor) || terms.limitMinor < 1 || terms.limitMinor > 2147483647) {
+  const limitMinor = mandateAmountMinor(terms.limitMinor);
+  if (terms.decision !== 'APPOINT' || terms.currency !== 'SAR' || limitMinor === null) {
     throw new ConflictException('تتطلب تسمية المفوّض عملة الريال وحدًا صريحًا صالحًا بالهللات.');
   }
   const validFrom = timestamp(terms.validFrom), validUntil = timestamp(terms.validUntil);
   if (validFrom >= validUntil) throw new BadRequestException('مدة التفويض غير صالحة.');
-  return { decision: 'APPOINT' as const, accountId, currency: 'SAR', limitMinor: terms.limitMinor, validFrom, validUntil };
+  return { decision: 'APPOINT' as const, accountId, currency: 'SAR', limitMinor, validFrom, validUntil };
 }
 
 @Injectable()
