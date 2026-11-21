@@ -1,6 +1,25 @@
 (() => {
   // Only authored interface text is localized. Account and business values stay opaque.
   const uiLocale = window.HydrolandI18n?.createScope("organizations", {
+  "إعدادات المشتريات": "Procurement settings",
+  "اختر من القائمة أو اكتب خيارًا خاصًا بالجهة.": "Choose a suggestion or enter a custom option.",
+  "طريقة الشراء": "Purchasing method",
+  "أمر شراء": "Purchase order",
+  "شراء مباشر": "Direct purchase",
+  "اتفاقية إطارية": "Framework agreement",
+  "نظام تبادل طلبات الشراء": "Procurement exchange system",
+  "بوابة هيدرولاند": "HYDROLAND portal",
+  "مستندات يدوية": "Manual documents",
+  "نظام مشتريات الجهة": "Organization procurement system",
+  "صفة ممثل الجهة": "Representative role",
+  "مسؤول المشتريات": "Procurement officer",
+  "ممثل مفوّض": "Authorized representative",
+  "اسم ممثل الجهة": "Representative name",
+  "مرجع العقد أو الاتفاقية": "Contract or agreement reference",
+  "طريقة القبول": "Acceptance method",
+  "ميداني": "On site",
+  "عن بُعد": "Remote",
+  "يُحدّد لاحقًا": "To be decided",
   "مؤكد": "Confirmed",
   "عدد المقاعد": "Number of seats",
   "قيد المعالجة": "Processing",
@@ -251,6 +270,18 @@
         <label>عملة المنشأة<input name="currency" value="الريال السعودي (SAR)" readonly></label>
         <label>الحالة الضريبية بحسب إقرار المنشأة<select name="taxStatus"><option value="UNDECLARED">لم تُحدد</option><option value="EXEMPT">معفاة من الضرائب بحسب الإقرار</option><option value="TAXABLE">خاضعة للضريبة بحسب الإقرار</option></select></label>
         <label>حالة تسجيل المنشأة<select name="registrationStatus"><option value="UNDECLARED">لم تُحدد</option><option value="REGISTERED">مسجّلة</option><option value="IN_PROGRESS">التسجيل قيد الإجراء</option><option value="NOT_REGISTERED">غير مسجّلة</option><option value="EXPIRED">التسجيل منتهٍ</option></select></label>
+        <details><summary>إعدادات المشتريات</summary><p>اختر من القائمة أو اكتب خيارًا خاصًا بالجهة.</p>
+          <label>طريقة الشراء<input name="method" data-procurement-field maxlength="200" list="org-proc-method"></label>
+          <datalist id="org-proc-method"><option>أمر شراء</option><option>شراء مباشر</option><option>اتفاقية إطارية</option></datalist>
+          <label>نظام تبادل طلبات الشراء<input name="system" data-procurement-field maxlength="200" list="org-proc-system"></label>
+          <datalist id="org-proc-system"><option>بوابة هيدرولاند</option><option>مستندات يدوية</option><option>نظام مشتريات الجهة</option></datalist>
+          <label>صفة ممثل الجهة<input name="representativeRole" data-procurement-field maxlength="200" list="org-proc-representativeRole"></label>
+          <datalist id="org-proc-representativeRole"><option>مسؤول المشتريات</option><option>ممثل مفوّض</option><option>مدير الجهة</option></datalist>
+          <label>اسم ممثل الجهة<input name="representativeName" data-procurement-field maxlength="200"></label>
+          <label>مرجع العقد أو الاتفاقية<input name="contractReference" data-procurement-field maxlength="200"></label>
+          <label>طريقة القبول<input name="acceptanceMethod" data-procurement-field maxlength="200" list="org-proc-acceptanceMethod"></label>
+          <datalist id="org-proc-acceptanceMethod"><option>ميداني</option><option>عن بُعد</option><option>يُحدّد لاحقًا</option></datalist>
+        </details>
         <div class="hl-org-form-actions"><button type="submit">حفظ بيانات المنشأة</button><button type="button" data-org-financial-docs>مستندات المنشأة وإرفاق PDF</button></div>
       </form>
       <p data-org-financial-note role="status"></p>
@@ -332,6 +363,7 @@
   function closeFinancialProfile() {
     profileContext = null;
     profileForm.reset();
+    profileForm.querySelector('details').open = false;
     profileForm.hidden = true;
     profileSection.hidden = true;
     profileNote.textContent = '';
@@ -355,6 +387,8 @@
       if (data?.currency !== 'SAR' || !Number.isSafeInteger(data.revision)) throw localError('تعذرت قراءة بيانات المنشأة.');
       profileForm.elements.taxStatus.value = data.taxStatus;
       profileForm.elements.registrationStatus.value = data.registrationStatus;
+      context.hasProcurement = Boolean(data.procurement);
+      for (const input of profileForm.querySelectorAll('[data-procurement-field]')) input.value = data.procurement?.[input.name] ?? '';
       context.revision = data.revision;
       profileForm.hidden = false;
       profileForm.querySelector('[type="submit"]').disabled = false;
@@ -375,12 +409,18 @@
     if (submit.disabled) return;
     submit.disabled = true;
     const body = { currency: 'SAR', taxStatus: profileForm.elements.taxStatus.value, registrationStatus: profileForm.elements.registrationStatus.value, expectedRevision: context.revision };
+    const procurement = {};
+    for (const input of profileForm.querySelectorAll('[data-procurement-field]')) {
+      if (input.value.trim()) procurement[input.name] = input.value.trim();
+    }
+    if (Object.keys(procurement).length || context.hasProcurement) body.procurement = procurement;
     try {
       const saved = await request('/organizations/' + encodeURIComponent(context.organizationId) + '/financial-profile', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
       if (!activeProfile(context)) return;
       context.revision = saved.revision;
+      context.hasProcurement = Boolean(saved.procurement);
       uiLocale.setMessage(profileNote, uiLocale.message('حُفظت بيانات المنشأة.'));
     } catch (error) {
       if (activeProfile(context)) {

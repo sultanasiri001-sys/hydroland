@@ -81,6 +81,21 @@ try {
   assert.equal((await ok(await call(contact, profilePath, 'PATCH', {...declaration, expectedRevision:1, registrationStatus:'IN_PROGRESS'}))).revision, 2);
   assert.equal(await db.auditEvent.count({where:{action:'organization.financial-profile.declared',resourceId:organization.id,actorId:contact.personId}}), 2);
   assert.equal(await db.operationalSetting.count({where:{key:'organization-financial-profile:'+otherOrganization.id}}), 0);
+  const procurement = {method:'أمر شراء', system:'نظام الجهة', representativeRole:'مسؤول المشتريات', contractReference:'TEST-PO', acceptanceMethod:'ميداني'};
+  const updated = {...declaration, registrationStatus:'IN_PROGRESS', expectedRevision:2, procurement};
+  const configured = await ok(await call(contact, profilePath, 'PATCH', updated));
+  assert.equal(configured.revision,3); assert.deepEqual(configured.procurement,procurement);
+  assert.deepEqual(await ok(await call(contact, profilePath, 'PATCH', updated)),configured);
+  assert.equal((await call(foreign, profilePath, 'PATCH', updated)).status,403);
+  assert.equal((await call(contact, profilePath, 'PATCH', {...updated, procurement:{method:'direct'}})).status,409);
+  const revised = await ok(await call(contact, profilePath, 'PATCH', {...updated,expectedRevision:3,procurement:{...procurement,system:'Custom intake'}}));
+  assert.equal(revised.procurement.system,'Custom intake');
+  const legacy = await ok(await call(contact, profilePath, 'PATCH', {...declaration,expectedRevision:4}));
+  assert.deepEqual(legacy.procurement,revised.procurement);
+  const history=await db.auditEvent.findMany({where:{action:'organization.financial-profile.declared',resourceId:organization.id}});
+  assert.ok(history.some(entry=>entry.metadata.previous?.procurement?.system===procurement.system && entry.metadata.declared?.procurement?.system==='Custom intake'));
+  const cleared=await ok(await call(contact, profilePath, 'PATCH', {...declaration, expectedRevision:5, procurement:null}));
+  assert.equal(cleared.procurement,undefined);
   const preview = await ok(await call(contact, `${scoped}/${booking.id}`));
   const cancellation = { requestId: randomUUID(), expectedState: preview.stateToken, reason: 'إلغاء بطلب الجهة قبل موعد الرحلة' };
   // A competing roster edit invalidates the reviewed cancellation snapshot.
