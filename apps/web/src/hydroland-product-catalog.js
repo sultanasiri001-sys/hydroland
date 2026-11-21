@@ -1,6 +1,6 @@
 (() => {
   const labels = {
-    'نوع العرض':'Offer type',
+    'نوع العرض':'Offer type','حساب سعر العرض':'Calculate sale price','طريقة الحساب':'Calculation method','نسبة مئوية':'Percentage','مبلغ الخصم':'Discount amount','قيمة الخصم':'Discount value','استخدام السعر المحسوب':'Use calculated price','أدخل السعر الأساسي وخصمًا أقل منه.':'Enter a regular price and a smaller discount.','سعر البيع المحسوب':'Calculated sale price',
     'تقارير المتجر':'Store reports','تصدير المنتجات':'Export products','تحديث تقرير الطلبات':'Refresh order report','تصدير الطلبات المعروضة':'Export displayed orders','من تاريخ':'From date','إلى تاريخ':'To date','العملة':'Currency','الحالة':'Status','بداية الخصم':'Sale start','نهاية الخصم':'Sale end','يعرض أحدث ٢٠٠ طلب. المبالغ هي قيمة الطلبات حسب حالتها.':'Includes the most recent 200 orders. Amounts are order values by status.','لا توجد طلبات للفترة المحددة.':'No orders in this date range.','تعذر تحميل التقرير.':'Could not load the report.','طلبات':'Orders','رقم الطلب':'Order number','تاريخ الطلب':'Order date','قيمة الطلب':'Order value','البحث في المنتجات والخدمات':'Search products and services','كل التصنيفات':'All categories','كل العلامات التجارية':'All brands','السعر من الأقل':'Price ascending','السعر من الأعلى':'Price descending','ترتيب المتجر':'Store order','المنتجات المخفضة فقط':'Discounted products only',
     'رمز مجموعة المقاسات':'Variant group code','المقاس':'Size','اللون':'Color','الباركود':'Barcode','التصنيف':'Category','العلامة التجارية':'Brand',
     'سعر البيع بعد الخصم':'Sale price','بداية الخصم بتوقيت الرياض':'Sale starts, Riyadh time','نهاية الخصم بتوقيت الرياض':'Sale ends, Riyadh time',
@@ -25,10 +25,34 @@
   }
   function discountFields(data={},currency='SAR') {
     return input('catalogSale','سعر البيع بعد الخصم',data.salePriceMinor == null ? '' : (data.salePriceMinor/100).toFixed(2),'type="number" step=".01" min=".01"')+
+      '<div data-discount-calculator><button type="button" data-show-calc aria-expanded="false">'+esc(t('حساب سعر العرض'))+'</button><div data-calc-panel hidden>'+
+      '<label>'+esc(t('طريقة الحساب'))+'<select data-calc-mode><option value="percent">'+esc(t('نسبة مئوية'))+'</option><option value="amount">'+esc(t('مبلغ الخصم'))+' · '+esc(currency)+'</option></select></label>'+
+      '<label>'+esc(t('قيمة الخصم'))+'<input data-calc-value type="number" step=".01" min=".01"></label>'+
+      '<button type="button" data-calc-price>'+esc(t('استخدام السعر المحسوب'))+'</button><output aria-live="polite"></output></div></div>'+
       '<small>'+esc(currency)+' · '+esc(t('اترك سعر الخصم فارغًا للبيع بالسعر الأساسي.'))+'</small>'+
       input('catalogStarts','بداية الخصم بتوقيت الرياض',riyadhTime(data.startsAt),'type="datetime-local"')+
       input('catalogEnds','نهاية الخصم بتوقيت الرياض',riyadhTime(data.endsAt),'type="datetime-local"');
   }
+  document.addEventListener('click',event=>{
+    const toggle=event.target.closest?.('[data-show-calc]');
+    if(toggle){const panel=toggle.parentElement.querySelector('[data-calc-panel]');panel.hidden=!panel.hidden;toggle.setAttribute('aria-expanded',String(!panel.hidden));return}
+    const button=event.target.closest?.('[data-calc-price]');if(!button)return;
+    const form=button.closest('form'),area=button.closest('[data-discount-calculator]');
+    if(!form||!area)return;
+    const baseValue=form.elements.namedItem('price')?.value;
+    const discountValue=area.querySelector('[data-calc-value]').value;
+    const percent=area.querySelector('[data-calc-mode]').value==='percent';
+    const output=area.querySelector('output');
+    const decimal=value=>typeof value==='string' && /^\d+(\.\d{1,2})?$/.test(value);
+    const base=Math.round(Number(baseValue)*100),discount=Math.round(Number(discountValue)*100);
+    const sale=percent ? base-Math.round(base*discount/10000) : base-discount;
+    if(!decimal(baseValue)||!decimal(discountValue)||!Number.isSafeInteger(base)||base>2147483647||
+       !Number.isSafeInteger(discount)||discount<=0||!Number.isSafeInteger(sale)||sale<=0||sale>=base){
+      output.textContent=t('أدخل السعر الأساسي وخصمًا أقل منه.');return;
+    }
+    form.elements.namedItem('catalogSale').value=(sale/100).toFixed(2);
+    output.textContent=t('سعر البيع المحسوب')+' · '+(sale/100).toFixed(2);
+  });
   function editor(data={},currency='SAR') {
     return '<fieldset class="hl-catalog-fields"><legend>'+esc(t('خيارات المنتج'))+'</legend>'+
       fields.map(([name,label])=>input('catalog_'+name,label,data[name] || '','maxlength="100"')).join('')+

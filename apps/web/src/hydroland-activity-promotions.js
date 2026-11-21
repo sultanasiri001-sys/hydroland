@@ -16,7 +16,7 @@
       out.replaceChildren();const ui=window.HydrolandProductCatalog;
       for(const row of data.filter(r=>r.title.toLocaleLowerCase().includes(search.value.trim().toLocaleLowerCase()))){
         const item=el('details'),title=el('summary',t({course:'الدورة',trip:'الرحلة',rental:'معدة للإيجار'}[row.type])+' · '+row.title);
-        const f=el('form'),base=el('input'),active=el('input'),label=el('label',t('السعر الأساسي بالريال'));base.type='number';base.step='0.01';base.min='0';base.required=true;base.readOnly=row.type!=='rental';base.value=row.baseMinor==null?'':(row.baseMinor/100).toFixed(2);label.append(base);f.append(label);
+        const f=el('form'),base=el('input'),active=el('input'),label=el('label',t('السعر الأساسي بالريال'));base.name='price';base.type='number';base.step='0.01';base.min='0';base.required=true;base.readOnly=row.type!=='rental';base.value=row.baseMinor==null?'':(row.baseMinor/100).toFixed(2);label.append(base);f.append(label);
         if(row.type==='rental'){active.type='checkbox';active.checked=row.published;const pub=el('label',t('عرض التأجير في المتجر'));pub.prepend(active);f.append(pub)}
         const fields=el('fieldset');fields.innerHTML=ui.discountFields(row.sale||{},row.currency);f.append(fields);
         const save=el('button',t('حفظ العرض')),status=el('p');status.setAttribute('role','status');f.append(save,status);item.append(title,f);out.append(item);

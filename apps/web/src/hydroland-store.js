@@ -373,7 +373,7 @@
     const active=sameSession();
     let order=null;
     try{
-      const r=await auth().authorizedFetch('/store/orders',{method:'POST',body:JSON.stringify({items:[...cart.values()].map(x=>({productId:x.id,quantity:x.quantity,...(x.catalogDetails ? {expectedUnitPriceMinor:x.priceMinor} : {})}))})});
+      const r=await auth().authorizedFetch('/store/orders',{method:'POST',body:JSON.stringify({items:[...cart.values()].map(x=>({productId:x.id,quantity:x.quantity,...(Number.isSafeInteger(x.listPriceMinor)||x.catalogDetails ? {expectedUnitPriceMinor:x.priceMinor} : {})}))})});
       order=await parse(r);
       if(!active())return;
       cart.clear();renderCart();await loadProducts();
