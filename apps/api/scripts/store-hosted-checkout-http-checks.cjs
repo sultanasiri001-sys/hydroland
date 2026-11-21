@@ -301,6 +301,26 @@ const cancel = row => call(owner, '/store/admin/orders/' + row.id + '/status', '
       assert.equal(await db.auditEvent.count({where: {action: 'STORE_COLLECTION_VERIFIED', resourceId: paidOrder.id}}), 1);
       await ok(await fulfill(paidOrder)); assert.equal((await db.storeOrder.findUniqueOrThrow({where: {id: paidOrder.id}})).status, 'FULFILLED');
     });
+    await check('native packing and tracked dispatch are isolated, replay safe and do not record buyer delivery',async()=>{
+      for (const [manager,organization] of [[owner,center],[foreign,otherCenter]]) {
+        await db.roleAssignment.create({data:{accountId:manager.id,role:'DIVE_CENTER',status:'ACTIVE'}});
+        await db.organizationMember.create({data:{accountId:manager.id,organizationId:organization.id,role:'OWNER',status:'ACTIVE'}});
+      }
+      const item=paidOrder.items[0],url='/store/provider/fulfillment/'+item.id,track=route(paidOrder,'fulfillment');
+      await reject(await call(customer,'/store/provider/fulfillment'),403);
+      assert.ok((await ok(await call(owner,'/store/provider/fulfillment'))).some(row=>row.itemId===item.id));
+      const packing={requestId:randomUUID(),revision:0,state:'PACKING'};
+      await reject(await call(foreign,url,'POST',packing),404);
+      const packed=await ok(await call(owner,url,'POST',packing));
+      assert.equal(packed.revision,1);
+      assert.equal((await ok(await call(owner,url,'POST',packing))).revision,1);
+      await reject(await call(owner,url,'POST',{...packing,requestId:randomUUID(),state:'SHIPPED',carrier:'Test carrier',tracking:'REF-100'}),409);
+      const notice=await ok(await call(owner,url,'POST',{requestId:randomUUID(),revision:1,state:'SHIPPED',carrier:'Test carrier',tracking:'REF-100'}));
+      assert.equal(notice.tracking,'REF-100');assert.equal(notice.revision,2);
+      await reject(await call(foreign,track),404);
+      assert.equal((await ok(await call(customer,track))).find(row=>row.itemId===item.id).notice.tracking,'REF-100');
+      assert.equal(await db.storeGoodsDelivery.count({where:{itemId:item.id}}),0);
+    });
     await check('partial goods delivery, return intake and independent seller receipt are scoped and replay-safe', async () => {
       const itemId = paidOrder.items[0].id, path = route(paidOrder, 'items/'+itemId+'/deliveries');
       const input = {quantity:1, receivedAt:new Date().toISOString(), requestId:randomUUID()};
@@ -319,10 +339,7 @@ const cancel = row => call(owner, '/store/admin/orders/' + row.id + '/status', '
       assert.equal(requested.sellerReceivedAt,null);
       assert.equal((await ok(await call(customer,requestPath,'POST',claim))).id,requested.id);
       await reject(await call(customer,requestPath,'POST',{...claim,requestId:randomUUID()}),409);
-      for (const [manager,organization] of [[owner,center],[foreign,otherCenter]]) {
-        await db.roleAssignment.create({data:{accountId:manager.id,role:'DIVE_CENTER',status:'ACTIVE'}});
-        await db.organizationMember.create({data:{accountId:manager.id,organizationId:organization.id,role:'OWNER',status:'ACTIVE'}});
-      }
+
       const receiptPath='/store/provider/returns/'+requested.id+'/receipt', receipt={receivedAt:new Date().toISOString()};
       assert.equal((await ok(await call(foreign,'/store/provider/returns'))).length,0);
       await reject(await call(foreign,receiptPath,'POST',receipt),404);

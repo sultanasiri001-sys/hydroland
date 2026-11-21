@@ -1,4 +1,7 @@
 import { ActivityPromotionsController } from './activity-promotions.controller';
+import { StorePreferencesController } from './store-preferences.controller';
+import { StoreFeedbackController } from './store-feedback.controller';
+import { StoreFeedbackService } from './store-feedback.service';
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { AdminModule } from '../admin/admin.module';
@@ -9,6 +12,6 @@ import { StoreOfferingsController } from './store-offerings.controller';
 import { StoreOfferingsService } from './store-offerings.service';
 import { StoreGoodsService } from './store-goods.service';
 import { StoreGoodsController } from './store-goods.controller';
-@Module({imports:[AuthModule,AdminModule,AuditModule],controllers:[ActivityPromotionsController,StoreGoodsController,StoreController,StoreOfferingsController],providers:[StoreGoodsService,StoreService,StoreOfferingsService]})
+@Module({imports:[AuthModule,AdminModule,AuditModule],controllers:[ActivityPromotionsController,StoreFeedbackController,StorePreferencesController,StoreGoodsController,StoreController,StoreOfferingsController],providers:[StoreFeedbackService,StoreGoodsService,StoreService,StoreOfferingsService]})
 export class StoreModule {}
 

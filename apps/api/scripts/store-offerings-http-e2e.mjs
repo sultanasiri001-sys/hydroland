@@ -1,5 +1,6 @@
 import {checkInstructorCompensation} from './instructor-compensation-http-checks.mjs';
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
 import sharp from 'sharp';
 import {PrismaClient} from '@prisma/client';
 import {createHmac,randomUUID} from 'node:crypto';
@@ -21,6 +22,16 @@ async function request(account,path,method='GET',body){
 }
 const ok=result=>{assert.ok(result.status>=200&&result.status<300,JSON.stringify(result));return result.body};
 try{
+ // Prisma db push creates model tables in integration CI, while production deploys SQL migrations.
+ // Install the exact production trigger on the isolated CI database for the stock-transition test.
+ const [trigger]=await db.$queryRaw`SELECT EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid='"StoreProduct"'::regclass AND tgname='hydroland_store_restock_notice') AS installed`;
+ if(!trigger.installed){
+   assert.ok(['127.0.0.1','localhost','postgres'].includes(new URL(process.env.DATABASE_URL).hostname),'Use a local integration database for migration fixtures');
+   const sql=await readFile(new URL('../prisma/migrations/20261121201000_store_customer_preferences/migration.sql',import.meta.url),'utf8');
+   const start=sql.indexOf('CREATE FUNCTION hydroland_'), end=sql.indexOf('CREATE TRIGGER hydroland_',start);
+   assert.ok(start>0 && end>start);
+   await db.$transaction(async tx=>{await tx.$executeRawUnsafe(sql.slice(start,end));await tx.$executeRawUnsafe(sql.slice(end))});
+ }
  for(const name of ['owner-a','owner-b','staff','buyer-a','buyer-b']){
    const person=await db.person.create({data:{firstName:name,lastName:'StoreOffers'}});persons.push(person);
    const account=await db.account.create({data:{personId:person.id,email:`store-offer-${name}-${randomUUID()}@example.invalid`,passwordHash:'test',status:'ACTIVE',emailVerifiedAt:new Date()}});accounts.push(account);
@@ -61,12 +72,53 @@ try{
  const bought=ok(await request(buyer,'/store/orders','POST',{items:[{productId:variantId,quantity:1,expectedUnitPriceMinor:9900}]}));orderIds.push(bought.id);
  assert.equal(bought.totalMinor,9900);assert.equal(bought.items[0].contractSnapshot.catalogSelection.size,'L');
  assert.equal(bought.items[0].contractSnapshot.catalogSelection.listPriceMinor,12550);
+ const pref='/store/preferences/'+variantId;
+ assert.equal((await request(null,pref+'/favorite','PUT',{enabled:true})).status,401);
+ assert.equal(ok(await request(buyer,pref+'/favorite','PUT',{enabled:true})).favorite,true);
+ assert.equal(ok(await request(buyer,pref+'/favorite','PUT',{enabled:true})).favorite,true);
+ assert.ok(!ok(await request(b,'/store/preferences/mine')).some(v=>v.productId===variantId));
+ assert.equal((await request(buyer,pref+'/stock-alert','PUT',{enabled:true})).status,409);
+ const {requestId:variantRequest,...variantFields}=variant;
+ const setVariantStock=async stockQuantity=>{
+   const prior=await db.storeProduct.findUniqueOrThrow({where:{id:variantId}});
+   return ok(await request(a,'/store/provider/products/'+variantId,'PATCH',{...variantFields,stockQuantity,expectedUpdatedAt:prior.updatedAt}));
+ };
+ await setVariantStock(0);
+ ok(await request(buyer,pref+'/stock-alert','PUT',{enabled:true}));
+ await setVariantStock(1);await setVariantStock(2);
+ assert.equal(await db.notification.count({where:{accountId:buyer.id,type:'STORE_PRODUCT_BACK_IN_STOCK',payload:{path:['productId'],equals:variantId}}}),1);
+ const favorites=ok(await request(buyer,'/store/preferences/mine')).find(row=>row.productId===variantId);
+ assert.deepEqual(favorites,{productId:variantId,favorite:true,stockAlert:false});
+ ok(await request(buyer,pref+'/favorite','PUT',{enabled:false}));
+ assert.ok(!ok(await request(buyer,'/store/preferences/mine')).some(row=>row.productId===variantId));
+ console.log('PASS isolated account favorites and one opt-in in-app restock notification per subscription');
+ const feedbackPath='/store/products/'+variantId+'/feedback',question={id:randomUUID(),kind:'QUESTION',body:'هل تتوفر قطعة بديلة؟'};
+ assert.equal((await request(null,feedbackPath,'POST',question)).status,401);
+ const submitted=ok(await request(buyer,feedbackPath,'POST',question));assert.equal(submitted.published,false);
+ assert.equal(ok(await request(buyer,feedbackPath,'POST',question)).id,submitted.id);
+ assert.ok(!ok(await request(null,feedbackPath)).some(x=>x.id===submitted.id));
+ assert.ok(!ok(await request(b,'/store/provider/feedback')).some(x=>x.id===submitted.id));
+ assert.equal((await request(b,'/store/provider/feedback/'+submitted.id,'PATCH',{revision:1,published:true,reply:'نعم'})).status,404);
+ const reviewed=ok(await request(a,'/store/provider/feedback/'+submitted.id,'PATCH',{revision:1,published:true,reply:'نعم'}));
+ const visible=ok(await request(null,feedbackPath)).find(x=>x.id===submitted.id);
+ assert.equal(visible.reply,'نعم');assert.equal(visible.accountId,undefined);
+ assert.equal((await request(buyer,feedbackPath,'POST',{...question,body:'متى تتوفر؟',revision:1})).status,409);
+ ok(await request(buyer,feedbackPath,'POST',{...question,body:'متى تتوفر؟',revision:reviewed.revision}));
+ assert.ok(!ok(await request(null,feedbackPath)).some(x=>x.id===submitted.id));
+ const rating={id:randomUUID(),kind:'REVIEW',body:'مقاس مناسب',rating:5};
+ assert.equal((await request(buyer,feedbackPath,'POST',rating)).status,400);
+ await db.storeGoodsDelivery.create({data:{id:randomUUID(),itemId:bought.items[0].id,customerAccountId:buyer.id,organizationId:organizations[0].id,quantity:1,receivedAt:new Date(),policyVersion:'test'}});
+ const review=ok(await request(buyer,feedbackPath,'POST',rating));assert.equal(review.rating,5);
+ ok(await request(a,'/store/provider/feedback/'+review.id,'PATCH',{revision:1,published:true,reply:'شكرًا'}));
+ assert.equal(ok(await request(null,feedbackPath)).find(x=>x.id===review.id).rating,5);
+ console.log('PASS native product questions and verified-delivery reviews, scoped moderation, unpublication after amendment, anonymous public projection');
  const latest=await db.storeProduct.findUniqueOrThrow({where:{id:variantId}});
  const {requestId:ignored,...options}=variant;
  const later=new Date(Date.now()+86400000).toISOString();
  ok(await request(a,'/store/provider/products/'+variantId,'PATCH',{...options,expectedUpdatedAt:latest.updatedAt,catalogDetails:{...variant.catalogDetails,startsAt:later},stockQuantity:latest.stockQuantity}));
  show=ok(await request(null,'/store/products')).find(x=>x.id===variantId);
  assert.equal(show.priceMinor,12550);assert.equal(show.discountActive,false);
+ assert.equal(show.catalogDetails.size,'L');assert.equal(Object.hasOwn(show.catalogDetails,'salePriceMinor'),false);
  assert.equal((await db.storeOrder.findUniqueOrThrow({where:{id:bought.id}})).totalMinor,9900);
  console.log('PASS catalog variants and scheduled discounts before cart, stale price conflict, immutable order pricing and idempotent merchant create.');
  let p=await db.storeProduct.findUniqueOrThrow({where:{id:productId}});
@@ -80,7 +132,7 @@ try{
  const promotionCourse=randomUUID();ids.push(promotionCourse);
  const promoCourse=ok(await request(a,'/store/provider/courses','POST',{requestId:promotionCourse,courseCode:'NATIVE-SALE',title:'دورة بعرض',description:'تجربة',locationName:'المركز',startsAt:new Date(Date.now()+864000000).toISOString(),endsAt:new Date(Date.now()+950400000).toISOString(),capacity:3,priceMinor:80000,status:'ACTIVE',saleDetails:{salePriceMinor:65000}}));
  const publicCourse=ok(await request(null,'/store/courses')).find(c=>c.id===promotionCourse);
- assert.equal(publicCourse.priceMinor,65000);assert.equal(publicCourse.listPriceMinor,80000);
+ assert.equal(Object.hasOwn(publicCourse,'saleDetails'),false);assert.equal(publicCourse.priceMinor,65000);assert.equal(publicCourse.listPriceMinor,80000);
  const enrollmentQuote=ok(await request(buyer,'/store/courses/'+promotionCourse+'/enroll','POST'));
  assert.equal(enrollmentQuote.metadata.contractSnapshot.unitPriceMinor,65000);
  assert.equal(enrollmentQuote.metadata.listPriceMinor,80000);
@@ -163,6 +215,7 @@ try{
  await db.trainingCertificate.deleteMany({where:{trainingRecordId:{in:records.map(row=>row.id)}}});
  await db.trainingRecord.deleteMany({where:{id:{in:records.map(row=>row.id)}}});
  await db.trainingEnrollment.deleteMany({where:{storeCourseOfferId:{in:ids}}});
+ await db.storeGoodsDelivery.deleteMany({where:{item:{orderId:{in:orderIds}}}});
  await db.storeOrderItem.deleteMany({where:{orderId:{in:orderIds}}});await db.storeOrder.deleteMany({where:{id:{in:orderIds}}});
  await db.storeProduct.deleteMany({where:{id:{in:ids}}});await db.storeCourseOffer.deleteMany({where:{id:{in:ids}}});
  await db.organizationMember.deleteMany({where:{organizationId:{in:organizations.map(row=>row.id)}}});await db.organization.deleteMany({where:{id:{in:organizations.map(row=>row.id)}}});

@@ -154,3 +154,23 @@ test('catalog shows the offer before cart and keeps each chosen SKU and price', 
  await page.locator('[data-clear-catalog-cart]').click();
  expect(await page.evaluate(()=>window.HydrolandStore.getCart())).toHaveLength(0);
 });
+
+test('customer can save a product and opt in to its stock notification independently',async({page})=>{
+ const prefs=new Map();
+ await setup(page);
+ await page.route('**/api/v1/store/products',r=>json(r,[{...service,stockQuantity:0}]));
+ await page.route('**/api/v1/store/preferences/mine',r=>json(r,[...prefs.values()]));
+ await page.route('**/api/v1/store/preferences/service-1/*',r=>{
+   const field=r.request().url().endsWith('/favorite')?'favorite':'stockAlert';
+   const row={productId:'service-1',favorite:false,stockAlert:false,...prefs.get('service-1'),[field]:r.request().postDataJSON().enabled};
+   prefs.set('service-1',row);return json(r,row);
+ });
+ await page.evaluate(()=>window.HydrolandStore.reloadProducts());
+ await page.locator('[data-product-preference="favorite"]').click();
+ await expect(page.locator('[data-product-preference="favorite"]')).toHaveAttribute('aria-pressed','true');
+ await page.locator('[data-product-preference="stock-alert"]').click();
+ await expect(page.locator('[data-product-preference="stock-alert"]')).toHaveAttribute('aria-pressed','true');
+ await page.locator('[data-store-favorites]').click();await expect(page.locator('[data-public-product]')).toHaveCount(1);
+ await page.locator('[data-product-preference="favorite"]').click();await expect(page.locator('[data-public-product]')).toHaveCount(0);
+ expect(prefs.get('service-1').stockAlert).toBe(true);
+});

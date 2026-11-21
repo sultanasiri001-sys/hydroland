@@ -145,7 +145,7 @@ export class StoreOfferingsService {
   async publicCourses(){
     const policy=await trainingOperationalPolicy(this.db);
     const rows=await this.db.storeCourseOffer.findMany({where:{status:'ACTIVE',startsAt:{gt:new Date()},organization:{status:'ACTIVE'}},orderBy:{startsAt:'asc'},include:{organization:{select:{displayName:true}},_count:{select:{enrollments:{where:{status:{not:'CANCELLED'}}}}}}});
-    return rows.map(({_count,...row})=>({...row,...priceActivity(row.priceMinor,row.saleDetails),bookingPolicy:{capacityLimit:policy.capacityLimit?'ENABLED':'DISABLED'},remainingSeats:Math.max(0,row.capacity-_count.enrollments)}));
+    return rows.map(({_count,saleDetails,...row})=>({...row,...priceActivity(row.priceMinor,saleDetails),bookingPolicy:{capacityLimit:policy.capacityLimit?'ENABLED':'DISABLED'},remainingSeats:Math.max(0,row.capacity-_count.enrollments)}));
   }
 
   enroll(accountId:string,courseId:string){

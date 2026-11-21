@@ -14,7 +14,12 @@ export class StoreService {
   async listProducts() {
     const rows = await this.prisma.storeProduct.findMany({ where: { status: 'ACTIVE', OR:[{organizationId:null},{organization:{status:'ACTIVE'}}] }, include:{organization:{select:{displayName:true}}}, orderBy: { nameAr: 'asc' } });
     const now = new Date();
-    return rows.map(product => catalogPrice(product, now));
+    return rows.map(product => {
+      const quote = catalogPrice(product, now);
+      if (!quote.catalogDetails) return quote;
+      const {family, size, color, barcode, category, brand} = quote.catalogDetails;
+      return {...quote, catalogDetails: {family, size, color, barcode, category, brand}};
+    });
   }
 
 
