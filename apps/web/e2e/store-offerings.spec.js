@@ -234,3 +234,26 @@ test('center calculates an optional percentage or fixed discount before publishi
  await calculator.locator('[data-calc-mode]').selectOption('amount');await calculator.locator('[data-calc-value]').fill('15.50');
  await calculator.locator('[data-calc-price]').click();await expect(form.locator('[name=catalogSale]')).toHaveValue('224.50');
 });
+
+test('center discount dashboard updates its own SKU and reports only its order portion',async({page})=>{
+ const state=await setup(page,true);
+ state.products=[{...service,status:'ACTIVE',catalogDetails:{family:'FINS',size:'M',salePriceMinor:10300}}];
+ await page.evaluate(()=>window.HydrolandStoreProvider.open());
+ const box=page.locator('.hl-store-provider .hl-catalog-dashboard');
+ await expect(box.getByRole('heading',{name:'لوحة خصومات المركز'})).toBeVisible();
+ await expect(box.locator('[data-discount-counts]')).toContainText('خصم سارٍ 1');
+ await page.route('**/api/v1/store/provider/products/service-1',r=>{
+   const body=r.request().postDataJSON();state.writes.push(body);Object.assign(state.products[0],body);
+   return json(r,state.products[0]);
+ });
+ await box.locator('[data-catalog-id="service-1"]').click();
+ await box.locator('[name=catalogSale]').fill('98.75');
+ await box.locator('[data-catalog-product] [type=submit]').click();
+ await expect.poll(()=>state.writes.length).toBe(1);
+ expect(state.writes[0]).toMatchObject({sku:'SERVICE-1',kind:'SERVICE',status:'ACTIVE',catalogDetails:{salePriceMinor:9875,size:'M'}});
+ const result=[{id:'customer-order',currency:'SAR',status:'CREATED',createdAt:revision,totalMinor:9875}];
+ await page.route('**/api/v1/store/provider/reports/orders*',r=>json(r,result));
+ const reports=box.locator('details').filter({has:page.locator('summary',{hasText:'تقارير المتجر'})});
+ await reports.locator('summary').click();await reports.getByRole('button',{name:'تحديث تقرير الطلبات'}).click();
+ await expect(reports).toContainText('قيمة بنود مركزك فقط');await expect(reports).toContainText('CREATED');
+});

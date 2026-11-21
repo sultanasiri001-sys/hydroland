@@ -1,5 +1,6 @@
 (() => {
   const labels = {
+    'لوحة خصومات المركز':'Center discount dashboard','يعرض أحدث ٢٠٠ طلب في الفترة المحددة، ويحسب قيمة بنود مركزك فقط.':'Shows the latest 200 matching orders and the value of your center’s items only.','نفد المخزون':'Out of stock',
     'نوع العرض':'Offer type','حساب سعر العرض':'Calculate sale price','طريقة الحساب':'Calculation method','نسبة مئوية':'Percentage','مبلغ الخصم':'Discount amount','قيمة الخصم':'Discount value','استخدام السعر المحسوب':'Use calculated price','أدخل السعر الأساسي وخصمًا أقل منه.':'Enter a regular price and a smaller discount.','سعر البيع المحسوب':'Calculated sale price',
     'تقارير المتجر':'Store reports','تصدير المنتجات':'Export products','تحديث تقرير الطلبات':'Refresh order report','تصدير الطلبات المعروضة':'Export displayed orders','من تاريخ':'From date','إلى تاريخ':'To date','العملة':'Currency','الحالة':'Status','بداية الخصم':'Sale start','نهاية الخصم':'Sale end','يعرض أحدث ٢٠٠ طلب. المبالغ هي قيمة الطلبات حسب حالتها.':'Includes the most recent 200 orders. Amounts are order values by status.','لا توجد طلبات للفترة المحددة.':'No orders in this date range.','تعذر تحميل التقرير.':'Could not load the report.','طلبات':'Orders','رقم الطلب':'Order number','تاريخ الطلب':'Order date','قيمة الطلب':'Order value','البحث في المنتجات والخدمات':'Search products and services','كل التصنيفات':'All categories','كل العلامات التجارية':'All brands','السعر من الأقل':'Price ascending','السعر من الأعلى':'Price descending','ترتيب المتجر':'Store order','المنتجات المخفضة فقط':'Discounted products only',
     'رمز مجموعة المقاسات':'Variant group code','المقاس':'Size','اللون':'Color','الباركود':'Barcode','التصنيف':'Category','العلامة التجارية':'Brand',
@@ -97,7 +98,7 @@
       return [row.sku,row.nameAr,row.description,d.category,d.brand,d.family,d.size,d.color,d.barcode,sheetPrice(row.priceMinor),sheetPrice(d.salePriceMinor),row.currency,row.stockQuantity,row.status,d.startsAt,d.endsAt,row.kind||'GOODS'];
     })]);
   }
-  function addReports(section,getProducts,api,active) {
+  function addReports(section,getProducts,api,active,provider) {
     const details=document.createElement('details'),summary=document.createElement('summary');summary.textContent=t('تقارير المتجر');details.append(summary);
     const output=document.createElement('div');
     const dateInput=(label)=>{const wrapper=document.createElement('label');wrapper.append(t(label));const field=document.createElement('input');field.type='date';wrapper.append(field);details.append(wrapper);return field};
@@ -117,7 +118,7 @@
         const item=groups.get(key) || {count:0,sum:0,currency:row.currency,status:row.status};
         item.count++; item.sum+=row.totalMinor;groups.set(key,item);
       }
-      const note=document.createElement('p');note.textContent=t('يعرض أحدث ٢٠٠ طلب. المبالغ هي قيمة الطلبات حسب حالتها.');output.append(note);
+      const note=document.createElement('p');note.textContent=t(provider?'يعرض أحدث ٢٠٠ طلب في الفترة المحددة، ويحسب قيمة بنود مركزك فقط.':'يعرض أحدث ٢٠٠ طلب. المبالغ هي قيمة الطلبات حسب حالتها.');output.append(note);
       for(const g of groups.values()){
         const line=document.createElement('p');line.textContent=[g.status,g.count+' '+t('طلبات'),new Intl.NumberFormat('ar-SA',{style:'currency',currency:g.currency}).format(g.sum/100)].join(' · ');output.append(line);
       }
@@ -127,7 +128,9 @@
     const refresh=makeButton('تحديث تقرير الطلبات',async()=>{
       const current=++version;refresh.disabled=true;
       try{
-        const response=await api('/store/admin/orders');const rows=await response.json();
+        const range=new URLSearchParams();if(from.value)range.set('from',from.value);if(to.value)range.set('to',to.value);
+        const endpoint=provider?'/store/provider/reports/orders'+(range.size?'?'+range:''):'/store/admin/orders';
+        const response=await api(endpoint);const rows=await response.json();
         if(!active()||current!==version)return;
         if(!response.ok || !Array.isArray(rows))throw Error();
         orders=rows;loaded=true;show();exportOrders.disabled=false;
@@ -138,20 +141,26 @@
       if(!active()||!loaded)return;
       downloadCsv('hydroland-orders.csv',[[t('رقم الطلب'),t('تاريخ الطلب'),t('الحالة'),t('قيمة الطلب'),t('العملة')],...filtered().map(o=>[o.id,o.createdAt,o.status,sheetPrice(o.totalMinor),o.currency])]);
     });
-    exportOrders.disabled=true;from.onchange=show;to.onchange=show;details.append(output);section.append(details);
+    exportOrders.disabled=true;const updateRange=()=>{if(!provider){show();return}version++;orders=[];loaded=false;exportOrders.disabled=true;refresh.disabled=false;output.replaceChildren()};from.onchange=updateRange;to.onchange=updateRange;details.append(output);section.append(details);
     return ()=>{version++;orders=[];loaded=false;details.open=false;exportOrders.disabled=true;refresh.disabled=false;output.replaceChildren();from.value='';to.value=''};
   }
-  function mount(box,api,reload,notify) {
+  function mount(box,api,reload,notify,options={}) {
+    const provider=options.role==='provider',active=options.active||(()=>!box.hidden);
     const section=document.createElement('section');
     section.className='hl-catalog-dashboard';
-    section.innerHTML='<h3>'+esc(t('لوحة الخصومات'))+'</h3><label>'+esc(t('بحث بالاسم أو رقم المنتج'))+'<input type="search" data-catalog-search></label><select aria-label="'+esc(t('الخصومات'))+'" data-catalog-filter>'+['جميع المنتجات','خصم سارٍ','مجدول','منتهي','بدون خصم'].map(x=>'<option value="'+esc(x)+'">'+esc(t(x))+'</option>').join('')+'</select><div data-catalog-results></div><div data-catalog-edit></div>';
-    box.querySelector('[data-store-admin-list]').before(section);
+    section.innerHTML='<h3>'+esc(t(provider?'لوحة خصومات المركز':'لوحة الخصومات'))+'</h3><label>'+esc(t('بحث بالاسم أو رقم المنتج'))+'<input type="search" data-catalog-search></label><select aria-label="'+esc(t('الخصومات'))+'" data-catalog-filter>'+['جميع المنتجات','خصم سارٍ','مجدول','منتهي','بدون خصم'].map(x=>'<option value="'+esc(x)+'">'+esc(t(x))+'</option>').join('')+'</select><div data-catalog-results></div><div data-catalog-edit></div>';
+    const anchor=box.querySelector(provider?'[data-managed-offers]':'[data-store-admin-list]');anchor.before(section);
+    const counts=document.createElement('p');counts.dataset.discountCounts='';section.querySelector('h3').after(counts);
     const results=section.querySelector('[data-catalog-results]'),area=section.querySelector('[data-catalog-edit]');
     const search=section.querySelector('input'),filter=section.querySelector('select');
     let products=[];
-    const resetImport=window.HydrolandCatalogImport?.mount(section,'admin',reload);
-    const resetReports=addReports(section,()=>products,api,()=>!box.hidden);
+    const resetImport=provider?null:window.HydrolandCatalogImport?.mount(section,'admin',reload);
+    const resetReports=addReports(section,()=>products,api,active,provider);
     function render() {
+      const summary={'خصم سارٍ':0,'مجدول':0,'منتهي':0,'بدون خصم':0};
+      for(const product of products)summary[status(product)]++;
+      summary['نفد المخزون']=products.filter(p=>p.stockQuantity===0).length;
+      counts.textContent=Object.entries(summary).map(([label,total])=>t(label)+' '+total).join(' · ');
       const term=search.value.trim().toLocaleLowerCase();
       const rows=products.filter(p=>[p.nameAr,p.sku,p.catalogDetails?.barcode,p.catalogDetails?.category,p.catalogDetails?.brand].some(x=>String(x||'').toLocaleLowerCase().includes(term))
         && (filter.selectedIndex===0 || status(p)===filter.value));
@@ -161,6 +170,7 @@
     results.addEventListener('click',event=>{
       const button=event.target.closest('button');if(!button)return;
       const clone=Boolean(button.dataset.variant);
+      const requestId=clone&&provider?crypto.randomUUID():null;
       const row=products.find(p=>p.id===(button.dataset.variant||button.dataset.catalogId));if(!row)return;
       const data={...row.catalogDetails,family:row.catalogDetails?.family||row.sku};
       if(clone){data.size='';data.color='';data.barcode=''}
@@ -172,20 +182,21 @@
       const form=area.querySelector('form');form.querySelector('input').focus();
       form.querySelector('[data-cancel-edit]').onclick=()=>area.replaceChildren();
       form.onsubmit=async event=>{
-        event.preventDefault();const submit=form.querySelector('[type=submit]');if(submit.disabled)return;
+        event.preventDefault();const submit=form.querySelector('[type=submit]');if(submit.disabled||!active())return;
         const values=Object.fromEntries(new FormData(form)),priceMinor=Math.round(Number(values.price)*100);
         submit.disabled=true;
         try {
           const payload={nameAr:values.nameAr,sku:values.sku,description:values.description,priceMinor,stockQuantity:Number(values.stockQuantity),
-            catalogDetails:read(form,data,priceMinor),...(clone?{variantOf:row.id,status:'DRAFT'}:{expectedUpdatedAt:row.updatedAt})};
-          const resp=await api('/store/admin/products'+(clone?'':'/'+encodeURIComponent(row.id)),{method:clone?'POST':'PATCH',body:JSON.stringify(payload)});
+            catalogDetails:read(form,data,priceMinor),...(provider?{kind:row.kind,status:clone?'DRAFT':row.status}:{}),
+            ...(clone?(provider?{requestId}:{variantOf:row.id,status:'DRAFT'}):{expectedUpdatedAt:row.updatedAt})};
+          const resp=await api((provider?'/store/provider/products':'/store/admin/products')+(clone?'':'/'+encodeURIComponent(row.id)),{method:clone?'POST':'PATCH',body:JSON.stringify(payload)});
           if(!resp.ok){const info=await resp.json().catch(()=>({}));throw Error(info.message||t('تعذر حفظ بيانات المنتج'))}
-          if(!box.hidden){area.replaceChildren();await reload();void window.HydrolandStore?.reloadProducts?.()}
+          if(active()){area.replaceChildren();await reload();void window.HydrolandStore?.reloadProducts?.()}
         } catch(error){form.querySelector('[role=status]').textContent=error.message||t('تعذر حفظ بيانات المنتج')}
         finally{submit.disabled=false}
       };
     });
-    return {update(rows){products=rows;render()},clear(){products=[];resetReports();resetImport?.();area.replaceChildren();results.replaceChildren();search.value='';filter.selectedIndex=0}};
+    return {update(rows){products=rows;render()},clear(){products=[];counts.textContent='';resetReports();resetImport?.();area.replaceChildren();results.replaceChildren();search.value='';filter.selectedIndex=0}};
   }
   const styles=document.createElement('style');
   styles.textContent='.hl-catalog-dashboard{margin:1.5rem 0;padding:1rem;border:1px solid #4b8394;border-radius:.8rem}.hl-catalog-dashboard article{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;padding:.65rem 0;border-bottom:1px solid #486571}.hl-catalog-dashboard form,.hl-catalog-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr));gap:.8rem}.hl-catalog-fields{grid-column:1/-1;border:1px solid #507385;border-radius:.5rem;padding:.8rem;min-width:0}.hl-catalog-fields small{grid-column:1/-1}.hl-catalog-dashboard label,.hl-catalog-fields label{display:grid;gap:.3rem}.hl-catalog-dashboard input,.hl-catalog-dashboard textarea,.hl-catalog-fields input{width:100%;min-width:0;box-sizing:border-box}.hl-catalog-dashboard form{margin-top:1rem}.hl-catalog-dashboard button,.hl-catalog-dashboard select{min-height:2.5rem}.hl-catalog-options{display:flex;flex-wrap:wrap;gap:.4rem;margin:.5rem 0}.hl-catalog-options a{padding:.3rem .6rem;border:1px solid currentColor;border-radius:.4rem}.hl-catalog-options [aria-current=true]{font-weight:800;text-decoration:underline}';
