@@ -42,7 +42,7 @@ function fixture({ participants = 1, incumbent = null } = {}) {
     metadata: { hydroland_payment_id: row.id, hydroland_booking_id: row.bookingId },
   });
   const db = {
-    booking: { findFirst: async ({ where }) => ({ id: where.id, accountId: where.accountId, tripId: 'trip-1', seats: 2, status: 'PENDING' }) },
+    booking: { findFirst: async ({ where }) => ({ id: where.id, accountId: where.accountId, tripId: 'trip-1', trip:{type:'SHORE_DIVE',organization:null}, seats: 2, status: 'PENDING' }) },
     operationalSetting: { findUnique: async () => ({ value: { pricePerSeatMinor: 12345, currency: 'SAR' } }) },
     payment: {
       findUnique: async ({ where }) => {
