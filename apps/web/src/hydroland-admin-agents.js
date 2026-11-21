@@ -663,7 +663,7 @@ function mountEvidencePanel(box,host,auth,access){
   function clear(){evidencePanel.clear();sectionPanel.hidden=true;uiLocale.setMessage(sectionStatus, '');departmentFilter.replaceChildren((option=>{uiLocale.setMessage(option, uiLocale.message('جميع الإدارات'));return option;})(new Option('', '')));resetSources();uiLocale.setMessage(rateStatus, '');providerRecovery.hidden=true;delete providerRecovery.dataset.revision;version++;busy=false;data=null;stale=true;cursor=nextCursor=null;history=[];connectionModel=null;uiLocale.setMessage(connection, '');resetInbox();resetReporting();cards.replaceChildren();box.querySelector('[data-ai-governance-office]').hidden=true;taskList.replaceChildren();uiLocale.setMessage(feedback, '');picker.replaceChildren();box.querySelectorAll('form').forEach(f=>f.reset());delete taskForm.dataset.requestId;box.querySelectorAll('[data-ai-message]').forEach(e=>uiLocale.setMessage(e, ''));box.querySelectorAll('[data-ai-provider],[data-ai-observed],[data-ai-budget]').forEach(e=>uiLocale.setMessage(e, ''));box.querySelector('[data-ai-tasks]').hidden=true;box.querySelector('[data-ai-initialize]').hidden=true;box.open=false;}
   // Current-view fencing must survive a role refresh that revokes permission,
   // so the central authorizer can clear the entire protected workspace.
-  async function authorize(v,s){const ok=await access()?.authorizeRole?.('admin',{sessionVersion:s,isCurrent:()=>v===version&&!host.hidden&&box.open});if(!ok||!current(v,s)){if(v===version)clear();return false}return true;}
+  async function authorize(v,s){const ok=await access()?.authorizeRole?.('admin',{sessionVersion:s,isCurrent:()=>v===version&&!host.hidden&&box.open});if(!ok||!current(v,s)){if(v===version&&s===auth()?.getSessionVersion?.())clear();return false}return true;}
   async function body(response,v,s){const payload=await response.json().catch(()=>null);if(response.status===403&&current(v,s))await authorize(v,s);if(!response.ok)throw localError((typeof payload?.message==='string' ? payload.message : (response.status===409 ? uiLocale.message('تغيرت الحالة؛ حدّث الوكلاء وراجع الإجراء.') : uiLocale.message('تعذر إكمال إجراء الوكيل.'))));return payload;}
   function correctionChoice(){
     const allowed=['EXECUTIVE','MARKETING','SALES','SUPPORT','INVENTORY','SOCIAL'].includes(picker.value)&&['DRAFT_REPORT','DRAFT_MESSAGE','DRAFT_CAMPAIGN'].includes(taskForm.elements.action.value);
@@ -803,7 +803,26 @@ function mountEvidencePanel(box,host,auth,access){
   document.addEventListener('hydroland:workspace-selected',event=>{if(event.detail?.target!==host)clear();});
   for(const name of ['hydroland:session-cleared','hydroland:portal-cleared','hydroland:role-changed'])document.addEventListener(name,clear);
   document.addEventListener('hydroland:auth-changed',()=>{if(!auth()?.isAuthenticated?.()||!access()?.roleAllowed?.('admin'))clear();});
-  setInterval(()=>{if(!eligible()||document.visibilityState!=='visible')return;if(data&&performance.now()-fetchedAt+(Date.parse(data.observedAt)-Date.parse(data.workerObservedAt||''))>data.metricsMaxAgeSeconds*1000)markStale();if(!busy)void load({background:true});},15000);
+  let backgroundAuthorization=null;
+  const refreshBackground=()=>{
+    if(!eligible()||document.visibilityState!=='visible')return;
+    if(data&&performance.now()-fetchedAt+(Date.parse(data.observedAt)-Date.parse(data.workerObservedAt||''))>data.metricsMaxAgeSeconds*1000)markStale();
+    if(busy)return;
+    const focused=document.activeElement,form=focused?.closest('form');
+    const editing=focused?.matches('input,textarea,select');
+    const submitting=focused?.matches('button')&&(form?.elements?.reason?.value?.trim()||form?.elements?.reviewed?.checked);
+    if(form&&box.contains(form)&&(editing||submitting)){
+      // Keep active draft/consent controls stable, but still refresh permission.
+      const v=version,s=auth()?.getSessionVersion?.();
+      if(backgroundAuthorization?.version===v&&backgroundAuthorization.session===s)return;
+      const pending={version:v,session:s};backgroundAuthorization=pending;
+      void authorize(v,s).catch(()=>{if(current(v,s))clear();}).finally(()=>{if(backgroundAuthorization===pending)backgroundAuthorization=null;});
+      return;
+    }
+    // A reset form can retain submit focus; it must not stop result polling.
+    void load({background:true});
+  };
+  setInterval(refreshBackground,15000);
   window.HydrolandAdminAgentWorkforce=Object.freeze({open(){const wasOpen=box.open;box.open=true;if(wasOpen)void load();},reload:load});
   return true;
  };

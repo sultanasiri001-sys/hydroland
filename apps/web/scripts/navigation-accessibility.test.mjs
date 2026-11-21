@@ -143,3 +143,73 @@ test('training navigation: a detached training target cannot be refreshed',async
   const f=trainingNavigationFixture();f.open('training');f.training.isConnected=false;
   await f.finish(0);assert.equal(f.shows.length,1);
 });
+
+// Exercise the actual AI poll and authorizer with deferred server decisions.
+const agentSource=await readFile(new URL('../src/hydroland-admin-agents.js',import.meta.url),'utf8');
+function agentRefreshFixture(){
+  const lines=agentSource.split('\n'),current=lines.find(line=>line.startsWith('  const current=(v,s)=>')),
+    authorize=lines.find(line=>line.startsWith('  async function authorize(v,s)')),
+    start=agentSource.indexOf('  let backgroundAuthorization=null;'),
+    polling=start<0?lines.find(line=>line.trim().startsWith('setInterval(')):agentSource.slice(start,agentSource.indexOf('  window.HydrolandAdminAgentWorkforce=',start));
+  assert.ok(current&&authorize&&polling,'actual AI poll and authorization source exists');
+  const state={session:1,eligible:true,elapsed:0,loads:0,clears:0,staleMarks:0,pending:[]};
+  const form={elements:{reason:{value:'Reviewed draft'},reviewed:{checked:true}}},host={hidden:false};
+  const box={open:true,contains:node=>node===form&&state.inside};
+  const document={visibilityState:'visible',activeElement:null};
+  const access={authorizeRole(role,options){assert.equal(role,'admin');return new Promise((resolve,reject)=>state.pending.push({options,resolve,reject}))}};
+  const context=vm.createContext({document,box,host,Promise,version:0,busy:false,fetchedAt:0,
+    data:{observedAt:'2026-11-21T00:00:00Z',workerObservedAt:'2026-11-21T00:00:00Z',metricsMaxAgeSeconds:90},
+    performance:{now:()=>state.elapsed},auth:()=>({getSessionVersion:()=>state.session}),access:()=>access,
+    eligible:()=>state.eligible&&!host.hidden&&box.open,markStale:()=>{state.staleMarks++},
+    clear:()=>{state.clears++;context.version++;context.busy=false;state.eligible=false;host.hidden=true;box.open=false},
+    setInterval(callback,ms){assert.equal(ms,15000);state.tick=callback}
+  });
+  context.load=()=>{
+    state.loads++;const v=++context.version,s=state.session;context.busy=true;
+    return context.runAgentAuthorize(v,s).catch(()=>{state.staleMarks++}).finally(()=>{if(v===context.version&&s===state.session)context.busy=false});
+  };
+  vm.runInContext(current+'\n'+authorize+'\n'+polling+'\nglobalThis.runAgentAuthorize=authorize;',context);
+  return {state,form,context,document,
+    focus(type,{inside=true,inForm=true}={}){state.inside=inside;document.activeElement={matches:selector=>selector.split(',').includes(type),closest:()=>inForm?form:null}},
+    async finish(index,allowed=true){state.pending[index].resolve(allowed);await new Promise(resolve=>setImmediate(resolve))}
+  };
+}
+test('agent background refresh: focused fields retain editing while permission is checked',async()=>{
+  for(const type of ['input','textarea','select']){
+    const f=agentRefreshFixture();f.focus(type);f.state.tick();assert.equal(f.state.loads,0);assert.equal(f.state.pending.length,1);
+    await f.finish(0);assert.equal(f.state.clears,0);assert.equal(f.context.busy,false);
+  }
+});
+test('agent background refresh: draft submit focus is protected but successful reset resumes polling',async()=>{
+  const f=agentRefreshFixture();f.focus('button');f.state.tick();assert.equal(f.state.loads,0);await f.finish(0);
+  f.state.tick();assert.equal(f.state.loads,0);await f.finish(1); // A failed save retains its draft for review.
+  f.form.elements.reason.value='';f.form.elements.reviewed.checked=false;f.state.tick();assert.equal(f.state.loads,1);await f.finish(2);
+});
+test('agent background refresh: leaving the form resumes the next normal poll',async()=>{
+  const f=agentRefreshFixture();f.focus('textarea');f.state.tick();await f.finish(0);assert.equal(f.state.loads,0);
+  f.focus('button',{inForm:false});f.state.tick();assert.equal(f.state.loads,1);await f.finish(1);
+  f.focus('input',{inside:false});f.state.tick();assert.equal(f.state.loads,2);await f.finish(2);
+});
+test('agent background refresh: stale marking is retained during editing and busy work',async()=>{
+  const f=agentRefreshFixture();f.focus('input');f.state.elapsed=91000;f.state.tick();assert.equal(f.state.staleMarks,1);assert.equal(f.state.loads,0);await f.finish(0);
+  f.context.busy=true;f.state.tick();assert.equal(f.state.staleMarks,2);assert.equal(f.state.pending.length,1);
+  f.document.visibilityState='hidden';f.state.tick();assert.equal(f.state.staleMarks,2);assert.equal(f.state.pending.length,1);
+});
+test('agent background refresh: fresh denial clears the protected view while editing',async()=>{
+  const f=agentRefreshFixture();f.focus('textarea');f.state.tick();await f.finish(0,false);assert.equal(f.state.clears,1);assert.equal(f.state.eligible,false);
+  f.state.tick();assert.equal(f.state.pending.length,1);
+});
+test('agent background refresh: an old authorization cannot clear a replacement session',async()=>{
+  const f=agentRefreshFixture(),oldVersion=f.context.version;
+  const pending=f.context.runAgentAuthorize(oldVersion,f.state.session);f.state.session++;
+  await f.finish(0,false);await pending;assert.equal(f.context.version,oldVersion);assert.equal(f.state.clears,0);
+});
+test('agent background refresh: replaced-session checks keep independent in-flight ownership',async()=>{
+  const f=agentRefreshFixture();f.focus('textarea');f.state.tick();f.state.tick();assert.equal(f.state.pending.length,1);
+  f.state.session++;f.state.tick();assert.equal(f.state.pending.length,2);await f.finish(0,false);assert.equal(f.state.clears,0);
+  f.state.tick();assert.equal(f.state.pending.length,2);await f.finish(1);f.state.tick();assert.equal(f.state.pending.length,3);await f.finish(2);
+});
+test('agent background refresh: an explicit new load fences a late deferred permission result',async()=>{
+  const f=agentRefreshFixture();f.focus('textarea');f.state.tick();assert.equal(f.state.loads,0);
+  const loaded=f.context.load();await f.finish(0,false);assert.equal(f.state.clears,0);await f.finish(1);await loaded;assert.equal(f.state.loads,1);assert.equal(f.context.busy,false);
+});
