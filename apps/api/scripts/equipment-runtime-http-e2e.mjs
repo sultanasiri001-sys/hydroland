@@ -203,7 +203,7 @@ try{
   if(afterPayment[0]?.stockStatus!=='AVAILABLE')throw new Error('Payment confirmation checked equipment out before handover');
 
   const handover=(token=adminToken)=>fetch(`${base}/trips/admin/equipment-rentals/${encodeURIComponent(rentalId)}/handover-scan`,{
-    method:'POST',headers:{...auth(token),'content-type':'application/json'},body:JSON.stringify({code:assetCode})
+    method:'POST',headers:{...auth(token),'content-type':'application/json'},body:JSON.stringify({code:assetCode,handoverCondition:'Intact except for a documented scratch'})
   });
   assert.equal((await handover(renterToken)).status,403);
   const audit=new AuditService(db);
@@ -228,12 +228,12 @@ try{
   const failedNotification=new EquipmentRentalHandoverService(db,audit,{
     notify(){throw new Error('Synthetic handover notification failure');}
   },inspections);
-  await assert.rejects(failedNotification.scan(admin.id,rentalId,{code:assetCode}),/Synthetic handover notification failure/);
+  await assert.rejects(failedNotification.scan(admin.id,rentalId,{code:assetCode,handoverCondition:'Intact except for a documented scratch'}),/Synthetic handover notification failure/);
   await assertHandoverUnchanged();
   const failedAudit=new EquipmentRentalHandoverService(db,{
     record(){throw new Error('Synthetic handover audit failure');}
   },new NotificationsService(db),inspections);
-  await assert.rejects(failedAudit.scan(admin.id,rentalId,{code:assetCode}),/Synthetic handover audit failure/);
+  await assert.rejects(failedAudit.scan(admin.id,rentalId,{code:assetCode,handoverCondition:'Intact except for a documented scratch'}),/Synthetic handover audit failure/);
   await assertHandoverUnchanged();
 
   const handovers=await Promise.all((await Promise.all([handover(),handover()])).map(json));
@@ -365,6 +365,8 @@ try{
   multiId=multi.id;
   await collectionFor(multiId);
   await json(await confirm(multiId));
+  const missingBaseline=await fetch(base+'/trips/admin/equipment-rentals/'+multiId+'/handover-scan',{method:'POST',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({code:passports[0].assetCode})});
+  assert.equal(missingBaseline.status,400);
   await Promise.all(passports.map(passport=>post('/trips/admin/equipment-rentals/'+multiId+'/handover-scan',{code:passport.assetCode,handoverCondition:'Existing scratch on handle'})));
   assert.equal(await db.auditEvent.count({where:{resourceId:multiId,action:'EQUIPMENT_RENTAL_ITEM_HANDED_OVER'}}),2);
   assert.equal(await db.notification.count({where:{accountId:renter.id,type:'EQUIPMENT_RENTAL_HANDED_OVER',payload:{path:['rentalId'],equals:multiId}}}),1);

@@ -61,8 +61,8 @@ try{
   await assert.rejects(handover.confirmPayment(requesterId,missing.rental.id),denied);await unchanged(missing);passed++;
   await db.$executeRaw`UPDATE "EquipmentRental" SET "paymentStatus"='PAID',"paidAt"=NOW() WHERE "id"=${missing.rental.id}`;
   await assert.rejects(handover.confirmPayment(requesterId,missing.rental.id),denied);
-  await assert.rejects(handover.scan(requesterId,missing.rental.id,{code:missing.items[0].code}),denied);
-  await assert.rejects(new EquipmentRentalAdminService(db,rentals,handover).handoverScan(requesterId,missing.rental.id,{code:missing.items[0].code}),denied);passed+=3;
+  await assert.rejects(handover.scan(requesterId,missing.rental.id,{handoverCondition:'Synthetic baseline',code:missing.items[0].code}),denied);
+  await assert.rejects(new EquipmentRentalAdminService(db,rentals,handover).handoverScan(requesterId,missing.rental.id,{handoverCondition:'Synthetic baseline',code:missing.items[0].code}),denied);passed+=3;
 
   const negatives=[
     ['other customer',proof=>{proof.customerAccountId=otherCustomerId;}],
@@ -129,7 +129,7 @@ try{
     if(operation==='handover')await handover.confirmPayment(requesterId,fixture.rental.id);
     let notifyHeld,release;const held=new Promise(resolve=>{notifyHeld=resolve;}),unblock=new Promise(resolve=>{release=resolve;});
     const guarded=new EquipmentRentalHandoverService(db,audit,notifications,{async evaluate(ids,tx){notifyHeld();await unblock;return inspections.evaluate(ids,tx);}});
-    const attempt=operation==='confirmation'?guarded.confirmPayment(requesterId,fixture.rental.id):guarded.scan(requesterId,fixture.rental.id,{code:fixture.items[0].code});
+    const attempt=operation==='confirmation'?guarded.confirmPayment(requesterId,fixture.rental.id):guarded.scan(requesterId,fixture.rental.id,{handoverCondition:'Synthetic baseline',code:fixture.items[0].code});
     const denial=assert.rejects(attempt,forbidden);
     await held;await db.roleAssignment.update({where:{id:adminRole.id},data:{status:'SUSPENDED'}});release();await denial;
     const [row]=await db.$queryRaw`SELECT "handedOverAt" FROM "EquipmentRentalItem" WHERE "rentalId"=${fixture.rental.id}`;
@@ -143,12 +143,12 @@ try{
   assert.deepEqual(concurrent.map(result=>result.result).sort(),['ALREADY_PAID','PAYMENT_CONFIRMED']);
   assert.equal(await db.auditEvent.count({where:{resourceId:valid.rental.id,action:'EQUIPMENT_RENTAL_PAYMENT_CONFIRMED'}}),1);
   assert.equal(await db.notification.count({where:{type:'EQUIPMENT_RENTAL_INVOICE',payload:{path:['rentalId'],equals:valid.rental.id}}}),1);passed++;
-  const scans=await Promise.all([handover.scan(requesterId,valid.rental.id,{code:valid.items[0].code}),handover.scan(requesterId,valid.rental.id,{code:valid.items[0].code})]);
+  const scans=await Promise.all([handover.scan(requesterId,valid.rental.id,{handoverCondition:'Synthetic baseline',code:valid.items[0].code}),handover.scan(requesterId,valid.rental.id,{handoverCondition:'Synthetic baseline',code:valid.items[0].code})]);
   assert.deepEqual(scans.map(result=>result.result).sort(),['ALREADY_HANDED_OVER','HANDED_OVER']);
   assert.equal(scans[0].status,'ACTIVE');passed++;
   await db.financeEntry.update({where:{id:validReceipt.financeEntryId},data:{status:'VOIDED'}});
   await assert.rejects(handover.confirmPayment(requesterId,valid.rental.id),denied);
-  await assert.rejects(handover.scan(requesterId,valid.rental.id,{code:valid.items[0].code}),denied);passed+=2;
+  await assert.rejects(handover.scan(requesterId,valid.rental.id,{handoverCondition:'Synthetic baseline',code:valid.items[0].code}),denied);passed+=2;
   console.log(JSON.stringify({result:'PASS',checks:passed,postgresql:true,providerCalls:0,realMoneyMovement:false,syntheticProofOnly:true}));
 }finally{
   await cleanupSyntheticRentalCollections(db,receipts);

@@ -4,7 +4,7 @@ export async function checkInstructorCompensation(db,{owner,foreignOwner,instruc
   await db.organizationMember.create({data:{organizationId:centerId,accountId:instructor.id,role:'INSTRUCTOR',status:'ACTIVE'}});
   await db.roleAssignment.upsert({where:{accountId_role:{accountId:instructor.id,role:'INSTRUCTOR'}},create:{accountId:instructor.id,role:'INSTRUCTOR',status:'ACTIVE'},update:{status:'ACTIVE'}});
   const path='/center/me/professionals/'+instructor.id+'/compensation';
-  const payload=(mode,rateBps,fixedMinor,expectedRevision)=>({mode,rateBps,fixedMinor,expectedRevision});
+  const payload=(mode,rateBps,fixedMinor,expectedRevision)=>({mode,rateBps,fixedMinor,expectedRevision,...(mode==='SALARY_ONLY'?{}:{earningTiming:'عند الحضور',reversalTerms:'حسب الاتفاق'})});
   const save=(body,actor=owner)=>request(actor,path,'PATCH',body);
   const salary=payload('SALARY_ONLY',0,0,3);
   const oldEarnings=await db.instructorEarning.count({where:{instructorAccountId:instructor.id}});
@@ -43,7 +43,7 @@ export async function checkInstructorCompensation(db,{owner,foreignOwner,instruc
     const visible=ok(await request(instructor,'/training/professional/me/earnings')).agreements[0];
     assert.equal(visible.earningTiming,input.earningTiming);
     assert.equal(visible.reversalTerms,changed.reversalTerms);
-    assert.equal(ok(await save(payload('FIXED',0,9000,6))).terms.reversalTerms,changed.reversalTerms);
+    assert.equal(ok(await save({mode:'FIXED',rateBps:0,fixedMinor:9000,expectedRevision:6})).terms.reversalTerms,changed.reversalTerms);
     assert.equal(await db.instructorEarning.count({where:{instructorAccountId:instructor.id}}),oldEarnings);
     assert.equal(await db.financeEntry.count(),oldFinance);
     console.log('PASS all four instructor compensation methods, salary-only zero, exact halala rounding, role/center isolation, stale writes, concurrent replay and preserved agreement history; zero financial entries.');

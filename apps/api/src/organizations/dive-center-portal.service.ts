@@ -242,6 +242,7 @@ export class DiveCenterPortalService {
         if (prior && prior.earningTiming === earningTiming && prior.reversalTerms === reversalTerms && prior.mode===terms.mode && prior.rateBps===terms.rateBps && prior.fixedMinor===terms.fixedMinor
           && (expectedRevision===prior.revision || expectedRevision===prior.revision-1)) return {terms:prior,canEdit:true};
         if ((prior?.revision??0)!==expectedRevision) throw new ConflictException('تغير الاتفاق. افتحه من جديد قبل الحفظ.');
+        if(terms.mode!=='SALARY_ONLY' && (!earningTiming || !reversalTerms))throw new BadRequestException('أدخل توقيت الاستحقاق وشروط عكسه قبل حفظ الاتفاق.');
         const saved=await tx.instructorCompensationAgreement.create({data:{...terms,earningTiming,reversalTerms,organizationId:scope.organizationId,instructorAccountId:instructorId,
           recordedByAccountId:accountId,revision:expectedRevision+1,currency:'SAR'}});
         await tx.auditEvent.create({data:{resource:'InstructorCompensationAgreement',resourceId:saved.id,action:'INSTRUCTOR_COMPENSATION_AGREED',

@@ -106,6 +106,8 @@ export class EquipmentRentalHandoverService{
       if (readiness.blocked) throw new ConflictException('Equipment inspection or service policy blocks rental handover.');
       await this.requireAuthority(tx,actorAccountId,collection.organizationId,true);
 
+      if(rentalObject(rentalObject(rental.contractSnapshot).damagePolicy).version==='RENTAL_DAMAGE_1' && !input.handoverCondition?.trim())
+        throw new BadRequestException('Describe the item condition before confirming handover.');
       await tx.$executeRaw`UPDATE "EquipmentRentalItem" SET "handedOverAt"=(statement_timestamp() AT TIME ZONE 'UTC') WHERE "id"=${item.id}`;
       await tx.$executeRaw`
         INSERT INTO "EquipmentMovement"("id","resourceId","movementType","fromLocation","toLocation","tripId","assignedAccountId","notes","actorAccountId","occurredAt")
