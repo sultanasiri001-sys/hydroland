@@ -307,6 +307,7 @@
       const [orderResponse,payments]=await Promise.all([auth().authorizedFetch('/store/orders/mine'),loadPayments()]);
       const data=await parse(orderResponse);if(!active()||version!==ordersVersion)return;if(!Array.isArray(data))throw localError('تعذر تحميل الطلبات');
       uiLocale.setHTML(orders, data.length?data.map(o=>{const payment=paymentForOrder(payments,o.id),eligible=['CREATED','CONFIRMED'].includes(o.status)&&!['CAPTURED','REFUNDED'].includes(payment?.status);return uiLocale.html`<article data-store-order="${esc(o.id)}"><b>${esc(o.status)}</b><span>${money(o.totalMinor,o.currency)}</span><small>${new Date(o.createdAt).toLocaleString('ar-SA')}</small><small data-store-payment-state>${esc(paymentStatusText(payment))}</small>${eligible?uiLocale.html`<button type="button" data-store-payment-retry>عرض الشروط والدفع</button>`:''}${payment?uiLocale.html`<button type="button" data-store-payment-refresh>تحديث حالة الدفع</button>`:''}${goodsControls(o)}</article>`}).join(''):uiLocale.t('لا توجد طلبات حتى الآن.'));
+      orders.querySelectorAll('[data-store-order]').forEach(card=>{const row=data.find(order=>order.id===card.dataset.storeOrder);if(row?.items?.some(item=>item.contractSnapshot?.kind==='PHYSICAL_GOOD'))window.HydrolandStoreFulfillment?.shopper(card,row)});
       orders.querySelectorAll('form[data-goods-delivery],form[data-goods-return]').forEach(form => form.addEventListener('submit',async event => {
         event.preventDefault();
         if (!active() || version !== ordersVersion || form.dataset.busy) return;

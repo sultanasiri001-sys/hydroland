@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { riyadhSevenDayRefundDeadline } from '../commerce/commerce-refund-policy';
 import { DatabaseService } from '../database/database.service';
-import { storeObject, storeCanonicalTime } from './store-checkout-contract';
+import { requireVerifiedStoreCollection, storeObject, storeCanonicalTime } from './store-checkout-contract';
 import { StoreOfferingsService } from './store-offerings.service';
 
 type Input = {requestId?: string; quantity?: number; receivedAt?: string; reason?: string};
@@ -33,6 +33,70 @@ export class StoreGoodsService {
       if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') throw error;
       return this.db.serializable(work);
     }
+  }
+
+  fulfillmentQueue(accountId:string) {
+    return this.db.serializable(async tx=>{
+      const org=await this.offers.providerScope(tx,accountId);
+      const rows=await tx.storeOrderItem.findMany({where:{product:{organizationId:org.id},order:{status:{in:['CONFIRMED','FULFILLED']},payment:{status:'CAPTURED'}}},
+        select:{id:true,orderId:true,quantity:true,contractSnapshot:true,deliveries:{select:{quantity:true}}},orderBy:{order:{createdAt:'desc'}},take:150});
+      const items=rows.filter(row=>storeObject(storeObject(row.contractSnapshot).issuer).organizationId===org.id && storeObject(row.contractSnapshot).kind==='PHYSICAL_GOOD');
+      const history=await this.fulfillmentHistory(tx,items.map(item=>item.id));
+      return items.map(item=>({itemId:item.id,orderId:item.orderId,title:storeObject(item.contractSnapshot).title,
+        remaining:item.quantity-item.deliveries.reduce((sum,d)=>sum+d.quantity,0),notice:history.get(item.id)??null})).filter(item=>item.remaining>0);
+    });
+  }
+
+  private async fulfillmentHistory(tx:Prisma.TransactionClient,ids:string[]) {
+    const rows=await tx.auditEvent.findMany({where:{resource:'StoreOrderItem',action:'STORE_FULFILLMENT_UPDATE',resourceId:{in:ids}},
+      orderBy:[{occurredAt:'desc'},{id:'desc'}],distinct:['resourceId'],select:{resourceId:true,metadata:true,occurredAt:true}});
+    return new Map(rows.map(row=>[row.resourceId,{...storeObject(row.metadata).notice,updatedAt:row.occurredAt.toISOString()}]));
+  }
+
+  customerFulfillment(accountId:string,orderId:string) {
+    return this.db.serializable(async tx=>{
+      const order=await tx.storeOrder.findFirst({where:{id:orderId,accountId},select:{items:{select:{id:true}}}});
+      if(!order)throw new NotFoundException('Order not found.');
+      const history=await this.fulfillmentHistory(tx,order.items.map(item=>item.id));
+      return order.items.map(item=>({itemId:item.id,notice:history.get(item.id)??null}));
+    });
+  }
+
+  setFulfillment(accountId:string,itemId:string,input:Record<string,unknown>){
+    if(!input||typeof input!=='object'||Object.keys(input).some(k=>!['requestId','revision','state','carrier','tracking','pickup'].includes(k))
+      ||typeof input.requestId!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.requestId)
+      ||typeof input.revision!=='number'||!Number.isSafeInteger(input.revision)||input.revision<0
+      ||!['PACKING','PICKUP_READY','SHIPPED'].includes(String(input.state)))throw new BadRequestException('تحقق من بيانات التجهيز.');
+    const value=(key:string,max:number)=>{const supplied=input[key]??'';if(typeof supplied!=='string'||supplied.length>max||/[\u0000-\u001f]/.test(supplied))throw new BadRequestException('تحقق من بيانات التسليم.');return supplied.trim()};
+    const state=String(input.state),carrier=value('carrier',100),tracking=value('tracking',140),pickup=value('pickup',320),requestId=input.requestId,revision=input.revision;
+    if((state==='SHIPPED')!==Boolean(carrier&&tracking) || (state!=='SHIPPED'&&(carrier||tracking)) || (state==='PICKUP_READY')!==Boolean(pickup))throw new BadRequestException('أدخل شركة الشحن ورقم التتبع أو موقع الاستلام بحسب طريقة التسليم.');
+    const change={state,carrier,tracking,pickup};
+    return this.db.serializable(async tx=>{
+      const org=await this.offers.providerScope(tx,accountId);
+      await tx.$queryRaw`SELECT id FROM "StoreOrderItem" WHERE id::text=${itemId} FOR UPDATE`;
+      const item=await tx.storeOrderItem.findFirst({where:{id:itemId,product:{organizationId:org.id}},include:{order:{include:{items:true,payment:true}},deliveries:{select:{quantity:true}}}});
+      if(!item||storeObject(storeObject(item.contractSnapshot).issuer).organizationId!==org.id)throw new NotFoundException('Order item not found.');
+      const filter={resource:'StoreOrderItem',resourceId:itemId,action:'STORE_FULFILLMENT_UPDATE'};
+      const previous=await tx.auditEvent.findFirst({where:{...filter,metadata:{path:['requestId'],equals:requestId}}});
+      if(previous){
+        const saved=storeObject(storeObject(previous.metadata).notice);
+        if(saved.state!==state||saved.carrier!==carrier||saved.tracking!==tracking||saved.pickup!==pickup)throw new ConflictException('تغيرت بيانات الطلب المعاد.');
+        return saved;
+      }
+      if(!['CONFIRMED','FULFILLED'].includes(item.order.status)||storeObject(item.contractSnapshot).kind!=='PHYSICAL_GOOD')throw new ConflictException('الطلب غير جاهز للتجهيز.');
+      await requireVerifiedStoreCollection(tx,item.order);
+      const quantity=item.quantity-item.deliveries.reduce((sum,d)=>sum+d.quantity,0);
+      if(quantity<1)throw new ConflictException('سُجّل استلام الكمية كاملة.');
+      const last=await tx.auditEvent.findFirst({where:filter,orderBy:[{occurredAt:'desc'},{id:'desc'}]});
+      const prior=storeObject(storeObject(last?.metadata).notice);
+      if((prior.revision??0)!==revision)throw new ConflictException('تغيرت حالة التجهيز. حدّث الطلب.');
+      if(prior.state && prior.state!=='PACKING' && prior.state!==state)throw new ConflictException('سبق تسجيل التسليم بطريقة أخرى.');
+      const notice={...change,quantity,revision:revision+1};
+      const actor=await tx.account.findUniqueOrThrow({where:{id:accountId},select:{personId:true}});
+      await tx.auditEvent.create({data:{...filter,actorId:actor.personId,occurredAt:new Date(Math.max(Date.now(),(last?.occurredAt.getTime()??0)+1)),
+        metadata:{requestId,organizationId:org.id,orderId:item.orderId,notice}}});
+      return notice;
+    });
   }
 
   delivery(accountId: string, orderId: string, itemId: string, input: Input) {
