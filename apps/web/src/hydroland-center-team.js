@@ -1,6 +1,28 @@
 (()=>{
   // Only authored interface text is localized. Account and business values stay opaque.
   const uiLocale = window.HydrolandI18n?.createScope("center-team", {
+  "اتفاق استحقاق المدرب": "Instructor compensation agreement",
+  "طريقة الاستحقاق": "Compensation method",
+  "اختر طريقة الاستحقاق": "Select a compensation method",
+  "نسبة فقط": "Percentage only",
+  "مبلغ ثابت فقط": "Fixed amount only",
+  "مبلغ ثابت مع نسبة": "Fixed amount plus percentage",
+  "راتب فقط (بدون استحقاق إضافي عن الدورة)": "Salary only (no additional course compensation)",
+  "النسبة المئوية": "Percentage",
+  "المبلغ الثابت بالريال": "Fixed amount in SAR",
+  "أساس النسبة للتجربة بالريال": "Example calculation base in SAR",
+  "معاينة الاستحقاق الإضافي": "Additional compensation preview",
+  "حفظ الاتفاق": "Save agreement",
+  "أغلق الاتفاق": "Close agreement",
+  "أدخل قيم الاتفاق لعرض المعاينة.": "Enter the agreement values to see the preview.",
+  "الإضافة عن الدورة تساوي صفرًا، ويستمر الراتب من مسار الرواتب.": "Additional course compensation is zero. Salary continues through payroll.",
+  "تُحفظ الطريقة والقيم لهذا المدرب في المركز.": "The method and amounts are saved for this instructor at this center.",
+  "تعذر تحميل اتفاق المدرب.": "Could not load the instructor agreement.",
+  "تعذر حفظ الاتفاق.": "Could not save the agreement.",
+  "تم حفظ اتفاق المدرب.": "Instructor agreement saved.",
+  "هذا الاتفاق متاح للقراءة.": "This agreement is available to view.",
+  "لا يوجد اتفاق محفوظ.": "No agreement has been saved.",
+  "تغير الاتفاق. افتحه من جديد قبل الحفظ.": "The agreement changed. Reopen it before saving.",
   "مرفوض": "Rejected",
   "بانتظار المراجعة": "Awaiting review",
   "غير مسجل": "Not recorded",
@@ -199,9 +221,75 @@
      const mode=event.target.closest?.('[data-center-team-mode]')?.dataset.centerTeamMode;if(mode)void open(mode);
      if(event.target.closest?.('[data-center-team-retry]'))void open(lastMode, '', lastMode==='assignments'?lastTrainingCursor:'');
      const next=event.target.closest?.('[data-training-page]');if(next)void open('assignments', '', next.dataset.trainingPage);
+     const agreement=event.target.closest?.('[data-compensation-open]');if(agreement)void openCompensation(host,agreement);
      const button=event.target.closest?.('[data-team-cancel]');if(button)void cancelInvitation(host,button);
    });
    section=host;document.getElementById('main')?.append(host);return host;
+ }
+ async function openCompensation(host,button){
+   const article=button.closest('[data-center-team-member]'),slot=article.querySelector('[data-compensation-slot]');
+   if(slot.childElementCount){slot.replaceChildren();button.setAttribute('aria-expanded','false');return}
+   const version=viewVersion,session=auth()?.getSessionVersion?.(),live=()=>current(host,version,session)&&button.isConnected;
+   const url='/center/me/professionals/'+encodeURIComponent(button.dataset.compensationOpen)+'/compensation';
+   const message=article.querySelector('[data-team-error]');
+   button.disabled=true;message.textContent='';
+   try{
+     if(!(await authorize(host,version,session))||!live())return;
+     const response=await auth().authorizedFetch(url),result=await response.json().catch(()=>null);
+     if(!live())return;
+     if(!response.ok||!result)throw localError('تعذر تحميل اتفاق المدرب.');
+     let revision=result.terms?.revision??0;
+     uiLocale.setHTML(slot,uiLocale.html`<form data-compensation-form><fieldset><legend>اتفاق استحقاق المدرب</legend>
+       <label>طريقة الاستحقاق <select name="mode" required><option value="">اختر طريقة الاستحقاق</option><option value="PERCENTAGE">نسبة فقط</option><option value="FIXED">مبلغ ثابت فقط</option><option value="FIXED_PLUS_PERCENTAGE">مبلغ ثابت مع نسبة</option><option value="SALARY_ONLY">راتب فقط (بدون استحقاق إضافي عن الدورة)</option></select></label>
+       <label data-rate>النسبة المئوية <input name="rate" type="number" min="0.01" max="100" step="0.01" inputmode="decimal"></label>
+       <label data-fixed>المبلغ الثابت بالريال <input name="fixed" type="number" min="0.01" max="21474836.47" step="0.01" inputmode="decimal"></label>
+       <label data-basis>أساس النسبة للتجربة بالريال <input name="basis" type="number" min="0" max="21474836.47" step="0.01" inputmode="decimal"></label>
+       <p data-salary>الإضافة عن الدورة تساوي صفرًا، ويستمر الراتب من مسار الرواتب.</p><label>معاينة الاستحقاق الإضافي <output data-preview aria-live="polite"></output></label>
+       <p>تُحفظ الطريقة والقيم لهذا المدرب في المركز.</p><button type="submit">حفظ الاتفاق</button></fieldset><p data-compensation-message role="status"></p></form>`);
+     const form=slot.querySelector('form'),fields=form.elements,status=form.querySelector('[role=status]');
+     button.setAttribute('aria-expanded','true');
+     const hasRate=()=>['PERCENTAGE','FIXED_PLUS_PERCENTAGE'].includes(fields.mode.value);
+     const hasFixed=()=>['FIXED','FIXED_PLUS_PERCENTAGE'].includes(fields.mode.value);
+     function minor(input){
+       if(input.value===''||!input.validity.valid)return null;
+       const [whole,fraction='']=input.value.split('.');
+       if(!/^\d+$/.test(whole)||!/^\d{0,2}$/.test(fraction))return null;
+       return Number(whole)*100+Number(fraction.padEnd(2,'0'));
+     }
+     function draw(){
+       for(const [selector,input,active] of [['[data-rate]',fields.rate,hasRate()],['[data-fixed]',fields.fixed,hasFixed()],['[data-basis]',fields.basis,hasRate()]]){
+         form.querySelector(selector).hidden=!active;input.disabled=!active;input.required=active&&input!==fields.basis;
+       }
+       const salary=fields.mode.value==='SALARY_ONLY';form.querySelector('[data-salary]').hidden=!salary;
+       const base=hasRate()?minor(fields.basis):0,rate=hasRate()?minor(fields.rate):0,fixed=hasFixed()?minor(fields.fixed):0;
+       const output=form.querySelector('[data-preview]');
+       if(!fields.mode.value||base===null||rate===null||fixed===null){uiLocale.setText(output,'أدخل قيم الاتفاق لعرض المعاينة.');return}
+       const amount=fixed+Math.floor((base*rate+5000)/10000);
+       output.textContent=new Intl.NumberFormat(document.documentElement.lang||'ar-SA',{style:'currency',currency:'SAR'}).format(amount/100);
+     }
+     fields.mode.value=result.terms?.mode??'';
+     if(result.terms?.rateBps)fields.rate.value=String(result.terms.rateBps/100);
+     if(result.terms?.fixedMinor)fields.fixed.value=String(result.terms.fixedMinor/100);
+     draw();form.addEventListener('input',draw);form.addEventListener('change',draw);
+     if(!result.canEdit){
+       form.querySelector('fieldset').disabled=true;form.querySelector('[type=submit]').hidden=true;
+       uiLocale.setText(status,result.terms?'هذا الاتفاق متاح للقراءة.':'لا يوجد اتفاق محفوظ.');return;
+     }
+     form.addEventListener('submit',async event=>{
+       event.preventDefault();if(form.dataset.busy||!live()||!form.isConnected||!form.reportValidity())return;
+       const payload={mode:fields.mode.value,rateBps:hasRate()?minor(fields.rate):0,fixedMinor:hasFixed()?minor(fields.fixed):0,expectedRevision:revision};
+       form.dataset.busy='true';form.querySelector('fieldset').disabled=true;
+       try{
+         if(!(await authorize(host,version,session))||!live()||!form.isConnected)return;
+         const resp=await auth().authorizedFetch(url,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),saved=await resp.json().catch(()=>null);
+         if(!live()||!form.isConnected)return;
+         if(!resp.ok||!saved?.terms)throw localError(resp.status===409?'تغير الاتفاق. افتحه من جديد قبل الحفظ.':'تعذر حفظ الاتفاق.');
+         revision=saved.terms.revision;uiLocale.setText(status,'تم حفظ اتفاق المدرب.');
+       }catch(error){if(live()&&form.isConnected)setLocalErrorText(status,error,'تعذر حفظ الاتفاق.')}
+       finally{delete form.dataset.busy;if(form.isConnected)form.querySelector('fieldset').disabled=false}
+     });
+   }catch(error){if(live())setLocalErrorText(message,error,'تعذر تحميل اتفاق المدرب.')}
+   finally{if(live())button.disabled=false}
  }
  async function invite(event){
    event.preventDefault();const form=event.currentTarget,host=form.closest('#hl-center-team');if(!host||!eligible()||form.dataset.busy)return;
@@ -317,7 +405,7 @@
    try{if(!(await authorize(host,version,session)))return;
      const response=await auth().authorizedFetch(mode==='assignments'?'/center/me/training'+(cursor?'?cursor='+encodeURIComponent(cursor):''):mode==='professionals'?'/center/me/professionals':'/center/me/team'),rows=await response.json().catch(()=>null);
      if(!current(host,version,session))return;if(!response.ok)throw (response.status===403?localError('لا تملك صلاحية عرض أعضاء هذا المركز.'):(value=>value?new Error(value):localError('تعذر التحميل'))(rows?.message));if(mode==='assignments'){if(!rows||!Array.isArray(rows.enrollments)||!Array.isArray(rows.instructors))throw localError('استجابة التكليفات غير مكتملة. أعد المحاولة.');uiLocale.setHTML(list, renderAssignments(rows,cursor));return}if(!Array.isArray(rows))throw localError('استجابة أعضاء المركز غير مكتملة. أعد المحاولة.');
-     uiLocale.setHTML(list, rows.length?rows.map((row,index)=>uiLocale.html`<article class="hl-course" data-center-team-member="${index}"><div class="hl-course-top"><div><b>${(value=>value?esc(value):uiLocale.messageHTML(uiLocale.message('عضو المركز')))(row.displayName||row.person?.displayName)}</b><small>${(value=>value?esc(value):uiLocale.messageHTML(uiLocale.message('عضو المركز')))(row.headline||row.person?.headline||roles[row.role])}</small>${(row.role?uiLocale.html`<small>دور المركز: ${uiLocale.messageHTML(((value=>value?uiLocale.message(value):value)(roles[row.role]) || uiLocale.message('غير معروف')))}</small>`:'')}</div><span>${uiLocale.messageHTML(((value=>value?uiLocale.message(value):value)(statuses[row.status||row.professional?.instructorStatus||'ACTIVE']) || uiLocale.message('غير معروف')))}</span></div><small>الشهادات الموثقة: ${count(row.verifiedCredentials??row.professional?.verifiedCredentials)}${(row.assignedTrainingCount!==undefined?uiLocale.label(" · التكليفات التدريبية: {0}", [count(row.assignedTrainingCount)]):'')}</small>${(row.accountStatus&&row.accountStatus!=='ACTIVE'?uiLocale.html`<p>الحساب غير نشط على المنصة؛ إعادة تفعيل عضوية المركز لا تفعّل الحساب.</p>`:'')}${(row.canCancelInvitation&&row.status==='PENDING'&&row.membershipId&&row.updatedAt?uiLocale.html`<button type="button" data-team-cancel="${esc(row.membershipId)}" data-revision="${esc(row.updatedAt)}">إلغاء الدعوة</button>`:'')}${managementForm(row)}<p data-team-error role="alert"></p></article>`).join(''):uiLocale.html`<p>لا توجد سجلات في هذا القسم حاليًا.</p>`);
+     uiLocale.setHTML(list, rows.length?rows.map((row,index)=>uiLocale.html`<article class="hl-course" data-center-team-member="${index}"><div class="hl-course-top"><div><b>${(value=>value?esc(value):uiLocale.messageHTML(uiLocale.message('عضو المركز')))(row.displayName||row.person?.displayName)}</b><small>${(value=>value?esc(value):uiLocale.messageHTML(uiLocale.message('عضو المركز')))(row.headline||row.person?.headline||roles[row.role])}</small>${(row.role?uiLocale.html`<small>دور المركز: ${uiLocale.messageHTML(((value=>value?uiLocale.message(value):value)(roles[row.role]) || uiLocale.message('غير معروف')))}</small>`:'')}</div><span>${uiLocale.messageHTML(((value=>value?uiLocale.message(value):value)(statuses[row.status||row.professional?.instructorStatus||'ACTIVE']) || uiLocale.message('غير معروف')))}</span></div><small>الشهادات الموثقة: ${count(row.verifiedCredentials??row.professional?.verifiedCredentials)}${(row.assignedTrainingCount!==undefined?uiLocale.label(" · التكليفات التدريبية: {0}", [count(row.assignedTrainingCount)]):'')}</small>${(row.accountStatus&&row.accountStatus!=='ACTIVE'?uiLocale.html`<p>الحساب غير نشط على المنصة؛ إعادة تفعيل عضوية المركز لا تفعّل الحساب.</p>`:'')}${(row.canCancelInvitation&&row.status==='PENDING'&&row.membershipId&&row.updatedAt?uiLocale.html`<button type="button" data-team-cancel="${esc(row.membershipId)}" data-revision="${esc(row.updatedAt)}">إلغاء الدعوة</button>`:'')}${managementForm(row)}${mode==='professionals'&&row.accountId?uiLocale.html`<button type="button" aria-expanded="false" data-compensation-open="${esc(row.accountId)}">اتفاق استحقاق المدرب</button><div data-compensation-slot></div>`:''}<p data-team-error role="alert"></p></article>`).join(''):uiLocale.html`<p>لا توجد سجلات في هذا القسم حاليًا.</p>`);
    }catch(error){if(current(host,version,session))uiLocale.setHTML(list, uiLocale.html`<p role="alert">${localErrorHTML((error instanceof Error?error:undefined), 'تعذر التحميل')}</p><button type="button" data-center-team-retry>إعادة المحاولة</button>`)}
    finally{if(current(host,version,session))list.removeAttribute('aria-busy')}
  }

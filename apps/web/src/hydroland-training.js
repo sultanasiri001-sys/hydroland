@@ -1,6 +1,11 @@
 (()=>{
   // Authored interface messages only. Account, provider and document values remain opaque.
   const uiLocale=window.HydrolandI18n?.createScope("training", {
+  "اتفاقات الاستحقاق مع المراكز": "Compensation agreements with centers",
+  "نسبة فقط": "Percentage only",
+  "مبلغ ثابت فقط": "Fixed amount only",
+  "مبلغ ثابت مع نسبة": "Fixed amount plus percentage",
+  "راتب فقط (بدون استحقاق إضافي عن الدورة)": "Salary only (no additional course compensation)",
   "مركز التدريب والدورات": "Training and courses center",
   "سجلك التدريبي المباشر": "Your live training record",
   "دوراتي": "My courses",
@@ -240,10 +245,11 @@
   const scheduleAuthorized=async(version,session)=>{const fn=window.HydrolandPortalAccess?.authorizeRole;return typeof fn==='function'&&await fn('instructor',{sessionVersion:session,isCurrent:()=>scheduleCurrent(version,session)})&&scheduleCurrent(version,session)};
   const scheduleDate=value=>new Intl.DateTimeFormat('ar-SA-u-ca-gregory',{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Riyadh'}).format(new Date(value));
   async function loadProfessionalEarnings(){
-    const list=section.querySelector('[data-training-list]');section.dataset.trainingMode='professional-earnings';
+    const list=section.querySelector('[data-training-list]'),session=auth.getSessionVersion?.();section.dataset.trainingMode='professional-earnings';
+    const current=()=>list.isConnected && section?.dataset.trainingMode==='professional-earnings' && session===auth.getSessionVersion?.();
     uiLocale.setText(section.querySelector('.hl-training-head h3'), ...['الإيرادات']);uiLocale.setText(section.querySelector('.hl-training-head span'), ...['استحقاقاتك التدريبية فقط — لا تعرض حسابات العملاء أو المنصة']);
     uiLocale.setHTML(list, uiLocale.html`<p>جارٍ تحميل الاستحقاقات...</p>`);
-    try{const response=await auth.authorizedFetch('/training/professional/me/earnings'),data=await response.json().catch(()=>null);if(!response.ok)throw localError(data?.message||uiLocale.message('تعذر تحميل الاستحقاقات'));
+    try{const response=await auth.authorizedFetch('/training/professional/me/earnings'),data=await response.json().catch(()=>null);if(!current())return;if(!response.ok)throw localError(data?.message||uiLocale.message('تعذر تحميل الاستحقاقات'));
       const entries=Array.isArray(data?.entries)?data.entries:[];
       const hasOtherCurrencies=entries.some(item=>item.currency!=='SAR');
       const knownCurrencies=new Set(Intl.supportedValuesOf?.('currency')||['SAR']);
@@ -266,8 +272,15 @@
       }
       const summary=(hasOtherCurrencies?uiLocale.html`<p>المجاميع بالريال السعودي. تظهر الاستحقاقات الأخرى بعملتها الأصلية.</p>`:'')+
         uiLocale.html`<div class="hl-role-tiles"><article><small>قيد الاعتماد</small><b>${money(totals?.pendingMinor,'SAR')}</b></article><article><small>معتمد</small><b>${money(totals?.approvedMinor,'SAR')}</b></article><article><small>تمت التسوية</small><b>${money(totals?.settledMinor,'SAR')}</b></article></div>`;
-      uiLocale.setHTML(list, summary+(entries.length?entries.map(item=>uiLocale.html`<article class="hl-course"><div class="hl-course-top"><div><b>${esc(item.courseCode)}</b><small>${new Date(item.createdAt).toLocaleDateString('ar-SA')}</small></div><span>${money(item.amountMinor,item.currency)} · ${esc(item.status)}</span></div></article>`).join(''):uiLocale.html`<p>لا توجد استحقاقات تدريبية مسجلة حتى الآن.</p>`));
-    }catch(error){uiLocale.setHTML(list, uiLocale.html`<p>${uiLocale.messageHTML(error instanceof Error?localErrorMessage(error):uiLocale.message('تعذر تحميل الاستحقاقات'))}</p>`);}
+      const modes={PERCENTAGE:'نسبة فقط',FIXED:'مبلغ ثابت فقط',FIXED_PLUS_PERCENTAGE:'مبلغ ثابت مع نسبة',SALARY_ONLY:'راتب فقط (بدون استحقاق إضافي عن الدورة)'};
+      const agreements=(Array.isArray(data?.agreements)?data.agreements:[]).filter(a=>Object.hasOwn(modes,a.mode));
+      const contracts=agreements.length?uiLocale.html`<h4>اتفاقات الاستحقاق مع المراكز</h4>`+agreements.map(a=>{
+        const parts=[];if(a.fixedMinor)parts.push(money(a.fixedMinor,'SAR'));
+        if(a.rateBps)parts.push(new Intl.NumberFormat(document.documentElement.lang||'ar-SA',{style:'percent',maximumFractionDigits:2}).format(a.rateBps/10000));
+        return uiLocale.html`<article class="hl-course"><b>${esc(a.centerName)}</b><p>${uiLocale.messageHTML(uiLocale.message(modes[a.mode]))} ${esc(parts.join(' + '))}</p></article>`;
+      }).join(''):'';
+      uiLocale.setHTML(list, contracts+summary+(entries.length?entries.map(item=>uiLocale.html`<article class="hl-course"><div class="hl-course-top"><div><b>${esc(item.courseCode)}</b><small>${new Date(item.createdAt).toLocaleDateString('ar-SA')}</small></div><span>${money(item.amountMinor,item.currency)} · ${esc(item.status)}</span></div></article>`).join(''):uiLocale.html`<p>لا توجد استحقاقات تدريبية مسجلة حتى الآن.</p>`));
+    }catch(error){if(!current())return;uiLocale.setHTML(list, uiLocale.html`<p>${uiLocale.messageHTML(error instanceof Error?localErrorMessage(error):uiLocale.message('تعذر تحميل الاستحقاقات'))}</p>`);}
   }
   async function loadProfessionalCertificates(){
     const list=section.querySelector('[data-training-list]'),version=++certificateVersion,session=auth?.getSessionVersion?.();section.dataset.trainingMode='professional-certificates';

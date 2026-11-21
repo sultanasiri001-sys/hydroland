@@ -75,6 +75,10 @@ export class DiveCenterPortalController {
   @Patch('me/training/sessions/:id/schedule') rescheduleTrainingSession(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.trainingSessions.reschedule(request.auth.accountId,id,body);}
   @Patch('me/training/sessions/:id/actions') trainingSessionAction(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.trainingSessions.act(request.auth.accountId,id,body);}
   @Get('me/team') team(@Req() request:AuthenticatedRequest){return this.portal.team(request.auth.accountId);}
+  @Get('me/professionals/:id/compensation')
+  instructorAgreement(@Req() req:AuthenticatedRequest,@Param('id') id:string,@Query('basisMinor') basis?:string) { return this.portal.instructorAgreement(req.auth.accountId,id,basis); }
+  @Patch('me/professionals/:id/compensation')
+  saveInstructorAgreement(@Req() req:AuthenticatedRequest,@Param('id') id:string,@Body() input:Record<string,unknown>) { return this.portal.saveInstructorAgreement(req.auth.accountId,id,input); }
   @Get('me/professionals') professionals(@Req() request:AuthenticatedRequest){return this.portal.professionals(request.auth.accountId);}
 
   @Post('me/trips') createTrip(@Req() request:AuthenticatedRequest,@Body() body:Record<string,unknown>){return this.tripManagement.save(request.auth.accountId,body);}
