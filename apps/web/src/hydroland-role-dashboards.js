@@ -2,7 +2,7 @@
   // Authored interface messages only. Account, provider and document values remain opaque.
   const uiLocale=window.HydrolandI18n?.createScope("role-dashboards", {
   "طلبات صلاحية الفوترة": "Invoice permission requests", "مراجعة صلاحيات الفوترة": "Review invoice permissions",
-  "رحلاتي المنفّذة":"My completed trips", "عدد الرحلات المنفّذة":"Completed trips", "عدد الطلاب الذين درّبتهم":"Students trained", "عدد مشاركات الركاب المسجّلة":"Recorded passenger attendances", "طلاب الرحلة":"Students on this trip", "الحضور المسجّل":"Recorded attendance", "جارٍ تحميل سجل الرحلات…":"Loading trip history…", "تعذّر تحميل سجل الرحلات.":"Could not load trip history.", "إعادة المحاولة":"Retry", "السابق":"Previous", "التالي":"Next",
+  "بيانات التواصل والمستحقات":"Contact and payout details", "رحلاتي المنفّذة":"My completed trips", "عدد الرحلات المنفّذة":"Completed trips", "عدد الطلاب الذين درّبتهم":"Students trained", "عدد مشاركات الركاب المسجّلة":"Recorded passenger attendances", "طلاب الرحلة":"Students on this trip", "الحضور المسجّل":"Recorded attendance", "جارٍ تحميل سجل الرحلات…":"Loading trip history…", "تعذّر تحميل سجل الرحلات.":"Could not load trip history.", "إعادة المحاولة":"Retry", "السابق":"Previous", "التالي":"Next",
   "فواتيري": "My invoices", "فاتورة العملية": "Transaction invoice",
   "مستندات المدرب": "Instructor documents",
   "مراجعة مستندات المدربين": "Review instructor documents",
@@ -623,7 +623,7 @@
       <div class="hl-portal-content"><header class="hl-role-head${center?' hl-center-hero':''}"><div><small>${authoredLabel(c.k)}</small><h1>${uiLocale.label(heroTitle)}</h1><p>${uiLocale.label(heroSubtitle)}</p>${role!=='admin'?highlights():''}</div></header>
       ${center?uiLocale.html`<div class="hl-center-home-toolbar"><p data-center-home-status role="status">جارٍ تحميل ملخص المركز…</p><button type="button" data-center-home-refresh>تحديث الملخص</button></div>`:role==='boat'?uiLocale.html`<div class="hl-center-home-toolbar"><p data-marine-home-status role="status">جارٍ تحميل ملخص الوساطة البحرية…</p><button type="button" data-marine-home-refresh>تحديث الملخص</button></div>`:role==='organization'?uiLocale.html`<div class="hl-center-home-toolbar"><p data-organization-home-status role="status">جارٍ تحميل بيانات الجهة…</p><button type="button" data-organization-home-refresh>تحديث الملخص</button></div>`:''}
       <div class="hl-role-grid">${c.m.map(([value,label],index)=>uiLocale.html`<${center?'button type="button" data-route="'+['center-bookings','center-operations','center-team','center-operations'][index]+'"':'article'} class="hl-role-tile">${icon(iconFor(label))}<div><small>${authoredLabel(label)}</small><b>${value}</b><span>${uiLocale.label(center?'فتح التفاصيل':'من النظام')}</span></div></${center?'button':'article'}>`).join('')}</div>
-      ${['boat','instructor'].includes(role)?uiLocale.html`<section class="hl-command" data-completed-trips></section>`:''}
+      ${['boat','instructor'].includes(role)?uiLocale.html`<section class="hl-command" data-completed-trips></section><button type="button" data-provider-contact>بيانات التواصل والمستحقات</button>`:''}
       <section class="hl-command" aria-label="الإجراءات الرئيسية">${['admin','organization'].includes(role)?uiLocale.html`<h2 class="hl-command-title">الخدمات والمهام السريعة</h2>`:''}<div class="hl-command-grid ${operational?'hl-picture-actions':''}">${actions.map(([label,target],index)=>{const route=actionRoute(role,label,target);return uiLocale.html`<button type="button" ${route?`data-route="${route}"`:'disabled aria-disabled="true" '+uiLocale.attribute('title','قيد الربط بالخدمة')} data-action-label="${label}" data-art="${index%6}"><span class="hl-action-art">${icon(iconFor(label))}</span><span>${authoredLabel(label)}</span></button>`}).join('')}</div></section>
       ${lowerFor(role,c)}</div><div class="hl-service-heading" hidden><button type="button" data-portal-home>${icon('home')}الرئيسية</button><span aria-hidden="true">/</span><h1 data-service-title></h1></div></div></div>`);
     document.getElementById('main')?.prepend(d);
@@ -633,6 +633,7 @@
     if(role==='center')void loadCenterSummary(d);
     if(role==='boat')void loadMarineSummary(d);
     if(role==='boat'||role==='instructor')mountCompletedTrips(d,role);
+    d.querySelector('[data-provider-contact]')?.addEventListener('click',()=>window.HydrolandProviderContact?.open());
     if(role==='organization')void loadOrganizationSummary(d);
 
     d.querySelector('[data-center-home-refresh]')?.addEventListener('click',()=>loadCenterSummary(d));

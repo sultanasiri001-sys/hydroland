@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { TripsService } from './trips.service';
 
@@ -8,6 +8,7 @@ export class TripsController {
 
   @UseGuards(AccessTokenGuard)
   @Get('completed/mine')
+  @Header('Cache-Control', 'private, no-store')
   completed(@Req() req:{auth:{accountId:string}},@Query('role') role:string,@Query('page') page='1'){
     return this.s.completed(req.auth.accountId,role,Number(page));
   }

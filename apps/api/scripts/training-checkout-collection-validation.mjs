@@ -30,6 +30,10 @@ const {InvoicePermissionsController}=await load('payments/invoice-permissions.co
 const {InvoicePermissionsService}=await load('payments/invoice-permissions.service.js');
 const {AccountInvoicesController}=await load('payments/account-invoices.controller.js');
 const {AccountInvoicesService}=await load('payments/account-invoices.service.js');
+const {ProviderContactController} = await load('profile/provider-contact.controller.js');
+const {ProviderContactService} = await load('profile/provider-contact.service.js');
+const {CenterPayeesController} = await load('finance/center-payees.controller.js');
+const {FinanceAccessService} = await load('finance/finance-access.service.js');
 const {TrainingCheckoutController} = await load('payments/training-checkout.controller.js');
 const {StoreOfferingsService} = await load('store/store-offerings.service.js');
 const {FinancePersistenceService} = await load('finance/finance-persistence.service.js');
@@ -83,7 +87,7 @@ const provider = new MoyasarPaymentProviderService({requireOperational() { retur
 const checkout = new TrainingCheckoutService(db, audit, provider), repository = new TrainingRepositoryService(db, {}, {}, {}, {});
 const trainingSessions = new TrainingSessionService(db, audit, new TrainingAuthorizationService(db));
 class CourseAcceptanceModule {}
-Module({controllers: [InvoicePermissionsController,AccountInvoicesController,TrainingCheckoutController,CheckoutRefundController], providers: [AccessTokenGuard,{provide:InvoicePermissionsService,useValue:new InvoicePermissionsService(db)},{provide:AccountInvoicesService,useValue:new AccountInvoicesService(db)},{provide:CheckoutRefundService,useValue:new CheckoutRefundService(db,provider)},
+Module({controllers: [ProviderContactController,CenterPayeesController,InvoicePermissionsController,AccountInvoicesController,TrainingCheckoutController,CheckoutRefundController], providers: [AccessTokenGuard, {provide:DatabaseService,useValue:db}, {provide:ProviderContactService,useValue:new ProviderContactService(db)}, {provide:FinanceAccessService,useValue:new FinanceAccessService(db)},{provide:InvoicePermissionsService,useValue:new InvoicePermissionsService(db)},{provide:AccountInvoicesService,useValue:new AccountInvoicesService(db)},{provide:CheckoutRefundService,useValue:new CheckoutRefundService(db,provider)},
   {provide: TrainingCheckoutService, useValue: checkout}, {provide: AuthService, useValue: auth}]})(CourseAcceptanceModule);
 const app = await NestFactory.create(CourseAcceptanceModule, {logger: false});
 app.setGlobalPrefix('api/v1');
@@ -487,6 +491,48 @@ try {
     assert.ok(!marine.items.some(row=>row.id===cancelled.id));
     await assert.rejects(completedTripHistory(db,trainer.id,'boat',1),status(403));
     assert.deepEqual((await completedTripHistory(db,skipper.id,'boat',2)).items,[]);
+  });
+  await check('private provider contacts and bank details are current, masked and scoped to the paying center', async()=>{
+    const request = async (actor,path,method='GET',body) => {
+      const response = await fetch(origin+'/api/v1/'+path, {method,headers:{...(actor?{authorization:'Bearer '+actor.token}:{}),'content-type':'application/json'},
+        ...(body===undefined?{}:{body:JSON.stringify(body)})});
+      return {status:response.status,data:await response.json(),cache:response.headers.get('cache-control')};
+    };
+    const profile='me/provider-contact', base='finance/centers/'+employment.orgUnitId+'/payees';
+    assert.equal((await request(null,profile)).status,401);
+    assert.equal((await request(buyer,profile)).status,403);
+    const boat=await account('payout owner');
+    await db.roleAssignment.create({data:{accountId:boat.id,role:'BOAT_OWNER',status:'ACTIVE'}});
+    const op=await db.organization.create({data:{ownerId:boat.id,kind:'MARINE_OPERATOR',status:'ACTIVE',displayName:'Synthetic payee'}});
+    const vessel=await db.marineAsset.create({data:{reviewCenterId:centerA.id,organizationId:op.id,name:'Payout vessel',assetType:'BOAT',status:'ACTIVE'}});
+    // Generate a checksum-valid fixture without using real bank details.
+    const bban='00'+'0'.repeat(16)+'12', digits=bban+'281000', iban='SA'+String(98-Number(BigInt(digits)%97n)).padStart(2,'0')+bban;
+    for(const provider of [owner,boat]){
+      const original=await request(provider,profile);
+      assert.equal(original.data.contactEmail,provider.email);assert.match(original.cache,/no-store/);
+      await db.diverProfile.create({data:{accountId:provider.id,notes:'retain unrelated fields'}});
+      const body={revision:original.data.revision,phone:'٠٥٠٠٠٠٠٠٠١',emergencyPhone:'0500000002',contactEmail:'finance@example.invalid',holder:'Synthetic Payee',iban};
+      const invalid=await request(provider,profile,'PATCH',{...body,iban:'SA00'+bban});assert.equal(invalid.status,400);
+      const saved=await request(provider,profile,'PATCH',body);assert.equal(saved.status,200);
+      assert.equal(saved.data.phone,'0500000001');assert.equal(saved.data.emergencyPhone,'0500000002');assert.equal(saved.data.lastFour,iban.slice(-4));
+      assert.ok(!JSON.stringify(saved.data).includes(iban));
+      assert.equal((await request(provider,profile,'PATCH',body)).status,409);
+      const edit=await request(provider,profile,'PATCH',{revision:saved.data.revision,emergencyName:'Emergency contact'});
+      assert.equal(edit.data.lastFour,saved.data.lastFour);assert.equal((await request(provider,profile)).data.emergencyName,'Emergency contact');
+      assert.equal((await db.account.findUnique({where:{id:provider.id}})).email,provider.email);
+      assert.equal((await db.diverProfile.findUnique({where:{accountId:provider.id}})).notes,'retain unrelated fields');
+      const stored=await db.providerPayoutProfile.findUniqueOrThrow({where:{accountId:provider.id}});
+      assert.ok(!stored.encryptedIban.includes(iban));
+      const list=await request(accountant,base);assert.equal(list.status,200);assert.ok(list.data.some(x=>x.id===provider.id));assert.ok(!JSON.stringify(list.data).includes(iban));
+      const reveal=await request(accountant,base+'/'+provider.id+'/bank','POST');assert.equal(reveal.status,201);assert.equal(reveal.data.iban,iban);assert.match(reveal.cache,/no-store/);
+      assert.equal((await request(otherAccountant,base+'/'+provider.id+'/bank','POST')).status,403);
+      const wrong=await db.employment.findFirstOrThrow({where:{accountId:otherAccountant.id}});
+      assert.equal((await request(otherAccountant,'finance/centers/'+wrong.orgUnitId+'/payees/'+provider.id+'/bank','POST')).status,404);
+      const audit=await db.auditEvent.findFirstOrThrow({where:{resourceId:provider.id,action:'CENTER_PAYEE_BANK_VIEWED'}});
+      assert.equal(audit.actorId,accountant.personId);assert.ok(!JSON.stringify(audit).includes(iban));
+    }
+    await db.marineAsset.update({where:{id:vessel.id},data:{status:'SUSPENDED'}});
+    assert.equal((await request(accountant,base+'/'+boat.id+'/bank','POST')).status,404);
   });
   await check('only the center can attach and print training and marine invoices, with approved switches and archived originals', async()=>{
     await verifyAccountInvoices({db,base:origin,owner,buyer,accountant,account,center:centerA,otherCenter:centerB,id});

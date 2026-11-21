@@ -77,7 +77,7 @@ export class BookingManagementService {
     return this.db.serializable(async tx => {
       const scope = await this.scope(tx, accountId, mode);
       const selectedTripId = routeTripId || tripId;
-      if (selectedTripId && !await tx.trip.findFirst({ where: { id: selectedTripId, ...(scope.trip as Prisma.TripWhereInput) } })) throw new NotFoundException(mode === 'center' ? 'الرحلة غير موجودة في المركز.' : 'الرحلة غير موجودة ضمن جهاتك البحرية.');
+      if (selectedTripId && !await tx.trip.findFirst({ where: { id: selectedTripId, ...(scope.trip as Prisma.TripWhereInput) }, select: { id: true } })) throw new NotFoundException(mode === 'center' ? 'الرحلة غير موجودة في المركز.' : 'الرحلة غير موجودة ضمن جهاتك البحرية.');
       const needle = q.replace(/[\\%_]/g, '\\$&');
       // Production Booking keys can be UUID, while the canonical schema uses TEXT.
       // Cast only for substring matching; keep both this lookup and final results scoped.

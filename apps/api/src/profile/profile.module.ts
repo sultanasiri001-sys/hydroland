@@ -1,3 +1,5 @@
+import { ProviderContactController } from './provider-contact.controller';
+import { ProviderContactService } from './provider-contact.service';
 import { CustomerServiceModule } from '../customer-service/customer-service.module';
 import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
@@ -14,7 +16,7 @@ import { PersonalDataRequestsService } from './personal-data-requests.service';
 
 @Module({
   imports: [CustomerServiceModule, AuthModule, TripsModule, AuditModule],
-  controllers: [ProfileController, DiverMasterProfileController, MembershipPassController, PersonalDataRequestsController],
-  providers: [ProfileService, DiverMasterProfileService, MembershipPassService, PersonalDataRequestsService],
+  controllers: [ProviderContactController, ProfileController, DiverMasterProfileController, MembershipPassController, PersonalDataRequestsController],
+  providers: [ProviderContactService, ProfileService, DiverMasterProfileService, MembershipPassService, PersonalDataRequestsService],
 })
 export class ProfileModule {}

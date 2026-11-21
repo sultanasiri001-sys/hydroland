@@ -1,3 +1,4 @@
+import { CenterPayeesController } from './center-payees.controller';
 import { FinanceReceivablesWorkspaceService } from './finance-receivables-workspace.service';
 import { FinanceWorkspaceService } from './finance-workspace.service';
 import { Module } from '@nestjs/common';
@@ -20,7 +21,7 @@ import { CenterServiceEntitlementService } from '../commerce/center-service-enti
 
 @Module({
   imports: [AuthModule, AdminModule, PaymentsModule],
-  controllers: [FinanceController],
+  controllers: [FinanceController, CenterPayeesController],
   providers: [CenterServiceEntitlementService, FinanceReceivablesWorkspaceService, FinanceWorkspaceService, FinanceFoundationService, FinanceWorkflowService, FinanceOperationsService, FinanceGovernanceService, FinancePersistenceService, FinanceAccessService, FinanceShiftsService, FinanceReceivablesService, FinanceShiftCloseService, FinancePeriodCloseService, FinanceSettlementService],
   exports: [FinanceFoundationService, FinanceWorkflowService, FinanceOperationsService, FinanceGovernanceService, FinancePersistenceService, FinanceAccessService, FinanceShiftsService, FinanceReceivablesService, FinanceShiftCloseService, FinancePeriodCloseService, FinanceSettlementService],
 })

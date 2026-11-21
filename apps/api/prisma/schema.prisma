@@ -154,6 +154,7 @@ model Person {
 }
 
 model Account {
+  payoutProfile ProviderPayoutProfile?
   retailStockCounts StoreStockCount[]
   storeStockTransfers StoreStockTransfer[]
   storeFeedback StoreProductFeedback[]
@@ -3188,4 +3189,14 @@ model InvoicePermissionRequest {
   @@index([scopeKey, status, sequence])
   @@index([centerId, requestedAt])
   @@index([status, requestedAt])
+}
+
+model ProviderPayoutProfile {
+  accountId String @id
+  account Account @relation(fields:[accountId], references:[id], onDelete:Cascade)
+  contactEmail String?
+  holder String?
+  encryptedIban String?
+  lastFour String?
+  revision Int @default(1)
 }
