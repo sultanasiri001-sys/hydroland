@@ -1,0 +1,23 @@
+name: Native store acceptance
+on:
+  push:
+    branches: [qa/hydroland-merchant-store-acceptance]
+permissions:
+  contents: read
+concurrency:
+  group: native-store-acceptance
+  cancel-in-progress: true
+jobs:
+  merchant-and-buyer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --workspace=@hydroland/web --include-workspace-root=true --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e -w @hydroland/web -- store-offerings.spec.js commerce-localization.spec.js --workers=3
