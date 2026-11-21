@@ -21,7 +21,7 @@
     const base=window.HydrolandAuth?.apiBase||'https://hydroland.onrender.com/api/v1';
     const response=await fetch(base+path);if(!response.ok)throw Error(t('تعذر تحميل الصفحة'));return response.json();
   }
-  let selected='',published=false;
+  let selected='',published=false,onRoute=()=>{};
   const allows=id=>!selected||(published&&id===selected);
   function catalog(store,redraw){
     const host=el('div');store.querySelector('.section-heading')?.after(host);
@@ -67,7 +67,7 @@
       form.onsubmit=e=>{e.preventDefault();void load()};more.onclick=()=>load(true);
     }
     window.addEventListener('hashchange',()=>render());
-    document.addEventListener('hydroland:storefront-route',()=>render());
+    onRoute=()=>render();
     void render();
   }
   function editor(panel,request,active){
@@ -118,5 +118,5 @@
     }
     host.ontoggle=()=>{if(host.open&&!loaded)void load()};
   }
-  window.HydrolandStorefronts=Object.freeze({catalog,editor,allows});
+  window.HydrolandStorefronts=Object.freeze({catalog,editor,allows,syncRoute:()=>onRoute()});
 })();
