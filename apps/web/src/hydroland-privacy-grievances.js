@@ -93,21 +93,40 @@
           section.append(element('h4',row.organization.displayName),element('p',row.description),element('p',localized(...states[row.state])));
           const date=new Date(row.dueAt).toLocaleString(document.documentElement.lang||'ar');
           section.append(element('p',localized('نهاية مهلة المركز','Center deadline')+' · '+date));
+          if(row.personalDataRequestId) section.append(element('p',localized('رقم طلب البيانات','Data request number')+' · '+row.personalDataRequestId));
+          if(row.firstOutcome) section.append(element('p',localized('القرار الأول','Initial decision')+' · '+row.firstOutcome));
+          if(row.appealReason) section.append(element('p',localized('سبب التظلم','Appeal reason')+' · '+row.appealReason));
+          if(row.canAppeal) {
+            const reason=textarea();
+            section.append(form([label(localized('سبب التظلم على القرار','Reason for appealing the decision'),reason)],
+              localized('إحالة التظلم للإدارة المختصة','Submit appeal to the department'),
+              ()=>api('/'+encodeURIComponent(row.id)+'/appeal',{reason:reason.value})));
+          }
           if(row.centerAction) section.append(element('p',row.centerAction));
           if(row.outcome) section.append(element('p',localized('نتيجة المعالجة','Outcome')+' · '+row.outcome));
           const act=(action,fields)=>api('/'+encodeURIComponent(row.id)+'/actions',{action,...fields});
           if(row.canCenter || row.canDepartment) {
             const result=textarea(),fields=[label(localized('النتيجة التي ستصل للمشترك والمركز','Outcome for the member and center'),result)];
+            const choice=element('select');
+            if(row.personalDataRequestId) {
+              choice.required=true;
+              choice.add(new Option(localized('حدد نتيجة القرار','Select a decision'),''));
+              if(row.hasExecutionProof) choice.add(new Option(localized('تم التنفيذ بإثبات مرتبط','Applied with linked evidence'),'APPLIED'));
+              choice.add(new Option(localized('تأجيل التنفيذ','Defer'),'DEFERRED'));
+              choice.add(new Option(localized('رفض الطلب','Refuse'),'REFUSED'));
+              fields.unshift(label(localized('قرار طلب البيانات','Data request decision'),choice));
+            }
+            const disposition=()=>row.personalDataRequestId?{disposition:choice.value}:{};
             if(row.canDepartment) {
               const report=textarea();
               fields.push(label(localized('تقرير داخلي للإدارة العليا','Internal report for executive management'),report));
-              section.append(form(fields,localized('رفع التقرير وإبلاغ الطرفين','File report and notify both parties'),()=>act('DEPARTMENT_RESOLVE',{message:result.value,report:report.value})));
+              section.append(form(fields,localized('رفع التقرير وإبلاغ الطرفين','File report and notify both parties'),()=>act('DEPARTMENT_RESOLVE',{message:result.value,report:report.value,...disposition()})));
             } else {
               if(row.state==='CENTER_PENDING') {
                 const work=textarea();
                 section.append(form([label(localized('الإجراء الذي اتخذه المركز','Action taken by the center'),work)],localized('تسجيل الإجراء','Record action'),()=>act('CENTER_HANDLE',{message:work.value})));
               }
-              section.append(form(fields,localized('إنهاء المعالجة وإبلاغ الطرفين','Resolve and notify both parties'),()=>act('CENTER_RESOLVE',{message:result.value})));
+              section.append(form(fields,localized('إنهاء المعالجة وإبلاغ الطرفين','Resolve and notify both parties'),()=>act('CENTER_RESOLVE',{message:result.value,...disposition()})));
             }
           }
           content.append(section);

@@ -21,9 +21,9 @@ const exportRules = {
 export function exportRetentionPolicy(domain: keyof typeof exportRules) {
   return {
     version: '0.1', status: 'DURATIONS_APPROVED_PENDING_EFFECTIVE_DATE',
-    effectiveFrom: null, scope: 'SOURCE_RECORD_CLASS_GUIDANCE',
+    activationCondition: 'TECHNICAL_WORK_COMPLETED', effectiveFrom: null, scope: 'SOURCE_RECORD_CLASS_GUIDANCE',
     recordLevelDispositionAssessed: false, automaticDeletionAuthorized: false,
-    noticeAr: 'اعتمدت مدد الجدول. تاريخ النفاذ وتحديد انطباق القاعدة وموانع الإتلاف على كل سجل تخضع لقرار المخوّل.',
+    noticeAr: 'اعتمدت مدد الجدول. تبدأ عند إتمام العمل التقني. يراجع المخوّل انطباق القاعدة وموانع الإتلاف على كل سجل.',
     rules: exportRules[domain],
   };
 }

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { exportRetentionPolicy } from './export-retention-policy';
 import { AuditService } from '../audit/audit.service';
@@ -129,13 +129,28 @@ export class ProfileService {
       return { ...snapshot, receipt: { auditEventId: receipt.id, sha256 } };
     });
   }
-  async update(accountId: string, rawInput: unknown) {
+  async update(accountId: string, rawInput: unknown, privacyRequestId?: string) {
     const input=profileUpdate(rawInput);
     const sourceKeys=['nationalLicenseCredentialId','qualificationCredentialId','eligibilityEvidenceReference'] as const;
     for(const key of sourceKeys){const value=input[key];if(value!==undefined&&value!==null&&(typeof value!=='string'||value.length>(key==='eligibilityEvidenceReference'?500:80)||/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/u.test(value)))throw new BadRequestException('بيانات مراجع العضوية غير صالحة.');}
     return this.db.serializable(async tx=>{
     const account=await tx.account.findUnique({where:{id:accountId},select:{personId:true,status:true}});
     if(!account||account.status!=='ACTIVE')throw new UnauthorizedException('الحساب غير متاح.');
+    if (privacyRequestId !== undefined) {
+      const [receipt] = await tx.$queryRaw<Array<{status:string;executionAuditId:string|null}>>`
+        SELECT "status","executionAuditId" FROM "PersonalDataRequest"
+        WHERE id=${privacyRequestId} AND "accountId"::text=${accountId} AND kind='CORRECTION' AND domain='ACCOUNT' FOR UPDATE`;
+      if (!receipt) throw new NotFoundException('طلب تصحيح الحساب غير متاح.');
+      if (receipt.executionAuditId) throw new ConflictException('سبق تسجيل تنفيذ التصحيح لهذا الطلب.');
+      if (!['RECEIVED','APPEAL_PENDING'].includes(receipt.status)) throw new ConflictException('صدر قرار الطلب. راجع حالته أو قدّم تظلّمًا.');
+      const allowed = ['firstName','lastName','phone','headline','bio','regionCode'];
+      if (Object.keys(input).some(key=>!allowed.includes(key)) || Object.values(input).some(value=>typeof value!=='string'||!value.trim()))
+        throw new BadRequestException('اختر حقلاً من الملف وأدخل قيمة التصحيح.');
+      const current=await tx.person.findUniqueOrThrow({where:{id:account.personId},select:{firstName:true,lastName:true,phone:true,
+        professional:{select:{headline:true,bio:true,regionCode:true}}}});
+      const before:Record<string,unknown>={firstName:current.firstName,lastName:current.lastName,phone:current.phone,...current.professional};
+      if (!Object.entries(input).some(([key,value])=>before[key]!==value)) throw new BadRequestException('القيم مطابقة للملف الحالي.');
+    }
     for(const key of ['nationalLicenseCredentialId','qualificationCredentialId'] as const){
       const value=input[key]?.trim();if(value&&!await tx.credential.findFirst({where:{id:value,personId:account.personId},select:{id:true}}))throw new BadRequestException('اختر شهادة مسجلة في حسابك.');
     }
@@ -160,7 +175,11 @@ export class ProfileService {
       },
       select: { id: true, person: { include: { professional: true } } }
     });
-    await this.audit.record({actorId:accountId,action:'ACCOUNT_PROFILE_CORRECTED',resource:'Account',resourceId:accountId,metadata:{changedFields:Object.keys(input).sort(),source:'SELF_SERVICE'}},tx);
+    const proof=await this.audit.record({actorId:accountId,action:'ACCOUNT_PROFILE_CORRECTED',resource:'Account',resourceId:accountId,metadata:{changedFields:Object.keys(input).sort(),source:'SELF_SERVICE',...(privacyRequestId?{privacyRequestId}:{})}},tx);
+    if (privacyRequestId) {
+      await tx.personalDataRequest.update({where:{id:privacyRequestId},data:{executionAuditId:proof.id}});
+      return {requestId:privacyRequestId,executionAuditId:proof.id};
+    }
     return updated;
     });
   }

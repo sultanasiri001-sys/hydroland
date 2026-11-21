@@ -1,3 +1,4 @@
+const {catalogOwnerDelegates}=require('./catalog-owner-unit-fixture.cjs');
 const assert=require('node:assert/strict');
 const {mandatoryBindingStatus}=require('../dist/trips/mandatory-policy.domain');
 const {PolicyControlService}=require('../dist/trips/policy-control.service');
@@ -44,14 +45,14 @@ global.fetch=()=>{throw Error('Network is forbidden');};
  // Both legacy writes reject a weaker state, with no mutation or audit.
  for(const method of ['setState','upsert']){
   let writes=0,audits=0;const row={id:'synthetic-policy',category:'BOAT',ruleKey:'REGISTRATION',state:'ENABLED',metadata:binding('BOAT','REGISTRATION')};
-  const tx={$queryRaw:async s=>{if(/^\s*(UPDATE|INSERT)\b/.test(s.join('')))writes++;return[row];}};
+  const tx={...catalogOwnerDelegates('actor'),$queryRaw:async s=>{if(/^\s*(UPDATE|INSERT)\b/.test(s.join('')))writes++;return[row];}};
   const svc=new PolicyControlService({serializable:fn=>fn(tx)},{record:async()=>{audits++;}});
   await assert.rejects(()=>method==='setState'?svc.setState('actor','BOAT','REGISTRATION','DISABLED'):svc.upsert('actor',{category:'BOAT',ruleKey:'REGISTRATION',labelAr:'Synthetic',state:'REVIEW'}),e=>e.getStatus()===403);
   assert.equal(writes,0);assert.equal(audits,0);checks++;
  }
  // The independent weather switch cannot turn an adopted requirement off.
  {
-  let writes=0;const db={$queryRaw:async s=>s.join('').includes('PolicyControl')?[{metadata:binding('WEATHER','WEATHER_GATE')}]:[{value:{enabled:false,mode:'ADVISORY'}}],$executeRaw:async()=>{writes++;}};db.serializable=fn=>fn(db);
+  let writes=0;const db={...catalogOwnerDelegates('actor'),$queryRaw:async s=>s.join('').includes('PolicyControl')?[{metadata:binding('WEATHER','WEATHER_GATE')}]:[{value:{enabled:false,mode:'ADVISORY'}}],$executeRaw:async()=>{writes++;}};db.serializable=fn=>fn(db);
   const gate=new WeatherGateService(db,{record:()=>{throw Error('Unexpected audit');}});
   assert.deepEqual(await gate.settings(),{enabled:true,mode:'ENFORCE',provider:'STORMGLASS'});
   assert.equal(gate.evaluate(null,await gate.settings()).blocking,true);

@@ -97,3 +97,45 @@ test('sent message download uses its own scope and checks the returned account',
   expect(JSON.parse(await readFile(await download.path(),'utf8'))).toEqual(fixture);
   await expect(translated).toBeDisabled();
 });
+
+test('member requests correction and erasure from settings and sees private receipts', async({page})=>{
+  await install(page);
+  const receipts=[];
+  await page.route('**/api/v1/me/data-requests*',route=>{
+    if(route.request().method()==='GET') return json(route,{items:receipts,more:false});
+    const data=route.request().postDataJSON();
+    expect(data.centerId).toBe('center-mine');
+    expect(data.requestKey).toMatch(/^[0-9a-f-]{36}$/);
+    const receipt={...data,id:'receipt-'+(receipts.length+1),status:'RECEIVED',createdAt:'2026-01-01T00:00:00Z'};
+    receipts.unshift(receipt);
+    return json(route,receipt,201);
+  });
+  await page.route('**/api/v1/me/data-requests/centers',route=>json(route,[{id:'center-mine',displayName:'مركز المشترك'}]));
+  await page.locator('[data-personal-data-requests]').click();
+  const dialog=page.locator('#hl-personal-data-requests');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel(/المركز الذي سيستلم/)).toHaveValue('center-mine');
+  await expect(dialog.getByLabel(/مرجع السجل/)).toBeHidden();
+  await dialog.getByLabel(/التصحيح المطلوب/).fill('تصحيح مسمى التخصص');
+  await dialog.getByRole('button',{name:'تقديم الطلب'}).click();
+  await expect(dialog.getByRole('status')).toContainText('receipt-1');
+  await expect(dialog.locator('article')).toContainText('تصحيح مسمى التخصص');
+  await page.route('**/api/v1/me/data-requests/receipt-1/profile-correction',route=>{
+    expect(route.request().postDataJSON()).toEqual({headline:'مسمى مهني مصحح'});
+    receipts[0].executionAuditId='profile-audit';
+    return json(route,{requestId:'receipt-1',executionAuditId:'profile-audit'},201);
+  });
+  await dialog.getByLabel('حقل الملف').selectOption('headline');
+  await dialog.getByLabel('القيمة الصحيحة').fill('مسمى مهني مصحح');
+  await dialog.getByRole('button',{name:'تطبيق التصحيح على ملفي'}).click();
+  await expect(dialog.locator('article')).toContainText('سُجّل تنفيذ التصحيح');
+  await dialog.getByLabel('نوع الطلب').selectOption('ERASURE');
+  await dialog.getByLabel('نطاق البيانات').selectOption('BOOKINGS');
+  await dialog.getByLabel(/مرجع السجل/).fill('my-booking');
+  await dialog.getByRole('button',{name:'تقديم الطلب'}).click();
+  await expect(dialog.getByRole('status')).toContainText('receipt-2');
+  await expect(dialog.locator('article')).toHaveCount(2);
+  expect(receipts[0]).toMatchObject({kind:'ERASURE',domain:'BOOKINGS',recordRef:'my-booking',details:''});
+  await page.evaluate(()=>window.HydrolandAuth.terminateSession());
+  await expect(dialog).toHaveCount(0);
+});

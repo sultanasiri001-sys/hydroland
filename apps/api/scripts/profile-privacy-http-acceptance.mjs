@@ -22,6 +22,7 @@ export async function profilePrivacyAcceptance({db,base}){
       assert.equal(login.response.status,200);assert(login.body.accessToken);account.token=login.body.accessToken;
     }
     const [a,b]=accounts;
+    await verifyPersonalDataRequests(db,call,a,b);
     await verifyTripRecords(db,call,a,b);
     await verifySentMessages(db,call,a,b);
     const secondBefore=await db.account.findUniqueOrThrow({where:{id:b.id},include:{person:{include:{professional:true}}}});
@@ -33,6 +34,7 @@ export async function profilePrivacyAcceptance({db,base}){
       assert.equal(response.status,201);assert.equal(response.headers.get('cache-control'),'private, no-store');
       assert.match(response.headers.get('content-disposition'),/attachment; filename="hydroland-account-profile.json"/);
       assert.equal(body.retentionPolicy.version,'0.1');
+      assert.equal(body.retentionPolicy.activationCondition,'TECHNICAL_WORK_COMPLETED');
       assert.equal(body.retentionPolicy.effectiveFrom,null);
       assert.equal(body.retentionPolicy.automaticDeletionAuthorized,false);
       assert.equal(body.retentionPolicy.rules[0].basis,'DURATION_OF_ACCOUNT_SERVICE');
@@ -55,11 +57,14 @@ export async function profilePrivacyAcceptance({db,base}){
     for(const body of [{firstName:null},{firstName:[]},{firstName:' '},{firstName:'x'.repeat(81)},{status:'ACTIVE'},{accountId:b.id},{firstName:'X\u0000Y'},[]])assert.equal((await call(a,'/me','PATCH',body)).response.status,400);
     assert.equal((await call(a,'/me','PATCH',{qualificationCredentialId:foreignCredential.id})).response.status,400);
     assert.deepEqual(await snapshot(),beforeInvalid);
-    await db.$executeRawUnsafe(`CREATE FUNCTION "${trigger}"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.resource='Account' AND NEW."resourceId"='${a.id}' AND NEW.action IN ('ACCOUNT_PROFILE_CORRECTED','ACCOUNT_PROFILE_EXPORTED','PERSONAL_TRIP_RECORDS_EXPORTED','PERSONAL_SENT_MESSAGES_EXPORTED') THEN RAISE EXCEPTION 'synthetic profile audit failure'; END IF; RETURN NEW; END $$`);
+    await db.$executeRawUnsafe(`CREATE FUNCTION "${trigger}"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF (NEW.action='PERSONAL_DATA_REQUEST_RECEIVED' AND NEW."actorId"='${a.personId}') OR (NEW.resource='Account' AND NEW."resourceId"='${a.id}' AND NEW.action IN ('ACCOUNT_PROFILE_CORRECTED','ACCOUNT_PROFILE_EXPORTED','PERSONAL_TRIP_RECORDS_EXPORTED','PERSONAL_SENT_MESSAGES_EXPORTED')) THEN RAISE EXCEPTION 'synthetic profile audit failure'; END IF; RETURN NEW; END $$`);
     await db.$executeRawUnsafe(`CREATE TRIGGER "${trigger}" BEFORE INSERT ON "AuditEvent" FOR EACH ROW EXECUTE FUNCTION "${trigger}"()`);installed=true;
     const auditCount=await db.auditEvent.count({where:{resourceId:a.id}});
     assert.equal((await call(a,'/me','PATCH',{firstName:'Must roll back',bio:'Must roll back'})).response.status,500);
     assert.deepEqual(await snapshot(),beforeInvalid);
+    const denied = requestBody('ERASURE','ACCOUNT');
+    assert.equal((await call(a,'/me/data-requests','POST',denied)).response.status,500);
+    assert.equal(await db.personalDataRequest.count({where:{requestKey:denied.requestKey}}),0);
     assert.equal((await call(a,'/me/data-export','POST',{})).response.status,500);
     assert.equal((await call(a,'/me/data-export/trip-records','POST',{domain:'PAYMENTS'})).response.status,500);
     assert.equal((await call(a,'/me/data-export/sent-messages','POST',{})).response.status,500);
@@ -71,12 +76,14 @@ export async function profilePrivacyAcceptance({db,base}){
     assert.deepEqual(await db.account.findUniqueOrThrow({where:{id:b.id},include:{person:{include:{professional:true}}}}),secondBefore);
     await db.account.update({where:{id:a.id},data:{status:'SUSPENDED'}});
     assert.equal((await call(a,'/me/data-export','POST',{})).response.status,401);assert.equal((await call(a,'/me','PATCH',{firstName:'Blocked'})).response.status,401);
+    assert.equal((await call(a,'/me/data-requests')).response.status,401);
     console.log('Account profile privacy HTTP/PostgreSQL: PASS; real logins, self-only export, explicit scope, no secrets/foreign account, private headers, receipt hash, correction audit, invalid/foreign-reference refusal, audit-failure rollback, concurrent partial edits and session revocation.');
   }finally{
     if(installed)await db.$executeRawUnsafe(`DROP TRIGGER "${trigger}" ON "AuditEvent"`);
     await db.$executeRawUnsafe(`DROP FUNCTION IF EXISTS "${trigger}"()`);
     for(const account of accounts){
       await db.auditEvent.deleteMany({where:{OR:[{actorId:account.personId},{resourceId:account.id}]}});
+      await db.personalDataRequest.deleteMany({where:{accountId:account.id}});
       await db.notification.deleteMany({where:{accountId:account.id}});
       await db.session.deleteMany({where:{accountId:account.id}});
       await db.roleAssignment.deleteMany({where:{accountId:account.id}});
@@ -85,6 +92,36 @@ export async function profilePrivacyAcceptance({db,base}){
       await db.account.delete({where:{id:account.id}});await db.person.delete({where:{id:account.personId}});
     }
   }
+}
+
+function requestBody(kind,domain,recordRef=null) {
+  return {requestKey:randomUUID(),kind,domain,recordRef,details:''};
+}
+
+async function verifyPersonalDataRequests(db,call,owner,other) {
+  const path = '/me/data-requests';
+  const input = {...requestBody('CORRECTION','ACCOUNT'),details:'Correct the spelling in my profile.'};
+  const post = (actor,body) => call(actor,path,'POST',body);
+  assert.equal((await post(null,input)).response.status,401);
+  assert.equal((await call(null,path)).response.status,401);
+  for (const invalid of [{details:''},{domain:'ALL'},{accountId:other.id},{recordRef:other.id},{requestKey:'invalid'}]) {
+    assert.equal((await post(owner,{...input,...invalid})).response.status,400);
+  }
+  const [first,retry] = await Promise.all([post(owner,input),post(owner,input)]);
+  assert.equal(first.response.status,201); assert.equal(retry.response.status,201);
+  assert.equal(first.body.id,retry.body.id); assert.equal(first.body.status,'RECEIVED');
+  assert.equal(first.response.headers.get('cache-control'),'private, no-store');
+  assert.equal((await post(owner,{...input,details:'Changed request'})).response.status,409);
+  assert.equal((await post(owner,requestBody('ERASURE','BOOKINGS',randomUUID()))).response.status,404);
+  const listing = await call(owner,path);
+  assert.equal(listing.response.headers.get('cache-control'),'private, no-store');
+  assert.deepEqual(listing.body,{items:[first.body],more:false});
+  assert.deepEqual((await call(other,path)).body,{items:[],more:false});
+  assert.equal((await call(owner,path+'?page=0')).response.status,400);
+  assert.deepEqual((await call(owner,path+'?page=2')).body,{items:[],more:false});
+  const events = await db.auditEvent.findMany({where:{action:'PERSONAL_DATA_REQUEST_RECEIVED',resourceId:first.body.id}});
+  assert.equal(events.length,1); assert.equal(events[0].actorId,owner.personId);
+  assert.deepEqual(events[0].metadata,{kind:'CORRECTION',domain:'ACCOUNT'});
 }
 
 async function verifyTripRecords(db, call, owner, other) {
@@ -98,7 +135,15 @@ async function verifyTripRecords(db, call, owner, other) {
     const group = await db.booking.create({data:{tripId:trip.id,accountId:owner.id,organizationId:org.id}});
     const payment = (bookingId,accountId) => db.payment.create({data:{bookingId,accountId,amountMinor:1280,currency:'SAR',idempotencyKey:randomUUID(),providerReference:randomUUID()}});
     const owned = await payment(ids[0],owner.id);
-    await payment(foreign.id,other.id);await payment(group.id,owner.id);await payment(ids[0],other.id);
+    const excludedPayments = [await payment(foreign.id,other.id),await payment(group.id,owner.id),await payment(ids[0],other.id)];
+    for (const [domain,ref,expected] of [
+      ['BOOKINGS',ids[0],201], ['BOOKINGS',foreign.id,404], ['BOOKINGS',group.id,404],
+      ['PAYMENTS',owned.id,201], ...excludedPayments.map(p=>['PAYMENTS',p.id,404]),
+    ]) {
+      const result = await call(owner,'/me/data-requests','POST',requestBody('ERASURE',domain,ref));
+      assert.equal(result.response.status,expected,domain);
+    }
+    assert.deepEqual(await db.payment.findUniqueOrThrow({where:{id:owned.id}}),owned);
     const first = await exportPage(owner,{domain:'BOOKINGS'});
     assert.equal(first.response.status,201);assert.equal(first.response.headers.get('cache-control'),'private, no-store');
     assert.equal(first.body.retentionPolicy.rules[0].months,12);
@@ -139,6 +184,9 @@ async function verifySentMessages(db, call, owner, other) {
     assert.equal(sent.response.status, 201);
     const received = await call(other, '/messages/conversations/'+id+'/messages', 'POST', {body:'Private reply from peer'});
     assert.equal(received.response.status, 201);
+    const requestMessage = ref => call(owner,'/me/data-requests','POST',requestBody('ERASURE','SENT_MESSAGES',ref));
+    assert.equal((await requestMessage(sent.body.id)).response.status,201);
+    assert.equal((await requestMessage(received.body.id)).response.status,404);
     await db.$executeRaw`
       INSERT INTO "Message" ("id","conversationId","senderAccountId","kind","body")
       SELECT (jsonb_populate_record(NULL::"Message",jsonb_build_object('id',source)))."id", c."id", c."createdByAccountId", 'TEXT', 'Owned text'
@@ -174,6 +222,7 @@ async function verifySentMessages(db, call, owner, other) {
     assert.deepEqual(audit.metadata,{domain:'SENT_MESSAGES',count:100,sha256:receipt.sha256});
     await db.$executeRaw`DELETE FROM "ConversationParticipant" WHERE "conversationId"::text=${id} AND "accountId"::text=${owner.id}`;
     assert.deepEqual((await page(owner)).body.records,[]);
+    assert.equal((await requestMessage(sent.body.id)).response.status,404);
   } finally {
     await db.$executeRaw`DELETE FROM "Conversation" WHERE "id"::text=${id}`;
   }

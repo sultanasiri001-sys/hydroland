@@ -154,6 +154,7 @@ model Person {
 }
 
 model Account {
+  personalDataRequests PersonalDataRequest[]
   instructorDocuments InstructorDocument[]
   privacyGrievances PrivacyGrievance[]
   operationalEvidenceCreated OperationalEvidence[] @relation("OperationalEvidenceCreator")
@@ -2923,7 +2924,33 @@ model WarehouseLocationRevision {
 }
 
 
+model PersonalDataRequest {
+  executionAuditId String? @unique
+  decisionDisposition String?
+  initialDisposition String?
+  routingCenterId String?
+  case PrivacyGrievance?
+  id String @id @default(uuid())
+  accountId String
+  requestKey String
+  kind String
+  domain String
+  recordRef String?
+  details String
+  status String @default("RECEIVED")
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  account Account @relation(fields:[accountId], references:[id], onDelete:Restrict)
+  @@unique([accountId,requestKey])
+  @@index([accountId,createdAt,id])
+}
+
 model PrivacyGrievance {
+  personalDataRequestId String? @unique
+  personalDataRequest PersonalDataRequest? @relation(fields:[personalDataRequestId], references:[id], onDelete:Restrict)
+  decisionPersonId String?
+  firstOutcome String?
+  appealReason String?
+  appealedAt DateTime? @db.Timestamptz(3)
   id String @id @default(uuid())
   customerId String
   requestKey String

@@ -3,6 +3,7 @@ import {randomUUID} from 'node:crypto';
 const policy='TECHNOLOGY_REQUEST_V1';
 const source={id:randomUUID(),label:'TEC-REQUEST-001 · APPROVED',version:1,contentHash:'a'.repeat(64),scopeReference:'CI-SYSTEM'};
 const employee={id:randomUUID(),label:'منفذ تقني مستقل'};
+const releaseOwner={id:randomUUID(),label:'مالك إصدار الاختبار'};
 const changeSource={id:randomUUID(),label:'TEC-CHANGE-001 · APPROVED'};
 const incidentSource={id:randomUUID(),label:'TEC-INCIDENT-001 · HIGH'};
 const riskSource={id:randomUUID(),label:'TEC-RISK-001 · HIGH'};
@@ -11,14 +12,14 @@ const record=extra=>({id:randomUUID(),revision:1,kind:'CHANGE',title:'طلب ت�
 const json=(r,data,status=200)=>r.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
 const ownerActions={DRAFT:['SUBMIT','REVOKE'],SUBMITTED:['APPROVE','REJECT','REVOKE'],APPROVED:['REVOKE'],EXECUTED:['PASS_TEST','FAIL_TEST','REQUEST_ROLLBACK','REVOKE'],VERIFIED:['CLOSE','REVOKE'],CLOSED:[]};
 async function setup(page,options={}){
- const state={role:'OWNER',records:[record()],writes:[],failCreate:0,deny:false,holdDetail:false,release:null,...options};
- const detail=row=>({schemaVersion:1,policy,role:state.role,record:row,actions:state.role==='OWNER'?(ownerActions[row.state]||['REVOKE']):(row.state==='APPROVED'?['START']:row.state==='IN_PROGRESS'?['RECORD_EXECUTION']:[]),history:[{revision:row.revision,action:'CREATE',reason:'سبب طلب محفوظ'}],historyTruncated:false});
+ const state={role:'OWNER',requestSource:source,records:[record()],writes:[],failCreate:0,deny:false,holdDetail:false,release:null,...options};
+ const detail=row=>({schemaVersion:1,policy,role:state.role,record:row,actions:state.role==='OWNER'?(ownerActions[row.state]||['REVOKE']):(row.state==='APPROVED'?['START']:row.state==='IN_PROGRESS'?['RECORD_EXECUTION']:row.state==='ROLLBACK_REQUIRED'?['RECORD_ROLLBACK']:[]),history:[{revision:row.revision,action:'CREATE',reason:'سبب طلب محفوظ'}],historyTruncated:false});
  await page.route('**/api/v1/**',r=>json(r,[]));await page.route('**/auth/google/config',r=>json(r,{enabled:false}));
  await page.route(/\/api\/v1\/me$/,r=>json(r,{id:'technology-owner-fixture',status:'ACTIVE',person:{firstName:'مالك',lastName:'اختبار'},roleAssignments:[{role:state.role==='OWNER'?'ADMIN':'STAFF',status:'ACTIVE'}]}));
  await page.route(/\/technology\/requests(?:[/?].*)?$/,async r=>{
   const url=new URL(r.request().url()),tail=url.pathname.split('/technology/requests')[1],method=r.request().method(),body=method==='GET'?null:r.request().postDataJSON();
   if(method!=='GET')state.writes.push({tail,method,body});if(state.deny)return json(r,{message:'انتهى تكليف هذا الحساب'},403);
-  if(tail==='/references')return json(r,{items:url.searchParams.get('type')==='assignee'?[employee]:url.searchParams.get('type')==='request'?[source]:url.searchParams.get('type')==='audit'?[{id:randomUUID(),label:'أثر تنفيذ الوصول'}]:[proof],nextCursor:null});
+  if(tail==='/references')return json(r,{items:url.searchParams.get('type')==='assignee'?[employee,releaseOwner]:url.searchParams.get('type')==='request'?[state.requestSource]:url.searchParams.get('type')==='audit'?[{id:randomUUID(),label:'أثر تنفيذ الوصول'}]:[proof],nextCursor:null});
   if(method==='GET'&&!tail)return json(r,{schemaVersion:1,policy,role:state.role,items:state.records,hasMore:false,nextCursor:null});
   if(method==='POST'&&!tail){if(state.failCreate-->0)return json(r,{message:'تعذر الحفظ مؤقتًا'},503);const row=record(body);state.records.unshift(row);return json(r,{...detail(row),created:true},201);}
   const id=tail.split('/')[1],row=state.records.find(x=>x.id===id);
@@ -89,3 +90,26 @@ test('risk acceptance is a recorded owner decision with a mandatory future revie
  const{writes,dialog}=await agentSetup(page,{risk:true}),requestForm=dialog.locator('form').first();expect(await requestForm.locator('[name=riskReviewAt]').inputValue()).not.toBe('');expect(writes[0].body.operation).toBe('ACCEPT_SECURITY_RISK');expect(Date.parse(writes[0].body.riskReviewAt)).toBeGreaterThan(Date.now());expect(writes).toHaveLength(1);
  const f=dialog.locator('[data-agent-case] form');await f.locator('[name=action]').selectOption('APPROVE_EXECUTE');await f.locator('[name=reason]').fill('أقبل الخطر مع مراجعة مستقبلية');await f.locator('[name=confirmed]').check();await f.getByRole('button',{name:'تأكيد الإجراء',exact:true}).click();await expect(dialog).toContainText('خطر مقبول');await expect(dialog).toContainText('موعد مراجعة الخطر');expect(writes).toHaveLength(2);expect(await dialog.locator('[data-agent-case] form').count()).toBe(0);
 });
+
+test('A16 renders pinned decision on a phone and saves the approved baseline explicitly',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ const id='TRAINING.SESSION_TIME_WINDOW';
+ const requestSource={...source,scopeReference:id,controlChange:{id,state:'DISABLED',previousState:'ENABLED',expectedRevision:'c'.repeat(64)}};
+ const state=await setup(page,{requestSource});const f=await fillCreate(page);
+ await f.locator('[name=releaseOwner]').selectOption(releaseOwner.id);
+ await expect(f.locator('[name=document] option:checked')).toContainText('إيقاف الضابط');
+ await f.getByRole('button',{name:'حفظ مسودة الطلب',exact:true}).click();
+ await expect.poll(()=>state.writes.length).toBe(1);
+ expect(state.writes[0].body.releaseOwnerAccountId).toBe(releaseOwner.id);
+ expect(state.writes[0].body.controlChange).toEqual({state:'DISABLED',expectedRevision:'c'.repeat(64)});
+ await expect(page.locator('[data-tr-summary]')).toContainText('c'.repeat(64));
+});
+for(const [stateName,expected] of [['IN_PROGRESS','تطبيق التغيير المعتمد وتسجيل إيصال التنفيذ'],['ROLLBACK_REQUIRED','تنفيذ الرجوع المعتمد وتسجيل إيصال الرجوع']]){
+ test('A16 shows the native action explicitly for the assigned operator in '+stateName,async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  const row=record({state:stateName,controlChange:{id:'TRAINING.SESSION_TIME_WINDOW',state:'DISABLED',previousState:'ENABLED',expectedRevision:'c'.repeat(64)},executionAuditId:'fixture-execution-receipt'});
+  await setup(page,{role:'ASSIGNEE',records:[row]});await page.locator('[data-case-id]').click();
+  await expect(page.locator('[data-tr-summary]')).toContainText('fixture-execution-receipt');
+  await expect(page.locator('[data-tr-action] [name=action]')).toContainText(expected);
+ });
+}

@@ -13,6 +13,9 @@ export class PrivacyGrievanceController {
   @Post() submit(@Req() req:Request,@Body() body:Record<string,unknown>) {
     return this.cases.submit(req.auth.accountId,body);
   }
+  @Post(':id/appeal') appeal(@Req() req:Request,@Param('id') id:string,@Body() body:Record<string,unknown>) {
+    return this.cases.appeal(req.auth.accountId,id,body);
+  }
   @Post(':id/actions') act(@Req() req:Request,@Param('id') id:string,@Body() body:Record<string,unknown>) {
     return this.cases.act(req.auth.accountId,id,body);
   }
