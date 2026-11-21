@@ -167,6 +167,12 @@ try{
   const stored=await db.commerceCollectionEvidence.findUniqueOrThrow({where:{id:receipt.collectionEvidenceId}});
   assert.ok(!JSON.stringify(stored).includes('DO-NOT-PERSIST'));
   assert.equal(stored.financeEntryId,goodEntry.id);check();
+  const {verifyProductSettlement}=await import('./commerce-settlement-product-checks.mjs');
+  const {FinanceSettlementService}=await load('finance/finance-settlement.service.js');
+  const {FinanceAccessService}=await load('finance/finance-access.service.js');
+  const productCheckout=await db.commerceCheckout.findUniqueOrThrow({where:{providerPaymentId:collected.payment.id}});
+  await verifyProductSettlement({db,access:new FinanceAccessService(db),settlements:FinanceSettlementService,provider,accountant,
+    reviewer:approver,secondReviewer:poster,centerId:orgUnitIds[0],organizationId:centerA,paymentId:collected.payment.id,checkoutId:productCheckout.id,amountMinor:5000});check();
   await handover.confirmPayment(owner,first.rental.id);
   await handover.scan(owner,first.rental.id,{handoverCondition:'Synthetic baseline',code:first.item.code});
   assert.equal((await rentals.get(first.rental.id)).status,'ACTIVE');check();
