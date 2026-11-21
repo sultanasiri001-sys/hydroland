@@ -72,17 +72,36 @@ export async function renterClaim(root,item){
     drawClaim(p,root,JSON.parse(claim),'renter',()=>renterClaim(root,item));
   }catch(e){if(p.current())p.message.textContent=e.message;}
 }
+const valuations={
+  PENDING:['يُحدد بعد التحقق','Decide after verification'],QUOTE:['عرض سعر لقطعة مماثلة','Quote for an equivalent item'],
+  SUPPLIER_INVOICE:['فاتورة استبدال من المورّد','Supplier replacement invoice'],AGREED_VALUE:['قيمة موثّقة اتفق عليها الطرفان','Documented agreed amount'],
+  IN_KIND:['بديل عيني مماثل','Equivalent item in kind'],NO_COMPENSATION:['دون تعويض','No compensation']
+};
+const recoveries={
+  INSPECT:['فحص القطعة ثم تحديد المعالجة','Inspect, then decide'],FULL_REFUND_REVIEW:['مراجعة رد كامل لمبلغ محصّل','Review full refund of collected funds'],
+  PARTIAL_REFUND_REVIEW:['مراجعة رد جزئي بعد توثيق الضرر','Review partial refund after documenting damage'],
+  IN_KIND_REVIEW:['مراجعة إعادة البديل العيني','Review return of the replacement item'],
+  NO_PAYMENT_TO_RETURN:['إغلاق البلاغ عند الاستلام إذا لم يُحصّل مبلغ','Close on receipt if nothing was collected'],OTHER:['إجراء آخر موضّح في التفاصيل','Other action described in the report']
+};
+const selectOptions=choices=>{
+  const menu=el('select');for(const [code,title] of Object.entries(choices))menu.add(new Option(label(...title),code));return menu;
+};
+export function lossTerms(root,report){
+  if(!report)return;
+  root.replaceChildren(el('p',label('أساس التعويض المقترح','Proposed compensation basis')+' · '+label(...(valuations[report.valuation]||valuations.PENDING))),
+    el('p',label('الإجراء المقترح عند العثور عليها','Proposed action on recovery')+' · '+label(...(recoveries[report.recovery]||recoveries.INSPECT))));
+}
 function missingForm(p,root,rows,refresh){
   if(!rows.length)return;
   const details=el('details'),summary=el('summary',label('الإبلاغ عن قطعة مفقودة','Report a missing item'));details.append(summary);root.append(details);
   const items=el('select');for(const row of rows){const opt=new Option(row.invoiceNumber+' · '+row.equipment+' · '+row.assetCode+(row.reported?' · '+label('مبلّغ عنها','Already reported'):''),row.itemId);opt.disabled=row.reported;items.add(opt);}
-  const why=el('select'),proposal=el('select'),reason=el('textarea');reason.maxLength=1000;
+  const why=el('select'),proposal=el('select'),valuation=selectOptions(valuations),recovery=selectOptions(recoveries),reason=el('textarea');reason.maxLength=1000;
   for(const [value,a,e] of [['NOT_RETURNED','لم تُعد عند موعد التسليم','Missing at return'],['REPORTED_BY_RENTER','أبلغ المستأجر بفقدها','Reported lost by renter'],['OTHER','سبب آخر','Other']])why.add(new Option(label(a,e),value));
   for(const [value,a,e] of [['TRACE','البحث وإمهال المستأجر لإعادة القطعة','Allow time to locate and return'],['EQUIVALENT','اقتراح بديل مماثل','Propose equivalent item'],['ESTIMATE','طلب تقدير قيمة الاستبدال','Request replacement valuation'],['WAIVER','طلب الإعفاء من التعويض','Request waiver'],['OTHER','مقترح آخر','Other proposal']])proposal.add(new Option(label(a,e),value));
-  for(const [title,input] of [[label('القطعة المسلّمة','Issued item'),items],[label('ظرف الفقد','Circumstance'),why],[label('الإجراء المقترح للمراجعة','Proposed resolution for review'),proposal],[label('تفاصيل البلاغ','Report details'),reason]]){const field=el('label',title);field.append(input);details.append(field);}
+  for(const [title,input] of [[label('القطعة المسلّمة','Issued item'),items],[label('ظرف الفقد','Circumstance'),why],[label('الإجراء المقترح للمراجعة','Proposed resolution for review'),proposal],[label('أساس التعويض المقترح','Proposed compensation basis'),valuation],[label('الإجراء المقترح عند العثور عليها','Proposed action on recovery'),recovery],[label('تفاصيل البلاغ','Report details'),reason]]){const field=el('label',title);field.append(input);details.append(field);}
   p.action(details,label('تسجيل بلاغ الفقد','Record loss report'),async()=>{
     if(!items.value||!reason.value.trim())throw new Error(label('اختر القطعة واكتب التفاصيل','Select the item and enter details'));
-    await p.request('items/'+encodeURIComponent(items.value)+'/missing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({circumstance:why.value,proposal:proposal.value,reason:reason.value.trim()})});
+    await p.request('items/'+encodeURIComponent(items.value)+'/missing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({circumstance:why.value,proposal:proposal.value,valuation:valuation.value,recovery:recovery.value,reason:reason.value.trim()})});
     if(p.current())await refresh();
   });
 }

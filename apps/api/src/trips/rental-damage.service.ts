@@ -60,8 +60,11 @@ export class RentalDamageService {
           AND r."contractSnapshot"->>'organizationId' IN (${Prisma.join(centers)}) ORDER BY r."invoiceNumber",i."assetCodeSnapshot"`;
     });
   }
-  async missing(actor:string,itemId:string,input:{reason?:string;circumstance?:string;proposal?:string}) {
+  async missing(actor:string,itemId:string,input:{reason?:string;circumstance?:string;proposal?:string;valuation?:string;recovery?:string}) {
     const reason=reasonText(input?.reason),circumstance=input?.circumstance,proposal=input?.proposal??'TRACE';
+    const valuation=input?.valuation??'PENDING',recovery=input?.recovery??'INSPECT';
+    if(!['PENDING','QUOTE','SUPPLIER_INVOICE','AGREED_VALUE','IN_KIND','NO_COMPENSATION'].includes(valuation)
+      ||!['INSPECT','FULL_REFUND_REVIEW','PARTIAL_REFUND_REVIEW','IN_KIND_REVIEW','NO_PAYMENT_TO_RETURN','OTHER'].includes(recovery))throw new BadRequestException('اختر أساس التقدير وإجراء العثور على القطعة.');
     if(!['TRACE','EQUIVALENT','ESTIMATE','WAIVER','OTHER'].includes(proposal))throw new BadRequestException('اختر إجراءً مقترحًا للمراجعة.');
     if(!['NOT_RETURNED','REPORTED_BY_RENTER','OTHER'].includes(circumstance??''))throw new BadRequestException('اختر سبب تسجيل الفقد.');
     return this.db.serializable(async tx=>{
@@ -76,11 +79,11 @@ export class RentalDamageService {
       const old=await tx.auditEvent.findFirst({where:{resource:'EquipmentRentalItem',resourceId:itemId,action:'RENTAL_ITEM_REPORTED_MISSING'},select:{metadata:true}});
       if(old){
         const meta=old.metadata;
-        if(!meta||typeof meta!=='object'||Array.isArray(meta)||meta.reason!==reason||meta.circumstance!==circumstance||meta.proposal!==proposal)throw new ConflictException('تختلف البيانات عن البلاغ المسجّل.');
+        if(!meta||typeof meta!=='object'||Array.isArray(meta)||meta.reason!==reason||meta.circumstance!==circumstance||meta.proposal!==proposal||(meta.valuation??'PENDING')!==valuation||(meta.recovery??'INSPECT')!==recovery)throw new ConflictException('تختلف البيانات عن البلاغ المسجّل.');
         return {status:'MISSING',itemId};
       }
-      await this.audit.record({actorId:actor,resource:'EquipmentRentalItem',resourceId:itemId,action:'RENTAL_ITEM_REPORTED_MISSING',metadata:{reason,circumstance,proposal,rentalId:line.rentalId}},tx);
-      await this.notices.notify(line.renter,'RENTAL_ITEM_REPORTED_MISSING',{rentalId:line.rentalId,itemId,reason,circumstance,proposal,title:'بلاغ قطعة تأجير مفقودة'},tx);
+      await this.audit.record({actorId:actor,resource:'EquipmentRentalItem',resourceId:itemId,action:'RENTAL_ITEM_REPORTED_MISSING',metadata:{reason,circumstance,proposal,valuation,recovery,rentalId:line.rentalId}},tx);
+      await this.notices.notify(line.renter,'RENTAL_ITEM_REPORTED_MISSING',{rentalId:line.rentalId,itemId,reason,circumstance,proposal,valuation,recovery,title:'بلاغ قطعة تأجير مفقودة'},tx);
       return {status:'MISSING',itemId};
     });
   }

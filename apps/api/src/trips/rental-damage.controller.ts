@@ -16,7 +16,7 @@ export class RentalDamageController {
   missingItems(@Req() req:Request){return this.damage.missingItems(req.auth.accountId);}
 
   @Post('items/:id/missing')
-  missing(@Req() req:Request,@Param('id') id:string,@Body() body:{reason?:string;circumstance?:string;proposal?:string}){
+  missing(@Req() req:Request,@Param('id') id:string,@Body() body:{reason?:string;circumstance?:string;proposal?:string;valuation?:string;recovery?:string}){
     return this.damage.missing(req.auth.accountId,id,body);
   }
 

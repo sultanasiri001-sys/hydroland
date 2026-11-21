@@ -381,13 +381,13 @@ try{
   const reviewerToken=await login(financeApprover);
   const openItems=await json(await fetch(damageBase+'/center/missing-items',{headers:auth(adminToken)}));
   const missingItem=openItems.find(row=>row.assetCode===passports[1].assetCode);
-  const lossBody={circumstance:'REPORTED_BY_RENTER',proposal:'EQUIVALENT',reason:'Reported lost during return'};
+  const lossBody={circumstance:'REPORTED_BY_RENTER',proposal:'EQUIVALENT',valuation:'IN_KIND',recovery:'IN_KIND_REVIEW',reason:'Reported lost during return'};
   const reportLoss=token=>fetch(damageBase+'/items/'+missingItem.itemId+'/missing',{method:'POST',headers:{...auth(token),'content-type':'application/json'},body:JSON.stringify(lossBody)});
   assert.equal((await reportLoss(otherToken)).status,404);
   assert.equal((await json(await reportLoss(adminToken))).status,'MISSING');
   assert.equal((await json(await reportLoss(adminToken))).status,'MISSING');
   const lostLine=(await json(await fetch(base+'/trips/equipment-rentals/'+multiId+'/mine',{headers:auth(renterToken)}))).items.find(i=>i.id===missingItem.itemId);
-  assert.equal(lostLine.lossStatus,'MISSING');assert.equal(lostLine.returnedAt,null);
+  assert.equal(lostLine.lossReport.valuation,'IN_KIND');assert.equal(lostLine.lossReport.recovery,'IN_KIND_REVIEW');assert.equal(lostLine.lossStatus,'MISSING');assert.equal(lostLine.returnedAt,null);
   assert.equal(await db.rentalDamageClaim.count({where:{itemId:missingItem.itemId}}),0);
   const returnPath='/trips/equipment-rentals/'+multiId+'/return-scan';
   const damaged=await post(returnPath,{code:passports[0].assetCode,condition:'DAMAGED',toLocation:'INSPECTION',newDamage:true,damageCause:'MISUSE',notes:'New crack on the base'});
