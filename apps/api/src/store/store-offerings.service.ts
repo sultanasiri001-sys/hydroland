@@ -5,10 +5,11 @@ import { DatabaseService } from '../database/database.service';
 import { randomUUID } from 'node:crypto';
 import { createCommerceContractSnapshot } from '../commerce/commerce-contract-snapshot';
 
+import { normalizeSale, priceActivity } from './activity-promotions';
 import { catalogDetails } from './product-catalog';
 
 const productFields = ['catalogDetails','sku','nameAr','description','priceMinor','stockQuantity','kind','status'];
-const courseFields = ['courseCode','title','description','locationName','startsAt','endsAt','capacity','priceMinor','status'];
+const courseFields = ['saleDetails','courseCode','title','description','locationName','startsAt','endsAt','capacity','priceMinor','status'];
 
 @Injectable()
 export class StoreOfferingsService {
@@ -50,7 +51,7 @@ export class StoreOfferingsService {
     if (before.updatedAt.getTime()!==this.revision(value).getTime()) throw new ConflictException('تغير العرض. أعد تحميله قبل الحفظ.');
   }
   private same(before: Record<string,unknown>, data: Record<string,unknown>) {
-    return Object.entries(data).every(([key,value])=>value instanceof Date ? (before[key] instanceof Date && (before[key] as Date).getTime()===value.getTime()) : key === 'catalogDetails' ? JSON.stringify(catalogDetails(before[key] ?? {},Number(data.priceMinor))) === JSON.stringify(value) : before[key]===value);
+    return Object.entries(data).every(([key,value])=>value instanceof Date ? (before[key] instanceof Date && (before[key] as Date).getTime()===value.getTime()) : key === 'saleDetails' ? JSON.stringify(Object.entries((before[key]??{}) as object).sort())===JSON.stringify(Object.entries(value as object).sort()) : key === 'catalogDetails' ? JSON.stringify(catalogDetails(before[key] ?? {},Number(data.priceMinor))) === JSON.stringify(value) : before[key]===value);
   }
   private async audited(tx: Prisma.TransactionClient, actorId: string, organizationId: string, resource: string, resourceId: string, action: string) {
     await tx.auditEvent.create({data:{action,resource,resourceId,metadata:{actorId,organizationId}}});
@@ -100,7 +101,7 @@ export class StoreOfferingsService {
   saveCourse(accountId: string, input: Record<string,unknown>, id?: string) {
     this.object(input,[...courseFields,id?'expectedUpdatedAt':'requestId']);
     const date=(key:string)=>{const value=input[key];if(typeof value!=='string'||!/(Z|[+-]\d{2}:\d{2})$/.test(value)||!Number.isFinite(Date.parse(value)))throw new BadRequestException('أدخل مواعيد الدورة مع المنطقة الزمنية.');return new Date(value)};
-    const data={courseCode:this.text(input,'courseCode',80),title:this.text(input,'title',240),description:this.text(input,'description',4000,true),locationName:this.text(input,'locationName',240),startsAt:date('startsAt'),endsAt:date('endsAt'),capacity:this.integer(input,'capacity',1),priceMinor:this.integer(input,'priceMinor'),currency:'SAR',status:this.status(input)};
+    const data={...(input.saleDetails===undefined?{}:{saleDetails:normalizeSale(input.saleDetails,this.integer(input,'priceMinor'))}),courseCode:this.text(input,'courseCode',80),title:this.text(input,'title',240),description:this.text(input,'description',4000,true),locationName:this.text(input,'locationName',240),startsAt:date('startsAt'),endsAt:date('endsAt'),capacity:this.integer(input,'capacity',1),priceMinor:this.integer(input,'priceMinor'),currency:'SAR',status:this.status(input)};
     if (data.endsAt<=data.startsAt || data.startsAt<=new Date()) throw new BadRequestException('يجب أن تبدأ الدورة مستقبلًا وتنتهي بعد بدايتها.');
     const courseId=id||this.requestId(input.requestId);
     return this.retryUnique(()=>this.db.serializable(async tx=>{
@@ -144,7 +145,7 @@ export class StoreOfferingsService {
   async publicCourses(){
     const policy=await trainingOperationalPolicy(this.db);
     const rows=await this.db.storeCourseOffer.findMany({where:{status:'ACTIVE',startsAt:{gt:new Date()},organization:{status:'ACTIVE'}},orderBy:{startsAt:'asc'},include:{organization:{select:{displayName:true}},_count:{select:{enrollments:{where:{status:{not:'CANCELLED'}}}}}}});
-    return rows.map(({_count,...row})=>({...row,bookingPolicy:{capacityLimit:policy.capacityLimit?'ENABLED':'DISABLED'},remainingSeats:Math.max(0,row.capacity-_count.enrollments)}));
+    return rows.map(({_count,...row})=>({...row,...priceActivity(row.priceMinor,row.saleDetails),bookingPolicy:{capacityLimit:policy.capacityLimit?'ENABLED':'DISABLED'},remainingSeats:Math.max(0,row.capacity-_count.enrollments)}));
   }
 
   enroll(accountId:string,courseId:string){
@@ -159,18 +160,19 @@ export class StoreOfferingsService {
       const count=await tx.trainingEnrollment.count({where:{storeCourseOfferId:courseId,status:{not:'CANCELLED'}}});
       const policy=await trainingOperationalPolicy(tx);
       if(policy.capacityLimit&&count>=course.capacity)throw new ConflictException('اكتملت مقاعد الدورة.');
+      const offer=priceActivity(course.priceMinor,course.saleDetails,new Date(recordedAt));
       let contractSnapshot;
       try {
         contractSnapshot = createCommerceContractSnapshot({
           sourceKind:'TRAINING_ENROLLMENT',sourceId:enrollmentId,parentId:null,offeringId:course.id,
           customerAccountId:accountId,organizationId:course.organizationId,organization:course.organization,
-          kind:'COURSE',title:course.title,quantity:1,unitPriceMinor:course.priceMinor,currency:course.currency,recordedAt,
+          kind:'COURSE',title:course.title,quantity:1,unitPriceMinor:offer.priceMinor,currency:course.currency,recordedAt,
           originalStartsAt:course.startsAt.toISOString(),originalEndsAt:course.endsAt.toISOString(),
         });
       } catch {
         throw new BadRequestException('بيانات شروط الدورة غير مكتملة أو غير صالحة.');
       }
-      const enrollment=await tx.trainingEnrollment.create({data:{id:enrollmentId,studentAccountId:accountId,courseCode:course.courseCode,centerOrganizationId:course.organizationId,storeCourseOfferId:course.id,status:'PENDING',metadata:{source:'UNIFIED_STORE',title:course.title,priceMinor:course.priceMinor,currency:course.currency,startsAt:course.startsAt.toISOString(),endsAt:course.endsAt.toISOString(),locationName:course.locationName,financialActionExecuted:false,operationalPolicy:policy,contractSnapshot}}});
+      const enrollment=await tx.trainingEnrollment.create({data:{id:enrollmentId,studentAccountId:accountId,courseCode:course.courseCode,centerOrganizationId:course.organizationId,storeCourseOfferId:course.id,status:'PENDING',metadata:{source:'UNIFIED_STORE',title:course.title,priceMinor:offer.priceMinor,...(offer.discountActive?{listPriceMinor:offer.listPriceMinor}:{}),currency:course.currency,startsAt:course.startsAt.toISOString(),endsAt:course.endsAt.toISOString(),locationName:course.locationName,financialActionExecuted:false,operationalPolicy:policy,contractSnapshot}}});
       await this.audited(tx,accountId,course.organizationId,'TrainingEnrollment',enrollment.id,'STORE_COURSE_ENROLLED');
       return enrollment;
     });

@@ -106,8 +106,17 @@ try{
       (SELECT COUNT(*)::int FROM "EquipmentRental" WHERE "renterAccountId"=${renter.id}) AS rentals,
       (SELECT COUNT(*)::int FROM "EquipmentRentalItem" WHERE "resourceId"=${equipmentId}) AS items`;
   assert.deepEqual(afterReceiptFailure, [{rentals: 0, items: 0}]);
-  response=await fetch(`${base}/trips/equipment-rentals`,{method:'POST',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({renterAccountId:renter.id,scheduledHandoverAt,dueAt,items:[{resourceId:equipmentId,equipmentType:'BCD',size:'M',unitPriceSar:50}]})});
+  const promotionUrl=base+'/store/admin/activity-promotions/rental/'+equipmentId;
+  const promoBody={baseMinor:6000,sale:{salePriceMinor:5000},revision:null,published:true};
+  let promo=await fetch(promotionUrl,{method:'PUT',headers:{...auth(renterToken),'content-type':'application/json'},body:JSON.stringify(promoBody)});assert.equal(promo.status,403);
+  promo=await fetch(promotionUrl,{method:'PUT',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify(promoBody)});assert.equal(promo.status,200,await promo.text());
+  const publicOffer=(await (await fetch(base+'/store/rental-offers')).json()).find(r=>r.id===equipmentId);
+  assert.equal(publicOffer.listPriceMinor,6000);assert.equal(publicOffer.priceMinor,5000);assert.equal(publicOffer.available,true);
+  response=await fetch(`${base}/trips/equipment-rentals`,{method:'POST',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({renterAccountId:renter.id,scheduledHandoverAt,dueAt,items:[{resourceId:equipmentId,equipmentType:'BCD',size:'M',unitPriceSar:60}]})});
   let rental=await json(response);rentalId=rental.id;
+  assert.equal(rental.totalHalala,5000);assert.equal(rental.items[0].unitPriceHalala,5000);
+  await db.operationalSetting.deleteMany({where:{key:'store-rental-rate:'+equipmentId}});
+  console.log('PASS publicly listed equipment rate freezes the sale price on a rental reservation.');
   assert.equal(await db.auditEvent.count({
     where: { resourceId: rentalId, action: 'EQUIPMENT_RENTAL_RESERVED' }
   }), 1);

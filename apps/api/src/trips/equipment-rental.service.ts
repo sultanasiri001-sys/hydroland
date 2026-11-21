@@ -1,3 +1,4 @@
+import { priceActivity } from '../store/activity-promotions';
 import { assertRentalFitsCalendar } from './equipment-rental-calendar';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { assertNoRentalClaim, rentalStatus, RENTAL_HOLD_MINUTES } from './equipment-rental-hold';
@@ -26,24 +27,23 @@ export class EquipmentRentalService{
     if(!scheduledHandoverAt||scheduledHandoverAt.getTime()<=Date.now()||scheduledHandoverAt.getTime()>=dueAt.getTime())throw new BadRequestException('Choose a future equipment handover time before the return deadline.');
     const renter=await this.db.account.findUnique({where:{id:renterAccountId},select:{id:true,status:true}});if(!renter||renter.status!=='ACTIVE')throw new BadRequestException('Renter account is missing or inactive.');
     const items=input.items||[];if(!items.length)throw new BadRequestException('At least one rental equipment item is required.');
-    const requested = items.map(item => ({
+    const requestLines = items.map(item => ({
       id: randomUUID(), resourceId: item.resourceId?.trim() || '', equipmentType: item.equipmentType?.trim() || null,
       size: item.size?.trim() || null, unitPriceHalala: this.toHalala(item.unitPriceSar)
     }));
-    const resourceIds = requested.map(item => item.resourceId);
+    const resourceIds = requestLines.map(item => item.resourceId);
     if (resourceIds.includes('')) throw new BadRequestException('Equipment resource is required.');
     if (new Set(resourceIds).size !== resourceIds.length) {
       throw new BadRequestException('A serialized equipment item can appear only once per rental.');
     }
-    const totalHalala = requested.reduce((sum, item) => sum + Number(item.unitPriceHalala), 0);
-    if(!Number.isSafeInteger(totalHalala)||totalHalala<100||totalHalala>2_147_483_647)throw new BadRequestException('The rental total must be between 1 SAR and the supported payment limit.');
     const invoiceNumber = this.invoiceNumber(), whatsappPhone = input.whatsappPhone?.trim() || null;
     const result = await this.db.serializable(async tx => {
-      const assets = await tx.$queryRaw<Array<{resourceId:string; assetCode:string; name:string; serialNumber:string|null; stockStatus:string;organizationId:string|null}>>`
-        SELECT b."resourceId", b."assetCode", b."serialNumber", b."stockStatus", b."organizationId"::text AS "organizationId", r."name"
+      const assets = await tx.$queryRaw<Array<{resourceId:string; assetCode:string; name:string; serialNumber:string|null; stockStatus:string;organizationId:string|null;catalogRate:unknown}>>`
+        SELECT b."resourceId", b."assetCode", b."serialNumber", b."stockStatus", b."organizationId"::text AS "organizationId", r."name", s.value AS "catalogRate"
         FROM "EquipmentBarcode" b JOIN "CalendarResource" r ON r."id" = b."resourceId"
+        LEFT JOIN "OperationalSetting" s ON s.key=('store-rental-rate:'||b."resourceId"::text)
         WHERE b."resourceId" = ANY(${resourceIds}::text[]) ORDER BY b."resourceId" FOR UPDATE OF b`;
-      if (assets.length !== requested.length) throw new NotFoundException('Rental equipment not found.');
+      if (assets.length !== requestLines.length) throw new NotFoundException('Rental equipment not found.');
       if (assets.some(asset => asset.stockStatus !== 'AVAILABLE')) throw new ConflictException('المعدّة غير متاحة للتأجير.');
       const organizationId=assets[0]?.organizationId;
       if(!organizationId||assets.some(asset=>asset.organizationId!==organizationId))throw new ConflictException('Each rental must contain equipment from one identified center.');
@@ -53,6 +53,15 @@ export class EquipmentRentalService{
       await assertRentalFitsCalendar(tx, resourceIds, dueAt);
       const assetsById = new Map(assets.map(asset => [asset.resourceId, asset]));
       const [{reservedAt}]=await tx.$queryRaw<Array<{reservedAt:Date}>>`SELECT statement_timestamp() AT TIME ZONE 'UTC' AS "reservedAt"`;
+      const requested=requestLines.map(item=>{
+        const profile=assetsById.get(item.resourceId)?.catalogRate as {published?:boolean;organizationId?:string;baseMinor?:number;sale?:unknown}|null;
+        if(!profile?.published || profile.organizationId!==organizationId || typeof profile.baseMinor!=='number')return item;
+        const current=priceActivity(profile.baseMinor,profile.sale,reservedAt);
+        if(item.unitPriceHalala!==BigInt(profile.baseMinor)&&item.unitPriceHalala!==BigInt(current.priceMinor))throw new ConflictException('تغير سعر عرض التأجير. راجع السعر المنشور للمعدة.');
+        return {...item,unitPriceHalala:BigInt(current.priceMinor)};
+      });
+      const totalHalala=requested.reduce((sum,item)=>sum+Number(item.unitPriceHalala),0);
+      if(!Number.isSafeInteger(totalHalala)||totalHalala<100||totalHalala>2147483647)throw new BadRequestException('The rental total must be between 1 SAR and the supported payment limit.');
       const rentalId=randomUUID();
       const contractSnapshot=createRentalContract({rental:{id:rentalId,renterAccountId,invoiceNumber,totalHalala:BigInt(totalHalala),reservedAt,dueAt,scheduledHandoverAt},issuer,
         lines:requested.map(item=>({...item,organizationId,assetCodeSnapshot:assetsById.get(item.resourceId)!.assetCode,equipmentNameSnapshot:assetsById.get(item.resourceId)!.name}))});

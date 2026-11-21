@@ -2044,6 +2044,7 @@ enum StoreProductKind {
 }
 
 model StoreCourseOffer {
+ saleDetails Json?
  id String @id @default(uuid())
  organizationId String
  organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)

@@ -77,6 +77,27 @@ try{
  assert.equal((await request(a,'/store/provider/products/'+productId,'DELETE',{expectedUpdatedAt:p.updatedAt})).status,409);
  assert.equal(await db.storeOrder.count({where:{id:order.id}}),1);
 
+ const promotionCourse=randomUUID();ids.push(promotionCourse);
+ const promoCourse=ok(await request(a,'/store/provider/courses','POST',{requestId:promotionCourse,courseCode:'NATIVE-SALE',title:'دورة بعرض',description:'تجربة',locationName:'المركز',startsAt:new Date(Date.now()+864000000).toISOString(),endsAt:new Date(Date.now()+950400000).toISOString(),capacity:3,priceMinor:80000,status:'ACTIVE',saleDetails:{salePriceMinor:65000}}));
+ const publicCourse=ok(await request(null,'/store/courses')).find(c=>c.id===promotionCourse);
+ assert.equal(publicCourse.priceMinor,65000);assert.equal(publicCourse.listPriceMinor,80000);
+ const enrollmentQuote=ok(await request(buyer,'/store/courses/'+promotionCourse+'/enroll','POST'));
+ assert.equal(enrollmentQuote.metadata.contractSnapshot.unitPriceMinor,65000);
+ assert.equal(enrollmentQuote.metadata.listPriceMinor,80000);
+ await db.roleAssignment.create({data:{role:'ADMIN',accountId:staff.id,status:'ACTIVE'}});
+ const courseRule='/store/admin/activity-promotions/course/'+promotionCourse;
+ const off={baseMinor:80000,revision:promoCourse.updatedAt,sale:{salePriceMinor:null}};
+ assert.equal((await request(other,courseRule,'PUT',off)).status,403);
+ ok(await request(staff,courseRule,'PUT',off));assert.equal((await request(staff,courseRule,'PUT',off)).status,409);
+ assert.equal(ok(await request(null,'/store/courses')).find(c=>c.id===promotionCourse).priceMinor,80000);
+ assert.equal((await db.trainingEnrollment.findUniqueOrThrow({where:{id:enrollmentQuote.id}})).metadata.priceMinor,65000);
+ const testTrip=await db.trip.create({data:{title:'رحلة بعرض',type:'TEST',organizationId:organizations[0].id,status:'OPEN',capacity:4,startsAt:new Date(Date.now()+86400000*4),endsAt:new Date(Date.now()+86400000*5)}});
+ try{
+   const tripRate=await db.operationalSetting.create({data:{key:'trip-price:'+testTrip.id,value:{pricePerSeatMinor:18000,currency:'SAR'}}});
+   ok(await request(staff,'/store/admin/activity-promotions/trip/'+testTrip.id,'PUT',{baseMinor:18000,revision:tripRate.updatedAt.toISOString(),sale:{salePriceMinor:16000}}));
+   const listing=ok(await request(null,'/trips')).find(t=>t.id===testTrip.id);assert.equal(listing.price.listPriceMinor,18000);assert.equal(listing.price.pricePerSeatMinor,16000);
+ }finally{await db.operationalSetting.deleteMany({where:{key:'trip-price:'+testTrip.id}});await db.trip.delete({where:{id:testTrip.id}})}
+ console.log('PASS course and trip promotions display before booking, preserve original enrollment price and restrict stale changes.');
  const courseId=randomUUID();ids.push(courseId);
  const startsAt=new Date(Date.now()+86400000*30).toISOString(),endsAt=new Date(Date.now()+86400000*31).toISOString();
  const course={requestId:courseId,courseCode:'OPEN-WATER',title:'دورة مياه مفتوحة',description:'برنامج المركز',locationName:'جدة',startsAt,endsAt,capacity:1,priceMinor:100000,status:'ACTIVE'};
