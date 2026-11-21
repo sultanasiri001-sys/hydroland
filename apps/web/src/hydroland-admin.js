@@ -1,6 +1,17 @@
 (() => {
   // Only authored interface text is localized. Account and business values stay opaque.
   const uiLocale = (typeof window==='undefined'?globalThis:window).HydrolandI18n?.createScope("admin", {
+  "تفويض دفع حجوزات الجهات": "Organization booking payment mandate",
+  "معرّف الجهة المصدرة": "Issuing organization ID",
+  "معرّف المستند الموقّع": "Signed document ID",
+  "مراجعة المستند": "Review signed document",
+  "اعتماد القرار الموثق": "Approve documented decision",
+  "المستند {0} · الإصدار {1} · وقّعه {2} في {3}": "Document {0} \u00b7 Version {1} \u00b7 Signed by {2} on {3}",
+  "تعيين {0} بحد {1} هللة لكل عملية من {2} إلى {3}": "Appoint {0} with a limit of {1} halalas per payment from {2} until {3}",
+  "إلغاء التفويض {0} للحساب {1}": "Revoke mandate {0} for account {1}",
+  "اعتمدت المنصة القرار. معرّف التفويض {0}": "The platform approved the decision. Mandate ID {0}",
+  "تعذرت مراجعة التفويض. تحقق من المعرّفات والصلاحية والتوقيع.": "Unable to review the mandate. Check identifiers, access and signature.",
+  "تعذر اعتماد القرار. راجع الإصدار الحالي للمستند.": "Unable to approve the decision. Review the current document version.",
   "HYDROLAND / الإدارة": "HYDROLAND / Administration",
   "مركز التحكم التشغيلي": "Operational control center",
   "مراجعة الطلبات وإدارة الحسابات وسياسات التدقيق من بيانات المنصة الفعلية.": "Review requests and manage accounts and audit policies using actual platform data.",
@@ -116,6 +127,12 @@
     <div class="hl-admin__header"><div><span class="eyebrow">HYDROLAND / الإدارة</span><h2>مركز التحكم التشغيلي</h2><p>مراجعة الطلبات وإدارة الحسابات وسياسات التدقيق من بيانات المنصة الفعلية.</p></div><button class="btn btn-primary" type="button" data-admin-refresh>تحديث البيانات</button></div>
     <div class="hl-admin__metrics"><article><span>طلبات بانتظار المراجعة</span><strong data-admin-metric="pendingReviews">—</strong></article><article><span>حجوزات نشطة</span><strong data-admin-metric="activeBookings">—</strong></article><article><span>الحسابات المسجلة</span><strong data-admin-metric="accounts">—</strong></article><article><span>رحلات مفتوحة</span><strong data-admin-metric="openTrips">—</strong></article></div>
     <div class="hl-admin__grid"><article class="hl-admin__panel"><div class="hl-admin__panel-title"><h3>طابور المراجعة</h3><span data-admin-state>بانتظار الاتصال</span></div><div class="hl-admin__queue" data-admin-queue><p>سجّل الدخول بحساب إداري ثم حدّث البيانات لعرض الطلبات الفعلية.</p></div></article><article class="hl-admin__panel"><div class="hl-admin__panel-title"><h3>ضوابط الإدارة</h3><span>مفعل</span></div><ul><li>مركز سياسات التدقيق يتحكم في حالة كل شرط تشغيلي.</li><li>كل بند يمكن أن يكون مفعّلًا أو موقوفًا أو تحت المراجعة.</li><li>كل تغيير في السياسة يُسجل في سجل التدقيق.</li></ul></article><article class="hl-admin__panel hl-admin__credential-panel"><div class="hl-admin__panel-title"><h3>مراجعة الشهادات والمستندات</h3><span data-credential-review-state>بانتظار الاتصال</span></div><div class="hl-admin__queue" data-credential-review-list><p>لا توجد بيانات محملة.</p></div></article></div>
+    <details class="hl-admin__panel" data-admin-mandate><summary>تفويض دفع حجوزات الجهات</summary>
+      <form class="hl-admin__credential-card"><label>معرّف الجهة المصدرة <input name="issuer" required></label>
+        <label>معرّف المستند الموقّع <input name="documentId" required></label>
+        <button type="submit">مراجعة المستند</button><p data-mandate-document></p><p data-mandate-terms></p>
+        <button type="button" data-mandate-approve disabled>اعتماد القرار الموثق</button><p role="status" data-mandate-status></p>
+      </form></details>
     <p class="hl-admin__notice" data-admin-copy>بيانات الإدارة تظهر عند اتصال المنصة بخادم HYDROLAND.</p>`);
   host.insertAdjacentElement('afterend', box);
 
@@ -125,6 +142,65 @@
   const renderQueue = items => { const queue=box.querySelector('[data-admin-queue]'); if(!queue)return; uiLocale.setMessage(queue, ''); if(!items.length){const empty=document.createElement('p');uiLocale.setMessage(empty, uiLocale.message('لا توجد طلبات معلقة حالياً.'));queue.appendChild(empty);return;} items.forEach(item=>{const name=item.account?.person?[item.account.person.firstName,item.account.person.lastName].filter(Boolean).join(' '):item.account?.email||uiLocale.t('حساب جديد');const type=item.type==='ORGANIZATION'?'طلب جهة / منظمة':'طلب تفعيل حساب';const article=document.createElement('article');article.className='hl-admin__queue-item';const strong=document.createElement('strong');uiLocale.setMessage(strong, name);const span=document.createElement('span');uiLocale.setMessage(span, uiLocale.message(type));article.append(strong,span);queue.appendChild(article);}); };
   const api=async(path,options={})=>{const client=window.HydrolandAuth?.authorizedFetch;if(!client)throw new Error('AUTH_REQUIRED');const response=await client(path,options),body=await response.json().catch(()=>null);if(!response.ok)throw new Error(body?.message||`HTTP_${response.status}`);return body};
   const toast=message=>{const t=document.getElementById('toast');if(!t)return;uiLocale.setMessage(t, message);t.classList.add('visible');clearTimeout(window.__hlAdminCredentialToast);window.__hlAdminCredentialToast=setTimeout(()=>t.classList.remove('visible'),2400)};
+  const mandateForm = box.querySelector('[data-admin-mandate] form');
+  const approveMandate = mandateForm.querySelector('[data-mandate-approve]');
+  const mandateStatus = mandateForm.querySelector('[data-mandate-status]');
+  const documentSummary = mandateForm.querySelector('[data-mandate-document]');
+  const termsSummary = mandateForm.querySelector('[data-mandate-terms]');
+  let mandateReview = null;
+  let mandateGeneration = 0;
+  function clearMandate() {
+    mandateGeneration++;
+    mandateReview = null;
+    approveMandate.disabled = true;
+    for (const node of [documentSummary, termsSummary, mandateStatus]) uiLocale.setMessage(node, '');
+  }
+  function resetMandateForm() {
+    clearMandate();
+    mandateForm.reset();
+    box.querySelector('[data-admin-mandate]').open = false;
+  }
+  mandateForm.addEventListener('input', clearMandate);
+  for (const event of ['hydroland:auth-changed','hydroland:role-changed','hydroland:session-cleared','hydroland:portal-cleared']) {
+    document.addEventListener(event, resetMandateForm);
+  }
+  mandateForm.addEventListener('submit', async event => {
+    event.preventDefault();
+    clearMandate();
+    const generation = mandateGeneration;
+    const organization = mandateForm.elements.issuer.value.trim();
+    const documentId = mandateForm.elements.documentId.value.trim();
+    if (!organization || !documentId || box.hidden) return;
+    const path = '/organizations/' + encodeURIComponent(organization) + '/booking-payment-mandates/' + encodeURIComponent(documentId);
+    try {
+      const result = await api(path, {cache:'no-store'});
+      if (generation !== mandateGeneration || box.hidden) return;
+      const terms = result?.terms;
+      if (result?.organizationId !== organization || result.documentId !== documentId || !Number.isSafeInteger(result.version)
+        || !result.contentHash || !terms || !['APPOINT','REVOKE'].includes(terms.decision)) throw new Error('INVALID_PREVIEW');
+      uiLocale.setMessage(documentSummary, uiLocale.message('المستند {0} · الإصدار {1} · وقّعه {2} في {3}', [result.referenceNumber,result.version,result.signedByAccountId,result.signedAt]));
+      uiLocale.setMessage(termsSummary, terms.decision === 'APPOINT'
+        ? uiLocale.message('تعيين {0} بحد {1} هللة لكل عملية من {2} إلى {3}', [terms.accountId,terms.limitMinor,terms.validFrom,terms.validUntil])
+        : uiLocale.message('إلغاء التفويض {0} للحساب {1}', [terms.grantId,terms.accountId]));
+      mandateReview = {path, version:result.version, hash:result.contentHash};
+      approveMandate.disabled = false;
+    } catch {
+      if (generation === mandateGeneration) uiLocale.setMessage(mandateStatus, uiLocale.message('تعذرت مراجعة التفويض. تحقق من المعرّفات والصلاحية والتوقيع.'));
+    }
+  });
+  approveMandate.addEventListener('click', async () => {
+    if (!mandateReview || approveMandate.disabled || box.hidden) return;
+    const generation = mandateGeneration, review = mandateReview;
+    approveMandate.disabled = true;
+    mandateReview = null;
+    try {
+      const receipt = await api(review.path + '/approve', {method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({expectedVersion:review.version,expectedContentHash:review.hash})});
+      if (generation === mandateGeneration) uiLocale.setMessage(mandateStatus, uiLocale.message('اعتمدت المنصة القرار. معرّف التفويض {0}', [receipt.grantId]));
+    } catch {
+      if (generation === mandateGeneration) uiLocale.setMessage(mandateStatus, uiLocale.message('تعذر اعتماد القرار. راجع الإصدار الحالي للمستند.'));
+    }
+  });
   const reviewState={catalog:[]};
   const selectedCatalogEntry=select=>reviewState.catalog.find(item=>item.source===select.value)||reviewState.catalog[0]||null;
 

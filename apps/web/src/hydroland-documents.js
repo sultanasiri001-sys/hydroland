@@ -402,7 +402,7 @@
     resetEditor();renderDocuments();renderInventory();
   }
   function clearData(){uiLocale.setMessage(panel.querySelector('[data-doc-owner-approval-status]'), '');state.ownerApprovals={};state.templates=[];state.documents=[];state.inventory=null;state.member=null;state.editing=null;panel.querySelector('[data-doc-template]').replaceChildren();uiLocale.setHTML(panel.querySelector('[data-doc-department]'), uiLocale.html`<option value="">كل الإدارات</option>`);renderSelection();}
-  async function loadOrganization(orgId){
+  async function loadOrganization(orgId, requestedTemplateId){
     if(state.orgId!==orgId)state.typeCode='';
     state.generation++;state.loading=true;state.orgId=orgId;const c=context();clearData();
     state.member=state.memberships.find(x=>x.organization?.id===orgId)||null;
@@ -415,11 +415,16 @@
       state.templates=Array.isArray(templates)?templates:[];state.documents=Array.isArray(documents)?documents:[];state.inventory=inventory;
       if(!inventory.departments.some(d=>d.code===state.department))state.department='';
       const select=panel.querySelector('[data-doc-department]');uiLocale.setHTML(select, uiLocale.html`<option value="">كل الإدارات</option>${inventory.departments.map(d=>uiLocale.html`<option value="${esc(d.code)}">${esc(d.nameAr)}</option>`).join('')}`);select.value=state.department;
-      renderSelection();if(state.inventory?.internalPlatform)void loadOwnerApprovals();note(uiLocale.message("تم تحميل {0} مستند · صلاحيتك: {1}", [state.documents.length, (state.member?.accessBasis==='PLATFORM_OWNER' ? uiLocale.message('مالك هيدرولاند الداخلي') : (state.member?.role || '—'))]));
+      renderSelection();
+      const formTemplate=panel.querySelector('[data-doc-template]');
+      if(requestedTemplateId && Array.from(formTemplate.options).some(option=>option.value===requestedTemplateId)){
+        formTemplate.value=requestedTemplateId;renderFields({});
+      }
+      if(state.inventory?.internalPlatform)void loadOwnerApprovals();note(uiLocale.message("تم تحميل {0} مستند · صلاحيتك: {1}", [state.documents.length, (state.member?.accessBasis==='PLATFORM_OWNER' ? uiLocale.message('مالك هيدرولاند الداخلي') : (state.member?.role || '—'))]));
     }catch(error){if(current(c)){clearData();note((error instanceof Error ? localErrorMessage(error) : uiLocale.message('تعذر تحميل المستندات')));}}
     finally{if(current(c)){state.loading=false;panel.querySelector('[data-doc-hr-source-preview]').disabled=false;}}
   }
-  async function refresh(requestedOrganizationId){
+  async function refresh(requestedOrganizationId, requestedTemplateId){
     state.generation++;const c=context();state.loading=true;clearData();
     if(!window.HydrolandAuth?.isAuthenticated?.()){state.memberships=[];panel.hidden=true;return;}
     try{
@@ -432,7 +437,7 @@
       if(!state.memberships.length){state.orgId=null;state.loading=false;note(uiLocale.message('لا توجد جهة مستندات متاحة لصلاحيتك الحالية.'));return;}
       const internal=state.memberships.find(x=>x.organization.kind==='HYDROLAND_INTERNAL_PLATFORM');
       const wanted=typeof requestedOrganizationId==='string'?requestedOrganizationId:state.preferInternal&&internal?internal.organization.id:state.memberships.some(x=>x.organization.id===state.orgId)?state.orgId:state.memberships[0].organization.id;
-      state.preferInternal=false;orgSelect.value=wanted;await loadOrganization(wanted);
+      state.preferInternal=false;orgSelect.value=wanted;await loadOrganization(wanted,requestedTemplateId);
     }catch(error){if(current(c)){state.loading=false;note((error instanceof Error ? localErrorMessage(error) : uiLocale.message('تعذر تحميل الجهات')));}}
   }
   panel.querySelector('[data-doc-hr-contracts]').addEventListener('click',()=>{if(!canManage()||state.department!=='HR'||!state.inventory?.internalPlatform)return;if(window.HydrolandContractLibrary?.open)window.HydrolandContractLibrary.open();else note(uiLocale.message('افتح مكتبة عقود هيدرولاند من الملف الشخصي.'));});
@@ -636,7 +641,7 @@
   window.HydrolandDocuments={open:(options={})=>{
     if(!window.HydrolandAuth?.isAuthenticated?.())return;
     state.department=options.department||'';state.typeCode='';state.preferInternal=options.internal===true||window.HydrolandPortalAccess?.getCurrentRole?.()==='admin';
-    panel.hidden=false;refresh(options.organizationId);
+    panel.hidden=false;refresh(options.organizationId, options.organizationId ? options.templateId : undefined);
     if(options.organizationId)panel.querySelector('[data-doc-org]').focus();
   },refresh};
 })();

@@ -294,3 +294,55 @@ for (const authorized of [false, true]) test(`organization prepayment ${authoriz
   expect(posted[0]).toMatchObject({quoteHash:'a'.repeat(64),policyVersion:'2026-11-21.1'});
   expect(posted[0].requestId).toMatch(/^[a-f0-9-]{36}$/i);
 });
+
+test('organization opens its finance mandate template and reuses it on the next visit', async ({page}) => {
+  const organization = await install(page);
+  let template;
+  let creates = 0;
+  await page.route('**/organizations/org-1/financial-profile', route => json(route, {currency:'SAR',taxStatus:'UNDECLARED',registrationStatus:'UNDECLARED',revision:1}));
+  await page.route('**/documents/workspace', route => json(route, [organization.membership]));
+  await page.route(/\/documents\/organizations\/org-1\/templates(?:\?.*)?$/, route => json(route, template ? [template] : []));
+  await page.route('**/documents/templates', route => {
+    creates++;
+    template = {...route.request().postDataJSON(),id:'mandate-template',version:1,status:'ACTIVE'};
+    return json(route, template, 201);
+  });
+  await page.route('**/documents/organizations/org-1/inventory', route => json(route, {organizationId:'org-1',observedAt:new Date().toISOString(),
+    departments:[{code:'FINANCE',nameAr:'المالية',summary:{types:1,noRecord:1,pendingApproval:0},items:[{activeTemplateId:'mandate-template',
+      code:'ORG-BOOKING-FINANCIAL-MANDATE',titleAr:'تفويض',templateStatus:'READY',recordStatus:'NO_RECORD',counts:{DRAFT:0,PENDING_APPROVAL:0,APPROVED:0,SIGNED:0,ARCHIVED:0}}]}]}));
+  await page.locator('[data-org-financial-open]').click();
+  const button = page.locator('[data-org-mandate-template]');
+  for (let i=0;i<2;i++) {
+    await button.click();
+    await expect(page.locator('[data-doc-template]')).toHaveValue('mandate-template');
+    await expect(page.locator('[data-doc-fields] [name="decision"] option')).toHaveCount(2);
+    await expect(page.locator('[data-doc-fields] [name="limitMinor"]')).toHaveAttribute('type','number');
+  }
+  expect(creates).toBe(1);
+});
+
+test('platform management reviews the signed version before applying a mandate decision', async ({page}) => {
+  await install(page);
+  const path = '**/organizations/org-1/booking-payment-mandates/signed-1';
+  const posts = [];
+  await page.route(path, route => json(route, {organizationId:'org-1',documentId:'signed-1',referenceNumber:'DOC-001',version:4,
+    contentHash:'signed-hash',signedByAccountId:'org-signer',signedAt:'2026-11-01T12:00:00Z',
+    terms:{decision:'REVOKE',accountId:'delegate',grantId:'original-grant'}}));
+  await page.route(path+'/approve', route => {posts.push(route.request().postDataJSON()); return json(route,{grantId:'original-grant'});});
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('hydroland:role-changed',{detail:{role:'admin'}})));
+  const panel = page.locator('[data-admin-mandate]');
+  await panel.locator('summary').click();
+  await panel.locator('[name="issuer"]').fill('org-1');
+  await panel.locator('[name="documentId"]').fill('signed-1');
+  const approve = panel.locator('[data-mandate-approve]');
+  await expect(approve).toBeDisabled();
+  await panel.locator('[type="submit"]').click();
+  await expect(panel.locator('[data-mandate-terms]')).toContainText('original-grant');
+  await panel.locator('[name="documentId"]').fill('another');
+  await expect(approve).toBeDisabled();
+  await panel.locator('[name="documentId"]').fill('signed-1');
+  await panel.locator('[type="submit"]').click();
+  await approve.click();
+  await expect(panel.locator('[data-mandate-status]')).toContainText('original-grant');
+  expect(posts).toEqual([{expectedVersion:4,expectedContentHash:'signed-hash'}]);
+});
