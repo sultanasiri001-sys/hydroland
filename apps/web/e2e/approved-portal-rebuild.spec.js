@@ -44,7 +44,11 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
    const baseActions=role==='admin'?13:['organization','boat'].includes(role)?10:6;
    const contractAccess=['instructor','center','admin'].includes(role);
    const documentAccess=role==='admin';
-   await expect(board.locator(role==='diver'?'.hl-diver-action-grid>button':'.hl-command-grid>button')).toHaveCount(baseActions+(contractAccess?2:0)+(documentAccess?1:0));
+   const instructorDocumentAccess=['instructor','center','admin'].includes(role);
+   await expect(board.locator(role==='diver'?'.hl-diver-action-grid>button':'.hl-command-grid>button')).toHaveCount(baseActions+(contractAccess?2:0)+(documentAccess?1:0)+(instructorDocumentAccess?1:0));
+   const instructorDocuments=board.locator('.hl-command-grid>button[data-hl-route="instructor-documents"]');
+   await expect(instructorDocuments).toHaveCount(instructorDocumentAccess?1:0);
+   if(instructorDocumentAccess)await expect(instructorDocuments).toHaveText(role==='instructor'?'مستندات المدرب':'مراجعة مستندات المدربين');
    await expect(board.locator('[data-admin-documents-entry]')).toHaveCount(documentAccess?2:0);
    const supportEntry=board.locator('[data-action-label="خدمة العملاء"]');
    await expect(supportEntry).toHaveCount(role==='admin'?1:0);
