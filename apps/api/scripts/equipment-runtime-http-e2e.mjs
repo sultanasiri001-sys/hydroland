@@ -1,3 +1,4 @@
+import { PDFDocument } from 'pdf-lib';
 import assert from 'node:assert/strict';
 import { DatabaseService } from '../dist/database/database.service.js';
 import { AuditService } from '../dist/audit/audit.service.js';
@@ -385,6 +386,45 @@ try{
   assert.equal((await post(returnPath,{code:passports[1].assetCode,condition:'OK'})).status,'RETURNED');
   assert.equal(await db.auditEvent.count({where:{resourceId:multiId,action:'EQUIPMENT_RENTAL_ITEM_RETURNED'}}),2);
   assert.equal(await db.auditEvent.count({where:{resourceId:multiId,action:'EQUIPMENT_RENTAL_RETURNED'}}),1);
+  const damageBase=base+'/trips/rental-damage';
+  const repairPdf=await PDFDocument.create();repairPdf.addPage();const bytes=await repairPdf.save();
+  for(const who of [admin,financeApprover,other]) {
+    await db.roleAssignment.create({data:{accountId:who.id,role:'DIVE_CENTER',status:'ACTIVE',scope:{}}});
+    await db.organizationMember.create({data:{accountId:who.id,organizationId:who===other?adjacent.organizationId:during.organizationId,role:'ADMIN',status:'ACTIVE'}});
+  }
+  await db.organization.update({where:{id:adjacent.organizationId},data:{status:'ACTIVE'}});
+  const reviewerToken=await login(financeApprover);
+  const eligibleRows=await json(await fetch(damageBase+'/center',{headers:auth(adminToken)}));
+  const line=eligibleRows.find(row=>row.rentalId===multiId);
+  assert.equal(line.damage,'New crack on the base');assert.equal(line.baseline,'Existing scratch on handle');
+  const clean=damaged.items.find(i=>i.id!==line.itemId);
+  const submitDamage=(token,itemId,sum='1900',doc=bytes)=>{
+    const form=new FormData();form.set('amountMinor',sum);form.set('kind','ESTIMATE');form.set('document',new Blob([doc],{type:'application/pdf'}),'estimate.pdf');
+    return fetch(damageBase+'/items/'+itemId,{method:'POST',headers:auth(token),body:form});
+  };
+  assert.equal((await submitDamage(otherToken,line.itemId)).status,404);
+  assert.equal((await submitDamage(adminToken,clean.id)).status,404);
+  assert.equal((await submitDamage(adminToken,line.itemId,'1900',new Uint8Array([1,2,3]))).status,400);
+  const claim=await json(await submitDamage(adminToken,line.itemId));
+  assert.equal(claim.status,'AWAITING_RENTER');assert.equal(claim.amountMinor,1900);assert.equal(claim.currency,'SAR');
+  assert.equal((await json(await submitDamage(adminToken,line.itemId))).id,claim.id);
+  assert.equal((await submitDamage(adminToken,line.itemId,'2000')).status,409);
+  const claimPath=damageBase+'/'+claim.id;
+  assert.equal((await fetch(claimPath+'/document',{headers:auth(otherToken)})).status,403);
+  const ownPdf=await fetch(claimPath+'/document',{headers:auth(renterToken)});assert.equal(ownPdf.status,200);
+  assert.deepEqual(new Uint8Array(await ownPdf.arrayBuffer()),bytes);
+  const decide=(token,op,decision,reason)=>fetch(claimPath+'/'+op,{method:'POST',headers:{...auth(token),'content-type':'application/json'},body:JSON.stringify({decision,reason})});
+  assert.equal((await decide(otherToken,'respond','ACCEPT')).status,404);
+  assert.equal((await decide(reviewerToken,'review','UPHOLD','Before dispute')).status,409);
+  const objection=await json(await decide(renterToken,'respond','DISPUTE','Already scratched'));
+  assert.equal(objection.status,'DISPUTED');assert.equal(objection.payableAt,null);
+  assert.equal((await decide(adminToken,'review','UPHOLD','Same assessor')).status,403);
+  assert.equal((await decide(otherToken,'review','UPHOLD','Other center')).status,403);
+  assert.equal((await json(await decide(reviewerToken,'review','DISMISS','The estimate covers an old scratch'))).status,'DISMISSED');
+  assert.equal((await decide(renterToken,'respond','ACCEPT')).status,409);
+  assert.equal(await db.rentalDamageClaim.count({where:{id:claim.id,financeEntryId:{not:null}}}),0);
+  assert.equal(await db.notification.count({where:{accountId:renter.id,type:'RENTAL_DAMAGE_AWAITING_RENTER',payload:{path:['claimId'],equals:claim.id}}}),1);
+  console.log('Rental damage acceptance passed: handover and return evidence, legacy-free clean return rejection, scoped PDF, idempotent pricing, renter objection, independent review and no collection on dismissal.');
   console.log('Calendar/rental acceptance passed across two center-owned trips: overlap, adjacency, concurrent claims, paid and expired holds, legacy confirmation, and extension rollback.');
   console.log('Rental collection gate passed: missing receipt rejected; explicit synthetic provider binding and three-person posted financial evidence required. No provider money moved.');
   console.log('Equipment HTTP/DB E2E passed: admin isolation, registration, duplicate protection, safety gate, reservation ownership, staged payment/handover, handover audit/notification rollback, concurrent handover and return replay, extension, return intent, atomic return rollback, partial returns, quarantine and persistence.');
@@ -396,6 +436,8 @@ try{
     await db.calendarEvent.deleteMany({where:{referenceType:'TRIP',referenceId:{in:calendarTrips}}});
     await db.trip.deleteMany({where:{id:{in:calendarTrips}}});
   }
+  await db.rentalDamageClaim.deleteMany({where:{customerAccountId:{in:accountIds}}});
+  await db.organizationMember.deleteMany({where:{accountId:{in:accountIds},organizationId:{in:calendarCenters}}});
   await cleanupSyntheticRentalCollections(db,collectionReceipts);
   for(const id of [rentalId,competingId,multiId,...holdFixtures].filter(Boolean))await db.auditEvent.deleteMany({where:{resourceId:id}}).catch(()=>{});
   for (const id of [equipmentId,...extraAssets].filter(Boolean)) await db.auditEvent.deleteMany({where:{resourceId:id}}).catch(()=>{});

@@ -3027,3 +3027,26 @@ model RentalRefundOperation {
  @@index([rentalId,status])
  @@index([organizationId,status,createdAt])
 }
+
+model RentalDamageClaim {
+  id               String   @id
+  itemId           String   @unique
+  organizationId   String
+  customerAccountId String
+  submittedBy      String
+  handoverReceiptId String
+  returnReceiptId  String   @unique
+  amountMinor      Int
+  currency         String
+  kind             String
+  pdf              Bytes
+  sha256           String
+  status           String   @default("AWAITING_RENTER")
+  disputeReason    String?
+  reviewReason     String?
+  reviewedBy       String?
+  payableAt        DateTime?
+  financeEntryId   String?  @unique
+  createdAt        DateTime @default(now())
+  @@index([organizationId,status], map: "RentalDamageClaim_center")
+}

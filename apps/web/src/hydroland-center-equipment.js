@@ -102,6 +102,7 @@
   "جارٍ البحث عن المعدة…": "Searching for equipment…",
   " · الرقم التسلسلي: {0}": " · Serial number: {0}",
   " · غير مفعلة": " · Inactive",
+  "مطالبات ضرر التأجير": "Rental damage claims",
   "تم حفظ المعدة. رمز الأصل: {0}": "Equipment saved. Asset code: {0}"
 }) || {t:value=>value,message(source,values=[]){return this.format(source,values)},messageHTML:value=>String(value??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])),setMessage:(node,value)=>(node.textContent=value??''),label(value,values=[]){return this.format(String(value??''),values).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))},format:(text,values=[])=>text.replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token),html:(parts,...values)=>parts.map((part,i)=>part+(i<values.length?String(values[i]??''):'')).join(''),bind:()=>{},setHTML:(node,value)=>(node.innerHTML=value),insertHTML:(node,position,value)=>node.insertAdjacentHTML(position,value),setText(node,text,values=[]){return node.textContent=this.format(text,values)},setAttribute(node,name,text,values=[]){node.setAttribute(name,this.format(text,values))},attribute(name,text,values=[]){if(!['aria-label','aria-description','placeholder','title','alt'].includes(name))throw new TypeError('Invalid display attribute');return name+'="'+this.format(text,values).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))+'"'}};
 
@@ -126,6 +127,10 @@
    // Every recreated workspace owns its listeners; never bind only the first instance.
    host.querySelector('[data-equipment-lookup]').addEventListener('submit',lookup);
    host.querySelector('[data-equipment-create]').addEventListener('submit',createEquipment);
+   const claims=document.createElement('details');
+   const heading=document.createElement('summary');uiLocale.setText(heading,'مطالبات ضرر التأجير');
+   const damageList=document.createElement('div');claims.append(heading,damageList);host.append(claims);
+   claims.addEventListener('toggle',async()=>{if(!claims.open||!eligible()){damageList.replaceChildren();return;}const view=await import('./hydroland-rental-damage.mjs');if(claims.open&&eligible()&&claims.isConnected)await view.centerClaims(damageList);});
    host.addEventListener('click',onClick);
    host.addEventListener('submit',event=>{if(event.target.matches('[data-equipment-inspection-form]'))void saveInspection(event);if(event.target.matches('[data-equipment-move-form]'))void saveMovement(event)});
    section=host;document.getElementById('main')?.append(host);return host;
