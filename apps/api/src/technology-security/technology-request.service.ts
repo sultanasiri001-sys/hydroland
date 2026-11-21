@@ -1,9 +1,13 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
+import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { lockAccountIdentities } from '../admin/admin-authorization';
 import { eligibleReviewParticipant, reviewPlatform, reviewSource } from '../document-forms/internal-document-review.domain';
+import { readOperationalControls } from '../trips/operational-controls.service';
+import { OPERATIONAL_CONTROLS } from '../trips/operational-controls.catalog';
+import { proposedControlChange, confirmControlBaseline, executeApprovedControl, confirmControlOutcome } from './technology-control-evidence';
 import { record } from '../hr/staffing-catalog';
 import { TECHNOLOGY_REQUEST_POLICY, TECHNOLOGY_REQUEST_PREFIX, TechnologyProof, TechnologyRequestAction, TechnologyRequestRecord,
   historyKey, readTechnologyRequest, requestDigest, requestKey, technologyActions, technologyCreate, technologyId, technologyNext,
@@ -17,7 +21,7 @@ const requestTemplates={ACCESS:'TEC-ACCESS-REQUEST',CHANGE:'TEC-CHANGE-REQUEST',
 
 @Injectable()
 export class TechnologyRequestService {
-  constructor(private readonly db:DatabaseService){}
+  constructor(private readonly db:DatabaseService, private readonly audit:AuditService){}
   private async owner(tx:Tx,actorId:string){const p=await reviewPlatform(tx);if(actorId!==p.ownerId)throw new ForbiddenException('إنشاء واعتماد طلبات التقنية متاح لمالك الجهة المتحقق.');return p;}
   private async lock(tx:Tx,p:Platform,ids:string[],id?:string){
     await tx.$queryRaw`SELECT "key" FROM "OperationalSetting" WHERE "key"='PLATFORM_STAFFING_ORGANIZATION:v1' FOR SHARE`;
@@ -67,8 +71,19 @@ export class TechnologyRequestService {
     if(!member&&!employment)throw new ConflictException('الحساب المستهدف خارج نطاق الجهة الداخلية.');
     if(id===p.ownerId)throw new ConflictException('طلبات الوصول لا تعدل وصول مالك المنصة.');
   }
+  private async bindAudit(tx:Tx,p:Platform,row:TechnologyRequestRecord,id:string,rollback:boolean){
+    const key='TECHNOLOGY_REQUEST_AUDIT_BINDING:v1:'+id;
+    if(await tx.operationalSetting.findUnique({where:{key}}))throw new ConflictException('أثر التنفيذ مرتبط مسبقًا بطلب أو مرحلة أخرى.');
+    await tx.operationalSetting.create({data:{key,value:json({organizationId:p.id,requestId:row.id,revision:row.revision,rollback})}});
+    return id;
+  }
   private async auditProof(tx:Tx,p:Platform,row:TechnologyRequestRecord,id:string|null,rollback=false){
-    if(row.kind!=='ACCESS'){if(id)throw new BadRequestException('مرجع IAM خاص بطلبات الوصول.');return;}
+    if(row.controlChange){
+      if(id)throw new BadRequestException('يستخرج النظام إيصال الضابط من سجل التنفيذ.');
+      const receipt=await executeApprovedControl(tx,this.audit,row,rollback);
+      return this.bindAudit(tx,p,row,receipt,rollback);
+    }
+    if(row.kind!=='ACCESS'){if(id)throw new BadRequestException('مرجع IAM خاص بطلبات الوصول.');return null;}
     if(!id||!row.approval)throw new ConflictException('يلزم أثر تنفيذ IAM من مساره الأصلي.');
     const e=await tx.auditEvent.findUnique({where:{id}}),m=record(e?.metadata);
     if(!e||e.occurredAt.getTime()<Date.parse(row.approval.at)||e.occurredAt.getTime()>Date.now()||![p.ownerPersonId,row.assignee.personId].includes(e.actorId??''))throw new ConflictException('أثر IAM لا يطابق هوية المنفذ أو وقت اعتماد الطلب.');
@@ -79,12 +94,10 @@ export class TechnologyRequestService {
       const status=rollback?(row.accessAction==='SUSPEND'?'ACTIVE':'SUSPENDED'):(row.accessAction==='SUSPEND'?'SUSPENDED':'ACTIVE');
       if(e.action!=='ACCOUNT_STATUS_CHANGED'||e.resource!=='Account'||e.resourceId!==row.targetAccountId||m.status!==status||m.sessionsRevoked!==true)throw new ConflictException('أثر تغيير الوصول لا يثبت الحالة وإبطال الجلسات المطلوبة.');
     }
-    const key='TECHNOLOGY_REQUEST_AUDIT_BINDING:v1:'+id;
-    const previous=await tx.operationalSetting.findUnique({where:{key}});
-    if(previous)throw new ConflictException('أثر التنفيذ مرتبط مسبقًا بطلب أو مرحلة أخرى.');
-    await tx.operationalSetting.create({data:{key,value:json({organizationId:p.id,requestId:row.id,revision:row.revision,rollback})}});
+    return this.bindAudit(tx,p,row,id,rollback);
   }
-  private async currentAccess(tx:Tx,p:Platform,row:TechnologyRequestRecord,rollback=false){
+  private async currentOutcome(tx:Tx,p:Platform,row:TechnologyRequestRecord,rollback=false){
+    if(row.controlChange)return confirmControlOutcome(tx,row,rollback);
     if(row.kind!=='ACCESS')return;
     const status=rollback?(row.accessAction==='SUSPEND'?'ACTIVE':'SUSPENDED'):(row.accessAction==='SUSPEND'?'SUSPENDED':'ACTIVE');
     const account=await tx.account.findUnique({where:{id:row.targetAccountId!},select:{status:true,emailVerifiedAt:true}});
@@ -108,12 +121,12 @@ export class TechnologyRequestService {
   private async append(tx:Tx,p:Platform,row:TechnologyRequestRecord,actorId:string,action:string,reason:string){
     const actor=await tx.account.findUniqueOrThrow({where:{id:actorId},select:{personId:true}});
     await tx.operationalSetting.create({data:{key:historyKey(p.id,row.id,row.revision),value:json({snapshot:row,recordDigest:row.recordDigest,action,reason,actorAccountId:actorId,at:row.updatedAt})}});
-    await tx.auditEvent.create({data:{actorId:actor.personId,action:'TECHNOLOGY_REQUEST_'+action,resource:'TechnologyRequest',resourceId:row.id,metadata:json({organizationId:p.id,revision:row.revision,kind:row.kind,state:row.state,recordDigest:row.recordDigest,executionAuditId:row.executionAuditId,recordsExistingExecution:true})}});
+    await tx.auditEvent.create({data:{actorId:actor.personId,action:'TECHNOLOGY_REQUEST_'+action,resource:'TechnologyRequest',resourceId:row.id,metadata:json({organizationId:p.id,revision:row.revision,kind:row.kind,state:row.state,recordDigest:row.recordDigest,executionAuditId:row.executionAuditId,...(row.controlChange?{executesApprovedControl:true,rollbackAuditId:row.rollbackAuditId}:{recordsExistingExecution:true})})}});
   }
   private summary(row:TechnologyRequestRecord){return {id:row.id,revision:row.revision,kind:row.kind,title:row.title,state:row.state,scopeReference:row.scopeReference,expiresAt:row.expiresAt,createdAt:row.createdAt};}
   private async view(tx:Tx,p:Platform,row:TechnologyRequestRecord,actorId:string){
     const role=await this.reader(tx,p,row,actorId),rows=await tx.operationalSetting.findMany({where:{key:{startsWith:`${'TECHNOLOGY_REQUEST_HISTORY:v1:'}${p.id}:${row.id}:`}},orderBy:{key:'desc'},take:51});
-    return {schemaVersion:1,policy:TECHNOLOGY_REQUEST_POLICY,role,record:row,actions:technologyActions(row.state,role),history:rows.slice(0,50).map(x=>{const h=record(x.value);return{action:h.action,reason:h.reason,at:h.at,revision:record(h.snapshot).revision};}),historyTruncated:rows.length>50};
+    return {schemaVersion:1,policy:TECHNOLOGY_REQUEST_POLICY,role,record:row,actions:technologyActions(row.state,role).filter(action=>action!=='REQUEST_ROLLBACK'||!row.controlChange||!!row.executionAuditId),history:rows.slice(0,50).map(x=>{const h=record(x.value);return{action:h.action,reason:h.reason,at:h.at,revision:record(h.snapshot).revision};}),historyTruncated:rows.length>50};
   }
   async list(actorId:string,cursor?:string){
     if(cursor)technologyId(cursor);
@@ -149,7 +162,10 @@ export class TechnologyRequestService {
       if(type==='request'){if(!kind||!Object.hasOwn(requestTemplates,kind))throw new BadRequestException('نوع الطلب غير صالح.');code=requestTemplates[kind as keyof typeof requestTemplates];}
       else{const definition=this.evidenceDefinition(row!,['ROLLBACK_REQUIRED','ROLLED_BACK'].includes(row!.state)||row!.outcome==='ROLLED_BACK');({code,field,reference}=definition);}
       const docs=await tx.managedDocument.findMany({where:{organizationId:p.id,department,template:{organizationId:p.id,department,code},...(type==='proof'?{status:{in:['APPROVED','SIGNED']},payload:{path:[field!],equals:reference!},...(actorId===p.ownerId?{}:{createdByAccountId:actorId})}:{}),...(cursor?{id:{gt:cursor}}:{})},orderBy:{id:'asc'},take:51,select:{id:true,referenceNumber:true,version:true,contentHash:true,status:true,payload:true}});
-      return {items:docs.slice(0,50).map(d=>{const fields=record(d.payload);return {id:d.id,label:d.referenceNumber+' · '+d.status,version:d.version,contentHash:d.contentHash,...(type==='request'?{scopeReference:fields[kind==='ACCESS'?'system':kind==='CHANGE'?'systemRef':'eventNo'],...(kind==='ACCESS'?{targetAccountId:fields.accountId,accessAction:fields.accessLevel==='STAFF'?'APPOINTMENT':fields.accessLevel}:{} )}:{})};}),nextCursor:docs.length>50?docs[49].id:null};
+      const controls=type==='request'&&kind==='CHANGE' ? await readOperationalControls(tx) : [];
+      return {items:docs.slice(0,50).map(d=>{const fields=record(d.payload);
+        const control=controls.find(c=>c.id===fields.systemRef);
+        return {id:d.id,label:d.referenceNumber+' · '+d.status,version:d.version,contentHash:d.contentHash,...(control?{controlChange:proposedControlChange(control)??null}:{}),...(type==='request'?{scopeReference:fields[kind==='ACCESS'?'system':kind==='CHANGE'?'systemRef':'eventNo'],...(kind==='ACCESS'?{targetAccountId:fields.accountId,accessAction:fields.accessLevel==='STAFF'?'APPOINTMENT':fields.accessLevel}:{} )}:{})};}),nextCursor:docs.length>50?docs[49].id:null};
     });
   }
   async create(actorId:string,body:unknown){
@@ -163,12 +179,21 @@ export class TechnologyRequestService {
       if(assignee.personId===p.ownerPersonId)throw new ConflictException('يلزم منفذ مستقل عن صاحب الاعتماد.');
       const source=await this.proof(tx,p,{documentId:input.requestDocumentId,version:input.requestDocumentVersion,contentHash:input.requestDocumentHash},false);
       this.requestScope(input,source.proof,source.payload);await this.target(tx,p,input);
+      const flag=input.kind==='CHANGE'&&OPERATIONAL_CONTROLS.some(c=>c.id===input.scopeReference);
+      let controlChange:TechnologyRequestRecord['controlChange'];
+      if(flag){
+        const live=(await readOperationalControls(tx)).find(c=>c.id===input.scopeReference)!;
+        controlChange=proposedControlChange(live);
+        if(!controlChange || !input.controlChange || controlChange.state!==input.controlChange.state ||
+           controlChange.expectedRevision!==input.controlChange.expectedRevision)
+          throw new ConflictException('راجع حالة الضابط والإصدار الذي تريد تغييره.');
+      }else if(input.controlChange)throw new BadRequestException('مستند الطلب لا يشير إلى ضابط تشغيل مسجل.');
       if(input.targetAccountId===assignee.accountId)throw new ConflictException('لا يمكن إسناد تغيير وصول الموظف إلى الموظف نفسه.');
       const sourceKey=`TECHNOLOGY_REQUEST_SOURCE:v1:${p.id}:${source.proof.documentId}:${source.proof.version}`;
       if(await tx.operationalSetting.findUnique({where:{key:sourceKey}}))throw new ConflictException('إصدار مستند الطلب مرتبط بالفعل بحالة؛ افتح الحالة الأصلية.');
       await tx.operationalSetting.create({data:{key:sourceKey,value:json({requestId:id})}});
       const now=new Date().toISOString();
-      const row:TechnologyRequestRecord={policy:TECHNOLOGY_REQUEST_POLICY,id,organizationId:p.id,requestKey:id,requestDigest:digest,revision:1,kind:input.kind,title:input.title,scopeReference:input.scopeReference,executionPlan:input.executionPlan,testPlan:input.testPlan,rollbackPlan:input.rollbackPlan,targetAccountId:input.targetAccountId,accessAction:input.accessAction,requestedByAccountId:actorId,assignee,expiresAt:input.expiresAt,requestProof:source.proof,state:'DRAFT',approval:null,executionProof:null,verificationProof:null,rollbackProof:null,executionAuditId:null,rollbackAuditId:null,riskReviewAt:null,outcome:null,createdAt:now,updatedAt:now,recordDigest:''};row.recordDigest=technologyRecordDigest(row);
+      const row:TechnologyRequestRecord={...(controlChange?{controlChange}:{}),policy:TECHNOLOGY_REQUEST_POLICY,id,organizationId:p.id,requestKey:id,requestDigest:digest,revision:1,kind:input.kind,title:input.title,scopeReference:input.scopeReference,executionPlan:input.executionPlan,testPlan:input.testPlan,rollbackPlan:input.rollbackPlan,targetAccountId:input.targetAccountId,accessAction:input.accessAction,requestedByAccountId:actorId,assignee,expiresAt:input.expiresAt,requestProof:source.proof,state:'DRAFT',approval:null,executionProof:null,verificationProof:null,rollbackProof:null,executionAuditId:null,rollbackAuditId:null,riskReviewAt:null,outcome:null,createdAt:now,updatedAt:now,recordDigest:''};row.recordDigest=technologyRecordDigest(row);
       await tx.operationalSetting.create({data:{key:requestKey(p.id,id),value:json(row)}});await this.append(tx,p,row,actorId,'CREATE','إنشاء طلب تقني محدد النطاق والمنفذ والمدة.');return {...await this.view(tx,p,row,actorId),created:true};
     });
   }
@@ -181,12 +206,15 @@ export class TechnologyRequestService {
       const row=await this.row(tx,p,id),role=await this.reader(tx,p,row,actorId);
       if(row.revision!==input.expectedRevision)throw new ConflictException('تغير إصدار الطلب؛ أعد القراءة قبل الإجراء.');
       const next=technologyNext(row.state,action,role);
+      if(action==='REQUEST_ROLLBACK'&&row.controlChange&&!row.executionAuditId)
+        throw new ConflictException('لم يُنفذ تغيير على الضابط. يمكن سحب التكليف من الطلب.');
       if(action!=='REVOKE'){
         await this.operator(tx,p,row);await this.target(tx,p,row);
         const source=await this.pinnedProof(tx,p,row.requestProof,!['SUBMIT','REJECT'].includes(action));this.requestScope(row,row.requestProof,source.payload);
         if(!['SUBMIT','APPROVE','REJECT'].includes(action)&&(!row.approval||row.approval.authorityDigest!==this.authority(p)))throw new ConflictException('تغير صاحب اعتماد الطلب أو صلاحياته؛ التنفيذ محجوب.');
       }
       const now=new Date().toISOString(),updated={...row,state:next,revision:row.revision+1,updatedAt:now};
+      if(row.controlChange&&(action==='APPROVE'||action==='START'))await confirmControlBaseline(tx,row.controlChange);
       if(action==='APPROVE')updated.approval={accountId:actorId,personId:p.ownerPersonId,authorityDigest:this.authority(p),at:now};
       if(input.proof){
         const proof=await this.proof(tx,p,input.proof,true);this.evidenceScope(row,proof.proof,proof.payload,action==='RECORD_ROLLBACK'||row.state==='ROLLED_BACK');
@@ -194,13 +222,13 @@ export class TechnologyRequestService {
           if(action==='ACCEPT_RISK'&&(row.kind!=='RISK'||typeof proof.payload.riskOrClosureDecisionRef!=='string'||!proof.payload.riskOrClosureDecisionRef.trim()))throw new ConflictException('قبول الخطر يحتاج حالة خطر ومحضر قرار صاحبه.');
           if(proof.approvedByPersonId!==p.ownerPersonId||[row.executionProof?.documentId,row.rollbackProof?.documentId].includes(proof.proof.documentId))throw new ConflictException('التحقق يحتاج محضرًا مستقلاً معتمدًا من صاحب القرار.');
           const execution=row.state==='ROLLED_BACK'?row.rollbackProof:row.executionProof;if(!execution)throw new ConflictException('أثر التنفيذ غير مكتمل.');await this.pinnedProof(tx,p,execution);
-          await this.currentAccess(tx,p,row,row.state==='ROLLED_BACK');
+          await this.currentOutcome(tx,p,row,row.state==='ROLLED_BACK');
           updated.verificationProof=proof.proof;updated.outcome=action==='ACCEPT_RISK'?'RISK_ACCEPTED':row.state==='ROLLED_BACK'?'ROLLED_BACK':'COMPLETED';updated.riskReviewAt=input.riskReviewAt;
         }else{
           if(proof.createdByAccountId!==actorId)throw new ForbiddenException('سجّل التنفيذ بمحضر تملكه ومعتمد في مساره الأصلي.');
-          await this.auditProof(tx,p,row,input.executionAuditId,action==='RECORD_ROLLBACK');
-          if(action==='RECORD_ROLLBACK'){updated.rollbackProof=proof.proof;updated.rollbackAuditId=input.executionAuditId;updated.verificationProof=null;updated.outcome=null;}else{updated.executionProof=proof.proof;updated.executionAuditId=input.executionAuditId;}
-          await this.currentAccess(tx,p,updated,action==='RECORD_ROLLBACK');
+          const auditId=await this.auditProof(tx,p,row,input.executionAuditId,action==='RECORD_ROLLBACK');
+          if(action==='RECORD_ROLLBACK'){updated.rollbackProof=proof.proof;updated.rollbackAuditId=auditId;updated.verificationProof=null;updated.outcome=null;}else{updated.executionProof=proof.proof;updated.executionAuditId=auditId;}
+          await this.currentOutcome(tx,p,updated,action==='RECORD_ROLLBACK');
         }
       }
       if(action==='FAIL_TEST'||action==='REQUEST_ROLLBACK'){updated.verificationProof=null;updated.outcome=null;}
@@ -209,7 +237,7 @@ export class TechnologyRequestService {
         if(!row.verificationProof||!row.outcome)throw new ConflictException('لا يمكن إقفال طلب دون تحقق مثبت.');
         const verification=await this.pinnedProof(tx,p,row.verificationProof);if(verification.approvedByPersonId!==p.ownerPersonId)throw new ConflictException('تغير اعتماد التحقق.');
         const execution=row.outcome==='ROLLED_BACK'?row.rollbackProof:row.executionProof;if(!execution)throw new ConflictException('أثر التنفيذ غير مكتمل.');await this.pinnedProof(tx,p,execution);
-        await this.currentAccess(tx,p,row,row.outcome==='ROLLED_BACK');
+        await this.currentOutcome(tx,p,row,row.outcome==='ROLLED_BACK');
       }
       updated.recordDigest=technologyRecordDigest(updated);
       await tx.operationalSetting.update({where:{key:requestKey(p.id,id)},data:{value:json(updated),updatedAt:new Date()}});

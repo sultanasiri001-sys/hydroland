@@ -12,7 +12,9 @@ export type TechnologyRequestKind = typeof TECHNOLOGY_REQUEST_KINDS[number];
 export type TechnologyRequestState = typeof TECHNOLOGY_REQUEST_STATES[number];
 export type TechnologyRequestAction = 'SUBMIT'|'APPROVE'|'REJECT'|'START'|'RECORD_EXECUTION'|'PASS_TEST'|'FAIL_TEST'|'ACCEPT_RISK'|'REQUEST_ROLLBACK'|'RECORD_ROLLBACK'|'CLOSE'|'REVOKE';
 export type TechnologyProof = {documentId:string;version:number;contentHash:string;sourceHash:string;reference:string;templateCode:string};
+export type ControlChange = {id:string; previousState:'ENABLED'|'DISABLED'; state:'ENABLED'|'DISABLED'; expectedRevision:string};
 export type TechnologyRequestRecord = {
+  controlChange?:ControlChange;
   policy:typeof TECHNOLOGY_REQUEST_POLICY;id:string;organizationId:string;requestKey:string;requestDigest:string;revision:number;
   kind:TechnologyRequestKind;title:string;scopeReference:string;executionPlan:string;testPlan:string;rollbackPlan:string;
   targetAccountId:string|null;accessAction:'SUSPEND'|'REACTIVATE'|'APPOINTMENT'|null;
@@ -36,12 +38,20 @@ export function technologyExpiry(value:unknown,now=Date.now()){
   if(typeof value!=='string'||!Number.isFinite(Date.parse(value))||new Date(value).toISOString()!==value||Date.parse(value)<=now||Date.parse(value)>now+7*86400000)throw new BadRequestException('تكليف التنفيذ يجب أن ينتهي خلال سبعة أيام كحد أقصى.');return value;
 }
 export function technologyCreate(body:unknown){
-  const x=templateObject(body,['requestKey','kind','title','scopeReference','executionPlan','testPlan','rollbackPlan','targetAccountId','accessAction','assigneeAccountId','expiresAt','requestDocumentId','requestDocumentVersion','requestDocumentHash']);
+  const x=templateObject(body,['requestKey','kind','title','scopeReference','executionPlan','testPlan','rollbackPlan','targetAccountId','accessAction','assigneeAccountId','expiresAt','requestDocumentId','requestDocumentVersion','requestDocumentHash','controlChange']);
   if(!TECHNOLOGY_REQUEST_KINDS.includes(x.kind as TechnologyRequestKind))throw new BadRequestException('نوع الطلب غير صالح.');
   if(typeof x.requestDocumentHash!=='string'||!/^[a-f0-9]{64}$/.test(x.requestDocumentHash))throw new BadRequestException('يلزم تثبيت بصمة مستند الطلب.');
   const kind=x.kind as TechnologyRequestKind;
   if(kind==='ACCESS'&&!['SUSPEND','REACTIVATE','APPOINTMENT'].includes(String(x.accessAction))||kind!=='ACCESS'&&(x.targetAccountId!==undefined||x.accessAction!==undefined))throw new BadRequestException('مسار طلب الوصول أو نطاق الحساب غير صالح.');
-  return {requestKey:technologyId(x.requestKey),kind,title:text(x.title,160),scopeReference:text(x.scopeReference,200),executionPlan:text(x.executionPlan),testPlan:text(x.testPlan),rollbackPlan:text(x.rollbackPlan),
+  let controlChange:{state:'ENABLED'|'DISABLED';expectedRevision:string}|undefined;
+  if(x.controlChange!==undefined){
+    const change=templateObject(x.controlChange,['state','expectedRevision']);
+    if(kind!=='CHANGE'||(change.state!=='ENABLED'&&change.state!=='DISABLED')||
+        typeof change.expectedRevision!=='string'||!/^[a-f0-9]{64}$/.test(change.expectedRevision))
+      throw new BadRequestException('يلزم تحديد حالة الضابط المقصودة وإصداره الحالي.');
+    controlChange={state:change.state,expectedRevision:change.expectedRevision};
+  }
+  return {...(controlChange?{controlChange}:{}),requestKey:technologyId(x.requestKey),kind,title:text(x.title,160),scopeReference:text(x.scopeReference,200),executionPlan:text(x.executionPlan),testPlan:text(x.testPlan),rollbackPlan:text(x.rollbackPlan),
     targetAccountId:kind==='ACCESS'?technologyId(x.targetAccountId):null,accessAction:kind==='ACCESS'?x.accessAction as 'SUSPEND'|'REACTIVATE'|'APPOINTMENT':null,
     assigneeAccountId:technologyId(x.assigneeAccountId),expiresAt:technologyExpiry(x.expiresAt),requestDocumentId:technologyId(x.requestDocumentId),requestDocumentVersion:revision(x.requestDocumentVersion),requestDocumentHash:x.requestDocumentHash};
 }

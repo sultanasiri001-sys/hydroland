@@ -11,7 +11,7 @@ const target=new URL(original);target.pathname='/hydroland_technology_ci';target
 const admin=new PrismaClient({datasourceUrl:original.href}),env={PATH:process.env.PATH,HOME:process.env.HOME,NODE_ENV:'test',DATABASE_URL:target.href,JWT_SECRET:randomBytes(48).toString('base64url'),WEB_ORIGIN:'http://127.0.0.1:4176',PORT:'3126',CI:'true'};
 const db=new DatabaseService({datasourceUrl:target.href});
 // DatabaseService has no custom constructor; Prisma options remain supported.
-const base='http://127.0.0.1:3126/api/v1/',checks=[];let app,created=false,serial=0;
+const base='http://127.0.0.1:3126/api/v1/',checks=[];let app,created=false,serial=0,controlCaseReceipt;
 const check=(name,condition=true)=>{assert(condition,name);checks.push(name);};
 const password=randomBytes(32).toString('base64url');
 const root=process.cwd(),apiLog=[];
@@ -32,7 +32,7 @@ async function document(code,payload,options={}){
 }
 const proof=d=>({proofDocumentId:d.id,proofDocumentVersion:d.version,proofDocumentHash:d.contentHash});
 async function create(kind='CHANGE',extra={}){
- const scope='CI-SYSTEM-'+randomUUID(),[code,field]=definitions[kind];
+ const scope=extra.scopeReference??'CI-SYSTEM-'+randomUUID(),[code,field]=definitions[kind];
  const source=await document(code,{[field]:kind==='ACCESS'?targetAccount.id:scope,...(kind==='ACCESS'?{system:scope,accessLevel:extra.accessAction==='REACTIVATE'?'REACTIVATE':'SUSPEND'}:{})});
  const input={requestKey:randomUUID(),kind,title:'حالة تقنية اصطناعية '+kind,scopeReference:scope,executionPlan:'تنفيذ في قاعدة اختبار معزولة فقط',testPlan:'اختبارات نجاح ومنع وعودة',rollbackPlan:'استرجاع الحالة السابقة ثم اختبار مستقل',assigneeAccountId:worker.id,expiresAt:new Date(Date.now()+3600000).toISOString(),requestDocumentId:source.id,requestDocumentVersion:1,requestDocumentHash:source.contentHash,...(kind==='ACCESS'?{targetAccountId:targetAccount.id,accessAction:'SUSPEND'}:{}),...extra};
  const view=await ok(owner,'technology/requests','POST',input);return{view,input,source};
@@ -77,6 +77,78 @@ try{
   const v=await evidence(r);r=(await action(owner,r,'PASS_TEST',proof(v))).record;r=(await action(owner,r,'CLOSE')).record;
   assert.equal(r.state,'CLOSED');assert.equal(r.outcome,'COMPLETED');assert((await ok(owner,'technology/requests/'+r.id)).history.length>=7);check(kind+' survives actual request, approval, independent execution, proof, verification and closure');
   if(kind==='ACCESS')await nativeStatus('ACTIVE');
+ }
+ {
+ const controlId='TRAINING.SESSION_TIME_WINDOW';
+ const flag = async () => (await ok(owner,'admin/operational-controls')).find(item=>item.id===controlId);
+ const original=await flag();
+ const desired=original.state==='ENABLED'?'DISABLED':'ENABLED';
+ const cc=await create('CHANGE',{scopeReference:controlId,controlChange:{state:desired,expectedRevision:original.revision}});
+ const sourceChoices=await ok(owner,'technology/requests/references?type=request&kind=CHANGE');
+ assert.equal(sourceChoices.items.find(d=>d.id===cc.source.id)?.controlChange?.expectedRevision,original.revision);
+ let bound=(await action(owner,cc.view.record,'SUBMIT')).record;
+ bound=(await action(owner,bound,'APPROVE')).record;
+ assert.equal(bound.controlChange.previousState,original.state);
+ bound=(await action(worker,bound,'START')).record;
+ const beforeChange=await ok(owner,'technology/requests/'+bound.id);
+ assert(!beforeChange.actions.includes('REQUEST_ROLLBACK'));
+ assert.equal((await call(owner,'technology/requests/'+bound.id+'/actions/REQUEST_ROLLBACK','POST',
+   {expectedRevision:bound.revision,reason:'Verify there is a forward action to reverse',confirmed:true})).status,409);
+ const release=await evidence(bound);
+ const recordExecution = (actor,r,release) => call(actor,'technology/requests/'+r.id+'/actions/RECORD_EXECUTION','POST',
+   {expectedRevision:r.revision,reason:'Record the assigned approved control change',confirmed:true,...proof(release)});
+ assert.equal((await recordExecution(worker,bound,release)).status,403);
+ assert.equal((await flag()).revision,original.revision);
+ const concurrent=await approved('CHANGE',{scopeReference:controlId,controlChange:{state:desired,expectedRevision:original.revision}});
+ const second=(await action(worker,concurrent.view.record,'START')).record;
+ const otherRelease=await evidence(second);
+ const fixtureAdmin=await db.roleAssignment.create({data:{accountId:worker.id,role:'ADMIN',status:'ACTIVE'}});
+ try {
+   assert.equal((await recordExecution(owner,bound,release)).status,409);
+   assert.equal((await recordExecution(worker,bound,otherRelease)).status,409);
+   assert.equal((await flag()).revision,original.revision);
+   await db.$executeRawUnsafe(`CREATE FUNCTION a16_case_audit_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action='TECHNOLOGY_REQUEST_RECORD_EXECUTION' THEN RAISE EXCEPTION 'SYNTHETIC_A16_CASE_AUDIT_FAILURE'; END IF; RETURN NEW; END $$`);
+   await db.$executeRawUnsafe('CREATE TRIGGER a16_case_audit_failure BEFORE INSERT ON "AuditEvent" FOR EACH ROW EXECUTE FUNCTION a16_case_audit_failure()');
+   try {
+     assert.equal((await recordExecution(worker,bound,release)).status,500);
+     assert.equal((await flag()).revision,original.revision);
+     assert.equal(await db.auditEvent.count({where:{action:'OPERATIONAL_CONTROL_CHANGED',resourceId:controlId}}),0);
+   } finally {
+     await db.$executeRawUnsafe('DROP TRIGGER a16_case_audit_failure ON "AuditEvent"');
+     await db.$executeRawUnsafe('DROP FUNCTION a16_case_audit_failure()');
+   }
+   const prior=bound;
+   bound=(await action(worker,bound,'RECORD_EXECUTION',proof(release))).record;
+   assert.equal((await recordExecution(worker,prior,release)).status,409);
+   assert.equal((await recordExecution(worker,second,otherRelease)).status,409);
+   const changed=await flag();assert.equal(changed.state,desired);
+   const applied=await db.auditEvent.findUniqueOrThrow({where:{id:bound.executionAuditId}});
+   assert.equal(applied.metadata.revision,changed.revision);
+   assert.equal(applied.actorId,worker.personId);
+   assert.equal(applied.metadata.technologyRequestId,bound.id);
+   assert.equal(applied.metadata.requestRevision,prior.revision);
+   assert.equal(applied.metadata.approvedByAccountId,owner.id);
+   bound=(await action(owner,bound,'REQUEST_ROLLBACK')).record;
+   bound=(await action(worker,bound,'RECORD_ROLLBACK',proof(await evidence(bound,true)))).record;
+   const restored=await flag();assert.equal(restored.state,original.state);
+   const reverted=await db.auditEvent.findUniqueOrThrow({where:{id:bound.rollbackAuditId}});
+   assert.equal(reverted.metadata.previousRevision,changed.revision);
+   assert.equal(reverted.metadata.revision,restored.revision);
+   assert.notEqual(bound.executionAuditId,bound.rollbackAuditId);
+   bound=(await action(owner,bound,'PASS_TEST',proof(await evidence(bound,true)))).record;
+   bound=(await action(owner,bound,'CLOSE')).record;
+   assert.equal(bound.outcome,'ROLLED_BACK');assert.equal((await flag()).revision,restored.revision);
+   assert.equal(reverted.metadata.technologyRequestId,bound.id);assert.equal(reverted.metadata.rollback,true);
+   assert.equal(await db.auditEvent.count({where:{action:'OPERATIONAL_CONTROL_CHANGED',resourceId:controlId}}),2);
+   controlCaseReceipt={controlId,requestId:bound.id,source:bound.requestProof.reference,caseOutcome:bound.outcome,
+     ownerAccountId:bound.approval.accountId,assigneeAccountId:bound.assignee.accountId,
+     execution:{auditId:applied.id,utc:applied.occurredAt,...applied.metadata},
+     rollback:{auditId:reverted.id,utc:reverted.occurredAt,...reverted.metadata},
+     finalState:restored.state,finalRevision:restored.revision};
+   check('A16 binds native execution and rollback to one approved request, refuses a competing request and verifies the restored state at closure');
+ } finally {
+   await db.roleAssignment.delete({where:{id:fixtureAdmin.id}});
+ }
  }
  const failed=await approved();let f=(await action(worker,failed.view.record,'START')).record;f=(await action(worker,f,'RECORD_EXECUTION',proof(await evidence(f)))).record;f=(await action(owner,f,'FAIL_TEST')).record;assert.equal((await call(owner,`technology/requests/${f.id}/actions/CLOSE`,'POST',{expectedRevision:f.revision,reason:'Synthetic invalid close',confirmed:true})).status,409);f=(await action(owner,f,'REQUEST_ROLLBACK')).record;f=(await action(worker,f,'RECORD_ROLLBACK',proof(await evidence(f,true)))).record;assert.equal(f.state,'ROLLED_BACK');f=(await action(owner,f,'PASS_TEST',proof(await evidence(f,true)))).record;f=(await action(owner,f,'CLOSE')).record;assert.equal(f.outcome,'ROLLED_BACK');check('Failed tests remain open until an approved rollback and separate verification are recorded');
  const risk=await approved('RISK');let k=(await action(worker,risk.view.record,'START')).record;k=(await action(worker,k,'RECORD_EXECUTION',proof(await evidence(k)))).record;k=(await action(owner,k,'FAIL_TEST')).record;k=(await action(owner,k,'ACCEPT_RISK',{...proof(await evidence(k)),riskReviewAt:new Date(Date.now()+3600000).toISOString()})).record;k=(await action(owner,k,'CLOSE')).record;assert.equal(k.outcome,'RISK_ACCEPTED');check('Risk acceptance records the owner decision and a future review without claiming the failed test passed');
@@ -148,7 +220,7 @@ try{
  const pastRisk=await agentRiskCase(new Date(Date.now()-1000).toISOString());assert.equal((await call(owner,'technology/agent-access','POST',pastRisk.input)).status,400);check('Risk acceptance cannot be proposed with an expired or invalid review date');
  const riskCase=await agentRiskCase(),riskRefs=await ok(owner,'technology/agent-access/references');assert(riskRefs.risks.some(x=>x.id===riskCase.d.id));let riskOperation=await ok(owner,'technology/agent-access','POST',riskCase.input);assert.equal(riskOperation.targetKind,'SECURITY_RISK');assert.equal(riskOperation.state,'PROPOSED');assert.equal(await db.auditEvent.count({where:{action:'TECHNOLOGY_SECURITY_RISK_ACCEPTED',resourceId:riskCase.d.payload.eventNo}}),0);riskOperation=await ok(owner,apath(riskOperation,'APPROVE_EXECUTE'),'POST',abody(riskOperation));assert.equal(riskOperation.state,'RISK_ACCEPTED');assert(riskOperation.nativeAuditId);const accepted=await db.auditEvent.findUniqueOrThrow({where:{id:riskOperation.nativeAuditId}});assert.equal(accepted.action,'TECHNOLOGY_SECURITY_RISK_ACCEPTED');assert.equal((accepted.metadata).reviewAt,riskCase.input.riskReviewAt);assert.equal((await call(owner,apath(riskOperation,'REVOKE'),'POST',abody(riskOperation))).status,409);check('Risk acceptance creates a durable owner-approved record with a one-year-bounded review date and no employee executor');
  const atomicRisk=await agentRiskCase(),riskBeforeFailure=await ok(owner,'technology/agent-access','POST',atomicRisk.input);await db.$executeRawUnsafe(`CREATE FUNCTION a07_risk_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action='TECHNOLOGY_AGENT_RISK_APPROVE_EXECUTE' THEN RAISE EXCEPTION 'SYNTHETIC_RISK_AUDIT_FAILURE'; END IF; RETURN NEW; END $$`);await db.$executeRawUnsafe('CREATE TRIGGER a07_risk_fail BEFORE INSERT ON "AuditEvent" FOR EACH ROW EXECUTE FUNCTION a07_risk_fail()');assert.equal((await call(owner,apath(riskBeforeFailure,'APPROVE_EXECUTE'),'POST',abody(riskBeforeFailure))).status,500);await db.$executeRawUnsafe('DROP TRIGGER a07_risk_fail ON "AuditEvent"');assert.equal(await db.auditEvent.count({where:{action:'TECHNOLOGY_SECURITY_RISK_ACCEPTED',resourceId:atomicRisk.d.payload.eventNo}}),0);assert.equal((await ok(owner,'technology/agent-access')).items.find(x=>x.id===riskBeforeFailure.id).state,'PROPOSED');check('Risk acceptance native decision and lifecycle commit atomically or roll back together');
- const receipt={suite:'a07-technology-requests-http-postgresql',status:'PASS',checks:checks.length,checkNames:checks,actualSavedRecords:true,actualHttpAuthentication:true,synthetic:true,productionWrites:0,externalProviderCalls:0,verifiedAt:new Date().toISOString()};
+ const receipt={suite:'a07-technology-requests-http-postgresql',status:'PASS',checks:checks.length,checkNames:checks,controlCaseReceipt,actualSavedRecords:true,actualHttpAuthentication:true,synthetic:true,productionWrites:0,externalProviderCalls:0,verifiedAt:new Date().toISOString()};
  if(process.env.A07_RECEIPT_PATH){await mkdir(process.env.A07_RECEIPT_PATH.substring(0,process.env.A07_RECEIPT_PATH.lastIndexOf('/')),{recursive:true});await writeFile(process.env.A07_RECEIPT_PATH,JSON.stringify(receipt,null,2));}
  console.log(JSON.stringify(receipt));
 }catch(e){if(process.env.A07_RECEIPT_PATH)await writeFile(process.env.A07_RECEIPT_PATH+'.failure.log',apiLog.join(''));throw e;}
