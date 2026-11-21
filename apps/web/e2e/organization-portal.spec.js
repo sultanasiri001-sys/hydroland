@@ -73,6 +73,28 @@ test('owner records a tax declaration and can leave commercial registration unkn
  await expect(workspace.locator('[data-doc-org]')).toHaveValue('org-1');
 });
 
+test('organization purchasing preferences accept custom options and reopen the saved agreement reference',async({page})=>{
+ await install(page);
+ let profile={currency:'SAR',taxStatus:'UNDECLARED',registrationStatus:'UNDECLARED',revision:0};
+ await page.route('**/organizations/org-1/financial-profile',route=>{
+   if(route.request().method()==='PATCH'){
+     const body=route.request().postDataJSON();
+     profile={...profile,procurement:body.procurement,revision:profile.revision+1};
+   }
+   return json(route,profile);
+ });
+ const open=page.locator('[data-org-financial-open]'),form=page.locator('[data-org-financial-form]');
+ await open.click();await form.locator('summary').click();
+ await form.locator('[name=method]').fill('أمر شراء');
+ await form.locator('[name=system]').fill('نظام الجهة الخاص');
+ await form.locator('[name=contractReference]').fill('SYN-PO-1');
+ await form.locator('[type=submit]').click();
+ await expect(page.locator('[data-org-financial-note]')).toHaveText('حُفظت بيانات المنشأة.');
+ await page.locator('[data-org-financial-close]').click();await open.click();await form.locator('summary').click();
+ await expect(form.locator('[name=system]')).toHaveValue('نظام الجهة الخاص');
+ await expect(form.locator('[name=contractReference]')).toHaveValue('SYN-PO-1');
+});
+
 test('financial evidence cannot fall back to another organization after document access changes',async({page})=>{
  await install(page);
  await page.route(/\/api\/v1\/organizations\/org-1\/financial-profile$/,route=>json(route,{currency:'SAR',taxStatus:'UNDECLARED',registrationStatus:'UNDECLARED',revision:0}));
