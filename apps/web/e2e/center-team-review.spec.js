@@ -156,7 +156,7 @@ test('center saves percentage, fixed, combined or salary-only instructor terms a
  await page.route('**/api/v1/center/me/professionals/p1/compensation',async route=>{
    if(route.request().method()==='PATCH'){
      const input=route.request().postDataJSON();writes.push(input);
-     terms={mode:input.mode,fixedMinor:input.fixedMinor,rateBps:input.rateBps,revision:input.expectedRevision+1,currency:'SAR'};
+     terms={earningTiming:input.earningTiming,reversalTerms:input.reversalTerms,mode:input.mode,fixedMinor:input.fixedMinor,rateBps:input.rateBps,revision:input.expectedRevision+1,currency:'SAR'};
    }
    return json(route,{terms,canEdit:true});
  });
@@ -166,6 +166,10 @@ test('center saves percentage, fixed, combined or salary-only instructor terms a
  await expect(select.locator('option')).toHaveCount(5);
  for(const [mode,rate,fixed] of [['PERCENTAGE',12.5,0],['FIXED',0,80],['FIXED_PLUS_PERCENTAGE',12.5,80],['SALARY_ONLY',0,0]]){
    await select.selectOption(mode);
+   if(mode!=='SALARY_ONLY'){
+     await form.locator('[name=earningTiming]').fill('عند اعتماد الحضور');
+     await form.locator('[name=reversalTerms]').fill('حسب الاتفاق عند الاسترداد');
+   }
    if(rate){await form.locator('[name=rate]').fill(String(rate));await form.locator('[name=basis]').fill('100');}
    if(fixed)await form.locator('[name=fixed]').fill(String(fixed));
    if(mode==='SALARY_ONLY'){
@@ -175,6 +179,8 @@ test('center saves percentage, fixed, combined or salary-only instructor terms a
    await form.getByRole('button',{name:'حفظ الاتفاق'}).click();await expect.poll(()=>terms?.mode).toBe(mode);
    await expect(form.getByRole('status').last()).toContainText('تم حفظ اتفاق المدرب.');
  }
+ expect(writes.slice(0,3).every(v=>v.earningTiming==='عند اعتماد الحضور' && v.reversalTerms==='حسب الاتفاق عند الاسترداد')).toBe(true);
+ expect(writes[3]).not.toHaveProperty('earningTiming');
  expect(writes.map(v=>[v.mode,v.rateBps,v.fixedMinor,v.expectedRevision])).toEqual([['PERCENTAGE',1250,0,0],['FIXED',0,8000,1],['FIXED_PLUS_PERCENTAGE',1250,8000,2],['SALARY_ONLY',0,0,3]]);
  await toggle.click();await toggle.click();await expect(form.locator('select')).toHaveValue('SALARY_ONLY');await expect(form.locator('[data-salary]')).toBeVisible();
 });

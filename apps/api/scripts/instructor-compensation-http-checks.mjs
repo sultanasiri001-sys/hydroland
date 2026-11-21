@@ -31,6 +31,19 @@ export async function checkInstructorCompensation(db,{owner,foreignOwner,instruc
     const snapshots=await db.instructorCompensationAgreement.findMany({where:{organizationId:centerId,instructorAccountId:instructor.id},orderBy:{revision:'asc'}});
     assert.deepEqual(snapshots.map(r=>r.mode),['PERCENTAGE','FIXED','FIXED_PLUS_PERCENTAGE','SALARY_ONLY']);
     assert.equal(await db.auditEvent.count({where:{resource:'InstructorCompensationAgreement',resourceId:{in:snapshots.map(r=>r.id)}}}),4);
+    const input={...payload('FIXED',0,8000,4),earningTiming:'عند اعتماد الحضور',reversalTerms:'مراجعة المركز عند رد الدفعة'};
+    for(const invalid of [{...input,earningTiming:' '},{...input,reversalTerms:undefined},{...input,reversalTerms:'x'.repeat(1001)}]){
+      assert.equal((await save(invalid)).status,400);
+    }
+    assert.equal(ok(await save(input)).terms.revision,5);
+    assert.equal(ok(await save(input)).terms.revision,5);
+    assert.equal((await save({...input,reversalTerms:'سياسة أخرى'})).status,409);
+    const changed={...input,expectedRevision:5,reversalTerms:'مراجعة جزئية حسب اتفاق المركز'};
+    assert.equal(ok(await save(changed)).terms.revision,6);
+    const visible=ok(await request(instructor,'/training/professional/me/earnings')).agreements[0];
+    assert.equal(visible.earningTiming,input.earningTiming);
+    assert.equal(visible.reversalTerms,changed.reversalTerms);
+    assert.equal(ok(await save(payload('FIXED',0,9000,6))).terms.reversalTerms,changed.reversalTerms);
     assert.equal(await db.instructorEarning.count({where:{instructorAccountId:instructor.id}}),oldEarnings);
     assert.equal(await db.financeEntry.count(),oldFinance);
     console.log('PASS all four instructor compensation methods, salary-only zero, exact halala rounding, role/center isolation, stale writes, concurrent replay and preserved agreement history; zero financial entries.');

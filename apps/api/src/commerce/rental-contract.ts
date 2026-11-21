@@ -42,6 +42,7 @@ export function createRentalContract(input: {
     policySnapshot: {...createRefundPolicySnapshot({lineId: rental.id, kind: 'RENTAL', currency: 'SAR',
       grossAmountMinor: Number(rental.totalHalala), contractedAt: rental.reservedAt.toISOString(),
       contractedScheduledAt: rental.scheduledHandoverAt?.toISOString() ?? null})},
+    damagePolicy: {version: 'RENTAL_DAMAGE_1', upfrontDepositMinor: 0, renterLiability: 'NEW_DAMAGE_AT_RETURN_ONLY'},
     invoiceReadiness: 'COMMERCIAL_RECORD_ONLY',
     lines: lines.map(line => ({id: line.id, resourceId: line.resourceId, amountMinor: Number(line.unitPriceHalala),
       assetCode: line.assetCodeSnapshot ?? null, equipmentName: line.equipmentNameSnapshot ?? null})),

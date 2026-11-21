@@ -2,6 +2,8 @@
   // Authored interface messages only. Account, provider and document values remain opaque.
   const uiLocale=window.HydrolandI18n?.createScope("training", {
   "اتفاقات الاستحقاق مع المراكز": "Compensation agreements with centers",
+  "توقيت استحقاق المدرب": "When the instructor earns compensation",
+  "شروط عكس الاستحقاق عند الاسترداد": "Reversal terms when a refund is issued",
   "نسبة فقط": "Percentage only",
   "مبلغ ثابت فقط": "Fixed amount only",
   "مبلغ ثابت مع نسبة": "Fixed amount plus percentage",
@@ -277,7 +279,9 @@
       const contracts=agreements.length?uiLocale.html`<h4>اتفاقات الاستحقاق مع المراكز</h4>`+agreements.map(a=>{
         const parts=[];if(a.fixedMinor)parts.push(money(a.fixedMinor,'SAR'));
         if(a.rateBps)parts.push(new Intl.NumberFormat(document.documentElement.lang||'ar-SA',{style:'percent',maximumFractionDigits:2}).format(a.rateBps/10000));
-        return uiLocale.html`<article class="hl-course"><b>${esc(a.centerName)}</b><p>${uiLocale.messageHTML(uiLocale.message(modes[a.mode]))} ${esc(parts.join(' + '))}</p></article>`;
+        const policy=a.earningTiming && a.reversalTerms
+          ? uiLocale.html`<dl><dt>توقيت استحقاق المدرب</dt><dd>${esc(a.earningTiming)}</dd><dt>شروط عكس الاستحقاق عند الاسترداد</dt><dd>${esc(a.reversalTerms)}</dd></dl>` : '';
+        return uiLocale.html`<article class="hl-course"><b>${esc(a.centerName)}</b><p>${uiLocale.messageHTML(uiLocale.message(modes[a.mode]))} ${esc(parts.join(' + '))}</p>${policy}</article>`;
       }).join(''):'';
       uiLocale.setHTML(list, contracts+summary+(entries.length?entries.map(item=>uiLocale.html`<article class="hl-course"><div class="hl-course-top"><div><b>${esc(item.courseCode)}</b><small>${new Date(item.createdAt).toLocaleDateString('ar-SA')}</small></div><span>${money(item.amountMinor,item.currency)} · ${esc(item.status)}</span></div></article>`).join(''):uiLocale.html`<p>لا توجد استحقاقات تدريبية مسجلة حتى الآن.</p>`));
     }catch(error){if(!current())return;uiLocale.setHTML(list, uiLocale.html`<p>${uiLocale.messageHTML(error instanceof Error?localErrorMessage(error):uiLocale.message('تعذر تحميل الاستحقاقات'))}</p>`);}

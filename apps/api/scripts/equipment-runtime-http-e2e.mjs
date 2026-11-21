@@ -365,11 +365,15 @@ try{
   multiId=multi.id;
   await collectionFor(multiId);
   await json(await confirm(multiId));
-  await Promise.all(passports.map(passport=>post('/trips/admin/equipment-rentals/'+multiId+'/handover-scan',{code:passport.assetCode})));
+  await Promise.all(passports.map(passport=>post('/trips/admin/equipment-rentals/'+multiId+'/handover-scan',{code:passport.assetCode,handoverCondition:'Existing scratch on handle'})));
   assert.equal(await db.auditEvent.count({where:{resourceId:multiId,action:'EQUIPMENT_RENTAL_ITEM_HANDED_OVER'}}),2);
   assert.equal(await db.notification.count({where:{accountId:renter.id,type:'EQUIPMENT_RENTAL_HANDED_OVER',payload:{path:['rentalId'],equals:multiId}}}),1);
   const returnPath='/trips/equipment-rentals/'+multiId+'/return-scan';
-  const damaged=await post(returnPath,{code:passports[0].assetCode,condition:'DAMAGED',toLocation:'INSPECTION'});
+  const damaged=await post(returnPath,{code:passports[0].assetCode,condition:'DAMAGED',toLocation:'INSPECTION',newDamage:true,notes:'New crack on the base'});
+  const damageReceipt=await db.auditEvent.findFirstOrThrow({where:{resource:'EquipmentRental',resourceId:multiId,action:'EQUIPMENT_RENTAL_ITEM_RETURNED'}});
+  assert.equal(damageReceipt.metadata.newDamageConfirmed,true);
+  const baseline=await db.auditEvent.findUniqueOrThrow({where:{id:damageReceipt.metadata.handoverReceiptId}});
+  assert.equal(baseline.metadata.handoverCondition,'Existing scratch on handle');
   assert.equal(damaged.status,'ACTIVE');
   assert.equal(damaged.pendingReturnCount,1);
   const held=await db.$queryRaw`SELECT "stockStatus","location" FROM "EquipmentBarcode" WHERE "resourceId"=${extraAssets[0]}`;

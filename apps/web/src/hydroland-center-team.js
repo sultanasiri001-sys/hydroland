@@ -4,6 +4,8 @@
   "اتفاق استحقاق المدرب": "Instructor compensation agreement",
   "طريقة الاستحقاق": "Compensation method",
   "اختر طريقة الاستحقاق": "Select a compensation method",
+  "توقيت استحقاق المدرب": "When the instructor earns compensation",
+  "شروط عكس الاستحقاق عند الاسترداد": "Reversal terms when a refund is issued",
   "نسبة فقط": "Percentage only",
   "مبلغ ثابت فقط": "Fixed amount only",
   "مبلغ ثابت مع نسبة": "Fixed amount plus percentage",
@@ -244,6 +246,8 @@
        <label data-rate>النسبة المئوية <input name="rate" type="number" min="0.01" max="100" step="0.01" inputmode="decimal"></label>
        <label data-fixed>المبلغ الثابت بالريال <input name="fixed" type="number" min="0.01" max="21474836.47" step="0.01" inputmode="decimal"></label>
        <label data-basis>أساس النسبة للتجربة بالريال <input name="basis" type="number" min="0" max="21474836.47" step="0.01" inputmode="decimal"></label>
+       <label data-earning-timing>توقيت استحقاق المدرب <textarea name="earningTiming" maxlength="1000"></textarea></label>
+       <label data-reversal-terms>شروط عكس الاستحقاق عند الاسترداد <textarea name="reversalTerms" maxlength="1000"></textarea></label>
        <p data-salary>الإضافة عن الدورة تساوي صفرًا، ويستمر الراتب من مسار الرواتب.</p><label>معاينة الاستحقاق الإضافي <output data-preview aria-live="polite"></output></label>
        <p>تُحفظ الطريقة والقيم لهذا المدرب في المركز.</p><button type="submit">حفظ الاتفاق</button></fieldset><p data-compensation-message role="status"></p></form>`);
      const form=slot.querySelector('form'),fields=form.elements,status=form.querySelector('[role=status]');
@@ -261,12 +265,18 @@
          form.querySelector(selector).hidden=!active;input.disabled=!active;input.required=active&&input!==fields.basis;
        }
        const salary=fields.mode.value==='SALARY_ONLY';form.querySelector('[data-salary]').hidden=!salary;
+       for(const name of ['earningTiming','reversalTerms']){
+         const input=fields[name],active=Boolean(fields.mode.value)&&!salary;
+         input.closest('label').hidden=!active;input.disabled=!active;input.required=active;
+       }
        const base=hasRate()?minor(fields.basis):0,rate=hasRate()?minor(fields.rate):0,fixed=hasFixed()?minor(fields.fixed):0;
        const output=form.querySelector('[data-preview]');
        if(!fields.mode.value||base===null||rate===null||fixed===null){uiLocale.setText(output,'أدخل قيم الاتفاق لعرض المعاينة.');return}
        const amount=fixed+Math.floor((base*rate+5000)/10000);
        output.textContent=new Intl.NumberFormat(document.documentElement.lang||'ar-SA',{style:'currency',currency:'SAR'}).format(amount/100);
      }
+     fields.earningTiming.value=result.terms?.earningTiming??'';
+     fields.reversalTerms.value=result.terms?.reversalTerms??'';
      fields.mode.value=result.terms?.mode??'';
      if(result.terms?.rateBps)fields.rate.value=String(result.terms.rateBps/100);
      if(result.terms?.fixedMinor)fields.fixed.value=String(result.terms.fixedMinor/100);
@@ -278,6 +288,7 @@
      form.addEventListener('submit',async event=>{
        event.preventDefault();if(form.dataset.busy||!live()||!form.isConnected||!form.reportValidity())return;
        const payload={mode:fields.mode.value,rateBps:hasRate()?minor(fields.rate):0,fixedMinor:hasFixed()?minor(fields.fixed):0,expectedRevision:revision};
+       if(fields.mode.value!=='SALARY_ONLY')Object.assign(payload,{earningTiming:fields.earningTiming.value.trim(),reversalTerms:fields.reversalTerms.value.trim()});
        form.dataset.busy='true';form.querySelector('fieldset').disabled=true;
        try{
          if(!(await authorize(host,version,session))||!live()||!form.isConnected)return;

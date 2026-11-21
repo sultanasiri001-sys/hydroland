@@ -100,7 +100,13 @@ export class EquipmentRentalService{
     return this.getMine(accountId, id);
   }
 
-  async get(id:string){const rentals=await this.db.$queryRaw<RentalRow[]>`SELECT * FROM "EquipmentRental" WHERE "id"=${id} LIMIT 1`;if(!rentals[0])throw new NotFoundException('Rental not found.');const items=await this.db.$queryRaw<RentalItemRow[]>`SELECT * FROM "EquipmentRentalItem" WHERE "rentalId"=${id} ORDER BY "createdAt"`;return this.serialize(rentals[0],items);}
+  async get(id:string){const rentals=await this.db.$queryRaw<RentalRow[]>`SELECT * FROM "EquipmentRental" WHERE "id"=${id} LIMIT 1`;if(!rentals[0])throw new NotFoundException('Rental not found.');const items=await this.db.$queryRaw<RentalItemRow[]>`SELECT * FROM "EquipmentRentalItem" WHERE "rentalId"=${id} ORDER BY "createdAt"`;const handovers=await this.db.auditEvent.findMany({where:{resource:'EquipmentRental',resourceId:id,action:'EQUIPMENT_RENTAL_ITEM_HANDED_OVER'},select:{metadata:true}});
+    const conditions=new Map<string,string>();
+    for(const event of handovers){
+      const meta=event.metadata;
+      if(meta && typeof meta==='object' && !Array.isArray(meta) && typeof meta.resourceId==='string' && typeof meta.handoverCondition==='string')conditions.set(meta.resourceId,meta.handoverCondition);
+    }
+    return this.serialize(rentals[0],items.map(item=>({...item,handoverCondition:conditions.get(item.resourceId)??null})));}
   async getMine(accountId:string,id:string){const rental=await this.get(id);if(rental.renterAccountId!==accountId)throw new NotFoundException('Rental not found.');return rental;}
 
   async mine(accountId:string){
@@ -188,17 +194,20 @@ export class EquipmentRentalService{
     return{status:'RETURN_INTENT_RECORDED',rentalId:id};
   }
 
-  async returnScan(actorAccountId: string, id: string, input: {code?: string; condition?: 'OK' | 'DAMAGED' | 'REVIEW'; notes?: string | null; toLocation?: string | null}) {
+  async returnScan(actorAccountId: string, id: string, input: {code?: string; condition?: 'OK' | 'DAMAGED' | 'REVIEW'; notes?: string | null; toLocation?: string | null; newDamage?: boolean}) {
     const code = input.code?.trim();
     if (!code) throw new BadRequestException('Barcode or QR code is required for return.');
     const condition = input.condition || 'OK';
     if (!['OK', 'DAMAGED', 'REVIEW'].includes(condition)) throw new BadRequestException('Invalid return condition.');
+    if(input.notes != null && typeof input.notes!=='string')throw new BadRequestException('Invalid return notes.');
     const notes = input.notes?.trim() || null;
+    if(input.newDamage !== undefined && typeof input.newDamage !== 'boolean')throw new BadRequestException('Invalid new damage confirmation.');
+    if(input.newDamage && (condition!=='DAMAGED' || !notes || notes.length>1000))throw new BadRequestException('Describe the new damage observed at return.');
     const nextStatus = condition === 'OK' ? 'AVAILABLE' : 'QUARANTINED';
 
     await this.db.serializable(async tx => {
-      const [rental] = await tx.$queryRaw<Array<Pick<RentalRow, 'id' | 'status' | 'invoiceNumber' | 'renterAccountId'>>>`
-        SELECT "id", "status", "invoiceNumber", "renterAccountId"
+      const [rental] = await tx.$queryRaw<Array<Pick<RentalRow, 'id' | 'status' | 'invoiceNumber' | 'renterAccountId' | 'contractSnapshot'>>>`
+        SELECT "id", "status", "invoiceNumber", "renterAccountId", "contractSnapshot"
         FROM "EquipmentRental" WHERE "id"=${id} FOR UPDATE`;
       if (!rental) throw new NotFoundException('Rental not found.');
       if (rental.status !== 'ACTIVE' && rental.status !== 'RETURNED') {
@@ -218,12 +227,28 @@ export class EquipmentRentalService{
       if (!item) throw new ConflictException('Scanned equipment does not belong to this rental.');
       if (item.returnedAt) {
         if (item.returnCondition && item.returnCondition !== condition) throw new ConflictException('Item already returned with a different condition.');
+        if(input.newDamage){
+          const receipt=await tx.auditEvent.findFirst({where:{resource:'EquipmentRental',resourceId:id,action:'EQUIPMENT_RENTAL_ITEM_RETURNED',metadata:{path:['resourceId'],equals:asset.resourceId}},select:{metadata:true}});
+          const meta=receipt?.metadata;
+          if(!meta || typeof meta!=='object' || Array.isArray(meta) || meta.newDamageConfirmed!==true || meta.notes!==notes)throw new ConflictException('Return evidence differs from the original receipt.');
+        }
         return;
       }
       if (rental.status !== 'ACTIVE' || asset.stockStatus !== 'CHECKED_OUT') {
         throw new ConflictException('Equipment is not currently checked out on an active rental.');
       }
 
+      let handoverReceiptId: string | null = null;
+      if(input.newDamage){
+        const contract=rental.contractSnapshot as {damagePolicy?: {version?:string}} | null;
+        if(contract?.damagePolicy?.version!=='RENTAL_DAMAGE_1')throw new ConflictException('Original rental terms require review.');
+        const handover=await tx.auditEvent.findFirst({where:{resource:'EquipmentRental',resourceId:id,action:'EQUIPMENT_RENTAL_ITEM_HANDED_OVER',
+          metadata:{path:['resourceId'],equals:asset.resourceId}},select:{id:true,metadata:true}});
+        const meta=handover?.metadata;
+        if(!handover || !meta || typeof meta!=='object' || Array.isArray(meta) || typeof meta.handoverCondition!=='string' || !meta.handoverCondition.trim())
+          throw new ConflictException('Documented handover condition is required to attribute new damage.');
+        handoverReceiptId=handover.id;
+      }
       const toLocation = input.toLocation?.trim() || asset.location;
       await tx.$executeRaw`UPDATE "EquipmentRentalItem" SET "returnedAt"=NOW(), "returnCondition"=${condition}, "returnNotes"=${notes} WHERE "id"=${item.id}`;
       await tx.$executeRaw`
@@ -231,7 +256,7 @@ export class EquipmentRentalService{
         VALUES (gen_random_uuid()::text,${asset.resourceId},${condition === 'OK' ? 'CHECK_IN' : 'QUARANTINE'},${asset.location},${toLocation},NULL,${rental.renterAccountId},${notes || `Rental return ${rental.invoiceNumber}`},${actorAccountId},NOW())`;
       await tx.$executeRaw`UPDATE "EquipmentBarcode" SET "stockStatus"=${nextStatus}, "location"=${toLocation}, "updatedAt"=NOW() WHERE "resourceId"=${asset.resourceId}`;
       await this.audit.record({actorId:actorAccountId, action:'EQUIPMENT_RENTAL_ITEM_RETURNED', resource:'EquipmentRental', resourceId:id,
-        metadata:{invoiceNumber:rental.invoiceNumber, resourceId:asset.resourceId, assetCode:asset.assetCode, condition, stockStatus:nextStatus, notes}}, tx);
+        metadata:{invoiceNumber:rental.invoiceNumber, resourceId:asset.resourceId, assetCode:asset.assetCode, condition, stockStatus:nextStatus, notes, handoverReceiptId, newDamageConfirmed: Boolean(handoverReceiptId)}}, tx);
 
       const [remaining] = await tx.$queryRaw<Array<{pending: boolean}>>`
         SELECT EXISTS (SELECT 1 FROM "EquipmentRentalItem" WHERE "rentalId"=${id} AND "returnedAt" IS NULL) AS "pending"`;
