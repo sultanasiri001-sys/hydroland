@@ -137,3 +137,20 @@ test('center store entry opens management directly and retains a public preview'
  await page.locator('[data-store-manage]').click();await expect(panel.locator('[data-offer-refresh]')).toBeVisible();
  await expect(page.locator('[data-service-title]')).toHaveText('إدارة عروض المركز');
 });
+
+test('catalog shows the offer before cart and keeps each chosen SKU and price', async({page})=>{
+ await setup(page);
+ const variants=['M','L'].map((size,index)=>({...service,kind:'GOODS',id:'fin-'+size,sku:'FINS-'+size,nameAr:'زعانف سباحة',
+   organizationId:'center-x',listPriceMinor:18000,priceMinor:index?15500:14500,discountActive:true,
+   catalogDetails:{family:'FINS',size,color:'أزرق',category:'زعانف',brand:'بحر'},stockQuantity:1}));
+ await page.route('**/api/v1/store/products',r=>json(r,variants));
+ await page.evaluate(()=>window.HydrolandStore.reloadProducts());
+ await expect(page.locator('[data-public-product]')).toHaveCount(1);
+ await expect(page.locator('[data-public-product] del')).toBeVisible();
+ expect(await page.evaluate(()=>window.HydrolandStore.getCart())).toHaveLength(0);
+ await page.locator('[data-catalog-variant]').selectOption('fin-L');
+ await page.locator('[data-store-add="fin-L"]').click();
+ expect(await page.evaluate(()=>window.HydrolandStore.getCart().map(x=>[x.id,x.priceMinor,x.quantity]))).toEqual([['fin-L',15500,1]]);
+ await page.locator('[data-clear-catalog-cart]').click();
+ expect(await page.evaluate(()=>window.HydrolandStore.getCart())).toHaveLength(0);
+});
