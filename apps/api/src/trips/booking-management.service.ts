@@ -117,7 +117,7 @@ export class BookingManagementService {
     const participants = await tx.bookingParticipant.findMany({ where: { bookingId: booking.id }, orderBy: { id: 'asc' }, select: { id: true, fullName: true, eligibilityStatus: true, certificationTitle: true, updatedAt: true } });
     const payments = await tx.payment.findMany({ where: { bookingId: booking.id }, orderBy: { id: 'asc' }, select: { id: true, bookingId: true, accountId: true, status: true, currency: true, amountMinor: true, refundedAmountMinor: true, providerReference: true, moyasarPaymentId: true, updatedAt: true,
       refundOperations: { where: { status: { in: ['RESERVED', 'DISPATCHED', 'RECONCILIATION_REQUIRED'] } }, orderBy: { id: 'asc' }, select: { id: true, status: true, amountMinor: true, updatedAt: true } } } });
-    const price = booking.contractSnapshot === null || booking.contractSnapshot === undefined
+    const price = !booking.organizationId && (booking.contractSnapshot === null || booking.contractSnapshot === undefined)
       ? await tx.operationalSetting.findUnique({ where: { key: 'trip-price:' + trip.id }, select: { value: true, updatedAt: true } }) : null;
     const requirement = tripBookingPaymentRequirement(booking, price?.value);
     const requiredAmountMinor = requirement.requiredAmountMinor;
@@ -137,7 +137,8 @@ export class BookingManagementService {
     if (safety?.decision === 'DEFERRED') blockers.push('SAFETY_APPROVAL');
     else require(safety?.decision === 'ALLOWED', 'safety', 'SAFETY_APPROVAL');
     require(confirmedSeats + (booking.status === 'CONFIRMED' ? 0 : booking.seats) <= trip.capacity, 'capacity', 'CAPACITY_LIMIT');
-    if (!amountValid && !rules.payment.bypass) blockers.push('PRICE_NOT_CONFIGURED');
+    if (booking.organizationId && !captured) blockers.push(amountValid ? 'PAYMENT_REQUIRED' : 'PRICE_NOT_CONFIGURED');
+    else if (!amountValid && !rules.payment.bypass) blockers.push('PRICE_NOT_CONFIGURED');
     else require(Boolean(captured), 'payment', 'PAYMENT_REQUIRED');
     require(!evaluation.blocking, 'weather', 'WEATHER_GATE');
     const mutable = !['CANCELLED', 'COMPLETED'].includes(trip.status) && trip.startsAt > new Date() && booking.status !== 'CANCELLED';

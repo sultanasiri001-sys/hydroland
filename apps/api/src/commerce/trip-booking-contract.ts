@@ -27,6 +27,12 @@ interface TripBookingContractInput {
 /** Called inside the booking transaction, before the new booking is inserted. */
 export function captureTripBookingContract(input: TripBookingContractInput) {
   const { bookingId, accountId, buyerOrganizationId, seats, createdAt, price, trip } = input;
+  const organizationTerms = buyerOrganizationId ? {
+    organizationPaymentTerms: Object.freeze({
+      mode: 'PREPAYMENT', initiator: 'NAMED_FINANCIAL_DELEGATE',
+      mandateIssuer: 'BUYER_ORGANIZATION', mandateApproval: 'PLATFORM_MANAGEMENT',
+    }),
+  } : {};
   const total = price.pricePerSeatMinor * seats;
   if (!price.configured || !Number.isSafeInteger(total) || total > 2_147_483_647) {
     // An unpriced reservation was already allowed. Preserve that workflow,
@@ -36,6 +42,7 @@ export function captureTripBookingContract(input: TripBookingContractInput) {
       source: Object.freeze({ kind: 'TRIP_BOOKING', id: bookingId, parentId: null, offeringId: trip.id }),
       customerAccountId: accountId,
       buyerOrganizationId,
+      ...organizationTerms,
       kind: 'TRIP',
       quantity: seats,
       unitPriceMinor: null,
@@ -56,7 +63,7 @@ export function captureTripBookingContract(input: TripBookingContractInput) {
     currency: price.currency, recordedAt: createdAt.toISOString(),
     originalStartsAt: trip.startsAt.toISOString(), originalEndsAt: trip.endsAt.toISOString(),
   });
-  return Object.freeze({ ...contract, buyerOrganizationId });
+  return Object.freeze({ ...contract, buyerOrganizationId, ...organizationTerms });
 }
 
 /** Replays display the saved contract price; current catalog prices are irrelevant. */
@@ -125,6 +132,7 @@ export function tripBookingPaymentRequirement(booking: BookingPriceSource, legac
     }
     return { ...base, requiredAmountMinor: contract.amountMinor as number, source: 'SNAPSHOT', reasonCode: null, providerEvidenceRequired: true };
   }
+  if (booking.organizationId) return review('ORIGINAL_ORGANIZATION_CONTRACT_REQUIRED');
   const price = record(legacyPrice);
   if (!price || typeof price.pricePerSeatMinor !== 'number' || !Number.isSafeInteger(price.pricePerSeatMinor)
     || price.pricePerSeatMinor < 0 || typeof price.currency !== 'string' || price.currency.trim().toUpperCase() !== 'SAR') return review('LEGACY_PRICE_NOT_CONFIGURED');
