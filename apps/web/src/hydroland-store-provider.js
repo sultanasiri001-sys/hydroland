@@ -109,6 +109,7 @@
      const data=await request('/store/provider/catalog');if(!live(v,session))return;
      if(!data?.organization||!Array.isArray(data.products)||!Array.isArray(data.courses))throw localError('استجابة العروض غير مكتملة.');
      uiLocale.setHTML(panel, uiLocale.html`<h3>عروض ${esc(data.organization.displayName)}</h3><p>العروض المنشورة تظهر في المتجر للجميع. إيقاف العرض يمنع الطلبات الجديدة ويحفظ الطلبات والتسجيلات السابقة.</p>${(notice?uiLocale.html`<p role="status">${uiLocale.messageHTML(notice)}</p>`:'')}<button type="button" data-offer-refresh>تحديث العروض</button><button type="button" data-offer-preview>معاينة المتجر</button><button type="button" data-offer-trips>إدارة الرحلات والحجوزات</button>${editor('products')}${editor('courses')}<details><summary>مرتجعات السلع</summary><button type="button" data-list-returns>عرض طلبات الإرجاع</button><button type="button" data-reviewed-returns>مراجعة المرتجعات المستلمة</button><div data-return-queue></div></details><div data-managed-offers>${data.products.map(row=>rowHtml('products',row)).join('')}${data.courses.map(row=>rowHtml('courses',row)).join('')}${(!data.products.length&&!data.courses.length?uiLocale.html`<p>لا توجد عروض للمركز بعد.</p>`:'')}</div>`);
+     window.HydrolandProductFeedback?.moderation(panel,'provider');
    const queue=panel.querySelector('[data-return-queue]');
    let queueVersion=0;
    const loadReturns=async(received=false)=>{

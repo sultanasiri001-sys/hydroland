@@ -249,7 +249,7 @@
     if (detail && kind==='product' && window.HydrolandProductCatalog) {
       const ui=window.HydrolandProductCatalog,rows=window.HydrolandStore.getProducts(),product=rows.find(row=>row.id===id);
       if(product){
-        const facts=dialog.querySelector('dl');
+        const facts=dialog.querySelector('dl');window.HydrolandProductFeedback?.publicView(facts.parentElement,id);
         const add=(label,value)=>{if(!value)return;const row=document.createElement('div'),key=document.createElement('dt'),val=document.createElement('dd');key.textContent=ui.t(label);val.textContent=value;row.append(key,val);facts.append(row)};
         if(product.discountActive)add('السعر قبل الخصم',new Intl.NumberFormat('ar-SA',{style:'currency',currency:product.currency}).format(product.listPriceMinor/100));
         for(const [key,label] of [['size','المقاس'],['color','اللون'],['category','التصنيف'],['brand','العلامة التجارية'],['barcode','الباركود']])add(label,product.catalogDetails?.[key]);

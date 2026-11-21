@@ -154,6 +154,7 @@ model Person {
 }
 
 model Account {
+  storeFeedback StoreProductFeedback[]
   storeProductPreferences StoreProductPreference[]
   personalDataRequests PersonalDataRequest[]
   instructorDocuments InstructorDocument[]
@@ -2020,6 +2021,7 @@ enum StoreOrderStatus {
  FULFILLED
 }
 model StoreProduct {
+ customerFeedback StoreProductFeedback[]
  customerPreferences StoreProductPreference[]
  catalogDetails Json?
  id String @id @default(uuid())
@@ -2040,6 +2042,23 @@ model StoreProduct {
  @@index([status,nameAr])
  @@index([organizationId,status])
 }
+model StoreProductFeedback {
+ id String @id
+ productId String
+ accountId String
+ kind String
+ body String @db.VarChar(1800)
+ rating Int?
+ reply String? @db.VarChar(1800)
+ published Boolean @default(false)
+ revision Int @default(1)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ product StoreProduct @relation(fields:[productId], references:[id], onDelete:Cascade)
+ account Account @relation(fields:[accountId], references:[id], onDelete:Cascade)
+ @@index([productId,published,createdAt])
+}
+
 model StoreProductPreference {
  accountId String
  productId String
