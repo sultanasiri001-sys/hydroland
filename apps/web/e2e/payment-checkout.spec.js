@@ -25,11 +25,13 @@ const prepare=async page=>{
   await expect(page.locator('.hl-login')).toHaveClass(/hidden/);
 };
 
-test('paid booking sends only booking identity to payment API and redirects to hosted checkout',async({page})=>{
+test('paid booking requires displayed original terms before payment and redirects to hosted checkout',async({page})=>{
   await installAuth(page);await installCommonApi(page);
-  const state={paymentBody:null,bookingSeats:null};
+  const state={paymentBody:null,bookingSeats:null,bookingCalls:0};
+  const originalDeparture='2030-04-05T21:30:00.000Z';
+  await page.route(/\/api\/v1\/payments\/bookings\/booking-pay-1\/quote$/,route=>json(route,{snapshot:{amountMinor:25000,currency:'SAR',quantity:2,originalSchedule:{startsAt:originalDeparture},issuer:{legalName:'مركز اختبار الرحلات <img src=x onerror="window.checkoutXss=1">'}},quoteHash:'quote-original-1',policyVersion:'2026-11-21.1'}));
   await page.route(/\/api\/v1\/trips\/trip-pay-1\/bookings$/,async route=>{
-    state.bookingSeats=route.request().postDataJSON()?.seats;
+    state.bookingCalls++;state.bookingSeats=route.request().postDataJSON()?.seats;
     return json(route,{id:'booking-pay-1',tripId:'trip-pay-1',accountId:'account-pay-e2e',status:'PENDING',seats:state.bookingSeats,price,participants:[]},201);
   });
   await page.route(/\/api\/v1\/payments$/,async route=>{
@@ -47,12 +49,97 @@ test('paid booking sends only booking identity to payment API and redirects to h
   await expect(page.locator('#booking-price')).not.toContainText('مجانية');
   await page.locator('#booking-seats').fill('2');
   await page.locator('#confirm-booking').click();
+  await expect(page.locator('[data-checkout-terms]')).toContainText('٤٨ ساعة');
+  await expect(page.locator('[data-checkout-terms]')).toContainText('٥٠٪');
+  await expect(page.locator('[data-checkout-terms]')).toContainText('مركز اختبار الرحلات');
+  await expect(page.locator('[data-checkout-terms]')).toContainText('<img src=x onerror="window.checkoutXss=1">');
+  await expect(page.locator('[data-checkout-terms] img')).toHaveCount(0);
+  expect(await page.evaluate(()=>window.checkoutXss)).toBeUndefined();
+  await expect(page.locator('[data-checkout-quantity]')).toHaveText('عدد المقاعد في هذا الحجز: 2');
+  const originalRiyadh=await page.evaluate(value=>new Intl.DateTimeFormat('ar-SA-u-ca-gregory',{timeZone:'Asia/Riyadh',dateStyle:'medium',timeStyle:'short'}).format(new Date(value)),originalDeparture);
+  await expect(page.locator('[data-checkout-departure]')).toContainText(originalRiyadh);
+  await expect(page.locator('[data-checkout-departure]')).toContainText('Asia/Riyadh');
+  expect(state.paymentBody).toBeNull();
+  await page.locator('#confirm-booking').click();
+  expect(state.paymentBody).toBeNull();
+  await page.evaluate(()=>window.HydrolandI18n.setLocale('en'));
+  await expect(page.locator('[data-checkout-quantity]')).toHaveText('Seats in this booking: 2');
+  const englishRiyadh=await page.evaluate(value=>new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Riyadh',dateStyle:'medium',timeStyle:'short'}).format(new Date(value)),originalDeparture);
+  await expect(page.locator('[data-checkout-departure]')).toContainText('Original departure (Saudi Arabia time, Asia/Riyadh)');
+  await expect(page.locator('[data-checkout-departure]')).toContainText(englishRiyadh);
+  await page.locator('[data-accept-checkout-terms]').check();
+  await page.locator('#confirm-booking').click();
   await expect.poll(()=>state.paymentBody).not.toBeNull();
+  expect(state.bookingCalls).toBe(1);
   expect(state.bookingSeats).toBe(2);
-  expect(state.paymentBody).toEqual({bookingId:'booking-pay-1',idempotencyKey:'booking:booking-pay-1'});
+  expect(state.paymentBody).toEqual({bookingId:'booking-pay-1',idempotencyKey:'booking:booking-pay-1',policyAcceptance:{version:'2026-11-21.1',quoteHash:'quote-original-1'}});
   expect(Object.hasOwn(state.paymentBody,'amountMinor')).toBe(false);
   await expect(page).toHaveURL('http://127.0.0.1:4173/provider-checkout');
 });
+
+for(const phase of ['quote','payment'])for(const change of ['dismiss','logout','account-switch']){
+  test(`delayed ${phase} JSON cannot restore consent or redirect after ${change}`,async({page})=>{
+    await installAuth(page);await installCommonApi(page);
+    const endpoint=phase==='quote'?'/payments/bookings/booking-pay-1/quote':'/payments';
+    // authorizedFetch checks the session when the Response arrives. Hold json()
+    // afterwards to exercise the separate UI continuation and redirect boundary.
+    await page.addInitScript(({endpoint})=>{
+      const originalFetch=window.fetch.bind(window);
+      window.checkoutJsonGate={enabled:false,entered:false,released:false};
+      window.fetch=async(...args)=>{
+        const response=await originalFetch(...args),input=args[0];
+        const pathname=new URL(typeof input==='string'?input:input.url||String(input),window.location.href).pathname;
+        if(window.checkoutJsonGate.enabled&&pathname.endsWith(endpoint)){
+          const parse=response.json.bind(response);
+          response.json=async()=>{
+            const body=await parse();window.checkoutJsonGate.enabled=false;window.checkoutJsonGate.entered=true;
+            await new Promise(resolve=>{window.releaseCheckoutJson=resolve});
+            window.checkoutJsonGate.released=true;return body;
+          };
+        }
+        return response;
+      };
+    },{endpoint});
+    const state={bookingCalls:0,paymentCalls:0,redirects:0};
+    await page.route(/\/api\/v1\/trips\/trip-pay-1\/bookings$/,route=>{
+      state.bookingCalls++;return json(route,{id:'booking-pay-1',tripId:'trip-pay-1',accountId:'account-pay-e2e',status:'PENDING',seats:1,price,participants:[]},201);
+    });
+    await page.route(/\/api\/v1\/payments\/bookings\/booking-pay-1\/quote$/,route=>json(route,{
+      snapshot:{amountMinor:12500,currency:'SAR',issuer:{legalName:'PRIVATE OLD CHECKOUT ISSUER'}},quoteHash:'private-quote-1',policyVersion:'2026-11-21.1',
+    }));
+    await page.route(/\/api\/v1\/payments$/,route=>{
+      state.paymentCalls++;return json(route,{id:'payment-local-1',bookingId:'booking-pay-1',amountMinor:12500,currency:'SAR',status:'PENDING',provider:'MOYASAR',checkoutUrl:'http://127.0.0.1:4173/provider-checkout'},201);
+    });
+    await page.route('http://127.0.0.1:4173/provider-checkout',route=>{
+      state.redirects++;return route.fulfill({status:200,contentType:'text/html',body:'<!doctype html><title>Unexpected old checkout</title>'});
+    });
+    await prepare(page);
+    await page.evaluate(()=>window.HydrolandBookings.openBooking('trip-pay-1'));
+    await expect(page.locator('#booking-dialog')).toBeVisible();
+    if(phase==='payment'){
+      await page.locator('#confirm-booking').click();
+      await expect(page.locator('[data-checkout-terms]')).toContainText('PRIVATE OLD CHECKOUT ISSUER');
+      await page.locator('[data-accept-checkout-terms]').check();
+    }
+    await page.evaluate(()=>{window.checkoutJsonGate.enabled=true});
+    await page.locator('#confirm-booking').click();
+    await page.waitForFunction(()=>window.checkoutJsonGate.entered);
+    if(change==='dismiss')await page.locator('#close-booking').click();
+    else if(change==='logout')await page.evaluate(()=>window.HydrolandAuth.terminateSession());
+    else await page.evaluate(()=>{const auth=window.HydrolandAuth;auth.acceptSession({accessToken:'different-checkout-account',refreshToken:'different-checkout-refresh'},auth.beginAuthAttempt())});
+    await expect(page.locator('#booking-dialog')).not.toBeVisible();
+    await expect(page.locator('[data-checkout-terms]')).toHaveCount(0);
+    await page.evaluate(()=>window.releaseCheckoutJson());
+    await page.waitForFunction(()=>window.checkoutJsonGate.released);
+    await page.waitForTimeout(50);
+    await expect(page.locator('[data-checkout-terms]')).toHaveCount(0);
+    await expect(page.locator('#booking-dialog')).not.toBeVisible();
+    expect(state.bookingCalls).toBe(1);
+    expect(state.paymentCalls).toBe(phase==='payment'?1:0);
+    expect(state.redirects).toBe(0);
+    await expect(page).not.toHaveURL(/\/provider-checkout/);
+  });
+}
 
 test('payment return ignores success query until server reconciliation confirms provider state',async({page})=>{
   await installAuth(page);await installCommonApi(page);

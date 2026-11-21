@@ -2,6 +2,8 @@ import { trainingOperationalPolicy } from '../governance/training-operational-po
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, StoreProductKind, StoreProductStatus } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
+import { randomUUID } from 'node:crypto';
+import { createCommerceContractSnapshot } from '../commerce/commerce-contract-snapshot';
 
 const productFields = ['sku','nameAr','description','priceMinor','stockQuantity','kind','status'];
 const courseFields = ['courseCode','title','description','locationName','startsAt','endsAt','capacity','priceMinor','status'];
@@ -142,17 +144,29 @@ export class StoreOfferingsService {
   }
 
   enroll(accountId:string,courseId:string){
+    const enrollmentId = randomUUID(), recordedAt = new Date().toISOString();
     return this.db.serializable(async tx=>{
       const account=await tx.account.findFirst({where:{id:accountId,status:'ACTIVE'},select:{id:true}});
       if(!account)throw new ForbiddenException('يتطلب التسجيل حسابًا نشطًا.');
-      const course=await tx.storeCourseOffer.findFirst({where:{id:courseId,status:'ACTIVE',startsAt:{gt:new Date()},organization:{status:'ACTIVE'}}});
+      const course=await tx.storeCourseOffer.findFirst({where:{id:courseId,status:'ACTIVE',startsAt:{gt:new Date()},organization:{status:'ACTIVE'}},include:{organization:{select:{id:true,displayName:true,legalName:true,registrationNumber:true,address:true}}}});
       if(!course)throw new NotFoundException('الدورة غير متاحة للتسجيل.');
       const existing=await tx.trainingEnrollment.findFirst({where:{storeCourseOfferId:courseId,studentAccountId:accountId,status:{not:'CANCELLED'}}});
       if(existing)return existing;
       const count=await tx.trainingEnrollment.count({where:{storeCourseOfferId:courseId,status:{not:'CANCELLED'}}});
       const policy=await trainingOperationalPolicy(tx);
       if(policy.capacityLimit&&count>=course.capacity)throw new ConflictException('اكتملت مقاعد الدورة.');
-      const enrollment=await tx.trainingEnrollment.create({data:{studentAccountId:accountId,courseCode:course.courseCode,centerOrganizationId:course.organizationId,storeCourseOfferId:course.id,status:'PENDING',metadata:{source:'UNIFIED_STORE',title:course.title,priceMinor:course.priceMinor,currency:course.currency,startsAt:course.startsAt.toISOString(),endsAt:course.endsAt.toISOString(),locationName:course.locationName,financialActionExecuted:false,operationalPolicy:policy}}});
+      let contractSnapshot;
+      try {
+        contractSnapshot = createCommerceContractSnapshot({
+          sourceKind:'TRAINING_ENROLLMENT',sourceId:enrollmentId,parentId:null,offeringId:course.id,
+          customerAccountId:accountId,organizationId:course.organizationId,organization:course.organization,
+          kind:'COURSE',title:course.title,quantity:1,unitPriceMinor:course.priceMinor,currency:course.currency,recordedAt,
+          originalStartsAt:course.startsAt.toISOString(),originalEndsAt:course.endsAt.toISOString(),
+        });
+      } catch {
+        throw new BadRequestException('بيانات شروط الدورة غير مكتملة أو غير صالحة.');
+      }
+      const enrollment=await tx.trainingEnrollment.create({data:{id:enrollmentId,studentAccountId:accountId,courseCode:course.courseCode,centerOrganizationId:course.organizationId,storeCourseOfferId:course.id,status:'PENDING',metadata:{source:'UNIFIED_STORE',title:course.title,priceMinor:course.priceMinor,currency:course.currency,startsAt:course.startsAt.toISOString(),endsAt:course.endsAt.toISOString(),locationName:course.locationName,financialActionExecuted:false,operationalPolicy:policy,contractSnapshot}}});
       await this.audited(tx,accountId,course.organizationId,'TrainingEnrollment',enrollment.id,'STORE_COURSE_ENROLLED');
       return enrollment;
     });

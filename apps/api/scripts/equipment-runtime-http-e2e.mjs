@@ -7,6 +7,7 @@ import { EquipmentInspectionService } from '../dist/trips/equipment-inspection.s
 import { PolicyControlService } from '../dist/trips/policy-control.service.js';
 import { NotificationsService } from '../dist/notifications/notifications.service.js';
 import { randomBytes, scryptSync } from 'node:crypto';
+import {createSyntheticRentalCollection,cleanupSyntheticRentalCollections} from './rental-collection-evidence-fixture.mjs';
 
 const db=new DatabaseService();
 const base=process.env.EQUIPMENT_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1';
@@ -25,7 +26,7 @@ async function login(account) {
 }
 const auth=token=>({authorization:`Bearer ${token}`});
 const json=async response=>{const body=await response.json().catch(()=>null);if(!response.ok)throw new Error(`HTTP ${response.status}: ${JSON.stringify(body)}`);return body};
-const people=[],accounts=[],extraAssets=[],holdFixtures=[],calendarTrips=[],calendarCenters=[];let equipmentId=null,rentalId=null,competingId=null,multiId=null;
+const people=[],accounts=[],extraAssets=[],holdFixtures=[],calendarTrips=[],calendarCenters=[],collectionReceipts=[];let equipmentId=null,rentalId=null,competingId=null,multiId=null;
 const makeAccount=async label=>{const person=await db.person.create({data:{firstName:'Equipment',lastName:label}});people.push(person);const account=await db.account.create({data:{personId:person.id,email:`equipment-${label.toLowerCase()}-${suffix}@example.invalid`,passwordHash,status:'ACTIVE',emailVerifiedAt:new Date()}});accounts.push(account);return account};
 
 try{
@@ -37,6 +38,7 @@ try{
     assert.notEqual(collisionProbe.invoiceNumber(),collisionProbe.invoiceNumber(),'Distinct rentals require unique invoice references even in one millisecond');
   }finally{Date.now=originalNow;}
   const admin=await makeAccount('Admin'),renter=await makeAccount('Renter'),other=await makeAccount('Other');
+  const financeApprover=await makeAccount('FinanceApprover'),financePoster=await makeAccount('FinancePoster');
   await db.roleAssignment.create({data:{accountId:admin.id,role:'ADMIN',status:'ACTIVE',scope:{}}});
   const [adminToken,renterToken,otherToken]=await Promise.all([admin,renter,other].map(login));
 
@@ -56,6 +58,7 @@ try{
   if(response.status!==409)throw new Error(`Duplicate serial expected 409, got ${response.status}`);
 
   const dueAt=new Date(Date.now()+2*86400000).toISOString();
+  const scheduledHandoverAt=new Date(Date.now()+86400000).toISOString();
   async function makeCalendarTrip(ownerId, name, start) {
     const center = await db.organization.create({data:{displayName:'Calendar fixture '+name, kind:'DIVE_CENTER', ownerId}});
     calendarCenters.push(center.id);
@@ -68,12 +71,15 @@ try{
   }
   const during = await makeCalendarTrip(admin.id, 'A', Date.now()+3600_000);
   const adjacent = await makeCalendarTrip(other.id, 'B', Date.parse(dueAt));
+  await db.organization.update({where:{id:during.organizationId},data:{status:'ACTIVE',legalName:'SYNTHETIC Rental Center',registrationNumber:'SYNTHETIC-RENTAL-001',address:'Synthetic test warehouse'}});
+  await db.$executeRaw`UPDATE "EquipmentBarcode" SET "organizationId"=${during.organizationId} WHERE "resourceId"=${equipmentId}`;
+  const collectionFor=async id=>{const receipt=await createSyntheticRentalCollection(db,{rentalId:id,centerId:during.organizationId,requesterId:admin.id,approverId:financeApprover.id,posterId:financePoster.id});collectionReceipts.push(receipt);return receipt;};
   const allocate = (trip, resourceIds) => fetch(base+'/trips/admin/calendar/'+trip.id+'/allocations', {
     method:'POST', headers:{...auth(adminToken),'content-type':'application/json'}, body:JSON.stringify({resourceIds}),
   });
   const calendarBook = () => fetch(base+'/trips/equipment-rentals', {
     method:'POST', headers:{...auth(adminToken),'content-type':'application/json'},
-    body:JSON.stringify({renterAccountId:renter.id, dueAt, items:[{resourceId:equipmentId,unitPriceSar:50}]}),
+    body:JSON.stringify({renterAccountId:renter.id, scheduledHandoverAt, dueAt, items:[{resourceId:equipmentId,unitPriceSar:50}]}),
   });
   await json(await allocate(during,[equipmentId]));
   assert.equal((await calendarBook()).status,409,'Trip allocation blocks an overlapping rental');
@@ -84,7 +90,7 @@ try{
     assert.equal(event.organizationId,trip.organizationId);
   }
   const repeatedItem={resourceId:equipmentId,equipmentType:'BCD',unitPriceSar:50};
-  response=await fetch(base+'/trips/equipment-rentals',{method:'POST',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({renterAccountId:renter.id,dueAt,items:[repeatedItem,{...repeatedItem,resourceId:' '+equipmentId+' '}]})});
+  response=await fetch(base+'/trips/equipment-rentals',{method:'POST',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({renterAccountId:renter.id,scheduledHandoverAt,dueAt,items:[repeatedItem,{...repeatedItem,resourceId:' '+equipmentId+' '}]})});
   if(response.status!==400)throw new Error('Duplicate serialized equipment must be rejected before creating a rental');
   const reservations=await db.$queryRaw`SELECT COUNT(*)::int AS count FROM "EquipmentRental" WHERE "renterAccountId"=${renter.id}`;
   if(reservations[0].count!==0)throw new Error('Duplicate equipment left a partial reservation');
@@ -92,14 +98,14 @@ try{
     record() { throw new Error('Synthetic reservation receipt failure'); }
   }, new NotificationsService(db));
   await assert.rejects(failingReservation.create(admin.id, {
-    renterAccountId: renter.id, dueAt, items: [repeatedItem]
+    renterAccountId: renter.id, scheduledHandoverAt, dueAt, items: [repeatedItem]
   }), /Synthetic reservation receipt failure/);
   const afterReceiptFailure = await db.$queryRaw`
     SELECT
       (SELECT COUNT(*)::int FROM "EquipmentRental" WHERE "renterAccountId"=${renter.id}) AS rentals,
       (SELECT COUNT(*)::int FROM "EquipmentRentalItem" WHERE "resourceId"=${equipmentId}) AS items`;
   assert.deepEqual(afterReceiptFailure, [{rentals: 0, items: 0}]);
-  response=await fetch(`${base}/trips/equipment-rentals`,{method:'POST',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({renterAccountId:renter.id,dueAt,items:[{resourceId:equipmentId,equipmentType:'BCD',size:'M',unitPriceSar:50}]})});
+  response=await fetch(`${base}/trips/equipment-rentals`,{method:'POST',headers:{...auth(adminToken),'content-type':'application/json'},body:JSON.stringify({renterAccountId:renter.id,scheduledHandoverAt,dueAt,items:[{resourceId:equipmentId,equipmentType:'BCD',size:'M',unitPriceSar:50}]})});
   let rental=await json(response);rentalId=rental.id;
   assert.equal(await db.auditEvent.count({
     where: { resourceId: rentalId, action: 'EQUIPMENT_RENTAL_RESERVED' }
@@ -115,7 +121,12 @@ try{
   response=await fetch(`${base}/trips/admin/equipment-rentals/${encodeURIComponent(rentalId)}/payment-confirmation`,{method:'POST',headers:auth(renterToken)});
   if(response.status!==403)throw new Error(`Non-admin payment confirmation expected 403, got ${response.status}`);
   response=await fetch(`${base}/trips/admin/equipment-rentals/${encodeURIComponent(rentalId)}/payment-confirmation`,{method:'POST',headers:auth(adminToken)});
-  if(response.status!==409)throw new Error(`Uninspected equipment payment expected 409 safety block, got ${response.status}`);
+  assert.equal(response.status,409,'Missing verified collection must reject an administrative PAID marker');
+  assert.equal((await response.json()).code,'RENTAL_COLLECTION_EVIDENCE_REQUIRED');
+  await collectionFor(rentalId);
+  response=await fetch(`${base}/trips/admin/equipment-rentals/${encodeURIComponent(rentalId)}/payment-confirmation`,{method:'POST',headers:auth(adminToken)});
+  assert.equal(response.status,409,'Valid collection cannot bypass the equipment safety check');
+  assert.match((await response.json()).message,/inspection|service policy/);
   const unpaid=await db.$queryRawUnsafe(`SELECT "paymentStatus" FROM "EquipmentRental" WHERE "id"=$1 LIMIT 1`,rentalId);
   if(unpaid[0]?.paymentStatus!=='PENDING')throw new Error('Blocked payment confirmation mutated rental payment state');
 
@@ -125,7 +136,7 @@ try{
 
   const book = () => fetch(base+'/trips/equipment-rentals', {
     method:'POST', headers:{...auth(adminToken),'content-type':'application/json'},
-    body: JSON.stringify({renterAccountId:renter.id, dueAt, items:[repeatedItem]})
+    body: JSON.stringify({renterAccountId:renter.id, scheduledHandoverAt, dueAt, items:[repeatedItem]})
   });
   const confirm=id=>fetch(base+'/trips/admin/equipment-rentals/'+encodeURIComponent(id)+'/payment-confirmation',{method:'POST',headers:auth(adminToken)});
   const mineById=id=>fetch(base+'/trips/equipment-rentals/'+id+'/mine',{headers:auth(renterToken)}).then(json);
@@ -162,6 +173,7 @@ try{
 
   // An unpaid older quote has no exclusive hold of its own.
   competingId=(await json(await book())).id;
+  await collectionFor(competingId);
   await db.$executeRaw`UPDATE "EquipmentRental" SET "holdExpiresAt"=NULL WHERE "id"=${competingId}`;
   await json(await allocate(during,[equipmentId]));
   assert.equal((await confirm(competingId)).status,409,'A legacy quote cannot be paid over a trip allocation');
@@ -169,6 +181,7 @@ try{
   assert.equal(await db.auditEvent.count({where:{resourceId:competingId,action:'EQUIPMENT_RENTAL_PAYMENT_CONFIRMED'}}),0);
   await json(await allocate(during,[]));
   rentalId=(await json(await book())).id;
+  await collectionFor(rentalId);
   assert.equal((await allocate(during,[equipmentId])).status,409);
   const attempts=await Promise.all([confirm(rentalId),confirm(competingId)]);
   assert.equal(attempts[0].ok,true);
@@ -340,15 +353,17 @@ try{
       name:'Multi-item return '+tag, serialNumber:'MULTI-'+tag+'-'+suffix, location:'WAREHOUSE-A'
     });
     extraAssets.push(registered.id);
+    await db.$executeRaw`UPDATE "EquipmentBarcode" SET "organizationId"=${during.organizationId} WHERE "resourceId"=${registered.id}`;
     passports.push(registered.passport);
     await post('/trips/admin/equipment/'+registered.id+'/inspections', {
       status:'PASS', serviceExpiresAt, notes:'Isolated multi-item return fixture'
     });
   }
   const multi = await post('/trips/equipment-rentals', {
-    renterAccountId:renter.id, dueAt, items:extraAssets.map(resourceId=>({resourceId,unitPriceSar:20}))
+    renterAccountId:renter.id, scheduledHandoverAt, dueAt, items:extraAssets.map(resourceId=>({resourceId,unitPriceSar:20}))
   });
   multiId=multi.id;
+  await collectionFor(multiId);
   await json(await confirm(multiId));
   await Promise.all(passports.map(passport=>post('/trips/admin/equipment-rentals/'+multiId+'/handover-scan',{code:passport.assetCode})));
   assert.equal(await db.auditEvent.count({where:{resourceId:multiId,action:'EQUIPMENT_RENTAL_ITEM_HANDED_OVER'}}),2);
@@ -365,6 +380,7 @@ try{
   assert.equal(await db.auditEvent.count({where:{resourceId:multiId,action:'EQUIPMENT_RENTAL_ITEM_RETURNED'}}),2);
   assert.equal(await db.auditEvent.count({where:{resourceId:multiId,action:'EQUIPMENT_RENTAL_RETURNED'}}),1);
   console.log('Calendar/rental acceptance passed across two center-owned trips: overlap, adjacency, concurrent claims, paid and expired holds, legacy confirmation, and extension rollback.');
+  console.log('Rental collection gate passed: missing receipt rejected; explicit synthetic provider binding and three-person posted financial evidence required. No provider money moved.');
   console.log('Equipment HTTP/DB E2E passed: admin isolation, registration, duplicate protection, safety gate, reservation ownership, staged payment/handover, handover audit/notification rollback, concurrent handover and return replay, extension, return intent, atomic return rollback, partial returns, quarantine and persistence.');
 } finally {
   const personIds=people.map(row=>row.id),accountIds=accounts.map(row=>row.id);
@@ -374,12 +390,13 @@ try{
     await db.calendarEvent.deleteMany({where:{referenceType:'TRIP',referenceId:{in:calendarTrips}}});
     await db.trip.deleteMany({where:{id:{in:calendarTrips}}});
   }
-  await db.organization.deleteMany({where:{id:{in:calendarCenters}}});
+  await cleanupSyntheticRentalCollections(db,collectionReceipts);
   for(const id of [rentalId,competingId,multiId,...holdFixtures].filter(Boolean))await db.auditEvent.deleteMany({where:{resourceId:id}}).catch(()=>{});
   for (const id of [equipmentId,...extraAssets].filter(Boolean)) await db.auditEvent.deleteMany({where:{resourceId:id}}).catch(()=>{});
   if(accountIds.length)await db.notification.deleteMany({where:{accountId:{in:accountIds}}}).catch(()=>{});
   for(const id of [rentalId,competingId,multiId,...holdFixtures].filter(Boolean)){await db.$executeRawUnsafe(`DELETE FROM "EquipmentRentalItem" WHERE "rentalId"=$1`,id).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "EquipmentRental" WHERE "id"=$1`,id).catch(()=>{})}
   for (const id of [equipmentId,...extraAssets].filter(Boolean)){await db.$executeRawUnsafe(`DELETE FROM "EquipmentInspection" WHERE "resourceId"=$1`,id).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "EquipmentMovement" WHERE "resourceId"=$1`,id).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "EquipmentBarcode" WHERE "resourceId"=$1`,id).catch(()=>{});await db.$executeRawUnsafe(`DELETE FROM "CalendarResource" WHERE "id"=$1`,id).catch(()=>{})}
+  await db.organization.deleteMany({where:{id:{in:calendarCenters}}});
   for(const account of accounts.reverse()){await db.roleAssignment.deleteMany({where:{accountId:account.id}}).catch(()=>{});await db.session.deleteMany({where:{accountId:account.id}}).catch(()=>{});await db.account.delete({where:{id:account.id}}).catch(()=>{})}
   for(const person of people.reverse())await db.person.delete({where:{id:person.id}}).catch(()=>{});
   await db.$disconnect();

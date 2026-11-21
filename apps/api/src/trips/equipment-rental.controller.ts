@@ -32,7 +32,7 @@ export class EquipmentRentalController{
 
   @UseGuards(AdminGuard)
   @Post()
-  create(@Req()req:{auth:{accountId:string}},@Body()body:{renterAccountId?:string;whatsappPhone?:string|null;dueAt?:string|null;items?:Array<{resourceId?:string;equipmentType?:string|null;size?:string|null;unitPriceSar?:number}>}){return this.rentals.create(req.auth.accountId,body);}
+  create(@Req()req:{auth:{accountId:string}},@Body()body:{renterAccountId?:string;whatsappPhone?:string|null;scheduledHandoverAt?:string|null;dueAt?:string|null;items?:Array<{resourceId?:string;equipmentType?:string|null;size?:string|null;unitPriceSar?:number}>}){return this.rentals.create(req.auth.accountId,body);}
 
   @UseGuards(AdminGuard)
   @Post(':id/paid')

@@ -1,6 +1,16 @@
 (()=>{
   // Only authored interface text is localized. Account and business values stay opaque.
   const uiLocale = window.HydrolandI18n?.createScope("bookings", {
+  "شروط الحجز والاسترداد": "Booking and refund conditions",
+  "رد كامل عند الإلغاء قبل الانطلاق بـ٤٨ ساعة أو أكثر. داخل آخر ٤٨ ساعة وقبل الانطلاق: خصم ٥٠٪. عدم الحضور بعد إغلاق الرحلة: لا استرداد، مع بقاء الحقوق النظامية المنطبقة.": "Full refund for cancellation at least 48 hours before departure. Within 48 hours and before departure: a 50% charge. No-show after trip closure: no refund, subject to applicable statutory rights.",
+  "اطلعت على شروط هذا الحجز وأوافق عليها": "I have read and accept the conditions for this booking",
+  "وافق على الشروط للمتابعة إلى الدفع": "Accept the conditions to continue to payment",
+  "الموافقة والمتابعة للدفع": "Accept and continue to payment",
+  "متابعة الحجز": "Continue booking",
+  "مقدم الخدمة": "Service provider",
+  "المبلغ الإجمالي": "Total amount",
+  "عدد المقاعد في هذا الحجز: {0}": "Seats in this booking: {0}",
+  "موعد الانطلاق الأصلي (بتوقيت السعودية، Asia/Riyadh): {0}": "Original departure (Saudi Arabia time, Asia/Riyadh): {0}",
   "مؤكد": "Confirmed",
   "تعذر تحميل الحجوزات": "Could not load bookings",
   "السعر لم يُعتمد بعد": "Price not yet approved",
@@ -48,6 +58,8 @@
   "جارٍ تحديث حالة الدفع والحجز…": "Refreshing payment and booking status…",
   "تم الدفع بنجاح": "Payment successful",
   "مسترد": "Refunded",
+  "استرداد جزئي": "Partially refunded",
+  "تم رد جزء من المبلغ. تظهر حالة الحجز مستقلة عن الاسترداد.": "Part of the payment was refunded. Booking status is shown separately from the refund.",
   "لم يكتمل الدفع": "Payment incomplete",
   "عملية الدفع ملغاة": "Payment cancelled",
   "قيد المعالجة": "Processing",
@@ -95,7 +107,7 @@
 
   const auth=()=>window.HydrolandAuth;
   const toast=message=>{const t=document.getElementById('toast');if(!t)return;uiLocale.setMessage(t, message);t.classList.add('visible');setTimeout(()=>t.classList.remove('visible'),2600)};
-  const state={trips:[],selected:null,pendingBooking:null,paymentReturnHandled:null,paymentId:null,publicStatus:'loading',filter:'all'};
+  const state={trips:[],selected:null,pendingBooking:null,pendingQuote:null,paymentReturnHandled:null,paymentId:null,publicStatus:'loading',filter:'all'};
   const normalize=value=>String(value||'').trim().toLowerCase();
   const locationText=trip=>{const location=trip?.location;if(location&&typeof location==='object')return String(location.locationName||trip?.siteName||trip?.meetingPoint||uiLocale.t('حسب بيانات الرحلة'));if(typeof location==='string'&&location.trim())return location;return trip?.siteName||trip?.meetingPoint||uiLocale.t('حسب بيانات الرحلة')};
   const request=async(path,options={})=>{
@@ -119,6 +131,24 @@
   };
   const bookingDialog=document.getElementById('booking-dialog');
   const confirm=document.getElementById('confirm-booking');
+  let checkoutIntentVersion=0,checkoutSessionVersion=auth()?.getSessionVersion?.();
+  const clearCheckoutIntent=()=>{
+    checkoutIntentVersion++;state.pendingBooking=null;state.pendingQuote=null;
+    bookingDialog?.querySelector('[data-checkout-terms]')?.remove();
+    if(confirm){confirm.disabled=false;uiLocale.setText(confirm,'متابعة الحجز');}
+  };
+  bookingDialog?.addEventListener('close',()=>{if(!bookingDialog.open)clearCheckoutIntent()});
+  document.addEventListener('hydroland:session-cleared',()=>{
+    clearCheckoutIntent();checkoutSessionVersion=auth()?.getSessionVersion?.();
+    if(bookingDialog?.open)bookingDialog.close();
+  });
+  document.addEventListener('hydroland:auth-changed',()=>{
+    const session=auth()?.getSessionVersion?.();
+    if(session!==checkoutSessionVersion||!auth()?.isAuthenticated?.()){
+      clearCheckoutIntent();if(bookingDialog?.open)bookingDialog.close();
+    }
+    checkoutSessionVersion=session;
+  });
   let seatsInput=document.getElementById('booking-seats');
   let priceText=document.getElementById('booking-price');
   if(bookingDialog&&confirm&&!seatsInput){
@@ -142,6 +172,7 @@
   const tripDate=trip=>{const date=new Date(trip.startsAt);return Number.isNaN(date.getTime())?uiLocale.t('الموعد من المشغّل'):date.toLocaleString('ar-SA',{dateStyle:'medium',timeStyle:'short'})};
   const publicCategory=trip=>{const type=String(trip.type||'').toUpperCase();return type.includes('SHORE')?'shore':type.includes('DIVE')?'dive':'marine'};
   const openBooking=async id=>{
+    clearCheckoutIntent();
     let trip=state.trips.find(item=>item.id===id);
     if(!trip){const trips=await loadTrips();trip=trips.find(item=>item.id===id)}
     if(!trip)return;
@@ -202,10 +233,38 @@
     catch{state.trips=[];state.publicStatus='error';renderPublicTrips([],true);bindButtons();return state.trips;}
     finally{document.dispatchEvent(new CustomEvent('hydroland:public-trips-updated'))}
   };
-  const startPayment=async booking=>{
+  const reviewPaymentTerms=quote=>{
+    let panel=bookingDialog?.querySelector('[data-checkout-terms]');
+    if(!panel&&bookingDialog&&confirm){panel=document.createElement('section');panel.dataset.checkoutTerms='';panel.setAttribute('aria-live','polite');confirm.parentNode.insertBefore(panel,confirm);}
+    if(!panel)return false;
+    if(panel.dataset.quoteHash!==quote.quoteHash){
+      panel.replaceChildren();panel.dataset.quoteHash=quote.quoteHash;
+      const heading=document.createElement('h3');uiLocale.setText(heading,'شروط الحجز والاسترداد');panel.append(heading);
+      const supplier=document.createElement('p');supplier.textContent=`${uiLocale.t('مقدم الخدمة')}: ${quote.snapshot?.issuer?.legalName||quote.snapshot?.issuer?.displayName||'—'}`;panel.append(supplier);
+      const total=document.createElement('p');total.textContent=`${uiLocale.t('المبلغ الإجمالي')}: ${(Number(quote.snapshot?.amountMinor)/100).toLocaleString('ar-SA',{minimumFractionDigits:2,maximumFractionDigits:2})} ${quote.snapshot?.currency||''}`;panel.append(total);
+      const quantity=document.createElement('p');quantity.dataset.checkoutQuantity='';panel.append(quantity);
+      const departure=document.createElement('p');departure.dataset.checkoutDeparture='';panel.append(departure);
+      const terms=document.createElement('p');uiLocale.setText(terms,'رد كامل عند الإلغاء قبل الانطلاق بـ٤٨ ساعة أو أكثر. داخل آخر ٤٨ ساعة وقبل الانطلاق: خصم ٥٠٪. عدم الحضور بعد إغلاق الرحلة: لا استرداد، مع بقاء الحقوق النظامية المنطبقة.');panel.append(terms);
+      const label=document.createElement('label'),checkbox=document.createElement('input'),caption=document.createElement('span');checkbox.type='checkbox';checkbox.dataset.acceptCheckoutTerms='';uiLocale.setText(caption,'اطلعت على شروط هذا الحجز وأوافق عليها');label.append(checkbox,caption);panel.append(label);checkbox.focus();
+    }
+    const quantity=quote.snapshot?.quantity,departure=new Date(quote.snapshot?.originalSchedule?.startsAt||'');
+    const locale=window.HydrolandI18n?.getLocale?.()==='en'?'en-GB':'ar-SA-u-ca-gregory';
+    const when=Number.isFinite(departure.getTime())?new Intl.DateTimeFormat(locale,{timeZone:'Asia/Riyadh',dateStyle:'medium',timeStyle:'short'}).format(departure):'—';
+    uiLocale.setText(panel.querySelector('[data-checkout-quantity]'),'عدد المقاعد في هذا الحجز: {0}',[Number.isSafeInteger(quantity)&&quantity>0?quantity:'—']);
+    uiLocale.setText(panel.querySelector('[data-checkout-departure]'),'موعد الانطلاق الأصلي (بتوقيت السعودية، Asia/Riyadh): {0}',[when]);
+    return panel.querySelector('[data-accept-checkout-terms]')?.checked===true;
+  };
+  document.addEventListener('hydroland:locale-changed',()=>{if(state.pendingQuote&&bookingDialog?.open)reviewPaymentTerms(state.pendingQuote)});
+  const startPayment=async(booking,current)=>{
+    if(!current())return{cancelled:true};
     const price=booking?.price||state.selected?.price;
     if(price?.configured===true&&Number(price.pricePerSeatMinor)===0){state.pendingBooking=null;toast(uiLocale.message('تم إنشاء الحجز المجاني بنجاح'));return{bypassed:true};}
-    const payment=await request('/payments',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bookingId:booking.id,idempotencyKey:`booking:${booking.id}`})});
+    const quote=await request(`/payments/bookings/${encodeURIComponent(booking.id)}/quote`,{method:'GET'});
+    if(!current())return{cancelled:true};
+    state.pendingQuote={...quote,bookingId:booking.id};
+    if(!reviewPaymentTerms(quote)){toast(uiLocale.message('وافق على الشروط للمتابعة إلى الدفع'));return{requiresTerms:true};}
+    const payment=await request('/payments',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bookingId:booking.id,idempotencyKey:`booking:${booking.id}`,policyAcceptance:{version:quote.policyVersion,quoteHash:quote.quoteHash}})});
+    if(!current())return{cancelled:true};
     if(payment?.status==='BYPASSED'||payment?.provider==='BYPASSED'||payment?.provider==='FREE_TRIP'){state.pendingBooking=null;toast(uiLocale.message('تم إنشاء الحجز بنجاح'));return{bypassed:true};}
     if(typeof payment?.checkoutUrl!=='string'||!payment.checkoutUrl)throw localError('تم حفظ الحجز لكن لم يتم تجهيز رابط الدفع');
     let checkout;try{checkout=new URL(payment.checkoutUrl);}catch{throw localError('رابط الدفع غير صالح');}
@@ -257,12 +316,15 @@
       try{const rows=await request('/trips/bookings/mine',{method:'GET'});if(Array.isArray(rows))booking=rows.find(row=>row?.id===payment.bookingId)||null}catch{}
       if(!current())return;
       const paymentLabels={CAPTURED:'تم الدفع بنجاح',REFUNDED:'مسترد',FAILED:'لم يكتمل الدفع',CANCELLED:'عملية الدفع ملغاة',CREATED:'قيد المعالجة',PENDING:'قيد المعالجة',AUTHORIZED:'محجوز ماليًا — لم يُحصّل'};
+      const partialRefund=Number.isSafeInteger(payment.refundedAmountMinor)&&payment.refundedAmountMinor>0&&payment.refundedAmountMinor<payment.amountMinor;
+      if(partialRefund)paymentLabels.CAPTURED='استرداد جزئي';
       const bookingLabels={PENDING:'بانتظار تأكيد المشغّل',CONFIRMED:'مؤكد',CANCELLED:'ملغى'};
       uiLocale.setMessage(field('state'), ((value=>value?uiLocale.message(value):value)(paymentLabels[payment.status]) || uiLocale.message('حالة غير معروفة')));
       uiLocale.setMessage(field('booking-state'), ((value=>value?uiLocale.message(value):value)(bookingLabels[booking?.status]) || uiLocale.message('تعذر التحقق من حالة الحجز')));
       field('trip').textContent=typeof booking?.trip?.title==='string'?booking.trip.title:'';
       let message;
-      if(payment.status==='CAPTURED'){
+      if(partialRefund){message=uiLocale.message('تم رد جزء من المبلغ. تظهر حالة الحجز مستقلة عن الاسترداد.');uiLocale.setMessage(field('next-step'),uiLocale.message('حدّث الحالة أو راجع المشغّل، ولا تكرر الدفع.'));}
+      else if(payment.status==='CAPTURED'){
         message=(booking?.status==='PENDING'?uiLocale.message('تم الدفع بنجاح، وحجزك بانتظار تأكيد المشغّل.'):(booking?.status==='CONFIRMED'?uiLocale.message('تم الدفع بنجاح، وحجزك مؤكد.'):(booking?.status==='CANCELLED'?uiLocale.message('تم الدفع بنجاح، لكن الحجز ملغى.'):uiLocale.message('تم الدفع بنجاح. تعذر التحقق من حالة الحجز.'))));
         uiLocale.setMessage(field('next-step'), (booking?.status==='PENDING'?uiLocale.message('يراجع المشغّل متطلبات الحجز ثم يؤكده. يمكنك تحديث الحالة هنا دون تكرار الدفع.'):(booking?.status==='CANCELLED'?uiLocale.message('راجع المشغّل لمتابعة المبلغ المدفوع؛ إلغاء الحجز لا يعني استرداده تلقائيًا.'):(booking?.status==='CONFIRMED'?uiLocale.message('يمكنك متابعة تفاصيل الرحلة من حجوزاتي.'):uiLocale.message('حدّث الحالة أو راجع المشغّل، ولا تكرر الدفع.')))));
       }else{
@@ -288,13 +350,14 @@
   setTimeout(()=>void reconcilePaymentReturn(),0);
   document.addEventListener('click',event=>{
     const button=event.target.closest?.('[data-book]');if(!button||button.disabled)return;
-    const apply=trip=>{if(!trip)return false;state.selected=trip;state.pendingBooking=null;button.dataset.tripId=trip.id;syncBookingDetails(trip);queueMicrotask(()=>syncBookingDetails(trip));return true};
+    const apply=trip=>{if(!trip)return false;clearCheckoutIntent();state.selected=trip;button.dataset.tripId=trip.id;syncBookingDetails(trip);queueMicrotask(()=>syncBookingDetails(trip));return true};
     if(apply(tripForButton(button)))return;
     state.selected=null;state.pendingBooking=null;syncSeats(null);
     void loadTrips().then(()=>{const trip=tripForButton(button);if(trip)apply(trip)});
   },true);
   if(confirm){confirm.addEventListener('click',async event=>{
     event.preventDefault();event.stopImmediatePropagation();
+    if(confirm.disabled||!bookingDialog?.open||!bookingDialog.isConnected)return;
     if(!auth()?.isAuthenticated?.()){toast(uiLocale.message('سجّل الدخول أولًا لإتمام الحجز'));return;}
     const title=document.getElementById('booking-title')?.textContent||'';
     const trip=state.selected||state.trips.find(item=>normalize(item.title)===normalize(title));
@@ -303,21 +366,27 @@
     const seats=Number(seatsInput?.value||1),remaining=Number(trip.remainingSeats??trip.capacity??0);
     if(!Number.isInteger(seats)||seats<1){toast(uiLocale.message('اختر عدد مقاعد صحيح'));seatsInput?.focus();return;}
     if(!['DISABLED','REVIEW'].includes(trip.bookingPolicy?.capacityLimit)&&remaining>0&&seats>remaining){toast(uiLocale.message("المتاح حاليًا {0} مقعد فقط", [remaining]));seatsInput?.focus();return;}
+    state.selected=trip;
+    const intent=++checkoutIntentVersion,session=auth()?.getSessionVersion?.();
+    const current=()=>intent===checkoutIntentVersion&&session===auth()?.getSessionVersion?.()
+      &&auth()?.isAuthenticated?.()&&bookingDialog.isConnected&&bookingDialog.open&&state.selected?.id===trip.id;
     confirm.disabled=true;const original=confirm.textContent;
     try{
       let booking=state.pendingBooking&&state.pendingBooking.tripId===trip.id?state.pendingBooking:null;
       if(!booking){
         uiLocale.setMessage(confirm, uiLocale.message('جارٍ حفظ الحجز...'));
         booking=await request(`/trips/${encodeURIComponent(trip.id)}/bookings`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seats})});
+        if(!current())return;
         state.pendingBooking=booking;
         window.dispatchEvent(new CustomEvent('hydroland:booking-created',{detail:booking}));
       }
       if(booking?.price?.configured===true&&Number(booking.price.pricePerSeatMinor)===0){bookingDialog?.close();state.pendingBooking=null;if(seatsInput)seatsInput.value='1';toast(uiLocale.message('تم إنشاء الحجز المجاني بنجاح'));return;}
       uiLocale.setMessage(confirm, uiLocale.message('جارٍ تجهيز الدفع الآمن...'));
-      const result=await startPayment(booking);
+      const result=await startPayment(booking,current);
+      if(!current())return;
       if(result?.bypassed){bookingDialog?.close();if(seatsInput)seatsInput.value='1';}
-    }catch(error){toast(localErrorMessage((error instanceof Error?error:undefined), 'تعذر إتمام الحجز والدفع'));}
-    finally{confirm.disabled=false;confirm.textContent=original;}
+    }catch(error){if(current())toast(localErrorMessage((error instanceof Error?error:undefined), 'تعذر إتمام الحجز والدفع'));}
+    finally{if(current()){confirm.disabled=false;if(state.pendingQuote)uiLocale.setText(confirm,'الموافقة والمتابعة للدفع');else confirm.textContent=original;}}
   },true);}
   const nextTripButton=document.querySelector('[data-hl-action="trip"]');
   if(nextTripButton){nextTripButton.addEventListener('click',async event=>{

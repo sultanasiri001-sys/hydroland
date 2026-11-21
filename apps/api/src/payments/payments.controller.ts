@@ -1,15 +1,19 @@
 import { Body,Controller,Get,Param,Post,Req,UseGuards } from '@nestjs/common';
 import { AccessTokenGuard } from '../auth/access-token.guard';
+import { PaymentContractService } from '../commerce/payment-contract.service';
 import { PaymentsService } from './payments.service';
 
 @UseGuards(AccessTokenGuard)
 @Controller('payments')
 export class PaymentsController {
-  constructor(private readonly s:PaymentsService){}
+  constructor(private readonly s:PaymentsService,private readonly contracts:PaymentContractService){}
+
+  @Get('bookings/:id/quote')
+  quote(@Req() request:{auth:{accountId:string}},@Param('id') id:string){return this.contracts.quote(request.auth.accountId,id)}
 
   @Post()
-  create(@Req() request: { auth: { accountId: string } }, @Body() body: { bookingId: string; idempotencyKey: string }) {
-    return this.s.create(request.auth.accountId, { bookingId: body?.bookingId, idempotencyKey: body?.idempotencyKey });
+  create(@Req() request: { auth: { accountId: string } }, @Body() body: { bookingId: string; idempotencyKey: string; policyAcceptance?:{version?:string;quoteHash?:string} }) {
+    return this.s.create(request.auth.accountId, { bookingId: body?.bookingId, idempotencyKey: body?.idempotencyKey, policyAcceptance:body?.policyAcceptance });
   }
 
   @Post(':id/refresh')

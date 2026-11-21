@@ -133,7 +133,7 @@ test('cancellation replay restores stock only once', async () => {
 });
 function courseFixture({ existing = null, count = 0, capacity = 1, disabled = false, active = true } = {}) {
   const saved = [], audits = [];
-  const course = { id: 'course-1', organizationId: 'center-1', courseCode: 'SAFE-TEST', title: 'Offline fixture', priceMinor: 39000, currency: 'SAR', startsAt: new Date('2099-01-01T00:00:00Z'), endsAt: new Date('2099-01-01T02:00:00Z'), locationName: 'Offline', capacity };
+  const course = { id: 'course-1', organizationId: 'center-1', organization: { id: 'center-1', displayName: 'Offline center', legalName: null, registrationNumber: null, address: null }, courseCode: 'SAFE-TEST', title: 'Offline fixture', priceMinor: 39000, currency: 'SAR', startsAt: new Date('2099-01-01T00:00:00Z'), endsAt: new Date('2099-01-01T02:00:00Z'), locationName: 'Offline', capacity };
   const tx = { account: { findFirst: async () => active ? { id: 'buyer' } : null }, storeCourseOffer: { findFirst: async () => course }, trainingEnrollment: { findFirst: async () => existing, count: async () => count, create: async ({ data }) => { const row = { id: 'enrollment-1', ...data }; saved.push(row); return row; } }, $queryRaw: async () => disabled ? [{ ruleKey: 'CAPACITY_LIMIT', state: 'DISABLED' }] : [], auditEvent: { create: async ({ data }) => { audits.push(data); return data; } } };
   return { saved, audits, course, service: new StoreOfferingsService({ serializable: work => work(tx) }) };
 }

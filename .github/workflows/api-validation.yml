@@ -149,6 +149,54 @@ jobs:
       - run: npm run validate:integrations -w @hydroland/api
       - run: npm run typecheck --workspace=@hydroland/api
       - run: npm run build --workspace=@hydroland/api
+      - name: Commerce original terms, refund boundaries and provider operations
+        run: |
+          node --test apps/api/scripts/commerce-refund-policy.test.cjs apps/api/scripts/commerce-contract-snapshot.test.cjs apps/api/scripts/trip-booking-contract.test.cjs apps/api/scripts/trip-payment-confirmation.test.cjs apps/api/scripts/center-service-entitlement.test.cjs apps/api/scripts/moyasar-refund-provider-validation.cjs
+      - name: Commerce financial migration and actual PostgreSQL refund execution
+        env:
+          NODE_ENV: test
+          COMMERCE_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+        run: |
+          psql postgresql://hydroland:hydroland@localhost:5433/hydroland -v ON_ERROR_STOP=1 -c 'CREATE DATABASE commerce_test_operations'
+          export DATABASE_URL=postgresql://hydroland:hydroland@localhost:5433/commerce_test_operations
+          npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+          node apps/api/scripts/bootstrap-equipment-runtime-schema.mjs
+          node apps/api/scripts/bootstrap-trip-weather-runtime-schema.mjs
+          node apps/api/scripts/bootstrap-messaging-runtime-schema.mjs
+          node apps/api/scripts/commerce-financial-migration.test.mjs
+          node apps/api/scripts/commerce-contract-snapshot-db-checks.cjs
+          node apps/api/scripts/commerce-refund-execution-db-checks.cjs
+          node apps/api/scripts/rental-collection-evidence-validation.mjs
+          node apps/api/scripts/rental-center-scope-bootstrap-validation.mjs
+          node apps/api/scripts/rental-checkout-collection-validation.mjs
+          node apps/api/scripts/center-service-entitlement-db-checks.cjs
+      - name: Original booking terms and payment capture through real HTTP routes
+        env:
+          NODE_ENV: test
+          TZ: Asia/Riyadh
+          PORT: 3115
+          DATABASE_URL: postgresql://hydroland:hydroland@localhost:5433/commerce_test_checkout
+          JWT_SECRET: disposable-SYNTHETIC-checkout-acceptance-secret
+          WEB_ORIGIN: http://127.0.0.1:4315
+          HYDROLAND_PUBLIC_WEB_ORIGIN: http://127.0.0.1:4315
+          COMMERCE_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+          COMMERCE_CHECKOUT_E2E_BASE_URL: http://127.0.0.1:3115/api/v1
+          HYDROLAND_INTEGRATION_PAYMENT_PSP_STATUS: SANDBOX
+          HYDROLAND_PAYMENT_PROVIDER: MOYASAR
+          MOYASAR_SECRET_KEY: sk_test_SYNTHETIC_LOCAL_CHECKOUT_ONLY
+          MOYASAR_WEBHOOK_SECRET: whsec_SYNTHETIC_LOCAL_CHECKOUT_ONLY
+          MOYASAR_API_BASE_URL: http://127.0.0.1:3198/v1/
+        run: |
+          psql postgresql://hydroland:hydroland@localhost:5433/hydroland -v ON_ERROR_STOP=1 -c 'CREATE DATABASE commerce_test_checkout'
+          npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+          node apps/api/scripts/bootstrap-equipment-runtime-schema.mjs
+          node apps/api/scripts/bootstrap-trip-weather-runtime-schema.mjs
+          node apps/api/scripts/bootstrap-messaging-runtime-schema.mjs
+          node apps/api/dist/main.js > "$RUNNER_TEMP/commerce-checkout-api.log" 2>&1 &
+          commerce_api_pid=$!
+          trap 'kill "$commerce_api_pid" 2>/dev/null || true; wait "$commerce_api_pid" 2>/dev/null || true' EXIT
+          curl --fail --silent --retry 30 --retry-connrefused --retry-delay 1 "$COMMERCE_CHECKOUT_E2E_BASE_URL/health/ready" > /dev/null
+          node apps/api/scripts/commerce-checkout-http-e2e.mjs
       - name: Verify independent Render provider observations in isolated PostgreSQL
         env:
           A06_DB_TEST: DISPOSABLE_LOOPBACK

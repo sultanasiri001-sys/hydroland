@@ -1,3 +1,9 @@
+import {PaymentContractService} from '../commerce/payment-contract.service';
+import {PaymentRefundExecutionService} from './payment-refund-execution.service';
+import {PaymentRefundExecutionController} from './payment-refund-execution.controller';
+import {FinanceOperationGrantService} from '../finance/finance-operation-grant.service';
+import {RentalCheckoutService} from './rental-checkout.service';
+import {RentalCheckoutController} from './rental-checkout.controller';
 import {Module} from '@nestjs/common';
 import {AdminModule} from '../admin/admin.module';
 import {AuditModule} from '../audit/audit.module';
@@ -10,5 +16,5 @@ import {SettlementReadinessController} from './settlement-readiness.controller';
 import {PaymentsService} from './payments.service';
 import {MoyasarPaymentProviderService} from './moyasar-payment-provider.service';
 import {MoyasarSettlementProviderService} from './moyasar-settlement-provider.service';
-@Module({imports:[AdminModule,AuthModule,AuditModule,TripsModule,IntegrationModule],controllers:[PaymentsController,PaymentsWebhookController,SettlementReadinessController],providers:[PaymentsService,MoyasarPaymentProviderService,MoyasarSettlementProviderService],exports:[PaymentsService,MoyasarPaymentProviderService,MoyasarSettlementProviderService]})
+@Module({imports:[AdminModule,AuthModule,AuditModule,TripsModule,IntegrationModule],controllers:[PaymentRefundExecutionController,RentalCheckoutController,PaymentsController,PaymentsWebhookController,SettlementReadinessController],providers:[PaymentContractService,PaymentRefundExecutionService,FinanceOperationGrantService,RentalCheckoutService,PaymentsService,MoyasarPaymentProviderService,MoyasarSettlementProviderService],exports:[PaymentsService,MoyasarPaymentProviderService,MoyasarSettlementProviderService]})
 export class PaymentsModule {}

@@ -4,7 +4,9 @@ import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 import { PolicyControlService } from '../trips/policy-control.service';
 import { IntegrationService } from '../integrations/integration.service';
+import { PaymentContractService } from '../commerce/payment-contract.service';
 import { MoyasarInvoice, MoyasarPaymentProviderService } from './moyasar-payment-provider.service';
+import { RentalCheckoutService } from './rental-checkout.service';
 
 type PaymentWithInvoice={
   id:string;
@@ -30,28 +32,35 @@ export class PaymentsService {
     private readonly audit:AuditService,
     private readonly integrations:IntegrationService,
     private readonly moyasar:MoyasarPaymentProviderService,
+    private readonly contracts:PaymentContractService = new PaymentContractService(db),
+    private readonly rentalCheckouts?:RentalCheckoutService,
   ){}
 
-  async create(accountId:string,input:{bookingId:string;idempotencyKey:string}){
+  async create(accountId:string,input:{bookingId:string;idempotencyKey:string;policyAcceptance?:{version?:string;quoteHash?:string}}){
     if(typeof input?.bookingId!=='string'||!input.bookingId.trim()||typeof input.idempotencyKey!=='string'||!input.idempotencyKey.trim())throw new BadRequestException('Invalid payment.');
     const paymentPolicy=await this.policies.decision('PAYMENT','PAYMENT_REQUIRED');
     const booking=await this.db.booking.findFirst({where:{id:input.bookingId,accountId,organizationId:null},include:{trip:true}});
     if(!booking)throw new NotFoundException('Booking not found.');
     if(booking.status==='CANCELLED')throw new ConflictException('Cancelled booking cannot create a payment.');
     if(paymentPolicy.bypass)return{bookingId:booking.id,status:'BYPASSED',provider:'BYPASSED',policyReview:{required:false,issues:[],states:{payment:paymentPolicy.state}}};
-    const pricing=await this.tripPrice(booking.tripId);
+    const savedContract=booking.contractSnapshot&&typeof booking.contractSnapshot==='object'&&!Array.isArray(booking.contractSnapshot)?booking.contractSnapshot as Record<string,unknown>:null;
+    const pricing=savedContract&&typeof savedContract.unitPriceMinor==='number'&&typeof savedContract.currency==='string'?{pricePerSeatMinor:savedContract.unitPriceMinor,currency:savedContract.currency}:await this.tripPrice(booking.tripId);
     if(!pricing)throw new ConflictException('Trip price is not configured.');
     if(pricing.currency!=='SAR')throw new ConflictException('Trip payment currency is not supported.');
     const amountMinor=pricing.pricePerSeatMinor*booking.seats;
     if(!Number.isSafeInteger(amountMinor)||amountMinor<0)throw new ConflictException('Trip payment amount is invalid.');
+    const originalContract=booking.contractSnapshot!==null&&booking.contractSnapshot!==undefined
+      ?this.contracts.buildTrip(booking,pricing.pricePerSeatMinor,pricing.currency):null;
     if(amountMinor===0)return{bookingId:booking.id,status:'BYPASSED',provider:'FREE_TRIP',amountMinor:0,currency:pricing.currency,policyReview:{required:false,issues:[],states:{payment:paymentPolicy.state}}};
     if(amountMinor<100)throw new ConflictException('Trip payment amount is below the provider minimum.');
     const idempotencyKey=input.idempotencyKey.trim();
     const existing=await this.db.payment.findUnique({where:{idempotencyKey}});
     if(existing&&existing.accountId!==accountId)throw new ConflictException('Idempotency key already belongs to another payment.');
     if(existing&&(existing.bookingId!==input.bookingId||existing.amountMinor!==amountMinor||existing.currency!==pricing.currency))throw new ConflictException('Idempotency key cannot be reused with different payment details.');
+    if(originalContract&&!existing&&!input.policyAcceptance)throw new ConflictException({code:'PAYMENT_TERMS_ACCEPTANCE_REQUIRED',message:'Review and accept the booking conditions before checkout.'});
+    const contractSnapshot=originalContract?this.contracts.accepted(originalContract,input.policyAcceptance):null;
     this.integrations.requireOperational('PAYMENT_PSP',{allowSandbox:true});
-    let payment=await this.db.payment.upsert({where:{idempotencyKey},create:{bookingId:input.bookingId,amountMinor,currency:pricing.currency,idempotencyKey,accountId,status:'CREATED'},update:{}});
+    let payment=await this.db.payment.upsert({where:{idempotencyKey},create:{bookingId:input.bookingId,amountMinor,currency:pricing.currency,idempotencyKey,accountId,status:'CREATED',...(contractSnapshot?{contractSnapshot:contractSnapshot as Prisma.InputJsonValue}:{})},update:{}});
     // Another request can claim the key after the lookup. Validate the persisted
     // winner before attributing an audit or creating/fetching its provider invoice.
     if(payment.accountId!==accountId)throw new ConflictException('Idempotency key already belongs to another payment.');
@@ -71,6 +80,11 @@ export class PaymentsService {
         payment=await this.db.payment.findUniqueOrThrow({where:{id:payment.id}});
         await this.audit.record({action:'PAYMENT_CHECKOUT_CREATED',resource:'Payment',resourceId:payment.id,metadata:{accountId,bookingId:payment.bookingId,provider:'MOYASAR',providerReference:providerInvoice.id,status:payment.status}});
         await this.syncMoyasarPaymentId(payment.id,providerInvoice);
+        payment=await this.db.serializable(async tx=>{
+          const current=await tx.payment.findUniqueOrThrow({where:{id:payment.id}});
+          await this.contracts.recordInvoiceSnapshot(current,tx);
+          return current;
+        });
       }else{
         await this.moyasar.cancelInvoice(providerInvoice.id);
         payment=await this.db.payment.findUniqueOrThrow({where:{id:payment.id}});
@@ -101,6 +115,8 @@ export class PaymentsService {
     if(duplicate)return{accepted:true,duplicate:true};
     const payment=await this.db.payment.findUnique({where:{providerReference:invoiceId}});
     if(!payment){
+      const rental=await this.rentalCheckouts?.handleVerifiedProviderEvent(event);
+      if(rental?.handled)return{accepted:true,matched:true,sourceType:'EQUIPMENT_RENTAL',...rental};
       return this.db.serializable(async tx=>{
         const repeated=await tx.auditEvent.findFirst({where:{resource:'PaymentProviderWebhook',resourceId:event.id},select:{id:true}});
         if(repeated)return{accepted:true,duplicate:true};
@@ -112,13 +128,14 @@ export class PaymentsService {
     }
     const providerInvoice=await this.moyasar.fetchInvoice(invoiceId);
     this.assertProviderInvoice(payment,providerInvoice);
-    const next=this.statusFromInvoice(providerInvoice.status);
+    const next=this.statusFromInvoice(providerInvoice.status,payment);
     return this.db.serializable(async tx=>{
       const repeated=await tx.auditEvent.findFirst({where:{resource:'PaymentProviderWebhook',resourceId:event.id},select:{id:true}});
       if(repeated)return{accepted:true,duplicate:true};
       const current=await this.requireReconciliationSnapshot(payment,providerInvoice,tx);
       await this.syncMoyasarPaymentId(current.id,providerInvoice,tx);
-      if(next!==current.status)await tx.payment.update({where:{id:current.id},data:{status:next}});
+      const reconciled=next!==current.status?await tx.payment.update({where:{id:current.id},data:{status:next}}):current;
+      await this.contracts.recordInvoiceSnapshot(reconciled,tx);
       await tx.auditEvent.create({data:{action:'PAYMENT_PROVIDER_WEBHOOK_PROCESSED',resource:'PaymentProviderWebhook',resourceId:event.id,metadata:{provider:'MOYASAR',type:event.type,paymentId:current.id,invoiceId,from:current.status,to:next,providerStatus:providerInvoice.status,live:event.live,providerVerified:true}}});
       return{accepted:true,matched:true,paymentId:current.id,status:next};
     });
@@ -153,14 +170,15 @@ export class PaymentsService {
       });
       if (recent) throw new ConflictException('A refund request was already submitted recently.');
       const policy = await this.policies.decision('PAYMENT', 'REFUND_REVIEW', tx);
+      const policyDecision=await this.contracts.refundDecision(payment,new Date(),tx);
       const event = await this.audit.record({ ...receipt, metadata: {
         accountId, bookingId: payment.bookingId, amountMinor: payment.amountMinor, requestedAmountMinor,
         currency: payment.currency, paymentStatus: payment.status, reason: reason.trim(),
-        provider: 'MOYASAR', policyState: policy.state, financialActionExecuted: false,
+        provider: 'MOYASAR', policyState: policy.state, financialActionExecuted: false, policyDecision,
       } }, tx);
       return {
         paymentId, status: 'REFUND_REQUESTED', requestedAmountMinor, currency: payment.currency,
-        financialActionExecuted: false, provider: 'MOYASAR', auditEventId: event.id,
+        financialActionExecuted: false, provider: 'MOYASAR', auditEventId: event.id, policyDecision,
         policyReview: { required: !policy.bypass, reviewRequired: policy.review, enforced: policy.enforce, states: { refund: policy.state } },
       };
     });
@@ -204,9 +222,10 @@ export class PaymentsService {
     return this.db.serializable(async tx=>{
       const current=await this.requireReconciliationSnapshot(snapshot,invoice,tx);
       await this.syncMoyasarPaymentId(current.id,invoice,tx);
-      const status=this.statusFromInvoice(invoice.status);
+      const status=this.statusFromInvoice(invoice.status,current);
       const updated=status===current.status?current:await tx.payment.update({where:{id:current.id},data:{status}});
       if(status!==current.status)await this.audit.record({action:'PAYMENT_PROVIDER_RECONCILED',resource:'Payment',resourceId:current.id,metadata:{accountId:current.accountId,provider:'MOYASAR',providerReference:current.providerReference,from:current.status,to:status,providerStatus:invoice.status}},tx);
+      await this.contracts.recordInvoiceSnapshot(updated,tx);
       return updated;
     });
   }
@@ -228,5 +247,12 @@ export class PaymentsService {
       throw error;
     }
   }
-  private statusFromInvoice(status:string):PaymentStatus{switch(status){case'paid':return PaymentStatus.CAPTURED;case'refunded':return PaymentStatus.REFUNDED;case'failed':return PaymentStatus.FAILED;case'canceled':case'voided':case'expired':return PaymentStatus.CANCELLED;case'on_hold':case'initiated':default:return PaymentStatus.PENDING}}
+  private statusFromInvoice(status:string,payment?:{amountMinor:number;refundedAmountMinor?:number;status?:string}):PaymentStatus{
+    const refunded=payment?.refundedAmountMinor??0;
+    // A later invoice summary cannot undo a previously observed refund. A
+    // cumulative provider total without operation attribution stays reviewable.
+    if(payment?.status==='REFUNDED')return PaymentStatus.REFUNDED;
+    if(refunded>0&&payment&&refunded===payment.amountMinor)return PaymentStatus.REFUNDED;
+    if(refunded>0&&status==='refunded')return PaymentStatus.CAPTURED;
+    switch(status){case'paid':return PaymentStatus.CAPTURED;case'refunded':return PaymentStatus.REFUNDED;case'failed':return PaymentStatus.FAILED;case'canceled':case'voided':case'expired':return PaymentStatus.CANCELLED;case'on_hold':case'initiated':default:return PaymentStatus.PENDING}}
 }
