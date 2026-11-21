@@ -4,8 +4,10 @@ import { platformOrganization } from '../hr/staffing-catalog';
 
 const object = (value: unknown): Record<string, any> | null => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : null;
 
+export const BOOKING_PREPAYMENT_OPERATION = 'INITIATE_ORGANIZATION_BOOKING_PREPAYMENT';
+
 /** Rechecked under row locks at both reservation and financial dispatch. */
-export async function requireFinancialOperationMandate(tx: Prisma.TransactionClient, accountId: string, organizationId: string, operation: string, amountMinor: number, currency: string) {
+async function currentMandate(tx: Prisma.TransactionClient, accountId: string, organizationId: string, operation: string, amountMinor: number, currency: string) {
     const now = new Date();
     await tx.$queryRaw`SELECT "id" FROM "Account" WHERE "id"::text=${accountId} FOR SHARE`;
     const account = await tx.account.findFirst({ where: { id: accountId, status: 'ACTIVE' }, select: { id: true, personId: true } });
@@ -28,5 +30,28 @@ export async function requireFinancialOperationMandate(tx: Prisma.TransactionCli
     const approved = object(evidence?.metadata);
     if (!approved || approved.accountId !== accountId || approved.organizationId !== organizationId || approved.operation !== operation
       || approved.currency !== currency || approved.limitMinor !== fresh.limitMinor || approved.validFrom !== fresh.validFrom.toISOString() || approved.validUntil !== fresh.validUntil.toISOString()) throw new ForbiddenException('Financial mandate approval evidence does not match.');
-    return account;
+    if (operation === BOOKING_PREPAYMENT_OPERATION) {
+      const member = await tx.organizationMember.findFirst({ where: { organizationId, accountId, status: 'ACTIVE', organization: { status: 'ACTIVE' } }, select: { id: true } });
+      if (approved.documentId !== fresh.id || !Number.isSafeInteger(approved.documentVersion) || typeof approved.documentHash !== 'string'
+        || !approved.documentHash.trim()) throw new ForbiddenException('The signed appointment reference is incomplete.');
+      const document = await tx.managedDocument.findFirst({
+        where: { id: approved.documentId, organizationId, version: approved.documentVersion, contentHash: approved.documentHash,
+          signedAt: { not: null }, status: { in: ['SIGNED', 'ARCHIVED'] } }, select: { id: true, payload: true },
+      });
+      const terms = object(document && document.payload);
+      if (!member || !document || terms?.purpose !== 'ORGANIZATION_BOOKING_PREPAYMENT' || terms.decision !== 'APPOINT'
+        || terms.delegateAccountId !== accountId || terms.currency !== currency || terms.limitMinor !== fresh.limitMinor
+        || Date.parse(terms.validFrom) !== fresh.validFrom.getTime() || Date.parse(terms.validUntil) !== fresh.validUntil.getTime()) {
+        throw new ForbiddenException('Organization membership or signed appointment no longer matches the financial mandate.');
+      }
+    }
+    return { account, grantId: fresh.id, approvalEvidenceReference: fresh.approvalEvidenceReference };
   }
+
+export async function requireFinancialOperationMandate(tx: Prisma.TransactionClient, accountId: string, organizationId: string, operation: string, amountMinor: number, currency: string) {
+  return (await currentMandate(tx, accountId, organizationId, operation, amountMinor, currency)).account;
+}
+
+export function requireBookingPrepaymentMandate(tx: Prisma.TransactionClient, accountId: string, organizationId: string, amountMinor: number) {
+  return currentMandate(tx, accountId, organizationId, BOOKING_PREPAYMENT_OPERATION, amountMinor, 'SAR');
+}
