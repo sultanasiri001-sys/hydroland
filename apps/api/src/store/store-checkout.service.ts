@@ -249,7 +249,7 @@ export class StoreCheckoutService {
       return row;
     });
     await this.refreshCheckout(checkout.id, undefined, accountId);
-    return this.db.serializable(async tx => {
+    const recordReceipt = (replayOnly: boolean) => this.db.serializable(async tx => {
       const {order, contract} = await this.order(tx, orderId);
       const current = await tx.commerceCheckout.findUniqueOrThrow({where: {id: checkout.id}});
       requireStoreCheckoutBinding(current, order, contract);
@@ -274,6 +274,7 @@ export class StoreCheckoutService {
           || storeCanonicalJson(existing.contractSnapshot) !== storeCanonicalJson(current.contractSnapshot)) throw new ConflictException('The store order already has another collection receipt.');
         return {status: 'COLLECTION_VERIFIED', orderId, collectionEvidenceId: existing.id, invoiceReadiness: 'REVIEW_REQUIRED', financialActionExecuted: false};
       }
+      if (replayOnly) throw new ConflictException('Collection references are already bound to another source.');
       const proof = await tx.commerceCollectionEvidence.create({data: {sourceType, sourceId: orderId, organizationId: current.organizationId,
         customerAccountId: current.customerAccountId, amountMinor: current.amountMinor, currency: 'SAR', provider: 'MOYASAR',
         providerPaymentId: current.providerPaymentId, providerInvoiceId: current.providerInvoiceId, providerCapturedMinor: current.amountMinor,
@@ -284,6 +285,14 @@ export class StoreCheckoutService {
           providerInvoiceId: current.providerInvoiceId, organizationId: current.organizationId, amountMinor: current.amountMinor, currency: 'SAR'}}, tx);
       return {status: 'COLLECTION_VERIFIED', orderId, collectionEvidenceId: proof.id, invoiceReadiness: 'REVIEW_REQUIRED', financialActionExecuted: false};
     });
+    try { return await recordReceipt(false); }
+    catch (error) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002'
+        || error.meta?.modelName !== 'CommerceCollectionEvidence') throw error;
+      // A competing insert can commit after our serializable snapshot. Re-read
+      // the winning receipt with all original bindings in a fresh transaction.
+      return recordReceipt(true);
+    }
   }
 
   /** Only the existing authenticated webhook dispatcher may call this method. */

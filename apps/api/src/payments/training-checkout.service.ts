@@ -301,7 +301,7 @@ export class TrainingCheckoutService {
       return row;
     });
     await this.refreshCheckout(checkout.id, undefined, accountId);
-    return this.db.serializable(async tx => {
+    const recordReceipt = (replayOnly: boolean) => this.db.serializable(async tx => {
       const {enrollment, contract} = await this.enrollment(tx, enrollmentId);
       const current = await tx.commerceCheckout.findUniqueOrThrow({where: {id: checkout.id}});
       this.checkBinding(current, enrollment, contract);
@@ -323,6 +323,7 @@ export class TrainingCheckoutService {
         return {status: 'COLLECTION_VERIFIED', enrollmentId, collectionEvidenceId: existing.id, financialConfirmation: 'VERIFIED', trainingStatus: enrollment.status};
       }
       this.requireOpen(enrollment, contract);
+      if (replayOnly) throw new ConflictException('Collection references are already bound to another source.');
       const proof = await tx.commerceCollectionEvidence.create({data: {sourceType, sourceId: enrollmentId,
         organizationId: current.organizationId, customerAccountId: current.customerAccountId, amountMinor: current.amountMinor, currency: 'SAR',
         provider: 'MOYASAR', providerPaymentId: current.providerPaymentId, providerInvoiceId: current.providerInvoiceId,
@@ -336,6 +337,14 @@ export class TrainingCheckoutService {
           providerInvoiceId: current.providerInvoiceId, organizationId: current.organizationId, amountMinor: current.amountMinor, currency: 'SAR'}}, tx);
       return {status: 'COLLECTION_VERIFIED', enrollmentId, collectionEvidenceId: proof.id, financialConfirmation: 'VERIFIED', trainingStatus: enrollment.status};
     });
+    try { return await recordReceipt(false); }
+    catch (error) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002'
+        || error.meta?.modelName !== 'CommerceCollectionEvidence') throw error;
+      // A competing insert can commit after our serializable snapshot. Re-read
+      // the winning receipt with all original bindings in a fresh transaction.
+      return recordReceipt(true);
+    }
   }
 
   async handleVerifiedProviderEvent(event: MoyasarWebhook) {
