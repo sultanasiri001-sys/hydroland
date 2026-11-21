@@ -134,7 +134,7 @@ export class FinanceSettlementService {
           feeMinor: intOrNull(line.fee), taxMinor: intOrNull(line.tax),
           transactedAt: typeof line.transacted_at === 'string' && Number.isFinite(Date.parse(line.transacted_at))
             ? new Date(line.transacted_at).toISOString() : null,
-          amountMatches: payment.currency === lineCurrency && paymentAmountMinor === payment.amountMinor,
+          amountMatches: payment.currency === lineCurrency && paymentAmountMinor===payment.amountMinor,
         };
         if (product) {
           result.sourceType = product.sourceType;
