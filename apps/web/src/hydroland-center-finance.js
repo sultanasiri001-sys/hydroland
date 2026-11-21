@@ -1,6 +1,7 @@
 (()=>{
   // Only authored interface text is localized. Account and business values stay opaque.
   const uiLocale = window.HydrolandI18n?.createScope("center-finance", {
+  "مطابقة تحصيل ضرر المعدات": "Reconcile rental damage payments",
   "مرفوض": "Rejected",
   "بانتظار المراجعة": "Awaiting review",
   "إلغاء": "Cancel",
@@ -245,6 +246,9 @@
   if(section?.isConnected)return section;
   const host=document.createElement('section');host.id='hl-center-finance';host.className='hl-center-finance';
   uiLocale.setHTML(host, uiLocale.html`<header><small>DIVE CENTER · مركز الغوص</small><h2>ورديات المحاسب</h2><p>فتح الوردية ومراجعة الرصيد وتسليم العهدة بين محاسبي المركز.</p></header><div data-finance-controls><label>المركز<select name="center" aria-label="المركز"></select></label><button type="button" data-finance-refresh>تحديث البيانات</button></div><p role="status" data-finance-status></p><div data-finance-result aria-live="polite"></div>`);
+  const damage=document.createElement('details'),title=document.createElement('summary'),damageBody=document.createElement('div');
+  uiLocale.setText(title,'مطابقة تحصيل ضرر المعدات');damage.append(title,damageBody);host.append(damage);
+  damage.addEventListener('toggle',async()=>{if(!damage.open||!eligible()){damageBody.replaceChildren();return;}const view=await import('./hydroland-rental-damage.mjs');if(damage.open&&eligible()&&damage.isConnected)view.accountant(damageBody);});
   host.addEventListener('change',event=>{if(event.target.name==='center'&&!busy){centerId=event.target.value;void load()}});
   host.addEventListener('click',event=>{if(event.target.closest('[data-finance-refresh]')&&!busy)void load()});
   host.addEventListener('submit',event=>{event.preventDefault();if(event.target.matches('[data-finance-operation]')&&!busy)void submit(event.target,event.submitter)});

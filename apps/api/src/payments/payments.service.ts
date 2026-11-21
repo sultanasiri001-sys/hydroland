@@ -1,3 +1,4 @@
+import { RentalDamagePaymentService } from './rental-damage-payment.service';
 import { OrganizationBookingCheckoutService, organizationPayer } from './organization-booking-checkout.service';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Payment, PaymentStatus, Prisma } from '@prisma/client';
@@ -40,6 +41,7 @@ export class PaymentsService {
     private readonly storeCheckouts?:StoreCheckoutService,
     private readonly trainingCheckouts?:TrainingCheckoutService,
     private readonly organizationCheckouts?:OrganizationBookingCheckoutService,
+    private readonly damagePayments?:RentalDamagePaymentService,
   ){}
 
   async create(accountId:string,input:{bookingId:string;idempotencyKey:string;policyAcceptance?:{version?:string;quoteHash?:string}}){
@@ -142,6 +144,7 @@ export class PaymentsService {
       // notification amounts and a client-side status never confirm collection.
       const handlers = [
         ['EQUIPMENT_RENTAL', this.rentalCheckouts],
+        ['RENTAL_DAMAGE', this.damagePayments],
         ['STORE_ORDER', this.storeCheckouts],
         ['TRAINING_ENROLLMENT', this.trainingCheckouts],
       ] as const;

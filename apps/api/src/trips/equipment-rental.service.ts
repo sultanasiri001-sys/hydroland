@@ -106,7 +106,13 @@ export class EquipmentRentalService{
       const meta=event.metadata;
       if(meta && typeof meta==='object' && !Array.isArray(meta) && typeof meta.resourceId==='string' && typeof meta.handoverCondition==='string')conditions.set(meta.resourceId,meta.handoverCondition);
     }
-    return this.serialize(rentals[0],items.map(item=>({...item,handoverCondition:conditions.get(item.resourceId)??null})));}
+    const returned=await this.db.auditEvent.findMany({where:{resource:'EquipmentRental',resourceId:id,action:'EQUIPMENT_RENTAL_ITEM_RETURNED'},select:{metadata:true}});
+    const causes=new Map<string,string>();
+    for(const {metadata:m} of returned){if(m&&typeof m==='object'&&!Array.isArray(m)&&typeof m.resourceId==='string'&&m.newDamageConfirmed===true)causes.set(m.resourceId,m.damageCause==='MISUSE'?'MISUSE':'NEW_DAMAGE');}
+    const reports=await this.db.auditEvent.findMany({where:{resource:'EquipmentRentalItem',resourceId:{in:items.map(item=>item.id)},action:'RENTAL_ITEM_REPORTED_MISSING'},select:{resourceId:true,metadata:true}});
+    const missing=new Map(reports.map(report=>[report.resourceId,report.metadata]));
+    return this.serialize(rentals[0],items.map(item=>({...item,handoverCondition:conditions.get(item.resourceId)??null,damageCause:causes.get(item.resourceId)??null,
+      ...(missing.has(item.id)?{lossStatus:item.returnedAt?'RECOVERED':'MISSING',lossReport:missing.get(item.id)}:{})})));}
   async getMine(accountId:string,id:string){const rental=await this.get(id);if(rental.renterAccountId!==accountId)throw new NotFoundException('Rental not found.');return rental;}
 
   async mine(accountId:string){
@@ -194,7 +200,7 @@ export class EquipmentRentalService{
     return{status:'RETURN_INTENT_RECORDED',rentalId:id};
   }
 
-  async returnScan(actorAccountId: string, id: string, input: {code?: string; condition?: 'OK' | 'DAMAGED' | 'REVIEW'; notes?: string | null; toLocation?: string | null; newDamage?: boolean}) {
+  async returnScan(actorAccountId: string, id: string, input: {code?: string; condition?: 'OK' | 'DAMAGED' | 'REVIEW'; notes?: string | null; toLocation?: string | null; newDamage?: boolean; damageCause?: string}) {
     const code = input.code?.trim();
     if (!code) throw new BadRequestException('Barcode or QR code is required for return.');
     const condition = input.condition || 'OK';
@@ -203,6 +209,8 @@ export class EquipmentRentalService{
     const notes = input.notes?.trim() || null;
     if(input.newDamage !== undefined && typeof input.newDamage !== 'boolean')throw new BadRequestException('Invalid new damage confirmation.');
     if(input.newDamage && (condition!=='DAMAGED' || !notes || notes.length>1000))throw new BadRequestException('Describe the new damage observed at return.');
+    if(input.damageCause!==undefined&&(!input.newDamage||!['NEW_DAMAGE','MISUSE'].includes(input.damageCause)))throw new BadRequestException('يجب توثيق الضرر الجديد قبل تصنيفه.');
+    const damageCause=input.newDamage?(input.damageCause||'NEW_DAMAGE'):null;
     const nextStatus = condition === 'OK' ? 'AVAILABLE' : 'QUARANTINED';
 
     await this.db.serializable(async tx => {
@@ -230,7 +238,7 @@ export class EquipmentRentalService{
         if(input.newDamage){
           const receipt=await tx.auditEvent.findFirst({where:{resource:'EquipmentRental',resourceId:id,action:'EQUIPMENT_RENTAL_ITEM_RETURNED',metadata:{path:['resourceId'],equals:asset.resourceId}},select:{metadata:true}});
           const meta=receipt?.metadata;
-          if(!meta || typeof meta!=='object' || Array.isArray(meta) || meta.newDamageConfirmed!==true || meta.notes!==notes)throw new ConflictException('Return evidence differs from the original receipt.');
+          if(!meta || typeof meta!=='object' || Array.isArray(meta) || meta.newDamageConfirmed!==true || meta.notes!==notes || (meta.damageCause??'NEW_DAMAGE')!==damageCause)throw new ConflictException('Return evidence differs from the original receipt.');
         }
         return;
       }
@@ -256,8 +264,13 @@ export class EquipmentRentalService{
         VALUES (gen_random_uuid()::text,${asset.resourceId},${condition === 'OK' ? 'CHECK_IN' : 'QUARANTINE'},${asset.location},${toLocation},NULL,${rental.renterAccountId},${notes || `Rental return ${rental.invoiceNumber}`},${actorAccountId},NOW())`;
       await tx.$executeRaw`UPDATE "EquipmentBarcode" SET "stockStatus"=${nextStatus}, "location"=${toLocation}, "updatedAt"=NOW() WHERE "resourceId"=${asset.resourceId}`;
       await this.audit.record({actorId:actorAccountId, action:'EQUIPMENT_RENTAL_ITEM_RETURNED', resource:'EquipmentRental', resourceId:id,
-        metadata:{invoiceNumber:rental.invoiceNumber, resourceId:asset.resourceId, assetCode:asset.assetCode, condition, stockStatus:nextStatus, notes, handoverReceiptId, newDamageConfirmed: Boolean(handoverReceiptId)}}, tx);
+        metadata:{invoiceNumber:rental.invoiceNumber, resourceId:asset.resourceId, assetCode:asset.assetCode, condition, stockStatus:nextStatus, notes, damageCause, handoverReceiptId, newDamageConfirmed: Boolean(handoverReceiptId)}}, tx);
 
+      const lost=await tx.auditEvent.findFirst({where:{resource:'EquipmentRentalItem',resourceId:item.id,action:'RENTAL_ITEM_REPORTED_MISSING'},select:{id:true}});
+      if(lost){
+        await this.audit.record({actorId:actorAccountId,resource:'EquipmentRentalItem',resourceId:item.id,action:'RENTAL_MISSING_ITEM_RECOVERED',metadata:{rentalId:id,reportId:lost.id,condition,damageCause}},tx);
+        await this.notifications.notify(rental.renterAccountId,'RENTAL_MISSING_ITEM_RECOVERED',{title:'استلم المركز القطعة المبلّغ عن فقدها',rentalId:id,itemId:item.id,condition},tx);
+      }
       const [remaining] = await tx.$queryRaw<Array<{pending: boolean}>>`
         SELECT EXISTS (SELECT 1 FROM "EquipmentRentalItem" WHERE "rentalId"=${id} AND "returnedAt" IS NULL) AS "pending"`;
       if (remaining.pending) return;

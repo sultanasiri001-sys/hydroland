@@ -5,7 +5,7 @@ import { IntegrationService } from '../integrations/integration.service';
 export type MoyasarInvoice={id:string;status:string;amount:number;currency:string;url:string;metadata:Record<string,string>;payments:Array<{id:string;status:string;amount:number;currency:string}>};
 export type MoyasarCommerceInvoice = MoyasarInvoice & {expiresAt: string};
 export type MoyasarCommerceInvoiceInput = {
-  checkoutId: string; sourceType: 'EQUIPMENT_RENTAL' | 'STORE_ORDER' | 'TRAINING_ENROLLMENT'; sourceId: string; organizationId: string;
+  checkoutId: string; sourceType: 'EQUIPMENT_RENTAL' | 'STORE_ORDER' | 'TRAINING_ENROLLMENT' | 'RENTAL_DAMAGE'; sourceId: string; organizationId: string;
   customerAccountId: string; amountMinor: number; currency: 'SAR'; expiresAt: string;
 };
 export type MoyasarWebhook={id:string;type:string;secret_token:string;live:boolean;data:Record<string,unknown>};
@@ -62,7 +62,9 @@ export class MoyasarPaymentProviderService {
     if(Date.parse(input.expiresAt)<=Date.now())throw new ConflictException('The original checkout payment window has expired.');
     this.assertProvider();
     const origin=this.publicWebOrigin();
-    const route=input.sourceType==='EQUIPMENT_RENTAL'
+    const route=input.sourceType==='RENTAL_DAMAGE'
+      ? {payment:'damage_payment',id:'claim_id',label:'rental damage claim'}
+      : input.sourceType==='EQUIPMENT_RENTAL'
       ? {payment:'rental_payment',id:'rental_id',label:'equipment rental'}
       : input.sourceType==='STORE_ORDER'
         ? {payment:'store_payment',id:'store_order_id',label:'store order'}
@@ -77,7 +79,7 @@ export class MoyasarPaymentProviderService {
       })});
       return await this.observeCommerceInvoice(response,input);
     }catch{
-      const code=input.sourceType==='EQUIPMENT_RENTAL'?'RENTAL_CHECKOUT_RECONCILIATION_REQUIRED'
+      const code=input.sourceType==='RENTAL_DAMAGE'?'DAMAGE_CHECKOUT_RECONCILIATION_REQUIRED':input.sourceType==='EQUIPMENT_RENTAL'?'RENTAL_CHECKOUT_RECONCILIATION_REQUIRED'
         :input.sourceType==='STORE_ORDER'?'STORE_CHECKOUT_RECONCILIATION_REQUIRED':'COURSE_CHECKOUT_RECONCILIATION_REQUIRED';
       throw new ServiceUnavailableException({code,message:'The checkout result requires reconciliation before any further payment request.'});
     }
@@ -92,7 +94,7 @@ export class MoyasarPaymentProviderService {
   }
 
   private assertCommerceInvoiceInput(input:MoyasarCommerceInvoiceInput){
-    if(!input||!['EQUIPMENT_RENTAL','STORE_ORDER','TRAINING_ENROLLMENT'].includes(input.sourceType)||!['checkoutId','sourceId','organizationId','customerAccountId'].every(key=>{
+    if(!input||!['EQUIPMENT_RENTAL','STORE_ORDER','TRAINING_ENROLLMENT','RENTAL_DAMAGE'].includes(input.sourceType)||!['checkoutId','sourceId','organizationId','customerAccountId'].every(key=>{
       const value=input[key as keyof MoyasarCommerceInvoiceInput];return typeof value==='string'&&value.trim()===value&&value.length>0&&value.length<=128;
     })||input.currency!=='SAR'||!Number.isSafeInteger(input.amountMinor)||input.amountMinor<100||input.amountMinor>maxProviderMinor
       ||typeof input.expiresAt!=='string'||!Number.isFinite(Date.parse(input.expiresAt))||new Date(input.expiresAt).toISOString()!==input.expiresAt){

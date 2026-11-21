@@ -44,7 +44,7 @@ export class EquipmentRentalController{
 
   @UseGuards(AdminGuard)
   @Post(':id/return-scan')
-  returnScan(@Req()req:{auth:{accountId:string}},@Param('id')id:string,@Body()body:{code?:string;condition?:'OK'|'DAMAGED'|'REVIEW';notes?:string|null;toLocation?:string|null}){return this.rentals.returnScan(req.auth.accountId,id,body);}
+  returnScan(@Req()req:{auth:{accountId:string}},@Param('id')id:string,@Body()body:{code?:string;condition?:'OK'|'DAMAGED'|'REVIEW';notes?:string|null;toLocation?:string|null;newDamage?:boolean;damageCause?:'NEW_DAMAGE'|'MISUSE'}){return this.rentals.returnScan(req.auth.accountId,id,body);}
 
   @UseGuards(AdminGuard)
   @Post(':id/share')

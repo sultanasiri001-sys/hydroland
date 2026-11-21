@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {PDFDocument} from 'pdf-lib';
 import {createServer} from 'node:http';
 import {randomUUID} from 'node:crypto';
 import {fileURLToPath,pathToFileURL} from 'node:url';
@@ -56,6 +57,7 @@ process.env.HYDROLAND_PUBLIC_WEB_ORIGIN='https://synthetic-rental.example.invali
 const provider=new MoyasarPaymentProviderService({requireOperational(){return {status:'SANDBOX'};},async recordProviderSignal(){}});
 const checkout=new RentalCheckoutService(db,audit,provider,inspections),ledger=new FinancePersistenceService(db);
 const accountIds=[],personIds=[],organizationIds=[],resourceIds=[],rentalIds=[],financeEntryIds=[],financeAccountIds=[],orgUnitIds=[],positionIds=[],employmentIds=[];
+const damageIds=[];
 let checks=0;
 const check=()=>checks++;
 const rejected=status=>error=>{assert.equal(typeof error.getStatus,'function',error.stack);assert.equal(error.getStatus(),status,error.message);return true;};
@@ -92,17 +94,17 @@ async function start(fixture){
   const input={quoteHash:quote.quoteHash,acceptedPolicyVersion:quote.policyVersion,idempotencyKey:'test-rental:'+fixture.rental.id};
   return {input,state:await checkout.checkout(customer,fixture.rental.id,input)};
 }
-async function providerCapture(rentalId){
-  const journal=await db.commerceCheckout.findUniqueOrThrow({where:{sourceType_sourceId:{sourceType:'EQUIPMENT_RENTAL',sourceId:rentalId}}});
+async function providerCapture(rentalId,type='EQUIPMENT_RENTAL'){
+  const journal=await db.commerceCheckout.findUniqueOrThrow({where:{sourceType_sourceId:{sourceType:type,sourceId:rentalId}}});
   const invoice=invoices.get(journal.providerInvoiceId);assert.ok(invoice);
   const payment={id:randomUUID(),invoice_id:invoice.id,status:'paid',amount:invoice.amount,currency:invoice.currency,captured:0,refunded:0,
     updated_at:new Date().toISOString(),refunded_at:null,source:{number:'DO-NOT-PERSIST',token:'DO-NOT-PERSIST'}};
   payments.set(payment.id,payment);invoice.status='paid';invoice.payments=[payment];return {invoice,payment};
 }
-async function entryFor(rentalId,{referenceId=rentalId,post=true,amountMinor=5000}={}){
+async function entryFor(rentalId,{referenceId=rentalId,post=true,amountMinor=5000,referenceType='EQUIPMENT_RENTAL_COLLECTION'}={}){
   const account=await ledger.createAccount({organizationId:centerA,name:'SYNTHETIC rental revenue '+randomUUID(),currency:'SAR'});financeAccountIds.push(account.id);
   const entry=await ledger.createEntry({organizationId:centerA,financeAccountId:account.id,type:'REVENUE',amountMinor,currency:'SAR',
-    referenceType:'EQUIPMENT_RENTAL_COLLECTION',referenceId,description:'SYNTHETIC no money movement',requestedByAccountId:owner});financeEntryIds.push(entry.id);
+    referenceType,referenceId,description:'SYNTHETIC no money movement',requestedByAccountId:owner});financeEntryIds.push(entry.id);
   if(post){await ledger.decideEntry(entry.id,approver,true,'SYNTHETIC independent approval');await ledger.postEntry(entry.id,poster);}
   return entry;
 }
@@ -245,9 +247,47 @@ try{
   await assert.rejects(checkout.quote(customer,legacy.rental.id),rejected(409));check();
   assert.equal(requests.filter(row=>row.method==='POST').every(row=>row.url==='/v1/invoices'),true);
   assert.equal(await db.financeEntry.count({where:{id:{in:financeEntryIds}}}),financeEntryIds.length,'Publisher creates no parallel or automatic ledger entries');check();
+  const {RentalDamageService}=await load('trips/rental-damage.service.js');
+  const {RentalDamagePaymentService}=await load('payments/rental-damage-payment.service.js');
+  const damage=new RentalDamageService(db,audit,notifications),damagePayments=new RentalDamagePaymentService(db,provider,audit);
+  await db.roleAssignment.create({data:{accountId:owner,role:'DIVE_CENTER',status:'ACTIVE'}});
+  for(const actor of [owner,approver]){
+    if(actor!==owner)await db.roleAssignment.create({data:{accountId:actor,role:'DIVE_CENTER',status:'ACTIVE'}});
+    await db.organizationMember.create({data:{accountId:actor,organizationId:centerA,role:'ADMIN',status:'ACTIVE'}});
+  }
+  const repaired=await makeRental();await start(repaired);await providerCapture(repaired.rental.id);
+  const hire=await entryFor(repaired.rental.id);await checkout.publishCollection(accountant,repaired.rental.id,hire.id);
+  await handover.confirmPayment(owner,repaired.rental.id);
+  await handover.scan(owner,repaired.rental.id,{code:repaired.item.code,handoverCondition:'Old scuff'});
+  const returned=await rentals.returnScan(owner,repaired.rental.id,{code:repaired.item.code,condition:'DAMAGED',newDamage:true,damageCause:'MISUSE',notes:'New tear in the strap'});
+  const pdf=await PDFDocument.create();pdf.addPage();const file={buffer:Buffer.from(await pdf.save()),mimetype:'application/pdf'};
+  const claim=await damage.submit(owner,returned.items[0].id,{kind:'REPAIR_INVOICE',amountMinor:'1950'},file);damageIds.push(claim.id);
+  const before=postCount();await assert.rejects(damagePayments.start(customer,claim.id),rejected(409));
+  await damage.decide(customer,claim.id,'renter',{decision:'DISPUTE',reason:'Check the baseline'});
+  await assert.rejects(damagePayments.start(customer,claim.id),rejected(409));assert.equal(postCount(),before);
+  await damage.decide(approver,claim.id,'review',{decision:'UPHOLD',reason:'Independent comparison confirms a new tear'});
+  await assert.rejects(damagePayments.start(other,claim.id),rejected(404));
+  dropNextInvoice=true;
+  await assert.rejects(damagePayments.start(customer,claim.id));
+  await assert.rejects(damagePayments.start(customer,claim.id),rejected(409));assert.equal(postCount(),before+1);
+  const original=[...invoices.values()].find(i=>i.metadata.hydroland_source_id===claim.id);
+  await assert.rejects(damagePayments.verify(otherAccountant,claim.id,{invoiceId:original.id}),rejected(403));
+  assert.equal((await damagePayments.verify(accountant,claim.id,{invoiceId:original.id})).status,'PENDING');
+  const active=await db.rentalDamageClaim.findUniqueOrThrow({where:{id:claim.id},select:{activeCheckoutId:true}});
+  const damagePayment=await providerCapture(active.activeCheckoutId,'RENTAL_DAMAGE');
+  assert.equal((await damagePayments.observe(claim.id,'renter',customer)).status,'CAPTURED');
+  await assert.rejects(damagePayments.verify(accountant,claim.id,{financeEntryId:hire.id}),rejected(409));
+  const proof=await entryFor(claim.id,{referenceType:'RENTAL_DAMAGE_COLLECTION',amountMinor:1950});
+  for(let replay=0;replay<2;replay++)assert.equal((await damagePayments.verify(accountant,claim.id,{financeEntryId:proof.id})).status,'COLLECTED');
+  assert.equal(await db.commerceCollectionEvidence.count({where:{sourceId:claim.id,providerPaymentId:damagePayment.payment.id}}),1);
+  assert.equal(postCount(),before+1);check();
   console.log(JSON.stringify({result:'PASS',checks,postgresql:true,providerTransport:'loopback HTTP only',providerInvoicePosts:postCount(),
     actualMerchantCalls:0,realMoneyMovement:false,legitimateCollectionPublisher:true,scopeAndLedgerApprovalVerified:true}));
 }finally{
+  await db.rentalDamageClaim.deleteMany({where:{customerAccountId:{in:accountIds}}});
+  await db.commerceCollectionEvidence.deleteMany({where:{sourceType:'RENTAL_DAMAGE',sourceId:{in:damageIds}}});
+  await db.commerceCheckout.deleteMany({where:{sourceType:'RENTAL_DAMAGE',customerAccountId:{in:accountIds}}});
+  await db.organizationMember.deleteMany({where:{organizationId:{in:organizationIds},accountId:{in:accountIds}}});
   await db.commerceCollectionEvidence.deleteMany({where:{sourceType:'EQUIPMENT_RENTAL',sourceId:{in:rentalIds}}});
   await db.commerceCheckout.deleteMany({where:{sourceType:'EQUIPMENT_RENTAL',sourceId:{in:rentalIds}}});
   await db.financeApproval.deleteMany({where:{financeEntryId:{in:financeEntryIds}}});
