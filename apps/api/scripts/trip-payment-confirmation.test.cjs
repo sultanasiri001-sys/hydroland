@@ -11,14 +11,14 @@ const { captureTripBookingContract, tripBookingPaymentRequirement, satisfiesTrip
 
 global.fetch = () => { throw new Error('Network is forbidden in payment confirmation tests'); };
 
-function fixture({ legacy = false } = {}) {
+function fixture({ legacy = false, organizationId = null, paymentMode = 'ENABLED' } = {}) {
   const now = new Date(), start = new Date(now.getTime() + 20 * 86_400_000), end = new Date(start.getTime() + 86_400_000);
   const trip = { id: 'trip-1', title: 'Frozen quote', type: 'SHORE', status: 'OPEN', startsAt: start, endsAt: end,
     capacity: 10, updatedAt: now, organizationId: 'center-1', organization: { id: 'center-1', displayName: 'Supplying center' } };
-  const snapshot = captureTripBookingContract({ bookingId: 'booking-1', accountId: 'buyer-1', buyerOrganizationId: null,
+  const snapshot = captureTripBookingContract({ bookingId: 'booking-1', accountId: 'buyer-1', buyerOrganizationId: organizationId,
     seats: 2, createdAt: now, price: { pricePerSeatMinor: 5_750, currency: 'SAR', configured: true }, trip });
   const state = {
-    booking: { id: 'booking-1', tripId: trip.id, accountId: 'buyer-1', organizationId: null, seats: 2, status: 'PENDING',
+    booking: { id: 'booking-1', tripId: trip.id, accountId: 'buyer-1', organizationId, seats: 2, status: 'PENDING',
       createdAt: now, updatedAt: now, contractSnapshot: legacy ? null : structuredClone(snapshot), trip,
       account: { person: { firstName: 'Fixture', lastName: 'Buyer' } } },
     payment: { id: 'payment-1', bookingId: 'booking-1', accountId: 'buyer-1', status: 'CAPTURED',
@@ -50,7 +50,10 @@ function fixture({ legacy = false } = {}) {
     auditEvent: { findFirst: async () => null },
   };
   const db = { ...tx, serializable: async callback => callback(tx) };
-  const policies = { decision: async () => ({ state: 'ENABLED', bypass: false, review: false, enforce: true }) };
+  const policies = { decision: async category => {
+    const state = category === 'PAYMENT' ? paymentMode : 'ENABLED';
+    return { state, bypass: state === 'DISABLED', review: state === 'OPTIONAL', enforce: state === 'ENABLED' };
+  } };
   const weather = { settings: async () => ({ enabled: false }), evaluateReview: () => ({ blocking: false, decision: 'ALLOW' }) };
   const reviews = { latest: async () => null };
   const context = { switchToHttp: () => ({ getRequest: () => ({ params: { id: 'trip-1', bookingId: 'booking-1' } }) }) };
@@ -173,4 +176,40 @@ test('legacy undefined refund field is compatible only with the legacy evidence 
   const legacy = tripBookingPaymentRequirement({ ...state.booking, contractSnapshot: null }, state.price);
   assert.equal(satisfiesTripBookingPayment(payment, legacy), true);
   assert.equal(satisfiesTripBookingPayment({ ...payment, refundedAmountMinor: 1 }, legacy), false);
+});
+
+for (const paymentMode of ['DISABLED', 'OPTIONAL', 'ENABLED']) {
+  test(`organization confirmation requires prepayment when the general rule is ${paymentMode}`, async () => {
+    const { state, guard, context, management } = fixture({ organizationId: 'buyer-org', paymentMode });
+    const captured = state.payment;
+    state.payment = null;
+    await assert.rejects(() => guard.canActivate(context), error => error.getStatus?.() === 409);
+    const unpaid = await management.detail('admin', 'booking-1', 'admin');
+    assert(unpaid.blockers.includes('PAYMENT_REQUIRED'));
+    await assert.rejects(() => management.apply('admin', 'booking-1', {
+      action: 'CONFIRM', requestId: randomUUID(), expectedState: unpaid.stateToken, policyReviewAcknowledged: true,
+    }, 'admin'), error => error.getStatus?.() === 409);
+    assert.equal(state.writes, 0);
+    state.payment = captured;
+    assert.equal(await guard.canActivate(context), true);
+    assert((await management.detail('admin', 'booking-1', 'admin')).actions.includes('CONFIRM'));
+  });
+}
+
+test('organization confirmation cannot substitute a current catalog price for a missing original contract', async () => {
+  const { state, guard, context, management } = fixture({ legacy: true, organizationId: 'buyer-org', paymentMode: 'DISABLED' });
+  await assert.rejects(() => guard.canActivate(context), error => error.getStatus?.() === 409);
+  const detail = await management.detail('admin', 'booking-1', 'admin');
+  assert.equal(detail.paymentContractReview.reasonCode, 'ORIGINAL_ORGANIZATION_CONTRACT_REQUIRED');
+  assert(detail.blockers.includes('PRICE_NOT_CONFIGURED'));
+  assert.equal(state.priceReads, 0);
+});
+
+test('individual policy settings still apply to personal bookings', async () => {
+  for (const paymentMode of ['OPTIONAL', 'DISABLED']) {
+    const { state, context, guard, management } = fixture({ paymentMode });
+    state.payment = null;
+    assert.equal(await guard.canActivate(context), true);
+    assert((await management.detail('admin', 'booking-1', 'admin')).actions.includes('CONFIRM'));
+  }
 });
