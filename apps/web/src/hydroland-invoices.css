@@ -1,0 +1,12 @@
+#hl-invoices-dialog{box-sizing:border-box;width:min(640px,94vw);max-height:84vh;overflow:auto;border:1px solid #3a6476;border-radius:18px;background:#092638;color:#f4f9fa;padding:1.1rem;font:inherit}
+#hl-invoices-dialog::backdrop{background:#03111bc9}
+#hl-invoices-dialog header,#hl-invoices-dialog nav{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+#hl-invoices-dialog nav{justify-content:flex-start;flex-wrap:wrap;margin-block:1rem}
+#hl-invoices-dialog nav[hidden]{display:none}
+#hl-invoices-dialog h2,#hl-invoices-dialog h3,#hl-invoices-dialog p{margin:.25rem 0}
+#hl-invoices-dialog article{display:grid;gap:.35rem;padding:1rem 0;border-top:1px solid #33505e;overflow-wrap:anywhere}
+#hl-invoices-dialog span{margin-inline-end:.6rem}
+#hl-invoices-dialog form,#hl-invoices-dialog label{display:grid;gap:.4rem}
+#hl-invoices-dialog input,#hl-invoices-dialog button{color:inherit;background:#14394b;border:1px solid #557685;border-radius:.5rem;padding:.5rem;font:inherit}
+#hl-invoices-dialog button{cursor:pointer;width:fit-content}
+#hl-invoices-dialog button[aria-pressed=true]{background:#bef4ea;color:#123742}

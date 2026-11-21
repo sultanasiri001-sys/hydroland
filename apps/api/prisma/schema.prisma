@@ -3148,3 +3148,18 @@ model RentalDamageClaim {
   createdAt        DateTime @default(now())
   @@index([organizationId,status], map: "RentalDamageClaim_center")
 }
+
+// One original seller document per payable transaction, shared by its parties.
+model AccountInvoiceDocument {
+  sourceType String
+  sourceId String
+  sellerId String
+  buyerOrganizationId String?
+  number String
+  sha256 String
+  content Bytes
+  attachedBy String
+  createdAt DateTime @default(now())
+  @@id([sourceType,sourceId])
+  @@unique([sellerId,number])
+}
