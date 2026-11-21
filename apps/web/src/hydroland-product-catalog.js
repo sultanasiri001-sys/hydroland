@@ -1,5 +1,6 @@
 (() => {
   const labels = {
+    'تفاصيل الطلبات':'Order details','قيمة بنود المركز':'Center item value','جديد':'Created','مؤكد':'Confirmed','ملغي':'Cancelled','مكتمل':'Fulfilled',
     'لوحة خصومات المركز':'Center discount dashboard','يعرض أحدث ٢٠٠ طلب في الفترة المحددة، ويحسب قيمة بنود مركزك فقط.':'Shows the latest 200 matching orders and the value of your center’s items only.','نفد المخزون':'Out of stock',
     'نوع العرض':'Offer type','حساب سعر العرض':'Calculate sale price','طريقة الحساب':'Calculation method','نسبة مئوية':'Percentage','مبلغ الخصم':'Discount amount','قيمة الخصم':'Discount value','استخدام السعر المحسوب':'Use calculated price','أدخل السعر الأساسي وخصمًا أقل منه.':'Enter a regular price and a smaller discount.','سعر البيع المحسوب':'Calculated sale price',
     'تقارير المتجر':'Store reports','تصدير المنتجات':'Export products','تحديث تقرير الطلبات':'Refresh order report','تصدير الطلبات المعروضة':'Export displayed orders','من تاريخ':'From date','إلى تاريخ':'To date','العملة':'Currency','الحالة':'Status','بداية الخصم':'Sale start','نهاية الخصم':'Sale end','يعرض أحدث ٢٠٠ طلب. المبالغ هي قيمة الطلبات حسب حالتها.':'Includes the most recent 200 orders. Amounts are order values by status.','لا توجد طلبات للفترة المحددة.':'No orders in this date range.','تعذر تحميل التقرير.':'Could not load the report.','طلبات':'Orders','رقم الطلب':'Order number','تاريخ الطلب':'Order date','قيمة الطلب':'Order value','البحث في المنتجات والخدمات':'Search products and services','كل التصنيفات':'All categories','كل العلامات التجارية':'All brands','السعر من الأقل':'Price ascending','السعر من الأعلى':'Price descending','ترتيب المتجر':'Store order','المنتجات المخفضة فقط':'Discounted products only',
@@ -113,6 +114,10 @@
     const show=()=>{
       output.replaceChildren();if(!active()||!loaded)return;
       const rows=filtered(),groups=new Map();
+      const language=window.HydrolandI18n?.getLocale()==='en'?'en-SA':'ar-SA';
+      const money=(amount,currency)=>new Intl.NumberFormat(language,{style:'currency',currency}).format(amount/100);
+      const statuses={CREATED:'جديد',CONFIRMED:'مؤكد',CANCELLED:'ملغي',FULFILLED:'مكتمل'};
+      const statusName=code=>statuses[code]?t(statuses[code]):code;
       for(const row of rows){
         const key=JSON.stringify([row.currency,row.status]);
         const item=groups.get(key) || {count:0,sum:0,currency:row.currency,status:row.status};
@@ -120,7 +125,20 @@
       }
       const note=document.createElement('p');note.textContent=t(provider?'يعرض أحدث ٢٠٠ طلب في الفترة المحددة، ويحسب قيمة بنود مركزك فقط.':'يعرض أحدث ٢٠٠ طلب. المبالغ هي قيمة الطلبات حسب حالتها.');output.append(note);
       for(const g of groups.values()){
-        const line=document.createElement('p');line.textContent=[g.status,g.count+' '+t('طلبات'),new Intl.NumberFormat('ar-SA',{style:'currency',currency:g.currency}).format(g.sum/100)].join(' · ');output.append(line);
+        const line=document.createElement('p');line.textContent=[statusName(g.status),g.count+' '+t('طلبات'),money(g.sum,g.currency)].join(' · ');output.append(line);
+      }
+      if(provider && rows.length){
+        const statement=document.createElement('details'),heading=document.createElement('summary');
+        heading.textContent=t('تفاصيل الطلبات');statement.append(heading);
+        const date=new Intl.DateTimeFormat(language,{calendar:'gregory',timeZone:'Asia/Riyadh',dateStyle:'medium'});
+        const list=document.createElement('ul');
+        for(const order of rows){
+          const row=document.createElement('li'),reference=document.createElement('bdi');
+          reference.dir='ltr';reference.style.overflowWrap='anywhere';reference.textContent=order.id;
+          row.append(t('رقم الطلب')+' ',reference,' · '+date.format(new Date(order.createdAt))+' · '+statusName(order.status)+' · '+t('قيمة بنود المركز')+' '+money(order.totalMinor,order.currency));
+          list.append(row);
+        }
+        statement.append(list);output.append(statement);
       }
       if(!rows.length){const empty=document.createElement('p');empty.textContent=t('لا توجد طلبات للفترة المحددة.');output.append(empty)}
     };
@@ -139,7 +157,7 @@
     });
     const exportOrders=makeButton('تصدير الطلبات المعروضة',()=>{
       if(!active()||!loaded)return;
-      downloadCsv('hydroland-orders.csv',[[t('رقم الطلب'),t('تاريخ الطلب'),t('الحالة'),t('قيمة الطلب'),t('العملة')],...filtered().map(o=>[o.id,o.createdAt,o.status,sheetPrice(o.totalMinor),o.currency])]);
+      downloadCsv('hydroland-orders.csv',[[t('رقم الطلب'),t('تاريخ الطلب'),t('الحالة'),t(provider?'قيمة بنود المركز':'قيمة الطلب'),t('العملة')],...filtered().map(o=>[o.id,o.createdAt,o.status,sheetPrice(o.totalMinor),o.currency])]);
     });
     exportOrders.disabled=true;const updateRange=()=>{if(!provider){show();return}version++;orders=[];loaded=false;exportOrders.disabled=true;refresh.disabled=false;output.replaceChildren()};from.onchange=updateRange;to.onchange=updateRange;details.append(output);section.append(details);
     return ()=>{version++;orders=[];loaded=false;details.open=false;exportOrders.disabled=true;refresh.disabled=false;output.replaceChildren();from.value='';to.value=''};

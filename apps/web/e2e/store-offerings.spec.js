@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {readFile} from 'node:fs/promises';
 import {openWorkspaceSwitcher} from './portal-test-helpers.js';
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 test.use({viewport:{width:390,height:844}});
@@ -251,11 +252,25 @@ test('center discount dashboard updates its own SKU and reports only its order p
  await box.locator('[data-catalog-product] [type=submit]').click();
  await expect.poll(()=>state.writes.length).toBe(1);
  expect(state.writes[0]).toMatchObject({sku:'SERVICE-1',kind:'SERVICE',status:'ACTIVE',catalogDetails:{salePriceMinor:9875,size:'M'}});
- const result=[{id:'customer-order',currency:'SAR',status:'CREATED',createdAt:revision,totalMinor:9875}];
+ const mixed={id:'6b367bbf-2f6f-4106-8c1b-648af519ef38',currency:'SAR',status:'CREATED',createdAt:'2026-10-08T22:10:00Z',totalMinor:12550};
+ const result=[mixed,{id:'another-order',currency:'SAR',status:'CREATED',createdAt:revision,totalMinor:9875}];
  await page.route('**/api/v1/store/provider/reports/orders*',r=>json(r,result));
  const reports=box.locator('details').filter({has:page.locator('summary',{hasText:'تقارير المتجر'})});
  await reports.locator('summary').click();await reports.getByRole('button',{name:'تحديث تقرير الطلبات'}).click();
- await expect(reports).toContainText('قيمة بنود مركزك فقط');await expect(reports).toContainText('CREATED');
+ await expect(reports).toContainText('قيمة بنود مركزك فقط');
+ await reports.getByText('تفاصيل الطلبات',{exact:true}).click();
+ const row=reports.getByRole('listitem').filter({hasText:mixed.id});
+ await expect(row).toContainText('جديد');
+ const amount=new Intl.NumberFormat('ar-SA',{style:'currency',currency:'SAR'}).format(125.5);
+ const localDay=new Intl.DateTimeFormat('ar-SA',{calendar:'gregory',timeZone:'Asia/Riyadh',dateStyle:'medium'}).format(new Date(mixed.createdAt));
+ await expect(row).toContainText(amount);await expect(row).toContainText(localDay);
+ const exportButton=reports.getByRole('button',{name:'تصدير الطلبات المعروضة'});
+ const downloading=page.waitForEvent('download');await exportButton.click();
+ const file=await downloading;
+ const csv=await readFile(await file.path(),'utf8');
+ expect(csv).toContain('"قيمة بنود المركز"');expect(csv).toContain('"125.50","SAR"');expect(csv).toContain(mixed.id);
+ await reports.getByLabel('من تاريخ').fill('2026-10-10');
+ await expect(row).toHaveCount(0);await expect(exportButton).toBeDisabled();
 });
 
 test('center moves a SKU out of published stock into a warehouse on mobile',async({page})=>{
