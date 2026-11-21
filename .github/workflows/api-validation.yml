@@ -197,6 +197,22 @@ jobs:
           trap 'kill "$commerce_api_pid" 2>/dev/null || true; wait "$commerce_api_pid" 2>/dev/null || true' EXIT
           curl --fail --silent --retry 30 --retry-connrefused --retry-delay 1 "$COMMERCE_CHECKOUT_E2E_BASE_URL/health/ready" > /dev/null
           node apps/api/scripts/commerce-checkout-http-e2e.mjs
+      - name: Verify effective change and rollback for the A16 operational control catalog
+        env:
+          DATABASE_URL: postgresql://hydroland:hydroland@localhost:5433/a16_catalog_acceptance
+          A16_API_BASE_URL: http://127.0.0.1:3168/api/v1
+          PORT: 3168
+          NODE_ENV: test
+        run: |
+          psql postgresql://hydroland:hydroland@localhost:5433/hydroland -v ON_ERROR_STOP=1 -c 'CREATE DATABASE a16_catalog_acceptance'
+          npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+          node apps/api/scripts/bootstrap-messaging-runtime-schema.mjs
+          export JWT_SECRET="$(openssl rand -hex 36)"
+          node apps/api/dist/main.js > "$RUNNER_TEMP/a16-api.log" 2>&1 &
+          a16_pid=$!
+          trap 'kill "$a16_pid" 2>/dev/null || true; wait "$a16_pid" 2>/dev/null || true' EXIT
+          curl --fail --silent --retry 30 --retry-connrefused --retry-delay 1 "$A16_API_BASE_URL/health/ready" > /dev/null
+          node apps/api/scripts/operational-catalog-rollback-e2e.mjs
       - name: Verify independent Render provider observations in isolated PostgreSQL
         env:
           A06_DB_TEST: DISPOSABLE_LOOPBACK
