@@ -166,7 +166,7 @@ try{
   assert.ok(!JSON.stringify(stored).includes('DO-NOT-PERSIST'));
   assert.equal(stored.financeEntryId,goodEntry.id);check();
   await handover.confirmPayment(owner,first.rental.id);
-  await handover.scan(owner,first.rental.id,{code:first.item.code});
+  await handover.scan(owner,first.rental.id,{handoverCondition:'Synthetic baseline',code:first.item.code});
   assert.equal((await rentals.get(first.rental.id)).status,'ACTIVE');check();
 
   const webhook=await checkout.handleVerifiedProviderEvent({id:randomUUID(),type:'payment_paid',secret_token:'[verified]',live:false,data:{invoice_id:collected.invoice.id,status:'failed'}});
@@ -184,7 +184,7 @@ try{
   const lateOldResponse=await oldRefresh;
   assert.equal(lateOldResponse.status,'RECONCILIATION_REQUIRED','A held old paid response cannot resurrect a newer observed refund');check();
   await assert.rejects(handover.confirmPayment(owner,first.rental.id),rejected(409));
-  await assert.rejects(handover.scan(owner,first.rental.id,{code:first.item.code}),rejected(409));check();
+  await assert.rejects(handover.scan(owner,first.rental.id,{handoverCondition:'Synthetic baseline',code:first.item.code}),rejected(409));check();
   assert.equal((await db.commerceCollectionEvidence.findUniqueOrThrow({where:{id:receipt.collectionEvidenceId}})).providerRefundedMinor,0,'Original collection proof remains immutable');check();
   collected.payment.status='paid';collected.payment.refunded=0;collected.payment.refunded_at=null;collected.payment.updated_at=new Date().toISOString();
   collected.invoice.status='paid';

@@ -172,7 +172,7 @@ async function unchanged(f) {
     await check('customer cancellation freezes the original request and blocks handover before any money moves', async () => {
       const f = await fixture(), r = await request(f);
       assert.equal(r.decision.refundAmountMinor, 10000); assert.equal(r.cancellationRecorded, true); assert.equal(r.financialActionExecuted, false);
-      await assert.rejects(handover.scan(owner.id, f.rental.id, { code: f.code }), status(409));
+      await assert.rejects(handover.scan(owner.id, f.rental.id, { handoverCondition:'Synthetic baseline', code: f.code }), status(409));
       const repeat = await ok(call(f.buyer, f.rental.id + '/refund-requests', r.input)); assert.equal(repeat.requestId, r.requestId);
       assert.equal((await call(f.buyer, f.rental.id + '/refund-requests', { ...r.input, requestedAmountMinor: 5000 })).status, 409);
       assert.equal(await db.auditEvent.count({ where: { action: 'RENTAL_REFUND_REQUESTED', resourceId: f.rental.id } }), 1);
@@ -216,7 +216,7 @@ async function unchanged(f) {
       assert.equal((await execute(f, await command(f, verified, 10000))).status, 'SUCCEEDED');
     });
     await check('handed-over equipment and defect requests never create an automatic ordinary refund', async () => {
-      const f = await fixture(); await handover.scan(owner.id, f.rental.id, { code: f.code });
+      const f = await fixture(); await handover.scan(owner.id, f.rental.id, { handoverCondition:'Synthetic baseline', code: f.code });
       const r = await request(f, { cause: 'DEFECT', reason: 'Synthetic defect allegation' });
       assert.equal(r.decision.status, 'REVIEW_REQUIRED'); assert.equal(r.cancellationRecorded, false);
       assert.equal((await call(f.executor, f.rental.id + '/refund-operations', await command(f, r, 10000))).status, 409);

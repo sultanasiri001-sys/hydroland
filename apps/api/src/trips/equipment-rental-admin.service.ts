@@ -16,7 +16,7 @@ export class EquipmentRentalAdminService{
     return result;
   }
 
-  async handoverScan(actorAccountId:string,id:string,input:{code?:string}){
+  async handoverScan(actorAccountId:string,id:string,input:{code?:string;handoverCondition?:string}){
     // Keep the internal compatibility method on the same verified and atomic path.
     return this.handover.scan(actorAccountId,id,input);
   }

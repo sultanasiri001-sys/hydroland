@@ -214,7 +214,7 @@ export class DiveCenterPortalService {
 
   private currentTerms(tx: Prisma.TransactionClient, organizationId: string, instructorAccountId: string) {
     return tx.instructorCompensationAgreement.findFirst({where:{organizationId,instructorAccountId},orderBy:{revision:'desc'},
-      select:{id:true,mode:true,fixedMinor:true,rateBps:true,currency:true,revision:true,recordedAt:true}});
+      select:{id:true,mode:true,fixedMinor:true,rateBps:true,currency:true,revision:true,recordedAt:true,earningTiming:true,reversalTerms:true}});
   }
 
   async instructorAgreement(accountId: string, instructorId: string, basis?: string) {
@@ -228,17 +228,22 @@ export class DiveCenterPortalService {
   }
 
   async saveInstructorAgreement(accountId: string, instructorId: string, input: Record<string,unknown>) {
-    const {expectedRevision,...terms} = compensationTerms(input);
+    const {expectedRevision,policy,...terms} = compensationTerms(input);
     try {
       return await this.db.serializable(async tx => {
         const scope = await this.compensationScope(tx,accountId,instructorId);
         if (!scope.canEdit) throw new ForbiddenException('حفظ الاتفاق متاح لمالك المركز.');
         await tx.$queryRaw`SELECT "id" FROM "OrganizationMember" WHERE "organizationId"::text=${scope.organizationId} AND "accountId"::text=${instructorId} FOR UPDATE`;
         const prior = await this.currentTerms(tx,scope.organizationId,instructorId);
-        if (prior && prior.mode===terms.mode && prior.rateBps===terms.rateBps && prior.fixedMinor===terms.fixedMinor
+        // Older clients omit both fields. Preserve the existing terms for the same compensation method.
+        const previousPolicy = prior?.mode === terms.mode ? prior : null;
+        const earningTiming = policy?.earningTiming ?? previousPolicy?.earningTiming ?? null;
+        const reversalTerms = policy?.reversalTerms ?? previousPolicy?.reversalTerms ?? null;
+        if (prior && prior.earningTiming === earningTiming && prior.reversalTerms === reversalTerms && prior.mode===terms.mode && prior.rateBps===terms.rateBps && prior.fixedMinor===terms.fixedMinor
           && (expectedRevision===prior.revision || expectedRevision===prior.revision-1)) return {terms:prior,canEdit:true};
         if ((prior?.revision??0)!==expectedRevision) throw new ConflictException('تغير الاتفاق. افتحه من جديد قبل الحفظ.');
-        const saved=await tx.instructorCompensationAgreement.create({data:{...terms,organizationId:scope.organizationId,instructorAccountId:instructorId,
+        if(terms.mode!=='SALARY_ONLY' && (!earningTiming || !reversalTerms))throw new BadRequestException('أدخل توقيت الاستحقاق وشروط عكسه قبل حفظ الاتفاق.');
+        const saved=await tx.instructorCompensationAgreement.create({data:{...terms,earningTiming,reversalTerms,organizationId:scope.organizationId,instructorAccountId:instructorId,
           recordedByAccountId:accountId,revision:expectedRevision+1,currency:'SAR'}});
         await tx.auditEvent.create({data:{resource:'InstructorCompensationAgreement',resourceId:saved.id,action:'INSTRUCTOR_COMPENSATION_AGREED',
           metadata:{organizationId:scope.organizationId,instructorAccountId:instructorId,recordedByAccountId:accountId,revision:saved.revision,priorAgreementId:prior?.id??null}}});
@@ -248,6 +253,8 @@ export class DiveCenterPortalService {
       if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code!=='P2002') throw error;
       const latest=await this.instructorAgreement(accountId,instructorId);
       if(latest.canEdit && latest.terms?.revision===expectedRevision+1 && latest.terms.mode===terms.mode
+        && (policy ? latest.terms.earningTiming===policy.earningTiming && latest.terms.reversalTerms===policy.reversalTerms
+          : latest.terms.earningTiming===null && latest.terms.reversalTerms===null)
         && latest.terms.rateBps===terms.rateBps && latest.terms.fixedMinor===terms.fixedMinor) return latest;
       throw new ConflictException('تغير الاتفاق. افتحه من جديد قبل الحفظ.');
     }

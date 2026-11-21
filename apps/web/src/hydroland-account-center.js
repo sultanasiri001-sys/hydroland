@@ -7,6 +7,7 @@
   "موعد التسليم:": "Scheduled handover:",
   "مقدم الخدمة:": "Service provider:",
   "السجل التجاري:": "Commercial registration:",
+  "لا يُطلب ضمان مالي مقدم. تُوثّق حالة كل قطعة عند التسليم، ويتحمل المستأجر تكلفة الضرر الجديد المثبت عند الإرجاع فقط.": "No deposit is collected. Each item is documented at handover. The renter covers only new damage documented at return.",
   "شروط تأجير المعدات": "Equipment rental terms",
   "إلغاء مجاني قبل موعد التسليم بـ٢٤ ساعة أو أكثر. داخل آخر ٢٤ ساعة وقبل التسليم: خصم ٢٥٪. لا استرداد اختياري بعد التسليم، مع بقاء الحقوق النظامية المنطبقة. تعذر التسليم من مقدم الخدمة يستوجب رد المبلغ كاملًا.": "Free cancellation at least 24 hours before the agreed handover. Within the last 24 hours before handover: a 25% deduction. No voluntary refund after handover; applicable statutory rights remain. If the provider cannot hand over the equipment, a full refund applies.",
   "اطلعت على بيانات التأجير وشروطه وأوافق عليها": "I have reviewed and accept the rental details and terms",
@@ -206,7 +207,8 @@
     const current=rentalViewSession(detail),quote=await request('/payments/rentals/'+encodeURIComponent(rentalId)+'/quote',{method:'GET'});
     if(!current()||!detail.isConnected)return;
     const snapshot=quote.snapshot,issuer=snapshot?.issuer;
-    uiLocale.setHTML(detail,uiLocale.html`<section><h4>شروط تأجير المعدات</h4><p>مقدم الخدمة: ${esc(issuer?.legalName||'—')}</p><p>السجل التجاري: ${esc(issuer?.registrationNumber||'—')}</p><p>${esc(issuer?.address||'—')}</p><p>موعد التسليم: ${esc(formatDate(snapshot.scheduledHandoverAt))}</p><p>موعد الإرجاع: ${esc(formatDate(snapshot.originalDueAt))}</p><p>الإجمالي: ${sar(snapshot.amountMinor)}</p><p>إلغاء مجاني قبل موعد التسليم بـ٢٤ ساعة أو أكثر. داخل آخر ٢٤ ساعة وقبل التسليم: خصم ٢٥٪. لا استرداد اختياري بعد التسليم، مع بقاء الحقوق النظامية المنطبقة. تعذر التسليم من مقدم الخدمة يستوجب رد المبلغ كاملًا.</p><label><input type="checkbox" data-rental-terms-accepted> اطلعت على بيانات التأجير وشروطه وأوافق عليها</label><div class="hl-account-actions"><button type="button" data-rental-start-checkout>المتابعة إلى الدفع</button></div><p role="status" data-rental-payment-message></p></section>`);
+    const damagePolicy=snapshot?.damagePolicy?.version==='RENTAL_DAMAGE_1'?uiLocale.html`<p>لا يُطلب ضمان مالي مقدم. تُوثّق حالة كل قطعة عند التسليم، ويتحمل المستأجر تكلفة الضرر الجديد المثبت عند الإرجاع فقط.</p>`:'';
+    uiLocale.setHTML(detail,uiLocale.html`<section><h4>شروط تأجير المعدات</h4><p>مقدم الخدمة: ${esc(issuer?.legalName||'—')}</p><p>السجل التجاري: ${esc(issuer?.registrationNumber||'—')}</p><p>${esc(issuer?.address||'—')}</p><p>موعد التسليم: ${esc(formatDate(snapshot.scheduledHandoverAt))}</p><p>موعد الإرجاع: ${esc(formatDate(snapshot.originalDueAt))}</p><p>الإجمالي: ${sar(snapshot.amountMinor)}</p><p>إلغاء مجاني قبل موعد التسليم بـ٢٤ ساعة أو أكثر. داخل آخر ٢٤ ساعة وقبل التسليم: خصم ٢٥٪. لا استرداد اختياري بعد التسليم، مع بقاء الحقوق النظامية المنطبقة. تعذر التسليم من مقدم الخدمة يستوجب رد المبلغ كاملًا.</p>${damagePolicy}<label><input type="checkbox" data-rental-terms-accepted> اطلعت على بيانات التأجير وشروطه وأوافق عليها</label><div class="hl-account-actions"><button type="button" data-rental-start-checkout>المتابعة إلى الدفع</button></div><p role="status" data-rental-payment-message></p></section>`);
     const button=detail.querySelector('[data-rental-start-checkout]'),message=detail.querySelector('[data-rental-payment-message]');
     button.addEventListener('click',async()=>{
       if(!current()||button.disabled)return;

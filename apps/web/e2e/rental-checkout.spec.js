@@ -4,6 +4,7 @@ import {resolve} from 'node:path';
 const source=name=>resolve(__dirname,'../src',name);
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 const snapshot={version:'2026-11-21.1',sourceType:'EQUIPMENT_RENTAL',sourceId:'rental-e2e',organizationId:'center-e2e',
+  damagePolicy:{version:'RENTAL_DAMAGE_1',upfrontDepositMinor:0,renterLiability:'NEW_DAMAGE_AT_RETURN_ONLY'},
   customerAccountId:'customer-e2e',invoiceNumber:'RNT-E2E',amountMinor:5000,currency:'SAR',
   scheduledHandoverAt:'2099-12-01T09:00:00.000Z',originalDueAt:'2099-12-03T09:00:00.000Z',
   issuer:{organizationId:'center-e2e',legalName:'مركز التأجير التجريبي',registrationNumber:'SYNTHETIC-001',address:'عنوان تجريبي'},invoiceReadiness:'COMMERCIAL_RECORD_ONLY'};
@@ -151,6 +152,7 @@ test('rental checkout displays original issuer and 24-hour terms and requires ex
   await page.locator('[data-rental-start-checkout]').click();
   expect(calls).toHaveLength(0);
   await expect(detail).toContainText('وافق على شروط التأجير للمتابعة');
+  await expect(page.getByText(/لا يُطلب ضمان مالي مقدم/)).toBeVisible();
   await page.locator('[data-rental-terms-accepted]').check();
   await page.locator('[data-rental-start-checkout]').click();
   await expect(page).toHaveURL('http://127.0.0.1:4173/rental-hosted-provider');

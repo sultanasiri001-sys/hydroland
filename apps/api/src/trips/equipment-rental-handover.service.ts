@@ -74,9 +74,11 @@ export class EquipmentRentalHandoverService{
     return this.summary(id,result);
   }
 
-  async scan(actorAccountId: string, id: string, input: {code?: string}) {
+  async scan(actorAccountId: string, id: string, input: {code?: string; handoverCondition?: string}) {
     const code = input.code?.trim();
     if (!code) throw new BadRequestException('Barcode or QR code is required for handover.');
+    if (input.handoverCondition !== undefined && (typeof input.handoverCondition !== 'string' || !input.handoverCondition.trim()
+      || input.handoverCondition.length > 1000)) throw new BadRequestException('Describe the item condition at handover.');
     const outcome = await this.db.serializable(async tx => {
       // Serialize all scans for a rental, including replay and its final completion notice.
       const [rental] = await tx.$queryRaw<Rental[]>`
@@ -104,6 +106,8 @@ export class EquipmentRentalHandoverService{
       if (readiness.blocked) throw new ConflictException('Equipment inspection or service policy blocks rental handover.');
       await this.requireAuthority(tx,actorAccountId,collection.organizationId,true);
 
+      if(rentalObject(rentalObject(rental.contractSnapshot).damagePolicy).version==='RENTAL_DAMAGE_1' && !input.handoverCondition?.trim())
+        throw new BadRequestException('Describe the item condition before confirming handover.');
       await tx.$executeRaw`UPDATE "EquipmentRentalItem" SET "handedOverAt"=(statement_timestamp() AT TIME ZONE 'UTC') WHERE "id"=${item.id}`;
       await tx.$executeRaw`
         INSERT INTO "EquipmentMovement"("id","resourceId","movementType","fromLocation","toLocation","tripId","assignedAccountId","notes","actorAccountId","occurredAt")
@@ -116,7 +120,7 @@ export class EquipmentRentalHandoverService{
       if (pendingHandoverCount === 0) {
         await tx.$executeRaw`UPDATE "EquipmentRental" SET "status"='ACTIVE',"updatedAt"=NOW() WHERE "id"=${id}`;
       }
-      await this.audit.record({actorId:actorAccountId,action:'EQUIPMENT_RENTAL_ITEM_HANDED_OVER',resource:'EquipmentRental',resourceId:id,metadata:{invoiceNumber:rental.invoiceNumber,resourceId:item.resourceId,assetCode:item.assetCodeSnapshot,handedOverCount:counts.handedOverCount,pendingHandoverCount,inspectionStates:readiness.states}},tx);
+      await this.audit.record({actorId:actorAccountId,action:'EQUIPMENT_RENTAL_ITEM_HANDED_OVER',resource:'EquipmentRental',resourceId:id,metadata:{invoiceNumber:rental.invoiceNumber,resourceId:item.resourceId,assetCode:item.assetCodeSnapshot,handedOverCount:counts.handedOverCount,pendingHandoverCount,handoverCondition:input.handoverCondition?.trim()??null,inspectionId:readiness.latest[0]?.id??null,inspectionStates:readiness.states}},tx);
       if (pendingHandoverCount === 0) {
         await this.notifications.notify(rental.renterAccountId,'EQUIPMENT_RENTAL_HANDED_OVER',{title:'تم استلام معدات التأجير',invoiceNumber:rental.invoiceNumber,rentalId:id,message:'تم تسليم جميع معدات التأجير لك وتفعيل الإيجار.'},tx);
       }
