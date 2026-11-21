@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { randomBytes, scryptSync } from 'node:crypto';
+import { randomBytes, randomUUID, scryptSync } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 
 const base = process.env.CUSTOMER_CASE_E2E_BASE_URL || 'http://127.0.0.1:3101/api/v1';
@@ -66,7 +66,15 @@ try {
     members: { create: { accountId: staff.id, role: 'OWNER', status: 'ACTIVE' } } } });
   organizations.push(orgB);
 
-  const ordinary = await createCase(customer, 'PAYMENT_ISSUE'), id = ordinary.id, path = management(id);
+  const storeOrder=await db.storeOrder.create({data:{accountId:customer.id,totalMinor:18500,currency:'SAR'}});
+  const orderIssue={type:'PAYMENT_ISSUE',subject:'Order assistance',description:'Test a linked order case',referenceType:'STORE_ORDER',referenceId:storeOrder.id,requestId:randomUUID()};
+  await request(other,'/customer-service/cases',orderIssue,404);
+  const ordinary=await request(customer,'/customer-service/cases',orderIssue),id=ordinary.id,path=management(id);
+  cases.push(id);
+  assert.equal(ordinary.referenceId,storeOrder.id);assert.equal((await request(customer,'/customer-service/cases',orderIssue)).id,id);
+  assert.equal(await auditCount(id,'customer_case.created'),1);
+  await request(customer,'/customer-service/cases',{...orderIssue,subject:'Different issue'},409);
+
   await request(null, '/customer-service/admin/cases', undefined, 401);
   await request(customer, '/customer-service/admin/cases', undefined, 403);
   await request(staff, path, undefined, 403);
@@ -207,6 +215,7 @@ try {
   await db.organization.deleteMany({ where: { id: { in: organizationIds } } }).catch(() => {});
   await db.session.deleteMany({ where: { accountId: { in: accountIds } } }).catch(() => {});
   await db.roleAssignment.deleteMany({ where: { accountId: { in: accountIds } } }).catch(() => {});
+  await db.storeOrder.deleteMany({where:{accountId:{in:accountIds}}}).catch(()=>{});
   await db.account.deleteMany({ where: { id: { in: accountIds } } }).catch(() => {});
   await db.person.deleteMany({ where: { id: { in: personIds } } }).catch(() => {});
   await db.$disconnect();

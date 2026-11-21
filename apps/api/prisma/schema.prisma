@@ -154,6 +154,10 @@ model Person {
 }
 
 model Account {
+  retailStockCounts StoreStockCount[]
+  storeStockTransfers StoreStockTransfer[]
+  storeFeedback StoreProductFeedback[]
+  storeProductPreferences StoreProductPreference[]
   personalDataRequests PersonalDataRequest[]
   instructorDocuments InstructorDocument[]
   privacyGrievances PrivacyGrievance[]
@@ -252,6 +256,9 @@ model Account {
 }
 
 model Organization {
+  retailStockCounts StoreStockCount[]
+  stockLocations StoreStockLocation[]
+  storeStockTransfers StoreStockTransfer[]
   instructorDocuments InstructorDocument[]
   privacyGrievances PrivacyGrievance[]
   operationalEvidence OperationalEvidence[]
@@ -1163,6 +1170,7 @@ model TripComplianceReview {
 }
 
 model OrgUnit {
+  merchantStockLocations StoreStockLocation[]
  id String @id @default(uuid())
  organizationId String
  parentId String?
@@ -2019,6 +2027,12 @@ enum StoreOrderStatus {
  FULFILLED
 }
 model StoreProduct {
+  stockCounts StoreStockCount[]
+  locationStock StoreStockBalance[]
+  stockTransfers StoreStockTransfer[]
+ customerFeedback StoreProductFeedback[]
+ customerPreferences StoreProductPreference[]
+ catalogDetails Json?
  id String @id @default(uuid())
  organizationId String?
  organization Organization? @relation(fields:[organizationId], references:[id], onDelete:Restrict)
@@ -2037,12 +2051,94 @@ model StoreProduct {
  @@index([status,nameAr])
  @@index([organizationId,status])
 }
+model StoreProductFeedback {
+ id String @id
+ productId String
+ accountId String
+ kind String
+ body String @db.VarChar(1800)
+ rating Int?
+ reply String? @db.VarChar(1800)
+ published Boolean @default(false)
+ revision Int @default(1)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ product StoreProduct @relation(fields:[productId], references:[id], onDelete:Cascade)
+ account Account @relation(fields:[accountId], references:[id], onDelete:Cascade)
+ @@index([productId,published,createdAt])
+}
+
+model StoreStockLocation {
+  id String @id
+  organizationId String
+  orgUnitId String?
+  code String
+  title String
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  orgUnit OrgUnit? @relation(fields:[orgUnitId],references:[id],onDelete:Restrict)
+  balances StoreStockBalance[]
+  @@unique([organizationId,code],map:"StoreStockLocation_org_code_key")
+}
+
+model StoreStockBalance {
+  productId String
+  locationId String
+  quantity Int
+  product StoreProduct @relation(fields:[productId],references:[id],onDelete:Restrict)
+  location StoreStockLocation @relation(fields:[locationId],references:[id],onDelete:Restrict)
+  @@id([productId,locationId])
+}
+
+model StoreStockCount {
+  id String @id
+  organizationId String
+  actorId String
+  productId String
+  locationKey String
+  expectedQuantity Int
+  countedQuantity Int
+  reason String
+  countedAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  actor Account @relation(fields:[actorId],references:[id],onDelete:Restrict)
+  product StoreProduct @relation(fields:[productId],references:[id],onDelete:Restrict)
+  @@index([organizationId,countedAt,id],map:"StoreStockCount_org_time_idx")
+}
+
+model StoreStockTransfer {
+  id String @id
+  organizationId String
+  actorId String
+  productId String
+  sourceKey String
+  destinationKey String
+  quantity Int
+  movedAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  actor Account @relation(fields:[actorId],references:[id],onDelete:Restrict)
+  product StoreProduct @relation(fields:[productId],references:[id],onDelete:Restrict)
+  @@index([organizationId,movedAt,id],map:"StoreStockTransfer_org_time_idx")
+}
+
+model StoreProductPreference {
+ accountId String
+ productId String
+ favorite Boolean @default(false)
+ stockAlert Boolean @default(false)
+ account Account @relation(fields:[accountId], references:[id], onDelete:Cascade)
+ product StoreProduct @relation(fields:[productId], references:[id], onDelete:Cascade)
+ @@id([accountId,productId])
+ @@index([productId,stockAlert])
+}
+
 enum StoreProductKind {
  GOODS
  SERVICE
 }
 
 model StoreCourseOffer {
+ saleDetails Json?
  id String @id @default(uuid())
  organizationId String
  organization Organization @relation(fields:[organizationId], references:[id], onDelete:Restrict)

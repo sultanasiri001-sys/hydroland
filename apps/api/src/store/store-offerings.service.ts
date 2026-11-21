@@ -2,11 +2,14 @@ import { trainingOperationalPolicy } from '../governance/training-operational-po
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, StoreProductKind, StoreProductStatus } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createCommerceContractSnapshot } from '../commerce/commerce-contract-snapshot';
 
-const productFields = ['sku','nameAr','description','priceMinor','stockQuantity','kind','status'];
-const courseFields = ['courseCode','title','description','locationName','startsAt','endsAt','capacity','priceMinor','status'];
+import { normalizeSale, priceActivity } from './activity-promotions';
+import { catalogDetails } from './product-catalog';
+
+const productFields = ['catalogDetails','sku','nameAr','description','priceMinor','stockQuantity','kind','status'];
+const courseFields = ['saleDetails','courseCode','title','description','locationName','startsAt','endsAt','capacity','priceMinor','status'];
 
 @Injectable()
 export class StoreOfferingsService {
@@ -48,7 +51,7 @@ export class StoreOfferingsService {
     if (before.updatedAt.getTime()!==this.revision(value).getTime()) throw new ConflictException('تغير العرض. أعد تحميله قبل الحفظ.');
   }
   private same(before: Record<string,unknown>, data: Record<string,unknown>) {
-    return Object.entries(data).every(([key,value])=>value instanceof Date ? (before[key] instanceof Date && (before[key] as Date).getTime()===value.getTime()) : before[key]===value);
+    return Object.entries(data).every(([key,value])=>value instanceof Date ? (before[key] instanceof Date && (before[key] as Date).getTime()===value.getTime()) : key === 'saleDetails' ? JSON.stringify(Object.entries((before[key]??{}) as object).sort())===JSON.stringify(Object.entries(value as object).sort()) : key === 'catalogDetails' ? JSON.stringify(catalogDetails(before[key] ?? {},Number(data.priceMinor))) === JSON.stringify(value) : before[key]===value);
   }
   private async audited(tx: Prisma.TransactionClient, actorId: string, organizationId: string, resource: string, resourceId: string, action: string) {
     await tx.auditEvent.create({data:{action,resource,resourceId,metadata:{actorId,organizationId}}});
@@ -70,11 +73,41 @@ export class StoreOfferingsService {
     });
   }
 
-  saveProduct(accountId: string, input: Record<string,unknown>, id?: string) {
-    this.object(input,[...productFields,id?'expectedUpdatedAt':'requestId']);
+  orderReport(accountId:string,from?:string,to?:string) {
+    const day=(value:string|undefined)=>{
+      if(value===undefined || value==='')return null;
+      if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value))throw new BadRequestException('أدخل تاريخًا صحيحًا.');
+      const date=new Date(value+'T00:00:00Z');
+      if(!Number.isFinite(date.getTime())||date.toISOString().slice(0,10)!==value)throw new BadRequestException('أدخل تاريخًا صحيحًا.');
+      return date.getTime()-3*3600000;
+    };
+    const start=day(from),last=day(to);
+    if(start!==null&&last!==null&&last<start)throw new BadRequestException('سبق تاريخ النهاية تاريخ البداية.');
+    const lower=start===null?Prisma.empty:Prisma.sql`AND o."createdAt" >= ${new Date(start)}`;
+    const upper=last===null?Prisma.empty:Prisma.sql`AND o."createdAt" < ${new Date(last+86400000)}`;
+    return this.db.serializable(async tx=>{
+      const org=await this.providerScope(tx,accountId);
+      // An order can contain several sellers. Aggregate only this seller's original lines.
+      // Pre-contract rows fall back to the product's recorded owner.
+      return tx.$queryRaw<Array<{id:string;createdAt:Date;status:string;currency:string;totalMinor:number}>>(Prisma.sql`
+        SELECT o.id,o."createdAt",o.status,o.currency,sum(i.quantity::bigint*i."unitPriceMinor")::float8 AS "totalMinor"
+        FROM "StoreOrderItem" i JOIN "StoreOrder" o ON o.id=i."orderId" JOIN "StoreProduct" p ON p.id=i."productId"
+        WHERE (i."contractSnapshot"->'issuer'->>'organizationId'=${org.id} OR (i."contractSnapshot" IS NULL AND p."organizationId"::text=${org.id}))
+        ${lower} ${upper}
+        GROUP BY o.id,o."createdAt",o.status,o.currency ORDER BY o."createdAt" DESC,o.id DESC LIMIT 200`);
+    });
+  }
+
+  private productData(input: Record<string,unknown>) {
     const kind=input.kind;
     if (kind!=='GOODS' && kind!=='SERVICE') throw new BadRequestException('اختر سلعة أو خدمة.');
-    const data={sku:this.text(input,'sku',80),nameAr:this.text(input,'nameAr',240),description:this.text(input,'description',4000,true),priceMinor:this.integer(input,'priceMinor'),stockQuantity:this.integer(input,'stockQuantity'),kind:kind as StoreProductKind,status:this.status(input),currency:'SAR'};
+    const price = this.integer(input,'priceMinor');
+    return {...(input.catalogDetails === undefined ? {} : {catalogDetails:catalogDetails(input.catalogDetails,price)}),sku:this.text(input,'sku',80),nameAr:this.text(input,'nameAr',240),description:this.text(input,'description',4000,true),priceMinor:this.integer(input,'priceMinor'),stockQuantity:this.integer(input,'stockQuantity'),kind:kind as StoreProductKind,status:this.status(input),currency:'SAR'};
+  }
+
+  saveProduct(accountId: string, input: Record<string,unknown>, id?: string) {
+    this.object(input,[...productFields,id?'expectedUpdatedAt':'requestId']);
+    const data=this.productData(input),kind=data.kind,price=data.priceMinor;
     const productId=id||this.requestId(input.requestId);
     return this.retryUnique(()=>this.db.serializable(async tx=>{
       const organization=await this.providerScope(tx,accountId),before=await tx.storeProduct.findUnique({where:{id:productId}});
@@ -83,6 +116,7 @@ export class StoreOfferingsService {
         if (before.organizationId!==organization.id) throw new ConflictException('تعذر إعادة استخدام طلب الحفظ.');
         if (!id) { if(this.same(before,data)) return before; throw new ConflictException('سبق حفظ هذا الطلب ببيانات مختلفة.'); }
         this.checkRevision(before,input.expectedUpdatedAt);
+        if (input.catalogDetails === undefined && before.catalogDetails != null) catalogDetails(before.catalogDetails,price);
         if (before.kind!==kind && await tx.storeOrderItem.count({where:{productId}})) throw new ConflictException('لا يمكن تغيير نوع عرض مرتبط بطلبات.');
       }
       const duplicate=await tx.storeProduct.findUnique({where:{sku:data.sku}});
@@ -93,10 +127,58 @@ export class StoreOfferingsService {
     }));
   }
 
+  async importProducts(accountId:string, input:Record<string,unknown>, platform=false) {
+    this.object(input,['requestId','rows']);
+    const requestId=this.requestId(input.requestId);
+    if (!Array.isArray(input.rows) || input.rows.length<1 || input.rows.length>200) {
+      throw new BadRequestException('اختر ملفًا يحتوي على منتج واحد إلى ٢٠٠ منتج.');
+    }
+    const rows=input.rows.map((row:Record<string,unknown>, index:number) => {
+      try {
+        this.object(row,[...productFields,'currency']);
+        const product=this.productData(row);
+        const currency=row.currency ?? 'SAR';
+        if (typeof currency!=='string' || !/^[A-Z]{3}$/.test(currency) || (!platform && currency!=='SAR')) {
+          throw new BadRequestException('تحقق من عملة المنتج.');
+        }
+        return {...product,currency};
+      } catch (error) {
+        if (error instanceof BadRequestException) throw new BadRequestException('السطر '+(index+2)+' — '+error.message);
+        throw error;
+      }
+    });
+    const skus=rows.map(row=>row.sku);
+    if (new Set(skus).size!==skus.length) throw new BadRequestException('يتكرر رقم منتج داخل الملف.');
+    const digest=createHash('sha256').update(JSON.stringify(rows)).digest('hex');
+    try {
+      return await this.retryUnique(()=>this.db.serializable(async tx=>{
+        const organizationId=platform ? null : (await this.providerScope(tx,accountId)).id;
+        const key='store-product-import:'+accountId+':'+(organizationId??'platform')+':'+requestId;
+        await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
+        const previous=await tx.operationalSetting.findUnique({where:{key}});
+        if (previous) {
+          const receipt=previous.value as {digest:string;count:number};
+          if (receipt.digest!==digest) throw new ConflictException('استُخدم طلب الاستيراد لملف مختلف.');
+          return {requestId,count:receipt.count};
+        }
+        if (await tx.storeProduct.count({where:{sku:{in:skus}}})) {
+          throw new ConflictException('أحد أرقام المنتجات مستخدم بالفعل. لم يُستورد أي صف.');
+        }
+        const {count}=await tx.storeProduct.createMany({data:rows.map(row=>({...row,organizationId}))});
+        await tx.operationalSetting.create({data:{key,value:{digest,count}}});
+        await tx.auditEvent.create({data:{resource:'StoreCatalogImport',resourceId:requestId,action:'STORE_PRODUCTS_IMPORTED',metadata:{accountId,organizationId,count}}});
+        return {requestId,count};
+      }));
+    } catch(error) {
+      if(error instanceof Prisma.PrismaClientKnownRequestError && error.code==='P2002') throw new ConflictException('تغيّر كتالوج المنتجات أثناء الاستيراد. راجع أرقام المنتجات.');
+      throw error;
+    }
+  }
+
   saveCourse(accountId: string, input: Record<string,unknown>, id?: string) {
     this.object(input,[...courseFields,id?'expectedUpdatedAt':'requestId']);
     const date=(key:string)=>{const value=input[key];if(typeof value!=='string'||!/(Z|[+-]\d{2}:\d{2})$/.test(value)||!Number.isFinite(Date.parse(value)))throw new BadRequestException('أدخل مواعيد الدورة مع المنطقة الزمنية.');return new Date(value)};
-    const data={courseCode:this.text(input,'courseCode',80),title:this.text(input,'title',240),description:this.text(input,'description',4000,true),locationName:this.text(input,'locationName',240),startsAt:date('startsAt'),endsAt:date('endsAt'),capacity:this.integer(input,'capacity',1),priceMinor:this.integer(input,'priceMinor'),currency:'SAR',status:this.status(input)};
+    const data={...(input.saleDetails===undefined?{}:{saleDetails:normalizeSale(input.saleDetails,this.integer(input,'priceMinor'))}),courseCode:this.text(input,'courseCode',80),title:this.text(input,'title',240),description:this.text(input,'description',4000,true),locationName:this.text(input,'locationName',240),startsAt:date('startsAt'),endsAt:date('endsAt'),capacity:this.integer(input,'capacity',1),priceMinor:this.integer(input,'priceMinor'),currency:'SAR',status:this.status(input)};
     if (data.endsAt<=data.startsAt || data.startsAt<=new Date()) throw new BadRequestException('يجب أن تبدأ الدورة مستقبلًا وتنتهي بعد بدايتها.');
     const courseId=id||this.requestId(input.requestId);
     return this.retryUnique(()=>this.db.serializable(async tx=>{
@@ -125,6 +207,7 @@ export class StoreOfferingsService {
       if(!before)throw new NotFoundException('العرض غير موجود في المركز.');
       this.checkRevision(before,input.expectedUpdatedAt);
       if(remove){
+        if(type==='products' && (await tx.storeStockTransfer.count({where:{productId:id}})||await tx.storeStockCount.count({where:{productId:id}})))throw new ConflictException('يرتبط المنتج بسجل حركة مخزون. يمكنك إيقاف عرضه.');
         const used=type==='products'?await tx.storeOrderItem.count({where:{productId:id}}):await tx.trainingEnrollment.count({where:{storeCourseOfferId:id}});
         if(before.status==='ACTIVE'||used)throw new ConflictException('أوقف العرض أولًا. العروض المرتبطة بطلبات أو تسجيلات تُحفظ ولا تُحذف.');
         if(type==='products')await tx.storeProduct.delete({where:{id}});else await tx.storeCourseOffer.delete({where:{id}});
@@ -140,7 +223,7 @@ export class StoreOfferingsService {
   async publicCourses(){
     const policy=await trainingOperationalPolicy(this.db);
     const rows=await this.db.storeCourseOffer.findMany({where:{status:'ACTIVE',startsAt:{gt:new Date()},organization:{status:'ACTIVE'}},orderBy:{startsAt:'asc'},include:{organization:{select:{displayName:true}},_count:{select:{enrollments:{where:{status:{not:'CANCELLED'}}}}}}});
-    return rows.map(({_count,...row})=>({...row,bookingPolicy:{capacityLimit:policy.capacityLimit?'ENABLED':'DISABLED'},remainingSeats:Math.max(0,row.capacity-_count.enrollments)}));
+    return rows.map(({_count,saleDetails,...row})=>({...row,...priceActivity(row.priceMinor,saleDetails),bookingPolicy:{capacityLimit:policy.capacityLimit?'ENABLED':'DISABLED'},remainingSeats:Math.max(0,row.capacity-_count.enrollments)}));
   }
 
   enroll(accountId:string,courseId:string){
@@ -155,18 +238,19 @@ export class StoreOfferingsService {
       const count=await tx.trainingEnrollment.count({where:{storeCourseOfferId:courseId,status:{not:'CANCELLED'}}});
       const policy=await trainingOperationalPolicy(tx);
       if(policy.capacityLimit&&count>=course.capacity)throw new ConflictException('اكتملت مقاعد الدورة.');
+      const offer=priceActivity(course.priceMinor,course.saleDetails,new Date(recordedAt));
       let contractSnapshot;
       try {
         contractSnapshot = createCommerceContractSnapshot({
           sourceKind:'TRAINING_ENROLLMENT',sourceId:enrollmentId,parentId:null,offeringId:course.id,
           customerAccountId:accountId,organizationId:course.organizationId,organization:course.organization,
-          kind:'COURSE',title:course.title,quantity:1,unitPriceMinor:course.priceMinor,currency:course.currency,recordedAt,
+          kind:'COURSE',title:course.title,quantity:1,unitPriceMinor:offer.priceMinor,currency:course.currency,recordedAt,
           originalStartsAt:course.startsAt.toISOString(),originalEndsAt:course.endsAt.toISOString(),
         });
       } catch {
         throw new BadRequestException('بيانات شروط الدورة غير مكتملة أو غير صالحة.');
       }
-      const enrollment=await tx.trainingEnrollment.create({data:{id:enrollmentId,studentAccountId:accountId,courseCode:course.courseCode,centerOrganizationId:course.organizationId,storeCourseOfferId:course.id,status:'PENDING',metadata:{source:'UNIFIED_STORE',title:course.title,priceMinor:course.priceMinor,currency:course.currency,startsAt:course.startsAt.toISOString(),endsAt:course.endsAt.toISOString(),locationName:course.locationName,financialActionExecuted:false,operationalPolicy:policy,contractSnapshot}}});
+      const enrollment=await tx.trainingEnrollment.create({data:{id:enrollmentId,studentAccountId:accountId,courseCode:course.courseCode,centerOrganizationId:course.organizationId,storeCourseOfferId:course.id,status:'PENDING',metadata:{source:'UNIFIED_STORE',title:course.title,priceMinor:offer.priceMinor,...(offer.discountActive?{listPriceMinor:offer.listPriceMinor}:{}),currency:course.currency,startsAt:course.startsAt.toISOString(),endsAt:course.endsAt.toISOString(),locationName:course.locationName,financialActionExecuted:false,operationalPolicy:policy,contractSnapshot}}});
       await this.audited(tx,accountId,course.organizationId,'TrainingEnrollment',enrollment.id,'STORE_COURSE_ENROLLED');
       return enrollment;
     });

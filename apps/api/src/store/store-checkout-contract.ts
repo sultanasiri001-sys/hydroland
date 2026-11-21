@@ -43,7 +43,14 @@ export function requireStoreCheckoutContract(order: StoreCheckoutOrder) {
           registrationNumber: supplier.registrationNumber, address: supplier.address}, kind: 'PHYSICAL_GOOD', title: original.title,
         quantity: item.quantity, unitPriceMinor: item.unitPriceMinor, currency: 'SAR', recordedAt: original.recordedAt});
     } catch { fail(); }
-    if (storeCanonicalJson(expected) !== storeCanonicalJson(original) || issuer && storeCanonicalJson(issuer) !== storeCanonicalJson(supplier)) fail();
+    const {catalogSelection, ...base} = original;
+    if (catalogSelection !== undefined) {
+      const choice = storeObject(catalogSelection);
+      if (Object.keys(choice).sort().join(',') !== 'color,listPriceMinor,size,sku' || typeof choice.sku !== 'string' || !choice.sku.trim()
+        || typeof choice.size !== 'string' || typeof choice.color !== 'string' || !Number.isSafeInteger(choice.listPriceMinor)
+        || choice.listPriceMinor < item.unitPriceMinor || choice.listPriceMinor > 2147483647) fail();
+    }
+    if (storeCanonicalJson(expected) !== storeCanonicalJson(base) || issuer && storeCanonicalJson(issuer) !== storeCanonicalJson(supplier)) fail();
     organizationId = supplier.organizationId; issuer = supplier; total += original.amountMinor;
     return original;
   });

@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {readFile} from 'node:fs/promises';
 import {openWorkspaceSwitcher} from './portal-test-helpers.js';
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 test.use({viewport:{width:390,height:844}});
@@ -63,9 +64,9 @@ test('center directly creates, edits, stops, republishes and deletes an unused o
  const state=await setup(page,true);
  await page.route('**/api/v1/store/provider/products',route=>{const body=route.request().postDataJSON();state.writes.push(body);state.products=[{...service,...body,id:body.requestId}];return json(route,state.products[0],201)});
  await expect(page.locator('.hl-store-provider')).toBeVisible();const form=page.locator('[data-offer-form][data-type="products"][data-id=""]');await form.locator('..').locator('summary').click();
- for(const[key,value]of Object.entries({nameAr:'خدمة جديدة',sku:'NEW-SERVICE',price:'125.50',stockQuantity:'2'}))await form.locator(`[name=${key}]`).fill(value);
+ for(const[key,value]of Object.entries({nameAr:'خدمة جديدة',sku:'NEW-SERVICE',price:'125.50',stockQuantity:'2',catalog_size:'L',catalogSale:'100.00'}))await form.locator(`[name=${key}]`).fill(value);
  await form.locator('[name=kind]').selectOption('SERVICE');await form.locator('[name=status]').selectOption('ACTIVE');await form.locator('[type=submit]').click();
- await expect(page.locator('.hl-store-provider')).toContainText('تم حفظ العرض');expect(state.writes[0]).toMatchObject({kind:'SERVICE',priceMinor:12550,stockQuantity:2});expect(state.writes[0]).not.toHaveProperty('organizationId');
+ await expect(page.locator('.hl-store-provider')).toContainText('تم حفظ العرض');expect(state.writes[0]).toMatchObject({kind:'SERVICE',priceMinor:12550,stockQuantity:2,catalogDetails:{size:'L',salePriceMinor:10000}});expect(state.writes[0]).not.toHaveProperty('organizationId');
  const id=state.products[0].id;let revisionCount=0;
  await page.route('**/api/v1/store/provider/products/'+id,route=>{
    state.writes.push(route.request().postDataJSON());if(route.request().method()==='DELETE'){state.products=[];return json(route,{deleted:true})}
@@ -136,4 +137,168 @@ test('center store entry opens management directly and retains a public preview'
  await expect(panel).toBeHidden();await expect(page.locator('[data-public-product="service-1"]')).toBeVisible();await expect(page.locator('[data-service-title]')).toHaveText('المتجر البحري');
  await page.locator('[data-store-manage]').click();await expect(panel.locator('[data-offer-refresh]')).toBeVisible();
  await expect(page.locator('[data-service-title]')).toHaveText('إدارة عروض المركز');
+});
+
+test('catalog shows the offer before cart and keeps each chosen SKU and price', async({page})=>{
+ await setup(page);
+ const variants=['M','L'].map((size,index)=>({...service,kind:'GOODS',id:'fin-'+size,sku:'FINS-'+size,nameAr:'زعانف سباحة',
+   organizationId:'center-x',listPriceMinor:18000,priceMinor:index?15500:14500,discountActive:true,
+   catalogDetails:{family:'FINS',size,color:'أزرق',category:'زعانف',brand:'بحر'},stockQuantity:1}));
+ await page.route('**/api/v1/store/products',r=>json(r,variants));
+ await page.evaluate(()=>window.HydrolandStore.reloadProducts());
+ await expect(page.locator('[data-public-product]')).toHaveCount(1);
+ await expect(page.locator('[data-public-product] del')).toBeVisible();
+ expect(await page.evaluate(()=>window.HydrolandStore.getCart())).toHaveLength(0);
+ await page.locator('[data-catalog-variant]').selectOption('fin-L');
+ await page.locator('[data-store-add="fin-L"]').click();
+ expect(await page.evaluate(()=>window.HydrolandStore.getCart().map(x=>[x.id,x.priceMinor,x.quantity]))).toEqual([['fin-L',15500,1]]);
+ await page.locator('[data-clear-catalog-cart]').click();
+ expect(await page.evaluate(()=>window.HydrolandStore.getCart())).toHaveLength(0);
+});
+
+test('customer can save a product and opt in to its stock notification independently',async({page})=>{
+ const prefs=new Map();
+ await setup(page);
+ await page.route('**/api/v1/store/products',r=>json(r,[{...service,stockQuantity:0}]));
+ await page.route('**/api/v1/store/preferences/mine',r=>json(r,[...prefs.values()]));
+ await page.route('**/api/v1/store/preferences/service-1/*',r=>{
+   const field=r.request().url().endsWith('/favorite')?'favorite':'stockAlert';
+   const row={productId:'service-1',favorite:false,stockAlert:false,...prefs.get('service-1'),[field]:r.request().postDataJSON().enabled};
+   prefs.set('service-1',row);return json(r,row);
+ });
+ await page.evaluate(()=>window.HydrolandStore.reloadProducts());
+ await page.locator('[data-product-preference="favorite"]').click();
+ await expect(page.locator('[data-product-preference="favorite"]')).toHaveAttribute('aria-pressed','true');
+ await page.locator('[data-product-preference="stock-alert"]').click();
+ await expect(page.locator('[data-product-preference="stock-alert"]')).toHaveAttribute('aria-pressed','true');
+ await page.locator('[data-store-favorites]').click();await expect(page.locator('[data-public-product]')).toHaveCount(1);
+ await page.locator('[data-product-preference="favorite"]').click();await expect(page.locator('[data-public-product]')).toHaveCount(0);
+ expect(prefs.get('service-1').stockAlert).toBe(true);
+});
+
+test('center previews a CSV and saves selected products with their own SKU and price',async({page})=>{
+ const state=await setup(page,true);
+ await page.route('**/api/v1/store/provider/catalog/import',route=>{
+   const body=route.request().postDataJSON();state.writes.push(body);
+   return json(route,{count:body.rows.length,requestId:body.requestId},201);
+ });
+ const section=page.locator('.hl-store-provider [data-catalog-import]');
+ await section.locator('summary').click();
+ await section.locator('input[type=file]').setInputFiles({name:'inventory.csv',mimeType:'text/csv',
+   buffer:Buffer.from('sku,nameAr,price,stock,kind,status,sale,size,description\r\nFIN-M,زعانف,150.25,4,GOODS,ACTIVE,125.50,M,"وصف, مع فاصلة"')});
+ await expect(section.locator('li')).toContainText('FIN-M');
+ expect(state.writes).toHaveLength(0);
+ await section.getByRole('button',{name:'حفظ المنتجات'}).click();
+ await expect(section.getByRole('status')).toContainText('تم حفظ المنتجات');
+ expect(state.writes[0].rows[0]).toMatchObject({sku:'FIN-M',kind:'GOODS',status:'DRAFT',description:'وصف, مع فاصلة',priceMinor:15025,stockQuantity:4,catalogDetails:{salePriceMinor:12550,size:'M'}});
+});
+
+test('shared center storefront filters the catalog and exposes merchant information on mobile',async({page})=>{
+ await setup(page);
+ const samples=[{...service,id:'center-fin',nameAr:'زعانف المركز الأول',status:'ACTIVE',organizationId:'center-one'},
+   {...service,id:'other-fin',nameAr:'زعانف المركز الثاني',status:'ACTIVE',organizationId:'center-two'}];
+ await page.route('**/api/v1/store/products',r=>json(r,samples));
+ await page.route('**/api/v1/store/storefronts/center-one',r=>json(r,{id:'center-one',displayName:'متجر فرسان',description:'التجهيز للموسم',hours:'صباح السبت',faqs:[{question:'أين الاستلام؟',answer:'رصيف فرسان'}]}));
+ await page.evaluate(()=>{location.hash='store/center/center-one';return window.HydrolandStore.reloadProducts()});
+ await expect(page.locator('#store h2').filter({hasText:'متجر فرسان'})).toBeVisible();
+ await expect(page.locator('[data-public-product="center-fin"]')).toBeVisible();
+ await expect(page.locator('[data-public-product="other-fin"]')).toHaveCount(0);
+ await page.getByText('أين الاستلام؟',{exact:true}).click();await expect(page.getByText('رصيف فرسان',{exact:true})).toBeVisible();
+ await page.locator('#store a[href="#store"]').filter({hasText:'كل عروض هيدرولاند'}).click();
+ await expect(page.locator('[data-public-product="other-fin"]')).toBeVisible();
+});
+
+test('buyer can open a linked store-order case and review its reference before sending',async({page})=>{
+ await setup(page);
+ const id='be8fb026-b2a1-4a0a-bf01-12a88fa560ae',sent=[];
+ await page.route('**/api/v1/store/orders/mine',r=>json(r,[{id,status:'CONFIRMED',totalMinor:49900,currency:'SAR',items:[],createdAt:revision}]));
+ await page.route(/\/api\/v1\/customer-service\/cases$/,r=>{sent.push(r.request().postDataJSON());return json(r,{id:'case'},201)});
+ await page.evaluate(()=>window.HydrolandStore.openOrders());
+ await page.locator('[data-store-order]').getByRole('button',{name:'مساعدة بشأن هذا الطلب'}).click();
+ const form=page.locator('[data-support-form]');
+ await expect(form).toBeVisible();await expect(page.locator('.hl-support')).toContainText(id);
+ expect(sent).toHaveLength(0);
+ await form.locator('[name=description]').fill('أحتاج توضيحًا حول تجهيز طلبي');
+ await form.getByRole('button').click();
+ await expect.poll(()=>sent.length).toBe(1);
+ expect(sent[0]).toMatchObject({referenceType:'STORE_ORDER',referenceId:id});
+});
+
+test('center calculates an optional percentage or fixed discount before publishing',async({page})=>{
+ await setup(page,true);
+ const form=page.locator('[data-offer-form][data-type="products"][data-id=""]');
+ await form.locator('..').locator('summary').first().click();
+ await form.locator('[name=price]').fill('240');
+ const calculator=form.locator('[data-discount-calculator]');await calculator.locator('[data-show-calc]').click();
+ await calculator.locator('[data-calc-value]').fill('25');await calculator.locator('[data-calc-price]').click();
+ await expect(form.locator('[name=catalogSale]')).toHaveValue('180.00');
+ await calculator.locator('[data-calc-mode]').selectOption('amount');await calculator.locator('[data-calc-value]').fill('15.50');
+ await calculator.locator('[data-calc-price]').click();await expect(form.locator('[name=catalogSale]')).toHaveValue('224.50');
+});
+
+test('center discount dashboard updates its own SKU and reports only its order portion',async({page})=>{
+ const state=await setup(page,true);
+ state.products=[{...service,status:'ACTIVE',catalogDetails:{family:'FINS',size:'M',salePriceMinor:10300}}];
+ await page.evaluate(()=>window.HydrolandStoreProvider.open());
+ const box=page.locator('.hl-store-provider .hl-catalog-dashboard');
+ await expect(box.getByRole('heading',{name:'لوحة خصومات المركز'})).toBeVisible();
+ await expect(box.locator('[data-discount-counts]')).toContainText('خصم سارٍ 1');
+ await page.route('**/api/v1/store/provider/products/service-1',r=>{
+   const body=r.request().postDataJSON();state.writes.push(body);Object.assign(state.products[0],body);
+   return json(r,state.products[0]);
+ });
+ await box.locator('[data-catalog-id="service-1"]').click();
+ await box.locator('[name=catalogSale]').fill('98.75');
+ await box.locator('[data-catalog-product] [type=submit]').click();
+ await expect.poll(()=>state.writes.length).toBe(1);
+ expect(state.writes[0]).toMatchObject({sku:'SERVICE-1',kind:'SERVICE',status:'ACTIVE',catalogDetails:{salePriceMinor:9875,size:'M'}});
+ const mixed={id:'6b367bbf-2f6f-4106-8c1b-648af519ef38',currency:'SAR',status:'CREATED',createdAt:'2026-10-08T22:10:00Z',totalMinor:12550};
+ const result=[mixed,{id:'another-order',currency:'SAR',status:'CREATED',createdAt:revision,totalMinor:9875}];
+ await page.route('**/api/v1/store/provider/reports/orders*',r=>json(r,result));
+ const reports=box.locator('details').filter({has:page.locator('summary',{hasText:'تقارير المتجر'})});
+ await reports.locator('summary').click();await reports.getByRole('button',{name:'تحديث تقرير الطلبات'}).click();
+ await expect(reports).toContainText('قيمة بنود مركزك فقط');
+ await reports.getByText('تفاصيل الطلبات',{exact:true}).click();
+ const row=reports.getByRole('listitem').filter({hasText:mixed.id});
+ await expect(row).toContainText('جديد');
+ const amount=new Intl.NumberFormat('ar-SA',{style:'currency',currency:'SAR'}).format(125.5);
+ const localDay=new Intl.DateTimeFormat('ar-SA',{calendar:'gregory',timeZone:'Asia/Riyadh',dateStyle:'medium'}).format(new Date(mixed.createdAt));
+ await expect(row).toContainText(amount);await expect(row).toContainText(localDay);
+ const exportButton=reports.getByRole('button',{name:'تصدير الطلبات المعروضة'});
+ const downloading=page.waitForEvent('download');await exportButton.click();
+ const file=await downloading;
+ const csv=await readFile(await file.path(),'utf8');
+ expect(csv).toContain('"قيمة بنود المركز"');expect(csv).toContain('"125.50","SAR"');expect(csv).toContain(mixed.id);
+ await reports.getByLabel('من تاريخ').fill('2026-10-10');
+ await expect(row).toHaveCount(0);await expect(exportButton).toBeDisabled();
+});
+
+test('center moves a SKU out of published stock into a warehouse on mobile',async({page})=>{
+ const state=await setup(page,true);
+ const stock={locations:[{id:'warehouse',title:'مستودع المرسى',code:'WH-A'}],units:[],
+   products:[{id:'mask',nameAr:'قناع الغوص',sku:'MASK-1',stockQuantity:4,locationStock:[]}],movements:[]};
+ await page.route('**/api/v1/store/provider/inventory',r=>json(r,stock));
+ await page.route('**/api/v1/store/provider/inventory/transfers',r=>{
+   const body=r.request().postDataJSON();state.writes.push(body);stock.products[0].stockQuantity-=body.quantity;
+   stock.products[0].locationStock=[{locationId:'warehouse',quantity:body.quantity}];return json(r,{id:body.requestId},201);
+ });
+ const inventory=page.locator('[data-merchant-inventory]');await inventory.locator('> summary').click();
+ const form=inventory.locator('[data-stock-transfer]');await expect(form).toBeVisible();
+ await form.getByLabel('إلى موقع').selectOption('warehouse');await form.getByLabel('الكمية').fill('3');
+ await form.getByRole('button',{name:'نقل الكمية'}).click();
+ await expect(form).toContainText('مستودع المرسى · WH-A · 3');await expect(form).toContainText('إجمالي الوحدات · 4');
+ expect(state.writes[0]).toMatchObject({productId:'mask',sourceKey:'ONLINE',destinationKey:'warehouse',quantity:3});
+ await page.route('**/api/v1/store/provider/inventory/counts',r=>{
+   const body=r.request().postDataJSON();state.writes.push(body);
+   stock.products[0].locationStock[0].quantity=body.countedQuantity;
+   stock.counts=[{...body,countedAt:revision}];return json(r,{id:body.requestId},201);
+ });
+ const count=inventory.locator('[data-physical-stock-count]');
+ await count.locator('..').locator('> summary').click();
+ await count.getByLabel('موقع الجرد').selectOption('warehouse');
+ await expect(count.getByLabel('الرصيد المسجل')).toHaveValue('3');
+ await count.getByLabel('الكمية الفعلية').fill('2');await count.getByLabel('سبب فرق الجرد').fill('قطعة تالفة');
+ await count.getByRole('button',{name:'اعتماد الجرد وتحديث الرصيد'}).click();
+ await expect(form).toContainText('إجمالي الوحدات · 3');
+ expect(state.writes[1]).toMatchObject({productId:'mask',locationKey:'warehouse',expectedQuantity:3,countedQuantity:2,reason:'قطعة تالفة'});
 });

@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { CustomerCasePriority, CustomerCaseType, CustomerInteractionChannel, Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 import { AuditService } from '../audit/audit.service';
@@ -75,8 +75,8 @@ export class CustomerCaseService {
     return this.db.customerCase.findMany({ where: { customerId: accountId, organizationId: null }, include: { interactions: { orderBy: { createdAt: 'asc' } } }, orderBy: { createdAt: 'desc' } });
   }
 
-  async create(accountId: string, input: { type: CustomerCaseType; subject: string; description: string; priority?: CustomerCasePriority; referenceType?: string; referenceId?: string }) {
-    if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !['type', 'subject', 'description', 'priority', 'referenceType', 'referenceId'].includes(key)) || typeof input.subject !== 'string' || typeof input.description !== 'string') throw new BadRequestException('Invalid request fields.');
+  async create(accountId: string, input: { type: CustomerCaseType; subject: string; description: string; priority?: CustomerCasePriority; referenceType?: string; referenceId?: string; requestId?: string }) {
+    if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !['type', 'subject', 'description', 'priority', 'referenceType', 'referenceId', 'requestId'].includes(key)) || typeof input.subject !== 'string' || typeof input.description !== 'string') throw new BadRequestException('Invalid request fields.');
     const subject = input.subject.trim(); const description = input.description.trim();
     if (!subject || !description || subject.length > 180 || description.length > 10000) throw new BadRequestException('Subject and description are required and must be within the allowed length.');
     if (!Object.values(CustomerCaseType).includes(input.type) || (input.priority !== undefined && !Object.values(CustomerCasePriority).includes(input.priority))) throw new BadRequestException('Invalid request type or priority.');
@@ -85,11 +85,31 @@ export class CustomerCaseService {
     }
     if (input.referenceType?.trim() === 'PRIVATE_MESSAGE_ABUSE') throw new BadRequestException('Use the report action on the private message.');
     if (input.referenceType?.trim() === providerAppealReferenceType) throw new BadRequestException('Provider observations require the dedicated provider-appeal workflow.');
-    return this.db.serializable(async tx => {
-      const record = await tx.customerCase.create({ data: { customerId: accountId, type: input.type, priority: input.priority ?? CustomerCasePriority.NORMAL, subject, description, referenceType: input.referenceType?.trim() || null, referenceId: input.referenceId?.trim() || null, interactions: { create: { actorType: 'CUSTOMER', actorId: accountId, channel: CustomerInteractionChannel.WEB, message: description } } }, include: { interactions: true } });
+    const orderReference=input.referenceType?.trim()==='STORE_ORDER';
+    const requestId=input.requestId;
+    if(requestId!==undefined && (!orderReference || typeof requestId!=='string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId))) throw new BadRequestException('Invalid support request identifier.');
+    const create=()=>this.db.serializable(async tx => {
+      if(orderReference){
+        const orderId=input.referenceId?.trim();
+        if(!orderId || !await tx.storeOrder.findFirst({where:{id:orderId,accountId},select:{id:true}}))throw new NotFoundException('طلب المتجر غير موجود في حسابك.');
+      }
+      if(requestId){
+        const previous=await tx.customerCase.findUnique({where:{id:requestId},include:{interactions:true}});
+        if(previous){
+          if(previous.customerId!==accountId||previous.referenceType!=='STORE_ORDER'||previous.referenceId!==input.referenceId?.trim()
+            ||previous.type!==input.type||previous.priority!==(input.priority??CustomerCasePriority.NORMAL)||previous.subject!==subject||previous.description!==description)
+            throw new ConflictException('استخدم طلبًا جديدًا عند تغيير بيانات التذكرة.');
+          return previous;
+        }
+      }
+      const record = await tx.customerCase.create({ data: { ...(requestId?{id:requestId}:{}),customerId: accountId, type: input.type, priority: input.priority ?? CustomerCasePriority.NORMAL, subject, description, referenceType: input.referenceType?.trim() || null, referenceId: input.referenceId?.trim() || null, interactions: { create: { actorType: 'CUSTOMER', actorId: accountId, channel: CustomerInteractionChannel.WEB, message: description } } }, include: { interactions: true } });
       await this.audit.record({ actorId: accountId, action: 'customer_case.created', resource: 'CustomerCase', resourceId: record.id, metadata: { type: input.type } }, tx);
       return record;
     });
+    try{return await create()}catch(error){
+      if(requestId && error instanceof Prisma.PrismaClientKnownRequestError && error.code==='P2002')return create();
+      throw error;
+    }
   }
 
   async reply(accountId: string, caseId: string, message: string) {

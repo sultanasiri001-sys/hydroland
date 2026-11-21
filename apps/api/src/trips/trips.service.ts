@@ -1,3 +1,4 @@
+import { priceActivity } from '../store/activity-promotions';
 import { BookingManagementService } from './booking-management.service';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
@@ -11,7 +12,7 @@ import { Prisma } from '@prisma/client';
 import { captureTripBookingContract, capturedTripPrice } from '../commerce/trip-booking-contract';
 
 type TripListRow={id:string;title:string;status:string;startsAt:Date;capacity:number;bookings:Array<{seats:number}>;safetyChecklists:Array<{id:string;decision:string;items:unknown;notes:string|null;decidedAt:Date|null;createdAt:Date}>;[key:string]:unknown};
-type TripPrice={pricePerSeatMinor:number;currency:'SAR';configured:boolean};
+type TripPrice={pricePerSeatMinor:number;listPriceMinor?:number;discountActive?:boolean;currency:'SAR';configured:boolean};
 
 @Injectable()
 export class TripsService {
@@ -27,7 +28,8 @@ export class TripsService {
     if(!row?.value||typeof row.value!=='object'||Array.isArray(row.value))return{pricePerSeatMinor:0,currency:'SAR',configured:false};
     const value=row.value as Record<string,unknown>,amount=typeof value.pricePerSeatMinor==='number'?value.pricePerSeatMinor:Number.NaN,currency=typeof value.currency==='string'?value.currency.toUpperCase():'';
     if(!Number.isSafeInteger(amount)||amount<0||currency!=='SAR')return{pricePerSeatMinor:0,currency:'SAR',configured:false};
-    return{pricePerSeatMinor:amount,currency:'SAR',configured:true};
+    const priced=priceActivity(amount,value.sale);
+    return{pricePerSeatMinor:priced.priceMinor,...(priced.discountActive?{listPriceMinor:amount,discountActive:true}:{}),currency:'SAR',configured:true};
   }
 
   async list(){const gateSettings=await this.weatherGate.settings();const [safetyPolicy,capacityPolicy,weatherPolicy]=await Promise.all([this.policies.decision('BOOKING','SAFETY_APPROVAL'),this.policies.decision('BOOKING','CAPACITY_LIMIT'),this.policies.decision('WEATHER','WEATHER_GATE')]);const trips=(await this.db.trip.findMany({where:{status:'OPEN'},orderBy:{startsAt:'asc'},include:{bookings:{where:{status:{in:['PENDING','CONFIRMED']}},select:{seats:true}},safetyChecklists:{orderBy:{createdAt:'desc'},take:1,select:{id:true,decision:true,items:true,notes:true,decidedAt:true,createdAt:true}}}})) as TripListRow[];return Promise.all(trips.map(async(trip:TripListRow)=>{const bookedSeats=trip.bookings.reduce((sum:number,booking:{seats:number})=>sum+booking.seats,0),latestSafety=trip.safetyChecklists[0]??null,[location,review,price]=await Promise.all([this.weatherReviews.location(trip.id),this.weatherReviews.latest(trip.id),this.tripPrice(trip.id)]),weather=this.weatherGate.evaluateReview(review?.snapshot,review?.status,gateSettings,review?.context,review?.fetchedAt),{bookings,safetyChecklists,...base}=trip;return {...base,bookingPolicy:{safetyApproval:safetyPolicy.state,capacityLimit:capacityPolicy.state,weatherGate:weatherPolicy.state},bookedSeats,remainingSeats:Math.max(0,trip.capacity-bookedSeats),price,safety:latestSafety,location,weather:{snapshot:review?.snapshot??null,reviewStatus:review?.status??null,forecastAt:review?.forecastAt??null,fetchedAt:review?.fetchedAt??null,gate:gateSettings,evaluation:{...weather,blocking:weather.blocking&&weatherPolicy.enforce}}};}));}

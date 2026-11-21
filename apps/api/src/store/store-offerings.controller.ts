@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { AdminGuard } from '../admin/admin.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { StoreOfferingsService } from './store-offerings.service';
 type Request = {auth:{accountId:string}};
@@ -8,7 +9,10 @@ export class StoreOfferingsController {
  constructor(private readonly offers:StoreOfferingsService){}
  @Get('courses') courses(){return this.offers.publicCourses();}
  @UseGuards(AccessTokenGuard) @Post('courses/:id/enroll') enroll(@Req() req:Request,@Param('id') id:string){return this.offers.enroll(req.auth.accountId,id);}
+ @UseGuards(AccessTokenGuard) @Get('provider/reports/orders') orderReport(@Req() req:Request,@Query('from') from?:string,@Query('to') to?:string){return this.offers.orderReport(req.auth.accountId,from,to);}
  @UseGuards(AccessTokenGuard) @Get('provider/catalog') catalog(@Req() req:Request){return this.offers.catalog(req.auth.accountId);}
+ @UseGuards(AccessTokenGuard,AdminGuard) @Post('admin/catalog/import') importPlatform(@Req() req:Request,@Body() body:Record<string,unknown>){return this.offers.importProducts(req.auth.accountId,body,true);}
+ @UseGuards(AccessTokenGuard) @Post('provider/catalog/import') importCenter(@Req() req:Request,@Body() body:Record<string,unknown>){return this.offers.importProducts(req.auth.accountId,body);}
  @UseGuards(AccessTokenGuard) @Post('provider/products') createProduct(@Req() req:Request,@Body() body:Record<string,unknown>){return this.offers.saveProduct(req.auth.accountId,body);}
  @UseGuards(AccessTokenGuard) @Patch('provider/products/:id') updateProduct(@Req() req:Request,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.offers.saveProduct(req.auth.accountId,body,id);}
  @UseGuards(AccessTokenGuard) @Post('provider/courses') createCourse(@Req() req:Request,@Body() body:Record<string,unknown>){return this.offers.saveCourse(req.auth.accountId,body);}

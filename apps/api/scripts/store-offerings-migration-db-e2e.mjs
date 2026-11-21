@@ -3,6 +3,7 @@ import {PrismaClient} from '@prisma/client';
 import {readFile} from 'node:fs/promises';
 const db=new PrismaClient();
 const sql=await readFile(new URL('../prisma/migrations/20261009183000_unified_store_offerings/migration.sql',import.meta.url),'utf8');
+const stock=await readFile(new URL('../prisma/migrations/20261121223500_store_location_stock/migration.sql',import.meta.url),'utf8');
 try{
  for(const type of ['TEXT','UUID']){
   const schema='store_offer_migration_'+type.toLowerCase();
@@ -26,6 +27,16 @@ try{
     await tx.$executeRawUnsafe(`INSERT INTO "TrainingEnrollment" ("id","storeCourseOfferId") VALUES ('enrollment','course')`);
     const columns=await tx.$queryRawUnsafe(`SELECT data_type FROM information_schema.columns WHERE table_schema='${schema}' AND table_name='StoreProduct' AND column_name='organizationId'`);
     assert.equal(columns[0].data_type,type.toLowerCase());
+    for(const table of ['OrgUnit','Account'])await tx.$executeRawUnsafe(`CREATE TABLE "${table}" (id ${type} PRIMARY KEY)`);
+    for(const statement of stock.split(';').filter(s=>s.trim()))await tx.$executeRawUnsafe(statement);
+    await tx.$executeRawUnsafe(`INSERT INTO "Account"(id) VALUES ('${id}')`);
+    await tx.$executeRawUnsafe(`INSERT INTO "StoreStockLocation"(id,"organizationId",code,title) VALUES ('loc','${id}','A','Site')`);
+    await tx.$executeRawUnsafe(`INSERT INTO "StoreStockBalance"("productId","locationId",quantity) VALUES ('goods','loc',2)`);
+    await tx.$executeRawUnsafe(`INSERT INTO "StoreStockTransfer"(id,"productId","actorId","organizationId","sourceKey","destinationKey",quantity) VALUES ('move','goods','${id}','${id}','ONLINE','loc',2)`);
+    const [transfer]=await tx.$queryRawUnsafe(`SELECT quantity FROM "StoreStockTransfer" WHERE id='move'`);assert.equal(transfer.quantity,2);
+    await tx.$executeRawUnsafe(`INSERT INTO "StoreStockCount"(id,"productId","actorId","organizationId","locationKey","expectedQuantity","countedQuantity",reason) VALUES ('count','goods','${id}','${id}','loc',2,1,'Damaged')`);
+    const [count]=await tx.$queryRawUnsafe(`SELECT "expectedQuantity","countedQuantity" FROM "StoreStockCount" WHERE id='count'`);
+    assert.deepEqual(count,{expectedQuantity:2,countedQuantity:1});
    });
   }finally{await db.$executeRawUnsafe(`DROP SCHEMA "${schema}" CASCADE`)}
  }
