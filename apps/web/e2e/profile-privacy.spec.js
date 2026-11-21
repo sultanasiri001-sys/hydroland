@@ -104,14 +104,17 @@ test('member requests correction and erasure from settings and sees private rece
   await page.route('**/api/v1/me/data-requests*',route=>{
     if(route.request().method()==='GET') return json(route,{items:receipts,more:false});
     const data=route.request().postDataJSON();
+    expect(data.centerId).toBe('center-mine');
     expect(data.requestKey).toMatch(/^[0-9a-f-]{36}$/);
     const receipt={...data,id:'receipt-'+(receipts.length+1),status:'RECEIVED',createdAt:'2026-01-01T00:00:00Z'};
     receipts.unshift(receipt);
     return json(route,receipt,201);
   });
+  await page.route('**/api/v1/me/data-requests/centers',route=>json(route,[{id:'center-mine',displayName:'مركز المشترك'}]));
   await page.locator('[data-personal-data-requests]').click();
   const dialog=page.locator('#hl-personal-data-requests');
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel(/المركز الذي سيستلم/)).toHaveValue('center-mine');
   await expect(dialog.getByLabel(/مرجع السجل/)).toBeHidden();
   await dialog.getByLabel(/التصحيح المطلوب/).fill('تصحيح مسمى التخصص');
   await dialog.getByRole('button',{name:'تقديم الطلب'}).click();
