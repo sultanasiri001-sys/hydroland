@@ -269,3 +269,28 @@ test('organization writers who did not request the case cannot see acceptance or
  await page.locator('[data-org-id="org-1"] [data-org-requests-open]').click();await expect(page.locator('[data-org-case-id="case-1"]')).toBeVisible();
  await expect(page.locator('[data-org-case-response]')).toHaveCount(0);await expect(page.locator('[data-org-case-reply]')).toHaveCount(1);
 });
+
+for (const authorized of [false, true]) test(`organization prepayment ${authorized ? 'requires explicit acceptance before opening checkout' : 'does not offer payment after the mandate lookup is denied'}`, async ({page}) => {
+  const state = await install(page, {role:'VIEWER'});
+  state.bookings.push({id:'booking-1',seats:2,status:'PENDING',updatedAt:'2026-11-21T00:00:00Z',trip:{title:'Test trip',startsAt:'2030-01-01T00:00:00Z'},participants:[]});
+  const base = '**/api/v1/organizations/org-1/bookings/booking-1/prepayment', posted = [];
+  await page.route(base+'/quote', route => authorized ? json(route,{policyVersion:'2026-11-21.1',quoteHash:'a'.repeat(64),snapshot:{
+    kind:'TRIP',source:{id:'booking-1'},buyerOrganizationId:'org-1',amountMinor:10000,currency:'SAR',issuer:{legalName:'Test supplier'},
+    refundPolicy:{snapshot:{version:'2026-11-21.1'}}}}) : json(route,{message:'تفويض مالي مطلوب'},403));
+  await page.route(base, route => {posted.push(route.request().postDataJSON());return json(route,{status:'PENDING',checkoutUrl:'https://example.invalid/checkout'});});
+  await page.locator('[data-org-id="org-1"] [data-org-bookings-open]').click();
+  await page.locator('[data-org-quote]').click();
+  if (!authorized) {
+    await expect(page.locator('[data-org-quote]')).toBeEnabled();
+    await expect(page.locator('[data-org-pay]')).toHaveCount(0);
+    expect(posted).toHaveLength(0);
+    return;
+  }
+  await expect(page.locator('[data-org-prepay]')).toContainText('Test supplier');
+  expect(posted).toHaveLength(0);
+  await page.locator('[data-org-pay]').click();
+  await expect(page.locator('[data-org-prepay] a')).toHaveAttribute('href','https://example.invalid/checkout');
+  expect(posted).toHaveLength(1);
+  expect(posted[0]).toMatchObject({quoteHash:'a'.repeat(64),policyVersion:'2026-11-21.1'});
+  expect(posted[0].requestId).toMatch(/^[a-f0-9-]{36}$/i);
+});

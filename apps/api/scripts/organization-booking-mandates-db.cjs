@@ -69,6 +69,7 @@ async function run(tx) {
   await tx.organizationMember.update({ where: membership, data: { status: 'SUSPENDED' } });
   await assert.rejects(check, status(403));
   await tx.organizationMember.update({ where: membership, data: { status: 'ACTIVE' } });
+  await require('./organization-booking-prepayment-db.cjs')(tx, db, org, platform, issuer, signer, delegate, approver);
   const overlapping = await document(terms);
   await assert.rejects(() => approve(overlapping), status(409));
   await assert.rejects(() => refundGrants.revoke(platform.id, saved.grantId), status(404));

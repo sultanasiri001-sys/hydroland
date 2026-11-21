@@ -93,6 +93,8 @@ export interface TripBookingPaymentRequirement {
   bookingId: string;
   accountId: string;
   requiredAmountMinor: number | null;
+  buyerOrganizationId?: string | null;
+  mandateReceiptRequired?: boolean;
   currency: 'SAR';
   source: 'SNAPSHOT' | 'LEGACY_PRICE' | 'REVIEW_REQUIRED';
   reasonCode: string | null;
@@ -104,7 +106,8 @@ const record = (value: unknown): Record<string, unknown> | null =>
 
 /** A present but invalid snapshot must never fall back to today's mutable price. */
 export function tripBookingPaymentRequirement(booking: BookingPriceSource, legacyPrice?: unknown): TripBookingPaymentRequirement {
-  const base = { bookingId: booking.id, accountId: booking.accountId, currency: 'SAR' as const };
+  const base = { bookingId: booking.id, accountId: booking.accountId, currency: 'SAR' as const, buyerOrganizationId: booking.organizationId ?? null,
+    mandateReceiptRequired: Boolean(booking.organizationId && record(booking.contractSnapshot)?.organizationPaymentTerms) };
   const review = (reasonCode: string): TripBookingPaymentRequirement => ({ ...base, requiredAmountMinor: null,
     source: 'REVIEW_REQUIRED', reasonCode, providerEvidenceRequired: true });
   if (booking.contractSnapshot !== null && booking.contractSnapshot !== undefined) {
@@ -148,6 +151,7 @@ export interface TripCapturedPaymentEvidence {
   amountMinor: number;
   currency: string;
   refundedAmountMinor?: number;
+  contractSnapshot?: unknown;
   providerReference?: string | null;
   moyasarPaymentId?: string | null;
   refundOperations?: Array<{ status: string }>;
@@ -156,7 +160,16 @@ export interface TripCapturedPaymentEvidence {
 /** This checks payment evidence; it does not confirm the booking or post money. */
 export function satisfiesTripBookingPayment(payment: TripCapturedPaymentEvidence, requirement: TripBookingPaymentRequirement): boolean {
   const required = requirement.requiredAmountMinor;
-  if (required === null || payment.bookingId !== requirement.bookingId || payment.accountId !== requirement.accountId
+  const saved = record(payment.contractSnapshot);
+  const receipt = record(saved?.organizationPaymentAuthorization);
+  if (requirement.buyerOrganizationId && (receipt || requirement.mandateReceiptRequired)) {
+    if (!receipt || receipt.source !== 'ORGANIZATION_BOOKING_PREPAYMENT' || receipt.buyerOrganizationId !== requirement.buyerOrganizationId
+      || receipt.delegateAccountId !== payment.accountId || receipt.bookingId !== requirement.bookingId
+      || typeof receipt.grantId !== 'string' || !receipt.grantId || typeof receipt.approvalEvidenceReference !== 'string' || !receipt.approvalEvidenceReference
+      || saved?.customerAccountId !== requirement.accountId || saved?.buyerOrganizationId !== requirement.buyerOrganizationId
+      || saved?.termsAcceptanceStatus !== 'ACCEPTED' || record(saved?.source)?.id !== requirement.bookingId) return false;
+  } else if (receipt || payment.accountId !== requirement.accountId) return false;
+  if (required === null || payment.bookingId !== requirement.bookingId
     || payment.status !== 'CAPTURED' || payment.currency !== requirement.currency
     || !Number.isSafeInteger(payment.amountMinor) || payment.amountMinor !== required) return false;
   const refunded = payment.refundedAmountMinor === undefined && !requirement.providerEvidenceRequired ? 0 : payment.refundedAmountMinor;

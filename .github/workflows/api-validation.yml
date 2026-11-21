@@ -164,6 +164,7 @@ jobs:
           node apps/api/scripts/bootstrap-trip-weather-runtime-schema.mjs
           node apps/api/scripts/bootstrap-messaging-runtime-schema.mjs
           node apps/api/scripts/commerce-financial-migration.test.mjs
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261121181000_organization_booking_prepayment/migration.sql
           node apps/api/scripts/organization-booking-mandates-db.cjs
           node apps/api/scripts/commerce-contract-snapshot-db-checks.cjs
           node apps/api/scripts/commerce-refund-execution-db-checks.cjs

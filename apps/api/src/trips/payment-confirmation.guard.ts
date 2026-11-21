@@ -21,9 +21,9 @@ export class PaymentConfirmationGuard implements CanActivate {
     const requiredAmount=requirement.requiredAmountMinor,currency=requirement.currency;
     if(requiredAmount===null)throw new ConflictException({code:requirement.reasonCode,message:'Trip contract price requires review.'});
     if(requiredAmount===0)return true;
-    const captured=await this.db.payment.findFirst({where:{bookingId,accountId:booking.accountId,status:'CAPTURED',amountMinor:requiredAmount,currency,refundedAmountMinor:0,
+    const captured=await this.db.payment.findFirst({where:{bookingId,...(booking.organizationId ? {} : {accountId:booking.accountId}),status:'CAPTURED',amountMinor:requiredAmount,currency,refundedAmountMinor:0,
       refundOperations:{none:{status:{in:['RESERVED','DISPATCHED','RECONCILIATION_REQUIRED']}}}},orderBy:{updatedAt:'desc'},
-      select:{id:true,bookingId:true,accountId:true,status:true,amountMinor:true,currency:true,refundedAmountMinor:true,providerReference:true,moyasarPaymentId:true}});
+      select:{id:true,bookingId:true,accountId:true,contractSnapshot:true,status:true,amountMinor:true,currency:true,refundedAmountMinor:true,providerReference:true,moyasarPaymentId:true}});
     if(captured&&satisfiesTripBookingPayment(captured,requirement))return true;
     if(!booking.organizationId && paymentPolicy.review)return true;
     throw new ConflictException('Captured payment is required before booking confirmation.');

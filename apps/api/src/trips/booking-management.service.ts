@@ -115,7 +115,7 @@ export class BookingManagementService {
     if (conflicts.length) calendarIssues.push('CALENDAR_RESOURCE_CONFLICT');
     const calendarReservation = { status: calendarIssues.length ? 'NEEDS_ATTENTION' : 'RESERVED', issues: calendarIssues, activeAllocationCount: allocations.length, confirmationGateEnforced: false };
     const participants = await tx.bookingParticipant.findMany({ where: { bookingId: booking.id }, orderBy: { id: 'asc' }, select: { id: true, fullName: true, eligibilityStatus: true, certificationTitle: true, updatedAt: true } });
-    const payments = await tx.payment.findMany({ where: { bookingId: booking.id }, orderBy: { id: 'asc' }, select: { id: true, bookingId: true, accountId: true, status: true, currency: true, amountMinor: true, refundedAmountMinor: true, providerReference: true, moyasarPaymentId: true, updatedAt: true,
+    const payments = await tx.payment.findMany({ where: { bookingId: booking.id }, orderBy: { id: 'asc' }, select: { id: true, bookingId: true, accountId: true, contractSnapshot: true, status: true, currency: true, amountMinor: true, refundedAmountMinor: true, providerReference: true, moyasarPaymentId: true, updatedAt: true,
       refundOperations: { where: { status: { in: ['RESERVED', 'DISPATCHED', 'RECONCILIATION_REQUIRED'] } }, orderBy: { id: 'asc' }, select: { id: true, status: true, amountMinor: true, updatedAt: true } } } });
     const price = !booking.organizationId && (booking.contractSnapshot === null || booking.contractSnapshot === undefined)
       ? await tx.operationalSetting.findUnique({ where: { key: 'trip-price:' + trip.id }, select: { value: true, updatedAt: true } }) : null;
