@@ -26,7 +26,7 @@ export class ActivityPromotionsController {
  async rentals(){
    return (await equipment(this.db,true)).flatMap(row=>{
      const profile=object(row.profile),base=profile.baseMinor;
-     return !baseAmount(base)?[]:[{id:row.id,title:row.title,sku:row.code,available:row.available,supplier:row.supplier,currency:'SAR',...priceActivity(base,profile.sale)}];
+     return !baseAmount(base)?[]:[{id:row.id,title:row.title,sku:row.code,available:row.available,supplier:row.supplier,organizationId:row.organizationId,currency:'SAR',...priceActivity(base,profile.sale)}];
    });
  }
  @UseGuards(AccessTokenGuard,AdminGuard) @Get('admin/activity-promotions')

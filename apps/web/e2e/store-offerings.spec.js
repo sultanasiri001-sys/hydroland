@@ -191,3 +191,18 @@ test('center previews a CSV and saves selected products with their own SKU and p
  await expect(section.getByRole('status')).toContainText('تم حفظ المنتجات');
  expect(state.writes[0].rows[0]).toMatchObject({sku:'FIN-M',kind:'GOODS',status:'DRAFT',description:'وصف, مع فاصلة',priceMinor:15025,stockQuantity:4,catalogDetails:{salePriceMinor:12550,size:'M'}});
 });
+
+test('shared center storefront filters the catalog and exposes merchant information on mobile',async({page})=>{
+ await setup(page);
+ const samples=[{...service,id:'center-fin',nameAr:'زعانف المركز الأول',status:'ACTIVE',organizationId:'center-one'},
+   {...service,id:'other-fin',nameAr:'زعانف المركز الثاني',status:'ACTIVE',organizationId:'center-two'}];
+ await page.route('**/api/v1/store/products',r=>json(r,samples));
+ await page.route('**/api/v1/store/storefronts/center-one',r=>json(r,{id:'center-one',displayName:'متجر فرسان',description:'التجهيز للموسم',hours:'صباح السبت',faqs:[{question:'أين الاستلام؟',answer:'رصيف فرسان'}]}));
+ await page.evaluate(()=>{location.hash='store/center/center-one';return window.HydrolandStore.reloadProducts()});
+ await expect(page.locator('#store h2').filter({hasText:'متجر فرسان'})).toBeVisible();
+ await expect(page.locator('[data-public-product="center-fin"]')).toBeVisible();
+ await expect(page.locator('[data-public-product="other-fin"]')).toHaveCount(0);
+ await page.getByText('أين الاستلام؟',{exact:true}).click();await expect(page.getByText('رصيف فرسان',{exact:true})).toBeVisible();
+ await page.locator('#store a[href="#store"]').filter({hasText:'كل عروض هيدرولاند'}).click();
+ await expect(page.locator('[data-public-product="other-fin"]')).toBeVisible();
+});

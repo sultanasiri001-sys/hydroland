@@ -74,6 +74,20 @@ try{
  assert.equal((await request(b,importPath,'POST',batch)).status,409);
  assert.equal((await request(a,importPath,'POST',{requestId:randomUUID(),rows:[{...batch.rows[0],currency:'USD'}]})).status,400);
  console.log('PASS atomic merchandise import preserves prices, center scope, idempotent retries and all-or-nothing SKU collisions.');
+ const shopPath='/store/storefronts/'+organizations[0].id,ownPage='/store/provider/storefront';
+ const shopBody={published:true,revision:null,description:'مستلزمات غوص فرسان',hours:'من السبت إلى الخميس',faqs:[{question:'أين يتم الاستلام؟',answer:'في المركز'}]};
+ assert.equal((await request(null,ownPage)).status,401);assert.equal((await request(staff,ownPage,'PUT',shopBody)).status,403);
+ assert.equal((await request(null,shopPath)).status,404);
+ const storePage=ok(await request(a,ownPage,'PUT',shopBody));assert.equal(storePage.organization.id,organizations[0].id);
+ assert.equal(ok(await request(a,ownPage,'PUT',shopBody)).revision,storePage.revision);
+ assert.equal(ok(await request(null,shopPath)).description,shopBody.description);
+ assert.ok(ok(await request(null,'/store/storefronts?q='+encodeURIComponent(organizations[0].displayName))).some(row=>row.id===organizations[0].id));
+ assert.equal(ok(await request(b,ownPage)).profile.published,false);
+ assert.equal((await request(a,ownPage,'PUT',{...shopBody,description:'تعديل قديم'})).status,409);
+ const hiddenPage=ok(await request(a,ownPage,'PUT',{...shopBody,revision:storePage.revision,published:false}));
+ assert.equal((await request(null,shopPath)).status,404);assert.equal(ok(await request(null,'/store/storefronts')).some(row=>row.id===organizations[0].id),false);
+ ok(await request(a,ownPage,'PUT',{...shopBody,revision:hiddenPage.revision}));
+ console.log('PASS native merchant storefront publication, FAQs, scoped ownership, stale revisions and unpublication.');
  const {requestId,...fields}=product,revision=created[0].body.updatedAt;
  assert.equal((await request(b,'/store/provider/products/'+productId,'PATCH',{...fields,expectedUpdatedAt:revision})).status,404);
  const updated=ok(await request(a,'/store/provider/products/'+productId,'PATCH',{...fields,nameAr:'خدمة معدلة',expectedUpdatedAt:revision}));
@@ -220,6 +234,7 @@ try{
  }
  await db.organization.update({where:{id:organizations[0].id},data:{status:'SUSPENDED'}});
  assert.equal((await request(a,'/store/provider/catalog')).status,403);
+ assert.equal((await request(null,shopPath)).status,404);
  assert.ok(!ok(await request(null,'/store/products')).some(row=>row.id===productId));
  assert.ok(!ok(await request(null,'/store/courses')).some(row=>row.id===courseId));
  assert.equal((await request(buyer,'/store/orders','POST',{items:[{productId,quantity:1}]})).status,404);
