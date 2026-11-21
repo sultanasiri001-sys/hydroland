@@ -153,12 +153,12 @@ const status = n => e => e.getStatus?.() === n;
     // unrelated workers or external integrations are registered in this module.
     const { Module } = require('@nestjs/common');
     const { NestFactory } = require('@nestjs/core');
-    const { StoreController } = require(resolve(__dirname, '../dist/store/store.controller.js'));
-    const { AuthService } = require(resolve(__dirname, '../dist/auth/auth.service.js'));
-    const { MfaService } = require(resolve(__dirname, '../dist/auth/mfa.service.js'));
-    const { GoogleIdentityService } = require(resolve(__dirname, '../dist/auth/google-identity.service.js'));
-    const { AccessTokenGuard } = require(resolve(__dirname, '../dist/auth/access-token.guard.js'));
-    const { AdminGuard } = require(resolve(__dirname, '../dist/admin/admin.guard.js'));
+    const { StoreController } = require(resolve(build, 'store/store.controller.js'));
+    const { AuthService } = require(resolve(build, 'auth/auth.service.js'));
+    const { MfaService } = require(resolve(build, 'auth/mfa.service.js'));
+    const { GoogleIdentityService } = require(resolve(build, 'auth/google-identity.service.js'));
+    const { AccessTokenGuard } = require(resolve(build, 'auth/access-token.guard.js'));
+    const { AdminGuard } = require(resolve(build, 'admin/admin.guard.js'));
     class CommerceHttpModule {}
     Module({ controllers: [StoreController], providers: [
       { provide: DatabaseService, useValue: db }, { provide: StoreService, useValue: store },

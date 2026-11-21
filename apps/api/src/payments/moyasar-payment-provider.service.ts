@@ -5,7 +5,7 @@ import { IntegrationService } from '../integrations/integration.service';
 export type MoyasarInvoice={id:string;status:string;amount:number;currency:string;url:string;metadata:Record<string,string>;payments:Array<{id:string;status:string;amount:number;currency:string}>};
 export type MoyasarCommerceInvoice = MoyasarInvoice & {expiresAt: string};
 export type MoyasarCommerceInvoiceInput = {
-  checkoutId: string; sourceType: 'EQUIPMENT_RENTAL'; sourceId: string; organizationId: string;
+  checkoutId: string; sourceType: 'EQUIPMENT_RENTAL' | 'STORE_ORDER' | 'TRAINING_ENROLLMENT'; sourceId: string; organizationId: string;
   customerAccountId: string; amountMinor: number; currency: 'SAR'; expiresAt: string;
 };
 export type MoyasarWebhook={id:string;type:string;secret_token:string;live:boolean;data:Record<string,unknown>};
@@ -58,20 +58,27 @@ export class MoyasarPaymentProviderService {
   // one durable operation first; a lost response can never trigger POST replay.
   async createCommerceInvoice(input: MoyasarCommerceInvoiceInput): Promise<MoyasarCommerceInvoice> {
     this.assertCommerceInvoiceInput(input);
-    if(Date.parse(input.expiresAt)<=Date.now())throw new ConflictException('The original rental payment hold has expired.');
+    if(Date.parse(input.expiresAt)<=Date.now())throw new ConflictException('The original checkout payment window has expired.');
     this.assertProvider();
     const origin=this.publicWebOrigin();
-    const successUrl=new URL(origin);successUrl.searchParams.set('rental_payment','returned');successUrl.searchParams.set('rental_id',input.sourceId);
-    const backUrl=new URL(origin);backUrl.searchParams.set('rental_payment','back');backUrl.searchParams.set('rental_id',input.sourceId);
+    const route=input.sourceType==='EQUIPMENT_RENTAL'
+      ? {payment:'rental_payment',id:'rental_id',label:'equipment rental'}
+      : input.sourceType==='STORE_ORDER'
+        ? {payment:'store_payment',id:'store_order_id',label:'store order'}
+        : {payment:'course_payment',id:'enrollment_id',label:'course enrollment'};
+    const successUrl=new URL(origin);successUrl.searchParams.set(route.payment,'returned');successUrl.searchParams.set(route.id,input.sourceId);
+    const backUrl=new URL(origin);backUrl.searchParams.set(route.payment,'back');backUrl.searchParams.set(route.id,input.sourceId);
     const metadata=this.commerceInvoiceMetadata(input);
     try{
       const response=await this.request('/invoices',{method:'POST',redirect:'error',body:JSON.stringify({
-        amount:input.amountMinor,currency:input.currency,description:`HYDROLAND equipment rental ${input.sourceId}`,
+        amount:input.amountMinor,currency:input.currency,description:`HYDROLAND ${route.label} ${input.sourceId}`,
         success_url:successUrl.toString(),back_url:backUrl.toString(),expired_at:input.expiresAt,metadata,
       })});
       return await this.observeCommerceInvoice(response,input);
     }catch{
-      throw new ServiceUnavailableException({code:'RENTAL_CHECKOUT_RECONCILIATION_REQUIRED',message:'The checkout result requires reconciliation before any further payment request.'});
+      const code=input.sourceType==='EQUIPMENT_RENTAL'?'RENTAL_CHECKOUT_RECONCILIATION_REQUIRED'
+        :input.sourceType==='STORE_ORDER'?'STORE_CHECKOUT_RECONCILIATION_REQUIRED':'COURSE_CHECKOUT_RECONCILIATION_REQUIRED';
+      throw new ServiceUnavailableException({code,message:'The checkout result requires reconciliation before any further payment request.'});
     }
   }
 
@@ -84,11 +91,11 @@ export class MoyasarPaymentProviderService {
   }
 
   private assertCommerceInvoiceInput(input:MoyasarCommerceInvoiceInput){
-    if(!input||input.sourceType!=='EQUIPMENT_RENTAL'||!['checkoutId','sourceId','organizationId','customerAccountId'].every(key=>{
+    if(!input||!['EQUIPMENT_RENTAL','STORE_ORDER','TRAINING_ENROLLMENT'].includes(input.sourceType)||!['checkoutId','sourceId','organizationId','customerAccountId'].every(key=>{
       const value=input[key as keyof MoyasarCommerceInvoiceInput];return typeof value==='string'&&value.trim()===value&&value.length>0&&value.length<=128;
     })||input.currency!=='SAR'||!Number.isSafeInteger(input.amountMinor)||input.amountMinor<100||input.amountMinor>maxProviderMinor
       ||typeof input.expiresAt!=='string'||!Number.isFinite(Date.parse(input.expiresAt))||new Date(input.expiresAt).toISOString()!==input.expiresAt){
-      throw new BadRequestException('A valid original rental checkout binding is required.');
+      throw new BadRequestException('A valid original commerce checkout binding is required.');
     }
   }
 

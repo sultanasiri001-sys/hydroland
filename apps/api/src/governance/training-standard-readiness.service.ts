@@ -15,7 +15,7 @@ export class TrainingStandardReadinessService {
     const result = await this.db.serializable(async tx => {
       await this.authorization.assertAdministrativeEnrollmentAccess(actorId, enrollmentId, tx);
       const enrollment = await tx.trainingEnrollment.findUniqueOrThrow({ where: { id: enrollmentId }, select: {
-        id: true, courseCode: true, status: true, metadata: true, instructorAccountId: true, studentAccountId: true, centerOrganizationId: true,
+        id: true, courseCode: true, status: true, metadata: true, instructorAccountId: true, studentAccountId: true, centerOrganizationId: true, storeCourseOfferId: true, updatedAt: true,
         record: { select: { id: true, _count: { select: { sessions: true } } } },
       } });
       const sessions = enrollment.record?._count.sessions ?? 0;

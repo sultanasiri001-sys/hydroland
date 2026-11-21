@@ -74,11 +74,20 @@ test('rental24-hour boundary is inclusive and applies25% deduction only before a
   assert.equal(pastDue.status, 'REVIEW_REQUIRED');
 });
 
-test('course prestart charge is not invented; verified no-show and voluntary poststart withdrawal remain separate', () => {
-  const before = evaluate(request('COURSE'));
-  assert.equal(before.status, 'REVIEW_REQUIRED');
-  assert.equal(before.reasonCode, 'COURSE_PRESTART_CHARGE_NOT_ADOPTED');
-  assert.equal(before.refundAmountMinor, null);
+test('course cancellations honor the 48-hour boundary and the original policy version', () => {
+  for (const [requestedAt, expectedAmount, expectedStatus] of [
+    ['2026-11-19T08:59:59.999Z', 7500, 'ELIGIBLE'],
+    ['2026-11-19T09:00:00.000Z', 0, 'NO_REFUND'],
+    ['2026-11-19T09:00:00.001Z', 0, 'NO_REFUND'],
+  ]) {
+    const result = evaluate(request('COURSE', {requestedAt}));
+    assert.equal(result.refundAmountMinor, expectedAmount);
+    assert.equal(result.status, expectedStatus);
+    assert.equal(result.reasonCode, expectedAmount ? 'COURSE_MORE_THAN_48_HOURS' : 'COURSE_WITHIN_48_HOURS');
+    assert.equal(result.policyVersion, '2026-11-21.2');
+  }
+  const old = {...line('COURSE'), version: '2026-11-21.1'};
+  assert.equal(evaluate(request('COURSE', {snapshot: old})).status, 'REVIEW_REQUIRED');
   const after = evaluate(request('COURSE', { requestedAt: '2026-11-22T09:00:00Z' },
     { serviceStartedAt: '2026-11-21T09:00:00Z', consumption: 'CONSUMED' }));
   assert.equal(after.refundAmountMinor, 0);
@@ -236,7 +245,7 @@ test('mixed order line policies and balances remain isolated and do not mutate c
   ];
   const original = JSON.stringify(requests);
   const results = requests.map(evaluate);
-  assert.deepEqual(results.map(result => result.refundAmountMinor), [4_000, 7_500, null, 10_000]);
+  assert.deepEqual(results.map(result => result.refundAmountMinor), [4_000, 7_500, 0, 10_000]);
   assert.deepEqual(results.map(result => result.lineId), requests.map(item => item.snapshot.lineId));
   assert.equal(JSON.stringify(requests), original);
   assert(results.every(result => !result.financialActionExecuted && !result.serviceCompletionImplied));

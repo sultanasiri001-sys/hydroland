@@ -4,6 +4,7 @@ import { DatabaseService } from '../database/database.service';
 import { AuditService } from '../audit/audit.service';
 import { randomUUID } from 'node:crypto';
 import { createCommerceContractSnapshot } from '../commerce/commerce-contract-snapshot';
+import { requireVerifiedStoreCollection, STORE_CHECKOUT_SOURCE } from './store-checkout-contract';
 
 @Injectable()
 export class StoreService {
@@ -128,9 +129,12 @@ export class StoreService {
     const key=typeof idempotencyKey==='string'?idempotencyKey.trim():'';
     if(!key)throw new BadRequestException('Idempotency key is required');
     const work=async(tx:Prisma.TransactionClient)=>{
+      await tx.$queryRaw`SELECT "id" FROM "StoreOrder" WHERE "id"=${orderId} FOR UPDATE`;
       const order=await tx.storeOrder.findFirst({where:{id:orderId,accountId},include:{payment:true}});
       if(!order)throw new NotFoundException('Order not found');
       if(order.status==='CANCELLED'||order.status==='FULFILLED')throw new BadRequestException('Order is not eligible for payment');
+      const hosted=await tx.commerceCheckout.findUnique({where:{sourceType_sourceId:{sourceType:STORE_CHECKOUT_SOURCE,sourceId:orderId}},select:{id:true}});
+      if(hosted)throw new ConflictException({code:'STORE_HOSTED_CHECKOUT_EXISTS',message:'Continue or refresh the original hosted checkout.'});
       if(order.payment){
         if(order.payment.idempotencyKey!==key)throw new ConflictException('Order already has a payment');
         return {...order.payment,provider:'NOT_SELECTED',financialActionExecuted:false};
@@ -182,17 +186,21 @@ export class StoreService {
     if(!['CREATED','CONFIRMED','CANCELLED','FULFILLED'].includes(status))throw new BadRequestException('Invalid order status');
     const allowed:Record<string,string[]>={CREATED:['CONFIRMED','CANCELLED'],CONFIRMED:['FULFILLED','CANCELLED'],CANCELLED:[],FULFILLED:[]};
     return this.prisma.serializable(async tx=>{
-      const order=await tx.storeOrder.findUnique({where:{id:orderId},include:{items:true}});
+      await tx.$queryRaw`SELECT "id" FROM "StoreOrder" WHERE "id"=${orderId} FOR UPDATE`;
+      const order=await tx.storeOrder.findUnique({where:{id:orderId},include:{items:true,payment:true}});
       if(!order)throw new NotFoundException('Order not found');
       if(order.status===status)return order;
       if(!allowed[order.status]?.includes(status))throw new BadRequestException('Invalid order status transition');
       if(status==='CANCELLED'){
-        const payment=await tx.storePayment.findUnique({where:{orderId},select:{status:true}});
-        if(payment?.status==='CAPTURED')throw new ConflictException('Captured payment requires an approved refund flow before cancellation.');
+        const checkout=await tx.commerceCheckout.findUnique({where:{sourceType_sourceId:{sourceType:STORE_CHECKOUT_SOURCE,sourceId:orderId}}});
+        // A provider invoice can collect after the local request returns. Keep
+        // stock reserved until the original invoice is verified closed and has
+        // no collected payment; never release it based on a pending label.
+        if(checkout&&(!['CANCELLED','FAILED'].includes(checkout.status)||checkout.providerPaymentId))throw new ConflictException({code:'STORE_CHECKOUT_RECONCILIATION_REQUIRED',message:'Reconcile the original hosted checkout before cancellation and stock release.'});
+        if(order.payment?.status==='CAPTURED'||order.payment?.status==='REFUNDED')throw new ConflictException('Collected payment requires an approved refund flow before cancellation.');
       }
       if(status==='FULFILLED'){
-        const payment=await tx.storePayment.findUnique({where:{orderId},select:{status:true}});
-        if(!payment||payment.status!=='CAPTURED')throw new ConflictException('Order cannot be fulfilled before payment is captured.');
+        await requireVerifiedStoreCollection(tx,order);
       }
 
       const transitioned=await tx.storeOrder.updateMany({where:{id:orderId,status:order.status},data:{status}});
@@ -210,7 +218,7 @@ export class StoreService {
   listMine(accountId: string) {
     return this.prisma.storeOrder.findMany({
       where: { accountId },
-      include: { items: { include: { product: true } } },
+      include: { items: { include: { product: true, deliveries: {include: {returns: {select: {id: true, quantity: true, reason: true, requestedAt: true, sellerReceivedAt: true}}}} } } },
       orderBy: { createdAt: 'desc' },
     });
   }

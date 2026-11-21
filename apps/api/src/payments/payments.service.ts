@@ -7,6 +7,8 @@ import { IntegrationService } from '../integrations/integration.service';
 import { PaymentContractService } from '../commerce/payment-contract.service';
 import { MoyasarInvoice, MoyasarPaymentProviderService } from './moyasar-payment-provider.service';
 import { RentalCheckoutService } from './rental-checkout.service';
+import { StoreCheckoutService } from '../store/store-checkout.service';
+import { TrainingCheckoutService } from './training-checkout.service';
 
 type PaymentWithInvoice={
   id:string;
@@ -34,6 +36,8 @@ export class PaymentsService {
     private readonly moyasar:MoyasarPaymentProviderService,
     private readonly contracts:PaymentContractService = new PaymentContractService(db),
     private readonly rentalCheckouts?:RentalCheckoutService,
+    private readonly storeCheckouts?:StoreCheckoutService,
+    private readonly trainingCheckouts?:TrainingCheckoutService,
   ){}
 
   async create(accountId:string,input:{bookingId:string;idempotencyKey:string;policyAcceptance?:{version?:string;quoteHash?:string}}){
@@ -115,8 +119,25 @@ export class PaymentsService {
     if(duplicate)return{accepted:true,duplicate:true};
     const payment=await this.db.payment.findUnique({where:{providerReference:invoiceId}});
     if(!payment){
-      const rental=await this.rentalCheckouts?.handleVerifiedProviderEvent(event);
-      if(rental?.handled)return{accepted:true,matched:true,sourceType:'EQUIPMENT_RENTAL',...rental};
+      // All commerce routes share the verified webhook boundary. Each handler
+      // resolves its own persisted source binding and reads the provider afresh;
+      // notification amounts and a client-side status never confirm collection.
+      const handlers = [
+        ['EQUIPMENT_RENTAL', this.rentalCheckouts],
+        ['STORE_ORDER', this.storeCheckouts],
+        ['TRAINING_ENROLLMENT', this.trainingCheckouts],
+      ] as const;
+      for (const [sourceType, handler] of handlers) {
+        const result=await handler?.handleVerifiedProviderEvent(event);
+        if(!result?.handled)continue;
+        await this.db.serializable(async tx=>{
+          await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${`commerce-webhook:${event.id}`},0))`;
+          const repeated=await tx.auditEvent.findFirst({where:{resource:'PaymentProviderWebhook',resourceId:event.id},select:{id:true}});
+          if(!repeated)await tx.auditEvent.create({data:{action:'PAYMENT_PROVIDER_WEBHOOK_PROCESSED',resource:'PaymentProviderWebhook',resourceId:event.id,
+            metadata:{provider:'MOYASAR',type:event.type,invoiceId,sourceType,status:result.status,live:event.live,providerVerified:true}}});
+        });
+        return{accepted:true,matched:true,sourceType,...result};
+      }
       return this.db.serializable(async tx=>{
         const repeated=await tx.auditEvent.findFirst({where:{resource:'PaymentProviderWebhook',resourceId:event.id},select:{id:true}});
         if(repeated)return{accepted:true,duplicate:true};

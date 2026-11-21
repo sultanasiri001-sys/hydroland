@@ -9,7 +9,7 @@ bank transfer, tax invoice, or complete mixed-store financial lifecycle.
 | Line kind | Ordinary customer cancellation | Separate cases |
 | --- | --- | --- |
 | Trip | Full refund at least 48 hours before the original departure; 50% refund inside 48 hours. The exact 48-hour boundary is included in the full-refund window. | Verified no-show/late arrival after closure has no ordinary refund. Mandatory rights and provider failures remain separate. |
-| Course | No free cancellation window after confirmation; no ordinary refund for no-show or voluntary withdrawal after starting. | The exact charge for voluntary cancellation after confirmation and before starting is unresolved. Provider cancellation before starting gives a full refund. |
+| Course | No free cancellation window after confirmation; no ordinary refund for no-show or voluntary withdrawal after starting. | New course refund terms (2026-11-21.2) deduct 25% and refund 75% when a confirmed course is cancelled more than 48 hours before its original start. With exactly 48 hours or less remaining, voluntary cancellation has no ordinary refund. Existing contracts retain their recorded terms. Provider cancellation before starting gives a full refund. |
 | Equipment rental | Full refund at least 24 hours before the original scheduled handover; 75% refund inside 24 hours before handover. | Provider failure to hand over gives a full refund. Voluntary early return after handover does not generate an ordinary refund. Defects and nonconformity are separate. |
 | Sold goods | Eligible unused goods have a seven-day return window measured from actual receipt. | The service cancellation percentages do not apply. Defects, nonconformity and warranty rights follow their own remedies. |
 
@@ -35,10 +35,26 @@ Later catalog edits do not change those terms. Legacy contracts remain without
 a fabricated snapshot and cannot acquire new cancellation fees retroactively.
 
 Store order lines and training enrollments also freeze their original terms.
-This does not imply that their collection and refund paths are integrated with
-trip checkout. Tax identity is not inferred from a commercial registration.
-Payment capture can create an immutable `DRAFT` commercial invoice; missing
+Single-center physical-goods orders and store course enrollments now have their
+own source-bound hosted checkout and collection paths. Each requires explicit
+acceptance of the original quote, a durable dispatch record, matching provider
+evidence and an independently approved posted collection entry. A lost invoice
+response requires reconciliation of that original invoice; it never creates a
+replacement payment automatically. Tax identity is not inferred from a commercial registration.
+Trip payment capture can create an immutable `DRAFT` commercial invoice; missing
 verified fiscal data remains `REVIEW_REQUIRED`.
+
+Course collection leaves the enrollment `PENDING`. Training activation, sessions,
+progress and completion retain their qualification and training-standard checks
+and require the purchased course's collection evidence. Client metadata cannot
+set `financialConfirmation`. The hosted course link expires after 30 minutes or
+at the original start, whichever comes first; this technical expiry does not
+invent a cancellation charge or change the original course schedule.
+
+Goods fulfillment requires its provider and posted ledger evidence, not a local
+`CAPTURED` label alone. Pending or uncertain payments prevent inventory from being
+released by order cancellation. Mixed suppliers, mixed service kinds and missing
+original contracts remain review cases. See [goods collection](STORE_HOSTED_COLLECTION.md).
 
 ## Refund execution
 
@@ -92,6 +108,16 @@ entry. `CommerceCollectionEvidence` is source evidence; balances remain in
 make a rental paid or authorize equipment handover. Collection after the hold
 expires requires reconciliation.
 
+Rental refund requests now bind the customer, original terms and verified
+collection. Eligible pre-handover cancellation stops equipment handover under
+the same rental lock. Refund execution requires the approved ledger entry and
+current monetary mandates, and records the provider result and financial posting
+without a repeated provider POST. Customer assertions of provider failure require
+independent center confirmation. The customer's later suspension cannot erase or
+prevent recording a refund already dispatched. The account interface distinguishes
+the requested amount from the sum of confirmed refunds. See
+[rental refund execution](RENTAL_REFUND_EXECUTION.md).
+
 Trip entitlement uses a confirmed booking, its bound captured payment, posted
 collection and actual completion attendance. Only attended seats count as
 performed services. No-show retention is shown separately. A refund or unresolved
@@ -104,6 +130,14 @@ only a `PENDING_APPROVAL` entry in the existing ledger. It does not execute or
 claim a bank transfer. Generic manual posting cannot bypass these guarded refund
 and entitlement paths.
 
+## Course cancellations and goods returns
+
+A buyer can cancel a financially confirmed course in the store. The server freezes the request time and evaluates the original refund policy, schedule and collection. The cancellation receipt records eligibility. A delegated executor uses an independently approved SAR ledger entry to pay an eligible claim back to its original provider payment.
+
+Goods delivery is acknowledged by the buyer per order item and quantity. The seller records actual return receipt separately and documents the inspection or verified remedy before execution. Both course and goods executions reserve one operation per claim. A lost provider response requires reconciliation and never authorizes a second dispatch.
+
+The finance routes are `POST /payments/courses/cancellations/:id/refund` and `POST /payments/goods/returns/:id/refund`. Both take the approved `financeEntryId`. Replaying the same request reads or posts the saved provider proof. The ledger reference types are `COURSE_CANCELLATION_REFUND` and `STORE_GOODS_RETURN_REFUND`, respectively. An unknown outcome without attributable provider evidence remains open for investigation.
+
 ## Evidence and remaining scope
 
 Acceptance uses disposable loopback PostgreSQL and a local synthetic provider,
@@ -113,9 +147,9 @@ GitHub CI also runs browser acceptance and existing API regressions on the exact
 candidate commit. No test credentials authorize real merchant transactions.
 
 Remaining acceptance includes verified fiscal profiles and invoice issuance,
-actual center payout routing and confirmation, store/course collection and
-refund integration, mixed-line order acceptance, rental refunds and damage/
-deposit terms, wallet/reward and instructor compensation rules, organization
+actual center payout routing and confirmation, store/course return and
+refund integration, mixed-line order acceptance, rental damage/deposit terms
+and applicable-rights review, wallet/reward and instructor compensation rules, organization
 payment delegation, and the procurement/contract/integration cycle. Scope
 completion must be recorded only after its own implementation, acceptance,
 publication and verification evidence exists.

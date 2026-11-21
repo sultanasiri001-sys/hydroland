@@ -104,7 +104,7 @@ export class EquipmentRentalHandoverService{
       if (readiness.blocked) throw new ConflictException('Equipment inspection or service policy blocks rental handover.');
       await this.requireAuthority(tx,actorAccountId,collection.organizationId,true);
 
-      await tx.$executeRaw`UPDATE "EquipmentRentalItem" SET "handedOverAt"=NOW() WHERE "id"=${item.id}`;
+      await tx.$executeRaw`UPDATE "EquipmentRentalItem" SET "handedOverAt"=(statement_timestamp() AT TIME ZONE 'UTC') WHERE "id"=${item.id}`;
       await tx.$executeRaw`
         INSERT INTO "EquipmentMovement"("id","resourceId","movementType","fromLocation","toLocation","tripId","assignedAccountId","notes","actorAccountId","occurredAt")
         VALUES(gen_random_uuid()::text,${item.resourceId},'CHECK_OUT',${asset.location},NULL,NULL,${rental.renterAccountId},${`Rental handover ${rental.invoiceNumber}`},${actorAccountId},NOW())`;
@@ -132,6 +132,8 @@ export class EquipmentRentalHandoverService{
    */
   private async requireCollectionEvidence(tx:Prisma.TransactionClient,rental:Rental){
     const fail=(message:string):never=>{throw new ConflictException({code:'RENTAL_COLLECTION_EVIDENCE_REQUIRED',message});};
+    const refund=await tx.rentalRefundOperation.findFirst({where:{rentalId:rental.id,status:{in:['RESERVED','DISPATCHED','RECONCILIATION_REQUIRED','SUCCEEDED']}},select:{id:true}});
+    if(refund)fail('A rental with a reserved or executed refund cannot authorize equipment handover.');
     const total=Number(rental.totalHalala);
     if(!Number.isSafeInteger(total)||total<=0||total>2_147_483_647||!rental.reservedAt||!rental.dueAt){
       fail('Rental requires a valid original amount and contract dates before financial confirmation.');

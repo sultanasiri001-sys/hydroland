@@ -2,6 +2,19 @@
   // Only authored interface text is localized. Account and business values stay opaque.
   const uiLocale = window.HydrolandI18n?.createScope("store-provider", {
   "تعذر تنفيذ الإجراء.": "Could not complete the action.",
+  "مرتجعات السلع": "Goods returns",
+  "عرض طلبات الإرجاع": "View return requests",
+  "وقت استلام المرتجع": "Actual return receipt time",
+  "تأكيد استلام المرتجع": "Confirm returned goods receipt",
+  "لا توجد مرتجعات بانتظار الاستلام.": "No returns awaiting receipt.",
+  "الكمية المطلوب إرجاعها": "Return quantity",
+  "مراجعة المرتجعات المستلمة": "Review received returns",
+  "أساس قبول الرد": "Refund eligibility basis",
+  "سلعة غير مستعملة مؤهلة للإرجاع": "Eligible unused goods",
+  "حق موثّق في رد الثمن": "Documented right to a refund",
+  "مرجع دليل الفحص": "Inspection evidence reference",
+  "تسجيل نتيجة الفحص": "Record inspection result",
+  "حُفظت نتيجة الفحص.": "Inspection result saved.",
   "عدد المقاعد": "Number of seats",
   "إعادة المحاولة": "Try again",
   "مسودة": "Draft",
@@ -95,7 +108,46 @@
      if(!(await authorize(v,session)))return;
      const data=await request('/store/provider/catalog');if(!live(v,session))return;
      if(!data?.organization||!Array.isArray(data.products)||!Array.isArray(data.courses))throw localError('استجابة العروض غير مكتملة.');
-     uiLocale.setHTML(panel, uiLocale.html`<h3>عروض ${esc(data.organization.displayName)}</h3><p>العروض المنشورة تظهر في المتجر للجميع. إيقاف العرض يمنع الطلبات الجديدة ويحفظ الطلبات والتسجيلات السابقة.</p>${(notice?uiLocale.html`<p role="status">${uiLocale.messageHTML(notice)}</p>`:'')}<button type="button" data-offer-refresh>تحديث العروض</button><button type="button" data-offer-preview>معاينة المتجر</button><button type="button" data-offer-trips>إدارة الرحلات والحجوزات</button>${editor('products')}${editor('courses')}<div data-managed-offers>${data.products.map(row=>rowHtml('products',row)).join('')}${data.courses.map(row=>rowHtml('courses',row)).join('')}${(!data.products.length&&!data.courses.length?uiLocale.html`<p>لا توجد عروض للمركز بعد.</p>`:'')}</div>`);
+     uiLocale.setHTML(panel, uiLocale.html`<h3>عروض ${esc(data.organization.displayName)}</h3><p>العروض المنشورة تظهر في المتجر للجميع. إيقاف العرض يمنع الطلبات الجديدة ويحفظ الطلبات والتسجيلات السابقة.</p>${(notice?uiLocale.html`<p role="status">${uiLocale.messageHTML(notice)}</p>`:'')}<button type="button" data-offer-refresh>تحديث العروض</button><button type="button" data-offer-preview>معاينة المتجر</button><button type="button" data-offer-trips>إدارة الرحلات والحجوزات</button>${editor('products')}${editor('courses')}<details><summary>مرتجعات السلع</summary><button type="button" data-list-returns>عرض طلبات الإرجاع</button><button type="button" data-reviewed-returns>مراجعة المرتجعات المستلمة</button><div data-return-queue></div></details><div data-managed-offers>${data.products.map(row=>rowHtml('products',row)).join('')}${data.courses.map(row=>rowHtml('courses',row)).join('')}${(!data.products.length&&!data.courses.length?uiLocale.html`<p>لا توجد عروض للمركز بعد.</p>`:'')}</div>`);
+   const queue=panel.querySelector('[data-return-queue]');
+   let queueVersion=0;
+   const loadReturns=async(received=false)=>{
+     if (!live(v,session)) return;
+     const intent=++queueVersion;
+     try {
+       const rows=await request('/store/provider/returns'+(received?'?stage=received':''));
+       if (!live(v,session) || intent!==queueVersion) return;
+       if (received) {
+         uiLocale.setHTML(queue,rows.map(row=>uiLocale.html`<form data-remedy-id="${esc(row.id)}"><b>${esc(row.title)} · ${esc(row.orderId)}</b><label>أساس قبول الرد <select name="basis" required><option value=""></option><option value="ELIGIBLE_UNUSED">سلعة غير مستعملة مؤهلة للإرجاع</option><option value="VERIFIED_RIGHT">حق موثّق في رد الثمن</option></select></label><label>مرجع دليل الفحص <input name="evidenceReference" maxlength="200" required></label><button>تسجيل نتيجة الفحص</button><span role="status"></span></form>`).join(''));
+         queue.querySelectorAll('form').forEach(form=>form.addEventListener('submit',async event=>{
+           event.preventDefault(); const button=form.querySelector('button'),message=form.querySelector('[role=status]');
+           if(button.disabled || intent!==queueVersion || !live(v,session))return;
+           button.disabled=true;
+           try {
+             await request('/store/provider/returns/'+encodeURIComponent(form.dataset.remedyId)+'/remedy',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(form)))});
+             if(live(v,session)&&intent===queueVersion)uiLocale.setText(message,'حُفظت نتيجة الفحص.');
+           }catch(error){if(live(v,session)&&intent===queueVersion)setLocalErrorText(message,error,'تعذر تنفيذ الإجراء.');}
+           finally{button.disabled=false;}
+         }));
+         return;
+       }
+       uiLocale.setHTML(queue,rows.length?rows.map(row=>uiLocale.html`<form data-return-id="${esc(row.id)}"><b>${esc(row.title)} · ${esc(row.orderId)}</b><span>الكمية المطلوب إرجاعها ${esc(row.quantity)}</span><label>وقت استلام المرتجع <input type="datetime-local" name="receivedAt" required></label><button>تأكيد استلام المرتجع</button></form>`).join(''):uiLocale.html`<p>لا توجد مرتجعات بانتظار الاستلام.</p>`);
+       queue.querySelectorAll('form').forEach(form=>form.addEventListener('submit',async event=>{
+         event.preventDefault();
+         const button=form.querySelector('button'); if(button.disabled||!live(v,session)||intent!==queueVersion)return;
+         button.disabled=true;
+         try {
+           const receivedAt=new Date(new FormData(form).get('receivedAt')).toISOString();
+           await request('/store/provider/returns/'+encodeURIComponent(form.dataset.returnId)+'/receipt',{method:'POST',body:JSON.stringify({receivedAt})});
+           if(live(v,session)&&intent===queueVersion)await loadReturns();
+         }catch(error){if(live(v,session))setLocalErrorText(queue,error,'تعذر تنفيذ الإجراء.');}
+         finally{button.disabled=false;}
+       }));
+     }catch(error){if(live(v,session))setLocalErrorText(queue,error,'تعذر تنفيذ الإجراء.');}
+
+   };
+   panel.querySelector('[data-list-returns]').addEventListener('click',()=>loadReturns(false));
+   panel.querySelector('[data-reviewed-returns]').addEventListener('click',()=>loadReturns(true));
    if(focusCourse){const form=panel.querySelector('[data-offer-form][data-type="courses"][data-id=""]');if(form){form.closest('details').open=true;form.querySelector('[name=title]')?.focus({preventScroll:true});form.scrollIntoView({behavior:'instant',block:'start'})}}
    }catch(error){if(live(v,session))uiLocale.setHTML(panel, uiLocale.html`<p role="alert">${localErrorHTML(error, '')}</p><button type="button" data-offer-refresh>إعادة المحاولة</button>`)}
  }

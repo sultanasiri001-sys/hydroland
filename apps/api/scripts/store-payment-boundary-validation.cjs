@@ -12,9 +12,11 @@ const payment = (patch = {}) => ({ id: 'payment-1', orderId: 'order-1', accountI
 function fixture({ orders = [order()], payments = [], products = [], auditFails = false } = {}) {
   const db = { state: { orders, payments, products, audits: [] }, transactions: 0 };
   const facade = (owner) => ({
+    $queryRaw: async () => [],
+    commerceCheckout: {findUnique: async () => null},
     storeOrder: {
       findFirst: async ({ where }) => { const row = owner.state.orders.find(x => x.id === where.id && x.accountId === where.accountId); return row && { ...row, payment: owner.state.payments.find(p => p.orderId === row.id) || null }; },
-      findUnique: async ({ where }) => owner.state.orders.find(x => x.id === where.id) || null,
+      findUnique: async ({ where }) => {const row = owner.state.orders.find(x => x.id === where.id); return row ? {...row, payment: owner.state.payments.find(p => p.orderId === row.id) || null} : null;},
       findUniqueOrThrow: async ({ where }) => assert.ok(owner.state.orders.some(x => x.id === where.id)) || owner.state.orders.find(x => x.id === where.id),
       updateMany: async ({ where, data }) => { const row = owner.state.orders.find(x => x.id === where.id && x.status === where.status); if (!row) return { count: 0 }; Object.assign(row, data); return { count: 1 }; },
       create: async ({ data }) => { const row = order({ id: 'new-order', currency: 'SAR', ...data }); owner.state.orders.push(row); return row; },
