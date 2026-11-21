@@ -1,6 +1,16 @@
 (() => {
   // Only authored interface text is localized. Account and business values stay opaque.
   const uiLocale = (typeof window==='undefined'?globalThis:window).HydrolandI18n?.createScope("technology-requests", {
+  "مالك الإصدار المفوض لهذا الطلب حتى انتهاء التكليف": "Release owner delegated for this request until the assignment expires",
+  "تطبيق التغيير المعتمد وتسجيل إيصال التنفيذ": "Apply the approved change and record its receipt",
+  "تنفيذ الرجوع المعتمد وتسجيل إيصال الرجوع": "Apply the approved rollback and record its receipt",
+  "تفعيل الضابط": "Enable control",
+  "إيقاف الضابط": "Disable control",
+  "الضابط غير متاح للتغيير": "Control is unavailable for changes",
+  "{0} · {1}": "{0} · {1}",
+  "{0} · الإصدار المطلوب تغييره {1}": "{0} · Baseline revision {1}",
+  "إيصال تنفيذ الضابط {0}": "Control execution receipt {0}",
+  "إيصال رجوع الضابط {0}": "Control rollback receipt {0}",
   "طلب وصول": "Access request",
   "طلب تغيير": "Change request",
   "حادث تقني": "Technical incident",
@@ -111,8 +121,12 @@
   }
   function lock(){body?.querySelectorAll('fieldset,button').forEach(x=>x.disabled=busy);}
   async function operation(work){if(busy||!dialog?.open||!auth()?.isAuthenticated?.())return;const v=++epoch,s=auth().getSessionVersion?.();busy=true;lock();try{await work(v,s);}catch(e){if(valid(v,s))feedback((localErrorMessage(e) || uiLocale.message('تعذر إكمال الإجراء.')));}finally{if(v===epoch){busy=false;lock();}}}
-  function options(select,items,append=false){if(!append)select.replaceChildren((option=>{uiLocale.setMessage(option, uiLocale.message('اختر المرجع'));return option;})(new Option('', '')));for(const item of items){const option=(option=>{uiLocale.setMessage(option, item.label);return option;})(new Option('', item.id));option.__reference=item;select.appendChild(option);}}
+  function options(select,items,append=false){if(!append)select.replaceChildren((option=>{uiLocale.setMessage(option, uiLocale.message('اختر المرجع'));return option;})(new Option('', '')));for(const item of items){const option=(option=>{uiLocale.setMessage(option, Object.hasOwn(item,'controlChange') ?
+      uiLocale.message("{0} · {1}", [item.label, item.controlChange?controlAction(item.controlChange):uiLocale.message('الضابط غير متاح للتغيير')]) : item.label);
+      if(item.controlChange===null)option.disabled=true;return option;})(new Option('', item.id));option.__reference=item;select.appendChild(option);}}
   const chosen=select=>select.selectedOptions[0]?.__reference;
+  const controlAction=change=>uiLocale.message(change.state==='ENABLED'?'تفعيل الضابط':'إيقاف الضابط');
+
   async function references(type,select,{kind,caseId,append=false}={}){
     const v=epoch,s=auth()?.getSessionVersion?.(),cursor=append?select.dataset.cursor:null;
     const query=new URLSearchParams({type,...(kind?{kind}:{}),...(caseId?{caseId}:{}),...(cursor?{cursor}:{})});
@@ -122,14 +136,26 @@
   }
   function optionField(form,label,name){const l=node('label', label),select=node('select');select.name=name;select.required=true;l.appendChild(select);const more=node('button', uiLocale.message('مراجع أخرى'));more.type='button';more.dataset.more='';more.hidden=true;l.appendChild(more);form.appendChild(l);return select;}
   function field(form,label,name,{type='text',max=2000,required=true}={}){const l=node('label', label),input=node(type==='textarea'?'textarea':'input');input.name=name;if(type!=='textarea')input.type=type;input.required=required;if(type==='text'||type==='textarea')input.maxLength=max;l.appendChild(input);form.appendChild(l);return input;}
-  async function loadCreate(){const form=el('create');await references('request',form.elements.document,{kind:form.elements.kind.value});await references('assignee',form.elements.assignee);}
+  async function loadCreate(){const form=el('create');await references('request',form.elements.document,{kind:form.elements.kind.value});await references('assignee',form.elements.assignee);syncReleaseField(form);}
+  function syncReleaseField(form){
+    const field=form.elements.releaseOwner;
+    const required=chosen(form.elements.document)?.scopeReference==='TRAINING.SESSION_TIME_WINDOW';
+    field.required=required;field.disabled=!required;field.parentElement.hidden=!required;
+    if(!required)field.value='';
+  }
   function rowButton(row){let b=[...el('list').querySelectorAll('[data-case-id]')].find(x=>x.dataset.caseId===row.id);if(!b){b=node('button');b.type='button';b.dataset.caseId=row.id;el('list').appendChild(b);}uiLocale.setMessage(b, uiLocale.message("{0} · {1} · {2}", [((value=>value===undefined?value:uiLocale.message(value))(kinds[row.kind]) || uiLocale.message('طلب')), row.title, ((value=>value===undefined?value:uiLocale.message(value))(states[row.state]) || row.state)]));}
   async function selected(detail){
     if(detail.schemaVersion!==1||detail.policy!=='TECHNOLOGY_REQUEST_V1'||!detail.record||!Object.hasOwn(states,detail.record.state)||!Array.isArray(detail.actions)||detail.actions.some(a=>!Object.hasOwn(actions,a))||!Array.isArray(detail.history))throw localError(uiLocale.message('تعذر تأكيد إصدار الطلب.'));
     current=detail.record;role=detail.role;rowButton(current);const summary=el('summary');summary.replaceChildren(node('h3', current.title),node('p', uiLocale.message("{0} · الإصدار {1}", [(value=>value===undefined?value:uiLocale.message(value))(states[current.state]), current.revision])),node('p', uiLocale.message("النطاق: {0}", [current.scopeReference])),node('p', uiLocale.message("مرجع الطلب: {0}", [current.requestProof.reference])),node('p', uiLocale.message("انتهاء التكليف: {0}", [new Date(current.expiresAt).toLocaleString('ar-SA')])));
+    if(current.controlChange){
+      summary.appendChild(node('p',uiLocale.message("{0} · الإصدار المطلوب تغييره {1}",[controlAction(current.controlChange),current.controlChange.expectedRevision])));
+      if(current.executionAuditId)summary.appendChild(node('p',uiLocale.message("إيصال تنفيذ الضابط {0}",[current.executionAuditId])));
+      if(current.rollbackAuditId)summary.appendChild(node('p',uiLocale.message("إيصال رجوع الضابط {0}",[current.rollbackAuditId])));
+    }
     for(const [label,key] of [['خطة التنفيذ','executionPlan'],['خطة الاختبار','testPlan'],['خطة الرجوع','rollbackPlan']])summary.appendChild(node('p', uiLocale.message("{0}: {1}", [uiLocale.message(label), current[key]])));
     if(current.riskReviewAt)summary.appendChild(node('p', uiLocale.message("مراجعة الخطر: {0}", [new Date(current.riskReviewAt).toLocaleString('ar-SA')])));
-    const form=el('action');form.reset();form.hidden=!detail.actions.length;options(form.elements.action,detail.actions.filter(a=>a!=='ACCEPT_RISK'||current.kind==='RISK').map(id=>({id,label:uiLocale.message(actions[id])})));
+    const form=el('action');form.reset();form.hidden=!detail.actions.length;options(form.elements.action,detail.actions.filter(a=>a!=='ACCEPT_RISK'||current.kind==='RISK').map(id=>({id,label:current.controlChange&&id==='RECORD_EXECUTION'?uiLocale.message('تطبيق التغيير المعتمد وتسجيل إيصال التنفيذ'):
+      current.controlChange&&id==='RECORD_ROLLBACK'?uiLocale.message('تنفيذ الرجوع المعتمد وتسجيل إيصال الرجوع'):uiLocale.message(actions[id])})));
     el('history').replaceChildren(node('h4', uiLocale.message('سجل الطلب')));for(const h of detail.history)el('history').appendChild(node('p', uiLocale.message("{0} · الإصدار {1} · {2}", [((value=>value===undefined?value:uiLocale.message(value))(actions[h.action]) || uiLocale.message('إنشاء الطلب')), h.revision, h.reason])));
     if(detail.historyTruncated)el('history').appendChild(node('p', uiLocale.message('يُعرض أحدث 50 إجراءً؛ الإجراءات الأقدم محفوظة.')));await actionFields();
   }
@@ -148,9 +174,13 @@
     const refresh=node('button', uiLocale.message('تحديث الطلبات'));refresh.type='button';refresh.addEventListener('click',()=>operation(()=>load()));body.appendChild(refresh);
     const form=node('form');form.dataset.trCreate='';form.hidden=true;const fields=node('fieldset');fields.appendChild(node('legend', uiLocale.message('طلب جديد')));form.appendChild(fields);
     const kind=optionField(fields, uiLocale.message('نوع الطلب'), 'kind');options(kind,Object.keys(kinds).map(id=>({id,label:uiLocale.message(kinds[id])})));kind.value='CHANGE';const document=optionField(fields, uiLocale.message('مستند الطلب في إدارة التقنية'), 'document'),assignee=optionField(fields, uiLocale.message('الموظف المكلف بالتنفيذ'), 'assignee');
+    const releaseOwner=optionField(fields,uiLocale.message('مالك الإصدار المفوض لهذا الطلب حتى انتهاء التكليف'),'releaseOwner');
+    syncReleaseField(form);
+    document.addEventListener('change',()=>{syncReleaseField(form);if(releaseOwner.required)void operation(()=>references('assignee',releaseOwner));});
+    releaseOwner.parentElement.querySelector('[data-more]').addEventListener('click',()=>operation(()=>references('assignee',releaseOwner,{append:true})));
     field(fields, uiLocale.message('عنوان الطلب'), 'title', {max:160});field(fields, uiLocale.message('خطة التنفيذ'), 'executionPlan', {type:'textarea'});field(fields, uiLocale.message('خطة الاختبار'), 'testPlan', {type:'textarea'});field(fields, uiLocale.message('خطة الرجوع'), 'rollbackPlan', {type:'textarea'});const expiry=field(fields, uiLocale.message('انتهاء تكليف التنفيذ'), 'expiresAt', {type:'datetime-local'});expiry.value=localDate(new Date(Date.now()+86400000));const submit=node('button', uiLocale.message('حفظ مسودة الطلب'));submit.type='submit';fields.appendChild(submit);body.appendChild(form);
     kind.addEventListener('change',()=>operation(()=>loadCreate()));document.parentElement.querySelector('[data-more]').addEventListener('click',()=>operation(()=>references('request',document,{kind:kind.value,append:true})));assignee.parentElement.querySelector('[data-more]').addEventListener('click',()=>operation(()=>references('assignee',assignee,{append:true})));
-    form.addEventListener('submit',event=>{event.preventDefault();void operation(async(v,s)=>{const source=chosen(document);if(!source||typeof source.scopeReference!=='string')throw localError(uiLocale.message('اختر مستند طلب يطابق نطاق الحالة.'));const content={kind:kind.value,title:form.elements.title.value.trim(),scopeReference:source.scopeReference,executionPlan:form.elements.executionPlan.value.trim(),testPlan:form.elements.testPlan.value.trim(),rollbackPlan:form.elements.rollbackPlan.value.trim(),assigneeAccountId:assignee.value,expiresAt:new Date(expiry.value).toISOString(),requestDocumentId:source.id,requestDocumentVersion:source.version,requestDocumentHash:source.contentHash,...(kind.value==='ACCESS'?{targetAccountId:source.targetAccountId,accessAction:source.accessAction}:{})};const signature=JSON.stringify(content);if(signature!==requestContent){requestId=crypto.randomUUID();requestContent=signature;}const result=await api('',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...content,requestKey:requestId})},v,s);if(result){await selected(result);feedback(uiLocale.message('حُفظت المسودة؛ يلزم إرسالها ثم اعتماد النطاق قبل بدء التنفيذ.'));}});});
+    form.addEventListener('submit',event=>{event.preventDefault();void operation(async(v,s)=>{const source=chosen(document);if(!source||typeof source.scopeReference!=='string')throw localError(uiLocale.message('اختر مستند طلب يطابق نطاق الحالة.'));const content={kind:kind.value,title:form.elements.title.value.trim(),scopeReference:source.scopeReference,executionPlan:form.elements.executionPlan.value.trim(),testPlan:form.elements.testPlan.value.trim(),rollbackPlan:form.elements.rollbackPlan.value.trim(),assigneeAccountId:assignee.value,...(releaseOwner.required?{releaseOwnerAccountId:releaseOwner.value}:{}),expiresAt:new Date(expiry.value).toISOString(),requestDocumentId:source.id,requestDocumentVersion:source.version,requestDocumentHash:source.contentHash,...(source.controlChange?{controlChange:{state:source.controlChange.state,expectedRevision:source.controlChange.expectedRevision}}:{}),...(kind.value==='ACCESS'?{targetAccountId:source.targetAccountId,accessAction:source.accessAction}:{})};const signature=JSON.stringify(content);if(signature!==requestContent){requestId=crypto.randomUUID();requestContent=signature;}const result=await api('',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...content,requestKey:requestId})},v,s);if(result){await selected(result);feedback(uiLocale.message('حُفظت المسودة؛ يلزم إرسالها ثم اعتماد النطاق قبل بدء التنفيذ.'));}});});
     const list=node('section');list.dataset.trList='';uiLocale.setAttribute(list, "aria-label", 'قائمة طلبات التقنية');body.appendChild(list);list.addEventListener('click',event=>{const b=event.target.closest('[data-case-id]');if(b)void operation(async(v,s)=>{const d=await api('/'+encodeURIComponent(b.dataset.caseId),{},v,s);if(d)await selected(d);});});const older=node('button', uiLocale.message('طلبات أخرى'));older.type='button';older.dataset.trOlder='';older.hidden=true;older.addEventListener('click',()=>operation(()=>load(true)));body.appendChild(older);const summary=node('section');summary.dataset.trSummary='';body.appendChild(summary);
     const action=node('form');action.dataset.trAction='';action.hidden=true;const af=node('fieldset');af.appendChild(node('legend', uiLocale.message('إجراء على الإصدار الحالي')));action.appendChild(af);const actionSelect=optionField(af, uiLocale.message('الإجراء'), 'action');optionField(af, uiLocale.message('محضر الإثبات المعتمد'), 'proof');optionField(af, uiLocale.message('أثر التنفيذ في مسار الوصول'), 'audit');field(af, uiLocale.message('موعد مراجعة الخطر'), 'riskReviewAt', {type:'datetime-local',required:false});field(af, uiLocale.message('سبب الإجراء ونتيجته'), 'reason', {type:'textarea',max:1000});field(af, uiLocale.message('راجعت النطاق والإثبات ونتيجة هذا الإجراء'), 'confirmed', {type:'checkbox'});const apply=node('button', uiLocale.message('حفظ الإجراء'));apply.type='submit';af.appendChild(apply);body.appendChild(action);actionSelect.addEventListener('change',()=>operation(()=>actionFields()));
     action.elements.proof.parentElement.querySelector('[data-more]').addEventListener('click',()=>operation(()=>references('proof',action.elements.proof,{caseId:current.id,append:true})));action.elements.audit.parentElement.querySelector('[data-more]').addEventListener('click',()=>operation(()=>references('audit',action.elements.audit,{caseId:current.id,append:true})));

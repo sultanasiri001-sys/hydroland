@@ -1,3 +1,4 @@
+const {catalogOwnerDelegates}=require('./catalog-owner-unit-fixture.cjs');
 const assert=require('node:assert/strict');
 const {OperationalControlsService}=require('../dist/trips/operational-controls.service');
 const {OPERATIONAL_CONTROLS}=require('../dist/trips/operational-controls.catalog');
@@ -8,7 +9,7 @@ const {CalendarAllocationService}=require('../dist/trips/calendar-allocation.ser
 const {StoreOfferingsService}=require('../dist/store/store-offerings.service');
 function harness(){
  let state={rows:[],weather:{value:{enabled:false,mode:'ENFORCE'},updatedAt:new Date(1)},audits:[]},active=true,failAudit=false;
- const tx={roleAssignment:{findFirst:async()=>active?{id:'admin-role'}:null},$queryRaw:async(strings)=>strings.join('').includes('OperationalSetting')?[structuredClone(state.weather)]:structuredClone(state.rows),$executeRaw:async(strings,...values)=>{
+ const tx={...catalogOwnerDelegates('admin'),roleAssignment:{findFirst:async()=>active?{id:'admin-role'}:null},$queryRaw:async(strings)=>strings.join('').includes('OperationalSetting')?[structuredClone(state.weather)]:structuredClone(state.rows),$executeRaw:async(strings,...values)=>{
   if(strings.join('').includes('INSERT INTO "OperationalSetting"'))state.weather={value:JSON.parse(values[0]),updatedAt:new Date(state.weather.updatedAt.getTime()+1)};
   else {const [category,ruleKey,,policyState]=values,old=state.rows.find(r=>r.category===category&&r.ruleKey===ruleKey);if(old){old.state=policyState;old.updatedAt=new Date(old.updatedAt.getTime()+1)}else state.rows.push({category,ruleKey,state:policyState,updatedAt:new Date(1)});}
  }};
