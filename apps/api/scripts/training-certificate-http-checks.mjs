@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {createCommerceContractSnapshot} from '../dist/commerce/commerce-contract-snapshot.js';
 import {checkProgressionCertificateHttp} from './training-progression-certificate-http-checks.mjs';
 import {createHash,randomUUID} from 'node:crypto';
 import {trainingStandardFixture} from './training-standard-isolated-fixture.mjs';
@@ -14,9 +15,17 @@ export async function checkTrainingCertificates(db,{base,instructor,student,owne
   await db.roleAssignment.create({data:{accountId:account.id,role,status:'ACTIVE'}});
  }
  const [admin,reviewer]=reviewers,recommend=id=>'/training/professional/me/records/'+id+'/certificate-recommendation',decision=id=>'/training/certificates/'+id+'/decision';
+ const offer=await db.storeCourseOffer.findUniqueOrThrow({where:{id:offerId},include:{organization:true}});
+ assert.equal(offer.priceMinor,0,'Certificate workflow fixtures must use the original free training offer');
  const fixture=async code=>{
+  const id=randomUUID(), startsAt=offer.startsAt.toISOString(), endsAt=offer.endsAt.toISOString();
+  const contractSnapshot=createCommerceContractSnapshot({
+   sourceKind:'TRAINING_ENROLLMENT',sourceId:id,parentId:null,offeringId:offerId,customerAccountId:student.id,
+   organizationId,organization:offer.organization,kind:'COURSE',title:offer.title,quantity:1,unitPriceMinor:offer.priceMinor,
+   currency:offer.currency,recordedAt:new Date().toISOString(),originalStartsAt:startsAt,originalEndsAt:endsAt,
+  });
   const row=await db.trainingEnrollment.create({
-   data:{storeCourseOfferId:offerId,studentAccountId:student.id,instructorAccountId:instructor.id,centerOrganizationId:organizationId,courseCode:code,status:'COMPLETED',completedAt:new Date(),metadata:{private:'DO_NOT_RETURN',medical:'DO_NOT_RETURN'},
+   data:{id,storeCourseOfferId:offerId,studentAccountId:student.id,instructorAccountId:instructor.id,centerOrganizationId:organizationId,courseCode:code,status:'COMPLETED',completedAt:new Date(),metadata:{source:'UNIFIED_STORE',title:offer.title,priceMinor:offer.priceMinor,currency:offer.currency,startsAt,endsAt,contractSnapshot,private:'DO_NOT_RETURN',medical:'DO_NOT_RETURN'},
     record:{create:{status:'COMPLETED',progressPercent:100,completedAt:new Date(),
      stages:{create:{stageType:'اختبار شهادة معزول — لا تدريب فعلي',deliveryMode:'THEORY',sequence:1,status:'COMPLETED',progressPercent:100,skills:{create:{skillCode:'QA-CERT-PROCEDURE',name:'مهارة اختبار إجرائي',status:'COMPETENT',signedOffByInstructorId:instructor.id,signedOffAt:new Date()}}}},
      sessions:{create:{instructorAccountId:instructor.id,status:'COMPLETED',startsAt:new Date(Date.now()-600000),endsAt:new Date()}}

@@ -88,12 +88,14 @@ const check = async (name, run) => { await run(); passed++; console.log('PASS', 
       assert.equal(await db.storeOrder.count(), beforeOrders); assert.equal(await db.storeOrderItem.count(), beforeItems);
       assert.deepEqual(await db.storeProduct.findMany({ where: { id: { in: goods.map(p => p.id) } }, orderBy: { id: 'asc' } }), beforeStock);
     });
-    await check('fulfillment does not invent actual receipt and legacy rows remain unsnapshotted', async () => {
+    await check('a local capture label cannot fulfill an unsnapshotted legacy order or manufacture a receipt', async () => {
       const legacy = await db.storeOrder.create({ data: { accountId: buyer.id, totalMinor: 1000, currency: 'SAR', items: { create: { productId: goods[0].id, quantity: 1, unitPriceMinor: 1000 } } }, include: { items: true } });
       assert.equal(legacy.items[0].contractSnapshot, null);
       await db.storePayment.create({ data: { orderId: legacy.id, accountId: buyer.id, amountMinor: 1000, currency: 'SAR', status: 'CAPTURED', idempotencyKey: randomUUID() } });
       await store.updateOrderStatus(legacy.id, 'CONFIRMED', owner.id);
-      await store.updateOrderStatus(legacy.id, 'FULFILLED', owner.id);
+      await assert.rejects(() => store.updateOrderStatus(legacy.id, 'FULFILLED', owner.id), error => error.getStatus?.() === 409);
+      assert.equal((await db.storeOrder.findUniqueOrThrow({where:{id:legacy.id}})).status, 'CONFIRMED');
+      assert.equal(await db.commerceCollectionEvidence.count({where:{sourceType:'STORE_ORDER',sourceId:legacy.id}}), 0);
       const row = await db.storeOrderItem.findUniqueOrThrow({ where: { id: legacy.items[0].id } });
       assert.equal(row.actualReceivedAt, null); assert.equal(row.contractSnapshot, null);
     });
