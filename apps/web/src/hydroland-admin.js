@@ -236,4 +236,12 @@
   document.addEventListener('hydroland:role-changed',event=>{if(event.detail?.role==='admin')show();else hide();});
   document.addEventListener('hydroland:auth-changed',()=>{if(!box.hidden)refreshAdminOverview();});
   box.querySelector('[data-admin-refresh]')?.addEventListener('click',refreshAdminOverview);
+  window.HydrolandAdminControl = {open() {
+    const access = window.HydrolandPortalAccess;
+    if (!window.HydrolandAuth?.isAuthenticated?.() || access?.getCurrentRole?.() !== 'admin' || !access.roleAllowed?.('admin')) return;
+    box.hidden = false;
+    window.HydrolandWorkspaceUI?.show?.(box);
+    void refreshAdminOverview();
+  }};
+  window.HydrolandRoleDashboards?.refreshControls?.();
 })();

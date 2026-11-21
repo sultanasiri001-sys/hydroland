@@ -174,13 +174,18 @@ export class OrganizationBookingCheckoutService {
       throw new ConflictException('فاتورة المزود لا تطابق الحجز والمبلغ وطلب الجهة.');
     }
     const paid = invoice.payments.filter(p => ['paid', 'captured', 'refunded'].includes(p.status));
-    if (paid.length > 1 || ['paid', 'refunded'].includes(invoice.status) && paid.length !== 1) throw pending();
+    const terminalInvoice = ['canceled', 'expired', 'voided', 'failed'].includes(invoice.status);
+    const unsettledAttempt = invoice.payments.some(attempt => ['authorized', 'verified'].includes(attempt.status));
+    if (unsettledAttempt || paid.length > 1 || ['paid', 'refunded'].includes(invoice.status) && paid.length !== 1
+      || terminalInvoice && invoice.payments.some(attempt => !['failed', 'expired', 'voided'].includes(attempt.status))) throw pending();
     if (paid.length && (paid[0].amount !== snapshot.amountMinor || paid[0].currency !== 'SAR')) throw pending();
     const verified = paid.length ? await this.provider.fetchPayment(paid[0].id, { invoiceId: invoice.id, currency: 'SAR', amountMinor: snapshot.amountMinor }) : null;
     let status: PaymentStatus;
     if (verified) {
       if (!['paid', 'refunded'].includes(invoice.status) || !['captured', 'paid', 'refunded'].includes(verified.status)
-        || verified.capturedMinor !== snapshot.amountMinor || verified.refundedMinor === 0 && verified.refundedAt !== null || Date.parse(verified.updatedAt) > Date.now()) throw pending();
+        || verified.capturedMinor !== snapshot.amountMinor || (verified.refundedMinor > 0) !== (verified.refundedAt !== null)
+        || (invoice.status === 'refunded' || paid[0].status === 'refunded' || verified.status === 'refunded') && verified.refundedMinor === 0
+        || Date.parse(verified.updatedAt) > Date.now()) throw pending();
       status = verified.refundedMinor === snapshot.amountMinor ? 'REFUNDED' : 'CAPTURED';
     } else if (['initiated', 'on_hold'].includes(invoice.status)) status = 'PENDING';
     else if (['canceled', 'expired', 'voided'].includes(invoice.status)) status = 'CANCELLED';

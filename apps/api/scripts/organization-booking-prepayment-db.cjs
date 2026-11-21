@@ -60,6 +60,18 @@ module.exports = async function checkPrepayment(tx, db, org, platform, creator, 
   invoice.status='paid';invoice.payments=[{id:pid,status:'paid',amount:10000,currency:'SAR'}];
   payments.set(pid,{id:pid,status:'paid',invoiceId:invoice.id,currency:'SAR',amountMinor:10000,capturedMinor:10000,
     refundedMinor:0,refundedAt:null,updatedAt:new Date().toISOString()});
+  const paidAttempt=invoice.payments[0];
+  for (const ambiguous of ['authorized','verified']) {
+    invoice.payments=[paidAttempt,{...paidAttempt,id:randomUUID(),status:ambiguous}];
+    await assert.rejects(()=>service.refresh(delegate.id,org.id,booking.id),errorCode(409));
+  }
+  invoice.status='expired';invoice.payments=[{...paidAttempt,status:'initiated'}];
+  await assert.rejects(()=>service.refresh(delegate.id,org.id,booking.id),errorCode(409));
+  invoice.status='refunded';invoice.payments=[paidAttempt];
+  await assert.rejects(()=>service.refresh(delegate.id,org.id,booking.id),errorCode(409));
+  assert.equal((await tx.payment.findUniqueOrThrow({where:{id:first.paymentId}})).status,'PENDING');
+  assert.equal(await tx.invoice.count({where:{paymentId:first.paymentId}}),0);
+  invoice.status='paid';
   assert.equal((await service.refresh(delegate.id,org.id,booking.id)).status,'CAPTURED');
   const paid=await tx.payment.findUniqueOrThrow({where:{id:first.paymentId}});
   assert.equal(paid.accountId,delegate.id);
