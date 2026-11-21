@@ -1,3 +1,5 @@
+import { RentalDamagePaymentController } from './rental-damage-payment.controller';
+import { RentalDamagePaymentService } from './rental-damage-payment.service';
 import { OrganizationBookingCheckoutController } from './organization-booking-checkout.controller';
 import { OrganizationBookingCheckoutService } from './organization-booking-checkout.service';
 import { OrganizationBookingMandateController } from './organization-booking-mandate.controller';
@@ -28,5 +30,5 @@ import {SettlementReadinessController} from './settlement-readiness.controller';
 import {PaymentsService} from './payments.service';
 import {MoyasarPaymentProviderService} from './moyasar-payment-provider.service';
 import {MoyasarSettlementProviderService} from './moyasar-settlement-provider.service';
-@Module({imports:[AdminModule,AuthModule,AuditModule,TripsModule,IntegrationModule],controllers:[OrganizationBookingCheckoutController,OrganizationBookingMandateController,CheckoutRefundController,PaymentRefundExecutionController,RentalCheckoutController,RentalRefundController,StoreCheckoutController,TrainingCheckoutController,PaymentsController,PaymentsWebhookController,SettlementReadinessController],providers:[OrganizationBookingCheckoutService,OrganizationBookingMandateService,CheckoutRefundService,PaymentContractService,PaymentRefundExecutionService,FinanceOperationGrantService,RentalCheckoutService,RentalRefundService,StoreCheckoutService,TrainingCheckoutService,PaymentsService,MoyasarPaymentProviderService,MoyasarSettlementProviderService],exports:[PaymentsService,MoyasarPaymentProviderService,MoyasarSettlementProviderService]})
+@Module({imports:[AdminModule,AuthModule,AuditModule,TripsModule,IntegrationModule],controllers:[RentalDamagePaymentController,OrganizationBookingCheckoutController,OrganizationBookingMandateController,CheckoutRefundController,PaymentRefundExecutionController,RentalCheckoutController,RentalRefundController,StoreCheckoutController,TrainingCheckoutController,PaymentsController,PaymentsWebhookController,SettlementReadinessController],providers:[RentalDamagePaymentService,OrganizationBookingCheckoutService,OrganizationBookingMandateService,CheckoutRefundService,PaymentContractService,PaymentRefundExecutionService,FinanceOperationGrantService,RentalCheckoutService,RentalRefundService,StoreCheckoutService,TrainingCheckoutService,PaymentsService,MoyasarPaymentProviderService,MoyasarSettlementProviderService],exports:[PaymentsService,MoyasarPaymentProviderService,MoyasarSettlementProviderService]})
 export class PaymentsModule {}

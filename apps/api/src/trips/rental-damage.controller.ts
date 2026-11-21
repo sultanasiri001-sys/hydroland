@@ -12,6 +12,14 @@ export class RentalDamageController {
   @Get('center')
   center(@Req() req:Request){return this.damage.centerItems(req.auth.accountId);}
 
+  @Get('center/missing-items')
+  missingItems(@Req() req:Request){return this.damage.missingItems(req.auth.accountId);}
+
+  @Post('items/:id/missing')
+  missing(@Req() req:Request,@Param('id') id:string,@Body() body:{reason?:string;circumstance?:string;proposal?:string}){
+    return this.damage.missing(req.auth.accountId,id,body);
+  }
+
   @Post('items/:id')
   @UseInterceptors(FileInterceptor('document',{limits:{fileSize:10_000_000,files:1,fields:2,parts:4}}))
   submit(@Req() req:Request,@Param('id') id:string,@Body() body:{amountMinor?:string;kind?:string},@UploadedFile() file?:{buffer:Buffer;mimetype:string}){

@@ -40,15 +40,51 @@ export class RentalDamageService {
   async centerItems(actor:string) {
     return this.db.serializable(async tx=>{
       const centers=await this.centers(tx,actor);
-      const items=await tx.$queryRaw<Array<{itemId:string; rentalId:string; invoiceNumber:string; equipment:string; baseline:string; damage:string}>>`
+      const items=await tx.$queryRaw<Array<{itemId:string; rentalId:string; invoiceNumber:string; equipment:string; baseline:string; damage:string; cause:string}>>`
         SELECT i."id" AS "itemId",r."id" AS "rentalId",r."invoiceNumber",i."equipmentNameSnapshot" AS equipment,
-          h."metadata"->>'handoverCondition' AS baseline,ret."metadata"->>'notes' AS damage ${eligible}
+          h."metadata"->>'handoverCondition' AS baseline,ret."metadata"->>'notes' AS damage,COALESCE(ret."metadata"->>'damageCause','NEW_DAMAGE') AS cause ${eligible}
           AND r."contractSnapshot"->>'organizationId' IN (${Prisma.join(centers)}) ORDER BY i."returnedAt" DESC,i."id"`;
       const claims=items.length?await tx.rentalDamageClaim.findMany({where:{itemId:{in:items.map(v=>v.itemId)},organizationId:{in:centers}},select:summary}):[];
       const byItem=new Map(claims.map(c=>[c.itemId,c]));
       return items.map(item=>({...item,claim:byItem.get(item.itemId)??null}));
     });
   }
+  async missingItems(actor:string) {
+    return this.db.serializable(async tx=>{
+      const centers=await this.centers(tx,actor);
+      return tx.$queryRaw<Array<{itemId:string;assetCode:string;equipment:string;invoiceNumber:string;reported:boolean}>>`
+        SELECT i."id" AS "itemId",i."assetCodeSnapshot" AS "assetCode",i."equipmentNameSnapshot" AS equipment,r."invoiceNumber",
+          EXISTS (SELECT 1 FROM "AuditEvent" a WHERE a."resource"='EquipmentRentalItem' AND a."resourceId"=i."id" AND a."action"='RENTAL_ITEM_REPORTED_MISSING') AS reported
+        FROM "EquipmentRentalItem" i JOIN "EquipmentRental" r ON r."id"=i."rentalId"
+        WHERE r."status"='ACTIVE' AND i."handedOverAt" IS NOT NULL AND i."returnedAt" IS NULL
+          AND r."contractSnapshot"->>'organizationId' IN (${Prisma.join(centers)}) ORDER BY r."invoiceNumber",i."assetCodeSnapshot"`;
+    });
+  }
+  async missing(actor:string,itemId:string,input:{reason?:string;circumstance?:string;proposal?:string}) {
+    const reason=reasonText(input?.reason),circumstance=input?.circumstance,proposal=input?.proposal??'TRACE';
+    if(!['TRACE','EQUIVALENT','ESTIMATE','WAIVER','OTHER'].includes(proposal))throw new BadRequestException('اختر إجراءً مقترحًا للمراجعة.');
+    if(!['NOT_RETURNED','REPORTED_BY_RENTER','OTHER'].includes(circumstance??''))throw new BadRequestException('اختر سبب تسجيل الفقد.');
+    return this.db.serializable(async tx=>{
+      const centers=await this.centers(tx,actor);
+      const [line]=await tx.$queryRaw<Array<{rentalId:string;renter:string;status:string;returnedAt:Date|null}>>`
+        SELECT r."id" AS "rentalId",r."renterAccountId" AS renter,r."status",i."returnedAt"
+        FROM "EquipmentRentalItem" i JOIN "EquipmentRental" r ON r."id"=i."rentalId"
+        WHERE i."id"=${itemId} AND i."handedOverAt" IS NOT NULL AND r."contractSnapshot"->>'organizationId' IN (${Prisma.join(centers)})
+        FOR UPDATE OF r,i`;
+      if(!line)throw new NotFoundException();
+      if(line.status!=='ACTIVE'||line.returnedAt)throw new ConflictException('لا يمكن تسجيل فقد قطعة أعيدت.');
+      const old=await tx.auditEvent.findFirst({where:{resource:'EquipmentRentalItem',resourceId:itemId,action:'RENTAL_ITEM_REPORTED_MISSING'},select:{metadata:true}});
+      if(old){
+        const meta=old.metadata;
+        if(!meta||typeof meta!=='object'||Array.isArray(meta)||meta.reason!==reason||meta.circumstance!==circumstance||meta.proposal!==proposal)throw new ConflictException('تختلف البيانات عن البلاغ المسجّل.');
+        return {status:'MISSING',itemId};
+      }
+      await this.audit.record({actorId:actor,resource:'EquipmentRentalItem',resourceId:itemId,action:'RENTAL_ITEM_REPORTED_MISSING',metadata:{reason,circumstance,proposal,rentalId:line.rentalId}},tx);
+      await this.notices.notify(line.renter,'RENTAL_ITEM_REPORTED_MISSING',{rentalId:line.rentalId,itemId,reason,circumstance,proposal,title:'بلاغ قطعة تأجير مفقودة'},tx);
+      return {status:'MISSING',itemId};
+    });
+  }
+
   async submit(actor:string,itemId:string,body:{amountMinor?:string;kind?:string},file?:{buffer:Buffer;mimetype:string}) {
     const raw=body?.amountMinor;
     if(typeof raw!=='string'||!/^\d{1,10}$/.test(raw)||Number(raw)<1||Number(raw)>2147483647||!['ESTIMATE','REPAIR_INVOICE'].includes(body?.kind??''))throw new BadRequestException('أدخل نوع المستند وتكلفة الإصلاح بالهللات.');

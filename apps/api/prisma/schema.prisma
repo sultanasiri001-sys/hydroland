@@ -3046,6 +3046,7 @@ model RentalDamageClaim {
   reviewReason     String?
   reviewedBy       String?
   payableAt        DateTime?
+  activeCheckoutId String? @unique
   financeEntryId   String?  @unique
   createdAt        DateTime @default(now())
   @@index([organizationId,status], map: "RentalDamageClaim_center")

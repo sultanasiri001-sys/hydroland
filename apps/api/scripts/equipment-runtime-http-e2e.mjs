@@ -371,10 +371,28 @@ try{
   await Promise.all(passports.map(passport=>post('/trips/admin/equipment-rentals/'+multiId+'/handover-scan',{code:passport.assetCode,handoverCondition:'Existing scratch on handle'})));
   assert.equal(await db.auditEvent.count({where:{resourceId:multiId,action:'EQUIPMENT_RENTAL_ITEM_HANDED_OVER'}}),2);
   assert.equal(await db.notification.count({where:{accountId:renter.id,type:'EQUIPMENT_RENTAL_HANDED_OVER',payload:{path:['rentalId'],equals:multiId}}}),1);
+  const damageBase=base+'/trips/rental-damage';
+  const repairPdf=await PDFDocument.create();repairPdf.addPage();const bytes=await repairPdf.save();
+  for(const who of [admin,financeApprover,other]) {
+    await db.roleAssignment.create({data:{accountId:who.id,role:'DIVE_CENTER',status:'ACTIVE',scope:{}}});
+    await db.organizationMember.create({data:{accountId:who.id,organizationId:who===other?adjacent.organizationId:during.organizationId,role:'ADMIN',status:'ACTIVE'}});
+  }
+  await db.organization.update({where:{id:adjacent.organizationId},data:{status:'ACTIVE'}});
+  const reviewerToken=await login(financeApprover);
+  const openItems=await json(await fetch(damageBase+'/center/missing-items',{headers:auth(adminToken)}));
+  const missingItem=openItems.find(row=>row.assetCode===passports[1].assetCode);
+  const lossBody={circumstance:'REPORTED_BY_RENTER',proposal:'EQUIVALENT',reason:'Reported lost during return'};
+  const reportLoss=token=>fetch(damageBase+'/items/'+missingItem.itemId+'/missing',{method:'POST',headers:{...auth(token),'content-type':'application/json'},body:JSON.stringify(lossBody)});
+  assert.equal((await reportLoss(otherToken)).status,404);
+  assert.equal((await json(await reportLoss(adminToken))).status,'MISSING');
+  assert.equal((await json(await reportLoss(adminToken))).status,'MISSING');
+  const lostLine=(await json(await fetch(base+'/trips/equipment-rentals/'+multiId+'/mine',{headers:auth(renterToken)}))).items.find(i=>i.id===missingItem.itemId);
+  assert.equal(lostLine.lossStatus,'MISSING');assert.equal(lostLine.returnedAt,null);
+  assert.equal(await db.rentalDamageClaim.count({where:{itemId:missingItem.itemId}}),0);
   const returnPath='/trips/equipment-rentals/'+multiId+'/return-scan';
-  const damaged=await post(returnPath,{code:passports[0].assetCode,condition:'DAMAGED',toLocation:'INSPECTION',newDamage:true,notes:'New crack on the base'});
+  const damaged=await post(returnPath,{code:passports[0].assetCode,condition:'DAMAGED',toLocation:'INSPECTION',newDamage:true,damageCause:'MISUSE',notes:'New crack on the base'});
   const damageReceipt=await db.auditEvent.findFirstOrThrow({where:{resource:'EquipmentRental',resourceId:multiId,action:'EQUIPMENT_RENTAL_ITEM_RETURNED'}});
-  assert.equal(damageReceipt.metadata.newDamageConfirmed,true);
+  assert.equal(damageReceipt.metadata.newDamageConfirmed,true);assert.equal(damageReceipt.metadata.damageCause,'MISUSE');
   const baseline=await db.auditEvent.findUniqueOrThrow({where:{id:damageReceipt.metadata.handoverReceiptId}});
   assert.equal(baseline.metadata.handoverCondition,'Existing scratch on handle');
   assert.equal(damaged.status,'ACTIVE');
@@ -386,14 +404,10 @@ try{
   assert.equal((await post(returnPath,{code:passports[1].assetCode,condition:'OK'})).status,'RETURNED');
   assert.equal(await db.auditEvent.count({where:{resourceId:multiId,action:'EQUIPMENT_RENTAL_ITEM_RETURNED'}}),2);
   assert.equal(await db.auditEvent.count({where:{resourceId:multiId,action:'EQUIPMENT_RENTAL_RETURNED'}}),1);
-  const damageBase=base+'/trips/rental-damage';
-  const repairPdf=await PDFDocument.create();repairPdf.addPage();const bytes=await repairPdf.save();
-  for(const who of [admin,financeApprover,other]) {
-    await db.roleAssignment.create({data:{accountId:who.id,role:'DIVE_CENTER',status:'ACTIVE',scope:{}}});
-    await db.organizationMember.create({data:{accountId:who.id,organizationId:who===other?adjacent.organizationId:during.organizationId,role:'ADMIN',status:'ACTIVE'}});
-  }
-  await db.organization.update({where:{id:adjacent.organizationId},data:{status:'ACTIVE'}});
-  const reviewerToken=await login(financeApprover);
+  assert.equal((await reportLoss(adminToken)).status,409);
+  const recovered=await json(await fetch(base+'/trips/equipment-rentals/'+multiId+'/mine',{headers:auth(renterToken)}));
+  assert.equal(recovered.items.find(i=>i.id===missingItem.itemId).lossStatus,'RECOVERED');
+  assert.equal(await db.auditEvent.count({where:{resourceId:missingItem.itemId,action:'RENTAL_ITEM_REPORTED_MISSING'}}),1);
   const eligibleRows=await json(await fetch(damageBase+'/center',{headers:auth(adminToken)}));
   const line=eligibleRows.find(row=>row.rentalId===multiId);
   assert.equal(line.damage,'New crack on the base');assert.equal(line.baseline,'Existing scratch on handle');

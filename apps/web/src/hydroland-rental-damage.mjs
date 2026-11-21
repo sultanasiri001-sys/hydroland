@@ -11,9 +11,9 @@ function panel(root){
   root.damageView=token;
   const current=()=>root.isConnected&&root.damageView===token&&auth.isAuthenticated?.()&&version===auth.getSessionVersion?.();
   const message=el('p');message.setAttribute('role','status');root.replaceChildren(message);
-  const request=async(path,options={})=>{
+  const request=async(path,options={},prefix=base)=>{
     if(!current())throw new Error();
-    const response=await auth.authorizedFetch(base+path,options);
+    const response=await auth.authorizedFetch(prefix+path,options);
     if(!current())throw new Error();
     if(!response.ok){const data=await response.json().catch(()=>null);throw new Error(data?.message||label('تعذّر تنفيذ الطلب','Request failed'));}
     return response;
@@ -37,6 +37,22 @@ function drawClaim(p,root,claim,view,refresh){
     const url=URL.createObjectURL(blob),link=el('a');link.href=url;link.download='repair.pdf';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   });
   const renter=view==='renter';
+  if(renter&&claim.status==='PAYABLE'){
+    const payment=el('div');root.append(payment);
+    const run=async op=>{
+      const result=await (await p.request(encodeURIComponent(claim.id)+'/'+op,{method:'POST'},'/payments/rental-damage/')).json();
+      if(!p.current())return;
+      const messages={PENDING:['فاتورة الدفع جاهزة','Payment invoice ready'],CAPTURED:['أكد المزوّد الدفع، بانتظار مطابقة الدفتر','Payment confirmed by provider, awaiting ledger matching'],
+        COLLECTED:['تم التحصيل','Collected'],CANCELLED:['انتهت فاتورة الدفع. يمكنك إنشاء فاتورة جديدة','Payment invoice expired. You can request a new one']};
+      payment.replaceChildren(el('p',label(...(messages[result.status]||['جارٍ التحقق من المطابقة','Reconciliation required']))));
+      if(result.status==='PENDING'&&result.url){
+        const url=new URL(result.url);if(url.protocol!=='https:'||url.username||url.password||!(url.hostname==='moyasar.com'||url.hostname.endsWith('.moyasar.com')))throw new Error(label('رابط بوابة الدفع غير معتمد','Unrecognized payment provider link'));
+        const link=el('a',label('فتح بوابة الدفع','Open payment provider'));link.href=url.href;link.rel='noreferrer';payment.append(link);
+      }
+    };
+    p.action(root,label('تجهيز فاتورة دفع الضرر','Prepare damage payment invoice'),()=>run('checkout'));
+    p.action(root,label('تحديث حالة دفعة الضرر','Refresh damage payment'),()=>run('refresh'));
+  }
   if(claim.status!==(renter?'AWAITING_RENTER':'DISPUTED'))return;
   const reason=el('textarea');reason.maxLength=1000;const field=el('label',label('السبب عند الاعتراض أو المراجعة','Reason for dispute or review'));field.append(reason);root.append(field);
   const decide=async decision=>{
@@ -56,13 +72,30 @@ export async function renterClaim(root,item){
     drawClaim(p,root,JSON.parse(claim),'renter',()=>renterClaim(root,item));
   }catch(e){if(p.current())p.message.textContent=e.message;}
 }
+function missingForm(p,root,rows,refresh){
+  if(!rows.length)return;
+  const details=el('details'),summary=el('summary',label('الإبلاغ عن قطعة مفقودة','Report a missing item'));details.append(summary);root.append(details);
+  const items=el('select');for(const row of rows){const opt=new Option(row.invoiceNumber+' · '+row.equipment+' · '+row.assetCode+(row.reported?' · '+label('مبلّغ عنها','Already reported'):''),row.itemId);opt.disabled=row.reported;items.add(opt);}
+  const why=el('select'),proposal=el('select'),reason=el('textarea');reason.maxLength=1000;
+  for(const [value,a,e] of [['NOT_RETURNED','لم تُعد عند موعد التسليم','Missing at return'],['REPORTED_BY_RENTER','أبلغ المستأجر بفقدها','Reported lost by renter'],['OTHER','سبب آخر','Other']])why.add(new Option(label(a,e),value));
+  for(const [value,a,e] of [['TRACE','البحث وإمهال المستأجر لإعادة القطعة','Allow time to locate and return'],['EQUIVALENT','اقتراح بديل مماثل','Propose equivalent item'],['ESTIMATE','طلب تقدير قيمة الاستبدال','Request replacement valuation'],['WAIVER','طلب الإعفاء من التعويض','Request waiver'],['OTHER','مقترح آخر','Other proposal']])proposal.add(new Option(label(a,e),value));
+  for(const [title,input] of [[label('القطعة المسلّمة','Issued item'),items],[label('ظرف الفقد','Circumstance'),why],[label('الإجراء المقترح للمراجعة','Proposed resolution for review'),proposal],[label('تفاصيل البلاغ','Report details'),reason]]){const field=el('label',title);field.append(input);details.append(field);}
+  p.action(details,label('تسجيل بلاغ الفقد','Record loss report'),async()=>{
+    if(!items.value||!reason.value.trim())throw new Error(label('اختر القطعة واكتب التفاصيل','Select the item and enter details'));
+    await p.request('items/'+encodeURIComponent(items.value)+'/missing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({circumstance:why.value,proposal:proposal.value,reason:reason.value.trim()})});
+    if(p.current())await refresh();
+  });
+}
+
 export async function centerClaims(root){
   const p=panel(root);
   try{
-    const rows=await (await p.request('center')).json();if(!p.current())return;
+    const [rows,missing]=await Promise.all(['center','center/missing-items'].map(async path=>(await p.request(path)).json()));if(!p.current())return;
+    missingForm(p,root,missing,()=>centerClaims(root));
     if(!rows.length)p.message.textContent=label('لا توجد قطع ذات ضرر جديد موثّق','No items with documented new damage');
     for(const row of rows){
       const card=el('article');root.append(card);
+      if(row.cause==='MISUSE')card.append(el('p',label('ضرر بسبب سوء الاستخدام','Damage due to misuse')));
       card.append(el('h4',row.equipment+' · '+row.invoiceNumber),el('p',label('حالة التسليم','Handover condition')+' · '+row.baseline),el('p',label('الضرر عند الإرجاع','Return damage')+' · '+row.damage));
       if(row.claim){drawClaim(p,card,row.claim,'center',()=>centerClaims(root));continue;}
       const amount=el('input');amount.type='number';amount.min='0.01';amount.step='0.01';
@@ -77,4 +110,17 @@ export async function centerClaims(root){
       });
     }
   }catch(e){if(p.current())p.message.textContent=e.message;}
+}
+
+export function accountant(root){
+  const p=panel(root),claim=el('input'),invoice=el('input'),entry=el('input');
+  for(const [caption,input] of [[label('معرّف مطالبة الضرر','Damage claim ID'),claim],[label('مرجع فاتورة المزوّد عند استعادة عملية','Original provider invoice for recovery'),invoice],[label('قيد إيراد الضرر المرحّل','Posted damage revenue entry'),entry]]){
+    const field=el('label',caption);field.append(input);root.append(field);
+  }
+  p.action(root,label('مطابقة التحصيل','Reconcile collection'),async()=>{
+    if(!claim.value.trim()||!(invoice.value.trim()||entry.value.trim()))throw new Error(label('أدخل مرجع المطالبة والمطابقة','Enter the claim and reconciliation references'));
+    const body={};if(invoice.value.trim())body.invoiceId=invoice.value.trim();if(entry.value.trim())body.financeEntryId=entry.value.trim();
+    const result=await (await p.request(encodeURIComponent(claim.value.trim())+'/reconcile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},'/payments/rental-damage/')).json();
+    if(p.current())p.message.textContent=result.status==='COLLECTED'?label('تمت مطابقة الدفعة وقيد الإيراد','Payment and revenue entry reconciled'):label('تم التحقق من مرجع المزوّد','Provider reference verified');
+  });
 }

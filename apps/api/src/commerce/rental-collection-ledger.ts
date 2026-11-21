@@ -11,7 +11,7 @@ export async function requirePostedRentalCollection(tx: Prisma.TransactionClient
 
 export async function requirePostedCommerceCollection(tx: Prisma.TransactionClient, input: {
   financeEntryId: string; sourceId: string; organizationId: string; amountMinor: number;
-  referenceType: 'EQUIPMENT_RENTAL_COLLECTION' | 'TRIP_PAYMENT_COLLECTION';
+  referenceType: 'EQUIPMENT_RENTAL_COLLECTION' | 'TRIP_PAYMENT_COLLECTION' | 'RENTAL_DAMAGE_COLLECTION';
 }) {
   await tx.$queryRaw`SELECT "id" FROM "FinanceEntry" WHERE "id"::text=${input.financeEntryId} FOR SHARE`;
   const entry = await tx.financeEntry.findUnique({where: {id: input.financeEntryId}, include: {financeAccount: true, approvals: true}});
@@ -25,7 +25,7 @@ export async function requirePostedCommerceCollection(tx: Prisma.TransactionClie
     || !entry.approvals.some(approval => approval.status === 'APPROVED'
       && approval.requestedByAccountId === entry.requestedByAccountId && approval.decidedByAccountId === entry.approvedByAccountId
       && approval.decidedAt?.getTime() === entry.approvedAt!.getTime())) {
-    throw new ConflictException({code: input.referenceType === 'EQUIPMENT_RENTAL_COLLECTION' ? 'RENTAL_COLLECTION_EVIDENCE_REQUIRED' : 'ORGANIZATION_BOOKING_COLLECTION_EVIDENCE_REQUIRED',
+    throw new ConflictException({code: input.referenceType === 'RENTAL_DAMAGE_COLLECTION' ? 'DAMAGE_COLLECTION_EVIDENCE_REQUIRED' : input.referenceType === 'EQUIPMENT_RENTAL_COLLECTION' ? 'RENTAL_COLLECTION_EVIDENCE_REQUIRED' : 'ORGANIZATION_BOOKING_COLLECTION_EVIDENCE_REQUIRED',
       message: 'Collection requires its matching posted revenue entry and independent financial approval.'});
   }
   return entry;

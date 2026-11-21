@@ -17,6 +17,7 @@ CREATE TABLE "RentalDamageClaim" (
   "reviewReason" TEXT,
   "reviewedBy" TEXT,
   "payableAt" TIMESTAMP(3),
+  "activeCheckoutId" TEXT UNIQUE REFERENCES "CommerceCheckout"("id") ON DELETE RESTRICT,
   "financeEntryId" TEXT UNIQUE,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CHECK (("status" IN ('PAYABLE','COLLECTED')) = ("payableAt" IS NOT NULL)),

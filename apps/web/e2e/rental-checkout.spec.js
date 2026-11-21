@@ -276,3 +276,27 @@ test('rental administration captures handover separately and publishes a real le
   await page.locator('#hl-rental-paid').click();
   await expect(page.locator('#hl-rental-paid')).toBeDisabled();expect(confirmationCalls).toBe(1);
 });
+
+test('renter inspects a new damage assessment and disputes it without collecting a payment',async({page})=>{
+  const assessed={id:'claim-test',itemId:'item-e2e',amountMinor:1900,currency:'SAR',kind:'ESTIMATE',status:'AWAITING_RENTER'};
+  const calls=[];
+  await page.route('**/trips/rental-damage/items/item-e2e/mine',route=>json(route,assessed));
+  await page.route('**/trips/rental-damage/claim-test/respond',route=>{
+    calls.push(route.request().postDataJSON());assessed.status='DISPUTED';assessed.disputeReason=calls[0].reason;return json(route,assessed);
+  });
+  await fixture(page,{paid:true});
+  await page.route('**/trips/equipment-rentals/mine',route=>{
+    const row=rental();row.status='RETURNED';row.paymentStatus='PAID';Object.assign(row.items[0],{returnedAt:'2026-11-20T10:00:00Z',returnCondition:'DAMAGED',returnNotes:'New crack',handoverCondition:'Surface scratch'});return json(route,[row]);
+  });
+  await page.evaluate(()=>{document.querySelector('#hl-rentals-dialog').close();return window.HydrolandAccountCenter.openRentals();});
+  await page.getByText('مطالبة ضرر المعدة',{exact:true}).click();
+  const section=page.locator('[data-damage-view]');
+  await expect(section).toContainText('Surface scratch');await expect(section).toContainText('New crack');
+  await expect(section.getByRole('button',{name:'تنزيل مستند الإصلاح PDF'})).toBeVisible();
+  await section.getByRole('button',{name:'أعترض على المطالبة'}).click();expect(calls).toHaveLength(0);
+  await section.getByRole('textbox').fill('الضرر موجود عند التسليم');
+  await section.getByRole('button',{name:'أعترض على المطالبة'}).click();
+  await expect(section).toContainText('قيد المراجعة، التحصيل معلّق');
+  expect(calls).toEqual([{decision:'DISPUTE',reason:'الضرر موجود عند التسليم'}]);
+  await expect(section.getByRole('button',{name:'أوافق على المبلغ'})).toHaveCount(0);
+});
