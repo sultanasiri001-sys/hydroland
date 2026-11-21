@@ -7,6 +7,8 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
   test.setTimeout(90_000);
   await page.setViewportSize(viewport);
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
+  let releaseEarnings,earningsRequested=false;
+  const earningsResponse=new Promise(resolve=>{releaseEarnings=resolve});
   await page.route('**/api/v1/**',route=>{
    const path=new URL(route.request().url()).pathname;
    if(path.endsWith('/me'))return json(route,{id:'portal-visual-account',status:'ACTIVE',email:'review@hydroland.test',roleAssignments:roles.map(role=>({id:'visual-'+role,role,status:'ACTIVE'})),person:{firstName:'حساب',lastName:'الاختبار',professional:null}});
@@ -16,6 +18,7 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
    if(path.endsWith('/weather/public-config'))return json(route,{configured:false,status:'NOT_SELECTED'});
    if(path.endsWith('/admin/employees'))return json(route,{initialized:false,departments:[],profiles:[],items:[],nextCursor:null,email:{enabled:false},google:{enabled:false}});
    if(path.endsWith('/customer-service/admin/cases'))return json(route,{items:[],total:0,page:1,pageSize:20});
+   if(path.endsWith('/training/professional/me/earnings')){earningsRequested=true;return earningsResponse.then(()=>json(route,[]))}
    return json(route,[]);
   });
   await page.goto('/',{waitUntil:'domcontentloaded'});
@@ -84,10 +87,26 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
     await expect(page.locator('.hl-training')).toBeVisible();await expect(page.locator('.hl-training')).toHaveAttribute('data-training-mode','professional');
     await board.locator('[data-portal-home]').click();await expect(board.locator('.hl-portal-content')).toBeVisible();
     for(const [label,mode] of [['الجدول الزمني','professional-schedule'],['التقييمات','professional-skills'],['الشهادات','professional-certificates'],['الإيرادات','professional-earnings']]){
+      if(mode==='professional-earnings')await page.evaluate(()=>{
+        const reload=window.HydrolandTraining.reload;
+        window.HydrolandTraining.reload=mode=>{
+          const loading=reload(mode);
+          if(mode==='instructor-earnings')window.__portalEarningsLoad=loading;
+          return loading;
+        };
+      });
       if(viewport.name==='mobile'){await board.locator('[data-portal-menu]').click();await expect(board).toHaveClass(/hl-portal-nav-open/)}
       await board.locator('.hl-portal-nav-item',{hasText:label}).click();
       await expect(page.locator('.hl-training')).toBeVisible();await expect(page.locator('.hl-training')).toHaveAttribute('data-training-mode',mode);
+      if(mode==='professional-earnings')await expect.poll(()=>earningsRequested).toBe(true);
       await board.locator('[data-portal-home]').click();
+      await expect(board.locator('.hl-portal-content')).toBeVisible();await expect(page.locator('.hl-training')).toBeHidden();
+      if(mode==='professional-earnings'){
+        // Finish the real request after Home: its reload must not reclaim navigation.
+        releaseEarnings();
+        await page.evaluate(async()=>{if(!window.__portalEarningsLoad)throw new Error('Expected the actual earnings reload');await window.__portalEarningsLoad;await Promise.resolve()});
+        await expect(board.locator('.hl-portal-content')).toBeVisible();await expect(page.locator('.hl-training')).toBeHidden();
+      }
     }
     await board.locator('[data-secondary-label="الملف المهني"]').click();
     await expect(page.locator('#profile-dialog')).toBeVisible();await page.locator('#profile-dialog').evaluate(node=>node.close());

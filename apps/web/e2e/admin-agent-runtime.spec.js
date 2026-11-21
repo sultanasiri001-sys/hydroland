@@ -7,9 +7,9 @@ const agent=(key,nameAr,state='PAUSED')=>({key,nameAr,state,revision:randomUUID(
 const task=(extra={})=>({id:randomUUID(),revision:randomUUID(),state:'QUEUED',action:'DRAFT_REPORT',language:'ar-SA',prompt:'موجز مهمة اختبار',createdAt:now,estimatedCostMicroUsd:null,result:null,approvalRequired:true,...extra});
 const governanceKeys=['GOV_QUALITY_AUDIT','GOV_TECH_REVIEW','GOV_SECURITY_RISK','GOV_COMPLIANCE_POLICY','GOV_VERIFICATION','GOV_FINAL_GATE'];
 async function setup(page,options={}){
- const state={catalogReads:0,failCatalog:false,inboxFiles:[],inboxOlder:[],inboxNext:null,inboxDetails:{},inboxReads:0,delayInboxDetail:false,releaseInboxDetail:null,admin:true,ready:true,items:[agent('INVENTORY','وكيل المخزون'),agent('SUPPORT','وكيل الدعم','ENABLED')],tasks:[],writes:[],connectionChecks:0,connectionResponse:{connected:true,reason:'MODEL_ACCESS_VERIFIED',provider:'OPENAI',model:'fixture-model',checkedAt:now,scope:'MODEL_ACCESS_ONLY',generationTested:false},delayConnection:false,releaseConnection:null,failQueue:false,failControl:false,delay:false,release:null,pages:false,...options};
+ const state={roleReads:0,delayRoleRead:false,heldRoleReads:[],catalogReads:0,failCatalog:false,inboxFiles:[],inboxOlder:[],inboxNext:null,inboxDetails:{},inboxReads:0,delayInboxDetail:false,releaseInboxDetail:null,admin:true,ready:true,items:[agent('INVENTORY','وكيل المخزون'),agent('SUPPORT','وكيل الدعم','ENABLED')],tasks:[],writes:[],connectionChecks:0,connectionResponse:{connected:true,reason:'MODEL_ACCESS_VERIFIED',provider:'OPENAI',model:'fixture-model',checkedAt:now,scope:'MODEL_ACCESS_ONLY',generationTested:false},delayConnection:false,releaseConnection:null,failQueue:false,failControl:false,delay:false,release:null,pages:false,...options};
  await page.route('**/api/v1/**',r=>json(r,[]));await page.route('**/auth/google/config',r=>json(r,{enabled:false}));
- await page.route(/\/api\/v1\/me$/,r=>json(r,{id:'agent-browser-admin',status:'ACTIVE',person:{firstName:'إدارة',lastName:'اختبار'},roleAssignments:state.admin?[{role:'ADMIN',status:'ACTIVE'}]:[]}));
+ await page.route(/\/api\/v1\/me$/,async r=>{state.roleReads++;if(state.delayRoleRead)await new Promise(resolve=>state.heldRoleReads.push(resolve));return json(r,{id:'agent-browser-admin',status:'ACTIVE',person:{firstName:'إدارة',lastName:'اختبار'},roleAssignments:state.admin?[{role:'ADMIN',status:'ACTIVE'}]:[]});});
  await page.route(/\/admin\/employees(?:\?.*)?$/,r=>json(r,{initialized:true,departments:[],profiles:[],items:[],nextCursor:null,email:{enabled:false},google:{enabled:false}}));
  await page.route(/\/admin\/agents$/,async r=>{state.catalogReads++;if(state.failCatalog)return json(r,{message:'تعذر قراءة حالة الوكلاء.'},503);if(state.delay)await new Promise(resolve=>state.release=resolve);return json(r,{initialized:true,sectionHeads:state.sectionHeads,provider:{ready:state.ready,reason:state.ready?'READY':'CREDENTIALS_MISSING',model:state.ready?'fixture-model':null,rateControl:state.rateControl||null},observedAt:new Date().toISOString(),workerObservedAt:state.ready?new Date().toISOString():null,metricsMaxAgeSeconds:90,budget:{limitMicroUsd:1000000,reservedMicroUsd:0,taskReserveMicroUsd:2560,day:'2026-10-22'},items:state.items.map(a=>({...a,canEnable:state.ready,counts:state.ready?a.counts:null,workload:state.ready?a.workload:'UNAVAILABLE'}))});});
  await page.route(/\/admin\/agents\/governance-reviews(?:\?.*)?$/,r=>{state.inboxReads++;return json(r,{scope:'ADVISORY_RUNTIME_OUTPUTS',readOnly:true,items:new URL(r.request().url()).searchParams.has('cursor')?state.inboxOlder:state.inboxFiles,nextCursor:new URL(r.request().url()).searchParams.has('cursor')?null:state.inboxNext});});
@@ -101,6 +101,39 @@ test('source snapshots survive periodic metric refresh but clear on read failure
  await page.locator('[data-ai-refresh]').click();await expect(panel).toBeHidden();await expect(page.locator('[data-ai-source-list]')).toBeEmpty();await expect(page.locator('[data-ai-refresh]')).toBeEnabled();
  await page.locator('[data-ai-source-check]').click();await expect(page.locator('[data-ai-source-department]')).toHaveCount(14);state.admin=false;await page.clock.fastForward(16_000);
  await expect(page.locator('#hl-admin-employees')).toBeHidden();await expect(page.locator('[data-ai-source-list]')).toBeEmpty();expect(reads).toBe(3);expect(state.writes).toHaveLength(0);expect(state.connectionChecks).toBe(0);
+});
+test('background authorization preserves active task input and consent, then polling resumes after focus leaves or a successful reset',async({page})=>{
+ await page.clock.install();const state=await setup(page),form=page.locator('[data-ai-task-form]');
+ const reason=form.locator('[name="reason"]'),reviewed=form.locator('[name="reviewed"]'),submit=form.getByRole('button');
+ await form.getByLabel('نوع مهمة الوكيل').selectOption('READ_OPERATIONS');await form.getByLabel('نص مهمة الوكيل').fill('مسودة تبقى قابلة للتحرير أثناء التحقق');
+ await reason.fill('سبب مراجعة محفوظ أثناء تحديث الصلاحية');await reviewed.check();await reason.focus();
+ const before=state.catalogReads;state.delayRoleRead=true;
+ await page.clock.fastForward(16_000);await expect.poll(()=>state.heldRoleReads.length).toBeGreaterThan(0);
+ await expect(form.locator('fieldset')).toBeEnabled();await expect(reason).toHaveValue('سبب مراجعة محفوظ أثناء تحديث الصلاحية');await expect(reviewed).toBeChecked();
+ await reviewed.uncheck();await reviewed.check();await expect(reviewed).toBeChecked();expect(state.catalogReads).toBe(before);expect(state.writes).toHaveLength(0);
+ const authorized=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/v1/me');state.delayRoleRead=false;state.heldRoleReads.splice(0).forEach(release=>release());await authorized;
+ await page.locator('[data-ai-refresh]').focus();await page.clock.fastForward(16_000);await expect.poll(()=>state.catalogReads).toBeGreaterThan(before);await expect(page.locator('[data-ai-feedback]')).toContainText('تم تحميل');
+ const beforeSubmit=state.catalogReads,roleReads=state.roleReads;await submit.focus();await page.clock.fastForward(16_000);await expect.poll(()=>state.roleReads).toBeGreaterThan(roleReads);
+ await expect(submit).toBeEnabled();await expect(reviewed).toBeChecked();expect(state.catalogReads).toBe(beforeSubmit);
+ await submit.click();await expect(page.locator('[data-ai-feedback]')).toContainText('حُفظت المهمة');expect(state.writes).toHaveLength(1);expect(state.writes[0]).toMatchObject({kind:'queue',body:{reviewed:true,reason:'سبب مراجعة محفوظ أثناء تحديث الصلاحية',prompt:'مسودة تبقى قابلة للتحرير أثناء التحقق'}});
+ await expect(reason).toHaveValue('');await expect(reviewed).not.toBeChecked();await submit.focus();
+ const afterSave=state.catalogReads;await page.clock.fastForward(16_000);await expect.poll(()=>state.catalogReads).toBeGreaterThan(afterSave);await expect(page.locator('[data-ai-feedback]')).toContainText('تم تحميل');expect(state.writes).toHaveLength(1);
+});
+test('periodic role revocation clears private AI state even while a task form is being edited',async({page})=>{
+ await page.clock.install();const state=await setup(page,{tasks:[task()]}),form=page.locator('[data-ai-task-form]');
+ await form.getByLabel('نص مهمة الوكيل').fill('مسودة خاصة يجب مسحها عند سحب الدور');await form.locator('[name="reason"]').fill('مراجعة قبل سحب صلاحية المدير');await form.locator('[name="reviewed"]').check();
+ const reads=state.catalogReads;state.admin=false;await page.clock.fastForward(16_000);
+ await expect(page.locator('#hl-admin-employees')).toBeHidden();await expect(page.locator('[data-ai-cards]')).toBeEmpty();await expect(page.locator('[data-ai-task-list]')).toBeEmpty();
+ await expect(form.getByLabel('نص مهمة الوكيل')).toHaveValue('');await expect(form.locator('[name="reviewed"]')).not.toBeChecked();expect(state.catalogReads).toBe(reads);expect(state.writes).toHaveLength(0);
+});
+test('active editing keeps stale-metric protection and permits explicit refresh',async({page})=>{
+ await page.clock.install();const state=await setup(page),form=page.locator('[data-ai-task-form]');
+ await form.locator('[name="reason"]').fill('مراجعة محفوظة أثناء تقادم القياسات');await form.locator('[name="reviewed"]').check();
+ const reads=state.catalogReads,roles=state.roleReads;await page.clock.fastForward(91_000);await expect.poll(()=>state.roleReads).toBeGreaterThan(roles);
+ await expect(page.locator('[data-ai-key="INVENTORY"] [data-ai-pressure]')).toContainText('القياسات قديمة');await expect(control(page).getByRole('button')).toBeDisabled();
+ await expect(form.locator('fieldset')).toBeEnabled();await expect(form.locator('[name="reviewed"]')).toBeChecked();expect(state.catalogReads).toBe(reads);
+ await page.locator('[data-ai-refresh]').click();await expect.poll(()=>state.catalogReads).toBeGreaterThan(reads);await expect(page.locator('[data-ai-feedback]')).toContainText('تم تحميل');
+ await expect(page.locator('[data-ai-key="INVENTORY"] [data-ai-pressure]')).toHaveText('متاح');await expect(control(page).getByRole('button')).toBeEnabled();await expect(form.locator('[name="reviewed"]')).toBeChecked();expect(state.writes).toHaveLength(0);
 });
 test('fresh role revocation clears department sources before another read',async({page})=>{
  const state=await setup(page);let reads=0;await page.route(/\/admin\/agents\/department-sources$/,r=>{reads++;return json(r,departmentSourceFixture());});await page.locator('[data-ai-source-check]').click();await expect(page.locator('[data-ai-source-department]')).toHaveCount(14);
