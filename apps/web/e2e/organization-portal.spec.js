@@ -91,13 +91,13 @@ test('organization purchasing preferences accept custom options and reopen the s
    return json(route,profile);
  });
  const open=page.locator('[data-org-financial-open]'),form=page.locator('[data-org-financial-form]');
- await open.click();await form.locator('summary').click();
+ await open.click();await form.getByText('إعدادات المشتريات', {exact:true}).click();
  await form.locator('[name=method]').fill('أمر شراء');
  await form.locator('[name=system]').fill('نظام الجهة الخاص');
  await form.locator('[name=contractReference]').fill('SYN-PO-1');
  await form.locator('[type=submit]').click();
  await expect(page.locator('[data-org-financial-note]')).toHaveText('حُفظت بيانات المنشأة.');
- await page.locator('[data-org-financial-close]').click();await open.click();await form.locator('summary').click();
+ await page.locator('[data-org-financial-close]').click();await open.click();await form.getByText('إعدادات المشتريات', {exact:true}).click();
  await expect(form.locator('[name=system]')).toHaveValue('نظام الجهة الخاص');
  await expect(form.locator('[name=contractReference]')).toHaveValue('SYN-PO-1');
 });
@@ -352,4 +352,27 @@ test('platform management reviews the signed version before applying a mandate d
   await approve.click();
   await expect(panel.locator('[data-mandate-status]')).toContainText('original-grant');
   expect(posts).toEqual([{expectedVersion:4,expectedContentHash:'signed-hash'}]);
+});
+
+test('invoice preview uses the selected seller and its logo while reporting is disconnected', async ({page}) => {
+  await install(page);
+  await page.route('**/organizations/org-1/financial-profile', route => json(route, {
+    currency:'SAR', taxStatus:'UNDECLARED', registrationStatus:'UNDECLARED',revision:0,
+  }));
+  await page.route('**/organizations/org-1/invoice-preview-seller', route => json(route, {
+    organizationId:'org-1',name:'مركز تجربة',displayName:'مركز تجربة',brandVersion:1,
+    logo:{mimeType:'image/png',base64:'iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAFUlEQVR4nGNkyJ/2nwENMKELUEEQAM9+Ag4W34bAAAAAAElFTkSuQmCC'},
+  }));
+  await page.locator('[data-org-financial-open]').click();
+  await page.getByText('تجهيز الفوترة الإلكترونية',{exact:true}).click();
+  const next = page.waitForEvent('popup');
+  await page.locator('[data-invoice-preview]').click();
+  const preview = await next;
+  await expect(preview.getByRole('heading',{name:'مركز تجربة'})).toBeVisible();
+  await expect(preview.locator('img.seller-logo')).toBeVisible();
+  await expect(preview.locator('figure svg')).toBeVisible();
+  await expect(preview.locator('[data-print]')).toBeEnabled();
+  await preview.locator('[data-paper="a4"]').click();
+  await expect(preview.locator('body')).toHaveClass('a4');
+  await expect(preview.locator('.sum')).toContainText('747.50');
 });

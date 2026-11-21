@@ -12,6 +12,13 @@ await cp(path.join(root, 'src'), dist, { recursive: true });
 await cp(path.join(root, 'public'), dist, { recursive: true });
 console.log('HYDROLAND web built in apps/web/dist');
 
+const identity = path.resolve(root, '../api/src/document-forms');
+const receiptAssets = path.join(dist, 'assets/document-identity-v2');
+await mkdir(receiptAssets, { recursive: true });
+for (const asset of ['fonts/Tajawal-Approved-Regular.ttf', 'fonts/Tajawal-Approved-Bold.ttf', 'fonts/Tajawal-Approved-OFL.txt', 'identity/hydroland-mark-approved-v2.png']) {
+  await cp(path.join(identity, asset), path.join(receiptAssets, path.basename(asset)));
+}
+
 const vendor=path.join(dist,'vendor/license-reader');
 await mkdir(path.join(vendor,'core'),{recursive:true});
 await mkdir(path.join(vendor,'lang'),{recursive:true});

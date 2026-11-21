@@ -22,7 +22,28 @@ function procurementSettings(value: unknown): Procurement | null {
   }
   return Object.keys(result).length ? result : null;
 }
+// Declared onboarding data only. No certificate, key or activation flag belongs in this profile.
+const sellerFields = ['vatNumber', 'street', 'buildingNumber', 'district', 'city', 'postalCode'] as const;
+type SellerDetails = Partial<Record<typeof sellerFields[number], string>>;
+function sellerDetails(value: unknown): SellerDetails | null {
+  if (value === null) return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new BadRequestException('تحقق من بيانات البائع.');
+  const raw = value as Record<string, unknown>;
+  if (Object.keys(raw).some(key => !sellerFields.some(field => field === key))) throw new BadRequestException('حقل بائع غير معروف.');
+  const result: SellerDetails = {};
+  for (const field of sellerFields) {
+    const input = raw[field];
+    if (input === undefined) continue;
+    if (typeof input !== 'string' || !input.trim() || input.length > 150 || /[\u0000-\u001f]/.test(input)) throw new BadRequestException('قيمة غير صالحة في بيانات البائع.');
+    const text = input.trim();
+    const pattern = field === 'vatNumber' ? /^3[0-9]{13}3$/ : field === 'buildingNumber' ? /^[0-9]{4}$/ : field === 'postalCode' ? /^[0-9]{5}$/ : null;
+    if (pattern && !pattern.test(text)) throw new BadRequestException('تحقق من الرقم الضريبي والعنوان الوطني.');
+    result[field] = text;
+  }
+  return Object.keys(result).length ? result : null;
+}
 type Profile = {
+  invoiceSeller?: SellerDetails;
   procurement?: Procurement;
   currency: 'SAR';
   taxStatus: typeof taxStatuses[number];
@@ -34,13 +55,14 @@ const initial: Profile = { currency: 'SAR', taxStatus: 'UNDECLARED', registratio
 function properties(input: unknown) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BadRequestException('بيانات المنشأة غير صالحة.');
   const body = input as Record<string, unknown>;
-  if (Object.keys(body).some(key => !['currency', 'taxStatus', 'registrationStatus', 'expectedRevision', 'procurement'].includes(key))
+  if (Object.keys(body).some(key => !['currency', 'taxStatus', 'registrationStatus', 'expectedRevision', 'procurement', 'invoiceSeller'].includes(key))
     || body.currency !== 'SAR' || !taxStatuses.includes(body.taxStatus as Profile['taxStatus'])
     || !registrationStatuses.includes(body.registrationStatus as Profile['registrationStatus'])
     || typeof body.expectedRevision !== 'number' || !Number.isSafeInteger(body.expectedRevision) || body.expectedRevision < 0) {
     throw new BadRequestException('تحقق من العملة والحالة الضريبية وحالة التسجيل وإصدار البيانات.');
   }
   return {
+    invoiceSeller: body.invoiceSeller === undefined ? undefined : sellerDetails(body.invoiceSeller),
     procurement: body.procurement === undefined ? undefined : procurementSettings(body.procurement),
     currency: 'SAR' as const, taxStatus: body.taxStatus as Profile['taxStatus'],
     registrationStatus: body.registrationStatus as Profile['registrationStatus'], expectedRevision: body.expectedRevision,
@@ -73,9 +95,11 @@ export class OrganizationFinancialProfileService {
       const { key, profile } = await this.load(tx, accountId, organizationId);
       const procurement = values.procurement === undefined ? profile.procurement : values.procurement;
       const sameSettings = procurementFields.every(key => procurement?.[key] === profile.procurement?.[key]);
-      if (sameSettings && profile.revision && values.taxStatus === profile.taxStatus && values.registrationStatus === profile.registrationStatus) return profile;
+      const seller = values.invoiceSeller === undefined ? profile.invoiceSeller : values.invoiceSeller;
+      const sameSeller = sellerFields.every(field => seller?.[field] === profile.invoiceSeller?.[field]);
+      if (sameSeller && sameSettings && profile.revision && values.taxStatus === profile.taxStatus && values.registrationStatus === profile.registrationStatus) return profile;
       if (profile.revision !== values.expectedRevision) throw new ConflictException('تغيرت بيانات المنشأة. أعد فتحها للاطلاع على آخر تعديل.');
-      const value: Profile = { ...(procurement ? { procurement } : {}), currency: values.currency, taxStatus: values.taxStatus, registrationStatus: values.registrationStatus, revision: profile.revision + 1 };
+      const value: Profile = { ...(seller ? { invoiceSeller: seller } : {}), ...(procurement ? { procurement } : {}), currency: values.currency, taxStatus: values.taxStatus, registrationStatus: values.registrationStatus, revision: profile.revision + 1 };
       if (profile.revision === 0) {
         const created = await tx.operationalSetting.createMany({ data: [{ key, value }], skipDuplicates: true });
         if (!created.count) throw new ConflictException('سبق حفظ بيانات المنشأة. أعد فتحها قبل التعديل.');

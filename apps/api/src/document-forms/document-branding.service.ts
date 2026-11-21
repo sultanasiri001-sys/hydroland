@@ -22,6 +22,15 @@ export class DocumentBrandingService {
     return {organizationId:org.id,brandVersion:org.documentBrandVersion,logoUrl:org.documentLogoUrl,logoAssetId:org.documentLogoAssetId,brandNameAr:org.documentBrandNameAr,brandNameEn:org.documentBrandNameEn,footerAr:org.documentFooterAr,footerEn:org.documentFooterEn};
   }
 
+  async invoicePreviewSeller(accountId: string, organizationId: string) {
+    await this.authz.assert(accountId, organizationId, 'BRAND_READ');
+    const org = await this.db.organization.findUnique({ where: { id: organizationId },
+      select: { displayName: true, legalName: true, documentLogoAssetId: true, documentBrandVersion: true } });
+    if (!org) throw new NotFoundException('Organization not found.');
+    return { name: org.legalName?.trim() || org.displayName, displayName: org.displayName,
+      logoAssetId: org.documentLogoAssetId, brandVersion: org.documentBrandVersion };
+  }
+
   async update(accountId:string,organizationId:string,input:DocumentBrandInput){
     await this.authz.assert(accountId,organizationId,'BRAND_UPDATE');
     if(input.logoUrl!==undefined&&input.logoUrl!==null){

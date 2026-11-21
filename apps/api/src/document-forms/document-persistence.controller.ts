@@ -27,6 +27,14 @@ export class DocumentPersistenceController {
     const bytes=Buffer.from(b.base64||'','base64');
     return this.assets.uploadLogo(r.auth.accountId,org,b.mimeType,bytes);
   }
+  @Get('organizations/:organizationId/invoice-preview-seller')
+  @Header('Cache-Control','private, no-store')
+  async invoiceSeller(@Req() r: ReqAuth, @Param('organizationId') org: string) {
+    const seller = await this.branding.invoicePreviewSeller(r.auth.accountId, org);
+    const logo = seller.logoAssetId ? await this.assets.bytesForLogo(org, seller.logoAssetId) : null;
+    return { organizationId: org, name: seller.name, displayName: seller.displayName, brandVersion: seller.brandVersion,
+      logo: logo ? { mimeType: logo.asset.mimeType, base64: logo.bytes.toString('base64') } : null };
+  }
   @Get('organizations/:organizationId/branding')
   @Header('Cache-Control','private, no-store')
   brandingCurrent(@Req() r:ReqAuth,@Param('organizationId') org:string){return this.branding.current(r.auth.accountId,org);}

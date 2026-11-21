@@ -96,6 +96,19 @@ try {
   assert.ok(history.some(entry=>entry.metadata.previous?.procurement?.system===procurement.system && entry.metadata.declared?.procurement?.system==='Custom intake'));
   const cleared=await ok(await call(contact, profilePath, 'PATCH', {...declaration, expectedRevision:5, procurement:null}));
   assert.equal(cleared.procurement,undefined);
+  const sellerFields = {city:'Test city',buildingNumber:'1234',postalCode:'12345'};
+  const setup = {...declaration, expectedRevision:cleared.revision, invoiceSeller:sellerFields};
+  const prepared = await ok(await call(contact,profilePath,'PATCH',setup));
+  assert.deepEqual(prepared.invoiceSeller,sellerFields);
+  assert.deepEqual((await ok(await call(contact,profilePath))).invoiceSeller,sellerFields);
+  assert.deepEqual(await ok(await call(contact,profilePath,'PATCH',setup)),prepared);
+  assert.equal((await call(contact,profilePath,'PATCH',{...setup,invoiceSeller:{vatNumber:'000000000000000'}})).status,400);
+  assert.equal((await call(contact,profilePath,'PATCH',{...setup,invoiceSeller:{connected:true}})).status,400);
+  assert.equal((await call(foreign,profilePath,'PATCH',setup)).status,403);
+  const compatibility = await ok(await call(contact,profilePath,'PATCH',{...declaration, expectedRevision:prepared.revision}));
+  assert.deepEqual(compatibility.invoiceSeller,sellerFields);
+  const emptySeller = await ok(await call(contact,profilePath,'PATCH',{...declaration,expectedRevision:compatibility.revision,invoiceSeller:null}));
+  assert.equal(emptySeller.invoiceSeller,undefined);
   const preview = await ok(await call(contact, `${scoped}/${booking.id}`));
   const cancellation = { requestId: randomUUID(), expectedState: preview.stateToken, reason: 'إلغاء بطلب الجهة قبل موعد الرحلة' };
   // A competing roster edit invalidates the reviewed cancellation snapshot.
