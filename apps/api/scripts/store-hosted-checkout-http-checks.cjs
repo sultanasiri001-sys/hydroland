@@ -352,6 +352,8 @@ const cancel = row => call(owner, '/store/admin/orders/' + row.id + '/status', '
       assert.equal(postCount()-before,1);
       assert.equal((await db.financeEntry.findUniqueOrThrow({where:{id:claim.id}})).status,'POSTED');
       assert.equal((await db.commerceCollectionEvidence.findUniqueOrThrow({where:{sourceType_sourceId:{sourceType:'STORE_ORDER',sourceId:paidOrder.id}}})).providerRefundedMinor,paidOrder.items[0].unitPriceMinor);
+      const {verifyPostedCheckoutRefund} = await import('./commerce-settlement-product-checks.mjs');
+      await verifyPostedCheckoutRefund({db, load, accountantId: accountant.id, organizationId: center.id, financeEntryId: claim.id});
     });
     await check('refund observation blocks fulfillment and stale later capture cannot restore it', async () => {
       const row = await order(); await start(row); const observed = await capture(row); await ok(await call(customer, route(row, 'refresh'), 'POST'));

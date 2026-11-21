@@ -421,6 +421,8 @@ try {
         assert.equal((await call(poster,'cancellations',path,'POST',payload)).body.operationId,sent.body.operationId);
         assert.equal((await db.financeEntry.findUniqueOrThrow({where:{id:approved.id}})).status,'POSTED');
         assert.equal(requests.filter(r=>r.url.endsWith('/refund')).length,1);
+        const {verifyPostedCheckoutRefund} = await import('./commerce-settlement-product-checks.mjs');
+        await verifyPostedCheckoutRefund({db, load, accountantId: accountant.id, organizationId: centerA.id, financeEntryId: approved.id});
       }
 
     }

@@ -1,4 +1,4 @@
-import { commerceSettlementCandidates } from './commerce-settlement-lines';
+import { commerceSettlementCandidates, matchProductLine } from './commerce-settlement-lines';
 import { ConflictException, Injectable } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
@@ -9,7 +9,7 @@ import { FinanceAccessService } from './finance-access.service';
 import { financeKey } from './finance-native-key';
 
 type ProviderLine={source_currency?:unknown;payment_id?:unknown;type?:unknown;currency?:unknown;payment_amount?:unknown;amount?:unknown;settlement_amount?:unknown;fee?:unknown;tax?:unknown;transacted_at?:unknown};
-type SafeLine={sourceType?:string;providerPaymentId:string;localPaymentId:string;type:string;currency:string;paymentAmountMinor:number|null;netAmountMinor:number|null;settlementAmountMinor:number|null;feeMinor:number|null;taxMinor:number|null;transactedAt:string|null;amountMatches:boolean};
+type SafeLine={sourceType?:string;refundOperationId?:string;providerPaymentId:string;localPaymentId:string;type:string;currency:string;paymentAmountMinor:number|null;netAmountMinor:number|null;settlementAmountMinor:number|null;feeMinor:number|null;taxMinor:number|null;transactedAt:string|null;amountMatches:boolean};
 const isRecord=(value:unknown):value is Record<string,unknown>=>Boolean(value&&typeof value==='object'&&!Array.isArray(value));
 const intOrNull=(value:unknown)=>Number.isSafeInteger(value)?value as number:null;
 
@@ -31,6 +31,7 @@ function settlementHash(settlementId: string, currency: string, lines: SafeLine[
     feeMinor: line.feeMinor, taxMinor: line.taxMinor, transactedAt: line.transactedAt,
     amountMatches: line.amountMatches,
     ...(line.sourceType?{sourceType:line.sourceType}:{}),
+    ...(line.refundOperationId ? { refundOperationId: line.refundOperationId } : {}),
   }));
   return createHash('sha256').update(JSON.stringify({settlementId, currency, lines: ordered})).digest('hex');
 }
@@ -114,12 +115,7 @@ export class FinanceSettlementService {
       if(providerIds.length)payments=await tx.$queryRaw<Array<{id:string;moyasarPaymentId:string;amountMinor:number;currency:string}>>`SELECT p."id"::text AS "id",p."moyasarPaymentId",p."amountMinor",p."currency" FROM "Payment" p JOIN "Booking" b ON b."id"=p."bookingId" JOIN "Trip" t ON t."id"=b."tripId" WHERE p."moyasarPaymentId"=ANY(${providerIds}::text[]) AND t."organizationId"=${financeKey('Organization','id',center.organizationId)}`;
       const byProviderId=new Map(payments.map(payment=>[payment.moyasarPaymentId,payment]));
       const commerce=await commerceSettlementCandidates(tx,current.organizationId,providerIds);
-      const paymentLineCounts=new Map<string,number>();
-      for(const row of rawLines){
-        if(typeof row.payment_id==='string'&&typeof row.type==='string'&&row.type.toLowerCase()==='payment'){
-          paymentLineCounts.set(row.payment_id,(paymentLineCounts.get(row.payment_id)??0)+1);
-        }
-      }
+      const productRows = new Map<string, SafeLine>();
       const lines:SafeLine[]=[];
       for(const line of rawLines){
         if(typeof line.payment_id!=='string')continue;
@@ -132,10 +128,28 @@ export class FinanceSettlementService {
         }
         const lineCurrency = line.currency.toUpperCase();
         const paymentAmountMinor=intOrNull(line.payment_amount);
-        const amountMatches=payment.currency===lineCurrency&&paymentAmountMinor===payment.amountMinor
-          &&(!product||(product.verified&&type==='payment'&&paymentLineCounts.get(line.payment_id)===1
-            &&[line.amount,line.settlement_amount,line.fee,line.tax].every(Number.isSafeInteger)));
-        lines.push({...(product?{sourceType:product.sourceType}:{}),providerPaymentId:line.payment_id,localPaymentId:payment.id,type,currency:lineCurrency,paymentAmountMinor,netAmountMinor:intOrNull(line.amount),settlementAmountMinor:intOrNull(line.settlement_amount),feeMinor:intOrNull(line.fee),taxMinor:intOrNull(line.tax),transactedAt:typeof line.transacted_at==='string'&&Number.isFinite(Date.parse(line.transacted_at))?new Date(line.transacted_at).toISOString():null,amountMatches});
+        const result: SafeLine = {
+          providerPaymentId: line.payment_id, localPaymentId: payment.id, type, currency: lineCurrency, paymentAmountMinor,
+          netAmountMinor: intOrNull(line.amount), settlementAmountMinor: intOrNull(line.settlement_amount),
+          feeMinor: intOrNull(line.fee), taxMinor: intOrNull(line.tax),
+          transactedAt: typeof line.transacted_at === 'string' && Number.isFinite(Date.parse(line.transacted_at))
+            ? new Date(line.transacted_at).toISOString() : null,
+          amountMatches: payment.currency === lineCurrency && paymentAmountMinor===payment.amountMinor,
+        };
+        if (product) {
+          result.sourceType = product.sourceType;
+          const match = matchProductLine(product, result);
+          result.amountMatches = result.amountMatches && match !== null;
+          if (match && type === 'refund') result.refundOperationId = match.key;
+          // Also reject the good copy if the provider repeats a payment with different fee fields.
+          const key = type === 'payment' ? 'payment:' + line.payment_id : result.refundOperationId;
+          if (key) {
+            const prior = productRows.get(key);
+            if (prior) prior.amountMatches = result.amountMatches = false;
+            else productRows.set(key, result);
+          }
+        }
+        lines.push(result);
       }
       const stableLines=lines.sort((a,b)=>a.providerPaymentId.localeCompare(b.providerPaymentId)||a.type.localeCompare(b.type)||String(a.transactedAt).localeCompare(String(b.transactedAt)));
       const contentHash=settlementHash(settlementRef, currency, stableLines);
@@ -184,11 +198,29 @@ export class FinanceSettlementService {
         }
         const productLines=row.lines.filter(line=>line.sourceType);
         const candidates=await commerceSettlementCandidates(tx,organizationId,productLines.map(line=>line.providerPaymentId));
-        if(productLines.some(line=>{
-          const match=candidates.get(line.providerPaymentId);
-          return !match?.verified||match.id!==line.localPaymentId||match.sourceType!==line.sourceType||
-            match.amountMinor!==line.paymentAmountMinor||match.currency!==line.currency||line.type!=='payment';
-        }))throw new Error('FINANCE_SETTLEMENT_RECONCILIATION_BLOCKED');
+        for (const line of productLines) {
+          const product = candidates.get(line.providerPaymentId);
+          const match = product && matchProductLine(product, line);
+          if (!product || !match || product.id !== line.localPaymentId || product.sourceType !== line.sourceType ||
+              product.currency !== line.currency || (line.type === 'refund' && match.key !== line.refundOperationId)) {
+            throw new Error('FINANCE_SETTLEMENT_RECONCILIATION_BLOCKED');
+          }
+        }
+        if (productLines.length) {
+          const refunds = productLines.flatMap(line => line.refundOperationId ? [line.refundOperationId] : []);
+          const payments = productLines.filter(line => line.type === 'payment').map(line => line.providerPaymentId);
+          // A provider transaction can appear in only one approved statement. Recheck in the same
+          // serializable transaction that records the review, including concurrent imports.
+          await tx.$queryRaw`SELECT id FROM "CommerceCheckout" WHERE id=ANY(${productLines.map(line=>line.localPaymentId)}::text[]) ORDER BY id FOR UPDATE`;
+          const [priorStatement] = await tx.$queryRaw<Array<{ used: boolean }>>`SELECT EXISTS(
+            SELECT 1 FROM "FinanceSettlementImport" i CROSS JOIN LATERAL jsonb_array_elements(i.lines) l
+            WHERE i.status='APPROVED' AND (l->>'refundOperationId'=ANY(${refunds}::text[])
+              OR (l->>'type'='payment' AND l->>'providerPaymentId'=ANY(${payments}::text[])))
+          ) AS used`;
+          if (priorStatement.used || new Set(refunds).size !== refunds.length || new Set(payments).size !== payments.length) {
+            throw new Error('FINANCE_SETTLEMENT_RECONCILIATION_BLOCKED');
+          }
+        }
       }
       const prior=await tx.$queryRaw<Array<{reviewerAccountId:string;decision:string}>>`SELECT "reviewerAccountId"::text AS "reviewerAccountId","decision"::text AS "decision" FROM "FinanceSettlementReview" WHERE "importId"=${financeKey('FinanceSettlementReview','importId',importId)}`;
       const reviewerAccountIds=prior.filter(x=>x.decision==='APPROVED').map(x=>x.reviewerAccountId);
