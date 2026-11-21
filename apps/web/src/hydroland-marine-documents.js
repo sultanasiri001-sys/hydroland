@@ -228,7 +228,7 @@
       }
     }catch(error){if(current())uiLocale.setText(content,error.message)}
   }
-  function open(role){clearView();state.role=role;panel.toggleAttribute('data-operations-review',role==='operations');panel.hidden=false;refresh();panel.scrollIntoView({behavior:residualScrollBehavior(),block:'start'})}
+  function open(role){clearView();state.role=role;if(role==='operations')panel.setAttribute('data-operations-review','');panel.hidden=false;refresh();panel.scrollIntoView({behavior:residualScrollBehavior(),block:'start'})}
   panel.querySelector('[data-marine-refresh]').addEventListener('click',refresh);
   async function attachment(file){
     if(!(file instanceof File)||!file.size||file.size>10_000_000)throw new Error(uiLocale.t('اختر ملفًا صالحًا لا يتجاوز 10 ميجابايت'));
