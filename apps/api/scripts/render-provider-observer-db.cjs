@@ -25,15 +25,9 @@ async function verifyProviderEscalation() {
   const audit = new AuditService(db);
   const deliver = () => db.$transaction(tx => deliverProviderEscalations(tx, audit));
   // All fixtures, receipts and identity bindings live in this run's disposable schema.
-  for (const name of ['AccountStatus', 'ProfessionalRole', 'RoleAssignmentStatus', 'OrganizationStatus', 'NotificationStatus']) {
-    await admin.$executeRawUnsafe('CREATE DOMAIN "' + schema + '"."' + name + '" AS "' + canonicalSchema + '"."' + name + '"');
-  }
-  for (const table of ['OperationalSetting','Organization','Account','RoleAssignment','Notification']) {
-    await admin.$executeRawUnsafe('CREATE TABLE "' + schema + '"."' + table + '" (LIKE "' + canonicalSchema + '"."' + table + '" INCLUDING ALL)');
-  }
   const owner = randomUUID(), org = randomUUID();
-  await db.$executeRaw`INSERT INTO "Account" ("id","personId","email","passwordHash","status","emailVerifiedAt","updatedAt")
-    VALUES (${owner},${randomUUID()},${owner+'@example.invalid'},'test','ACTIVE',NOW(),NOW())`;
+  await db.account.create({data:{id:owner,email:owner+'@example.invalid',passwordHash:'test',status:'ACTIVE',
+    emailVerifiedAt:new Date(),person:{create:{firstName:'A06',lastName:'Fixture'}}}});
   await db.$executeRaw`INSERT INTO "RoleAssignment" ("id","accountId","role","status","updatedAt")
     VALUES (${randomUUID()},${owner},'ADMIN','ACTIVE',NOW())`;
   await db.$executeRaw`INSERT INTO "Organization" ("id","ownerId","kind","displayName","status","updatedAt")
@@ -65,7 +59,9 @@ async function verifyProviderEscalation() {
 async function verify() {
   await admin.$executeRawUnsafe('CREATE SCHEMA "' + schema + '"');
   try {
-    await admin.$executeRawUnsafe('CREATE TABLE "' + schema + '"."AuditEvent" (LIKE "' + canonicalSchema + '"."AuditEvent" INCLUDING ALL)');
+    require('node:child_process').execFileSync(process.execPath, [
+      'node_modules/prisma/build/index.js','db','push','--skip-generate','--schema','apps/api/prisma/schema.prisma',
+    ], {env:{...process.env,DATABASE_URL:url.href},stdio:'pipe',timeout:120000});
     const [one, two] = await Promise.all([capture(), capture()]);
     const first = one || two;
     assert.equal([one, two].filter(Boolean).length, 1);
