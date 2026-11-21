@@ -10,3 +10,12 @@
 #hl-invoices-dialog input,#hl-invoices-dialog button{color:inherit;background:#14394b;border:1px solid #557685;border-radius:.5rem;padding:.5rem;font:inherit}
 #hl-invoices-dialog button{cursor:pointer;width:fit-content}
 #hl-invoices-dialog button[aria-pressed=true]{background:#bef4ea;color:#123742}
+#hl-invoice-permissions{box-sizing:border-box;width:min(38rem,94vw);max-height:84vh;overflow:auto;border:1px solid #3a6476;border-radius:1rem;background:#092638;color:#f4f9fa;padding:1.2rem;font:inherit}
+#hl-invoice-permissions::backdrop{background:#03111bc9}
+#hl-invoice-permissions header{display:flex;align-items:center;justify-content:space-between;gap:1rem}
+#hl-invoice-permissions :is(h2,h3,h4,p){margin:.45rem 0}
+#hl-invoice-permissions label{display:grid;gap:.35rem;margin:.65rem 0}
+#hl-invoice-permissions article{display:grid;gap:.3rem;padding-block:.8rem;border-top:1px solid #33505e;overflow-wrap:anywhere}
+#hl-invoice-permissions :is(select,textarea,button){color:inherit;background:#14394b;border:1px solid #557685;border-radius:.5rem;padding:.55rem;font:inherit}
+#hl-invoice-permissions button{cursor:pointer;margin-inline-end:.4rem}
+#hl-invoice-permissions textarea{min-height:3rem;resize:vertical}

@@ -3163,3 +3163,26 @@ model AccountInvoiceDocument {
   @@id([sourceType,sourceId])
   @@unique([sellerId,number])
 }
+
+model InvoicePermissionRequest {
+  id String @id
+  sequence Int @unique @default(autoincrement())
+  scopeKey String
+  pendingKey String? @unique
+  centerId String
+  centerName String
+  kind String
+  targetId String
+  targetName String
+  enable Boolean
+  reason String
+  requestedBy String
+  requestedAt DateTime @default(now())
+  status String @default("PENDING")
+  decidedBy String?
+  decidedAt DateTime?
+  decisionNote String?
+  @@index([scopeKey, status, sequence])
+  @@index([centerId, requestedAt])
+  @@index([status, requestedAt])
+}

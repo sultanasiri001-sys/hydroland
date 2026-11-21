@@ -84,7 +84,7 @@ export function invoiceRegister(accountId: string, key?: InvoiceKey) {
     )
     SELECT s."sourceType",s."sourceId",s."amountMinor",s.currency,s.occurred AS "occurredAt",s.seller AS "sellerId",
       COALESCE(o."displayName",NULLIF(concat_ws(' ',person."firstName",person."lastName"),'')) AS "sellerName",
-      s.buyer_org AS "buyerOrganizationId",s.purchase AS "isPurchase",s.sale AS "isSale",s.attach AS "canAttach",s.native AS "nativeStatus",
+      s.buyer_org AS "buyerOrganizationId",s.purchase AS "isPurchase",s.sale AS "isSale",(s.attach AND (permission.scope IS NULL OR COALESCE(approval.enable,FALSE))) AS "canAttach",s.native AS "nativeStatus",
       COALESCE(d.number,CASE WHEN s.native IN ('ISSUED','PAID','VOID') THEN s.num END) AS number,
       d."sourceId" IS NOT NULL AS "hasDocument"
     FROM parties s LEFT JOIN "Organization" o ON o.id::text=s.seller
@@ -92,5 +92,14 @@ export function invoiceRegister(accountId: string, key?: InvoiceKey) {
     LEFT JOIN "Person" person ON person.id=instructor."personId"
     LEFT JOIN "AccountInvoiceDocument" d ON d."sourceType"=s."sourceType" AND d."sourceId"=s."sourceId" AND d."sellerId"=s.seller
       AND d."buyerOrganizationId" IS NOT DISTINCT FROM s.buyer_org
-    WHERE (s.purchase OR s.sale)`;
+    CROSS JOIN LATERAL (SELECT CASE
+      WHEN s."sourceType"='INSTRUCTOR_SERVICE' THEN 'instructor:' || s.buyer_org || ':' || substr(s.seller,length('instructor:')+1)
+      WHEN s."sourceType"='TRIP_PAYMENT' AND o.kind='MARINE_OPERATOR' THEN 'marine:' || s.seller
+    END AS scope) permission
+    LEFT JOIN LATERAL (
+      SELECT r.enable FROM "InvoicePermissionRequest" r WHERE r."scopeKey"=permission.scope AND r.status='APPROVED'
+      ORDER BY r.sequence DESC LIMIT 1
+    ) approval ON TRUE
+    WHERE (s.purchase OR s.sale) AND (permission.scope IS NULL OR approval.enable
+      OR d."sourceId" IS NOT NULL OR s.native IN ('ISSUED','PAID','VOID'))`;
 }
