@@ -35,7 +35,7 @@ export class StoreFeedbackService{
         if(row.accountId!==accountId||row.productId!==productId||row.kind!==kind)throw new ConflictException('تعذر استخدام هذا المعرّف.');
         if(row.body===body&&row.rating===rating)return tx.storeProductFeedback.findUniqueOrThrow({where:{id},select:customerFields});
         if(input.revision!==row.revision)throw new ConflictException('تغيرت المشاركة. حدّث الصفحة.');
-        return tx.storeProductFeedback.update({where:{id,revision:row.revision},data:{body,rating,published:false,reply:null,revision:{increment:1}},select:customerFields});
+        return tx.storeProductFeedback.update({where:{id,revision:row.revision},data:{body,rating:rating as number|null,published:false,reply:null,revision:{increment:1}},select:customerFields});
       }
       if(input.revision!==undefined)throw new ConflictException('المشاركة غير موجودة.');
       if(kind==='REVIEW'){
