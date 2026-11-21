@@ -1,4 +1,4 @@
-import {Body, Controller, Get, Param, Post, Req, UseGuards} from '@nestjs/common';
+import {Body, Controller, Get, Param, Post, Query, Req, UseGuards} from '@nestjs/common';
 import {AccessTokenGuard} from '../auth/access-token.guard';
 import {StoreGoodsService} from './store-goods.service';
 
@@ -16,7 +16,11 @@ export class StoreGoodsController {
     return this.goods.requestReturn(req.auth.accountId, id, input);
   }
   @Get('provider/returns')
-  list(@Req() req: Request) { return this.goods.listReturns(req.auth.accountId); }
+  list(@Req() req: Request, @Query('stage') stage?:string) { return this.goods.listReturns(req.auth.accountId,stage==='received'); }
+  @Post('provider/returns/:id/remedy')
+  remedy(@Req() req: Request, @Param('id') id: string, @Body() input: {basis?: string; evidenceReference?: string}) {
+    return this.goods.verifyRemedy(req.auth.accountId,id,input);
+  }
   @Post('provider/returns/:id/receipt')
   receive(@Req() req: Request, @Param('id') id: string, @Body() input: {receivedAt?: string}) {
     return this.goods.receiveReturn(req.auth.accountId, id, input);

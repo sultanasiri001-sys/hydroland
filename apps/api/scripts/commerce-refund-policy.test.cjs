@@ -75,17 +75,19 @@ test('rental24-hour boundary is inclusive and applies25% deduction only before a
 });
 
 test('course cancellations honor the 48-hour boundary and the original policy version', () => {
-  for (const requestedAt of ['2026-11-19T08:59:59.999Z', '2026-11-19T09:00:00.000Z']) {
+  for (const [requestedAt, expectedAmount, expectedStatus] of [
+    ['2026-11-19T08:59:59.999Z', 7500, 'ELIGIBLE'],
+    ['2026-11-19T09:00:00.000Z', 0, 'NO_REFUND'],
+    ['2026-11-19T09:00:00.001Z', 0, 'NO_REFUND'],
+  ]) {
     const result = evaluate(request('COURSE', {requestedAt}));
-    assert.equal(result.refundAmountMinor, 7500);
+    assert.equal(result.refundAmountMinor, expectedAmount);
+    assert.equal(result.status, expectedStatus);
+    assert.equal(result.reasonCode, expectedAmount ? 'COURSE_MORE_THAN_48_HOURS' : 'COURSE_WITHIN_48_HOURS');
     assert.equal(result.policyVersion, '2026-11-21.2');
   }
   const old = {...line('COURSE'), version: '2026-11-21.1'};
   assert.equal(evaluate(request('COURSE', {snapshot: old})).status, 'REVIEW_REQUIRED');
-  const before = evaluate(request('COURSE', {requestedAt:'2026-11-19T09:00:00.001Z'}));
-  assert.equal(before.status, 'NO_REFUND');
-  assert.equal(before.reasonCode, 'COURSE_WITHIN_48_HOURS');
-  assert.equal(before.refundAmountMinor, 0);
   const after = evaluate(request('COURSE', { requestedAt: '2026-11-22T09:00:00Z' },
     { serviceStartedAt: '2026-11-21T09:00:00Z', consumption: 'CONSUMED' }));
   assert.equal(after.refundAmountMinor, 0);

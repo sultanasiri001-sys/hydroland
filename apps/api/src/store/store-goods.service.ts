@@ -93,15 +93,39 @@ export class StoreGoodsService {
     });
   }
 
-  listReturns(accountId: string) {
+  listReturns(accountId: string, received = false) {
     return this.db.serializable(async tx => {
       const center = await this.offers.providerScope(tx, accountId);
-      return tx.storeGoodsReturn.findMany({where: {delivery: {organizationId: center.id}, sellerReceivedAt: null},
+      return tx.storeGoodsReturn.findMany({where: {delivery: {organizationId: center.id}, sellerReceivedAt: received ? {not:null} : null},
         orderBy: [{requestedAt: 'asc'}, {id: 'asc'}], take: 100, select: {id: true, quantity: true, reason: true, requestedAt: true,
           delivery: {select: {itemId: true, item: {select: {orderId: true, contractSnapshot: true}}}}}}).then(rows => rows.map(row => ({
             id: row.id, quantity: row.quantity, reason: row.reason, requestedAt: row.requestedAt, orderId: row.delivery.item.orderId,
             title: storeObject(row.delivery.item.contractSnapshot).title
           })));
+    });
+  }
+
+  verifyRemedy(accountId: string, id: string, input: {basis?: string; evidenceReference?: string}) {
+    if (!input || !['ELIGIBLE_UNUSED','VERIFIED_RIGHT'].includes(input.basis || '') || typeof input.evidenceReference !== 'string'
+      || !input.evidenceReference.trim() || input.evidenceReference.length > 200) throw new BadRequestException('Document the basis and evidence reference for this return.');
+    return this.db.serializable(async tx=>{
+      const center = await this.offers.providerScope(tx,accountId);
+      const row = await tx.storeGoodsReturn.findFirst({where:{id,delivery:{organizationId:center.id}},include:{delivery:true}});
+      if (!row) throw new NotFoundException('Return not found.');
+      if (!row.sellerReceivedAt || row.delivery.customerAccountId===accountId) throw new ConflictException('An independent seller must verify the returned goods.');
+      if (input.basis==='ELIGIBLE_UNUSED' && (row.reason!=='CHANGE_OF_MIND' || row.requestedAt.toISOString()>riyadhSevenDayRefundDeadline(row.delivery.receivedAt.toISOString()))) {
+        throw new ConflictException('This claim requires a separately verified remedy.');
+      }
+      const key = {action:'STORE_GOODS_REFUND_REMEDY_VERIFIED',resource:'StoreGoodsReturn',resourceId:id};
+      const existing=await tx.auditEvent.findFirst({where:key});
+      if (existing) {
+        const saved=storeObject(existing.metadata);
+        if (saved.evidenceReference!==input.evidenceReference || saved.basis!==input.basis) throw new ConflictException('A remedy has already been recorded for this return.');
+        return {id,reviewId:existing.id};
+      }
+      const review=await this.audit.record({...key,actorId:accountId,metadata:{organizationId:center.id,quantity:row.quantity,receiptTime:row.sellerReceivedAt.toISOString(),
+        basis:input.basis,evidenceReference:input.evidenceReference,reviewerAccountId:accountId}},tx);
+      return {id,reviewId:review.id};
     });
   }
 

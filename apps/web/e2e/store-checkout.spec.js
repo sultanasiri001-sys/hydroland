@@ -72,7 +72,7 @@ test('course payment uses its enrollment and preserves pending training rather t
   await page.route('**/api/v1/payments/courses/enrollment-original/quote',route=>json(route,courseQuote));
   const writes=[];await page.route('**/api/v1/payments/courses/enrollment-original/checkout',route=>{writes.push(route.request().postDataJSON());return json(route,{status:'CAPTURED',collectionVerified:false,trainingStatus:'PENDING'})});
   await page.locator('.hl-store-course-payments').click();await page.locator('[data-course-checkout]').click();
-  const dialog=page.locator('#hl-store-payment-dialog');await expect(dialog).toContainText('يُخصم ٢٥٪');await expect(dialog).toContainText('خلال آخر ٤٨ ساعة لا يُردّ المبلغ');
+  const dialog=page.locator('#hl-store-payment-dialog');await expect(dialog).toContainText('يُخصم ٢٥٪');await expect(dialog).toContainText('٤٨ ساعة بالضبط أو أقل');
   await dialog.locator('[data-commerce-accepted]').check();await dialog.locator('[data-commerce-pay]').click();
   await expect(dialog.getByRole('status')).toContainText('بانتظار المطابقة المالية');expect(writes).toHaveLength(1);expect(writes[0].idempotencyKey).toBe('course:enrollment-original');expect(state.creates).toBe(0);
   await expect(dialog).toContainText('تأكيد الدفع لا يعني قبول التدريب أو إتمامه.');

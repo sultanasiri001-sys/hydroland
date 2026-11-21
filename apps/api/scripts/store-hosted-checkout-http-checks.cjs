@@ -24,6 +24,9 @@ const {MfaService} = load('auth/mfa.service.js');
 const {GoogleIdentityService} = load('auth/google-identity.service.js');
 const {AccessTokenGuard} = load('auth/access-token.guard.js');
 const {AdminGuard} = load('admin/admin.guard.js');
+const {CheckoutRefundController} = load('payments/checkout-refund.controller.js');
+const {CheckoutRefundService} = load('payments/checkout-refund.service.js');
+const {FinanceOperationGrantService} = load('finance/finance-operation-grant.service.js');
 const {StoreGoodsController} = load('store/store-goods.controller.js');
 const {StoreGoodsService} = load('store/store-goods.service.js');
 const {StoreOfferingsService} = load('store/store-offerings.service.js');
@@ -133,6 +136,14 @@ const cancel = row => call(owner, '/store/admin/orders/' + row.id + '/status', '
           if (invoiceMutator) invoiceMutator(observation);
           send(200, observation); return;
         }
+        const refund=/^\/v1\/payments\/([0-9a-f-]+)\/refund$/.exec(req.url);
+        if (refund && req.method==='POST') {
+          const payment=payments.get(refund[1]); assert.ok(payment);
+          assert.ok(input.amount > 0 && input.amount<=payment.amount-payment.refunded);
+          payment.refunded+=input.amount; payment.updated_at=new Date().toISOString(); payment.refunded_at=payment.updated_at;
+          if(payment.amount===payment.refunded)payment.status='refunded';
+          send(200,payment);return;
+        }
         const paymentMatch = /^\/v1\/payments\/([0-9a-f-]+)$/.exec(req.url);
         if (req.method === 'GET' && paymentMatch) {
           assert.ok(payments.has(paymentMatch[1])); const observation = jsonClone(payments.get(paymentMatch[1]));
@@ -145,7 +156,7 @@ const cancel = row => call(owner, '/store/admin/orders/' + row.id + '/status', '
     await new Promise(resolve => providerServer.listen(0, '127.0.0.1', resolve));
     process.env.MOYASAR_API_BASE_URL = `http://127.0.0.1:${providerServer.address().port}/v1/`;
     class FixtureModule {}
-    Module({controllers: [AuthController, StoreGoodsController, StoreController, StoreCheckoutController], providers: [StoreGoodsService, StoreOfferingsService, DatabaseService, AuditService, AuthService, MfaService,
+    Module({controllers: [AuthController, CheckoutRefundController, StoreGoodsController, StoreController, StoreCheckoutController], providers: [CheckoutRefundService, StoreGoodsService, StoreOfferingsService, DatabaseService, AuditService, AuthService, MfaService,
       GoogleIdentityService, AccessTokenGuard, AdminGuard, IntegrationService, MoyasarPaymentProviderService, StoreService, StoreCheckoutService]})(FixtureModule);
     app = await NestFactory.create(FixtureModule, {logger: false});
     await app.listen(0, '127.0.0.1'); base = await app.getUrl();
@@ -322,6 +333,26 @@ const cancel = row => call(owner, '/store/admin/orders/' + row.id + '/status', '
       assert.equal((await ok(await call(owner,'/store/provider/returns'))).length,0);
       assert.equal((await ok(await call(customer,'/store/orders/mine'))).find(o=>o.id===paidOrder.id).items[0].deliveries.find(d=>d.id===first.id).returns[0].sellerReceivedAt,receipt.receivedAt);
     });
+    await check('goods refund uses the returned quantity, verified remedy and original collection exactly once',async()=>{
+      const row=await db.storeGoodsReturn.findFirstOrThrow({where:{delivery:{item:{orderId:paidOrder.id}}}});
+      const key='/payments/goods/returns/'+row.id+'/refund', review='/store/provider/returns/'+row.id+'/remedy';
+      const claim=await ledger.createEntry({organizationId:center.id,financeAccountId:collectionEntry.financeAccountId,type:'REFUND',amountMinor:paidOrder.items[0].unitPriceMinor,
+        currency:'SAR',referenceType:'STORE_GOODS_RETURN_REFUND',referenceId:row.id,requestedByAccountId:customer.id});
+      await ledger.decideEntry(claim.id,approver.id,true);
+      await assert.rejects(ledger.postEntry(claim.id,poster.id));
+      await require('./checkout-refund-grants.cjs')(db,new FinanceOperationGrantService(db),owner,center.id,approver,poster);
+      const input={financeEntryId:claim.id}, terms={basis:'VERIFIED_RIGHT',evidenceReference:'synthetic-defect-remedy'};
+      await reject(await call(poster,key,'POST',input),409);
+      await reject(await call(foreign,review,'POST',terms),404);
+      await ok(await call(owner,review,'POST',terms));
+      await reject(await call(customer,key,'POST',input),403);
+      const before=postCount();
+      await Promise.all([1,2,3].map(()=>call(poster,key,'POST',input).then(ok)));
+      assert.equal((await ok(await call(poster,key,'POST',input))).status,'POSTED');
+      assert.equal(postCount()-before,1);
+      assert.equal((await db.financeEntry.findUniqueOrThrow({where:{id:claim.id}})).status,'POSTED');
+      assert.equal((await db.commerceCollectionEvidence.findUniqueOrThrow({where:{sourceType_sourceId:{sourceType:'STORE_ORDER',sourceId:paidOrder.id}}})).providerRefundedMinor,paidOrder.items[0].unitPriceMinor);
+    });
     await check('refund observation blocks fulfillment and stale later capture cannot restore it', async () => {
       const row = await order(); await start(row); const observed = await capture(row); await ok(await call(customer, route(row, 'refresh'), 'POST'));
       const revenue = await entry(row); await ok(await call(accountant, route(row, 'collection'), 'POST', {financeEntryId: revenue.id})); await confirm(row);
@@ -372,7 +403,7 @@ const cancel = row => call(owner, '/store/admin/orders/' + row.id + '/status', '
     await check('collection does not issue tax invoices, rewards, refunds or bank payouts', async () => {
       assert.equal(await db.storeInvoice.count(), 0); assert.equal(await db.walletEntry.count(), 0); assert.equal(await db.rewardEntry.count(), 0);
       assert.equal(await db.commerceRefundOperation.count(), 0);
-      assert.ok(requests.every(row => row.method === 'POST' && row.path === '/v1/invoices' || row.method === 'GET' && /^\/v1\/(invoices|payments)\//.test(row.path)));
+      assert.ok(requests.every(row => row.method === 'POST' && (row.path === '/v1/invoices' || /^\/v1\/payments\/[0-9a-f-]+\/refund$/.test(row.path)) || row.method === 'GET' && /^\/v1\/(invoices|payments)\//.test(row.path)));
     });
     console.log(JSON.stringify({suite: 'store-hosted-checkout-http-postgresql', passed: passed.length, failed: 0, cases: passed,
       realDatabase: true, realAuthentication: true, nativeHttpRoutes: true, realProviderAdapter: true, syntheticProviderPosts: postCount(),

@@ -1525,6 +1525,7 @@ model FinanceEntry {
   financeAccount FinanceAccount @relation(fields:[financeAccountId], references:[id], onDelete:Restrict)
   approvals FinanceApproval[]
   commerceRefund CommerceRefundOperation?
+  checkoutRefund CheckoutRefund?
   rentalRefund RentalRefundOperation?
   collectionEvidence CommerceCollectionEvidence?
   @@index([organizationId,status,createdAt])
@@ -2221,6 +2222,7 @@ model CommerceCheckout {
  updatedAt DateTime @updatedAt
  @@unique([sourceType,sourceId])
  @@index([organizationId,status,createdAt])
+ checkoutRefunds CheckoutRefund[]
  rentalRefunds RentalRefundOperation[]
 }
 
@@ -2927,6 +2929,29 @@ model PrivacyGrievance {
 }
 
 // Execution journal for a source-bound equipment rental refund.
+model CheckoutRefund {
+ id String @id @default(uuid())
+ checkoutId String
+ claimId String @unique
+ financeEntryId String @unique
+ executorId String
+ approverId String
+ preparerId String
+ organizationId String
+ originalAmountMinor Int
+ amountMinor Int
+ baselineMinor Int
+ providerPaymentId String
+ providerInvoiceId String
+ status String
+ providerResult Json?
+ createdAt DateTime @default(now())
+ postedAt DateTime?
+ checkout CommerceCheckout @relation(fields:[checkoutId],references:[id],onDelete:Restrict)
+ financeEntry FinanceEntry @relation(fields:[financeEntryId],references:[id],onDelete:Restrict)
+ @@index([checkoutId,status])
+}
+
 model RentalRefundOperation {
  id String @id @default(uuid())
  checkoutId String

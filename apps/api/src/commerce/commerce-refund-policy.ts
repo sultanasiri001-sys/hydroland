@@ -341,8 +341,8 @@ export function evaluateCommerceRefund(input: EvaluateCommerceRefundInput): Comm
   if (snapshot.kind === 'COURSE') {
     if (startedAt !== null && startedAt <= requestedAt) return commercial('COURSE_VOLUNTARY_WITHDRAWAL_AFTER_START', 0);
     if (snapshot.version === COURSE_REFUND_POLICY_VERSION && evidence.serviceStartedAt === null && requestedAt < scheduledAt!) {
-      return scheduledAt! - requestedAt >= 48 * HOUR_MS
-        ? commercial('COURSE_AT_LEAST_48_HOURS', 7_500)
+      return scheduledAt! - requestedAt > 48 * HOUR_MS
+        ? commercial('COURSE_MORE_THAN_48_HOURS', 7_500)
         : commercial('COURSE_WITHIN_48_HOURS', 0);
     }
     return review(statutoryUnresolved ? 'STATUTORY_ENTITLEMENT_REVIEW' : 'COURSE_PRESTART_CHARGE_NOT_ADOPTED');

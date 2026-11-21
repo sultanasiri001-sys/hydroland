@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
+import refundGrants from './checkout-refund-grants.cjs';
 import {createServer} from 'node:http';
 import {randomUUID, randomBytes, scryptSync} from 'node:crypto';
 import {fileURLToPath, pathToFileURL} from 'node:url';
@@ -21,6 +22,9 @@ const {MfaService} = await load('auth/mfa.service.js');
 const {AccessTokenGuard} = await load('auth/access-token.guard.js');
 const {MoyasarPaymentProviderService} = await load('payments/moyasar-payment-provider.service.js');
 const {TrainingCheckoutService} = await load('payments/training-checkout.service.js');
+const {CheckoutRefundController}=await load('payments/checkout-refund.controller.js');
+const {CheckoutRefundService}=await load('payments/checkout-refund.service.js');
+const {FinanceOperationGrantService}=await load('finance/finance-operation-grant.service.js');
 const {TrainingCheckoutController} = await load('payments/training-checkout.controller.js');
 const {StoreOfferingsService} = await load('store/store-offerings.service.js');
 const {FinancePersistenceService} = await load('finance/finance-persistence.service.js');
@@ -49,6 +53,14 @@ const providerServer = createServer(async (req, res) => {
   }
   const invoiceMatch = /^\/v1\/invoices\/([a-f0-9-]+)$/.exec(req.url);
   if (req.method === 'GET' && invoiceMatch && invoices.has(invoiceMatch[1])) { reply(200, invoices.get(invoiceMatch[1])); return; }
+  const refund=/^\/v1\/payments\/([a-f0-9-]+)\/refund$/.exec(req.url);
+  if(refund && req.method==='POST'){
+    const payment=payments.get(refund[1]);assert.ok(payment);
+    assert.ok(body.amount>0 && body.amount<=payment.amount-payment.refunded);
+    payment.refunded+=body.amount;payment.updated_at=new Date().toISOString();payment.refunded_at=payment.updated_at;
+    if(payment.amount===payment.refunded)payment.status='refunded';
+    reply(200,payment);return;
+  }
   const paymentMatch = /^\/v1\/payments\/([a-f0-9-]+)$/.exec(req.url);
   if (req.method === 'GET' && paymentMatch && payments.has(paymentMatch[1])) {
     const snapshot = structuredClone(payments.get(paymentMatch[1]));
@@ -66,7 +78,7 @@ const provider = new MoyasarPaymentProviderService({requireOperational() { retur
 const checkout = new TrainingCheckoutService(db, audit, provider), repository = new TrainingRepositoryService(db, {}, {}, {}, {});
 const trainingSessions = new TrainingSessionService(db, audit, new TrainingAuthorizationService(db));
 class CourseAcceptanceModule {}
-Module({controllers: [TrainingCheckoutController], providers: [AccessTokenGuard,
+Module({controllers: [TrainingCheckoutController,CheckoutRefundController], providers: [AccessTokenGuard,{provide:CheckoutRefundService,useValue:new CheckoutRefundService(db,provider)},
   {provide: TrainingCheckoutService, useValue: checkout}, {provide: AuthService, useValue: auth}]})(CourseAcceptanceModule);
 const app = await NestFactory.create(CourseAcceptanceModule, {logger: false});
 app.setGlobalPrefix('api/v1');
@@ -396,10 +408,25 @@ try {
       assert.equal(await db.auditEvent.count({where:{resourceId:source,action:'COURSE_CUSTOMER_CANCELLATION_RECORDED'}}),1);
       await assert.rejects(repository.setEnrollmentStatus(source,'PENDING'),status(409));
       assert.equal(requests.length,requestsBefore);
+      if(expected){
+        await refundGrants(db,new FinanceOperationGrantService(db),owner,centerA.id,approver,poster);
+        const receipt=answers[0].body.requestId;
+        const approved=await ledger.createEntry({organizationId:centerA.id,financeAccountId:entry.financeAccountId,type:'REFUND',amountMinor:expected,
+          currency:'SAR',referenceType:'COURSE_CANCELLATION_REFUND',referenceId:receipt,requestedByAccountId:buyer.id});
+        await ledger.decideEntry(approved.id,approver.id,true);
+        const path=receipt+'/refund', payload={financeEntryId:approved.id};
+        assert.equal((await call(other,'cancellations',path,'POST',payload)).status,403);
+        const sent=await call(poster,'cancellations',path,'POST',payload);
+        assert.equal(sent.status,201,JSON.stringify(sent));assert.equal(sent.body.status,'POSTED');
+        assert.equal((await call(poster,'cancellations',path,'POST',payload)).body.operationId,sent.body.operationId);
+        assert.equal((await db.financeEntry.findUniqueOrThrow({where:{id:approved.id}})).status,'POSTED');
+        assert.equal(requests.filter(r=>r.url.endsWith('/refund')).length,1);
+      }
+
     }
   });
   assert.equal(await db.financeEntry.count({where: {id: {in: allFinanceIds}}}), allFinanceIds.length);
-  assert.ok(requests.filter(row => row.method === 'POST').every(row => row.url === '/v1/invoices'));
+  assert.ok(requests.filter(row => row.method === 'POST').every(row => row.url === '/v1/invoices' || /^\/v1\/payments\/[a-f0-9-]+\/refund$/.test(row.url)));
   console.log(JSON.stringify({result: 'PASS', suite: 'training-checkout-postgresql-http', passed: cases.length, failed: 0, cases,
     actualPostgresql: true, actualControllerAndSessionGuard: true, providerTransport: 'loopback HTTP only', providerInvoicePosts: posts(),
     externalProviderCalls: 0, actualMoneyTransfers: 0, productionWrites: 0, trainingActivatedOrCompleted: false}));
