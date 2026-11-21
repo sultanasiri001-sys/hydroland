@@ -47,6 +47,39 @@ const requiredIndexes = [
 
 const client = new PrismaClient();
 
+// Read the application-owned markers as they were saved by the workers, without
+// starting schedulers on a restored copy or reading any member payloads.
+async function restoredCutoffMarkers(tx) {
+  const cutoff = new Date('2026-11-14T21:34:39.000Z');
+  const limitMs = 15 * 60_000;
+  const workers = await tx.$queryRaw`
+    SELECT keys.name, s."updatedAt" AS "savedAt",
+      CASE WHEN keys.name = 'AI_RUNTIME_HEARTBEAT:v1' THEN s.value->>'observedAt' END AS observation
+    FROM (VALUES ('AI_RUNTIME_HEARTBEAT:v1'),('LEASE:CREW_ESCALATION'),('LEASE:OPERATIONAL_CLEARANCE_SCAN')) AS keys(name)
+    LEFT JOIN "OperationalSetting" s ON s.key=keys.name ORDER BY keys.name`;
+  function describe(stamp) {
+    if (!stamp) return {state:'NOT_FOUND', savedAt:null, ageMs:null};
+    const ageMs = cutoff.getTime() - stamp.getTime();
+    const state = ageMs < 0 ? 'AFTER_TARGET' : ageMs <= limitMs ? 'WITHIN_15_MIN' : 'OLDER_THAN_15_MIN';
+    return {state, savedAt:stamp.toISOString(), ageMs};
+  }
+  const workerMarkers = workers.map(row => {
+    const marker = {worker:row.name, ...describe(row.savedAt)};
+    if (row.name === 'AI_RUNTIME_HEARTBEAT:v1') {
+      const observed = typeof row.observation === 'string' ? Date.parse(row.observation) : NaN;
+      marker.payloadTimeMatchesSavedTime = Number.isFinite(observed) && observed === row.savedAt?.getTime();
+    }
+    return marker;
+  });
+  const [audit] = await tx.$queryRaw`
+    SELECT max("occurredAt") AS latest, count(*) FILTER (
+      WHERE "occurredAt" >= (${cutoff}::timestamptz AT TIME ZONE 'UTC') - interval '15 minutes'
+    )::int AS recent FROM "AuditEvent" WHERE "occurredAt" <= (${cutoff}::timestamptz AT TIME ZONE 'UTC')`;
+  return {targetUtc:cutoff.toISOString(), objectiveSeconds:limitMs/1000, workers:workerMarkers,
+    latestAuditMarker:describe(audit.latest), auditRowsInWindow:audit.recent,
+    scope:'Persisted pre-cutoff application evidence only. Does not run or deliver recovered work or measure end-to-end RTO.'};
+}
+
 async function checkRestoredCatalogs(moduleRoot) {
   const { StoreService } = require(path.join(moduleRoot, 'store/store.service.js'));
   const { StoreOfferingsService } = require(path.join(moduleRoot, 'store/store-offerings.service.js'));
@@ -289,6 +322,7 @@ try {
       Number(integrity.reply_snapshot_violations) === 0 &&
       Number(integrity.delivery_snapshot_violations) === 0;
 
+    const cutoffMarkers = await restoredCutoffMarkers(tx);
     const checks = {
       historical_document_inventory_matched: historicalDocumentInventoryMatched,
       booking_references_resolved: bookings.records > 0 && bookings.unresolved_references === 0,
@@ -329,6 +363,7 @@ try {
       },
       column_mismatches: columnMismatches,
       reference_type_mismatches: referenceTypeMismatches,
+      cutoff_application_markers: cutoffMarkers,
       observed_counts: {
         historical_document_inventory: { records: documents.records, bytes: documents.bytes },
         restored_bookings: bookings,
