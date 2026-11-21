@@ -255,7 +255,11 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE grievance_test'
           export DATABASE_URL=postgresql://hydroland:hydroland@localhost:5432/grievance_test
           npm --workspace @hydroland/api exec -- prisma db push --skip-generate
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'DROP TABLE "PrivacyGrievance"' -f apps/api/prisma/migrations/20261120214500_privacy_grievance/migration.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+            -c 'DROP TABLE "PrivacyGrievance", "PersonalDataRequest"' \
+            -f apps/api/prisma/migrations/20261120214500_privacy_grievance/migration.sql \
+            -f apps/api/prisma/migrations/20261121060000_personal_data_requests/migration.sql \
+            -f apps/api/prisma/migrations/20261121171500_link_privacy_rights_cases/migration.sql
           node apps/api/scripts/bootstrap-messaging-runtime-schema.mjs
           export JWT_SECRET="$(openssl rand -hex 36)"
           node apps/api/dist/main.js > "$RUNNER_TEMP/grievance-api.log" 2>&1 &

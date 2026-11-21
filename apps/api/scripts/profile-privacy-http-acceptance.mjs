@@ -34,6 +34,7 @@ export async function profilePrivacyAcceptance({db,base}){
       assert.equal(response.status,201);assert.equal(response.headers.get('cache-control'),'private, no-store');
       assert.match(response.headers.get('content-disposition'),/attachment; filename="hydroland-account-profile.json"/);
       assert.equal(body.retentionPolicy.version,'0.1');
+      assert.equal(body.retentionPolicy.activationCondition,'TECHNICAL_WORK_COMPLETED');
       assert.equal(body.retentionPolicy.effectiveFrom,null);
       assert.equal(body.retentionPolicy.automaticDeletionAuthorized,false);
       assert.equal(body.retentionPolicy.rules[0].basis,'DURATION_OF_ACCOUNT_SERVICE');
