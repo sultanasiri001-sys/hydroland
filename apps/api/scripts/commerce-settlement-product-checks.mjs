@@ -38,3 +38,23 @@ export async function verifyProductSettlement({db,access,settlements,provider,ac
     await db.roleAssignment.deleteMany({where:{id:{in:roles}}});
   }
 }
+
+export async function verifyPostedCheckoutRefund({ db, load, accountantId, organizationId, financeEntryId }) {
+  const { FinanceSettlementService } = await load('finance/finance-settlement.service.js');
+  const { FinanceAccessService } = await load('finance/finance-access.service.js');
+  const operation = await db.checkoutRefund.findUniqueOrThrow({ where: { financeEntryId } });
+  const employee = await db.employment.findFirstOrThrow({ where: { accountId: accountantId, organizationId, status: 'ACTIVE' } });
+  const line = {
+    type: 'refund', payment_id: operation.providerPaymentId, currency: 'SAR', source_currency: 'SAR',
+    payment_amount: operation.originalAmountMinor, amount: -operation.amountMinor, settlement_amount: -operation.amountMinor,
+    fee: 0, tax: 0, transacted_at: operation.providerResult.refundedAt,
+  };
+  const source = { fetchSettlement: async id => ({ id, currency: 'SAR' }),
+    listSettlementLines: async () => ({ lines: [line], meta: { next_page: null } }) };
+  const service = new FinanceSettlementService(db, new FinanceAccessService(db), source, null);
+  const imported = await service.import(accountantId, employee.orgUnitId, randomUUID());
+  assert.equal(imported.matchedLineCount, 1);
+  assert.equal(imported.mismatchedLineCount, 0);
+  assert.equal(imported.lines[0].refundOperationId, operation.id);
+  console.log('PASS: posted ' + imported.lines[0].sourceType + ' refund reconciled to its settlement line');
+}
