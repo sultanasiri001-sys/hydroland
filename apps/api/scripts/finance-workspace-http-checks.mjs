@@ -13,17 +13,20 @@ import {FinancePeriodCloseService} from '../dist/finance/finance-period-close.se
 import {FinanceSettlementService} from '../dist/finance/finance-settlement.service.js';
 import {FinancePersistenceService} from '../dist/finance/finance-persistence.service.js';
 import {PaymentsService} from '../dist/payments/payments.service.js';
+import {CenterServiceEntitlementService} from '../dist/commerce/center-service-entitlement.service.js';
+import {FinanceAccessService} from '../dist/finance/finance-access.service.js';
 // Real HTTP routing, AccessTokenGuard, controller, compiled services and PostgreSQL.
 // Token verification alone is substituted with an explicit fixture token map.
 export async function checkFinanceWorkspaceHttp(db,workspace,shifts,{a,b,outsider,wrong,unitA,from,coreType}){
  const tokens=new Map([[a,a],[b,b],[outsider,outsider],[wrong,wrong]]);
  class FixtureModule{}
  Module({controllers:[FinanceController],providers:[
+  CenterServiceEntitlementService,FinanceAccessService,
   {provide:DatabaseService,useValue:db},{provide:AuthService,useValue:{authenticateAccessToken:async token=>{if(!tokens.has(token))throw new UnauthorizedException();return {accountId:tokens.get(token)}}}},
   {provide:FinanceReceivablesWorkspaceService,useValue:{}},{provide:FinanceWorkspaceService,useValue:workspace},{provide:FinanceShiftsService,useValue:shifts},
   ...[FinanceReceivablesService,FinancePersistenceService,PaymentsService].map(provide=>({provide,useValue:{}})),{provide:FinanceShiftCloseService,useValue:{reviewCenters:async()=>[],pending:async()=>[],dailyReport:async(_accountId,centerOrgUnitId,businessDate)=>({centerOrgUnitId,businessDate,shiftCount:0,decision:'NO_APPROVED_SHIFT_CLOSES'})}},{provide:FinancePeriodCloseService,useValue:{reviewCenters:async()=>[],preview:async(_accountId,centerOrgUnitId,periodType,periodKey)=>({centerOrgUnitId,periodType,periodKey,state:'READY'}),submit:async()=>({status:'SUBMITTED'}),pending:async()=>[],decide:async()=>({status:'CLOSED'})}},{provide:FinanceSettlementService,useValue:{list:async()=>[],syncPaymentReferences:async()=>({syncedCount:0,failedCount:0,remainingCount:0,batchSize:10}),import:async()=>({}),review:async()=>({})}}
  ]})(FixtureModule);
- const app=await NestFactory.create(FixtureModule,{logger:false});let count=0;
+ const app=await NestFactory.create(FixtureModule,{logger:false,abortOnError:false});let count=0;
  try{
   await app.listen(0,'127.0.0.1');const base=await app.getUrl();
   const call=async(path,token,body)=>{const r=await fetch(base+'/finance'+path,{method:body===undefined?'GET':'POST',headers:{...(token?{authorization:'Bearer '+token}:{}),'content-type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,body:await r.json()}};

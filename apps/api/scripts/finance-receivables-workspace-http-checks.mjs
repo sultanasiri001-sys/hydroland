@@ -15,12 +15,14 @@ import {financeKey} from '../dist/finance/finance-native-key.js';
 import {FinancePersistenceService} from '../dist/finance/finance-persistence.service.js';
 
 import {PaymentsService} from '../dist/payments/payments.service.js';
+import {CenterServiceEntitlementService} from '../dist/commerce/center-service-entitlement.service.js';
+import {FinanceAccessService} from '../dist/finance/finance-access.service.js';
 // The real guard delegates token verification to this isolated fixture map.
 export async function checkReceivablesWorkspaceHttp(db,workspace,arWorkspace,shifts,ar,{a,b,outsider,unitA,invoiceId,paymentId,foreignId}){
  const tokens=new Set([a,b,outsider]);class FixtureModule{}
- Module({controllers:[FinanceController],providers:[{provide:DatabaseService,useValue:db},{provide:AuthService,useValue:{authenticateAccessToken:async token=>{if(!tokens.has(token))throw new UnauthorizedException();return {accountId:token}}}},
+ Module({controllers:[FinanceController],providers:[CenterServiceEntitlementService,FinanceAccessService,{provide:DatabaseService,useValue:db},{provide:AuthService,useValue:{authenticateAccessToken:async token=>{if(!tokens.has(token))throw new UnauthorizedException();return {accountId:token}}}},
   ...[[FinanceWorkspaceService,workspace],[FinanceReceivablesWorkspaceService,arWorkspace],[FinanceShiftsService,shifts],[FinanceReceivablesService,ar],[FinancePersistenceService,{}],[PaymentsService,{}],[FinanceShiftCloseService,{reviewCenters:async()=>[],pending:async()=>[]}],[FinancePeriodCloseService,{reviewCenters:async()=>[],preview:async()=>({state:'READY'}),submit:async()=>({status:'SUBMITTED'}),pending:async()=>[],decide:async()=>({status:'CLOSED'})}],[FinanceSettlementService,{list:async()=>[],syncPaymentReferences:async()=>({syncedCount:0,failedCount:0,remainingCount:0,batchSize:10}),import:async()=>({}),review:async()=>({})}]].map(([provide,useValue])=>({provide,useValue}))]})(FixtureModule);
- const app=await NestFactory.create(FixtureModule,{logger:false});let count=0;
+ const app=await NestFactory.create(FixtureModule,{logger:false,abortOnError:false});let count=0;
  try{
   await app.listen(0,'127.0.0.1');const base=await app.getUrl();
   const call=async(path,token,body)=>{const r=await fetch(base+'/finance'+path,{method:body===undefined?'GET':'POST',headers:{...(token?{authorization:'Bearer '+token}:{}),'content-type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,body:await r.json()}};
