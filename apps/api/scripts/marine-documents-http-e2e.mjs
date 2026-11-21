@@ -11,8 +11,8 @@ const expectOk=async response=>{const body=await response.json().catch(()=>null)
 const persons=[],accounts=[];let org=null,member=null,adminRole=null,assetId=null,docId=null;
 let reviewFixture;
 try{
- for(const name of ['owner','other','admin']){const person=await db.person.create({data:{firstName:name,lastName:'MarineDocsE2E'}});persons.push(person);const account=await db.account.create({data:{personId:person.id,email:`marine-${name}-${suffix}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}});accounts.push(account);}
- const [owner,other,admin]=accounts;org=await db.organization.create({data:{displayName:'Marine E2E Org',kind:'MARINE_OPERATOR',status:'ACTIVE',ownerId:owner.id}});member=await db.organizationMember.create({data:{organizationId:org.id,accountId:owner.id,role:'OWNER',status:'ACTIVE'}});adminRole=await db.roleAssignment.create({data:{accountId:admin.id,role:'ADMIN',status:'ACTIVE',activeAt:new Date(),scope:{purpose:'MARINE_DOCS_E2E'}}});
+ for(const name of ['owner','other','admin','reviewer']){const person=await db.person.create({data:{firstName:name,lastName:'MarineDocsE2E'}});persons.push(person);const account=await db.account.create({data:{personId:person.id,email:`marine-${name}-${suffix}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}});accounts.push(account);}
+ const [owner,other,admin,reviewer]=accounts;org=await db.organization.create({data:{displayName:'Marine E2E Org',kind:'MARINE_OPERATOR',status:'ACTIVE',ownerId:owner.id}});member=await db.organizationMember.create({data:{organizationId:org.id,accountId:owner.id,role:'OWNER',status:'ACTIVE'}});adminRole=await db.roleAssignment.create({data:{accountId:admin.id,role:'ADMIN',status:'ACTIVE',activeAt:new Date(),scope:{purpose:'MARINE_DOCS_E2E'}}});
  const ownerToken=await marineTestToken(db,owner.id,secret),otherToken=await marineTestToken(db,other.id,secret),adminToken=await marineTestToken(db,admin.id,secret);
  let response=await fetch(base+'/marine-operations/assets/mine');if(response.status!==401)throw new Error(`Anonymous assets/mine expected 401, got ${response.status}`);
  response=await fetch(base+'/marine-operations/assets',{method:'POST',headers:headers(ownerToken),body:JSON.stringify({organizationId:org.id,name:'E2E Dive Boat',assetType:'DIVE_BOAT',registrationNumber:'MAR-E2E-01',passengerCapacity:10})});const asset=await expectOk(response);assetId=asset.id;if(asset.organizationId!==org.id||asset.name!=='E2E Dive Boat')throw new Error('Marine asset creation mismatch');
@@ -25,6 +25,17 @@ try{
  response=await fetch(base+'/marine-operations/admin/documents/pending',{headers:headers(ownerToken)});if(response.status!==403)throw new Error(`Non-admin pending review expected 403, got ${response.status}`);
  const {pending,call,ok,decide}=reviewFixture;
  const ownerPath='assets/'+assetId+'/documents/'+docId;
+ const reviewerToken=await marineTestToken(db,reviewer.id,secret);
+ await reviewFixture.prepareReviewer(reviewer);
+ const delegate=(enabled)=>ok(adminToken,'admin/recommendation-delegates','POST',{email:reviewer.email,enabled});
+ const cap=()=>ok(reviewerToken,'operations/capability');
+ assert.equal((await cap()).canRecommend,false);
+ assert.equal((await call(otherToken,'admin/recommendation-delegates','POST',{email:reviewer.email,enabled:true})).status,403);
+ assert.equal((await call(adminToken,'admin/recommendation-delegates','POST',{email:other.email,enabled:true})).status,403);
+ await delegate(true);
+ assert.equal((await cap()).canRecommend,true);
+ const opsRead=(id=docId)=>pending(reviewerToken,'operations',id);
+ const recommend=async(id=docId)=>decide(reviewerToken,'operations',await opsRead(id),'RECOMMEND','Checked current attachment and recommend approval');
  const centerRead=()=>pending(otherToken,'center',docId);
  const adminRead=()=>pending(adminToken,'admin',docId);
  const ownerRead=async()=>(await ok(ownerToken,'assets/mine')).find(a=>a.id===assetId).documents.find(d=>d.id===docId);
@@ -36,7 +47,28 @@ try{
  await ok(ownerToken,ownerPath,'PATCH',{...reviewFixture.file(),expectedRevision:initial.reviewRevision});
  await decide(otherToken,'center',await centerRead(),'FORWARD');
  assert.equal(await centerRead(),undefined);
+ assert.equal(await adminRead(),undefined);
+ const inOperations=await opsRead();
+ assert.equal(inOperations.status,'OPERATIONS_PENDING');
+ assert.equal((await decision(adminToken,'admin',inOperations,'VERIFIED')).status,409);
+ assert.equal((await decision(reviewerToken,'operations',inOperations,'VERIFIED')).status,400);
+ assert.equal((await decision(reviewerToken,'operations',inOperations,'RECOMMEND')).status,400);
+ await delegate(false);
+ assert.equal((await cap()).canRecommend,false);
+ assert.equal((await call(reviewerToken,'operations/documents/'+docId+'/access')).status,403);
+ assert.equal((await decision(reviewerToken,'operations',inOperations,'RECOMMEND','checked')).status,403);
+ await delegate(true);
+ await decide(reviewerToken,'operations',await opsRead(),'RETURNED','Resubmit to center');
+ assert.equal((await ownerRead()).reviewNote,'Resubmit to center');
+ await ok(ownerToken,ownerPath,'PATCH',{...reviewFixture.file(),expectedRevision:(await ownerRead()).reviewRevision});
+ await decide(otherToken,'center',await centerRead(),'FORWARD');
+ assert.equal((await decision(reviewerToken,'operations',inOperations,'RECOMMEND','old revision')).status,409);
+ const opsAccess=await ok(reviewerToken,'operations/documents/'+docId+'/access');
+ assert.equal((await fetch(opsAccess.url)).status,200);
+ await recommend();
  const forwarded=await adminRead();
+ assert.equal(forwarded.operationsRecommendedBy,reviewer.id);
+ assert.equal(await opsRead(),undefined);
  assert.equal((await decision(adminToken,'admin',forwarded,'RETURNED')).status,400,'Return needs a note');
  await decide(adminToken,'admin',forwarded,'ON_HOLD','Waiting for confirmation');
  assert.equal((await ownerRead()).reviewNote,'Waiting for confirmation');
@@ -56,6 +88,8 @@ try{
  const bytes=Buffer.from(await (await fetch(access.url)).arrayBuffer());
  assert.deepEqual(bytes,Buffer.from(corrected.base64,'base64'));
  await decide(otherToken,'center',fresh,'FORWARD');
+ assert.equal(await adminRead(),undefined);
+ await recommend();
  const verified=await decide(adminToken,'admin',await adminRead(),'VERIFIED');
  assert.equal(verified.status,'VERIFIED');assert(verified.verifiedAt);
  const second=await ok(ownerToken,'assets/'+assetId+'/documents','POST',{documentType:'PERIODIC_INSPECTION',...reviewFixture.file()});
@@ -63,6 +97,7 @@ try{
  const secondView=(await ok(ownerToken,'assets/mine')).find(a=>a.id===assetId).documents.find(d=>d.id===second.id);
  await ok(ownerToken,'assets/'+assetId+'/documents/'+second.id,'PATCH',{expiresAt:'2030-03-01',expectedRevision:secondView.reviewRevision});
  await decide(otherToken,'center',await pending(otherToken,'center',second.id),'FORWARD');
+ await recommend(second.id);
  await decide(adminToken,'admin',await pending(adminToken,'admin',second.id),'REJECTED','Document is invalid');
  const rejected=(await ok(ownerToken,'assets/mine')).find(a=>a.id===assetId).documents.find(d=>d.id===second.id);
  assert.equal(rejected.status,'REJECTED');assert.equal(rejected.reviewNote,'Document is invalid');

@@ -20,6 +20,7 @@ export async function marineReviewFixture(db, base, centerOwner, platformOwner, 
   const platform = await db.organization.create({ data: { displayName: 'E2E platform', kind: 'HYDROLAND_INTERNAL_PLATFORM', status: 'ACTIVE', ownerId: platformOwner } });
   await db.operationalSetting.upsert({ where: { key: pointer }, create: { key: pointer, value: { organizationId: platform.id } }, update: { value: { organizationId: platform.id } } });
   const objects = new Map();
+  const reviewerRecords=[];
   let server;
   if (storage) {
     server = http.createServer(async (request, response) => {
@@ -54,11 +55,29 @@ export async function marineReviewFixture(db, base, centerOwner, platformOwner, 
   }
   return {
     center, call, ok, pending, decide,
+    async prepareReviewer(account) {
+      const unit=reviewerRecords[0]?.unit || await db.orgUnit.create({data:{organizationId:platform.id,type:'DEPARTMENT',code:'MARINE_OPERATIONS',nameAr:'العمليات البحرية للاختبار'}});
+      const position=reviewerRecords[0]?.position || await db.position.create({data:{orgUnitId:unit.id,code:'MARINE_TEST',titleAr:'مراجع اختباري',active:true}});
+      const employment=await db.employment.create({data:{accountId:account.id,organizationId:platform.id,orgUnitId:unit.id,positionId:position.id,workerClass:'EMPLOYEE',status:'ACTIVE'}});
+      const membership=await db.organizationMember.create({data:{organizationId:platform.id,accountId:account.id,role:'STAFF',status:'ACTIVE'}});
+      const role=await db.roleAssignment.create({data:{accountId:account.id,role:'STAFF',status:'ACTIVE'}});
+      reviewerRecords.push({unit,position,employment,membership,role,account});
+    },
     file() {
       return { originalName: 'registration.pdf', mimeType: 'application/pdf', base64: Buffer.from('%PDF-1.4\n% Synthetic ' + randomUUID() + '\n%%EOF').toString('base64') };
     },
     bind: (token, assetId) => ok(token, 'assets/' + assetId + '/review-center', 'POST', { centerId: center.id }),
     async close() {
+      for(const {employment,membership,role,account} of reviewerRecords){
+        await db.operationalSetting.deleteMany({where:{key:'MARINE_DOCUMENT_RECOMMENDER:v1:'+platform.id+':'+account.id}});
+        await db.employment.delete({where:{id:employment.id}});
+        await db.organizationMember.delete({where:{id:membership.id}});
+        await db.roleAssignment.delete({where:{id:role.id}});
+      }
+      if(reviewerRecords.length){
+        await db.position.delete({where:{id:reviewerRecords[0].position.id}});
+        await db.orgUnit.delete({where:{id:reviewerRecords[0].unit.id}});
+      }
       if (server) await new Promise(resolve => server.close(resolve));
       if (previous) await db.operationalSetting.update({ where: { key: pointer }, data: { value: previous.value, updatedAt: previous.updatedAt } });
       else await db.operationalSetting.delete({ where: { key: pointer } });

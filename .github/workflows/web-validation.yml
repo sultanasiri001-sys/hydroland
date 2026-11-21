@@ -34,6 +34,8 @@ jobs:
         run: npm run build -w @hydroland/web
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
+      - name: Delegated marine document review in the browser
+        run: npm run test:e2e -w @hydroland/web -- marine-documents.spec.js --output=test-results-marine-documents
       - name: Agency training standard selection regression
         run: npm run test:e2e -w @hydroland/web -- training-standard-selection.spec.js --output=test-results-training-standards
       - name: Individual training session planning fields and server rejection regression

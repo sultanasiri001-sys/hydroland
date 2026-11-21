@@ -30,6 +30,12 @@ export class MarineOperationsController{
  @Post('center/documents/:documentId/decision') centerDecision(@Req() req:{auth:{accountId:string}},@Param('documentId') id:string,@Body() body:unknown){return this.marine.decideDocument(req.auth.accountId,id,body,'CENTER')}
  @UseGuards(AdminGuard)
  @Get('admin/documents/:documentId/access') reviewerDocumentAccess(@Req()req:{auth:{accountId:string}},@Param('documentId')documentId:string){return this.marine.reviewerDocumentAccess(req.auth.accountId,documentId)}
+ @Get('operations/capability') recommendationCapability(@Req()req:{auth:{accountId:string}}){return this.marine.recommendationCapability(req.auth.accountId)}
+ @UseGuards(AdminGuard)
+ @Post('admin/recommendation-delegates') delegate(@Req()req:{auth:{accountId:string}},@Body() body:{email?:string;enabled?:boolean}){return this.marine.setRecommendationDelegate(req.auth.accountId,body)}
+ @Get('operations/documents/pending') operationsPending(@Req()req:{auth:{accountId:string}}){return this.marine.pendingDocuments(req.auth.accountId,'OPERATIONS')}
+ @Get('operations/documents/:documentId/access') operationsFile(@Req()req:{auth:{accountId:string}},@Param('documentId') id:string){return this.marine.reviewerDocumentAccess(req.auth.accountId,id,'OPERATIONS')}
+ @Post('operations/documents/:documentId/decision') operationsDecision(@Req()req:{auth:{accountId:string}},@Param('documentId') id:string,@Body() body:unknown){return this.marine.decideDocument(req.auth.accountId,id,body,'OPERATIONS')}
  @UseGuards(AdminGuard)
  @Get('admin/documents/pending') pending(@Req() req:{auth:{accountId:string}}){return this.marine.pendingDocuments(req.auth.accountId,'PLATFORM')}
  @UseGuards(AdminGuard)

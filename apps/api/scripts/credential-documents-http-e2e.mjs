@@ -14,7 +14,7 @@ const json=async r=>{const b=await r.json().catch(()=>null);if(!r.ok)throw new E
 const storage=http.createServer(async(req,res)=>{const key=req.url?.split('?')[0]||'/';if(req.method==='PUT'){sawSigV4=String(req.headers.authorization||'').startsWith('AWS4-HMAC-SHA256 ');const chunks=[];req.on('data',c=>chunks.push(c));req.on('end',async()=>{objects.set(key,Buffer.concat(chunks));if(afterPut){const hook=afterPut;afterPut=null;await hook()}res.statusCode=200;res.end()});return}if(req.method==='HEAD'){if(afterHead){const hook=afterHead;afterHead=null;await hook()}res.statusCode=objects.has(key)?200:404;res.end();return}if(req.method==='GET'){const bytes=objects.get(key);if(!bytes){res.statusCode=404;res.end();return}res.statusCode=200;res.setHeader('content-type','application/octet-stream');res.end(bytes);return}if(req.method==='DELETE'){objects.delete(key);res.statusCode=204;res.end();return}res.statusCode=405;res.end()});
 await new Promise((resolve,reject)=>{storage.once('error',reject);storage.listen(3199,'127.0.0.1',resolve)});
 let ownerPerson,ownerAccount,reviewerPerson,reviewerAccount,outsiderPerson,outsiderAccount,credentialId,documentId,marineOrganization,marineMember,marineAssetId,marineDocumentId;
-let reviewFixture;
+let reviewFixture,operationsAccount,operationsPerson;
 try{
   ownerPerson=await db.person.create({data:{firstName:'Credential',lastName:'Owner'}});
   ownerAccount=await db.account.create({data:{personId:ownerPerson.id,email:`credential-owner-${suffix}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}});
@@ -91,6 +91,25 @@ try{
   await reviewFixture.bind(ownerToken,marineAssetId);
   assert.equal(await reviewFixture.pending(reviewerToken,'admin',marineDocumentId),undefined);
   await reviewFixture.decide(outsiderToken,'center',await reviewFixture.pending(outsiderToken,'center',marineDocumentId),'FORWARD');
+  assert.equal(await reviewFixture.pending(reviewerToken,'admin',marineDocumentId),undefined);
+  await reviewFixture.prepareReviewer(outsiderAccount);
+  const grant=(account)=>reviewFixture.ok(reviewerToken,'admin/recommendation-delegates','POST',{email:account.email,enabled:true});
+  await grant(outsiderAccount);
+  assert.equal((await reviewFixture.ok(outsiderToken,'operations/capability')).canRecommend,true);
+  assert.equal(await reviewFixture.pending(outsiderToken,'operations',marineDocumentId),undefined,'A center cannot recommend its own preliminary approval using an ordinary delegation');
+  const currentAsset=(await reviewFixture.ok(ownerToken,'assets/mine')).find(asset=>asset.id===marineAssetId);
+  const revision=currentAsset.documents.find(document=>document.id===marineDocumentId).reviewRevision;
+  const sameActorDecision=await reviewFixture.call(outsiderToken,'operations/documents/'+marineDocumentId+'/decision','POST',
+    {outcome:'RECOMMEND',note:'Synthetic same-account trial',expectedRevision:revision});
+  assert.equal(sameActorDecision.status,409,'The server must reject the center actor recommending its own document');
+  console.log('Isolated same-account marine trial passed: enrolled center delegate, hidden own item and HTTP 409 for its own recommendation.');
+  operationsPerson=await db.person.create({data:{firstName:'Marine',lastName:'Operations test'}});
+  operationsAccount=await db.account.create({data:{personId:operationsPerson.id,email:`credential-operations-${suffix}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}});
+  const operationsToken=await marineTestToken(db,operationsAccount.id,secret);
+  await reviewFixture.prepareReviewer(operationsAccount);
+  await grant(operationsAccount);
+  const marineReview=await reviewFixture.pending(operationsToken,'operations',marineDocumentId);
+  await reviewFixture.decide(operationsToken,'operations',marineReview,'RECOMMEND','Verified the current private attachment');
   r=await fetch(`${base}/marine-operations/admin/documents/${marineDocumentId}/access`,{headers:auth(reviewerToken)});body=await json(r);if(!body.url?.includes('X-Amz-Signature='))throw new Error('Marine reviewer signed access missing');
   const adminMarineAssets=await json(await fetch(base+'/marine-operations/admin/assets/review',{headers:auth(reviewerToken)}));const reviewedAsset=adminMarineAssets.find(asset=>asset.id===marineAssetId),reviewedMarineDoc=reviewedAsset?.documents?.find(doc=>doc.id===marineDocumentId);if(!reviewedMarineDoc?.hasFile||'storageKey'in reviewedMarineDoc)throw new Error('Marine admin asset review leaked private storage key');
   r=await fetch(`${base}/marine-operations/admin/documents/${marineDocumentId}/access`,{headers:auth(outsiderToken)});if(r.status!==403)throw new Error('Non-admin marine review access expected 403, got '+r.status);
@@ -117,9 +136,11 @@ try{
   if(marineAssetId){await db.marineAssetDocument.deleteMany({where:{marineAssetId}}).catch(()=>{});await db.marineMaintenanceRecord.deleteMany({where:{marineAssetId}}).catch(()=>{});await db.marineAsset.deleteMany({where:{id:marineAssetId}}).catch(()=>{});}
   if(marineOrganization){await db.organizationMember.deleteMany({where:{organizationId:marineOrganization.id}}).catch(()=>{});await db.organization.delete({where:{id:marineOrganization.id}}).catch(()=>{});}
   if(credentialId){await db.document.deleteMany({where:{credentialId}}).catch(()=>{});await db.credential.deleteMany({where:{id:credentialId}}).catch(()=>{});}
-  for(const account of [ownerAccount,reviewerAccount,outsiderAccount].filter(Boolean)){await db.notification.deleteMany({where:{accountId:account.id}}).catch(()=>{});await db.roleAssignment.deleteMany({where:{accountId:account.id}}).catch(()=>{});await db.session.deleteMany({where:{accountId:account.id}}).catch(()=>{});}
+  for(const account of [ownerAccount,reviewerAccount,outsiderAccount,operationsAccount].filter(Boolean)){await db.notification.deleteMany({where:{accountId:account.id}}).catch(()=>{});await db.roleAssignment.deleteMany({where:{accountId:account.id}}).catch(()=>{});await db.session.deleteMany({where:{accountId:account.id}}).catch(()=>{});}
   const resourceIds=[credentialId,documentId,marineDocumentId].filter(Boolean);if(resourceIds.length)await db.auditEvent.deleteMany({where:{resourceId:{in:resourceIds}}}).catch(()=>{});
-  for(const account of [ownerAccount,reviewerAccount,outsiderAccount].filter(Boolean))await db.account.delete({where:{id:account.id}}).catch(()=>{});
-  for(const person of [ownerPerson,reviewerPerson,outsiderPerson].filter(Boolean))await db.person.delete({where:{id:person.id}}).catch(()=>{});
+  const actorIds=[ownerPerson,reviewerPerson,outsiderPerson,operationsPerson].filter(Boolean).map(person=>person.id);
+  await db.auditEvent.deleteMany({where:{actorId:{in:actorIds}}});
+  for(const account of [ownerAccount,reviewerAccount,outsiderAccount,operationsAccount].filter(Boolean))await db.account.delete({where:{id:account.id}}).catch(()=>{});
+  for(const person of [ownerPerson,reviewerPerson,outsiderPerson,operationsPerson].filter(Boolean))await db.person.delete({where:{id:person.id}}).catch(()=>{});
   await db.$disconnect();await new Promise(resolve=>storage.close(resolve));
 }
