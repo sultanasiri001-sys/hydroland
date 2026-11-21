@@ -1,3 +1,4 @@
+import {checkInstructorCompensation} from './instructor-compensation-http-checks.mjs';
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
 import {PrismaClient} from '@prisma/client';
@@ -91,6 +92,7 @@ try{
    ok(await request(a,'/store/provider/'+type+'/'+id,'DELETE',{expectedUpdatedAt:row.updatedAt}));
  }
  await checkStoreCourseTraining(db,{base,owner:a,foreignOwner:b,student:buyer,organizationId:organizations[0].id,request,ok,accounts,persons,ids});
+ await checkInstructorCompensation(db,{owner:a,foreignOwner:b,instructor:other,centerId:organizations[0].id,request,ok});
  // Suspended providers disappear from the public catalog and cannot sell via stale IDs.
  p=await db.storeProduct.update({where:{id:productId},data:{status:'ACTIVE'}});
  await db.storeCourseOffer.update({where:{id:courseId},data:{status:'ACTIVE'}});

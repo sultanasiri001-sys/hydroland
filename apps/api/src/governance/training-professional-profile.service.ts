@@ -29,7 +29,14 @@ export class TrainingProfessionalProfileService {
     for (const row of rows) {
       if (row.currency === 'SAR') totals[row.status] = (totals[row.status] ?? 0) + row.amountMinor;
     }
-    return {currency:'SAR',totalsScope:'SAR_ONLY',totals:{pendingMinor:totals.PENDING||0,approvedMinor:totals.APPROVED||0,settledMinor:totals.SETTLED||0},entries:rows.map(row=>({id:row.id,courseCode:row.trainingEnrollment.courseCode,amountMinor:row.amountMinor,currency:row.currency,status:row.status,approvedAt:row.approvedAt,settledAt:row.settledAt,createdAt:row.createdAt}))};
+    const memberships=await this.db.organizationMember.findMany({where:{accountId,status:'ACTIVE',role:{in:['OWNER','ADMIN','INSTRUCTOR']},
+      organization:{status:'ACTIVE',kind:{contains:'DIVE',mode:'insensitive'}}},select:{organization:{select:{id:true,displayName:true}}}});
+    const centers=new Map(memberships.map(row=>[row.organization.id,row.organization.displayName]));
+    const current=await this.db.instructorCompensationAgreement.findMany({
+      where:{instructorAccountId:accountId,organizationId:{in:[...centers.keys()]}},orderBy:[{organizationId:'asc'},{revision:'desc'}],
+      distinct:['organizationId'],select:{organizationId:true,revision:true,mode:true,fixedMinor:true,rateBps:true,currency:true}});
+    const agreements=current.map(({organizationId,...terms})=>({...terms,centerName:centers.get(organizationId)}));
+    return {agreements,currency:'SAR',totalsScope:'SAR_ONLY',totals:{pendingMinor:totals.PENDING||0,approvedMinor:totals.APPROVED||0,settledMinor:totals.SETTLED||0},entries:rows.map(row=>({id:row.id,courseCode:row.trainingEnrollment.courseCode,amountMinor:row.amountMinor,currency:row.currency,status:row.status,approvedAt:row.approvedAt,settledAt:row.settledAt,createdAt:row.createdAt}))};
   }
 
   async listCertificateReadiness(accountId: string) {

@@ -1930,6 +1930,21 @@ model TrainingSkill {
   @@index([trainingStageId,status])
 }
 
+model InstructorCompensationAgreement {
+  id String @id @default(uuid())
+  organizationId String
+  instructorAccountId String
+  revision Int
+  mode String
+  rateBps Int
+  fixedMinor Int
+  currency String @default("SAR")
+  recordedByAccountId String
+  recordedAt DateTime @default(now())
+  @@unique([organizationId,instructorAccountId,revision], map:"InstructorCompAgreement_center_trainer_rev")
+  @@index([instructorAccountId])
+}
+
 model InstructorEarning {
   id String @id @default(uuid())
   trainingEnrollmentId String @unique

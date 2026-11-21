@@ -149,3 +149,32 @@ test('late assignment save cannot restore student data after logout',async({page
  const state=await install(page),panel=await openAssignments(page,state);let pending;await page.route('**/api/v1/center/me/training/enrollments/c1/instructor',route=>{pending=route});
  await panel.getByText('تغيير مدرب الدورة',{exact:true}).click();const form=panel.locator('[data-training-assign="enrollment"]');await form.getByLabel('المدرب الجديد',{exact:true}).selectOption('p2');await form.getByLabel('سبب التكليف').fill('تغطية التدريب');await form.getByRole('button',{name:'حفظ التكليف'}).click();await expect.poll(()=>Boolean(pending)).toBe(true);await page.evaluate(()=>window.HydrolandAuth.terminateSession());await json(pending,{id:'c1',transferredSessionCount:1});await expect(panel).toHaveCount(0);await expect(page.getByText('متدرب المركز',{exact:true})).toHaveCount(0);
 });
+
+test('center saves percentage, fixed, combined or salary-only instructor terms and reloads them',async({page})=>{
+ await install(page);
+ const writes=[];let terms=null;
+ await page.route('**/api/v1/center/me/professionals/p1/compensation',async route=>{
+   if(route.request().method()==='PATCH'){
+     const input=route.request().postDataJSON();writes.push(input);
+     terms={mode:input.mode,fixedMinor:input.fixedMinor,rateBps:input.rateBps,revision:input.expectedRevision+1,currency:'SAR'};
+   }
+   return json(route,{terms,canEdit:true});
+ });
+ await page.locator('[data-portal-label="محترفي الغوص"]').click();
+ const toggle=page.getByRole('button',{name:'اتفاق استحقاق المدرب',exact:true});await toggle.click();
+ const form=page.locator('[data-compensation-form]'),select=form.locator('select');
+ await expect(select.locator('option')).toHaveCount(5);
+ for(const [mode,rate,fixed] of [['PERCENTAGE',12.5,0],['FIXED',0,80],['FIXED_PLUS_PERCENTAGE',12.5,80],['SALARY_ONLY',0,0]]){
+   await select.selectOption(mode);
+   if(rate){await form.locator('[name=rate]').fill(String(rate));await form.locator('[name=basis]').fill('100');}
+   if(fixed)await form.locator('[name=fixed]').fill(String(fixed));
+   if(mode==='SALARY_ONLY'){
+     await expect(form.locator('[data-salary]')).toBeVisible();
+     await expect(form.locator('[name=rate]')).toBeHidden();await expect(form.locator('[name=fixed]')).toBeHidden();
+   }
+   await form.getByRole('button',{name:'حفظ الاتفاق'}).click();await expect.poll(()=>terms?.mode).toBe(mode);
+   await expect(form.getByRole('status').last()).toContainText('تم حفظ اتفاق المدرب.');
+ }
+ expect(writes.map(v=>[v.mode,v.rateBps,v.fixedMinor,v.expectedRevision])).toEqual([['PERCENTAGE',1250,0,0],['FIXED',0,8000,1],['FIXED_PLUS_PERCENTAGE',1250,8000,2],['SALARY_ONLY',0,0,3]]);
+ await toggle.click();await toggle.click();await expect(form.locator('select')).toHaveValue('SALARY_ONLY');await expect(form.locator('[data-salary]')).toBeVisible();
+});

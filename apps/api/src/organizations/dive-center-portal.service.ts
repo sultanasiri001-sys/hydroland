@@ -1,3 +1,5 @@
+import { Prisma } from '@prisma/client';
+import { compensationAmount, compensationTerms } from './instructor-compensation';
 import { createHash } from 'node:crypto';
 import { centerReportRange } from './center-report-range';
 import {CenterLicensePlatformReviewService} from './center-license-platform-review.service';
@@ -54,15 +56,15 @@ export class DiveCenterPortalService {
     });}catch(error){if(typeof error==='object'&&error!==null&&'code' in error&&error.code==='P2002')throw new ConflictException('رقم السجل مستخدم لدى مركز أو جهة أخرى.');throw error}
   }
 
-  private async managedCenter(accountId: string) {
-    const role = await this.db.roleAssignment.findUnique({
+  private async managedCenter(accountId: string, db: Prisma.TransactionClient = this.db) {
+    const role = await db.roleAssignment.findUnique({
       where: { accountId_role: { accountId, role: 'DIVE_CENTER' } },
       select: { status: true },
     });
     if (role?.status !== 'ACTIVE') {
       throw new ForbiddenException('Active dive-center role required.');
     }
-    const membership=await this.db.organizationMember.findFirst({
+    const membership=await db.organizationMember.findFirst({
       where:{accountId,status:'ACTIVE',role:{in:['OWNER','ADMIN']},organization:{kind:{contains:'DIVE',mode:'insensitive'},status:'ACTIVE'}},
       select:{organization:{select:{id:true,displayName:true,legalName:true,registrationNumber:true,regionCode:true,status:true,documentBrandNameAr:true,documentBrandNameEn:true}}},
       orderBy:{createdAt:'asc'},
@@ -197,6 +199,58 @@ export class DiveCenterPortalService {
       const ordinary=['OPERATOR','INSTRUCTOR','STAFF','VIEWER'].includes(member.role)&&member.accountId!==accountId;
       return {membershipId:member.id,role:member.role,status:member.status,accountStatus:member.account.status,updatedAt:member.updatedAt,canCancelInvitation:ordinary&&member.status==='PENDING',canChangeRole:ordinary&&['ACTIVE','SUSPENDED'].includes(member.status),canSuspend:ordinary&&member.status==='ACTIVE',canReactivate:ordinary&&member.status==='SUSPENDED',openTrainingEnrollments:enrollmentCounts.get(member.accountId)||0,openTrainingSessions:sessionCounts.get(member.accountId)||0,person:{displayName:[member.account.person.firstName,member.account.person.lastName].filter(Boolean).join(' ').trim()||'عضو',headline:member.account.person.professional?.headline??null,regionCode:member.account.person.professional?.regionCode??null},professional:{instructorStatus:member.account.roleAssignments[0]?.status??null,instructorActiveAt:member.account.roleAssignments[0]?.activeAt??null,verifiedCredentials:member.account.person._count.credentials}};
     });
+  }
+
+  private async compensationScope(tx: Prisma.TransactionClient, accountId: string, instructorId: string) {
+    const center = await this.managedCenter(accountId, tx);
+    const manager = await tx.organizationMember.findFirst({where:{organizationId:center.id,accountId,status:'ACTIVE',account:{status:'ACTIVE'}},
+      select:{role:true,organization:{select:{ownerId:true}}}});
+    if (!manager) throw new ForbiddenException();
+    const member = await tx.organizationMember.findFirst({where:{organizationId:center.id,accountId:instructorId,status:'ACTIVE',
+      role:{in:['OWNER','ADMIN','INSTRUCTOR']},account:{status:'ACTIVE',roleAssignments:{some:{role:'INSTRUCTOR',status:'ACTIVE'}}}},select:{id:true}});
+    if (!member) throw new NotFoundException('المدرب غير مسجل في هذا المركز.');
+    return {organizationId:center.id,instructorAccountId:instructorId,canEdit:manager.role==='OWNER' && manager.organization.ownerId===accountId};
+  }
+
+  private currentTerms(tx: Prisma.TransactionClient, organizationId: string, instructorAccountId: string) {
+    return tx.instructorCompensationAgreement.findFirst({where:{organizationId,instructorAccountId},orderBy:{revision:'desc'},
+      select:{id:true,mode:true,fixedMinor:true,rateBps:true,currency:true,revision:true,recordedAt:true}});
+  }
+
+  async instructorAgreement(accountId: string, instructorId: string, basis?: string) {
+    return this.db.serializable(async tx => {
+      const scope = await this.compensationScope(tx,accountId,instructorId);
+      const terms = await this.currentTerms(tx,scope.organizationId,instructorId);
+      if (basis !== undefined && !/^\d{1,10}$/.test(basis)) throw new BadRequestException('أدخل أساسًا صحيحًا بالهللة.');
+      const previewMinor = terms && basis !== undefined ? compensationAmount(terms,Number(basis)) : null;
+      return {terms,canEdit:scope.canEdit,previewMinor};
+    });
+  }
+
+  async saveInstructorAgreement(accountId: string, instructorId: string, input: Record<string,unknown>) {
+    const {expectedRevision,...terms} = compensationTerms(input);
+    try {
+      return await this.db.serializable(async tx => {
+        const scope = await this.compensationScope(tx,accountId,instructorId);
+        if (!scope.canEdit) throw new ForbiddenException('حفظ الاتفاق متاح لمالك المركز.');
+        await tx.$queryRaw`SELECT "id" FROM "OrganizationMember" WHERE "organizationId"::text=${scope.organizationId} AND "accountId"::text=${instructorId} FOR UPDATE`;
+        const prior = await this.currentTerms(tx,scope.organizationId,instructorId);
+        if (prior && prior.mode===terms.mode && prior.rateBps===terms.rateBps && prior.fixedMinor===terms.fixedMinor
+          && (expectedRevision===prior.revision || expectedRevision===prior.revision-1)) return {terms:prior,canEdit:true};
+        if ((prior?.revision??0)!==expectedRevision) throw new ConflictException('تغير الاتفاق. افتحه من جديد قبل الحفظ.');
+        const saved=await tx.instructorCompensationAgreement.create({data:{...terms,organizationId:scope.organizationId,instructorAccountId:instructorId,
+          recordedByAccountId:accountId,revision:expectedRevision+1,currency:'SAR'}});
+        await tx.auditEvent.create({data:{resource:'InstructorCompensationAgreement',resourceId:saved.id,action:'INSTRUCTOR_COMPENSATION_AGREED',
+          metadata:{organizationId:scope.organizationId,instructorAccountId:instructorId,recordedByAccountId:accountId,revision:saved.revision,priorAgreementId:prior?.id??null}}});
+        return {terms:await this.currentTerms(tx,scope.organizationId,instructorId),canEdit:true};
+      });
+    } catch (error) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code!=='P2002') throw error;
+      const latest=await this.instructorAgreement(accountId,instructorId);
+      if(latest.canEdit && latest.terms?.revision===expectedRevision+1 && latest.terms.mode===terms.mode
+        && latest.terms.rateBps===terms.rateBps && latest.terms.fixedMinor===terms.fixedMinor) return latest;
+      throw new ConflictException('تغير الاتفاق. افتحه من جديد قبل الحفظ.');
+    }
   }
 
   async professionals(accountId:string){
