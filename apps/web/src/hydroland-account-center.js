@@ -190,7 +190,7 @@
       try{
         const state=await request('/payments/rentals/'+encodeURIComponent(rentalId)+'/checkout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({quoteHash:quote.quoteHash,acceptedPolicyVersion:quote.policyVersion,idempotencyKey:'rental:'+rentalId})});
         if(!current()||!detail.isConnected)return;
-        if(state.checkoutUrl){const url=new URL(state.checkoutUrl);if(url.protocol!=='https:'&&!['localhost','127.0.0.1'].includes(url.hostname))throw localError('رابط الدفع غير صالح');window.location.assign(url.toString());return;}
+        if(state.checkoutUrl){const url=new URL(state.checkoutUrl);if(url.protocol!=='https:'&&!(url.protocol==='http:'&&['localhost','127.0.0.1'].includes(url.hostname)))throw localError('رابط الدفع غير صالح');window.location.assign(url.toString());return;}
         uiLocale.setText(message,rentalPaymentMessage(state));
       }catch(error){if(current()&&detail.isConnected)uiLocale.setMessage(message,localErrorMessage(error,'تعذر تجهيز دفع التأجير'));}
       finally{if(current()&&detail.isConnected)button.disabled=false;}

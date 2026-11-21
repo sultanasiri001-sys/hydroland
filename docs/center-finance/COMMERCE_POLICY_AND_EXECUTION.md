@@ -61,6 +61,9 @@ together. A timeout or uncertain response remains
 `RECONCILIATION_REQUIRED`. A later cumulative provider GET cannot attribute
 someone else's dashboard refund to this operation. Reconciliation may finish a
 posting rollback only from the saved, validated original POST result.
+An uncertain result reports `financialOutcome: UNKNOWN` and
+`financialActionExecuted: null`; it never asserts that no money moved after a
+timeout that could have occurred after the provider applied the refund.
 
 Provider invoice summaries cannot reverse an already observed full refund.
 Partially refunded payments retain their actual refunded amount and cannot

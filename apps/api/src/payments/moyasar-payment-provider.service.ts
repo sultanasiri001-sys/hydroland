@@ -273,7 +273,7 @@ export class MoyasarPaymentProviderService {
     if(row.metadata&&typeof row.metadata==='object'&&!Array.isArray(row.metadata))for(const[key,value]of Object.entries(row.metadata as Record<string,unknown>))if(typeof value==='string')metadata[key]=value;
     if(expectedMetadata)for(const[key,value]of Object.entries(expectedMetadata))if(metadata[key]!==value)throw new ServiceUnavailableException('Payment provider metadata mismatch.');
     let checkout:URL;try{checkout=new URL(url);}catch{throw new ServiceUnavailableException('Payment provider returned an invalid checkout URL.');}
-    if(checkout.protocol!=='https:'&&!['localhost','127.0.0.1'].includes(checkout.hostname))throw new ServiceUnavailableException('Payment checkout URL must use HTTPS.');
+    if(checkout.protocol!=='https:'&&!(checkout.protocol==='http:'&&['localhost','127.0.0.1'].includes(checkout.hostname)))throw new ServiceUnavailableException('Payment checkout URL must use HTTPS.');
     const payments=Array.isArray(row.payments)?row.payments.flatMap(value=>{
       if(!value||typeof value!=='object'||Array.isArray(value))return[];
       const payment=value as Record<string,unknown>;
@@ -286,7 +286,7 @@ export class MoyasarPaymentProviderService {
   private publicWebOrigin(){
     const raw=process.env.HYDROLAND_PUBLIC_WEB_ORIGIN?.trim();if(!raw)throw new ServiceUnavailableException('Public web origin is not configured.');
     let url:URL;try{url=new URL(raw);}catch{throw new ServiceUnavailableException('Public web origin is invalid.');}
-    if(url.protocol!=='https:'&&!['localhost','127.0.0.1'].includes(url.hostname))throw new ServiceUnavailableException('Public web origin must use HTTPS.');
+    if(url.protocol!=='https:'&&!(url.protocol==='http:'&&['localhost','127.0.0.1'].includes(url.hostname)))throw new ServiceUnavailableException('Public web origin must use HTTPS.');
     url.pathname='/';url.search='';url.hash='';return url;
   }
 }

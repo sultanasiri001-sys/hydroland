@@ -206,3 +206,59 @@ test('Moyasar refund adapter uses verified financial evidence and one mutation a
     });
   });
 });
+
+test('checkout schemes allow HTTPS or HTTP loopback for both trip and rental invoices', async t => {
+  const settings = {HYDROLAND_PAYMENT_PROVIDER:'MOYASAR', MOYASAR_SECRET_KEY:'fixture-secret',
+    HYDROLAND_PUBLIC_WEB_ORIGIN:'https://hydroland.example'};
+  const previous = Object.fromEntries(Object.keys(settings).map(key => [key, process.env[key]]));
+  Object.assign(process.env, settings);
+  const service = new MoyasarPaymentProviderService({requireOperational:() => ({status:'SANDBOX'}), recordProviderSignal:async() => {}});
+  const rentalInput = {checkoutId:'checkout-scheme-test',sourceType:'EQUIPMENT_RENTAL',sourceId:'rental-scheme-test',
+    organizationId:'center-scheme-test',customerAccountId:'customer-scheme-test',amountMinor:10000,currency:'SAR',
+    expiresAt:new Date(Date.now()+900000).toISOString()};
+  const rows = [
+    ['https://checkout.example/invoice',true],
+    ['http://localhost:4173/invoice',true],
+    ['http://127.0.0.1:4173/invoice',true],
+    ['javascript://localhost/%0aalert(1)',false],
+    ['ftp://127.0.0.1/invoice',false],
+    ['data://localhost/text/html,unsafe',false],
+    ['http://checkout.example/invoice',false],
+  ];
+  let response, calls=0, lastRequest;
+  // Transport is stubbed so this boundary test cannot navigate or contact a
+  // provider. The public trip/rental adapter methods still validate the body.
+  service.request = async(path,options) => {calls++;lastRequest={path,options};return response;};
+  try {
+    for (const [url,allowed] of rows) await t.test(`${allowed?'accepts':'rejects'} ${new URL(url).protocol} ${new URL(url).hostname}`, async() => {
+      response={id:invoiceId,status:'initiated',amount:10000,currency:'SAR',url,payments:[],
+        expired_at:rentalInput.expiresAt,metadata:service.commerceInvoiceMetadata(rentalInput)};
+      if(allowed){
+        assert.equal((await service.fetchInvoice(invoiceId)).url,url);
+        assert.equal((await service.fetchCommerceInvoice(invoiceId,rentalInput)).url,url);
+      }else{
+        await assert.rejects(service.fetchInvoice(invoiceId),code(503));
+        await assert.rejects(service.fetchCommerceInvoice(invoiceId,rentalInput),code(503));
+      }
+      process.env.HYDROLAND_PUBLIC_WEB_ORIGIN=url;
+      const before=calls;
+      if(allowed){
+        response={...response,url:'https://checkout.example/invoice',metadata:{hydroland_payment_id:'trip-payment-scheme',hydroland_booking_id:'trip-booking-scheme'}};
+        await service.createInvoice({paymentId:'trip-payment-scheme',bookingId:'trip-booking-scheme',amountMinor:10000,currency:'SAR'});
+        const destination=new URL(JSON.parse(lastRequest.options.body).success_url);
+        assert.equal(destination.protocol,new URL(url).protocol);
+        assert.equal(destination.hostname,new URL(url).hostname);
+        response={...response,metadata:service.commerceInvoiceMetadata(rentalInput)};
+        await service.createCommerceInvoice(rentalInput);
+        assert.equal(new URL(JSON.parse(lastRequest.options.body).success_url).protocol,new URL(url).protocol);
+        assert.equal(calls-before,2);
+      }else{
+        await assert.rejects(service.createInvoice({paymentId:'trip-payment-scheme',bookingId:'trip-booking-scheme',amountMinor:10000,currency:'SAR'}),code(503));
+        await assert.rejects(service.createCommerceInvoice(rentalInput),code(503));
+        assert.equal(calls,before,'Unsafe return origin must fail before a provider request');
+      }
+    });
+  } finally {
+    for(const [key,value] of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}
+  }
+});

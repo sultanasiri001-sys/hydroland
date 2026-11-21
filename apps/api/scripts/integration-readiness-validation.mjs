@@ -123,7 +123,11 @@ for(const marker of [
   "providerVerified:true",
   "invoice.metadata.hydroland_payment_id!==payment.id",
   "invoice.metadata.hydroland_booking_id!==payment.bookingId",
-  "const pricing=await this.tripPrice(booking.tripId)",
+  "const pricing=savedContract",
+  "booking.contractSnapshot!==null&&booking.contractSnapshot!==undefined",
+  "this.contracts.buildTrip(booking,pricing.pricePerSeatMinor,pricing.currency)",
+  "PAYMENT_TERMS_ACCEPTANCE_REQUIRED",
+  "this.contracts.accepted(originalContract,input.policyAcceptance)",
   "const amountMinor=pricing.pricePerSeatMinor*booking.seats",
 ])if(!payments.includes(marker))throw new Error(`Payment lifecycle invariant missing: ${marker}`);
 // Checkout pricing is server-owned. Only the refund-review route accepts an
@@ -144,7 +148,10 @@ for(const marker of [
   "request(`/payments/${encodeURIComponent(paymentId)}/refresh`",
   "payment.status==='CAPTURED'",
 ])if(!webBookings.includes(marker))throw new Error(`Web payment checkout invariant missing: ${marker}`);
-if(webBookings.includes('amountMinor'))throw new Error('Web checkout must not submit a payment amount.');
+// Displaying the server quote amount is required for informed acceptance. Keep
+// the boundary on the submitted checkout body, not every read of that amount.
+const checkoutBodies=[...webBookings.matchAll(/request\(['"]\/payments['"],\s*\{[\s\S]*?\bbody:\s*JSON\.stringify\((\{[\s\S]*?\})\)\s*\}/g)];
+if(checkoutBodies.length!==1||/\b(?:amountMinor|amount|currency)\s*:|\.\.\./.test(checkoutBodies[0][1]))throw new Error('Web checkout must submit explicit references and acceptance without a client payment amount.');
 if(!paymentWebhook.includes("@Controller('payments/provider')")||!paymentWebhook.includes("@Post('moyasar/webhook')")||paymentWebhook.includes('UseGuards'))throw new Error('Moyasar public webhook boundary is missing or incorrectly guarded.');
 for(const key of ['HYDROLAND_INTEGRATION_PAYMENT_PSP_STATUS','HYDROLAND_PAYMENT_PROVIDER','MOYASAR_SECRET_KEY','MOYASAR_WEBHOOK_SECRET'])if(!render.includes(`key: ${key}`))throw new Error(`Render blueprint missing payment activation input: ${key}`);
 for(const marker of [

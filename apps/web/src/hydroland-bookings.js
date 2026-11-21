@@ -268,7 +268,7 @@
     if(payment?.status==='BYPASSED'||payment?.provider==='BYPASSED'||payment?.provider==='FREE_TRIP'){state.pendingBooking=null;toast(uiLocale.message('تم إنشاء الحجز بنجاح'));return{bypassed:true};}
     if(typeof payment?.checkoutUrl!=='string'||!payment.checkoutUrl)throw localError('تم حفظ الحجز لكن لم يتم تجهيز رابط الدفع');
     let checkout;try{checkout=new URL(payment.checkoutUrl);}catch{throw localError('رابط الدفع غير صالح');}
-    if(checkout.protocol!=='https:'&&!['localhost','127.0.0.1'].includes(checkout.hostname))throw localError('رابط الدفع غير آمن');
+    if(checkout.protocol!=='https:'&&!(checkout.protocol==='http:'&&['localhost','127.0.0.1'].includes(checkout.hostname)))throw localError('رابط الدفع غير آمن');
     window.location.assign(checkout.toString());return{redirected:true};
   };
   const paymentReturnKey='hl-payment-return-id';

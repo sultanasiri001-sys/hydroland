@@ -51,6 +51,23 @@ test('rental checkout displays original issuer and 24-hour terms and requires ex
   expect(calls[0]).not.toHaveProperty('paid');
 });
 
+test('rental checkout rejects executable and non-HTTP loopback schemes and accepts HTTPS',async({page})=>{
+  let checkoutUrl='javascript://localhost/%0awindow.checkoutSchemeExecuted=1',paymentCalls=0;
+  await page.route(/\/api\/v1\/payments\/rentals\/rental-e2e\/checkout$/,route=>{paymentCalls++;return json(route,{status:'PENDING',checkoutUrl},201)});
+  await page.route('https://checkout.example/rental',route=>route.fulfill({status:200,contentType:'text/html',body:'<h1>Synthetic HTTPS rental checkout</h1>'}));
+  await fixture(page);await page.locator('[data-rental-checkout]').click();await page.locator('[data-rental-terms-accepted]').check();
+  for(const url of ['javascript://localhost/%0awindow.checkoutSchemeExecuted=1','ftp://127.0.0.1/rental','data://localhost/text/html,unsafe']){
+    checkoutUrl=url;const before=paymentCalls;
+    await page.locator('[data-rental-start-checkout]').click();await expect.poll(()=>paymentCalls).toBe(before+1);
+    await expect(page.locator('[data-rental-start-checkout]')).toBeEnabled();
+    await expect(page.locator('[data-rental-payment-message]')).toContainText('رابط الدفع غير صالح');
+    await expect(page).toHaveURL(/\/rental-fixture$/);
+    expect(await page.evaluate(()=>window.checkoutSchemeExecuted)).toBeUndefined();
+  }
+  checkoutUrl='https://checkout.example/rental';await page.locator('[data-rental-start-checkout]').click();
+  await expect(page).toHaveURL('https://checkout.example/rental');
+});
+
 test('rental return navigation cannot mark payment paid and uses the verified refresh result',async({page})=>{
   let calls=0;
   await page.route(/\/api\/v1\/payments\/rentals\/rental-e2e\/refresh$/,route=>{

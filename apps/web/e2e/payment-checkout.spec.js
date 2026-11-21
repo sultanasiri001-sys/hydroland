@@ -77,6 +77,27 @@ test('paid booking requires displayed original terms before payment and redirect
   await expect(page).toHaveURL('http://127.0.0.1:4173/provider-checkout');
 });
 
+test('trip checkout rejects executable and non-HTTP loopback schemes and accepts HTTPS',async({page})=>{
+  await installAuth(page);await installCommonApi(page);
+  let checkoutUrl='javascript://localhost/%0awindow.checkoutSchemeExecuted=1',paymentCalls=0;
+  await page.route(/\/api\/v1\/trips\/trip-pay-1\/bookings$/,route=>json(route,{id:'booking-pay-1',tripId:'trip-pay-1',accountId:'account-pay-e2e',status:'PENDING',seats:1,price},201));
+  await page.route(/\/api\/v1\/payments\/bookings\/booking-pay-1\/quote$/,route=>json(route,{snapshot:{amountMinor:12500,currency:'SAR',quantity:1,originalSchedule:{startsAt:trip().startsAt},issuer:{legalName:'مركز اختبار'}},quoteHash:'scheme-quote',policyVersion:'2026-11-21.1'}));
+  await page.route(/\/api\/v1\/payments$/,route=>{paymentCalls++;return json(route,{status:'PENDING',provider:'MOYASAR',checkoutUrl},201)});
+  await page.route('https://checkout.example/trip',route=>route.fulfill({status:200,contentType:'text/html',body:'<h1>Synthetic HTTPS checkout</h1>'}));
+  await prepare(page);await page.evaluate(()=>window.HydrolandBookings.openBooking('trip-pay-1'));
+  await page.locator('#confirm-booking').click();await page.locator('[data-accept-checkout-terms]').check();
+  for(const url of ['javascript://localhost/%0awindow.checkoutSchemeExecuted=1','ftp://127.0.0.1/trip','data://localhost/text/html,unsafe']){
+    checkoutUrl=url;const before=paymentCalls;
+    await page.locator('#confirm-booking').click();await expect.poll(()=>paymentCalls).toBe(before+1);
+    await expect(page.locator('#confirm-booking')).toBeEnabled();
+    await expect(page.locator('#toast')).toContainText('رابط الدفع غير آمن');
+    await expect(page.locator('#booking-dialog')).toBeVisible();
+    expect(await page.evaluate(()=>window.checkoutSchemeExecuted)).toBeUndefined();
+  }
+  checkoutUrl='https://checkout.example/trip';await page.locator('#confirm-booking').click();
+  await expect(page).toHaveURL('https://checkout.example/trip');
+});
+
 for(const phase of ['quote','payment'])for(const change of ['dismiss','logout','account-switch']){
   test(`delayed ${phase} JSON cannot restore consent or redirect after ${change}`,async({page})=>{
     await installAuth(page);await installCommonApi(page);

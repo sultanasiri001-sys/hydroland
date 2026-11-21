@@ -15,8 +15,10 @@ export class PaymentRefundExecutionService {
   constructor(private readonly db: DatabaseService, private readonly provider: MoyasarPaymentProviderService, private readonly contracts: PaymentContractService) {}
 
   private result(row: CommerceRefundOperation) {
+    const uncertain = ['DISPATCHED', 'RECONCILIATION_REQUIRED'].includes(row.status);
     return { id: row.id, paymentId: row.paymentId, amountMinor: row.amountMinor, currency: row.currency, status: row.status,
-      financialActionExecuted: row.status === 'SUCCEEDED', provider: 'MOYASAR',
+      financialActionExecuted: row.status === 'SUCCEEDED' ? true : uncertain ? null : false,
+      financialOutcome: row.status === 'SUCCEEDED' ? 'CONFIRMED' : uncertain ? 'UNKNOWN' : 'NOT_EXECUTED', provider: 'MOYASAR',
       providerPaymentReference: row.status === 'SUCCEEDED' ? row.providerPaymentId : null,
       // Moyasar returns the original payment ID, not a distinct refund reference.
       financeEntryId: row.financeEntryId, confirmedAt: row.confirmedAt, automaticResendAllowed: false };

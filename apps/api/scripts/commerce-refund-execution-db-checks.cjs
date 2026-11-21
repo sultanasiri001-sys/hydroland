@@ -224,7 +224,8 @@ async function noMutation(f, operationCount = 0) {
     await check('provider timeout after applying money stays held and GET totals cannot attribute or resend it', async () => {
       const f = await fixture(); f.provider.mode = 'TIMEOUT_AFTER_APPLY';
       const result = await refunds.execute(f.executor.id, f.command);
-      assert.equal(result.status, 'RECONCILIATION_REQUIRED'); assert.equal(result.financialActionExecuted, false); assert.equal(f.provider.posts, 1);
+      assert.equal(result.status, 'RECONCILIATION_REQUIRED'); assert.equal(result.financialActionExecuted, null);
+      assert.equal(result.financialOutcome, 'UNKNOWN'); assert.equal(f.provider.posts, 1);
       assert.equal(f.provider.payload.refunded, 1000);
       assert.equal((await db.payment.findUniqueOrThrow({ where: { id: f.payment.id } })).refundedAmountMinor, 0);
       assert.equal((await db.financeEntry.findUniqueOrThrow({ where: { id: f.entry.id } })).status, 'APPROVED');
