@@ -164,6 +164,7 @@ jobs:
           node apps/api/scripts/bootstrap-trip-weather-runtime-schema.mjs
           node apps/api/scripts/bootstrap-messaging-runtime-schema.mjs
           node apps/api/scripts/commerce-financial-migration.test.mjs
+          node apps/api/scripts/organization-booking-mandates-db.cjs
           node apps/api/scripts/commerce-contract-snapshot-db-checks.cjs
           node apps/api/scripts/commerce-refund-execution-db-checks.cjs
           node apps/api/scripts/rental-refund-migration-checks.mjs
