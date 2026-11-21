@@ -1,5 +1,6 @@
 import {checkInstructorCompensation} from './instructor-compensation-http-checks.mjs';
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
 import sharp from 'sharp';
 import {PrismaClient} from '@prisma/client';
 import {createHmac,randomUUID} from 'node:crypto';
@@ -21,6 +22,16 @@ async function request(account,path,method='GET',body){
 }
 const ok=result=>{assert.ok(result.status>=200&&result.status<300,JSON.stringify(result));return result.body};
 try{
+ // Prisma db push creates model tables in integration CI, while production deploys SQL migrations.
+ // Install the exact production trigger on the isolated CI database for the stock-transition test.
+ const [trigger]=await db.$queryRaw`SELECT EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid='"StoreProduct"'::regclass AND tgname='hydroland_store_restock_notice') AS installed`;
+ if(!trigger.installed){
+   assert.ok(['127.0.0.1','localhost','postgres'].includes(new URL(process.env.DATABASE_URL).hostname),'Use a local integration database for migration fixtures');
+   const sql=await readFile(new URL('../prisma/migrations/20261121201000_store_customer_preferences/migration.sql',import.meta.url),'utf8');
+   const start=sql.indexOf('CREATE FUNCTION hydroland_'), end=sql.indexOf('CREATE TRIGGER hydroland_',start);
+   assert.ok(start>0 && end>start);
+   await db.$transaction(async tx=>{await tx.$executeRawUnsafe(sql.slice(start,end));await tx.$executeRawUnsafe(sql.slice(end))});
+ }
  for(const name of ['owner-a','owner-b','staff','buyer-a','buyer-b']){
    const person=await db.person.create({data:{firstName:name,lastName:'StoreOffers'}});persons.push(person);
    const account=await db.account.create({data:{personId:person.id,email:`store-offer-${name}-${randomUUID()}@example.invalid`,passwordHash:'test',status:'ACTIVE',emailVerifiedAt:new Date()}});accounts.push(account);
@@ -67,10 +78,14 @@ try{
  assert.equal(ok(await request(buyer,pref+'/favorite','PUT',{enabled:true})).favorite,true);
  assert.ok(!ok(await request(b,'/store/preferences/mine')).some(v=>v.productId===variantId));
  assert.equal((await request(buyer,pref+'/stock-alert','PUT',{enabled:true})).status,409);
- await db.storeProduct.update({where:{id:variantId},data:{stockQuantity:0}});
+ const {requestId:variantRequest,...variantFields}=variant;
+ const setVariantStock=async stockQuantity=>{
+   const prior=await db.storeProduct.findUniqueOrThrow({where:{id:variantId}});
+   return ok(await request(a,'/store/provider/products/'+variantId,'PATCH',{...variantFields,stockQuantity,expectedUpdatedAt:prior.updatedAt}));
+ };
+ await setVariantStock(0);
  ok(await request(buyer,pref+'/stock-alert','PUT',{enabled:true}));
- await db.storeProduct.update({where:{id:variantId},data:{stockQuantity:1}});
- await db.storeProduct.update({where:{id:variantId},data:{stockQuantity:2}});
+ await setVariantStock(1);await setVariantStock(2);
  assert.equal(await db.notification.count({where:{accountId:buyer.id,type:'STORE_PRODUCT_BACK_IN_STOCK',payload:{path:['productId'],equals:variantId}}}),1);
  const favorites=ok(await request(buyer,'/store/preferences/mine')).find(row=>row.productId===variantId);
  assert.deepEqual(favorites,{productId:variantId,favorite:true,stockAlert:false});
