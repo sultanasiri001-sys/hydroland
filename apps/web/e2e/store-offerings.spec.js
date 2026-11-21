@@ -206,3 +206,19 @@ test('shared center storefront filters the catalog and exposes merchant informat
  await page.locator('#store a[href="#store"]').filter({hasText:'كل عروض هيدرولاند'}).click();
  await expect(page.locator('[data-public-product="other-fin"]')).toBeVisible();
 });
+
+test('buyer can open a linked store-order case and review its reference before sending',async({page})=>{
+ await setup(page);
+ const id='be8fb026-b2a1-4a0a-bf01-12a88fa560ae',sent=[];
+ await page.route('**/api/v1/store/orders/mine',r=>json(r,[{id,status:'CONFIRMED',totalMinor:49900,currency:'SAR',items:[],createdAt:revision}]));
+ await page.route(/\/api\/v1\/customer-service\/cases$/,r=>{sent.push(r.request().postDataJSON());return json(r,{id:'case'},201)});
+ await page.evaluate(()=>window.HydrolandStore.openOrders());
+ await page.locator('[data-store-order]').getByRole('button',{name:'مساعدة بشأن هذا الطلب'}).click();
+ const form=page.locator('[data-support-form]');
+ await expect(form).toBeVisible();await expect(page.locator('.hl-support')).toContainText(id);
+ expect(sent).toHaveLength(0);
+ await form.locator('[name=description]').fill('أحتاج توضيحًا حول تجهيز طلبي');
+ await form.getByRole('button').click();
+ await expect.poll(()=>sent.length).toBe(1);
+ expect(sent[0]).toMatchObject({referenceType:'STORE_ORDER',referenceId:id});
+});

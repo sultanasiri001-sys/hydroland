@@ -1,6 +1,7 @@
 (()=>{
   // Only authored interface text is localized. Account and business values stay opaque.
   const uiLocale = window.HydrolandI18n?.createScope("support", {
+  "مساعدة بخصوص طلب المتجر":"Get help with this order","طلب المتجر المرتبط":"Linked store order","إزالة مرجع الطلب":"Remove order reference",
   "جارٍ حفظ الإجراء…": "Saving action…",
   "غير محددة": "Not specified",
   "مفتوحة": "Open",
@@ -41,6 +42,7 @@
   "تسجيل الدخول": "Sign in",
   "مسندة": "Assigned",
   "بانتظار رد العميل": "Awaiting customer response",
+  "رفع تجميد دليل البلاغ":"Release case evidence hold","مراجعة الرسالة المبلّغ عنها":"Review reported message","سبب زوال الحاجة لحفظ الدليل":"Reason the evidence hold can end","رُفع التجميد.":"Hold released.","سُجّل الطلب بانتظار تأكيد مفوّض ثانٍ.":"A second authorized reviewer must confirm release.","تعذرت مراجعة الدليل أو تغيّرت الصلاحية.":"Evidence is unavailable or your permissions changed.",
   "بانتظار قبول الحل": "Awaiting resolution acceptance",
   "مغلقة": "Closed",
   "فريق الدعم": "Support team",
@@ -142,7 +144,7 @@
   const syncAccess=()=>{const allowed=Boolean(Auth?.isAuthenticated?.());form.hidden=!allowed;guestGate.hidden=allowed;inboxButton.hidden=!adminEligible();if(!allowed)uiLocale.setMessage(state, uiLocale.message('يتطلب تسجيل الدخول'));};
   const guestList=()=>{uiLocale.setMessage(state, uiLocale.message('يتطلب تسجيل الدخول'));count.textContent='—';uiLocale.setHTML(list, uiLocale.html`<div class="hl-ticket"><span><strong>سجّل الدخول لعرض التذاكر</strong></span><b class="hl-status closed">—</b></div>`);};
   function clearPrivate(){loadVersion++;form.reset();form.querySelector('button').disabled=false;uiLocale.setMessage(message, uiLocale.message('تُحفظ التذاكر في حسابك ويمكن متابعتها من هذه الصفحة.'));wrap.querySelector('[data-support-link]').textContent='—';guestList();clearAdmin();syncAccess();}
-  function renderMine(rows){uiLocale.setHTML(list, rows.length?rows.map(item=>uiLocale.html`<article class="hl-support-case" data-support-case="${esc(item.id)}"><div class="hl-ticket"><strong>${esc(item.subject)}</strong><b class="hl-status">${uiLocale.messageHTML(((value=>value?uiLocale.message(value):value)(labels[item.status]) || uiLocale.message('قيد المراجعة')))}</b></div><small>${uiLocale.messageHTML(((value=>value?uiLocale.message(value):value)(types[item.type]) || uiLocale.message('طلب خدمة')))} · ${esc(date(item.createdAt))}</small>${deadline(item)}<details><summary>عرض المحادثة ومتابعة الطلب</summary><p>${esc(item.description)}</p>${thread(item)}${(protectedCase(item)?uiLocale.html`<p>تُراجع هذه الحالة من مسار اعتراضات المزود.</p>`:(item.status==='RESOLVED'?uiLocale.html`<form data-support-resolution><label>ردك على الحل<textarea name="message" required maxlength="10000" rows="2"></textarea></label><div class="hl-support-actions"><button type="submit" name="decision" value="ACCEPT">أقبل الحل وأغلق التذكرة</button><button type="submit" name="decision" value="OBJECT">أعترض وأطلب متابعة المعالجة</button></div></form>`:(item.status!=='CLOSED'?uiLocale.html`<form data-support-reply><label>إضافة رد<textarea name="message" required maxlength="10000" rows="2"></textarea></label><button type="submit">إرسال الرد</button></form>`:'')))}<p data-support-case-feedback role="status"></p></details></article>`).join(''):uiLocale.html`<div class="hl-ticket"><span><strong>لا توجد تذاكر</strong><small>يمكنك إنشاء أول تذكرة من النموذج.</small></span><b class="hl-status closed">—</b></div>`);}
+  function renderMine(rows){uiLocale.setHTML(list, rows.length?rows.map(item=>uiLocale.html`<article class="hl-support-case" data-support-case="${esc(item.id)}"><div class="hl-ticket"><strong>${esc(item.subject)}</strong><b class="hl-status">${uiLocale.messageHTML(((value=>value?uiLocale.message(value):value)(labels[item.status]) || uiLocale.message('قيد المراجعة')))}</b></div><small>${uiLocale.messageHTML(((value=>value?uiLocale.message(value):value)(types[item.type]) || uiLocale.message('طلب خدمة')))} · ${esc(date(item.createdAt))}</small>${item.referenceType==='STORE_ORDER'?'<small>'+esc(uiLocale.t('طلب المتجر المرتبط'))+' · '+esc(item.referenceId)+'</small>':''}${deadline(item)}<details><summary>عرض المحادثة ومتابعة الطلب</summary><p>${esc(item.description)}</p>${thread(item)}${(protectedCase(item)?uiLocale.html`<p>تُراجع هذه الحالة من مسار اعتراضات المزود.</p>`:(item.status==='RESOLVED'?uiLocale.html`<form data-support-resolution><label>ردك على الحل<textarea name="message" required maxlength="10000" rows="2"></textarea></label><div class="hl-support-actions"><button type="submit" name="decision" value="ACCEPT">أقبل الحل وأغلق التذكرة</button><button type="submit" name="decision" value="OBJECT">أعترض وأطلب متابعة المعالجة</button></div></form>`:(item.status!=='CLOSED'?uiLocale.html`<form data-support-reply><label>إضافة رد<textarea name="message" required maxlength="10000" rows="2"></textarea></label><button type="submit">إرسال الرد</button></form>`:'')))}<p data-support-case-feedback role="status"></p></details></article>`).join(''):uiLocale.html`<div class="hl-ticket"><span><strong>لا توجد تذاكر</strong><small>يمكنك إنشاء أول تذكرة من النموذج.</small></span><b class="hl-status closed">—</b></div>`);}
   async function load(){
     const generation=++loadVersion;if(!Auth?.isAuthenticated?.()||!Auth?.authorizedFetch){guestList();return;}
     const version=Auth.getSessionVersion(),current=()=>generation===loadVersion&&sessionCurrent(version);
@@ -150,9 +152,23 @@
     try{const rows=await request('/customer-service/cases/mine');if(!current())return;if(!Array.isArray(rows))throw new Error('INVALID_CASE_LIST');uiLocale.setMessage(state, uiLocale.message('متصل بالنظام'));count.textContent=String(rows.length);wrap.querySelector('[data-support-link]').textContent=new Date().toLocaleTimeString('ar-SA');renderMine(rows);}
     catch{if(current()){uiLocale.setMessage(state, uiLocale.message('تعذر تحميل الخدمة'));count.textContent='—';uiLocale.setMessage(list, uiLocale.message('تعذر تحميل التذاكر. أعد المحاولة.'));}}
   }
+  let linkedOrder='',intent='',savedPayload='';
+  const referenceBanner=document.createElement('div');referenceBanner.hidden=true;form.before(referenceBanner);
+  function unlinkOrder(){linkedOrder='';intent='';savedPayload='';referenceBanner.replaceChildren();referenceBanner.hidden=true}
+  form.addEventListener('reset',unlinkOrder);
+  function orderHelp(id){
+    if(!Auth?.isAuthenticated?.()||!id)return;
+    unlinkOrder();linkedOrder=id;const label=document.createElement('span'),unlink=document.createElement('button');
+    label.textContent=uiLocale.t('طلب المتجر المرتبط')+' · '+id;unlink.type='button';unlink.textContent=uiLocale.t('إزالة مرجع الطلب');unlink.onclick=unlinkOrder;
+    referenceBanner.append(label,unlink);referenceBanner.hidden=false;
+    setView('mine');syncAccess();window.HydrolandWorkspaceUI?.show?.(wrap);
+    if(!form.elements.subject.value)form.elements.subject.value=uiLocale.t('مساعدة بخصوص طلب المتجر');
+    form.elements.description.focus();void load();
+  }
   form.addEventListener('submit',async event=>{
     event.preventDefault();if(!Auth?.isAuthenticated?.()||!Auth?.authorizedFetch){uiLocale.setMessage(message, uiLocale.message('سجّل الدخول أولًا.'));return;}
     const data=new FormData(form),body={type:data.get('type'),subject:String(data.get('subject')||'').trim(),description:String(data.get('description')||'').trim()};if(!body.subject||!body.description)return;
+    if(linkedOrder){const fingerprint=JSON.stringify([linkedOrder,body]);if(savedPayload!==fingerprint){intent=crypto.randomUUID();savedPayload=fingerprint}Object.assign(body,{referenceType:'STORE_ORDER',referenceId:linkedOrder,requestId:intent})}
     const version=Auth.getSessionVersion(),button=form.querySelector('button');button.disabled=true;
     try{const response=await Auth.authorizedFetch('/customer-service/cases',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!sessionCurrent(version))return;if(!response.ok)throw new Error('CREATE_FAILED');form.reset();uiLocale.setMessage(message, uiLocale.message('تم تسجيل التذكرة في النظام.'));await load();}
     catch{if(sessionCurrent(version))uiLocale.setMessage(message, uiLocale.message('تعذر تسجيل التذكرة. تحقق من تسجيل الدخول وحاول مرة أخرى.'));}
@@ -185,8 +201,31 @@
     selected=item;const actorId=window.HydrolandProfileData?.profile?.id,options=[];
     if(['OPEN','ASSIGNED','WAITING_CUSTOMER'].includes(item.status)){options.push('ASSIGN','ESCALATE');if(item.status==='ASSIGNED')options.push('WAIT');if(['ASSIGNED','WAITING_CUSTOMER'].includes(item.status)&&item.assignedAccountId===actorId)options.push('RESOLVE');}
     const owner=assignees.find(row=>row.id===item.assignedAccountId);
-    uiLocale.setHTML(adminDetail, uiLocale.html`<h4>${esc(item.subject)}</h4><p>${uiLocale.messageHTML(((value=>value?uiLocale.message(value):value)(labels[item.status]) || uiLocale.message('قيد المراجعة')))}</p><p>المسؤول: ${(value=>value?esc(value):uiLocale.messageHTML((item.assignedAccountId?uiLocale.message('يلزم مراجعة تكليف المسؤول'):uiLocale.message('لم يُكلّف مسؤول بعد'))))(owner?.displayName||owner?.email)}</p>${deadline(item)}<p>${esc(item.description)}</p>${thread(item)}${(options.length?uiLocale.html`<form data-support-action><label>الإجراء<select name="action">${options.map(value=>uiLocale.html`<option value="${value}">${uiLocale.messageHTML((value=>value?uiLocale.message(value):value)(actions[value]))}</option>`).join('')}</select></label><div data-case-owner-fields><label>المسؤول<select name="assignedAccountId" required><option value="">اختر المسؤول</option>${assignees.map(row=>uiLocale.html`<option value="${esc(row.id)}" ${row.id===item.assignedAccountId?'selected':''}>${esc(row.displayName)} · ${esc(row.email)}</option>`).join('')}</select></label><label>مهلة هذه الحالة<input type="datetime-local" name="dueAt" value="${esc(localDate(item.dueAt))}"></label><small>تُعرض المهلة بتوقيت جهازك. أدخل موعدًا صريحًا عند التكليف الأول.</small></div><label data-case-message-field>الرسالة أو سبب الإجراء<textarea name="message" maxlength="10000" rows="3"></textarea></label><button type="submit">حفظ الإجراء</button></form>`:(item.status==='RESOLVED'?uiLocale.html`<p>يبقى الحل بانتظار قبول العميل أو اعتراضه. يُقفل الطلب عند قبوله.</p>`:uiLocale.html`<p>هذه الحالة مغلقة.</p>`))}<p data-support-action-feedback role="status"></p><details><summary>تاريخ الحالة</summary>${(item.history||[]).map(row=>uiLocale.html`<p>${uiLocale.messageHTML(((value=>value?uiLocale.message(value):value)(historyLabels[row.action]) || uiLocale.message('تحديث الحالة')))} · ${esc(date(row.occurredAt))}</p>`).join('')}</details>`);
-    const entryForm=adminDetail.querySelector('[data-support-action]');if(entryForm)syncActionFields(entryForm);
+    uiLocale.setHTML(adminDetail, uiLocale.html`<h4>${esc(item.subject)}</h4><p>${uiLocale.messageHTML(((value=>value?uiLocale.message(value):value)(labels[item.status]) || uiLocale.message('قيد المراجعة')))}</p><p>المسؤول: ${(value=>value?esc(value):uiLocale.messageHTML((item.assignedAccountId?uiLocale.message('يلزم مراجعة تكليف المسؤول'):uiLocale.message('لم يُكلّف مسؤول بعد'))))(owner?.displayName||owner?.email)}</p>${item.referenceType==='STORE_ORDER'?'<p>'+esc(uiLocale.t('طلب المتجر المرتبط'))+' · '+esc(item.referenceId)+'</p>':''}${deadline(item)}<p>${esc(item.description)}</p>${thread(item)}${(options.length?uiLocale.html`<form data-support-action><label>الإجراء<select name="action">${options.map(value=>uiLocale.html`<option value="${value}">${uiLocale.messageHTML((value=>value?uiLocale.message(value):value)(actions[value]))}</option>`).join('')}</select></label><div data-case-owner-fields><label>المسؤول<select name="assignedAccountId" required><option value="">اختر المسؤول</option>${assignees.map(row=>uiLocale.html`<option value="${esc(row.id)}" ${row.id===item.assignedAccountId?'selected':''}>${esc(row.displayName)} · ${esc(row.email)}</option>`).join('')}</select></label><label>مهلة هذه الحالة<input type="datetime-local" name="dueAt" value="${esc(localDate(item.dueAt))}"></label><small>تُعرض المهلة بتوقيت جهازك. أدخل موعدًا صريحًا عند التكليف الأول.</small></div><label data-case-message-field>الرسالة أو سبب الإجراء<textarea name="message" maxlength="10000" rows="3"></textarea></label><button type="submit">حفظ الإجراء</button></form>`:(item.status==='RESOLVED'?uiLocale.html`<p>يبقى الحل بانتظار قبول العميل أو اعتراضه. يُقفل الطلب عند قبوله.</p>`:uiLocale.html`<p>هذه الحالة مغلقة.</p>`))}<p data-support-action-feedback role="status"></p><details><summary>تاريخ الحالة</summary>${(item.history||[]).map(row=>uiLocale.html`<p>${uiLocale.messageHTML(((value=>value?uiLocale.message(value):value)(historyLabels[row.action]) || uiLocale.message('تحديث الحالة')))} · ${esc(date(row.occurredAt))}</p>`).join('')}</details>`);
+    if(item.referenceType==='PRIVATE_MESSAGE_ABUSE'){
+      const panel=document.createElement('div'),result=document.createElement('p');
+      const detail=detailVersion,session=Auth.getSessionVersion();
+      const current=()=>selected?.id===item.id&&detailVersion===detail&&Auth.getSessionVersion()===session&&view==='admin';
+      for(const action of ['message-evidence','release-message-hold']){
+        const release=action==='release-message-hold';
+        if(release&&item.status!=='CLOSED')continue;
+        const button=document.createElement('button');button.type='button';
+        uiLocale.setMessage(button,uiLocale.message(release?'رفع تجميد دليل البلاغ':'مراجعة الرسالة المبلّغ عنها'));
+        button.addEventListener('click',async()=>{
+          const reason=release?window.prompt(uiLocale.message('سبب زوال الحاجة لحفظ الدليل')):null;
+          if(!current()||(release&&!reason))return;
+          button.disabled=true;
+          try{
+            const data=await request('/customer-service/admin/cases/'+encodeURIComponent(item.id)+'/'+action,release?{method:'POST',body:JSON.stringify({reason})}:undefined);
+            if(current())result.textContent=release?uiLocale.message(data.released?'رُفع التجميد.':'سُجّل الطلب بانتظار تأكيد مفوّض ثانٍ.'):data.body||data.mediaUrl||'';
+          }catch{if(current())uiLocale.setMessage(result,uiLocale.message('تعذرت مراجعة الدليل أو تغيّرت الصلاحية.'))}
+          finally{button.disabled=false}
+        });
+        panel.appendChild(button);
+      }
+      panel.appendChild(result);adminDetail.appendChild(panel);
+    }
+      const entryForm=adminDetail.querySelector('[data-support-action]');if(entryForm)syncActionFields(entryForm);
   }
   async function openDetail(id){
     const version=adminVersion,detail=++detailVersion,session=Auth.getSessionVersion(),current=()=>adminCurrent(version,session)&&detail===detailVersion;selected=null;uiLocale.setMessage(adminDetail, uiLocale.message('جارٍ تحميل التذكرة…'));
@@ -217,5 +256,5 @@
   document.addEventListener('hydroland:auth-changed',()=>{clearPrivate();void load();});
   for(const name of ['hydroland:role-changed','hydroland:portal-cleared'])document.addEventListener(name,()=>{clearAdmin();syncAccess();});
   document.addEventListener('hydroland:profile-data-ready',syncAccess);
-  window.HydrolandSupport=Object.freeze({openAdmin});syncAccess();guestList();void load();
+  window.HydrolandSupport=Object.freeze({openAdmin,orderHelp});syncAccess();guestList();void load();
 })();
