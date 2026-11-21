@@ -136,6 +136,10 @@ test('organization buyer and supplying center remain distinct, and an idempotent
   const saved = JSON.stringify(state.bookings[0].contractSnapshot);
   assert.equal(first.organizationId, 'buying-organization');
   assert.equal(first.contractSnapshot.buyerOrganizationId, 'buying-organization');
+  assert.deepEqual(first.contractSnapshot.organizationPaymentTerms, {
+    mode: 'PREPAYMENT', initiator: 'NAMED_FINANCIAL_DELEGATE',
+    mandateIssuer: 'BUYER_ORGANIZATION', mandateApproval: 'PLATFORM_MANAGEMENT',
+  });
   assert.equal(first.contractSnapshot.issuer.organizationId, 'seller-center');
   assert.equal(first.contractSnapshot.customerAccountId, 'buyer-operator');
   state.price.pricePerSeatMinor = 999_999;

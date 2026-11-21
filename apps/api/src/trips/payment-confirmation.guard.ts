@@ -14,8 +14,8 @@ export class PaymentConfirmationGuard implements CanActivate {
     const booking=await this.db.booking.findFirst({where:{id:bookingId,tripId},select:{id:true,tripId:true,accountId:true,organizationId:true,seats:true,contractSnapshot:true}});
     if(!booking)throw new NotFoundException('Booking not found for this trip.');
     const paymentPolicy=await this.policies.decision('PAYMENT','PAYMENT_REQUIRED');
-    if(paymentPolicy.bypass)return true;
-    const setting=booking.contractSnapshot===null||booking.contractSnapshot===undefined
+    if(!booking.organizationId && paymentPolicy.bypass)return true;
+    const setting=!booking.organizationId && (booking.contractSnapshot===null||booking.contractSnapshot===undefined)
       ? await this.db.operationalSetting.findUnique({where:{key:`trip-price:${tripId}`},select:{value:true}}) : null;
     const requirement=tripBookingPaymentRequirement(booking,setting?.value);
     const requiredAmount=requirement.requiredAmountMinor,currency=requirement.currency;
@@ -25,7 +25,7 @@ export class PaymentConfirmationGuard implements CanActivate {
       refundOperations:{none:{status:{in:['RESERVED','DISPATCHED','RECONCILIATION_REQUIRED']}}}},orderBy:{updatedAt:'desc'},
       select:{id:true,bookingId:true,accountId:true,status:true,amountMinor:true,currency:true,refundedAmountMinor:true,providerReference:true,moyasarPaymentId:true}});
     if(captured&&satisfiesTripBookingPayment(captured,requirement))return true;
-    if(paymentPolicy.review)return true;
+    if(!booking.organizationId && paymentPolicy.review)return true;
     throw new ConflictException('Captured payment is required before booking confirmation.');
   }
 }
