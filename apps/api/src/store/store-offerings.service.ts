@@ -73,6 +73,31 @@ export class StoreOfferingsService {
     });
   }
 
+  orderReport(accountId:string,from?:string,to?:string) {
+    const day=(value:string|undefined)=>{
+      if(value===undefined || value==='')return null;
+      if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value))throw new BadRequestException('أدخل تاريخًا صحيحًا.');
+      const date=new Date(value+'T00:00:00Z');
+      if(!Number.isFinite(date.getTime())||date.toISOString().slice(0,10)!==value)throw new BadRequestException('أدخل تاريخًا صحيحًا.');
+      return date.getTime()-3*3600000;
+    };
+    const start=day(from),last=day(to);
+    if(start!==null&&last!==null&&last<start)throw new BadRequestException('سبق تاريخ النهاية تاريخ البداية.');
+    const lower=start===null?Prisma.empty:Prisma.sql`AND o."createdAt" >= ${new Date(start)}`;
+    const upper=last===null?Prisma.empty:Prisma.sql`AND o."createdAt" < ${new Date(last+86400000)}`;
+    return this.db.serializable(async tx=>{
+      const org=await this.providerScope(tx,accountId);
+      // An order can contain several sellers. Aggregate only this seller's original lines.
+      // Pre-contract rows fall back to the product's recorded owner.
+      return tx.$queryRaw<Array<{id:string;createdAt:Date;status:string;currency:string;totalMinor:number}>>(Prisma.sql`
+        SELECT o.id,o."createdAt",o.status,o.currency,sum(i.quantity::bigint*i."unitPriceMinor")::float8 AS "totalMinor"
+        FROM "StoreOrderItem" i JOIN "StoreOrder" o ON o.id=i."orderId" JOIN "StoreProduct" p ON p.id=i."productId"
+        WHERE (i."contractSnapshot"->'issuer'->>'organizationId'=${org.id} OR (i."contractSnapshot" IS NULL AND p."organizationId"::text=${org.id}))
+        ${lower} ${upper}
+        GROUP BY o.id,o."createdAt",o.status,o.currency ORDER BY o."createdAt" DESC,o.id DESC LIMIT 200`);
+    });
+  }
+
   private productData(input: Record<string,unknown>) {
     const kind=input.kind;
     if (kind!=='GOODS' && kind!=='SERVICE') throw new BadRequestException('اختر سلعة أو خدمة.');
