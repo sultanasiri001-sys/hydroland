@@ -1,5 +1,6 @@
 (() => {
   const locale=window.HydrolandI18n?.createScope('merchant-stock',{
+    'الجرد الفعلي':'Physical stock count','موقع الجرد':'Count location','الرصيد المسجل':'Recorded balance','الكمية الفعلية':'Counted quantity','سبب فرق الجرد':'Reason for count variance','اعتماد الجرد وتحديث الرصيد':'Confirm count and update balance','سجل الجرد':'Count history','تعرض آخر ٥٠ عملية':'Latest 50 records','لا توجد عمليات جرد بعد':'No counts recorded yet','تم تسجيل الجرد':'Stock count saved',
     'مخزون الفروع والمستودعات':'Branch and warehouse stock','موقع جديد':'New stock location','اسم الموقع':'Location name','رمز الموقع':'Location code',
     'الفرع':'Branch','موقع مستقل':'Independent location','حفظ الموقع':'Save location','حركة مخزون':'Stock transfer','الصنف':'Item',
     'من موقع':'From location','إلى موقع':'To location','المتاح للبيع في المتجر':'Available for online sale','الكمية':'Quantity',
@@ -38,7 +39,7 @@
             try{
               await request('/store/provider/inventory/'+path,{method:'POST',body:JSON.stringify({requestId:key,...payload})});
               if(live(v)){
-                if(path==='transfers'){void window.HydrolandStore?.reloadProducts?.();await onTransfer();return}
+                if(path==='transfers'||path==='counts'){void window.HydrolandStore?.reloadProducts?.();await onTransfer(notice);return}
                 await load(t(notice));
               }
             }catch(error){if(live(v))feedback.textContent=error.message}
@@ -70,6 +71,17 @@
         const source=select(move,'من موقع',[...places]),target=select(move,'إلى موقع',[['',t('اختر موقعًا')],...places]);
         target.required=true;const qty=label(move,'الكمية',el('input'));qty.type='number';qty.min='1';qty.max='2147483647';qty.step='1';qty.required=true;
         bind(move,submit(move,'نقل الكمية'),'transfers',()=>({productId:item.value,sourceKey:source.value,destinationKey:target.value,quantity:Number(qty.value)}),'تم تسجيل حركة المخزون');
+        const countSection=el('details');countSection.append(el('summary',t('الجرد الفعلي')));const countForm=el('form');countForm.dataset.physicalStockCount='';countSection.append(countForm);body.append(countSection);
+        const countedSku=select(countForm,'الصنف',data.products.map(p=>[p.id,p.nameAr+' · '+p.sku])),site=select(countForm,'موقع الجرد',[...places]);
+        const recorded=label(countForm,'الرصيد المسجل',el('input')),counted=label(countForm,'الكمية الفعلية',el('input')),reason=label(countForm,'سبب فرق الجرد',el('textarea'));
+        recorded.readOnly=true;counted.type='number';counted.min='0';counted.max='2147483647';counted.step='1';counted.required=true;reason.maxLength=400;countedSku.required=true;
+        const countBalance=()=>{const product=data.products.find(p=>p.id===countedSku.value);recorded.value=product?(site.value==='ONLINE'?product.stockQuantity:(product.locationStock.find(x=>x.locationId===site.value)?.quantity||0)):'';counted.value='';reason.value='';reason.required=false};
+        countBalance();countedSku.onchange=countBalance;site.onchange=countBalance;
+        counted.oninput=()=>{reason.required=counted.value!==''&&Number(counted.value)!==Number(recorded.value)};
+        bind(countForm,submit(countForm,'اعتماد الجرد وتحديث الرصيد'),'counts',()=>({productId:countedSku.value,locationKey:site.value,expectedQuantity:Number(recorded.value),countedQuantity:Number(counted.value),reason:reason.value.trim()}),'تم تسجيل الجرد');
+        const audits=el('details');audits.append(el('summary',t('سجل الجرد')),el('small',t('تعرض آخر ٥٠ عملية')));body.append(audits);
+        for(const c of data.counts||[]){const sku=data.products.find(p=>p.id===c.productId)?.sku||c.productId;audits.append(el('p',[sku,places.get(c.locationKey),t('الرصيد المسجل')+' '+c.expectedQuantity,t('الكمية الفعلية')+' '+c.countedQuantity,c.reason,new Date(c.countedAt).toLocaleString('ar-SA',{timeZone:'Asia/Riyadh'})].filter(Boolean).join(' · ')))}
+        if(!data.counts?.length)audits.append(el('p',t('لا توجد عمليات جرد بعد')));
         const history=el('details');history.append(el('summary',t('آخر الحركات')));const names=new Map(data.products.map(p=>[p.id,p.sku]));
         for(const m of data.movements)history.append(el('p',[names.get(m.productId)||m.productId,places.get(m.sourceKey),places.get(m.destinationKey),m.quantity,new Date(m.movedAt).toLocaleString('ar-SA',{timeZone:'Asia/Riyadh'})].join(' · ')));
         if(!data.movements.length)history.append(el('p',t('لا توجد حركات بعد')));body.append(history);

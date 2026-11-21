@@ -1,7 +1,7 @@
 (()=>{
   // Only authored interface text is localized. Account and business values stay opaque.
   const uiLocale = window.HydrolandI18n?.createScope("store-provider", {
-  "تم تسجيل حركة المخزون":"Stock transfer recorded",
+  "تم تسجيل حركة المخزون":"Stock transfer recorded","تم تسجيل الجرد":"Stock count saved",
   "تعذر تنفيذ الإجراء.": "Could not complete the action.",
   "مرتجعات السلع": "Goods returns",
   "عرض طلبات الإرجاع": "View return requests",
@@ -110,7 +110,7 @@
      const data=await request('/store/provider/catalog');if(!live(v,session))return;
      if(!data?.organization||!Array.isArray(data.products)||!Array.isArray(data.courses))throw localError('استجابة العروض غير مكتملة.');
      uiLocale.setHTML(panel, uiLocale.html`<h3>عروض ${esc(data.organization.displayName)}</h3><p>العروض المنشورة تظهر في المتجر للجميع. إيقاف العرض يمنع الطلبات الجديدة ويحفظ الطلبات والتسجيلات السابقة.</p>${(notice?uiLocale.html`<p role="status">${uiLocale.messageHTML(notice)}</p>`:'')}<button type="button" data-offer-refresh>تحديث العروض</button><button type="button" data-offer-preview>معاينة المتجر</button><button type="button" data-offer-trips>إدارة الرحلات والحجوزات</button>${editor('products')}${editor('courses')}<details><summary>مرتجعات السلع</summary><button type="button" data-list-returns>عرض طلبات الإرجاع</button><button type="button" data-reviewed-returns>مراجعة المرتجعات المستلمة</button><div data-return-queue></div></details><div data-managed-offers>${data.products.map(row=>rowHtml('products',row)).join('')}${data.courses.map(row=>rowHtml('courses',row)).join('')}${(!data.products.length&&!data.courses.length?uiLocale.html`<p>لا توجد عروض للمركز بعد.</p>`:'')}</div>`);
-     const stock=window.HydrolandStoreInventory?.mount(panel,request,()=>live(v,session),()=>open(uiLocale.message('تم تسجيل حركة المخزون'),false,true));
+     const stock=window.HydrolandStoreInventory?.mount(panel,request,()=>live(v,session),notice=>open(uiLocale.message(notice),false,true));
      if(stock && focusInventory)stock.open=true;
      window.HydrolandStorefronts?.editor(panel,request,()=>live(v,session));
      window.HydrolandCatalogImport?.mount(panel,'provider',()=>open());

@@ -24,13 +24,14 @@ export class StoreInventoryController {
   inventory(@Req() req:Request){
     return this.db.serializable(async tx=>{
       const org=await this.offers.providerScope(tx,req.auth.accountId);
-      const [locations,units,products,movements]=await Promise.all([
+      const [locations,units,products,movements,counts]=await Promise.all([
         tx.storeStockLocation.findMany({where:{organizationId:org.id},orderBy:{title:'asc'},select:{id:true,title:true,code:true,orgUnitId:true}}),
         tx.orgUnit.findMany({where:{organizationId:org.id,active:true,type:{in:['CENTER','UNIT']}},orderBy:{nameAr:'asc'},select:{id:true,nameAr:true,code:true}}),
         tx.storeProduct.findMany({where:{organizationId:org.id,kind:'GOODS'},orderBy:{nameAr:'asc'},select:{id:true,nameAr:true,sku:true,stockQuantity:true,locationStock:{where:{quantity:{gt:0}},select:{locationId:true,quantity:true}}}}),
         tx.storeStockTransfer.findMany({where:{organizationId:org.id},orderBy:[{movedAt:'desc'},{id:'desc'}],take:50,select:{id:true,productId:true,sourceKey:true,destinationKey:true,quantity:true,movedAt:true}}),
+        tx.storeStockCount.findMany({where:{organizationId:org.id},orderBy:[{countedAt:'desc'},{id:'desc'}],take:50,select:{id:true,productId:true,locationKey:true,expectedQuantity:true,countedQuantity:true,reason:true,countedAt:true}}),
       ]);
-      return {locations,units,products,movements};
+      return {locations,units,products,movements,counts};
     });
   }
 
@@ -51,6 +52,37 @@ export class StoreInventoryController {
       if(orgUnitId && !await tx.orgUnit.findFirst({where:{id:orgUnitId,organizationId:org.id,active:true,type:{in:['CENTER','UNIT']}}}))throw new NotFoundException('الفرع غير متاح للمركز.');
       if(await tx.storeStockLocation.findUnique({where:{organizationId_code:{organizationId:org.id,code}}}))throw new ConflictException('رمز الموقع مستخدم في المركز.');
       return tx.storeStockLocation.create({data:{id,organizationId:org.id,code,title,orgUnitId}});
+    });
+  }
+
+  @Post('counts')
+  countStock(@Req() req:Request,@Body() body:Record<string,unknown>){
+    const amount=(v:unknown):v is number=>typeof v==='number' && Number.isSafeInteger(v) && v>=0 && v<=maxStock;
+    if(!body||Object.keys(body).some(k=>!['requestId','productId','locationKey','expectedQuantity','countedQuantity','reason'].includes(k))
+      ||!uuid(body.requestId)||!validId(body.productId)||!validId(body.locationKey)||!amount(body.expectedQuantity)||!amount(body.countedQuantity)
+      ||typeof body.reason!=='string'||body.reason.trim().length>400||(body.countedQuantity!==body.expectedQuantity&&!body.reason.trim())){
+      throw new BadRequestException('تحقق من الكمية الفعلية واذكر سبب فرق الجرد.');
+    }
+    const {requestId:id,productId,locationKey,expectedQuantity,countedQuantity}=body,reason=body.reason.trim(),actorId=req.auth.accountId;
+    return this.write(async tx=>{
+      const org=await this.offers.providerScope(tx,actorId);
+      const rows=await tx.$queryRaw<Array<{stockQuantity:number}>>`SELECT "stockQuantity" FROM "StoreProduct" WHERE id::text=${productId} AND "organizationId"::text=${org.id} AND kind='GOODS' FOR UPDATE`;
+      if(!rows.length)throw new NotFoundException('السلعة غير موجودة في المركز.');
+      const receipt=await tx.storeStockCount.findUnique({where:{id}});
+      if(receipt){
+        if(receipt.actorId!==actorId||receipt.organizationId!==org.id||receipt.productId!==productId||receipt.locationKey!==locationKey||
+          receipt.countedQuantity!==countedQuantity||receipt.expectedQuantity!==expectedQuantity||receipt.reason!==reason)throw new ConflictException('مرجع الجرد مستخدم لتسوية مختلفة.');
+        return receipt;
+      }
+      const key={productId,locationId:locationKey};
+      if(locationKey!==online && !await tx.storeStockLocation.findFirst({where:{id:locationKey,organizationId:org.id}}))throw new NotFoundException('الموقع غير موجود في المركز.');
+      const current=locationKey===online?rows[0].stockQuantity:(await tx.storeStockBalance.findUnique({where:{productId_locationId:key}}))?.quantity??0;
+      if(current!==expectedQuantity)throw new ConflictException('تغير الرصيد منذ عرض النموذج. حدّث المخزون وأعد التحقق.');
+      if(countedQuantity!==current){
+        if(locationKey===online)await tx.storeProduct.update({where:{id:productId},data:{stockQuantity:countedQuantity}});
+        else await tx.storeStockBalance.upsert({where:{productId_locationId:key},create:{...key,quantity:countedQuantity},update:{quantity:countedQuantity}});
+      }
+      return tx.storeStockCount.create({data:{id,productId,organizationId:org.id,actorId,locationKey,expectedQuantity,countedQuantity,reason}});
     });
   }
 

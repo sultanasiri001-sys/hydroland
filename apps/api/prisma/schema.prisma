@@ -154,6 +154,7 @@ model Person {
 }
 
 model Account {
+  retailStockCounts StoreStockCount[]
   storeStockTransfers StoreStockTransfer[]
   storeFeedback StoreProductFeedback[]
   storeProductPreferences StoreProductPreference[]
@@ -255,6 +256,7 @@ model Account {
 }
 
 model Organization {
+  retailStockCounts StoreStockCount[]
   stockLocations StoreStockLocation[]
   storeStockTransfers StoreStockTransfer[]
   instructorDocuments InstructorDocument[]
@@ -2025,6 +2027,7 @@ enum StoreOrderStatus {
  FULFILLED
 }
 model StoreProduct {
+  stockCounts StoreStockCount[]
   locationStock StoreStockBalance[]
   stockTransfers StoreStockTransfer[]
  customerFeedback StoreProductFeedback[]
@@ -2085,6 +2088,22 @@ model StoreStockBalance {
   product StoreProduct @relation(fields:[productId],references:[id],onDelete:Restrict)
   location StoreStockLocation @relation(fields:[locationId],references:[id],onDelete:Restrict)
   @@id([productId,locationId])
+}
+
+model StoreStockCount {
+  id String @id
+  organizationId String
+  actorId String
+  productId String
+  locationKey String
+  expectedQuantity Int
+  countedQuantity Int
+  reason String
+  countedAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  actor Account @relation(fields:[actorId],references:[id],onDelete:Restrict)
+  product StoreProduct @relation(fields:[productId],references:[id],onDelete:Restrict)
+  @@index([organizationId,countedAt,id],map:"StoreStockCount_org_time_idx")
 }
 
 model StoreStockTransfer {

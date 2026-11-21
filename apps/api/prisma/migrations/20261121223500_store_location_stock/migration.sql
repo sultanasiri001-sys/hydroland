@@ -15,3 +15,11 @@ ALTER TABLE "StoreStockTransfer" ADD COLUMN id TEXT PRIMARY KEY, ALTER COLUMN "p
   ADD FOREIGN KEY ("productId") REFERENCES "StoreProduct"(id) ON DELETE RESTRICT, ADD FOREIGN KEY ("organizationId") REFERENCES "Organization"(id) ON DELETE RESTRICT,
   ADD FOREIGN KEY ("actorId") REFERENCES "Account"(id) ON DELETE RESTRICT;
 CREATE INDEX "StoreStockTransfer_org_time_idx" ON "StoreStockTransfer" ("organizationId","movedAt",id);
+
+CREATE TABLE "StoreStockCount" AS SELECT p.id AS "productId",o.id AS "organizationId",a.id AS "actorId" FROM "StoreProduct" p CROSS JOIN "Organization" o CROSS JOIN "Account" a WITH NO DATA;
+ALTER TABLE "StoreStockCount" ADD COLUMN id TEXT PRIMARY KEY, ALTER COLUMN "productId" SET NOT NULL, ALTER COLUMN "organizationId" SET NOT NULL, ALTER COLUMN "actorId" SET NOT NULL,
+  ADD COLUMN "locationKey" TEXT NOT NULL, ADD COLUMN "expectedQuantity" INTEGER NOT NULL CHECK("expectedQuantity">=0), ADD COLUMN "countedQuantity" INTEGER NOT NULL CHECK("countedQuantity">=0),
+  ADD COLUMN reason TEXT NOT NULL, ADD COLUMN "countedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  ADD FOREIGN KEY ("productId") REFERENCES "StoreProduct"(id) ON DELETE RESTRICT, ADD FOREIGN KEY ("organizationId") REFERENCES "Organization"(id) ON DELETE RESTRICT,
+  ADD FOREIGN KEY ("actorId") REFERENCES "Account"(id) ON DELETE RESTRICT;
+CREATE INDEX "StoreStockCount_org_time_idx" ON "StoreStockCount" ("organizationId","countedAt",id);

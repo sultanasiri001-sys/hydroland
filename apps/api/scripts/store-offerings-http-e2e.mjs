@@ -127,6 +127,16 @@ try{
  orderIds.push(stockedOrder.id);
  const afterStock=ok(await request(a,warehouse)).products.find(x=>x.id===stockId);assert.equal(afterStock.stockQuantity,0);
  assert.equal(afterStock.locationStock.reduce((total,row)=>total+row.quantity,0),3);
+ const check={requestId:randomUUID(),productId:stockId,locationKey:secondLoc.requestId,expectedQuantity:2,countedQuantity:1,reason:'تلف مثبت بالجرد'};
+ assert.equal((await request(a,warehouse+'/counts','POST',{...check,reason:''})).status,400);
+ assert.equal((await request(a,warehouse+'/counts','POST',{...check,expectedQuantity:0})).status,409);
+ assert.equal((await request(b,warehouse+'/counts','POST',check)).status,404);
+ const tally=await Promise.all([1,2].map(()=>request(a,warehouse+'/counts','POST',check)));
+ for(const response of tally)assert.equal(ok(response).id,check.requestId);
+ const auditedInventory=ok(await request(a,warehouse));assert.equal(auditedInventory.counts.filter(x=>x.productId===stockId).length,1);
+ assert.equal(auditedInventory.products.find(x=>x.id===stockId).locationStock.find(x=>x.locationId===secondLoc.requestId).quantity,1);
+ assert.equal((await request(a,warehouse+'/counts','POST',{...check,countedQuantity:0})).status,409);
+ console.log('PASS stock count verifies original quantity, records the reason and corrects the selected location exactly once.');
  console.log('PASS warehouse and branch transfers conserve SKU units, isolate centers, handle concurrent replay and limit checkout to online stock.');
  const reportPath='/store/provider/reports/orders';
  const outsideId=randomUUID();ids.push(outsideId);
@@ -290,6 +300,7 @@ try{
  await db.trainingEnrollment.deleteMany({where:{storeCourseOfferId:{in:ids}}});
  await db.storeGoodsDelivery.deleteMany({where:{item:{orderId:{in:orderIds}}}});
  await db.storeOrderItem.deleteMany({where:{orderId:{in:orderIds}}});await db.storeOrder.deleteMany({where:{id:{in:orderIds}}});
+ await db.storeStockCount.deleteMany({where:{organizationId:{in:organizations.map(row=>row.id)}}});
  await db.storeStockTransfer.deleteMany({where:{organizationId:{in:organizations.map(row=>row.id)}}});
  await db.storeStockBalance.deleteMany({where:{productId:{in:ids}}});
  await db.storeStockLocation.deleteMany({where:{organizationId:{in:organizations.map(row=>row.id)}}});

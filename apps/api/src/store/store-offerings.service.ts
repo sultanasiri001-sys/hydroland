@@ -207,7 +207,7 @@ export class StoreOfferingsService {
       if(!before)throw new NotFoundException('العرض غير موجود في المركز.');
       this.checkRevision(before,input.expectedUpdatedAt);
       if(remove){
-        if(type==='products' && await tx.storeStockTransfer.count({where:{productId:id}}))throw new ConflictException('يرتبط المنتج بسجل حركة مخزون. يمكنك إيقاف عرضه.');
+        if(type==='products' && (await tx.storeStockTransfer.count({where:{productId:id}})||await tx.storeStockCount.count({where:{productId:id}})))throw new ConflictException('يرتبط المنتج بسجل حركة مخزون. يمكنك إيقاف عرضه.');
         const used=type==='products'?await tx.storeOrderItem.count({where:{productId:id}}):await tx.trainingEnrollment.count({where:{storeCourseOfferId:id}});
         if(before.status==='ACTIVE'||used)throw new ConflictException('أوقف العرض أولًا. العروض المرتبطة بطلبات أو تسجيلات تُحفظ ولا تُحذف.');
         if(type==='products')await tx.storeProduct.delete({where:{id}});else await tx.storeCourseOffer.delete({where:{id}});

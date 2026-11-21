@@ -34,6 +34,9 @@ try{
     await tx.$executeRawUnsafe(`INSERT INTO "StoreStockBalance"("productId","locationId",quantity) VALUES ('goods','loc',2)`);
     await tx.$executeRawUnsafe(`INSERT INTO "StoreStockTransfer"(id,"productId","actorId","organizationId","sourceKey","destinationKey",quantity) VALUES ('move','goods','${id}','${id}','ONLINE','loc',2)`);
     const [transfer]=await tx.$queryRawUnsafe(`SELECT quantity FROM "StoreStockTransfer" WHERE id='move'`);assert.equal(transfer.quantity,2);
+    await tx.$executeRawUnsafe(`INSERT INTO "StoreStockCount"(id,"productId","actorId","organizationId","locationKey","expectedQuantity","countedQuantity",reason) VALUES ('count','goods','${id}','${id}','loc',2,1,'Damaged')`);
+    const [count]=await tx.$queryRawUnsafe(`SELECT "expectedQuantity","countedQuantity" FROM "StoreStockCount" WHERE id='count'`);
+    assert.deepEqual(count,{expectedQuantity:2,countedQuantity:1});
    });
   }finally{await db.$executeRawUnsafe(`DROP SCHEMA "${schema}" CASCADE`)}
  }

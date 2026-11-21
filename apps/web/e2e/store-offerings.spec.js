@@ -273,4 +273,17 @@ test('center moves a SKU out of published stock into a warehouse on mobile',asyn
  await form.getByRole('button',{name:'نقل الكمية'}).click();
  await expect(form).toContainText('مستودع المرسى · WH-A · 3');await expect(form).toContainText('إجمالي الوحدات · 4');
  expect(state.writes[0]).toMatchObject({productId:'mask',sourceKey:'ONLINE',destinationKey:'warehouse',quantity:3});
+ await page.route('**/api/v1/store/provider/inventory/counts',r=>{
+   const body=r.request().postDataJSON();state.writes.push(body);
+   stock.products[0].locationStock[0].quantity=body.countedQuantity;
+   stock.counts=[{...body,countedAt:revision}];return json(r,{id:body.requestId},201);
+ });
+ const count=inventory.locator('[data-physical-stock-count]');
+ await count.locator('..').locator('> summary').click();
+ await count.getByLabel('موقع الجرد').selectOption('warehouse');
+ await expect(count.getByLabel('الرصيد المسجل')).toHaveValue('3');
+ await count.getByLabel('الكمية الفعلية').fill('2');await count.getByLabel('سبب فرق الجرد').fill('قطعة تالفة');
+ await count.getByRole('button',{name:'اعتماد الجرد وتحديث الرصيد'}).click();
+ await expect(form).toContainText('إجمالي الوحدات · 3');
+ expect(state.writes[1]).toMatchObject({productId:'mask',locationKey:'warehouse',expectedQuantity:3,countedQuantity:2,reason:'قطعة تالفة'});
 });
