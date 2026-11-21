@@ -15,7 +15,7 @@ const enc=x=>Buffer.from(JSON.stringify(x)).toString('base64url');
 const token=id=>{const now=Math.floor(Date.now()/1000),body=enc({alg:'HS256',typ:'JWT'})+'.'+enc({sub:id,iat:now,exp:now+900});return body+'.'+createHmac('sha256',secret).update(body).digest('base64url')};
 let restoreOwner;
 const people=[],accounts=[];
-const originals=await db.$queryRaw`SELECT * FROM "PolicyControl" WHERE ("category"='WEATHER' AND "ruleKey"='WEATHER_GATE') OR ("category"='TRAINING' AND "ruleKey" IN ('CAPACITY_LIMIT','SESSION_TIME_WINDOW'))`;
+const originals=await db.$queryRaw`SELECT * FROM "PolicyControl" WHERE ("category"='WEATHER' AND "ruleKey"='WEATHER_GATE') OR ("category"='TRAINING' AND "ruleKey" IN ('CAPACITY_LIMIT','SESSION_TIME_WINDOW','SCHEDULE_CONFLICT'))`;
 const weatherOriginal=await db.operationalSetting.findUnique({where:{key:'WEATHER_GATE'}});
 const request=async(account,path='',body)=>{const r=await fetch(base+'/admin/operational-controls'+path,{method:body?'PATCH':'GET',headers:{'content-type':'application/json',...(account?{authorization:'Bearer '+token(account.id)}:{})},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,body:await r.json()}};
 try{
@@ -26,7 +26,7 @@ try{
  await policyControlAtomicityAcceptance({db,base,admin,reader,token});
  assert.equal((await request(null)).status,401);assert.equal((await request(reader)).status,403);
  const initial=await request(admin);assert.equal(initial.status,200);assert.equal(initial.body.length,29);
- await verifyTrainingWindowRollback(admin);
+ await verifyTrainingConflictRollback(admin);
  const change=async(id,state)=>{const list=await request(admin),rule=list.body.find(r=>r.id===id);return request(admin,'/'+id,{state,reason:'Isolated runtime verification of operational control',expectedRevision:rule.revision})};
  let off=await change('WEATHER.WEATHER_GATE','DISABLED');assert.equal(off.status,200);
  const old=off.body.revision;

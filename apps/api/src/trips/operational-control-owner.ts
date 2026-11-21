@@ -8,6 +8,8 @@ const ownerControls = new Set(OPERATIONAL_CONTROLS
   .map(control => control.id));
 
 export async function requireCatalogOwner(tx: Prisma.TransactionClient, accountId: string, category: string, ruleKey: string) {
+  if (category==='TRAINING' && ruleKey==='SESSION_TIME_WINDOW')
+    throw new ForbiddenException('يتطلب تغيير موعد فتح الجلسة طلب تغيير معتمدًا من مالك الإصدار المفوض بعد المراجعة المستقلة.');
   if (!ownerControls.has(category + '.' + ruleKey)) return;
   const organization = await platformOrganization(tx);
   if (organization?.ownerId === accountId) {

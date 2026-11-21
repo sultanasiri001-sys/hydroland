@@ -138,7 +138,12 @@ try {
       });
       assert.equal(blocked.status,403,control.id);
     }
-    receipts.push(await verifyControl(control, account, headers));
+    if(control.id==='TRAINING.SESSION_TIME_WINDOW') {
+      const state=control.state==='ENABLED'?'DISABLED':'ENABLED';
+      const response=await fetch(api.href+'/admin/operational-controls/'+control.id,{method:'PATCH',headers,
+        body:JSON.stringify({state,expectedRevision:control.revision,reason:'Delegated control must use formal change'})});
+      assert.equal(response.status,403,control.id);
+    } else receipts.push(await verifyControl(control, account, headers));
   }
   for (const [method,path,body] of [
     ['PATCH','/admin/policies/WEATHER/WEATHER_GATE/state',{state:'DISABLED',reason:'Isolated owner check'}],
@@ -157,9 +162,9 @@ try {
     assert.equal(await effective(row), row.state === 'ENABLED');
   }
   const result = {status:'PASS', databaseTimezone:database.timezone, verifiedUtc:new Date().toISOString(),
-    controls:receipts.length, categories:new Set([...catalog.values()].map(row => row.category)).size,
+    controls:catalog.size, ownerRoutedControls:receipts.length, delegatedControls:1, categories:new Set([...catalog.values()].map(row => row.category)).size,
     auditRecords:receipts.reduce((count, row) => count + row.evidence.length, 0),
-    scope:'HTTP changes and rollbacks on optional synthetic controls, checked through training, weather and shared operating-policy readers. Risk-based authorization is a separate acceptance condition.',
+    scope:'Direct owner-authorized changes and rollbacks across 28 controls. Direct training-window changes are refused; its authorized lifecycle runs in the technology-request HTTP acceptance.',
     receipts};
   if (process.env.A16_EVIDENCE_PATH) await writeFile(process.env.A16_EVIDENCE_PATH, JSON.stringify(result, null, 2) + '\n');
   console.log('A16 catalog rollback PASS: %d controls, %d categories, %d attributed audit records.', result.controls, result.categories, result.auditRecords);
