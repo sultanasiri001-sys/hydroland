@@ -2923,6 +2923,9 @@ model WarehouseLocationRevision {
 
 
 model PersonalDataRequest {
+  executionAuditId String? @unique
+  decisionDisposition String?
+  initialDisposition String?
   routingCenterId String?
   case PrivacyGrievance?
   id String @id @default(uuid())

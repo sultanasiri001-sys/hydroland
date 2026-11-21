@@ -120,6 +120,15 @@ test('member requests correction and erasure from settings and sees private rece
   await dialog.getByRole('button',{name:'تقديم الطلب'}).click();
   await expect(dialog.getByRole('status')).toContainText('receipt-1');
   await expect(dialog.locator('article')).toContainText('تصحيح مسمى التخصص');
+  await page.route('**/api/v1/me/data-requests/receipt-1/profile-correction',route=>{
+    expect(route.request().postDataJSON()).toEqual({headline:'مسمى مهني مصحح'});
+    receipts[0].executionAuditId='profile-audit';
+    return json(route,{requestId:'receipt-1',executionAuditId:'profile-audit'},201);
+  });
+  await dialog.getByLabel('حقل الملف').selectOption('headline');
+  await dialog.getByLabel('القيمة الصحيحة').fill('مسمى مهني مصحح');
+  await dialog.getByRole('button',{name:'تطبيق التصحيح على ملفي'}).click();
+  await expect(dialog.locator('article')).toContainText('سُجّل تنفيذ التصحيح');
   await dialog.getByLabel('نوع الطلب').selectOption('ERASURE');
   await dialog.getByLabel('نطاق البيانات').selectOption('BOOKINGS');
   await dialog.getByLabel(/مرجع السجل/).fill('my-booking');

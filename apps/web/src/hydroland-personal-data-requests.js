@@ -93,6 +93,28 @@
             node('p',t('رقم الطلب','Request number')+' '+item.id));
           if (item.recordRef) entry.append(node('p',item.recordRef));
           if (item.details) entry.append(node('p',item.details));
+          const dispositions={APPLIED:t('نُفذ التصحيح','Correction applied'),DEFERRED:t('أُجّل التنفيذ','Deferred'),REFUSED:t('رُفض الطلب','Refused')};
+          if (dispositions[item.decisionDisposition]) entry.append(node('p',dispositions[item.decisionDisposition]));
+          if (item.executionAuditId) entry.append(node('p',t('سُجّل تنفيذ التصحيح في الملف.','The profile correction was recorded.')));
+          if (item.kind==='CORRECTION' && item.domain==='ACCOUNT' && !item.executionAuditId && ['RECEIVED','APPEAL_PENDING'].includes(item.status)) {
+            const edit=node('form'), field=select({firstName:['الاسم الأول','First name'],lastName:['اسم العائلة','Last name'],
+              phone:['الهاتف','Phone'],headline:['المسمى المهني','Professional headline'],bio:['النبذة','Biography'],regionCode:['المنطقة','Region']});
+            const value=node('input'); value.required=true; value.maxLength=80;
+            const limit=()=>{value.maxLength=({firstName:80,lastName:80,phone:40,headline:120,bio:5000,regionCode:80})[field.value];};
+            field.addEventListener('change',limit);
+            const save=node('button',t('تطبيق التصحيح على ملفي','Apply correction to my profile'));save.type='submit';
+            edit.append(label(t('حقل الملف','Profile field'),field),label(t('القيمة الصحيحة','Correct value'),value),save);
+            edit.addEventListener('submit',async event=>{
+              event.preventDefault(); if(save.disabled || !current())return;
+              save.disabled=true;
+              try {
+                await request('/'+encodeURIComponent(item.id)+'/profile-correction',{[field.value]:value.value});
+                if(current()) {status.textContent=t('حُفظ التصحيح في ملفك وربط بطلبك.','Correction saved and linked to your request.'); await load();}
+              } catch (error) {if(current()){status.textContent=error.message;await load();}}
+              finally {save.disabled=false;}
+            });
+            entry.append(edit);
+          }
           history.append(entry);
         }
         if(!data.items.length) history.append(node('p',t('لا توجد طلبات في هذه الصفحة.','No requests on this page.')));

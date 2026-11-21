@@ -259,7 +259,8 @@ jobs:
             -c 'DROP TABLE "PrivacyGrievance", "PersonalDataRequest"' \
             -f apps/api/prisma/migrations/20261120214500_privacy_grievance/migration.sql \
             -f apps/api/prisma/migrations/20261121060000_personal_data_requests/migration.sql \
-            -f apps/api/prisma/migrations/20261121171500_link_privacy_rights_cases/migration.sql
+            -f apps/api/prisma/migrations/20261121171500_link_privacy_rights_cases/migration.sql \
+            -f apps/api/prisma/migrations/20261121172500_verified_rights_outcomes/migration.sql
           node apps/api/scripts/bootstrap-messaging-runtime-schema.mjs
           export JWT_SECRET="$(openssl rand -hex 36)"
           node apps/api/dist/main.js > "$RUNNER_TEMP/grievance-api.log" 2>&1 &

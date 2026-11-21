@@ -92,10 +92,10 @@ export class PrivacyGrievanceService {
       const rows = await tx.privacyGrievance.findMany({ where:{ OR:[{ customerId:actor }, { organizationId:{ in:managedIds } },
         { departmentCode:{ in:departments }, escalatedAt:{ not:null } }] }, orderBy:[{ createdAt:'desc' }, { id:'asc' }], skip:(page-1)*25, take:26,
         select:{ id:true, customerId:true, organizationId:true, organization:{ select:{ displayName:true } }, departmentCode:true, description:true,
-          personalDataRequestId:true,decisionPersonId:true,appealedAt:true,firstOutcome:true,appealReason:true,state:true, createdAt:true, dueAt:true, escalatedAt:true, centerAction:true, outcome:true } });
+          personalDataRequestId:true,personalDataRequest:{select:{decisionDisposition:true,initialDisposition:true,executionAuditId:true}},decisionPersonId:true,appealedAt:true,firstOutcome:true,appealReason:true,state:true, createdAt:true, dueAt:true, escalatedAt:true, centerAction:true, outcome:true } });
       const identity=await tx.account.findUniqueOrThrow({where:{id:actor},select:{personId:true}});
-      return { centers, topics, page, more:rows.length>25, items:rows.slice(0,25).map(({customerId, organizationId, decisionPersonId, ...item}) => ({
-        ...item, mine:customerId===actor, canAppeal:customerId===actor && !!item.personalDataRequestId && !!decisionPersonId && !item.appealedAt && item.state==='RESOLVED', canCenter:customerId!==actor && managedIds.includes(organizationId) && (item.state==='CENTER_HANDLING' || item.state==='CENTER_PENDING' && item.dueAt>new Date()),
+      return { centers, topics, page, more:rows.length>25, items:rows.slice(0,25).map(({customerId, organizationId, decisionPersonId, personalDataRequest, ...item}) => ({
+        ...item, disposition:personalDataRequest?.decisionDisposition, firstDisposition:personalDataRequest?.initialDisposition, hasExecutionProof:!!personalDataRequest?.executionAuditId, mine:customerId===actor, canAppeal:customerId===actor && !!item.personalDataRequestId && !!decisionPersonId && !item.appealedAt && item.state==='RESOLVED', canCenter:customerId!==actor && managedIds.includes(organizationId) && (item.state==='CENTER_HANDLING' || item.state==='CENTER_PENDING' && item.dueAt>new Date()),
         canDepartment:customerId!==actor && decisionPersonId!==identity.personId && item.state==='DEPARTMENT_PENDING' && departments.includes(item.departmentCode),
       })) };
     });
@@ -163,7 +163,7 @@ export class PrivacyGrievanceService {
   }
 
   async act(actor: string, id: string, body: Record<string, unknown>) {
-    validateKeys(body,['action','message','report']);
+    validateKeys(body,['action','message','report','disposition']);
     const action=body.action;
     if (action!=='CENTER_HANDLE' && action!=='CENTER_RESOLVE' && action!=='DEPARTMENT_RESOLVE') throw new BadRequestException('اختر إجراءً صالحًا.');
     const message=field(body.message);
@@ -173,13 +173,25 @@ export class PrivacyGrievanceService {
     return this.db.serializable(async tx => {
       const departments = await this.roles(tx,actor);
       const scoped: Prisma.PrivacyGrievanceWhereInput = department ? { departmentCode:{in:departments},escalatedAt:{not:null} } : { organization:managedCenters(actor) };
-      const row = await tx.privacyGrievance.findFirst({ where:{ id,...scoped }, include:{ organization:{ select:{ ownerId:true } }, customer:{select:{personId:true}} } });
+      const row = await tx.privacyGrievance.findFirst({ where:{ id,...scoped }, include:{ organization:{ select:{ ownerId:true } }, customer:{select:{personId:true}}, personalDataRequest:{select:{executionAuditId:true,kind:true,domain:true}} } });
       if (!row) throw new NotFoundException();
       const identity=await tx.account.findUniqueOrThrow({where:{id:actor},select:{personId:true}});
       if(row.customer.personId===identity.personId || (department && row.appealedAt && row.decisionPersonId===identity.personId))
         throw new ForbiddenException('يلزم مراجع مستقل لهذا الطلب.');
       const now = new Date();
       if (department ? row.state!=='DEPARTMENT_PENDING' : !(row.state==='CENTER_HANDLING' || row.state==='CENTER_PENDING' && now<row.dueAt)) throw new ConflictException('تغيرت مرحلة الطلب. حدّث القائمة.');
+      const linkedDecision = row.personalDataRequestId && action!=='CENTER_HANDLE';
+      const disposition = body.disposition;
+      if (linkedDecision) {
+        if (disposition!=='APPLIED' && disposition!=='DEFERRED' && disposition!=='REFUSED')
+          throw new BadRequestException('حدد ما نُفذ أو أُجّل أو رُفض مع بيان السبب.');
+        if (disposition==='APPLIED') {
+          const proofId=row.personalDataRequest?.executionAuditId;
+          const verified=proofId && await tx.auditEvent.findFirst({where:{id:proofId,action:'ACCOUNT_PROFILE_CORRECTED',
+            resource:'Account',resourceId:row.customerId,actorId:row.customer.personId,metadata:{path:['privacyRequestId'],equals:row.personalDataRequestId!}},select:{id:true}});
+          if (!verified) throw new ConflictException('يلزم إثبات تنفيذ مرتبط بهذا الطلب والسجل.');
+        }
+      } else if (disposition!==undefined) throw new BadRequestException('النتيجة المنظمة تخص قرار طلب البيانات.');
       if (action==='CENTER_HANDLE') {
         if (row.state!=='CENTER_PENDING') throw new ConflictException('سُجّل إجراء المركز.');
         await tx.privacyGrievance.update({ where:{id},data:{state:'CENTER_HANDLING',centerAction:message} });
@@ -190,11 +202,11 @@ export class PrivacyGrievanceService {
           await this.alerts.notify(office.ownerId,'PRIVACY_GRIEVANCE_REPORT',{caseId:id,title:'تقرير معالجة تظلّم',message:report,departmentCode:row.departmentCode},tx);
         }
         await tx.privacyGrievance.update({where:{id},data:{state:'RESOLVED',outcome:message,resolvedAt:now,...(row.personalDataRequestId&&!row.appealedAt?{decisionPersonId:identity.personId}:{})}});
-        if(row.personalDataRequestId)await tx.personalDataRequest.update({where:{id:row.personalDataRequestId},data:{status:row.appealedAt?'APPEAL_DECIDED':'DECISION_RECORDED'}});
+        if(row.personalDataRequestId)await tx.personalDataRequest.update({where:{id:row.personalDataRequestId},data:{status:row.appealedAt?'APPEAL_DECIDED':'DECISION_RECORDED',decisionDisposition:String(disposition),...(!row.appealedAt?{initialDisposition:String(disposition)}:{})}});
         for (const [accountId,type] of [[row.customerId,'PRIVACY_GRIEVANCE_MEMBER_RESULT'],[row.organization.ownerId,'PRIVACY_GRIEVANCE_CENTER_RESULT']])
           await this.alerts.notify(accountId,type,{caseId:id,title:'نتيجة معالجة التظلّم',message},tx);
       }
-      await this.audit.record({actorId:actor,resource:'PrivacyGrievance',resourceId:id,action:'privacy_grievance.'+action.toLowerCase()},tx);
+      await this.audit.record({actorId:actor,resource:'PrivacyGrievance',resourceId:id,action:'privacy_grievance.'+action.toLowerCase(),...(linkedDecision?{metadata:{disposition:String(disposition),requestId:row.personalDataRequestId!}}:{})},tx);
       return {id,state:action==='CENTER_HANDLE'?'CENTER_HANDLING':'RESOLVED'};
     });
   }

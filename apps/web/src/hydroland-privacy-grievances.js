@@ -107,16 +107,26 @@
           const act=(action,fields)=>api('/'+encodeURIComponent(row.id)+'/actions',{action,...fields});
           if(row.canCenter || row.canDepartment) {
             const result=textarea(),fields=[label(localized('النتيجة التي ستصل للمشترك والمركز','Outcome for the member and center'),result)];
+            const choice=element('select');
+            if(row.personalDataRequestId) {
+              choice.required=true;
+              choice.add(new Option(localized('حدد نتيجة القرار','Select a decision'),''));
+              if(row.hasExecutionProof) choice.add(new Option(localized('تم التنفيذ بإثبات مرتبط','Applied with linked evidence'),'APPLIED'));
+              choice.add(new Option(localized('تأجيل التنفيذ','Defer'),'DEFERRED'));
+              choice.add(new Option(localized('رفض الطلب','Refuse'),'REFUSED'));
+              fields.unshift(label(localized('قرار طلب البيانات','Data request decision'),choice));
+            }
+            const disposition=()=>row.personalDataRequestId?{disposition:choice.value}:{};
             if(row.canDepartment) {
               const report=textarea();
               fields.push(label(localized('تقرير داخلي للإدارة العليا','Internal report for executive management'),report));
-              section.append(form(fields,localized('رفع التقرير وإبلاغ الطرفين','File report and notify both parties'),()=>act('DEPARTMENT_RESOLVE',{message:result.value,report:report.value})));
+              section.append(form(fields,localized('رفع التقرير وإبلاغ الطرفين','File report and notify both parties'),()=>act('DEPARTMENT_RESOLVE',{message:result.value,report:report.value,...disposition()})));
             } else {
               if(row.state==='CENTER_PENDING') {
                 const work=textarea();
                 section.append(form([label(localized('الإجراء الذي اتخذه المركز','Action taken by the center'),work)],localized('تسجيل الإجراء','Record action'),()=>act('CENTER_HANDLE',{message:work.value})));
               }
-              section.append(form(fields,localized('إنهاء المعالجة وإبلاغ الطرفين','Resolve and notify both parties'),()=>act('CENTER_RESOLVE',{message:result.value})));
+              section.append(form(fields,localized('إنهاء المعالجة وإبلاغ الطرفين','Resolve and notify both parties'),()=>act('CENTER_RESOLVE',{message:result.value,...disposition()})));
             }
           }
           content.append(section);

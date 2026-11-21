@@ -10,7 +10,7 @@ type RequestInput = {
   recordRef: string | null; routingCenterId: string | null; details: string;
 };
 type Receipt = Omit<RequestInput, 'requestKey'> & { id: string; status: string; createdAt: Date };
-const receiptFields = Prisma.sql`"id","kind","domain","recordRef","routingCenterId","details","status","createdAt"`;
+const receiptFields = Prisma.sql`"id","kind","domain","recordRef","routingCenterId","details","status","createdAt","decisionDisposition","initialDisposition","executionAuditId"`;
 
 function parse(input: unknown): RequestInput {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BadRequestException('راجع بيانات الطلب.');
