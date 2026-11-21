@@ -93,7 +93,7 @@ async function fixture(options = {}) {
   const unit = await db.orgUnit.create({ data: { organizationId: center.id, type: 'CENTER', code: 'SYN-CTR', nameAr: 'مركز تجريبي' } });
   const position = await db.position.create({ data: { orgUnitId: unit.id, code: 'CENTER_ACCOUNTANT', titleAr: 'محاسب تجريبي' } });
   await db.employment.create({ data: { accountId: accountant.id, organizationId: center.id, orgUnitId: unit.id, positionId: position.id, workerClass: 'EMPLOYEE', status: 'ACTIVE' } });
-  return { buyer, preparer, approver, executor, foreign, accountant, center, rental, resource, code, evidence, providerRow, approvalGrant, executionGrant, ...receipt };
+  return { buyer, preparer, approver, executor, foreign, accountant, unit, center, rental, resource, code, evidence, providerRow, approvalGrant, executionGrant, ...receipt };
 }
 async function request(f, changes = {}) {
   const body = { idempotencyKey: randomUUID(), requestedAmountMinor: 10000, cause: 'CUSTOMER_CANCELLATION', reason: 'Synthetic original customer cancellation', ...changes };
@@ -185,6 +185,44 @@ async function unchanged(f) {
       assert.equal((await db.commerceCollectionEvidence.findUniqueOrThrow({ where: { id: f.evidence.id } })).providerRefundedMinor, 10000);
       assert.equal((await rentals.get(f.rental.id)).paymentStatus, 'REFUNDED'); assert.equal(f.providerRow.posts, 2);
       const history = await ok(call(f.buyer, f.rental.id + '/refund-requests')); assert.equal(history.requests[0].operations.length, 2);
+    });
+    await check('settlement reconciles two posted refunds and rejects duplicate, altered, or previously settled evidence', async () => {
+      const f = await fixture(), requestRow = await request(f);
+      const lines = [];
+      for (const amount of [3000, 7000]) {
+        const operation = await execute(f, await command(f, requestRow, amount));
+        assert.equal(operation.status, 'SUCCEEDED');
+        lines.push({ type: 'refund', payment_id: f.evidence.providerPaymentId, currency: 'SAR', source_currency: 'SAR',
+          payment_amount: 10000, amount: -amount, settlement_amount: -amount, fee: 0, tax: 0,
+          transacted_at: f.providerRow.payload.refunded_at });
+      }
+      const { FinanceAccessService } = load('finance/finance-access.service');
+      const { FinanceSettlementService } = load('finance/finance-settlement.service');
+      let statement = lines;
+      const source = { fetchSettlement: async id => ({ id, currency: 'SAR' }),
+        listSettlementLines: async () => ({ lines: statement, meta: { next_page: null } }) };
+      const service = new FinanceSettlementService(db, new FinanceAccessService(db), source, provider);
+      const capture = () => service.import(f.accountant.id, f.unit.id, randomUUID());
+      for (const reviewer of [f.approver, f.foreign]) {
+        await db.roleAssignment.create({ data: { accountId: reviewer.id, role: 'EXECUTIVE_APPROVER', status: 'ACTIVE', scope: { organizationId: f.center.id } } });
+      }
+      statement = [lines[0],lines[0]];
+      assert.equal((await capture()).mismatchedLineCount, 2);
+      statement = [{ ...lines[0], amount: -1, settlement_amount: -1 }, { ...lines[1], transacted_at: new Date(0).toISOString() }];
+      assert.equal((await capture()).mismatchedLineCount, 2);
+      statement = lines;
+      const first = await capture();
+      assert.equal(first.mismatchedLineCount, 0);
+      assert.equal(new Set(first.lines.map(line => line.refundOperationId)).size, 2);
+      await service.review(f.approver.id, first.id, 'APPROVED');
+      const operation = await db.rentalRefundOperation.findUniqueOrThrow({ where: { id: first.lines[0].refundOperationId } });
+      await db.rentalRefundOperation.update({ where: { id: operation.id }, data: { providerResult: { ...operation.providerResult, source: "UNVERIFIED" } } });
+      await assert.rejects(service.review(f.foreign.id, first.id, 'APPROVED'), /FINANCE_SETTLEMENT_RECONCILIATION_BLOCKED/);
+      await db.rentalRefundOperation.update({ where: { id: operation.id }, data: { providerResult: operation.providerResult } });
+      assert.equal((await service.review(f.foreign.id, first.id, 'APPROVED')).status, 'APPROVED');
+      const repeated = await capture();
+      await assert.rejects(service.review(f.approver.id, repeated.id, 'APPROVED'), /FINANCE_SETTLEMENT_RECONCILIATION_BLOCKED/);
+      assert.equal(f.providerRow.posts, 2);
     });
     await check('six concurrent identical executions dispatch one provider POST and post one ledger entry', async () => {
       const f = await fixture(), r = await request(f), c = await command(f, r, 10000);
