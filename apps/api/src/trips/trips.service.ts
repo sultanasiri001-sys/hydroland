@@ -11,7 +11,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { captureTripBookingContract, capturedTripPrice } from '../commerce/trip-booking-contract';
 
-type TripListRow={id:string;title:string;status:string;startsAt:Date;capacity:number;bookings:Array<{seats:number}>;safetyChecklists:Array<{id:string;decision:string;items:unknown;notes:string|null;decidedAt:Date|null;createdAt:Date}>;[key:string]:unknown};
+import { boatBookingInclude, bookableThroughCenter, requireCenterBoat } from './center-boat-booking';
+
 type TripPrice={pricePerSeatMinor:number;listPriceMinor?:number;discountActive?:boolean;currency:'SAR';configured:boolean};
 
 @Injectable()
@@ -32,14 +33,14 @@ export class TripsService {
     return{pricePerSeatMinor:priced.priceMinor,...(priced.discountActive?{listPriceMinor:amount,discountActive:true}:{}),currency:'SAR',configured:true};
   }
 
-  async list(){const gateSettings=await this.weatherGate.settings();const [safetyPolicy,capacityPolicy,weatherPolicy]=await Promise.all([this.policies.decision('BOOKING','SAFETY_APPROVAL'),this.policies.decision('BOOKING','CAPACITY_LIMIT'),this.policies.decision('WEATHER','WEATHER_GATE')]);const trips=(await this.db.trip.findMany({where:{status:'OPEN'},orderBy:{startsAt:'asc'},include:{bookings:{where:{status:{in:['PENDING','CONFIRMED']}},select:{seats:true}},safetyChecklists:{orderBy:{createdAt:'desc'},take:1,select:{id:true,decision:true,items:true,notes:true,decidedAt:true,createdAt:true}}}})) as TripListRow[];return Promise.all(trips.map(async(trip:TripListRow)=>{const bookedSeats=trip.bookings.reduce((sum:number,booking:{seats:number})=>sum+booking.seats,0),latestSafety=trip.safetyChecklists[0]??null,[location,review,price]=await Promise.all([this.weatherReviews.location(trip.id),this.weatherReviews.latest(trip.id),this.tripPrice(trip.id)]),weather=this.weatherGate.evaluateReview(review?.snapshot,review?.status,gateSettings,review?.context,review?.fetchedAt),{bookings,safetyChecklists,...base}=trip;return {...base,bookingPolicy:{safetyApproval:safetyPolicy.state,capacityLimit:capacityPolicy.state,weatherGate:weatherPolicy.state},bookedSeats,remainingSeats:Math.max(0,trip.capacity-bookedSeats),price,safety:latestSafety,location,weather:{snapshot:review?.snapshot??null,reviewStatus:review?.status??null,forecastAt:review?.forecastAt??null,fetchedAt:review?.fetchedAt??null,gate:gateSettings,evaluation:{...weather,blocking:weather.blocking&&weatherPolicy.enforce}}};}));}
+  async list(){const gateSettings=await this.weatherGate.settings();const [safetyPolicy,capacityPolicy,weatherPolicy]=await Promise.all([this.policies.decision('BOOKING','SAFETY_APPROVAL'),this.policies.decision('BOOKING','CAPACITY_LIMIT'),this.policies.decision('WEATHER','WEATHER_GATE')]);const trips=await this.db.trip.findMany({where:{status:'OPEN'},orderBy:{startsAt:'asc'},include:{...boatBookingInclude,bookings:{where:{status:{in:['PENDING','CONFIRMED']}},select:{seats:true}},safetyChecklists:{orderBy:{createdAt:'desc'},take:1,select:{id:true,decision:true,items:true,notes:true,decidedAt:true,createdAt:true}}}});return Promise.all(trips.filter(bookableThroughCenter).map(async(trip)=>{const bookedSeats=trip.bookings.reduce((sum:number,booking:{seats:number})=>sum+booking.seats,0),latestSafety=trip.safetyChecklists[0]??null,[location,review,price]=await Promise.all([this.weatherReviews.location(trip.id),this.weatherReviews.latest(trip.id),this.tripPrice(trip.id)]),weather=this.weatherGate.evaluateReview(review?.snapshot,review?.status,gateSettings,review?.context,review?.fetchedAt),{bookings,safetyChecklists,organization,marineAsset,...base}=trip;return {...base,centerName:organization?.displayName,bookingPolicy:{safetyApproval:safetyPolicy.state,capacityLimit:capacityPolicy.state,weatherGate:weatherPolicy.state},bookedSeats,remainingSeats:Math.max(0,trip.capacity-bookedSeats),price,safety:latestSafety,location,weather:{snapshot:review?.snapshot??null,reviewStatus:review?.status??null,forecastAt:review?.forecastAt??null,fetchedAt:review?.fetchedAt??null,gate:gateSettings,evaluation:{...weather,blocking:weather.blocking&&weatherPolicy.enforce}}};}));}
 
   async book(accountId:string,tripId:string,seats:number){
     if(!Number.isInteger(seats)||seats<1)throw new BadRequestException('Invalid seats.');
     const reviewIssues:string[]=[];
     const result=await this.db.serializable(async tx=>{
       const controls=await this.bookingControls(tx),{gateSettings,safetyPolicy,weatherPolicy,capacityPolicy}=controls;
-      const trip=await tx.trip.findUnique({where:{id:tripId},include:{organization:true}});if(!trip||trip.status!=='OPEN')throw new NotFoundException('Trip unavailable.');if(trip.startsAt<=new Date())throw new ConflictException('Trip already started.');
+      const trip=await tx.trip.findUnique({where:{id:tripId},include:boatBookingInclude});if(!trip||trip.status!=='OPEN')throw new NotFoundException('Trip unavailable.');requireCenterBoat(trip);if(trip.startsAt<=new Date())throw new ConflictException('Trip already started.');
       const existing=await tx.booking.findFirst({where:{tripId,accountId,organizationId:null,status:{in:['PENDING','CONFIRMED']}},select:{id:true}});
       if(existing)throw new ConflictException('An active booking already exists for this trip.');
       const previousCancelled=await tx.booking.findFirst({where:{tripId,accountId,organizationId:null,status:'CANCELLED'},select:{id:true}});
@@ -78,8 +79,9 @@ export class TripsService {
       const previousCancelled=await tx.booking.findFirst({where:{organizationId,tripId:input.tripId,accountId,status:'CANCELLED'},select:{id:true}});
       const active=await tx.booking.findFirst({where:{organizationId,tripId:input.tripId,status:{in:['PENDING','CONFIRMED']}},select:{id:true}});
       if(active)throw new ConflictException('للجهة حجز قائم لهذه الرحلة. افتح الحجز الحالي لتعديله أو تابع طلبه.');
-      const trip=await tx.trip.findUnique({where:{id:input.tripId},include:{organization:true}});
+      const trip=await tx.trip.findUnique({where:{id:input.tripId},include:boatBookingInclude});
       if(!trip||trip.status!=='OPEN')throw new NotFoundException('الرحلة غير متاحة.');
+      requireCenterBoat(trip);
       if(trip.startsAt<=new Date())throw new ConflictException('بدأت الرحلة بالفعل.');
       const latestSafety=await tx.safetyChecklist.findFirst({where:{tripId:input.tripId},orderBy:{createdAt:'desc'},select:{decision:true}});
       if(latestSafety?.decision==='DEFERRED')throw new ConflictException('تم تأجيل الرحلة بقرار سلامة.');

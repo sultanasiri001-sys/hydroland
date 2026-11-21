@@ -3,7 +3,7 @@ import {openWorkspaceSwitcher} from './portal-test-helpers.js';
 
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 
-test('boat operator creates, edits and publishes an organization scoped trip draft',async({page})=>{
+test('boat operator creates and edits an organization scoped trip draft',async({page})=>{
  const profile={id:'marine-trips-owner',email:'marine-trips@hydroland.test',status:'ACTIVE',roleAssignments:[{id:'boat-role',role:'BOAT_OWNER',status:'ACTIVE'}],person:{firstName:'Marine',lastName:'Trips',phone:null,professional:null}};
  const marine={id:'org-marine-trips',displayName:'المشغل البحري',kind:'MARINE_OPERATOR',status:'ACTIVE'};
  const center={id:'org-center-excluded',displayName:'مركز غوص مستبعد',kind:'DIVE_CENTER',status:'ACTIVE'};
@@ -30,9 +30,11 @@ test('boat operator creates, edits and publishes an organization scoped trip dra
  await panel.locator('[name="title"]').fill('رحلة الساحل');await panel.locator('[name="startsAt"]').fill('2030-05-01T10:00');await panel.locator('[name="endsAt"]').fill('2030-05-01T12:00');await panel.locator('[name="capacity"]').fill('8');await panel.locator('[name="pricePerSeatMinor"]').fill('12500');await panel.locator('[name="locationName"]').fill('مرسى تجريبي');await panel.locator('[name="latitude"]').fill('24.7');await panel.locator('[name="longitude"]').fill('46.6');await panel.locator('[data-mt-form] button[type="submit"]').click();
  const card=panel.locator('[data-mt-trip="marine-trip-draft"]');await expect(card).toContainText('رحلة الساحل');await expect(card).toContainText('125.00 ر.س للمقعد');expect(state.trip.organizationId).toBe(marine.id);expect(state.trip.status).toBe('DRAFT');
  await card.locator('[data-mt-edit]').click();await panel.locator('[name="title"]').fill('رحلة الساحل المعدلة');await panel.locator('[data-mt-form] button[type="submit"]').click();await expect(panel.locator('[data-mt-trip="marine-trip-draft"]')).toContainText('رحلة الساحل المعدلة');
- await panel.locator('[data-mt-trip="marine-trip-draft"] [data-mt-publish]').click();await expect.poll(()=>state.published).toBe(true);await expect(panel.locator('[data-mt-trip="marine-trip-draft"] .hl-mt-state')).toHaveText('OPEN');expect(state.organizationsCalls).toBeGreaterThan(0);expect(state.listCalls).toBeGreaterThan(0);
+ await expect(card.locator('[data-mt-publish]')).toHaveCount(0);expect(state.published).toBe(false);
+ // Historical operator bookings remain visible in the read-only operations view.
+ state.trip={...state.trip,status:'OPEN'};await panel.locator('[data-mt-refresh]').click();
  const bookingCard=panel.locator('[data-mt-trip="marine-trip-draft"]');await bookingCard.locator('[data-mt-bookings]').click();await expect(bookingCard.locator('[data-mt-bookings-view]')).toContainText('عدد الحجوزات المطابقة: 1');await expect(bookingCard.locator('[data-mt-booking="marine-booking-1"]')).toContainText('عميل بحري');expect(state.bookingQuery.get('status')).toBe('ALL');await bookingCard.locator('[data-mt-booking-filter] input[name="q"]').fill('marine-booking');await bookingCard.locator('[data-mt-booking-filter] select[name="status"]').selectOption('PENDING');await bookingCard.locator('[data-mt-booking-filter] button[type="submit"]').click();await expect.poll(()=>state.bookingQuery?.get('q')).toBe('marine-booking');expect(state.bookingQuery.get('status')).toBe('PENDING');await bookingCard.locator('[data-mt-booking-open="marine-booking-1"]').click();await expect(bookingCard.locator('[data-mt-booking-detail]')).toContainText('مشارك');await expect(bookingCard.locator('[data-mt-booking-detail]')).toContainText('عرض فقط');await expect(bookingCard.locator('[data-mt-booking-detail] button[data-booking-action]')).toHaveCount(0);
- await expect(panel).toContainText('النشر لا يمنح موافقة السلامة أو الجاهزية التشغيلية');await page.evaluate(()=>document.dispatchEvent(new CustomEvent('hydroland:role-changed',{detail:{role:'center'}})));await expect(panel).toBeHidden();await expect(panel).not.toContainText('عميل بحري');
+ await expect(panel).toContainText('يفتح مركز الغوص الحجز');await page.evaluate(()=>document.dispatchEvent(new CustomEvent('hydroland:role-changed',{detail:{role:'center'}})));await expect(panel).toBeHidden();await expect(panel).not.toContainText('عميل بحري');
 });
 
 

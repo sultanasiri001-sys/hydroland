@@ -1,3 +1,4 @@
+import { boatBookingInclude, requireCenterBoat } from '../trips/center-boat-booking';
 import { tripCalendarReservation } from '../trips/trip-calendar-reservation';
 import { FinanceAccessService } from '../finance/finance-access.service';
 import { requirePostedCommerceCollection } from '../commerce/rental-collection-ledger';
@@ -27,7 +28,7 @@ export class OrganizationBookingCheckoutService {
     private readonly integrations: IntegrationService, private readonly provider: MoyasarPaymentProviderService) {}
 
   private async booking(tx: Prisma.TransactionClient, organizationId: string, bookingId: string) {
-    const booking = await tx.booking.findFirst({ where: { id: bookingId, organizationId }, include: { trip: true } });
+    const booking = await tx.booking.findFirst({ where: { id: bookingId, organizationId }, include: { trip: {include:boatBookingInclude} } });
     if (!booking) throw new NotFoundException('لم يعثر على الحجز في هذه الجهة.');
     const req = tripBookingPaymentRequirement(booking);
     const contract = record(booking.contractSnapshot), supplier = record(contract.issuer);
@@ -43,6 +44,7 @@ export class OrganizationBookingCheckoutService {
       organization: { status: 'ACTIVE' }, account: { status: 'ACTIVE' } }, select: { id: true } });
     if (!member) throw new NotFoundException('الحجز غير متاح.');
     const data = await this.booking(tx, organizationId, bookingId);
+    requireCenterBoat(data.booking.trip);
     const seller = await tx.organization.findFirst({ where: { id: data.booking.trip.organizationId!, kind: 'DIVE_CENTER', status: 'ACTIVE' }, select: { id: true } });
     if (!seller) throw new ConflictException('المركز المورّد غير متاح للتحصيل.');
     const grant = await requireBookingPrepaymentMandate(tx, accountId, organizationId, data.amount);

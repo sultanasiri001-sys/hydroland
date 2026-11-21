@@ -1,3 +1,4 @@
+import { boatBookingInclude, isBoatTrip, requireCenterBoat } from './center-boat-booking';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, Trip } from '@prisma/client';
 import { createHash } from 'crypto';
@@ -132,6 +133,7 @@ export class TripLifecycleService {
       if (operational) await this.clearance.assertCurrent(tripId, operational.clearance.id, tx);
       const nextStatus = { PUBLISH: 'OPEN', REOPEN: 'OPEN', CLOSE: 'CLOSED', CANCEL: 'CANCELLED', COMPLETE: 'COMPLETED' }[command.action] as Trip['status'];
       if (nextStatus === 'OPEN') {
+        if(isBoatTrip(trip.type)) requireCenterBoat(await tx.trip.findUniqueOrThrow({where:{id:tripId},include:boatBookingInclude}));
         const price = await tx.operationalSetting.findUnique({ where: { key: 'trip-price:' + tripId } });
         const value = price?.value as Record<string, unknown> | null;
         if (!value || value.currency !== 'SAR' || !Number.isSafeInteger(value.pricePerSeatMinor) || Number(value.pricePerSeatMinor) < 0) throw new ConflictException('حدد سعر الرحلة قبل فتح الحجز.');

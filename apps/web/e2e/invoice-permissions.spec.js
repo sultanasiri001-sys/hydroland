@@ -8,8 +8,8 @@ test('a center requests invoicing and the platform reviews the requested change'
     roleAssignments:['DIVE_CENTER','ADMIN'].map(role => ({id:role, role, status:'ACTIVE'})),
     person:{firstName:'مشرف', lastName:'الاختبار', professional:null}};
   const targets = [
-    {kind:'INSTRUCTOR', targetId:'trainer', targetName:'مدرب الاختبار', enabled:false, pending:false},
-    {kind:'MARINE_OPERATOR', targetId:'marine', targetName:'مشغّل الاختبار', enabled:true, pending:false},
+    {kind:'INSTRUCTOR', targetId:'test-center', targetName:center.displayName, enabled:false, pending:false},
+    {kind:'MARINE_OPERATOR', targetId:'test-center', targetName:center.displayName, enabled:true, pending:false},
   ];
   const requests = [];
   const json = (route, body, status = 200) => route.fulfill({status, json:body});
@@ -24,7 +24,7 @@ test('a center requests invoicing and the platform reviews the requested change'
     if (path === 'review') return json(route, requests.filter(row => row.status === 'PENDING'));
     const body = route.request().postDataJSON();
     if (path === 'centers/test-center/requests') {
-      const target = targets.find(item => item.targetId === body.targetId);
+      const target = targets.find(item => item.kind === body.kind && item.targetId === body.targetId);
       target.pending = true;
       requests.push({...body, id:body.requestId, targetName:target.targetName, centerName:center.displayName,
         requestedAt:new Date().toISOString(), status:'PENDING'});
@@ -34,7 +34,7 @@ test('a center requests invoicing and the platform reviews the requested change'
     if (!row) return json(route, {}, 404);
     row.status = body.decision;
     row.decisionNote = body.note;
-    const target = targets.find(item => item.targetId === row.targetId);
+    const target = targets.find(item => item.kind === row.kind && item.targetId === row.targetId);
     target.pending = false;
     if (row.status === 'APPROVED') target.enabled = row.enable;
     return json(route, row, 201);
@@ -64,19 +64,19 @@ test('a center requests invoicing and the platform reviews the requested change'
   await dialog.getByRole('button', {name:'طلب فتح الفوترة'}).click();
   await expect(dialog.getByRole('status')).toHaveText('وصل الطلب إلى الإدارة العليا.');
   await expect(dialog.getByRole('button', {name:'طلب فتح الفوترة'})).toHaveCount(0);
-  await dialog.getByLabel('نوع صاحب الفاتورة').selectOption('MARINE_OPERATOR');
+  await dialog.getByLabel('نوع الخدمة').selectOption('MARINE_OPERATOR');
   await dialog.getByLabel('سبب الطلب').fill('مراجعة بيانات المشغّل');
   await dialog.getByRole('button', {name:'طلب إيقاف الفوترة'}).click();
   await expect(dialog.locator('article')).toHaveCount(2);
   expect(requests.map(({targetId, enable}) => ({targetId, enable}))).toEqual([
-    {targetId:'trainer',enable:true}, {targetId:'marine',enable:false},
+    {targetId:'test-center',enable:true}, {targetId:'test-center',enable:false},
   ]);
   await dialog.getByRole('button', {name:'إغلاق'}).click();
   await open('admin');
-  const trainer = dialog.locator('article').filter({hasText:'مدرب الاختبار'});
+  const trainer = dialog.locator('article').filter({hasText:'اعتماد فواتير خدمات التدريب'});
   await trainer.getByRole('button', {name:'اعتماد'}).click();
   await expect(trainer).toHaveCount(0);
-  const marine = dialog.locator('article').filter({hasText:'مشغّل الاختبار'});
+  const marine = dialog.locator('article').filter({hasText:'مراجعة بيانات المشغّل'});
   await marine.getByRole('button', {name:'رفض'}).click();
   await expect(dialog.getByRole('status')).toHaveText('أدخل سبب الرفض.');
   await marine.getByLabel('ملاحظة القرار').fill('الرخصة سارية');
@@ -85,5 +85,31 @@ test('a center requests invoicing and the platform reviews the requested change'
   await dialog.getByRole('button', {name:'إغلاق'}).click();
   await open('center');
   await expect(dialog).toContainText('الفوترة مفتوحة');
-  await expect(dialog.locator('article').filter({hasText:'مشغّل الاختبار'})).toContainText('الرخصة سارية');
+  await expect(dialog.locator('article').filter({hasText:'مراجعة بيانات المشغّل'})).toContainText('الرخصة سارية');
+});
+
+test('the center opens the stored original PDF for printing', async ({page})=>{
+  const {PDFDocument}=await import('pdf-lib');
+  const pdf=await PDFDocument.create();pdf.addPage([180,280]);
+  const original=Buffer.from(await pdf.save());
+  await page.goto('/',{waitUntil:'domcontentloaded'});
+  await page.waitForSelector('#hl-invoices-dialog',{state:'attached'});
+  await page.route('**/account/invoices?*',route=>route.fulfill({json:{items:[{
+    sourceType:'TRAINING_ENROLLMENT',sourceId:'course-42',amountMinor:5000,currency:'SAR',occurredAt:new Date().toISOString(),
+    sellerName:'مركز الاختبار',isSale:true,canPrint:true,hasDocument:true,number:'CTR-42'
+  }],nextOffset:null}}));
+  await page.route('**/account/invoices/TRAINING_ENROLLMENT/course-42/document',route=>route.fulfill({contentType:'application/pdf',body:original}));
+  await page.evaluate(()=>{
+    window.HydrolandAuth={isAuthenticated:()=>true,getSessionVersion:()=>1,authorizedFetch:path=>fetch('/api/v1'+path)};
+    window.HydrolandPortalAccess={getCurrentRole:()=>'center'};
+    const trigger=document.createElement('button');trigger.dataset.accountInvoices='';document.body.append(trigger);trigger.click();
+  });
+  const popupPromise=page.waitForEvent('popup');
+  await page.getByRole('button',{name:'طباعة فاتورة المركز'}).click();
+  const popup=await popupPromise;
+  await expect(popup).toHaveTitle('مركز الاختبار · CTR-42');
+  await expect(popup.locator('iframe')).toBeAttached();
+  const bytes=await popup.locator('iframe').evaluate(async frame=>Array.from(new Uint8Array(await (await fetch(frame.src)).arrayBuffer())));
+  expect(Buffer.from(bytes)).toEqual(original);
+  await expect(popup.getByRole('button',{name:'طباعة فاتورة المركز'})).toBeVisible();
 });

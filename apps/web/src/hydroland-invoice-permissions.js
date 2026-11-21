@@ -1,22 +1,22 @@
 (() => {
   const ui = window.HydrolandI18n.createScope('invoice-permissions', {
     'طلبات صلاحية الفوترة':'Invoice permission requests', 'مراجعة صلاحيات الفوترة':'Review invoice permissions',
-    'إغلاق':'Close', 'تحديث':'Refresh', 'المركز':'Center', 'نوع صاحب الفاتورة':'Issuer type',
-    'مدرب مستقل':'Independent instructor', 'مشغّل وسائط بحرية':'Marine operator', 'صاحب الفاتورة':'Invoice issuer',
+    'إغلاق':'Close', 'تحديث':'Refresh', 'المركز':'Center', 'نوع الخدمة':'Service type',
+    'التدريب':'Training', 'الرحلات البحرية':'Marine trips', 'المركز المُصدر للفاتورة':'Issuing center',
     'الفوترة مفتوحة':'Invoicing enabled', 'الفوترة موقوفة':'Invoicing disabled',
     'قيد المراجعة':'Pending review', 'معتمد':'Approved', 'مرفوض':'Rejected', 'فتح الفوترة':'Enable invoicing',
     'إيقاف الفوترة':'Disable invoicing', 'طلب فتح الفوترة':'Request to enable invoicing',
     'طلب إيقاف الفوترة':'Request to disable invoicing', 'سبب الطلب':'Reason for request',
     'سجل طلبات المركز':'Center request history', 'لا توجد طلبات.':'No requests.',
     'لا توجد طلبات قيد المراجعة.':'No requests pending review.', 'لا يوجد مركز متاح لهذا الحساب.':'No center is available to this account.',
-    'لا يوجد صاحب فاتورة مرتبط بالمركز من هذا النوع.':'No issuer of this type is linked to the center.',
+    'هذه الخدمة غير متاحة للمركز.':'This service is unavailable for the center.',
     'ملاحظة القرار':'Decision note', 'اعتماد':'Approve', 'رفض':'Reject', 'أدخل سبب الرفض.':'Enter a reason for rejection.',
     'جارٍ التحميل…':'Loading…', 'تعذّر تحميل الطلبات.':'Could not load requests.',
     'تعذّر حفظ الطلب.':'Could not save the request.', 'وصل الطلب إلى الإدارة العليا.':'Request submitted for review.',
     'تم اعتماد الطلب.':'Request approved.', 'تم رفض الطلب.':'Request rejected.',
     'تظل الفواتير السابقة متاحة عند الإيقاف.':'Existing invoices remain accessible when invoicing is disabled.'
   });
-  const types = {INSTRUCTOR:'مدرب مستقل', MARINE_OPERATOR:'مشغّل وسائط بحرية'};
+  const types = {INSTRUCTOR:'التدريب', MARINE_OPERATOR:'الرحلات البحرية'};
   const states = {PENDING:'قيد المراجعة', APPROVED:'معتمد', REJECTED:'مرفوض'};
   const dialog = document.createElement('dialog');
   dialog.id = 'hl-invoice-permissions';
@@ -118,14 +118,14 @@
     button(form, 'رفض', () => decide('REJECTED'));
   }
   function centerForm(parent, targets, current) {
-    const kind = field(parent, 'نوع صاحب الفاتورة', 'select');
+    const kind = field(parent, 'نوع الخدمة', 'select');
     for (const [value, label] of Object.entries(types)) option(kind, value, label, true);
     const fields = add(parent, 'div');
     function selectKind() {
       fields.replaceChildren();
       const available = targets.filter(item => item.kind === kind.value);
-      if (!available.length) {add(fields, 'p', 'لا يوجد صاحب فاتورة مرتبط بالمركز من هذا النوع.'); return;}
-      const issuer = field(fields, 'صاحب الفاتورة', 'select');
+      if (!available.length) {add(fields, 'p', 'هذه الخدمة غير متاحة للمركز.'); return;}
+      const issuer = field(fields, 'المركز المُصدر للفاتورة', 'select');
       available.forEach(target => option(issuer, target.targetId, target.targetName));
       const details = add(fields, 'div');
       function selectTarget() {

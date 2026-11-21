@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 export type InvoiceKey = { sourceType: string; sourceId: string };
 export type InvoiceRow = InvoiceKey & {
   amountMinor: number; currency: string; occurredAt: Date; sellerId: string | null; sellerName: string | null;
-  buyerOrganizationId: string | null; isPurchase: boolean; isSale: boolean; canAttach: boolean; number: string | null; nativeStatus: string | null; hasDocument: boolean;
+  buyerOrganizationId: string | null; isPurchase: boolean; isSale: boolean; canPrint: boolean; canAttach: boolean; number: string | null; nativeStatus: string | null; hasDocument: boolean;
 };
 
 // Keep the original payment/order as identity even if finance reconciles it later.
@@ -58,33 +58,19 @@ export function invoiceRegister(accountId: string, key?: InvoiceKey) {
         earning."centerOrganizationId"::text,earning."amountMinor",earning.currency,earning."createdAt",NULL::text,
         CASE WHEN earning.status='VOIDED' THEN 'VOID' END
       FROM "InstructorEarning" earning
-      LEFT JOIN "AccountInvoiceDocument" original ON original."sourceType"='INSTRUCTOR_SERVICE'
+      JOIN "AccountInvoiceDocument" original ON original."sourceType"='INSTRUCTOR_SERVICE'
         AND original."sourceId"=earning.id::text AND original."sellerId"='instructor:' || earning."instructorAccountId"::text
         AND original."buyerOrganizationId"=earning."centerOrganizationId"::text
-      WHERE earning."centerOrganizationId" IS NOT NULL AND (original."sourceId" IS NOT NULL OR (
-        earning.status IN ('APPROVED','SETTLED') AND earning."approvedAt" IS NOT NULL
-        AND earning."approvedByAccountId"::text<>earning."instructorAccountId"::text AND earning."amountMinor">0
-        AND (SELECT agreement.mode FROM "InstructorCompensationAgreement" agreement
-          WHERE agreement."organizationId"::text=earning."centerOrganizationId"::text
-          AND agreement."instructorAccountId"::text=earning."instructorAccountId"::text
-          AND agreement."recordedAt"<=earning."createdAt" ORDER BY agreement.revision DESC LIMIT 1)
-          IN ('FIXED','PERCENTAGE','FIXED_PLUS_PERCENTAGE')
-        AND (SELECT BOOL_AND(e."workerClass" IN ('INDEPENDENT_PROFESSIONAL','CONTRACTOR'))
-          FROM "Employment" e WHERE e."organizationId"::text=earning."centerOrganizationId"::text
-          AND e."accountId"::text=earning."instructorAccountId"::text AND e.status IN ('ACTIVE','ON_LEAVE','TERMINATED','OFFBOARDED')
-          AND COALESCE(e."startsAt",e."createdAt")<=earning."createdAt"
-          AND (e."endsAt">=earning."createdAt" OR (e."endsAt" IS NULL AND e.status IN ('ACTIVE','ON_LEAVE'))))
-      ))
     ), parties AS (
       SELECT s.*, ((s.buyer_org IS NULL AND s.buyer=${accountId}) OR mb.id IS NOT NULL) AS purchase, (ms.id IS NOT NULL OR COALESCE(s.seller='instructor:' || ${accountId},FALSE)) AS sale,
-        (ms.id IS NOT NULL OR (COALESCE(s.seller='instructor:' || ${accountId},FALSE) AND EXISTS (
-          SELECT 1 FROM "RoleAssignment" a WHERE a."accountId"::text=${accountId} AND a.role='INSTRUCTOR' AND a.status='ACTIVE'))) AS attach
+        ms.id IS NOT NULL AS attach
       FROM sources s LEFT JOIN managed mb ON mb.id=s.buyer_org LEFT JOIN managed ms ON ms.id=s.seller
       ${key ? Prisma.sql`WHERE s."sourceType"=${key.sourceType} AND s."sourceId"=${key.sourceId}` : Prisma.empty}
     )
     SELECT s."sourceType",s."sourceId",s."amountMinor",s.currency,s.occurred AS "occurredAt",s.seller AS "sellerId",
-      COALESCE(o."displayName",NULLIF(concat_ws(' ',person."firstName",person."lastName"),'')) AS "sellerName",
-      s.buyer_org AS "buyerOrganizationId",s.purchase AS "isPurchase",s.sale AS "isSale",(s.attach AND (permission.scope IS NULL OR COALESCE(approval.enable,FALSE))) AS "canAttach",s.native AS "nativeStatus",
+      COALESCE(NULLIF(o."legalName",''),o."displayName",NULLIF(concat_ws(' ',person."firstName",person."lastName"),'')) AS "sellerName",
+      s.buyer_org AS "buyerOrganizationId",s.purchase AS "isPurchase",s.sale AS "isSale",(s.attach AND (permission.activity IS NULL OR (o.kind='DIVE_CENTER' AND COALESCE(approval.enable,TRUE)))) AS "canAttach",
+      (s.sale AND o.kind='DIVE_CENTER' AND permission.activity IS NOT NULL AND d."sourceId" IS NOT NULL) AS "canPrint",s.native AS "nativeStatus",
       COALESCE(d.number,CASE WHEN s.native IN ('ISSUED','PAID','VOID') THEN s.num END) AS number,
       d."sourceId" IS NOT NULL AS "hasDocument"
     FROM parties s LEFT JOIN "Organization" o ON o.id::text=s.seller
@@ -92,14 +78,17 @@ export function invoiceRegister(accountId: string, key?: InvoiceKey) {
     LEFT JOIN "Person" person ON person.id=instructor."personId"
     LEFT JOIN "AccountInvoiceDocument" d ON d."sourceType"=s."sourceType" AND d."sourceId"=s."sourceId" AND d."sellerId"=s.seller
       AND d."buyerOrganizationId" IS NOT DISTINCT FROM s.buyer_org
-    CROSS JOIN LATERAL (SELECT CASE
-      WHEN s."sourceType"='INSTRUCTOR_SERVICE' THEN 'instructor:' || s.buyer_org || ':' || substr(s.seller,length('instructor:')+1)
-      WHEN s."sourceType"='TRIP_PAYMENT' AND o.kind='MARINE_OPERATOR' THEN 'marine:' || s.seller
-    END AS scope) permission
+    LEFT JOIN "Payment" pay ON s."sourceType"='TRIP_PAYMENT' AND pay.id::text=s."sourceId"
+    LEFT JOIN "Booking" booking ON booking.id=pay."bookingId"
+    LEFT JOIN "Trip" trip ON trip.id=booking."tripId"
+    CROSS JOIN LATERAL (SELECT CASE WHEN s."sourceType"='TRAINING_ENROLLMENT' THEN 'INSTRUCTOR'
+      WHEN s."sourceType"='TRIP_PAYMENT' AND (UPPER(trip.type) IN ('BOAT','BOAT_DIVE','MARINE_TRIP') OR o.kind='MARINE_OPERATOR') THEN 'MARINE_OPERATOR'
+    END AS activity) permission
     LEFT JOIN LATERAL (
-      SELECT r.enable FROM "InvoicePermissionRequest" r WHERE r."scopeKey"=permission.scope AND r.status='APPROVED'
+      SELECT r.enable FROM "InvoicePermissionRequest" r WHERE r."scopeKey"='center:' || s.seller || ':' || permission.activity
+        AND r.status='APPROVED' AND r."centerId"=s.seller AND r."targetId"=s.seller
       ORDER BY r.sequence DESC LIMIT 1
     ) approval ON TRUE
-    WHERE (s.purchase OR s.sale) AND (permission.scope IS NULL OR approval.enable
+    WHERE (s.purchase OR s.sale) AND (permission.activity IS NULL OR o.kind='DIVE_CENTER'
       OR d."sourceId" IS NOT NULL OR s.native IN ('ISSUED','PAID','VOID'))`;
 }

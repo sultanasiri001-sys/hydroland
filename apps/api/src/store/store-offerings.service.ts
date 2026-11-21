@@ -222,7 +222,7 @@ export class StoreOfferingsService {
 
   async publicCourses(){
     const policy=await trainingOperationalPolicy(this.db);
-    const rows=await this.db.storeCourseOffer.findMany({where:{status:'ACTIVE',startsAt:{gt:new Date()},organization:{status:'ACTIVE'}},orderBy:{startsAt:'asc'},include:{organization:{select:{displayName:true}},_count:{select:{enrollments:{where:{status:{not:'CANCELLED'}}}}}}});
+    const rows=await this.db.storeCourseOffer.findMany({where:{status:'ACTIVE',startsAt:{gt:new Date()},organization:{kind:'DIVE_CENTER',status:'ACTIVE'}},orderBy:{startsAt:'asc'},include:{organization:{select:{displayName:true}},_count:{select:{enrollments:{where:{status:{not:'CANCELLED'}}}}}}});
     return rows.map(({_count,saleDetails,...row})=>({...row,...priceActivity(row.priceMinor,saleDetails),bookingPolicy:{capacityLimit:policy.capacityLimit?'ENABLED':'DISABLED'},remainingSeats:Math.max(0,row.capacity-_count.enrollments)}));
   }
 
@@ -231,7 +231,7 @@ export class StoreOfferingsService {
     return this.db.serializable(async tx=>{
       const account=await tx.account.findFirst({where:{id:accountId,status:'ACTIVE'},select:{id:true}});
       if(!account)throw new ForbiddenException('يتطلب التسجيل حسابًا نشطًا.');
-      const course=await tx.storeCourseOffer.findFirst({where:{id:courseId,status:'ACTIVE',startsAt:{gt:new Date()},organization:{status:'ACTIVE'}},include:{organization:{select:{id:true,displayName:true,legalName:true,registrationNumber:true,address:true}}}});
+      const course=await tx.storeCourseOffer.findFirst({where:{id:courseId,status:'ACTIVE',startsAt:{gt:new Date()},organization:{kind:'DIVE_CENTER',status:'ACTIVE'}},include:{organization:{select:{id:true,displayName:true,legalName:true,registrationNumber:true,address:true}}}});
       if(!course)throw new NotFoundException('الدورة غير متاحة للتسجيل.');
       const existing=await tx.trainingEnrollment.findFirst({where:{storeCourseOfferId:courseId,studentAccountId:accountId,status:{not:'CANCELLED'}}});
       if(existing)return existing;

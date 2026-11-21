@@ -19,6 +19,7 @@ interface TripBookingContractInput {
     title: string;
     startsAt: Date;
     endsAt: Date;
+    marineAssetId?: string | null;
     organizationId: string | null;
     organization: CommerceIssuerSource | null;
   };
@@ -42,7 +43,7 @@ export function captureTripBookingContract(input: TripBookingContractInput) {
       source: Object.freeze({ kind: 'TRIP_BOOKING', id: bookingId, parentId: null, offeringId: trip.id }),
       customerAccountId: accountId,
       buyerOrganizationId,
-      ...organizationTerms,
+      ...organizationTerms, ...(trip.marineAssetId ? {marineAssetId:trip.marineAssetId} : {}),
       kind: 'TRIP',
       quantity: seats,
       unitPriceMinor: null,
@@ -63,7 +64,7 @@ export function captureTripBookingContract(input: TripBookingContractInput) {
     currency: price.currency, recordedAt: createdAt.toISOString(),
     originalStartsAt: trip.startsAt.toISOString(), originalEndsAt: trip.endsAt.toISOString(),
   });
-  return Object.freeze({ ...contract, buyerOrganizationId, ...organizationTerms });
+  return Object.freeze({ ...contract, buyerOrganizationId, ...organizationTerms, ...(trip.marineAssetId ? {marineAssetId:trip.marineAssetId} : {}) });
 }
 
 /** Replays display the saved contract price; current catalog prices are irrelevant. */

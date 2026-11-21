@@ -434,7 +434,32 @@ try {
   });
   assert.equal(await db.financeEntry.count({where: {id: {in: allFinanceIds}}}), allFinanceIds.length);
   assert.ok(requests.filter(row => row.method === 'POST').every(row => row.url === '/v1/invoices' || /^\/v1\/payments\/[a-f0-9-]+\/refund$/.test(row.url)));
-  await check('original invoices link purchases, independent instructor services, center, boat and shop sales to their parties', async()=>{
+  await check('a center booking binds the vessel and center seller and rejects operator-owned or unlinked boats',async()=>{
+    const {TripsService}=await load('trips/trips.service.js');
+    const {BookingParticipantService}=await load('trips/booking-participant.service.js');
+    const policies={decision:async()=>({state:'ENABLED',enforce:true,review:false})};
+    const trips=new TripsService({},db,{settings:async()=>({}),evaluateReview:()=>({blocking:false})},
+      {latest:async()=>null},new BookingParticipantService(db,policies,audit),policies,audit);
+    const vessel=await db.marineAsset.create({data:{name:'Fixture vessel',reviewCenterId:centerA.id,organizationId:centerB.id,assetType:'DIVE_BOAT',status:'ACTIVE',passengerCapacity:4}});
+    const now=Date.now(), data={title:'Center reservation',type:'BOAT',startsAt:new Date(now+86400000),endsAt:new Date(now+90000000),capacity:3,status:'OPEN'};
+    const trip=await db.trip.create({data:{...data,organizationId:centerA.id,marineAssetId:vessel.id}});
+    const unlinked=await db.trip.create({data:{...data,organizationId:centerA.id}});
+    const operator=await db.organization.create({data:{kind:'MARINE_OPERATOR',displayName:'Synthetic boat owner',status:'ACTIVE',ownerId:other.id}});
+    const direct=await db.trip.create({data:{...data,organizationId:operator.id,marineAssetId:vessel.id}});
+    const wrongCenter=await db.trip.create({data:{...data,organizationId:centerB.id,marineAssetId:vessel.id}});
+    for(const row of [direct,unlinked,wrongCenter]) await assert.rejects(trips.book(buyer.id,row.id,1),status(409));
+    await db.safetyChecklist.create({data:{tripId:trip.id,decision:'ALLOWED',items:[]}});
+    await db.operationalSetting.create({data:{key:'trip-price:'+trip.id,value:{pricePerSeatMinor:15000,currency:'SAR'}}});
+    const booking=await trips.book(buyer.id,trip.id,1);
+    assert.equal(booking.contractSnapshot.issuer.organizationId,centerA.id);
+    assert.equal(booking.contractSnapshot.issuer.legalName,centerA.legalName);
+    assert.equal(booking.contractSnapshot.marineAssetId,vessel.id);
+    assert.throws(()=>repository.createEnrollment({studentAccountId:buyer.id,courseCode:'UNCENTERED'}),status(400));
+    await assert.rejects(repository.createEnrollment({studentAccountId:buyer.id,centerOrganizationId:operator.id,courseCode:'OPERATOR'}),status(400));
+    const enrolled=await repository.createEnrollment({studentAccountId:buyer.id,centerOrganizationId:centerA.id,courseCode:'CENTER'});
+    assert.equal(enrolled.centerOrganizationId,centerA.id);
+  });
+  await check('only the center can attach and print training and marine invoices, with approved switches and archived originals', async()=>{
     await verifyAccountInvoices({db,base:origin,owner,buyer,accountant,account,center:centerA,otherCenter:centerB,id});
   });
   console.log(JSON.stringify({result: 'PASS', suite: 'training-checkout-postgresql-http', passed: cases.length, failed: 0, cases,

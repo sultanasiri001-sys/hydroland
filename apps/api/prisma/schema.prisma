@@ -747,6 +747,8 @@ enum BookingStatus {
 }
 
 model Trip {
+  marineAssetId String?
+  marineAsset MarineAsset? @relation(fields:[marineAssetId], references:[id], onDelete:Restrict)
   id String @id @default(uuid())
   title String
   type String
@@ -2600,6 +2602,7 @@ enum MarineReadinessStatus {
 }
 
 model MarineAsset {
+  trips Trip[]
   reviewCenterId String?
   id String @id @default(uuid())
   organizationId String
