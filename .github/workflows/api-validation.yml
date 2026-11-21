@@ -151,7 +151,7 @@ jobs:
       - run: npm run build --workspace=@hydroland/api
       - name: Commerce original terms, refund boundaries and provider operations
         run: |
-          node --test apps/api/scripts/commerce-refund-policy.test.cjs apps/api/scripts/commerce-contract-snapshot.test.cjs apps/api/scripts/trip-booking-contract.test.cjs apps/api/scripts/trip-payment-confirmation.test.cjs apps/api/scripts/center-service-entitlement.test.cjs apps/api/scripts/moyasar-refund-provider-validation.cjs
+          node --test apps/api/scripts/commerce-refund-policy.test.cjs apps/api/scripts/commerce-contract-snapshot.test.cjs apps/api/scripts/trip-booking-contract.test.cjs apps/api/scripts/trip-payment-confirmation.test.cjs apps/api/scripts/center-service-entitlement.test.cjs apps/api/scripts/moyasar-refund-provider-validation.cjs apps/api/scripts/commerce-webhook-dispatch.test.cjs
       - name: Commerce financial migration and actual PostgreSQL refund execution
         env:
           NODE_ENV: test
@@ -166,10 +166,30 @@ jobs:
           node apps/api/scripts/commerce-financial-migration.test.mjs
           node apps/api/scripts/commerce-contract-snapshot-db-checks.cjs
           node apps/api/scripts/commerce-refund-execution-db-checks.cjs
+          node apps/api/scripts/rental-refund-migration-checks.mjs
+          node apps/api/scripts/rental-refund-postgresql-http-checks.cjs
           node apps/api/scripts/rental-collection-evidence-validation.mjs
           node apps/api/scripts/rental-center-scope-bootstrap-validation.mjs
           node apps/api/scripts/rental-checkout-collection-validation.mjs
           node apps/api/scripts/center-service-entitlement-db-checks.cjs
+      - name: Goods original-contract checkout and collection through real HTTP routes
+        env:
+          NODE_ENV: test
+          COMMERCE_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+          DATABASE_URL: postgresql://hydroland:hydroland@localhost:5433/commerce_test_store_checkout
+        run: |
+          psql postgresql://hydroland:hydroland@localhost:5433/hydroland -v ON_ERROR_STOP=1 -c 'CREATE DATABASE commerce_test_store_checkout'
+          npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+          node apps/api/scripts/store-hosted-checkout-http-checks.cjs
+      - name: Course original-contract checkout and collection through real HTTP routes
+        env:
+          NODE_ENV: test
+          COURSE_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+          DATABASE_URL: postgresql://hydroland:hydroland@localhost:5433/course_checkout_test
+        run: |
+          psql postgresql://hydroland:hydroland@localhost:5433/hydroland -v ON_ERROR_STOP=1 -c 'CREATE DATABASE course_checkout_test'
+          npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+          node apps/api/scripts/training-checkout-collection-validation.mjs
       - name: Original booking terms and payment capture through real HTTP routes
         env:
           NODE_ENV: test

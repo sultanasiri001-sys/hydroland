@@ -7,6 +7,7 @@ import { hasInstructorCenterAccess } from './training-center-scope';
 import { readTrainingProgressionEvidence } from './training-progression-evidence';
 import { assertTrainingCalendarAvailable } from '../trips/calendar-training-availability';
 import { evaluateDiveProgression, evaluateDivePlanning, DiveProgressionError } from './training-dive-progression';
+import { requireCourseCollection } from '../commerce/course-collection';
 
 const CATEGORY = 'TRAINING_STANDARD_PROFILE';
 const json = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -42,7 +43,7 @@ export function rejectReservedTrainingMetadata(value: unknown) {
   if (keys.some(key => key.startsWith('trainingStandard'))) throw new BadRequestException('اختيار معايير التدريب من صلاحية المدرب، وليس من بيانات تسجيل المتدرب.');
   // The generic enrollment DTO accepts user notes, but commercial conditions
   // and evidence of a financial action must come from trusted server flows.
-  if (keys.some(key => key === 'contractSnapshot' || key === 'financialActionExecuted')) throw new BadRequestException('شروط التعاقد وحالة التنفيذ المالي تُسجل من مسار الخدمة المعتمد، وليس من بيانات تسجيل المتدرب.');
+  if (keys.some(key => key === 'contractSnapshot' || key === 'financialActionExecuted' || key === 'financialConfirmation')) throw new BadRequestException('شروط التعاقد وحالة التنفيذ المالي تُسجل من مسار الخدمة المعتمد، وليس من بيانات تسجيل المتدرب.');
 }
 export async function createTrainingStandardDraft(tx: Prisma.TransactionClient, actorId: string, body: Record<string, unknown>) {
   fields(body, ['profile', 'reason']);
@@ -140,7 +141,10 @@ export async function bindTrainingStandard(tx: Prisma.TransactionClient, actorId
   await audit(tx, actorId, 'training.standard_bound', enrollmentId, { binding, context, reference });
   return { enrollmentId, binding, requirements: profile.requirements };
 }
-export async function assertTrainingStandardReady(tx: Prisma.TransactionClient, enrollment: Pick<TrainingEnrollment, 'id' | 'metadata' | 'courseCode' | 'studentAccountId' | 'instructorAccountId' | 'centerOrganizationId'>, instructorAccountId: string | null, at = new Date(), sessionContext?: unknown) {
+export async function assertTrainingStandardReady(tx: Prisma.TransactionClient, enrollment: Pick<TrainingEnrollment, 'id' | 'metadata' | 'courseCode' | 'studentAccountId' | 'instructorAccountId' | 'centerOrganizationId' | 'storeCourseOfferId' | 'status' | 'updatedAt'>, instructorAccountId: string | null, at = new Date(), sessionContext?: unknown) {
+  // Every operational entry point uses this gate, including session attendance,
+  // skills and completion. A payment flag supplied in metadata is never proof.
+  await requireCourseCollection(tx, enrollment);
   const metadata = json(enrollment.metadata), binding = metadata.trainingStandard as TrainingStandardBinding | undefined;
   if (!binding || typeof binding.profileId !== 'string') throw new ConflictException({ code: 'STANDARD_SELECTION_REQUIRED', message: 'اختر المنظمة وبرنامجًا بإصدار معتمد قبل بدء التدريب.' });
   const { profile } = await approvedProfile(tx, binding.profileId, at);

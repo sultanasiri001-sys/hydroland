@@ -35,10 +35,26 @@ Later catalog edits do not change those terms. Legacy contracts remain without
 a fabricated snapshot and cannot acquire new cancellation fees retroactively.
 
 Store order lines and training enrollments also freeze their original terms.
-This does not imply that their collection and refund paths are integrated with
-trip checkout. Tax identity is not inferred from a commercial registration.
-Payment capture can create an immutable `DRAFT` commercial invoice; missing
+Single-center physical-goods orders and store course enrollments now have their
+own source-bound hosted checkout and collection paths. Each requires explicit
+acceptance of the original quote, a durable dispatch record, matching provider
+evidence and an independently approved posted collection entry. A lost invoice
+response requires reconciliation of that original invoice; it never creates a
+replacement payment automatically. Tax identity is not inferred from a commercial registration.
+Trip payment capture can create an immutable `DRAFT` commercial invoice; missing
 verified fiscal data remains `REVIEW_REQUIRED`.
+
+Course collection leaves the enrollment `PENDING`. Training activation, sessions,
+progress and completion retain their qualification and training-standard checks
+and require the purchased course's collection evidence. Client metadata cannot
+set `financialConfirmation`. The hosted course link expires after 30 minutes or
+at the original start, whichever comes first; this technical expiry does not
+invent a cancellation charge or change the original course schedule.
+
+Goods fulfillment requires its provider and posted ledger evidence, not a local
+`CAPTURED` label alone. Pending or uncertain payments prevent inventory from being
+released by order cancellation. Mixed suppliers, mixed service kinds and missing
+original contracts remain review cases. See [goods collection](STORE_HOSTED_COLLECTION.md).
 
 ## Refund execution
 
@@ -92,6 +108,16 @@ entry. `CommerceCollectionEvidence` is source evidence; balances remain in
 make a rental paid or authorize equipment handover. Collection after the hold
 expires requires reconciliation.
 
+Rental refund requests now bind the customer, original terms and verified
+collection. Eligible pre-handover cancellation stops equipment handover under
+the same rental lock. Refund execution requires the approved ledger entry and
+current monetary mandates, and records the provider result and financial posting
+without a repeated provider POST. Customer assertions of provider failure require
+independent center confirmation. The customer's later suspension cannot erase or
+prevent recording a refund already dispatched. The account interface distinguishes
+the requested amount from the sum of confirmed refunds. See
+[rental refund execution](RENTAL_REFUND_EXECUTION.md).
+
 Trip entitlement uses a confirmed booking, its bound captured payment, posted
 collection and actual completion attendance. Only attended seats count as
 performed services. No-show retention is shown separately. A refund or unresolved
@@ -113,9 +139,9 @@ GitHub CI also runs browser acceptance and existing API regressions on the exact
 candidate commit. No test credentials authorize real merchant transactions.
 
 Remaining acceptance includes verified fiscal profiles and invoice issuance,
-actual center payout routing and confirmation, store/course collection and
-refund integration, mixed-line order acceptance, rental refunds and damage/
-deposit terms, wallet/reward and instructor compensation rules, organization
+actual center payout routing and confirmation, store/course return and
+refund integration, mixed-line order acceptance, rental damage/deposit terms
+and applicable-rights review, wallet/reward and instructor compensation rules, organization
 payment delegation, and the procurement/contract/integration cycle. Scope
 completion must be recorded only after its own implementation, acceptance,
 publication and verification evidence exists.

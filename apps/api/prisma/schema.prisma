@@ -1525,6 +1525,7 @@ model FinanceEntry {
   financeAccount FinanceAccount @relation(fields:[financeAccountId], references:[id], onDelete:Restrict)
   approvals FinanceApproval[]
   commerceRefund CommerceRefundOperation?
+  rentalRefund RentalRefundOperation?
   collectionEvidence CommerceCollectionEvidence?
   @@index([organizationId,status,createdAt])
   @@index([referenceType,referenceId])
@@ -2192,6 +2193,7 @@ model CommerceCheckout {
  updatedAt DateTime @updatedAt
  @@unique([sourceType,sourceId])
  @@index([organizationId,status,createdAt])
+ rentalRefunds RentalRefundOperation[]
 }
 
 
@@ -2894,4 +2896,37 @@ model PrivacyGrievance {
   @@index([state,dueAt])
   @@index([organizationId,state])
   @@index([departmentCode,state])
+}
+
+// Execution journal for a source-bound equipment rental refund.
+model RentalRefundOperation {
+ id String @id @default(uuid())
+ checkoutId String
+ rentalId String
+ collectionEvidenceId String
+ financeEntryId String @unique
+ requestAuditEventId String
+ idempotencyKey String @unique
+ requestFingerprint String
+ organizationId String
+ requestedByAccountId String
+ approvedByAccountId String
+ executedByAccountId String
+ amountMinor Int
+ currency String
+ baselineRefundedMinor Int
+ resultingRefundedMinor Int?
+ status String @default("RESERVED")
+ providerPaymentId String
+ providerInvoiceId String
+ policyDecision Json
+ providerResult Json?
+ dispatchedAt DateTime?
+ confirmedAt DateTime?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ checkout CommerceCheckout @relation(fields:[checkoutId], references:[id], onDelete:Restrict)
+ financeEntry FinanceEntry @relation(fields:[financeEntryId], references:[id], onDelete:Restrict)
+ @@index([rentalId,status])
+ @@index([organizationId,status,createdAt])
 }

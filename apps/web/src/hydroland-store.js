@@ -19,6 +19,36 @@
   "إنشاء الطلب": "Create order",
   "الدفع الإلكتروني غير متاح حاليًا. إنشاء الطلب لا يخصم أي مبلغ.": "Online payment is currently unavailable. Creating an order does not charge any amount.",
   "طلباتي": "My orders",
+  "مدفوعات دوراتي": "My course payments",
+  "إنشاء الطلب يحفظ السلة. راجع الشروط ووافق عليها قبل الانتقال إلى الدفع.": "Creating an order saves your cart. Review and accept the terms before continuing to payment.",
+  "عرض الشروط والدفع": "Review terms and pay",
+  "تحديث حالة الدفع": "Refresh payment status",
+  "تفاصيل الدفع": "Payment details",
+  "إغلاق": "Close",
+  "جارٍ تحميل شروط الطلب...": "Loading the original order terms...",
+  "تعذر تحميل شروط الدفع": "Could not load payment terms",
+  "المورد:": "Provider:",
+  "السجل التجاري:": "Commercial registration:",
+  "الإجمالي:": "Total:",
+  "موعد البداية:": "Start time:",
+  "إصدار الشروط:": "Terms version:",
+  "اطلعت على بيانات الطلب وشروطه وأوافق عليها": "I have reviewed and accept the order details and terms",
+  "المتابعة إلى الدفع": "Continue to payment",
+  "وافق على الشروط للمتابعة": "Accept the terms to continue",
+  "تعذر تجهيز الدفع؛ حدّث حالة الطلب قبل المحاولة مجددًا.": "Could not prepare payment. Refresh the order status before trying again.",
+  "رابط الدفع غير صالح": "Invalid payment link",
+  "تم تأكيد التحصيل ومطابقته ماليًا.": "Collection has been confirmed and financially reconciled.",
+  "تم التحقق من التحصيل؛ بانتظار المطابقة المالية لدى المركز.": "Collection has been verified and is awaiting the center's financial reconciliation.",
+  "لم يكتمل التحصيل بعد. يمكنك متابعة رابط الدفع الأصلي خلال المهلة.": "Collection is not complete. You can continue using the original payment link while it remains valid.",
+  "حالة الدفع تحتاج مراجعة من المركز؛ لا تنشئ دفعة جديدة.": "The center needs to review the payment status. Do not create another payment.",
+  "انتهى رابط الدفع أو أُلغي.": "The payment link has expired or been canceled.",
+  "لم يبدأ الدفع بعد.": "Payment has not started.",
+  "إرجاع السلع المؤهلة خلال ٧ أيام من الاستلام الفعلي. تُراجع حالات العيب وعدم المطابقة والضمان بصورة مستقلة.": "Eligible goods may be returned within seven days of actual receipt. Defects, nonconformity and warranty claims are reviewed separately.",
+  "لا توجد مهلة إلغاء مجانية بعد تأكيد الدورة. إلغاء العميل قبل البداية يحتاج مراجعة لأن رسمه لم يُحدد. لا استرداد عادي لعدم الحضور أو الانسحاب بعد البدء. إلغاء المركز قبل البدء يستوجب ردًا كاملًا.": "There is no free cancellation window after course confirmation. Customer cancellation before the start requires review because its charge is not set. No ordinary refund applies to no-shows or withdrawal after starting. Center cancellation before starting requires a full refund.",
+  "تأكيد الدفع لا يعني قبول التدريب أو إتمامه.": "Payment confirmation does not mean training has been approved or completed.",
+  "هذه بيانات الطلب وشروطه، وليست فاتورة ضريبية نهائية.": "These are the order details and terms, not a final tax invoice.",
+  "تم إنشاء الطلب. راجع الشروط من «طلباتي» لإتمام الدفع.": "Order created. Review the terms in My orders to complete payment.",
+  "لا توجد دورات مشتراة حتى الآن.": "No purchased course enrollments yet.",
   "منتج ·": "Product ·",
   "سجل الدفع: {0} · {1}{2}": "Payment record: {0} · {1}{2}",
   "· لا يوجد تحصيل مالي منفذ": "· No funds captured",
@@ -98,22 +128,56 @@
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const auth=()=>window.HydrolandAuth;
   const idempotencyKey=()=>`store-${Date.now()}-${globalThis.crypto?.randomUUID?.()||Math.random().toString(36).slice(2)}`;
-  const panel=document.createElement('div');panel.className='hl-store-cart';uiLocale.setHTML(panel, uiLocale.html`<strong>السلة</strong><span class="hl-store-summary">السلة فارغة</span><button type="button" class="hl-store-checkout" disabled>إنشاء الطلب</button><small class="hl-store-payment-note">الدفع الإلكتروني غير متاح حاليًا. إنشاء الطلب لا يخصم أي مبلغ.</small><button type="button" class="hl-store-orders">طلباتي</button><div class="hl-store-orders-list" hidden></div>`);section.appendChild(panel);
+  const panel=document.createElement('div');panel.className='hl-store-cart';uiLocale.setHTML(panel, uiLocale.html`<strong>السلة</strong><span class="hl-store-summary">السلة فارغة</span><button type="button" class="hl-store-checkout" disabled>إنشاء الطلب</button><small class="hl-store-payment-note">إنشاء الطلب يحفظ السلة. راجع الشروط ووافق عليها قبل الانتقال إلى الدفع.</small><button type="button" class="hl-store-orders">طلباتي</button><button type="button" class="hl-store-course-payments">مدفوعات دوراتي</button><div class="hl-store-orders-list" hidden></div><div class="hl-store-course-list" hidden></div>`);section.appendChild(panel);
   const summary=panel.querySelector('.hl-store-summary'),checkout=panel.querySelector('.hl-store-checkout'),orders=panel.querySelector('.hl-store-orders-list');
   const renderCart=()=>{let n=0,total=0;for(const x of cart.values()){n+=x.quantity;total+=x.priceMinor*x.quantity}summary.textContent=n?(n+uiLocale.t(' منتج · ')+money(total)):uiLocale.t('السلة فارغة');checkout.disabled=!n};
   const parse=async r=>{const body=await r.json().catch(()=>({}));if(!r.ok)throw (Array.isArray(body.message)?new Error(body.message.join('، ')):new Error(body.message||`HTTP ${r.status}`));return body};
   const loadPayments=async()=>{const r=await auth().authorizedFetch('/store/payments/mine');const data=await parse(r);return Array.isArray(data)?data:[]};
   const paymentForOrder=(payments,orderId)=>payments.find(payment=>payment.orderId===orderId)||null;
-  const createPaymentRecord=async(orderId,key=idempotencyKey())=>{
-    try{
-      const r=await auth().authorizedFetch(`/store/orders/${encodeURIComponent(orderId)}/payment`,{method:'POST',body:JSON.stringify({idempotencyKey:key})});
-      return{payment:await parse(r),recovered:false};
-    }catch(error){
-      try{const payments=await loadPayments(),existing=paymentForOrder(payments,orderId);if(existing)return{payment:existing,recovered:true}}catch{}
-      throw error;
-    }
+  const paymentMessage=state=>state?.collectionVerified?'تم تأكيد التحصيل ومطابقته ماليًا.'
+    :state?.status==='CAPTURED'?'تم التحقق من التحصيل؛ بانتظار المطابقة المالية لدى المركز.'
+    :state?.status==='PENDING'?'لم يكتمل التحصيل بعد. يمكنك متابعة رابط الدفع الأصلي خلال المهلة.'
+    :['CANCELLED','FAILED'].includes(state?.status)?'انتهى رابط الدفع أو أُلغي.'
+    :!state||state.status==='CREATED'?'لم يبدأ الدفع بعد.':'حالة الدفع تحتاج مراجعة من المركز؛ لا تنشئ دفعة جديدة.';
+  const paymentStatusText=payment=>payment?uiLocale.t(paymentMessage(payment)):uiLocale.t('لا يوجد سجل دفع');
+  let paymentViewVersion=0,ordersVersion=0,courseListVersion=0,storeSession=auth()?.getSessionVersion?.();
+  const sameSession=()=>{const version=auth()?.getSessionVersion?.();return()=>auth()?.isAuthenticated?.()&&version===auth()?.getSessionVersion?.()};
+  const paymentPath=(kind,id)=>kind==='COURSE'?'/payments/courses/'+encodeURIComponent(id):'/store/orders/'+encodeURIComponent(id);
+  const paymentDialog=()=>{
+    let dialog=document.getElementById('hl-store-payment-dialog');if(dialog)return dialog;
+    const style=document.createElement('style');style.textContent='#hl-store-payment-dialog{width:min(640px,calc(100vw - 24px));max-height:85vh;overflow:auto;background:#071f31;color:#edf7fb;border:1px solid #30556b;border-radius:20px;padding:1.2rem}#hl-store-payment-dialog::backdrop{background:#071524bb}#hl-store-payment-dialog header{display:flex;justify-content:space-between;align-items:center;gap:1rem}#hl-store-payment-dialog button{padding:.65rem .9rem;border-radius:10px;border:1px solid #527288;background:#12354a;color:inherit;cursor:pointer}#hl-store-payment-dialog p,#hl-store-payment-dialog li{line-height:1.9;overflow-wrap:anywhere}#hl-store-payment-dialog label{display:flex;align-items:flex-start;gap:.6rem;margin:1rem 0}#hl-store-payment-dialog [data-commerce-controls]{display:flex;flex-wrap:wrap;gap:.7rem}.hl-store-orders-list article,.hl-store-course-list article{display:grid;gap:.6rem;margin:.7rem 0;padding:1rem;border:1px solid #30556b;border-radius:12px}';document.head.appendChild(style);
+    dialog=document.createElement('dialog');dialog.id='hl-store-payment-dialog';uiLocale.setHTML(dialog,uiLocale.html`<header><h3>تفاصيل الدفع</h3><button type="button" data-commerce-close>إغلاق</button></header><div data-commerce-body></div>`);
+    dialog.querySelector('[data-commerce-close]').addEventListener('click',()=>dialog.close());
+    dialog.addEventListener('close',()=>{paymentViewVersion++;dialog.querySelector('[data-commerce-body]').replaceChildren()});document.body.appendChild(dialog);return dialog;
   };
-  const paymentStatusText=payment=>payment?uiLocale.format("سجل الدفع: {0} · {1}{2}", [payment.status, (payment.provider || 'NOT_SELECTED'), (payment.financialActionExecuted?'':uiLocale.message(' · لا يوجد تحصيل مالي منفذ'))]):uiLocale.t('لا يوجد سجل دفع');
+  const openPayment=async(kind,id,{refresh=false}={})=>{
+    if(!auth()?.isAuthenticated?.())return;
+    const dialog=paymentDialog(),body=dialog.querySelector('[data-commerce-body]'),version=++paymentViewVersion,session=sameSession();
+    const current=()=>session()&&version===paymentViewVersion&&dialog.open&&dialog.isConnected;
+    uiLocale.setText(body,'جارٍ تحميل شروط الطلب...');if(!dialog.open)dialog.showModal();
+    const base=paymentPath(kind,id);
+    try{
+      if(refresh){const state=await parse(await auth().authorizedFetch(base+'/refresh',{method:'POST'}));if(current())uiLocale.setText(body,paymentMessage(state));return;}
+      const quote=await parse(await auth().authorizedFetch(base+'/quote'));if(!current())return;
+      if(!quote.snapshot||typeof quote.quoteHash!=='string'||typeof quote.policyVersion!=='string')throw localError('تعذر تحميل شروط الدفع');
+      const snapshot=quote.snapshot,lines=Array.isArray(snapshot.lines)?snapshot.lines:[snapshot],issuer=snapshot.issuer||lines[0]?.issuer;
+      uiLocale.setHTML(body,uiLocale.html`<p>المورد: ${esc(issuer?.legalName||issuer?.displayName||'—')}</p><p>السجل التجاري: ${esc(issuer?.registrationNumber||'—')}</p><ul>${lines.map(line=>uiLocale.html`<li>${esc(line.title||line.name||'—')} · ${esc(line.quantity||1)} · ${esc(money(line.amountMinor||0,line.currency||snapshot.currency||'SAR'))}</li>`).join('')}</ul><p>الإجمالي: ${esc(money(snapshot.amountMinor,snapshot.currency))}</p>${kind==='COURSE'?uiLocale.html`<p>موعد البداية: ${esc(new Date(snapshot.originalSchedule?.startsAt).toLocaleString('ar-SA',{timeZone:'Asia/Riyadh'}))}</p><p>لا توجد مهلة إلغاء مجانية بعد تأكيد الدورة. إلغاء العميل قبل البداية يحتاج مراجعة لأن رسمه لم يُحدد. لا استرداد عادي لعدم الحضور أو الانسحاب بعد البدء. إلغاء المركز قبل البدء يستوجب ردًا كاملًا.</p><p>تأكيد الدفع لا يعني قبول التدريب أو إتمامه.</p>`:uiLocale.html`<p>إرجاع السلع المؤهلة خلال ٧ أيام من الاستلام الفعلي. تُراجع حالات العيب وعدم المطابقة والضمان بصورة مستقلة.</p>`}<p>إصدار الشروط: ${esc(quote.policyVersion)}</p><small>هذه بيانات الطلب وشروطه، وليست فاتورة ضريبية نهائية.</small><label><input type="checkbox" data-commerce-accepted> اطلعت على بيانات الطلب وشروطه وأوافق عليها</label><div data-commerce-controls><button type="button" data-commerce-pay>المتابعة إلى الدفع</button><button type="button" data-commerce-refresh>تحديث حالة الدفع</button></div><p role="status" data-commerce-feedback></p>`);
+      const button=body.querySelector('[data-commerce-pay]'),feedback=body.querySelector('[data-commerce-feedback]');
+      body.querySelector('[data-commerce-refresh]').addEventListener('click',()=>{if(current())void openPayment(kind,id,{refresh:true})});
+      button.addEventListener('click',async()=>{
+        if(!current()||button.disabled)return;
+        if(!body.querySelector('[data-commerce-accepted]')?.checked){uiLocale.setText(feedback,'وافق على الشروط للمتابعة');return;}
+        button.disabled=true;
+        try{
+          const state=await parse(await auth().authorizedFetch(base+'/checkout',{method:'POST',body:JSON.stringify({quoteHash:quote.quoteHash,acceptedPolicyVersion:quote.policyVersion,idempotencyKey:(kind==='COURSE'?'course:':'store:')+id})}));
+          if(!current())return;
+          if(state.checkoutUrl){const url=new URL(state.checkoutUrl);if(url.protocol!=='https:'&&!(url.protocol==='http:'&&['localhost','127.0.0.1'].includes(url.hostname)))throw localError('رابط الدفع غير صالح');window.location.assign(url.toString());return;}
+          uiLocale.setText(feedback,paymentMessage(state));
+        }catch(error){if(current())uiLocale.setMessage(feedback,localErrorMessage(error,'تعذر تجهيز الدفع؛ حدّث حالة الطلب قبل المحاولة مجددًا.'));}
+        finally{if(current())button.disabled=false;}
+      });
+    }catch(error){if(current())uiLocale.setMessage(body,localErrorMessage(error,'تعذر تحميل شروط الدفع'));}
+  };
   const addToCart=id=>{
     const product=catalog.products.find(item=>item.id===id);if(!product)return false;
     const quantity=cart.get(id)?.quantity||0;
@@ -167,36 +231,52 @@
   };
   const loadOrders=async()=>{
     if(!auth()?.isAuthenticated?.()){toast(uiLocale.message('سجّل الدخول لعرض طلباتك'));return}
+    const active=sameSession(),version=++ordersVersion;
     orders.hidden=false;uiLocale.setMessage(orders, uiLocale.message('جارٍ تحميل الطلبات...'));
     try{
       const [orderResponse,payments]=await Promise.all([auth().authorizedFetch('/store/orders/mine'),loadPayments()]);
-      const data=await parse(orderResponse);if(!Array.isArray(data))throw localError('تعذر تحميل الطلبات');
-      uiLocale.setHTML(orders, data.length?data.map(o=>{const payment=paymentForOrder(payments,o.id),eligible=['CREATED','CONFIRMED'].includes(o.status)&&!payment;return uiLocale.html`<article data-store-order="${esc(o.id)}"><b>${esc(o.status)}</b><span>${money(o.totalMinor,o.currency)}</span><small>${new Date(o.createdAt).toLocaleString('ar-SA')}</small><small data-store-payment-state>${esc(paymentStatusText(payment))}</small>${(eligible?uiLocale.html`<button type="button" data-store-payment-retry>إنشاء سجل الدفع</button>`:'')}</article>`}).join(''):uiLocale.t('لا توجد طلبات حتى الآن.'));
-      orders.querySelectorAll('[data-store-payment-retry]').forEach(button=>button.addEventListener('click',async()=>{const article=button.closest('[data-store-order]'),orderId=article?.dataset.storeOrder,status=article?.querySelector('[data-store-payment-state]');if(!orderId)return;button.disabled=true;if(status)uiLocale.setMessage(status, uiLocale.message('جارٍ إنشاء سجل الدفع...'));try{const {payment}=await createPaymentRecord(orderId);if(status)status.textContent=paymentStatusText(payment);button.remove();toast(uiLocale.message('تم إنشاء سجل الدفع للطلب؛ مزود الدفع لم يُفعّل بعد.'))}catch(error){if(status)uiLocale.setMessage(status, uiLocale.message('تعذر إنشاء سجل الدفع'));toast(localErrorMessage(error, 'تعذر إنشاء سجل الدفع'))}finally{button.disabled=false}}));
-    }catch{uiLocale.setMessage(orders, uiLocale.message('تعذر تحميل الطلبات.'))}
+      const data=await parse(orderResponse);if(!active()||version!==ordersVersion)return;if(!Array.isArray(data))throw localError('تعذر تحميل الطلبات');
+      uiLocale.setHTML(orders, data.length?data.map(o=>{const payment=paymentForOrder(payments,o.id),eligible=['CREATED','CONFIRMED'].includes(o.status)&&!['CAPTURED','REFUNDED'].includes(payment?.status);return uiLocale.html`<article data-store-order="${esc(o.id)}"><b>${esc(o.status)}</b><span>${money(o.totalMinor,o.currency)}</span><small>${new Date(o.createdAt).toLocaleString('ar-SA')}</small><small data-store-payment-state>${esc(paymentStatusText(payment))}</small>${eligible?uiLocale.html`<button type="button" data-store-payment-retry>عرض الشروط والدفع</button>`:''}${payment?uiLocale.html`<button type="button" data-store-payment-refresh>تحديث حالة الدفع</button>`:''}</article>`}).join(''):uiLocale.t('لا توجد طلبات حتى الآن.'));
+      orders.querySelectorAll('[data-store-payment-retry],[data-store-payment-refresh]').forEach(button=>button.addEventListener('click',()=>{if(active()&&version===ordersVersion)void openPayment('STORE',button.closest('[data-store-order]').dataset.storeOrder,{refresh:button.hasAttribute('data-store-payment-refresh')})}));
+    }catch{if(active()&&version===ordersVersion)uiLocale.setMessage(orders, uiLocale.message('تعذر تحميل الطلبات.'))}
+  };
+  const loadCoursePayments=async()=>{
+    if(!auth()?.isAuthenticated?.()){toast(uiLocale.message('سجّل الدخول لعرض طلباتك'));return}
+    const active=sameSession(),version=++courseListVersion,list=panel.querySelector('.hl-store-course-list');list.hidden=false;uiLocale.setText(list,'جارٍ تحميل الطلبات...');
+    try{
+      const rows=await parse(await auth().authorizedFetch('/training/mine/enrollments'));if(!active()||version!==courseListVersion)return;
+      if(!Array.isArray(rows))throw localError('تعذر تحميل الطلبات');const enrolled=rows.filter(row=>row.storeCourseOfferId||row.metadata?.source==='UNIFIED_STORE');
+      uiLocale.setHTML(list,enrolled.length?enrolled.map(row=>uiLocale.html`<article data-course-enrollment="${esc(row.id)}"><b>${esc(row.metadata?.title||row.courseCode)}</b><span>${esc(row.status)}</span>${row.status==='PENDING'?uiLocale.html`<button type="button" data-course-checkout>عرض الشروط والدفع</button>`:''}<button type="button" data-course-payment-refresh>تحديث حالة الدفع</button><small>تأكيد الدفع لا يعني قبول التدريب أو إتمامه.</small></article>`).join(''):uiLocale.t('لا توجد دورات مشتراة حتى الآن.'));
+      list.querySelectorAll('[data-course-checkout],[data-course-payment-refresh]').forEach(button=>button.addEventListener('click',()=>{if(active()&&version===courseListVersion)void openPayment('COURSE',button.closest('[data-course-enrollment]').dataset.courseEnrollment,{refresh:button.hasAttribute('data-course-payment-refresh')})}));
+    }catch(error){if(active()&&version===courseListVersion)uiLocale.setMessage(list,localErrorMessage(error,'تعذر تحميل الطلبات'));}
   };
   checkout.addEventListener('click',async()=>{
     if(!auth()?.isAuthenticated?.()){toast(uiLocale.message('سجّل الدخول أولًا لإتمام الطلب'));document.getElementById('visitor-auth-cta')?.click();return}
     checkout.disabled=true;
+    const active=sameSession();
     let order=null;
     try{
       const r=await auth().authorizedFetch('/store/orders',{method:'POST',body:JSON.stringify({items:[...cart.values()].map(x=>({productId:x.id,quantity:x.quantity}))})});
       order=await parse(r);
+      if(!active())return;
       cart.clear();renderCart();await loadProducts();
-      try{
-        const {payment,recovered}=await createPaymentRecord(order.id);
-        toast((recovered?uiLocale.message('تم إنشاء الطلب واستعادة سجل الدفع الموجود · مزود الدفع غير مفعّل'):uiLocale.message('تم إنشاء الطلب وسجل الدفع · مزود الدفع غير مفعّل')));
-        window.dispatchEvent(new CustomEvent('hydroland:store-checkout-created',{detail:{order,payment}}));
-      }catch(error){
-        toast(uiLocale.message('تم إنشاء الطلب وحفظ المخزون، لكن تعذر إنشاء سجل الدفع. افتح «طلباتي» لاستكماله.'));
-        window.dispatchEvent(new CustomEvent('hydroland:store-order-created',{detail:{order,paymentError:error?.message||'PAYMENT_RECORD_FAILED'}}));
-      }
-    }catch(error){toast(localErrorMessage(error, 'تعذر إنشاء الطلب'))}
-    finally{renderCart()}
+      if(!active())return;
+      toast(uiLocale.message('تم إنشاء الطلب. راجع الشروط من «طلباتي» لإتمام الدفع.'));
+      window.dispatchEvent(new CustomEvent('hydroland:store-order-created',{detail:{order}}));
+      await loadOrders();
+    }catch(error){if(active())toast(localErrorMessage(error, 'تعذر إنشاء الطلب'))}
+    finally{if(active())renderCart()}
   });
   panel.querySelector('.hl-store-orders').addEventListener('click',loadOrders);
+  panel.querySelector('.hl-store-course-payments').addEventListener('click',loadCoursePayments);
+  const clearCommerceSession=()=>{paymentViewVersion++;ordersVersion++;courseListVersion++;cart.clear();renderCart();orders.replaceChildren();orders.hidden=true;const list=panel.querySelector('.hl-store-course-list');list.replaceChildren();list.hidden=true;document.getElementById('hl-store-payment-dialog')?.close();};
+  let returnHandled=null;
+  const resumeCommercePayment=async()=>{const params=new URLSearchParams(window.location.search),course=params.get('enrollment_id'),order=params.get('store_order_id'),kind=params.has('course_payment')?'COURSE':params.has('store_payment')?'STORE':null,id=kind==='COURSE'?course:order;if(!kind||!id||id.length>128||!auth()?.isAuthenticated?.())return;const key=kind+':'+id+':'+auth().getSessionVersion?.();if(returnHandled===key)return;returnHandled=key;await openPayment(kind,id,{refresh:true});};
+  document.addEventListener('hydroland:session-cleared',()=>{clearCommerceSession();returnHandled=null});
+  document.addEventListener('hydroland:auth-changed',()=>{const version=auth()?.getSessionVersion?.();if(version!==storeSession||!auth()?.isAuthenticated?.()){clearCommerceSession();returnHandled=null;}storeSession=version;void resumeCommercePayment()});
   document.addEventListener('hydroland:center-trips-changed',loadProducts);
   loadProducts();
-  window.HydrolandStore={reloadProducts:loadProducts,openOrders:loadOrders,getCart:()=>[...cart.values()],setTypeFilter,getProducts:()=>[...catalog.products],getPublicStatus:()=>catalog.errors.includes('products')?'error':catalog.status,addToCart,setFilter:filter=>{catalog.filter=['all','available','unavailable'].includes(filter)?filter:'all';if(catalog.status==='ready')renderProducts()}};
+  window.HydrolandStore={reloadProducts:loadProducts,openOrders:loadOrders,openCoursePayments:loadCoursePayments,getCart:()=>[...cart.values()],setTypeFilter,getProducts:()=>[...catalog.products],getPublicStatus:()=>catalog.errors.includes('products')?'error':catalog.status,addToCart,setFilter:filter=>{catalog.filter=['all','available','unavailable'].includes(filter)?filter:'all';if(catalog.status==='ready')renderProducts()}};
+  void resumeCommercePayment();
 })();
 

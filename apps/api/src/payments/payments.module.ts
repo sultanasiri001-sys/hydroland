@@ -4,6 +4,12 @@ import {PaymentRefundExecutionController} from './payment-refund-execution.contr
 import {FinanceOperationGrantService} from '../finance/finance-operation-grant.service';
 import {RentalCheckoutService} from './rental-checkout.service';
 import {RentalCheckoutController} from './rental-checkout.controller';
+import {RentalRefundController} from './rental-refund.controller';
+import {RentalRefundService} from './rental-refund.service';
+import {StoreCheckoutController} from '../store/store-checkout.controller';
+import {StoreCheckoutService} from '../store/store-checkout.service';
+import {TrainingCheckoutController} from './training-checkout.controller';
+import {TrainingCheckoutService} from './training-checkout.service';
 import {Module} from '@nestjs/common';
 import {AdminModule} from '../admin/admin.module';
 import {AuditModule} from '../audit/audit.module';
@@ -16,5 +22,5 @@ import {SettlementReadinessController} from './settlement-readiness.controller';
 import {PaymentsService} from './payments.service';
 import {MoyasarPaymentProviderService} from './moyasar-payment-provider.service';
 import {MoyasarSettlementProviderService} from './moyasar-settlement-provider.service';
-@Module({imports:[AdminModule,AuthModule,AuditModule,TripsModule,IntegrationModule],controllers:[PaymentRefundExecutionController,RentalCheckoutController,PaymentsController,PaymentsWebhookController,SettlementReadinessController],providers:[PaymentContractService,PaymentRefundExecutionService,FinanceOperationGrantService,RentalCheckoutService,PaymentsService,MoyasarPaymentProviderService,MoyasarSettlementProviderService],exports:[PaymentsService,MoyasarPaymentProviderService,MoyasarSettlementProviderService]})
+@Module({imports:[AdminModule,AuthModule,AuditModule,TripsModule,IntegrationModule],controllers:[PaymentRefundExecutionController,RentalCheckoutController,RentalRefundController,StoreCheckoutController,TrainingCheckoutController,PaymentsController,PaymentsWebhookController,SettlementReadinessController],providers:[PaymentContractService,PaymentRefundExecutionService,FinanceOperationGrantService,RentalCheckoutService,RentalRefundService,StoreCheckoutService,TrainingCheckoutService,PaymentsService,MoyasarPaymentProviderService,MoyasarSettlementProviderService],exports:[PaymentsService,MoyasarPaymentProviderService,MoyasarSettlementProviderService]})
 export class PaymentsModule {}

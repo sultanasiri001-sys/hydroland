@@ -77,7 +77,7 @@ export class FinancePersistenceService {
       const entry = await tx.financeEntry.findUnique({ where: { id: entryId } });
       if (!entry) throw new NotFoundException('Finance entry not found.');
       if (entry.status !== FinanceEntryStatus.APPROVED) throw new BadRequestException('Only approved finance entries can be posted.');
-      if (entry.referenceType === 'PAYMENT_REFUND') throw new BadRequestException('Payment refunds are posted only after verified provider execution.');
+      if (['PAYMENT_REFUND', 'EQUIPMENT_RENTAL_REFUND'].includes(entry.referenceType)) throw new BadRequestException('Payment refunds are posted only after verified provider execution.');
       if (entry.referenceType === 'CENTER_SERVICE_ENTITLEMENT') throw new BadRequestException('A service entitlement is posted only after verified transfer execution.');
       if (entry.requestedByAccountId === postedByAccountId || entry.approvedByAccountId === postedByAccountId) throw new BadRequestException('Finance posting requires segregation of duties.');
       const updated = await tx.financeEntry.updateMany({ where: { id: entryId, status: FinanceEntryStatus.APPROVED }, data: { status: FinanceEntryStatus.POSTED, postedAt: new Date(), postedByAccountId } });

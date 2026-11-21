@@ -61,6 +61,7 @@ export class TrainingRepositoryService {
   setEnrollmentStatus(enrollmentId: string, status: TrainingEnrollmentStatus) {
     if(!Object.values(TrainingEnrollmentStatus).includes(status))throw new BadRequestException('حالة التسجيل غير صالحة.');
     return this.db.serializable(async tx=>{
+      await tx.$queryRaw`SELECT "id" FROM "TrainingEnrollment" WHERE "id"=${enrollmentId} FOR UPDATE`;
       const current=await tx.trainingEnrollment.findUniqueOrThrow({where:{id:enrollmentId},include:{record:{include:{stages:{include:{skills:true}},sessions:true,certificate:true}}}});
       if(status==='ACTIVE')await standardRequest(()=>assertTrainingStandardReady(tx,current,current.instructorAccountId));
       if(status==='COMPLETED')await standardRequest(()=>assertTrainingStandardCompletion(tx,enrollmentId));
