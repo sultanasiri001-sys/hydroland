@@ -94,6 +94,49 @@ async function noMutation(f, operationCount = 0) {
   assert.equal((await db.financeEntry.findUniqueOrThrow({ where: { id: f.entry.id } })).status, 'APPROVED');
 }
 
+// Pin two real PostgreSQL snapshots before either reservation acquires its
+// advisory lock. Hold dispatch until both reservation transactions finish so
+// the winner cannot change the payment/ledger and hide the unique-key race.
+async function overlappingReservations(calls, beforeDispatch = async () => {}) {
+  const serializable = db.serializable.bind(db), collisions = [];
+  let invocations = 0, arrivals = 0, settled = 0, releaseSnapshots, releaseDispatch, timer;
+  const snapshotsReady = new Promise(resolve => { releaseSnapshots = resolve; });
+  const dispatchReady = new Promise(resolve => { releaseDispatch = resolve; });
+  const deadline = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Reservation test barrier timed out')), 4000); });
+  const waitFor = barrier => Promise.race([barrier, deadline]);
+  db.serializable = async work => {
+    if (++invocations <= 2) {
+      try {
+        return await serializable(async tx => {
+          await tx.$queryRaw`SELECT pg_current_snapshot()::text AS snapshot`;
+          if (++arrivals === 2) releaseSnapshots();
+          await waitFor(snapshotsReady);
+          return work(tx);
+        });
+      } catch (error) {
+        if (error.code === 'P2002') collisions.push(error.meta);
+        throw error;
+      } finally {
+        if (++settled === 2) {
+          try { await beforeDispatch(); }
+          finally { clearTimeout(timer); releaseDispatch(); }
+        }
+      }
+    }
+    await waitFor(dispatchReady);
+    return serializable(work);
+  };
+  try {
+    const results = await Promise.allSettled(calls.map(({ actorId, command }) => refunds.execute(actorId, command)));
+    assert.equal(collisions.length, 1, 'The real stale-snapshot unique conflict must be exercised');
+    assert.equal(collisions[0].modelName, 'CommerceRefundOperation');
+    assert.ok(collisions[0].target.length === 1 && ['financeEntryId', 'idempotencyKey'].includes(collisions[0].target[0]));
+    return results;
+  } finally {
+    clearTimeout(timer); releaseSnapshots(); releaseDispatch(); db.serializable = serializable;
+  }
+}
+
 (async () => {
   try {
     await db.$connect();
@@ -123,12 +166,52 @@ async function noMutation(f, operationCount = 0) {
     });
     await check('eight exact concurrent executions issue one POST and one posted operation', async () => {
       const f = await fixture({ amountMinor: 10000 });
-      const results = await Promise.all(Array.from({ length: 8 }, () => refunds.execute(f.executor.id, f.command)));
+      const settled = await Promise.allSettled(Array.from({ length: 8 }, () => refunds.execute(f.executor.id, f.command)));
+      assert.ok(settled.every(row => row.status === 'fulfilled'), settled.filter(row => row.status === 'rejected').map(row => row.reason.stack).join('\n'));
+      const results = settled.map(row => row.value);
       assert.equal(new Set(results.map(r => r.id)).size, 1); assert.equal(f.provider.posts, 1);
       const [operation] = await db.commerceRefundOperation.findMany({ where: { paymentId: f.payment.id } });
       assert.equal(operation.status, 'SUCCEEDED');
       assert.equal(await db.auditEvent.count({ where: { action: 'PAYMENT_REFUND_POSTED', resourceId: operation.id } }), 1);
       const replay = await refunds.execute(f.executor.id, f.command); assert.equal(replay.status, 'SUCCEEDED'); assert.equal(f.provider.posts, 1);
+    });
+    await check('stale Serializable reservations recover the exact committed operation without a second provider POST', async () => {
+      const f = await fixture({ amountMinor: 10000 });
+      const results = await overlappingReservations([1, 2].map(() => ({ actorId: f.executor.id, command: f.command })));
+      assert.ok(results.every(row => row.status === 'fulfilled'), results.filter(row => row.status === 'rejected').map(row => row.reason.stack).join('\n'));
+      assert.equal(new Set(results.map(row => row.value.id)).size, 1); assert.equal(f.provider.posts, 1);
+      const operations = await db.commerceRefundOperation.findMany({ where: { paymentId: f.payment.id } });
+      assert.equal(operations.length, 1); assert.equal(operations[0].status, 'SUCCEEDED');
+      for (const action of ['PAYMENT_REFUND_RESERVED', 'PAYMENT_REFUND_POSTED']) assert.equal(await db.auditEvent.count({ where: { action, resourceId: operations[0].id } }), 1);
+      assert.equal((await db.payment.findUniqueOrThrow({ where: { id: f.payment.id } })).refundedAmountMinor, 10000);
+    });
+    for (const variant of ['different nonce', 'different customer request']) {
+      await check(`reservation recovery rejects ${variant} instead of adopting another refund`, async () => {
+        const f = await fixture({ amountMinor: 10000 });
+        const second = { ...f.command };
+        if (variant === 'different nonce') second.idempotencyKey = randomUUID();
+        else {
+          const request = await db.auditEvent.create({ data: { actorId: f.buyer.personId, action: 'PAYMENT_REFUND_REQUESTED', resource: 'Payment', resourceId: f.payment.id, metadata: f.request.metadata } });
+          second.requestAuditEventId = request.id;
+        }
+        const results = await overlappingReservations([f.command, second].map(command => ({ actorId: f.executor.id, command })));
+        assert.equal(results.filter(row => row.status === 'fulfilled').length, 1);
+        const rejected = results.filter(row => row.status === 'rejected');
+        assert.equal(rejected.length, 1); assert.equal(rejected[0].reason.getStatus?.(), 409);
+        assert.equal(f.provider.posts, 1);
+        assert.equal(await db.commerceRefundOperation.count({ where: { paymentId: f.payment.id } }), 1);
+        assert.equal((await db.payment.findUniqueOrThrow({ where: { id: f.payment.id } })).refundedAmountMinor, 10000);
+      });
+    }
+    await check('reservation recovery and dispatch both recheck a newly revoked execution mandate', async () => {
+      const f = await fixture({ amountMinor: 10000 });
+      const results = await overlappingReservations([1, 2].map(() => ({ actorId: f.executor.id, command: f.command })),
+        () => db.financeOperationGrant.update({ where: { id: f.executionGrant.id }, data: { revokedAt: new Date() } }));
+      assert.ok(results.every(row => row.status === 'rejected' && row.reason.getStatus?.() === 403));
+      await noMutation(f, 1);
+      const operation = await db.commerceRefundOperation.findUniqueOrThrow({ where: { idempotencyKey: f.command.idempotencyKey } });
+      assert.equal(operation.status, 'RESERVED');
+      assert.equal(await db.auditEvent.count({ where: { action: 'PAYMENT_REFUND_POSTED', resourceId: operation.id } }), 0);
     });
     await check('concurrent different operations cannot over-refund one captured balance', async () => {
       const f = await fixture({ amountMinor: 6000 }), secondEntry = await approvedEntry(f, 6000);

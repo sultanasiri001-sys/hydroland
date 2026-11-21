@@ -55,6 +55,13 @@ customer request, the applicable policy entitlement, or the captured balance.
 A durable dispatch claim precedes the provider POST. That POST is outside all
 retrying database transactions and is not automatically repeated.
 
+Overlapping Serializable reservations can report a unique-key conflict after
+waiting for the advisory lock. Recovery applies only to that rolled-back
+reservation: a fresh transaction reads the exact idempotency key and rechecks
+the actor, request fingerprint, payment, customer request, ledger entry and
+current mandate. Another nonce or changed request cannot adopt the existing
+operation. Provider dispatch and financial posting are outside this recovery.
+
 A validated POST response is saved before the ledger posting transaction. The
 operation, payment counter, existing ledger entry and audit are then committed
 together. A timeout or uncertain response remains
@@ -119,3 +126,4 @@ Primary references checked for this implementation:
 - [Ministry of Commerce consumer-protection transition FAQ](https://mc.gov.sa/ar/cps/Documents/CPS-FAQ.pdf)
 - [Moyasar refund operation](https://docs.moyasar.com/api/payments/05-refund-payment)
 - [Moyasar documented idempotency scope](https://docs.moyasar.com/api/idempotency)
+- [PostgreSQL Serializable transaction isolation](https://www.postgresql.org/docs/18/transaction-iso.html)

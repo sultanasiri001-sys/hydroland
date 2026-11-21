@@ -66,6 +66,15 @@ export class PaymentRefundExecutionService {
     return entry;
   }
 
+  private async authorizedReplay(tx: Prisma.TransactionClient, prior: CommerceRefundOperation, actorId: string, input: RefundInput, fingerprint: string) {
+    if (prior.idempotencyKey !== input.idempotencyKey || prior.requestFingerprint !== fingerprint || prior.executedByAccountId !== actorId
+      || prior.paymentId !== input.paymentId || prior.requestAuditEventId !== input.requestAuditEventId || prior.financeEntryId !== input.financeEntryId) {
+      throw new ConflictException('Refund idempotency key is already bound to different details.');
+    }
+    await this.mandate(tx, actorId, prior.organizationId, 'EXECUTE_REFUND', prior.amountMinor, prior.currency);
+    return prior;
+  }
+
   async execute(actorId: string, input: RefundInput) {
     if (!input || ![actorId, input.paymentId, input.requestAuditEventId, input.financeEntryId, input.idempotencyKey].every(text)) throw new BadRequestException('Refund identifiers are invalid.');
     const fingerprint = createHash('sha256').update(JSON.stringify({ actorId, paymentId: input.paymentId, requestAuditEventId: input.requestAuditEventId, financeEntryId: input.financeEntryId, idempotencyKey: input.idempotencyKey })).digest('hex');
@@ -73,9 +82,7 @@ export class PaymentRefundExecutionService {
       await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${`commerce-refund:${input.idempotencyKey}`},0))`;
       const prior = await tx.commerceRefundOperation.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
       if (prior) {
-        if (prior.requestFingerprint !== fingerprint || prior.executedByAccountId !== actorId) throw new ConflictException('Refund idempotency key is already bound to different details.');
-        await this.mandate(tx, actorId, prior.organizationId, 'EXECUTE_REFUND', prior.amountMinor, prior.currency);
-        return prior;
+        return this.authorizedReplay(tx, prior, actorId, input, fingerprint);
       }
       await tx.$queryRaw`SELECT "id" FROM "Payment" WHERE "id"::text=${input.paymentId} FOR UPDATE`;
       const payment = await tx.payment.findUnique({ where: { id: input.paymentId }, include: { booking: { include: { trip: true } } } });
@@ -116,6 +123,21 @@ export class PaymentRefundExecutionService {
       await tx.auditEvent.create({ data: { action: 'PAYMENT_REFUND_RESERVED', resource: 'CommerceRefundOperation', resourceId: row.id,
         metadata: { paymentId: payment.id, financeEntryId: entry.id, actorAccountId: actorId, amountMinor: row.amountMinor, currency: row.currency, financialActionExecuted: false } } });
       return row;
+    }).catch(async (error: unknown) => {
+      const details = object(error), meta = object(details?.meta);
+      const target = meta?.target;
+      if (details?.code !== 'P2002' || meta?.modelName !== 'CommerceRefundOperation' || !Array.isArray(target) || target.length !== 1
+        || !['idempotencyKey', 'financeEntryId'].includes(target[0])) throw error;
+      // A Serializable snapshot can precede the advisory-lock wait. The
+      // winning reservation is then invisible to this transaction, although
+      // its unique key is enforced. The failed transaction has rolled back;
+      // recover only its exact committed operation in a fresh snapshot.
+      // No provider dispatch, POST, or financial posting is retried here.
+      return this.db.serializable(async tx => {
+        const prior = await tx.commerceRefundOperation.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
+        if (!prior) throw new ConflictException('Refund ledger entry is already reserved for different details.');
+        return this.authorizedReplay(tx, prior, actorId, input, fingerprint);
+      });
     });
     if (prepared.status !== 'RESERVED') return this.result(prepared);
 
