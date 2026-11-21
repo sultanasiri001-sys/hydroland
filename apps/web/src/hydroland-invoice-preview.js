@@ -44,12 +44,19 @@ export async function showInvoicePreview(win, seller, options = {}) {
   const localTime = new Intl.DateTimeFormat('en-GB', { timeZone:'Asia/Riyadh', year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23' }).format(new Date(invoice.timestamp)).replace(',', ' ·');
   const row = (label, value) => '<div class="pair"><span>' + label + '</span><bdi>' + escape(value) + '</bdi></div>';
   const qr = previewQr(invoice);
+  const assets = await fetch(new URL('invoice-print.json', base));
+  if (!assets.ok) throw new Error('تعذّر تحميل هوية المستند.');
+  const identity = await assets.json();
+  if (win.closed) return;
   const doc = win.document;
   doc.open();
-  doc.write('<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>فاتورة تجريبية | هيدرولاند</title><link rel="stylesheet" href="' + new URL('./hydroland-invoice-preview.css', import.meta.url).href + '"></head><body></body></html>');
+  doc.write('<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>فاتورة تجريبية | هيدرولاند</title></head><body></body></html>');
   doc.close();
+  const brandStyle = doc.createElement('style');
+  brandStyle.textContent = identity.css;
+  doc.head.append(brandStyle);
   doc.body.innerHTML = `<nav aria-label="خيارات الطباعة"><button data-paper="thermal">إيصال ٨٠ مم</button><button data-paper="a4">مستند A4</button><button data-print disabled>طباعة</button></nav>
-    <main><header><div class="brand"><img src="${new URL('hydroland-mark-approved-v2.png',base).href}" alt=""><div><strong>HYDROLAND</strong><b>هيدرولاند</b></div></div>
+    <main><header><div class="brand"><img alt=""><div><strong>HYDROLAND</strong><b>هيدرولاند</b></div></div>
       <h1>فاتورة ضريبية مبسطة</h1></header>
     <article><p class="status">نموذج تجريبي للطباعة</p>
     <section class="seller">${centerMark}<div><small>البائع ومقدّم الخدمة</small><h2>${escape(name)}</h2>
@@ -70,8 +77,7 @@ export async function showInvoicePreview(win, seller, options = {}) {
   };
   for (const button of doc.querySelectorAll('[data-paper]')) button.onclick = () => format(button.dataset.paper);
   format(options.paper === 'a4' ? 'a4' : 'thermal');
-  const css = doc.querySelector('link');
-  if (!css.sheet) await new Promise((resolve,reject) => { css.onload = resolve; css.onerror = () => reject(new Error('تعذّر تحميل هوية المستند.')); });
+  doc.querySelector('.brand img').src = identity.logo;
   await Promise.all([doc.fonts.load('700 16px Tajawal'),doc.fonts.load('400 16px Tajawal'),...Array.from(doc.images).map(img => img.decode())]);
   const print = doc.querySelector('[data-print]'); print.disabled = false; print.onclick = () => win.print();
 }
