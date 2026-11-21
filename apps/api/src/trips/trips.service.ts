@@ -1,3 +1,4 @@
+import { completedTripHistory } from './completed-trip-history';
 import { priceActivity } from '../store/activity-promotions';
 import { BookingManagementService } from './booking-management.service';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
@@ -18,6 +19,8 @@ type TripPrice={pricePerSeatMinor:number;listPriceMinor?:number;discountActive?:
 @Injectable()
 export class TripsService {
   constructor(private readonly bookingManagement:BookingManagementService,private readonly db:DatabaseService,private readonly weatherGate:WeatherGateService,private readonly weatherReviews:TripWeatherReviewService,private readonly participants:BookingParticipantService,private readonly policies:PolicyControlService,private readonly audit:AuditService) {}
+
+  completed(accountId:string,role:string,page:number){return completedTripHistory(this.db,accountId,role,page);}
 
   private async bookingControls(tx:Prisma.TransactionClient){
     const [gateSettings,safetyPolicy,weatherPolicy,capacityPolicy]=await Promise.all([this.weatherGate.settings(tx),this.policies.decision('BOOKING','SAFETY_APPROVAL',tx),this.policies.decision('WEATHER','WEATHER_GATE',tx),this.policies.decision('BOOKING','CAPACITY_LIMIT',tx)]);

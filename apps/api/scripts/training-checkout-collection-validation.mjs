@@ -459,6 +459,35 @@ try {
     const enrolled=await repository.createEnrollment({studentAccountId:buyer.id,centerOrganizationId:centerA.id,courseCode:'CENTER'});
     assert.equal(enrolled.centerOrganizationId,centerA.id);
   });
+  await check('completed history counts each trip once, actual passenger attendances and distinct taught students',async()=>{
+    const {completedTripHistory}=await load('trips/completed-trip-history.js');
+    const trainer=await account('history-instructor'), skipper=await account('history-owner');
+    await db.roleAssignment.createMany({data:[{accountId:trainer.id,role:'INSTRUCTOR',status:'ACTIVE'},{accountId:skipper.id,role:'BOAT_OWNER',status:'ACTIVE'}]});
+    const operator=await db.organization.create({data:{ownerId:skipper.id,kind:'MARINE_OPERATOR',status:'ACTIVE',displayName:'Fixture boat owner'}});
+    await db.organizationMember.create({data:{accountId:skipper.id,organizationId:operator.id,role:'OWNER',status:'ACTIVE'}});
+    const vessel=await db.marineAsset.create({data:{organizationId:operator.id,reviewCenterId:centerA.id,name:'Fixture boat',assetType:'DIVE_BOAT',status:'ACTIVE'}});
+    const now=new Date();
+    const tripData={type:'BOAT',organizationId:centerA.id,marineAssetId:vessel.id,title:'Fixture completed trip',startsAt:now,endsAt:now,capacity:9};
+    const [first,second,cancelled]=await Promise.all(['COMPLETED','COMPLETED','CANCELLED'].map(status=>db.trip.create({data:{...tripData,status}})));
+    const enr=await db.trainingEnrollment.create({data:{studentAccountId:buyer.id,courseCode:'HISTORY',centerOrganizationId:centerA.id}});
+    const record=await db.trainingRecord.create({data:{enrollmentId:enr.id}});
+    await db.trainingSession.createMany({data:[first.id,first.id,second.id].map(tripId=>({trainingRecordId:record.id,instructorAccountId:trainer.id,tripId,startsAt:now,status:'COMPLETED'}))});
+    await db.trainingSession.create({data:{trainingRecordId:record.id,instructorAccountId:trainer.id,tripId:cancelled.id,startsAt:now,status:'CANCELLED'}});
+    const booking=await db.booking.create({data:{tripId:first.id,accountId:buyer.id,seats:3,status:'CONFIRMED'}});
+    for(let n=0;n<3;n++){
+      const person=await db.bookingParticipant.create({data:{bookingId:booking.id,fullName:'Fixture passenger '+n}});
+      if(n<2)await db.diveLog.create({data:{sourceTripId:first.id,sourceParticipantId:person.id,siteName:'Fixture site',diveDate:now,maxDepthM:0,durationMin:20}});
+    }
+    const teaching=await completedTripHistory(db,trainer.id,'instructor',1);
+    assert.equal(teaching.tripCount,2);assert.equal(teaching.peopleCount,1);
+    assert.deepEqual(teaching.items.map(row=>row.peopleCount),[1,1]);
+    const marine=await completedTripHistory(db,skipper.id,'boat',1);
+    assert.equal(marine.tripCount,2);assert.equal(marine.peopleCount,2);
+    assert.equal(marine.items.find(row=>row.id===first.id).peopleCount,2);
+    assert.ok(!marine.items.some(row=>row.id===cancelled.id));
+    await assert.rejects(completedTripHistory(db,trainer.id,'boat',1),status(403));
+    assert.deepEqual((await completedTripHistory(db,skipper.id,'boat',2)).items,[]);
+  });
   await check('only the center can attach and print training and marine invoices, with approved switches and archived originals', async()=>{
     await verifyAccountInvoices({db,base:origin,owner,buyer,accountant,account,center:centerA,otherCenter:centerB,id});
   });
