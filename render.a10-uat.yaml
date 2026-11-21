@@ -6,7 +6,7 @@ services:
     plan: free
     branch: codex/a10-managed-uat-20261121
     autoDeployTrigger: off
-    buildCommand: npm ci --workspace=@hydroland/api --include-workspace-root=true --no-audit --no-fund && npx --no-install prisma generate --schema apps/api/prisma/schema.prisma
+    buildCommand: npm ci --workspace=@hydroland/api --include-workspace-root=true --include=dev --no-audit --no-fund && npx --no-install prisma generate --schema apps/api/prisma/schema.prisma && npm run build --workspace=@hydroland/api
     startCommand: node ops/a10-uat/seed.mjs
     envVars:
       - key: DATABASE_URL
