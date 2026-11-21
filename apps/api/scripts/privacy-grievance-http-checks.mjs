@@ -82,6 +82,29 @@ async function check() {
   assert.equal((await notices(outside,id)).length,0);
   assert(!JSON.stringify(await inbox(member)).includes(report));
   assert.equal(await db.auditEvent.count({where:{resourceId:id,action:'privacy_grievance.escalated'}}),1);
+  const rights='/me/data-requests';
+  const input={kind:'ERASURE',domain:'PAYMENTS',details:'Review synthetic payment',centerId:center.id,requestKey:randomUUID()};
+  assert.deepEqual((await call(member,rights+'/centers')).data.map(c=>c.id),[center.id]);
+  assert.equal((await call(member,rights,'POST',{...input,centerId:foreign.id})).status,403);
+  const [receipt,again]=await Promise.all([call(member,rights,'POST',input),call(member,rights,'POST',input)]);
+  assert.equal(receipt.status,201);assert.equal(again.data.id,receipt.data.id);assert.equal(receipt.data.routingCenterId,center.id);
+  const linked=await db.privacyGrievance.findUniqueOrThrow({where:{personalDataRequestId:receipt.data.id}});
+  assert.equal((await notices(owner,linked.id)).length,1);
+  assert.equal((await act(owner,linked.id,'CENTER_RESOLVE','First decision')).status,201);
+  const appeal=(actor,reason)=>call(actor,route+'/'+linked.id+'/appeal','POST',{reason});
+  assert.equal((await appeal(outside,'Other person')).status,404);
+  assert.equal((await appeal(member,'Review the decision')).status,201);
+  assert.equal((await appeal(member,'Review the decision')).status,201);
+  assert.equal((await appeal(member,'Different appeal')).status,409);
+  await db.roleAssignment.create({data:{accountId:owner.id,role:'STAFF',status:'ACTIVE'}});
+  await db.organizationMember.create({data:{organizationId:platform.id,accountId:owner.id,role:'STAFF',status:'ACTIVE'}});
+  await db.employment.create({data:{accountId:owner.id,organizationId:platform.id,orgUnitId:unit.id,status:'ACTIVE',workerClass:'EMPLOYEE'}});
+  assert.equal((await act(owner,linked.id,'DEPARTMENT_RESOLVE','Same reviewer','Report')).status,403);
+  assert.equal((await act(staff,linked.id,'DEPARTMENT_RESOLVE','Independent decision','Private appeal report')).status,201);
+  assert.equal((await call(member,rights)).data.items.find(i=>i.id===receipt.data.id).status,'APPEAL_DECIDED');
+  assert.equal((await inbox(member)).items.find(i=>i.id===linked.id).firstOutcome,'First decision');
+  assert.equal((await notices(executive,linked.id)).filter(n=>n.payload.message==='Private appeal report').length,1);
+  console.log('PASS rights receipt, affiliated center, first decision and independent appeal');
   console.log('PASS actual login, verified center affiliation, exact seven-day deadline, handled and idle branches, scheduler, department isolation, executive report and two private inbox deliveries, atomic rollback and duplicate retries');
 }
 try { await check(); } finally { await db.$disconnect(); }

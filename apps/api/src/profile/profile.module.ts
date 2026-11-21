@@ -1,3 +1,4 @@
+import { CustomerServiceModule } from '../customer-service/customer-service.module';
 import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
 import { AuthModule } from '../auth/auth.module';
@@ -12,7 +13,7 @@ import { PersonalDataRequestsController } from './personal-data-requests.control
 import { PersonalDataRequestsService } from './personal-data-requests.service';
 
 @Module({
-  imports: [AuthModule, TripsModule, AuditModule],
+  imports: [CustomerServiceModule, AuthModule, TripsModule, AuditModule],
   controllers: [ProfileController, DiverMasterProfileController, MembershipPassController, PersonalDataRequestsController],
   providers: [ProfileService, DiverMasterProfileService, MembershipPassService, PersonalDataRequestsService],
 })

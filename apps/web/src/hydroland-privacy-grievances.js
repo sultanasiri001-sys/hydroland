@@ -93,6 +93,15 @@
           section.append(element('h4',row.organization.displayName),element('p',row.description),element('p',localized(...states[row.state])));
           const date=new Date(row.dueAt).toLocaleString(document.documentElement.lang||'ar');
           section.append(element('p',localized('نهاية مهلة المركز','Center deadline')+' · '+date));
+          if(row.personalDataRequestId) section.append(element('p',localized('رقم طلب البيانات','Data request number')+' · '+row.personalDataRequestId));
+          if(row.firstOutcome) section.append(element('p',localized('القرار الأول','Initial decision')+' · '+row.firstOutcome));
+          if(row.appealReason) section.append(element('p',localized('سبب التظلم','Appeal reason')+' · '+row.appealReason));
+          if(row.canAppeal) {
+            const reason=textarea();
+            section.append(form([label(localized('سبب التظلم على القرار','Reason for appealing the decision'),reason)],
+              localized('إحالة التظلم للإدارة المختصة','Submit appeal to the department'),
+              ()=>api('/'+encodeURIComponent(row.id)+'/appeal',{reason:reason.value})));
+          }
           if(row.centerAction) section.append(element('p',row.centerAction));
           if(row.outcome) section.append(element('p',localized('نتيجة المعالجة','Outcome')+' · '+row.outcome));
           const act=(action,fields)=>api('/'+encodeURIComponent(row.id)+'/actions',{action,...fields});

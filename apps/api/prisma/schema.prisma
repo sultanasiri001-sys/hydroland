@@ -2923,6 +2923,8 @@ model WarehouseLocationRevision {
 
 
 model PersonalDataRequest {
+  routingCenterId String?
+  case PrivacyGrievance?
   id String @id @default(uuid())
   accountId String
   requestKey String
@@ -2938,6 +2940,12 @@ model PersonalDataRequest {
 }
 
 model PrivacyGrievance {
+  personalDataRequestId String? @unique
+  personalDataRequest PersonalDataRequest? @relation(fields:[personalDataRequestId], references:[id], onDelete:Restrict)
+  decisionPersonId String?
+  firstOutcome String?
+  appealReason String?
+  appealedAt DateTime? @db.Timestamptz(3)
   id String @id @default(uuid())
   customerId String
   requestKey String

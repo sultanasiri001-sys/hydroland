@@ -26,6 +26,6 @@ const rehearsalControllers = process.env.NODE_ENV === 'test' && process.env.HYDR
   imports: [NotificationsModule, AuthModule, AdminModule, AuditModule, DatabaseModule],
   controllers: [PrivacyGrievanceController, CustomerCaseController, CustomerCaseManagementController, OrganizationCustomerCaseController, ...rehearsalControllers],
   providers: [PrivacyGrievanceService, PrivacyGrievanceScheduler, CustomerCaseService, CustomerCaseManagementService, CustomerServiceFoundationService, CustomerServiceWorkflowService, CustomerServiceOperationsService, CustomerServiceGovernanceService],
-  exports: [CustomerCaseService, CustomerCaseManagementService, CustomerServiceFoundationService, CustomerServiceWorkflowService, CustomerServiceOperationsService, CustomerServiceGovernanceService],
+  exports: [PrivacyGrievanceService, CustomerCaseService, CustomerCaseManagementService, CustomerServiceFoundationService, CustomerServiceWorkflowService, CustomerServiceOperationsService, CustomerServiceGovernanceService],
 })
 export class CustomerServiceModule {}

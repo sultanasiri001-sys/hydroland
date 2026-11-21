@@ -8,6 +8,9 @@ type Session = { auth: { accountId: string } };
 export class PersonalDataRequestsController {
   constructor(private readonly requests: PersonalDataRequestsService) {}
 
+  @Get('centers') @Header('Cache-Control','private, no-store')
+  centers(@Req() req: Session) { return this.requests.centers(req.auth.accountId); }
+
   @Get() @Header('Cache-Control','private, no-store')
   list(@Req() req: Session, @Query('page') page?: string) {
     return this.requests.list(req.auth.accountId, page === undefined ? 1 : Number(page));

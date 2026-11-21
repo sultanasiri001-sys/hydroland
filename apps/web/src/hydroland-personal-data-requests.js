@@ -33,13 +33,15 @@
     title.id='hl-personal-data-title'; dialog.setAttribute('aria-labelledby',title.id);
     header.append(title,button(t('إغلاق','Close'),()=>dialog.close()));
     const form=node('form'),kind=select(kinds),domain=select(domains),ref=node('input'),details=node('textarea');
+    const center=node('select'), centerField=label(t('المركز الذي سيستلم تفاصيل الطلب','Center that will receive the request details'),center);
+    centerField.hidden=true;
     ref.maxLength=200; details.maxLength=1000;
     const refLabel=label(t('مرجع السجل من تنزيل بياناتي (اختياري)','Record ID from my data download (optional)'),ref);
     const sync=()=>{refLabel.hidden=domain.value==='ACCOUNT'; details.required=kind.value==='CORRECTION';};
     domain.addEventListener('change',sync); kind.addEventListener('change',sync); sync();
-    const submit=node('button',t('تقديم الطلب','Submit request')); submit.type='submit';
+    const submit=node('button',t('تقديم الطلب','Submit request')); submit.type='submit'; submit.disabled=true;
     const status=node('p'); status.setAttribute('role','status');
-    form.append(label(t('نوع الطلب','Request type'),kind),label(t('نطاق البيانات','Data scope'),domain),refLabel,
+    form.append(label(t('نوع الطلب','Request type'),kind),label(t('نطاق البيانات','Data scope'),domain),centerField,refLabel,
       label(t('التصحيح المطلوب أو تفاصيل طلب الحذف','Correction needed or erasure details'),details),
       node('p',t('اكتفِ بوصف السجل والتغيير المطلوب. تجنّب إدخال بيانات طبية أو أرقام هوية أو دفع.',
         'Describe the record and requested change. Omit medical information, ID numbers and payment details.')),submit);
@@ -64,6 +66,19 @@
       }
       return res.json();
     }
+    async function loadCenters() {
+      try {
+        const centers=await request('/centers');
+        if (!current()) return;
+        center.replaceChildren();
+        if (centers.length>1) center.add(new Option(t('اختر مركزك','Select your center'),''));
+        for (const item of centers) center.add(new Option(item.displayName,item.id));
+        centerField.hidden=centers.length===0; center.required=centers.length>0;
+        submit.disabled=false; status.replaceChildren();
+      } catch {
+        if(current()) status.replaceChildren(node('span',t('تعذّر تحميل مراكزك.','Could not load your centers.')),button(t('إعادة المحاولة','Retry'),loadCenters));
+      }
+    }
     async function load() {
       const attempt=++loadId;
       try {
@@ -73,7 +88,7 @@
         for (const item of data.items) {
           const entry=node('article');
           entry.append(node('h4',t(...kinds[item.kind])+' · '+t(...domains[item.domain])),
-            node('p',item.status==='RECEIVED' ? t('تم استلام الطلب','Request received') : item.status),
+            node('p',({RECEIVED:t('تم استلام الطلب','Request received'),DECISION_RECORDED:t('صدر القرار الأول','Initial decision recorded'),APPEAL_PENDING:t('التظلم لدى الإدارة','Appeal under review'),APPEAL_DECIDED:t('صدر قرار التظلم','Appeal decision recorded')})[item.status] || item.status),
             node('p',new Date(item.createdAt).toLocaleString(document.documentElement.lang)),
             node('p',t('رقم الطلب','Request number')+' '+item.id));
           if (item.recordRef) entry.append(node('p',item.recordRef));
@@ -91,10 +106,10 @@
     form.addEventListener('submit',async event=>{
       event.preventDefault();
       if(submit.disabled || !current()) return;
-      const data={kind:kind.value,domain:domain.value,recordRef:refLabel.hidden ? null : ref.value.trim() || null,details:details.value.trim()};
+      const data={...(center.value ? {centerId:center.value} : {}),kind:kind.value,domain:domain.value,recordRef:refLabel.hidden ? null : ref.value.trim() || null,details:details.value.trim()};
       const fingerprint=JSON.stringify(data);
       if(pending?.fingerprint!==fingerprint) pending={fingerprint,key:crypto.randomUUID()};
-      const controls=[kind,domain,ref,details,submit];
+      const controls=[kind,domain,center,ref,details,submit];
       for(const control of controls) control.disabled=true;
       try {
         const receipt=await request('',{...data,requestKey:pending.key});
@@ -104,7 +119,7 @@
       } catch(error) { if(current()) status.textContent=error.message; }
       finally { if(current()) for(const control of controls) control.disabled=false; }
     });
-    void load();
+    void loadCenters(); void load();
   }
   document.addEventListener('click',event=>{if(event.target.closest?.('[data-personal-data-requests]')) open();});
   document.addEventListener('hydroland:session-cleared',()=>active?.close());
