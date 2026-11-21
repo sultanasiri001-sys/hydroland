@@ -222,3 +222,15 @@ test('buyer can open a linked store-order case and review its reference before s
  await expect.poll(()=>sent.length).toBe(1);
  expect(sent[0]).toMatchObject({referenceType:'STORE_ORDER',referenceId:id});
 });
+
+test('center calculates an optional percentage or fixed discount before publishing',async({page})=>{
+ await setup(page,true);
+ const form=page.locator('[data-offer-form][data-type="products"][data-id=""]');
+ await form.locator('..').locator('summary').first().click();
+ await form.locator('[name=price]').fill('240');
+ const calculator=form.locator('[data-discount-calculator]');await calculator.locator('[data-show-calc]').click();
+ await calculator.locator('[data-calc-value]').fill('25');await calculator.locator('[data-calc-price]').click();
+ await expect(form.locator('[name=catalogSale]')).toHaveValue('180.00');
+ await calculator.locator('[data-calc-mode]').selectOption('amount');await calculator.locator('[data-calc-value]').fill('15.50');
+ await calculator.locator('[data-calc-price]').click();await expect(form.locator('[name=catalogSale]')).toHaveValue('224.50');
+});
