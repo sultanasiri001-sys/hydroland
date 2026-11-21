@@ -257,3 +257,20 @@ test('center discount dashboard updates its own SKU and reports only its order p
  await reports.locator('summary').click();await reports.getByRole('button',{name:'تحديث تقرير الطلبات'}).click();
  await expect(reports).toContainText('قيمة بنود مركزك فقط');await expect(reports).toContainText('CREATED');
 });
+
+test('center moves a SKU out of published stock into a warehouse on mobile',async({page})=>{
+ const state=await setup(page,true);
+ const stock={locations:[{id:'warehouse',title:'مستودع المرسى',code:'WH-A'}],units:[],
+   products:[{id:'mask',nameAr:'قناع الغوص',sku:'MASK-1',stockQuantity:4,locationStock:[]}],movements:[]};
+ await page.route('**/api/v1/store/provider/inventory',r=>json(r,stock));
+ await page.route('**/api/v1/store/provider/inventory/transfers',r=>{
+   const body=r.request().postDataJSON();state.writes.push(body);stock.products[0].stockQuantity-=body.quantity;
+   stock.products[0].locationStock=[{locationId:'warehouse',quantity:body.quantity}];return json(r,{id:body.requestId},201);
+ });
+ const inventory=page.locator('[data-merchant-inventory]');await inventory.locator('> summary').click();
+ const form=inventory.locator('[data-stock-transfer]');await expect(form).toBeVisible();
+ await form.getByLabel('إلى موقع').selectOption('warehouse');await form.getByLabel('الكمية').fill('3');
+ await form.getByRole('button',{name:'نقل الكمية'}).click();
+ await expect(form).toContainText('مستودع المرسى · WH-A · 3');await expect(form).toContainText('إجمالي الوحدات · 4');
+ expect(state.writes[0]).toMatchObject({productId:'mask',sourceKey:'ONLINE',destinationKey:'warehouse',quantity:3});
+});

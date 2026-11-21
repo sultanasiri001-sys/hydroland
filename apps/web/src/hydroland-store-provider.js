@@ -1,6 +1,7 @@
 (()=>{
   // Only authored interface text is localized. Account and business values stay opaque.
   const uiLocale = window.HydrolandI18n?.createScope("store-provider", {
+  "تم تسجيل حركة المخزون":"Stock transfer recorded",
   "تعذر تنفيذ الإجراء.": "Could not complete the action.",
   "مرتجعات السلع": "Goods returns",
   "عرض طلبات الإرجاع": "View return requests",
@@ -100,7 +101,7 @@
    const used=type==='courses'?row._count?.enrollments:row._count?.items;
    return uiLocale.html`<article data-managed-offer="${esc(row.id)}" data-type="${type}" data-revision="${esc(row.updatedAt)}"><h4>${esc(row.title||row.nameAr)}</h4><p>${uiLocale.messageHTML(((value=>value?uiLocale.message(value):value)(({DRAFT:'مسودة',ACTIVE:'منشور',INACTIVE:'متوقف'})[row.status]) || row.status))} · ${uiLocale.messageHTML((type==='courses'?uiLocale.message('دورة'):(row.kind==='SERVICE'?uiLocale.message('خدمة'):uiLocale.message('سلعة'))))}</p>${editor(type,row)}<button type="button" data-offer-status="${row.status==='ACTIVE'?'INACTIVE':'ACTIVE'}">${uiLocale.messageHTML((row.status==='ACTIVE'?uiLocale.message('إيقاف العرض'):uiLocale.message('نشر العرض')))}</button>${(row.status!=='ACTIVE'&&!used?uiLocale.html`<button type="button" data-offer-delete>حذف العرض</button>`:uiLocale.html`<small>أوقف العرض لإزالته من المتجر. تُحفظ العروض المرتبطة بطلبات أو تسجيلات.</small>`)}<p data-offer-action-feedback role="status"></p></article>`;
  }
- async function open(notice='',focusCourse=false){
+ async function open(notice='',focusCourse=false,focusInventory=false){
    if(!eligible()){clear();return}
    window.HydrolandWorkspaceUI?.show?.(store);const heading=document.querySelector('[data-service-title]');if(heading)uiLocale.setMessage(heading, uiLocale.message('إدارة عروض المركز'));
    panel.hidden=false;toggle.setAttribute('aria-expanded','true');const v=++version,session=auth().getSessionVersion?.();uiLocale.setHTML(panel, uiLocale.html`<p>جارٍ تحميل عروض المركز...</p>`);
@@ -109,6 +110,8 @@
      const data=await request('/store/provider/catalog');if(!live(v,session))return;
      if(!data?.organization||!Array.isArray(data.products)||!Array.isArray(data.courses))throw localError('استجابة العروض غير مكتملة.');
      uiLocale.setHTML(panel, uiLocale.html`<h3>عروض ${esc(data.organization.displayName)}</h3><p>العروض المنشورة تظهر في المتجر للجميع. إيقاف العرض يمنع الطلبات الجديدة ويحفظ الطلبات والتسجيلات السابقة.</p>${(notice?uiLocale.html`<p role="status">${uiLocale.messageHTML(notice)}</p>`:'')}<button type="button" data-offer-refresh>تحديث العروض</button><button type="button" data-offer-preview>معاينة المتجر</button><button type="button" data-offer-trips>إدارة الرحلات والحجوزات</button>${editor('products')}${editor('courses')}<details><summary>مرتجعات السلع</summary><button type="button" data-list-returns>عرض طلبات الإرجاع</button><button type="button" data-reviewed-returns>مراجعة المرتجعات المستلمة</button><div data-return-queue></div></details><div data-managed-offers>${data.products.map(row=>rowHtml('products',row)).join('')}${data.courses.map(row=>rowHtml('courses',row)).join('')}${(!data.products.length&&!data.courses.length?uiLocale.html`<p>لا توجد عروض للمركز بعد.</p>`:'')}</div>`);
+     const stock=window.HydrolandStoreInventory?.mount(panel,request,()=>live(v,session),()=>open(uiLocale.message('تم تسجيل حركة المخزون'),false,true));
+     if(stock && focusInventory)stock.open=true;
      window.HydrolandStorefronts?.editor(panel,request,()=>live(v,session));
      window.HydrolandCatalogImport?.mount(panel,'provider',()=>open());
      const discounts=window.HydrolandProductCatalog?.mount(panel,(path,options)=>auth().authorizedFetch(path,options),()=>open(),null,{role:'provider',active:()=>live(v,session)});
