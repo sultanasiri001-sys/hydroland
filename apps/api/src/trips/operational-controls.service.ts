@@ -40,12 +40,12 @@ export class OperationalControlsService {
    if(previous.state===state)return previous;
    await tx.$executeRaw`
     INSERT INTO "PolicyControl" ("id","category","ruleKey","labelAr","state","description","updatedByAccountId","createdAt","updatedAt")
-    VALUES (gen_random_uuid()::text,${control.category},${control.ruleKey},${control.labelAr},${state},${control.description},${accountId}::uuid,NOW(),NOW())
-    ON CONFLICT ("category","ruleKey") DO UPDATE SET "state"=EXCLUDED."state","updatedByAccountId"=EXCLUDED."updatedByAccountId","updatedAt"=clock_timestamp()
+    VALUES (gen_random_uuid()::text,${control.category},${control.ruleKey},${control.labelAr},${state},${control.description},${accountId}::uuid,(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'),(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'))
+    ON CONFLICT ("category","ruleKey") DO UPDATE SET "state"=EXCLUDED."state","updatedByAccountId"=EXCLUDED."updatedByAccountId","updatedAt"=(clock_timestamp() AT TIME ZONE 'UTC')
    `;
    if(control.category==='WEATHER'){
     const value={enabled:state==='ENABLED',mode:state==='ENABLED'?'ENFORCE':'ADVISORY',provider:'STORMGLASS'};
-    await tx.$executeRaw`INSERT INTO "OperationalSetting" ("key","value","updatedAt") VALUES ('WEATHER_GATE',${JSON.stringify(value)}::jsonb,NOW()) ON CONFLICT ("key") DO UPDATE SET "value"=EXCLUDED."value","updatedAt"=clock_timestamp()`;
+    await tx.$executeRaw`INSERT INTO "OperationalSetting" ("key","value","updatedAt") VALUES ('WEATHER_GATE',${JSON.stringify(value)}::jsonb,(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')) ON CONFLICT ("key") DO UPDATE SET "value"=EXCLUDED."value","updatedAt"=(clock_timestamp() AT TIME ZONE 'UTC')`;
    }
    const current=(await this.snapshot(tx)).find(row=>row.id===id)!;
    await this.audit.record({actorId:accountId,action:'OPERATIONAL_CONTROL_CHANGED',resource:'PolicyControl',resourceId:id,metadata:{accountId,category:control.category,ruleKey:control.ruleKey,previousState:previous.state,previousPolicyState:previous.policyState,state,reason,previousRevision:previous.revision,revision:current.revision}},tx);
