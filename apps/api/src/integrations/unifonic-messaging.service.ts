@@ -1,6 +1,7 @@
 import { BadGatewayException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { IntegrationService } from './integration.service';
 
+import { approvedWhatsAppTemplates } from './whatsapp-template-policy';
 import { smsSubmissionReceipt, type SmsSubmissionReceipt } from './unifonic-sms-receipt';
 
 type SmsInput={recipient:string;body:string;correlationId:string};
@@ -41,6 +42,9 @@ export class UnifonicMessagingService {
     const name=input.templateName?.trim();
     const language=input.languageCode?.trim();
     if(!name||!language)throw new ServiceUnavailableException('WhatsApp template input is incomplete.');
+    if (!approvedWhatsAppTemplates().has(`${name}:${language}`)) {
+      throw new ServiceUnavailableException('WhatsApp template and language are not approved.');
+    }
     const parameters=(input.parameters??[]).map(value=>({type:'text',text:String(value)}));
     const requestBody={recipient:{contact:recipient,channel:'whatsapp'},content:{type:'template',name,language:{code:language},components:parameters.length?[{type:'body',parameters}]:[]}};
     let response:Response;
