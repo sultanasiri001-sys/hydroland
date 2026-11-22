@@ -3338,7 +3338,25 @@ model WarehousePurchaseReceipt {
   @@id([organizationId, receiptId])
 }
 
+model WarehouseProcurementAssignment {
+  organizationId String
+  accountId String
+  employmentId String
+  positionId String
+  grantedBy String
+  active Boolean
+  updatedAt DateTime @updatedAt
+  @@id([organizationId,accountId])
+}
+
 model WarehouseDecisionRequest {
+  recommendedBy String?
+  recommenderPersonId String?
+  recommendation String?
+  recommendationNote String?
+  recommendedAt DateTime?
+  finalDecision String?
+  finalNote String?
   organizationId String
   id String
   kind String

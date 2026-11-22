@@ -18,7 +18,11 @@ export async function warehouseDecisionsCases({db, org, owner, other, actor, ok,
   const submit = 'warehouse/purchase-requests/'+purchaseId, receiptPath = 'warehouse/receipts/'+receiptId;
   const receipt = {lineId:purchaseId,locationId,quantity:12};
   const path = (id,step) => 'warehouse/requests/'+id+'/'+step;
-  const mandate = kind => db.operationalSetting.create({data:{key:'WAREHOUSE_FINAL_APPROVER:v1:'+org.id+':'+kind,value:{accountId:owner.id}}});
+  const procurement = await employee('procurement','INVENTORY_LOGISTICS');
+  const assignment='warehouse/procurement-representatives/'+procurement.id;
+  await deny(other,assignment,'POST',{active:true},[403]);
+  await ok(owner,assignment,'POST',{active:true});
+  const opinion=(request,decision='APPROVE')=>({digest:request.finalDigest || request.digest,decision,note:'مسوغ تجريبي للقرار'});
   await deny(null,submit,'POST',order,[401]);
   await deny(other,submit,'POST',order,[403]);
   const request = await ok(maker,submit,'POST',order);
@@ -29,10 +33,21 @@ export async function warehouseDecisionsCases({db, org, owner, other, actor, ok,
   await deny(maker,path(purchaseId,'review'),'POST',sign,[403]);
   await deny(finance,path(purchaseId,'review'),'POST',{digest:'0'.repeat(64)},[409]);
   await ok(finance,path(purchaseId,'review'),'POST',sign);
-  await deny(owner,path(purchaseId,'finalize'),'POST',sign,[403]);
-  await mandate('PURCHASE');
-  await ok(owner,path(purchaseId,'finalize'),'POST',sign);
-  await ok(owner,path(purchaseId,'finalize'),'POST',sign);
+  await deny(owner,path(purchaseId,'finalize'),'POST',opinion(request),[409]);
+  await deny(reviewer,path(purchaseId,'recommend'),'POST',opinion(request),[403]);
+  await ok(owner,assignment,'POST',{active:false});
+  await deny(procurement,path(purchaseId,'recommend'),'POST',opinion(request),[403]);
+  await ok(owner,assignment,'POST',{active:true});
+  const recommendation=await ok(procurement,path(purchaseId,'recommend'),'POST',opinion(request));
+  await deny(owner,path(purchaseId,'finalize'),'POST',opinion(request),[409]);
+  await deny(procurement,path(purchaseId,'finalize'),'POST',opinion(request),[403]);
+  await ok(owner,path(purchaseId,'finalize'),'POST',opinion(recommendation));
+  await ok(owner,path(purchaseId,'finalize'),'POST',opinion(recommendation));
+  const refusedId=randomUUID(), refused=await ok(maker,'warehouse/purchase-requests/'+refusedId,'POST',{...order,purchaseReference:randomUUID()});
+  await ok(finance,path(refusedId,'review'),'POST',{digest:refused.digest});
+  const adverse=await ok(procurement,path(refusedId,'recommend'),'POST',opinion(refused,'DECLINE'));
+  await ok(owner,path(refusedId,'finalize'),'POST',opinion(adverse,'DECLINE'));
+  await deny(reviewer,receiptPath,'POST',{...receipt,lineId:refusedId},[404]);
   await deny(finance,receiptPath,'POST',receipt,[403]);
   const delivery = await ok(reviewer,receiptPath,'POST',receipt);
   assert.equal(delivery.lot.received,12); assert.equal(delivery.lot.unitCostMinor,2500);
@@ -42,11 +57,11 @@ export async function warehouseDecisionsCases({db, org, owner, other, actor, ok,
     const body={digest:result.digest};
     await deny(maker,path(id,'review'),'POST',body,[403]);
     await ok(reviewer,path(id,'review'),'POST',body);
-    return {url:path(id,'finalize'),body};
+    const rec=await ok(procurement,path(id,'recommend'),'POST',opinion(result));
+    return {url:path(id,'finalize'),body:opinion(rec)};
   }
   const stale=await count(11), surplus=await count(14);
-  await deny(owner,surplus.url,'POST',surplus.body,[403]);
-  await mandate('COUNT');
+  await deny(other,surplus.url,'POST',surplus.body,[403]);
   await Promise.all([1,2,3].map(()=>ok(owner,surplus.url,'POST',surplus.body)));
   await deny(owner,stale.url,'POST',stale.body,[409]);
   const loss=await count(9);
@@ -57,8 +72,8 @@ export async function warehouseDecisionsCases({db, org, owner, other, actor, ok,
   const issue=await ok(maker,issuePath,'POST',{lotId:receiptId,custodianId:finance.id,quantity:3});
   await deny(maker,issuePath+'/post','POST',undefined,[409]);
   await ok(reviewer,path(issueId,'review'),'POST',{digest:issue.digest});
-  await mandate('ISSUE');
-  await ok(owner,path(issueId,'finalize'),'POST',{digest:issue.digest});
+  const issueRec=await ok(procurement,path(issueId,'recommend'),'POST',opinion(issue));
+  await ok(owner,path(issueId,'finalize'),'POST',opinion(issueRec));
   await Promise.all([1,2,3].map(()=>ok(maker,issuePath+'/post','POST')));
   const acknowledgment='warehouse/custody/'+org.id+'/'+issueId+'/acknowledge';
   await deny(maker,acknowledgment,'POST',undefined,[404]);
@@ -72,5 +87,5 @@ export async function warehouseDecisionsCases({db, org, owner, other, actor, ok,
   assert.equal(financialView.inventory,false);assert.equal(financialView.receipts.length,0);
   assert.ok(financialView.requests.every(r=>r.kind==='PURCHASE'));
   await deny(other,'warehouse/workspace','GET',undefined,[403]);
-  console.log('PASS HTTP warehouse purchase, independent budget review, final mandates, receipt, positive and negative stock counts, stale count rejection and concurrent replay.');
+  console.log('PASS HTTP warehouse purchase, independent budget review, documented procurement recommendation, executive approval and refusal, receipt, positive and negative stock counts, stale count rejection and concurrent replay.');
 }

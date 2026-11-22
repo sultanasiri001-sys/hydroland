@@ -10,7 +10,10 @@
     'مرجع بند الشراء':'Purchase line reference','معرّف الموقع':'Location ID','حفظ':'Save','الطلبات الأخيرة':'Recent requests',
     'مراجعة':'Review','اعتماد':'Approve','تنفيذ الصرف':'Post issue','عهد بانتظار إقراري':'Custody awaiting my acknowledgment',
     'إقرار الاستلام':'Acknowledge receipt','لا توجد طلبات':'No requests','تعذّر إكمال الإجراء':'Operation failed',
-    'دفعات الاستلام الأخيرة':'Recent stock receipts','الرصيد الحالي':'Current balance','تحديث':'Refresh','تفاصيل الطلب':'Request details','العدد الدفتري':'Book quantity','فرق الجرد':'Count difference',
+    'دفعات الاستلام الأخيرة':'Recent stock receipts','الرصيد الحالي':'Current balance','ممثل المشتريات':'Procurement representative','رقم حساب الموظف':'Employee account ID','تكليف':'Assign','إلغاء التكليف':'Revoke assignment',
+    'توصية المشتريات':'Procurement recommendation','مسوغات التوصية':'Recommendation grounds','مسوغات القرار':'Decision grounds',
+    'اختر القرار':'Select a decision','موافقة':'Approve','رفض':'Decline','مرفوض':'Declined','بانتظار توصية المشتريات':'Awaiting procurement recommendation',
+    'قرار الإدارة العليا':'Executive decision','تسجيل التوصية':'Record recommendation','تسجيل القرار':'Record decision','تحديث':'Refresh','تفاصيل الطلب':'Request details','العدد الدفتري':'Book quantity','فرق الجرد':'Count difference',
     'بانتظار المراجعة':'Awaiting review','بانتظار الاعتماد':'Awaiting approval','معتمد':'Approved','تم الحفظ':'Saved'
   });
   const dialog = document.createElement('dialog');
@@ -85,8 +88,31 @@
   function value(parent,label,v) {
     const p=add(parent,'p');add(p,'span',label);p.append(' · ',String(v));
   }
+  function opinionForm(group,row,stage) {
+    const panel=add(group,'form');
+    const title=stage==='recommend'?'توصية المشتريات':'قرار الإدارة العليا';
+    const select=add(add(panel,'label',title),'select');
+    select.required=true;const placeholder=add(select,'option','اختر القرار');placeholder.value='';placeholder.disabled=true;placeholder.selected=true;
+    for(const [key,label] of [['APPROVE','موافقة'],['DECLINE','رفض']]) add(select,'option',label).value=key;
+    const note=add(add(panel,'label',stage==='recommend'?'مسوغات التوصية':'مسوغات القرار'),'textarea');
+    note.required=true;note.minLength=3;note.maxLength=1000;
+    add(panel,'button',stage==='recommend'?'تسجيل التوصية':'تسجيل القرار').type='submit';
+    panel.addEventListener('submit',event=>{
+      event.preventDefault();
+      void post('requests/'+encodeURIComponent(row.id)+'/'+stage,{digest:stage==='finalize'?row.finalDigest:row.digest,decision:select.value,note:note.value});
+    });
+  }
+
   function render(data) {
     content.replaceChildren();
+    if(data.executive){
+      const group=add(content,'details');add(group,'summary','ممثل المشتريات');
+      const panel=add(group,'form'),account=add(add(panel,'label','رقم حساب الموظف'),'input');
+      account.required=true;account.maxLength=128;
+      const assign=add(panel,'button','تكليف'), revoke=add(panel,'button','إلغاء التكليف');
+      assign.type=revoke.type='submit';
+      panel.addEventListener('submit',e=>{e.preventDefault();void post('procurement-representatives/'+encodeURIComponent(account.value.trim()),{active:e.submitter===assign});});
+    }
     if(data.inventory){
       form('طلب شراء','purchase-requests',['purchaseReference','supplierId','itemId','quantity','unitCostMinor']);
       form('استلام توريد','receipts',['lineId','locationId','quantity']);
@@ -99,13 +125,19 @@
     for(const row of data.requests){
       const group=add(content,'details'),summary=add(group,'summary');
       add(summary,'span',kinds[row.kind]);summary.append(' · ',row.id,' · ');
-      add(summary,'span',row.finalizedAt?'معتمد':row.reviewedAt?'بانتظار الاعتماد':'بانتظار المراجعة');
+      add(summary,'span',row.finalizedAt?(row.finalDecision==='APPROVE'?'معتمد':'مرفوض'):row.recommendedAt?'بانتظار الاعتماد':row.reviewedAt?'بانتظار توصية المشتريات':'بانتظار المراجعة');
       for(const [key,label] of Object.entries(labels)) if(row.details[key]!==undefined)value(group,label,row.details[key]);
       if(row.kind==='COUNT')value(group,'فرق الجرد',row.details.counted-row.details.expected);
       const path='requests/'+encodeURIComponent(row.id)+'/';
       if(row.review)button(group,'مراجعة',()=>post(path+'review',{digest:row.digest}));
-      if(row.finalize)button(group,'اعتماد',()=>post(path+'finalize',{digest:row.digest}));
-      if(data.inventory&&row.finalizedAt&&row.kind==='ISSUE')button(group,'تنفيذ الصرف',()=>post('issue-requests/'+encodeURIComponent(row.id)+'/post',{}));
+      if(row.recommendedAt){
+        const rec=add(group,'p');add(rec,'span','توصية المشتريات');rec.append(' · ');add(rec,'span',row.recommendation==='APPROVE'?'موافقة':'رفض');
+        value(group,'مسوغات التوصية',row.recommendationNote);
+      }
+      if(row.finalizedAt)value(group,'مسوغات القرار',row.finalNote);
+      if(row.recommend)opinionForm(group,row,'recommend');
+      if(row.finalize)opinionForm(group,row,'finalize');
+      if(data.inventory&&row.finalDecision==='APPROVE'&&row.kind==='ISSUE')button(group,'تنفيذ الصرف',()=>post('issue-requests/'+encodeURIComponent(row.id)+'/post',{}));
     }
     if(data.receipts.length){
       add(content,'h3','دفعات الاستلام الأخيرة');

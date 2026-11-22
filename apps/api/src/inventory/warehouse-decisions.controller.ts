@@ -14,7 +14,7 @@ export class WarehouseDecisionsController {
 
   private async view(result: Promise<Decision>) {
     const row = await result;
-    return { ...row, digest: this.decisions.digest(row) };
+    return { ...row, digest: this.decisions.digest(row), finalDigest: this.decisions.finalDigest(row) };
   }
 
   @Post('purchase-requests/:id') @Header('Cache-Control','private, no-store')
@@ -51,10 +51,20 @@ export class WarehouseDecisionsController {
     return this.view(this.decisions.decide(req.auth.accountId, id, 'review', typeof digest === 'string' ? digest : ''));
   }
 
+  @Post('procurement-representatives/:id') @Header('Cache-Control','private, no-store')
+  assign(@Req() req: Request, @Param('id') id: string, @Body() body: unknown) {
+    return this.decisions.assign(req.auth.accountId,id,body);
+  }
+
+  @Post('requests/:id/recommend') @Header('Cache-Control','private, no-store')
+  recommend(@Req() req: Request, @Param('id') id: string, @Body() body: unknown) {
+    return this.view(this.decisions.recommend(req.auth.accountId,id,body));
+  }
+
   @Post('requests/:id/finalize') @Header('Cache-Control','private, no-store')
   finalize(@Req() req: Request, @Param('id') id: string, @Body() body: unknown) {
-    const { digest } = templateObject(body, ['digest']);
-    return this.view(this.decisions.decide(req.auth.accountId, id, 'finalize', typeof digest === 'string' ? digest : ''));
+    const { digest } = templateObject(body,['digest','decision','note']);
+    return this.view(this.decisions.decide(req.auth.accountId,id,'finalize',typeof digest==='string'?digest:'',body));
   }
 
   @Post('receipts/:id') @Header('Cache-Control','private, no-store')
