@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { AuditService } from '../dist/audit/audit.service.js';
 import { createHmac, randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
 
@@ -14,7 +15,27 @@ const tokenFor=id=>{const now=Math.floor(Date.now()/1000),body=`${enc({alg:'HS25
 const call=(token,path='',method='GET',body)=>fetch(base+'/notifications'+path,{method,headers:{...(token?{authorization:`Bearer ${token}`} :{}),...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
 const json=async response=>{const body=await response.json();assert(response.ok,`Unexpected HTTP ${response.status}: ${JSON.stringify(body)}`);return body};
 
+async function verifyCallbackAudit() {
+  const audit = new AuditService(db);
+  const event = { provider: 'SMS', eventId: randomUUID(), eventType: 'dlr' };
+  const where = {
+    action: 'integration.webhook.verified', resource: 'integration.webhook',
+    resourceId: event.provider + ':' + event.eventId,
+  };
+  try {
+    const results = await Promise.all(Array.from({length: 4}, () => audit.recordWebhookOnce(event)));
+    assert.deepEqual(results.sort(), [false, false, false, true]);
+    assert.equal(await audit.recordWebhookOnce(event), false);
+    const rows = await db.auditEvent.findMany({where, select: {metadata: true}});
+    assert.deepEqual(rows, [{metadata: event}]);
+    console.log('SMS callback audit passed: one durable record across concurrent and later retries.');
+  } finally {
+    await db.auditEvent.deleteMany({where});
+  }
+}
+
 try{
+  await verifyCallbackAudit();
   for(const name of ['Owner','Other']){
     const person=await db.person.create({data:{firstName:name,lastName:'Notifications E2E'}});people.push(person.id);
     accounts.push(await db.account.create({data:{personId:person.id,email:`notifications-${randomUUID()}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}}));
