@@ -417,6 +417,14 @@ jobs:
           node --test apps/api/scripts/credential-storage-recovery.test.cjs
       - name: Auth email outbox PostgreSQL E2E
         run: node apps/api/scripts/auth-email-outbox-db-e2e.mjs
+      - name: Customer booking and invoice email PostgreSQL E2E
+        env:
+          DATABASE_URL: postgresql://hydroland:hydroland@localhost:5433/commerce_notice_test
+        run: |
+          psql postgresql://hydroland:hydroland@localhost:5433/hydroland -v ON_ERROR_STOP=1 -c 'CREATE DATABASE commerce_notice_test'
+          npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261122233000_customer_notification_email/migration.sql
+          node apps/api/scripts/customer-notice-email-db-e2e.mjs
       - name: MFA lifecycle PostgreSQL E2E
         run: node apps/api/scripts/mfa-lifecycle-db-e2e.mjs
       - name: Credential integrity PostgreSQL E2E
