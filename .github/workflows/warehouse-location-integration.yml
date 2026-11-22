@@ -49,6 +49,7 @@ jobs:
       - run: npm --workspace @hydroland/api run build
       - run: node --test apps/api/scripts/warehouse-location.test.cjs apps/api/scripts/department-source.test.cjs
       - run: node apps/api/scripts/warehouse-issue-ledger-db.cjs
+      - run: node apps/api/scripts/warehouse-receipt-db.cjs
       - name: Additive warehouse migration on TEXT and UUID identities
         run: node apps/api/scripts/warehouse-location-migration-db-e2e.mjs
       - name: Native HTTP PostgreSQL locations and authorization acceptance
