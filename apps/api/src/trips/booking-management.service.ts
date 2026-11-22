@@ -110,7 +110,9 @@ export class BookingManagementService {
     const requirement = tripBookingPaymentRequirement(booking, price?.value);
     const requiredAmountMinor = requirement.requiredAmountMinor;
     const amountValid = requiredAmountMinor !== null;
-    const captured = amountValid && (requiredAmountMinor === 0 || payments.some(payment => satisfiesTripBookingPayment(payment, requirement)));
+    const needsPointsAcceptance=requiredAmountMinor===0 && Boolean((booking.contractSnapshot as {bookingPoints?:unknown}|null)?.bookingPoints);
+    const acceptedPoints=!needsPointsAcceptance || Boolean(await tx.auditEvent.findFirst({where:{action:'POINTS_BOOKING_TERMS_ACCEPTED',resource:'Booking',resourceId:booking.id}}));
+    const captured = amountValid && acceptedPoints && (requiredAmountMinor === 0 || payments.some(payment => satisfiesTripBookingPayment(payment, requirement)));
     const paymentContractReview = { source: requirement.source, required: requirement.source !== 'SNAPSHOT', reasonCode: requirement.reasonCode };
     const safety = await tx.safetyChecklist.findFirst({ where: { tripId: trip.id }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { id: true, decision: true, updatedAt: true } });
     const confirmedSeats = (await tx.booking.aggregate({ where: { tripId: trip.id, status: 'CONFIRMED' }, _sum: { seats: true } }))._sum.seats ?? 0;

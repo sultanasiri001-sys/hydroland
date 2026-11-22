@@ -26,6 +26,7 @@ export class LoyaltyController {
   @Post('offers/:id/reservations') reserve(@Req() r:Request,@Param('id') id:string,@Body() b:any) {
     return this.ledger.reserve(r.auth.accountId,id,b?.requestKey,b?.points,b?.cashDueMinor);
   }
+  @Post('trip-bookings/:id/reconcile-cancellation') releaseBooking(@Req() r:Request,@Param('id') id:string){return this.ledger.releaseBooking(r.auth.accountId,id);}
   @Get('offers/:id/pending') pending(@Req() r:Request,@Param('id') id:string) {return this.ledger.pending(r.auth.accountId,id);}
   @Post('reservations/:id/payment-failed') failed(@Req() r:Request,@Param('id') id:string,@Body() b:any) {return this.ledger.failedPayment(r.auth.accountId,id,b?.evidenceId);}
   @Post('reservations/:id/payment') pay(@Req() r:Request,@Param('id') id:string) {return this.ledger.beginPayment(r.auth.accountId,id);}

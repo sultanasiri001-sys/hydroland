@@ -135,13 +135,14 @@ module.exports = async function verify(ctx) {
       const {BookingParticipantService}=require(resolve(build,'trips/booking-participant.service.js'));
       const {PaymentsService}=require(resolve(build,'payments/payments.service.js'));
       const {PaymentContractService}=require(resolve(build,'commerce/payment-contract.service.js'));
-      const {releaseRefundedBookingPoints}=require(resolve(build,'rewards/booking-points.js'));
+      const {releaseRefundedBookingPoints,reverseRefundedTripAward}=require(resolve(build,'rewards/booking-points.js'));
       const member=await account('discount-buyer');
       const seed=await db.rewardAccount.create({data:{accountId:member.id,points:2000}});
       await db.rewardEntry.create({data:{rewardAccountId:seed.id,type:'EARN',points:2000,balanceAfter:2000,idempotencyKey:randomUUID(),referenceType:'HISTORICAL_BOOKING',referenceId:randomUUID()}});
       await db.loyaltyMonth.update({where:{id:month},data:{issuedMinor:150}});
       const controls={decision:async()=>({state:'ENABLED',enforce:false,review:false,bypass:false})};
-      const audit={record:async()=>({})};
+      const {AuditService}=require(resolve(build,'audit/audit.service.js'));
+      const audit=new AuditService(db);
       const trips=new TripsService(null,db,{settings:async()=>({enabled:false}),evaluateReview:()=>({blocking:false})},
         {latest:async()=>null},new BookingParticipantService(db,controls,audit),controls,audit);
       const contracts=new PaymentContractService(db);
@@ -175,6 +176,28 @@ module.exports = async function verify(ctx) {
       const rid=randomUUID();await db.serializable(tx=>releaseRefundedBookingPoints(tx,charge,rid,0,14000));
       await db.serializable(tx=>releaseRefundedBookingPoints(tx,charge,rid,0,14000));
       assert.equal((await db.rewardAccount.findUniqueOrThrow({where:{accountId:member.id}})).points,1140);
+      for(let i=0;i<2;i++)await db.serializable(tx=>reverseRefundedTripAward(tx,charge,rid,0,14000));
+      assert.equal((await db.rewardAccount.findUniqueOrThrow({where:{accountId:member.id}})).points,1070);
+      await check('fully points-funded booking accepts terms, skips the provider and restores a cancelled booking once',async()=>{
+        const future=new Date(Date.now()+4*86400000);
+        const next=await db.trip.create({data:{organizationId:center.id,title:'Points-only future trip',type:'SHORE_DIVE',
+          capacity:1,status:'OPEN',startsAt:future,endsAt:new Date(future.getTime()+3600000)}});
+        await db.operationalSetting.create({data:{key:'trip-price:'+next.id,value:{pricePerSeatMinor:1000,currency:'SAR'}}});
+        const campaign=await loyalty.propose(owner.id,center.id,{title:'عرض مركز',priceMinor:1000,pointsCost:1000,
+          platformBps:5000,platformCap:0,centerCap:500});
+        await loyalty.approve(owner.id,campaign.id);
+        const saved=await trips.book(member.id,next.id,1,{points:1000,cashDueMinor:0,offerId:campaign.id});
+        assert.equal(saved.contractSnapshot.bookingPoints.centerShareMinor,500);
+        assert.equal((await loyalty.bookingBalance(member.id,center.id)).points,70);
+        const original=await contracts.quote(member.id,saved.id);
+        await assert.rejects(payments.create(member.id,{bookingId:saved.id,idempotencyKey:randomUUID()}));
+        const answer=await payments.create(member.id,{bookingId:saved.id,idempotencyKey:randomUUID(),policyAcceptance:{version:original.policyVersion,quoteHash:original.quoteHash}});
+        assert.equal(answer.provider,'LOYALTY_POINTS');assert.equal(await db.payment.count({where:{bookingId:saved.id}}),0);
+        await db.booking.update({where:{id:saved.id},data:{status:'CANCELLED'}});
+        for(let i=0;i<2;i++)assert.equal((await loyalty.releaseBooking(member.id,saved.id)).restoredPoints,1000);
+        assert.equal((await loyalty.bookingBalance(member.id,center.id)).points,1070);
+        assert.equal((await db.loyaltyOffer.findUniqueOrThrow({where:{id:campaign.id}})).centerSpent,0);
+      });
     });
     const instructor=await account('trainer');
     let settled;

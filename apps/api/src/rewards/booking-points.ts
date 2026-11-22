@@ -1,3 +1,4 @@
+import { createRefundPolicySnapshot, evaluateCommerceRefund } from '../commerce/commerce-refund-policy';
 import { BookingPoints, bookingDiscount } from '../commerce/trip-booking-contract';
 import { ConflictException } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
@@ -64,11 +65,34 @@ export async function releaseUncollectedBookingPoints(tx:Tx,booking:{id:string;a
   const completed=await tx.auditEvent.findFirst({where:{action:'TRIP_COMPLETED',resource:'Trip',
     resourceId:(booking.contractSnapshot as {source:{offeringId:string}}).source.offeringId}});
   if(completed) return;
-  const balance=await tx.rewardAccount.update({where:{accountId:booking.accountId},data:{points:{increment:d.points}}});
-  await tx.rewardEntry.create({data:{rewardAccountId:balance.id,type:'ADJUSTMENT',points:d.points,balanceAfter:balance.points,
+  let returned=d.points;
+  const contract=booking.contractSnapshot as {recordedAt:string;source:{offeringId:string};originalSchedule:{startsAt:string}};
+  const accepted=d.points===d.listMinor && await tx.auditEvent.findFirst({where:{action:'POINTS_BOOKING_TERMS_ACCEPTED',resource:'Booking',resourceId:booking.id}});
+  if(accepted){
+    const cancellation=await tx.auditEvent.findFirst({where:{resource:'Booking',resourceId:booking.id,
+      action:{in:['BOOKING_SELF_CANCELLED','BOOKING_CANCELLED']}},orderBy:{occurredAt:'asc'}});
+    const when=cancellation?.occurredAt??new Date();
+    const snapshot=createRefundPolicySnapshot({kind:'TRIP',currency:'SAR',lineId:booking.id,grossAmountMinor:d.points,
+      contractedAt:contract.recordedAt,contractedScheduledAt:contract.originalSchedule.startsAt});
+    const facts=await tx.operationalSetting.findUnique({where:{key:'commerce-legal-classification:TRIP:'+contract.source.offeringId}});
+    const f=facts?.value as {sourceId?:string;sourceType?:string;statutoryClassification?:'ELIGIBLE'|'EXEMPT';classification?:'ELIGIBLE'|'EXEMPT';evidenceReference?:string;exception?:any}|null;
+    const classification=f?.sourceId===contract.source.offeringId && f.sourceType==='TRIP' && f.evidenceReference && (f.classification==='ELIGIBLE'||f.classification==='EXEMPT');
+    const decision=evaluateCommerceRefund({snapshot,requestedAt:when.toISOString(),evidenceAsOf:new Date().toISOString(),
+      cause:'CUSTOMER_CANCELLATION',collectedAmountMinor:d.points,refundedAmountMinor:0,evidence:{lineId:booking.id,
+        consumption:when.getTime()<Date.parse(contract.originalSchedule.startsAt)?'NONE':'UNKNOWN',
+        statutoryClassification:classification?f!.classification!:'UNKNOWN',...(classification?{legalEvidenceReference:f!.evidenceReference,statutoryException:f!.exception}:{})}});
+    if(decision.refundAmountMinor===null || !decision.refundAmountMinor) {
+      if(!await tx.auditEvent.findFirst({where:{action:'POINTS_BOOKING_REFUND_REVIEW',resource:'Booking',resourceId:booking.id}}))
+        await tx.auditEvent.create({data:{action:'POINTS_BOOKING_REFUND_REVIEW',resource:'Booking',resourceId:booking.id,metadata:{reason:decision.reasonCode}}});
+      return;
+    }
+    returned=decision.refundAmountMinor;
+  }
+  const balance=await tx.rewardAccount.update({where:{accountId:booking.accountId},data:{points:{increment:returned}}});
+  await tx.rewardEntry.create({data:{rewardAccountId:balance.id,type:'ADJUSTMENT',points:returned,balanceAfter:balance.points,
     referenceType:'TRIP_BOOKING_DISCOUNT_RELEASE',referenceId:booking.id,idempotencyKey:'release-discount:'+booking.id,
     metadata:{originalEntryId:d.entryId,organizationId}}});
-  if(d.offerId && d.centerShareMinor) await tx.loyaltyOffer.update({where:{id:d.offerId},data:{centerSpent:{decrement:d.centerShareMinor}}});
+  if(d.offerId && d.centerShareMinor) await tx.loyaltyOffer.update({where:{id:d.offerId},data:{centerSpent:{decrement:Number(BigInt(d.centerShareMinor)*BigInt(returned)/BigInt(d.points))}}});
 }
 
 export async function releaseRefundedBookingPoints(tx:Tx, payment:{bookingId:string;accountId:string;amountMinor:number;contractSnapshot:unknown},
@@ -94,4 +118,28 @@ export async function releaseRefundedBookingPoints(tx:Tx, payment:{bookingId:str
       metadata:{originalEntryId:d.entryId,bookingId:booking.id,previousCashRefund,cumulativeCashRefund}}});
   }
   if(d.offerId && center) await tx.loyaltyOffer.update({where:{id:d.offerId},data:{centerSpent:{decrement:center}}});
+}
+
+// Only the posted award for this purchase can be reversed. Existing holds stay covered.
+export async function reverseRefundedTripAward(tx:Tx, payment:{bookingId:string;amountMinor:number;accountId:string}, operationId:string,
+  before:number, after:number) {
+  const award=await tx.rewardEntry.findUnique({where:{idempotencyKey:'loyalty:earned:TRIP:'+payment.bookingId},include:{rewardAccount:true}});
+  if(!award || !payment.amountMinor || award.rewardAccount.accountId!==payment.accountId) return;
+  const source=award.metadata as Prisma.JsonObject;
+  if(!minor(source?.paidMinor) || source.paidMinor>payment.amountMinor || !minor(after) || !minor(before) ||
+    after<before || after>payment.amountMinor) throw new ConflictException('Booking award refund evidence is invalid.');
+  const remaining=(refund:number)=>Number(BigInt(source.paidMinor as number)*BigInt(payment.amountMinor-refund)/BigInt(payment.amountMinor)/200n);
+  const difference=remaining(before)-remaining(after);
+  if(!difference)return;
+  if(await tx.auditEvent.findFirst({where:{resource:'CommerceRefundOperation',resourceId:operationId,action:'TRIP_REWARD_REFUND_REVIEWED'}})) return;
+  const available=await spendablePoints(tx,payment.accountId);
+  const reverse=Math.min(Math.max(0,available),difference);
+  if(reverse) {
+    const balance=await tx.rewardAccount.update({where:{id:award.rewardAccountId},data:{points:{decrement:reverse}}});
+    await tx.rewardEntry.create({data:{rewardAccountId:balance.id,type:'REDEEM',points:reverse,balanceAfter:balance.points,
+      referenceType:'TRIP_EARN_REFUND',referenceId:operationId,idempotencyKey:'reverse-trip-award:'+operationId,
+      metadata:{originalEntryId:award.id,bookingId:payment.bookingId}}});
+  }
+  await tx.auditEvent.create({data:{resource:'CommerceRefundOperation',resourceId:operationId,action:'TRIP_REWARD_REFUND_REVIEWED',
+    metadata:{originalEntryId:award.id,pointsReversed:reverse,pointsForReview:difference-reverse}}});
 }

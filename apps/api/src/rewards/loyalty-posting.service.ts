@@ -1,4 +1,4 @@
-import { spendablePoints, centerParticipates } from './booking-points';
+import { releaseUncollectedBookingPoints, spendablePoints, centerParticipates } from './booking-points';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
@@ -114,6 +114,16 @@ export class LoyaltyPostingService {
     return this.db.loyaltyOffer.findMany({where:{organizationId,platformApprovedBy:{not:null}},
       select:{id:true,title:true,priceMinor:true,pointsCost:true},orderBy:{createdAt:'desc'},take:100});
   }
+  async releaseBooking(actor:string,id:string) {
+    return postingTransaction(this.db,async tx=>{
+      const booking=await tx.booking.findFirstOrThrow({where:{id,status:'CANCELLED'},include:{trip:{select:{organizationId:true}}}});
+      if(booking.accountId!==actor)await requirePlatformFinanceApprover(tx,actor);
+      await releaseUncollectedBookingPoints(tx,booking,booking.trip.organizationId);
+      const posted=await tx.rewardEntry.findUnique({where:{idempotencyKey:'release-discount:'+id},select:{points:true}});
+      return {restoredPoints:posted?.points??0};
+    });
+  }
+
   async bookingBalance(actor:string,organizationId:string) {
     if(process.env.HYDROLAND_B03_LEDGER_POSTING!=='enabled') return {points:0};
     return postingTransaction(this.db,async tx=>({points:await centerParticipates(tx,organizationId)?await spendablePoints(tx,actor):0}));

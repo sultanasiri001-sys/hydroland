@@ -133,7 +133,7 @@ export function evaluateCenterTripEntitlement(input: CenterTripEntitlementInput)
   const supplierTotal=backed && discount ? discount.listMinor-discount.centerShareMinor : (unitPrice??0)*booking.seats;
   const performedGross=booking.seats>0?Math.floor(supplierTotal*completedQuantity/booking.seats):0;
   const unperformedGross=unitPrice===null?null:supplierTotal-performedGross;
-  if (!minor(performedGross) || performedGross===0 || (!backed && payment && performedGross>payment.amountMinor))
+  if (!minor(performedGross) || (!backed && performedGross===0) || (!backed && payment && performedGross>payment.amountMinor))
     blockers.push('ELIGIBLE_GROSS_AMOUNT_REVIEW_REQUIRED');
   if (input.ambiguousSettlement) blockers.push('DUPLICATE_SETTLEMENT_LEDGER_REVIEW_REQUIRED');
   // A preview token binds an owner decision to current source evidence, while

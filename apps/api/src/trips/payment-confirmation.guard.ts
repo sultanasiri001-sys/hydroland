@@ -20,6 +20,9 @@ export class PaymentConfirmationGuard implements CanActivate {
     const requirement=tripBookingPaymentRequirement(booking,setting?.value);
     const requiredAmount=requirement.requiredAmountMinor,currency=requirement.currency;
     if(requiredAmount===null)throw new ConflictException({code:requirement.reasonCode,message:'Trip contract price requires review.'});
+    if(requiredAmount===0 && (booking.contractSnapshot as {bookingPoints?:unknown}|null)?.bookingPoints
+      && !await this.db.auditEvent.findFirst({where:{action:'POINTS_BOOKING_TERMS_ACCEPTED',resource:'Booking',resourceId:booking.id}}))
+      throw new ConflictException('The customer must confirm the points payment terms.');
     if(requiredAmount===0)return true;
     const captured=await this.db.payment.findFirst({where:{bookingId,...(booking.organizationId ? {} : {accountId:booking.accountId}),status:'CAPTURED',amountMinor:requiredAmount,currency,refundedAmountMinor:0,
       refundOperations:{none:{status:{in:['RESERVED','DISPATCHED','RECONCILIATION_REQUIRED']}}}},orderBy:{updatedAt:'desc'},

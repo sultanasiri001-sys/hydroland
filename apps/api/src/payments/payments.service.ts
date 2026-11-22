@@ -1,4 +1,4 @@
-import { releaseUncollectedBookingPoints } from '../rewards/booking-points';
+import { proofOfBookingPoints, releaseUncollectedBookingPoints } from '../rewards/booking-points';
 import { boatBookingInclude, isBoatTrip, requireCenterBoat } from '../trips/center-boat-booking';
 import { RentalDamagePaymentService } from './rental-damage-payment.service';
 import { OrganizationBookingCheckoutService, organizationPayer } from './organization-booking-checkout.service';
@@ -60,15 +60,17 @@ export class PaymentsService {
     const pricing=savedContract&&typeof savedContract.unitPriceMinor==='number'&&typeof savedContract.currency==='string'?{pricePerSeatMinor:savedContract.unitPriceMinor,currency:savedContract.currency}:await this.tripPrice(booking.tripId);
     if(!pricing)throw new ConflictException('Trip price is not configured.');
     if(pricing.currency!=='SAR')throw new ConflictException('Trip payment currency is not supported.');
-    const amountMinor=savedContract?.bookingPoints && typeof savedContract.amountMinor==='number'
-      ? savedContract.amountMinor : pricing.pricePerSeatMinor*booking.seats;
+    const points=savedContract?.bookingPoints && booking.trip.organizationId
+      ? await proofOfBookingPoints(this.db,booking,booking.trip.organizationId) : null;
+    if(savedContract?.bookingPoints && !points)throw new ConflictException('Original booking discount evidence is unavailable.');
+    const amountMinor=pricing.pricePerSeatMinor*booking.seats-(points?.points??0);
     if(!Number.isSafeInteger(amountMinor)||amountMinor<0)throw new ConflictException('Trip payment amount is invalid.');
     const originalContract=booking.contractSnapshot!==null&&booking.contractSnapshot!==undefined
       ?this.contracts.buildTrip(booking,pricing.pricePerSeatMinor,pricing.currency):null;
     if(amountMinor===0 && savedContract?.bookingPoints && originalContract) {
       if(!input.policyAcceptance)throw new ConflictException('Review and accept the booking conditions.');
       this.contracts.accepted(originalContract,input.policyAcceptance);
-      await this.audit.record({action:'POINTS_BOOKING_TERMS_ACCEPTED',resource:'Booking',resourceId:booking.id,
+      await this.audit.record({actorId:accountId,action:'POINTS_BOOKING_TERMS_ACCEPTED',resource:'Booking',resourceId:booking.id,
         metadata:{accountId,quoteHash:input.policyAcceptance.quoteHash,version:input.policyAcceptance.version,termsAcceptedAt:new Date().toISOString()}});
     }
     if(amountMinor===0)return{bookingId:booking.id,status:'BYPASSED',provider:savedContract?.bookingPoints?'LOYALTY_POINTS':'FREE_TRIP',amountMinor:0,currency:pricing.currency,policyReview:{required:false,issues:[],states:{payment:paymentPolicy.state}}};
