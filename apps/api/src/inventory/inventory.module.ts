@@ -1,3 +1,5 @@
+import { WarehouseDecisionsService } from './warehouse-decisions.service';
+import { WarehouseDecisionsController } from './warehouse-decisions.controller';
 import { WarehouseReceivingService } from './warehouse-receiving.service';
 import { WarehouseCustodyController } from './warehouse-custody.controller';
 import { InventoryIssueLedgerService } from './inventory-issue-ledger.service';
@@ -14,8 +16,8 @@ import { InventoryGovernanceService } from './inventory-governance.service';
 
 @Module({
   imports:[DatabaseModule,AuthModule,AdminModule],
-  controllers:[WarehouseLocationController, WarehouseCustodyController],
-  providers: [WarehouseReceivingService, InventoryIssueLedgerService,WarehouseLocationService,InventoryFoundationService, InventoryWorkflowService, InventoryOperationsService, InventoryGovernanceService],
+  controllers:[WarehouseDecisionsController, WarehouseLocationController, WarehouseCustodyController],
+  providers: [WarehouseDecisionsService, WarehouseReceivingService, InventoryIssueLedgerService,WarehouseLocationService,InventoryFoundationService, InventoryWorkflowService, InventoryOperationsService, InventoryGovernanceService],
   exports: [WarehouseReceivingService, InventoryIssueLedgerService,InventoryFoundationService, InventoryWorkflowService, InventoryOperationsService, InventoryGovernanceService],
 })
 export class InventoryModule {}

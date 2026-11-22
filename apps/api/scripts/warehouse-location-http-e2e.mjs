@@ -1,3 +1,4 @@
+import {warehouseDecisionsCases} from './warehouse-decisions-http-cases.mjs';
 import assert from 'node:assert/strict';
 import {createHmac,randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
@@ -84,5 +85,6 @@ try{
  const audit=JSON.stringify(await db.auditEvent.findMany({where:{resource:'WarehouseLocation'}}));assert(!audit.includes(input.title)&&!audit.includes(input.locationDescription));
  pass('14 v5 adapters remain partial; location counts exclude foreign data, retain v2/v3/v4 gaps and create no AI task, document or email');
  console.log(`Warehouse locations HTTP/PostgreSQL PASS: ${checks} groups; isolated location register only, no production seeds, stock movement or provider traffic.`);
+ await warehouseDecisionsCases({db,org,owner,other,actor,ok,deny,locationId:id});
 }finally{await db.$disconnect();}
 
