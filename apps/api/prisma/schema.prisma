@@ -3377,3 +3377,20 @@ model WarehouseDecisionRequest {
   createdAt DateTime @default(now())
   @@id([organizationId, id])
 }
+
+model CustomerNoticeEmail {
+  id String @id @default(uuid())
+  event String
+  sourceType String
+  sourceId String
+  accountId String
+  state String @default("PENDING")
+  attempts Int @default(0)
+  firstAttemptAt DateTime?
+  recipientHash String?
+  providerMessageId String?
+  nextAttemptAt DateTime @default(dbgenerated("timezone('UTC', CURRENT_TIMESTAMP)"))
+  createdAt DateTime @default(dbgenerated("timezone('UTC', CURRENT_TIMESTAMP)"))
+  @@unique([event,sourceType,sourceId,accountId])
+  @@index([state,nextAttemptAt])
+}

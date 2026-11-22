@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { CustomerNoticeEmailWorker } from './customer-notice-email.worker';
 import { AuthEmailOutboxWorker } from '../auth/auth-email-outbox.worker';
 import { AdminModule } from '../admin/admin.module';
 import { AuditModule } from '../audit/audit.module';
@@ -18,7 +19,7 @@ import { MarineTrafficAisService } from './marinetraffic-ais.service';
 @Module({
   imports:[AdminModule,AuditModule,AuthModule],
   controllers:[IntegrationController,DistressAisReadinessController,OfficialOnboardingReadinessController,A06ProviderObservationController],
-  providers:[RenderProviderObserver,IntegrationService,EmailDeliveryService,UnifonicMessagingService,SignitEsignService,MarineTrafficAisService,AuthEmailOutboxWorker,A06GitHubActionsOidcGuard,A06IndependentObserver],
+  providers:[RenderProviderObserver,IntegrationService,EmailDeliveryService,UnifonicMessagingService,SignitEsignService,MarineTrafficAisService,AuthEmailOutboxWorker,CustomerNoticeEmailWorker,A06GitHubActionsOidcGuard,A06IndependentObserver],
   exports:[IntegrationService,EmailDeliveryService,UnifonicMessagingService,SignitEsignService,MarineTrafficAisService],
 })
 export class IntegrationModule {}

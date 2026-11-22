@@ -74,15 +74,34 @@ export class EmailDeliveryService {
   async sendExecutiveReport(input:{notificationId:string;to:string;text:string}):Promise<AuthEmailDelivery>{
     let configuration:ReturnType<EmailDeliveryService['configuration']>;
     try{configuration=this.configuration();assertAuthEmailRecipient(input.to);}catch{throw new ReportEmailError('PERMANENT');}
-    const {apiKey,from}=configuration;
     const html=`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>تقرير إدارات هيدرولاند</title></head><body style="font-family:Arial,sans-serif;line-height:1.8;color:#102131;background:#fff"><h1>تقرير إدارات هيدرولاند</h1><div style="white-space:pre-wrap">${escapeHtml(input.text)}</div></body></html>`;
     if(!input.text.trim()||Buffer.byteLength(html,'utf8')>95*1024)throw new ReportEmailError('PERMANENT');
+    return this.sendTransactional(configuration,input.to,'تقرير إدارات هيدرولاند | عبدالله',input.text,html,`hydroland-report/${input.notificationId}`);
+  }
+
+  async sendCustomerNotice(input:{id:string;to:string;event:'BOOKING_CONFIRMED'|'INVOICE_ISSUED';sourceType:string;sourceId:string}){
+    const config=this.configuration();
+    assertAuthEmailRecipient(input.to);
+    const invoice=input.event==='INVOICE_ISSUED';
+    const subject=invoice?'صدرت فاتورتك في هيدرولاند':'تم تأكيد حجزك في هيدرولاند';
+    const action=invoice?'فتح الفاتورة':'عرض إشعار الحجز';
+    const url=new URL(config.origin.toString());
+    const link=new URLSearchParams({notice:invoice?'invoice':'booking'});
+    if(invoice){link.set('sourceType',input.sourceType);link.set('sourceId',input.sourceId);}
+    url.hash=link.toString();
+    const text=subject+'\n'+action+' بعد تسجيل الدخول إلى حسابك:\n'+url.href;
+    const html=`<!doctype html><html lang="ar" dir="rtl"><body><h1>${subject}</h1><p>سجّل الدخول إلى حسابك في هيدرولاند لعرض التفاصيل.</p><p><a href="${escapeHtml(url.href)}">${action}</a></p></body></html>`;
+    return this.sendTransactional(config,input.to,subject,text,html,`hydroland-customer/${input.id}`);
+  }
+
+  private async sendTransactional(config:{apiKey:string;from:string},to:string,subject:string,text:string,html:string,key:string):Promise<AuthEmailDelivery>{
+    const {apiKey,from}=config;
     let endpoint:URL;
     try{endpoint=new URL('/emails',process.env.RESEND_API_BASE_URL?.trim()||'https://api.resend.com');}catch{throw new ReportEmailError('PERMANENT');}
     const localTest=process.env.NODE_ENV==='test'&&endpoint.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(endpoint.hostname);
     if(endpoint.username||endpoint.password||endpoint.origin!=='https://api.resend.com'&&!localTest)throw new ReportEmailError('PERMANENT');
     let response:Response;
-    try{response=await fetch(endpoint,{method:'POST',redirect:'error',headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json','Idempotency-Key':`hydroland-report/${input.notificationId}`,Accept:'application/json'},body:JSON.stringify({from,to:[input.to],subject:'تقرير إدارات هيدرولاند | عبدالله',text:input.text,html}),signal:AbortSignal.timeout(8_000)});}catch{await this.integrations.recordProviderSignal('EMAIL','PROVIDER_FAILURE');throw new ReportEmailError('UNCERTAIN');}
+    try{response=await fetch(endpoint,{method:'POST',redirect:'error',headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json','Idempotency-Key':key,Accept:'application/json'},body:JSON.stringify({from,to:[to],subject,text,html}),signal:AbortSignal.timeout(8_000)});}catch{await this.integrations.recordProviderSignal('EMAIL','PROVIDER_FAILURE');throw new ReportEmailError('UNCERTAIN');}
     if(!response.ok){if(response.status===401||response.status===403||response.status===408||response.status===429||response.status>=500)await this.integrations.recordProviderSignal('EMAIL','PROVIDER_FAILURE');await response.body?.cancel();throw new ReportEmailError(response.status===429||response.status>=500?'RETRYABLE':'PERMANENT');}
     try{
       const reader=response.body?.getReader();if(!reader)throw new Error();const parts:Uint8Array[]=[];let size=0;

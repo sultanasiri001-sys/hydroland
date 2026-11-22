@@ -143,6 +143,28 @@
     filters.hidden=Boolean(source);showSelection();
     if(!dialog.open)dialog.showModal();load();
   }
+  // Email links carry only an opaque invoice key. The API authorizes the signed-in buyer on each read.
+  let requestedLogin=false;
+  function openNoticeLink(){
+    const params=new URLSearchParams(location.hash.slice(1));
+    const notice=params.get('notice');
+    if(notice!=='invoice'&&notice!=='booking')return;
+    const type=params.get('sourceType'),id=params.get('sourceId');
+    if(notice==='invoice'&&(!Object.hasOwn(labels,type)||!id||id.length>200))return;
+    if(!auth()?.isAuthenticated()){
+      const signIn=document.getElementById('visitor-auth-cta');
+      if(signIn&&!requestedLogin){requestedLogin=true;signIn.click();}
+      return;
+    }
+    if(notice==='booking'&&!window.HydrolandAccountCenter)return;
+    history.replaceState(history.state,'',location.pathname+location.search);
+    if(notice==='invoice')open(type,id);
+    else window.HydrolandAccountCenter.openNotifications();
+  }
+  document.addEventListener('hydroland:auth-changed',openNoticeLink);
+  window.addEventListener('hashchange',()=>{requestedLogin=false;openNoticeLink();});
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',openNoticeLink,{once:true});
+  else queueMicrotask(openNoticeLink);
   function clear(){version++;list.replaceChildren();}
   dialog.addEventListener('close',clear);
   document.addEventListener('hydroland:session-cleared',()=>{if(dialog.open)dialog.close();clear();});
