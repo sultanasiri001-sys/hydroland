@@ -135,6 +135,17 @@ export class CenterServiceEntitlementService {
     return { input, readiness: evaluateCenterTripEntitlement(input), allocation, existing };
   }
 
+  async loyaltySource(tx: Prisma.TransactionClient, organizationId: string, bookingId: string) {
+    const {input,readiness} = await this.resolve(tx,{organizationId},bookingId);
+    if (input.booking.organizationId || !input.payment || !input.completion || readiness.grossReadiness !== 'ELIGIBLE'
+      || readiness.commissionAmountMinor === null || !readiness.collectionFinanceEntryId || !readiness.allocationApprovalEventId) {
+      throw new ConflictException('Completed personal booking, posted collection and approved allocation required.');
+    }
+    return {payerId:input.payment.accountId, paidMinor:readiness.eligibleGrossAmountMinor,
+      commissionMinor:readiness.commissionAmountMinor, receiptId:readiness.collectionFinanceEntryId,
+      paymentId:input.payment.id, completionId:input.completion.id, allocationId:readiness.allocationApprovalEventId};
+  }
+
   async readTrip(accountId: string, centerOrgUnitId: string, bookingId: string) {
     return this.db.serializable(async tx => {
       const scope = await this.scope(tx, accountId, centerOrgUnitId);

@@ -1,6 +1,7 @@
 (()=>{
   // Authored interface messages only. Account, provider and document values remain opaque.
   const uiLocale=window.HydrolandI18n?.createScope("training", {
+  "استحقاق مسجل": "Earned", "معلّق للمراجعة": "On hold", "جاهز للصرف": "Payable", "قيد الصرف": "Processing payout", "فشل الصرف": "Payout failed", "عُكس الاستحقاق": "Earning reversed", "مطلوب استرداد من المدرب": "Recovery due", "تمت تسوية الاسترداد": "Recovery settled", "تاريخ آخر حركة": "Last movement date",
   "فواتيري": "My invoices", "فاتورة العملية": "Transaction invoice",
   "اتفاقات الاستحقاق مع المراكز": "Compensation agreements with centers",
   "توقيت استحقاق المدرب": "When the instructor earns compensation",
@@ -284,7 +285,9 @@
           ? uiLocale.html`<dl><dt>توقيت استحقاق المدرب</dt><dd>${esc(a.earningTiming)}</dd><dt>شروط عكس الاستحقاق عند الاسترداد</dt><dd>${esc(a.reversalTerms)}</dd></dl>` : '';
         return uiLocale.html`<article class="hl-course"><b>${esc(a.centerName)}</b><p>${uiLocale.messageHTML(uiLocale.message(modes[a.mode]))} ${esc(parts.join(' + '))}</p>${policy}</article>`;
       }).join(''):'';
-      uiLocale.setHTML(list, contracts+summary+(entries.length?entries.map(item=>uiLocale.html`<article class="hl-course"><div class="hl-course-top"><div><b>${esc(item.courseCode)}</b><small>${new Date(item.createdAt).toLocaleDateString('ar-SA')}</small></div><span>${money(item.amountMinor,item.currency)} · ${esc(item.status)}</span></div></article>`).join(''):uiLocale.html`<p>لا توجد استحقاقات تدريبية مسجلة حتى الآن.</p>`));
+      const stages={EARNED:'استحقاق مسجل',HOLD:'معلّق للمراجعة',PAYABLE:'جاهز للصرف',PROCESSING:'قيد الصرف',FAILED:'فشل الصرف',SETTLED:'تمت التسوية',REVERSED:'عُكس الاستحقاق',RECOVERY_REQUIRED:'مطلوب استرداد من المدرب',SETTLED_WITH_RECOVERY:'تمت تسوية الاسترداد'};
+      const stageLabel=item=>Object.hasOwn(stages,item.postingStage)?uiLocale.t(stages[item.postingStage]):item.status;
+      uiLocale.setHTML(list, contracts+summary+(entries.length?entries.map(item=>uiLocale.html`<article class="hl-course"><div class="hl-course-top"><div><b>${esc(item.courseCode)}</b><small>${new Date(item.createdAt).toLocaleDateString('ar-SA')}</small></div><span>${money(item.amountMinor,item.currency)} · ${esc(stageLabel(item))}${item.postingUpdatedAt?uiLocale.html`<small>تاريخ آخر حركة · ${esc(new Date(item.postingUpdatedAt).toLocaleDateString(document.documentElement.lang||'ar-SA'))}</small>`:''}</span></div></article>`).join(''):uiLocale.html`<p>لا توجد استحقاقات تدريبية مسجلة حتى الآن.</p>`));
     }catch(error){if(!current())return;uiLocale.setHTML(list, uiLocale.html`<p>${uiLocale.messageHTML(error instanceof Error?localErrorMessage(error):uiLocale.message('تعذر تحميل الاستحقاقات'))}</p>`);}
   }
   async function loadProfessionalCertificates(){

@@ -302,3 +302,26 @@ test('center moves a SKU out of published stock into a warehouse on mobile',asyn
  await expect(form).toContainText('إجمالي الوحدات · 3');
  expect(state.writes[1]).toMatchObject({productId:'mask',locationKey:'warehouse',expectedQuantity:3,countedQuantity:2,reason:'قطعة تالفة'});
 });
+
+test('diver confirms the exact points and cash shortfall on a center offer',async({page})=>{
+ await setup(page);
+ const writes=[];
+ await page.route('**/api/v1/store/storefronts/reward-center',r=>json(r,{id:'reward-center',displayName:'متجر المكافآت',faqs:[]}));
+ await page.route('**/api/v1/rewards/centers/reward-center/offers',r=>json(r,[{id:'photo',title:'تصوير الرحلة'}]));
+ await page.route('**/api/v1/rewards/offers/photo/pending',r=>json(r,[]));
+ await page.route('**/api/v1/rewards/offers/photo/quote',r=>json(r,{title:'تصوير الرحلة',heldPoints:800,topUpMinor:200,cashDueMinor:200}));
+ await page.route('**/api/v1/rewards/offers/photo/reservations',r=>{
+   writes.push(r.request().postDataJSON());
+   return json(r,{id:'held-photo',status:'HELD',heldPoints:800,topUpMinor:200},201);
+ });
+ await page.route('**/api/v1/rewards/reservations/held-photo/payment',r=>json(r,{id:'held-photo',status:'AWAITING_PAYMENT'},201));
+ await page.evaluate(()=>{location.hash='store/center/reward-center';return window.HydrolandStore.reloadProducts()});
+ await page.getByRole('button',{name:'عرض تكلفة الاستبدال'}).click();
+ const offer=page.locator('article').filter({has:page.getByRole('heading',{name:'تصوير الرحلة'})});
+ await expect(offer.locator('dd').first()).toHaveText('800');
+ await expect(offer.locator('dt').last()).toHaveText('المبلغ المطلوب');
+ await offer.getByRole('button',{name:'كمّل نقاطك'}).click();
+ await expect(offer).toContainText('بانتظار تأكيد التحصيل');
+ expect(writes).toHaveLength(1);
+ expect(writes[0]).toMatchObject({points:800,cashDueMinor:200});
+});
