@@ -3303,6 +3303,7 @@ model WarehouseIssuePosting {
   custodianId String
   approvedBy String
   postedBy String
+  acknowledgedAt DateTime?
   balanceAfter Int
   createdAt DateTime @default(now())
   lot WarehouseStockLot @relation(fields:[organizationId,lotId],references:[organizationId,lotId],onDelete:Restrict)
