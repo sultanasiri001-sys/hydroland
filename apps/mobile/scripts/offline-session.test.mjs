@@ -90,6 +90,37 @@ await check('unverified legacy identity cannot read cache or trust decoded subje
 await check('logout removes file/metadata cache and invalidates previous account scope',async()=>{
  const w=world();await w.login();await w.download();const s=w.load('src/session.ts'),scope=await s.getSessionScope();await s.logout();assert.equal(await s.loadSession(),null);assert.equal(w.files.size,0);assert.throws(()=>w.load('src/offline-content-store.ts').loadOfflineContent('trip-a',scope),/Session changed/);w.setHandler((route,init,normal)=>route==='/me'?response({id:'verified-account-B',status:'ACTIVE'}):normal(route,init));await w.login('B');assert.equal(await w.load('src/offline-trip-package.ts').loadTripPackage('trip-a'),null);assert.equal((await s.getSessionScope()).accountId,'verified-account-B');assert.notEqual((await s.getSessionScope()).cacheId,scope.cacheId);
 });
+await check('account switch revokes the prior server session before issuing the new one', async () => {
+ const w=world(); await w.login('A');
+ const revoke=deferred(); w.setHandler((route,init,normal)=>route==='/auth/logout'?revoke.promise:normal(route,init));
+ const replacement=w.login('B'); await w.settle();
+ assert.equal(w.calls.filter(call=>call.route==='/auth/login').length,1);
+ assert.equal(JSON.parse(w.calls.find(call=>call.route==='/auth/logout').init.body).refreshToken,'refresh-A');
+ revoke.resolve(response(null,204)); await replacement;
+ assert.equal((await w.load('src/session.ts').loadSession()).refreshToken,'refresh-B');
+});
+await check('failed remote revocation keeps the old session available for a retry', async () => {
+ const w=world(); await w.login('A');
+ w.setHandler((route,init,normal)=>route==='/auth/logout'?response({},503):normal(route,init));
+ await assert.rejects(()=>w.login('B'));
+ assert.equal(w.calls.filter(call=>call.route==='/auth/login').length,1);
+ assert.equal((await w.load('src/session.ts').loadSession()).refreshToken,'refresh-A');
+ w.setHandler(null); await w.login('B');
+ assert.equal((await w.load('src/session.ts').loadSession()).refreshToken,'refresh-B');
+});
+await check('a rotation racing with account switch is revoked before the new login',async()=>{
+ const w=world(); await w.login('A'); const s=w.load('src/session.ts'),rotate=deferred(),revoke=deferred();
+ w.setHandler((route,init,normal)=>{
+   if(route==='/auth/refresh')return rotate.promise;
+   if(route==='/auth/logout' && JSON.parse(init.body).refreshToken==='refresh-A')return revoke.promise;
+   return normal(route,init);
+ });
+ const rotation=s.refreshSession(); await w.settle();
+ const change=w.login('B'); await w.settle();
+ rotate.resolve(response({accessToken:jwt('A'),refreshToken:'rotated-A'})); await rotation;
+ revoke.resolve(response(null,204)); await change;
+ assert.deepEqual(w.calls.filter(call=>call.route==='/auth/logout').map(call=>JSON.parse(call.init.body).refreshToken),['refresh-A','rotated-A']);
+});
 await check('refresh is single-flight and delayed refresh cannot resurrect logout',async()=>{
  const w=world();await w.login();const s=w.load('src/session.ts'),gate=deferred();w.setHandler((route,init,normal)=>route==='/auth/refresh'?gate.promise:normal(route,init));const first=s.refreshSession(),second=s.refreshSession();await w.settle();assert.equal(w.calls.filter(x=>x.route==='/auth/refresh').length,1);await s.logout();gate.resolve(response({accessToken:jwt('A'),refreshToken:'late-issued'}));assert.equal(await first,null);assert.equal(await second,null);assert.equal(await s.loadSession(),null);assert.ok(w.calls.some(x=>x.route==='/auth/logout'&&JSON.parse(x.init.body).refreshToken==='late-issued'));
 });
