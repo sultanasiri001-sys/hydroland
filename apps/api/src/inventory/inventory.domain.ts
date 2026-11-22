@@ -37,6 +37,7 @@ export interface StockBalance {
   onHand: number;
   reserved: number;
   available: number;
+  fulfilledIssues?: ReadonlyArray<{ requestId: string; quantity: number; requestedBy: string; approvedBy: string }>;
 }
 
 export const calculateAvailableStock = (onHand: number, reserved: number): number => {

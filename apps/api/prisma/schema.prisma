@@ -3280,3 +3280,31 @@ model InstructorRecovery {
   earning InstructorEarningPosting @relation(fields:[earningId],references:[earningId],onDelete:Restrict)
   @@index([earningId])
 }
+
+model WarehouseStockLot {
+  organizationId String
+  lotId String
+  locationId String
+  itemId String
+  purchaseReference String
+  receiptReference String
+  unitCostMinor Int
+  received Int
+  onHand Int
+  issues WarehouseIssuePosting[]
+  @@id([organizationId,lotId])
+}
+
+model WarehouseIssuePosting {
+  organizationId String
+  requestId String
+  lotId String
+  quantity Int
+  custodianId String
+  approvedBy String
+  postedBy String
+  balanceAfter Int
+  createdAt DateTime @default(now())
+  lot WarehouseStockLot @relation(fields:[organizationId,lotId],references:[organizationId,lotId],onDelete:Restrict)
+  @@id([organizationId,requestId])
+}

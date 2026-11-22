@@ -25,4 +25,13 @@ assert.throws(()=>foundation.validateItem({...item,id:'item-2',qrCode:undefined}
 const snapshot=governance.snapshot([item],[foundation.stockBalance(item.id,location.id,2,0)],2,'2026-09-23T00:00:00.000Z');
 assert.deepEqual(snapshot.lowStockItems,[item.id]);
 assert.ok(governance.automationSignals(snapshot).includes('REVIEW_REORDER_LEVELS'));
+const twoReservations = workflow.reserve(foundation.stockBalance(item.id,location.id,12,3),3);
+const firstIssue = workflow.fulfillIssue(request,twoReservations);
+const replay = workflow.fulfillIssue(request,JSON.parse(JSON.stringify(firstIssue)));
+assert.equal(replay.onHand,9);
+assert.equal(replay.reserved,3);
+assert.throws(()=>workflow.fulfillIssue({...request,quantity:2},replay));
+const secondIssue = workflow.fulfillIssue({...request,id:'req-2'},replay);
+assert.equal(secondIssue.onHand,6);
+assert.equal(secondIssue.reserved,0);
 console.log('Inventory validation passed.');
