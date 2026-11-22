@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { activeDestination, qualifiedSupplier, receiveMovement, returnableIssue } from './warehouse-movements';
 import { InventoryIssueLedgerService } from './inventory-issue-ledger.service';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
@@ -13,7 +14,7 @@ function opinion(body: unknown) {
     typeof x.note !== 'string' || x.note.trim().length < 3 || x.note.length > 1000) throw new BadRequestException('أدخل القرار ومسوغاته.');
   return { digest:x.digest, decision:x.decision as Opinion, note:x.note.trim() };
 }
-type Kind = 'COUNT' | 'PURCHASE' | 'ISSUE';
+type Kind = 'COUNT' | 'PURCHASE' | 'ISSUE' | 'TRANSFER' | 'RETURN';
 interface Purchase { purchaseReference: string; supplierId: string; itemId: string; quantity: number; unitCostMinor: number }
 interface Count { lotId: string; counted: number; reason: string; expected: number; revision: number }
 
@@ -37,6 +38,18 @@ function issueInput(body: unknown) {
   return { lotId: x.lotId, custodianId: x.custodianId, quantity: integer(x.quantity, 1) };
 }
 
+function transferInput(body:unknown) {
+  const x=templateObject(body,['lotId','destinationId','quantity']);
+  scopeId(x.lotId);scopeId(x.destinationId);
+  return {lotId:x.lotId,destinationId:x.destinationId,quantity:integer(x.quantity,1)};
+}
+function returnInput(body:unknown) {
+  const x=templateObject(body,['issueId','quantity']);
+  scopeId(x.issueId);
+  return {issueId:x.issueId,quantity:integer(x.quantity,1)};
+}
+const inputs={COUNT:countInput,PURCHASE:purchaseInput,ISSUE:issueInput,TRANSFER:transferInput,RETURN:returnInput};
+
 function countInput(body: unknown) {
   const x = templateObject(body, ['lotId','counted','reason']);
   scopeId(x.lotId);
@@ -52,9 +65,10 @@ export class WarehouseDecisionsService {
     scopeId(id);
     return this.db.serializable(async tx => {
       const org = await reviewPlatform(tx);
-      const maker = await eligibleReviewParticipant(tx, org.id, 'INVENTORY_LOGISTICS', actor, 'EMPLOYEE');
+      const makerPersonId = kind==='RETURN' ? await this.custodian(tx,org.id,actor) :
+        (await eligibleReviewParticipant(tx, org.id, 'INVENTORY_LOGISTICS', actor, 'EMPLOYEE')).binding.personId;
       const where = { organizationId_id: { organizationId: org.id, id } };
-      const input = kind === 'COUNT' ? countInput(body) : kind === 'ISSUE' ? issueInput(body) : purchaseInput(body);
+      const input = inputs[kind](body);
       const old = await tx.warehouseDecisionRequest.findUnique({ where });
       if (old) {
         const saved = old.details as Record<string, unknown>;
@@ -68,12 +82,19 @@ export class WarehouseDecisionsService {
         const lot = await tx.warehouseStockLot.findUnique({where:{organizationId_lotId:{organizationId:org.id,lotId:input.lotId}}});
         if (!lot) throw new NotFoundException('دفعة غير متاحة.');
         if ('counted' in input) details = { ...input, expected: lot.onHand, revision: lot.revision };
-        else await this.custodian(tx, org.id, input.custodianId);
+        else if ('destinationId' in input) {
+          if (lot.locationId===input.destinationId || lot.onHand<input.quantity) throw new ConflictException('تحقق من الموقع والكمية المتاحة.');
+          await activeDestination(tx,org.id,input.destinationId);
+        } else await this.custodian(tx, org.id, input.custodianId);
+      } else if ('issueId' in input) {
+        const issue=await returnableIssue(tx,org.id,input.issueId,actor,input.quantity);
+        details={...input,lotId:issue.lotId};
       } else {
+        details={...input,...await qualifiedSupplier(tx,org.id,input.supplierId)};
         const item = await tx.storeProduct.findFirst({ where: { id: input.itemId, organizationId: org.id, kind: 'GOODS' } });
         if (!item) throw new NotFoundException('الصنف خارج نطاق الجهة.');
       }
-      return tx.warehouseDecisionRequest.create({ data: { organizationId: org.id, id, kind, details, makerId: actor, makerPersonId: maker.binding.personId } });
+      return tx.warehouseDecisionRequest.create({ data: { organizationId: org.id, id, kind, details, makerId: actor, makerPersonId } });
     }).catch(error => {
       if (error?.code === 'P2002') throw new ConflictException('مرجع الطلب مسجل؛ أعد قراءة الطلب.');
       throw error;
@@ -92,11 +113,15 @@ export class WarehouseDecisionsService {
       const executive = org.ownerId === actor;
       const assignment = inventory ? await tx.warehouseProcurementAssignment.findUnique({where:{organizationId_accountId:{organizationId:org.id,accountId:actor}}}) : null;
       const procurement = !!(inventory && assignment?.active && assignment.employmentId===inventory.employmentId && assignment.positionId===inventory.positionId);
-      const custody = await tx.warehouseIssuePosting.findMany({ where: { organizationId: org.id, custodianId: actor, acknowledgedAt: null },
-        orderBy: [{createdAt:'asc'},{requestId:'asc'}], take: 50, select: { requestId:true,lotId:true,quantity:true } });
-      if (!inventory && !finance && !executive && !custody.length) throw new ForbiddenException('مساحة المستودع غير متاحة.');
-      const visible: Prisma.WarehouseDecisionRequestWhereInput[] = [];
-      if (inventory) visible.push({ makerId:actor }, {kind:{in:['COUNT','ISSUE']}}, {kind:'PURCHASE',finalizedAt:{not:null}});
+      const custodyScope={organizationId:org.id,custodianId:actor};
+      const custodySelect={requestId:true,lotId:true,quantity:true,returned:true,acknowledgedAt:true};
+      const custody = await tx.warehouseIssuePosting.findMany({where:{...custodyScope,acknowledgedAt:null},select:custodySelect,
+        orderBy:[{createdAt:'asc'},{requestId:'asc'}],take:50});
+      const held = await tx.warehouseIssuePosting.findMany({where:{...custodyScope,acknowledgedAt:{not:null},returned:{lt:tx.warehouseIssuePosting.fields.quantity}},
+        select:custodySelect,orderBy:[{createdAt:'asc'},{requestId:'asc'}],take:50});
+      if (!inventory && !finance && !executive && !custody.length && !held.length) throw new ForbiddenException('مساحة المستودع غير متاحة.');
+      const visible: Prisma.WarehouseDecisionRequestWhereInput[] = [{makerId:actor}];
+      if (inventory) visible.push({kind:{in:['COUNT','ISSUE','TRANSFER','RETURN']}}, {kind:'PURCHASE',finalizedAt:{not:null}});
       if (finance) visible.push({kind:'PURCHASE'});
       if (procurement) visible.push({reviewedAt:{not:null}});
       const rows = await tx.warehouseDecisionRequest.findMany({ where: { organizationId:org.id,...(org.ownerId===actor?{}:{OR:visible}) },
@@ -105,7 +130,14 @@ export class WarehouseDecisionsService {
         where:{organizationId:org.id}, orderBy:[{createdAt:'desc'},{receiptId:'desc'}], take:50,
         select:{receiptId:true,lineId:true,lot:{select:{itemId:true,locationId:true,received:true,onHand:true,unitCostMinor:true}}}
       }) : [];
-      return { organizationId:org.id, inventory:Boolean(inventory), executive, custody, receipts, requests: rows.map(row => {
+      const lots = inventory ? await tx.warehouseStockLot.findMany({
+        where:{organizationId:org.id}, orderBy:{lotId:'asc'}, take:100,
+        select:{lotId:true,parentLotId:true,receiptReference:true,purchaseReference:true,itemId:true,locationId:true,received:true,onHand:true,unitCostMinor:true}
+      }) : [];
+      const suppliers=inventory ? await tx.managedDocument.findMany({where:{organizationId:org.id,department:'INVENTORY_LOGISTICS',
+        status:{in:['APPROVED','SIGNED']},template:{organizationId:org.id,code:'INV-SUPPLIER-QUALIFICATION',status:'ACTIVE'}},
+        select:{id:true,referenceNumber:true},orderBy:{referenceNumber:'asc'},take:100}) : [];
+      return { organizationId:org.id, inventory:Boolean(inventory), executive, custody, held, receipts, lots, suppliers, requests: rows.map(row => {
         const reviewer = row.kind==='PURCHASE' ? finance : inventory;
         return { ...row, digest:this.digest(row), finalDigest:this.finalDigest(row),
           review:Boolean(!row.reviewedAt && reviewer && reviewer.personId!==row.makerPersonId),
@@ -123,7 +155,8 @@ export class WarehouseDecisionsService {
       const row = await tx.warehouseDecisionRequest.findUnique({ where: { organizationId_id: { organizationId: org.id, id } } });
       if (!row) throw new NotFoundException('الطلب غير متاح.');
       if (actor !== org.ownerId) {
-        if (row.kind !== 'PURCHASE' || row.makerId === actor) await eligibleReviewParticipant(tx, org.id, 'INVENTORY_LOGISTICS', actor, 'EMPLOYEE');
+        if(row.kind==='RETURN' && row.makerId===actor) await this.custodian(tx,org.id,actor);
+        else if (row.kind !== 'PURCHASE' || row.makerId === actor) await eligibleReviewParticipant(tx, org.id, 'INVENTORY_LOGISTICS', actor, 'EMPLOYEE');
         else {
           try { await eligibleReviewParticipant(tx, org.id, 'FINANCE', actor, 'EMPLOYEE'); }
           catch (error) {
@@ -217,8 +250,12 @@ export class WarehouseDecisionsService {
           data: { onHand: d.counted, countedCeiling: d.counted, revision: { increment: 1 } } });
         if (!change.count) throw new ConflictException('تغير الرصيد بعد الجرد؛ أعد العد في محضر جديد.');
       } else if (row.kind === 'PURCHASE') {
-        const d = row.details as unknown as Purchase;
-        await tx.warehousePurchaseLine.create({data:{...d,organizationId:org.id,lineId:id,approvalReference:id}});
+        const d = row.details as unknown as Purchase & {supplierHash?:string};
+        if (!d.supplierHash) throw new ConflictException('أعد تقديم طلب الشراء بمرجع تأهيل المورد المعتمد.');
+        const supplier=await qualifiedSupplier(tx,org.id,d.supplierId);
+        if (supplier.supplierHash!==d.supplierHash) throw new ConflictException('تغير سجل تأهيل المورد؛ أنشئ طلبًا بإصداره الحالي.');
+        const {purchaseReference,supplierId,itemId,quantity,unitCostMinor}=d;
+        await tx.warehousePurchaseLine.create({data:{purchaseReference,supplierId,itemId,quantity,unitCostMinor,organizationId:org.id,lineId:id,approvalReference:id}});
       }
       return tx.warehouseDecisionRequest.update({ where, data: final });
     });
@@ -229,6 +266,17 @@ export class WarehouseDecisionsService {
       account: { status: 'ACTIVE', emailVerifiedAt: { not: null } } }, select: { account: { select: { personId: true } } } });
     if (!member) throw new NotFoundException('مستلم العهدة غير متاح في الجهة.');
     return member.account.personId;
+  }
+
+  async receiveMovement(actor:string,id:string) {
+    scopeId(id);
+    return this.db.serializable(async tx=>{
+      const org=await reviewPlatform(tx), worker=await eligibleReviewParticipant(tx,org.id,'INVENTORY_LOGISTICS',actor,'EMPLOYEE');
+      return receiveMovement(tx,org.id,id,actor,worker.binding.personId);
+    }).catch(error=>{
+      if(error?.code==='P2002') throw new ConflictException('مرجع الدفعة مستخدم؛ راجع مستند التحويل.');
+      throw error;
+    });
   }
 
   async postIssue(actor: string, id: string) {

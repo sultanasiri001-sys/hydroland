@@ -3,7 +3,10 @@
   const profile = document.querySelector('#profile-dialog .profile-list');
   if (!profile) return;
   const ui = window.HydrolandI18n.createScope('warehouse-workspace', {
-    'المستودع والعهد':'Warehouse and custody','إغلاق':'Close','طلب شراء':'Purchase request','محضر جرد':'Stock count',
+    'المستودع والعهد':'Warehouse and custody','تحويل بين المستودعات':'Warehouse transfer','إرجاع عهدة':'Return custody',
+    'الموقع المستلم':'Destination location','مرجع الصرف':'Issue reference','تأكيد استلام التحويل أو المرتجع':'Confirm movement receipt',
+    'دفعات المخزون':'Stock lots','سجلات تأهيل الموردين':'Supplier qualification records','مرجع التأهيل':'Qualification reference','الكمية المعادة':'Returned quantity',
+    'عهدي':'My custody','مرجع قرار تأهيل المورد':'Supplier acceptance decision reference','إغلاق':'Close','طلب شراء':'Purchase request','محضر جرد':'Stock count',
     'طلب صرف':'Issue request','استلام توريد':'Receive delivery','المرجع':'Reference','مرجع أمر الشراء':'Purchase order reference',
     'مرجع المورد':'Supplier reference','معرّف الصنف':'Item ID','الكمية':'Quantity','تكلفة الوحدة بالهللة':'Unit cost in halalas',
     'مرجع الدفعة':'Lot reference','العدد الفعلي':'Physical count','سبب الجرد':'Count reason','حساب المستلم':'Custodian account ID',
@@ -50,7 +53,7 @@
     const token=++generation, session=auth().getSessionVersion();
     try {
       const data=await api('workspace');
-      if(!data?.organizationId || !Array.isArray(data.requests) || !Array.isArray(data.receipts) || !Array.isArray(data.custody)) throw new Error(ui.t('تعذّر إكمال الإجراء'));
+      if(!data?.organizationId || !Array.isArray(data.requests) || !Array.isArray(data.lots) || !Array.isArray(data.custody)) throw new Error(ui.t('تعذّر إكمال الإجراء'));
       if(token!==generation||session!==auth().getSessionVersion()) return;
       launch.hidden=false;
       if(dialog.open){render(data); if(notice) ui.setText(status,notice); else status.replaceChildren();}
@@ -66,7 +69,7 @@
     catch(error) {if(token===generation)status.textContent=error.message;}
     finally {busy=false;content.inert=false;}
   }
-  const labels={purchaseReference:'مرجع أمر الشراء',supplierId:'مرجع المورد',itemId:'معرّف الصنف',quantity:'الكمية',
+  const labels={supplierRef:'مرجع المورد',supplierAcceptanceRef:'مرجع قرار تأهيل المورد',issueId:'مرجع الصرف',destinationId:'الموقع المستلم',purchaseReference:'مرجع أمر الشراء',supplierId:'مرجع التأهيل',itemId:'معرّف الصنف',quantity:'الكمية',
     unitCostMinor:'تكلفة الوحدة بالهللة',lotId:'مرجع الدفعة',counted:'العدد الفعلي',reason:'سبب الجرد',
     custodianId:'حساب المستلم',lineId:'مرجع بند الشراء',locationId:'معرّف الموقع',expected:'العدد الدفتري'};
   const numbers=new Set(['quantity','counted','unitCostMinor']);
@@ -114,6 +117,11 @@
       panel.addEventListener('submit',e=>{e.preventDefault();void post('procurement-representatives/'+encodeURIComponent(account.value.trim()),{active:e.submitter===assign});});
     }
     if(data.inventory){
+      if(data.suppliers?.length){
+        const docs=add(content,'details');add(docs,'summary','سجلات تأهيل الموردين');
+        for(const supplier of data.suppliers)add(docs,'p').textContent=supplier.referenceNumber+' · '+supplier.id;
+      }
+      form('تحويل بين المستودعات','transfers',['lotId','destinationId','quantity']);
       form('طلب شراء','purchase-requests',['purchaseReference','supplierId','itemId','quantity','unitCostMinor']);
       form('استلام توريد','receipts',['lineId','locationId','quantity']);
       form('محضر جرد','counts',['lotId','counted','reason']);
@@ -121,7 +129,7 @@
     }
     add(content,'h3','الطلبات الأخيرة');
     if(!data.requests.length)add(content,'p','لا توجد طلبات');
-    const kinds={PURCHASE:'طلب شراء',COUNT:'محضر جرد',ISSUE:'طلب صرف'};
+    const kinds={TRANSFER:'تحويل بين المستودعات',RETURN:'إرجاع عهدة',PURCHASE:'طلب شراء',COUNT:'محضر جرد',ISSUE:'طلب صرف'};
     for(const row of data.requests){
       const group=add(content,'details'),summary=add(group,'summary');
       add(summary,'span',kinds[row.kind]);summary.append(' · ',row.id,' · ');
@@ -137,21 +145,26 @@
       if(row.finalizedAt)value(group,'مسوغات القرار',row.finalNote);
       if(row.recommend)opinionForm(group,row,'recommend');
       if(row.finalize)opinionForm(group,row,'finalize');
+      if(data.inventory&&row.finalDecision==='APPROVE'&&!row.postedAt&&['TRANSFER','RETURN'].includes(row.kind))
+        button(group,'تأكيد استلام التحويل أو المرتجع',()=>post('movements/'+encodeURIComponent(row.id)+'/receive',{}));
       if(data.inventory&&row.finalDecision==='APPROVE'&&row.kind==='ISSUE')button(group,'تنفيذ الصرف',()=>post('issue-requests/'+encodeURIComponent(row.id)+'/post',{}));
     }
-    if(data.receipts.length){
-      add(content,'h3','دفعات الاستلام الأخيرة');
-      for(const receipt of data.receipts){
-        const group=add(content,'details');add(group,'summary').textContent=receipt.receiptId;
-        value(group,'مرجع بند الشراء',receipt.lineId);value(group,'معرّف الصنف',receipt.lot.itemId);
-        value(group,'معرّف الموقع',receipt.lot.locationId);value(group,'الكمية',receipt.lot.received);
-        value(group,'الرصيد الحالي',receipt.lot.onHand);value(group,'تكلفة الوحدة بالهللة',receipt.lot.unitCostMinor);
+    if(data.lots.length){
+      add(content,'h3','دفعات المخزون');
+      for(const lot of data.lots){
+        const group=add(content,'details');add(group,'summary').textContent=lot.lotId;
+        value(group,'مرجع أمر الشراء',lot.purchaseReference);value(group,'معرّف الصنف',lot.itemId);
+        value(group,'معرّف الموقع',lot.locationId);value(group,'الكمية',lot.received);
+        value(group,'الرصيد الحالي',lot.onHand);value(group,'تكلفة الوحدة بالهللة',lot.unitCostMinor);
       }
     }
-    if(data.custody.length)add(content,'h3','عهد بانتظار إقراري');
-    for(const r of data.custody){
-      const section=add(content,'section');value(section,'المرجع',r.requestId);value(section,'مرجع الدفعة',r.lotId);value(section,'الكمية',r.quantity);
-      button(section,'إقرار الاستلام',()=>post('custody/'+encodeURIComponent(data.organizationId)+'/'+encodeURIComponent(r.requestId)+'/acknowledge',{}));
+    const custody=[...data.custody,...(data.held || [])];
+    if(custody.length)add(content,'h3','عهدي');
+    if(custody.some(r=>r.acknowledgedAt && r.returned<r.quantity))form('إرجاع عهدة','returns',['issueId','quantity']);
+    for(const r of custody){
+      const section=add(content,'section');value(section,'مرجع الصرف',r.requestId);value(section,'مرجع الدفعة',r.lotId);value(section,'الكمية',r.quantity);
+      if(r.returned)value(section,'الكمية المعادة',r.returned);
+      if(!r.acknowledgedAt)button(section,'إقرار الاستلام',()=>post('custody/'+encodeURIComponent(data.organizationId)+'/'+encodeURIComponent(r.requestId)+'/acknowledge',{}));
     }
     button(content,'تحديث',()=>refresh());
   }

@@ -3282,6 +3282,9 @@ model InstructorRecovery {
 }
 
 model WarehouseStockLot {
+  parentLotId String?
+  parent WarehouseStockLot? @relation("LotTransfer", fields:[organizationId,parentLotId],references:[organizationId,lotId],onDelete:Restrict)
+  transfers WarehouseStockLot[] @relation("LotTransfer")
   countedCeiling Int @default(0)
   revision Int @default(0)
   organizationId String
@@ -3299,6 +3302,7 @@ model WarehouseStockLot {
 }
 
 model WarehouseIssuePosting {
+  returned Int @default(0)
   organizationId String
   requestId String
   lotId String
@@ -3350,6 +3354,8 @@ model WarehouseProcurementAssignment {
 }
 
 model WarehouseDecisionRequest {
+  postedAt DateTime?
+  postedBy String?
   recommendedBy String?
   recommenderPersonId String?
   recommendation String?
