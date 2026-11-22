@@ -1,6 +1,8 @@
 import { BadGatewayException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { IntegrationService } from './integration.service';
 
+import { smsSubmissionReceipt, type SmsSubmissionReceipt } from './unifonic-sms-receipt';
+
 type SmsInput={recipient:string;body:string;correlationId:string};
 type WhatsAppTemplateInput={recipient:string;templateName:string;languageCode:string;parameters?:string[]};
 type DeliveryResult={provider:'UNIFONIC';providerMessageId:string|null;status:string|null};
@@ -9,7 +11,7 @@ type DeliveryResult={provider:'UNIFONIC';providerMessageId:string|null;status:st
 export class UnifonicMessagingService {
   constructor(private readonly integrations:IntegrationService){}
 
-  async sendSms(input:SmsInput):Promise<DeliveryResult>{
+  async sendSms(input:SmsInput):Promise<SmsSubmissionReceipt>{
     this.integrations.requireOperational('SMS',{allowSandbox:true});
     if(process.env.HYDROLAND_SMS_PROVIDER?.trim().toUpperCase()!=='UNIFONIC')throw new ServiceUnavailableException('SMS provider is not configured.');
     const appSid=process.env.UNIFONIC_SMS_APPSID?.trim();
@@ -25,8 +27,8 @@ export class UnifonicMessagingService {
       response=await fetch('https://el.cloud.unifonic.com/rest/SMS/messages',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/x-www-form-urlencoded'},body:form,signal:AbortSignal.timeout(8_000)});
     }catch{throw new BadGatewayException('SMS provider request failed.');}
     const payload=await this.safeJson(response);
-    if(!response.ok||payload?.success===false)throw new BadGatewayException(`SMS provider rejected delivery (${response.status}).`);
-    return{provider:'UNIFONIC',providerMessageId:this.stringValue(payload?.data?.MessageID),status:this.stringValue(payload?.data?.Status)};
+    if(!response.ok||payload?.success===false||payload?.success==='false')throw new BadGatewayException(`SMS provider rejected delivery (${response.status}).`);
+    return smsSubmissionReceipt(payload,correlationId,recipient);
   }
 
   async sendWhatsAppTemplate(input:WhatsAppTemplateInput):Promise<DeliveryResult>{

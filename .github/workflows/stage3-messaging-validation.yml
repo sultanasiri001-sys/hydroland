@@ -7,6 +7,9 @@ on:
       - 'apps/api/src/integrations/unifonic-messaging.service.ts'
       - 'apps/api/src/integrations/integration.module.ts'
       - 'apps/api/scripts/unifonic-messaging-validation.mjs'
+      - 'apps/api/src/integrations/unifonic-sms-receipt.ts'
+      - 'apps/api/scripts/unifonic-sms-receipt.test.cjs'
+      - '.github/workflows/stage3-messaging-validation.yml'
       - 'render.yaml'
   workflow_dispatch:
 
@@ -27,3 +30,5 @@ jobs:
         run: npm --workspace @hydroland/api run typecheck
       - name: Build API
         run: npm --workspace @hydroland/api run build
+      - name: Verify SMS submission receipts with isolated fixtures
+        run: node --test apps/api/scripts/unifonic-sms-receipt.test.cjs
