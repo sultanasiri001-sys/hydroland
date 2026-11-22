@@ -14,7 +14,21 @@ export async function warehouseDecisionsCases({db, org, owner, other, actor, ok,
   const finance = await employee('finance','FINANCE');
   const item = await db.storeProduct.create({data:{organizationId:org.id,sku:randomUUID(),nameAr:'اختبار',kind:'GOODS',priceMinor:100}});
   const purchaseId = randomUUID(), receiptId = randomUUID();
-  const order = {purchaseReference:randomUUID(),supplierId:'test-supplier',itemId:item.id,quantity:12,unitCostMinor:2500};
+  const supplierFields=[
+    {key:'supplierRef',labelAr:'المورد',labelEn:'Supplier',type:'TEXT',required:true},
+    {key:'supplierAcceptanceRef',labelAr:'القبول',labelEn:'Approval',type:'TEXT',required:true},
+    {key:'nextSupplierReviewDate',labelAr:'المراجعة',labelEn:'Review',type:'DATE',required:true}
+  ];
+  const template=await db.documentTemplate.create({data:{organizationId:org.id,department:'INVENTORY_LOGISTICS',code:'INV-SUPPLIER-QUALIFICATION',
+    titleAr:'تأهيل مورد',titleEn:'Supplier qualification',fields:supplierFields}});
+  await db.documentBrandSnapshot.create({data:{organizationId:org.id,brandVersion:1}});
+  const payload={supplierRef:'test-supplier',supplierAcceptanceRef:'test-acceptance',nextSupplierReviewDate:'2099-12-31'};
+  const doc=await db.managedDocument.create({data:{organizationId:org.id,department:'INVENTORY_LOGISTICS',templateId:template.id,
+    documentBrandVersion:1,referenceNumber:randomUUID(),createdByAccountId:maker.id,approvedByAccountId:reviewer.id,approvedAt:new Date(),
+    status:'APPROVED',contentHash:'a'.repeat(64),payload}});
+  await db.documentRevision.create({data:{documentId:doc.id,version:1,createdByAccountId:maker.id,contentHash:doc.contentHash,payload}});
+  await db.documentLifecycleEvent.create({data:{documentId:doc.id,version:1,actorAccountId:reviewer.id,action:'APPROVED',fromStatus:'PENDING_APPROVAL',toStatus:'APPROVED'}});
+  const order = {purchaseReference:randomUUID(),supplierId:doc.id,itemId:item.id,quantity:12,unitCostMinor:2500};
   const submit = 'warehouse/purchase-requests/'+purchaseId, receiptPath = 'warehouse/receipts/'+receiptId;
   const receipt = {lineId:purchaseId,locationId,quantity:12};
   const path = (id,step) => 'warehouse/requests/'+id+'/'+step;
@@ -25,7 +39,9 @@ export async function warehouseDecisionsCases({db, org, owner, other, actor, ok,
   const opinion=(request,decision='APPROVE')=>({digest:request.finalDigest || request.digest,decision,note:'مسوغ تجريبي للقرار'});
   await deny(null,submit,'POST',order,[401]);
   await deny(other,submit,'POST',order,[403]);
+  await deny(maker,submit,'POST',{...order,supplierId:randomUUID()},[403]);
   const request = await ok(maker,submit,'POST',order);
+  assert.equal(request.details.supplierRef,'test-supplier');
   const sign = {digest:request.digest};
   assert.equal((await ok(maker,submit,'POST',order)).digest,request.digest);
   await deny(maker,submit,'POST',{...order,quantity:1},[409]);
@@ -82,10 +98,33 @@ export async function warehouseDecisionsCases({db, org, owner, other, actor, ok,
   assert.equal(final.onHand,6);
   const inventoryView=await ok(maker,'warehouse/workspace');
   assert.equal(inventoryView.inventory,true);
-  assert.equal(inventoryView.receipts.find(r=>r.receiptId===receiptId).lot.onHand,6);
+  assert.equal(inventoryView.lots.find(r=>r.lotId===receiptId).onHand,6);
   const financialView=await ok(finance,'warehouse/workspace');
-  assert.equal(financialView.inventory,false);assert.equal(financialView.receipts.length,0);
+  assert.equal(financialView.inventory,false);assert.equal(financialView.lots.length,0);
   assert.ok(financialView.requests.every(r=>r.kind==='PURCHASE'));
   await deny(other,'warehouse/workspace','GET',undefined,[403]);
+  const dest=(await db.warehouseLocation.findFirstOrThrow({where:{organizationId:org.id,status:'RECORDED',id:{not:locationId}}})).id;
+  async function approveMovement(author,route,details) {
+    const id=randomUUID(), req=await ok(author,'warehouse/'+route+'/'+id,'POST',details);
+    await ok(reviewer,path(id,'review'),'POST',{digest:req.digest});
+    const rec=await ok(procurement,path(id,'recommend'),'POST',opinion(req));
+    await ok(owner,path(id,'finalize'),'POST',opinion(rec));
+    return id;
+  }
+  const transfer=await approveMovement(maker,'transfers',{lotId:receiptId,destinationId:dest,quantity:4});
+  const postMove=id=>'warehouse/movements/'+id+'/receive';
+  await deny(maker,postMove(transfer),'POST',undefined,[403]);
+  await Promise.all([1,2,3].map(()=>ok(reviewer,postMove(transfer),'POST')));
+  const child=await db.warehouseStockLot.findUniqueOrThrow({where:{organizationId_lotId:{organizationId:org.id,lotId:transfer}}});
+  assert.equal(child.onHand,4);assert.equal(child.parentLotId,receiptId);assert.equal(child.unitCostMinor,2500);
+  await deny(maker,'warehouse/returns/'+randomUUID(),'POST',{issueId,quantity:1},[404]);
+  const ret=await approveMovement(finance,'returns',{issueId,quantity:2});
+  await Promise.all([1,2,3].map(()=>ok(reviewer,postMove(ret),'POST')));
+  await deny(finance,'warehouse/returns/'+randomUUID(),'POST',{issueId,quantity:2},[409]);
+  const after=await db.warehouseStockLot.findUniqueOrThrow({where:{organizationId_lotId:{organizationId:org.id,lotId:receiptId}}});
+  assert.equal(after.onHand,4);
+  const returned=await db.warehouseIssuePosting.findUniqueOrThrow({where:{organizationId_requestId:{organizationId:org.id,requestId:issueId}}});
+  assert.equal(returned.quantity-returned.returned,1);
+  console.log('PASS supplier document, approved cross-location transfer with cost preserved and partial return against acknowledged custody.');
   console.log('PASS HTTP warehouse purchase, independent budget review, documented procurement recommendation, executive approval and refusal, receipt, positive and negative stock counts, stale count rejection and concurrent replay.');
 }

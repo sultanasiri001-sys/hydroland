@@ -5,7 +5,7 @@ test('staff opens warehouse decisions from the profile, reviews the actual count
   const response=(route,data)=>route.fulfill({contentType:'application/json',body:JSON.stringify(data)});
   await page.route('**/api/v1/**',r=>response(r,[]));
   await page.route(/\/api\/v1\/me$/,r=>response(r,{id:'fixture-staff',status:'ACTIVE',person:{firstName:'Test',lastName:'Staff'},roleAssignments:[{role:'STAFF',status:'ACTIVE'}]}));
-  await page.route('**/warehouse/workspace',r=>response(r,{organizationId:'fixture',inventory:true,custody:[],receipts:[],requests:[
+  await page.route('**/warehouse/workspace',r=>response(r,{organizationId:'fixture',inventory:true,custody:[],lots:[],requests:[
     {id:'COUNT-1',kind:'COUNT',digest:'a'.repeat(64),details:{lotId:'receipt-1',expected:12,counted:9,reason:'<private fixture>'},review:requests.length===0}
   ]}));
   await page.route('**/warehouse/requests/COUNT-1/review',route=>{requests.push(route.request().postDataJSON());return response(route,{});});
@@ -34,7 +34,7 @@ test('executive reads procurement grounds before signing the final decision', as
   const response=(r,data)=>r.fulfill({contentType:'application/json',body:JSON.stringify(data)});
   await page.route('**/api/v1/**',r=>response(r,[]));
   await page.route(/\/api\/v1\/me$/,r=>response(r,{id:'owner-test',status:'ACTIVE',person:{firstName:'Owner',lastName:'Test'},roleAssignments:[{role:'ADMIN',status:'ACTIVE'}]}));
-  await page.route('**/warehouse/workspace',r=>response(r,{organizationId:'fixture',executive:true,inventory:false,custody:[],receipts:[],requests:[{
+  await page.route('**/warehouse/workspace',r=>response(r,{organizationId:'fixture',executive:true,inventory:false,custody:[],lots:[],requests:[{
     id:'PO-test',kind:'PURCHASE',digest:'a'.repeat(64),finalDigest:'b'.repeat(64),details:{quantity:12},reviewedAt:'2026-11-22T00:00:00Z',
     recommendedAt:'2026-11-22T00:01:00Z',recommendation:'DECLINE',recommendationNote:'الكمية تتجاوز الاحتياج',finalize:!posted.length
   }]}));
@@ -55,4 +55,30 @@ test('executive reads procurement grounds before signing the final decision', as
   await dialog.getByRole('button',{name:'تسجيل القرار'}).click();
   await expect(dialog.getByRole('status')).toContainText('تم الحفظ');
   expect(posted).toEqual([{digest:'b'.repeat(64),decision:'DECLINE',note:'اعتماد توصية المشتريات بالرفض'}]);
+});
+
+test('custodian returns a partial quantity from an acknowledged issue',async({page})=>{
+  const writes=[];
+  const respond=(r,data)=>r.fulfill({contentType:'application/json',body:JSON.stringify(data)});
+  await page.route('**/api/v1/**',r=>respond(r,[]));
+  await page.route(/\/api\/v1\/me$/,r=>respond(r,{id:'custodian',status:'ACTIVE',person:{firstName:'Test',lastName:'Recipient'},roleAssignments:[]}));
+  await page.route('**/warehouse/workspace',r=>respond(r,{organizationId:'fixture',inventory:false,executive:false,lots:[],requests:[],
+    custody:[],held:[{requestId:'ISSUE-1',lotId:'LOT-1',quantity:3,returned:0,acknowledgedAt:'2026-11-22T01:00:00Z'}]}));
+  await page.route('**/warehouse/returns/*',r=>{writes.push(r.request().postDataJSON());return respond(r,{});});
+  await page.goto('/',{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>window.HydrolandAuth && window.HydrolandProfile);
+  await page.evaluate(async()=>{
+    window.HydrolandAuth.acceptSession({accessToken:'warehouse-recipient',refreshToken:'warehouse-refresh'},window.HydrolandAuth.beginAuthAttempt());
+    await window.HydrolandProfile.load();
+  });
+  await page.locator('#profile-open').click();
+  await page.getByRole('button',{name:'المستودع والعهد',exact:true}).click();
+  const dialog=page.getByRole('dialog',{name:'المستودع والعهد'});
+  await expect(dialog.getByText('طلب شراء',{exact:true})).toHaveCount(0);
+  await dialog.locator('summary').filter({hasText:'إرجاع عهدة'}).click();
+  await dialog.getByLabel('مرجع الصرف').fill('ISSUE-1');
+  await dialog.getByLabel('الكمية',{exact:true}).fill('2');
+  await dialog.getByRole('button',{name:'حفظ',exact:true}).click();
+  await expect(dialog.getByRole('status')).toContainText('تم الحفظ');
+  expect(writes).toEqual([{issueId:'ISSUE-1',quantity:2}]);
 });

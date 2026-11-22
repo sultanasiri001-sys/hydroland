@@ -37,6 +37,21 @@ export class WarehouseDecisionsController {
     return this.decisions.postIssue(req.auth.accountId, id);
   }
 
+  @Post('transfers/:id') @Header('Cache-Control','private, no-store')
+  transfer(@Req() req: Request, @Param('id') id: string, @Body() body: unknown) {
+    return this.view(this.decisions.submit(req.auth.accountId,id,'TRANSFER',body));
+  }
+
+  @Post('returns/:id') @Header('Cache-Control','private, no-store')
+  requestReturn(@Req() req: Request, @Param('id') id: string, @Body() body: unknown) {
+    return this.view(this.decisions.submit(req.auth.accountId,id,'RETURN',body));
+  }
+
+  @Post('movements/:id/receive') @Header('Cache-Control','private, no-store')
+  receiveMovement(@Req() req: Request, @Param('id') id: string) {
+    return this.view(this.decisions.receiveMovement(req.auth.accountId,id));
+  }
+
   @Get('workspace') @Header('Cache-Control','private, no-store')
   workspace(@Req() req: Request) { return this.decisions.workspace(req.auth.accountId); }
 
