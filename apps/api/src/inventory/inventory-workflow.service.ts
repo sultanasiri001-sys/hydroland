@@ -33,10 +33,22 @@ export class InventoryWorkflowService {
   fulfillIssue(request: InventoryRequest, balance: StockBalance): StockBalance {
     if (request.status !== 'APPROVED') throw new BadRequestException('Inventory issue requires approval.');
     if (request.itemId !== balance.itemId) throw new BadRequestException('Inventory item mismatch.');
+    if (!request.id?.trim() || !request.approvedBy || !Number.isFinite(request.quantity) || request.quantity <= 0
+      || (request.sourceLocationId && request.sourceLocationId !== balance.locationId)) {
+      throw new BadRequestException('Invalid inventory issue identity, quantity or location.');
+    }
+    const previous = balance.fulfilledIssues?.find(issue => issue.requestId === request.id);
+    if (previous) {
+      if (previous.quantity !== request.quantity || previous.requestedBy !== request.requestedBy || previous.approvedBy !== request.approvedBy) {
+        throw new BadRequestException('Previously fulfilled inventory request has different details.');
+      }
+      return balance;
+    }
     if (request.quantity > balance.reserved || request.quantity > balance.onHand) throw new BadRequestException('Approved quantity is not reserved.');
     const onHand = balance.onHand - request.quantity;
     const reserved = balance.reserved - request.quantity;
-    return { ...balance, onHand, reserved, available: calculateAvailableStock(onHand, reserved) };
+    const issue = { requestId: request.id, quantity: request.quantity, requestedBy: request.requestedBy, approvedBy: request.approvedBy };
+    return { ...balance, onHand, reserved, available: calculateAvailableStock(onHand, reserved), fulfilledIssues: [...(balance.fulfilledIssues ?? []), issue] };
   }
 
   validateTransfer(request: InventoryRequest): InventoryRequest {
