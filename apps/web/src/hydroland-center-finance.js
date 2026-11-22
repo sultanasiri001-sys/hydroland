@@ -1,6 +1,18 @@
 (()=>{
   // Only authored interface text is localized. Account and business values stay opaque.
   const uiLocale = window.HydrolandI18n?.createScope("center-finance", {
+  "مطابقة حوالة رحلة": "Compare a trip transfer",
+  "معرّف الحجز": "Booking ID",
+  "معرّف الجهة المستفيدة في هيدرولاند": "Beneficiary organization ID in HYDROLAND",
+  "معرّف قيد التسوية": "Settlement ledger entry ID",
+  "رقم فاتورة المركز": "Center invoice number",
+  "مرجع الحوالة في الكشف": "Transfer reference on the statement",
+  "صافي المبلغ في الكشف": "Net amount on the statement",
+  "رمز العملة": "Currency code",
+  "قارن بيانات الكشف": "Compare statement details",
+  "تطابقت البيانات المدخلة. يبقى تأكيد وصول الحوالة من البنك.": "The supplied details match. Bank confirmation of receipt is still required.",
+  "حقول تحتاج مراجعة": "Fields requiring review",
+  "تعذرت المطابقة. راجع الحجز وأصل الفاتورة واعتماد قيد التسوية.": "Could not compare the transfer. Check the booking, original invoice and settlement approval.",
   "مطابقة تحصيل ضرر المعدات": "Reconcile rental damage payments",
   "مرفوض": "Rejected",
   "بانتظار المراجعة": "Awaiting review",
@@ -277,6 +289,41 @@
   uiLocale.setHTML(result, html);
   if(data.isOperator){
    const selected=centerId,session=auth().getSessionVersion();
+   const panel=document.createElement('details');
+   uiLocale.setHTML(panel,uiLocale.html`<summary>مطابقة حوالة رحلة</summary><form>
+     <label>معرّف الحجز<input name="bookingId" required maxlength="200" dir="ltr"></label>
+     <label>مرجع الحوالة في الكشف<input name="transferReference" required maxlength="200" dir="ltr"></label>
+     <label>معرّف الجهة المستفيدة في هيدرولاند<input name="beneficiaryOrganizationId" required maxlength="200" dir="ltr"></label>
+     <label>معرّف قيد التسوية<input name="settlementEntryId" required maxlength="200" dir="ltr"></label>
+     <label>رقم فاتورة المركز<input name="invoiceNumber" required maxlength="100" dir="ltr"></label>
+     <label>صافي المبلغ في الكشف<input name="amount" required inputmode="decimal" dir="ltr"></label>
+     <label>رمز العملة<input name="currency" required maxlength="3" pattern="[A-Za-z]{3}" dir="ltr"></label>
+     <button type="submit">قارن بيانات الكشف</button><p role="status"></p></form>`);
+   result.append(panel);
+   const compareForm=panel.querySelector('form'), responseText=panel.querySelector('[role=status]');
+   const labels={beneficiaryOrganizationId:'معرّف الجهة المستفيدة في هيدرولاند',settlementEntryId:'معرّف قيد التسوية',
+     invoiceNumber:'رقم فاتورة المركز',amountMinor:'صافي المبلغ في الكشف',currency:'رمز العملة'};
+   compareForm.addEventListener('input',()=>{responseText.textContent='';});
+   compareForm.addEventListener('submit',async event=>{
+     event.preventDefault();
+     const button=compareForm.querySelector('button');
+     if(button.disabled)return;
+     const {bookingId,amount,...fields}=Object.fromEntries(new FormData(compareForm));
+     const amountMinor=minor(amount);
+     if(!amountMinor){responseText.textContent=uiLocale.t('صافي المبلغ في الكشف');compareForm.elements.amount.focus();return;}
+     const active=()=>panel.isConnected&&eligible()&&snapshot===data&&selected===centerId&&session===auth().getSessionVersion();
+     if(!active())return;
+     button.disabled=true;
+     const inputs=[...compareForm.querySelectorAll('input')];
+     inputs.forEach(input=>input.readOnly=true);
+     try{
+       const path='/finance/centers/'+encodeURIComponent(selected)+'/service-entitlements/trips/'+encodeURIComponent(bookingId.trim())+'/compare-transfer';
+       const match=await request(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...fields,currency:fields.currency.toUpperCase(),amountMinor})});
+       if(active())responseText.textContent=match.comparison==='DETAILS_MATCH'?uiLocale.t('تطابقت البيانات المدخلة. يبقى تأكيد وصول الحوالة من البنك.'):
+         uiLocale.t('حقول تحتاج مراجعة')+' · '+match.differences.map(field=>uiLocale.t(labels[field])).join('، ');
+     }catch{if(active())responseText.textContent=uiLocale.t('تعذرت المطابقة. راجع الحجز وأصل الفاتورة واعتماد قيد التسوية.');}
+     finally{button.disabled=false;inputs.forEach(input=>input.readOnly=false);}
+   });
    window.HydrolandProviderContact?.payees(result,selected,()=>eligible()&&snapshot===data&&selected===centerId&&session===auth().getSessionVersion());
   }
  }
