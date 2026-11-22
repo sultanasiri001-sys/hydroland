@@ -76,7 +76,8 @@ try{
 
   person=await db.person.create({data:{firstName:'Payment',lastName:'E2E'}});
   account=await db.account.create({data:{personId:person.id,email:`payment-${suffix}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}});
-  trip=await db.trip.create({data:{title:`Payment E2E ${suffix}`,type:'BOAT_DIVE',startsAt:new Date(Date.now()+86400000),endsAt:new Date(Date.now()+90000000),capacity:4,status:'OPEN'}});
+  // Legacy provider reconciliation uses a shore booking without a stored contract.
+  trip=await db.trip.create({data:{title:`Payment E2E ${suffix}`,type:'SHORE_DIVE',startsAt:new Date(Date.now()+86400000),endsAt:new Date(Date.now()+90000000),capacity:4,status:'OPEN'}});
   await db.operationalSetting.create({data:{key:`trip-price:${trip.id}`,value:{pricePerSeatMinor:12345,currency:'SAR'}}});
   booking=await db.booking.create({data:{tripId:trip.id,accountId:account.id,seats:2,status:'PENDING'}});
   const expectBookingAwaitingConfirmation=async stage=>{

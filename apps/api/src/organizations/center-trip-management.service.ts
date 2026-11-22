@@ -1,3 +1,4 @@
+import { isBoatTrip } from '../trips/center-boat-booking';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
@@ -94,18 +95,33 @@ export class CenterTripManagementService {
    return {id,deleted:true};
   });
  }
+ async vessels(accountId:string) {
+  return this.db.serializable(async tx=>{
+   const centerId=await this.scope(tx,accountId);
+   return tx.marineAsset.findMany({where:{status:'ACTIVE',OR:[{reviewCenterId:centerId},{organizationId:centerId,reviewCenterId:null}]},
+    select:{id:true,name:true},orderBy:[{name:'asc'},{id:'asc'}]});
+  });
+ }
  async publish(accountId:string,id:string,input:Record<string,unknown>){
-  this.object(input,['expectedUpdatedAt']);const revision=this.revision(input.expectedUpdatedAt);
+  this.object(input,['expectedUpdatedAt','marineAssetId']);const revision=this.revision(input.expectedUpdatedAt);
   return this.db.serializable(async tx=>{
    const organizationId=await this.scope(tx,accountId),trip=await tx.trip.findFirst({where:{id,organizationId}});if(!trip)throw new NotFoundException('الرحلة غير موجودة في المركز.');
    if(trip.updatedAt.getTime()!==revision.getTime())throw new ConflictException('تغيرت الرحلة. أعد تحميلها قبل النشر.');
-   if(trip.status!=='DRAFT'||trip.startsAt<=new Date())throw new ConflictException('يمكن نشر رحلة محفوظة لم تبدأ بعد فقط.');
+   const bindExisting=isBoatTrip(trip.type) && trip.status==='OPEN' && !trip.marineAssetId;
+   if((trip.status!=='DRAFT' && !bindExisting)||trip.startsAt<=new Date())throw new ConflictException('يمكن نشر رحلة محفوظة لم تبدأ بعد فقط.');
    const detail=await this.details(tx,id),price=detail.price as {pricePerSeatMinor?:number;currency?:string}|null;
    if(!price||!Number.isSafeInteger(price.pricePerSeatMinor)||Number(price.pricePerSeatMinor)<0||price.currency!=='SAR'||!detail.location)throw new ConflictException('أكمل السعر والموقع قبل فتح الحجز.');
    // Publishing does not grant safety, weather, participant, payment or operational approval.
    // Existing booking and completion services retain those independent gates.
-   const updated=await tx.trip.updateMany({where:{id,organizationId,status:'DRAFT',updatedAt:revision},data:{status:'OPEN'}});if(updated.count!==1)throw new ConflictException('تغيرت الرحلة. أعد تحميلها قبل النشر.');
-   await this.audit.record({actorId:accountId,action:'CENTER_TRIP_PUBLISHED',resource:'Trip',resourceId:id,metadata:{organizationId,previousStatus:'DRAFT',status:'OPEN',operationalApprovalGranted:false}},tx);
+   let marineAssetId: string | null = null;
+   if (isBoatTrip(trip.type)) {
+    if (typeof input.marineAssetId!=='string' || !input.marineAssetId) throw new BadRequestException('اختر قاربًا مرتبطًا بالمركز.');
+    const vessel=await tx.marineAsset.findFirst({where:{id:input.marineAssetId,status:'ACTIVE',OR:[{reviewCenterId:organizationId},{organizationId,reviewCenterId:null}]},select:{id:true,passengerCapacity:true}});
+    if (!vessel || (vessel.passengerCapacity!==null && vessel.passengerCapacity<trip.capacity)) throw new ConflictException('تحقق من ارتباط القارب بالمركز وسعته.');
+    marineAssetId=vessel.id;
+   }
+   const updated=await tx.trip.updateMany({where:{id,organizationId,status:trip.status,updatedAt:revision},data:{status:'OPEN',marineAssetId}});if(updated.count!==1)throw new ConflictException('تغيرت الرحلة. أعد تحميلها قبل النشر.');
+   await this.audit.record({actorId:accountId,action:'CENTER_TRIP_PUBLISHED',resource:'Trip',resourceId:id,metadata:{organizationId,marineAssetId,previousStatus:trip.status,status:'OPEN',operationalApprovalGranted:false}},tx);
    return this.details(tx,id);
   });
  }

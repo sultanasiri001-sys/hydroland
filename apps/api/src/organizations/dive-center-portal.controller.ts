@@ -87,6 +87,7 @@ export class DiveCenterPortalController {
   @Post('me/trips/:tripId/publish') publishTrip(@Req() request:AuthenticatedRequest,@Param('tripId') tripId:string,@Body() body:Record<string,unknown>){return this.tripManagement.publish(request.auth.accountId,tripId,body);}
   @Get('me/trips/:tripId/lifecycle') tripLifecyclePreview(@Req() request:AuthenticatedRequest,@Param('tripId') tripId:string){return this.tripLifecycle.preview(request.auth.accountId,tripId);}
   @Post('me/trips/:tripId/actions') tripAction(@Req() request:AuthenticatedRequest,@Param('tripId') tripId:string,@Body() body:Record<string,unknown>){return this.tripLifecycle.apply(request.auth.accountId,tripId,body);}
+  @Get('me/trip-vessels') tripVessels(@Req() request:AuthenticatedRequest){return this.tripManagement.vessels(request.auth.accountId);}
   @Get('me/trips') trips(@Req() request:AuthenticatedRequest){return this.tripManagement.list(request.auth.accountId);}
   @Get('me/trips/:tripId/bookings') bookings(@Req() request:AuthenticatedRequest,@Param('tripId') tripId:string){return this.portal.bookings(request.auth.accountId,tripId);}
 }

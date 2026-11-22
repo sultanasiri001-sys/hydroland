@@ -3,7 +3,7 @@
     'فواتيري':'My invoices','المشتريات':'Purchases','المبيعات':'Sales','الكل':'All','إغلاق':'Close',
     'خدمة مدرب مستقل':'Independent instructor service','دورة تدريبية':'Training course','تأجير معدات':'Equipment rental','مطالبة تأجير':'Rental claim',
     'حجز رحلة':'Trip booking','طلب متجر':'Store order','شراء':'Purchase','بيع':'Sale',
-    'رقم الفاتورة':'Invoice number','تحميل الفاتورة PDF':'Download invoice PDF',
+    'طباعة فاتورة المركز':'Print center invoice', 'رقم الفاتورة':'Invoice number','تحميل الفاتورة PDF':'Download invoice PDF',
     'بانتظار فاتورة البائع':'Awaiting the seller’s invoice','نسخة PDF غير مرفقة':'PDF not attached',
     'فاتورة ملغاة':'Voided invoice','ملف الفاتورة الأصلي':'Original invoice PDF','ربط الفاتورة':'Attach invoice',
     'لا توجد فواتير في هذا العرض.':'No invoices in this view.','تحميل المزيد':'Load more',
@@ -53,6 +53,30 @@
     if(row.number){const id=element('p',article);element('span',id,'رقم الفاتورة');element('bdi',id).textContent=row.number;}
     if(row.nativeStatus==='VOID')element('p',article,'فاتورة ملغاة');
     if(row.hasDocument){
+      if(row.canPrint && window.HydrolandPortalAccess?.getCurrentRole()==='center'){
+        button(article,'طباعة فاتورة المركز',async()=>{
+          const preview=window.open('about:blank','_blank');
+          if(!preview){ui.setText(message,'تعذّر تحميل الملف.');return;}
+          preview.opener=null;
+          try{
+            const response=await request(sourcePath(row));
+            if(!response.ok || !stillHere())throw new Error();
+            const url=URL.createObjectURL(await response.blob());
+            const doc=preview.document;
+            doc.title=row.sellerName+' · '+row.number;
+            doc.documentElement.lang=document.documentElement.lang||'ar';
+            doc.documentElement.dir=document.documentElement.dir||'rtl';
+            const print=doc.createElement('button');
+            print.type='button';print.textContent=ui.t('طباعة فاتورة المركز');
+            const frame=doc.createElement('iframe');
+            frame.title=doc.title;frame.style.cssText='width:100%;height:90vh;border:0;display:block';
+            const printOriginal=()=>{frame.contentWindow.focus();frame.contentWindow.print();};
+            print.addEventListener('click',printOriginal);frame.addEventListener('load',printOriginal,{once:true});
+            frame.src=url;doc.body.replaceChildren(print,frame);
+            preview.addEventListener('pagehide',()=>URL.revokeObjectURL(url),{once:true});
+          }catch{preview.close();if(stillHere())ui.setText(message,'تعذّر تحميل الملف.');}
+        });
+      }
       const download=button(article,'تحميل الفاتورة PDF',async()=>{
         download.disabled=true;
         try{

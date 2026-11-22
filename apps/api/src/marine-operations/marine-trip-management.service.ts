@@ -71,18 +71,4 @@ export class MarineTripManagementService{
    return this.details(tx,tripId);
   });}catch(error){if(!id&&typeof error==='object'&&error!==null&&'code' in error&&error.code==='P2002')return this.save(accountId,input);throw error;}
  }
- async publish(accountId:string,id:string,input:Record<string,unknown>){
-  this.object(input,['expectedUpdatedAt']);const revision=this.revision(input.expectedUpdatedAt);
-  return this.db.serializable(async tx=>{
-   const organizationIds=await this.organizations(tx,accountId),trip=await tx.trip.findFirst({where:{id,organizationId:{in:organizationIds}}});if(!trip)throw new NotFoundException('Trip not found in your marine organizations.');
-   if(trip.updatedAt.getTime()!==revision.getTime())throw new ConflictException('Trip changed. Refresh before publishing.');
-   if(trip.status!=='DRAFT'||trip.startsAt<=new Date())throw new ConflictException('Only a future draft trip can be published.');
-   const detail=await this.details(tx,id),price=detail.price as {pricePerSeatMinor?:number;currency?:string}|null;
-   if(!price||!Number.isSafeInteger(price.pricePerSeatMinor)||Number(price.pricePerSeatMinor)<0||price.currency!=='SAR'||!detail.location)throw new ConflictException('Add a price and location before opening bookings.');
-   // Publishing opens bookings only; it does not approve safety, weather, or operational clearance.
-   const updated=await tx.trip.updateMany({where:{id,organizationId:trip.organizationId,status:'DRAFT',updatedAt:revision},data:{status:'OPEN'}});if(updated.count!==1)throw new ConflictException('Trip changed. Refresh before publishing.');
-   await this.audit.record({actorId:accountId,action:'MARINE_TRIP_PUBLISHED',resource:'Trip',resourceId:id,metadata:{organizationId:trip.organizationId,previousStatus:'DRAFT',status:'OPEN',operationalApprovalGranted:false}},tx);
-   return this.details(tx,id);
-  });
- }
 }

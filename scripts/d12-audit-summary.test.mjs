@@ -41,7 +41,14 @@ test('every classification links to its existing producer; unmeasured categories
   for (const category of result.unmeasured) assert.equal(result.categories[category], undefined);
   for (const { sources, events } of Object.values(result.categories)) {
     assert.equal(events, 0);
-    for (const { action, resource, file } of sources) {
+    for (const { action, resource, file, historicalRevision } of sources) {
+      if (historicalRevision) {
+        assert.equal(action,'MARINE_TRIP_PUBLISHED');
+        assert.match(historicalRevision,/^[0-9a-f]{40}$/);
+        const historical=await summarizeAudit([{...sample,action,resource}],scope);
+        assert.equal(historical.categories.trip.events,1);
+        continue;
+      }
       const code = await readFile(new URL('../' + file, import.meta.url), 'utf8');
       assert(code.includes("'" + action + "'"), action);
       assert(code.includes("'" + resource + "'"), resource);

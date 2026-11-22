@@ -52,7 +52,7 @@ export async function summarizeAudit(events, { organization, from, until }) {
     schemaVersion: 'D12.v2', source: 'AuditEvent', from: start, until: end, sourceDigest: digest.digest('hex'),
     categories: Object.fromEntries([...counts].map(([category, value]) => [category, {
       events: value.events, distinctSubjects: value.subjects.size,
-      sources: sources.filter(([key]) => key === category).map(([, action, resource, file]) => ({ action, resource, file: 'apps/api/src/' + file })),
+      sources: sources.filter(([key]) => key === category).map(([, action, resource, file, historicalRevision]) => ({ action, resource, file: 'apps/api/src/' + file, ...(historicalRevision ? {historicalRevision} : {}) })),
     }])),
     unmeasured,
   };

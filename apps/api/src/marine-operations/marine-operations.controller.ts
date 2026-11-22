@@ -14,7 +14,6 @@ export class MarineOperationsController{
  @Get('trips/mine') tripsMine(@Req()req:{auth:{accountId:string}}){return this.trips.list(req.auth.accountId)}
  @Post('trips') createTrip(@Req()req:{auth:{accountId:string}},@Body()body:Record<string,unknown>){return this.trips.save(req.auth.accountId,body)}
  @Patch('trips/:tripId') updateTrip(@Req()req:{auth:{accountId:string}},@Param('tripId')tripId:string,@Body()body:Record<string,unknown>){return this.trips.save(req.auth.accountId,body,tripId)}
- @Post('trips/:tripId/publish') publishTrip(@Req()req:{auth:{accountId:string}},@Param('tripId')tripId:string,@Body()body:Record<string,unknown>){return this.trips.publish(req.auth.accountId,tripId,body)}
  @Get('assets/mine') mine(@Req()req:{auth:{accountId:string}}){return this.marine.listMine(req.auth.accountId)}
  @Post('assets') create(@Req()req:{auth:{accountId:string}},@Body()body:{organizationId:string;name:string;assetType:MarineAssetType;registrationNumber?:string;passengerCapacity?:number}){return this.marine.createOwnedAsset(req.auth.accountId,body)}
  @Post('assets/:assetId/documents') addDocument(@Req()req:{auth:{accountId:string}},@Param('assetId')assetId:string,@Body()body:{documentType:string;referenceNumber?:string;expiresAt?:string;originalName?:string;mimeType?:string;base64?:string}){return this.marine.addDocument(req.auth.accountId,assetId,body)}

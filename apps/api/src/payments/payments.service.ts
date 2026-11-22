@@ -1,3 +1,4 @@
+import { boatBookingInclude, isBoatTrip, requireCenterBoat } from '../trips/center-boat-booking';
 import { RentalDamagePaymentService } from './rental-damage-payment.service';
 import { OrganizationBookingCheckoutService, organizationPayer } from './organization-booking-checkout.service';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
@@ -48,8 +49,10 @@ export class PaymentsService {
     if(typeof input?.bookingId!=='string'||!input.bookingId.trim()||typeof input.idempotencyKey!=='string'||!input.idempotencyKey.trim())throw new BadRequestException('Invalid payment.');
     if(input.idempotencyKey.trim().startsWith('org-prepay:'))throw new BadRequestException('Invalid personal payment request key.');
     const paymentPolicy=await this.policies.decision('PAYMENT','PAYMENT_REQUIRED');
-    const booking=await this.db.booking.findFirst({where:{id:input.bookingId,accountId,organizationId:null},include:{trip:true}});
+    const booking=await this.db.booking.findFirst({where:{id:input.bookingId,accountId,organizationId:null},include:{trip:{include:boatBookingInclude}}});
     if(!booking)throw new NotFoundException('Booking not found.');
+    requireCenterBoat(booking.trip);
+    if (isBoatTrip(booking.trip.type) && (booking.contractSnapshot as any)?.issuer?.organizationId!==booking.trip.organizationId) throw new ConflictException('تتطلب الدفعة عقدًا أصليًا باسم المركز.');
     if(booking.status==='CANCELLED')throw new ConflictException('Cancelled booking cannot create a payment.');
     if(paymentPolicy.bypass)return{bookingId:booking.id,status:'BYPASSED',provider:'BYPASSED',policyReview:{required:false,issues:[],states:{payment:paymentPolicy.state}}};
     const savedContract=booking.contractSnapshot&&typeof booking.contractSnapshot==='object'&&!Array.isArray(booking.contractSnapshot)?booking.contractSnapshot as Record<string,unknown>:null;
