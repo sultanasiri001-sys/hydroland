@@ -1,3 +1,5 @@
+import { InstructorPostingController } from './posting/instructor-posting.controller';
+import { InstructorPostingService } from './posting/instructor-posting.service';
 import { CenterPayeesController } from './center-payees.controller';
 import { FinanceReceivablesWorkspaceService } from './finance-receivables-workspace.service';
 import { FinanceWorkspaceService } from './finance-workspace.service';
@@ -21,8 +23,8 @@ import { CenterServiceEntitlementService } from '../commerce/center-service-enti
 
 @Module({
   imports: [AuthModule, AdminModule, PaymentsModule],
-  controllers: [FinanceController, CenterPayeesController],
-  providers: [CenterServiceEntitlementService, FinanceReceivablesWorkspaceService, FinanceWorkspaceService, FinanceFoundationService, FinanceWorkflowService, FinanceOperationsService, FinanceGovernanceService, FinancePersistenceService, FinanceAccessService, FinanceShiftsService, FinanceReceivablesService, FinanceShiftCloseService, FinancePeriodCloseService, FinanceSettlementService],
-  exports: [FinanceFoundationService, FinanceWorkflowService, FinanceOperationsService, FinanceGovernanceService, FinancePersistenceService, FinanceAccessService, FinanceShiftsService, FinanceReceivablesService, FinanceShiftCloseService, FinancePeriodCloseService, FinanceSettlementService],
+  controllers: [InstructorPostingController, FinanceController, CenterPayeesController],
+  providers: [InstructorPostingService, CenterServiceEntitlementService, FinanceReceivablesWorkspaceService, FinanceWorkspaceService, FinanceFoundationService, FinanceWorkflowService, FinanceOperationsService, FinanceGovernanceService, FinancePersistenceService, FinanceAccessService, FinanceShiftsService, FinanceReceivablesService, FinanceShiftCloseService, FinancePeriodCloseService, FinanceSettlementService],
+  exports: [CenterServiceEntitlementService, FinanceFoundationService, FinanceWorkflowService, FinanceOperationsService, FinanceGovernanceService, FinancePersistenceService, FinanceAccessService, FinanceShiftsService, FinanceReceivablesService, FinanceShiftCloseService, FinancePeriodCloseService, FinanceSettlementService],
 })
 export class FinanceModule {}

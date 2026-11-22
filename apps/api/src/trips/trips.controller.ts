@@ -18,7 +18,7 @@ export class TripsController {
 
   @UseGuards(AccessTokenGuard)
   @Post(':id/bookings')
-  book(@Req() r:{auth:{accountId:string}},@Param('id') id:string,@Body() b:{seats:number}){return this.s.book(r.auth.accountId,id,b.seats);}
+  book(@Req() r:{auth:{accountId:string}},@Param('id') id:string,@Body() b:{seats:number;redemption?:{points:number;cashDueMinor:number;offerId?:string}}){return this.s.book(r.auth.accountId,id,b.seats,b.redemption);}
 
   @UseGuards(AccessTokenGuard)
   @Get('bookings/mine')

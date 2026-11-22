@@ -1,3 +1,4 @@
+import { proofOfBookingPoints } from '../rewards/booking-points';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
@@ -82,7 +83,7 @@ export class CenterServiceEntitlementService {
     const owner = await this.platformOwner(tx);
     return {
       evidenceId: event.id, ownerVerified: Boolean(owner && event.actorId === owner.personId && value.approvedByAccountId === owner.id),
-      organizationId: value.organizationId as string, bookingId: value.bookingId as string, paymentId: value.paymentId as string,
+      organizationId: value.organizationId as string, bookingId: value.bookingId as string, paymentId: value.paymentId as string|null, rewardEntryId:value.rewardEntryId as string|null,
       completionEventId: value.completionEventId as string, contractHash: value.contractHash as string,
       currency: value.currency as string, grossAmountMinor: value.grossAmountMinor as number,
       commissionAmountMinor: value.commissionAmountMinor as number, otherDeductionsMinor: value.otherDeductionsMinor as number,
@@ -119,7 +120,10 @@ export class CenterServiceEntitlementService {
       && entry.approvals.some(approval => approval.status === 'APPROVED' && approval.decidedByAccountId === entry.approvedByAccountId
         && approval.requestedByAccountId === entry.requestedByAccountId && approval.decidedAt && approval.createdAt <= approval.decidedAt
         && approval.decidedAt.getTime() === entry.approvedAt?.getTime()));
+    const verifiedPoints=(booking.contractSnapshot as {bookingPoints?:unknown}|null)?.bookingPoints
+      ? await proofOfBookingPoints(tx,booking,scope.organizationId) : null;
     const input: CenterTripEntitlementInput = {
+      verifiedPoints,
       organizationId: scope.organizationId, booking, tripStatus: booking.trip.status,
       participantIds: booking.participants.map(participant => participant.id), payment,
       ambiguousPayment: payments.length > 1, pendingRefund: Boolean(pendingRefund),
@@ -133,6 +137,17 @@ export class CenterServiceEntitlementService {
       allocation, existingSettlement: existing, ambiguousSettlement: settlements.length > 1, observedAt: new Date().toISOString(),
     };
     return { input, readiness: evaluateCenterTripEntitlement(input), allocation, existing };
+  }
+
+  async loyaltySource(tx: Prisma.TransactionClient, organizationId: string, bookingId: string) {
+    const {input,readiness} = await this.resolve(tx,{organizationId},bookingId);
+    if (input.booking.organizationId || !input.payment || !input.completion || readiness.grossReadiness !== 'ELIGIBLE'
+      || readiness.commissionAmountMinor === null || !readiness.collectionFinanceEntryId || !readiness.allocationApprovalEventId) {
+      throw new ConflictException('Completed personal booking, posted collection and approved allocation required.');
+    }
+    return {payerId:input.payment.accountId, paidMinor:input.verifiedPoints ? Math.floor(input.payment.amountMinor*readiness.completedQuantity/input.booking.seats) : readiness.eligibleGrossAmountMinor,
+      commissionMinor:readiness.commissionAmountMinor, receiptId:readiness.collectionFinanceEntryId,
+      paymentId:input.payment.id, completionId:input.completion.id, allocationId:readiness.allocationApprovalEventId};
   }
 
   async readTrip(accountId: string, centerOrgUnitId: string, bookingId: string) {
@@ -178,6 +193,7 @@ export class CenterServiceEntitlementService {
       const event = await tx.auditEvent.create({ data: { actorId: scope.owner.personId, action: 'CENTER_SERVICE_ALLOCATION_APPROVED',
         resource: 'Booking', resourceId: bookingId, occurredAt: await this.nextDecisionAt(tx, bookingId), metadata: {
           approvedByAccountId: scope.owner.id, organizationId, bookingId, paymentId: resolved.readiness.paymentId,
+          ...(resolved.input.verifiedPoints ? {rewardEntryId:resolved.input.verifiedPoints.entryId} : {}),
           completionEventId: resolved.readiness.completionEventId, collectionFinanceEntryId: resolved.readiness.collectionFinanceEntryId,
           contractHash: resolved.readiness.contractHash, allocationEvidenceHash: resolved.readiness.allocationEvidenceHash,
           currency: 'SAR', grossAmountMinor: resolved.readiness.eligibleGrossAmountMinor,
@@ -251,6 +267,7 @@ export class CenterServiceEntitlementService {
       const actor = await tx.account.findUniqueOrThrow({ where: { id: accountId }, select: { personId: true } });
       await tx.auditEvent.create({ data: { actorId: actor.personId, action: 'CENTER_SERVICE_SETTLEMENT_PREPARED', resource: 'FinanceEntry', resourceId: entry.id,
         metadata: { organizationId: scope.organizationId, bookingId, paymentId: resolved.readiness.paymentId,
+          ...(resolved.input.verifiedPoints ? {rewardEntryId:resolved.input.verifiedPoints.entryId} : {}),
           completionEventId: resolved.readiness.completionEventId, collectionFinanceEntryId: resolved.readiness.collectionFinanceEntryId,
           allocationApprovalEventId: input.allocationApprovalEventId, contractHash: resolved.readiness.contractHash,
           grossAmountMinor: resolved.readiness.eligibleGrossAmountMinor, completedQuantity: resolved.readiness.completedQuantity,

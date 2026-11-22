@@ -1,3 +1,4 @@
+import { releaseRefundedBookingPoints, reverseRefundedTripAward } from '../rewards/booking-points';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { CommerceRefundOperation, Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
@@ -168,6 +169,9 @@ export class PaymentRefundExecutionService {
       if (entry.status !== 'APPROVED' || entry.type !== 'REFUND' || entry.referenceType !== 'PAYMENT_REFUND' || entry.referenceId !== operation.paymentId || entry.organizationId !== operation.organizationId
         || entry.requestedByAccountId !== operation.requestedByAccountId || entry.amountMinor !== operation.amountMinor || entry.currency !== operation.currency || entry.approvedByAccountId !== operation.approvedByAccountId) throw new ConflictException('Approved ledger entry changed after dispatch.');
       await tx.payment.update({ where: { id: payment.id }, data: { refundedAmountMinor: observed.refundedMinor, status: observed.refundedMinor === payment.amountMinor ? 'REFUNDED' : 'CAPTURED' } });
+      await releaseRefundedBookingPoints(tx,payment,id,operation.baselineRefundedMinor,observed.refundedMinor);
+      if(process.env.HYDROLAND_B03_LEDGER_POSTING==='enabled' || (payment.contractSnapshot as {bookingPoints?:unknown}|null)?.bookingPoints)
+        await reverseRefundedTripAward(tx,payment,id,operation.baselineRefundedMinor,observed.refundedMinor);
       const now = new Date();
       await tx.financeEntry.update({ where: { id: entry.id }, data: { status: 'POSTED', postedAt: now, postedByAccountId: operation.executedByAccountId } });
       const saved = await tx.commerceRefundOperation.update({ where: { id }, data: { status: 'SUCCEEDED', confirmedAt: now, resultingRefundedMinor: observed.refundedMinor } });

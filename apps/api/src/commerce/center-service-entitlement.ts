@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { satisfiesTripBookingPayment, tripBookingPaymentRequirement } from './trip-booking-contract';
+import { BookingPoints, bookingDiscount, satisfiesTripBookingPayment, tripBookingPaymentRequirement } from './trip-booking-contract';
 
 type JsonRecord = Record<string, unknown>;
 const object = (value: unknown): JsonRecord | null => value && typeof value === 'object' && !Array.isArray(value) ? value as JsonRecord : null;
@@ -25,6 +25,7 @@ export interface CenterTripEntitlementInput {
     id: string; bookingId: string; accountId: string; status: string; amountMinor: number; currency: string;
     refundedAmountMinor: number; providerReference: string | null; moyasarPaymentId: string | null; contractSnapshot: unknown;
   } | null;
+  verifiedPoints?: BookingPoints | null;
   ambiguousPayment: boolean;
   pendingRefund: boolean;
   collection: {
@@ -35,7 +36,7 @@ export interface CenterTripEntitlementInput {
   ambiguousCollection: boolean;
   completion: { id: string; tripId: string; occurredAt: string; attendedParticipantIds: unknown; absentParticipantIds: unknown } | null;
   allocation: {
-    evidenceId: string; ownerVerified: boolean; organizationId: string; bookingId: string; paymentId: string;
+    evidenceId: string; ownerVerified: boolean; organizationId: string; bookingId: string; paymentId: string | null; rewardEntryId?: string | null;
     completionEventId: string; contractHash: string; currency: string; grossAmountMinor: number;
     commissionAmountMinor: number; otherDeductionsMinor: number; netAmountMinor: number; financeAccountId: string;
     occurredAt: string; participantIds: unknown; completedParticipantIds: unknown; allocationEvidenceHash: string;
@@ -90,9 +91,14 @@ export function evaluateCenterTripEntitlement(input: CenterTripEntitlementInput)
   if (input.tripStatus !== 'COMPLETED') blockers.push('TRIP_NOT_COMPLETED');
   if (!identifiers(input.participantIds) || input.participantIds.length !== booking.seats) blockers.push('BOOKING_ROSTER_REVIEW_REQUIRED');
   if (input.ambiguousPayment) blockers.push('MULTIPLE_COLLECTED_PAYMENTS_REVIEW_REQUIRED');
-  if (!payment || payment.bookingId !== booking.id || (booking.organizationId ? !satisfiesTripBookingPayment(payment, requirement) : payment.accountId !== booking.accountId)
+  const discount=bookingDiscount(contract);
+  const tender=input.verifiedPoints;
+  const backed=Boolean(discount && tender && entitlementContractHash(discount)===entitlementContractHash(tender));
+  if (contract?.bookingPoints && !backed) blockers.push('ORIGINAL_REWARD_POSTING_REQUIRED');
+  const pointsOnly=backed && requirement.requiredAmountMinor===0 && !payment && !collection;
+  if (!pointsOnly && (!payment || payment.bookingId !== booking.id || (booking.organizationId ? !satisfiesTripBookingPayment(payment, requirement) : payment.accountId !== booking.accountId)
     || payment.status !== 'CAPTURED' || payment.currency !== 'SAR' || !minor(payment.amountMinor)
-    || payment.amountMinor !== requirement.requiredAmountMinor || !identifier(payment.providerReference) || !identifier(payment.moyasarPaymentId)) blockers.push('VERIFIED_COLLECTION_REQUIRED');
+    || payment.amountMinor !== requirement.requiredAmountMinor || !identifier(payment.providerReference) || !identifier(payment.moyasarPaymentId))) blockers.push('VERIFIED_COLLECTION_REQUIRED');
   if (payment && (tripBookingPaymentRequirement({ ...booking, contractSnapshot: payment.contractSnapshot }).source !== 'SNAPSHOT'
     || entitlementContractHash(originalTerms(payment.contractSnapshot)) !== entitlementContractHash(originalTerms(booking.contractSnapshot)))) {
     blockers.push('PAYMENT_ORIGINAL_CONTRACT_BINDING_REQUIRED');
@@ -100,11 +106,11 @@ export function evaluateCenterTripEntitlement(input: CenterTripEntitlementInput)
   if (payment && (!minor(payment.refundedAmountMinor) || payment.refundedAmountMinor > 0)) blockers.push('REFUND_ALLOCATION_REVIEW_REQUIRED');
   if (input.pendingRefund) blockers.push('PENDING_REFUND_REQUIRES_RECONCILIATION');
   if (input.ambiguousCollection) blockers.push('DUPLICATE_COLLECTION_LEDGER_REVIEW_REQUIRED');
-  if (!collection || !payment || collection.organizationId !== input.organizationId || collection.accountOrganizationId !== input.organizationId
+  if (!pointsOnly && (!collection || !payment || collection.organizationId !== input.organizationId || collection.accountOrganizationId !== input.organizationId
     || collection.referenceType !== 'TRIP_PAYMENT_COLLECTION' || collection.referenceId !== payment.id
     || collection.type !== 'REVENUE' || collection.status !== 'POSTED' || !collection.accountActive
     || collection.currency !== 'SAR' || collection.accountCurrency !== 'SAR' || collection.amountMinor !== payment.amountMinor
-    || !collection.approvalAndPostingVerified) blockers.push('POSTED_COLLECTION_LEDGER_REQUIRED');
+    || !collection.approvalAndPostingVerified)) blockers.push('POSTED_COLLECTION_LEDGER_REQUIRED');
   let completedQuantity = 0;
   let completedParticipantIds: string[] = [];
   const observed = Date.parse(input.observedAt), completedAt = completion ? Date.parse(completion.occurredAt) : NaN;
@@ -124,9 +130,11 @@ export function evaluateCenterTripEntitlement(input: CenterTripEntitlementInput)
   }
   if (completedQuantity === 0) blockers.push('NO_PERFORMED_SERVICE_FOR_THIS_BOOKING');
   const unitPrice = typeof contract?.unitPriceMinor === 'number' && minor(contract.unitPriceMinor) ? contract.unitPriceMinor : null;
-  const performedGross = unitPrice === null ? 0 : unitPrice * completedQuantity;
-  const unperformedGross = unitPrice === null || !Number.isSafeInteger(booking.seats) ? null : unitPrice * (booking.seats - completedQuantity);
-  if (!minor(performedGross) || performedGross === 0 || (payment && performedGross > payment.amountMinor)) blockers.push('ELIGIBLE_GROSS_AMOUNT_REVIEW_REQUIRED');
+  const supplierTotal=backed && discount ? discount.listMinor-discount.centerShareMinor : (unitPrice??0)*booking.seats;
+  const performedGross=booking.seats>0?Math.floor(supplierTotal*completedQuantity/booking.seats):0;
+  const unperformedGross=unitPrice===null?null:supplierTotal-performedGross;
+  if (!minor(performedGross) || (!backed && performedGross===0) || (!backed && payment && performedGross>payment.amountMinor))
+    blockers.push('ELIGIBLE_GROSS_AMOUNT_REVIEW_REQUIRED');
   if (input.ambiguousSettlement) blockers.push('DUPLICATE_SETTLEMENT_LEDGER_REVIEW_REQUIRED');
   // A preview token binds an owner decision to current source evidence, while
   // excluding wall-clock observation time and the decision being replaced.
@@ -139,6 +147,7 @@ export function evaluateCenterTripEntitlement(input: CenterTripEntitlementInput)
       providerReference: payment.providerReference, moyasarPaymentId: payment.moyasarPaymentId,
       originalTermsHash: entitlementContractHash(originalTerms(payment.contractSnapshot)),
     } : null,
+    ...(backed ? {verifiedPoints:tender} : {}),
     collection, completion: completion ? { id: completion.id, tripId: completion.tripId, occurredAt: completion.occurredAt,
       attendedParticipantIds: identifiers(completion.attendedParticipantIds) ? [...completion.attendedParticipantIds].sort() : null,
       absentParticipantIds: identifiers(completion.absentParticipantIds) ? [...completion.absentParticipantIds].sort() : null } : null,
@@ -148,7 +157,7 @@ export function evaluateCenterTripEntitlement(input: CenterTripEntitlementInput)
   let net: number | null = null, commission: number | null = null, deductions: number | null = null;
   if (!allocation) reviewReasons.push('OWNER_APPROVED_ALLOCATION_REQUIRED');
   else if (!allocation.ownerVerified || !identifier(allocation.evidenceId) || allocation.organizationId !== input.organizationId || allocation.bookingId !== booking.id
-    || allocation.paymentId !== payment?.id || allocation.completionEventId !== completion?.id || allocation.contractHash !== contractHash
+    || (allocation.paymentId??null) !== (payment?.id??null) || (backed && allocation.rewardEntryId!==discount?.entryId) || allocation.completionEventId !== completion?.id || allocation.contractHash !== contractHash
     || allocation.allocationEvidenceHash !== allocationEvidenceHash || allocation.currency !== 'SAR' || allocation.grossAmountMinor !== performedGross
     || !Number.isFinite(Date.parse(allocation.occurredAt)) || Date.parse(allocation.occurredAt) < completedAt || Date.parse(allocation.occurredAt) > observed
     || !sameIdentifiers(allocation.participantIds, input.participantIds) || !sameIdentifiers(allocation.completedParticipantIds, completedParticipantIds)

@@ -25,6 +25,9 @@ export class TrainingProfessionalProfileService {
       select:{id:true,amountMinor:true,currency:true,status:true,approvedAt:true,settledAt:true,createdAt:true,trainingEnrollment:{select:{courseCode:true}}},
       orderBy:{createdAt:'desc'},take:200,
     });
+    const postings=process.env.HYDROLAND_B03_LEDGER_POSTING==='enabled' && rows.length
+      ? await this.db.instructorEarningPosting.findMany({where:{earningId:{in:rows.map(row=>row.id)}},select:{earningId:true,stage:true,updatedAt:true}}) : [];
+    const byEarning=new Map(postings.map(row=>[row.earningId,row]));
     const totals: Record<string, number> = {};
     for (const row of rows) {
       if (row.currency === 'SAR') totals[row.status] = (totals[row.status] ?? 0) + row.amountMinor;
@@ -36,7 +39,7 @@ export class TrainingProfessionalProfileService {
       where:{instructorAccountId:accountId,organizationId:{in:[...centers.keys()]}},orderBy:[{organizationId:'asc'},{revision:'desc'}],
       distinct:['organizationId'],select:{organizationId:true,revision:true,mode:true,fixedMinor:true,rateBps:true,currency:true,earningTiming:true,reversalTerms:true}});
     const agreements=current.map(({organizationId,...terms})=>({...terms,centerName:centers.get(organizationId)}));
-    return {agreements,currency:'SAR',totalsScope:'SAR_ONLY',totals:{pendingMinor:totals.PENDING||0,approvedMinor:totals.APPROVED||0,settledMinor:totals.SETTLED||0},entries:rows.map(row=>({id:row.id,courseCode:row.trainingEnrollment.courseCode,amountMinor:row.amountMinor,currency:row.currency,status:row.status,approvedAt:row.approvedAt,settledAt:row.settledAt,createdAt:row.createdAt}))};
+    return {agreements,currency:'SAR',totalsScope:'SAR_ONLY',totals:{pendingMinor:totals.PENDING||0,approvedMinor:totals.APPROVED||0,settledMinor:totals.SETTLED||0},entries:rows.map(row=>({id:row.id,courseCode:row.trainingEnrollment.courseCode,amountMinor:row.amountMinor,currency:row.currency,status:row.status,postingStage:byEarning.get(row.id)?.stage??null,postingUpdatedAt:byEarning.get(row.id)?.updatedAt??null,approvedAt:row.approvedAt,settledAt:row.settledAt,createdAt:row.createdAt}))};
   }
 
   async listCertificateReadiness(accountId: string) {

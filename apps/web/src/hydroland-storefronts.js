@@ -42,6 +42,7 @@
             for(const faq of data.faqs){const item=el('details');item.append(el('summary',faq.question),el('p',faq.answer));host.append(item)}
           }
           published=true;redraw();document.title=data.displayName+' | HYDROLAND';
+          void window.HydrolandLoyaltyOffers?.render(host,id,()=>current===sequence);
         }catch{if(current===sequence)host.append(el('p',t('تعذر تحميل الصفحة')))}
         return;
       }
@@ -67,6 +68,7 @@
       form.onsubmit=e=>{e.preventDefault();void load()};more.onclick=()=>load(true);
     }
     window.addEventListener('hashchange',()=>render());
+    document.addEventListener('hydroland:auth-changed',()=>render(true));
     onRoute=()=>render();
     void render();
   }

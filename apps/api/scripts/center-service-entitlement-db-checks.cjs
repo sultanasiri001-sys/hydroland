@@ -44,17 +44,17 @@ async function centerScope(label, staff) {
   return { organization, unit };
 }
 
-async function bookingFixture(trip, seats) {
+async function bookingFixture(trip, seats, pricePerSeatMinor = 5750) {
   const recordedAt = new Date(baseTime - 20 * 86_400_000), bookingId = randomUUID();
   const contract = captureTripBookingContract({ bookingId, accountId: buyer.id, buyerOrganizationId: null, seats, createdAt: recordedAt,
-    price: { pricePerSeatMinor: 5750, currency: 'SAR', configured: true }, trip: { ...trip, organization: center } });
+    price: { pricePerSeatMinor, currency: 'SAR', configured: true }, trip: { ...trip, organization: center } });
   const booking = await db.booking.create({ data: { id: bookingId, tripId: trip.id, accountId: buyer.id,
     seats, status: 'CONFIRMED', createdAt: recordedAt, contractSnapshot: contract } });
   const participants = [];
   for (let index = 0; index < seats; index++) participants.push(await db.bookingParticipant.create({ data: {
     bookingId, fullName: `Synthetic participant ${index}`, eligibilityStatus: 'ELIGIBLE' } }));
   const accepted = { ...contract, termsAcceptanceStatus: 'ACCEPTED', termsAcceptedAt: new Date(recordedAt.getTime() + 1000).toISOString() };
-  const payment = await db.payment.create({ data: { bookingId, accountId: buyer.id, amountMinor: seats * 5750, currency: 'SAR',
+  const payment = await db.payment.create({ data: { bookingId, accountId: buyer.id, amountMinor: seats * pricePerSeatMinor, currency: 'SAR',
     status: 'CAPTURED', idempotencyKey: randomUUID(), providerReference: randomUUID(), moyasarPaymentId: randomUUID(),
     createdAt: new Date(recordedAt.getTime() + 2000), contractSnapshot: accepted } });
   const approvedAt = new Date(baseTime - 3 * 86_400_000);
@@ -289,6 +289,8 @@ async function main() {
 
   console.log(JSON.stringify({ status: 'PASS', cases: outcomes.length, checks: outcomes, actualDatabase: true,
     actualServiceAndAuthorization: true, financialActionExecuted: false, bankTransferExecuted: false, providerCalls: 0 }));
+  await require('./b03-financial-posting-checks.cjs')({db,build,entitlements:service,owner,buyer,accountant,
+    collector,approver,poster,center,foreignCenter,financeAccount,bookingFixture,account});
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => { global.fetch = originalFetch; await db.$disconnect(); });

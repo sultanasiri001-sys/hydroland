@@ -134,6 +134,7 @@
   let checkoutIntentVersion=0,checkoutSessionVersion=auth()?.getSessionVersion?.();
   const clearCheckoutIntent=()=>{
     checkoutIntentVersion++;state.pendingBooking=null;state.pendingQuote=null;
+    const points=bookingDialog?.querySelector('[data-booking-points]');points?.dispose?.();points?.remove();
     bookingDialog?.querySelector('[data-checkout-terms]')?.remove();
     if(confirm){confirm.disabled=false;uiLocale.setText(confirm,'متابعة الحجز');}
   };
@@ -182,6 +183,9 @@
     const title=document.getElementById('booking-title');if(title)title.textContent=trip.title;
     if(!auth()?.isAuthenticated?.()){toast(uiLocale.message('سجّل الدخول أولًا لإتمام الحجز'));document.getElementById('visitor-auth-cta')?.click();return}
     bookingDialog?.showModal();
+    const version=checkoutIntentVersion,session=auth()?.getSessionVersion?.();
+    void window.HydrolandLoyaltyOffers?.bookingOptions(bookingDialog,confirm,trip,seatsInput,
+      ()=>checkoutIntentVersion===version&&bookingDialog?.open&&auth()?.getSessionVersion?.()===session);
   };
   const renderPublicTrips=(trips,error=false)=>{
     const grid=document.querySelector('[data-public-trip-grid]');if(!grid)return;
@@ -375,9 +379,10 @@
       let booking=state.pendingBooking&&state.pendingBooking.tripId===trip.id?state.pendingBooking:null;
       if(!booking){
         uiLocale.setMessage(confirm, uiLocale.message('جارٍ حفظ الحجز...'));
-        booking=await request(`/trips/${encodeURIComponent(trip.id)}/bookings`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seats})});
+        booking=await request(`/trips/${encodeURIComponent(trip.id)}/bookings`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seats,redemption:bookingDialog.querySelector('[data-booking-points]')?.readDiscount?.()})});
         if(!current())return;
         state.pendingBooking=booking;
+        const points=bookingDialog.querySelector('[data-booking-points]');if(points)points.disabled=true;
         window.dispatchEvent(new CustomEvent('hydroland:booking-created',{detail:booking}));
       }
       if(booking?.price?.configured===true&&Number(booking.price.pricePerSeatMinor)===0){bookingDialog?.close();state.pendingBooking=null;if(seatsInput)seatsInput.value='1';toast(uiLocale.message('تم إنشاء الحجز المجاني بنجاح'));return;}

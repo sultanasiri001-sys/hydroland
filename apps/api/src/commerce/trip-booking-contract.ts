@@ -1,6 +1,23 @@
 import { createCommerceContractSnapshot, CommerceIssuerSource, COMMERCE_CONTRACT_SNAPSHOT_VERSION } from './commerce-contract-snapshot';
 import { createRefundPolicySnapshot } from './commerce-refund-policy';
 
+export interface BookingPoints {
+  entryId: string;
+  points: number;
+  centerShareMinor: number;
+  listMinor: number;
+  offerId: string | null;
+}
+const safeMinor=(v:unknown):v is number=>typeof v==="number" && Number.isSafeInteger(v) && v>=0 && v<=2147483647;
+export function bookingDiscount(snapshot: unknown): BookingPoints | null {
+  const contract=snapshot as {bookingPoints?:BookingPoints;quantity?:number;unitPriceMinor?:number;amountMinor?:number}|null;
+  const d=contract?.bookingPoints;
+  if (!d || typeof d.entryId!=='string' || !d.entryId || !safeMinor(d.points) || !d.points || !safeMinor(d.listMinor)
+    || !safeMinor(d.centerShareMinor) || d.centerShareMinor>d.points || d.points>d.listMinor
+    || d.listMinor!==Number(contract?.quantity)*Number(contract?.unitPriceMinor)
+    || contract?.amountMinor!==d.listMinor-d.points) return null;
+  return d;
+}
 export interface CapturedTripPrice {
   pricePerSeatMinor: number;
   currency: 'SAR';
@@ -11,6 +28,7 @@ interface TripBookingContractInput {
   bookingId: string;
   accountId: string;
   buyerOrganizationId: string | null;
+  bookingPoints?: BookingPoints;
   seats: number;
   createdAt: Date;
   price: CapturedTripPrice;
@@ -64,6 +82,15 @@ export function captureTripBookingContract(input: TripBookingContractInput) {
     currency: price.currency, recordedAt: createdAt.toISOString(),
     originalStartsAt: trip.startsAt.toISOString(), originalEndsAt: trip.endsAt.toISOString(),
   });
+  if (input.bookingPoints) {
+    const bookingPoints=input.bookingPoints;
+    const amountMinor=total-bookingPoints.points;
+    const saved={...contract,amountMinor,bookingPoints,buyerOrganizationId,
+      ...(trip.marineAssetId ? {marineAssetId:trip.marineAssetId} : {}),
+      refundPolicy:{...contract.refundPolicy,snapshot:{...contract.refundPolicy.snapshot!,grossAmountMinor:amountMinor}}};
+    if (buyerOrganizationId || !bookingDiscount(saved)) throw new Error('Invalid personal booking points allocation.');
+    return Object.freeze(saved);
+  }
   return Object.freeze({ ...contract, buyerOrganizationId, ...organizationTerms, ...(trip.marineAssetId ? {marineAssetId:trip.marineAssetId} : {}) });
 }
 
@@ -77,7 +104,7 @@ export function capturedTripPrice(snapshot: unknown): CapturedTripPrice {
     || record.unitPriceMinor < 0 || record.unitPriceMinor > 2_147_483_647
     || typeof record.quantity !== 'number' || !Number.isSafeInteger(record.quantity) || record.quantity < 1
     || typeof record.amountMinor !== 'number' || !Number.isSafeInteger(record.amountMinor)
-    || record.amountMinor !== record.quantity * record.unitPriceMinor || record.amountMinor > 2_147_483_647) return unknownPrice;
+    || (record.bookingPoints !== undefined ? !bookingDiscount(record) : record.amountMinor !== record.quantity * record.unitPriceMinor) || record.amountMinor > 2_147_483_647) return unknownPrice;
   return { pricePerSeatMinor: record.unitPriceMinor, currency: 'SAR', configured: true };
 }
 

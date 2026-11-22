@@ -1,3 +1,4 @@
+import { releaseUncollectedBookingPoints } from '../rewards/booking-points';
 import { tripCalendarReservation } from './trip-calendar-reservation';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { BookingStatus, Prisma } from '@prisma/client';
@@ -109,7 +110,9 @@ export class BookingManagementService {
     const requirement = tripBookingPaymentRequirement(booking, price?.value);
     const requiredAmountMinor = requirement.requiredAmountMinor;
     const amountValid = requiredAmountMinor !== null;
-    const captured = amountValid && (requiredAmountMinor === 0 || payments.some(payment => satisfiesTripBookingPayment(payment, requirement)));
+    const needsPointsAcceptance=requiredAmountMinor===0 && Boolean((booking.contractSnapshot as {bookingPoints?:unknown}|null)?.bookingPoints);
+    const acceptedPoints=!needsPointsAcceptance || Boolean(await tx.auditEvent.findFirst({where:{action:'POINTS_BOOKING_TERMS_ACCEPTED',resource:'Booking',resourceId:booking.id}}));
+    const captured = amountValid && acceptedPoints && (requiredAmountMinor === 0 || payments.some(payment => satisfiesTripBookingPayment(payment, requirement)));
     const paymentContractReview = { source: requirement.source, required: requirement.source !== 'SNAPSHOT', reasonCode: requirement.reasonCode };
     const safety = await tx.safetyChecklist.findFirst({ where: { tripId: trip.id }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { id: true, decision: true, updatedAt: true } });
     const confirmedSeats = (await tx.booking.aggregate({ where: { tripId: trip.id, status: 'CONFIRMED' }, _sum: { seats: true } }))._sum.seats ?? 0;
@@ -194,6 +197,8 @@ export class BookingManagementService {
       const status = command.action === 'CONFIRM' ? 'CONFIRMED' : 'CANCELLED';
       const updatedAt = new Date(Math.max(Date.now(), booking.updatedAt.getTime() + 1));
       if ((await tx.booking.updateMany({ where: { id, status: booking.status, updatedAt: booking.updatedAt }, data: { status, updatedAt } })).count !== 1) throw stale();
+      if(status==='CANCELLED' && (booking.contractSnapshot as {bookingPoints?:unknown}|null)?.bookingPoints)
+        await releaseUncollectedBookingPoints(tx,booking,booking.trip.organizationId);
       const crewNotification = command.action === 'CONFIRM' ? await this.crew.dispatchForConfirmedBooking(booking.tripId, id, tx) : { tripId: booking.tripId, bookingId: id, notifiedCrew: 0 };
       const type = command.action === 'CONFIRM' ? 'BOOKING_CONFIRMED' : 'BOOKING_CANCELLED';
       await tx.notification.create({ data: { accountId: booking.accountId, type, status: 'SENT', sentAt: updatedAt, payload: { bookingId: id, tripId: booking.tripId, seats: booking.seats, financialActionExecuted: false, message: command.action === 'CONFIRM' ? 'تم تأكيد حجزك.' : 'أُلغي حجزك. تُراجع أي مبالغ مدفوعة عبر الإجراءات المالية؛ لم يُنفّذ استرداد تلقائي.' } } });

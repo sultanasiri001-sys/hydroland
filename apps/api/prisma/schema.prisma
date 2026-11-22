@@ -3200,3 +3200,83 @@ model ProviderPayoutProfile {
   lastFour String?
   revision Int @default(1)
 }
+
+model LoyaltyMonth {
+  id String @id
+  capMinor Int
+  issuedMinor Int @default(0)
+  forecasts Json
+  approvedBy String
+  updatedAt DateTime @updatedAt
+}
+model LoyaltyOffer {
+  id String @id @default(uuid())
+  organizationId String
+  title String
+  priceMinor Int
+  pointsCost Int
+  platformBps Int
+  platformCap Int
+  centerCap Int
+  platformSpent Int @default(0)
+  centerSpent Int @default(0)
+  centerApprovedBy String
+  platformApprovedBy String?
+  createdAt DateTime @default(now())
+  reservations LoyaltyReservation[]
+  @@index([organizationId,platformApprovedBy])
+}
+model LoyaltyReservation {
+  id String @id @default(uuid())
+  requestKey String
+  offerId String
+  accountId String
+  status String
+  heldPoints Int
+  topUpMinor Int
+  platformBonusMinor Int
+  centerBonusMinor Int
+  topUpEntryId String? @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  offer LoyaltyOffer @relation(fields:[offerId],references:[id],onDelete:Restrict)
+  @@unique([accountId,requestKey])
+  @@index([offerId,status])
+}
+model InstructorEarningPosting {
+  earningId String @id
+  agreementId String
+  collectionId String
+  stage String
+  basisMinor Int
+  approvedTerms Json
+  evidence String
+  attemptId String? @unique
+  confirmedReference String? @unique
+  attempts InstructorTransferAttempt[]
+  recoveries InstructorRecovery[]
+  updatedAt DateTime @updatedAt
+}
+model InstructorTransferAttempt {
+  id String @id
+  earningId String
+  status String
+  createdAt DateTime @default(now())
+  finishedAt DateTime?
+  evidenceId String? @unique
+  earning InstructorEarningPosting @relation(fields:[earningId],references:[earningId],onDelete:Restrict)
+  @@index([earningId,status])
+}
+model InstructorRecovery {
+  id String @id
+  earningId String
+  amountMinor Int
+  reason String
+  actorId String
+  stage String
+  settledEntryId String? @unique
+  recoveredAt DateTime?
+  createdAt DateTime @default(now())
+  earning InstructorEarningPosting @relation(fields:[earningId],references:[earningId],onDelete:Restrict)
+  @@index([earningId])
+}
