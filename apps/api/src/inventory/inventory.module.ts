@@ -1,3 +1,4 @@
+import { WarehouseReceivingService } from './warehouse-receiving.service';
 import { WarehouseCustodyController } from './warehouse-custody.controller';
 import { InventoryIssueLedgerService } from './inventory-issue-ledger.service';
 import { Module } from '@nestjs/common';
@@ -14,7 +15,7 @@ import { InventoryGovernanceService } from './inventory-governance.service';
 @Module({
   imports:[DatabaseModule,AuthModule,AdminModule],
   controllers:[WarehouseLocationController, WarehouseCustodyController],
-  providers: [InventoryIssueLedgerService,WarehouseLocationService,InventoryFoundationService, InventoryWorkflowService, InventoryOperationsService, InventoryGovernanceService],
-  exports: [InventoryIssueLedgerService,InventoryFoundationService, InventoryWorkflowService, InventoryOperationsService, InventoryGovernanceService],
+  providers: [WarehouseReceivingService, InventoryIssueLedgerService,WarehouseLocationService,InventoryFoundationService, InventoryWorkflowService, InventoryOperationsService, InventoryGovernanceService],
+  exports: [WarehouseReceivingService, InventoryIssueLedgerService,InventoryFoundationService, InventoryWorkflowService, InventoryOperationsService, InventoryGovernanceService],
 })
 export class InventoryModule {}

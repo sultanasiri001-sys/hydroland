@@ -3292,6 +3292,7 @@ model WarehouseStockLot {
   received Int
   onHand Int
   issues WarehouseIssuePosting[]
+  purchaseReceipt WarehousePurchaseReceipt?
   @@id([organizationId,lotId])
 }
 
@@ -3308,4 +3309,29 @@ model WarehouseIssuePosting {
   createdAt DateTime @default(now())
   lot WarehouseStockLot @relation(fields:[organizationId,lotId],references:[organizationId,lotId],onDelete:Restrict)
   @@id([organizationId,requestId])
+}
+
+model WarehousePurchaseLine {
+  organizationId String
+  lineId String
+  purchaseReference String
+  supplierId String
+  itemId String
+  quantity Int
+  unitCostMinor Int
+  received Int @default(0)
+  approvalReference String
+  receipts WarehousePurchaseReceipt[]
+  @@id([organizationId, lineId])
+}
+
+model WarehousePurchaseReceipt {
+  organizationId String
+  receiptId String
+  lineId String
+  receivedBy String
+  createdAt DateTime @default(now())
+  line WarehousePurchaseLine @relation(fields:[organizationId,lineId], references:[organizationId,lineId], onDelete:Restrict)
+  lot WarehouseStockLot @relation(fields:[organizationId,receiptId], references:[organizationId,lotId], onDelete:Restrict)
+  @@id([organizationId, receiptId])
 }
