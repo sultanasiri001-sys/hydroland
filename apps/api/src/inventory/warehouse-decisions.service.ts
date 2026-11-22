@@ -73,6 +73,47 @@ export class WarehouseDecisionsService {
     });
   }
 
+  async workspace(actor: string) {
+    return this.db.serializable(async tx => {
+      const org = await reviewPlatform(tx);
+      const employee = async (dept: string) => {
+        try { return (await eligibleReviewParticipant(tx, org.id, dept, actor, 'EMPLOYEE')).binding; }
+        catch (error) { if (error instanceof ForbiddenException) return null; throw error; }
+      };
+      const inventory = await employee('INVENTORY_LOGISTICS');
+      const finance = await employee('FINANCE');
+      const executive = org.ownerId === actor ? { personId: org.ownerPersonId } : await employee('EXECUTIVE_GOVERNANCE');
+      const operations: Kind[] = ['PURCHASE','COUNT','ISSUE'];
+      const finalKinds: string[] = [];
+      if (executive) {
+        for (const kind of operations) {
+          const mandate = await tx.operationalSetting.findUnique({ where: { key: 'WAREHOUSE_FINAL_APPROVER:v1:' + org.id + ':' + kind } });
+          if ((mandate?.value as { accountId?: string } | null)?.accountId === actor) finalKinds.push(kind);
+        }
+      }
+      const custody = await tx.warehouseIssuePosting.findMany({ where: { organizationId: org.id, custodianId: actor, acknowledgedAt: null },
+        orderBy: [{createdAt:'asc'},{requestId:'asc'}], take: 50, select: { requestId:true,lotId:true,quantity:true } });
+      if (!inventory && !finance && !executive && !custody.length) throw new ForbiddenException('مساحة المستودع غير متاحة.');
+      const visible: Prisma.WarehouseDecisionRequestWhereInput[] = [];
+      if (inventory) visible.push({ makerId:actor }, {kind:{in:['COUNT','ISSUE']}}, {kind:'PURCHASE',finalizedAt:{not:null}});
+      if (finance) visible.push({kind:'PURCHASE'});
+      if (finalKinds.length) visible.push({kind:{in:finalKinds}});
+      const rows = await tx.warehouseDecisionRequest.findMany({ where: { organizationId:org.id,...(org.ownerId===actor?{}:{OR:visible}) },
+        orderBy:[{createdAt:'desc'},{id:'desc'}],take:50 });
+      const receipts = inventory ? await tx.warehousePurchaseReceipt.findMany({
+        where:{organizationId:org.id}, orderBy:[{createdAt:'desc'},{receiptId:'desc'}], take:50,
+        select:{receiptId:true,lineId:true,lot:{select:{itemId:true,locationId:true,received:true,onHand:true,unitCostMinor:true}}}
+      }) : [];
+      return { organizationId:org.id, inventory:Boolean(inventory), custody, receipts, requests: rows.map(row => {
+        const reviewer = row.kind==='PURCHASE' ? finance : inventory;
+        return { ...row, digest:this.digest(row),
+          review:Boolean(!row.reviewedAt && reviewer && reviewer.personId!==row.makerPersonId),
+          finalize:Boolean(row.reviewedAt && !row.finalizedAt && finalKinds.includes(row.kind) && executive &&
+            executive.personId!==row.makerPersonId && executive.personId!==row.reviewerPersonId) };
+      }) };
+    });
+  }
+
   async detail(actor: string, id: string) {
     scopeId(id);
     return this.db.serializable(async tx => {

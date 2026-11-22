@@ -65,5 +65,12 @@ export async function warehouseDecisionsCases({db, org, owner, other, actor, ok,
   await ok(finance,acknowledgment,'POST');
   const final=await db.warehouseStockLot.findUniqueOrThrow({where:{organizationId_lotId:{organizationId:org.id,lotId:receiptId}}});
   assert.equal(final.onHand,6);
+  const inventoryView=await ok(maker,'warehouse/workspace');
+  assert.equal(inventoryView.inventory,true);
+  assert.equal(inventoryView.receipts.find(r=>r.receiptId===receiptId).lot.onHand,6);
+  const financialView=await ok(finance,'warehouse/workspace');
+  assert.equal(financialView.inventory,false);assert.equal(financialView.receipts.length,0);
+  assert.ok(financialView.requests.every(r=>r.kind==='PURCHASE'));
+  await deny(other,'warehouse/workspace','GET',undefined,[403]);
   console.log('PASS HTTP warehouse purchase, independent budget review, final mandates, receipt, positive and negative stock counts, stale count rejection and concurrent replay.');
 }

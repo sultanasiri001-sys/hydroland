@@ -37,6 +37,9 @@ export class WarehouseDecisionsController {
     return this.decisions.postIssue(req.auth.accountId, id);
   }
 
+  @Get('workspace') @Header('Cache-Control','private, no-store')
+  workspace(@Req() req: Request) { return this.decisions.workspace(req.auth.accountId); }
+
   @Get('requests/:id') @Header('Cache-Control','private, no-store')
   detail(@Req() req: Request, @Param('id') id: string) {
     return this.view(this.decisions.detail(req.auth.accountId, id));
