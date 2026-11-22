@@ -5,7 +5,8 @@ export default defineConfig({
   testMatch:'orca-screen-reader.spec.js',
   workers:1,
   retries:0,
-  timeout:180_000,
+  // Each native speech observation has its own deadline. Allow all seven portals to finish.
+  timeout:300_000,
   outputDir:'test-results-orca',
   use:{
     baseURL:'http://127.0.0.1:4173',

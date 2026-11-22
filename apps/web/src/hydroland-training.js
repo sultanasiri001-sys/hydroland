@@ -1,6 +1,7 @@
 (()=>{
   // Authored interface messages only. Account, provider and document values remain opaque.
   const uiLocale=window.HydrolandI18n?.createScope("training", {
+  "فواتيري": "My invoices", "فاتورة العملية": "Transaction invoice",
   "اتفاقات الاستحقاق مع المراكز": "Compensation agreements with centers",
   "توقيت استحقاق المدرب": "When the instructor earns compensation",
   "شروط عكس الاستحقاق عند الاسترداد": "Reversal terms when a refund is issued",
@@ -390,7 +391,7 @@
       section.querySelector('[data-training-active]').textContent=String(active);
       section.querySelector('[data-training-completed]').textContent=String(completed);
       section.querySelector('[data-training-progress]').textContent=average+'%';
-      uiLocale.setHTML(list, enrollments.length?enrollments.map(item=>{const progress=Math.max(0,Math.min(100,Number(item.record?.progressPercent||0)));return uiLocale.html`<article class="hl-course"><div class="hl-course-top"><div><b>${esc(item.courseCode)}</b><small>${uiLocale.label(label(item.status))}</small></div><span>${progress}%</span></div><div class="hl-progress"><i style="width:${progress}%"></i></div><small>${uiLocale.label(item.instructorAccountId?'تم تعيين المدرب':'بانتظار تعيين المدرب')}</small></article>`;}).join(''):uiLocale.html`<p>لا توجد دورات مسجلة على حسابك حتى الآن.</p>`);
+      uiLocale.setHTML(list, enrollments.length?enrollments.map(item=>{const progress=Math.max(0,Math.min(100,Number(item.record?.progressPercent||0)));return uiLocale.html`<article class="hl-course"><div class="hl-course-top"><div><b>${esc(item.courseCode)}</b><small>${uiLocale.label(label(item.status))}</small></div><span>${progress}%</span></div><div class="hl-progress"><i style="width:${progress}%"></i></div><small>${uiLocale.label(item.instructorAccountId?'تم تعيين المدرب':'بانتظار تعيين المدرب')}</small>${item.storeCourseOfferId?uiLocale.html`<button type="button" data-account-invoices data-invoice-type="TRAINING_ENROLLMENT" data-invoice-source="${esc(item.id)}">فاتورة العملية</button>`:''}</article>`;}).join(''):uiLocale.html`<p>لا توجد دورات مسجلة على حسابك حتى الآن.</p>`);
     }catch(error){uiLocale.setHTML(list, uiLocale.html`<p>${uiLocale.messageHTML(error instanceof Error?localErrorMessage(error):uiLocale.message('تعذر تحميل بيانات التدريب'))}</p>`);}
   }
   document.addEventListener('click',event=>{const button=event.target.closest?.('[data-hl-action="training"],[data-training-open]');if(!button)return;event.preventDefault();section.scrollIntoView({behavior:shortcutScrollBehavior(),block:'start'});if(!auth?.isAuthenticated()){const list=section.querySelector('[data-training-list]');if(list)uiLocale.setHTML(list, uiLocale.html`<p>سجل الدخول لعرض بيانات التدريب.</p>`);return}const instructor=Boolean(button.closest?.('.hl-role-dashboard[data-role="instructor"]'));load(instructor?'instructor':undefined);});

@@ -1,3 +1,4 @@
+import { boatBookingInclude, isBoatTrip, requireCenterBoat } from '../trips/center-boat-booking';
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Payment, Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
@@ -25,8 +26,10 @@ export class PaymentContractService {
   }
 
   async quote(accountId: string, bookingId: string) {
-    const booking = await this.db.booking.findFirst({ where: { id: bookingId, accountId, organizationId: null }, include: { trip: { include: { organization: true } } } });
+    const booking = await this.db.booking.findFirst({ where: { id: bookingId, accountId, organizationId: null }, include:{trip:{include:boatBookingInclude}} });
     if (!booking) throw new NotFoundException('Booking not found.');
+    requireCenterBoat(booking.trip);
+    if (isBoatTrip(booking.trip.type) && (booking.contractSnapshot as any)?.issuer?.organizationId!==booking.trip.organizationId) throw new ConflictException('تتطلب الدفعة عقدًا أصليًا باسم المركز.');
     if (booking.status === 'CANCELLED') throw new ConflictException('Booking was cancelled.');
     const saved = object(booking.contractSnapshot);
     if (!saved) throw new ConflictException('Original booking terms require review.');

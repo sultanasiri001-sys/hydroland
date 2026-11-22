@@ -1,5 +1,6 @@
 import {randomUUID} from 'node:crypto';
 export async function checkCenterTripManagement(db,{base,a,b,ownerA,ta,tb,ts},check){
+ const boats=[];
  const ids=[randomUUID(),randomUUID()];
  const body={requestId:ids[0],title:'رحلة المركز المحفوظة',type:'BOAT',startsAt:'2031-02-03T06:00:00.000Z',endsAt:'2031-02-03T10:00:00.000Z',capacity:6,pricePerSeatMinor:12550,locationName:'موقع المركز',latitude:18.2,longitude:41.5};
  const request=async(token,path,method='POST',data=body)=>{const r=await fetch(base+'/center/me/trips'+path,{method,headers:{...(token?{authorization:'Bearer '+token}:{}),'content-type':'application/json'},...(method==='GET'?{}:{body:JSON.stringify(data)})});return{status:r.status,body:await r.json().catch(()=>null)}};
@@ -26,8 +27,11 @@ export async function checkCenterTripManagement(db,{base,a,b,ownerA,ta,tb,ts},ch
   check((await request(ta,'/'+ids[0],'PATCH',{...values,expectedUpdatedAt:revision})).status===409,'Stale edit cannot overwrite trip');
   check((await request(ta,'/'+ids[0]+'/publish','POST',{expectedUpdatedAt:revision})).status===409,'Stale revision cannot publish trip');
   revision=result.body.updatedAt;
-  const concurrent=await Promise.all([1,2].map(()=>request(ta,'/'+ids[0]+'/publish','POST',{expectedUpdatedAt:revision})));check(concurrent.filter(r=>r.status===201).length===1&&concurrent.filter(r=>r.status===409).length===1,'Concurrent publishing produces one transition');
-  const published=await db.trip.findUniqueOrThrow({where:{id:ids[0]}});check(published.status==='OPEN'&&published.organizationId===a.org.id,'Published trip retains center ownership');
+  for (const org of [a.org,b.org]) boats.push(await db.marineAsset.create({data:{organizationId:org.id,name:'Test vessel',assetType:'DIVE_BOAT',passengerCapacity:6,status:'ACTIVE'}}));
+  check((await request(ta,'/'+ids[0]+'/publish','POST',{expectedUpdatedAt:revision})).status===400,'Publishing a boat trip requires a vessel');
+  check((await request(ta,'/'+ids[0]+'/publish','POST',{expectedUpdatedAt:revision,marineAssetId:boats[1].id})).status===409,'A center cannot use another center vessel');
+  const concurrent=await Promise.all([1,2].map(()=>request(ta,'/'+ids[0]+'/publish','POST',{expectedUpdatedAt:revision,marineAssetId:boats[0].id})));check(concurrent.filter(r=>r.status===201).length===1&&concurrent.filter(r=>r.status===409).length===1,'Concurrent publishing produces one transition');
+  const published=await db.trip.findUniqueOrThrow({where:{id:ids[0]}});check(published.status==='OPEN'&&published.organizationId===a.org.id&&published.marineAssetId===boats[0].id,'Published trip retains center ownership');
   check(await db.auditEvent.count({where:{resourceId:ids[0],action:'CENTER_TRIP_PUBLISHED'}})===1,'Publish audit recorded once');
   check(await db.safetyChecklist.count({where:{tripId:ids[0]}})===0,'Publishing does not forge safety approval');
   check(await db.auditEvent.count({where:{resourceId:ids[0],action:{in:['OPERATIONAL_CLEARANCE_GRANTED','OPERATIONAL_REVIEW_APPROVED']}}})===0,'Publishing does not grant operational clearance');
@@ -49,6 +53,7 @@ export async function checkCenterTripManagement(db,{base,a,b,ownerA,ta,tb,ts},ch
   await db.organization.update({where:{id:a.org.id},data:{status:'ACTIVE'}});await db.roleAssignment.update({where:{accountId_role:{accountId:ownerA.id,role:'DIVE_CENTER'}},data:{status:'ACTIVE'}});
   await db.calendarEvent.deleteMany({where:{referenceType:'TRIP',referenceId:{in:ids}}});
   await db.operationalSetting.deleteMany({where:{key:{in:ids.map(id=>'trip-price:'+id)}}});await db.trip.deleteMany({where:{id:{in:ids}}});
+  await db.marineAsset.deleteMany({where:{id:{in:boats.map(boat=>boat.id)}}});
  }
 }
 

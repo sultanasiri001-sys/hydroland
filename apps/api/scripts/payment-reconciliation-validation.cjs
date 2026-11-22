@@ -16,7 +16,7 @@ const stale = error => error.getStatus?.() === 409 && error.getResponse?.().code
 
 function fixture({ missing = false, auditFails = false, webhookAuditFails = false, organizationId = null } = {}) {
   let state = { payment: missing ? null : originalPayment(), events: [],
-    booking: { id: 'booking-1', accountId: 'buyer-1', tripId: 'trip-1', seats: 2, status: 'PENDING', organizationId } };
+    booking: { id: 'booking-1', accountId: 'buyer-1', tripId: 'trip-1', trip:{type:'SHORE_DIVE',organization:null}, seats: 2, status: 'PENDING', organizationId } };
   const pending = [], controls = { auditFails, webhookAuditFails };
   let inTransaction = false, tail = Promise.resolve(), providerCalls = 0;
   const facade = getState => ({

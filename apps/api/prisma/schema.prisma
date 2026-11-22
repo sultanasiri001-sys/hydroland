@@ -154,6 +154,7 @@ model Person {
 }
 
 model Account {
+  payoutProfile ProviderPayoutProfile?
   retailStockCounts StoreStockCount[]
   storeStockTransfers StoreStockTransfer[]
   storeFeedback StoreProductFeedback[]
@@ -747,6 +748,8 @@ enum BookingStatus {
 }
 
 model Trip {
+  marineAssetId String?
+  marineAsset MarineAsset? @relation(fields:[marineAssetId], references:[id], onDelete:Restrict)
   id String @id @default(uuid())
   title String
   type String
@@ -2600,6 +2603,7 @@ enum MarineReadinessStatus {
 }
 
 model MarineAsset {
+  trips Trip[]
   reviewCenterId String?
   id String @id @default(uuid())
   organizationId String
@@ -3147,4 +3151,52 @@ model RentalDamageClaim {
   financeEntryId   String?  @unique
   createdAt        DateTime @default(now())
   @@index([organizationId,status], map: "RentalDamageClaim_center")
+}
+
+// One original seller document per payable transaction, shared by its parties.
+model AccountInvoiceDocument {
+  sourceType String
+  sourceId String
+  sellerId String
+  buyerOrganizationId String?
+  number String
+  sha256 String
+  content Bytes
+  attachedBy String
+  createdAt DateTime @default(now())
+  @@id([sourceType,sourceId])
+  @@unique([sellerId,number])
+}
+
+model InvoicePermissionRequest {
+  id String @id
+  sequence Int @unique @default(autoincrement())
+  scopeKey String
+  pendingKey String? @unique
+  centerId String
+  centerName String
+  kind String
+  targetId String
+  targetName String
+  enable Boolean
+  reason String
+  requestedBy String
+  requestedAt DateTime @default(now())
+  status String @default("PENDING")
+  decidedBy String?
+  decidedAt DateTime?
+  decisionNote String?
+  @@index([scopeKey, status, sequence])
+  @@index([centerId, requestedAt])
+  @@index([status, requestedAt])
+}
+
+model ProviderPayoutProfile {
+  accountId String @id
+  account Account @relation(fields:[accountId], references:[id], onDelete:Cascade)
+  contactEmail String?
+  holder String?
+  encryptedIban String?
+  lastFour String?
+  revision Int @default(1)
 }

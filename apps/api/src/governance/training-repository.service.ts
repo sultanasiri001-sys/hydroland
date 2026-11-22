@@ -23,7 +23,11 @@ export class TrainingRepositoryService {
 
   createEnrollment(input: CreateTrainingEnrollmentInput) {
     rejectReservedTrainingMetadata(input.metadata);
-    return this.db.trainingEnrollment.create({
+    if (typeof input.centerOrganizationId!=='string' || !input.centerOrganizationId.trim()) throw new BadRequestException('اختر مركز الغوص للتسجيل في الدورة.');
+    return this.db.serializable(async tx=>{
+      const center=await tx.organization.findFirst({where:{id:input.centerOrganizationId,kind:'DIVE_CENTER',status:'ACTIVE'},select:{id:true}});
+      if (!center) throw new BadRequestException('مركز التسجيل غير متاح.');
+      return tx.trainingEnrollment.create({
       data: {
         studentAccountId: input.studentAccountId,
         courseCode: input.courseCode,
@@ -32,6 +36,7 @@ export class TrainingRepositoryService {
         metadata: input.metadata,
       },
       include: { record: true },
+      });
     });
   }
 
@@ -71,7 +76,7 @@ export class TrainingRepositoryService {
       if(current.storeCourseOfferId&&current.status==='CANCELLED'&&status!=='CANCELLED'){
         const cancellation = await tx.auditEvent.findFirst({where:{resource:'TrainingEnrollment',resourceId:enrollmentId,action:'COURSE_CUSTOMER_CANCELLATION_RECORDED'},select:{id:true}});
         if(cancellation)throw new ConflictException('يتطلب الحجز بعد الإلغاء المالي تسجيلًا جديدًا بشروطه الخاصة.');
-        const offer=await tx.storeCourseOffer.findFirst({where:{id:current.storeCourseOfferId,status:'ACTIVE',startsAt:{gt:new Date()},organization:{status:'ACTIVE'}}});
+        const offer=await tx.storeCourseOffer.findFirst({where:{id:current.storeCourseOfferId,status:'ACTIVE',startsAt:{gt:new Date()},organization:{kind:'DIVE_CENTER',status:'ACTIVE'}}});
         if(!offer)throw new ConflictException('الدورة غير متاحة لإعادة التسجيل.');
         const duplicate=await tx.trainingEnrollment.findFirst({where:{storeCourseOfferId:offer.id,studentAccountId:current.studentAccountId,status:{not:'CANCELLED'}}});
         const seats=await tx.trainingEnrollment.count({where:{storeCourseOfferId:offer.id,status:{not:'CANCELLED'}}});

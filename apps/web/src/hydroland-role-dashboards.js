@@ -1,6 +1,9 @@
 (()=>{
   // Authored interface messages only. Account, provider and document values remain opaque.
   const uiLocale=window.HydrolandI18n?.createScope("role-dashboards", {
+  "طلبات صلاحية الفوترة": "Invoice permission requests", "مراجعة صلاحيات الفوترة": "Review invoice permissions",
+  "بيانات التواصل والمستحقات":"Contact and payout details", "رحلاتي المنفّذة":"My completed trips", "عدد الرحلات المنفّذة":"Completed trips", "عدد الطلاب الذين درّبتهم":"Students trained", "عدد مشاركات الركاب المسجّلة":"Recorded passenger attendances", "طلاب الرحلة":"Students on this trip", "الحضور المسجّل":"Recorded attendance", "جارٍ تحميل سجل الرحلات…":"Loading trip history…", "تعذّر تحميل سجل الرحلات.":"Could not load trip history.", "إعادة المحاولة":"Retry", "السابق":"Previous", "التالي":"Next",
+  "فواتيري": "My invoices", "فاتورة العملية": "Transaction invoice",
   "مستندات المدرب": "Instructor documents",
   "مراجعة مستندات المدربين": "Review instructor documents",
   "DIVE PROFESSIONALS · محترفي الغوص": "DIVE PROFESSIONALS",
@@ -394,6 +397,35 @@
 
   function clearDashboard(){document.querySelector('.hl-role-dashboard')?.remove()}
   const syncDashboardIdentity=()=>{const d=document.querySelector('.hl-role-dashboard');if(!d)return;const person=window.HydrolandProfileData?.profile?.person||{},name=[person.firstName,person.lastName].filter(Boolean).join(' ').trim();d.querySelectorAll('[data-portal-name],[data-center-name]').forEach(node=>{if(node.hasAttribute('data-center-name')&&d.dataset.centerScopeLoaded==='1')return;if(name){if(node.textContent!==name)node.textContent=name}else uiLocale.setText(node,'حساب HYDROLAND')});d.querySelectorAll('[data-portal-avatar],[data-center-avatar]').forEach(node=>{const value=(person.firstName||'H').trim().slice(0,1).toUpperCase();if(node.textContent!==value)node.textContent=value})};
+  function mountCompletedTrips(d,role){
+    const host=d.querySelector('[data-completed-trips]');
+    const metric=role==='instructor'?'عدد الطلاب الذين درّبتهم':'عدد مشاركات الركاب المسجّلة';
+    const auth=window.HydrolandAuth,access=window.HydrolandPortalAccess,session=auth.getSessionVersion();
+    const current=()=>d.isConnected && session===auth.getSessionVersion() && access.getCurrentRole()===role && auth.isAuthenticated();
+    let revision=0;
+    async function load(page){
+      const version=++revision;
+      uiLocale.setHTML(host,uiLocale.html`<p role="status">جارٍ تحميل سجل الرحلات…</p>`);
+      try {
+        const response=await auth.authorizedFetch('/trips/completed/mine?role='+role+'&page='+page);
+        if(!response.ok)throw new Error();
+        const data=await response.json();
+        if(!current() || version!==revision)return;
+        if(!Number.isSafeInteger(data.tripCount)||!Number.isSafeInteger(data.peopleCount)||!Array.isArray(data.items))throw new Error();
+        const nf=new Intl.NumberFormat(timeLocale());
+        uiLocale.setHTML(host,uiLocale.html`<h2>رحلاتي المنفّذة</h2><p>${uiLocale.label('عدد الرحلات المنفّذة')} <b>${esc(nf.format(data.tripCount))}</b> · ${uiLocale.label(metric)} <b>${esc(nf.format(data.peopleCount))}</b></p>
+          <ul>${data.items.map(trip=>uiLocale.html`<li><strong>${esc(trip.title)}</strong> · ${esc(new Date(trip.startsAt).toLocaleDateString(timeLocale(),{timeZone:'Asia/Riyadh'}))} · ${uiLocale.label(role==='instructor'?'طلاب الرحلة':'الحضور المسجّل')} ${esc(nf.format(trip.peopleCount))}</li>`).join('')}</ul>
+          ${page>1?uiLocale.html`<button type="button" data-trip-previous>السابق</button>`:''}${page*data.pageSize<data.tripCount?uiLocale.html`<button type="button" data-trip-next>التالي</button>`:''}`);
+        host.querySelector('[data-trip-previous]')?.addEventListener('click',()=>load(page-1));
+        host.querySelector('[data-trip-next]')?.addEventListener('click',()=>load(page+1));
+      }catch{
+        if(!current()||version!==revision)return;
+        uiLocale.setHTML(host,uiLocale.html`<p role="status">تعذّر تحميل سجل الرحلات.</p><button type="button">إعادة المحاولة</button>`);
+        host.querySelector('button').addEventListener('click',()=>load(page));
+      }
+    }
+    void load(1);
+  }
   const centerLoads=new WeakMap();
   const marineLoads=new WeakMap();
   const organizationLoads=new WeakMap();
@@ -585,12 +617,13 @@
         ${!center?uiLocale.html`<a class="brand" href="#home">${brand()}</a>`:''}
         <section class="hl-portal-member ${center?'hl-center-member':''}"><span class="avatar" ${center?'data-center-avatar':'data-portal-avatar'}>H</span><div><b ${center?'data-center-name':'data-portal-name'}>حساب HYDROLAND</b><small>${authoredLabel(c.t)}</small></div></section>
         <nav>${c.nav.map((label,index)=>uiLocale.html`<button type="button" class="hl-portal-nav-item${index===0?' active':''}" data-portal-label="${label}" ${index===0?'aria-current="page"':''}>${icon(iconFor(label))}<span>${authoredLabel(label)}</span></button>`).join('')}</nav>
-        <div class="hl-portal-safe"><p lang="en" dir="ltr">Explore · Learn<br>Protect · Belong</p><button type="button" class="hl-portal-switch" data-portal-switch>${icon('people')}تبديل الواجهة</button><button type="button" class="hl-portal-switch" data-hl-action="logout">${icon('arrow')}تسجيل الخروج</button></div>
+        <div class="hl-portal-safe"><p lang="en" dir="ltr">Explore · Learn<br>Protect · Belong</p>${operational||role==='organization'?uiLocale.html`<button type="button" class="hl-portal-switch" data-account-invoices>فواتيري</button>`:''}${center?uiLocale.html`<button type="button" class="hl-portal-switch" data-invoice-permissions="center">طلبات صلاحية الفوترة</button>`:role==='admin'?uiLocale.html`<button type="button" class="hl-portal-switch" data-invoice-permissions="admin">مراجعة صلاحيات الفوترة</button>`:''}<button type="button" class="hl-portal-switch" data-portal-switch>${icon('people')}تبديل الواجهة</button><button type="button" class="hl-portal-switch" data-hl-action="logout">${icon('arrow')}تسجيل الخروج</button></div>
       </aside>
       <div class="hl-portal-main"><header class="hl-portal-topbar"><button type="button" class="icon-button hl-portal-menu" aria-label="فتح قائمة البوابة" aria-expanded="false" data-portal-menu>${icon('menu')}</button><form class="hl-portal-search" role="search">${center?uiLocale.html`<select aria-label="نطاق البحث في المركز"><option value="bookings">الحجوزات</option><option value="customers">العملاء</option><option value="equipment">رمز المعدة</option></select>`:''}<input ${uiLocale.attribute('aria-label',center?'بحث في بيانات المركز':'بحث في المنصة')} ${uiLocale.attribute('placeholder',center?'رقم الحجز أو اسم العميل أو الرحلة':'ابحث في هيدرولاند…')} ${center?'required maxlength="120"':''}><button type="submit" aria-label="بحث">${icon('search')}</button></form><div class="hl-portal-utility"><button type="button" class="hl-locale-switch" data-hl-locale-switch="portal"><span data-hl-locale-name lang="en">EN</span></button><button type="button" class="icon-button" data-portal-notifications aria-label="فتح الإشعارات">${icon('bell')}</button><button type="button" class="icon-button" data-portal-messages aria-label="فتح الرسائل الداخلية">${icon('mail')}</button><button type="button" class="hl-portal-account" data-portal-profile><span class="avatar" data-portal-avatar>H</span><span data-portal-name>حساب HYDROLAND</span></button></div></header>
       <div class="hl-portal-content"><header class="hl-role-head${center?' hl-center-hero':''}"><div><small>${authoredLabel(c.k)}</small><h1>${uiLocale.label(heroTitle)}</h1><p>${uiLocale.label(heroSubtitle)}</p>${role!=='admin'?highlights():''}</div></header>
       ${center?uiLocale.html`<div class="hl-center-home-toolbar"><p data-center-home-status role="status">جارٍ تحميل ملخص المركز…</p><button type="button" data-center-home-refresh>تحديث الملخص</button></div>`:role==='boat'?uiLocale.html`<div class="hl-center-home-toolbar"><p data-marine-home-status role="status">جارٍ تحميل ملخص الوساطة البحرية…</p><button type="button" data-marine-home-refresh>تحديث الملخص</button></div>`:role==='organization'?uiLocale.html`<div class="hl-center-home-toolbar"><p data-organization-home-status role="status">جارٍ تحميل بيانات الجهة…</p><button type="button" data-organization-home-refresh>تحديث الملخص</button></div>`:''}
       <div class="hl-role-grid">${c.m.map(([value,label],index)=>uiLocale.html`<${center?'button type="button" data-route="'+['center-bookings','center-operations','center-team','center-operations'][index]+'"':'article'} class="hl-role-tile">${icon(iconFor(label))}<div><small>${authoredLabel(label)}</small><b>${value}</b><span>${uiLocale.label(center?'فتح التفاصيل':'من النظام')}</span></div></${center?'button':'article'}>`).join('')}</div>
+      ${['boat','instructor'].includes(role)?uiLocale.html`<section class="hl-command" data-completed-trips></section><button type="button" data-provider-contact>بيانات التواصل والمستحقات</button>`:''}
       <section class="hl-command" aria-label="الإجراءات الرئيسية">${['admin','organization'].includes(role)?uiLocale.html`<h2 class="hl-command-title">الخدمات والمهام السريعة</h2>`:''}<div class="hl-command-grid ${operational?'hl-picture-actions':''}">${actions.map(([label,target],index)=>{const route=actionRoute(role,label,target);return uiLocale.html`<button type="button" ${route?`data-route="${route}"`:'disabled aria-disabled="true" '+uiLocale.attribute('title','قيد الربط بالخدمة')} data-action-label="${label}" data-art="${index%6}"><span class="hl-action-art">${icon(iconFor(label))}</span><span>${authoredLabel(label)}</span></button>`}).join('')}</div></section>
       ${lowerFor(role,c)}</div><div class="hl-service-heading" hidden><button type="button" data-portal-home>${icon('home')}الرئيسية</button><span aria-hidden="true">/</span><h1 data-service-title></h1></div></div></div>`);
     document.getElementById('main')?.prepend(d);
@@ -599,6 +632,8 @@
     if(role==='instructor')void loadInstructorSummary(d);
     if(role==='center')void loadCenterSummary(d);
     if(role==='boat')void loadMarineSummary(d);
+    if(role==='boat'||role==='instructor')mountCompletedTrips(d,role);
+    d.querySelector('[data-provider-contact]')?.addEventListener('click',()=>window.HydrolandProviderContact?.open());
     if(role==='organization')void loadOrganizationSummary(d);
 
     d.querySelector('[data-center-home-refresh]')?.addEventListener('click',()=>loadCenterSummary(d));

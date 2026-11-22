@@ -8,7 +8,7 @@ import { centerReportRange } from '../organizations/center-report-range';
 import { AdminGuard } from './admin.guard';
 
 // Both the offline verifier and the API read this versioned producer list.
-const sources: [string, string, string, string][] = require('../../d12-audit-sources.json');
+const sources: [string, string, string, string, string?][] = require('../../d12-audit-sources.json');
 const mapping = sources.map(([category, action, resource]) => ({ category, action, resource }));
 type Request = { auth: { accountId: string } };
 type CurrencySum = { currency: string; minor: string };

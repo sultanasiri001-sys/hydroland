@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import {verifyAccountInvoices} from './account-invoice-register-cases.mjs';
 import assert from 'node:assert/strict';
 import refundGrants from './checkout-refund-grants.cjs';
 import {createServer} from 'node:http';
@@ -25,6 +26,14 @@ const {TrainingCheckoutService} = await load('payments/training-checkout.service
 const {CheckoutRefundController}=await load('payments/checkout-refund.controller.js');
 const {CheckoutRefundService}=await load('payments/checkout-refund.service.js');
 const {FinanceOperationGrantService}=await load('finance/finance-operation-grant.service.js');
+const {InvoicePermissionsController}=await load('payments/invoice-permissions.controller.js');
+const {InvoicePermissionsService}=await load('payments/invoice-permissions.service.js');
+const {AccountInvoicesController}=await load('payments/account-invoices.controller.js');
+const {AccountInvoicesService}=await load('payments/account-invoices.service.js');
+const {ProviderContactController} = await load('profile/provider-contact.controller.js');
+const {ProviderContactService} = await load('profile/provider-contact.service.js');
+const {CenterPayeesController} = await load('finance/center-payees.controller.js');
+const {FinanceAccessService} = await load('finance/finance-access.service.js');
 const {TrainingCheckoutController} = await load('payments/training-checkout.controller.js');
 const {StoreOfferingsService} = await load('store/store-offerings.service.js');
 const {FinancePersistenceService} = await load('finance/finance-persistence.service.js');
@@ -78,7 +87,7 @@ const provider = new MoyasarPaymentProviderService({requireOperational() { retur
 const checkout = new TrainingCheckoutService(db, audit, provider), repository = new TrainingRepositoryService(db, {}, {}, {}, {});
 const trainingSessions = new TrainingSessionService(db, audit, new TrainingAuthorizationService(db));
 class CourseAcceptanceModule {}
-Module({controllers: [TrainingCheckoutController,CheckoutRefundController], providers: [AccessTokenGuard,{provide:CheckoutRefundService,useValue:new CheckoutRefundService(db,provider)},
+Module({controllers: [ProviderContactController,CenterPayeesController,InvoicePermissionsController,AccountInvoicesController,TrainingCheckoutController,CheckoutRefundController], providers: [AccessTokenGuard, {provide:DatabaseService,useValue:db}, {provide:ProviderContactService,useValue:new ProviderContactService(db)}, {provide:FinanceAccessService,useValue:new FinanceAccessService(db)},{provide:InvoicePermissionsService,useValue:new InvoicePermissionsService(db)},{provide:AccountInvoicesService,useValue:new AccountInvoicesService(db)},{provide:CheckoutRefundService,useValue:new CheckoutRefundService(db,provider)},
   {provide: TrainingCheckoutService, useValue: checkout}, {provide: AuthService, useValue: auth}]})(CourseAcceptanceModule);
 const app = await NestFactory.create(CourseAcceptanceModule, {logger: false});
 app.setGlobalPrefix('api/v1');
@@ -429,6 +438,105 @@ try {
   });
   assert.equal(await db.financeEntry.count({where: {id: {in: allFinanceIds}}}), allFinanceIds.length);
   assert.ok(requests.filter(row => row.method === 'POST').every(row => row.url === '/v1/invoices' || /^\/v1\/payments\/[a-f0-9-]+\/refund$/.test(row.url)));
+  await check('a center booking binds the vessel and center seller and rejects operator-owned or unlinked boats',async()=>{
+    const {TripsService}=await load('trips/trips.service.js');
+    const {BookingParticipantService}=await load('trips/booking-participant.service.js');
+    const policies={decision:async()=>({state:'ENABLED',enforce:true,review:false})};
+    const trips=new TripsService({},db,{settings:async()=>({}),evaluateReview:()=>({blocking:false})},
+      {latest:async()=>null},new BookingParticipantService(db,policies,audit),policies,audit);
+    const vessel=await db.marineAsset.create({data:{name:'Fixture vessel',reviewCenterId:centerA.id,organizationId:centerB.id,assetType:'DIVE_BOAT',status:'ACTIVE',passengerCapacity:4}});
+    const now=Date.now(), data={title:'Center reservation',type:'BOAT',startsAt:new Date(now+86400000),endsAt:new Date(now+90000000),capacity:3,status:'OPEN'};
+    const trip=await db.trip.create({data:{...data,organizationId:centerA.id,marineAssetId:vessel.id}});
+    const unlinked=await db.trip.create({data:{...data,organizationId:centerA.id}});
+    const operator=await db.organization.create({data:{kind:'MARINE_OPERATOR',displayName:'Synthetic boat owner',status:'ACTIVE',ownerId:other.id}});
+    const direct=await db.trip.create({data:{...data,organizationId:operator.id,marineAssetId:vessel.id}});
+    const wrongCenter=await db.trip.create({data:{...data,organizationId:centerB.id,marineAssetId:vessel.id}});
+    for(const row of [direct,unlinked,wrongCenter]) await assert.rejects(trips.book(buyer.id,row.id,1),status(409));
+    await db.safetyChecklist.create({data:{tripId:trip.id,decision:'ALLOWED',items:[]}});
+    await db.operationalSetting.create({data:{key:'trip-price:'+trip.id,value:{pricePerSeatMinor:15000,currency:'SAR'}}});
+    const booking=await trips.book(buyer.id,trip.id,1);
+    assert.equal(booking.contractSnapshot.issuer.organizationId,centerA.id);
+    assert.equal(booking.contractSnapshot.issuer.legalName,centerA.legalName);
+    assert.equal(booking.contractSnapshot.marineAssetId,vessel.id);
+    assert.throws(()=>repository.createEnrollment({studentAccountId:buyer.id,courseCode:'UNCENTERED'}),status(400));
+    await assert.rejects(repository.createEnrollment({studentAccountId:buyer.id,centerOrganizationId:operator.id,courseCode:'OPERATOR'}),status(400));
+    const enrolled=await repository.createEnrollment({studentAccountId:buyer.id,centerOrganizationId:centerA.id,courseCode:'CENTER'});
+    assert.equal(enrolled.centerOrganizationId,centerA.id);
+  });
+  await check('completed history counts each trip once, actual passenger attendances and distinct taught students',async()=>{
+    const {completedTripHistory}=await load('trips/completed-trip-history.js');
+    const trainer=await account('history-instructor'), skipper=await account('history-owner');
+    await db.roleAssignment.createMany({data:[{accountId:trainer.id,role:'INSTRUCTOR',status:'ACTIVE'},{accountId:skipper.id,role:'BOAT_OWNER',status:'ACTIVE'}]});
+    const operator=await db.organization.create({data:{ownerId:skipper.id,kind:'MARINE_OPERATOR',status:'ACTIVE',displayName:'Fixture boat owner'}});
+    await db.organizationMember.create({data:{accountId:skipper.id,organizationId:operator.id,role:'OWNER',status:'ACTIVE'}});
+    const vessel=await db.marineAsset.create({data:{organizationId:operator.id,reviewCenterId:centerA.id,name:'Fixture boat',assetType:'DIVE_BOAT',status:'ACTIVE'}});
+    const now=new Date();
+    const tripData={type:'BOAT',organizationId:centerA.id,marineAssetId:vessel.id,title:'Fixture completed trip',startsAt:now,endsAt:now,capacity:9};
+    const [first,second,cancelled]=await Promise.all(['COMPLETED','COMPLETED','CANCELLED'].map(status=>db.trip.create({data:{...tripData,status}})));
+    const enr=await db.trainingEnrollment.create({data:{studentAccountId:buyer.id,courseCode:'HISTORY',centerOrganizationId:centerA.id}});
+    const record=await db.trainingRecord.create({data:{enrollmentId:enr.id}});
+    await db.trainingSession.createMany({data:[first.id,first.id,second.id].map(tripId=>({trainingRecordId:record.id,instructorAccountId:trainer.id,tripId,startsAt:now,status:'COMPLETED'}))});
+    await db.trainingSession.create({data:{trainingRecordId:record.id,instructorAccountId:trainer.id,tripId:cancelled.id,startsAt:now,status:'CANCELLED'}});
+    const booking=await db.booking.create({data:{tripId:first.id,accountId:buyer.id,seats:3,status:'CONFIRMED'}});
+    for(let n=0;n<3;n++){
+      const person=await db.bookingParticipant.create({data:{bookingId:booking.id,fullName:'Fixture passenger '+n}});
+      if(n<2)await db.diveLog.create({data:{sourceTripId:first.id,sourceParticipantId:person.id,siteName:'Fixture site',diveDate:now,maxDepthM:0,durationMin:20}});
+    }
+    const teaching=await completedTripHistory(db,trainer.id,'instructor',1);
+    assert.equal(teaching.tripCount,2);assert.equal(teaching.peopleCount,1);
+    assert.deepEqual(teaching.items.map(row=>row.peopleCount),[1,1]);
+    const marine=await completedTripHistory(db,skipper.id,'boat',1);
+    assert.equal(marine.tripCount,2);assert.equal(marine.peopleCount,2);
+    assert.equal(marine.items.find(row=>row.id===first.id).peopleCount,2);
+    assert.ok(!marine.items.some(row=>row.id===cancelled.id));
+    await assert.rejects(completedTripHistory(db,trainer.id,'boat',1),status(403));
+    assert.deepEqual((await completedTripHistory(db,skipper.id,'boat',2)).items,[]);
+  });
+  await check('private provider contacts and bank details are current, masked and scoped to the paying center', async()=>{
+    const request = async (actor,path,method='GET',body) => {
+      const response = await fetch(origin+'/api/v1/'+path, {method,headers:{...(actor?{authorization:'Bearer '+actor.token}:{}),'content-type':'application/json'},
+        ...(body===undefined?{}:{body:JSON.stringify(body)})});
+      return {status:response.status,data:await response.json(),cache:response.headers.get('cache-control')};
+    };
+    const profile='me/provider-contact', base='finance/centers/'+employment.orgUnitId+'/payees';
+    assert.equal((await request(null,profile)).status,401);
+    assert.equal((await request(buyer,profile)).status,403);
+    const boat=await account('payout owner');
+    await db.roleAssignment.create({data:{accountId:boat.id,role:'BOAT_OWNER',status:'ACTIVE'}});
+    const op=await db.organization.create({data:{ownerId:boat.id,kind:'MARINE_OPERATOR',status:'ACTIVE',displayName:'Synthetic payee'}});
+    const vessel=await db.marineAsset.create({data:{reviewCenterId:centerA.id,organizationId:op.id,name:'Payout vessel',assetType:'BOAT',status:'ACTIVE'}});
+    // Generate a checksum-valid fixture without using real bank details.
+    const bban='00'+'0'.repeat(16)+'12', digits=bban+'281000', iban='SA'+String(98-Number(BigInt(digits)%97n)).padStart(2,'0')+bban;
+    for(const provider of [owner,boat]){
+      const original=await request(provider,profile);
+      assert.equal(original.data.contactEmail,provider.email);assert.match(original.cache,/no-store/);
+      await db.diverProfile.create({data:{accountId:provider.id,notes:'retain unrelated fields'}});
+      const body={revision:original.data.revision,phone:'٠٥٠٠٠٠٠٠٠١',emergencyPhone:'0500000002',contactEmail:'finance@example.invalid',holder:'Synthetic Payee',iban};
+      const invalid=await request(provider,profile,'PATCH',{...body,iban:'SA00'+bban});assert.equal(invalid.status,400);
+      const saved=await request(provider,profile,'PATCH',body);assert.equal(saved.status,200);
+      assert.equal(saved.data.phone,'0500000001');assert.equal(saved.data.emergencyPhone,'0500000002');assert.equal(saved.data.lastFour,iban.slice(-4));
+      assert.ok(!JSON.stringify(saved.data).includes(iban));
+      assert.equal((await request(provider,profile,'PATCH',body)).status,409);
+      const edit=await request(provider,profile,'PATCH',{revision:saved.data.revision,emergencyName:'Emergency contact'});
+      assert.equal(edit.data.lastFour,saved.data.lastFour);assert.equal((await request(provider,profile)).data.emergencyName,'Emergency contact');
+      assert.equal((await db.account.findUnique({where:{id:provider.id}})).email,provider.email);
+      assert.equal((await db.diverProfile.findUnique({where:{accountId:provider.id}})).notes,'retain unrelated fields');
+      const stored=await db.providerPayoutProfile.findUniqueOrThrow({where:{accountId:provider.id}});
+      assert.ok(!stored.encryptedIban.includes(iban));
+      const list=await request(accountant,base);assert.equal(list.status,200);assert.ok(list.data.some(x=>x.id===provider.id));assert.ok(!JSON.stringify(list.data).includes(iban));
+      const reveal=await request(accountant,base+'/'+provider.id+'/bank','POST');assert.equal(reveal.status,201);assert.equal(reveal.data.iban,iban);assert.match(reveal.cache,/no-store/);
+      assert.equal((await request(otherAccountant,base+'/'+provider.id+'/bank','POST')).status,403);
+      const wrong=await db.employment.findFirstOrThrow({where:{accountId:otherAccountant.id}});
+      assert.equal((await request(otherAccountant,'finance/centers/'+wrong.orgUnitId+'/payees/'+provider.id+'/bank','POST')).status,404);
+      const audit=await db.auditEvent.findFirstOrThrow({where:{resourceId:provider.id,action:'CENTER_PAYEE_BANK_VIEWED'}});
+      assert.equal(audit.actorId,accountant.personId);assert.ok(!JSON.stringify(audit).includes(iban));
+    }
+    await db.marineAsset.update({where:{id:vessel.id},data:{status:'SUSPENDED'}});
+    assert.equal((await request(accountant,base+'/'+boat.id+'/bank','POST')).status,404);
+  });
+  await check('only the center can attach and print training and marine invoices, with approved switches and archived originals', async()=>{
+    await verifyAccountInvoices({db,base:origin,owner,buyer,accountant,account,center:centerA,otherCenter:centerB,id});
+  });
   console.log(JSON.stringify({result: 'PASS', suite: 'training-checkout-postgresql-http', passed: cases.length, failed: 0, cases,
     actualPostgresql: true, actualControllerAndSessionGuard: true, providerTransport: 'loopback HTTP only', providerInvoicePosts: posts(),
     externalProviderCalls: 0, actualMoneyTransfers: 0, productionWrites: 0, trainingActivatedOrCompleted: false}));
