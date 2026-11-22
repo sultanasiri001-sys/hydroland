@@ -1,4 +1,5 @@
 import {test, expect} from '@playwright/test';
+import fixturePdf from './fixtures/license-text-pdf.json';
 import {openWorkspaceSwitcher} from './portal-test-helpers.js';
 
 test('a center requests invoicing and the platform reviews the requested change', async ({page}) => {
@@ -89,9 +90,7 @@ test('a center requests invoicing and the platform reviews the requested change'
 });
 
 test('the center opens the stored original PDF for printing', async ({page})=>{
-  const {PDFDocument}=await import('pdf-lib');
-  const pdf=await PDFDocument.create();pdf.addPage([180,280]);
-  const original=Buffer.from(await pdf.save());
+  const original=Buffer.from(fixturePdf.base64, 'base64');
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#hl-invoices-dialog',{state:'attached'});
   await page.route('**/account/invoices?*',route=>route.fulfill({json:{items:[{
