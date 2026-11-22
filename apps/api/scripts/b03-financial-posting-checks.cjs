@@ -21,8 +21,8 @@ module.exports = async function verify(ctx) {
     const when=new Date();
     return db.financeEntry.create({data:{organizationId:center.id,financeAccountId:financeAccount.id,type,
       status:'POSTED',amountMinor,currency:'SAR',referenceType,referenceId,requestedByAccountId:collector.id,
-      approvedByAccountId:approver.id,postedByAccountId:poster.id,approvedAt:when,postedAt:when,
-      approvals:{create:{requestedByAccountId:collector.id,decidedByAccountId:approver.id,status:'APPROVED',decidedAt:when}}}});
+      approvedByAccountId:approver.id,postedByAccountId:poster.id,createdAt:when,approvedAt:when,postedAt:when,
+      approvals:{create:{requestedByAccountId:collector.id,decidedByAccountId:approver.id,status:'APPROVED',createdAt:when,decidedAt:when}}}});
   }
   const initial=process.env.HYDROLAND_B03_LEDGER_POSTING;
   delete process.env.HYDROLAND_B03_LEDGER_POSTING;
@@ -129,6 +129,52 @@ module.exports = async function verify(ctx) {
       await loyalty.finish(owner.id,hold.id,valid.id);await loyalty.finish(owner.id,hold.id,valid.id);
       assert.equal((await db.rewardAccount.findUniqueOrThrow({where:{accountId:buyer.id}})).points,0);
       assert.equal(await db.rewardEntry.count({where:{referenceId:hold.id}}),1);
+    });
+    await check('a regular trip checkout spends 2000 points, charges SAR 280, pays the supplier on SAR 300 and awards 140 points',async()=>{
+      const {TripsService}=require(resolve(build,'trips/trips.service.js'));
+      const {BookingParticipantService}=require(resolve(build,'trips/booking-participant.service.js'));
+      const {PaymentsService}=require(resolve(build,'payments/payments.service.js'));
+      const {PaymentContractService}=require(resolve(build,'commerce/payment-contract.service.js'));
+      const {releaseRefundedBookingPoints}=require(resolve(build,'rewards/booking-points.js'));
+      const member=await account('discount-buyer');
+      const seed=await db.rewardAccount.create({data:{accountId:member.id,points:2000}});
+      await db.rewardEntry.create({data:{rewardAccountId:seed.id,type:'EARN',points:2000,balanceAfter:2000,idempotencyKey:randomUUID(),referenceType:'HISTORICAL_BOOKING',referenceId:randomUUID()}});
+      await db.loyaltyMonth.update({where:{id:month},data:{issuedMinor:150}});
+      const controls={decision:async()=>({state:'ENABLED',enforce:false,review:false,bypass:false})};
+      const audit={record:async()=>({})};
+      const trips=new TripsService(null,db,{settings:async()=>({enabled:false}),evaluateReview:()=>({blocking:false})},
+        {latest:async()=>null},new BookingParticipantService(db,controls,audit),controls,audit);
+      const contracts=new PaymentContractService(db);
+      const localProvider={createInvoice:async args=>({id:randomUUID(),status:'paid',amount:args.amountMinor,
+        currency:'SAR',url:'http://localhost/mock',metadata:{hydroland_payment_id:args.paymentId,hydroland_booking_id:args.bookingId},
+        payments:[{id:randomUUID(),amount:args.amountMinor,currency:'SAR',status:'paid'}]})};
+      const payments=new PaymentsService(db,controls,audit,{requireOperational:()=>{}},localProvider,contracts);
+      const startsAt=new Date(Date.now()+1600);
+      const t=await db.trip.create({data:{organizationId:center.id,title:'Ordinary points checkout',type:'SHORE_DIVE',
+        capacity:2,status:'OPEN',startsAt,endsAt:new Date(startsAt.getTime()+50)}});
+      await db.operationalSetting.create({data:{key:'trip-price:'+t.id,value:{pricePerSeatMinor:15000,currency:'SAR'}}});
+      await assert.rejects(trips.book(member.id,t.id,2,{points:2000,cashDueMinor:27000}));
+      const booked=await trips.book(member.id,t.id,2,{points:2000,cashDueMinor:28000});
+      assert.equal(booked.contractSnapshot.amountMinor,28000);assert.equal(booked.contractSnapshot.bookingPoints.points,2000);
+      const quote=await contracts.quote(member.id,booked.id);
+      const charge=await payments.create(member.id,{bookingId:booked.id,idempotencyKey:randomUUID(),policyAcceptance:{version:quote.policyVersion,quoteHash:quote.quoteHash}});
+      assert.equal(charge.amountMinor,28000);assert.equal(charge.status,'CAPTURED');
+      await receipt('REVENUE','TRIP_PAYMENT_COLLECTION',charge.id,28000);
+      const invoice=await db.invoice.findUniqueOrThrow({where:{paymentId:charge.id}});
+      assert.equal(invoice.contractSnapshot.bookingPoints.listMinor,30000);assert.equal(invoice.contractSnapshot.amountMinor,28000);
+      await new Promise(r=>setTimeout(r,Math.max(0,t.endsAt.getTime()-Date.now()+40)));
+      await db.booking.update({where:{id:booked.id},data:{status:'CONFIRMED'}});await db.trip.update({where:{id:t.id},data:{status:'COMPLETED'}});
+      await db.auditEvent.create({data:{action:'TRIP_COMPLETED',resource:'Trip',resourceId:t.id,
+        metadata:{attendedParticipantIds:booked.participants.map(p=>p.id),absentParticipantIds:[]}}});
+      const summary=await entitlements.readTripForOwner(owner.id,center.id,booked.id);
+      assert.equal(summary.eligibleGrossAmountMinor,30000,JSON.stringify(summary.blockers));
+      await entitlements.approveTripAllocation(owner.id,center.id,booked.id,{financeAccountId:financeAccount.id,
+        commissionAmountMinor:1500,otherDeductionsMinor:0,expectedEvidenceHash:summary.allocationEvidenceHash});
+      const reward=await loyalty.earnTrip(owner.id,center.id,booked.id,0,'confirmed-costs');
+      assert.equal(reward.points,140);
+      const rid=randomUUID();await db.serializable(tx=>releaseRefundedBookingPoints(tx,charge,rid,0,14000));
+      await db.serializable(tx=>releaseRefundedBookingPoints(tx,charge,rid,0,14000));
+      assert.equal((await db.rewardAccount.findUniqueOrThrow({where:{accountId:member.id}})).points,1140);
     });
     const instructor=await account('trainer');
     let settled;

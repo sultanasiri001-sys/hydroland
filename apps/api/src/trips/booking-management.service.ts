@@ -1,3 +1,4 @@
+import { releaseUncollectedBookingPoints } from '../rewards/booking-points';
 import { tripCalendarReservation } from './trip-calendar-reservation';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { BookingStatus, Prisma } from '@prisma/client';
@@ -194,6 +195,8 @@ export class BookingManagementService {
       const status = command.action === 'CONFIRM' ? 'CONFIRMED' : 'CANCELLED';
       const updatedAt = new Date(Math.max(Date.now(), booking.updatedAt.getTime() + 1));
       if ((await tx.booking.updateMany({ where: { id, status: booking.status, updatedAt: booking.updatedAt }, data: { status, updatedAt } })).count !== 1) throw stale();
+      if(status==='CANCELLED' && (booking.contractSnapshot as {bookingPoints?:unknown}|null)?.bookingPoints)
+        await releaseUncollectedBookingPoints(tx,booking,booking.trip.organizationId);
       const crewNotification = command.action === 'CONFIRM' ? await this.crew.dispatchForConfirmedBooking(booking.tripId, id, tx) : { tripId: booking.tripId, bookingId: id, notifiedCrew: 0 };
       const type = command.action === 'CONFIRM' ? 'BOOKING_CONFIRMED' : 'BOOKING_CANCELLED';
       await tx.notification.create({ data: { accountId: booking.accountId, type, status: 'SENT', sentAt: updatedAt, payload: { bookingId: id, tripId: booking.tripId, seats: booking.seats, financialActionExecuted: false, message: command.action === 'CONFIRM' ? 'تم تأكيد حجزك.' : 'أُلغي حجزك. تُراجع أي مبالغ مدفوعة عبر الإجراءات المالية؛ لم يُنفّذ استرداد تلقائي.' } } });

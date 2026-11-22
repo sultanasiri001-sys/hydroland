@@ -1,3 +1,4 @@
+import { spendablePoints, centerParticipates } from './booking-points';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
@@ -12,11 +13,6 @@ type Tx = Prisma.TransactionClient;
 type Forecast = {organizationId:string;eligibleMinor:number};
 type Draft = {title:string;priceMinor:number;pointsCost:number;platformBps:number;platformCap:number;centerCap:number};
 const monthNow = () => new Date(Date.now() + 3 * 3600000).toISOString().slice(0,7);
-async function availablePoints(tx: Tx, accountId:string) {
-  const balance = await tx.rewardAccount.findUnique({where:{accountId},select:{points:true}});
-  const held = await tx.loyaltyReservation.aggregate({where:{accountId,status:{in:['HELD','AWAITING_PAYMENT']}},_sum:{heldPoints:true}});
-  return (balance?.points ?? 0) - (held._sum.heldPoints ?? 0);
-}
 @Injectable()
 export class LoyaltyPostingService {
   constructor(private readonly db:DatabaseService, private readonly entitlements:CenterServiceEntitlementService) {}
@@ -118,11 +114,15 @@ export class LoyaltyPostingService {
     return this.db.loyaltyOffer.findMany({where:{organizationId,platformApprovedBy:{not:null}},
       select:{id:true,title:true,priceMinor:true,pointsCost:true},orderBy:{createdAt:'desc'},take:100});
   }
+  async bookingBalance(actor:string,organizationId:string) {
+    if(process.env.HYDROLAND_B03_LEDGER_POSTING!=='enabled') return {points:0};
+    return postingTransaction(this.db,async tx=>({points:await centerParticipates(tx,organizationId)?await spendablePoints(tx,actor):0}));
+  }
   async quote(accountId:string,offerId:string) {
     return postingTransaction(this.db,async tx=>{
       const offer=await tx.loyaltyOffer.findFirst({where:{id:offerId,platformApprovedBy:{not:null}}});
       if(!offer) throw new NotFoundException('Offer unavailable.');
-      return {title:offer.title,...offerQuote(offer,await availablePoints(tx,accountId))};
+      return {title:offer.title,...offerQuote(offer,await spendablePoints(tx,accountId))};
     });
   }
   async reserve(accountId:string,offerId:string,requestKey:string,expectedHeld:number,expectedCash:number) {
@@ -136,7 +136,7 @@ export class LoyaltyPostingService {
       }
       const offer=await tx.loyaltyOffer.findFirst({where:{id:offerId,platformApprovedBy:{not:null}}});
       if(!offer) throw new NotFoundException('Offer unavailable.');
-      const q=offerQuote(offer,await availablePoints(tx,accountId));
+      const q=offerQuote(offer,await spendablePoints(tx,accountId));
       if(q.heldPoints!==expectedHeld || q.cashDueMinor!==expectedCash) throw new ConflictException('Review the updated quote.');
 
       const held=await tx.loyaltyOffer.updateMany({where:{id:offerId,platformSpent:{lte:offer.platformCap-q.additionalPlatformBudgetMinor},

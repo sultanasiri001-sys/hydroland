@@ -18,6 +18,8 @@ export class LoyaltyController {
   }
   @Post('centers/:center/offers') propose(@Req() r:Request,@Param('center') center:string,@Body() b:any) {return this.ledger.propose(r.auth.accountId,center,b);}
   @Post('offers/:id/approve') approve(@Req() r:Request,@Param('id') id:string) {return this.ledger.approve(r.auth.accountId,id);}
+  @Header('Cache-Control','private, no-store')
+  @Get('centers/:center/booking-balance') balance(@Req() r:Request,@Param('center') center:string){return this.ledger.bookingBalance(r.auth.accountId,center);}
   @Get('centers/:center/offers') offers(@Param('center') center:string) {return this.ledger.offers(center);}
   @Header('Cache-Control','private, no-store')
   @Get('offers/:id/quote') quote(@Req() r:Request,@Param('id') id:string) {return this.ledger.quote(r.auth.accountId,id);}

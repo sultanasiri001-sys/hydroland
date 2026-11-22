@@ -367,3 +367,24 @@ for(const recovery of ['same-account','different-account','explicit-logout']){
     expect(state.loginCalls).toBe(1);expect(state.authRefreshCalls).toBe(1);expect(state.otherMutations).toEqual([]);
   });
 }
+
+test('regular trip displays points and the balance due before submitting a booking',async({page})=>{
+  await installAuth(page);await installCommonApi(page);
+  await page.route(/\/api\/v1\/trips$/,r=>json(r,[{...trip(),organizationId:'points-center',price:{...price,pricePerSeatMinor:30000}}]));
+  await page.route('**/api/v1/rewards/centers/points-center/booking-balance',r=>json(r,{points:2000}));
+  await page.route('**/api/v1/rewards/centers/points-center/offers',r=>json(r,[]));
+  let submitted;
+  await page.route(/\/api\/v1\/trips\/trip-pay-1\/bookings$/,r=>{
+    submitted=r.request().postDataJSON();return json(r,{id:'points-booking',tripId:'trip-pay-1',price,participants:[]},201);
+  });
+  await page.route('**/api/v1/payments/bookings/points-booking/quote',r=>json(r,{
+    snapshot:{quantity:1,amountMinor:28000,currency:'SAR',issuer:{displayName:'مركز الغوص'}},quoteHash:'cash-quote',policyVersion:'2026-11-21.1'}));
+  await prepare(page);await page.evaluate(()=>window.HydrolandBookings.openBooking('trip-pay-1'));
+  const dialog=page.locator('#booking-dialog');
+  await dialog.getByLabel('استخدم نقاطي لهذا الحجز').check();
+  await expect(dialog.getByLabel('عدد النقاط',{exact:true})).toHaveValue('2000');
+  await expect(dialog.locator('[data-booking-points] output')).toContainText('المتبقي بعد النقاط');
+  await dialog.locator('#confirm-booking').click();
+  await expect.poll(()=>submitted).toEqual({seats:1,redemption:{points:2000,cashDueMinor:28000}});
+  await expect(dialog.locator('[data-checkout-terms]')).toBeVisible();
+});

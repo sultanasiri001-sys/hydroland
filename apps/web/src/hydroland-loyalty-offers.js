@@ -4,7 +4,7 @@
     'قيمة النقاط':'Points value','المبلغ المطلوب':'Amount due','أكّد الاستبدال':'Confirm redemption','كمّل نقاطك':'Complete your points',
     'إلغاء الحجز':'Cancel reservation','بانتظار تأكيد التحصيل':'Awaiting payment confirmation',
     'تم الاستبدال':'Redeemed','تعذرت العملية. أعد تحميل العرض.':'Could not complete the action. Reload the offer.',
-    'متابعة الحجز':'Continue reservation'
+    'متابعة الحجز':'Continue reservation','استخدم نقاطي لهذا الحجز':'Use my points for this booking','المتبقي بعد النقاط':'Due after points','عدد النقاط':'Number of points','الخصم العام من هيدرولاند':'Hydroland general discount'
   });
   const t=value=>locale?.t(value)||value;
   function node(tag,text){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;}
@@ -72,5 +72,45 @@
       });
     }
   }
-  window.HydrolandLoyaltyOffers={render};
+  async function bookingOptions(dialog,confirm,trip,seats,current){
+    if(!dialog || !trip.organizationId || !current())return;
+    const auth=window.HydrolandAuth;
+    const base='/rewards/centers/'+encodeURIComponent(trip.organizationId);
+    let points,offers;
+    try {
+      const balance=await auth.authorizedFetch(base+'/booking-balance',{});
+      if(!balance.ok || !current())return;
+      points=(await balance.json()).points;
+      if(!Number.isSafeInteger(points)||points<=0||!current())return;
+      const response=await auth.authorizedFetch(base+'/offers',{});
+      offers=response.ok?await response.json():[];
+    }catch{return;}
+    if(!current()||!Array.isArray(offers))return;
+    const panel=node('fieldset'),label=node('label'),toggle=node('input'),quantity=node('input'),choice=node('select'),hint=node('output');
+    panel.dataset.bookingPoints='';
+    toggle.type='checkbox';label.append(toggle,document.createTextNode(t('استخدم نقاطي لهذا الحجز')));
+    quantity.type='number';quantity.min='1';quantity.step='1';quantity.setAttribute('aria-label',t('عدد النقاط'));
+    choice.setAttribute('aria-label',t('عروض النقاط'));
+    const total=()=>Number(trip.price?.pricePerSeatMinor)*Number(seats?.value||1);
+    let last;
+    const refresh=()=>{
+      const gross=total(),max=Math.min(points,gross);
+      if(gross!==last){
+        choice.replaceChildren(new Option(t('الخصم العام من هيدرولاند'),''));
+        for(const o of offers.filter(o=>o.priceMinor===gross&&o.pointsCost===gross))choice.add(new Option(o.title,o.id));
+        quantity.max=String(max);quantity.value=String(max);last=gross;
+      }
+      quantity.hidden=hint.hidden=!toggle.checked;choice.hidden=!toggle.checked||choice.options.length===1;
+      hint.textContent=t('المتبقي بعد النقاط')+' '+money(gross-Number(quantity.value));
+    };
+    toggle.onchange=quantity.oninput=refresh;
+    seats?.addEventListener('input',refresh);
+    panel.readDiscount=()=>{
+      refresh();
+      return toggle.checked?{points:Number(quantity.value),cashDueMinor:total()-Number(quantity.value),...(choice.value?{offerId:choice.value}:{})}:undefined;
+    };
+    panel.dispose=()=>seats?.removeEventListener('input',refresh);
+    panel.append(label,quantity,choice,hint);confirm.before(panel);refresh();
+  }
+  window.HydrolandLoyaltyOffers={render,bookingOptions};
 })();

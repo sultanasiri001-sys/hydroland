@@ -1,3 +1,4 @@
+import { releaseUncollectedBookingPoints } from '../rewards/booking-points';
 import { boatBookingInclude, isBoatTrip, requireCenterBoat } from '../trips/center-boat-booking';
 import { RentalDamagePaymentService } from './rental-damage-payment.service';
 import { OrganizationBookingCheckoutService, organizationPayer } from './organization-booking-checkout.service';
@@ -59,11 +60,18 @@ export class PaymentsService {
     const pricing=savedContract&&typeof savedContract.unitPriceMinor==='number'&&typeof savedContract.currency==='string'?{pricePerSeatMinor:savedContract.unitPriceMinor,currency:savedContract.currency}:await this.tripPrice(booking.tripId);
     if(!pricing)throw new ConflictException('Trip price is not configured.');
     if(pricing.currency!=='SAR')throw new ConflictException('Trip payment currency is not supported.');
-    const amountMinor=pricing.pricePerSeatMinor*booking.seats;
+    const amountMinor=savedContract?.bookingPoints && typeof savedContract.amountMinor==='number'
+      ? savedContract.amountMinor : pricing.pricePerSeatMinor*booking.seats;
     if(!Number.isSafeInteger(amountMinor)||amountMinor<0)throw new ConflictException('Trip payment amount is invalid.');
     const originalContract=booking.contractSnapshot!==null&&booking.contractSnapshot!==undefined
       ?this.contracts.buildTrip(booking,pricing.pricePerSeatMinor,pricing.currency):null;
-    if(amountMinor===0)return{bookingId:booking.id,status:'BYPASSED',provider:'FREE_TRIP',amountMinor:0,currency:pricing.currency,policyReview:{required:false,issues:[],states:{payment:paymentPolicy.state}}};
+    if(amountMinor===0 && savedContract?.bookingPoints && originalContract) {
+      if(!input.policyAcceptance)throw new ConflictException('Review and accept the booking conditions.');
+      this.contracts.accepted(originalContract,input.policyAcceptance);
+      await this.audit.record({action:'POINTS_BOOKING_TERMS_ACCEPTED',resource:'Booking',resourceId:booking.id,
+        metadata:{accountId,quoteHash:input.policyAcceptance.quoteHash,version:input.policyAcceptance.version,termsAcceptedAt:new Date().toISOString()}});
+    }
+    if(amountMinor===0)return{bookingId:booking.id,status:'BYPASSED',provider:savedContract?.bookingPoints?'LOYALTY_POINTS':'FREE_TRIP',amountMinor:0,currency:pricing.currency,policyReview:{required:false,issues:[],states:{payment:paymentPolicy.state}}};
     if(amountMinor<100)throw new ConflictException('Trip payment amount is below the provider minimum.');
     const idempotencyKey=input.idempotencyKey.trim();
     const existing=await this.db.payment.findUnique({where:{idempotencyKey}});
@@ -269,6 +277,10 @@ export class PaymentsService {
       await this.syncMoyasarPaymentId(current.id,invoice,tx);
       const status=this.statusFromInvoice(invoice.status,current);
       const updated=status===current.status?current:await tx.payment.update({where:{id:current.id},data:{status}});
+      if((status==='FAILED'||status==='CANCELLED') && (current.contractSnapshot as {bookingPoints?:unknown}|null)?.bookingPoints) {
+        const booking=await tx.booking.findUniqueOrThrow({where:{id:current.bookingId},include:{trip:{select:{organizationId:true}}}});
+        if(booking.status==='CANCELLED')await releaseUncollectedBookingPoints(tx,booking,booking.trip.organizationId);
+      }
       if(status!==current.status)await this.audit.record({action:'PAYMENT_PROVIDER_RECONCILED',resource:'Payment',resourceId:current.id,metadata:{accountId:current.accountId,provider:'MOYASAR',providerReference:current.providerReference,from:current.status,to:status,providerStatus:invoice.status}},tx);
       await this.contracts.recordInvoiceSnapshot(updated,tx);
       return updated;

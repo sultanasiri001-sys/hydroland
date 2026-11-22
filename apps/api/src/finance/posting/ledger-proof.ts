@@ -14,10 +14,10 @@ export async function verifiedEntry(tx: Prisma.TransactionClient, id: string) {
   if (!entry || entry.status !== 'POSTED' || entry.currency !== 'SAR' || entry.amountMinor <= 0
     || !entry.financeAccount.active || entry.financeAccount.organizationId !== entry.organizationId
     || entry.financeAccount.currency !== entry.currency || !entry.approvedByAccountId || !entry.postedByAccountId
-    || !entry.approvedAt || !entry.postedAt || entry.postedAt < entry.approvedAt
+    || !entry.approvedAt || !entry.postedAt || entry.createdAt > entry.approvedAt || entry.postedAt > new Date() || entry.postedAt < entry.approvedAt
     || new Set([entry.requestedByAccountId, entry.approvedByAccountId, entry.postedByAccountId]).size !== 3
     || !entry.approvals.some(a => a.status === 'APPROVED' && a.requestedByAccountId === entry.requestedByAccountId
-      && a.decidedByAccountId === entry.approvedByAccountId && a.decidedAt?.getTime() === entry.approvedAt?.getTime())) {
+      && a.decidedAt && a.createdAt <= a.decidedAt && a.decidedByAccountId === entry.approvedByAccountId && a.decidedAt?.getTime() === entry.approvedAt?.getTime())) {
     throw new ConflictException('An independently approved and posted SAR entry is required.');
   }
   return entry;
