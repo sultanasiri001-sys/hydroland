@@ -152,6 +152,64 @@ async function overlappingReservations(calls, beforeDispatch = async () => {}) {
     const platform = await db.organization.create({ data: { displayName: 'Synthetic platform', kind: 'HYDROLAND_INTERNAL_PLATFORM', status: 'ACTIVE', ownerId: owner.id } });
     await db.operationalSetting.upsert({ where: { key: 'PLATFORM_STAFFING_ORGANIZATION:v1' }, create: { key: 'PLATFORM_STAFFING_ORGANIZATION:v1', value: { organizationId: platform.id } }, update: { value: { organizationId: platform.id } } });
 
+    await check('center receipt and posted refund reconcile to the same captured payment', async () => {
+      const f = await fixture({ amountMinor: 3000 });
+      const { FinanceAccessService } = require(resolve(build, 'finance/finance-access.service.js'));
+      const { FinanceReceivablesService } = require(resolve(build, 'finance/finance-receivables.service.js'));
+      const access = new FinanceAccessService(db);
+      const receivables = new FinanceReceivablesService(db, access);
+      const branch = await db.orgUnit.create({ data: {
+        organizationId: f.center.id, type: 'CENTER', code: 'TEST', nameAr: 'مركز اختبار'
+      } });
+      const position = await db.position.create({ data: {
+        orgUnitId: branch.id, code: 'BRANCH_ACCOUNTANT', titleAr: 'محاسب المركز'
+      } });
+      await db.employment.create({ data: {
+        accountId: f.preparer.id, organizationId: f.center.id, orgUnitId: branch.id,
+        positionId: position.id, workerClass: 'EMPLOYEE', status: 'ACTIVE'
+      } });
+      // The finance shift matrix separately covers opening a shift and its PostgreSQL partial index.
+      const shift = await db.financeAccountantShift.create({ data: {
+        centerOrgUnitId: f.center.id, accountantAccountId: f.preparer.id, openingBalanceMinor: 0
+      } });
+      // The issued invoice identifies the booking. Collection references the settled payment for it.
+      const original = await db.payment.create({ data: {
+        bookingId: f.booking.id, accountId: f.buyer.id, amountMinor: 10000,
+        currency: 'SAR', status: 'PENDING', idempotencyKey: randomUUID()
+      } });
+      const invoice = await db.invoice.create({ data: {
+        paymentId: original.id, number: 'TEST-' + randomUUID(), status: 'ISSUED', issuedAt: new Date()
+      } });
+      const ar = await receivables.createDeferredInvoice(f.preparer.id, {
+        invoiceId: invoice.id, customerAccountId: f.buyer.id, centerOrgUnitId: branch.id,
+        totalMinor: 10000, paidMinor: 0, dueAt: new Date(Date.now() + 86400000)
+      });
+      const receiptNumber = 'COUNTER-' + randomUUID();
+      const collected = await receivables.collect(f.preparer.id, ar.receivableId, {
+        paymentId: f.payment.id, amountMinor: 10000, receiptNumber
+      });
+      assert.equal(collected.outstandingMinor, 0);
+      const receipt = await db.receivablePayment.findUniqueOrThrow({ where: { receiptNumber } });
+      assert.equal(receipt.paymentId, f.payment.id);
+      assert.equal(receipt.collectedByAccountId, f.preparer.id);
+      assert.equal(receipt.shiftId, shift.id);
+      const collectionEntry = await db.financeShiftEntry.findUniqueOrThrow({ where: { paymentId: f.payment.id } });
+      assert.equal(collectionEntry.type, 'REVENUE');
+      assert.equal(collectionEntry.referenceType, 'RECEIVABLE_COLLECTION');
+      assert.equal(collectionEntry.referenceId, receipt.id);
+      assert.equal(collectionEntry.amountMinor, 10000);
+      const operation = await refunds.execute(f.executor.id, f.command);
+      assert.equal(operation.status, 'SUCCEEDED');
+      const payment = await db.payment.findUniqueOrThrow({ where: { id: receipt.paymentId } });
+      const refundEntry = await db.financeEntry.findUniqueOrThrow({ where: { id: f.entry.id } });
+      assert.equal(refundEntry.status, 'POSTED');
+      assert.equal(refundEntry.referenceId, receipt.paymentId);
+      assert.equal(refundEntry.amountMinor, 3000);
+      assert.equal(payment.refundedAmountMinor, refundEntry.amountMinor);
+      assert.equal(collectionEntry.amountMinor - refundEntry.amountMinor, 7000);
+      assert.equal(f.provider.posts, 1);
+    });
+
     await check('real provider HTTP partial then full refund posts the existing ledger and exact cumulative counter', async () => {
       const f = await fixture({ amountMinor: 3000 });
       const first = await refunds.execute(f.executor.id, f.command);
