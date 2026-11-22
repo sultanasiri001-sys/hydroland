@@ -2,6 +2,7 @@ import { Controller, Get, UseGuards } from '@nestjs/common';
 import { AdminGuard } from '../admin/admin.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { inspectCredentialObjectStorage } from '../credentials/credential-object-storage.config';
+import { approvedWhatsAppTemplates } from '../integrations/whatsapp-template-policy';
 import { IntegrationService } from '../integrations/integration.service';
 import { IntegrationReadinessPayload } from '../integrations/integration.types';
 
@@ -53,7 +54,7 @@ export class IntegrationReadinessController {
   getWhatsAppReadiness():IntegrationReadinessPayload {
     const integration = this.integrations.status('WHATSAPP');
     const provider = process.env.HYDROLAND_WHATSAPP_PROVIDER?.trim().toUpperCase() || '';
-    const checks = {lifecycleOperational:integration.status==='PRODUCTION_ENABLED'||integration.status==='SANDBOX',providerConfigured:provider==='UNIFONIC',publicIdConfigured:Boolean(process.env.UNIFONIC_WHATSAPP_PUBLIC_ID?.trim()),secretConfigured:Boolean(process.env.UNIFONIC_WHATSAPP_SECRET?.trim())};
+    const checks = {lifecycleOperational:integration.status==='PRODUCTION_ENABLED'||integration.status==='SANDBOX',providerConfigured:provider==='UNIFONIC',publicIdConfigured:Boolean(process.env.UNIFONIC_WHATSAPP_PUBLIC_ID?.trim()),secretConfigured:Boolean(process.env.UNIFONIC_WHATSAPP_SECRET?.trim()),approvedTemplatesConfigured:approvedWhatsAppTemplates().size>0};
     const locallyConfigured = Object.values(checks).every(Boolean);
     return {service:'hydroland-api',integration:'WHATSAPP',status:integration.status,provider:checks.providerConfigured?'UNIFONIC':'UNCONFIGURED',locallyConfigured,productionReady:locallyConfigured&&integration.status==='PRODUCTION_ENABLED',sandboxReady:locallyConfigured&&integration.status==='SANDBOX',checks,commit:process.env.RENDER_GIT_COMMIT||'local',timestamp:new Date().toISOString()};
   }
