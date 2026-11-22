@@ -3394,3 +3394,8 @@ model CustomerNoticeEmail {
   @@unique([event,sourceType,sourceId,accountId])
   @@index([state,nextAttemptAt])
 }
+
+model CustomerNoticeEmailBudget {
+  month String @id
+  reservedHalalas Int
+}

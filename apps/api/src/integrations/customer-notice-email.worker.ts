@@ -63,8 +63,34 @@ export class CustomerNoticeEmailWorker implements OnModuleInit, OnModuleDestroy 
     if((row.firstAttemptAt&&Date.now()-row.firstAttemptAt.getTime()>23*60*60_000)||(row.recipientHash&&row.recipientHash!==hash)){
       await finish('REVIEW_REQUIRED');return;
     }
-    const pinned=await this.db.customerNoticeEmail.updateMany({where:claim,data:{recipientHash:hash,firstAttemptAt:row.firstAttemptAt??new Date()}});
-    if(!pinned.count)return;
+    // Charge a conservative upper bound for each transport attempt, including ambiguous retries.
+    // Both values are configured in SAR halalas. Without an approved bound the notice stays queued.
+    const cap = Number(process.env.HYDROLAND_CUSTOMER_EMAIL_MONTHLY_CAP_HALALAS);
+    const cost = Number(process.env.HYDROLAND_CUSTOMER_EMAIL_MAX_ATTEMPT_HALALAS);
+    if (!Number.isSafeInteger(cap) || cap > 2147483647 || !Number.isSafeInteger(cost) || cost <= 0 || cost > cap) {
+      await later(60 * 60_000);
+      return;
+    }
+    const reserved = await this.db.$executeRaw`
+      WITH owner AS (
+        SELECT id FROM "CustomerNoticeEmail"
+        WHERE id = ${row.id} AND attempts = ${row.attempts}::int AND state = 'PENDING'
+        FOR UPDATE
+      ), budget AS (
+        INSERT INTO "CustomerNoticeEmailBudget" ("month", "reservedHalalas")
+        SELECT to_char(now() AT TIME ZONE 'Asia/Riyadh', 'YYYY-MM'), ${cost}::int FROM owner
+        ON CONFLICT ("month") DO UPDATE
+          SET "reservedHalalas" = "CustomerNoticeEmailBudget"."reservedHalalas" + EXCLUDED."reservedHalalas"
+          WHERE "CustomerNoticeEmailBudget"."reservedHalalas" <= ${cap - cost}::int
+        RETURNING "month"
+      )
+      UPDATE "CustomerNoticeEmail" SET "recipientHash" = ${hash},
+        "firstAttemptAt" = COALESCE("firstAttemptAt", timezone('UTC', CURRENT_TIMESTAMP))
+      FROM budget WHERE id = ${row.id}`;
+    if (!reserved) {
+      await later(60 * 60_000);
+      return;
+    }
     try{
       const receipt=await this.email.sendCustomerNotice({id:row.id,to:account.email,event,sourceType:row.sourceType,sourceId:row.sourceId});
       await this.db.customerNoticeEmail.updateMany({where:claim,data:{state:'PROVIDER_ACCEPTED',providerMessageId:receipt.messageId}});
