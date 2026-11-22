@@ -22,7 +22,7 @@ export class AuditService {
   async recordWebhookOnce(input:{provider:string;eventId:string;eventType:string}){
     const replayKey=`${input.provider}:${input.eventId}`;
     return this.db.$transaction(async tx=>{
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${replayKey})::bigint)`;
+      await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${replayKey})::bigint)`;
       const existing=await tx.auditEvent.findFirst({
         where:{action:'integration.webhook.verified',resource:'integration.webhook',resourceId:replayKey},
         select:{id:true},
