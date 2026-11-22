@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException, Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 
 export interface AuthorizedStockIssue {
@@ -15,6 +15,22 @@ export interface AuthorizedStockIssue {
 @Injectable()
 export class InventoryIssueLedgerService {
   constructor(private readonly db: DatabaseService) {}
+
+  async acknowledge(organizationId: string, requestId: string, accountId: string) {
+    const where = { organizationId, requestId, custodianId: accountId };
+    return this.db.serializable(async tx => {
+      await tx.warehouseIssuePosting.updateMany({
+        where: { ...where, acknowledgedAt: null },
+        data: { acknowledgedAt: new Date() },
+      });
+      const receipt = await tx.warehouseIssuePosting.findFirst({
+        where,
+        select: { requestId: true, lotId: true, quantity: true, acknowledgedAt: true },
+      });
+      if (!receipt) throw new NotFoundException('العهدة غير متاحة.');
+      return receipt;
+    });
+  }
 
   async post(issue: AuthorizedStockIssue) {
     const {organizationId,requestId,lotId,quantity,custodianId,approvedBy,postedBy} = issue;

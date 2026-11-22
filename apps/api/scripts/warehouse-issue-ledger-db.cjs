@@ -17,6 +17,14 @@ async function check() {
     assert.equal(await db.warehouseIssuePosting.count({where:{organizationId}}),1);
     await assert.rejects(ledger.post({...issue,quantity:2}),e=>e.getStatus?.()===409);
     await assert.rejects(ledger.post({...issue,organizationId:randomUUID()}),e=>e.getStatus?.()===409);
+    for (const [org, actor] of [[organizationId, 'another-account'], [randomUUID(), issue.custodianId]]) {
+      await assert.rejects(ledger.acknowledge(org, issue.requestId, actor), error => error.getStatus?.() === 404);
+    }
+    assert.equal((await db.warehouseIssuePosting.findFirstOrThrow({ where: { organizationId } })).acknowledgedAt, null);
+    const receipts = await Promise.all(Array.from({length: 4}, () =>
+      ledger.acknowledge(organizationId, issue.requestId, issue.custodianId)));
+    assert.ok(receipts.every(receipt => receipt.acknowledgedAt instanceof Date &&
+      receipt.acknowledgedAt.getTime() === receipts[0].acknowledgedAt.getTime() && receipt.quantity === 3));
     const competing=await Promise.allSettled([1,2].map(()=>ledger.post({...issue,requestId:randomUUID(),quantity:6})));
     assert.equal(competing.filter(r=>r.status==='fulfilled').length,1);
     assert.equal(competing.find(r=>r.status==='rejected').reason.getStatus(),409);
