@@ -1,4 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { createHash } from 'node:crypto';
+import { protectSecret } from '../auth/mfa-crypto';
+import { BadRequestException, ConflictException, UnauthorizedException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 
@@ -11,6 +13,43 @@ const inAppNotification: Prisma.NotificationWhereInput = {
 @Injectable()
 export class NotificationsService {
   constructor(private readonly db:DatabaseService){}
+
+  private deviceToken(value: unknown): string {
+    if (typeof value !== 'string' || value.length > 256 || !/^(?:Expo|Exponent)PushToken\[[A-Za-z0-9_-]+\]$/.test(value)) {
+      throw new BadRequestException('Invalid push token.');
+    }
+    return value;
+  }
+
+  async registerDevice(accountId: string, sessionId: string, value: unknown) {
+    const token = this.deviceToken(value);
+    const hash = createHash('sha256').update(token).digest('hex');
+    const encrypted = protectSecret(token, 'push-device:' + sessionId);
+    try {
+      await this.db.serializable(async tx => {
+        // Release an expired binding without displacing another active session.
+        await tx.$executeRaw`UPDATE "Session" SET "pushTokenHash"=NULL, "pushTokenCiphertext"=NULL
+          WHERE "pushTokenHash"=${hash} AND "expiresAt" <= timezone('UTC', CURRENT_TIMESTAMP)`;
+        const changed = await tx.$executeRaw`UPDATE "Session" SET "pushTokenHash"=${hash}, "pushTokenCiphertext"=${encrypted}
+          WHERE id::text=${sessionId} AND "accountId"::text=${accountId} AND "revokedAt" IS NULL
+          AND "expiresAt" > timezone('UTC', CURRENT_TIMESTAMP) AND "tokenHash" NOT LIKE 'mfa:%'`;
+        if (!changed) throw new UnauthorizedException('A current session is required.');
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2010' && error.meta?.code === '23505') {
+        throw new ConflictException('Device registration is unavailable.');
+      }
+      throw error;
+    }
+    return {registered: true};
+  }
+
+  async unregisterDevice(accountId: string, sessionId: string, value: unknown) {
+    const hash = createHash('sha256').update(this.deviceToken(value)).digest('hex');
+    await this.db.$executeRaw`UPDATE "Session" SET "pushTokenHash"=NULL, "pushTokenCiphertext"=NULL
+      WHERE id::text=${sessionId} AND "accountId"::text=${accountId} AND "pushTokenHash"=${hash}`;
+    return {registered: false};
+  }
 
   list(accountId:string){
     return this.db.notification.findMany({where:{accountId,...inAppNotification},orderBy:{createdAt:'desc'},take:100});

@@ -357,6 +357,8 @@ model OrganizationMember {
 }
 
 model Session {
+  pushTokenHash String? @unique
+  pushTokenCiphertext String?
   id String @id @default(uuid())
   accountId String
   tokenHash String @unique
