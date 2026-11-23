@@ -16,7 +16,7 @@ const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve
 const response=(value,status=200)=>new Response(status===204?null:JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
 const packageFor=tripId=>{const manifest={schemaVersion:1,tripId,briefingVersion:1,files:[],generatedAt:'2026-10-26T00:00:00Z'};return{tripId,briefingVersion:1,manifest,checksum:hash(stable(manifest)),generatedAt:manifest.generatedAt}};
 const text=node=>typeof node==='string'?node:Array.isArray(node)?node.map(text).join(' '):node&&typeof node==='object'?text(node.props?.children):'';
-function world(){
+function world(notifications = {}){
  const secure=new Map(),files=new Map(),dirs=new Set(),modules=new Map(),calls=[],navigations=[],appListeners=new Set();
  let initialFocus=true,handler=null,writeHook=null,digestHook=null,params={tripId:'trip-a'},component=null,tree=null,dirty=false,cursor=0;
  const states=[],hooks=[],pending=[];
@@ -53,11 +53,11 @@ function world(){
   throw new Error('Unexpected synthetic route '+route);
  };
  const native={
-  'expo-secure-store':secureStore,'expo-file-system':{Directory,File,Paths:{document:'/sandbox'}},
+  'expo-constants':{__esModule:true,default:{expoConfig:{extra:{eas:{projectId:'synthetic-project'}}}}}, 'expo-notifications':notifications, 'expo-secure-store':secureStore,'expo-file-system':{Directory,File,Paths:{document:'/sandbox'}},
   'expo-crypto':{randomUUID,CryptoDigestAlgorithm:{SHA256:'SHA-256'},digestStringAsync:async(_,value,options)=>{if(digestHook)await digestHook();return createHash('sha256').update(value).digest(options?.encoding??'hex')},digest:async(_,value)=>{if(digestHook)await digestHook();const bytes=createHash('sha256').update(new Uint8Array(value)).digest();return bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength)}},
   react,'react/jsx-runtime':{jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props}),Fragment:'Fragment'},
   'expo-router':{useLocalSearchParams:()=>params,router:{replace:value=>navigations.push(value)},useFocusEffect:fn=>effect(()=>initialFocus?fn():undefined,[fn])},
-  'react-native':{SafeAreaView:'SafeAreaView',Text:'Text',View:'View',Pressable:'Pressable',TextInput:'TextInput',StyleSheet:{create:value=>value},AppState:{addEventListener:(_,fn)=>{appListeners.add(fn);return{remove:()=>appListeners.delete(fn)}}}},
+  'react-native':{Platform:{OS:'android'},SafeAreaView:'SafeAreaView',Text:'Text',View:'View',Pressable:'Pressable',TextInput:'TextInput',StyleSheet:{create:value=>value},AppState:{addEventListener:(_,fn)=>{appListeners.add(fn);return{remove:()=>appListeners.delete(fn)}}}},
  };
  function load(rel){
   const file=path.resolve(root,rel);if(modules.has(file))return modules.get(file).exports;
@@ -81,6 +81,31 @@ function world(){
 }
 let passed=0;
 async function check(name,run){await run();passed++;console.log('PASS',name)}
+await check('native enrollment uses the signed-in session after permission and does not submit a stale device response', async () => {
+ const sequence=[];
+ const native={AndroidImportance:{DEFAULT:3},setNotificationChannelAsync:async()=>{sequence.push('channel')},
+   getPermissionsAsync:async()=>({granted:false,canAskAgain:true}),requestPermissionsAsync:async()=>{sequence.push('permission');return {granted:true}},
+   getExpoPushTokenAsync:async({projectId})=>{assert.equal(projectId,'synthetic-project');sequence.push('token');return {data:'ExpoPushToken[fixture]'}}};
+ const w=world(native),register=w.load('src/register-push.ts').registerDevicePush;
+ assert.equal(await register(),'guest');assert.deepEqual(sequence,[]);
+ await w.login();const session=w.load('src/session.ts'),saved=await session.loadSession();
+ w.setHandler((route,init,normal)=>{
+   if(route!=='/notifications/device/register')return normal(route,init);
+   assert.equal(init.headers.get('Authorization'),'Bearer '+saved.accessToken);
+   assert.deepEqual(JSON.parse(init.body),{token:'ExpoPushToken[fixture]'});sequence.push('register');return response({registered:true});
+ });
+ assert.equal(await register(),'enabled');assert.deepEqual(sequence,['channel','permission','token','register']);
+ const gate=deferred();native.getExpoPushTokenAsync=()=>gate.promise;
+ const late=register();await w.settle();await w.login('B');
+ gate.resolve({data:'ExpoPushToken[stale]'});await assert.rejects(()=>late,/Session changed/);
+ assert.equal(w.calls.filter(call=>call.route==='/notifications/device/register').length,1);
+});
+await check('denied native permission does not request or register a token',async()=>{
+ const w=world({AndroidImportance:{DEFAULT:3},setNotificationChannelAsync:async()=>{},
+   getPermissionsAsync:async()=>({granted:false,canAskAgain:false})});
+ await w.login();assert.equal(await w.load('src/register-push.ts').registerDevicePush(),'denied');
+ assert.equal(w.calls.filter(call=>call.route==='/notifications/device/register').length,0);
+});
 await check('protected /me, not unverified JWT sub, supplies cache namespace',async()=>{
  const w=world();await w.login();const scope=await w.load('src/session.ts').getSessionScope();assert.equal(scope.accountId,'verified-account');assert.notEqual(scope.accountId,'untrusted-decoded-subject');await w.download();assert.ok([...w.files.keys()].every(key=>key.includes('/verified-account/')));
 });
