@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { createHash, createHmac, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { DatabaseService } from '../database/database.service';
 import { GoogleIdentityService } from './google-identity.service';
 import { MfaService } from './mfa.service';
@@ -134,21 +134,26 @@ export class AuthService {
       if(!session||session.revokedAt||session.expiresAt<=new Date()||session.account.status!=='ACTIVE'||!session.account.emailVerifiedAt)throw new UnauthorizedException('Invalid session.');
       const consumed=await tx.session.updateMany({where:{id:session.id,revokedAt:null,expiresAt:{gt:new Date()}},data:{revokedAt:new Date()}});
       if(consumed.count!==1)throw new UnauthorizedException('Invalid session.');
-      // Revocation removes the old binding in this transaction. Carry it only to
-      // the replacement session for the same account; an ordinary login starts unbound.
-      const nextId = randomUUID();
-      let device: {pushTokenHash: string; pushTokenCiphertext: string} | undefined;
+      const next = await this.issue(session.accountId, tx);
       if (session.pushTokenHash && session.pushTokenCiphertext) {
+        const tokenHash = this.tokenHash(next.refreshToken);
+        const successor = await tx.session.findUniqueOrThrow({where:{tokenHash},select:{id:true}});
+        let ciphertext: string | undefined;
         try {
-          const token = revealSecret(session.pushTokenCiphertext, 'push-device:' + session.id);
-          if (createHash('sha256').update(token).digest('hex') === session.pushTokenHash) {
-            device = {pushTokenHash: session.pushTokenHash, pushTokenCiphertext: protectSecret(token, 'push-device:' + nextId)};
+          const device = revealSecret(session.pushTokenCiphertext, 'push-device:' + session.id);
+          if (this.tokenHash(device) === session.pushTokenHash) {
+            ciphertext = protectSecret(device, 'push-device:' + successor.id);
           }
         } catch {
-          // After a device encryption key change the mobile client must register again.
+          // An unreadable device binding requires enrollment again; authentication can continue.
+        }
+        if (ciphertext) {
+          await tx.session.update({where:{id:successor.id},data:{
+            pushTokenHash:session.pushTokenHash, pushTokenCiphertext:ciphertext,
+          }});
         }
       }
-      return this.issue(session.accountId, tx, {id: nextId, ...device});
+      return next;
     });
   }
 
@@ -205,10 +210,10 @@ export class AuthService {
   private googleMappedAccountId(value:unknown){if(!value||typeof value!=='object'||Array.isArray(value))return null;const accountId=(value as Record<string,unknown>).accountId;return typeof accountId==='string'&&accountId?accountId:null}
   private googleSubjectKey(subject:string){return`auth.google.subject.${createHash('sha256').update(subject).digest('hex')}`}
 
-  private async issue(accountId:string,tx:Prisma.TransactionClient=this.db, replacement?:{id:string;pushTokenHash?:string;pushTokenCiphertext?:string}):Promise<Tokens>{
-    if(tx===this.db)return this.db.serializable(inner=>this.issue(accountId,inner,replacement));
+  private async issue(accountId:string,tx:Prisma.TransactionClient=this.db):Promise<Tokens>{
+    if(tx===this.db)return this.db.serializable(inner=>this.issue(accountId,inner));
     await lockActiveSessionAccount(tx,accountId);
-    const refreshToken=randomBytes(48).toString('base64url');const session=await tx.session.create({data:{...replacement,accountId,tokenHash:this.tokenHash(refreshToken),expiresAt:new Date(Date.now()+2592000000)}});return{accessToken:this.access(accountId,session.id),refreshToken};
+    const refreshToken=randomBytes(48).toString('base64url');const session=await tx.session.create({data:{accountId,tokenHash:this.tokenHash(refreshToken),expiresAt:new Date(Date.now()+2592000000)}});return{accessToken:this.access(accountId,session.id),refreshToken};
   }
   private access(id:string,sessionId:string){const secret=process.env.JWT_SECRET;if(!secret||secret.length<32)throw new Error('JWT_SECRET required.');const now=Math.floor(Date.now()/1000),encode=(value:object)=>Buffer.from(JSON.stringify(value)).toString('base64url'),body=`${encode({alg:'HS256',typ:'JWT'})}.${encode({sub:id,sid:sessionId,iat:now,exp:now+900})}`;return `${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`}
   verifyAccessToken(token:string){if(typeof token!=='string'||token.length<16)throw new UnauthorizedException('Invalid access token.');const parts=token.split('.');if(parts.length!==3)throw new UnauthorizedException('Invalid access token.');const [header,payload,signature]=parts,secret=process.env.JWT_SECRET;if(!header||!payload||!signature||!secret)throw new UnauthorizedException('Invalid access token.');const expected=createHmac('sha256',secret).update(`${header}.${payload}`).digest('base64url');if(signature.length!==expected.length||!timingSafeEqual(Buffer.from(signature),Buffer.from(expected)))throw new UnauthorizedException('Invalid access token.');try{const claims=JSON.parse(Buffer.from(payload,'base64url').toString()) as{sub?:unknown;sid?:unknown;exp?:unknown};if(typeof claims.sub!=='string'||!claims.sub||typeof claims.exp!=='number'||!Number.isFinite(claims.exp)||claims.exp<=Math.floor(Date.now()/1000))throw new UnauthorizedException('Invalid access token.');if(typeof claims.sid==='string'&&claims.sid)return{accountId:claims.sub,sessionId:claims.sid};if(this.allowSessionlessE2eAccess())return{accountId:claims.sub,sessionId:null};throw new UnauthorizedException('Invalid access token.')}catch(error){if(error instanceof UnauthorizedException)throw error;throw new UnauthorizedException('Invalid access token.')}}
