@@ -424,9 +424,12 @@ jobs:
           DATABASE_URL: postgresql://hydroland:hydroland@localhost:5433/commerce_notice_test
         run: |
           psql postgresql://hydroland:hydroland@localhost:5433/hydroland -v ON_ERROR_STOP=1 -c 'CREATE DATABASE commerce_notice_test'
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261123003000_customer_notice_email_budget/migration.sql
           npm --workspace @hydroland/api exec -- prisma db push --skip-generate
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261122233000_customer_notification_email/migration.sql
           node apps/api/scripts/customer-notice-email-db-e2e.mjs
+          node apps/api/scripts/customer-email-delivery-db-e2e.mjs
+          node apps/api/scripts/sms-dlr-db-e2e.mjs
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261123034000_session_push_registration/migration.sql
           node apps/api/scripts/push-session-db-e2e.mjs
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261123053000_trial_push_dispatch/migration.sql

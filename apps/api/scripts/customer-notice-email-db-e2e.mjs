@@ -1,3 +1,4 @@
+import {reconcileCustomerEmail} from './reconcile-customer-email.mjs';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
@@ -19,12 +20,14 @@ const provider=createServer(async(req,res)=>{
   let raw='';for await(const chunk of req)raw+=chunk;
   requests.push({key:req.headers['idempotency-key'],body:JSON.parse(raw)});
   if(rejectNext){rejectNext=false;res.writeHead(503);res.end('{}');return;}
-  res.end(JSON.stringify({id:'provider-'+requests.length}));
+  requests.at(-1).id=randomUUID(); res.end(JSON.stringify({id:requests.at(-1).id}));
 });
 provider.listen(0,'127.0.0.1');await once(provider,'listening');
 Object.assign(process.env,{NODE_ENV:'test',HYDROLAND_INTEGRATION_EMAIL_STATUS:'SANDBOX',HYDROLAND_EMAIL_PROVIDER:'RESEND',
   RESEND_API_BASE_URL:'http://127.0.0.1:'+provider.address().port,RESEND_API_KEY:'local-fixture',
   HYDROLAND_EMAIL_FROM:'Hydroland <sender@example.invalid>',HYDROLAND_PUBLIC_WEB_ORIGIN:'https://web.example.invalid'});
+process.env.HYDROLAND_CUSTOMER_EMAIL_MONTHLY_CAP_HALALAS='10';
+process.env.HYDROLAND_CUSTOMER_EMAIL_MAX_ATTEMPT_HALALAS='2';
 delete process.env.HYDROLAND_EMAIL_TEST_RECIPIENT;
 const noopAudit={record:async()=>{}};
 const email=new EmailDeliveryService(new IntegrationService(noopAudit),noopAudit);
@@ -99,5 +102,43 @@ try{
   assert.equal(requests.length,4);assert.deepEqual(requests[3].body.to,[buyer.email]);
   assert.deepEqual(await invoices.download(buyer.id,docKey),file.buffer);
   await assert.rejects(()=>invoices.download(other.id,docKey),e=>e.getStatus()===404);
+  // Four transport attempts (including the ambiguous first attempt) have reserved eight halalas.
+  // Two additional purchases race for the final two halalas on the same monthly ledger.
+  for (const account of [buyer, other]) {
+    const extra = await db.booking.create({data:{accountId:account.id,tripId:trip.id,status:'CONFIRMED'}});
+    await db.notification.create({data:{...confirmation,accountId:account.id,payload:{bookingId:extra.id}}});
+  }
+  await Promise.all([worker().poll(), worker().poll()]);
+  assert.equal(requests.length, 5);
+  const budget = await db.$queryRaw`SELECT "reservedHalalas" FROM "CustomerNoticeEmailBudget"`;
+  assert.deepEqual(budget, [{reservedHalalas:10}]);
+  const waiting = await db.customerNoticeEmail.findMany({where:{state:'PENDING'}});
+  assert.equal(waiting.length, 1);
+  assert.equal(waiting[0].firstAttemptAt, null);
+  async function retryWaiting() {
+    await db.customerNoticeEmail.update({where:{id:waiting[0].id},data:{nextAttemptAt:new Date(0)}});
+    await worker().poll();
+  }
+  delete process.env.HYDROLAND_CUSTOMER_EMAIL_MAX_ATTEMPT_HALALAS;
+  await retryWaiting();
+  assert.equal(requests.length, 5);
+  process.env.HYDROLAND_CUSTOMER_EMAIL_MAX_ATTEMPT_HALALAS='2';
+  process.env.HYDROLAND_CUSTOMER_EMAIL_MONTHLY_CAP_HALALAS='12';
+  await retryWaiting();
+  assert.equal(requests.length, 6);
+  for (const [sourceId, sent] of [[booking.id, requests[1]],[order.id,requests[2]]]) {
+    const outbox=await db.customerNoticeEmail.findFirstOrThrow({where:{sourceId}});
+    assert.equal(outbox.providerMessageId,sent.id);
+    const receipt=async (target,opts)=>{
+      assert.equal(target,'https://api.resend.com/emails/'+sent.id);assert.equal(opts.method,'GET');
+      return Response.json({object:'email',id:sent.id,to:sent.body.to,cc:[],bcc:[],last_event:'delivered'});
+    };
+    assert.equal(await reconcileCustomerEmail(db,outbox.id,'fixture',receipt),'RECORDED');
+    assert.equal(await reconcileCustomerEmail(db,outbox.id,'fixture',()=>assert.fail('extra lookup')),'ALREADY_RECORDED');
+    assert.equal(await db.auditEvent.count({where:{resourceId:outbox.id,action:'customer_email.provider_delivered'}}),1);
+  }
+  const ledger=await db.$queryRaw`SELECT "reservedHalalas" FROM "CustomerNoticeEmailBudget"`;
+  assert.deepEqual(ledger,[{reservedHalalas:12}]); assert.equal(requests.length,6);
+  console.log('PASS booking and invoice: source, recipient inbox, budgeted send, stored provider ID, matched delivery receipt, single audit, unchanged cost on replay.');
   console.log('PASS: customer inbox, booking email, issued invoice link, recipient isolation, restricted trial, concurrent workers and replay.');
 }finally{await db.$disconnect();provider.closeAllConnections();await new Promise(resolve=>provider.close(resolve));}
