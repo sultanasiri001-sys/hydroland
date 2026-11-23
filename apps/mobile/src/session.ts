@@ -55,6 +55,20 @@ async function identify(value:Session){
  return profile.id;
 }
 export async function login(email:string,password:string,isCurrent:()=>boolean=()=>true){
+ // The previous account can still own a server session on this installation.
+ // Revoke it before a replacement login, including a rotation that finishes during logout.
+ const previousEpoch = generation;
+ let previous = await loadSession();
+ assertSessionGeneration(previousEpoch);
+ while (previous) {
+   if (!isCurrent()) throw new SessionChangedError();
+   await apiFetch('/auth/logout', {method:'POST', body:JSON.stringify({refreshToken:previous.refreshToken})});
+   assertSessionGeneration(previousEpoch);
+   if (refreshing) await refreshing.promise;
+   assertSessionGeneration(previousEpoch);
+   if (current?.refreshToken === previous.refreshToken) break;
+   previous = current;
+ }
  const clearing=clearSession(),epoch=generation;await clearing;assertSessionGeneration(epoch);if(!isCurrent())throw new SessionChangedError();
  const next=await apiFetch<Session>('/auth/login',{method:'POST',body:JSON.stringify({email,password})});
  // MFA challenges are not sessions. The existing shell has no MFA completion UI.

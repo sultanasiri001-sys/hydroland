@@ -357,6 +357,8 @@ model OrganizationMember {
 }
 
 model Session {
+  pushTokenHash String? @unique
+  pushTokenCiphertext String?
   id String @id @default(uuid())
   accountId String
   tokenHash String @unique
@@ -3393,4 +3395,20 @@ model CustomerNoticeEmail {
   createdAt DateTime @default(dbgenerated("timezone('UTC', CURRENT_TIMESTAMP)"))
   @@unique([event,sourceType,sourceId,accountId])
   @@index([state,nextAttemptAt])
+}
+
+model TrialPushDispatch {
+  notificationId String @id
+  accountId String
+  sessionId String
+  bindingDigest String
+  state String
+  ticketId String? @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CustomerNoticeEmailBudget {
+  month String @id
+  reservedHalalas Int
 }

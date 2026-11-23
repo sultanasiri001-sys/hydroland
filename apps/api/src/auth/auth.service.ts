@@ -5,6 +5,7 @@ import { DatabaseService } from '../database/database.service';
 import { GoogleIdentityService } from './google-identity.service';
 import { MfaService } from './mfa.service';
 import { assertAuthEmailRecipient } from './email-trial-policy';
+import { protectSecret, revealSecret } from './mfa-crypto';
 import { lockActiveSessionAccount } from './account-session-lock';
 
 type Credentials={email:string;password:string};
@@ -133,7 +134,26 @@ export class AuthService {
       if(!session||session.revokedAt||session.expiresAt<=new Date()||session.account.status!=='ACTIVE'||!session.account.emailVerifiedAt)throw new UnauthorizedException('Invalid session.');
       const consumed=await tx.session.updateMany({where:{id:session.id,revokedAt:null,expiresAt:{gt:new Date()}},data:{revokedAt:new Date()}});
       if(consumed.count!==1)throw new UnauthorizedException('Invalid session.');
-      return this.issue(session.accountId,tx);
+      const next = await this.issue(session.accountId, tx);
+      if (session.pushTokenHash && session.pushTokenCiphertext) {
+        const tokenHash = this.tokenHash(next.refreshToken);
+        const successor = await tx.session.findUniqueOrThrow({where:{tokenHash},select:{id:true}});
+        let ciphertext: string | undefined;
+        try {
+          const device = revealSecret(session.pushTokenCiphertext, 'push-device:' + session.id);
+          if (this.tokenHash(device) === session.pushTokenHash) {
+            ciphertext = protectSecret(device, 'push-device:' + successor.id);
+          }
+        } catch {
+          // An unreadable device binding requires enrollment again; authentication can continue.
+        }
+        if (ciphertext) {
+          await tx.session.update({where:{id:successor.id},data:{
+            pushTokenHash:session.pushTokenHash, pushTokenCiphertext:ciphertext,
+          }});
+        }
+      }
+      return next;
     });
   }
 

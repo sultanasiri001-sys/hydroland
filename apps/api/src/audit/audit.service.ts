@@ -1,3 +1,4 @@
+import { observeSms, type SmsBinding } from '../integrations/unifonic-dlr';
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
@@ -19,7 +20,11 @@ export class AuditService {
     return tx.auditEvent.create({data:{action:input.action,resource:input.resource,resourceId:input.resourceId,actorId,metadata:input.metadata as never}});
   }
 
-  async recordWebhookOnce(input:{provider:string;eventId:string;eventType:string}){
+  recordSmsSubmission(binding:SmsBinding){
+    return this.db.$transaction(tx => observeSms(tx,binding,'submission'));
+  }
+
+  async recordWebhookOnce(input:{provider:string;eventId:string;eventType:string}, sms?:SmsBinding){
     const replayKey=`${input.provider}:${input.eventId}`;
     return this.db.$transaction(async tx=>{
       await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${replayKey})::bigint)`;
@@ -28,6 +33,7 @@ export class AuditService {
         select:{id:true},
       });
       if(existing)return false;
+      if(sms) await observeSms(tx,sms,'dlr');
       await tx.auditEvent.create({
         data:{
           action:'integration.webhook.verified',

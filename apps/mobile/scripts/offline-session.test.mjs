@@ -16,7 +16,7 @@ const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve
 const response=(value,status=200)=>new Response(status===204?null:JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
 const packageFor=tripId=>{const manifest={schemaVersion:1,tripId,briefingVersion:1,files:[],generatedAt:'2026-10-26T00:00:00Z'};return{tripId,briefingVersion:1,manifest,checksum:hash(stable(manifest)),generatedAt:manifest.generatedAt}};
 const text=node=>typeof node==='string'?node:Array.isArray(node)?node.map(text).join(' '):node&&typeof node==='object'?text(node.props?.children):'';
-function world(){
+function world(notifications = {}){
  const secure=new Map(),files=new Map(),dirs=new Set(),modules=new Map(),calls=[],navigations=[],appListeners=new Set();
  let initialFocus=true,handler=null,writeHook=null,digestHook=null,params={tripId:'trip-a'},component=null,tree=null,dirty=false,cursor=0;
  const states=[],hooks=[],pending=[];
@@ -53,11 +53,11 @@ function world(){
   throw new Error('Unexpected synthetic route '+route);
  };
  const native={
-  'expo-secure-store':secureStore,'expo-file-system':{Directory,File,Paths:{document:'/sandbox'}},
+  'expo-constants':{__esModule:true,default:{expoConfig:{extra:{eas:{projectId:'synthetic-project'}}}}}, 'expo-notifications':notifications, 'expo-secure-store':secureStore,'expo-file-system':{Directory,File,Paths:{document:'/sandbox'}},
   'expo-crypto':{randomUUID,CryptoDigestAlgorithm:{SHA256:'SHA-256'},digestStringAsync:async(_,value,options)=>{if(digestHook)await digestHook();return createHash('sha256').update(value).digest(options?.encoding??'hex')},digest:async(_,value)=>{if(digestHook)await digestHook();const bytes=createHash('sha256').update(new Uint8Array(value)).digest();return bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength)}},
   react,'react/jsx-runtime':{jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props}),Fragment:'Fragment'},
   'expo-router':{useLocalSearchParams:()=>params,router:{replace:value=>navigations.push(value)},useFocusEffect:fn=>effect(()=>initialFocus?fn():undefined,[fn])},
-  'react-native':{SafeAreaView:'SafeAreaView',Text:'Text',View:'View',Pressable:'Pressable',TextInput:'TextInput',StyleSheet:{create:value=>value},AppState:{addEventListener:(_,fn)=>{appListeners.add(fn);return{remove:()=>appListeners.delete(fn)}}}},
+  'react-native':{Platform:{OS:'android'},SafeAreaView:'SafeAreaView',Text:'Text',View:'View',Pressable:'Pressable',TextInput:'TextInput',StyleSheet:{create:value=>value},AppState:{addEventListener:(_,fn)=>{appListeners.add(fn);return{remove:()=>appListeners.delete(fn)}}}},
  };
  function load(rel){
   const file=path.resolve(root,rel);if(modules.has(file))return modules.get(file).exports;
@@ -81,6 +81,31 @@ function world(){
 }
 let passed=0;
 async function check(name,run){await run();passed++;console.log('PASS',name)}
+await check('native enrollment uses the signed-in session after permission and does not submit a stale device response', async () => {
+ const sequence=[];
+ const native={AndroidImportance:{DEFAULT:3},setNotificationChannelAsync:async()=>{sequence.push('channel')},
+   getPermissionsAsync:async()=>({granted:false,canAskAgain:true}),requestPermissionsAsync:async()=>{sequence.push('permission');return {granted:true}},
+   getExpoPushTokenAsync:async({projectId})=>{assert.equal(projectId,'synthetic-project');sequence.push('token');return {data:'ExpoPushToken[fixture]'}}};
+ const w=world(native),register=w.load('src/register-push.ts').registerDevicePush;
+ assert.equal(await register(),'guest');assert.deepEqual(sequence,[]);
+ await w.login();const session=w.load('src/session.ts'),saved=await session.loadSession();
+ w.setHandler((route,init,normal)=>{
+   if(route!=='/notifications/device/register')return normal(route,init);
+   assert.equal(init.headers.get('Authorization'),'Bearer '+saved.accessToken);
+   assert.deepEqual(JSON.parse(init.body),{token:'ExpoPushToken[fixture]'});sequence.push('register');return response({registered:true});
+ });
+ assert.equal(await register(),'enabled');assert.deepEqual(sequence,['channel','permission','token','register']);
+ const gate=deferred();native.getExpoPushTokenAsync=()=>gate.promise;
+ const late=register();await w.settle();await w.login('B');
+ gate.resolve({data:'ExpoPushToken[stale]'});await assert.rejects(()=>late,/Session changed/);
+ assert.equal(w.calls.filter(call=>call.route==='/notifications/device/register').length,1);
+});
+await check('denied native permission does not request or register a token',async()=>{
+ const w=world({AndroidImportance:{DEFAULT:3},setNotificationChannelAsync:async()=>{},
+   getPermissionsAsync:async()=>({granted:false,canAskAgain:false})});
+ await w.login();assert.equal(await w.load('src/register-push.ts').registerDevicePush(),'denied');
+ assert.equal(w.calls.filter(call=>call.route==='/notifications/device/register').length,0);
+});
 await check('protected /me, not unverified JWT sub, supplies cache namespace',async()=>{
  const w=world();await w.login();const scope=await w.load('src/session.ts').getSessionScope();assert.equal(scope.accountId,'verified-account');assert.notEqual(scope.accountId,'untrusted-decoded-subject');await w.download();assert.ok([...w.files.keys()].every(key=>key.includes('/verified-account/')));
 });
@@ -89,6 +114,37 @@ await check('unverified legacy identity cannot read cache or trust decoded subje
 });
 await check('logout removes file/metadata cache and invalidates previous account scope',async()=>{
  const w=world();await w.login();await w.download();const s=w.load('src/session.ts'),scope=await s.getSessionScope();await s.logout();assert.equal(await s.loadSession(),null);assert.equal(w.files.size,0);assert.throws(()=>w.load('src/offline-content-store.ts').loadOfflineContent('trip-a',scope),/Session changed/);w.setHandler((route,init,normal)=>route==='/me'?response({id:'verified-account-B',status:'ACTIVE'}):normal(route,init));await w.login('B');assert.equal(await w.load('src/offline-trip-package.ts').loadTripPackage('trip-a'),null);assert.equal((await s.getSessionScope()).accountId,'verified-account-B');assert.notEqual((await s.getSessionScope()).cacheId,scope.cacheId);
+});
+await check('account switch revokes the prior server session before issuing the new one', async () => {
+ const w=world(); await w.login('A');
+ const revoke=deferred(); w.setHandler((route,init,normal)=>route==='/auth/logout'?revoke.promise:normal(route,init));
+ const replacement=w.login('B'); await w.settle();
+ assert.equal(w.calls.filter(call=>call.route==='/auth/login').length,1);
+ assert.equal(JSON.parse(w.calls.find(call=>call.route==='/auth/logout').init.body).refreshToken,'refresh-A');
+ revoke.resolve(response(null,204)); await replacement;
+ assert.equal((await w.load('src/session.ts').loadSession()).refreshToken,'refresh-B');
+});
+await check('failed remote revocation keeps the old session available for a retry', async () => {
+ const w=world(); await w.login('A');
+ w.setHandler((route,init,normal)=>route==='/auth/logout'?response({},503):normal(route,init));
+ await assert.rejects(()=>w.login('B'));
+ assert.equal(w.calls.filter(call=>call.route==='/auth/login').length,1);
+ assert.equal((await w.load('src/session.ts').loadSession()).refreshToken,'refresh-A');
+ w.setHandler(null); await w.login('B');
+ assert.equal((await w.load('src/session.ts').loadSession()).refreshToken,'refresh-B');
+});
+await check('a rotation racing with account switch is revoked before the new login',async()=>{
+ const w=world(); await w.login('A'); const s=w.load('src/session.ts'),rotate=deferred(),revoke=deferred();
+ w.setHandler((route,init,normal)=>{
+   if(route==='/auth/refresh')return rotate.promise;
+   if(route==='/auth/logout' && JSON.parse(init.body).refreshToken==='refresh-A')return revoke.promise;
+   return normal(route,init);
+ });
+ const rotation=s.refreshSession(); await w.settle();
+ const change=w.login('B'); await w.settle();
+ rotate.resolve(response({accessToken:jwt('A'),refreshToken:'rotated-A'})); await rotation;
+ revoke.resolve(response(null,204)); await change;
+ assert.deepEqual(w.calls.filter(call=>call.route==='/auth/logout').map(call=>JSON.parse(call.init.body).refreshToken),['refresh-A','rotated-A']);
 });
 await check('refresh is single-flight and delayed refresh cannot resurrect logout',async()=>{
  const w=world();await w.login();const s=w.load('src/session.ts'),gate=deferred();w.setHandler((route,init,normal)=>route==='/auth/refresh'?gate.promise:normal(route,init));const first=s.refreshSession(),second=s.refreshSession();await w.settle();assert.equal(w.calls.filter(x=>x.route==='/auth/refresh').length,1);await s.logout();gate.resolve(response({accessToken:jwt('A'),refreshToken:'late-issued'}));assert.equal(await first,null);assert.equal(await second,null);assert.equal(await s.loadSession(),null);assert.ok(w.calls.some(x=>x.route==='/auth/logout'&&JSON.parse(x.init.body).refreshToken==='late-issued'));
