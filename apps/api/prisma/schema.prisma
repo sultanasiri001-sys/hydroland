@@ -3396,3 +3396,14 @@ model CustomerNoticeEmail {
   @@unique([event,sourceType,sourceId,accountId])
   @@index([state,nextAttemptAt])
 }
+
+model TrialPushDispatch {
+  notificationId String @id
+  accountId String
+  sessionId String
+  bindingDigest String
+  state String
+  ticketId String? @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

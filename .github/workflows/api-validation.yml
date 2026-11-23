@@ -429,6 +429,8 @@ jobs:
           node apps/api/scripts/customer-notice-email-db-e2e.mjs
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261123034000_session_push_registration/migration.sql
           node apps/api/scripts/push-session-db-e2e.mjs
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261123053000_trial_push_dispatch/migration.sql
+          node apps/api/scripts/trial-push-db-e2e.mjs
       - name: MFA lifecycle PostgreSQL E2E
         run: node apps/api/scripts/mfa-lifecycle-db-e2e.mjs
       - name: Credential integrity PostgreSQL E2E
