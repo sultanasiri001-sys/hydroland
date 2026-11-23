@@ -1,4 +1,4 @@
-import { BadGatewayException, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { BadGatewayException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { IntegrationService } from './integration.service';
 
 import { approvedWhatsAppTemplates } from './whatsapp-template-policy';
@@ -29,7 +29,12 @@ export class UnifonicMessagingService {
     }catch{throw new BadGatewayException('SMS provider request failed.');}
     const payload=await this.safeJson(response);
     if(!response.ok||payload?.success===false||payload?.success==='false')throw new BadGatewayException(`SMS provider rejected delivery (${response.status}).`);
-    return smsSubmissionReceipt(payload,correlationId,recipient);
+    const receipt = smsSubmissionReceipt(payload,correlationId,recipient);
+    if (receipt.providerMessageId && process.env.UNIFONIC_SMS_DLR_ACCOUNT_ID?.trim()) {
+      try { await this.integrations.recordSmsSubmission(receipt.providerMessageId,correlationId,recipient); }
+      catch { Logger.warn('SMS submission accepted; delivery evidence could not be recorded.', 'UnifonicMessagingService'); }
+    }
+    return receipt;
   }
 
   async sendWhatsAppTemplate(input:WhatsAppTemplateInput):Promise<DeliveryResult>{
