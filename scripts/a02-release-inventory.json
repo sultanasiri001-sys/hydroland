@@ -227,6 +227,7 @@
         "path": ".github/workflows/web-validation.yml",
         "jobs": [
           "validate",
+          "focused-regressions",
           "screen-reader"
         ],
         "criticalSteps": {
@@ -236,20 +237,32 @@
             "Static web validation",
             "Production web build",
             "Install Chromium",
+            "Center scoped search browser acceptance",
+            "Verify center scoped search execution evidence",
+            "Browser E2E",
+            "Verify full browser execution evidence",
+            "Retain browser execution evidence"
+          ],
+          "focused-regressions": [
+            "Record focused regression source",
+            "Install Chromium",
+            "Delegated marine document review in the browser",
+            "Agency training standard selection regression",
+            "Individual training session planning fields and server rejection regression",
+            "Technology request scoped browser acceptance",
             "Motion preference browser regression",
+            "Account and support session privacy regression",
+            "Customer case assignment, escalation and customer acceptance regression",
             "Scoped research owner and reviewer browser regression",
             "Account lifecycle and fresh action authorization regression",
             "Center workflow focused regression",
-            "Center scoped search browser acceptance",
-            "Verify center scoped search execution evidence",
             "Organization portal focused regression",
             "Professional training completion regression",
             "Training certificate review regression",
             "Booking participant review regression",
-            "Browser E2E",
-            "Verify full browser execution evidence",
             "Phase 4 notification focused regression",
-            "Retain browser execution evidence"
+            "Verify focused regression source after execution",
+            "Retain focused regression source receipts"
           ],
           "screen-reader": [
             "Record native screen-reader source",

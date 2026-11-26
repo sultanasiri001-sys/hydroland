@@ -92,6 +92,28 @@ test('skipped matrix leg blocks despite successful workflow',()=>{
   e.jobs[index+100].jobs[1].conclusion='skipped';assert.equal(evaluate(e).status,'BLOCKED');
 });
 
+for (const outcome of ['missing','cancelled','skipped']) test(`full browser success cannot replace ${outcome} focused regressions`,()=>{
+  const path='.github/workflows/web-validation.yml';
+  const index=inventory.policy.required.findIndex(rule=>rule.path===path);
+  const rule=inventory.policy.required[index];
+  assert(rule.jobs.includes('focused-regressions'));
+  const e=evidence(), page=e.jobs[index+100];
+  const full=page.jobs.find(job=>job.name==='validate');
+  assert.equal(full.conclusion,'success');
+  assert(full.steps.some(step=>step.name==='Verify full browser execution evidence'&&step.conclusion==='success'));
+  const focused=page.jobs.find(job=>job.name==='focused-regressions');
+  assert(focused);
+  if(outcome==='missing'){
+    page.jobs=page.jobs.filter(job=>job!==focused);
+    page.total_count=page.jobs.length;
+  }else focused.conclusion=outcome;
+  const result=evaluate(e), gate=result.gates.find(value=>value.path===path);
+  assert.equal(result.status,'BLOCKED');
+  assert.equal(gate.status,'BLOCKED');
+  assert(gate.reasons.includes(outcome==='missing'?'MISSING_OR_DUPLICATE_REQUIRED_JOB':'JOB_NOT_SUCCESS'));
+  assert(!gate.reasons.includes('INCOMPLETE_OR_WRONG_ATTEMPT_JOBS'));
+});
+
 for (const rule of inventory.policy.required.filter(r => r.criticalSteps)) {
   for (const [jobName, names] of Object.entries(rule.criticalSteps)) {
     for (const name of names) test(`skipped critical step blocks green job: ${rule.path} / ${name}`, () => {

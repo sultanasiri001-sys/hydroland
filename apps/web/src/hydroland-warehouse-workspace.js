@@ -31,43 +31,72 @@
   }
   const heading = add(dialog,'h2','المستودع والعهد'); heading.id='warehouse-workspace-title';
   dialog.setAttribute('aria-labelledby',heading.id);
-  button(dialog,'إغلاق',()=>dialog.close());
+  button(dialog,'إغلاق',()=>{discardDialogRead();dialog.close();});
   const status = add(dialog,'p'); status.setAttribute('role','status');
   const content = add(dialog,'section');
   const launch = button(profile,'المستودع والعهد',()=>{document.getElementById('profile-dialog')?.close();dialog.showModal();void refresh();});
   launch.hidden=true;
-  let generation=0, busy=false;
+  let generation=0, readVersion=0, writing=null, refreshing=false, refreshQueued=false, renderedSignature=null, pendingNotice='';
+  const profileIdentity=()=>{
+    const data=window.HydrolandProfileData?.profile;
+    const roles=(data?.roles||[]).map(row=>[row.role,row.status,row.organizationId||null]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
+    return JSON.stringify([auth()?.getSessionVersion?.(),data?.id,data?.status,roles,window.HydrolandPortalAccess?.getCurrentRole?.()]);
+  };
+  let profileContext=profileIdentity();
+  function discardDialogRead(){readVersion++;refreshing=false;renderedSignature=null;pendingNotice='';content.replaceChildren();status.replaceChildren();content.inert=Boolean(writing);}
   function clear() {
-    generation++; busy=false; launch.hidden=true; status.replaceChildren();content.replaceChildren();
+    generation++; readVersion++; writing=null; refreshing=false; refreshQueued=false; renderedSignature=null;pendingNotice='';
+    profileContext=profileIdentity(); launch.hidden=true; status.replaceChildren();content.replaceChildren();content.inert=false;
     if(dialog.open) dialog.close();
   }
   async function api(path, body) {
     const options=body===undefined?{}:{method:'POST',body:JSON.stringify(body)};
     const response=await auth().authorizedFetch('/warehouse/'+path,options);
     const data=await response.json().catch(()=>null);
-    if(!response.ok) throw new Error(typeof data?.message==='string'?data.message:ui.t('تعذّر إكمال الإجراء'));
+    if(!response.ok){const error=new Error(typeof data?.message==='string'?data.message:ui.t('تعذّر إكمال الإجراء'));error.status=response.status;throw error;}
     return data;
   }
-  async function refresh(notice='') {
+  async function refresh(notice='',preserveForm=false) {
     if(!auth()?.isAuthenticated?.()) return;
-    const token=++generation, session=auth().getSessionVersion();
+    if(notice)pendingNotice=notice;
+    if(writing){refreshQueued=true;content.inert=true;return;}
+    const token=generation, request=++readVersion, session=auth().getSessionVersion();
+    const current=()=>token===generation&&request===readVersion&&session===auth()?.getSessionVersion()&&auth()?.isAuthenticated?.();
+    refreshing=true;content.inert=true;
     try {
       const data=await api('workspace');
+      if(!current())return;
       if(!data?.organizationId || !Array.isArray(data.requests) || !Array.isArray(data.lots) || !Array.isArray(data.custody)) throw new Error(ui.t('تعذّر إكمال الإجراء'));
-      if(token!==generation||session!==auth().getSessionVersion()) return;
       launch.hidden=false;
-      if(dialog.open){render(data); if(notice) ui.setText(status,notice); else status.replaceChildren();}
+      if(dialog.open){
+        const signature=JSON.stringify(data),unchanged=preserveForm&&!pendingNotice&&signature===renderedSignature;
+        if(!unchanged){render(data);renderedSignature=signature;status.replaceChildren();}
+        if(pendingNotice){ui.setText(status,pendingNotice);pendingNotice='';}
+      }
     } catch(error) {
-      if(token!==generation) return;
-      launch.hidden=true; content.replaceChildren(); status.textContent=error.message;
+      if(!current())return;
+      if(error.status===401||error.status===403){clear();return;}
+      launch.hidden=true; renderedSignature=null;content.replaceChildren();status.textContent=error.message;
+    } finally {
+      if(current()){refreshing=false;content.inert=Boolean(writing);}
     }
   }
   async function post(path,body) {
-    if(busy) return;
-    const token=generation;busy=true;content.inert=true;
-    try { await api(path,body); if(token===generation) await refresh('تم الحفظ'); }
-    catch(error) {if(token===generation)status.textContent=error.message;}
-    finally {busy=false;content.inert=false;}
+    if(writing||refreshing) return;
+    const operation={generation,session:auth()?.getSessionVersion()};
+    const current=()=>writing===operation&&operation.generation===generation&&operation.session===auth()?.getSessionVersion()&&auth()?.isAuthenticated?.();
+    writing=operation;readVersion++;content.inert=true;
+    let saved=false;
+    try {await api(path,body);if(current())saved=true;}
+    catch(error){if(current()){if(error.status===401||error.status===403)clear();else status.textContent=error.message;}}
+    finally {
+      if(current()){
+        writing=null;
+        const needsRefresh=saved||refreshQueued;refreshQueued=false;
+        if(needsRefresh)await refresh(saved&&dialog.open?'تم الحفظ':'',!saved);
+        else content.inert=false;
+      }
+    }
   }
   const labels={supplierRef:'مرجع المورد',supplierAcceptanceRef:'مرجع قرار تأهيل المورد',issueId:'مرجع الصرف',destinationId:'الموقع المستلم',purchaseReference:'مرجع أمر الشراء',supplierId:'مرجع التأهيل',itemId:'معرّف الصنف',quantity:'الكمية',
     unitCostMinor:'تكلفة الوحدة بالهللة',lotId:'مرجع الدفعة',counted:'العدد الفعلي',reason:'سبب الجرد',
@@ -168,8 +197,13 @@
     }
     button(content,'تحديث',()=>refresh());
   }
-  dialog.addEventListener('close',()=>{generation++;content.replaceChildren();status.replaceChildren();});
-  for(const name of ['session-cleared','portal-cleared','role-changed'])document.addEventListener('hydroland:'+name,clear);
-  for(const name of ['auth-changed','profile-data-ready','role-changed'])document.addEventListener('hydroland:'+name,()=>{clear();void refresh();});
+  dialog.addEventListener('cancel',discardDialogRead);
+  dialog.addEventListener('close',()=>{if(!dialog.open){renderedSignature=null;pendingNotice='';content.replaceChildren();status.replaceChildren();}});
+  for(const name of ['session-cleared','portal-cleared'])document.addEventListener('hydroland:'+name,clear);
+  for(const name of ['auth-changed','role-changed'])document.addEventListener('hydroland:'+name,()=>{clear();void refresh();});
+  document.addEventListener('hydroland:profile-data-ready',()=>{
+    if(profileIdentity()!==profileContext)clear();
+    void refresh('',true);
+  });
   void refresh();
 })();
