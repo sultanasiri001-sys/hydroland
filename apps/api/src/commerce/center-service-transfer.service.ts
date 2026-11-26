@@ -83,6 +83,8 @@ async function pdf(value: unknown) {
   return { bytes: Uint8Array.from(bytes), sha256: hash(bytes) };
 }
 
+export { text as transferText, timestamp as transferTimestamp, pdf as transferPdf };
+
 /** Records and independently confirms an external bank transfer. This service never sends money. */
 @Injectable()
 export class CenterServiceTransferService {
@@ -275,8 +277,12 @@ export class CenterServiceTransferService {
       if (await tx.centerServiceTransferReceipt.findUnique({ where: { activeFinanceEntryId: entry.id } })) {
         throw new ConflictException('An existing transfer for this settlement requires review; no additional transfer is authorized.');
       }
+      if (await tx.commerceSourceTransferReceipt.findUnique({ where: { activeFinanceEntryId: entry.id } })) {
+        throw new ConflictException('This settlement already has commerce transfer evidence.');
+      }
       const referenceHistory = await tx.centerServiceTransferReceipt.findMany({ where: { bankReferenceKey }, select: { financeEntryId: true, status: true } });
-      if (referenceHistory.some(row => row.financeEntryId !== entry.id || row.status !== 'REJECTED')) {
+      const commerceHistory = await tx.commerceSourceTransferReceipt.findMany({ where: { bankReferenceKey }, select: { financeEntryId: true, status: true } });
+      if ([...referenceHistory, ...commerceHistory].some(row => row.financeEntryId !== entry.id || row.status !== 'REJECTED')) {
         throw new ConflictException('This bank reference is already attributed to an unresolved or different settlement.');
       }
       const source = await this.source(tx, scope, entry);

@@ -35,7 +35,7 @@ export class FinancePersistenceService {
   }
 
   async createEntry(input: CreateFinanceEntryInput) {
-    if (input.referenceType === 'CENTER_SERVICE_ENTITLEMENT') throw new BadRequestException('Service entitlements must be prepared from verified collection, completion and allocation evidence.');
+    if (['CENTER_SERVICE_ENTITLEMENT', 'CENTER_STORE_ENTITLEMENT', 'CENTER_COURSE_ENTITLEMENT', 'CENTER_RENTAL_ENTITLEMENT'].includes(input.referenceType)) throw new BadRequestException('Service entitlements must be prepared from verified collection, completion and allocation evidence.');
     if (!Number.isInteger(input.amountMinor) || input.amountMinor <= 0) throw new BadRequestException('Finance entry amount must be a positive integer.');
     if (!input.referenceType || !input.referenceId || !input.requestedByAccountId) throw new BadRequestException('Finance entry reference and requester are required.');
     const account = await this.db.financeAccount.findUnique({ where: { id: input.financeAccountId } });
@@ -78,7 +78,7 @@ export class FinancePersistenceService {
       if (!entry) throw new NotFoundException('Finance entry not found.');
       if (entry.status !== FinanceEntryStatus.APPROVED) throw new BadRequestException('Only approved finance entries can be posted.');
       if (['PAYMENT_REFUND', 'EQUIPMENT_RENTAL_REFUND', 'STORE_GOODS_RETURN_REFUND', 'COURSE_CANCELLATION_REFUND'].includes(entry.referenceType)) throw new BadRequestException('Payment refunds are posted only after verified provider execution.');
-      if (entry.referenceType === 'CENTER_SERVICE_ENTITLEMENT') throw new BadRequestException('A service entitlement is posted only after verified transfer execution.');
+      if (['CENTER_SERVICE_ENTITLEMENT', 'CENTER_STORE_ENTITLEMENT', 'CENTER_COURSE_ENTITLEMENT', 'CENTER_RENTAL_ENTITLEMENT'].includes(entry.referenceType)) throw new BadRequestException('A service entitlement is posted only after verified transfer execution.');
       if (entry.requestedByAccountId === postedByAccountId || entry.approvedByAccountId === postedByAccountId) throw new BadRequestException('Finance posting requires segregation of duties.');
       const updated = await tx.financeEntry.updateMany({ where: { id: entryId, status: FinanceEntryStatus.APPROVED }, data: { status: FinanceEntryStatus.POSTED, postedAt: new Date(), postedByAccountId } });
       if (updated.count !== 1) throw new BadRequestException('Finance entry was modified concurrently.');
