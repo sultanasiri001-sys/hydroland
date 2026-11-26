@@ -2,6 +2,14 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { FinanceEntryStatus, FinanceEntryType, Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
 
+const procurementReferences = new Set(['ORGANIZATION_PROCUREMENT_SETTLEMENT', 'ORGANIZATION_PROCUREMENT_REVERSAL']);
+
+function dedicatedProcurementPath(referenceType: string) {
+  if (procurementReferences.has(referenceType)) {
+    throw new BadRequestException('Organization procurement entries require the scoped contract, receipt and independent payment-proof workflow.');
+  }
+}
+
 export interface CreateFinanceAccountInput {
   organizationId: string;
   name: string;
@@ -35,6 +43,7 @@ export class FinancePersistenceService {
   }
 
   async createEntry(input: CreateFinanceEntryInput) {
+    dedicatedProcurementPath(input.referenceType);
     if (['CENTER_SERVICE_ENTITLEMENT', 'CENTER_STORE_ENTITLEMENT', 'CENTER_COURSE_ENTITLEMENT', 'CENTER_RENTAL_ENTITLEMENT'].includes(input.referenceType)) throw new BadRequestException('Service entitlements must be prepared from verified collection, completion and allocation evidence.');
     if (!Number.isInteger(input.amountMinor) || input.amountMinor <= 0) throw new BadRequestException('Finance entry amount must be a positive integer.');
     if (!input.referenceType || !input.referenceId || !input.requestedByAccountId) throw new BadRequestException('Finance entry reference and requester are required.');
@@ -58,6 +67,7 @@ export class FinancePersistenceService {
     return this.db.serializable(async (tx: Prisma.TransactionClient) => {
       const entry = await tx.financeEntry.findUnique({ where: { id: entryId }, include: { approvals: { where: { status: 'REQUESTED' }, orderBy: { createdAt: 'desc' }, take: 1 } } });
       if (!entry) throw new NotFoundException('Finance entry not found.');
+      dedicatedProcurementPath(entry.referenceType);
       if (entry.status !== FinanceEntryStatus.PENDING_APPROVAL || !entry.approvals[0]) throw new BadRequestException('Finance entry is not pending approval.');
       if (entry.requestedByAccountId === decidedByAccountId) throw new BadRequestException('Finance requester cannot approve or reject their own entry.');
       const now = new Date();
@@ -76,6 +86,7 @@ export class FinancePersistenceService {
     return this.db.serializable(async (tx: Prisma.TransactionClient) => {
       const entry = await tx.financeEntry.findUnique({ where: { id: entryId } });
       if (!entry) throw new NotFoundException('Finance entry not found.');
+      dedicatedProcurementPath(entry.referenceType);
       if (entry.status !== FinanceEntryStatus.APPROVED) throw new BadRequestException('Only approved finance entries can be posted.');
       if (['PAYMENT_REFUND', 'EQUIPMENT_RENTAL_REFUND', 'STORE_GOODS_RETURN_REFUND', 'COURSE_CANCELLATION_REFUND'].includes(entry.referenceType)) throw new BadRequestException('Payment refunds are posted only after verified provider execution.');
       if (['CENTER_SERVICE_ENTITLEMENT', 'CENTER_STORE_ENTITLEMENT', 'CENTER_COURSE_ENTITLEMENT', 'CENTER_RENTAL_ENTITLEMENT'].includes(entry.referenceType)) throw new BadRequestException('A service entitlement is posted only after verified transfer execution.');

@@ -32,6 +32,9 @@ export class FinanceShiftsService {
   }
 
   async recordEntry(accountantAccountId:string,shiftId:string,input:{type:EntryType;amountMinor:number;paymentId?:string;referenceType?:string;referenceId?:string;description?:string}){
+    if (['ORGANIZATION_PROCUREMENT_SETTLEMENT','ORGANIZATION_PROCUREMENT_REVERSAL'].includes(input.referenceType ?? '')) {
+      throw new Error('FINANCE_PROCUREMENT_SCOPED_WORKFLOW_REQUIRED');
+    }
     if(!Number.isSafeInteger(input.amountMinor)||input.amountMinor<=0)throw new Error('FINANCE_AMOUNT_INVALID');
     if(input.type==='REVENUE'&&!input.paymentId)throw new Error('FINANCE_REVENUE_PAYMENT_REQUIRED');
     const scope=await this.shiftScope(shiftId);

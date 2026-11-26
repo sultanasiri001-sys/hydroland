@@ -232,6 +232,14 @@ exports.verifyFinancialLifecycle = async function verifyFinancialLifecycle(f, {m
     denied(await call(stranger, transferPath, 'POST', input), 403);
     denied(await call(owner, transferPath, 'POST', {...input, amountMinor: input.amountMinor + 1}), 409);
     assert.deepEqual(await financeSnapshot(), before);
+    const { withProcurementReference } = require('./procurement-reference-sentinel.cjs');
+    const bankReferenceKey = f.load('commerce/center-service-entitlement.js').entitlementContractHash([
+      input.bankName.normalize('NFKC').toUpperCase().replace(/\s+/g, ' '),
+      input.bankReference.normalize('NFKC').toUpperCase().replace(/\s+/g, ''),
+    ]);
+    await withProcurementReference(db, { organizationId: center.id, actorId: owner.id, amountMinor: input.amountMinor, bankReferenceKey },
+      async () => denied(await call(owner, transferPath, 'POST', input), 409));
+    assert.deepEqual(await financeSnapshot(), before, 'An F08 reference claim must block B08 without financial writes.');
     let receipt = ok(await call(owner, transferPath, 'POST', input));
     const reviewPath = transferPath + '/' + receipt.id + '/review';
     const rejected = {decision: 'REJECTED', note: 'Synthetic independent mismatch; no money posted'};

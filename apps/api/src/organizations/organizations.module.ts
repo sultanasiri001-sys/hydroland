@@ -18,12 +18,14 @@ import { TripsModule } from '../trips/trips.module';
 import { OrganizationsController } from './organizations.controller';
 import { OrganizationsService } from './organizations.service';
 import { OrganizationFinancialProfileService } from './organization-financial-profile.service';
+import { ProcurementService } from './procurement.service';
+import { ProcurementController } from './procurement.controller';
 import { DiveCenterPortalController } from './dive-center-portal.controller';
 import { DiveCenterPortalService } from './dive-center-portal.service';
 
 @Module({
   imports: [GovernanceModule, AdministrativeAffairsModule, AuthModule, AdminModule, AuditModule, NotificationsModule, TripsModule],
-  controllers: [CenterLicensePlatformReviewController, OrganizationsController, DiveCenterPortalController],
-  providers: [OrganizationFinancialProfileService, CenterOverviewService,CenterSafetyService,CenterCustomerService,OrganizationMembershipService, CenterEquipmentManagementService, CenterTripManagementService, CenterLicensePlatformReviewService, OrganizationsService, DiveCenterPortalService, CenterLicenseService],
+  controllers: [ProcurementController, CenterLicensePlatformReviewController, OrganizationsController, DiveCenterPortalController],
+  providers: [ProcurementService, OrganizationFinancialProfileService, CenterOverviewService,CenterSafetyService,CenterCustomerService,OrganizationMembershipService, CenterEquipmentManagementService, CenterTripManagementService, CenterLicensePlatformReviewService, OrganizationsService, DiveCenterPortalService, CenterLicenseService],
 })
 export class OrganizationsModule {}

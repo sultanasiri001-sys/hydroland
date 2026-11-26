@@ -212,6 +212,34 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261126100000_unified_store_orders/migration.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261126103000_commerce_source_finance/migration.sql
           node apps/api/scripts/mixed-commerce-http-checks.cjs
+      - name: F08 scoped procurement, financial reversal and independent acceptance
+        env:
+          NODE_ENV: test
+          TZ: UTC
+          PGTZ: UTC
+          COMMERCE_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+          F08_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+          F08_POSTGRES_CONTAINER: ${{ job.services.postgres18.id }}
+          F08_EVIDENCE_FILE: artifacts/f08-http-acceptance.json
+          F08_RECOVERY_EVIDENCE_FILE: artifacts/f08-native-recovery.json
+          DATABASE_URL: postgresql://hydroland:hydroland@localhost:5433/commerce_test_f08_acceptance
+        run: |
+          mkdir -p artifacts
+          psql postgresql://hydroland:hydroland@localhost:5433/hydroland -v ON_ERROR_STOP=1 -c 'CREATE DATABASE commerce_test_f08_acceptance'
+          npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+          node apps/api/scripts/f08-migrations-db-checks.mjs
+          for migration in apps/api/prisma/migrations/*organization_procurement*/migration.sql; do
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+          done
+          node apps/api/scripts/f08-procurement-http-checks.cjs
+          node apps/api/scripts/f08-native-recovery-checks.mjs
+      - name: Retain F08 synthetic acceptance and native recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: f08-procurement-evidence
+          path: artifacts/f08-*.json
+          if-no-files-found: warn
       - name: Course original-contract checkout and collection through real HTTP routes
         env:
           NODE_ENV: test

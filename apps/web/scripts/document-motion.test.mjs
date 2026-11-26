@@ -66,7 +66,33 @@ for (const [name, mutate] of [['disabled button', f => { f.button.disabled = tru
     assert.deepEqual(f.result.calls, []); assert.deepEqual(f.result.fields, []); assert.equal(f.state.editing, null);
   });
 }
-test('source retains exactly two motion-sensitive calls and no hard-coded smooth call', () => {
-  assert.equal((source.match(/behavior:documentScrollBehavior\(\)/g) || []).length, 2);
+function scopedOpenerFixture() {
+  const result = {reduced:false, session:1, calls:[], pending:null};
+  const state = {orgId:null}, target = {dataset:{documentId:'doc-1'},focus(options){result.calls.push({kind:'focus',...options});},scrollIntoView(options){result.calls.push({kind:'scroll',...options});}};
+  const panel = {hidden:true,querySelector:()=>({focus(){}}),querySelectorAll:()=>[target]};
+  const window = {HydrolandAuth:{isAuthenticated:()=>true},matchMedia:()=>({matches:result.reduced})};
+  const refresh = async organizationId => {state.orgId=organizationId;if(result.pending)await result.pending;};
+  const opener = source.slice(source.indexOf('  window.HydrolandDocuments='),source.lastIndexOf('})();'));
+  const context = vm.createContext({window,panel,state,refresh,session:()=>result.session,uiLocale:{message:value=>value},note:()=>{}});
+  vm.runInContext([helper,'let requestedDocumentGeneration=0;',opener].join('\n'),context);
+  return {result,state,panel,open:window.HydrolandDocuments.open};
+}
+test('scoped document opener respects live motion preference and focuses only the requested document',async()=>{
+  const f=scopedOpenerFixture();
+  for(const [reduced,behavior]of [[false,'smooth'],[true,'instant']]){
+    f.result.reduced=reduced;await f.open({organizationId:'org-1',documentId:'doc-1'});
+    assert.deepEqual(f.result.calls.at(-2),{kind:'focus',preventScroll:true});
+    assert.deepEqual(f.result.calls.at(-1),{kind:'scroll',behavior,block:'nearest'});
+  }
+  f.result.calls=[];await f.open({organizationId:'org-1',documentId:'missing'});assert.deepEqual(f.result.calls,[]);
+});
+for(const boundary of ['session','organization'])test(`scoped document opener discards late focus after a ${boundary} change`,async()=>{
+  const f=scopedOpenerFixture();let release;f.result.pending=new Promise(resolve=>{release=resolve;});
+  const opening=f.open({organizationId:'org-1',documentId:'doc-1'});
+  if(boundary==='session')f.result.session++;else f.state.orgId='org-2';
+  release();await opening;assert.deepEqual(f.result.calls,[]);
+});
+test('source retains exactly three motion-sensitive calls and no hard-coded smooth call', () => {
+  assert.equal((source.match(/behavior:documentScrollBehavior\(\)/g) || []).length, 3);
   assert.doesNotMatch(source, /behavior:\s*['"]smooth['"]/);
 });

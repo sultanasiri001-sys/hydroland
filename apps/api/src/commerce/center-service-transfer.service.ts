@@ -282,7 +282,8 @@ export class CenterServiceTransferService {
       }
       const referenceHistory = await tx.centerServiceTransferReceipt.findMany({ where: { bankReferenceKey }, select: { financeEntryId: true, status: true } });
       const commerceHistory = await tx.commerceSourceTransferReceipt.findMany({ where: { bankReferenceKey }, select: { financeEntryId: true, status: true } });
-      if ([...referenceHistory, ...commerceHistory].some(row => row.financeEntryId !== entry.id || row.status !== 'REJECTED')) {
+      const procurement = await tx.procurementMoneyProof.findUnique({ where: { bankReferenceKey }, select: { id: true } });
+      if (procurement || [...referenceHistory, ...commerceHistory].some(row => row.financeEntryId !== entry.id || row.status !== 'REJECTED')) {
         throw new ConflictException('This bank reference is already attributed to an unresolved or different settlement.');
       }
       const source = await this.source(tx, scope, entry);

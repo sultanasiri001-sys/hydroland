@@ -4,6 +4,7 @@
   "معرّفات مراجعة تفويض الدفع": "Payment mandate review identifiers",
   "الجهة {0} · المستند {1}": "Organization {0} · Document {1}",
   "إدارة المستندات": "Document department",
+  "المستند المطلوب غير متاح ضمن مستندات هذه الجهة.": "The requested document is not available among this organization's documents.",
   "DOCUMENT CONTROL · إدارة المستندات": "DOCUMENT CONTROL · Document management",
   "المستندات والنماذج التشغيلية": "Operational documents and forms",
   "إنشاء، تعديل، متابعة، اعتماد وتوقيع المستندات حسب صلاحيتك الفعلية في الجهة.": "Create, edit, track, approve and sign documents according to your actual authority in the organization.",
@@ -637,14 +638,22 @@
   const observer=new MutationObserver(records=>records.forEach(record=>record.addedNodes.forEach(node=>{if(node.nodeType===1)connectDocumentButtons(node)})));observer.observe(document.body,{childList:true,subtree:true});
   document.addEventListener('hydroland:role-changed',event=>{if(event.detail?.role==='organization'){panel.hidden=false;refresh()}else panel.hidden=true});
   document.addEventListener('hydroland:role-changed',()=>{if(panel.hidden)resetPlatformSource();});
-  const clear=()=>{state.generation++;state.orgId=null;state.memberships=[];state.department='';state.typeCode='';state.loading=false;clearData();panel.querySelector('[data-doc-org]').replaceChildren();note('');panel.hidden=true;};
+  let requestedDocumentGeneration=0;
+  const clear=()=>{requestedDocumentGeneration++;state.generation++;state.orgId=null;state.memberships=[];state.department='';state.typeCode='';state.loading=false;clearData();panel.querySelector('[data-doc-org]').replaceChildren();note('');panel.hidden=true;};
   document.addEventListener('hydroland:auth-changed',()=>{if(!window.HydrolandAuth?.isAuthenticated?.())clear();else if(!panel.hidden)refresh();});
   for(const event of ['hydroland:session-cleared','hydroland:portal-cleared'])document.addEventListener(event,clear);
-  window.HydrolandDocuments={open:(options={})=>{
+  window.HydrolandDocuments={open:async(options={})=>{
     if(!window.HydrolandAuth?.isAuthenticated?.())return;
+    const requestGeneration=++requestedDocumentGeneration,openedSession=session();
     state.department=options.department||'';state.typeCode='';state.preferInternal=options.internal===true||window.HydrolandPortalAccess?.getCurrentRole?.()==='admin';
-    panel.hidden=false;refresh(options.organizationId, options.organizationId ? options.templateId : undefined);
+    panel.hidden=false;const loading=refresh(options.organizationId, options.organizationId ? options.templateId : undefined);
     if(options.organizationId)panel.querySelector('[data-doc-org]').focus();
+    if(!options.organizationId||typeof options.documentId!=='string')return;
+    await loading;
+    if(requestGeneration!==requestedDocumentGeneration||openedSession!==session()||!window.HydrolandAuth?.isAuthenticated?.()||panel.hidden||state.orgId!==options.organizationId)return;
+    const target=[...panel.querySelectorAll('[data-document-id]')].find(node=>node.dataset.documentId===options.documentId);
+    if(!target){note(uiLocale.message('المستند المطلوب غير متاح ضمن مستندات هذه الجهة.'));return;}
+    target.tabIndex=-1;target.focus({preventScroll:true});target.scrollIntoView({behavior:documentScrollBehavior(),block:'nearest'});
   },refresh};
 })();
 

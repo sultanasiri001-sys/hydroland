@@ -3554,3 +3554,104 @@ model CustomerNoticeEmailBudget {
   month String @id
   reservedHalalas Int
 }
+
+model ProcurementOrder {
+  id String @id
+  organizationId String
+  purchaseReference String
+  contractDocumentId String @unique
+  contractVersion Int
+  contractHash String
+  contractSnapshot Json
+  supplierDocumentId String
+  supplierVersion Int
+  supplierHash String
+  supplierSnapshot Json
+  authoritySnapshot Json
+  terms Json
+  amountMinor Int
+  currency String @default("SAR")
+  status String @default("REQUESTED")
+  revision Int @default(1)
+  requestedByAccountId String
+  ownerAccountId String
+  recommendation Json?
+  approval Json?
+  invoiceKey String? @unique
+  invoiceSnapshot Json?
+  receiptAcceptanceSnapshot Json?
+  reversalSnapshot Json?
+  acceptanceSnapshot Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  events ProcurementOrderEvent[]
+  receipts ProcurementReceipt[]
+  moneyProofs ProcurementMoneyProof[]
+  @@unique([organizationId,id])
+  @@unique([organizationId,purchaseReference])
+  @@index([organizationId,status,createdAt])
+}
+
+model ProcurementOrderEvent {
+  id String @id
+  organizationId String
+  orderId String
+  requestId String
+  action String
+  actorAccountId String
+  actorPersonId String
+  requestFingerprint String
+  beforeRevision Int
+  afterRevision Int
+  payload Json
+  evidenceHash String
+  result Json
+  createdAt DateTime @default(now())
+  order ProcurementOrder @relation(fields:[organizationId,orderId],references:[organizationId,id],onDelete:Restrict)
+  @@unique([organizationId,requestId])
+  @@unique([organizationId,orderId,afterRevision])
+  @@index([organizationId,orderId,createdAt])
+}
+
+model ProcurementReceipt {
+  id String @id
+  organizationId String
+  orderId String
+  documentId String @unique
+  documentVersion Int
+  documentHash String
+  documentSnapshot Json
+  lines Json
+  receivedByAccountId String
+  receivedByPersonId String
+  createdAt DateTime @default(now())
+  order ProcurementOrder @relation(fields:[organizationId,orderId],references:[organizationId,id],onDelete:Restrict)
+  @@index([organizationId,orderId,createdAt])
+}
+
+model ProcurementMoneyProof {
+  id String @id
+  organizationId String
+  orderId String
+  kind String
+  financeEntryId String @unique
+  activeKey String? @unique
+  status String
+  amountMinor Int
+  currency String @default("SAR")
+  documentId String? @unique
+  documentVersion Int?
+  documentHash String?
+  documentSnapshot Json?
+  bankReferenceKey String? @unique
+  bankName String?
+  bankReference String?
+  transferredAt DateTime?
+  preparedByAccountId String
+  approvedByAccountId String?
+  confirmedByAccountId String?
+  createdAt DateTime @default(now())
+  confirmedAt DateTime?
+  order ProcurementOrder @relation(fields:[organizationId,orderId],references:[organizationId,id],onDelete:Restrict)
+  @@index([organizationId,orderId,kind,createdAt])
+}
