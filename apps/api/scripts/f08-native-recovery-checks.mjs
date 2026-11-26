@@ -62,7 +62,7 @@ async function snapshot(client) {
     FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
     WHERE n.nspname='public' AND p.prokind IN ('f','p') ORDER BY p.proname,arguments`;
   const views = await client.$queryRaw`SELECT viewname,definition FROM pg_views WHERE schemaname='public' ORDER BY viewname`;
-  const sequences = await client.$queryRaw`SELECT sequencename,data_type,start_value::text,min_value::text,max_value::text,
+  const sequences = await client.$queryRaw`SELECT sequencename,data_type::text AS data_type,start_value::text,min_value::text,max_value::text,
     increment_by::text,cycle,cache_size::text,last_value::text FROM pg_sequences WHERE schemaname='public' ORDER BY sequencename`;
   return { contents, columns, constraints, indexes, enums, triggers, functions, views, sequences };
 }
