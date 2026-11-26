@@ -154,6 +154,8 @@ model Person {
 }
 
 model Account {
+  procurementLabSessions ProcurementLabSession[]
+  procurementApiProfile ProcurementApiProfile?
   payoutProfile ProviderPayoutProfile?
   retailStockCounts StoreStockCount[]
   storeStockTransfers StoreStockTransfer[]
@@ -3654,4 +3656,57 @@ model ProcurementMoneyProof {
   confirmedAt DateTime?
   order ProcurementOrder @relation(fields:[organizationId,orderId],references:[organizationId,id],onDelete:Restrict)
   @@index([organizationId,orderId,kind,createdAt])
+}
+
+// Synthetic, owner-only preparation. These records never represent an
+// organization purchase, a signed document, or a real financial journal.
+model ProcurementLabSession {
+  id String @id
+  ownerAccountId String
+  scenario String @default("STANDARD_V1")
+  status String @default("REQUESTED")
+  revision Int @default(1)
+  digest String
+  amountMinor Int
+  state Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  owner Account @relation(fields:[ownerAccountId],references:[id],onDelete:Restrict)
+  events ProcurementLabEvent[]
+  @@unique([ownerAccountId,id])
+  @@index([ownerAccountId,createdAt])
+}
+
+model ProcurementLabEvent {
+  id String @id
+  ownerAccountId String
+  sessionId String
+  requestId String
+  action String
+  role String
+  requestFingerprint String
+  beforeRevision Int
+  afterRevision Int
+  previousDigest String?
+  resultDigest String
+  evidenceHash String
+  payload Json
+  createdAt DateTime @default(now())
+  session ProcurementLabSession @relation(fields:[ownerAccountId,sessionId],references:[ownerAccountId,id],onDelete:Restrict)
+  @@unique([ownerAccountId,requestId])
+  @@unique([sessionId,afterRevision])
+  @@index([ownerAccountId,sessionId,createdAt])
+}
+
+model ProcurementApiProfile {
+  id String @id
+  ownerAccountId String @unique
+  revision Int @default(1)
+  configHash String
+  settings Json
+  history Json
+  lastCheck Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  owner Account @relation(fields:[ownerAccountId],references:[id],onDelete:Restrict)
 }

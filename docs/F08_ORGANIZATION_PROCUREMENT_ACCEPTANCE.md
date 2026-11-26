@@ -206,15 +206,24 @@ Only successful execution on the released source revision is acceptance
 evidence. Test discovery, syntax validation, a draft PR, or this document by
 itself is not a pass.
 
-## Remaining real acceptance
+## Technical preparation and later real acceptance
 
-The existing F08.01 criterion requires a real organization, its authorized
-representative, its contract and agreed integration scope, followed by separate
+On 26 November 2026 the owner clarified that the platform will be tested before
+any real organization is connected. The current closure scope is therefore
+technical preparation and isolated verification, including a same-site test
+workspace and configurable API preparation. See
+[F08 API preparation](F08_API_PREPARATION.md). The absence of a real organization
+or contract is not a blocker for that technical scope. User acceptance and the
+external organization's commissioning are recorded separately when they occur.
+
+For real operation, the organization still supplies its authorized
+representative, contract and agreed integration scope, followed by separate
 representative acceptance. No such identities, contractual agreement or human
-approval are fabricated by this change. The synthetic accepting identities in
-the fixtures are not a real customer's acceptance.
+approval are fabricated. The synthetic accepting identities in the fixtures
+and simulator are not a real customer's acceptance.
 
 Field operations previously deferred by the owner remain deferred. The actual
 acceptance method may be remote when that is what the organization agrees to in
-its contract. Completing this technical workflow supplies the concrete system
-and evidence to review; it does not silently grant the remaining project gate.
+its contract. Completing technical preparation supplies the concrete system and
+evidence for the owner's platform test; it does not grant D19 generally or
+record the later user/customer acceptance. Q01 remains last.
