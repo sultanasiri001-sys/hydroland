@@ -10,6 +10,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { Prisma } from '@prisma/client';
 
 type RentalItemInput={resourceId?:string;equipmentType?:string|null;size?:string|null;unitPriceSar?:number};
+export type RentalOccurrence={readonly rentalId:string;readonly invoiceNumber:string;readonly itemIds:ReadonlyMap<string,string>};
 type RentalRow={id:string;holdExpiresAt:Date|null;renterAccountId:string;status:string;paymentStatus:string;totalHalala:bigint;invoiceNumber:string;whatsappPhone:string|null;reservedAt:Date;scheduledHandoverAt:Date|null;contractSnapshot:unknown;paidAt:Date|null;returnedAt:Date|null;dueAt:Date|null;overdueNotifiedAt:Date|null;extensionRequestedUntil:Date|null;extensionStatus:'PENDING'|'APPROVED'|'REJECTED'|null;extensionRequestedAt:Date|null;extensionReviewedAt:Date|null;extensionReviewedByAccountId:string|null;returnIntentAt:Date|null;createdByAccountId:string;createdAt:Date;updatedAt:Date};
 type RentalItemRow={id:string;rentalId:string;resourceId:string;equipmentType:string|null;size:string|null;unitPriceHalala:bigint;assetCodeSnapshot:string;equipmentNameSnapshot:string;serialNumberSnapshot:string|null;returnedAt:Date|null;returnCondition:'OK'|'DAMAGED'|'REVIEW'|null;returnNotes:string|null};
 
@@ -22,11 +23,19 @@ export class EquipmentRentalService{
   private serialize(rental:RentalRow,items:RentalItemRow[]){const returnedCount=items.filter(item=>item.returnedAt).length,now=Date.now(),overdue=Boolean(rental.status==='ACTIVE'&&rental.dueAt&&rental.dueAt.getTime()<now);return{...rental,status:rentalStatus(rental),totalHalala:Number(rental.totalHalala),returnedCount,pendingReturnCount:items.length-returnedCount,overdue,items:items.map(item=>({...item,unitPriceHalala:Number(item.unitPriceHalala)}))};}
 
   async create(actorAccountId:string,input:{renterAccountId?:string;whatsappPhone?:string|null;scheduledHandoverAt?:string|null;dueAt?:string|null;items?:RentalItemInput[]}){
-    return this.db.serializable(tx=>this.createInTransaction(tx,actorAccountId,input));
+    const occurrence = this.createOccurrence(input.items ?? []);
+    return this.db.serializable(tx=>this.createInTransaction(tx,actorAccountId,input,occurrence));
+  }
+
+  /** Allocate identities once; the native reservation clock is still read in each attempt. */
+  createOccurrence(items:readonly {resourceId?:string}[]):RentalOccurrence{
+    if(!Array.isArray(items)||!items.length)throw new BadRequestException('At least one rental equipment item is required.');
+    return {rentalId:randomUUID(),invoiceNumber:this.invoiceNumber(),
+      itemIds:new Map(items.map(item=>[item?.resourceId?.trim()??'',randomUUID()]))};
   }
 
   /** Native inventory/calendar hold and contract, within an existing transaction. */
-  async createInTransaction(tx:Prisma.TransactionClient,actorAccountId:string,input:{renterAccountId?:string;whatsappPhone?:string|null;scheduledHandoverAt?:string|null;dueAt?:string|null;items?:RentalItemInput[]},options:{publishedOnly?:boolean}={}){
+  async createInTransaction(tx:Prisma.TransactionClient,actorAccountId:string,input:{renterAccountId?:string;whatsappPhone?:string|null;scheduledHandoverAt?:string|null;dueAt?:string|null;items?:RentalItemInput[]},occurrence:RentalOccurrence,options:{publishedOnly?:boolean}={}){
     const renterAccountId=input.renterAccountId?.trim();if(!renterAccountId)throw new BadRequestException('Renter account is required.');
     const dueAt=this.parseDate(input.dueAt,'Rental due date');if(!dueAt||dueAt.getTime()<=Date.now())throw new BadRequestException('Rental due date must be in the future.');
     const scheduledHandoverAt=this.parseDate(input.scheduledHandoverAt,'Scheduled equipment handover');
@@ -34,16 +43,18 @@ export class EquipmentRentalService{
     const renter=await tx.account.findUnique({where:{id:renterAccountId},select:{id:true,status:true}});if(!renter||renter.status!=='ACTIVE')throw new BadRequestException('Renter account is missing or inactive.');
     if(options.publishedOnly&&renterAccountId!==actorAccountId)throw new BadRequestException('The rental customer must match the authenticated buyer.');
     const items=input.items||[];if(!items.length)throw new BadRequestException('At least one rental equipment item is required.');
-    const requestLines = items.map(item => ({
-      id: randomUUID(), resourceId: item.resourceId?.trim() || '', equipmentType: item.equipmentType?.trim() || null,
-      size: item.size?.trim() || null, unitPriceHalala: this.toHalala(item.unitPriceSar)
-    }));
+    const requestLines = items.map(item => {
+      const resourceId=item.resourceId?.trim()||'',id=occurrence.itemIds.get(resourceId);
+      if(!id)throw new BadRequestException('Rental occurrence is invalid.');
+      return {id,resourceId,equipmentType:item.equipmentType?.trim()||null,
+        size:item.size?.trim()||null,unitPriceHalala:this.toHalala(item.unitPriceSar)};
+    });
     const resourceIds = requestLines.map(item => item.resourceId);
     if (resourceIds.includes('')) throw new BadRequestException('Equipment resource is required.');
     if (new Set(resourceIds).size !== resourceIds.length) {
       throw new BadRequestException('A serialized equipment item can appear only once per rental.');
     }
-    const invoiceNumber = this.invoiceNumber(), whatsappPhone = input.whatsappPhone?.trim() || null;
+    const {rentalId,invoiceNumber}=occurrence, whatsappPhone = input.whatsappPhone?.trim() || null;
       const assets = await tx.$queryRaw<Array<{resourceId:string; assetCode:string; name:string; serialNumber:string|null; stockStatus:string;organizationId:string|null;catalogRate:unknown}>>`
         SELECT b."resourceId", b."assetCode", b."serialNumber", b."stockStatus", b."organizationId"::text AS "organizationId", r."name", s.value AS "catalogRate"
         FROM "EquipmentBarcode" b JOIN "CalendarResource" r ON r."id" = b."resourceId"
@@ -71,7 +82,6 @@ export class EquipmentRentalService{
       });
       const totalHalala=requested.reduce((sum,item)=>sum+Number(item.unitPriceHalala),0);
       if(!Number.isSafeInteger(totalHalala)||totalHalala<100||totalHalala>2147483647)throw new BadRequestException('The rental total must be between 1 SAR and the supported payment limit.');
-      const rentalId=randomUUID();
       const contractSnapshot=createRentalContract({rental:{id:rentalId,renterAccountId,invoiceNumber,totalHalala:BigInt(totalHalala),reservedAt,dueAt,scheduledHandoverAt},issuer,
         lines:requested.map(item=>({...item,organizationId,assetCodeSnapshot:assetsById.get(item.resourceId)!.assetCode,equipmentNameSnapshot:assetsById.get(item.resourceId)!.name}))});
       const [rental] = await tx.$queryRaw<RentalRow[]>`

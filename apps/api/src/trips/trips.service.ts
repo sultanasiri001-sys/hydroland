@@ -40,11 +40,16 @@ export class TripsService {
   async list(){const gateSettings=await this.weatherGate.settings();const [safetyPolicy,capacityPolicy,weatherPolicy]=await Promise.all([this.policies.decision('BOOKING','SAFETY_APPROVAL'),this.policies.decision('BOOKING','CAPACITY_LIMIT'),this.policies.decision('WEATHER','WEATHER_GATE')]);const trips=await this.db.trip.findMany({where:{status:'OPEN'},orderBy:{startsAt:'asc'},include:{...boatBookingInclude,bookings:{where:{status:{in:['PENDING','CONFIRMED']}},select:{seats:true}},safetyChecklists:{orderBy:{createdAt:'desc'},take:1,select:{id:true,decision:true,items:true,notes:true,decidedAt:true,createdAt:true}}}});return Promise.all(trips.filter(bookableThroughCenter).map(async(trip)=>{const bookedSeats=trip.bookings.reduce((sum:number,booking:{seats:number})=>sum+booking.seats,0),latestSafety=trip.safetyChecklists[0]??null,[location,review,price]=await Promise.all([this.weatherReviews.location(trip.id),this.weatherReviews.latest(trip.id),this.tripPrice(trip.id)]),weather=this.weatherGate.evaluateReview(review?.snapshot,review?.status,gateSettings,review?.context,review?.fetchedAt),{bookings,safetyChecklists,organization,marineAsset,...base}=trip;return {...base,centerName:organization?.displayName,bookingPolicy:{safetyApproval:safetyPolicy.state,capacityLimit:capacityPolicy.state,weatherGate:weatherPolicy.state},bookedSeats,remainingSeats:Math.max(0,trip.capacity-bookedSeats),price,safety:latestSafety,location,weather:{snapshot:review?.snapshot??null,reviewStatus:review?.status??null,forecastAt:review?.forecastAt??null,fetchedAt:review?.fetchedAt??null,gate:gateSettings,evaluation:{...weather,blocking:weather.blocking&&weatherPolicy.enforce}}};}));}
 
   async book(accountId:string,tripId:string,seats:number,redemption?:{points:number;cashDueMinor:number;offerId?:string}){
-    return this.db.serializable(tx=>this.bookInTransaction(tx,accountId,tripId,seats,redemption));
+    const occurrence = this.createBookingOccurrence();
+    return this.db.serializable(tx=>this.bookInTransaction(tx,accountId,tripId,seats,occurrence,redemption));
+  }
+
+  createBookingOccurrence(){
+    return { id: randomUUID(), createdAt: new Date() };
   }
 
   /** Keeps capacity, safety, weather, participants and the original contract atomic with a store basket. */
-  async bookInTransaction(tx:Prisma.TransactionClient,accountId:string,tripId:string,seats:number,redemption?:{points:number;cashDueMinor:number;offerId?:string}){
+  async bookInTransaction(tx:Prisma.TransactionClient,accountId:string,tripId:string,seats:number,occurrence:{readonly id:string;readonly createdAt:Date},redemption?:{points:number;cashDueMinor:number;offerId?:string}){
     if(!Number.isInteger(seats)||seats<1)throw new BadRequestException('Invalid seats.');
     const reviewIssues:string[]=[];
       const controls=await this.bookingControls(tx),{gateSettings,safetyPolicy,weatherPolicy,capacityPolicy}=controls;
@@ -57,7 +62,7 @@ export class TripsService {
       if(!latestSafety||latestSafety.decision!=='ALLOWED'){if(safetyPolicy.enforce)throw new ConflictException('Trip requires safety approval before booking.');if(safetyPolicy.review)reviewIssues.push('SAFETY_APPROVAL');}
       const weatherReview=await this.weatherReviews.latest(tripId,tx),weather=this.weatherGate.evaluateReview(weatherReview?.snapshot,weatherReview?.status,gateSettings,weatherReview?.context,weatherReview?.fetchedAt);if(weather.blocking){if(weatherPolicy.enforce)throw new ConflictException(weather.reason||'Trip is unavailable because weather review is not approved.');if(weatherPolicy.review)reviewIssues.push('WEATHER_GATE');}
       const used=await tx.booking.aggregate({where:{tripId,status:{in:['PENDING','CONFIRMED']}},_sum:{seats:true}});if((used._sum.seats??0)+seats>trip.capacity){if(capacityPolicy.enforce)throw new ConflictException('Trip capacity reached.');if(capacityPolicy.review)reviewIssues.push('CAPACITY_LIMIT');}
-      const id=randomUUID(),createdAt=new Date(),quotedPrice=await this.tripPrice(tripId,tx);
+      const {id,createdAt}=occurrence,quotedPrice=await this.tripPrice(tripId,tx);
       const bookingPoints=redemption ? await spendOnBooking(tx,accountId,trip.organizationId,id,quotedPrice.pricePerSeatMinor*seats,redemption) : undefined;
       const contractSnapshot=captureTripBookingContract({bookingId:id,accountId,buyerOrganizationId:null,seats,createdAt,price:quotedPrice,trip,bookingPoints});
       // A fresh booking keeps cancelled contracts, participants and payments intact.

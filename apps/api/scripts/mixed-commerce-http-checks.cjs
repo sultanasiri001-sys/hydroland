@@ -2,6 +2,7 @@
 // This acceptance deliberately makes no single-charge or real-bank claim.
 const assert = require('node:assert/strict');
 const {randomUUID} = require('node:crypto');
+const {Prisma} = require('@prisma/client');
 const {openFixture} = require('./mixed-commerce-fixture.cjs');
 
 (async () => {
@@ -20,6 +21,26 @@ const {openFixture} = require('./mixed-commerce-fixture.cjs');
     ]);
     return {stock: goods.stockQuantity, bookings, courses, rentals: rentals[0].count, orders, lines, payments, checkouts, collection, refunds, ledger,
       providerWrites: requests.filter(row => row.method === 'POST').length};
+  };
+  const retryOnce = async (input, beforeRetry = async () => {}) => {
+    const serializable = db.serializable.bind(db);
+    let first, completedAttempts = 0, retried = false;
+    db.serializable = work => serializable(async tx => {
+      // This callback is entered again only after the failed transaction has
+      // rolled back. A separate committed catalog update remains visible to it.
+      if (first && !retried) {retried = true; await beforeRetry();}
+      const result = await work(tx);
+      if (result?.requestId === input.requestId && Array.isArray(result.lines)) {
+        completedAttempts++;
+        if (!first) {
+          first = structuredClone(result);
+          throw new Prisma.PrismaClientKnownRequestError('Synthetic B08 serialization retry', {code: 'P2034', clientVersion: 'disposable-test'});
+        }
+      }
+      return result;
+    });
+    try {return {response: await call(buyer, '/store/unified-orders', 'POST', input), first, completedAttempts, retried};}
+    finally {db.serializable = serializable;}
   };
   let main, order, collected, financial;
   try {
@@ -69,6 +90,47 @@ const {openFixture} = require('./mixed-commerce-fixture.cjs');
         await db.$executeRawUnsafe('DROP FUNCTION b08_fail_parent()');
       }
       assert.deepEqual(await snapshot(offer), before);
+    });
+    await check('serialization retry preserves grouped and native identities and original terms without freezing rental transaction time', async () => {
+      const offer = await f.offerings('retry-identities'), before = await snapshot(offer);
+      const retried = await retryOnce(offer.input), result = ok(retried.response);
+      assert.equal(retried.completedAttempts, 2); assert.equal(retried.retried, true);
+      const occurrence = value => ({id: value.id, lines: value.lines.map(line => {
+        const contractSnapshot = structuredClone(line.contractSnapshot);
+        // Native rental reservation time is the current transaction's database
+        // clock. Preserve that existing rule while proving all other terms.
+        if (line.kind === 'RENTAL') {delete contractSnapshot.contractedAt; delete contractSnapshot.policySnapshot.contractedAt;}
+        return {id: line.id, kind: line.kind, sourceType: line.sourceType, sourceId: line.sourceId, contractSnapshot,
+          ...(line.kind === 'RENTAL' ? {} : {contractHash: line.contractHash})};
+      }).sort((a, b) => a.kind.localeCompare(b.kind))});
+      assert.deepEqual(occurrence(result), occurrence(retried.first));
+      const rental = result.lines.find(line => line.kind === 'RENTAL'), previousRental = retried.first.lines.find(line => line.kind === 'RENTAL');
+      assert.ok(Date.parse(rental.contractSnapshot.contractedAt) >= Date.parse(previousRental.contractSnapshot.contractedAt));
+      assert.equal(rental.contractSnapshot.policySnapshot.contractedAt, rental.contractSnapshot.contractedAt);
+      assert.equal(rental.contractHash, f.load('store/store-checkout-contract.js').storeContractHash(rental.contractSnapshot));
+      const [nativeRental] = await db.$queryRaw`SELECT "reservedAt" FROM "EquipmentRental" WHERE id=${rental.sourceId}`;
+      assert.equal(nativeRental.reservedAt.toISOString(), rental.contractSnapshot.contractedAt);
+      const after = await snapshot(offer);
+      assert.equal(after.orders, before.orders + 1); assert.equal(after.lines, before.lines + 4);
+      assert.equal(after.stock, 18); assert.equal(after.bookings, 1); assert.equal(after.courses, 1); assert.equal(after.rentals, 1);
+      for (const key of ['payments', 'checkouts', 'collection', 'refunds', 'ledger', 'providerWrites']) assert.equal(after[key], before[key], key);
+      assert.equal(await db.auditEvent.count({where: {action: 'UNIFIED_STORE_ORDER_CREATED', resourceId: result.id}}), 1);
+    });
+    await check('every source rechecks current catalog price after serialization rollback before committing original consent', async () => {
+      for (const kind of ['GOODS', 'TRIP', 'COURSE', 'RENTAL']) {
+        const offer = await f.offerings('retry-price-' + kind.toLowerCase()), before = await snapshot(offer);
+        const retried = await retryOnce(offer.input, async () => {
+          if (kind === 'GOODS') await db.storeProduct.update({where: {id: offer.goods.id}, data: {priceMinor: 1201}});
+          else if (kind === 'TRIP') await db.operationalSetting.update({where: {key: 'trip-price:' + offer.trip.id}, data: {value: {pricePerSeatMinor: 2301, currency: 'SAR'}}});
+          else if (kind === 'COURSE') await db.storeCourseOffer.update({where: {id: offer.course.id}, data: {priceMinor: 3401}});
+          else await db.operationalSetting.update({where: {key: 'store-rental-rate:' + offer.equipment.id},
+            data: {value: {organizationId: center.id, published: true, baseMinor: 4501, currency: 'SAR'}}});
+        });
+        denied(retried.response, 409); assert.equal(retried.completedAttempts, 1); assert.equal(retried.retried, true);
+        assert.deepEqual(await snapshot(offer), before, kind);
+        assert.equal(await db.unifiedStoreOrder.count({where: {id: retried.first.id}}), 0);
+        assert.equal(await db.auditEvent.count({where: {action: 'UNIFIED_STORE_ORDER_CREATED', resourceId: retried.first.id}}), 0);
+      }
     });
     await check('simultaneous identical requests create one grouped order and one of every native source', async () => {
       main = await f.offerings('main');

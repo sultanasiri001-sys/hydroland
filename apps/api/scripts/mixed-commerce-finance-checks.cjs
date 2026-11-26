@@ -32,7 +32,7 @@ exports.verifyFinancialLifecycle = async function verifyFinancialLifecycle(f, {m
     nativeStoreInvoices: await db.storeInvoice.count(), nativeTripInvoices: await db.invoice.count(),
     audit: await db.auditEvent.count({where: {action: {startsWith: 'COMMERCE_SOURCE_'}}}), providerWrites: f.requests.filter(r => r.method === 'POST').length});
   let goods, refund;
-  const settlements = [];
+  const settlements = [], invoiceReceipts = [];
 
   await check('collected but unperformed sources cannot allocate or prepare a settlement', async () => {
     const before = await financeSnapshot();
@@ -104,9 +104,28 @@ exports.verifyFinancialLifecycle = async function verifyFinancialLifecycle(f, {m
   });
   await check('original seller invoices finalize with exact lines, amounts, tax and atomic audit evidence', async () => {
     const profile = ok(await call(owner, `/organizations/${center.id}/financial-profile`));
-    ok(await call(owner, `/organizations/${center.id}/financial-profile`, 'PATCH', {currency: 'SAR', taxStatus: 'EXEMPT',
+    let declaredProfile = ok(await call(owner, `/organizations/${center.id}/financial-profile`, 'PATCH', {currency: 'SAR', taxStatus: 'EXEMPT',
       registrationStatus: 'REGISTERED', expectedRevision: profile.revision}));
-    for (const line of order.lines) {
+    // Finalize three exempt originals first, then one explicitly taxable course.
+    // Tax is supplied in minor units from the original; no rate is inferred.
+    for (const line of [...order.lines.filter(row => row.kind !== 'COURSE'), byKind.COURSE]) {
+      const taxMinor = line.kind === 'COURSE' ? 400 : 0;
+      if (line.kind === 'COURSE') {
+        const current = ok(await call(owner, `/organizations/${center.id}/financial-profile`));
+        declaredProfile = ok(await call(owner, `/organizations/${center.id}/financial-profile`, 'PATCH', {currency: 'SAR', taxStatus: 'TAXABLE',
+          registrationStatus: 'REGISTERED', expectedRevision: current.revision}));
+        assert.equal(declaredProfile.revision, current.revision + 1);
+        assert.equal(invoiceReceipts.length, 3);
+        for (const prior of invoiceReceipts) {
+          const stored = await db.commerceInvoiceFinalization.findUniqueOrThrow({where: {id: prior.id}});
+          assert.deepEqual(stored.snapshot, prior.snapshot);
+          assert.equal(stored.taxMinor, 0); assert.equal(stored.snapshot.sellerFinancialProfile.taxStatus, 'EXEMPT');
+          const state = await read(byKind[prior.kind]);
+          assert.equal(state.invoice.status, 'FINALIZED'); assert.equal(state.invoice.taxMinor, 0);
+          assert.equal(state.invoice.sellerFinancialProfile.taxStatus, 'EXEMPT');
+          assert.equal(ok(await call(accountant, path(byKind[prior.kind]) + '/invoice-finalization', 'POST', prior.input)).id, prior.id);
+        }
+      }
       let state = await read(line); assert.equal(state.invoice.canFinalize, false);
       const key = state.invoice.documentKey;
       const rows = ok(await call(accountant, `/account/invoices?sourceType=${key.sourceType}&sourceId=${key.sourceId}`));
@@ -120,29 +139,40 @@ exports.verifyFinancialLifecycle = async function verifyFinancialLifecycle(f, {m
       assert.equal(attached.status, 201, await attached.text());
       state = await read(line); assert.equal(state.invoice.canFinalize, true, JSON.stringify(state));
       const taxLines = line.kind === 'GOODS' ? line.contractSnapshot.lines.map(row => ({lineId: row.source.id, taxMinor: 0}))
-        : line.kind === 'RENTAL' ? line.contractSnapshot.lines.map(row => ({lineId: row.id, taxMinor: 0})) : [{lineId: line.sourceId, taxMinor: 0}];
+        : line.kind === 'RENTAL' ? line.contractSnapshot.lines.map(row => ({lineId: row.id, taxMinor: 0})) : [{lineId: line.sourceId, taxMinor}];
       const input = {issuedAt: new Date().toISOString(), expectedEvidenceHash: state.invoice.expectedEvidenceHash, taxLines};
       const endpoint = path(line) + '/invoice-finalization';
       denied(await call(owner, endpoint, 'POST', input), 403);
       denied(await call(accountant, endpoint, 'POST', {...input, expectedEvidenceHash: '0'.repeat(64)}), 409);
       denied(await call(accountant, endpoint, 'POST', {...input, taxLines: [{lineId: randomUUID(), taxMinor: 0}]}), 409);
       const before = await financeSnapshot();
+      if (line.kind !== 'COURSE') {
+        denied(await call(accountant, endpoint, 'POST', {...input, taxLines: taxLines.map((row, index) => ({...row, taxMinor: index ? 0 : 1}))}), 409);
+        assert.deepEqual(await financeSnapshot(), before);
+      }
       if (line.kind === 'GOODS') {
         await failAudit(db, 'COMMERCE_SOURCE_INVOICE_FINALIZED', async () => denied(await call(accountant, endpoint, 'POST', input), 500));
         assert.deepEqual(await financeSnapshot(), before);
       }
       const result = ok(await call(accountant, endpoint, 'POST', input));
-      assert.equal(result.status, 'FINALIZED'); assert.equal(result.amountMinor, line.amountMinor); assert.equal(result.taxMinor, 0);
+      assert.equal(result.status, 'FINALIZED'); assert.equal(result.amountMinor, line.amountMinor); assert.equal(result.taxMinor, taxMinor);
       assert.equal(ok(await call(accountant, endpoint, 'POST', input)).id, result.id);
       const stored = await db.commerceInvoiceFinalization.findUniqueOrThrow({where: {sourceType_sourceId: {sourceType: line.sourceType, sourceId: line.sourceId}}});
       assert.equal(stored.documentSha256, createHash('sha256').update(content).digest('hex'));
       assert.equal(stored.customerAccountId, buyer.id); assert.equal(stored.sellerId, center.id); assert.equal(stored.amountMinor, line.amountMinor);
+      assert.equal(stored.taxMinor, taxMinor); assert.equal(stored.snapshot.taxMinor, taxMinor);
+      assert.equal(stored.snapshot.subtotalMinor, line.amountMinor - taxMinor);
       assert.equal(stored.snapshot.subtotalMinor + stored.snapshot.taxMinor, line.amountMinor);
+      assert.deepEqual(stored.snapshot.taxLines, [...taxLines].sort((a, b) => a.lineId.localeCompare(b.lineId)));
+      assert.equal(stored.snapshot.sellerFinancialProfile.taxStatus, line.kind === 'COURSE' ? 'TAXABLE' : 'EXEMPT');
+      assert.equal(stored.snapshot.sellerFinancialProfile.revision, declaredProfile.revision);
       assert.equal(stored.snapshot.originalContract.customerAccountId, buyer.id);
       assert.equal(await db.auditEvent.count({where: {action: 'COMMERCE_SOURCE_INVOICE_FINALIZED', resourceId: line.sourceId}}), 1);
       if (line.kind === 'GOODS') assert.equal(await db.storeInvoice.count({where: {payment: {orderId: line.sourceId}}}), 1);
       const projected = ok(await call(buyer, '/store/unified-orders/' + order.id)).lines.find(row => row.id === line.id);
       assert.equal(projected.invoice.finalizationStatus, 'FINALIZED'); assert.equal(projected.invoice.finalizationId, stored.id);
+      invoiceReceipts.push({kind: line.kind, id: stored.id, amountMinor: stored.amountMinor, taxMinor, subtotalMinor: stored.snapshot.subtotalMinor,
+        profileRevision: declaredProfile.revision, snapshot: stored.snapshot, input});
     }
   });
   await check('tampered invoice tax evidence and void native invoices cannot support settlement', async () => {
@@ -269,7 +299,9 @@ exports.verifyFinancialLifecycle = async function verifyFinancialLifecycle(f, {m
     cancellation = await verifyCancelledSources(f, {check, financePath: path});
   }
   return {currency: 'SAR', originalCollectedMinor: 12600, refundedMinor: 1200, earnedGrossMinor: 11400, commissionMinor: 400,
-    confirmedExternalReceiptMinor: 11000, realBankExecution: false, settlements: settlements.map(row => ({kind: row.line.kind,
+    confirmedExternalReceiptMinor: 11000, realBankExecution: false,
+    invoices: invoiceReceipts.map(({kind, id, amountMinor, taxMinor, subtotalMinor, profileRevision}) => ({kind, id, amountMinor, taxMinor, subtotalMinor, profileRevision})),
+    settlements: settlements.map(row => ({kind: row.line.kind,
       sourceType: row.line.sourceType, sourceId: row.line.sourceId, grossMinor: row.gross, netMinor: row.entry.amountMinor,
       financeEntryId: row.entry.id, transferReceiptId: row.transfer.id})), cancellation};
 };

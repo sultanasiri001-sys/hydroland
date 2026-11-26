@@ -7,6 +7,8 @@ import { randomUUID } from 'node:crypto';
 import { createCommerceContractSnapshot } from '../commerce/commerce-contract-snapshot';
 import { requireVerifiedStoreCollection, STORE_CHECKOUT_SOURCE } from './store-checkout-contract';
 
+export type StoreOrderOccurrence = { readonly orderId: string; readonly recordedAt: string; readonly itemIds: ReadonlyMap<string, string> };
+
 @Injectable()
 export class StoreService {
   constructor(private readonly prisma: DatabaseService, private readonly audit: AuditService) {}
@@ -61,11 +63,19 @@ export class StoreService {
   }
 
   async createOrder(accountId: string, items: { productId: string; quantity: number; expectedUnitPriceMinor?:number }[]) {
-    return this.prisma.serializable(tx => this.createOrderInTransaction(tx, accountId, items));
+    const occurrence = this.createOrderOccurrence(items);
+    return this.prisma.serializable(tx => this.createOrderInTransaction(tx, accountId, items, occurrence));
+  }
+
+  /** Allocate only occurrence identity/time before the caller's retry boundary. */
+  createOrderOccurrence(items: readonly { productId: string }[]): StoreOrderOccurrence {
+    if (!Array.isArray(items) || !items.length) throw new BadRequestException('Order requires items');
+    return { orderId: randomUUID(), recordedAt: new Date().toISOString(),
+      itemIds: new Map(items.map(item => [item?.productId ?? '', randomUUID()])) };
   }
 
   /** Reuses the native goods contract and stock reservation in a caller-owned transaction. */
-  async createOrderInTransaction(tx: Prisma.TransactionClient, accountId: string, items: { productId: string; quantity: number; expectedUnitPriceMinor?:number }[]) {
+  async createOrderInTransaction(tx: Prisma.TransactionClient, accountId: string, items: { productId: string; quantity: number; expectedUnitPriceMinor?:number }[], occurrence: StoreOrderOccurrence) {
     if (!items?.length) throw new BadRequestException('Order requires items');
 
     const quantities = new Map<string, number>();
@@ -81,9 +91,12 @@ export class StoreService {
       }
       quantities.set(item.productId, (quantities.get(item.productId) ?? 0) + item.quantity);
     }
-    const normalizedItems = [...quantities].map(([productId, quantity]) => ({ id: randomUUID(), productId, quantity }));
-    const orderId = randomUUID();
-    const recordedAt = new Date().toISOString();
+    const normalizedItems = [...quantities].map(([productId, quantity]) => {
+      const id = occurrence.itemIds.get(productId);
+      if (!id) throw new BadRequestException('Order occurrence is invalid');
+      return { id, productId, quantity };
+    });
+    const { orderId, recordedAt } = occurrence;
 
       const products = await tx.storeProduct.findMany({
         where: { id: { in: normalizedItems.map((item) => item.productId) }, status: 'ACTIVE', OR:[{organizationId:null},{organization:{status:'ACTIVE'}}] },

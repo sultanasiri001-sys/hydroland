@@ -106,6 +106,23 @@ export class UnifiedStoreOrdersService {
 
   async create(accountId: string, raw: unknown) {
     const input = parseInput(raw), fingerprint = storeContractHash({ version: 'UNIFIED_STORE_ORDER_V1', accountId, items: input.items });
+    const goods = input.items.filter((item): item is Goods => item.kind === 'GOODS');
+    const trips = input.items.filter((item): item is Trip => item.kind === 'TRIP');
+    const courses = input.items.filter((item): item is Course => item.kind === 'COURSE');
+    const rentals = input.items.filter((item): item is Rental => item.kind === 'RENTAL');
+    // Only occurrence identity/time survives retries. Supplier grouping, catalog,
+    // prices, policies and all availability/authority guards are read in each attempt.
+    const goodsOccurrences = new Map(goods.map(item => [item.productId, this.store.createOrderOccurrence([item])]));
+    const tripOccurrences = new Map(trips.map(item => [item.tripId, this.trips.createBookingOccurrence()]));
+    const courseOccurrences = new Map(courses.map(item => [item.courseId, this.offers.createEnrollmentOccurrence()]));
+    const rentalOccurrences = new Map(rentals.map(item => [item.resourceId, this.rentals.createOccurrence([item])]));
+    const orderId = randomUUID(), createdAt = new Date();
+    const lineIds = new Map([
+      ...[...goodsOccurrences.values()].map(value => value.orderId),
+      ...[...tripOccurrences.values()].map(value => value.id),
+      ...[...courseOccurrences.values()].map(value => value.enrollmentId),
+      ...[...rentalOccurrences.values()].map(value => value.rentalId),
+    ].map(sourceId => [sourceId, randomUUID()]));
     const work = (replayOnly = false) => this.db.serializable(async tx => {
       const actor = await this.actor(tx, accountId);
       await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtextextended(${`unified-store:${accountId}:${input.requestId}`},0))`;
@@ -116,7 +133,6 @@ export class UnifiedStoreOrdersService {
       }
       if (replayOnly) throw new ConflictException('تغير أحد الحجوزات بالتزامن. حدّث الطلب قبل المحاولة.');
       const lines: LineInput[] = [];
-      const goods = input.items.filter((item): item is Goods => item.kind === 'GOODS');
       if (goods.length) {
         const products = await tx.storeProduct.findMany({ where: { id: { in: goods.map(item => item.productId) }, kind: 'GOODS', status: 'ACTIVE',
           organization: { kind: 'DIVE_CENTER', status: 'ACTIVE' } }, select: { id: true, organizationId: true } });
@@ -127,32 +143,34 @@ export class UnifiedStoreOrdersService {
           grouped.set(supplier, [...(grouped.get(supplier) ?? []), item]);
         }
         for (const [supplier, items] of [...grouped].sort(([a], [b]) => a.localeCompare(b))) {
-          const order = await this.store.createOrderInTransaction(tx, accountId, items.sort((a, b) => a.productId.localeCompare(b.productId)));
+          items.sort((a, b) => a.productId.localeCompare(b.productId));
+          const occurrence = { ...goodsOccurrences.get(items[0].productId)!,
+            itemIds: new Map(items.flatMap(item => [...goodsOccurrences.get(item.productId)!.itemIds])) };
+          const order = await this.store.createOrderInTransaction(tx, accountId, items, occurrence);
           const snapshot = requireStoreCheckoutContract({ ...order, payment: null });
           if (snapshot.organizationId !== supplier) throw new ConflictException('تغير المركز المورّد للسلع.');
           lines.push(this.line('GOODS', 'STORE_ORDER', order.id, snapshot, snapshot.lines.map(item => item.title).join(' · ')));
         }
       }
 
-      for (const item of input.items.filter((row): row is Trip => row.kind === 'TRIP').sort((a, b) => a.tripId.localeCompare(b.tripId))) {
+      for (const item of [...trips].sort((a, b) => a.tripId.localeCompare(b.tripId))) {
         await tx.$queryRaw`SELECT "id" FROM "Trip" WHERE "id"::text=${item.tripId} FOR UPDATE`;
-        const booking = await this.trips.bookInTransaction(tx, accountId, item.tripId, item.seats);
+        const booking = await this.trips.bookInTransaction(tx, accountId, item.tripId, item.seats, tripOccurrences.get(item.tripId)!);
         const requirement = tripBookingPaymentRequirement(booking), snapshot = storeObject(booking.contractSnapshot);
         if (requirement.source !== 'SNAPSHOT' || requirement.requiredAmountMinor === null) throw new ConflictException('راجع السعر والسياسة الأصليين للرحلة.');
         this.price(item.expectedUnitPriceMinor, snapshot.unitPriceMinor);
         lines.push(this.line('TRIP', 'TRIP_BOOKING', booking.id, snapshot, snapshot.title));
       }
 
-      for (const item of input.items.filter((row): row is Course => row.kind === 'COURSE').sort((a, b) => a.courseId.localeCompare(b.courseId))) {
+      for (const item of [...courses].sort((a, b) => a.courseId.localeCompare(b.courseId))) {
         await tx.$queryRaw`SELECT "id" FROM "StoreCourseOffer" WHERE "id"::text=${item.courseId} FOR UPDATE`;
         const existing = await tx.trainingEnrollment.findFirst({ where: { storeCourseOfferId: item.courseId, studentAccountId: accountId, status: { not: 'CANCELLED' } }, select: { id: true } });
         if (existing) throw new ConflictException('لديك تسجيل قائم في هذه الدورة. تابع تسجيلك الأصلي.');
-        const enrollment = await this.offers.enrollInTransaction(tx, accountId, item.courseId), snapshot = requireCourseContract(enrollment, true);
+        const enrollment = await this.offers.enrollInTransaction(tx, accountId, item.courseId, courseOccurrences.get(item.courseId)!), snapshot = requireCourseContract(enrollment, true);
         this.price(item.expectedUnitPriceMinor, snapshot.unitPriceMinor);
         lines.push(this.line('COURSE', 'TRAINING_ENROLLMENT', enrollment.id, snapshot, snapshot.title));
       }
 
-      const rentals = input.items.filter((item): item is Rental => item.kind === 'RENTAL');
       if (rentals.length) {
         const ids = rentals.map(item => item.resourceId).sort();
         const assets = await tx.$queryRaw<RentalOffer[]>`SELECT b."resourceId", b."organizationId"::text AS "organizationId", s.value AS profile
@@ -174,9 +192,12 @@ export class UnifiedStoreOrdersService {
           groups.set(key, [...(groups.get(key) ?? []), { ...item, priceMinor }]);
         }
         for (const [, items] of [...groups].sort(([a], [b]) => a.localeCompare(b))) {
+          items.sort((a, b) => a.resourceId.localeCompare(b.resourceId));
+          const occurrence = { ...rentalOccurrences.get(items[0].resourceId)!,
+            itemIds: new Map(items.flatMap(item => [...rentalOccurrences.get(item.resourceId)!.itemIds])) };
           const rental = await this.rentals.createInTransaction(tx, accountId, { renterAccountId: accountId,
             scheduledHandoverAt: items[0].scheduledHandoverAt, dueAt: items[0].dueAt,
-            items: items.sort((a, b) => a.resourceId.localeCompare(b.resourceId)).map(item => ({ resourceId: item.resourceId, unitPriceSar: item.priceMinor / 100 })) }, { publishedOnly: true });
+            items: items.map(item => ({ resourceId: item.resourceId, unitPriceSar: item.priceMinor / 100 })) }, occurrence, { publishedOnly: true });
           const snapshot = storeObject(rental.contractSnapshot);
           // The native helper re-prices inside the same transaction; a promotion boundary requires renewed consent.
           for (const item of items) {
@@ -188,8 +209,8 @@ export class UnifiedStoreOrdersService {
       }
       const totalMinor = lines.reduce((sum, line) => sum + line.amountMinor, 0);
       if (!Number.isSafeInteger(totalMinor) || totalMinor > maxMinor) throw new BadRequestException('إجمالي الطلب يتجاوز الحد المسموح.');
-      const order = await tx.unifiedStoreOrder.create({ data: { id: randomUUID(), accountId, requestId: input.requestId,
-        requestFingerprint: fingerprint, totalMinor, currency: 'SAR', lines: { create: lines.map(line => ({ id: randomUUID(), ...line })) } }, include: { lines: true } });
+      const order = await tx.unifiedStoreOrder.create({ data: { id: orderId, createdAt, accountId, requestId: input.requestId,
+        requestFingerprint: fingerprint, totalMinor, currency: 'SAR', lines: { create: lines.map(line => ({ id: lineIds.get(line.sourceId)!, ...line })) } }, include: { lines: true } });
       await tx.auditEvent.create({ data: { actorId: actor.personId, action: 'UNIFIED_STORE_ORDER_CREATED', resource: 'UnifiedStoreOrder', resourceId: order.id,
         metadata: { accountId, requestId: input.requestId, requestFingerprint: fingerprint, totalMinor, currency: 'SAR',
           sources: lines.map(({ sourceType, sourceId, amountMinor }) => ({ sourceType, sourceId, amountMinor })), financialActionExecuted: false } } });

@@ -8,7 +8,7 @@ financial record. The order is a reference group with `paymentMode: PER_SOURCE`.
 Each child collects through its established checkout and remains independently
 visible after cancellation, execution or refund.
 
-The complete local B08 HTTP/financial acceptance run passed **25 of 25 checks** on
+The complete local B08 HTTP/financial acceptance run passed **27 of 27 checks** on
 2026-11-26. This document describes the implemented boundary and executable local
 acceptance scenarios. Its verification record contains observed local results. Exact CI,
 merged-revision, deployment and live-verification evidence belongs in the release
@@ -55,6 +55,16 @@ stock, capacity, eligibility, boat, publication, contract and reservation guards
 All child creation, stock/seat/equipment reservation, parent lines and creation
 audit run inside one serializable database transaction. A rejected last child or
 an audit/database failure rolls back every earlier child in that basket.
+
+The caller allocates parent/line identities and each native child's occurrence
+context once before serializable retries. Goods order/item IDs, course enrollment
+IDs, trip booking IDs, rental/item IDs and the rental invoice reference therefore
+survive a rolled-back attempt. Goods/course contract timestamps and trip creation
+time also remain stable. Rental `reservedAt` retains its original database
+`statement_timestamp()` inside each attempt; the resulting rental contract and
+hash bind to that attempt's actual reservation time. Supplier grouping, catalog,
+price, policy, account/authority and availability checks are read again inside
+every attempt. A stable occurrence never authorizes stale offer data.
 
 An account/request advisory lock and a canonical request fingerprint make a
 concurrent identical submission replay the saved order. Offering ordering is
@@ -304,7 +314,7 @@ time zone, which was not inspected as part of this acceptance.
 
 The fixture amounts below are **minor SAR units (halalas)**. They were verified by
 the successful `B08_MIXED_NATIVE_ORDER` run, whose local output is
-`b08-full-acceptance.json`; they are synthetic acceptance evidence.
+`b08-retry-context-full.json`; they are synthetic acceptance evidence.
 
 | Native source | Original capture | Posted refund | Net collected | Explicit commission | Expected center settlement |
 |---|---:|---:|---:|---:|---:|
@@ -317,7 +327,12 @@ the successful `B08_MIXED_NATIVE_ORDER` run, whose local output is
 Thus the synthetic order is SAR 126, the goods refund is SAR 12, net collection
 is SAR 114, explicit commissions total SAR 4, and synthetic posted center
 settlements total SAR 110. The fixture explicitly declares an exempt profile and
-zero invoice tax; its commission is separate from that declaration.
+zero invoice tax for goods, trip and rental. It then declares the course issuer's
+profile taxable and finalizes the original course gross amount of **3,400** as
+**3,000 subtotal plus 400 explicitly supplied tax**. No tax rate is inferred.
+The three earlier exempt invoice snapshots and their zero tax remain unchanged
+after that profile revision, and their original finalizations replay correctly.
+Invoice tax and the separately declared commissions remain distinct records.
 
 The same successful run also exercised a second complete mixed order through
 native cancellation and refund operations. Its original collection was 12,600
@@ -339,6 +354,15 @@ goods orders; corrupted collection/payment state produces review; invoice tax
 tampering and native voiding block settlement; and receipt audit failure/stale
 evidence cannot partially post a transfer. The external bank-execution flag was
 `false` throughout.
+
+The retry acceptance injects `P2034` after the whole group has been written,
+verifies one committed set of original child/line identities and contracts, and
+checks the rental clock against its stored reservation. Separate retry cases
+change each of the four original offer prices after rollback. Every retry reads
+the changed price, refuses the old expected price with HTTP 409 and leaves no
+children, reservations or money from the rejected basket. The unchanged native
+commerce-contract snapshot suite also passes its existing stable-occurrence
+serialization check.
 
 | Boundary | Executable evidence |
 |---|---|
@@ -363,9 +387,10 @@ API and full web validation gates.
 
 | Check | Recorded result |
 |---|---|
-| API TypeScript (`npm --workspace @hydroland/api run typecheck`) | Passed locally on 2026-11-26 after shared invoice validation and cancellation ambiguity handling |
+| API TypeScript (`tsc --noEmit --incremental false --project apps/api/tsconfig.json`) | Passed locally on 2026-11-26 after the native/aggregate occurrence retry correction |
 | `git diff --check` | Passed locally on 2026-11-26, including final acceptance documentation |
-| Full B08 clean-database HTTP/financial suite | **25/25 passed**, `B08_MIXED_NATIVE_ORDER`, synthetic loopback provider and disposable UTC PostgreSQL; verified both completed/settled and cancelled/refunded mixed orders |
+| Unchanged native commerce-contract snapshot database suite | **7/7 passed**, including stable occurrence IDs after a synthetic `P2034` rollback |
+| Full B08 clean-database HTTP/financial suite | **27/27 passed**, `B08_MIXED_NATIVE_ORDER`, synthetic loopback provider and disposable UTC PostgreSQL; verified retry identities and fresh prices, explicit positive course tax, completed/settled orders and cancelled/refunded orders |
 | TEXT/UUID migration suite with replay | Passed after fresh and checkless-bootstrap coverage with conditional constraint installation |
 | Existing B12 acceptance | 15/15 passed |
 | Original policy/contract/entitlement checks | 38/38 passed |

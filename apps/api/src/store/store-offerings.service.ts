@@ -227,12 +227,17 @@ export class StoreOfferingsService {
   }
 
   enroll(accountId:string,courseId:string){
-    return this.db.serializable(tx=>this.enrollInTransaction(tx,accountId,courseId));
+    const occurrence = this.createEnrollmentOccurrence();
+    return this.db.serializable(tx=>this.enrollInTransaction(tx,accountId,courseId,occurrence));
+  }
+
+  createEnrollmentOccurrence(){
+    return { enrollmentId: randomUUID(), recordedAt: new Date().toISOString() };
   }
 
   /** Creates the original enrollment using the same capacity and policy checks. */
-  async enrollInTransaction(tx:Prisma.TransactionClient,accountId:string,courseId:string){
-    const enrollmentId = randomUUID(), recordedAt = new Date().toISOString();
+  async enrollInTransaction(tx:Prisma.TransactionClient,accountId:string,courseId:string,occurrence:{readonly enrollmentId:string;readonly recordedAt:string}){
+    const { enrollmentId, recordedAt } = occurrence;
       const account=await tx.account.findFirst({where:{id:accountId,status:'ACTIVE'},select:{id:true}});
       if(!account)throw new ForbiddenException('يتطلب التسجيل حسابًا نشطًا.');
       const course=await tx.storeCourseOffer.findFirst({where:{id:courseId,status:'ACTIVE',startsAt:{gt:new Date()},organization:{kind:'DIVE_CENTER',status:'ACTIVE'}},include:{organization:{select:{id:true,displayName:true,legalName:true,registrationNumber:true,address:true}}}});
