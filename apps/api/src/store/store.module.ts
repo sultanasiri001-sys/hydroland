@@ -14,6 +14,9 @@ import { StoreOfferingsController } from './store-offerings.controller';
 import { StoreOfferingsService } from './store-offerings.service';
 import { StoreGoodsService } from './store-goods.service';
 import { StoreGoodsController } from './store-goods.controller';
-@Module({imports:[AuthModule,AdminModule,AuditModule],controllers:[StoreInventoryController,StorefrontController,ActivityPromotionsController,StoreFeedbackController,StorePreferencesController,StoreGoodsController,StoreController,StoreOfferingsController],providers:[StoreFeedbackService,StoreGoodsService,StoreService,StoreOfferingsService]})
+import { TripsModule } from '../trips/trips.module';
+import { UnifiedStoreOrdersController } from './unified-store-orders.controller';
+import { UnifiedStoreOrdersService } from './unified-store-orders.service';
+@Module({imports:[AuthModule,AdminModule,AuditModule,TripsModule],controllers:[UnifiedStoreOrdersController,StoreInventoryController,StorefrontController,ActivityPromotionsController,StoreFeedbackController,StorePreferencesController,StoreGoodsController,StoreController,StoreOfferingsController],providers:[UnifiedStoreOrdersService,StoreFeedbackService,StoreGoodsService,StoreService,StoreOfferingsService]})
 export class StoreModule {}
 

@@ -61,6 +61,11 @@ export class StoreService {
   }
 
   async createOrder(accountId: string, items: { productId: string; quantity: number; expectedUnitPriceMinor?:number }[]) {
+    return this.prisma.serializable(tx => this.createOrderInTransaction(tx, accountId, items));
+  }
+
+  /** Reuses the native goods contract and stock reservation in a caller-owned transaction. */
+  async createOrderInTransaction(tx: Prisma.TransactionClient, accountId: string, items: { productId: string; quantity: number; expectedUnitPriceMinor?:number }[]) {
     if (!items?.length) throw new BadRequestException('Order requires items');
 
     const quantities = new Map<string, number>();
@@ -80,7 +85,6 @@ export class StoreService {
     const orderId = randomUUID();
     const recordedAt = new Date().toISOString();
 
-    return this.prisma.serializable(async (tx) => {
       const products = await tx.storeProduct.findMany({
         where: { id: { in: normalizedItems.map((item) => item.productId) }, status: 'ACTIVE', OR:[{organizationId:null},{organization:{status:'ACTIVE'}}] },
         include: { organization: { select: { id: true, displayName: true, legalName: true, registrationNumber: true, address: true } } },
@@ -145,7 +149,6 @@ export class StoreService {
         },
         include: { items: true },
       });
-    });
   }
 
   async createPayment(accountId:string,orderId:string,idempotencyKey:string) {

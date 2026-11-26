@@ -196,6 +196,22 @@ jobs:
           psql postgresql://hydroland:hydroland@localhost:5433/hydroland -v ON_ERROR_STOP=1 -c 'CREATE DATABASE commerce_test_store_checkout'
           npm --workspace @hydroland/api exec -- prisma db push --skip-generate
           node apps/api/scripts/store-hosted-checkout-http-checks.cjs
+      - name: B08 mixed native order and complete source financial acceptance
+        env:
+          NODE_ENV: test
+          COMMERCE_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+          B08_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+          DATABASE_URL: postgresql://hydroland:hydroland@localhost:5433/commerce_test_b08_acceptance
+        run: |
+          psql postgresql://hydroland:hydroland@localhost:5433/hydroland -v ON_ERROR_STOP=1 -c 'CREATE DATABASE commerce_test_b08_acceptance'
+          npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+          node apps/api/scripts/bootstrap-equipment-runtime-schema.mjs
+          node apps/api/scripts/bootstrap-trip-weather-runtime-schema.mjs
+          node apps/api/scripts/bootstrap-messaging-runtime-schema.mjs
+          node apps/api/scripts/b08-migrations-db-checks.mjs
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261126100000_unified_store_orders/migration.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261126103000_commerce_source_finance/migration.sql
+          node apps/api/scripts/mixed-commerce-http-checks.cjs
       - name: Course original-contract checkout and collection through real HTTP routes
         env:
           NODE_ENV: test

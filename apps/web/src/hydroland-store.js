@@ -147,6 +147,7 @@
   const grid=section.querySelector('.product-grid');
   const toast=m=>{const t=document.getElementById('toast');if(!t)return;uiLocale.setMessage(t, m);t.classList.add('visible');setTimeout(()=>t.classList.remove('visible'),2600)};
   const cart=new Map();
+  let unifiedStore=null;
   const capacityAvailable=item=>['DISABLED','REVIEW'].includes(item.bookingPolicy?.capacityLimit)||Number(item.remainingSeats??item.capacity??0)>0;
   const catalog={products:[],trips:[],courses:[],rentals:[],errors:[],status:'loading',filter:'all',typeFilter:'all'};
   const money=(v,c='SAR')=>new Intl.NumberFormat('ar-SA',{style:'currency',currency:c}).format(v/100);
@@ -155,7 +156,7 @@
   const idempotencyKey=()=>`store-${Date.now()}-${globalThis.crypto?.randomUUID?.()||Math.random().toString(36).slice(2)}`;
   const panel=document.createElement('div');panel.className='hl-store-cart';uiLocale.setHTML(panel, uiLocale.html`<strong>السلة</strong><span class="hl-store-summary">السلة فارغة</span><button type="button" class="hl-store-checkout" disabled>إنشاء الطلب</button><small class="hl-store-payment-note">إنشاء الطلب يحفظ السلة. راجع الشروط ووافق عليها قبل الانتقال إلى الدفع.</small><button type="button" class="hl-store-orders">طلباتي</button><button type="button" data-account-invoices>فواتيري</button><button type="button" class="hl-store-course-payments">مدفوعات دوراتي</button><div class="hl-store-orders-list" hidden></div><div class="hl-store-course-list" hidden></div>`);section.appendChild(panel);
   const summary=panel.querySelector('.hl-store-summary'),checkout=panel.querySelector('.hl-store-checkout'),orders=panel.querySelector('.hl-store-orders-list');
-  const renderCart=()=>{let n=0,total=0;for(const x of cart.values()){n+=x.quantity;total+=x.priceMinor*x.quantity}summary.textContent=n?(n+uiLocale.t(' منتج · ')+money(total)):uiLocale.t('السلة فارغة');checkout.disabled=!n;const clear=panel.querySelector('[data-clear-catalog-cart]');if(clear)clear.hidden=!n};
+  const renderCart=()=>{let n=0,total=0;for(const x of cart.values()){n+=x.quantity;total+=x.priceMinor*x.quantity}summary.textContent=n?(n+uiLocale.t(' منتج · ')+money(total)):uiLocale.t('السلة فارغة');checkout.disabled=!n||Boolean(unifiedStore?.busy());const clear=panel.querySelector('[data-clear-catalog-cart]');if(clear)clear.hidden=!n;unifiedStore?.renderCart()};
   const parse=async r=>{const body=await r.json().catch(()=>({}));if(!r.ok)throw (Array.isArray(body.message)?new Error(body.message.join('، ')):new Error(body.message||`HTTP ${r.status}`));return body};
   const loadPayments=async()=>{const r=await auth().authorizedFetch('/store/payments/mine');const data=await parse(r);return Array.isArray(data)?data:[]};
   const paymentForOrder=(payments,orderId)=>payments.find(payment=>payment.orderId===orderId)||null;
@@ -211,6 +212,7 @@
     }catch(error){if(current())uiLocale.setMessage(body,localErrorMessage(error,'تعذر تحميل شروط الدفع'));}
   };
   const addToCart=id=>{
+    if(unifiedStore?.busy())return false;
     const product=catalog.products.find(item=>item.id===id);if(!product)return false;
     const quantity=cart.get(id)?.quantity||0;
     if(quantity>=product.stockQuantity){toast(uiLocale.message('لا يمكن تجاوز المخزون المتاح'));return false}
@@ -280,6 +282,7 @@
     grid.querySelectorAll('[data-store-add]').forEach(button=>button.addEventListener('click',()=>addToCart(button.dataset.storeAdd)));
     grid.querySelectorAll('[data-book]').forEach(button=>button.addEventListener('click',()=>window.HydrolandBookings?.openBooking?.(button.dataset.tripId)));
     grid.querySelectorAll('[data-store-enroll]').forEach(button=>button.addEventListener('click',()=>enrollCourse(button)));
+    unifiedStore?.renderOffers(grid);
     window.HydrolandBookingAvailability?.refresh?.();
   };
   window.HydrolandStorefronts?.catalog(document.getElementById('store'),()=>{if(catalog.status!=='loading')renderProducts()});
@@ -376,7 +379,9 @@
     }catch(error){if(active()&&version===courseListVersion)uiLocale.setMessage(list,localErrorMessage(error,'تعذر تحميل الطلبات'));}
   };
   checkout.addEventListener('click',async()=>{
+    if(unifiedStore?.busy())return;
     if(!auth()?.isAuthenticated?.()){toast(uiLocale.message('سجّل الدخول أولًا لإتمام الطلب'));document.getElementById('visitor-auth-cta')?.click();return}
+    if(unifiedStore?.needsUnified()){await unifiedStore.create();return;}
     checkout.disabled=true;
     const active=sameSession();
     let order=null;
@@ -393,15 +398,16 @@
     finally{if(active())renderCart()}
   });
   const clearCart=document.createElement('button');clearCart.type='button';clearCart.dataset.clearCatalogCart='';clearCart.hidden=true;clearCart.textContent=catalogUI()?.t('إفراغ السلة') || 'إفراغ السلة';checkout.after(clearCart);
-  clearCart.addEventListener('click',()=>{cart.clear();renderCart();void loadProducts()});
+  clearCart.addEventListener('click',()=>{if(unifiedStore?.busy())return;cart.clear();renderCart();void loadProducts()});
   panel.querySelector('.hl-store-orders').addEventListener('click',loadOrders);
   panel.querySelector('.hl-store-course-payments').addEventListener('click',loadCoursePayments);
-  const clearCommerceSession=()=>{paymentViewVersion++;ordersVersion++;courseListVersion++;cart.clear();renderCart();orders.replaceChildren();orders.hidden=true;const list=panel.querySelector('.hl-store-course-list');list.replaceChildren();list.hidden=true;document.getElementById('hl-store-payment-dialog')?.close();};
+  const clearCommerceSession=()=>{paymentViewVersion++;ordersVersion++;courseListVersion++;cart.clear();renderCart();orders.replaceChildren();orders.hidden=true;const list=panel.querySelector('.hl-store-course-list');list.replaceChildren();list.hidden=true;document.getElementById('hl-store-payment-dialog')?.close();unifiedStore?.clearSession();};
   let returnHandled=null;
   const resumeCommercePayment=async()=>{const params=new URLSearchParams(window.location.search),course=params.get('enrollment_id'),order=params.get('store_order_id'),kind=params.has('course_payment')?'COURSE':params.has('store_payment')?'STORE':null,id=kind==='COURSE'?course:order;if(!kind||!id||id.length>128||!auth()?.isAuthenticated?.())return;const key=kind+':'+id+':'+auth().getSessionVersion?.();if(returnHandled===key)return;returnHandled=key;await openPayment(kind,id,{refresh:true});};
   document.addEventListener('hydroland:session-cleared',()=>{clearCommerceSession();returnHandled=null});
   document.addEventListener('hydroland:auth-changed',()=>{const version=auth()?.getSessionVersion?.();if(version!==storeSession||!auth()?.isAuthenticated?.()){clearCommerceSession();returnHandled=null;}storeSession=version;void resumeCommercePayment()});
   document.addEventListener('hydroland:center-trips-changed',loadProducts);
+  unifiedStore=window.HydrolandUnifiedStore?.mount({cart,catalog,panel,renderCart,loadProducts,toast,openPayment})||null;
   loadProducts();
   window.HydrolandStore={reloadProducts:loadProducts,openOrders:loadOrders,openCoursePayments:loadCoursePayments,getCart:()=>[...cart.values()],setTypeFilter,getProducts:()=>[...catalog.products],getPublicStatus:()=>catalog.errors.includes('products')?'error':catalog.status,addToCart,setFilter:filter=>{catalog.filter=['all','available','unavailable'].includes(filter)?filter:'all';if(catalog.status==='ready')renderProducts()}};
   void resumeCommercePayment();

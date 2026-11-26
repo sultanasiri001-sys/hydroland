@@ -22,11 +22,14 @@ import { FinanceSettlementService } from './finance-settlement.service';
 import { CenterServiceEntitlementService } from '../commerce/center-service-entitlement.service';
 import { CenterServiceTransferService } from '../commerce/center-service-transfer.service';
 import { CenterServiceTransferController } from './center-service-transfer.controller';
+import { CommerceSourceFinanceService } from '../commerce/commerce-source-finance.service';
+import { CommerceSourceTransferService } from '../commerce/commerce-source-transfer.service';
+import { CommerceSourceFinanceController } from './commerce-source-finance.controller';
 
 @Module({
   imports: [AuthModule, AdminModule, PaymentsModule],
-  controllers: [CenterServiceTransferController, InstructorPostingController, FinanceController, CenterPayeesController],
-  providers: [CenterServiceTransferService, InstructorPostingService, CenterServiceEntitlementService, FinanceReceivablesWorkspaceService, FinanceWorkspaceService, FinanceFoundationService, FinanceWorkflowService, FinanceOperationsService, FinanceGovernanceService, FinancePersistenceService, FinanceAccessService, FinanceShiftsService, FinanceReceivablesService, FinanceShiftCloseService, FinancePeriodCloseService, FinanceSettlementService],
+  controllers: [CommerceSourceFinanceController, CenterServiceTransferController, InstructorPostingController, FinanceController, CenterPayeesController],
+  providers: [CommerceSourceFinanceService, CommerceSourceTransferService, CenterServiceTransferService, InstructorPostingService, CenterServiceEntitlementService, FinanceReceivablesWorkspaceService, FinanceWorkspaceService, FinanceFoundationService, FinanceWorkflowService, FinanceOperationsService, FinanceGovernanceService, FinancePersistenceService, FinanceAccessService, FinanceShiftsService, FinanceReceivablesService, FinanceShiftCloseService, FinancePeriodCloseService, FinanceSettlementService],
   exports: [CenterServiceEntitlementService, FinanceFoundationService, FinanceWorkflowService, FinanceOperationsService, FinanceGovernanceService, FinancePersistenceService, FinanceAccessService, FinanceShiftsService, FinanceReceivablesService, FinanceShiftCloseService, FinancePeriodCloseService, FinanceSettlementService],
 })
 export class FinanceModule {}

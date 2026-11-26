@@ -3,6 +3,13 @@
   const uiLocale = window.HydrolandI18n?.createScope("center-finance", {
   "مطابقة تحصيل ضرر المعدات": "Reconcile rental damage payments",
   "حوالات مستحقات خدمات المركز": "Center service entitlement transfers",
+  "حوالات مستحقات الطلب الموحد": "Unified order entitlement transfers",
+  "البند": "Source",
+  "مرجع العملية": "Transaction reference",
+  "سلع المتجر": "Store goods",
+  "دورة تدريبية": "Training course",
+  "تأجير معدات": "Equipment rental",
+  "حجز رحلة": "Trip booking",
   "تسجيل حوالات نُفذت خارج هيدرولاند ومراجعة إثبات وصولها إلى المركز.": "Record transfers made outside Hydroland and review evidence that the center received them.",
   "تحديث سجل الحوالات": "Refresh transfer register",
   "جارٍ تحميل سجل الحوالات…": "Loading transfer register…",
@@ -286,14 +293,15 @@
   if(!response.ok)throw localError(errors[data?.code||data?.message]||(response.status===403?'صلاحية المحاسب غير متاحة.':'تعذر إتمام الطلب. حدّث البيانات قبل تكرار أي عملية مالية.'));
   return data;
  }
- function serviceTransfers(parent,selectedCenter,isCurrent){
+ function serviceTransfers(parent,selectedCenter,isCurrent,{kind='service',sourceLabels={}}={}){
+  const commerce=kind==='commerce',sourceTypes={STORE_ORDER:'سلع المتجر',TRAINING_ENROLLMENT:'دورة تدريبية',EQUIPMENT_RENTAL:'تأجير معدات',TRIP_BOOKING:'حجز رحلة'};
   const session=auth()?.getSessionVersion?.(),node=(tag,container,text)=>{const item=document.createElement(tag);if(text)uiLocale.setText(item,text);container.append(item);return item;};
-  const panel=node('details',parent);panel.dataset.serviceTransfers='';panel.className='hl-service-transfers';
-  node('summary',panel,'حوالات مستحقات خدمات المركز');
+  const panel=node('details',parent);if(commerce)panel.dataset.commerceTransfers='';else panel.dataset.serviceTransfers='';panel.className='hl-service-transfers';
+  node('summary',panel,commerce?'حوالات مستحقات الطلب الموحد':'حوالات مستحقات خدمات المركز');
   node('p',panel,'تسجيل حوالات نُفذت خارج هيدرولاند ومراجعة إثبات وصولها إلى المركز.');
   const refresh=node('button',panel,'تحديث سجل الحوالات');refresh.type='button';
   const status=node('p',panel);status.setAttribute('role','status');status.dataset.transferStatus='';
-  const content=node('div',panel),base='/finance/centers/'+encodeURIComponent(selectedCenter)+'/service-transfers';
+  const content=node('div',panel),base='/finance/centers/'+encodeURIComponent(selectedCenter)+(commerce?'/commerce-transfers':'/service-transfers');
   let generation=0,pending=false;
   const current=()=>panel.isConnected&&panel.open&&isCurrent()&&auth()?.isAuthenticated?.()&&session===auth()?.getSessionVersion?.();
   const field=(container,label,value)=>{const line=node('p',container);node('span',line,label);line.append(document.createTextNode(': '));const valueNode=node('bdi',line);valueNode.textContent=String(value??'—');valueNode.style.overflowWrap='anywhere';};
@@ -326,12 +334,12 @@
    content.replaceChildren();
    if(data.canSubmit){
     const article=node('article',content);node('h3',article,'تسجيل حوالة منفذة خارج هيدرولاند');
-    const candidates=data.candidates.filter(row=>row.financeEntryId&&row.bookingId&&Number.isSafeInteger(row.amountMinor)&&row.amountMinor>0&&row.currency==='SAR');
+    const candidates=data.candidates.filter(row=>row.financeEntryId&&(commerce?row.sourceId&&sourceTypes[row.sourceType]:row.bookingId)&&Number.isSafeInteger(row.amountMinor)&&row.amountMinor>0&&row.currency==='SAR');
     if(!candidates.length)node('p',article,'لا توجد مستحقات معتمدة متاحة لتسجيل حوالة.');
     else{
      const form=node('form',article);form.dataset.serviceTransferSubmit='';const requestId=crypto.randomUUID();
      const entry=input(form,'المستحق المعتمد','financeEntryId','select');option(entry,'','اختر المستحق');
-     for(const candidate of candidates){const item=option(entry,candidate.financeEntryId);uiLocale.setText(item,'الحجز {0} · {1}',[candidate.bookingId,money(candidate.amountMinor)]);}
+     for(const candidate of candidates){const item=option(entry,candidate.financeEntryId);if(commerce)item.textContent=(sourceLabels[candidate.sourceType+':'+candidate.sourceId]||uiLocale.t(sourceTypes[candidate.sourceType]))+' · '+money(candidate.amountMinor);else uiLocale.setText(item,'الحجز {0} · {1}',[candidate.bookingId,money(candidate.amountMinor)]);}
      const amount=input(form,'مبلغ المستحق المعتمد','amount');amount.readOnly=true;amount.required=false;
      entry.addEventListener('change',()=>{amount.value=money(candidates.find(row=>row.financeEntryId===entry.value)?.amountMinor);});
      const bank=input(form,'اسم البنك','bankName');bank.maxLength=200;const reference=input(form,'مرجع الحوالة البنكية','bankReference');reference.maxLength=200;
@@ -344,7 +352,7 @@
    if(!data.items.length)node('p',content,'لم تُسجل حوالات لهذه المستحقات.');
    for(const row of data.items){
     const article=node('article',content);article.dataset.transferId=row.id;node('h3',article,({PENDING:'بانتظار تأكيد الوصول',CONFIRMED:'تم تأكيد الوصول',REJECTED:'إثبات مرفوض'})[row.status]);
-    field(article,'مرجع الحجز',row.bookingId);field(article,'مرجع المستحق',row.financeEntryId);field(article,'مرجع اعتماد الفاتورة',row.invoiceFinalizationId);field(article,'اسم البنك',row.bankName);field(article,'مرجع الحوالة البنكية',row.bankReference);field(article,'المبلغ',money(row.amountMinor));field(article,'تاريخ الحوالة',displayTime(row.transferredAt));
+    if(commerce){field(article,'البند',sourceLabels[row.sourceType+':'+row.sourceId]||uiLocale.t(sourceTypes[row.sourceType]||''));field(article,'مرجع العملية',row.sourceId);}else field(article,'مرجع الحجز',row.bookingId);field(article,'مرجع المستحق',row.financeEntryId);field(article,'مرجع اعتماد الفاتورة',row.invoiceFinalizationId);field(article,'اسم البنك',row.bankName);field(article,'مرجع الحوالة البنكية',row.bankReference);field(article,'المبلغ',money(row.amountMinor));field(article,'تاريخ الحوالة',displayTime(row.transferredAt));
     if(row.decisionNote)field(article,'توضيح المراجعة',row.decisionNote);
     for(const kind of row.receiptDocumentSha256?['transfer','receipt']:['transfer']){const button=node('button',article,kind==='receipt'?'تحميل إثبات الوصول':'تحميل إثبات الحوالة');button.type='button';button.addEventListener('click',()=>void download(button,row.id,kind));}
     if(row.canConfirm===true&&row.status==='PENDING'){
@@ -402,7 +410,7 @@
   if(data.canReviewPeriod)html+=uiLocale.html`<article><h3>طلبات إقفال الفترات بانتظار الاعتماد</h3>${(data.periodCloseReviews.length?data.periodCloseReviews.map(c=>uiLocale.html`<div class="hl-finance-handover"><h4>${uiLocale.messageHTML((c.periodType==='MONTH'?uiLocale.message('شهر'):(c.periodType==='QUARTER'?uiLocale.message('ربع سنة'):uiLocale.message('سنة'))))} ${esc(c.periodKey)} · إصدار ${esc(c.revision)}</h4><p>مقدم الطلب: ${esc(c.submittedByName||'—')} · الاعتمادات: ${esc(c.approvals.length)}/2</p>${c.approvals.map(a=>uiLocale.html`<p>اعتماد ${(value=>value?esc(value):uiLocale.messageHTML(uiLocale.message('مراجع')))(a.reviewerName)} — ${esc(a.reviewerRole)}</p>`).join('')}<form data-finance-operation="period-review" data-submission-id="${esc(c.id)}"><label>ملاحظة المراجع<textarea name="reviewNote" maxlength="1000"></textarea></label><button name="decision" value="APPROVED" type="submit">${uiLocale.messageHTML((c.approvals.length?uiLocale.message('الاعتماد الثاني وإقفال الفترة'):uiLocale.message('الاعتماد الأول')))}</button><button name="decision" value="REJECTED" type="submit">رفض مع توضيح السبب</button></form></div>`).join(''):uiLocale.html`<p>لا توجد طلبات إقفال فترات بانتظار الاعتماد.</p>`)}</article>`;
   if(data.isOperator||data.canReview||data.canReviewPeriod){const items=data.settlementImports||[],status={SUBMITTED:'بانتظار اعتمادين',APPROVED:'معتمدة',REJECTED:'مرفوضة'};html+=uiLocale.html`<article><h3>مطابقة تسويات الدفع</h3><p>استيراد قراءة فقط من Moyasar. تُعرض عمليات المركز المطابقة فقط؛ لا يُنشأ قيد محاسبي ولا يُنفّذ تحويل مالي. أدخل معرّف التسوية من كشف Moyasar.</p>`;if(data.isOperator)html+=uiLocale.html`<form data-finance-operation="settlement-sync"><button type="submit">مزامنة مراجع الدفعات السابقة (10 في كل مرة)</button></form><form data-finance-operation="settlement-import"><label>معرّف التسوية<input name="settlementId" autocomplete="off" pattern="[0-9a-fA-F-]{36}" required></label><button type="submit">استيراد ومطابقة</button></form>`;html+=items.length?items.map(batch=>{const rows=Array.isArray(batch.lines)?batch.lines:[],reviews=Array.isArray(batch.reviews)?batch.reviews:[];return uiLocale.html`<div class="hl-finance-handover"><h4>تسوية ${esc(batch.providerSettlementId)} · ${uiLocale.messageHTML(((value=>value?uiLocale.message(value):value)(status[batch.status]) || batch.status))}</h4><p>${esc(batch.matchedLineCount)} سطر مطابق · إجمالي العمليات ${esc(money(batch.grossAmountMinor))} · الرسوم قبل الضريبة ${esc(money(batch.feeMinor))} · الضريبة ${esc(money(batch.taxMinor))}</p>${(batch.mismatchedLineCount?uiLocale.html`<p role="alert">يوجد ${esc(batch.mismatchedLineCount)} اختلاف مبلغ؛ يلزم تصحيحه قبل الاعتماد.</p>`:'')}<p>الاعتمادات: ${esc(reviews.filter(x=>x.decision==='APPROVED').length)}/2</p><ul>${rows.slice(0,20).map(line=>uiLocale.html`<li>${uiLocale.messageHTML(((value=>value?uiLocale.message(value):value)(({payment:'تحصيل',refund:'استرداد',fee:'رسوم',void:'إلغاء'})[line.type]) || line.type))} · ${esc(money(line.netAmountMinor))} · ${uiLocale.messageHTML((line.amountMatches?uiLocale.message('مطابق'):uiLocale.message('اختلاف مبلغ')))}</li>`).join('')}</ul>${((data.canReview||data.canReviewPeriod)&&batch.status==='SUBMITTED'?uiLocale.html`<form data-finance-operation="settlement-review" data-import-id="${esc(batch.id)}"><label>ملاحظة المراجع<textarea name="reviewNote" maxlength="1000"></textarea></label><button name="decision" value="APPROVED" type="submit">${uiLocale.messageHTML((reviews.filter(x=>x.decision==='APPROVED').length?uiLocale.message('الاعتماد الثاني'):uiLocale.message('اعتماد المطابقة')))}</button><button name="decision" value="REJECTED" type="submit">رفض مع السبب</button></form>`:'')}</div>`}).join(''):uiLocale.html`<p>لم تُستورد تسويات لهذا المركز.</p>`;html+=uiLocale.html`</article>`}
   uiLocale.setHTML(result, html);
-  if(data.isOperator){const selected=centerId,session=auth().getSessionVersion?.();serviceTransfers(result,selected,()=>eligible()&&snapshot===data&&selected===centerId&&session===auth().getSessionVersion?.());}
+  if(data.isOperator){const selected=centerId,session=auth().getSessionVersion?.(),scope=()=>eligible()&&snapshot===data&&selected===centerId&&session===auth().getSessionVersion?.();serviceTransfers(result,selected,scope);window.HydrolandCommerceFinance?.mount(result,selected,scope);}
   if(data.isOperator){
    const selected=centerId,session=auth().getSessionVersion();
    window.HydrolandProviderContact?.payees(result,selected,()=>eligible()&&snapshot===data&&selected===centerId&&session===auth().getSessionVersion());

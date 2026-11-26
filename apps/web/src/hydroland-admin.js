@@ -154,6 +154,7 @@
   const ownerTransfers=box.querySelector('[data-admin-service-transfers]'),ownerStatus=ownerTransfers.querySelector('[data-owner-transfer-status]'),ownerCenters=ownerTransfers.querySelector('[data-owner-transfer-centers]'),ownerWorkspace=ownerTransfers.querySelector('[data-owner-transfer-workspace]'),ownerRefresh=ownerTransfers.querySelector('[data-owner-transfer-refresh]');
   let ownerGeneration=0,ownerSelection=0;
   const ownerEligible=()=>!box.hidden&&window.HydrolandAuth?.isAuthenticated?.()&&window.HydrolandPortalAccess?.getCurrentRole?.()==='admin'&&window.HydrolandPortalAccess?.roleAllowed?.('admin');
+  window.HydrolandCommerceFinance?.owner(box,ownerEligible);
   function clearOwnerTransfers(close=true){ownerGeneration++;ownerSelection++;ownerCenters.replaceChildren();ownerWorkspace.replaceChildren();ownerStatus.textContent='';ownerRefresh.disabled=false;if(close)ownerTransfers.open=false;}
   async function loadOwnerTransfers(){
     if(!ownerEligible()||!ownerTransfers.open)return;clearOwnerTransfers(false);const generation=ownerGeneration,session=window.HydrolandAuth.getSessionVersion?.();

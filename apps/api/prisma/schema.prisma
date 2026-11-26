@@ -1185,6 +1185,63 @@ model CenterServiceTransferReceipt {
   @@index([bankReferenceKey])
 }
 
+// Source-bound invoice and transfer evidence; balances remain in FinanceEntry.
+model CommerceInvoiceFinalization {
+  id String @id @default(uuid())
+  sourceType String
+  sourceId String
+  sellerId String
+  customerAccountId String
+  number String
+  issuedAt DateTime
+  documentSha256 String
+  collectionEvidenceId String?
+  collectionFinanceEntryId String
+  contractHash String
+  amountMinor Int
+  currency String @default("SAR")
+  taxMinor Int
+  snapshot Json
+  finalizedBy String
+  finalizedAt DateTime @default(now())
+  @@unique([sourceType,sourceId])
+  @@unique([sellerId,number])
+  @@index([sellerId,finalizedAt])
+}
+
+model CommerceSourceTransferReceipt {
+  id String @id
+  financeEntryId String
+  activeFinanceEntryId String? @unique
+  organizationId String
+  centerOrgUnitId String
+  sourceType String
+  sourceId String
+  invoiceFinalizationId String
+  bankName String
+  bankReference String
+  bankReferenceKey String
+  amountMinor Int
+  currency String @default("SAR")
+  transferredAt DateTime
+  document Bytes
+  documentSha256 String
+  evidenceSnapshot Json
+  status String @default("PENDING")
+  submittedBy String
+  submittedAt DateTime @default(now())
+  reviewedBy String?
+  reviewedAt DateTime?
+  decisionNote String?
+  receivedAt DateTime?
+  receiptDocument Bytes?
+  receiptDocumentSha256 String?
+  @@index([organizationId,financeEntryId])
+  @@index([sourceType,sourceId])
+  @@index([centerOrgUnitId,status])
+  @@index([bankReferenceKey])
+}
+
 model ThemeSchedule {
   id String @id
   themeId String
@@ -2229,6 +2286,38 @@ model StoreOrder {
  payment StorePayment?
  @@index([accountId,status,createdAt])
 }
+
+// Customer-facing grouping only. Financial state remains on each native source.
+model UnifiedStoreOrder {
+ id String @id
+ accountId String
+ requestId String
+ requestFingerprint String
+ totalMinor Int
+ currency String @default("SAR")
+ createdAt DateTime @default(now())
+ lines UnifiedStoreOrderLine[]
+ @@unique([accountId,requestId])
+ @@index([accountId,createdAt])
+}
+
+model UnifiedStoreOrderLine {
+ id String @id
+ orderId String
+ kind String
+ sourceType String
+ sourceId String
+ organizationId String
+ title String
+ amountMinor Int
+ currency String @default("SAR")
+ contractSnapshot Json
+ contractHash String
+ order UnifiedStoreOrder @relation(fields:[orderId],references:[id],onDelete:Restrict)
+ @@unique([sourceType,sourceId])
+ @@index([orderId])
+}
+
 model StorePayment {
  id String @id @default(uuid())
  orderId String @unique
