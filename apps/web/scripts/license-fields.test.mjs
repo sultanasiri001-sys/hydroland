@@ -10,6 +10,30 @@ test('ambiguous, invalid, conflicting and Hijri dates stay empty',()=>{
  assert.deepEqual(extractFields('2025-01-01 2030-01-01'),{});
 });
 
+test('multiple distinct dates in one labelled value stay manual in Arabic and English',()=>{
+ for(const value of [
+  'Issue date: 2025-01-01 or 2026-02-02',
+  'Issue date: 2025-01-01 / 18-03-2025',
+  'تاريخ الإصدار: ٢٠٢٥/٠١/٠١ أو ٢٠٢٦/٠٢/٠٢',
+  'تاريخ الاصدار: ۲۰۲۵/۰۱/۰۱ أو ۲۰۲۶/۰۲/۰۲',
+ ])assert.equal(extractFields(value).issuedAt,undefined,value);
+ assert.equal(extractFields('تاريخ الانتهاء: ٢٠٢٨-٠٧-٢٤ أو ٢٠٢٩-٠٧-٢٤').expiresAt,undefined);
+});
+
+test('an unreadable date alternative cannot be discarded in favour of a valid date',()=>{
+ for(const value of ['2025-01-01 or 01/02/2025','2025-01-01 or 2025-02-30','2025-01-01 or 1447-01-01']){
+  assert.equal(extractFields('Issue date: '+value).issuedAt,undefined,value);
+ }
+ assert.equal(extractFields('Issue date: 2025-01-01\nIssue date: 01/02/2025').issuedAt,undefined);
+ assert.equal(extractFields('تاريخ الانتهاء: ٢٠٣٠-٠١-٠١\nتاريخ الانتهاء: غير مقروء').expiresAt,undefined);
+});
+
+test('repeated equivalent dates remain usable while uncertain references stay manual',()=>{
+ assert.equal(extractFields('Issue date: 2025-03-18 / 18.03.2025').issuedAt,'2025-03-18');
+ assert.equal(extractFields('تاريخ الإصدار: ٢٠٢٥/٣/١٨\nتاريخ الإصدار: ۲۰۲۵-۰۳-۱۸').issuedAt,'2025-03-18');
+ assert.deepEqual(extractFields('License number: ABC-123\nLicense number: unreadable ?\nExpiry date: 2030-03-04'),{expiresAt:'2030-03-04'});
+});
+
 test('a low-confidence scan cannot supply a reference even when a second page repeats it',()=>{
  const lines=[
   {text:'رقم التصريح: 6211701',words:[{confidence:96},{confidence:91},{confidence:65}]},
