@@ -22,6 +22,8 @@
   "بوابة هيدرولاند": "HYDROLAND portal",
   "مستندات يدوية": "Manual documents",
   "نظام مشتريات الجهة": "Organization procurement system",
+  "المشتريات": "Procurement",
+  "جارٍ تجهيز مساحة المشتريات، حاول مجددًا.": "The procurement workspace is loading. Please try again.",
   "صفة ممثل الجهة": "Representative role",
   "مسؤول المشتريات": "Procurement officer",
   "ممثل مفوّض": "Authorized representative",
@@ -502,7 +504,7 @@
       const canViewRequests = status === 'ACTIVE' && organization.status === 'ACTIVE';
       const canOperate = status === 'ACTIVE' && organization.status === 'ACTIVE' && ['OWNER', 'ADMIN', 'OPERATOR'].includes(role);
       const canReportSafety = status === 'ACTIVE' && organization.status === 'ACTIVE' && ['OWNER', 'ADMIN', 'OPERATOR', 'STAFF'].includes(role);
-      return uiLocale.html`<article class="hl-org-item" data-org-id="${esc(organization.id)}"><div><strong>${esc(organization.displayName)}</strong><small>${esc(organization.kind)} · دورك: ${uiLocale.messageHTML(authoredRoleLabel(role))}</small></div><span class="hl-org-status ${esc(organization.status.toLowerCase())}">${uiLocale.messageHTML(authoredStatusLabel(organization.status))}</span><small>العضوية: ${esc(status)}</small>${(manager || canViewRequests || canOperate || canReportSafety?uiLocale.html`<div class="hl-org-item-actions">${(manager?uiLocale.html`<button type="button" data-org-edit>تعديل بيانات الجهة</button><button type="button" data-org-financial-open>بيانات المنشأة المالية</button><button type="button" data-org-view-members>عرض العضويات</button>`:'')}${(canViewRequests?uiLocale.html`<button type="button" data-org-requests-open>طلبات الخدمات</button>`:'')}${(canViewRequests?uiLocale.html`<button type="button" data-org-bookings-open>الحجوزات</button>`:'')}${(canReportSafety?uiLocale.html`<button type="button" data-org-safety-open>السلامة والبلاغات</button>`:'')}</div>`:'')}</article>`;
+      return uiLocale.html`<article class="hl-org-item" data-org-id="${esc(organization.id)}"><div><strong>${esc(organization.displayName)}</strong><small>${esc(organization.kind)} · دورك: ${uiLocale.messageHTML(authoredRoleLabel(role))}</small></div><span class="hl-org-status ${esc(organization.status.toLowerCase())}">${uiLocale.messageHTML(authoredStatusLabel(organization.status))}</span><small>العضوية: ${esc(status)}</small>${(manager || canViewRequests || canOperate || canReportSafety?uiLocale.html`<div class="hl-org-item-actions">${(manager?uiLocale.html`<button type="button" data-org-edit>تعديل بيانات الجهة</button><button type="button" data-org-financial-open>بيانات المنشأة المالية</button><button type="button" data-org-view-members>عرض العضويات</button>`:'')}${(canViewRequests?uiLocale.html`<button type="button" data-org-procurement-open>المشتريات</button><button type="button" data-org-requests-open>طلبات الخدمات</button>`:'')}${(canViewRequests?uiLocale.html`<button type="button" data-org-bookings-open>الحجوزات</button>`:'')}${(canReportSafety?uiLocale.html`<button type="button" data-org-safety-open>السلامة والبلاغات</button>`:'')}</div>`:'')}</article>`;
     }).join(''));
   }
 
@@ -730,12 +732,18 @@
   panel.querySelector('[data-org-refresh]')?.addEventListener('click', refresh);
   panel.querySelector('[data-org-cancel]')?.addEventListener('click', () => { resetForm(); note(uiLocale.message('أُلغي تعديل بيانات الجهة.')); });
   panel.querySelector('[data-org-list]')?.addEventListener('click', async (event) => {
-    const button = event.target.closest('button[data-org-edit],button[data-org-view-members],button[data-org-requests-open],button[data-org-bookings-open],button[data-org-safety-open],button[data-org-financial-open]');
+    const button = event.target.closest('button[data-org-edit],button[data-org-view-members],button[data-org-requests-open],button[data-org-bookings-open],button[data-org-safety-open],button[data-org-financial-open],button[data-org-procurement-open]');
     if (!button) return;
     const card = button.closest('[data-org-id]');
     const organizationId = card?.dataset.orgId;
     const membership = stateMemberships.find(row => row.organization?.id === organizationId);
     if (!membership || membership.status !== 'ACTIVE') return;
+    if (button.matches('[data-org-procurement-open]')) {
+      if (membership.organization.status !== 'ACTIVE') return;
+      if (window.HydrolandOrganizationProcurement) window.HydrolandOrganizationProcurement.open({organizationId});
+      else note(uiLocale.message('جارٍ تجهيز مساحة المشتريات، حاول مجددًا.'));
+      return;
+    }
     if (button.matches('[data-org-bookings-open]')) {
       if (membership.organization.status !== 'ACTIVE') return;
       selectedBookingsOrganization = organizationId; uiLocale.setText(panel.querySelector('[data-org-bookings-title]'), "حجوزات {0}", [membership.organization.displayName]); panel.querySelector('[data-org-bookings]').hidden = false;

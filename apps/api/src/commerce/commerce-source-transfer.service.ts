@@ -105,7 +105,8 @@ export class CommerceSourceTransferService {
         tx.commerceSourceTransferReceipt.findMany({ where: { bankReferenceKey }, select: { financeEntryId: true, status: true } }),
         tx.centerServiceTransferReceipt.findMany({ where: { bankReferenceKey }, select: { financeEntryId: true, status: true } }),
       ]);
-      if ([...history, ...previousSystem].some(row => row.financeEntryId !== entry.id || row.status !== 'REJECTED')) {
+      const procurement = await tx.procurementMoneyProof.findUnique({ where: { bankReferenceKey }, select: { id: true } });
+      if (procurement || [...history, ...previousSystem].some(row => row.financeEntryId !== entry.id || row.status !== 'REJECTED')) {
         throw new ConflictException('Bank reference is already attributed to another or unresolved transfer.');
       }
       const source = await this.finance.transferSource(tx, scope, entry.id);

@@ -267,6 +267,17 @@ async function main() {
   });
 
   let submitted;
+  await check('F08 procurement bank claims cannot be reused by the B12 booking transfer path', async () => {
+    const { withProcurementReference } = require('./procurement-reference-sentinel.cjs');
+    const bankReferenceKey = entitlementContractHash([
+      input.bankName.normalize('NFKC').toUpperCase().replace(/\s+/g, ' '),
+      input.bankReference.normalize('NFKC').toUpperCase().replace(/\s+/g, ''),
+    ]);
+    await withProcurementReference(db, { organizationId: center.id, actorId: owner.id, amountMinor: input.amountMinor, bankReferenceKey },
+      () => assert.rejects(transfers.submit(owner.id, unit.id, input), status(409)));
+    assert.equal(await db.centerServiceTransferReceipt.count({ where: { financeEntryId: f.settlement.id } }), 0);
+    assert.equal((await entry(f)).status, 'APPROVED');
+  });
   await check('concurrent submission replays one pending receipt and never posts the ledger', async () => {
     const results = await Promise.all(Array.from({ length: 4 }, () => transfers.submit(owner.id, unit.id, input)));
     submitted = results[0];
