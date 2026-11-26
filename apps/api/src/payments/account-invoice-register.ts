@@ -4,6 +4,7 @@ export type InvoiceKey = { sourceType: string; sourceId: string };
 export type InvoiceRow = InvoiceKey & {
   amountMinor: number; currency: string; occurredAt: Date; sellerId: string | null; sellerName: string | null;
   buyerOrganizationId: string | null; isPurchase: boolean; isSale: boolean; canPrint: boolean; canAttach: boolean; number: string | null; nativeStatus: string | null; hasDocument: boolean;
+  finalizationStatus: 'DRAFT' | 'FINALIZED' | null; canFinalize: boolean;
 };
 
 // Keep the original payment/order as identity even if finance reconciles it later.
@@ -72,13 +73,24 @@ export function invoiceRegister(accountId: string, key?: InvoiceKey) {
       s.buyer_org AS "buyerOrganizationId",s.purchase AS "isPurchase",s.sale AS "isSale",(s.attach AND (permission.activity IS NULL OR (o.kind='DIVE_CENTER' AND COALESCE(approval.enable,TRUE)))) AS "canAttach",
       (s.sale AND o.kind='DIVE_CENTER' AND permission.activity IS NOT NULL AND d."sourceId" IS NOT NULL) AS "canPrint",s.native AS "nativeStatus",
       COALESCE(d.number,CASE WHEN s.native IN ('ISSUED','PAID','VOID') THEN s.num END) AS number,
-      d."sourceId" IS NOT NULL AS "hasDocument"
+      d."sourceId" IS NOT NULL AS "hasDocument",
+      CASE WHEN s."sourceType"='TRIP_PAYMENT' AND s.buyer_org IS NOT NULL
+        THEN CASE WHEN final.id IS NOT NULL THEN 'FINALIZED' WHEN s.native='DRAFT' THEN 'DRAFT' END END AS "finalizationStatus",
+      (s."sourceType"='TRIP_PAYMENT' AND s.buyer_org IS NOT NULL AND s.attach AND d."sourceId" IS NOT NULL
+        AND s.native='DRAFT' AND final.id IS NULL
+        AND EXISTS (SELECT 1 FROM "Employment" employed
+          JOIN "OrgUnit" center ON center.id=employed."orgUnitId" AND center."organizationId"=employed."organizationId" AND center.type='CENTER' AND center.active
+          JOIN "Position" position ON position.id=employed."positionId" AND position."orgUnitId"=center.id AND position.active
+          WHERE employed."accountId"::text=${accountId} AND employed."organizationId"::text=s.seller AND employed.status='ACTIVE'
+            AND position.code IN ('BRANCH_ACCOUNTANT','CENTER_ACCOUNTANT'))
+        AND (permission.activity IS NULL OR (o.kind='DIVE_CENTER' AND COALESCE(approval.enable,TRUE)))) AS "canFinalize"
     FROM parties s LEFT JOIN "Organization" o ON o.id::text=s.seller
     LEFT JOIN "Account" instructor ON s."sourceType"='INSTRUCTOR_SERVICE' AND s.seller='instructor:' || instructor.id::text
     LEFT JOIN "Person" person ON person.id=instructor."personId"
     LEFT JOIN "AccountInvoiceDocument" d ON d."sourceType"=s."sourceType" AND d."sourceId"=s."sourceId" AND d."sellerId"=s.seller
       AND d."buyerOrganizationId" IS NOT DISTINCT FROM s.buyer_org
     LEFT JOIN "Payment" pay ON s."sourceType"='TRIP_PAYMENT' AND pay.id::text=s."sourceId"
+    LEFT JOIN "OrganizationBookingInvoiceFinalization" final ON s."sourceType"='TRIP_PAYMENT' AND final."paymentId"=s."sourceId"
     LEFT JOIN "Booking" booking ON booking.id=pay."bookingId"
     LEFT JOIN "Trip" trip ON trip.id=booking."tripId"
     CROSS JOIN LATERAL (SELECT CASE WHEN s."sourceType"='TRAINING_ENROLLMENT' THEN 'INSTRUCTOR'

@@ -2,6 +2,12 @@
   // Only authored interface text is localized. Account and business values stay opaque.
   const uiLocale = (typeof window==='undefined'?globalThis:window).HydrolandI18n?.createScope("admin", {
   "تفويض دفع حجوزات الجهات": "Organization booking payment mandate",
+  "حوالات مستحقات المراكز": "Center entitlement transfers",
+  "المركز المستفيد": "Receiving center",
+  "تحديث المراكز المستفيدة": "Refresh receiving centers",
+  "جارٍ تحميل المراكز المستفيدة…": "Loading receiving centers…",
+  "لا توجد مراكز لديها مستحقات معتمدة أو حوالات مسجلة.": "No centers have approved entitlements or recorded transfers.",
+  "تعذر تحميل حوالات المراكز. تحقق من صلاحية مالك المنصة ثم حدّث البيانات.": "Could not load center transfers. Check platform owner authority and refresh.",
   "معرّف الجهة المصدرة": "Issuing organization ID",
   "معرّف المستند الموقّع": "Signed document ID",
   "مراجعة المستند": "Review signed document",
@@ -133,6 +139,10 @@
         <button type="submit">مراجعة المستند</button><p data-mandate-document></p><p data-mandate-terms></p>
         <button type="button" data-mandate-approve disabled>اعتماد القرار الموثق</button><p role="status" data-mandate-status></p>
       </form></details>
+    <details class="hl-admin__panel hl-service-transfers" data-admin-service-transfers><summary>حوالات مستحقات المراكز</summary>
+      <button type="button" data-owner-transfer-refresh>تحديث المراكز المستفيدة</button>
+      <p role="status" data-owner-transfer-status></p><div data-owner-transfer-centers></div><div data-owner-transfer-workspace></div>
+    </details>
     <p class="hl-admin__notice" data-admin-copy>بيانات الإدارة تظهر عند اتصال المنصة بخادم HYDROLAND.</p>`);
   host.insertAdjacentElement('afterend', box);
 
@@ -141,6 +151,28 @@
   const setNotice = message => { const notice=box.querySelector('[data-admin-copy]'); if(notice) uiLocale.setMessage(notice, message); };
   const renderQueue = items => { const queue=box.querySelector('[data-admin-queue]'); if(!queue)return; uiLocale.setMessage(queue, ''); if(!items.length){const empty=document.createElement('p');uiLocale.setMessage(empty, uiLocale.message('لا توجد طلبات معلقة حالياً.'));queue.appendChild(empty);return;} items.forEach(item=>{const name=item.account?.person?[item.account.person.firstName,item.account.person.lastName].filter(Boolean).join(' '):item.account?.email||uiLocale.t('حساب جديد');const type=item.type==='ORGANIZATION'?'طلب جهة / منظمة':'طلب تفعيل حساب';const article=document.createElement('article');article.className='hl-admin__queue-item';const strong=document.createElement('strong');uiLocale.setMessage(strong, name);const span=document.createElement('span');uiLocale.setMessage(span, uiLocale.message(type));article.append(strong,span);queue.appendChild(article);}); };
   const api=async(path,options={})=>{const client=window.HydrolandAuth?.authorizedFetch;if(!client)throw new Error('AUTH_REQUIRED');const response=await client(path,options),body=await response.json().catch(()=>null);if(!response.ok)throw new Error(body?.message||`HTTP_${response.status}`);return body};
+  const ownerTransfers=box.querySelector('[data-admin-service-transfers]'),ownerStatus=ownerTransfers.querySelector('[data-owner-transfer-status]'),ownerCenters=ownerTransfers.querySelector('[data-owner-transfer-centers]'),ownerWorkspace=ownerTransfers.querySelector('[data-owner-transfer-workspace]'),ownerRefresh=ownerTransfers.querySelector('[data-owner-transfer-refresh]');
+  let ownerGeneration=0,ownerSelection=0;
+  const ownerEligible=()=>!box.hidden&&window.HydrolandAuth?.isAuthenticated?.()&&window.HydrolandPortalAccess?.getCurrentRole?.()==='admin'&&window.HydrolandPortalAccess?.roleAllowed?.('admin');
+  function clearOwnerTransfers(close=true){ownerGeneration++;ownerSelection++;ownerCenters.replaceChildren();ownerWorkspace.replaceChildren();ownerStatus.textContent='';ownerRefresh.disabled=false;if(close)ownerTransfers.open=false;}
+  async function loadOwnerTransfers(){
+    if(!ownerEligible()||!ownerTransfers.open)return;clearOwnerTransfers(false);const generation=ownerGeneration,session=window.HydrolandAuth.getSessionVersion?.();
+    const current=()=>generation===ownerGeneration&&ownerEligible()&&ownerTransfers.open&&session===window.HydrolandAuth?.getSessionVersion?.();
+    ownerRefresh.disabled=true;uiLocale.setText(ownerStatus,'جارٍ تحميل المراكز المستفيدة…');
+    try{
+      const data=await api('/finance/owner/service-transfer-centers');if(!current())return;
+      if(!Array.isArray(data?.centers)||!window.HydrolandCenterFinance?.serviceTransfers)throw new Error('INVALID_TRANSFER_CENTERS');
+      if(!data.centers.length){uiLocale.setText(ownerStatus,'لا توجد مراكز لديها مستحقات معتمدة أو حوالات مسجلة.');return;}
+      ownerStatus.textContent='';const label=document.createElement('label');uiLocale.setText(label,'المركز المستفيد');const select=document.createElement('select');select.name='serviceTransferCenter';label.append(select);ownerCenters.append(label);
+      for(const center of data.centers){if(!center?.id)throw new Error('INVALID_TRANSFER_CENTER');const option=document.createElement('option');option.value=center.id;option.textContent=[center.organizationName,center.nameAr].filter(Boolean).join(' — ');select.append(option);}
+      const mount=()=>{ownerWorkspace.replaceChildren();const selection=++ownerSelection,selected=select.value;if(!current()||!data.centers.some(center=>center.id===selected))return;const panel=window.HydrolandCenterFinance.serviceTransfers(ownerWorkspace,selected,()=>current()&&selection===ownerSelection&&select.value===selected);panel.open=true;};
+      select.addEventListener('change',mount);mount();
+    }catch{if(current()){ownerCenters.replaceChildren();ownerWorkspace.replaceChildren();uiLocale.setText(ownerStatus,'تعذر تحميل حوالات المراكز. تحقق من صلاحية مالك المنصة ثم حدّث البيانات.');}}
+    finally{if(current())ownerRefresh.disabled=false;}
+  }
+  ownerTransfers.addEventListener('toggle',()=>{if(ownerTransfers.open)void loadOwnerTransfers();else clearOwnerTransfers(false);});
+  ownerRefresh.addEventListener('click',()=>void loadOwnerTransfers());
+  for(const event of ['hydroland:session-cleared','hydroland:auth-changed','hydroland:role-changed','hydroland:portal-access-cleared'])document.addEventListener(event,()=>clearOwnerTransfers());
   const toast=message=>{const t=document.getElementById('toast');if(!t)return;uiLocale.setMessage(t, message);t.classList.add('visible');clearTimeout(window.__hlAdminCredentialToast);window.__hlAdminCredentialToast=setTimeout(()=>t.classList.remove('visible'),2400)};
   const mandateForm = box.querySelector('[data-admin-mandate] form');
   const approveMandate = mandateForm.querySelector('[data-mandate-approve]');

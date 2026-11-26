@@ -9,7 +9,17 @@
     'لا توجد فواتير في هذا العرض.':'No invoices in this view.','تحميل المزيد':'Load more',
     'جارٍ التحميل…':'Loading…','تعذّر تحميل الفواتير.':'Could not load invoices.',
     'تعذّر تحميل الملف.':'Could not download the file.','تعذّر ربط الملف.':'Could not attach the file.',
-    'سجل الفواتير':'Invoice register','إعادة المحاولة':'Retry','رقم العملية':'Transaction reference'
+    'سجل الفواتير':'Invoice register','إعادة المحاولة':'Retry','رقم العملية':'Transaction reference',
+    'مراجعة أصل فاتورة المركز':'Review center invoice original','اعتماد أصل فاتورة المركز':'Approve center invoice original',
+    'أصل فاتورة المركز معتمد':'Center invoice original approved','بانتظار اعتماد أصل فاتورة المركز':'Awaiting center invoice original approval',
+    'بيانات البائع':'Seller details','بيانات المشتري':'Buyer details','رقم التسجيل':'Registration number','العنوان':'Address',
+    'غير متوفر':'Not available','المبلغ':'Amount','مرجع قيد التحصيل':'Collection ledger reference',
+    'تاريخ ووقت إصدار الفاتورة الأصلية (بتوقيت السعودية)':'Original invoice issue date and time (Saudi time)',
+    'تاريخ إصدار الأصل':'Original issue date','افتح أصل PDF وتحقق من بياناته قبل الاعتماد.':'Open the original PDF and verify its details before approval.',
+    'أؤكد مطابقة أصل PDF لبيانات البائع والمشتري ورقم الفاتورة والمبلغ والعملة وتاريخ الإصدار.':'I confirm that the original PDF matches the seller, buyer, invoice number, amount, currency and issue date.',
+    'تعذرت مراجعة أصل الفاتورة.':'Could not review the invoice original.','تعذر اعتماد أصل الفاتورة.':'Could not approve the invoice original.',
+    'تعذر التحقق من بيانات المراجعة.':'Could not verify the review details.',
+    'أعد فتح المراجعة للتحقق من أحدث بيانات الفاتورة.':'Open the review again to check the latest invoice details.'
   });
   const labels={INSTRUCTOR_SERVICE:'خدمة مدرب مستقل',TRAINING_ENROLLMENT:'دورة تدريبية',TRIP_PAYMENT:'حجز رحلة',STORE_ORDER:'طلب متجر',
     EQUIPMENT_RENTAL:'تأجير معدات',RENTAL_DAMAGE:'مطالبة تأجير'};
@@ -36,6 +46,69 @@
   let version=0,view='all',source=null;
   function request(path,options){return auth().authorizedFetch('/account/invoices'+path,options);}
   const sourcePath=row=>'/'+encodeURIComponent(row.sourceType)+'/'+encodeURIComponent(row.sourceId)+'/document';
+  function finalization(row,article,stillHere){
+    if(row.sourceType!=='TRIP_PAYMENT'||row.isSale!==true||
+      !(row.canFinalize===true||['DRAFT','FINALIZED'].includes(row.finalizationStatus)))return;
+    const section=element('section',article);section.dataset.invoiceFinalization='';
+    element('p',section,row.finalizationStatus==='FINALIZED'?'أصل فاتورة المركز معتمد':'بانتظار اعتماد أصل فاتورة المركز');
+    const content=element('div',section),status=element('p',section);status.setAttribute('role','status');status.dataset.finalizationStatus='';
+    const path='/TRIP_PAYMENT/'+encodeURIComponent(row.sourceId)+'/finalization';
+    let revision=0;
+    const review=button(section,'مراجعة أصل فاتورة المركز',async()=>{
+      const attempt=++revision,current=()=>stillHere()&&attempt===revision;
+      review.disabled=true;content.replaceChildren();ui.setText(status,'جارٍ التحميل…');
+      try{
+        const response=await request(path);
+        if(!response.ok){const error=await response.json().catch(()=>null);throw new Error(typeof error?.message==='string'?error.message:'');}
+        const data=await response.json();if(!current())return;
+        if(!data||!['DRAFT','FINALIZED'].includes(data.status)||!Array.isArray(data.blockers)||
+          !data.seller||!data.buyer||!Number.isSafeInteger(data.amountMinor)||data.amountMinor<0||data.currency!=='SAR')throw new Error(ui.t('تعذر التحقق من بيانات المراجعة.'));
+        status.textContent='';
+        const field=(parent,label,value)=>{const line=element('p',parent);element('span',line,label);line.append(document.createTextNode(': '));element('bdi',line).textContent=typeof value==='string'&&value?value:ui.t('غير متوفر');};
+        for(const [label,party] of [['بيانات البائع',data.seller],['بيانات المشتري',data.buyer]]){
+          const group=element('section',content);element('h4',group,label);
+          element('p',group).textContent=typeof party.name==='string'?party.name:ui.t('غير متوفر');
+          field(group,'رقم التسجيل',party.registrationNumber);field(group,'العنوان',party.address);
+        }
+        field(content,'رقم الفاتورة',data.number);
+        field(content,'المبلغ',new Intl.NumberFormat(document.documentElement.lang==='en'?'en-GB':'ar-SA',{style:'currency',currency:data.currency}).format(data.amountMinor/100));
+        field(content,'مرجع قيد التحصيل',data.collectionFinanceEntryId);
+        if(data.status==='FINALIZED'){
+          element('p',content,'أصل فاتورة المركز معتمد');
+          const issued=new Date(data.issuedAt);
+          if(data.issuedAt&&Number.isFinite(issued.getTime()))field(content,'تاريخ إصدار الأصل',new Intl.DateTimeFormat(document.documentElement.lang==='en'?'en-GB':'ar-SA',{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Riyadh'}).format(issued));
+          return;
+        }
+        if(data.blockers.length){const blockers=element('ul',content);for(const reason of data.blockers)if(typeof reason==='string')element('li',blockers).textContent=reason;return;}
+        if(data.canFinalize!==true)return;
+        if(row.hasDocument!==true||!data.number||!data.collectionFinanceEntryId||
+          !/^[a-f0-9]{64}$/i.test(data.documentSha256||'')||!/^[a-f0-9]{64}$/i.test(data.expectedEvidenceHash||''))throw new Error(ui.t('تعذر التحقق من بيانات المراجعة.'));
+        element('p',content,'افتح أصل PDF وتحقق من بياناته قبل الاعتماد.');
+        const form=element('form',content);form.dataset.invoiceFinalizationForm='';
+        const dateLabel=element('label',form);element('span',dateLabel,'تاريخ ووقت إصدار الفاتورة الأصلية (بتوقيت السعودية)');
+        const issuedAt=element('input',dateLabel);issuedAt.type='datetime-local';issuedAt.step='1';issuedAt.name='issuedAt';issuedAt.required=true;
+        const confirmLabel=element('label',form),confirmed=element('input',confirmLabel);confirmed.type='checkbox';confirmed.name='originalInvoiceVerified';confirmed.required=true;
+        element('span',confirmLabel,'أؤكد مطابقة أصل PDF لبيانات البائع والمشتري ورقم الفاتورة والمبلغ والعملة وتاريخ الإصدار.');
+        const submit=element('button',form,'اعتماد أصل فاتورة المركز');submit.type='submit';submit.disabled=true;
+        const enable=()=>{submit.disabled=!(issuedAt.value&&confirmed.checked);};issuedAt.addEventListener('input',enable);confirmed.addEventListener('change',enable);
+        form.addEventListener('submit',async event=>{
+          event.preventDefault();if(submit.disabled||!current()||!form.reportValidity())return;
+          const originalIssueDate=new Date(issuedAt.value+'+03:00');
+          if(!Number.isFinite(originalIssueDate.getTime()))return;
+          submit.disabled=true;review.disabled=true;issuedAt.disabled=true;confirmed.disabled=true;status.textContent='';
+          try{
+            const result=await request(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({issuedAt:originalIssueDate.toISOString(),expectedEvidenceHash:data.expectedEvidenceHash,originalInvoiceVerified:true})});
+            const receipt=await result.json().catch(()=>null);
+            if(!result.ok)throw new Error(typeof receipt?.message==='string'?receipt.message:'');
+            if(!receipt||receipt.status!=='FINALIZED'||!receipt.finalizationId)throw new Error('');
+            if(current())await load();
+          }catch(error){if(current()){status.textContent=(error.message||ui.t('تعذر اعتماد أصل الفاتورة.'))+' '+ui.t('أعد فتح المراجعة للتحقق من أحدث بيانات الفاتورة.');}}
+          finally{if(current())review.disabled=false;}
+        });
+      }catch(error){if(current()){content.replaceChildren();status.textContent=error.message||ui.t('تعذرت مراجعة أصل الفاتورة.');}}
+      finally{if(current())review.disabled=false;}
+    });
+  }
   function card(row,current){
     const article=element('article',list);
     const stillHere=()=>current()&&article.isConnected;
@@ -112,6 +185,7 @@
       }
     }
     const message=element('p',article);message.setAttribute('role','status');
+    finalization(row,article,stillHere);
   }
   async function load(offset=0){
     const revision=++version,session=auth().getSessionVersion();

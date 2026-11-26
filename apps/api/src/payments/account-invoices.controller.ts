@@ -2,12 +2,24 @@ import { BadRequestException, Body, Controller, Get, Header, Param, Post, Query,
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { AccountInvoicesService } from './account-invoices.service';
+import { OrganizationBookingInvoiceService } from './organization-booking-invoice.service';
 
 type Request = {auth:{accountId:string}};
 @Controller('account/invoices')
 @UseGuards(AccessTokenGuard)
 export class AccountInvoicesController {
-  constructor(private readonly invoices:AccountInvoicesService) {}
+  constructor(private readonly invoices:AccountInvoicesService, private readonly organizationInvoices:OrganizationBookingInvoiceService) {}
+
+  @Get('TRIP_PAYMENT/:sourceId/finalization')
+  @Header('Cache-Control','private, no-store')
+  previewFinalization(@Req() req:Request,@Param('sourceId') sourceId:string) {
+    return this.organizationInvoices.preview(req.auth.accountId,sourceId);
+  }
+
+  @Post('TRIP_PAYMENT/:sourceId/finalization')
+  finalize(@Req() req:Request,@Param('sourceId') sourceId:string,@Body() body:Record<string,unknown>) {
+    return this.organizationInvoices.finalize(req.auth.accountId,sourceId,body);
+  }
 
   @Get()
   @Header('Cache-Control','private, no-store')

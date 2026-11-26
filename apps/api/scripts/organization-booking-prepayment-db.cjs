@@ -87,6 +87,7 @@ module.exports = async function checkPrepayment(tx, db, org, platform, creator, 
   await assert.rejects(()=>service.matchLedger(delegate.id,org.id,booking.id,entry.id),errorCode(403));
   const matched=await service.matchLedger(accountant.id,org.id,booking.id,entry.id);
   assert(!matched.alreadyApplied);assert((await service.matchLedger(accountant.id,org.id,booking.id,entry.id)).alreadyApplied);
+  await require('./organization-invoice-finalization-db.cjs')(tx, db, {seller, org, paid, accountant, creator, delegate, entry});
   const { CenterServiceEntitlementService } = require('../dist/commerce/center-service-entitlement.service');
   const { FinanceAccessService } = require('../dist/finance/finance-access.service');
   const entitlement = new CenterServiceEntitlementService(db,new FinanceAccessService(db));

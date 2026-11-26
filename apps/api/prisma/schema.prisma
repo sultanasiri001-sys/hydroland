@@ -1132,6 +1132,59 @@ model Invoice {
   payment Payment @relation(fields:[paymentId], references:[id], onDelete:Restrict)
 }
 
+// These evidence records use textual source identities, like AccountInvoiceDocument,
+// so historical TEXT and UUID production identities can both be retained verbatim.
+model OrganizationBookingInvoiceFinalization {
+  id String @id @default(uuid())
+  paymentId String @unique
+  invoiceId String @unique
+  sellerId String
+  buyerOrganizationId String
+  number String
+  issuedAt DateTime
+  documentSha256 String
+  collectionEvidenceId String
+  collectionFinanceEntryId String
+  contractHash String
+  snapshot Json
+  finalizedBy String
+  finalizedAt DateTime @default(now())
+  @@unique([sellerId,number])
+  @@index([buyerOrganizationId,finalizedAt], map: "OrganizationBookingInvoiceFinalization_buyer_finalized_idx")
+}
+
+model CenterServiceTransferReceipt {
+  id String @id
+  financeEntryId String
+  activeFinanceEntryId String? @unique
+  organizationId String
+  centerOrgUnitId String
+  bookingId String
+  paymentId String
+  invoiceFinalizationId String
+  bankName String
+  bankReference String
+  bankReferenceKey String
+  amountMinor Int
+  currency String @default("SAR")
+  transferredAt DateTime
+  document Bytes
+  documentSha256 String
+  evidenceSnapshot Json
+  status String @default("PENDING")
+  submittedBy String
+  submittedAt DateTime @default(now())
+  reviewedBy String?
+  reviewedAt DateTime?
+  decisionNote String?
+  receivedAt DateTime?
+  receiptDocument Bytes?
+  receiptDocumentSha256 String?
+  @@index([organizationId,financeEntryId])
+  @@index([centerOrgUnitId,status])
+  @@index([bankReferenceKey])
+}
+
 model ThemeSchedule {
   id String @id
   themeId String
