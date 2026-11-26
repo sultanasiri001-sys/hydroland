@@ -26,7 +26,7 @@ test('accountant workspace opens from center navigation with scoped totals and e
 test('opens shift with exact minor units and blocks double submission',async({page})=>{
  const state=await setup(page,blank('center-a')),panel=await open(page);let pending;await page.route('**/api/v1/finance/shifts/open',route=>{state.writes.push(route.request().postDataJSON());pending=route});
  await panel.locator('[name=openingBalance]').fill('١٢٣٫٤٥');await panel.getByRole('button',{name:'فتح الوردية',exact:true}).click();await expect.poll(()=>Boolean(pending)).toBe(true);await expect(panel.getByRole('button',{name:'فتح الوردية',exact:true})).toBeDisabled();expect(state.writes).toEqual([{centerOrgUnitId:'center-a',openingBalanceMinor:12345}]);
- state.view=active();await json(pending,{},201);await expect(panel.locator('[role=status]')).toContainText('تم فتح الوردية');await expect(panel).toContainText('ورديتي الحالية');
+ state.view=active();await json(pending,{},201);await expect(panel.locator('[data-finance-status]')).toContainText('تم فتح الوردية');await expect(panel).toContainText('ورديتي الحالية');
 });
 test('handover requires recipient and variance explanation and sends actual cash precisely',async({page})=>{
  const state=await setup(page),panel=await open(page);await panel.locator('[name=receiver]').selectOption('receiver-b');await panel.locator('[data-finance-operation=handover] [name=actualCash]').fill('1.25');await expect(panel.locator('[data-finance-operation=handover] [data-finance-variance]')).toContainText('0.05');await panel.getByRole('button',{name:'إرسال طلب التسليم'}).click();expect(state.writes).toHaveLength(0);
@@ -35,7 +35,7 @@ test('handover requires recipient and variance explanation and sends actual cash
 });
 test('receiver reviews incoming handover and explicitly accepts the cash',async({page})=>{
  const view={...active(),handovers:[{id:'incoming-a',direction:'INCOMING',counterpartyName:'محاسب الفترة السابقة',expectedCashMinor:120,actualCashMinor:100,varianceMinor:-20,varianceReason:'فرق جرد موثق'}]},state=await setup(page,view),panel=await open(page);
- await expect(panel.locator('[data-finance-operation=handover]')).toHaveCount(0);await panel.getByRole('button',{name:'قبول استلام العهدة'}).click();expect(state.writes).toHaveLength(0);await panel.getByRole('checkbox').check();state.view=active();await panel.getByRole('button',{name:'قبول استلام العهدة'}).click();await expect.poll(()=>state.writes.length).toBe(1);expect(state.writes[0].path).toBe('/api/v1/finance/shifts/handovers/incoming-a/accept');await expect(panel.locator('[role=status]')).toContainText('تم قبول العهدة');
+ await expect(panel.locator('[data-finance-operation=handover]')).toHaveCount(0);await panel.getByRole('button',{name:'قبول استلام العهدة'}).click();expect(state.writes).toHaveLength(0);await panel.getByRole('checkbox').check();state.view=active();await panel.getByRole('button',{name:'قبول استلام العهدة'}).click();await expect.poll(()=>state.writes.length).toBe(1);expect(state.writes[0].path).toBe('/api/v1/finance/shifts/handovers/incoming-a/accept');await expect(panel.locator('[data-finance-status]')).toContainText('تم قبول العهدة');
 });
 test('no accountant employment shows access explanation without opening actions',async({page})=>{
  const state=await setup(page);state.centers=[];const panel=await open(page);await expect(panel).toContainText('لا يوجد لديك تعيين محاسب نشط');await expect(panel.locator('form')).toHaveCount(0);expect(state.reads).toEqual(['centers']);
@@ -73,7 +73,7 @@ test('finance reviewer sees the prior approval and can record the independent se
 });
 
 test('accountant syncs older payment references in bounded batches',async({page})=>{
- const state=await setup(page),panel=await open(page);await panel.locator('[data-finance-operation=settlement-sync] button').click();await expect.poll(()=>state.writes.length).toBe(1);expect(state.writes[0]).toEqual({path:'/api/v1/finance/centers/center-a/settlement-payment-sync',body:{}});await expect(panel.locator('[role=status]')).toContainText('تمت مزامنة 10 مرجعًا؛ المتبقي 2');
+ const state=await setup(page),panel=await open(page);await panel.locator('[data-finance-operation=settlement-sync] button').click();await expect.poll(()=>state.writes.length).toBe(1);expect(state.writes[0]).toEqual({path:'/api/v1/finance/centers/center-a/settlement-payment-sync',body:{}});await expect(panel.locator('[data-finance-status]')).toContainText('تمت مزامنة 10 مرجعًا؛ المتبقي 2');
 });
 
 test('accountant imports an exact settlement reference and sees only matched rows',async({page})=>{

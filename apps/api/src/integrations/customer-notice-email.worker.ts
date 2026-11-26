@@ -48,7 +48,16 @@ export class CustomerNoticeEmailWorker implements OnModuleInit, OnModuleDestroy 
     const event=row.event;
     if(event==='INVOICE_ISSUED'){
       const [invoice]=await this.db.$queryRaw<InvoiceRow[]>(invoiceRegister(row.accountId,{sourceType:row.sourceType,sourceId:row.sourceId}));
-      if(!invoice?.isPurchase||!invoice.number||invoice.nativeStatus==='VOID'){await finish('SUPPRESSED');return;}
+      if(!invoice?.isPurchase||invoice.nativeStatus==='VOID'){await finish('SUPPRESSED');return;}
+      // Older uploads may already have queued an organizational draft notice.
+      // Keep its identity/history and retry after approval, without contacting
+      // the provider or charging the email budget while the native invoice is a draft.
+      // Previously issued invoices retain their own provenance and need no new finalization.
+      if(invoice.sourceType==='TRIP_PAYMENT'&&invoice.buyerOrganizationId
+        && !['ISSUED','PAID'].includes(invoice.nativeStatus||'')){
+        await later(60_000);return;
+      }
+      if(!invoice.number){await finish('SUPPRESSED');return;}
     }else if(event==='BOOKING_CONFIRMED'){
       const booking=await this.db.booking.findUnique({where:{id:row.sourceId},select:{accountId:true,status:true}});
       if(booking?.accountId!==row.accountId||booking.status!=='CONFIRMED'){await finish('SUPPRESSED');return;}

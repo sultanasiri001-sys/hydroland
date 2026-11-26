@@ -139,6 +139,11 @@ export class CenterServiceEntitlementService {
     return { input, readiness: evaluateCenterTripEntitlement(input), allocation, existing };
   }
 
+  /** Current source evidence for the scoped transfer workflow, inside its locked transaction. */
+  transferSource(tx: Prisma.TransactionClient, organizationId: string, bookingId: string, allocationApprovalEventId: string) {
+    return this.resolve(tx, { organizationId }, bookingId, allocationApprovalEventId);
+  }
+
   async loyaltySource(tx: Prisma.TransactionClient, organizationId: string, bookingId: string) {
     const {input,readiness} = await this.resolve(tx,{organizationId},bookingId);
     if (input.booking.organizationId || !input.payment || !input.completion || readiness.grossReadiness !== 'ELIGIBLE'

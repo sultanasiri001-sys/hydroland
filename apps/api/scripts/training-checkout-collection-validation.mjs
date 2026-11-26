@@ -30,6 +30,7 @@ const {InvoicePermissionsController}=await load('payments/invoice-permissions.co
 const {InvoicePermissionsService}=await load('payments/invoice-permissions.service.js');
 const {AccountInvoicesController}=await load('payments/account-invoices.controller.js');
 const {AccountInvoicesService}=await load('payments/account-invoices.service.js');
+const {OrganizationBookingInvoiceService}=await load('payments/organization-booking-invoice.service.js');
 const {ProviderContactController} = await load('profile/provider-contact.controller.js');
 const {ProviderContactService} = await load('profile/provider-contact.service.js');
 const {CenterPayeesController} = await load('finance/center-payees.controller.js');
@@ -87,7 +88,7 @@ const provider = new MoyasarPaymentProviderService({requireOperational() { retur
 const checkout = new TrainingCheckoutService(db, audit, provider), repository = new TrainingRepositoryService(db, {}, {}, {}, {});
 const trainingSessions = new TrainingSessionService(db, audit, new TrainingAuthorizationService(db));
 class CourseAcceptanceModule {}
-Module({controllers: [ProviderContactController,CenterPayeesController,InvoicePermissionsController,AccountInvoicesController,TrainingCheckoutController,CheckoutRefundController], providers: [AccessTokenGuard, {provide:DatabaseService,useValue:db}, {provide:ProviderContactService,useValue:new ProviderContactService(db)}, {provide:FinanceAccessService,useValue:new FinanceAccessService(db)},{provide:InvoicePermissionsService,useValue:new InvoicePermissionsService(db)},{provide:AccountInvoicesService,useValue:new AccountInvoicesService(db)},{provide:CheckoutRefundService,useValue:new CheckoutRefundService(db,provider)},
+Module({controllers: [ProviderContactController,CenterPayeesController,InvoicePermissionsController,AccountInvoicesController,TrainingCheckoutController,CheckoutRefundController], providers: [AccessTokenGuard, {provide:DatabaseService,useValue:db}, {provide:ProviderContactService,useValue:new ProviderContactService(db)}, {provide:FinanceAccessService,useValue:new FinanceAccessService(db)},{provide:InvoicePermissionsService,useValue:new InvoicePermissionsService(db)},{provide:AccountInvoicesService,useValue:new AccountInvoicesService(db)},{provide:OrganizationBookingInvoiceService,useValue:new OrganizationBookingInvoiceService(db)},{provide:CheckoutRefundService,useValue:new CheckoutRefundService(db,provider)},
   {provide: TrainingCheckoutService, useValue: checkout}, {provide: AuthService, useValue: auth}]})(CourseAcceptanceModule);
 const app = await NestFactory.create(CourseAcceptanceModule, {logger: false});
 app.setGlobalPrefix('api/v1');
