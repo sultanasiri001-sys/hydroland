@@ -84,10 +84,14 @@ try {
       for (const column of ['documentVersion', 'documentHash', 'bankReferenceKey']) {
         await sqlDenied(() => db.$executeRawUnsafe(`UPDATE "ProcurementMoneyProof" SET "${column}"=NULL`), ['23514']);
       }
-      await assert.rejects(() => db.procurementOrder.delete({ where: { id: order.id } }), error => ['P2003', 'P2010'].includes(error.code));
       const snapshot = async () => ({ order: await db.procurementOrder.findMany(), events: await db.procurementOrderEvent.findMany(),
         receipts: await db.procurementReceipt.findMany(), money: await db.procurementMoneyProof.findMany() });
-      const before = await snapshot(); apply(); assert.deepEqual(await snapshot(), before);
+      const before = await snapshot();
+      // PostgreSQL RESTRICT may surface through different Prisma ORM wrappers.
+      // Assert the database SQLSTATE and retained evidence, not that wrapper.
+      await sqlDenied(() => db.$executeRaw`DELETE FROM "ProcurementOrder" WHERE "id"=${order.id}`, ['23001', '23503']);
+      assert.deepEqual(await snapshot(), before, 'A refused deletion must preserve the order and all dependent evidence.');
+      apply(); assert.deepEqual(await snapshot(), before);
       for (const [table, value] of [['Organization', organizationId], ['Account', accountId], ['ManagedDocument', documentId], ['FinanceEntry', financeId]]) {
         assert.deepEqual(await db.$queryRawUnsafe(`SELECT "id"::text,"marker" FROM "${table}"`), [{ id: value, marker: 'ORIGINAL_' + table }]);
       }
