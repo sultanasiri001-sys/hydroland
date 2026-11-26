@@ -48,7 +48,11 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
    const contractAccess=['instructor','center','admin'].includes(role);
    const documentAccess=role==='admin';
    const instructorDocumentAccess=['instructor','center','admin'].includes(role);
-   await expect(board.locator(role==='diver'?'.hl-diver-action-grid>button':'.hl-command-grid>button')).toHaveCount(baseActions+(contractAccess?2:0)+(documentAccess?1:0)+(instructorDocumentAccess?1:0));
+   const procurementLabAccess=role==='admin';
+   await expect(board.locator(role==='diver'?'.hl-diver-action-grid>button':'.hl-command-grid>button')).toHaveCount(baseActions+(contractAccess?2:0)+(documentAccess?1:0)+(instructorDocumentAccess?1:0)+(procurementLabAccess?1:0));
+   const procurementLab=board.locator('.hl-command-grid>button[data-procurement-lab-open]');
+   await expect(procurementLab).toHaveCount(procurementLabAccess?1:0);
+   if(procurementLabAccess){await expect(procurementLab).toBeVisible();await expect(procurementLab).toBeEnabled();await expect(procurementLab).toHaveText('تجربة المشتريات وإعداد الربط');}
    const instructorDocuments=board.locator('.hl-command-grid>button[data-hl-route="instructor-documents"]');
    await expect(instructorDocuments).toHaveCount(instructorDocumentAccess?1:0);
    if(instructorDocumentAccess)await expect(instructorDocuments).toHaveText(role==='instructor'?'مستندات المدرب':'مراجعة مستندات المدربين');

@@ -124,6 +124,8 @@
   "الموقع (اختياري)": "Location (optional)",
   "إرسال البلاغ": "Send report",
   "لا تُنشأ أي جهة أو حالة اعتماد تجريبية.": "No sample organization or approval status is created.",
+  "تجربة المشتريات وإعداد الربط": "Procurement testing and integration",
+  "تتاح تجربة مصطنعة لمالك المنصة قبل إنشاء جهة فعلية.": "A synthetic test is available to the platform owner before creating a real organization.",
   "خدمة المصادقة غير جاهزة.": "Authentication service is not ready.",
   "تعذر إكمال الطلب.": "Could not complete the request.",
   "معتمدة ونشطة": "Approved and active",
@@ -498,7 +500,15 @@
   function render(items) {
     const list = panel.querySelector('[data-org-list]');
     if (!list) return;
-    if (!items.length) { uiLocale.setHTML(list, uiLocale.html`<p>لا توجد جهات مرتبطة بحسابك حتى الآن.</p>`); return; }
+    if (!items.length) {
+      uiLocale.setHTML(list, uiLocale.html`<p>لا توجد جهات مرتبطة بحسابك حتى الآن.</p>`);
+      if (window.HydrolandPortalAccess?.roleAllowed?.('admin')) {
+        const description = document.createElement('p'); uiLocale.setText(description,'تتاح تجربة مصطنعة لمالك المنصة قبل إنشاء جهة فعلية.'); list.append(description);
+        const lab = document.createElement('button'); lab.type = 'button'; lab.dataset.orgProcurementLab = ''; uiLocale.setText(lab,'تجربة المشتريات وإعداد الربط');
+        lab.addEventListener('click',() => void window.HydrolandProcurementLab?.open()); list.append(lab);
+      }
+      return;
+    }
     uiLocale.setHTML(list, items.map(({ organization, role, status }) => {
       const manager = status === 'ACTIVE' && ['OWNER', 'ADMIN'].includes(role);
       const canViewRequests = status === 'ACTIVE' && organization.status === 'ACTIVE';

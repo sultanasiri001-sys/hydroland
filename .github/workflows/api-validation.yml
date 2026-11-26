@@ -233,12 +233,36 @@ jobs:
           done
           node apps/api/scripts/f08-procurement-http-checks.cjs
           node apps/api/scripts/f08-native-recovery-checks.mjs
+      - name: F08 strict exchange contract and bounded HTTPS transport
+        run: |
+          mkdir -p artifacts
+          node --test apps/api/scripts/f08-api-contract-transport.test.cjs | tee artifacts/f08-api-contract-transport.tap
+      - name: F08 same-site API preparation and isolated interactive lab
+        env:
+          NODE_ENV: test
+          TZ: UTC
+          PGTZ: UTC
+          COMMERCE_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+          F08_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+          F08_API_LAB_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+          F08_API_LAB_EVIDENCE_FILE: artifacts/f08-api-lab-http.json
+          F08_RECOVERY_SCOPE: PROCUREMENT_LAB
+          F08_POSTGRES_CONTAINER: ${{ job.services.postgres18.id }}
+          F08_RECOVERY_EVIDENCE_FILE: artifacts/f08-api-lab-native-recovery.json
+          DATABASE_URL: postgresql://hydroland:hydroland@localhost:5433/commerce_test_f08_api_acceptance
+        run: |
+          psql postgresql://hydroland:hydroland@localhost:5433/hydroland -v ON_ERROR_STOP=1 -c 'CREATE DATABASE commerce_test_f08_api_acceptance'
+          npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+          node apps/api/scripts/f08-api-lab-migrations-db-checks.mjs
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261126180000_procurement_api_lab/migration.sql
+          node apps/api/scripts/f08-api-lab-http-checks.cjs
+          node apps/api/scripts/f08-native-recovery-checks.mjs
       - name: Retain F08 synthetic acceptance and native recovery evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: f08-procurement-evidence
-          path: artifacts/f08-*.json
+          path: artifacts/f08-*
           if-no-files-found: warn
       - name: Course original-contract checkout and collection through real HTTP routes
         env:

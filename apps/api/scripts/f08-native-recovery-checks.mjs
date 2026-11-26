@@ -10,11 +10,17 @@ import { fileURLToPath } from 'node:url';
 import { PrismaClient } from '@prisma/client';
 
 const source = new URL(process.env.DATABASE_URL || 'invalid:');
+const labScope = process.env.F08_RECOVERY_SCOPE === 'PROCUREMENT_LAB';
+assert.ok(process.env.F08_RECOVERY_SCOPE === undefined || labScope, 'Select a known recovery evidence scope.');
 assert.equal(process.env.CI, 'true');
 assert.equal(process.env.NODE_ENV, 'test');
 assert.equal(process.env.F08_DB_TEST_CONFIRM, 'DISPOSABLE_LOOPBACK_ONLY');
 assert.ok(['127.0.0.1', 'localhost', '[::1]'].includes(source.hostname));
 assert.match(source.pathname, /^\/commerce_test_f08_[a-z0-9_]+$/);
+if (labScope) {
+  assert.equal(process.env.F08_API_LAB_DB_TEST_CONFIRM, 'DISPOSABLE_LOOPBACK_ONLY');
+  assert.match(source.pathname, /^\/commerce_test_f08_api_[a-z0-9_]+$/);
+}
 const container = process.env.F08_POSTGRES_CONTAINER;
 assert.match(container || '', /^[a-f0-9]{12,64}$/, 'The existing disposable PostgreSQL service container is required.');
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -72,8 +78,11 @@ try {
   assert.equal(server.database, source.pathname.slice(1));
   assert.match(server.version, /^18\./);
   const before = await snapshot(db);
-  const procurement = before.contents.filter(row => /^Procurement/.test(row.table));
-  assert.ok(procurement.length >= 3 && procurement.every(row => Number(row.count) > 0), 'Run complete F08 HTTP acceptance before recovery.');
+  const expectedTables = labScope ? ['ProcurementLabSession', 'ProcurementLabEvent', 'ProcurementApiProfile']
+    : ['ProcurementOrder', 'ProcurementOrderEvent', 'ProcurementReceipt', 'ProcurementMoneyProof'];
+  const procurement = before.contents.filter(row => expectedTables.includes(row.table));
+  assert.equal(procurement.length, expectedTables.length);
+  assert.ok(procurement.every(row => Number(row.count) > 0), 'Run the selected complete F08 HTTP acceptance before recovery.');
   const existing = await db.$queryRaw`SELECT datname FROM pg_database WHERE datname=${copyName}`;
   assert.equal(existing.length, 0, 'Never overwrite an existing database.');
   const archive = native('pg_dump', ['--format=custom', '--no-owner', '--no-privileges', '--dbname=' + server.database]);
@@ -83,7 +92,7 @@ try {
   native('pg_restore', ['--exit-on-error', '--no-owner', '--no-privileges', '--dbname=' + copyName], archive);
   const after = await snapshot(restored);
   assert.deepEqual(after, before, 'Native recovery must preserve schema, every original row and binary-document fingerprint.');
-  const migrations = (await readdir(resolve(repo, 'apps/api/prisma/migrations'))).filter(name => name.includes('organization_procurement'));
+  const migrations = (await readdir(resolve(repo, 'apps/api/prisma/migrations'))).filter(name => labScope ? name === '20261126180000_procurement_api_lab' : name.includes('organization_procurement'));
   assert.ok(migrations.length > 0);
   for (const migration of migrations) {
     const sql = await readFile(resolve(repo, 'apps/api/prisma/migrations', migration, 'migration.sql'));
@@ -91,7 +100,7 @@ try {
   }
   assert.deepEqual(await snapshot(restored), after, 'Forward replay after native restore must retain data and constraints.');
   assert.deepEqual(await snapshot(db), before, 'The original synthetic database must remain unchanged.');
-  const result = { kind: 'F08_SYNTHETIC_NATIVE_RECOVERY_V1', serverVersion: server.version,
+  const result = { kind: labScope ? 'F08_SYNTHETIC_API_LAB_NATIVE_RECOVERY_V1' : 'F08_SYNTHETIC_NATIVE_RECOVERY_V1', serverVersion: server.version,
     archiveSha256: digest(archive), archiveBytes: archive.length,
     originalSha256: digest(stable(before)), restoredSha256: digest(stable(after)),
     tableCount: before.contents.length, procurement, forwardReplayUnchanged: true,

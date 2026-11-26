@@ -31,6 +31,7 @@ import { WalletModule } from './wallet/wallet.module';
 import { RewardsModule } from './rewards/rewards.module';
 import { ProfileModule } from './profile/profile.module';
 import { OrganizationsModule } from './organizations/organizations.module';
+import { ProcurementLabModule } from './procurement-lab/procurement-lab.module';
 import { ResearchMarketModule } from './research-market/research-market.module';
 import { LegalGovernanceModule } from './legal-governance/legal-governance.module';
 import { TripIntelligenceModule } from './trip-intelligence/trip-intelligence.module';
@@ -46,7 +47,7 @@ const communityRehearsalModules =
     : [];
 
 @Module({
-  imports: [ServiceImagesModule, DatabaseModule, AuthModule, ProfileModule, CredentialsModule, ActivationModule, AuditModule, NotificationsModule, MessagingModule, GovernanceModule, TripsModule, SafetyModule, PaymentsModule, AdminModule, DiveLogsModule, OrganizationsModule, IntegrationModule, InventoryModule, FinanceModule, CustomerServiceModule,
+  imports: [ProcurementLabModule, ServiceImagesModule, DatabaseModule, AuthModule, ProfileModule, CredentialsModule, ActivationModule, AuditModule, NotificationsModule, MessagingModule, GovernanceModule, TripsModule, SafetyModule, PaymentsModule, AdminModule, DiveLogsModule, OrganizationsModule, IntegrationModule, InventoryModule, FinanceModule, CustomerServiceModule,
     MarketingModule,
     TechnologySecurityModule,
     FacilitiesMaintenanceModule,
