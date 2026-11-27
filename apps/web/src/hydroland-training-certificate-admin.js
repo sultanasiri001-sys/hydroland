@@ -64,10 +64,13 @@
  const labels={RECOMMENDED:'بانتظار المراجعة',APPROVED:'معتمد',REJECTED:'مرفوض',REVOKED:'ملغى'},skillLabels={COMPETENT:'متقن',IN_PROGRESS:'قيد التقييم',NEEDS_REVIEW:'يحتاج مراجعة',NOT_STARTED:'لم يبدأ'},sessionLabels={COMPLETED:'مكتمل',CANCELLED:'ملغي',IN_PROGRESS:'قيد التنفيذ',CHECK_IN_OPEN:'الحضور مفتوح',SCHEDULED:'مجدول'};
  const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const date=value=>value?new Intl.DateTimeFormat('ar-SA-u-ca-gregory',{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Riyadh'}).format(new Date(value)):'—';
- let version=0,cursor=null;
+ let version=0,cursor=null;const pendingWrites=new Set();
+ const syncQueueControls=()=>{const busy=pendingWrites.size>0;filter.disabled=busy;next.disabled=busy;panel.querySelector('[data-training-certificate-refresh]').disabled=busy};
+ const beginWrite=form=>{pendingWrites.add(form);syncQueueControls()};
+ const finishWrite=form=>{pendingWrites.delete(form);syncQueueControls()};
  const eligible=()=>Boolean(auth()?.isAuthenticated?.()&&access()?.roleAllowed?.('admin')&&access()?.getCurrentRole?.()==='admin');
  const current=(v,session)=>v===version&&session===auth()?.getSessionVersion?.()&&eligible();
- const clear=()=>{version++;cursor=null;list.textContent='';status.textContent='';next.hidden=true;panel.hidden=true};
+ const clear=()=>{version++;cursor=null;pendingWrites.clear();syncQueueControls();list.textContent='';status.textContent='';next.hidden=true;panel.hidden=true};
  async function authorize(v,session){const allowed=await access()?.authorizeRole?.('admin',{sessionVersion:session,isCurrent:()=>v===version});if(!allowed||!current(v,session)){if(v===version)clear();return false}return true}
  function render(row){
   const record=row.record,stages=Array.isArray(record?.stages)?record.stages:[],sessions=Array.isArray(record?.sessions)?record.sessions:[],canApprove=row.canApprove===true&&certificateUI?.ready(row.completionReadiness);
@@ -90,20 +93,22 @@
   const body={outcome:fields.get('outcome'),reason:String(fields.get('reason')||'').trim(),reviewed:fields.get('reviewed')==='on',expectedUpdatedAt:card.dataset.revision};
   if(body.outcome==='APPROVED'&&card.dataset.canApprove!=='true'){uiLocale.setText(feedback,'لا تسمح الجاهزية الحالية بالاعتماد. حدّث القائمة لمراجعة المتطلبات.');return}
   if(!body.reviewed||!['APPROVED','REJECTED'].includes(body.outcome)||body.reason.length<5){uiLocale.setText(feedback, ...['اختر القرار، واكتب ملاحظاته، وأكد مراجعة السجل.']);return}
-  form.dataset.busy='true';form.querySelector('fieldset').disabled=true;
+  // Keep queue navigation from invalidating the in-flight authorization/command.
+  // Account and role changes still clear this scope immediately.
+  form.dataset.busy='true';form.querySelector('fieldset').disabled=true;beginWrite(form);
   try{
    if(!await authorize(v,session)||!form.isConnected)return;
    const response=await auth().authorizedFetch('/training/certificates/'+encodeURIComponent(card.dataset.trainingCertificate)+'/decision',{method:'POST',body:JSON.stringify(body)}),data=await response.json().catch(()=>null);
    if(!current(v,session)||!form.isConnected)return;if([401,403,404].includes(response.status)){clear();return}if(!response.ok){if(response.status===409){card.dataset.canApprove='false';form.querySelector('option[value=APPROVED]').disabled=true;if(form.elements.outcome.value==='APPROVED')form.elements.outcome.value=''}throw localError(data?.message||uiLocale.message('تعذر حفظ قرار الشهادة.'))}await load();
   }catch(error){if(current(v,session)&&form.isConnected)uiLocale.setMessage(feedback, localErrorMessage(error)||uiLocale.message('تعذر حفظ القرار.'))}
-  finally{if(current(v,session)&&form.isConnected){delete form.dataset.busy;form.querySelector('fieldset').disabled=false}}
+  finally{finishWrite(form);if(current(v,session)&&form.isConnected){delete form.dataset.busy;form.querySelector('fieldset').disabled=false}}
  });
  async function saveLifecycle(form,retry=false){
   if(form.dataset.busy||form.dataset.stale||!['reconsideration-decision','revoke'].includes(form.dataset.certificateLifecycle))return;
   const v=version,session=auth()?.getSessionVersion?.(),live=()=>current(v,session)&&form.isConnected,feedback=form.querySelector('[data-certificate-feedback]');
   const body=retry?certificateUI?.retryBody(form):certificateUI?.command(form);
   if(!body){uiLocale.setText(feedback,'اكتب السبب وأكد المراجعة المستقلة قبل حفظ الإجراء.');return}
-  form.dataset.busy='true';form.querySelector('fieldset').disabled=true;let sent=false,responded=false;
+  form.dataset.busy='true';form.querySelector('fieldset').disabled=true;beginWrite(form);let sent=false,responded=false;
   try{
    if(!await authorize(v,session)||!live())return;
    sent=true;const response=await auth().authorizedFetch('/training/certificates/'+encodeURIComponent(form.dataset.certificateId)+'/'+form.dataset.certificateLifecycle,{method:'POST',body:JSON.stringify(body)});responded=true;
@@ -111,7 +116,7 @@
    if(!response.ok){if([401,403,404].includes(response.status)){clear();return}if(response.status===409)form.dataset.stale='true';throw localError(data?.message||uiLocale.message('تعذر حفظ القرار.'))}
    await load();
   }catch(error){if(live()){if(sent&&!responded)certificateUI.uncertain(form);else uiLocale.setMessage(feedback,localErrorMessage(error)||uiLocale.message('تعذر حفظ القرار.'));}}
-  finally{if(live()){delete form.dataset.busy;form.querySelector('fieldset').disabled=Boolean(form.dataset.stale||form.dataset.uncertain)}}
+  finally{finishWrite(form);if(live()){delete form.dataset.busy;form.querySelector('fieldset').disabled=Boolean(form.dataset.stale||form.dataset.uncertain)}}
  }
  for(const name of ['hydroland:session-cleared','hydroland:portal-cleared'])document.addEventListener(name,clear);
  document.addEventListener('hydroland:role-changed',()=>{if(eligible())void load();else clear()});

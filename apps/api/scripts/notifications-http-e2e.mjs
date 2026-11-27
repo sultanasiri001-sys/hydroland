@@ -9,9 +9,9 @@ for(const url of [new URL(base),new URL(process.env.DATABASE_URL||'postgresql://
 }
 const secret=process.env.JWT_SECRET;
 assert(secret,'JWT_SECRET required');
-const db=new PrismaClient(),accounts=[],people=[];
+const db=new PrismaClient(),accounts=[],people=[],sessions=new Map();
 const enc=value=>Buffer.from(JSON.stringify(value)).toString('base64url');
-const tokenFor=id=>{const now=Math.floor(Date.now()/1000),body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:id,iat:now,exp:now+900})}`;return `${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`};
+const tokenFor=id=>{const now=Math.floor(Date.now()/1000),body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:id,sid:sessions.get(id),iat:now,exp:now+900})}`;return `${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`};
 const call=(token,path='',method='GET',body)=>fetch(base+'/notifications'+path,{method,headers:{...(token?{authorization:`Bearer ${token}`} :{}),...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
 const json=async response=>{const body=await response.json();assert(response.ok,`Unexpected HTTP ${response.status}: ${JSON.stringify(body)}`);return body};
 
@@ -38,7 +38,9 @@ try{
   await verifyCallbackAudit();
   for(const name of ['Owner','Other']){
     const person=await db.person.create({data:{firstName:name,lastName:'Notifications E2E'}});people.push(person.id);
-    accounts.push(await db.account.create({data:{personId:person.id,email:`notifications-${randomUUID()}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}}));
+    const account=await db.account.create({data:{personId:person.id,email:`notifications-${randomUUID()}@example.invalid`,passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}});accounts.push(account);
+    const session=await db.session.create({data:{accountId:account.id,tokenHash:`notifications-fixture-${randomUUID()}`,expiresAt:new Date(Date.now()+900_000)}});
+    sessions.set(account.id,session.id);
   }
   const [owner,other]=accounts,token=tokenFor(owner.id),otherToken=tokenFor(other.id);
   const ordinary=await db.notification.create({data:{accountId:owner.id,type:'MESSAGE_RECEIVED',status:'SENT',payload:{title:'رسالة جديدة'}}});
@@ -59,9 +61,12 @@ try{
     assert.deepEqual(await db.notification.findUniqueOrThrow({where:{id:challenge.id}}),challenge,'Auth challenge remains unchanged');
   }
 
-  const results=await Promise.all(Array.from({length:4},()=>call(token,'/safety-test','POST',{
+  const settled=await Promise.allSettled(Array.from({length:4},()=>call(token,'/safety-test','POST',{
     accountId:other.id,type:'SAFETY_ALERT',payload:{isTest:false,areaLabel:'Injected area'},
   }).then(json)));
+  const rejected=settled.filter(result=>result.status==='rejected');
+  assert.deepEqual(rejected.map(result=>String(result.reason)),[], 'All concurrent notification requests must succeed before teardown');
+  const results=settled.map(result=>result.value);
   assert.equal(results.filter(result=>result.created).length,1,'Concurrent test requests create exactly one notification');
   assert.equal(new Set(results.map(result=>result.notification.id)).size,1);
   const demo=results[0].notification;
@@ -84,8 +89,11 @@ try{
   console.log('Notifications HTTP/DB E2E passed: authentication, ownership, auth challenge isolation, concurrent self-only safety tests, fixed simulation content, persistence and read status.');
 }finally{
   const ids=accounts.map(account=>account.id);
-  await db.notification.deleteMany({where:{accountId:{in:ids}}});
-  await db.account.deleteMany({where:{id:{in:ids}}});
-  await db.person.deleteMany({where:{id:{in:people}}});
+  await db.$transaction(async tx=>{
+    await tx.notification.deleteMany({where:{accountId:{in:ids}}});
+    await tx.session.deleteMany({where:{accountId:{in:ids}}});
+    await tx.account.deleteMany({where:{id:{in:ids}}});
+    await tx.person.deleteMany({where:{id:{in:people}}});
+  });
   await db.$disconnect();
 }

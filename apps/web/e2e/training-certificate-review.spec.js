@@ -33,6 +33,18 @@ test('stale certificate decision preserves notes and fresh role revocation preve
  const state=await setupAdmin(page);state.conflict=true;const form=await prepareDecision(page,'REJECTED');await form.getByRole('button',{name:'حفظ قرار شهادة التدريب',exact:true}).click();await expect(form).toContainText('تغير طلب الشهادة');await expect(form.getByLabel('ملاحظات قرار شهادة التدريب',{exact:true})).toHaveValue('مراجعة إجرائية في اختبار معزول');expect(state.posts).toBe(1);
  state.active=false;await form.getByRole('button',{name:'حفظ قرار شهادة التدريب',exact:true}).click();await expect(page.locator('[data-training-certificate]')).toHaveCount(0);expect(state.posts).toBe(1);
 });
+test('queue filters cannot discard an explicit certificate decision during fresh authorization',async({page})=>{
+ const state=await setupAdmin(page),form=await prepareDecision(page,'REJECTED');
+ let release,started;const pending=new Promise(resolve=>{release=resolve}),requested=new Promise(resolve=>{started=resolve});
+ await page.route(/\/api\/v1\/me$/,async route=>{started();await pending;return json(route,{id:'independent-admin',status:'ACTIVE',person:{firstName:'إدارة',lastName:'اختبار'},roleAssignments:[{role:'ADMIN',status:'ACTIVE'}]})});
+ try{
+  await form.getByRole('button',{name:'حفظ قرار شهادة التدريب',exact:true}).click();await requested;
+  await expect(page.locator('[data-training-certificate-filter]')).toBeDisabled();await expect(page.locator('[data-training-certificate-refresh]')).toBeDisabled();expect(state.posts).toBe(0);
+  release();await expect(page.locator('[data-training-certificate-filter]')).toBeEnabled();expect(state.posts).toBe(1);
+  await page.locator('[data-training-certificate-filter]').selectOption('REJECTED');
+  const card=page.locator('[data-training-certificate="certificate-1"]');await expect(card.locator('[data-certificate-internal]')).toContainText('مرفوض');await expect(card).toContainText('مراجعة إجرائية في اختبار معزول');await expect(card.locator('form')).toHaveCount(0);
+ }finally{release()}
+});
 test('late pending queue cannot overwrite a newer history filter',async({page})=>{
  const state=await setupAdmin(page);state.rows.push({...certificate('history-1','APPROVED'),courseCode:'QA-HISTORY-ONLY'});
  let release,started;const pending=new Promise(resolve=>{release=resolve}),requested=new Promise(resolve=>{started=resolve});
