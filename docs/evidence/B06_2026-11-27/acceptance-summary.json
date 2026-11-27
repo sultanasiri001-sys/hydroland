@@ -1,0 +1,54 @@
+{
+  "task": "B06 legal lifecycle",
+  "environment": "isolated synthetic loopback PostgreSQL 16.16 and compiled Nest API",
+  "databaseTimeZone": "Asia/Riyadh",
+  "results": [
+    {
+      "script": "apps/api/scripts/legal-contract-lifecycle-migration-db-e2e.mjs",
+      "assertions": 32,
+      "exitCode": 0,
+      "covers": "populated TEXT/UUID sources, native FKs, append-only UPDATE/DELETE/TRUNCATE guards"
+    },
+    {
+      "script": "apps/api/scripts/legal-contract-lifecycle-http-e2e.mjs",
+      "assertions": 98,
+      "exitCode": 0,
+      "covers": "actual native general/cooperation source lifecycle and renewal, scoped/revoked visibility, race/replay, finance reference only, rollback, archive and source tamper"
+    },
+    {
+      "script": "apps/web/scripts/legal-contract-lifecycle-browser-e2e.mjs",
+      "assertions": 31,
+      "exitCode": 0,
+      "covers": "Arabic/English/mobile, original authorized PDF preview, native draft handoff, command replay, stale/session clearing"
+    },
+    {
+      "script": "apps/api/scripts/legal-contract-lifecycle-reopen-http-e2e.mjs",
+      "assertions": 11,
+      "exitCode": 0,
+      "covers": "actual API stop/start then retained PostgreSQL state and event digests"
+    }
+  ],
+  "builds": {
+    "api": 0,
+    "web": 0
+  },
+  "sourceSha256": {
+    "apps/api/prisma/migrations/20261127020000_legal_contract_lifecycle/migration.sql": "f42a8d11e728c6279597b92078e18cc7abb97067fbff1bc5dc4dbcdbbe009d73",
+    "apps/api/scripts/legal-contract-lifecycle-http-e2e.mjs": "48a80b35c61f8377ca32ce0eba652ede76d41db4821c4f9a4c4fc8006a94713f",
+    "apps/api/scripts/legal-contract-lifecycle-migration-db-e2e.mjs": "45b0aad8dbc7cec1b056b3fb0d6e4366849f37ff6fe527c7825799bf2939664e",
+    "apps/api/scripts/legal-contract-lifecycle-reopen-http-e2e.mjs": "70280616e941870d6c4cc02c08bc80d90ce40518c57cc3b5ce8e2445bf3053ce",
+    "apps/api/src/legal-governance/legal-contract-lifecycle-source.ts": "9fc4d7c1ac4831d0b8788dc6eb53a63df96e98c2c225581b308f90b4e1449684",
+    "apps/api/src/legal-governance/legal-contract-lifecycle.controller.ts": "8e11388593aae023bec9fe5de87e1d067fe7c8c9433bb48e4d6227ec099184e8",
+    "apps/api/src/legal-governance/legal-contract-lifecycle.domain.ts": "833df52343afd522eef426ad1012ec02a260f7b72caeaeac258ff3f12ac48d6c",
+    "apps/api/src/legal-governance/legal-contract-lifecycle.service.ts": "4f019d835d9201e8f7f90b3ffd35e4dbcdac72bc603c8d67bd7a643e1fa96087",
+    "apps/web/scripts/legal-contract-lifecycle-browser-e2e.mjs": "7881124590b5963685372713d209cb3805ec40a92fc6251ed9c4609d0e3bb48b",
+    "apps/web/src/hydroland-legal-lifecycle.css": "3a6a6c29b6c47f52385b77f12d019c14c01865a00f069786c3ac757c89b394e8",
+    "apps/web/src/hydroland-legal-lifecycle.js": "651eb77e35a85dfc781e7d989e1fb40e5652a1d238191e092b0dbed7053aa6ff"
+  },
+  "limits": [
+    "Synthetic local acceptance only; no remote CI/deployment/real legal acceptance claimed.",
+    "Current explicit internal source grants remain required and revocable; no broad staff sharing is added.",
+    "Settlement references an existing posted journal and executes no money transfer.",
+    "Production migration history/recovery and real user Q01 acceptance remain separate."
+  ]
+}

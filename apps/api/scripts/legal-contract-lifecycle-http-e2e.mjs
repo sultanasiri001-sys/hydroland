@@ -1,0 +1,272 @@
+import assert from 'node:assert/strict';
+import {createHmac,randomUUID,randomBytes,createHash} from 'node:crypto';
+import {PrismaClient} from '@prisma/client';
+import {PDFDocument} from 'pdf-lib';
+import {createRequire} from 'node:module';
+
+const base=process.env.LEGAL_E2E_BASE_URL||'http://127.0.0.1:3183/api/v1';
+const loopback=value=>['localhost','127.0.0.1','[::1]'].includes(new URL(value).hostname);
+assert(process.env.NODE_ENV==='test'&&process.env.CI==='true');
+assert(process.env.LEGAL_E2E_CONFIRM==='ISOLATED_LOOPBACK_DATABASE');
+assert(process.env.DATABASE_URL&&loopback(process.env.DATABASE_URL)&&loopback(base));
+assert(/(?:_ci|_test)$/.test(new URL(process.env.DATABASE_URL).pathname),'Dedicated synthetic database required');
+assert(process.env.JWT_SECRET);
+const db=new PrismaClient(),tag=randomUUID(),settingKey='PLATFORM_STAFFING_ORGANIZATION:v1';
+const require=createRequire(import.meta.url);
+let checks=0,trigger=false;
+const eq=(actual,expected,label)=>{assert.deepEqual(actual,expected,label);checks++;};
+const ok=(value,label)=>{assert.ok(value,label);checks++;};
+const today=new Date().toISOString().slice(0,10),past=new Date(Date.now()-86400000*30).toISOString().slice(0,10),future=new Date(Date.now()+86400000*365).toISOString().slice(0,10),later=new Date(Date.now()+86400000*730).toISOString().slice(0,10);
+async function account(label,role='ADMIN',personId){
+  const person=personId?{id:personId}:await db.person.create({data:{firstName:label,lastName:'B06 Synthetic'}});
+  const a=await db.account.create({data:{personId:person.id,email:`legal-${label}-${tag}@example.invalid`,passwordHash:'isolated-fixture-no-login',status:'ACTIVE',emailVerifiedAt:new Date()}});
+  if(role)await db.roleAssignment.create({data:{accountId:a.id,role,status:'ACTIVE'}});
+  const session=await db.session.create({data:{accountId:a.id,tokenHash:randomBytes(32).toString('hex'),expiresAt:new Date(Date.now()+3600000)}});
+  const enc=x=>Buffer.from(JSON.stringify(x)).toString('base64url'),now=Math.floor(Date.now()/1000),body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:a.id,sid:session.id,iat:now,exp:now+1800})}`;
+  return {...a,token:body+'.'+createHmac('sha256',process.env.JWT_SECRET).update(body).digest('base64url')};
+}
+async function call(actor,path,method='GET',body){
+  const r=await fetch(base+path,{method,headers:{'Content-Type':'application/json',...(actor?{authorization:'Bearer '+actor.token}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});
+  return {status:r.status,body:await r.json().catch(()=>null),headers:r.headers};
+}
+async function success(actor,path,method='GET',body){const r=await call(actor,path,method,body);assert(r.status<300,`${method} ${path}: ${r.status} ${JSON.stringify(r.body)}`);return r.body;}
+async function auditFailure(enabled){
+  if(enabled){
+    await db.$executeRawUnsafe(`CREATE FUNCTION b06_test_audit_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW."action" LIKE 'LEGAL_LIFECYCLE_%' THEN RAISE EXCEPTION 'B06 isolated audit failure'; END IF; RETURN NEW; END $$`);
+    await db.$executeRawUnsafe(`CREATE TRIGGER b06_test_audit_failure BEFORE INSERT ON "AuditEvent" FOR EACH ROW EXECUTE FUNCTION b06_test_audit_failure()`);trigger=true;
+  }else if(trigger){await db.$executeRawUnsafe('DROP TRIGGER b06_test_audit_failure ON "AuditEvent"');await db.$executeRawUnsafe('DROP FUNCTION b06_test_audit_failure()');trigger=false;}
+}
+try{
+  eq(await db.operationalSetting.count({where:{key:settingKey}}),0,'Fixture refuses to replace an existing platform');
+  const platformOwner=await account('PlatformOwner'),legal=await account('Legal','STAFF'),owner=await account('Owner'),manager=await account('Manager'),creator=await account('Author','STAFF'),worker=await account('Worker','STAFF'),viewer=await account('Viewer','DIVER'),outsider=await account('Outsider'),poster=await account('Poster');
+  await assert.rejects(()=>account('WorkerAlias','ADMIN',worker.personId),/Unique constraint/);checks++;
+  const platform=await db.organization.create({data:{displayName:'B06 synthetic platform',kind:'HYDROLAND_INTERNAL_PLATFORM',status:'ACTIVE',ownerId:platformOwner.id}});
+  await db.operationalSetting.create({data:{key:settingKey,value:{version:1,organizationId:platform.id}}});
+  for(const [a,role] of [[platformOwner,'OWNER'],[legal,'STAFF']])await db.organizationMember.create({data:{organizationId:platform.id,accountId:a.id,role,status:'ACTIVE'}});
+  const legalUnit=await db.orgUnit.create({data:{organizationId:platform.id,code:'LEGAL_CONTRACTS_INSURANCE',nameAr:'قانونية اختبارية',type:'DEPARTMENT'}});
+  const legalPosition=await db.position.create({data:{orgUnitId:legalUnit.id,code:'B06-LEGAL-REVIEWER',titleAr:'مراجع قانوني اختباري',titleEn:'Synthetic legal reviewer'}});
+  await db.employment.create({data:{organizationId:platform.id,accountId:legal.id,orgUnitId:legalUnit.id,positionId:legalPosition.id,workerClass:'EMPLOYEE',status:'ACTIVE'}});
+  const org=await db.organization.create({data:{displayName:'B06 isolated organization',kind:'DIVE_CENTER',status:'ACTIVE',ownerId:owner.id}});
+  const other=await db.organization.create({data:{displayName:'B06 foreign organization',kind:'DIVE_CENTER',status:'ACTIVE',ownerId:outsider.id}});
+  for(const [a,role] of [[owner,'OWNER'],[manager,'ADMIN'],[creator,'STAFF'],[worker,'STAFF'],[viewer,'VIEWER']])await db.organizationMember.create({data:{organizationId:org.id,accountId:a.id,role,status:'ACTIVE'}});
+  await db.organizationMember.create({data:{organizationId:other.id,accountId:outsider.id,role:'OWNER',status:'ACTIVE'}});
+  const path=`/legal/contracts/organizations/${org.id}`,foreign=`/legal/contracts/organizations/${other.id}`;
+  eq((await call(null,'/legal/contracts/workspaces')).status,401);
+  eq((await call(outsider,path+'/workspace')).status,403,'Global admin role cannot cross organization scope');
+  eq((await call(viewer,path+'/templates/install','POST',{})).status,403);
+  eq((await success(owner,path+'/templates/install','POST',{})).created,2);
+  eq((await success(owner,path+'/templates/install','POST',{})).created,0,'Template installation is idempotent');
+  eq((await success(owner,'/legal/contracts/workspaces')).organizations.map(o=>o.id),[org.id]);
+  eq((await success(legal,'/legal/contracts/workspaces')).organizations.map(o=>o.id),[platform.id]);
+  eq((await call(legal,`/legal/contracts/organizations/${platform.id}/templates/install`,'POST',{})).status,403,'Legal reviewer cannot install templates');
+  await success(platformOwner,'/contracts/library/initialize','POST',{reviewed:true});
+  const starter=(await success(platformOwner,'/contracts/library')).items.find(t=>t.code==='CLIB-DIVE-COOPERATION');
+  let library=await success(platformOwner,`/contracts/library/${starter.id}/copy`,'POST',{expectedVersion:starter.version,expectedContentHash:starter.contentHash,titleAr:'عقد اختبار دورة قانونية',titleEn:'Synthetic lifecycle reference contract',clauses:starter.content.clauses,usageNotes:starter.content.usageNotes,reason:'قالب معزول لاختبار متابعة العقود'});
+  const decision=async(a,action)=>success(a,`/contracts/library/${library.id}/decision`,'POST',{expectedVersion:library.version,expectedContentHash:library.contentHash,action,reason:'مراجعة اختبارية معزولة للنسخة',reference:'B06-SYNTHETIC-LIBRARY',reviewed:true});
+  await decision(platformOwner,'SUBMIT');await decision(legal,'LEGAL_REVIEW');await decision(platformOwner,'PUBLISH');
+  library=await success(platformOwner,'/contracts/library/'+library.id);
+  const workspace=await success(owner,path+'/workspace'),contractTemplate=workspace.templates.find(t=>t.code==='B06-LEGAL-CONTRACT-V1'),evidenceTemplate=workspace.templates.find(t=>t.code==='B06-LEGAL-EVIDENCE-V1');
+  const pdf=await PDFDocument.create();pdf.addPage().drawText('Synthetic B06 evidence only');const pdfBytes=await pdf.save();
+  const nativeContract=(extra={})=>({purpose:'B06_CONTRACT_V1',libraryTemplateId:library.id,libraryVersion:library.version,libraryContentHash:library.contentHash,subject:'Synthetic services contract',partyReferences:'Synthetic parties and signing authority checked in this isolated fixture',terms:'Synthetic signed obligations, renewal, coverage and termination terms',effectiveFrom:past,expiresOn:future,applicabilityReference:'SYNTHETIC-SOURCE-REVIEW',applicabilityScope:'Isolated test only; no real legal or operating authority',...extra});
+  async function native(template,payload,{signed=true,attachment=false}={}){
+    const doc=await success(creator,'/documents','POST',{organizationId:org.id,templateId:template.id,department:'LEGAL_CONTRACTS_INSURANCE',contentHash:'sha256:'+createHash('sha256').update(JSON.stringify(payload)).digest('hex'),payload});
+    if(attachment)await success(creator,`/documents/${doc.id}/attachments`,'POST',{filename:'synthetic-evidence.pdf',mimeType:'application/pdf',base64:Buffer.from(pdfBytes).toString('base64')});
+    if(signed){await success(creator,`/documents/${doc.id}/submit`,'POST',{});await success(owner,`/documents/${doc.id}/approve`,'POST',{});await success(manager,`/documents/${doc.id}/sign`,'POST',{});}
+    return doc;
+  }
+  const doc=await native(contractTemplate,nativeContract(),{attachment:true});
+  const source=(await success(owner,path+'/workspace')).sources.find(s=>s.id===doc.id);ok(source&&source.hash.length===64,'Workspace computes native-source digest');
+  const register={commandId:randomUUID(),contractDocumentId:doc.id,expectedDocumentVersion:source.version,expectedDocumentHash:source.hash};
+  eq((await call(viewer,path+'/records','POST',register)).status,403);
+  eq((await call(outsider,foreign+'/records','POST',register)).status,404,'Foreign source rejected');
+  eq((await call(owner,path+'/records','POST',{...register,expectedDocumentHash:'0'.repeat(64)})).status,409);
+  const unsigned=await native(contractTemplate,nativeContract(),{signed:false});
+  eq((await call(owner,path+'/records','POST',{...register,contractDocumentId:unsigned.id})).status,409,'Unsigned contract rejected');
+  const pair=await Promise.all([call(owner,path+'/records','POST',register),call(owner,path+'/records','POST',register)]);
+  eq(pair.map(p=>p.status),[201,201],'Concurrent delivery of one registration is safe');eq(pair[0].body.id,pair[1].body.id);
+  let record=pair[0].body;eq(record.revision,1);eq(record.boundary.moneyExecution,false);
+  ok(Math.abs(Date.now()-Date.parse(record.createdAt))<30000,'Raw SQL timestamps preserve UTC under the server timezone');
+  eq((await call(owner,path+'/records','POST',{...register,commandId:randomUUID()})).status,409,'Different commands cannot duplicate the original source');
+  eq((await call(manager,path+'/records','POST',register)).status,409,'Idempotency cannot change authority');
+  eq((await success(owner,path+'/records','POST',register)).replayed,true);
+  eq((await call(owner,foreign+'/records/'+record.id)).status,403);
+  eq((await call(outsider,foreign+'/records/'+record.id)).status,404);
+  eq((await call(viewer,path+'/records/'+record.id)).headers.get('cache-control'),'private, no-store');
+  async function evidence(action,subjectId,extra={},r=record){
+    return native(evidenceTemplate,{purpose:'B06_LEGAL_EVIDENCE_V1',kind:action,contractDocumentId:r.contract.id,contractVersion:r.contract.version,contractHash:r.contract.hash,lifecycleId:r.id,...(subjectId?{subjectId}:{}),reference:'SYNTHETIC-'+action,findings:'Synthetic evidence verified by separate fixture authors, approver and signer.',occurredAt:new Date().toISOString(),...extra},{attachment:['ADD_POLICY','LINK_SETTLEMENT'].includes(action)});
+  }
+  const actionCommand=(action,e,subjectId,extra={},r=record)=>({commandId:randomUUID(),expectedRevision:r.revision,action,evidenceDocumentId:e.id,...(subjectId?{subjectId}:{}),...extra});
+  async function act(actor,action,subjectId,details={},extra={}){const e=await evidence(action,subjectId,details);record=await success(actor,path+'/records/'+record.id+'/actions','POST',actionCommand(action,e,subjectId,extra));return record;}
+  const obligationId=randomUUID();
+  const readOnlyDutyId=randomUUID(),readOnlyDuty=await evidence('ADD_OBLIGATION',readOnlyDutyId,{title:'Cannot assign read-only authority',responsibleAccountId:viewer.id,dueAt:today});
+  eq((await call(owner,path+'/records/'+record.id+'/actions','POST',actionCommand('ADD_OBLIGATION',readOnlyDuty,readOnlyDutyId))).status,403,'Viewer cannot become an executor');
+  await act(owner,'ADD_OBLIGATION',obligationId,{title:'Synthetic verified delivery',responsibleAccountId:worker.id,dueAt:today});
+  eq(record.obligations[0].status,'OPEN');
+  const completion=await evidence('FULFILL_OBLIGATION',obligationId),completionCmd=actionCommand('FULFILL_OBLIGATION',completion,obligationId);
+  eq((await call(owner,path+'/records/'+record.id+'/actions','POST',completionCmd)).status,403,'Manager cannot impersonate the named executor');
+  eq((await call(worker,path+'/records/'+record.id+'/actions','POST',{...completionCmd,expectedRevision:1})).status,409,'Stale revision rejected');
+  await db.organizationMember.update({where:{organizationId_accountId:{organizationId:org.id,accountId:worker.id}},data:{role:'VIEWER'}});
+  eq((await call(worker,path+'/records/'+record.id+'/actions','POST',completionCmd)).status,403,'Executor downgraded to viewer loses execution authority');
+  await db.organizationMember.update({where:{organizationId_accountId:{organizationId:org.id,accountId:worker.id}},data:{role:'STAFF'}});
+  record=await success(worker,path+'/records/'+record.id+'/actions','POST',completionCmd);eq(record.obligations[0].status,'AWAITING_VERIFICATION');
+  const verify=await evidence('VERIFY_OBLIGATION',obligationId),verifyCmd=actionCommand('VERIFY_OBLIGATION',verify,obligationId);
+  await db.organizationMember.update({where:{organizationId_accountId:{organizationId:org.id,accountId:worker.id}},data:{role:'ADMIN'}});
+  eq((await call(worker,path+'/records/'+record.id+'/actions','POST',verifyCmd)).status,403,'Executor with manager authority still cannot self-verify');
+  await db.organizationMember.update({where:{organizationId_accountId:{organizationId:org.id,accountId:worker.id}},data:{role:'STAFF'}});
+  await act(owner,'REJECT_OBLIGATION',obligationId);eq(record.obligations[0].status,'OPEN');
+  await act(worker,'FULFILL_OBLIGATION',obligationId);await act(owner,'VERIFY_OBLIGATION',obligationId);eq(record.obligations[0].status,'FULFILLED');
+  await act(manager,'REOPEN_OBLIGATION',obligationId);eq(record.obligations[0].status,'OPEN');
+  await act(worker,'FULFILL_OBLIGATION',obligationId);await act(manager,'VERIFY_OBLIGATION',obligationId);
+  const policyId=randomUUID();await act(owner,'ADD_POLICY',policyId,{provider:'Synthetic insurer',policyNumber:'B06-ISOLATED-POLICY',coverageFrom:past,coverageUntil:future,scope:'Synthetic service liability only'});
+  const duplicatePolicy=await evidence('ADD_POLICY',randomUUID(),{provider:'Synthetic insurer',policyNumber:'B06-ISOLATED-POLICY',coverageFrom:past,coverageUntil:future,scope:'Duplicate fixture'});
+  eq((await call(owner,path+'/records/'+record.id+'/actions','POST',actionCommand('ADD_POLICY',duplicatePolicy,duplicatePolicy.payload.subjectId))).status,409,'Policy number is unique within contract');
+  const claimId=randomUUID();await act(owner,'OPEN_CLAIM',claimId,{policyId,title:'Synthetic insured incident',amountMinor:12500,currency:'SAR',occurredAt:new Date(Date.now()-86400000).toISOString()});
+  eq(record.claims[0].status,'OPEN','Covered historical incident may be registered after the event');
+  const ownDecision=await evidence('APPROVE_CLAIM',claimId);
+  eq((await call(owner,path+'/records/'+record.id+'/actions','POST',actionCommand('APPROVE_CLAIM',ownDecision,claimId))).status,403,'Claim maker cannot approve own claim');
+  await act(manager,'REJECT_CLAIM',claimId);eq(record.claims[0].status,'REJECTED');
+  await act(owner,'REOPEN_CLAIM',claimId);await act(manager,'APPROVE_CLAIM',claimId);eq(record.claims[0].status,'APPROVED');
+  const finance=await success(owner,'/finance/admin/accounts','POST',{organizationId:org.id,name:'B06 synthetic revenue ledger',currency:'SAR'});
+  let entry=await success(owner,'/finance/admin/entries','POST',{organizationId:org.id,financeAccountId:finance.id,type:'REVENUE',amountMinor:12500,currency:'SAR',referenceType:'B06_INSURANCE_CLAIM',referenceId:claimId,description:'Synthetic posted ledger reference; no payment execution'});
+  const pending=await evidence('LINK_SETTLEMENT',claimId,{financeEntryId:entry.id});
+  eq((await call(manager,path+'/records/'+record.id+'/actions','POST',actionCommand('LINK_SETTLEMENT',pending,claimId))).status,409,'Pending journal cannot settle a claim');
+  await success(manager,`/finance/admin/entries/${entry.id}/decision`,'POST',{approved:true,note:'Synthetic independent approval'});entry=await success(poster,`/finance/admin/entries/${entry.id}/post`,'POST',{});
+  let wrongAmount=await success(owner,'/finance/admin/entries','POST',{organizationId:org.id,financeAccountId:finance.id,type:'REVENUE',amountMinor:12499,currency:'SAR',referenceType:'B06_INSURANCE_CLAIM',referenceId:claimId});
+  await success(manager,`/finance/admin/entries/${wrongAmount.id}/decision`,'POST',{approved:true});wrongAmount=await success(poster,`/finance/admin/entries/${wrongAmount.id}/post`,'POST',{});
+  const mismatch=await evidence('LINK_SETTLEMENT',claimId,{financeEntryId:wrongAmount.id});
+  eq((await call(manager,path+'/records/'+record.id+'/actions','POST',actionCommand('LINK_SETTLEMENT',mismatch,claimId))).status,409,'Posted journal still requires the exact claim amount');
+  const moneyBefore=await db.financeEntry.findMany({where:{organizationId:org.id},include:{approvals:true}});
+  const settlement=await evidence('LINK_SETTLEMENT',claimId,{financeEntryId:entry.id}),settlementCmd=actionCommand('LINK_SETTLEMENT',settlement,claimId);
+  const beforeRollback=await success(owner,path+'/records/'+record.id),beforeAudit=await db.auditEvent.count({where:{resourceId:record.id}});
+  await auditFailure(true);
+  eq((await call(manager,path+'/records/'+record.id+'/actions','POST',settlementCmd)).status,500,'Audit failure surfaces without a partial settlement');
+  await auditFailure(false);
+  eq(await success(owner,path+'/records/'+record.id),beforeRollback,'Audit failure rolls back state and event');
+  eq(await db.$queryRaw`SELECT "financeEntryId" FROM "LegalContractSettlementReference"`,[],'Audit failure rolls back financial reference');
+  eq(await db.auditEvent.count({where:{resourceId:record.id}}),beforeAudit);
+  const settlementRace=await Promise.all([call(manager,path+'/records/'+record.id+'/actions','POST',settlementCmd),call(manager,path+'/records/'+record.id+'/actions','POST',settlementCmd)]);
+  eq(settlementRace.map(x=>x.status),[201,201]);eq(settlementRace.map(x=>x.body.revision),[record.revision+1,record.revision+1]);record=settlementRace[0].body;
+  eq(record.claims[0].status,'SETTLED');eq(record.claims[0].settlement.financeEntryId,entry.id);
+  eq(await db.financeEntry.findMany({where:{organizationId:org.id},include:{approvals:true}}),moneyBefore,'B06 makes zero finance writes or transfers');
+  await act(manager,'CANCEL_POLICY',policyId);eq(record.policies[0].status,'CANCELLED');
+  const invalidClaimId=randomUUID(),invalidClaim=await evidence('OPEN_CLAIM',invalidClaimId,{policyId,title:'After cancellation',amountMinor:200,currency:'SAR'});
+  eq((await call(owner,path+'/records/'+record.id+'/actions','POST',actionCommand('OPEN_CLAIM',invalidClaim,invalidClaimId))).status,409,'Incident after cancellation rejected');
+  const secondObligation=randomUUID();await act(owner,'ADD_OBLIGATION',secondObligation,{title:'Surviving renewal obligation',responsibleAccountId:worker.id,dueAt:future});
+  const renewed=await native(contractTemplate,nativeContract({previousContractDocumentId:doc.id,effectiveFrom:future,expiresOn:later,subject:'Synthetic renewed contract'}));
+  const renewalSource=(await success(owner,path+'/workspace')).sources.find(s=>s.id===renewed.id),renewalEvidence=await evidence('RENEW',null,{newContractDocumentId:renewed.id,newContractVersion:renewalSource.version,newContractHash:renewalSource.hash});
+  const renewalCmd=actionCommand('RENEW',renewalEvidence,null,{newContractDocumentId:renewed.id,newContractVersion:renewalSource.version,newContractHash:renewalSource.hash});
+  const recordsBefore=(await db.$queryRaw`SELECT count(*)::integer AS n FROM "LegalContractLifecycle"`)[0].n;
+  await auditFailure(true);eq((await call(owner,path+'/records/'+record.id+'/actions','POST',renewalCmd)).status,500);await auditFailure(false);
+  eq((await db.$queryRaw`SELECT count(*)::integer AS n FROM "LegalContractLifecycle"`)[0].n,recordsBefore,'Renewal successor rolls back with audit');
+  record=await success(owner,path+'/records/'+record.id+'/actions','POST',renewalCmd);eq(record.status,'RENEWED');
+  const successor=await success(owner,path+'/records/'+record.successorId);eq(successor.predecessorId,record.id);eq(successor.obligations,[],'Renewal does not copy or satisfy old obligations');
+  const earlyArchive=await evidence('ARCHIVE',null,{retainUntil:later});
+  eq((await call(owner,path+'/records/'+record.id+'/actions','POST',actionCommand('ARCHIVE',earlyArchive))).status,409,'Unfulfilled obligations block archive');
+  await act(worker,'FULFILL_OBLIGATION',secondObligation);await act(manager,'VERIFY_OBLIGATION',secondObligation);
+  await act(owner,'ARCHIVE',null,{retainUntil:later});eq(record.status,'ARCHIVED');
+  const archivedState=await success(viewer,path+'/records/'+record.id);eq(archivedState.status,'ARCHIVED');eq(archivedState.events.length,record.revision);
+  eq((await call(owner,path+'/records/'+record.id+'/actions','POST',{...renewalCmd,commandId:randomUUID(),expectedRevision:record.revision})).status,409,'Archived follow-up is read-only');
+  eq((await db.managedDocument.findUniqueOrThrow({where:{id:doc.id}})).status,'SIGNED','Follow-up archive preserves native source lifecycle');
+  await assert.rejects(()=>db.$executeRaw`UPDATE "LegalContractLifecycleEvent" SET "action"='ARCHIVE' WHERE "lifecycleId"=${record.id}`,/append-only/);checks++;
+  await assert.rejects(()=>db.$executeRaw`UPDATE "LegalContractSettlementReference" SET "claimId"=${randomUUID()} WHERE "financeEntryId"::text=${entry.id}`,/append-only/);checks++;
+  await assert.rejects(()=>db.$executeRaw`DELETE FROM "LegalContractLifecycle" WHERE "id"=${record.id}`,/immutable/);checks++;
+  const originalRecord=record;record=successor;
+  const unfinished=randomUUID();await act(owner,'ADD_OBLIGATION',unfinished,{title:'Termination leaves duties visible',responsibleAccountId:worker.id,dueAt:later});
+  const terminationEvidence=await Promise.all([evidence('TERMINATE'),evidence('TERMINATE')]);
+  const terminationRace=await Promise.all(terminationEvidence.map(e=>call(owner,path+'/records/'+record.id+'/actions','POST',actionCommand('TERMINATE',e))));
+  eq(terminationRace.map(r=>r.status).sort(),[201,409],'Different concurrent commands preserve stale revision conflicts');record=terminationRace.find(r=>r.status===201).body;
+  eq(record.status,'TERMINATED');eq(record.obligations[0].status,'OPEN');
+  await act(worker,'FULFILL_OBLIGATION',unfinished);await act(manager,'VERIFY_OBLIGATION',unfinished);await act(owner,'ARCHIVE',null,{retainUntil:later});
+  eq(record.status,'ARCHIVED');
+  const original=await db.managedDocument.findUniqueOrThrow({where:{id:doc.id}});
+  await db.managedDocument.update({where:{id:doc.id},data:{payload:{...original.payload,terms:'tampered'}}});
+  eq((await call(owner,path+'/records/'+originalRecord.id)).status,409,'Original source alteration fails closed');
+  await db.managedDocument.update({where:{id:doc.id},data:{payload:original.payload}});
+  const attachment=await db.managedDocumentAttachment.findFirstOrThrow({where:{documentId:doc.id}});
+  await db.managedDocumentAttachment.update({where:{id:attachment.id},data:{content:new Uint8Array([1,2,3])}});
+  eq((await call(owner,path+'/records/'+originalRecord.id)).status,409,'Original attachment bytes are checked');
+  await db.managedDocumentAttachment.update({where:{id:attachment.id},data:{content:attachment.content}});
+  const branding=await db.documentBrandSnapshot.findUniqueOrThrow({where:{organizationId_brandVersion:{organizationId:org.id,brandVersion:original.documentBrandVersion}}});
+  await db.documentBrandSnapshot.update({where:{id:branding.id},data:{brandNameAr:'Altered signed branding'}});
+  eq((await call(owner,path+'/records/'+originalRecord.id)).status,409,'Signed branding revision is part of source binding');
+  await db.documentBrandSnapshot.update({where:{id:branding.id},data:{brandNameAr:branding.brandNameAr}});
+  // The native cooperation path has two actual parties and an independent
+  // platform approval. B06 consumes that source without widening visibility.
+  for(const [a,action] of [[platformOwner,'SUBMIT'],[legal,'LEGAL_REVIEW'],[platformOwner,'PUBLISH']])await success(a,`/contracts/library/${starter.id}/decision`,'POST',{expectedVersion:starter.version,expectedContentHash:starter.contentHash,action,reason:'Synthetic cooperation library review',reference:'B06-COOPERATION-FIXTURE',reviewed:true});
+  const professional=await account('Professional','INSTRUCTOR');
+  const national=await db.credential.create({data:{personId:professional.personId,issuer:'Synthetic issuer',title:'Synthetic licence only',credentialNumber:'B06-NATIONAL',issuedAt:new Date(past),expiresAt:new Date(later),verificationStatus:'VERIFIED'}});
+  const qualification=await db.credential.create({data:{personId:professional.personId,issuer:'Synthetic training organization',title:'Synthetic qualification',credentialNumber:'B06-QUALIFICATION',issuedAt:new Date(past),expiresAt:new Date(later),verificationStatus:'DOCUMENT_VERIFIED'}});
+  await db.professionalProfile.create({data:{personId:professional.personId,nationalLicenseCredentialId:national.id,qualificationCredentialId:qualification.id,eligibilityEvidenceReference:'Synthetic eligibility reference only'}});
+  await db.organization.update({where:{id:org.id},data:{registrationNumber:'B06-SYNTHETIC',address:'Synthetic address',trainingMembershipReference:'B06-SYNTHETIC-MEMBERSHIP'}});
+  const centerUnit=await db.orgUnit.create({data:{organizationId:org.id,type:'CENTER',code:'B06-COOPERATION',nameAr:'مركز اختبار معزول'}});
+  await db.administrativeRecord.create({data:{organizationId:org.id,unitId:centerUnit.id,type:'LICENSE',referenceNumber:'B06-SYNTHETIC-LICENSE',subject:'Synthetic licence fixture only',status:'REGISTERED',ownerAccountId:owner.id,licenseIssuedAt:new Date(past),licenseExpiresAt:new Date(later),licenseReviewStatus:'APPROVED'}});
+  let coop=await success(owner,'/contracts/cooperation','POST',{organizationId:org.id,professionalEmail:professional.email});
+  const terms=Object.fromEntries(require('../dist/document-forms/cooperation-contract.domain.js').CONTRACT_FIELDS.filter(([section])=>section==='terms').map(([,key])=>[key,key==='startDate'?past:key==='endDate'?future:'Synthetic terms: '+key]));
+  const expectedCoop=d=>({expectedVersion:d.version,expectedContentHash:d.contentHash});
+  coop=await success(owner,`/contracts/cooperation/${coop.id}/fields`,'PUT',{...expectedCoop(coop),values:{terms}});
+  coop=await success(owner,`/contracts/cooperation/${coop.id}/issue`,'POST',expectedCoop(coop));
+  const stamp={mimeType:'image/png',base64:(await require('sharp')(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="180" height="100"><rect width="180" height="100" fill="white"/><text x="8" y="55" fill="blue">SYNTHETIC B06 ONLY</text></svg>')).png().toBuffer()).toString('base64')};
+  await success(owner,`/contracts/cooperation/${coop.id}/sign`,'POST',{...expectedCoop(coop),signatureName:'Owner B06 Synthetic',consent:true,centerSeal:stamp,centerSealConsent:true});
+  await success(professional,`/contracts/cooperation/${coop.id}/sign`,'POST',{...expectedCoop(coop),signatureName:'Professional B06 Synthetic',consent:true});
+  eq((await success(owner,path+'/workspace')).sources.some(s=>s.id===coop.id),false,'Two party signatures alone do not substitute platform approval');
+  coop=await success(platformOwner,`/contracts/cooperation/${coop.id}/decision`,'POST',{...expectedCoop(coop),action:'APPROVE',reviewed:true,reason:'Synthetic independent platform approval'});
+  const coopSource=(await success(owner,path+'/workspace')).sources.find(s=>s.id===coop.id);ok(coopSource,'Native cooperation signatures and original center seal are accepted');
+  const coopBefore=await db.managedDocument.findUniqueOrThrow({where:{id:coop.id},include:{lifecycleEvents:true,revisions:true}});
+  const coopRecord=await success(owner,path+'/records','POST',{commandId:randomUUID(),contractDocumentId:coop.id,expectedDocumentVersion:coopSource.version,expectedDocumentHash:coopSource.hash});
+  eq(coopRecord.contract.id,coop.id);eq(coopRecord.status,'OPEN');
+  eq((await call(manager,path+'/records/'+coopRecord.id)).status,403,'Organization admin cannot bypass the native cooperation-party restriction');
+  eq((await call(viewer,path+'/records/'+coopRecord.id)).status,403);
+  eq((await success(manager,path+'/workspace')).records.some(r=>r.id===coopRecord.id),false,'Private cooperation follow-up is excluded from unrelated member lists');
+  eq((await success(viewer,path+'/workspace')).sources.some(s=>s.id===coop.id),false,'Private cooperation source is excluded from unrelated member selectors');
+  eq(await db.managedDocument.findUniqueOrThrow({where:{id:coop.id},include:{lifecycleEvents:true,revisions:true}}),coopBefore,'B06 preserves the native cooperation signature and version truth');
+  let nextCoop=await success(owner,'/contracts/cooperation','POST',{organizationId:org.id,professionalEmail:professional.email});
+  nextCoop=await success(owner,`/contracts/cooperation/${nextCoop.id}/fields`,'PUT',{...expectedCoop(nextCoop),values:{terms:{...terms,startDate:future,endDate:later}}});
+  nextCoop=await success(owner,`/contracts/cooperation/${nextCoop.id}/issue`,'POST',expectedCoop(nextCoop));
+  await success(owner,`/contracts/cooperation/${nextCoop.id}/sign`,'POST',{...expectedCoop(nextCoop),signatureName:'Owner B06 Synthetic',consent:true,centerSeal:stamp,centerSealConsent:true});
+  await success(professional,`/contracts/cooperation/${nextCoop.id}/sign`,'POST',{...expectedCoop(nextCoop),signatureName:'Professional B06 Synthetic',consent:true});
+  await success(platformOwner,`/contracts/cooperation/${nextCoop.id}/decision`,'POST',{...expectedCoop(nextCoop),action:'APPROVE',reviewed:true,reason:'Synthetic independent renewal approval'});
+  const nextCoopSource=(await success(owner,path+'/workspace')).sources.find(s=>s.id===nextCoop.id);
+  const renewalBinding={newContractDocumentId:nextCoop.id,newContractVersion:nextCoopSource.version,newContractHash:nextCoopSource.hash};
+  const wrongBinding=await evidence('RENEW',null,{...renewalBinding,newContractHash:'0'.repeat(64)},coopRecord);
+  eq((await call(owner,path+'/records/'+coopRecord.id+'/actions','POST',actionCommand('RENEW',wrongBinding,null,renewalBinding,coopRecord))).status,409,'Signed evidence cannot substitute a different renewal version digest');
+  const nativeRenewal=await evidence('RENEW',null,renewalBinding,coopRecord);
+  const renewedCoop=await success(owner,path+'/records/'+coopRecord.id+'/actions','POST',actionCommand('RENEW',nativeRenewal,null,renewalBinding,coopRecord));
+  eq(renewedCoop.status,'RENEWED');eq((await success(owner,path+'/records/'+renewedCoop.successorId)).contract.id,nextCoop.id,'Native cooperation renews through exact signed old/new-source evidence without changing its producer');
+  // Internal legal employment is not a blanket document grant. Exercise the
+  // existing named, expiring per-version reviewer/signature delegation.
+  const internalSigner=await account('InternalSigner','STAFF'),unrelatedLegal=await account('UnrelatedLegal','STAFF');
+  for(const a of [internalSigner,unrelatedLegal]){
+    await db.organizationMember.create({data:{organizationId:platform.id,accountId:a.id,role:'STAFF',status:'ACTIVE'}});
+    const position=await db.position.create({data:{orgUnitId:legalUnit.id,code:'B06-'+a.id,titleAr:'مراجع قانوني اختباري'}});
+    await db.employment.create({data:{organizationId:platform.id,accountId:a.id,orgUnitId:legalUnit.id,positionId:position.id,workerClass:'EMPLOYEE',status:'ACTIVE'}});
+  }
+  const internalPath=`/legal/contracts/organizations/${platform.id}`;
+  await success(platformOwner,internalPath+'/templates/install','POST',{});
+  const internalTemplate=(await success(platformOwner,internalPath+'/workspace')).templates.find(t=>t.code==='B06-LEGAL-CONTRACT-V1');
+  const privatePayload=nativeContract({subject:'Private internal contract'}),internal=await success(platformOwner,'/documents','POST',{organizationId:platform.id,templateId:internalTemplate.id,department:'LEGAL_CONTRACTS_INSURANCE',contentHash:'sha256:'+createHash('sha256').update(JSON.stringify(privatePayload)).digest('hex'),payload:privatePayload});
+  await success(platformOwner,`/documents/${internal.id}/submit`,'POST',{});
+  const reviewPath=`/document-reviews/organizations/${platform.id}/documents/${internal.id}`;
+  const assignment={reviewerAccountId:legal.id,signerAccountId:internalSigner.id,expectedDocumentVersion:internal.version,expiresAt:new Date(Date.now()+86400000).toISOString(),reason:'Synthetic explicit source-bound review'};
+  const plan=await success(platformOwner,reviewPath+'/plan','POST',assignment);
+  await success(platformOwner,reviewPath+'/assignment','POST',{...assignment,expectedPlanHash:plan.planHash,confirmed:true});
+  for(const [actor,action] of [[legal,'APPROVE'],[internalSigner,'SIGN']]){const view=await success(actor,reviewPath+'/view');await success(actor,reviewPath+'/decisions','POST',{action,expectedVersion:view.source.version,reviewHash:view.reviewHash,note:'Synthetic independent document decision',confirmed:true});}
+  const internalSource=(await success(platformOwner,internalPath+'/workspace')).sources.find(s=>s.id===internal.id);
+  const internalCommand={commandId:randomUUID(),contractDocumentId:internal.id,expectedDocumentVersion:internalSource.version,expectedDocumentHash:internalSource.hash};
+  const internalRecord=await success(platformOwner,internalPath+'/records','POST',internalCommand);
+  eq((await success(legal,internalPath+'/records/'+internalRecord.id)).id,internalRecord.id,'Current named source participant can read the bound follow-up');
+  const unrelatedWorkspace=await success(unrelatedLegal,internalPath+'/workspace');eq(unrelatedWorkspace.records,[]);eq(unrelatedWorkspace.sources,[]);eq(unrelatedWorkspace.settlementEntries,[]);
+  eq((await call(unrelatedLegal,internalPath+'/records/'+internalRecord.id)).status,403,'Unrelated legal employment cannot use a direct record identifier');
+  eq((await call(unrelatedLegal,internalPath+'/records','POST',{...internalCommand,commandId:randomUUID()})).status,403,'Legal employment cannot register a private unassigned source');
+  const assigned=await success(platformOwner,reviewPath+'/assignment');
+  await success(platformOwner,reviewPath+'/revoke','POST',{expectedRevision:assigned.current.revision,reason:'Synthetic source access revocation',confirmed:true});
+  eq((await call(legal,internalPath+'/records/'+internalRecord.id)).status,403,'Native source revocation immediately removes B06 access');
+  eq((await success(legal,internalPath+'/workspace')).records,[]);
+  eq((await success(platformOwner,internalPath+'/records/'+internalRecord.id)).id,internalRecord.id,'Source revocation retains owner access and historical evidence');
+  await db.organizationMember.update({where:{organizationId_accountId:{organizationId:org.id,accountId:owner.id}},data:{status:'SUSPENDED'}});
+  eq((await call(owner,path+'/records','POST',register)).status,403,'Retry after membership revocation cannot return prior data');
+  eq((await success(manager,path+'/records/'+originalRecord.id)).status,'ARCHIVED','A fresh authorized read persists complete history');
+  console.log(`PASS B06 legal lifecycle: ${checks} assertions; native signed source/library, scope/IAM/person separation, durable obligations/coverage/claims, posted ledger reference only, renewal/archive, command concurrency, atomic audit rollback, and source tamper rejection.`);
+}finally{
+  await auditFailure(false).catch(()=>{});
+  await db.$disconnect();
+}

@@ -60,21 +60,21 @@ try{
   assert.equal(responseWordCount(alreadyShort.text),86);
   assert(alreadyShort.text.startsWith('عينة اختبار، لا تمثل واقع المنصة.'));
   assert.equal(reportScopeNotice('تقرير تشغيلي فعلي'),null);
-  for(const [key,department,metric,gap] of [['FINANCE_DIRECTOR','FINANCE','settlementImports','FINANCIAL_RECONCILIATION_CLOSE'],['INVENTORY','INVENTORY_LOGISTICS','recordedWarehouseMovementEvidence','WAREHOUSE_OPERATIONAL_EVIDENCE_VERIFICATION'],['ADMIN_DIRECTOR','ADMIN_AFFAIRS_RECORDS','recordedDeliveryEvidence','DELIVERY_RETENTION_DISPOSAL_EVIDENCE'],['MARKETING','MARKETING_GROWTH','recordedPublicationEvidence','CAMPAIGN_PUBLICATION_ANALYTICS']]){
+  for(const [version,key,department,metric,gap] of [[6,'FINANCE_DIRECTOR','FINANCE','settlementImports','FINANCIAL_RECONCILIATION_CLOSE'],[6,'INVENTORY','INVENTORY_LOGISTICS','recordedWarehouseMovementEvidence','WAREHOUSE_OPERATIONAL_EVIDENCE_VERIFICATION'],[6,'ADMIN_DIRECTOR','ADMIN_AFFAIRS_RECORDS','recordedDeliveryEvidence','DELIVERY_RETENTION_DISPOSAL_EVIDENCE'],[6,'MARKETING','MARKETING_GROWTH','recordedPublicationEvidence','CAMPAIGN_PUBLICATION_ANALYTICS'],[7,'LEGAL_RISK','LEGAL_CONTRACTS_INSURANCE','linkedPostedContractSettlements','LEGAL_OPERATIONAL_ACCEPTANCE_AND_ISSUER_VERIFICATION'],[7,'FACILITIES_DIRECTOR','FACILITIES_ASSETS_MAINTENANCE','linkedWarehousePartUsages','MAINTENANCE_EXECUTION_AND_INSPECTION_ACCEPTANCE']]){
    for(const count of [0,3]){
     scenario={firstWords:40};requests=[];
-    const snapshot={version:6,department,scope:'INTERNAL_PLATFORM_ORGANIZATION',coverage:'PARTIAL',metrics:{[metric]:count,untrustedCounter:12},missingSources:[gap]};
+    const snapshot={version,department,scope:'INTERNAL_PLATFORM_ORGANIZATION',coverage:'PARTIAL',metrics:{[metric]:count,untrustedCounter:12},missingSources:[gap]};
     await provider.execute(config,{key,nameEn:key},'READ_OPERATIONS','ar-SA','لخص أعداد السجلات وحدود الأدلة دون اعتماد.',snapshot);
     assert.equal(requests.length,2,'scope classification adds no provider request');
     const request=requests.find(r=>r.path.endsWith('/responses')).body,instructions=request.input[0].content,contract=JSON.parse(instructions.match(/Aggregate source contract: (\{[^}]+\})\./)[1]);
-    assert.deepEqual(contract,{sourceVersion:6,scope:'INTERNAL_PLATFORM_ORGANIZATION',counterUnit:'RECORD_COUNT',operationalAcceptance:'NOT_ASSESSED',connectedCounterKeys:[metric],gapMeaning:'REMAINING_OPERATIONAL_EVIDENCE_OR_VERIFICATION'});
+    assert.deepEqual(contract,{sourceVersion:version,scope:'INTERNAL_PLATFORM_ORGANIZATION',counterUnit:'RECORD_COUNT',operationalAcceptance:'NOT_ASSESSED',connectedCounterKeys:[metric],gapMeaning:'REMAINING_OPERATIONAL_EVIDENCE_OR_VERIFICATION'});
     assert.deepEqual(JSON.parse(request.input[1].content).aggregateOperations,snapshot);
     assert(instructions.includes('recordedPublicationEvidence')&&instructions.includes('owner-recorded evidence entries')&&instructions.includes('not physical stock'));
     assert(instructions.includes('including zero')&&instructions.includes('does not erase a supplied counter')&&instructions.includes('Zero records before launch are not a defect'));
     assert.equal(request.max_output_tokens,2048);assert.deepEqual(request.tools,[]);assert.equal(request.store,false);
    }
   }
-  for(const snapshot of [{version:7,department:'FINANCE'},{version:6,department:'MARKETING_GROWTH'}]){
+  for(const snapshot of [{version:8,department:'FINANCE'},{version:6,department:'MARKETING_GROWTH'}]){
     scenario={firstWords:40};requests=[];await provider.execute(config,{key:'FINANCE_DIRECTOR',nameEn:'Finance'},'READ_OPERATIONS','ar-SA','لخص الأدلة فقط.',snapshot);
     const policy=requests.find(r=>r.path.endsWith('/responses')).body.input[0].content,contract=JSON.parse(policy.match(/Aggregate source contract: (\{[^}]+\})\./)[1]);assert.equal(contract.scope,'UNAVAILABLE','unknown or mismatched departmental data cannot become platform-wide facts');
   }
@@ -86,7 +86,7 @@ try{
     assert(policy.includes('evidenceGaps is reserved for missing or invalid evidence needed to assess the summary itself')&&policy.includes('This does not approve operations'));
     assert.equal(requests.length,2);
   }
-  console.log('V6 model contract checks passed: four department scopes, zero/nonzero connected counters, allowlisted keys, legacy gap semantics, six review stages, evidence limits, unchanged token reservations and unavailable unknown/mismatched versions.');
+  console.log('V6/V7 model contract checks passed: six department scopes, zero/nonzero connected counters, allowlisted keys, legacy gap semantics, six review stages, evidence limits, unchanged token reservations and unavailable unknown/mismatched versions.');
   console.log('Word-bound checks passed: one completed-draft format pass, exact counting, combined input/output reservation, original evidence, strict final word bound and no uncertain/whole-task replay.');
 }finally{
   server.closeAllConnections();await new Promise(resolve=>server.close(resolve));

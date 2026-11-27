@@ -34,6 +34,7 @@ async function verifyCallbackAudit() {
   }
 }
 
+let primaryFailure=false;
 try{
   await verifyCallbackAudit();
   for(const name of ['Owner','Other']){
@@ -61,11 +62,12 @@ try{
     assert.deepEqual(await db.notification.findUniqueOrThrow({where:{id:challenge.id}}),challenge,'Auth challenge remains unchanged');
   }
 
+  // A rejected request must not start fixture cleanup while its peers still write.
   const settled=await Promise.allSettled(Array.from({length:4},()=>call(token,'/safety-test','POST',{
     accountId:other.id,type:'SAFETY_ALERT',payload:{isTest:false,areaLabel:'Injected area'},
   }).then(json)));
-  const rejected=settled.filter(result=>result.status==='rejected');
-  assert.deepEqual(rejected.map(result=>String(result.reason)),[], 'All concurrent notification requests must succeed before teardown');
+  const failures=settled.filter(result=>result.status==='rejected').map(result=>result.reason);
+  if(failures.length)throw new AggregateError(failures,'Concurrent safety-test requests failed',{cause:failures[0]});
   const results=settled.map(result=>result.value);
   assert.equal(results.filter(result=>result.created).length,1,'Concurrent test requests create exactly one notification');
   assert.equal(new Set(results.map(result=>result.notification.id)).size,1);
@@ -87,13 +89,23 @@ try{
   assert.equal(next.created,true);assert.notEqual(next.notification.id,demo.id,'A later explicit test can create a new notification');
   assert.equal((await json(await call(otherToken))).length,1,'Other account still sees only its own original notification');
   console.log('Notifications HTTP/DB E2E passed: authentication, ownership, auth challenge isolation, concurrent self-only safety tests, fixed simulation content, persistence and read status.');
+}catch(error){
+  primaryFailure=true;
+  throw error;
 }finally{
   const ids=accounts.map(account=>account.id);
-  await db.$transaction(async tx=>{
-    await tx.notification.deleteMany({where:{accountId:{in:ids}}});
-    await tx.session.deleteMany({where:{accountId:{in:ids}}});
-    await tx.account.deleteMany({where:{id:{in:ids}}});
-    await tx.person.deleteMany({where:{id:{in:people}}});
-  });
-  await db.$disconnect();
+  const cleanupFailures=[];
+  try{
+    await db.$transaction(async tx=>{
+      await tx.notification.deleteMany({where:{accountId:{in:ids}}});
+      await tx.session.deleteMany({where:{accountId:{in:ids}}});
+      await tx.account.deleteMany({where:{id:{in:ids}}});
+      await tx.person.deleteMany({where:{id:{in:people}}});
+    });
+  }catch(error){cleanupFailures.push(error);}
+  try{await db.$disconnect();}catch(error){cleanupFailures.push(error);}
+  if(cleanupFailures.length){
+    if(primaryFailure)console.error('Notifications E2E cleanup also failed; preserving the original test failure.',...cleanupFailures);
+    else throw new AggregateError(cleanupFailures,'Notifications E2E cleanup failed');
+  }
 }

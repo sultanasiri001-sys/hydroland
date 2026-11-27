@@ -217,3 +217,34 @@ merged-main validation, deployment, and canonical tracker closure remain
 pending until their actual source-bound receipts are available. No real
 campaign publication, spending, rights grant, professional acceptance or
 D11 authorization is claimed by these synthetic checks.
+
+## Resumed verification on the Purple release — 27 November 2026
+
+The existing C06 work was merged with the published Purple source
+`95b0d91cc7f8090b5f17a63d12bf81c05232e402`. The original draft fixture now
+preserves C06's incoming foreign keys and then applies the existing Purple
+fixture schemas. Its historical source-version assertion follows V7; all
+original assertions and append-only protections remain in force.
+
+The guided-document browser case previously read its result before the
+asynchronous fresh-authority check finished. It now deliberately holds that
+check, verifies that no document opens while authority is unresolved, releases
+it, and waits for the exact original document/scope and the cleared busy state.
+No timeout, authorization rule or expected document scope was relaxed.
+
+The resulting source passed API build and lint, **20/20** API unit cases,
+**20/20** focused browser cases (13 lifecycle and seven original draft cases),
+both C06 native **TEXT/UUID** migration matrices, all four original draft
+Organization/Account identity combinations, and **8/8** original HTTP draft
+acceptance groups. The C06 native HTTP run finished at **08:28:11 UTC** with
+**25/25** groups and zero skipped on PostgreSQL 16.16 / Node 24.22.3. It retained
+14 synthetic drafts, 12 lifecycles, 27 lifecycle events, three original evidence
+records and 30 source documents, with zero finance entries and zero external
+HTTP requests. These repeat the existing acceptance groups; they are not new
+business transactions or additional distinct coverage counts.
+
+PostgreSQL 18 native recovery, full updated-head/main CI and live deployment
+remain release gates until the root release receipt records their actual
+results. Original content/data rights, real budgets, external publishing,
+provider verification, spending and the final Q01 user acceptance are not
+created by this isolated technical verification.

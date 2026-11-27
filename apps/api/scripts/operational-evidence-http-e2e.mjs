@@ -4,6 +4,7 @@ import {createRequire} from 'node:module';
 import {readFile} from 'node:fs/promises';
 import {PrismaClient} from '@prisma/client';
 import {sqlStatements} from './internal-research-test-support.mjs';
+import {ensurePurpleTestSchema} from './purple-test-schema.mjs';
 const database=new URL(process.env.DATABASE_URL||'postgresql://invalid/invalid');
 assert(process.env.CI==='true'&&process.env.NODE_ENV==='test'&&process.env.OPERATIONAL_EVIDENCE_CONFIRM==='ISOLATED_LOOPBACK_DATABASE'&&database.pathname==='/hydroland_evidence_ci'&&['localhost','127.0.0.1','[::1]'].includes(database.hostname),'Dedicated disposable evidence database required');
 const base=new URL('http://127.0.0.1:3118/api/v1/'),secret=process.env.JWT_SECRET;assert(secret?.length>=32);
@@ -18,6 +19,7 @@ async function ok(a,path=root,method='GET',body){const r=await call(a,path,metho
 async function deny(a,path=root,method='GET',body,allowed=[400,403,409]){const r=await call(a,path,method,body);assert(allowed.includes(r.status),`${path}: expected ${allowed}, got ${r.status} ${JSON.stringify(r.body)}`);return r;}
 const auditSnapshot=()=>Promise.all([db.operationalEvidence.findMany({orderBy:{id:'asc'}}),db.operationalEvidenceRevision.findMany({orderBy:{id:'asc'}}),db.auditEvent.count()]);
 try{
+ await ensurePurpleTestSchema(db);
  assert.equal(await db.account.count(),0);assert.equal(await db.organization.count(),0);
  const migration=await readFile(new URL('../prisma/migrations/20261031160000_operational_evidence_registry/migration.sql',import.meta.url),'utf8');
  // Exercise the exact additive migration with TEXT and native UUID parents.
@@ -61,7 +63,7 @@ try{
  for(const kind of ['WAREHOUSE_MOVEMENT','PROCUREMENT','RECORD_DELIVERY','RECORD_RETENTION','CAMPAIGN_PUBLICATION']){const d=await ok(owner,root,'POST',payload(kind));recorded[kind]=(await ok(owner,`${root}/${d.record.id}/record`,'POST',confirm)).record;}
  inputs.RECORD_DISPOSAL={recordId:record.id,retentionEvidenceId:recorded.RECORD_RETENTION.id,authorizationDocumentId:docs.ADMIN_AFFAIRS_RECORDS.id};inputs.CAMPAIGN_ANALYTICS={campaignDraftId:campaign.id,publicationEvidenceId:recorded.CAMPAIGN_PUBLICATION.id,windowStart:earlier,windowEnd:occurredAt,impressions:0,clicks:0,conversions:0};
  for(const kind of ['RECORD_DISPOSAL','CAMPAIGN_ANALYTICS']){const d=await ok(owner,root,'POST',payload(kind));recorded[kind]=(await ok(owner,`${root}/${d.record.id}/record`,'POST',confirm)).record;}
- const preview=()=>ok(owner,'admin/agents/department-sources'),sources=await preview(),packet=code=>sources.departments.find(d=>d.department===code).evidence;assert.equal(sources.sourceVersion,6);assert.equal(sources.operationalAcceptance,'NOT_ASSESSED');assert.equal(packet('INVENTORY_LOGISTICS').metrics.recordedWarehouseBalanceEvidence,1);assert.equal(packet('INVENTORY_LOGISTICS').metrics.recordedWarehouseMovementEvidence,1);assert.equal(packet('INVENTORY_LOGISTICS').metrics.recordedProcurementEvidence,1);assert.equal(packet('ADMIN_AFFAIRS_RECORDS').metrics.recordedDeliveryEvidence,1);assert.equal(packet('ADMIN_AFFAIRS_RECORDS').metrics.recordedRetentionEvidence,1);assert.equal(packet('ADMIN_AFFAIRS_RECORDS').metrics.recordedDisposalEvidence,1);assert.equal(packet('MARKETING_GROWTH').metrics.recordedPublicationEvidence,1);assert.equal(packet('MARKETING_GROWTH').metrics.recordedAnalyticsEvidence,1);
+ const preview=()=>ok(owner,'admin/agents/department-sources'),sources=await preview(),packet=code=>sources.departments.find(d=>d.department===code).evidence;assert.equal(sources.sourceVersion,7);assert.equal(sources.operationalAcceptance,'NOT_ASSESSED');assert.equal(packet('INVENTORY_LOGISTICS').metrics.recordedWarehouseBalanceEvidence,1);assert.equal(packet('INVENTORY_LOGISTICS').metrics.recordedWarehouseMovementEvidence,1);assert.equal(packet('INVENTORY_LOGISTICS').metrics.recordedProcurementEvidence,1);assert.equal(packet('ADMIN_AFFAIRS_RECORDS').metrics.recordedDeliveryEvidence,1);assert.equal(packet('ADMIN_AFFAIRS_RECORDS').metrics.recordedRetentionEvidence,1);assert.equal(packet('ADMIN_AFFAIRS_RECORDS').metrics.recordedDisposalEvidence,1);assert.equal(packet('MARKETING_GROWTH').metrics.recordedPublicationEvidence,1);assert.equal(packet('MARKETING_GROWTH').metrics.recordedAnalyticsEvidence,1);
  const serialized=JSON.stringify(sources);for(const value of [sentinel,owner.email,owner.id,org.id,foreign.id,product.id,campaign.id,...Object.values(recorded).map(x=>x.id),'PRIVATE-PO','PRIVATE-PUBLICATION','PRIVATE-RECIPIENT'])assert(!serialized.includes(value));
  assert.equal((await db.storeProduct.findUniqueOrThrow({where:{id:product.id}})).stockQuantity,4);assert.equal(await db.financeEntry.count(),0);assert.equal(await db.aiAgentTask.count(),0);assert.equal(await db.notification.count(),0);
  pass('all eight recorded evidence paths feed private scalar-only v6 counts without business execution');
