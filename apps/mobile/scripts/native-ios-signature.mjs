@@ -31,9 +31,9 @@ function verifiedAdhocMetadata(metadata, verification) {
 export function verifyIosQaSignature(metadata, entitlements, verification) {
   const signed = verifiedAdhocMetadata(metadata, verification);
   assert.equal(signed.bundleIdentifier, IOS_QA_BUNDLE_ID, 'Only the isolated QA bundle may be accepted.');
-  assert.deepEqual(entitlements, IOS_QA_ENTITLEMENTS, 'Only the explicit QA application and its own keychain group are permitted.');
-  return {kind: 'ad-hoc-simulator-qa', verified: true, ...signed,
-    applicationIdentifier: IOS_QA_APPLICATION_ID, entitlements,
+  assert.deepEqual(entitlements, {}, 'The ad-hoc host signature must not claim restricted iOS or debugging entitlements.');
+  return {kind: 'ad-hoc-simulator-host', entitlementScope: 'host-code-signature', verified: true, ...signed,
+    entitlements,
     productionSigningVerified: false};
 }
 
@@ -41,5 +41,5 @@ export function verifyIosEmbeddedSignature(metadata, entitlements, verification,
   const signed = verifiedAdhocMetadata(metadata, verification);
   assert.equal(signed.bundleIdentifier, bundleIdentifier, 'Signed framework identity must match its own Info.plist.');
   assert.deepEqual(entitlements, {}, 'Embedded frameworks must not inherit application or keychain entitlements.');
-  return {kind: 'ad-hoc-embedded-framework', verified: true, ...signed, entitlements, productionSigningVerified: false};
+  return {kind: 'ad-hoc-embedded-framework', entitlementScope: 'host-code-signature', verified: true, ...signed, entitlements, productionSigningVerified: false};
 }

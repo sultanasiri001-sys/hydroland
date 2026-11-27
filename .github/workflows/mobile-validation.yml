@@ -35,7 +35,7 @@ jobs:
           node-version: 22
       - run: npm ci --workspace=@hydroland/mobile --include-workspace-root=false
       - name: Validate native identities and release configuration
-        run: node --test apps/mobile/scripts/native-config.test.mjs apps/mobile/scripts/native-signature.test.mjs
+        run: node --test apps/mobile/scripts/native-config.test.mjs apps/mobile/scripts/native-signature.test.mjs apps/mobile/scripts/native-ios-simulator.test.mjs
       - run: npm --workspace @hydroland/mobile run test
       - run: npm --workspace @hydroland/mobile run typecheck
       - run: npm --workspace @hydroland/mobile run build
@@ -166,6 +166,7 @@ jobs:
           path: |
             apps/mobile/native-artifacts/ios/*.json
             apps/mobile/native-artifacts/ios/*.xml
+            apps/mobile/native-artifacts/ios/*.der
             apps/mobile/native-artifacts/ios/*.txt
             apps/mobile/native-artifacts/ios/*.png
             apps/mobile/native-artifacts/ios/maestro/**

@@ -38,23 +38,34 @@ project and refuses to accept a modified package manifest or lockfile.
 Android produces an x86_64 APK and AAB for virtual-device testing. The runner
 independently checks the package identity, ABI and generated Android debug
 certificate. The AAB is a compilation artifact, not a store-ready upload.
-iOS produces an actual simulator `.app` archive. Before archiving, the runner
-applies an ad-hoc signature to the isolated QA application so that native
-SecureStore can use its own Keychain group. The only entitlements are
-`application-identifier` and `keychain-access-groups`, both bound to
-`HYDROQA001.com.hydroland.acceptance`. `HYDROQA001` is a synthetic local test prefix,
-not an Apple developer team. Embedded frameworks receive no application
-entitlements. After Xcode/CocoaPods finish copying and stripping the pinned
+iOS produces an actual simulator `.app` archive. Its generated QA application
+target links `application-identifier` and `keychain-access-groups`, both bound to
+`HYDROQA001.com.hydroland.acceptance`, into the simulator's `__TEXT,__entitlements`
+and `__TEXT,__ents_der` sections. `HYDROQA001` is a synthetic local test prefix,
+not an Apple developer team. The change applies only to that application's
+Release target; Pod/framework and project-wide linker settings are untouched.
+These simulator permissions let the real native SecureStore use the app's own
+Keychain group. They are separate from the macOS host code signature, which must
+have no entitlements. Apple's build system makes this distinction in its
+[entitlement task](https://github.com/swiftlang/swift-build/blob/d417bbcdd46bcd5afb99cc810b3d769d3e7f922f/Sources/SWBTaskExecution/TaskActions/ProcessProductEntitlementsTaskAction.swift)
+and [binary verification helper](https://github.com/swiftlang/swift-build/blob/d417bbcdd46bcd5afb99cc810b3d769d3e7f922f/Sources/SwiftBuildTestSupport/CoreQualificationTester.swift).
+Embedded frameworks must contain neither application entitlement sections nor
+host entitlements. After Xcode/CocoaPods finish copying and stripping the pinned
 framework set, each framework gets its own ad-hoc signature over the final
 embedded resources. A prebuilt seal can become stale when privacy resource
 bundles are embedded, and Hermes can have only a linker signature. This is an
 explicit QA build step, not a fallback after failed verification. The resulting
 framework signatures must all verify strictly under their own identities with
 empty entitlements; unexpected framework names stop the build for review.
-The runner verifies the app and nested signatures, reads back the actual
-entitlements and ad-hoc metadata, and repeats verification on the installed
-simulator bundle. The installed CodeDirectory hash must match the built app.
-These receipts and their hashes are retained with the archive hash. No device
+The runner verifies the app and nested ad-hoc signatures strictly, records the
+actual empty host entitlements and metadata, and independently extracts both
+simulated entitlement sections from the application binary. Apple's `derq`
+decodes the embedded DER, and both decoded dictionaries must equal the exact
+isolated QA permissions. This verification repeats on the installed simulator
+bundle; its CodeDirectory hash, binary hash and both section hashes must match
+the built app. Raw XML/DER sections, decoded DER, host-signature receipts and
+their hashes are retained with the archive hash. Maestro still clears app state
+and must actually launch the app and pass the native SecureStore probe. No device
 provisioning profile, owner signing key, IPA or App Store signature is used.
 
 Maestro is downloaded from its official release with a pinned SHA-256 digest.

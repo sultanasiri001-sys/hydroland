@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { verifyAcceptanceCertificate } from './native-signature.mjs';
 import { IOS_QA_BUNDLE_ID, IOS_QA_ENTITLEMENTS, verifyIosQaSignature, verifyIosEmbeddedSignature } from './native-ios-signature.mjs';
+import { configureIosSimulatorEntitlements, readIosSimulatorEntitlementSections, verifyIosSimulatorEntitlements } from './native-ios-simulator.mjs';
 
 const mobile = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const root = path.resolve(mobile, '../..');
@@ -54,9 +55,42 @@ function inspectIosQaSignature(app, prefix, embedded = false) {
   fs.writeFileSync(entitlementFile, entitlementXml + '\n');
   const entitlements = entitlementXml ? JSON.parse(run('/usr/bin/plutil', ['-convert', 'json', '-o', '-', entitlementFile], { capture: true })) : {};
   const verified = embedded ? verifyIosEmbeddedSignature(metadata, entitlements, verification, bundleIdentifier) : verifyIosQaSignature(metadata, entitlements, verification);
+  if (embedded) {
+    const executable = run('/usr/libexec/PlistBuddy', ['-c', 'Print:CFBundleExecutable', plist], { capture: true });
+    assert.equal(path.basename(executable), executable);
+    const image = readIosSimulatorEntitlementSections(fs.readFileSync(path.join(app, executable)), {allowSingleFatSlice: true});
+    assert.equal(image.fileType, 6, 'An embedded framework must be a Mach-O dynamic library.');
+    assert.deepEqual(image.sections, {}, 'Embedded frameworks must not contain simulated application entitlements.');
+    verified.simulatedEntitlementsAbsent = true;
+  }
   fs.writeFileSync(metadataFile, metadata + '\n');
   fs.writeFileSync(verificationFile, verification + '\n');
   return { ...verified, metadata: outputFile(metadataFile), verificationLog: outputFile(verificationFile), entitlementsFile: outputFile(entitlementFile) };
+}
+
+function inspectIosSimulatorEntitlements(app, prefix) {
+  const plist = path.join(app, 'Info.plist');
+  assert.equal(run('/usr/libexec/PlistBuddy', ['-c', 'Print:CFBundleIdentifier', plist], { capture: true }), IOS_QA_BUNDLE_ID);
+  const executable = run('/usr/libexec/PlistBuddy', ['-c', 'Print:CFBundleExecutable', plist], { capture: true });
+  assert.equal(path.basename(executable), executable);
+  const binaryPath = path.join(app, executable), binary = fs.readFileSync(binaryPath);
+  const image = readIosSimulatorEntitlementSections(binary);
+  assert.equal(image.fileType, 2, 'Simulated entitlements must be linked into the QA application executable.');
+  assert.deepEqual(Object.keys(image.sections).sort(), ['__entitlements', '__ents_der'].sort(), 'Both simulated entitlement sections are required.');
+  const xmlPath = path.join(artifacts, platform, prefix + '-simulator-entitlements.xml');
+  const derPath = path.join(artifacts, platform, prefix + '-simulator-entitlements.der');
+  const decodedDerPath = path.join(artifacts, platform, prefix + '-simulator-entitlements-der.xml');
+  fs.writeFileSync(xmlPath, image.sections.__entitlements.bytes);
+  fs.writeFileSync(derPath, image.sections.__ents_der.bytes);
+  run('/usr/bin/derq', ['query', '-i', derPath, '-o', decodedDerPath, '--xml']);
+  const decode = filename => JSON.parse(run('/usr/bin/plutil', ['-convert', 'json', '-o', '-', filename], { capture: true }));
+  const verified = verifyIosSimulatorEntitlements(decode(xmlPath), decode(decodedDerPath));
+  const sectionReceipt = (section, filename) => ({segment: section.segment, name: section.name,
+    offset: section.offset, size: section.size, sha256: sha256(filename), artifact: outputFile(filename)});
+  return {...verified, architecture: image.architecture,
+    binary: {name: executable, size: binary.length, sha256: sha256(binaryPath)},
+    xmlSection: sectionReceipt(image.sections.__entitlements, xmlPath),
+    derSection: sectionReceipt(image.sections.__ents_der, derPath), decodedDer: outputFile(decodedDerPath)};
 }
 
 if (operation === 'prepare') {
@@ -105,6 +139,19 @@ if (operation === 'prepare') {
   const workspace = fs.readdirSync(path.join(mobile, 'ios')).filter(name => name.endsWith('.xcworkspace'));
   assert.equal(workspace.length, 1, 'Expected one generated Xcode workspace.');
   const scheme = workspace[0].slice(0, -'.xcworkspace'.length);
+  const requestedEntitlements = path.join(artifacts, platform, 'ios-qa-simulated-entitlements.xml');
+  const requestedDer = path.join(artifacts, platform, 'ios-qa-simulated-entitlements.der');
+  fs.writeFileSync(requestedEntitlements, JSON.stringify(IOS_QA_ENTITLEMENTS));
+  run('/usr/bin/plutil', ['-convert', 'xml1', requestedEntitlements]);
+  run('/usr/bin/derq', ['query', '-f', 'xml', '-i', requestedEntitlements, '-o', requestedDer, '--raw']);
+  const projectPath = path.join(mobile, 'ios', scheme + '.xcodeproj', 'project.pbxproj');
+  assert(fs.existsSync(projectPath), 'Expected the generated application Xcode project.');
+  const project = mobileRequire('xcode').project(projectPath);
+  project.parseSync();
+  const simulatorEntitlementLinkerConfiguration = configureIosSimulatorEntitlements(project, requestedEntitlements, requestedDer);
+  fs.writeFileSync(projectPath, project.writeSync());
+  write('ios-simulator-linker-configuration.json', {...simulatorEntitlementLinkerConfiguration,
+    generatedProjectSha256: sha256(projectPath), requestedXml: outputFile(requestedEntitlements), requestedDer: outputFile(requestedDer)});
   const derived = path.join(artifacts, platform, 'build');
   run('xcodebuild', [
     '-workspace', path.join(mobile, 'ios', workspace[0]), '-scheme', scheme,
@@ -143,17 +190,18 @@ if (operation === 'prepare') {
     run('/usr/bin/codesign', ['--force', '--sign', '-', '--timestamp=none', framework]);
     return {name: entry.name, envelopeAdded: !priorResourceEnvelopePresent, priorResourceEnvelopePresent, qaSignedAfterEmbedding: true, ...inspectIosQaSignature(framework, 'ios-embedded-' + index, true)};
   });
-  const requestedEntitlements = path.join(artifacts, platform, 'ios-qa-entitlements.plist');
-  fs.writeFileSync(requestedEntitlements, JSON.stringify(IOS_QA_ENTITLEMENTS));
-  run('/usr/bin/plutil', ['-convert', 'xml1', requestedEntitlements]);
-  // Sign the QA app envelope after its frameworks. Frameworks retain their own
-  // identities and receive no app/keychain entitlements; --deep is verify-only.
-  run('/usr/bin/codesign', ['--force', '--sign', '-', '--timestamp=none', '--generate-entitlement-der', '--entitlements', requestedEntitlements, app]);
+  // The simulator consumes the linked XML/DER above. Its macOS host signature
+  // must not claim the restricted iOS keychain entitlements. Keep host signatures
+  // unprivileged and sign the app envelope after its frameworks; --deep verifies.
+  run('/usr/bin/codesign', ['--force', '--sign', '-', '--timestamp=none', app]);
   const iosSignature = inspectIosQaSignature(app, 'ios-build');
+  const iosSimulatorEntitlements = inspectIosSimulatorEntitlements(app, 'ios-build');
+  assert.equal(iosSimulatorEntitlements.architecture, architectures);
   const archive = path.join(artifacts, platform, 'hydroland-ios-simulator.app.tar.gz');
   run('tar', ['-czf', archive, '-C', products, apps[0]]);
-  write('build.json', { ...read('source.json'), built: true, app: path.relative(mobile, app), architectures, toolchain, iosSignature, iosEmbeddedSignatures,
-    artifacts: [outputFile(archive)], signing: 'ad-hoc QA simulator signature with an isolated local keychain group; no Apple developer team, device profile or App Store signature' });
+  write('build.json', { ...read('source.json'), built: true, app: path.relative(mobile, app), architectures, toolchain, iosSignature, iosEmbeddedSignatures, iosSimulatorEntitlements,
+    simulatorEntitlementLinkerConfiguration: outputFile(path.join(artifacts, platform, 'ios-simulator-linker-configuration.json')),
+    artifacts: [outputFile(archive)], signing: 'unprivileged ad-hoc host signatures; isolated application/keychain entitlements linked into simulator XML/DER sections; no Apple developer team, device profile or App Store signature' });
 } else if (operation === 'install' && platform === 'android') {
   run('adb', ['install', '-r', path.join(mobile, 'android/app/build/outputs/apk/release/app-release.apk')]);
   const apkPath = run('adb', ['shell', 'pm', 'path', 'com.hydroland.acceptance'], { capture: true });
@@ -182,8 +230,16 @@ if (operation === 'prepare') {
   assert(container.endsWith('.app'), 'Simulator installation was not confirmed.');
   const iosSignature = inspectIosQaSignature(container, 'ios-installed');
   assert.equal(iosSignature.codeDirectoryHash, build.iosSignature.codeDirectoryHash, 'Installed signed code must match the archived QA build.');
+  const iosSimulatorEntitlements = inspectIosSimulatorEntitlements(container, 'ios-installed');
+  assert.equal(iosSimulatorEntitlements.architecture, build.architectures);
+  assert.deepEqual(iosSimulatorEntitlements.binary, build.iosSimulatorEntitlements.binary, 'Installed simulator executable must match the built binary.');
+  for (const key of ['xmlSection', 'derSection']) {
+    for (const field of ['segment', 'name', 'offset', 'size', 'sha256']) {
+      assert.equal(iosSimulatorEntitlements[key][field], build.iosSimulatorEntitlements[key][field], 'Installed simulator entitlement section differs from the build: ' + key + '.' + field);
+    }
+  }
   if (process.env.GITHUB_ENV) fs.appendFileSync(process.env.GITHUB_ENV, 'HYDROLAND_SIMULATOR_ID=' + device.udid + '\n');
-  write('installation.json', { ...source(), platform, installed: true, physicalDevice: false, name: device.name, runtime: device.runtime, udid: device.udid, container, iosSignature });
+  write('installation.json', { ...source(), platform, installed: true, physicalDevice: false, name: device.name, runtime: device.runtime, udid: device.udid, container, iosSignature, iosSimulatorEntitlements });
 } else if (operation === 'record-tests') {
   const { parseStringPromise } = await import('xml2js');
   const result = await parseStringPromise(fs.readFileSync(path.join(artifacts, platform, 'junit.xml'), 'utf8'));
