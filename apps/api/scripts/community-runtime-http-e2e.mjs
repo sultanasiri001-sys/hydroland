@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import {PrismaClient} from '@prisma/client';
 import { randomBytes, scryptSync } from 'node:crypto';
+import { communityPolicyFixture } from './community-policy-test-support.mjs';
+import { runCommunityCompletionChecks } from './community-completion-http-checks.mjs';
 import { runCommunityIntegrityChecks } from './community-integrity-http-checks.mjs';
 
 const db=new PrismaClient();
@@ -18,7 +20,7 @@ const passwordHash = salt + ':' + scryptSync(password, salt, 64).toString('hex')
 const headers=token=>({authorization:'Bearer '+token,'content-type':'application/json'});
 const expectOk=async response=>{const body=await response.json().catch(()=>null);if(!response.ok)throw new Error('HTTP '+response.status+': '+JSON.stringify(body));return body;};
 
-const people=[],accounts=[];let adminRole=null,postId=null,eventId=null,registrationId=null,engagementId=null;
+const people=[],accounts=[];let policyFixture=null,adminRole=null,postId=null,eventId=null,registrationId=null,engagementId=null;
 try{
   for(const name of ['member','other','admin']){
     const person=await db.person.create({data:{firstName:name,lastName:'CommunityE2E'}});
@@ -39,6 +41,7 @@ try{
     return session.accessToken;
   }
   const [memberToken, otherToken, adminToken] = await Promise.all(accounts.map(login));
+  policyFixture=await communityPolicyFixture({db,owner:admin,creator:member,base,token:adminToken});
 
 
   let response=await fetch(base+'/community/posts');
@@ -108,9 +111,12 @@ try{
   const myRequests=await expectOk(await fetch(base+'/community/engagement-requests/mine',{headers:headers(memberToken)}));
   if(!myRequests.some(item=>item.id===engagementId&&item.status==='SCHEDULED'))throw new Error('Member engagement list is missing scheduled request');
 
+  await runCommunityCompletionChecks({db,base,accounts,tokens:[memberToken,otherToken,adminToken],policyFixture});
   await runCommunityIntegrityChecks({ db, base, accounts, tokens: [memberToken, otherToken, adminToken] });
   console.log('Community HTTP/DB E2E passed: publication review, private ownership, capacity-safe volunteering, reconciled volunteer hours (120 to 90), and scheduled consultation lifecycle.');
 }finally{
+  if(policyFixture)await policyFixture.cleanup();
+  for(const id of [postId].filter(Boolean)){await db.$executeRaw`DELETE FROM "CommunityPostLifecycle" WHERE "postId"=${id}`;await db.$executeRaw`DELETE FROM "CommunityPostRevision" WHERE "postId"=${id}`;}
   if(engagementId)await db.communityEngagementRequest.deleteMany({where:{id:engagementId}}).catch(()=>{});
   if(registrationId)await db.communityVolunteerRegistration.deleteMany({where:{id:registrationId}}).catch(()=>{});
   if(eventId)await db.communityEvent.deleteMany({where:{id:eventId}}).catch(()=>{});

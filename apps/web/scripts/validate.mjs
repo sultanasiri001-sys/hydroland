@@ -89,8 +89,8 @@ for(const token of ['--hl-deep:#0A1E3A','--hl-cyan:#00D4FF','--hl-gold:#F6C35E']
 const portalCss=await readFile(path.join(src,'hydroland-portals.css'),'utf8');
 if(!portalCss.includes('var(--hl-line)')||!portalCss.includes('var(--hl-theme-accent)')||!portalCss.includes('var(--hl-theme-gold)'))throw new Error('Portal dashboards must use the approved visual identity.');
 const messagesModule=await readFile(path.join(src,'hydroland-messages.js'),'utf8');
-for(const marker of ["mobile.disabled=false","button.id='top-messages'","/messages/conversations","kind:'TEXT'","kind:'VOICE'","sessionStorage.removeItem('hl-guest-mode')","audio controls"])if(!messagesModule.includes(marker))throw new Error(`Missing connected messaging UI boundary: ${marker}`);
-if(messagesModule.includes('MediaRecorder')||messagesModule.includes('getUserMedia'))throw new Error('Messaging UI must not claim direct voice capture before object-storage upload is implemented');
+for(const marker of ["mobile.disabled=false","button.id='top-messages'","/messages/conversations","kind:'TEXT'","sessionStorage.removeItem('hl-guest-mode')","audio controls","getUserMedia","encodeWav","audioConsent","requestKey:key","consent:true","authorizedFetch","URL.revokeObjectURL"])if(!messagesModule.includes(marker))throw new Error(`Missing connected messaging UI boundary: ${marker}`);
+if(/<input[^>]+name=["']mediaUrl["']/.test(messagesModule))throw new Error('New private audio must use authenticated upload instead of a user-supplied public URL');
 
 const mapModule = await readFile(path.join(src, 'hydroland-map.js'), 'utf8');
 for(const marker of ["MAPLIBRE_VERSION='6.11.2'",'cdn.jsdelivr.net/npm/maplibre-gl@${MAPLIBRE_VERSION}/dist','HydrolandMapLibreTestDouble','MapLibre runtime failed to load','طبقة المزود غير متاحة'])if(!mapModule.includes(marker))throw new Error(`Map runtime integrity marker missing: ${marker}`);

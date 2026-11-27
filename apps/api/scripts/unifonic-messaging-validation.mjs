@@ -17,7 +17,7 @@ for(const marker of [
   "https://apis.unifonic.com/v1/messages",
   "channel:'whatsapp'",
   "type:'template'",
-  'AbortSignal.timeout(8_000)',
+  'AbortSignal.timeout(4_000)',
 ])if(!service.includes(marker))throw new Error(`Unifonic messaging invariant missing: ${marker}`);
 const exportsBlock=moduleFile.match(/exports:\[([^\]]*)\]/s)?.[1]??'';
 const providersBlock=moduleFile.match(/providers:\[([^\]]*)\]/s)?.[1]??'';

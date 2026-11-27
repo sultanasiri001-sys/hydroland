@@ -5,6 +5,8 @@ import { emailTrialRecipient } from '../auth/email-trial-policy';
 import { DatabaseService } from '../database/database.service';
 import { invoiceRegister, InvoiceRow } from '../payments/account-invoice-register';
 import { EmailDeliveryService, ReportEmailError } from './email-delivery.service';
+import { emailPreference } from '../notifications/customer-channel.domain';
+import { issuedPurchase, lockInvoiceForCustomerNotice } from '../notifications/customer-notice-source';
 
 @Injectable()
 export class CustomerNoticeEmailWorker implements OnModuleInit, OnModuleDestroy {
@@ -63,6 +65,10 @@ export class CustomerNoticeEmailWorker implements OnModuleInit, OnModuleDestroy 
       if(booking?.accountId!==row.accountId||booking.status!=='CONFIRMED'){await finish('SUPPRESSED');return;}
     }else{await finish('SUPPRESSED');return;}
 
+    const preference=await emailPreference(this.db,row.accountId,event);
+    if(preference==='SUPPRESS'){await finish('SUPPRESSED');return;}
+    if(preference==='QUIET'){await later(5*60_000);return;}
+
     const trial=emailTrialRecipient();
     if(!account.emailVerifiedAt||account.status!=='ACTIVE'||(trial&&account.email.trim().toLowerCase()!==trial)){
       await later(60*60_000);return;
@@ -101,8 +107,28 @@ export class CustomerNoticeEmailWorker implements OnModuleInit, OnModuleDestroy 
       return;
     }
     try{
-      const receipt=await this.email.sendCustomerNotice({id:row.id,to:account.email,event,sourceType:row.sourceType,sourceId:row.sourceId});
-      await this.db.customerNoticeEmail.updateMany({where:claim,data:{state:'PROVIDER_ACCEPTED',providerMessageId:receipt.messageId}});
+      // Lock the account even when no preference row exists, so an initial opt-out
+      // cannot commit between the final consent check and the provider request.
+      // Keep the existing provider idempotency key and durable budget reservation.
+      await this.db.$transaction(async tx=>{
+        const [currentAccount]=await tx.$queryRaw<Array<{email:string;status:string;emailVerifiedAt:Date|null}>>`SELECT email,status,"emailVerifiedAt" FROM "Account" WHERE id::text=${row.accountId} FOR UPDATE`;
+        const [current]=await tx.$queryRaw<CustomerNoticeEmail[]>`SELECT * FROM "CustomerNoticeEmail" WHERE id=${row.id} AND attempts=${row.attempts}::int AND state='PENDING' FOR UPDATE`;
+        if(!current)return;
+        if(!currentAccount||currentAccount.status!=='ACTIVE'||!currentAccount.emailVerifiedAt){await tx.customerNoticeEmail.updateMany({where:claim,data:{state:'SUPPRESSED'}});return;}
+        if(currentAccount.email!==account.email){await tx.customerNoticeEmail.updateMany({where:claim,data:{state:'REVIEW_REQUIRED'}});return;}
+        const finalPreference=await emailPreference(tx,row.accountId,event);
+        if(finalPreference==='SUPPRESS'){await tx.customerNoticeEmail.updateMany({where:claim,data:{state:'SUPPRESSED'}});return;}
+        if(finalPreference==='QUIET'){await tx.customerNoticeEmail.updateMany({where:claim,data:{nextAttemptAt:new Date(Date.now()+5*60_000)}});return;}
+        if(event==='BOOKING_CONFIRMED'){
+          const booking=await tx.$queryRaw<Array<{id:string}>>`SELECT id FROM "Booking" WHERE id::text=${row.sourceId} AND "accountId"::text=${row.accountId} AND status='CONFIRMED' FOR SHARE`;
+          if(!booking.length){await tx.customerNoticeEmail.updateMany({where:claim,data:{state:'SUPPRESSED'}});return;}
+        }else{
+          const invoice=await lockInvoiceForCustomerNotice(tx,row.accountId,row);
+          if(!issuedPurchase(invoice)){await tx.customerNoticeEmail.updateMany({where:claim,data:{state:'SUPPRESSED'}});return;}
+        }
+        const receipt=await this.email.sendCustomerNotice({id:row.id,to:account.email,event,sourceType:row.sourceType,sourceId:row.sourceId});
+        await tx.customerNoticeEmail.updateMany({where:claim,data:{state:'PROVIDER_ACCEPTED',providerMessageId:receipt.messageId}});
+      },{timeout:15000});
     }catch(error){
       if(error instanceof ReportEmailError&&error.disposition==='PERMANENT'){await finish('REVIEW_REQUIRED');return;}
       await later(Math.min(15*60_000,30_000*2**Math.min(row.attempts-1,5)));

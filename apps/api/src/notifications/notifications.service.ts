@@ -1,8 +1,9 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { protectSecret } from '../auth/mfa-crypto';
 import { BadRequestException, ConflictException, UnauthorizedException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DatabaseService } from '../database/database.service';
+import { lockActiveSessionAccount } from '../auth/account-session-lock';
 
 // Email outboxes must never be visible or consumed as in-app alerts: marking a
 // pending report READ would otherwise suppress its delivery.
@@ -25,12 +26,15 @@ export class NotificationsService {
     const token = this.deviceToken(value);
     const hash = createHash('sha256').update(token).digest('hex');
     const encrypted = protectSecret(token, 'push-device:' + sessionId);
+    const registrationId = randomUUID();
     try {
       await this.db.serializable(async tx => {
+        await lockActiveSessionAccount(tx,accountId);
         // Release an expired binding without displacing another active session.
         await tx.$executeRaw`UPDATE "Session" SET "pushTokenHash"=NULL, "pushTokenCiphertext"=NULL
           WHERE "pushTokenHash"=${hash} AND "expiresAt" <= timezone('UTC', CURRENT_TIMESTAMP)`;
-        const changed = await tx.$executeRaw`UPDATE "Session" SET "pushTokenHash"=${hash}, "pushTokenCiphertext"=${encrypted}
+        const changed = await tx.$executeRaw`UPDATE "Session" SET "pushTokenHash"=${hash}, "pushTokenCiphertext"=${encrypted},
+          "pushRegistrationId"=CASE WHEN "pushTokenHash"=${hash} THEN COALESCE("pushRegistrationId",${registrationId}) ELSE ${registrationId} END
           WHERE id::text=${sessionId} AND "accountId"::text=${accountId} AND "revokedAt" IS NULL
           AND "expiresAt" > timezone('UTC', CURRENT_TIMESTAMP) AND "tokenHash" NOT LIKE 'mfa:%'`;
         if (!changed) throw new UnauthorizedException('A current session is required.');

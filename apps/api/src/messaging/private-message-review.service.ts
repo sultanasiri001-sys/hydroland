@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { requireVerifiedAdmin } from '../admin/admin-authorization';
 import { AuditService } from '../audit/audit.service';
@@ -93,7 +94,18 @@ export class PrivateMessageReviewService implements OnModuleInit, OnModuleDestro
         UNION ALL SELECT kind,body,"mediaUrl","durationSec" FROM "Message" WHERE id::text=${evidence.messageId} AND "withdrawnAt" IS NULL`;
       if (!content) throw new NotFoundException();
       await this.audit.record({actorId:actor,action:'message.case_evidence_read',resource:'CustomerCase',resourceId:caseId},tx);
-      return content;
+      const [audio]=await tx.$queryRaw<{available:boolean}[]>`SELECT EXISTS(SELECT 1 FROM "PrivateMessageAudio" WHERE "messageId"::text=${evidence.messageId}) AS available`;
+      return {...content,privateAudio:audio.available};
+    });
+  }
+
+  audio(actor: string, caseId: string) {
+    return this.db.serializable(async tx => {
+      const {evidence}=await this.reviewScope(tx,actor,caseId);
+      const [row]=await tx.$queryRaw<{content:Buffer;byteSize:number;sha256:string}[]>`SELECT content,"byteSize",sha256 FROM "PrivateMessageAudio" WHERE "messageId"::text=${evidence.messageId} FOR SHARE`;
+      if (!row) throw new NotFoundException();
+      await this.audit.record({actorId:actor,action:'message.case_audio_read',resource:'CustomerCase',resourceId:caseId},tx);
+      const bytes=Buffer.from(row.content);if(bytes.length!==row.byteSize||createHash('sha256').update(bytes).digest('hex')!==row.sha256)throw new ConflictException('Audio integrity check failed.');return bytes;
     });
   }
 

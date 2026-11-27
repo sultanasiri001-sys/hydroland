@@ -1,0 +1,129 @@
+{
+  "purpose": "Isolated independent new raw-table migration review",
+  "migrations": [
+    {
+      "path": "apps/api/prisma/migrations/20261127090000_yellow_private_audio/migration.sql",
+      "sha256": "6779469c1099085a2feef3095d3a4b843d6b5e785feae338c448f64feaabe20b"
+    },
+    {
+      "path": "apps/api/prisma/migrations/20261127091000_yellow_community_content/migration.sql",
+      "sha256": "a2e9376005630c24a1c03348138892dd28f1f6298c9a0271c6fd55cec6733383"
+    }
+  ],
+  "checks": [
+    {
+      "account": "text",
+      "conversation": "text",
+      "message_communitypost_case": "text",
+      "result": "PASS",
+      "checks": [
+        "typed audio FKs",
+        "sender retry key uniqueness",
+        "audio size and duration constraints",
+        "message delete cascades bytes",
+        "community text and native key joins",
+        "community retention limits"
+      ]
+    },
+    {
+      "account": "text",
+      "conversation": "text",
+      "message_communitypost_case": "uuid",
+      "result": "PASS",
+      "checks": [
+        "typed audio FKs",
+        "sender retry key uniqueness",
+        "audio size and duration constraints",
+        "message delete cascades bytes",
+        "community text and native key joins",
+        "community retention limits"
+      ]
+    },
+    {
+      "account": "text",
+      "conversation": "uuid",
+      "message_communitypost_case": "text",
+      "result": "PASS",
+      "checks": [
+        "typed audio FKs",
+        "sender retry key uniqueness",
+        "audio size and duration constraints",
+        "message delete cascades bytes",
+        "community text and native key joins",
+        "community retention limits"
+      ]
+    },
+    {
+      "account": "text",
+      "conversation": "uuid",
+      "message_communitypost_case": "uuid",
+      "result": "PASS",
+      "checks": [
+        "typed audio FKs",
+        "sender retry key uniqueness",
+        "audio size and duration constraints",
+        "message delete cascades bytes",
+        "community text and native key joins",
+        "community retention limits"
+      ]
+    },
+    {
+      "account": "uuid",
+      "conversation": "text",
+      "message_communitypost_case": "text",
+      "result": "PASS",
+      "checks": [
+        "typed audio FKs",
+        "sender retry key uniqueness",
+        "audio size and duration constraints",
+        "message delete cascades bytes",
+        "community text and native key joins",
+        "community retention limits"
+      ]
+    },
+    {
+      "account": "uuid",
+      "conversation": "text",
+      "message_communitypost_case": "uuid",
+      "result": "PASS",
+      "checks": [
+        "typed audio FKs",
+        "sender retry key uniqueness",
+        "audio size and duration constraints",
+        "message delete cascades bytes",
+        "community text and native key joins",
+        "community retention limits"
+      ]
+    },
+    {
+      "account": "uuid",
+      "conversation": "uuid",
+      "message_communitypost_case": "text",
+      "result": "PASS",
+      "checks": [
+        "typed audio FKs",
+        "sender retry key uniqueness",
+        "audio size and duration constraints",
+        "message delete cascades bytes",
+        "community text and native key joins",
+        "community retention limits"
+      ]
+    },
+    {
+      "account": "uuid",
+      "conversation": "uuid",
+      "message_communitypost_case": "uuid",
+      "result": "PASS",
+      "checks": [
+        "typed audio FKs",
+        "sender retry key uniqueness",
+        "audio size and duration constraints",
+        "message delete cascades bytes",
+        "community text and native key joins",
+        "community retention limits"
+      ]
+    }
+  ],
+  "result": "PASS",
+  "checked_at_utc": "2026-11-27T08:40:02Z"
+}

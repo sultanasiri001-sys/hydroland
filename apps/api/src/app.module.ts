@@ -42,18 +42,13 @@ import { HrModule } from './hr/hr.module';
 import { StaffingAdminModule } from './hr/staffing-admin.module';
 import { DocumentFormModule } from './document-forms/document-form.module';
 
-const communityRehearsalModules =
-  process.env.NODE_ENV === 'test' && process.env.HYDROLAND_COMMUNITY_REHEARSAL === '1'
-    ? [CommunityModule]
-    : [];
-
 @Module({
   imports: [ParticipationModule, ProcurementLabModule, ServiceImagesModule, DatabaseModule, AuthModule, ProfileModule, CredentialsModule, ActivationModule, AuditModule, NotificationsModule, MessagingModule, GovernanceModule, TripsModule, SafetyModule, PaymentsModule, AdminModule, DiveLogsModule, OrganizationsModule, IntegrationModule, InventoryModule, FinanceModule, CustomerServiceModule,
     MarketingModule,
     TechnologySecurityModule,
     FacilitiesMaintenanceModule,
     AdministrativeAffairsModule,
-    ExecutiveGovernanceModule, HrModule, StaffingAdminModule, AgentModule, ResearchMarketModule, LegalGovernanceModule, TripIntelligenceModule, TranslationModule, MarineOperationsModule, DocumentFormModule, ...communityRehearsalModules, StoreModule, WalletModule, RewardsModule],
+    ExecutiveGovernanceModule, HrModule, StaffingAdminModule, AgentModule, ResearchMarketModule, LegalGovernanceModule, TripIntelligenceModule, TranslationModule, MarineOperationsModule, DocumentFormModule, CommunityModule, StoreModule, WalletModule, RewardsModule],
   controllers: [HealthController, IntegrationReadinessController],
 })
 export class AppModule {}

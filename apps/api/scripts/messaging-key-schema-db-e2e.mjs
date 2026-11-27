@@ -34,6 +34,10 @@ try {
       for (const statement of statements(sql)) await db.$executeRawUnsafe(statement);
       const review = await readFile(new URL('../prisma/migrations/20261121210000_private_message_review/migration.sql',import.meta.url),'utf8');
       for (const statement of statements(review)) await db.$executeRawUnsafe(statement);
+      const audio=await readFile(new URL('../prisma/migrations/20261127090000_yellow_private_audio/migration.sql',import.meta.url),'utf8'),audioEnd=audio.indexOf('END $$;')+7;
+      assert.ok(audioEnd>7);await db.$executeRawUnsafe(audio.slice(0,audioEnd));for(const statement of statements(audio.slice(audioEnd)))await db.$executeRawUnsafe(statement);
+      const audioKey=await db.$queryRaw`SELECT data_type FROM information_schema.columns WHERE table_schema=${schema} AND table_name='PrivateMessageAudio' AND column_name='messageId'`;
+      assert.equal(audioKey[0].data_type,type);scenarios++;
       const keyTypes = await db.$queryRaw`SELECT data_type FROM information_schema.columns WHERE table_schema=${schema} AND table_name='ConversationParticipant' AND column_name='accountId'`;
       assert.equal(keyTypes[0].data_type, type);
       const [owner, peer, outsider, unavailable] = Array.from({ length: 4 }, () => randomUUID());

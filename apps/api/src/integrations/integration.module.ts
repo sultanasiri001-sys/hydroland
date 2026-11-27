@@ -1,6 +1,10 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { CustomerNoticeEmailWorker } from './customer-notice-email.worker';
+import { CustomerChannelWorker } from './customer-channel.worker';
+import { CustomerChannelTransport } from './customer-channel.transport';
+import { CustomerNoticePreferenceService } from '../notifications/customer-notice-preference.service';
+import { CustomerChannelReviewController, CustomerNoticePreferenceController } from '../notifications/customer-notice-preference.controller';
 import { AuthEmailOutboxWorker } from '../auth/auth-email-outbox.worker';
 import { AdminModule } from '../admin/admin.module';
 import { AuditModule } from '../audit/audit.module';
@@ -18,8 +22,8 @@ import { SignitEsignService } from './signit-esign.service';
 import { MarineTrafficAisService } from './marinetraffic-ais.service';
 @Module({
   imports:[AdminModule,AuditModule,AuthModule],
-  controllers:[IntegrationController,DistressAisReadinessController,OfficialOnboardingReadinessController,A06ProviderObservationController],
-  providers:[RenderProviderObserver,IntegrationService,EmailDeliveryService,UnifonicMessagingService,SignitEsignService,MarineTrafficAisService,AuthEmailOutboxWorker,CustomerNoticeEmailWorker,A06GitHubActionsOidcGuard,A06IndependentObserver],
+  controllers:[IntegrationController,DistressAisReadinessController,OfficialOnboardingReadinessController,A06ProviderObservationController,CustomerNoticePreferenceController,CustomerChannelReviewController],
+  providers:[RenderProviderObserver,IntegrationService,EmailDeliveryService,UnifonicMessagingService,SignitEsignService,MarineTrafficAisService,AuthEmailOutboxWorker,CustomerNoticeEmailWorker,CustomerChannelWorker,CustomerChannelTransport,CustomerNoticePreferenceService,A06GitHubActionsOidcGuard,A06IndependentObserver],
   exports:[IntegrationService,EmailDeliveryService,UnifonicMessagingService,SignitEsignService,MarineTrafficAisService],
 })
 export class IntegrationModule {}

@@ -132,6 +132,10 @@ export class AuthService {
       await lockActiveSessionAccount(tx,reference.accountId);
       const session=await tx.session.findUnique({where:{tokenHash:this.tokenHash(token)},include:{account:{select:{status:true,emailVerifiedAt:true}}}});
       if(!session||session.revokedAt||session.expiresAt<=new Date()||session.account.status!=='ACTIVE'||!session.account.emailVerifiedAt)throw new UnauthorizedException('Invalid session.');
+      // Only native device sessions need the optional channel identity. Keep ordinary refresh and MFA unchanged.
+      const [registration] = session.pushTokenHash && session.pushTokenCiphertext
+        ? await tx.$queryRaw<Array<{pushRegistrationId:string|null}>>`SELECT "pushRegistrationId" FROM "Session" WHERE id::text=${session.id} FOR UPDATE`
+        : [];
       const consumed=await tx.session.updateMany({where:{id:session.id,revokedAt:null,expiresAt:{gt:new Date()}},data:{revokedAt:new Date()}});
       if(consumed.count!==1)throw new UnauthorizedException('Invalid session.');
       const next = await this.issue(session.accountId, tx);
@@ -151,6 +155,7 @@ export class AuthService {
           await tx.session.update({where:{id:successor.id},data:{
             pushTokenHash:session.pushTokenHash, pushTokenCiphertext:ciphertext,
           }});
+          if (registration?.pushRegistrationId) await tx.$executeRaw`UPDATE "Session" SET "pushRegistrationId"=${registration.pushRegistrationId} WHERE id::text=${successor.id}`;
         }
       }
       return next;

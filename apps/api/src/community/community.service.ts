@@ -1,6 +1,8 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { lockAccountIdentities, requireVerifiedAdmin } from '../admin/admin-authorization';
+import { platformOrganization } from '../hr/staffing-catalog';
+import { CommunityPolicyService } from './community-policy.service';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
 
@@ -18,9 +20,9 @@ const volunteerDecisions:CommunityVolunteerDecision[]=['ATTENDED','REJECTED'];
 
 @Injectable()
 export class CommunityService {
-  constructor(private readonly db:DatabaseService,private readonly audit:AuditService){}
+  constructor(private readonly db:DatabaseService,private readonly audit:AuditService,private readonly policy:CommunityPolicyService){}
 
-  private mutate<T>(accountId:string,admin:boolean,work:(tx:Prisma.TransactionClient)=>Promise<T>){
+  private mutate<T>(accountId:string,admin:boolean,work:(tx:Prisma.TransactionClient)=>Promise<T>,requireActivation=true){
     return this.db.serializable(async tx=>{
       // Share the identity lock order used by account/role administration so a
       // revoked actor cannot pass an earlier HTTP guard and then commit here.
@@ -28,6 +30,8 @@ export class CommunityService {
       if(admin)await requireVerifiedAdmin(tx,accountId);
       else if(!await tx.account.findFirst({where:{id:accountId,status:'ACTIVE',emailVerifiedAt:{not:null}},select:{id:true}}))
         throw new ForbiddenException('An active verified account is required.');
+      if(requireActivation)await this.policy.requireActive(tx);
+      if(admin&&requireActivation)await this.policy.moderator(tx,accountId);
       return work(tx);
     });
   }
@@ -71,7 +75,8 @@ export class CommunityService {
     return {starts,ends};
   }
 
-  publicPosts(){
+  async publicPosts(){
+    if(!await this.policy.active(this.db))return [];
     return this.db.communityPost.findMany({
       where:{status:'PUBLISHED'},
       select:{id:true,title:true,body:true,status:true,publishedAt:true,createdAt:true,updatedAt:true,
@@ -81,7 +86,8 @@ export class CommunityService {
     });
   }
 
-  publicEvents(){
+  async publicEvents(){
+    if(!await this.policy.active(this.db))return [];
     return this.db.communityEvent.findMany({
       where:{status:'PUBLISHED',endsAt:{gte:new Date()}},
       include:{_count:{select:{volunteerRegistrations:true}}},
@@ -90,20 +96,81 @@ export class CommunityService {
     });
   }
 
-  myPosts(accountId:string){
-    return this.db.communityPost.findMany({where:{authorAccountId:accountId},orderBy:{createdAt:'desc'},take:100});
+  async myPosts(accountId:string){
+    const hidden=await this.db.$queryRaw<{postId:string}[]>`SELECT "postId" FROM "CommunityPostLifecycle" WHERE "withdrawnAt" IS NOT NULL`;
+    return this.db.communityPost.findMany({where:{authorAccountId:accountId,id:{notIn:hidden.map(row=>row.postId)}},orderBy:{createdAt:'desc'},take:100});
   }
 
   async createPost(accountId:string,input:{title:string;body:string}){
     return this.mutate(accountId, false, async tx => {
       const post=await tx.communityPost.create({data:{authorAccountId:accountId,title:this.text(input.title,'Post title',3,160),body:this.text(input.body,'Post body',3,5000)}});
+      const policy=await this.policy.requireActive(tx);
+      await tx.$executeRaw`INSERT INTO "CommunityPostLifecycle" ("postId","policyDocumentId","policyVersion","policyHash","retentionDays") VALUES (${post.id},${policy.documentId},${policy.version},${policy.contentHash},${policy.retentionDays})`;
       await this.audit.record({actorId:accountId,action:'COMMUNITY_POST_CREATED',resource:'CommunityPost',resourceId:post.id,metadata:{status:post.status}}, tx);
       return post;
     });
   }
 
-  adminPosts(){
+  async editPost(accountId:string,postId:string,input:{title?:unknown;body?:unknown;expectedUpdatedAt?:unknown}){
+    return this.mutate(accountId,false,async tx=>{
+      const post=await tx.communityPost.findFirst({where:{id:postId,authorAccountId:accountId}});if(!post)throw new NotFoundException();
+      const [life]=await tx.$queryRaw<{withdrawnAt:Date|null}[]>`SELECT "withdrawnAt" FROM "CommunityPostLifecycle" WHERE "postId"=${postId}`;
+      if(life?.withdrawnAt)throw new ConflictException('Deleted posts cannot be edited.');
+      if(typeof input.expectedUpdatedAt!=='string'||new Date(input.expectedUpdatedAt).getTime()!==post.updatedAt.getTime())throw new ConflictException('The post changed. Reload it before editing.');
+      await tx.$executeRaw`INSERT INTO "CommunityPostRevision" ("postId","changedByAccountId",title,body,"previousStatus") VALUES (${postId},${accountId},${post.title},${post.body},${post.status}::text)`;
+      const updated=await tx.communityPost.update({where:{id:postId},data:{title:this.text(input.title,'Post title',3,160),body:this.text(input.body,'Post body',3,5000),status:'PENDING_REVIEW',reviewedByAccountId:null,reviewedAt:null,reviewNotes:null,publishedAt:null}});
+      await this.audit.record({actorId:accountId,action:'COMMUNITY_POST_EDITED',resource:'CommunityPost',resourceId:postId,metadata:{previousStatus:post.status,status:'PENDING_REVIEW'}},tx);return updated;
+    });
+  }
+  async withdrawPost(accountId:string,postId:string){
+    return this.mutate(accountId,false,async tx=>{
+      const post=await tx.communityPost.findFirst({where:{id:postId,authorAccountId:accountId}});if(!post)throw new NotFoundException();
+      const [life]=await tx.$queryRaw<{retentionDays:number|null;policyDocumentId:string|null;policyVersion:number|null;policyHash:string|null}[]>`SELECT "retentionDays","policyDocumentId","policyVersion","policyHash" FROM "CommunityPostLifecycle" WHERE "postId"=${postId}`;
+      const active=life?null:await this.policy.active(tx),policy=life||{retentionDays:active?.retentionDays??null,policyDocumentId:active?.documentId??null,policyVersion:active?.version??null,policyHash:active?.contentHash??null};
+      await tx.$executeRaw`INSERT INTO "CommunityPostLifecycle" ("postId","withdrawnAt","purgeAfter","policyDocumentId","policyVersion","policyHash","retentionDays")
+        VALUES (${postId},now(),CASE WHEN ${policy.retentionDays}::int IS NULL THEN NULL ELSE now()+make_interval(days=>${policy.retentionDays}::int) END,${policy.policyDocumentId},${policy.policyVersion},${policy.policyHash},${policy.retentionDays})
+        ON CONFLICT ("postId") DO UPDATE SET "withdrawnAt"=COALESCE("CommunityPostLifecycle"."withdrawnAt",excluded."withdrawnAt"),"purgeAfter"=COALESCE("CommunityPostLifecycle"."purgeAfter",excluded."purgeAfter")`;
+      await tx.communityPost.update({where:{id:postId},data:{status:'ARCHIVED'}});
+      await this.audit.record({actorId:accountId,action:'COMMUNITY_POST_WITHDRAWN',resource:'CommunityPost',resourceId:postId,metadata:{policyDocumentId:policy.policyDocumentId,policyVersion:policy.policyVersion}},tx);return {id:postId,hidden:true};
+    },false);
+  }
+  async reportPost(accountId:string,postId:string,input:{reason?:unknown}){
+    const reason=this.text(input.reason,'Report reason',5,2000);
+    return this.mutate(accountId,false,async tx=>{
+      const post=await tx.communityPost.findUnique({where:{id:postId}});if(!post||post.status!=='PUBLISHED')throw new NotFoundException();
+      const [previous]=await tx.$queryRaw<{caseId:string}[]>`SELECT "caseId" FROM "CommunityPostReport" WHERE "postId"=${postId} AND "reporterId"=${accountId}`;if(previous)return previous;
+      const ticket=await tx.customerCase.create({data:{customerId:accountId,type:'COMPLAINT',priority:'HIGH',subject:'بلاغ محتوى مجتمعي',description:reason,referenceType:'COMMUNITY_POST_REPORT',referenceId:postId},select:{id:true}});
+      await tx.$executeRaw`INSERT INTO "CommunityPostReport" ("caseId","postId","reporterId","reportedTitle","reportedBody") VALUES (${ticket.id},${postId},${accountId},${post.title},${post.body})`;
+      await this.audit.record({actorId:accountId,action:'COMMUNITY_POST_REPORTED',resource:'CustomerCase',resourceId:ticket.id,metadata:{postId}},tx);return {caseId:ticket.id};
+    });
+  }
+  reports(actor:string){return this.mutate(actor,true,async tx=>{const platform=await platformOrganization(tx);const rows=await tx.$queryRaw<{caseId:string}[]>`SELECT r."caseId",r."postId",CASE WHEN r."releasedAt" IS NULL THEN r."reportedTitle" ELSE '[released]' END AS "reportedTitle",CASE WHEN r."releasedAt" IS NULL THEN r."reportedBody" ELSE '[released]' END AS "reportedBody",r."releasedAt",c.status,c.description FROM "CommunityPostReport" r JOIN "CustomerCase" c ON c.id::text=r."caseId" WHERE (c."assignedAccountId"::text=${actor} OR ${platform?.ownerId===actor}) ORDER BY c."createdAt" DESC LIMIT 200`;for(const row of rows)await this.audit.record({actorId:actor,action:'COMMUNITY_REPORT_EVIDENCE_READ',resource:'CustomerCase',resourceId:row.caseId},tx);return rows;},false);}
+  releaseReport(actor:string,caseId:string){
+    return this.mutate(actor,true,async tx=>{
+      const reviewer=await requireVerifiedAdmin(tx,actor),platform=await platformOrganization(tx);const ticket=await tx.customerCase.findUnique({where:{id:caseId}});if(!ticket||(ticket.assignedAccountId!==actor&&platform?.ownerId!==actor))throw new ForbiddenException();const [report]=await tx.$queryRaw<{releasePersonId:string|null;releasedAt:Date|null;status:string}[]>`SELECT r."releasePersonId",r."releasedAt",c.status FROM "CommunityPostReport" r JOIN "CustomerCase" c ON c.id::text=r."caseId" WHERE r."caseId"=${caseId} FOR UPDATE OF r`;
+      if(!report)throw new NotFoundException();if(report.releasedAt)return {released:true};if(report.status!=='CLOSED')throw new ConflictException('Close the customer service report first.');
+      if(report.releasePersonId===reviewer.personId)throw new ConflictException('Another authorized reviewer must confirm release.');
+      if(report.releasePersonId)await tx.$executeRaw`UPDATE "CommunityPostReport" SET "releasedAt"=now() WHERE "caseId"=${caseId}`;
+      else await tx.$executeRaw`UPDATE "CommunityPostReport" SET "releasePersonId"=${reviewer.personId} WHERE "caseId"=${caseId}`;
+      await this.audit.record({actorId:actor,action:'COMMUNITY_REPORT_RELEASE_REVIEWED',resource:'CustomerCase',resourceId:caseId,metadata:{released:!!report.releasePersonId}},tx);return {released:!!report.releasePersonId};
+    },false);
+  }
+  purgePosts(actor:string,input:{confirm?:unknown}){
+    return this.mutate(actor,true,async tx=>{
+      const platform=await platformOrganization(tx);if(platform?.ownerId!==actor)throw new ForbiddenException('The platform owner must confirm retention purge.');
+      const rows=await tx.$queryRaw<{postId:string}[]>`SELECT l."postId" FROM "CommunityPostLifecycle" l JOIN "CommunityPost" p ON p.id::text=l."postId" WHERE l."withdrawnAt" IS NOT NULL AND l."purgeAfter"<=now()
+        AND NOT EXISTS(SELECT 1 FROM "CommunityPostReport" r WHERE r."postId"=l."postId" AND r."releasedAt" IS NULL) ORDER BY l."purgeAfter" LIMIT 100 FOR UPDATE OF p`;
+      if(input.confirm!==true)return {due:rows.map(row=>row.postId),purged:0};
+      for(const row of rows){await tx.$executeRaw`DELETE FROM "CommunityPostRevision" WHERE "postId"=${row.postId}`;await tx.$executeRaw`UPDATE "CommunityPostReport" SET "reportedTitle"='[purged]',"reportedBody"='[purged]' WHERE "postId"=${row.postId} AND "releasedAt" IS NOT NULL`;await tx.communityPost.delete({where:{id:row.postId}});await tx.$executeRaw`DELETE FROM "CommunityPostLifecycle" WHERE "postId"=${row.postId}`;}
+      await this.audit.record({actorId:actor,action:'COMMUNITY_POST_CONTENT_PURGED',resource:'CommunityPost',metadata:{count:rows.length}},tx);return {purged:rows.length};
+    },false);
+  }
+
+  async adminPosts(actor:string){
+    await this.policy.moderator(this.db,actor);
+    const hidden=await this.db.$queryRaw<{postId:string}[]>`SELECT "postId" FROM "CommunityPostLifecycle" WHERE "withdrawnAt" IS NOT NULL`;
     return this.db.communityPost.findMany({
+      where:{id:{notIn:hidden.map(row=>row.postId)}},
       include:{
         author:{select:{id:true,email:true,person:{select:{firstName:true,lastName:true}}}},
         reviewedBy:{select:{id:true,email:true,person:{select:{firstName:true,lastName:true}}}},
@@ -118,6 +185,9 @@ export class CommunityService {
       if(!postDecisions.includes(input.status))throw new BadRequestException('Invalid post decision.');
       const post=await tx.communityPost.findUnique({where:{id:postId}});
       if(!post)throw new NotFoundException('Community post not found.');
+      const [withdrawn]=await tx.$queryRaw<{withdrawnAt:Date|null}[]>`SELECT "withdrawnAt" FROM "CommunityPostLifecycle" WHERE "postId"=${postId}`;
+      if(withdrawn?.withdrawnAt)throw new ConflictException('A deleted post cannot be republished.');
+      if(post.authorAccountId===adminAccountId)throw new ForbiddenException('A different moderator must review this post.');
       const reviewNotes=this.optionalText(input.reviewNotes,2000);
       if(input.status==='REJECTED'&&!reviewNotes)throw new BadRequestException('Review notes are required when rejecting a post.');
       const now=new Date();
@@ -136,7 +206,8 @@ export class CommunityService {
     });
   }
 
-  adminEvents(){
+  async adminEvents(actor:string){
+    await this.policy.moderator(this.db,actor);
     return this.db.communityEvent.findMany({
       include:{createdBy:{select:{id:true,email:true,person:{select:{firstName:true,lastName:true}}}},_count:{select:{volunteerRegistrations:true}}},
       orderBy:{startsAt:'desc'},
@@ -234,10 +305,11 @@ export class CommunityService {
       const updated=await tx.communityVolunteerRegistration.update({where:{id:registrationId},data:{status:'CANCELLED'}});
       await this.audit.record({actorId:accountId,action:'COMMUNITY_VOLUNTEER_CANCELLED',resource:'CommunityVolunteerRegistration',resourceId:registrationId,metadata:{eventId:registration.eventId}}, tx);
       return updated;
-    });
+    },false);
   }
 
-  adminVolunteers(){
+  async adminVolunteers(actor:string){
+    await this.policy.moderator(this.db,actor);
     return this.db.communityVolunteerRegistration.findMany({
       include:{
         event:true,
@@ -297,10 +369,11 @@ export class CommunityService {
       const updated=await tx.communityEngagementRequest.update({where:{id:requestId},data:{status:'CANCELLED'}});
       await this.audit.record({actorId:accountId,action:'COMMUNITY_ENGAGEMENT_CANCELLED',resource:'CommunityEngagementRequest',resourceId:requestId,metadata:{previousStatus:request.status}}, tx);
       return updated;
-    });
+    },false);
   }
 
-  adminEngagementRequests(){
+  async adminEngagementRequests(actor:string){
+    await this.policy.moderator(this.db,actor);
     return this.db.communityEngagementRequest.findMany({
       include:{
         requester:{select:{id:true,email:true,person:{select:{firstName:true,lastName:true}}}},
