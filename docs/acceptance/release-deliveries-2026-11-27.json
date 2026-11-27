@@ -12751,7 +12751,7 @@
     "This historical denominator ends at the named candidate. Finalized Purple deliveries are recorded separately and future work requires a new register version."
   ],
   "purpleDeliveryCount": 1,
-  "totalDeliveredCount": 51,
+  "totalDeliveredCount": 52,
   "purpleWorkflowRunRecords": 22,
   "purpleWorkflowConclusions": {
     "success": 22
@@ -15001,12 +15001,728 @@
       "deployment": {
         "status": "NOT_VERIFIED_BY_THIS_REVIEW"
       }
+    },
+    {
+      "deliveryNumber": 52,
+      "pr": 724,
+      "url": "https://github.com/sultanasiri001-sys/hydroland/pull/724",
+      "title": "Preserve notification concurrency failures before fixture teardown",
+      "merge": "7444b7fba315f21598611a1cccc269137c1e0060",
+      "firstParent": "631d4437ec1ec4239235053e1a4ca708919ca324",
+      "exactPrHead": "58ac757a30d7a9f80c204eca501d375b4ee5bc59",
+      "headTree": "43a81bde1ebde148f735316a7aa3e2b4a652dc1e",
+      "mergeTree": "43a81bde1ebde148f735316a7aa3e2b4a652dc1e",
+      "headMergeTreeMatches": true,
+      "remoteMetadataMatches": true,
+      "localMergeDagVerified": true,
+      "mergedAt": "2026-11-27T01:52:30Z",
+      "mergeCommitTimestamp": "2026-11-27T01:52:29Z",
+      "commitCount": 1,
+      "changedFiles": 1,
+      "additions": 15,
+      "deletions": 7,
+      "files": [
+        {
+          "path": "apps/api/scripts/notifications-http-e2e.mjs",
+          "status": "M",
+          "beforeBlob": "ec2d605733e9a9439874891227b4d3b590aced21",
+          "afterBlob": "4cf22e96a0259d71b5056e8e5a651e3b6f27cee2"
+        }
+      ],
+      "remoteLocalChangedFileMatches": true,
+      "workflowRuns": [
+        {
+          "id": 45922589686,
+          "name": "API validation",
+          "path": ".github/workflows/api-validation.yml",
+          "head_sha": "58ac757a30d7a9f80c204eca501d375b4ee5bc59",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:26:30Z",
+          "updated_at": "2026-11-27T01:46:49Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45922589686",
+          "workflow_id": 357149799
+        },
+        {
+          "id": 45922589655,
+          "name": "Mobile release security (independent release)",
+          "path": ".github/workflows/mobile-security.yml",
+          "head_sha": "58ac757a30d7a9f80c204eca501d375b4ee5bc59",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:26:30Z",
+          "updated_at": "2026-11-27T01:27:24Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45922589655",
+          "workflow_id": 373814544
+        },
+        {
+          "id": 45922589713,
+          "name": "Marketing drafts HTTP database acceptance",
+          "path": ".github/workflows/marketing-draft-integration.yml",
+          "head_sha": "58ac757a30d7a9f80c204eca501d375b4ee5bc59",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:26:30Z",
+          "updated_at": "2026-11-27T01:28:05Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45922589713",
+          "workflow_id": 402360866
+        },
+        {
+          "id": 45922589512,
+          "name": "Stage 3 Main Integrity Gate",
+          "path": ".github/workflows/stage3-main-integrity.yml",
+          "head_sha": "58ac757a30d7a9f80c204eca501d375b4ee5bc59",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:26:29Z",
+          "updated_at": "2026-11-27T01:26:42Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45922589512",
+          "workflow_id": 367751012
+        },
+        {
+          "id": 45922589629,
+          "name": "Security audit",
+          "path": ".github/workflows/security-audit.yml",
+          "head_sha": "58ac757a30d7a9f80c204eca501d375b4ee5bc59",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:26:29Z",
+          "updated_at": "2026-11-27T01:27:12Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45922589629",
+          "workflow_id": 358176563
+        },
+        {
+          "id": 45922589636,
+          "name": "Production Release Gate",
+          "path": ".github/workflows/production-release-gate.yml",
+          "head_sha": "58ac757a30d7a9f80c204eca501d375b4ee5bc59",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:26:29Z",
+          "updated_at": "2026-11-27T01:28:06Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45922589636",
+          "workflow_id": 362196381
+        },
+        {
+          "id": 45922589578,
+          "name": "Operational evidence sources",
+          "path": ".github/workflows/operational-evidence-validation.yml",
+          "head_sha": "58ac757a30d7a9f80c204eca501d375b4ee5bc59",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:26:29Z",
+          "updated_at": "2026-11-27T01:28:13Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45922589578",
+          "workflow_id": 402865078
+        },
+        {
+          "id": 45922589548,
+          "name": "Warehouse locations HTTP database acceptance",
+          "path": ".github/workflows/warehouse-location-integration.yml",
+          "head_sha": "58ac757a30d7a9f80c204eca501d375b4ee5bc59",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:26:29Z",
+          "updated_at": "2026-11-27T01:28:02Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45922589548",
+          "workflow_id": 402467320
+        },
+        {
+          "id": 45922589472,
+          "name": "Internal research HTTP database acceptance",
+          "path": ".github/workflows/internal-research-integration.yml",
+          "head_sha": "58ac757a30d7a9f80c204eca501d375b4ee5bc59",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:26:29Z",
+          "updated_at": "2026-11-27T01:28:25Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45922589472",
+          "workflow_id": 397563416
+        },
+        {
+          "id": 45922589618,
+          "name": "Release Candidate Gate",
+          "path": ".github/workflows/release-candidate.yml",
+          "head_sha": "58ac757a30d7a9f80c204eca501d375b4ee5bc59",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:26:29Z",
+          "updated_at": "2026-11-27T01:27:51Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45922589618",
+          "workflow_id": 362193789
+        },
+        {
+          "id": 45922589584,
+          "name": "Messaging key schema validation",
+          "path": ".github/workflows/messaging-key-schema-validation.yml",
+          "head_sha": "58ac757a30d7a9f80c204eca501d375b4ee5bc59",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:26:29Z",
+          "updated_at": "2026-11-27T01:27:58Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45922589584",
+          "workflow_id": 370762444
+        },
+        {
+          "id": 45922589555,
+          "name": "A02 full release policy gate",
+          "path": ".github/workflows/a02-release-collector.yml",
+          "head_sha": "58ac757a30d7a9f80c204eca501d375b4ee5bc59",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:26:29Z",
+          "updated_at": "2026-11-27T01:27:48Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45922589555",
+          "workflow_id": 399738953
+        },
+        {
+          "id": 45922589531,
+          "name": "Calendar and training availability",
+          "path": ".github/workflows/calendar-training-availability-validation.yml",
+          "head_sha": "58ac757a30d7a9f80c204eca501d375b4ee5bc59",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:26:29Z",
+          "updated_at": "2026-11-27T01:29:19Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45922589531",
+          "workflow_id": 397563419
+        },
+        {
+          "id": 45922589542,
+          "name": "Form library HTTP database acceptance",
+          "path": ".github/workflows/form-library-integration.yml",
+          "head_sha": "58ac757a30d7a9f80c204eca501d375b4ee5bc59",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:26:29Z",
+          "updated_at": "2026-11-27T01:30:19Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45922589542",
+          "workflow_id": 395530399
+        }
+      ],
+      "workflowScope": "All14 retrieved pull_request workflows for exact head58ac757a; the path-filtered PR did not run a standalone Web workflow. Postmerge is separate.",
+      "authorDeclaredScopeAndLimits": "## Why\nThe merged-main API run for 631d443 failed while removing a notification test account. The fixture used Promise.all, so one rejected request could enter teardown while sibling HTTP requests were still writing notifications. The foreign-key cleanup failure then hid the original request error. The same notification workflow subsequently passed in the D02 PR run, so this change does not claim a reproduced production defect.\n\n## Changes\n- Wait for all four concurrent HTTP requests and assert that every response succeeded before checking exactly-once creation.\n- Use persisted test sessions and session-bound access tokens, exercising the normal authorization path outside the GitHub-only sessionless fixture allowance.\n- Remove only the fixture notifications, sessions, accounts and people in one transaction.\n\n## Validation\nThe native HTTP/PostgreSQL notification suite passed once with persisted sessions, followed by eight bounded repetitions against a fresh isolated PostgreSQL database. All existing authentication, ownership, auth-challenge isolation, four-request deduplication, immutable simulation content, read-state and later-new-request assertions remain intact. No production service, assertion expectation, retry allowance or workflow timeout changed.\n\nThe original main failure remains recorded at https://github.com/sultanasiri001-sys/hydroland/actions/runs/45920202411. This PR improves evidence and teardown correctness; it does not reclassify that failed run as successful.",
+      "apiVerification": {
+        "runId": 45922589686,
+        "jobId": 140256513011,
+        "conclusion": "success",
+        "sourceLines": [
+          "2026-11-27T01:26:58.9961041Z HEAD is now at 10d5c7f Merge 58ac757a30d7a9f80c204eca501d375b4ee5bc59 into 631d4437ec1ec4239235053e1a4ca708919ca324",
+          "2026-11-27T01:26:59.0024395Z [command]/usr/bin/git log -1 --format=%H"
+        ],
+        "checkoutCommitLines": [
+          "2026-11-27T01:26:59.0050055Z 10d5c7fc79af89c2891c51fc30da74b5c0d6bc62"
+        ],
+        "passLines": [
+          "2026-11-27T01:41:14.6791272Z Notifications HTTP/DB E2E passed: authentication, ownership, auth challenge isolation, concurrent self-only safety tests, fixed simulation content, persistence and read status."
+        ],
+        "actualCheckoutCommit": "10d5c7fc79af89c2891c51fc30da74b5c0d6bc62",
+        "actualCheckoutTree": "43a81bde1ebde148f735316a7aa3e2b4a652dc1e"
+      },
+      "postMergeGates": {
+        "status": "PENDING_AT_RECEIPT",
+        "observedAt": "2026-11-27 01:58:05 UTC",
+        "workflowRuns": [
+          {
+            "id": 45925051394,
+            "name": "Production Uptime Check",
+            "path": ".github/workflows/production-uptime.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:52:53Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051394",
+            "workflow_id": 366907102
+          },
+          {
+            "id": 45925051374,
+            "name": "Security audit",
+            "path": ".github/workflows/security-audit.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:53:15Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051374",
+            "workflow_id": 358176563
+          },
+          {
+            "id": 45925051401,
+            "name": "Dependency lock audit",
+            "path": ".github/workflows/dependency-lock.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:53:17Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051401",
+            "workflow_id": 361756274
+          },
+          {
+            "id": 45925051468,
+            "name": "Stage 3 Technical Closure Gate",
+            "path": ".github/workflows/stage3-technical-closure.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:53:25Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051468",
+            "workflow_id": 367806972
+          },
+          {
+            "id": 45925051597,
+            "name": "Organization migration recovery",
+            "path": ".github/workflows/organization-migration-recovery.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:53:57Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051597",
+            "workflow_id": 389911028
+          },
+          {
+            "id": 45925051380,
+            "name": "Release Candidate Gate",
+            "path": ".github/workflows/release-candidate.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:54:10Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051380",
+            "workflow_id": 362193789
+          },
+          {
+            "id": 45925051566,
+            "name": "Warehouse locations HTTP database acceptance",
+            "path": ".github/workflows/warehouse-location-integration.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:54:12Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051566",
+            "workflow_id": 402467320
+          },
+          {
+            "id": 45925051550,
+            "name": "Operational evidence sources",
+            "path": ".github/workflows/operational-evidence-validation.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:54:21Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051550",
+            "workflow_id": 402865078
+          },
+          {
+            "id": 45925051556,
+            "name": "Marketing drafts HTTP database acceptance",
+            "path": ".github/workflows/marketing-draft-integration.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:54:24Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051556",
+            "workflow_id": 402360866
+          },
+          {
+            "id": 45925051362,
+            "name": "API validation",
+            "path": ".github/workflows/api-validation.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "in_progress",
+            "conclusion": null,
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:54:30Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051362",
+            "workflow_id": 357149799
+          },
+          {
+            "id": 45925051535,
+            "name": "Phase 11 recovery drill",
+            "path": ".github/workflows/phase11-recovery-drill.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:54:30Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051535",
+            "workflow_id": 368883030
+          },
+          {
+            "id": 45925051573,
+            "name": "Limited owner decision acceptance",
+            "path": ".github/workflows/owner-decision-validation.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:54:31Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051573",
+            "workflow_id": 395745232
+          },
+          {
+            "id": 45925051512,
+            "name": "Internal research HTTP database acceptance",
+            "path": ".github/workflows/internal-research-integration.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:54:41Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051512",
+            "workflow_id": 397563416
+          },
+          {
+            "id": 45925051605,
+            "name": "Commerce payment boundaries",
+            "path": ".github/workflows/commerce-payment-boundaries.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:54:47Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051605",
+            "workflow_id": 397563418
+          },
+          {
+            "id": 45925051555,
+            "name": "Web validation",
+            "path": ".github/workflows/web-validation.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "in_progress",
+            "conclusion": null,
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:54:44Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051555",
+            "workflow_id": 357187353
+          },
+          {
+            "id": 45925051562,
+            "name": "A02 release evidence contract",
+            "path": ".github/workflows/a02-release-evidence-contract.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:55:02Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051562",
+            "workflow_id": 399600840
+          },
+          {
+            "id": 45925051404,
+            "name": "A02 full release policy gate",
+            "path": ".github/workflows/a02-release-collector.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "queued",
+            "conclusion": null,
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:55:57Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051404",
+            "workflow_id": 399738953
+          },
+          {
+            "id": 45925051589,
+            "name": "Mobile release security (independent release)",
+            "path": ".github/workflows/mobile-security.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:56:01Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051589",
+            "workflow_id": 373814544
+          },
+          {
+            "id": 45925051403,
+            "name": "Form library focused validation",
+            "path": ".github/workflows/form-library-validation.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:56:12Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051403",
+            "workflow_id": 395507003
+          },
+          {
+            "id": 45925051593,
+            "name": "Calendar and training availability",
+            "path": ".github/workflows/calendar-training-availability-validation.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:56:33Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051593",
+            "workflow_id": 397563419
+          },
+          {
+            "id": 45925051541,
+            "name": "Offline trip read authorization",
+            "path": ".github/workflows/offline-trip-authorization.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:56:33Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051541",
+            "workflow_id": 397916626
+          },
+          {
+            "id": 45925051392,
+            "name": "Phase 11 production security",
+            "path": ".github/workflows/phase11-production-security.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:56:58Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051392",
+            "workflow_id": 368878520
+          },
+          {
+            "id": 45925051601,
+            "name": "Production Release Gate",
+            "path": ".github/workflows/production-release-gate.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:55:18Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051601",
+            "workflow_id": 362196381
+          },
+          {
+            "id": 45925051548,
+            "name": "Messaging key schema validation",
+            "path": ".github/workflows/messaging-key-schema-validation.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:55:39Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051548",
+            "workflow_id": 370762444
+          },
+          {
+            "id": 45925051587,
+            "name": "Independent document review acceptance",
+            "path": ".github/workflows/internal-document-review-validation.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:55:26Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051587",
+            "workflow_id": 396092278
+          },
+          {
+            "id": 45925051580,
+            "name": "Stage 3 Main Integrity Gate",
+            "path": ".github/workflows/stage3-main-integrity.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:55:16Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051580",
+            "workflow_id": 367751012
+          },
+          {
+            "id": 45925051407,
+            "name": "Admin document library entry",
+            "path": ".github/workflows/admin-documents-entry-validation.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:56:23Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051407",
+            "workflow_id": 395915408
+          },
+          {
+            "id": 45925051624,
+            "name": "Platform form source acceptance",
+            "path": ".github/workflows/platform-form-source-validation.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:57:29Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051624",
+            "workflow_id": 402333065
+          },
+          {
+            "id": 45925051526,
+            "name": "Owner approvals and HR source acceptance",
+            "path": ".github/workflows/owner-approval-validation.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:57:39Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051526",
+            "workflow_id": 396168984
+          },
+          {
+            "id": 45925051540,
+            "name": "Membership account pass validation",
+            "path": ".github/workflows/membership-pass-validation.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:57:49Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051540",
+            "workflow_id": 370790806
+          },
+          {
+            "id": 45925051382,
+            "name": "Form library HTTP database acceptance",
+            "path": ".github/workflows/form-library-integration.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "push",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:52:33Z",
+            "updated_at": "2026-11-27T01:57:50Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925051382",
+            "workflow_id": 395530399
+          }
+        ],
+        "counts": {
+          "success": 28,
+          "in_progress": 2,
+          "queued": 1
+        },
+        "unpassedRunIds": [
+          45925051362,
+          45925051555,
+          45925051404
+        ],
+        "otherObservedRuns": [
+          {
+            "id": 45925138026,
+            "name": "A06 provider health monitor",
+            "path": ".github/workflows/a06-provider-watch.yml",
+            "head_sha": "7444b7fba315f21598611a1cccc269137c1e0060",
+            "event": "schedule",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "created_at": "2026-11-27T01:53:30Z",
+            "updated_at": "2026-11-27T01:56:00Z",
+            "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925138026",
+            "workflow_id": 417431120
+          }
+        ],
+        "scope": "31 push runs; the separate scheduled A06 health run is retained but not counted as a release gate."
+      },
+      "deployment": {
+        "status": "NOT_VERIFIED_BY_THIS_REVIEW"
+      }
     }
   ],
-  "concurrentDeliveryCount": 1,
-  "concurrentWorkflowRunRecords": 27,
+  "concurrentDeliveryCount": 2,
+  "concurrentWorkflowRunRecords": 41,
   "concurrentWorkflowConclusions": {
-    "success": 27
+    "success": 41
   },
   "currentCombinedSourceReview": {
     "status": "LOCAL_STAGED_CONCURRENT_INTEGRATION_NOT_RELEASED",
@@ -15478,5 +16194,181 @@
     "priorMainFailurePreserved": true,
     "historicalSerializationCauseSolved": false,
     "finalExactHeadCiStillRequired": true
-  }
+  },
+  "concurrentFixtureIntegrationReview": {
+    "status": "LOCAL_STAGED_FIXTURE_ONLY_CONCURRENT_INTEGRATION",
+    "baseHead": "7c5c3754db3fac541c48ab9c4715b34d7b8a9a9c",
+    "integratedMain": "7444b7fba315f21598611a1cccc269137c1e0060",
+    "mainVerifiedAt": "2026-11-27 02:00:39 UTC",
+    "unresolvedPaths": 0,
+    "unchangedTrackedSources": [
+      {
+        "path": "apps/api/src",
+        "referenceGitObject": "a207c50702e8d4b00a4e02006e27784ee0106ca1",
+        "workingTreeDiffExit": 0,
+        "indexDiffExit": 0,
+        "diff": ""
+      },
+      {
+        "path": "apps/api/prisma",
+        "referenceGitObject": "4556cdbb09d89e1eb19d98660a2474a3f9defeea",
+        "workingTreeDiffExit": 0,
+        "indexDiffExit": 0,
+        "diff": ""
+      },
+      {
+        "path": "apps/api/prisma/schema.prisma",
+        "referenceGitObject": "3b97d51c8e71018a7ad426468d708c1434720967",
+        "workingTreeDiffExit": 0,
+        "indexDiffExit": 0,
+        "diff": ""
+      },
+      {
+        "path": "apps/api/prisma/migrations",
+        "referenceGitObject": "4143e61f3a4c5c715e628e8f27f3e917332541e6",
+        "workingTreeDiffExit": 0,
+        "indexDiffExit": 0,
+        "diff": ""
+      },
+      {
+        "path": "apps/web",
+        "referenceGitObject": "74e845713055f3e9cd17ca279cbf3ff5331534b4",
+        "workingTreeDiffExit": 0,
+        "indexDiffExit": 0,
+        "diff": ""
+      }
+    ],
+    "sourceAuditRerun": false,
+    "sourceAuditReason": "Both working-tree and index diffs against7c are empty for production API source, complete Prisma schema/migrations, and all tracked Web files; prior source review applies to identical bytes.",
+    "reconciliation": "Adopts PR724 persisted session/sid-bound tokens and transactional fixture cleanup while retaining the prior AggregateError, original-error preservation, unconditional disconnect attempt and canonical diagnostic wrapper.",
+    "notificationAcceptance": {
+      "summaryPath": "/workspace/scratch/20736c13540d/purple-test-runtime/notifications-evidence-20261127015837944/summary.json",
+      "independentlyRead": true,
+      "summary": {
+        "success": true,
+        "database": "notifications_ci_20261127015837944",
+        "results": [
+          {
+            "name": "initdb",
+            "code": 0,
+            "elapsedMs": 945,
+            "log": "/workspace/scratch/20736c13540d/purple-test-runtime/notifications-evidence-20261127015837944/initdb.log",
+            "expectedExit": 0
+          },
+          {
+            "name": "schema",
+            "code": 0,
+            "elapsedMs": 3688,
+            "log": "/workspace/scratch/20736c13540d/purple-test-runtime/notifications-evidence-20261127015837944/schema.log",
+            "expectedExit": 0
+          },
+          {
+            "name": "notifications-real-http-postgres",
+            "code": 0,
+            "elapsedMs": 692,
+            "log": "/workspace/scratch/20736c13540d/purple-test-runtime/notifications-evidence-20261127015837944/notifications-real-http-postgres.log",
+            "expectedExit": 0
+          },
+          {
+            "name": "request-failure-settles-peers",
+            "code": 1,
+            "elapsedMs": 1095,
+            "log": "/workspace/scratch/20736c13540d/purple-test-runtime/notifications-evidence-20261127015837944/request-failure-settles-peers.log",
+            "expectedExit": 1
+          },
+          {
+            "name": "request-failure-settles-peers-proof",
+            "allFourSettled": true,
+            "realApiPeerStatuses": [
+              200,
+              200,
+              200
+            ],
+            "originalFailurePreserved": true,
+            "disconnectCompleted": true,
+            "remainingBeforeHarnessCleanup": {
+              "accounts": 0,
+              "people": 0,
+              "sessions": 0,
+              "notifications": 0
+            }
+          },
+          {
+            "name": "request-and-cleanup-failure",
+            "code": 1,
+            "elapsedMs": 829,
+            "log": "/workspace/scratch/20736c13540d/purple-test-runtime/notifications-evidence-20261127015837944/request-and-cleanup-failure.log",
+            "expectedExit": 1
+          },
+          {
+            "name": "request-and-cleanup-failure-proof",
+            "allFourSettled": true,
+            "realApiPeerStatuses": [
+              200,
+              200,
+              200
+            ],
+            "originalFailurePreserved": true,
+            "disconnectCompleted": true,
+            "remainingBeforeHarnessCleanup": {
+              "accounts": 2,
+              "people": 2,
+              "sessions": 2,
+              "notifications": 5
+            }
+          }
+        ],
+        "hashes": {
+          "apps/api/scripts/notifications-http-e2e.mjs": "d51fe77f4a7efb52952696dcac1594fad9bcd43572e7d8897efc1aac5ea73df3",
+          ".github/workflows/api-validation.yml": "e43df2a955e1a6f42483af6d7c9db0ec4b3bcb76b30822c40eb2fdd9dcb34e6a",
+          "apps/api/dist/notifications/notifications.service.js": "513528cbb12bf26b219cb6279ef814294888d179259deebb354ad8387e612674",
+          "apps/api/dist/database/database.service.js": "748ceefa86ae90b284a188801eed90df65dd2307d1a78b9d5b4bbefb2d500323",
+          "apps/api/dist/auth/auth.service.js": "6459331cd5ef4590a15f987e4802d1460ae10a123377ab375310e360ad371db5"
+        },
+        "boundary": "Real PostgreSQL + built API happy path; two deliberate proxy/DB cleanup failures validate fixture behavior. No historical serialization root cause is claimed."
+      },
+      "scenariosPassed": 3,
+      "intentionalFailureCasesKeepNonzeroExit": true,
+      "summarySha256": "e23cf9dccb438defe568e0a6144303bbd133a45d1a0f3bc77c8ba4ae85866e63"
+    },
+    "schemaModels": 173,
+    "sqlMigrationFiles": 149,
+    "literalRoutes": 844,
+    "routeScanReusedFromIdenticalProductionSource": true,
+    "releaseAcceptance": "NEW_EXACT_HEAD_CI_AND_MATCHING_DEPLOYMENT_PENDING",
+    "historicalFailurePreserved": true,
+    "nextDelivery": {
+      "number": 53,
+      "pr": 722,
+      "status": "NOT_YET_ACCEPTED_OR_COUNTED"
+    }
+  },
+  "latestSourceReviewKey": "concurrentFixtureIntegrationReview",
+  "nextPlannedDelivery": {
+    "number": 53,
+    "pr": 722,
+    "status": "NOT_YET_ACCEPTED_OR_COUNTED"
+  },
+  "deliveredCountHistory": [
+    {
+      "name": "Historical49",
+      "through": "32e07e17439026d741e4c137f9858bc725fced49",
+      "count": 49
+    },
+    {
+      "name": "C12_PR720",
+      "through": "024a6440d1c04135bde07ed11dc8a08883815ef4",
+      "count": 50
+    },
+    {
+      "name": "Concurrent_D01_PR721",
+      "through": "631d4437ec1ec4239235053e1a4ca708919ca324",
+      "count": 51
+    },
+    {
+      "name": "Concurrent_notification_fixture_PR724",
+      "through": "7444b7fba315f21598611a1cccc269137c1e0060",
+      "count": 52
+    }
+  ]
 }

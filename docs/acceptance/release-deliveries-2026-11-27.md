@@ -59,7 +59,7 @@ This is a source/check, schema, migration, route and ownership reconciliation fo
 
 ## Purple and concurrent delivery extension
 
-The 49 historical deliveries above remain an immutable denominator. **PR720 is delivery 50 and the concurrent PR721 is delivery 51** in the combined register. Their receipts are recorded separately below. PR722 remains outside the delivered denominator until its exact accepted merge is recorded.
+The 49 historical deliveries above remain an immutable denominator. **PR720 is delivery 50, concurrent PR721 is delivery 51 and concurrent PR724 is delivery 52** in the combined register. Their receipts are recorded separately below. PR722 remains outside the delivered denominator until its exact accepted merge is recorded.
 
 | Delivery | Exact PR head | Accepted merge | Observed PR workflows |
 | --- | --- | --- | --- |
@@ -101,7 +101,7 @@ The C08 projection test directly seeds synthetic native rows to verify the read 
 The [C05 acceptance record](c05-maintenance-2026-11-27.md), [B06 acceptance record](../B06_LEGAL_CONTRACT_LIFECYCLE_ACCEPTANCE_2026-11-27.md) and [committed B06 source-hash summary](../evidence/B06_2026-11-27/acceptance-summary.json) preserve their detailed boundaries. The machine-readable I01 register retains the local result summaries and log digests. Full current-source remote Web/API/release-policy results, production migration/deployment and the subsequent accepted merge must be appended as separate receipts. None of these local results changes PR666's historical cancellation or creates real operational approval.
 
 
-## Concurrent D01 delivery and updated combined-source review
+## Concurrent D01 delivery and combined-source snapshot
 
 **PR721 is delivery 51.** It merged while the Purple candidate was awaiting final checks. [PR721](https://github.com/sultanasiri001-sys/hydroland/pull/721) has exact head `8f53716e46fa3c8b73da2051283561acecb66c84` and accepted merge `631d4437ec1ec4239235053e1a4ca708919ca324`. The merge's first parent is C12 delivery 50, `024a6440d1c04135bde07ed11dc8a08883815ef4`; its second parent is the exact D01 head. Both head and merge have tree `0895fc2f0d00020bf54615f58b7ef56d51c63c87`. GitHub records the merge at 01:01:59 UTC on 27 November. The two-commit DAG and all 76 changed-file before/after blobs match the retrieved GitHub metadata.
 
@@ -149,13 +149,43 @@ C05 continues to use the canonical asset/calendar and B05 issue/return records. 
 
 The superseded Purple head `83bb1bd` failed its stale diagnostic environment and three portal browser cases. Its complete full-Web artifact nevertheless provides exact diagnostic evidence: **940 passed, 3 failed, 0 skipped, 0 flaky**, with all six grievance-panel cases passing on their first attempt. The only browser failures expected nine center command cards after the B06 service added the tenth. Head `98c9902` passed the complete API gate, including C05, B06, formal grievances and B08 cancellation, and passed the corrected form-library diagnostic; its focused Web job retained the same three portal failures. The narrow portal correction passed all three local desktop/tablet/mobile cases. Head `8c9a606` had no PR workflows observed before the concurrent main integration because the PR was no longer mergeable.
 
-These receipts diagnose the previous source; they do not pass the new combined head. **PR722 will be delivery 52 only after its exact accepted merge is recorded.** The delivered count in this version is 51: the immutable 49 historical deliveries, C12 delivery 50 and concurrent D01 delivery 51. The new combined API/Web/full-policy checks, any required fixture correction, accepted merge and matching deployment remain separate pending release evidence. PR666's historical cancelled Web execution remains unchanged.
+These receipts diagnose the previous source; they do not pass the new combined head. At this D01 integration snapshot, PR722 was planned as delivery 52 and the delivered count was 51: the immutable 49 historical deliveries, C12 delivery 50 and concurrent D01 delivery 51. The subsequent concurrent delivery below advances the delivered count and the next planned delivery number. The new combined API/Web/full-policy checks, any required fixture correction, accepted merge and matching deployment remain separate pending release evidence. PR666's historical cancelled Web execution remains unchanged.
 
 ### Notification fixture failure preservation
 
 The demonstrated fixture race is corrected without changing the notification service, authentication, foreign keys or transaction retry policy. All four concurrent POSTs settle before their results are asserted or fixture cleanup starts. A cleanup error is retained separately and cannot replace the original request/assertion error; the Prisma disconnect is always attempted. The canonical HR step prints the API log and keeps a failing exit status when this acceptance fails.
 
 On a fresh isolated PostgreSQL database and the real combined API, the unchanged strict notification assertions passed. Two deliberate failure cases also passed their diagnostic assertions: one HTTP 500 alongside three delayed real-API 200 responses, and the same request failure with a temporary database cleanup rejection. Both waited for all requests, preserved the original error and completed disconnect; the harness removed only its own temporary trigger and synthetic records. The JSON register retains the source and log digests. This verifies the diagnostic/cleanup correction; it does not establish the cause of the historical serialization errors. The new exact-head CI must still pass all existing concurrency assertions.
+
+
+## Concurrent notification fixture delivery — PR724
+
+**PR724 is delivery 52.** The exact head `58ac757a30d7a9f80c204eca501d375b4ee5bc59` and accepted merge `7444b7fba315f21598611a1cccc269137c1e0060` have identical tree `43a81bde1ebde148f735316a7aa3e2b4a652dc1e`. The merge's parents are `631d4437ec1ec4239235053e1a4ca708919ca324` and the exact PR head. [GitHub records the merge](https://github.com/sultanasiri001-sys/hydroland/pull/724) at 01:52:30 UTC on 27 November. The fetched local DAG matches this metadata.
+
+This delivery changes only `apps/api/scripts/notifications-http-e2e.mjs`: its blob changes from `ec2d605733e9a9439874891227b4d3b590aced21` to `4cf22e96a0259d71b5056e8e5a651e3b6f27cee2`. It waits for all concurrent requests, uses persisted sessions with session-bound access tokens, and removes only its fixture notifications, sessions, accounts and people transactionally. It does not change a production service, Prisma source or Web file.
+
+All **14 retrieved final-head PR workflows succeeded**. The path-filtered PR did not run a separate Web workflow; no such result is invented. The [API run 45922589686](https://github.com/sultanasiri001-sys/hydroland/actions/runs/45922589686), job `140256513011`, completed the grouped acceptance and logged the strict notification HTTP/PostgreSQL success. Its actual checkout `10d5c7fc79af89c2891c51fc30da74b5c0d6bc62` has the same verified tree `43a81bde`.
+
+At the **01:58:05 UTC** postmerge receipt, the 31 push workflows comprise 28 successes, API and Web still running, and A02 full policy queued. The separate scheduled A06 success is retained separately from these release gates. The JSON register preserves every observed run. Postmerge completion and matching deployment are not asserted here, and the original `631d4437` API failure remains a failed historical execution.
+
+### Fixture-only integration into the Purple source
+
+The integration owner reconciled `7444b7fb` with Purple head `7c5c3754db3fac541c48ab9c4715b34d7b8a9a9c`. The fixture adopts the incoming persisted sessions and transactional cleanup while preserving the previous primary-error/AggregateError handling, unconditional disconnect attempt and canonical diagnostic wrapper.
+
+Both current working-tree and staged-index diffs against `7c5c3754` are empty for these tracked source trees. No production-source audit rerun is needed for identical bytes.
+
+| Unchanged source | Exact Git object at `7c5c3754` |
+| --- | --- |
+| Production API source, `apps/api/src` | `a207c50702e8d4b00a4e02006e27784ee0106ca1` |
+| Complete Prisma directory | `4556cdbb09d89e1eb19d98660a2474a3f9defeea` |
+| Prisma schema file | `3b97d51c8e71018a7ad426468d708c1434720967` |
+| Prisma migration directory | `4143e61f3a4c5c715e628e8f27f3e917332541e6` |
+| All tracked Web files, `apps/web` | `74e845713055f3e9cd17ca279cbf3ff5331534b4` |
+
+The prior 173-model, 149-migration and 844-route findings therefore remain applicable to these unchanged production bytes. The merged fixture itself passed **three fresh isolated acceptance scenarios**. The real API/PostgreSQL happy path used persisted sessions and passed in 692 ms. The request-failure case waited for all four requests, retained three real-API 200 responses, preserved the original failure, disconnected and left zero fixture rows. The deliberate cleanup-failure case preserved the original failure and rolled back cleanup, retaining two accounts, two people, two sessions and five notifications before the harness removed only its own records. The two deliberate failure processes correctly exited nonzero; their diagnostic assertions passed. The retained summary and source/log digests are recorded in the JSON.
+
+This is new fixture-integration evidence, not a reclassification of the historical serialization failures. The current main parent was independently verified as `7444b7fb` at 02:00:39 UTC. **The delivered count is now 52; PR722 is planned as delivery 53 and remains uncounted until its exact accepted merge.** The earlier 49-, 50- and 51-delivery boundaries remain named historical snapshots. The newly published combined head still requires its own complete CI and matching deployment receipts.
+
 
 ## Historical delivery index
 
