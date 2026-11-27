@@ -18,6 +18,7 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
    if(path.endsWith('/weather/public-config'))return json(route,{configured:false,status:'NOT_SELECTED'});
    if(path.endsWith('/admin/employees'))return json(route,{initialized:false,departments:[],profiles:[],items:[],nextCursor:null,email:{enabled:false},google:{enabled:false}});
    if(path.endsWith('/customer-service/admin/cases'))return json(route,{items:[],total:0,page:1,pageSize:20});
+   if(path.endsWith('/legal/contracts/workspaces'))return json(route,{organizations:[]});
    if(path.endsWith('/training/professional/me/earnings')){earningsRequested=true;return earningsResponse.then(()=>json(route,[]))}
    return json(route,[]);
   });
@@ -49,7 +50,20 @@ for(const viewport of [{name:'desktop',width:1536,height:864},{name:'tablet',wid
    const documentAccess=role==='admin';
    const instructorDocumentAccess=['instructor','center','admin'].includes(role);
    const procurementLabAccess=role==='admin';
-   await expect(board.locator(role==='diver'?'.hl-diver-action-grid>button':'.hl-command-grid>button')).toHaveCount(baseActions+(contractAccess?2:0)+(documentAccess?1:0)+(instructorDocumentAccess?1:0)+(procurementLabAccess?1:0));
+   const legalLifecycleAccess=['center','organization','admin'].includes(role);
+   await expect(board.locator(role==='diver'?'.hl-diver-action-grid>button':'.hl-command-grid>button')).toHaveCount(baseActions+(contractAccess?2:0)+(documentAccess?1:0)+(instructorDocumentAccess?1:0)+(procurementLabAccess?1:0)+(legalLifecycleAccess?1:0));
+   const legalLifecycle=board.locator('.hl-command-grid>button[data-legal-lifecycle-open]');
+   await expect(legalLifecycle).toHaveCount(legalLifecycleAccess?1:0);
+   if(legalLifecycleAccess){
+    await expect(legalLifecycle).toBeVisible();await expect(legalLifecycle).toBeEnabled();await expect(legalLifecycle).toHaveText('متابعة العقود والتأمين');
+    const workspaceRequest=page.waitForRequest(request=>new URL(request.url()).pathname.endsWith('/legal/contracts/workspaces')&&request.method()==='GET');
+    await legalLifecycle.click();await workspaceRequest;
+    const legalDialog=page.locator('#hl-legal-lifecycle');await expect(legalDialog).toBeVisible();
+    await expect(legalDialog.getByRole('heading',{name:'متابعة العقود والتأمين',exact:true})).toBeVisible();
+    await expect(legalDialog.getByRole('status')).toHaveText('لا توجد جهة متاحة لهذا الحساب.');
+    await legalDialog.getByRole('button',{name:'إغلاق',exact:true}).click();
+    await expect(legalDialog).toBeHidden();await expect(legalLifecycle).toBeFocused();await expect(board).toBeVisible();
+   }
    const procurementLab=board.locator('.hl-command-grid>button[data-procurement-lab-open]');
    await expect(procurementLab).toHaveCount(procurementLabAccess?1:0);
    if(procurementLabAccess){await expect(procurementLab).toBeVisible();await expect(procurementLab).toBeEnabled();await expect(procurementLab).toHaveText('تجربة المشتريات وإعداد الربط');}
