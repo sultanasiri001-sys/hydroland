@@ -12,7 +12,9 @@
     "validate:public-interfaces": "node scripts/public-interfaces-validation.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "^1.58.2"
+    "@fontsource/noto-sans-arabic": "5.3.0",
+    "@playwright/test": "^1.58.2",
+    "pdf-lib": "1.17.1"
   },
   "dependencies": {
     "@tesseract.js-data/ara": "1.0.0",
