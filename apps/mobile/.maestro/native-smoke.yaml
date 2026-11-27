@@ -29,6 +29,11 @@ name: Native installation, guest UI and encrypted-storage capabilities
     commands:
       - tapOn:
           text: Open
+      - extendedWaitUntil:
+          notVisible: 'Open in .*HYDROLAND QA.*'
+          timeout: 10000
+      - takeScreenshot: ios-link-consent-state
+      - openLink: hydroland-qa://native-acceptance
 - extendedWaitUntil:
     visible:
       id: native-capabilities-run

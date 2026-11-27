@@ -75,6 +75,20 @@ SecureStore and encrypted-file operations.
 Ciphertext alteration and a different authenticated scope must be rejected.
 The probe deletes its synthetic key and file in a `finally` block.
 
+On iOS, the capability flow handles the simulator's first-use link consent
+described by the [Maestro openLink command](https://docs.maestro.dev/reference/commands-available/openlink)
+separately from delivery of the URL to the running application. The initial
+`openLink` and conditional **Open** confirmation remain required. Only when
+that consent prompt is actually observed, the flow waits up to 10 seconds for
+the same prompt to disappear, records `ios-link-consent-state.png` as a separate
+diagnostic image, and sends the identical URL once to the running app. There is
+no retry loop or alternate navigation path. The original capability-screen and
+**PASS** assertions, their timeouts, the native probe, app-state clearing and the
+product flow remain unchanged. This setup does not prove why the first
+consent handoff left the login screen visible in prior runs. Acceptance of the
+first link on a physical device remains part of Q01. The diagnostic image is
+additional evidence and does not replace any of the 17 required screenshots.
+
 The second opens the seven actual product screens (account, credentials, trips,
 bookings, training, finance and notifications), waits for their loaded records,
 and captures each in Arabic and English. A loopback-only HTTP fixture supplies
