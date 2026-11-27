@@ -128,6 +128,8 @@ jobs:
       HYDROLAND_BUILD_NUMBER: ${{ github.run_number }}
       EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:3001/api/v1
       MAESTRO_CLI_NO_ANALYTICS: '1'
+      # Milliseconds for cold XCTest driver startup only; flow assertions remain mandatory.
+      MAESTRO_DRIVER_STARTUP_TIMEOUT: '300000'
     steps:
       - uses: actions/checkout@v4
         with:
