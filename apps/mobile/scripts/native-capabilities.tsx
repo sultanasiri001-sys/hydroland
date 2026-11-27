@@ -5,6 +5,7 @@ import {Pressable,Text,View} from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import {AESEncryptionKey,AESKeySize,AESSealedData,aesEncryptAsync,aesDecryptAsync,randomUUID} from 'expo-crypto';
 import {Directory,File,Paths} from 'expo-file-system';
+import {decodeOfflineCiphertext} from '../src/offline-ciphertext';
 
 export default function NativeCapabilities(){
  const running=useRef(false),[result,setResult]=useState('READY');
@@ -33,12 +34,17 @@ export default function NativeCapabilities(){
    await SecureStore.setItemAsync(keyName,encoded,options);
    const restored=await SecureStore.getItemAsync(keyName,options);if(restored!==encoded)throw new Error('Key persistence');
    const restoredKey=await AESEncryptionKey.import(restored,'hex');
-   stage='private-encrypted-file';directory.create({idempotent:true,intermediates:true});
+   stage='private-directory';directory.create({idempotent:true,intermediates:true});
+   stage='private-file-write';
    const file=new File(directory,'encrypted.json');file.write(JSON.stringify({version:1,ciphertext:await sealed.combined('base64')}));
+   stage='private-file-read';
    const stored=JSON.parse(await file.text());
-   const reopened=await aesDecryptAsync(AESSealedData.fromCombined(stored.ciphertext),restoredKey,{additionalData:aad});
+   stage='private-file-decrypt';
+   const reopened=await aesDecryptAsync(AESSealedData.fromCombined(decodeOfflineCiphertext(stored.ciphertext),{ivLength:12,tagLength:16}),restoredKey,{additionalData:aad});
    if(reopened.length!==plain.length||reopened.some((v,i)=>v!==plain[i]))throw new Error('Stored roundtrip');
+   stage='private-file-delete';
    file.delete();if(file.exists)throw new Error('File cleanup');
+   stage='SecureStore-delete';
    await SecureStore.deleteItemAsync(keyName,options);if(await SecureStore.getItemAsync(keyName,options)!==null)throw new Error('Key cleanup');
   }catch{failure=stage}
   finally{

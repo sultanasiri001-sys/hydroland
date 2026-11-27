@@ -429,6 +429,8 @@ jobs:
       - name: Verify independent Render provider observations in isolated PostgreSQL
         env:
           A06_DB_TEST: DISPOSABLE_LOOPBACK
+          NODE_ENV: test
+          D03_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
         run: node apps/api/scripts/render-provider-observer-db.cjs
       - name: Exercise A15 center escalation, executive report and outcome delivery
         env:

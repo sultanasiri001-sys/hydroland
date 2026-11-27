@@ -11,13 +11,62 @@ name: Seven native product journeys in Arabic and English using isolated synthet
     timeout: 30000
 - tapOn:
     id: home-login
+- scrollUntilVisible:
+    element:
+      id: login-email
+    direction: DOWN
+    visibilityPercentage: 100
+    timeout: 20000
 - tapOn:
     id: login-email
+# Maestro iOS reads AX hasFocus, which is not reliably keyboard focus for RN
+# TextInput (upstream issue #2842). Validate native focus on Android only.
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - assertVisible:
+          id: login-email
+          focused: true
 - inputText: qa-mobile@example.test
+# Dismiss the email keyboard before targeting the lower password field. On the
+# 320px Android device it otherwise covers that field and receives the tap.
+- hideKeyboard
+- assertVisible:
+    id: login-email
+    text: '^qa-mobile@example[.]test$'
+- scrollUntilVisible:
+    element:
+      id: login-password
+    direction: DOWN
+    visibilityPercentage: 100
+    timeout: 20000
 - tapOn:
     id: login-password
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - assertVisible:
+          id: login-password
+          focused: true
 - inputText: NativeFixtureOnly!123
 - hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: login-email
+    direction: UP
+    visibilityPercentage: 100
+    timeout: 20000
+- assertVisible:
+    id: login-email
+    text: '^qa-mobile@example[.]test$'
+- scrollUntilVisible:
+    element:
+      id: login-submit
+    direction: DOWN
+    visibilityPercentage: 100
+    timeout: 20000
 - tapOn:
     id: login-submit
 - extendedWaitUntil:

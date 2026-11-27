@@ -22,6 +22,13 @@ name: Native installation, guest UI and encrypted-storage capabilities
     id: login-error
 - takeScreenshot: login-validation
 - openLink: hydroland-qa://native-acceptance
+- runFlow:
+    when:
+      platform: iOS
+      visible: 'Open in .*HYDROLAND QA.*'
+    commands:
+      - tapOn:
+          text: Open
 - extendedWaitUntil:
     visible:
       id: native-capabilities-run

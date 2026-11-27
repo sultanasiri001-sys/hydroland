@@ -81,6 +81,14 @@ format version, verified account ID, random per-login cache ID and the individua
 record/file purpose. Ciphertext copied between purposes or account/cache scopes
 cannot authenticate.
 
+The stored envelope uses canonical Base64. Reopening decodes that ciphertext to
+`Uint8Array` before `AESSealedData.fromCombined`, matching the installed Android
+native bridge. The shared decoder rejects malformed alphabet/padding and nonzero
+padding bits, and permits at most 8 MiB of plaintext plus the 12-byte nonce and
+16-byte tag. Both the application vault and the QA native file probe use this
+same decoder; authentication and account/cache/purpose binding still occur in
+AES-GCM after decoding.
+
 The 256-bit key is stored only in Expo SecureStore with
 `WHEN_UNLOCKED_THIS_DEVICE_ONLY`. Availability, key creation/import and a native
 roundtrip are checked before a new private offline request. A failed/missing key,
@@ -173,7 +181,7 @@ Executed against real source, synthetic accounts/data and isolated local storage
 | Evidence | Result / boundary |
 | --- | --- |
 | `apps/mobile/scripts/offline-session.test.mjs` | 25 retained session/push/cache/TripDay regression groups. Uses synthetic device/hooks/HTTP boundaries. |
-| `apps/mobile/scripts/offline-security.test.mjs` | 26 focused encryption/clock/persistence/MFA/outbox/HTTP-boundary groups. Actual TypeScript source with Node GCM adapter; not native-device AES evidence. |
+| `apps/mobile/scripts/offline-security.test.mjs` | 28 focused groups: the 26 retained encryption/clock/persistence/MFA/outbox/HTTP-boundary groups plus canonical bounded byte decoding and the shared QA encrypted-file/key lifecycle. Uses actual TypeScript source with a Node GCM adapter; native execution is recorded separately in D07. |
 | `apps/api/scripts/mobile-offline-http-db-checks.cjs` | 16 groups through actual Nest HTTP/guards/services and PostgreSQL, run with canonical timestamp and historical session timestamptz layouts under a non-UTC database zone. |
 | Exact new migration | All 9 combinations of TEXT, UUID and varchar(36) Account/TripBriefing keys exercised in the native DB fixture; validated FK and cascade behavior checked. |
 | `apps/api/scripts/offline-trip-access-db-checks.cjs` | 47 existing native authorization checks in each timestamp layout; original trip access policy preserved. |

@@ -1,6 +1,22 @@
 import assert from 'node:assert/strict';
 import {world,packageFor,stable,hash,jwt,deferred,response,text,leaseFor,nodes} from './offline-test-world.mjs';
 let passed=0;async function check(name,work){await work();passed++;console.log('PASS',name)}
+await check('ciphertext decoding is canonical, bounded and compatible with the byte-only Android bridge',async()=>{
+ const w=world(),{decodeOfflineCiphertext,MAX_OFFLINE_BYTES}=w.load('src/offline-ciphertext.ts');
+ for(let length=28;length<160;length++){const source=Buffer.from(Array.from({length},(_,i)=>(i*17+length)%256));assert.deepEqual(Buffer.from(decodeOfflineCiphertext(source.toString('base64'))),source)}
+ const canonical=Buffer.alloc(28).toString('base64'),onePadding=Buffer.alloc(29).toString('base64');
+ for(const invalid of [null,'',Buffer.alloc(27).toString('base64'),canonical+'=',canonical.slice(0,4)+'\n'+canonical.slice(4),'é'+canonical.slice(1),'-'+canonical.slice(1),'='+canonical.slice(1),canonical.slice(0,-3)+'B==',onePadding.slice(0,-2)+'B='])assert.throws(()=>decodeOfflineCiphertext(invalid));
+ const maximum=Buffer.alloc(MAX_OFFLINE_BYTES+28,0xa5);assert.deepEqual(Buffer.from(decodeOfflineCiphertext(maximum.toString('base64'))),maximum);
+ assert.throws(()=>decodeOfflineCiphertext(Buffer.alloc(MAX_OFFLINE_BYTES+29).toString('base64')));
+ assert.throws(()=>w.crypto.AESSealedData.fromCombined(canonical),/Uint8Array/);
+ await w.login();await w.download();assert.ok(await w.load('src/trip-intelligence.ts').readOfflineBriefing('trip-a'));
+});
+await check('QA capability fixture uses the same byte decoder and cleans its synthetic encrypted file/key',async()=>{
+ const w=world();w.mount('scripts/native-capabilities.tsx');
+ await nodes(w.tree()).find(node=>node.props?.testID==='native-capabilities-run').props.onPress();w.render();
+ assert.equal(nodes(w.tree()).find(node=>node.props?.testID==='native-capabilities-result').props.children,'PASS');
+ assert.equal(w.files.size,0);assert.equal(w.secure.size,0);assert.equal(w.calls.length,0);w.unmount();
+});
 await check('all package, metadata and payload bytes are authenticated ciphertext, not plaintext private data',async()=>{const w=world();await w.login();await w.download();assert.ok(w.files.size>=2);for(const raw of w.files.values()){const envelope=JSON.parse(raw);assert.equal(envelope.algorithm,'AES-256-GCM');assert.equal(typeof envelope.ciphertext,'string');assert.equal(raw.includes('Synthetic private briefing'),false);assert.equal(raw.includes('tripId'),false)}assert.equal(JSON.parse(w.secure.get('hydroland.offline.key.v3')).key.length,64)});
 await check('missing native crypto or SecureStore fails before any private download request',async()=>{for(const boundary of ['aes','secure']){const w=world();await w.login();if(boundary==='aes')w.crypto.aesEncryptAsync=undefined;else w.secureStore.isAvailableAsync=async()=>false;await assert.rejects(()=>w.download(),error=>error.code==='OFFLINE_ENCRYPTION_UNAVAILABLE');assert.equal(w.calls.filter(call=>call.route.includes('/mobile-offline/')).length,0);assert.equal(w.files.size,0)}});
 await check('SecureStore write failure has no plaintext fallback and cannot fetch protected content',async()=>{const w=world();await w.login();w.setWriteHook(async(key)=>{if(key==='hydroland.offline.key.v3')throw Error('synthetic locked keychain')});await assert.rejects(()=>w.download(),error=>error.code==='OFFLINE_ENCRYPTION_UNAVAILABLE');assert.equal(w.files.size,0);assert.equal(w.calls.filter(call=>call.route.includes('/mobile-offline/')).length,0)});

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import {createHmac,randomUUID,randomBytes} from 'node:crypto';
 import {createRequire} from 'node:module';
-import {PrismaClient} from '@prisma/client';
+import {PrismaClient,Prisma} from '@prisma/client';
+import {isolatedProviderFixture} from './provider-read-test-support.mjs';
 import {readFile,writeFile,mkdir} from 'node:fs/promises';
 
 const base=process.env.CONTRACT_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1';
@@ -12,7 +13,7 @@ assert(process.env.JWT_SECRET,'JWT_SECRET required');
 const db=new PrismaClient(),tag=randomUUID(),require=createRequire(import.meta.url);
 const {CONTRACT_FIELDS,contractValues}=require('../dist/document-forms/cooperation-contract.domain.js');
 const platformKey='PLATFORM_STAFFING_ORGANIZATION:v1';
-let platformSettingCreated=false,checks=0;
+let platformSettingCreated=false,previousPlatformSetting=null,checks=0;
 const equal=(actual,expected,message)=>{assert.deepEqual(actual,expected,message);checks++};
 const fixture=async(label,role)=>{const person=await db.person.create({data:{firstName:label,lastName:'ContractFixture'}});const account=await db.account.create({data:{personId:person.id,email:`contract-${label}-${tag}@example.invalid`,passwordHash:'isolated-fixture',status:'ACTIVE',emailVerifiedAt:new Date()}});if(role)await db.roleAssignment.create({data:{accountId:account.id,role,status:'ACTIVE'}});const session=await db.session.create({data:{accountId:account.id,tokenHash:randomBytes(32).toString('hex'),expiresAt:new Date(Date.now()+3600000)}});const enc=x=>Buffer.from(JSON.stringify(x)).toString('base64url'),now=Math.floor(Date.now()/1000),body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:account.id,sid:session.id,iat:now,exp:now+1800})}`;return {...account,token:body+'.'+createHmac('sha256',process.env.JWT_SECRET).update(body).digest('base64url'),name:label+' ContractFixture'};};
 const call=async(actor,path,method='GET',body)=>{const response=await fetch(base+path,{method,headers:{'Content-Type':'application/json',...(actor?{authorization:'Bearer '+actor.token}:{})},...(body?{body:JSON.stringify(body)}:{})});return {status:response.status,body:await response.json().catch(()=>null)}};
@@ -22,11 +23,18 @@ const centerStamp={mimeType:'image/png',base64:(await require('sharp')(Buffer.fr
 const sign=(a,d)=>call(a,`/contracts/cooperation/${d.id}/sign`,'POST',{...expected(d),signatureName:a.name,consent:true,...(a.id===d.participants.centerAccountId?{centerSeal:centerStamp,centerSealConsent:true}:{})});
 const fresh=async(a,id)=>{const r=await call(a,'/contracts/cooperation/'+id);equal(r.status,200);return r.body};
 try{
-  equal(await db.operationalSetting.count({where:{key:platformKey}}),0,'Contract test requires an unconfigured isolated platform');
+  previousPlatformSetting=await db.operationalSetting.findUnique({where:{key:platformKey}});
+  // Replacing a preconfigured platform requires the stronger disposable D03
+  // database/confirmation guards; CI plus a loopback address is insufficient.
+  if(previousPlatformSetting)isolatedProviderFixture();
   const owner=await fixture('Owner','ADMIN'),center=await fixture('Center','DIVE_CENTER'),professional=await fixture('Professional','INSTRUCTOR'),outsider=await fixture('Outsider','INSTRUCTOR'),otherAdmin=await fixture('OtherAdmin','ADMIN');
   await db.account.update({where:{id:professional.id},data:{email:'diver@example.invalid'}});professional.email='diver@example.invalid';
   const platform=await db.organization.create({data:{displayName:'Contract test internal platform',kind:'HYDROLAND_INTERNAL_PLATFORM',status:'ACTIVE',ownerId:owner.id}});
-  await db.operationalSetting.create({data:{key:platformKey,value:{version:1,organizationId:platform.id}}});platformSettingCreated=true;
+  const platformValue={version:1,organizationId:platform.id};
+  if(previousPlatformSetting)await db.operationalSetting.update({where:{key:platformKey},data:{value:platformValue}});
+  else await db.operationalSetting.create({data:{key:platformKey,value:platformValue}});
+  platformSettingCreated=true;
+  equal((await db.operationalSetting.findUniqueOrThrow({where:{key:platformKey}})).value,platformValue,'Cooperation fixtures use only their own canonical organization');
   const legal=await fixture('LegalReviewer','STAFF');
   const legalUnit=await db.orgUnit.create({data:{organizationId:platform.id,code:'LEGAL_CONTRACTS_INSURANCE',nameAr:'القانونية',type:'DEPARTMENT'}});
   await db.organizationMember.create({data:{organizationId:platform.id,accountId:legal.id,role:'STAFF',status:'ACTIVE'}});
@@ -179,8 +187,13 @@ try{
   equal((await call(center,`/contracts/cooperation/${rejected.body.id}/sync`,'POST',expected(reject.body))).status,409);
   equal((await call(owner,`/contracts/cooperation/${rejected.body.id}/decision`,'POST',{...expected(reject.body),...reason,action:'APPROVE'})).status,409);
   equal(await sideEffects(),before,'Contract approval does not create employments, roles or organization memberships');
-  console.log(`Cooperation contract HTTP/PostgreSQL: ${checks} checks passed`);
 }finally{
-  if(platformSettingCreated)await db.operationalSetting.delete({where:{key:platformKey}});
-  await db.$disconnect();
+  try{
+    if(platformSettingCreated){
+      if(previousPlatformSetting)await db.operationalSetting.update({where:{key:platformKey},data:{value:previousPlatformSetting.value===null?Prisma.JsonNull:previousPlatformSetting.value,updatedAt:previousPlatformSetting.updatedAt}});
+      else await db.operationalSetting.delete({where:{key:platformKey}});
+      equal(await db.operationalSetting.findUnique({where:{key:platformKey}}),previousPlatformSetting,'Cooperation fixtures restore the exact prior platform setting');
+    }
+  }finally{await db.$disconnect();}
 }
+console.log(`Cooperation contract HTTP/PostgreSQL: ${checks} checks passed`);

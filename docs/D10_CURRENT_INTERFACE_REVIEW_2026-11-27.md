@@ -23,16 +23,19 @@ control placement and non-collapsing control width. Long Arabic titles and an
 unbroken reference string exercise wrapping. Each scenario saves both the full
 page and the community section, for 16 screenshots.
 
-Two observed defects were corrected and retested:
+Three observed defects were corrected and retested:
 
 | Defect | Smallest implemented correction | Regression evidence |
 | --- | --- | --- |
 | Membership card intrinsic width expanded a 320-pixel page to 341 pixels. | Allow card/grid children to shrink, wrap flex rows and long content, and use a zero-minimum grid track. No page-level overflow hiding was introduced. | All eight current community viewport/locale/policy combinations assert the page and visible community controls stay within the viewport. |
 | A post's review status ran directly into its title. | Display the status on its own line with a small logical block margin. | The active-policy cases assert that the status starts below the rendered title. |
+| English mobile navigation labels overlapped at 320 pixels; the Community label measured 71 pixels inside a 61.59-pixel target. | Scope the diver desktop navigation rule to its sidebar, and preserve readable mobile labels with compact horizontal padding and 52-pixel target height. | Each rendered label line stays at least two pixels inside its own target; every mobile target is at least 44 × 44 pixels and its center is directly clickable. |
 
-The full community suite passed **12/12** locally: four existing functional and
-authorization regressions plus the eight current responsive cases. The current
-web static validation also passed. The authoritative published-source result is
+The community suite contains **12 cases**: four existing functional and
+authorization regressions plus the eight current responsive cases. The full suite
+passed locally before the navigation correction; all **8/8** responsive cases
+were then rerun successfully with the label and touch-target checks. The integrated
+web static suite also passed. The authoritative published-source result is
 the matching PR/main `Web validation` run, including its source-bound full
 browser receipt. Focused repetitions are reported separately, not added as unique
 test coverage. The workflow retains current images under

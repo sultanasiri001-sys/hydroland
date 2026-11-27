@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import {createHmac,randomUUID,randomBytes} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {PrismaClient,Prisma} from '@prisma/client';
+import {isolatedProviderFixture} from './provider-read-test-support.mjs';
 const base=process.env.CONTRACT_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1';
 const loopback=url=>['localhost','127.0.0.1','[::1]'].includes(new URL(url).hostname);
 assert(process.env.CI==='true'||process.env.NODE_ENV==='test');
 assert(process.env.DATABASE_URL&&loopback(process.env.DATABASE_URL)&&loopback(base),'Fixtures require isolated loopback services');
 assert(process.env.JWT_SECRET);
 const db=new PrismaClient(),tag=randomUUID(),key='PLATFORM_STAFFING_ORGANIZATION:v1',require=createRequire(import.meta.url);
-let configured=false,checks=0;
+let configured=false,previousPlatformSetting=null,checks=0;
 const eq=(a,b,m)=>{assert.deepEqual(a,b,m);checks++;};
 async function account(label,role){
   const person=await db.person.create({data:{firstName:label,lastName:'LibraryFixture'}});
@@ -23,10 +24,17 @@ const expected=v=>({expectedVersion:v.version,expectedContentHash:v.contentHash}
 const decision=(a,v,action,extra={})=>call(a,`/contracts/library/${v.id}/decision`,'POST',{...expected(v),action,reason:'قرار مراجعة معزول لاستخدام القالب',reference:'FIXTURE-REVIEW-2026',reviewed:true,...extra});
 const change=(v,extra={})=>({...expected(v),titleAr:v.titleAr,titleEn:v.titleEn,clauses:v.content.clauses,usageNotes:v.content.usageNotes,reason:'تحديث بنود إصدار القالب للاختبار',...extra});
 try{
-  eq(await db.operationalSetting.count({where:{key}}),0);
+  previousPlatformSetting=await db.operationalSetting.findUnique({where:{key}});
+  // Replacing a preconfigured platform requires the stronger disposable D03
+  // database/confirmation guards; CI plus a loopback address is insufficient.
+  if(previousPlatformSetting)isolatedProviderFixture();
   const owner=await account('Owner','ADMIN'),legal=await account('Legal','STAFF'),hr=await account('HR','STAFF'),admin=await account('Admin','ADMIN'),center=await account('Center','DIVE_CENTER'),pro=await account('Professional','INSTRUCTOR'),outsider=await account('Other','DIVER');
   const platform=await db.organization.create({data:{displayName:'Isolated contract library',kind:'HYDROLAND_INTERNAL_PLATFORM',status:'ACTIVE',ownerId:owner.id}});
-  await db.operationalSetting.create({data:{key,value:{version:1,organizationId:platform.id}}});configured=true;
+  const platformValue={version:1,organizationId:platform.id};
+  if(previousPlatformSetting)await db.operationalSetting.update({where:{key},data:{value:platformValue}});
+  else await db.operationalSetting.create({data:{key,value:platformValue}});
+  configured=true;
+  eq((await db.operationalSetting.findUniqueOrThrow({where:{key}})).value,platformValue,'Contract library fixtures use only their own canonical organization');
   for(const a of [owner,legal,hr,admin])await db.organizationMember.create({data:{organizationId:platform.id,accountId:a.id,role:a===owner?'OWNER':a===admin?'ADMIN':'STAFF',status:'ACTIVE'}});
   const legalUnit=await db.orgUnit.create({data:{organizationId:platform.id,code:'LEGAL_CONTRACTS_INSURANCE',nameAr:'القانونية',type:'DEPARTMENT'}}),hrUnit=await db.orgUnit.create({data:{organizationId:platform.id,code:'HR',nameAr:'الموارد البشرية',type:'DEPARTMENT'}});
   for(const [a,u] of [[legal,legalUnit],[hr,hrUnit]])await db.employment.create({data:{organizationId:platform.id,accountId:a.id,orgUnitId:u.id,workerClass:'EMPLOYEE',status:'ACTIVE'}});
@@ -277,5 +285,13 @@ try{
   await db.organization.update({where:{id:platform.id},data:{ownerId:admin.id,updatedAt:new Date(Date.now()+1)}});eq((await call(admin,'/contracts/library/workspace')).body.ownerDepartmentResponsibility.active,false);
   await db.organization.update({where:{id:platform.id},data:{ownerId:owner.id,updatedAt:new Date(Date.now()+10)}});eq((await call(owner,'/contracts/library/workspace')).body.ownerDepartmentResponsibility.active,false,'Transferring ownership back does not revive an assignment');eq((await call(owner,path)).body.templates.map(t=>t.id),[independentlyPublished.id],'An independent publication remains available after administrative assignment revocation');
   eq(await db.auditEvent.count({where:{action:'OWNER_DEPARTMENT_RESPONSIBILITY_ASSIGNED',resourceId:platform.id}}),2);eq(await db.auditEvent.count({where:{action:'CONTRACT_TEMPLATE_APPROVE_FOR_DRAFTS'}}),2);
-  console.log(`Contract library HTTP/PostgreSQL: ${checks} checks passed`);
-}finally{if(configured)await db.operationalSetting.delete({where:{key}});await db.$disconnect();}
+}finally{
+  try{
+    if(configured){
+      if(previousPlatformSetting)await db.operationalSetting.update({where:{key},data:{value:previousPlatformSetting.value===null?Prisma.JsonNull:previousPlatformSetting.value,updatedAt:previousPlatformSetting.updatedAt}});
+      else await db.operationalSetting.delete({where:{key}});
+      eq(await db.operationalSetting.findUnique({where:{key}}),previousPlatformSetting,'Contract library fixtures restore the exact prior platform setting');
+    }
+  }finally{await db.$disconnect();}
+}
+console.log(`Contract library HTTP/PostgreSQL: ${checks} checks passed`);

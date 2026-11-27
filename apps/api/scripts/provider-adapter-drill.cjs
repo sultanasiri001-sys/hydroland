@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const {randomUUID} = require('node:crypto');
+const {Prisma} = require('@prisma/client');
 const {AuditService} = require('../dist/audit/audit.service');
 const {IntegrationService} = require('../dist/integrations/integration.service');
 const {CredentialObjectStorageService} = require('../dist/credentials/credential-object-storage.service');
@@ -24,9 +25,12 @@ exports.runProviderDrill = async function (db) {
     HYDROLAND_AI_DAILY_BUDGET_MICRO_USD:'100000',
   };
   for (const id of ids) settings['HYDROLAND_INTEGRATION_' + id + '_STATUS'] = 'SANDBOX';
-  const prior = Object.fromEntries(Object.keys(settings).map(key => [key, process.env[key]]));
+  const sourcePin = 'HYDROLAND_D03_WEATHER_MARINE_DOCUMENT';
+  const prior = Object.fromEntries([...Object.keys(settings),sourcePin].map(key => [key, process.env[key]]));
   Object.assign(process.env, settings);
   const originalFetch = global.fetch;
+  const platformKey = 'PLATFORM_STAFFING_ORGANIZATION:v1';
+  let previousPlatformSetting = null, platformFixtureStarted = false;
   const pay = new MoyasarPaymentProviderService(integration);
   const actions = [
     () => new CredentialObjectStorageService(integration).exists('credentials/test/item.pdf'),
@@ -45,6 +49,14 @@ exports.runProviderDrill = async function (db) {
   const successBodies = [null, {hours:[{time:date.toISOString(),windSpeed:{sg:2}}]}, {id:'fixture-message'},
     {id:invoiceId,status:'initiated',amount:100,currency:'SAR',url:'https://checkout.example.invalid'}, {id:'fixture-model',object:'model'}];
   try {
+    // The real weather adapter requires pinned native source evidence before
+    // transport. These synthetic rows stay in the caller's disposable schema.
+    const {isolatedProviderFixture,providerFixturePlatform,providerFixture} = await import('./provider-read-test-support.mjs');
+    isolatedProviderFixture();
+    previousPlatformSetting = await db.operationalSetting.findUnique({where:{key:platformKey}});
+    platformFixtureStarted = true;
+    const platform = await providerFixturePlatform(db);
+    await providerFixture(db,platform,'WEATHER_MARINE');
     for (const [index,id] of ids.entries()) {
       let calls = 0;
       global.fetch = async () => {calls++;return new Response(null,{status:503});};
@@ -74,8 +86,16 @@ exports.runProviderDrill = async function (db) {
     }
   } finally {
     global.fetch = originalFetch;
-    for (const [key,value] of Object.entries(prior)) {
-      if (value === undefined) delete process.env[key]; else process.env[key]=value;
+    try {
+      if (platformFixtureStarted) {
+        if (previousPlatformSetting) await db.operationalSetting.update({where:{key:platformKey},data:{value:previousPlatformSetting.value===null?Prisma.JsonNull:previousPlatformSetting.value,updatedAt:previousPlatformSetting.updatedAt}});
+        else await db.operationalSetting.deleteMany({where:{key:platformKey}});
+        assert.deepEqual(await db.operationalSetting.findUnique({where:{key:platformKey}}),previousPlatformSetting,'Provider drill restores the prior platform setting before escalation checks');
+      }
+    } finally {
+      for (const [key,value] of Object.entries(prior)) {
+        if (value === undefined) delete process.env[key]; else process.env[key]=value;
+      }
     }
   }
 };

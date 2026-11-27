@@ -3,9 +3,10 @@ import {AESEncryptionKey,AESKeySize,AESSealedData,aesEncryptAsync,aesDecryptAsyn
 import {assertSessionScope,isSessionScopeCurrent,SessionChangedError,type SessionScope} from './session';
 import {OfflineAccessError} from './offline-errors';
 import {clearOfflineLeases} from './offline-access';
+import {decodeOfflineCiphertext,MAX_OFFLINE_BYTES} from './offline-ciphertext';
+export {MAX_OFFLINE_BYTES} from './offline-ciphertext';
 const KEY='hydroland.offline.key.v3';
 const OPTIONS={keychainAccessible:SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY};
-export const MAX_OFFLINE_BYTES=8*1024*1024;
 let keyWrites:Promise<unknown>=Promise.resolve(),epoch=0;
 function serialize<T>(work:()=>Promise<T>){const result=keyWrites.then(work);keyWrites=result.catch(()=>{});return result}
 const unavailable=()=>new OfflineAccessError('OFFLINE_ENCRYPTION_UNAVAILABLE','Secure offline storage is unavailable.');
@@ -52,7 +53,7 @@ export async function openOfflineBytes(envelope:string,scope:SessionScope,purpos
  try{
   if(envelope.length>MAX_OFFLINE_BYTES*2+1024)throw corrupt();const parsed=JSON.parse(envelope);
   if(parsed?.version!==3||parsed.algorithm!=='AES-256-GCM'||typeof parsed.ciphertext!=='string'||!/^[A-Za-z0-9+/]+={0,2}$/.test(parsed.ciphertext))throw corrupt();
-  const bytes=await aesDecryptAsync(AESSealedData.fromCombined(parsed.ciphertext,{ivLength:12,tagLength:16}),key,{additionalData:aad(scope,purpose)});check(scope,expected);
+  const bytes=await aesDecryptAsync(AESSealedData.fromCombined(decodeOfflineCiphertext(parsed.ciphertext),{ivLength:12,tagLength:16}),key,{additionalData:aad(scope,purpose)});check(scope,expected);
   if(bytes.length>MAX_OFFLINE_BYTES)throw corrupt();return bytes;
  }catch(error){invalidate(scope);if(error instanceof SessionChangedError||error instanceof OfflineAccessError)throw error;throw corrupt()}
 }

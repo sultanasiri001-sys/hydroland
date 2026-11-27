@@ -89,6 +89,27 @@ for(const width of [320,1024])for(const language of ['ar','en'])for(const active
    await expect(root.locator('[data-community-action=withdraw]')).toBeVisible();
    await expect(root.locator('[data-community-action=cancel-volunteer]')).toBeVisible();
   }
+  if(width===320){
+   // Visible labels must stay inside their own touch target, not merely inside
+   // the viewport. A desktop workspace rule previously crowded adjacent labels.
+   const navigationLabels=await page.locator('.mobile-nav .nav-item').evaluateAll(items=>items.map(item=>{
+    const bounds=item.getBoundingClientRect(),label=item.querySelector(':scope > span:last-child');
+    const range=document.createRange();range.selectNodeContents(label);
+    return {label:label.textContent,left:bounds.left,right:bounds.right,width:bounds.width,height:bounds.height,
+     targetAtCenter:document.elementFromPoint(bounds.left+bounds.width/2,bounds.top+bounds.height/2)?.closest('.nav-item')===item,
+     lines:[...range.getClientRects()].map(rect=>({left:rect.left,right:rect.right}))};
+   }));
+   expect(navigationLabels).toHaveLength(5);
+   for(const item of navigationLabels){
+    expect(item.width,JSON.stringify(item)).toBeGreaterThanOrEqual(44);
+    expect(item.height,JSON.stringify(item)).toBeGreaterThanOrEqual(44);
+    expect(item.targetAtCenter,JSON.stringify(item)).toBe(true);
+    for(const line of item.lines){
+     expect(line.left,JSON.stringify(item)).toBeGreaterThanOrEqual(item.left+2);
+     expect(line.right,JSON.stringify(item)).toBeLessThanOrEqual(item.right-2);
+    }
+   }
+  }
   await page.evaluate(()=>window.scrollTo(0,0));
   await page.screenshot({path:testInfo.outputPath('community-'+language+'-'+width+'-'+(active?'active':'suspended')+'.png'),fullPage:true});
   await root.screenshot({path:testInfo.outputPath('community-section-'+language+'-'+width+'-'+(active?'active':'suspended')+'.png')});
