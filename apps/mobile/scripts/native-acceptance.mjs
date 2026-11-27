@@ -6,6 +6,7 @@ import { createHash, X509Certificate } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { verifyAcceptanceCertificate } from './native-signature.mjs';
+import { IOS_QA_BUNDLE_ID, IOS_QA_ENTITLEMENTS, verifyIosQaSignature, verifyIosEmbeddedSignature } from './native-ios-signature.mjs';
 
 const mobile = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const root = path.resolve(mobile, '../..');
@@ -18,12 +19,14 @@ assert.equal(process.env.HYDROLAND_BUILD_PROFILE, 'acceptance', 'This runner is 
 fs.mkdirSync(path.join(artifacts, platform), { recursive: true });
 
 function run(command, args, options = {}) {
+  const { capture = false, captureStderr = false, ...processOptions } = options;
   const result = spawnSync(command, args, {
     cwd: mobile, env: process.env, encoding: 'utf8',
-    stdio: options.capture ? 'pipe' : 'inherit', ...options,
+    stdio: capture ? 'pipe' : 'inherit', ...processOptions,
   });
   if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(command + ' failed with ' + result.status + (options.capture ? ': ' + result.stderr : ''));
+  if (result.status !== 0) throw new Error(command + ' failed with ' + result.status + (capture ? ': ' + result.stderr : ''));
+  if (captureStderr) return [result.stdout, result.stderr].filter(Boolean).join('\n').trim();
   return result.stdout?.trim() || '';
 }
 const git = (...args) => run('git', args, { cwd: root, capture: true });
@@ -32,6 +35,29 @@ const write = (name, value) => fs.writeFileSync(path.join(artifacts, platform, n
 const read = name => JSON.parse(fs.readFileSync(path.join(artifacts, platform, name), 'utf8'));
 const source = () => ({ commit: git('rev-parse', 'HEAD'), tree: git('rev-parse', 'HEAD^{tree}'), event: process.env.GITHUB_EVENT_NAME || 'local', ref: process.env.GITHUB_REF || null });
 const outputFile = filename => ({ path: path.relative(mobile, filename), size: fs.statSync(filename).size, sha256: sha256(filename) });
+
+function inspectIosQaSignature(app, prefix, embedded = false) {
+  assert.equal(process.platform, 'darwin', 'Actual codesign verification requires macOS.');
+  const plist = path.join(app, 'Info.plist');
+  const bundleIdentifier = run('/usr/libexec/PlistBuddy', ['-c', 'Print:CFBundleIdentifier', plist], { capture: true });
+  if (!embedded) {
+    assert.equal(bundleIdentifier, IOS_QA_BUNDLE_ID);
+    assert.equal(run('/usr/libexec/PlistBuddy', ['-c', 'Print:DTPlatformName', plist], { capture: true }), 'iphonesimulator');
+  }
+  assert(!fs.existsSync(path.join(app, 'embedded.mobileprovision')), 'A QA simulator must not carry device provisioning material.');
+  const verification = run('/usr/bin/codesign', ['--verify', '--deep', '--strict', '--verbose=2', app], { capture: true, captureStderr: true });
+  const metadata = run('/usr/bin/codesign', ['--display', '--verbose=4', app], { capture: true, captureStderr: true });
+  const entitlementXml = run('/usr/bin/codesign', ['--display', '--entitlements', '-', '--xml', app], { capture: true });
+  const entitlementFile = path.join(artifacts, platform, prefix + '-entitlements.xml');
+  const metadataFile = path.join(artifacts, platform, prefix + '-signature.txt');
+  const verificationFile = path.join(artifacts, platform, prefix + '-signature-verification.txt');
+  fs.writeFileSync(entitlementFile, entitlementXml + '\n');
+  const entitlements = entitlementXml ? JSON.parse(run('/usr/bin/plutil', ['-convert', 'json', '-o', '-', entitlementFile], { capture: true })) : {};
+  const verified = embedded ? verifyIosEmbeddedSignature(metadata, entitlements, verification, bundleIdentifier) : verifyIosQaSignature(metadata, entitlements, verification);
+  fs.writeFileSync(metadataFile, metadata + '\n');
+  fs.writeFileSync(verificationFile, verification + '\n');
+  return { ...verified, metadata: outputFile(metadataFile), verificationLog: outputFile(verificationFile), entitlementsFile: outputFile(entitlementFile) };
+}
 
 if (operation === 'prepare') {
   const fixture = path.join(mobile, 'scripts/native-capabilities.tsx');
@@ -96,9 +122,31 @@ if (operation === 'prepare') {
   assert.equal(appId, 'com.hydroland.acceptance');
   const executable = run('/usr/libexec/PlistBuddy', ['-c', 'Print:CFBundleExecutable', plist], { capture: true });
   const architectures = run('lipo', ['-archs', path.join(app, executable)], { capture: true });
+  assert.equal(run('/usr/libexec/PlistBuddy', ['-c', 'Print:DTPlatformName', plist], { capture: true }), 'iphonesimulator');
+  assert(!fs.existsSync(path.join(app, 'embedded.mobileprovision')), 'Only an isolated simulator bundle may be signed here.');
+  const frameworks = path.join(app, 'Frameworks');
+  const frameworkEntries = fs.readdirSync(frameworks, { withFileTypes: true });
+  assert(frameworkEntries.length > 0 && frameworkEntries.every(entry => entry.isDirectory() && entry.name.endsWith('.framework')), 'Review unexpected embedded code before signing this QA bundle.');
+  const iosEmbeddedSignatures = frameworkEntries.sort((a, b) => a.name.localeCompare(b.name)).map((entry, index) => {
+    const framework = path.join(frameworks, entry.name);
+    // Hermes has a linker-only ad-hoc CodeDirectory after unsigned Xcode builds.
+    // Add its missing framework envelope without any application entitlements.
+    // Already signed frameworks must verify as-is; no fallback hides failures.
+    const envelopeAdded = !fs.existsSync(path.join(framework, '_CodeSignature', 'CodeResources'));
+    if (envelopeAdded) run('/usr/bin/codesign', ['--force', '--sign', '-', '--timestamp=none', framework]);
+    return {name: entry.name, envelopeAdded, ...inspectIosQaSignature(framework, 'ios-embedded-' + index, true)};
+  });
+  const requestedEntitlements = path.join(artifacts, platform, 'ios-qa-entitlements.plist');
+  fs.writeFileSync(requestedEntitlements, JSON.stringify(IOS_QA_ENTITLEMENTS));
+  run('/usr/bin/plutil', ['-convert', 'xml1', requestedEntitlements]);
+  // Sign only the QA app envelope. Its embedded frameworks retain their own
+  // signatures and receive no app/keychain entitlements; --deep is verify-only.
+  run('/usr/bin/codesign', ['--force', '--sign', '-', '--timestamp=none', '--generate-entitlement-der', '--entitlements', requestedEntitlements, app]);
+  const iosSignature = inspectIosQaSignature(app, 'ios-build');
   const archive = path.join(artifacts, platform, 'hydroland-ios-simulator.app.tar.gz');
   run('tar', ['-czf', archive, '-C', products, apps[0]]);
-  write('build.json', { ...read('source.json'), built: true, app: path.relative(mobile, app), architectures, toolchain, artifacts: [outputFile(archive)], signing: 'unsigned iOS simulator application; no device profile or App Store signature' });
+  write('build.json', { ...read('source.json'), built: true, app: path.relative(mobile, app), architectures, toolchain, iosSignature, iosEmbeddedSignatures,
+    artifacts: [outputFile(archive)], signing: 'ad-hoc QA simulator signature with an isolated local keychain group; no Apple developer team, device profile or App Store signature' });
 } else if (operation === 'install' && platform === 'android') {
   run('adb', ['install', '-r', path.join(mobile, 'android/app/build/outputs/apk/release/app-release.apk')]);
   const apkPath = run('adb', ['shell', 'pm', 'path', 'com.hydroland.acceptance'], { capture: true });
@@ -111,6 +159,9 @@ if (operation === 'prepare') {
     installedPackage: apkPath,
   });
 } else if (operation === 'install' && platform === 'ios') {
+  const build = read('build.json');
+  assert.equal(build.commit, source().commit); assert.equal(build.tree, source().tree);
+  assert.equal(build.iosSignature?.verified, true, 'The signed QA build receipt is required before installation.');
   const all = JSON.parse(run('xcrun', ['simctl', 'list', 'devices', 'available', '--json'], { capture: true }));
   const candidates = Object.entries(all.devices).flatMap(([runtime, devices]) => devices.map(device => ({ ...device, runtime })))
     .filter(device => device.isAvailable && device.runtime.includes('iOS') && device.name.startsWith('iPhone'));
@@ -119,11 +170,13 @@ if (operation === 'prepare') {
   if (device.state !== 'Booted') run('xcrun', ['simctl', 'boot', device.udid]);
   run('xcrun', ['simctl', 'bootstatus', device.udid, '-b']);
   run('xcrun', ['simctl', 'ui', device.udid, 'appearance', 'dark']);
-  run('xcrun', ['simctl', 'install', device.udid, path.join(mobile, read('build.json').app)]);
+  run('xcrun', ['simctl', 'install', device.udid, path.join(mobile, build.app)]);
   const container = run('xcrun', ['simctl', 'get_app_container', device.udid, 'com.hydroland.acceptance', 'app'], { capture: true });
   assert(container.endsWith('.app'), 'Simulator installation was not confirmed.');
+  const iosSignature = inspectIosQaSignature(container, 'ios-installed');
+  assert.equal(iosSignature.codeDirectoryHash, build.iosSignature.codeDirectoryHash, 'Installed signed code must match the archived QA build.');
   if (process.env.GITHUB_ENV) fs.appendFileSync(process.env.GITHUB_ENV, 'HYDROLAND_SIMULATOR_ID=' + device.udid + '\n');
-  write('installation.json', { ...source(), platform, installed: true, physicalDevice: false, name: device.name, runtime: device.runtime, udid: device.udid, container });
+  write('installation.json', { ...source(), platform, installed: true, physicalDevice: false, name: device.name, runtime: device.runtime, udid: device.udid, container, iosSignature });
 } else if (operation === 'record-tests') {
   const { parseStringPromise } = await import('xml2js');
   const result = await parseStringPromise(fs.readFileSync(path.join(artifacts, platform, 'junit.xml'), 'utf8'));

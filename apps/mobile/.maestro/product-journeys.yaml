@@ -31,6 +31,20 @@ name: Seven native product journeys in Arabic and English using isolated synthet
 - inputText: qa-mobile@example.test
 # Dismiss the email keyboard before targeting the lower password field. On the
 # 320px Android device it otherwise covers that field and receives the tap.
+# On iOS the default center-screen swipes land inside this email field. Tap the
+# non-interactive title, then retain hideKeyboard's native dismissal check.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: '^تسجيل الدخول$'
+          direction: UP
+          visibilityPercentage: 100
+          timeout: 20000
+      - tapOn:
+          text: '^تسجيل الدخول$'
 - hideKeyboard
 - assertVisible:
     id: login-email
@@ -51,6 +65,18 @@ name: Seven native product journeys in Arabic and English using isolated synthet
           id: login-password
           focused: true
 - inputText: NativeFixtureOnly!123
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: '^تسجيل الدخول$'
+          direction: UP
+          visibilityPercentage: 100
+          timeout: 20000
+      - tapOn:
+          text: '^تسجيل الدخول$'
 - hideKeyboard
 - scrollUntilVisible:
     element:

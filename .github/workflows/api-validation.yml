@@ -508,7 +508,7 @@ jobs:
             psql postgresql://hydroland:hydroland@localhost:5433/hydroland -v ON_ERROR_STOP=1 -c "ALTER DATABASE \"$OFFLINE_TEST_DATABASE\" SET timezone='Asia/Riyadh'"
             export DATABASE_URL="postgresql://hydroland:hydroland@localhost:5433/$OFFLINE_TEST_DATABASE"
             npm --workspace @hydroland/api exec -- prisma db push --skip-generate
-            npm --workspace @hydroland/api exec -- prisma db execute --file prisma/migrations/20261127150000_mobile_offline_sync/migration.sql
+            npm --workspace @hydroland/api exec -- prisma db execute --schema prisma/schema.prisma --file prisma/migrations/20261127150000_mobile_offline_sync/migration.sql
             if [ "$layout" = legacy ]; then
               node apps/api/scripts/mobile-offline-http-db-checks.cjs --legacy-session-timestamptz
             else

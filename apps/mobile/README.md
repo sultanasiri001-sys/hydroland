@@ -38,8 +38,19 @@ project and refuses to accept a modified package manifest or lockfile.
 Android produces an x86_64 APK and AAB for virtual-device testing. The runner
 independently checks the package identity, ABI and generated Android debug
 certificate. The AAB is a compilation artifact, not a store-ready upload.
-iOS produces an actual unsigned simulator `.app` archive; this does not imply an
-iPhone provisioning profile, an IPA or App Store signing.
+iOS produces an actual simulator `.app` archive. Before archiving, the runner
+applies an ad-hoc signature to the isolated QA application so that native
+SecureStore can use its own Keychain group. The only entitlements are
+`application-identifier` and `keychain-access-groups`, both bound to
+`HYDROQA001.com.hydroland.acceptance`. `HYDROQA001` is a synthetic local test prefix,
+not an Apple developer team. Embedded frameworks receive no application
+entitlements. A framework left with only a linker signature, such as Hermes,
+gets its own ad-hoc resource envelope; existing envelopes must verify unchanged.
+The runner verifies the app and nested signatures, reads back the actual
+entitlements and ad-hoc metadata, and repeats verification on the installed
+simulator bundle. The installed CodeDirectory hash must match the built app.
+These receipts and their hashes are retained with the archive hash. No device
+provisioning profile, owner signing key, IPA or App Store signature is used.
 
 Maestro is downloaded from its official release with a pinned SHA-256 digest.
 The workflow installs the application and runs two independent Maestro flows.
