@@ -10,6 +10,8 @@ Keep Q01 for the owner's final interface acceptance. Local synthetic acceptance 
 
 Use the existing private object-storage connection. No additional bucket, provider account, public object access or public endpoint is required. The API needs `ListObjectsV2`, `GetObject` and `PutObject` on its privacy namespace. Retain the existing production requirements: HTTPS, private access, encryption at rest and versioning, as checked by `credential-object-storage.config.ts`.
 
+The journal also respects `HYDROLAND_INTEGRATION_OBJECT_STORAGE_STATUS` through the existing integration service. A disabled or otherwise non-operational provider prevents every journal HTTP request, including the maintenance CLI. Each network operation has an eight-second deadline that includes the complete response body. Transport success/failure produces the same sanitized A06 observations as the existing storage adapter. An expected missing object is a successful provider response; invalid ciphertext or content-address conflicts are integrity failures, not provider-outage signals.
+
 | Variable | Initial release value and purpose |
 | --- | --- |
 | `HYDROLAND_PRIVACY_RECOVERY_REQUIRED` | `true`; mandatory before any new erasure or private-message purge. Preserve it across restores. |
@@ -79,7 +81,7 @@ Keep the API and workers offline. Restore the original journal namespace and enc
 node apps/api/scripts/privacy-erasure-recovery.mjs --verify
 ```
 
-Verification is read-only. If a committed external receipt identifies an unchanged native record restored by the backup, use the explicit offline repair mode:
+Verification does not change native source rows, erasure receipts or the baseline; ordinary sanitized provider-health observations may be recorded. If a committed external receipt identifies an unchanged native record restored by the backup, use the explicit offline repair mode:
 
 ```sh
 HYDROLAND_PRIVACY_RESTORE_CONFIRM=OFFLINE_RESTORE_REPLAY \

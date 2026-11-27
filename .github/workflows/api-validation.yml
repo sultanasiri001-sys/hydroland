@@ -175,15 +175,15 @@ jobs:
           name: a14-owner-onboarding-${{ github.event.pull_request.head.sha || github.sha }}
           path: ${{ runner.temp }}/a14-onboarding-pg*.json
           if-no-files-found: error
-      - name: A15 original source approval, erasure receipts, holds and restored database recovery
+      - name: A15 source approval, erasure receipts, holds and PostgreSQL 18 recovery
         env:
           CI: "true"
           NODE_ENV: test
           A15_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
           A15_EVIDENCE_FILE: ${{ runner.temp }}/a15-erasure-recovery.json
         run: |
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE a15_erasure_test'
-          export DATABASE_URL=postgresql://hydroland:hydroland@localhost:5432/a15_erasure_test
+          psql postgresql://hydroland:hydroland@localhost:5433/hydroland -v ON_ERROR_STOP=1 -c 'CREATE DATABASE a15_erasure_test'
+          export DATABASE_URL=postgresql://hydroland:hydroland@localhost:5433/a15_erasure_test
           npm --workspace @hydroland/api exec -- prisma db push --skip-generate
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
             -c 'DROP TABLE "PrivacyRecordHold", "PrivacyErasureOperation"' \

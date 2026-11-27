@@ -2,7 +2,7 @@
 
 ## Observed local outcome
 
-The final native acceptance run completed **14/14 groups, zero failures**, from `2026-11-27T22:13:52.328Z` to `2026-11-27T22:14:04.000Z` UTC. It ran the real Nest HTTP application against a new PostgreSQL 17.12 cluster, a loopback S3-compatible test gateway through the production AWS SDK adapter, and a separate database created by real `pg_dump`/`pg_restore`. It produced 17 encrypted journal objects. The API build also passed.
+The final native acceptance run completed **16/16 groups, zero failures**, from `2026-11-27T22:36:57.885Z` to `2026-11-27T22:37:21.179Z` UTC. It ran the real Nest HTTP application against a new PostgreSQL 17.12 cluster, a loopback S3-compatible test gateway through the production AWS SDK adapter, and a separate database created by real `pg_dump`/`pg_restore`. It produced 19 encrypted journal objects. The API build and correctness lint also passed.
 
 The machine-readable result is emitted by `apps/api/scripts/a15-erasure-http-recovery-e2e.mjs` to `A15_EVIDENCE_FILE`. CI retains it as `a15-erasure-recovery`. The local reviewed result was `/workspace/scratch/9b25dd62c988/a15-acceptance.json`; the run log was `/tmp/a15-test.log`.
 
@@ -10,6 +10,8 @@ This is synthetic technical evidence. No production data was deleted, no product
 
 ## What the native acceptance exercised
 
+- Disabling the existing object-storage integration prevents every journal HTTP request and preserves the native record; re-enabling it permits a consistent retry. Expected object-not-found responses remain successful provider observations.
+- A response with headers and a deliberately stalled body is interrupted by the eight-second deadline. A06 receives only sanitized provider state/category, while ciphertext corruption does not generate a provider-outage observation.
 - Native migration and rolling-deployment barrier: a legacy deletion followed by the old audit action is rejected and the deletion rolls back.
 - Authentication, owner-only blank-template preparation and idempotence; preparation creates no approvals or activation.
 - The original HTTP document cycle: owner draft and submission, explicit independent review assignment, staff review and approval, then owner source binding. Source hashes use the `sha256:` format produced by the Documents interface.

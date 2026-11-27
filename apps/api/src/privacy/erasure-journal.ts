@@ -2,6 +2,7 @@ import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import { inspectCredentialObjectStorage } from '../credentials/credential-object-storage.config';
+import { IntegrationService } from '../integrations/integration.service';
 
 export const erasureDigest = (value: unknown): string => createHash('sha256').update(canonical(value)).digest('hex');
 export function canonical(value: unknown): string {
@@ -22,7 +23,9 @@ const phasePattern = /^(intent|commit|abort|baseline)$/;
  * terminal record is an unresolved operation, never permission to replay it. */
 @Injectable()
 export class PrivateErasureJournal implements ErasureJournal {
+  constructor(private readonly integrations:IntegrationService){}
   private config() {
+    this.integrations.requireOperational('OBJECT_STORAGE',{allowSandbox:true});
     const storage = inspectCredentialObjectStorage();
     const namespace = process.env.HYDROLAND_PRIVACY_JOURNAL_NAMESPACE;
     const key = process.env.HYDROLAND_PRIVACY_JOURNAL_KEY;
@@ -32,6 +35,36 @@ export class PrivateErasureJournal implements ErasureJournal {
     return { key:Buffer.from(key,'hex'), prefix:'privacy-erasure/'+namespace+'/', bucket:cfg.bucket,
       client:new S3Client({region:cfg.region,endpoint:cfg.url.toString(),forcePathStyle:true,maxAttempts:1,requestChecksumCalculation:'WHEN_REQUIRED',
         credentials:{accessKeyId:cfg.accessKeyId,secretAccessKey:cfg.secretAccessKey}}) };
+  }
+  private async request<T>(operation:(signal:AbortSignal)=>Promise<T>,allowNotFound=false):Promise<T|null> {
+    // A configured endpoint does not override the existing provider kill switch.
+    this.integrations.requireOperational('OBJECT_STORAGE',{allowSandbox:true});
+    const controller=new AbortController();
+    let timer:NodeJS.Timeout|undefined;
+    const deadline=new Promise<never>((_resolve,reject)=>{
+      timer=setTimeout(()=>{controller.abort();reject(new Error('Privacy journal transport deadline.'));},8000);timer.unref();
+    });
+    try {
+      const response=await Promise.race([operation(controller.signal),deadline]);
+      await this.integrations.recordProviderSignal('OBJECT_STORAGE','SUCCESS');return response;
+    }catch(error){
+      if(allowNotFound&&(error as {$metadata?:{httpStatusCode?:number}})?.$metadata?.httpStatusCode===404){
+        await this.integrations.recordProviderSignal('OBJECT_STORAGE','SUCCESS');return null;
+      }
+      await this.integrations.recordProviderSignal('OBJECT_STORAGE','PROVIDER_FAILURE');
+      throw new ServiceUnavailableException('تعذر الوصول إلى سجل المحو الخارجي في المهلة المحددة.');
+    }finally{if(timer)clearTimeout(timer);}
+  }
+  private read(cfg:ReturnType<PrivateErasureJournal['config']>,objectKey:string,allowNotFound=false) {
+    return this.request(async signal=>{
+      const response=await cfg.client.send(new GetObjectCommand({Bucket:cfg.bucket,Key:objectKey}),{abortSignal:signal}),body=response.Body;
+      if(!body)throw new Error('Missing privacy journal response body.');
+      // SDK send resolves at the headers. Keep the same deadline through the
+      // complete body and destroy a stalled Node stream when it expires.
+      const abort=()=>{if('destroy' in body&&typeof body.destroy==='function')body.destroy(new Error('Privacy journal body deadline.'));};
+      signal.addEventListener('abort',abort,{once:true});
+      try{signal.throwIfAborted();return await body.transformToString();}finally{signal.removeEventListener('abort',abort);}
+    },allowNotFound);
   }
   private objectKey(prefix:string,id:string,phase:string,digest:string) {
     if (!identifier.test(id) || !phasePattern.test(phase)||!/^[a-f0-9]{64}$/.test(digest)) throw new Error('Invalid erasure journal reference.');
@@ -55,7 +88,7 @@ export class PrivateErasureJournal implements ErasureJournal {
     const cfg=this.config(),digest=erasureDigest(value),objectKey=this.objectKey(cfg.prefix,id,phase,digest);
     const operationPrefix=cfg.prefix+id+'/';
     const verifyAddress=async(required:boolean)=>{
-      const list=await cfg.client.send(new ListObjectsV2Command({Bucket:cfg.bucket,Prefix:operationPrefix,MaxKeys:4}));
+      const list=(await this.request(signal=>cfg.client.send(new ListObjectsV2Command({Bucket:cfg.bucket,Prefix:operationPrefix,MaxKeys:4}),{abortSignal:signal})))!;
       const keys=(list.Contents??[]).map(row=>row.Key);
       const phases=new Map<string,string>();
       for(const key of keys){
@@ -72,24 +105,21 @@ export class PrivateErasureJournal implements ErasureJournal {
     // value by its full hash instead; never overwrite a different value at the
     // same logical phase. Both normal readback and enumeration detect forks.
     await verifyAddress(false);
-    const prior=await cfg.client.send(new GetObjectCommand({Bucket:cfg.bucket,Key:objectKey})).catch(error=>{
-      if(error?.$metadata?.httpStatusCode===404)return null;throw error;
-    });
-    if(prior){const text=await prior.Body?.transformToString();if(!text||erasureDigest(this.decrypt(text,cfg.key,objectKey))!==digest)throw new Error('Erasure journal content mismatch.');await verifyAddress(true);return;}
+    const prior=await this.read(cfg,objectKey,true);
+    if(prior!==null){if(!prior||erasureDigest(this.decrypt(prior,cfg.key,objectKey))!==digest)throw new Error('Erasure journal content mismatch.');await verifyAddress(true);return;}
     try {
-      await cfg.client.send(new PutObjectCommand({Bucket:cfg.bucket,Key:objectKey,Body:this.encrypt(value,cfg.key,objectKey),
-        ContentType:'application/json'}));
+      const body=this.encrypt(value,cfg.key,objectKey);
+      await this.request(signal=>cfg.client.send(new PutObjectCommand({Bucket:cfg.bucket,Key:objectKey,Body:body,
+        ContentType:'application/json'}),{abortSignal:signal}));
     } catch(error) {
       // A transport failure can be ambiguous. Read this exact content address;
       // never issue a differently addressed value or a second destructive command.
-      const existing=await cfg.client.send(new GetObjectCommand({Bucket:cfg.bucket,Key:objectKey})).catch(()=>{throw error;});
-      const text=await existing.Body?.transformToString();
+      const text=await this.read(cfg,objectKey).catch(()=>{throw error;});
       if(!text||erasureDigest(this.decrypt(text,cfg.key,objectKey))!==erasureDigest(value))throw new Error('Erasure journal collision or changed evidence.');
       await verifyAddress(true);
       return;
     }
-    const saved=await cfg.client.send(new GetObjectCommand({Bucket:cfg.bucket,Key:objectKey}));
-    const text=await saved.Body?.transformToString();
+    const text=await this.read(cfg,objectKey);
     if(!text||erasureDigest(this.decrypt(text,cfg.key,objectKey))!==erasureDigest(value))throw new Error('Erasure journal verification failed.');
     await verifyAddress(true);
   }
@@ -97,11 +127,11 @@ export class PrivateErasureJournal implements ErasureJournal {
     const cfg=this.config(), entries:Array<{id:string;phase:JournalPhase;value:unknown}>=[];
     let token:string|undefined;
     do {
-      const page=await cfg.client.send(new ListObjectsV2Command({Bucket:cfg.bucket,Prefix:cfg.prefix,ContinuationToken:token,MaxKeys:1000}));
+      const page=(await this.request(signal=>cfg.client.send(new ListObjectsV2Command({Bucket:cfg.bucket,Prefix:cfg.prefix,ContinuationToken:token,MaxKeys:1000}),{abortSignal:signal})))!;
       for(const item of page.Contents??[]) {
         const key=item.Key??'', relative=key.slice(cfg.prefix.length), match=/^([a-f0-9-]{36})\/(intent|commit|abort|baseline)-([a-f0-9]{64})\.json$/.exec(relative);
         if(!key.startsWith(cfg.prefix)||!match||!item.Size||item.Size>1048576)throw new Error('Unexpected erasure journal object.');
-        const saved=await cfg.client.send(new GetObjectCommand({Bucket:cfg.bucket,Key:key})), text=await saved.Body?.transformToString();
+        const text=await this.read(cfg,key);
         if(!text)throw new Error('Erasure journal object unavailable.');
         const value=this.decrypt(text,cfg.key,key);if(erasureDigest(value)!==match[3])throw new Error('Erasure journal content address mismatch.');
         entries.push({id:match[1],phase:match[2] as JournalPhase,value});

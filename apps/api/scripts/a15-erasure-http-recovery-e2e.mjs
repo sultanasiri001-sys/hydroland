@@ -19,7 +19,7 @@ let postgresBin=process.env.A15_POSTGRES_BIN??'';
 const command=name=>postgresBin?resolve(postgresBin,name):name;
 const localDb=new PrismaClient(),objects=new Map(),checks=[],startedAt=new Date().toISOString();
 let postgresTools=null;
-let app,db,base,store,storeOrigin,failure,restoreDb,restoreName,blockedPhase=null,failAfterWrite=false;
+let app,db,base,store,storeOrigin,failure,restoreDb,restoreName,blockedPhase=null,failAfterWrite=false,storageRequests=0,stallNextBody=false;
 const originalEnv=new Map();
 function env(k,v){if(!originalEnv.has(k))originalEnv.set(k,process.env[k]);if(v===undefined)delete process.env[k];else process.env[k]=v;}
 function expect(r,status,label=''){assert.equal(r.status,status,label+' '+JSON.stringify(r.data));return r.data;}
@@ -87,6 +87,7 @@ try{
  }
  postgresTools={serverVersion,serverMajor,...clients};
  store=createServer(async(req,res)=>{
+  storageRequests++;
   const u=new URL(req.url,'http://127.0.0.1'),key=u.pathname;
   if(req.method==='GET'&&u.searchParams.get('list-type')==='2'){
    const prefix=u.searchParams.get('prefix')??'',items=[...objects.entries()].filter(([k])=>k.startsWith('/a15-synthetic/'+prefix));
@@ -99,7 +100,7 @@ try{
    assert.equal(req.headers['if-none-match'],undefined);assert.equal(req.headers['x-amz-sdk-checksum-algorithm'],undefined);const bytes=await text(req);
    objects.set(key,bytes);if(failAfterWrite){req.socket.destroy();return;}res.setHeader('ETag','"synthetic"');res.end();return;
   }
-  if(req.method==='GET'&&objects.has(key)){res.setHeader('content-type','application/json');res.end(objects.get(key));return;}
+  if(req.method==='GET'&&objects.has(key)){res.setHeader('content-type','application/json');if(stallNextBody){stallNextBody=false;res.write('{"version":');return;}res.end(objects.get(key));return;}
   res.statusCode=404;res.end('<Error><Code>NoSuchKey</Code></Error>');
  });
  await new Promise((ok,bad)=>store.once('error',bad).listen(0,'127.0.0.1',ok));storeOrigin='http://127.0.0.1:'+store.address().port;
@@ -132,6 +133,18 @@ try{
  }
 
  const erasure=app.get(load('privacy/privacy-erasure.service.js').PrivacyErasureService),recovery=app.get(load('privacy/privacy-recovery.service.js').PrivacyRecoveryService),journal=app.get(load('privacy/erasure-journal.js').PrivateErasureJournal);
+ const providerFailures=()=>db.auditEvent.count({where:{action:'integration.provider.health.observed',resourceId:'a06.provider.OBJECT_STORAGE',metadata:{path:['category'],equals:'PROVIDER_FAILURE'}}});
+ const latestProvider=()=>db.auditEvent.findFirstOrThrow({where:{action:'integration.provider.health.observed',resourceId:'a06.provider.OBJECT_STORAGE'},orderBy:{occurredAt:'desc'}});
+ await check('disabled object storage prevents every HTTP request and native purge; expected 404 remains a successful provider observation',async()=>{
+  const id=await message('SYNTHETIC_PROVIDER_KILL_SWITCH'),before=storageRequests,failures=await providerFailures();env('HYDROLAND_INTEGRATION_OBJECT_STORAGE_STATUS','DISABLED');
+  await assert.rejects(erasure.purgePrivateMessage(id));await assert.rejects(journal.entries());assert.equal(storageRequests,before);assert(await retained(id));assert.equal(await providerFailures(),failures);
+  env('HYDROLAND_INTEGRATION_OBJECT_STORAGE_STATUS','SANDBOX');await erasure.purgePrivateMessage(id);assert(!(await retained(id)));assert.equal(await providerFailures(),failures);
+  const signal=await latestProvider();assert.equal(signal.metadata.category,'SUCCESS');assert.deepEqual(Object.keys(signal.metadata).sort(),['category','provider','state']);
+ });
+ await check('journal body transport expires within eight seconds and emits only a sanitized provider failure',async()=>{
+  stallNextBody=true;const start=Date.now();await assert.rejects(journal.entries(),error=>error.getStatus?.()===503);const elapsed=Date.now()-start;assert(elapsed>=7900&&elapsed<12000,'A stalled body must use the same bounded network deadline');
+  const signal=await latestProvider();assert.equal(signal.metadata.category,'PROVIDER_FAILURE');assert.deepEqual(Object.keys(signal.metadata).sort(),['category','provider','state']);await journal.entries();assert.equal((await latestProvider()).metadata.category,'SUCCESS');
+ });
  await check('native migration blocks legacy purge after the baseline and rolls its deletion back',async()=>{
   const id=await message('SYNTHETIC_LEGACY_DEPLOYMENT_RACE');
   await assert.rejects(db.serializable(async tx=>{
@@ -222,6 +235,7 @@ try{
  });
  await check('missing external intent prevents native purge; changed restricted content after prepare is refused',async()=>{
   const id=await message();blockedPhase='intent';await assert.rejects(erasure.purgePrivateMessage(id));assert(await retained(id));blockedPhase=null;
+  assert.equal((await latestProvider()).metadata.category,'PROVIDER_FAILURE');
   await db.$executeRaw`UPDATE "WithdrawnMessageContent" SET body='changed synthetic protected content' WHERE "messageId"=${id}`;
   await assert.rejects(erasure.purgePrivateMessage(id));assert(await retained(id));
   const [op]=await db.$queryRaw`SELECT state FROM "PrivacyErasureOperation" WHERE "recordRef"=${id}`;assert.equal(op.state,'ABORTED');
@@ -254,8 +268,8 @@ try{
   await recovery.reconcile(false);
   const [published]=await db.$queryRaw`SELECT id,"intentHash" FROM "PrivacyErasureOperation" WHERE state='PUBLISHED' LIMIT 1`;
   await assert.rejects(journal.put(published.id,'abort',{version:1,id:published.id,intentHash:published.intentHash,reason:'CONFLICTING_SYNTHETIC_TERMINAL'}));
-  const key=[...objects.keys()].find(x=>/\/commit-[a-f0-9]{64}\.json$/.test(x)),original=objects.get(key);objects.set(key,Buffer.from(original.toString().replace(/"ciphertext":"./,'"ciphertext":"!')));
-  await assert.rejects(recovery.reconcile(false));objects.set(key,original);await recovery.reconcile(false);
+  const failures=await providerFailures(),key=[...objects.keys()].find(x=>/\/commit-[a-f0-9]{64}\.json$/.test(x)),original=objects.get(key);objects.set(key,Buffer.from(original.toString().replace(/"ciphertext":"./,'"ciphertext":"!')));
+  await assert.rejects(recovery.reconcile(false));assert.equal(await providerFailures(),failures,'Corrupt journal ciphertext is not a provider outage');objects.set(key,original);await recovery.reconcile(false);
  });
  await check('real pg_dump/pg_restore blocks resurrection and rejects changed restored content before controlled replay',async()=>{
   const id=await message('RESTORE_SYNTHETIC_PRIVATE_CONTENT');await recovery.reconcile(false);
