@@ -51,7 +51,8 @@ hull-correction endpoint or authorize vessel operation.
   `git diff --check` passed.
 
 The API suite writes a JSON receipt containing case results, runtime versions,
-source SHA-256 hashes, and explicit `synthetic: true`,
+source and compiled-module SHA-256 hashes (including the canonical schema and
+the hull identity helper), and explicit `synthetic: true`,
 `realOwnerAcceptance: false`, and `productionDocumentAccepted: false` markers.
 It creates and drops a random schema in a specifically named disposable
 loopback database, and refuses an existing external API URL or non-loopback
@@ -73,7 +74,8 @@ node apps/api/scripts/a14-owner-onboarding-http-e2e.mjs
 npm run test:e2e -w @hydroland/web -- e2e/marine-documents.spec.js
 ```
 
-The normal CI runtime is Node 22; its result and the merged/deployed revision
+The normal CI runtime is Node 22 and runs the suite independently on PostgreSQL
+16 and 18; both receipts are retained. Its result and the merged/deployed revision
 must be recorded separately. The local Node 24 result does not replace that
 release gate.
 

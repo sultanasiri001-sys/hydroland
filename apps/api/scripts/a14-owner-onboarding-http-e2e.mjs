@@ -413,14 +413,17 @@ finally {
   if (adminDb) await adminDb.$disconnect();
   global.fetch = nativeFetch;
   for (const [key, value] of savedEnvironment) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
-  const sourcePaths = ['apps/api/scripts/a14-owner-onboarding-http-e2e.mjs', 'apps/api/scripts/marine-review-fixture.mjs', 'apps/api/src/auth/auth.service.ts', 'apps/api/src/organizations/organization-membership.service.ts', 'apps/api/src/marine-operations/marine-operations.service.ts', 'apps/api/src/marine-operations/marine-asset-identity.domain.ts', 'apps/api/prisma/migrations/20261128020000_marine_asset_hull_number/migration.sql'];
+  const sourcePaths = ['apps/api/scripts/a14-owner-onboarding-http-e2e.mjs', 'apps/api/scripts/marine-review-fixture.mjs', 'apps/api/prisma/schema.prisma', 'apps/api/src/auth/auth.service.ts', 'apps/api/src/organizations/organization-membership.service.ts', 'apps/api/src/marine-operations/marine-operations.service.ts', 'apps/api/src/marine-operations/marine-asset-identity.domain.ts', 'apps/api/prisma/migrations/20261128020000_marine_asset_hull_number/migration.sql'];
+  const compiledPaths = ['app.module.js', 'auth/auth.service.js', 'auth/auth-email-outbox.worker.js', 'integrations/email-delivery.service.js', 'credentials/credential-object-storage.service.js', 'organizations/organization-membership.service.js', 'marine-operations/marine-operations.service.js', 'marine-operations/marine-asset-identity.domain.js'];
+  const fingerprints = paths => Object.fromEntries(paths.map(path => [path, createHash('sha256').update(readFileSync(resolve(root, path))).digest('hex')]));
   receipt = {
     schemaVersion: 1, suite: 'A14_OWNER_ONBOARDING_HTTP_POSTGRESQL', synthetic: true, realOwnerAcceptance: false,
     status: failure ? 'FAIL' : 'PASS', startedAt, finishedAt: new Date().toISOString(), postgresVersion, nodeVersion: process.version,
     passed: checks.filter(row => row.status === 'PASS').length, failed: checks.filter(row => row.status === 'FAIL').length,
     checks, externalHttpAttempts: externalAttempts.length, localAuthDeliveries: capturedMail.length,
     productionVesselReviewed: false, productionDocumentAccepted: false,
-    sourceHashes: Object.fromEntries(sourcePaths.map(path => [path, createHash('sha256').update(readFileSync(resolve(root, path))).digest('hex')])),
+    sourceHashes: fingerprints(sourcePaths),
+    compiledHashes: fingerprints(compiledPaths.map(path => 'apps/api/dist/' + path)),
   };
   if (process.env.A14_ONBOARDING_RESULT_FILE) {
     const output = resolve(process.env.A14_ONBOARDING_RESULT_FILE); mkdirSync(dirname(output), { recursive: true }); writeFileSync(output, JSON.stringify(receipt, null, 2) + '\n');
