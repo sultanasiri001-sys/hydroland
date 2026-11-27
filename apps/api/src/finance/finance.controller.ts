@@ -1,7 +1,7 @@
 import { FinanceReceivablesWorkspaceService } from './finance-receivables-workspace.service';
 import { FinanceWorkspaceService } from './finance-workspace.service';
 import { financeHttp } from './finance-http';
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, HttpCode, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { FinanceEntryType } from '@prisma/client';
 import { AdminGuard } from '../admin/admin.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
@@ -24,6 +24,14 @@ export class FinanceController {
   @Get('centers/:centerOrgUnitId/service-entitlements/trips/:bookingId')
   tripEntitlement(@Req() request: AuthenticatedRequest, @Param('centerOrgUnitId') centerId: string, @Param('bookingId') bookingId: string) {
     return financeHttp(()=>this.entitlements.readTrip(request.auth.accountId,centerId,bookingId));
+  }
+
+  @Post('centers/:centerOrgUnitId/service-entitlements/trips/:bookingId/compare-transfer')
+  @HttpCode(200)
+  @Header('Cache-Control', 'private, no-store')
+  compareTransfer(@Req() request:AuthenticatedRequest,@Param('centerOrgUnitId') centerId:string,
+    @Param('bookingId') bookingId:string,@Body() statement:Record<string,unknown>) {
+    return financeHttp(() => this.entitlements.compareTransfer(request.auth.accountId,centerId,bookingId,statement));
   }
 
   @Post('centers/:centerOrgUnitId/service-entitlements/trips/:bookingId/prepare')

@@ -162,6 +162,47 @@ export class CenterServiceEntitlementService {
     });
   }
 
+  /** Compare statement fields supplied for review. Only the payer's integration can attest receipt. */
+  async compareTransfer(accountId: string, centerId: string, bookingId: string, statement: Record<string, unknown>) {
+    if (!statement || !identifier(statement.transferReference) || !identifier(statement.settlementEntryId)
+      || !identifier(statement.beneficiaryOrganizationId) || !identifier(statement.invoiceNumber)
+      || !minor(statement.amountMinor) || statement.amountMinor === 0
+      || typeof statement.currency !== 'string' || !/^[A-Z]{3}$/.test(statement.currency)) {
+      throw new BadRequestException('تحقق من مرجع الحوالة والمستفيد والفاتورة والقيد والمبلغ والعملة.');
+    }
+    return this.db.serializable(async tx => {
+      const scope = await this.scope(tx, accountId, centerId);
+      const { readiness, input, existing, allocation } = await this.resolve(tx, scope, bookingId);
+      if (!existing || existing.type !== 'SETTLEMENT' || existing.status !== 'APPROVED' || !existing.approvedAt
+        || !existing.approvedByAccountId || existing.approvedByAccountId === existing.requestedByAccountId
+        || !readiness.paymentId || !allocation || !readiness.collectionFinanceEntryId || !readiness.netPayoutAmountMinor
+        || existing.amountMinor !== readiness.netPayoutAmountMinor || existing.currency !== readiness.currency
+        || existing.financeAccountId !== allocation.financeAccountId || readiness.reviewReasons.some(
+          reason => reason !== 'EXISTING_SETTLEMENT_REQUIRES_CURRENT_RECONCILIATION')) {
+        throw new ConflictException('تحتاج التسوية إلى قيد معتمد وأدلة استحقاق سارية.');
+      }
+      const approval = await tx.financeApproval.findFirst({where:{financeEntryId:existing.id, status:'APPROVED',
+        requestedByAccountId:existing.requestedByAccountId, decidedByAccountId:existing.approvedByAccountId, decidedAt:existing.approvedAt},select:{id:true}});
+      const prepared = await tx.auditEvent.findFirst({where:{resource:'FinanceEntry',resourceId:existing.id,action:'CENTER_SERVICE_SETTLEMENT_PREPARED'},
+        select:{metadata:true}});
+      const original = await tx.accountInvoiceDocument.findUnique({where:{sourceType_sourceId:{sourceType:'TRIP_PAYMENT',sourceId:readiness.paymentId}},
+        select:{sellerId:true,buyerOrganizationId:true,number:true}});
+      const invoice = await tx.invoice.findUnique({where:{paymentId:readiness.paymentId},select:{number:true,status:true}});
+      const evidence = object(prepared?.metadata);
+      if (!approval || evidence?.allocationApprovalEventId !== readiness.allocationApprovalEventId
+        || evidence?.collectionFinanceEntryId !== readiness.collectionFinanceEntryId || !original
+        || original.sellerId !== scope.organizationId || original.buyerOrganizationId !== input.booking.organizationId
+        || invoice?.status === 'VOID' || (invoice && ['ISSUED','PAID'].includes(invoice.status) && invoice.number !== original.number)) {
+        throw new ConflictException('راجع أصل فاتورة المركز وإثبات اعتماد القيد.');
+      }
+      const expected = {beneficiaryOrganizationId:scope.organizationId,settlementEntryId:existing.id,
+        invoiceNumber:original.number,amountMinor:existing.amountMinor,currency:existing.currency};
+      const differences = Object.entries(expected).filter(([key,value]) => statement[key] !== value).map(([key]) => key);
+      return {transferReference:statement.transferReference, expected, differences,
+        comparison: differences.length ? 'MISMATCH' : 'DETAILS_MATCH', bankReceiptVerified:false, financialActionExecuted:false};
+    });
+  }
+
   async readTripForOwner(accountId: string, organizationId: string, bookingId: string) {
     return this.db.serializable(async tx => {
       const scope = await this.ownerScope(tx, accountId, organizationId);

@@ -1,5 +1,26 @@
 import {test,expect} from '@playwright/test';
 import {openWorkspaceSwitcher} from './portal-test-helpers.js';
+
+test('accountant compares a statement to a trip invoice without confirming a transfer',async({page})=>{
+ await setup(page);
+ const responses=['MISMATCH','DETAILS_MATCH'];
+ await page.route('**/finance/centers/center-a/service-entitlements/trips/booking-1/compare-transfer',async route=>{
+   expect(route.request().postDataJSON()).toEqual({transferReference:'TEST-BANK-4',beneficiaryOrganizationId:'supplier-1',
+     settlementEntryId:'entry-2',invoiceNumber:'INV-3',amountMinor:5150,currency:'SAR'});
+   const comparison=responses.shift();
+   await json(route,{comparison,differences:comparison==='MISMATCH'?['invoiceNumber']:[],bankReceiptVerified:false});
+ });
+ const host=await open(page);
+ const panel=host.locator('details').filter({has:page.getByText('مطابقة حوالة رحلة',{exact:true})});
+ await panel.locator('summary').click();
+ for (const [name,value] of Object.entries({bookingId:'booking-1',transferReference:'TEST-BANK-4',beneficiaryOrganizationId:'supplier-1',
+   settlementEntryId:'entry-2',invoiceNumber:'INV-3',amount:'٥١٫٥٠',currency:'sar'})) await panel.locator('[name='+name+']').fill(value);
+ await panel.getByRole('button').click();
+ await expect(panel.getByRole('status')).toContainText('رقم فاتورة المركز');
+ await panel.getByRole('button').click();
+ await expect(panel.getByRole('status')).toContainText('يبقى تأكيد وصول الحوالة من البنك');
+ expect(responses).toHaveLength(0);
+});
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 const blank=id=>({centerOrgUnitId:id,shift:null,totals:null,entries:[],entryLimit:50,receivers:[],handovers:[],closeSubmission:null});
 const active=()=>({...blank('center-a'),shift:{id:'own-shift',status:'OPEN',openingBalanceMinor:100,currency:'SAR'},totals:{revenueMinor:40,expenseMinor:20,refundMinor:0,adjustmentMinor:0,expectedCashMinor:120},entries:[{id:'entry',type:'EXPENSE',amountMinor:20,description:'معدات المركز'}],receivers:[{accountId:'receiver-b',name:'المحاسب المستلم'}]});

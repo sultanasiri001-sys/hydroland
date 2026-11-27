@@ -260,6 +260,38 @@ async function main() {
     assert.equal(await db.auditEvent.count({ where: { resource: 'FinanceEntry', resourceId: settlementId, action: 'CENTER_SERVICE_SETTLEMENT_PREPARED' } }), 1);
   });
 
+  await check('compare credited trip details with the approved net payable and archived seller invoice without posting money', async () => {
+    const { AccountInvoicesService } = require(resolve(build, 'payments/account-invoices.service.js'));
+    const { FinancePersistenceService } = require(resolve(build, 'finance/finance-persistence.service.js'));
+    const { PDFDocument } = require('pdf-lib');
+    const statement = {beneficiaryOrganizationId:center.id, settlementEntryId:settlementId,
+      invoiceNumber:'TEST-' + randomUUID(), amountMinor:5150, currency:'SAR', transferReference:'TEST-STATEMENT-1'};
+    const compare = (fields = {}, actor = accountant.id) => service.compareTransfer(actor, centerUnit.id, partial.booking.id, {...statement,...fields});
+    await assert.rejects(compare(), status(409));
+    await new FinancePersistenceService(db).decideEntry(settlementId, approver.id, true, 'Synthetic reviewer');
+    await assert.rejects(compare(), status(409));
+    const pdf = await PDFDocument.create();
+    pdf.addPage().drawText(statement.invoiceNumber);
+    await new AccountInvoicesService(db).attach(accountant.id, {sourceType:'TRIP_PAYMENT',sourceId:partial.payment.id},
+      statement.invoiceNumber, {buffer:Buffer.from(await pdf.save()),mimetype:'application/pdf'});
+    const result = await compare();
+    assert.equal(result.comparison,'DETAILS_MATCH');
+    assert.deepEqual(result.differences,[]);
+    assert.equal(result.bankReceiptVerified,false);
+    assert.equal(result.financialActionExecuted,false);
+    for (const [key,value] of Object.entries({beneficiaryOrganizationId:foreignCenter.id,settlementEntryId:randomUUID(),
+      invoiceNumber:'OTHER',amountMinor:5750,currency:'USD'})) {
+      const changed = await compare({[key]:value});
+      assert.equal(changed.comparison,'MISMATCH');
+      assert.deepEqual(changed.differences,[key]);
+    }
+    await assert.rejects(compare({},foreignAccountant.id));
+    await assert.rejects(compare({amountMinor:-1}), status(400));
+    const unchanged = await db.financeEntry.findUniqueOrThrow({where:{id:settlementId}});
+    assert.equal(unchanged.status,'APPROVED');
+    assert.equal(unchanged.postedAt,null);
+  });
+
   await check('rejected or voided settlement history stays idempotent instead of issuing a replacement', async () => {
     for (const state of ['REJECTED', 'VOIDED']) {
       await db.financeEntry.update({ where: { id: settlementId }, data: { status: state } });
