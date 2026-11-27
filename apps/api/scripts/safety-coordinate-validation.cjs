@@ -23,7 +23,7 @@ const rejects = async (fn, expected) => { await assert.rejects(fn, status(expect
   }
 
   const ais = new MarineTrafficAisService({});
-  const parse = row => ais.position([row], '123456789');
+  const parse = row => ais.position([{ TIMESTAMP: new Date(Date.now() - 1000).toISOString(), ...row }], { mmsi: '123456789' });
   for (const value of bad) {
     check(() => assert.throws(() => parse({ MMSI: '123456789', LAT: value, LON: 42.5 }), status(503)));
     check(() => assert.throws(() => parse({ MMSI: '123456789', LAT: 18.2, LON: value }), status(503)));
@@ -53,7 +53,7 @@ const rejects = async (fn, expected) => { await assert.rejects(fn, status(expect
   let incidentWrites = 0, aisCalls = 0;
   const audits = [];
   const distress = new SafetyDistressService(
-    { create: async (_accountId, input) => { incidentWrites++; return { id: 'offline-incident', ...input }; } },
+    { assertReportContext: async () => {}, create: async (_accountId, input) => { incidentWrites++; return { id: 'offline-incident', ...input }; } },
     { singleVesselByMmsi: async () => { aisCalls++; return parse({ MMSI: '123456789' }); } },
     { record: async event => audits.push(event) },
   );

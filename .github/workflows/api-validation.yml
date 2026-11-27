@@ -432,6 +432,33 @@ jobs:
         run: node --test apps/api/scripts/department-reporting.test.cjs apps/api/scripts/department-source.test.cjs apps/api/scripts/warehouse-location.test.cjs apps/api/scripts/section-heads.test.cjs
       - name: Safety coordinate input and explicit fallback boundaries
         run: node apps/api/scripts/safety-coordinate-validation.cjs
+      - name: D03 native marine source, freshness and isolated transport acceptance
+        env:
+          NODE_ENV: test
+          TZ: UTC
+          PGTZ: UTC
+          D01_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+          D03_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+          D03_MARINE_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+          D03_MARINE_EVIDENCE_FILE: artifacts/d03-http-acceptance.json
+          DATABASE_URL: postgresql://hydroland:hydroland@localhost:5433/participation_test_d01_d03_acceptance
+        run: |
+          mkdir -p artifacts
+          psql postgresql://hydroland:hydroland@localhost:5433/hydroland -v ON_ERROR_STOP=1 -c 'CREATE DATABASE participation_test_d01_d03_acceptance'
+          npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+          node apps/api/scripts/bootstrap-equipment-runtime-schema.mjs
+          node apps/api/scripts/bootstrap-trip-weather-runtime-schema.mjs
+          node apps/api/scripts/bootstrap-messaging-runtime-schema.mjs
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20260930080000_audit_event_append_only/migration.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261127010000_participation_source_eligibility/migration.sql
+          node apps/api/scripts/d03-marine-source-http-checks.cjs
+      - name: Retain D03 synthetic native and transport evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d03-marine-source-evidence
+          path: artifacts/d03-*
+          if-no-files-found: warn
       - name: Canonical weather context and calendar consumer boundaries
         run: |
           node apps/api/scripts/weather-review-context-validation.cjs
@@ -581,6 +608,7 @@ jobs:
       - name: HR HTTP/DB E2E
         env:
           NODE_ENV: test
+          D03_MARINE_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
           JWT_SECRET: ci-hr-e2e-secret-must-be-at-least-32-characters
           PORT: 3101
           HYDROLAND_INTEGRATION_OBJECT_STORAGE_STATUS: SANDBOX

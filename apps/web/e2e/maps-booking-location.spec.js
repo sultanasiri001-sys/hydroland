@@ -1,5 +1,13 @@
 import { test, expect } from '@playwright/test';
 
+test.beforeEach(async({page})=>{
+  await page.route('**/*',route=>{
+    const url=new URL(route.request().url());
+    if(url.pathname.startsWith('/api/v1/'))return route.fulfill({status:404,contentType:'application/json',body:'{"message":"No isolated fixture for this route"}'});
+    return ['127.0.0.1','localhost'].includes(url.hostname)?route.continue():route.abort();
+  });
+});
+
 const installProfileApi=async page=>{
   const profile={id:'map-diver-e2e',email:'map-diver@hydroland.test',status:'ACTIVE',roleAssignments:[],person:{firstName:'Map',lastName:'Diver',phone:null,professional:null}};
   const requireAuth=request=>request.headers().authorization==='Bearer map-e2e-access';

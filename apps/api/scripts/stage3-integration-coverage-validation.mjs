@@ -22,6 +22,7 @@ const translationRouter=read('src/translation/translation-router.service.ts');
 const googleTranslation=read('src/translation/google-cloud-translation.provider.ts');
 const signit=read('src/integrations/signit-esign.service.ts');
 const marineTraffic=read('src/integrations/marinetraffic-ais.service.ts');
+const marineTransport=read('src/integrations/marine-provider-transport.ts');
 const credentials=read('src/credentials/credentials.service.ts');
 const webMap=read('../web/src/hydroland-map.js');
 
@@ -75,12 +76,19 @@ for(const marker of [
   'externalVerificationEvidence:externalVerification',
 ])if(!credentials.includes(marker))throw new Error(`CERTIFICATION partial manual-verification evidence missing: ${marker}`);
 for(const marker of [
-  "requireOperational('DISTRESS_AIS',{allowSandbox:true})",
+  "requireOperational('DISTRESS_AIS', { allowSandbox: true })",
   'HYDROLAND_DISTRESS_AIS_PROVIDER',
   'MARINETRAFFIC_AIS_ONLY',
   'MARINETRAFFIC_API_KEY',
-  'https://services.marinetraffic.com/api/exportvessel/',
+  "marineProviderOrigin('MARINETRAFFIC')",
+  '/api/exportvessel/${encodeURIComponent(key)}',
+  "marineProviderJson('MARINETRAFFIC', url, { Accept: 'application/json' })",
 ])if(!marineTraffic.includes(marker))throw new Error(`DISTRESS_AIS partial AIS evidence missing: ${marker}`);
+for(const marker of [
+  "MARINETRAFFIC: 'https://services.marinetraffic.com'",
+  'url.origin !== marineProviderOrigin(provider)',
+  "redirect: 'manual'",
+])if(!marineTransport.includes(marker))throw new Error(`Marine provider transport boundary missing: ${marker}`);
 for(const marker of [
   "status('NAFATH')",
   "providerSelected:provider==='NAFATH'",

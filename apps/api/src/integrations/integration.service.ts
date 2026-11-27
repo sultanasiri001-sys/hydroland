@@ -3,6 +3,7 @@ import { Injectable, ServiceUnavailableException, UnauthorizedException } from '
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { AuditService } from '../audit/audit.service';
 import { IntegrationDescriptor, IntegrationKey, MapsPublicConfigPayload, VerifiedWebhook, WeatherPublicConfigPayload } from './integration.types';
+import { MarineObservation, marineReadinessEvidence } from './marine-provider-evidence';
 const catalog:readonly IntegrationDescriptor[]=[
  {key:'AI_MODEL',name:'Bounded AI task execution',category:'ai',status:'NOT_SELECTED',requiresHumanApproval:true,supportsWebhook:false},
  {key:'WEATHER_MARINE',name:'Weather & marine data',category:'marine',status:'NOT_SELECTED',requiresHumanApproval:false,supportsWebhook:false},
@@ -23,11 +24,19 @@ const catalog:readonly IntegrationDescriptor[]=[
 const statuses=new Set(['NOT_SELECTED','SANDBOX','CONFIGURED','VERIFIED','PRODUCTION_ENABLED','DEGRADED','DISABLED']);
 @Injectable() export class IntegrationService {
  constructor(private readonly audit:AuditService){}
+ private readonly marineObservations = new Map<string, MarineObservation>();
+ observeMarineProvider(key:'WEATHER_MARINE'|'DISTRESS_AIS',status:'RESPONSE_RECEIVED'|'FAILED',reasonCode:string|null=null){
+  this.marineObservations.set(key,{status,checkedAt:new Date().toISOString(),scope:'CURRENT_PROCESS',reasonCode});
+ }
+ marineReadiness(key:'MAPS_GEO'|'WEATHER_MARINE'|'DISTRESS_AIS',configured:boolean){
+  return marineReadinessEvidence(configured,this.status(key).status,this.marineObservations.get(key));
+ }
  private configuredStatus(key:IntegrationKey){
   const status=process.env[`HYDROLAND_INTEGRATION_${key}_STATUS`]?.trim().toUpperCase();
   return status&&statuses.has(status)?status as IntegrationDescriptor['status']:undefined;
  }
  async recordProviderSignal(provider:'OBJECT_STORAGE'|'WEATHER_MARINE'|'EMAIL'|'PAYMENT_PSP'|'AI_MODEL',category:'SUCCESS'|'PROVIDER_FAILURE'){
+  if(provider==='WEATHER_MARINE')this.observeMarineProvider(provider,category==='SUCCESS'?'RESPONSE_RECEIVED':'FAILED',category==='SUCCESS'?null:'WEATHER_PROVIDER_EVIDENCE_UNAVAILABLE');
   try{await this.audit.recordProviderState(provider,category);}catch{/* Monitoring must never change a user-facing provider operation. */}
  }
  async recordSmsSubmission(id:string,correlation:string,recipient:string){
@@ -43,13 +52,19 @@ const statuses=new Set(['NOT_SELECTED','SANDBOX','CONFIGURED','VERIFIED','PRODUC
   const styleUrl=process.env.HYDROLAND_MAP_STYLE_URL?.trim()||null;
   const provider=process.env.HYDROLAND_MAP_PROVIDER?.trim()||'UNCONFIGURED';
   const attribution=process.env.HYDROLAND_MAP_ATTRIBUTION?.trim()||null;
-  return{engine:'MAPLIBRE',engineVersion:'6.11.2',status:integration.status,provider,enabled:operational&&Boolean(styleUrl),styleUrl:operational?styleUrl:null,attribution};
+  let safeStyle=false;
+  try{const url=new URL(styleUrl||'');safeStyle=url.protocol==='https:'&&!url.username&&!url.password&&!url.hash&&Boolean(url.hostname)&&Boolean(styleUrl&&styleUrl.length<=2000);}catch{/* An invalid public style is unconfigured. */}
+  const enabled=operational&&safeStyle;
+  return{engine:'MAPLIBRE',engineVersion:'6.11.2',status:integration.status,provider,enabled,styleUrl:enabled?styleUrl:null,attribution,
+   ...this.marineReadiness('MAPS_GEO',enabled),dataFreshness:{status:'NOT_ASSESSED',reasonCodes:['MAP_SOURCE_FRESHNESS_NOT_VERIFIED']}};
  }
  publicWeatherConfig():WeatherPublicConfigPayload{
   const integration=this.status('WEATHER_MARINE');
   const operational=integration.status==='PRODUCTION_ENABLED'||integration.status==='SANDBOX';
   const credentialsConfigured=Boolean(process.env.STORMGLASS_API_KEY?.trim());
-  return{status:integration.status,provider:'STORMGLASS',configured:operational&&credentialsConfigured,sandbox:integration.status==='SANDBOX'};
+  const configured=operational&&credentialsConfigured;
+  return{status:integration.status,provider:'STORMGLASS',configured,sandbox:integration.status==='SANDBOX',
+   ...this.marineReadiness('WEATHER_MARINE',configured),dataFreshness:{status:'TRIP_REVIEW_REQUIRED',reasonCodes:['TRIP_CONTEXT_AND_HUMAN_REVIEW_REQUIRED']}};
  }
  requireOperational(key:IntegrationKey,options:{allowSandbox?:boolean}={}){
   const integration=this.status(key);

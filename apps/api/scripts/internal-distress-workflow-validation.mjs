@@ -6,6 +6,7 @@ const controller=read('src/safety/safety-incidents.controller.ts');
 const moduleFile=read('src/safety/safety.module.ts');
 const incidentService=read('src/safety/safety-incidents.service.ts');
 const ais=read('src/integrations/marinetraffic-ais.service.ts');
+const transport=read('src/integrations/marine-provider-transport.ts');
 const safetyUi=fs.readFileSync(new URL('../../web/src/hydroland-safety-incidents.js',import.meta.url),'utf8');
 const coverage=fs.readFileSync(new URL('../../../docs/STAGE3_INTEGRATION_COVERAGE.md',import.meta.url),'utf8');
 
@@ -20,6 +21,8 @@ for(const marker of [
   'SAFETY_DISTRESS_CASE_OPENED',
   'ais.singleVesselByMmsi',
   'ais.singleVesselByImo',
+  'aisUsedForEffectivePosition:false',
+  'this.incidents.assertReportContext(accountId,input.tripId)',
 ])if(!service.includes(marker))throw new Error(`Internal distress workflow invariant missing: ${marker}`);
 
 for(const prohibited of ['sendDistress','triggerDistress','transmitDistress','acknowledgeDistress','maydayEndpoint','method:\'POST\'']){
@@ -29,7 +32,7 @@ for(const prohibited of ['sendDistress','triggerDistress','transmitDistress','ac
 for(const marker of ["@Post('distress')",'this.distress.open','SafetyDistressService'])if(!controller.includes(marker))throw new Error(`Distress controller boundary missing: ${marker}`);
 for(const marker of ['IntegrationModule','SafetyDistressService'])if(!moduleFile.includes(marker))throw new Error(`Safety module distress registration missing: ${marker}`);
 for(const marker of ['SafetyIncident','UNDER_REVIEW','RESOLVED','CLOSED','Resolution notes are required'])if(!incidentService.includes(marker))throw new Error(`Safety incident lifecycle invariant missing: ${marker}`);
-for(const marker of ["method:'GET'",'MARINETRAFFIC_AIS_ONLY'])if(!ais.includes(marker))throw new Error(`AIS read-only invariant missing: ${marker}`);
+if(!transport.includes("method: 'GET'")||!ais.includes('MARINETRAFFIC_AIS_ONLY'))throw new Error('AIS transport must retain its read-only provider boundary.');
 
 for(const marker of [
   "emergency.dataset.safetyEmergencyBoundary='internal-only'",

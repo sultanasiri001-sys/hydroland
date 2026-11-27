@@ -53,7 +53,7 @@ for(const marker of [
 }
 
 for(const marker of [
-  "requireOperational('DISTRESS_AIS',{allowSandbox:true})",
+  "requireOperational('DISTRESS_AIS', { allowSandbox: true })",
   'MARINETRAFFIC_AIS_ONLY',
   'MARINETRAFFIC_API_KEY',
 ])if(!marineTraffic.includes(marker))throw new Error(`MarineTraffic AIS boundary marker missing: ${marker}`);

@@ -3,6 +3,8 @@ import { IntegrationService } from '../integrations/integration.service';
 import { WeatherSnapshot } from './weather-gate.service';
 import { finiteNumericInput } from '../geo/coordinate-input';
 import { forecastWindow, hasWeatherMeasurements } from './weather-review-context';
+import { marineEvidenceDigest, marineUtcInstant } from '../integrations/marine-provider-evidence';
+import { marineProviderFailure, marineProviderJson, marineProviderOrigin } from '../integrations/marine-provider-transport';
 
 type StormglassMetric = { sg?: number; noaa?: number; meteo?: number; [source:string]:number|undefined };
 type StormglassHour = Record<string, StormglassMetric | string | undefined> & { time?: string };
@@ -10,8 +12,8 @@ type StormglassResponse = { hours?: StormglassHour[] };
 
 const value = (hour: StormglassHour, key: string) => {
   const metric = hour[key];
-  if (!metric || typeof metric === 'string') return undefined;
-  return finiteNumericInput(metric.sg ?? metric.noaa ?? metric.meteo) ?? undefined;
+  if (!metric || typeof metric !== 'object' || Array.isArray(metric)) return undefined;
+  return finiteNumericInput(metric.sg) ?? undefined;
 };
 const validDate=(value:Date|string|undefined)=>{
   const date=value instanceof Date?value:new Date(value??Date.now());
@@ -32,9 +34,9 @@ export class StormglassWeatherService {
     const apiKey = process.env.STORMGLASS_API_KEY?.trim();
     if (!apiKey) throw new ServiceUnavailableException('Stormglass API key is not configured.');
 
-    const base=process.env.STORMGLASS_API_BASE_URL?.trim()||'https://api.stormglass.io';
-    let url:URL;
-    try{url=new URL('/v2/weather/point',base);}catch{throw new ServiceUnavailableException('Stormglass endpoint is not configured correctly.');}
+    const base=marineProviderOrigin('STORMGLASS');
+    const url=new URL('/v2/weather/point',base);
+    const lifecycle=process.env.HYDROLAND_INTEGRATION_WEATHER_MARINE_STATUS;
     url.searchParams.set('lat', String(latitude));
     url.searchParams.set('lng', String(longitude));
     url.searchParams.set('params', 'windSpeed,gust,windDirection,waveHeight,waveDirection,wavePeriod,swellHeight,swellDirection,swellPeriod,currentSpeed,currentDirection,waterTemperature');
@@ -42,36 +44,25 @@ export class StormglassWeatherService {
     const window=forecastWindow(target.getTime());
     url.searchParams.set('start',String(window.start/1000));
     url.searchParams.set('end',String(window.end/1000));
-    const signal = AbortSignal.timeout(8_000);
-    let response: Response;
     try {
-      response = await fetch(url, { headers: { Authorization: apiKey, Accept:'application/json' }, signal });
-    } catch {
-      await this.integrations.recordProviderSignal('WEATHER_MARINE','PROVIDER_FAILURE');
-      throw new ServiceUnavailableException('Stormglass weather request failed.');
-    }
-    if (!response.ok) {
-      await this.integrations.recordProviderSignal('WEATHER_MARINE','PROVIDER_FAILURE');
-      if(response.status===429)throw new ServiceUnavailableException('Stormglass request quota is temporarily exhausted.');
-      if(response.status===401||response.status===403)throw new ServiceUnavailableException('Stormglass authentication failed.');
-      throw new ServiceUnavailableException(`Stormglass weather request failed (${response.status}).`);
-    }
-    let payload:StormglassResponse;
-    try{payload = await response.json() as StormglassResponse;}catch{await this.integrations.recordProviderSignal('WEATHER_MARINE','PROVIDER_FAILURE');throw new ServiceUnavailableException('Stormglass returned an invalid response.');}
+    const received=await marineProviderJson('STORMGLASS',url,{Authorization:apiKey,Accept:'application/json'});
+    this.integrations.requireOperational('WEATHER_MARINE', { allowSandbox: true });
+    if(base!==marineProviderOrigin('STORMGLASS')||apiKey!==process.env.STORMGLASS_API_KEY?.trim()||lifecycle!==process.env.HYDROLAND_INTEGRATION_WEATHER_MARINE_STATUS)throw marineProviderFailure('MARINE_CONFIGURATION_CHANGED');
+    const payload=received.payload as StormglassResponse;
     const hours=payload&&Array.isArray(payload.hours)?payload.hours:[];
     const hour=hours.reduce<StormglassHour|undefined>((best,current)=>{
       if(!current||typeof current!=='object'||Array.isArray(current))return best;
-      const currentTime=typeof current.time==='string'?new Date(current.time).getTime():Number.NaN;
+      const instant=marineUtcInstant(current.time),currentTime=instant?Date.parse(instant):Number.NaN;
       if(!Number.isFinite(currentTime)||currentTime<window.start||currentTime>window.end)return best;
       if(!best)return current;
       const bestTime=best.time?new Date(best.time).getTime():Number.NaN;
       return !Number.isFinite(bestTime)||Math.abs(currentTime-target.getTime())<Math.abs(bestTime-target.getTime())?current:best;
     },undefined);
-    if (!hour){await this.integrations.recordProviderSignal('WEATHER_MARINE','PROVIDER_FAILURE');throw new ServiceUnavailableException('Stormglass returned no marine forecast for the trip time.');}
+    if (!hour)throw marineProviderFailure('WEATHER_FORECAST_WINDOW_EMPTY');
     const snapshot:WeatherSnapshot={
       provider: 'STORMGLASS',
       source:'sg',
-      observedAt: typeof hour.time==='string' ? hour.time : target.toISOString(),
+      observedAt: marineUtcInstant(hour.time)!,
       windSpeedKph: value(hour, 'windSpeed') === undefined ? undefined : value(hour, 'windSpeed')! * 3.6,
       windGustKph: value(hour, 'gust') === undefined ? undefined : value(hour, 'gust')! * 3.6,
       windDirectionDeg: value(hour, 'windDirection'),
@@ -87,8 +78,15 @@ export class StormglassWeatherService {
       decision: 'REVIEW_REQUIRED',
       reason: 'Marine forecast supplied by Stormglass source sg for the trip window; operational approval remains human-reviewed.',
     };
-    if(!hasWeatherMeasurements(snapshot)){await this.integrations.recordProviderSignal('WEATHER_MARINE','PROVIDER_FAILURE');throw new ServiceUnavailableException('Stormglass returned no valid marine measurements for the trip time.');}
+    if(!hasWeatherMeasurements(snapshot))throw marineProviderFailure('WEATHER_REQUESTED_SOURCE_MISSING');
+    snapshot.sourceEvidence={schemaVersion:1,provider:'STORMGLASS',dataset:'sg',requestedFor:target.toISOString(),
+      windowStart:new Date(window.start).toISOString(),windowEnd:new Date(window.end).toISOString(),
+      dataDigest:marineEvidenceDigest({latitude,longitude,target:target.toISOString(),snapshot})};
     await this.integrations.recordProviderSignal('WEATHER_MARINE','SUCCESS');
     return snapshot;
+    }catch(error){
+      await this.integrations.recordProviderSignal('WEATHER_MARINE','PROVIDER_FAILURE');
+      throw error;
+    }
   }
 }
