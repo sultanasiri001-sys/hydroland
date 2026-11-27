@@ -8,7 +8,8 @@ export function participationFixture(db, base) {
   const loopback = value => ['localhost', '127.0.0.1', '[::1]'].includes(new URL(value).hostname);
   const name = decodeURIComponent(url.pathname.slice(1));
   const githubService = process.env.GITHUB_ACTIONS === 'true' && ['5432', '5433'].includes(url.port)
-    && /^(hydroland|course_checkout_test|calendar_training_availability_ci|training_cross_role_availability_ci|.*_availability_ci)$/.test(name);
+    && (/^(hydroland|course_checkout_test|calendar_training_availability_ci|training_cross_role_availability_ci|.*_availability_ci)$/.test(name)
+      || name === 'hydroland_form_library_ci' && process.env.FORM_LIBRARY_E2E_CONFIRM === 'ISOLATED_LOOPBACK_DATABASE');
   assert.equal(process.env.CI, 'true', 'D01 fixtures require CI');
   assert.equal(process.env.NODE_ENV, 'test', 'D01 fixtures require NODE_ENV=test');
   assert.equal(process.env.D01_DB_TEST_CONFIRM, 'DISPOSABLE_LOOPBACK_ONLY', 'Explicit disposable D01 database confirmation required');
