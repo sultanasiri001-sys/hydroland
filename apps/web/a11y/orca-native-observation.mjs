@@ -60,3 +60,31 @@ export function createNativeStartupBarrier(document){
     return {...load,lastPresentationOffset:lastActivity,stableForMs};
   };
 }
+
+// Workspace changes do not load a new document. Orca can still be processing
+// queued focus restoration and live regions after the new DOM is visible.
+// Observe that real queue before the single ordinary interrupt; this is not a
+// substitute for the subsequent native interruption or PCM silence checks.
+export function createNativePresentationBarrier(){
+  let lastActivity=-1;
+  let stableSince=null;
+  const reset=()=>{lastActivity=-1;stableSince=null;return null;};
+  return (log,nowMs)=>{
+    const started=[...log.matchAll(/^vvvvv PROCESS OBJECT EVENT (.+) \(queue size: (\d+)\) vvvvv$/gm)].at(-1);
+    if(!started||Number(started[2])!==0)return reset();
+    const end='^^^^^ PROCESS OBJECT EVENT '+started[1]+' ^^^^^';
+    const endIndex=log.indexOf(end,started.index+started[0].length);
+    if(endIndex<0)return reset();
+    const queued=[...log.matchAll(/^.*EVENT MANAGER: Queueing .*$/gm)].at(-1);
+    if(queued&&queued.index>started.index)return reset();
+    const liveQueue=[...log.matchAll(/^.*LIVE REGIONS: messages in queue: (\d+).*$/gm)].at(-1);
+    if(liveQueue&&Number(liveQueue[1])!==0)return reset();
+    const activity=[...log.matchAll(/^.*(?:SPEECH DISPATCHER: Speaking|SPEECH OUTPUT:|WEB SAY ALL:|WEB: Doing SayAll|LIVE REGIONS:|EVENT MANAGER: (?:Queueing|Dequeued|Processing)|(?:vvvvv|\^\^\^\^\^) PROCESS OBJECT EVENT).*$/gm)].at(-1);
+    const endOffset=endIndex+end.length;
+    const activityOffset=Math.max(endOffset,activity?activity.index+activity[0].length:-1);
+    if(activityOffset!==lastActivity){lastActivity=activityOffset;stableSince=nowMs;}
+    const stableForMs=nowMs-stableSince;
+    if(stableForMs<600)return null;
+    return {event:started[1],endOffset,queueSize:0,liveRegionQueueSize:liveQueue?0:null,lastActivityOffset:lastActivity,stableForMs};
+  };
+}

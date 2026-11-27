@@ -1,0 +1,317 @@
+# Genuine selected lines from Orca native diagnostics; intervening debug details omitted.
+# Run 45928198468 / job 140274438163 / artifact 15167890025.
+# Source head 1e6a6127bbb73a9f46b3f866cde3cd4118229907.
+# Artifact ZIP SHA256 c1bf5eedfc547c1e7bf14c65158e5dcc210a10063683c26c943dcc654d15f158.
+# Original orca-ar.log lines 25001..28095; every event line below is copied verbatim.
+# Original log SHA256 27b2ddd8b8f93ce52fea9b1a3303de438c97d70f8fc2fa26f8c228141bea0ac7
+
+^^^^^ PROCESS OBJECT EVENT object:state-changed:focused ^^^^^
+02:30:10.991729 - EVENT MANAGER: Queueing object:state-changed:focused for [entry: 'بحث في المنصة'] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+02:30:11.000881 - EVENT MANAGER: Queueing object:state-changed:focused for [invalid] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+02:30:11.001385 - EVENT MANAGER: Dequeued object:state-changed:focused for [entry: 'بحث في المنصة'] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+vvvvv PROCESS OBJECT EVENT object:state-changed:focused (queue size: 1) vvvvv
+02:30:11.001642 - OBJECT EVENT: object:state-changed:focused for [entry: 'بحث في المنصة'] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+02:30:11.004041 - EVENT MANAGER: Queueing object:children-changed:remove for [landmark: 'لوحة الوساطة البحرية'] in [application: 'Google Chrome for Testing'] (3, 0, [paragraph])
+02:30:11.010902 - EVENT MANAGER: Queueing object:children-changed:add for [document web: 'HYDROLAND | هيدرولاند'] in [application: 'Google Chrome for Testing'] (0, 0, [dialog: 'اختر نوع الحساب'])
+02:30:11.012300 - EVENT MANAGER: Queueing object:state-changed:focused for [push button: 'إغلاق'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+02:30:11.023386 - EVENT MANAGER: Processing object:state-changed:focused: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:state-changed:focused ^^^^^
+02:30:11.023722 - EVENT MANAGER: Dequeued object:state-changed:focused for [invalid] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+vvvvv PROCESS OBJECT EVENT object:state-changed:focused (queue size: 3) vvvvv
+^^^^^ PROCESS OBJECT EVENT object:state-changed:focused ^^^^^
+02:30:11.024145 - EVENT MANAGER: Dequeued object:children-changed:remove for [DEAD] in None (3, 0, [paragraph])
+vvvvv PROCESS OBJECT EVENT object:children-changed:remove (queue size: 2) vvvvv
+^^^^^ PROCESS OBJECT EVENT object:children-changed:remove ^^^^^
+02:30:11.024470 - EVENT MANAGER: Dequeued object:children-changed:add for [document web: 'HYDROLAND | هيدرولاند'] in [application: 'Google Chrome for Testing'] (0, 0, [dialog: 'اختر نوع الحساب'])
+vvvvv PROCESS OBJECT EVENT object:children-changed:add (queue size: 1) vvvvv
+02:30:11.024675 - OBJECT EVENT: object:children-changed:add for [document web: 'HYDROLAND | هيدرولاند'] in [application: 'Google Chrome for Testing'] (0, 0, [dialog: 'اختر نوع الحساب'])
+02:30:11.035627 - EVENT MANAGER: Processing object:children-changed:add: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:children-changed:add ^^^^^
+02:30:11.039232 - EVENT MANAGER: Dequeued object:state-changed:focused for [push button: 'إغلاق'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+vvvvv PROCESS OBJECT EVENT object:state-changed:focused (queue size: 0) vvvvv
+02:30:11.039367 - OBJECT EVENT: object:state-changed:focused for [push button: 'إغلاق'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+02:30:11.047026 - EVENT MANAGER: Processing object:state-changed:focused: script for event is active
+02:30:11.108345 - SPEECH OUTPUT: 'اختر نوع الحساب' {'family': {'name': 'Arabic', 'gender': None, 'lang': 'ar', 'dialect': 'none', 'variant': None}, 'established': False}
+02:30:11.108355 - SPEECH DISPATCHER: Speaking 'اختر نوع الحساب' as string
+02:30:11.110552 - SPEECH DISPATCHER: Speaking '<speak><mark name="0:4"/>اختر <mark name="5:8"/>نوع <mark name="9:15"/>الحساب</speak>' 
+02:30:11.110838 - SPEECH OUTPUT: 'dialog' {'family': {'name': 'Arabic', 'gender': None, 'lang': 'ar', 'dialect': 'none', 'variant': None}, 'established': False}
+02:30:11.110857 - SPEECH DISPATCHER: Speaking 'dialog' as string
+02:30:11.113523 - SPEECH DISPATCHER: Speaking '<speak><mark name="0:6"/>dialog</speak>' 
+02:30:11.113962 - SPEECH OUTPUT: 'إغلاق' {'family': {'name': 'Arabic', 'gender': None, 'lang': 'ar', 'dialect': 'none', 'variant': None}, 'established': False}
+02:30:11.113984 - SPEECH DISPATCHER: Speaking 'إغلاق' as string
+02:30:11.117029 - SPEECH DISPATCHER: Speaking '<speak><mark name="0:5"/>إغلاق</speak>' 
+02:30:11.117279 - SPEECH OUTPUT: 'push button.' {'family': {'name': 'Arabic', 'gender': None, 'lang': 'ar', 'dialect': 'none', 'variant': None}, 'established': False}
+02:30:11.117301 - SPEECH DISPATCHER: Speaking 'push button.' as string
+02:30:11.120280 - SPEECH DISPATCHER: Speaking '<speak><mark name="0:4"/>push <mark name="5:12"/>button.</speak>' 
+02:30:11.125029 - SPEECH OUTPUT: 'Browse mode' {'family': {'name': 'Arabic', 'gender': None, 'lang': 'ar', 'dialect': 'none', 'variant': None}}
+02:30:11.125054 - SPEECH DISPATCHER: Speaking 'Browse mode' as string
+02:30:11.128547 - SPEECH DISPATCHER: Speaking '<speak><mark name="0:6"/>Browse <mark name="7:11"/>mode</speak>' 
+^^^^^ PROCESS OBJECT EVENT object:state-changed:focused ^^^^^
+02:30:11.173421 - EVENT MANAGER: Queueing object:text-selection-changed for [push button: 'شركة أو جهة'] in [application: 'Google Chrome for Testing'] (0, 0,)
+02:30:11.173900 - EVENT MANAGER: Queueing object:text-caret-moved for [push button: 'شركة أو جهة'] in [application: 'Google Chrome for Testing'] (4, 0, 0)
+02:30:11.174183 - EVENT MANAGER: Queueing object:state-changed:focused for [push button: 'إغلاق'] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+02:30:11.174516 - EVENT MANAGER: Queueing object:state-changed:focused for [push button: 'شركة أو جهة'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+02:30:11.174844 - EVENT MANAGER: Dequeued object:text-selection-changed for [push button: 'شركة أو جهة'] in [application: 'Google Chrome for Testing'] (0, 0,)
+vvvvv PROCESS OBJECT EVENT object:text-selection-changed (queue size: 3) vvvvv
+02:30:11.175136 - OBJECT EVENT: object:text-selection-changed for [push button: 'شركة أو جهة'] in [application: 'Google Chrome for Testing'] (0, 0,)
+02:30:11.180922 - EVENT MANAGER: Processing object:text-selection-changed: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:text-selection-changed ^^^^^
+02:30:11.182361 - EVENT MANAGER: Dequeued object:text-caret-moved for [push button: 'شركة أو جهة'] in [application: 'Google Chrome for Testing'] (4, 0, 0)
+vvvvv PROCESS OBJECT EVENT object:text-caret-moved (queue size: 2) vvvvv
+02:30:11.182581 - OBJECT EVENT: object:text-caret-moved for [push button: 'شركة أو جهة'] in [application: 'Google Chrome for Testing'] (4, 0, 0)
+02:30:11.193600 - EVENT MANAGER: Processing object:text-caret-moved: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:text-caret-moved ^^^^^
+02:30:11.202728 - EVENT MANAGER: Dequeued object:state-changed:focused for [push button: 'إغلاق'] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+vvvvv PROCESS OBJECT EVENT object:state-changed:focused (queue size: 1) vvvvv
+02:30:11.203097 - OBJECT EVENT: object:state-changed:focused for [push button: 'إغلاق'] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+02:30:11.210624 - EVENT MANAGER: Processing object:state-changed:focused: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:state-changed:focused ^^^^^
+02:30:11.210948 - EVENT MANAGER: Dequeued object:state-changed:focused for [push button: 'شركة أو جهة'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+vvvvv PROCESS OBJECT EVENT object:state-changed:focused (queue size: 0) vvvvv
+02:30:11.211188 - OBJECT EVENT: object:state-changed:focused for [push button: 'شركة أو جهة'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+02:30:11.219572 - EVENT MANAGER: Processing object:state-changed:focused: script for event is active
+02:30:11.277221 - SPEECH OUTPUT: 'شركة أو جهة' {'family': {'name': 'Arabic', 'gender': None, 'lang': 'ar', 'dialect': 'none', 'variant': None}, 'established': False}
+02:30:11.277235 - SPEECH DISPATCHER: Speaking 'شركة أو جهة' as string
+02:30:11.292593 - SPEECH DISPATCHER: Speaking '<speak><mark name="0:4"/>شركة <mark name="5:7"/>أو <mark name="8:11"/>جهة</speak>' 
+02:30:11.292991 - SPEECH OUTPUT: 'push button.' {'family': {'name': 'Arabic', 'gender': None, 'lang': 'ar', 'dialect': 'none', 'variant': None}, 'established': False}
+02:30:11.293100 - SPEECH DISPATCHER: Speaking 'push button.' as string
+02:30:11.297444 - SPEECH DISPATCHER: Speaking '<speak><mark name="0:4"/>push <mark name="5:12"/>button.</speak>' 
+^^^^^ PROCESS OBJECT EVENT object:state-changed:focused ^^^^^
+02:30:11.317177 - EVENT MANAGER: Queueing object:children-changed:remove for [dialog: 'اختر نوع الحساب'] in [application: 'Google Chrome for Testing'] (0, 0, [heading])
+02:30:11.318930 - EVENT MANAGER: Queueing object:text-changed:insert for [status bar] in [application: 'Google Chrome for Testing'] (0, 27, تم فتح لوحة الشركات والجهات)
+02:30:11.321823 - EVENT MANAGER: Queueing object:text-changed:insert for [status bar] in [application: 'Google Chrome for Testing'] (0, 35, جارٍ تحميل بيانات الجهة والمدفوعات…)
+02:30:11.323671 - EVENT MANAGER: Queueing object:state-changed:focused for [section] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+02:30:11.324263 - EVENT MANAGER: Queueing object:selection-changed for [menu] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+02:30:11.324862 - EVENT MANAGER: Queueing object:selection-changed for [menu] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+02:30:11.325769 - EVENT MANAGER: Queueing object:selection-changed for [menu] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+02:30:11.326432 - EVENT MANAGER: Queueing object:selection-changed for [menu] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+02:30:11.328683 - EVENT MANAGER: Queueing object:children-changed:add for [document web: 'HYDROLAND | هيدرولاند'] in [application: 'Google Chrome for Testing'] (0, 0, [section])
+02:30:11.329116 - EVENT MANAGER: Queueing object:selection-changed for [menu] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+02:30:11.329616 - EVENT MANAGER: Queueing object:selection-changed for [menu] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+02:30:11.332397 - EVENT MANAGER: Queueing object:state-changed:selected for [menu item: 'كل الإدارات'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+02:30:11.333719 - EVENT MANAGER: Queueing object:state-changed:selected for [menu item: 'اختر طلبًا محفوظًا'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+02:30:11.335073 - EVENT MANAGER: Queueing object:state-changed:selected for [menu item: 'حسابي'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+02:30:11.336336 - EVENT MANAGER: Queueing object:state-changed:selected for [menu item: 'اختر سجلًا'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+02:30:11.340201 - EVENT MANAGER: Queueing object:state-changed:selected for [menu item: 'ابحث ثم اختر حسابًا متحققًا'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+02:30:11.341770 - EVENT MANAGER: Queueing object:state-changed:selected for [menu item: 'جميع الإدارات'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+02:30:11.342249 - EVENT MANAGER: Dequeued object:children-changed:remove for [dialog: 'اختر نوع الحساب'] in [application: 'Google Chrome for Testing'] (0, 0, [heading])
+vvvvv PROCESS OBJECT EVENT object:children-changed:remove (queue size: 16) vvvvv
+02:30:11.343150 - OBJECT EVENT: object:children-changed:remove for [dialog: 'اختر نوع الحساب'] in [application: 'Google Chrome for Testing'] (0, 0, [heading])
+02:30:11.352814 - EVENT MANAGER: Processing object:children-changed:remove: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:children-changed:remove ^^^^^
+02:30:11.363150 - EVENT MANAGER: Dequeued object:text-changed:insert for [status bar] in [application: 'Google Chrome for Testing'] (0, 27, تم فتح لوحة الشركات والجهات)
+vvvvv PROCESS OBJECT EVENT object:text-changed:insert (queue size: 15) vvvvv
+02:30:11.363707 - OBJECT EVENT: object:text-changed:insert for [status bar] in [application: 'Google Chrome for Testing'] (0, 27, تم فتح لوحة الشركات والجهات)
+02:30:11.372667 - EVENT MANAGER: Processing object:text-changed:insert: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:text-changed:insert ^^^^^
+02:30:11.394832 - EVENT MANAGER: Dequeued object:text-changed:insert for [status bar] in [application: 'Google Chrome for Testing'] (0, 35, جارٍ تحميل بيانات الجهة والمدفوعات…)
+vvvvv PROCESS OBJECT EVENT object:text-changed:insert (queue size: 14) vvvvv
+02:30:11.395243 - OBJECT EVENT: object:text-changed:insert for [status bar] in [application: 'Google Chrome for Testing'] (0, 35, جارٍ تحميل بيانات الجهة والمدفوعات…)
+02:30:11.397652 - EVENT MANAGER: Queueing object:children-changed:remove for [section] in [application: 'Google Chrome for Testing'] (0, 0, [invalid])
+02:30:11.399487 - EVENT MANAGER: Queueing object:children-changed:remove for [status bar] in [application: 'Google Chrome for Testing'] (0, 0, [invalid])
+02:30:11.401904 - EVENT MANAGER: Queueing object:children-changed:remove for [section] in [application: 'Google Chrome for Testing'] (0, 0, [invalid])
+02:30:11.404255 - EVENT MANAGER: Queueing object:children-changed:remove for [section] in [application: 'Google Chrome for Testing'] (0, 0, [invalid])
+02:30:11.408128 - EVENT MANAGER: Queueing object:children-changed:remove for [section] in [application: 'Google Chrome for Testing'] (0, 0, [invalid])
+02:30:11.409659 - EVENT MANAGER: Queueing object:text-changed:delete for [status bar] in [application: 'Google Chrome for Testing'] (0, 35, جارٍ تحميل بيانات الجهة والمدفوعات…)
+02:30:11.410313 - EVENT MANAGER: Queueing object:text-changed:insert for [status bar] in [application: 'Google Chrome for Testing'] (0, 49, تم تحديث الجهات والمدفوعات من النظام · ٠٥:٣٠:١١ ص)
+02:30:11.410801 - EVENT MANAGER: Queueing object:state-changed:focused for [section] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+02:30:11.411156 - EVENT MANAGER: Queueing object:state-changed:focused for [document web: 'HYDROLAND | هيدرولاند'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+02:30:11.413838 - EVENT MANAGER: Queueing object:selection-changed for [menu] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+02:30:11.415930 - EVENT MANAGER: Queueing object:state-changed:selected for [menu item: 'غير مرتبط برحلة'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+02:30:11.416906 - EVENT MANAGER: Queueing object:selection-changed for [menu] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+02:30:11.417894 - EVENT MANAGER: Queueing object:state-changed:selected for [menu item: 'LOW'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+02:30:11.420256 - EVENT MANAGER: Queueing object:children-changed:add for [section] in [application: 'Google Chrome for Testing'] (0, 0, [static: '0'])
+02:30:11.424661 - EVENT MANAGER: Queueing object:children-changed:add for [section] in [application: 'Google Chrome for Testing'] (0, 0, [static: '0'])
+02:30:11.426413 - EVENT MANAGER: Queueing object:children-changed:add for [section] in [application: 'Google Chrome for Testing'] (0, 0, [static: '0'])
+02:30:11.429755 - EVENT MANAGER: Queueing object:children-changed:add for [status bar] in [application: 'Google Chrome for Testing'] (0, 0, [static: 'تم تحديث الجهات والمدفوعات من النظام · ٠٥:٣٠:١١ ص'])
+02:30:11.431629 - EVENT MANAGER: Queueing object:children-changed:add for [section] in [application: 'Google Chrome for Testing'] (0, 0, [static: '0'])
+02:30:11.437795 - EVENT MANAGER: Processing object:text-changed:insert: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:text-changed:insert ^^^^^
+02:30:11.437999 - EVENT MANAGER: Dequeued object:state-changed:focused for [section] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+vvvvv PROCESS OBJECT EVENT object:state-changed:focused (queue size: 31) vvvvv
+^^^^^ PROCESS OBJECT EVENT object:state-changed:focused ^^^^^
+02:30:11.438457 - EVENT MANAGER: Dequeued object:selection-changed for [menu] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+vvvvv PROCESS OBJECT EVENT object:selection-changed (queue size: 30) vvvvv
+02:30:11.439688 - OBJECT EVENT: object:selection-changed for [menu] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+02:30:11.446872 - EVENT MANAGER: Processing object:selection-changed: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:selection-changed ^^^^^
+02:30:11.451412 - EVENT MANAGER: Dequeued object:selection-changed for [menu] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+vvvvv PROCESS OBJECT EVENT object:selection-changed (queue size: 29) vvvvv
+02:30:11.452546 - OBJECT EVENT: object:selection-changed for [menu] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+02:30:11.459157 - EVENT MANAGER: Processing object:selection-changed: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:selection-changed ^^^^^
+02:30:11.461672 - EVENT MANAGER: Dequeued object:selection-changed for [menu] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+vvvvv PROCESS OBJECT EVENT object:selection-changed (queue size: 28) vvvvv
+02:30:11.462810 - OBJECT EVENT: object:selection-changed for [menu] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+02:30:11.467817 - EVENT MANAGER: Processing object:selection-changed: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:selection-changed ^^^^^
+02:30:11.471597 - EVENT MANAGER: Dequeued object:selection-changed for [menu] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+vvvvv PROCESS OBJECT EVENT object:selection-changed (queue size: 27) vvvvv
+02:30:11.472562 - OBJECT EVENT: object:selection-changed for [menu] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+02:30:11.477618 - EVENT MANAGER: Processing object:selection-changed: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:selection-changed ^^^^^
+02:30:11.479987 - EVENT MANAGER: Dequeued object:children-changed:add for [document web: 'HYDROLAND | هيدرولاند'] in [application: 'Google Chrome for Testing'] (0, 0, [section])
+vvvvv PROCESS OBJECT EVENT object:children-changed:add (queue size: 26) vvvvv
+02:30:11.480976 - OBJECT EVENT: object:children-changed:add for [document web: 'HYDROLAND | هيدرولاند'] in [application: 'Google Chrome for Testing'] (0, 0, [section])
+02:30:11.493466 - EVENT MANAGER: Processing object:children-changed:add: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:children-changed:add ^^^^^
+02:30:11.501205 - SPEECH OUTPUT: 'تم فتح لوحة الشركات والجهات' {'family': {'name': 'Arabic', 'gender': None, 'lang': 'ar', 'dialect': 'none', 'variant': None}}
+02:30:11.501223 - SPEECH DISPATCHER: Speaking 'تم فتح لوحة الشركات والجهات' as string
+02:30:11.506307 - SPEECH DISPATCHER: Speaking '<speak><mark name="0:2"/>تم <mark name="3:6"/>فتح <mark name="7:11"/>لوحة <mark name="12:19"/>الشركات <mark name="20:27"/>والجهات</speak>' 
+02:30:11.507514 - LIVE REGIONS: messages in queue: 0
+02:30:11.507671 - EVENT MANAGER: Dequeued object:selection-changed for [menu] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+vvvvv PROCESS OBJECT EVENT object:selection-changed (queue size: 25) vvvvv
+02:30:11.508640 - OBJECT EVENT: object:selection-changed for [menu] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+02:30:11.516464 - EVENT MANAGER: Processing object:selection-changed: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:selection-changed ^^^^^
+02:30:11.519651 - EVENT MANAGER: Dequeued object:selection-changed for [menu] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+vvvvv PROCESS OBJECT EVENT object:selection-changed (queue size: 24) vvvvv
+02:30:11.520154 - OBJECT EVENT: object:selection-changed for [menu] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+02:30:11.523675 - EVENT MANAGER: Processing object:selection-changed: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:selection-changed ^^^^^
+02:30:11.525594 - EVENT MANAGER: Dequeued object:state-changed:selected for [menu item: 'كل الإدارات'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+vvvvv PROCESS OBJECT EVENT object:state-changed:selected (queue size: 23) vvvvv
+02:30:11.526149 - OBJECT EVENT: object:state-changed:selected for [menu item: 'كل الإدارات'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+02:30:11.532591 - EVENT MANAGER: Processing object:state-changed:selected: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:state-changed:selected ^^^^^
+02:30:11.534850 - EVENT MANAGER: Dequeued object:state-changed:selected for [menu item: 'اختر طلبًا محفوظًا'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+vvvvv PROCESS OBJECT EVENT object:state-changed:selected (queue size: 22) vvvvv
+02:30:11.535647 - OBJECT EVENT: object:state-changed:selected for [menu item: 'اختر طلبًا محفوظًا'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+02:30:11.543094 - EVENT MANAGER: Processing object:state-changed:selected: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:state-changed:selected ^^^^^
+02:30:11.544239 - EVENT MANAGER: Dequeued object:state-changed:selected for [menu item: 'حسابي'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+vvvvv PROCESS OBJECT EVENT object:state-changed:selected (queue size: 21) vvvvv
+02:30:11.545074 - OBJECT EVENT: object:state-changed:selected for [menu item: 'حسابي'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+02:30:11.554101 - EVENT MANAGER: Processing object:state-changed:selected: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:state-changed:selected ^^^^^
+02:30:11.555124 - EVENT MANAGER: Dequeued object:state-changed:selected for [menu item: 'اختر سجلًا'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+vvvvv PROCESS OBJECT EVENT object:state-changed:selected (queue size: 20) vvvvv
+02:30:11.555591 - OBJECT EVENT: object:state-changed:selected for [menu item: 'اختر سجلًا'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+02:30:11.561376 - EVENT MANAGER: Processing object:state-changed:selected: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:state-changed:selected ^^^^^
+02:30:11.565299 - EVENT MANAGER: Dequeued object:state-changed:selected for [menu item: 'ابحث ثم اختر حسابًا متحققًا'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+vvvvv PROCESS OBJECT EVENT object:state-changed:selected (queue size: 19) vvvvv
+02:30:11.566002 - OBJECT EVENT: object:state-changed:selected for [menu item: 'ابحث ثم اختر حسابًا متحققًا'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+02:30:11.573957 - EVENT MANAGER: Processing object:state-changed:selected: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:state-changed:selected ^^^^^
+02:30:11.575246 - EVENT MANAGER: Dequeued object:state-changed:selected for [menu item: 'جميع الإدارات'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+vvvvv PROCESS OBJECT EVENT object:state-changed:selected (queue size: 18) vvvvv
+02:30:11.575682 - OBJECT EVENT: object:state-changed:selected for [menu item: 'جميع الإدارات'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+02:30:11.581791 - EVENT MANAGER: Processing object:state-changed:selected: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:state-changed:selected ^^^^^
+02:30:11.583927 - EVENT MANAGER: Dequeued object:children-changed:remove for [section] in [application: 'Google Chrome for Testing'] (0, 0, [invalid])
+vvvvv PROCESS OBJECT EVENT object:children-changed:remove (queue size: 17) vvvvv
+02:30:11.584738 - OBJECT EVENT: object:children-changed:remove for [section] in [application: 'Google Chrome for Testing'] (0, 0, [invalid])
+02:30:11.599774 - EVENT MANAGER: Processing object:children-changed:remove: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:children-changed:remove ^^^^^
+02:30:11.605389 - EVENT MANAGER: Dequeued object:children-changed:remove for [status bar] in [application: 'Google Chrome for Testing'] (0, 0, [invalid])
+vvvvv PROCESS OBJECT EVENT object:children-changed:remove (queue size: 16) vvvvv
+02:30:11.605773 - OBJECT EVENT: object:children-changed:remove for [status bar] in [application: 'Google Chrome for Testing'] (0, 0, [invalid])
+02:30:11.613815 - EVENT MANAGER: Processing object:children-changed:remove: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:children-changed:remove ^^^^^
+02:30:11.616719 - EVENT MANAGER: Dequeued object:children-changed:remove for [section] in [application: 'Google Chrome for Testing'] (0, 0, [invalid])
+vvvvv PROCESS OBJECT EVENT object:children-changed:remove (queue size: 15) vvvvv
+02:30:11.617446 - OBJECT EVENT: object:children-changed:remove for [section] in [application: 'Google Chrome for Testing'] (0, 0, [invalid])
+02:30:11.625431 - EVENT MANAGER: Processing object:children-changed:remove: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:children-changed:remove ^^^^^
+02:30:11.631951 - EVENT MANAGER: Dequeued object:children-changed:remove for [section] in [application: 'Google Chrome for Testing'] (0, 0, [invalid])
+vvvvv PROCESS OBJECT EVENT object:children-changed:remove (queue size: 14) vvvvv
+02:30:11.632332 - OBJECT EVENT: object:children-changed:remove for [section] in [application: 'Google Chrome for Testing'] (0, 0, [invalid])
+02:30:11.640682 - EVENT MANAGER: Processing object:children-changed:remove: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:children-changed:remove ^^^^^
+02:30:11.647578 - EVENT MANAGER: Dequeued object:children-changed:remove for [section] in [application: 'Google Chrome for Testing'] (0, 0, [invalid])
+vvvvv PROCESS OBJECT EVENT object:children-changed:remove (queue size: 13) vvvvv
+02:30:11.647884 - OBJECT EVENT: object:children-changed:remove for [section] in [application: 'Google Chrome for Testing'] (0, 0, [invalid])
+02:30:11.655621 - EVENT MANAGER: Processing object:children-changed:remove: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:children-changed:remove ^^^^^
+vvvvv PROCESS ATSPI_KEY_PRESSED_EVENT: 'Control_L' (37) vvvvv
+02:30:11.664172 - DEFAULT: Interrupting presentation
+02:30:11.664565 - SPEECH OUTPUT: 'left control' {'family': {'name': 'Arabic', 'lang': 'ar', 'dialect': 'none'}}
+02:30:11.664624 - SPEECH DISPATCHER: Speaking 'left control' as string
+02:30:11.664635 - SPEECH DISPATCHER: Speaking 'left control' as string
+02:30:11.666723 - SPEECH DISPATCHER: Speaking '<speak><mark name="0:4"/>left <mark name="5:12"/>control</speak>' 
+^^^^^ PROCESS ATSPI_KEY_PRESSED_EVENT: 'Control_L' (37) ^^^^^
+02:30:11.671514 - EVENT MANAGER: Dequeued object:text-changed:delete for [status bar] in [application: 'Google Chrome for Testing'] (0, 35, جارٍ تحميل بيانات الجهة والمدفوعات…)
+vvvvv PROCESS OBJECT EVENT object:text-changed:delete (queue size: 12) vvvvv
+02:30:11.671826 - OBJECT EVENT: object:text-changed:delete for [status bar] in [application: 'Google Chrome for Testing'] (0, 35, جارٍ تحميل بيانات الجهة والمدفوعات…)
+02:30:11.678077 - EVENT MANAGER: Processing object:text-changed:delete: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:text-changed:delete ^^^^^
+02:30:11.680098 - EVENT MANAGER: Dequeued object:text-changed:insert for [status bar] in [application: 'Google Chrome for Testing'] (0, 49, تم تحديث الجهات والمدفوعات من النظام · ٠٥:٣٠:١١ ص)
+vvvvv PROCESS OBJECT EVENT object:text-changed:insert (queue size: 11) vvvvv
+02:30:11.680562 - OBJECT EVENT: object:text-changed:insert for [status bar] in [application: 'Google Chrome for Testing'] (0, 49, تم تحديث الجهات والمدفوعات من النظام · ٠٥:٣٠:١١ ص)
+02:30:11.687830 - EVENT MANAGER: Processing object:text-changed:insert: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:text-changed:insert ^^^^^
+02:30:11.703966 - EVENT MANAGER: Dequeued object:state-changed:focused for [section] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+vvvvv PROCESS OBJECT EVENT object:state-changed:focused (queue size: 10) vvvvv
+02:30:11.704288 - OBJECT EVENT: object:state-changed:focused for [section] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+02:30:11.709153 - EVENT MANAGER: Processing object:state-changed:focused: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:state-changed:focused ^^^^^
+02:30:11.709349 - EVENT MANAGER: Dequeued object:state-changed:focused for [document web: 'HYDROLAND | هيدرولاند'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+vvvvv PROCESS OBJECT EVENT object:state-changed:focused (queue size: 9) vvvvv
+02:30:11.709604 - OBJECT EVENT: object:state-changed:focused for [document web: 'HYDROLAND | هيدرولاند'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+02:30:11.715823 - EVENT MANAGER: Processing object:state-changed:focused: script for event is active
+02:30:11.841334 - SPEECH OUTPUT: 'HYDROLAND | هيدرولاند - Google Chrome for Testing' {'family': {'name': 'Arabic', 'gender': None, 'lang': 'ar', 'dialect': 'none', 'variant': None}, 'established': False}
+02:30:11.841347 - SPEECH DISPATCHER: Speaking 'HYDROLAND | هيدرولاند - Google Chrome for Testing' as string
+02:30:11.843809 - SPEECH DISPATCHER: Speaking '<speak><mark name="0:9"/>HYDROLAND <mark name="10:11"/>| <mark name="12:21"/>هيدرولاند <mark name="22:23"/>- <mark name="24:30"/>Google <mark name="31:37"/>Chrome <mark name="38:41"/>for <mark name="42:49"/>Testing</speak>' 
+02:30:11.844261 - SPEECH OUTPUT: 'HYDROLAND | هيدرولاند' {'family': {'name': 'Arabic', 'gender': None, 'lang': 'ar', 'dialect': 'none', 'variant': None}, 'established': False}
+02:30:11.844274 - SPEECH DISPATCHER: Speaking 'HYDROLAND | هيدرولاند' as string
+02:30:11.846320 - SPEECH DISPATCHER: Speaking '<speak><mark name="0:9"/>HYDROLAND <mark name="10:11"/>| <mark name="12:21"/>هيدرولاند</speak>' 
+02:30:11.846579 - SPEECH OUTPUT: 'document web.' {'family': {'name': 'Arabic', 'gender': None, 'lang': 'ar', 'dialect': 'none', 'variant': None}, 'established': False}
+02:30:11.846598 - SPEECH DISPATCHER: Speaking 'document web.' as string
+02:30:11.848566 - SPEECH DISPATCHER: Speaking '<speak><mark name="0:8"/>document <mark name="9:13"/>web.</speak>' 
+^^^^^ PROCESS OBJECT EVENT object:state-changed:focused ^^^^^
+02:30:11.852298 - SPEECH OUTPUT: 'تم تحديث الجهات والمدفوعات من النظام · ٠٥:٣٠:١١ ص' {'family': {'name': 'Arabic', 'gender': None, 'lang': 'ar', 'dialect': 'none', 'variant': None}}
+02:30:11.852310 - SPEECH DISPATCHER: Speaking 'تم تحديث الجهات والمدفوعات من النظام · ٠٥:٣٠:١١ ص' as string
+02:30:11.853867 - SPEECH DISPATCHER: Speaking '<speak><mark name="0:2"/>تم <mark name="3:8"/>تحديث <mark name="9:15"/>الجهات <mark name="16:26"/>والمدفوعات <mark name="27:29"/>من <mark name="30:36"/>النظام <mark name="37:38"/>· <mark name="39:47"/>٠٥:٣٠:١١ <mark name="48:49"/>ص</speak>' 
+02:30:11.854488 - LIVE REGIONS: messages in queue: 0
+02:30:11.854589 - EVENT MANAGER: Dequeued object:selection-changed for [menu] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+vvvvv PROCESS OBJECT EVENT object:selection-changed (queue size: 8) vvvvv
+02:30:11.854849 - OBJECT EVENT: object:selection-changed for [menu] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+02:30:11.859399 - EVENT MANAGER: Processing object:selection-changed: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:selection-changed ^^^^^
+02:30:11.867183 - EVENT MANAGER: Dequeued object:state-changed:selected for [menu item: 'غير مرتبط برحلة'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+vvvvv PROCESS OBJECT EVENT object:state-changed:selected (queue size: 7) vvvvv
+02:30:11.867434 - OBJECT EVENT: object:state-changed:selected for [menu item: 'غير مرتبط برحلة'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+02:30:11.872636 - EVENT MANAGER: Processing object:state-changed:selected: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:state-changed:selected ^^^^^
+02:30:11.873679 - EVENT MANAGER: Dequeued object:selection-changed for [menu] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+vvvvv PROCESS OBJECT EVENT object:selection-changed (queue size: 6) vvvvv
+02:30:11.873890 - OBJECT EVENT: object:selection-changed for [menu] in [application: 'Google Chrome for Testing'] (0, 0, 0)
+02:30:11.878704 - EVENT MANAGER: Processing object:selection-changed: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:selection-changed ^^^^^
+02:30:11.886217 - EVENT MANAGER: Dequeued object:state-changed:selected for [menu item: 'LOW'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+vvvvv PROCESS OBJECT EVENT object:state-changed:selected (queue size: 5) vvvvv
+02:30:11.886421 - OBJECT EVENT: object:state-changed:selected for [menu item: 'LOW'] in [application: 'Google Chrome for Testing'] (1, 0, 0)
+02:30:11.891371 - EVENT MANAGER: Processing object:state-changed:selected: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:state-changed:selected ^^^^^
+02:30:11.892401 - EVENT MANAGER: Dequeued object:children-changed:add for [section] in [application: 'Google Chrome for Testing'] (0, 0, [static: '0'])
+vvvvv PROCESS OBJECT EVENT object:children-changed:add (queue size: 4) vvvvv
+02:30:11.892676 - OBJECT EVENT: object:children-changed:add for [section] in [application: 'Google Chrome for Testing'] (0, 0, [static: '0'])
+02:30:11.901875 - EVENT MANAGER: Processing object:children-changed:add: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:children-changed:add ^^^^^
+02:30:11.903472 - EVENT MANAGER: Dequeued object:children-changed:add for [section] in [application: 'Google Chrome for Testing'] (0, 0, [static: '0'])
+vvvvv PROCESS OBJECT EVENT object:children-changed:add (queue size: 3) vvvvv
+02:30:11.903686 - OBJECT EVENT: object:children-changed:add for [section] in [application: 'Google Chrome for Testing'] (0, 0, [static: '0'])
+02:30:11.911785 - EVENT MANAGER: Processing object:children-changed:add: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:children-changed:add ^^^^^
+02:30:11.913631 - EVENT MANAGER: Dequeued object:children-changed:add for [section] in [application: 'Google Chrome for Testing'] (0, 0, [static: '0'])
+vvvvv PROCESS OBJECT EVENT object:children-changed:add (queue size: 2) vvvvv
+02:30:11.913810 - OBJECT EVENT: object:children-changed:add for [section] in [application: 'Google Chrome for Testing'] (0, 0, [static: '0'])
+02:30:11.922382 - EVENT MANAGER: Processing object:children-changed:add: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:children-changed:add ^^^^^
+02:30:11.923780 - EVENT MANAGER: Dequeued object:children-changed:add for [status bar] in [application: 'Google Chrome for Testing'] (0, 0, [static: 'تم تحديث الجهات والمدفوعات من النظام · ٠٥:٣٠:١١ ص'])
+vvvvv PROCESS OBJECT EVENT object:children-changed:add (queue size: 1) vvvvv
+02:30:11.923951 - OBJECT EVENT: object:children-changed:add for [status bar] in [application: 'Google Chrome for Testing'] (0, 0, [static: 'تم تحديث الجهات والمدفوعات من النظام · ٠٥:٣٠:١١ ص'])
+02:30:11.931544 - EVENT MANAGER: Processing object:children-changed:add: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:children-changed:add ^^^^^
+02:30:11.933098 - EVENT MANAGER: Dequeued object:children-changed:add for [section] in [application: 'Google Chrome for Testing'] (0, 0, [static: '0'])
+vvvvv PROCESS OBJECT EVENT object:children-changed:add (queue size: 0) vvvvv
+02:30:11.933230 - OBJECT EVENT: object:children-changed:add for [section] in [application: 'Google Chrome for Testing'] (0, 0, [static: '0'])
+02:30:11.942845 - EVENT MANAGER: Processing object:children-changed:add: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:children-changed:add ^^^^^
+02:30:13.776342 - EVENT MANAGER: Queueing object:children-changed:remove for [section] in [application: 'Google Chrome for Testing'] (3, 0, [status bar])
+02:30:13.776629 - EVENT MANAGER: Dequeued object:children-changed:remove for [section] in [application: 'Google Chrome for Testing'] (3, 0, [status bar])
+vvvvv PROCESS OBJECT EVENT object:children-changed:remove (queue size: 0) vvvvv
+02:30:13.776821 - OBJECT EVENT: object:children-changed:remove for [section] in [application: 'Google Chrome for Testing'] (3, 0, [status bar])
+02:30:13.790359 - EVENT MANAGER: Processing object:children-changed:remove: script for event is active
+^^^^^ PROCESS OBJECT EVENT object:children-changed:remove ^^^^^

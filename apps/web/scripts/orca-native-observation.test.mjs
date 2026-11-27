@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {createNativeStartupBarrier,nativeControlInterruption,processedDocumentLoad} from '../a11y/orca-native-observation.mjs';
+import {createNativeStartupBarrier,createNativePresentationBarrier,nativeControlInterruption,processedDocumentLoad} from '../a11y/orca-native-observation.mjs';
 
 // Genuine diagnostic excerpts, run 44487597490 / artifact 14512555777.
 // This regression replays event ordering; it does not claim a new native run.
@@ -69,4 +69,85 @@ test('partial native blocks cannot borrow completion from another event',()=>{
   const foreign=completedLoad.replaceAll(document.uri,'https://example.invalid/');
   assert.equal(processedDocumentLoad(partial+foreign,document),null);
   assert.ok(processedDocumentLoad(foreign+completedLoad,document));
+});
+
+// Genuine D02 main failure, run 45928198468 / artifact 15167890025. The
+// selected original lines retain the native queue sizes, focus and speech order.
+const workspace=readFileSync(new URL('../a11y/fixtures/orca-46.1-workspace-1e6a612.txt',import.meta.url),'utf8');
+const workspaceControl=workspace.indexOf("vvvvv PROCESS ATSPI_KEY_PRESSED_EVENT: 'Control_L'");
+const restoredFocus=workspace.indexOf('02:30:11.703966 - EVENT MANAGER: Dequeued object:state-changed:focused');
+const firstIdleStart=workspace.indexOf('vvvvv PROCESS OBJECT EVENT object:state-changed:focused (queue size: 0)');
+const focusEnd='^^^^^ PROCESS OBJECT EVENT object:state-changed:focused ^^^^^';
+const firstIdleEnd=workspace.indexOf(focusEnd,firstIdleStart)+focusEnd.length;
+const firstIdle=workspace.slice(0,firstIdleEnd);
+const laterQueue=workspace.indexOf('02:30:13.776342 - EVENT MANAGER: Queueing');
+const drained=workspace.slice(0,laterQueue);
+
+test('real workspace failure has a valid Control interruption before late focus and live speech',()=>{
+  assert.ok(workspaceControl>firstIdleEnd&&restoredFocus>workspaceControl);
+  assert.match(nativeControlInterruption(workspace.slice(workspaceControl,restoredFocus)).interruption,/02:30:11\.664172/);
+  assert.match(workspace.slice(restoredFocus),/02:30:11\.841347 - SPEECH DISPATCHER: Speaking 'HYDROLAND/);
+  assert.match(workspace.slice(restoredFocus),/02:30:11\.852310 - SPEECH DISPATCHER: Speaking 'تم تحديث الجهات والمدفوعات/);
+  const observe=createNativePresentationBarrier(),interruptedTooEarly=workspace.slice(0,restoredFocus);
+  assert.equal(observe(interruptedTooEarly,0),null);
+  assert.equal(observe(interruptedTooEarly,15_000),null,'A stalled nonempty native queue must not become ready with time alone');
+});
+
+test('native workspace focus restoration invalidates an earlier stable presentation',()=>{
+  const observe=createNativePresentationBarrier();
+  assert.equal(observe(firstIdle,0),null);
+  assert.ok(observe(firstIdle,600));
+  const focusStarted=workspace.slice(0,workspace.indexOf('02:30:11.709604'));
+  assert.equal(observe(focusStarted,601),null);
+  assert.equal(observe(focusStarted,15_601),null);
+  assert.equal(observe(drained,15_602),null);
+  assert.equal(observe(drained,16_201),null);
+  const proof=observe(drained,16_202);
+  assert.equal(proof.queueSize,0);
+  assert.equal(proof.liveRegionQueueSize,0);
+  assert.equal(proof.stableForMs,600);
+  assert.ok(proof.lastActivityOffset>workspace.indexOf('02:30:11.852310'));
+});
+
+test('genuine asynchronous native speech resets the presentation observation without fabricating silence',()=>{
+  const observe=createNativePresentationBarrier();
+  assert.equal(observe(completedLoad,0),null);
+  assert.equal(observe(completedLoad,599),null);
+  const withSpeech=fixture.slice(loadStart);
+  assert.equal(observe(withSpeech,600),null);
+  assert.equal(observe(withSpeech,1199),null);
+  assert.equal(observe(withSpeech,1200).stableForMs,600);
+});
+
+test('a late native queued event must finish before observation starts again',()=>{
+  const observe=createNativePresentationBarrier();
+  assert.equal(observe(drained,0),null);
+  assert.ok(observe(drained,600));
+  const queuedOnly=workspace.slice(0,workspace.indexOf('\n',laterQueue)+1);
+  assert.equal(observe(queuedOnly,601),null);
+  assert.equal(observe(queuedOnly,15_601),null);
+  assert.equal(observe(workspace,15_602),null);
+  assert.ok(observe(workspace,16_202));
+});
+
+test('incomplete zero-queue processing and interruption alone cannot satisfy native presentation readiness',()=>{
+  const incomplete=firstIdle.slice(0,firstIdle.length-focusEnd.length);
+  for(const log of ['',initialControl,'The workspace DOM is visible',incomplete]){
+    const observe=createNativePresentationBarrier();
+    assert.equal(observe(log,0),null);
+    assert.equal(observe(log,15_000),null);
+  }
+});
+
+test('pending native live-region speech blocks readiness even after an otherwise completed event',()=>{
+  const observe=createNativePresentationBarrier();
+  // Fault-inject only the recorded count, preserving the original native event.
+  // A nonempty queue cannot be used as proof of completed presentation.
+  const lastQueue=drained.lastIndexOf('LIVE REGIONS: messages in queue: 0');
+  const pending=drained.slice(0,lastQueue)+drained.slice(lastQueue).replace('LIVE REGIONS: messages in queue: 0','LIVE REGIONS: messages in queue: 1');
+  assert.notEqual(pending,drained);
+  assert.equal(observe(pending,0),null);
+  assert.equal(observe(pending,15_000),null);
+  assert.equal(observe(drained,15_001),null);
+  assert.ok(observe(drained,15_601));
 });

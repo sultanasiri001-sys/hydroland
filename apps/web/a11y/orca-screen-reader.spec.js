@@ -5,7 +5,7 @@ import path from 'node:path';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {openWorkspaceSwitcher} from '../e2e/portal-test-helpers.js';
-import {createNativeStartupBarrier,nativeControlInterruption} from './orca-native-observation.mjs';
+import {createNativeStartupBarrier,createNativePresentationBarrier,nativeControlInterruption} from './orca-native-observation.mjs';
 
 const run=promisify(execFile);
 const locale=process.env.HL_ORCA_LOCALE;
@@ -82,18 +82,27 @@ test('Orca announces controls across all seven portals with the selected languag
   },{timeout:15_000,message:'Orca must process the loaded page before its startup reading is interrupted'}).toBe(true);
   await writeFile(path.join(evidenceDir,'startup-'+locale+'.json'),JSON.stringify({sourceSha,sourceTree,locale,navigationLogOffset,...nativeStartup},null,2)+'\n');
 
-  async function announce(surface,name,locator){
+  async function announce(surface,name,locator,presentationLogOffset=null){
     await expect(locator).toBeVisible();
     // Interrupt the previous page-load/live-region reading with an ordinary
     // desktop keystroke. This does not mute speech or inject an utterance; the
     // measured focus starts only after the real monitor becomes quiet.
-    const interruptionOffset=(await readLog()).length;
-    await run('xdotool',['key','--clearmodifiers','Control_L']);
+    let interruptionOffset=null,nativePresentation=null;
+    const observePresentation=presentationLogOffset===null?null:createNativePresentationBarrier();
     // Drain earlier announcements. Diagnostics alone can precede a failed
     // synthesis call, so each new focus also requires genuine native PCM output.
     let interruption;
     await expect.poll(async()=>{
-      interruption=nativeControlInterruption((await readLog()).slice(interruptionOffset));
+      const log=await readLog();
+      if(interruptionOffset===null){
+        // Keep observation, the one key and PCM draining inside the original
+        // 15-second boundary. A visible DOM is not a drained native queue.
+        if(observePresentation){nativePresentation=observePresentation(log.slice(presentationLogOffset),Date.now());if(!nativePresentation)return false;}
+        interruptionOffset=log.length;
+        await run('xdotool',['key','--clearmodifiers','Control_L']);
+        return false;
+      }
+      interruption=nativeControlInterruption(log.slice(interruptionOffset));
       if(!interruption)return false;
       const end=await audioSize();if(end<19_200)return false;
       const metrics=audioMetrics(await readAudio(end-19_200,end));
@@ -127,35 +136,40 @@ test('Orca announces controls across all seven portals with the selected languag
     const clip=wav(pcm),clipName='speech-'+locale+'-'+surface+'.wav';
     await mkdir(evidenceDir,{recursive:true});
     await writeFile(path.join(evidenceDir,clipName),clip);
-    rows.push({surface,locale,name,utterance,interruption:{logOffset:interruptionOffset,...interruption},audio:{file:clipName,sha256:createHash('sha256').update(clip).digest('hex'),format:'PCM16LE mono 16000Hz',startByte:audioStart,...signal},observedAt:new Date().toISOString()});
+    rows.push({surface,locale,name,utterance,nativePresentation:nativePresentation?{logOffset:presentationLogOffset,...nativePresentation}:null,interruption:{logOffset:interruptionOffset,...interruption},audio:{file:clipName,sha256:createHash('sha256').update(clip).digest('hex'),format:'PCM16LE mono 16000Hz',startByte:audioStart,...signal},observedAt:new Date().toISOString()});
   }
 
   async function selectLanguage(){
+    let presentationLogOffset=null;
     const control=page.locator('[data-hl-locale-switch]:visible');
     await expect(control).toHaveCount(1);
     await expect(control).toBeEnabled();
     if(await page.locator('html').getAttribute('lang')!==locale){
+      presentationLogOffset=(await readLog()).length;
       await control.focus();
       // Native X11 input travels through the same desktop as Orca and Chromium.
       await run('xdotool',['key','--clearmodifiers','Return']);
     }
     await expect(page.locator('html')).toHaveAttribute('lang',locale);
     await expect(page.locator('html')).toHaveAttribute('dir',locale==='ar'?'rtl':'ltr');
+    return presentationLogOffset;
   }
 
-  await selectLanguage();
-  await announce('visitor',locale==='ar'?'الرئيسية':'Home',page.locator('#navigation a[href="#home"]'));
+  const languageLogOffset=await selectLanguage();
+  await announce('visitor',locale==='ar'?'الرئيسية':'Home',page.locator('#navigation a[href="#home"]'),languageLogOffset);
   await announce('visitor-search',locale==='ar'?'بحث':'Search',page.locator('#search-form input'));
+  const profileLogOffset=(await readLog()).length;
   await page.evaluate(async()=>{
     window.HydrolandAuth.acceptSession({accessToken:'orca-synthetic-access',refreshToken:'orca-synthetic-refresh'},window.HydrolandAuth.beginAuthAttempt());
     await window.HydrolandProfile.load();
   });
   await expect(page.locator('#hl-diver-dashboard')).toBeVisible();
   await selectLanguage();
-  await announce('diver',locale==='ar'?'لوحة هواة الغوص':'Diver dashboard',page.locator('#navigation a[href="#hl-diver-dashboard"]'));
+  await announce('diver',locale==='ar'?'لوحة هواة الغوص':'Diver dashboard',page.locator('#navigation a[href="#hl-diver-dashboard"]'),profileLogOffset);
 
   for(const role of ['instructor','center','boat','organization','admin']){
     await openWorkspaceSwitcher(page);
+    const workspaceLogOffset=(await readLog()).length;
     await page.locator('#role-dialog [data-role="'+role+'"]').click();
     const board=page.locator('.hl-role-dashboard[data-role="'+role+'"]');
     await expect(board).toBeVisible();
@@ -163,7 +177,7 @@ test('Orca announces controls across all seven portals with the selected languag
     const home=board.locator('.hl-portal-nav-item').first();
     const name=role==='admin'?(locale==='ar'?'مركز القيادة والتحكم':'Command center'):(locale==='ar'?'الرئيسية':'Home');
     await expect(home).toContainText(name);
-    await announce(role,name,home);
+    await announce(role,name,home,workspaceLogOffset);
     const input=board.locator('.hl-portal-search input');
     const searchName=role==='center'?(locale==='ar'?'بحث في بيانات المركز':'Search center data'):(locale==='ar'?'بحث في المنصة':'Search the platform');
     await announce(role+'-search',searchName,input);
