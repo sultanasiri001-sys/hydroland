@@ -472,6 +472,22 @@ jobs:
         run: node apps/api/scripts/compliance-transaction-validation.cjs
       - name: Marine registration input and review revision boundaries
         run: node --test apps/api/scripts/marine-registration.test.cjs
+      - name: A14 new owner onboarding, hull identity and three-stage document review
+        env:
+          CI: "true"
+          NODE_ENV: test
+          A14_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+          A14_ONBOARDING_RESULT_FILE: ${{ runner.temp }}/a14-onboarding.json
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE a14_owner_onboarding_test'
+          export DATABASE_URL=postgresql://hydroland:hydroland@localhost:5432/a14_owner_onboarding_test
+          node apps/api/scripts/a14-owner-onboarding-http-e2e.mjs
+      - name: Retain the A14 synthetic onboarding receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: a14-owner-onboarding
+          path: ${{ runner.temp }}/a14-onboarding.json
+          if-no-files-found: error
       - name: Actual SIGTERM drains AI receipts before database shutdown
         run: node apps/api/scripts/agent-shutdown-check.mjs
       - name: Department directors and executive report boundaries without provider traffic

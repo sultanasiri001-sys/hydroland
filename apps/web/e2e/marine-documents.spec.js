@@ -17,7 +17,7 @@ test('boat operator registers marine asset and license attachment, center forwar
   await page.route(/\/api\/v1\/marine-operations\/assets\/mine$/,route=>requireAuth(route.request())?json(route,state.assets):json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/marine-operations\/assets$/,route=>{
     if(!requireAuth(route.request()))return json(route,{message:'Unauthorized'},401);
-    const body=route.request().postDataJSON();const asset={id:'asset-marine-e2e',organizationId:body.organizationId,name:body.name,assetType:body.assetType,registrationNumber:body.registrationNumber||null,passengerCapacity:body.passengerCapacity||null,status:'ACTIVE',documents:[],maintenance:[],updatedAt:new Date().toISOString()};state.assets=[asset];return json(route,asset,201);
+    const body=route.request().postDataJSON();expect(body.hullNumber).toBe('SA-QA-HULL-2026-01');const asset={id:'asset-marine-e2e',organizationId:body.organizationId,name:body.name,assetType:body.assetType,registrationNumber:body.registrationNumber||null,hullNumber:body.hullNumber||null,passengerCapacity:body.passengerCapacity||null,status:'ACTIVE',documents:[],maintenance:[],updatedAt:new Date().toISOString()};state.assets=[asset];return json(route,asset,201);
   });
   await page.route(/\/api\/v1\/marine-operations\/assets\/asset-marine-e2e\/documents$/,route=>{
     if(!requireAuth(route.request()))return json(route,{message:'Unauthorized'},401);
@@ -61,8 +61,9 @@ test('boat operator registers marine asset and license attachment, center forwar
   await dashboard.locator('.hl-portal-nav-item[data-portal-label="المستندات والتراخيص"]').click();
   await expect(panel).toBeVisible();
   await page.evaluate(()=>window.HydrolandMarineDocuments.refresh());
-  const assetForm=panel.locator('[data-marine-asset-form]');await assetForm.locator('[name="name"]').fill('قارب القحمة');await assetForm.locator('[name="assetType"]').selectOption('DIVE_BOAT');await assetForm.locator('[name="registrationNumber"]').fill('QA-2026-01');await assetForm.locator('[name="passengerCapacity"]').fill('10');await assetForm.locator('button[type="submit"]').click();
+  const assetForm=panel.locator('[data-marine-asset-form]');await assetForm.locator('[name="name"]').fill('قارب القحمة');await assetForm.locator('[name="assetType"]').selectOption('DIVE_BOAT');await assetForm.locator('[name="registrationNumber"]').fill('QA-2026-01');await assetForm.getByLabel('رقم الهيكل',{exact:true}).fill('SA-QA-HULL-2026-01');await assetForm.locator('[name="passengerCapacity"]').fill('10');await assetForm.locator('button[type="submit"]').click();
   await expect.poll(()=>state.assets.length).toBe(1);await expect(panel.locator('[data-marine-asset="asset-marine-e2e"]')).toContainText('قارب القحمة');await expect(dashboard.locator('.hl-role-tile b').nth(0)).toHaveText('1');
+  await expect(panel.locator('[data-marine-hull]')).toHaveText('رقم الهيكل: SA-QA-HULL-2026-01');
   const binding=panel.locator('[data-center-binding]');await binding.locator('select').selectOption('center-e2e');await binding.locator('button').click();await expect(binding).toHaveCount(0);
   const slots=panel.locator('[data-marine-asset="asset-marine-e2e"] [data-document-slot]');
   const slot=type=>panel.locator('[data-marine-asset="asset-marine-e2e"] [data-document-slot="'+type+'"]');
@@ -81,6 +82,7 @@ test('boat operator registers marine asset and license attachment, center forwar
   await page.locator('[data-open-marine-recommendations]').click();
   const ops=panel.locator('[data-marine-doc="marine-doc-e2e"]');
   await expect(ops).toContainText('بانتظار توصية العمليات البحرية');
+  await expect(ops).toContainText('رقم الهيكل: SA-QA-HULL-2026-01');
   await ops.locator('[data-review-note]').fill('Reviewed current file');
   await ops.locator('[data-marine-decision="RECOMMEND"]').click();
   await expect.poll(()=>state.pending[0]?.status).toBe('PLATFORM_PENDING');

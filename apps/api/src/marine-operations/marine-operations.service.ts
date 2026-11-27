@@ -8,11 +8,13 @@ import {MARINE_ASSET_TYPES,REQUIRED_MARINE_DOCUMENTS,MarineAssetType,MarineReadi
 import {lockAccountIdentities} from '../admin/admin-authorization';
 import {eligibleReviewParticipant, reviewPlatform} from '../document-forms/internal-document-review.domain';
 import {marineDocumentReviewRevision} from './marine-registration.domain';
+import {marineHullNumber} from './marine-asset-identity.domain';
 
 type ReviewStage = 'CENTER' | 'OPERATIONS' | 'PLATFORM';
 type DocumentInput = {documentType?:string;referenceNumber?:string;expiresAt?:string;originalName?:string;mimeType?:string;base64?:string;expectedRevision?:string};
 type Upload = {bytes:Buffer;name:string;type:string;sha256:string;storageKey:string};
 type MarineAssetDecision='ACTIVE'|'SUSPENDED'|'OUT_OF_SERVICE';
+type MarineAssetInput={organizationId:string;name:string;assetType:MarineAssetType;registrationNumber?:string;hullNumber?:string;passengerCapacity?:number};
 
 @Injectable()
 export class MarineOperationsService{
@@ -48,18 +50,25 @@ export class MarineOperationsService{
  private validateDocument(originalName:string,mimeType:string,bytes:Buffer){const name=String(originalName||'').split(/[\\/]/).pop()?.trim()||'';if(!name||name.length>180)throw new BadRequestException('Invalid document file name.');const type=String(mimeType||'').trim().toLowerCase();if(!['application/pdf','image/jpeg','image/png'].includes(type))throw new BadRequestException('Only PDF, JPEG and PNG documents are supported.');const lower=name.toLowerCase(),extensionOk=type==='application/pdf'?lower.endsWith('.pdf'):type==='image/png'?lower.endsWith('.png'):lower.endsWith('.jpg')||lower.endsWith('.jpeg');if(!extensionOk)throw new BadRequestException('File extension does not match the declared content type.');const signatureOk=type==='application/pdf'?bytes.subarray(0,5).toString('ascii')==='%PDF-':type==='image/png'?bytes.length>=8&&bytes.subarray(0,8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a])):bytes.length>=3&&bytes[0]===0xff&&bytes[1]===0xd8&&bytes[2]===0xff;if(!signatureOk)throw new BadRequestException('Document signature does not match the declared content type.');return{name,type};}
  private publicDocument<T extends {storageKey?:string|null;sha256?:string|null}>(document:T){const{storageKey,sha256,...safe}=document;return{...safe,hasFile:Boolean(storageKey)};}
  private parseDueAt(value?:string){if(!value)return null;const date=new Date(value);if(Number.isNaN(date.getTime()))throw new BadRequestException('Invalid maintenance due date.');return date;}
- async createAsset(input:{organizationId:string;name:string;assetType:MarineAssetType;registrationNumber?:string;passengerCapacity?:number}){
+ async createAsset(input:MarineAssetInput,tx:Prisma.TransactionClient=this.db){
   if(!MARINE_ASSET_TYPES.includes(input.assetType))throw new BadRequestException('Unsupported marine asset type.');
   if(!input.name?.trim())throw new BadRequestException('Marine asset name is required.');
   if(input.passengerCapacity!==undefined&&(!Number.isInteger(input.passengerCapacity)||input.passengerCapacity<1))throw new BadRequestException('Passenger capacity must be a positive integer.');
-  const org=await this.db.organization.findUnique({where:{id:input.organizationId},select:{id:true,kind:true,status:true}});
+  const hullNumber=marineHullNumber(input.hullNumber);
+  const org=await tx.organization.findUnique({where:{id:input.organizationId},select:{id:true,kind:true,status:true}});
   if(!org||org.status!=='ACTIVE')throw new NotFoundException('Active organization not found.');
   if(!['DIVE_CENTER','MARINE_OPERATOR'].includes(org.kind))throw new BadRequestException('Marine assets must belong to an active dive center or marine operator.');
-  return this.db.marineAsset.create({data:{organizationId:org.id,assetType:input.assetType,passengerCapacity:input.passengerCapacity,name:input.name.trim(),registrationNumber:input.registrationNumber?.trim()||null}});
+  try{return await tx.marineAsset.create({data:{organizationId:org.id,assetType:input.assetType,passengerCapacity:input.passengerCapacity,name:input.name.trim(),registrationNumber:input.registrationNumber?.trim()||null,hullNumber}})}
+  catch(error){
+   if(error instanceof Prisma.PrismaClientKnownRequestError&&error.code==='P2002')throw new ConflictException('رقم التسجيل أو رقم الهيكل مسجل مسبقًا. راجع الأرقام.');
+   throw error;
+  }
  }
- async createOwnedAsset(accountId:string,input:{organizationId:string;name:string;assetType:MarineAssetType;registrationNumber?:string;passengerCapacity?:number}){
-  await this.requireMember(accountId,input.organizationId,true);
-  return this.createAsset(input);
+ async createOwnedAsset(accountId:string,input:MarineAssetInput){
+  return this.db.serializable(async tx=>{
+   await this.requireMember(accountId,input.organizationId,true,tx);
+   return this.createAsset(input,tx);
+  });
  }
  async listMine(accountId:string){
   const memberships=await this.db.organizationMember.findMany({where:{accountId,status:'ACTIVE',account:{status:'ACTIVE'},organization:{status:'ACTIVE',kind:{in:['DIVE_CENTER','MARINE_OPERATOR']}}},select:{organizationId:true}});

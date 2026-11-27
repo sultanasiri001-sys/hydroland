@@ -44,6 +44,9 @@
   "الاسم": "Name",
   "النوع": "Type",
   "رقم التسجيل": "Registration number",
+  "رقم الهيكل": "Hull number",
+  "رقم الهيكل: {0}": "Hull number: {0}",
+  "غير مسجل": "Not recorded",
   "سعة الركاب": "Passenger capacity",
   "حفظ الأصل البحري": "Save marine asset",
   "الأصول والوثائق": "Assets and documents",
@@ -179,12 +182,13 @@
     return uiLocale.html`<article class="hl-marine-asset" data-marine-asset="${esc(asset.id)}">
       <div class="hl-marine-row"><div><strong>${esc(asset.name)}</strong><small> · ${esc(asset.assetType)} · ${esc(asset.registrationNumber || uiLocale.t('بدون رقم'))}</small></div>
         <span class="hl-marine-state">${esc(asset.status)}</span></div>
+      <p class="hl-marine-note" data-marine-hull>${uiLocale.label('رقم الهيكل: {0}', [asset.hullNumber || uiLocale.t('غير مسجل')])}</p>
       ${centerPicker(asset)}
       <div class="hl-marine-slots">${Object.keys(documentNames).map(type => documentSlot(type, asset, now)).join('')}</div>
     </article>`;
   }
 
-  function renderBoat(){const orgOptions=state.memberships.map(m=>uiLocale.html`<option value="${esc(m.organization.id)}">${esc(m.organization.displayName)}</option>`).join('');uiLocale.setHTML(content, uiLocale.html`<div class="hl-marine-grid"><form class="hl-marine-card hl-marine-form" data-marine-asset-form><h4>إضافة قارب / أصل بحري</h4><label>الجهة<select name="organizationId" required>${orgOptions}</select></label><label>الاسم<input name="name" required maxlength="120"></label><label>النوع<select name="assetType"><option>DIVE_BOAT</option><option>YACHT</option><option>RIB</option><option>SUPPORT_VESSEL</option><option>OTHER</option></select></label><label>رقم التسجيل<input name="registrationNumber" maxlength="80"></label><label>سعة الركاب<input name="passengerCapacity" type="number" min="1"></label><button class="primary" type="submit" ${orgOptions?'':'disabled'}>حفظ الأصل البحري</button></form><section class="hl-marine-card"><h4>الأصول والوثائق</h4><div data-marine-assets>${state.assets.length?state.assets.map(renderAsset).join(''):uiLocale.html`<p class="hl-marine-note">لا توجد أصول بحرية مرتبطة بعضويتك بعد.</p>`}</div></section></div>`)}
+  function renderBoat(){const orgOptions=state.memberships.map(m=>uiLocale.html`<option value="${esc(m.organization.id)}">${esc(m.organization.displayName)}</option>`).join('');uiLocale.setHTML(content, uiLocale.html`<div class="hl-marine-grid"><form class="hl-marine-card hl-marine-form" data-marine-asset-form><h4>إضافة قارب / أصل بحري</h4><label>الجهة<select name="organizationId" required>${orgOptions}</select></label><label>الاسم<input name="name" required maxlength="120"></label><label>النوع<select name="assetType"><option>DIVE_BOAT</option><option>YACHT</option><option>RIB</option><option>SUPPORT_VESSEL</option><option>OTHER</option></select></label><label>رقم التسجيل<input name="registrationNumber" maxlength="80"></label><label>رقم الهيكل<input name="hullNumber" maxlength="80" autocapitalize="characters" spellcheck="false"></label><label>سعة الركاب<input name="passengerCapacity" type="number" min="1"></label><button class="primary" type="submit" ${orgOptions?'':'disabled'}>حفظ الأصل البحري</button></form><section class="hl-marine-card"><h4>الأصول والوثائق</h4><div data-marine-assets>${state.assets.length?state.assets.map(renderAsset).join(''):uiLocale.html`<p class="hl-marine-note">لا توجد أصول بحرية مرتبطة بعضويتك بعد.</p>`}</div></section></div>`)}
   let generation=0;
   function reviewPanel(role){
     const choices={
@@ -196,6 +200,7 @@
     return uiLocale.html`<section class="hl-marine-card"><h4>${uiLocale.label(headings[role])}</h4>
       ${state.pending.length?state.pending.map(d=>uiLocale.html`<article class="hl-marine-asset" data-marine-doc="${esc(d.id)}">
         <strong>${esc(d.marineAsset.name)} · ${esc(d.marineAsset.registrationNumber)}</strong>
+        <p class="hl-marine-note">${uiLocale.label('رقم الهيكل: {0}', [d.marineAsset.hullNumber || uiLocale.t('غير مسجل')])}</p>
         <p>${uiLocale.label(docName(d.documentType))} · ${esc(d.referenceNumber)} · ${esc(fmtDate(d.expiresAt))}</p>
         <p>${uiLocale.label(statusNames[d.status]||d.status)} ${esc(d.reviewNote)}</p>
         ${d.hasFile?uiLocale.html`<button type="button" data-marine-review-access="${esc(d.id)}">عرض الملف</button>`:''}
