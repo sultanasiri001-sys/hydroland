@@ -1,0 +1,123 @@
+{
+  "schema": "HYDROLAND_C08_TECHNICAL_ACCEPTANCE_V1",
+  "localSourceCommit": "57302f606dc5b993c8f83678f2f5619dd415f1c8",
+  "scope": "Synthetic actual loopback HTTP/PostgreSQL/browser and versioned source contracts; not real human, professional, provider or departmental operational acceptance.",
+  "results": [
+    {
+      "name": "projection-schema",
+      "code": 0,
+      "seconds": 3.454,
+      "passLines": [],
+      "log": "projection-schema.log"
+    },
+    {
+      "name": "projection-http",
+      "code": 0,
+      "seconds": 0.955,
+      "passLines": [
+        "Equipment runtime schema bootstrap verified against production migration definitions.",
+        "PASS 1: Current owner-only HTTP authority and zero native counts; no operational acceptance is inferred.",
+        "PASS 2: Signed-document and native posted-entry projection excludes foreign source links and keeps inconsistent own rows visible as counts.",
+        "PASS 3: Marine work-order projection fixtures link to same-organization B05 approval, posting and acknowledgement fields with pinned quantity and cost; actual execution is tested separately by C05.",
+        "PASS 4: Equipment links use the original barcode and calendar resource; foreign equipment is not counted as a consistent owned asset.",
+        "PASS 5: Changed stock returns remove stale links until the current work-order reconciliation exists; original part evidence remains unchanged.",
+        "PASS 6: Changed financial status, entry/account organization or document revision invalidates current links without rewriting retained sources.",
+        "PASS 7: Preview is read-only and exposes counts without identities, document payloads, amounts or inferred approval.",
+        "PASS 8: Fresh administrator revocation and session revocation stop later HTTP reads.",
+        "8 C08 source-projection HTTP/PostgreSQL groups passed. Synthetic projection fixtures are separate from the actual B06/C05 lifecycle acceptance; no business operation or professional approval is claimed."
+      ],
+      "log": "projection-http.log"
+    },
+    {
+      "name": "runtime-schema",
+      "code": 0,
+      "seconds": 3.503,
+      "passLines": [],
+      "log": "runtime-schema.log"
+    },
+    {
+      "name": "runtime-http",
+      "code": 0,
+      "seconds": 83.747,
+      "passLines": [
+        "Operations evidence HTTP/PostgreSQL passed: exact aggregate input retained across six reviews; provenance-bound private receipt; historical and conflicting evidence blocked with reviews preserved; snapshot audit failure prevents generation; no historical backfill.",
+        "Governance source guard passed: standalone and stale links, duplicate receipts, wrong agent endpoints, requester and language mismatch, and missing source refuse both token-count and generation calls; failed task and paused control retained without retries or approval.",
+        "Governance deferred resume passed: fresh admin and version checks, explicit acknowledgement, atomic audit rollback, two concurrent requests create exactly one review, source and provider call counts unchanged, paused reviewer queue retained, failed tasks not replayed.",
+        "Governance review inbox HTTP/PostgreSQL passed: fresh admin-only/no-store reads; empty catalogue; six-stage detail and final owner receipt; original evidence; correction/escalation/deferral; revision and duplicate-link quarantine; cross-requester payload isolation; bounded distinct pagination and invalid cursors; revoked-role refusal; no ledger writes or model dispatch.",
+        "Governance office HTTP/PostgreSQL passed: additive bounded agent catalog; full six-gate route with original evidence and five reviews; exactly-once final recommendation requiring owner approval; correction, evidence-gap, invalid-output, high-risk and policy escalation stops; unlinked/revision-conflict isolation; paused controls; queue cap; atomic audit rollback; no business writes. Model traffic was loopback only.",
+        "AI connected browser/PostgreSQL/automatic-worker passed: per-agent pause during generation, retained queue, actual process restart, persisted resume exactly once, aggregate read adapter, escaped model result and logout privacy.",
+        "Bounded draft correction HTTP/PostgreSQL passed: explicit one-round opt-in; immutable source and reviews; exact linked provider input; six restarted reviews; no legacy/evidence-gap/high-risk/second-round correction; invalid source blocks counting and generation; paused and budget-held queues; full-queue recovery; concurrent idempotency; audit rollback; fresh authority; no business writes. Model traffic was loopback only.",
+        "Governance inbox batch PostgreSQL/HTTP passed: 20 six-stage files in 17 reads; per-parent duplicate detection; missing links/final receipts; requester/revision conflicts; unknown cost; cursor continuity; correction lineage and conflicting receipts; detail parity; immutable evidence; no model traffic.",
+        "Equipment runtime schema bootstrap verified against production migration definitions.",
+        "Department reporting HTTP/PostgreSQL PASS: 14 directors \u2192 linked office reviews including a correction \u2192 verified Abdullah context \u2192 stale outbox isolated \u2192 one concurrent-safe owner-only email; no approval or real provider delivery.",
+        "Department sources HTTP/PostgreSQL PASS: 14 isolated v7 packets, 14 operational count adapters, warehouse-location, campaign-draft, store-goods and marine-only subsets, explicit remaining operational verification gaps, queued and historical v2/v3/v4 compatibility, owner/role/deactivation guards, foreign and inconsistent relation exclusion, scalar-only privacy, read-only preview, immutable historical source across a live change and all 14 director-to-office inputs. All model traffic was loopback.",
+        "Provider recovery HTTP/PostgreSQL passed: shared persistent Retry-After, restart/concurrency fences, snapshot integrity across retries, attempt cap, unknown and daily holds, quota review with revision lease, uncertain/completed no-replay, legacy receipt preservation, per-attempt UTC-day budgets, pacing and revoked requesters. All provider traffic was loopback.",
+        "Agent historical performance HTTP/PostgreSQL passed: actual aggregates, duration denominator, zero known cost, unknown dispatched estimate, cancellation, no model calls and no inferred acceptance.",
+        "AI runtime HTTP/PostgreSQL passed: private catalog; atomic setup/control/queue audit; idempotent requests; duplicate-dispatch fencing; real queued/running/high pressure; pause with in-flight completion; persisted resume; conservative budget; stale metrics; crash and late-result preservation; no uncertain replay; token/output bounds; revoked administrator and scoped actions. Model traffic was loopback only."
+      ],
+      "log": "runtime-http.log"
+    },
+    {
+      "name": "source-domain",
+      "code": 0,
+      "seconds": 0.932,
+      "passLines": [
+        "\u2139 pass 15"
+      ],
+      "log": "source-domain.log"
+    },
+    {
+      "name": "provider-source",
+      "code": 0,
+      "seconds": 0.676,
+      "passLines": [
+        "V6/V7 model contract checks passed: six department scopes, zero/nonzero connected counters, allowlisted keys, legacy gap semantics, six review stages, evidence limits, unchanged token reservations and unavailable unknown/mismatched versions.",
+        "Word-bound checks passed: one completed-draft format pass, exact counting, combined input/output reservation, original evidence, strict final word bound and no uncertain/whole-task replay."
+      ],
+      "log": "provider-source.log"
+    }
+  ],
+  "sourceSha256": {
+    "apps/api/src/agents/cross-department-lifecycle.reader.ts": "13bc602d2799d68708e9c71a244d2e42f0c428ee01a27e6412347d608cc625de",
+    "apps/api/src/agents/department-source.domain.ts": "9b5a025c22c732dff34004055394690e909c23f1199ddf82cb203e90aed6cb60",
+    "apps/api/src/agents/department-source.reader.ts": "526920dfd46e36b862eec04896fc15f22895e5e4418635778b24ca3d7c8780d2",
+    "apps/api/src/agents/agent-model-provider.service.ts": "74f069296923c3cd695a691a12b11fc8d57fab1b73aa3a3de1ce4ddb13d974c6",
+    "apps/api/scripts/cross-department-lifecycle-http-e2e.mjs": "72d518ee3deed8f5888c8f64a9485b40912b8ee3ac50b2f96fa21cb4b8885398",
+    "apps/api/scripts/purple-test-schema.mjs": "f2dc585c51abd221b1e70bfc71512ad03edf42bfb52964a03316e1549b84d23b",
+    "apps/api/scripts/department-source-acceptance.mjs": "9edbed608fbcc3e5573e848bfe4b8757565c955d117827552ed912a4f95019ed",
+    "apps/api/scripts/department-reporting-acceptance.mjs": "231d5c84ad6eb7327d93c751aa189ed7336127323dba5af0264cc42719d4dd26",
+    "apps/api/scripts/department-source.test.cjs": "eb8b8e203e5c969d6ba8019fd7266189a77ffe685b5bce419f0561510cbd17f0",
+    "apps/api/scripts/agent-word-limit-check.mjs": "3a49d789f96668d9d82c988c3a288bad1d9939304c4a551573ab3bddff879ded",
+    "apps/web/src/hydroland-admin-agents.js": "3ec80952b1d8405cc4a121187748289e5404094cc7e6bb6ef5a77c394e955e56",
+    "apps/web/e2e/admin-agent-runtime.spec.js": "5e619aba9b32710fcec1471cb01d0369f8507e55fe2982f384ccbc2dd8effea9"
+  },
+  "priorFailedAttempt": {
+    "name": "attempt-1-comment-splitter",
+    "result": "Fixture SQL splitter treated a standalone comment semicolon as SQL; corrected without changing executable migration SQL and rerun passed."
+  },
+  "remoteRelease": "Requires separately verified CI, merge and deployment receipts.",
+  "formalGrievanceBrowser": {
+    "scope": "Shipped grievance panel and native auth with deterministic API fixtures; actual source/audit/outcome mutations are covered separately by privacy-grievance-http-checks.mjs.",
+    "rootComparisonSource": "c66e22109c65c5420b384f6fca7affdf49b3a398",
+    "localBrowserBase": "99e544a86936070838037b5c2907fa2dd261bc3c",
+    "browserStats": {
+      "startTime": "2026-11-27T00:29:47.913Z",
+      "duration": 30659.807999999997,
+      "expected": 6,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "componentSha256": {
+      "apps/web/src/hydroland-privacy-grievances.js": "dfa8c3d9ff5bedc48e6cec1fff6484b986ae9ed90bcbded9d8265110da1a5ad1",
+      "apps/web/src/hydroland-profile-data.js": "c53e32ea009157424348dbd13fa006359357587f8fbbee56480c2bb664225039",
+      "apps/web/src/hydroland-auth.js": "0fc645c60ba7da6b17e5f52cbd2083f4a57a049ef48a1467252dde90f14dc791",
+      "apps/web/src/hydroland-i18n.js": "a1a477e00c34ddabba1b2e51725cad90b213c86e05b93df79f253c1fb90949b0"
+    },
+    "testSha256": "b942a1a92b9316864822930eb5b877ccef66d2ebbc5d73307c648c54a4a0d4bd",
+    "priorAttempt": "attempt-1-label-locator.json",
+    "priorFailure": "Exact label locator included select option text; corrected to the observed native combobox role/name. No production change.",
+    "humanAcceptanceAsserted": false,
+    "productionFilesChanged": []
+  }
+}

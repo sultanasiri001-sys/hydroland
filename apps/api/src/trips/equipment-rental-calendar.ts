@@ -1,9 +1,11 @@
 import { ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { assertMaintenanceAvailable } from '../facilities-maintenance/maintenance-availability';
 
 // Both reservation writers read the other domain within the same serializable
 // transaction as their write, including retries after a concurrent reservation.
 export async function assertRentalFitsCalendar(tx: Prisma.TransactionClient, resourceIds: string[], dueAt: Date | null) {
+  await assertMaintenanceAvailable(tx,resourceIds);
   const now = new Date();
   const allocation = await tx.calendarAllocation.findFirst({
     where: {
@@ -15,8 +17,9 @@ export async function assertRentalFitsCalendar(tx: Prisma.TransactionClient, res
   if (allocation) throw new ConflictException('المعدّة مخصّصة في التقويم خلال مدة الإيجار.');
 }
 
-export async function assertTripFitsEquipmentRentals(tx: Prisma.TransactionClient, resourceIds: string[], startsAt: Date, endsAt: Date) {
+export async function assertTripFitsEquipmentRentals(tx: Prisma.TransactionClient, resourceIds: string[], startsAt: Date, endsAt: Date, excludeMaintenanceWorkOrderId?:string) {
   if (!resourceIds.length) return;
+  await assertMaintenanceAvailable(tx,resourceIds,excludeMaintenanceWorkOrderId);
   const equipment = await tx.calendarResource.findMany({
     where: { id: { in: resourceIds }, type: 'EQUIPMENT' }, select: { id: true },
   });

@@ -29,6 +29,7 @@
   "لم يُفحص": "Not checked",
   "فحص الجاهزية": "Check readiness",
   "الصيانة": "Maintenance",
+  "أوامر صيانة الأصل": "Asset maintenance work orders",
   "لا توجد أعمال صيانة مسجلة.": "No maintenance jobs recorded.",
   "صيانة": "Maintenance",
   "إتمام الصيانة": "Complete maintenance",
@@ -160,9 +161,10 @@
   };
   const renderMaintenance=(asset,hostEl)=>{
     const section=document.createElement('section');section.className='hl-mr-record';const title=document.createElement('h5');uiLocale.setText(title, ...['الصيانة']);section.appendChild(title);
+    const launch=button(uiLocale.message('أوامر صيانة الأصل'));launch.addEventListener('click',()=>window.HydrolandMaintenance?.open({organizationId:asset.organizationId,assetKind:'MARINE',assetId:asset.id}));section.appendChild(launch);
     const list=document.createElement('div');list.className='hl-mr-list';const records=asset.maintenance||[];
     if(!records.length)list.appendChild(note(uiLocale.message('لا توجد أعمال صيانة مسجلة.')));
-    records.forEach(record=>{const row=document.createElement('div');row.className='hl-mr-record';const top=document.createElement('div');top.className='hl-mr-row';const text=document.createElement('strong');text.textContent=(record.maintenanceType||uiLocale.t('صيانة'))+' · '+date(record.dueAt);top.append(text,badge(record.status));row.appendChild(top);if(record.notes){const details=document.createElement('p');details.className='hl-mr-note';details.textContent=record.notes;row.appendChild(details)}if(record.status!=='COMPLETED'){const done=button(uiLocale.message('إتمام الصيانة'));done.dataset.marineMaintenanceComplete=record.id;done.dataset.marineAssetId=asset.id;row.appendChild(done)}list.appendChild(row)});section.appendChild(list);
+    records.forEach(record=>{const row=document.createElement('div');row.className='hl-mr-record';const top=document.createElement('div');top.className='hl-mr-row';const text=document.createElement('strong');text.textContent=(record.maintenanceType||uiLocale.t('صيانة'))+' · '+date(record.dueAt);top.append(text,badge(record.status));row.appendChild(top);if(record.notes){const details=document.createElement('p');details.className='hl-mr-note';details.textContent=record.notes;row.appendChild(details)}if(!['COMPLETED','CANCELLED'].includes(record.status)&&!String(record.maintenanceType).startsWith('C05:')){const done=button(uiLocale.message('إتمام الصيانة'));done.dataset.marineMaintenanceComplete=record.id;done.dataset.marineAssetId=asset.id;row.appendChild(done)}list.appendChild(row)});section.appendChild(list);
     const form=document.createElement('form');form.className='hl-mr-form';form.dataset.marineMaintenance=asset.id;const heading=document.createElement('strong');uiLocale.setText(heading, ...['إضافة عمل صيانة']);form.appendChild(heading);
     const typeLabel=document.createElement('label');uiLocale.setText(typeLabel, ...['نوع العمل']);const type=document.createElement('input');type.name='maintenanceType';type.required=true;type.maxLength=120;typeLabel.appendChild(type);form.appendChild(typeLabel);
     const dueLabel=document.createElement('label');uiLocale.setText(dueLabel, ...['الموعد المستهدف']);const due=document.createElement('input');due.name='dueAt';due.type='date';dueLabel.appendChild(due);form.appendChild(dueLabel);

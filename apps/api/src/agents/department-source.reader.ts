@@ -1,4 +1,5 @@
 import { operationalEvidenceCounts, financialCloseCounts } from './operational-evidence.reader';
+import { legalLifecycleCounts, maintenanceLifecycleCounts } from './cross-department-lifecycle.reader';
 import { ForbiddenException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
@@ -55,6 +56,10 @@ async function operationalCounts(tx:Prisma.TransactionClient,code:DepartmentCode
       for(const [metric,kind] of Object.entries(EVIDENCE_COUNT_KEYS[code]))result[metric]=evidence[kind]||0;
     }
   }
+  if(version>=7){
+    if(code==='LEGAL_CONTRACTS_INSURANCE')Object.assign(result,await legalLifecycleCounts(tx,id));
+    if(code==='FACILITIES_ASSETS_MAINTENANCE')Object.assign(result,await maintenanceLifecycleCounts(tx,id));
+  }
   return result;
 }
 
@@ -67,7 +72,7 @@ export async function requireDepartmentSourceOwner(tx:Prisma.TransactionClient,a
   return organization;
 }
 
-export async function readDepartmentSources(tx:Prisma.TransactionClient,actorId:string,selected:readonly DepartmentCode[]=STAFFING_DEPARTMENTS.map(d=>d.code),version:DepartmentSourceVersion=6){
+export async function readDepartmentSources(tx:Prisma.TransactionClient,actorId:string,selected:readonly DepartmentCode[]=STAFFING_DEPARTMENTS.map(d=>d.code),version:DepartmentSourceVersion=7){
   const organization=await requireDepartmentSourceOwner(tx,actorId);
   const definitions=STAFFING_DEPARTMENTS.filter(d=>selected.includes(d.code)),sourceTemplates=reviewedAdministrativeTemplates('source-catalog').filter(t=>selected.includes(t.department));
   const [units,templates,groups]=await Promise.all([

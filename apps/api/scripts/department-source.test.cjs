@@ -17,7 +17,7 @@ test('source versions preserve old adapter shapes and refuse silent upgrades',()
   const old=value(code,2),current=value(code,3);assert.deepEqual(departmentSourceValues(old),old);assert.deepEqual(departmentSourceValues(current),current);
   assert.equal(departmentSourceValues({...old,version:3}),null);assert.equal(departmentSourceValues({...current,version:2}),null);
  }
- for(const bad of [1,7,'5',null])assert.equal(departmentSourceValues({...value('HR'),version:bad}),null);
+ for(const bad of [1,8,'5',null])assert.equal(departmentSourceValues({...value('HR'),version:bad}),null);
  assert.equal(departmentSourceVersion('department-source:v2:abc'),2);assert.equal(departmentSourceVersion('department-source:v3:abc'),3);assert.equal(departmentSourceVersion('department-source:v4:abc'),4);assert.equal(departmentSourceVersion('department-source:v5:abc'),5);assert.equal(departmentSourceVersion('department-source:v6:abc'),6);
 });
 test('source packet rejects private fields, cross-department substitutions and invented coverage',()=>{
@@ -35,7 +35,7 @@ test('historical v1 evidence stays readable without upgrading or reconstructing 
  const tx={auditEvent:{findMany:async()=>events}};assert.deepEqual(await readOperationsEvidence(tx,source),{status:'RECORDED',observedAt,values});
  for(const fingerprint of [DIRECTOR_SOURCE_FINGERPRINT_V2+'pinned',DIRECTOR_SOURCE_FINGERPRINT+'pinned','department-source:v6:future'])assert.deepEqual(await readOperationsEvidence(tx,{...source,fingerprint}),{status:'INVALID'},'A legacy receipt cannot satisfy a supported or unknown pinned contract');
 });
-for(const version of [2,3,4,5,6])test(`v${version} receipt binds the original department, input and exact successful claim`,async()=>{
+for(const version of [2,3,4,5,6,7])test(`v${version} receipt binds the original department, input and exact successful claim`,async()=>{
  const id=randomUUID(),claimId=randomUUID(),revision=randomUUID(),now=new Date(),values=value('HR',version),scope=departmentSourceScope(version),observedAt=now.toISOString(),source={id,claimId,agentKey:'HR_DIRECTOR',action:'READ_OPERATIONS',fingerprint:`department-source:v${version}:pinned`,startedAt:new Date(now-100),finishedAt:new Date(+now+100)};
  const events=[{action:'AI_TASK_STARTED',metadata:{claimId,revision}},{action:'AI_TASK_OPERATIONS_CAPTURED',metadata:{claimId,sourceRevision:revision,agentKey:source.agentKey,scope,observedAt,values,digest:operationsEvidenceDigest(id,claimId,revision,observedAt,values)}}];
  const tx={auditEvent:{findMany:async()=>events}};assert.deepEqual(await readOperationsEvidence(tx,source),{status:'RECORDED',scope,observedAt,values});
@@ -56,6 +56,16 @@ test('v5 warehouse location counts cannot relabel a v4 inventory receipt or impl
 
 test('v6 source supplements preserve V5 receipts and count evidence records rather than reconstructed outcomes',()=>{
  for(const code of ['FINANCE','INVENTORY_LOGISTICS','ADMIN_AFFAIRS_RECORDS','MARKETING_GROWTH']){const before=value(code,5),current=value(code,6);assert.deepEqual(departmentSourceValues(current),current);assert.equal(departmentSourceValues({...before,version:6}),null);assert.equal(departmentSourceValues({...current,version:5}),null);assert.equal(current.coverage,'PARTIAL');assert.equal(current.missingSources.length,1);}
- assert.equal(departmentSourceVersion('department-source:v5:pinned'),5);assert.equal(departmentSourceVersion('department-source:v6:pinned'),6);assert.equal(departmentSourceVersion('department-source:v7:future'),null);
+ assert.equal(departmentSourceVersion('department-source:v5:pinned'),5);assert.equal(departmentSourceVersion('department-source:v6:pinned'),6);assert.equal(departmentSourceVersion('department-source:v8:future'),null);
  const v=value('MARKETING_GROWTH',6);assert.equal(departmentSourceValues({...v,metrics:{...v.metrics,impressions:917273}}),null);assert(!Object.hasOwn(value('INVENTORY_LOGISTICS',6).metrics,'availableStock'));
+});
+
+
+test('v7 adds native legal and maintenance links without rewriting V6 evidence',()=>{
+ for(const code of ['LEGAL_CONTRACTS_INSURANCE','FACILITIES_ASSETS_MAINTENANCE']){
+  const old=value(code,6),current=value(code,7);assert.deepEqual(departmentSourceValues(old),old);assert.deepEqual(departmentSourceValues(current),current);
+  assert.equal(departmentSourceValues({...old,version:7}),null);assert.equal(departmentSourceValues({...current,version:6}),null);
+  assert.equal(departmentSourceValues({...current,coverage:'COMPLETE'}),null);assert.equal(departmentSourceValues({...current,metrics:{...current.metrics,paidAmountMinor:100}}),null);
+ }
+ assert.equal(departmentSourceVersion('department-source:v7:pinned'),7);assert.equal(departmentSourceScope(6),'DEPARTMENT_AGGREGATE_V6');assert.equal(departmentSourceScope(7),'DEPARTMENT_AGGREGATE_V7');
 });

@@ -41,7 +41,7 @@ jobs:
       - run: node --test apps/api/scripts/operational-evidence.test.cjs apps/api/scripts/department-source.test.cjs
       - name: Organization audit event classification and repeatable counts
         run: node --test scripts/d12-audit-summary.test.mjs
-      - name: V6 provider source scope and original word/token bounds
+      - name: V6 and V7 provider source scope and original word/token bounds
         run: node apps/api/scripts/agent-word-limit-check.mjs
       - name: Evidence lifecycle, migrations and private source counts on native HTTP/PostgreSQL
         run: |
@@ -53,3 +53,18 @@ jobs:
             sleep 1
           done
           node apps/api/scripts/operational-evidence-http-e2e.mjs
+      - name: Native legal, finance, asset and warehouse source links
+        env:
+          DATABASE_URL: postgresql://hydroland:hydroland@localhost:5432/hydroland_c08_test
+          C08_E2E_BASE_URL: http://127.0.0.1:3184/api/v1
+          C08_E2E_CONFIRM: ISOLATED_LOOPBACK_DATABASE
+          PORT: 3184
+        run: |
+          psql postgresql://hydroland:hydroland@localhost:5432/postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE hydroland_c08_test'
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "ALTER DATABASE hydroland_c08_test SET timezone TO 'Asia/Riyadh'"
+          npm exec -w @hydroland/api -- prisma db push --skip-generate
+          node apps/api/dist/main.js > /tmp/c08-source-api.log 2>&1 &
+          C08_API_PID=$!
+          trap 'C08_EXIT=$?; kill $C08_API_PID || true; if [ "$C08_EXIT" -ne 0 ]; then cat /tmp/c08-source-api.log; fi' EXIT
+          curl --fail --silent --retry 30 --retry-connrefused --retry-delay 1 http://127.0.0.1:3184/api/v1/health/ready > /dev/null
+          node apps/api/scripts/cross-department-lifecycle-http-e2e.mjs

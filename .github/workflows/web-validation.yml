@@ -34,6 +34,10 @@ jobs:
         run: npm run build -w @hydroland/web
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
+      - name: C05 maintenance scoped browser and retry boundaries
+        run: |
+          set -o pipefail
+          node apps/web/scripts/maintenance-work-order-validation.cjs | tee artifacts/browser-validation/c05-maintenance-boundaries.log
       - name: Center scoped search browser acceptance
         env:
           PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ github.workspace }}/artifacts/browser-validation/center-scoped-search.json
@@ -50,7 +54,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: web-browser-evidence-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: artifacts/browser-validation/*.json
+          path: |
+            artifacts/browser-validation/*.json
+            artifacts/browser-validation/c05-maintenance-boundaries.log
           if-no-files-found: error
           retention-days: 14
       - name: Retain incomplete browser execution evidence
@@ -58,7 +64,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: web-browser-incomplete-evidence-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: artifacts/browser-validation/*.json
+          path: |
+            artifacts/browser-validation/*.json
+            artifacts/browser-validation/c05-maintenance-boundaries.log
           if-no-files-found: ignore
           retention-days: 14
       - name: Retain browser failure diagnostics

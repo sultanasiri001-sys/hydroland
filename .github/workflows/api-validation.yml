@@ -71,6 +71,10 @@ jobs:
       # Forward migration immutability is enforced separately by Production Release Gate.
       - name: Bootstrap canonical schema on clean PostgreSQL
         run: npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+      - name: Purple additive schemas on the isolated canonical database
+        env:
+          NODE_ENV: test
+        run: node apps/api/scripts/purple-test-schema.mjs
       - name: Customer case explicit-deadline forward migration
         run: node apps/api/scripts/customer-case-deadline-migration-db-checks.mjs
       - name: Managed document attachment migration on TEXT and UUID identities
@@ -399,6 +403,83 @@ jobs:
         # connected fixture launches Chromium and verifies those dependencies.
         # Avoid unrelated OS/font upgrades in the API validation job.
         run: npx playwright install --only-shell chromium
+      - name: C05 canonical asset maintenance on dedicated PostgreSQL and native browser
+        env:
+          DATABASE_URL: postgresql://hydroland:hydroland@127.0.0.1:5432/hydroland_form_library_ci
+          NODE_ENV: test
+          JWT_SECRET: ci-c05-isolated-synthetic-secret-at-least-32-characters
+          PORT: 3182
+          WEB_ORIGIN: http://127.0.0.1:4182
+          C05_E2E_CONFIRM: ISOLATED_LOOPBACK_DATABASE
+          C05_E2E_BASE_URL: http://127.0.0.1:3182/api/v1/
+          C05_E2E_BROWSER: '1'
+          C05_REQUIRE_APP_LOADER: '1'
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/c05-evidence
+          git log -1 --format='%H %P %s' > /tmp/c05-evidence/checkout.txt
+          # This dedicated database is unused by earlier steps. Refuse reuse.
+          psql postgresql://hydroland:hydroland@127.0.0.1:5432/hydroland -v ON_ERROR_STOP=1 -c 'CREATE DATABASE hydroland_form_library_ci'
+          npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+          node apps/api/scripts/maintenance-work-order-migration-e2e.mjs | tee /tmp/c05-evidence/migration.log
+          node apps/api/scripts/maintenance-work-order-ci-prepare.mjs | tee /tmp/c05-evidence/preparation.log
+          node apps/api/dist/main.js > /tmp/c05-evidence/api.log 2>&1 &
+          c05_api_pid=$!
+          trap 'c05_exit=$?; kill "$c05_api_pid" 2>/dev/null || true; wait "$c05_api_pid" 2>/dev/null || true; if [ "$c05_exit" -ne 0 ]; then cat /tmp/c05-evidence/api.log; fi' EXIT
+          ready=0
+          for attempt in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:3182/api/v1/health >/dev/null; then ready=1; break; fi
+            if ! kill -0 "$c05_api_pid" 2>/dev/null; then cat /tmp/c05-evidence/api.log; exit 1; fi
+            sleep 1
+          done
+          if [ "$ready" != 1 ]; then cat /tmp/c05-evidence/api.log; exit 1; fi
+          node apps/api/scripts/maintenance-work-order-http-e2e.mjs 2>&1 | tee /tmp/c05-evidence/http-browser.log
+      - name: Retain C05 isolated maintenance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: c05-maintenance-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/c05-evidence/
+          retention-days: 3
+          if-no-files-found: ignore
+      - name: B06 native contract lifecycle, retained evidence and browser
+        env:
+          DATABASE_URL: postgresql://hydroland:hydroland@127.0.0.1:5432/hydroland_legal_ci
+          NODE_ENV: test
+          JWT_SECRET: b06-isolated-ci-signing-secret-no-production-use-20261127
+          PORT: 3183
+          LEGAL_E2E_CONFIRM: ISOLATED_LOOPBACK_DATABASE
+          LEGAL_E2E_BASE_URL: http://127.0.0.1:3183/api/v1
+          LEGAL_BROWSER_OUTPUT: /tmp/b06-evidence/browser
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/b06-evidence
+          git log -1 --format='%H %P %s' > /tmp/b06-evidence/checkout.txt
+          psql postgresql://hydroland:hydroland@127.0.0.1:5432/hydroland -v ON_ERROR_STOP=1 -c 'CREATE DATABASE hydroland_legal_ci'
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "ALTER DATABASE hydroland_legal_ci SET timezone TO 'Asia/Riyadh'"
+          npm exec --workspace=@hydroland/api -- prisma db push --skip-generate
+          npm exec --workspace=@hydroland/api -- prisma db execute --schema prisma/schema.prisma --file prisma/migrations/20261127020000_legal_contract_lifecycle/migration.sql
+          node apps/api/scripts/legal-contract-lifecycle-migration-db-e2e.mjs 2>&1 | tee /tmp/b06-evidence/migration.log
+          node apps/api/dist/main.js > /tmp/b06-evidence/api.log 2>&1 &
+          b06_api_pid=$!
+          trap 'b06_exit=$?; kill "$b06_api_pid" 2>/dev/null || true; wait "$b06_api_pid" 2>/dev/null || true; if [ "$b06_exit" -ne 0 ]; then cat /tmp/b06-evidence/api*.log; fi' EXIT
+          curl --fail --silent --retry 30 --retry-connrefused --retry-delay 1 http://127.0.0.1:3183/api/v1/health/ready > /dev/null
+          node apps/api/scripts/legal-contract-lifecycle-http-e2e.mjs 2>&1 | tee /tmp/b06-evidence/http.log
+          kill "$b06_api_pid"
+          wait "$b06_api_pid" || true
+          node apps/api/dist/main.js > /tmp/b06-evidence/api-restarted.log 2>&1 &
+          b06_api_pid=$!
+          curl --fail --silent --retry 30 --retry-connrefused --retry-delay 1 http://127.0.0.1:3183/api/v1/health/ready > /dev/null
+          node apps/api/scripts/legal-contract-lifecycle-reopen-http-e2e.mjs 2>&1 | tee /tmp/b06-evidence/restart.log
+          node apps/web/scripts/legal-contract-lifecycle-browser-e2e.mjs 2>&1 | tee /tmp/b06-evidence/browser.log
+      - name: Retain B06 isolated contract evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b06-contracts-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/b06-evidence/
+          retention-days: 3
+          if-no-files-found: ignore
       - name: D12 owner dashboard acceptance with disposable PostgreSQL and real browser
         run: bash scripts/d12-isolated-acceptance.sh github-ci
       - name: Durable AI queue and controls HTTP and PostgreSQL
@@ -523,6 +604,7 @@ jobs:
         run: node apps/api/scripts/diver-profile-schema-db-e2e.mjs
       - name: HR HTTP/DB E2E
         env:
+          NODE_ENV: test
           JWT_SECRET: ci-hr-e2e-secret-must-be-at-least-32-characters
           PORT: 3101
           HYDROLAND_INTEGRATION_OBJECT_STORAGE_STATUS: SANDBOX
