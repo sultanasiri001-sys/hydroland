@@ -2830,6 +2830,7 @@ model MarineAsset {
   name String
   assetType String
   registrationNumber String? @unique
+  hullNumber String? @unique
   passengerCapacity Int?
   status MarineAssetStatus @default(DRAFT)
   createdAt DateTime @default(now())

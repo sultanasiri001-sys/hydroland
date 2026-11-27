@@ -83,7 +83,7 @@ async function fixtureActor(label, role) {
   const tokens = expectStatus(await call(null, '/auth/login', 'POST', { email: account.email, password }), 200, 'Fixture reviewer login');
   return { ...account, token: tokens.accessToken };
 }
-const vesselInput = organizationId => ({ organizationId, name: 'Synthetic A14 onboarding vessel', assetType: 'DIVE_BOAT', registrationNumber: 'A14-SYNTHETIC-' + randomUUID(), passengerCapacity: 8 });
+const vesselInput = organizationId => ({ organizationId, name: 'Synthetic A14 onboarding vessel', assetType: 'DIVE_BOAT', registrationNumber: 'A14-SYNTHETIC-' + randomUUID(), hullNumber: 'A14-HULL-' + randomUUID(), passengerCapacity: 8 });
 const documentPath = () => '/marine-operations/assets/' + asset.id + '/documents/' + document.id;
 const pending = async (actor, stage) => expectStatus(await call(actor, '/marine-operations/' + stage + '/documents/pending'), 200, stage + ' pending queue').find(row => row.id === document.id);
 const decide = (actor, stage, row, outcome, note) => call(actor, '/marine-operations/' + stage + '/documents/' + document.id + '/decision', 'POST', { expectedRevision: row.reviewRevision, outcome, ...(note ? { note } : {}) });
@@ -141,6 +141,24 @@ try {
     HYDROLAND_OBJECT_STORAGE_REGION: 'us-east-1', HYDROLAND_OBJECT_STORAGE_BUCKET: 'a14-synthetic',
     HYDROLAND_OBJECT_STORAGE_ACCESS_KEY_ID: 'SYNTHETIC_A14_OBJECT_ID', HYDROLAND_OBJECT_STORAGE_SECRET_ACCESS_KEY: 'SYNTHETIC_A14_OBJECT_SECRET',
   })) setEnvironment(key, value);
+  await test('the additive hull migration preserves legacy registrations and enforces uniqueness in PostgreSQL', async () => {
+    const migrationDb = new PrismaClient({ datasourceUrl: scopedDatabase.href });
+    try {
+      await migrationDb.$executeRawUnsafe('CREATE TABLE "MarineAsset" ("id" TEXT PRIMARY KEY, "registrationNumber" TEXT)');
+      await migrationDb.$executeRaw`INSERT INTO "MarineAsset" ("id","registrationNumber") VALUES ('legacy-one','LEGACY-1'),('legacy-two','LEGACY-2')`;
+      execFileSync(process.execPath, [resolve(root, 'node_modules/prisma/build/index.js'), 'db', 'execute', '--file',
+        resolve(root, 'apps/api/prisma/migrations/20261128020000_marine_asset_hull_number/migration.sql'),
+        '--schema', resolve(root, 'apps/api/prisma/schema.prisma')], { cwd: root, env: { ...process.env }, stdio: 'pipe', timeout: 30_000 });
+      const legacy = await migrationDb.$queryRaw`SELECT "id", "registrationNumber", "hullNumber" FROM "MarineAsset" ORDER BY "id"`;
+      assert.deepEqual(legacy, [
+        { id: 'legacy-one', registrationNumber: 'LEGACY-1', hullNumber: null },
+        { id: 'legacy-two', registrationNumber: 'LEGACY-2', hullNumber: null },
+      ]);
+      await migrationDb.$executeRaw`INSERT INTO "MarineAsset" ("id","hullNumber") VALUES ('hull-one','A14-UNIQUE')`;
+      await assert.rejects(migrationDb.$executeRaw`INSERT INTO "MarineAsset" ("id","hullNumber") VALUES ('hull-two','A14-UNIQUE')`, error => error.code === 'P2010' && error.meta?.code === '23505');
+      await migrationDb.$executeRawUnsafe('DROP TABLE "MarineAsset"');
+    } finally { await migrationDb.$disconnect(); }
+  });
   execFileSync(process.execPath, [resolve(root, 'node_modules/prisma/build/index.js'), 'db', 'push', '--skip-generate', '--schema', resolve(root, 'apps/api/prisma/schema.prisma')], {
     cwd: root, env: { ...process.env }, stdio: 'pipe', timeout: 120_000,
   });
@@ -239,7 +257,24 @@ try {
     assert.equal((await db.organizationMember.findUniqueOrThrow({ where: { id: invitation.id } })).status, 'ACTIVE');
   });
 
-  await test('the registered owner creates a marine organization and an independent administrator approves it through HTTP', async () => {
+  await test('the same owner session loses vessel write access when membership is read-only or suspended', async () => {
+    const manage = async action => {
+      const member = await db.organizationMember.findUniqueOrThrow({ where: { id: invitation.id } });
+      return expectStatus(await call(centerOwner, '/center/me/team/' + invitation.id, 'PATCH', {
+        ...action, expectedUpdatedAt: member.updatedAt.toISOString(), reason: 'Synthetic A14 membership boundary test',
+      }), 200, 'Center membership update');
+    };
+    await manage({ action: 'CHANGE_ROLE', role: 'VIEWER' });
+    expectStatus(await call(owner, '/marine-operations/assets', 'POST', vesselInput(fixture.center.id)), 403, 'Viewer cannot register a vessel');
+    await manage({ action: 'CHANGE_ROLE', role: 'OPERATOR' });
+    await manage({ action: 'SUSPEND' });
+    expectStatus(await call(owner, '/marine-operations/assets', 'POST', vesselInput(fixture.center.id)), 403, 'Suspended member cannot register a vessel');
+    assert.equal(await db.marineAsset.count(), 0);
+    await manage({ action: 'REACTIVATE' });
+    assert.equal((await db.organizationMember.findUniqueOrThrow({ where: { id: invitation.id } })).status, 'ACTIVE');
+  });
+
+  await test('the registered owner creates and independently approves the marine organization through HTTP', async () => {
     marineOrg = expectStatus(await call(owner, '/organizations', 'POST', { displayName: 'Synthetic A14 marine owner organization', kind: 'MARINE_OPERATOR', registrationNumber: 'A14-ORG-' + randomUUID() }), 201, 'Marine organization submission');
     assert.equal(marineOrg.ownerId, owner.id); assert.equal(marineOrg.status, 'PENDING_REVIEW');
     expectStatus(await call(owner, '/marine-operations/assets', 'POST', vesselInput(marineOrg.id)), 403, 'Unapproved organization cannot create assets');
@@ -252,14 +287,41 @@ try {
 
   await test('vessel creation and center binding use the verified owner session and preserved identity', async () => {
     const input = vesselInput(marineOrg.id);
+    input.hullNumber = '  a14-' + randomUUID() + '-١٢  ';
+    const normalizedHull = input.hullNumber.trim().toUpperCase().replace('١٢', '12');
+    expectStatus(await call(outsider, '/marine-operations/assets', 'POST', input), 403, 'Unrelated vessel creation');
     asset = expectStatus(await call(owner, '/marine-operations/assets', 'POST', input), 201, 'Owner vessel creation');
-    assert.equal(asset.organizationId, marineOrg.id); assert.equal(asset.registrationNumber, input.registrationNumber); assert.equal(asset.status, 'DRAFT');
+    assert.equal(asset.organizationId, marineOrg.id); assert.equal(asset.registrationNumber, input.registrationNumber); assert.equal(asset.hullNumber, normalizedHull); assert.equal(asset.status, 'DRAFT');
     expectStatus(await call(outsider, '/marine-operations/assets/' + asset.id + '/review-center', 'POST', { centerId: fixture.center.id }), 403, 'Unrelated center binding');
     const bound = expectStatus(await call(owner, '/marine-operations/assets/' + asset.id + '/review-center', 'POST', { centerId: fixture.center.id }), 201, 'Owner review-center binding');
     assert.equal(bound.reviewCenterId, fixture.center.id);
     const mine = expectStatus(await call(owner, '/marine-operations/assets/mine'), 200, 'Owner vessel listing');
-    assert.ok(mine.some(row => row.id === asset.id && row.registrationNumber === input.registrationNumber));
+    assert.ok(mine.some(row => row.id === asset.id && row.registrationNumber === input.registrationNumber && row.hullNumber === normalizedHull));
     assert.ok(!expectStatus(await call(outsider, '/marine-operations/assets/mine'), 200, 'Unrelated vessel listing').some(row => row.id === asset.id));
+  });
+
+  await test('normalized hull uniqueness spans organizations and simultaneous writes without disclosing another owner', async () => {
+    const input = { ...vesselInput(fixture.center.id), hullNumber: asset.hullNumber.toLowerCase().replace(/12$/, '۱۲') };
+    const duplicate = expectStatus(await call(centerOwner, '/marine-operations/assets', 'POST', input), 409, 'Duplicate hull in another organization');
+    for (const value of [owner.id, ownerEmail, asset.id, marineOrg.id, marineOrg.displayName]) assert.ok(!JSON.stringify(duplicate).includes(value));
+    expectStatus(await call(outsider, '/marine-operations/assets', 'POST', input), 403, 'Membership checked before a duplicate lookup');
+    const racedHull = 'A14-RACE-' + randomUUID();
+    const raced = await Promise.all([
+      call(owner, '/marine-operations/assets', 'POST', { ...vesselInput(marineOrg.id), hullNumber: racedHull.toLowerCase() }),
+      call(centerOwner, '/marine-operations/assets', 'POST', { ...vesselInput(fixture.center.id), hullNumber: '  ' + racedHull + '  ' }),
+    ]);
+    assert.deepEqual(raced.map(result => result.status).sort(), [201, 409]);
+    assert.equal(await db.marineAsset.count({ where: { hullNumber: racedHull.toUpperCase() } }), 1);
+    for (const hullNumber of [42, {}, 'A14\nINJECTED', '<script>', 'A'.repeat(81)]) {
+      expectStatus(await call(owner, '/marine-operations/assets', 'POST', { ...vesselInput(marineOrg.id), hullNumber }), 400, 'Invalid hull identity');
+    }
+    const before = await db.marineAsset.findUniqueOrThrow({ where: { id: asset.id } });
+    assert.equal(before.hullNumber, asset.hullNumber); assert.equal(before.status, 'DRAFT');
+    for (let index = 0; index < 2; index++) {
+      const legacy = vesselInput(marineOrg.id); delete legacy.hullNumber;
+      const withoutHull = expectStatus(await call(owner, '/marine-operations/assets', 'POST', legacy), 201, 'No retroactive hull assumption');
+      assert.equal(withoutHull.hullNumber, null); assert.equal(withoutHull.registrationNumber, legacy.registrationNumber);
+    }
   });
 
   let fileBytes;
@@ -278,8 +340,36 @@ try {
     assert.deepEqual(Buffer.from(await response.arrayBuffer()), fileBytes);
   });
 
+  await test('the center returns V1 to its owner and only a corrected current revision can re-enter review', async () => {
+    const first = await pending(centerOwner, 'center');
+    assert.equal(first.marineAsset.hullNumber, asset.hullNumber);
+    const returned = expectStatus(await decide(centerOwner, 'center', first, 'RETURNED', 'Synthetic request: replace V1 with the corrected V2 file'), 201, 'Center returns V1');
+    assert.equal(returned.status, 'RETURNED');
+    assert.equal(await pending(centerOwner, 'center'), undefined);
+    assert.equal(await pending(operations, 'operations'), undefined);
+    assert.equal(await pending(administrator, 'admin'), undefined);
+    const owned = expectStatus(await call(owner, '/marine-operations/assets/mine'), 200, 'Owner reads returned document').find(row => row.id === asset.id);
+    const current = owned.documents.find(row => row.id === document.id);
+    assert.equal(current.status, 'RETURNED'); assert.match(current.reviewNote, /corrected V2/);
+    expectStatus(await call(owner, documentPath(), 'PATCH', { expectedRevision: first.reviewRevision, referenceNumber: 'STALE-V2' }), 409, 'Stale resubmission');
+    expectStatus(await call(owner, documentPath(), 'PATCH', { expectedRevision: current.reviewRevision }), 400, 'Unchanged returned document');
+    expectStatus(await call(outsider, documentPath(), 'PATCH', { expectedRevision: current.reviewRevision, referenceNumber: 'FOREIGN-V2' }), 403, 'Unrelated resubmission');
+    const previousHash = createHash('sha256').update(fileBytes).digest('hex');
+    const file = fixture.file(); fileBytes = Buffer.from(file.base64, 'base64');
+    const resubmitted = expectStatus(await call(owner, documentPath(), 'PATCH', { ...file, expectedRevision: current.reviewRevision, referenceNumber: 'A14-CORRECTED-V2' }), 200, 'Owner submits V2');
+    assert.equal(resubmitted.id, document.id); assert.equal(resubmitted.status, 'PENDING'); assert.equal(resubmitted.reviewNote, null);
+    assert.equal(resubmitted.centerApprovedBy, null); assert.equal(resubmitted.operationsRecommendedBy, null);
+    const stored = await db.marineAssetDocument.findUniqueOrThrow({ where: { id: document.id } });
+    assert.notEqual(stored.sha256, previousHash); assert.equal(stored.sha256, createHash('sha256').update(fileBytes).digest('hex'));
+    assert.equal(objects.size, 1, 'V1 is removed only after committed V2 replacement');
+    const next = await pending(centerOwner, 'center'); assert.equal(next.referenceNumber, 'A14-CORRECTED-V2');
+    assert.notEqual(next.reviewRevision, first.reviewRevision);
+    expectStatus(await decide(centerOwner, 'center', first, 'FORWARD'), 409, 'A V1 decision cannot approve V2');
+  });
+
   await test('center forwarding, independent operations recommendation and platform approval persist in order', async () => {
     const center = await pending(centerOwner, 'center');
+    assert.equal(center.marineAsset.hullNumber, asset.hullNumber);
     const forwarded = expectStatus(await decide(centerOwner, 'center', center, 'FORWARD'), 201, 'Center forward');
     assert.equal(forwarded.status, 'OPERATIONS_PENDING');
     assert.equal(await pending(administrator, 'admin'), undefined);
@@ -296,9 +386,9 @@ try {
     assert.equal(stored.sha256, createHash('sha256').update(fileBytes).digest('hex'));
     const actions = ['MARINE_DOCUMENT_CENTER_REVIEWED', 'MARINE_DOCUMENT_OPERATIONS_REVIEWED', 'MARINE_DOCUMENT_REVIEWED'];
     const events = await db.auditEvent.findMany({ where: { resource: 'MarineAssetDocument', resourceId: document.id, action: { in: actions } }, orderBy: { occurredAt: 'asc' } });
-    assert.deepEqual(events.map(row => row.action), actions);
-    assert.deepEqual(events.map(row => row.actorId), [centerOwner.personId, operations.personId, administrator.personId]);
-    assert.deepEqual(events.map(row => row.metadata.outcome), ['FORWARD', 'RECOMMEND', 'VERIFIED']);
+    assert.deepEqual(events.map(row => row.action), [actions[0], ...actions]);
+    assert.deepEqual(events.map(row => row.actorId), [centerOwner.personId, centerOwner.personId, operations.personId, administrator.personId]);
+    assert.deepEqual(events.map(row => row.metadata.outcome), ['RETURNED', 'FORWARD', 'RECOMMEND', 'VERIFIED']);
   });
 
   await test('approved bytes stay immutable and document verification does not activate a real vessel', async () => {
@@ -323,8 +413,8 @@ finally {
   if (adminDb) await adminDb.$disconnect();
   global.fetch = nativeFetch;
   for (const [key, value] of savedEnvironment) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
-  const sourcePaths = ['apps/api/scripts/a14-owner-onboarding-http-e2e.mjs', 'apps/api/scripts/marine-review-fixture.mjs', 'apps/api/prisma/schema.prisma', 'apps/api/src/auth/auth.service.ts', 'apps/api/src/organizations/organization-membership.service.ts', 'apps/api/src/marine-operations/marine-operations.service.ts'];
-  const compiledPaths = ['app.module.js', 'auth/auth.service.js', 'auth/auth-email-outbox.worker.js', 'integrations/email-delivery.service.js', 'credentials/credential-object-storage.service.js', 'organizations/organization-membership.service.js', 'marine-operations/marine-operations.service.js'];
+  const sourcePaths = ['apps/api/scripts/a14-owner-onboarding-http-e2e.mjs', 'apps/api/scripts/marine-review-fixture.mjs', 'apps/api/prisma/schema.prisma', 'apps/api/src/auth/auth.service.ts', 'apps/api/src/organizations/organization-membership.service.ts', 'apps/api/src/marine-operations/marine-operations.service.ts', 'apps/api/src/marine-operations/marine-asset-identity.domain.ts', 'apps/api/prisma/migrations/20261128020000_marine_asset_hull_number/migration.sql'];
+  const compiledPaths = ['app.module.js', 'auth/auth.service.js', 'auth/auth-email-outbox.worker.js', 'integrations/email-delivery.service.js', 'credentials/credential-object-storage.service.js', 'organizations/organization-membership.service.js', 'marine-operations/marine-operations.service.js', 'marine-operations/marine-asset-identity.domain.js'];
   const fingerprints = paths => Object.fromEntries(paths.map(path => [path, createHash('sha256').update(readFileSync(resolve(root, path))).digest('hex')]));
   receipt = {
     schemaVersion: 1, suite: 'A14_OWNER_ONBOARDING_HTTP_POSTGRESQL', synthetic: true, realOwnerAcceptance: false,
