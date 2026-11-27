@@ -104,6 +104,14 @@
   "تمت التسوية": "Settled",
   "لا توجد استحقاقات تدريبية مسجلة حتى الآن.": "No training entitlements recorded yet.",
   "الشهادات": "Certificates",
+  "نتائجي وشهاداتي الداخلية": "My internal results and certificates",
+  "تحديث حالة الشهادات": "Refresh certificate status",
+  "العودة إلى دوراتي": "Back to my courses",
+  "الشهادة الداخلية وشهادة الجهة الخارجية حالتان منفصلتان.": "Internal and external agency certificates have separate statuses.",
+  "تحتاج مراجعة المتطلبات": "Prerequisites need review",
+  "لا توجد شهادات داخلية مسجلة على حسابك.": "No internal certificates are recorded for your account.",
+  "تعذر حفظ طلب إعادة النظر.": "Could not save the reconsideration request.",
+  "اكتب سبب إعادة النظر من 5 إلى 1000 حرف.": "Enter a reconsideration reason of 5 to 1000 characters.",
   "توصية المدرب ثم اعتماد مستقل قبل الإصدار": "Instructor recommendation followed by independent approval before issuance",
   "جارٍ تحميل حالة الشهادات...": "Loading certificate status...",
   "تعذر تحميل الشهادات": "Could not load certificates",
@@ -172,13 +180,22 @@
   if(!host||document.querySelector('.hl-training'))return;
   const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const section=document.createElement('section');section.className='hl-training';
-  uiLocale.setHTML(section, uiLocale.html`<header class="hl-training-head"><div><small>HYDROLAND LEARNING</small><h3>مركز التدريب والدورات</h3></div><span>سجلك التدريبي المباشر</span></header><div class="hl-training-grid"><article class="hl-training-card"><small>دوراتي</small><b data-training-count>—</b></article><article class="hl-training-card"><small>دورات نشطة</small><b data-training-active>—</b></article><article class="hl-training-card"><small>دورات مكتملة</small><b data-training-completed>—</b></article><article class="hl-training-card"><small>متوسط التقدم</small><b data-training-progress>—</b></article></div><div class="hl-training-main"><section class="hl-training-panel"><h4>مساري التدريبي</h4><div class="hl-course-list" data-training-list><p>سجل الدخول لعرض بيانات التدريب.</p></div></section></div>`);
+  uiLocale.setHTML(section, uiLocale.html`<header class="hl-training-head"><div><small>HYDROLAND LEARNING</small><h3>مركز التدريب والدورات</h3></div><span>سجلك التدريبي المباشر</span><button type="button" data-training-my-certificates hidden>نتائجي وشهاداتي الداخلية</button></header><div class="hl-training-grid"><article class="hl-training-card"><small>دوراتي</small><b data-training-count>—</b></article><article class="hl-training-card"><small>دورات نشطة</small><b data-training-active>—</b></article><article class="hl-training-card"><small>دورات مكتملة</small><b data-training-completed>—</b></article><article class="hl-training-card"><small>متوسط التقدم</small><b data-training-progress>—</b></article></div><div class="hl-training-main"><section class="hl-training-panel"><h4>مساري التدريبي</h4><div class="hl-course-list" data-training-list><p>سجل الدخول لعرض بيانات التدريب.</p></div></section></div>`);
   host.insertAdjacentElement('afterend',section);
 
   const label=status=>({PENDING:'بانتظار التفعيل',ACTIVE:'نشط',SUSPENDED:'موقوف',COMPLETED:'مكتمل',CANCELLED:'ملغي'}[status]||status||'—');
-  let planVersion=0,planEnrollment=null,certificateVersion=0;
-  const certificateCurrent=(version,session)=>version===certificateVersion&&session===auth?.getSessionVersion?.()&&auth?.isAuthenticated()&&section.dataset.trainingMode==='professional-certificates'&&window.HydrolandPortalAccess?.getCurrentRole?.()==='instructor';
-  const certificateAuthorized=async(version,session)=>{const authorize=window.HydrolandPortalAccess?.authorizeRole;return typeof authorize==='function'&&await authorize('instructor',{sessionVersion:session,isCurrent:()=>certificateCurrent(version,session)})&&certificateCurrent(version,session)};
+  let planVersion=0,planEnrollment=null,certificateVersion=0,certificatePortalRole=null;
+  const certificateUI=window.HydrolandTrainingCertificateUI;
+  const certificateCurrent=(version,session)=>version===certificateVersion&&session===auth?.getSessionVersion?.()&&auth?.isAuthenticated()&&['professional-certificates','student-certificates'].includes(section.dataset.trainingMode)&&certificatePortalRole===window.HydrolandPortalAccess?.getCurrentRole?.();
+  const certificateAuthorized=async(version,session)=>{
+    if(section.dataset.trainingMode==='professional-certificates'){
+      const authorize=window.HydrolandPortalAccess?.authorizeRole;
+      return typeof authorize==='function'&&await authorize('instructor',{sessionVersion:session,isCurrent:()=>certificateCurrent(version,session)})&&certificateCurrent(version,session);
+    }
+    const response=await auth.authorizedFetch('/me'),account=await response.json().catch(()=>null);
+    if(!response.ok||account?.status!=='ACTIVE'){if(certificateCurrent(version,session))section.querySelector('[data-training-list]').textContent='';return false}
+    return certificateCurrent(version,session);
+  };
   const planCurrent=(version,session)=>version===planVersion&&session===auth?.getSessionVersion?.()&&auth?.isAuthenticated()&&section.dataset.trainingMode==='professional-plan'&&window.HydrolandPortalAccess?.getCurrentRole?.()==='instructor';
   const planAuthorized=async(version,session)=>{const authorize=window.HydrolandPortalAccess?.authorizeRole;return typeof authorize==='function'&&await authorize('instructor',{sessionVersion:session,isCurrent:()=>planCurrent(version,session)})&&planCurrent(version,session)};
   const standardsByForm=new WeakMap();
@@ -290,28 +307,52 @@
       uiLocale.setHTML(list, contracts+summary+(entries.length?entries.map(item=>uiLocale.html`<article class="hl-course"><div class="hl-course-top"><div><b>${esc(item.courseCode)}</b><small>${new Date(item.createdAt).toLocaleDateString('ar-SA')}</small></div><span>${money(item.amountMinor,item.currency)} · ${esc(stageLabel(item))}${item.postingUpdatedAt?uiLocale.html`<small>تاريخ آخر حركة · ${esc(new Date(item.postingUpdatedAt).toLocaleDateString(document.documentElement.lang||'ar-SA'))}</small>`:''}</span></div></article>`).join(''):uiLocale.html`<p>لا توجد استحقاقات تدريبية مسجلة حتى الآن.</p>`));
     }catch(error){if(!current())return;uiLocale.setHTML(list, uiLocale.html`<p>${uiLocale.messageHTML(error instanceof Error?localErrorMessage(error):uiLocale.message('تعذر تحميل الاستحقاقات'))}</p>`);}
   }
-  async function loadProfessionalCertificates(){
-    const list=section.querySelector('[data-training-list]'),version=++certificateVersion,session=auth?.getSessionVersion?.();section.dataset.trainingMode='professional-certificates';
-    uiLocale.setText(section.querySelector('.hl-training-head h3'), ...['الشهادات']);uiLocale.setText(section.querySelector('.hl-training-head span'), ...['توصية المدرب ثم اعتماد مستقل قبل الإصدار']);
-    uiLocale.setHTML(list, uiLocale.html`<p>جارٍ تحميل حالة الشهادات...</p>`);
+  function renderCertificateRecord(item,{student=false}={}){
+    const certificate=student?item:item.certificate,readiness=item.completionReadiness;
+    const ready=!student&&item.readyForRecommendation===true&&certificateUI?.ready(readiness),states={RECOMMENDED:'بانتظار مراجعة الإدارة',APPROVED:'معتمد',REJECTED:'مرفوض',REVOKED:'ملغى'};
+    const id=item.trainingRecordId;
+    return uiLocale.html`<article class="hl-course" data-certificate-record="${esc(id)}"><div class="hl-course-top"><div><b><bdi>${esc(item.courseCode)}</bdi></b><small>${esc(item.student?.displayName||uiLocale.t('طالب'))}</small></div><span>${uiLocale.label(certificate?(states[certificate.status]||certificate.status):(ready?'جاهز للتوصية':'تحتاج مراجعة المتطلبات'))}</span></div>${certificateUI?.result(certificate||item)||''}${!student?certificateUI?.readiness(readiness)||'':''}${!student&&!certificate?uiLocale.html`<details><summary>توصية المدرب بالشهادة</summary><form data-certificate-recommend-form data-allowed="${ready?'true':'false'}"><fieldset ${ready?'':'disabled'}><p>التوصية وحدها لا تصدر شهادة. القرار لمراجع مستقل.</p><label><input type="checkbox" name="reviewed" required>راجعت اكتمال سجل التدريب قبل التوصية</label><button type="submit" data-certificate-recommend>إرسال توصية الاعتماد</button></fieldset><p data-certificate-feedback role="status"></p></form></details>`:''}${certificate?.reviewReason?uiLocale.html`<p>ملاحظات الإدارة: ${esc(certificate.reviewReason)}</p>`:''}${certificateUI?.reconsideration(certificate)||''}${certificateUI?.history(certificate)||''}${certificateUI?.requestForm(certificate)||''}</article>`;
+  }
+  async function loadProfessionalCertificates(student=false){
+    const list=section.querySelector('[data-training-list]'),version=++certificateVersion,session=auth?.getSessionVersion?.();
+    section.dataset.trainingMode=student?'student-certificates':'professional-certificates';certificatePortalRole=window.HydrolandPortalAccess?.getCurrentRole?.();
+    section.querySelector('[data-training-my-certificates]').hidden=true;section.querySelector('.hl-training-grid').hidden=true;
+    uiLocale.setText(section.querySelector('.hl-training-head h3'),student?'نتائجي وشهاداتي الداخلية':'الشهادات');uiLocale.setText(section.querySelector('.hl-training-head span'),'الشهادة الداخلية وشهادة الجهة الخارجية حالتان منفصلتان.');
+    uiLocale.setHTML(list,uiLocale.html`<p>جارٍ تحميل حالة الشهادات...</p>`);
     try{
-      if(!await certificateAuthorized(version,session))return;
-      const response=await auth.authorizedFetch('/training/professional/me/certificates'),rows=await response.json().catch(()=>null);if(!certificateCurrent(version,session))return;if(!response.ok||!Array.isArray(rows))throw localError(rows?.message||uiLocale.message('تعذر تحميل الشهادات'));
-      const states={RECOMMENDED:'بانتظار مراجعة الإدارة',APPROVED:'معتمد',REJECTED:'مرفوض',REVOKED:'ملغى'};
-      uiLocale.setHTML(list, rows.length?rows.map(item=>uiLocale.html`<article class="hl-course" data-certificate-record="${esc(item.trainingRecordId)}"><div class="hl-course-top"><div><b>${esc(item.courseCode)}</b><small>${esc(item.student?.displayName||uiLocale.t('طالب'))}</small></div><span>${uiLocale.label(item.certificate?(states[item.certificate.status]||item.certificate.status):(item.readyForRecommendation?'جاهز للتوصية':'غير مكتمل'))}</span></div>${item.readyForRecommendation&&!item.certificate?uiLocale.html`<details><summary>توصية المدرب بالشهادة</summary><form data-certificate-recommend-form><fieldset><p>التوصية وحدها لا تصدر شهادة. القرار لمراجع مستقل.</p><label><input type="checkbox" name="reviewed" required>راجعت اكتمال سجل التدريب قبل التوصية</label><button type="submit" data-certificate-recommend>إرسال توصية الاعتماد</button></fieldset><p data-certificate-feedback role="status"></p></form></details>`:''}${item.certificate?.reviewReason?uiLocale.html`<p>ملاحظات الإدارة: ${esc(item.certificate.reviewReason)}</p>`:''}${item.certificate?.certificateNumber?uiLocale.html`<small>رقم الشهادة الداخلية: ${esc(item.certificate.certificateNumber)}</small>`:''}</article>`).join(''):uiLocale.html`<p>لا توجد سجلات تدريب مرتبطة بك.</p>`);
-    }catch(error){if(certificateCurrent(version,session))uiLocale.setHTML(list, uiLocale.html`<p role="alert">${uiLocale.messageHTML(error instanceof Error?localErrorMessage(error):uiLocale.message('تعذر تحميل الشهادات'))}</p>`);}
+      if(!await certificateAuthorized(version,session)){if(certificateCurrent(version,session))list.textContent='';return}
+      const response=await auth.authorizedFetch(student?'/training/mine/certificates':'/training/professional/me/certificates'),data=await response.json().catch(()=>null),rows=student?data?.items:data;
+      if(!certificateCurrent(version,session))return;if(!response.ok||!Array.isArray(rows))throw localError(data?.message||uiLocale.message('تعذر تحميل الشهادات'));
+      uiLocale.setHTML(list,uiLocale.html`<div class="hl-member-actions"><button type="button" data-training-certificates-refresh>تحديث حالة الشهادات</button>${student?uiLocale.html`<button type="button" data-training-courses-back>العودة إلى دوراتي</button>`:''}</div>`+(rows.length?rows.map(item=>renderCertificateRecord(item,{student})).join(''):uiLocale.html`<p>${uiLocale.label(student?'لا توجد شهادات داخلية مسجلة على حسابك.':'لا توجد سجلات تدريب مرتبطة بك.')}</p>`));
+    }catch(error){if(certificateCurrent(version,session))uiLocale.setHTML(list,uiLocale.html`<p role="alert">${uiLocale.messageHTML(error instanceof Error?localErrorMessage(error):uiLocale.message('تعذر تحميل الشهادات'))}</p><button type="button" data-training-certificates-refresh>تحديث حالة الشهادات</button>`);}
   }
   section.addEventListener('submit',async event=>{
-    const form=event.target;if(!form.matches('[data-certificate-recommend-form]'))return;event.preventDefault();if(form.dataset.busy||!form.elements.reviewed.checked)return;
+    const form=event.target;if(!form.matches('[data-certificate-recommend-form]'))return;event.preventDefault();if(form.dataset.busy||form.dataset.allowed!=='true'||!form.elements.reviewed.checked)return;
     const version=certificateVersion,session=auth?.getSessionVersion?.(),id=form.closest('[data-certificate-record]').dataset.certificateRecord,live=()=>certificateCurrent(version,session)&&form.isConnected;
     form.dataset.busy='true';form.querySelector('fieldset').disabled=true;
     try{
       if(!await certificateAuthorized(version,session)||!live())return;
       const response=await auth.authorizedFetch('/training/professional/me/records/'+encodeURIComponent(id)+'/certificate-recommendation',{method:'POST'}),data=await response.json().catch(()=>null);
-      if(!live())return;if(!response.ok||data?.trainingRecordId!==id)throw localError(data?.message||uiLocale.message('تعذر إرسال التوصية'));await loadProfessionalCertificates();
-    }catch(error){if(live())uiLocale.setMessage(form.querySelector('[data-certificate-feedback]'), localErrorMessage(error)||uiLocale.message('تعذر إرسال التوصية'));}
-    finally{delete form.dataset.busy;form.querySelector('fieldset').disabled=false}
+      if(!live())return;if(!response.ok||data?.trainingRecordId!==id){if(response.status===409)form.dataset.allowed='false';throw localError(data?.message||uiLocale.message('تعذر إرسال التوصية'))}await loadProfessionalCertificates();
+    }catch(error){if(live())uiLocale.setMessage(form.querySelector('[data-certificate-feedback]'),localErrorMessage(error)||uiLocale.message('تعذر إرسال التوصية'));}
+    finally{if(live()){delete form.dataset.busy;form.querySelector('fieldset').disabled=form.dataset.allowed!=='true'}}
   });
+  async function requestReconsideration(form,retry=false){
+    if(form.dataset.busy||form.dataset.stale||form.dataset.certificateLifecycle!=='reconsideration')return;
+    const version=certificateVersion,session=auth?.getSessionVersion?.(),live=()=>certificateCurrent(version,session)&&form.isConnected;
+    const body=retry?certificateUI?.retryBody(form):certificateUI?.command(form),feedback=form.querySelector('[data-certificate-feedback]');
+    if(!body){uiLocale.setText(feedback,'اكتب سبب إعادة النظر من 5 إلى 1000 حرف.');return}
+    form.dataset.busy='true';form.querySelector('fieldset').disabled=true;let sent=false,responded=false;
+    try{
+      if(!await certificateAuthorized(version,session)||!live())return;
+      sent=true;const response=await auth.authorizedFetch('/training/certificates/'+encodeURIComponent(form.dataset.certificateId)+'/reconsideration',{method:'POST',body:JSON.stringify(body)});responded=true;
+      const data=await response.json().catch(()=>null);if(!live())return;
+      if(!response.ok){if([401,403,404].includes(response.status)){section.querySelector('[data-training-list]').textContent='';return}if(response.status===409)form.dataset.stale='true';throw localError(data?.message||uiLocale.message('تعذر حفظ طلب إعادة النظر.'))}
+      await loadProfessionalCertificates(section.dataset.trainingMode==='student-certificates');
+    }catch(error){if(live()){if(sent&&!responded)certificateUI.uncertain(form);else uiLocale.setMessage(feedback,localErrorMessage(error)||uiLocale.message('تعذر حفظ طلب إعادة النظر.'));}}
+    finally{if(live()){delete form.dataset.busy;form.querySelector('fieldset').disabled=Boolean(form.dataset.stale||form.dataset.uncertain)}}
+  }
+  section.addEventListener('submit',event=>{const form=event.target.closest('[data-certificate-lifecycle]');if(form){event.preventDefault();void requestReconsideration(form)}});
   async function loadProfessionalSkills(){
     const list=section.querySelector('[data-training-list]');section.dataset.trainingMode='professional-skills';
     uiLocale.setText(section.querySelector('.hl-training-head h3'), ...['تقييم المهارات']);uiLocale.setText(section.querySelector('.hl-training-head span'), ...['مهارات الطلاب المعيّنين لك فقط']);
@@ -365,7 +406,7 @@
   }
 
   async function load(mode){
-    scheduleVersion++;planVersion++;certificateVersion++;planEnrollment=null;section.querySelector('.hl-training-grid').hidden=false;
+    scheduleVersion++;planVersion++;certificateVersion++;planEnrollment=null;section.querySelector('.hl-training-grid').hidden=false;section.querySelector('[data-training-my-certificates]').hidden=true;
     if(mode)requestedMode=mode;
     const instructorPortal=document.querySelector('.hl-role-dashboard[data-role="instructor"]');
     if(!mode&&instructorPortal&&window.HydrolandPortalAccess?.getCurrentRole?.()==='instructor')requestedMode='instructor';
@@ -376,14 +417,17 @@
     if(mode==='instructor-schedule')return loadProfessionalSchedule();
     if(mode==='instructor-skills')return loadProfessionalSkills();
     if(mode==='instructor-certificates')return loadProfessionalCertificates();
+    if(mode==='student-certificates')return loadProfessionalCertificates(true);
     if(mode==='instructor-earnings')return loadProfessionalEarnings();
     uiLocale.setText(section.querySelector('.hl-training-head h3'), ...['مركز التدريب والدورات']);
     uiLocale.setText(section.querySelector('.hl-training-head span'), ...['سجلك التدريبي المباشر']);
-    section.dataset.trainingMode='student';
+    section.dataset.trainingMode='student';section.querySelector('[data-training-my-certificates]').hidden=false;
+    const studentVersion=certificateVersion,studentSession=auth?.getSessionVersion?.(),studentCurrent=()=>studentVersion===certificateVersion&&studentSession===auth?.getSessionVersion?.()&&auth?.isAuthenticated()&&section.dataset.trainingMode==='student';
     uiLocale.setHTML(list, uiLocale.html`<p>جارٍ تحميل السجل التدريبي...</p>`);
     try{
       const response=await auth.authorizedFetch('/training/mine/enrollments');
       const rows=await response.json().catch(()=>[]);
+      if(!studentCurrent())return;
       if(!response.ok)throw localError(rows?.message||uiLocale.message('تعذر تحميل بيانات التدريب'));
       const enrollments=Array.isArray(rows)?rows:[];
       const active=enrollments.filter(x=>x.status==='ACTIVE').length;
@@ -395,10 +439,14 @@
       section.querySelector('[data-training-completed]').textContent=String(completed);
       section.querySelector('[data-training-progress]').textContent=average+'%';
       uiLocale.setHTML(list, enrollments.length?enrollments.map(item=>{const progress=Math.max(0,Math.min(100,Number(item.record?.progressPercent||0)));return uiLocale.html`<article class="hl-course"><div class="hl-course-top"><div><b>${esc(item.courseCode)}</b><small>${uiLocale.label(label(item.status))}</small></div><span>${progress}%</span></div><div class="hl-progress"><i style="width:${progress}%"></i></div><small>${uiLocale.label(item.instructorAccountId?'تم تعيين المدرب':'بانتظار تعيين المدرب')}</small>${item.storeCourseOfferId?uiLocale.html`<button type="button" data-account-invoices data-invoice-type="TRAINING_ENROLLMENT" data-invoice-source="${esc(item.id)}">فاتورة العملية</button>`:''}</article>`;}).join(''):uiLocale.html`<p>لا توجد دورات مسجلة على حسابك حتى الآن.</p>`);
-    }catch(error){uiLocale.setHTML(list, uiLocale.html`<p>${uiLocale.messageHTML(error instanceof Error?localErrorMessage(error):uiLocale.message('تعذر تحميل بيانات التدريب'))}</p>`);}
+    }catch(error){if(studentCurrent())uiLocale.setHTML(list, uiLocale.html`<p>${uiLocale.messageHTML(error instanceof Error?localErrorMessage(error):uiLocale.message('تعذر تحميل بيانات التدريب'))}</p>`);}
   }
   document.addEventListener('click',event=>{const button=event.target.closest?.('[data-hl-action="training"],[data-training-open]');if(!button)return;event.preventDefault();section.scrollIntoView({behavior:shortcutScrollBehavior(),block:'start'});if(!auth?.isAuthenticated()){const list=section.querySelector('[data-training-list]');if(list)uiLocale.setHTML(list, uiLocale.html`<p>سجل الدخول لعرض بيانات التدريب.</p>`);return}const instructor=Boolean(button.closest?.('.hl-role-dashboard[data-role="instructor"]'));load(instructor?'instructor':undefined);});
   section.addEventListener('click',async event=>{
+    if(event.target.closest?.('[data-training-my-certificates]')){await load('student-certificates');return}
+    if(event.target.closest?.('[data-training-certificates-refresh]')){await loadProfessionalCertificates(section.dataset.trainingMode==='student-certificates');return}
+    if(event.target.closest?.('[data-training-courses-back]')){await load('student');return}
+    const retry=event.target.closest?.('[data-certificate-retry]');if(retry){await requestReconsideration(retry.closest('form'),true);return}
     const plan=event.target.closest?.('[data-training-plan]');if(plan){await openPlan(plan.dataset.trainingPlan);return}
     if(event.target.closest?.('[data-plan-back]')){await load('instructor');return}
     if(event.target.closest?.('[data-plan-refresh]')){if(planEnrollment)await openPlan(planEnrollment);return}
@@ -424,8 +472,9 @@
     }catch(error){if(live())uiLocale.insertHTML(article, 'beforeend', uiLocale.html`<p role="alert">${uiLocale.messageHTML(error instanceof Error?localErrorMessage(error):uiLocale.message('تعذر تحديث الحضور'))}</p><button type="button" data-training-schedule-refresh>تحديث الجدول</button>`);}
     finally{button.disabled=false}
   });
-  document.addEventListener('hydroland:session-cleared',()=>{scheduleVersion++;planVersion++;certificateVersion++;planEnrollment=null;if(['professional-schedule','professional-plan','professional-certificates'].includes(section.dataset.trainingMode))uiLocale.setText(section.querySelector('[data-training-list]'), ...['سجل الدخول لعرض بيانات التدريب.'])});
-  document.addEventListener('hydroland:role-changed',()=>{if(window.HydrolandPortalAccess?.getCurrentRole?.()!=='instructor'){if(section.dataset.trainingMode==='professional-certificates'){certificateVersion++;section.querySelector('[data-training-list]').textContent=''}if(section.dataset.trainingMode==='professional-plan'){planVersion++;planEnrollment=null;section.querySelector('[data-training-list]').textContent=''}}});
+  document.addEventListener('hydroland:session-cleared',()=>{scheduleVersion++;planVersion++;certificateVersion++;planEnrollment=null;if(['professional-schedule','professional-plan','professional-certificates','student-certificates'].includes(section.dataset.trainingMode))uiLocale.setText(section.querySelector('[data-training-list]'), ...['سجل الدخول لعرض بيانات التدريب.'])});
+  document.addEventListener('hydroland:portal-cleared',()=>{certificateVersion++;if(['professional-certificates','student-certificates'].includes(section.dataset.trainingMode))section.querySelector('[data-training-list]').textContent=''});
+  document.addEventListener('hydroland:role-changed',()=>{if(section.dataset.trainingMode==='student-certificates'&&certificatePortalRole!==window.HydrolandPortalAccess?.getCurrentRole?.()){certificateVersion++;section.querySelector('[data-training-list]').textContent=''}if(window.HydrolandPortalAccess?.getCurrentRole?.()!=='instructor'){if(section.dataset.trainingMode==='professional-certificates'){certificateVersion++;section.querySelector('[data-training-list]').textContent=''}if(section.dataset.trainingMode==='professional-plan'){planVersion++;planEnrollment=null;section.querySelector('[data-training-list]').textContent=''}}});
   document.addEventListener('hydroland:auth-changed',()=>load(requestedMode));
   window.HydrolandTraining={reload:mode=>load(mode)};
   setTimeout(load,0);

@@ -59,7 +59,7 @@ This is a source/check, schema, migration, route and ownership reconciliation fo
 
 ## Purple and concurrent delivery extension
 
-The 49 historical deliveries above remain an immutable denominator. **PR720 is delivery 50, concurrent PR721 is delivery 51 and concurrent PR724 is delivery 52** in the combined register. Their receipts are recorded separately below. PR722 remains outside the delivered denominator until its exact accepted merge is recorded.
+The 49 historical deliveries above remain an immutable denominator. **PR720 is delivery 50, concurrent PR721 is delivery 51, concurrent PR724 is delivery 52 and concurrent PR723 is delivery 53** in the combined register. Their receipts are recorded separately below. PR722 remains outside the delivered denominator until its exact accepted merge is recorded.
 
 | Delivery | Exact PR head | Accepted merge | Observed PR workflows |
 | --- | --- | --- | --- |
@@ -184,8 +184,32 @@ Both current working-tree and staged-index diffs against `7c5c3754` are empty fo
 
 The prior 173-model, 149-migration and 844-route findings therefore remain applicable to these unchanged production bytes. The merged fixture itself passed **three fresh isolated acceptance scenarios**. The real API/PostgreSQL happy path used persisted sessions and passed in 692 ms. The request-failure case waited for all four requests, retained three real-API 200 responses, preserved the original failure, disconnected and left zero fixture rows. The deliberate cleanup-failure case preserved the original failure and rolled back cleanup, retaining two accounts, two people, two sessions and five notifications before the harness removed only its own records. The two deliberate failure processes correctly exited nonzero; their diagnostic assertions passed. The retained summary and source/log digests are recorded in the JSON.
 
-This is new fixture-integration evidence, not a reclassification of the historical serialization failures. The current main parent was independently verified as `7444b7fb` at 02:00:39 UTC. **The delivered count is now 52; PR722 is planned as delivery 53 and remains uncounted until its exact accepted merge.** The earlier 49-, 50- and 51-delivery boundaries remain named historical snapshots. The newly published combined head still requires its own complete CI and matching deployment receipts.
+This is new fixture-integration evidence, not a reclassification of the historical serialization failures. The current main parent was independently verified as `7444b7fb` at 02:00:39 UTC. **At that review, the delivered count was 52 and PR722 was planned as delivery 53. The later PR723 receipt below supersedes only that prospective numbering.** The earlier 49-, 50- and 51-delivery boundaries remain named historical snapshots. The newly published combined head still requires its own complete CI and matching deployment receipts.
 
+
+## Concurrent D02 delivery — PR723
+
+**PR723 is delivery 53; PR722 is now pending delivery 54 and remains outside the accepted denominator.** [PR723](https://github.com/sultanasiri001-sys/hydroland/pull/723) merged at **02:25:01 UTC** on 27 November. Its exact head `4f6f22089852da09cca36bc511e01db4971ed1c5` and accepted merge `1e6a6127bbb73a9f46b3f866cde3cd4118229907` have identical tree `e3357c3b36a258fffc91d8041eed9974705b1663`. The first parent is `7444b7fba315f21598611a1cccc269137c1e0060`; the second is the exact PR head. The fetched metadata, local Git DAG and all **20 changed-file before/after blobs** agree. The source difference is 2,167 additions and 63 deletions.
+
+All **18 retrieved exact-head PR workflows succeeded**, including [API validation](https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925362544) and [Web validation](https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925362503). The JSON retains every full-SHA workflow record and receipt digest. The earlier abbreviated query returned no runs and is not used as evidence. Main `1e6a6127` and the newly combined Purple source still require their own complete CI and matching deployment receipts. No deployment result is inferred here.
+
+### Combined D02 and Purple source review
+
+The resolved staged source was reviewed at `2026-11-27T02:31:56.520Z`, with local Purple input `f29c24217307feff43041657529e5cabc6f136a6` and incoming main `1e6a6127bbb73a9f46b3f866cde3cd4118229907`. The pre-documentation index tree is `76727b3fad432afaf310602657ed379ce7a21cb5`; this is an observed local snapshot, not a release commit. Production working files match that staged source, and no unresolved paths remain.
+
+| Source check | Exact observed result |
+| --- | --- |
+| Production API source | Git tree `7e54df9ee2eb78695b4ba8d369243bff1fa8668e`. |
+| Canonical Prisma schema | **173 models**, unchanged blob `3b97d51c8e71018a7ad426468d708c1434720967`. |
+| Migration history | **149 SQL files**, unchanged tree `4143e61f3a4c5c715e628e8f27f3e917332541e6`. Incoming PR723 adds or modifies no schema or migration file. |
+| Web source and browser fixtures | Trees `bf42e4a71ce8e1c03b467a7a98c9efea59d05453` and `b1d8cbdce7aa08679ac4aa8a83c0e65bcdc5ec0e`. The resolved loader retains D02 and the existing ordered Purple modules. |
+| Literal route scan | **849 signatures across 606 TypeScript files, zero conflicts**, using `node apps/api/scripts/route-uniqueness.mjs`. This does not establish runtime precedence or full A10 acceptance. |
+
+D02 adds five literal routes to the existing training controller: `GET /training/mine/certificates`, `GET /training/certificates/:id`, and `POST /training/certificates/:id/reconsideration`, `/reconsideration-decision` and `/revoke`. The existing `TrainingCertificate`, native enrollment/training/participation records and append-only audit events retain ownership. Source-derived readiness, independent reconsideration and terminal internal revocation do not create a second certificate register.
+
+The reviewed adapter remains a **HYDROLAND-owned TEST contract** requiring an explicitly synthetic driver. Its external certification state stays `NOT_CONNECTED`, with `officialIssuance:false`; no agency is selected or contacted. The PR's author-declared native/runtime, adapter and browser counts remain separately attributed in the JSON and [D02 acceptance record](../D02_TRAINING_CERTIFICATION_TECHNICAL_ACCEPTANCE.md); this bounded source review did not rerun those suites or regenerate the shared client.
+
+All earlier delivery entries, workflow observations and named source audits remain intact, including PR666's cancelled Web run and the failed `631d4437` API execution. The current accepted count is **53**. The finite I01 closure target becomes **54 only after PR722's actual accepted merge, required checks and matching deployments are recorded**.
 
 ## Historical delivery index
 

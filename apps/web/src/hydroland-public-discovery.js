@@ -188,7 +188,14 @@
   document.querySelectorAll('#navigation a,.mobile-nav a').forEach(link=>{const name=navIcons[link.hash.slice(1)],target=link.querySelector('.nav-icon');if(name&&target)uiLocale.setHTML(target, icon(name))});
   document.querySelector('#profile-open-mobile .nav-icon')?.replaceChildren(...new DOMParser().parseFromString(icon('user'),'text/html').body.childNodes);
   for(const [id,name] of [['visitor-auth-cta','user'],['visitor-register-cta','userPlus']]){const button=document.getElementById(id);if(button){const label=document.createElement('span');uiLocale.setText(label,id==='visitor-auth-cta'?'تسجيل الدخول':'إنشاء حساب');uiLocale.setHTML(button, icon(name));button.appendChild(label)}}
-  const menu=document.getElementById('menu');if(menu){uiLocale.setHTML(menu, icon('menu'));uiLocale.setAttribute(menu, "aria-label", ...['فتح القائمة'])}
+  const menu=document.getElementById('menu');if(menu){
+    // The shell icon is already interactive. Replacing its nodes between a
+    // pointer press and release cancels the browser's native click.
+    const glyph=menu.querySelector('svg');
+    if(glyph){glyph.classList.remove('hl-icon');glyph.setAttribute('width','24');glyph.setAttribute('height','24');glyph.setAttribute('stroke-width','1.6')}
+    else uiLocale.setHTML(menu,icon('menu'));
+    uiLocale.setAttribute(menu,'aria-label','فتح القائمة');
+  }
   const searchButton=document.querySelector('#search-form button');if(searchButton){uiLocale.setHTML(searchButton, icon('search'));uiLocale.setAttribute(searchButton, "aria-label", ...['بحث']);uiLocale.setAttribute(searchButton, "title", ...['بحث'])}
   const searchInput=document.querySelector('#search-form input');if(searchInput)uiLocale.setAttribute(searchInput, "placeholder", ...['ابحث عن رحلة أو وجهة أو تجربة…']);
   document.querySelectorAll('#home .hero-ctas button').forEach(button=>{const label=document.createElement('span');uiLocale.setText(label,button.dataset.toast==='تم فتح الرحلات المتاحة'?'استكشف الرحلات':'استكشف التدريب');uiLocale.setHTML(button, icon(button.classList.contains('primary-button')?'boat':'learn'));button.append(label);uiLocale.insertHTML(button, 'beforeend', icon('arrow'))});

@@ -12751,7 +12751,7 @@
     "This historical denominator ends at the named candidate. Finalized Purple deliveries are recorded separately and future work requires a new register version."
   ],
   "purpleDeliveryCount": 1,
-  "totalDeliveredCount": 52,
+  "totalDeliveredCount": 53,
   "purpleWorkflowRunRecords": 22,
   "purpleWorkflowConclusions": {
     "success": 22
@@ -15717,12 +15717,426 @@
       "deployment": {
         "status": "NOT_VERIFIED_BY_THIS_REVIEW"
       }
+    },
+    {
+      "deliveryNumber": 53,
+      "pr": 723,
+      "url": "https://github.com/sultanasiri001-sys/hydroland/pull/723",
+      "title": "D02: current-source certificate readiness and internal reconsideration",
+      "merge": "1e6a6127bbb73a9f46b3f866cde3cd4118229907",
+      "firstParent": "7444b7fba315f21598611a1cccc269137c1e0060",
+      "exactPrHead": "4f6f22089852da09cca36bc511e01db4971ed1c5",
+      "headTree": "e3357c3b36a258fffc91d8041eed9974705b1663",
+      "mergeTree": "e3357c3b36a258fffc91d8041eed9974705b1663",
+      "headMergeTreeMatches": true,
+      "remoteMetadataMatches": true,
+      "localMergeDagVerified": true,
+      "mergedAt": "2026-11-27T02:25:01Z",
+      "mergeCommitTimestamp": "2026-11-27T05:25:00+03:00",
+      "commitCount": 2,
+      "changedFiles": 20,
+      "additions": 2167,
+      "deletions": 63,
+      "files": [
+        {
+          "path": ".github/workflows/api-validation.yml",
+          "status": "M",
+          "beforeBlob": "1561fb465ff848ace36e3ec12871cf639ad91228",
+          "afterBlob": "212973d331159e677796071c7f8d30a61e646117"
+        },
+        {
+          "path": "apps/api/scripts/d02-certification-adapter.test.mjs",
+          "status": "A",
+          "beforeBlob": null,
+          "afterBlob": "343c2d6d6cac3380c4900519bc4dc888e7b11e68"
+        },
+        {
+          "path": "apps/api/scripts/d02-training-certification-http-checks.cjs",
+          "status": "A",
+          "beforeBlob": null,
+          "afterBlob": "4fb18b74311e804849dac6a82869b83960237c61"
+        },
+        {
+          "path": "apps/api/src/governance/training-certificate-presentation.ts",
+          "status": "A",
+          "beforeBlob": null,
+          "afterBlob": "4df03b40c6c9fac8a66bbd26ef25dd1a70dfefa1"
+        },
+        {
+          "path": "apps/api/src/governance/training-certificate-readiness.ts",
+          "status": "A",
+          "beforeBlob": null,
+          "afterBlob": "d35ebc3871e276bef907b47e0a96c2a6ba9bb903"
+        },
+        {
+          "path": "apps/api/src/governance/training-certificate.service.ts",
+          "status": "M",
+          "beforeBlob": "937aa71682b89f8d58e7336f16f71676c1b1cc13",
+          "afterBlob": "5b288f33f3ffac1a4d08c916c24cbddb41fa2cdc"
+        },
+        {
+          "path": "apps/api/src/governance/training-certification-adapter.ts",
+          "status": "A",
+          "beforeBlob": null,
+          "afterBlob": "f116ab80115da6af7c06a5516f6c1aefb65b4fd8"
+        },
+        {
+          "path": "apps/api/src/governance/training-certification-contract.ts",
+          "status": "A",
+          "beforeBlob": null,
+          "afterBlob": "eea5fe081302fe3d7d0ef75ea83b6791a74dbd33"
+        },
+        {
+          "path": "apps/api/src/governance/training-professional-profile.service.ts",
+          "status": "M",
+          "beforeBlob": "14263c8360dab680f50eaa47090ff6c0481d6052",
+          "afterBlob": "7de065f0aeb64a2fc926ef17b7e13b216cbb809a"
+        },
+        {
+          "path": "apps/api/src/governance/training.controller.ts",
+          "status": "M",
+          "beforeBlob": "a5897558d5941b3375c1a2d54026068825a611fe",
+          "afterBlob": "785c0775c9f9c175d47ece5e934c3a7edb6d25f8"
+        },
+        {
+          "path": "apps/web/e2e/navigation-accessibility.spec.js",
+          "status": "M",
+          "beforeBlob": "a9a221ad50ee51ded60c60054aefbfd493fb291f",
+          "afterBlob": "fc6f01f623cc8d53a5e1e7c3bcdbb99f59abf9b3"
+        },
+        {
+          "path": "apps/web/e2e/professional-portal-closure.spec.js",
+          "status": "M",
+          "beforeBlob": "659f37489463d7ad271fa295cff5ceb311c0b55f",
+          "afterBlob": "646b5c8dc1e7616c0395aabdde836fc7036a624d"
+        },
+        {
+          "path": "apps/web/e2e/training-certificate-review.spec.js",
+          "status": "M",
+          "beforeBlob": "1c7f84e018fe9a794266e81b4857c59e117bc29a",
+          "afterBlob": "735da3c63a618060c4a31849f51a088d75dfc528"
+        },
+        {
+          "path": "apps/web/src/app.js",
+          "status": "M",
+          "beforeBlob": "803ec8f69ee8fb603b9fd3fcfb6d00dae1418a5e",
+          "afterBlob": "272d56a4fb488c80e552e730fbc13a01295d884e"
+        },
+        {
+          "path": "apps/web/src/hydroland-public-discovery.js",
+          "status": "M",
+          "beforeBlob": "a2506ab32339e0d4a4568ac593b1e2b57bcc7f04",
+          "afterBlob": "b0f65057e896eef0aa0950b3fce285de91f30b89"
+        },
+        {
+          "path": "apps/web/src/hydroland-training-certificate-admin.js",
+          "status": "M",
+          "beforeBlob": "c37a0fa8f0be41f317f58299c955388c1d0f2a7f",
+          "afterBlob": "318a4ad63da0e7eb875c29ea97a4a90948a679d6"
+        },
+        {
+          "path": "apps/web/src/hydroland-training-certificate-ui.js",
+          "status": "A",
+          "beforeBlob": null,
+          "afterBlob": "b66967c720d063e9eeb4dad2ab5b2379a0f2ee85"
+        },
+        {
+          "path": "apps/web/src/hydroland-training.css",
+          "status": "M",
+          "beforeBlob": "869e9f70a9d896ef9b23c386216bdbd9f1aadf0c",
+          "afterBlob": "7a4bafb42552f15e0bc50dc0b0c711cd0a2b5641"
+        },
+        {
+          "path": "apps/web/src/hydroland-training.js",
+          "status": "M",
+          "beforeBlob": "15eb034d78b6a16e3d930c7248528040bbf2f51e",
+          "afterBlob": "b36f2be63d8cb6aa8784d4600d1fe1e5466040d4"
+        },
+        {
+          "path": "docs/D02_TRAINING_CERTIFICATION_TECHNICAL_ACCEPTANCE.md",
+          "status": "A",
+          "beforeBlob": null,
+          "afterBlob": "774bc2a0f28c5574415c01465ceb33ac8c702e76"
+        }
+      ],
+      "workflowRuns": [
+        {
+          "id": 45925362522,
+          "name": "Mobile release security (independent release)",
+          "path": ".github/workflows/mobile-security.yml",
+          "head_sha": "4f6f22089852da09cca36bc511e01db4971ed1c5",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:55:55Z",
+          "updated_at": "2026-11-27T01:56:52Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925362522",
+          "workflow_id": 373814544
+        },
+        {
+          "id": 45925362499,
+          "name": "Messaging key schema validation",
+          "path": ".github/workflows/messaging-key-schema-validation.yml",
+          "head_sha": "4f6f22089852da09cca36bc511e01db4971ed1c5",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:55:55Z",
+          "updated_at": "2026-11-27T01:57:31Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925362499",
+          "workflow_id": 370762444
+        },
+        {
+          "id": 45925362564,
+          "name": "Warehouse locations HTTP database acceptance",
+          "path": ".github/workflows/warehouse-location-integration.yml",
+          "head_sha": "4f6f22089852da09cca36bc511e01db4971ed1c5",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:55:55Z",
+          "updated_at": "2026-11-27T01:57:57Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925362564",
+          "workflow_id": 402467320
+        },
+        {
+          "id": 45925362514,
+          "name": "Security audit",
+          "path": ".github/workflows/security-audit.yml",
+          "head_sha": "4f6f22089852da09cca36bc511e01db4971ed1c5",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:55:55Z",
+          "updated_at": "2026-11-27T01:58:12Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925362514",
+          "workflow_id": 358176563
+        },
+        {
+          "id": 45925362492,
+          "name": "Release Candidate Gate",
+          "path": ".github/workflows/release-candidate.yml",
+          "head_sha": "4f6f22089852da09cca36bc511e01db4971ed1c5",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:55:55Z",
+          "updated_at": "2026-11-27T01:58:11Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925362492",
+          "workflow_id": 362193789
+        },
+        {
+          "id": 45925362572,
+          "name": "Operational evidence sources",
+          "path": ".github/workflows/operational-evidence-validation.yml",
+          "head_sha": "4f6f22089852da09cca36bc511e01db4971ed1c5",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:55:55Z",
+          "updated_at": "2026-11-27T01:58:24Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925362572",
+          "workflow_id": 402865078
+        },
+        {
+          "id": 45925362505,
+          "name": "Internal research HTTP database acceptance",
+          "path": ".github/workflows/internal-research-integration.yml",
+          "head_sha": "4f6f22089852da09cca36bc511e01db4971ed1c5",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:55:55Z",
+          "updated_at": "2026-11-27T01:59:06Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925362505",
+          "workflow_id": 397563416
+        },
+        {
+          "id": 45925362561,
+          "name": "A02 full release policy gate",
+          "path": ".github/workflows/a02-release-collector.yml",
+          "head_sha": "4f6f22089852da09cca36bc511e01db4971ed1c5",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:55:55Z",
+          "updated_at": "2026-11-27T02:01:51Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925362561",
+          "workflow_id": 399738953
+        },
+        {
+          "id": 45925362662,
+          "name": "Independent document review acceptance",
+          "path": ".github/workflows/internal-document-review-validation.yml",
+          "head_sha": "4f6f22089852da09cca36bc511e01db4971ed1c5",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:55:55Z",
+          "updated_at": "2026-11-27T02:02:30Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925362662",
+          "workflow_id": 396092278
+        },
+        {
+          "id": 45925362602,
+          "name": "Form library focused validation",
+          "path": ".github/workflows/form-library-validation.yml",
+          "head_sha": "4f6f22089852da09cca36bc511e01db4971ed1c5",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:55:55Z",
+          "updated_at": "2026-11-27T02:03:11Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925362602",
+          "workflow_id": 395507003
+        },
+        {
+          "id": 45925362483,
+          "name": "Form library HTTP database acceptance",
+          "path": ".github/workflows/form-library-integration.yml",
+          "head_sha": "4f6f22089852da09cca36bc511e01db4971ed1c5",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:55:55Z",
+          "updated_at": "2026-11-27T01:59:32Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925362483",
+          "workflow_id": 395530399
+        },
+        {
+          "id": 45925362584,
+          "name": "Stage 3 Main Integrity Gate",
+          "path": ".github/workflows/stage3-main-integrity.yml",
+          "head_sha": "4f6f22089852da09cca36bc511e01db4971ed1c5",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:55:55Z",
+          "updated_at": "2026-11-27T01:59:53Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925362584",
+          "workflow_id": 367751012
+        },
+        {
+          "id": 45925362493,
+          "name": "A02 release evidence contract",
+          "path": ".github/workflows/a02-release-evidence-contract.yml",
+          "head_sha": "4f6f22089852da09cca36bc511e01db4971ed1c5",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:55:55Z",
+          "updated_at": "2026-11-27T01:59:54Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925362493",
+          "workflow_id": 399600840
+        },
+        {
+          "id": 45925362575,
+          "name": "Calendar and training availability",
+          "path": ".github/workflows/calendar-training-availability-validation.yml",
+          "head_sha": "4f6f22089852da09cca36bc511e01db4971ed1c5",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:55:55Z",
+          "updated_at": "2026-11-27T01:59:39Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925362575",
+          "workflow_id": 397563419
+        },
+        {
+          "id": 45925362615,
+          "name": "Production Release Gate",
+          "path": ".github/workflows/production-release-gate.yml",
+          "head_sha": "4f6f22089852da09cca36bc511e01db4971ed1c5",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:55:55Z",
+          "updated_at": "2026-11-27T02:00:35Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925362615",
+          "workflow_id": 362196381
+        },
+        {
+          "id": 45925362512,
+          "name": "Marketing drafts HTTP database acceptance",
+          "path": ".github/workflows/marketing-draft-integration.yml",
+          "head_sha": "4f6f22089852da09cca36bc511e01db4971ed1c5",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:55:55Z",
+          "updated_at": "2026-11-27T02:00:58Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925362512",
+          "workflow_id": 402360866
+        },
+        {
+          "id": 45925362544,
+          "name": "API validation",
+          "path": ".github/workflows/api-validation.yml",
+          "head_sha": "4f6f22089852da09cca36bc511e01db4971ed1c5",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:55:55Z",
+          "updated_at": "2026-11-27T02:15:34Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925362544",
+          "workflow_id": 357149799
+        },
+        {
+          "id": 45925362503,
+          "name": "Web validation",
+          "path": ".github/workflows/web-validation.yml",
+          "head_sha": "4f6f22089852da09cca36bc511e01db4971ed1c5",
+          "event": "pull_request",
+          "status": "completed",
+          "conclusion": "success",
+          "run_attempt": 1,
+          "created_at": "2026-11-27T01:55:55Z",
+          "updated_at": "2026-11-27T02:21:41Z",
+          "html_url": "https://github.com/sultanasiri001-sys/hydroland/actions/runs/45925362503",
+          "workflow_id": 357187353
+        }
+      ],
+      "authorDeclaredScopeAndLimits": "## Why\nThe certificate readiness screens previously inferred readiness from completion flags. A program or participation source could be withdrawn while the instructor or reviewer still saw an approval action. Internal refusals also lacked a persisted reconsideration path.\n\n## What changes\n- Project instructor and reviewer readiness through the same current completion/program/participation gate used by writes. Expose coarse reasons without private medical or guardian evidence.\n- Add a student's own internal-results view, source-derived action permissions, an audited request/review path for reconsideration, and terminal internal revocation that retains the original number and issuance history.\n- Bind adapter input to the original internal approval audit, current certificate state and native source evidence digest.\n- Add the HYDROLAND-owned TEST certification contract and a bounded synthetic adapter with source rechecks, strict receipts, idempotency, fenced reservations, timeout and unknown-result recovery.\n- Keep external certification explicitly NOT_CONNECTED. No agency is selected or contacted, no official certificate is issued, and no live provider endpoint or permission is inferred.\n- Add the isolated native HTTP/PostgreSQL 18 acceptance and contract tests to the existing API gate without changing timeouts or skipping existing checks.\n\n## Verification\n- API build, correctness lint and diff checks passed.\n- Native HTTP/PostgreSQL 16.16: 19/19 groups, nine synthetic courses, original D01 source adoption and renewed consent after program binding, independent approval, audit immutability, reconsideration/revocation, concurrency/rollback, and real native source drift before/after synthetic adapter dispatch.\n- Contract/adapter: 70/70 tests, zero failed/skipped/cancelled; includes actual loopback HTTP failure cases and recovery/fencing.\n- Existing center/certificate regressions: 1364/1364 checks.\n- Web: 25/25 focused browser cases, 165/165 unit tests and six validators. After a small mobile heading separation, both affected student AR/EN cases passed again. No retries or skipped/flaky cases.\n- Local source tree: 663a1cf5ec649c97b0b24c29fde0c5904cd1ec99; based on merged D01 631d4437ec1ec4239235053e1a4ca708919ca324.\n\n## Boundaries\nThe adapter test store is an explicitly ephemeral test double. A future connected caller needs native durable attempt persistence, the selected agency's real contract/mapping, authorized data use and commissioning evidence. Internal acceptance and synthetic contract agreement do not grant external certification, marine operation, medical/guardian approval, D17/D19 or final Q01 acceptance. Main CI and matching live deployment will be checked before tracker closure.\n\n## Follow-up validation and asynchronous UI fixes\n\nThe initial API job passed all 131 steps, including 19 native PostgreSQL 18.7 acceptance groups and 70 adapter contract tests. Its web run exposed two real asynchronous UI defects: public-discovery hydration replaced the menu icon during a pointer press, and queue filter changes invalidated a certificate command while fresh authorization was in flight. The follow-up preserves the existing menu nodes and disables queue navigation until the command and refresh finish; session/role changes still clear private state immediately.\n\nDeterministic regressions plus all certificate-review cases and the original failing historical-performance case passed locally: 28/28 browser cases, zero skipped/retried/flaky, and 165/165 unit tests. Existing assertions, helpers, timeouts and retry policy are unchanged. Main notification acceptance recovery is incorporated. Full CI and release evidence for this updated head remain pending.",
+      "remoteLocalChangedFileTotalsMatch": true,
+      "workflowScope": "All18 retrieved pull_request workflows at the exact full PR head completed successfully; no result is inferred from the earlier abbreviated empty query.",
+      "receiptProvenance": {
+        "metadataObservedAt": "2026-11-27T02:29:45.254Z",
+        "readAndReconciledAt": "2026-11-27T02:31:56.512Z",
+        "sha256": {
+          "metadata": "57402e9b2a32a3f69ef52edc2e6e67c03601f7e6c741b1f36c18f1f2c5888173",
+          "workflows": "597129a1e9a87ec29a239b6d3ded03af635d0f0c99bffe6737b4ff5e97c1bf79"
+        }
+      },
+      "postMergeGates": {
+        "status": "PENDING_NOT_VERIFIED_BY_THIS_REVIEW",
+        "exactHead": "1e6a6127bbb73a9f46b3f866cde3cd4118229907"
+      },
+      "deployment": {
+        "status": "NOT_VERIFIED_BY_THIS_REVIEW"
+      }
     }
   ],
-  "concurrentDeliveryCount": 2,
-  "concurrentWorkflowRunRecords": 41,
+  "concurrentDeliveryCount": 3,
+  "concurrentWorkflowRunRecords": 59,
   "concurrentWorkflowConclusions": {
-    "success": 41
+    "success": 59
   },
   "currentCombinedSourceReview": {
     "status": "LOCAL_STAGED_CONCURRENT_INTEGRATION_NOT_RELEASED",
@@ -16343,9 +16757,9 @@
       "status": "NOT_YET_ACCEPTED_OR_COUNTED"
     }
   },
-  "latestSourceReviewKey": "concurrentFixtureIntegrationReview",
+  "latestSourceReviewKey": "concurrentD02IntegrationReview",
   "nextPlannedDelivery": {
-    "number": 53,
+    "number": 54,
     "pr": 722,
     "status": "NOT_YET_ACCEPTED_OR_COUNTED"
   },
@@ -16369,6 +16783,118 @@
       "name": "Concurrent_notification_fixture_PR724",
       "through": "7444b7fba315f21598611a1cccc269137c1e0060",
       "count": 52
+    },
+    {
+      "name": "Concurrent_D02_PR723",
+      "through": "1e6a6127bbb73a9f46b3f866cde3cd4118229907",
+      "count": 53
     }
-  ]
+  ],
+  "concurrentD02IntegrationReview": {
+    "status": "LOCAL_STAGED_D02_AND_PURPLE_SOURCE_RECONCILIATION",
+    "observedAt": "2026-11-27T02:31:56.520Z",
+    "baseHead": "f29c24217307feff43041657529e5cabc6f136a6",
+    "integratedMain": "1e6a6127bbb73a9f46b3f866cde3cd4118229907",
+    "stagedIndexTreeBeforeDocumentationUpdate": "76727b3fad432afaf310602657ed379ce7a21cb5",
+    "sourceObjects": [
+      {
+        "path": "apps/api/src",
+        "priorObject": "a207c50702e8d4b00a4e02006e27784ee0106ca1",
+        "stagedObject": "7e54df9ee2eb78695b4ba8d369243bff1fa8668e"
+      },
+      {
+        "path": "apps/api/prisma",
+        "priorObject": "4556cdbb09d89e1eb19d98660a2474a3f9defeea",
+        "stagedObject": "4556cdbb09d89e1eb19d98660a2474a3f9defeea"
+      },
+      {
+        "path": "apps/api/prisma/schema.prisma",
+        "priorObject": "3b97d51c8e71018a7ad426468d708c1434720967",
+        "stagedObject": "3b97d51c8e71018a7ad426468d708c1434720967"
+      },
+      {
+        "path": "apps/api/prisma/migrations",
+        "priorObject": "4143e61f3a4c5c715e628e8f27f3e917332541e6",
+        "stagedObject": "4143e61f3a4c5c715e628e8f27f3e917332541e6"
+      },
+      {
+        "path": "apps/web/src",
+        "priorObject": "bae21620b433f7084be02b56c9719e1e1e70eeb8",
+        "stagedObject": "bf42e4a71ce8e1c03b467a7a98c9efea59d05453"
+      },
+      {
+        "path": "apps/web/e2e",
+        "priorObject": "07be278d50da2946cb5fb58fc73b9ff6b5f3590d",
+        "stagedObject": "b1d8cbdce7aa08679ac4aa8a83c0e65bcdc5ec0e"
+      },
+      {
+        "path": ".github/workflows/api-validation.yml",
+        "priorObject": "8d5c0ed2e6addcf4c47dbde6d280c12383239ba2",
+        "stagedObject": "17ee49f690d83df14a51afb33876a709fe2e2fdc"
+      }
+    ],
+    "workingProductionMatchesIndex": true,
+    "unresolvedPaths": 0,
+    "schemaModels": 173,
+    "sqlMigrationFiles": 149,
+    "schemaAndMigrationBlobsUnchanged": true,
+    "incomingChangedSchemaOrMigrationFiles": [],
+    "routes": {
+      "files": 606,
+      "literalRoutes": 849,
+      "conflictCount": 0,
+      "conflicts": [],
+      "scope": "literal controller method signatures; not runtime precedence or full A10 acceptance"
+    },
+    "newLiteralRoutes": [
+      {
+        "method": "GET",
+        "path": "/training/mine/certificates",
+        "file": "apps/api/src/governance/training.controller.ts",
+        "handler": "TrainingController.mineCertificates"
+      },
+      {
+        "method": "GET",
+        "path": "/training/certificates/:param",
+        "file": "apps/api/src/governance/training.controller.ts",
+        "handler": "TrainingController.certificateDetail"
+      },
+      {
+        "method": "POST",
+        "path": "/training/certificates/:param/reconsideration",
+        "file": "apps/api/src/governance/training.controller.ts",
+        "handler": "TrainingController.requestCertificateReconsideration"
+      },
+      {
+        "method": "POST",
+        "path": "/training/certificates/:param/reconsideration-decision",
+        "file": "apps/api/src/governance/training.controller.ts",
+        "handler": "TrainingController.decideCertificateReconsideration"
+      },
+      {
+        "method": "POST",
+        "path": "/training/certificates/:param/revoke",
+        "file": "apps/api/src/governance/training.controller.ts",
+        "handler": "TrainingController.revokeCertificate"
+      }
+    ],
+    "releaseAcceptance": "NEW_EXACT_HEAD_CI_AND_MATCHING_DEPLOYMENT_PENDING",
+    "noSharedClientGeneratedByReview": true,
+    "priorSourceReviewKey": "concurrentFixtureIntegrationReview",
+    "productionOwnership": {
+      "internalTraining": "Existing TrainingCertificate, native training/enrollment/participation sources and append-only AuditEvent remain the originals; no schema or migration additions.",
+      "externalCertification": "HYDROLAND-owned TEST contract only; synthetic driver required, externalCertification remains NOT_CONNECTED and officialIssuance false. No agency connection, credential or official issuance is established.",
+      "webLoader": "The resolved staged loader retains the D02 training-certificate UI module and the prior Purple ordered maintenance/legal modules."
+    },
+    "limits": [
+      "The incoming20-file source/diff and literal-route contracts were reviewed; this review does not repeat the author-declared D02 runtime suites.",
+      "The prior844-route result remains valid for its named earlier source; the combined staged source has849 literal signatures.",
+      "Main1e6 and the new combined PR722 head still require their actual complete CI and matching deployment receipts; existing failures/cancellations remain historical."
+    ],
+    "nextDelivery": {
+      "number": 54,
+      "pr": 722,
+      "status": "NOT_YET_ACCEPTED_OR_COUNTED"
+    }
+  }
 }

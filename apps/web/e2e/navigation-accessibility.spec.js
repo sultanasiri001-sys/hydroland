@@ -57,3 +57,37 @@ test('managed training navigation resets menu ARIA after opening a service',asyn
 
   });
 }
+
+test('mobile shell activation survives public-discovery hydration during a pointer press',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  await page.route('**/*',route=>{
+    const url=new URL(route.request().url());
+    if(url.pathname.startsWith('/api/v1/'))return route.fulfill({contentType:'application/json',body:'[]'});
+    return ['127.0.0.1','localhost'].includes(url.hostname)?route.continue():route.abort();
+  });
+  await page.route('**/api/v1/me',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({id:'navigation-hydration-admin',status:'ACTIVE',person:{firstName:'إدارة',lastName:'اختبار'},roleAssignments:[{role:'ADMIN',status:'ACTIVE'}]})}));
+  await page.route('**/api/v1/me/diver-profile',route=>route.fulfill({contentType:'application/json',body:'{"profile":null,"equipment":[]}'}));
+  let release;const deferred=new Promise(resolve=>release=resolve);
+  await page.route('**/hydroland-public-discovery.js',async route=>{const response=await route.fetch();await deferred;await route.fulfill({response})});
+  let pressed=false;
+  try{
+    await page.goto('/',{waitUntil:'domcontentloaded'});
+    await page.waitForFunction(()=>window.HydrolandAdminAgentWorkforce&&window.HydrolandAuth&&window.HydrolandProfile&&window.HydrolandPortalFreshness);
+    await page.evaluate(async()=>{window.HydrolandAuth.acceptSession({accessToken:'isolated-navigation-access',refreshToken:'isolated-navigation-refresh'},window.HydrolandAuth.beginAuthAttempt());await window.HydrolandProfile.load()});
+    const menu=page.locator('#menu'),sidebar=page.locator('.sidebar');
+    await expect(menu).toHaveAccessibleName('فتح القائمة');await expect(menu).toHaveAttribute('aria-expanded','false');
+    const glyph=await menu.locator('svg path').elementHandle(),box=await menu.boundingBox();
+    expect(glyph).not.toBeNull();expect(box).not.toBeNull();
+    await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();pressed=true;
+    // Release the real final bootstrap module while the pointer is held on the
+    // existing icon. Replacing that node cancels the browser's native click.
+    release();await page.waitForFunction(()=>window.HydrolandPublicUI);
+    await page.mouse.up();pressed=false;
+    await expect(sidebar).toHaveClass(/open/);
+    await expect(menu).toHaveAttribute('aria-expanded','true');await expect(menu).toHaveAttribute('aria-controls','sidebar');
+    await expect(menu).toHaveAccessibleName('فتح القائمة');await expect(menu).toBeFocused();
+    expect(await glyph.evaluate(node=>node.isConnected)).toBe(true);
+    await page.keyboard.press('Escape');await expect(menu).toHaveAttribute('aria-expanded','false');await expect(menu).toBeFocused();
+    await openWorkspaceSwitcher(page);await expect(page.locator('#role-dialog')).toBeVisible();
+  }finally{release();if(pressed)await page.mouse.up()}
+});

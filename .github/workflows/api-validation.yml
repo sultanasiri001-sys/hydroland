@@ -297,6 +297,34 @@ jobs:
           name: d01-participation-evidence
           path: artifacts/d01-*
           if-no-files-found: warn
+      - name: D02 internal training certification and isolated adapter acceptance
+        env:
+          NODE_ENV: test
+          TZ: UTC
+          PGTZ: UTC
+          D01_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+          D02_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+          D02_CERTIFICATION_EVIDENCE_FILE: artifacts/d02-http-acceptance.json
+          DATABASE_URL: postgresql://hydroland:hydroland@localhost:5433/participation_test_d01_d02_acceptance
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          node --experimental-strip-types --test apps/api/scripts/d02-certification-adapter.test.mjs | tee artifacts/d02-certification-adapter.tap
+          psql postgresql://hydroland:hydroland@localhost:5433/hydroland -v ON_ERROR_STOP=1 -c 'CREATE DATABASE participation_test_d01_d02_acceptance'
+          npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+          node apps/api/scripts/bootstrap-equipment-runtime-schema.mjs
+          node apps/api/scripts/bootstrap-trip-weather-runtime-schema.mjs
+          node apps/api/scripts/bootstrap-messaging-runtime-schema.mjs
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20260930080000_audit_event_append_only/migration.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261127010000_participation_source_eligibility/migration.sql
+          node apps/api/scripts/d02-training-certification-http-checks.cjs
+      - name: Retain D02 internal certificate and synthetic contract evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d02-training-certification-evidence
+          path: artifacts/d02-*
+          if-no-files-found: warn
       - name: Course original-contract checkout and collection through real HTTP routes
         env:
           NODE_ENV: test
