@@ -13,7 +13,12 @@ Google services credentials. Test data and the capability probe belong only to
 the isolated QA build.
 
 The workflow uses Node 22, the committed npm lockfile, JDK 17, the generated
-Android SDK requirements and macOS/Xcode 26.2 (including Swift 6.2) for iOS. Before native compilation:
+Android SDK requirements and macOS 26/Xcode 26.6 for iOS. Expo SDK 57 requires
+Xcode 26.4 or newer; the selected runner pins a supported installed toolchain
+instead of inheriting an older Xcode default. See the [Expo SDK 57 compatibility
+table](https://docs.expo.dev/versions/v57.0.0/) and the [GitHub macOS 26 image
+inventory](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md).
+Before native compilation:
 
 ```sh
 npm ci --ignore-scripts

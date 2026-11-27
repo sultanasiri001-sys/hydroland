@@ -9,7 +9,7 @@ name: Native installation, guest UI and encrypted-storage capabilities
     visible:
       id: home-login
     timeout: 30000
-- takeScreenshot: ${ARTIFACT_DIR}/home
+- takeScreenshot: home
 - tapOn:
     id: home-login
 - assertVisible:
@@ -20,7 +20,7 @@ name: Native installation, guest UI and encrypted-storage capabilities
     id: login-submit
 - assertVisible:
     id: login-error
-- takeScreenshot: ${ARTIFACT_DIR}/login-validation
+- takeScreenshot: login-validation
 - openLink: hydroland-qa://native-acceptance
 - extendedWaitUntil:
     visible:
@@ -33,7 +33,7 @@ name: Native installation, guest UI and encrypted-storage capabilities
       id: native-capabilities-result
       text: PASS
     timeout: 30000
-- takeScreenshot: ${ARTIFACT_DIR}/native-capabilities
+- takeScreenshot: native-capabilities
 - stopApp
 - launchApp
 - extendedWaitUntil:

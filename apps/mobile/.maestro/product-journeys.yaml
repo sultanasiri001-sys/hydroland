@@ -40,7 +40,7 @@ name: Seven native product journeys in Arabic and English using isolated synthet
       id: profile-firstName
     direction: DOWN
     timeout: 20000
-- takeScreenshot: ${ARTIFACT_DIR}/product-ar-account
+- takeScreenshot: product-ar-account
 - scrollUntilVisible:
     element:
       id: account-screen-back
@@ -68,7 +68,7 @@ name: Seven native product journeys in Arabic and English using isolated synthet
       id: credential-native-credential
     direction: DOWN
     timeout: 20000
-- takeScreenshot: ${ARTIFACT_DIR}/product-ar-credentials
+- takeScreenshot: product-ar-credentials
 - scrollUntilVisible:
     element:
       id: credentials-screen-back
@@ -96,7 +96,7 @@ name: Seven native product journeys in Arabic and English using isolated synthet
       id: trip-native-trip
     direction: DOWN
     timeout: 20000
-- takeScreenshot: ${ARTIFACT_DIR}/product-ar-trips
+- takeScreenshot: product-ar-trips
 - scrollUntilVisible:
     element:
       id: trips-screen-back
@@ -124,7 +124,7 @@ name: Seven native product journeys in Arabic and English using isolated synthet
       id: booking-open-native-booking
     direction: DOWN
     timeout: 20000
-- takeScreenshot: ${ARTIFACT_DIR}/product-ar-bookings
+- takeScreenshot: product-ar-bookings
 - scrollUntilVisible:
     element:
       id: bookings-screen-back
@@ -152,7 +152,7 @@ name: Seven native product journeys in Arabic and English using isolated synthet
       id: course-confirm-native-course
     direction: DOWN
     timeout: 20000
-- takeScreenshot: ${ARTIFACT_DIR}/product-ar-training
+- takeScreenshot: product-ar-training
 - scrollUntilVisible:
     element:
       id: training-screen-back
@@ -180,7 +180,7 @@ name: Seven native product journeys in Arabic and English using isolated synthet
       id: payment-native-payment
     direction: DOWN
     timeout: 20000
-- takeScreenshot: ${ARTIFACT_DIR}/product-ar-finance
+- takeScreenshot: product-ar-finance
 - scrollUntilVisible:
     element:
       id: finance-screen-back
@@ -208,7 +208,7 @@ name: Seven native product journeys in Arabic and English using isolated synthet
       id: notification-read-native-notification
     direction: DOWN
     timeout: 20000
-- takeScreenshot: ${ARTIFACT_DIR}/product-ar-notifications
+- takeScreenshot: product-ar-notifications
 - scrollUntilVisible:
     element:
       id: notifications-screen-back
@@ -238,7 +238,7 @@ name: Seven native product journeys in Arabic and English using isolated synthet
       id: profile-firstName
     direction: DOWN
     timeout: 20000
-- takeScreenshot: ${ARTIFACT_DIR}/product-en-account
+- takeScreenshot: product-en-account
 - scrollUntilVisible:
     element:
       id: account-screen-back
@@ -266,7 +266,7 @@ name: Seven native product journeys in Arabic and English using isolated synthet
       id: credential-native-credential
     direction: DOWN
     timeout: 20000
-- takeScreenshot: ${ARTIFACT_DIR}/product-en-credentials
+- takeScreenshot: product-en-credentials
 - scrollUntilVisible:
     element:
       id: credentials-screen-back
@@ -294,7 +294,7 @@ name: Seven native product journeys in Arabic and English using isolated synthet
       id: trip-native-trip
     direction: DOWN
     timeout: 20000
-- takeScreenshot: ${ARTIFACT_DIR}/product-en-trips
+- takeScreenshot: product-en-trips
 - scrollUntilVisible:
     element:
       id: trips-screen-back
@@ -322,7 +322,7 @@ name: Seven native product journeys in Arabic and English using isolated synthet
       id: booking-open-native-booking
     direction: DOWN
     timeout: 20000
-- takeScreenshot: ${ARTIFACT_DIR}/product-en-bookings
+- takeScreenshot: product-en-bookings
 - scrollUntilVisible:
     element:
       id: bookings-screen-back
@@ -350,7 +350,7 @@ name: Seven native product journeys in Arabic and English using isolated synthet
       id: course-confirm-native-course
     direction: DOWN
     timeout: 20000
-- takeScreenshot: ${ARTIFACT_DIR}/product-en-training
+- takeScreenshot: product-en-training
 - scrollUntilVisible:
     element:
       id: training-screen-back
@@ -378,7 +378,7 @@ name: Seven native product journeys in Arabic and English using isolated synthet
       id: payment-native-payment
     direction: DOWN
     timeout: 20000
-- takeScreenshot: ${ARTIFACT_DIR}/product-en-finance
+- takeScreenshot: product-en-finance
 - scrollUntilVisible:
     element:
       id: finance-screen-back
@@ -406,7 +406,7 @@ name: Seven native product journeys in Arabic and English using isolated synthet
       id: notification-read-native-notification
     direction: DOWN
     timeout: 20000
-- takeScreenshot: ${ARTIFACT_DIR}/product-en-notifications
+- takeScreenshot: product-en-notifications
 - scrollUntilVisible:
     element:
       id: notifications-screen-back

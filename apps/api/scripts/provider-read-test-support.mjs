@@ -6,7 +6,8 @@ const {digest}=require('../dist/integrations/provider-read-policy');
 export function isolatedProviderFixture(){
   const url=new URL(process.env.DATABASE_URL||'postgresql://invalid/invalid');
   const name=decodeURIComponent(url.pathname.slice(1)),named=/^(white_d03_|hydroland_d03_)/.test(name),github=process.env.GITHUB_ACTIONS==='true'&&name==='hydroland'&&['5432','5433'].includes(url.port);
-  if(process.env.NODE_ENV!=='test'||process.env.CI!=='true'||process.env.D03_DB_TEST_CONFIRM!=='DISPOSABLE_LOOPBACK_ONLY'||!['127.0.0.1','localhost','[::1]'].includes(url.hostname)||!named&&!github)throw new Error('D03 fixtures require CI, NODE_ENV=test, explicit disposable confirmation and a named isolated loopback database.');
+  const formLibrary=process.env.GITHUB_ACTIONS==='true'&&process.env.FORM_LIBRARY_E2E_CONFIRM==='ISOLATED_LOOPBACK_DATABASE'&&name==='hydroland_form_library_ci'&&url.port==='5432';
+  if(process.env.NODE_ENV!=='test'||process.env.CI!=='true'||process.env.D03_DB_TEST_CONFIRM!=='DISPOSABLE_LOOPBACK_ONLY'||!['127.0.0.1','localhost','[::1]'].includes(url.hostname)||!named&&!github&&!formLibrary)throw new Error('D03 fixtures require CI, NODE_ENV=test, explicit disposable confirmation and a named isolated loopback database.');
 }
 export async function providerFixturePlatform(db){
   isolatedProviderFixture();

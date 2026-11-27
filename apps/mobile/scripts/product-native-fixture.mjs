@@ -26,7 +26,9 @@ export function createNativeProductFixture() {
     const url = new URL(req.url, 'http://127.0.0.1'), route = url.pathname.replace(/^\/api\/v1/, '');
     let buffer = ''; for await (const chunk of req) {buffer += chunk; if (buffer.length > 65_536) return response(res, 413, {message: 'Fixture request limit.'});}
     let body; try {body = buffer ? JSON.parse(buffer) : {};} catch {return response(res, 400, {message: 'JSON required.'});}
-    calls.push({method: req.method, route}); if (calls.length > 2000) calls.shift();
+    const call = {method: req.method, route, status: null};
+    calls.push(call); if (calls.length > 2000) calls.shift();
+    res.once('finish', () => {call.status = res.statusCode;});
     if (route === '/health/native-fixture') return response(res, 200, {synthetic: true, scope: 'VIRTUAL_DEVICE_UI_ONLY', actualAcceptance: false});
     if (req.method === 'POST' && route === '/auth/login') return body.email === NATIVE_FIXTURE_EMAIL && body.password === NATIVE_FIXTURE_PASSWORD ? response(res, 200, tokens()) : response(res, 401, {message: 'Synthetic fixture credentials required.'});
     if (req.method === 'POST' && route === '/auth/refresh') {const existing = [...sessions].find(([, token]) => token === body.refreshToken); if (!existing) return response(res, 401, {}); sessions.delete(existing[0]); return response(res, 200, tokens());}
@@ -58,7 +60,11 @@ export async function startNativeProductFixture(port = 3001) {
   return {server, ...fixture};
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const {server} = await startNativeProductFixture(Number(process.env.NATIVE_FIXTURE_PORT || 3001));
+  const {server, calls} = await startNativeProductFixture(Number(process.env.NATIVE_FIXTURE_PORT || 3001));
   console.log('SYNTHETIC_NATIVE_UI_ONLY listening on loopback:' + server.address().port);
-  for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => server.close(() => process.exit(0)));
+  // Diagnose the virtual-device boundary without retaining bodies, credentials,
+  // authorization headers, or issued session tokens in the CI artifact.
+  for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => server.close(() => {
+    process.stdout.write(JSON.stringify({kind: 'SYNTHETIC_NATIVE_HTTP_REQUESTS', calls}) + '\n', () => process.exit(0));
+  }));
 }

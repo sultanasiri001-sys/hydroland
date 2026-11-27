@@ -68,6 +68,7 @@ jobs:
       - name: Generate isolated native Android project
         run: node apps/mobile/scripts/native-acceptance.mjs prepare android
       - name: Compile APK and AAB and verify identity and test signature
+        id: android_build
         run: node apps/mobile/scripts/native-acceptance.mjs build android
       - name: Install verified Maestro distribution
         run: bash apps/mobile/scripts/install-maestro.sh
@@ -97,10 +98,11 @@ jobs:
             apps/mobile/native-artifacts/android/*.xml
             apps/mobile/native-artifacts/android/*.txt
             apps/mobile/native-artifacts/android/*.png
+            apps/mobile/native-artifacts/android/maestro/**
           if-no-files-found: error
           retention-days: 14
       - name: Retain compiled Android acceptance packages
-        if: success()
+        if: always() && steps.android_build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: native-android-packages
@@ -112,10 +114,12 @@ jobs:
 
   ios-native:
     needs: mobile
-    runs-on: macos-15
+    # Expo SDK 57 requires Xcode 26.4+; the macOS 26 image includes 26.6.
+    # https://docs.expo.dev/versions/v57.0.0/#support-for-android-and-ios-versions
+    runs-on: macos-26
     timeout-minutes: 60
     env:
-      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       CI: '1'
       EXPO_NO_TELEMETRY: '1'
       HYDROLAND_BUILD_PROFILE: acceptance
@@ -144,6 +148,7 @@ jobs:
       - name: Generate isolated native iOS project
         run: node apps/mobile/scripts/native-acceptance.mjs prepare ios
       - name: Compile the actual iOS simulator application
+        id: ios_build
         run: node apps/mobile/scripts/native-acceptance.mjs build ios
       - name: Install verified Maestro distribution
         run: bash apps/mobile/scripts/install-maestro.sh
@@ -161,10 +166,11 @@ jobs:
             apps/mobile/native-artifacts/ios/*.xml
             apps/mobile/native-artifacts/ios/*.txt
             apps/mobile/native-artifacts/ios/*.png
+            apps/mobile/native-artifacts/ios/maestro/**
           if-no-files-found: error
           retention-days: 14
       - name: Retain compiled iOS simulator application
-        if: success()
+        if: always() && steps.ios_build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: native-ios-simulator-application

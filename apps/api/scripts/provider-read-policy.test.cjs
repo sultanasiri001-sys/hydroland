@@ -78,3 +78,39 @@ test('public data retains attribution and validity without native approval ident
   for(const key of ['documentId','documentVersion','sourceHash','policyHash'])assert.equal(Object.hasOwn(published.provenance,key),false);
   assert.ok(internal.provenance.documentId);
 });
+
+// Guard-only checks: no DatabaseService is constructed and no fixture writes run.
+const fixtureEnv={DATABASE_URL:'postgresql://synthetic:synthetic@127.0.0.1:5432/hydroland_form_library_ci',NODE_ENV:'test',CI:'true',GITHUB_ACTIONS:'true',D03_DB_TEST_CONFIRM:'DISPOSABLE_LOOPBACK_ONLY',FORM_LIBRARY_E2E_CONFIRM:'ISOLATED_LOOPBACK_DATABASE'};
+function withFixtureEnv(changes,run){
+  const values={...fixtureEnv,...changes},previous=Object.fromEntries(Object.keys(values).map(key=>[key,process.env[key]]));
+  try{for(const [key,value]of Object.entries(values))if(value===undefined)delete process.env[key];else process.env[key]=value;return run();}
+  finally{for(const [key,value]of Object.entries(previous))if(value===undefined)delete process.env[key];else process.env[key]=value;}
+}
+test('form-library diagnostic fixture admits only its exact isolated CI environment',async()=>{
+  const {isolatedProviderFixture}=await import('./provider-read-test-support.mjs');
+  assert.doesNotThrow(()=>withFixtureEnv({},isolatedProviderFixture));
+  for(const key of ['NODE_ENV','CI','GITHUB_ACTIONS','D03_DB_TEST_CONFIRM','FORM_LIBRARY_E2E_CONFIRM']){
+    assert.throws(()=>withFixtureEnv({[key]:undefined},isolatedProviderFixture),/D03 fixtures require/,key+' is required');
+    assert.throws(()=>withFixtureEnv({[key]:'false'},isolatedProviderFixture),/D03 fixtures require/,key+' must exactly match');
+  }
+});
+test('form-library fixture rejects remote, production, wrong-port and lookalike databases without connecting',async()=>{
+  const {isolatedProviderFixture}=await import('./provider-read-test-support.mjs');
+  for(const DATABASE_URL of [
+    'postgresql://synthetic:synthetic@production.example.invalid:5432/hydroland_form_library_ci',
+    'postgresql://synthetic:synthetic@127.0.0.1:5432/hydroland_production',
+    'postgresql://synthetic:synthetic@127.0.0.1:5432/hydroland_form_library_ci_other',
+    'postgresql://synthetic:synthetic@127.0.0.1:5433/hydroland_form_library_ci',
+    'postgresql://synthetic:synthetic@127.0.0.1/hydroland_form_library_ci',
+  ])assert.throws(()=>withFixtureEnv({DATABASE_URL},isolatedProviderFixture),/D03 fixtures require/);
+  assert.throws(()=>withFixtureEnv({NODE_ENV:'production'},isolatedProviderFixture),/D03 fixtures require/);
+});
+test('existing named D03 and canonical GitHub fixtures retain their original restrictions',async()=>{
+  const {isolatedProviderFixture}=await import('./provider-read-test-support.mjs');
+  for(const name of ['white_d03_guard','hydroland_d03_weather_ci'])assert.doesNotThrow(()=>withFixtureEnv({DATABASE_URL:'postgresql://synthetic:synthetic@127.0.0.1:55452/'+name,GITHUB_ACTIONS:undefined,FORM_LIBRARY_E2E_CONFIRM:undefined},isolatedProviderFixture));
+  for(const port of ['5432','5433']){
+    const DATABASE_URL='postgresql://synthetic:synthetic@127.0.0.1:'+port+'/hydroland';
+    assert.doesNotThrow(()=>withFixtureEnv({DATABASE_URL,FORM_LIBRARY_E2E_CONFIRM:undefined},isolatedProviderFixture));
+    assert.throws(()=>withFixtureEnv({DATABASE_URL,GITHUB_ACTIONS:undefined},isolatedProviderFixture),/D03 fixtures require/);
+  }
+});
