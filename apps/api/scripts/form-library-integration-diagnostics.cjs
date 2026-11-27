@@ -28,8 +28,8 @@ for (const script of ['bootstrap-equipment-runtime-schema.mjs','bootstrap-trip-w
  if(result.status!==0)process.exit(result.status||1);
 }
 const env={...process.env,...Object.fromEntries(Object.entries(step.env).map(([key,value])=>[key,String(value)]))};
-// This step in the canonical workflow has no NODE_ENV, unlike the form-specific test.
-delete env.NODE_ENV;
+// Replay the canonical step's current environment, including its explicit test
+// mode. Removing NODE_ENV would invalidate the persisted-session HR fixture.
 const log=fs.openSync(path.join(evidence,'grouped-http.log'),'w');
 const result=spawnSync('bash',['-e','-o','pipefail','-x','-c',step.run],{env,stdio:['ignore',log,log],timeout:12*60*1000});
 fs.closeSync(log);

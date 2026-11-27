@@ -75,6 +75,13 @@ The `HR HTTP/DB E2E` step in `api-validation.yml` now explicitly sets
 `form-library-integration.yml` already sets that value at job scope. No new
 duplicate CI job or authentication exception was added.
 
+The first combined PR's form-library diagnostic replay exposed a stale helper
+that deleted `NODE_ENV` after copying the canonical step environment. It now
+retains that environment, so the persisted-session fixture runs in the same
+explicit test mode as the original API step. All grouped HTTP assertions and
+the isolated-database guard remain enabled; the corrected remote run needs its
+own receipt.
+
 ## Local evidence identity
 
 The successful C02 entries are in `root-evidence/summary.json` with SHA-256
