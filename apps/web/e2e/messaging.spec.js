@@ -10,6 +10,7 @@ test('messages control is auth-gated and authenticated member can read text/voic
     {id:'m-voice',conversationId:'conversation-e2e',senderAccountId:'recipient-e2e',senderEmail:'recipient@hydroland.test',senderFirstName:'Recipient',senderLastName:'E2E',kind:'VOICE',body:null,mediaUrl:'https://media.hydroland.test/e2e.m4a',durationSec:8,createdAt:new Date().toISOString()}
   ];
   const list=()=>[{id:'conversation-e2e',title:'رحلة جزيرة سمر',createdByAccountId:'sender-e2e',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),participants,latestMessage:messages[messages.length-1]}];
+  await page.route(/\/api\/v1\/community\/audio-policy$/,route=>json(route,{active:false,reason:'D16_AUDIO_POLICY_REQUIRED'}));
   const requireAuth=request=>request.headers().authorization==='Bearer messaging-e2e-access';
   await page.route(/\/api\/v1\/me$/,route=>requireAuth(route.request())?json(route,profile):json(route,{message:'Unauthorized'},401));
   await page.route(/\/api\/v1\/credentials$/,route=>requireAuth(route.request())?json(route,[]):json(route,{message:'Unauthorized'},401));
@@ -51,15 +52,17 @@ test('messages control is auth-gated and authenticated member can read text/voic
   expect(messages.at(-1)?.body).toBe('تم التأكيد من طرفي');
 });
 
+function privateWav(){const b=Buffer.alloc(32044);b.write('RIFF');b.writeUInt32LE(b.length-8,4);b.write('WAVEfmt ',8);b.writeUInt32LE(16,16);b.writeUInt16LE(1,20);b.writeUInt16LE(1,22);b.writeUInt32LE(16000,24);b.writeUInt32LE(32000,28);b.writeUInt16LE(2,32);b.writeUInt16LE(16,34);b.write('data',36);b.writeUInt32LE(b.length-44,40);return b}
 const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return{promise,resolve}};
-async function historyFixture(page){
-  const control={historyRequests:[],conversationRequests:[],reads:[],sends:[],historyError:false,listError:false,historyGate:null,conversationGate:null,sendGate:null};
+async function historyFixture(page,{audioActive=true}={}){
+  const control={audioActive,audioPolicyGate:null,historyRequests:[],conversationRequests:[],reads:[],sends:[],historyError:false,listError:false,historyGate:null,conversationGate:null,sendGate:null};
   const profile={id:'history-owner',email:'owner@example.invalid',status:'ACTIVE',roleAssignments:[],person:{firstName:'History',lastName:'Owner',phone:null,professional:null}};
   const participants=[{accountId:profile.id,firstName:'History',lastName:'Owner'},{accountId:'history-peer',firstName:'History',lastName:'Peer'}];
   const message=(n,id='history-a')=>({id:`${id}-${n}`,conversationId:id,senderAccountId:'history-peer',senderFirstName:'History',senderLastName:'Peer',kind:'TEXT',body:`History message ${n}`,createdAt:'2026-10-01T00:00:00Z'});
-  const messages=Array.from({length:401},(_,index)=>message(index+1));
+  const messages=Array.from({length:401},(_,index)=>message(index+1));control.messages=messages;
   const summary=id=>({id,title:id==='history-a'?'Long conversation':'Other conversation',participants,latestMessage:id==='history-a'?messages.at(-1):message(900,'history-b')});
   const pageFor=(all,end=all.length)=>{const start=Math.max(0,end-200),batch=all.slice(start,end);return{messages:batch,hasMore:start>0,olderCursor:start>0?batch[0].id:null}};
+  await page.route(/\/api\/v1\/community\/audio-policy$/,async route=>{const active=control.audioActive;if(control.audioPolicyGate)await control.audioPolicyGate.promise;return json(route,{active,reason:active?undefined:'D16_AUDIO_POLICY_REQUIRED'})});
   await page.route(/\/api\/v1\/me$/,route=>json(route,profile));
   await page.route(/\/api\/v1\/credentials$/,route=>json(route,[]));
   await page.route(/\/api\/v1\/me\/diver-profile$/,route=>json(route,{profile:null,equipment:[]}));
@@ -68,6 +71,11 @@ async function historyFixture(page){
     if(path.endsWith('/conversations'))return control.listError?json(route,{message:'List unavailable'},503):json(route,[summary('history-a'),summary('history-b')]);
     const id=path.split('/conversations/')[1].split('/')[0];
     if(path.endsWith('/read')){control.reads.push(id);return json(route,{status:'READ'})}
+    if(path.endsWith('/audio')){
+      if(request.method()==='GET')return route.fulfill({status:200,contentType:'audio/wav',body:privateWav()});
+      const payload=request.postDataJSON();control.sends.push({id,body:payload});if(control.sendGate)await control.sendGate.promise;
+      const created={...message(messages.length+1,id),senderAccountId:profile.id,kind:'VOICE',body:null,mediaUrl:null,privateAudio:true,durationSec:1};messages.push(created);return json(route,created,201);
+    }
     if(path.endsWith('/messages')){
       if(request.method()==='POST'){
         const payload=request.postDataJSON();control.sends.push({id,body:payload});if(control.sendGate)await control.sendGate.promise;
@@ -159,16 +167,32 @@ test('an in-flight send stays bound to its conversation and does not clear the n
   await expect(dialog.locator('[data-message-title]')).toHaveText('Other conversation');await expect(dialog.locator('textarea[name="body"]')).toHaveValue('Draft in B');expect(control.sends[0].id).toBe('history-a');
 });
 
-test('same-conversation send refresh preserves newer drafts and the other compose mode',async({page})=>{
+test('same-conversation send refresh preserves newer text and private audio drafts',async({page})=>{
   const {control,dialog,select}=await historyFixture(page);await select('history-a');
-  const body=dialog.locator('textarea[name="body"]'),media=dialog.locator('input[name="mediaUrl"]'),duration=dialog.locator('input[name="durationSec"]');
-  await dialog.locator('summary').click();await body.fill('Submitted text');await media.fill('https://example.invalid/prepared.ogg');await duration.fill('8');
+  const body=dialog.locator('textarea[name="body"]'),file=dialog.locator('input[name="audioFile"]');
+  await dialog.locator('summary').click();await body.fill('Submitted text');await file.setInputFiles({name:'private.wav',mimeType:'audio/wav',buffer:privateWav()});await dialog.locator('[name=audioConsent]').check();
   control.sendGate=deferred();await dialog.locator('[data-message-form] button[type="submit"]').click();await expect.poll(()=>control.sends.length).toBe(1);await body.fill('Next text draft');
   control.sendGate.resolve();control.sendGate=null;await page.waitForFunction(()=>window.__historyPending===0);
-  await expect(dialog.locator('[data-message-id="history-a-402"]')).toHaveText(/Submitted text/);await expect(body).toHaveValue('Next text draft');await expect(media).toHaveValue('https://example.invalid/prepared.ogg');await expect(duration).toHaveValue('8');
+  await expect(dialog.locator('[data-message-id="history-a-402"]')).toHaveText(/Submitted text/);await expect(body).toHaveValue('Next text draft');await expect(dialog.locator('[data-audio-preview]')).toBeVisible();await expect(dialog.locator('[name=audioConsent]')).toBeChecked();
   await dialog.locator('[data-send-voice]').click();await expect.poll(()=>control.sends.length).toBe(2);await page.waitForFunction(()=>window.__historyPending===0);
-  await expect(dialog.locator('audio[src="https://example.invalid/prepared.ogg"]')).toHaveCount(1);await expect(body).toHaveValue('Next text draft');await expect(media).toHaveValue('');await expect(duration).toHaveValue('');
+  expect(control.sends[1].body.mimeType).toBe('audio/wav');expect(Buffer.from(control.sends[1].body.base64,'base64')).toEqual(privateWav());expect(control.sends[1].body.consent).toBe(true);
+  await expect(body).toHaveValue('Next text draft');await expect(dialog.locator('[data-audio-preview]')).toBeHidden();await expect(dialog.locator('[name=audioConsent]')).not.toBeChecked();await expect(dialog.locator('[data-message-id="history-a-403"]')).toContainText('تحميل الصوت الخاص');
   control.conversationGate=deferred();const requests=control.conversationRequests.length;await select('history-a');await select('history-a');await expect.poll(()=>control.conversationRequests.length).toBe(requests+2);control.conversationGate.resolve();control.conversationGate=null;await page.waitForFunction(()=>window.__historyPending===0);await expect(body).toHaveValue('Next text draft');
+});
+
+test('pending microphone permission is cancelled by discard and never leaves a stale stream running',async({page})=>{
+  const {dialog,select}=await historyFixture(page);await select('history-a');await dialog.locator('summary').click();
+  await page.evaluate(()=>{window.audioStops=0;window.audioRequests=0;Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getUserMedia:()=>{window.audioRequests++;return new Promise(resolve=>window.finishAudioPermission=()=>resolve({getTracks:()=>[{stop:()=>window.audioStops++}]}))}}})});
+  await dialog.locator('[data-record-voice]').click();await expect(dialog.locator('[data-record-voice]')).toBeDisabled();await expect.poll(()=>page.evaluate(()=>window.audioRequests)).toBe(1);
+  await dialog.locator('[data-discard-voice]').click();await page.evaluate(()=>window.finishAudioPermission());await expect.poll(()=>page.evaluate(()=>window.audioStops)).toBe(1);await expect(dialog.locator('[data-stop-voice]')).toBeDisabled();await expect(dialog.locator('[data-audio-preview]')).toBeHidden();
+});
+
+test('private recording captures PCM, requires consent and clears on session loss',async({page})=>{
+  const {dialog,select}=await historyFixture(page);await select('history-a');await dialog.locator('summary').click();
+  await page.evaluate(()=>{window.audioStops=0;window.audioClosed=0;Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getUserMedia:async()=>({getTracks:()=>[{stop:()=>window.audioStops++}]})}});window.AudioContext=class{sampleRate=48000;destination={};async resume(){}createMediaStreamSource(){return{connect(){},disconnect(){}}}createScriptProcessor(){window.audioProcessor={connect(){},disconnect(){},onaudioprocess:null};return window.audioProcessor}async close(){window.audioClosed++}}});
+  await dialog.locator('[data-record-voice]').click();await expect(dialog.locator('[data-stop-voice]')).toBeEnabled();await page.evaluate(()=>window.audioProcessor.onaudioprocess({inputBuffer:{getChannelData:()=>new Float32Array(48000).fill(.25)}}));await dialog.locator('[data-stop-voice]').click();await expect(dialog.locator('[data-audio-preview]')).toBeVisible();await expect.poll(()=>page.evaluate(()=>window.audioStops)).toBe(1);
+  await dialog.locator('[data-send-voice]').click();await expect(dialog.locator('[data-message-status]')).toContainText('راجع الصوت');
+  await page.evaluate(()=>document.dispatchEvent(new CustomEvent('hydroland:session-cleared')));await expect(dialog).not.toBeVisible();await expect(dialog.locator('[data-audio-preview]')).not.toHaveAttribute('src');
 });
 
 test('account transitions clear cached sidebar previews even when the new list fails',async({page})=>{
@@ -178,4 +202,20 @@ test('account transitions clear cached sidebar previews even when the new list f
   await expect(dialog.locator('[data-conversation-items]')).not.toContainText('Long conversation');await expect(dialog.locator('[data-conversation-items]')).not.toContainText('History message 401');await expect(dialog.locator('[data-message-id]')).toHaveCount(0);
   await page.waitForFunction(()=>window.__historyPending===0);await dialog.locator('[data-messages-close]').click();await page.locator('#top-messages').click();
   await expect(dialog.locator('[data-conversation-id]')).toHaveCount(0);await expect(dialog.locator('[data-message-id]')).toHaveCount(0);
+});
+
+
+test('private audio is default-off and source suspension stops capture while preserving existing playback',async({page})=>{
+  const {control,dialog,select}=await historyFixture(page,{audioActive:false});Object.assign(control.messages.at(-1),{kind:'VOICE',privateAudio:true,body:null,durationSec:1});await select('history-a');await dialog.locator('summary').click();await expect(dialog.locator('[data-audio-policy]')).toContainText('يلزم اعتماد');await expect(dialog.locator('[data-record-voice]')).toBeDisabled();await expect(dialog.locator('[name=audioFile]')).toBeDisabled();await expect(dialog.locator('[data-send-voice]')).toBeDisabled();
+  await page.evaluate(()=>{window.audioRequests=0;window.audioStops=0;Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getUserMedia:()=>{window.audioRequests++;return new Promise(resolve=>window.finishAudioPermission=()=>resolve({getTracks:()=>[{stop:()=>window.audioStops++}]}))}}});window.AudioContext=class{async resume(){}}});
+  await dialog.locator('[data-record-voice]').dispatchEvent('click');expect(await page.evaluate(()=>window.audioRequests)).toBe(0);expect(control.sends).toHaveLength(0);
+  const oldAudio=dialog.locator('[data-message-id=history-a-401] audio');await dialog.locator('[data-message-id=history-a-401]').getByRole('button',{name:'تحميل الصوت الخاص'}).click();await expect(oldAudio).toHaveAttribute('src',/^blob:/);
+  control.audioActive=true;await page.evaluate(()=>window.HydrolandMessages.refreshAudioPolicy());await expect(dialog.locator('[data-record-voice]')).toBeEnabled();await dialog.locator('[data-record-voice]').click();await expect.poll(()=>page.evaluate(()=>window.audioRequests)).toBe(1);
+  control.audioActive=false;await page.evaluate(()=>window.HydrolandMessages.refreshAudioPolicy());await page.evaluate(()=>window.finishAudioPermission());await expect.poll(()=>page.evaluate(()=>window.audioStops)).toBe(1);await expect(dialog.locator('[data-record-voice]')).toBeDisabled();await expect(dialog.locator('[data-audio-preview]')).toBeHidden();
+  await dialog.locator('textarea[name="body"]').fill('Text remains available');await dialog.locator('[data-message-form] button[type="submit"]').click();await expect.poll(()=>control.sends.length).toBe(1);expect(control.sends[0].body.kind).toBe('TEXT');
+});
+
+test('a stale audio-policy response cannot re-enable upload after an account change',async({page})=>{
+  const {control,dialog,select}=await historyFixture(page);await select('history-a');await dialog.locator('summary').click();control.audioPolicyGate=deferred();await page.evaluate(()=>{void window.HydrolandMessages.refreshAudioPolicy()});
+  await page.evaluate(()=>{sessionStorage.setItem('hl-access-token','new-account');sessionStorage.setItem('hl-refresh-token','new-refresh');document.dispatchEvent(new CustomEvent('hydroland:auth-changed'))});control.audioActive=false;control.audioPolicyGate.resolve();control.audioPolicyGate=null;await page.waitForFunction(()=>window.__historyPending===0);await expect(dialog.locator('[data-record-voice]')).toBeDisabled();await expect(dialog.locator('[name=audioFile]')).toBeDisabled();
 });

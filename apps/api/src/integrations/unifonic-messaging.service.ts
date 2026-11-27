@@ -5,7 +5,7 @@ import { approvedWhatsAppTemplates } from './whatsapp-template-policy';
 import { smsSubmissionReceipt, type SmsSubmissionReceipt } from './unifonic-sms-receipt';
 
 type SmsInput={recipient:string;body:string;correlationId:string};
-type WhatsAppTemplateInput={recipient:string;templateName:string;languageCode:string;parameters?:string[]};
+type WhatsAppTemplateInput={recipient:string;templateName:string;languageCode:string;parameters?:string[];referenceId?:string};
 type DeliveryResult={provider:'UNIFONIC';providerMessageId:string|null;status:string|null};
 
 @Injectable()
@@ -25,7 +25,7 @@ export class UnifonicMessagingService {
     const form=new URLSearchParams({AppSid:appSid,SenderID:senderId,Recipient:recipient,Body:body,responseType:'JSON',CorrelationID:correlationId,baseEncode:'true',async:'false'});
     let response:Response;
     try{
-      response=await fetch('https://el.cloud.unifonic.com/rest/SMS/messages',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/x-www-form-urlencoded'},body:form,signal:AbortSignal.timeout(8_000)});
+      response=await fetch('https://el.cloud.unifonic.com/rest/SMS/messages',{method:'POST',redirect:'error',headers:{Accept:'application/json','Content-Type':'application/x-www-form-urlencoded'},body:form,signal:AbortSignal.timeout(4_000)});
     }catch{throw new BadGatewayException('SMS provider request failed.');}
     const payload=await this.safeJson(response);
     if(!response.ok||payload?.success===false||payload?.success==='false')throw new BadGatewayException(`SMS provider rejected delivery (${response.status}).`);
@@ -51,10 +51,11 @@ export class UnifonicMessagingService {
       throw new ServiceUnavailableException('WhatsApp template and language are not approved.');
     }
     const parameters=(input.parameters??[]).map(value=>({type:'text',text:String(value)}));
-    const requestBody={recipient:{contact:recipient,channel:'whatsapp'},content:{type:'template',name,language:{code:language},components:parameters.length?[{type:'body',parameters}]:[]}};
+    if(input.referenceId!==undefined&&(typeof input.referenceId!=='string'||!/^hydroland-notice\/[0-9a-f-]{36}$/i.test(input.referenceId)))throw new ServiceUnavailableException('WhatsApp reference is invalid.');
+    const requestBody={...(input.referenceId?{referenceId:input.referenceId}:{}),recipient:{contact:recipient,channel:'whatsapp'},content:{type:'template',name,language:{code:language},components:parameters.length?[{type:'body',parameters}]:[]}};
     let response:Response;
     try{
-      response=await fetch('https://apis.unifonic.com/v1/messages',{method:'POST',headers:{PublicId:publicId,Secret:secret,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify(requestBody),signal:AbortSignal.timeout(8_000)});
+      response=await fetch('https://apis.unifonic.com/v1/messages',{method:'POST',redirect:'error',headers:{PublicId:publicId,Secret:secret,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify(requestBody),signal:AbortSignal.timeout(4_000)});
     }catch{throw new BadGatewayException('WhatsApp provider request failed.');}
     const payload=await this.safeJson(response);
     if(!response.ok)throw new BadGatewayException(`WhatsApp provider rejected delivery (${response.status}).`);
@@ -74,6 +75,13 @@ export class UnifonicMessagingService {
     return`+${digits}`;
   }
 
-  private async safeJson(response:Response):Promise<any>{try{return await response.json();}catch{return null;}}
+  private async safeJson(response:Response):Promise<any>{
+    try{
+      const reader=response.body?.getReader();if(!reader)return null;
+      const chunks:Uint8Array[]=[];let size=0;
+      while(true){const part=await reader.read();if(part.done)break;size+=part.value.byteLength;if(size>32768){await reader.cancel();return null;}chunks.push(part.value);}
+      return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    }catch{return null;}
+  }
   private stringValue(value:unknown){return value===undefined||value===null?null:String(value);}
 }

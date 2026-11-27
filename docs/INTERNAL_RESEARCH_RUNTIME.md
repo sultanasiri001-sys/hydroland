@@ -4,7 +4,7 @@
 
 `INTERNAL_DESK_RESEARCH_V1` persists RND_MARKET_INTELLIGENCE initiatives, exact-version source references, actual employee reviews, and owner lifecycle decisions. It does **not** execute research externally, call a model, spend money, publish, make investments, change staffing/roles, confer general document access, or close an administrative department. `COMPLETED` means only this internal research record passed its defined proposal/result review path. It is not regulatory/legal approval or operational acceptance.
 
-Existing pure research-market planners remain unchanged; caller-constructed review objects from those planners cannot approve this runtime. No real employee, evidence, assignment or approval is seeded. Operational adoption still requires real eligible employees, genuine evidence and their own decisions. This package is API-first; no owner/reviewer UI is delivered here.
+Existing pure research-market planners remain unchanged; caller-constructed review objects from those planners cannot approve this runtime. No real employee, evidence, assignment or approval is seeded. Operational adoption still requires real eligible employees, genuine evidence and their own decisions. The owner/reviewer interface is shipped with this runtime; see [INTERNAL_RESEARCH_UI.md](INTERNAL_RESEARCH_UI.md). The API and browser evidence for the reviewed main revision is recorded in [C07 technical acceptance](acceptance/C07_INTERNAL_RESEARCH_TECHNICAL_ACCEPTANCE_2026-11-27.md).
 
 ## Authority and independence
 

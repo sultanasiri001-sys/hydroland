@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { PrismaClient } from '@prisma/client';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -42,4 +43,8 @@ try{
   }
   const review = await readFile(resolve(prismaRoot,'migrations','20261121210000_private_message_review','migration.sql'),'utf8');
   for (const statement of splitStatements(review)) await db.$executeRawUnsafe(statement);
+  const [audio]=await db.$queryRaw`SELECT to_regclass('public."PrivateMessageAudio"')::text AS name`;
+  if(!audio.name)execFileSync(process.execPath,[resolve(here,'../../../node_modules/prisma/build/index.js'),'db','execute','--url',process.env.DATABASE_URL,'--file',resolve(prismaRoot,'migrations','20261127090000_yellow_private_audio','migration.sql')],{stdio:'inherit'});
+  const columns=await db.$queryRaw`SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='PrivateMessageAudio'`;
+  for(const name of ['messageId','conversationId','senderAccountId','content','sha256','byteSize','requestKey'])if(!columns.some(row=>row.column_name===name))throw new Error('Private audio schema is incomplete: '+name);
 } finally { await db.$disconnect(); }

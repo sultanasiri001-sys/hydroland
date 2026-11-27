@@ -91,17 +91,17 @@ export class EmailDeliveryService {
     url.hash=link.toString();
     const text=subject+'\n'+action+' بعد تسجيل الدخول إلى حسابك:\n'+url.href;
     const html=`<!doctype html><html lang="ar" dir="rtl"><body><h1>${subject}</h1><p>سجّل الدخول إلى حسابك في هيدرولاند لعرض التفاصيل.</p><p><a href="${escapeHtml(url.href)}">${action}</a></p></body></html>`;
-    return this.sendTransactional(config,input.to,subject,text,html,`hydroland-customer/${input.id}`);
+    return this.sendTransactional(config,input.to,subject,text,html,`hydroland-customer/${input.id}`,4_000);
   }
 
-  private async sendTransactional(config:{apiKey:string;from:string},to:string,subject:string,text:string,html:string,key:string):Promise<AuthEmailDelivery>{
+  private async sendTransactional(config:{apiKey:string;from:string},to:string,subject:string,text:string,html:string,key:string,timeoutMs=8_000):Promise<AuthEmailDelivery>{
     const {apiKey,from}=config;
     let endpoint:URL;
     try{endpoint=new URL('/emails',process.env.RESEND_API_BASE_URL?.trim()||'https://api.resend.com');}catch{throw new ReportEmailError('PERMANENT');}
     const localTest=process.env.NODE_ENV==='test'&&endpoint.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(endpoint.hostname);
     if(endpoint.username||endpoint.password||endpoint.origin!=='https://api.resend.com'&&!localTest)throw new ReportEmailError('PERMANENT');
     let response:Response;
-    try{response=await fetch(endpoint,{method:'POST',redirect:'error',headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json','Idempotency-Key':key,Accept:'application/json'},body:JSON.stringify({from,to:[to],subject,text,html}),signal:AbortSignal.timeout(8_000)});}catch{await this.integrations.recordProviderSignal('EMAIL','PROVIDER_FAILURE');throw new ReportEmailError('UNCERTAIN');}
+    try{response=await fetch(endpoint,{method:'POST',redirect:'error',headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json','Idempotency-Key':key,Accept:'application/json'},body:JSON.stringify({from,to:[to],subject,text,html}),signal:AbortSignal.timeout(timeoutMs)});}catch{await this.integrations.recordProviderSignal('EMAIL','PROVIDER_FAILURE');throw new ReportEmailError('UNCERTAIN');}
     if(!response.ok){if(response.status===401||response.status===403||response.status===408||response.status===429||response.status>=500)await this.integrations.recordProviderSignal('EMAIL','PROVIDER_FAILURE');await response.body?.cancel();throw new ReportEmailError(response.status===429||response.status>=500?'RETRYABLE':'PERMANENT');}
     try{
       const reader=response.body?.getReader();if(!reader)throw new Error();const parts:Uint8Array[]=[];let size=0;

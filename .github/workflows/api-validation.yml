@@ -191,6 +191,8 @@ jobs:
           node apps/api/scripts/center-service-transfer-db-checks.cjs
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261122233000_customer_notification_email/migration.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261126081500_organization_invoice_notice_finalization/migration.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261123034000_session_push_registration/migration.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261127113000_customer_notice_channels/migration.sql
           node apps/api/scripts/organization-invoice-notice-db.cjs
       - name: Goods original-contract checkout and collection through real HTTP routes
         env:
@@ -633,7 +635,6 @@ jobs:
       - name: Admin account lifecycle HTTP and PostgreSQL
         env:
           NODE_ENV: test
-          HYDROLAND_COMMUNITY_REHEARSAL: '1'
           JWT_SECRET: ci-account-lifecycle-secret-at-least-32-characters
           PORT: 3102
           HYDROLAND_PROVIDER_REHEARSAL: "1"
@@ -684,13 +685,29 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261123003000_customer_notice_email_budget/migration.sql
           npm --workspace @hydroland/api exec -- prisma db push --skip-generate
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261122233000_customer_notification_email/migration.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261123034000_session_push_registration/migration.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261127113000_customer_notice_channels/migration.sql
           node apps/api/scripts/customer-notice-email-db-e2e.mjs
           node apps/api/scripts/customer-email-delivery-db-e2e.mjs
           node apps/api/scripts/sms-dlr-db-e2e.mjs
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261123034000_session_push_registration/migration.sql
           node apps/api/scripts/push-session-db-e2e.mjs
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261123053000_trial_push_dispatch/migration.sql
           node apps/api/scripts/trial-push-db-e2e.mjs
+      - name: B07 consent and automatic customer channel delivery through native HTTP and PostgreSQL
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://hydroland:hydroland@localhost:5433/customer_channels_test
+          CUSTOMER_CHANNEL_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+        run: |
+          node --test apps/api/scripts/customer-channel-policy.test.cjs
+          psql postgresql://hydroland:hydroland@localhost:5433/hydroland -v ON_ERROR_STOP=1 -c 'CREATE DATABASE customer_channels_test'
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261123003000_customer_notice_email_budget/migration.sql
+          npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261122233000_customer_notification_email/migration.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261123034000_session_push_registration/migration.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261127113000_customer_notice_channels/migration.sql
+          node apps/api/scripts/customer-channels-http-db-e2e.mjs
+          node apps/api/scripts/customer-channels-schema-db-e2e.mjs
       - name: MFA lifecycle PostgreSQL E2E
         run: node apps/api/scripts/mfa-lifecycle-db-e2e.mjs
       - name: Credential integrity PostgreSQL E2E
@@ -748,6 +765,8 @@ jobs:
           FINANCE_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/finance-http-e2e.mjs
           MAPS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/maps-runtime-http-e2e.mjs
           MESSAGING_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/messaging-http-e2e.mjs
+          node --test apps/api/scripts/private-audio-validation.test.cjs
+          MESSAGING_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/private-audio-http-e2e.mjs
           if ! NOTIFICATIONS_E2E_BASE_URL=http://127.0.0.1:3101/api/v1 node apps/api/scripts/notifications-http-e2e.mjs; then
             echo "Notifications HTTP/DB E2E failed; API log follows"
             cat /tmp/hydroland-api.log

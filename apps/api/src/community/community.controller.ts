@@ -1,13 +1,37 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, Param, Patch, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { AdminGuard } from '../admin/admin.guard';
 import { AccessTokenGuard } from '../auth/access-token.guard';
+import { CommunityPolicyService } from './community-policy.service';
 import { CommunityService } from './community.service';
 
 type RequestAuth={auth:{accountId:string}};
 
 @Controller('community')
 export class CommunityController {
-  constructor(private readonly community:CommunityService){}
+  constructor(private readonly community:CommunityService,private readonly policy:CommunityPolicyService){}
+
+  @Get('policy') policyStatus(){return this.policy.current()}
+  @Get('audio-policy') @Header('Cache-Control','no-store') audioPolicyStatus(){return this.policy.audioCurrent()}
+  @UseGuards(AccessTokenGuard,AdminGuard)
+  @Get('admin/policy-authoring') policyAuthoring(@Req() request:RequestAuth){return this.policy.authoring(request.auth.accountId)}
+  @UseGuards(AccessTokenGuard,AdminGuard)
+  @Post('admin/policy-drafts') policyDraft(@Req() request:RequestAuth,@Body() body:Parameters<CommunityPolicyService['draft']>[1]){return this.policy.draft(request.auth.accountId,body??{})}
+  @UseGuards(AccessTokenGuard,AdminGuard)
+  @Get('admin/policy-sources') policySources(@Req() request:RequestAuth){return this.policy.candidates(request.auth.accountId)}
+  @UseGuards(AccessTokenGuard,AdminGuard)
+  @Put('admin/policy') configurePolicy(@Req() request:RequestAuth,@Body() body:Parameters<CommunityPolicyService['configure']>[1]){return this.policy.configure(request.auth.accountId,body??{})}
+  @UseGuards(AccessTokenGuard)
+  @Patch('posts/:postId') editPost(@Req() request:RequestAuth,@Param('postId') postId:string,@Body() body:Parameters<CommunityService['editPost']>[2]){return this.community.editPost(request.auth.accountId,postId,body??{})}
+  @UseGuards(AccessTokenGuard)
+  @Post('posts/:postId/withdraw') withdrawPost(@Req() request:RequestAuth,@Param('postId') postId:string){return this.community.withdrawPost(request.auth.accountId,postId)}
+  @UseGuards(AccessTokenGuard)
+  @Post('posts/:postId/report') reportPost(@Req() request:RequestAuth,@Param('postId') postId:string,@Body() body:Parameters<CommunityService['reportPost']>[2]){return this.community.reportPost(request.auth.accountId,postId,body??{})}
+  @UseGuards(AccessTokenGuard,AdminGuard)
+  @Get('admin/reports') reports(@Req() request:RequestAuth){return this.community.reports(request.auth.accountId)}
+  @UseGuards(AccessTokenGuard,AdminGuard)
+  @Post('admin/reports/:caseId/release') releaseReport(@Req() request:RequestAuth,@Param('caseId') caseId:string){return this.community.releaseReport(request.auth.accountId,caseId)}
+  @UseGuards(AccessTokenGuard,AdminGuard)
+  @Post('admin/posts/purge') purgePosts(@Req() request:RequestAuth,@Body() body:{confirm?:unknown}){return this.community.purgePosts(request.auth.accountId,body??{})}
 
   @Get('posts')
   posts(){return this.community.publicPosts()}
@@ -49,7 +73,7 @@ export class CommunityController {
 
   @UseGuards(AccessTokenGuard,AdminGuard)
   @Get('admin/posts')
-  adminPosts(){return this.community.adminPosts()}
+  adminPosts(@Req() request:RequestAuth){return this.community.adminPosts(request.auth.accountId)}
 
   @UseGuards(AccessTokenGuard,AdminGuard)
   @Patch('admin/posts/:postId/status')
@@ -57,7 +81,7 @@ export class CommunityController {
 
   @UseGuards(AccessTokenGuard,AdminGuard)
   @Get('admin/events')
-  adminEvents(){return this.community.adminEvents()}
+  adminEvents(@Req() request:RequestAuth){return this.community.adminEvents(request.auth.accountId)}
 
   @UseGuards(AccessTokenGuard,AdminGuard)
   @Post('admin/events')
@@ -69,7 +93,7 @@ export class CommunityController {
 
   @UseGuards(AccessTokenGuard,AdminGuard)
   @Get('admin/volunteers')
-  adminVolunteers(){return this.community.adminVolunteers()}
+  adminVolunteers(@Req() request:RequestAuth){return this.community.adminVolunteers(request.auth.accountId)}
 
   @UseGuards(AccessTokenGuard,AdminGuard)
   @Patch('admin/volunteers/:registrationId/status')
@@ -77,7 +101,7 @@ export class CommunityController {
 
   @UseGuards(AccessTokenGuard,AdminGuard)
   @Get('admin/engagement-requests')
-  adminEngagementRequests(){return this.community.adminEngagementRequests()}
+  adminEngagementRequests(@Req() request:RequestAuth){return this.community.adminEngagementRequests(request.auth.accountId)}
 
   @UseGuards(AccessTokenGuard,AdminGuard)
   @Patch('admin/engagement-requests/:requestId/status')

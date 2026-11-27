@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, Param, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { AccessTokenGuard } from '../auth/access-token.guard';
 import { PrivateMessageReviewService } from './private-message-review.service';
 
@@ -21,6 +21,12 @@ export class PrivateMessageReviewController {
   @Header('Cache-Control','private, no-store')
   read(@Req() req: Actor, @Param('caseId') caseId: string) {
     return this.review.read(req.auth.accountId, caseId);
+  }
+  @Get('customer-service/admin/cases/:caseId/message-audio-evidence')
+  async audio(@Req() req: Actor, @Param('caseId') caseId: string, @Res() res: any) {
+    const bytes=await this.review.audio(req.auth.accountId,caseId);
+    res.setHeader('Content-Type','audio/wav');res.setHeader('Cache-Control','private, no-store');res.setHeader('X-Content-Type-Options','nosniff');
+    return res.send(bytes);
   }
   @Post('customer-service/admin/cases/:caseId/release-message-hold')
   release(@Req() req: Actor, @Param('caseId') caseId: string, @Body() body: {reason?: unknown}) {
