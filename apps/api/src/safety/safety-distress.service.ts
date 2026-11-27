@@ -3,6 +3,7 @@ import {AuditService} from '../audit/audit.service';
 import {MarineTrafficAisPosition,MarineTrafficAisService} from '../integrations/marinetraffic-ais.service';
 import {SafetyIncidentsService} from './safety-incidents.service';
 import {finiteNumericInput} from '../geo/coordinate-input';
+import {publicProvenance} from '../integrations/provider-read-policy';
 
 type DistressInput={
   tripId?:string;
@@ -40,7 +41,7 @@ export class SafetyDistressService{
       humanEmergencyEscalationRequired:true,
       aisLookupAttempted:aisResult.attempted,
       aisLookupStatus:aisResult.status,
-      aisSnapshot:aisResult.position,
+      aisSnapshot:aisResult.position?{...aisResult.position,provenance:publicProvenance(aisResult.position.provenance)}:null,
       callerCoordinates,
       effectivePosition:effective,
     };
@@ -52,6 +53,7 @@ export class SafetyDistressService{
     if(!mmsi&&!imo)return{attempted:false,status:'NOT_REQUESTED',position:null};
     try{
       const position=mmsi?await this.ais.singleVesselByMmsi(mmsi):await this.ais.singleVesselByImo(imo!);
+      if(mmsi&&imo&&position.imo!==imo)return{attempted:true,status:'UNAVAILABLE',position:null};
       return{attempted:true,status:'AVAILABLE',position};
     }catch{
       return{attempted:true,status:'UNAVAILABLE',position:null};

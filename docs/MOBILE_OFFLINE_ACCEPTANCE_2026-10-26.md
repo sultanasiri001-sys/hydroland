@@ -1,5 +1,10 @@
 # Mobile/offline acceptance — 26 October 2026
 
+Historical baseline. The 27 November D06 implementation and its separate server,
+client and device acceptance boundaries are recorded in
+[MOBILE_OFFLINE_D06_TECHNICAL_ACCEPTANCE_2026-11-27.md](MOBILE_OFFLINE_D06_TECHNICAL_ACCEPTANCE_2026-11-27.md).
+The sections below describe the October snapshot, not the current completion state.
+
 Scope: canonical `apps/mobile` home, login and trip-day shell, reviewed from
 `908f389`. This is a local implementation acceptance record, not a signed native
 release, customer-data test, production-auth test or store-publication approval.

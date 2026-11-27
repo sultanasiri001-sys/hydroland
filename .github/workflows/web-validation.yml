@@ -113,6 +113,14 @@ jobs:
           path: apps/web/test-results/**/locale-*.png
           if-no-files-found: ignore
           retention-days: 14
+      - name: D10 current community responsive review screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d10-community-responsive-review
+          path: apps/web/test-results/**/community-*.png
+          if-no-files-found: error
+          retention-days: 14
   focused-regressions:
     runs-on: ubuntu-latest
     timeout-minutes: 35

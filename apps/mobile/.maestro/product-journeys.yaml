@@ -1,0 +1,434 @@
+appId: com.hydroland.acceptance
+name: Seven native product journeys in Arabic and English using isolated synthetic HTTP
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- extendedWaitUntil:
+    visible:
+      id: home-login
+    timeout: 30000
+- tapOn:
+    id: home-login
+- tapOn:
+    id: login-email
+- inputText: qa-mobile@example.test
+- tapOn:
+    id: login-password
+- inputText: NativeFixtureOnly!123
+- hideKeyboard
+- tapOn:
+    id: login-submit
+- extendedWaitUntil:
+    visible:
+      id: home-account
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      id: nav-account
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: nav-account
+- extendedWaitUntil:
+    visible:
+      id: account-screen
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: profile-firstName
+    direction: DOWN
+    timeout: 20000
+- takeScreenshot: ${ARTIFACT_DIR}/product-ar-account
+- scrollUntilVisible:
+    element:
+      id: account-screen-back
+    direction: UP
+    timeout: 20000
+- tapOn:
+    id: account-screen-back
+- extendedWaitUntil:
+    visible:
+      id: home-account
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: nav-credentials
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: nav-credentials
+- extendedWaitUntil:
+    visible:
+      id: credentials-screen
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: credential-native-credential
+    direction: DOWN
+    timeout: 20000
+- takeScreenshot: ${ARTIFACT_DIR}/product-ar-credentials
+- scrollUntilVisible:
+    element:
+      id: credentials-screen-back
+    direction: UP
+    timeout: 20000
+- tapOn:
+    id: credentials-screen-back
+- extendedWaitUntil:
+    visible:
+      id: home-account
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: nav-trips
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: nav-trips
+- extendedWaitUntil:
+    visible:
+      id: trips-screen
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: trip-native-trip
+    direction: DOWN
+    timeout: 20000
+- takeScreenshot: ${ARTIFACT_DIR}/product-ar-trips
+- scrollUntilVisible:
+    element:
+      id: trips-screen-back
+    direction: UP
+    timeout: 20000
+- tapOn:
+    id: trips-screen-back
+- extendedWaitUntil:
+    visible:
+      id: home-account
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: nav-bookings
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: nav-bookings
+- extendedWaitUntil:
+    visible:
+      id: bookings-screen
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: booking-open-native-booking
+    direction: DOWN
+    timeout: 20000
+- takeScreenshot: ${ARTIFACT_DIR}/product-ar-bookings
+- scrollUntilVisible:
+    element:
+      id: bookings-screen-back
+    direction: UP
+    timeout: 20000
+- tapOn:
+    id: bookings-screen-back
+- extendedWaitUntil:
+    visible:
+      id: home-account
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: nav-training
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: nav-training
+- extendedWaitUntil:
+    visible:
+      id: training-screen
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: course-confirm-native-course
+    direction: DOWN
+    timeout: 20000
+- takeScreenshot: ${ARTIFACT_DIR}/product-ar-training
+- scrollUntilVisible:
+    element:
+      id: training-screen-back
+    direction: UP
+    timeout: 20000
+- tapOn:
+    id: training-screen-back
+- extendedWaitUntil:
+    visible:
+      id: home-account
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: nav-finance
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: nav-finance
+- extendedWaitUntil:
+    visible:
+      id: finance-screen
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: payment-native-payment
+    direction: DOWN
+    timeout: 20000
+- takeScreenshot: ${ARTIFACT_DIR}/product-ar-finance
+- scrollUntilVisible:
+    element:
+      id: finance-screen-back
+    direction: UP
+    timeout: 20000
+- tapOn:
+    id: finance-screen-back
+- extendedWaitUntil:
+    visible:
+      id: home-account
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: nav-notifications
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: nav-notifications
+- extendedWaitUntil:
+    visible:
+      id: notifications-screen
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: notification-read-native-notification
+    direction: DOWN
+    timeout: 20000
+- takeScreenshot: ${ARTIFACT_DIR}/product-ar-notifications
+- scrollUntilVisible:
+    element:
+      id: notifications-screen-back
+    direction: UP
+    timeout: 20000
+- tapOn:
+    id: notifications-screen-back
+- extendedWaitUntil:
+    visible:
+      id: home-account
+    timeout: 20000
+- tapOn:
+    id: change-language
+- scrollUntilVisible:
+    element:
+      id: nav-account
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: nav-account
+- extendedWaitUntil:
+    visible:
+      id: account-screen
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: profile-firstName
+    direction: DOWN
+    timeout: 20000
+- takeScreenshot: ${ARTIFACT_DIR}/product-en-account
+- scrollUntilVisible:
+    element:
+      id: account-screen-back
+    direction: UP
+    timeout: 20000
+- tapOn:
+    id: account-screen-back
+- extendedWaitUntil:
+    visible:
+      id: home-account
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: nav-credentials
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: nav-credentials
+- extendedWaitUntil:
+    visible:
+      id: credentials-screen
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: credential-native-credential
+    direction: DOWN
+    timeout: 20000
+- takeScreenshot: ${ARTIFACT_DIR}/product-en-credentials
+- scrollUntilVisible:
+    element:
+      id: credentials-screen-back
+    direction: UP
+    timeout: 20000
+- tapOn:
+    id: credentials-screen-back
+- extendedWaitUntil:
+    visible:
+      id: home-account
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: nav-trips
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: nav-trips
+- extendedWaitUntil:
+    visible:
+      id: trips-screen
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: trip-native-trip
+    direction: DOWN
+    timeout: 20000
+- takeScreenshot: ${ARTIFACT_DIR}/product-en-trips
+- scrollUntilVisible:
+    element:
+      id: trips-screen-back
+    direction: UP
+    timeout: 20000
+- tapOn:
+    id: trips-screen-back
+- extendedWaitUntil:
+    visible:
+      id: home-account
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: nav-bookings
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: nav-bookings
+- extendedWaitUntil:
+    visible:
+      id: bookings-screen
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: booking-open-native-booking
+    direction: DOWN
+    timeout: 20000
+- takeScreenshot: ${ARTIFACT_DIR}/product-en-bookings
+- scrollUntilVisible:
+    element:
+      id: bookings-screen-back
+    direction: UP
+    timeout: 20000
+- tapOn:
+    id: bookings-screen-back
+- extendedWaitUntil:
+    visible:
+      id: home-account
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: nav-training
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: nav-training
+- extendedWaitUntil:
+    visible:
+      id: training-screen
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: course-confirm-native-course
+    direction: DOWN
+    timeout: 20000
+- takeScreenshot: ${ARTIFACT_DIR}/product-en-training
+- scrollUntilVisible:
+    element:
+      id: training-screen-back
+    direction: UP
+    timeout: 20000
+- tapOn:
+    id: training-screen-back
+- extendedWaitUntil:
+    visible:
+      id: home-account
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: nav-finance
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: nav-finance
+- extendedWaitUntil:
+    visible:
+      id: finance-screen
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: payment-native-payment
+    direction: DOWN
+    timeout: 20000
+- takeScreenshot: ${ARTIFACT_DIR}/product-en-finance
+- scrollUntilVisible:
+    element:
+      id: finance-screen-back
+    direction: UP
+    timeout: 20000
+- tapOn:
+    id: finance-screen-back
+- extendedWaitUntil:
+    visible:
+      id: home-account
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: nav-notifications
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: nav-notifications
+- extendedWaitUntil:
+    visible:
+      id: notifications-screen
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: notification-read-native-notification
+    direction: DOWN
+    timeout: 20000
+- takeScreenshot: ${ARTIFACT_DIR}/product-en-notifications
+- scrollUntilVisible:
+    element:
+      id: notifications-screen-back
+    direction: UP
+    timeout: 20000
+- tapOn:
+    id: notifications-screen-back
+- extendedWaitUntil:
+    visible:
+      id: home-account
+    timeout: 20000
+- tapOn:
+    id: home-account
+- scrollUntilVisible:
+    element:
+      id: account-logout
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: account-logout
+- extendedWaitUntil:
+    visible:
+      id: home-login
+    timeout: 20000
+- stopApp

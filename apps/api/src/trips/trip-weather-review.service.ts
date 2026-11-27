@@ -46,19 +46,19 @@ export class TripWeatherReviewService {
     const rows = await tx.$queryRaw<TripWeatherReview[]>`SELECT *,"updatedAt"::text AS "revision" FROM "TripWeatherReview" WHERE "tripId"::text=${tripId} ORDER BY "createdAt" DESC,"id" DESC LIMIT 1`;
     return rows[0] ?? null;
   }
-  private view(review: TripWeatherReview | null, context: WeatherReviewContext | null): TripWeatherReviewView | null {
+  private async view(review: TripWeatherReview | null, context: WeatherReviewContext | null,tx:Prisma.TransactionClient=this.db): Promise<TripWeatherReviewView | null> {
     if (!review) return null;
-    const valid = Boolean(review.revision && validWeatherReview(review.snapshot, context, review.fetchedAt) && this.hash(review.snapshot) === review.snapshotHash && new Date(review.snapshot.observedAt!).getTime() === new Date(review.forecastAt).getTime());
+    const valid = Boolean(review.revision && validWeatherReview(review.snapshot, context, review.fetchedAt) && this.hash(review.snapshot) === review.snapshotHash && new Date(review.snapshot.observedAt!).getTime() === new Date(review.forecastAt).getTime() && await this.stormglass.sourceCurrent(review.snapshot,tx));
     return { ...review, storedStatus: review.status, status: valid ? review.status : 'PENDING', context, requiresRefresh: !valid, decisionToken: valid ? this.hash([review.id, review.snapshotHash, review.status, review.revision, context]) : null };
   }
   async latest(tripId: string, tx: Prisma.TransactionClient = this.db) {
     const current = await this.currentContext(tripId, tx);
-    return this.view(await this.latestPersisted(tripId, tx), current.context);
+    return this.view(await this.latestPersisted(tripId, tx), current.context,tx);
   }
   async state(tripId: string) {
     return this.db.serializable(async tx => {
       const current = await this.currentContext(tripId, tx);
-      return { trip: current.trip, location: current.location, review: this.view(await this.latestPersisted(tripId, tx), current.context) };
+      return { trip: current.trip, location: current.location, review: await this.view(await this.latestPersisted(tripId, tx), current.context,tx) };
     });
   }
 
@@ -85,7 +85,7 @@ export class TripWeatherReviewService {
       await this.lockTrip(tripId, tx);
       const current = await this.currentContext(tripId, tx);
       if (!sameWeatherContext(captured.context, current.context)) throw new ConflictException('Trip location or time changed during weather refresh; refresh the current trip again.');
-      const previous = await this.latestPersisted(tripId, tx), previousView = this.view(previous, current.context);
+      const previous = await this.latestPersisted(tripId, tx), previousView = await this.view(previous, current.context,tx);
       let review: TripWeatherReview;
       if (previous && previous.snapshotHash === snapshotHash && !previousView?.requiresRefresh) {
         const rows = await tx.$queryRaw<TripWeatherReview[]>`UPDATE "TripWeatherReview" SET "provider"=${snapshot.provider ?? 'STORMGLASS'},"forecastAt"=${forecastAt},"fetchedAt"=${fetchedAt},"snapshot"=${JSON.stringify(snapshot)}::jsonb,"updatedAt"=GREATEST(clock_timestamp(),"updatedAt"+interval '1 microsecond') WHERE "id"::text=${previous.id} RETURNING *,"updatedAt"::text AS "revision"`;
@@ -95,7 +95,7 @@ export class TripWeatherReviewService {
         review = rows[0];
       }
       await this.audit.record({ actorId: actorAccountId, action: 'TRIP_WEATHER_REFRESHED', resource: 'TripWeatherReview', resourceId: review.id, metadata: { actorAccountId, tripId, provider: review.provider, forecastAt: review.forecastAt, status: review.status, snapshotChanged: !previous || previous.snapshotHash !== snapshotHash } }, tx);
-      return { trip: current.trip, location: current.location, review: this.view(review, current.context) };
+      return { trip: current.trip, location: current.location, review: await this.view(review, current.context,tx) };
     });
   }
 
@@ -108,13 +108,13 @@ export class TripWeatherReviewService {
     return this.db.serializable(async tx => {
       await this.lockTrip(tripId, tx);
       if (!await tx.roleAssignment.findFirst({ where: { accountId: actorAccountId, role: 'ADMIN', status: 'ACTIVE', account: { status: 'ACTIVE' } }, select: { id: true } })) throw new ForbiddenException('Active weather review authority required.');
-      const current = await this.currentContext(tripId, tx), persisted = await this.latestPersisted(tripId, tx), preview = this.view(persisted, current.context);
+      const current = await this.currentContext(tripId, tx), persisted = await this.latestPersisted(tripId, tx), preview = await this.view(persisted, current.context,tx);
       if (!persisted || !preview || preview.requiresRefresh || preview.decisionToken !== input.expectedReview) throw new ConflictException('Weather review or trip context changed; refresh and review the current forecast.');
       const rows = await tx.$queryRaw<TripWeatherReview[]>`UPDATE "TripWeatherReview" SET "status"=${status},"notes"=${notes},"reviewedByAccountId"=(SELECT a."id" FROM "Account" a WHERE a."id"::text=${actorAccountId} LIMIT 1),"reviewedAt"=clock_timestamp(),"updatedAt"=GREATEST(clock_timestamp(),"updatedAt"+interval '1 microsecond') WHERE "id"::text=${persisted.id} AND "snapshotHash"=${persisted.snapshotHash} AND "updatedAt"=${persisted.revision}::timestamptz RETURNING *,"updatedAt"::text AS "revision"`;
       const review = rows[0];
       if (!review) throw new ConflictException('Weather review changed; reload before recording a decision.');
       await this.audit.record({ actorId: actorAccountId, action: `TRIP_WEATHER_${status}`, resource: 'TripWeatherReview', resourceId: review.id, metadata: { actorAccountId, tripId, provider: review.provider, forecastAt: review.forecastAt, snapshotHash: review.snapshotHash, previousStatus: persisted.status, notes } }, tx);
-      return { trip: current.trip, location: current.location, review: this.view(review, current.context) };
+      return { trip: current.trip, location: current.location, review: await this.view(review, current.context,tx) };
     });
   }
 }

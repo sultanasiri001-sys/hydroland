@@ -35,7 +35,7 @@ jobs:
           node-version: 22
       - run: npm ci --workspace=@hydroland/mobile --include-workspace-root=false
       - name: Validate native identities and release configuration
-        run: node --test apps/mobile/scripts/native-config.test.mjs
+        run: node --test apps/mobile/scripts/native-config.test.mjs apps/mobile/scripts/native-signature.test.mjs
       - run: npm --workspace @hydroland/mobile run test
       - run: npm --workspace @hydroland/mobile run typecheck
       - run: npm --workspace @hydroland/mobile run build
@@ -86,18 +86,25 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
             node apps/mobile/scripts/native-acceptance.mjs install android
-            maestro test --format junit --output apps/mobile/native-artifacts/android/junit.xml -e ARTIFACT_DIR="$PWD/apps/mobile/native-artifacts/android" apps/mobile/.maestro/native-smoke.yaml
-            node apps/mobile/scripts/native-acceptance.mjs record-tests android
-      - name: Retain native Android packages, screenshots and source receipts
+            bash apps/mobile/scripts/run-native-ui.sh android
+      - name: Retain native Android screenshots and source receipts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: native-android-acceptance
+          name: native-android-acceptance-evidence
           path: |
             apps/mobile/native-artifacts/android/*.json
             apps/mobile/native-artifacts/android/*.xml
             apps/mobile/native-artifacts/android/*.txt
             apps/mobile/native-artifacts/android/*.png
+          if-no-files-found: error
+          retention-days: 14
+      - name: Retain compiled Android acceptance packages
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-android-packages
+          path: |
             apps/mobile/android/app/build/outputs/apk/release/*.apk
             apps/mobile/android/app/build/outputs/bundle/release/*.aab
           if-no-files-found: error
@@ -108,6 +115,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 60
     env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
       CI: '1'
       EXPO_NO_TELEMETRY: '1'
       HYDROLAND_BUILD_PROFILE: acceptance
@@ -128,6 +136,11 @@ jobs:
           distribution: temurin
           java-version: '17'
       - run: npm ci --ignore-scripts
+      - name: Verify Xcode and Swift toolchain required by Expo native modules
+        run: |
+          test -d "$DEVELOPER_DIR"
+          xcodebuild -version
+          xcrun swift --version
       - name: Generate isolated native iOS project
         run: node apps/mobile/scripts/native-acceptance.mjs prepare ios
       - name: Compile the actual iOS simulator application
@@ -136,20 +149,25 @@ jobs:
         run: bash apps/mobile/scripts/install-maestro.sh
       - name: Install native application on an available iPhone simulator
         run: node apps/mobile/scripts/native-acceptance.mjs install ios
-      - name: Exercise native guest UI and encrypted-storage capabilities
-        run: |
-          maestro --device "$HYDROLAND_SIMULATOR_ID" test --format junit --output apps/mobile/native-artifacts/ios/junit.xml -e ARTIFACT_DIR="$PWD/apps/mobile/native-artifacts/ios" apps/mobile/.maestro/native-smoke.yaml
-          node apps/mobile/scripts/native-acceptance.mjs record-tests ios
-      - name: Retain native iOS application, screenshots and source receipts
+      - name: Exercise native UI, seven product journeys and encrypted storage
+        run: bash apps/mobile/scripts/run-native-ui.sh ios
+      - name: Retain native iOS screenshots and source receipts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: native-ios-acceptance
+          name: native-ios-acceptance-evidence
           path: |
             apps/mobile/native-artifacts/ios/*.json
             apps/mobile/native-artifacts/ios/*.xml
             apps/mobile/native-artifacts/ios/*.txt
             apps/mobile/native-artifacts/ios/*.png
-            apps/mobile/native-artifacts/ios/*.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+      - name: Retain compiled iOS simulator application
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-ios-simulator-application
+          path: apps/mobile/native-artifacts/ios/*.tar.gz
           if-no-files-found: error
           retention-days: 14

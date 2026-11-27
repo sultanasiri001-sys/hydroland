@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createHash } from 'node:crypto';
+import { createHash, X509Certificate } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { verifyAcceptanceCertificate } from './native-signature.mjs';
 
 const mobile = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const root = path.resolve(mobile, '../..');
@@ -63,15 +64,17 @@ if (operation === 'prepare') {
   assert(toolDir);
   const signature = run(path.join(toolDir, 'apksigner'), ['verify', '--verbose', '--print-certs', apk], { capture: true });
   const manifest = run(path.join(toolDir, 'aapt2'), ['dump', 'badging', apk], { capture: true });
-  assert(manifest.includes("package: name='com.hydroland.acceptance'"), 'Unexpected package identity.');
-  assert(manifest.includes("native-code: 'x86_64'"), 'The APK must contain the emulator ABI.');
-  assert(/Signer #1 certificate SHA-256 digest:/i.test(signature), 'No verified signing certificate.');
-  assert(/Android Debug/i.test(signature), 'Acceptance APK must use the generated test certificate.');
   fs.writeFileSync(path.join(artifacts, platform, 'apk-signature.txt'), signature + '\n');
   fs.writeFileSync(path.join(artifacts, platform, 'apk-manifest.txt'), manifest + '\n');
-  write('build.json', { ...read('source.json'), built: true, artifacts: [outputFile(apk), outputFile(bundle)], signing: 'generated Android debug certificate; not an owner upload key' });
+  assert(manifest.includes("package: name='com.hydroland.acceptance'"), 'Unexpected package identity.');
+  assert(manifest.includes("native-code: 'x86_64'"), 'The APK must contain the emulator ABI.');
+  const certificate = new X509Certificate(run('keytool', ['-exportcert', '-rfc', '-keystore', path.join(mobile, 'android/app/debug.keystore'), '-alias', 'androiddebugkey', '-storepass', 'android'], { capture: true }));
+  assert.match(certificate.subject, /CN=Android Debug/, 'Acceptance keystore must contain the generated QA certificate.');
+  const signingCertificateSha256 = verifyAcceptanceCertificate(signature, createHash('sha256').update(certificate.raw).digest('hex'));
+  write('build.json', { ...read('source.json'), built: true, artifacts: [outputFile(apk), outputFile(bundle)], signingCertificateSha256, signing: 'generated Android debug certificate; not an owner upload key' });
 } else if (operation === 'build' && platform === 'ios') {
   assert.equal(process.platform, 'darwin', 'An actual macOS/Xcode runner is required.');
+  const toolchain = { xcode: run('xcodebuild', ['-version'], { capture: true }), swift: run('xcrun', ['swift', '--version'], { capture: true }) };
   run('pod', ['install'], { cwd: path.join(mobile, 'ios') });
   const workspace = fs.readdirSync(path.join(mobile, 'ios')).filter(name => name.endsWith('.xcworkspace'));
   assert.equal(workspace.length, 1, 'Expected one generated Xcode workspace.');
@@ -95,7 +98,7 @@ if (operation === 'prepare') {
   const architectures = run('lipo', ['-archs', path.join(app, executable)], { capture: true });
   const archive = path.join(artifacts, platform, 'hydroland-ios-simulator.app.tar.gz');
   run('tar', ['-czf', archive, '-C', products, apps[0]]);
-  write('build.json', { ...read('source.json'), built: true, app: path.relative(mobile, app), architectures, artifacts: [outputFile(archive)], signing: 'unsigned iOS simulator application; no device profile or App Store signature' });
+  write('build.json', { ...read('source.json'), built: true, app: path.relative(mobile, app), architectures, toolchain, artifacts: [outputFile(archive)], signing: 'unsigned iOS simulator application; no device profile or App Store signature' });
 } else if (operation === 'install' && platform === 'android') {
   run('adb', ['install', '-r', path.join(mobile, 'android/app/build/outputs/apk/release/app-release.apk')]);
   const apkPath = run('adb', ['shell', 'pm', 'path', 'com.hydroland.acceptance'], { capture: true });
@@ -134,9 +137,10 @@ if (operation === 'prepare') {
     }
   };
   walk(result);
-  assert(cases.length > 0, 'No native UI test cases ran.');
+  assert(cases.length >= 2, 'Both native capability and product journey flows must run.');
   assert(cases.every(test => !test.failure && !test.error && !test.skipped), 'Native UI test failed or was skipped.');
-  const screenshots = ['home.png', 'login-validation.png', 'native-capabilities.png'].map(name => {
+  const productScreens = ['ar', 'en'].flatMap(locale => ['account', 'credentials', 'trips', 'bookings', 'training', 'finance', 'notifications'].map(screen => 'product-' + locale + '-' + screen + '.png'));
+  const screenshots = ['home.png', 'login-validation.png', 'native-capabilities.png', ...productScreens].map(name => {
     const filename = path.join(artifacts, platform, name);
     assert(fs.existsSync(filename) && fs.statSync(filename).size > 1000, 'Missing native screenshot: ' + name);
     return outputFile(filename);
@@ -149,7 +153,7 @@ if (operation === 'prepare') {
     ...build, installation, screenshots, nativeUiTestsPassed: cases.length,
     tests: cases.map(test => test.$), completedAt: new Date().toISOString(),
     physicalDeviceAcceptance: false, productionSigningVerified: false, storeSubmissionApproved: false,
-    scope: 'native compilation, QA package identity/signature, virtual-device installation, guest UI, real native AES/SecureStore/filesystem capability fixture',
+    scope: 'native compilation, QA package identity/signature, virtual-device installation, guest UI, seven actual product screens in Arabic/English with isolated synthetic HTTP, real native AES/SecureStore/filesystem capability fixture',
   });
   console.log(JSON.stringify({ platform, commit: build.commit, nativeUiTestsPassed: cases.length, screenshots: screenshots.length, physicalDeviceAcceptance: false }));
 }

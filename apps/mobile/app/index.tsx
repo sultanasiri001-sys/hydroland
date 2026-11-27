@@ -1,5 +1,19 @@
-import {PushRegistrationButton} from '../src/push-registration-button';
-import {Link} from 'expo-router';import {SafeAreaView,ScrollView,StyleSheet,Text,View} from 'react-native';
-const portals=['الغواص','محترفو الغوص','مراكز الغوص','الوسائط البحرية','الشركات والجهات الحكومية'];
-export default function Home(){return <SafeAreaView style={s.safe}><ScrollView contentContainerStyle={s.page}><Text style={s.brand}>HYDROLAND</Text><Text style={s.title}>منصتك الذكية للغوص والأنشطة البحرية</Text><Text style={s.sub}>تجربة جوال عربية أولاً، مع فصل واضح بين الاستكشاف والعمليات المحمية.</Text><View style={s.card}><Text style={s.cardTitle}>استكشف</Text>{portals.map(x=><Text key={x} style={s.item}>• {x}</Text>)}</View><Link href="/login" testID="home-login" style={s.cta}>تسجيل الدخول</Link><Link href="/trip-day" style={s.cta}>وضع يوم الرحلة</Link><PushRegistrationButton/></ScrollView></SafeAreaView>}
-const s=StyleSheet.create({safe:{flex:1,backgroundColor:'#061826'},page:{padding:24,gap:18},brand:{color:'#44d7e8',fontWeight:'800',letterSpacing:2,fontSize:18},title:{color:'white',fontWeight:'800',fontSize:30,textAlign:'right'},sub:{color:'#b9cbd4',fontSize:16,lineHeight:25,textAlign:'right'},card:{borderWidth:1,borderColor:'#17465b',backgroundColor:'#0b2534',borderRadius:24,padding:20,gap:12},cardTitle:{color:'white',fontSize:20,fontWeight:'700',textAlign:'right'},item:{color:'#d7e7ed',fontSize:16,textAlign:'right'},cta:{backgroundColor:'#0d8fa4',color:'white',padding:16,borderRadius:18,textAlign:'center',fontWeight:'800',fontSize:17}});
+import {router} from 'expo-router';
+import {useProduct} from '../src/product-context';
+import {destinations} from '../src/product-model';
+import {Button, Card, Paragraph, Screen} from '../src/product-ui';
+
+export default function Home() {
+  const {profile, t} = useProduct();
+  return <Screen testID="home-screen" back={false} title={t('منصتك الذكية للغوص والأنشطة البحرية', 'Your diving and marine activities companion')} subtitle={t('خطط لرحلتك، تابع تدريبك، واحتفظ بسجلاتك في مكان واحد.', 'Plan your trip, follow your training and keep your records together.')}>
+    <Card title={profile ? t('أهلًا ' + profile.person.firstName, 'Hello ' + profile.person.firstName) : t('ابدأ رحلتك', 'Start your journey')}>
+      <Paragraph muted>{profile ? profile.email : t('يمكنك استكشاف الرحلات والدورات، ثم تسجيل الدخول للحجز ومتابعة حسابك.', 'Explore trips and courses, then sign in to book and follow your account.')}</Paragraph>
+      {!profile ? <Button testID="home-login" label={t('تسجيل الدخول أو إنشاء حساب', 'Sign in or create an account')} onPress={() => router.push('/login')}/> : <Button testID="home-account" label={t('إدارة الحساب', 'Manage account')} onPress={() => router.push('/account' as never)}/>}
+    </Card>
+    {destinations.map(destination => <Card key={destination.key}>
+      <Button testID={'nav-' + destination.key} label={t(destination.ar, destination.en)} onPress={() => router.push(destination.path as never)}/>
+      <Paragraph muted>{t(destination.hintAr, destination.hintEn)}</Paragraph>
+    </Card>)}
+    <Button testID="nav-trip-day" label={t('وضع يوم الرحلة', 'Trip day mode')} kind="quiet" onPress={() => router.push('/trip-day')}/>
+  </Screen>;
+}

@@ -3,6 +3,8 @@ const json=(route,body,status=200)=>route.fulfill({status,contentType:'applicati
 async function fixture(page,{active=true,admin=false}={}){
  const profile={id:'community-member',email:'member@example.invalid',status:'ACTIVE',roleAssignments:admin?[{role:'ADMIN',status:'ACTIVE'}]:[],person:{firstName:'Synthetic',lastName:'Member'}};
  const control={profile,active,posts:[],mine:[],events:[{id:'event-1',title:'Synthetic coast activity',description:'Isolated browser fixture',locationName:'Fixture coast',startsAt:'2030-01-01T09:00:00Z'}],volunteers:{approvedMinutes:45,registrations:[{id:'volunteer-1',event:{title:'Registered activity'},status:'REGISTERED'}]},engagements:[{id:'engagement-1',subject:'Private advice fixture',status:'OPEN'}],calls:[],denySave:false,holdMine:null,denyMine:false};
+ await page.route(/\/api\/v1\//,route=>json(route,{message:'Isolated unmatched fixture request'},404));
+ await page.route(/\/api\/v1\/(?:dive-logs|customer-service\/cases\/mine)$/,route=>json(route,[]));
  await page.route(/\/api\/v1\/me$/,r=>json(r,profile));await page.route(/\/api\/v1\/credentials$/,r=>json(r,[]));await page.route(/\/api\/v1\/me\/diver-profile$/,r=>json(r,{profile:null,equipment:[]}));
  await page.route(/\/api\/v1\/community\/.*/,async route=>{
    const req=route.request(),path=new URL(req.url()).pathname.split('/community/')[1],method=req.method();const body=method==='GET'?undefined:req.postDataJSON();control.calls.push({path,method,body});
@@ -28,7 +30,9 @@ async function fixture(page,{active=true,admin=false}={}){
  });
  await page.goto('/');await page.waitForFunction(()=>window.HydrolandCommunity&&window.HydrolandAuth&&window.HydrolandProfile);
  await page.evaluate(async()=>{sessionStorage.setItem('hl-access-token','community-fixture-token');sessionStorage.setItem('hl-refresh-token','community-fixture-refresh');window.HydrolandAuth.syncAuthUi();document.dispatchEvent(new CustomEvent('hydroland:auth-changed'));await window.HydrolandProfile.load()});
- await page.locator('.sidebar a[href="#community"]').click();
+ const communityEntry=page.locator('.sidebar a[href="#community"]');
+ if(!await communityEntry.isVisible())await page.locator('#menu').click();
+ await communityEntry.click();
  const root=page.locator('.hl-community');await expect(root).toBeVisible();await expect(root).toContainText(active?'سياسة اصطناعية':'يلزم اعتماد');return{control,root};
 }
 
@@ -55,3 +59,58 @@ test('authority loss and delayed responses cannot restore old community data',as
  await page.evaluate(()=>{window.HydrolandProfileData.profile.roleAssignments=[];document.dispatchEvent(new CustomEvent('hydroland:profile-data-ready'))});await expect(root).not.toContainText('Secret previous account post');await expect(root).not.toContainText('Held evidence content');release();await page.waitForTimeout(150);await expect(root).not.toContainText('Secret previous account post');
  await page.evaluate(()=>document.dispatchEvent(new CustomEvent('hydroland:session-cleared')));await expect(root).not.toContainText('Private body');
 });
+
+// D10: actual responsive composition of the current community UI. The API
+// boundary is an isolated browser fixture, not a live policy or customer record.
+for(const width of [320,1024])for(const language of ['ar','en'])for(const active of [true,false]){
+ test('D10 community '+language+' '+width+'px policy '+(active?'active':'suspended')+' stays usable',async({page},testInfo)=>{
+  await page.setViewportSize({width,height:900});
+  const {control,root}=await fixture(page,{active});
+  const title='منشور تجريبي لاختبار عرض الواجهة على الشاشات المختلفة';
+  const body='بيانات اصطناعية للمراجعة البصرية فقط. '+'REFERENCE'.repeat(18);
+  control.mine=[{id:'post-1',title,body,status:'PENDING_REVIEW',updatedAt:'2026-11-27T10:00:00.000Z'}];
+  control.posts=[{id:'published-visual',title,body,status:'PUBLISHED',publishedAt:'2026-11-27T10:00:00.000Z'}];
+  await page.evaluate(()=>window.HydrolandCommunity.reload());
+  await page.evaluate(value=>window.HydrolandI18n.setLocale(value),language);
+  await expect(page.locator('html')).toHaveAttribute('dir',language==='ar'?'rtl':'ltr');
+  await expect(root).toContainText(title);
+  if(active){
+   const form=root.locator('[data-community-form=post]');
+   await form.locator('[name=title]').fill(title);
+   await form.locator('[name=body]').fill(body);
+   await form.locator('button[type=submit]').click();
+   await expect.poll(()=>control.calls.filter(call=>call.path==='posts'&&call.method==='POST').length).toBe(1);
+   await expect(root.locator('[data-community-status]')).toHaveText(language==='en'?'Action completed.':'تم تنفيذ الإجراء.');
+   await expect(root.locator('[data-community-mine]')).toContainText(title);
+   const postGeometry=await root.locator('[data-community-mine] strong').evaluate(node=>({titleBottom:node.getBoundingClientRect().bottom,statusTop:node.nextElementSibling.getBoundingClientRect().top}));
+   expect(postGeometry.statusTop).toBeGreaterThanOrEqual(postGeometry.titleBottom);
+  }else{
+   await expect(root.locator('[data-community-form=post]')).toHaveCount(0);
+   await expect(root.locator('[data-community-action=withdraw]')).toBeVisible();
+   await expect(root.locator('[data-community-action=cancel-volunteer]')).toBeVisible();
+  }
+  await page.evaluate(()=>window.scrollTo(0,0));
+  await page.screenshot({path:testInfo.outputPath('community-'+language+'-'+width+'-'+(active?'active':'suspended')+'.png'),fullPage:true});
+  await root.screenshot({path:testInfo.outputPath('community-section-'+language+'-'+width+'-'+(active?'active':'suspended')+'.png')});
+  const geometry=await root.evaluate(section=>{
+   const viewport=document.documentElement.clientWidth;
+   return {
+    viewport,scroll:document.documentElement.scrollWidth,
+    overflow:[...document.querySelectorAll('body *')].filter(node=>{
+     const rect=node.getBoundingClientRect();
+     return node.getClientRects().length&&rect.width&&getComputedStyle(node).visibility!=='hidden'&& !node.closest('.sidebar')&& (rect.left < -1||rect.right>viewport+1);
+    }).slice(0,12).map(node=>({tag:node.tagName,id:node.id,className:node.className,left:node.getBoundingClientRect().left,right:node.getBoundingClientRect().right})),
+    controls:[...section.querySelectorAll('button,input,textarea,select')].filter(node=>node.getClientRects().length).map(node=>{
+     const rect=node.getBoundingClientRect();
+     return {name:node.getAttribute('name')||node.textContent,left:rect.left,right:rect.right,width:rect.width};
+    }),
+   };
+  });
+  expect(geometry.scroll,JSON.stringify(geometry)).toBeLessThanOrEqual(geometry.viewport+1);
+  for(const control of geometry.controls){
+   expect(control.left,JSON.stringify(control)).toBeGreaterThanOrEqual(-1);
+   expect(control.right,JSON.stringify(control)).toBeLessThanOrEqual(geometry.viewport+1);
+   expect(control.width,JSON.stringify(control)).toBeGreaterThan(20);
+  }
+ });
+}

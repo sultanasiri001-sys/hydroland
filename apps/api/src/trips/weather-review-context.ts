@@ -1,4 +1,5 @@
 import type { WeatherSnapshot } from './weather-gate.service';
+import { publicProvenance } from '../integrations/provider-read-policy';
 
 export const FORECAST_WINDOW_MS = 3_600_000;
 export type WeatherReviewContext = {
@@ -36,8 +37,13 @@ export function validWeatherReview(snapshot: WeatherSnapshot | null | undefined,
   if (!snapshot || !context || !sameWeatherContext(snapshot.forecastContext, context) || !hasWeatherMeasurements(snapshot)) return false;
   const target = date(context.startsAt), observed = date(snapshot.observedAt), fetched = date(fetchedAt);
   if (![target, observed, fetched].every(Number.isFinite) || fetched > now) return false;
+  if(snapshot.provenance){
+    const p=snapshot.provenance;
+    if(p.version!==1||p.purpose!=='INFORMATION_ONLY'||p.automaticSafetyPermission!==false||!Number.isSafeInteger(p.maxDataAgeSeconds)||p.maxDataAgeSeconds<1||p.maxDataAgeSeconds>86400||!Number.isFinite(date(p.validUntil))||date(p.validUntil)<=now||now-fetched>=p.maxDataAgeSeconds*1000)return false;
+  }
   const window = forecastWindow(target);
-  // This is the provider's existing requested trip window, not an invented age TTL.
+  // Trip window and source-approved fetch age are separate. Never infer an
+  // operating TTL from the forecast time; provenance carries the approved age.
   // A future forecast is valid; only a future fetch-record timestamp is invalid.
   return observed >= window.start && observed <= window.end;
 }
@@ -46,4 +52,12 @@ export function canonicalWeatherJson(value: unknown): string {
   if (Array.isArray(value)) return '[' + value.map(canonicalWeatherJson).join(',') + ']';
   if (value && typeof value === 'object') return '{' + Object.entries(value).filter(([, v]) => v !== undefined).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => JSON.stringify(k) + ':' + canonicalWeatherJson(v)).join(',') + '}';
   return JSON.stringify(value) ?? 'null';
+}
+
+/** Native approval document identities stay in authorized operational views. */
+export function publicWeatherSnapshot(snapshot:WeatherSnapshot|null|undefined){
+  if(!snapshot)return null;
+  const {provenance,...measurements}=snapshot;
+  if(!provenance)return measurements;
+  return {...measurements,provenance:publicProvenance(provenance)};
 }

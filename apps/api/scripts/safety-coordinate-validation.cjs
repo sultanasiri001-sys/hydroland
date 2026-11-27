@@ -23,7 +23,8 @@ const rejects = async (fn, expected) => { await assert.rejects(fn, status(expect
   }
 
   const ais = new MarineTrafficAisService({});
-  const parse = row => ais.position([row], '123456789');
+  const source={documentId:'offline-doc',version:1,sourceHash:'a'.repeat(64),policyHash:'b'.repeat(64),policy:{attribution:'Isolated technical fixture',validUntil:new Date(Date.now()+3600000).toISOString(),maxDataAgeSeconds:300,allowedAisDataSources:['TER']}};
+  const parse = row => ais.position([{TIMESTAMP:new Date().toISOString(),DSRC:'TER',...row}], '123456789',undefined,source);
   for (const value of bad) {
     check(() => assert.throws(() => parse({ MMSI: '123456789', LAT: value, LON: 42.5 }), status(503)));
     check(() => assert.throws(() => parse({ MMSI: '123456789', LAT: 18.2, LON: value }), status(503)));

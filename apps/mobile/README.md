@@ -13,7 +13,7 @@ Google services credentials. Test data and the capability probe belong only to
 the isolated QA build.
 
 The workflow uses Node 22, the committed npm lockfile, JDK 17, the generated
-Android SDK requirements and macOS/Xcode for iOS. Before native compilation:
+Android SDK requirements and macOS/Xcode 26.2 (including Swift 6.2) for iOS. Before native compilation:
 
 ```sh
 npm ci --ignore-scripts
@@ -37,15 +37,29 @@ iOS produces an actual unsigned simulator `.app` archive; this does not imply an
 iPhone provisioning profile, an IPA or App Store signing.
 
 Maestro is downloaded from its official release with a pinned SHA-256 digest.
-The workflow installs the application, exercises the guest UI and executes real
-native AES-256-GCM, authenticated-data, SecureStore and encrypted-file operations.
+The workflow installs the application and runs two independent Maestro flows.
+The first exercises the guest UI and real native AES-256-GCM, authenticated-data,
+SecureStore and encrypted-file operations.
 Ciphertext alteration and a different authenticated scope must be rejected.
 The probe deletes its synthetic key and file in a `finally` block.
 
+The second opens the seven actual product screens (account, credentials, trips,
+bookings, training, finance and notifications), waits for their loaded records,
+and captures each in Arabic and English. A loopback-only HTTP fixture supplies
+explicitly synthetic records and blocks business mutations. It is not imported
+by the product or the API. These checks establish native navigation/rendering;
+the separate D05 real-React and actual Nest/PostgreSQL suites establish actions
+and server contracts. No real booking, charge, notification delivery or provider
+approval is created by the virtual-device flow.
+
 The artifact `acceptance.json` is produced only after successful compilation,
-installation and a non-empty JUnit result with no failed or skipped cases.
-Package hashes, source commit/tree, dependency versions, native environment and
-screenshots are retained as workflow artifacts for 14 days. Inspect the actual
+installation, both passing JUnit flows with no failed or skipped cases, and all
+17 required screenshots (three guest/capability images and 14 bilingual product
+images). Package hashes, source commit/tree, dependency versions, native environment and
+screenshots are retained as workflow artifacts for 14 days. Small evidence
+bundles (`native-android-acceptance-evidence` and
+`native-ios-acceptance-evidence`) are separate from the compiled Android packages
+and iOS simulator application. Inspect the actual
 workflow result; the existence of this runbook is not execution evidence.
 
 ## Production build configuration

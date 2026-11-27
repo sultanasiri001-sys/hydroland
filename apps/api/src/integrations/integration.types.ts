@@ -53,6 +53,13 @@ export interface MapsPublicConfigPayload {
   enabled:boolean;
   styleUrl:string|null;
   attribution:string|null;
+  reason:string|null;
+  validUntil:string|null;
+  allowedOrigins:string[];
+  maxResourcesPerView:number;
+  providerVerified:false;
+  automaticSafetyPermission:false;
+  purpose:'INFORMATION_ONLY';
 }
 
 export interface WeatherPublicConfigPayload {
@@ -60,4 +67,10 @@ export interface WeatherPublicConfigPayload {
   provider:'STORMGLASS';
   configured:boolean;
   sandbox:boolean;
+  reason:string|null;
+  attribution:string|null;
+  validUntil:string|null;
+  providerVerified:false;
+  automaticSafetyPermission:false;
+  purpose:'INFORMATION_ONLY';
 }

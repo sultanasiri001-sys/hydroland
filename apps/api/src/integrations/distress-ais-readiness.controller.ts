@@ -10,16 +10,18 @@ export class DistressAisReadinessController {
   constructor(private readonly integrations:IntegrationService){}
 
   @Get('distress-ais')
-  getDistressAisReadiness():DistressAisReadinessPayload{
+  async getDistressAisReadiness():Promise<DistressAisReadinessPayload>{
     const integration=this.integrations.status('DISTRESS_AIS');
     const provider=process.env.HYDROLAND_DISTRESS_AIS_PROVIDER?.trim().toUpperCase()||'';
+    const source=await this.integrations.sourceReadiness('DISTRESS_AIS');
     const checks={
       lifecycleOperational:integration.status==='PRODUCTION_ENABLED'||integration.status==='SANDBOX',
       aisProviderConfigured:provider==='MARINETRAFFIC_AIS_ONLY',
-      aisCredentialsConfigured:Boolean(process.env.MARINETRAFFIC_API_KEY?.trim()),
+      aisCredentialsConfigured:/^[0-9a-f]{40}$/i.test(process.env.MARINETRAFFIC_API_KEY?.trim()||''),
+      currentNativeSourceApproved:source.ready,
       distressProviderConfigured:false,
     };
-    const aisReady=checks.lifecycleOperational&&checks.aisProviderConfigured&&checks.aisCredentialsConfigured;
+    const aisReady=checks.lifecycleOperational&&checks.aisProviderConfigured&&checks.aisCredentialsConfigured&&checks.currentNativeSourceApproved;
     return{
       service:'hydroland-api',
       integration:'DISTRESS_AIS',
