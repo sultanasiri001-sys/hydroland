@@ -12,7 +12,7 @@ const { REQUIRED_MARINE_DOCUMENTS } = require('../dist/marine-operations/marine-
 const start = new Date('2080-06-15T06:00:00Z'), end = new Date('2080-06-15T07:00:00Z');
 let checks = 0;
 global.fetch = () => { throw Error('Provider/network calls forbidden'); };
-function fixture({ state = 'ENABLED', safety = 'ALLOWED', regulatory = 'APPROVED', failAt, terminal = false } = {}) {
+function fixture({ state = 'ENABLED', safety = 'ALLOWED', regulatory = 'APPROVED', maintenance = false, missingMaintenanceSchema = false, failAt, terminal = false } = {}) {
   const reads = [], snapshots = [], grants = [], failure = new Error('Injected ' + failAt);
   let rootReads = 0;
   const hit = name => { reads.push(name); if (name === failAt) throw failure; };
@@ -24,7 +24,7 @@ function fixture({ state = 'ENABLED', safety = 'ALLOWED', regulatory = 'APPROVED
       findMany: async args => { hit('trips'); assert.equal(args.where.id, 'trip'); return [trip]; },
     },
     $queryRaw: async (strings, ...values) => {
-      const sql = strings.join('');
+      const sql = Array.isArray(strings) ? strings.join('') : strings.sql;
       if (sql.includes('GREATEST')) { hit('revision'); return [{ changedAt: start }]; }
       if (sql.includes('PolicyControl')) { hit('policy:' + values[1]); return [{ state: values[0] === 'WEATHER' ? 'DISABLED' : state }]; }
       if (sql.includes('OperationalSetting')) { hit('weather-setting'); return []; }
@@ -32,6 +32,8 @@ function fixture({ state = 'ENABLED', safety = 'ALLOWED', regulatory = 'APPROVED
       if (sql.includes('CalendarAllocation')) { hit('allocations'); return allocations; }
       if (sql.includes('BoatResourceCompliance')) { hit('boat-proof'); return [{ resourceId: 'BOAT', registrationNumber: 'fixture', registrationStatus: 'VERIFIED', navigationLicenseNumber: 'fixture', navigationLicenseExpiresAt: end, safetyCertificateExpiresAt: end, passengerLimit: 2 }]; }
       if (sql.includes('EquipmentInspection')) { hit('equipment-proof'); return [{ resourceId: 'EQUIPMENT', status: 'PASS', serviceExpiresAt: end }]; }
+      if (sql.includes('to_regclass') && sql.includes('MaintenanceWorkOrder')) { hit('maintenance-schema'); return [{ absent: missingMaintenanceSchema }]; }
+      if (sql.includes('MaintenanceWorkOrder')) { hit('maintenance-proof'); return maintenance ? [{ resourceId: 'EQUIPMENT' }] : []; }
       if (sql.includes('TripComplianceReview')) { hit('trip-proof'); return [{ regulatoryStatus: regulatory, permitStatus: 'APPROVED' }]; }
       if (sql.includes('TripOperationalLocation') || sql.includes('TripWeatherReview')) { hit('weather-proof'); return []; }
       throw Error('Unexpected query: ' + sql);
@@ -83,24 +85,30 @@ function statusFixture({ state = 'ENABLED', invalidSource = false, changedAt = s
   for (const state of ['ENABLED', 'REVIEW', 'DISABLED']) {
     const f = fixture({ state }), r = await f.clearance.grant('reviewer', 'trip', 'Documented test review reason');
     assert.equal(r.clearance, 'GRANTED'); assert.equal(r.readiness.status, 'READY'); assert.equal(f.grants.length, 1); assert.equal(f.snapshots.length, 1); assert.equal(f.rootReads(), 0);
-    for (const name of ['trip', 'trips', 'weather-setting', 'weather-proof', 'policy:REGISTRATION', 'policy:INSPECTION_STATUS', 'policy:PERMIT_REQUIRED', 'marine-proof', 'marine-snapshot', 'boat-proof', 'equipment-proof', 'trip-proof', 'audit']) assert(f.reads.includes(name), name);
+    for (const name of ['trip', 'trips', 'weather-setting', 'weather-proof', 'policy:REGISTRATION', 'policy:INSPECTION_STATUS', 'policy:PERMIT_REQUIRED', 'marine-proof', 'marine-snapshot', 'boat-proof', 'equipment-proof', 'maintenance-schema', 'maintenance-proof', 'trip-proof', 'audit']) assert(f.reads.includes(name), name);
     checks++;
-    for (const options of [{ safety: 'DEFERRED' }, { regulatory: 'REJECTED' }]) {
+    for (const options of [{ safety: 'DEFERRED' }, { regulatory: 'REJECTED' }, { maintenance: true }]) {
       const blocked = fixture({ state, ...options });
       await assert.rejects(() => blocked.clearance.grant('reviewer', 'trip'), e => e.getStatus() === 409);
       assert.equal(blocked.grants.length, 0); assert.equal(blocked.snapshots.length, 0); assert.equal(blocked.rootReads(), 0); checks++;
     }
   }
-  for (const failAt of ['boat-proof', 'equipment-proof', 'trip-proof', 'marine-snapshot', 'audit']) {
+  for (const failAt of ['boat-proof', 'equipment-proof', 'maintenance-schema', 'maintenance-proof', 'trip-proof', 'marine-snapshot', 'audit']) {
     const f = fixture({ failAt }); await assert.rejects(() => f.clearance.grant('reviewer', 'trip'), e => e === f.failure);
     assert.equal(f.grants.length, 0); assert.equal(f.snapshots.length, 0); assert.equal(f.rootReads(), 0); checks++;
   }
   // A previously valid event/revision cannot hide a newly expired/blocked check.
   for (const method of ['assertCurrent', 'assertReadinessUnchanged']) {
-    const blocked = fixture({ state: 'DISABLED', regulatory: 'REJECTED' });
-    await assert.rejects(() => blocked.clearance[method]('trip', method === 'assertCurrent' ? 'prior' : start, blocked.tx), e => e.getStatus() === 409); checks++;
+    for (const options of [{ regulatory: 'REJECTED' }, { maintenance: true }]) {
+      const blocked = fixture({ state: 'DISABLED', ...options });
+      await assert.rejects(() => blocked.clearance[method]('trip', method === 'assertCurrent' ? 'prior' : start, blocked.tx), e => e.getStatus() === 409); assert.equal(blocked.rootReads(), 0); checks++;
+    }
     const valid = fixture(); await valid.clearance[method]('trip', method === 'assertCurrent' ? 'prior' : start, valid.tx); assert.equal(valid.rootReads(), 0); checks++;
   }
+  // A legacy database with no C05 registry cannot contain a maintenance claim.
+  const legacy = fixture({ missingMaintenanceSchema: true });
+  assert.equal((await legacy.clearance.grant('reviewer', 'trip')).clearance, 'GRANTED');
+  assert(legacy.reads.includes('maintenance-schema')); assert(!legacy.reads.includes('maintenance-proof')); assert.equal(legacy.rootReads(), 0); checks++;
   const ended = fixture({ terminal: true }); await assert.rejects(() => ended.clearance.grant('reviewer', 'trip'), e => e.getStatus() === 409); assert(!ended.reads.includes('boat-proof')); checks++;
   const current = statusFixture();
   assert.equal((await current.clearance.status('trip')).status, 'ACTIVE');

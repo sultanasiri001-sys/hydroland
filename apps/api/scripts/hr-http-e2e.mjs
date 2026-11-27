@@ -1,8 +1,10 @@
 import { PrismaClient } from '@prisma/client';
-import { createHmac, scryptSync } from 'node:crypto';
+import { createHmac, randomUUID, scryptSync } from 'node:crypto';
 
 const db=new PrismaClient();
 const base=process.env.HR_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1';
+const database=new URL(process.env.DATABASE_URL||'postgresql://invalid/invalid');
+if(process.env.NODE_ENV!=='test'||!['localhost','127.0.0.1','[::1]'].includes(database.hostname)||!['localhost','127.0.0.1','[::1]'].includes(new URL(base).hostname))throw new Error('HR fixtures require an isolated loopback database and API.');
 const secret=process.env.JWT_SECRET;
 if(!secret)throw new Error('JWT_SECRET required');
 const suffix=Date.now().toString();
@@ -16,8 +18,9 @@ await db.roleAssignment.create({data:{accountId:account.id,role:'HR_MANAGER',sta
 const orgUnit=await db.orgUnit.create({data:{organizationId:org.id,type:'DEPARTMENT',code:'HR-E2E-'+suffix,nameAr:'الموارد البشرية'}});
 const employment=await db.employment.create({data:{accountId:account.id,organizationId:org.id,orgUnitId:orgUnit.id,status:'DRAFT',workerClass:'EMPLOYEE'}});
 const enc=v=>Buffer.from(JSON.stringify(v)).toString('base64url'),now=Math.floor(Date.now()/1000);
-const body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:account.id,iat:now,exp:now+900})}`;
-const token=`${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`;
+const signToken=(accountId,sessionId)=>{const body=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:accountId,sid:sessionId,iat:now,exp:now+900})}`;return `${body}.${createHmac('sha256',secret).update(body).digest('base64url')}`;};
+const accessToken=async actor=>{const session=await db.session.create({data:{accountId:actor.id,tokenHash:'hr-fixture-'+randomUUID(),expiresAt:new Date(Date.now()+3600000)}});return signToken(actor.id,session.id);};
+const token=await accessToken(account);
 const patch=(payload,t=token)=>fetch(`${base}/hr/employments/${employment.id}/status`,{method:'PATCH',headers:{'content-type':'application/json',authorization:`Bearer ${t}`},body:JSON.stringify(payload)});
 let compensationId=null, relationsId=null, candidateId=null, candidatePerson=null, reviewerAccount=null, reviewerPerson=null;
 try{
@@ -47,7 +50,7 @@ try{
  await db.organizationMember.create({data:{organizationId:org.id,accountId:reviewerAccount.id,role:'STAFF',status:'ACTIVE'}});
  candidatePerson=await db.person.create({data:{firstName:'HR',lastName:'Candidate'}});
  const candidate=await db.hrCandidate.create({data:{organizationId:org.id,personId:candidatePerson.id,status:'SUBMITTED'}}); candidateId=candidate.id;
- const requesterBodyCandidate=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:requesterAccount.id,iat:now,exp:now+900})}`; const requesterCandidateToken=`${requesterBodyCandidate}.${createHmac('sha256',secret).update(requesterBodyCandidate).digest('base64url')}`;
+ const requesterCandidateToken=await accessToken(requesterAccount);
  let candidateResponse=await fetch(`${base}/hr/employments/candidates/${candidate.id}/verify`,{method:'PATCH',headers:{'content-type':'application/json',authorization:`Bearer ${requesterCandidateToken}`},body:JSON.stringify({notes:'must be denied'})});
  if(candidateResponse.status!==403)throw new Error('Unauthorized candidate verification was not denied: '+candidateResponse.status);
  let candidateState=await db.hrCandidate.findUniqueOrThrow({where:{id:candidate.id}}); if(candidateState.status!=='SUBMITTED'||candidateState.verifiedByAccountId||candidateState.verifiedAt)throw new Error('Denied candidate verification mutated state');
@@ -58,7 +61,7 @@ try{
  candidateAudit=await db.auditEvent.count({where:{resource:'HrCandidate',resourceId:candidate.id,action:'HR_CANDIDATE_VERIFIED'}}); if(candidateAudit!==1)throw new Error('Candidate verification audit missing');
  await db.roleAssignment.update({where:{accountId_role:{accountId:account.id,role:'HR_REVIEWER'}},data:{role:'HR_EXECUTIVE'}});
  const beforeOpenCount=await db.employeeRelationsCase.count({where:{employmentId:employment.id}});
- const requesterBody=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:requesterAccount.id,iat:now,exp:now+900})}`; const requesterToken=`${requesterBody}.${createHmac('sha256',secret).update(requesterBody).digest('base64url')}`;
+ const requesterToken=requesterCandidateToken;
  const deniedOpen=await fetch(`${base}/hr/employments/${employment.id}/relations`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${requesterToken}`},body:JSON.stringify({caseType:'GRIEVANCE',summary:'Denied E2E case'})});
  if(deniedOpen.status!==403)throw new Error('Unauthorized employee relations opening was not denied: '+deniedOpen.status);
  const afterDeniedOpenCount=await db.employeeRelationsCase.count({where:{employmentId:employment.id}}); if(afterDeniedOpenCount!==beforeOpenCount)throw new Error('Denied employee relations opening mutated state');
@@ -97,8 +100,7 @@ try{
  const openRelations=(t=token)=>fetch(base+'/hr/employments/'+employment.id+'/relations',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+t},body:JSON.stringify({caseType:'GRIEVANCE',summary:'E2E relations case',context:{organizationId:org.id}})});
  const outsiderPerson=await db.person.create({data:{firstName:'HR',lastName:'RelationsDenied'}});
  const outsiderAccount=await db.account.create({data:{personId:outsiderPerson.id,email:'hr-relations-denied-'+suffix+'@example.invalid',passwordHash:'e2e',status:'ACTIVE',emailVerifiedAt:new Date()}});
- const outsiderBody=enc({alg:'HS256',typ:'JWT'})+'.'+enc({sub:outsiderAccount.id,iat:now,exp:now+900});
- const outsiderToken=outsiderBody+'.'+createHmac('sha256',secret).update(outsiderBody).digest('base64url');
+ const outsiderToken=await accessToken(outsiderAccount);
  r=await openRelations(outsiderToken); if(r.status<400)throw new Error('Unauthorized relations case opening was accepted');
  if(await db.employeeRelationsCase.count({where:{employmentId:employment.id}})!==relationsBeforeOpen)throw new Error('Denied relations opening mutated case state');
  if(await db.auditEvent.count({where:{resource:'EmployeeRelationsCase',action:'HR_EMPLOYEE_RELATIONS_CASE_OPENED'}})!==relationsAuditBeforeOpen)throw new Error('Denied relations opening emitted success audit');
@@ -115,9 +117,9 @@ try{
  await db.roleAssignment.create({data:{accountId:iamAccount.id,role:'IAM_SERVICE',status:'ACTIVE',scope:{organizationIds:[org.id]}}});
  const targetEmployment=await db.employment.create({data:{accountId:targetAccount.id,organizationId:org.id,orgUnitId:orgUnit.id,status:'TERMINATED',workerClass:'EMPLOYEE'}});
  const targetSession=await db.session.create({data:{accountId:targetAccount.id,tokenHash:'hr-e2e-session-'+suffix,expiresAt:new Date(Date.now()+3600000)}});
+ const targetToken=signToken(targetAccount.id,targetSession.id);
  const offboarding=await db.offboardingCase.create({data:{employmentId:targetEmployment.id,status:'APPROVED',clearance:{completed:false}}});
- const iamBody=`${enc({alg:'HS256',typ:'JWT'})}.${enc({sub:iamAccount.id,iat:now,exp:now+900})}`;
- const iamToken=`${iamBody}.${createHmac('sha256',secret).update(iamBody).digest('base64url')}`;
+ const iamToken=await accessToken(iamAccount);
  const patchEmployment=(id,payload,t)=>fetch(`${base}/hr/employments/${id}/status`,{method:'PATCH',headers:{'content-type':'application/json',authorization:`Bearer ${t}`},body:JSON.stringify(payload)});
  r=await patchEmployment(targetEmployment.id,{action:'APPLY_IAM_CHANGE',nextStatus:'OFFBOARDED',context:{organizationId:org.id}},iamToken);
  if(r.status!==409)throw new Error('Expected 409 incomplete clearance denial, got '+r.status+' '+await r.text());
@@ -137,6 +139,8 @@ try{
  if(!r.ok)throw new Error('IAM offboarding failed '+r.status+' '+await r.text());
  const offboardedTarget=await db.employment.findUniqueOrThrow({where:{id:targetEmployment.id}}); if(offboardedTarget.status!=='OFFBOARDED')throw new Error('Offboarding status not persisted');
  const revokedSession=await db.session.findUniqueOrThrow({where:{id:targetSession.id}}); if(!revokedSession.revokedAt)throw new Error('Target session was not revoked');
+ const revokedRequest=await patchEmployment(targetEmployment.id,{action:'APPLY_IAM_CHANGE',nextStatus:'OFFBOARDED',context:{organizationId:org.id}},targetToken);
+ if(revokedRequest.status!==401)throw new Error('The offboarded actor retained HTTP access after session revocation: '+revokedRequest.status);
  const archivedRole=await db.roleAssignment.findUniqueOrThrow({where:{accountId_role:{accountId:targetAccount.id,role:'DIVER'}}}); if(archivedRole.status!=='ARCHIVED'||!archivedRole.endedAt)throw new Error('Target role was not archived');
  const closedOffboarding=await db.offboardingCase.findUniqueOrThrow({where:{id:offboarding.id}}); if(closedOffboarding.status!=='CLOSED'||!closedOffboarding.iamRevokedAt||!closedOffboarding.closedAt)throw new Error('Offboarding case was not closed with IAM evidence');
  const offboardingAudit=await db.auditEvent.findFirst({where:{actorId:iamPerson.id,resourceId:targetEmployment.id,action:'HR_EMPLOYMENT_STATUS_CHANGED'}}); if(!offboardingAudit)throw new Error('IAM offboarding audit missing');

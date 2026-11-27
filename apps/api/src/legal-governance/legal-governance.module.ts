@@ -11,5 +11,7 @@ import { DepartmentClosureAssessmentService } from './department-closure-assessm
 import { DepartmentReferencesService } from './department-references.service';
 import { OperationalSourceLinkController } from './operational-source-link.controller';
 import { OperationalSourceLinkService } from './operational-source-link.service';
-@Module({ imports:[DatabaseModule, AuthModule, AdminModule], controllers:[DepartmentReferencesController, OperationalSourceLinkController], providers:[LegalGovernanceFoundationService, LegalGovernanceWorkflowService, LegalGovernanceOperationsService, LegalGovernanceIntelligenceService, DepartmentReferencesService, DepartmentClosureAssessmentService, OperationalSourceLinkService], exports:[LegalGovernanceFoundationService, LegalGovernanceWorkflowService, LegalGovernanceOperationsService, LegalGovernanceIntelligenceService] })
+import { LegalContractLifecycleController } from './legal-contract-lifecycle.controller';
+import { LegalContractLifecycleService } from './legal-contract-lifecycle.service';
+@Module({ imports:[DatabaseModule, AuthModule, AdminModule], controllers:[DepartmentReferencesController, OperationalSourceLinkController, LegalContractLifecycleController], providers:[LegalGovernanceFoundationService, LegalGovernanceWorkflowService, LegalGovernanceOperationsService, LegalGovernanceIntelligenceService, DepartmentReferencesService, DepartmentClosureAssessmentService, OperationalSourceLinkService, LegalContractLifecycleService], exports:[LegalGovernanceFoundationService, LegalGovernanceWorkflowService, LegalGovernanceOperationsService, LegalGovernanceIntelligenceService] })
 export class LegalGovernanceModule {}

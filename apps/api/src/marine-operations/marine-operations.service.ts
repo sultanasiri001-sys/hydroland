@@ -26,7 +26,7 @@ export class MarineOperationsService{
   const [activeAssets,scheduledTrips,openMaintenance,confirmedBookings]=await Promise.all([
    this.db.marineAsset.count({where:{...scope,status:'ACTIVE'}}),
    this.db.trip.count({where:{...scope,status:'OPEN',startsAt:{gte:now}}}),
-   this.db.marineMaintenanceRecord.count({where:{status:{not:'COMPLETED'},marineAsset:{organizationId:{in:ids}}}}),
+   this.db.marineMaintenanceRecord.count({where:{status:{notIn:['COMPLETED','CANCELLED']},marineAsset:{organizationId:{in:ids}}}}),
    this.db.booking.count({where:{status:'CONFIRMED',trip:{...scope,status:'OPEN',startsAt:{gte:now}}}}),
   ]);
   return{generatedAt:now,metrics:{activeAssets,scheduledTrips,openMaintenance,confirmedBookings}};
@@ -283,6 +283,8 @@ export class MarineOperationsService{
   return this.addMaintenance(marineAssetId,input);
  }
  async completeMaintenance(recordId:string){
+  const [schema]=await this.db.$queryRaw<Array<{present:boolean}>>`SELECT to_regclass('"MaintenanceWorkOrder"') IS NOT NULL AS present`;
+  if(schema.present){const managed=await this.db.$queryRaw<Array<{id:string}>>`SELECT "id" FROM "MaintenanceWorkOrder" WHERE "maintenanceRecordId"::text=${recordId} LIMIT 1`;if(managed.length)throw new BadRequestException('أمر الصيانة يتطلب إثبات التنفيذ والفحص والإقفال من مسار أوامر العمل.');}
   const record=await this.db.marineMaintenanceRecord.findUnique({where:{id:recordId}});
   if(!record)throw new NotFoundException('Marine maintenance record not found.');
   if(record.status==='COMPLETED')throw new BadRequestException('Marine maintenance record is already completed.');
@@ -338,7 +340,7 @@ export class MarineOperationsService{
    const doc=asset.documents.find(d=>d.documentType===type&&d.status==='VERIFIED'&&(!d.expiresAt||d.expiresAt>now));
    if(!doc)reasons.push('DOCUMENT_'+type+'_INVALID');
   }
-  if(asset.maintenance.some(m=>m.status!=='COMPLETED'&&(!m.dueAt||m.dueAt<=now)))reasons.push('MAINTENANCE_BLOCKING');
+  if(asset.maintenance.some(m=>!['COMPLETED','CANCELLED'].includes(m.status)&&(!m.dueAt||m.dueAt<=now)))reasons.push('MAINTENANCE_BLOCKING');
   const hard=reasons.filter(r=>r!=='CALENDAR_RESOURCE_NOT_LINKED');
   const status:MarineReadinessResult['status']=hard.length?'NOT_READY':reasons.length?'NEEDS_REVIEW':'READY';
   await tx.marineReadinessSnapshot.create({data:{marineAssetId,tripId:tripId??null,status,reasonCodes:reasons,checkedByAccountId:checkedByAccountId??null}});

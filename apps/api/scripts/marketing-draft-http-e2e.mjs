@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {ensurePurpleTestSchema} from './purple-test-schema.mjs';
 import {createHmac,randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {readFile} from 'node:fs/promises';
@@ -25,6 +26,7 @@ try{
  assert.equal(await db.account.count(),0,'Refuse existing account stores');assert.equal(await db.organization.count(),0,'Dedicated empty database required');
  for(const table of ['MarketingCampaignDraftRevision','MarketingCampaignDraft'])assert.equal(Number((await db.$queryRawUnsafe(`SELECT count(*) AS count FROM "${table}"`))[0].count),0);
  await db.$transaction(async tx=>{await tx.$executeRawUnsafe('DROP TABLE "MarketingCampaignDraftRevision"');await tx.$executeRawUnsafe('DROP TABLE "MarketingCampaignDraft"');for(const sql of sqlStatements(await marketingMigration()))await tx.$executeRawUnsafe(sql);for(const sql of sqlStatements(await readFile(new URL('../prisma/migrations/20260930080000_audit_event_append_only/migration.sql',import.meta.url),'utf8')))await tx.$executeRawUnsafe(sql);});
+ await ensurePurpleTestSchema(db);
  const owner=await actor('owner'),other=await actor('other'),staff=await actor('staff','STAFF');
  const org=await db.organization.create({data:{displayName:'Synthetic internal marketing',kind:'HYDROLAND_INTERNAL_PLATFORM',status:'ACTIVE',ownerId:owner.id}}),foreign=await db.organization.create({data:{displayName:'Synthetic unrelated center',kind:'DIVE_CENTER',status:'ACTIVE',ownerId:other.id}});
  await db.organizationMember.create({data:{organizationId:org.id,accountId:owner.id,role:'OWNER',status:'ACTIVE'}});
@@ -76,7 +78,7 @@ try{
  await deny(owner,root+'?cursor='+rows[52].id,'GET',undefined,[400]);await deny(owner,root+'?status=ACTIVE','GET',undefined,[400]);const archived=await ok(owner,root+'?status=ARCHIVED');assert(archived.items.every(r=>r.status==='ARCHIVED'));
  pass('keyset pagination handles tied timestamps, filters and foreign cursors without leaking unrelated drafts');
  const {STAFFING_DEPARTMENTS}=require('../dist/hr/staffing-catalog.js');await db.orgUnit.createMany({data:STAFFING_DEPARTMENTS.map(d=>({organizationId:org.id,type:'DEPARTMENT',code:d.code,nameAr:d.nameAr,active:true}))});
- const beforePreview=await snapshot(),sources=await ok(owner,'admin/agents/department-sources'),packet=sources.departments.find(d=>d.department==='MARKETING_GROWTH');assert.equal(sources.sourceVersion,6);assert.equal(sources.coverage,'PARTIAL');assert.equal(sources.operationalAcceptance,'NOT_ASSESSED');assert.equal(sources.departments.filter(d=>d.operationalCountsConnected).length,14);assert.deepEqual(packet.evidence.metrics,{marketingCampaignDrafts:54,openMarketingCampaignDrafts:28,archivedMarketingCampaignDrafts:26,recordedPublicationEvidence:0,recordedAnalyticsEvidence:0});assert.deepEqual(packet.evidence.missingSources,['CAMPAIGN_PUBLICATION_ANALYTICS']);
+ const beforePreview=await snapshot(),sources=await ok(owner,'admin/agents/department-sources'),packet=sources.departments.find(d=>d.department==='MARKETING_GROWTH');assert.equal(sources.sourceVersion,7);assert.equal(sources.coverage,'PARTIAL');assert.equal(sources.operationalAcceptance,'NOT_ASSESSED');assert.equal(sources.departments.filter(d=>d.operationalCountsConnected).length,14);assert.deepEqual(packet.evidence.metrics,{marketingCampaignDrafts:54,openMarketingCampaignDrafts:28,archivedMarketingCampaignDrafts:26,recordedPublicationEvidence:0,recordedAnalyticsEvidence:0});assert.deepEqual(packet.evidence.missingSources,['CAMPAIGN_PUBLICATION_ANALYTICS']);
  const text=JSON.stringify(sources);for(const forbiddenText of [input.title,input.objective,owner.email,owner.id,org.id,foreign.id,...rows.map(r=>r.id)])assert(!text.includes(forbiddenText));assert.deepEqual(await snapshot(),beforePreview);
  const {readDepartmentSources}=require('../dist/agents/department-source.reader.js');for(const version of [2,3]){const old=await db.$transaction(tx=>readDepartmentSources(tx,owner.id,['MARKETING_GROWTH'],version));assert.deepEqual(old.departments[0].evidence.metrics,{});assert.equal(old.sourceVersion,version);}
  assert.equal(await db.aiAgentTask.count(),0);assert.equal(await db.managedDocument.count(),0);assert.equal(await db.notification.count(),0);

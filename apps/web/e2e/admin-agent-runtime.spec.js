@@ -51,6 +51,7 @@ function departmentSourceFixture(version=2){
  ];
  if(version>=5){const inventory=definitions.find(d=>d[0]==='INVENTORY_LOGISTICS');inventory[2]=[...inventory[2],'warehouseLocations','recordedWarehouseLocations','archivedWarehouseLocations'];inventory[3]='WAREHOUSE_BALANCES_MOVEMENTS_PROCUREMENT_REGISTRY';}
  if(version>=6){const more={FINANCE:['settlementImports','approvedSettlementImports','settlementImportsWithMismatches','periodCloseSubmissions','recordedClosedPeriodSubmissions','shiftCloseSubmissions','approvedShiftCloseSubmissions'],INVENTORY_LOGISTICS:['recordedWarehouseBalanceEvidence','recordedWarehouseMovementEvidence','recordedProcurementEvidence'],ADMIN_AFFAIRS_RECORDS:['recordedDeliveryEvidence','recordedRetentionEvidence','recordedDisposalEvidence'],MARKETING_GROWTH:['recordedPublicationEvidence','recordedAnalyticsEvidence']};for(const d of definitions)if(more[d[0]])d[2].push(...more[d[0]]);definitions.find(d=>d[0]==='INVENTORY_LOGISTICS')[3]='WAREHOUSE_OPERATIONAL_EVIDENCE_VERIFICATION';}
+ if(version>=7){const more={LEGAL_CONTRACTS_INSURANCE:['legalContractLifecycles','openLegalContractLifecycles','archivedLegalContractLifecycles','legalContractLifecycleEvents','legalContractSettlementReferences','linkedPostedContractSettlements','inconsistentLegalContractSources'],FACILITIES_ASSETS_MAINTENANCE:['maintenanceWorkOrders','openMaintenanceWorkOrders','closedMaintenanceWorkOrders','maintenancePreventivePlans','maintenanceCommands','maintenancePartUsageRecords','linkedWarehousePartUsages','inconsistentMaintenanceSources']};for(const d of definitions)if(more[d[0]])d[2].push(...more[d[0]]);definitions.find(d=>d[0]==='LEGAL_CONTRACTS_INSURANCE')[3]='LEGAL_OPERATIONAL_ACCEPTANCE_AND_ISSUER_VERIFICATION';definitions.find(d=>d[0]==='FACILITIES_ASSETS_MAINTENANCE')[3]='MAINTENANCE_EXECUTION_AND_INSPECTION_ACCEPTANCE';}
  return {scope:'DEPARTMENT_SOURCE_PREVIEW',sourceVersion:version,readOnly:true,generationTested:false,observedAt:now,coverage:'PARTIAL',operationalAcceptance:'NOT_ASSESSED',departments:definitions.map(([department,agentKey,keys,gap])=>({department,agentKey,nameAr:department==='HR'?'الموارد البشرية':'إدارة '+department,unitState:'ACTIVE',operationalCountsConnected:keys.length>0,evidence:{version,department,scope:'INTERNAL_PLATFORM_ORGANIZATION',coverage:'PARTIAL',catalog:{revision:'2026-10-25.1',codesDigest:'a'.repeat(64)},documents:{templateTypes:1,activeTemplateTypes:1,templateConflicts:0,documents:1,drafts:0,pendingApproval:0,approved:1,signed:0,archived:0,inconsistentLinks:0},metrics:Object.fromEntries(keys.map(k=>[k,1])),missingSources:[gap]}}))};
 }
 test('v6 sources distinguish recorded evidence counts from physical stock and campaign totals',async({page})=>{
@@ -58,6 +59,42 @@ test('v6 sources distinguish recorded evidence counts from physical stock and ca
  const finance=page.locator('[data-ai-source-department="FINANCE"]');await finance.locator('summary').click();await expect(finance).toContainText('ملفات التسوية المسجلة: 1');
  const inventory=page.locator('[data-ai-source-department="INVENTORY_LOGISTICS"]');await inventory.locator('summary').click();await expect(inventory).toContainText('سجلات أدلة استلام وصرف موثقة: 1');await expect(inventory).toContainText('لا تساوي رصيد مخزون');
  const marketing=page.locator('[data-ai-source-department="MARKETING_GROWTH"]');await marketing.locator('summary').click();await expect(marketing).toContainText('سجلات أدلة تحليلات موثقة: 1');
+});
+test('v7 sources show native contract and maintenance links with acceptance limits in Arabic and English',async({page})=>{
+ await page.setViewportSize({width:390,height:844});const state=await setup(page,{ready:false}),payload=departmentSourceFixture(7);
+ const legalValues=payload.departments.find(d=>d.department==='LEGAL_CONTRACTS_INSURANCE').evidence.metrics;
+ legalValues.linkedPostedContractSettlements=0;legalValues.inconsistentLegalContractSources=2;
+ const maintenanceValues=payload.departments.find(d=>d.department==='FACILITIES_ASSETS_MAINTENANCE').evidence.metrics;
+ maintenanceValues.linkedWarehousePartUsages=0;maintenanceValues.inconsistentMaintenanceSources=3;
+ await page.route(/\/admin\/agents\/department-sources$/,r=>json(r,payload));await page.locator('[data-ai-source-check]').click();
+ await expect(page.locator('[data-ai-source-department]')).toHaveCount(14);
+ const legal=page.locator('[data-ai-source-department="LEGAL_CONTRACTS_INSURANCE"]'),maintenance=page.locator('[data-ai-source-department="FACILITIES_ASSETS_MAINTENANCE"]');
+ await legal.locator('summary').click();await maintenance.locator('summary').click();
+ await expect(legal).toContainText('سجلات متابعة العقود: 1');await expect(legal).toContainText('مراجع تسويات مرتبطة بقيود مرحلة: 0');await expect(legal).toContainText('مصادر متابعة عقود تحتاج مراجعة: 2');
+ await expect(legal).toContainText('لا تثبت سدادًا فعليًا أو قبولًا قانونيًا أو تحقق جهة الإصدار');await expect(legal).toContainText('القبول التشغيلي والتحقق من جهة الإصدار');
+ await expect(maintenance).toContainText('أوامر صيانة بحالة مقفلة: 1');await expect(maintenance).toContainText('روابط قطع مطابقة لصرف المستودع: 0');await expect(maintenance).toContainText('مصادر صيانة تحتاج مراجعة: 3');
+ await expect(maintenance).toContainText('حالة الإقفال المسجلة لا تثبت تنفيذ الصيانة أو الفحص الفعلي');await expect(maintenance).not.toContainText('أوامر العمل ما زال بحاجة إلى الربط');
+ await page.evaluate(()=>window.HydrolandI18n.setLocale('en'));await expect(page.locator('html')).toHaveAttribute('dir','ltr');
+ await expect(legal).toContainText('Recorded contract lifecycle records: 1');await expect(legal).toContainText('Settlement references linked to posted entries: 0');await expect(legal).toContainText('Operational acceptance and issuer verification');
+ await expect(maintenance).toContainText('Maintenance work orders recorded as closed: 1');await expect(maintenance).toContainText('Part links matching warehouse issues: 0');await expect(maintenance).toContainText('does not establish actual maintenance execution or inspection');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);expect(state.writes).toHaveLength(0);expect(state.connectionChecks).toBe(0);
+ await page.evaluate(()=>window.HydrolandAuth.logout());await expect(page.locator('[data-ai-source-list]')).toBeEmpty();
+});
+test('v7 source validation rejects missing, extra, unsafe, stale and approval-shaped fields without rendering partial counts',async({page})=>{
+ const state=await setup(page,{ready:false});let payload=departmentSourceFixture(7);
+ await page.route(/\/admin\/agents\/department-sources$/,r=>json(r,payload));
+ const invalid=[
+  p=>{delete p.departments.find(d=>d.department==='LEGAL_CONTRACTS_INSURANCE').evidence.metrics.legalContractLifecycles;},
+  p=>{p.departments.find(d=>d.department==='FACILITIES_ASSETS_MAINTENANCE').evidence.metrics.privateLedgerAmount=5000;},
+  p=>{p.departments.find(d=>d.department==='LEGAL_CONTRACTS_INSURANCE').evidence.metrics.linkedPostedContractSettlements='<img src=x onerror=alert(1)>';},
+  p=>{p.departments.find(d=>d.department==='FACILITIES_ASSETS_MAINTENANCE').evidence.metrics.closedMaintenanceWorkOrders=-1;},
+  p=>{p.departments.find(d=>d.department==='LEGAL_CONTRACTS_INSURANCE').evidence.missingSources=['COMMERCIAL_INSURANCE_CLAIMS_REGISTRY'];},
+  p=>{p.departments.find(d=>d.department==='FACILITIES_ASSETS_MAINTENANCE').evidence.version=6;},
+  p=>{p.sourceVersion=8;},
+  p=>{p.operationalAcceptance='ACCEPTED';}
+ ];
+ for(const change of invalid){payload=departmentSourceFixture(7);change(payload);await page.locator('[data-ai-source-check]').click();await expect(page.locator('[data-ai-source-status]')).toContainText('تعذر تأكيد');await expect(page.locator('[data-ai-source-list]')).toBeEmpty();await expect(page.locator('[data-ai-source-list] img')).toHaveCount(0);}
+ payload=departmentSourceFixture(7);await page.locator('[data-ai-source-check]').click();await expect(page.locator('[data-ai-source-department]')).toHaveCount(14);expect(state.writes).toHaveLength(0);expect(state.connectionChecks).toBe(0);
 });
 test('owner evidence intake selects named references and preserves draft, recorded and archived states without AI writes',async({page})=>{
  await page.setViewportSize({width:390,height:844});const state=await setup(page,{ready:false}),id=randomUUID(),doc=randomUUID(),product=randomUUID(),location=randomUUID(),writes=[];let record=null;
@@ -227,7 +264,18 @@ test('correction retry rejects conflicts, stale consent and malformed receipts a
 const officeItems=()=>['EXECUTIVE','MARKETING','SALES','SUPPORT','INVENTORY','SOCIAL','LEGAL_RISK','CYBER_SECURITY',...governanceKeys].map(key=>agent(key,key));
 const reviewFile=(status='READY_FOR_OWNER')=>({scope:'ADVISORY_RUNTIME_OUTPUTS',readOnly:true,approved:false,ownerApprovalRequired:status==='READY_FOR_OWNER',status,completedReviews:6,cost:{estimatedMicroUsd:123},source:{id:randomUUID(),revision:randomUUID(),nameAr:'وكيل المخزون',departmentName:'المخزون',prompt:'موجز المصدر الأصلي',result:'<img src=x onerror=alert(1)> مخرج المصدر',createdAt:now},reviews:governanceKeys.map(agentKey=>({agentKey,nameAr:agentKey,state:'COMPLETED',taskId:randomUUID(),result:'نص المراجعة',review:{findings:['ملاحظة محفوظة'],evidenceGaps:[]}}))});
 async function openInbox(page){await page.locator('[data-ai-governance-inbox]>summary').click();await expect(page.locator('[data-ai-inbox-feedback]')).toContainText('تم تحميل');}
-for(const version of [2,3,4,5])test(`historical v${version} inventory evidence retains its captured profile and rejects substitutions`,async({page})=>{
+for(const version of [6,7])for(const [label,department,agentKey,newLabel,oldGap] of [
+ ['legal','LEGAL_CONTRACTS_INSURANCE','LEGAL_RISK','سجلات متابعة العقود: 1','ربط العقود التجارية والتأمين والمطالبات'],
+ ['maintenance','FACILITIES_ASSETS_MAINTENANCE','FACILITIES_DIRECTOR','أوامر الصيانة المسجلة: 1','ربط سجل الأصول الموحد وأوامر الصيانة']
+])test(`historical v${version} ${label} evidence retains its captured native source version`,async({page})=>{
+ const file=reviewFile(),values=departmentSourceFixture(version).departments.find(d=>d.department===department).evidence;
+ Object.assign(file.source,{agentKey,action:'READ_OPERATIONS',operationsEvidence:{status:'RECORDED',scope:`DEPARTMENT_AGGREGATE_V${version}`,observedAt:now,values}});
+ const state=await setup(page,{items:officeItems(),inboxFiles:[file],inboxDetails:{[file.source.id]:file}});await openInbox(page);await page.locator('[data-ai-inbox-work]').click();
+ const evidence=page.locator('[data-ai-inbox-evidence]');await expect(evidence).toContainText('مصادر الإدارة المستخدمة');await expect(evidence).toContainText('القبول التشغيلي لم يُقيّم');
+ if(version===7){await expect(evidence).toContainText(newLabel);await expect(evidence).not.toContainText(oldGap);}else{await expect(evidence).toContainText(oldGap);await expect(evidence).not.toContainText(newLabel);}
+ file.source.operationsEvidence.scope=`DEPARTMENT_AGGREGATE_V${version===7?6:7}`;await page.locator('[data-ai-inbox-refresh]').click();await expect(page.locator('[data-ai-inbox-feedback]')).toContainText('تعذر تأكيد');await expect(page.locator('[data-ai-inbox-detail]')).toBeEmpty();expect(state.writes).toHaveLength(0);
+});
+for(const version of [2,3,4,5,6,7])test(`historical v${version} inventory evidence retains its captured profile and rejects substitutions`,async({page})=>{
  const file=reviewFile(),values=departmentSourceFixture(version).departments.find(d=>d.department==='INVENTORY_LOGISTICS').evidence;Object.assign(file.source,{agentKey:'INVENTORY',action:'READ_OPERATIONS',operationsEvidence:{status:'RECORDED',scope:`DEPARTMENT_AGGREGATE_V${version}`,observedAt:now,values}});
  const state=await setup(page,{items:officeItems(),inboxFiles:[file],inboxDetails:{[file.source.id]:file}});await openInbox(page);await page.locator('[data-ai-inbox-work]').click();await expect(page.locator('[data-ai-inbox-evidence]')).toContainText('مصادر الإدارة المستخدمة');await expect(page.locator('[data-ai-inbox-evidence]')).toContainText(version===2?'المصدر التشغيلي غير متصل':'منتجات المتجر المادية المسجلة: 1');
  values.version=version===2?3:2;await page.locator('[data-ai-inbox-refresh]').click();await expect(page.locator('[data-ai-inbox-feedback]')).toContainText('تعذر تأكيد');await expect(page.locator('[data-ai-inbox-detail]')).toBeEmpty();values.version=version;
