@@ -175,6 +175,27 @@ jobs:
           name: a14-owner-onboarding-${{ github.event.pull_request.head.sha || github.sha }}
           path: ${{ runner.temp }}/a14-onboarding-pg*.json
           if-no-files-found: error
+      - name: A15 original source approval, erasure receipts, holds and restored database recovery
+        env:
+          CI: "true"
+          NODE_ENV: test
+          A15_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+          A15_EVIDENCE_FILE: ${{ runner.temp }}/a15-erasure-recovery.json
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE a15_erasure_test'
+          export DATABASE_URL=postgresql://hydroland:hydroland@localhost:5432/a15_erasure_test
+          npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+            -c 'DROP TABLE "PrivacyRecordHold", "PrivacyErasureOperation"' \
+            -f apps/api/prisma/migrations/20261128010000_privacy_erasure_receipts/migration.sql
+          node apps/api/scripts/bootstrap-messaging-runtime-schema.mjs
+          node apps/api/scripts/a15-erasure-http-recovery-e2e.mjs
+      - name: Retain the A15 isolated erasure and recovery receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: a15-erasure-recovery
+          path: ${{ runner.temp }}/a15-erasure-recovery.json
+          if-no-files-found: error
       - name: Commerce original terms, refund boundaries and provider operations
         run: |
           node --test apps/api/scripts/commerce-refund-policy.test.cjs apps/api/scripts/commerce-contract-snapshot.test.cjs apps/api/scripts/trip-booking-contract.test.cjs apps/api/scripts/trip-payment-confirmation.test.cjs apps/api/scripts/center-service-entitlement.test.cjs apps/api/scripts/moyasar-refund-provider-validation.cjs apps/api/scripts/commerce-webhook-dispatch.test.cjs

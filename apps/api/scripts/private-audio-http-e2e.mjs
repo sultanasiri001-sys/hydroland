@@ -1,3 +1,4 @@
+import { privacyPurgeTestFixture } from './privacy-purge-test-fixture.mjs';
 import assert from 'node:assert/strict';
 import {createHmac,randomUUID,randomBytes} from 'node:crypto';
 import {DatabaseService} from '../dist/database/database.service.js';
@@ -6,7 +7,8 @@ import {PrivateMessageReviewService} from '../dist/messaging/private-message-rev
 import {communityPolicyFixture} from './community-policy-test-support.mjs';
 const db=new DatabaseService(),base=process.env.MESSAGING_E2E_BASE_URL||'http://127.0.0.1:3101/api/v1';
 for(const url of [base,process.env.DATABASE_URL])assert.ok(['127.0.0.1','localhost','[::1]'].includes(new URL(url).hostname));assert.equal(process.env.NODE_ENV,'test');
-const review=new PrivateMessageReviewService(db,new AuditService(db)),accounts=[],persons=[],conversations=[],cases=[],prefix=randomUUID();let org,previous,policyFixture;
+const purgeFixture=await privacyPurgeTestFixture(db);
+const review=purgeFixture.review,accounts=[],persons=[],conversations=[],cases=[],prefix=randomUUID();let org,previous,policyFixture;
 function wav(byteSize=32044,rate=16000){const b=Buffer.alloc(byteSize);b.write('RIFF');b.writeUInt32LE(b.length-8,4);b.write('WAVEfmt ',8);b.writeUInt32LE(16,16);b.writeUInt16LE(1,20);b.writeUInt16LE(1,22);b.writeUInt32LE(rate,24);b.writeUInt32LE(rate*2,28);b.writeUInt16LE(2,32);b.writeUInt16LE(16,34);b.write('data',36);b.writeUInt32LE(b.length-44,40);for(let i=44;i<b.length;i+=2)b.writeInt16LE(Math.floor(1000*Math.sin(i/16)),i);return b}
 const bytes=wav();const payload={mimeType:'audio/wav',base64:bytes.toString('base64'),consent:true,requestKey:randomUUID().replaceAll('-','')};
 async function account(name,admin=false){const person=await db.person.create({data:{firstName:name,lastName:'AudioFixture'}});persons.push(person);const a=await db.account.create({data:{personId:person.id,email:name+'-'+prefix+'@example.invalid',passwordHash:'fixture',status:'ACTIVE',emailVerifiedAt:new Date()}});if(admin)await db.roleAssignment.create({data:{accountId:a.id,role:'ADMIN',status:'ACTIVE',activeAt:new Date()}});const session=await db.session.create({data:{accountId:a.id,tokenHash:randomBytes(24).toString('hex'),expiresAt:new Date(Date.now()+3600000)}}),enc=x=>Buffer.from(JSON.stringify(x)).toString('base64url'),iat=Math.floor(Date.now()/1000),body=enc({alg:'HS256',typ:'JWT'})+'.'+enc({sub:a.id,sid:session.id,iat,exp:iat+3600});const result={...a,session,token:body+'.'+createHmac('sha256',process.env.JWT_SECRET).update(body).digest('base64url')};accounts.push(result);return result}
@@ -56,6 +58,7 @@ try{
  const next=await ok(sender,path+'/audio',{...payload,requestKey:randomUUID().replaceAll('-','')});await db.session.update({where:{id:peer.session.id},data:{revokedAt:new Date()}});assert.equal((await call(peer,path+'/messages/'+next.id+'/audio')).status,401);
  console.log('D09 private audio HTTP/PostgreSQL passed: explicit D16 default-off, independent community/audio choice, source drift/retirement and authority revocation gates, preserved existing read/withdraw/evidence; PCM bytes, consent, concurrent retry, atomic notification rollback, exact 4 MiB upload, participant/session isolation, held retention and purge cascade.');
 }finally{
+ await purgeFixture.close();
  if(policyFixture)await policyFixture.cleanup();
  for(const caseId of cases){await db.$executeRaw`DELETE FROM "MessageAbuseEvidence" WHERE "caseId"=${caseId}`;await db.customerCase.deleteMany({where:{id:caseId}})}
  for(const id of conversations){await db.$executeRaw`DELETE FROM "WithdrawnMessageContent" WHERE "messageId" IN (SELECT id::text FROM "Message" WHERE "conversationId"::text=${id})`;await db.$executeRaw`DELETE FROM "Conversation" WHERE id::text=${id}`}

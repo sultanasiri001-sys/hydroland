@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { requireVerifiedAdmin } from '../admin/admin-authorization';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';
+import { PrivacyErasureService } from '../privacy/privacy-erasure.service';
 import { platformOrganization } from '../hr/staffing-catalog';
 
 export const abuseReference = 'PRIVATE_MESSAGE_ABUSE';
@@ -19,7 +20,6 @@ export class PrivateMessageReviewService implements OnModuleInit, OnModuleDestro
   onModuleInit() {
     this.timer = setInterval(() => { void this.sweep(); }, 60000);
     this.timer.unref();
-    void this.sweep();
   }
   onModuleDestroy() { if (this.timer) clearInterval(this.timer); }
   private async sweep() {
@@ -29,7 +29,7 @@ export class PrivateMessageReviewService implements OnModuleInit, OnModuleDestro
     catch { Logger.error('Could not purge expired private messages', PrivateMessageReviewService.name); }
     finally { this.running = false; }
   }
-  constructor(private readonly db: DatabaseService, private readonly audit: AuditService) {}
+  constructor(private readonly db: DatabaseService, private readonly audit: AuditService, private readonly erasure: PrivacyErasureService) {}
 
   private async source(tx: Tx, actor: string, conversation: string, message: string) {
     const [source] = await tx.$queryRaw<Source[]>`
@@ -123,18 +123,18 @@ export class PrivateMessageReviewService implements OnModuleInit, OnModuleDestro
     });
   }
 
-  purgeExpired() {
-    return this.db.serializable(async tx => {
-      const due=await tx.$queryRaw<{id:string}[]>`SELECT m.id::text AS id FROM "Message" m
-        WHERE m."withdrawnAt" <= clock_timestamp() - interval '720 hours'
-          AND NOT EXISTS (SELECT 1 FROM "MessageAbuseEvidence" e WHERE e."messageId"=m.id::text AND e."releasedAt" IS NULL)
-        ORDER BY m."withdrawnAt",m.id LIMIT 500 FOR UPDATE OF m SKIP LOCKED`;
-      if (!due.length) return 0;
-      const ids=Prisma.join(due.map(row=>row.id));
-      await tx.$executeRaw(Prisma.sql`DELETE FROM "WithdrawnMessageContent" WHERE "messageId" IN (${ids})`);
-      await tx.$executeRaw(Prisma.sql`DELETE FROM "Message" WHERE id::text IN (${ids})`);
-      await this.audit.record({action:'message.expired_content_purged',resource:'Message',metadata:{count:due.length}},tx);
-      return due.length;
-    });
+  async purgeExpired() {
+    // Read only here. Each deletion then acquires the native lock, verifies all
+    // holds again, and saves a durable encrypted intent before destroying data.
+    const due=await this.db.$queryRaw<{id:string}[]>`SELECT m.id::text AS id FROM "Message" m
+      WHERE m."withdrawnAt" <= clock_timestamp() - interval '720 hours'
+        AND NOT EXISTS (SELECT 1 FROM "MessageAbuseEvidence" e WHERE e."messageId"=m.id::text AND e."releasedAt" IS NULL)
+      ORDER BY m."withdrawnAt",m.id LIMIT 500`;
+    let count=0;
+    for(const row of due){
+      try{if(await this.erasure.purgePrivateMessage(row.id))count++;}
+      catch(error){if(!(error instanceof ConflictException||error instanceof NotFoundException))throw error;}
+    }
+    return count;
   }
 }

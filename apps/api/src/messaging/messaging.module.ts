@@ -1,3 +1,4 @@
+import { PrivacyModule } from '../privacy/privacy.module';
 import { AuditModule } from '../audit/audit.module';
 import { CommunityModule } from '../community/community.module';
 import { PrivateMessageReviewController } from './private-message-review.controller';
@@ -10,5 +11,5 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { MessagingController } from './messaging.controller';
 import { MessagingService } from './messaging.service';
 
-@Module({imports:[AuthModule,NotificationsModule,AuditModule,CommunityModule],controllers:[MessagingController,PrivateMessageReviewController,PrivateAudioController],providers:[MessagingService,PrivateMessageReviewService,PrivateAudioService],exports:[MessagingService]})
+@Module({imports:[PrivacyModule,AuthModule,NotificationsModule,AuditModule,CommunityModule],controllers:[MessagingController,PrivateMessageReviewController,PrivateAudioController],providers:[MessagingService,PrivateMessageReviewService,PrivateAudioService],exports:[MessagingService]})
 export class MessagingModule {}

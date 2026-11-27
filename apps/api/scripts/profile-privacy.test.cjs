@@ -7,7 +7,7 @@ function fixture({failAudit=false,status='ACTIVE',foreignCredential=false}={}){
  let saved={account:{id:'self',personId:'person-self',status,email:'self@example.invalid',person:{firstName:'Before',lastName:'Kept',professional:{bio:'Kept biography'}}},events:[]};
  const db={serializable:async work=>{
   const state=structuredClone(saved);
-  const tx={account:{findUnique:async()=>state.account,update:async({where,data})=>{
+  const tx={operationalSetting:{findUnique:async()=>null},account:{findUnique:async()=>state.account,update:async({where,data})=>{
    assert.equal(where.id,'self');const patch=data.person.update;
    for(const key of ['firstName','lastName','phone'])if(patch[key]!==undefined)state.account.person[key]=patch[key];
    Object.assign(state.account.person.professional,Object.fromEntries(Object.entries(patch.professional.upsert.update).filter(([,v])=>v!==undefined)));

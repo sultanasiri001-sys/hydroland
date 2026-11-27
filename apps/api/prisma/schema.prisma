@@ -3337,6 +3337,44 @@ model PersonalDataRequest {
   @@index([accountId,createdAt,id])
 }
 
+// Source identities are retained as text: the source may be erased and older
+// deployments use both TEXT and UUID keys. No deleted content is copied here.
+model PrivacyErasureOperation {
+  id String @id
+  requestId String?
+  accountId String
+  domain String
+  recordRef String
+  scope String
+  state String @default("PREPARED")
+  intent Json
+  intentHash String
+  receipt Json?
+  receiptHash String?
+  executionAuditId String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  appliedAt DateTime? @db.Timestamptz(3)
+  publishedAt DateTime? @db.Timestamptz(3)
+  @@index([requestId,state])
+  @@index([domain,recordRef,state])
+}
+
+model PrivacyRecordHold {
+  id String @id @default(uuid())
+  requestId String
+  accountId String
+  domain String
+  recordRef String
+  reason String
+  createdByPersonId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  releaseRequestedByPersonId String?
+  releaseReason String?
+  releasedByPersonId String?
+  releasedAt DateTime? @db.Timestamptz(3)
+  @@index([accountId,domain,recordRef,releasedAt])
+}
+
 model PrivacyGrievance {
   personalDataRequestId String? @unique
   personalDataRequest PersonalDataRequest? @relation(fields:[personalDataRequestId], references:[id], onDelete:Restrict)
