@@ -71,6 +71,21 @@ export class TrainingController {
   @Get('certificates')
   certificateQueue(@Req() request:AuthenticatedRequest,@Query('status') status?:string,@Query('cursor') cursor?:string){return this.certificates.list(request.auth.accountId,status,cursor);}
 
+  @Get('mine/certificates')
+  mineCertificates(@Req() request:AuthenticatedRequest){return this.certificates.mine(request.auth.accountId);}
+
+  @Get('certificates/:id')
+  certificateDetail(@Req() request:AuthenticatedRequest,@Param('id') id:string){return this.certificates.detail(id,request.auth.accountId);}
+
+  @Post('certificates/:id/reconsideration')
+  requestCertificateReconsideration(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.certificates.requestReconsideration(id,request.auth.accountId,body);}
+
+  @Post('certificates/:id/reconsideration-decision')
+  decideCertificateReconsideration(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.certificates.decideReconsideration(id,request.auth.accountId,body);}
+
+  @Post('certificates/:id/revoke')
+  revokeCertificate(@Req() request:AuthenticatedRequest,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.certificates.revoke(id,request.auth.accountId,body);}
+
   @Get('professional/me/skills')
   professionalSkills(@Req() request: AuthenticatedRequest) {
     return this.professionalProfile.listSkills(request.auth.accountId);
