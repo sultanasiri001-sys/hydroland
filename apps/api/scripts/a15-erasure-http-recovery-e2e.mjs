@@ -3,7 +3,7 @@ import { createHash, randomBytes, randomUUID, scryptSync } from 'node:crypto';
 import { createServer } from 'node:http';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -15,9 +15,10 @@ assert.equal(database.search,'');assert.equal(database.hash,'');
 const require=createRequire(import.meta.url),root=resolve(dirname(fileURLToPath(import.meta.url)),'../../..');
 const load=path=>require(resolve(root,'apps/api/dist',path));
 const {PrismaClient}=require('@prisma/client');
-const postgresBin=process.env.A15_POSTGRES_BIN??'';
+let postgresBin=process.env.A15_POSTGRES_BIN??'';
 const command=name=>postgresBin?resolve(postgresBin,name):name;
 const localDb=new PrismaClient(),objects=new Map(),checks=[],startedAt=new Date().toISOString();
+let postgresTools=null;
 let app,db,base,store,storeOrigin,failure,restoreDb,restoreName,blockedPhase=null,failAfterWrite=false;
 const originalEnv=new Map();
 function env(k,v){if(!originalEnv.has(k))originalEnv.set(k,process.env[k]);if(v===undefined)delete process.env[k];else process.env[k]=v;}
@@ -76,6 +77,15 @@ async function retained(id){return (await db.$queryRaw`SELECT "messageId" FROM "
 
 try{
  assert.equal(await localDb.account.count(),0,'A15 test requires a new empty database');
+ const [{version:serverVersion}]=await localDb.$queryRaw`SELECT current_setting('server_version_num') AS version`;
+ const serverMajor=Math.floor(Number(serverVersion)/10000);assert.ok(Number.isInteger(serverMajor)&&serverMajor>=10);
+ const matchingBin='/usr/lib/postgresql/'+serverMajor+'/bin';
+ if(!postgresBin&&existsSync(resolve(matchingBin,'pg_dump'))&&existsSync(resolve(matchingBin,'pg_restore')))postgresBin=matchingBin;
+ const clients={};for(const name of ['pg_dump','pg_restore']){
+  const version=execFileSync(command(name),['--version'],{encoding:'utf8',timeout:5000}).trim();
+  assert.equal(Number(/PostgreSQL\)\s+(\d+)\./.exec(version)?.[1]),serverMajor,'A15 requires '+name+' matching PostgreSQL '+serverMajor+'; set A15_POSTGRES_BIN to its installed bin directory');clients[name]=version;
+ }
+ postgresTools={serverVersion,serverMajor,...clients};
  store=createServer(async(req,res)=>{
   const u=new URL(req.url,'http://127.0.0.1'),key=u.pathname;
   if(req.method==='GET'&&u.searchParams.get('list-type')==='2'){
@@ -277,7 +287,7 @@ finally{
  if(app)await app.close();await localDb.$disconnect();
  if(store?.listening)await new Promise(ok=>{store.close(ok);store.closeAllConnections?.();});
  for(const [k,v] of originalEnv){if(v===undefined)delete process.env[k];else process.env[k]=v;}
- const result={suite:'A15_NATIVE_ERASURE_HTTP_POSTGRESQL_RECOVERY',synthetic:true,productionDataDeleted:false,humanApprovalCreated:false,status:failure?'FAIL':'PASS',startedAt,finishedAt:new Date().toISOString(),passed:checks.filter(x=>x.status==='PASS').length,failed:checks.filter(x=>x.status==='FAIL').length,checks,postgresRestorePerformed:checks.some(x=>x.name.startsWith('real pg_dump')&&x.status==='PASS'),encryptedJournalObjects:objects.size};
+ const result={suite:'A15_NATIVE_ERASURE_HTTP_POSTGRESQL_RECOVERY',synthetic:true,productionDataDeleted:false,humanApprovalCreated:false,status:failure?'FAIL':'PASS',nodeVersion:process.version,postgresTools,startedAt,finishedAt:new Date().toISOString(),passed:checks.filter(x=>x.status==='PASS').length,failed:checks.filter(x=>x.status==='FAIL').length,checks,postgresRestorePerformed:checks.some(x=>x.name.startsWith('real pg_dump')&&x.status==='PASS'),encryptedJournalObjects:objects.size};
  if(process.env.A15_EVIDENCE_FILE){const file=resolve(process.env.A15_EVIDENCE_FILE);mkdirSync(dirname(file),{recursive:true});writeFileSync(file,JSON.stringify(result,null,2)+'\n');}
  console.log('A15_RESULT '+JSON.stringify(result));
 }

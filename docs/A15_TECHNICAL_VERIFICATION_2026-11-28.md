@@ -51,6 +51,8 @@ and erasure checks above. API correctness lint completed with zero warnings.
 
 Build and generate the Prisma client with the repository's normal commands. Use a **new disposable loopback database**, named `a15_erasure_test`, with no accounts. PostgreSQL client tools must match the server; the fixture user needs permission to create its random restored database. `A15_POSTGRES_BIN` can point to those client binaries when they are not on `PATH`.
 
+The fixture reads the server major version before setup, prefers the matching installed `/usr/lib/postgresql/<major>/bin` directory when no explicit override is supplied, and checks both client major versions. Its receipt records the Node and PostgreSQL client/server versions. This avoids a newer runner client introducing unsupported restore settings into PostgreSQL 16; an unavailable matching client fails the preflight instead of accepting restore errors.
+
 The following schema reset is **only for that newly created disposable test database**. Production uses the normal migrations and must never use this reset:
 
 ```sh

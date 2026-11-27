@@ -191,6 +191,7 @@ jobs:
           node apps/api/scripts/bootstrap-messaging-runtime-schema.mjs
           node apps/api/scripts/a15-erasure-http-recovery-e2e.mjs
       - name: Retain the A15 isolated erasure and recovery receipt
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: a15-erasure-recovery
