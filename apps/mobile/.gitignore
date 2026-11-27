@@ -1,3 +1,14 @@
+# Generated native projects and local acceptance artifacts are reproduced from source.
+android/
+ios/
 .expo/
 node_modules/
 dist/
+native-artifacts/
+*.keystore
+*.jks
+*.mobileprovision
+GoogleService-Info.plist
+google-services.json
+# Added only by the reviewed native acceptance build runner.
+app/native-acceptance.tsx

@@ -367,7 +367,7 @@
     {
       "path": ".github/workflows/mobile-validation.yml",
       "disposition": "independent-mobile",
-      "reason": "Independent mobile validation channel; unchanged."
+      "reason": "Independent native mobile channel: source and behavior validation plus actual Android APK/AAB and iOS simulator compilation, installation, guest UI and native cryptographic-capability acceptance. Production signing, physical devices and store submission remain separate."
     },
     {
       "path": ".github/workflows/offline-trip-authorization.yml",

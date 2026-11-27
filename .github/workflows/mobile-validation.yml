@@ -1,20 +1,155 @@
 name: Mobile validation
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/mobile/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/mobile-validation.yml'
   pull_request:
     paths:
       - 'apps/mobile/**'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/mobile-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-native-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   mobile:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: npm ci --workspace=@hydroland/mobile --include-workspace-root=false
+      - name: Validate native identities and release configuration
+        run: node --test apps/mobile/scripts/native-config.test.mjs
       - run: npm --workspace @hydroland/mobile run test
       - run: npm --workspace @hydroland/mobile run typecheck
       - run: npm --workspace @hydroland/mobile run build
+
+  android-native:
+    needs: mobile
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+      HYDROLAND_BUILD_PROFILE: acceptance
+      HYDROLAND_IOS_BUNDLE_ID: com.hydroland.acceptance
+      HYDROLAND_ANDROID_PACKAGE: com.hydroland.acceptance
+      HYDROLAND_BUILD_NUMBER: ${{ github.run_number }}
+      EXPO_PUBLIC_API_BASE_URL: http://10.0.2.2:3001/api/v1
+      MAESTRO_CLI_NO_ANALYTICS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: npm ci --ignore-scripts
+      - name: Generate isolated native Android project
+        run: node apps/mobile/scripts/native-acceptance.mjs prepare android
+      - name: Compile APK and AAB and verify identity and test signature
+        run: node apps/mobile/scripts/native-acceptance.mjs build android
+      - name: Install verified Maestro distribution
+        run: bash apps/mobile/scripts/install-maestro.sh
+      - name: Enable virtual-device acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install and exercise the actual Android application
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            node apps/mobile/scripts/native-acceptance.mjs install android
+            maestro test --format junit --output apps/mobile/native-artifacts/android/junit.xml -e ARTIFACT_DIR="$PWD/apps/mobile/native-artifacts/android" apps/mobile/.maestro/native-smoke.yaml
+            node apps/mobile/scripts/native-acceptance.mjs record-tests android
+      - name: Retain native Android packages, screenshots and source receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-android-acceptance
+          path: |
+            apps/mobile/native-artifacts/android/*.json
+            apps/mobile/native-artifacts/android/*.xml
+            apps/mobile/native-artifacts/android/*.txt
+            apps/mobile/native-artifacts/android/*.png
+            apps/mobile/android/app/build/outputs/apk/release/*.apk
+            apps/mobile/android/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+          retention-days: 14
+
+  ios-native:
+    needs: mobile
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+      HYDROLAND_BUILD_PROFILE: acceptance
+      HYDROLAND_IOS_BUNDLE_ID: com.hydroland.acceptance
+      HYDROLAND_ANDROID_PACKAGE: com.hydroland.acceptance
+      HYDROLAND_BUILD_NUMBER: ${{ github.run_number }}
+      EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:3001/api/v1
+      MAESTRO_CLI_NO_ANALYTICS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: npm ci --ignore-scripts
+      - name: Generate isolated native iOS project
+        run: node apps/mobile/scripts/native-acceptance.mjs prepare ios
+      - name: Compile the actual iOS simulator application
+        run: node apps/mobile/scripts/native-acceptance.mjs build ios
+      - name: Install verified Maestro distribution
+        run: bash apps/mobile/scripts/install-maestro.sh
+      - name: Install native application on an available iPhone simulator
+        run: node apps/mobile/scripts/native-acceptance.mjs install ios
+      - name: Exercise native guest UI and encrypted-storage capabilities
+        run: |
+          maestro --device "$HYDROLAND_SIMULATOR_ID" test --format junit --output apps/mobile/native-artifacts/ios/junit.xml -e ARTIFACT_DIR="$PWD/apps/mobile/native-artifacts/ios" apps/mobile/.maestro/native-smoke.yaml
+          node apps/mobile/scripts/native-acceptance.mjs record-tests ios
+      - name: Retain native iOS application, screenshots and source receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-ios-acceptance
+          path: |
+            apps/mobile/native-artifacts/ios/*.json
+            apps/mobile/native-artifacts/ios/*.xml
+            apps/mobile/native-artifacts/ios/*.txt
+            apps/mobile/native-artifacts/ios/*.png
+            apps/mobile/native-artifacts/ios/*.tar.gz
+          if-no-files-found: error
+          retention-days: 14
