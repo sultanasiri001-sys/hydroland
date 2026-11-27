@@ -334,6 +334,44 @@ jobs:
           psql postgresql://hydroland:hydroland@localhost:5433/hydroland -v ON_ERROR_STOP=1 -c 'CREATE DATABASE course_checkout_test'
           npm --workspace @hydroland/api exec -- prisma db push --skip-generate
           node apps/api/scripts/training-checkout-collection-validation.mjs
+      - name: C06 native campaign sources, owner decision, measurement and recovery
+        env:
+          NODE_ENV: test
+          TZ: UTC
+          PGTZ: UTC
+          COMMERCE_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+          C06_DB_TEST_CONFIRM: DISPOSABLE_LOOPBACK_ONLY
+          C06_POSTGRES_CONTAINER: ${{ job.services.postgres18.id }}
+          C06_EVIDENCE_FILE: artifacts/c06-http-acceptance.json
+          C06_RECOVERY_EVIDENCE_FILE: artifacts/c06-native-recovery.json
+          DATABASE_URL: postgresql://hydroland:hydroland@localhost:5433/commerce_test_c06_acceptance
+        run: |
+          mkdir -p artifacts
+          psql postgresql://hydroland:hydroland@localhost:5433/hydroland -v ON_ERROR_STOP=1 -c 'CREATE DATABASE commerce_test_c06_acceptance'
+          npm --workspace @hydroland/api exec -- prisma db push --skip-generate
+          node apps/api/scripts/bootstrap-equipment-runtime-schema.mjs
+          node apps/api/scripts/bootstrap-trip-weather-runtime-schema.mjs
+          node apps/api/scripts/bootstrap-messaging-runtime-schema.mjs
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20260930080000_audit_event_append_only/migration.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261127010000_participation_source_eligibility/migration.sql
+          node --input-type=module <<'NODE'
+          import {readFileSync,writeFileSync} from 'node:fs';
+          const sources=['20261031010000_marketing_campaign_drafts','20261031160000_operational_evidence_registry'];
+          const guards=sources.map(name=>{const sql=readFileSync('apps/api/prisma/migrations/'+name+'/migration.sql','utf8'),start=sql.indexOf('CREATE FUNCTION ');if(start<0)throw new Error('Original history guard missing');return sql.slice(start)});
+          writeFileSync('/tmp/c06-original-history-guards.sql',guards.join('\n'));
+          NODE
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f /tmp/c06-original-history-guards.sql
+          node apps/api/scripts/c06-campaign-lifecycle-migration-checks.mjs
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/prisma/migrations/20261127090000_campaign_lifecycle/migration.sql
+          node apps/api/scripts/c06-campaign-lifecycle-http-checks.cjs
+          node apps/api/scripts/c06-campaign-lifecycle-native-recovery.mjs
+      - name: Retain C06 synthetic campaign and native recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: c06-campaign-lifecycle-evidence
+          path: artifacts/c06-*
+          if-no-files-found: warn
       - name: Original booking terms and payment capture through real HTTP routes
         env:
           NODE_ENV: test

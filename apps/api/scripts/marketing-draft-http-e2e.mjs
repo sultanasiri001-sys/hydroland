@@ -25,7 +25,22 @@ const snapshot=()=>Promise.all([db.marketingCampaignDraft.findMany({orderBy:{id:
 try{
  assert.equal(await db.account.count(),0,'Refuse existing account stores');assert.equal(await db.organization.count(),0,'Dedicated empty database required');
  for(const table of ['MarketingCampaignDraftRevision','MarketingCampaignDraft'])assert.equal(Number((await db.$queryRawUnsafe(`SELECT count(*) AS count FROM "${table}"`))[0].count),0);
- await db.$transaction(async tx=>{await tx.$executeRawUnsafe('DROP TABLE "MarketingCampaignDraftRevision"');await tx.$executeRawUnsafe('DROP TABLE "MarketingCampaignDraft"');for(const sql of sqlStatements(await marketingMigration()))await tx.$executeRawUnsafe(sql);for(const sql of sqlStatements(await readFile(new URL('../prisma/migrations/20260930080000_audit_event_append_only/migration.sql',import.meta.url),'utf8')))await tx.$executeRawUnsafe(sql);});
+ await db.$transaction(async tx=>{
+  // Reinstall the exact original migration in this empty fixture while retaining
+  // later native references (C06). No dependent table or constraint is discarded.
+  const incoming=()=>tx.$queryRaw`SELECT r.relname AS "tableName",c.conname AS name,pg_get_constraintdef(c.oid) AS definition,c.convalidated AS validated FROM pg_constraint c JOIN pg_class r ON r.oid=c.conrelid JOIN pg_namespace n ON n.oid=r.relnamespace WHERE c.contype='f' AND c.confrelid='"MarketingCampaignDraft"'::regclass AND c.conrelid<>'"MarketingCampaignDraftRevision"'::regclass AND n.nspname=current_schema() ORDER BY r.relname,c.conname`;
+  const references=await incoming(),identifier=value=>'"'+value.replaceAll('"','""')+'"';
+  for(const reference of references){
+   assert.equal(Number((await tx.$queryRawUnsafe(`SELECT count(*) AS count FROM ${identifier(reference.tableName)}`))[0].count),0,'Dependent lifecycle fixture must be empty');
+   await tx.$executeRawUnsafe(`ALTER TABLE ${identifier(reference.tableName)} DROP CONSTRAINT ${identifier(reference.name)}`);
+  }
+  await tx.$executeRawUnsafe('DROP TABLE "MarketingCampaignDraftRevision"');
+  await tx.$executeRawUnsafe('DROP TABLE "MarketingCampaignDraft"');
+  for(const sql of sqlStatements(await marketingMigration()))await tx.$executeRawUnsafe(sql);
+  for(const reference of references)await tx.$executeRawUnsafe(`ALTER TABLE ${identifier(reference.tableName)} ADD CONSTRAINT ${identifier(reference.name)} ${reference.definition}`);
+  assert.deepEqual(await incoming(),references,'Later native foreign keys and validation state must survive the original migration fixture');
+  for(const sql of sqlStatements(await readFile(new URL('../prisma/migrations/20260930080000_audit_event_append_only/migration.sql',import.meta.url),'utf8')))await tx.$executeRawUnsafe(sql);
+ });
  await ensurePurpleTestSchema(db);
  const owner=await actor('owner'),other=await actor('other'),staff=await actor('staff','STAFF');
  const org=await db.organization.create({data:{displayName:'Synthetic internal marketing',kind:'HYDROLAND_INTERNAL_PLATFORM',status:'ACTIVE',ownerId:owner.id}}),foreign=await db.organization.create({data:{displayName:'Synthetic unrelated center',kind:'DIVE_CENTER',status:'ACTIVE',ownerId:other.id}});

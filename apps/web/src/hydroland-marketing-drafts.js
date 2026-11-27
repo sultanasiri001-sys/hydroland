@@ -55,6 +55,8 @@
   "{0} قنوات التخطيط": "{0} planning channels",
   "{0} · {1} · الإصدار {2}": "{0} · {1} · Version {2}",
   "الإصدار {0} · {1} · {2}": "Version {0} · {1} · {2}"
+  ,"الحقوق والميزانية وقرار الحملة": "Campaign rights, budget and decision"
+  ,"تعذر تحميل دورة الحملة.": "Could not load the campaign lifecycle."
 }) || {t:value=>value,message(text,values=[]){return this.format(text,values)},messageHTML(value){return String(value??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))},setMessage:(node,value)=>(node.textContent=value??''),attribute(name,text,values=[]){return name+'="'+this.format(text,values).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))+'"'},label(value,values=[]){return this.format(String(value??''),values).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))},format:(text,values=[])=>text.replace(/\{(\d+)\}/g,(token,i)=>i<values.length?String(values[i]??''):token),html:(parts,...values)=>parts.map((part,i)=>part+(i<values.length?String(values[i]??''):'')).join(''),bind:()=>{},setHTML:(node,value)=>(node.innerHTML=value),insertHTML:(node,position,value)=>node.insertAdjacentHTML(position,value),setText(node,text,values=[]){return node.textContent=this.format(text,values)},setAttribute(node,name,text,values=[]){node.setAttribute(name,this.format(text,values))}};
 
   // Local error identity retains authored text; server/provider messages stay opaque.
@@ -74,17 +76,19 @@
   host.appendChild(box);
   const auth=()=>window.HydrolandAuth,access=()=>window.HydrolandPortalAccess;
   const create=box.querySelector('[data-marketing-create]'),edit=box.querySelector('[data-marketing-edit]'),stateForm=box.querySelector('[data-marketing-state]'),list=box.querySelector('[data-marketing-list]'),history=box.querySelector('[data-marketing-history]'),feedback=box.querySelector('[data-marketing-feedback]'),older=box.querySelector('[data-marketing-older]');
-  let epoch=0,busy=false,current=null,nextCursor=null,ownerLoaded=false,requestKey=null,requestContent=null;
+  const lifecycleButton=document.createElement('button'),lifecycleHost=document.createElement('section');lifecycleButton.type='button';lifecycleButton.dataset.marketingLifecycleOpen='';lifecycleHost.dataset.campaignLifecycle='';lifecycleButton.hidden=lifecycleHost.hidden=true;uiLocale.setText(lifecycleButton,'الحقوق والميزانية وقرار الحملة');history.insertAdjacentElement('beforebegin',lifecycleButton);lifecycleButton.insertAdjacentElement('afterend',lifecycleHost);
+  let epoch=0,busy=false,current=null,nextCursor=null,ownerLoaded=false,requestKey=null,requestContent=null,lifecycleBusy=false,lifecycle=null,lifecycleToken=0;
   const eligible=()=>Boolean(box.open&&!host.hidden&&auth()?.isAuthenticated?.()&&access()?.getCurrentRole?.()==='admin'&&access()?.roleAllowed?.('admin'));
   const same=(v,s)=>v===epoch&&s===auth()?.getSessionVersion?.()&&eligible();
-  function lock(){box.querySelectorAll('fieldset,button').forEach(e=>e.disabled=busy);older.hidden=!nextCursor;}
-  function clear(){epoch++;busy=false;current=null;nextCursor=null;ownerLoaded=false;requestKey=requestContent=null;list.replaceChildren();history.replaceChildren();uiLocale.setMessage(feedback, '');for(const f of [create,edit,stateForm]){f.reset();f.hidden=true;}older.hidden=true;box.open=false;lock();}
+  function lock(){box.querySelectorAll('fieldset,button').forEach(e=>{if(!e.closest('[data-campaign-lifecycle]'))e.disabled=busy||lifecycleBusy;});older.hidden=!nextCursor;}
+  function dropLifecycle(){lifecycleToken++;lifecycle?.destroy();lifecycle=null;lifecycleBusy=false;lifecycleHost.replaceChildren();lifecycleHost.hidden=true;lifecycleButton.hidden=true;}
+  function clear(){epoch++;dropLifecycle();busy=false;current=null;nextCursor=null;ownerLoaded=false;requestKey=requestContent=null;list.replaceChildren();history.replaceChildren();uiLocale.setMessage(feedback, '');for(const f of [create,edit,stateForm]){f.reset();f.hidden=true;}older.hidden=true;box.open=false;lock();}
   async function authorize(v,s){const ok=await access()?.authorizeRole?.('admin',{sessionVersion:s,isCurrent:()=>v===epoch&&!host.hidden&&box.open});if(!ok||!same(v,s)){if(v===epoch)clear();return false;}return true;}
   async function call(path,options,v,s){const response=await auth().authorizedFetch('/admin/marketing-campaign-drafts'+path,options),data=await response.json().catch(()=>null);if(response.status===401||response.status===403){if(v===epoch){clear();uiLocale.setMessage(feedback, uiLocale.message('سجل المسودات متاح لمالك هيدرولاند المتحقق فقط.'));}throw localError(uiLocale.message('صلاحية سجل المسودات غير متاحة.'));}if(!response.ok)throw localError((typeof data?.message==='string' ? data.message : uiLocale.message('تعذر حفظ أو قراءة المسودة.')));if(!same(v,s))return null;return data;}
   const valid=r=>r&&typeof r.id==='string'&&Number.isSafeInteger(r.revision)&&r.revision>0&&['DRAFT','ARCHIVED'].includes(r.status)&&typeof r.title==='string'&&r.title.length<=160&&Array.isArray(r.channels)&&r.channels.length>0&&r.channels.every(c=>Object.hasOwn(channels,c));
   function selected(detail){
    const r=detail?.record;if(detail?.schemaVersion!==1||detail.policy!=='MARKETING_CAMPAIGN_DRAFT_V1'||!valid(r)||typeof r.objective!=='string'||r.objective.length>2000||typeof detail.historyTruncated!=='boolean'||!Array.isArray(detail.history)||detail.history.some(h=>!Number.isSafeInteger(h.revision)||typeof h.reason!=='string'||typeof h.action!=='string'||!Object.hasOwn(actions,h.action)||h.revision<1||h.revision>r.revision||h.reason.length>500))throw localError(uiLocale.message('تعذر تأكيد إصدار المسودة.'));
-   current=r;let item=[...list.querySelectorAll('[data-marketing-draft-id]')].find(b=>b.dataset.marketingDraftId===r.id);if(!item){item=document.createElement('button');item.type='button';item.dataset.marketingDraftId=r.id;list.prepend(item);}uiLocale.setMessage(item, uiLocale.message("{0} · {1} · الإصدار {2}", [r.title, (r.status==='DRAFT' ? uiLocale.message('مسودة') : uiLocale.message('مؤرشفة')), r.revision]));edit.hidden=r.status!=='DRAFT';stateForm.hidden=false;
+   dropLifecycle();current=r;lifecycleButton.hidden=false;let item=[...list.querySelectorAll('[data-marketing-draft-id]')].find(b=>b.dataset.marketingDraftId===r.id);if(!item){item=document.createElement('button');item.type='button';item.dataset.marketingDraftId=r.id;list.prepend(item);}uiLocale.setMessage(item, uiLocale.message("{0} · {1} · الإصدار {2}", [r.title, (r.status==='DRAFT' ? uiLocale.message('مسودة') : uiLocale.message('مؤرشفة')), r.revision]));edit.hidden=r.status!=='DRAFT';stateForm.hidden=false;
    edit.elements.title.value=r.title;edit.elements.objective.value=r.objective;for(const o of edit.elements.channels.options)o.selected=r.channels.includes(o.value);edit.elements.reason.value='';stateForm.reset();
    uiLocale.setMessage(box.querySelector('[data-marketing-transition]'), (r.status==='DRAFT' ? uiLocale.message('أرشفة المسودة') : uiLocale.message('استعادة المسودة للتحرير')));history.replaceChildren();
    const title=document.createElement('h5');uiLocale.setMessage(title, uiLocale.message('تاريخ إصدارات المسودة'));history.appendChild(title);
@@ -92,7 +96,22 @@
    if(detail.historyTruncated){const p=document.createElement('p');uiLocale.setMessage(p, uiLocale.message('يُعرض أحدث 50 إصدارًا؛ الإصدارات الأقدم محفوظة.'));history.appendChild(p);}
   }
   function content(form){return {title:form.elements.title.value.trim(),objective:form.elements.objective.value.trim(),channels:[...form.elements.channels.selectedOptions].map(o=>o.value).sort()};}
-  async function operation(work){if(busy||!eligible())return;const v=++epoch,s=auth().getSessionVersion?.();busy=true;lock();try{if(await authorize(v,s))await work(v,s);}catch(e){if(same(v,s))uiLocale.setMessage(feedback, (localErrorMessage(e) || uiLocale.message('تعذر إكمال الإجراء.')));}finally{if(v===epoch){busy=false;lock();}}}
+  async function operation(work){if(busy||lifecycleBusy||!eligible())return;dropLifecycle();const v=++epoch,s=auth().getSessionVersion?.();busy=true;lock();try{if(await authorize(v,s))await work(v,s);}catch(e){if(same(v,s))uiLocale.setMessage(feedback, (localErrorMessage(e) || uiLocale.message('تعذر إكمال الإجراء.')));}finally{if(v===epoch){busy=false;lifecycleButton.hidden=!current;lock();}}}
+  let lifecycleScript=null;
+  async function loadLifecycle(){
+   if(window.HydrolandCampaignLifecycle)return;
+   if(!lifecycleScript){lifecycleScript=new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='./hydroland-campaign-lifecycle.js';script.onload=()=>window.HydrolandCampaignLifecycle?resolve():reject(new Error('load'));script.onerror=()=>{script.remove();reject(new Error('load'));};document.body.appendChild(script);}).catch(error=>{lifecycleScript=null;throw error;});}
+   await lifecycleScript;
+  }
+  lifecycleButton.addEventListener('click',async()=>{
+   if(busy||lifecycleBusy||!current||!eligible())return;
+   if(lifecycle){void lifecycle.refresh();return;}
+   const token=++lifecycleToken,draft=current,s=auth().getSessionVersion?.();lifecycleBusy=true;lock();
+   const live=()=>token===lifecycleToken&&current===draft&&s===auth().getSessionVersion?.()&&eligible();
+   try{await loadLifecycle();if(!live())return;lifecycleHost.hidden=false;lifecycle=window.HydrolandCampaignLifecycle.mount(lifecycleHost,{draftId:draft.id,isCurrent:live,onBusy:value=>{if(live()){lifecycleBusy=value;lock();}},onAccessLost:clear});await lifecycle.refresh();}
+   catch{if(live())uiLocale.setText(feedback,'تعذر تحميل دورة الحملة.');}
+   finally{if(live()){lifecycleBusy=false;lock();}}
+  });
   async function load(append=false){return operation(async(v,s)=>{
    const payload=await call(append?'?cursor='+encodeURIComponent(nextCursor):'',{},v,s);if(!payload)return;
    if(payload.schemaVersion!==1||payload.policy!=='MARKETING_CAMPAIGN_DRAFT_V1'||!Array.isArray(payload.items)||payload.items.length>50||payload.items.some(r=>!valid(r))||typeof payload.hasMore!=='boolean'||(payload.hasMore&&typeof payload.nextCursor!=='string'))throw localError(uiLocale.message('تعذر تأكيد قائمة المسودات.'));
